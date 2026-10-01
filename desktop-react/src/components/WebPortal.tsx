@@ -6,8 +6,7 @@ import { useAccount } from "../state/useAccount";
 export type PortalHostState = "idle" | "checking" | "online" | "offline" | "unbound";
 type AccountController = ReturnType<typeof useAccount>;
 
-const SMIREL_LOGO = "/smirel-logo.svg";
-const SMIREL_MARK = "/smirel-mark.svg";
+const SMIREL_LOGO = "/smirel-logo.png";
 const PORTAL_STYLES = [
   "https://smirel.com/download/styles-v3.css",
   "https://smirel.com/download/cosmic-bright-v1.css",
@@ -115,10 +114,14 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, r
     if (ok) setPassword("");
   }
 
+  function focusAccount() {
+    document.getElementById("account")?.scrollIntoView({ behavior: "smooth", block: "center" });
+    window.setTimeout(() => document.getElementById("emailInput")?.focus(), 220);
+  }
+
   function openWeb() {
     if (!authenticated) {
-      document.getElementById("account")?.scrollIntoView({ behavior: "smooth", block: "center" });
-      window.setTimeout(() => document.getElementById("emailInput")?.focus(), 220);
+      focusAccount();
       return;
     }
     onEnter();
@@ -134,72 +137,95 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, r
           ? (remoteMode ? copy.remoteOffline : copy.localOffline)
           : (zh ? "等待 Loom Host" : "Waiting for Loom Host");
 
+  const hostLabel = hostState === "online"
+    ? (selectedDeviceName || (zh ? "已连接" : "Connected"))
+    : hostState === "checking"
+      ? (zh ? "连接中" : "Connecting")
+      : hostState === "offline"
+        ? (zh ? "离线" : "Offline")
+        : hostState === "unbound"
+          ? (zh ? "待绑定" : "Not linked")
+          : (zh ? "等待连接" : "Waiting");
+
   return (
     <div className="loom-portal-page">
       <PortalWallpaper />
       <main className="release-shell loom-portal-shell">
-        <header className="topbar fade">
+        <header className="topbar fade loom-site-header">
           <a className="brand loom-portal-brand" href="/" aria-label="Smirel Loom">
-            <img className="loom-portal-logo" src={SMIREL_LOGO} alt="Smirel" />
-            <span className="loom-portal-brand-divider" aria-hidden="true" />
+            <img className="loom-smirel-wordmark" src={SMIREL_LOGO} alt="Smirel" />
+            <span className="loom-brand-divider" aria-hidden="true" />
             <span className="brand-copy"><strong>Loom</strong><small>Personal AI Agent</small></span>
           </a>
-          <div className="topbar-right">
-            <nav className="portal-nav" aria-label={zh ? "页面导航" : "Portal navigation"}>
-              <a href="#release">{zh ? "下载" : "Download"}</a><a href="#account">{zh ? "账户" : "Account"}</a><button type="button" onClick={openWeb}>{zh ? "网页版" : "Web"}</button>
-            </nav>
-            <div className="service-status"><i /><span>Stable</span></div>
-          </div>
+          <nav className="loom-site-nav" aria-label={zh ? "页面导航" : "Portal navigation"}>
+            <a href="#desktop">{zh ? "桌面端" : "Desktop"}</a>
+            <button type="button" onClick={openWeb}>{zh ? "网页版" : "Web"}</button>
+            <a href="#account">{zh ? "账户" : "Account"}</a>
+          </nav>
         </header>
 
-        <section className="portal-title fade">
-          <div className="portal-title-copy"><p className="eyebrow">SMIREL · PERSONAL AI AGENT</p><h1>Loom for Windows</h1><p>{zh ? "下载 Loom Windows 客户端，或通过浏览器连接你自己的 Loom Host。" : "Download Loom for Windows or connect to your own Loom Host from the browser."}</p></div>
-          <div className="portal-title-meta"><span className="title-chip live">Stable</span><span className="title-chip">Windows x64</span></div>
+        <section className="loom-hero cards fade">
+          <div className="loom-hero-copy">
+            <p className="kicker">LOOM · PERSONAL AI AGENT</p>
+            <h1>{zh ? "一个 Agent，随处继续。" : "One agent. Continue anywhere."}</h1>
+            <p className="loom-hero-description">
+              {zh
+                ? "Loom 的 Agent Runtime 运行在你自己的电脑上。桌面端和网页版共享同一套会话、审批、文件与 Computer Use。"
+                : "Loom runs its Agent Runtime on your own computer. Desktop and Web share the same conversations, approvals, files and Computer Use."}
+            </p>
+            <div className="loom-hero-actions">
+              <button className="loom-action loom-action-primary" type="button" onClick={openWeb}><span>{zh ? "打开 Loom Web" : "Open Loom Web"}</span><span>→</span></button>
+              <a className="loom-action loom-action-secondary" href={RELEASE.download}><span>{zh ? "下载 Windows 版" : "Download for Windows"}</span><span>↓</span></a>
+            </div>
+          </div>
+          <div className="loom-hero-status">
+            <div className="loom-status-kicker"><span className={`loom-live-dot${hostState === "online" ? " is-online" : ""}`} />{zh ? "当前连接" : "CURRENT CONNECTION"}</div>
+            <strong className="loom-status-title">{authenticated ? hostLabel : (zh ? "尚未登录" : "Signed out")}</strong>
+            <p>{authenticated ? (hostError || hostText) : (zh ? "登录后，浏览器会安全连接到你的 Loom Host。" : "Sign in and the browser will securely connect to your Loom Host.")}</p>
+            <div className="loom-status-row"><span>{zh ? "账户" : "Account"}</span><strong>{authenticated ? account.account.user?.email : (zh ? "未登录" : "Signed out")}</strong></div>
+            <div className="loom-status-row"><span>Host</span><strong>{authenticated ? hostLabel : "—"}</strong></div>
+          </div>
         </section>
 
-        <section className="dashboard" id="release">
-          <article className="release-card cards fade">
-            <div className="release-product"><div className="release-product-icon loom-product-mark"><img src={SMIREL_MARK} alt="" /></div><div className="release-product-copy"><strong>Loom for Windows</strong><span>Personal AI Agent</span></div><span className="release-channel">STABLE CHANNEL</span></div>
-            <div className="release-head"><div><p className="kicker">LATEST RELEASE</p></div><span className="release-badge">WINDOWS · X64</span></div>
-            <div className="version-large"><strong>{RELEASE.version}</strong><span>{RELEASE.published}</span></div>
-            <p className="release-summary">{zh ? "当前正式版本。桌面端与 Loom Web 共用同一个本地 Agent Runtime、会话、审批、文件与 Computer Use。" : "Current stable release. Desktop and Loom Web share the same local Agent Runtime, conversations, approvals, files and Computer Use."}</p>
-            <div className="release-state-row"><span className="release-state-item live"><i />Stable release</span><span className="release-state-item"><i />Local Host</span><span className="release-state-item"><i />Secure Web relay</span></div>
-            <div className="release-meta"><div className="meta-item"><span>PLATFORM</span><strong>Windows 10 / 11 · x64</strong></div><div className="meta-item"><span>PACKAGE</span><strong>{RELEASE.package}</strong></div><div className="meta-item"><span>ACCOUNT</span><strong>{authenticated ? account.account.user?.email : (zh ? "未登录" : "Signed out")}</strong></div></div>
-            <div className="loom-portal-release-actions">
-              <a className="download-button cards" href={RELEASE.download}><span className="download-copy"><strong>Download Loom</strong><small>Loom Setup {RELEASE.version} · x64</small></span><span className="download-arrow">⇩</span></a>
-              <button className="download-button cards loom-open-web-button" type="button" onClick={openWeb}><span className="download-copy"><strong>Open Loom Web</strong><small>{authenticated ? hostText : (zh ? "登录后连接 Loom Host" : "Sign in to connect your Loom Host")}</small></span><span className="download-arrow">→</span></button>
-            </div>
-          </article>
+        <section className="loom-function-grid fade">
+          <div className="loom-function-stack">
+            <article className="loom-function-card cards" id="desktop">
+              <div className="loom-card-head"><span className="loom-card-index">01</span><div><p className="kicker">DESKTOP</p><h2>Loom for Windows</h2></div></div>
+              <p className="loom-card-copy">{zh ? "安装 Loom 桌面端与本地 Host。它是真正运行 Agent、Computer Use、文件和审批的地方。" : "Install Loom Desktop and the local Host. This is where the Agent, Computer Use, files and approvals actually run."}</p>
+              <div className="loom-spec-row"><span><small>{zh ? "版本" : "Version"}</small><strong>{RELEASE.version}</strong></span><span><small>{zh ? "平台" : "Platform"}</small><strong>Windows x64</strong></span><span><small>{zh ? "大小" : "Size"}</small><strong>{RELEASE.package}</strong></span></div>
+              <div className="loom-card-actions"><a className="loom-action loom-action-primary" href={RELEASE.download}><span>{zh ? "下载安装包" : "Download installer"}</span><span>↓</span></a><a className="loom-text-link" href={RELEASE.latest} target="_blank" rel="noreferrer">{zh ? "更新日志" : "Release notes"} ↗</a></div>
+            </article>
 
-          <aside className="account-card cards fade" id="account">
-            <div className="account-head"><div><p className="kicker">ACCOUNT ACCESS</p><h2>{authenticated ? "Loom Account" : authMode === "login" ? (zh ? "账户登录" : "Sign in") : (zh ? "创建账户" : "Create account")}</h2></div><span className="secure-pill">ACCESS</span></div>
+            <article className="loom-function-card cards" id="web">
+              <div className="loom-card-head"><span className="loom-card-index">02</span><div><p className="kicker">WEB</p><h2>Loom Web</h2></div></div>
+              <p className="loom-card-copy">{zh ? "网页版不是另一套 Agent。它只是连接你自己的 Loom Host，让你在浏览器里继续同一个工作区。" : "Loom Web is not a second Agent. It connects to your own Loom Host so the same workspace continues in the browser."}</p>
+              <div className="loom-host-state"><span className={`loom-live-dot${hostState === "online" ? " is-online" : ""}`} /><div><small>Loom Host</small><strong>{authenticated ? hostLabel : (zh ? "等待登录" : "Waiting for sign-in")}</strong></div></div>
+              <div className="loom-card-actions"><button className="loom-action loom-action-primary" type="button" onClick={openWeb}><span>{zh ? "进入网页版" : "Enter Loom Web"}</span><span>→</span></button><button className="loom-text-link loom-text-button" type="button" onClick={authenticated ? onRemote : focusAccount}>{authenticated ? copy.remoteDevices : (zh ? "先登录账户" : "Sign in first")}</button></div>
+            </article>
+          </div>
+
+          <aside className="loom-account-card cards" id="account">
+            <div className="loom-card-head"><span className="loom-card-index">03</span><div><p className="kicker">ACCOUNT</p><h2>{authenticated ? (zh ? "你的 Loom" : "Your Loom") : authMode === "login" ? (zh ? "登录账户" : "Sign in") : (zh ? "创建账户" : "Create account")}</h2></div></div>
             {!authenticated ? <>
-              <p className="account-intro">{zh ? "账户入口直接嵌入原玻璃卡片布局，登录后即可连接 Loom Host。" : "Account access is embedded directly in the original glass portal. Sign in to connect your Loom Host."}</p>
-              <form className="login-form" onSubmit={submitAuth} autoComplete="on">
+              <p className="loom-card-copy">{zh ? "账户只负责身份与设备连接；浏览器不会直接持有 Loom Host access token。" : "Your account handles identity and device connection; the browser never directly holds the Loom Host access token."}</p>
+              <form className="login-form loom-account-form" onSubmit={submitAuth} autoComplete="on">
                 <label><span>{zh ? "邮箱" : "Email"}</span><input id="emailInput" type="email" autoComplete="email" placeholder="name@example.com" value={email} onChange={(event) => setEmail(event.target.value)} required /></label>
                 <label className="password-field"><span>{zh ? "密码" : "Password"}</span><input type={showPassword ? "text" : "password"} autoComplete={authMode === "login" ? "current-password" : "new-password"} placeholder="••••••••" value={password} onChange={(event) => setPassword(event.target.value)} required /><button className="password-toggle" type="button" aria-pressed={showPassword} onClick={() => setShowPassword((value) => !value)}>{showPassword ? (zh ? "隐藏" : "Hide") : (zh ? "显示" : "Show")}</button></label>
-                <button className="login-button cards" type="submit" disabled={account.busy}><span>{account.busy ? (zh ? "处理中…" : "Working…") : authMode === "login" ? (zh ? "登录" : "Sign in") : (zh ? "创建账户" : "Create account")}</span></button>
+                <button className="loom-action loom-action-primary loom-account-submit" type="submit" disabled={account.busy}><span>{account.busy ? (zh ? "处理中…" : "Working…") : authMode === "login" ? (zh ? "登录" : "Sign in") : (zh ? "创建账户" : "Create account")}</span><span>→</span></button>
               </form>
-              <div className="account-secondary-actions"><button className="account-link-button" type="button" onClick={() => { account.clearError(); setAuthMode(authMode === "login" ? "register" : "login"); }}>{authMode === "login" ? (zh ? "创建账户" : "Create account") : (zh ? "返回登录" : "Back to sign in")}</button></div>
-              <p className={`form-note${account.error ? " is-error" : ""}`}>{account.error?.message || (zh ? "浏览器使用安全会话，不直接持有 Loom Host access token。" : "The browser uses a secure session and never directly holds the Loom Host access token.")}</p>
-            </> : <div className="signed-in loom-portal-signed-in">
-              <div className="signed-in-state"><div className="account-avatar">✓</div><div><p className="kicker">SIGNED IN</p><p className="account-email">{account.account.user?.email}</p></div></div>
-              <div className="account-status-panel"><div className="account-status-line"><span>{zh ? "会话状态" : "Session"}</span><strong data-state="ok">{zh ? "已登录" : "Signed in"}</strong></div><div className="account-status-line"><span>Loom Host</span><strong data-state={hostState === "online" ? "ok" : "neutral"}>{hostState === "online" ? (selectedDeviceName || "Online") : hostState}</strong></div></div>
+              <button className="loom-account-switch" type="button" onClick={() => { account.clearError(); setAuthMode(authMode === "login" ? "register" : "login"); }}>{authMode === "login" ? (zh ? "没有账户？创建一个" : "No account? Create one") : (zh ? "已有账户？返回登录" : "Already have an account? Sign in")}</button>
+              {account.error ? <p className="form-note is-error">{account.error.message}</p> : null}
+            </> : <div className="loom-signed-in">
+              <div className="loom-account-identity"><span className="loom-account-check">✓</span><div><small>{zh ? "已登录" : "SIGNED IN"}</small><strong>{account.account.user?.email}</strong></div></div>
+              <div className="loom-account-details"><div><span>{zh ? "当前设备" : "Current device"}</span><strong>{hostLabel}</strong></div><div><span>{zh ? "连接方式" : "Connection"}</span><strong>{remoteMode ? (zh ? "远程设备" : "Remote device") : (zh ? "本机 Host" : "Local Host")}</strong></div></div>
               <p className="loom-host-note">{hostError || hostText}</p>
-              <div className="signed-account-actions"><button className="switch-account-button" type="button" onClick={openWeb}>Open Loom Web</button><button className="switch-account-button" type="button" onClick={onRemote}>{copy.remoteDevices}</button><button className="logout-button" type="button" onClick={() => void account.logout()}>{zh ? "退出登录" : "Sign out"}</button></div>
+              <div className="loom-account-actions"><button className="loom-action loom-action-primary" type="button" onClick={openWeb}><span>{zh ? "打开 Loom Web" : "Open Loom Web"}</span><span>→</span></button><button className="loom-action loom-action-secondary" type="button" onClick={onRemote}><span>{copy.remoteDevices}</span><span>↗</span></button></div>
+              <button className="loom-account-switch" type="button" onClick={() => void account.logout()}>{zh ? "退出当前账户" : "Sign out"}</button>
             </div>}
-            <div className="account-access-flow"><span className="flow-label">ACCESS FLOW</span><div className="flow-steps"><div className="flow-step"><span>01</span><strong>{zh ? "账户登录" : "Sign in"}</strong></div><div className="flow-step"><span>02</span><strong>{zh ? "连接 Host" : "Connect Host"}</strong></div><div className="flow-step"><span>03</span><strong>Loom Web</strong></div></div></div>
-            <div className="account-footer"><span>Secure account access</span><span>smirel.com</span></div>
           </aside>
         </section>
 
-        <section className="utility-grid fade" id="details">
-          <a className="utility-card cards" href={RELEASE.latest} target="_blank" rel="noreferrer"><span className="utility-icon">☷</span><span className="utility-overline">RELEASE</span><h3>{zh ? "更新日志" : "Release notes"}</h3><p>{zh ? "查看当前正式版本与变更。" : "View the current stable release and changes."}</p></a>
-          <a className="utility-card cards" href={RELEASE.releases} target="_blank" rel="noreferrer"><span className="utility-icon">↺</span><span className="utility-overline">ARCHIVE</span><h3>{zh ? "历史版本" : "Archive"}</h3><p>{zh ? "查看已发布的 Windows 正式版本。" : "Browse released Windows builds."}</p></a>
-          <div className="utility-card cards"><span className="utility-icon">▣</span><span className="utility-overline">SYSTEM</span><h3>{zh ? "运行环境" : "System"}</h3><p>Windows 10 / 11 · x64 · Loom Host</p></div>
-          <a className="utility-card cards" href={RELEASE.support} target="_blank" rel="noreferrer"><span className="utility-icon">?</span><span className="utility-overline">SUPPORT</span><h3>{zh ? "安装帮助" : "Support"}</h3><p>{zh ? "安装、登录、Host 与 Web 连接问题。" : "Installation, account, Host and Web connection help."}</p></a>
-        </section>
-        <footer className="footer fade"><span>© 2026 Smirel · Loom</span><span className="footer-status"><i />Official distribution</span></footer>
+        <footer className="footer fade loom-site-footer"><span>© 2026 Smirel · Loom</span><span className="loom-footer-links"><a href={RELEASE.releases} target="_blank" rel="noreferrer">{zh ? "全部版本" : "All releases"}</a><a href={RELEASE.support} target="_blank" rel="noreferrer">{zh ? "支持" : "Support"}</a><span>{RELEASE.published.split(" · ")[0]}</span></span></footer>
       </main>
     </div>
   );
