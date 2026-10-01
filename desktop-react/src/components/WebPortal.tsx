@@ -1,8 +1,9 @@
 import "./portal-base.css";
 import "./portal-modules.css";
+import "./portal-host-card.css";
 import type { CSSProperties, FormEvent } from "react";
 import { useEffect, useState } from "react";
-import { Laptop, Download } from "lucide-react";
+import { Laptop, Download, UserRound, LogOut, Check, ArrowRight } from "lucide-react";
 import { useI18n } from "../i18n";
 import { useAccount } from "../state/useAccount";
 
@@ -142,11 +143,13 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
 
   const primaryLabel = !authenticated
     ? (zh ? "登录并打开 Loom Web" : "Sign in to Loom Web")
-    : hostState === "checking"
-      ? (zh ? "正在连接…" : "Connecting…")
-      : hostState === "unbound"
-        ? (zh ? "查找本机 Loom Host" : "Find Loom Host")
-        : (zh ? "重新连接 Loom Host" : "Reconnect Loom Host");
+    : hostState === "online"
+      ? (zh ? "打开 Loom Web" : "Open Loom Web")
+      : hostState === "checking"
+        ? (zh ? "正在连接…" : "Connecting…")
+        : hostState === "unbound"
+          ? (zh ? "查找本机 Loom Host" : "Find Loom Host")
+          : (zh ? "重新连接 Loom Host" : "Reconnect Loom Host");
 
   return (
     <div className="loom-portal-page is-modular">
@@ -201,27 +204,39 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
               <button className="loom-account-switch" type="button" onClick={() => { account.clearError(); setAuthMode(authMode === "login" ? "register" : "login"); }}>{authMode === "login" ? (zh ? "没有账户？创建一个" : "New to Loom? Create an account") : (zh ? "已有账户？返回登录" : "Already have an account? Sign in")}</button>
               {account.error ? <p className="form-note is-error">{account.error.message}</p> : null}
             </section> : <>
-              <section className="loom-host-module" aria-label={zh ? "Host 连接" : "Host connection"}>
-              <div className="loom-control-top">
-                <div>
+              <section className="loom-host-module loom-host-refined" data-host-state={hostState} aria-label={zh ? "Host 连接" : "Host connection"}>
+                <div className="loom-host-meta">
                   <p className="kicker">LOOM HOST</p>
-                  <h2>{hostLabel}</h2>
+                  <span className={`loom-connection-badge${hostState === "online" ? " is-online" : hostState === "checking" ? " is-working" : ""}`}>
+                    <i aria-hidden="true" />{hostState === "online" ? (zh ? "在线" : "Online") : hostState === "checking" ? (zh ? "连接中" : "Connecting") : hostState === "idle" ? (zh ? "等待中" : "Waiting") : hostState === "unbound" ? (zh ? "未发现" : "Not found") : (zh ? "离线" : "Offline")}
+                  </span>
                 </div>
-                <span className={`loom-connection-badge${hostState === "online" ? " is-online" : hostState === "checking" ? " is-working" : ""}`}><i aria-hidden="true" />{hostState === "checking" ? (zh ? "连接中" : "CONNECTING") : hostState === "online" ? (zh ? "在线" : "ONLINE") : (zh ? "需要连接" : "ACTION NEEDED")}</span>
-              </div>
-
-              <p className="loom-control-copy">{hostError || hostText}</p>
-              <div className={`loom-connection-track${hostState === "checking" ? " is-working" : hostState === "online" ? " is-online" : ""}`} aria-hidden="true"><span /></div>
-
-              {hostState !== "checking" ? <button className="loom-form-submit loom-host-action" type="button" onClick={primaryAction}><span>{primaryLabel}</span><span aria-hidden="true">→</span></button> : null}
+                <div className="loom-host-summary">
+                  <span className="loom-host-emblem" aria-hidden="true"><Laptop size={27} strokeWidth={1.5} /><i /></span>
+                  <div role="status" aria-live="polite" aria-atomic="true">
+                    <h2>{hostLabel}</h2>
+                    <p className="loom-host-target">{hostState === "online" ? (zh ? "当前电脑" : "This computer") : selectedDeviceName || (zh ? "你的本地工作区" : "Your local workspace")}</p>
+                  </div>
+                </div>
+                <p className="loom-control-copy">{hostError || hostText}</p>
+                {hostState === "checking" || hostState === "online" ? <div className={`loom-connection-track${hostState === "checking" ? " is-working" : " is-online"}`} aria-hidden="true"><span /></div> : null}
+                {hostState !== "checking" ? <button className="loom-form-submit loom-host-action" type="button" onClick={primaryAction}><span>{primaryLabel}</span><ArrowRight size={15} aria-hidden="true" /></button> : null}
               </section>
-              <section className="loom-account-module" aria-label={zh ? "账户与设备" : "Account and device"}>
-                <div className="loom-account-heading"><h2>{zh ? "账户与设备" : "Account & device"}</h2><button className="loom-account-switch" type="button" onClick={() => void account.logout()}>{zh ? "退出登录" : "Sign out"}</button></div>
-              <dl className="loom-control-details">
-                <div><dt>{zh ? "账户" : "Account"}</dt><dd>{account.account.user?.email}</dd></div>
-                <div><dt>{zh ? "这台电脑" : "This computer"}</dt><dd>{selectedDeviceName || (zh ? "等待发现" : "Waiting for discovery")}</dd></div>
-              </dl>
-
+              <section className="loom-account-module loom-account-refined" aria-label={zh ? "账户与设备" : "Account and device"}>
+                <div className="loom-account-heading">
+                  <h2>{zh ? "账户与设备" : "Account & device"}</h2>
+                  <button className="loom-account-switch" type="button" disabled={account.busy} onClick={() => void account.logout()}><LogOut size={13} aria-hidden="true" />{zh ? "退出登录" : "Sign out"}</button>
+                </div>
+                <dl className="loom-identity-list">
+                  <div className="loom-identity-row">
+                    <dt><UserRound size={18} strokeWidth={1.5} aria-hidden="true" /><span>{zh ? "已登录账户" : "Signed-in account"}</span></dt>
+                    <dd><span>{account.account.user?.email}</span><Check size={13} aria-hidden="true" /></dd>
+                  </div>
+                  <div className="loom-identity-row">
+                    <dt><Laptop size={18} strokeWidth={1.5} aria-hidden="true" /><span>{zh ? "当前电脑" : "This computer"}</span></dt>
+                    <dd><span>{selectedDeviceName || (zh ? "等待发现" : "Waiting for discovery")}</span></dd>
+                  </div>
+                </dl>
               </section>
             </>}
             </div>
