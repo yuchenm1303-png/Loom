@@ -1,6 +1,7 @@
 import { app, BrowserWindow, dialog, Menu, nativeImage, shell, Tray } from "electron";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import WebSocket from "ws";
+import { LoomAccountClient } from "./accountClient.js";
 import { webRelayDeviceIdentity } from "./webRelayAuth.js";
 
 // The Loom Web device relay runs inside the same Electron main process that
@@ -13,6 +14,8 @@ const LOCAL_DISCOVERY_HOST = "127.0.0.1";
 const LOCAL_DISCOVERY_PORT = 39223;
 const LOCAL_STATUS_PATH = "/loom/status";
 const LOCAL_OPEN_PATH = "/loom/open";
+const LOCAL_PAIR_PATH = "/loom/pair";
+const LOCAL_BODY_LIMIT = 4 * 1024;
 const HEARTBEAT_MS = 30_000;
 const RETRY_MIN_MS = 4_000;
 const RETRY_MAX_MS = 30_000;
@@ -108,6 +111,33 @@ function writeLocalJson(
   response.end(body);
 }
 
+async function readLocalJson(request: IncomingMessage): Promise<Record<string, unknown>> {
+  const declared = Number(request.headers["content-length"] || 0);
+  if (!Number.isFinite(declared) || declared < 0 || declared > LOCAL_BODY_LIMIT) throw new Error("request_too_large");
+  const chunks: Buffer[] = [];
+  let total = 0;
+  for await (const part of request) {
+    const chunk = Buffer.isBuffer(part) ? part : Buffer.from(part);
+    total += chunk.byteLength;
+    if (total > LOCAL_BODY_LIMIT) throw new Error("request_too_large");
+    chunks.push(chunk);
+  }
+  const raw = Buffer.concat(chunks).toString("utf8") || "{}";
+  const parsed = JSON.parse(raw) as unknown;
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("invalid_json");
+  return parsed as Record<string, unknown>;
+}
+
+function reconnectRelayNow(): void {
+  retryMs = RETRY_MIN_MS;
+  if (reconnectTimer) clearTimeout(reconnectTimer);
+  reconnectTimer = null;
+  const current = ws;
+  ws = null;
+  try { current?.close(); } catch {}
+  void connectRelay();
+}
+
 async function handleLocalDiscovery(request: IncomingMessage, response: ServerResponse): Promise<void> {
   const origin = allowedLocalOrigin(request);
   const suppliedOrigin = Boolean(String(request.headers.origin || "").trim());
@@ -121,8 +151,6 @@ async function handleLocalDiscovery(request: IncomingMessage, response: ServerRe
     response.setHeader("Access-Control-Allow-Origin", origin);
     response.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
     response.setHeader("Access-Control-Allow-Headers", "Content-Type");
-    // Chromium's legacy Private Network Access preflight uses this header. New
-    // Local Network Access browsers prompt for loopback permission separately.
     response.setHeader("Access-Control-Allow-Private-Network", "true");
     response.setHeader("Cache-Control", "no-store");
     response.setHeader("Vary", "Origin");
@@ -130,9 +158,6 @@ async function handleLocalDiscovery(request: IncomingMessage, response: ServerRe
     return;
   }
 
-  // Browser requests must come from the Loom Web origin. Requests without an
-  // Origin are allowed only for the read-only status endpoint so local health
-  // diagnostics (curl, support tooling) remain possible.
   if (suppliedOrigin && !origin) {
     writeLocalJson(response, 403, { ok: false, error: "origin_not_allowed" });
     return;
@@ -146,6 +171,29 @@ async function handleLocalDiscovery(request: IncomingMessage, response: ServerRe
       ...identity,
       relayReady: ws?.readyState === WebSocket.OPEN,
     }, origin);
+    return;
+  }
+
+  if (request.method === "POST" && url.pathname === LOCAL_PAIR_PATH) {
+    if (!origin) {
+      writeLocalJson(response, 403, { ok: false, error: "origin_required" });
+      return;
+    }
+    try {
+      const body = await readLocalJson(request);
+      const pairingTicket = String(body.pairing_ticket || "").trim();
+      if (!pairingTicket) {
+        writeLocalJson(response, 400, { ok: false, error: "pairing_ticket_required" }, origin);
+        return;
+      }
+      const snapshot = await new LoomAccountClient().pairDevice(pairingTicket);
+      if (!snapshot.authenticated) throw new Error("pairing_failed");
+      reconnectRelayNow();
+      writeLocalJson(response, 200, { ok: true }, origin);
+    } catch (cause) {
+      const message = cause instanceof Error ? cause.message : String(cause);
+      writeLocalJson(response, 401, { ok: false, error: "pairing_failed", message }, origin);
+    }
     return;
   }
 
@@ -230,9 +278,6 @@ function configureBackgroundHostStartup(): void {
   }
 }
 
-// Register before main.ts creates its BrowserWindow. Preventing the close keeps
-// main.ts's existing `closed -> app.quit()` path from firing; the window simply
-// becomes a hidden client while the Host and relay remain alive.
 app.on("browser-window-created", (_event, window) => {
   if (window.getTitle() !== "Loom") return;
   window.on("close", (event) => {
@@ -309,8 +354,6 @@ async function handleInvoke(frame: InvokeFrame): Promise<void> {
     if (operation) {
       result = await operation(args);
     } else if (frame.operation === "pickDirectory") {
-      // Native directory selection is a Host shell capability. Desktop already
-      // exposes the same dialog through IPC; Web reaches it through the relay.
       const selection = await dialog.showOpenDialog({
         title: "Add project folder",
         properties: ["openDirectory", "createDirectory"],
