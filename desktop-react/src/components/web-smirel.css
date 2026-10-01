@@ -1,8 +1,7 @@
-/* Portal-only glue. The glass system itself is vendored verbatim from Chen-s-Homepage/download. */
+/* Loom owns the layout and information hierarchy. The .cards surface comes from the original Smirel glass CSS unchanged. */
 html[data-loom-web="true"] body { background: #21313c; }
 .loom-portal-page {
   position: relative;
-  height: 100%;
   min-height: 100vh;
   overflow-x: hidden;
   overflow-y: auto;
@@ -11,31 +10,195 @@ html[data-loom-web="true"] body { background: #21313c; }
   --text: #fff;
   --muted: rgba(255,255,255,.67);
   --soft: rgba(255,255,255,.42);
-  --card: #00000040;
-  --card-hover: rgba(0,0,0,.4);
-  --line: rgba(255,255,255,.12);
 }
 .loom-portal-page > .cosmos { z-index: 0 !important; }
-.loom-portal-shell { position: relative; z-index: 2; }
-.loom-portal-brand { gap: 12px; }
-.loom-portal-logo { display:none; }
-.loom-portal-brand::before { content:""; display:block; width:112px; height:36px; flex:0 0 112px; background:url('/smirel-logo.png') center/contain no-repeat; }
-.loom-portal-brand-divider { width:1px; height:24px; background:rgba(255,255,255,.13); }
-.loom-portal-brand .brand-copy strong { font-size:.92rem; }
-.loom-portal-brand .brand-copy small { font-size:.58rem; }
-.loom-portal-page .portal-nav button { border:0; background:transparent; color:inherit; cursor:pointer; font:inherit; }
-.loom-portal-page .release-product-icon.loom-product-mark { display:flex; align-items:center; justify-content:center; padding:5px; background-image:none !important; }
-.loom-product-mark img { display:block; width:100%; height:100%; object-fit:contain; }
-.loom-portal-release-actions { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,.82fr); gap:10px; }
-.loom-portal-release-actions .download-button { text-decoration:none; }
-.loom-open-web-button { background:rgba(255,255,255,.08); }
-.loom-portal-page .utility-grid { grid-template-columns:repeat(4,minmax(0,1fr)); }
-.loom-portal-page .utility-card { display:block; text-decoration:none; }
-.loom-portal-page .utility-card:not(a) { cursor:default; }
-.loom-portal-signed-in { min-height:250px; }
-.loom-portal-signed-in .account-status-panel { width:100%; }
-.loom-host-note { color:rgba(255,255,255,.48); font-size:.68rem; line-height:1.6; }
-.loom-portal-page .signed-account-actions { display:flex; flex-wrap:wrap; gap:10px; width:100%; align-items:center; }
-.loom-portal-page .form-note.is-error { color:rgba(255,190,198,.9); }
-@media (max-width:980px){ .loom-portal-page .utility-grid{grid-template-columns:repeat(2,minmax(0,1fr));} }
-@media (max-width:760px){ .loom-portal-release-actions{grid-template-columns:1fr}.loom-portal-page .utility-grid{grid-template-columns:1fr}.loom-portal-logo{width:92px} }
+.loom-portal-shell {
+  position: relative;
+  z-index: 2;
+  width: min(1220px, calc(100vw - 48px));
+  min-height: 100vh;
+  padding: 22px 0;
+  justify-content: flex-start;
+}
+
+.loom-site-header { margin: 0 0 16px; }
+.loom-portal-brand { gap: 11px; }
+.loom-smirel-wordmark { width: 112px; height: 36px; object-fit: contain; }
+.loom-brand-divider { width: 1px; height: 24px; background: rgba(255,255,255,.13); }
+.loom-portal-brand .brand-copy strong { font-size: .94rem; letter-spacing: -.01em; }
+.loom-portal-brand .brand-copy small { font-size: .58rem; }
+.loom-site-nav { display: flex; align-items: center; gap: 8px; }
+.loom-site-nav a,
+.loom-site-nav button {
+  border: 0;
+  padding: 8px 10px;
+  background: transparent;
+  color: rgba(255,255,255,.58);
+  font: inherit;
+  font-size: .7rem;
+  cursor: pointer;
+  transition: color .2s ease;
+}
+.loom-site-nav a:hover,
+.loom-site-nav button:hover { color: #fff; }
+
+.loom-hero {
+  min-height: 300px;
+  padding: 38px 40px;
+  display: grid;
+  grid-template-columns: minmax(0,1.5fr) minmax(280px,.7fr);
+  gap: 44px;
+  align-items: stretch;
+}
+.loom-hero-copy { display: flex; flex-direction: column; justify-content: center; }
+.loom-hero h1 {
+  max-width: 760px;
+  margin-top: 12px;
+  font-size: clamp(2.8rem,5.4vw,5.25rem);
+  line-height: .98;
+  font-weight: 560;
+  letter-spacing: -.055em;
+}
+.loom-hero-description {
+  max-width: 700px;
+  margin-top: 20px;
+  color: rgba(255,255,255,.7);
+  font-size: .88rem;
+  line-height: 1.8;
+}
+.loom-hero-actions { display: flex; flex-wrap: wrap; gap: 9px; margin-top: 27px; }
+.loom-action {
+  min-height: 44px;
+  padding: 0 15px;
+  border: 0;
+  border-radius: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 26px;
+  text-decoration: none;
+  color: #fff;
+  font: inherit;
+  font-size: .75rem;
+  font-weight: 610;
+  cursor: pointer;
+  transition: background-color .2s ease, transform .2s ease, opacity .2s ease;
+}
+.loom-action:hover { transform: translateY(-1px); }
+.loom-action:active { transform: translateY(0) scale(.99); }
+.loom-action:disabled { opacity: .48; cursor: not-allowed; transform: none; }
+.loom-action-primary { background: rgba(10,28,39,.72); }
+.loom-action-primary:hover { background: rgba(10,28,39,.88); }
+.loom-action-secondary { background: rgba(255,255,255,.08); }
+.loom-action-secondary:hover { background: rgba(255,255,255,.13); }
+
+.loom-hero-status {
+  min-width: 0;
+  padding-left: 30px;
+  border-left: 1px solid rgba(255,255,255,.1);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+.loom-status-kicker { display: flex; align-items: center; gap: 8px; color: rgba(255,255,255,.43); font-size: .6rem; letter-spacing: .1em; }
+.loom-live-dot { width: 7px; height: 7px; flex: 0 0 7px; border-radius: 50%; background: rgba(255,255,255,.34); }
+.loom-live-dot.is-online { background: #83efc7; box-shadow: 0 0 12px rgba(131,239,199,.55); }
+.loom-status-title { display: block; margin-top: 15px; font-size: 1.45rem; font-weight: 620; letter-spacing: -.025em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.loom-hero-status > p { margin: 8px 0 18px; color: rgba(255,255,255,.52); font-size: .72rem; line-height: 1.65; }
+.loom-status-row { min-width: 0; display: flex; justify-content: space-between; gap: 16px; padding: 10px 0; border-top: 1px solid rgba(255,255,255,.08); }
+.loom-status-row span { color: rgba(255,255,255,.36); font-size: .6rem; }
+.loom-status-row strong { min-width: 0; color: rgba(255,255,255,.78); font-size: .64rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+.loom-function-grid {
+  display: grid;
+  grid-template-columns: minmax(0,1.35fr) minmax(340px,.65fr);
+  gap: 16px;
+  margin-top: 16px;
+  align-items: stretch;
+}
+.loom-function-stack { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.loom-function-card,
+.loom-account-card { min-height: 330px; padding: 26px; }
+.loom-function-card { display: flex; flex-direction: column; }
+.loom-card-head { display: flex; align-items: flex-start; gap: 13px; }
+.loom-card-index {
+  width: 29px;
+  height: 29px;
+  flex: 0 0 29px;
+  display: grid;
+  place-items: center;
+  border-radius: 6px;
+  background: rgba(255,255,255,.08);
+  color: rgba(255,255,255,.55);
+  font-size: .62rem;
+}
+.loom-card-head h2 { margin-top: 4px; font-size: 1.2rem; font-weight: 620; letter-spacing: -.02em; }
+.loom-card-copy { margin-top: 20px; color: rgba(255,255,255,.6); font-size: .76rem; line-height: 1.7; }
+.loom-spec-row { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 6px; margin-top: 20px; }
+.loom-spec-row span { min-width: 0; padding: 10px; background: rgba(0,0,0,.11); border-radius: 6px; }
+.loom-spec-row small { display: block; color: rgba(255,255,255,.34); font-size: .55rem; text-transform: uppercase; }
+.loom-spec-row strong { display: block; margin-top: 4px; font-size: .67rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.loom-host-state { display: flex; align-items: center; gap: 10px; margin-top: 22px; padding: 13px 14px; background: rgba(0,0,0,.11); border-radius: 6px; }
+.loom-host-state small { display: block; color: rgba(255,255,255,.34); font-size: .56rem; text-transform: uppercase; }
+.loom-host-state strong { display: block; margin-top: 3px; font-size: .72rem; }
+.loom-card-actions { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: auto; padding-top: 24px; }
+.loom-card-actions .loom-action { flex: 1 1 auto; }
+.loom-text-link { color: rgba(255,255,255,.52); font-size: .66rem; white-space: nowrap; }
+.loom-text-link:hover { color: #fff; }
+.loom-text-button { padding: 0; border: 0; background: transparent; font: inherit; cursor: pointer; }
+
+.loom-account-card { display: flex; flex-direction: column; }
+.loom-account-form { margin-top: 20px; }
+.loom-account-form input { height: 42px; }
+.loom-account-submit { width: 100%; margin-top: 2px; }
+.loom-account-switch {
+  margin-top: 13px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: rgba(255,255,255,.45);
+  font: inherit;
+  font-size: .66rem;
+  cursor: pointer;
+}
+.loom-account-switch:hover { color: #fff; }
+.loom-portal-page .form-note.is-error { color: rgba(255,190,198,.9); }
+.loom-signed-in { display: flex; flex: 1; flex-direction: column; margin-top: 23px; }
+.loom-account-identity { display: flex; align-items: center; gap: 12px; }
+.loom-account-check { width: 38px; height: 38px; flex: 0 0 38px; display: grid; place-items: center; border-radius: 50%; background: rgba(131,239,199,.1); color: #9ff3d4; }
+.loom-account-identity small { display: block; color: rgba(255,255,255,.38); font-size: .56rem; letter-spacing: .08em; }
+.loom-account-identity strong { display: block; margin-top: 4px; max-width: 250px; color: rgba(255,255,255,.82); font-size: .74rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.loom-account-details { display: grid; gap: 7px; margin-top: 22px; }
+.loom-account-details > div { display: flex; justify-content: space-between; gap: 14px; padding: 11px 12px; background: rgba(0,0,0,.1); border-radius: 6px; }
+.loom-account-details span { color: rgba(255,255,255,.4); font-size: .62rem; }
+.loom-account-details strong { color: rgba(255,255,255,.76); font-size: .65rem; font-weight: 600; text-align: right; }
+.loom-host-note { margin-top: 12px; color: rgba(255,255,255,.43); font-size: .65rem; line-height: 1.6; }
+.loom-account-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: auto; padding-top: 22px; }
+
+.loom-site-footer { margin-top: 16px; padding: 2px 2px 0; }
+.loom-footer-links { display: flex; gap: 16px; align-items: center; }
+.loom-footer-links a { color: rgba(255,255,255,.4); }
+.loom-footer-links a:hover { color: #fff; }
+
+@media (max-width:1040px) {
+  .loom-hero { grid-template-columns: 1fr; gap: 26px; }
+  .loom-hero-status { padding: 22px 0 0; border-left: 0; border-top: 1px solid rgba(255,255,255,.1); }
+  .loom-function-grid { grid-template-columns: 1fr; }
+  .loom-account-card { min-height: 300px; }
+}
+@media (max-width:760px) {
+  .loom-portal-shell { width: min(100% - 24px,1220px); padding-top: 12px; }
+  .loom-smirel-wordmark { width: 92px; }
+  .loom-site-nav a:first-child { display: none; }
+  .loom-hero { min-height: 0; padding: 28px 22px; }
+  .loom-hero h1 { font-size: clamp(2.55rem,13vw,4rem); }
+  .loom-hero-actions { display: grid; grid-template-columns: 1fr; }
+  .loom-action { width: 100%; }
+  .loom-function-stack { grid-template-columns: 1fr; }
+  .loom-function-card,
+  .loom-account-card { min-height: 0; padding: 22px; }
+  .loom-card-actions { align-items: stretch; flex-direction: column; }
+  .loom-text-link { padding: 4px 2px; }
+  .loom-account-actions { grid-template-columns: 1fr; }
+  .loom-site-footer { align-items: flex-start; flex-direction: column; }
+}
