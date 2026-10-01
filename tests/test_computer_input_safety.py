@@ -293,6 +293,7 @@ def test_clear_text_is_one_atomic_shortcut_sequence(monkeypatch):
     operator = object.__new__(PyWinAutoWindowsOperator)
     operator._lock = threading.RLock()
     operator._control_maps = {}
+    monkeypatch.setattr(operator, "_cancel_ime_composition", lambda frame: {"ime_clear_steps": [], "after_ime_composition": False})
     frame = ComputerFrame(frame_id="frame", origin_x=0, origin_y=0, width=100, height=100)
     observation = SimpleNamespace(observation_id="obs", frame=frame)
     action = ComputerAction(type=ComputerActionType.CLEAR_TEXT)

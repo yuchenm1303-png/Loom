@@ -509,13 +509,16 @@ class PyWinAutoWindowsOperator:
 
             if action.type is ComputerActionType.TYPE:
                 if wrapper is not None:
+                    read_before = self._read_focused_value(observation.frame)
                     native = self._native_type(wrapper, action.text)
                     if native:
+                        read_after = self._read_focused_value(observation.frame)
                         return ComputerExecution(
                             ok=True,
                             message="text input completed through UI Automation",
                             action=action,
                             native=True,
+                            details={"input_backend": "uia-value", **self._verify_text_readback(action.text, read_before, read_after)},
                         )
                     if not self._native_click(wrapper, double=False, right=False):
                         point = self._wrapper_center(wrapper, observation.frame)
@@ -558,7 +561,11 @@ class PyWinAutoWindowsOperator:
                             details={"input_backend": "console-input-failed", **console_target, **console_result},
                         )
                 else:
+                    read_before = self._read_focused_value(observation.frame)
                     self._send_unicode_text(action.text)
+                    time.sleep(0.05)
+                    read_after = self._read_focused_value(observation.frame)
+                    content_check = self._verify_text_readback(action.text, read_before, read_after)
                     fallback_name = "Unicode SendInput fallback"
                     input_backend = "unicode-sendinput"
                     console_result = {}
@@ -570,17 +577,10 @@ class PyWinAutoWindowsOperator:
                     fallback_used=True,
                     details={"input_backend": input_backend, **console_target, **console_result}
                     if process_name in _CONSOLE_PROCESSES
-                    else {"input_backend": input_backend},
+                    else {"input_backend": input_backend, **content_check},
                 )
 
             if action.type is ComputerActionType.CLEAR_TEXT:
-                if wrapper is not None and self._native_type(wrapper, ""):
-                    return ComputerExecution(
-                        ok=True,
-                        message="text cleared through UI Automation",
-                        action=action,
-                        native=True,
-                    )
                 if wrapper is not None:
                     if not self._native_click(wrapper, double=False, right=False):
                         point = self._wrapper_center(wrapper, observation.frame)
@@ -590,6 +590,13 @@ class PyWinAutoWindowsOperator:
                     self._click_point(observation.frame, action.point)
                 import pyautogui
 
+                ime_details = self._cancel_ime_composition(observation.frame)
+                if ime_details.get("after_ime_composition") is True:
+                    return ComputerExecution(ok=False, message="IME composition remains active; clear shortcut was not sent",
+                                             action=action, details=ime_details)
+                if wrapper is not None and self._native_type(wrapper, ""):
+                    return ComputerExecution(ok=True, message="text cleared through UI Automation",
+                                             action=action, native=True, details=ime_details)
                 try:
                     self._send_key_chord(("ctrl", "a"))
                     pyautogui.press("delete")
@@ -601,6 +608,7 @@ class PyWinAutoWindowsOperator:
                     action=action,
                     native=False,
                     fallback_used=True,
+                    details=ime_details,
                 )
 
             if wrapper is not None and action.type in {
@@ -670,9 +678,15 @@ class PyWinAutoWindowsOperator:
             win32api.SetCursorPos(start)
             win32api.mouse_event(win32con.MOUSEEVENTF_LEFTDOWN, 0, 0, 0, 0)
             try:
-                if action.duration_ms:
-                    time.sleep(action.duration_ms / 1000.0)
-                win32api.SetCursorPos(end)
+                duration = max(0.15, action.duration_ms / 1000.0)
+                steps = max(10, min(240, round(duration * 60)))
+                # Cross the drag threshold while held, then continue moving.
+                # Sleeping at the start followed by a teleport lets browsers
+                # coalesce the only move with mouse-up and lose drag/drop.
+                for index in range(1, steps + 1):
+                    win32api.SetCursorPos((round(start[0] + (end[0] - start[0]) * index / steps),
+                                          round(start[1] + (end[1] - start[1]) * index / steps)))
+                    time.sleep(duration / steps)
             finally:
                 win32api.mouse_event(win32con.MOUSEEVENTF_LEFTUP, 0, 0, 0, 0)
         elif action.type is ComputerActionType.SCROLL:
@@ -725,6 +739,109 @@ class PyWinAutoWindowsOperator:
     def _normalize_key(key: str) -> str:
         normalized = str(key or "").strip().casefold()
         return _KEY_ALIASES.get(normalized, normalized)
+
+    @staticmethod
+    def _verify_text_readback(text: str, before, after) -> dict[str, object]:
+        details: dict[str, object] = {"resolved_text_length": len(text), "content_verified": False,
+                                     "readback_status": "unavailable"}
+        if before is None or after is None or before[0] != after[0]:
+            return details
+        old, new = before[1], after[1]
+        # Exact replacement or insertion into the same focused ValuePattern.
+        # Strings remain RAM-only; receipts contain no values or recoverable hash.
+        matched = bool(text and new != old and
+                       (new == text or any(new[:i] + new[i + len(text):] == old
+                                          for i in range(len(new) - len(text) + 1)
+                                          if new.startswith(text, i))))
+        details.update(content_verified=matched, readback_status="matched" if matched else "not_confirmed",
+                       readback_length=len(new))
+        return details
+
+    def _read_focused_value(self, frame: ComputerFrame):
+        provider = getattr(self, "semantics", None)
+        if provider is None:
+            return None
+
+        def read():
+            import win32gui
+            import win32process
+            from pywinauto.uia_defines import IUIA, get_elem_interface
+            hwnd = self._parse_window_id(frame.window_id)
+            if int(win32gui.GetForegroundWindow() or 0) != hwnd:
+                return None
+            element = IUIA().iuia.GetFocusedElement()
+            if element.CurrentProcessId != win32process.GetWindowThreadProcessId(hwnd)[1] or element.CurrentIsPassword:
+                return None
+            identity = tuple(element.GetRuntimeId())
+            value = str(get_elem_interface(element, "Value").CurrentValue)
+            return identity, value
+
+        result = provider.run(read, deadline_ms=150, window_key=frame.window_id)
+        return result.value if result.ok else None
+
+    def _cancel_ime_composition(self, frame: ComputerFrame) -> dict[str, object]:
+        """Cancel, never commit, composition before selecting document text.
+
+        TSF/cross-process IMEs may not expose an IMM context. In that case Escape
+        is the bounded fallback and the reported state remains unknown, not false.
+        No global keyboard layout or IME open mode is changed.
+        """
+        import pyautogui
+
+        steps: list[str] = []
+        details: dict[str, object] = {"ime_clear_steps": steps, "after_ime_composition": None}
+        context = 0
+        try:
+            import win32gui
+            import win32process
+            from ctypes import wintypes
+
+            hwnd = self._parse_window_id(frame.window_id)
+            thread_id = win32process.GetWindowThreadProcessId(hwnd)[0]
+            focus = int(win32gui.GetGUIThreadInfo(thread_id).get("hwndFocus") or hwnd)
+            imm = ctypes.WinDLL("imm32", use_last_error=True)
+            imm.ImmGetContext.argtypes = [wintypes.HWND]
+            imm.ImmGetContext.restype = wintypes.HANDLE
+            imm.ImmReleaseContext.argtypes = [wintypes.HWND, wintypes.HANDLE]
+            imm.ImmGetCompositionStringW.argtypes = [wintypes.HANDLE, wintypes.DWORD, ctypes.c_void_p, wintypes.DWORD]
+            imm.ImmGetCompositionStringW.restype = ctypes.c_long
+            imm.ImmNotifyIME.argtypes = [wintypes.HANDLE, wintypes.DWORD, wintypes.DWORD, wintypes.DWORD]
+            context = imm.ImmGetContext(focus)
+            if context:
+                size = imm.ImmGetCompositionStringW(context, 0x0008, None, 0)
+                if size >= 0:
+                    details["before_ime_composition"] = size > 0
+                if size > 0:
+                    cancelled = bool(imm.ImmNotifyIME(context, 0x0015, 0x0004, 0))
+                    steps.append("imm_cancel" if cancelled else "imm_cancel_failed")
+                remaining = imm.ImmGetCompositionStringW(context, 0x0008, None, 0)
+                if remaining >= 0:
+                    details["after_ime_composition"] = remaining > 0
+            else:
+                steps.append("imm_context_unavailable")
+        except Exception as exc:
+            details["ime_probe_error"] = type(exc).__name__
+        finally:
+            if context:
+                imm.ImmReleaseContext(focus, context)
+        if details["after_ime_composition"] is not False:
+            pyautogui.press("esc")
+            steps.append("escape_cancel")
+            time.sleep(0.05)
+            # A positive native observation must be rechecked. Unknown TSF state
+            # remains unknown even after Escape; never claim it was cancelled.
+            if context:
+                try:
+                    context = imm.ImmGetContext(focus)
+                    if context:
+                        remaining = imm.ImmGetCompositionStringW(context, 0x0008, None, 0)
+                        details["after_ime_composition"] = remaining > 0 if remaining >= 0 else None
+                        imm.ImmReleaseContext(focus, context)
+                    else:
+                        details["after_ime_composition"] = None
+                except Exception:
+                    details["after_ime_composition"] = None
+        return details
 
     def _send_key_chord(self, keys: tuple[str, ...]) -> None:
         """Inject a chord with explicit down/up ordering.
@@ -1049,6 +1166,9 @@ class PyWinAutoWindowsOperator:
         hwnd = self._parse_window_id(action.window_id)
         if not win32gui.IsWindow(hwnd):
             raise RuntimeError(f"Windows window no longer exists: {action.window_id}")
+        if int(win32gui.GetForegroundWindow() or 0) == hwnd and not win32gui.IsIconic(hwnd):
+            return ComputerExecution(ok=True, message="window is already foreground", action=action,
+                                     native=True, details={"noop": True, "effect_reason": "already_foreground"})
 
         # Everything below is a synchronous call into the target's message loop.
         # Refusing here costs one failed action; proceeding against a window that

@@ -87,6 +87,8 @@ class ComputerTransientInputPlatform:
                 "computer transient input is no longer available; retry the Computer Use action "
                 "instead of recovering typed data from durable state"
             )
+        if raw.startswith(_TRANSIENT_PREFIX):
+            raise RuntimeError("computer input contains a copied transient reference, not literal text; supply a fresh literal test string")
         return raw
 
     def clear(self) -> None:
