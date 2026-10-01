@@ -18,8 +18,6 @@ try {
     };
     const [decoration, pointer] = await Promise.all([load(character), load(arrow)]);
     const canvas = document.createElement("canvas");
-    canvas.width = decoration.naturalWidth;
-    canvas.height = decoration.naturalHeight + 18;
     const ctx = canvas.getContext("2d");
     // Separate the original marker from the decoration before laying them out.
     const characterLayer = document.createElement("canvas");
@@ -28,8 +26,24 @@ try {
     const characterContext = characterLayer.getContext("2d");
     characterContext.drawImage(decoration, 0, 0);
     characterContext.clearRect(0, 0, 10, 9);
-    // Give the enlarged pointer its own space without scaling or covering the character.
-    ctx.drawImage(characterLayer, 0, 18);
+    const pixels = characterContext.getImageData(0, 0, characterLayer.width, characterLayer.height).data;
+    let right = 0;
+    let bottom = 0;
+    for (let y = 0; y < characterLayer.height; y++) {
+      for (let x = 0; x < characterLayer.width; x++) {
+        if (pixels[(y * characterLayer.width + x) * 4 + 3]) {
+          right = Math.max(right, x + 1);
+          bottom = Math.max(bottom, y + 1);
+        }
+      }
+    }
+    // Equal X/Y offsets put the pointer diagonally upper-left of the character,
+    // not directly above it. Trim unused padding to keep the native cursor compact.
+    const offset = 18;
+    const size = Math.max(offset + right, offset + bottom, pointer.naturalWidth, pointer.naturalHeight) + 2;
+    canvas.width = size;
+    canvas.height = size;
+    ctx.drawImage(characterLayer, offset, offset);
     // The SVG defines the enlarged arm lengths, retaining the original stroke thickness.
     // Draw at its native size and keep the click hotspot at (0, 0).
     ctx.imageSmoothingEnabled = false;
