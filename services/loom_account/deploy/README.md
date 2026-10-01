@@ -207,3 +207,16 @@ per account per minute, shared across devices. Only bounded query/count inputs
 and normalized results travel over this route; provider credentials and upstream
 error bodies are never returned. Desktop builds automatically use the account
 service when no personal search key is configured.
+
+
+## Loom Model Gateway
+
+The same deployment now includes `loom-model-gateway`, the Loom-owned endpoint for built-in model traffic. Put provider secrets only in an ignored `.env.models` beside the compose file (see `.env.models.example`). The public path is `https://<account-domain>/model/v1`; the Caddy block strips `/model` and forwards to the gateway.
+
+On the reference Docker deployment, include the proxy overlay so both `loom-account` and `loom-model-gateway` join the existing Caddy network:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.proxy.yml up -d --build
+```
+
+Users never receive `LOOM_ANT_LING_API_KEY`. Desktop clients mint a scoped `loom_model_*` credential from the account service; it is tied to the current login session and becomes invalid when that session is revoked.

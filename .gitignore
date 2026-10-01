@@ -8,6 +8,7 @@ venv/
 .env
 .env.*
 !.env.example
+!services/loom_account/deploy/.env.models.example
 .idea/
 .vscode/
 .DS_Store

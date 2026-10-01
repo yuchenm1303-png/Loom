@@ -56,6 +56,36 @@ services:
       start_period: 5s
     security_opt:
       - no-new-privileges:true
+
+  loom-model-gateway:
+    container_name: loom-model-gateway
+    build:
+      context: ../../..
+      dockerfile: services/loom_model_gateway/Dockerfile
+    image: loom-model-gateway:local
+    restart: unless-stopped
+    env_file:
+      - path: .env.models
+        required: false
+    environment:
+      LOOM_ACCOUNT_INTERNAL_URL: http://loom-account:8787/v1
+    depends_on:
+      loom-account:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:8791:8790"
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import sys,urllib.request; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8790/healthz', timeout=5).status == 200 else 1)"
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 5s
+    security_opt:
+      - no-new-privileges:true
     # If the reverse proxy already runs in Docker, attach this service to that
     # proxy's network so it can be reached by container name. Set the network
     # name to the one your proxy is on (`docker inspect <proxy> --format

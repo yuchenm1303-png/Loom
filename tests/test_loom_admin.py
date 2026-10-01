@@ -97,3 +97,34 @@ def test_admin_frontend_vendors_original_usage_glass_system() -> None:
     assert 'usage-presence-rail' in html
     assert 'usage-throughput-chart' in html
     assert '/admin/system' in js
+
+
+def test_model_entitlements_default_and_override(tmp_path: Path) -> None:
+    app=_app(tmp_path); owner=app.register({"email":"owner-models@example.com","password":PASSWORD},"a"); user=app.register({"email":"user-models@example.com","password":PASSWORD},"b")
+    _set_role(app, owner["user"]["id"], "owner")
+    default=app.model_access(_token(user))["access"]
+    assert default["enabled"] is True and "Ling-3.0-flash" in default["models"] and default["source"] == "default"
+    changed=app.admin_set_user_model_access({"user_id":user["user"]["id"],"enabled":True,"models":["Ling-3.0-tiny"]},_token(owner))["access"]
+    assert changed["models"] == ["Ling-3.0-tiny"] and changed["source"] == "override"
+    assert app.model_access(_token(user))["access"]["models"] == ["Ling-3.0-tiny"]
+
+def test_admin_can_disable_all_builtin_models_for_one_user(tmp_path: Path) -> None:
+    app=_app(tmp_path); owner=app.register({"email":"owner-disable@example.com","password":PASSWORD},"a"); user=app.register({"email":"user-disable@example.com","password":PASSWORD},"b")
+    _set_role(app, owner["user"]["id"], "owner")
+    result=app.admin_set_user_model_access({"user_id":user["user"]["id"],"enabled":False,"models":[]},_token(owner))["access"]
+    assert result["enabled"] is False and app.model_access(_token(user))["access"]["enabled"] is False
+
+
+
+def test_scoped_model_credential_is_tied_to_login_session(tmp_path: Path) -> None:
+    app = _app(tmp_path)
+    user = app.register({"email": "model-token@example.com", "password": PASSWORD}, "a")
+    credential = app.model_credential(_token(user))
+    model_token = credential["model_token"]
+    assert model_token.startswith("loom_model_")
+    assert app.model_access(f"Bearer {model_token}")["access"]["enabled"] is True
+
+    app.logout({"refresh_token": user["refresh_token"]})
+    with pytest.raises(AccountError) as denied:
+        app.model_access(f"Bearer {model_token}")
+    assert denied.value.code == "INVALID_MODEL_TOKEN"

@@ -33,6 +33,8 @@ const REPO_VENV_PYTHON = process.platform === "win32"
   ? path.join(REPO_ROOT, ".venv", "Scripts", "python.exe")
   : path.join(REPO_ROOT, ".venv", "bin", "python");
 const HTML_ESCAPE: Record<string, string> = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
+const APP_SERVER_CONNECT_TIMEOUT_MS = 15_000;
+const APP_SERVER_CALL_TIMEOUT_MS = 120_000;
 
 type DiagnosticLogKind = "computer" | "browser";
 
@@ -735,7 +737,11 @@ async function openExternalUrl(value: string): Promise<boolean> {
 class LoomRpcProcess {
   private child: ChildProcessWithoutNullStreams | null = null;
   private nextId = 1;
-  private pending = new Map<number, { resolve: (value: unknown) => void; reject: (error: Error) => void }>();
+  private pending = new Map<number, {
+    resolve: (value: unknown) => void;
+    reject: (error: Error) => void;
+    timer: ReturnType<typeof setTimeout>;
+  }>();
   private initialized = false;
   private initializeResult: unknown = null;
   private connectPromise: Promise<unknown> | null = null;
@@ -743,25 +749,50 @@ class LoomRpcProcess {
   constructor(
     private readonly notify: (payload: JsonRpcResponse) => void,
     private readonly models: DesktopModelManager,
+    private readonly account: LoomAccountClient,
   ) {}
+
+  private async materializeModelSpec(spec: ModelLaunchSpec): Promise<ModelLaunchSpec> {
+    if (spec.authMode !== "loom-account") return spec;
+    return { ...spec, apiKey: await this.account.modelCredential() };
+  }
+
+  async modelParams(spec: ModelLaunchSpec): Promise<Record<string, unknown>> {
+    return runtimeModelParams(await this.materializeModelSpec(spec));
+  }
 
   get ready(): boolean {
     return Boolean(this.child && this.initialized);
+  }
+
+  private async initializeOnce(): Promise<unknown> {
+    if (!this.child) await this.startProcess();
+    const result = await this.call("initialize", {
+      protocolVersion: 1,
+      clientInfo: { name: "loom-react-desktop", version: "0.1.0" },
+    }, APP_SERVER_CONNECT_TIMEOUT_MS);
+    this.sendNotification("initialized", {});
+    this.initializeResult = result;
+    this.initialized = true;
+    return result;
   }
 
   async connect(): Promise<unknown> {
     if (this.child && this.initialized) return this.initializeResult;
     if (this.connectPromise) return this.connectPromise;
     this.connectPromise = (async () => {
-      if (!this.child) await this.startProcess();
-      const result = await this.call("initialize", {
-        protocolVersion: 1,
-        clientInfo: { name: "loom-react-desktop", version: "0.1.0" },
-      });
-      this.sendNotification("initialized", {});
-      this.initializeResult = result;
-      this.initialized = true;
-      return result;
+      try {
+        return await this.initializeOnce();
+      } catch (firstError) {
+        console.warn("[loom-app-server] initialize failed; restarting once", firstError);
+        this.stopProcess(new Error("Loom App Server initialization timed out"));
+        try {
+          return await this.initializeOnce();
+        } catch (secondError) {
+          this.stopProcess(new Error("Loom App Server initialization failed after recovery"));
+          throw secondError;
+        }
+      }
     })();
     try {
       return await this.connectPromise;
@@ -770,11 +801,33 @@ class LoomRpcProcess {
     }
   }
 
-  async call(method: string, params: Record<string, unknown> = {}): Promise<unknown> {
-    if (!this.child) throw new Error("Loom App Server is not running");
+  async call(
+    method: string,
+    params: Record<string, unknown> = {},
+    timeoutMs = APP_SERVER_CALL_TIMEOUT_MS,
+  ): Promise<unknown> {
+    const child = this.child;
+    if (!child) throw new Error("Loom App Server is not running");
     const id = this.nextId++;
-    const promise = new Promise<unknown>((resolve, reject) => this.pending.set(id, { resolve, reject }));
-    this.child.stdin.write(`${JSON.stringify({ jsonrpc: "2.0", id, method, params })}\n`, "utf8");
+    const promise = new Promise<unknown>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        const pending = this.pending.get(id);
+        if (!pending) return;
+        this.pending.delete(id);
+        reject(new Error(`Loom App Server request timed out: ${method}`));
+      }, timeoutMs);
+      this.pending.set(id, { resolve, reject, timer });
+    });
+    try {
+      child.stdin.write(`${JSON.stringify({ jsonrpc: "2.0", id, method, params })}\n`, "utf8");
+    } catch (cause) {
+      const pending = this.pending.get(id);
+      if (pending) {
+        clearTimeout(pending.timer);
+        this.pending.delete(id);
+        pending.reject(cause instanceof Error ? cause : new Error(String(cause)));
+      }
+    }
     return promise;
   }
 
@@ -788,7 +841,7 @@ class LoomRpcProcess {
 
   async setModel(spec: ModelLaunchSpec): Promise<unknown> {
     if (!this.child || !this.initialized) return this.connect();
-    const runtime = await this.call("runtime/set_model", runtimeModelParams(spec));
+    const runtime = await this.call("runtime/set_model", await this.modelParams(spec));
     this.initializeResult = initializationFromRuntime(runtime);
     return this.initializeResult;
   }
@@ -804,15 +857,18 @@ class LoomRpcProcess {
     return this.connect();
   }
 
-  stop(): void {
+  private stopProcess(error: Error): void {
     const child = this.child;
     this.child = null;
     this.initialized = false;
     this.initializeResult = null;
-    this.connectPromise = null;
-    for (const { reject } of this.pending.values()) reject(new Error("Loom App Server stopped"));
-    this.pending.clear();
+    this.failAll(error);
     if (child && !child.killed) child.kill();
+  }
+
+  stop(): void {
+    this.connectPromise = null;
+    this.stopProcess(new Error("Loom App Server stopped"));
   }
 
   private sendNotification(method: string, params: Record<string, unknown>): void {
@@ -821,7 +877,8 @@ class LoomRpcProcess {
 
   private async startProcess(): Promise<void> {
     const searchRelay = await sharedSearchRelay();
-    const spec = this.models.current ?? this.models.ensureInitial();
+    const selectedSpec = this.models.current ?? this.models.ensureInitial();
+    const spec = await this.materializeModelSpec(selectedSpec);
     const python = resolvePythonExecutable();
     const script = path.join(REPO_ROOT, "loom_app_server.py");
     const args = [script, "--workspace", REPO_ROOT, "--provider", spec.provider, "--model", spec.model, "--selection", spec.selection, "--local-ipc"];
@@ -884,12 +941,16 @@ class LoomRpcProcess {
     const pending = this.pending.get(payload.id);
     if (!pending) return;
     this.pending.delete(payload.id);
+    clearTimeout(pending.timer);
     if (payload.error) pending.reject(new Error(payload.error.message));
     else pending.resolve(payload.result);
   }
 
   private failAll(error: Error): void {
-    for (const { reject } of this.pending.values()) reject(error);
+    for (const { reject, timer } of this.pending.values()) {
+      clearTimeout(timer);
+      reject(error);
+    }
     this.pending.clear();
   }
 }
@@ -898,13 +959,13 @@ let mainWindow: BrowserWindow | null = null;
 const artifactWindows = new Set<BrowserWindow>();
 const artifactPreviewRoots = new Map<string, string>();
 const modelManager = new DesktopModelManager(REPO_ROOT);
+const accountClient = new LoomAccountClient();
 function handleRuntimeNotification(payload: JsonRpcResponse): void {
   mainWindow?.webContents.send("loom:notification", payload);
   sendRelayNotification(payload);
   if (payload.method === "hud/update") sendHudUpdate(payload.params ?? {});
 }
-const rpc = new LoomRpcProcess(handleRuntimeNotification, modelManager);
-const accountClient = new LoomAccountClient();
+const rpc = new LoomRpcProcess(handleRuntimeNotification, modelManager, accountClient);
 let searchRelayPromise: ReturnType<typeof createSearchRelay> | null = null;
 function sharedSearchRelay(): ReturnType<typeof createSearchRelay> {
   if (!searchRelayPromise) searchRelayPromise = createSearchRelay((query, count) => accountClient.search(query, count));
@@ -950,7 +1011,7 @@ async function changeThreadModel(
   if (!id) throw new Error("Thread is required");
   const result = await rpc.call("thread/set_model", {
     threadId: id,
-    ...runtimeModelParams(spec),
+    ...(await rpc.modelParams(spec)),
   }) as { thread?: Record<string, unknown>; runtime?: unknown };
   const confirmedSelection = String(result.thread?.modelSelection ?? "");
   const confirmedModel = String(result.thread?.model ?? "");

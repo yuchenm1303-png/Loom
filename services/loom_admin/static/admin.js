@@ -12,7 +12,9 @@
     health: { admin:false, account:false, loom:false },
     range: '24h',
     selectedUser: null,
+    selectedModelAccess: null,
   };
+  const BUILTIN_MODELS = ['Ling-3.0-flash','Ling-3.0-flash-VL','Ling-3.0-tiny','Ling-2.6-1T','Ring-2.6-1T','Ling-2.6-flash'];
 
   const escapeHtml = (value) => String(value ?? '').replace(/[&<>'"]/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[ch]));
   const fmtTime = (value) => value ? new Date(Number(value) * 1000).toLocaleString('zh-CN', {hour12:false}) : '—';
@@ -157,12 +159,15 @@
   }
   async function mutate(path,body={}) { await request(path,{method:'POST',body:JSON.stringify(body)}); await loadAll(); }
   async function openUserDetail(id) {
-    const u=(await request(`/admin/users/${id}`)).user; state.selectedUser=u;
+    const [userPayload, accessPayload] = await Promise.all([request(`/admin/users/${id}`), request(`/admin/users/${id}/model-access`)]);
+    const u=userPayload.user, access=accessPayload.access || {enabled:true,models:[]}; state.selectedUser=u; state.selectedModelAccess=access;
     $('detailTitle').textContent=u.email;
-    $('userDetailBody').innerHTML=`<div><span>Role</span><strong>${escapeHtml(u.role)}</strong></div><div><span>Status</span><strong>${escapeHtml(u.status)}</strong></div><div><span>Verified</span><strong>${u.verified==null?'Not configured':(u.verified?'Verified':'Unverified')}</strong></div><div><span>Active sessions</span><strong>${u.active_sessions}</strong></div><div><span>Created</span><strong>${fmtTime(u.created_at)}</strong></div><div><span>Last active</span><strong>${fmtTime(u.last_seen_at)}</strong></div>`;
-    $('detailStatusButton').textContent=u.status==='active'?'Disable':'Enable'; $('detailStatusButton').disabled=Number(u.id)===Number(state.me.id)&&u.status==='active';
-    $('userDialog').showModal();
+    const enabledModels=new Set((access.models||[]).map(String));
+    const modelRows=BUILTIN_MODELS.map(model=>`<label class="loom-admin-model-toggle"><input type="checkbox" data-model-access-id="${escapeHtml(model)}" ${enabledModels.has(model)?'checked':''}><span>${escapeHtml(model)}</span></label>`).join('');
+    $('userDetailBody').innerHTML=`<div><span>Role</span><strong>${escapeHtml(u.role)}</strong></div><div><span>Status</span><strong>${escapeHtml(u.status)}</strong></div><div><span>Verified</span><strong>${u.verified==null?'Not configured':(u.verified?'Verified':'Unverified')}</strong></div><div><span>Active sessions</span><strong>${u.active_sessions}</strong></div><div><span>Created</span><strong>${fmtTime(u.created_at)}</strong></div><div><span>Last active</span><strong>${fmtTime(u.last_seen_at)}</strong></div><section class="loom-admin-model-access"><div class="loom-admin-model-access-head"><span>Built-in models</span><label><input id="modelAccessEnabled" type="checkbox" ${access.enabled!==false?'checked':''}> Enabled</label></div><small>${access.source==='override'?'Per-user override':'Using Loom default policy'}</small><div class="loom-admin-model-grid">${modelRows}</div><button id="saveModelAccessButton" class="loom-admin-action" type="button">Save model access</button></section>`;
+    $('detailStatusButton').textContent=u.status==='active'?'Disable':'Enable'; $('detailStatusButton').disabled=Number(u.id)===Number(state.me.id)&&u.status==='active'; $('userDialog').showModal();
   }
+
 
   $('loginForm').addEventListener('submit',async e=>{e.preventDefault();$('loginError').textContent='';const b=e.currentTarget.querySelector('button');b.disabled=true;try{await login($('loginEmail').value.trim(),$('loginPassword').value);$('loginPassword').value='';await loadAll()}catch(err){$('loginError').textContent=err.code==='ADMIN_REQUIRED'?'这个 Loom 账号没有管理员权限。':(err.message||'登录失败');setHeader(false,'Access denied')}finally{b.disabled=false}});
   $('logoutButton').addEventListener('click',async()=>{const refresh=state.refresh;if(refresh){try{await fetch(API+'/auth/logout',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({refresh_token:refresh}),cache:'no-store'})}catch(_){}}clearTokens();setAuthenticated(false);setHeader(false,'Signed out')});
@@ -171,6 +176,13 @@
   $('usersBody').addEventListener('click',async e=>{const detail=e.target.closest('[data-user-detail]'),status=e.target.closest('[data-status-user]'),revoke=e.target.closest('[data-revoke-user]');try{if(detail)return await openUserDetail(Number(detail.dataset.userDetail));if(status){const id=Number(status.dataset.statusUser),next=status.dataset.nextStatus;if(next==='disabled'&&!confirm('确认停用这个账号并立即撤销其会话？'))return;return await mutate(`/admin/users/${id}/${next==='disabled'?'disable':'enable'}`)}if(revoke){if(!confirm('确认撤销这个用户的全部有效会话？'))return;return await mutate('/admin/users/revoke-sessions',{user_id:Number(revoke.dataset.revokeUser)})}}catch(err){alert(err.message||'操作失败')}});
   $('usersBody').addEventListener('change',async e=>{const select=e.target.closest('[data-role-user]');if(!select)return;try{await mutate('/admin/users/role',{user_id:Number(select.dataset.roleUser),role:select.value})}catch(err){alert(err.message||'修改角色失败');await loadAll()}});
   $('sessionsBody').addEventListener('click',async e=>{const revoke=e.target.closest('[data-revoke-session]');if(!revoke||!confirm('确认撤销这个 Session？'))return;try{await mutate(`/admin/sessions/${encodeURIComponent(revoke.dataset.revokeSession)}/revoke`)}catch(err){alert(err.message||'撤销失败')}});
+  $('userDialog').addEventListener('click',async e=>{
+    const save=e.target.closest('#saveModelAccessButton'); if(!save)return; const u=state.selectedUser;if(!u)return;
+    const models=[...$('userDetailBody').querySelectorAll('[data-model-access-id]:checked')].map(el=>el.dataset.modelAccessId);
+    const enabled=Boolean($('modelAccessEnabled')?.checked); save.disabled=true;
+    try { const result=await request('/admin/users/model-access',{method:'POST',body:JSON.stringify({user_id:Number(u.id),enabled,models})}); state.selectedModelAccess=result.access; save.textContent='Saved'; setTimeout(()=>{save.textContent='Save model access'},900); }
+    catch(err){alert(err.message||'修改内置模型权限失败')} finally{save.disabled=false}
+  });
   $('closeUserDialog').addEventListener('click',()=>$('userDialog').close());
   $('detailStatusButton').addEventListener('click',async()=>{const u=state.selectedUser;if(!u)return;const next=u.status==='active'?'disable':'enable';if(next==='disable'&&!confirm('确认停用这个账号并立即撤销其会话？'))return;try{await mutate(`/admin/users/${u.id}/${next}`);$('userDialog').close()}catch(err){alert(err.message||'操作失败')}});
   $('detailRevokeButton').addEventListener('click',async()=>{const u=state.selectedUser;if(!u||!confirm('确认撤销这个用户的全部有效会话？'))return;try{await mutate('/admin/users/revoke-sessions',{user_id:Number(u.id)});$('userDialog').close()}catch(err){alert(err.message||'操作失败')}});

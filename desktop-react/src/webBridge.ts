@@ -4,6 +4,8 @@ import type { LoomNotification } from "./types/global";
 const WEB_PLATFORM_MARKER = "web";
 const DEFAULT_WS_PATH = "/api/ws/browser";
 const SOCKET_WAIT_MS = 8_000;
+const CONNECT_INVOKE_TIMEOUT_MS = 40_000;
+const INVOKE_TIMEOUT_MS = 120_000;
 const HEARTBEAT_MS = 30_000;
 const MAX_STAGED_BYTES = 48 * 1024 * 1024;
 const LOCAL_DEVICE_QUERY = "local_device";
@@ -36,6 +38,7 @@ type RelayMessage =
 type PendingCall = {
   resolve(value: unknown): void;
   reject(error: Error): void;
+  timeout: number;
 };
 
 const listeners = new Set<(payload: LoomNotification) => void>();
@@ -154,7 +157,10 @@ function stopHeartbeat(): void {
 }
 
 function failPending(message: string): void {
-  for (const call of pending.values()) call.reject(new Error(message));
+  for (const call of pending.values()) {
+    window.clearTimeout(call.timeout);
+    call.reject(new Error(message));
+  }
   pending.clear();
 }
 
@@ -190,6 +196,7 @@ function handleRelayMessage(raw: string): void {
     const call = pending.get(message.id);
     if (!call) return;
     pending.delete(message.id);
+    window.clearTimeout(call.timeout);
     if (message.error) call.reject(relayError(message.error));
     else call.resolve(message.result);
     return;
@@ -254,11 +261,24 @@ async function invoke<T = unknown>(operation: string, args: unknown[] = []): Pro
   }
   const id = nextId++;
   const message: InvokeMessage = { type: "invoke", id, operation, args };
-  const result = new Promise<unknown>((resolve, reject) => pending.set(id, { resolve, reject }));
+  const timeoutMs = operation === "connect" ? CONNECT_INVOKE_TIMEOUT_MS : INVOKE_TIMEOUT_MS;
+  const result = new Promise<unknown>((resolve, reject) => {
+    const timeout = window.setTimeout(() => {
+      const call = pending.get(id);
+      if (!call) return;
+      pending.delete(id);
+      reject(new Error(operation === "connect"
+        ? "Loom Host runtime did not become ready in time. Retry the connection; Loom will recover the local runtime automatically."
+        : `Loom Host did not respond in time (${operation}).`));
+    }, timeoutMs);
+    pending.set(id, { resolve, reject, timeout });
+  });
   try {
     if (ws.readyState !== WebSocket.OPEN) throw new Error("Loom Web connection closed before the request was sent.");
     ws.send(JSON.stringify(message));
   } catch (cause) {
+    const call = pending.get(id);
+    if (call) window.clearTimeout(call.timeout);
     pending.delete(id);
     if (socket === ws) closeSocket();
     throw cause instanceof Error ? cause : new Error("Could not send the Loom Web request.");

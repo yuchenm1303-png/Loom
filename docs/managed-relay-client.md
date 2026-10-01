@@ -36,16 +36,7 @@ After the server-side entitlement change, hiding a model is not only a UI filter
 
 ### Ant Ling
 
-Ant Ling is a Loom-managed built-in provider. The desktop never stores the Loom-owned `sk-studio-...` upstream credential and never calls `api.ant-ling.com` with that credential. Instead it:
-
-1. authenticates to `https://muxway.dev/v1` with the customer/device Relay credential;
-2. reads `/models` and enables only server-authorized `Ling-*` / `Ring-*` models;
-3. sends inference to Muxway with the Relay credential;
-4. relies on Muxway to keep the real Ant Ling upstream key server-side and to enforce the TermRelay group/model policy.
-
-The Ant Ling provider stays visible in Loom even when the current account/device has no Ant Ling entitlement. In that state Loom shows the bundled Ling/Ring catalog as unavailable/locked rows. This is display-only: selecting or hand-crafting an unentitled model still fails the Relay entitlement check, so visibility never grants access.
-
-Users who want to use their own Ant Ling account can still choose `Add connection` and supply `https://api.ant-ling.com/v1` plus their own key. That saved connection is separate from the Loom-managed Ant Ling provider.
+Ant Ling no longer uses the Muxway Managed Relay. Loom-owned built-in Ant Ling traffic goes through `https://account.smirel.com/model/v1` and is authorized by the user's Loom account. See [`loom-model-gateway.md`](./loom-model-gateway.md).
 
 ## Build-side provisioning
 
@@ -77,7 +68,6 @@ After that, the customer does not need to enter any key. Loom calls `https://mux
 
 Change the customer's TermRelay group or API key status on the server:
 
-- remove `Ling-3.0-flash` / other `Ling-*` or `Ring-*` IDs to remove Ant Ling built-in access;
 - remove `cqu-default` from the group list to close CQU for that customer;
 - remove `MiniMax-M3` to close MiniMax;
 - disable or expire the customer's API key to cut all built-in Relay access;
@@ -85,7 +75,7 @@ Change the customer's TermRelay group or API key status on the server:
 
 No client update is required for these server-side model entitlement changes.
 
-For per-user control, issue/provision a distinct Relay credential (or distinct TermRelay key/group binding) per user/customer. Sharing one Relay credential across all installations necessarily gives those installations the same server-side model entitlement.
+For Muxway-backed providers, per-customer control still comes from distinct Relay credentials / TermRelay key-group bindings. Ant Ling per-user access is now controlled in the Loom Admin through the Loom Model Gateway instead.
 
 ## Files that must never be committed
 

@@ -353,7 +353,9 @@ tests/test_loom_account_http.py
 tests/test_loom_account_pairing.py
 tests/test_loom_account_service.py
 tests/test_loom_admin.py
+tests/test_loom_model_gateway.py
 tests/test_loom_remote_ui_contract.py
+tests/test_loom_web_host_recovery_contract.py
 tests/test_loom_web_local_first_contract.py
 tests/test_loom_web_local_host_contract.py
 tests/test_loom_web_smirel_branding.py

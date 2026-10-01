@@ -45,15 +45,28 @@
 # becomes a credential store.
 
 {$LOOM_ACCOUNT_DOMAIN} {
-	reverse_proxy loom-account:8787 {
-		# Overwrite whatever the client sent. The account service trusts these
-		# headers only from configured proxy addresses, and uses the leftmost
-		# entry as the rate-limit key — so a client must not be able to inject
-		# its own value.
-		header_up X-Real-IP {remote_host}
-		header_up X-Forwarded-For {remote_host}
-		header_up X-Forwarded-Proto {scheme}
-		header_up X-Forwarded-Host {host}
+	# Built-in model traffic stays on Loom's own account origin. Strip the
+	# /model prefix before forwarding so the gateway sees its native /v1 paths.
+	handle_path /model/* {
+		reverse_proxy loom-model-gateway:8790 {
+			header_up X-Real-IP {remote_host}
+			header_up X-Forwarded-For {remote_host}
+			header_up X-Forwarded-Proto {scheme}
+			header_up X-Forwarded-Host {host}
+		}
+	}
+
+	handle {
+		reverse_proxy loom-account:8787 {
+			# Overwrite whatever the client sent. The account service trusts these
+			# headers only from configured proxy addresses, and uses the leftmost
+			# entry as the rate-limit key — so a client must not be able to inject
+			# its own value.
+			header_up X-Real-IP {remote_host}
+			header_up X-Forwarded-For {remote_host}
+			header_up X-Forwarded-Proto {scheme}
+			header_up X-Forwarded-Host {host}
+		}
 	}
 
 	header {
