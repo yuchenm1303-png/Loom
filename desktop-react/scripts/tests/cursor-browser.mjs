@@ -23,19 +23,33 @@ try {
     const source = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
     return {
       width: canvas.width, height: canvas.height,
-      blackFill: composite[(2 * canvas.width + 2) * 4] === 0,
-      lightEdge: composite[(2 * canvas.width) * 4] > 50,
+      whiteFill: composite[(2 * canvas.width + 2) * 4] === 255,
       preserved: composite.every((value, index) => {
         const pixel = Math.floor(index / 4);
-        return (pixel % canvas.width < 10 && Math.floor(pixel / canvas.width) < 9) || value === source[index];
+        return (pixel % canvas.width < 12 && Math.floor(pixel / canvas.width) < 11) || value === source[index];
       }),
     };
   });
   assert.equal(pointerAsset.width, 70);
   assert.equal(pointerAsset.height, 70);
-  assert.ok(pointerAsset.blackFill, "retain the original black pointer fill");
-  assert.ok(pointerAsset.lightEdge, "thin light edge must contrast against dark backgrounds");
-  assert.ok(pointerAsset.preserved, "all pixels outside the original 10x9 pointer must remain unchanged");
+  assert.ok(pointerAsset.whiteFill, "dark surfaces must use a white pointer");
+  assert.ok(pointerAsset.preserved, "character pixels outside the enlarged pointer must remain unchanged");
+  await page.evaluate(() => {
+    const surface = document.createElement("div");
+    surface.id = "contrast-surface";
+    surface.style.cssText = "position:fixed;left:100px;top:100px;width:100px;height:100px;background:white";
+    surface.innerHTML = '<span id="contrast-child">Transparent child</span>';
+    document.body.append(surface);
+  });
+  await page.locator("#contrast-child").hover();
+  await page.waitForFunction(() => document.documentElement.dataset.loomPointerTone === "black");
+  assert.match(await page.locator("#contrast-child").evaluate(el => getComputedStyle(el).cursor), /yukino-cursor\.png.*0 0/);
+  await page.evaluate(() => { document.querySelector("#contrast-surface").style.background = "black"; });
+  await page.mouse.move(400, 400);
+  await page.locator("#contrast-child").hover();
+  await page.waitForFunction(() => document.documentElement.dataset.loomPointerTone === "white");
+  assert.match(await page.locator("#contrast-child").evaluate(el => getComputedStyle(el).cursor), /yukino-cursor-white.*0 0/);
+  await page.evaluate(() => document.querySelector("#contrast-surface").remove());
   for (const selector of [".stop", ".stop svg", ".stop rect", "input", "#portal button"]) {
     await page.locator(selector).hover();
     const cursor = await page.locator(selector).evaluate((el) => getComputedStyle(el).cursor);

@@ -8,6 +8,7 @@ const arrow = await readFile(new URL("cursor-arrow.svg", assets));
 const browser = await chromium.launch({ executablePath: process.env.LOOM_CHROMIUM_PATH, headless: true });
 try {
   const page = await browser.newPage();
+  for (const [filename, color] of [["yukino-cursor.png", "#000"], ["yukino-cursor-white.png", "#fff"]]) {
   const png = await page.evaluate(async ({ character, arrow }) => {
     const load = async (url) => {
       const image = new Image();
@@ -23,11 +24,13 @@ try {
     ctx.drawImage(decoration, 0, 0);
     // Keep the character intact; replace the original tiny black arrow area only.
     ctx.clearRect(0, 0, pointer.naturalWidth, pointer.naturalHeight);
-    ctx.drawImage(pointer, 0, 0);
+    // Enlarge only the pointer; the character and top-left hotspot stay unchanged.
+    ctx.drawImage(pointer, 0, 0, pointer.naturalWidth * 1.2, pointer.naturalHeight * 1.2);
     return canvas.toDataURL("image/png").split(",")[1];
   }, {
     character: `data:image/png;base64,${character.toString("base64")}`,
-    arrow: `data:image/svg+xml;base64,${arrow.toString("base64")}`,
+    arrow: `data:image/svg+xml;base64,${Buffer.from(arrow.toString().replace('fill="#000"', `fill="${color}"`)).toString("base64")}`,
   });
-  await writeFile(new URL("yukino-cursor.png", assets), Buffer.from(png, "base64"));
+  await writeFile(new URL(filename, assets), Buffer.from(png, "base64"));
+  }
 } finally { await browser.close(); }
