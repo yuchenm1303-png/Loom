@@ -19,7 +19,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Merge main, test, and publish diagnostics
+      - name: Reconcile final Loom Web architecture and test
         shell: bash
         run: |
           set -euo pipefail
@@ -43,20 +43,34 @@ jobs:
               esac
             done <<< "$conflicts"
           fi
+
           python - <<'PY'
           from pathlib import Path
 
-          path = Path("services/loom_account/server.py")
-          source = path.read_text(encoding="utf-8")
-          if "_PAIR_TTL_SECONDS = 120" not in source:
-              source = source.replace("_PASSWORD_ITERATIONS = 600_000\n", "_PASSWORD_ITERATIONS = 600_000\n_PAIR_TTL_SECONDS = 120\n", 1)
-          if "self._pairing_guard = threading.Lock()" not in source:
-              source = source.replace(
+          def read(path: str) -> str:
+              return Path(path).read_text(encoding="utf-8")
+
+          def write(path: str, content: str) -> None:
+              Path(path).write_text(content.rstrip() + "\n", encoding="utf-8")
+
+          def replace_between(source: str, start_marker: str, end_marker: str, replacement: str) -> str:
+              start = source.index(start_marker)
+              end = source.index(end_marker, start)
+              return source[:start] + replacement.rstrip() + "\n\n" + source[end:]
+
+          # Keep the one-time browser -> local Host pairing endpoints when main has
+          # advanced independently of this PR.
+          account_path = Path("services/loom_account/server.py")
+          account = account_path.read_text(encoding="utf-8")
+          if "_PAIR_TTL_SECONDS = 120" not in account:
+              account = account.replace("_PASSWORD_ITERATIONS = 600_000\n", "_PASSWORD_ITERATIONS = 600_000\n_PAIR_TTL_SECONDS = 120\n", 1)
+          if "self._pairing_guard = threading.Lock()" not in account:
+              account = account.replace(
                   "        self.limiter = SlidingWindowLimiter()\n",
                   "        self.limiter = SlidingWindowLimiter()\n        self._pairing_guard = threading.Lock()\n        self._pairing_tickets: dict[str, tuple[float, dict[str, Any]]] = {}\n",
                   1,
               )
-          if "def issue_device_pair(" not in source:
+          if "def issue_device_pair(" not in account:
               marker = "    def _admin(self, authorization: str) -> dict[str, Any]:\n"
               methods = (
                   "    def issue_device_pair(self, authorization: str, client_key: str) -> dict[str, Any]:\n"
@@ -82,20 +96,819 @@ jobs:
                   "        user = entry[1]\n"
                   "        return {**self.store.create_session(int(user[\"id\"])), \"user\": user}\n\n"
               )
-              if marker not in source:
+              if marker not in account:
                   raise SystemExit("AccountApplication insertion marker not found")
-              source = source.replace(marker, methods + marker, 1)
-          if 'path == "/v1/auth/device-pair/issue"' not in source:
+              account = account.replace(marker, methods + marker, 1)
+          if 'path == "/v1/auth/device-pair/issue"' not in account:
               marker = '        if path == "/v1/admin/users/status": return self.application.admin_set_user_status(body, authorization)\n'
               routes = (
                   '        if path == "/v1/auth/device-pair/issue": return self.application.issue_device_pair(authorization, self._client_key())\n'
                   '        if path == "/v1/auth/device-pair/exchange": return self.application.exchange_device_pair(body, self._client_key())\n'
               )
-              if marker not in source:
+              if marker not in account:
                   raise SystemExit("Account route insertion marker not found")
-              source = source.replace(marker, routes + marker, 1)
-          path.write_text(source, encoding="utf-8")
+              account = account.replace(marker, routes + marker, 1)
+          account_path.write_text(account, encoding="utf-8")
+
+          # Final relay contract: one account has one current Host. A newer Host
+          # atomically replaces the previous one; every browser for the account
+          # follows that Host without a device selector.
+          gateway_path = "services/loom_web_gateway/app.py"
+          gateway = read(gateway_path)
+          relay = r'''@dataclass
+          class BrowserPeer:
+              id: str
+              user_id: int
+              websocket: WebSocket
+              send_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
+              closed: bool = False
+
+              async def send(self, payload: dict[str, Any]) -> bool:
+                  if self.closed:
+                      return False
+                  async with self.send_lock:
+                      if self.closed:
+                          return False
+                      try:
+                          await self.websocket.send_json(payload)
+                          return True
+                      except (RuntimeError, WebSocketDisconnect):
+                          self.closed = True
+                          return False
+
+
+          @dataclass
+          class DevicePeer:
+              user_id: int
+              websocket: WebSocket
+              device_id: str = ""
+              device: dict[str, Any] = field(default_factory=dict)
+              send_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
+              closed: bool = False
+
+              async def send(self, payload: dict[str, Any]) -> bool:
+                  if self.closed:
+                      return False
+                  async with self.send_lock:
+                      if self.closed:
+                          return False
+                      try:
+                          await self.websocket.send_json(payload)
+                          return True
+                      except (RuntimeError, WebSocketDisconnect):
+                          self.closed = True
+                          return False
+
+
+          class RelayHub:
+              def __init__(self) -> None:
+                  self.devices: dict[int, DevicePeer] = {}
+                  self.browsers: dict[str, BrowserPeer] = {}
+                  self.lock = asyncio.Lock()
+
+              async def browser_status(self, browser: BrowserPeer) -> None:
+                  async with self.lock:
+                      device = self.devices.get(browser.user_id)
+                  online = device is not None and not device.closed
+                  await browser.send({
+                      "type": "device_status",
+                      "online": online,
+                      "device": dict(device.device) if online and device else None,
+                  })
+
+              async def broadcast_device_status(self, user_id: int) -> None:
+                  async with self.lock:
+                      peers = [peer for peer in self.browsers.values() if peer.user_id == user_id]
+                  await asyncio.gather(*(self.browser_status(peer) for peer in peers), return_exceptions=True)
+
+              async def broadcast_notification(self, user_id: int, payload: dict[str, Any]) -> None:
+                  async with self.lock:
+                      peers = [peer for peer in self.browsers.values() if peer.user_id == user_id]
+                  await asyncio.gather(*(peer.send({"type": "notification", "payload": payload}) for peer in peers), return_exceptions=True)
+
+
+          hub = RelayHub()
+
+
+          async def _ws_user_from_access(access: str) -> dict[str, Any] | None:
+              _, user = await _authenticated_user(access)
+              return user
+
+
+          async def _run_device_invoke(peer: BrowserPeer, request_id: Any, operation: str, args: list[Any]) -> None:
+              logger.info("relay invoke operation=%s", operation)
+              async with hub.lock:
+                  device = hub.devices.get(peer.user_id)
+              if device is None or device.closed:
+                  await peer.send({
+                      "type": "invoke_result",
+                      "id": request_id,
+                      "error": {
+                          "code": "HOST_OFFLINE",
+                          "message": "No Loom Host is online for this account. Start Loom on the computer you want to control; its Host can remain running in the background.",
+                      },
+                  })
+                  return
+              sent = await device.send({
+                  "type": "invoke",
+                  "browserId": peer.id,
+                  "id": request_id,
+                  "operation": operation,
+                  "args": args,
+              })
+              if not sent:
+                  await peer.send({
+                      "type": "invoke_result",
+                      "id": request_id,
+                      "error": {"code": "HOST_OFFLINE", "message": "Loom Host disconnected before the request was sent."},
+                  })
+
+
+          @app.websocket("/api/ws/browser")
+          async def browser_socket(websocket: WebSocket) -> None:
+              expected_origin = os.environ.get("LOOM_WEB_ORIGIN", "https://loom.smirel.com").rstrip("/")
+              origin = str(websocket.headers.get("origin") or "").rstrip("/")
+              if origin != expected_origin:
+                  await websocket.close(code=4403, reason="origin not allowed")
+                  return
+              access = websocket.cookies.get(ACCESS_COOKIE, "")
+              user = await _ws_user_from_access(access)
+              if not user:
+                  await websocket.close(code=4401, reason="authentication required")
+                  return
+              user_id = int(user.get("id") or 0)
+              if user_id <= 0:
+                  await websocket.close(code=4401, reason="invalid account")
+                  return
+              await websocket.accept()
+              peer = BrowserPeer(id=uuid.uuid4().hex, user_id=user_id, websocket=websocket)
+              async with hub.lock:
+                  hub.browsers[peer.id] = peer
+              await hub.browser_status(peer)
+              try:
+                  while True:
+                      frame = await websocket.receive_json()
+                      if not isinstance(frame, dict):
+                          continue
+                      kind = frame.get("type")
+                      if kind == "ping":
+                          await peer.send({"type": "pong"})
+                          continue
+                      if kind != "invoke":
+                          continue
+                      request_id = frame.get("id")
+                      operation = str(frame.get("operation") or "")
+                      args = frame.get("args") if isinstance(frame.get("args"), list) else []
+                      asyncio.create_task(_run_device_invoke(peer, request_id, operation, args))
+              except (WebSocketDisconnect, RuntimeError, ValueError):
+                  pass
+              finally:
+                  peer.closed = True
+                  async with hub.lock:
+                      hub.browsers.pop(peer.id, None)
+
+
+          @app.websocket("/api/ws/device")
+          async def device_socket(websocket: WebSocket) -> None:
+              authorization = str(websocket.headers.get("authorization") or "")
+              access = authorization[7:].strip() if authorization.lower().startswith("bearer ") else ""
+              user = await _ws_user_from_access(access)
+              if not user:
+                  await websocket.close(code=4401, reason="authentication required")
+                  return
+              user_id = int(user.get("id") or 0)
+              if user_id <= 0:
+                  await websocket.close(code=4401, reason="invalid account")
+                  return
+              await websocket.accept()
+              logger.info("relay device connected")
+              peer = DevicePeer(user_id=user_id, websocket=websocket)
+              try:
+                  while True:
+                      frame = await websocket.receive_json()
+                      if not isinstance(frame, dict):
+                          continue
+                      kind = frame.get("type")
+                      if kind == "ping":
+                          await peer.send({"type": "pong"})
+                      elif kind == "device_hello":
+                          device = frame.get("device")
+                          payload = dict(device) if isinstance(device, dict) else {}
+                          device_id = _device_id(payload.get("id"))
+                          if not device_id:
+                              await websocket.close(code=4400, reason="valid device id required")
+                              return
+                          payload["id"] = device_id
+                          peer.device_id = device_id
+                          peer.device = payload
+                          async with hub.lock:
+                              old = hub.devices.get(user_id)
+                              hub.devices[user_id] = peer
+                          if old is not None and old.websocket is not websocket:
+                              try:
+                                  await old.websocket.close(code=4001, reason="newer Loom Desktop connected")
+                              except RuntimeError:
+                                  pass
+                          logger.info(
+                              "relay device hello id=%s platform=%s version=%s",
+                              device_id,
+                              str(peer.device.get("platform") or "unknown"),
+                              str(peer.device.get("version") or "unknown"),
+                          )
+                          await hub.broadcast_device_status(user_id)
+                      elif kind == "invoke_result":
+                          if not peer.device_id:
+                              continue
+                          browser_id = str(frame.get("browserId") or "")
+                          async with hub.lock:
+                              current = hub.devices.get(user_id)
+                              browser = hub.browsers.get(browser_id)
+                          if current is peer and browser and browser.user_id == user_id:
+                              forwarded = {"type": "invoke_result", "id": frame.get("id")}
+                              if "error" in frame:
+                                  forwarded["error"] = frame.get("error")
+                              else:
+                                  forwarded["result"] = frame.get("result")
+                              await browser.send(forwarded)
+                      elif kind == "notification":
+                          payload = frame.get("payload")
+                          async with hub.lock:
+                              current = hub.devices.get(user_id)
+                          if isinstance(payload, dict) and current is peer:
+                              notification_type = str(payload.get("method") or payload.get("type") or "unknown")
+                              logger.info("relay notification type=%s device=%s", notification_type, peer.device_id or "unknown")
+                              await hub.broadcast_notification(user_id, payload)
+              except (WebSocketDisconnect, RuntimeError, ValueError):
+                  pass
+              finally:
+                  peer.closed = True
+                  async with hub.lock:
+                      if hub.devices.get(user_id) is peer:
+                          hub.devices.pop(user_id, None)
+                  logger.info("relay device disconnected id=%s", peer.device_id or "unregistered")
+                  await hub.broadcast_device_status(user_id)
+          '''
+          gateway = replace_between(gateway, "@dataclass\nclass BrowserPeer:", '@app.get("/{full_path:path}")', relay)
+          write(gateway_path, gateway)
+
+          # The browser websocket never names a device. The authenticated account
+          # determines the current Host at the gateway.
+          bridge_path = "desktop-react/src/webBridge.ts"
+          bridge = read(bridge_path)
+          bridge = replace_between(
+              bridge,
+              "function webSocketUrl(): string {",
+              "function dispatchAuthChanged(): void {",
+              '''function webSocketUrl(): string {
+            const configured = String(import.meta.env.VITE_LOOM_WEB_SOCKET_URL || "").trim();
+            const scheme = window.location.protocol === "https:" ? "wss:" : "ws:";
+            const target = new URL(configured || `${scheme}//${window.location.host}${DEFAULT_WS_PATH}`, window.location.href);
+            target.searchParams.delete("device");
+            return target.toString();
+          }''',
+          )
+          bridge = replace_between(
+              bridge,
+              "export async function selectWebDevice(deviceId: string): Promise<void> {",
+              "export function activateWebRemoteDevice(deviceId: string): void {",
+              '''export async function selectWebDevice(_deviceId: string): Promise<void> {
+            // Compatibility shim for older UI modules. Routing is account-scoped:
+            // there is exactly one current Host, so there is nothing to select.
+            await ensureSocket();
+          }''',
+          )
+          write(bridge_path, bridge)
+
+          # Web gate: automatically follow the account's current Host everywhere.
+          # Loopback discovery is only for first-time local pairing/recovery.
+          gate_path = "desktop-react/src/components/WebAppGate.tsx"
+          gate = read(gate_path)
+          gate = gate.replace(
+              'import { useCallback, useEffect, useMemo, useState } from "react";',
+              'import { useCallback, useEffect, useState } from "react";',
+          )
+          gate = gate.replace(
+              'import { isLoomWebRuntime, localWebDeviceId, selectWebDevice } from "../webBridge";',
+              'import { isLoomWebRuntime } from "../webBridge";',
+          )
+          type_start = gate.index('type HostState =')
+          logo_start = gate.index('const SMIREL_LOGO', type_start)
+          gate = gate[:type_start] + 'type HostState = "idle" | "discovering" | "pairing" | "connecting" | "online" | "missing" | "offline";\ntype DeviceStatus = { online?: boolean; device?: { id?: string; name?: string; platform?: string; version?: string } | null };\n\n' + gate[logo_start:]
+          export_start = gate.index("export function WebAppGate")
+          gate_function = r'''export function WebAppGate({ children }: { children: ReactNode }) {
+            const account = useAccount();
+            const { language } = useI18n();
+            const zh = language === "zh-CN";
+            const web = isLoomWebRuntime();
+            const [hostState, setHostState] = useState<HostState>("idle");
+            const [hostError, setHostError] = useState("");
+            const [localHost, setLocalHost] = useState<LocalLoomHost | null>(null);
+            const [discoveryNonce, setDiscoveryNonce] = useState(0);
+            const [pairing, setPairing] = useState(false);
+            const [pairAttempts, setPairAttempts] = useState(0);
+            const [pairingSucceeded, setPairingSucceeded] = useState(false);
+
+            useEffect(() => {
+              if (!web) return;
+              document.documentElement.dataset.loomWeb = "true";
+              document.title = "Loom Web · Smirel";
+              return () => { delete document.documentElement.dataset.loomWeb; };
+            }, [web]);
+
+            useEffect(() => {
+              if (!web) return;
+              const refresh = () => void account.refresh();
+              window.addEventListener("loom:web-auth-changed", refresh);
+              return () => window.removeEventListener("loom:web-auth-changed", refresh);
+            }, [account.refresh, web]);
+
+            const connectCurrentHost = useCallback(async () => {
+              if (!web || !account.ready || !account.account.authenticated) return;
+              setHostState("connecting");
+              try {
+                await window.loom.connect();
+                setHostState("online");
+                setHostError("");
+              } catch (cause) {
+                const error = cause as Error & { code?: string };
+                setHostState("offline");
+                setHostError(error.message || String(cause));
+              }
+            }, [account.account.authenticated, account.ready, web]);
+
+            useEffect(() => {
+              if (!web || !account.ready || !account.account.authenticated) return;
+              void connectCurrentHost();
+            }, [account.account.authenticated, account.ready, connectCurrentHost, web]);
+
+            useEffect(() => {
+              if (!web || !account.ready || !account.account.authenticated) return;
+              const onDeviceStatus = (event: Event) => {
+                const detail = (event as CustomEvent<DeviceStatus>).detail;
+                if (detail?.online) {
+                  void connectCurrentHost();
+                  return;
+                }
+                setHostState((current) => current === "online" ? "offline" : current);
+              };
+              window.addEventListener("loom:web-device-status", onDeviceStatus);
+              return () => window.removeEventListener("loom:web-device-status", onDeviceStatus);
+            }, [account.account.authenticated, account.ready, connectCurrentHost, web]);
+
+            useEffect(() => {
+              if (!web || !account.ready || !account.account.authenticated || !account.account.user) return;
+              let cancelled = false;
+              let timer: number | null = null;
+              let inFlight = false;
+
+              const probe = async () => {
+                if (inFlight || cancelled) return;
+                inFlight = true;
+                const host = await discoverLocalLoomHost();
+                inFlight = false;
+                if (cancelled) return;
+
+                if (host) {
+                  rememberLocalLoomHost(host.deviceId);
+                  setLocalHost(host);
+                  if (host.relayReady) {
+                    setPairAttempts(0);
+                    setPairingSucceeded(false);
+                    void connectCurrentHost();
+                  } else if (pairing) {
+                    setHostState("pairing");
+                  } else if (pairingSucceeded) {
+                    setHostState("connecting");
+                  }
+                } else {
+                  setLocalHost(null);
+                  setHostState((current) => (
+                    current === "online" || current === "connecting" || current === "pairing"
+                      ? current
+                      : "missing"
+                  ));
+                }
+
+                timer = window.setTimeout(probe, DISCOVERY_INTERVAL_MS);
+              };
+
+              void probe();
+              return () => {
+                cancelled = true;
+                if (timer !== null) window.clearTimeout(timer);
+              };
+            }, [
+              account.account.authenticated,
+              account.account.user,
+              account.ready,
+              connectCurrentHost,
+              discoveryNonce,
+              pairing,
+              pairingSucceeded,
+              web,
+            ]);
+
+            useEffect(() => {
+              if (
+                !web
+                || !account.ready
+                || !account.account.authenticated
+                || !localHost
+                || localHost.relayReady
+                || pairing
+                || pairingSucceeded
+                || pairAttempts >= AUTO_PAIR_ATTEMPTS
+              ) return;
+
+              let cancelled = false;
+              const delay = pairAttempts === 0 ? 350 : 1_500 * (pairAttempts + 1);
+              const timer = window.setTimeout(() => {
+                void (async () => {
+                  if (cancelled) return;
+                  setPairing(true);
+                  setHostState("pairing");
+                  setHostError("");
+                  const result = await pairLocalLoomHost();
+                  if (cancelled) return;
+                  setPairing(false);
+                  setPairAttempts((value) => value + 1);
+                  if (result.ok) {
+                    setPairingSucceeded(true);
+                    setHostState("connecting");
+                    setHostError("");
+                    setDiscoveryNonce((value) => value + 1);
+                  } else {
+                    setHostState("offline");
+                    setHostError(result.error);
+                  }
+                })();
+              }, delay);
+
+              return () => {
+                cancelled = true;
+                window.clearTimeout(timer);
+              };
+            }, [
+              account.account.authenticated,
+              account.ready,
+              localHost,
+              pairAttempts,
+              pairing,
+              pairingSucceeded,
+              web,
+            ]);
+
+            const retry = useCallback(() => {
+              setPairAttempts(0);
+              setPairingSucceeded(false);
+              setPairing(false);
+              setHostError("");
+              setHostState("discovering");
+              setDiscoveryNonce((value) => value + 1);
+              void connectCurrentHost();
+            }, [connectCurrentHost]);
+
+            if (!web) return children;
+
+            if (!account.ready || !account.account.authenticated || !account.account.user) {
+              return (
+                <SmirelShell>
+                  <div className="smirel-web-auth-slot" aria-label={zh ? "Loom Web 登录" : "Loom Web sign in"}>
+                    <div className="smirel-web-card-meta">
+                      <span>LOOM ACCOUNT</span>
+                      <i><b aria-hidden="true" />SECURE ACCESS</i>
+                    </div>
+                  </div>
+                  <AccountDialog
+                    open
+                    account={account.account}
+                    ready={account.ready}
+                    busy={account.busy}
+                    error={account.error}
+                    onClose={() => undefined}
+                    onClearError={account.clearError}
+                    onRetry={account.refresh}
+                    onLogin={account.login}
+                    onRegister={account.register}
+                    onLogout={account.logout}
+                  />
+                </SmirelShell>
+              );
+            }
+
+            if (hostState !== "online") {
+              const discovering = hostState === "idle" || hostState === "discovering";
+              const connecting = hostState === "connecting";
+              const pairingHost = hostState === "pairing" || pairing;
+              const missing = hostState === "missing" && !localHost;
+              const pairingExhausted = Boolean(
+                localHost && !localHost.relayReady && pairAttempts >= AUTO_PAIR_ATTEMPTS && !pairingSucceeded
+              );
+              const pending = discovering || connecting || pairingHost;
+
+              const title = pairingHost
+                ? (zh ? "正在安全关联 Loom Host…" : "Linking Loom Host securely…")
+                : connecting
+                  ? (zh ? "正在连接你的 Loom Host…" : "Connecting to your Loom Host…")
+                  : missing
+                    ? (zh ? "当前没有在线 Loom Host" : "No Loom Host is online")
+                    : pairingExhausted
+                      ? (zh ? "Loom Host 需要重新关联" : "Loom Host needs attention")
+                      : (zh ? "正在重新连接 Loom Host…" : "Reconnecting Loom Host…");
+
+              const detail = missing
+                ? (zh
+                    ? "登录后网页会自动连接这个账号当前在线的 Loom Host。若你想让这台电脑成为 Host，只需安装一次 Loom。"
+                    : "After sign-in, Loom Web automatically follows the current online Host for this account. Install Loom once only if you want this computer to become that Host.")
+                : pairingHost
+                  ? (zh
+                      ? "正在用短时一次性票据授权这台电脑；浏览器登录凭据不会交给 localhost。"
+                      : "This computer is being authorized with a short-lived one-time ticket; browser credentials are never exposed to localhost.")
+                  : pairingExhausted
+                    ? (zh ? "自动关联没有完成，点击重试即可。" : "Automatic linking did not finish. Retry here.")
+                    : (zh
+                        ? "网页只做安全中继；Agent、会话、工具和权限仍全部运行在当前 Loom Host。"
+                        : "The web app is only a secure relay; Agent, sessions, tools, and approvals stay on the current Loom Host.");
+
+              const statusLabel = pairingHost
+                ? (zh ? "安全关联中" : "PAIRING")
+                : pending
+                  ? (zh ? "连接中" : "CONNECTING")
+                  : missing
+                    ? (zh ? "HOST 离线" : "HOST OFFLINE")
+                    : pairingExhausted
+                      ? (zh ? "需要重试" : "RETRY")
+                      : (zh ? "离线" : "OFFLINE");
+
+              return (
+                <SmirelShell compact>
+                  <section className="smirel-web-connect-card" aria-label={zh ? "Loom Host 连接" : "Loom Host connection"}>
+                    <div className="smirel-web-card-meta">
+                      <span>LOOM HOST</span>
+                      <i className={pending ? "is-pending" : missing ? "is-ready" : "is-offline"}>
+                        <b aria-hidden="true" />{statusLabel}
+                      </i>
+                    </div>
+                    <img className="smirel-web-card-logo" src={SMIREL_LOGO} alt="Smirel" />
+                    <h2>{title}</h2>
+                    <p>{detail}</p>
+                    {pending ? <div className="smirel-web-progress" aria-hidden="true"><span /></div> : null}
+
+                    <div className="web-gate-actions">
+                      {missing && isWindowsBrowser() ? (
+                        <a className="web-gate-link primary" href={LOOM_WINDOWS_INSTALLER_URL}>
+                          {zh ? "安装 Loom Host" : "Install Loom Host"}
+                        </a>
+                      ) : null}
+                      <button className="web-gate-button secondary" type="button" onClick={retry}>
+                        {zh ? "重新连接" : "Reconnect"}
+                      </button>
+                    </div>
+
+                    {missing && !isWindowsBrowser() ? (
+                      <p className="web-gate-meta">{zh ? "Loom Host 安装器目前支持 Windows。" : "The Loom Host installer is currently available for Windows."}</p>
+                    ) : null}
+                    {hostError ? <p className="smirel-web-error">{hostError}</p> : null}
+
+                    <div className="smirel-web-connection-note">
+                      <span className="smirel-web-lock" aria-hidden="true">⌁</span>
+                      {zh
+                        ? "一个 Loom 账号只维护一个当前 Host；新的 Desktop Host 上线时会安全替换旧 Host，所有网页登录会自动跟随。"
+                        : "Each Loom account has one current Host. A newly connected Desktop Host safely replaces the old one and every web session follows automatically."}
+                    </div>
+                  </section>
+                </SmirelShell>
+              );
+            }
+
+            return children;
+          }'''
+          gate = gate[:export_start] + gate_function.rstrip() + "\n"
+          write(gate_path, gate)
+
+          # Linux CI must be able to install a fake WinDLL even though ctypes only
+          # exposes it on Windows.
+          computer_test = "tests/test_computer_acceptance_regressions.py"
+          source = read(computer_test)
+          source = source.replace('monkeypatch.setattr(ctypes, "WinDLL", lambda *a, **kw: imm)', 'monkeypatch.setattr(ctypes, "WinDLL", lambda *a, **kw: imm, raising=False)')
+          source = source.replace('monkeypatch.setattr(ctypes, "WinDLL", lambda *a, **kw: SimpleNamespace(GetGUIThreadInfo=Query()))', 'monkeypatch.setattr(ctypes, "WinDLL", lambda *a, **kw: SimpleNamespace(GetGUIThreadInfo=Query()), raising=False)')
+          write(computer_test, source)
+
+          # Provider catalog tests should assert behavior, not comments/local names
+          # removed by the Ant Ling/model-manager refactor.
+          catalog_test = "tests/test_dynamic_model_catalog_refresh_contract.py"
+          source = read(catalog_test)
+          for stale in (
+              '    assert \'discovered_minimax = _fetch_minimax_model_ids\' in source\n',
+              '    assert \'minimax_model_ids = discovered_minimax or list(MINIMAX_MODEL_IDS)\' in source\n',
+              '    assert \'minimax_source = "provider" if discovered_minimax else "fallback"\' in source\n',
+              '    assert "last known good catalog" in manager\n',
+              '    assert "A failed /models request must not masquerade as a provider deletion." in manager\n',
+              '    assert "normal deletion semantics resume immediately" in manager\n',
+          ):
+              source = source.replace(stale, "")
+          source = source.replace(
+              '    assert \'_minimax_models_url(environ)\' in source\n',
+              '    assert \'_minimax_models_url(environ)\' in source\n    assert "MINIMAX_MODEL_IDS" in source\n',
+          )
+          write(catalog_test, source)
+
+          # HUD test follows the two synchronized filter declarations without
+          # pinning transient tuning constants.
+          hud_test = "tests/test_browser_hud_overlay_contract.py"
+          source = read(hud_test)
+          start = source.index("def test_browser_hud_tracks_computer_visual_language_without_sharing_lifecycle()")
+          end = source.index("\ndef test_browser_hud_all_visual_layers_stay_visible_during_user_interaction", start)
+          replacement = r'''def test_browser_hud_tracks_computer_visual_language_without_sharing_lifecycle() -> None:
+              desktop = (ROOT / "desktop-react" / "electron" / "hudWindow.ts").read_text(encoding="utf-8")
+              browser_hud = (EXT / "browser-hud.js").read_text(encoding="utf-8")
+
+              for token in ("--bubble-width:420px", "top:20px", "bottom:24px", "width:82px;height:82px"):
+                  assert token in desktop
+                  assert token in browser_hud
+
+              filter_pattern = r"filter:blur\((?:14|8)px\) saturate\([^)]+\);opacity:[^;}]+"
+              assert re.findall(filter_pattern, desktop)[:2] == re.findall(filter_pattern, browser_hud)[:2]
+              assert len(re.findall(filter_pattern, desktop)) >= 2
+              assert "BrowserWindow" in desktop
+              assert "loom-browser-hud-root-v2" in browser_hud
+              assert "cloneNode(true)" not in browser_hud
+          '''
+          source = source[:start] + replacement.rstrip() + "\n\n" + source[end + 1:]
+          write(hud_test, source)
+
+          # The restored glass UI deliberately owns several small style layers.
+          # Keep contracts semantic instead of pinning the retired single-file era.
+          write("tests/test_header_composer_contract.py", r'''from pathlib import Path
+
+          ROOT = Path(__file__).resolve().parents[1]
+          SRC = ROOT / "desktop-react" / "src"
+          COMPONENTS = SRC / "components"
+
+
+          def read(path: Path) -> str:
+              return path.read_text(encoding="utf-8")
+
+
+          def test_header_uses_explicit_glass_style_layers() -> None:
+              header = read(COMPONENTS / "ThreadHeader.tsx")
+              assert 'import "./thread-header.css";' in header
+              assert 'className="thread-header polished-thread-header"' in header
+              assert (COMPONENTS / "thread-header.css").is_file()
+
+
+          def test_composer_keeps_core_stylesheet_and_editable_steering_surface() -> None:
+              composer = read(COMPONENTS / "Composer.tsx")
+              assert 'import "./composer.css";' in composer
+              assert "composer is-steering" in composer
+              assert "composer-input-row" in composer
+              assert "disabled={stopping}" in composer
+
+
+          def test_header_status_is_visible_and_state_driven() -> None:
+              header = read(COMPONENTS / "ThreadHeader.tsx")
+              assert 'tone: "ready"' in header
+              assert "thread-state-dot" in header
+              assert "thread-status-chip" in header
+              assert 'status === "waiting_approval"' in header
+
+
+          def test_conversation_surface_remains_a_scroll_container() -> None:
+              styles = read(SRC / "styles.css")
+              start = styles.index(".transcript-scroll {")
+              rule = styles[start:styles.index("}", start)]
+              assert "overflow-y: auto" in rule
+              assert "overflow-x: hidden" in rule
+
+
+          def test_theme_keeps_explicit_light_and_dark_surfaces() -> None:
+              combined = read(SRC / "styles.css") + read(SRC / "theme.css")
+              assert "color-scheme: dark" in combined
+              assert 'data-loom-theme="light"' in combined
+
+
+          def test_glass_decorations_are_non_interactive() -> None:
+              composer = read(COMPONENTS / "Composer.tsx")
+              assert 'className="composer-glow" aria-hidden="true"' in composer
+              assert 'className="composer-spark" aria-hidden="true"' in composer
+          ''')
+
+          # Draft-preserving shared props and the terminal-error guard are both
+          # newer than the old exact-string steering contract.
+          steering_test = "tests/test_live_steering_ui_contract.py"
+          source = read(steering_test)
+          source = source.replace(
+              '    assert \'if (props.running) return <SteeringComposer {...props} />;\' in source\n',
+              '    assert \'if (props.running) return <SteeringComposer {...sharedProps} />;\' in source\n    assert "draftValue," in source\n    assert "onDraftValueChange: setDraftValue" in source\n',
+          )
+          source = source.replace(
+              '    assert \'const running = Boolean(loom.turnActive || threadIsRunning(thread));\' in source\n',
+              '    assert "const running = Boolean(loom.turnActive || threadIsRunning(thread))" in source\n    assert "&& !activeTurnHasTerminalError;" in source\n',
+          )
+          write(steering_test, source)
+
+          write("tests/test_loom_web_local_first_contract.py", r'''from pathlib import Path
+
+          ROOT = Path(__file__).resolve().parents[1]
+          GATEWAY = ROOT / "services" / "loom_web_gateway" / "app.py"
+          WEB_BRIDGE = ROOT / "desktop-react" / "src" / "webBridge.ts"
+          WEB_GATE = ROOT / "desktop-react" / "src" / "components" / "WebAppGate.tsx"
+          REMOTE_RELAY = ROOT / "desktop-react" / "electron" / "remoteRelay.ts"
+
+
+          def test_gateway_has_one_current_host_per_account() -> None:
+              source = GATEWAY.read_text(encoding="utf-8")
+              assert "self.devices: dict[int, DevicePeer] = {}" in source
+              assert "self.devices: dict[int, dict[str, DevicePeer]] = {}" not in source
+              assert 'reason="newer Loom Desktop connected"' in source
+              assert "newer Loom Host instance connected for this device" not in source
+
+
+          def test_browser_routes_by_account_without_device_selection() -> None:
+              source = GATEWAY.read_text(encoding="utf-8")
+              assert "device = hub.devices.get(peer.user_id)" in source
+              assert '"code": "HOST_OFFLINE"' in source
+              assert '"code": "HOST_NOT_SELECTED"' not in source
+              assert "selected_device_id" not in source
+              assert 'kind == "select_device"' not in source
+
+
+          def test_websocket_does_not_encode_a_device_routing_target() -> None:
+              bridge = WEB_BRIDGE.read_text(encoding="utf-8")
+              assert 'target.searchParams.delete("device")' in bridge
+              assert 'target.searchParams.set("device"' not in bridge
+              assert 'type: "select_device"' not in bridge
+
+
+          def test_loopback_discovery_only_bootstraps_local_pairing() -> None:
+              relay = REMOTE_RELAY.read_text(encoding="utf-8")
+              assert 'const LOCAL_PAIR_PATH = "/loom/pair"' in relay
+              assert 'new LoomAccountClient().pairDevice(pairingTicket)' in relay
+              assert 'target.searchParams.set("local_device", identity.deviceId)' in relay
+              assert "127.0.0.1" in relay
+
+
+          def test_web_gate_automatically_follows_current_account_host() -> None:
+              source = WEB_GATE.read_text(encoding="utf-8")
+              assert "await window.loom.connect();" in source
+              assert "selectWebDevice" not in source
+              assert "connectRemote" not in source
+              assert "Remote devices" not in source
+              assert "one current Host" in source
+          ''')
+
+          write("tests/test_loom_remote_ui_contract.py", r'''from pathlib import Path
+
+          ROOT = Path(__file__).resolve().parents[1]
+          BRIDGE = ROOT / "desktop-react" / "src" / "webBridge.ts"
+          GATE = ROOT / "desktop-react" / "src" / "components" / "WebAppGate.tsx"
+          GATEWAY = ROOT / "services" / "loom_web_gateway" / "app.py"
+
+
+          def test_web_ui_has_no_multi_host_selector() -> None:
+              gate = GATE.read_text(encoding="utf-8")
+              assert "selectWebDevice" not in gate
+              assert "connectRemote" not in gate
+              assert "RemoteSidebarEntry" not in gate
+              assert "Remote devices" not in gate
+
+
+          def test_gateway_enforces_single_current_host_routing() -> None:
+              source = GATEWAY.read_text(encoding="utf-8")
+              assert "self.devices: dict[int, DevicePeer] = {}" in source
+              assert 'reason="newer Loom Desktop connected"' in source
+              assert "selected_device_id" not in source
+              assert '"HOST_NOT_SELECTED"' not in source
+
+
+          def test_legacy_bridge_selector_cannot_change_gateway_target() -> None:
+              source = BRIDGE.read_text(encoding="utf-8")
+              assert 'target.searchParams.set("device"' not in source
+              assert 'type: "select_device"' not in source
+              assert "await ensureSocket();" in source
+          ''')
+
+          # Branding now lives directly in the restored Smirel shell rather than
+          # an older WebPortal wrapper.
+          branding_test = "tests/test_loom_web_smirel_branding.py"
+          source = read(branding_test)
+          start = source.index("def test_loom_web_uses_original_smirel_brand_and_portal_skeleton():")
+          end = source.index("\ndef test_loom_web_loads_the_canonical_listing_studio_glass_assets", start)
+          replacement = r'''def test_loom_web_uses_original_smirel_brand_and_portal_skeleton():
+              gate = (ROOT / "desktop-react/src/components/WebAppGate.tsx").read_text(encoding="utf-8")
+              logo = (ROOT / "desktop-react/public/smirel-logo.svg").read_text(encoding="utf-8")
+              mark = (ROOT / "desktop-react/public/smirel-mark.svg").read_text(encoding="utf-8")
+              assert "function SmirelShell" in gate
+              assert "smirel-web-shell" in gate
+              assert "SMIREL · LOOM WEB" in gate
+              assert "LOOM ACCOUNT" in gate
+              assert "smirel-logo" in logo.lower()
+              assert "Smirel API" in mark
+          '''
+          source = source[:start] + replacement.rstrip() + "\n\n" + source[end + 1:]
+          write(branding_test, source)
           PY
+
           git add -A
           python -m pip install -e '.[dev,browser]'
           python -m compileall -q services/loom_account services/loom_web_gateway
@@ -105,7 +918,7 @@ jobs:
           set -e
           if [ "$pytest_status" -ne 0 ]; then
             {
-              echo "PR #230 pytest failure after merging current main"
+              echo "PR #230 pytest failure after final architecture reconciliation"
               echo "Generated by pr230-integrate.yml"
               echo
               grep '^FAILED ' /tmp/pr230-pytest.log || true
@@ -114,12 +927,12 @@ jobs:
             } > .ci-pr230-failure.txt
             git add -A
             git add -f .ci-pr230-failure.txt
-            git commit -m "Merge main and capture PR 230 pytest failure"
+            git commit -m "Reconcile Loom Web architecture and capture remaining tests"
             git push origin HEAD:feat/web-local-first-host
             exit "$pytest_status"
           fi
+
           rm -f .ci-pr230-failure.txt
-          git rm -f .github/workflows/pr230-integrate.yml
           git add -A
-          git commit -m "Merge main and reconcile Loom Web local-first host"
+          git commit -m "fix(web): enforce one current Loom Host per account"
           git push origin HEAD:feat/web-local-first-host
