@@ -8,7 +8,25 @@ export interface LoomAccountUser {
   email: string;
   display_name?: string;
   status: string;
+  role?: string;
+  email_verified?: boolean;
   created_at?: number;
+}
+
+export interface LoomAuthCapabilities {
+  emailVerification: boolean;
+  passwordReset: boolean;
+  google: boolean;
+  github: boolean;
+  legacyRegistration: boolean;
+}
+
+export interface LoomAuthChallenge {
+  id: string;
+  email: string;
+  purpose: string;
+  expires_in: number;
+  resend_after: number;
 }
 
 export interface LoomAccountSnapshot {
@@ -35,6 +53,10 @@ interface AuthResponse {
   expires_in: number;
   token_type?: string;
   user: LoomAccountUser;
+}
+
+interface ChallengeResponse {
+  challenge: LoomAuthChallenge;
 }
 
 /**
@@ -360,6 +382,58 @@ export class LoomAccountClient {
         return this.snapshot(null);
       }
     }
+  }
+
+  async capabilities(): Promise<LoomAuthCapabilities> {
+    return this.request<LoomAuthCapabilities>("/auth/capabilities", { method: "GET" });
+  }
+
+  async registerStart(email: string, password: string): Promise<LoomAuthChallenge> {
+    const response = await this.request<ChallengeResponse>("/auth/register/start", {
+      method: "POST",
+      body: JSON.stringify({ email, password }),
+    });
+    return response.challenge;
+  }
+
+  async verifyEmail(challengeId: string, code: string): Promise<LoomAccountSnapshot> {
+    const response = await this.request<AuthResponse>("/auth/verify-email", {
+      method: "POST",
+      body: JSON.stringify({ challenge_id: challengeId, code }),
+    });
+    return this.snapshot(await this.saveSession(response));
+  }
+
+  async resendEmail(challengeId: string): Promise<LoomAuthChallenge> {
+    const response = await this.request<ChallengeResponse>("/auth/resend-email", {
+      method: "POST",
+      body: JSON.stringify({ challenge_id: challengeId }),
+    });
+    return response.challenge;
+  }
+
+  async forgotPassword(email: string): Promise<LoomAuthChallenge> {
+    const response = await this.request<ChallengeResponse>("/auth/forgot-password", {
+      method: "POST",
+      body: JSON.stringify({ email }),
+    });
+    return response.challenge;
+  }
+
+  async resetPassword(challengeId: string, code: string, password: string): Promise<LoomAccountSnapshot> {
+    const response = await this.request<AuthResponse>("/auth/reset-password", {
+      method: "POST",
+      body: JSON.stringify({ challenge_id: challengeId, code, password }),
+    });
+    return this.snapshot(await this.saveSession(response));
+  }
+
+  async oauthExchange(code: string): Promise<LoomAccountSnapshot> {
+    const response = await this.request<AuthResponse>("/auth/oauth/exchange", {
+      method: "POST",
+      body: JSON.stringify({ code }),
+    });
+    return this.snapshot(await this.saveSession(response));
   }
 
   async login(email: string, password: string): Promise<LoomAccountSnapshot> {

@@ -1,4 +1,4 @@
-import type { LoomAccountResult } from "./account";
+import type { LoomAccountResult, LoomAuthCapabilitiesResult, LoomAuthChallengeResult } from "./account";
 
 export interface LoomNotification {
   jsonrpc: "2.0";
@@ -30,8 +30,15 @@ export interface LoomBridge {
   /** Account calls resolve with a result union instead of rejecting, so the
       service's error code reaches the renderer intact. */
   accountStatus(): Promise<LoomAccountResult>;
+  accountCapabilities(): Promise<LoomAuthCapabilitiesResult>;
   accountLogin(email: string, password: string): Promise<LoomAccountResult>;
   accountRegister(email: string, password: string): Promise<LoomAccountResult>;
+  accountRegisterStart(email: string, password: string): Promise<LoomAuthChallengeResult>;
+  accountVerifyEmail(challengeId: string, code: string): Promise<LoomAccountResult>;
+  accountResendEmail(challengeId: string): Promise<LoomAuthChallengeResult>;
+  accountForgotPassword(email: string): Promise<LoomAuthChallengeResult>;
+  accountResetPassword(challengeId: string, code: string, password: string): Promise<LoomAccountResult>;
+  accountOAuthExchange(code: string): Promise<LoomAccountResult>;
   accountLogout(): Promise<LoomAccountResult>;
   listModels<T = unknown>(forceRefresh?: boolean): Promise<T>;
   setModelProviderKey<T = unknown>(provider: string, apiKey: string): Promise<T>;

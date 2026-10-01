@@ -11,15 +11,20 @@ import json
 import os
 import re
 import secrets
+import smtplib
 import sqlite3
 import threading
 import time
 import uuid
 from dataclasses import dataclass
+from email.message import EmailMessage
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any, Collection
+from urllib.error import HTTPError, URLError
+from urllib.parse import parse_qs, urlencode, urlsplit, urlunsplit
+from urllib.request import Request as UrlRequest, urlopen
 from .search import SearchServiceError, search as shared_search
 
 
@@ -34,6 +39,10 @@ _DEFAULT_BUILTIN_MODEL_IDS = (
     "Ling-2.6-flash",
 )
 _PAIR_TTL_SECONDS = 120
+_EMAIL_CHALLENGE_TTL_SECONDS = 10 * 60
+_EMAIL_RESEND_SECONDS = 60
+_OAUTH_STATE_TTL_SECONDS = 10 * 60
+_OAUTH_EXCHANGE_TTL_SECONDS = 2 * 60
 
 # Peers allowed to set the client address through a forwarding header. The
 # service is meant to sit behind a TLS-terminating reverse proxy, so loopback is
@@ -91,6 +100,18 @@ def _now() -> int:
 
 def _token_hash(token: str) -> str:
     return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+def _challenge_code_hash(challenge_id: str, code: str) -> str:
+    # Six-digit verification codes have a tiny search space. A deliberately
+    # slower KDF makes an offline database leak much less useful while keeping
+    # each legitimate verification comfortably fast.
+    return hashlib.pbkdf2_hmac(
+        "sha256",
+        str(code).encode("utf-8"),
+        str(challenge_id).encode("utf-8"),
+        120_000,
+    ).hex()
 
 
 def _new_token(prefix: str) -> str:
@@ -160,6 +181,21 @@ class AccountConfig:
     db_path: Path
     access_ttl_seconds: int = 15 * 60
     refresh_ttl_seconds: int = 30 * 24 * 60 * 60
+    public_base_url: str = "https://account.smirel.com/v1"
+    web_origin: str = "https://loom.smirel.com"
+    email_provider: str = ""
+    email_from: str = ""
+    resend_api_key: str = ""
+    smtp_host: str = ""
+    smtp_port: int = 587
+    smtp_username: str = ""
+    smtp_password: str = ""
+    smtp_tls: bool = True
+    google_client_id: str = ""
+    google_client_secret: str = ""
+    github_client_id: str = ""
+    github_client_secret: str = ""
+    legacy_registration_enabled: bool = True
 
 
 class AccountStore:
@@ -187,6 +223,7 @@ class AccountStore:
                     display_name TEXT NOT NULL DEFAULT '',
                     status TEXT NOT NULL DEFAULT 'active',
                     role TEXT NOT NULL DEFAULT 'user',
+                    email_verified_at INTEGER,
                     created_at INTEGER NOT NULL,
                     updated_at INTEGER NOT NULL
                 );
@@ -206,6 +243,48 @@ class AccountStore:
                 CREATE INDEX IF NOT EXISTS idx_sessions_access_hash ON sessions(access_hash);
                 CREATE INDEX IF NOT EXISTS idx_sessions_refresh_hash ON sessions(refresh_hash);
                 CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON sessions(user_id);
+
+                CREATE TABLE IF NOT EXISTS auth_identities (
+                    provider TEXT NOT NULL,
+                    subject TEXT NOT NULL,
+                    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                    email TEXT NOT NULL DEFAULT '',
+                    email_verified INTEGER NOT NULL DEFAULT 0,
+                    created_at INTEGER NOT NULL,
+                    updated_at INTEGER NOT NULL,
+                    PRIMARY KEY(provider, subject)
+                );
+                CREATE INDEX IF NOT EXISTS idx_auth_identities_user ON auth_identities(user_id);
+
+                CREATE TABLE IF NOT EXISTS email_challenges (
+                    id TEXT PRIMARY KEY,
+                    email TEXT NOT NULL,
+                    purpose TEXT NOT NULL,
+                    code_hash TEXT NOT NULL,
+                    payload_json TEXT NOT NULL DEFAULT '{}',
+                    expires_at INTEGER NOT NULL,
+                    resend_after INTEGER NOT NULL,
+                    attempts INTEGER NOT NULL DEFAULT 0,
+                    consumed_at INTEGER,
+                    created_at INTEGER NOT NULL
+                );
+                CREATE INDEX IF NOT EXISTS idx_email_challenges_email ON email_challenges(email, purpose, created_at DESC);
+
+                CREATE TABLE IF NOT EXISTS oauth_states (
+                    state_hash TEXT PRIMARY KEY,
+                    provider TEXT NOT NULL,
+                    return_to TEXT NOT NULL,
+                    expires_at INTEGER NOT NULL,
+                    created_at INTEGER NOT NULL
+                );
+
+                CREATE TABLE IF NOT EXISTS oauth_exchange_codes (
+                    code_hash TEXT PRIMARY KEY,
+                    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                    expires_at INTEGER NOT NULL,
+                    consumed_at INTEGER,
+                    created_at INTEGER NOT NULL
+                );
 
                 CREATE TABLE IF NOT EXISTS audit_logs (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -250,7 +329,19 @@ class AccountStore:
             columns = {str(row[1]) for row in db.execute("PRAGMA table_info(users)")}
             if "role" not in columns:
                 db.execute("ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'user'")
+            legacy_without_verification = "email_verified_at" not in columns
+            if legacy_without_verification:
+                db.execute("ALTER TABLE users ADD COLUMN email_verified_at INTEGER")
             db.execute("UPDATE users SET role = 'user' WHERE role NOT IN ('user', 'admin', 'owner')")
+            if legacy_without_verification:
+                # Accounts that predate verified-email support are grandfathered
+                # exactly once. New OAuth-only users must not acquire a fake
+                # password identity on later service restarts.
+                db.execute("UPDATE users SET email_verified_at = COALESCE(email_verified_at, created_at)")
+                db.execute(
+                    """INSERT OR IGNORE INTO auth_identities(provider, subject, user_id, email, email_verified, created_at, updated_at)
+                    SELECT 'password', email, id, email, 1, created_at, updated_at FROM users"""
+                )
 
     @staticmethod
     def _safe_user(row: sqlite3.Row) -> dict[str, Any]:
@@ -260,20 +351,32 @@ class AccountStore:
             "display_name": str(row["display_name"] or ""),
             "status": str(row["status"]),
             "role": str(row["role"] or "user"),
+            "email_verified": bool(row["email_verified_at"]),
             "created_at": int(row["created_at"]),
         }
 
     def register(self, email: str, password: str) -> dict[str, Any]:
         email = _normalize_email(email)
         password = _validate_password(password)
+        return self.register_verified(email, _password_hash(password))
+
+    def register_verified(self, email: str, password_hash: str, *, display_name: str = "") -> dict[str, Any]:
+        email = _normalize_email(email)
         now = _now()
         try:
             with self._guard, self._connect() as db:
                 cursor = db.execute(
-                    "INSERT INTO users(email, password_hash, created_at, updated_at) VALUES (?, ?, ?, ?)",
-                    (email, _password_hash(password), now, now),
+                    """INSERT INTO users(email, password_hash, display_name, email_verified_at, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?)""",
+                    (email, str(password_hash), str(display_name or ""), now, now, now),
                 )
-                row = db.execute("SELECT * FROM users WHERE id = ?", (int(cursor.lastrowid),)).fetchone()
+                user_id = int(cursor.lastrowid)
+                db.execute(
+                    """INSERT INTO auth_identities(provider, subject, user_id, email, email_verified, created_at, updated_at)
+                    VALUES ('password', ?, ?, ?, 1, ?, ?)""",
+                    (email, user_id, email, now, now),
+                )
+                row = db.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
         except sqlite3.IntegrityError as exc:
             raise AccountError(
                 HTTPStatus.CONFLICT,
@@ -281,11 +384,223 @@ class AccountStore:
                 "An account with this email already exists.",
             ) from exc
         if row is None:
-            raise AccountError(
-                HTTPStatus.INTERNAL_SERVER_ERROR,
-                "ACCOUNT_CREATE_FAILED",
-                "Account could not be created.",
+            raise AccountError(HTTPStatus.INTERNAL_SERVER_ERROR, "ACCOUNT_CREATE_FAILED", "Account could not be created.")
+        return self._safe_user(row)
+
+    def user_by_email(self, email: str) -> dict[str, Any] | None:
+        email = _normalize_email(email)
+        with self._connect() as db:
+            row = db.execute("SELECT * FROM users WHERE email = ?", (email,)).fetchone()
+        return self._safe_user(row) if row is not None else None
+
+    def create_email_challenge(
+        self,
+        email: str,
+        purpose: str,
+        payload: dict[str, Any],
+        *,
+        ttl: int = _EMAIL_CHALLENGE_TTL_SECONDS,
+    ) -> tuple[dict[str, Any], str]:
+        email = _normalize_email(email)
+        challenge_id = uuid.uuid4().hex
+        code = f"{secrets.randbelow(1_000_000):06d}"
+        now = _now()
+        expires_at = now + max(60, int(ttl))
+        resend_after = now + _EMAIL_RESEND_SECONDS
+        with self._guard, self._connect() as db:
+            db.execute(
+                """INSERT INTO email_challenges(id, email, purpose, code_hash, payload_json, expires_at, resend_after, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    challenge_id,
+                    email,
+                    str(purpose),
+                    _challenge_code_hash(challenge_id, code),
+                    json.dumps(payload, ensure_ascii=False, separators=(",", ":")),
+                    expires_at,
+                    resend_after,
+                    now,
+                ),
             )
+        return {
+            "id": challenge_id,
+            "email": email,
+            "purpose": str(purpose),
+            "expires_in": expires_at - now,
+            "resend_after": _EMAIL_RESEND_SECONDS,
+        }, code
+
+    def resend_email_challenge(self, challenge_id: str) -> tuple[dict[str, Any], str]:
+        now = _now()
+        code = f"{secrets.randbelow(1_000_000):06d}"
+        with self._guard, self._connect() as db:
+            row = db.execute(
+                "SELECT * FROM email_challenges WHERE id = ? AND consumed_at IS NULL",
+                (str(challenge_id or ""),),
+            ).fetchone()
+            if row is None or int(row["expires_at"]) <= now:
+                raise AccountError(HTTPStatus.BAD_REQUEST, "CHALLENGE_EXPIRED", "This verification request has expired.")
+            if int(row["resend_after"]) > now:
+                raise AccountError(HTTPStatus.TOO_MANY_REQUESTS, "RESEND_TOO_SOON", "Please wait before requesting another code.")
+            expires_at = now + _EMAIL_CHALLENGE_TTL_SECONDS
+            resend_after = now + _EMAIL_RESEND_SECONDS
+            db.execute(
+                """UPDATE email_challenges SET code_hash = ?, expires_at = ?, resend_after = ?, attempts = 0
+                WHERE id = ?""",
+                (_challenge_code_hash(str(row["id"]), code), expires_at, resend_after, str(row["id"])),
+            )
+        return {
+            "id": str(row["id"]),
+            "email": str(row["email"]),
+            "purpose": str(row["purpose"]),
+            "expires_in": _EMAIL_CHALLENGE_TTL_SECONDS,
+            "resend_after": _EMAIL_RESEND_SECONDS,
+        }, code
+
+    def consume_email_challenge(self, challenge_id: str, code: str, purpose: str) -> tuple[str, dict[str, Any]]:
+        now = _now()
+        cid = str(challenge_id or "").strip()
+        supplied = re.sub(r"\D", "", str(code or ""))
+        with self._guard, self._connect() as db:
+            row = db.execute("SELECT * FROM email_challenges WHERE id = ?", (cid,)).fetchone()
+            if (
+                row is None
+                or str(row["purpose"]) != str(purpose)
+                or row["consumed_at"] is not None
+                or int(row["expires_at"]) <= now
+                or int(row["attempts"]) >= 6
+            ):
+                raise AccountError(HTTPStatus.BAD_REQUEST, "INVALID_CODE", "The verification code is invalid or has expired.")
+            expected = str(row["code_hash"])
+            actual = _challenge_code_hash(cid, supplied)
+            if len(supplied) != 6 or not hmac.compare_digest(actual, expected):
+                db.execute("UPDATE email_challenges SET attempts = attempts + 1 WHERE id = ?", (cid,))
+                raise AccountError(HTTPStatus.BAD_REQUEST, "INVALID_CODE", "The verification code is invalid or has expired.")
+            db.execute("UPDATE email_challenges SET consumed_at = ? WHERE id = ?", (now, cid))
+            try:
+                payload = json.loads(str(row["payload_json"] or "{}"))
+            except json.JSONDecodeError:
+                payload = {}
+        return str(row["email"]), payload if isinstance(payload, dict) else {}
+
+    def set_password(self, user_id: int, password: str) -> dict[str, Any]:
+        password = _validate_password(password)
+        now = _now()
+        with self._guard, self._connect() as db:
+            row = db.execute("SELECT * FROM users WHERE id = ?", (int(user_id),)).fetchone()
+            if row is None:
+                raise AccountError(HTTPStatus.BAD_REQUEST, "INVALID_CODE", "The verification code is invalid or has expired.")
+            email = str(row["email"])
+            db.execute(
+                "UPDATE users SET password_hash = ?, email_verified_at = COALESCE(email_verified_at, ?), updated_at = ? WHERE id = ?",
+                (_password_hash(password), now, now, int(user_id)),
+            )
+            db.execute(
+                """INSERT INTO auth_identities(provider, subject, user_id, email, email_verified, created_at, updated_at)
+                VALUES ('password', ?, ?, ?, 1, ?, ?)
+                ON CONFLICT(provider, subject) DO UPDATE SET user_id=excluded.user_id, email=excluded.email, email_verified=1, updated_at=excluded.updated_at""",
+                (email, int(user_id), email, now, now),
+            )
+            db.execute("UPDATE sessions SET revoked_at = ? WHERE user_id = ? AND revoked_at IS NULL", (now, int(user_id)))
+            updated = db.execute("SELECT * FROM users WHERE id = ?", (int(user_id),)).fetchone()
+        return self._safe_user(updated)
+
+    def upsert_oauth_user(
+        self,
+        provider: str,
+        subject: str,
+        email: str,
+        *,
+        email_verified: bool,
+        display_name: str = "",
+    ) -> dict[str, Any]:
+        provider = str(provider).strip().casefold()
+        subject = str(subject).strip()
+        email = _normalize_email(email)
+        if provider not in {"google", "github"} or not subject:
+            raise AccountError(HTTPStatus.BAD_REQUEST, "OAUTH_IDENTITY_INVALID", "The sign-in identity is invalid.")
+        if not email_verified:
+            raise AccountError(HTTPStatus.BAD_REQUEST, "OAUTH_EMAIL_UNVERIFIED", "The provider did not return a verified email address.")
+        now = _now()
+        with self._guard, self._connect() as db:
+            identity = db.execute(
+                "SELECT user_id FROM auth_identities WHERE provider = ? AND subject = ?",
+                (provider, subject),
+            ).fetchone()
+            if identity is not None:
+                user_id = int(identity["user_id"])
+                db.execute(
+                    "UPDATE auth_identities SET email = ?, email_verified = 1, updated_at = ? WHERE provider = ? AND subject = ?",
+                    (email, now, provider, subject),
+                )
+            else:
+                user = db.execute("SELECT * FROM users WHERE email = ?", (email,)).fetchone()
+                if user is None:
+                    cursor = db.execute(
+                        """INSERT INTO users(email, password_hash, display_name, email_verified_at, created_at, updated_at)
+                        VALUES (?, ?, ?, ?, ?, ?)""",
+                        (email, _password_hash(_new_token("oauth_only")), str(display_name or ""), now, now, now),
+                    )
+                    user_id = int(cursor.lastrowid)
+                else:
+                    user_id = int(user["id"])
+                    db.execute(
+                        "UPDATE users SET email_verified_at = COALESCE(email_verified_at, ?), display_name = CASE WHEN display_name = '' THEN ? ELSE display_name END, updated_at = ? WHERE id = ?",
+                        (now, str(display_name or ""), now, user_id),
+                    )
+                db.execute(
+                    """INSERT INTO auth_identities(provider, subject, user_id, email, email_verified, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, 1, ?, ?)""",
+                    (provider, subject, user_id, email, now, now),
+                )
+            row = db.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
+        if row is None:
+            raise AccountError(HTTPStatus.INTERNAL_SERVER_ERROR, "ACCOUNT_CREATE_FAILED", "Account could not be created.")
+        return self._safe_user(row)
+
+    def create_oauth_state(self, provider: str, return_to: str) -> str:
+        state = _new_token("loom_oauth_state")
+        now = _now()
+        with self._guard, self._connect() as db:
+            db.execute(
+                "INSERT INTO oauth_states(state_hash, provider, return_to, expires_at, created_at) VALUES (?, ?, ?, ?, ?)",
+                (_token_hash(state), str(provider), str(return_to), now + _OAUTH_STATE_TTL_SECONDS, now),
+            )
+        return state
+
+    def consume_oauth_state(self, state: str, provider: str) -> str:
+        now = _now()
+        hashed = _token_hash(str(state or ""))
+        with self._guard, self._connect() as db:
+            row = db.execute("SELECT * FROM oauth_states WHERE state_hash = ? AND provider = ?", (hashed, str(provider))).fetchone()
+            db.execute("DELETE FROM oauth_states WHERE state_hash = ?", (hashed,))
+        if row is None or int(row["expires_at"]) <= now:
+            raise AccountError(HTTPStatus.BAD_REQUEST, "OAUTH_STATE_INVALID", "This sign-in request has expired. Please try again.")
+        return str(row["return_to"])
+
+    def create_oauth_exchange(self, user_id: int) -> str:
+        code = _new_token("loom_oauth_exchange")
+        now = _now()
+        with self._guard, self._connect() as db:
+            db.execute(
+                "INSERT INTO oauth_exchange_codes(code_hash, user_id, expires_at, created_at) VALUES (?, ?, ?, ?)",
+                (_token_hash(code), int(user_id), now + _OAUTH_EXCHANGE_TTL_SECONDS, now),
+            )
+        return code
+
+    def consume_oauth_exchange(self, code: str) -> dict[str, Any]:
+        now = _now()
+        hashed = _token_hash(str(code or ""))
+        with self._guard, self._connect() as db:
+            row = db.execute(
+                """SELECT oauth_exchange_codes.*, users.* FROM oauth_exchange_codes
+                JOIN users ON users.id = oauth_exchange_codes.user_id
+                WHERE oauth_exchange_codes.code_hash = ? AND oauth_exchange_codes.consumed_at IS NULL""",
+                (hashed,),
+            ).fetchone()
+            if row is None or int(row["expires_at"]) <= now:
+                raise AccountError(HTTPStatus.UNAUTHORIZED, "OAUTH_CODE_INVALID", "This sign-in code is invalid or has expired.")
+            db.execute("UPDATE oauth_exchange_codes SET consumed_at = ? WHERE code_hash = ?", (now, hashed))
         return self._safe_user(row)
 
     def authenticate(self, email: str, password: str) -> dict[str, Any]:
@@ -801,14 +1116,300 @@ class AccountApplication:
         self._pairing_guard = threading.Lock()
         self._pairing_tickets: dict[str, tuple[float, dict[str, Any]]] = {}
 
+    def _email_configured(self) -> bool:
+        cfg = self.store.config
+        provider = str(cfg.email_provider or "").casefold()
+        if provider == "test":
+            return True
+        if provider == "resend":
+            return bool(cfg.resend_api_key and cfg.email_from)
+        if provider == "smtp":
+            return bool(cfg.smtp_host and cfg.email_from)
+        return False
+
+    def capabilities(self) -> dict[str, Any]:
+        cfg = self.store.config
+        return {
+            "emailVerification": self._email_configured(),
+            "passwordReset": self._email_configured(),
+            "google": bool(cfg.google_client_id and cfg.google_client_secret),
+            "github": bool(cfg.github_client_id and cfg.github_client_secret),
+            "legacyRegistration": bool(cfg.legacy_registration_enabled),
+        }
+
+    def _send_email(self, to: str, subject: str, text: str) -> None:
+        cfg = self.store.config
+        provider = str(cfg.email_provider or "").casefold()
+        if provider == "test":
+            return
+        if provider == "resend":
+            payload = json.dumps({"from": cfg.email_from, "to": [to], "subject": subject, "text": text}).encode("utf-8")
+            request = UrlRequest(
+                "https://api.resend.com/emails",
+                data=payload,
+                method="POST",
+                headers={"Authorization": f"Bearer {cfg.resend_api_key}", "Content-Type": "application/json"},
+            )
+            try:
+                with urlopen(request, timeout=15) as response:
+                    if int(response.status) >= 300:
+                        raise RuntimeError(f"mail provider status {response.status}")
+            except (HTTPError, URLError, OSError) as exc:
+                raise AccountError(HTTPStatus.BAD_GATEWAY, "EMAIL_DELIVERY_FAILED", "We could not send the verification email. Please try again.") from exc
+            return
+        if provider == "smtp":
+            message = EmailMessage()
+            message["From"] = cfg.email_from
+            message["To"] = to
+            message["Subject"] = subject
+            message.set_content(text)
+            try:
+                if int(cfg.smtp_port) == 465:
+                    smtp = smtplib.SMTP_SSL(cfg.smtp_host, int(cfg.smtp_port), timeout=15)
+                else:
+                    smtp = smtplib.SMTP(cfg.smtp_host, int(cfg.smtp_port), timeout=15)
+                with smtp:
+                    smtp.ehlo()
+                    if int(cfg.smtp_port) != 465 and cfg.smtp_tls:
+                        smtp.starttls()
+                        smtp.ehlo()
+                    if cfg.smtp_username:
+                        smtp.login(cfg.smtp_username, cfg.smtp_password)
+                    smtp.send_message(message)
+            except (OSError, smtplib.SMTPException) as exc:
+                raise AccountError(HTTPStatus.BAD_GATEWAY, "EMAIL_DELIVERY_FAILED", "We could not send the verification email. Please try again.") from exc
+            return
+        raise AccountError(HTTPStatus.SERVICE_UNAVAILABLE, "EMAIL_NOT_CONFIGURED", "Email verification is not configured yet.")
+
+    def _send_code(self, challenge: dict[str, Any], code: str) -> None:
+        purpose = str(challenge.get("purpose") or "")
+        if purpose == "register":
+            subject = "Verify your Loom account"
+            heading = "Use this code to finish creating your Loom account:"
+        else:
+            subject = "Reset your Loom password"
+            heading = "Use this code to reset your Loom password:"
+        self._send_email(
+            str(challenge.get("email") or ""),
+            subject,
+            f"{heading}\n\n{code}\n\nThis code expires in 10 minutes. If you did not request this, you can ignore this email.",
+        )
+
     def register(self, body: dict[str, Any], client_key: str) -> dict[str, Any]:
         self.limiter.check(f"register:{client_key}", 5, 60)
+        if not self.store.config.legacy_registration_enabled:
+            raise AccountError(HTTPStatus.UPGRADE_REQUIRED, "EMAIL_VERIFICATION_REQUIRED", "Update Loom to create a verified account.")
         user = self.store.register(str(body.get("email") or ""), str(body.get("password") or ""))
+        return {**self.store.create_session(int(user["id"])), "user": user}
+
+    def register_start(self, body: dict[str, Any], client_key: str) -> dict[str, Any]:
+        self.limiter.check(f"register-start:{client_key}", 5, 60)
+        if not self._email_configured():
+            raise AccountError(HTTPStatus.SERVICE_UNAVAILABLE, "EMAIL_NOT_CONFIGURED", "Email verification is not configured yet.")
+        email = _normalize_email(str(body.get("email") or ""))
+        password = _validate_password(str(body.get("password") or ""))
+        if self.store.user_by_email(email) is not None:
+            raise AccountError(HTTPStatus.CONFLICT, "EMAIL_EXISTS", "An account with this email already exists.")
+        challenge, code = self.store.create_email_challenge(email, "register", {"password_hash": _password_hash(password)})
+        self._send_code(challenge, code)
+        return {"challenge": challenge}
+
+    def verify_email(self, body: dict[str, Any], client_key: str) -> dict[str, Any]:
+        self.limiter.check(f"verify-email:{client_key}", 12, 60)
+        email, payload = self.store.consume_email_challenge(
+            str(body.get("challenge_id") or ""), str(body.get("code") or ""), "register"
+        )
+        password_hash = str(payload.get("password_hash") or "")
+        if not password_hash.startswith("pbkdf2_sha256$"):
+            raise AccountError(HTTPStatus.BAD_REQUEST, "INVALID_CODE", "The verification code is invalid or has expired.")
+        user = self.store.register_verified(email, password_hash)
+        return {**self.store.create_session(int(user["id"])), "user": user}
+
+    def resend_email(self, body: dict[str, Any], client_key: str) -> dict[str, Any]:
+        self.limiter.check(f"resend-email:{client_key}", 6, 60)
+        challenge, code = self.store.resend_email_challenge(str(body.get("challenge_id") or ""))
+        if challenge.get("purpose") == "register" or self.store.user_by_email(str(challenge.get("email") or "")) is not None:
+            self._send_code(challenge, code)
+        return {"challenge": challenge}
+
+    def forgot_password(self, body: dict[str, Any], client_key: str) -> dict[str, Any]:
+        self.limiter.check(f"forgot-password:{client_key}", 5, 60)
+        if not self._email_configured():
+            raise AccountError(HTTPStatus.SERVICE_UNAVAILABLE, "EMAIL_NOT_CONFIGURED", "Password reset email is not configured yet.")
+        email = _normalize_email(str(body.get("email") or ""))
+        user = self.store.user_by_email(email)
+        challenge, code = self.store.create_email_challenge(email, "password_reset", {"user_id": int(user["id"]) if user else 0})
+        # Do not reveal whether the address exists. Unknown addresses get a
+        # syntactically valid challenge but no outbound message.
+        if user is not None:
+            self._send_code(challenge, code)
+        return {"challenge": challenge}
+
+    def reset_password(self, body: dict[str, Any], client_key: str) -> dict[str, Any]:
+        self.limiter.check(f"reset-password:{client_key}", 10, 60)
+        password = _validate_password(str(body.get("password") or ""))
+        _, payload = self.store.consume_email_challenge(
+            str(body.get("challenge_id") or ""), str(body.get("code") or ""), "password_reset"
+        )
+        user_id = int(payload.get("user_id") or 0)
+        if user_id <= 0:
+            raise AccountError(HTTPStatus.BAD_REQUEST, "INVALID_CODE", "The verification code is invalid or has expired.")
+        user = self.store.set_password(user_id, password)
         return {**self.store.create_session(int(user["id"])), "user": user}
 
     def login(self, body: dict[str, Any], client_key: str) -> dict[str, Any]:
         self.limiter.check(f"login:{client_key}", 20, 60)
         user = self.store.authenticate(str(body.get("email") or ""), str(body.get("password") or ""))
+        return {**self.store.create_session(int(user["id"])), "user": user}
+
+    def _safe_return_to(self, value: str) -> str:
+        origin = self.store.config.web_origin.rstrip("/")
+        candidate = str(value or "").strip() or origin + "/"
+        try:
+            parsed = urlsplit(candidate)
+            expected = urlsplit(origin)
+            if parsed.scheme == expected.scheme and parsed.netloc == expected.netloc:
+                return candidate
+        except ValueError:
+            pass
+        return origin + "/"
+
+    @staticmethod
+    def _append_query(url: str, **params: str) -> str:
+        parsed = urlsplit(url)
+        current = parse_qs(parsed.query, keep_blank_values=True)
+        for key, value in params.items():
+            current[key] = [str(value)]
+        query = urlencode([(key, item) for key, values in current.items() for item in values])
+        return urlunsplit((parsed.scheme, parsed.netloc, parsed.path or "/", query, parsed.fragment))
+
+    @staticmethod
+    def _fetch_json(url: str, *, method: str = "GET", data: dict[str, Any] | None = None, headers: dict[str, str] | None = None) -> dict[str, Any]:
+        body = urlencode(data).encode("utf-8") if data is not None else None
+        request_headers = {"Accept": "application/json", "User-Agent": "Loom-Account/1"}
+        if data is not None:
+            request_headers["Content-Type"] = "application/x-www-form-urlencoded"
+        request_headers.update(headers or {})
+        request = UrlRequest(url, data=body, method=method, headers=request_headers)
+        try:
+            with urlopen(request, timeout=15) as response:
+                payload = json.loads(response.read().decode("utf-8"))
+        except (HTTPError, URLError, OSError, json.JSONDecodeError) as exc:
+            raise AccountError(HTTPStatus.BAD_GATEWAY, "OAUTH_PROVIDER_FAILED", "The sign-in provider did not respond correctly. Please try again.") from exc
+        if not isinstance(payload, dict):
+            raise AccountError(HTTPStatus.BAD_GATEWAY, "OAUTH_PROVIDER_FAILED", "The sign-in provider did not respond correctly. Please try again.")
+        return payload
+
+    def oauth_start(self, provider: str, return_to: str) -> str:
+        provider = str(provider).casefold()
+        cfg = self.store.config
+        redirect_uri = f"{cfg.public_base_url.rstrip('/')}/auth/oauth/{provider}/callback"
+        target = self._safe_return_to(return_to)
+        if provider == "google" and cfg.google_client_id and cfg.google_client_secret:
+            state = self.store.create_oauth_state(provider, target)
+            return "https://accounts.google.com/o/oauth2/v2/auth?" + urlencode({
+                "client_id": cfg.google_client_id,
+                "redirect_uri": redirect_uri,
+                "response_type": "code",
+                "scope": "openid email profile",
+                "state": state,
+                "prompt": "select_account",
+            })
+        if provider == "github" and cfg.github_client_id and cfg.github_client_secret:
+            state = self.store.create_oauth_state(provider, target)
+            return "https://github.com/login/oauth/authorize?" + urlencode({
+                "client_id": cfg.github_client_id,
+                "redirect_uri": redirect_uri,
+                "scope": "read:user user:email",
+                "state": state,
+            })
+        raise AccountError(HTTPStatus.SERVICE_UNAVAILABLE, "OAUTH_NOT_CONFIGURED", "This sign-in provider is not configured yet.")
+
+    def oauth_callback(self, provider: str, params: dict[str, str]) -> str:
+        provider = str(provider).casefold()
+        cfg = self.store.config
+        default_return = cfg.web_origin.rstrip("/") + "/"
+        state = str(params.get("state") or "")
+        try:
+            return_to = self.store.consume_oauth_state(state, provider)
+        except AccountError as exc:
+            return self._append_query(default_return, loom_oauth_error=exc.code)
+        if params.get("error"):
+            return self._append_query(return_to, loom_oauth_error="OAUTH_CANCELLED")
+        code = str(params.get("code") or "").strip()
+        if not code:
+            return self._append_query(return_to, loom_oauth_error="OAUTH_CODE_MISSING")
+        redirect_uri = f"{cfg.public_base_url.rstrip('/')}/auth/oauth/{provider}/callback"
+        try:
+            if provider == "google":
+                token = self._fetch_json(
+                    "https://oauth2.googleapis.com/token",
+                    method="POST",
+                    data={
+                        "code": code,
+                        "client_id": cfg.google_client_id,
+                        "client_secret": cfg.google_client_secret,
+                        "redirect_uri": redirect_uri,
+                        "grant_type": "authorization_code",
+                    },
+                )
+                access = str(token.get("access_token") or "")
+                profile = self._fetch_json(
+                    "https://openidconnect.googleapis.com/v1/userinfo",
+                    headers={"Authorization": f"Bearer {access}"},
+                )
+                subject = str(profile.get("sub") or "")
+                email = str(profile.get("email") or "")
+                verified = bool(profile.get("email_verified"))
+                name = str(profile.get("name") or "")
+            elif provider == "github":
+                token = self._fetch_json(
+                    "https://github.com/login/oauth/access_token",
+                    method="POST",
+                    data={
+                        "code": code,
+                        "client_id": cfg.github_client_id,
+                        "client_secret": cfg.github_client_secret,
+                        "redirect_uri": redirect_uri,
+                    },
+                )
+                access = str(token.get("access_token") or "")
+                profile = self._fetch_json(
+                    "https://api.github.com/user",
+                    headers={"Authorization": f"Bearer {access}", "X-GitHub-Api-Version": "2022-11-28"},
+                )
+                subject = str(profile.get("id") or "")
+                email = str(profile.get("email") or "")
+                verified = False
+                if email:
+                    # Public profile email still has to be confirmed against the verified email list.
+                    verified = False
+                if not email or not verified:
+                    request = UrlRequest(
+                        "https://api.github.com/user/emails",
+                        headers={"Accept": "application/vnd.github+json", "Authorization": f"Bearer {access}", "User-Agent": "Loom-Account/1", "X-GitHub-Api-Version": "2022-11-28"},
+                    )
+                    with urlopen(request, timeout=15) as response:
+                        values = json.loads(response.read().decode("utf-8"))
+                    if isinstance(values, list):
+                        chosen = next((item for item in values if isinstance(item, dict) and item.get("primary") and item.get("verified")), None)
+                        chosen = chosen or next((item for item in values if isinstance(item, dict) and item.get("verified")), None)
+                        if isinstance(chosen, dict):
+                            email = str(chosen.get("email") or "")
+                            verified = bool(chosen.get("verified"))
+                name = str(profile.get("name") or profile.get("login") or "")
+            else:
+                raise AccountError(HTTPStatus.BAD_REQUEST, "OAUTH_PROVIDER_INVALID", "Unsupported sign-in provider.")
+            user = self.store.upsert_oauth_user(provider, subject, email, email_verified=verified, display_name=name)
+            exchange = self.store.create_oauth_exchange(int(user["id"]))
+            return self._append_query(return_to, loom_oauth_code=exchange, loom_oauth_provider=provider)
+        except (AccountError, HTTPError, URLError, OSError, json.JSONDecodeError) as exc:
+            code_name = exc.code if isinstance(exc, AccountError) else "OAUTH_PROVIDER_FAILED"
+            return self._append_query(return_to, loom_oauth_error=code_name)
+
+    def oauth_exchange(self, body: dict[str, Any], client_key: str) -> dict[str, Any]:
+        self.limiter.check(f"oauth-exchange:{client_key}", 20, 60)
+        user = self.store.consume_oauth_exchange(str(body.get("code") or ""))
         return {**self.store.create_session(int(user["id"])), "user": user}
 
     def refresh(self, body: dict[str, Any], client_key: str) -> dict[str, Any]:
@@ -999,6 +1600,7 @@ class AccountRequestHandler(BaseHTTPRequestHandler):
         if self.command == "GET" and path == "/healthz":
             return {"ok": True}
         authorization = self.headers.get("Authorization") or ""
+        if self.command == "GET" and path == "/v1/auth/capabilities": return self.application.capabilities()
         if self.command == "GET" and path == "/v1/auth/me": return self.application.me(authorization)
         if self.command == "GET" and path == "/v1/admin/me": return self.application.admin_me(authorization)
         if self.command == "GET" and path == "/v1/admin/overview": return self.application.admin_overview(authorization)
@@ -1021,6 +1623,18 @@ class AccountRequestHandler(BaseHTTPRequestHandler):
             return self.application.search(body, self.headers.get("Authorization") or "")
         if path == "/v1/auth/register":
             return self.application.register(body, self._client_key())
+        if path == "/v1/auth/register/start":
+            return self.application.register_start(body, self._client_key())
+        if path == "/v1/auth/verify-email":
+            return self.application.verify_email(body, self._client_key())
+        if path == "/v1/auth/resend-email":
+            return self.application.resend_email(body, self._client_key())
+        if path == "/v1/auth/forgot-password":
+            return self.application.forgot_password(body, self._client_key())
+        if path == "/v1/auth/reset-password":
+            return self.application.reset_password(body, self._client_key())
+        if path == "/v1/auth/oauth/exchange":
+            return self.application.oauth_exchange(body, self._client_key())
         if path == "/v1/auth/login":
             return self.application.login(body, self._client_key())
         if path == "/v1/auth/refresh":
@@ -1039,7 +1653,30 @@ class AccountRequestHandler(BaseHTTPRequestHandler):
         if path == "/v1/admin/users/model-access": return self.application.admin_set_user_model_access(body, authorization)
         raise AccountError(HTTPStatus.NOT_FOUND, "NOT_FOUND", "Endpoint not found.")
 
+    def _redirect(self, location: str) -> None:
+        self.send_response(HTTPStatus.FOUND)
+        self.send_header("Location", str(location))
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("Content-Length", "0")
+        self.end_headers()
+
     def do_GET(self) -> None:
+        parsed = urlsplit(self.path)
+        path = parsed.path.rstrip("/") or "/"
+        match = re.fullmatch(r"/v1/auth/oauth/(google|github)/start", path)
+        if match:
+            try:
+                query = parse_qs(parsed.query)
+                return_to = str((query.get("return_to") or [""])[0])
+                self._redirect(self.application.oauth_start(match.group(1), return_to))
+            except AccountError as exc:
+                self._write_json(exc.status, {"error": {"code": exc.code, "message": exc.message}})
+            return
+        match = re.fullmatch(r"/v1/auth/oauth/(google|github)/callback", path)
+        if match:
+            query = {key: str(values[0]) for key, values in parse_qs(parsed.query).items() if values}
+            self._redirect(self.application.oauth_callback(match.group(1), query))
+            return
         self._serve()
 
     def do_POST(self) -> None:
@@ -1107,6 +1744,21 @@ def main(argv: list[str] | None = None) -> int:
             300,
             int(os.environ.get("LOOM_ACCOUNT_REFRESH_TTL", str(30 * 24 * 60 * 60))),
         ),
+        public_base_url=os.environ.get("LOOM_ACCOUNT_PUBLIC_BASE_URL", "https://account.smirel.com/v1").rstrip("/"),
+        web_origin=os.environ.get("LOOM_WEB_ORIGIN", "https://loom.smirel.com").rstrip("/"),
+        email_provider=os.environ.get("LOOM_EMAIL_PROVIDER", "").strip().casefold(),
+        email_from=os.environ.get("LOOM_EMAIL_FROM", "").strip(),
+        resend_api_key=os.environ.get("LOOM_RESEND_API_KEY", "").strip(),
+        smtp_host=os.environ.get("LOOM_SMTP_HOST", "").strip(),
+        smtp_port=int(os.environ.get("LOOM_SMTP_PORT", "587")),
+        smtp_username=os.environ.get("LOOM_SMTP_USERNAME", "").strip(),
+        smtp_password=os.environ.get("LOOM_SMTP_PASSWORD", ""),
+        smtp_tls=os.environ.get("LOOM_SMTP_TLS", "1") != "0",
+        google_client_id=os.environ.get("LOOM_GOOGLE_CLIENT_ID", "").strip(),
+        google_client_secret=os.environ.get("LOOM_GOOGLE_CLIENT_SECRET", "").strip(),
+        github_client_id=os.environ.get("LOOM_GITHUB_CLIENT_ID", "").strip(),
+        github_client_secret=os.environ.get("LOOM_GITHUB_CLIENT_SECRET", "").strip(),
+        legacy_registration_enabled=os.environ.get("LOOM_ALLOW_LEGACY_REGISTER", "1") != "0",
     )
     application = AccountApplication(AccountStore(config))
     trusted_proxies_setting = os.environ.get("LOOM_ACCOUNT_TRUSTED_PROXIES")
