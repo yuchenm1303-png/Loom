@@ -65,3 +65,29 @@
 /* The inline Enter keycap duplicates the shortcut hint below the composer and
    competes with the primary send action. Keep the footer focused on Send. */
 .composer .composer-keycap { display: none !important; }
+
+/* Give writing its own space above the controls, in both themes. Keep the
+   textarea's auto-grow behaviour; min-height only establishes the empty state. */
+:root .composer-wrap .composer { padding: 18px 18px 14px; }
+:root .composer-wrap .composer-input-row { display: flex; min-height: 72px; }
+:root .composer-wrap .composer textarea {
+  min-height: 72px;
+  padding: 3px 2px 12px;
+  line-height: 1.65;
+}
+:root .composer-wrap .composer-toolbar { margin-top: 10px; gap: 12px; }
+:root .composer-wrap .composer-left { height: auto; min-height: 34px; gap: 8px; }
+:root .composer-wrap .composer-chip,
+:root .composer-wrap .composer-tool { height: 34px; padding-inline: 10px; }
+:root .composer-wrap .sticker-chip { width: 34px; padding: 0; }
+
+@media (max-width: 760px) {
+  :root .composer-wrap { padding-inline: 14px; }
+  :root .composer-wrap .composer { padding: 15px 14px 12px; }
+  :root .composer-wrap .composer-input-row,
+  :root .composer-wrap .composer textarea { min-height: 64px; }
+  :root .composer-wrap .composer-left { gap: 6px; }
+  :root .composer-wrap .composer-tool { width: 34px; padding: 0; }
+  :root .composer-wrap .composer-chip { padding-inline: 8px; }
+  :root .composer-wrap .sticker-chip { padding: 0; }
+}
