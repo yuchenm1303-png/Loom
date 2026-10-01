@@ -37,17 +37,11 @@ const HOST_COPY = {
     localSetup: "Open Loom on this computer, then choose “Open Loom Web” from the Loom tray once. This browser will remember this computer.",
     localConnecting: "Establishing a secure connection to the Loom Host on this computer.",
     localOffline: "Loom Host on this computer is offline. Start Loom and try again.",
-    remoteConnecting: "Connecting to the computer you explicitly selected in Loom Remote.",
-    remoteOffline: "That remote computer is unavailable right now.",
-    remoteDevices: "Remote devices",
   },
   zh: {
     localSetup: "在当前电脑打开 Loom，然后从托盘选择一次「Open Loom Web」。这个浏览器会记住当前电脑。",
     localConnecting: "正在建立浏览器与当前电脑 Loom Host 的安全连接。",
     localOffline: "当前电脑上的 Loom Host 已离线，请启动 Loom 后重试。",
-    remoteConnecting: "正在连接你在 Loom Remote 中明确选择的电脑。",
-    remoteOffline: "这台远程电脑当前不可用。",
-    remoteDevices: "远程设备",
   },
 } as const;
 
@@ -89,14 +83,12 @@ function PortalWallpaper() {
   );
 }
 
-export function WebPortal({ account, hostState, hostError, selectedDeviceName, remoteMode, onEnter, onRemote }: {
+export function WebPortal({ account, hostState, hostError, selectedDeviceName, onEnter }: {
   account: AccountController;
   hostState: PortalHostState;
   hostError: string;
   selectedDeviceName: string;
-  remoteMode: boolean;
   onEnter: () => void;
-  onRemote: () => void;
 }) {
   usePortalStyles();
   const { language } = useI18n();
@@ -130,11 +122,11 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, r
   const hostText = hostState === "online"
     ? (zh ? "已连接，可进入 Loom Web" : "Connected · Loom Web ready")
     : hostState === "checking"
-      ? (remoteMode ? copy.remoteConnecting : copy.localConnecting)
+      ? copy.localConnecting
       : hostState === "unbound"
         ? copy.localSetup
         : hostState === "offline"
-          ? (remoteMode ? copy.remoteOffline : copy.localOffline)
+          ? copy.localOffline
           : (zh ? "等待 Loom Host" : "Waiting for Loom Host");
 
   const hostLabel = hostState === "online"
@@ -200,7 +192,7 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, r
               <div className="loom-card-head"><span className="loom-card-index">02</span><div><p className="kicker">WEB</p><h2>Loom Web</h2></div></div>
               <p className="loom-card-copy">{zh ? "网页版不是另一套 Agent。它只是连接你自己的 Loom Host，让你在浏览器里继续同一个工作区。" : "Loom Web is not a second Agent. It connects to your own Loom Host so the same workspace continues in the browser."}</p>
               <div className="loom-host-state"><span className={`loom-live-dot${hostState === "online" ? " is-online" : ""}`} /><div><small>Loom Host</small><strong>{authenticated ? hostLabel : (zh ? "等待登录" : "Waiting for sign-in")}</strong></div></div>
-              <div className="loom-card-actions"><button className="loom-action loom-action-primary" type="button" onClick={openWeb}><span>{zh ? "进入网页版" : "Enter Loom Web"}</span><span>→</span></button><button className="loom-text-link loom-text-button" type="button" onClick={authenticated ? onRemote : focusAccount}>{authenticated ? copy.remoteDevices : (zh ? "先登录账户" : "Sign in first")}</button></div>
+              <div className="loom-card-actions"><button className="loom-action loom-action-primary" type="button" onClick={openWeb}><span>{authenticated ? (zh ? "连接当前 Host" : "Connect current Host") : (zh ? "先登录账户" : "Sign in first")}</span><span>→</span></button></div>
             </article>
           </div>
 
@@ -211,15 +203,15 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, r
               <form className="login-form loom-account-form" onSubmit={submitAuth} autoComplete="on">
                 <label><span>{zh ? "邮箱" : "Email"}</span><input id="emailInput" type="email" autoComplete="email" placeholder="name@example.com" value={email} onChange={(event) => setEmail(event.target.value)} required /></label>
                 <label className="password-field"><span>{zh ? "密码" : "Password"}</span><input type={showPassword ? "text" : "password"} autoComplete={authMode === "login" ? "current-password" : "new-password"} placeholder="••••••••" value={password} onChange={(event) => setPassword(event.target.value)} required /><button className="password-toggle" type="button" aria-pressed={showPassword} onClick={() => setShowPassword((value) => !value)}>{showPassword ? (zh ? "隐藏" : "Hide") : (zh ? "显示" : "Show")}</button></label>
-                <button className="loom-action loom-action-primary loom-account-submit" type="submit" disabled={account.busy}><span>{account.busy ? (zh ? "处理中…" : "Working…") : authMode === "login" ? (zh ? "登录" : "Sign in") : (zh ? "创建账户" : "Create account")}</span><span>→</span></button>
+                <button className="loom-action loom-action-primary loom-account-submit" type="submit" disabled={!account.ready || account.busy}><span>{!account.ready ? (zh ? "加载中…" : "Loading…") : account.busy ? (zh ? "处理中…" : "Working…") : authMode === "login" ? (zh ? "登录" : "Sign in") : (zh ? "创建账户" : "Create account")}</span><span>→</span></button>
               </form>
               <button className="loom-account-switch" type="button" onClick={() => { account.clearError(); setAuthMode(authMode === "login" ? "register" : "login"); }}>{authMode === "login" ? (zh ? "没有账户？创建一个" : "No account? Create one") : (zh ? "已有账户？返回登录" : "Already have an account? Sign in")}</button>
               {account.error ? <p className="form-note is-error">{account.error.message}</p> : null}
             </> : <div className="loom-signed-in">
               <div className="loom-account-identity"><span className="loom-account-check">✓</span><div><small>{zh ? "已登录" : "SIGNED IN"}</small><strong>{account.account.user?.email}</strong></div></div>
-              <div className="loom-account-details"><div><span>{zh ? "当前设备" : "Current device"}</span><strong>{hostLabel}</strong></div><div><span>{zh ? "连接方式" : "Connection"}</span><strong>{remoteMode ? (zh ? "远程设备" : "Remote device") : (zh ? "本机 Host" : "Local Host")}</strong></div></div>
+              <div className="loom-account-details"><div><span>{zh ? "当前设备" : "Current device"}</span><strong>{hostLabel}</strong></div><div><span>{zh ? "Host 规则" : "Host model"}</span><strong>{zh ? "当前账号唯一 Host" : "One current Host"}</strong></div></div>
               <p className="loom-host-note">{hostError || hostText}</p>
-              <div className="loom-account-actions"><button className="loom-action loom-action-primary" type="button" onClick={openWeb}><span>{zh ? "打开 Loom Web" : "Open Loom Web"}</span><span>→</span></button><button className="loom-action loom-action-secondary" type="button" onClick={onRemote}><span>{copy.remoteDevices}</span><span>↗</span></button></div>
+              <div className="loom-account-actions"><button className="loom-action loom-action-primary" type="button" onClick={openWeb}><span>{zh ? "重新连接 Host" : "Reconnect Host"}</span><span>→</span></button></div>
               <button className="loom-account-switch" type="button" onClick={() => void account.logout()}>{zh ? "退出当前账户" : "Sign out"}</button>
             </div>}
           </aside>
