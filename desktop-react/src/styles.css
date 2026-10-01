@@ -39,11 +39,12 @@
 :root :is(body, #root) *::before,
 :root :is(body, #root) *::after {
   /* The arrow at the top-left owns the hotspot; the character is decoration. */
-  cursor: var(--loom-native-cursor, url("./assets/yukino-cursor-white.png") 0 0), auto !important;
+  cursor: var(--loom-native-cursor, url("./assets/yukino-cursor-white.png") 0 0, url("./assets/yukino-pointer-white.png") 0 0), auto !important;
 }
-:root[data-loom-theme="light"] { --loom-native-cursor: url("./assets/yukino-cursor.png") 0 0; }
-:root[data-loom-pointer-tone="white"] { --loom-native-cursor: url("./assets/yukino-cursor-white.png") 0 0; }
-:root[data-loom-pointer-tone="black"] { --loom-native-cursor: url("./assets/yukino-cursor.png") 0 0; }
+/* The browser chooses the compact candidate at edges without a JS movement loop. */
+:root[data-loom-theme="light"] { --loom-native-cursor: url("./assets/yukino-cursor.png") 0 0, url("./assets/yukino-pointer.png") 0 0; }
+:root[data-loom-pointer-tone="white"] { --loom-native-cursor: url("./assets/yukino-cursor-white.png") 0 0, url("./assets/yukino-pointer-white.png") 0 0; }
+:root[data-loom-pointer-tone="black"] { --loom-native-cursor: url("./assets/yukino-cursor.png") 0 0, url("./assets/yukino-pointer.png") 0 0; }
 html, body, #root {
   width: 100%;
   height: 100%;

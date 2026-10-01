@@ -1,8 +1,10 @@
 import blackCursor from "./assets/yukino-cursor.png";
 import whiteCursor from "./assets/yukino-cursor-white.png";
+import blackPointer from "./assets/yukino-pointer.png";
+import whitePointer from "./assets/yukino-pointer-white.png";
 
 // Switch native resources at surface boundaries, never move a DOM cursor.
-const preloaded = [blackCursor, whiteCursor].map((src) => {
+const preloaded = [blackCursor, whiteCursor, blackPointer, whitePointer].map((src) => {
   const image = new Image();
   image.src = src;
   return image;

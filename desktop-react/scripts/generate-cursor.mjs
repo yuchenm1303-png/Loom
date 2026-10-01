@@ -48,11 +48,21 @@ try {
     // Draw at its native size and keep the click hotspot at (0, 0).
     ctx.imageSmoothingEnabled = false;
     ctx.drawImage(pointer, 0, 0);
-    return canvas.toDataURL("image/png").split(",")[1];
+    // Chromium skips oversized native cursors near viewport edges. A pointer-only
+    // second CSS candidate stays below 32px and retains the exact same hotspot.
+    const edgeCanvas = document.createElement("canvas");
+    edgeCanvas.width = pointer.naturalWidth;
+    edgeCanvas.height = pointer.naturalHeight;
+    edgeCanvas.getContext("2d").drawImage(pointer, 0, 0);
+    return {
+      full: canvas.toDataURL("image/png").split(",")[1],
+      edge: edgeCanvas.toDataURL("image/png").split(",")[1],
+    };
   }, {
     character: `data:image/png;base64,${character.toString("base64")}`,
     arrow: `data:image/svg+xml;base64,${Buffer.from(arrow.toString().replace('fill="#000"', `fill="${color}"`)).toString("base64")}`,
   });
-  await writeFile(new URL(filename, assets), Buffer.from(png, "base64"));
+  await writeFile(new URL(filename, assets), Buffer.from(png.full, "base64"));
+  await writeFile(new URL(filename.replace("yukino-cursor", "yukino-pointer"), assets), Buffer.from(png.edge, "base64"));
   }
 } finally { await browser.close(); }
