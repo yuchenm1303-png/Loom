@@ -146,3 +146,27 @@ Run `scripts/loom_target_verify.sh` from a host with network access to
   local dev. The production compose is generated on the host.
 - `services/loom_web_gateway/requirements.txt` — Python dependencies.
 - `services/loom_web_gateway/README.md` — endpoint reference.
+## Modular portal layout (2026-10-01)
+
+The active production container uses `/opt/loom-web-deploy/compose.prod.yml`
+and `loom-web:independent`. The matching frontend source is under
+`/opt/loom-web-main-src/desktop-react`, rather than the legacy account checkout.
+The portal now separates introduction, download, Host status, and account/device
+information into modules. `portal-base.css` captures the production portal's
+existing layout rules; `portal-modules.css` changes only layout and typography.
+Every module inherits the original externally provided `.cards` material,
+hover, press, and transition rules. Keep entry animation on individual cards:
+a filter animation on their parent prevents backdrop blur from sampling the
+wallpaper correctly.
+
+Build the matching production source with the updated `WebPortal.tsx`,
+`portal-base.css`, and `portal-modules.css`, then pass the absolute built `dist`
+path to `scripts/deploy-loom-portal-layout.sh`. It layers static files over the
+running image, retains existing asset files, saves a rollback tag, checks health,
+and leaves the gateway and its environment intact. Credentials stay on the host.
+The local WebAppGate also renders WebPortal and retains its existing Host logic.
+
+Validated: frontend type check/build, public health endpoint, signed-in and
+signed-out browser layouts at 1440/900/390px, register/password controls, and
+original hover/press transforms. Auth checks use a mocked account; no real
+credentials or Host operations are required for presentation verification.
