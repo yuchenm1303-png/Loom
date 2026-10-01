@@ -19,12 +19,18 @@ try {
     const [decoration, pointer] = await Promise.all([load(character), load(arrow)]);
     const canvas = document.createElement("canvas");
     canvas.width = decoration.naturalWidth;
-    canvas.height = decoration.naturalHeight;
+    canvas.height = decoration.naturalHeight + 18;
     const ctx = canvas.getContext("2d");
-    ctx.drawImage(decoration, 0, 0);
-    // Keep the character intact; replace the original tiny black arrow area only.
-    ctx.clearRect(0, 0, pointer.naturalWidth, pointer.naturalHeight);
-    // Enlarge only the pointer; the character and top-left hotspot stay unchanged.
+    // Separate the original marker from the decoration before laying them out.
+    const characterLayer = document.createElement("canvas");
+    characterLayer.width = decoration.naturalWidth;
+    characterLayer.height = decoration.naturalHeight;
+    const characterContext = characterLayer.getContext("2d");
+    characterContext.drawImage(decoration, 0, 0);
+    characterContext.clearRect(0, 0, pointer.naturalWidth, pointer.naturalHeight);
+    // Give the enlarged pointer its own space without scaling or covering the character.
+    ctx.drawImage(characterLayer, 0, 18);
+    // Scale both pointer axes equally; keep the click hotspot at (0, 0).
     ctx.imageSmoothingEnabled = false;
     ctx.drawImage(pointer, 0, 0, pointer.naturalWidth * 2, pointer.naturalHeight * 2);
     return canvas.toDataURL("image/png").split(",")[1];
