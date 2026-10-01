@@ -19,7 +19,7 @@ html[data-loom-web="true"] body { background: #21313c; }
 .loom-portal-shell { position: relative; z-index: 2; }
 .loom-portal-brand { gap: 12px; }
 .loom-portal-logo { display:none; }
-.loom-portal-brand::before { content:""; display:block; width:34px; height:34px; flex:0 0 34px; background:url('/smirel-mark.svg') center/contain no-repeat; }
+.loom-portal-brand::before { content:""; display:block; width:112px; height:36px; flex:0 0 112px; background:url('/smirel-logo.png') center/contain no-repeat; }
 .loom-portal-brand-divider { width:1px; height:24px; background:rgba(255,255,255,.13); }
 .loom-portal-brand .brand-copy strong { font-size:.92rem; }
 .loom-portal-brand .brand-copy small { font-size:.58rem; }

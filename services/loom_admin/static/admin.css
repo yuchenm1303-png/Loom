@@ -6,8 +6,8 @@ html, body { min-height:100%; }
 .loom-admin-body { background:#21313c; }
 .loom-admin-shell { position:relative; z-index:2; }
 .loom-admin-logo { display:none; }
+.loom-admin-brand::before { content:""; display:block; width:112px; height:36px; flex:0 0 112px; background:url('./smirel-logo.png') center/contain no-repeat; }
 .loom-admin-brand { gap:12px; }
-.loom-admin-brand::before { content:""; display:block; width:34px; height:34px; flex:0 0 34px; background:url('./smirel-mark.svg') center/contain no-repeat; }
 .loom-admin-brand-divider { width:1px; height:24px; background:rgba(255,255,255,.13); }
 .loom-admin-logout { padding-inline:14px; }
 .loom-admin-auth-card { max-width:560px; margin:46px auto 82px; min-height:0; }
