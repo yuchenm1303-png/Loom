@@ -19,6 +19,23 @@ _SERIALIZED_TOOL_PROTOCOL_RE = re.compile(
     re.IGNORECASE,
 )
 _INLINE_STICKER_RE = re.compile(r"\[\[AI_LEDGER_INLINE_STICKER:[a-z0-9_]{2,48}\]\]", re.I)
+_WAIT_ONLY_RE = re.compile(
+    r"(?:(?:好|好的)[，,。\s]*)?(?:请)?(?:等一下|等一等|稍等(?:一下)?|等我一下|让我想想|让我想一下|我想一下|马上|正在处理)"
+    r"|(?:please\s+)?(?:wait(?: a moment)?|hold on|one moment|just a moment|let me think|working on it)",
+    re.I,
+)
+WAIT_RECOVERY_INSTRUCTION = (
+    "Your previous response only asked the user to wait, but ended the turn without doing the task. "
+    "Continue the same task now. Use a native tool call if needed. If you cannot proceed, give the "
+    "specific blocker and required user action. Do not return another waiting/progress-only message "
+    "or claim the task is complete without a result."
+)
+TOOL_ARGUMENT_RECOVERY_INSTRUCTION = (
+    "Your previous native tool call failed schema validation and was not executed. "
+    "Correct its arguments using the advertised tool schema, including every required property, "
+    "and emit a valid native tool call. No call in that response was executed. "
+    "If you cannot proceed, explain the specific blocker; do not just ask the user to wait."
+)
 # Match an assistant's immediate commitment, not suggestions addressed to the
 # user or generic future plans. Inspect prose only so examples/quotes are safe.
 _ACTION_PROMISE_RE = re.compile(
@@ -128,6 +145,9 @@ def invalid_terminal_response(response: ModelResponse) -> str:
         return "reasoning_without_visible_answer"
     if contains_serialized_tool_protocol(visible):
         return "serialized_tool_call_text"
+    waiting = _INLINE_STICKER_RE.sub("", visible).strip().strip("。.!！… \t\r\n")
+    if _WAIT_ONLY_RE.fullmatch(waiting):
+        return "waiting_only_terminal"
     if _DANGLING_TERMINAL_RE.search(visible):
         return "dangling_serialized_structure"
     # An unmatched inline backtick or emphasis marker is displayable Markdown,

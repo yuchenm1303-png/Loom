@@ -17,6 +17,29 @@ PROMISE = (
 )
 
 
+@pytest.mark.parametrize("text", ["等一下。", "好，等一下。", "稍等一下…", "请稍等。", "让我想想。", "One moment.", "Hold on!", "等一下。[[AI_LEDGER_INLINE_STICKER:joy_burst]]"])
+def test_wait_only_reply_cannot_complete_a_task(text):
+    assert invalid_terminal_response(ModelResponse(text=text, finish_reason="stop")) == "waiting_only_terminal"
+
+
+@pytest.mark.parametrize("text", ["好了。", "是的。", "请稍等安装完成后再重试。", "等一下，缺少服务器地址，请提供地址。", '模型只回复了“等一下。”。', "运行已完成。"])
+def test_short_results_and_explicit_blockers_remain_valid(text):
+    assert invalid_terminal_response(ModelResponse(text=text, finish_reason="stop")) == ""
+
+
+def test_wait_only_recovery_is_same_turn_and_does_not_merge_wait_text(tmp_path):
+    runtime, store, platform, session = _runtime(tmp_path, [
+        ModelResponse(text="等一下。", finish_reason="stop"),
+        ModelResponse(text="检查完成。", finish_reason="stop"),
+    ])
+    result = runtime.start_turn(session.session_id, "检查服务器")
+    assert result.status is AgentStatus.COMPLETED
+    assert result.final_text == "检查完成。"
+    assert "only asked the user to wait" in platform.requests[1][1].messages[-1].content
+    assert all(m.content != "等一下。" for m in store.load(session.session_id).messages)
+    runtime.close()
+
+
 @pytest.mark.parametrize("text", [
     PROMISE,
     "我先检查日志。",

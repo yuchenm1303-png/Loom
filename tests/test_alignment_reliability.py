@@ -567,6 +567,67 @@ def test_stream_retry_does_not_duplicate_tool_side_effect(tmp_path):
     rt.close()
 
 
+def test_malformed_batch_is_repaired_before_any_side_effect(tmp_path):
+    calls = []
+    tool = AgentTool("effect", "test", {"type": "object", "properties": {"argv": {"type": "array", "items": {"type": "string"}}}, "required": ["argv"]},
+        lambda c, a: calls.append(a["argv"]) or ToolResult(True, "done"))
+    platform = Scripted([
+        ModelResponse(tool_calls=(ToolCall("valid-prefix", "effect", {"argv": ["once"]}), ToolCall("bad", "effect", {})), finish_reason="tool_calls"),
+        ModelResponse(text="等一下。", finish_reason="stop"),
+        ModelResponse(tool_calls=(ToolCall("fixed", "effect", {"argv": ["once"]}),), finish_reason="tool_calls"),
+        ModelResponse(text="done", finish_reason="stop"),
+    ])
+    rt = make_runtime(tmp_path, platform, [tool])
+    session = rt.create_session("agent.fast")
+    result = rt.start_turn(session.session_id, "work")
+    assert result.status is AgentStatus.COMPLETED
+    assert calls == [["once"]]
+    assert "Invalid tool: effect" in platform.requests[1].messages[-1].content
+    assert '"argv"' in platform.requests[1].messages[-1].content
+    events = rt.store.events(session.session_id)
+    rejected = [e for e in events if e.kind.value == "model_response_rejected"]
+    assert [e.data["reason"] for e in rejected] == ["invalid_tool_arguments", "waiting_only_terminal"]
+    assert sum(e.kind.value == "tool_started" for e in events) == 1
+    assert not any(c.call_id == "bad" for m in rt.store.load(session.session_id).messages for c in m.tool_calls)
+    rt.close()
+
+
+@pytest.mark.parametrize("response, reason", [
+    (ModelResponse(text="等一下。", finish_reason="stop"), "waiting_only_terminal"),
+    (ModelResponse(tool_calls=(ToolCall("bad", "effect", {}),)), "invalid_tool_arguments"),
+])
+def test_repeated_wait_or_invalid_tool_fails_without_claiming_success(tmp_path, response, reason):
+    calls = []
+    tool = AgentTool("effect", "test", {"type": "object", "required": ["argv"]},
+        lambda c, a: calls.append(1) or ToolResult(True, "done"))
+    rt = make_runtime(tmp_path, Scripted([response] * 3), [tool])
+    session = rt.create_session("agent.fast")
+    result = rt.start_turn(session.session_id, "work")
+    assert result.status is AgentStatus.FAILED
+    assert reason in result.error
+    assert not calls
+    assert not any(e.kind.value == "turn_completed" for e in rt.store.events(session.session_id))
+    rt.close()
+
+
+def test_sensitive_input_refusal_is_not_retried_as_a_schema_error(tmp_path):
+    from app.agent_runtime.tools import BLOCKED_SENSITIVE_INPUT_ARGUMENT
+    calls = []
+    tool = AgentTool("effect", "test", {"type": "object", "required": ["argv"]},
+        lambda c, a: calls.append(1) or ToolResult(True, "done"))
+    platform = Scripted([
+        ModelResponse(tool_calls=(ToolCall("blocked", "effect", {BLOCKED_SENSITIVE_INPUT_ARGUMENT: True}),)),
+        ModelResponse(text="输入被安全边界拒绝，请通过凭据存储配置。"),
+    ])
+    rt = make_runtime(tmp_path, platform, [tool])
+    session = rt.create_session("agent.fast")
+    result = rt.start_turn(session.session_id, "work")
+    assert result.status is AgentStatus.COMPLETED
+    assert not calls
+    assert not any(e.kind.value == "model_response_rejected" for e in rt.store.events(session.session_id))
+    rt.close()
+
+
 @pytest.mark.parametrize("reason", ["first_output_timeout", "stream_stall_timeout"])
 def test_model_timeout_after_tool_retries_sampling_without_repeating_tool(tmp_path, reason):
     from app.agent_runtime.model_execution import ModelRequestTimeout
