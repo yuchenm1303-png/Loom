@@ -6,6 +6,8 @@ const DEFAULT_WS_PATH = "/api/ws/browser";
 const SOCKET_WAIT_MS = 8_000;
 const HEARTBEAT_MS = 30_000;
 const MAX_STAGED_BYTES = 48 * 1024 * 1024;
+const LOCAL_DEVICE_QUERY = "local_device";
+const LOCAL_DEVICE_STORAGE_KEY = "loom.web.localDeviceId";
 
 type InvokeMessage = {
   type: "invoke";
@@ -14,8 +16,16 @@ type InvokeMessage = {
   args: unknown[];
 };
 
+type RelayDevice = Record<string, unknown> & { id?: string; name?: string; platform?: string; version?: string };
+
 type RelayMessage =
-  | { type: "device_status"; online: boolean; device?: Record<string, unknown> | null }
+  | {
+      type: "device_status";
+      online: boolean;
+      device?: RelayDevice | null;
+      selectedDeviceId?: string | null;
+      devices?: RelayDevice[];
+    }
   | { type: "invoke_result"; id: number; result?: unknown; error?: { message?: string; code?: string } }
   | { type: "notification"; payload?: LoomNotification }
   | { type: "pong" };
@@ -32,13 +42,51 @@ let socketPromise: Promise<WebSocket> | null = null;
 let connectPromise: Promise<unknown> | null = null;
 let nextId = 1;
 let heartbeatTimer: number | null = null;
+let localDeviceId = "";
 const blobUrls = new Set<string>();
+
+function normalizeDeviceId(value: unknown): string {
+  const candidate = String(value || "").trim();
+  if (!candidate || candidate.length > 128) return "";
+  return /^[A-Za-z0-9_.:-]+$/.test(candidate) ? candidate : "";
+}
+
+function captureLocalDeviceBinding(): string {
+  let queryDeviceId = "";
+  try {
+    const url = new URL(window.location.href);
+    queryDeviceId = normalizeDeviceId(url.searchParams.get(LOCAL_DEVICE_QUERY));
+    if (queryDeviceId) {
+      window.localStorage.setItem(LOCAL_DEVICE_STORAGE_KEY, queryDeviceId);
+      url.searchParams.delete(LOCAL_DEVICE_QUERY);
+      window.history.replaceState(window.history.state, "", `${url.pathname}${url.search}${url.hash}`);
+    }
+  } catch {
+    // Storage can be unavailable in hardened/private browser profiles. In that
+    // case the current navigation still keeps the device id in memory.
+  }
+
+  if (queryDeviceId) {
+    localDeviceId = queryDeviceId;
+    return localDeviceId;
+  }
+  if (localDeviceId) return localDeviceId;
+  try {
+    localDeviceId = normalizeDeviceId(window.localStorage.getItem(LOCAL_DEVICE_STORAGE_KEY));
+  } catch {
+    localDeviceId = "";
+  }
+  return localDeviceId;
+}
 
 function webSocketUrl(): string {
   const configured = String(import.meta.env.VITE_LOOM_WEB_SOCKET_URL || "").trim();
-  if (configured) return configured;
   const scheme = window.location.protocol === "https:" ? "wss:" : "ws:";
-  return `${scheme}//${window.location.host}${DEFAULT_WS_PATH}`;
+  const target = new URL(configured || `${scheme}//${window.location.host}${DEFAULT_WS_PATH}`, window.location.href);
+  const deviceId = captureLocalDeviceBinding();
+  if (deviceId) target.searchParams.set("device", deviceId);
+  else target.searchParams.delete("device");
+  return target.toString();
 }
 
 function dispatchAuthChanged(): void {
@@ -97,6 +145,12 @@ function closeSocket(): void {
   if (current && current.readyState < WebSocket.CLOSING) current.close(1000, "client closed");
 }
 
+function relayError(payload: { message?: string; code?: string }): Error {
+  const error = new Error(payload.message || "Remote Loom operation failed.") as Error & { code?: string };
+  error.code = payload.code;
+  return error;
+}
+
 function handleRelayMessage(raw: string): void {
   let message: RelayMessage;
   try {
@@ -113,7 +167,7 @@ function handleRelayMessage(raw: string): void {
     const call = pending.get(message.id);
     if (!call) return;
     pending.delete(message.id);
-    if (message.error) call.reject(new Error(message.error.message || "Remote Loom operation failed."));
+    if (message.error) call.reject(relayError(message.error));
     else call.resolve(message.result);
     return;
   }
@@ -243,9 +297,19 @@ export function isLoomWebRuntime(): boolean {
   return document.documentElement.dataset.loomPlatform === WEB_PLATFORM_MARKER;
 }
 
+export function localWebDeviceId(): string {
+  return captureLocalDeviceBinding();
+}
+
+export async function selectWebDevice(deviceId: string): Promise<void> {
+  const ws = await ensureSocket();
+  ws.send(JSON.stringify({ type: "select_device", deviceId: normalizeDeviceId(deviceId) }));
+}
+
 export function installWebBridge(): void {
   if (Reflect.get(window, "loom")) return;
   document.documentElement.dataset.loomPlatform = WEB_PLATFORM_MARKER;
+  captureLocalDeviceBinding();
 
   const bridge: Window["loom"] = {
     connect: async () => {
