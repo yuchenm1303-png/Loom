@@ -12,7 +12,6 @@ if (!String(process.env.LOOM_ACCOUNT_API_BASE_URL || "").trim()) {
   process.env.LOOM_ACCOUNT_API_BASE_URL = DEFAULT_ACCOUNT_URL;
 }
 
-
 async function deviceId(): Promise<string> {
   const target = path.join(app.getPath("userData"), DEVICE_ID_FILE);
   try {
@@ -38,29 +37,43 @@ async function readCurrentAccessToken(): Promise<{ accessToken: string; userId: 
   return { accessToken, userId: Number(status.user.id), email: String(status.user.email || "") };
 }
 
-export type WebRelayAuth = {
-  accessToken: string;
-  userId: number;
-  email: string;
+export type WebRelayDeviceIdentity = {
   deviceId: string;
   deviceName: string;
   platform: string;
   appVersion: string;
 };
 
+export type WebRelayAuth = WebRelayDeviceIdentity & {
+  accessToken: string;
+  userId: number;
+  email: string;
+};
+
 /**
- * Shared by the `loom:web-relay-auth` IPC channel (renderer) and the main-process
- * relay, so both agree on identity, device id, and token refresh behaviour.
+ * Stable, non-secret identity for this local Loom Host. This deliberately does
+ * not require account authentication so loom.smirel.com can discover a freshly
+ * installed Host before the user has opened the Desktop UI.
  */
-export async function webRelayAuthPayload(): Promise<WebRelayAuth> {
-  const identity = await readCurrentAccessToken();
+export async function webRelayDeviceIdentity(): Promise<WebRelayDeviceIdentity> {
   return {
-    ...identity,
     deviceId: await deviceId(),
     deviceName: os.hostname(),
     platform: process.platform,
     appVersion: app.getVersion(),
   };
+}
+
+/**
+ * Shared by the `loom:web-relay-auth` IPC channel (renderer) and the main-process
+ * relay, so both agree on identity, device id, and token refresh behaviour.
+ */
+export async function webRelayAuthPayload(): Promise<WebRelayAuth> {
+  const [identity, device] = await Promise.all([
+    readCurrentAccessToken(),
+    webRelayDeviceIdentity(),
+  ]);
+  return { ...identity, ...device };
 }
 
 ipcMain.handle("loom:web-relay-auth", () => webRelayAuthPayload());
