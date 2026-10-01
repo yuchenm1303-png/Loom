@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { ArrowDownToLine, Laptop, LockKeyhole, ShieldCheck, Layers3, ArrowUpRight } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { AccountDialog } from "./AccountDialog";
 import { useI18n } from "../i18n";
@@ -14,11 +15,12 @@ import {
 } from "../localHostDiscovery";
 import "./web-smirel.css";
 import "../web-gate.css";
+import "./web-gate-surface.css";
 
 type HostState = "idle" | "discovering" | "pairing" | "connecting" | "online" | "missing" | "offline";
 type DeviceStatus = { online?: boolean; device?: { id?: string; name?: string; platform?: string; version?: string } | null };
 
-const SMIREL_LOGO = "/smirel-logo.svg";
+const SMIREL_LOGO = "/smirel-logo.png";
 const DISCOVERY_INTERVAL_MS = 1_500;
 const AUTO_PAIR_ATTEMPTS = 3;
 
@@ -36,35 +38,39 @@ function SmirelShell({ children, compact = false }: { children: ReactNode; compa
         <a className="smirel-web-brand" href="/" aria-label="Smirel Loom">
           <img src={SMIREL_LOGO} alt="Smirel" />
           <span className="smirel-web-brand-divider" aria-hidden="true" />
-          <span className="smirel-web-product">LOOM</span>
+          <span className="smirel-web-product">Loom<small>PERSONAL AI AGENT</small></span>
         </a>
         <span className="smirel-web-status"><i aria-hidden="true" />{zh ? "安全连接" : "Secure connection"}</span>
       </header>
 
       <main className="smirel-web-layout">
         <section className="smirel-web-intro" aria-label="Smirel Loom Web">
-          <span className="smirel-web-kicker">SMIREL · LOOM WEB</span>
+          <span className="smirel-web-kicker"><span /> LOOM · LOCAL-FIRST AGENT</span>
           <h1>
-            {zh ? "你的 Loom，" : "Your Loom,"}<br />
-            <span>{zh ? "随时从浏览器打开。" : "ready in your browser."}</span>
+            {zh ? "你的 Loom，" : "Your Loom stays"}<br />
+            <span>{zh ? "始终在你的电脑上。" : "on your computer."}</span>
           </h1>
           <p>
             {zh
-              ? "网页只负责安全连接。任务、工具、文件和 Computer Use 仍由你这台电脑上的 Loom Host 执行。"
-              : "The web app is only a secure bridge. Tasks, tools, files, and Computer Use still run on the Loom Host on this computer."}
+              ? "桌面端运行你的智能体。浏览器让你随时回到同一个工作区，继续会话、访问文件并管理审批。"
+              : "Your desktop runs the agent. Your browser brings you back to the same conversations, files, and approvals."}
           </p>
+
+          <a className="smirel-web-download" href={LOOM_WINDOWS_INSTALLER_URL}>
+            <ArrowDownToLine size={20} aria-hidden="true" /><span><strong>{zh ? "下载 Windows 版" : "Download for Windows"}</strong><small>Windows 10 / 11 · x64</small></span><ArrowUpRight size={18} aria-hidden="true" />
+          </a>
 
           <div className="smirel-web-capabilities" aria-label={zh ? "Loom Web 特性" : "Loom Web features"}>
             <div>
-              <b>01</b>
+              <Laptop size={18} aria-hidden="true" />
               <span><strong>{zh ? "本机执行" : "Runs locally"}</strong><small>{zh ? "Agent Runtime 与权限链路保持在本机" : "Agent Runtime and approvals stay on your computer"}</small></span>
             </div>
             <div>
-              <b>02</b>
+              <Layers3 size={18} aria-hidden="true" />
               <span><strong>{zh ? "同一会话" : "Same workspace"}</strong><small>{zh ? "Web 与 Desktop 共用模型、会话与工具" : "Web and Desktop share models, sessions, and tools"}</small></span>
             </div>
             <div>
-              <b>03</b>
+              <ShieldCheck size={18} aria-hidden="true" />
               <span><strong>{zh ? "安全中继" : "Secure relay"}</strong><small>{zh ? "浏览器不直接暴露你的 Loom Host" : "Your Loom Host is never exposed directly to the browser"}</small></span>
             </div>
           </div>
@@ -334,10 +340,14 @@ export function WebAppGate({ children }: { children: ReactNode }) {
               <b aria-hidden="true" />{statusLabel}
             </i>
           </div>
-          <img className="smirel-web-card-logo" src={SMIREL_LOGO} alt="Smirel" />
-          <h2>{title}</h2>
-          <p>{detail}</p>
+          <div className={`smirel-web-host-symbol${pending ? " is-pending" : ""}`} aria-hidden="true"><Laptop size={30} /><span><LockKeyhole size={12} /></span></div>
+          <div role="status" aria-live="polite"><h2>{title}</h2><p className="smirel-web-host-detail">{detail}</p></div>
           {pending ? <div className="smirel-web-progress" aria-hidden="true"><span /></div> : null}
+
+          <dl className="smirel-web-host-facts">
+            <div><dt>{zh ? "账户" : "Account"}</dt><dd>{account.account.user.email}</dd></div>
+            <div><dt>{zh ? "当前电脑" : "This computer"}</dt><dd>{localHost?.deviceName || (zh ? "等待发现" : "Waiting for host")}</dd></div>
+          </dl>
 
           <div className="web-gate-actions">
             {missing && isWindowsBrowser() ? (
@@ -355,8 +365,10 @@ export function WebAppGate({ children }: { children: ReactNode }) {
           ) : null}
           {hostError ? <p className="smirel-web-error">{hostError}</p> : null}
 
+          <button className="smirel-web-signout" type="button" disabled={account.busy} onClick={() => void account.logout()}>{zh ? "退出登录" : "Sign out"}</button>
+
           <div className="smirel-web-connection-note">
-            <span className="smirel-web-lock" aria-hidden="true">⌁</span>
+            <LockKeyhole size={15} aria-hidden="true" />
             {zh
               ? "一个 Loom 账号只维护一个当前 Host；新的 Desktop Host 上线时会安全替换旧 Host，所有网页登录会自动跟随。"
               : "Each Loom account has one current Host. A newly connected Desktop Host safely replaces the old one and every web session follows automatically."}
