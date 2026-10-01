@@ -94,16 +94,40 @@ def test_thread_specific_removed_model_does_not_fall_back_to_global_current() ->
     assert "profiles: [...snapshot.profiles, unavailable]" in block
 
 
-def test_discovered_metadata_is_carried_into_launch_specs() -> None:
+def test_discovered_metadata_is_reprojected_into_launch_specs() -> None:
     manager = MANAGER.read_text(encoding="utf-8")
 
-    resolve_start = manager.index("  resolve(selection: string): ModelLaunchSpec {")
-    resolve_end = manager.index("  add(input: AddModelInput)", resolve_start)
-    block = manager[resolve_start:resolve_end]
-    assert "const catalog = this.registryCache?.profiles.find" in block
-    assert "contextLimits: catalog?.contextLimits ?? resolved.contextLimits" in block
-    assert "reasoning: catalog?.reasoning ?? resolved.reasoning ?? null" in block
-    assert "vision: safe?.vision ?? catalog?.vision ?? resolved.vision ?? true" in block
+    project_start = manager.index("  private projectLaunchSpec(")
+    project_end = manager.index("  private refreshLaunchEntry(", project_start)
+    block = manager[project_start:project_end]
+    assert "contextLimits: catalog?.contextLimits ?? base.contextLimits" in block
+    assert "reasoning: catalog?.reasoning ?? base.reasoning ?? null" in block
+    assert "vision: safe?.vision ?? catalog?.vision ?? base.vision ?? true" in block
+    assert "authMode: catalog?.authMode ?? base.authMode" in block
+    assert "this.refreshLaunchEntry(entry, merged, metadata)" in manager
+    assert "if (cached) return cached.spec" in manager
+
+
+def test_model_catalog_sync_path_enforces_ttl_with_monotonic_clock() -> None:
+    manager = MANAGER.read_text(encoding="utf-8")
+
+    assert "function monotonicNow(): number" in manager
+    assert "registryCacheMonotonicAt" in manager
+    assert "monotonicNow() - this.registryCacheMonotonicAt < this.catalogTtlMs" in manager
+    assert "if (!forceRefresh && this.registryCache && this.catalogFresh())" in manager
+    assert "const metadata = this.metadata(true);" in manager
+
+
+def test_provider_key_change_does_not_use_provider_prefix_invalidation() -> None:
+    manager = MANAGER.read_text(encoding="utf-8")
+
+    start = manager.index("  setProviderKey(provider: string, apiKey: string): ModelSnapshot {")
+    end = manager.index("  setReasoning(", start)
+    block = manager[start:end]
+    assert "this.invalidateCaches({ clearLaunch: true })" in block
+    assert "this.currentSpec = this.resolve(currentSelection)" in block
+    assert 'key.startsWith("builtin:opencode-go:")' not in block
+    assert 'key.startsWith("managed:")' not in block
 
 
 def test_transient_catalog_fallback_keeps_last_authoritative_provider_rows() -> None:
