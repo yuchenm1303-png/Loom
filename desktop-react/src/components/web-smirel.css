@@ -1,4 +1,4 @@
-/* Loom owns the layout and information hierarchy. The .cards surface comes from the original Smirel glass CSS unchanged. */
+/* Loom owns the layout. The glass surface itself still comes from the original Smirel .cards system. */
 html[data-loom-web="true"] body { background: #21313c; }
 .loom-portal-page {
   position: relative;
@@ -15,190 +15,247 @@ html[data-loom-web="true"] body { background: #21313c; }
 .loom-portal-shell {
   position: relative;
   z-index: 2;
-  width: min(1220px, calc(100vw - 48px));
+  width: min(1160px, calc(100vw - 48px));
   min-height: 100vh;
-  padding: 22px 0;
-  justify-content: flex-start;
+  padding: 30px 0 24px;
+  justify-content: center;
 }
 
-.loom-site-header { margin: 0 0 16px; }
+.loom-site-header {
+  height: 52px;
+  margin: 0 0 18px;
+}
 .loom-portal-brand { gap: 11px; }
-.loom-smirel-wordmark { width: 112px; height: 36px; object-fit: contain; }
-.loom-brand-divider { width: 1px; height: 24px; background: rgba(255,255,255,.13); }
-.loom-portal-brand .brand-copy strong { font-size: .94rem; letter-spacing: -.01em; }
-.loom-portal-brand .brand-copy small { font-size: .58rem; }
-.loom-site-nav { display: flex; align-items: center; gap: 8px; }
-.loom-site-nav a,
-.loom-site-nav button {
-  border: 0;
-  padding: 8px 10px;
-  background: transparent;
-  color: rgba(255,255,255,.58);
-  font: inherit;
-  font-size: .7rem;
-  cursor: pointer;
-  transition: color .2s ease;
+.loom-smirel-wordmark { width: 108px; height: 34px; object-fit: contain; }
+.loom-brand-divider { width: 1px; height: 22px; background: rgba(255,255,255,.13); }
+.loom-portal-brand .brand-copy strong { font-size: .92rem; letter-spacing: -.01em; }
+.loom-portal-brand .brand-copy small { font-size: .56rem; }
+.loom-header-meta {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  color: rgba(255,255,255,.46);
+  font-size: .64rem;
 }
-.loom-site-nav a:hover,
-.loom-site-nav button:hover { color: #fff; }
+.loom-header-meta i,
+.loom-release-note i {
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: rgba(255,255,255,.28);
+}
 
-.loom-hero {
-  min-height: 300px;
-  padding: 38px 40px;
+.loom-home-card {
+  min-height: 560px;
   display: grid;
-  grid-template-columns: minmax(0,1.5fr) minmax(280px,.7fr);
-  gap: 44px;
-  align-items: stretch;
+  grid-template-columns: minmax(0,1.22fr) minmax(340px,.78fr);
+  overflow: hidden;
 }
-.loom-hero-copy { display: flex; flex-direction: column; justify-content: center; }
-.loom-hero h1 {
-  max-width: 760px;
-  margin-top: 12px;
-  font-size: clamp(2.8rem,5.4vw,5.25rem);
-  line-height: .98;
+.loom-home-card:hover,
+.loom-home-card:active { transform: none; }
+
+.loom-home-copy {
+  min-width: 0;
+  padding: 54px 58px 48px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+.loom-home-copy h1 {
+  max-width: 680px;
+  margin-top: 13px;
+  font-size: clamp(3rem,5vw,4.9rem);
+  line-height: 1.01;
   font-weight: 560;
   letter-spacing: -.055em;
 }
-.loom-hero-description {
-  max-width: 700px;
-  margin-top: 20px;
-  color: rgba(255,255,255,.7);
+.loom-home-description {
+  max-width: 650px;
+  margin-top: 22px;
+  color: rgba(255,255,255,.69);
   font-size: .88rem;
-  line-height: 1.8;
+  line-height: 1.85;
 }
-.loom-hero-actions { display: flex; flex-wrap: wrap; gap: 9px; margin-top: 27px; }
-.loom-action {
-  min-height: 44px;
-  padding: 0 15px;
+.loom-home-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 9px;
+  margin-top: 30px;
+}
+.loom-primary-action,
+.loom-secondary-action,
+.loom-form-submit {
+  min-height: 46px;
+  padding: 0 16px;
   border: 0;
   border-radius: 6px;
   display: inline-flex;
   align-items: center;
   justify-content: space-between;
-  gap: 26px;
-  text-decoration: none;
+  gap: 28px;
   color: #fff;
   font: inherit;
-  font-size: .75rem;
-  font-weight: 610;
+  font-size: .74rem;
+  font-weight: 620;
+  text-decoration: none;
   cursor: pointer;
   transition: background-color .2s ease, transform .2s ease, opacity .2s ease;
 }
-.loom-action:hover { transform: translateY(-1px); }
-.loom-action:active { transform: translateY(0) scale(.99); }
-.loom-action:disabled { opacity: .48; cursor: not-allowed; transform: none; }
-.loom-action-primary { background: rgba(10,28,39,.72); }
-.loom-action-primary:hover { background: rgba(10,28,39,.88); }
-.loom-action-secondary { background: rgba(255,255,255,.08); }
-.loom-action-secondary:hover { background: rgba(255,255,255,.13); }
+.loom-primary-action,
+.loom-form-submit { background: rgba(9,28,40,.76); }
+.loom-primary-action:hover,
+.loom-form-submit:hover { background: rgba(9,28,40,.92); transform: translateY(-1px); }
+.loom-secondary-action { background: rgba(255,255,255,.08); }
+.loom-secondary-action:hover { background: rgba(255,255,255,.14); transform: translateY(-1px); }
+.loom-primary-action:active,
+.loom-secondary-action:active,
+.loom-form-submit:active { transform: translateY(0) scale(.99); }
+.loom-primary-action:disabled,
+.loom-form-submit:disabled { opacity: .5; cursor: default; transform: none; }
+.loom-release-note {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 18px;
+  color: rgba(255,255,255,.38);
+  font-size: .61rem;
+}
 
-.loom-hero-status {
+.loom-access {
   min-width: 0;
-  padding-left: 30px;
+  padding: 42px 38px;
   border-left: 1px solid rgba(255,255,255,.1);
+  background: rgba(5,18,28,.08);
   display: flex;
   flex-direction: column;
   justify-content: center;
 }
-.loom-status-kicker { display: flex; align-items: center; gap: 8px; color: rgba(255,255,255,.43); font-size: .6rem; letter-spacing: .1em; }
-.loom-live-dot { width: 7px; height: 7px; flex: 0 0 7px; border-radius: 50%; background: rgba(255,255,255,.34); }
-.loom-live-dot.is-online { background: #83efc7; box-shadow: 0 0 12px rgba(131,239,199,.55); }
-.loom-status-title { display: block; margin-top: 15px; font-size: 1.45rem; font-weight: 620; letter-spacing: -.025em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.loom-hero-status > p { margin: 8px 0 18px; color: rgba(255,255,255,.52); font-size: .72rem; line-height: 1.65; }
-.loom-status-row { min-width: 0; display: flex; justify-content: space-between; gap: 16px; padding: 10px 0; border-top: 1px solid rgba(255,255,255,.08); }
-.loom-status-row span { color: rgba(255,255,255,.36); font-size: .6rem; }
-.loom-status-row strong { min-width: 0; color: rgba(255,255,255,.78); font-size: .64rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-
-.loom-function-grid {
-  display: grid;
-  grid-template-columns: minmax(0,1.35fr) minmax(340px,.65fr);
+.loom-access-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
   gap: 16px;
-  margin-top: 16px;
-  align-items: stretch;
 }
-.loom-function-stack { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
-.loom-function-card,
-.loom-account-card { min-height: 330px; padding: 26px; }
-.loom-function-card { display: flex; flex-direction: column; }
-.loom-card-head { display: flex; align-items: flex-start; gap: 13px; }
-.loom-card-index {
-  width: 29px;
-  height: 29px;
-  flex: 0 0 29px;
-  display: grid;
-  place-items: center;
-  border-radius: 6px;
+.loom-access-head h2 {
+  margin-top: 6px;
+  font-size: 1.55rem;
+  line-height: 1.2;
+  font-weight: 620;
+  letter-spacing: -.025em;
+}
+.loom-access-badge,
+.loom-connection-badge {
+  flex: 0 0 auto;
+  min-height: 25px;
+  padding: 0 9px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   background: rgba(255,255,255,.08);
-  color: rgba(255,255,255,.55);
-  font-size: .62rem;
+  color: rgba(255,255,255,.54);
+  font-size: .55rem;
+  letter-spacing: .06em;
 }
-.loom-card-head h2 { margin-top: 4px; font-size: 1.2rem; font-weight: 620; letter-spacing: -.02em; }
-.loom-card-copy { margin-top: 20px; color: rgba(255,255,255,.6); font-size: .76rem; line-height: 1.7; }
-.loom-spec-row { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 6px; margin-top: 20px; }
-.loom-spec-row span { min-width: 0; padding: 10px; background: rgba(0,0,0,.11); border-radius: 6px; }
-.loom-spec-row small { display: block; color: rgba(255,255,255,.34); font-size: .55rem; text-transform: uppercase; }
-.loom-spec-row strong { display: block; margin-top: 4px; font-size: .67rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.loom-host-state { display: flex; align-items: center; gap: 10px; margin-top: 22px; padding: 13px 14px; background: rgba(0,0,0,.11); border-radius: 6px; }
-.loom-host-state small { display: block; color: rgba(255,255,255,.34); font-size: .56rem; text-transform: uppercase; }
-.loom-host-state strong { display: block; margin-top: 3px; font-size: .72rem; }
-.loom-card-actions { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: auto; padding-top: 24px; }
-.loom-card-actions .loom-action { flex: 1 1 auto; }
-.loom-text-link { color: rgba(255,255,255,.52); font-size: .66rem; white-space: nowrap; }
-.loom-text-link:hover { color: #fff; }
-.loom-text-button { padding: 0; border: 0; background: transparent; font: inherit; cursor: pointer; }
-
-.loom-account-card { display: flex; flex-direction: column; }
-.loom-account-form { margin-top: 20px; }
-.loom-account-form input { height: 42px; }
-.loom-account-submit { width: 100%; margin-top: 2px; }
+.loom-connection-badge i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: rgba(255,255,255,.38);
+}
+.loom-connection-badge.is-working i {
+  background: #a9dbef;
+  box-shadow: 0 0 12px rgba(169,219,239,.48);
+}
+.loom-connection-badge.is-online i {
+  background: #83efc7;
+  box-shadow: 0 0 12px rgba(131,239,199,.55);
+}
+.loom-access-copy {
+  margin-top: 14px;
+  color: rgba(255,255,255,.52);
+  font-size: .72rem;
+  line-height: 1.68;
+}
+.loom-account-form { margin-top: 24px; }
+.loom-account-form input { height: 44px; }
+.loom-form-submit { width: 100%; margin-top: 3px; }
 .loom-account-switch {
-  margin-top: 13px;
+  align-self: flex-start;
+  margin-top: 14px;
   padding: 0;
   border: 0;
   background: transparent;
-  color: rgba(255,255,255,.45);
+  color: rgba(255,255,255,.43);
   font: inherit;
-  font-size: .66rem;
+  font-size: .65rem;
   cursor: pointer;
 }
 .loom-account-switch:hover { color: #fff; }
-.loom-portal-page .form-note.is-error { color: rgba(255,190,198,.9); }
-.loom-signed-in { display: flex; flex: 1; flex-direction: column; margin-top: 23px; }
-.loom-account-identity { display: flex; align-items: center; gap: 12px; }
-.loom-account-check { width: 38px; height: 38px; flex: 0 0 38px; display: grid; place-items: center; border-radius: 50%; background: rgba(131,239,199,.1); color: #9ff3d4; }
-.loom-account-identity small { display: block; color: rgba(255,255,255,.38); font-size: .56rem; letter-spacing: .08em; }
-.loom-account-identity strong { display: block; margin-top: 4px; max-width: 250px; color: rgba(255,255,255,.82); font-size: .74rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.loom-account-details { display: grid; gap: 7px; margin-top: 22px; }
-.loom-account-details > div { display: flex; justify-content: space-between; gap: 14px; padding: 11px 12px; background: rgba(0,0,0,.1); border-radius: 6px; }
-.loom-account-details span { color: rgba(255,255,255,.4); font-size: .62rem; }
-.loom-account-details strong { color: rgba(255,255,255,.76); font-size: .65rem; font-weight: 600; text-align: right; }
-.loom-host-note { margin-top: 12px; color: rgba(255,255,255,.43); font-size: .65rem; line-height: 1.6; }
-.loom-account-actions { display: block; margin-top: auto; padding-top: 22px; }
-.loom-account-actions .loom-action { width: 100%; }
+.loom-portal-page .form-note.is-error { color: rgba(255,190,198,.92); }
 
-.loom-site-footer { margin-top: 16px; padding: 2px 2px 0; }
-.loom-footer-links { display: flex; gap: 16px; align-items: center; }
-.loom-footer-links a { color: rgba(255,255,255,.4); }
-.loom-footer-links a:hover { color: #fff; }
-
-@media (max-width:1040px) {
-  .loom-hero { grid-template-columns: 1fr; gap: 26px; }
-  .loom-hero-status { padding: 22px 0 0; border-left: 0; border-top: 1px solid rgba(255,255,255,.1); }
-  .loom-function-grid { grid-template-columns: 1fr; }
-  .loom-account-card { min-height: 300px; }
+.loom-connection-details {
+  display: grid;
+  gap: 0;
+  margin-top: 24px;
+  border-top: 1px solid rgba(255,255,255,.08);
+  border-bottom: 1px solid rgba(255,255,255,.08);
 }
-@media (max-width:760px) {
-  .loom-portal-shell { width: min(100% - 24px,1220px); padding-top: 12px; }
-  .loom-smirel-wordmark { width: 92px; }
-  .loom-site-nav a:first-child { display: none; }
-  .loom-hero { min-height: 0; padding: 28px 22px; }
-  .loom-hero h1 { font-size: clamp(2.55rem,13vw,4rem); }
-  .loom-hero-actions { display: grid; grid-template-columns: 1fr; }
-  .loom-action { width: 100%; }
-  .loom-function-stack { grid-template-columns: 1fr; }
-  .loom-function-card,
-  .loom-account-card { min-height: 0; padding: 22px; }
-  .loom-card-actions { align-items: stretch; flex-direction: column; }
-  .loom-text-link { padding: 4px 2px; }
-  .loom-site-footer { align-items: flex-start; flex-direction: column; }
+.loom-connection-details > div {
+  min-width: 0;
+  padding: 13px 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+.loom-connection-details > div + div { border-top: 1px solid rgba(255,255,255,.06); }
+.loom-connection-details span { color: rgba(255,255,255,.37); font-size: .62rem; }
+.loom-connection-details strong {
+  min-width: 0;
+  max-width: 235px;
+  color: rgba(255,255,255,.76);
+  font-size: .65rem;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.loom-reconnect-button { margin-top: 22px; }
+
+.loom-site-footer {
+  margin-top: 14px;
+  padding: 0 2px;
+  color: rgba(255,255,255,.34);
+}
+
+@media (max-width: 920px) {
+  .loom-portal-shell { justify-content: flex-start; }
+  .loom-home-card { grid-template-columns: 1fr; }
+  .loom-home-copy { padding: 42px 38px 36px; }
+  .loom-access {
+    padding: 34px 38px 38px;
+    border-left: 0;
+    border-top: 1px solid rgba(255,255,255,.1);
+  }
+}
+
+@media (max-width: 620px) {
+  .loom-portal-shell { width: min(100% - 24px,1160px); padding: 12px 0 18px; }
+  .loom-site-header { height: 46px; margin-bottom: 12px; }
+  .loom-smirel-wordmark { width: 88px; height: 30px; }
+  .loom-brand-divider { display: none; }
+  .loom-portal-brand .brand-copy small { display: none; }
+  .loom-header-meta span:first-child,
+  .loom-header-meta i { display: none; }
+  .loom-home-copy { padding: 32px 22px 28px; }
+  .loom-home-copy h1 { font-size: clamp(2.45rem,12vw,3.65rem); }
+  .loom-home-description { font-size: .8rem; }
+  .loom-home-actions { display: grid; grid-template-columns: 1fr; }
+  .loom-primary-action,
+  .loom-secondary-action { width: 100%; }
+  .loom-release-note { flex-wrap: wrap; }
+  .loom-access { padding: 28px 22px 30px; }
+  .loom-access-head h2 { font-size: 1.35rem; }
+  .loom-site-footer { align-items: flex-start; flex-direction: column; gap: 6px; }
 }
