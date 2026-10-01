@@ -6,6 +6,10 @@ streak across every chip. Together they read as moulded plastic. The refinement
 layer replaces all of that with hairlines, one surface colour and tints for
 state. These tests keep it that way: no gloss, no motion beyond a colour fade,
 colour only where it means something, and everything scoped to the composer.
+
+The model card (the popover behind the model chip: model identity, the reasoning
+thread, the model library) is the exception. It was given back to its own sheets
+at the user's request, so the layer must stay out of it.
 """
 
 import re
@@ -114,8 +118,8 @@ def test_nothing_lifts_scales_or_sweeps() -> None:
     assert "@keyframes" not in css and "animation" not in css
     transforms = re.findall(r"(?<![\w-])transform\s*:\s*([^;]+);", css)
     assert transforms and set(transforms) <= {"none", "rotate(180deg)"}
-    # `scale:` appears once, on the reasoning stop under the pointer.
-    assert len(re.findall(r"(?<![\w-])(?:scale|translate|rotate)\s*:", css)) == 1
+    # No standalone transform properties either (`scale:`, `translate:`, `rotate:`).
+    assert not re.findall(r"(?<![\w-])(?:scale|translate|rotate)\s*:", css)
 
 
 def test_motion_is_a_colour_fade_only() -> None:
@@ -161,7 +165,7 @@ def test_decorations_the_old_sheets_added_are_switched_off() -> None:
         f"{SCOPE} .composer-spark",
         f"{SCOPE} .composer .composer-chip::before",
         f"{SCOPE} .composer .send-button::after",
-        f"{SCOPE} .composer-popover::before",
+        f"{SCOPE} .composer-popover:not(.model-manager-popover)::before",
         f"{SCOPE} .composer-popover-icon",
         f"{SCOPE} .sticker-panel-symbol",
     ):
@@ -195,36 +199,29 @@ def test_permission_tags_are_tinted_words_not_outlined_pills() -> None:
     assert "border: 0;" in active and "box-shadow: none;" in active
 
 
-def test_model_picker_tokens_follow_the_composer_palette() -> None:
+def test_the_model_card_keeps_its_own_look() -> None:
+    """The model card went back to model-core-redesign.css and model-picker.css."""
     css = read(REFINED)
-    picker = body_of(css, f"{SCOPE} .model-manager-popover .mp")
+    guard = ":not(.model-manager-popover)"
+    raw = [selector.strip() for selector_list, _ in rules(css) for selector in selector_list.split(",")]
 
-    for token, value in (
-        ("--mp-text", "var(--cq-ink)"),
-        ("--mp-muted", "var(--cq-ink-3)"),
-        ("--mp-faint", "var(--cq-ink-4)"),
-        ("--mp-hover", "var(--cq-hover)"),
-        ("--mp-hairline", "var(--cq-line)"),
-        ("--mp-field", "var(--cq-field)"),
-    ):
-        assert f"{token}: {value};" in picker, token
-    # The picker still needs its accent for the check mark and focus colour.
-    assert "--mp-accent-strong" not in picker
-    # Provider marks are neutral tiles, not brand-coloured ones.
-    mark = body_of(css, f"{SCOPE} .model-manager-popover .mp-mark")
-    assert "background: var(--cq-hover);" in mark and "box-shadow: none;" in mark
+    # Nothing in the layer styles the card: not its identity, the reasoning thread
+    # (.rt), the model library (.mp) or the popover that holds them. The only
+    # mention allowed is the guard that keeps the shared popover frame off it.
+    card = re.compile(r"\.(?:mp|rt)(?!\w)|\.(?:mp|rt)-|model-manager|model-core|model-popover")
+    for selector in raw:
+        assert not card.search(selector.replace(guard, "")), selector
+    # Its token sets are not redirected either.
+    body = stripped(css)
+    assert "--mp-" not in body and "--rt-" not in body and "--cq-thread" not in body
 
+    # The shared popover frame is the one rule that would otherwise reach it.
+    frame = f"{SCOPE} .composer-popover"
+    assert f"{frame}{guard}" in raw and f"{frame}{guard}::before" in raw
+    for selector in raw:
+        assert selector not in (frame, f"{frame}::before"), selector
 
-def test_reasoning_thread_is_one_flat_colour_and_static() -> None:
-    css = read(REFINED)
-    thread = body_of(css, f"{SCOPE} .rt")
-
-    assert "--rt-cool: var(--cq-thread);" in thread and "--rt-warm: var(--cq-thread);" in thread
-    hidden = next(
-        selector_list for selector_list, body in rules(css)
-        if "display: none;" in body and f"{SCOPE} .rt-comet" in selector_list
-    )
-    for layer in (".rt-strand", ".rt-comet", ".rt-aura", ".rt-burst", ".rt-orbit", ".rt-ghost", ".rt-spine::after"):
-        assert f"{SCOPE} {layer}" in hidden, layer
-    # Old loops are not re-enabled here.
-    assert "animation" not in stripped(css)
+    # The layer still opts in only through the composer wrap, so the card's own
+    # sheets keep winning inside it.
+    for selector in raw:
+        assert selector.startswith((SCOPE, LIGHT_SCOPE)), selector

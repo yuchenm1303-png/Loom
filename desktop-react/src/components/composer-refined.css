@@ -1,8 +1,8 @@
 /* Composer refinement layer
    =========================
    One late stylesheet that gives the composer and everything that opens from it
-   (permission, model and expression popovers, attachments) the same quiet,
-   precise finish. The earlier composer sheets each patched the one before:
+   (permission and expression popovers, attachments) the same quiet, precise
+   finish. The earlier composer sheets each patched the one before:
    gradients, inner highlights, glows, lift-on-hover and a light streak on every
    chip. Together they read as moulded plastic. This layer takes the surface back
    to what it is, a hairline-bordered panel in a single colour, with colour spent
@@ -16,7 +16,11 @@
      scales or sweeps on hover. State is a tint of the surface.
    - Layout, motion (data-motion-phase) and font sizes owned by typography-scale.css
      are not restated here; this layer is skin only.
-   - Tokens are --cq-*; popovers sit inside .composer-wrap, so they share them. */
+   - Tokens are --cq-*; popovers sit inside .composer-wrap, so they share them.
+   - The model card (.model-manager-popover: model identity, the reasoning thread
+     and the model library) is deliberately NOT part of this layer. It keeps the
+     look model-core-redesign.css and model-picker.css give it; the popover frame
+     rules below step around it. */
 
 /* -------------------------------------------------------------------------- */
 /* Tokens                                                                      */
@@ -302,7 +306,7 @@
 
 /* One quiet surface: hairline border, a single soft shadow, no arrow, no
    gradient, no highlight. */
-:root .composer-wrap.composer-refined .composer-popover {
+:root .composer-wrap.composer-refined .composer-popover:not(.model-manager-popover) {
   padding: 6px;
   border: 1px solid var(--cq-line);
   border-radius: 16px;
@@ -310,7 +314,7 @@
   box-shadow: var(--cq-shadow-pop);
 }
 
-:root .composer-wrap.composer-refined .composer-popover::before {
+:root .composer-wrap.composer-refined .composer-popover:not(.model-manager-popover)::before {
   display: none;
 }
 
@@ -451,7 +455,6 @@
 /* Tags: a tinted word, not an outlined pill. Colour appears only where it
    carries meaning (the safe end, the recommended default, the risky end). */
 :root .composer-wrap.composer-refined .permission-badge,
-:root .composer-wrap.composer-refined .model-active-badge,
 :root .composer-wrap.composer-refined .permission-popover .permission-badge {
   min-height: 17px;
   padding: 0 6px;
@@ -469,8 +472,7 @@
   color: var(--cq-safe);
 }
 
-:root .composer-wrap.composer-refined .permission-badge.recommended,
-:root .composer-wrap.composer-refined .model-active-badge {
+:root .composer-wrap.composer-refined .permission-badge.recommended {
   background: color-mix(in srgb, var(--accent) 13%, transparent);
   color: var(--cq-accent-ink);
 }
@@ -507,210 +509,6 @@
 
 :root .composer-wrap.composer-refined .permission-popover .permission-footnote > svg {
   color: var(--cq-ink-4);
-}
-
-/* -------------------------------------------------------------------------- */
-/* Model popover                                                               */
-/* -------------------------------------------------------------------------- */
-
-/* The picker manages its own insets (full-bleed footer, scrolling list). */
-:root .composer-wrap.composer-refined .composer-popover.model-manager-popover {
-  padding: 0;
-  border-radius: 16px;
-  border-color: var(--cq-line);
-  background: var(--cq-pop);
-  box-shadow: var(--cq-shadow-pop);
-}
-
-/* The picker is token-driven (--mp-*); point the tokens at the same quiet
-   palette. --mp-accent-strong stays: it is the check mark and the focus colour,
-   and the old primary button text relies on its contrast. */
-:root .composer-wrap.composer-refined .model-manager-popover .mp {
-  --mp-text: var(--cq-ink);
-  --mp-muted: var(--cq-ink-3);
-  --mp-faint: var(--cq-ink-4);
-  --mp-accent: var(--cq-accent-ink);
-  --mp-accent-soft: color-mix(in srgb, var(--accent) 13%, transparent);
-  --mp-hover: var(--cq-hover);
-  --mp-press: var(--cq-press);
-  --mp-current: var(--cq-selected);
-  --mp-current-hover: var(--cq-press);
-  --mp-hairline: var(--cq-line);
-  --mp-field: var(--cq-field);
-  --mp-field-hover: var(--cq-hover);
-  --mp-field-border: var(--cq-line);
-  --mp-field-focus: var(--cq-field);
-  --mp-focus-border: color-mix(in srgb, var(--accent) 36%, var(--cq-line-strong));
-  --mp-focus-ring: color-mix(in srgb, var(--accent) 8%, transparent);
-  --mp-ring: color-mix(in srgb, var(--accent) 55%, transparent);
-  --mp-tray: transparent;
-  --mp-danger: var(--cq-danger);
-  --mp-danger-soft: color-mix(in srgb, var(--cq-danger) 12%, transparent);
-}
-
-:root .composer-wrap.composer-refined .model-manager-popover .mp-head-title {
-  font-weight: 600;
-  letter-spacing: 0;
-}
-
-/* Search: a quiet field. Focus is one clear border and a barely-there ring,
-   not a glowing outline. */
-:root .composer-wrap.composer-refined .model-manager-popover .mp-search:focus-within {
-  color: var(--cq-ink-2);
-}
-
-/* Provider marks: one neutral tile and a single-ink glyph. The brand colours
-   (red, blue, green) were the loudest thing in the list. */
-:root .composer-wrap.composer-refined .model-manager-popover .mp-mark {
-  background: var(--cq-hover);
-  box-shadow: none;
-  color: var(--cq-ink-2);
-  font-weight: 600;
-}
-
-:root .composer-wrap.composer-refined .model-manager-popover .mp-row:hover:not(:disabled) .mp-mark,
-:root .composer-wrap.composer-refined .model-manager-popover .mp-row.is-current .mp-mark {
-  color: var(--cq-ink);
-}
-
-:root .composer-wrap.composer-refined .model-manager-popover .mp-badge {
-  font-weight: 500;
-  letter-spacing: 0;
-}
-
-:root .composer-wrap.composer-refined .model-manager-popover .mp-row-title {
-  font-weight: 500;
-}
-
-:root .composer-wrap.composer-refined .model-manager-popover .mp-provider .mp-row-title {
-  font-weight: 550;
-}
-
-/* Footer actions are text, separated by one hairline. */
-:root .composer-wrap.composer-refined .model-manager-popover .mp-foot {
-  background: transparent;
-}
-
-/* Primary actions share the send key's look: flat and inverse. */
-:root .composer-wrap.composer-refined .model-manager-popover .mp-primary,
-:root .composer-wrap.composer-refined .model-manager-popover .mp-connect-form button {
-  background: var(--cq-send);
-  color: var(--cq-send-ink);
-  font-weight: 550;
-  filter: none;
-  transition: background-color 140ms ease, opacity 140ms ease;
-}
-
-:root .composer-wrap.composer-refined .model-manager-popover .mp-primary:hover:not(:disabled),
-:root .composer-wrap.composer-refined .model-manager-popover .mp-connect-form button:hover:not(:disabled) {
-  background: var(--cq-send-hover);
-  filter: none;
-}
-
-:root .composer-wrap.composer-refined .model-manager-popover .mp-primary:focus-visible {
-  box-shadow: 0 0 0 3px var(--cq-ring);
-}
-
-:root .composer-wrap.composer-refined .model-manager-popover .mp-connect-icon {
-  background: var(--cq-hover);
-  color: var(--cq-ink-3);
-}
-
-:root .composer-wrap.composer-refined .model-manager-popover .mp-notice {
-  background: var(--cq-hover);
-}
-
-:root .composer-wrap.composer-refined .model-manager-popover .mp-notice.is-error {
-  background: color-mix(in srgb, var(--cq-danger) 11%, transparent);
-  color: var(--cq-danger);
-}
-
-/* -------------------------------------------------------------------------- */
-/* Reasoning control (model popover, home layer)                               */
-/* -------------------------------------------------------------------------- */
-
-/* The woven thread keeps its geometry, its stops and its bead gliding between
-   levels. What goes is the show: the blue-to-orchid gradient, the twisting
-   plies, the comet that crosses the thread on a loop, the breathing halo, the
-   ripple and sparks, the glossy pearl. Thread, stops and bead are one flat
-   colour, and nothing moves unless the level changes. */
-:root .composer-wrap.composer-refined .rt {
-  --cq-thread: var(--accent);
-  --rt-cool: var(--cq-thread);
-  --rt-warm: var(--cq-thread);
-  --rt-track: var(--cq-line-strong);
-  --rt-stop: var(--cq-ink-4);
-  --rt-surface: var(--cq-pop);
-  --rt-text: var(--cq-ink);
-  --rt-muted: var(--cq-ink-3);
-  --rt-faint: var(--cq-ink-4);
-  --rt-hover: var(--cq-hover);
-  --rt-danger: var(--cq-danger);
-  --rt-danger-soft: color-mix(in srgb, var(--cq-danger) 12%, transparent);
-}
-
-:root .composer-wrap.composer-refined .rt-strand,
-:root .composer-wrap.composer-refined .rt-comet,
-:root .composer-wrap.composer-refined .rt-aura,
-:root .composer-wrap.composer-refined .rt-burst,
-:root .composer-wrap.composer-refined .rt-orbit,
-:root .composer-wrap.composer-refined .rt-ghost,
-:root .composer-wrap.composer-refined .rt-spine::after,
-:root .composer-wrap.composer-refined .rt-auto-line::after,
-:root .composer-wrap.composer-refined .rt-auto-badge::before {
-  display: none;
-}
-
-:root .composer-wrap.composer-refined .rt-eyebrow {
-  font-weight: 500;
-  letter-spacing: .06em;
-}
-
-:root .composer-wrap.composer-refined .rt-spine {
-  background: var(--cq-thread);
-}
-
-:root .composer-wrap.composer-refined .rt-stop::after {
-  background: var(--cq-thread);
-  box-shadow: 0 0 0 2px var(--rt-surface);
-}
-
-:root .composer-wrap.composer-refined .rt-option:not([aria-disabled="true"]):hover .rt-stop {
-  scale: 1.2;
-}
-
-:root .composer-wrap.composer-refined .rt-option.is-active,
-:root .composer-wrap.composer-refined .rt-option.is-active:hover {
-  color: var(--cq-ink);
-}
-
-:root .composer-wrap.composer-refined .rt-option.is-active .rt-label {
-  font-weight: 550;
-}
-
-:root .composer-wrap.composer-refined .rt-core {
-  background: var(--cq-thread);
-  box-shadow:
-    0 0 0 3px var(--rt-surface),
-    0 0 0 4px color-mix(in srgb, var(--cq-thread) 38%, transparent);
-}
-
-/* Managed ("Auto"): a quiet hairline either side of a quiet word. */
-:root .composer-wrap.composer-refined .rt-auto-line::before {
-  background: var(--cq-line-strong);
-  box-shadow: none;
-}
-
-:root .composer-wrap.composer-refined .rt-auto-line:last-child::before {
-  background: var(--cq-line-strong);
-}
-
-:root .composer-wrap.composer-refined .rt-auto-badge {
-  padding: 3px 11px;
-  border: 0;
-  background: var(--cq-hover);
-  color: var(--cq-ink-2);
-  font-weight: 500;
 }
 
 /* -------------------------------------------------------------------------- */
