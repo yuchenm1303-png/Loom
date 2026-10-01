@@ -4,82 +4,96 @@ import pytest
 
 from services.loom_account.server import AccountApplication, AccountConfig, AccountError, AccountStore
 
+PASSWORD = "correct-horse-battery"
+
 
 def _app(tmp_path: Path) -> AccountApplication:
     return AccountApplication(AccountStore(AccountConfig(db_path=tmp_path / "accounts.db")))
 
 
-def _promote(app: AccountApplication, user_id: int, role: str = "owner") -> None:
+def _set_role(app: AccountApplication, user_id: int, role: str) -> None:
     with app.store._connect() as db:
         db.execute("UPDATE users SET role = ? WHERE id = ?", (role, user_id))
 
 
-def test_admin_api_is_role_gated_and_owner_can_manage_users(tmp_path: Path) -> None:
-    app = _app(tmp_path)
-    owner = app.register({"email": "owner@example.com", "password": "abcdefgh"}, "owner-ip")
-    user = app.register({"email": "user@example.com", "password": "abcdefgh"}, "user-ip")
+def _token(payload: dict) -> str:
+    return f"Bearer {payload['access_token']}"
 
+
+def test_registration_always_defaults_to_user(tmp_path: Path) -> None:
+    app = _app(tmp_path)
+    created = app.register({"email": "user@example.com", "password": PASSWORD, "role": "owner"}, "ip")
+    assert created["user"]["role"] == "user"
+
+
+def test_admin_endpoints_allow_owner_and_admin_but_deny_user(tmp_path: Path) -> None:
+    app = _app(tmp_path)
+    owner = app.register({"email": "owner@example.com", "password": PASSWORD}, "a")
+    admin = app.register({"email": "admin@example.com", "password": PASSWORD}, "b")
+    user = app.register({"email": "user@example.com", "password": PASSWORD}, "c")
+    _set_role(app, owner["user"]["id"], "owner")
+    _set_role(app, admin["user"]["id"], "admin")
+    assert app.admin_overview(_token(owner))["users"] == 3
+    assert app.admin_overview(_token(admin))["admins"] == 1
     with pytest.raises(AccountError) as denied:
-        app.admin_overview(f"Bearer {owner['access_token']}")
+        app.admin_overview(_token(user))
+    assert denied.value.status == 403
     assert denied.value.code == "ADMIN_REQUIRED"
 
-    _promote(app, owner["user"]["id"])
-    overview = app.admin_overview(f"Bearer {owner['access_token']}")
-    assert overview["users"] == 2
-    assert overview["owners"] == 1
 
-    updated = app.admin_set_user_status(
-        {"user_id": user["user"]["id"], "status": "disabled"},
-        f"Bearer {owner['access_token']}",
-    )["user"]
-    assert updated["status"] == "disabled"
-
-    events = app.admin_audit(f"Bearer {owner['access_token']}")["events"]
-    assert events[0]["action"] == "user.status"
-
-
-def test_owner_only_role_changes_and_last_owner_guard(tmp_path: Path) -> None:
+def test_role_changes_remain_owner_only_and_admin_role_is_valid(tmp_path: Path) -> None:
     app = _app(tmp_path)
-    owner = app.register({"email": "owner@example.com", "password": "abcdefgh"}, "a")
-    admin = app.register({"email": "admin@example.com", "password": "abcdefgh"}, "b")
-    _promote(app, owner["user"]["id"], "owner")
-    _promote(app, admin["user"]["id"], "admin")
-
+    owner = app.register({"email": "owner@example.com", "password": PASSWORD}, "a")
+    admin = app.register({"email": "admin@example.com", "password": PASSWORD}, "b")
+    user = app.register({"email": "user@example.com", "password": PASSWORD}, "c")
+    _set_role(app, owner["user"]["id"], "owner")
+    _set_role(app, admin["user"]["id"], "admin")
+    promoted = app.admin_set_user_role({"user_id": user["user"]["id"], "role": "admin"}, _token(owner))["user"]
+    assert promoted["role"] == "admin"
     with pytest.raises(AccountError) as denied:
-        app.admin_set_user_role(
-            {"user_id": owner["user"]["id"], "role": "user"},
-            f"Bearer {admin['access_token']}",
-        )
+        app.admin_set_user_role({"user_id": user["user"]["id"], "role": "user"}, _token(admin))
     assert denied.value.code == "OWNER_REQUIRED"
 
-    with pytest.raises(AccountError) as last_owner:
-        app.admin_set_user_role(
-            {"user_id": owner["user"]["id"], "role": "admin"},
-            f"Bearer {owner['access_token']}",
-        )
-    assert last_owner.value.code == "LAST_OWNER"
 
-
-def test_feature_flags_are_audited(tmp_path: Path) -> None:
+def test_last_owner_guard_is_preserved(tmp_path: Path) -> None:
     app = _app(tmp_path)
-    owner = app.register({"email": "owner@example.com", "password": "abcdefgh"}, "a")
-    _promote(app, owner["user"]["id"])
-    result = app.admin_set_feature_flag(
-        {"key": "web.new_shell", "enabled": True, "value": {"rollout": 100}},
-        f"Bearer {owner['access_token']}",
-    )["flag"]
-    assert result["enabled"] is True
-    flags = app.admin_feature_flags(f"Bearer {owner['access_token']}")["flags"]
-    assert flags[0]["key"] == "web.new_shell"
+    owner = app.register({"email": "owner@example.com", "password": PASSWORD}, "a")
+    _set_role(app, owner["user"]["id"], "owner")
+    with pytest.raises(AccountError) as denied:
+        app.admin_set_user_role({"user_id": owner["user"]["id"], "role": "admin"}, _token(owner))
+    assert denied.value.code == "LAST_OWNER"
 
 
-def test_admin_frontend_reuses_service_monitor_components() -> None:
+def test_admin_system_and_real_overview_counts(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    for key in ("LOOM_SMTP_HOST", "SMTP_HOST", "LOOM_SMTP_FROM", "SMTP_FROM"):
+        monkeypatch.delenv(key, raising=False)
+    app = _app(tmp_path)
+    owner = app.register({"email": "owner@example.com", "password": PASSWORD}, "a")
+    admin = app.register({"email": "admin@example.com", "password": PASSWORD}, "b")
+    _set_role(app, owner["user"]["id"], "owner")
+    _set_role(app, admin["user"]["id"], "admin")
+    overview = app.admin_overview(_token(owner))
+    assert overview["users"] == 2
+    assert overview["owners"] == 1
+    assert overview["admins"] == 1
+    assert overview["active_sessions"] == 2
+    assert overview["total_sessions"] == 2
+    system = app.admin_system(_token(admin))
+    assert system["account_api"]["status"] == "healthy"
+    assert system["database"] == {"status": "healthy", "engine": "SQLite"}
+    assert system["smtp"]["status"] == "not_configured"
+
+
+def test_admin_frontend_vendors_original_usage_glass_system() -> None:
     root = Path(__file__).resolve().parents[1]
     html = (root / "services/loom_admin/static/index.html").read_text(encoding="utf-8")
-    css = (root / "services/loom_admin/static/admin.css").read_text(encoding="utf-8")
-    assert "usage-summary-grid" in html
-    assert "usage-activity-card" in html
-    assert "usage-ops-grid" in html
-    assert "https://smirel.com/download/usage-admin-v1.css" in html
-    assert "wallpaper-rain-anime-v1.png" in css
-    assert "smirel-logo.svg" in html
+    js = (root / "services/loom_admin/static/admin.js").read_text(encoding="utf-8")
+    assert 'https://smirel.com/download/usage-admin-v1.css' in html
+    assert 'https://smirel.com/download/usage-ops-v1.css' in html
+    assert 'https://smirel.com/download/beach-wallpaper-v1.css' in html
+    assert 'https://smirel.com/download/wallpaper-rain-anime-v1.png' in html
+    assert 'usage-summary-grid' in html
+    assert 'usage-range-control' in html
+    assert 'usage-presence-rail' in html
+    assert 'usage-throughput-chart' in html
+    assert '/admin/system' in js

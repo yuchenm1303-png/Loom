@@ -205,8 +205,6 @@ export class LoomAccountClient {
           signal: controller.signal,
         });
       } catch (cause) {
-        // Distinguish "the service never answered" from "the service answered
-        // with an error", so the UI can tell the user which one to fix.
         if (cause instanceof Error && cause.name === "AbortError") {
           throw new AccountHttpError(
             0,
@@ -268,12 +266,6 @@ export class LoomAccountClient {
     }
   }
 
-  /**
-   * Liveness probe. `/auth/me` with no token answers 401 MISSING_TOKEN, which
-   * still proves the service is answering — so any HTTP response counts as
-   * reachable and only a transport failure counts as an outage. `/auth/me` is
-   * not rate limited, so this is safe to call on every status check.
-   */
   private async probe(): Promise<boolean> {
     try {
       await this.request("/auth/me", { method: "GET" });
@@ -288,9 +280,6 @@ export class LoomAccountClient {
     let session = await this.loadSession();
 
     if (!session) {
-      // No stored credential — but the UI still has to distinguish "signed out"
-      // from "cannot reach the service", so probe instead of assuming the
-      // service is up just because a URL is configured.
       return this.snapshot(null, await this.probe());
     }
 
@@ -298,9 +287,6 @@ export class LoomAccountClient {
       try {
         session = await this.refresh(session);
       } catch (error) {
-        // Only a rejected credential means the session is dead. A transport
-        // failure is an outage, and deleting the stored session for it would
-        // sign the user out over a dropped connection.
         if (!isAuthRejection(error)) return this.snapshot(session, false);
         await this.clearSession();
         return this.snapshot(null);
@@ -341,6 +327,21 @@ export class LoomAccountClient {
     const response = await this.request<AuthResponse>("/auth/register", {
       method: "POST",
       body: JSON.stringify({ email, password }),
+    });
+    return this.snapshot(await this.saveSession(response));
+  }
+
+  /**
+   * Exchange a short-lived, one-time ticket minted for an already authenticated
+   * Loom Web session. The Host receives its own independent refresh token, so
+   * browser and background Host sessions never rotate or invalidate each other.
+   */
+  async pairDevice(pairingTicket: string): Promise<LoomAccountSnapshot> {
+    const ticket = String(pairingTicket || "").trim();
+    if (!ticket) throw new AccountHttpError(400, "PAIRING_TICKET_REQUIRED", "A pairing ticket is required.");
+    const response = await this.request<AuthResponse>("/auth/device-pair/exchange", {
+      method: "POST",
+      body: JSON.stringify({ pairing_ticket: ticket }),
     });
     return this.snapshot(await this.saveSession(response));
   }

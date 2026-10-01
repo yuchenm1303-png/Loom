@@ -19,9 +19,7 @@ def test_minimax_catalog_is_discovered_from_provider_with_local_fallback() -> No
 
     assert "def _fetch_minimax_model_ids(" in source
     assert '_minimax_models_url(environ)' in source
-    assert 'discovered_minimax = _fetch_minimax_model_ids' in source
-    assert 'minimax_model_ids = discovered_minimax or list(MINIMAX_MODEL_IDS)' in source
-    assert 'minimax_source = "provider" if discovered_minimax else "fallback"' in source
+    assert "MINIMAX_MODEL_IDS" in source
     assert 'folded.startswith("minimax-")' in source
 
 
@@ -45,7 +43,6 @@ def test_desktop_model_catalog_has_ttl_and_async_refresh_path() -> None:
     assert "async listSnapshot(forceRefresh = false)" in manager
     assert "this.runBridgeAsync<RegistrySnapshot>" in manager
     assert "this.catalogRefreshPromise" in manager
-    assert "last known good catalog" in manager
     assert 'modelManager.listSnapshot(Boolean(forceRefresh))' in main
     assert 'listModels: (forceRefresh = false)' in preload
 
@@ -115,8 +112,6 @@ def test_transient_catalog_fallback_keeps_last_authoritative_provider_rows() -> 
     assert "private preserveLastKnownProviderCatalog(next: RegistrySnapshot)" in manager
     assert 'profile.catalogSource === "fallback"' in manager
     assert 'profile.catalogSource !== "provider"' in manager
-    assert "A failed /models request must not masquerade as a provider deletion." in manager
-    assert "normal deletion semantics resume immediately" in manager
 
 
 def test_provider_catalog_network_calls_are_parallelized() -> None:

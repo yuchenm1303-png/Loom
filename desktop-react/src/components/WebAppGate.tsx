@@ -1,54 +1,26 @@
 import type { ReactNode } from "react";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { AccountDialog } from "./AccountDialog";
-import { RemoteControlSurface } from "./RemoteDevicesPanel";
-import { RemoteSidebarEntry } from "./RemoteSidebarEntry";
 import { useI18n } from "../i18n";
 import { useAccount } from "../state/useAccount";
+import { isLoomWebRuntime } from "../webBridge";
 import {
-  isLoomWebRuntime,
-  selectedWebDeviceId,
-  webExecutionMode,
-  type WebDeviceStatus,
-} from "../webBridge";
+  discoverLocalLoomHost,
+  isWindowsBrowser,
+  LOOM_WINDOWS_INSTALLER_URL,
+  pairLocalLoomHost,
+  rememberLocalLoomHost,
+  type LocalLoomHost,
+} from "../localHostDiscovery";
 import "./web-smirel.css";
+import "../web-gate.css";
 
-type HostState = "idle" | "checking" | "online" | "offline" | "unbound";
-
-// Product contract: Other computers are never selected automatically; remote control belongs in Loom Remote.
-
-const COPY = {
-  en: {
-    signIn: "Sign in to use Loom on this computer. Loom Web will not silently connect to another computer on your account.",
-    connectLocal: "Connect Loom on this computer",
-    connectingLocal: "Connecting to this computer…",
-    localOffline: "Loom on this computer is offline",
-    connectRemote: "Connecting to remote computer…",
-    remoteOffline: "Remote computer is offline",
-    localSetup: "Open Loom on this computer, then choose “Open Loom Web” from the Loom tray once. This browser will remember this computer.",
-    localConnecting: "Establishing a secure connection between this browser and your local Loom Host.",
-    localOfflineHint: "Start Loom on this computer. The Desktop window may close while Loom Host keeps running in the background.",
-    remoteConnecting: "Connecting to the computer you explicitly selected in Loom Remote.",
-    remoteOfflineHint: "That remote computer is unavailable right now. Choose another computer or return to this computer.",
-    remoteDevices: "Remote devices",
-  },
-  zh: {
-    signIn: "登录后使用当前电脑上的 Loom。Loom Web 不会自动连接到你账号里的其他电脑。",
-    connectLocal: "连接当前电脑上的 Loom",
-    connectingLocal: "正在连接当前电脑…",
-    localOffline: "当前电脑上的 Loom 已离线",
-    connectRemote: "正在连接远程电脑…",
-    remoteOffline: "远程电脑已离线",
-    localSetup: "在当前电脑打开 Loom，然后从托盘选择一次「Open Loom Web」。这个浏览器会记住当前电脑。",
-    localConnecting: "正在建立浏览器与本机 Loom Host 的安全连接。",
-    localOfflineHint: "启动当前电脑上的 Loom。Desktop 窗口可以关闭，Loom Host 会继续在后台保持连接。",
-    remoteConnecting: "正在连接你在 Loom Remote 中明确选择的电脑。",
-    remoteOfflineHint: "这台远程电脑当前不可用。你可以选择另一台电脑，或返回当前电脑。",
-    remoteDevices: "远程设备",
-  },
-} as const;
+type HostState = "idle" | "discovering" | "pairing" | "connecting" | "online" | "missing" | "offline";
+type DeviceStatus = { online?: boolean; device?: { id?: string; name?: string; platform?: string; version?: string } | null };
 
 const SMIREL_LOGO = "/smirel-logo.svg";
+const DISCOVERY_INTERVAL_MS = 1_500;
+const AUTO_PAIR_ATTEMPTS = 3;
 
 function SmirelShell({ children, compact = false }: { children: ReactNode; compact?: boolean }) {
   const { language } = useI18n();
@@ -112,22 +84,20 @@ export function WebAppGate({ children }: { children: ReactNode }) {
   const account = useAccount();
   const { language } = useI18n();
   const zh = language === "zh-CN";
-  const copy = COPY[zh ? "zh" : "en"];
   const web = isLoomWebRuntime();
-  const selectedDeviceId = web ? selectedWebDeviceId() : "";
-  const remoteMode = web ? webExecutionMode() === "remote" : false;
   const [hostState, setHostState] = useState<HostState>("idle");
   const [hostError, setHostError] = useState("");
-  const [selectedDeviceName, setSelectedDeviceName] = useState("");
-  const [remoteOpen, setRemoteOpen] = useState(false);
+  const [localHost, setLocalHost] = useState<LocalLoomHost | null>(null);
+  const [discoveryNonce, setDiscoveryNonce] = useState(0);
+  const [pairing, setPairing] = useState(false);
+  const [pairAttempts, setPairAttempts] = useState(0);
+  const [pairingSucceeded, setPairingSucceeded] = useState(false);
 
   useEffect(() => {
     if (!web) return;
     document.documentElement.dataset.loomWeb = "true";
     document.title = "Loom Web · Smirel";
-    return () => {
-      delete document.documentElement.dataset.loomWeb;
-    };
+    return () => { delete document.documentElement.dataset.loomWeb; };
   }, [web]);
 
   useEffect(() => {
@@ -137,77 +107,153 @@ export function WebAppGate({ children }: { children: ReactNode }) {
     return () => window.removeEventListener("loom:web-auth-changed", refresh);
   }, [account.refresh, web]);
 
-  useEffect(() => {
-    if (!web) return;
-    const openRemote = () => setRemoteOpen(true);
-    window.addEventListener("loom:web-open-remote", openRemote);
-    return () => window.removeEventListener("loom:web-open-remote", openRemote);
-  }, [web]);
-
-  useEffect(() => {
-    if (!web || !account.ready || !account.account.authenticated || !account.account.user) {
-      setHostState("idle");
+  const connectCurrentHost = useCallback(async () => {
+    if (!web || !account.ready || !account.account.authenticated) return;
+    setHostState("connecting");
+    try {
+      await window.loom.connect();
+      setHostState("online");
       setHostError("");
-      return;
+    } catch (cause) {
+      const error = cause as Error & { code?: string };
+      setHostState("offline");
+      setHostError(error.message || String(cause));
     }
-    if (!selectedDeviceId) {
-      setHostState("unbound");
-      setHostError("");
-      return;
-    }
+  }, [account.account.authenticated, account.ready, web]);
 
-    let cancelled = false;
-    let connecting = false;
+  useEffect(() => {
+    if (!web || !account.ready || !account.account.authenticated) return;
+    void connectCurrentHost();
+  }, [account.account.authenticated, account.ready, connectCurrentHost, web]);
 
-    const connectHost = async () => {
-      if (connecting) return;
-      connecting = true;
-      if (!cancelled) setHostState("checking");
-      try {
-        await window.loom.connect();
-        if (!cancelled) {
-          setHostState("online");
-          setHostError("");
-        }
-      } catch (cause) {
-        if (!cancelled) {
-          const error = cause as Error & { code?: string };
-          setHostState(error.code === "HOST_NOT_SELECTED" ? "unbound" : "offline");
-          setHostError(error.message || String(cause));
-        }
-      } finally {
-        connecting = false;
-      }
-    };
-
+  useEffect(() => {
+    if (!web || !account.ready || !account.account.authenticated) return;
     const onDeviceStatus = (event: Event) => {
-      const detail = (event as CustomEvent<WebDeviceStatus>).detail;
-      if (detail?.selectedDeviceId && detail.selectedDeviceId !== selectedDeviceId) return;
-      setSelectedDeviceName(String(detail?.device?.name || ""));
-      if (!detail?.online) {
-        setHostState("offline");
-        setHostError(remoteMode ? copy.remoteOffline : copy.localOffline);
+      const detail = (event as CustomEvent<DeviceStatus>).detail;
+      if (detail?.online) {
+        void connectCurrentHost();
         return;
       }
-      void connectHost();
+      setHostState((current) => current === "online" ? "offline" : current);
+    };
+    window.addEventListener("loom:web-device-status", onDeviceStatus);
+    return () => window.removeEventListener("loom:web-device-status", onDeviceStatus);
+  }, [account.account.authenticated, account.ready, connectCurrentHost, web]);
+
+  useEffect(() => {
+    if (!web || !account.ready || !account.account.authenticated || !account.account.user) return;
+    let cancelled = false;
+    let timer: number | null = null;
+    let inFlight = false;
+
+    const probe = async () => {
+      if (inFlight || cancelled) return;
+      inFlight = true;
+      const host = await discoverLocalLoomHost();
+      inFlight = false;
+      if (cancelled) return;
+
+      if (host) {
+        rememberLocalLoomHost(host.deviceId);
+        setLocalHost(host);
+        if (host.relayReady) {
+          setPairAttempts(0);
+          setPairingSucceeded(false);
+          void connectCurrentHost();
+        } else if (pairing) {
+          setHostState("pairing");
+        } else if (pairingSucceeded) {
+          setHostState("connecting");
+        }
+      } else {
+        setLocalHost(null);
+        setHostState((current) => (
+          current === "online" || current === "connecting" || current === "pairing"
+            ? current
+            : "missing"
+        ));
+      }
+
+      timer = window.setTimeout(probe, DISCOVERY_INTERVAL_MS);
     };
 
-    window.addEventListener("loom:web-device-status", onDeviceStatus);
-    void connectHost();
+    void probe();
     return () => {
       cancelled = true;
-      window.removeEventListener("loom:web-device-status", onDeviceStatus);
+      if (timer !== null) window.clearTimeout(timer);
     };
-  }, [account.account.authenticated, account.account.user, account.ready, copy.localOffline, copy.remoteOffline, remoteMode, selectedDeviceId, web]);
+  }, [
+    account.account.authenticated,
+    account.account.user,
+    account.ready,
+    connectCurrentHost,
+    discoveryNonce,
+    pairing,
+    pairingSucceeded,
+    web,
+  ]);
+
+  useEffect(() => {
+    if (
+      !web
+      || !account.ready
+      || !account.account.authenticated
+      || !localHost
+      || localHost.relayReady
+      || pairing
+      || pairingSucceeded
+      || pairAttempts >= AUTO_PAIR_ATTEMPTS
+    ) return;
+
+    let cancelled = false;
+    const delay = pairAttempts === 0 ? 350 : 1_500 * (pairAttempts + 1);
+    const timer = window.setTimeout(() => {
+      void (async () => {
+        if (cancelled) return;
+        setPairing(true);
+        setHostState("pairing");
+        setHostError("");
+        const result = await pairLocalLoomHost();
+        if (cancelled) return;
+        setPairing(false);
+        setPairAttempts((value) => value + 1);
+        if (result.ok) {
+          setPairingSucceeded(true);
+          setHostState("connecting");
+          setHostError("");
+          setDiscoveryNonce((value) => value + 1);
+        } else {
+          setHostState("offline");
+          setHostError(result.error);
+        }
+      })();
+    }, delay);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [
+    account.account.authenticated,
+    account.ready,
+    localHost,
+    pairAttempts,
+    pairing,
+    pairingSucceeded,
+    web,
+  ]);
+
+  const retry = useCallback(() => {
+    setPairAttempts(0);
+    setPairingSucceeded(false);
+    setPairing(false);
+    setHostError("");
+    setHostState("discovering");
+    setDiscoveryNonce((value) => value + 1);
+    void connectCurrentHost();
+  }, [connectCurrentHost]);
 
   if (!web) return children;
-
-  const remoteSurface = (
-    <>
-      <RemoteSidebarEntry />
-      <RemoteControlSurface open={remoteOpen} onClose={() => setRemoteOpen(false)} />
-    </>
-  );
 
   if (!account.ready || !account.account.authenticated || !account.account.user) {
     return (
@@ -236,42 +282,89 @@ export function WebAppGate({ children }: { children: ReactNode }) {
   }
 
   if (hostState !== "online") {
-    const unbound = hostState === "unbound";
-    const checking = hostState === "checking" || hostState === "idle";
-    const title = remoteMode
-      ? checking ? copy.connectRemote : copy.remoteOffline
-      : unbound ? copy.connectLocal : checking ? copy.connectingLocal : copy.localOffline;
-    const detail = remoteMode
-      ? checking ? copy.remoteConnecting : copy.remoteOfflineHint
-      : unbound ? copy.localSetup : checking ? copy.localConnecting : copy.localOfflineHint;
+    const discovering = hostState === "idle" || hostState === "discovering";
+    const connecting = hostState === "connecting";
+    const pairingHost = hostState === "pairing" || pairing;
+    const missing = hostState === "missing" && !localHost;
+    const pairingExhausted = Boolean(
+      localHost && !localHost.relayReady && pairAttempts >= AUTO_PAIR_ATTEMPTS && !pairingSucceeded
+    );
+    const pending = discovering || connecting || pairingHost;
+
+    const title = pairingHost
+      ? (zh ? "正在安全关联 Loom Host…" : "Linking Loom Host securely…")
+      : connecting
+        ? (zh ? "正在连接你的 Loom Host…" : "Connecting to your Loom Host…")
+        : missing
+          ? (zh ? "当前没有在线 Loom Host" : "No Loom Host is online")
+          : pairingExhausted
+            ? (zh ? "Loom Host 需要重新关联" : "Loom Host needs attention")
+            : (zh ? "正在重新连接 Loom Host…" : "Reconnecting Loom Host…");
+
+    const detail = missing
+      ? (zh
+          ? "登录后网页会自动连接这个账号当前在线的 Loom Host。若你想让这台电脑成为 Host，只需安装一次 Loom。"
+          : "After sign-in, Loom Web automatically follows the current online Host for this account. Install Loom once only if you want this computer to become that Host.")
+      : pairingHost
+        ? (zh
+            ? "正在用短时一次性票据授权这台电脑；浏览器登录凭据不会交给 localhost。"
+            : "This computer is being authorized with a short-lived one-time ticket; browser credentials are never exposed to localhost.")
+        : pairingExhausted
+          ? (zh ? "自动关联没有完成，点击重试即可。" : "Automatic linking did not finish. Retry here.")
+          : (zh
+              ? "网页只做安全中继；Agent、会话、工具和权限仍全部运行在当前 Loom Host。"
+              : "The web app is only a secure relay; Agent, sessions, tools, and approvals stay on the current Loom Host.");
+
+    const statusLabel = pairingHost
+      ? (zh ? "安全关联中" : "PAIRING")
+      : pending
+        ? (zh ? "连接中" : "CONNECTING")
+        : missing
+          ? (zh ? "HOST 离线" : "HOST OFFLINE")
+          : pairingExhausted
+            ? (zh ? "需要重试" : "RETRY")
+            : (zh ? "离线" : "OFFLINE");
 
     return (
-      <>
-        <SmirelShell compact>
-          <section className="smirel-web-connect-card" aria-label={remoteMode ? copy.remoteDevices : zh ? "Loom Host 连接" : "Loom Host connection"}>
-            <div className="smirel-web-card-meta">
-              <span>{remoteMode ? "LOOM REMOTE" : "LOOM HOST"}</span>
-              <i className={checking ? "is-pending" : unbound ? "is-ready" : "is-offline"}><b aria-hidden="true" />{checking ? "CONNECTING" : unbound ? "READY" : "OFFLINE"}</i>
-            </div>
-            <img className="smirel-web-card-logo" src={SMIREL_LOGO} alt="Smirel" />
-            <h2>{title}</h2>
-            {remoteMode && selectedDeviceName ? <div className="web-host-selected-device">{selectedDeviceName}</div> : null}
-            <p>{detail}</p>
-            {checking ? <div className="smirel-web-progress" aria-hidden="true"><span /></div> : null}
-            {!unbound && !checking && hostError ? <p className="smirel-web-error">{hostError}</p> : null}
-            <div className="web-host-gate-actions">
-              <button type="button" className="button secondary" onClick={() => setRemoteOpen(true)}>{copy.remoteDevices}</button>
-            </div>
-            <div className="smirel-web-connection-note">
-              <span className="smirel-web-lock" aria-hidden="true">⌁</span>
-              {zh ? "Remote 设备不会被自动选择。远程控制仍需从 Loom Remote 明确进入。" : "Remote devices are never selected automatically. Remote control remains an explicit Loom Remote action."}
-            </div>
-          </section>
-        </SmirelShell>
-        {remoteSurface}
-      </>
+      <SmirelShell compact>
+        <section className="smirel-web-connect-card" aria-label={zh ? "Loom Host 连接" : "Loom Host connection"}>
+          <div className="smirel-web-card-meta">
+            <span>LOOM HOST</span>
+            <i className={pending ? "is-pending" : missing ? "is-ready" : "is-offline"}>
+              <b aria-hidden="true" />{statusLabel}
+            </i>
+          </div>
+          <img className="smirel-web-card-logo" src={SMIREL_LOGO} alt="Smirel" />
+          <h2>{title}</h2>
+          <p>{detail}</p>
+          {pending ? <div className="smirel-web-progress" aria-hidden="true"><span /></div> : null}
+
+          <div className="web-gate-actions">
+            {missing && isWindowsBrowser() ? (
+              <a className="web-gate-link primary" href={LOOM_WINDOWS_INSTALLER_URL}>
+                {zh ? "安装 Loom Host" : "Install Loom Host"}
+              </a>
+            ) : null}
+            <button className="web-gate-button secondary" type="button" onClick={retry}>
+              {zh ? "重新连接" : "Reconnect"}
+            </button>
+          </div>
+
+          {missing && !isWindowsBrowser() ? (
+            <p className="web-gate-meta">{zh ? "Loom Host 安装器目前支持 Windows。" : "The Loom Host installer is currently available for Windows."}</p>
+          ) : null}
+          {hostError ? <p className="smirel-web-error">{hostError}</p> : null}
+
+          <div className="smirel-web-connection-note">
+            <span className="smirel-web-lock" aria-hidden="true">⌁</span>
+            {zh
+              ? "一个 Loom 账号只维护一个当前 Host；新的 Desktop Host 上线时会安全替换旧 Host，所有网页登录会自动跟随。"
+              : "Each Loom account has one current Host. A newly connected Desktop Host safely replaces the old one and every web session follows automatically."}
+          </div>
+        </section>
+      </SmirelShell>
     );
   }
 
-  return <>{children}{remoteSurface}</>;
+  return children;
 }

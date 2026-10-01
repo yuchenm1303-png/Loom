@@ -12,14 +12,15 @@ from typing import Any
 
 from app.ai.model_context import model_context_limits_from_provider_listing, model_context_limits_to_camel
 from app.ai.model_selection_store import ModelSelectionStore
+from app.ai.model_store import ModelConfigStore
 from app.ai.reasoning import ReasoningRequest
 from app.ai.reasoning_catalog import resolved_reasoning
 from app.ai.reasoning_store import ReasoningConfigStore
+from loom_model_bridge import _managed_relay_base_url, _managed_relay_key
 
 
 ANT_LING_SELECTION = "builtin:ant-ling"
 ANT_LING_SELECTION_PREFIX = "builtin:ant-ling:"
-ANT_LING_BASE_URL = "https://api.ant-ling.com/v1"
 ANT_LING_DEFAULT_MODEL = "Ling-3.0-flash"
 ANT_LING_FALLBACK_MODEL_IDS = (
     "Ling-3.0-flash",
@@ -29,9 +30,6 @@ ANT_LING_FALLBACK_MODEL_IDS = (
     "Ring-2.6-1T",
     "Ling-2.6-flash",
 )
-_KEYRING_SERVICE = "loom-agent"
-_CREDENTIAL_ALIAS = "builtin/ant-ling"
-_KEY_ENV = ("ANT_LING_API_KEY", "LOOM_ANT_LING_API_KEY")
 _DISPLAY_NAMES = {
     "ling-3.0-flash": "Ling 3.0 Flash",
     "ling-3.0-flash-vl": "Ling 3.0 Flash VL",
@@ -48,38 +46,26 @@ def _home() -> Path:
     return Path(raw).expanduser().resolve() if raw else (Path.home() / ".loom").resolve()
 
 
-def _credential_get() -> str:
-    try:
-        import keyring
+def _relay_key() -> str:
+    """Return Loom's customer/device Relay credential, never an Ant Ling key.
 
-        return str(keyring.get_password(_KEYRING_SERVICE, _CREDENTIAL_ALIAS) or "").strip()
-    except Exception:
-        return ""
+    The Ant Ling upstream credential stays on Muxway.  The desktop only owns a
+    Relay credential whose server-side group decides whether Ling/Ring models
+    are visible and callable for this installation/user package.
+    """
+
+    store = ModelConfigStore(_home())
+    return str(
+        _managed_relay_key(
+            store,
+            repo_root=Path(__file__).resolve().parent,
+        )
+        or ""
+    ).strip()
 
 
-def _credential_set(value: str) -> None:
-    try:
-        import keyring
-
-        keyring.set_password(_KEYRING_SERVICE, _CREDENTIAL_ALIAS, value)
-    except Exception as exc:
-        raise RuntimeError(f"could not save the credential in the OS credential store: {exc}") from exc
-
-
-def _api_key() -> str:
-    secret = _credential_get()
-    if secret:
-        return secret
-    for name in _KEY_ENV:
-        value = str(os.environ.get(name) or "").strip()
-        if not value:
-            continue
-        try:
-            _credential_set(value)
-        except RuntimeError:
-            pass
-        return value
-    return ""
+def _relay_base_url() -> str:
+    return _managed_relay_base_url()
 
 
 def _selection_for_model(model: str) -> str:
@@ -101,6 +87,11 @@ def _model_from_selection(selection: str) -> str | None:
     return None
 
 
+def _is_ant_ling_model(model: str) -> bool:
+    folded = str(model or "").strip().casefold()
+    return folded.startswith("ling-") or folded.startswith("ring-")
+
+
 def _display_name(model: str) -> str:
     value = str(model or "").strip()
     return _DISPLAY_NAMES.get(value.casefold(), value)
@@ -118,16 +109,18 @@ def _reasoning_key(selection: str, model: str) -> str:
 def _profile(
     model: str,
     *,
-    configured: bool,
     source: str,
     reasoning_store: ReasoningConfigStore,
 ) -> dict[str, Any]:
     model = str(model or "").strip()
+    if not _is_ant_ling_model(model):
+        raise ValueError(f"not an Ant Ling model id: {model!r}")
     selection = _selection_for_model(model)
+    base_url = _relay_base_url()
     capability, selected = resolved_reasoning(
         model=model,
         adapter="openai-compatible",
-        base_url=ANT_LING_BASE_URL,
+        base_url=base_url,
         saved=reasoning_store.get(_reasoning_key(selection, model)) or reasoning_store.get(selection),
     )
     payload: dict[str, Any] = {
@@ -139,12 +132,16 @@ def _profile(
         "groupName": "Ant Ling",
         "groupOrder": 25,
         "adapter": "openai-compatible",
-        "baseUrl": ANT_LING_BASE_URL,
+        "baseUrl": base_url,
         "model": model,
         "vision": model.casefold().endswith("-vl"),
-        "configured": bool(configured),
+        # A profile exists only after Muxway advertises it to this Relay
+        # credential, so the built-in provider is already connected from the
+        # user's point of view. There is deliberately no Ant Ling key prompt.
+        "configured": True,
         "available": True,
         "catalogSource": source,
+        "managed": True,
     }
     limits = _DISCOVERED_LIMITS.get(model.casefold())
     if limits:
@@ -156,25 +153,34 @@ def _profile(
     return payload
 
 
-def _fetch_models(api_key: str, timeout: float = 3.5) -> tuple[list[str], bool]:
+def _fetch_models(relay_key: str, timeout: float = 3.5) -> list[str]:
+    """Read the authoritative Ant Ling entitlement from Muxway `/models`.
+
+    No local fallback is used here.  If the server does not advertise a Ling or
+    Ring model to this Relay credential, Loom must not surface it as a built-in
+    model.  The Relay also enforces the same model list on inference requests,
+    so a hand-crafted client request cannot bypass the UI entitlement.
+    """
+
+    secret = str(relay_key or "").strip()
+    if not secret:
+        return []
     request = urllib.request.Request(
-        f"{ANT_LING_BASE_URL}/models",
+        f"{_relay_base_url()}/models",
         headers={
-            "Authorization": f"Bearer {api_key}",
+            "Authorization": f"Bearer {secret}",
             "Accept": "application/json",
-            "User-Agent": "Loom/ant-ling",
+            "User-Agent": "Loom/ant-ling-managed",
         },
     )
     try:
         with urllib.request.urlopen(request, timeout=timeout) as response:
             payload = json.loads(response.read().decode("utf-8"))
-    except urllib.error.HTTPError as exc:
-        return [], exc.code in {401, 403}
-    except (OSError, urllib.error.URLError, json.JSONDecodeError):
-        return [], False
+    except (OSError, urllib.error.URLError, urllib.error.HTTPError, json.JSONDecodeError):
+        return []
     data = payload.get("data") if isinstance(payload, dict) else None
     if not isinstance(data, list):
-        return [], False
+        return []
 
     models: list[str] = []
     seen: set[str] = set()
@@ -183,7 +189,7 @@ def _fetch_models(api_key: str, timeout: float = 3.5) -> tuple[list[str], bool]:
             continue
         model_id = str(item.get("id") or "").strip()
         folded = model_id.casefold()
-        if not model_id or folded in seen:
+        if not model_id or folded in seen or not _is_ant_ling_model(model_id):
             continue
         seen.add(folded)
         models.append(model_id)
@@ -195,54 +201,46 @@ def _fetch_models(api_key: str, timeout: float = 3.5) -> tuple[list[str], bool]:
         }
         if mapped:
             _DISCOVERED_LIMITS[folded] = mapped
-    return models, False
+    return models
 
 
 def _registry() -> dict[str, Any]:
     home = _home()
     reasoning_store = ReasoningConfigStore(home)
     selection_store = ModelSelectionStore(home)
-    key = _api_key()
-    discovered: list[str] = []
-    rejected = False
-    if key:
-        discovered, rejected = _fetch_models(key)
-    model_ids = discovered or list(ANT_LING_FALLBACK_MODEL_IDS)
-    configured = bool(key) and not rejected
-    source = "provider" if discovered else "fallback"
+    relay_key = _relay_key()
+    model_ids = _fetch_models(relay_key) if relay_key else []
     profiles = [
-        _profile(model, configured=configured, source=source, reasoning_store=reasoning_store)
+        _profile(model, source="provider", reasoning_store=reasoning_store)
         for model in model_ids
     ]
     active = str(selection_store.get() or "").strip()
     return {
         "profiles": profiles,
-        "activeSelection": active if _model_from_selection(active) else None,
+        "activeSelection": active if profiles and _model_from_selection(active) else None,
     }
 
 
 def _resolve(selection: str) -> dict[str, Any]:
     model = _model_from_selection(selection)
-    if not model:
+    if not model or not _is_ant_ling_model(model):
         raise ValueError(f"unknown Ant Ling selection: {selection!r}")
-    key = _api_key()
-    if not key:
-        raise RuntimeError("Ant Ling API key is not configured. Open the Ant Ling model group and connect it first.")
+    relay_key = _relay_key()
+    if not relay_key:
+        raise RuntimeError(
+            "Loom managed-model access is not provisioned. Sign in/use a Loom package with built-in model access, "
+            "or add your own Ant Ling API under Add connection."
+        )
     reasoning_store = ReasoningConfigStore(_home())
-    profile = _profile(model, configured=True, source="runtime", reasoning_store=reasoning_store)
-    return {**profile, "provider": "openai-compatible", "apiKey": key}
+    profile = _profile(model, source="runtime", reasoning_store=reasoning_store)
+    return {**profile, "provider": "openai-compatible", "apiKey": relay_key}
 
 
 def _describe(selection: str, model: str) -> dict[str, Any]:
     if not _model_from_selection(selection):
         raise ValueError(f"unknown Ant Ling selection: {selection!r}")
     reasoning_store = ReasoningConfigStore(_home())
-    return _profile(
-        model,
-        configured=bool(_api_key()),
-        source="runtime",
-        reasoning_store=reasoning_store,
-    )
+    return _profile(model, source="runtime", reasoning_store=reasoning_store)
 
 
 def _set_reasoning(selection: str, model: str, kind: str, value: str) -> dict[str, Any]:
@@ -250,7 +248,7 @@ def _set_reasoning(selection: str, model: str, kind: str, value: str) -> dict[st
         raise ValueError(f"unknown Ant Ling selection: {selection!r}")
     home = _home()
     reasoning_store = ReasoningConfigStore(home)
-    profile = _profile(model, configured=bool(_api_key()), source="runtime", reasoning_store=reasoning_store)
+    profile = _profile(model, source="runtime", reasoning_store=reasoning_store)
     capability = profile.get("reasoning")
     if not isinstance(capability, dict):
         raise ValueError("the selected model does not advertise reasoning controls")
@@ -267,7 +265,7 @@ def _set_reasoning(selection: str, model: str, kind: str, value: str) -> dict[st
     if requested.value not in supported:
         raise ValueError(f"reasoning value {requested.value!r} is not supported by the selected model")
     reasoning_store.set(_reasoning_key(selection, model), requested)
-    return _profile(model, configured=bool(_api_key()), source="runtime", reasoning_store=reasoning_store)
+    return _profile(model, source="runtime", reasoning_store=reasoning_store)
 
 
 def _read_payload() -> dict[str, Any]:
@@ -300,11 +298,10 @@ def main(argv: list[str] | None = None) -> int:
         elif command == "describe-model":
             result = _describe(str(payload.get("selection") or ""), str(payload.get("model") or ""))
         elif command == "set-key":
-            api_key = str(payload.get("apiKey") or "").strip()
-            if not api_key:
-                raise ValueError("API key must not be empty")
-            _credential_set(api_key)
-            result = {"configured": True}
+            raise RuntimeError(
+                "Built-in Ant Ling is managed by Loom/Muxway and does not accept an upstream key here. "
+                "Use Add connection when you want to call Ant Ling with your own API key."
+            )
         elif command == "set-active":
             selection = str(payload.get("selection") or "").strip()
             if not _model_from_selection(selection):

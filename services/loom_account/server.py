@@ -25,6 +25,7 @@ from .search import SearchServiceError, search as shared_search
 
 _EMAIL_RE = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
 _PASSWORD_ITERATIONS = 600_000
+_PAIR_TTL_SECONDS = 120
 
 # Peers allowed to set the client address through a forwarding header. The
 # service is meant to sit behind a TLS-terminating reverse proxy, so loopback is
@@ -222,6 +223,7 @@ class AccountStore:
             columns = {str(row[1]) for row in db.execute("PRAGMA table_info(users)")}
             if "role" not in columns:
                 db.execute("ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'user'")
+            db.execute("UPDATE users SET role = 'user' WHERE role NOT IN ('user', 'admin', 'owner')")
 
     @staticmethod
     def _safe_user(row: sqlite3.Row) -> dict[str, Any]:
@@ -468,7 +470,9 @@ class AccountStore:
                 "active_sessions": int(db.execute("SELECT COUNT(*) FROM sessions WHERE revoked_at IS NULL AND refresh_expires_at > ?", (now,)).fetchone()[0]),
                 "active_24h": int(db.execute("SELECT COUNT(DISTINCT user_id) FROM sessions WHERE last_used_at >= ?", (day_ago,)).fetchone()[0]),
                 "registrations_24h": int(db.execute("SELECT COUNT(*) FROM users WHERE created_at >= ?", (day_ago,)).fetchone()[0]),
+                "admins": int(db.execute("SELECT COUNT(*) FROM users WHERE role = 'admin'").fetchone()[0]),
                 "owners": int(db.execute("SELECT COUNT(*) FROM users WHERE role = 'owner'").fetchone()[0]),
+                "total_sessions": int(db.execute("SELECT COUNT(*) FROM sessions").fetchone()[0]),
                 "audit_events_24h": int(db.execute("SELECT COUNT(*) FROM audit_logs WHERE created_at >= ?", (day_ago,)).fetchone()[0]),
                 "generated_at": now,
             }
@@ -482,7 +486,24 @@ class AccountStore:
                 GROUP BY users.id ORDER BY users.created_at DESC, users.id DESC LIMIT ?""",
                 (now, max(1, min(int(limit), 500))),
             ).fetchall()
-        return [{**self._safe_user(row), "updated_at": int(row["updated_at"]), "active_sessions": int(row["active_sessions"] or 0), "last_seen_at": int(row["last_seen_at"]) if row["last_seen_at"] is not None else None} for row in rows]
+        return [{**self._safe_user(row), "updated_at": int(row["updated_at"]), "active_sessions": int(row["active_sessions"] or 0), "last_seen_at": int(row["last_seen_at"]) if row["last_seen_at"] is not None else None, "verified": None} for row in rows]
+
+    def admin_user(self, user_id: int) -> dict[str, Any]:
+        now = _now()
+        with self._connect() as db:
+            row = db.execute(
+                """SELECT users.*, COUNT(CASE WHEN sessions.revoked_at IS NULL AND sessions.refresh_expires_at > ? THEN 1 END) AS active_sessions, MAX(sessions.last_used_at) AS last_seen_at
+                FROM users LEFT JOIN sessions ON sessions.user_id = users.id
+                WHERE users.id = ? GROUP BY users.id""",
+                (now, int(user_id)),
+            ).fetchone()
+            if row is None:
+                raise AccountError(HTTPStatus.NOT_FOUND, "USER_NOT_FOUND", "User not found.")
+            sessions = db.execute(
+                "SELECT id, created_at, last_used_at, refresh_expires_at, revoked_at FROM sessions WHERE user_id = ? ORDER BY last_used_at DESC LIMIT 100",
+                (int(user_id),),
+            ).fetchall()
+        return {**self._safe_user(row), "updated_at": int(row["updated_at"]), "active_sessions": int(row["active_sessions"] or 0), "last_seen_at": int(row["last_seen_at"]) if row["last_seen_at"] is not None else None, "verified": None, "sessions": [dict(item) for item in sessions]}
 
     def admin_sessions(self, limit: int = 300) -> list[dict[str, Any]]:
         with self._connect() as db:
@@ -492,6 +513,21 @@ class AccountStore:
                 (max(1, min(int(limit), 1000)),),
             ).fetchall()
         return [dict(row) for row in rows]
+
+    def admin_system(self) -> dict[str, Any]:
+        with self._connect() as db:
+            db.execute("SELECT 1").fetchone()
+        smtp_configured = bool(
+            (os.getenv("LOOM_SMTP_HOST") or os.getenv("SMTP_HOST"))
+            and (os.getenv("LOOM_SMTP_FROM") or os.getenv("SMTP_FROM"))
+        )
+        return {
+            "account_api": {"status": "healthy"},
+            "database": {"status": "healthy", "engine": "SQLite"},
+            "smtp": {"status": "configured" if smtp_configured else "not_configured"},
+            "release": str(os.getenv("LOOM_RELEASE") or "unknown"),
+            "generated_at": _now(),
+        }
 
     def admin_audit(self, limit: int = 200) -> list[dict[str, Any]]:
         with self._connect() as db:
@@ -548,6 +584,21 @@ class AccountStore:
             result = db.execute("UPDATE sessions SET revoked_at = COALESCE(revoked_at, ?) WHERE user_id = ? AND revoked_at IS NULL", (now, int(user_id)))
             self._audit(db, int(actor["id"]), "user.sessions.revoke", target_type="user", target_id=str(user_id), metadata={"count": int(result.rowcount)})
         return int(result.rowcount)
+
+    def admin_revoke_session(self, actor: dict[str, Any], session_id: str) -> bool:
+        session_id = str(session_id or "").strip()
+        if not session_id or len(session_id) > 128:
+            raise AccountError(HTTPStatus.BAD_REQUEST, "INVALID_SESSION_ID", "Session id is invalid.")
+        now = _now()
+        with self._guard, self._connect() as db:
+            row = db.execute("SELECT id, user_id, revoked_at FROM sessions WHERE id = ?", (session_id,)).fetchone()
+            if row is None:
+                raise AccountError(HTTPStatus.NOT_FOUND, "SESSION_NOT_FOUND", "Session not found.")
+            changed = row["revoked_at"] is None
+            if changed:
+                db.execute("UPDATE sessions SET revoked_at = ? WHERE id = ? AND revoked_at IS NULL", (now, session_id))
+            self._audit(db, int(actor["id"]), "session.revoke", target_type="session", target_id=session_id, metadata={"user_id": int(row["user_id"]), "changed": changed})
+        return changed
 
     def admin_set_feature_flag(self, actor: dict[str, Any], key: str, enabled: bool, value: Any) -> dict[str, Any]:
         key = str(key or "").strip()
@@ -608,6 +659,8 @@ class AccountApplication:
     def __init__(self, store: AccountStore) -> None:
         self.store = store
         self.limiter = SlidingWindowLimiter()
+        self._pairing_guard = threading.Lock()
+        self._pairing_tickets: dict[str, tuple[float, dict[str, Any]]] = {}
 
     def register(self, body: dict[str, Any], client_key: str) -> dict[str, Any]:
         self.limiter.check(f"register:{client_key}", 5, 60)
@@ -640,6 +693,30 @@ class AccountApplication:
             )
         return {"user": self.store.user_for_access_token(token.strip())}
 
+    def issue_device_pair(self, authorization: str, client_key: str) -> dict[str, Any]:
+        user = self.me(authorization)["user"]
+        user_id = int(user["id"])
+        self.limiter.check(f"pair-issue:{user_id}:{client_key}", 20, 60)
+        ticket = _new_token("loom_pair")
+        now = time.monotonic()
+        with self._pairing_guard:
+            self._pairing_tickets = {key: value for key, value in self._pairing_tickets.items() if value[0] > now}
+            self._pairing_tickets[ticket] = (now + _PAIR_TTL_SECONDS, dict(user))
+        return {"pairing_ticket": ticket, "expires_in": _PAIR_TTL_SECONDS}
+
+    def exchange_device_pair(self, body: dict[str, Any], client_key: str) -> dict[str, Any]:
+        self.limiter.check(f"pair-exchange:{client_key}", 30, 60)
+        ticket = str(body.get("pairing_ticket") or "").strip()
+        if not ticket.startswith("loom_pair_") or len(ticket) > 256:
+            raise AccountError(HTTPStatus.UNAUTHORIZED, "INVALID_PAIRING_TICKET", "This Loom Host pairing request is no longer valid.")
+        now = time.monotonic()
+        with self._pairing_guard:
+            entry = self._pairing_tickets.pop(ticket, None)
+        if entry is None or entry[0] <= now:
+            raise AccountError(HTTPStatus.UNAUTHORIZED, "INVALID_PAIRING_TICKET", "This Loom Host pairing request is no longer valid.")
+        user = entry[1]
+        return {**self.store.create_session(int(user["id"])), "user": user}
+
     def _admin(self, authorization: str) -> dict[str, Any]:
         user = self.me(authorization)["user"]
         if str(user.get("role")) not in {"owner", "admin"}: raise AccountError(HTTPStatus.FORBIDDEN, "ADMIN_REQUIRED", "Administrator access is required.")
@@ -648,7 +725,9 @@ class AccountApplication:
     def admin_me(self, authorization: str) -> dict[str, Any]: return {"user": self._admin(authorization)}
     def admin_overview(self, authorization: str) -> dict[str, Any]: self._admin(authorization); return self.store.admin_overview()
     def admin_users(self, authorization: str) -> dict[str, Any]: self._admin(authorization); return {"users": self.store.admin_users()}
+    def admin_user(self, user_id: int, authorization: str) -> dict[str, Any]: self._admin(authorization); return {"user": self.store.admin_user(user_id)}
     def admin_sessions(self, authorization: str) -> dict[str, Any]: self._admin(authorization); return {"sessions": self.store.admin_sessions()}
+    def admin_system(self, authorization: str) -> dict[str, Any]: self._admin(authorization); return self.store.admin_system()
     def admin_audit(self, authorization: str) -> dict[str, Any]: self._admin(authorization); return {"events": self.store.admin_audit()}
     def admin_feature_flags(self, authorization: str) -> dict[str, Any]: self._admin(authorization); return {"flags": self.store.admin_feature_flags()}
 
@@ -659,10 +738,14 @@ class AccountApplication:
 
     def admin_set_user_status(self, body: dict[str, Any], authorization: str) -> dict[str, Any]:
         actor=self._admin(authorization); return {"user": self.store.admin_set_user_status(actor, self._user_id(body), str(body.get("status") or ""))}
+    def admin_set_user_status_by_id(self, user_id: int, status: str, authorization: str) -> dict[str, Any]:
+        actor=self._admin(authorization); return {"user": self.store.admin_set_user_status(actor, int(user_id), status)}
     def admin_set_user_role(self, body: dict[str, Any], authorization: str) -> dict[str, Any]:
         actor=self._admin(authorization); return {"user": self.store.admin_set_user_role(actor, self._user_id(body), str(body.get("role") or ""))}
     def admin_revoke_user_sessions(self, body: dict[str, Any], authorization: str) -> dict[str, Any]:
         actor=self._admin(authorization); return {"ok": True, "revoked": self.store.admin_revoke_user_sessions(actor, self._user_id(body))}
+    def admin_revoke_session(self, session_id: str, authorization: str) -> dict[str, Any]:
+        actor=self._admin(authorization); return {"ok": True, "revoked": self.store.admin_revoke_session(actor, session_id)}
     def admin_set_feature_flag(self, body: dict[str, Any], authorization: str) -> dict[str, Any]:
         actor=self._admin(authorization); return {"flag": self.store.admin_set_feature_flag(actor, str(body.get("key") or ""), body.get("enabled"), body.get("value"))}
 
@@ -752,7 +835,10 @@ class AccountRequestHandler(BaseHTTPRequestHandler):
         if self.command == "GET" and path == "/v1/admin/me": return self.application.admin_me(authorization)
         if self.command == "GET" and path == "/v1/admin/overview": return self.application.admin_overview(authorization)
         if self.command == "GET" and path == "/v1/admin/users": return self.application.admin_users(authorization)
+        if self.command == "GET" and (match := re.fullmatch(r"/v1/admin/users/(\d+)", path)):
+            return self.application.admin_user(int(match.group(1)), authorization)
         if self.command == "GET" and path == "/v1/admin/sessions": return self.application.admin_sessions(authorization)
+        if self.command == "GET" and path == "/v1/admin/system": return self.application.admin_system(authorization)
         if self.command == "GET" and path == "/v1/admin/audit": return self.application.admin_audit(authorization)
         if self.command == "GET" and path == "/v1/admin/feature-flags": return self.application.admin_feature_flags(authorization)
         if self.command != "POST": raise AccountError(HTTPStatus.NOT_FOUND, "NOT_FOUND", "Endpoint not found.")
@@ -767,6 +853,12 @@ class AccountRequestHandler(BaseHTTPRequestHandler):
         if path == "/v1/auth/refresh":
             return self.application.refresh(body, self._client_key())
         if path == "/v1/auth/logout": return self.application.logout(body)
+        if match := re.fullmatch(r"/v1/admin/users/(\d+)/(disable|enable)", path):
+            return self.application.admin_set_user_status_by_id(int(match.group(1)), "disabled" if match.group(2) == "disable" else "active", authorization)
+        if match := re.fullmatch(r"/v1/admin/sessions/([^/]+)/revoke", path):
+            return self.application.admin_revoke_session(match.group(1), authorization)
+        if path == "/v1/auth/device-pair/issue": return self.application.issue_device_pair(authorization, self._client_key())
+        if path == "/v1/auth/device-pair/exchange": return self.application.exchange_device_pair(body, self._client_key())
         if path == "/v1/admin/users/status": return self.application.admin_set_user_status(body, authorization)
         if path == "/v1/admin/users/role": return self.application.admin_set_user_role(body, authorization)
         if path == "/v1/admin/users/revoke-sessions": return self.application.admin_revoke_user_sessions(body, authorization)
