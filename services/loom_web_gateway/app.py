@@ -4,15 +4,17 @@ import asyncio
 import logging
 import os
 import uuid
+from urllib.parse import urlencode
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 import httpx
 from fastapi import FastAPI, Request, Response, WebSocket, WebSocketDisconnect
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
 
 ACCOUNT_BASE_URL = os.environ.get("LOOM_ACCOUNT_API_BASE_URL", "https://account.smirel.com/v1").rstrip("/")
+WEB_ORIGIN = os.environ.get("LOOM_WEB_ORIGIN", "https://loom.smirel.com").rstrip("/")
 STATIC_DIR = Path(os.environ.get("LOOM_WEB_STATIC_DIR", "/app/static")).resolve()
 ACCESS_COOKIE = "loom_web_access"
 REFRESH_COOKIE = "loom_web_refresh"
@@ -139,10 +141,11 @@ async def _auth_form(endpoint: str, request: Request) -> Response:
         body = await request.json()
     except Exception:
         body = {}
-    status, payload = await _account_request("POST", endpoint, json_body={
-        "email": str(body.get("email") or ""),
-        "password": str(body.get("password") or ""),
-    })
+    return await _auth_action(endpoint, request, body if isinstance(body, dict) else {})
+
+
+async def _auth_action(endpoint: str, request: Request, body: dict[str, Any] | None = None) -> Response:
+    status, payload = await _account_request("POST", endpoint, json_body=body or {})
     if status != 200:
         error = payload.get("error") if isinstance(payload.get("error"), dict) else {}
         return JSONResponse({"ok": False, "error": _error(
@@ -151,9 +154,24 @@ async def _auth_form(endpoint: str, request: Request) -> Response:
             status,
         )})
     user = payload.get("user") if isinstance(payload.get("user"), dict) else None
-    response = JSONResponse({"ok": True, "snapshot": _snapshot(user)})
-    _set_session_cookies(response, payload)
-    return response
+    if user and payload.get("access_token") and payload.get("refresh_token"):
+        response = JSONResponse({"ok": True, "snapshot": _snapshot(user)})
+        _set_session_cookies(response, payload)
+        return response
+    return JSONResponse({"ok": True, **payload})
+
+
+@app.get("/api/auth/capabilities")
+async def auth_capabilities() -> Response:
+    status, payload = await _account_request("GET", "/auth/capabilities")
+    if status != 200:
+        error = payload.get("error") if isinstance(payload.get("error"), dict) else {}
+        return JSONResponse({"ok": False, "error": _error(
+            str(error.get("code") or "ACCOUNT_REQUEST_FAILED"),
+            str(error.get("message") or "Could not load sign-in methods."),
+            status,
+        )})
+    return JSONResponse({"ok": True, "capabilities": payload})
 
 
 @app.post("/api/auth/login")
@@ -164,6 +182,61 @@ async def auth_login(request: Request) -> Response:
 @app.post("/api/auth/register")
 async def auth_register(request: Request) -> Response:
     return await _auth_form("/auth/register", request)
+
+
+@app.post("/api/auth/register/start")
+async def auth_register_start(request: Request) -> Response:
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    return await _auth_action("/auth/register/start", request, body if isinstance(body, dict) else {})
+
+
+@app.post("/api/auth/verify-email")
+async def auth_verify_email(request: Request) -> Response:
+    try: body = await request.json()
+    except Exception: body = {}
+    return await _auth_action("/auth/verify-email", request, body if isinstance(body, dict) else {})
+
+
+@app.post("/api/auth/resend-email")
+async def auth_resend_email(request: Request) -> Response:
+    try: body = await request.json()
+    except Exception: body = {}
+    return await _auth_action("/auth/resend-email", request, body if isinstance(body, dict) else {})
+
+
+@app.post("/api/auth/forgot-password")
+async def auth_forgot_password(request: Request) -> Response:
+    try: body = await request.json()
+    except Exception: body = {}
+    return await _auth_action("/auth/forgot-password", request, body if isinstance(body, dict) else {})
+
+
+@app.post("/api/auth/reset-password")
+async def auth_reset_password(request: Request) -> Response:
+    try: body = await request.json()
+    except Exception: body = {}
+    return await _auth_action("/auth/reset-password", request, body if isinstance(body, dict) else {})
+
+
+@app.get("/api/auth/oauth/start/{provider}")
+async def auth_oauth_start(provider: str) -> Response:
+    provider = str(provider).casefold()
+    if provider not in {"google", "github"}:
+        return JSONResponse({"ok": False, "error": _error("OAUTH_PROVIDER_INVALID", "Unsupported sign-in provider.", 400)}, status_code=400)
+    return RedirectResponse(
+        f"{ACCOUNT_BASE_URL}/auth/oauth/{provider}/start?{urlencode({'return_to': WEB_ORIGIN + '/'})}",
+        status_code=302,
+    )
+
+
+@app.post("/api/auth/oauth/exchange")
+async def auth_oauth_exchange(request: Request) -> Response:
+    try: body = await request.json()
+    except Exception: body = {}
+    return await _auth_action("/auth/oauth/exchange", request, body if isinstance(body, dict) else {})
 
 
 @app.post("/api/auth/logout")

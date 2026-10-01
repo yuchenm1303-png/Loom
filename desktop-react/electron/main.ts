@@ -12,7 +12,7 @@ import {
   type EditModelInput,
   type ModelLaunchSpec,
 } from "./modelManager.js";
-import { LoomAccountClient, type LoomAccountSnapshot } from "./accountClient.js";
+import { LoomAccountClient, type LoomAccountSnapshot, type LoomAuthCapabilities, type LoomAuthChallenge } from "./accountClient.js";
 import { accountErrorPayload, type AccountErrorPayload } from "./accountErrors.js";
 import { closeHudOverlayWindow, createHudOverlayWindow, sendHudUpdate } from "./hudWindow.js";
 import {
@@ -1405,6 +1405,14 @@ type AccountIpcResult =
   | { ok: true; snapshot: LoomAccountSnapshot }
   | { ok: false; error: AccountErrorPayload };
 
+type AccountCapabilitiesIpcResult =
+  | { ok: true; capabilities: LoomAuthCapabilities }
+  | { ok: false; error: AccountErrorPayload };
+
+type AccountChallengeIpcResult =
+  | { ok: true; challenge: LoomAuthChallenge }
+  | { ok: false; error: AccountErrorPayload };
+
 async function runAccountAction(
   action: () => Promise<LoomAccountSnapshot>,
 ): Promise<AccountIpcResult> {
@@ -1415,12 +1423,51 @@ async function runAccountAction(
   }
 }
 
+async function runAccountCapabilities(
+  action: () => Promise<LoomAuthCapabilities>,
+): Promise<AccountCapabilitiesIpcResult> {
+  try {
+    return { ok: true, capabilities: await action() };
+  } catch (error) {
+    return { ok: false, error: accountErrorPayload(error) };
+  }
+}
+
+async function runAccountChallenge(
+  action: () => Promise<LoomAuthChallenge>,
+): Promise<AccountChallengeIpcResult> {
+  try {
+    return { ok: true, challenge: await action() };
+  } catch (error) {
+    return { ok: false, error: accountErrorPayload(error) };
+  }
+}
+
 ipcMain.handle("loom:account-status", () => runAccountAction(() => accountClient.status()));
+ipcMain.handle("loom:account-capabilities", () => runAccountCapabilities(() => accountClient.capabilities()));
 ipcMain.handle("loom:account-login", (_event, email: string, password: string) =>
   runAccountAction(() => accountClient.login(String(email || ""), String(password || "")))
 );
 ipcMain.handle("loom:account-register", (_event, email: string, password: string) =>
   runAccountAction(() => accountClient.register(String(email || ""), String(password || "")))
+);
+ipcMain.handle("loom:account-register-start", (_event, email: string, password: string) =>
+  runAccountChallenge(() => accountClient.registerStart(String(email || ""), String(password || "")))
+);
+ipcMain.handle("loom:account-verify-email", (_event, challengeId: string, code: string) =>
+  runAccountAction(() => accountClient.verifyEmail(String(challengeId || ""), String(code || "")))
+);
+ipcMain.handle("loom:account-resend-email", (_event, challengeId: string) =>
+  runAccountChallenge(() => accountClient.resendEmail(String(challengeId || "")))
+);
+ipcMain.handle("loom:account-forgot-password", (_event, email: string) =>
+  runAccountChallenge(() => accountClient.forgotPassword(String(email || "")))
+);
+ipcMain.handle("loom:account-reset-password", (_event, challengeId: string, code: string, password: string) =>
+  runAccountAction(() => accountClient.resetPassword(String(challengeId || ""), String(code || ""), String(password || "")))
+);
+ipcMain.handle("loom:account-oauth-exchange", (_event, code: string) =>
+  runAccountAction(() => accountClient.oauthExchange(String(code || "")))
 );
 ipcMain.handle("loom:account-logout", () => runAccountAction(() => accountClient.logout()));
 ipcMain.handle("loom:model-list", (_event, forceRefresh?: boolean) => modelManager.listSnapshot(Boolean(forceRefresh)));

@@ -23,6 +23,8 @@ services:
     image: loom-account:local
     restart: unless-stopped
     env_file:
+      - path: .env.auth
+        required: false
       - path: .env.search
         required: false
     environment:

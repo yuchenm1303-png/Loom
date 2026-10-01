@@ -3,6 +3,8 @@ export interface LoomAccountUser {
   email: string;
   display_name?: string;
   status: string;
+  role?: string;
+  email_verified?: boolean;
   created_at?: number;
 }
 
@@ -15,6 +17,22 @@ export interface LoomAccountSnapshot {
   serviceUrl: string;
 }
 
+export interface LoomAuthCapabilities {
+  emailVerification: boolean;
+  passwordReset: boolean;
+  google: boolean;
+  github: boolean;
+  legacyRegistration: boolean;
+}
+
+export interface LoomAuthChallenge {
+  id: string;
+  email: string;
+  purpose: "register" | "password_reset" | string;
+  expires_in: number;
+  resend_after: number;
+}
+
 /** Mirrors `AccountErrorPayload` in `desktop-react/electron/accountErrors.ts`. */
 export interface LoomAccountError {
   code: string;
@@ -22,10 +40,14 @@ export interface LoomAccountError {
   status?: number;
 }
 
-/**
- * Shape returned by the account IPC handlers. They resolve instead of rejecting
- * so the service's error `code` survives the IPC boundary.
- */
 export type LoomAccountResult =
   | { ok: true; snapshot: LoomAccountSnapshot }
+  | { ok: false; error: LoomAccountError };
+
+export type LoomAuthCapabilitiesResult =
+  | { ok: true; capabilities: LoomAuthCapabilities }
+  | { ok: false; error: LoomAccountError };
+
+export type LoomAuthChallengeResult =
+  | { ok: true; challenge: LoomAuthChallenge }
   | { ok: false; error: LoomAccountError };

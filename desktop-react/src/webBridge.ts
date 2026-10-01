@@ -1,4 +1,4 @@
-import type { LoomAccountResult } from "./types/account";
+import type { LoomAccountResult, LoomAuthCapabilitiesResult, LoomAuthChallengeResult } from "./types/account";
 import type { LoomNotification } from "./types/global";
 
 const WEB_PLATFORM_MARKER = "web";
@@ -118,7 +118,9 @@ function dispatchAuthChanged(): void {
   window.dispatchEvent(new CustomEvent("loom:web-auth-changed"));
 }
 
-async function accountRequest(path: string, init: RequestInit = {}): Promise<LoomAccountResult> {
+type AccountBridgeResult = LoomAccountResult | LoomAuthCapabilitiesResult | LoomAuthChallengeResult;
+
+async function accountRequest<T extends AccountBridgeResult = LoomAccountResult>(path: string, init: RequestInit = {}): Promise<T> {
   let response: Response;
   try {
     response = await fetch(`/api/auth/${path}`, {
@@ -137,10 +139,10 @@ async function accountRequest(path: string, init: RequestInit = {}): Promise<Loo
         code: "ACCOUNT_SERVICE_UNREACHABLE",
         message: cause instanceof Error ? cause.message : "Could not reach the Loom web service.",
       },
-    };
+    } as T;
   }
-  const payload = await response.json().catch(() => ({})) as LoomAccountResult;
-  if (payload && typeof payload === "object" && "ok" in payload) return payload;
+  const payload = await response.json().catch(() => ({})) as AccountBridgeResult;
+  if (payload && typeof payload === "object" && "ok" in payload) return payload as T;
   return {
     ok: false,
     error: {
@@ -148,7 +150,7 @@ async function accountRequest(path: string, init: RequestInit = {}): Promise<Loo
       message: `Loom web service returned an invalid response (${response.status}).`,
       status: response.status,
     },
-  };
+  } as T;
 }
 
 function stopHeartbeat(): void {
@@ -419,14 +421,33 @@ export function installWebBridge(): void {
       if (source === "dark" || source === "light") return source;
       return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
     },
-    accountStatus: () => accountRequest("status"),
+    accountStatus: () => accountRequest<LoomAccountResult>("status"),
+    accountCapabilities: () => accountRequest<LoomAuthCapabilitiesResult>("capabilities"),
     accountLogin: async (email, password) => {
-      const result = await accountRequest("login", { method: "POST", body: JSON.stringify({ email, password }) });
+      const result = await accountRequest<LoomAccountResult>("login", { method: "POST", body: JSON.stringify({ email, password }) });
       if (result.ok) dispatchAuthChanged();
       return result;
     },
     accountRegister: async (email, password) => {
-      const result = await accountRequest("register", { method: "POST", body: JSON.stringify({ email, password }) });
+      const result = await accountRequest<LoomAccountResult>("register", { method: "POST", body: JSON.stringify({ email, password }) });
+      if (result.ok) dispatchAuthChanged();
+      return result;
+    },
+    accountRegisterStart: (email, password) => accountRequest<LoomAuthChallengeResult>("register/start", { method: "POST", body: JSON.stringify({ email, password }) }),
+    accountVerifyEmail: async (challengeId, code) => {
+      const result = await accountRequest<LoomAccountResult>("verify-email", { method: "POST", body: JSON.stringify({ challenge_id: challengeId, code }) });
+      if (result.ok) dispatchAuthChanged();
+      return result;
+    },
+    accountResendEmail: (challengeId) => accountRequest<LoomAuthChallengeResult>("resend-email", { method: "POST", body: JSON.stringify({ challenge_id: challengeId }) }),
+    accountForgotPassword: (email) => accountRequest<LoomAuthChallengeResult>("forgot-password", { method: "POST", body: JSON.stringify({ email }) }),
+    accountResetPassword: async (challengeId, code, password) => {
+      const result = await accountRequest<LoomAccountResult>("reset-password", { method: "POST", body: JSON.stringify({ challenge_id: challengeId, code, password }) });
+      if (result.ok) dispatchAuthChanged();
+      return result;
+    },
+    accountOAuthExchange: async (code) => {
+      const result = await accountRequest<LoomAccountResult>("oauth/exchange", { method: "POST", body: JSON.stringify({ code }) });
       if (result.ok) dispatchAuthChanged();
       return result;
     },
