@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="zh-CN" class="wallpaper-pending">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#91c7e3" />
+  <title>Loom Admin · Smirel</title>
+  <link rel="stylesheet" href="https://smirel.com/download/styles-v3.css" />
+  <link rel="stylesheet" href="https://smirel.com/download/cosmic-bright-v1.css" />
+  <link rel="stylesheet" href="https://smirel.com/download/portal-polish-v1.css" />
+  <link rel="stylesheet" href="https://smirel.com/download/portal-polish-v2.css" />
+  <link rel="stylesheet" href="https://smirel.com/download/portal-account-v2.css" />
+  <link rel="stylesheet" href="https://smirel.com/download/layout-visual-restore-v1.css" />
+  <link rel="stylesheet" href="https://smirel.com/download/usage-admin-v1.css" />
+  <link rel="stylesheet" href="https://smirel.com/download/usage-ops-v1.css" />
+  <link rel="stylesheet" href="https://smirel.com/download/usage-ops-layout-v2.css" />
+  <link rel="stylesheet" href="./admin.css" />
+</head>
+<body class="beach-wallpaper-active loom-admin-body">
+  <div class="cosmos beach-wallpaper-active" aria-hidden="true">
+    <div class="beach-wallpaper loom-admin-wallpaper"></div>
+    <div class="cosmos-sky"></div><div class="cosmos-glow"></div>
+    <div class="cosmos-nebula cosmos-nebula-cyan"></div><div class="cosmos-nebula cosmos-nebula-violet"></div>
+    <div class="parallax-layer parallax-layer-far">
+      <span class="small-star small-star--ivory s1"></span><span class="small-star small-star--cyan s2"></span><span class="small-star small-star--ivory s3"></span><span class="small-star small-star--rose s4"></span><span class="small-star small-star--ivory s5"></span><span class="small-star small-star--cyan s6"></span><span class="small-star small-star--ivory s7"></span><span class="small-star small-star--ivory s8"></span><span class="small-star small-star--cyan s9"></span><span class="small-star small-star--rose s10"></span>
+    </div>
+    <div class="parallax-layer parallax-layer-near"><span class="major-star major-star--cyan m1"></span><span class="major-star major-star--ivory m2"></span><span class="major-star major-star--cyan m3"></span><span class="major-star major-star--rose m4"></span></div>
+    <div class="cosmos-vignette"></div>
+  </div>
+
+  <main class="release-shell usage-shell loom-admin-shell">
+    <header class="topbar fade">
+      <a class="brand loom-admin-brand" href="https://loom.smirel.com" aria-label="Loom Web">
+        <img src="https://loom.smirel.com/smirel-logo.svg" alt="Smirel" class="loom-admin-logo" />
+        <span class="brand-copy"><strong>Loom</strong><small>Admin Console</small></span>
+      </a>
+      <div class="topbar-right">
+        <nav class="portal-nav loom-admin-nav" aria-label="后台导航">
+          <a href="#overview" aria-current="page">概览</a><a href="#users">用户</a><a href="#sessions">会话</a><a href="#flags">功能开关</a><a href="#audit">审计</a>
+        </nav>
+        <div class="service-status" id="headerStatus"><i></i><span>Checking</span></div>
+        <button id="logoutButton" class="switch-account-button loom-admin-logout" type="button" hidden>退出</button>
+      </div>
+    </header>
+
+    <section class="usage-heading fade" id="overview">
+      <div><p class="eyebrow">SMIREL · LOOM CONTROL PLANE</p><h1>Loom Admin</h1><p>用户、会话、访问权限、功能开关与服务状态统一管理。</p></div>
+      <div class="usage-heading-actions"><div class="usage-updated"><span>LAST UPDATE</span><strong id="generatedAt">等待读取</strong></div><button id="refreshButton" class="switch-account-button usage-refresh" type="button">刷新</button></div>
+    </section>
+
+    <section id="authPanel" class="account-card cards loom-admin-auth-card fade">
+      <div class="account-head"><div><p class="kicker">ADMIN ACCESS</p><h2>管理员登录</h2><p class="usage-account-email">使用 Loom 账号登录。只有 owner / admin 角色可以进入管理后台。</p></div><span class="loom-admin-security-dot">SECURE</span></div>
+      <form id="loginForm" class="loom-admin-login-form">
+        <label><span>邮箱</span><input id="loginEmail" type="email" autocomplete="email" placeholder="name@example.com" required /></label>
+        <label><span>密码</span><input id="loginPassword" type="password" autocomplete="current-password" placeholder="••••••••" required /></label>
+        <button class="download-button primary-download loom-admin-login-button" type="submit">登录 Loom Admin</button>
+        <p id="loginError" class="loom-admin-error" role="alert"></p>
+      </form>
+    </section>
+
+    <div id="adminContent" hidden>
+      <section class="account-status-panel usage-status-panel fade" aria-live="polite">
+        <div class="account-status-line"><span>管理员</span><strong id="adminIdentity" data-state="ok">—</strong></div>
+        <div class="account-status-line"><span>账号服务</span><strong id="serviceState" data-state="neutral">正在检查</strong></div>
+      </section>
+
+      <section class="usage-summary-grid fade" id="summaryGrid">
+        <article class="utility-card cards usage-summary-card"><span class="utility-overline">USERS</span><h3 id="kpiUsers">0</h3><p>全部用户</p></article>
+        <article class="utility-card cards usage-summary-card"><span class="utility-overline">ACTIVE</span><h3 id="kpiActive">0</h3><p>活跃账号</p></article>
+        <article class="utility-card cards usage-summary-card"><span class="utility-overline">24H</span><h3 id="kpiActive24">0</h3><p>24h 活跃用户</p></article>
+        <article class="utility-card cards usage-summary-card"><span class="utility-overline">SESSIONS</span><h3 id="kpiSessions">0</h3><p>有效会话</p></article>
+        <article class="utility-card cards usage-summary-card"><span class="utility-overline">NEW 24H</span><h3 id="kpiNew">0</h3><p>新注册</p></article>
+        <article class="utility-card cards usage-summary-card"><span class="utility-overline">DISABLED</span><h3 id="kpiDisabled">0</h3><p>已停用</p></article>
+        <article class="utility-card cards usage-summary-card"><span class="utility-overline">OWNERS</span><h3 id="kpiOwners">0</h3><p>Owner</p></article>
+        <article class="utility-card cards usage-summary-card"><span class="utility-overline">AUDIT 24H</span><h3 id="kpiAudit">0</h3><p>管理操作</p></article>
+      </section>
+
+      <section class="usage-activity-section fade">
+        <article class="account-card cards usage-activity-card">
+          <div class="account-head usage-activity-head"><div><p class="kicker">24H ACTIVITY</p><h2>运行概览</h2><p class="usage-account-email">沿用原 Service Monitor 的活动轨与玻璃卡片组件。</p></div><span class="loom-admin-live-pill"><i></i>LIVE</span></div>
+          <div class="usage-monitor-grid">
+            <div class="usage-monitor-panel"><div class="usage-monitor-panel-head"><span>用户活动</span><strong id="activitySummary">—</strong></div><div id="activityRail" class="usage-presence-rail loom-admin-activity-rail"></div><div id="activityAxis" class="usage-monitor-axis" aria-hidden="true"></div></div>
+            <div class="usage-monitor-panel"><div class="usage-monitor-panel-head"><span>会话最近活动</span><strong id="sessionActivitySummary">—</strong></div><div id="sessionSpark" class="usage-throughput-chart loom-admin-spark"></div><div id="sessionAxis" class="usage-monitor-axis" aria-hidden="true"></div></div>
+          </div>
+          <div class="account-footer usage-monitor-legend"><span><i class="usage-legend-dot is-active"></i>有活动</span><span><i class="usage-legend-dot is-idle"></i>无记录</span><span>数据来自 Loom Account Service</span></div>
+        </article>
+      </section>
+
+      <section class="usage-accounts-section fade" id="users">
+        <div class="usage-section-head"><div><p class="kicker">USER DIRECTORY</p><h2>用户</h2></div><div class="usage-audit-tools"><input id="userSearch" class="usage-audit-search" type="search" placeholder="搜索邮箱 / 昵称 / 角色" /><span id="usersHint">0 个用户</span></div></div>
+        <div class="account-card cards loom-admin-table-card"><div class="loom-admin-table-wrap"><table class="loom-admin-table"><thead><tr><th>用户</th><th>状态</th><th>角色</th><th>会话</th><th>最后活动</th><th>注册时间</th><th>操作</th></tr></thead><tbody id="usersBody"></tbody></table></div></div>
+      </section>
+
+      <section class="usage-accounts-section fade" id="sessions">
+        <div class="usage-section-head"><div><p class="kicker">SESSION CONTROL</p><h2>会话</h2></div><span id="sessionsHint">0 条</span></div>
+        <div class="account-card cards loom-admin-table-card"><div class="loom-admin-table-wrap"><table class="loom-admin-table"><thead><tr><th>账号</th><th>Session</th><th>角色</th><th>创建</th><th>最后活动</th><th>过期</th><th>状态</th></tr></thead><tbody id="sessionsBody"></tbody></table></div></div>
+      </section>
+
+      <section class="usage-ops-section fade" id="flags">
+        <div class="usage-section-head"><div><p class="kicker">FEATURE CONTROL</p><h2>功能开关</h2></div><span>灰度与产品配置</span></div>
+        <div class="usage-ops-grid loom-admin-flag-grid">
+          <article class="account-card cards usage-ops-panel"><div class="loom-admin-panel-head"><div><span class="utility-overline">FLAGS</span><h3>Feature Flags</h3></div><button id="addFlagButton" class="switch-account-button" type="button">新增</button></div><div id="flagsList" class="loom-admin-flags-list"></div></article>
+          <article class="account-card cards usage-ops-panel"><span class="utility-overline">SYSTEM</span><h3>服务状态</h3><div id="systemHealth" class="loom-admin-health-list"></div></article>
+          <article class="account-card cards usage-ops-panel"><span class="utility-overline">SECURITY</span><h3>权限边界</h3><div class="loom-admin-security-copy"><p>所有管理 API 都在服务端校验 owner / admin 角色。</p><p>普通 Loom Session 无法调用 <code>/v1/admin/*</code>。</p><p>停用账号会同步撤销其有效 Session。</p></div></article>
+        </div>
+      </section>
+
+      <section class="usage-accounts-section fade" id="audit">
+        <div class="usage-section-head"><div><p class="kicker">AUDIT LOG</p><h2>审计记录</h2></div><span id="auditHint">0 条</span></div>
+        <div id="auditList" class="usage-diagnostic-list loom-admin-audit-list"></div>
+      </section>
+    </div>
+
+    <footer class="footer fade usage-footer"><span>© 2026 Smirel · Loom Admin</span><span>产品管理层；服务器运维继续由 SentinelX 负责。</span></footer>
+  </main>
+  <script src="./admin.js" defer></script>
+</body>
+</html>

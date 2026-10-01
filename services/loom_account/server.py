@@ -178,6 +178,7 @@ class AccountStore:
                     password_hash TEXT NOT NULL,
                     display_name TEXT NOT NULL DEFAULT '',
                     status TEXT NOT NULL DEFAULT 'active',
+                    role TEXT NOT NULL DEFAULT 'user',
                     created_at INTEGER NOT NULL,
                     updated_at INTEGER NOT NULL
                 );
@@ -197,8 +198,31 @@ class AccountStore:
                 CREATE INDEX IF NOT EXISTS idx_sessions_access_hash ON sessions(access_hash);
                 CREATE INDEX IF NOT EXISTS idx_sessions_refresh_hash ON sessions(refresh_hash);
                 CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON sessions(user_id);
+
+                CREATE TABLE IF NOT EXISTS audit_logs (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    actor_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+                    action TEXT NOT NULL,
+                    target_type TEXT NOT NULL DEFAULT '',
+                    target_id TEXT NOT NULL DEFAULT '',
+                    metadata_json TEXT NOT NULL DEFAULT '{}',
+                    created_at INTEGER NOT NULL
+                );
+                CREATE INDEX IF NOT EXISTS idx_audit_logs_created_at ON audit_logs(created_at DESC);
+                CREATE INDEX IF NOT EXISTS idx_audit_logs_actor ON audit_logs(actor_user_id);
+
+                CREATE TABLE IF NOT EXISTS feature_flags (
+                    key TEXT PRIMARY KEY,
+                    enabled INTEGER NOT NULL DEFAULT 0,
+                    value_json TEXT NOT NULL DEFAULT '{}',
+                    updated_at INTEGER NOT NULL,
+                    updated_by INTEGER REFERENCES users(id) ON DELETE SET NULL
+                );
                 """
             )
+            columns = {str(row[1]) for row in db.execute("PRAGMA table_info(users)")}
+            if "role" not in columns:
+                db.execute("ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'user'")
 
     @staticmethod
     def _safe_user(row: sqlite3.Row) -> dict[str, Any]:
@@ -207,6 +231,7 @@ class AccountStore:
             "email": str(row["email"]),
             "display_name": str(row["display_name"] or ""),
             "status": str(row["status"]),
+            "role": str(row["role"] or "user"),
             "created_at": int(row["created_at"]),
         }
 
@@ -425,6 +450,118 @@ class AccountStore:
                 (_now(), hashed),
             )
 
+    def _audit(self, db: sqlite3.Connection, actor_user_id: int | None, action: str, *, target_type: str = "", target_id: str = "", metadata: dict[str, Any] | None = None) -> None:
+        db.execute(
+            "INSERT INTO audit_logs(actor_user_id, action, target_type, target_id, metadata_json, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+            (actor_user_id, action, target_type, target_id, json.dumps(metadata or {}, ensure_ascii=False, separators=(",", ":")), _now()),
+        )
+
+    def admin_overview(self) -> dict[str, Any]:
+        now = _now()
+        day_ago = now - 86400
+        with self._connect() as db:
+            users = int(db.execute("SELECT COUNT(*) FROM users").fetchone()[0])
+            active_users = int(db.execute("SELECT COUNT(*) FROM users WHERE status = 'active'").fetchone()[0])
+            return {
+                "users": users,
+                "active_users": active_users,
+                "disabled_users": users - active_users,
+                "active_sessions": int(db.execute("SELECT COUNT(*) FROM sessions WHERE revoked_at IS NULL AND refresh_expires_at > ?", (now,)).fetchone()[0]),
+                "active_24h": int(db.execute("SELECT COUNT(DISTINCT user_id) FROM sessions WHERE last_used_at >= ?", (day_ago,)).fetchone()[0]),
+                "registrations_24h": int(db.execute("SELECT COUNT(*) FROM users WHERE created_at >= ?", (day_ago,)).fetchone()[0]),
+                "owners": int(db.execute("SELECT COUNT(*) FROM users WHERE role = 'owner'").fetchone()[0]),
+                "audit_events_24h": int(db.execute("SELECT COUNT(*) FROM audit_logs WHERE created_at >= ?", (day_ago,)).fetchone()[0]),
+                "generated_at": now,
+            }
+
+    def admin_users(self, limit: int = 200) -> list[dict[str, Any]]:
+        now = _now()
+        with self._connect() as db:
+            rows = db.execute(
+                """SELECT users.*, COUNT(CASE WHEN sessions.revoked_at IS NULL AND sessions.refresh_expires_at > ? THEN 1 END) AS active_sessions, MAX(sessions.last_used_at) AS last_seen_at
+                FROM users LEFT JOIN sessions ON sessions.user_id = users.id
+                GROUP BY users.id ORDER BY users.created_at DESC, users.id DESC LIMIT ?""",
+                (now, max(1, min(int(limit), 500))),
+            ).fetchall()
+        return [{**self._safe_user(row), "updated_at": int(row["updated_at"]), "active_sessions": int(row["active_sessions"] or 0), "last_seen_at": int(row["last_seen_at"]) if row["last_seen_at"] is not None else None} for row in rows]
+
+    def admin_sessions(self, limit: int = 300) -> list[dict[str, Any]]:
+        with self._connect() as db:
+            rows = db.execute(
+                """SELECT sessions.id, sessions.user_id, users.email, users.role, sessions.created_at, sessions.last_used_at, sessions.refresh_expires_at, sessions.revoked_at
+                FROM sessions JOIN users ON users.id = sessions.user_id ORDER BY sessions.last_used_at DESC LIMIT ?""",
+                (max(1, min(int(limit), 1000)),),
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def admin_audit(self, limit: int = 200) -> list[dict[str, Any]]:
+        with self._connect() as db:
+            rows = db.execute("""SELECT audit_logs.*, users.email AS actor_email FROM audit_logs LEFT JOIN users ON users.id = audit_logs.actor_user_id ORDER BY audit_logs.id DESC LIMIT ?""", (max(1, min(int(limit), 500)),)).fetchall()
+        result = []
+        for row in rows:
+            item = dict(row)
+            try: item["metadata"] = json.loads(str(item.pop("metadata_json") or "{}"))
+            except json.JSONDecodeError: item["metadata"] = {}
+            result.append(item)
+        return result
+
+    def admin_feature_flags(self) -> list[dict[str, Any]]:
+        with self._connect() as db:
+            rows = db.execute("SELECT * FROM feature_flags ORDER BY key").fetchall()
+        result = []
+        for row in rows:
+            try: value = json.loads(str(row["value_json"] or "{}"))
+            except json.JSONDecodeError: value = {}
+            result.append({"key": str(row["key"]), "enabled": bool(row["enabled"]), "value": value, "updated_at": int(row["updated_at"]), "updated_by": int(row["updated_by"]) if row["updated_by"] is not None else None})
+        return result
+
+    def admin_set_user_status(self, actor: dict[str, Any], user_id: int, status: str) -> dict[str, Any]:
+        status = str(status or "").strip().casefold()
+        if status not in {"active", "disabled"}: raise AccountError(HTTPStatus.BAD_REQUEST, "INVALID_STATUS", "Status must be active or disabled.")
+        if int(actor["id"]) == int(user_id) and status != "active": raise AccountError(HTTPStatus.BAD_REQUEST, "SELF_DISABLE_FORBIDDEN", "You cannot disable your own administrator account.")
+        with self._guard, self._connect() as db:
+            row = db.execute("SELECT * FROM users WHERE id = ?", (int(user_id),)).fetchone()
+            if row is None: raise AccountError(HTTPStatus.NOT_FOUND, "USER_NOT_FOUND", "User not found.")
+            now = _now(); db.execute("UPDATE users SET status = ?, updated_at = ? WHERE id = ?", (status, now, int(user_id)))
+            if status == "disabled": db.execute("UPDATE sessions SET revoked_at = COALESCE(revoked_at, ?) WHERE user_id = ?", (now, int(user_id)))
+            self._audit(db, int(actor["id"]), "user.status", target_type="user", target_id=str(user_id), metadata={"status": status})
+            updated = db.execute("SELECT * FROM users WHERE id = ?", (int(user_id),)).fetchone()
+        return self._safe_user(updated)
+
+    def admin_set_user_role(self, actor: dict[str, Any], user_id: int, role: str) -> dict[str, Any]:
+        if str(actor.get("role")) != "owner": raise AccountError(HTTPStatus.FORBIDDEN, "OWNER_REQUIRED", "Owner access is required.")
+        role = str(role or "").strip().casefold()
+        if role not in {"user", "admin", "owner"}: raise AccountError(HTTPStatus.BAD_REQUEST, "INVALID_ROLE", "Role must be user, admin, or owner.")
+        with self._guard, self._connect() as db:
+            row = db.execute("SELECT * FROM users WHERE id = ?", (int(user_id),)).fetchone()
+            if row is None: raise AccountError(HTTPStatus.NOT_FOUND, "USER_NOT_FOUND", "User not found.")
+            if int(actor["id"]) == int(user_id) and str(row["role"]) == "owner" and role != "owner":
+                if int(db.execute("SELECT COUNT(*) FROM users WHERE role = 'owner'").fetchone()[0]) <= 1: raise AccountError(HTTPStatus.BAD_REQUEST, "LAST_OWNER", "The last owner cannot be demoted.")
+            db.execute("UPDATE users SET role = ?, updated_at = ? WHERE id = ?", (role, _now(), int(user_id)))
+            self._audit(db, int(actor["id"]), "user.role", target_type="user", target_id=str(user_id), metadata={"role": role})
+            updated = db.execute("SELECT * FROM users WHERE id = ?", (int(user_id),)).fetchone()
+        return self._safe_user(updated)
+
+    def admin_revoke_user_sessions(self, actor: dict[str, Any], user_id: int) -> int:
+        now = _now()
+        with self._guard, self._connect() as db:
+            if db.execute("SELECT 1 FROM users WHERE id = ?", (int(user_id),)).fetchone() is None: raise AccountError(HTTPStatus.NOT_FOUND, "USER_NOT_FOUND", "User not found.")
+            result = db.execute("UPDATE sessions SET revoked_at = COALESCE(revoked_at, ?) WHERE user_id = ? AND revoked_at IS NULL", (now, int(user_id)))
+            self._audit(db, int(actor["id"]), "user.sessions.revoke", target_type="user", target_id=str(user_id), metadata={"count": int(result.rowcount)})
+        return int(result.rowcount)
+
+    def admin_set_feature_flag(self, actor: dict[str, Any], key: str, enabled: bool, value: Any) -> dict[str, Any]:
+        key = str(key or "").strip()
+        if not key or len(key) > 80 or not re.fullmatch(r"[a-z0-9_.-]+", key): raise AccountError(HTTPStatus.BAD_REQUEST, "INVALID_FLAG_KEY", "Feature flag key is invalid.")
+        if not isinstance(enabled, bool): raise AccountError(HTTPStatus.BAD_REQUEST, "INVALID_FLAG_VALUE", "enabled must be a boolean.")
+        value_json = json.dumps(value if value is not None else {}, ensure_ascii=False, separators=(",", ":"))
+        if len(value_json.encode("utf-8")) > 8192: raise AccountError(HTTPStatus.BAD_REQUEST, "FLAG_VALUE_TOO_LARGE", "Feature flag value is too large.")
+        now = _now()
+        with self._guard, self._connect() as db:
+            db.execute("""INSERT INTO feature_flags(key, enabled, value_json, updated_at, updated_by) VALUES (?, ?, ?, ?, ?) ON CONFLICT(key) DO UPDATE SET enabled=excluded.enabled,value_json=excluded.value_json,updated_at=excluded.updated_at,updated_by=excluded.updated_by""", (key, 1 if enabled else 0, value_json, now, int(actor["id"])))
+            self._audit(db, int(actor["id"]), "feature_flag.set", target_type="feature_flag", target_id=key, metadata={"enabled": enabled})
+        return {"key": key, "enabled": enabled, "value": json.loads(value_json), "updated_at": now, "updated_by": int(actor["id"])}
+
 
 class SlidingWindowLimiter:
     """In-process sliding-window limiter keyed by client address.
@@ -513,10 +650,7 @@ class AccountApplication:
         ticket = _new_token("loom_pair")
         now = time.monotonic()
         with self._pairing_guard:
-            cutoff = now
-            self._pairing_tickets = {
-                key: value for key, value in self._pairing_tickets.items() if value[0] > cutoff
-            }
+            self._pairing_tickets = {key: value for key, value in self._pairing_tickets.items() if value[0] > now}
             self._pairing_tickets[ticket] = (now + _PAIR_TTL_SECONDS, dict(user))
         return {"pairing_ticket": ticket, "expires_in": _PAIR_TTL_SECONDS}
 
@@ -524,22 +658,40 @@ class AccountApplication:
         self.limiter.check(f"pair-exchange:{client_key}", 30, 60)
         ticket = str(body.get("pairing_ticket") or "").strip()
         if not ticket.startswith("loom_pair_") or len(ticket) > 256:
-            raise AccountError(
-                HTTPStatus.UNAUTHORIZED,
-                "INVALID_PAIRING_TICKET",
-                "This Loom Host pairing request is no longer valid.",
-            )
+            raise AccountError(HTTPStatus.UNAUTHORIZED, "INVALID_PAIRING_TICKET", "This Loom Host pairing request is no longer valid.")
         now = time.monotonic()
         with self._pairing_guard:
             entry = self._pairing_tickets.pop(ticket, None)
         if entry is None or entry[0] <= now:
-            raise AccountError(
-                HTTPStatus.UNAUTHORIZED,
-                "INVALID_PAIRING_TICKET",
-                "This Loom Host pairing request is no longer valid.",
-            )
+            raise AccountError(HTTPStatus.UNAUTHORIZED, "INVALID_PAIRING_TICKET", "This Loom Host pairing request is no longer valid.")
         user = entry[1]
         return {**self.store.create_session(int(user["id"])), "user": user}
+
+    def _admin(self, authorization: str) -> dict[str, Any]:
+        user = self.me(authorization)["user"]
+        if str(user.get("role")) not in {"owner", "admin"}: raise AccountError(HTTPStatus.FORBIDDEN, "ADMIN_REQUIRED", "Administrator access is required.")
+        return user
+
+    def admin_me(self, authorization: str) -> dict[str, Any]: return {"user": self._admin(authorization)}
+    def admin_overview(self, authorization: str) -> dict[str, Any]: self._admin(authorization); return self.store.admin_overview()
+    def admin_users(self, authorization: str) -> dict[str, Any]: self._admin(authorization); return {"users": self.store.admin_users()}
+    def admin_sessions(self, authorization: str) -> dict[str, Any]: self._admin(authorization); return {"sessions": self.store.admin_sessions()}
+    def admin_audit(self, authorization: str) -> dict[str, Any]: self._admin(authorization); return {"events": self.store.admin_audit()}
+    def admin_feature_flags(self, authorization: str) -> dict[str, Any]: self._admin(authorization); return {"flags": self.store.admin_feature_flags()}
+
+    @staticmethod
+    def _user_id(body: dict[str, Any]) -> int:
+        try: return int(body.get("user_id"))
+        except (TypeError, ValueError): raise AccountError(HTTPStatus.BAD_REQUEST, "INVALID_USER_ID", "user_id must be an integer.") from None
+
+    def admin_set_user_status(self, body: dict[str, Any], authorization: str) -> dict[str, Any]:
+        actor=self._admin(authorization); return {"user": self.store.admin_set_user_status(actor, self._user_id(body), str(body.get("status") or ""))}
+    def admin_set_user_role(self, body: dict[str, Any], authorization: str) -> dict[str, Any]:
+        actor=self._admin(authorization); return {"user": self.store.admin_set_user_role(actor, self._user_id(body), str(body.get("role") or ""))}
+    def admin_revoke_user_sessions(self, body: dict[str, Any], authorization: str) -> dict[str, Any]:
+        actor=self._admin(authorization); return {"ok": True, "revoked": self.store.admin_revoke_user_sessions(actor, self._user_id(body))}
+    def admin_set_feature_flag(self, body: dict[str, Any], authorization: str) -> dict[str, Any]:
+        actor=self._admin(authorization); return {"flag": self.store.admin_set_feature_flag(actor, str(body.get("key") or ""), body.get("enabled"), body.get("value"))}
 
     def search(self, body: dict[str, Any], authorization: str) -> dict[str, Any]:
         user = self.me(authorization)["user"]
@@ -558,6 +710,7 @@ class AccountApplication:
 
 class AccountRequestHandler(BaseHTTPRequestHandler):
     server_version = "LoomAccount/1"
+
     _MAX_BODY_BYTES = 64 * 1024
     _MAX_DRAIN_BYTES = 1024 * 1024
 
@@ -621,10 +774,15 @@ class AccountRequestHandler(BaseHTTPRequestHandler):
         path = self.path.split("?", 1)[0].rstrip("/") or "/"
         if self.command == "GET" and path == "/healthz":
             return {"ok": True}
-        if self.command == "GET" and path == "/v1/auth/me":
-            return self.application.me(self.headers.get("Authorization") or "")
-        if self.command != "POST":
-            raise AccountError(HTTPStatus.NOT_FOUND, "NOT_FOUND", "Endpoint not found.")
+        authorization = self.headers.get("Authorization") or ""
+        if self.command == "GET" and path == "/v1/auth/me": return self.application.me(authorization)
+        if self.command == "GET" and path == "/v1/admin/me": return self.application.admin_me(authorization)
+        if self.command == "GET" and path == "/v1/admin/overview": return self.application.admin_overview(authorization)
+        if self.command == "GET" and path == "/v1/admin/users": return self.application.admin_users(authorization)
+        if self.command == "GET" and path == "/v1/admin/sessions": return self.application.admin_sessions(authorization)
+        if self.command == "GET" and path == "/v1/admin/audit": return self.application.admin_audit(authorization)
+        if self.command == "GET" and path == "/v1/admin/feature-flags": return self.application.admin_feature_flags(authorization)
+        if self.command != "POST": raise AccountError(HTTPStatus.NOT_FOUND, "NOT_FOUND", "Endpoint not found.")
 
         body = self._json_body()
         if path == "/v1/search":
@@ -635,15 +793,13 @@ class AccountRequestHandler(BaseHTTPRequestHandler):
             return self.application.login(body, self._client_key())
         if path == "/v1/auth/refresh":
             return self.application.refresh(body, self._client_key())
-        if path == "/v1/auth/logout":
-            return self.application.logout(body)
-        if path == "/v1/auth/device-pair/issue":
-            return self.application.issue_device_pair(
-                self.headers.get("Authorization") or "",
-                self._client_key(),
-            )
-        if path == "/v1/auth/device-pair/exchange":
-            return self.application.exchange_device_pair(body, self._client_key())
+        if path == "/v1/auth/logout": return self.application.logout(body)
+        if path == "/v1/auth/device-pair/issue": return self.application.issue_device_pair(authorization, self._client_key())
+        if path == "/v1/auth/device-pair/exchange": return self.application.exchange_device_pair(body, self._client_key())
+        if path == "/v1/admin/users/status": return self.application.admin_set_user_status(body, authorization)
+        if path == "/v1/admin/users/role": return self.application.admin_set_user_role(body, authorization)
+        if path == "/v1/admin/users/revoke-sessions": return self.application.admin_revoke_user_sessions(body, authorization)
+        if path == "/v1/admin/feature-flags": return self.application.admin_set_feature_flag(body, authorization)
         raise AccountError(HTTPStatus.NOT_FOUND, "NOT_FOUND", "Endpoint not found.")
 
     def do_GET(self) -> None:

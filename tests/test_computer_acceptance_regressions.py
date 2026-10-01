@@ -95,6 +95,7 @@ def test_imm_composition_is_cancelled_and_rechecked(monkeypatch, remaining):
         ImmGetCompositionStringW=Fn(lambda *a: next(sizes)),
         ImmNotifyIME=Fn(lambda *a: calls.append(("notify", a)) or 1))
     monkeypatch.setattr(ctypes, "WinDLL", lambda *a, **kw: imm)
+    monkeypatch.setattr("app.agent_runtime.computer_windows._focused_hwnd_for_thread", lambda tid: 2)
     monkeypatch.setitem(sys.modules, "win32gui", SimpleNamespace(GetGUIThreadInfo=lambda tid: {"hwndFocus": 2}))
     monkeypatch.setitem(sys.modules, "win32process", SimpleNamespace(GetWindowThreadProcessId=lambda h: (1, 3)))
     monkeypatch.setitem(sys.modules, "pyautogui", SimpleNamespace(press=lambda key: calls.append(key)))
@@ -105,6 +106,21 @@ def test_imm_composition_is_cancelled_and_rechecked(monkeypatch, remaining):
     assert details["after_ime_composition"] is (remaining > 0)
     assert ("notify", (123, 0x15, 4, 0)) in calls
     assert calls.count("release") == (2 if remaining else 1)
+
+
+def test_focus_query_uses_typed_user32_without_optional_pywin32_export(monkeypatch):
+    import ctypes
+    from app.agent_runtime.computer_windows import _focused_hwnd_for_thread
+    class Query:
+        def __call__(self, thread_id, pointer):
+            info = pointer._obj
+            assert thread_id == 42
+            assert info.cbSize == ctypes.sizeof(info)
+            info.hwndFocus = 0x12345678
+            return 1
+    monkeypatch.setattr(ctypes, "WinDLL", lambda *a, **kw: SimpleNamespace(GetGUIThreadInfo=Query()))
+    monkeypatch.setitem(sys.modules, "win32gui", SimpleNamespace())
+    assert _focused_hwnd_for_thread(42) == 0x12345678
 
 
 def test_same_window_switch_is_verified_noop_not_changed():

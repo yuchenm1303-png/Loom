@@ -107,6 +107,18 @@ interface ModelMetadataSnapshot {
 }
 
 export const PRIMARY_SELECTION = "builtin:minimax";
+const ANT_LING_SELECTION = "builtin:ant-ling";
+const ANT_LING_SELECTION_PREFIX = "builtin:ant-ling:";
+
+function isAntLingSelection(selection: string): boolean {
+  const value = String(selection || "").trim();
+  return value === ANT_LING_SELECTION || value.startsWith(ANT_LING_SELECTION_PREFIX);
+}
+
+interface AntLingRegistrySnapshot {
+  profiles: ModelProfile[];
+  activeSelection: string | null;
+}
 
 export class DesktopModelManager {
   private currentSpec: ModelLaunchSpec | null = null;
@@ -142,6 +154,35 @@ export class DesktopModelManager {
     if (!forceRefresh && this.metadataCache) return this.metadataCache;
     this.metadataCache = this.runAdmin<ModelMetadataSnapshot>("metadata", {});
     return this.metadataCache;
+  }
+
+  private antLingRegistry(): AntLingRegistrySnapshot {
+    return this.runPythonBridge<AntLingRegistrySnapshot>("loom_ant_ling_bridge.py", "list", {});
+  }
+
+  private antLingRegistryAsync(): Promise<AntLingRegistrySnapshot> {
+    return this.runPythonBridgeAsync<AntLingRegistrySnapshot>("loom_ant_ling_bridge.py", "list", {});
+  }
+
+  private mergeAntLingRegistry(registry: RegistrySnapshot, antLing: AntLingRegistrySnapshot): RegistrySnapshot {
+    const profiles = [
+      ...registry.profiles.filter((profile) => profile.groupId !== "ant-ling"),
+      ...antLing.profiles,
+    ];
+    const activeAntLing = antLing.activeSelection
+      ? profiles.find((profile) => profile.selection === antLing.activeSelection)
+      : undefined;
+    return {
+      ...registry,
+      profiles,
+      activeModelId: activeAntLing?.id ?? registry.activeModelId,
+    };
+  }
+
+  private describeModel(selection: string, model: string): ModelProfile {
+    return isAntLingSelection(selection)
+      ? this.runPythonBridge<ModelProfile>("loom_ant_ling_bridge.py", "describe-model", { selection, model })
+      : this.runBridge<ModelProfile>("describe-model", { selection, model });
   }
 
   private mergeRegistry(registry: RegistrySnapshot, metadata: ModelMetadataSnapshot): RegistrySnapshot {
@@ -185,10 +226,6 @@ export class DesktopModelManager {
     });
     if (!retained.length) return next;
 
-    // A failed /models request must not masquerade as a provider deletion.
-    // Keep the last authoritative provider rows and use the bundled fallback
-    // only to fill holes. Once discovery succeeds again (catalogSource=provider)
-    // normal deletion semantics resume immediately.
     const retainedSelections = new Set(retained.map((profile) => profile.selection));
     const profiles = [
       ...retained,
@@ -204,11 +241,6 @@ export class DesktopModelManager {
     this.registryCache = merged;
     this.registryCacheAt = Date.now();
 
-    // A provider may remove/rename a model between refreshes. Drop stale launch
-    // cache entries so a future click cannot resurrect an old provider listing.
-    // The model already bound to the live conversation is deliberately kept:
-    // it remains usable until the user changes it, and snapshotFor marks it as
-    // unavailable instead of silently switching the conversation.
     const currentSelection = this.currentSpec?.selection ?? "";
     const liveSelections = new Set(merged.profiles.map((profile) => profile.selection));
     for (const selection of [...this.launchCache.keys()]) {
@@ -229,7 +261,10 @@ export class DesktopModelManager {
 
   registry(forceRefresh = false): RegistrySnapshot {
     if (!forceRefresh && this.registryCache) return this.registryCache;
-    const registry = this.runBridge<RegistrySnapshot>("list", {});
+    const registry = this.mergeAntLingRegistry(
+      this.runBridge<RegistrySnapshot>("list", {}),
+      this.antLingRegistry(),
+    );
     const metadata = this.metadata(forceRefresh);
     return this.adoptRegistry(registry, metadata);
   }
@@ -269,9 +304,6 @@ export class DesktopModelManager {
 
     let profiles = registry.profiles;
     if (spec && !currentProfile) {
-      // Preserve the missing current model as a disabled row. New catalog
-      // entries appear immediately, removed entries disappear, but the active
-      // thread never jumps to a different model behind the user's back.
       const unavailable: ModelProfile = {
         selection: spec.selection,
         id: spec.id,
@@ -323,17 +355,16 @@ export class DesktopModelManager {
 
     this.catalogRefreshPromise = (async () => {
       try {
-        const [registry, metadata] = await Promise.all([
+        const [baseRegistry, metadata, antLing] = await Promise.all([
           this.runBridgeAsync<RegistrySnapshot>("list", {}),
           this.runAdminAsync<ModelMetadataSnapshot>("metadata", {}),
+          this.antLingRegistryAsync(),
         ]);
+        const registry = this.mergeAntLingRegistry(baseRegistry, antLing);
         const adopted = this.adoptRegistry(registry, metadata);
         this.metadataCache = metadata;
         return this.snapshotFromRegistry(this.currentSpec, adopted);
       } catch (error) {
-        // A transient /models outage must not make every model disappear.
-        // Keep the last known good catalog when one exists; first launch still
-        // surfaces the real discovery error so setup problems are diagnosable.
         if (this.registryCache) {
           return this.snapshotFromRegistry(this.currentSpec, this.registryCache);
         }
@@ -348,13 +379,11 @@ export class DesktopModelManager {
   resolve(selection: string): ModelLaunchSpec {
     const cached = this.launchCache.get(selection);
     if (cached) return cached;
-    const resolved = this.runBridge<ModelLaunchSpec>("resolve", { selection });
+    const resolved = isAntLingSelection(selection)
+      ? this.runPythonBridge<ModelLaunchSpec>("loom_ant_ling_bridge.py", "resolve", { selection })
+      : this.runBridge<ModelLaunchSpec>("resolve", { selection });
     const safe = this.metadata().profiles.find((profile) => profile.selection === selection);
     const catalog = this.registryCache?.profiles.find((profile) => profile.selection === selection);
-    // Provider discovery happens in the short-lived catalog bridge process.
-    // Carry its published metadata into the durable launch spec here so a
-    // newly discovered model keeps its real context/capability information
-    // when the later resolve call runs in a fresh Python process.
     const next = {
       ...resolved,
       groupId: catalog?.groupId ?? resolved.groupId,
@@ -421,6 +450,10 @@ export class DesktopModelManager {
   }
 
   persistActive(selection: string): void {
+    if (isAntLingSelection(selection)) {
+      this.runPythonBridge<{ selection: string }>("loom_ant_ling_bridge.py", "set-active", { selection });
+      return;
+    }
     this.runBridge<{ selection: string }>("persist-active", { selection });
   }
 
@@ -434,16 +467,24 @@ export class DesktopModelManager {
     const secret = String(apiKey || "").trim();
     if (!value) throw new Error("Provider is required");
     if (!secret) throw new Error("API key is required");
-    this.runBridge<{ provider: string; configured: boolean }>("set-provider-key", {
-      provider: value,
-      apiKey: secret,
-    });
+    if (value.toLowerCase() === "ant-ling") {
+      this.runPythonBridge<{ configured: boolean }>("loom_ant_ling_bridge.py", "set-key", {
+        apiKey: secret,
+      });
+    } else {
+      this.runBridge<{ provider: string; configured: boolean }>("set-provider-key", {
+        provider: value,
+        apiKey: secret,
+      });
+    }
     this.registryCache = null;
     this.registryCacheAt = 0;
     this.metadataCache = null;
     for (const key of [...this.launchCache.keys()]) {
       if (
         key.startsWith("builtin:opencode-go:")
+        || key === "builtin:ant-ling"
+        || key.startsWith("builtin:ant-ling:")
         || key.startsWith("managed:")
         || key === "builtin:cqu"
       ) {
@@ -455,12 +496,19 @@ export class DesktopModelManager {
 
   setReasoning(kind: string, value: string): ModelReasoningState {
     const current = this.currentSpec ?? this.ensureInitial();
-    const profile = this.runBridge<ModelProfile>("set-reasoning", {
-      selection: current.selection,
-      model: current.model,
-      kind,
-      value,
-    });
+    const profile = isAntLingSelection(current.selection)
+      ? this.runPythonBridge<ModelProfile>("loom_ant_ling_bridge.py", "set-reasoning", {
+          selection: current.selection,
+          model: current.model,
+          kind,
+          value,
+        })
+      : this.runBridge<ModelProfile>("set-reasoning", {
+          selection: current.selection,
+          model: current.model,
+          kind,
+          value,
+        });
     if (!profile.reasoning) throw new Error("Selected model does not expose reasoning controls");
     this.currentSpec = { ...current, reasoning: profile.reasoning };
     this.launchCache.set(current.selection, this.currentSpec);
@@ -489,14 +537,7 @@ export class DesktopModelManager {
     const value = String(model || "").trim();
     if (!value) throw new Error("Model ID must not be empty");
     const current = this.resolve(selection);
-    const described = this.runBridge<ModelProfile>("describe-model", {
-      selection,
-      model: value,
-    });
-    // describe-model is allowed to canonicalize a known built-in model onto
-    // its owning provider. Never keep the old connection while only changing
-    // the visible model name: that can make the UI say DeepSeek while requests
-    // still use MiniMax credentials/base URL.
+    const described = this.describeModel(selection, value);
     const connection = described.selection && described.selection !== current.selection
       ? this.resolve(described.selection)
       : current;
@@ -512,10 +553,7 @@ export class DesktopModelManager {
     if (!value) throw new Error("Model ID must not be empty");
     const current = this.currentSpec ?? this.ensureInitial();
     if (value !== current.model) this.rememberCurrentModel(current.model);
-    const described = this.runBridge<ModelProfile>("describe-model", {
-      selection: current.selection,
-      model: value,
-    });
+    const described = this.describeModel(current.selection, value);
     const connection = described.selection && described.selection !== current.selection
       ? this.resolve(described.selection)
       : current;

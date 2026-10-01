@@ -61,6 +61,13 @@ interface ProviderCredentialTarget {
 }
 
 function providerCredentialTarget(groupId: string): ProviderCredentialTarget | null {
+  if (groupId === "ant-ling") {
+    return {
+      provider: "ant-ling",
+      label: "Ant Ling",
+      placeholder: "Ant Ling API key",
+    };
+  }
   if (groupId === "opencode-go") {
     return {
       provider: "opencode-go",
@@ -132,6 +139,7 @@ const PROVIDER_TINTS: Record<string, readonly [hue: number, chroma: number]> = {
   minimax: [16, 0.14],
   "managed-relay:minimax": [16, 0.14],
   deepseek: [262, 0.13],
+  "ant-ling": [318, 0.11],
   "opencode-go": [168, 0.1],
   "managed-relay": [295, 0.13],
   "managed-relay:openai": [0, 0],

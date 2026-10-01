@@ -36,3 +36,23 @@ claim multi-display/DPI environment coverage or completed 50-action stress tests
 IMM reference: https://learn.microsoft.com/en-us/windows/win32/api/imm/nf-imm-immgetcontext
 and Microsoft's IME sample:
 https://github.com/microsoft/VCSamples/blob/master/VC2008Samples/International/IME/IMEEdit.cpp
+
+## October 1 follow-up (befea8f17ff44720af8d0ca43e53497c)
+
+IME focus lookup called an unavailable `win32gui.GetGUIThreadInfo` export,
+raising AttributeError before IMM probing. It now uses typed user32
+GetGUIThreadInfo with cbSize and pointer-width-correct handles; probe stage is
+included in diagnostics. The native focus query passed a read-only Windows
+smoke check. Sogou composition cancellation still needs a live acceptance test.
+
+The fixture's dragover handler sets b2.left/top from the pointer, and drop only
+sets status to dropped. Therefore overlap is application behavior, not proof of
+missing mouse-up; the fixture has no dragend listener at all.
+
+The reported literal `CU_READBACK_60b1f3a4_NOTE_127` contains 29 characters,
+not 19. The persisted reference contains 56, not 29. A readback_length of 19 is
+a UIA ValuePattern observation, not a screen character count. This discrepancy
+is still unconfirmed; it does not prove truncation, IME interference, or any
+harness template replacement. No replacement template exists in this input
+boundary. Also, foreground_target_lost_after_input is a different case from
+zero-visual-change pointer verification; that latter test remains outstanding.

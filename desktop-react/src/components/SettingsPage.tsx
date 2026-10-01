@@ -24,6 +24,7 @@ import {
   Plug,
   RefreshCw,
   Search,
+  Settings,
   Settings2,
   ShieldAlert,
   ShieldCheck,
@@ -1487,7 +1488,7 @@ export function SettingsPage({ runtime, models, threadId, running, onRefreshMode
       <aside className="settings-sidebar">
         <div className="settings-sidebar-top">
           <button type="button" className="settings-back" onClick={onClose}><ArrowLeft size={15} /><span>Back to Loom</span></button>
-          <div className="settings-sidebar-title"><span className="settings-brand-orb"><Bot size={16} /></span><div><strong>Settings</strong><span>Local agent controls</span></div></div>
+          <div className="settings-sidebar-title"><span className="settings-brand-orb"><Settings size={18} strokeWidth={1.6} /></span><div><strong>Settings</strong><span>Local agent controls</span></div></div>
           <label className="settings-search"><Search size={14} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search settings" /></label>
         </div>
         <nav className="settings-nav" aria-label="Settings navigation" ref={navRef}>
