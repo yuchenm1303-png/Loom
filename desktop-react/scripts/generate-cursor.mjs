@@ -22,7 +22,7 @@ try {
     const ctx = canvas.getContext("2d");
     ctx.drawImage(decoration, 0, 0);
     // Keep the character intact; replace the original tiny black arrow area only.
-    ctx.clearRect(0, 0, 12, 14);
+    ctx.clearRect(0, 0, pointer.naturalWidth, pointer.naturalHeight);
     ctx.drawImage(pointer, 0, 0);
     return canvas.toDataURL("image/png").split(",")[1];
   }, {

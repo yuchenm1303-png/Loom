@@ -14,17 +14,28 @@ try {
     canvas.height = image.naturalHeight;
     const ctx = canvas.getContext("2d");
     ctx.drawImage(image, 0, 0);
+    const composite = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+    const original = new Image();
+    original.src = "/src/assets/yukino-mouse.png";
+    await original.decode();
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(original, 0, 0);
+    const source = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
     return {
       width: canvas.width, height: canvas.height,
-      fill: [...ctx.getImageData(3, 10, 1, 1).data],
-      outline: [...ctx.getImageData(0, 0, 20, 28).data].some((value, index, pixels) =>
-        index % 4 === 0 && value < 80 && pixels[index + 1] < 80 && pixels[index + 2] < 80 && pixels[index + 3] > 200),
+      blackFill: composite[(2 * canvas.width + 2) * 4] === 0,
+      lightEdge: composite[(2 * canvas.width) * 4] > 50,
+      preserved: composite.every((value, index) => {
+        const pixel = Math.floor(index / 4);
+        return (pixel % canvas.width < 10 && Math.floor(pixel / canvas.width) < 9) || value === source[index];
+      }),
     };
   });
   assert.equal(pointerAsset.width, 70);
   assert.equal(pointerAsset.height, 70);
-  assert.deepEqual(pointerAsset.fill, [255, 255, 255, 255], "arrow must contrast against dark backgrounds");
-  assert.ok(pointerAsset.outline, "dark outline must contrast against light backgrounds");
+  assert.ok(pointerAsset.blackFill, "retain the original black pointer fill");
+  assert.ok(pointerAsset.lightEdge, "thin light edge must contrast against dark backgrounds");
+  assert.ok(pointerAsset.preserved, "all pixels outside the original 10x9 pointer must remain unchanged");
   for (const selector of [".stop", ".stop svg", ".stop rect", "input", "#portal button"]) {
     await page.locator(selector).hover();
     const cursor = await page.locator(selector).evaluate((el) => getComputedStyle(el).cursor);
