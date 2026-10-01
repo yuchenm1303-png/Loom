@@ -173,7 +173,8 @@ html[data-loom-web="true"] body { background: #21313c; }
 .loom-account-details span { color: rgba(255,255,255,.4); font-size: .62rem; }
 .loom-account-details strong { color: rgba(255,255,255,.76); font-size: .65rem; font-weight: 600; text-align: right; }
 .loom-host-note { margin-top: 12px; color: rgba(255,255,255,.43); font-size: .65rem; line-height: 1.6; }
-.loom-account-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: auto; padding-top: 22px; }
+.loom-account-actions { display: block; margin-top: auto; padding-top: 22px; }
+.loom-account-actions .loom-action { width: 100%; }
 
 .loom-site-footer { margin-top: 16px; padding: 2px 2px 0; }
 .loom-footer-links { display: flex; gap: 16px; align-items: center; }
@@ -199,6 +200,5 @@ html[data-loom-web="true"] body { background: #21313c; }
   .loom-account-card { min-height: 0; padding: 22px; }
   .loom-card-actions { align-items: stretch; flex-direction: column; }
   .loom-text-link { padding: 4px 2px; }
-  .loom-account-actions { grid-template-columns: 1fr; }
   .loom-site-footer { align-items: flex-start; flex-direction: column; }
 }
