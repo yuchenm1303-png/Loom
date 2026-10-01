@@ -170,11 +170,22 @@ async function ensureSocket(): Promise<WebSocket> {
 }
 
 async function invoke<T = unknown>(operation: string, args: unknown[] = []): Promise<T> {
-  const ws = await ensureSocket();
+  let ws = await ensureSocket();
+  if (ws.readyState !== WebSocket.OPEN) {
+    if (socket === ws) closeSocket();
+    ws = await ensureSocket();
+  }
   const id = nextId++;
   const message: InvokeMessage = { type: "invoke", id, operation, args };
   const result = new Promise<unknown>((resolve, reject) => pending.set(id, { resolve, reject }));
-  ws.send(JSON.stringify(message));
+  try {
+    if (ws.readyState !== WebSocket.OPEN) throw new Error("Loom Web connection closed before the request was sent.");
+    ws.send(JSON.stringify(message));
+  } catch (cause) {
+    pending.delete(id);
+    if (socket === ws) closeSocket();
+    throw cause instanceof Error ? cause : new Error("Could not send the Loom Web request.");
+  }
   return result as Promise<T>;
 }
 
@@ -285,15 +296,11 @@ export function installWebBridge(): void {
     setupBrowserExtension: (browser = "edge", extensionConnected = false) => invoke("setupBrowserExtension", [browser, extensionConnected]),
     revealPath: (targetPath) => invoke("revealPath", [targetPath]),
     copyImageSource: (source) => invoke("copyImageSource", [source]),
-    readClipboardText: async () => navigator.clipboard?.readText?.() ?? "",
-    writeClipboardText: async (value) => {
-      await navigator.clipboard.writeText(String(value || ""));
-      return true;
-    },
-    openExternal: async (value) => {
+    readClipboardText: () => invoke("readClipboardText", []),
+    writeClipboardText: (value) => invoke("writeClipboardText", [String(value || "")]),
+    openExternal: (value) => {
       const url = safeExternalUrl(value);
-      window.open(url.toString(), "_blank", "noopener,noreferrer");
-      return true;
+      return invoke("openExternal", [url.toString()]);
     },
     openLocalArtifact: async (targetPath, workspaceRoot) => {
       const url = await invoke<{ base64?: string; mimeType?: string }>("readLocalArtifact", [targetPath, workspaceRoot]);
@@ -307,7 +314,7 @@ export function installWebBridge(): void {
     },
     readLocalImage: (targetPath, workspaceRoot) => invoke("readLocalImage", [targetPath, workspaceRoot]),
     readLocalMedia: (targetPath, workspaceRoot) => invoke("readLocalMedia", [targetPath, workspaceRoot]),
-    pickDirectory: async () => "",
+    pickDirectory: () => invoke("pickDirectory", []),
     pickFiles: pickAndStageFiles,
     setZoomFactor: (factor) => {
       const numeric = Number(factor);

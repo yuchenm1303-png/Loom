@@ -1,53 +1,59 @@
 # Loom Web
 
-`loom.smirel.com` is an independent Loom Agent runtime that shares the same React renderer
-and Python Agent core as Loom Desktop. The browser does **not** require Loom Desktop to be
-online for normal conversations, model calls, streaming, cloud-workspace files, approvals,
-or agent tools.
+`loom.smirel.com` is the browser client for the same **local Loom Host** used by Loom Desktop.
+There is only one Agent runtime and one source of truth for conversations, model settings,
+approvals, workspace files, Browser Use, Computer Use and local tools.
 
-The optional Desktop relay remains available only for actions that genuinely need a physical
-user device, such as opening the local browser extension or revealing a local path.
+The cloud gateway does **not** run an Agent. It only serves the shared React frontend,
+authenticates the Loom account, and relays WebSocket traffic between the browser and the
+user's local Loom Host.
 
 ## Architecture
 
 ```text
-Browser -> Loom Web -> per-account loom_app_server.py -> Agent Runtime / cloud workspace
-                   \
-                    -> optional WSS device relay -> Loom Desktop (local-only actions)
+                       local computer
+                  +----------------------+
+Desktop React ---->  Loom Host / App Server  <---- WSS relay ---- Browser React
+                  | Agent Runtime        |                     loom.smirel.com
+                  | models / sessions    |
+                  | shell / files        |
+                  | Browser / Computer   |
+                  | approvals / tools    |
+                  +----------------------+
+
+Cloud gateway: authentication + static frontend + encrypted relay only
 ```
 
-Each authenticated Loom account gets a separate runtime home and workspace under
-`LOOM_WEB_RUNTIME_ROOT`. Those directories live on the `loom_web_data` volume so Web
-conversations survive container restarts. Desktop and Web are separate runtimes and do not
-share process lifetime or local files.
+Desktop and Web use the same `desktop-react` renderer and the same host operation table.
+The transport is the only difference:
 
-## Runtime model configuration
+- Desktop: React -> Electron IPC -> local Loom Host
+- Web: React -> WSS gateway -> local Loom Host
 
-Production Loom Web uses a server-managed Muxway Relay credential. The credential never
-reaches browser JavaScript. The Web runtime reads the Relay `/models` catalog, exposes every
-model authorized for that credential, and can switch models independently from Loom Desktop.
+Closing the Desktop window does not stop Loom Host. On Windows the installed app registers a
+background-host login launch and keeps a tray entry so Web access remains available without
+an Electron window being open. The tray provides **Open Loom**, **Open Loom Web**, and
+**Quit Loom Host**.
 
-Configure the deployment with:
+## Security boundary
 
-- `LOOM_WEB_BASE_URL` — Relay endpoint, defaults to `https://muxway.dev/v1`
-- `LOOM_WEB_MODEL` — preferred/default model, defaults to `MiniMax-M3`
-- `LOOM_WEB_API_KEY` — dedicated Loom Web Relay credential
-- `LOOM_WEB_PERMISSION_MODE` — defaults to `workspace`
-
-`LOOM_WEB_API_KEY_FILE` is preferred in production so the Relay credential can be mounted as
-a read-only secret instead of being written into Compose or browser-visible configuration.
-The selected Web model is persisted per Loom account inside `loom_web_data`; Desktop model
-selection remains independent.
+- Browser authentication uses Secure, HttpOnly, SameSite=Strict cookies.
+- The local Host connects **outbound** to `wss://loom.smirel.com/api/ws/device`; no inbound
+  port is opened on the user's computer.
+- The Host authenticates with the user's Loom Account access token in the WSS Authorization
+  header. Browser JavaScript never receives that token.
+- The gateway only connects browser and Host peers belonging to the same authenticated user.
+- Operation names are allow-listed by the Host's shared `desktopOperations` table.
+- App Server approvals, sandboxing and permission checks are unchanged because Web invokes
+  the exact same local App Server as Desktop.
 
 ## Endpoints
 
 - `GET /api/healthz`
-- `GET|POST /api/auth/*` — same-origin account facade with Secure HttpOnly cookies
-- `WS /api/ws/browser` — browser <-> independent Web runtime
-- `WS /api/ws/device` — optional outbound Loom Desktop connection
-
-The device socket requires the Loom Account access token in the `Authorization` header.
-The browser never receives that token; it uses Secure, HttpOnly, SameSite=Strict cookies.
+- `GET|POST /api/auth/*` — same-origin account facade
+- `WS /api/ws/browser` — authenticated browser transport
+- `WS /api/ws/device` — outbound local Loom Host transport
+- `GET /setup` — retired; returns 410 because Web no longer has a cloud model credential
 
 ## Caddy
 
@@ -57,5 +63,5 @@ loom.smirel.com {
 }
 ```
 
-Attach `loom-web` to the same Docker network as Caddy and keep it without a public host port.
-The Desktop device relay, when used, connects outbound to `wss://loom.smirel.com/api/ws/device`.
+Attach `loom-web` to the same internal Docker network as Caddy. It needs no public host port,
+no model API key, no workspace volume, and no server-side Loom Agent runtime.

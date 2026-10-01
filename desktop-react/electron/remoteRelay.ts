@@ -1,18 +1,15 @@
+import { app, BrowserWindow, dialog, Menu, nativeImage, shell, Tray } from "electron";
 import WebSocket from "ws";
 
-// The Loom Web device relay. This runs in the Electron *main* process, not in a
-// renderer or preload: the gateway's device socket authenticates the access
-// token from an `Authorization: Bearer` header, and only the `ws` package can
-// set WebSocket headers. A sandboxed preload has no access to `ws` at all.
-//
-// Transport only. The operations table and the auth lookup are injected by
-// main.ts, which keeps this module free of any import back into main.ts and
-// gives the IPC handlers and the relay one shared implementation.
+// The Loom Web device relay runs inside the same Electron main process that
+// owns Loom Desktop's App Server. The browser is only another client of that
+// local Host; this module never starts a second Agent Runtime.
 
 const DEFAULT_RELAY_URL = "wss://loom.smirel.com/api/ws/device";
 const HEARTBEAT_MS = 30_000;
 const RETRY_MIN_MS = 4_000;
 const RETRY_MAX_MS = 30_000;
+const BACKGROUND_HOST_ARG = "--loom-background-host";
 
 export type WebRelayAuth = {
   accessToken: string;
@@ -46,6 +43,106 @@ let retryMs = RETRY_MIN_MS;
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
 
+// Desktop's visible window is only a UI client. Keep the Electron main process
+// alive as Loom Host when that window is closed, so loom.smirel.com keeps using
+// the exact same App Server, model registry, conversations, approvals and tools.
+const backgroundHostLaunch = process.argv.includes(BACKGROUND_HOST_ARG);
+const primaryInstance = app.requestSingleInstanceLock();
+let allowHostQuit = false;
+let uiRequested = !backgroundHostLaunch;
+let hostTray: Tray | null = null;
+
+function loomMainWindow(): BrowserWindow | null {
+  return BrowserWindow.getAllWindows().find((window) => !window.isDestroyed() && window.getTitle() === "Loom") ?? null;
+}
+
+function showLoomWindow(): void {
+  uiRequested = true;
+  const window = loomMainWindow();
+  if (!window) return;
+  if (window.isMinimized()) window.restore();
+  window.show();
+  window.focus();
+}
+
+async function ensureHostTray(): Promise<void> {
+  if (hostTray || process.platform === "darwin") return;
+  let icon = nativeImage.createEmpty();
+  try { icon = await app.getFileIcon(process.execPath, { size: "small" }); } catch {}
+  hostTray = new Tray(icon);
+  hostTray.setToolTip("Loom Host · Web access available in background");
+  hostTray.setContextMenu(Menu.buildFromTemplate([
+    { label: "Open Loom", click: () => showLoomWindow() },
+    { label: "Open Loom Web", click: () => void shell.openExternal("https://loom.smirel.com") },
+    { type: "separator" },
+    {
+      label: "Quit Loom Host",
+      click: () => {
+        allowHostQuit = true;
+        app.quit();
+      },
+    },
+  ]));
+  hostTray.on("double-click", () => showLoomWindow());
+}
+
+function configureBackgroundHostStartup(): void {
+  if (process.platform !== "win32" || !app.isPackaged) return;
+  try {
+    app.setLoginItemSettings({
+      openAtLogin: true,
+      path: process.execPath,
+      args: [BACKGROUND_HOST_ARG],
+    });
+  } catch (error) {
+    console.warn("Could not configure Loom Host login startup", error);
+  }
+}
+
+// Register before main.ts creates its BrowserWindow. Preventing the close keeps
+// main.ts's existing `closed -> app.quit()` path from firing; the window simply
+// becomes a hidden client while the Host and relay remain alive.
+app.on("browser-window-created", (_event, window) => {
+  if (window.getTitle() !== "Loom") return;
+  window.on("close", (event) => {
+    if (allowHostQuit) return;
+    event.preventDefault();
+    window.hide();
+  });
+
+  if (backgroundHostLaunch && !uiRequested) {
+    const keepHidden = () => {
+      if (!uiRequested && !window.isDestroyed()) setImmediate(() => {
+        if (!uiRequested && !window.isDestroyed()) window.hide();
+      });
+    };
+    window.on("show", keepHidden);
+    window.once("ready-to-show", keepHidden);
+  }
+});
+
+if (!primaryInstance) {
+  app.quit();
+} else {
+  app.on("second-instance", (_event, argv) => {
+    if (argv.includes(BACKGROUND_HOST_ARG)) return;
+    if (app.isReady()) showLoomWindow();
+    else void app.whenReady().then(() => showLoomWindow());
+  });
+}
+
+app.whenReady().then(async () => {
+  if (!primaryInstance) return;
+  configureBackgroundHostStartup();
+  await ensureHostTray();
+});
+
+app.on("before-quit", () => {
+  allowHostQuit = true;
+  hostTray?.destroy();
+  hostTray = null;
+});
+
 function clearTimers(): void {
   if (reconnectTimer) clearTimeout(reconnectTimer);
   if (heartbeatTimer) clearInterval(heartbeatTimer);
@@ -72,10 +169,23 @@ function send(frame: unknown): void {
 }
 
 async function handleInvoke(frame: InvokeFrame): Promise<void> {
+  const args = Array.isArray(frame.args) ? frame.args : [];
   const operation = options?.operations[frame.operation];
   try {
-    if (!operation) throw new Error(`Unsupported Loom Web operation: ${frame.operation}`);
-    const result = await operation(Array.isArray(frame.args) ? frame.args : []);
+    let result: unknown;
+    if (operation) {
+      result = await operation(args);
+    } else if (frame.operation === "pickDirectory") {
+      // Native directory selection is a Host shell capability. Desktop already
+      // exposes the same dialog through IPC; Web reaches it through the relay.
+      const selection = await dialog.showOpenDialog({
+        title: "Add project folder",
+        properties: ["openDirectory", "createDirectory"],
+      });
+      result = selection.canceled || !selection.filePaths.length ? "" : selection.filePaths[0];
+    } else {
+      throw new Error(`Unsupported Loom Web operation: ${frame.operation}`);
+    }
     send({ type: "invoke_result", browserId: frame.browserId, id: frame.id, result });
   } catch (cause) {
     send({
@@ -88,7 +198,7 @@ async function handleInvoke(frame: InvokeFrame): Promise<void> {
 }
 
 async function connectRelay(): Promise<void> {
-  if (stopped || !options) return;
+  if (stopped || !options || !primaryInstance) return;
   if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) return;
   let auth: WebRelayAuth;
   try {

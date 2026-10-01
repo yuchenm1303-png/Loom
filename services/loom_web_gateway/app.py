@@ -9,9 +9,7 @@ from typing import Any
 
 import httpx
 from fastapi import FastAPI, Request, Response, WebSocket, WebSocketDisconnect
-from fastapi.responses import FileResponse, JSONResponse
-
-from runtime import CloudRuntimeError, CloudRuntimePool
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 
 ACCOUNT_BASE_URL = os.environ.get("LOOM_ACCOUNT_API_BASE_URL", "https://account.smirel.com/v1").rstrip("/")
 STATIC_DIR = Path(os.environ.get("LOOM_WEB_STATIC_DIR", "/app/static")).resolve()
@@ -20,13 +18,9 @@ REFRESH_COOKIE = "loom_web_refresh"
 ACCESS_MAX_AGE = 15 * 60
 REFRESH_MAX_AGE = 30 * 24 * 60 * 60
 
-# These operations require a physical desktop device. Everything else executes
-# inside the Web runtime and remains available when every Desktop is offline.
-DEVICE_OPERATIONS = {
-    "setupBrowserExtension",
-    "revealPath",
-    "copyImageSource",
-}
+# Loom Web is a thin browser client for the same local Loom Host used by Desktop.
+# The gateway authenticates the account and relays WebSocket frames only; it never
+# starts a second Agent Runtime on the server.
 
 app = FastAPI(title="Loom Web", docs_url=None, redoc_url=None, openapi_url=None)
 
@@ -111,6 +105,15 @@ async def healthz() -> dict[str, bool]:
     return {"ok": True}
 
 
+@app.get("/setup")
+async def retired_cloud_setup() -> Response:
+    return HTMLResponse(
+        "<!doctype html><title>Loom Web</title><p>No cloud model setup is required. "
+        "Loom Web uses the same local Loom Host, models, sessions and tools as Loom Desktop.</p>",
+        status_code=410,
+    )
+
+
 @app.get("/api/auth/status")
 async def auth_status(request: Request) -> Response:
     user, rotated = await _browser_identity(request)
@@ -168,10 +171,20 @@ class BrowserPeer:
     user_id: int
     websocket: WebSocket
     send_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
+    closed: bool = False
 
-    async def send(self, payload: dict[str, Any]) -> None:
+    async def send(self, payload: dict[str, Any]) -> bool:
+        if self.closed:
+            return False
         async with self.send_lock:
-            await self.websocket.send_json(payload)
+            if self.closed:
+                return False
+            try:
+                await self.websocket.send_json(payload)
+                return True
+            except (RuntimeError, WebSocketDisconnect):
+                self.closed = True
+                return False
 
 
 @dataclass
@@ -180,10 +193,20 @@ class DevicePeer:
     websocket: WebSocket
     device: dict[str, Any] = field(default_factory=dict)
     send_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
+    closed: bool = False
 
-    async def send(self, payload: dict[str, Any]) -> None:
+    async def send(self, payload: dict[str, Any]) -> bool:
+        if self.closed:
+            return False
         async with self.send_lock:
-            await self.websocket.send_json(payload)
+            if self.closed:
+                return False
+            try:
+                await self.websocket.send_json(payload)
+                return True
+            except (RuntimeError, WebSocketDisconnect):
+                self.closed = True
+                return False
 
 
 class RelayHub:
@@ -211,35 +234,11 @@ class RelayHub:
 
 
 hub = RelayHub()
-runtimes = CloudRuntimePool(hub.broadcast_notification)
-
-
-@app.on_event("shutdown")
-async def shutdown_runtime_pool() -> None:
-    await runtimes.close()
 
 
 async def _ws_user_from_access(access: str) -> dict[str, Any] | None:
     _, user = await _authenticated_user(access)
     return user
-
-
-async def _run_cloud_invoke(peer: BrowserPeer, request_id: Any, operation: str, args: list[Any]) -> None:
-    try:
-        result = await runtimes.invoke(peer.user_id, operation, args)
-        await peer.send({"type": "invoke_result", "id": request_id, "result": result})
-    except CloudRuntimeError as exc:
-        await peer.send({
-            "type": "invoke_result",
-            "id": request_id,
-            "error": {"code": "WEB_RUNTIME_ERROR", "message": str(exc)},
-        })
-    except Exception as exc:
-        await peer.send({
-            "type": "invoke_result",
-            "id": request_id,
-            "error": {"code": "WEB_RUNTIME_FAILURE", "message": f"Loom Web operation failed: {exc}"},
-        })
 
 
 async def _run_device_invoke(peer: BrowserPeer, request_id: Any, operation: str, args: list[Any]) -> None:
@@ -249,16 +248,22 @@ async def _run_device_invoke(peer: BrowserPeer, request_id: Any, operation: str,
         await peer.send({
             "type": "invoke_result",
             "id": request_id,
-            "error": {"code": "DEVICE_OFFLINE", "message": "This action needs a connected Loom Desktop device."},
+            "error": {"code": "HOST_OFFLINE", "message": "Your Loom Host is offline. Start Loom on your computer; the Host can remain running in the background."},
         })
         return
-    await device.send({
+    sent = await device.send({
         "type": "invoke",
         "browserId": peer.id,
         "id": request_id,
         "operation": operation,
         "args": args,
     })
+    if not sent:
+        await peer.send({
+            "type": "invoke_result",
+            "id": request_id,
+            "error": {"code": "HOST_OFFLINE", "message": "Your Loom Host disconnected before the request was sent."},
+        })
 
 
 @app.websocket("/api/ws/browser")
@@ -295,13 +300,14 @@ async def browser_socket(websocket: WebSocket) -> None:
             request_id = frame.get("id")
             operation = str(frame.get("operation") or "")
             args = frame.get("args") if isinstance(frame.get("args"), list) else []
-            if operation in DEVICE_OPERATIONS:
-                asyncio.create_task(_run_device_invoke(peer, request_id, operation, args))
-            else:
-                asyncio.create_task(_run_cloud_invoke(peer, request_id, operation, args))
+            # Every operation goes to the user's local Loom Host. Desktop and Web
+            # therefore share one App Server, Agent Runtime, model registry,
+            # conversation store, approval chain and tool execution environment.
+            asyncio.create_task(_run_device_invoke(peer, request_id, operation, args))
     except (WebSocketDisconnect, RuntimeError, ValueError):
         pass
     finally:
+        peer.closed = True
         async with hub.lock:
             hub.browsers.pop(peer.id, None)
 
@@ -352,11 +358,16 @@ async def device_socket(websocket: WebSocket) -> None:
                     else:
                         forwarded["result"] = frame.get("result")
                     await browser.send(forwarded)
-            # Desktop runtime notifications stay local to Desktop. Web runtime
-            # has its own independent notification stream and conversation state.
+            elif kind == "notification":
+                payload = frame.get("payload")
+                if isinstance(payload, dict):
+                    # Streaming deltas, turn completion, approvals and every other
+                    # App Server notification are the same stream Desktop receives.
+                    await hub.broadcast_notification(user_id, payload)
     except (WebSocketDisconnect, RuntimeError, ValueError):
         pass
     finally:
+        peer.closed = True
         async with hub.lock:
             if hub.devices.get(user_id) is peer:
                 hub.devices.pop(user_id, None)
@@ -368,8 +379,9 @@ async def spa(full_path: str) -> Response:
     relative = full_path.strip("/")
     candidate = (STATIC_DIR / relative).resolve() if relative else STATIC_DIR / "index.html"
     if STATIC_DIR in candidate.parents and candidate.is_file():
-        return FileResponse(candidate)
+        headers = {"Cache-Control": "no-cache, must-revalidate"} if candidate.name == "index.html" else None
+        return FileResponse(candidate, headers=headers)
     index = STATIC_DIR / "index.html"
     if index.is_file():
-        return FileResponse(index)
+        return FileResponse(index, headers={"Cache-Control": "no-cache, must-revalidate"})
     return JSONResponse({"error": "Loom Web frontend is not built."}, status_code=503)
