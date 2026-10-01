@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="16" height="14" viewBox="0 0 16 14">
-  <!-- Shorten both arms by 2px, preserving the previous rendered stroke thickness. -->
-  <path d="M0 0H16V4.444H5.333V14H0Z" fill="#000"/>
+<svg xmlns="http://www.w3.org/2000/svg" width="14" height="12" viewBox="0 0 14 12">
+  <!-- Shorter arms with slightly heavier strokes; the tip remains at (0, 0). -->
+  <path d="M0 0H14V5.444H6.333V12H0Z" fill="#000"/>
 </svg>
