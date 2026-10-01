@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import os
 import uuid
 from dataclasses import dataclass, field
@@ -23,6 +24,7 @@ REFRESH_MAX_AGE = 30 * 24 * 60 * 60
 # starts a second Agent Runtime on the server.
 
 app = FastAPI(title="Loom Web", docs_url=None, redoc_url=None, openapi_url=None)
+logger = logging.getLogger("loom.web.relay")
 
 
 def _snapshot(user: dict[str, Any] | None, *, reachable: bool = True) -> dict[str, Any]:
@@ -242,6 +244,7 @@ async def _ws_user_from_access(access: str) -> dict[str, Any] | None:
 
 
 async def _run_device_invoke(peer: BrowserPeer, request_id: Any, operation: str, args: list[Any]) -> None:
+    logger.info("relay invoke operation=%s", operation)
     async with hub.lock:
         device = hub.devices.get(peer.user_id)
     if device is None:
@@ -325,6 +328,7 @@ async def device_socket(websocket: WebSocket) -> None:
         await websocket.close(code=4401, reason="invalid account")
         return
     await websocket.accept()
+    logger.info("relay device connected")
     peer = DevicePeer(user_id=user_id, websocket=websocket)
     async with hub.lock:
         old = hub.devices.get(user_id)
@@ -346,6 +350,11 @@ async def device_socket(websocket: WebSocket) -> None:
             elif kind == "device_hello":
                 device = frame.get("device")
                 peer.device = device if isinstance(device, dict) else {}
+                logger.info(
+                    "relay device hello platform=%s version=%s",
+                    str(peer.device.get("platform") or "unknown"),
+                    str(peer.device.get("version") or "unknown"),
+                )
                 await hub.broadcast_device_status(user_id)
             elif kind == "invoke_result":
                 browser_id = str(frame.get("browserId") or "")
@@ -361,6 +370,8 @@ async def device_socket(websocket: WebSocket) -> None:
             elif kind == "notification":
                 payload = frame.get("payload")
                 if isinstance(payload, dict):
+                    notification_type = str(payload.get("method") or payload.get("type") or "unknown")
+                    logger.info("relay notification type=%s", notification_type)
                     # Streaming deltas, turn completion, approvals and every other
                     # App Server notification are the same stream Desktop receives.
                     await hub.broadcast_notification(user_id, payload)
@@ -371,6 +382,7 @@ async def device_socket(websocket: WebSocket) -> None:
         async with hub.lock:
             if hub.devices.get(user_id) is peer:
                 hub.devices.pop(user_id, None)
+        logger.info("relay device disconnected")
         await hub.broadcast_device_status(user_id)
 
 
