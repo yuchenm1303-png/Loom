@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-import hashlib
 import importlib
 import os
 import shutil
 import sys
+import threading
 from pathlib import Path
 from typing import Any
 
@@ -26,6 +26,8 @@ _EXECUTABLE_LANGUAGES = {
     "terminal",
     "zsh",
 }
+_PROCESS_CONTEXT: dict[str, tuple[str, str]] = {}
+_PROCESS_CONTEXT_LOCK = threading.RLock()
 
 
 def _workspace(value: object) -> Path:
@@ -38,9 +40,33 @@ def _workspace(value: object) -> Path:
     return path
 
 
-def _session_id(workspace: Path) -> str:
-    digest = hashlib.sha256(str(workspace).encode("utf-8", errors="replace")).hexdigest()[:16]
-    return f"code-block-terminal-{digest}"
+def _execution_context(service, workspace: Path) -> tuple[str, PermissionMode]:
+    list_sessions = getattr(service, "_list_session_objects", None)
+    if not callable(list_sessions):
+        raise RuntimeError("Loom thread registry is unavailable")
+
+    matches = []
+    for session in list_sessions():
+        try:
+            session_workspace = Path(session.workspace_dir).expanduser().resolve()
+        except (AttributeError, OSError, RuntimeError, ValueError):
+            continue
+        if session_workspace == workspace:
+            matches.append(session)
+
+    if not matches:
+        raise ValueError("workspace is not associated with a Loom thread")
+
+    is_active = getattr(service, "_is_active", None)
+    selected = next(
+        (
+            session
+            for session in matches
+            if callable(is_active) and is_active(str(session.session_id))
+        ),
+        matches[0],
+    )
+    return str(selected.session_id), PermissionMode(selected.permission_mode)
 
 
 def _shell_argv(language: str, command: str) -> tuple[str, ...]:
@@ -98,27 +124,32 @@ def _snapshot(managed, *, drain_delta: bool = True) -> dict[str, Any]:
         "failure": snapshot["failure"],
         "backend": snapshot["backend"],
         "pty": snapshot["pty"],
+        "permissionMode": snapshot["permission_mode"],
+        "sandbox": snapshot["sandbox"],
     }
 
 
 def _run(service, params: dict[str, Any]) -> dict[str, Any]:
     workspace = _workspace(params.get("workspace"))
+    session_id, permission_mode = _execution_context(service, workspace)
     command = str(params.get("command") or "")
     language = str(params.get("language") or "shell")
     argv = _shell_argv(language, command)
-    permissions = permission_snapshot(PermissionMode.WORKSPACE)
+    permissions = permission_snapshot(permission_mode)
     managed = service.runtime.process_store.start(
-        session_id=_session_id(workspace),
+        session_id=session_id,
         argv=argv,
         cwd=workspace,
         workspace=workspace,
-        permission_mode=PermissionMode.WORKSPACE.value,
+        permission_mode=permission_mode.value,
         permissions=permissions,
         timeout_seconds=3600,
         pty=True,
         rows=24,
         cols=120,
     )
+    with _PROCESS_CONTEXT_LOCK:
+        _PROCESS_CONTEXT[managed.process_id] = (session_id, str(workspace))
     return _snapshot(managed)
 
 
@@ -127,10 +158,14 @@ def _process(service, params: dict[str, Any]):
     process_id = str(params.get("processId") or "").strip()
     if not process_id:
         raise ValueError("processId is required")
-    return service.runtime.process_store.get(
-        process_id,
-        session_id=_session_id(workspace),
-    )
+    with _PROCESS_CONTEXT_LOCK:
+        context = _PROCESS_CONTEXT.get(process_id)
+    if context is None:
+        raise ValueError("terminal process is not associated with this app-server session")
+    session_id, expected_workspace = context
+    if str(workspace) != expected_workspace:
+        raise ValueError("terminal process belongs to a different workspace")
+    return service.runtime.process_store.get(process_id, session_id=session_id)
 
 
 def _dispatch(service, method: str, params: dict[str, Any]) -> dict[str, Any]:
@@ -176,7 +211,8 @@ def _install_on_app_server(module) -> None:
                 "run": True,
                 "interactive": True,
                 "interrupt": True,
-                "sandbox": "workspace-write",
+                "permissionMode": "thread",
+                "authorization": "explicit-user-run",
             }
         return result
 
