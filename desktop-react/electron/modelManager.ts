@@ -1,5 +1,6 @@
 import { spawn, spawnSync } from "node:child_process";
 import path from "node:path";
+import { resolveHostPythonExecutable } from "./hostRuntime.js";
 
 export interface ModelReasoningOption {
   value: string;
@@ -646,7 +647,7 @@ export class DesktopModelManager {
     command: string,
     payload: Record<string, unknown>,
   ): Promise<T> {
-    const python = process.env.LOOM_PYTHON || (process.platform === "win32" ? "python" : "python3");
+    const python = resolveHostPythonExecutable(this.repoRoot);
     const script = path.join(this.repoRoot, scriptName);
     return new Promise<T>((resolve, reject) => {
       const child = spawn(python, [script, command], {
@@ -692,7 +693,7 @@ export class DesktopModelManager {
   }
 
   private runPythonBridge<T>(scriptName: string, command: string, payload: Record<string, unknown>): T {
-    const python = process.env.LOOM_PYTHON || (process.platform === "win32" ? "python" : "python3");
+    const python = resolveHostPythonExecutable(this.repoRoot);
     const script = path.join(this.repoRoot, scriptName);
     const result = spawnSync(python, [script, command], {
       cwd: this.repoRoot,

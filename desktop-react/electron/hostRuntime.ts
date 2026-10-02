@@ -95,7 +95,7 @@ function descriptorFromRoot(root: string, source: HostRuntimeSource): HostRuntim
 }
 
 function managedHostRuntime(): HostRuntimeDescriptor | null {
-  if (!app.isPackaged || process.platform !== "win32") return null;
+  if (!app.isReady() || !app.isPackaged || process.platform !== "win32") return null;
   const pointer = safeJson<Partial<HostRuntimePointer>>(hostRuntimePointerPath());
   if (!pointer || pointer.schema !== HOST_RUNTIME_SCHEMA || !validVersion(pointer.version)) return null;
   const descriptor = descriptorFromRoot(path.join(hostRuntimeVersionsRoot(), pointer.version), "managed");

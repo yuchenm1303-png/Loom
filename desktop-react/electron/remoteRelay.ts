@@ -2,9 +2,11 @@ import { app, BrowserWindow, dialog, Menu, nativeImage, shell, Tray } from "elec
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import WebSocket from "ws";
 import { LoomAccountClient } from "./accountClient.js";
-import { LOOM_HOST_PROTOCOL_VERSION, webRelayDeviceIdentity } from "./webRelayAuth.js";
-import { ensureWebHostUpdate, softwareUpdateState } from "./updater.js";
-import { BACKGROUND_HOST_ARG, LOOM_HOST_RUNTIME_VERSION, isBackgroundHostLaunch, loomHostLaunchMode, type LoomHostLaunchMode } from "./hostMode.js";
+import { LOOM_BOOTSTRAP_PROTOCOL_VERSION, webRelayDeviceIdentity } from "./webRelayAuth.js";
+import { ensureBootstrapUpdate, softwareUpdateState } from "./updater.js";
+import { BACKGROUND_HOST_ARG, isBackgroundHostLaunch, loomHostLaunchMode, type LoomHostLaunchMode } from "./hostMode.js";
+import { currentHostRuntimeProtocol, currentHostRuntimeVersion } from "./hostRuntime.js";
+import { ensureHostRuntimeUpdate, hostRuntimeUpdateState } from "./hostRuntimeUpdater.js";
 
 // The Loom Web device relay runs inside the same Electron main process that
 // owns Loom Desktop's App Server. The browser is only another client of that
@@ -32,6 +34,7 @@ export type WebRelayAuth = {
   hostVersion: string;
   hostMode: LoomHostLaunchMode;
   hostProtocol: number;
+  bootstrapProtocol: number;
 };
 
 export type WebRelayOperation = (args: unknown[]) => Promise<unknown>;
@@ -191,10 +194,9 @@ async function handleLocalDiscovery(request: IncomingMessage, response: ServerRe
     writeLocalJson(response, 200, {
       ok: true,
       ...identity,
-      hostVersion: LOOM_HOST_RUNTIME_VERSION,
-      hostMode: loomHostLaunchMode(),
       relayReady: ws?.readyState === WebSocket.OPEN,
-      update: softwareUpdateState(),
+      update: hostRuntimeUpdateState(),
+      bootstrapUpdate: softwareUpdateState(),
     }, origin);
     return;
   }
@@ -207,16 +209,16 @@ async function handleLocalDiscovery(request: IncomingMessage, response: ServerRe
     try {
       const body = await readLocalJson(request);
       const requiredProtocol = Math.max(0, Math.min(1_000_000, Number(body.required_protocol || 0) || 0));
-      const update = LOOM_HOST_PROTOCOL_VERSION < requiredProtocol
-        ? await ensureWebHostUpdate()
-        : softwareUpdateState();
+      const update = await ensureHostRuntimeUpdate(requiredProtocol);
+      const hostProtocol = currentHostRuntimeProtocol();
       writeLocalJson(response, 200, {
         ok: true,
-        hostProtocol: LOOM_HOST_PROTOCOL_VERSION,
-        hostVersion: LOOM_HOST_RUNTIME_VERSION,
+        hostProtocol,
+        hostVersion: currentHostRuntimeVersion(),
         hostMode: loomHostLaunchMode(),
+        bootstrapProtocol: LOOM_BOOTSTRAP_PROTOCOL_VERSION,
         requiredProtocol,
-        compatible: LOOM_HOST_PROTOCOL_VERSION >= requiredProtocol,
+        compatible: hostProtocol >= requiredProtocol,
         update,
       }, origin);
     } catch (cause) {
@@ -410,21 +412,29 @@ async function handleInvoke(frame: InvokeFrame): Promise<void> {
       result = await operation(args);
     } else if (frame.operation === "hostUpdateStatus") {
       result = {
-        hostProtocol: LOOM_HOST_PROTOCOL_VERSION,
-        hostVersion: LOOM_HOST_RUNTIME_VERSION,
+        hostProtocol: currentHostRuntimeProtocol(),
+        hostVersion: currentHostRuntimeVersion(),
         hostMode: loomHostLaunchMode(),
-        update: softwareUpdateState(),
+        bootstrapProtocol: LOOM_BOOTSTRAP_PROTOCOL_VERSION,
+        update: hostRuntimeUpdateState(),
       };
     } else if (frame.operation === "hostUpdateEnsure") {
       const requiredProtocol = Math.max(0, Math.min(1_000_000, Number(args[0] || 0) || 0));
+      const update = await ensureHostRuntimeUpdate(requiredProtocol);
+      const hostProtocol = currentHostRuntimeProtocol();
       result = {
-        hostProtocol: LOOM_HOST_PROTOCOL_VERSION,
-        hostVersion: LOOM_HOST_RUNTIME_VERSION,
+        hostProtocol,
+        hostVersion: currentHostRuntimeVersion(),
         hostMode: loomHostLaunchMode(),
+        bootstrapProtocol: LOOM_BOOTSTRAP_PROTOCOL_VERSION,
         requiredProtocol,
-        compatible: LOOM_HOST_PROTOCOL_VERSION >= requiredProtocol,
-        update: LOOM_HOST_PROTOCOL_VERSION < requiredProtocol ? await ensureWebHostUpdate() : softwareUpdateState(),
+        compatible: hostProtocol >= requiredProtocol,
+        update,
       };
+    } else if (frame.operation === "bootstrapUpdateStatus") {
+      result = { bootstrapProtocol: LOOM_BOOTSTRAP_PROTOCOL_VERSION, appVersion: app.getVersion(), update: softwareUpdateState() };
+    } else if (frame.operation === "bootstrapUpdateEnsure") {
+      result = { bootstrapProtocol: LOOM_BOOTSTRAP_PROTOCOL_VERSION, appVersion: app.getVersion(), update: await ensureBootstrapUpdate() };
     } else if (frame.operation === "pickDirectory") {
       const selection = await dialog.showOpenDialog({
         title: "Add project folder",
@@ -476,6 +486,7 @@ async function connectRelay(): Promise<void> {
         hostVersion: auth.hostVersion,
         hostMode: auth.hostMode,
         hostProtocol: auth.hostProtocol,
+        bootstrapProtocol: auth.bootstrapProtocol,
       },
     });
     if (heartbeatTimer) clearInterval(heartbeatTimer);

@@ -27,15 +27,19 @@ import { webRelayAuthPayload } from "./webRelayAuth.js";
 import { createSearchRelay } from "./searchRelay.js";
 import { isBackgroundHostLaunch, setLoomHostLaunchMode } from "./hostMode.js";
 import { consumeHeadlessUpdateRestart, registerHeadlessUpdateGuard } from "./updater.js";
+import {
+  currentHostRuntimeVersion,
+  resolveHostBrowserExtensionRoot,
+  resolveHostPythonExecutable,
+  resolveHostSandboxExecutable,
+} from "./hostRuntime.js";
+import { registerHostRuntimeUpdateHooks } from "./hostRuntimeUpdater.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const DESKTOP_ROOT = path.resolve(__dirname, "..");
 const REPO_ROOT = path.resolve(DESKTOP_ROOT, "..");
 const DEV_WINDOW_ICON = path.join(DESKTOP_ROOT, "build", "icon.png");
-const REPO_VENV_PYTHON = process.platform === "win32"
-  ? path.join(REPO_ROOT, ".venv", "Scripts", "python.exe")
-  : path.join(REPO_ROOT, ".venv", "bin", "python");
 const HTML_ESCAPE: Record<string, string> = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
 const APP_SERVER_CONNECT_TIMEOUT_MS = 15_000;
 const APP_SERVER_CALL_TIMEOUT_MS = 120_000;
@@ -154,10 +158,7 @@ interface ReasoningUpdateResult {
 }
 
 function resolvePythonExecutable(): string {
-  const configured = process.env.LOOM_PYTHON?.trim();
-  if (configured) return configured;
-  if (fsSync.existsSync(REPO_VENV_PYTHON)) return REPO_VENV_PYTHON;
-  return process.platform === "win32" ? "python" : "python3";
+  return resolveHostPythonExecutable(REPO_ROOT);
 }
 
 function appendPythonPath(existing: string | undefined): string {
@@ -240,9 +241,7 @@ function unpackedExtensionId(absolutePath: string): string {
 }
 
 function browserExtensionSource(): string {
-  return app.isPackaged
-    ? path.join(process.resourcesPath, "browser-current-tab")
-    : path.join(REPO_ROOT, "extensions", "browser-current-tab");
+  return resolveHostBrowserExtensionRoot(REPO_ROOT);
 }
 
 function browserExtensionTarget(): string {
@@ -892,6 +891,7 @@ class LoomRpcProcess {
       }
     }
     const python = resolvePythonExecutable();
+    const sandboxExecutable = resolveHostSandboxExecutable(REPO_ROOT);
     const script = path.join(REPO_ROOT, "loom_app_server.py");
     const args = [script, "--workspace", REPO_ROOT, "--provider", spec.provider, "--model", spec.model, "--selection", spec.selection, "--local-ipc"];
     if (spec.baseUrl) args.push("--base-url", spec.baseUrl);
@@ -905,6 +905,8 @@ class LoomRpcProcess {
         PYTHONUTF8: "1",
         PYTHONPATH: appendPythonPath(process.env.PYTHONPATH),
         LOOM_DESKTOP_PYTHON: python,
+        LOOM_HOST_RUNTIME_VERSION: currentHostRuntimeVersion(REPO_ROOT),
+        LOOM_WINDOWS_SANDBOX_EXECUTABLE: sandboxExecutable || process.env.LOOM_WINDOWS_SANDBOX_EXECUTABLE,
         // Computer Use observes the foreground window, which is sometimes Loom
         // itself. Knowing which process owns Loom's own windows lets it say so
         // instead of silently automating its own UI.
@@ -986,6 +988,21 @@ registerHeadlessUpdateGuard(async () => {
   } catch {
     return false;
   }
+});
+registerHostRuntimeUpdateHooks({
+  canActivate: async () => {
+    try {
+      await rpc.assertRestartSafe();
+      return true;
+    } catch {
+      return false;
+    }
+  },
+  reload: async () => {
+    const wasReady = rpc.ready;
+    rpc.stop();
+    if (wasReady) await rpc.connect();
+  },
 });
 let searchRelayPromise: ReturnType<typeof createSearchRelay> | null = null;
 function sharedSearchRelay(): ReturnType<typeof createSearchRelay> {

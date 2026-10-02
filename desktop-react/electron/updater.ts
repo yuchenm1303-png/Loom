@@ -71,6 +71,7 @@ let errorRetryTimer: NodeJS.Timeout | null = null;
 let headlessInstallGuard: (() => boolean | Promise<boolean>) | null = null;
 let headlessInstallRetryTimer: NodeJS.Timeout | null = null;
 let headlessInstallAttempt: Promise<boolean> | null = null;
+let bootstrapAutoInstallRequested = false;
 const earlyRecheckTimers: NodeJS.Timeout[] = [];
 
 export function softwareUpdateState(): SoftwareUpdateState {
@@ -132,7 +133,7 @@ function hasVisibleWindow(): boolean {
 }
 
 function headlessInstallWanted(): boolean {
-  return state.phase === "downloaded" && !hasVisibleWindow();
+  return bootstrapAutoInstallRequested && state.phase === "downloaded" && !hasVisibleWindow();
 }
 
 function headlessRestartMarkerPath(): string {
@@ -199,8 +200,9 @@ export function registerHeadlessUpdateGuard(guard: () => boolean | Promise<boole
   headlessInstallGuard = guard;
 }
 
-export async function ensureWebHostUpdate(): Promise<SoftwareUpdateState> {
+export async function ensureBootstrapUpdate(): Promise<SoftwareUpdateState> {
   if (!updateEnabled) return softwareUpdateState();
+  bootstrapAutoInstallRequested = true;
   if (state.phase === "downloaded") {
     void maybeInstallHeadless();
     return softwareUpdateState();
@@ -209,6 +211,10 @@ export async function ensureWebHostUpdate(): Promise<SoftwareUpdateState> {
   void maybeInstallHeadless();
   return next;
 }
+
+// Backwards-compatible export for older internal callers. New Web Host update
+// paths use hostRuntimeUpdater instead of downloading the Desktop package.
+export const ensureWebHostUpdate = ensureBootstrapUpdate;
 
 function clearErrorRetry(): void {
   if (!errorRetryTimer) return;
@@ -359,6 +365,7 @@ function configureUpdater(): void {
 
   autoUpdater.on("update-not-available", (info) => {
     clearErrorRetry();
+    bootstrapAutoInstallRequested = false;
     setState({
       phase: "up-to-date",
       ...updateInfoPatch(info),
@@ -429,6 +436,7 @@ ipcMain.handle("loom:update-check", () => checkForUpdates());
 ipcMain.handle("loom:update-install", () => installDownloadedUpdate());
 
 app.on("browser-window-created", (_event, window) => {
+  startAutomaticChecks();
   window.webContents.once("did-finish-load", () => {
     if (!window.isDestroyed() && !window.webContents.isDestroyed()) {
       window.webContents.send(STATUS_CHANNEL, softwareUpdateState());
@@ -439,7 +447,9 @@ app.on("browser-window-created", (_event, window) => {
 });
 
 app.whenReady().then(() => {
-  startAutomaticChecks();
+  // A pure background Host updates its independent runtime instead. Desktop
+  // update checks start lazily when a Desktop window actually exists.
+  if (hasVisibleWindow()) startAutomaticChecks();
 });
 
 app.on("before-quit", () => {

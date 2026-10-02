@@ -13,9 +13,16 @@ def test_host_has_independent_runtime_identity_and_background_mode() -> None:
     source = HOST_MODE.read_text(encoding="utf-8")
     assert "BACKGROUND_HOST_ARG" in source
     assert "--loom-background-host" in source
-    assert "LOOM_HOST_RUNTIME_VERSION" in source
+    assert "LOOM_HOST_RUNTIME_VERSION" not in source
+    runtime = (ELECTRON / "hostRuntime.ts").read_text(encoding="utf-8")
+    updater = (ELECTRON / "hostRuntimeUpdater.ts").read_text(encoding="utf-8")
     auth = (ELECTRON / "webRelayAuth.ts").read_text(encoding="utf-8")
-    assert "hostVersion: LOOM_HOST_RUNTIME_VERSION" in auth
+    assert "currentHostRuntimeVersion()" in auth
+    assert "currentHostRuntimeProtocol()" in auth
+    assert "LOOM_BOOTSTRAP_PROTOCOL_VERSION" in auth
+    assert "host-runtime" in runtime
+    assert "activateHostRuntime" in runtime
+    assert "ensureHostRuntimeUpdate" in updater
     assert "hostMode: loomHostLaunchMode()" in auth
 
 
@@ -38,16 +45,18 @@ def test_host_starts_at_login_and_can_lazily_open_desktop() -> None:
     assert "Quit Loom Host" in source
 
 
-def test_headless_updates_wait_for_idle_runtime_and_resume_headless() -> None:
+def test_host_runtime_updates_independently_and_bootstrap_update_is_rare() -> None:
     source = UPDATER.read_text(encoding="utf-8")
+    runtime_updater = (ELECTRON / "hostRuntimeUpdater.ts").read_text(encoding="utf-8")
     main = MAIN.read_text(encoding="utf-8")
-    assert "registerHeadlessUpdateGuard" in source
-    assert "HEADLESS_INSTALL_RETRY_MS" in source
-    assert "markHeadlessUpdateRestart();" in source
-    assert "consumeHeadlessUpdateRestart" in source
-    assert 'window.on("hide", () => { void maybeInstallHeadless(); });' in source
+    assert "bootstrapAutoInstallRequested" in source
+    assert "ensureBootstrapUpdate" in source
+    assert "registerHostRuntimeUpdateHooks" in runtime_updater
+    assert "checksum verification failed" in runtime_updater
+    assert "Runtime activation rolled back" in runtime_updater
     assert "await rpc.assertRestartSafe();" in main
-    assert "consumeHeadlessUpdateRestart()" in main
+    assert "resolveHostPythonExecutable" in main
+    assert "resolveHostBrowserExtensionRoot" in main
 
 
 def test_web_copy_treats_desktop_as_optional_ui() -> None:

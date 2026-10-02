@@ -7,6 +7,7 @@ DESKTOP_MAIN = (ROOT / "desktop-react/electron/main.ts").read_text(encoding="utf
 REMOTE_RELAY = (ROOT / "desktop-react/electron/remoteRelay.ts").read_text(encoding="utf-8")
 WEB_RELAY_AUTH = (ROOT / "desktop-react/electron/webRelayAuth.ts").read_text(encoding="utf-8")
 UPDATER = (ROOT / "desktop-react/electron/updater.ts").read_text(encoding="utf-8")
+HOST_UPDATER = (ROOT / "desktop-react/electron/hostRuntimeUpdater.ts").read_text(encoding="utf-8")
 HOST_MODE = (ROOT / "desktop-react/electron/hostMode.ts").read_text(encoding="utf-8")
 WEB_BRIDGE = (ROOT / "desktop-react/src/webBridge.ts").read_text(encoding="utf-8")
 LOCAL_DISCOVERY = (ROOT / "desktop-react/src/localHostDiscovery.ts").read_text(encoding="utf-8")
@@ -49,14 +50,18 @@ def test_web_system_actions_reach_local_host() -> None:
 
 
 def test_web_host_negotiates_protocol_and_can_self_update() -> None:
-    assert "LOOM_HOST_PROTOCOL_VERSION = 1" in WEB_RELAY_AUTH
+    assert "LOOM_BOOTSTRAP_PROTOCOL_VERSION = 1" in WEB_RELAY_AUTH
     assert "hostProtocol: auth.hostProtocol" in REMOTE_RELAY
+    assert "bootstrapProtocol: auth.bootstrapProtocol" in REMOTE_RELAY
     assert 'const LOCAL_UPDATE_PATH = "/loom/update"' in REMOTE_RELAY
     assert 'frame.operation === "hostUpdateEnsure"' in REMOTE_RELAY
-    assert "ensureWebHostUpdate()" in REMOTE_RELAY
-    assert "registerHeadlessUpdateGuard" in UPDATER
-    assert "HEADLESS_INSTALL_RETRY_MS" in UPDATER
-    assert "markHeadlessUpdateRestart()" in UPDATER
+    assert "ensureHostRuntimeUpdate(requiredProtocol)" in REMOTE_RELAY
+    assert "hostRuntimeUpdateState()" in REMOTE_RELAY
+    assert 'frame.operation === "bootstrapUpdateEnsure"' in REMOTE_RELAY
+    assert "ensureBootstrapUpdate()" in REMOTE_RELAY
+    assert "bootstrapAutoInstallRequested" in UPDATER
+    assert "activateHostRuntime" in HOST_UPDATER
+    assert "sha256(bytes) !== channel.sha256" in HOST_UPDATER
     assert "autoUpdater.quitAndInstall(false, true)" in UPDATER
     assert "LOOM_WEB_REQUIRED_HOST_PROTOCOL = 1" in LOCAL_DISCOVERY
     assert "ensureLocalLoomHostCompatibility" in LOCAL_DISCOVERY
