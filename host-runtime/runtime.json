@@ -2,5 +2,5 @@
   "schema": 1,
   "series": "1.0",
   "protocol": 1,
-  "minBootstrapVersion": "0.1.10"
+  "minBootstrapVersion": "0.1.11"
 }
