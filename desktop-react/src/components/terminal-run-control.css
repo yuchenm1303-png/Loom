@@ -1,0 +1,144 @@
+.terminal-run-launch {
+  position: absolute;
+  z-index: 2;
+  top: 4px;
+  right: 58px;
+  height: 22px;
+  padding: 0 7px;
+  border: 0;
+  border-radius: 5px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: transparent;
+  color: #7f8995;
+  cursor: pointer;
+  font: 9px/1 ui-sans-serif, system-ui, sans-serif;
+  transition: color 130ms ease, background 130ms ease, opacity 130ms ease;
+}
+
+.terminal-run-launch:hover:not(:disabled) {
+  color: #cfd4dc;
+  background: rgba(255,255,255,.045);
+}
+
+.terminal-run-launch.is-running {
+  color: #d7b0a8;
+}
+
+.terminal-run-launch:disabled {
+  opacity: .38;
+  cursor: default;
+}
+
+.terminal-run-spinner {
+  animation: terminal-run-spin 760ms linear infinite;
+}
+
+@keyframes terminal-run-spin {
+  to { transform: rotate(360deg); }
+}
+
+.terminal-run-panel {
+  border-top: 1px solid #232730;
+  background: #0a0c10;
+}
+
+.terminal-run-status {
+  height: 28px;
+  padding: 0 11px 0 13px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: #68717e;
+  background: rgba(255,255,255,.012);
+  font: 9.5px/1 "SFMono-Regular", Consolas, monospace;
+}
+
+.terminal-run-status .is-running { color: #9e98d9; }
+.terminal-run-status .is-success { color: #83a98e; }
+.terminal-run-status .is-error { color: #ca8f86; }
+
+.markdown-code-block .terminal-run-output {
+  margin: 0;
+  padding: 11px 13px;
+  max-height: 220px;
+  overflow: auto;
+  border-top: 1px solid rgba(255,255,255,.025);
+  background: #090b0e;
+  color: #aeb5c0;
+  font: .78em/1.55 "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.terminal-run-error {
+  padding: 8px 13px;
+  border-top: 1px solid rgba(201,116,101,.12);
+  color: #c98d84;
+  background: rgba(122,50,42,.08);
+  font: 10px/1.45 ui-sans-serif, system-ui, sans-serif;
+  overflow-wrap: anywhere;
+}
+
+.terminal-run-input-row {
+  min-height: 34px;
+  padding: 5px 7px 6px 10px;
+  border-top: 1px solid #232730;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: #0c0e12;
+}
+
+.terminal-run-input-row input {
+  min-width: 0;
+  flex: 1;
+  height: 24px;
+  padding: 0 7px;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  outline: none;
+  background: rgba(255,255,255,.025);
+  color: #c8cdd5;
+  font: 10px/1 "SFMono-Regular", Consolas, monospace;
+  transition: border-color 130ms ease, background 130ms ease;
+}
+
+.terminal-run-input-row input:focus {
+  border-color: rgba(145,135,220,.26);
+  background: rgba(255,255,255,.038);
+}
+
+.terminal-run-input-row input::placeholder {
+  color: #505865;
+}
+
+.terminal-run-input-row button {
+  width: 26px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 5px;
+  display: grid;
+  place-items: center;
+  background: transparent;
+  color: #77808d;
+  cursor: pointer;
+  transition: color 130ms ease, background 130ms ease, opacity 130ms ease;
+}
+
+.terminal-run-input-row button:hover:not(:disabled) {
+  color: #c4c9d1;
+  background: rgba(255,255,255,.04);
+}
+
+.terminal-run-input-row button:disabled {
+  opacity: .3;
+  cursor: default;
+}
+
+@media (max-width: 680px) {
+  .terminal-run-launch span { display: none; }
+  .terminal-run-launch { right: 54px; width: 24px; padding: 0; justify-content: center; }
+}
