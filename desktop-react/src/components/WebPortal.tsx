@@ -34,14 +34,14 @@ const RELEASE = {
 
 const HOST_COPY = {
   en: {
-    localSetup: "No Loom Host was found on this computer. Install Loom once, open it, and this page will discover and securely connect automatically.",
+    localSetup: "Loom Host is not running on this computer, or Loom has not been installed yet. If Loom is already installed, open it and this page will reconnect automatically.",
     localConnecting: "Connecting securely to the Loom Host on this computer.",
-    localOffline: "Loom Host is offline. Start Loom on this computer, then reconnect.",
+    localOffline: "Loom is installed for this account, but its Host is offline. Open Loom on this computer and this page will reconnect automatically.",
   },
   zh: {
-    localSetup: "这台电脑上还没有发现 Loom Host。首次使用请先安装并启动一次 Loom，本页面会自动发现并安全连接。",
+    localSetup: "这台电脑上当前没有运行 Loom Host。可能是已经安装但尚未启动，也可能还没有安装。若已安装，直接启动 Loom，本页面会自动重新连接。",
     localConnecting: "正在安全连接这台电脑上的 Loom Host。",
-    localOffline: "Loom Host 已离线。请先在这台电脑上启动 Loom，然后重新连接。",
+    localOffline: "这台电脑的 Loom Host 当前离线。直接启动 Loom，本页面会自动重新连接。",
   },
 } as const;
 
@@ -118,6 +118,7 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
   const [challengeEmail, setChallengeEmail] = useState("");
   const [resendWait, setResendWait] = useState(0);
   const [localError, setLocalError] = useState("");
+  const [launchingLoom, setLaunchingLoom] = useState(false);
   const authenticated = Boolean(account.account.authenticated && account.account.user);
   const strength = passwordScore(password);
 
@@ -239,9 +240,22 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
     window.setTimeout(() => document.getElementById("emailInput")?.focus(), 220);
   }
 
+  function openInstalledLoom() {
+    setLaunchingLoom(true);
+    setLocalError("");
+    window.location.href = "loom://open?source=web";
+    window.setTimeout(() => onEnter(), 1_200);
+    window.setTimeout(() => onEnter(), 3_200);
+    window.setTimeout(() => setLaunchingLoom(false), 4_500);
+  }
+
   function primaryAction() {
     if (!authenticated) {
       focusAccount();
+      return;
+    }
+    if (hostState === "offline") {
+      openInstalledLoom();
       return;
     }
     onEnter();
@@ -264,7 +278,7 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
       : hostState === "offline"
         ? (zh ? "已离线" : "Offline")
         : hostState === "unbound"
-          ? (zh ? "需要安装 Loom" : "Loom Host required")
+          ? (zh ? "未检测到 Loom Host" : "Loom Host not detected")
           : (zh ? "等待连接" : "Waiting");
 
   const primaryLabel = !authenticated
@@ -274,8 +288,12 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
       : hostState === "checking"
         ? (zh ? "正在连接…" : "Connecting…")
         : hostState === "unbound"
-          ? (zh ? "已安装，重新检测" : "I installed Loom · Check again")
-          : (zh ? "重新连接 Loom Host" : "Reconnect Loom Host");
+          ? (zh ? "重新检测 Loom Host" : "Check again")
+          : hostState === "offline"
+            ? launchingLoom
+              ? (zh ? "正在启动 Loom…" : "Opening Loom…")
+              : (zh ? "启动已安装的 Loom" : "Open installed Loom")
+            : (zh ? "重新连接 Loom Host" : "Reconnect Loom Host");
 
   return (
     <div className="loom-portal-page is-modular">
@@ -345,7 +363,7 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
                   <label><span>{zh ? "邮箱" : "Email"}</span><div className="loom-input-shell"><Mail size={16} aria-hidden="true" /><input id="emailInput" type="email" autoComplete="email" placeholder="name@example.com" value={email} onChange={(event) => setEmail(event.target.value)} required /></div></label>
                   <label className="password-field"><span className="loom-field-heading"><span>{zh ? "密码" : "Password"}</span>{authMode === "login" && account.capabilities.passwordReset ? <button className="loom-inline-link" type="button" onClick={() => { account.clearError(); setLocalError(""); setAuthStep("forgot"); }}>{zh ? "忘记密码？" : "Forgot password?"}</button> : null}</span><div className="loom-input-shell"><KeyRound size={16} aria-hidden="true" /><input type={showPassword ? "text" : "password"} autoComplete={authMode === "login" ? "current-password" : "new-password"} placeholder="••••••••" value={password} onChange={(event) => setPassword(event.target.value)} required /><button className="password-toggle" type="button" aria-pressed={showPassword} onClick={() => setShowPassword((value) => !value)}>{showPassword ? (zh ? "隐藏" : "Hide") : (zh ? "显示" : "Show")}</button></div></label>
                   {authMode === "register" ? <>
-                    <div className="loom-password-strength" data-score={strength}><div className="loom-strength-copy"><span>{zh ? "密码强度" : "Password strength"}</span><span>{password ? ([zh ? "较弱" : "Weak", zh ? "一般" : "Fair", zh ? "良好" : "Good", zh ? "较强" : "Strong"][Math.max(0, strength - 1)] || (zh ? "较弱" : "Weak")) : (zh ? "未输入" : "Not entered")}</span></div><div className="loom-strength-bars">{[1,2,3,4].map((level) => <i key={level} className={strength >= level ? "is-active" : ""} />)}</div><small>{zh ? "建议至少 12 位，并混合大小写、数字和符号" : "12+ characters with mixed case, numbers and symbols is recommended"}</small></div>
+                    <div className="loom-password-strength" data-score={strength}><div className="loom-strength-copy"><span>{zh ? "密码强度" : "Password strength"}</span><span>{password ? ([zh ? "较弱" : "Weak", zh ? "一般" : "Fair", zh ? "良好" : "Good", zh ? "较强" : "Strong"][Math.max(0, strength - 1)] || (zh ? "较弱" : "Weak")) : (zh ? "未输入" : "Not entered")}</span></div><div className="loom-strength-bars">{[1,2,3,4].map((level) => <i key={level} className={strength >= level ? "is-active" : ""} />}</div><small>{zh ? "建议至少 12 位，并混合大小写、数字和符号" : "12+ characters with mixed case, numbers and symbols is recommended"}</small></div>
                     <label><span>{zh ? "确认密码" : "Confirm password"}</span><div className="loom-input-shell"><KeyRound size={16} aria-hidden="true" /><input type={showPassword ? "text" : "password"} autoComplete="new-password" placeholder="••••••••" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} required /></div></label>
                   </> : null}
                   <button className="loom-form-submit" type="submit" disabled={!account.ready || account.busy}><span>{!account.ready ? (zh ? "加载中…" : "Loading…") : account.busy ? (zh ? "处理中…" : "Working…") : authMode === "login" ? (zh ? "登录" : "Sign in") : account.capabilities.emailVerification ? (zh ? "创建并验证邮箱" : "Create & verify email") : (zh ? "创建账户" : "Create account")}</span><span aria-hidden="true">→</span></button>
@@ -394,18 +412,26 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
                 <p className="loom-control-copy">{hostError || hostText}</p>
                 {hostState === "unbound" ? <div className="loom-host-onboarding">
                   <div className="loom-host-onboarding-head">
+                    <span className="loom-host-onboarding-icon" aria-hidden="true"><Laptop size={17} /></span>
+                    <div><strong>{zh ? "已经安装 Loom？" : "Already installed Loom?"}</strong><span>{zh ? "这种情况下通常只是 Loom 和 Host 还没有启动。" : "In this state, Loom may simply be installed but not running yet."}</span></div>
+                  </div>
+                  <button className="loom-host-install-action loom-host-open-action" type="button" onClick={openInstalledLoom} disabled={launchingLoom}>
+                    <span>{launchingLoom ? (zh ? "正在启动 Loom…" : "Opening Loom…") : (zh ? "启动已安装的 Loom" : "Open installed Loom")}</span><ArrowRight size={15} aria-hidden="true" />
+                  </button>
+                  <p className="loom-host-onboarding-note">{zh ? "若浏览器没有拉起应用，请从 Windows 开始菜单启动 Loom。启动后网页会自动重试；也可以点击下方“重新检测”。" : "If the browser does not open the app, start Loom from the Windows Start menu. This page retries automatically, or you can use Check again below."}</p>
+                  <div className="loom-host-onboarding-divider" aria-hidden="true" />
+                  <div className="loom-host-onboarding-head">
                     <span className="loom-host-onboarding-icon" aria-hidden="true"><Download size={17} /></span>
-                    <div><strong>{zh ? "首次在这台电脑使用 Loom？" : "First time using Loom on this computer?"}</strong><span>{zh ? "只需要安装一次，之后直接打开网页即可。" : "Install it once. After that, you can come straight back to the web."}</span></div>
+                    <div><strong>{zh ? "这台电脑还没安装 Loom？" : "Loom not installed on this computer?"}</strong><span>{zh ? "只需要安装一次，本机 Host 与 Agent Runtime 会一起安装。" : "Install it once; the local Host and Agent Runtime are included."}</span></div>
                   </div>
                   <ol className="loom-host-onboarding-steps">
-                    <li><span>1</span><p><strong>{zh ? "下载安装 Loom" : "Install Loom"}</strong><small>{zh ? "安装本机 Loom Host 与 Agent Runtime。" : "This installs the local Loom Host and Agent Runtime."}</small></p></li>
-                    <li><span>2</span><p><strong>{zh ? "启动一次 Loom" : "Open Loom once"}</strong><small>{zh ? "Host 会在后台保持可用，不需要一直打开桌面窗口。" : "The Host stays available in the background; the desktop window does not need to stay open."}</small></p></li>
-                    <li><span>3</span><p><strong>{zh ? "回到这个页面" : "Return to this page"}</strong><small>{zh ? "网页会自动发现、配对并连接这台电脑。" : "Loom Web will automatically discover, pair, and connect this computer."}</small></p></li>
+                    <li><span>1</span><p><strong>{zh ? "下载安装 Loom" : "Install Loom"}</strong><small>{zh ? "安装完成后会注册网页唤起能力。" : "The installer also registers browser-to-Loom launch support."}</small></p></li>
+                    <li><span>2</span><p><strong>{zh ? "启动 Loom" : "Open Loom"}</strong><small>{zh ? "Loom Host 启动后会自动连接你的账户。" : "Loom Host connects to your account when the app starts."}</small></p></li>
+                    <li><span>3</span><p><strong>{zh ? "继续留在这个页面" : "Stay on this page"}</strong><small>{zh ? "网页会自动发现、配对并进入当前电脑。" : "Loom Web will automatically discover, pair, and reconnect this computer."}</small></p></li>
                   </ol>
                   <a className="loom-host-install-action" href={RELEASE.download}><span>{zh ? "下载 Loom for Windows" : "Download Loom for Windows"}</span><Download size={15} aria-hidden="true" /></a>
-                  <p className="loom-host-onboarding-note">{zh ? "已经安装？启动 Loom 后点击下面的“重新检测”，无需刷新网页。" : "Already installed? Open Loom, then use Check again below — no page refresh needed."}</p>
                 </div> : null}
-                {hostState === "offline" ? <div className="loom-host-recovery"><span>{zh ? "如果这是新电脑，请先安装 Loom；如果已经安装，只需启动 Loom。" : "On a new computer, install Loom first. If it is already installed, just open Loom."}</span><a href={RELEASE.download}>{zh ? "下载安装包" : "Download installer"}</a></div> : null}
+                {hostState === "offline" ? <div className="loom-host-recovery"><span>{zh ? "这台电脑此前已经连接过 Loom，现在只是 Host 没有运行。点击下方“启动已安装的 Loom”，网页会自动重连。" : "This computer has connected before; its Host is simply not running now. Use Open installed Loom below and the web will reconnect automatically."}</span><a href={RELEASE.download}>{zh ? "需要重新安装？" : "Need to reinstall?"}</a></div> : null}
                 {hostState === "checking" || hostState === "online" ? <div className={`loom-connection-track${hostState === "checking" ? " is-working" : " is-online"}`} aria-hidden="true"><span /></div> : null}
                 {hostState !== "checking" ? <button className="loom-form-submit loom-host-action" type="button" onClick={primaryAction}><span>{primaryLabel}</span><ArrowRight size={15} aria-hidden="true" /></button> : null}
               </section>
