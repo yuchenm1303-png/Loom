@@ -51,6 +51,4 @@ jobs:
                   tests/test_ant_ling_bridge.py \
                   tests/test_ant_ling_thread_switch.py
           git commit -m 'Fix Ant Ling thread model switching'
-          git fetch origin main
-          git rebase origin/main
           git push origin HEAD:main
