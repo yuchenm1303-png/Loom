@@ -29,7 +29,10 @@ function hostUpdateMessage(update?: LocalHostUpdateState | null): string {
       ? `Loom Host is updating (${Math.max(0, Math.min(100, Math.round(percent)))}%). It will reconnect automatically.`
       : "Loom Host is downloading a compatible update. It will reconnect automatically.";
   }
-  if (phase === "downloaded") return "Loom Host update is ready. Restart Loom on the host computer to finish updating.";
+  if (phase === "ready") return "Loom Host update is verified and waiting for the current task to become idle.";
+  if (phase === "activating") return "Loom Host is switching to the verified runtime. It will reconnect automatically.";
+  if (phase === "incompatible") return "This Loom bootstrap is too old for the newest Host runtime. Install the latest Loom once to upgrade the bootstrap.";
+  if (phase === "downloaded") return "Loom bootstrap update is ready. Restart Loom on the host computer to finish updating.";
   if (phase === "available") return version
     ? `Loom Host ${version} is downloading in the background.`
     : "A compatible Loom Host update is downloading in the background.";
