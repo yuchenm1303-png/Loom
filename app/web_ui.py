@@ -383,6 +383,18 @@ class LoomWebHandler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:
         if not self._host_allowed() or not self._origin_allowed():
+            # Drain a bounded, already-sent body before closing. Otherwise
+            # Windows can reset the socket before the client reads our 403.
+            timeout = self.connection.gettimeout()
+            try:
+                length = int(self.headers.get("Content-Length") or 0)
+                self.connection.settimeout(0.25)
+                if 0 < length <= _MAX_JSON_BODY:
+                    self.rfile.read(length)
+            except (OSError, ValueError):
+                pass
+            finally:
+                self.connection.settimeout(timeout)
             self._error(HTTPStatus.FORBIDDEN, "Cross-origin requests are not allowed")
             return
         try:

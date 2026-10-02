@@ -11,7 +11,6 @@ from .tools import ToolContext
 
 
 _MAX_EDITABLE_BYTES = 1_000_000
-_MAX_WRITE_CHARS = 1_000_000
 
 
 @dataclass(frozen=True, slots=True)
@@ -84,7 +83,7 @@ class ApplyPatchRuntime:
                 if target.stat().st_size > _MAX_EDITABLE_BYTES:
                     raise ValueError(f"patch target exceeds editable size limit: {relative}")
                 try:
-                    value = target.read_text(encoding="utf-8")
+                    value = target.read_bytes().decode("utf-8")
                 except UnicodeDecodeError as exc:
                     raise ValueError(f"patch target is not UTF-8 text: {relative}") from exc
             original[relative] = value
@@ -134,6 +133,11 @@ class ApplyPatchRuntime:
                     raise ValueError(f"update requires non-empty old_text: {path}")
                 if not isinstance(new_text, str):
                     raise ValueError(f"update requires string new_text: {path}")
+                # Structured edits often arrive with LF from a model even when
+                # the file uses CRLF. Preserve that file's uniform line style.
+                if "\r\n" in before and "\n" not in before.replace("\r\n", ""):
+                    old_text = old_text.replace("\r\n", "\n").replace("\n", "\r\n")
+                    new_text = new_text.replace("\r\n", "\n").replace("\n", "\r\n")
                 count = before.count(old_text)
                 if count == 0:
                     raise ValueError(f"old_text was not found in {path}")
@@ -253,8 +257,8 @@ class ApplyPatchRuntime:
 
     @staticmethod
     def _validate_content(content: str) -> None:
-        if len(content) > _MAX_WRITE_CHARS:
-            raise ValueError(f"patched text exceeds {_MAX_WRITE_CHARS:,} characters")
+        if len(content.encode("utf-8")) > _MAX_EDITABLE_BYTES:
+            raise ValueError(f"patched text exceeds {_MAX_EDITABLE_BYTES:,} UTF-8 bytes")
 
     @staticmethod
     def _read_current(context: ToolContext, relative: str) -> str | None:
@@ -265,7 +269,7 @@ class ApplyPatchRuntime:
             raise RuntimeError(f"patch target is no longer a regular file: {relative}")
         if target.stat().st_size > _MAX_EDITABLE_BYTES:
             raise RuntimeError(f"patch target exceeds editable size limit: {relative}")
-        return target.read_text(encoding="utf-8")
+        return target.read_bytes().decode("utf-8")
 
     @staticmethod
     def _restore(context: ToolContext, relative: str, content: str | None) -> None:

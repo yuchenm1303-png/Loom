@@ -175,13 +175,27 @@ def _consume_forced_compaction(rt, session) -> bool:
 def _latest_provider_context_tokens(rt, session) -> int | None:
     """Return the newest surviving provider-reported context usage."""
     try:
-        events = rt.store.events(session.session_id)
+        recent = getattr(rt.store, "recent_events", None)
+        bounded = callable(recent)
+        events = recent(session.session_id, _CALIBRATION_EVENT_SCAN_LIMIT) if bounded else rt.store.events(session.session_id)
     except Exception:
         return None
+    found, tokens = _provider_context_usage(events)
+    if found or not bounded or len(events) < _CALIBRATION_EVENT_SCAN_LIMIT:
+        return tokens
+    # An unusually long tool-only interval may put the latest usage outside
+    # the tail. Retain the original full-history semantics in that case.
+    try:
+        return _provider_context_usage(rt.store.events(session.session_id))[1]
+    except Exception:
+        return None
+
+
+def _provider_context_usage(events) -> tuple[bool, int | None]:
     for event in reversed(events):
         kind = getattr(event.kind, "value", str(event.kind))
         if kind == "context_checkpointed":
-            return None
+            return True, None
         if kind not in {"model_response", "model_response_rejected"}:
             continue
         usage = event.data.get("usage") if isinstance(event.data, dict) else None
@@ -189,12 +203,12 @@ def _latest_provider_context_tokens(rt, session) -> int | None:
             continue
         total = int(usage.get("total_tokens") or 0)
         if total > 0:
-            return total
+            return True, total
         input_tokens = int(usage.get("input_tokens") or 0)
         output_tokens = int(usage.get("output_tokens") or 0)
         if input_tokens or output_tokens:
-            return input_tokens + output_tokens
-    return None
+            return True, input_tokens + output_tokens
+    return False, None
 
 
 def _local_tokens_after_latest_model_message(messages: Sequence[AIMessage]) -> int:
@@ -219,6 +233,13 @@ def _local_tokens_after_latest_model_message(messages: Sequence[AIMessage]) -> i
     return estimate_tokens(messages[last_assistant + 1 :])
 
 
+def _calibration_events(rt, session):
+    recent = getattr(rt.store, "recent_events", None)
+    if callable(recent):
+        return recent(session.session_id, _CALIBRATION_EVENT_SCAN_LIMIT)
+    return rt.store.events(session.session_id)[-_CALIBRATION_EVENT_SCAN_LIMIT:]
+
+
 def _observed_context_ceiling(rt, session) -> int | None:
     """Smallest request size this provider has already refused as too long.
 
@@ -228,7 +249,7 @@ def _observed_context_ceiling(rt, session) -> int | None:
     the ceiling every time history grows back.
     """
     try:
-        events = rt.store.events(session.session_id)
+        events = _calibration_events(rt, session)
     except Exception:
         return None
 
@@ -249,7 +270,7 @@ def _observed_context_ceiling(rt, session) -> int | None:
 def _largest_accepted_input_tokens(rt, session) -> int:
     """Largest request size this provider has actually served in this session."""
     try:
-        events = rt.store.events(session.session_id)
+        events = _calibration_events(rt, session)
     except Exception:
         return 0
     best = 0
@@ -312,7 +333,7 @@ def _estimator_calibration(rt, session) -> tuple[float, int]:
     and summarization is far more expensive than carrying the history.
     """
     try:
-        events = rt.store.events(session.session_id)
+        events = _calibration_events(rt, session)
     except Exception:
         return 1.0, 0
 

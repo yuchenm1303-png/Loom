@@ -34,8 +34,11 @@ def parse_text_patch(context, source: str):
             target = context.resolve_workspace_path(path)
             if target.stat().st_size > 1_000_000:
                 raise ValueError("patch target exceeds editable size limit")
-            before = target.read_text(encoding="utf-8")
-            content = before.splitlines()
+            before = target.read_bytes().decode("utf-8")
+            raw_lines = before.splitlines(keepends=True)
+            content = [line.rstrip("\r\n") for line in raw_lines]
+            endings = [line[len(text):] for line, text in zip(raw_lines, content)]
+            newline = "\r\n" if endings.count("\r\n") > endings.count("\n") else "\n"
             destination = None
             if lines[index].startswith("*** Move to: "):
                 destination = lines[index][len("*** Move to: "):]
@@ -51,15 +54,17 @@ def parse_text_patch(context, source: str):
                     if len(found) != 1:
                         raise ValueError(f"patch anchor missing or ambiguous: {anchor}")
                     cursor = found[0] + 1
-                old, new = [], []
+                old, new, origins = [], [], []
                 while index < len(lines) - 1 and not lines[index].startswith(("@@", "*** ")):
                     line = lines[index]
                     if not line or line[0] not in " +-":
                         raise ValueError("hunk lines require a context, +, or - prefix")
+                    origin = len(old) if line[0] == " " else None
                     if line[0] in " -":
                         old.append(line[1:])
                     if line[0] in " +":
                         new.append(line[1:])
+                        origins.append(origin)
                     index += 1
                 eof = lines[index] == "*** End of File"
                 if eof:
@@ -74,9 +79,25 @@ def parse_text_patch(context, source: str):
                     at = found[0]
                 else:
                     at = len(content) if eof else cursor
+                new_endings = []
+                for new_index, origin in enumerate(origins):
+                    if origin is not None:
+                        ending = endings[at + origin]
+                    elif old:
+                        ending = endings[at + min(new_index, len(old) - 1)] or newline
+                    else:
+                        ending = newline
+                    new_endings.append(ending)
+                # Preserve an existing missing final newline during replacement.
+                if new and old and at + len(old) == len(content) and endings[-1] == "":
+                    new_endings[-1] = ""
                 content[at:at + len(old)] = new
+                endings[at:at + len(old)] = new_endings
+                for line_index in range(max(0, at - 1), len(endings) - 1):
+                    if not endings[line_index]:
+                        endings[line_index] = newline
                 cursor = at + len(new)
-            after = "\n".join(content) + ("\n" if content else "")
+            after = "".join(text + ending for text, ending in zip(content, endings))
             changes.append({"action": "update", "path": path, "content": after, "expected_text": before})
             if destination:
                 changes.append({"action": "move", "path": path, "move_to": destination})

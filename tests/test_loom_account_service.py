@@ -72,3 +72,44 @@ def test_tokens_are_not_stored_in_plaintext(tmp_path: Path) -> None:
     raw = (tmp_path / "accounts.db").read_bytes()
     assert result["access_token"].encode() not in raw
     assert result["refresh_token"].encode() not in raw
+
+
+def test_relay_credential_survives_rotation_but_not_revocation(tmp_path):
+    app = _app(tmp_path)
+    session = app.register({"email": "relay@example.com", "password": "abcdefgh"}, "a")
+    credential = app.relay_credential(f"Bearer {session['access_token']}")
+    proof = credential["relay_token"]
+    assert proof.startswith("loom_relay_")
+    with app.store._connect() as db:
+        stored = db.execute("SELECT token_hash FROM relay_credentials").fetchone()[0]
+    assert stored != proof and not stored.startswith("loom_relay_")
+    rotated = app.refresh({"refresh_token": session["refresh_token"]}, "a")
+    assert app.relay_me(f"Bearer {proof}")["user"]["id"] == session["user"]["id"]
+    # Relay proof does not grant login/model credential privileges.
+    with pytest.raises(AccountError):
+        app.me(f"Bearer {proof}")
+    with pytest.raises(AccountError):
+        app.model_access(f"Bearer {proof}")
+    app.logout({"refresh_token": rotated["refresh_token"]})
+    with pytest.raises(AccountError, match="Relay authorization"):
+        app.relay_me(f"Bearer {proof}")
+
+
+def test_relay_credential_respects_disabled_account_and_session_expiry(tmp_path, monkeypatch):
+    import services.loom_account.server as module
+    wall = [1000]
+    monkeypatch.setattr(module, "_now", lambda: wall[0])
+    app = _app(tmp_path, refresh_ttl=60)
+    session = app.register({"email": "relay@example.com", "password": "abcdefgh"}, "a")
+    proof = app.relay_credential(f"Bearer {session['access_token']}")["relay_token"]
+    with app.store._connect() as db:
+        db.execute("UPDATE users SET status='disabled'")
+    with pytest.raises(AccountError) as disabled:
+        app.relay_me(f"Bearer {proof}")
+    assert disabled.value.code == "ACCOUNT_DISABLED"
+    with app.store._connect() as db:
+        db.execute("UPDATE users SET status='active'")
+    wall[0] = 1061
+    with pytest.raises(AccountError) as expired:
+        app.relay_me(f"Bearer {proof}")
+    assert expired.value.code == "INVALID_RELAY_TOKEN"

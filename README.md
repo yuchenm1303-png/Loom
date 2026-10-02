@@ -59,7 +59,7 @@ MXC enforcement run on this development host.
 - Explicit network-sensitive approval boundary for web search
 - Secret-like environment variables stripped from child processes
 
-Private model chain-of-thought is neither requested nor persisted. Loom stores only observable messages, tool activity, lifecycle events, usage, durable thread/workspace state, archived context checkpoints, durable agent-graph metadata, and validated long-term memory records.
+Loom does not request hidden model chain-of-thought. Provider-returned reasoning text may be persisted with assistant messages when required for provider replay and displayed in the conversation. These records therefore share the same privacy and retention boundary as the transcript. Loom also stores observable messages, tool activity, lifecycle events, usage, durable thread/workspace state, archived context checkpoints, agent-graph metadata, and validated long-term memory records.
 
 ## Install
 

@@ -245,6 +245,17 @@ class AccountStore:
                 );
                 CREATE INDEX IF NOT EXISTS idx_model_credentials_session ON model_credentials(session_id);
                 CREATE INDEX IF NOT EXISTS idx_model_credentials_user ON model_credentials(user_id);
+                CREATE TABLE IF NOT EXISTS relay_credentials (
+                    token_hash TEXT PRIMARY KEY,
+                    session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+                    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                    expires_at INTEGER NOT NULL,
+                    created_at INTEGER NOT NULL,
+                    last_used_at INTEGER NOT NULL
+                );
+                CREATE INDEX IF NOT EXISTS idx_relay_credentials_session ON relay_credentials(session_id);
+                CREATE INDEX IF NOT EXISTS idx_relay_credentials_user ON relay_credentials(user_id);
+                CREATE INDEX IF NOT EXISTS idx_relay_credentials_expiry ON relay_credentials(expires_at);
                 """
             )
             columns = {str(row[1]) for row in db.execute("PRAGMA table_info(users)")}
@@ -448,6 +459,54 @@ class AccountStore:
                 db.execute("UPDATE model_credentials SET last_used_at = ? WHERE token_hash = ?", (now, hashed))
         if row is None:
             raise AccountError(HTTPStatus.UNAUTHORIZED, "INVALID_MODEL_TOKEN", "Built-in model authorization has expired. Sign in again.")
+        if str(row["status"]) != "active":
+            raise AccountError(HTTPStatus.FORBIDDEN, "ACCOUNT_DISABLED", "This account is not active.")
+        return self._safe_user(row)
+
+    def issue_relay_credential(self, access_token: str) -> dict[str, Any]:
+        hashed = _token_hash(str(access_token or ""))
+        now = _now()
+        with self._guard, self._connect() as db:
+            row = db.execute(
+                """SELECT sessions.id AS session_id, sessions.user_id, sessions.refresh_expires_at, users.status
+                FROM sessions JOIN users ON users.id = sessions.user_id
+                WHERE sessions.access_hash = ? AND sessions.revoked_at IS NULL
+                  AND sessions.access_expires_at > ? AND sessions.refresh_expires_at > ?""",
+                (hashed, now, now),
+            ).fetchone()
+            if row is None:
+                raise AccountError(HTTPStatus.UNAUTHORIZED, "INVALID_TOKEN", "Your session has expired. Sign in again.")
+            if str(row["status"]) != "active":
+                raise AccountError(HTTPStatus.FORBIDDEN, "ACCOUNT_DISABLED", "This account is not active.")
+            token = _new_token("loom_relay")
+            expires_at = int(row["refresh_expires_at"])
+            db.execute(
+                "INSERT INTO relay_credentials(token_hash, session_id, user_id, expires_at, created_at, last_used_at) VALUES (?, ?, ?, ?, ?, ?)",
+                (_token_hash(token), str(row["session_id"]), int(row["user_id"]), expires_at, now, now),
+            )
+            db.execute("DELETE FROM relay_credentials WHERE expires_at <= ?", (now,))
+        return {"relay_token": token, "expires_in": max(1, expires_at - now), "token_type": "Bearer"}
+
+    def user_for_relay_token(self, token: str) -> dict[str, Any]:
+        hashed = _token_hash(str(token or ""))
+        now = _now()
+        with self._guard, self._connect() as db:
+            row = db.execute(
+                """SELECT users.*, relay_credentials.session_id AS credential_session_id
+                FROM relay_credentials
+                JOIN sessions ON sessions.id = relay_credentials.session_id
+                JOIN users ON users.id = relay_credentials.user_id
+                WHERE relay_credentials.token_hash = ?
+                  AND relay_credentials.expires_at > ?
+                  AND sessions.revoked_at IS NULL
+                  AND sessions.refresh_expires_at > ?
+                  AND sessions.user_id = relay_credentials.user_id""",
+                (hashed, now, now),
+            ).fetchone()
+            if row is not None:
+                db.execute("UPDATE relay_credentials SET last_used_at = ? WHERE token_hash = ?", (now, hashed))
+        if row is None:
+            raise AccountError(HTTPStatus.UNAUTHORIZED, "INVALID_RELAY_TOKEN", "Relay authorization has expired. Sign in again.")
         if str(row["status"]) != "active":
             raise AccountError(HTTPStatus.FORBIDDEN, "ACCOUNT_DISABLED", "This account is not active.")
         return self._safe_user(row)
@@ -869,6 +928,15 @@ class AccountApplication:
         self.limiter.check(f"model-credential:{int(user['id'])}", 20, 60)
         return self.store.issue_model_credential(token)
 
+    def relay_credential(self, authorization: str) -> dict[str, Any]:
+        token = self._bearer_token(authorization)
+        user = self.store.user_for_access_token(token)
+        self.limiter.check(f"relay-credential:{int(user['id'])}", 60, 60)
+        return self.store.issue_relay_credential(token)
+
+    def relay_me(self, authorization: str) -> dict[str, Any]:
+        return {"user": self.store.user_for_relay_token(self._bearer_token(authorization))}
+
     def _admin(self, authorization: str) -> dict[str, Any]:
         user = self.me(authorization)["user"]
         if str(user.get("role")) not in {"owner", "admin"}: raise AccountError(HTTPStatus.FORBIDDEN, "ADMIN_REQUIRED", "Administrator access is required.")
@@ -999,6 +1067,7 @@ class AccountRequestHandler(BaseHTTPRequestHandler):
         if self.command == "GET" and path == "/healthz":
             return {"ok": True}
         authorization = self.headers.get("Authorization") or ""
+        if self.command == "GET" and path == "/v1/auth/relay-me": return self.application.relay_me(authorization)
         if self.command == "GET" and path == "/v1/auth/me": return self.application.me(authorization)
         if self.command == "GET" and path == "/v1/admin/me": return self.application.admin_me(authorization)
         if self.command == "GET" and path == "/v1/admin/overview": return self.application.admin_overview(authorization)
@@ -1015,6 +1084,8 @@ class AccountRequestHandler(BaseHTTPRequestHandler):
         if self.command != "POST": raise AccountError(HTTPStatus.NOT_FOUND, "NOT_FOUND", "Endpoint not found.")
 
         body = self._json_body()
+        if path == "/v1/auth/relay-credential":
+            return self.application.relay_credential(authorization)
         if path == "/v1/models/credential":
             return self.application.model_credential(self.headers.get("Authorization") or "")
         if path == "/v1/search":

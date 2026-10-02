@@ -103,12 +103,31 @@ def repair_tail(path):
     if not path.exists():
         return
     with path.open("r+b") as handle:
-        data = handle.read()
-        if not data or data.endswith(b"\n"):
+        size = handle.seek(0, 2)
+        if not size:
             return
-        boundary = data.rfind(b"\n") + 1
+        handle.seek(size - 1)
+        if handle.read(1) == b"\n":
+            return
+        # Only a damaged/incomplete final record needs scanning. Normal appends
+        # read one byte regardless of the size of the historical transcript.
+        position = size
+        chunks = []
+        boundary = 0
+        while position:
+            start = max(0, position - 8192)
+            handle.seek(start)
+            chunk = handle.read(position - start)
+            newline = chunk.rfind(b"\n")
+            if newline >= 0:
+                boundary = start + newline + 1
+                chunks.append(chunk[newline + 1:])
+                break
+            chunks.append(chunk)
+            position = start
+        tail = b"".join(reversed(chunks))
         try:
-            json.loads(data[boundary:])
+            json.loads(tail)
         except (ValueError, UnicodeDecodeError):
             handle.truncate(boundary)
         else:

@@ -62,8 +62,9 @@ function safeAccountBaseUrl(value: string): string {
   if (!normalized) return "";
   try {
     const parsed = new URL(normalized);
-    const loopback = parsed.hostname === "127.0.0.1" || parsed.hostname === "localhost" || parsed.hostname === "::1";
-    if (parsed.protocol === "https:" || loopback) return normalized;
+    const loopback = parsed.hostname === "127.0.0.1" || parsed.hostname === "localhost" || parsed.hostname === "[::1]";
+    if (parsed.username || parsed.password) return "";
+    if (parsed.protocol === "https:" || (parsed.protocol === "http:" && loopback)) return normalized;
   } catch {
     return "";
   }
@@ -80,18 +81,19 @@ function isAuthRejection(error: unknown): boolean {
 }
 
 function configuredAccountBaseUrl(): string {
-  const fromEnvironment = safeAccountBaseUrl(process.env.LOOM_ACCOUNT_API_BASE_URL || "");
-  if (fromEnvironment) return fromEnvironment;
+  const configured = String(process.env.LOOM_ACCOUNT_API_BASE_URL || "").trim();
+  if (configured) return safeAccountBaseUrl(configured);
 
   try {
     const configPath = path.join(app.getPath("home"), ".loom", "account-service.json");
     if (fsSync.existsSync(configPath)) {
       const parsed = JSON.parse(fsSync.readFileSync(configPath, "utf8")) as { baseUrl?: string };
-      const fromFile = safeAccountBaseUrl(parsed.baseUrl || "");
-      if (fromFile) return fromFile;
+      return safeAccountBaseUrl(parsed.baseUrl || "");
     }
   } catch {
-    // A malformed optional config file must not stop Loom from starting.
+    // Keep startup possible, but never silently redirect an explicit broken
+    // configuration to a different account service.
+    return "";
   }
 
   return app.isPackaged ? "https://account.smirel.com/v1" : "http://127.0.0.1:8787/v1";

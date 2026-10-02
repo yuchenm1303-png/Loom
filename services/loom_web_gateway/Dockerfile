@@ -1,7 +1,7 @@
 FROM node:22-bookworm-slim AS web
 WORKDIR /src/desktop-react
-COPY desktop-react/package.json ./package.json
-RUN npm install --no-audit --no-fund
+COPY desktop-react/package.json desktop-react/package-lock.json ./
+RUN npm ci --no-audit --no-fund
 COPY desktop-react ./
 RUN npm run build:electron && npm run build:web
 

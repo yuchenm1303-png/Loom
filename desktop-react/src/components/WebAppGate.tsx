@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useAccount } from "../state/useAccount";
-import { isLoomWebRuntime } from "../webBridge";
+import { isLoomWebRuntime, webExecutionMode } from "../webBridge";
 import {
   discoverLocalLoomHost,
   pairLocalLoomHost,
@@ -20,6 +20,7 @@ const AUTO_PAIR_ATTEMPTS = 3;
 export function WebAppGate({ children }: { children: ReactNode }) {
   const account = useAccount();
   const web = isLoomWebRuntime();
+  const remote = webExecutionMode() === "remote";
   const [hostState, setHostState] = useState<HostState>("idle");
   const [hostError, setHostError] = useState("");
   const [localHost, setLocalHost] = useState<LocalLoomHost | null>(null);
@@ -106,6 +107,7 @@ export function WebAppGate({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!web || !account.ready || !account.account.authenticated || !account.account.user) return;
+    if (remote) return;
     let cancelled = false;
     let timer: number | null = null;
     let inFlight = false;
@@ -155,11 +157,13 @@ export function WebAppGate({ children }: { children: ReactNode }) {
     pairingSucceeded,
     setTrackedHostState,
     web,
+    remote,
   ]);
 
   useEffect(() => {
     if (
       !web
+      || remote
       || !account.ready
       || !account.account.authenticated
       || !localHost
@@ -206,6 +210,7 @@ export function WebAppGate({ children }: { children: ReactNode }) {
     pairingSucceeded,
     setTrackedHostState,
     web,
+    remote,
   ]);
 
   const retry = useCallback(() => {
