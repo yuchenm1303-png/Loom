@@ -5,7 +5,10 @@ GATEWAY = (ROOT / "services/loom_web_gateway/app.py").read_text(encoding="utf-8"
 DOCKERFILE = (ROOT / "services/loom_web_gateway/Dockerfile").read_text(encoding="utf-8")
 DESKTOP_MAIN = (ROOT / "desktop-react/electron/main.ts").read_text(encoding="utf-8")
 REMOTE_RELAY = (ROOT / "desktop-react/electron/remoteRelay.ts").read_text(encoding="utf-8")
+WEB_RELAY_AUTH = (ROOT / "desktop-react/electron/webRelayAuth.ts").read_text(encoding="utf-8")
+UPDATER = (ROOT / "desktop-react/electron/updater.ts").read_text(encoding="utf-8")
 WEB_BRIDGE = (ROOT / "desktop-react/src/webBridge.ts").read_text(encoding="utf-8")
+LOCAL_DISCOVERY = (ROOT / "desktop-react/src/localHostDiscovery.ts").read_text(encoding="utf-8")
 
 
 def test_web_gateway_is_transport_not_agent_runtime() -> None:
@@ -41,3 +44,17 @@ def test_web_system_actions_reach_local_host() -> None:
     assert 'pickDirectory: () => invoke("pickDirectory", [])' in WEB_BRIDGE
     assert 'frame.operation === "pickDirectory"' in REMOTE_RELAY
     assert "dialog.showOpenDialog" in REMOTE_RELAY
+
+
+def test_web_host_negotiates_protocol_and_can_self_update() -> None:
+    assert "LOOM_HOST_PROTOCOL_VERSION = 1" in WEB_RELAY_AUTH
+    assert "hostProtocol: auth.hostProtocol" in REMOTE_RELAY
+    assert 'const LOCAL_UPDATE_PATH = "/loom/update"' in REMOTE_RELAY
+    assert 'frame.operation === "hostUpdateEnsure"' in REMOTE_RELAY
+    assert "ensureWebHostUpdate()" in REMOTE_RELAY
+    assert "webAutoInstallRequested" in UPDATER
+    assert "autoUpdater.quitAndInstall(false, true)" in UPDATER
+    assert "LOOM_WEB_REQUIRED_HOST_PROTOCOL = 1" in LOCAL_DISCOVERY
+    assert "ensureLocalLoomHostCompatibility" in LOCAL_DISCOVERY
+    assert '"hostUpdateEnsure"' in WEB_BRIDGE
+    assert 'error.code = "HOST_UPDATE_REQUIRED"' in WEB_BRIDGE
