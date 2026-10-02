@@ -28,7 +28,7 @@ def test_browser_routes_to_its_selected_device() -> None:
 
 def test_websocket_encodes_the_selected_device_routing_target() -> None:
     bridge = WEB_BRIDGE.read_text(encoding="utf-8")
-    assert "const selectedDeviceId = selectedWebDeviceId();" in bridge
+    assert "const desiredDeviceId = selectedWebDeviceId();" in bridge
     assert 'target.searchParams.set("device", selectedDeviceId)' in bridge
     assert 'type: "select_device"' not in bridge
 

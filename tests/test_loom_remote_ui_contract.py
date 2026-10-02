@@ -24,6 +24,6 @@ def test_gateway_routes_each_browser_to_one_selected_host() -> None:
 
 def test_web_bridge_sends_its_device_target_during_connect() -> None:
     source = BRIDGE.read_text(encoding="utf-8")
-    assert "const selectedDeviceId = selectedWebDeviceId();" in source
+    assert "const desiredDeviceId = selectedWebDeviceId();" in source
     assert 'target.searchParams.set("device", selectedDeviceId)' in source
     assert 'type: "select_device"' not in source

@@ -66,6 +66,7 @@ const listeners = new Set<(payload: LoomNotification) => void>();
 const pending = new Map<number, PendingCall>();
 let socket: WebSocket | null = null;
 let socketPromise: Promise<WebSocket> | null = null;
+let socketDeviceId = "";
 let connectPromise: Promise<unknown> | null = null;
 let nextId = 1;
 let heartbeatTimer: number | null = null;
@@ -95,15 +96,12 @@ function captureLocalDeviceBinding(): string {
     // case the current navigation still keeps the device id in memory.
   }
 
-  if (queryDeviceId) {
-    localDeviceId = queryDeviceId;
-    return localDeviceId;
-  }
-  if (localDeviceId) return localDeviceId;
+  if (queryDeviceId) localDeviceId = queryDeviceId;
   try {
-    localDeviceId = normalizeDeviceId(window.localStorage.getItem(LOCAL_DEVICE_STORAGE_KEY));
+    const storedDeviceId = normalizeDeviceId(window.localStorage.getItem(LOCAL_DEVICE_STORAGE_KEY));
+    if (storedDeviceId) localDeviceId = storedDeviceId;
   } catch {
-    localDeviceId = "";
+    // Keep the in-memory binding when storage is unavailable.
   }
   return localDeviceId;
 }
@@ -127,11 +125,29 @@ export function selectedWebDeviceId(): string {
   return remote || captureLocalDeviceBinding();
 }
 
-function webSocketUrl(): string {
+/**
+ * Make localhost discovery authoritative for the local execution target.
+ * If an older browser socket is still routed to a stale device id, close it
+ * immediately so the next connect/invoke is guaranteed to use this Host.
+ */
+export function bindLocalWebDevice(deviceId: string): boolean {
+  const normalized = normalizeDeviceId(deviceId);
+  if (!normalized) return false;
+
+  const previousLocalDeviceId = captureLocalDeviceBinding();
+  localDeviceId = normalized;
+  try { window.localStorage.setItem(LOCAL_DEVICE_STORAGE_KEY, normalized); } catch {}
+
+  const selectedTarget = remoteWebDeviceId() || normalized;
+  const routeMismatch = Boolean(socket || socketPromise) && socketDeviceId !== selectedTarget;
+  if (routeMismatch) closeSocket();
+  return previousLocalDeviceId !== normalized || routeMismatch;
+}
+
+function webSocketUrl(selectedDeviceId = selectedWebDeviceId()): string {
   const configured = String(import.meta.env.VITE_LOOM_WEB_SOCKET_URL || "").trim();
   const scheme = window.location.protocol === "https:" ? "wss:" : "ws:";
   const target = new URL(configured || `${scheme}//${window.location.host}${DEFAULT_WS_PATH}`, window.location.href);
-  const selectedDeviceId = selectedWebDeviceId();
   if (selectedDeviceId) target.searchParams.set("device", selectedDeviceId);
   else target.searchParams.delete("device");
   return target.toString();
@@ -193,6 +209,7 @@ function closeSocket(): void {
   const current = socket;
   socket = null;
   socketPromise = null;
+  socketDeviceId = "";
   lastDeviceStatus = null;
   stopHeartbeat();
   failPending("Loom Web connection closed.");
@@ -235,17 +252,21 @@ function handleRelayMessage(raw: string): void {
 }
 
 async function ensureSocket(): Promise<WebSocket> {
-  if (socket?.readyState === WebSocket.OPEN) return socket;
-  if (socketPromise) return socketPromise;
+  const desiredDeviceId = selectedWebDeviceId();
+  if (socket?.readyState === WebSocket.OPEN && socketDeviceId === desiredDeviceId) return socket;
+  if (socket && socketDeviceId !== desiredDeviceId) closeSocket();
+  if (socketPromise && socketDeviceId === desiredDeviceId) return socketPromise;
+  if (socketPromise) closeSocket();
 
   const account = await accountRequest("status");
   if (!account.ok || !account.snapshot.authenticated) {
     throw new Error("Sign in to Loom Web before connecting.");
   }
 
-  socketPromise = new Promise<WebSocket>((resolve, reject) => {
-    const ws = new WebSocket(webSocketUrl());
+  const pendingSocket = new Promise<WebSocket>((resolve, reject) => {
+    const ws = new WebSocket(webSocketUrl(desiredDeviceId));
     socket = ws;
+    socketDeviceId = desiredDeviceId;
     const timeout = window.setTimeout(() => {
       if (ws.readyState !== WebSocket.OPEN) {
         ws.close();
@@ -264,7 +285,7 @@ async function ensureSocket(): Promise<WebSocket> {
     ws.addEventListener("close", () => {
       if (socket === ws) {
         socket = null;
-        socketPromise = null;
+        socketDeviceId = "";
         stopHeartbeat();
         failPending("Loom Web connection closed.");
       }
@@ -272,11 +293,12 @@ async function ensureSocket(): Promise<WebSocket> {
     ws.addEventListener("error", () => {
       if (ws.readyState !== WebSocket.OPEN) reject(new Error("Could not connect to Loom Web."));
     });
-  }).finally(() => {
-    socketPromise = null;
   });
-
-  return socketPromise;
+  const trackedSocketPromise = pendingSocket.finally(() => {
+    if (socketPromise === trackedSocketPromise) socketPromise = null;
+  });
+  socketPromise = trackedSocketPromise;
+  return trackedSocketPromise;
 }
 
 async function invoke<T = unknown>(operation: string, args: unknown[] = []): Promise<T> {
@@ -375,8 +397,9 @@ export function currentWebDeviceStatus(): WebDeviceStatus | null {
 }
 
 export async function getWebDeviceStatus(): Promise<WebDeviceStatus> {
-  const existing = currentWebDeviceStatus();
-  if (existing) return existing;
+  // Always validate the socket route before trusting cached status. Localhost
+  // discovery may have replaced the remembered device id since the previous
+  // status arrived; ensureSocket() will atomically retire a stale route.
   await ensureSocket();
   const afterConnect = currentWebDeviceStatus();
   if (afterConnect) return afterConnect;
@@ -473,6 +496,11 @@ export function installWebBridge(): void {
         const deviceStatus = await getWebDeviceStatus();
         const compatibility = await ensureWebHostCompatibility(deviceStatus);
         if (!compatibility.compatible) {
+          if (!compatibility.online) {
+            const error = new Error("Loom Host is offline. Start Loom on this computer and it will reconnect automatically.") as Error & { code?: string };
+            error.code = "HOST_OFFLINE";
+            throw error;
+          }
           const phase = String(compatibility.update?.phase || "");
           const error = new Error(phase === "downloaded"
             ? "Loom Host update is ready. Restart Loom on the host computer to finish updating."
