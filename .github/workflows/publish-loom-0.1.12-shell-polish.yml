@@ -11,33 +11,89 @@ permissions:
   contents: write
 
 jobs:
-  publish-version-commit:
-    runs-on: ubuntu-latest
+  publish-windows-x64:
+    runs-on: windows-latest
+    env:
+      CSC_IDENTITY_AUTO_DISCOVERY: "false"
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      LOOM_GITHUB_CLIENT_ID: ${{ vars.LOOM_GITHUB_CLIENT_ID }}
+      LOOM_GITHUB_CLIENT_SECRET: ${{ secrets.LOOM_GITHUB_CLIENT_SECRET }}
+      LOOM_GITHUB_OAUTH_SCOPES: ${{ vars.LOOM_GITHUB_OAUTH_SCOPES || 'repo read:org' }}
+      LOOM_GITHUB_CALLBACK_PATH: ${{ vars.LOOM_GITHUB_CALLBACK_PATH || '/oauth/github/callback' }}
+
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: main
+          ref: 5c7dcf6ce5df17758e6dc040cd9c49d1084d0d8a
           fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
 
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
 
-      - name: Guard release base
-        shell: bash
+      - name: Guard immutable release commit
+        shell: pwsh
         run: |
-          test "$(git rev-parse HEAD)" = "e6f5c33b48d8b7c72550f3ef92e48526ff87e0c5" || { echo "main moved; refusing stale release"; exit 1; }
-          node -e "const p=require('./desktop-react/package.json'); if(p.version!=='0.1.11') throw new Error('expected 0.1.11, got '+p.version)"
+          $package = Get-Content (Join-Path $env:GITHUB_WORKSPACE "desktop-react\package.json") -Raw | ConvertFrom-Json
+          if ([string]$package.version -ne "0.1.12") { throw "Expected Loom 0.1.12." }
+          git fetch --tags origin
+          if ((git tag --list v0.1.12).Count -gt 0) { throw "Tag v0.1.12 already exists." }
+          $existing = @(gh release list --limit 1000 --json tagName --jq '.[].tagName')
+          if ($existing -contains "v0.1.12") { throw "Release v0.1.12 already exists." }
+          if ([string]::IsNullOrWhiteSpace($env:LOOM_GITHUB_CLIENT_ID)) { throw "Missing LOOM_GITHUB_CLIENT_ID." }
+          if ([string]::IsNullOrWhiteSpace($env:LOOM_GITHUB_CLIENT_SECRET)) { throw "Missing LOOM_GITHUB_CLIENT_SECRET." }
 
-      - name: Bump Desktop bootstrap version
+      - name: Install desktop dependencies
         working-directory: desktop-react
-        run: npm version 0.1.12 --no-git-tag-version
+        run: npm install --no-audit --no-fund
 
-      - name: Publish immutable release commit
-        shell: bash
+      - name: Build Windows release candidate
+        working-directory: desktop-react
+        run: npm run package:win
+
+      - name: Verify release candidate
+        shell: pwsh
+        run: |
+          $releaseDir = Join-Path $env:GITHUB_WORKSPACE "desktop-react\release"
+          $installer = Get-ChildItem $releaseDir -Filter "Loom-Setup-*.exe" | Select-Object -First 1
+          $metadata = Join-Path $releaseDir "latest.yml"
+          $blockmap = Get-ChildItem $releaseDir -Filter "Loom-Setup-*.exe.blockmap" | Select-Object -First 1
+          $runtime = Join-Path $releaseDir "win-unpacked\resources\python.exe"
+          if (-not $installer) { throw "Loom Setup executable was not produced." }
+          if ($installer.Length -lt 1000000) { throw "Installer is unexpectedly small." }
+          if (-not (Test-Path $metadata)) { throw "latest.yml was not produced." }
+          if (-not $blockmap) { throw "NSIS blockmap was not produced." }
+          if (-not (Test-Path $runtime)) { throw "Packaged Python runtime was not produced." }
+          & $runtime self-test
+          if ($LASTEXITCODE -ne 0) { throw "Packaged runtime self-test failed." }
+          $latest = Get-Content $metadata -Raw
+          if ($latest -notmatch "version:\s+0\.1\.12") { throw "latest.yml version does not match 0.1.12." }
+
+      - name: Publish v0.1.12
+        shell: pwsh
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add desktop-react/package.json desktop-react/package-lock.json
-          git commit -m "chore(release): Loom v0.1.12"
-          git push origin HEAD:main
+          git tag -a v0.1.12 5c7dcf6ce5df17758e6dc040cd9c49d1084d0d8a -m "Loom v0.1.12"
+          git push origin refs/tags/v0.1.12
+          if ($LASTEXITCODE -ne 0) { throw "Failed to publish v0.1.12 tag." }
+
+          $releaseDir = Join-Path $env:GITHUB_WORKSPACE "desktop-react\release"
+          $installer = Get-ChildItem $releaseDir -Filter "Loom-Setup-*.exe" | Select-Object -First 1
+          $blockmap = Get-ChildItem $releaseDir -Filter "Loom-Setup-*.exe.blockmap" | Select-Object -First 1
+          $metadata = Join-Path $releaseDir "latest.yml"
+          gh release create v0.1.12 "$($installer.FullName)" "$($blockmap.FullName)" "$metadata" --verify-tag --title "Loom v0.1.12" --generate-notes
+          if ($LASTEXITCODE -ne 0) { throw "Failed to publish v0.1.12 release." }
+
+      - name: Verify published updater assets
+        shell: pwsh
+        run: |
+          $names = @(gh release view v0.1.12 --json assets --jq '.assets[].name')
+          foreach ($suffix in @('.exe', '.exe.blockmap')) {
+            if (-not ($names | Where-Object { $_.EndsWith($suffix) })) { throw "Published release is missing $suffix asset." }
+          }
+          if ($names -notcontains 'latest.yml') { throw "Published release is missing latest.yml." }
