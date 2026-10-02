@@ -27,19 +27,19 @@ const PORTAL_STYLES = [
 ] as const;
 
 const RELEASE = {
-  version: "v0.1.8",
+  version: "v0.1.9",
   package: "137.6 MiB",
   download: "https://github.com/yuchenm1303-png/Loom/releases/latest/download/Loom-Setup-x64.exe",
 } as const;
 
 const HOST_COPY = {
   en: {
-    localSetup: "Open Loom on this computer once. The browser will discover and securely pair with your local Loom Host.",
+    localSetup: "No Loom Host was found on this computer. Install Loom once, open it, and this page will discover and securely connect automatically.",
     localConnecting: "Connecting securely to the Loom Host on this computer.",
     localOffline: "Loom Host is offline. Start Loom on this computer, then reconnect.",
   },
   zh: {
-    localSetup: "在这台电脑上启动一次 Loom，浏览器会自动发现并安全关联本机 Loom Host。",
+    localSetup: "这台电脑上还没有发现 Loom Host。首次使用请先安装并启动一次 Loom，本页面会自动发现并安全连接。",
     localConnecting: "正在安全连接这台电脑上的 Loom Host。",
     localOffline: "Loom Host 已离线。请先在这台电脑上启动 Loom，然后重新连接。",
   },
@@ -264,7 +264,7 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
       : hostState === "offline"
         ? (zh ? "已离线" : "Offline")
         : hostState === "unbound"
-          ? (zh ? "未发现 Host" : "Host not found")
+          ? (zh ? "需要安装 Loom" : "Loom Host required")
           : (zh ? "等待连接" : "Waiting");
 
   const primaryLabel = !authenticated
@@ -274,7 +274,7 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
       : hostState === "checking"
         ? (zh ? "正在连接…" : "Connecting…")
         : hostState === "unbound"
-          ? (zh ? "查找本机 Loom Host" : "Find Loom Host")
+          ? (zh ? "已安装，重新检测" : "I installed Loom · Check again")
           : (zh ? "重新连接 Loom Host" : "Reconnect Loom Host");
 
   return (
@@ -392,6 +392,20 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
                   </div>
                 </div>
                 <p className="loom-control-copy">{hostError || hostText}</p>
+                {hostState === "unbound" ? <div className="loom-host-onboarding">
+                  <div className="loom-host-onboarding-head">
+                    <span className="loom-host-onboarding-icon" aria-hidden="true"><Download size={17} /></span>
+                    <div><strong>{zh ? "首次在这台电脑使用 Loom？" : "First time using Loom on this computer?"}</strong><span>{zh ? "只需要安装一次，之后直接打开网页即可。" : "Install it once. After that, you can come straight back to the web."}</span></div>
+                  </div>
+                  <ol className="loom-host-onboarding-steps">
+                    <li><span>1</span><p><strong>{zh ? "下载安装 Loom" : "Install Loom"}</strong><small>{zh ? "安装本机 Loom Host 与 Agent Runtime。" : "This installs the local Loom Host and Agent Runtime."}</small></p></li>
+                    <li><span>2</span><p><strong>{zh ? "启动一次 Loom" : "Open Loom once"}</strong><small>{zh ? "Host 会在后台保持可用，不需要一直打开桌面窗口。" : "The Host stays available in the background; the desktop window does not need to stay open."}</small></p></li>
+                    <li><span>3</span><p><strong>{zh ? "回到这个页面" : "Return to this page"}</strong><small>{zh ? "网页会自动发现、配对并连接这台电脑。" : "Loom Web will automatically discover, pair, and connect this computer."}</small></p></li>
+                  </ol>
+                  <a className="loom-host-install-action" href={RELEASE.download}><span>{zh ? "下载 Loom for Windows" : "Download Loom for Windows"}</span><Download size={15} aria-hidden="true" /></a>
+                  <p className="loom-host-onboarding-note">{zh ? "已经安装？启动 Loom 后点击下面的“重新检测”，无需刷新网页。" : "Already installed? Open Loom, then use Check again below — no page refresh needed."}</p>
+                </div> : null}
+                {hostState === "offline" ? <div className="loom-host-recovery"><span>{zh ? "如果这是新电脑，请先安装 Loom；如果已经安装，只需启动 Loom。" : "On a new computer, install Loom first. If it is already installed, just open Loom."}</span><a href={RELEASE.download}>{zh ? "下载安装包" : "Download installer"}</a></div> : null}
                 {hostState === "checking" || hostState === "online" ? <div className={`loom-connection-track${hostState === "checking" ? " is-working" : " is-online"}`} aria-hidden="true"><span /></div> : null}
                 {hostState !== "checking" ? <button className="loom-form-submit loom-host-action" type="button" onClick={primaryAction}><span>{primaryLabel}</span><ArrowRight size={15} aria-hidden="true" /></button> : null}
               </section>
