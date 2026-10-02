@@ -68,6 +68,12 @@
   "build": {
     "appId": "com.loom.agent",
     "productName": "Loom",
+    "protocols": [
+      {
+        "name": "Loom",
+        "schemes": ["loom"]
+      }
+    ],
     "asar": true,
     "electronUpdaterCompatibility": ">=2.16",
     "publish": [
