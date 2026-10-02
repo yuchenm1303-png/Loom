@@ -26,16 +26,29 @@ export function WebAppGate({ children }: { children: ReactNode }) {
   const [localHost, setLocalHost] = useState<LocalLoomHost | null>(null);
   const [discoveryNonce, setDiscoveryNonce] = useState(0);
   const [pairing, setPairing] = useState(false);
+  const pairingRef = useRef(false);
   const [pairAttempts, setPairAttempts] = useState(0);
   const [pairingSucceeded, setPairingSucceeded] = useState(false);
   const [entered, setEntered] = useState(false);
   const hostStateRef = useRef<HostState>("idle");
   const connectPromiseRef = useRef<Promise<void> | null>(null);
+  const activeAccountId = account.account.authenticated ? String(account.account.user?.id || "") : "";
+  const accountIdRef = useRef(activeAccountId);
+  accountIdRef.current = activeAccountId;
 
   const setTrackedHostState = useCallback((next: HostState) => {
     hostStateRef.current = next;
     setHostState(next);
   }, []);
+
+  useEffect(() => {
+    setEntered(false);
+    setTrackedHostState("idle");
+    setPairAttempts(0);
+    setPairingSucceeded(false);
+    setPairing(false);
+    setLocalHost(null);
+  }, [activeAccountId, setTrackedHostState]);
 
   useEffect(() => {
     if (!web) return;
@@ -55,19 +68,23 @@ export function WebAppGate({ children }: { children: ReactNode }) {
     if (!account.ready || !account.account.authenticated || !account.account.user) setEntered(false);
   }, [account.account.authenticated, account.account.user, account.ready]);
 
-  const connectCurrentHost = useCallback(async (options?: { force?: boolean }) => {
+  const connectCurrentHost = useCallback(async (options?: { force?: boolean; background?: boolean }) => {
     if (!web || !account.ready || !account.account.authenticated) return;
     const force = Boolean(options?.force);
     if (!force && hostStateRef.current === "online") return;
     if (connectPromiseRef.current) return connectPromiseRef.current;
 
-    if (hostStateRef.current !== "online") setTrackedHostState("connecting");
+    if (hostStateRef.current !== "online" && !options?.background) setTrackedHostState("connecting");
     const attempt = (async () => {
+      const identity = activeAccountId;
       try {
         await window.loom.connect();
+        if (accountIdRef.current !== identity) return;
         setTrackedHostState("online");
+        setEntered(true);
         setHostError("");
       } catch (cause) {
+        if (accountIdRef.current !== identity) return;
         const error = cause as Error & { code?: string };
         setEntered(false);
         setTrackedHostState("offline");
@@ -81,11 +98,21 @@ export function WebAppGate({ children }: { children: ReactNode }) {
     } finally {
       if (connectPromiseRef.current === attempt) connectPromiseRef.current = null;
     }
-  }, [account.account.authenticated, account.ready, setTrackedHostState, web]);
+  }, [account.account.authenticated, account.ready, activeAccountId, setTrackedHostState, web]);
 
   useEffect(() => {
     if (!web || !account.ready || !account.account.authenticated) return;
     void connectCurrentHost();
+  }, [account.account.authenticated, account.ready, connectCurrentHost, web]);
+
+  useEffect(() => {
+    if (!web || !account.ready || !account.account.authenticated) return;
+    const timer = window.setInterval(() => {
+      if (hostStateRef.current === "offline" || hostStateRef.current === "missing") {
+        void connectCurrentHost({ background: true });
+      }
+    }, 5000);
+    return () => window.clearInterval(timer);
   }, [account.account.authenticated, account.ready, connectCurrentHost, web]);
 
   useEffect(() => {
@@ -168,20 +195,23 @@ export function WebAppGate({ children }: { children: ReactNode }) {
       || !account.account.authenticated
       || !localHost
       || localHost.relayReady
-      || pairing
+      || pairingRef.current
       || pairingSucceeded
       || pairAttempts >= AUTO_PAIR_ATTEMPTS
     ) return;
 
     let cancelled = false;
+    const controller = new AbortController();
     const delay = pairAttempts === 0 ? 350 : 1_500 * (pairAttempts + 1);
     const timer = window.setTimeout(() => {
       void (async () => {
         if (cancelled) return;
+        pairingRef.current = true;
         setPairing(true);
         if (hostStateRef.current !== "online") setTrackedHostState("pairing");
         setHostError("");
-        const result = await pairLocalLoomHost();
+        const result = await pairLocalLoomHost(controller.signal);
+        pairingRef.current = false;
         if (cancelled) return;
         setPairing(false);
         setPairAttempts((value) => value + 1);
@@ -199,14 +229,18 @@ export function WebAppGate({ children }: { children: ReactNode }) {
 
     return () => {
       cancelled = true;
+      controller.abort();
+      pairingRef.current = false;
+      setPairing(false);
       window.clearTimeout(timer);
     };
   }, [
     account.account.authenticated,
+    activeAccountId,
     account.ready,
-    localHost,
+    localHost?.deviceId,
+    localHost?.relayReady,
     pairAttempts,
-    pairing,
     pairingSucceeded,
     setTrackedHostState,
     web,
@@ -251,6 +285,7 @@ export function WebAppGate({ children }: { children: ReactNode }) {
         hostState={portalState}
         hostError={hostError}
         selectedDeviceName={localHost?.deviceName || ""}
+        hostDetected={Boolean(localHost)}
         onEnter={enterOrRetry}
       />
     );

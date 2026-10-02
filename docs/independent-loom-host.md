@@ -60,3 +60,18 @@ values in both processes. These overrides are not needed in normal installations
 Packaged acceptance still needs a new Windows build: confirm the Loom tray icon,
 login startup, web pairing, desktop exit during a running web task, reopening the
 same thread, and an installer update while both processes are running.
+
+## Web entry
+
+The web portal distinguishes starting an installed Host from installing Loom on
+a new computer. It offers `loom://host/start` as a user-initiated launch action;
+it does not automatically launch an external application. Once a signed-in Host
+is connected, the workspace opens automatically. Connection loss returns to the
+Host entry and retries in the background. Failure to discover localhost is not
+proof that Loom is uninstalled: the same entry offers both start and install.
+
+Pairing requests have a bounded lifetime and are canceled when the account or
+Host changes. Polling new Host snapshots does not cancel an in-flight pairing
+request. Connection responses from a previous account cannot enter a workspace
+after sign-out or account switching. Detailed connection errors are available
+in an expandable section while the main copy explains the next action.

@@ -109,3 +109,19 @@ test("refresh requests a fresh device status rather than returning the cached sn
     assert.equal((await env.bridge.getWebDeviceStatus()).online, true);
   } finally { await env.close(); }
 });
+
+test("a dropped socket reports Host offline and the next call reconnects", async () => {
+  const env = await setup();
+  const statuses = [];
+  const listener = (event) => statuses.push(event.detail);
+  window.addEventListener("loom:web-device-status", listener);
+  try {
+    await window.loom.connect();
+    env.sockets[0].close();
+    assert.equal(statuses.at(-1).online, false);
+    assert.equal(statuses.at(-1).selectedDeviceId, "host-a");
+    await window.loom.connect();
+    assert.equal(env.sockets.length, 2);
+    assert.equal(env.intervals.size, 1);
+  } finally { window.removeEventListener("loom:web-device-status", listener); await env.close(); }
+});

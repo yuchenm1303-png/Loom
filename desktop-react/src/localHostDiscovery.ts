@@ -61,7 +61,9 @@ function messageFromPayload(payload: unknown, fallback: string): string {
  */
 export async function discoverLocalLoomHost(signal?: AbortSignal): Promise<LocalLoomHost | null> {
   try {
-    const response = await fetch(LOCAL_HOST_STATUS_URL, requestInit({ method: "GET", signal }));
+    const response = await fetch(LOCAL_HOST_STATUS_URL, requestInit({ method: "GET",
+      signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(5000)]) : AbortSignal.timeout(5000),
+    }));
     if (!response.ok) return null;
     const payload = await response.json() as Partial<LocalLoomHost> & { ok?: boolean };
     const deviceId = normalizeDeviceId(payload.deviceId);
@@ -90,13 +92,15 @@ export function rememberLocalLoomHost(deviceId: string): void {
  * a 120-second one-time ticket; the Host exchanges it for its own independent
  * refresh session and reconnects the authenticated WSS relay.
  */
-export async function pairLocalLoomHost(): Promise<LocalPairResult> {
+export async function pairLocalLoomHost(signal?: AbortSignal): Promise<LocalPairResult> {
   try {
+    const boundedSignal = signal ? AbortSignal.any([signal, AbortSignal.timeout(15000)]) : AbortSignal.timeout(15000);
     const issueResponse = await fetch("/api/auth/device-pair", {
       method: "POST",
       cache: "no-store",
       credentials: "same-origin",
       headers: { Accept: "application/json" },
+      signal: boundedSignal,
     });
     const issued = await issueResponse.json().catch(() => ({})) as {
       ok?: boolean;
@@ -112,6 +116,7 @@ export async function pairLocalLoomHost(): Promise<LocalPairResult> {
       method: "POST",
       headers: { "Content-Type": "application/json", Accept: "application/json" },
       body: JSON.stringify({ pairing_ticket: pairingTicket }),
+      signal: boundedSignal,
     }));
     const paired = await pairResponse.json().catch(() => ({})) as { ok?: boolean; error?: unknown; message?: unknown };
     if (!pairResponse.ok || !paired.ok) {

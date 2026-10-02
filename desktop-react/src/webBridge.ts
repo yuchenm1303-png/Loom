@@ -258,6 +258,9 @@ async function ensureSocket(): Promise<WebSocket> {
           lastDeviceStatus = null;
           stopHeartbeat();
           failPending("Loom Web connection closed.");
+          window.dispatchEvent(new CustomEvent("loom:web-device-status", {
+            detail: { type: "device_status", online: false, selectedDeviceId: socketDeviceId },
+          }));
         }
       });
       ws.addEventListener("error", () => {
