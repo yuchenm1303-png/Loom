@@ -1,0 +1,185 @@
+name: Loom Host Runtime Release
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - "app/**"
+      - "loom_*.py"
+      - "extensions/browser-current-tab/**"
+      - "desktop-react/electron/hostRuntime.ts"
+      - "desktop-react/electron/hostRuntimeUpdater.ts"
+      - "desktop-react/electron/main.ts"
+      - "desktop-react/electron/modelManager.ts"
+      - "desktop-react/scripts/build-windows-runtime.mjs"
+      - "desktop-react/scripts/package-host-runtime.mjs"
+      - "host-runtime/runtime.json"
+      - "pyproject.toml"
+      - "requirements*.txt"
+      - ".github/workflows/host-runtime-release.yml"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: loom-host-runtime-stable
+  cancel-in-progress: false
+
+jobs:
+  publish-host-runtime:
+    runs-on: windows-latest
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      LOOM_GITHUB_CLIENT_ID: ${{ vars.LOOM_GITHUB_CLIENT_ID }}
+      LOOM_GITHUB_CLIENT_SECRET: ${{ secrets.LOOM_GITHUB_CLIENT_SECRET }}
+      LOOM_GITHUB_OAUTH_SCOPES: ${{ vars.LOOM_GITHUB_OAUTH_SCOPES || 'repo read:org' }}
+      LOOM_GITHUB_CALLBACK_PATH: ${{ vars.LOOM_GITHUB_CALLBACK_PATH || '/oauth/github/callback' }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Resolve Host runtime version
+        id: runtime
+        shell: pwsh
+        run: |
+          $config = Get-Content (Join-Path $env:GITHUB_WORKSPACE "host-runtime\runtime.json") -Raw | ConvertFrom-Json
+          if ($config.schema -ne 1) { throw "Unsupported Host runtime config schema." }
+          $series = [string]$config.series
+          if ($series -notmatch '^\d+\.\d+$') { throw "Invalid Host runtime series: $series" }
+          $version = "$series.${{ github.run_number }}"
+          $tag = "host-v$version"
+          "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "tag=$tag" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "protocol=$($config.protocol)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "min_bootstrap=$($config.minBootstrapVersion)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+
+      - name: Validate trusted runtime configuration
+        shell: pwsh
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:LOOM_GITHUB_CLIENT_ID)) { throw "Missing LOOM_GITHUB_CLIENT_ID." }
+          if ([string]::IsNullOrWhiteSpace($env:LOOM_GITHUB_CLIENT_SECRET)) { throw "Missing LOOM_GITHUB_CLIENT_SECRET." }
+
+      - name: Install Desktop build dependencies
+        working-directory: desktop-react
+        run: npm install --no-audit --no-fund
+
+      - name: Build frozen Host runtime
+        working-directory: desktop-react
+        env:
+          LOOM_HOST_RUNTIME_VERSION: ${{ steps.runtime.outputs.version }}
+          LOOM_HOST_RUNTIME_PROTOCOL: ${{ steps.runtime.outputs.protocol }}
+          LOOM_HOST_MIN_BOOTSTRAP_VERSION: ${{ steps.runtime.outputs.min_bootstrap }}
+        run: npm run build:runtime:win
+
+      - name: Package standalone Host runtime
+        working-directory: desktop-react
+        run: >-
+          node scripts/package-host-runtime.mjs
+          --version=${{ steps.runtime.outputs.version }}
+          --protocol=${{ steps.runtime.outputs.protocol }}
+          --min-bootstrap=${{ steps.runtime.outputs.min_bootstrap }}
+          --source-sha=${{ github.sha }}
+
+      - name: Verify standalone Host runtime
+        shell: pwsh
+        run: |
+          $version = "${{ steps.runtime.outputs.version }}"
+          $releaseDir = Join-Path $env:GITHUB_WORKSPACE "desktop-react\host-runtime-release"
+          $archive = Join-Path $releaseDir "Loom-Host-Runtime-$version-win-x64.zip"
+          $verifyDir = Join-Path $env:RUNNER_TEMP "loom-host-runtime-verify"
+          if (-not (Test-Path $archive)) { throw "Host runtime archive was not produced." }
+          Remove-Item $verifyDir -Recurse -Force -ErrorAction SilentlyContinue
+          Expand-Archive -LiteralPath $archive -DestinationPath $verifyDir -Force
+          foreach ($required in @("python.exe", "wxc-exec.exe", "manifest.json", "browser-current-tab\manifest.json")) {
+            if (-not (Test-Path (Join-Path $verifyDir $required))) { throw "Host runtime is missing $required" }
+          }
+          & (Join-Path $verifyDir "python.exe") self-test
+          if ($LASTEXITCODE -ne 0) { throw "Standalone Host runtime self-test failed." }
+          $manifest = Get-Content (Join-Path $verifyDir "manifest.json") -Raw | ConvertFrom-Json
+          if ($manifest.version -ne $version) { throw "Host runtime manifest version mismatch." }
+          if ([int]$manifest.protocol -ne [int]"${{ steps.runtime.outputs.protocol }}") { throw "Host runtime manifest protocol mismatch." }
+
+      - name: Publish immutable Host runtime prerelease
+        shell: pwsh
+        env:
+          RUNTIME_TAG: ${{ steps.runtime.outputs.tag }}
+        run: |
+          $version = "${{ steps.runtime.outputs.version }}"
+          $releaseDir = Join-Path $env:GITHUB_WORKSPACE "desktop-react\host-runtime-release"
+          $archive = Join-Path $releaseDir "Loom-Host-Runtime-$version-win-x64.zip"
+          $manifest = Join-Path $releaseDir "host-runtime-manifest.json"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch --tags origin
+          if (-not (git tag --list $env:RUNTIME_TAG)) {
+            git tag -a $env:RUNTIME_TAG $env:GITHUB_SHA -m "Loom Host Runtime $version"
+            git push origin "refs/tags/$env:RUNTIME_TAG"
+          }
+          $existing = gh release view $env:RUNTIME_TAG --json tagName 2>$null
+          if ($LASTEXITCODE -eq 0) {
+            gh release upload $env:RUNTIME_TAG $archive $manifest --clobber
+          } else {
+            gh release create $env:RUNTIME_TAG $archive $manifest --verify-tag --prerelease --title "Loom Host Runtime $version" --notes "Independent Loom Host runtime. Install/upgrade is handled by the Loom Host bootstrap; this prerelease is not a Desktop release."
+          }
+          if ($LASTEXITCODE -ne 0) { throw "Failed to publish Host runtime prerelease." }
+
+      - name: Advance stable Host channel
+        shell: pwsh
+        env:
+          RUNTIME_TAG: ${{ steps.runtime.outputs.tag }}
+        run: |
+          $version = "${{ steps.runtime.outputs.version }}"
+          $protocol = [int]"${{ steps.runtime.outputs.protocol }}"
+          $minBootstrap = "${{ steps.runtime.outputs.min_bootstrap }}"
+          $archiveName = "Loom-Host-Runtime-$version-win-x64.zip"
+          $archive = Join-Path $env:GITHUB_WORKSPACE "desktop-react\host-runtime-release\$archiveName"
+          $sha = (Get-FileHash -Algorithm SHA256 $archive).Hash.ToLowerInvariant()
+          $size = (Get-Item $archive).Length
+          $url = "https://github.com/${{ github.repository }}/releases/download/$env:RUNTIME_TAG/$archiveName"
+          $channel = [ordered]@{
+            schema = 1
+            channel = "stable"
+            version = $version
+            protocol = $protocol
+            minBootstrapVersion = $minBootstrap
+            url = $url
+            sha256 = $sha
+            size = $size
+            sourceSha = "${{ github.sha }}"
+            publishedAt = (Get-Date).ToUniversalTime().ToString("o")
+          } | ConvertTo-Json
+
+          git fetch origin main
+          git checkout main
+          git reset --hard origin/main
+          $channelPath = Join-Path $env:GITHUB_WORKSPACE "host-runtime\stable.json"
+          [IO.File]::WriteAllText($channelPath, $channel + "`n", [Text.UTF8Encoding]::new($false))
+          git add host-runtime/stable.json
+          if (git diff --cached --quiet) {
+            Write-Host "Stable Host channel already points at $version."
+            exit 0
+          }
+          git commit -m "chore(host): advance runtime stable channel to $version"
+          git push origin HEAD:main
+          if ($LASTEXITCODE -ne 0) { throw "Failed to advance Host stable channel; rerun this workflow after main settles." }
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Loom-Host-Runtime-${{ steps.runtime.outputs.version }}
+          path: |
+            desktop-react/host-runtime-release/Loom-Host-Runtime-*-win-x64.zip
+            desktop-react/host-runtime-release/host-runtime-manifest.json
+          if-no-files-found: error
+          retention-days: 30
