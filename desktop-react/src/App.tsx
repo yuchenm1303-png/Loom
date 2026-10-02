@@ -1111,6 +1111,7 @@ export default function App() {
         threadView={loom.threadView}
         archivedCount={loom.threadCounts.archived}
         onOpen={loom.openThread}
+        onPrefetch={loom.prefetchThread}
         onNew={loom.newThread}
         onOpenProject={openProjectDetails}
         projects={loom.projects}
