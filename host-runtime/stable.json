@@ -1,0 +1,12 @@
+{
+  "schema": 1,
+  "channel": "stable",
+  "version": "1.0.0",
+  "protocol": 1,
+  "minBootstrapVersion": "0.1.10",
+  "url": "",
+  "sha256": "",
+  "size": 0,
+  "sourceSha": "",
+  "publishedAt": ""
+}
