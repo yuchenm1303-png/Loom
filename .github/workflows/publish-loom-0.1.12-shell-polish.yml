@@ -1,0 +1,43 @@
+name: Publish Loom v0.1.12 shell polish
+
+on:
+  push:
+    branches:
+      - automation/release-0.1.12-shell-polish
+    paths:
+      - ".github/workflows/publish-loom-0.1.12-shell-polish.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  publish-version-commit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Guard release base
+        shell: bash
+        run: |
+          test "$(git rev-parse HEAD)" = "e6f5c33b48d8b7c72550f3ef92e48526ff87e0c5" || { echo "main moved; refusing stale release"; exit 1; }
+          node -e "const p=require('./desktop-react/package.json'); if(p.version!=='0.1.11') throw new Error('expected 0.1.11, got '+p.version)"
+
+      - name: Bump Desktop bootstrap version
+        working-directory: desktop-react
+        run: npm version 0.1.12 --no-git-tag-version
+
+      - name: Publish immutable release commit
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add desktop-react/package.json desktop-react/package-lock.json
+          git commit -m "chore(release): Loom v0.1.12"
+          git push origin HEAD:main
