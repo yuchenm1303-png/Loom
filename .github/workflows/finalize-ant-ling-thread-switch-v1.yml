@@ -1,0 +1,56 @@
+name: Finalize Ant Ling thread switch fix
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  finalize:
+    if: github.event.head_commit.message == 'Prepare Ant Ling thread switch fix'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install Python dependencies
+        run: python -m pip install --disable-pip-version-check -e '.[dev]'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Apply Ant Ling thread switch patch
+        shell: bash
+        run: |
+          base64 -d .github/ant-ling-thread-switch-v1.patch.gz.b64 | gzip -dc > /tmp/ant-ling-thread-switch.patch
+          git apply --check /tmp/ant-ling-thread-switch.patch
+          git apply /tmp/ant-ling-thread-switch.patch
+          git diff --check
+      - name: Focused Python tests
+        run: python -m pytest -q tests/test_ant_ling_bridge.py tests/test_ant_ling_thread_switch.py tests/test_reasoning_controls.py
+      - name: Install desktop dependencies
+        working-directory: desktop-react
+        run: npm ci --no-audit --no-fund
+      - name: Renderer and Electron typecheck
+        working-directory: desktop-react
+        run: npm run typecheck
+      - name: Publish fix
+        shell: bash
+        run: |
+          git rm -f .github/ant-ling-thread-switch-v1.patch.gz.b64
+          git rm -f .github/workflows/finalize-ant-ling-thread-switch-v1.yml
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add app/app_server_reasoning.py \
+                  desktop-react/electron/main.ts \
+                  loom_model_bridge.py \
+                  tests/test_ant_ling_bridge.py \
+                  tests/test_ant_ling_thread_switch.py
+          git commit -m 'Fix Ant Ling thread model switching'
+          git fetch origin main
+          git rebase origin/main
+          git push origin HEAD:main
