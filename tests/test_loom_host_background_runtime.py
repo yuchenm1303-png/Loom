@@ -42,7 +42,8 @@ def test_host_starts_at_login_and_can_lazily_open_desktop() -> None:
     assert "args: [BACKGROUND_HOST_ARG]" in source
     assert "registerDesktopWindowFactory" in source
     assert "desktopWindowFactory();" in source
-    assert "Quit Loom Host" in source
+    assert 'label: "Quit Loom"' in source
+    assert "Quit Loom Host" not in source
 
 
 def test_host_runtime_updates_independently_and_bootstrap_update_is_rare() -> None:
