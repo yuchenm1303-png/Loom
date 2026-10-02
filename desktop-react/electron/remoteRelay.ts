@@ -1,17 +1,19 @@
-import { app, BrowserWindow, dialog, Menu, nativeImage, shell, Tray } from "electron";
+import { app, dialog, Menu, nativeImage, shell, Tray } from "electron";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { HOST_ARG, isHostProcess, launchDesktop } from "./hostRuntime.js";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import WebSocket from "ws";
-import { LoomAccountClient } from "./accountClient.js";
+import { hostAccount } from "./hostAccount.js";
 import { webRelayDeviceIdentity } from "./webRelayAuth.js";
 
-// The Loom Web device relay runs inside the same Electron main process that
-// owns Loom Desktop's App Server. The browser is only another client of that
-// local Host; this module never starts a second Agent Runtime.
+// Only the independent Host process owns discovery, relay and Agent Runtime.
+// Desktop and browser are clients; neither owns the Host's lifetime.
 
 const DEFAULT_RELAY_URL = "wss://loom.smirel.com/api/ws/device";
 const DEFAULT_WEB_URL = "https://loom.smirel.com";
 const LOCAL_DISCOVERY_HOST = "127.0.0.1";
-const LOCAL_DISCOVERY_PORT = 39223;
+const LOCAL_DISCOVERY_PORT = Number(process.env.LOOM_HOST_DISCOVERY_PORT || 39223);
 const LOCAL_STATUS_PATH = "/loom/status";
 const LOCAL_OPEN_PATH = "/loom/open";
 const LOCAL_PAIR_PATH = "/loom/pair";
@@ -19,7 +21,6 @@ const LOCAL_BODY_LIMIT = 4 * 1024;
 const HEARTBEAT_MS = 30_000;
 const RETRY_MIN_MS = 4_000;
 const RETRY_MAX_MS = 30_000;
-const BACKGROUND_HOST_ARG = "--loom-background-host";
 
 export type WebRelayAuth = {
   accessToken: string;
@@ -54,27 +55,7 @@ let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
 let localDiscoveryServer: Server | null = null;
 
-// Desktop's visible window is only a UI client. Keep the Electron main process
-// alive as Loom Host when that window is closed, so loom.smirel.com keeps using
-// the exact same App Server, model registry, conversations, approvals and tools.
-const backgroundHostLaunch = process.argv.includes(BACKGROUND_HOST_ARG);
-const primaryInstance = app.requestSingleInstanceLock();
-let allowHostQuit = false;
-let uiRequested = !backgroundHostLaunch;
 let hostTray: Tray | null = null;
-
-function loomMainWindow(): BrowserWindow | null {
-  return BrowserWindow.getAllWindows().find((window) => !window.isDestroyed() && window.getTitle() === "Loom") ?? null;
-}
-
-function showLoomWindow(): void {
-  uiRequested = true;
-  const window = loomMainWindow();
-  if (!window) return;
-  if (window.isMinimized()) window.restore();
-  window.show();
-  window.focus();
-}
 
 function normalizedOrigin(value: string): string {
   try { return new URL(value).origin; } catch { return ""; }
@@ -170,6 +151,8 @@ async function handleLocalDiscovery(request: IncomingMessage, response: ServerRe
       ok: true,
       ...identity,
       relayReady: ws?.readyState === WebSocket.OPEN,
+      hostPid: process.pid,
+      desktopRequired: false,
     }, origin);
     return;
   }
@@ -186,7 +169,7 @@ async function handleLocalDiscovery(request: IncomingMessage, response: ServerRe
         writeLocalJson(response, 400, { ok: false, error: "pairing_ticket_required" }, origin);
         return;
       }
-      const snapshot = await new LoomAccountClient().pairDevice(pairingTicket);
+      const snapshot = await hostAccount.pairDevice(pairingTicket);
       if (!snapshot.authenticated) throw new Error("pairing_failed");
       reconnectRelayNow();
       writeLocalJson(response, 200, { ok: true }, origin);
@@ -202,7 +185,7 @@ async function handleLocalDiscovery(request: IncomingMessage, response: ServerRe
       writeLocalJson(response, 403, { ok: false, error: "origin_required" });
       return;
     }
-    showLoomWindow();
+    launchDesktop();
     writeLocalJson(response, 200, { ok: true }, origin);
     return;
   }
@@ -211,7 +194,7 @@ async function handleLocalDiscovery(request: IncomingMessage, response: ServerRe
 }
 
 function startLocalDiscovery(): void {
-  if (localDiscoveryServer || !primaryInstance) return;
+  if (localDiscoveryServer || !isHostProcess) return;
   const server = createServer((request, response) => {
     void handleLocalDiscovery(request, response).catch(() => {
       if (!response.headersSent) writeLocalJson(response, 500, { ok: false, error: "internal_error" });
@@ -247,22 +230,27 @@ async function openLocalLoomWeb(): Promise<void> {
 async function ensureHostTray(): Promise<void> {
   if (hostTray || process.platform === "darwin") return;
   let icon = nativeImage.createEmpty();
-  try { icon = await app.getFileIcon(process.execPath, { size: "small" }); } catch {}
+  const iconPath = app.isPackaged
+    ? path.join(process.resourcesPath, "loom-icon.png")
+    : path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../build/icon.png");
+  icon = nativeImage.createFromPath(iconPath);
+  if (icon.isEmpty()) {
+    try { icon = await app.getFileIcon(process.execPath, { size: "small" }); } catch {}
+  }
   hostTray = new Tray(icon);
   hostTray.setToolTip("Loom Host · local Web access available in background");
   hostTray.setContextMenu(Menu.buildFromTemplate([
-    { label: "Open Loom", click: () => showLoomWindow() },
+    { label: "Open Loom", click: () => launchDesktop() },
     { label: "Open Loom Web", click: () => void openLocalLoomWeb() },
     { type: "separator" },
     {
       label: "Quit Loom Host",
       click: () => {
-        allowHostQuit = true;
         app.quit();
       },
     },
   ]));
-  hostTray.on("double-click", () => showLoomWindow());
+  hostTray.on("double-click", () => launchDesktop());
 }
 
 function configureBackgroundHostStartup(): void {
@@ -271,51 +259,21 @@ function configureBackgroundHostStartup(): void {
     app.setLoginItemSettings({
       openAtLogin: true,
       path: process.execPath,
-      args: [BACKGROUND_HOST_ARG],
+      args: [HOST_ARG],
     });
   } catch (error) {
     console.warn("Could not configure Loom Host login startup", error);
   }
 }
 
-app.on("browser-window-created", (_event, window) => {
-  if (window.getTitle() !== "Loom") return;
-  window.on("close", (event) => {
-    if (allowHostQuit) return;
-    event.preventDefault();
-    window.hide();
-  });
-
-  if (backgroundHostLaunch && !uiRequested) {
-    const keepHidden = () => {
-      if (!uiRequested && !window.isDestroyed()) setImmediate(() => {
-        if (!uiRequested && !window.isDestroyed()) window.hide();
-      });
-    };
-    window.on("show", keepHidden);
-    window.once("ready-to-show", keepHidden);
-  }
-});
-
-if (!primaryInstance) {
-  app.quit();
-} else {
-  app.on("second-instance", (_event, argv) => {
-    if (argv.includes(BACKGROUND_HOST_ARG)) return;
-    if (app.isReady()) showLoomWindow();
-    else void app.whenReady().then(() => showLoomWindow());
-  });
-}
-
 app.whenReady().then(async () => {
-  if (!primaryInstance) return;
+  if (!isHostProcess) return;
   configureBackgroundHostStartup();
   startLocalDiscovery();
   await ensureHostTray();
 });
 
 app.on("before-quit", () => {
-  allowHostQuit = true;
   stopLocalDiscovery();
   hostTray?.destroy();
   hostTray = null;
@@ -374,7 +332,7 @@ async function handleInvoke(frame: InvokeFrame): Promise<void> {
 }
 
 async function connectRelay(): Promise<void> {
-  if (stopped || !options || !primaryInstance) return;
+  if (stopped || !options || !isHostProcess) return;
   if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) return;
   let auth: WebRelayAuth;
   try {

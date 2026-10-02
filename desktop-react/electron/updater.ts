@@ -4,6 +4,7 @@ import electronUpdater, {
   type ProgressInfo,
   type UpdateInfo,
 } from "electron-updater";
+import { broadcastHostEvent, handleHostChannel, isHostProcess } from "./hostRuntime.js";
 
 export type SoftwareUpdatePhase =
   | "disabled"
@@ -50,7 +51,7 @@ function getAutoUpdater(): AppUpdater {
 }
 
 const autoUpdater = getAutoUpdater();
-const updateEnabled = app.isPackaged && process.platform === "win32";
+const updateEnabled = isHostProcess && app.isPackaged && process.platform === "win32";
 let state: SoftwareUpdateState = {
   enabled: updateEnabled,
   phase: updateEnabled ? "idle" : "disabled",
@@ -72,6 +73,7 @@ function publicState(): SoftwareUpdateState {
 
 function broadcastState(): void {
   const payload = publicState();
+  broadcastHostEvent(STATUS_CHANNEL, payload);
   for (const window of BrowserWindow.getAllWindows()) {
     if (!window.isDestroyed() && !window.webContents.isDestroyed()) {
       window.webContents.send(STATUS_CHANNEL, payload);
@@ -116,6 +118,7 @@ function updateInFlight(): boolean {
 }
 
 function activeWindow(): BrowserWindow | undefined {
+  if (isHostProcess) return undefined;
   return BrowserWindow.getFocusedWindow()
     ?? BrowserWindow.getAllWindows().find((window) => !window.isDestroyed());
 }
@@ -188,7 +191,7 @@ async function offerDownloadedUpdate(info: UpdateInfo): Promise<void> {
     : await dialog.showMessageBox(options);
 
   if (result.response === 0 && state.phase === "downloaded") {
-    autoUpdater.quitAndInstall(false, true);
+    restartForUpdate();
   }
 }
 
@@ -230,7 +233,7 @@ function installDownloadedUpdate(): { accepted: boolean; state: SoftwareUpdateSt
     return { accepted: false, state: publicState() };
   }
 
-  autoUpdater.quitAndInstall(false, true);
+  restartForUpdate();
   return { accepted: true, state: publicState() };
 }
 
@@ -238,6 +241,12 @@ function maybeCheckAfterFocus(): void {
   if (!updateEnabled || !lastCheckStartedAt || checkPromise || updateInFlight()) return;
   if (Date.now() - lastCheckStartedAt < FOCUS_RECHECK_MIN_AGE_MS) return;
   void checkForUpdates();
+}
+
+function restartForUpdate(): void {
+  // Close desktop clients before the installer replaces the shared executable.
+  broadcastHostEvent("loom:host-updating", null);
+  setTimeout(() => autoUpdater.quitAndInstall(false, true), 500);
 }
 
 function configureUpdater(): void {
@@ -330,14 +339,14 @@ function startAutomaticChecks(): void {
 
 configureUpdater();
 
-ipcMain.handle("loom:update-status", () => publicState());
-ipcMain.handle("loom:update-check", () => checkForUpdates());
-ipcMain.handle("loom:update-install", () => installDownloadedUpdate());
+handleHostChannel("loom:update-status", () => publicState());
+handleHostChannel("loom:update-check", () => checkForUpdates());
+handleHostChannel("loom:update-install", () => installDownloadedUpdate());
 
 app.on("browser-window-created", (_event, window) => {
   window.webContents.once("did-finish-load", () => {
     if (!window.isDestroyed() && !window.webContents.isDestroyed()) {
-      window.webContents.send(STATUS_CHANNEL, publicState());
+      if (isHostProcess) window.webContents.send(STATUS_CHANNEL, publicState());
     }
   });
   window.on("focus", maybeCheckAfterFocus);

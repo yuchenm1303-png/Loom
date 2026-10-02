@@ -22,7 +22,9 @@ import {
   type WebRelayOperations,
 } from "./remoteRelay.js";
 import { webRelayAuthPayload } from "./webRelayAuth.js";
+import { hostAccount } from "./hostAccount.js";
 import { createSearchRelay } from "./searchRelay.js";
+import { broadcastHostEvent, handleHostChannel, isHostProcess, prepareDesktopHost, startHostTransport } from "./hostRuntime.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -959,14 +961,22 @@ let mainWindow: BrowserWindow | null = null;
 const artifactWindows = new Set<BrowserWindow>();
 const artifactPreviewRoots = new Map<string, string>();
 const modelManager = new DesktopModelManager(REPO_ROOT);
-const accountClient = new LoomAccountClient();
+const accountClient = hostAccount;
 function handleRuntimeNotification(payload: JsonRpcResponse): void {
   mainWindow?.webContents.send("loom:notification", payload);
+  broadcastHostEvent("loom:notification", payload);
   sendRelayNotification(payload);
   if (payload.method === "hud/update") sendHudUpdate(payload.params ?? {});
 }
 const rpc = new LoomRpcProcess(handleRuntimeNotification, modelManager, accountClient);
 let searchRelayPromise: ReturnType<typeof createSearchRelay> | null = null;
+export function showDesktopWindow(): void {
+  if (isHostProcess) return;
+  if (!mainWindow) createWindow();
+  if (mainWindow?.isMinimized()) mainWindow.restore();
+  mainWindow?.show();
+  mainWindow?.focus();
+}
 function sharedSearchRelay(): ReturnType<typeof createSearchRelay> {
   if (!searchRelayPromise) searchRelayPromise = createSearchRelay((query, count) => accountClient.search(query, count));
   return searchRelayPromise;
@@ -1356,9 +1366,10 @@ const desktopOperations: WebRelayOperations = {
   readLocalArtifact: async (args) => readRelayArtifact(String(args[0] || ""), String(args[1] || "")),
 };
 
-ipcMain.handle("loom:connect", () => rpc.connect());
-ipcMain.handle("loom:call", (_event, method: string, params?: Record<string, unknown>) => rpc.call(method, params ?? {}));
-ipcMain.handle("loom:disconnect", () => rpc.stop());
+handleHostChannel("loom:connect", () => rpc.connect());
+handleHostChannel("loom:call", (_event, method: string, params?: Record<string, unknown>) => rpc.call(method, params ?? {}));
+// Disconnecting a UI must never stop shared web tasks or the Agent Runtime.
+ipcMain.handle("loom:disconnect", () => true);
 ipcMain.handle("loom:set-native-theme", (_event, source: "system" | "light" | "dark") => {
   const next = source === "light" || source === "dark" ? source : "system";
   nativeTheme.themeSource = next;
@@ -1369,9 +1380,9 @@ ipcMain.handle("loom:set-native-theme", (_event, source: "system" | "light" | "d
   }
   return resolved;
 });
-ipcMain.handle("loom:export-computer-logs", () => exportComputerLogs());
-ipcMain.handle("loom:export-browser-logs", () => exportBrowserLogs());
-ipcMain.handle("loom:setup-browser-extension", (_event, browser: "edge" | "chrome" = "edge", extensionConnected = false) => setupBrowserExtension(browser, extensionConnected));
+handleHostChannel("loom:export-computer-logs", () => exportComputerLogs());
+handleHostChannel("loom:export-browser-logs", () => exportBrowserLogs());
+handleHostChannel("loom:setup-browser-extension", (_event, browser: "edge" | "chrome" = "edge", extensionConnected = false) => setupBrowserExtension(browser, extensionConnected));
 ipcMain.handle("loom:reveal-path", (_event, targetPath: string) => revealPath(targetPath));
 ipcMain.handle("loom:copy-image-source", (_event, source: string) => copyImageSource(source));
 ipcMain.handle("loom:clipboard-read-text", () => clipboard.readText());
@@ -1415,57 +1426,68 @@ async function runAccountAction(
   }
 }
 
-ipcMain.handle("loom:account-status", () => runAccountAction(() => accountClient.status()));
-ipcMain.handle("loom:account-login", (_event, email: string, password: string) =>
+handleHostChannel("loom:account-status", () => runAccountAction(() => accountClient.status()));
+handleHostChannel("loom:account-login", (_event, email: string, password: string) =>
   runAccountAction(() => accountClient.login(String(email || ""), String(password || "")))
 );
-ipcMain.handle("loom:account-register", (_event, email: string, password: string) =>
+handleHostChannel("loom:account-register", (_event, email: string, password: string) =>
   runAccountAction(() => accountClient.register(String(email || ""), String(password || "")))
 );
-ipcMain.handle("loom:account-logout", () => runAccountAction(() => accountClient.logout()));
-ipcMain.handle("loom:model-list", (_event, forceRefresh?: boolean) => modelManager.listSnapshot(Boolean(forceRefresh)));
-ipcMain.handle("loom:model-provider-key", (_event, provider: string, apiKey: string) =>
+handleHostChannel("loom:account-logout", () => runAccountAction(() => accountClient.logout()));
+handleHostChannel("loom:model-list", (_event, forceRefresh?: boolean) => modelManager.listSnapshot(Boolean(forceRefresh)));
+handleHostChannel("loom:model-provider-key", (_event, provider: string, apiKey: string) =>
   modelManager.setProviderKey(String(provider || ""), String(apiKey || ""))
 );
-ipcMain.handle("loom:model-switch", (_event, threadOrSelection: string, maybeSelection?: string) => (
+handleHostChannel("loom:model-switch", (_event, threadOrSelection: string, maybeSelection?: string) => (
   runSwitchModelProfile(threadOrSelection, maybeSelection)
 ));
-ipcMain.handle("loom:model-switch-current", (
+handleHostChannel("loom:model-switch-current", (
   _event,
   threadOrModel: string,
   selectionOrUndefined?: string,
   modelOrUndefined?: string,
 ) => runSwitchCurrentModel(threadOrModel, selectionOrUndefined, modelOrUndefined));
-ipcMain.handle("loom:model-add", (_event, threadOrInput: string | AddModelInput, maybeInput?: AddModelInput) => (
+handleHostChannel("loom:model-add", (_event, threadOrInput: string | AddModelInput, maybeInput?: AddModelInput) => (
   runAddModel(threadOrInput, maybeInput)
 ));
-ipcMain.handle("loom:model-update", (_event, input: EditModelInput) => runUpdateModel(input));
-ipcMain.handle("loom:model-test", async (_event, selection: string) => modelManager.test(selection));
-ipcMain.handle("loom:model-delete", async (_event, selection: string) => deleteModel(selection));
-ipcMain.handle("loom:reasoning-set", (_event, ...args: string[]) => runSetReasoning(...args));
+handleHostChannel("loom:model-update", (_event, input: EditModelInput) => runUpdateModel(input));
+handleHostChannel("loom:model-test", async (_event, selection: string) => modelManager.test(selection));
+handleHostChannel("loom:model-delete", async (_event, selection: string) => deleteModel(selection));
+handleHostChannel("loom:reasoning-set", (_event, ...args: string[]) => runSetReasoning(...args));
 
 app.setName("Loom");
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   void protocol.handle("loom-artifact", serveLocalArtifact);
   // Keep the packaged executable, taskbar grouping, Start menu shortcut, and
   // Windows notifications on the same application identity. electron-builder
   // stamps the executable with the icon configured for this appId.
   if (process.platform === "win32") app.setAppUserModelId("com.loom.agent");
-  createWindow();
+  if (!isHostProcess) {
+    await prepareDesktopHost();
+    createWindow();
+    return;
+  }
+  await startHostTransport();
   createHudOverlayWindow();
   // The relay owns its own reconnect loop; it stays idle until an account
   // session exists, and a failed auth lookup just schedules a retry.
   startWebRelay({ auth: webRelayAuthPayload, operations: desktopOperations });
+}).catch((error) => {
+  console.error("Loom startup failed", error);
+  dialog.showErrorBox("Loom startup failed", error instanceof Error ? error.message : String(error));
+  app.quit();
 });
 app.on("activate", () => {
-  if (!mainWindow) createWindow();
+  if (!isHostProcess && !mainWindow) createWindow();
 });
 app.on("window-all-closed", () => {
-  if (process.platform !== "darwin") app.quit();
+  if (!isHostProcess && process.platform !== "darwin") app.quit();
 });
 app.on("before-quit", () => {
-  rpc.stop();
-  closeHudOverlayWindow();
-  stopWebRelay();
+  if (isHostProcess) {
+    rpc.stop();
+    closeHudOverlayWindow();
+    stopWebRelay();
+  }
 });
