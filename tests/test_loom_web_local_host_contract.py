@@ -7,6 +7,7 @@ DESKTOP_MAIN = (ROOT / "desktop-react/electron/main.ts").read_text(encoding="utf
 REMOTE_RELAY = (ROOT / "desktop-react/electron/remoteRelay.ts").read_text(encoding="utf-8")
 WEB_RELAY_AUTH = (ROOT / "desktop-react/electron/webRelayAuth.ts").read_text(encoding="utf-8")
 UPDATER = (ROOT / "desktop-react/electron/updater.ts").read_text(encoding="utf-8")
+HOST_MODE = (ROOT / "desktop-react/electron/hostMode.ts").read_text(encoding="utf-8")
 WEB_BRIDGE = (ROOT / "desktop-react/src/webBridge.ts").read_text(encoding="utf-8")
 LOCAL_DISCOVERY = (ROOT / "desktop-react/src/localHostDiscovery.ts").read_text(encoding="utf-8")
 
@@ -29,7 +30,8 @@ def test_every_web_invoke_routes_to_local_host() -> None:
 
 def test_desktop_window_is_not_the_host_lifetime() -> None:
     assert "app.requestSingleInstanceLock()" in REMOTE_RELAY
-    assert "--loom-background-host" in REMOTE_RELAY
+    assert "--loom-background-host" in HOST_MODE
+    assert "BACKGROUND_HOST_ARG" in REMOTE_RELAY
     assert "app.setLoginItemSettings" in REMOTE_RELAY
     assert "new Tray(" in REMOTE_RELAY
     assert 'window.on("close"' in REMOTE_RELAY
@@ -52,7 +54,9 @@ def test_web_host_negotiates_protocol_and_can_self_update() -> None:
     assert 'const LOCAL_UPDATE_PATH = "/loom/update"' in REMOTE_RELAY
     assert 'frame.operation === "hostUpdateEnsure"' in REMOTE_RELAY
     assert "ensureWebHostUpdate()" in REMOTE_RELAY
-    assert "webAutoInstallRequested" in UPDATER
+    assert "registerHeadlessUpdateGuard" in UPDATER
+    assert "HEADLESS_INSTALL_RETRY_MS" in UPDATER
+    assert "markHeadlessUpdateRestart()" in UPDATER
     assert "autoUpdater.quitAndInstall(false, true)" in UPDATER
     assert "LOOM_WEB_REQUIRED_HOST_PROTOCOL = 1" in LOCAL_DISCOVERY
     assert "ensureLocalLoomHostCompatibility" in LOCAL_DISCOVERY

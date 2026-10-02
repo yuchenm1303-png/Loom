@@ -21,6 +21,8 @@ export type LocalLoomHost = {
   deviceName: string;
   platform: string;
   appVersion: string;
+  hostVersion: string;
+  hostMode: "background" | "desktop" | string;
   hostProtocol: number;
   relayReady: boolean;
   update?: LocalHostUpdateState | null;
@@ -84,6 +86,8 @@ export async function discoverLocalLoomHost(signal?: AbortSignal): Promise<Local
       deviceName: String(payload.deviceName || "This computer"),
       platform: String(payload.platform || ""),
       appVersion: String(payload.appVersion || ""),
+      hostVersion: String(payload.hostVersion || payload.appVersion || ""),
+      hostMode: String(payload.hostMode || "desktop"),
       hostProtocol: Math.max(0, Number(payload.hostProtocol || 0) || 0),
       relayReady: Boolean(payload.relayReady),
       update: payload.update && typeof payload.update === "object" ? payload.update as LocalHostUpdateState : null,

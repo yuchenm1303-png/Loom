@@ -20,7 +20,15 @@ type InvokeMessage = {
   args: unknown[];
 };
 
-export type WebRelayDevice = Record<string, unknown> & { id?: string; name?: string; platform?: string; version?: string; hostProtocol?: number };
+export type WebRelayDevice = Record<string, unknown> & {
+  id?: string;
+  name?: string;
+  platform?: string;
+  version?: string;
+  hostVersion?: string;
+  hostMode?: string;
+  hostProtocol?: number;
+};
 
 export type WebDeviceStatus = {
   type: "device_status";

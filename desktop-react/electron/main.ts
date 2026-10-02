@@ -16,6 +16,8 @@ import { LoomAccountClient, type LoomAccountSnapshot, type LoomAuthCapabilities,
 import { accountErrorPayload, type AccountErrorPayload } from "./accountErrors.js";
 import { closeHudOverlayWindow, createHudOverlayWindow, sendHudUpdate } from "./hudWindow.js";
 import {
+  registerDesktopWindowFactory,
+  requestDesktopWindow,
   sendRelayNotification,
   startWebRelay,
   stopWebRelay,
@@ -23,6 +25,8 @@ import {
 } from "./remoteRelay.js";
 import { webRelayAuthPayload } from "./webRelayAuth.js";
 import { createSearchRelay } from "./searchRelay.js";
+import { isBackgroundHostLaunch, setLoomHostLaunchMode } from "./hostMode.js";
+import { consumeHeadlessUpdateRestart, registerHeadlessUpdateGuard } from "./updater.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -975,6 +979,14 @@ function handleRuntimeNotification(payload: JsonRpcResponse): void {
   if (payload.method === "hud/update") sendHudUpdate(payload.params ?? {});
 }
 const rpc = new LoomRpcProcess(handleRuntimeNotification, modelManager, accountClient);
+registerHeadlessUpdateGuard(async () => {
+  try {
+    await rpc.assertRestartSafe();
+    return true;
+  } catch {
+    return false;
+  }
+});
 let searchRelayPromise: ReturnType<typeof createSearchRelay> | null = null;
 function sharedSearchRelay(): ReturnType<typeof createSearchRelay> {
   if (!searchRelayPromise) searchRelayPromise = createSearchRelay((query, count) => accountClient.search(query, count));
@@ -1193,9 +1205,16 @@ function createWindow(): void {
   void loadRenderer(window);
   window.on("closed", () => {
     if (mainWindow === window) mainWindow = null;
-    if (process.platform !== "darwin") app.quit();
   });
 }
+
+function ensureDesktopUi(): void {
+  if (mainWindow && !mainWindow.isDestroyed()) return;
+  createWindow();
+  createHudOverlayWindow();
+}
+
+registerDesktopWindowFactory(ensureDesktopUi);
 
 // ---------------------------------------------------------------------------
 // Shared desktop operations
@@ -1508,17 +1527,22 @@ app.whenReady().then(() => {
   // Windows notifications on the same application identity. electron-builder
   // stamps the executable with the icon configured for this appId.
   if (process.platform === "win32") app.setAppUserModelId("com.loom.agent");
-  createWindow();
-  createHudOverlayWindow();
+  // A background Host is a first-class runtime mode, not a hidden Desktop.
+  // Avoid loading React/HUD at login; create the UI lazily only if the user
+  // explicitly opens Loom. This keeps the always-on Host much lighter.
+  const resumeHeadlessHost = consumeHeadlessUpdateRestart();
+  if (resumeHeadlessHost) setLoomHostLaunchMode("background");
+  if (!isBackgroundHostLaunch()) ensureDesktopUi();
   // The relay owns its own reconnect loop; it stays idle until an account
   // session exists, and a failed auth lookup just schedules a retry.
   startWebRelay({ auth: webRelayAuthPayload, operations: desktopOperations });
 });
 app.on("activate", () => {
-  if (!mainWindow) createWindow();
+  requestDesktopWindow();
 });
 app.on("window-all-closed", () => {
-  if (process.platform !== "darwin") app.quit();
+  // Deliberately keep the Host alive. "Close window" and "Quit Loom Host"
+  // are separate actions; the tray menu owns the explicit quit path.
 });
 app.on("before-quit", () => {
   rpc.stop();

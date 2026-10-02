@@ -1,4 +1,6 @@
 import { app, BrowserWindow, dialog, ipcMain, shell } from "electron";
+import fs from "node:fs";
+import path from "node:path";
 import electronUpdater, {
   type AppUpdater,
   type ProgressInfo,
@@ -39,8 +41,10 @@ const EARLY_RECHECK_DELAYS_MS = [2 * 60_000, 10 * 60_000];
 const PERIODIC_CHECK_INTERVAL_MS = 30 * 60_000;
 const FOCUS_RECHECK_MIN_AGE_MS = 5 * 60_000;
 const ERROR_RETRY_DELAY_MS = 60_000;
+const HEADLESS_INSTALL_RETRY_MS = 30_000;
 const STATUS_CHANNEL = "loom:update-status-changed";
 const RELEASE_BASE_URL = "https://github.com/yuchenm1303-png/Loom/releases/tag";
+const HEADLESS_RESTART_MARKER = "loom-headless-update-restart";
 
 function getAutoUpdater(): AppUpdater {
   // electron-updater is CommonJS. Destructuring the default import keeps the
@@ -64,7 +68,9 @@ let lastCheckStartedAt = 0;
 let startupTimer: NodeJS.Timeout | null = null;
 let periodicTimer: NodeJS.Timeout | null = null;
 let errorRetryTimer: NodeJS.Timeout | null = null;
-let webAutoInstallRequested = false;
+let headlessInstallGuard: (() => boolean | Promise<boolean>) | null = null;
+let headlessInstallRetryTimer: NodeJS.Timeout | null = null;
+let headlessInstallAttempt: Promise<boolean> | null = null;
 const earlyRecheckTimers: NodeJS.Timeout[] = [];
 
 export function softwareUpdateState(): SoftwareUpdateState {
@@ -125,23 +131,82 @@ function hasVisibleWindow(): boolean {
   return BrowserWindow.getAllWindows().some((window) => !window.isDestroyed() && window.isVisible());
 }
 
-function maybeInstallForWeb(): boolean {
-  if (!webAutoInstallRequested || state.phase !== "downloaded" || hasVisibleWindow()) return false;
-  // Browser-only sessions have no visible Desktop UI to click through an install
-  // prompt. Restart the background Host only after the package is fully ready.
-  setTimeout(() => autoUpdater.quitAndInstall(false, true), 250).unref?.();
-  return true;
+function headlessInstallWanted(): boolean {
+  return state.phase === "downloaded" && !hasVisibleWindow();
+}
+
+function headlessRestartMarkerPath(): string {
+  return path.join(app.getPath("userData"), HEADLESS_RESTART_MARKER);
+}
+
+function markHeadlessUpdateRestart(): void {
+  try {
+    fs.writeFileSync(headlessRestartMarkerPath(), "background\n", { encoding: "utf8", mode: 0o600 });
+  } catch (error) {
+    console.warn("Could not persist Loom Host restart mode", error);
+  }
+}
+
+export function consumeHeadlessUpdateRestart(): boolean {
+  try {
+    const marker = headlessRestartMarkerPath();
+    if (!fs.existsSync(marker)) return false;
+    fs.unlinkSync(marker);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function scheduleHeadlessInstallRetry(): void {
+  if (headlessInstallRetryTimer || !headlessInstallWanted()) return;
+  headlessInstallRetryTimer = setTimeout(() => {
+    headlessInstallRetryTimer = null;
+    void maybeInstallHeadless();
+  }, HEADLESS_INSTALL_RETRY_MS);
+  headlessInstallRetryTimer.unref?.();
+}
+
+async function maybeInstallHeadless(): Promise<boolean> {
+  if (headlessInstallAttempt) return headlessInstallAttempt;
+  if (!headlessInstallWanted()) return false;
+  headlessInstallAttempt = (async () => {
+    if (headlessInstallGuard) {
+      let safe = false;
+      try { safe = await headlessInstallGuard(); } catch { safe = false; }
+      if (!safe) {
+        scheduleHeadlessInstallRetry();
+        return false;
+      }
+    }
+    if (headlessInstallRetryTimer) {
+      clearTimeout(headlessInstallRetryTimer);
+      headlessInstallRetryTimer = null;
+    }
+    // A hidden Host has no Desktop prompt to click. Once the package is ready
+    // and the Agent is idle, restart the Host automatically and let the web
+    // reconnect to the new process without reopening the Desktop UI.
+    markHeadlessUpdateRestart();
+    setTimeout(() => autoUpdater.quitAndInstall(false, true), 250).unref?.();
+    return true;
+  })().finally(() => {
+    headlessInstallAttempt = null;
+  });
+  return headlessInstallAttempt;
+}
+
+export function registerHeadlessUpdateGuard(guard: () => boolean | Promise<boolean>): void {
+  headlessInstallGuard = guard;
 }
 
 export async function ensureWebHostUpdate(): Promise<SoftwareUpdateState> {
   if (!updateEnabled) return softwareUpdateState();
-  webAutoInstallRequested = true;
   if (state.phase === "downloaded") {
-    maybeInstallForWeb();
+    void maybeInstallHeadless();
     return softwareUpdateState();
   }
   const next = await checkForUpdates();
-  maybeInstallForWeb();
+  void maybeInstallHeadless();
   return next;
 }
 
@@ -285,7 +350,7 @@ function configureUpdater(): void {
       percent: 0,
       transferred: 0,
     });
-    if (!webAutoInstallRequested || hasVisibleWindow()) {
+    if (hasVisibleWindow()) {
       availablePromptPromise = offerAvailableUpdate(info).finally(() => {
         availablePromptPromise = null;
       });
@@ -294,7 +359,6 @@ function configureUpdater(): void {
 
   autoUpdater.on("update-not-available", (info) => {
     clearErrorRetry();
-    webAutoInstallRequested = false;
     setState({
       phase: "up-to-date",
       ...updateInfoPatch(info),
@@ -322,7 +386,9 @@ function configureUpdater(): void {
       percent: 100,
       error: undefined,
     });
-    if (!maybeInstallForWeb()) void offerDownloadedUpdate(info);
+    void maybeInstallHeadless().then((accepted) => {
+      if (!accepted && !headlessInstallWanted()) void offerDownloadedUpdate(info);
+    });
   });
 
   autoUpdater.on("error", (error) => {
@@ -369,6 +435,7 @@ app.on("browser-window-created", (_event, window) => {
     }
   });
   window.on("focus", maybeCheckAfterFocus);
+  window.on("hide", () => { void maybeInstallHeadless(); });
 });
 
 app.whenReady().then(() => {
@@ -379,9 +446,11 @@ app.on("before-quit", () => {
   if (startupTimer) clearTimeout(startupTimer);
   if (periodicTimer) clearInterval(periodicTimer);
   if (errorRetryTimer) clearTimeout(errorRetryTimer);
+  if (headlessInstallRetryTimer) clearTimeout(headlessInstallRetryTimer);
   for (const timer of earlyRecheckTimers) clearTimeout(timer);
   earlyRecheckTimers.length = 0;
   startupTimer = null;
   periodicTimer = null;
   errorRetryTimer = null;
+  headlessInstallRetryTimer = null;
 });

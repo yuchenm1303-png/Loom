@@ -233,7 +233,7 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
     event.preventDefault();
     setLocalError("");
     if (password !== confirmPassword) {
-      setLocalError(zh ? "两次输入的密码不一致。" : "Password does not match.");
+      setLocalError(zh ? "两次输入的密码不一致。" : "The passwords do not match.");
       return;
     }
     const ok = await account.resetPassword(challengeId, verificationCode, password);
@@ -324,8 +324,8 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
             <h1><span className="loom-heading-main">{zh ? "你的 Loom，" : "Your Loom stays"}</span>{" "}<span className="loom-heading-accent">{zh ? "始终在自己的电脑上。" : "on your computer."}</span></h1>
             <p className="loom-stage-description">
               {zh
-                ? "桌面端负责真正运行 Agent，网页只是安全入口。无论从哪里打开，继续的都是同一个会话、文件、审批和 Computer Use。"
-                : "Desktop runs the Agent. The web is simply a secure way back in — to the same conversations, files, approvals and Computer Use."}
+                ? "Loom Host 会在后台真正运行 Agent。桌面端只是可选界面，网页会安全连接同一个会话、文件、审批和 Computer Use。"
+                : "Loom Host runs the Agent in the background. Desktop is optional; the web securely connects to the same conversations, files, approvals and Computer Use."}
             </p>
 
             {!authenticated ? <div className="loom-stage-actions"><button className="loom-primary-action" type="button" onClick={primaryAction}><span>{primaryLabel}</span><span aria-hidden="true">→</span></button></div> : null}

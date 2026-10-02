@@ -4,6 +4,7 @@ import WebSocket from "ws";
 import { LoomAccountClient } from "./accountClient.js";
 import { LOOM_HOST_PROTOCOL_VERSION, webRelayDeviceIdentity } from "./webRelayAuth.js";
 import { ensureWebHostUpdate, softwareUpdateState } from "./updater.js";
+import { BACKGROUND_HOST_ARG, LOOM_HOST_RUNTIME_VERSION, isBackgroundHostLaunch, loomHostLaunchMode, type LoomHostLaunchMode } from "./hostMode.js";
 
 // The Loom Web device relay runs inside the same Electron main process that
 // owns Loom Desktop's App Server. The browser is only another client of that
@@ -21,7 +22,6 @@ const LOCAL_BODY_LIMIT = 4 * 1024;
 const HEARTBEAT_MS = 30_000;
 const RETRY_MIN_MS = 4_000;
 const RETRY_MAX_MS = 30_000;
-const BACKGROUND_HOST_ARG = "--loom-background-host";
 
 export type WebRelayAuth = {
   accessToken: string;
@@ -29,6 +29,8 @@ export type WebRelayAuth = {
   deviceName: string;
   platform: string;
   appVersion: string;
+  hostVersion: string;
+  hostMode: LoomHostLaunchMode;
   hostProtocol: number;
 };
 
@@ -60,11 +62,12 @@ let localDiscoveryServer: Server | null = null;
 // Desktop's visible window is only a UI client. Keep the Electron main process
 // alive as Loom Host when that window is closed, so loom.smirel.com keeps using
 // the exact same App Server, model registry, conversations, approvals and tools.
-const backgroundHostLaunch = process.argv.includes(BACKGROUND_HOST_ARG);
+const backgroundHostLaunch = isBackgroundHostLaunch();
 const primaryInstance = app.requestSingleInstanceLock();
 let allowHostQuit = false;
 let uiRequested = !backgroundHostLaunch;
 let hostTray: Tray | null = null;
+let desktopWindowFactory: (() => void) | null = null;
 
 function loomMainWindow(): BrowserWindow | null {
   return BrowserWindow.getAllWindows().find((window) => !window.isDestroyed() && window.getTitle() === "Loom") ?? null;
@@ -72,11 +75,27 @@ function loomMainWindow(): BrowserWindow | null {
 
 function showLoomWindow(): void {
   uiRequested = true;
-  const window = loomMainWindow();
+  let window = loomMainWindow();
+  if (!window && desktopWindowFactory) {
+    desktopWindowFactory();
+    window = loomMainWindow();
+  }
   if (!window) return;
   if (window.isMinimized()) window.restore();
   window.show();
   window.focus();
+}
+
+export function registerDesktopWindowFactory(factory: () => void): void {
+  desktopWindowFactory = factory;
+}
+
+export function requestDesktopWindow(): void {
+  showLoomWindow();
+}
+
+export function isLoomBackgroundHostLaunch(): boolean {
+  return backgroundHostLaunch;
 }
 
 function normalizedOrigin(value: string): string {
@@ -172,6 +191,8 @@ async function handleLocalDiscovery(request: IncomingMessage, response: ServerRe
     writeLocalJson(response, 200, {
       ok: true,
       ...identity,
+      hostVersion: LOOM_HOST_RUNTIME_VERSION,
+      hostMode: loomHostLaunchMode(),
       relayReady: ws?.readyState === WebSocket.OPEN,
       update: softwareUpdateState(),
     }, origin);
@@ -192,6 +213,8 @@ async function handleLocalDiscovery(request: IncomingMessage, response: ServerRe
       writeLocalJson(response, 200, {
         ok: true,
         hostProtocol: LOOM_HOST_PROTOCOL_VERSION,
+        hostVersion: LOOM_HOST_RUNTIME_VERSION,
+        hostMode: loomHostLaunchMode(),
         requiredProtocol,
         compatible: LOOM_HOST_PROTOCOL_VERSION >= requiredProtocol,
         update,
@@ -388,12 +411,16 @@ async function handleInvoke(frame: InvokeFrame): Promise<void> {
     } else if (frame.operation === "hostUpdateStatus") {
       result = {
         hostProtocol: LOOM_HOST_PROTOCOL_VERSION,
+        hostVersion: LOOM_HOST_RUNTIME_VERSION,
+        hostMode: loomHostLaunchMode(),
         update: softwareUpdateState(),
       };
     } else if (frame.operation === "hostUpdateEnsure") {
       const requiredProtocol = Math.max(0, Math.min(1_000_000, Number(args[0] || 0) || 0));
       result = {
         hostProtocol: LOOM_HOST_PROTOCOL_VERSION,
+        hostVersion: LOOM_HOST_RUNTIME_VERSION,
+        hostMode: loomHostLaunchMode(),
         requiredProtocol,
         compatible: LOOM_HOST_PROTOCOL_VERSION >= requiredProtocol,
         update: LOOM_HOST_PROTOCOL_VERSION < requiredProtocol ? await ensureWebHostUpdate() : softwareUpdateState(),
@@ -446,6 +473,8 @@ async function connectRelay(): Promise<void> {
         name: auth.deviceName,
         platform: auth.platform,
         version: auth.appVersion,
+        hostVersion: auth.hostVersion,
+        hostMode: auth.hostMode,
         hostProtocol: auth.hostProtocol,
       },
     });
