@@ -39,7 +39,7 @@ jobs:
 
       - name: Run Host contracts
         run: |
-          python -m pip install --quiet pytest
+          python -m pip install --quiet -e '.[dev,browser]'
           python -m pytest -q \
             tests/test_loom_host_background_runtime.py \
             tests/test_loom_web_local_host_contract.py \
