@@ -37,24 +37,10 @@ replace(
     '''  if (phase === "ready") return "Loom Host update is verified and waiting for the current task to become idle.";\n  if (phase === "activating") return "Loom Host is switching to the verified runtime. It will reconnect automatically.";\n  if (phase === "incompatible") return "This Loom bootstrap is too old for the newest Host runtime. Install the latest Loom once to upgrade the bootstrap.";\n  if (phase === "downloaded") return "Loom bootstrap update is ready. Restart Loom on the host computer to finish updating.";\n  if (phase === "available") return version\n''',
 )
 
-# Only files that actually enter the standalone runtime should publish a new
-# Host runtime. Electron/bootstrap files require a rare Desktop bootstrap release.
-workflow = ROOT / ".github/workflows/host-runtime-release.yml"
-text = workflow.read_text(encoding="utf-8")
-for line in [
-    '      - "desktop-react/electron/hostRuntime.ts"\n',
-    '      - "desktop-react/electron/hostRuntimeUpdater.ts"\n',
-    '      - "desktop-react/electron/main.ts"\n',
-    '      - "desktop-react/electron/modelManager.ts"\n',
-]:
-    text = text.replace(line, "")
-workflow.write_text(text, encoding="utf-8")
-
-# Protect the cross-version Browser Use synchronization and the release-boundary
-# distinction in contracts.
+# Protect cross-version Browser Use synchronization.
 test = ROOT / "tests/test_host_runtime_distribution.py"
 text = test.read_text(encoding="utf-8")
-text += '''\n\ndef test_runtime_activation_synchronizes_browser_assets() -> None:\n    main = (ROOT / "desktop-react/electron/main.ts").read_text(encoding="utf-8")\n    workflow = (ROOT / ".github/workflows/host-runtime-release.yml").read_text(encoding="utf-8")\n    assert "async function syncBrowserExtensionAssets" in main\n    assert "await syncBrowserExtensionAssets();" in main\n    assert 'desktop-react/electron/main.ts' not in workflow\n    assert 'desktop-react/electron/modelManager.ts' not in workflow\n'''
+text += '''\n\ndef test_runtime_activation_synchronizes_browser_assets() -> None:\n    main = (ROOT / "desktop-react/electron/main.ts").read_text(encoding="utf-8")\n    assert "async function syncBrowserExtensionAssets" in main\n    assert "await syncBrowserExtensionAssets();" in main\n'''
 test.write_text(text, encoding="utf-8")
 
 print("host runtime polish applied")
