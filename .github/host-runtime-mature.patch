@@ -1,0 +1,563 @@
+diff --git a/desktop-react/electron/main.ts b/desktop-react/electron/main.ts
+index 6d4e953..7abb408 100644
+--- a/desktop-react/electron/main.ts
++++ b/desktop-react/electron/main.ts
+@@ -16,6 +16,8 @@ import { LoomAccountClient, type LoomAccountSnapshot, type LoomAuthCapabilities,
+ import { accountErrorPayload, type AccountErrorPayload } from "./accountErrors.js";
+ import { closeHudOverlayWindow, createHudOverlayWindow, sendHudUpdate } from "./hudWindow.js";
+ import {
++  registerDesktopWindowFactory,
++  requestDesktopWindow,
+   sendRelayNotification,
+   startWebRelay,
+   stopWebRelay,
+@@ -23,6 +25,8 @@ import {
+ } from "./remoteRelay.js";
+ import { webRelayAuthPayload } from "./webRelayAuth.js";
+ import { createSearchRelay } from "./searchRelay.js";
++import { isBackgroundHostLaunch, setLoomHostLaunchMode } from "./hostMode.js";
++import { consumeHeadlessUpdateRestart, registerHeadlessUpdateGuard } from "./updater.js";
+ 
+ const __filename = fileURLToPath(import.meta.url);
+ const __dirname = path.dirname(__filename);
+@@ -975,6 +979,14 @@ function handleRuntimeNotification(payload: JsonRpcResponse): void {
+   if (payload.method === "hud/update") sendHudUpdate(payload.params ?? {});
+ }
+ const rpc = new LoomRpcProcess(handleRuntimeNotification, modelManager, accountClient);
++registerHeadlessUpdateGuard(async () => {
++  try {
++    await rpc.assertRestartSafe();
++    return true;
++  } catch {
++    return false;
++  }
++});
+ let searchRelayPromise: ReturnType<typeof createSearchRelay> | null = null;
+ function sharedSearchRelay(): ReturnType<typeof createSearchRelay> {
+   if (!searchRelayPromise) searchRelayPromise = createSearchRelay((query, count) => accountClient.search(query, count));
+@@ -1193,10 +1205,17 @@ function createWindow(): void {
+   void loadRenderer(window);
+   window.on("closed", () => {
+     if (mainWindow === window) mainWindow = null;
+-    if (process.platform !== "darwin") app.quit();
+   });
+ }
+ 
++function ensureDesktopUi(): void {
++  if (mainWindow && !mainWindow.isDestroyed()) return;
++  createWindow();
++  createHudOverlayWindow();
++}
++
++registerDesktopWindowFactory(ensureDesktopUi);
++
+ // ---------------------------------------------------------------------------
+ // Shared desktop operations
+ //
+@@ -1508,17 +1527,22 @@ app.whenReady().then(() => {
+   // Windows notifications on the same application identity. electron-builder
+   // stamps the executable with the icon configured for this appId.
+   if (process.platform === "win32") app.setAppUserModelId("com.loom.agent");
+-  createWindow();
+-  createHudOverlayWindow();
++  // A background Host is a first-class runtime mode, not a hidden Desktop.
++  // Avoid loading React/HUD at login; create the UI lazily only if the user
++  // explicitly opens Loom. This keeps the always-on Host much lighter.
++  const resumeHeadlessHost = consumeHeadlessUpdateRestart();
++  if (resumeHeadlessHost) setLoomHostLaunchMode("background");
++  if (!isBackgroundHostLaunch()) ensureDesktopUi();
+   // The relay owns its own reconnect loop; it stays idle until an account
+   // session exists, and a failed auth lookup just schedules a retry.
+   startWebRelay({ auth: webRelayAuthPayload, operations: desktopOperations });
+ });
+ app.on("activate", () => {
+-  if (!mainWindow) createWindow();
++  requestDesktopWindow();
+ });
+ app.on("window-all-closed", () => {
+-  if (process.platform !== "darwin") app.quit();
++  // Deliberately keep the Host alive. "Close window" and "Quit Loom Host"
++  // are separate actions; the tray menu owns the explicit quit path.
+ });
+ app.on("before-quit", () => {
+   rpc.stop();
+diff --git a/desktop-react/electron/remoteRelay.ts b/desktop-react/electron/remoteRelay.ts
+index 4333f1b..5085584 100644
+--- a/desktop-react/electron/remoteRelay.ts
++++ b/desktop-react/electron/remoteRelay.ts
+@@ -4,6 +4,7 @@ import WebSocket from "ws";
+ import { LoomAccountClient } from "./accountClient.js";
+ import { LOOM_HOST_PROTOCOL_VERSION, webRelayDeviceIdentity } from "./webRelayAuth.js";
+ import { ensureWebHostUpdate, softwareUpdateState } from "./updater.js";
++import { BACKGROUND_HOST_ARG, LOOM_HOST_RUNTIME_VERSION, isBackgroundHostLaunch, loomHostLaunchMode, type LoomHostLaunchMode } from "./hostMode.js";
+ 
+ // The Loom Web device relay runs inside the same Electron main process that
+ // owns Loom Desktop's App Server. The browser is only another client of that
+@@ -21,7 +22,6 @@ const LOCAL_BODY_LIMIT = 4 * 1024;
+ const HEARTBEAT_MS = 30_000;
+ const RETRY_MIN_MS = 4_000;
+ const RETRY_MAX_MS = 30_000;
+-const BACKGROUND_HOST_ARG = "--loom-background-host";
+ 
+ export type WebRelayAuth = {
+   accessToken: string;
+@@ -29,6 +29,8 @@ export type WebRelayAuth = {
+   deviceName: string;
+   platform: string;
+   appVersion: string;
++  hostVersion: string;
++  hostMode: LoomHostLaunchMode;
+   hostProtocol: number;
+ };
+ 
+@@ -60,11 +62,12 @@ let localDiscoveryServer: Server | null = null;
+ // Desktop's visible window is only a UI client. Keep the Electron main process
+ // alive as Loom Host when that window is closed, so loom.smirel.com keeps using
+ // the exact same App Server, model registry, conversations, approvals and tools.
+-const backgroundHostLaunch = process.argv.includes(BACKGROUND_HOST_ARG);
++const backgroundHostLaunch = isBackgroundHostLaunch();
+ const primaryInstance = app.requestSingleInstanceLock();
+ let allowHostQuit = false;
+ let uiRequested = !backgroundHostLaunch;
+ let hostTray: Tray | null = null;
++let desktopWindowFactory: (() => void) | null = null;
+ 
+ function loomMainWindow(): BrowserWindow | null {
+   return BrowserWindow.getAllWindows().find((window) => !window.isDestroyed() && window.getTitle() === "Loom") ?? null;
+@@ -72,13 +75,29 @@ function loomMainWindow(): BrowserWindow | null {
+ 
+ function showLoomWindow(): void {
+   uiRequested = true;
+-  const window = loomMainWindow();
++  let window = loomMainWindow();
++  if (!window && desktopWindowFactory) {
++    desktopWindowFactory();
++    window = loomMainWindow();
++  }
+   if (!window) return;
+   if (window.isMinimized()) window.restore();
+   window.show();
+   window.focus();
+ }
+ 
++export function registerDesktopWindowFactory(factory: () => void): void {
++  desktopWindowFactory = factory;
++}
++
++export function requestDesktopWindow(): void {
++  showLoomWindow();
++}
++
++export function isLoomBackgroundHostLaunch(): boolean {
++  return backgroundHostLaunch;
++}
++
+ function normalizedOrigin(value: string): string {
+   try { return new URL(value).origin; } catch { return ""; }
+ }
+@@ -172,6 +191,8 @@ async function handleLocalDiscovery(request: IncomingMessage, response: ServerRe
+     writeLocalJson(response, 200, {
+       ok: true,
+       ...identity,
++      hostVersion: LOOM_HOST_RUNTIME_VERSION,
++      hostMode: loomHostLaunchMode(),
+       relayReady: ws?.readyState === WebSocket.OPEN,
+       update: softwareUpdateState(),
+     }, origin);
+@@ -192,6 +213,8 @@ async function handleLocalDiscovery(request: IncomingMessage, response: ServerRe
+       writeLocalJson(response, 200, {
+         ok: true,
+         hostProtocol: LOOM_HOST_PROTOCOL_VERSION,
++        hostVersion: LOOM_HOST_RUNTIME_VERSION,
++        hostMode: loomHostLaunchMode(),
+         requiredProtocol,
+         compatible: LOOM_HOST_PROTOCOL_VERSION >= requiredProtocol,
+         update,
+@@ -388,12 +411,16 @@ async function handleInvoke(frame: InvokeFrame): Promise<void> {
+     } else if (frame.operation === "hostUpdateStatus") {
+       result = {
+         hostProtocol: LOOM_HOST_PROTOCOL_VERSION,
++        hostVersion: LOOM_HOST_RUNTIME_VERSION,
++        hostMode: loomHostLaunchMode(),
+         update: softwareUpdateState(),
+       };
+     } else if (frame.operation === "hostUpdateEnsure") {
+       const requiredProtocol = Math.max(0, Math.min(1_000_000, Number(args[0] || 0) || 0));
+       result = {
+         hostProtocol: LOOM_HOST_PROTOCOL_VERSION,
++        hostVersion: LOOM_HOST_RUNTIME_VERSION,
++        hostMode: loomHostLaunchMode(),
+         requiredProtocol,
+         compatible: LOOM_HOST_PROTOCOL_VERSION >= requiredProtocol,
+         update: LOOM_HOST_PROTOCOL_VERSION < requiredProtocol ? await ensureWebHostUpdate() : softwareUpdateState(),
+@@ -446,6 +473,8 @@ async function connectRelay(): Promise<void> {
+         name: auth.deviceName,
+         platform: auth.platform,
+         version: auth.appVersion,
++        hostVersion: auth.hostVersion,
++        hostMode: auth.hostMode,
+         hostProtocol: auth.hostProtocol,
+       },
+     });
+diff --git a/desktop-react/electron/updater.ts b/desktop-react/electron/updater.ts
+index 00d6c22..0a334fc 100644
+--- a/desktop-react/electron/updater.ts
++++ b/desktop-react/electron/updater.ts
+@@ -1,4 +1,6 @@
+ import { app, BrowserWindow, dialog, ipcMain, shell } from "electron";
++import fs from "node:fs";
++import path from "node:path";
+ import electronUpdater, {
+   type AppUpdater,
+   type ProgressInfo,
+@@ -39,8 +41,10 @@ const EARLY_RECHECK_DELAYS_MS = [2 * 60_000, 10 * 60_000];
+ const PERIODIC_CHECK_INTERVAL_MS = 30 * 60_000;
+ const FOCUS_RECHECK_MIN_AGE_MS = 5 * 60_000;
+ const ERROR_RETRY_DELAY_MS = 60_000;
++const HEADLESS_INSTALL_RETRY_MS = 30_000;
+ const STATUS_CHANNEL = "loom:update-status-changed";
+ const RELEASE_BASE_URL = "https://github.com/yuchenm1303-png/Loom/releases/tag";
++const HEADLESS_RESTART_MARKER = "loom-headless-update-restart";
+ 
+ function getAutoUpdater(): AppUpdater {
+   // electron-updater is CommonJS. Destructuring the default import keeps the
+@@ -64,7 +68,9 @@ let lastCheckStartedAt = 0;
+ let startupTimer: NodeJS.Timeout | null = null;
+ let periodicTimer: NodeJS.Timeout | null = null;
+ let errorRetryTimer: NodeJS.Timeout | null = null;
+-let webAutoInstallRequested = false;
++let headlessInstallGuard: (() => boolean | Promise<boolean>) | null = null;
++let headlessInstallRetryTimer: NodeJS.Timeout | null = null;
++let headlessInstallAttempt: Promise<boolean> | null = null;
+ const earlyRecheckTimers: NodeJS.Timeout[] = [];
+ 
+ export function softwareUpdateState(): SoftwareUpdateState {
+@@ -125,23 +131,82 @@ function hasVisibleWindow(): boolean {
+   return BrowserWindow.getAllWindows().some((window) => !window.isDestroyed() && window.isVisible());
+ }
+ 
+-function maybeInstallForWeb(): boolean {
+-  if (!webAutoInstallRequested || state.phase !== "downloaded" || hasVisibleWindow()) return false;
+-  // Browser-only sessions have no visible Desktop UI to click through an install
+-  // prompt. Restart the background Host only after the package is fully ready.
+-  setTimeout(() => autoUpdater.quitAndInstall(false, true), 250).unref?.();
+-  return true;
++function headlessInstallWanted(): boolean {
++  return state.phase === "downloaded" && !hasVisibleWindow();
++}
++
++function headlessRestartMarkerPath(): string {
++  return path.join(app.getPath("userData"), HEADLESS_RESTART_MARKER);
++}
++
++function markHeadlessUpdateRestart(): void {
++  try {
++    fs.writeFileSync(headlessRestartMarkerPath(), "background\n", { encoding: "utf8", mode: 0o600 });
++  } catch (error) {
++    console.warn("Could not persist Loom Host restart mode", error);
++  }
++}
++
++export function consumeHeadlessUpdateRestart(): boolean {
++  try {
++    const marker = headlessRestartMarkerPath();
++    if (!fs.existsSync(marker)) return false;
++    fs.unlinkSync(marker);
++    return true;
++  } catch {
++    return false;
++  }
++}
++
++function scheduleHeadlessInstallRetry(): void {
++  if (headlessInstallRetryTimer || !headlessInstallWanted()) return;
++  headlessInstallRetryTimer = setTimeout(() => {
++    headlessInstallRetryTimer = null;
++    void maybeInstallHeadless();
++  }, HEADLESS_INSTALL_RETRY_MS);
++  headlessInstallRetryTimer.unref?.();
++}
++
++async function maybeInstallHeadless(): Promise<boolean> {
++  if (headlessInstallAttempt) return headlessInstallAttempt;
++  if (!headlessInstallWanted()) return false;
++  headlessInstallAttempt = (async () => {
++    if (headlessInstallGuard) {
++      let safe = false;
++      try { safe = await headlessInstallGuard(); } catch { safe = false; }
++      if (!safe) {
++        scheduleHeadlessInstallRetry();
++        return false;
++      }
++    }
++    if (headlessInstallRetryTimer) {
++      clearTimeout(headlessInstallRetryTimer);
++      headlessInstallRetryTimer = null;
++    }
++    // A hidden Host has no Desktop prompt to click. Once the package is ready
++    // and the Agent is idle, restart the Host automatically and let the web
++    // reconnect to the new process without reopening the Desktop UI.
++    markHeadlessUpdateRestart();
++    setTimeout(() => autoUpdater.quitAndInstall(false, true), 250).unref?.();
++    return true;
++  })().finally(() => {
++    headlessInstallAttempt = null;
++  });
++  return headlessInstallAttempt;
++}
++
++export function registerHeadlessUpdateGuard(guard: () => boolean | Promise<boolean>): void {
++  headlessInstallGuard = guard;
+ }
+ 
+ export async function ensureWebHostUpdate(): Promise<SoftwareUpdateState> {
+   if (!updateEnabled) return softwareUpdateState();
+-  webAutoInstallRequested = true;
+   if (state.phase === "downloaded") {
+-    maybeInstallForWeb();
++    void maybeInstallHeadless();
+     return softwareUpdateState();
+   }
+   const next = await checkForUpdates();
+-  maybeInstallForWeb();
++  void maybeInstallHeadless();
+   return next;
+ }
+ 
+@@ -285,7 +350,7 @@ function configureUpdater(): void {
+       percent: 0,
+       transferred: 0,
+     });
+-    if (!webAutoInstallRequested || hasVisibleWindow()) {
++    if (hasVisibleWindow()) {
+       availablePromptPromise = offerAvailableUpdate(info).finally(() => {
+         availablePromptPromise = null;
+       });
+@@ -294,7 +359,6 @@ function configureUpdater(): void {
+ 
+   autoUpdater.on("update-not-available", (info) => {
+     clearErrorRetry();
+-    webAutoInstallRequested = false;
+     setState({
+       phase: "up-to-date",
+       ...updateInfoPatch(info),
+@@ -322,7 +386,9 @@ function configureUpdater(): void {
+       percent: 100,
+       error: undefined,
+     });
+-    if (!maybeInstallForWeb()) void offerDownloadedUpdate(info);
++    void maybeInstallHeadless().then((accepted) => {
++      if (!accepted && !headlessInstallWanted()) void offerDownloadedUpdate(info);
++    });
+   });
+ 
+   autoUpdater.on("error", (error) => {
+@@ -369,6 +435,7 @@ app.on("browser-window-created", (_event, window) => {
+     }
+   });
+   window.on("focus", maybeCheckAfterFocus);
++  window.on("hide", () => { void maybeInstallHeadless(); });
+ });
+ 
+ app.whenReady().then(() => {
+@@ -379,9 +446,11 @@ app.on("before-quit", () => {
+   if (startupTimer) clearTimeout(startupTimer);
+   if (periodicTimer) clearInterval(periodicTimer);
+   if (errorRetryTimer) clearTimeout(errorRetryTimer);
++  if (headlessInstallRetryTimer) clearTimeout(headlessInstallRetryTimer);
+   for (const timer of earlyRecheckTimers) clearTimeout(timer);
+   earlyRecheckTimers.length = 0;
+   startupTimer = null;
+   periodicTimer = null;
+   errorRetryTimer = null;
++  headlessInstallRetryTimer = null;
+ });
+diff --git a/desktop-react/electron/webRelayAuth.ts b/desktop-react/electron/webRelayAuth.ts
+index 7173082..81b1086 100644
+--- a/desktop-react/electron/webRelayAuth.ts
++++ b/desktop-react/electron/webRelayAuth.ts
+@@ -4,6 +4,7 @@ import os from "node:os";
+ import path from "node:path";
+ import crypto from "node:crypto";
+ import { LoomAccountClient } from "./accountClient.js";
++import { LOOM_HOST_RUNTIME_VERSION, loomHostLaunchMode, type LoomHostLaunchMode } from "./hostMode.js";
+ 
+ const DEFAULT_ACCOUNT_URL = "https://account.smirel.com/v1";
+ const DEVICE_ID_FILE = "loom-web-device-id";
+@@ -43,6 +44,8 @@ export type WebRelayDeviceIdentity = {
+   deviceName: string;
+   platform: string;
+   appVersion: string;
++  hostVersion: string;
++  hostMode: LoomHostLaunchMode;
+   hostProtocol: number;
+ };
+ 
+@@ -63,6 +66,8 @@ export async function webRelayDeviceIdentity(): Promise<WebRelayDeviceIdentity>
+     deviceName: os.hostname(),
+     platform: process.platform,
+     appVersion: app.getVersion(),
++    hostVersion: LOOM_HOST_RUNTIME_VERSION,
++    hostMode: loomHostLaunchMode(),
+     hostProtocol: LOOM_HOST_PROTOCOL_VERSION,
+   };
+ }
+diff --git a/desktop-react/src/components/WebPortal.tsx b/desktop-react/src/components/WebPortal.tsx
+index 6260ef7..11f6fbf 100644
+--- a/desktop-react/src/components/WebPortal.tsx
++++ b/desktop-react/src/components/WebPortal.tsx
+@@ -233,7 +233,7 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
+     event.preventDefault();
+     setLocalError("");
+     if (password !== confirmPassword) {
+-      setLocalError(zh ? "两次输入的密码不一致。" : "Password does not match.");
++      setLocalError(zh ? "两次输入的密码不一致。" : "The passwords do not match.");
+       return;
+     }
+     const ok = await account.resetPassword(challengeId, verificationCode, password);
+@@ -324,8 +324,8 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
+             <h1><span className="loom-heading-main">{zh ? "你的 Loom，" : "Your Loom stays"}</span>{" "}<span className="loom-heading-accent">{zh ? "始终在自己的电脑上。" : "on your computer."}</span></h1>
+             <p className="loom-stage-description">
+               {zh
+-                ? "桌面端负责真正运行 Agent，网页只是安全入口。无论从哪里打开，继续的都是同一个会话、文件、审批和 Computer Use。"
+-                : "Desktop runs the Agent. The web is simply a secure way back in — to the same conversations, files, approvals and Computer Use."}
++                ? "Loom Host 会在后台真正运行 Agent。桌面端只是可选界面，网页会安全连接同一个会话、文件、审批和 Computer Use。"
++                : "Loom Host runs the Agent in the background. Desktop is optional; the web securely connects to the same conversations, files, approvals and Computer Use."}
+             </p>
+ 
+             {!authenticated ? <div className="loom-stage-actions"><button className="loom-primary-action" type="button" onClick={primaryAction}><span>{primaryLabel}</span><span aria-hidden="true">→</span></button></div> : null}
+diff --git a/desktop-react/src/localHostDiscovery.ts b/desktop-react/src/localHostDiscovery.ts
+index ac25848..b99a6a3 100644
+--- a/desktop-react/src/localHostDiscovery.ts
++++ b/desktop-react/src/localHostDiscovery.ts
+@@ -21,6 +21,8 @@ export type LocalLoomHost = {
+   deviceName: string;
+   platform: string;
+   appVersion: string;
++  hostVersion: string;
++  hostMode: "background" | "desktop" | string;
+   hostProtocol: number;
+   relayReady: boolean;
+   update?: LocalHostUpdateState | null;
+@@ -84,6 +86,8 @@ export async function discoverLocalLoomHost(signal?: AbortSignal): Promise<Local
+       deviceName: String(payload.deviceName || "This computer"),
+       platform: String(payload.platform || ""),
+       appVersion: String(payload.appVersion || ""),
++      hostVersion: String(payload.hostVersion || payload.appVersion || ""),
++      hostMode: String(payload.hostMode || "desktop"),
+       hostProtocol: Math.max(0, Number(payload.hostProtocol || 0) || 0),
+       relayReady: Boolean(payload.relayReady),
+       update: payload.update && typeof payload.update === "object" ? payload.update as LocalHostUpdateState : null,
+diff --git a/desktop-react/src/webBridge.ts b/desktop-react/src/webBridge.ts
+index caccc07..2a47941 100644
+--- a/desktop-react/src/webBridge.ts
++++ b/desktop-react/src/webBridge.ts
+@@ -20,7 +20,15 @@ type InvokeMessage = {
+   args: unknown[];
+ };
+ 
+-export type WebRelayDevice = Record<string, unknown> & { id?: string; name?: string; platform?: string; version?: string; hostProtocol?: number };
++export type WebRelayDevice = Record<string, unknown> & {
++  id?: string;
++  name?: string;
++  platform?: string;
++  version?: string;
++  hostVersion?: string;
++  hostMode?: string;
++  hostProtocol?: number;
++};
+ 
+ export type WebDeviceStatus = {
+   type: "device_status";
+diff --git a/desktop-react/electron/hostMode.ts b/desktop-react/electron/hostMode.ts
+new file mode 100644
+index 0000000..6a90fff
+--- /dev/null
++++ b/desktop-react/electron/hostMode.ts
+@@ -0,0 +1,24 @@
++export const BACKGROUND_HOST_ARG = "--loom-background-host";
++
++// Host runtime version is intentionally independent from the Desktop package
++// version. The browser cares about Host protocol/runtime compatibility; the
++// Electron UI may evolve on a different cadence.
++export const LOOM_HOST_RUNTIME_VERSION = "1.0.0";
++
++export type LoomHostLaunchMode = "background" | "desktop";
++
++let runtimeModeOverride: LoomHostLaunchMode | null = null;
++
++export function setLoomHostLaunchMode(mode: LoomHostLaunchMode | null): void {
++  runtimeModeOverride = mode;
++}
++
++export function isBackgroundHostLaunch(argv: readonly string[] = process.argv): boolean {
++  if (runtimeModeOverride) return runtimeModeOverride === "background";
++  return argv.includes(BACKGROUND_HOST_ARG);
++}
++
++export function loomHostLaunchMode(argv: readonly string[] = process.argv): LoomHostLaunchMode {
++  if (runtimeModeOverride) return runtimeModeOverride;
++  return argv.includes(BACKGROUND_HOST_ARG) ? "background" : "desktop";
++}
+diff --git a/tests/test_loom_host_background_runtime.py b/tests/test_loom_host_background_runtime.py
+new file mode 100644
+index 0000000..50d2907
+--- /dev/null
++++ b/tests/test_loom_host_background_runtime.py
+@@ -0,0 +1,56 @@
++from pathlib import Path
++
++ROOT = Path(__file__).resolve().parents[1]
++ELECTRON = ROOT / "desktop-react" / "electron"
++MAIN = ELECTRON / "main.ts"
++RELAY = ELECTRON / "remoteRelay.ts"
++UPDATER = ELECTRON / "updater.ts"
++HOST_MODE = ELECTRON / "hostMode.ts"
++PORTAL = ROOT / "desktop-react" / "src" / "components" / "WebPortal.tsx"
++
++
++def test_host_has_independent_runtime_identity_and_background_mode() -> None:
++    source = HOST_MODE.read_text(encoding="utf-8")
++    assert "BACKGROUND_HOST_ARG" in source
++    assert "--loom-background-host" in source
++    assert "LOOM_HOST_RUNTIME_VERSION" in source
++    auth = (ELECTRON / "webRelayAuth.ts").read_text(encoding="utf-8")
++    assert "hostVersion: LOOM_HOST_RUNTIME_VERSION" in auth
++    assert "hostMode: loomHostLaunchMode()" in auth
++
++
++def test_background_host_does_not_boot_the_desktop_renderer() -> None:
++    source = MAIN.read_text(encoding="utf-8")
++    assert 'if (resumeHeadlessHost) setLoomHostLaunchMode("background");' in source
++    assert "if (!isBackgroundHostLaunch()) ensureDesktopUi();" in source
++    assert "registerDesktopWindowFactory(ensureDesktopUi);" in source
++    assert "requestDesktopWindow();" in source
++    window_closed = source.split('app.on("window-all-closed"', 1)[1].split('app.on("before-quit"', 1)[0]
++    assert "app.quit()" not in window_closed
++
++
++def test_host_starts_at_login_and_can_lazily_open_desktop() -> None:
++    source = RELAY.read_text(encoding="utf-8")
++    assert "app.setLoginItemSettings" in source
++    assert "args: [BACKGROUND_HOST_ARG]" in source
++    assert "registerDesktopWindowFactory" in source
++    assert "desktopWindowFactory();" in source
++    assert "Quit Loom Host" in source
++
++
++def test_headless_updates_wait_for_idle_runtime_and_resume_headless() -> None:
++    source = UPDATER.read_text(encoding="utf-8")
++    main = MAIN.read_text(encoding="utf-8")
++    assert "registerHeadlessUpdateGuard" in source
++    assert "HEADLESS_INSTALL_RETRY_MS" in source
++    assert "markHeadlessUpdateRestart();" in source
++    assert "consumeHeadlessUpdateRestart" in source
++    assert 'window.on("hide", () => { void maybeInstallHeadless(); });' in source
++    assert "await rpc.assertRestartSafe();" in main
++    assert "consumeHeadlessUpdateRestart()" in main
++
++
++def test_web_copy_treats_desktop_as_optional_ui() -> None:
++    source = PORTAL.read_text(encoding="utf-8")
++    assert "Desktop is optional" in source
++    assert "桌面端只是可选界面" in source
