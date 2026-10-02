@@ -510,6 +510,41 @@ def _turn_records(session: Any, events: tuple[AgentEvent, ...]) -> list[dict[str
     return list(turns.values())
 
 
+def _window_turn_events(
+    events: tuple[AgentEvent, ...],
+    *,
+    limit: int,
+    before_turn_id: str = "",
+) -> tuple[tuple[AgentEvent, ...], bool]:
+    """Return at most ``limit`` durable turns without rebuilding older history.
+
+    The store still owns one append-only event stream, but transcript rendering
+    does not need to materialize every historical tool/result item just to open
+    the latest part of a long conversation. ``before_turn_id`` is an exclusive
+    cursor used when the renderer asks for the previous page.
+    """
+    ordered_turn_ids: list[str] = []
+    seen: set[str] = set()
+    for event in events:
+        turn_id = str(event.turn_id or "").strip()
+        if not turn_id or turn_id in seen:
+            continue
+        seen.add(turn_id)
+        ordered_turn_ids.append(turn_id)
+
+    end = len(ordered_turn_ids)
+    if before_turn_id:
+        try:
+            end = ordered_turn_ids.index(before_turn_id)
+        except ValueError as exc:
+            raise ValueError("thread/read beforeTurnId is not present in this thread") from exc
+
+    start = max(0, end - limit)
+    selected_ids = set(ordered_turn_ids[start:end])
+    selected_events = tuple(event for event in events if event.turn_id in selected_ids)
+    return selected_events, start > 0
+
+
 class LoomAppServerService:
     """Protocol-facing adapter over the existing Loom AgentRuntime.
 
@@ -886,13 +921,31 @@ class LoomAppServerService:
             return {"thread": thread}
 
         events = self.store.events(session_id)
+        turn_limit_raw = params.get("turnLimit")
+        window_events = events
+        has_more_turns: bool | None = None
+        if turn_limit_raw is not None and turn_limit_raw != "":
+            turn_limit = int(turn_limit_raw)
+            if not 1 <= turn_limit <= 100:
+                raise ValueError("thread/read turnLimit must be within 1..100")
+            before_turn_id = str(params.get("beforeTurnId") or "").strip()
+            window_events, has_more_turns = _window_turn_events(
+                events,
+                limit=turn_limit,
+                before_turn_id=before_turn_id,
+            )
+
+        turns = _turn_records(session, window_events)
         result: dict[str, Any] = {
             "thread": thread,
-            "turns": _turn_records(session, events),
+            "turns": turns,
             "pendingApproval": pending_approval_record(session, events),
             "finalText": session.final_text,
             "error": session.error,
         }
+        if has_more_turns is not None:
+            result["hasMoreTurns"] = has_more_turns
+            result["oldestTurnId"] = str(turns[0].get("id") or "") if turns else None
         if not bool(params.get("presentationOnly", False)):
             result["messages"] = [_message_record(message) for message in session.messages]
             result["events"] = [_event_record(event) for event in events]

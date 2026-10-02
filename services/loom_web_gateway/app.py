@@ -304,6 +304,7 @@ class BrowserPeer:
     user_id: int
     websocket: WebSocket
     selected_device_id: str = ""
+    pending_invokes: dict[str, tuple[str, list[Any]]] = field(default_factory=dict)
     send_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     closed: bool = False
 
@@ -414,6 +415,78 @@ async def _ws_user_from_access(access: str) -> dict[str, Any] | None:
     return user
 
 
+def _window_legacy_thread_read_result(
+    result: Any,
+    operation: str,
+    args: list[Any],
+) -> Any:
+    """Bound old-Host thread/read payloads before they reach the browser.
+
+    Loom Host 0.1.8 predates turn-window support and ignores ``turnLimit``. The
+    gateway already has to decode its response, so slicing here prevents the
+    browser from receiving/parsing/rendering a giant transcript while remaining
+    fully compatible with newer Hosts that return ``hasMoreTurns`` themselves.
+    """
+    if operation != "call" or len(args) < 2 or args[0] != "thread/read":
+        return result
+    params = args[1] if isinstance(args[1], dict) else {}
+    limit_raw = params.get("turnLimit")
+    if limit_raw is None or limit_raw == "" or not isinstance(result, dict):
+        return result
+
+    try:
+        limit = int(limit_raw)
+    except (TypeError, ValueError):
+        return result
+    if not 1 <= limit <= 100:
+        return result
+
+    # Newer Hosts have already done the expensive durable-state windowing.
+    # Still strip legacy diagnostic duplicates when the browser explicitly asked
+    # for the presentation shape.
+    bounded = dict(result)
+    if bool(params.get("presentationOnly", False)):
+        bounded.pop("messages", None)
+        bounded.pop("events", None)
+    if isinstance(result.get("hasMoreTurns"), bool):
+        return bounded
+
+    turns = result.get("turns")
+    if not isinstance(turns, list):
+        return bounded
+
+    before_turn_id = str(params.get("beforeTurnId") or "").strip()
+    end = len(turns)
+    if before_turn_id:
+        cursor = next(
+            (index for index, turn in enumerate(turns) if isinstance(turn, dict) and str(turn.get("id") or "") == before_turn_id),
+            -1,
+        )
+        if cursor < 0:
+            bounded["turns"] = []
+            bounded["hasMoreTurns"] = False
+            bounded["oldestTurnId"] = None
+            return bounded
+        end = cursor
+
+    start = max(0, end - limit)
+    window_turns = turns[start:end]
+    bounded["turns"] = window_turns
+    bounded["hasMoreTurns"] = start > 0
+    logger.info(
+        "relay legacy thread/read window total_turns=%s sent_turns=%s before=%s",
+        len(turns),
+        len(window_turns),
+        bool(before_turn_id),
+    )
+    bounded["oldestTurnId"] = (
+        str(window_turns[0].get("id") or "")
+        if window_turns and isinstance(window_turns[0], dict)
+        else None
+    )
+    return bounded
+
+
 async def _run_device_invoke(peer: BrowserPeer, request_id: Any, operation: str, args: list[Any]) -> None:
     logger.info("relay invoke operation=%s", operation)
     device = await hub.device_for_browser(peer)
@@ -427,6 +500,13 @@ async def _run_device_invoke(peer: BrowserPeer, request_id: Any, operation: str,
             },
         })
         return
+    request_key = str(request_id)
+    track_result_window = bool(operation == "call" and len(args) >= 2 and args[0] == "thread/read")
+    if track_result_window:
+        peer.pending_invokes[request_key] = (operation, args)
+        while len(peer.pending_invokes) > 256:
+            peer.pending_invokes.pop(next(iter(peer.pending_invokes)), None)
+
     sent = await device.send({
         "type": "invoke",
         "browserId": peer.id,
@@ -435,6 +515,7 @@ async def _run_device_invoke(peer: BrowserPeer, request_id: Any, operation: str,
         "args": args,
     })
     if not sent:
+        peer.pending_invokes.pop(request_key, None)
         await peer.send({
             "type": "invoke_result",
             "id": request_id,
@@ -556,11 +637,16 @@ async def device_socket(websocket: WebSocket) -> None:
                     current = hub.devices.get(user_id, {}).get(peer.device_id)
                     browser = hub.browsers.get(browser_id)
                 if current is peer and browser and browser.user_id == user_id:
-                    forwarded = {"type": "invoke_result", "id": frame.get("id")}
+                    request_id = frame.get("id")
+                    invoke_meta = browser.pending_invokes.pop(str(request_id), None)
+                    forwarded = {"type": "invoke_result", "id": request_id}
                     if "error" in frame:
                         forwarded["error"] = frame.get("error")
                     else:
-                        forwarded["result"] = frame.get("result")
+                        result = frame.get("result")
+                        if invoke_meta is not None:
+                            result = _window_legacy_thread_read_result(result, invoke_meta[0], invoke_meta[1])
+                        forwarded["result"] = result
                     await browser.send(forwarded)
             elif kind == "notification":
                 payload = frame.get("payload")
