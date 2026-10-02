@@ -66,7 +66,7 @@ same thread, and an installer update while both processes are running.
 The web portal distinguishes starting an installed Host from installing Loom on
 a new computer. It offers `loom://host/start` as a user-initiated launch action;
 it does not automatically launch an external application. Once a signed-in Host
-is connected, the workspace opens automatically. Connection loss returns to the
+is connected, the portal stays visible until the user clicks Open workspace. Connection loss returns to the
 Host entry and retries in the background. Failure to discover localhost is not
 proof that Loom is uninstalled: the same entry offers both start and install.
 

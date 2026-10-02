@@ -81,7 +81,6 @@ export function WebAppGate({ children }: { children: ReactNode }) {
         await window.loom.connect();
         if (accountIdRef.current !== identity) return;
         setTrackedHostState("online");
-        setEntered(true);
         setHostError("");
       } catch (cause) {
         if (accountIdRef.current !== identity) return;

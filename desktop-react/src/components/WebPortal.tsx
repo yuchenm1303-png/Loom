@@ -32,12 +32,12 @@ const PORTAL_STYLES = [
 const HOST_COPY = {
   en: {
     localSetup: "Start your local Loom Host to use files and apps on this computer. This page will connect automatically.",
-    localConnecting: "Finding and securely connecting your Host. Your workspace will open automatically.",
+    localConnecting: "Finding and securely connecting your Host. Once connected, click Open workspace to enter.",
     localOffline: "The connection to Loom Host was lost. Your conversations stay on this computer; reconnect to continue.",
   },
   zh: {
     localSetup: "启动本机 Loom Host，即可使用这台电脑上的文件和应用。本页会自动连接。",
-    localConnecting: "正在查找并安全连接本机 Host，连接后会自动进入工作区。",
+    localConnecting: "正在查找并安全连接本机 Host，连接后点击进入工作区。",
     localOffline: "与 Loom Host 的连接已断开。会话仍保留在本机，重新连接即可继续。",
   },
 } as const;
@@ -129,7 +129,7 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
   }
 
   const hostText = hostState === "online"
-    ? (zh ? "Host 已连接，正在进入工作区。" : "Host connected. Opening your workspace.")
+    ? (zh ? "Host 已连接，点击进入工作区。" : "Host connected. Click Open workspace to enter.")
     : hostState === "checking"
       ? copy.localConnecting
       : hostState === "unbound"
@@ -202,7 +202,7 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
                 </div>
                 <span className="loom-security-label">SECURE</span>
               </div>
-              <p className="loom-control-copy">{zh ? "登录后会自动连接本机 Loom Host，连接成功即可进入工作区。" : "Sign in to automatically connect your local Host and open your workspace."}</p>
+              <p className="loom-control-copy">{zh ? "登录后会自动连接本机 Loom Host，连接成功后点击进入工作区。" : "Sign in to automatically connect your local Host, then click Open workspace."}</p>
               <form className="login-form loom-account-form" onSubmit={submitAuth} autoComplete="on">
                 <label><span>{zh ? "邮箱" : "Email"}</span><input id="emailInput" type="email" autoComplete="email" placeholder="name@example.com" value={email} onChange={(event) => setEmail(event.target.value)} required /></label>
                 <label className="password-field"><span>{zh ? "密码" : "Password"}</span><input type={showPassword ? "text" : "password"} autoComplete={authMode === "login" ? "current-password" : "new-password"} placeholder="••••••••" value={password} onChange={(event) => setPassword(event.target.value)} required /><button className="password-toggle" type="button" aria-pressed={showPassword} onClick={() => setShowPassword((value) => !value)}>{showPassword ? (zh ? "隐藏" : "Hide") : (zh ? "显示" : "Show")}</button></label>
