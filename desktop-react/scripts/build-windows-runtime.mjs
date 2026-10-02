@@ -136,7 +136,7 @@ run(runtimeExe, [
 
 const hostRuntimeVersion = String(process.env.LOOM_HOST_RUNTIME_VERSION || "1.0.0").trim();
 const hostRuntimeProtocol = Number(process.env.LOOM_HOST_RUNTIME_PROTOCOL || "1");
-const hostMinBootstrapVersion = String(process.env.LOOM_HOST_MIN_BOOTSTRAP_VERSION || "0.1.10").trim();
+const hostMinBootstrapVersion = String(process.env.LOOM_HOST_MIN_BOOTSTRAP_VERSION || "0.1.11").trim();
 if (!/^\d+\.\d+\.\d+$/.test(hostRuntimeVersion)) throw new Error(`Invalid Host runtime version: ${hostRuntimeVersion}`);
 if (!Number.isInteger(hostRuntimeProtocol) || hostRuntimeProtocol < 0) throw new Error(`Invalid Host runtime protocol: ${hostRuntimeProtocol}`);
 const hostManifest = {
