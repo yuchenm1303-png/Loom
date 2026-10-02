@@ -23,8 +23,8 @@ type ThreadCounts = { active: number; archived: number; all: number };
 type ThreadListResult = { threads: ThreadRecord[]; counts?: Partial<ThreadCounts> };
 type ThreadReadCacheEntry = { result: ThreadReadResult; cachedAt: number };
 
-const THREAD_READ_CACHE_LIMIT = 3;
-const THREAD_READ_CACHE_TTL_MS = 45_000;
+const THREAD_READ_CACHE_LIMIT = 8;
+const THREAD_READ_CACHE_TTL_MS = 5 * 60_000;
 const MODEL_CATALOG_POLL_MS = 60_000;
 
 function flattenItems(turns: TurnRecord[]): TranscriptItem[] {
@@ -207,6 +207,7 @@ export function useLoom() {
   const openRequestRef = useRef(0);
   const openingThreadIdRef = useRef("");
   const threadReadCacheRef = useRef<Map<string, ThreadReadCacheEntry>>(new Map());
+  const threadReadInflightRef = useRef<Map<string, Promise<ThreadReadResult>>>(new Map());
   const threadsRef = useRef<ThreadRecord[]>([]);
   const threadViewRef = useRef<ThreadView>("active");
   const terminalErrorTurnRef = useRef("");
@@ -423,6 +424,36 @@ export function useLoom() {
     return entry.result;
   }, []);
 
+  const readThread = useCallback((threadId: string): Promise<ThreadReadResult> => {
+    const existing = threadReadInflightRef.current.get(threadId);
+    if (existing) return existing;
+
+    const request = requireBridge()
+      .call<ThreadReadResult>("thread/read", { threadId, presentationOnly: true })
+      .finally(() => {
+        if (threadReadInflightRef.current.get(threadId) === request) {
+          threadReadInflightRef.current.delete(threadId);
+        }
+      });
+    threadReadInflightRef.current.set(threadId, request);
+    return request;
+  }, []);
+
+  const prefetchThread = useCallback((threadId: string) => {
+    const normalized = threadId.trim();
+    if (!normalized || normalized === activeIdRef.current) return;
+    const listed = threadsRef.current.find((thread) => thread.id === normalized);
+    if (!listed || threadIsRunning(listed)) return;
+    if (cachedThreadRead(normalized)) return;
+
+    void readThread(normalized)
+      .then((result) => rememberThreadRead(result))
+      .catch(() => {
+        // Hover/focus prefetch is opportunistic. Navigation itself will surface
+        // a real read failure if the user actually opens this conversation.
+      });
+  }, [cachedThreadRead, readThread, rememberThreadRead]);
+
   const applyThreadRead = useCallback((result: ThreadReadResult) => {
     activeIdRef.current = result.thread.id;
     activeTurnIdRef.current = String(result.thread.currentTurnId ?? "");
@@ -468,30 +499,26 @@ export function useLoom() {
     setOpeningThreadId(normalized);
 
     const cached = cachedThreadRead(normalized);
-    let usedCachedSnapshot = false;
     if (cached) {
-      usedCachedSnapshot = true;
       applyThreadRead(cached);
       if (openRequestRef.current === requestId) {
         openingThreadIdRef.current = "";
         setOpeningThreadId("");
       }
+      return;
     }
 
     try {
-      const result = await requireBridge().call<ThreadReadResult>("thread/read", { threadId: normalized, presentationOnly: true });
+      const result = await readThread(normalized);
       if (openRequestRef.current !== requestId) return;
       applyThreadRead(result);
-    } catch (cause) {
-      if (!usedCachedSnapshot) throw cause;
-      console.warn("Could not refresh cached conversation", cause);
     } finally {
       if (openRequestRef.current === requestId) {
         openingThreadIdRef.current = "";
         setOpeningThreadId("");
       }
     }
-  }, [applyThreadRead, cachedThreadRead]);
+  }, [applyThreadRead, cachedThreadRead, readThread]);
 
   const ensureSelection = useCallback(async (list: ThreadRecord[], preferredId = activeIdRef.current) => {
     if (preferredId && list.some((thread) => thread.id === preferredId)) return;
@@ -1057,6 +1084,7 @@ export function useLoom() {
     compactContext,
     refreshContext,
     openThread,
+    prefetchThread,
     newThread,
     renameThread,
     archiveThread,
@@ -1100,6 +1128,7 @@ export function useLoom() {
     newThread,
     openThread,
     openingThreadId,
+    prefetchThread,
     projects,
     projectsSupported,
     createProject,

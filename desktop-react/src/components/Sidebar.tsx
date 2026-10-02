@@ -186,6 +186,7 @@ interface SidebarProps {
   threadView: ThreadView;
   archivedCount: number;
   onOpen(threadId: string): Promise<void> | void;
+  onPrefetch?(threadId: string): void;
   onNew(workspace?: string, projectId?: string): Promise<void> | void;
   onOpenProject(projectId: string): Promise<void> | void;
   onAddProject(root: string): Promise<ProjectRecord | void>;
@@ -319,6 +320,7 @@ export function Sidebar({
   threadView,
   archivedCount,
   onOpen,
+  onPrefetch,
   onNew,
   onOpenProject,
   projects,
@@ -356,6 +358,24 @@ export function Sidebar({
   const renameRef = useRef<HTMLInputElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const renameCommittingRef = useRef(false);
+  const prefetchTimerRef = useRef<number | null>(null);
+
+  const cancelScheduledPrefetch = useCallback(() => {
+    if (prefetchTimerRef.current !== null) {
+      window.clearTimeout(prefetchTimerRef.current);
+      prefetchTimerRef.current = null;
+    }
+  }, []);
+
+  const schedulePrefetch = useCallback((threadId: string) => {
+    cancelScheduledPrefetch();
+    prefetchTimerRef.current = window.setTimeout(() => {
+      prefetchTimerRef.current = null;
+      onPrefetch?.(threadId);
+    }, 90);
+  }, [cancelScheduledPrefetch, onPrefetch]);
+
+  useEffect(() => cancelScheduledPrefetch, [cancelScheduledPrefetch]);
 
   const closeContextMenu = useCallback((immediate = false) => {
     if (contextMenuCloseTimerRef.current !== null) {
@@ -780,6 +800,13 @@ export function Sidebar({
         ) : (
           <button
             className="compact-thread-main"
+            onPointerEnter={() => schedulePrefetch(thread.id)}
+            onPointerLeave={cancelScheduledPrefetch}
+            onPointerDown={() => {
+              cancelScheduledPrefetch();
+              onPrefetch?.(thread.id);
+            }}
+            onFocus={() => onPrefetch?.(thread.id)}
             onClick={() => void openThread(thread)}
             type="button"
             title={`${thread.title || copy.untitled}${time ? ` · ${time}` : ""}`}
