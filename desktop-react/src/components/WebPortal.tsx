@@ -121,6 +121,15 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
   const [launchingLoom, setLaunchingLoom] = useState(false);
   const authenticated = Boolean(account.account.authenticated && account.account.user);
   const strength = passwordScore(password);
+  const strengthLabel = !password
+    ? (zh ? "未输入" : "Not entered")
+    : strength >= 4
+      ? (zh ? "较强" : "Strong")
+      : strength >= 3
+        ? (zh ? "良好" : "Good")
+        : strength >= 2
+          ? (zh ? "一般" : "Fair")
+          : (zh ? "较弱" : "Weak");
 
   useEffect(() => {
     if (resendWait <= 0) return;
@@ -224,7 +233,7 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
     event.preventDefault();
     setLocalError("");
     if (password !== confirmPassword) {
-      setLocalError(zh ? "两次输入的密码不一致。" : "The passwords do not match.");
+      setLocalError(zh ? "两次输入的密码不一致。" : "Password does not match.");
       return;
     }
     const ok = await account.resetPassword(challengeId, verificationCode, password);
@@ -363,7 +372,7 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
                   <label><span>{zh ? "邮箱" : "Email"}</span><div className="loom-input-shell"><Mail size={16} aria-hidden="true" /><input id="emailInput" type="email" autoComplete="email" placeholder="name@example.com" value={email} onChange={(event) => setEmail(event.target.value)} required /></div></label>
                   <label className="password-field"><span className="loom-field-heading"><span>{zh ? "密码" : "Password"}</span>{authMode === "login" && account.capabilities.passwordReset ? <button className="loom-inline-link" type="button" onClick={() => { account.clearError(); setLocalError(""); setAuthStep("forgot"); }}>{zh ? "忘记密码？" : "Forgot password?"}</button> : null}</span><div className="loom-input-shell"><KeyRound size={16} aria-hidden="true" /><input type={showPassword ? "text" : "password"} autoComplete={authMode === "login" ? "current-password" : "new-password"} placeholder="••••••••" value={password} onChange={(event) => setPassword(event.target.value)} required /><button className="password-toggle" type="button" aria-pressed={showPassword} onClick={() => setShowPassword((value) => !value)}>{showPassword ? (zh ? "隐藏" : "Hide") : (zh ? "显示" : "Show")}</button></div></label>
                   {authMode === "register" ? <>
-                    <div className="loom-password-strength" data-score={strength}><div className="loom-strength-copy"><span>{zh ? "密码强度" : "Password strength"}</span><span>{password ? ([zh ? "较弱" : "Weak", zh ? "一般" : "Fair", zh ? "良好" : "Good", zh ? "较强" : "Strong"][Math.max(0, strength - 1)] || (zh ? "较弱" : "Weak")) : (zh ? "未输入" : "Not entered")}</span></div><div className="loom-strength-bars">{[1,2,3,4].map((level) => <i key={level} className={strength >= level ? "is-active" : ""} />}</div><small>{zh ? "建议至少 12 位，并混合大小写、数字和符号" : "12+ characters with mixed case, numbers and symbols is recommended"}</small></div>
+                    <div className="loom-password-strength" data-score={strength}><div className="loom-strength-copy"><span>{zh ? "密码强度" : "Password strength"}</span><span>{strengthLabel}</span></div><div className="loom-strength-bars">{[1,2,3,4].map((level) => <i key={level} className={strength >= level ? "is-active" : ""} />)}</div><small>{zh ? "建议至少 12 位，并混合大小写、数字和符号" : "12+ characters with mixed case, numbers and symbols is recommended"}</small></div>
                     <label><span>{zh ? "确认密码" : "Confirm password"}</span><div className="loom-input-shell"><KeyRound size={16} aria-hidden="true" /><input type={showPassword ? "text" : "password"} autoComplete="new-password" placeholder="••••••••" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} required /></div></label>
                   </> : null}
                   <button className="loom-form-submit" type="submit" disabled={!account.ready || account.busy}><span>{!account.ready ? (zh ? "加载中…" : "Loading…") : account.busy ? (zh ? "处理中…" : "Working…") : authMode === "login" ? (zh ? "登录" : "Sign in") : account.capabilities.emailVerification ? (zh ? "创建并验证邮箱" : "Create & verify email") : (zh ? "创建账户" : "Create account")}</span><span aria-hidden="true">→</span></button>
