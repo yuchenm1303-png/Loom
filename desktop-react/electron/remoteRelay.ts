@@ -84,6 +84,7 @@ function showLoomWindow(): void {
     window = loomMainWindow();
   }
   if (!window) return;
+  window.setSkipTaskbar(false);
   if (window.isMinimized()) window.restore();
   window.show();
   window.focus();
@@ -303,16 +304,18 @@ async function openLocalLoomWeb(): Promise<void> {
 
 async function ensureHostTray(): Promise<void> {
   if (hostTray || process.platform === "darwin") return;
+  // Reuse the installed Loom executable icon instead of introducing a second
+  // "Host" brand. The tray is only Loom's background presence.
   let icon = nativeImage.createEmpty();
-  try { icon = await app.getFileIcon(process.execPath, { size: "small" }); } catch {}
+  try { icon = await app.getFileIcon(process.execPath, { size: "normal" }); } catch {}
   hostTray = new Tray(icon);
-  hostTray.setToolTip("Loom Host · local Web access available in background");
+  hostTray.setToolTip("Loom · running in the background");
   hostTray.setContextMenu(Menu.buildFromTemplate([
     { label: "Open Loom", click: () => showLoomWindow() },
     { label: "Open Loom Web", click: () => void openLocalLoomWeb() },
     { type: "separator" },
     {
-      label: "Quit Loom Host",
+      label: "Quit Loom",
       click: () => {
         allowHostQuit = true;
         app.quit();
@@ -340,13 +343,19 @@ app.on("browser-window-created", (_event, window) => {
   window.on("close", (event) => {
     if (allowHostQuit) return;
     event.preventDefault();
+    // Closing the Desktop means "keep Loom running in the background". Remove
+    // the hidden window from Alt+Tab/taskbar and leave only the Loom tray icon.
+    window.setSkipTaskbar(true);
     window.hide();
   });
 
   if (backgroundHostLaunch && !uiRequested) {
     const keepHidden = () => {
       if (!uiRequested && !window.isDestroyed()) setImmediate(() => {
-        if (!uiRequested && !window.isDestroyed()) window.hide();
+        if (!uiRequested && !window.isDestroyed()) {
+          window.setSkipTaskbar(true);
+          window.hide();
+        }
       });
     };
     window.on("show", keepHidden);

@@ -1170,6 +1170,9 @@ function createWindow(): void {
     icon: windowIcon,
     autoHideMenuBar: true,
     show: false,
+    // A login-started background Host must not reserve a taskbar slot. If the
+    // user opens Loom, remoteRelay restores the normal taskbar button first.
+    skipTaskbar: isBackgroundHostLaunch(),
     webPreferences: {
       preload: path.join(__dirname, "preload.cjs"),
       contextIsolation: true,
