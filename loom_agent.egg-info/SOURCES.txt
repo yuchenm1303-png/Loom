@@ -346,6 +346,7 @@ tests/test_execution_binding_projection.py
 tests/test_execution_guidance.py
 tests/test_global_motion_contract.py
 tests/test_header_composer_contract.py
+tests/test_host_runtime_distribution.py
 tests/test_instruction_turn_snapshot.py
 tests/test_instructions_codex_parity.py
 tests/test_json_schema_semantics.py
