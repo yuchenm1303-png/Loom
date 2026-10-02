@@ -3,7 +3,7 @@
   "channel": "stable",
   "version": "1.0.0",
   "protocol": 1,
-  "minBootstrapVersion": "0.1.10",
+  "minBootstrapVersion": "0.1.11",
   "url": "",
   "sha256": "",
   "size": 0,
