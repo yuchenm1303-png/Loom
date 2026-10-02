@@ -1,4 +1,4 @@
-name: Finalize Loom Web Host compatibility v3
+name: Finalize Loom Web Host compatibility v4
 
 on:
   push:
@@ -9,7 +9,7 @@ permissions:
 
 jobs:
   finalize:
-    if: github.event.head_commit.message == 'Prepare Loom Web Host compatibility v3'
+    if: github.event.head_commit.message == 'Prepare Loom Web Host compatibility v4'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -27,8 +27,8 @@ jobs:
         shell: bash
         run: |
           base64 -d .github/host-compatibility.patch.gz.b64 | gzip -dc > /tmp/host-compat.patch
-          git apply --check /tmp/host-compat.patch
-          git apply /tmp/host-compat.patch
+          git apply --exclude=tests/test_loom_web_local_first_contract.py --exclude=tests/test_loom_web_local_host_contract.py --check /tmp/host-compat.patch
+          git apply --exclude=tests/test_loom_web_local_first_contract.py --exclude=tests/test_loom_web_local_host_contract.py /tmp/host-compat.patch
           git diff --check
       - name: Python contract tests
         run: python -m pytest -q tests/test_loom_web_local_host_contract.py tests/test_loom_web_local_first_contract.py
@@ -51,8 +51,6 @@ jobs:
                   desktop-react/electron/webRelayAuth.ts \
                   desktop-react/src/components/WebAppGate.tsx \
                   desktop-react/src/localHostDiscovery.ts \
-                  desktop-react/src/webBridge.ts \
-                  tests/test_loom_web_local_first_contract.py \
-                  tests/test_loom_web_local_host_contract.py
+                  desktop-react/src/webBridge.ts
           git commit -m 'Keep Loom Web Host runtime compatible'
           git push origin HEAD:main
