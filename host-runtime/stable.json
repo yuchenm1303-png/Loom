@@ -1,12 +1,12 @@
 {
   "schema": 1,
   "channel": "stable",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "protocol": 1,
   "minBootstrapVersion": "0.1.11",
-  "url": "",
-  "sha256": "",
-  "size": 0,
-  "sourceSha": "",
-  "publishedAt": ""
+  "url": "https://github.com/yuchenm1303-png/Loom/releases/download/host-v1.0.1/Loom-Host-Runtime-1.0.1-win-x64.zip",
+  "sha256": "8a48d7a37130912aee46f64f8670a0535aa8a0a64c3d2758abdf515c7e2871e6",
+  "size": 63534155,
+  "sourceSha": "db8057877ee5d14dbafc962dff467c41e64b085e",
+  "publishedAt": "2026-10-02T08:59:32.6369408Z"
 }
