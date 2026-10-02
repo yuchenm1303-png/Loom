@@ -53,3 +53,14 @@ def test_loom_web_loads_the_canonical_listing_studio_glass_assets():
     assert 'html[data-loom-web="true"]' not in glue
     assert not (ROOT / "desktop-react/src/components/web-smirel.css").exists()
     assert not (ROOT / "desktop-react/src/web-gate.css").exists()
+
+
+def test_signed_in_portal_compacts_for_short_desktop_viewports():
+    modules = (ROOT / "desktop-react/src/components/portal-modules.css").read_text(encoding="utf-8")
+    host = (ROOT / "desktop-react/src/components/portal-host-card.css").read_text(encoding="utf-8")
+    breakpoint = "@media (min-width: 1001px) and (max-height: 980px)"
+    assert breakpoint in modules
+    assert breakpoint in host
+    assert "grid-template-columns: repeat(3, minmax(0,1fr))" in host
+    assert ".loom-identity-list { grid-template-columns: repeat(2, minmax(0,1fr));" in host
+    assert ".loom-host-refined .loom-host-action { min-height: 44px; margin-top: 14px; }" in host

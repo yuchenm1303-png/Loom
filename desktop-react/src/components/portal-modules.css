@@ -38,6 +38,23 @@
 .loom-module-grid .loom-secondary-action { min-width: clamp(170px, 12vw, 230px); min-height: 50px; gap: 18px; grid-column: 2; grid-row: 1; }
 .loom-module-grid .loom-secondary-action strong { font-size: clamp(13px, .8vw, 14px); }
 @media (min-width: 1600px) { .loom-portal-page.is-modular .loom-site-header { margin-bottom: 48px; } }
+
+/* Keep the full signed-in portal visible on common 16:9 laptop/desktop viewports.
+   Width-only breakpoints were leaving the right glass surface taller than the
+   viewport once first-run Host guidance and account details were both present. */
+@media (min-width: 1001px) and (max-height: 980px) {
+  .loom-portal-page.is-modular .loom-portal-shell { padding: 18px 0 22px; }
+  .loom-portal-page.is-modular .loom-site-header { height: 48px; margin-bottom: 18px; }
+  .loom-portal-page.is-modular .loom-smirel-wordmark { height: 30px; }
+  .loom-module-grid { gap: clamp(20px, 1.7vw, 34px); }
+  .loom-module-grid .loom-intro-module { padding: 30px clamp(34px, 2.5vw, 48px) 24px; gap: 24px; }
+  .loom-module-grid .loom-stage-copy h1 { margin-top: 16px; font-size: clamp(34px, 2.65vw, 52px); }
+  .loom-module-grid .loom-heading-accent { margin-top: 5px; }
+  .loom-module-grid .loom-stage-description { margin-top: 16px; line-height: 1.65; }
+  .loom-module-grid .loom-download-module { padding-top: 18px; gap: 11px 16px; }
+  .loom-download-product p { margin-top: 3px; }
+  .loom-module-grid .loom-secondary-action { min-height: 44px; }
+}
 @media (max-width: 1000px) { .loom-module-grid { grid-template-columns: minmax(0, 1.35fr) minmax(310px, 1fr); gap: 18px; } .loom-module-grid .loom-intro-module { padding: 34px 32px 26px; gap: 32px; } .loom-module-grid .loom-stage-copy h1 { font-size: 34px; } .loom-module-grid .loom-download-module { grid-template-columns: 1fr; } .loom-module-grid .loom-secondary-action { grid-column: 1; grid-row: 2; width: 100%; } .loom-download-version { grid-row: 3; } }
 @media (max-width: 760px) {
   .loom-portal-page.is-modular .loom-portal-shell { width: calc(100% - 32px); padding: 22px 0 28px; }
