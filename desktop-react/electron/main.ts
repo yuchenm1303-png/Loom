@@ -271,24 +271,30 @@ function legacyBrowserExtensionTargets(): string[] {
   ));
 }
 
-async function setupBrowserExtension(browser: "edge" | "chrome" = "edge", extensionConnected = false): Promise<Record<string, unknown>> {
+async function syncBrowserExtensionAssets(): Promise<{ target: string; version: string; installTargets: string[] }> {
   const source = browserExtensionSource();
   const target = browserExtensionTarget();
   if (!fsSync.existsSync(path.join(source, "manifest.json"))) {
     throw new Error(`Packaged browser extension is missing: ${source}`);
   }
   const manifest = JSON.parse(await fs.readFile(path.join(source, "manifest.json"), "utf8")) as { version?: string };
+  const version = String(manifest.version || "");
   const installTargets = [target, ...legacyBrowserExtensionTargets()];
   const bridgeConfig = JSON.stringify({ bridgeUrl: "http://127.0.0.1:39222", token: ensureBrowserBridgeToken() });
-  const updateSignal = JSON.stringify({ token: crypto.randomUUID(), version: String(manifest.version || "") });
+  const updateSignal = JSON.stringify({ token: crypto.randomUUID(), version });
   for (const installTarget of installTargets) {
     await fs.mkdir(installTarget, { recursive: true });
     await fs.cp(source, installTarget, { recursive: true, force: true });
     await fs.writeFile(path.join(installTarget, "bridge-config.json"), bridgeConfig, { encoding: "utf8", mode: 0o600 });
     // Write the signal last. A legacy extension that already has the watcher
-    // will now reload only after all code and pairing files are in place.
+    // reloads only after all code and pairing files are in place.
     await fs.writeFile(path.join(installTarget, "extension-update.json"), updateSignal, { encoding: "utf8", mode: 0o600 });
   }
+  return { target, version, installTargets };
+}
+
+async function setupBrowserExtension(browser: "edge" | "chrome" = "edge", extensionConnected = false): Promise<Record<string, unknown>> {
+  const { target, version, installTargets } = await syncBrowserExtensionAssets();
   if (!extensionConnected) clipboard.writeText(target);
   const folderError = extensionConnected ? "" : await shell.openPath(target);
   const managementUrl = browser === "chrome" ? "chrome://extensions" : "edge://extensions";
@@ -313,7 +319,7 @@ async function setupBrowserExtension(browser: "edge" | "chrome" = "edge", extens
   }
   return {
     ok: true,
-    desiredVersion: String(manifest.version || ""),
+    desiredVersion: version,
     manualInstallRequired: !extensionConnected,
     automaticUpdateRequested: extensionConnected,
     migratedLegacyInstalls: Math.max(0, installTargets.length - 1),
@@ -999,6 +1005,10 @@ registerHostRuntimeUpdateHooks({
     }
   },
   reload: async () => {
+    // Browser Use assets are part of the independently versioned Host runtime.
+    // Synchronize installed unpacked-extension folders before the App Server
+    // resumes so Browser Use and Agent code cross the version boundary together.
+    await syncBrowserExtensionAssets();
     const wasReady = rpc.ready;
     rpc.stop();
     if (wasReady) await rpc.connect();

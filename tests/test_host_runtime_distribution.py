@@ -34,3 +34,9 @@ def test_background_host_does_not_poll_full_desktop_updates() -> None:
     assert "bootstrapAutoInstallRequested" in updater
     assert "if (hasVisibleWindow()) startAutomaticChecks();" in updater
     assert "ensureBootstrapUpdate" in updater
+
+
+def test_runtime_activation_synchronizes_browser_assets() -> None:
+    main = (ROOT / "desktop-react/electron/main.ts").read_text(encoding="utf-8")
+    assert "async function syncBrowserExtensionAssets" in main
+    assert "await syncBrowserExtensionAssets();" in main
