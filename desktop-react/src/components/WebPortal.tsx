@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import { Laptop, Download, UserRound, LogOut, Check, ArrowRight } from "lucide-react";
 import { useI18n } from "../i18n";
 import { useAccount } from "../state/useAccount";
+import { FALLBACK_RELEASE, fetchPortalRelease } from "../portalRelease";
 
 export type PortalHostState = "idle" | "checking" | "online" | "offline" | "unbound";
 type AccountController = ReturnType<typeof useAccount>;
@@ -26,11 +27,6 @@ const PORTAL_STYLES = [
   "https://smirel.com/download/wallpaper-ready-v1.css",
 ] as const;
 
-const RELEASE = {
-  version: "v0.1.8",
-  package: "137.6 MiB",
-  download: "https://github.com/yuchenm1303-png/Loom/releases/latest/download/Loom-Setup-x64.exe",
-} as const;
 
 const HOST_COPY = {
   en: {
@@ -93,6 +89,15 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
   onRemote?: () => void;
 }) {
   usePortalStyles();
+  const [release, setRelease] = useState(FALLBACK_RELEASE);
+  useEffect(() => {
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), 10000);
+    fetchPortalRelease(controller.signal).then(setRelease).catch(() => {
+      // The generic latest download remains available without stale metadata.
+    }).finally(() => window.clearTimeout(timeout));
+    return () => { controller.abort(); window.clearTimeout(timeout); };
+  }, []);
   const { language } = useI18n();
   const zh = language === "zh-CN";
   const copy = HOST_COPY[zh ? "zh" : "en"];
@@ -161,7 +166,7 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
             <span className="loom-brand-divider" aria-hidden="true" />
             <span className="brand-copy"><strong>Loom</strong><small>Personal AI Agent</small></span>
           </a>
-          <div className="loom-version-chip"><span>{RELEASE.version}</span></div>
+          <div className="loom-version-chip"><span>{(release.version || (zh ? "最新稳定版" : "Latest stable"))}</span></div>
         </header>
 
         <section className="loom-module-grid">
@@ -178,9 +183,9 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
             {!authenticated ? <div className="loom-stage-actions"><button className="loom-primary-action" type="button" onClick={primaryAction}><span>{primaryLabel}</span><span aria-hidden="true">→</span></button></div> : null}
             </div>
           <div className="loom-download-module" aria-labelledby="loom-download-title">
-            <div className="loom-download-product"><Laptop size={26} aria-hidden="true" /><div><h2 id="loom-download-title">Loom for Windows</h2><p>Windows 10 / 11 · x64 · {RELEASE.package}</p></div></div>
-            <div className="loom-download-version"><span>{RELEASE.version} · Stable</span><a href="https://github.com/yuchenm1303-png/Loom/releases" target="_blank" rel="noreferrer">{zh ? "更新日志" : "Release notes"}<span aria-hidden="true"> ↗</span></a></div>
-            <a className="loom-secondary-action" href={RELEASE.download}><span><strong>{zh ? "下载 Windows 版" : "Download for Windows"}</strong></span><Download size={16} aria-hidden="true" /></a>
+            <div className="loom-download-product"><Laptop size={26} aria-hidden="true" /><div><h2 id="loom-download-title">Loom for Windows</h2><p>Windows 10 / 11 · x64{release.package ? ` · ${release.package}` : ""}</p></div></div>
+            <div className="loom-download-version"><span>{(release.version || (zh ? "最新稳定版" : "Latest stable"))} · Stable</span><a href={release.notes} target="_blank" rel="noreferrer">{zh ? "更新日志" : "Release notes"}<span aria-hidden="true"> ↗</span></a></div>
+            <a className="loom-secondary-action" href={release.download}><span><strong>{zh ? "下载 Windows 版" : "Download for Windows"}</strong></span><Download size={16} aria-hidden="true" /></a>
           </div>
 
           </article>
