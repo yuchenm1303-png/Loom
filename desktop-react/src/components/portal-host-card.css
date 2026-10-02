@@ -13,7 +13,38 @@
 .loom-module-grid .loom-host-summary h2 { margin: 0; font-size: clamp(24px, 1.6vw, 30px); font-weight: 590; letter-spacing: -.035em; line-height: 1.2; overflow-wrap: anywhere; }
 .loom-host-target { margin: 5px 0 0; font-size: 11px; line-height: 1.5; color: var(--loom-muted); overflow-wrap: anywhere; }
 .loom-module-grid .loom-host-refined .loom-control-copy { margin: 20px 0 0; font-size: clamp(12px, .8vw, 14px); line-height: 1.75; overflow-wrap: anywhere; }
-.loom-host-refined .loom-connection-track { margin-top: 22px; height: 2px; }
+.loom-host-refined .loom-connection-track {
+  margin-top: 22px;
+  height: 3px;
+  background: linear-gradient(90deg, rgba(190, 221, 236, .05), rgba(190, 221, 236, .14) 50%, rgba(190, 221, 236, .05));
+  box-shadow: 0 1px 0 rgba(255, 255, 255, .025);
+}
+.loom-host-refined .loom-connection-track span { height: 100%; }
+.loom-host-refined .loom-connection-track.is-working span {
+  width: 44%;
+  background: linear-gradient(90deg, transparent, rgba(151, 211, 234, .16) 22%, rgba(172, 228, 246, .6) 52%, #ddf6ff 72%, rgba(177, 228, 244, .55) 85%, transparent);
+  animation: loom-host-stream 2.8s linear infinite;
+  will-change: transform, opacity;
+}
+.loom-host-refined .loom-connection-track.is-working span::after {
+  content: "";
+  position: absolute;
+  inset: 0 17% 0 22%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, transparent, rgba(240, 252, 255, .7), transparent);
+  opacity: .45;
+}
+.loom-host-refined .loom-connection-track.is-online span {
+  background: linear-gradient(90deg, rgba(136, 230, 196, .3), rgba(177, 240, 219, .85) 55%, rgba(136, 230, 196, .45));
+  animation: none;
+  transform: none;
+}
+@keyframes loom-host-stream {
+  0% { transform: translateX(-100%); opacity: 0; }
+  14% { opacity: 1; }
+  82% { opacity: 1; }
+  100% { transform: translateX(228%); opacity: 0; }
+}
 .loom-module-grid .loom-account-refined { margin: 0 clamp(28px, 2.3vw, 38px); padding: 22px 0 28px; }
 .loom-module-grid .loom-account-refined .loom-account-heading h2 { font-size: 13px; letter-spacing: -.015em; }
 .loom-module-grid .loom-account-refined .loom-account-switch { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; padding: 6px 0 6px 8px; }
@@ -35,7 +66,7 @@
   .loom-module-grid .loom-host-summary h2 { font-size: 24px; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .loom-host-refined .loom-connection-track.is-working span { animation: none; left: 33%; }
+  .loom-host-refined .loom-connection-track.is-working span { animation: none; left: 18%; width: 64%; transform: none; opacity: .8; will-change: auto; }
 }
 .loom-host-onboarding { margin-top: 22px; padding: 18px; border: 1px solid rgba(183,216,203,.16); border-radius: 18px; background: rgba(10,18,27,.22); backdrop-filter: blur(12px); }
 .loom-host-onboarding-head { display: grid; grid-template-columns: 36px minmax(0,1fr); gap: 12px; align-items: center; }
