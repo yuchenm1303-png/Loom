@@ -83,7 +83,7 @@ export function TerminalRunControl({
   }, []);
 
   useEffect(() => {
-    if (!processId || !running || !workspace) return;
+    if (!processId || !workspace) return;
     let disposed = false;
     let timer = 0;
 
@@ -109,7 +109,7 @@ export function TerminalRunControl({
       disposed = true;
       if (timer) window.clearTimeout(timer);
     };
-  }, [applySnapshot, processId, running, workspace]);
+  }, [applySnapshot, processId, workspace]);
 
   if (!executable || !workspace) return null;
 
