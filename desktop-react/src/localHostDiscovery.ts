@@ -1,16 +1,29 @@
 const LOCAL_HOST_ORIGIN = "http://127.0.0.1:39223";
 const LOCAL_HOST_STATUS_URL = `${LOCAL_HOST_ORIGIN}/loom/status`;
 const LOCAL_HOST_PAIR_URL = `${LOCAL_HOST_ORIGIN}/loom/pair`;
+const LOCAL_HOST_UPDATE_URL = `${LOCAL_HOST_ORIGIN}/loom/update`;
 const LOCAL_DEVICE_STORAGE_KEY = "loom.web.localDeviceId";
 
 export const LOOM_WINDOWS_INSTALLER_URL = "https://github.com/yuchenm1303-png/Loom/releases/latest/download/Loom-Setup-x64.exe";
+export const LOOM_WEB_REQUIRED_HOST_PROTOCOL = 1;
+
+export type LocalHostUpdateState = {
+  enabled?: boolean;
+  phase?: string;
+  currentVersion?: string;
+  availableVersion?: string;
+  percent?: number;
+  error?: string;
+};
 
 export type LocalLoomHost = {
   deviceId: string;
   deviceName: string;
   platform: string;
   appVersion: string;
+  hostProtocol: number;
   relayReady: boolean;
+  update?: LocalHostUpdateState | null;
 };
 
 export type LocalPairResult = {
@@ -71,10 +84,56 @@ export async function discoverLocalLoomHost(signal?: AbortSignal): Promise<Local
       deviceName: String(payload.deviceName || "This computer"),
       platform: String(payload.platform || ""),
       appVersion: String(payload.appVersion || ""),
+      hostProtocol: Math.max(0, Number(payload.hostProtocol || 0) || 0),
       relayReady: Boolean(payload.relayReady),
+      update: payload.update && typeof payload.update === "object" ? payload.update as LocalHostUpdateState : null,
     };
   } catch {
     return null;
+  }
+}
+
+export type LocalHostCompatibilityResult = {
+  ok: boolean;
+  compatible: boolean;
+  hostProtocol: number;
+  requiredProtocol: number;
+  update?: LocalHostUpdateState | null;
+  error: string;
+};
+
+export function localHostNeedsProtocolUpdate(host: Pick<LocalLoomHost, "hostProtocol">): boolean {
+  // Protocol 0 is a pre-handshake Host. Keep it usable during the first rollout;
+  // its existing desktop updater will move it onto protocol-aware builds.
+  return host.hostProtocol > 0 && host.hostProtocol < LOOM_WEB_REQUIRED_HOST_PROTOCOL;
+}
+
+export async function ensureLocalLoomHostCompatibility(
+  requiredProtocol = LOOM_WEB_REQUIRED_HOST_PROTOCOL,
+): Promise<LocalHostCompatibilityResult> {
+  try {
+    const response = await fetch(LOCAL_HOST_UPDATE_URL, requestInit({
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify({ required_protocol: requiredProtocol }),
+    }));
+    const payload = await response.json().catch(() => ({})) as {
+      ok?: boolean; compatible?: boolean; hostProtocol?: number; requiredProtocol?: number; update?: LocalHostUpdateState; error?: unknown; message?: unknown;
+    };
+    if (!response.ok || !payload.ok) {
+      return {
+        ok: false, compatible: false, hostProtocol: Number(payload.hostProtocol || 0), requiredProtocol,
+        update: payload.update || null, error: messageFromPayload(payload, "Could not update Loom Host."),
+      };
+    }
+    return {
+      ok: true, compatible: Boolean(payload.compatible),
+      hostProtocol: Math.max(0, Number(payload.hostProtocol || 0) || 0),
+      requiredProtocol: Math.max(0, Number(payload.requiredProtocol || requiredProtocol) || requiredProtocol),
+      update: payload.update || null, error: "",
+    };
+  } catch {
+    return { ok: false, compatible: false, hostProtocol: 0, requiredProtocol, update: null, error: "Could not ask Loom Host to update." };
   }
 }
 

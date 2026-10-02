@@ -64,14 +64,15 @@ let lastCheckStartedAt = 0;
 let startupTimer: NodeJS.Timeout | null = null;
 let periodicTimer: NodeJS.Timeout | null = null;
 let errorRetryTimer: NodeJS.Timeout | null = null;
+let webAutoInstallRequested = false;
 const earlyRecheckTimers: NodeJS.Timeout[] = [];
 
-function publicState(): SoftwareUpdateState {
+export function softwareUpdateState(): SoftwareUpdateState {
   return { ...state };
 }
 
 function broadcastState(): void {
-  const payload = publicState();
+  const payload = softwareUpdateState();
   for (const window of BrowserWindow.getAllWindows()) {
     if (!window.isDestroyed() && !window.webContents.isDestroyed()) {
       window.webContents.send(STATUS_CHANNEL, payload);
@@ -118,6 +119,30 @@ function updateInFlight(): boolean {
 function activeWindow(): BrowserWindow | undefined {
   return BrowserWindow.getFocusedWindow()
     ?? BrowserWindow.getAllWindows().find((window) => !window.isDestroyed());
+}
+
+function hasVisibleWindow(): boolean {
+  return BrowserWindow.getAllWindows().some((window) => !window.isDestroyed() && window.isVisible());
+}
+
+function maybeInstallForWeb(): boolean {
+  if (!webAutoInstallRequested || state.phase !== "downloaded" || hasVisibleWindow()) return false;
+  // Browser-only sessions have no visible Desktop UI to click through an install
+  // prompt. Restart the background Host only after the package is fully ready.
+  setTimeout(() => autoUpdater.quitAndInstall(false, true), 250).unref?.();
+  return true;
+}
+
+export async function ensureWebHostUpdate(): Promise<SoftwareUpdateState> {
+  if (!updateEnabled) return softwareUpdateState();
+  webAutoInstallRequested = true;
+  if (state.phase === "downloaded") {
+    maybeInstallForWeb();
+    return softwareUpdateState();
+  }
+  const next = await checkForUpdates();
+  maybeInstallForWeb();
+  return next;
 }
 
 function clearErrorRetry(): void {
@@ -192,10 +217,10 @@ async function offerDownloadedUpdate(info: UpdateInfo): Promise<void> {
   }
 }
 
-async function checkForUpdates(): Promise<SoftwareUpdateState> {
-  if (!updateEnabled) return publicState();
+export async function checkForUpdates(): Promise<SoftwareUpdateState> {
+  if (!updateEnabled) return softwareUpdateState();
   if (checkPromise) return checkPromise;
-  if (updateInFlight()) return publicState();
+  if (updateInFlight()) return softwareUpdateState();
 
   clearErrorRetry();
   lastCheckStartedAt = Date.now();
@@ -217,7 +242,7 @@ async function checkForUpdates(): Promise<SoftwareUpdateState> {
       scheduleErrorRetry();
     }
 
-    return publicState();
+    return softwareUpdateState();
   })().finally(() => {
     checkPromise = null;
   });
@@ -225,13 +250,13 @@ async function checkForUpdates(): Promise<SoftwareUpdateState> {
   return checkPromise;
 }
 
-function installDownloadedUpdate(): { accepted: boolean; state: SoftwareUpdateState } {
+export function installDownloadedUpdate(): { accepted: boolean; state: SoftwareUpdateState } {
   if (!updateEnabled || state.phase !== "downloaded") {
-    return { accepted: false, state: publicState() };
+    return { accepted: false, state: softwareUpdateState() };
   }
 
   autoUpdater.quitAndInstall(false, true);
-  return { accepted: true, state: publicState() };
+  return { accepted: true, state: softwareUpdateState() };
 }
 
 function maybeCheckAfterFocus(): void {
@@ -260,13 +285,16 @@ function configureUpdater(): void {
       percent: 0,
       transferred: 0,
     });
-    availablePromptPromise = offerAvailableUpdate(info).finally(() => {
-      availablePromptPromise = null;
-    });
+    if (!webAutoInstallRequested || hasVisibleWindow()) {
+      availablePromptPromise = offerAvailableUpdate(info).finally(() => {
+        availablePromptPromise = null;
+      });
+    }
   });
 
   autoUpdater.on("update-not-available", (info) => {
     clearErrorRetry();
+    webAutoInstallRequested = false;
     setState({
       phase: "up-to-date",
       ...updateInfoPatch(info),
@@ -294,7 +322,7 @@ function configureUpdater(): void {
       percent: 100,
       error: undefined,
     });
-    void offerDownloadedUpdate(info);
+    if (!maybeInstallForWeb()) void offerDownloadedUpdate(info);
   });
 
   autoUpdater.on("error", (error) => {
@@ -330,14 +358,14 @@ function startAutomaticChecks(): void {
 
 configureUpdater();
 
-ipcMain.handle("loom:update-status", () => publicState());
+ipcMain.handle("loom:update-status", () => softwareUpdateState());
 ipcMain.handle("loom:update-check", () => checkForUpdates());
 ipcMain.handle("loom:update-install", () => installDownloadedUpdate());
 
 app.on("browser-window-created", (_event, window) => {
   window.webContents.once("did-finish-load", () => {
     if (!window.isDestroyed() && !window.webContents.isDestroyed()) {
-      window.webContents.send(STATUS_CHANNEL, publicState());
+      window.webContents.send(STATUS_CHANNEL, softwareUpdateState());
     }
   });
   window.on("focus", maybeCheckAfterFocus);

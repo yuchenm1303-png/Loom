@@ -1,5 +1,6 @@
 import type { LoomAccountResult, LoomAuthCapabilitiesResult, LoomAuthChallengeResult } from "./types/account";
 import type { LoomNotification } from "./types/global";
+import { LOOM_WEB_REQUIRED_HOST_PROTOCOL, type LocalHostUpdateState } from "./localHostDiscovery";
 
 const WEB_PLATFORM_MARKER = "web";
 const DEFAULT_WS_PATH = "/api/ws/browser";
@@ -19,7 +20,7 @@ type InvokeMessage = {
   args: unknown[];
 };
 
-export type WebRelayDevice = Record<string, unknown> & { id?: string; name?: string; platform?: string; version?: string };
+export type WebRelayDevice = Record<string, unknown> & { id?: string; name?: string; platform?: string; version?: string; hostProtocol?: number };
 
 export type WebDeviceStatus = {
   type: "device_status";
@@ -28,6 +29,26 @@ export type WebDeviceStatus = {
   selectedDeviceId?: string | null;
   devices?: WebRelayDevice[];
 };
+
+export type WebHostCompatibility = {
+  compatible: boolean;
+  legacy: boolean;
+  online: boolean;
+  hostProtocol: number;
+  requiredProtocol: number;
+  update?: LocalHostUpdateState | null;
+  error?: string;
+};
+
+function relayHostProtocol(device: WebRelayDevice | null | undefined): number {
+  return Math.max(0, Number(device?.hostProtocol || 0) || 0);
+}
+
+export function webHostNeedsProtocolUpdate(status: WebDeviceStatus | null | undefined): boolean {
+  const protocol = relayHostProtocol(status?.device);
+  // Protocol 0 predates the handshake. Allow it during the migration release.
+  return Boolean(status?.online && protocol > 0 && protocol < LOOM_WEB_REQUIRED_HOST_PROTOCOL);
+}
 
 type RelayMessage =
   | WebDeviceStatus
@@ -373,6 +394,41 @@ export async function getWebDeviceStatus(): Promise<WebDeviceStatus> {
   });
 }
 
+export async function ensureWebHostCompatibility(
+  status?: WebDeviceStatus | null,
+): Promise<WebHostCompatibility> {
+  const current = status || await getWebDeviceStatus();
+  const hostProtocol = relayHostProtocol(current.device);
+  if (!current.online) {
+    return { compatible: false, legacy: false, online: false, hostProtocol, requiredProtocol: LOOM_WEB_REQUIRED_HOST_PROTOCOL };
+  }
+  if (hostProtocol <= 0) {
+    return { compatible: true, legacy: true, online: true, hostProtocol, requiredProtocol: LOOM_WEB_REQUIRED_HOST_PROTOCOL };
+  }
+  if (hostProtocol >= LOOM_WEB_REQUIRED_HOST_PROTOCOL) {
+    return { compatible: true, legacy: false, online: true, hostProtocol, requiredProtocol: LOOM_WEB_REQUIRED_HOST_PROTOCOL };
+  }
+  try {
+    const result = await invoke<{ hostProtocol?: number; requiredProtocol?: number; compatible?: boolean; update?: LocalHostUpdateState }>(
+      "hostUpdateEnsure",
+      [LOOM_WEB_REQUIRED_HOST_PROTOCOL],
+    );
+    return {
+      compatible: Boolean(result?.compatible),
+      legacy: false,
+      online: true,
+      hostProtocol: Math.max(0, Number(result?.hostProtocol || hostProtocol) || hostProtocol),
+      requiredProtocol: Math.max(0, Number(result?.requiredProtocol || LOOM_WEB_REQUIRED_HOST_PROTOCOL) || LOOM_WEB_REQUIRED_HOST_PROTOCOL),
+      update: result?.update || null,
+    };
+  } catch (cause) {
+    return {
+      compatible: false, legacy: false, online: true, hostProtocol, requiredProtocol: LOOM_WEB_REQUIRED_HOST_PROTOCOL,
+      error: cause instanceof Error ? cause.message : String(cause),
+    };
+  }
+}
+
 export async function selectWebDevice(_deviceId: string): Promise<void> {
   // Compatibility shim for older UI modules. Routing is account-scoped:
   // there is exactly one current Host, so there is nothing to select.
@@ -413,6 +469,16 @@ export function installWebBridge(): void {
         const account = await accountRequest("status");
         if (!account.ok || !account.snapshot.authenticated) {
           throw new Error("Sign in to Loom Web before connecting.");
+        }
+        const deviceStatus = await getWebDeviceStatus();
+        const compatibility = await ensureWebHostCompatibility(deviceStatus);
+        if (!compatibility.compatible) {
+          const phase = String(compatibility.update?.phase || "");
+          const error = new Error(phase === "downloaded"
+            ? "Loom Host update is ready. Restart Loom on the host computer to finish updating."
+            : "Loom Host is updating to match Loom Web. It will reconnect automatically when ready.") as Error & { code?: string };
+          error.code = "HOST_UPDATE_REQUIRED";
+          throw error;
         }
         return invoke("connect", []);
       })();

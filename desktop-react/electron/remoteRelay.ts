@@ -2,7 +2,8 @@ import { app, BrowserWindow, dialog, Menu, nativeImage, shell, Tray } from "elec
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import WebSocket from "ws";
 import { LoomAccountClient } from "./accountClient.js";
-import { webRelayDeviceIdentity } from "./webRelayAuth.js";
+import { LOOM_HOST_PROTOCOL_VERSION, webRelayDeviceIdentity } from "./webRelayAuth.js";
+import { ensureWebHostUpdate, softwareUpdateState } from "./updater.js";
 
 // The Loom Web device relay runs inside the same Electron main process that
 // owns Loom Desktop's App Server. The browser is only another client of that
@@ -15,6 +16,7 @@ const LOCAL_DISCOVERY_PORT = 39223;
 const LOCAL_STATUS_PATH = "/loom/status";
 const LOCAL_OPEN_PATH = "/loom/open";
 const LOCAL_PAIR_PATH = "/loom/pair";
+const LOCAL_UPDATE_PATH = "/loom/update";
 const LOCAL_BODY_LIMIT = 4 * 1024;
 const HEARTBEAT_MS = 30_000;
 const RETRY_MIN_MS = 4_000;
@@ -27,6 +29,7 @@ export type WebRelayAuth = {
   deviceName: string;
   platform: string;
   appVersion: string;
+  hostProtocol: number;
 };
 
 export type WebRelayOperation = (args: unknown[]) => Promise<unknown>;
@@ -170,7 +173,36 @@ async function handleLocalDiscovery(request: IncomingMessage, response: ServerRe
       ok: true,
       ...identity,
       relayReady: ws?.readyState === WebSocket.OPEN,
+      update: softwareUpdateState(),
     }, origin);
+    return;
+  }
+
+  if (request.method === "POST" && url.pathname === LOCAL_UPDATE_PATH) {
+    if (!origin) {
+      writeLocalJson(response, 403, { ok: false, error: "origin_required" });
+      return;
+    }
+    try {
+      const body = await readLocalJson(request);
+      const requiredProtocol = Math.max(0, Math.min(1_000_000, Number(body.required_protocol || 0) || 0));
+      const update = LOOM_HOST_PROTOCOL_VERSION < requiredProtocol
+        ? await ensureWebHostUpdate()
+        : softwareUpdateState();
+      writeLocalJson(response, 200, {
+        ok: true,
+        hostProtocol: LOOM_HOST_PROTOCOL_VERSION,
+        requiredProtocol,
+        compatible: LOOM_HOST_PROTOCOL_VERSION >= requiredProtocol,
+        update,
+      }, origin);
+    } catch (cause) {
+      writeLocalJson(response, 500, {
+        ok: false,
+        error: "update_check_failed",
+        message: cause instanceof Error ? cause.message : String(cause),
+      }, origin);
+    }
     return;
   }
 
@@ -353,6 +385,19 @@ async function handleInvoke(frame: InvokeFrame): Promise<void> {
     let result: unknown;
     if (operation) {
       result = await operation(args);
+    } else if (frame.operation === "hostUpdateStatus") {
+      result = {
+        hostProtocol: LOOM_HOST_PROTOCOL_VERSION,
+        update: softwareUpdateState(),
+      };
+    } else if (frame.operation === "hostUpdateEnsure") {
+      const requiredProtocol = Math.max(0, Math.min(1_000_000, Number(args[0] || 0) || 0));
+      result = {
+        hostProtocol: LOOM_HOST_PROTOCOL_VERSION,
+        requiredProtocol,
+        compatible: LOOM_HOST_PROTOCOL_VERSION >= requiredProtocol,
+        update: LOOM_HOST_PROTOCOL_VERSION < requiredProtocol ? await ensureWebHostUpdate() : softwareUpdateState(),
+      };
     } else if (frame.operation === "pickDirectory") {
       const selection = await dialog.showOpenDialog({
         title: "Add project folder",
@@ -401,6 +446,7 @@ async function connectRelay(): Promise<void> {
         name: auth.deviceName,
         platform: auth.platform,
         version: auth.appVersion,
+        hostProtocol: auth.hostProtocol,
       },
     });
     if (heartbeatTimer) clearInterval(heartbeatTimer);

@@ -7,6 +7,7 @@ import { LoomAccountClient } from "./accountClient.js";
 
 const DEFAULT_ACCOUNT_URL = "https://account.smirel.com/v1";
 const DEVICE_ID_FILE = "loom-web-device-id";
+export const LOOM_HOST_PROTOCOL_VERSION = 1;
 
 if (!String(process.env.LOOM_ACCOUNT_API_BASE_URL || "").trim()) {
   process.env.LOOM_ACCOUNT_API_BASE_URL = DEFAULT_ACCOUNT_URL;
@@ -42,6 +43,7 @@ export type WebRelayDeviceIdentity = {
   deviceName: string;
   platform: string;
   appVersion: string;
+  hostProtocol: number;
 };
 
 export type WebRelayAuth = WebRelayDeviceIdentity & {
@@ -61,6 +63,7 @@ export async function webRelayDeviceIdentity(): Promise<WebRelayDeviceIdentity> 
     deviceName: os.hostname(),
     platform: process.platform,
     appVersion: app.getVersion(),
+    hostProtocol: LOOM_HOST_PROTOCOL_VERSION,
   };
 }
 
