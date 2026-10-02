@@ -1211,6 +1211,9 @@ export default function App() {
             threadId={thread?.id}
             currentTurnId={thread?.currentTurnId}
             running={running}
+            hasOlder={loom.hasOlderTurns}
+            loadingOlder={loom.loadingOlderTurns}
+            onLoadOlder={loom.loadOlderTurns}
           />
         </div>
 

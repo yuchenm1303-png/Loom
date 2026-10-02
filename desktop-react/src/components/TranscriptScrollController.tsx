@@ -8,9 +8,13 @@ interface TranscriptScrollControllerProps {
   threadId?: string | null;
   currentTurnId?: string | null;
   running?: boolean;
+  hasOlder?: boolean;
+  loadingOlder?: boolean;
+  onLoadOlder?(): Promise<void> | void;
 }
 
 const BOTTOM_THRESHOLD_PX = 96;
+const HISTORY_LOAD_THRESHOLD_PX = 220;
 const SCROLL_EPSILON_PX = 2;
 const LIVE_FOLLOW_MIN_STEP_PX = 1.5;
 const LIVE_FOLLOW_MAX_STEP_PX = 42;
@@ -70,6 +74,9 @@ export function TranscriptScrollController({
   threadId,
   currentTurnId,
   running,
+  hasOlder = false,
+  loadingOlder = false,
+  onLoadOlder,
 }: TranscriptScrollControllerProps) {
   const followingRef = useRef(true);
   const forceBottomRef = useRef(false);
@@ -91,15 +98,59 @@ export function TranscriptScrollController({
   const wasRunningRef = useRef(Boolean(running));
   const settleUntilRef = useRef(0);
   const settleTimerRef = useRef<number | null>(null);
+  const hasOlderRef = useRef(Boolean(hasOlder));
+  const loadingOlderRef = useRef(Boolean(loadingOlder));
+  const onLoadOlderRef = useRef(onLoadOlder);
+  const itemsLengthRef = useRef(items.length);
+  const historyLoadInFlightRef = useRef(false);
+  const prependAnchorRef = useRef<{ threadId: string; scrollHeight: number; scrollTop: number; itemCount: number } | null>(null);
   const [jumpVisible, setJumpVisible] = useState(false);
   const latestUserId = useMemo(() => latestUserMessageId(items), [items]);
   const latestActivityId = useMemo(() => latestActivityItemId(items), [items]);
+
+  hasOlderRef.current = Boolean(hasOlder);
+  loadingOlderRef.current = Boolean(loadingOlder);
+  onLoadOlderRef.current = onLoadOlder;
+  itemsLengthRef.current = items.length;
 
   const cancelScheduledScroll = () => {
     if (frameRef.current !== null) {
       cancelAnimationFrame(frameRef.current);
       frameRef.current = null;
     }
+  };
+
+  const requestOlderHistory = (scroller: HTMLDivElement) => {
+    const loader = onLoadOlderRef.current;
+    if (
+      !loader
+      || !hasOlderRef.current
+      || loadingOlderRef.current
+      || historyLoadInFlightRef.current
+      || scroller.scrollTop > HISTORY_LOAD_THRESHOLD_PX
+    ) return;
+
+    const anchor = {
+      threadId: String(threadId ?? ""),
+      scrollHeight: scroller.scrollHeight,
+      scrollTop: scroller.scrollTop,
+      itemCount: itemsLengthRef.current,
+    };
+    prependAnchorRef.current = anchor;
+    historyLoadInFlightRef.current = true;
+    Promise.resolve(loader())
+      .catch(() => {
+        // History paging is best-effort UI work. A later scroll gesture can retry.
+      })
+      .finally(() => {
+        historyLoadInFlightRef.current = false;
+        window.requestAnimationFrame(() => {
+          if (
+            prependAnchorRef.current === anchor
+            && itemsLengthRef.current <= anchor.itemCount
+          ) prependAnchorRef.current = null;
+        });
+      });
   };
 
   const detachFromLiveFollow = (scroller: HTMLDivElement) => {
@@ -190,6 +241,19 @@ export function TranscriptScrollController({
 
     frameRef.current = requestAnimationFrame(step);
   };
+
+  useLayoutEffect(() => {
+    const anchor = prependAnchorRef.current;
+    if (!anchor || anchor.threadId !== String(threadId ?? "") || items.length <= anchor.itemCount) return;
+    const scroller = transcriptScroller();
+    if (!scroller) return;
+
+    const addedHeight = Math.max(0, scroller.scrollHeight - anchor.scrollHeight);
+    scroller.scrollTop = anchor.scrollTop + addedHeight;
+    lastScrollTopRef.current = scroller.scrollTop;
+    bottomTargetDirtyRef.current = true;
+    prependAnchorRef.current = null;
+  }, [items.length, threadId]);
 
   useLayoutEffect(() => {
     const nextRunning = Boolean(running);
@@ -330,12 +394,14 @@ export function TranscriptScrollController({
 
       lastScrollTopRef.current = nextScrollTop;
       setJumpVisible(userDetachedRef.current && !nearBottom);
+      if (nextScrollTop <= HISTORY_LOAD_THRESHOLD_PX) requestOlderHistory(scroller);
     };
 
     const onWheel = (event: WheelEvent) => {
       if (isPanelResizeActive()) return;
       if (event.deltaY < 0) {
         detachFromLiveFollow(scroller);
+        requestOlderHistory(scroller);
       } else if (event.deltaY > 0) {
         markReturnIntent();
       }
@@ -354,6 +420,7 @@ export function TranscriptScrollController({
         // Finger down reveals older content; finger up heads toward latest.
         if (nextY > previousY + SCROLL_EPSILON_PX) {
           detachFromLiveFollow(scroller);
+          requestOlderHistory(scroller);
         } else if (nextY < previousY - SCROLL_EPSILON_PX) {
           markReturnIntent();
         }
@@ -399,6 +466,7 @@ export function TranscriptScrollController({
         || (event.key === " " && event.shiftKey)
       ) {
         detachFromLiveFollow(scroller);
+        requestOlderHistory(scroller);
       } else if (
         event.key === "PageDown"
         || event.key === "End"

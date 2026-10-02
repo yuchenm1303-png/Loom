@@ -16,7 +16,7 @@ def test_recent_idle_conversations_stay_hot_long_enough_for_real_navigation() ->
 
 def test_hover_prefetch_and_click_share_one_inflight_thread_read() -> None:
     assert "threadReadInflightRef" in CORE
-    assert "const existing = threadReadInflightRef.current.get(threadId);" in CORE
+    assert "const existing = threadReadInflightRef.current.get(requestKey);" in CORE
     assert "if (existing) return existing;" in CORE
     assert "const prefetchThread = useCallback" in CORE
     assert "const result = await readThread(normalized);" in CORE
