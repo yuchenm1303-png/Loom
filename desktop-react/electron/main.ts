@@ -879,6 +879,14 @@ class LoomRpcProcess {
     const searchRelay = await sharedSearchRelay();
     const selectedSpec = this.models.current ?? this.models.ensureInitial();
     const spec = await this.materializeModelSpec(selectedSpec);
+    let accountModelCredential = spec.authMode === "loom-account" ? spec.apiKey : "";
+    if (!accountModelCredential) {
+      try {
+        accountModelCredential = await this.account.modelCredential();
+      } catch {
+        // BYOK/offline desktops remain usable without Loom account model access.
+      }
+    }
     const python = resolvePythonExecutable();
     const script = path.join(REPO_ROOT, "loom_app_server.py");
     const args = [script, "--workspace", REPO_ROOT, "--provider", spec.provider, "--model", spec.model, "--selection", spec.selection, "--local-ipc"];
@@ -898,6 +906,7 @@ class LoomRpcProcess {
         // instead of silently automating its own UI.
         LOOM_DESKTOP_HOST_PID: String(process.pid),
         LOOM_API_KEY: spec.apiKey,
+        LOOM_ACCOUNT_MODEL_CREDENTIAL: accountModelCredential,
         LOOM_BROWSER_EXTENSION_TOKEN: ensureBrowserBridgeToken(),
         // The page HUD is the extension's asset, and a browser Loom launches
         // has no extension in it: the runtime injects the same file over CDP.
