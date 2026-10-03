@@ -111,3 +111,17 @@ def test_gateway_heartbeat_is_owned_by_device_socket():
     device=source.split('async def device_socket',1)[1].split('def _static_headers',1)[0]
     assert 'heartbeat' not in browser or '_record_device(peer' not in browser
     assert 'heartbeat' in device and '_record_device(peer' in device
+
+
+def test_admin_information_architecture_is_overview_first():
+    html=Path("services/loom_admin/static/index.html").read_text(encoding="utf-8")
+    js=Path("services/loom_admin/static/admin.js").read_text(encoding="utf-8")
+    assert 'id="overview" data-admin-page="overview"' in html
+    assert 'id="runs" data-admin-page="runs" hidden' in html
+    assert 'id="devices" data-admin-page="devices" hidden' in html
+    assert 'id="user" data-admin-page="user" hidden' in html
+    assert 'Global controls' in html and 'ACCOUNT WORKSPACE' in html
+    assert '<dialog id="userDialog"' not in html
+    assert 'function showPage(page)' in js and 'function applyRoute()' in js
+    assert "location.hash=`user/${u.id}`" in js
+    assert 'renderUserWorkspace' in js
