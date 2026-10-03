@@ -51,6 +51,8 @@ jobs:
         run: npm run typecheck
       - name: Build React desktop
         run: npm run build
+      - name: Verify deployable web portal
+        run: node --test scripts/tests/portal-release.test.mjs && node scripts/verify-web-portal-bundle.mjs
 
   windows-context-smoke:
     runs-on: windows-latest

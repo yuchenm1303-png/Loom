@@ -3,7 +3,7 @@ WORKDIR /src/desktop-react
 COPY desktop-react/package.json desktop-react/package-lock.json ./
 RUN npm ci --no-audit --no-fund
 COPY desktop-react ./
-RUN npm run build
+RUN npm run build && node scripts/verify-web-portal-bundle.mjs
 
 FROM python:3.12-slim
 ARG LOOM_BUILD_SHA=unknown
