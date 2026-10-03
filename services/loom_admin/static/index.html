@@ -74,22 +74,16 @@
         <article class="utility-card cards usage-summary-card"><span class="utility-overline">NEW 24H</span><h3 id="kpiNew">0</h3><p>新注册</p></article>
       </section>
 
-      <section class="usage-activity-section fade" data-admin-page="overview">
-        <article class="account-card cards usage-activity-card">
-          <div class="account-head usage-activity-head"><div><p class="kicker">LIVE OPERATIONS</p><h2>Agent activity</h2><p class="usage-account-email">只展示运行元数据；不会上传 Prompt、对话正文、文件或 Computer Use 屏幕。</p></div><div id="activityRangeControl" class="usage-range-control" role="group" aria-label="活动时间范围"><button type="button" data-range="24h" aria-pressed="true">24H</button><button type="button" data-range="7d" aria-pressed="false">7D</button><button type="button" data-range="30d" aria-pressed="false">30D</button></div></div>
-          <div class="usage-monitor-grid">
-            <div class="usage-monitor-panel"><div class="usage-monitor-panel-head"><span>User last active</span><strong id="activitySummary">—</strong></div><div id="activityRail" class="usage-presence-rail loom-admin-activity-rail"></div><div id="activityAxis" class="usage-monitor-axis" aria-hidden="true"></div></div>
-            <div class="usage-monitor-panel"><div class="usage-monitor-panel-head"><span>Agent runs</span><strong id="runActivitySummary">—</strong></div><div id="runSpark" class="usage-throughput-chart loom-admin-spark"></div><div id="runAxis" class="usage-monitor-axis" aria-hidden="true"></div></div>
-          </div>
-          <div class="account-footer usage-monitor-legend"><span><i class="usage-legend-dot is-active"></i>有活动</span><span><i class="usage-legend-dot is-idle"></i>无记录</span><span>Source · Account + Agent telemetry</span></div>
-        </article>
+      <section class="usage-ops-section fade loom-admin-overview-snapshot" data-admin-page="overview">
+        <div class="usage-section-head"><div><p class="kicker">OPERATIONS SNAPSHOT</p><h2>Platform summary</h2><p>只显示全局聚合状态，不在首页展开任何账号、Run、Session 或设备明细。</p></div><span>Live aggregate</span></div>
+        <div class="loom-admin-mini-kpis loom-admin-mini-kpis-3"><div><span>Runs 24H</span><strong id="overviewRuns24">0</strong></div><div><span>Failed 24H</span><strong id="overviewFailed24">0</strong></div><div><span>Known devices</span><strong id="overviewKnownDevices">0</strong></div></div>
       </section>
 
       <section class="usage-ops-section fade loom-admin-overview-controls" id="overview-controls" data-admin-page="overview">
         <div class="usage-section-head"><div><p class="kicker">GLOBAL CONTROL</p><h2>Global controls</h2><p>首页只保留全局状态与已配置的 Feature Flags；详细数据进入二级页面。</p></div><button class="loom-admin-action" type="button" data-admin-route="flags">管理全部开关</button></div>
         <div class="usage-ops-grid loom-admin-overview-grid">
           <article class="account-card cards usage-ops-panel"><span class="utility-overline">FEATURE FLAGS</span><h3>Runtime switches</h3><div id="overviewFlags" class="loom-admin-flags-list"></div></article>
-          <article class="account-card cards usage-ops-panel"><span class="utility-overline">QUICK ACCESS</span><h3>Operations</h3><div class="loom-admin-quick-links"><button class="loom-admin-action" type="button" data-admin-route="users">用户</button><button class="loom-admin-action" type="button" data-admin-route="runs">运行</button><button class="loom-admin-action" type="button" data-admin-route="devices">设备</button><button class="loom-admin-action" type="button" data-admin-route="system">系统</button><button class="loom-admin-action" type="button" data-admin-route="audit">审计</button></div><p class="loom-admin-empty-block">全局页不再展开用户级明细。进入用户工作区后，只显示该账号自己的 Session、Host、Run 与用量；Flag 是否生效取决于对应功能是否消费它。</p></article>
+          <article class="account-card cards usage-ops-panel"><span class="utility-overline">QUICK ACCESS</span><h3>Operations</h3><div class="loom-admin-quick-links"><button class="loom-admin-action" type="button" data-admin-route="users">用户</button><button class="loom-admin-action" type="button" data-admin-route="runs">运行</button><button class="loom-admin-action" type="button" data-admin-route="devices">设备</button><button class="loom-admin-action" type="button" data-admin-route="system">系统</button><button class="loom-admin-action" type="button" data-admin-route="audit">审计</button></div><p class="loom-admin-empty-block">全局页不再展开用户级明细。进入用户工作区后，后端只查询该账号自己的 Session、Host、Run 与 30 天用量；Flag 是否生效取决于对应功能是否消费它。</p></article>
         </div>
       </section>
 
@@ -158,7 +152,7 @@
           <div id="userDetailBody" class="loom-admin-detail-grid"></div>
           <div class="loom-admin-detail-actions"><button id="detailStatusButton" class="loom-admin-action" type="button">Disable</button><button id="detailRevokeButton" class="loom-admin-action is-danger" type="button">Revoke sessions</button></div>
         </article>
-        <div class="loom-admin-mini-kpis loom-admin-user-kpis"><div><span>Devices</span><strong id="userKpiDevices">0</strong></div><div><span>Active runs</span><strong id="userKpiRuns">0</strong></div><div><span>Tokens</span><strong id="userKpiTokens">0</strong></div><div><span>Tool calls</span><strong id="userKpiTools">0</strong></div><div><span>Sessions</span><strong id="userKpiSessions">0</strong></div></div>
+        <div class="loom-admin-mini-kpis loom-admin-user-kpis"><div><span>Devices</span><strong id="userKpiDevices">0</strong></div><div><span>Active runs</span><strong id="userKpiRuns">0</strong></div><div><span>Tokens 30D</span><strong id="userKpiTokens">0</strong></div><div><span>Tools 30D</span><strong id="userKpiTools">0</strong></div><div><span>Sessions</span><strong id="userKpiSessions">0</strong></div></div>
         <div class="loom-admin-user-sections">
           <article class="account-card cards loom-admin-table-card"><div class="loom-admin-panel-head"><div><span class="utility-overline">DEVICES</span><h3>Host devices</h3></div></div><div class="loom-admin-table-wrap"><table class="loom-admin-table loom-admin-user-table"><thead><tr><th>Device</th><th>Platform</th><th>Loom</th><th>Host</th><th>Last seen</th><th>State</th></tr></thead><tbody id="userDevicesBody"></tbody></table></div></article>
           <article class="account-card cards loom-admin-table-card"><div class="loom-admin-panel-head"><div><span class="utility-overline">RUNS</span><h3>Agent runs</h3></div></div><div class="loom-admin-table-wrap"><table class="loom-admin-table loom-admin-user-table"><thead><tr><th>Model</th><th>Status</th><th>Started</th><th>Duration</th><th>Tools</th><th>Tokens</th><th>Action</th></tr></thead><tbody id="userRunsBody"></tbody></table></div></article>
@@ -170,7 +164,7 @@
     <footer class="footer fade usage-footer"><span>© 2026 Smirel · Loom Admin</span><span>Agent operations without centralizing user content</span></footer>
   </main>
 
-  <script src="./admin.js?v=20261003.3" defer></script>
-  <script src="./model-policy.js?v=20261003.3" defer></script>
+  <script src="./admin.js?v=20261003.4" defer></script>
+  <script src="./model-policy.js?v=20261003.4" defer></script>
 </body>
 </html>
