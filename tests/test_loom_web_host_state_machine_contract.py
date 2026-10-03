@@ -29,3 +29,12 @@ def test_offline_host_is_not_misreported_as_updating() -> None:
     # offline, so HOST_OFFLINE cannot enter the updater state.
     assert 'error.code === "HOST_UPDATE_REQUIRED"' in WEB_GATE
     assert 'setTrackedHostState("offline");' in WEB_GATE
+
+
+def test_workspace_entry_survives_host_disconnect_and_update() -> None:
+    # Only identity/auth changes may discard the user's entry decision.
+    assert WEB_GATE.count("setEntered(false)") == 2
+    render_guard = WEB_GATE.split("if (!account.ready", 2)[-1].split("return (", 1)[0]
+    assert 'hostState !== "online"' not in render_guard
+    assert 'role="status"' in WEB_GATE
+    assert 'loom:web-host-reconnected' in WEB_GATE

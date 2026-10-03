@@ -101,14 +101,14 @@ export function WebAppGate({ children }: { children: ReactNode }) {
     const attempt = (async () => {
       const identity = activeAccountId;
       try {
-        await window.loom.connect();
+        const initialization = await window.loom.connect();
         if (accountIdRef.current !== identity) return;
         setTrackedHostState("online");
         setHostError("");
+        window.dispatchEvent(new CustomEvent("loom:web-host-reconnected", { detail: initialization }));
       } catch (cause) {
         if (accountIdRef.current !== identity) return;
         const error = cause as Error & { code?: string };
-        setEntered(false);
         if (error.code === "HOST_UPDATE_REQUIRED") {
           setTrackedHostState("updating");
           setHostError(error.message || hostUpdateMessage());
@@ -148,7 +148,6 @@ export function WebAppGate({ children }: { children: ReactNode }) {
       const detail = (event as CustomEvent<DeviceStatus>).detail;
       if (detail?.online) {
         if (webHostNeedsProtocolUpdate(detail)) {
-          setEntered(false);
           setTrackedHostState("updating");
           setHostError(hostUpdateMessage());
           void ensureWebHostCompatibility(detail).then((result) => {
@@ -160,7 +159,6 @@ export function WebAppGate({ children }: { children: ReactNode }) {
         return;
       }
       if (hostStateRef.current === "online") {
-        setEntered(false);
         setTrackedHostState("offline");
       }
     };
@@ -186,7 +184,6 @@ export function WebAppGate({ children }: { children: ReactNode }) {
         rememberLocalLoomHost(host.deviceId);
         setLocalHost(host);
         if (localHostNeedsProtocolUpdate(host)) {
-          setEntered(false);
           setTrackedHostState("updating");
           setHostError(hostUpdateMessage(host.update));
           void ensureLocalLoomHostCompatibility().then((result) => {
@@ -330,7 +327,6 @@ export function WebAppGate({ children }: { children: ReactNode }) {
   }, [account.account.authenticated, account.ready, connectCurrentHost, web]);
 
   const retry = useCallback(() => {
-    setEntered(false);
     setPairAttempts(0);
     setPairingSucceeded(false);
     setPairing(false);
@@ -373,7 +369,7 @@ export function WebAppGate({ children }: { children: ReactNode }) {
           ? "offline"
           : "idle";
 
-  if (!account.ready || !account.account.authenticated || !account.account.user || hostState !== "online" || !entered) {
+  if (!account.ready || !account.account.authenticated || !account.account.user || !entered) {
     return (
       <WebPortal
         account={account}
@@ -386,5 +382,13 @@ export function WebAppGate({ children }: { children: ReactNode }) {
     );
   }
 
-  return children;
+  // Preserve the mounted workspace (including drafts and selected conversation)
+  // through relay disconnects and runtime updates. Entry is reset only by auth.
+  return <>
+    {children}
+    {hostState !== "online" && <div className="web-reconnect-notice" role="status">
+      <span>{hostState === "updating" ? "Loom Host is updating…" : "Reconnecting to Loom Host…"}</span>
+      <button type="button" onClick={retry}>Retry connection</button>
+    </div>}
+  </>;
 }

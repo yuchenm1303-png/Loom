@@ -16,6 +16,7 @@ import type {
   TurnRecord,
 } from "../types/loom";
 import { PRESENTATION_FRAME_MS } from "../presentationTiming";
+import { isLoomWebRuntime } from "../webBridge";
 import { buildApprovalResponse } from "./approvalProtocol";
 
 type ThreadView = "active" | "archived";
@@ -883,6 +884,7 @@ export function useLoom() {
     const unsubscribe = bridge.onNotification((message) => {
       const params = message.params ?? {};
       if (message.method === "host/disconnected") {
+        if (isLoomWebRuntime()) return; // WebAppGate reconnects without discarding the workspace.
         setConnection("error");
         setError("Loom Host stopped. Reopen Loom to reconnect.");
         return;
@@ -1109,6 +1111,29 @@ export function useLoom() {
     });
     return unsubscribe;
   }, [clearActive, flushPendingItemDeltas, openThread, refreshThreads, scheduleItemDeltaFlush]);
+
+  useEffect(() => {
+    if (!isLoomWebRuntime()) return;
+    let disposed = false;
+    const recovered = () => {
+      const threadId = activeIdRef.current;
+      if (!threadId) return;
+      // Notifications may have been missed while the relay was disconnected.
+      threadReadCacheRef.current.delete(threadId);
+      void readThread(threadId).then((result) => {
+        if (disposed || activeIdRef.current !== threadId) return;
+        applyThreadRead(result);
+        setConnection("ready");
+        setError("");
+      }).catch(() => { /* A subsequent reconnect will retry reconciliation. */ });
+      void refreshThreads().catch(() => {});
+    };
+    window.addEventListener("loom:web-host-reconnected", recovered);
+    return () => {
+      disposed = true;
+      window.removeEventListener("loom:web-host-reconnected", recovered);
+    };
+  }, [applyThreadRead, readThread, refreshThreads]);
 
   useEffect(() => {
     let disposed = false;
