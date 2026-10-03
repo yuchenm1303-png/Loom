@@ -9,6 +9,7 @@ import { LOOM_BOOTSTRAP_PROTOCOL_VERSION, webRelayDeviceIdentity } from "./webRe
 import { ensureBootstrapUpdate, softwareUpdateState } from "./updater.js";
 import { BACKGROUND_HOST_ARG, isBackgroundHostLaunch, loomHostLaunchMode, type LoomHostLaunchMode } from "./hostMode.js";
 import { currentHostRuntimeProtocol, currentHostRuntimeVersion } from "./hostRuntime.js";
+import { collectHostHealthSnapshot } from "./hostHealth.js";
 import { ensureHostRuntimeUpdate, hostRuntimeUpdateState } from "./hostRuntimeUpdater.js";
 
 // Only the independent Host process owns discovery, relay and Agent Runtime.
@@ -62,6 +63,8 @@ let stopped = true;
 let retryMs = RETRY_MIN_MS;
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
+let relayRttMs: number | null = null;
+let heartbeatSentAt = 0;
 let localDiscoveryServer: Server | null = null;
 
 let hostTray: Tray | null = null;
@@ -355,6 +358,11 @@ function send(frame: unknown): void {
   if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify(frame));
 }
 
+function sendHeartbeat(): void {
+  heartbeatSentAt = Date.now();
+  send({ type: "ping", health: collectHostHealthSnapshot(relayRttMs) });
+}
+
 async function handleInvoke(frame: InvokeFrame): Promise<void> {
   const args = Array.isArray(frame.args) ? frame.args : [];
   const operation = options?.operations[frame.operation];
@@ -440,13 +448,19 @@ async function connectRelay(): Promise<void> {
         hostProtocol: auth.hostProtocol,
         bootstrapProtocol: auth.bootstrapProtocol,
       },
+      health: collectHostHealthSnapshot(relayRttMs),
     });
     if (heartbeatTimer) clearInterval(heartbeatTimer);
-    heartbeatTimer = setInterval(() => send({ type: "ping" }), HEARTBEAT_MS);
+    sendHeartbeat();
+    heartbeatTimer = setInterval(sendHeartbeat, HEARTBEAT_MS);
   });
   candidate.on("message", (data) => {
-    let frame: { type?: string } & Partial<InvokeFrame>;
+    let frame: { type?: string; browserId?: string; id?: number; operation?: string; args?: unknown[] };
     try { frame = JSON.parse(data.toString()) as typeof frame; } catch { return; }
+    if (frame.type === "pong") {
+      if (heartbeatSentAt > 0) relayRttMs = Math.max(0, Date.now() - heartbeatSentAt);
+      return;
+    }
     if (frame.type === "invoke" && typeof frame.id === "number" && frame.browserId && frame.operation) {
       void handleInvoke(frame as InvokeFrame);
     }
@@ -455,6 +469,8 @@ async function connectRelay(): Promise<void> {
     if (ws === candidate) ws = null;
     if (heartbeatTimer) clearInterval(heartbeatTimer);
     heartbeatTimer = null;
+    heartbeatSentAt = 0;
+    relayRttMs = null;
     scheduleReconnect();
   });
   candidate.on("error", () => {
