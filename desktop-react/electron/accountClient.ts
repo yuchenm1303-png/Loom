@@ -29,6 +29,20 @@ export interface LoomAuthChallenge {
   resend_after: number;
 }
 
+export interface LoomModelPolicyDecision {
+  model_id: string;
+  enabled: boolean;
+  source: string;
+  groups?: string[];
+}
+
+export interface LoomModelPolicyAccess {
+  enabled: boolean;
+  models: string[];
+  model_groups?: Array<{ id: string; name: string; enabled: boolean }>;
+  decisions?: LoomModelPolicyDecision[];
+}
+
 export interface LoomAccountSnapshot {
   configured: boolean;
   /** False when the service could not be reached, as opposed to rejecting us. */
@@ -286,6 +300,74 @@ export class LoomAccountClient {
       return await this.refreshInFlight;
     } finally {
       this.refreshInFlight = null;
+    }
+  }
+
+  private modelPolicyAccessUrl(): string {
+    const parsed = new URL(this.baseUrl);
+    const loopback = parsed.hostname === "127.0.0.1" || parsed.hostname === "localhost" || parsed.hostname === "::1";
+    if (loopback && parsed.port === "8787") {
+      parsed.port = "8792";
+      parsed.pathname = "/v1/access";
+    } else {
+      parsed.pathname = "/policy/v1/access";
+    }
+    parsed.search = "";
+    parsed.hash = "";
+    return parsed.toString();
+  }
+
+  async modelPolicyAccess(): Promise<LoomModelPolicyAccess | null> {
+    let session = await this.loadSession();
+    if (!session) return null;
+    if (session.expiresAt <= Date.now() + 30_000) session = await this.refresh(session);
+
+    const issue = async (active: TokenSession): Promise<LoomModelPolicyAccess> => {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 10_000);
+      try {
+        let response: Response;
+        try {
+          response = await fetch(this.modelPolicyAccessUrl(), {
+            method: "GET",
+            headers: {
+              Accept: "application/json",
+              Authorization: "Bearer " + active.accessToken,
+            },
+            signal: controller.signal,
+          });
+        } catch (cause) {
+          if (cause instanceof Error && cause.name === "AbortError") {
+            throw new AccountHttpError(0, "MODEL_POLICY_TIMEOUT", "Loom model policy did not respond in time.");
+          }
+          throw new AccountHttpError(0, "MODEL_POLICY_UNREACHABLE", "Could not reach Loom model policy.");
+        }
+        const body = await response.json().catch(() => ({})) as {
+          access?: LoomModelPolicyAccess;
+          error?: { code?: string; message?: string };
+        };
+        if (!response.ok) {
+          throw new AccountHttpError(
+            response.status,
+            String(body.error?.code || "MODEL_POLICY_FAILED"),
+            String(body.error?.message || ("Model policy request failed (" + response.status + ").")),
+          );
+        }
+        if (!body.access || !Array.isArray(body.access.models)) {
+          throw new AccountHttpError(0, "MODEL_POLICY_INVALID", "Model policy returned invalid access data.");
+        }
+        return body.access;
+      } finally {
+        clearTimeout(timer);
+      }
+    };
+
+    try {
+      return await issue(session);
+    } catch (error) {
+      if (!(error instanceof AccountHttpError) || error.status !== 401) throw error;
+      session = await this.refresh(session);
+      return issue(session);
     }
   }
 

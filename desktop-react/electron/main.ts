@@ -12,7 +12,7 @@ import {
   type EditModelInput,
   type ModelLaunchSpec,
 } from "./modelManager.js";
-import { LoomAccountClient, type LoomAccountSnapshot, type LoomAuthCapabilities, type LoomAuthChallenge } from "./accountClient.js";
+import { LoomAccountClient, type LoomAccountSnapshot, type LoomAuthCapabilities, type LoomAuthChallenge, type LoomModelPolicyAccess } from "./accountClient.js";
 import { accountErrorPayload, type AccountErrorPayload } from "./accountErrors.js";
 import { closeHudOverlayWindow, createHudOverlayWindow, sendHudUpdate } from "./hudWindow.js";
 import {
@@ -1269,6 +1269,82 @@ function runWriteClipboardText(value: string): boolean {
   return true;
 }
 
+function modelPolicyGroup(selection: string): string | null {
+  const value = String(selection || "").trim();
+  if (value === "builtin:minimax" || value.startsWith("builtin:minimax:")) return "minimax";
+  if (value === "builtin:deepseek" || value.startsWith("builtin:deepseek:")) return "deepseek";
+  if (value === "builtin:ant-ling" || value.startsWith("builtin:ant-ling:")) return "ant-ling";
+  if (value.startsWith("builtin:opencode-go:")) return "opencode-go";
+  if (value === "builtin:cqu" || value.startsWith("managed:")) return "managed-relay";
+  return null;
+}
+
+function policyAllowsSelection(access: LoomModelPolicyAccess, selection: string): boolean {
+  const value = String(selection || "").trim();
+  if (!value || value.startsWith("saved:")) return true;
+  if (!(value.startsWith("builtin:") || value.startsWith("managed:"))) return true;
+  if (!access.enabled && Array.isArray(access.decisions) && access.decisions.length) return false;
+  const decision = access.decisions?.find((item) => item.model_id === value);
+  if (decision) return Boolean(decision.enabled);
+  const groupId = modelPolicyGroup(value);
+  const group = groupId ? access.model_groups?.find((item) => item.id === groupId) : undefined;
+  if (group && group.enabled === false) return false;
+  // Dynamic provider catalogs can contain models not known to the central
+  // catalogue yet. Group policy is still applied here; exact per-model policy
+  // is checked again by the App Server before the next turn starts.
+  return true;
+}
+
+function applyModelPolicy(
+  snapshot: ReturnType<DesktopModelManager["snapshot"]>,
+  access: LoomModelPolicyAccess | null,
+): ReturnType<DesktopModelManager["snapshot"]> {
+  if (!access) return snapshot;
+  const profiles = snapshot.profiles.map((profile) => {
+    if (profile.kind !== "builtin" || policyAllowsSelection(access, profile.selection)) return profile;
+    return {
+      ...profile,
+      available: false,
+      statusMessage: "Disabled by Loom Admin model policy",
+    };
+  });
+  const primary = profiles.find((profile) => profile.selection === snapshot.primary.selection) ?? snapshot.primary;
+  const current = snapshot.current && !policyAllowsSelection(access, snapshot.current.selection)
+    ? { ...snapshot.current, available: false, statusMessage: "Disabled by Loom Admin model policy" }
+    : snapshot.current;
+  return { ...snapshot, profiles, primary, current };
+}
+
+async function currentModelPolicy(): Promise<LoomModelPolicyAccess | null> {
+  try {
+    return await accountClient.modelPolicyAccess();
+  } catch (error) {
+    // The App Server performs fail-closed enforcement before every signed-in
+    // built-in turn. Keeping the last local catalogue visible during an outage
+    // makes it possible to switch to saved/BYOK connections instead of trapping
+    // the user in an empty model picker.
+    console.warn("[model-policy] catalogue check failed", error);
+    return null;
+  }
+}
+
+async function assertModelSelectionAllowed(selection: string): Promise<void> {
+  const value = String(selection || "").trim();
+  if (!value || value.startsWith("saved:")) return;
+  const access = await currentModelPolicy();
+  if (access && !policyAllowsSelection(access, value)) {
+    throw new Error("This built-in model is disabled by Loom Admin.");
+  }
+}
+
+async function runListModels(forceRefresh = false): Promise<ReturnType<DesktopModelManager["snapshot"]>> {
+  const [snapshot, access] = await Promise.all([
+    modelManager.listSnapshot(Boolean(forceRefresh)),
+    currentModelPolicy(),
+  ]);
+  return applyModelPolicy(snapshot, access);
+}
+
 async function runStageTempFile(name: string, bytes: Uint8Array): Promise<string> {
   const safe = (name || "pasted.png").replace(/[^A-Za-z0-9._-]+/g, "_").slice(-80) || "pasted.png";
   const folder = path.join(app.getPath("temp"), "loom-attachments");
@@ -1282,11 +1358,14 @@ async function runSwitchModelProfile(threadOrSelection: string, maybeSelection?:
   if (maybeSelection === undefined) {
     const selection = String(threadOrSelection || "").trim();
     if (!selection) throw new Error("Model profile is required");
+    await assertModelSelectionAllowed(selection);
     return changeModel(() => modelManager.useProfile(selection), { persistSelection: selection });
   }
   const selection = String(maybeSelection || "").trim();
   if (!selection) throw new Error("Model profile is required");
-  return changeThreadModel(threadOrSelection, modelManager.resolve(selection));
+  const spec = modelManager.resolve(selection);
+  await assertModelSelectionAllowed(spec.selection);
+  return changeThreadModel(threadOrSelection, spec);
 }
 
 async function runSwitchCurrentModel(
@@ -1297,13 +1376,18 @@ async function runSwitchCurrentModel(
   if (modelOrUndefined === undefined) {
     const model = String(threadOrModel || "").trim();
     if (!model) throw new Error("Model ID is required");
+    const currentSelection = (modelManager.current ?? modelManager.ensureInitial()).selection;
+    const spec = modelManager.resolveModelNameFor(currentSelection, model);
+    await assertModelSelectionAllowed(spec.selection);
     return changeModel(() => modelManager.useModelName(model));
   }
   const selection = String(selectionOrUndefined || "").trim();
   const model = String(modelOrUndefined || "").trim();
   if (!selection) throw new Error("Model profile is required");
   if (!model) throw new Error("Model ID is required");
-  return changeThreadModel(threadOrModel, modelManager.resolveModelNameFor(selection, model));
+  const spec = modelManager.resolveModelNameFor(selection, model);
+  await assertModelSelectionAllowed(spec.selection);
+  return changeThreadModel(threadOrModel, spec);
 }
 
 async function runAddModel(
@@ -1384,7 +1468,7 @@ async function runSetReasoning(
 const desktopOperations: WebRelayOperations = {
   connect: async () => rpc.connect(),
   call: async (args) => rpc.call(String(args[0] || ""), (args[1] || {}) as Record<string, unknown>),
-  listModels: async (args) => modelManager.listSnapshot(Boolean(args[0])),
+  listModels: async (args) => runListModels(Boolean(args[0])),
   setModelProviderKey: async (args) => modelManager.setProviderKey(String(args[0] || ""), String(args[1] || "")),
   switchModelProfile: async (args) => args.length > 1
     ? runSwitchModelProfile(String(args[0] || ""), String(args[1] || ""))
@@ -1537,7 +1621,7 @@ handleHostChannel("loom:account-oauth-exchange", (_event, code: string) =>
   runAccountAction(() => accountClient.oauthExchange(String(code || "")))
 );
 handleHostChannel("loom:account-logout", () => runAccountAction(() => accountClient.logout()));
-handleHostChannel("loom:model-list", (_event, forceRefresh?: boolean) => modelManager.listSnapshot(Boolean(forceRefresh)));
+handleHostChannel("loom:model-list", (_event, forceRefresh?: boolean) => runListModels(Boolean(forceRefresh)));
 handleHostChannel("loom:model-provider-key", (_event, provider: string, apiKey: string) =>
   modelManager.setProviderKey(String(provider || ""), String(apiKey || ""))
 );

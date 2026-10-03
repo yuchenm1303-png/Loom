@@ -4,6 +4,7 @@ import argparse
 import json
 import os
 import urllib.error
+import urllib.parse
 import urllib.request
 from dataclasses import dataclass
 from http import HTTPStatus
@@ -20,6 +21,14 @@ ANT_LING_MODELS = (
     "Ling-2.6-flash",
 )
 
+ANT_LING_DEFAULT_MODEL = "Ling-3.0-flash"
+
+def _policy_model_id(model: str) -> str:
+    value = str(model or "").strip()
+    if value.casefold() == ANT_LING_DEFAULT_MODEL.casefold():
+        return "builtin:ant-ling"
+    return "builtin:ant-ling:" + urllib.parse.quote(value, safe="")
+
 
 class GatewayError(RuntimeError):
     def __init__(self, status: int, code: str, message: str) -> None:
@@ -34,6 +43,7 @@ class GatewayConfig:
     account_base_url: str
     ant_ling_base_url: str
     ant_ling_api_key: str
+    model_policy_base_url: str = ""
     upstream_timeout_seconds: float = 180.0
 
 
@@ -45,8 +55,15 @@ class LoomModelGateway:
         token = str(authorization or "").strip()
         if not token.lower().startswith("bearer "):
             raise GatewayError(HTTPStatus.UNAUTHORIZED, "MISSING_TOKEN", "Sign in to Loom to use built-in models.")
+        policy_base = str(self.config.model_policy_base_url or "").strip().rstrip("/")
+        if policy_base:
+            endpoint = f"{policy_base}/access"
+            service_name = "model policy"
+        else:
+            endpoint = f"{self.config.account_base_url.rstrip('/')}/models/access"
+            service_name = "account"
         request = urllib.request.Request(
-            f"{self.config.account_base_url.rstrip('/')}/models/access",
+            endpoint,
             headers={"Authorization": token, "Accept": "application/json", "User-Agent": "LoomModelGateway/1"},
         )
         try:
@@ -56,16 +73,20 @@ class LoomModelGateway:
             raw = exc.read().decode("utf-8", errors="replace")
             try:
                 body = json.loads(raw)
-                message = str(body.get("error", {}).get("message") or "Loom account authorization failed.")
-                code = str(body.get("error", {}).get("code") or "ACCOUNT_AUTH_FAILED")
+                message = str(body.get("error", {}).get("message") or "Loom model authorization failed.")
+                code = str(body.get("error", {}).get("code") or "MODEL_AUTH_FAILED")
             except json.JSONDecodeError:
-                message, code = "Loom account authorization failed.", "ACCOUNT_AUTH_FAILED"
+                message, code = "Loom model authorization failed.", "MODEL_AUTH_FAILED"
             raise GatewayError(exc.code, code, message) from None
         except (OSError, urllib.error.URLError, json.JSONDecodeError):
-            raise GatewayError(HTTPStatus.BAD_GATEWAY, "ACCOUNT_SERVICE_UNAVAILABLE", "Loom account service is unavailable.") from None
+            raise GatewayError(
+                HTTPStatus.BAD_GATEWAY,
+                "MODEL_POLICY_UNAVAILABLE" if policy_base else "ACCOUNT_SERVICE_UNAVAILABLE",
+                f"Loom {service_name} service is unavailable.",
+            ) from None
         access = payload.get("access") if isinstance(payload, dict) else None
         if not isinstance(access, dict):
-            raise GatewayError(HTTPStatus.BAD_GATEWAY, "ACCOUNT_RESPONSE_INVALID", "Loom account service returned invalid model access data.")
+            raise GatewayError(HTTPStatus.BAD_GATEWAY, "ACCOUNT_RESPONSE_INVALID", "Loom model policy returned invalid access data.")
         return access
 
     @staticmethod
@@ -81,7 +102,8 @@ class LoomModelGateway:
         allowed = self._allowed_models(self._account_access(authorization))
         data = []
         for model in ANT_LING_MODELS:
-            if model.casefold() not in allowed:
+            access_id = _policy_model_id(model) if self.config.model_policy_base_url else model
+            if access_id.casefold() not in allowed:
                 continue
             data.append({
                 "id": model,
@@ -100,8 +122,13 @@ class LoomModelGateway:
         if normalized.casefold() not in supported:
             raise GatewayError(HTTPStatus.NOT_FOUND, "MODEL_NOT_FOUND", f"Model {normalized!r} is not a Loom built-in model.")
         allowed = self._allowed_models(self._account_access(authorization))
-        if normalized.casefold() not in allowed:
-            raise GatewayError(HTTPStatus.FORBIDDEN, "MODEL_NOT_ENTITLED", "This Loom account is not entitled to this built-in model.")
+        access_id = _policy_model_id(normalized) if self.config.model_policy_base_url else normalized
+        if access_id.casefold() not in allowed:
+            raise GatewayError(
+                HTTPStatus.FORBIDDEN,
+                "MODEL_NOT_ENTITLED",
+                "This Loom account is not allowed to use this built-in model by the current model policy.",
+            )
         if not self.config.ant_ling_api_key:
             raise GatewayError(HTTPStatus.SERVICE_UNAVAILABLE, "UPSTREAM_NOT_CONFIGURED", "Ant Ling upstream is not configured on the Loom gateway.")
 
@@ -227,6 +254,7 @@ def main(argv: list[str] | None = None) -> int:
         account_base_url=str(os.environ.get("LOOM_ACCOUNT_INTERNAL_URL") or "http://127.0.0.1:8787/v1"),
         ant_ling_base_url=str(os.environ.get("LOOM_ANT_LING_BASE_URL") or "https://api.ant-ling.com/v1"),
         ant_ling_api_key=str(os.environ.get("LOOM_ANT_LING_API_KEY") or "").strip(),
+        model_policy_base_url=str(os.environ.get("LOOM_MODEL_POLICY_INTERNAL_URL") or "").strip(),
         upstream_timeout_seconds=max(10.0, float(os.environ.get("LOOM_MODEL_UPSTREAM_TIMEOUT", "180"))),
     )
     server = GatewayServer((str(args.host), int(args.port)), LoomModelGateway(config))

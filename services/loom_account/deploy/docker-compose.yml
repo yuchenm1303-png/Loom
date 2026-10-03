@@ -2,15 +2,10 @@
 #
 # Run from this directory:  docker compose up -d --build
 #
-# The published port is bound to loopback on purpose. The service speaks plain
-# HTTP and expects a TLS-terminating reverse proxy (see the Caddyfile next to
-# this file); the desktop client refuses plain-HTTP account endpoints unless
-# they are loopback.
-#
-# The project and container names are pinned so the container has a stable DNS
-# name on its network. Compose would otherwise derive both from the directory
-# name, which breaks the `reverse_proxy loom-account:8787` upstream whenever the
-# checkout is renamed.
+# The published account port is bound to loopback on purpose. Public traffic
+# terminates at the reverse proxy. Model policy is internal-only: Admin reaches
+# it over the shared edge network and Model Gateway reaches it over this stack's
+# default network.
 
 name: loom-account
 
@@ -29,19 +24,7 @@ services:
         required: false
     environment:
       LOOM_ACCOUNT_DB: /data/accounts.db
-      # Comma-separated peers allowed to set the client address through
-      # X-Real-IP / X-Forwarded-For. Addresses or CIDR ranges. Defaults to
-      # loopback. Set it to an empty value to trust nobody; then every request
-      # is rate limited on the raw peer address, which behind a proxy means one
-      # shared bucket for everyone.
-      #
-      # If the proxy runs in Docker, its peer address is a bridge-network
-      # address (for example 172.18.0.2) rather than loopback, and it moves on
-      # restart — list the network range instead of one address.
       LOOM_ACCOUNT_TRUSTED_PROXIES: "127.0.0.1,::1"
-      # Optional token lifetimes (seconds).
-      # LOOM_ACCOUNT_ACCESS_TTL: "900"
-      # LOOM_ACCOUNT_REFRESH_TTL: "2592000"
     volumes:
       - loom-account-data:/data
     ports:
@@ -59,6 +42,43 @@ services:
     security_opt:
       - no-new-privileges:true
 
+  loom-model-policy:
+    container_name: loom-model-policy
+    build:
+      context: ../../..
+      dockerfile: services/loom_model_policy/Dockerfile
+    image: loom-model-policy:local
+    restart: unless-stopped
+    environment:
+      LOOM_ACCOUNT_INTERNAL_URL: http://loom-account:8787/v1
+      LOOM_ACCOUNT_DB_READONLY: /account-data/accounts.db
+      LOOM_MODEL_POLICY_DB: /data/model-policy.db
+    depends_on:
+      loom-account:
+        condition: service_healthy
+    volumes:
+      - loom-model-policy-data:/data
+      - loom-account-data:/account-data:ro
+    expose:
+      - "8792"
+    ports:
+      - "127.0.0.1:8792:8792"
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import sys,urllib.request; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8792/healthz', timeout=5).status == 200 else 1)"
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 5s
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - default
+      - edge
+
   loom-model-gateway:
     container_name: loom-model-gateway
     build:
@@ -71,8 +91,11 @@ services:
         required: false
     environment:
       LOOM_ACCOUNT_INTERNAL_URL: http://loom-account:8787/v1
+      LOOM_MODEL_POLICY_INTERNAL_URL: http://loom-model-policy:8792/v1
     depends_on:
       loom-account:
+        condition: service_healthy
+      loom-model-policy:
         condition: service_healthy
     ports:
       - "127.0.0.1:8791:8790"
@@ -88,22 +111,12 @@ services:
       start_period: 5s
     security_opt:
       - no-new-privileges:true
-    # If the reverse proxy already runs in Docker, attach this service to that
-    # proxy's network so it can be reached by container name. Set the network
-    # name to the one your proxy is on (`docker inspect <proxy> --format
-    # '{{range $k,$v := .NetworkSettings.Networks}}{{$k}}{{end}}'`), then
-    # uncomment both this block and the top-level `networks:` below.
-    # networks:
-    #   - proxy
 
-# The service stores its data in a single SQLite file, which supports exactly
-# one instance. Do not scale this service out until the storage adapter moves to
-# a shared transactional database; a second replica would hold a separate,
-# divergent set of accounts and sessions.
 volumes:
   loom-account-data:
+  loom-model-policy-data:
 
-# networks:
-#   proxy:
-#     external: true
-#     name: termrelay_default
+networks:
+  edge:
+    external: true
+    name: termrelay_termrelay-internal
