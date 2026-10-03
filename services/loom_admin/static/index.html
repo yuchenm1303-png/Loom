@@ -57,34 +57,100 @@
     </section>
 
     <div id="adminContent" hidden>
-      <section class="account-status-panel usage-status-panel fade loom-admin-status-strip" data-admin-page="overview" aria-live="polite">
-        <div class="account-status-line"><span>Admin</span><strong id="adminIdentity" data-state="ok">—</strong></div>
-        <div class="account-status-line"><span>Account API</span><strong id="serviceState" data-state="neutral">正在检查</strong></div>
-        <div class="account-status-line"><span>Loom Web</span><strong id="loomWebState" data-state="neutral">正在检查</strong></div>
-      </section>
-
-      <section class="usage-summary-grid fade loom-admin-kpi-grid" id="summaryGrid" data-admin-page="overview">
-        <article class="utility-card cards usage-summary-card"><span class="utility-overline">USERS</span><h3 id="kpiUsers">0</h3><p>注册用户</p></article>
-        <article class="utility-card cards usage-summary-card"><span class="utility-overline">DEVICES</span><h3 id="kpiOnlineDevices">0</h3><p>在线 Host</p></article>
-        <article class="utility-card cards usage-summary-card"><span class="utility-overline">RUNS</span><h3 id="kpiActiveRuns">0</h3><p>正在运行</p></article>
-        <article class="utility-card cards usage-summary-card"><span class="utility-overline">APPROVALS</span><h3 id="kpiApprovals">0</h3><p>等待审批</p></article>
-        <article class="utility-card cards usage-summary-card"><span class="utility-overline">TOKENS 24H</span><h3 id="kpiTokens24">0</h3><p>Agent Token</p></article>
-        <article class="utility-card cards usage-summary-card"><span class="utility-overline">TOOLS 24H</span><h3 id="kpiToolCalls24">0</h3><p>工具调用</p></article>
-        <article class="utility-card cards usage-summary-card"><span class="utility-overline">SESSIONS</span><h3 id="kpiSessions">0</h3><p>有效登录</p></article>
-        <article class="utility-card cards usage-summary-card"><span class="utility-overline">NEW 24H</span><h3 id="kpiNew">0</h3><p>新注册</p></article>
-      </section>
-
-      <section class="usage-ops-section fade loom-admin-overview-snapshot" data-admin-page="overview">
-        <div class="usage-section-head"><div><p class="kicker">OPERATIONS SNAPSHOT</p><h2>Platform summary</h2><p>只显示全局聚合状态，不在首页展开任何账号、Run、Session 或设备明细。</p></div><span>Live aggregate</span></div>
-        <div class="loom-admin-mini-kpis loom-admin-mini-kpis-3"><div><span>Runs 24H</span><strong id="overviewRuns24">0</strong></div><div><span>Failed 24H</span><strong id="overviewFailed24">0</strong></div><div><span>Known devices</span><strong id="overviewKnownDevices">0</strong></div></div>
-      </section>
-
-      <section class="usage-ops-section fade loom-admin-overview-controls" id="overview-controls" data-admin-page="overview">
-        <div class="usage-section-head"><div><p class="kicker">GLOBAL CONTROL</p><h2>Global controls</h2><p>首页只保留全局状态与已配置的 Feature Flags；详细数据进入二级页面。</p></div><button class="loom-admin-action" type="button" data-admin-route="flags">管理全部开关</button></div>
-        <div class="usage-ops-grid loom-admin-overview-grid">
-          <article class="account-card cards usage-ops-panel"><span class="utility-overline">FEATURE FLAGS</span><h3>Runtime switches</h3><div id="overviewFlags" class="loom-admin-flags-list"></div></article>
-          <article class="account-card cards usage-ops-panel"><span class="utility-overline">QUICK ACCESS</span><h3>Operations</h3><div class="loom-admin-quick-links"><button class="loom-admin-action" type="button" data-admin-route="users">用户</button><button class="loom-admin-action" type="button" data-admin-route="runs">运行</button><button class="loom-admin-action" type="button" data-admin-route="devices">设备</button><button class="loom-admin-action" type="button" data-admin-route="system">系统</button><button class="loom-admin-action" type="button" data-admin-route="audit">审计</button></div><p class="loom-admin-empty-block">全局页不再展开用户级明细。进入用户工作区后，后端只查询该账号自己的 Session、Host、Run 与 30 天用量；Flag 是否生效取决于对应功能是否消费它。</p></article>
+      <section class="account-card cards fade loom-admin-overview-hero" data-admin-page="overview" aria-live="polite">
+        <div class="loom-admin-overview-hero-main">
+          <span class="loom-admin-health-orb" id="overviewHealthMark" data-state="neutral"><i></i></span>
+          <div class="loom-admin-overview-hero-copy">
+            <span class="utility-overline">CONTROL PLANE</span>
+            <strong id="overviewHealthTitle">正在检查控制面</strong>
+            <small id="overviewHealthSubtitle">正在读取 Account API 与 Loom Web 状态</small>
+          </div>
         </div>
+        <div class="loom-admin-service-chips" aria-label="服务状态">
+          <span class="loom-admin-service-chip"><i></i><span>Account</span><b id="serviceState" data-state="neutral">Checking</b></span>
+          <span class="loom-admin-service-chip"><i></i><span>Loom Web</span><b id="loomWebState" data-state="neutral">Checking</b></span>
+          <span class="loom-admin-service-chip is-private"><i></i><span>Telemetry</span><b>Metadata only</b></span>
+        </div>
+        <div class="loom-admin-overview-admin">
+          <span>Signed in</span>
+          <strong id="adminIdentity">—</strong>
+        </div>
+      </section>
+
+      <section class="fade loom-admin-primary-metrics" id="summaryGrid" data-admin-page="overview" aria-label="核心指标">
+        <button class="loom-admin-primary-card" type="button" data-admin-route="users">
+          <span class="utility-overline">USERS</span><strong id="kpiUsers">0</strong><small>注册账号</small><i>↗</i>
+        </button>
+        <button class="loom-admin-primary-card is-host" type="button" data-admin-route="devices">
+          <span class="utility-overline">ONLINE HOSTS</span><strong id="kpiOnlineDevices">0</strong><small>当前在线设备</small><i>↗</i>
+        </button>
+        <button class="loom-admin-primary-card is-live" type="button" data-admin-route="runs">
+          <span class="utility-overline">ACTIVE RUNS</span><strong id="kpiActiveRuns">0</strong><small>正在执行的 Turn</small><i>↗</i>
+        </button>
+        <button class="loom-admin-primary-card is-attention" type="button" data-admin-route="runs">
+          <span class="utility-overline">WAITING APPROVAL</span><strong id="kpiApprovals">0</strong><small>需要人工处理</small><i>↗</i>
+        </button>
+      </section>
+
+      <section class="account-card cards fade loom-admin-overview-pulse" data-admin-page="overview">
+        <div class="loom-admin-overview-pulse-head">
+          <div><span class="utility-overline">24 HOUR PULSE</span><strong>平台活动</strong></div>
+          <small>滚动 24 小时 · 聚合元数据</small>
+        </div>
+        <div class="loom-admin-pulse-grid">
+          <div><span>Tokens</span><strong id="kpiTokens24">0</strong><small>Agent Token</small></div>
+          <div><span>Tool calls</span><strong id="kpiToolCalls24">0</strong><small>工具调用</small></div>
+          <div><span>Runs</span><strong id="overviewRuns24">0</strong><small>完成 / 活跃</small></div>
+          <div class="is-failure"><span>Failed</span><strong id="overviewFailed24">0</strong><small>失败 / 中断 / 取消</small></div>
+          <div><span>Sessions</span><strong id="kpiSessions">0</strong><small>有效登录</small></div>
+          <div><span>New users</span><strong id="kpiNew">0</strong><small>新注册</small></div>
+        </div>
+      </section>
+
+      <section class="fade loom-admin-overview-bottom" data-admin-page="overview">
+        <article class="account-card cards loom-admin-ops-card">
+          <div class="loom-admin-card-head">
+            <div><span class="utility-overline">OPERATIONS SNAPSHOT</span><h3>Agent fleet</h3></div>
+            <button class="loom-admin-text-action" type="button" data-admin-route="runs">打开监控 ↗</button>
+          </div>
+          <div class="loom-admin-ops-list">
+            <div class="loom-admin-ops-row">
+              <div><span>Host coverage</span><strong id="overviewDeviceCoverage">—</strong></div>
+              <div class="loom-admin-progress"><i id="overviewDeviceFill"></i></div>
+              <small><b id="overviewKnownDevices">0</b> known</small>
+            </div>
+            <div class="loom-admin-ops-row">
+              <div><span>Run success · 24H</span><strong id="overviewSuccessRate">—</strong></div>
+              <div class="loom-admin-progress"><i id="overviewSuccessFill"></i></div>
+              <small id="overviewFailureNote">No runs yet</small>
+            </div>
+            <div class="loom-admin-ops-row is-current">
+              <div><span>Current workload</span><strong id="overviewWorkload">Idle</strong></div>
+              <div class="loom-admin-ops-inline"><span><i class="is-live"></i><b id="overviewActiveInline">0</b> running</span><span><i class="is-warn"></i><b id="overviewApprovalInline">0</b> waiting</span></div>
+            </div>
+          </div>
+          <div class="loom-admin-privacy-note"><i></i><span>这里只显示运行元数据；Prompt、回复、文件与屏幕内容仍保留在用户本地。</span></div>
+        </article>
+
+        <article class="account-card cards loom-admin-control-card" id="overview-controls">
+          <div class="loom-admin-card-head">
+            <div><span class="utility-overline">GLOBAL CONTROL</span><h3>控制与快捷入口</h3></div>
+            <button class="loom-admin-text-action" type="button" data-admin-route="flags">全部开关 ↗</button>
+          </div>
+          <div class="loom-admin-control-section">
+            <div class="loom-admin-control-label"><span>Feature flags</span><small>仅展示已配置项</small></div>
+            <div id="overviewFlags" class="loom-admin-flags-list loom-admin-overview-flags"></div>
+          </div>
+          <div class="loom-admin-control-section is-shortcuts">
+            <div class="loom-admin-control-label"><span>Quick access</span><small>进入二级管理页</small></div>
+            <div class="loom-admin-quick-grid">
+              <button type="button" data-admin-route="users"><span>用户</span><small>账号与权限</small><i>↗</i></button>
+              <button type="button" data-admin-route="runs"><span>监控</span><small>Run 与异常</small><i>↗</i></button>
+              <button type="button" data-admin-route="devices"><span>设备</span><small>Host 状态</small><i>↗</i></button>
+              <button type="button" data-admin-route="system"><span>系统</span><small>服务健康</small><i>↗</i></button>
+            </div>
+          </div>
+        </article>
       </section>
 
       <section class="usage-accounts-section fade" id="users" data-admin-page="users" hidden>
