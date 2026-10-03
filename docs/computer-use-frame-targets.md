@@ -8,7 +8,7 @@ scroll-region dimensions should be applied a second time.
 The single-loop action schema exposes `frame_id` and `control_id`. A control
 target requires the exact current frame ID, an enabled fully contained rectangle,
 and no conflicting point. It resolves to a physical pointer action, not UIA
-Invoke, retaining the Windows foreground/geometry/occlusion checks. A stale
+Invoke, retaining the Windows foreground/geometry checks. A stale
 explicit frame is rejected before input. Legacy point-only callers remain
 compatible and still use the session's latest observation and existing guards.
 
@@ -27,3 +27,13 @@ targets, conflicting targets, physical-coordinate round trips at 96/120/144 DPI
 and negative desktop origins. These are automated regressions, not a claim of
 full real-desktop acceptance. Re-test the browser counter on a fresh screenshot,
 including scrolling, window movement and occlusion, before full acceptance.
+
+## Visible popups (October 2)
+
+Physical clicks no longer require WindowFromPoint/GA_ROOT to equal the
+screenshot HWND. A visible menu or popup may have a different root HWND;
+the model owns target selection. There are no application-specific exceptions.
+Clicks reject an actual foreground or captured window-rectangle change before
+input. An overlay appearing without either change is not detected by these
+freshness checks; it can receive the click. Pixel changes remain unverified
+application outcomes. This does not resolve model grounding/recovery mistakes.

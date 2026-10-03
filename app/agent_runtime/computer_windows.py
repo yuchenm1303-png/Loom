@@ -1094,23 +1094,22 @@ class PyWinAutoWindowsOperator:
         import win32gui
 
         screen_point = frame.to_screen(point)
-        # A screenshot is only authority over the window it captured.  A modal,
-        # toast, or failed window switch can cover the same coordinates between
-        # observation and execution; clicking through would act on an application
-        # the model never saw.  Fail closed and make the caller observe again.
+        # The model selects the point, including visible menus/popups with their
+        # own HWND. Hit-window identity is not screenshot freshness. Only reject
+        # an actual foreground/geometry change since this frame was captured.
         if frame.window_id:
             expected = self._parse_window_id(frame.window_id)
-            actual = int(win32gui.WindowFromPoint(screen_point) or 0)
-            get_ancestor = getattr(win32gui, "GetAncestor", None)
-            ga_root = int(getattr(win32con, "GA_ROOT", 2))
-            if callable(get_ancestor):
-                expected = int(get_ancestor(expected, ga_root) or expected)
-                actual = int(get_ancestor(actual, ga_root) or actual)
-            if actual and actual != expected:
+            actual = int(win32gui.GetForegroundWindow() or 0)
+            if actual != expected:
                 raise RuntimeError(
-                    "computer target changed after the screenshot; refresh computer_observe before clicking "
+                    "computer foreground changed after the screenshot; capture a fresh screenshot before clicking "
                     f"(expected {self._window_id(expected)}, found {self._window_id(actual)})"
                 )
+            rect = tuple(win32gui.GetWindowRect(expected))
+            captured = (frame.origin_x, frame.origin_y,
+                        frame.origin_x + frame.width, frame.origin_y + frame.height)
+            if rect != captured:
+                raise RuntimeError("computer frame geometry changed after the screenshot; capture a fresh screenshot before clicking")
         win32api.SetCursorPos(screen_point)
         if right:
             down = win32con.MOUSEEVENTF_RIGHTDOWN

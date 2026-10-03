@@ -240,7 +240,8 @@ def test_failed_hidden_window_activation_is_rolled_back(monkeypatch):
     assert fake.calls[-1] == "ShowWindow(0)"
 
 
-def test_coordinate_click_refuses_a_window_that_covered_the_screenshot(monkeypatch):
+@pytest.mark.parametrize("button", ["left", "right", "double"])
+def test_coordinate_click_allows_visible_popup_with_different_hwnd(monkeypatch, button):
     import sys
     from types import SimpleNamespace
 
@@ -253,12 +254,14 @@ def test_coordinate_click_refuses_a_window_that_covered_the_screenshot(monkeypat
     monkeypatch.setitem(
         sys.modules,
         "win32gui",
-        SimpleNamespace(WindowFromPoint=lambda _point: 0x20, GetAncestor=lambda hwnd, _kind: hwnd),
+        SimpleNamespace(WindowFromPoint=lambda _point: 0x20, GetAncestor=lambda hwnd, _kind: hwnd,
+                        GetForegroundWindow=lambda: 0x10, GetWindowRect=lambda hwnd: (0, 0, 100, 100)),
     )
     monkeypatch.setitem(
         sys.modules,
         "win32con",
-        SimpleNamespace(GA_ROOT=2, MOUSEEVENTF_LEFTDOWN=2, MOUSEEVENTF_LEFTUP=4),
+        SimpleNamespace(GA_ROOT=2, MOUSEEVENTF_LEFTDOWN=2, MOUSEEVENTF_LEFTUP=4,
+                        MOUSEEVENTF_RIGHTDOWN=8, MOUSEEVENTF_RIGHTUP=16),
     )
     frame = ComputerFrame(
         frame_id="frame",
@@ -269,8 +272,25 @@ def test_coordinate_click_refuses_a_window_that_covered_the_screenshot(monkeypat
         window_id="0x10",
     )
 
-    with pytest.raises(RuntimeError, match="target changed after the screenshot"):
-        _operator()._click_point(frame, ComputerPoint(0.5, 0.5))
+    _operator()._click_point(frame, ComputerPoint(0.5, 0.5), double=button == "double", right=button == "right")
+    assert cursor_moves == [(50, 50)]
+
+
+@pytest.mark.parametrize("foreground,rect,reason", [
+    (0x20, (0, 0, 100, 100), "foreground changed"),
+    (0x10, (10, 0, 110, 100), "geometry changed"),
+])
+def test_stale_click_frame_is_refused_before_mouse_input(monkeypatch, foreground, rect, reason):
+    import sys
+    from types import SimpleNamespace
+    cursor_moves = []
+    monkeypatch.setitem(sys.modules, "win32api", SimpleNamespace(SetCursorPos=cursor_moves.append))
+    monkeypatch.setitem(sys.modules, "win32con", SimpleNamespace())
+    monkeypatch.setitem(sys.modules, "win32gui", SimpleNamespace(
+        GetForegroundWindow=lambda: foreground, GetWindowRect=lambda hwnd: rect))
+    frame = ComputerFrame("frame", 0, 0, 100, 100, window_id="0x10")
+    with pytest.raises(RuntimeError, match=reason):
+        _operator()._click_point(frame, ComputerPoint(.5, .5))
 
     assert cursor_moves == []
 
