@@ -4,7 +4,7 @@ import electronUpdater, {
   type ProgressInfo,
   type UpdateInfo,
 } from "electron-updater";
-import { broadcastHostEvent, handleHostChannel, isHostProcess } from "./hostRuntime.js";
+import { broadcastHostEvent, handleHostChannel, isHostProcess } from "./hostProcess.js";
 
 export type SoftwareUpdatePhase =
   | "disabled"

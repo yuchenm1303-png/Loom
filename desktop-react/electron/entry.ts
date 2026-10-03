@@ -1,7 +1,7 @@
 import { app } from "electron";
-import { isHostProcess } from "./hostRuntime.js";
+import { isHostProcess } from "./hostProcess.js";
 
-// hostRuntime selects a distinct UI data folder before acquiring either lock.
+// hostProcess selects a distinct UI data folder before acquiring either lock.
 // A second desktop launch raises the UI; a second Host launch simply exits.
 if (!app.requestSingleInstanceLock()) {
   app.quit();

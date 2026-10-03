@@ -24,7 +24,7 @@ import {
 import { webRelayAuthPayload } from "./webRelayAuth.js";
 import { hostAccount } from "./hostAccount.js";
 import { createSearchRelay } from "./searchRelay.js";
-import { broadcastHostEvent, handleHostChannel, isHostProcess, prepareDesktopHost, startHostTransport } from "./hostRuntime.js";
+import { broadcastHostEvent, handleHostChannel, isHostProcess, prepareDesktopHost, startHostTransport } from "./hostProcess.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);

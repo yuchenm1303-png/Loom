@@ -1,7 +1,7 @@
 import { app, dialog, Menu, nativeImage, shell, Tray } from "electron";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { HOST_ARG, isHostProcess, launchDesktop } from "./hostRuntime.js";
+import { HOST_ARG, isHostProcess, launchDesktop } from "./hostProcess.js";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import WebSocket from "ws";
 import { hostAccount } from "./hostAccount.js";

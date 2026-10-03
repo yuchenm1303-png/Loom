@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import crypto from "node:crypto";
 import { hostAccount } from "./hostAccount.js";
-import { handleHostChannel } from "./hostRuntime.js";
+import { handleHostChannel } from "./hostProcess.js";
 
 const DEFAULT_ACCOUNT_URL = "https://account.smirel.com/v1";
 const DEVICE_ID_FILE = "loom-web-device-id";

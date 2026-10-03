@@ -46,7 +46,7 @@ async function runClient() {
   await writeFile(script, `
     import { createRequire } from "node:module";
     const { app } = createRequire(${JSON.stringify(path.join(root, "package.json"))})("electron");
-    const { callHost } = await import(${JSON.stringify(pathToFileURL(path.join(root, "dist-electron/hostRuntime.js")).href)});
+    const { callHost } = await import(${JSON.stringify(pathToFileURL(path.join(root, "dist-electron/hostProcess.js")).href)});
     app.whenReady().then(async () => { try {
       const state = await callHost("loom:update-status");
       if (!state.currentVersion) throw new Error("Missing Host version");
