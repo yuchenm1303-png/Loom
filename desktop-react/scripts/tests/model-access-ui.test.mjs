@@ -31,3 +31,11 @@ test("BYOK is discoverable without pretending to bypass admin policy", () => {
   assert.match(modelPanel, /Use own API key/);
   assert.match(modelPanel, /setBaseUrl\(candidate\.adapter === "openai" \? "" : candidate\.baseUrl\)/);
 });
+
+
+test("model manager actions never nest forms inside the chat composer", () => {
+  assert.doesNotMatch(modelPanel, /<form\b/);
+  assert.match(modelPanel, /type="button" className="mp-primary"[\s\S]*onClick=\{\(\) => void submitAdd\(\)\}/);
+  assert.match(modelPanel, /type="button"[\s\S]*onClick=\{\(\) => void configureProvider\(credentialTarget\.provider\)\}/);
+  assert.match(modelPanel, /event\.stopPropagation\(\)/);
+});

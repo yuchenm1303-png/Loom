@@ -762,11 +762,14 @@ export function ModelPanel({
 
   if (view === "add") {
     return (
-      <form
+      <div
         className="mp mp-form"
         data-direction={direction}
-        onSubmit={(event) => {
+        role="form"
+        onKeyDown={(event) => {
+          if (event.key !== "Enter" || event.shiftKey || !(event.target instanceof HTMLInputElement)) return;
           event.preventDefault();
+          event.stopPropagation();
           void submitAdd();
         }}
       >
@@ -826,23 +829,26 @@ export function ModelPanel({
         </div>
         <div className="mp-foot mp-form-foot">
           <button type="button" className="mp-foot-action" onClick={() => navigate("profiles", "back")}>Cancel</button>
-          <button type="submit" className="mp-primary" disabled={locked || !accountAuthenticated}>
+          <button type="button" className="mp-primary" disabled={locked || !accountAuthenticated} onClick={() => void submitAdd()}>
             {busy ? <LoaderCircle size={14} strokeWidth={2} className="mp-spin" /> : null}
             Save & use
           </button>
         </div>
-      </form>
+      </div>
     );
   }
 
   if (view === "custom") {
     const connectionId = snapshot?.current ? profileGroupId(snapshot.current) : "current";
     return (
-      <form
+      <div
         className="mp mp-form"
         data-direction={direction}
-        onSubmit={(event) => {
+        role="form"
+        onKeyDown={(event) => {
+          if (event.key !== "Enter" || event.shiftKey || !(event.target instanceof HTMLInputElement)) return;
           event.preventDefault();
+          event.stopPropagation();
           void submitCustom();
         }}
       >
@@ -887,12 +893,12 @@ export function ModelPanel({
         </div>
         <div className="mp-foot mp-form-foot">
           <button type="button" className="mp-foot-action" onClick={() => navigate("profiles", "back")}>Cancel</button>
-          <button type="submit" className="mp-primary" disabled={locked || !accountAuthenticated}>
+          <button type="button" className="mp-primary" disabled={locked || !accountAuthenticated} onClick={() => void submitCustom()}>
             {busy ? <LoaderCircle size={14} strokeWidth={2} className="mp-spin" /> : null}
             Switch model
           </button>
         </div>
-      </form>
+      </div>
     );
   }
 
@@ -954,10 +960,13 @@ export function ModelPanel({
             </div>
           ) : null}
           {credentialTarget ? (
-            <form
+            <div
               className="mp-connect"
-              onSubmit={(event) => {
+              role="form"
+              onKeyDown={(event) => {
+                if (event.key !== "Enter" || event.shiftKey || !(event.target instanceof HTMLInputElement)) return;
                 event.preventDefault();
+                event.stopPropagation();
                 void configureProvider(credentialTarget.provider);
               }}
             >
@@ -985,12 +994,12 @@ export function ModelPanel({
                   autoFocus
                   disabled={!accountAuthenticated}
                 />
-                <button type="submit" disabled={!accountAuthenticated || !providerKey.trim() || providerConfiguring}>
+                <button type="button" disabled={!accountAuthenticated || !providerKey.trim() || providerConfiguring} onClick={() => void configureProvider(credentialTarget.provider)}>
                   {providerConfiguring ? <LoaderCircle size={14} strokeWidth={2} className="mp-spin" /> : null}
                   Connect
                 </button>
               </div>
-            </form>
+            </div>
           ) : null}
 
           {hasBuiltinModels ? (
