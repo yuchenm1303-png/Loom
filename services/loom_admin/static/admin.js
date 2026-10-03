@@ -9,7 +9,7 @@
     usage: {}, tools: {}, models: {}, audit: [], flags: [],
     health: { admin:false, account:false, loom:false },
     activityRange: '24h', usageRange: '24h', selectedUser: null, selectedModelAccess: null,
-    page: 'overview', refreshTimer: null,
+    page: 'overview', selectedUserOps: null, loaded: new Set(), refreshTimer: null,
   };
 
   const escapeHtml = (value) => String(value ?? '').replace(/[&<>'"]/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[ch]));
@@ -70,7 +70,10 @@
     $('generatedAt').textContent=fmtTime(a.generated_at||o.generated_at); $('adminIdentity').textContent=`${state.me.email} · ${state.me.role}`;
     $('serviceState').textContent=state.health.account?'Healthy':'Unavailable'; $('serviceState').dataset.state=state.health.account?'ok':'bad';
     $('loomWebState').textContent=state.health.loom?'Healthy':'Unavailable'; $('loomWebState').dataset.state=state.health.loom?'ok':'bad';
-    renderActivity();renderOverviewControls();
+    if($('overviewRuns24')) $('overviewRuns24').textContent=fmtNumber(a.runs_24h);
+    if($('overviewFailed24')) $('overviewFailed24').textContent=fmtNumber(a.failed_runs_24h);
+    if($('overviewKnownDevices')) $('overviewKnownDevices').textContent=fmtNumber(a.known_devices);
+    renderOverviewControls();
   }
   function renderOverviewControls(){
     const root=$('overviewFlags'); if(!root)return;
@@ -124,9 +127,9 @@
   }
   function renderUsage(){
     const summary=state.usage?.ranges?.[state.usageRange]||{};$('usageTokens').textContent=fmtCompact(summary.total_tokens);$('usageRuns').textContent=fmtNumber(summary.runs);$('usageInput').textContent=fmtCompact(summary.input_tokens);$('usageOutput').textContent=fmtCompact(summary.output_tokens);$('usageDuration').textContent=fmtDuration(summary.avg_duration);
-    const agg=aggregateRuns(state.usageRange),maxModel=Math.max(1,...agg.models.map(x=>x.total_tokens));
-    $('modelsList').innerHTML=agg.models.length?agg.models.slice(0,12).map(m=>`<div class="loom-admin-metric-row"><div><strong>${escapeHtml(m.model)}</strong><small>${escapeHtml(m.provider)} · ${m.runs} runs</small></div><div class="loom-admin-metric-value"><span>${fmtCompact(m.total_tokens)}</span><i style="--metric:${Math.max(4,(m.total_tokens/maxModel)*100)}%"></i></div></div>`).join(''):'<p class="loom-admin-empty-block">当前范围暂无模型用量。</p>';
-    const maxUser=Math.max(1,...agg.users.map(x=>x.total_tokens));$('usageUsersList').innerHTML=agg.users.length?agg.users.slice(0,12).map(u=>`<div class="loom-admin-metric-row"><div><strong>${escapeHtml(u.email)}</strong><small>${u.runs} runs</small></div><div class="loom-admin-metric-value"><span>${fmtCompact(u.total_tokens)}</span><i style="--metric:${Math.max(4,(u.total_tokens/maxUser)*100)}%"></i></div></div>`).join(''):'<p class="loom-admin-empty-block">当前范围暂无用户用量。</p>';
+    const models=Array.isArray(state.usage?.models)?state.usage.models:[],users=Array.isArray(state.usage?.users)?state.usage.users:[],maxModel=Math.max(1,...models.map(x=>Number(x.total_tokens||0)));
+    $('modelsList').innerHTML=models.length?models.slice(0,12).map(m=>`<div class="loom-admin-metric-row"><div><strong>${escapeHtml(m.model||'unknown')}</strong><small>${escapeHtml(m.provider||'local')} · ${fmtNumber(m.runs)} runs</small></div><div class="loom-admin-metric-value"><span>${fmtCompact(m.total_tokens)}</span><i style="--metric:${Math.max(4,(Number(m.total_tokens||0)/maxModel)*100)}%"></i></div></div>`).join(''):'<p class="loom-admin-empty-block">当前范围暂无模型用量。</p>';
+    const maxUser=Math.max(1,...users.map(x=>Number(x.total_tokens||0)));$('usageUsersList').innerHTML=users.length?users.slice(0,12).map(u=>`<div class="loom-admin-metric-row"><div><strong>${escapeHtml(u.email)}</strong><small>${fmtNumber(u.runs)} runs</small></div><div class="loom-admin-metric-value"><span>${fmtCompact(u.total_tokens)}</span><i style="--metric:${Math.max(4,(Number(u.total_tokens||0)/maxUser)*100)}%"></i></div></div>`).join(''):'<p class="loom-admin-empty-block">当前范围暂无用户用量。</p>';
     const daily=Array.isArray(state.usage?.daily)?state.usage.daily:[],max=Math.max(1,...daily.map(x=>Number(x.total_tokens||0)));$('usageDailyChart').innerHTML=daily.length?daily.map(d=>`<div title="${escapeHtml(d.day)} · ${fmtNumber(d.total_tokens)} tokens"><i style="height:${Math.max(4,(Number(d.total_tokens||0)/max)*100)}%"></i><span>${escapeHtml(String(d.day||'').slice(5))}</span></div>`).join(''):'<p class="loom-admin-empty-block">暂无趋势数据。</p>';
   }
   function renderTools(){
@@ -137,11 +140,9 @@
     const now=Math.floor(Date.now()/1000);$('sessionsHint').textContent=`${state.sessions.length} sessions`;$('sessionsBody').innerHTML=state.sessions.length?state.sessions.map(s=>{const live=!s.revoked_at&&Number(s.refresh_expires_at)>now;return `<tr><td>${escapeHtml(s.email)}</td><td><code title="${escapeHtml(s.id)}">${escapeHtml(shortId(s.id))}</code></td><td>${fmtTime(s.created_at)}</td><td>${fmtTime(s.last_used_at)}</td><td>${fmtTime(s.refresh_expires_at)}</td><td><span class="loom-admin-badge ${live?'is-ok':'is-bad'}">${live?'active':(s.revoked_at?'revoked':'expired')}</span></td><td>${live?`<button class="loom-admin-action is-danger" data-revoke-session="${escapeHtml(s.id)}">Revoke</button>`:'—'}</td></tr>`}).join(''):'<tr><td colspan="7" class="loom-admin-empty">暂无会话</td></tr>';
   }
   function renderUserWorkspace(){
-    const u=state.selectedUser;if(!u)return;const uid=Number(u.id),now=Math.floor(Date.now()/1000);
-    const devices=state.devices.filter(d=>Number(d.user_id)===uid||d.email===u.email);
-    const runs=state.runs.filter(r=>Number(r.user_id)===uid||r.email===u.email);
-    const sessions=state.sessions.filter(x=>Number(x.user_id)===uid||x.email===u.email);
-    $('userKpiDevices').textContent=fmtNumber(devices.length);$('userKpiRuns').textContent=fmtNumber(runs.filter(activeRun).length);$('userKpiTokens').textContent=fmtCompact(runs.reduce((n,r)=>n+Number(r.total_tokens||0),0));$('userKpiTools').textContent=fmtNumber(runs.reduce((n,r)=>n+Number(r.tool_count||0),0));$('userKpiSessions').textContent=fmtNumber(sessions.filter(x=>!x.revoked_at&&Number(x.refresh_expires_at)>now).length);
+    const u=state.selectedUser,ops=state.selectedUserOps||{};if(!u)return;const now=Math.floor(Date.now()/1000);
+    const devices=Array.isArray(ops.devices)?ops.devices:[],runs=Array.isArray(ops.runs)?ops.runs:[],sessions=Array.isArray(u.sessions)?u.sessions:[],summary=ops.summary||{};
+    $('userKpiDevices').textContent=fmtNumber(summary.known_devices??devices.length);$('userKpiRuns').textContent=fmtNumber(summary.active_runs??runs.filter(activeRun).length);$('userKpiTokens').textContent=fmtCompact(summary.tokens_30d);$('userKpiTools').textContent=fmtNumber(summary.tool_calls_30d);$('userKpiSessions').textContent=fmtNumber(sessions.filter(x=>!x.revoked_at&&Number(x.refresh_expires_at)>now).length);
     $('userDevicesBody').innerHTML=devices.length?devices.map(d=>`<tr><td><strong>${escapeHtml(d.name||'Loom Host')}</strong><small class="loom-admin-subline">${escapeHtml(shortId(d.device_id,7,4))}</small></td><td>${escapeHtml(d.platform||'—')}</td><td>${escapeHtml(d.app_version||'—')}</td><td>${escapeHtml(d.host_version||'—')}</td><td>${fmtTime(d.last_seen_at)}</td><td><span class="loom-admin-badge ${d.online?'is-ok':'is-bad'}">${d.online?'online':'offline'}</span></td></tr>`).join(''):'<tr><td colspan="6" class="loom-admin-empty">这个账号还没有 Host telemetry。</td></tr>';
     $('userRunsBody').innerHTML=runs.length?runs.map(r=>{const end=Number(r.completed_at||now),duration=Math.max(0,end-Number(r.started_at||end)),model=[r.provider,r.model].filter(Boolean).join(' · ')||'—';return `<tr><td><strong>${escapeHtml(model)}</strong><small class="loom-admin-subline">${escapeHtml(shortId(r.turn_id,7,4))}</small></td><td>${runStatusBadge(r.status)}</td><td>${fmtTime(r.started_at)}</td><td>${fmtDuration(duration)}</td><td>${fmtNumber(r.tool_count)}</td><td>${fmtCompact(r.total_tokens)}</td><td>${activeRun(r)?`<button class="loom-admin-action is-danger" data-interrupt-run="${r.id}">Interrupt</button>`:'—'}</td></tr>`}).join(''):'<tr><td colspan="7" class="loom-admin-empty">这个账号暂无 Agent Run。</td></tr>';
     $('userSessionsBody').innerHTML=sessions.length?sessions.map(x=>{const live=!x.revoked_at&&Number(x.refresh_expires_at)>now;return `<tr><td><code>${escapeHtml(shortId(x.id))}</code></td><td>${fmtTime(x.created_at)}</td><td>${fmtTime(x.last_used_at)}</td><td>${fmtTime(x.refresh_expires_at)}</td><td><span class="loom-admin-badge ${live?'is-ok':'is-bad'}">${live?'active':(x.revoked_at?'revoked':'expired')}</span></td><td>${live?`<button class="loom-admin-action is-danger" data-revoke-session="${escapeHtml(x.id)}">Revoke</button>`:'—'}</td></tr>`}).join(''):'<tr><td colspan="6" class="loom-admin-empty">这个账号暂无 Session。</td></tr>';
@@ -161,39 +162,49 @@
   }
 
   async function loadHealth(){const [admin,account,loom]=await Promise.all([probe('/healthz'),probe('/api/healthz'),probe('/ops/loom-healthz')]);state.health={admin,account,loom};}
-  async function loadAll(){
-    setHeader(true,'Loading');
-    const [overview,agent,users,sessions,system,devices,runs,usage,tools,models,audit,flags]=await Promise.all([
-      request('/admin/overview'),request('/admin/agent-overview'),request('/admin/users'),request('/admin/sessions'),request('/admin/system'),request('/admin/devices'),request('/admin/runs'),request('/admin/usage'),request('/admin/tools'),request('/admin/models'),request('/admin/audit'),request('/admin/feature-flags'),loadHealth()
-    ]);
-    state.overview=overview;state.agent=agent;state.users=users.users||[];state.sessions=sessions.sessions||[];state.system=system;state.devices=devices.devices||[];state.runs=runs.runs||[];state.usage=usage;state.tools=tools;state.models=models;state.audit=audit.events||[];state.flags=flags.flags||[];
-    renderOverview();renderUsers($('userSearch').value);renderDevices();renderRuns($('runSearch').value);renderUsage();renderTools();renderSessions();renderFlags();renderAudit($('auditSearch').value);renderSystem();if(state.selectedUser)renderUserWorkspace();
-    const ok=state.health.admin&&state.health.account;setHeader(ok,ok?'Operational':'Degraded');setAuthenticated(true);startAutoRefresh();applyRoute();
+  async function loadOverview(force=false){
+    if(!force&&state.loaded.has('overview'))return;setHeader(true,'Loading');
+    const [overview,agent,flags]=await Promise.all([request('/admin/overview'),request('/admin/agent-overview'),request('/admin/feature-flags'),loadHealth()]);
+    state.overview=overview;state.agent=agent;state.flags=flags.flags||[];state.loaded.add('overview');renderOverview();
+    const ok=state.health.admin&&state.health.account;setHeader(ok,ok?'Operational':'Degraded');
   }
-  async function loadAgentOps(){
-    if(!state.me)return;
-    try{const [agent,devices,runs,usage,tools,models]=await Promise.all([request('/admin/agent-overview'),request('/admin/devices'),request('/admin/runs'),request('/admin/usage'),request('/admin/tools'),request('/admin/models')]);state.agent=agent;state.devices=devices.devices||[];state.runs=runs.runs||[];state.usage=usage;state.tools=tools;state.models=models;renderOverview();renderDevices();renderRuns($('runSearch').value);renderUsage();renderTools();renderSystem();if(state.selectedUser)renderUserWorkspace();}catch(err){if(err?.status===401||err?.status===403)showLoadError(err);}
+  async function loadPageData(page,{force=false}={}){
+    if(page==='overview')return loadOverview(force);if(page==='user')return;if(!force&&state.loaded.has(page))return;
+    if(page==='users'){const p=await request('/admin/users');state.users=p.users||[];renderUsers($('userSearch').value)}
+    else if(page==='devices'){const p=await request('/admin/devices');state.devices=p.devices||[];renderDevices()}
+    else if(page==='runs'){const p=await request('/admin/runs');state.runs=p.runs||[];renderRuns($('runSearch').value)}
+    else if(page==='usage'){state.usage=await request('/admin/usage');renderUsage()}
+    else if(page==='tools'){state.tools=await request('/admin/tools');renderTools()}
+    else if(page==='sessions'){const p=await request('/admin/sessions');state.sessions=p.sessions||[];renderSessions()}
+    else if(page==='flags'){const p=await request('/admin/feature-flags');state.flags=p.flags||[];renderFlags();renderOverviewControls()}
+    else if(page==='audit'){const p=await request('/admin/audit');state.audit=p.events||[];renderAudit($('auditSearch').value)}
+    else if(page==='system'){const [system,agent]=await Promise.all([request('/admin/system'),request('/admin/agent-overview'),loadHealth()]);state.system=system;state.agent=agent;renderSystem()}
+    state.loaded.add(page);
   }
-  function startAutoRefresh(){if(state.refreshTimer)return;state.refreshTimer=setInterval(()=>void loadAgentOps(),10000);}
-  async function mutate(path,body={}){await request(path,{method:'POST',body:JSON.stringify(body)});await loadAll();}
+  async function refreshSelectedUserOps(){if(!state.selectedUser)return;state.selectedUserOps=await request(`/admin/users/${state.selectedUser.id}/agent-ops`);renderUserWorkspace()}
+  async function refreshCurrentPage(full=false){
+    if(!state.me)return;if(state.page==='user'&&state.selectedUser){if(full)await openUserDetail(state.selectedUser.id,{navigate:false});else await refreshSelectedUserOps();return}
+    await loadPageData(state.page,{force:true});
+  }
+  function startAutoRefresh(){if(state.refreshTimer)return;state.refreshTimer=setInterval(()=>void refreshCurrentPage(false).catch(err=>{if(err?.status===401||err?.status===403)showLoadError(err)}),10000)}
+  async function mutate(path,body={}){await request(path,{method:'POST',body:JSON.stringify(body)});state.loaded.clear();await loadOverview(true);if(state.page==='user'&&state.selectedUser)await openUserDetail(state.selectedUser.id,{navigate:false});else if(state.page!=='overview')await loadPageData(state.page,{force:true})}
   function modelCatalog(){const seen=new Set(),out=[];const add=x=>{const v=String(x||'').trim();if(v&&!seen.has(v.toLowerCase())){seen.add(v.toLowerCase());out.push(v)}};(state.models?.managed_models||[]).forEach(add);(state.models?.observed||[]).forEach(x=>add(x.model));(state.selectedModelAccess?.models||[]).forEach(add);return out;}
   async function openUserDetail(id,{navigate=true}={}){
-    const [userPayload,accessPayload]=await Promise.all([request(`/admin/users/${id}`),request(`/admin/users/${id}/model-access`)]);const u=userPayload.user,access=accessPayload.access||{enabled:true,models:[]};state.selectedUser=u;state.selectedModelAccess=access;$('detailTitle').textContent=u.email;const enabled=new Set((access.models||[]).map(String));const rows=modelCatalog().map(model=>`<label class="loom-admin-model-toggle"><input type="checkbox" data-model-access-id="${escapeHtml(model)}" ${enabled.has(model)?'checked':''}><span>${escapeHtml(model)}</span></label>`).join('');
+    const [userPayload,accessPayload,opsPayload,modelsPayload]=await Promise.all([request(`/admin/users/${id}`),request(`/admin/users/${id}/model-access`),request(`/admin/users/${id}/agent-ops`),request('/admin/models')]);const u=userPayload.user,access=accessPayload.access||{enabled:true,models:[]};state.selectedUser=u;state.selectedUserOps=opsPayload;state.selectedModelAccess=access;state.models=modelsPayload||{};$('detailTitle').textContent=u.email;const enabled=new Set((access.models||[]).map(String));const rows=modelCatalog().map(model=>`<label class="loom-admin-model-toggle"><input type="checkbox" data-model-access-id="${escapeHtml(model)}" ${enabled.has(model)?'checked':''}><span>${escapeHtml(model)}</span></label>`).join('');
     const verified=Boolean(u.email_verified??u.verified);
     $('userDetailBody').innerHTML=`<div><span>Role</span><strong>${escapeHtml(u.role)}</strong></div><div><span>Status</span><strong>${escapeHtml(u.status)}</strong></div><div><span>Verified</span><strong>${verified?'Verified':'Unverified'}</strong></div><div><span>Active sessions</span><strong>${u.active_sessions}</strong></div><div><span>Created</span><strong>${fmtTime(u.created_at)}</strong></div><div><span>Last active</span><strong>${fmtTime(u.last_seen_at)}</strong></div><section class="loom-admin-model-access"><div class="loom-admin-model-access-head"><span>Built-in model access</span><label><input id="modelAccessEnabled" type="checkbox" ${access.enabled!==false?'checked':''}> Enabled</label></div><small>${access.source==='override'?'Per-user override':'Using Loom default policy'}</small><div class="loom-admin-model-grid">${rows||'<p class="loom-admin-empty-block">No managed model catalog.</p>'}</div><button id="saveModelAccessButton" class="loom-admin-action" type="button">Save model access</button></section>`;
-    $('detailStatusButton').textContent=u.status==='active'?'Disable':'Enable';$('detailStatusButton').disabled=Number(u.id)===Number(state.me.id)&&u.status==='active';renderUserWorkspace();
+    $('detailStatusButton').textContent=u.status==='active'?'Disable':'Enable';$('detailStatusButton').disabled=Number(u.id)===Number(state.me.id)&&u.status==='active';renderUserWorkspace();state.loaded.add('user');
     if(navigate)location.hash=`user/${u.id}`;else showPage('user');
   }
   async function saveFlag(key,enabled,value){const result=await request('/admin/feature-flags',{method:'POST',body:JSON.stringify({key,enabled,value})});const next=result.flag;const i=state.flags.findIndex(f=>f.key===next.key);if(i>=0)state.flags[i]=next;else state.flags.push(next);state.flags.sort((a,b)=>a.key.localeCompare(b.key));renderFlags();renderOverviewControls();}
 
-  $('loginForm').addEventListener('submit',async e=>{e.preventDefault();$('loginError').textContent='';const b=e.currentTarget.querySelector('button');b.disabled=true;try{await login($('loginEmail').value.trim(),$('loginPassword').value);$('loginPassword').value='';await loadAll()}catch(err){$('loginError').textContent=err.code==='ADMIN_REQUIRED'?'这个 Loom 账号没有管理员权限。':(err.message||'登录失败');setHeader(false,'Access denied')}finally{b.disabled=false}});
+  $('loginForm').addEventListener('submit',async e=>{e.preventDefault();$('loginError').textContent='';const b=e.currentTarget.querySelector('button');b.disabled=true;try{await login($('loginEmail').value.trim(),$('loginPassword').value);$('loginPassword').value='';setAuthenticated(true);await loadOverview(true);startAutoRefresh();await applyRoute()}catch(err){$('loginError').textContent=err.code==='ADMIN_REQUIRED'?'这个 Loom 账号没有管理员权限。':(err.message||'登录失败');setHeader(false,'Access denied')}finally{b.disabled=false}});
   $('logoutButton').addEventListener('click',async()=>{const refresh=state.refresh;if(refresh){try{await fetch(API+'/auth/logout',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({refresh_token:refresh}),cache:'no-store'})}catch(_){}}clearTokens();setAuthenticated(false);setHeader(false,'Signed out')});
-  $('refreshButton').addEventListener('click',()=>loadAll().catch(showLoadError));$('userSearch').addEventListener('input',e=>renderUsers(e.target.value));$('runSearch').addEventListener('input',e=>renderRuns(e.target.value));$('auditSearch').addEventListener('input',e=>renderAudit(e.target.value));
-  $('activityRangeControl').addEventListener('click',e=>{const b=e.target.closest('[data-range]');if(!b)return;state.activityRange=b.dataset.range;document.querySelectorAll('#activityRangeControl [data-range]').forEach(x=>x.setAttribute('aria-pressed',x===b?'true':'false'));renderActivity()});
+  $('refreshButton').addEventListener('click',()=>void refreshCurrentPage(true).catch(showLoadError));$('userSearch').addEventListener('input',e=>renderUsers(e.target.value));$('runSearch').addEventListener('input',e=>renderRuns(e.target.value));$('auditSearch').addEventListener('input',e=>renderAudit(e.target.value));
   $('usageRangeControl').addEventListener('click',e=>{const b=e.target.closest('[data-range]');if(!b)return;state.usageRange=b.dataset.range;document.querySelectorAll('#usageRangeControl [data-range]').forEach(x=>x.setAttribute('aria-pressed',x===b?'true':'false'));renderUsage()});
   $('usersBody').addEventListener('click',async e=>{const detail=e.target.closest('[data-user-detail]'),status=e.target.closest('[data-status-user]'),revoke=e.target.closest('[data-revoke-user]');try{if(detail)return await openUserDetail(Number(detail.dataset.userDetail));if(status){const id=Number(status.dataset.statusUser),next=status.dataset.nextStatus;if(next==='disabled'&&!confirm('确认停用这个账号并立即撤销其会话？'))return;return await mutate(`/admin/users/${id}/${next==='disabled'?'disable':'enable'}`)}if(revoke){if(!confirm('确认撤销这个用户的全部有效会话？'))return;return await mutate('/admin/users/revoke-sessions',{user_id:Number(revoke.dataset.revokeUser)})}}catch(err){alert(err.message||'操作失败')}});
-  $('usersBody').addEventListener('change',async e=>{const select=e.target.closest('[data-role-user]');if(!select)return;try{await mutate('/admin/users/role',{user_id:Number(select.dataset.roleUser),role:select.value})}catch(err){alert(err.message||'修改角色失败');await loadAll()}});
-  async function handleInterrupt(button){if(!button||!confirm('确认中断这个正在运行的 Agent Turn？该操作会写入审计日志。'))return;button.disabled=true;button.textContent='Queuing…';try{await request('/admin/runs/interrupt',{method:'POST',body:JSON.stringify({run_id:Number(button.dataset.interruptRun)})});button.textContent='Queued';setTimeout(()=>void loadAgentOps(),3500)}catch(err){button.disabled=false;button.textContent='Interrupt';alert(err.message||'中断失败')}}
+  $('usersBody').addEventListener('change',async e=>{const select=e.target.closest('[data-role-user]');if(!select)return;try{await mutate('/admin/users/role',{user_id:Number(select.dataset.roleUser),role:select.value})}catch(err){alert(err.message||'修改角色失败');await loadPageData('users',{force:true})}});
+  async function handleInterrupt(button){if(!button||!confirm('确认中断这个正在运行的 Agent Turn？该操作会写入审计日志。'))return;button.disabled=true;button.textContent='Queuing…';try{await request('/admin/runs/interrupt',{method:'POST',body:JSON.stringify({run_id:Number(button.dataset.interruptRun)})});button.textContent='Queued';setTimeout(()=>void refreshCurrentPage(false).catch(showLoadError),3500)}catch(err){button.disabled=false;button.textContent='Interrupt';alert(err.message||'中断失败')}}
   async function handleSessionRevoke(revoke){if(!revoke||!confirm('确认撤销这个 Session？'))return;try{await mutate(`/admin/sessions/${encodeURIComponent(revoke.dataset.revokeSession)}/revoke`);if(state.selectedUser)await openUserDetail(state.selectedUser.id,{navigate:false})}catch(err){alert(err.message||'撤销失败')}}
   $('runsBody').addEventListener('click',e=>void handleInterrupt(e.target.closest('[data-interrupt-run]')));
   $('userRunsBody').addEventListener('click',e=>void handleInterrupt(e.target.closest('[data-interrupt-run]')));
@@ -214,8 +225,8 @@
     requestAnimationFrame(()=>window.scrollTo({top:0,behavior:'auto'}));
   }
   function routeState(){const raw=decodeURIComponent(location.hash.replace(/^#/,'')||'overview');if(raw.startsWith('user/')){const id=Number(raw.split('/')[1]||0);return id>0?{page:'user',userId:id}:{page:'users'}}return{page:ADMIN_PAGES.has(raw)?raw:'overview'}}
-  function applyRoute(){const route=routeState();if(route.page==='user'){showPage('user');if(state.me&&(!state.selectedUser||Number(state.selectedUser.id)!==route.userId))void openUserDetail(route.userId,{navigate:false}).catch(showLoadError);else if(state.selectedUser)renderUserWorkspace();return}showPage(route.page)}
-  function setupNav(){window.addEventListener('hashchange',applyRoute);document.addEventListener('click',e=>{const target=e.target.closest('[data-admin-route]');if(!target)return;e.preventDefault();location.hash=target.dataset.adminRoute});applyRoute()}
+  async function applyRoute(){const route=routeState();if(route.page==='user'){showPage('user');if(state.me&&(!state.selectedUser||Number(state.selectedUser.id)!==route.userId))await openUserDetail(route.userId,{navigate:false});else if(state.selectedUser)renderUserWorkspace();return}showPage(route.page);if(state.me)await loadPageData(route.page)}
+  function setupNav(){window.addEventListener('hashchange',()=>void applyRoute().catch(showLoadError));document.addEventListener('click',e=>{const target=e.target.closest('[data-admin-route]');if(!target)return;e.preventDefault();location.hash=target.dataset.adminRoute});void applyRoute().catch(showLoadError)}
   function showLoadError(err){if(err?.status===401||err?.status===403){clearTokens();setAuthenticated(false);$('loginError').textContent=err.status===403?'这个账号没有管理员权限。':'登录已过期，请重新登录。';setHeader(false,'Access required');return}setHeader(false,'Service error');console.error(err);}
-  setupNav();(async()=>{try{if(state.access||state.refresh){state.me=(await request('/admin/me')).user;await loadAll()}else{setAuthenticated(false);setHeader(false,'Admin sign in')}}catch(err){showLoadError(err)}})();
+  setupNav();(async()=>{try{if(state.access||state.refresh){state.me=(await request('/admin/me')).user;setAuthenticated(true);await loadOverview(true);startAutoRefresh();await applyRoute()}else{setAuthenticated(false);setHeader(false,'Admin sign in')}}catch(err){showLoadError(err)}})();
 })();
