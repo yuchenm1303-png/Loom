@@ -9,17 +9,14 @@
   <link rel="stylesheet" href="https://smirel.com/download/cosmic-bright-v1.css" />
   <link rel="stylesheet" href="https://smirel.com/download/portal-polish-v1.css" />
   <link rel="stylesheet" href="https://smirel.com/download/portal-polish-v2.css" />
-  <link rel="stylesheet" href="https://smirel.com/download/portal-account-v1.css" />
   <link rel="stylesheet" href="https://smirel.com/download/portal-account-v2.css" />
   <link rel="stylesheet" href="https://smirel.com/download/layout-visual-restore-v1.css" />
-  <link rel="stylesheet" href="https://smirel.com/download/cursor-reference-source-v1.css" />
   <link rel="stylesheet" href="https://smirel.com/download/usage-admin-v1.css" />
   <link rel="stylesheet" href="https://smirel.com/download/usage-ops-v1.css" />
   <link rel="stylesheet" href="https://smirel.com/download/usage-ops-layout-v2.css" />
   <link rel="stylesheet" href="https://smirel.com/download/beach-wallpaper-v1.css" />
   <link rel="stylesheet" href="https://smirel.com/download/wallpaper-ready-v1.css" />
-  <link rel="stylesheet" href="./admin.css?v=20261003.3" />
-  <link rel="stylesheet" href="./admin-polish-v2.css?v=20261003.3" />
+  <link rel="stylesheet" href="./admin.css" />
 </head>
 <body class="beach-wallpaper-active loom-admin-body">
   <div class="cosmos beach-wallpaper-active" aria-hidden="true">
@@ -34,14 +31,15 @@
         <span class="brand-copy"><strong>Loom</strong><small>Agent Control Plane</small></span>
       </a>
       <div class="topbar-right loom-admin-topbar-right">
-        <nav class="portal-nav loom-admin-nav-compact" id="sectionNav" aria-label="后台导航" hidden>
-          <a href="#overview" aria-current="page">概览</a><a href="#users">用户</a><a href="#devices">Agent</a><a href="#models">模型</a><a href="#system">系统</a>
-        </nav>
         <div class="service-status" id="headerStatus"><i></i><span>Checking</span></div>
         <button id="refreshButton" class="switch-account-button usage-refresh" type="button">刷新</button>
         <button id="logoutButton" class="switch-account-button loom-admin-logout" type="button" hidden>退出</button>
       </div>
     </header>
+
+    <nav class="loom-admin-section-nav fade" id="sectionNav" aria-label="后台导航" hidden>
+      <a href="#overview" aria-current="page">概览</a><a href="#users">用户</a><a href="#devices">设备</a><a href="#runs">运行</a><a href="#usage">模型与用量</a><a href="#tools">工具</a><a href="#sessions">会话</a><a href="#flags">功能开关</a><a href="#audit">审计</a><a href="#system">系统</a>
+    </nav>
 
     <section class="usage-heading fade" id="overview">
       <div><p class="eyebrow">SMIREL · LOOM CONTROL PLANE</p><h1>Loom Admin</h1><p>管理账号、设备、Agent 运行、模型权限、工具活动与平台健康；对话、文件与屏幕内容仍保留在用户本地。</p></div>
@@ -50,7 +48,7 @@
 
     <section id="authPanel" class="account-card cards loom-admin-auth-card fade">
       <div class="account-head"><div><p class="kicker">ADMIN ACCESS</p><h2>管理员登录</h2><p class="usage-account-email">使用 Loom owner / admin 账号进入控制台。高风险操作会记录到 Audit Log。</p></div><span class="loom-admin-security-dot">SECURE</span></div>
-      <form id="loginForm" class="login-form loom-admin-login-form">
+      <form id="loginForm" class="loom-admin-login-form">
         <label><span>邮箱</span><input id="loginEmail" type="email" autocomplete="email" placeholder="name@example.com" required /></label>
         <label><span>密码</span><input id="loginPassword" type="password" autocomplete="current-password" placeholder="••••••••" required /></label>
         <button class="login-button cards loom-admin-login-button" type="submit">登录 Loom Admin</button>
