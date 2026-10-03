@@ -45,6 +45,16 @@
 # becomes a credential store.
 
 {$LOOM_ACCOUNT_DOMAIN} {
+	# Authenticated model-policy reads/checks share the account origin.
+	handle_path /policy/* {
+		reverse_proxy loom-model-policy:8792 {
+			header_up X-Real-IP {remote_host}
+			header_up X-Forwarded-For {remote_host}
+			header_up X-Forwarded-Proto {scheme}
+			header_up X-Forwarded-Host {host}
+		}
+	}
+
 	# Built-in model traffic stays on Loom's own account origin. Strip the
 	# /model prefix before forwarding so the gateway sees its native /v1 paths.
 	handle_path /model/* {
