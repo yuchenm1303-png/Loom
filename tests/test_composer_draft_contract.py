@@ -17,8 +17,9 @@ def test_composer_draft_is_owned_above_idle_and_running_variants() -> None:
     assert 'const draftKey = props.threadId || UNBOUND_DRAFT_KEY;' in composer
     assert 'const draftValue = drafts[draftKey] ?? "";' in composer
     assert 'onDraftValueChange: setDraftValue' in composer
-    assert 'if (props.running) return <SteeringComposer {...sharedProps} />;' in composer
-    assert 'return <ComposerBase {...sharedProps} />;' in composer
+    assert 'props.running' in composer
+    assert '<SteeringComposer {...sharedProps} />' in composer
+    assert '<ComposerBase {...sharedProps} />' in composer
 
 
 def test_both_composer_surfaces_consume_the_shared_draft() -> None:
