@@ -152,6 +152,11 @@ export function useAccount() {
     [run],
   );
 
+  const updateProfile = useCallback(
+    (displayName: string, avatarDataUrl: string) => run(() => window.loom.accountUpdateProfile(displayName, avatarDataUrl)),
+    [run],
+  );
+
   const logout = useCallback(async () => {
     await run(() => window.loom.accountLogout());
   }, [run]);
@@ -173,6 +178,7 @@ export function useAccount() {
     forgotPassword,
     resetPassword,
     oauthExchange,
+    updateProfile,
     logout,
   };
 }

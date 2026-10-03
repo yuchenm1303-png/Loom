@@ -381,6 +381,15 @@ export default function App() {
   const [profileOpen, setProfileOpen] = useState(false);
   const profilePresence = useMotionPresence(profileOpen, 260);
   const [accountOpen, setAccountOpen] = useState(false);
+  useEffect(() => {
+    const openProfile = () => {
+      setSettingsOpen(false);
+      setAccountOpen(false);
+      setProfileOpen(true);
+    };
+    window.addEventListener("loom:open-profile", openProfile);
+    return () => window.removeEventListener("loom:open-profile", openProfile);
+  }, []);
   const [reviewOpen, setReviewOpen] = useState(false);
   const [agentsOpen, setAgentsOpen] = useState(false);
   const [artifactPreview, setArtifactPreview] = useState<{ path: string; workspace: string } | null>(null);
@@ -1167,7 +1176,8 @@ export default function App() {
           agentsOpen={agentsOpen}
           agentCount={agentCount}
           accountAuthenticated={account.account.authenticated}
-          accountLabel={account.account.user?.email || ""}
+          accountLabel={account.account.user?.display_name?.trim() || account.account.user?.email || ""}
+          accountAvatar={account.account.user?.avatar_data_url || ""}
           context={loom.context}
           compacting={loom.compacting}
           compactionProgress={loom.compactionProgress}
@@ -1321,6 +1331,12 @@ export default function App() {
         onRetry={account.refresh}
         onLogin={account.login}
         onRegister={account.register}
+        onUpdateProfile={account.updateProfile}
+        onOpenProfile={() => {
+          setAccountOpen(false);
+          setSettingsOpen(false);
+          setProfileOpen(true);
+        }}
         onLogout={account.logout}
       />
       </div>

@@ -37,6 +37,16 @@
   user-select: none;
 }
 
+.thread-account-avatar-image {
+  width: 20px;
+  height: 20px;
+  border: 1px solid color-mix(in srgb, var(--accent, #8b7cf6) 28%, transparent);
+  border-radius: 50%;
+  display: block;
+  object-fit: cover;
+}
+
+
 .thread-account-dot {
   position: absolute;
   right: 5px;
@@ -608,6 +618,157 @@
 
 .loom-account-profile > svg {
   color: var(--success, #82b49b);
+}
+
+.loom-account-avatar.has-image {
+  overflow: hidden;
+  padding: 0;
+  background: var(--panel-soft, #191c24);
+}
+
+.loom-account-avatar img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
+}
+
+.loom-account-profile-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.loom-account-profile-actions button,
+.loom-account-profile-editor-actions button {
+  min-height: 38px;
+  border: 1px solid var(--border, #292d38);
+  border-radius: 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  background: var(--panel-soft, #191c24);
+  color: var(--text-2, #bcc1cb);
+  font: inherit;
+  font-size: .72rem;
+  font-weight: 640;
+  cursor: pointer;
+  transition: background 130ms ease, border-color 130ms ease, color 130ms ease;
+}
+
+.loom-account-profile-actions button:hover:not(:disabled),
+.loom-account-profile-editor-actions button:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--accent, #8b7cf6) 34%, var(--border, #292d38));
+  color: var(--text, #f0f1f4);
+}
+
+.loom-account-profile-editor {
+  display: grid;
+  grid-template-columns: 72px 1fr;
+  gap: 14px;
+  padding: 14px;
+  border: 1px solid var(--border, #292d38);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--bg-deep, #090a0d) 78%, transparent);
+}
+
+.loom-account-avatar-editor {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 7px;
+}
+
+.loom-account-avatar-button {
+  position: relative;
+  width: 58px;
+  height: 58px;
+  padding: 0;
+  cursor: pointer;
+}
+
+.loom-account-avatar-button > i {
+  position: absolute;
+  right: -2px;
+  bottom: -2px;
+  width: 23px;
+  height: 23px;
+  border: 2px solid var(--bg-deep, #090a0d);
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--accent, #8b7cf6);
+  color: #fff;
+}
+
+.loom-account-avatar-input {
+  display: none;
+}
+
+.loom-account-text-button {
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: var(--muted, #858c99);
+  font: inherit;
+  font-size: .62rem;
+  cursor: pointer;
+}
+
+.loom-account-profile-name {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  min-width: 0;
+}
+
+.loom-account-profile-name > span {
+  color: var(--text-2, #bcc1cb);
+  font-size: .69rem;
+  font-weight: 620;
+}
+
+.loom-account-profile-name input {
+  width: 100%;
+  height: 40px;
+  padding: 0 48px 0 11px;
+  border: 1px solid var(--border, #292d38);
+  border-radius: 9px;
+  outline: none;
+  background: var(--bg-deep, #090a0d);
+  color: var(--text, #f0f1f4);
+  font: inherit;
+  font-size: .75rem;
+}
+
+.loom-account-profile-name small {
+  position: absolute;
+  right: 10px;
+  bottom: 12px;
+  color: var(--faint, #68707d);
+  font-size: .6rem;
+}
+
+.loom-account-profile-error {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: var(--danger, #df8585);
+  font-size: .67rem;
+}
+
+.loom-account-profile-editor-actions {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.loom-account-profile-editor-actions button.is-primary {
+  border-color: color-mix(in srgb, var(--accent, #8b7cf6) 58%, var(--border, #292d38));
+  background: color-mix(in srgb, var(--accent, #8b7cf6) 24%, var(--panel-soft, #191c24));
+  color: var(--text, #f0f1f4);
 }
 
 .loom-account-security-note {

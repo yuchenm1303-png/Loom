@@ -1663,6 +1663,9 @@ handleHostChannel("loom:account-reset-password", (_event, challengeId: string, c
 handleHostChannel("loom:account-oauth-exchange", (_event, code: string) =>
   runAccountAction(() => accountClient.oauthExchange(String(code || "")))
 );
+handleHostChannel("loom:account-update-profile", (_event, displayName: string, avatarDataUrl: string) =>
+  runAccountAction(() => accountClient.updateProfile(String(displayName || ""), String(avatarDataUrl || "")))
+);
 handleHostChannel("loom:account-logout", () => runAccountAction(() => accountClient.logout()));
 handleHostChannel("loom:model-list", (_event, forceRefresh?: boolean) => runListModels(Boolean(forceRefresh)));
 handleHostChannel("loom:model-provider-key", (_event, provider: string, apiKey: string) =>
