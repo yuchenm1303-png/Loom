@@ -121,7 +121,7 @@ def test_admin_information_architecture_is_overview_first():
     assert 'id="runs" data-admin-page="runs" hidden' in html
     assert 'id="devices" data-admin-page="devices" hidden' in html
     assert 'id="user" data-admin-page="user" hidden' in html
-    assert 'Global controls' in html and 'ACCOUNT WORKSPACE' in html
+    assert 'GLOBAL CONTROL' in html and 'ACCOUNT WORKSPACE' in html
     assert '<dialog id="userDialog"' not in html
     assert 'function showPage(page)' in js and 'function applyRoute()' in js
     assert "location.hash=`user/${u.id}`" in js
