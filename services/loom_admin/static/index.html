@@ -17,6 +17,7 @@
   <link rel="stylesheet" href="https://smirel.com/download/beach-wallpaper-v1.css" />
   <link rel="stylesheet" href="https://smirel.com/download/wallpaper-ready-v1.css" />
   <link rel="stylesheet" href="./admin.css" />
+  <link rel="stylesheet" href="./usage-dashboard-v2.css?v=20261003.1" />
 </head>
 <body class="beach-wallpaper-active loom-admin-body">
   <div class="cosmos beach-wallpaper-active" aria-hidden="true">
@@ -121,13 +122,57 @@
         <div class="account-card cards loom-admin-table-card loom-admin-monitor-table"><div class="loom-admin-table-wrap"><table class="loom-admin-table"><thead><tr><th>User</th><th>Model</th><th>Status</th><th>Started</th><th>Duration</th><th>Tools</th><th>Approvals</th><th>Tokens</th><th>Action</th></tr></thead><tbody id="runsBody"></tbody></table></div></div>
       </section>
 
-      <section class="usage-ops-section fade" id="usage" data-admin-page="usage" hidden>
-        <div class="usage-section-head"><div><p class="kicker">MODEL & USAGE</p><h2>Models / Usage</h2><p>模型使用量来自 Agent Turn 完成事件；本地私有模型只记录模型名与 Provider。</p></div><div id="usageRangeControl" class="usage-range-control" role="group" aria-label="用量范围"><button type="button" data-range="24h" aria-pressed="true">24H</button><button type="button" data-range="7d" aria-pressed="false">7D</button><button type="button" data-range="30d" aria-pressed="false">30D</button></div></div>
-        <div class="loom-admin-mini-kpis"><div><span>Total tokens</span><strong id="usageTokens">0</strong></div><div><span>Runs</span><strong id="usageRuns">0</strong></div><div><span>Input</span><strong id="usageInput">0</strong></div><div><span>Output</span><strong id="usageOutput">0</strong></div><div><span>Avg duration</span><strong id="usageDuration">0s</strong></div></div>
-        <div class="usage-ops-grid loom-admin-usage-grid">
-          <article class="account-card cards usage-ops-panel"><span class="utility-overline">OBSERVED MODELS</span><h3>Model activity</h3><div id="modelsList" class="loom-admin-metric-list"></div></article>
-          <article class="account-card cards usage-ops-panel"><span class="utility-overline">USER USAGE</span><h3>By account</h3><div id="usageUsersList" class="loom-admin-metric-list"></div></article>
-          <article class="account-card cards usage-ops-panel"><span class="utility-overline">30 DAY TREND</span><h3>Daily tokens</h3><div id="usageDailyChart" class="loom-admin-daily-chart"></div></article>
+      <section class="usage-ops-section fade loom-admin-usage-page" id="usage" data-admin-page="usage" hidden>
+        <div class="usage-section-head loom-admin-usage-head">
+          <div>
+            <p class="kicker">MODEL & USAGE</p>
+            <h2>Models / Usage</h2>
+            <p>模型使用量来自 Agent Turn 完成事件；本地私有模型只记录模型名与 Provider，不保存 Prompt、回复正文或工具内容。</p>
+            <div class="loom-admin-usage-heading-meta"><span class="loom-admin-usage-live">TELEMETRY</span><span id="usageUpdatedAt">WAITING FOR DATA</span></div>
+          </div>
+          <div class="loom-admin-usage-controls">
+            <span id="usageSelectedRange">LAST 24 HOURS</span>
+            <div id="usageRangeControl" class="usage-range-control" role="group" aria-label="用量范围"><button type="button" data-range="24h" aria-pressed="true">24H</button><button type="button" data-range="7d" aria-pressed="false">7D</button><button type="button" data-range="30d" aria-pressed="false">30D</button></div>
+          </div>
+        </div>
+
+        <div class="loom-admin-usage-kpis" aria-label="用量摘要">
+          <article class="loom-admin-usage-kpi is-primary"><div class="loom-admin-usage-kpi-head"><span>Total tokens</span><i></i></div><strong id="usageTokens">0</strong><small id="usageExactTokens">0 exact</small></article>
+          <article class="loom-admin-usage-kpi"><div class="loom-admin-usage-kpi-head"><span>Runs</span><i></i></div><strong id="usageRuns">0</strong><small id="usageRangeRunsMeta">No completed runs</small></article>
+          <article class="loom-admin-usage-kpi"><div class="loom-admin-usage-kpi-head"><span>Input</span><i></i></div><strong id="usageInput">0</strong><small><b id="usageInputShare">0.0%</b> of measured tokens</small></article>
+          <article class="loom-admin-usage-kpi"><div class="loom-admin-usage-kpi-head"><span>Output</span><i></i></div><strong id="usageOutput">0</strong><small><b id="usageOutputShareDetail">0.0%</b> of measured tokens</small></article>
+          <article class="loom-admin-usage-kpi"><div class="loom-admin-usage-kpi-head"><span>Avg duration</span><i></i></div><strong id="usageDuration">0s</strong><small id="usageDurationMeta">0 completed runs</small></article>
+        </div>
+
+        <div class="loom-admin-usage-insights" aria-label="用量派生指标">
+          <div class="loom-admin-usage-insight"><span>Tokens / run</span><strong id="usageTokensPerRun">—</strong></div>
+          <div class="loom-admin-usage-insight"><span>Output share</span><strong id="usageOutputShare">—</strong></div>
+          <div class="loom-admin-usage-insight"><span>Input : Output</span><strong id="usageInputOutputRatio">—</strong></div>
+          <div class="loom-admin-usage-insight"><span>30D footprint</span><strong><span id="usageModelCount">0</span> models · <span id="usageAccountCount">0</span> accounts</strong></div>
+        </div>
+
+        <div class="loom-admin-usage-primary-grid">
+          <article class="account-card cards usage-ops-panel loom-admin-usage-card loom-admin-usage-trend-card">
+            <div class="loom-admin-usage-card-head"><div><span class="utility-overline">30 DAY TREND</span><h3>Daily tokens</h3><p>每天完成的 Agent Turn Token，总量与 Run 数来自 30D telemetry。</p></div><div class="loom-admin-usage-card-stat"><strong id="usageTrendTotal">0</strong><span id="usageTrendRuns">0 runs</span></div></div>
+            <div id="usageDailyChart" class="loom-admin-daily-chart"></div>
+            <div class="loom-admin-usage-chart-footer"><div class="loom-admin-usage-chart-legend"><span><i></i>Total tokens</span></div><span>Peak · <b id="usagePeakDay">—</b></span></div>
+          </article>
+
+          <article class="account-card cards usage-ops-panel loom-admin-usage-card loom-admin-usage-composition">
+            <div class="loom-admin-usage-card-head"><div><span class="utility-overline">TOKEN MIX</span><h3>Input / Output</h3><p id="usageCompositionRange">LAST 24 HOURS</p></div></div>
+            <div class="loom-admin-usage-donut-wrap"><div id="usageCompositionDonut" class="loom-admin-usage-donut"><div class="loom-admin-usage-donut-center"><strong id="usageCompositionTotal">0</strong><span>measured</span></div></div></div>
+            <div class="loom-admin-usage-split">
+              <div class="loom-admin-usage-split-row"><i></i><span>Input</span><strong><span id="usageInputExact">0</span> · <span id="usageInputShare">0.0%</span></strong></div>
+              <div class="loom-admin-usage-split-row is-output"><i></i><span>Output</span><strong><span id="usageOutputExact">0</span> · <span id="usageOutputShareDetail">0.0%</span></strong></div>
+              <div class="loom-admin-usage-split-bar" aria-hidden="true"><i id="usageInputBar" style="width:0%"></i><b id="usageOutputBar" style="width:0%"></b></div>
+            </div>
+            <p class="loom-admin-usage-composition-note">Token mix follows the selected summary range. Model / account rankings below remain 30-day observations because the current telemetry endpoint exposes those aggregates at 30D scope.</p>
+          </article>
+        </div>
+
+        <div class="loom-admin-usage-rankings">
+          <article class="account-card cards usage-ops-panel loom-admin-usage-card"><div class="loom-admin-usage-card-head"><div><span class="utility-overline">OBSERVED MODELS · 30D</span><h3>Model activity</h3><p>按 Token 排序，同时显示 Provider、Run 数与 30 天占比。</p></div><div class="loom-admin-usage-card-stat"><strong id="usageModelCountMirror">Top 10</strong><span>ranked</span></div></div><div id="modelsList" class="loom-admin-metric-list"></div></article>
+          <article class="account-card cards usage-ops-panel loom-admin-usage-card"><div class="loom-admin-usage-card-head"><div><span class="utility-overline">USER USAGE · 30D</span><h3>By account</h3><p>按账号聚合已完成 Run 的 Token；只展示控制面已有的运营元数据。</p></div><div class="loom-admin-usage-card-stat"><strong>Top 10</strong><span>accounts</span></div></div><div id="usageUsersList" class="loom-admin-metric-list"></div></article>
         </div>
       </section>
 
@@ -184,6 +229,7 @@
   </main>
 
   <script src="./admin.js?v=20261003.5" defer></script>
+  <script src="./usage-dashboard-v2.js?v=20261003.1" defer></script>
   <script src="./model-policy.js?v=20261003.5" defer></script>
 </body>
 </html>
