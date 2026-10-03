@@ -98,6 +98,7 @@ def test_agent_ops_http_routes(tmp_path, monkeypatch):
         assert call("/v1/telemetry/device",method="POST",body=body,secret="route-secret")[0]==200
         assert call("/v1/telemetry/agent-event",method="POST",secret="route-secret",body={"event":"turn.started","user_id":user["id"],"device_id":"route-device","thread_id":"route-thread","turn_id":"route-turn","model":"route-model"})[0]==200
         status,overview=call("/v1/admin/agent-overview",auth=True); assert status==200 and overview["known_devices"]==1 and overview["active_runs"]==1
+        status,user_cards=call("/v1/admin/users-operations",auth=True); assert status==200 and user_cards["users"][0]["email"]=="route-owner@example.com" and len(user_cards["users"][0]["activity_24h"])==24
         status,runs=call("/v1/admin/runs",auth=True); assert status==200 and runs["runs"][0]["turn_id"]=="route-turn"; run_id=runs["runs"][0]["id"]
         status,user_ops=call(f"/v1/admin/users/{user['id']}/agent-ops",auth=True); assert status==200 and user_ops["user_id"]==user["id"] and user_ops["runs"][0]["turn_id"]=="route-turn"
         status,queued=call("/v1/admin/runs/interrupt",method="POST",body={"run_id":run_id},auth=True); assert status==200 and queued["command"]["kind"]=="turn.interrupt"
