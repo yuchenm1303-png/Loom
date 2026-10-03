@@ -17,6 +17,7 @@
   <link rel="stylesheet" href="https://smirel.com/download/beach-wallpaper-v1.css" />
   <link rel="stylesheet" href="https://smirel.com/download/wallpaper-ready-v1.css" />
   <link rel="stylesheet" href="./admin.css" />
+  <link rel="stylesheet" href="./tools-dashboard.css" />
 </head>
 <body class="beach-wallpaper-active loom-admin-body">
   <div class="cosmos beach-wallpaper-active" aria-hidden="true">
@@ -113,7 +114,21 @@
       <section class="usage-ops-section fade" id="tools">
         <div class="usage-section-head"><div><p class="kicker">TOOLS & APPROVALS</p><h2>Tool activity</h2><p>只记录工具名称和调用次数，不保存参数、输出或文件内容。</p></div><span>30D telemetry</span></div>
         <div class="loom-admin-mini-kpis loom-admin-mini-kpis-3"><div><span>Tool calls</span><strong id="toolCallsTotal">0</strong></div><div><span>Approvals</span><strong id="approvalsTotal">0</strong></div><div><span>Waiting now</span><strong id="approvalsWaiting">0</strong></div></div>
-        <article class="account-card cards usage-ops-panel"><div class="loom-admin-panel-head"><div><span class="utility-overline">TOOL DISTRIBUTION</span><h3>Most used tools</h3></div></div><div id="toolsList" class="loom-admin-tool-grid"></div></article>
+        <article class="account-card cards usage-ops-panel">
+          <div class="loom-admin-panel-head">
+            <div><span class="utility-overline">TOOL DISTRIBUTION</span><h3>Tool usage</h3></div>
+            <div class="loom-admin-tool-toolbar">
+              <input id="toolSearch" class="loom-admin-tool-search" type="search" placeholder="搜索工具 / namespace" aria-label="搜索工具" />
+              <select id="toolSort" class="loom-admin-tool-sort" aria-label="工具排序">
+                <option value="calls">调用次数</option>
+                <option value="recent">最近调用</option>
+                <option value="name">名称 A–Z</option>
+              </select>
+              <span id="toolsHint">等待 telemetry</span>
+            </div>
+          </div>
+          <div id="toolsList" class="loom-admin-tool-grid"></div>
+        </article>
       </section>
 
       <section class="usage-accounts-section fade" id="sessions">
@@ -156,5 +171,6 @@
     </article>
   </dialog>
   <script src="./admin.js" defer></script>
+  <script src="./tools-dashboard.js" defer></script>
 </body>
 </html>
