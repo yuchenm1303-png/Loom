@@ -1,5 +1,6 @@
 from pathlib import Path
 
+# Protect the new overview hierarchy and aggregate-only behavior rather than legacy layout class names.
 ROOT = Path(__file__).resolve().parents[1]
 HTML = (ROOT / "services/loom_admin/static/index.html").read_text(encoding="utf-8")
 ADMIN = (ROOT / "services/loom_admin/static/admin.js").read_text(encoding="utf-8")
