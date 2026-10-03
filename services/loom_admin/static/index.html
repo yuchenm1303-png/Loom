@@ -155,9 +155,31 @@
         </article>
       </section>
 
-      <section class="usage-accounts-section fade" id="users" data-admin-page="users" hidden>
-        <div class="usage-section-head"><div><p class="kicker">USER DIRECTORY</p><h2>Users</h2></div><div class="usage-audit-tools"><input id="userSearch" class="usage-audit-search" type="search" placeholder="搜索 Email / Role / Status" /><span id="usersHint">0 users</span></div></div>
-        <div class="account-card cards loom-admin-table-card"><div class="loom-admin-table-wrap"><table class="loom-admin-table"><thead><tr><th>User</th><th>Role</th><th>Status</th><th>Verified</th><th>Sessions</th><th>Created</th><th>Last active</th><th>Actions</th></tr></thead><tbody id="usersBody"></tbody></table></div></div>
+      <section class="usage-accounts-section fade loom-admin-users-page" id="users" data-admin-page="users" hidden>
+        <div class="usage-section-head loom-admin-users-head">
+          <div><p class="kicker">USER OPERATIONS</p><h2>账号与在线态</h2><p>每张卡片聚合账号、Host、Agent 与最近 24 小时运行情况；进入账号工作区后再查看完整明细。</p></div>
+          <div class="loom-admin-users-live"><i></i><span>LIVE · 10S</span></div>
+        </div>
+        <div class="account-card cards loom-admin-users-toolbar">
+          <div class="loom-admin-user-filters" id="userPresenceFilter" role="group" aria-label="用户状态筛选">
+            <button type="button" data-user-presence="all" aria-pressed="true">全部</button>
+            <button type="button" data-user-presence="online" aria-pressed="false">Host 在线</button>
+            <button type="button" data-user-presence="running" aria-pressed="false">Agent 运行中</button>
+            <button type="button" data-user-presence="attention" aria-pressed="false">需要关注</button>
+            <button type="button" data-user-presence="offline" aria-pressed="false">离线</button>
+          </div>
+          <div class="loom-admin-users-tools">
+            <input id="userSearch" class="usage-audit-search" type="search" placeholder="搜索 Email / Role / Device / Platform" />
+            <select id="userSort" class="loom-admin-user-sort" aria-label="用户排序">
+              <option value="recent">最近活跃</option>
+              <option value="runs">24H Runs</option>
+              <option value="tokens">24H Token</option>
+              <option value="created">注册时间</option>
+            </select>
+            <span id="usersHint">0 users</span>
+          </div>
+        </div>
+        <div id="usersGrid" class="loom-admin-user-card-grid" aria-live="polite"></div>
       </section>
 
       <section class="usage-accounts-section fade" id="devices" data-admin-page="devices" hidden>

@@ -260,6 +260,102 @@ class AgentOpsStore(base.AccountStore):
             overrides = int(db.execute("SELECT COUNT(*) FROM model_entitlements").fetchone()[0])
         return {"managed_models": self._default_model_ids(), "entitlement_overrides": overrides, "observed": [dict(r) for r in observed]}
 
+    def admin_users_operations(self, limit: int = 500) -> dict[str, Any]:
+        now = _now()
+        online_cutoff = now - 90
+        account_recent_cutoff = now - 300
+        active_cutoff = now - 7200
+        day = now - 86400
+        users = super().admin_users(limit=max(1, min(int(limit), 1000)))
+        by_id: dict[int, dict[str, Any]] = {}
+        for item in users:
+            uid = int(item["id"])
+            by_id[uid] = {
+                **item,
+                "account_online": bool(item.get("last_seen_at") and int(item["last_seen_at"]) >= account_recent_cutoff),
+                "known_devices": 0,
+                "online_devices": 0,
+                "active_runs": 0,
+                "waiting_approvals": 0,
+                "runs_24h": 0,
+                "completed_runs_24h": 0,
+                "failed_runs_24h": 0,
+                "tokens_24h": 0,
+                "tool_calls_24h": 0,
+                "approvals_24h": 0,
+                "avg_duration_24h": 0,
+                "success_rate_24h": None,
+                "primary_device": None,
+                "activity_24h": [{"runs": 0, "tokens": 0} for _ in range(24)],
+                "top_tools_24h": [],
+            }
+        if not by_id:
+            return {"users": [], "generated_at": now}
+        with self._connect() as db:
+            device_rows = db.execute("""SELECT d.*,
+                CASE WHEN d.last_seen_at>=? AND (d.disconnected_at IS NULL OR d.disconnected_at<d.last_seen_at) THEN 1 ELSE 0 END AS online
+                FROM agent_devices d ORDER BY d.user_id, d.last_seen_at DESC""", (online_cutoff,)).fetchall()
+            run_rows = db.execute("""SELECT user_id,
+                SUM(CASE WHEN started_at>=? THEN 1 ELSE 0 END) AS runs_24h,
+                SUM(CASE WHEN status='completed' AND completed_at>=? THEN 1 ELSE 0 END) AS completed_runs_24h,
+                SUM(CASE WHEN status IN ('failed','interrupted','cancelled') AND COALESCE(completed_at,updated_at)>=? THEN 1 ELSE 0 END) AS failed_runs_24h,
+                SUM(CASE WHEN COALESCE(completed_at,updated_at)>=? THEN total_tokens ELSE 0 END) AS tokens_24h,
+                SUM(CASE WHEN updated_at>=? THEN tool_count ELSE 0 END) AS tool_calls_24h,
+                SUM(CASE WHEN updated_at>=? THEN approval_count ELSE 0 END) AS approvals_24h,
+                SUM(CASE WHEN status IN ('running','waiting_approval') AND updated_at>=? THEN 1 ELSE 0 END) AS active_runs,
+                SUM(CASE WHEN status='waiting_approval' AND updated_at>=? THEN 1 ELSE 0 END) AS waiting_approvals,
+                AVG(CASE WHEN status='completed' AND completed_at>=? THEN completed_at-started_at END) AS avg_duration_24h
+                FROM agent_runs GROUP BY user_id""", (day, day, day, day, day, day, active_cutoff, active_cutoff, day)).fetchall()
+            activity_rows = db.execute("""SELECT user_id,
+                MIN(23, CAST((started_at-?)/3600 AS INTEGER)) AS bucket,
+                COUNT(*) AS runs,
+                COALESCE(SUM(total_tokens),0) AS tokens
+                FROM agent_runs WHERE started_at>=? GROUP BY user_id, bucket ORDER BY user_id, bucket""", (day, day)).fetchall()
+            tool_rows = db.execute("""SELECT user_id, tool_name, COUNT(*) AS calls
+                FROM agent_tool_events WHERE kind='tool' AND created_at>=? AND tool_name<>''
+                GROUP BY user_id, tool_name ORDER BY user_id, calls DESC, tool_name ASC""", (day,)).fetchall()
+        primary_seen: set[int] = set()
+        for row in device_rows:
+            uid = int(row["user_id"])
+            item = by_id.get(uid)
+            if item is None:
+                continue
+            online = bool(row["online"])
+            item["known_devices"] += 1
+            if online:
+                item["online_devices"] += 1
+            if uid not in primary_seen:
+                device = dict(row)
+                device["online"] = online
+                device["uptime_seconds"] = max(0, now - int(row["connected_at"])) if online else None
+                item["primary_device"] = device
+                primary_seen.add(uid)
+        for row in run_rows:
+            uid = int(row["user_id"])
+            item = by_id.get(uid)
+            if item is None:
+                continue
+            for key in ("runs_24h", "completed_runs_24h", "failed_runs_24h", "tokens_24h", "tool_calls_24h", "approvals_24h", "active_runs", "waiting_approvals", "avg_duration_24h"):
+                item[key] = int(row[key] or 0)
+            decided = item["completed_runs_24h"] + item["failed_runs_24h"]
+            item["success_rate_24h"] = round(item["completed_runs_24h"] * 100 / decided) if decided else None
+        for row in activity_rows:
+            uid = int(row["user_id"])
+            item = by_id.get(uid)
+            bucket = int(row["bucket"] or 0)
+            if item is not None and 0 <= bucket < 24:
+                item["activity_24h"][bucket] = {"runs": int(row["runs"] or 0), "tokens": int(row["tokens"] or 0)}
+        tool_counts: dict[int, list[dict[str, Any]]] = {}
+        for row in tool_rows:
+            uid = int(row["user_id"])
+            values = tool_counts.setdefault(uid, [])
+            if len(values) < 4:
+                values.append({"tool_name": str(row["tool_name"]), "calls": int(row["calls"] or 0)})
+        for uid, values in tool_counts.items():
+            if uid in by_id:
+                by_id[uid]["top_tools_24h"] = values
+        return {"users": list(by_id.values()), "generated_at": now}
+
     def admin_user_operations(self, user_id: int, limit: int = 120) -> dict[str, Any]:
         uid = int(user_id)
         now = _now(); online_cutoff = now - 90; active_cutoff = now - 7200; month = now - 30*86400
@@ -312,6 +408,7 @@ class AgentOpsApplication(base.AccountApplication):
     def admin_usage(self, authorization: str) -> dict[str, Any]: self._admin(authorization); return self.store.admin_usage()
     def admin_tools(self, authorization: str) -> dict[str, Any]: self._admin(authorization); return self.store.admin_tools()
     def admin_models(self, authorization: str) -> dict[str, Any]: self._admin(authorization); return self.store.admin_models()
+    def admin_users_operations(self, authorization: str) -> dict[str, Any]: self._admin(authorization); return self.store.admin_users_operations()
 
     def admin_user_operations(self, user_id: int, authorization: str) -> dict[str, Any]: self._admin(authorization); return self.store.admin_user_operations(user_id)
 
@@ -343,7 +440,8 @@ class AgentOpsRequestHandler(base.AccountRequestHandler):
         if self.command == "GET":
             routes = {"/v1/admin/agent-overview": self.application.admin_agent_overview, "/v1/admin/devices": self.application.admin_devices,
                 "/v1/admin/runs": self.application.admin_runs, "/v1/admin/usage": self.application.admin_usage,
-                "/v1/admin/tools": self.application.admin_tools, "/v1/admin/models": self.application.admin_models}
+                "/v1/admin/tools": self.application.admin_tools, "/v1/admin/models": self.application.admin_models,
+                "/v1/admin/users-operations": self.application.admin_users_operations}
             handler = routes.get(path)
             if handler is not None:
                 return handler(authorization)

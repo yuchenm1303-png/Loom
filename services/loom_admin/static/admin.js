@@ -8,7 +8,7 @@
     overview: {}, agent: {}, users: [], sessions: [], system: {}, devices: [], runs: [],
     usage: {}, tools: {}, models: {}, audit: [], flags: [],
     health: { admin:false, account:false, loom:false },
-    activityRange: '24h', usageRange: '24h', runStatusFilter: 'all', selectedUser: null, selectedModelAccess: null,
+    activityRange: '24h', usageRange: '24h', runStatusFilter: 'all', userPresenceFilter: 'all', userSort: 'recent', selectedUser: null, selectedModelAccess: null,
     page: 'overview', selectedUserOps: null, loaded: new Set(), refreshTimer: null,
   };
 
@@ -114,15 +114,67 @@
     $('activityAxis').innerHTML=labels.map(x=>`<span>${x}</span>`).join('');$('runAxis').innerHTML=$('activityAxis').innerHTML;
   }
 
-  function verifiedLabel(value){return value===true?'<span class="loom-admin-badge is-ok">Verified</span>':value===false?'<span class="loom-admin-badge is-bad">Unverified</span>':'<span class="loom-admin-badge">Unknown</span>'}
+  function fmtRelative(value){
+    if(!value)return '从未活跃';const delta=Math.max(0,Math.floor(Date.now()/1000)-Number(value));
+    if(delta<60)return `${delta}s 前`;if(delta<3600)return `${Math.floor(delta/60)}m 前`;if(delta<86400)return `${Math.floor(delta/3600)}h 前`;return `${Math.floor(delta/86400)}d 前`;
+  }
+  function userPresence(u){
+    if(u.status!=='active')return{key:'attention',label:'账号已停用',cls:'is-bad'};
+    if(Number(u.waiting_approvals||0)>0)return{key:'attention',label:'等待审批',cls:'is-warn'};
+    if(Number(u.active_runs||0)>0)return{key:'running',label:'Agent 运行中',cls:'is-live'};
+    if(Number(u.online_devices||0)>0)return{key:'online',label:'Host 在线',cls:'is-ok'};
+    if(u.account_online)return{key:'online',label:'近期活跃',cls:'is-ok'};
+    return{key:'offline',label:'离线',cls:''};
+  }
+  function userMatchesPresence(u,filter){
+    if(filter==='all')return true;if(filter==='online')return Number(u.online_devices||0)>0;
+    if(filter==='running')return Number(u.active_runs||0)>0;
+    if(filter==='attention')return u.status!=='active'||Number(u.waiting_approvals||0)>0||Number(u.failed_runs_24h||0)>0;
+    if(filter==='offline')return Number(u.online_devices||0)===0;return true;
+  }
+  function userActivityBars(u){
+    const activity=Array.isArray(u.activity_24h)?u.activity_24h:[],max=Math.max(1,...activity.map(x=>Number(x.runs||0)));
+    return activity.map((x,i)=>{const runs=Number(x.runs||0),tokens=Number(x.tokens||0),height=runs?Math.max(14,(runs/max)*100):7;return `<i class="${runs?'is-active':''}" style="--bar:${height}%" title="${i}:00 · ${runs} runs · ${fmtCompact(tokens)} tokens"><span></span></i>`}).join('');
+  }
+  function userToolMix(u){
+    const tools=Array.isArray(u.top_tools_24h)?u.top_tools_24h:[];if(!tools.length)return '<span class="loom-admin-user-tool-empty">24H 暂无工具调用</span>';
+    const total=Math.max(1,tools.reduce((n,x)=>n+Number(x.calls||0),0));
+    return `<div class="loom-admin-user-tool-bar">${tools.map((x,i)=>`<i class="tool-${i+1}" style="--share:${(Number(x.calls||0)/total)*100}%" title="${escapeHtml(x.tool_name)} · ${fmtNumber(x.calls)}"><span></span></i>`).join('')}</div><div class="loom-admin-user-tool-legend">${tools.map((x,i)=>`<span><i class="tool-${i+1}"></i>${escapeHtml(x.tool_name)} <b>${fmtNumber(x.calls)}</b></span>`).join('')}</div>`;
+  }
   function renderUsers(filter=''){
-    const q=filter.trim().toLowerCase(),users=state.users.filter(u=>!q||`${u.email} ${u.display_name||''} ${u.role} ${u.status}`.toLowerCase().includes(q));
-    $('usersHint').textContent=`${users.length} users`;
-    $('usersBody').innerHTML=users.length?users.map(u=>{const self=Number(u.id)===Number(state.me.id);return `<tr>
-      <td><button class="loom-admin-user-link" data-user-detail="${u.id}"><strong>${escapeHtml(u.email)}</strong>${u.display_name?`<small>${escapeHtml(u.display_name)}</small>`:''}</button></td>
-      <td>${state.me?.role==='owner'?`<select data-role-user="${u.id}" aria-label="Role"><option value="user" ${u.role==='user'?'selected':''}>user</option><option value="admin" ${u.role==='admin'?'selected':''}>admin</option><option value="owner" ${u.role==='owner'?'selected':''}>owner</option></select>`:`<span class="loom-admin-badge">${escapeHtml(u.role)}</span>`}</td>
-      <td><span class="loom-admin-badge ${u.status==='active'?'is-ok':'is-bad'}">${escapeHtml(u.status)}</span></td><td>${verifiedLabel(u.email_verified??u.verified)}</td><td>${u.active_sessions}</td><td>${fmtTime(u.created_at)}</td><td>${fmtTime(u.last_seen_at)}</td>
-      <td><div class="loom-admin-actions"><button class="loom-admin-action" data-status-user="${u.id}" data-next-status="${u.status==='active'?'disabled':'active'}" ${self&&u.status==='active'?'disabled':''}>${u.status==='active'?'Disable':'Enable'}</button><button class="loom-admin-action is-danger" data-revoke-user="${u.id}">Revoke</button></div></td></tr>`}).join(''):'<tr><td colspan="8" class="loom-admin-empty">没有匹配用户</td></tr>';
+    const q=filter.trim().toLowerCase(),presenceFilter=state.userPresenceFilter||'all',sort=state.userSort||'recent';
+    const users=state.users.filter(u=>{const d=u.primary_device||{};const hay=`${u.email} ${u.display_name||''} ${u.role} ${u.status} ${d.name||''} ${d.platform||''}`.toLowerCase();return(!q||hay.includes(q))&&userMatchesPresence(u,presenceFilter)});
+    users.sort((a,b)=>{if(sort==='runs')return Number(b.runs_24h||0)-Number(a.runs_24h||0);if(sort==='tokens')return Number(b.tokens_24h||0)-Number(a.tokens_24h||0);if(sort==='created')return Number(b.created_at||0)-Number(a.created_at||0);const ar=Math.max(Number(a.last_seen_at||0),Number(a.primary_device?.last_seen_at||0)),br=Math.max(Number(b.last_seen_at||0),Number(b.primary_device?.last_seen_at||0));return br-ar});
+    $('usersHint').textContent=`${users.length} / ${state.users.length} users`;
+    $('usersGrid').innerHTML=users.length?users.map(u=>{
+      const self=Number(u.id)===Number(state.me.id),presence=userPresence(u),d=u.primary_device||null,verified=Boolean(u.email_verified??u.verified),score=u.success_rate_24h==null?null:Number(u.success_rate_24h),activity=userActivityBars(u);
+      const initial=escapeHtml((u.display_name||u.email||'?').trim().charAt(0).toUpperCase());
+      const deviceTitle=d?escapeHtml(d.name||'Loom Host'):'未连接 Loom Host',deviceMeta=d?[d.platform,d.host_version?`Host ${d.host_version}`:'',d.app_version?`App ${d.app_version}`:''].filter(Boolean).map(escapeHtml).join(' · '):'等待该账号的 Host 首次连接';
+      const deviceState=d?.online?`已在线 ${fmtDuration(d.uptime_seconds||0)}`:d?`最后心跳 ${fmtRelative(d.last_seen_at)}`:'No telemetry';
+      return `<article class="account-card cards loom-admin-user-card ${presence.cls}" data-user-card="${u.id}">
+        <header class="loom-admin-user-card-head">
+          <div class="loom-admin-user-avatar">${initial}</div>
+          <div class="loom-admin-user-identity"><div><strong>${escapeHtml(u.email)}</strong><span class="loom-admin-presence-pill ${presence.cls}"><i></i>${escapeHtml(presence.label)}</span></div><small>${u.display_name?escapeHtml(u.display_name)+' · ':''}${verified?'邮箱已验证':'邮箱未验证'} · 注册 ${fmtRelative(u.created_at)}</small></div>
+          <div class="loom-admin-user-role">${state.me?.role==='owner'?`<select data-role-user="${u.id}" aria-label="Role"><option value="user" ${u.role==='user'?'selected':''}>user</option><option value="admin" ${u.role==='admin'?'selected':''}>admin</option><option value="owner" ${u.role==='owner'?'selected':''}>owner</option></select>`:`<span class="loom-admin-badge">${escapeHtml(u.role)}</span>`}</div>
+        </header>
+        <section class="loom-admin-user-device ${d?.online?'is-online':''}">
+          <div class="loom-admin-device-mark"><i></i></div><div class="loom-admin-user-device-copy"><span>PRIMARY HOST</span><strong>${deviceTitle}</strong><small>${deviceMeta}</small></div>
+          <div class="loom-admin-user-device-state"><b>${d?.online?'ONLINE':d?'OFFLINE':'NO HOST'}</b><small>${deviceState}${Number(u.known_devices||0)>1?` · ${fmtNumber(u.known_devices)} 台设备`:''}</small></div>
+        </section>
+        <div class="loom-admin-user-metric-grid">
+          <div><span>RUNS 24H</span><strong>${fmtNumber(u.runs_24h)}</strong><small>${Number(u.active_runs||0)?`${fmtNumber(u.active_runs)} active`:'当前空闲'}</small></div>
+          <div><span>TOKENS 24H</span><strong>${fmtCompact(u.tokens_24h)}</strong><small>Agent usage</small></div>
+          <div><span>TOOLS 24H</span><strong>${fmtNumber(u.tool_calls_24h)}</strong><small>${fmtNumber(u.approvals_24h)} approvals</small></div>
+          <div><span>SESSIONS</span><strong>${fmtNumber(u.active_sessions)}</strong><small>${u.account_online?'近期在线':'最近活跃 '+fmtRelative(u.last_seen_at)}</small></div>
+        </div>
+        <div class="loom-admin-user-visual-grid">
+          <div class="loom-admin-user-chart"><div class="loom-admin-user-chart-head"><span>24H ACTIVITY</span><b>${fmtNumber(u.runs_24h)} runs</b></div><div class="loom-admin-user-spark">${activity}</div><div class="loom-admin-user-chart-axis"><span>-24h</span><span>-12h</span><span>now</span></div></div>
+          <div class="loom-admin-user-success"><div class="loom-admin-user-ring ${score==null?'is-empty':''}" style="--score:${score??0}"><strong>${score==null?'—':score+'%'}</strong><span>SUCCESS</span></div><div><b>${fmtNumber(u.failed_runs_24h)} failed</b><small>24 小时异常 Run</small><small>平均耗时 ${fmtDuration(u.avg_duration_24h)}</small></div></div>
+        </div>
+        <div class="loom-admin-user-tools"><div class="loom-admin-user-chart-head"><span>TOOL MIX · 24H</span><b>${fmtNumber(u.tool_calls_24h)} calls</b></div>${userToolMix(u)}</div>
+        <footer class="loom-admin-user-card-foot"><div class="loom-admin-user-times"><span>最近账号活动 <b>${fmtRelative(u.last_seen_at)}</b></span><span>Host 心跳 <b>${d?fmtRelative(d.last_seen_at):'—'}</b></span></div><div class="loom-admin-actions"><button class="loom-admin-action is-primary" data-user-detail="${u.id}">打开账号</button><button class="loom-admin-action" data-status-user="${u.id}" data-next-status="${u.status==='active'?'disabled':'active'}" ${self&&u.status==='active'?'disabled':''}>${u.status==='active'?'Disable':'Enable'}</button><button class="loom-admin-action is-danger" data-revoke-user="${u.id}">Revoke</button></div></footer>
+      </article>`;
+    }).join(''):'<div class="account-card cards loom-admin-users-empty"><strong>没有匹配账号</strong><span>调整搜索词或状态筛选后再试。</span></div>';
   }
   function renderDevices(){
     $('devicesHint').textContent=`${state.devices.length} devices`;
@@ -200,7 +252,7 @@
   }
   async function loadPageData(page,{force=false}={}){
     if(page==='overview')return loadOverview(force);if(page==='user')return;if(!force&&state.loaded.has(page))return;
-    if(page==='users'){const p=await request('/admin/users');state.users=p.users||[];renderUsers($('userSearch').value)}
+    if(page==='users'){const p=await request('/admin/users-operations');state.users=p.users||[];renderUsers($('userSearch').value)}
     else if(page==='devices'){const p=await request('/admin/devices');state.devices=p.devices||[];renderDevices()}
     else if(page==='runs'){const [p,a]=await Promise.all([request('/admin/runs'),request('/admin/agent-overview')]);state.runs=p.runs||[];state.agent=a||state.agent;renderRuns($('runSearch').value)}
     else if(page==='usage'){state.usage=await request('/admin/usage');renderUsage()}
@@ -231,10 +283,10 @@
 
   $('loginForm').addEventListener('submit',async e=>{e.preventDefault();$('loginError').textContent='';const b=e.currentTarget.querySelector('button');b.disabled=true;try{await login($('loginEmail').value.trim(),$('loginPassword').value);$('loginPassword').value='';setAuthenticated(true);await loadOverview(true);startAutoRefresh();await applyRoute()}catch(err){$('loginError').textContent=err.code==='ADMIN_REQUIRED'?'这个 Loom 账号没有管理员权限。':(err.message||'登录失败');setHeader(false,'Access denied')}finally{b.disabled=false}});
   $('logoutButton').addEventListener('click',async()=>{const refresh=state.refresh;if(refresh){try{await fetch(API+'/auth/logout',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({refresh_token:refresh}),cache:'no-store'})}catch(_){}}clearTokens();setAuthenticated(false);setHeader(false,'Signed out')});
-  $('refreshButton').addEventListener('click',()=>void refreshCurrentPage(true).catch(showLoadError));$('userSearch').addEventListener('input',e=>renderUsers(e.target.value));$('runSearch').addEventListener('input',e=>renderRuns(e.target.value));$('runStatusFilter').addEventListener('click',e=>{const b=e.target.closest('[data-run-status]');if(!b)return;state.runStatusFilter=b.dataset.runStatus||'all';document.querySelectorAll('#runStatusFilter [data-run-status]').forEach(x=>x.setAttribute('aria-pressed',x===b?'true':'false'));renderRuns($('runSearch').value)});$('auditSearch').addEventListener('input',e=>renderAudit(e.target.value));
+  $('refreshButton').addEventListener('click',()=>void refreshCurrentPage(true).catch(showLoadError));$('userSearch').addEventListener('input',e=>renderUsers(e.target.value));$('userPresenceFilter').addEventListener('click',e=>{const b=e.target.closest('[data-user-presence]');if(!b)return;state.userPresenceFilter=b.dataset.userPresence||'all';document.querySelectorAll('#userPresenceFilter [data-user-presence]').forEach(x=>x.setAttribute('aria-pressed',x===b?'true':'false'));renderUsers($('userSearch').value)});$('userSort').addEventListener('change',e=>{state.userSort=e.target.value||'recent';renderUsers($('userSearch').value)});$('runSearch').addEventListener('input',e=>renderRuns(e.target.value));$('runStatusFilter').addEventListener('click',e=>{const b=e.target.closest('[data-run-status]');if(!b)return;state.runStatusFilter=b.dataset.runStatus||'all';document.querySelectorAll('#runStatusFilter [data-run-status]').forEach(x=>x.setAttribute('aria-pressed',x===b?'true':'false'));renderRuns($('runSearch').value)});$('auditSearch').addEventListener('input',e=>renderAudit(e.target.value));
   $('usageRangeControl').addEventListener('click',e=>{const b=e.target.closest('[data-range]');if(!b)return;state.usageRange=b.dataset.range;document.querySelectorAll('#usageRangeControl [data-range]').forEach(x=>x.setAttribute('aria-pressed',x===b?'true':'false'));renderUsage()});
-  $('usersBody').addEventListener('click',async e=>{const detail=e.target.closest('[data-user-detail]'),status=e.target.closest('[data-status-user]'),revoke=e.target.closest('[data-revoke-user]');try{if(detail)return await openUserDetail(Number(detail.dataset.userDetail));if(status){const id=Number(status.dataset.statusUser),next=status.dataset.nextStatus;if(next==='disabled'&&!confirm('确认停用这个账号并立即撤销其会话？'))return;return await mutate(`/admin/users/${id}/${next==='disabled'?'disable':'enable'}`)}if(revoke){if(!confirm('确认撤销这个用户的全部有效会话？'))return;return await mutate('/admin/users/revoke-sessions',{user_id:Number(revoke.dataset.revokeUser)})}}catch(err){alert(err.message||'操作失败')}});
-  $('usersBody').addEventListener('change',async e=>{const select=e.target.closest('[data-role-user]');if(!select)return;try{await mutate('/admin/users/role',{user_id:Number(select.dataset.roleUser),role:select.value})}catch(err){alert(err.message||'修改角色失败');await loadPageData('users',{force:true})}});
+  $('usersGrid').addEventListener('click',async e=>{const detail=e.target.closest('[data-user-detail]'),status=e.target.closest('[data-status-user]'),revoke=e.target.closest('[data-revoke-user]');try{if(detail)return await openUserDetail(Number(detail.dataset.userDetail));if(status){const id=Number(status.dataset.statusUser),next=status.dataset.nextStatus;if(next==='disabled'&&!confirm('确认停用这个账号并立即撤销其会话？'))return;return await mutate(`/admin/users/${id}/${next==='disabled'?'disable':'enable'}`)}if(revoke){if(!confirm('确认撤销这个用户的全部有效会话？'))return;return await mutate('/admin/users/revoke-sessions',{user_id:Number(revoke.dataset.revokeUser)})}}catch(err){alert(err.message||'操作失败')}});
+  $('usersGrid').addEventListener('change',async e=>{const select=e.target.closest('[data-role-user]');if(!select)return;try{await mutate('/admin/users/role',{user_id:Number(select.dataset.roleUser),role:select.value})}catch(err){alert(err.message||'修改角色失败');await loadPageData('users',{force:true})}});
   async function handleInterrupt(button){if(!button||!confirm('确认中断这个正在运行的 Agent Turn？该操作会写入审计日志。'))return;button.disabled=true;button.textContent='Queuing…';try{await request('/admin/runs/interrupt',{method:'POST',body:JSON.stringify({run_id:Number(button.dataset.interruptRun)})});button.textContent='Queued';setTimeout(()=>void refreshCurrentPage(false).catch(showLoadError),3500)}catch(err){button.disabled=false;button.textContent='Interrupt';alert(err.message||'中断失败')}}
   async function handleSessionRevoke(revoke){if(!revoke||!confirm('确认撤销这个 Session？'))return;try{await mutate(`/admin/sessions/${encodeURIComponent(revoke.dataset.revokeSession)}/revoke`);if(state.selectedUser)await openUserDetail(state.selectedUser.id,{navigate:false})}catch(err){alert(err.message||'撤销失败')}}
   $('runsBody').addEventListener('click',e=>void handleInterrupt(e.target.closest('[data-interrupt-run]')));
