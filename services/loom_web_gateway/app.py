@@ -1,22 +1,24 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import logging
 import os
+import time
 import uuid
-from urllib.parse import urlencode
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlencode
 
 import httpx
 from fastapi import FastAPI, Request, Response, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
 
 ACCOUNT_BASE_URL = os.environ.get("LOOM_ACCOUNT_API_BASE_URL", "https://account.smirel.com/v1").rstrip("/")
-WEB_ORIGIN = os.environ.get("LOOM_WEB_ORIGIN", "https://loom.smirel.com").rstrip("/")
 STATIC_DIR = Path(os.environ.get("LOOM_WEB_STATIC_DIR", "/app/static")).resolve()
-BUILD_SHA = str(os.environ.get("LOOM_BUILD_SHA", "unknown") or "unknown").strip()
+WEB_ORIGIN = os.environ.get("LOOM_WEB_ORIGIN", "https://loom.smirel.com").rstrip("/")
+BUILD_SHA = os.environ.get("LOOM_BUILD_SHA", "unknown")
 TELEMETRY_SECRET = str(os.environ.get("LOOM_TELEMETRY_SECRET", "") or "").strip()
 ACCESS_COOKIE = "loom_web_access"
 REFRESH_COOKIE = "loom_web_refresh"
@@ -273,19 +275,51 @@ async def _authenticated_user(access_token: str) -> tuple[int, dict[str, Any] | 
     return status, user if isinstance(user, dict) else None
 
 
-async def _browser_identity(request: Request) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
+# Short overlap window for concurrent requests carrying the same rotating cookie.
+# Keys are hashes; credentials remain in bounded process memory only.
+_refresh_tasks: dict[str, tuple[float, asyncio.Task]] = {}
+
+
+async def _shared_refresh(token: str) -> tuple[int, dict[str, Any]]:
+    now = time.monotonic()
+    key = hashlib.sha256(token.encode()).hexdigest()
+    for old_key, (expires, task) in list(_refresh_tasks.items()):
+        if expires <= now and task.done():
+            _refresh_tasks.pop(old_key, None)
+    entry = _refresh_tasks.get(key)
+    if entry is None:
+        if len(_refresh_tasks) >= 256:
+            return 503, {}
+        task = asyncio.create_task(_refresh(token))
+        _refresh_tasks[key] = (now + 30, task)
+    else:
+        task = entry[1]
+    status, payload = await asyncio.shield(task)
+    if status != 200:
+        _refresh_tasks.pop(key, None)
+    return status, payload
+
+
+async def _browser_identity(request: Request) -> tuple[dict[str, Any] | None, dict[str, Any] | None, int]:
     access = request.cookies.get(ACCESS_COOKIE, "")
-    _, user = await _authenticated_user(access)
+    status, user = await _authenticated_user(access)
     if user:
-        return user, None
+        return user, None, status
+    # Outages and disabled accounts must not rotate otherwise valid cookies.
+    if status != 401:
+        return None, None, status
     refresh = request.cookies.get(REFRESH_COOKIE, "")
     if not refresh:
-        return None, None
-    refresh_status, session = await _refresh(refresh)
-    if refresh_status != 200:
-        return None, None
-    _, user = await _authenticated_user(str(session.get("access_token") or ""))
-    return user, session if user else None
+        return None, None, 401
+    status, session = await _shared_refresh(refresh)
+    if status != 200:
+        return None, None, status
+    user = session.get("user")
+    if not isinstance(user, dict) or not session.get("access_token") or not session.get("refresh_token"):
+        return None, None, 502
+    # Refresh itself authenticates and returns the user. Avoid a second /me
+    # request losing already-rotated credentials when the service goes offline.
+    return user, session, 200
 
 
 @app.get("/api/healthz")
@@ -304,8 +338,8 @@ async def retired_cloud_setup() -> Response:
 
 @app.get("/api/auth/status")
 async def auth_status(request: Request) -> Response:
-    user, rotated = await _browser_identity(request)
-    response = JSONResponse({"ok": True, "snapshot": _snapshot(user)})
+    user, rotated, status = await _browser_identity(request)
+    response = JSONResponse({"ok": True, "snapshot": _snapshot(user, reachable=status not in {0, 502, 503, 504} and status < 500)})
     if rotated:
         _set_session_cookies(response, rotated)
     return response
@@ -314,9 +348,11 @@ async def auth_status(request: Request) -> Response:
 async def _auth_form(endpoint: str, request: Request) -> Response:
     try:
         body = await request.json()
-    except Exception:
-        body = {}
-    return await _auth_action(endpoint, request, body if isinstance(body, dict) else {})
+    except (ValueError, UnicodeDecodeError):
+        return JSONResponse({"ok": False, "error": _error("INVALID_JSON", "Request body must be a JSON object.", 400)}, status_code=400)
+    if not isinstance(body, dict):
+        return JSONResponse({"ok": False, "error": _error("INVALID_JSON", "Request body must be a JSON object.", 400)}, status_code=400)
+    return await _auth_action(endpoint, request, body)
 
 
 async def _auth_action(endpoint: str, request: Request, body: dict[str, Any] | None = None) -> Response:
@@ -333,6 +369,8 @@ async def _auth_action(endpoint: str, request: Request, body: dict[str, Any] | N
         response = JSONResponse({"ok": True, "snapshot": _snapshot(user)})
         _set_session_cookies(response, payload)
         return response
+    if endpoint in {"/auth/login", "/auth/oauth/exchange", "/auth/verify-email", "/auth/reset-password"}:
+        return JSONResponse({"ok": False, "error": _error("ACCOUNT_RESPONSE_INVALID", "Account service returned an incomplete session.", 502)}, status_code=502)
     return JSONResponse({"ok": True, **payload})
 
 
@@ -418,7 +456,18 @@ async def auth_oauth_exchange(request: Request) -> Response:
 async def auth_logout(request: Request) -> Response:
     refresh = request.cookies.get(REFRESH_COOKIE, "")
     if refresh:
+        key = hashlib.sha256(refresh.encode()).hexdigest()
+        entry = _refresh_tasks.pop(key, None)
+        if entry:
+            status, rotated = await asyncio.shield(entry[1])
+            if status == 200:
+                refresh = str(rotated.get("refresh_token") or refresh)
         await _account_request("POST", "/auth/logout", json_body={"refresh_token": refresh})
+        for key, (_, task) in list(_refresh_tasks.items()):
+            if task.done() and not task.cancelled() and task.exception() is None:
+                _, payload = task.result()
+                if payload.get("refresh_token") == refresh:
+                    _refresh_tasks.pop(key, None)
     response = JSONResponse({"ok": True, "snapshot": _snapshot(None)})
     _clear_session_cookies(response)
     return response
@@ -432,21 +481,11 @@ async def auth_device_pair(request: Request) -> Response:
     account service exchanges this one-time ticket into a completely independent
     Host session, so later token rotation cannot sign either side out.
     """
-    access = request.cookies.get(ACCESS_COOKIE, "")
-    _, user = await _authenticated_user(access)
-    rotated: dict[str, Any] | None = None
-    if not user:
-        refresh = request.cookies.get(REFRESH_COOKIE, "")
-        if refresh:
-            refresh_status, candidate = await _refresh(refresh)
-            if refresh_status == 200:
-                candidate_access = str(candidate.get("access_token") or "")
-                _, user = await _authenticated_user(candidate_access)
-                if user:
-                    access = candidate_access
-                    rotated = candidate
+    user, rotated, identity_status = await _browser_identity(request)
+    access = str(rotated.get("access_token") or "") if rotated else request.cookies.get(ACCESS_COOKIE, "")
     if not user or not access:
-        return JSONResponse({"ok": False, "error": _error("AUTH_REQUIRED", "Sign in to Loom Web first.", 401)}, status_code=401)
+        status = identity_status or 502
+        return JSONResponse({"ok": False, "error": _error("AUTH_REQUIRED" if status in {401, 403} else "ACCOUNT_SERVICE_UNREACHABLE", "Could not authenticate Loom Web.", status)}, status_code=status)
 
     status, payload = await _account_request(
         "POST",
@@ -472,121 +511,140 @@ async def auth_device_pair(request: Request) -> Response:
     return response
 
 
+AUTH_RECHECK_SECONDS = 30.0
+SEND_TIMEOUT_SECONDS = 10.0
+MAX_INFLIGHT_INVOKES = 32
+
+
+@dataclass
+class RelayIdentity:
+    token: str = field(repr=False)
+    user_id: int
+    valid_until: float
+    lock: asyncio.Lock = field(default_factory=asyncio.Lock)
+
+    async def valid(self) -> bool:
+        async with self.lock:
+            if time.monotonic() < self.valid_until:
+                return True
+            status, payload = await _account_request("GET", "/auth/relay-me", token=self.token)
+            user = payload.get("user")
+            if status != 200 or not isinstance(user, dict) or user.get("id") != self.user_id:
+                return False
+            self.valid_until = time.monotonic() + AUTH_RECHECK_SECONDS
+            return True
+
+
+async def _relay_identity(access: str, user_id: int) -> RelayIdentity | None:
+    status, payload = await _account_request("POST", "/auth/relay-credential", token=access, json_body={})
+    token = str(payload.get("relay_token") or "")
+    if status != 200 or not token:
+        return None
+    return RelayIdentity(token, user_id, time.monotonic() + AUTH_RECHECK_SECONDS)
+
+
+async def _watch_identity(peer) -> None:
+    while not peer.closed:
+        await asyncio.sleep(AUTH_RECHECK_SECONDS)
+        if not await peer.identity.valid():
+            peer.closed = True
+            await peer.websocket.close(code=4401, reason="session no longer authorized")
+            return
+        if isinstance(peer, BrowserPeer):
+            for request_id, deadline in list(peer.deadlines.items()):
+                if deadline <= time.monotonic():
+                    peer.deadlines.pop(request_id, None)
+                    peer.pending.pop(request_id, None)
+                    peer.pending_invokes.pop(request_id, None)
+                    await peer.send({"type": "invoke_result", "id": request_id,
+                                     "error": {"code": "HOST_TIMEOUT", "message": "The selected Host did not respond."}})
+
+
+async def _send(peer, payload: dict[str, Any]) -> bool:
+    if peer.closed:
+        return False
+    if not await peer.identity.valid():
+        peer.closed = True
+        await peer.websocket.close(code=4401, reason="session no longer authorized")
+        return False
+    try:
+        # Timeout includes waiting for the send lock, bounding slow clients.
+        async with asyncio.timeout(SEND_TIMEOUT_SECONDS):
+            async with peer.send_lock:
+                if peer.closed:
+                    return False
+                await peer.websocket.send_json(payload)
+        return True
+    except (TimeoutError, OSError, RuntimeError, WebSocketDisconnect):
+        peer.closed = True
+        try:
+            await asyncio.wait_for(peer.websocket.close(code=1013), timeout=1)
+        except (TimeoutError, OSError, RuntimeError, WebSocketDisconnect):
+            pass
+        return False
+
+
 @dataclass
 class BrowserPeer:
     id: str
     user_id: int
     websocket: WebSocket
-    selected_device_id: str = ""
-    pending_invokes: dict[str, tuple[str, list[Any]]] = field(default_factory=dict)
+    device_id: str
+    identity: RelayIdentity
     send_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     closed: bool = False
+    pending: dict[int, Any] = field(default_factory=dict)
+    deadlines: dict[int, float] = field(default_factory=dict)
+    pending_invokes: dict[int, tuple[str, list[Any]]] = field(default_factory=dict)
 
     async def send(self, payload: dict[str, Any]) -> bool:
-        if self.closed:
-            return False
-        async with self.send_lock:
-            if self.closed:
-                return False
-            try:
-                await self.websocket.send_json(payload)
-                return True
-            except (RuntimeError, WebSocketDisconnect):
-                self.closed = True
-                return False
+        return await _send(self, payload)
 
 
 @dataclass
 class DevicePeer:
     user_id: int
     websocket: WebSocket
+    identity: RelayIdentity
     device_id: str = ""
     device: dict[str, Any] = field(default_factory=dict)
     send_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     closed: bool = False
 
     async def send(self, payload: dict[str, Any]) -> bool:
-        if self.closed:
-            return False
-        async with self.send_lock:
-            if self.closed:
-                return False
-            try:
-                await self.websocket.send_json(payload)
-                return True
-            except (RuntimeError, WebSocketDisconnect):
-                self.closed = True
-                return False
+        return await _send(self, payload)
 
 
 class RelayHub:
     def __init__(self) -> None:
-        # One account can legitimately have more than one Loom Host online.
-        # Keep them by durable device id instead of making different machines
-        # fight over one account-level slot.
-        self.devices: dict[int, dict[str, DevicePeer]] = {}
+        self.devices: dict[tuple[int, str], DevicePeer] = {}
         self.browsers: dict[str, BrowserPeer] = {}
         self.lock = asyncio.Lock()
 
-    def _device_for_browser_locked(self, browser: BrowserPeer) -> DevicePeer | None:
-        devices = self.devices.get(browser.user_id, {})
-        if browser.selected_device_id:
-            selected = devices.get(browser.selected_device_id)
-            return selected if selected is not None and not selected.closed else None
-        # Backward compatibility for an older browser that did not send a
-        # routing target. The newest live Host wins, but other Hosts remain
-        # connected and are never evicted.
-        for device in reversed(tuple(devices.values())):
-            if not device.closed:
-                return device
-        return None
-
-    async def device_for_browser(self, browser: BrowserPeer) -> DevicePeer | None:
-        async with self.lock:
-            return self._device_for_browser_locked(browser)
-
     async def browser_status(self, browser: BrowserPeer) -> None:
         async with self.lock:
-            devices = [
-                device
-                for device in self.devices.get(browser.user_id, {}).values()
-                if not device.closed
-            ]
-            selected = self._device_for_browser_locked(browser)
-        await browser.send({
-            "type": "device_status",
-            "online": selected is not None,
-            "device": dict(selected.device) if selected else None,
-            "selectedDeviceId": browser.selected_device_id or (selected.device_id if selected else None),
-            "devices": [dict(device.device) for device in devices],
-        })
+            device = self.devices.get((browser.user_id, browser.device_id))
+            devices = [dict(peer.device) for (user_id, _), peer in self.devices.items()
+                       if user_id == browser.user_id and not peer.closed]
+        online = device is not None and not device.closed
+        await browser.send({"type": "device_status", "online": online,
+                            "selectedDeviceId": browser.device_id,
+                            "devices": devices,
+                            "device": dict(device.device) if online and device else None})
 
     async def broadcast_device_status(self, user_id: int) -> None:
         async with self.lock:
             peers = [peer for peer in self.browsers.values() if peer.user_id == user_id]
         await asyncio.gather(*(self.browser_status(peer) for peer in peers), return_exceptions=True)
 
-    async def broadcast_notification(self, user_id: int, device_id: str, payload: dict[str, Any]) -> None:
-        # Notifications mutate renderer state, so they must follow the same
-        # selected-device route as invokes. Never leak another computer's turn
-        # events into the browser that is controlling this one.
+    async def broadcast_notification(self, device: DevicePeer, payload: dict[str, Any]) -> None:
         async with self.lock:
-            peers = [
-                peer
-                for peer in self.browsers.values()
-                if peer.user_id == user_id
-                and (selected := self._device_for_browser_locked(peer)) is not None
-                and selected.device_id == device_id
-            ]
+            peers = [peer for peer in self.browsers.values()
+                     if peer.user_id == device.user_id and peer.device_id == device.device_id]
         await asyncio.gather(*(peer.send({"type": "notification", "payload": payload}) for peer in peers), return_exceptions=True)
 
 
 hub = RelayHub()
-
-
-async def _ws_user_from_access(access: str) -> dict[str, Any] | None:
-    _, user = await _authenticated_user(access)
-    return user
 
 
 def _window_legacy_thread_read_result(
@@ -661,40 +719,35 @@ def _window_legacy_thread_read_result(
     return bounded
 
 
-async def _run_device_invoke(peer: BrowserPeer, request_id: Any, operation: str, args: list[Any]) -> None:
-    logger.info("relay invoke operation=%s", operation)
-    device = await hub.device_for_browser(peer)
-    if device is None or device.closed:
-        await peer.send({
-            "type": "invoke_result",
-            "id": request_id,
-            "error": {
-                "code": "HOST_OFFLINE",
-                "message": "No Loom Host is online for this account. Start Loom on the computer you want to control; its Host can remain running in the background.",
-            },
-        })
+async def _run_device_invoke(peer: BrowserPeer, request_id: int, operation: str, args: list[Any]) -> None:
+    async with hub.lock:
+        device = hub.devices.get((peer.user_id, peer.device_id))
+    if peer.closed or not await peer.identity.valid():
+        await peer.websocket.close(code=4401, reason="session no longer authorized")
         return
-    request_key = str(request_id)
-    track_result_window = bool(operation == "call" and len(args) >= 2 and args[0] == "thread/read")
-    if track_result_window:
-        peer.pending_invokes[request_key] = (operation, args)
-        while len(peer.pending_invokes) > 256:
-            peer.pending_invokes.pop(next(iter(peer.pending_invokes)), None)
-
-    sent = await device.send({
-        "type": "invoke",
-        "browserId": peer.id,
-        "id": request_id,
-        "operation": operation,
-        "args": args,
-    })
+    if device is None or device.closed or not await device.identity.valid():
+        peer.pending.pop(request_id, None)
+        peer.deadlines.pop(request_id, None)
+        await peer.send({"type": "invoke_result", "id": request_id,
+                         "error": {"code": "HOST_OFFLINE", "message": "The selected Loom Host is offline. Start Loom on that computer; another Host will not be used."}})
+        return
+    if operation == "call" and len(args) >= 2 and args[0] == "thread/read":
+        peer.pending_invokes[request_id] = (operation, args)
+    peer.pending[request_id] = device
+    sent = await device.send({"type": "invoke", "browserId": peer.id, "id": request_id,
+                              "operation": operation, "args": args})
     if not sent:
-        peer.pending_invokes.pop(request_key, None)
-        await peer.send({
-            "type": "invoke_result",
-            "id": request_id,
-            "error": {"code": "HOST_OFFLINE", "message": "Loom Host disconnected before the request was sent."},
-        })
+        peer.pending.pop(request_id, None)
+        peer.deadlines.pop(request_id, None)
+        peer.pending_invokes.pop(request_id, None)
+        await peer.send({"type": "invoke_result", "id": request_id,
+                         "error": {"code": "HOST_OFFLINE", "message": "The selected Loom Host disconnected."}})
+
+
+async def _cancel_tasks(tasks) -> None:
+    for task in tasks:
+        task.cancel()
+    await asyncio.gather(*tasks, return_exceptions=True)
 
 
 @app.websocket("/api/ws/browser")
@@ -705,48 +758,54 @@ async def browser_socket(websocket: WebSocket) -> None:
         await websocket.close(code=4403, reason="origin not allowed")
         return
     access = websocket.cookies.get(ACCESS_COOKIE, "")
-    user = await _ws_user_from_access(access)
-    if not user:
+    _, user = await _authenticated_user(access)
+    user_id = int(user.get("id") or 0) if user else 0
+    identity = await _relay_identity(access, user_id) if user_id > 0 else None
+    if identity is None:
         await websocket.close(code=4401, reason="authentication required")
         return
-    user_id = int(user.get("id") or 0)
-    if user_id <= 0:
-        await websocket.close(code=4401, reason="invalid account")
-        return
-    requested_device = str(websocket.query_params.get("device") or "").strip()
-    selected_device_id = _device_id(requested_device)
-    if requested_device and not selected_device_id:
-        await websocket.close(code=4400, reason="invalid device id")
-        return
+    selected = _device_id(websocket.query_params.get("device"))
     await websocket.accept()
-    peer = BrowserPeer(
-        id=uuid.uuid4().hex,
-        user_id=user_id,
-        websocket=websocket,
-        selected_device_id=selected_device_id,
-    )
+    peer = BrowserPeer(uuid.uuid4().hex, user_id, websocket, selected, identity)
     async with hub.lock:
         hub.browsers[peer.id] = peer
-    await hub.browser_status(peer)
+    tasks: set[asyncio.Task] = set()
+    watcher = asyncio.create_task(_watch_identity(peer))
     try:
-        while True:
+        await hub.browser_status(peer)
+        while not peer.closed:
             frame = await websocket.receive_json()
             if not isinstance(frame, dict):
                 continue
-            kind = frame.get("type")
-            if kind == "ping":
+            if frame.get("type") == "ping":
                 await peer.send({"type": "pong"})
                 continue
-            if kind != "invoke":
+            if frame.get("type") == "get_status":
+                await hub.browser_status(peer)
+                continue
+            if frame.get("type") != "invoke":
                 continue
             request_id = frame.get("id")
+            if type(request_id) is not int:
+                continue
+            if request_id in peer.pending or len(peer.pending) >= MAX_INFLIGHT_INVOKES:
+                await peer.send({"type": "invoke_result", "id": request_id,
+                                 "error": {"code": "HOST_BUSY", "message": "Too many pending Host requests."}})
+                continue
             operation = str(frame.get("operation") or "")
             args = frame.get("args") if isinstance(frame.get("args"), list) else []
-            asyncio.create_task(_run_device_invoke(peer, request_id, operation, args))
-    except (WebSocketDisconnect, RuntimeError, ValueError):
+            peer.pending[request_id] = None
+            peer.deadlines[request_id] = time.monotonic() + 120
+            task = asyncio.create_task(_run_device_invoke(peer, request_id, operation, args))
+            tasks.add(task)
+            task.add_done_callback(tasks.discard)
+    except (WebSocketDisconnect, OSError, RuntimeError, ValueError):
         pass
     finally:
         peer.closed = True
+        await _cancel_tasks([watcher, *tasks])
+        peer.pending.clear()
+        peer.deadlines.clear()
         async with hub.lock:
             hub.browsers.pop(peer.id, None)
 
@@ -755,66 +814,55 @@ async def browser_socket(websocket: WebSocket) -> None:
 async def device_socket(websocket: WebSocket) -> None:
     authorization = str(websocket.headers.get("authorization") or "")
     access = authorization[7:].strip() if authorization.lower().startswith("bearer ") else ""
-    user = await _ws_user_from_access(access)
-    if not user:
+    _, user = await _authenticated_user(access)
+    user_id = int(user.get("id") or 0) if user else 0
+    identity = await _relay_identity(access, user_id) if user_id > 0 else None
+    if identity is None:
         await websocket.close(code=4401, reason="authentication required")
         return
-    user_id = int(user.get("id") or 0)
-    if user_id <= 0:
-        await websocket.close(code=4401, reason="invalid account")
-        return
     await websocket.accept()
-    logger.info("relay device connected")
-    peer = DevicePeer(user_id=user_id, websocket=websocket)
-    command_task: asyncio.Task[None] | None = None
+    peer = DevicePeer(user_id, websocket, identity)
+    watcher = asyncio.create_task(_watch_identity(peer))
+    command_task: asyncio.Task | None = None
     try:
-        while True:
+        while not peer.closed:
             frame = await websocket.receive_json()
             if not isinstance(frame, dict):
                 continue
+            if not await peer.identity.valid():
+                await websocket.close(code=4401, reason="session no longer authorized")
+                return
             kind = frame.get("type")
             if kind == "ping":
                 await peer.send({"type": "pong"})
                 if peer.device_id:
                     asyncio.create_task(_record_device(peer, "heartbeat"))
             elif kind == "device_hello":
-                device = frame.get("device")
-                payload = dict(device) if isinstance(device, dict) else {}
+                payload = frame.get("device")
+                payload = dict(payload) if isinstance(payload, dict) else {}
                 device_id = _device_id(payload.get("id"))
-                if not device_id:
-                    await websocket.close(code=4400, reason="valid device id required")
+                if not device_id or (peer.device_id and peer.device_id != device_id):
+                    await websocket.close(code=4400, reason="valid immutable device id required")
                     return
                 payload["id"] = device_id
-                peer.device_id = device_id
-                peer.device = payload
+                peer.device_id, peer.device = device_id, payload
                 asyncio.create_task(_record_device(peer, "connected"))
                 if command_task is None:
                     command_task = asyncio.create_task(_command_loop(peer))
                 async with hub.lock:
-                    devices = hub.devices.setdefault(user_id, {})
-                    old = devices.get(device_id)
-                    # Reinsert so legacy browsers without an explicit target
-                    # still follow the most recently connected Host.
-                    devices.pop(device_id, None)
-                    devices[device_id] = peer
-                if old is not None and old is not peer and old.websocket is not websocket:
-                    try:
-                        await old.websocket.close(code=4001, reason="newer Loom Host instance connected for this device")
-                    except RuntimeError:
-                        pass
-                logger.info(
-                    "relay device hello id=%s platform=%s version=%s",
-                    device_id,
-                    str(peer.device.get("platform") or "unknown"),
-                    str(peer.device.get("version") or "unknown"),
-                )
+                    old = hub.devices.get((user_id, device_id))
+                    hub.devices[(user_id, device_id)] = peer
+                if old is not None and old is not peer:
+                    old.closed = True
+                    await old.websocket.close(code=4001, reason="newer connection for this device")
                 await hub.broadcast_device_status(user_id)
             elif kind == "invoke_result":
-                if not peer.device_id:
-                    continue
                 browser_id = str(frame.get("browserId") or "")
+                request_id = frame.get("id")
+                if type(request_id) is not int:
+                    continue
                 async with hub.lock:
-                    current = hub.devices.get(user_id, {}).get(peer.device_id)
+                    current = hub.devices.get((user_id, peer.device_id))
                     browser = hub.browsers.get(browser_id)
                 if current is peer and browser_id.startswith("ops:"):
                     try:
@@ -829,10 +877,12 @@ async def device_socket(websocket: WebSocket) -> None:
                             "error": str((error or {}).get("message") or "")[:240],
                         })
                     continue
-                if current is peer and browser and browser.user_id == user_id:
-                    request_id = frame.get("id")
-                    invoke_meta = browser.pending_invokes.pop(str(request_id), None)
+                if (current is peer and browser and browser.user_id == user_id
+                        and browser.device_id == peer.device_id and browser.pending.get(request_id) is peer):
+                    browser.pending.pop(request_id, None)
+                    browser.deadlines.pop(request_id, None)
                     forwarded = {"type": "invoke_result", "id": request_id}
+                    invoke_meta = browser.pending_invokes.pop(request_id, None)
                     if "error" in frame:
                         forwarded["error"] = frame.get("error")
                     else:
@@ -844,27 +894,32 @@ async def device_socket(websocket: WebSocket) -> None:
             elif kind == "notification":
                 payload = frame.get("payload")
                 async with hub.lock:
-                    current = hub.devices.get(user_id, {}).get(peer.device_id)
+                    current = hub.devices.get((user_id, peer.device_id))
                 if isinstance(payload, dict) and current is peer:
-                    notification_type = str(payload.get("method") or payload.get("type") or "unknown")
-                    logger.info("relay notification type=%s device=%s", notification_type, peer.device_id or "unknown")
                     asyncio.create_task(_record_notification(peer, payload))
-                    await hub.broadcast_notification(user_id, peer.device_id, payload)
-    except (WebSocketDisconnect, RuntimeError, ValueError):
+                    await hub.broadcast_notification(peer, payload)
+    except (WebSocketDisconnect, OSError, RuntimeError, ValueError):
         pass
     finally:
-        if command_task is not None:
-            command_task.cancel()
         if peer.device_id:
             await _record_device(peer, "disconnected")
         peer.closed = True
+        tasks_to_cancel = [watcher]
+        if command_task is not None:
+            tasks_to_cancel.append(command_task)
+        await _cancel_tasks(tasks_to_cancel)
         async with hub.lock:
-            devices = hub.devices.get(user_id)
-            if devices is not None and peer.device_id and devices.get(peer.device_id) is peer:
-                devices.pop(peer.device_id, None)
-                if not devices:
-                    hub.devices.pop(user_id, None)
-        logger.info("relay device disconnected id=%s", peer.device_id or "unregistered")
+            if hub.devices.get((user_id, peer.device_id)) is peer:
+                hub.devices.pop((user_id, peer.device_id), None)
+            browsers = [browser for browser in hub.browsers.values() if browser.user_id == user_id]
+        for browser in browsers:
+            for request_id, device in list(browser.pending.items()):
+                if device is peer:
+                    browser.pending.pop(request_id, None)
+                    browser.deadlines.pop(request_id, None)
+                    browser.pending_invokes.pop(request_id, None)
+                    await browser.send({"type": "invoke_result", "id": request_id,
+                                        "error": {"code": "HOST_OFFLINE", "message": "The selected Loom Host disconnected."}})
         await hub.broadcast_device_status(user_id)
 
 def _static_headers(path: Path) -> dict[str, str]:
