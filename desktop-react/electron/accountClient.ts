@@ -428,6 +428,19 @@ export class LoomAccountClient {
     }
   }
 
+  async hasAuthenticatedSession(): Promise<boolean> {
+    let session = await this.loadSession();
+    if (!session?.user) return false;
+    if (session.expiresAt > Date.now()) return true;
+    try {
+      session = await this.refresh(session);
+      return Boolean(session?.user);
+    } catch (error) {
+      if (isAuthRejection(error)) await this.clearSession();
+      return false;
+    }
+  }
+
   async status(): Promise<LoomAccountSnapshot> {
     if (!this.configured) return this.snapshot(null, false);
     let session = await this.loadSession();

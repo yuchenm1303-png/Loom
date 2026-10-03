@@ -42,6 +42,8 @@ interface ComposerProps {
   model?: string;
   modelSnapshot?: ModelSnapshot | null;
   modelBusy?: boolean;
+  accountAuthenticated?: boolean;
+  onOpenAccount?(): void;
   permissionMode?: string;
   permissionModes?: string[];
   stickerPreferences?: StickerPreferences | null;
@@ -135,6 +137,8 @@ export function Composer({
   model,
   modelSnapshot,
   modelBusy,
+  accountAuthenticated = false,
+  onOpenAccount,
   permissionMode,
   permissionModes,
   stickerPreferences,
@@ -370,11 +374,13 @@ export function Composer({
             onPaste={(event) => void onPaste(event)}
             onFocus={() => setFocused(true)}
             onBlur={() => setFocused(false)}
-            placeholder={quote
-              ? (zh ? "针对引用内容继续提问…" : "Ask about the quoted content…")
-              : zh
-                ? (disabled ? "打开对话，开始工作" : "描述任务，或提出问题…")
-                : (disabled ? "Open a thread to start" : "Describe a task or ask a question…")}
+            placeholder={!accountAuthenticated
+              ? (zh ? "登录 Loom 后才能使用模型和发送消息" : "Sign in to Loom to use models and send messages")
+              : quote
+                ? (zh ? "针对引用内容继续提问…" : "Ask about the quoted content…")
+                : zh
+                  ? (disabled ? "打开对话，开始工作" : "描述任务，或提出问题…")
+                  : (disabled ? "Open a thread to start" : "Describe a task or ask a question…")}
             disabled={disabled || running}
             rows={1}
           />
@@ -501,6 +507,8 @@ export function Composer({
                     snapshot={modelSnapshot ?? null}
                     busy={modelBusy}
                     running={running}
+                    accountAuthenticated={accountAuthenticated}
+                    onOpenAccount={onOpenAccount}
                     onSwitchProfile={async (selection) => {
                       if (!onModelProfileChange) throw new Error("Model switching is unavailable.");
                       await onModelProfileChange(selection);

@@ -1223,11 +1223,13 @@ export default function App() {
             completed={thread.status === "completed"} />}
           <Composer
             threadId={thread?.id}
-            disabled={!thread || loom.connection !== "ready" || archived}
+            disabled={!thread || loom.connection !== "ready" || archived || !account.account.authenticated}
             running={running}
             model={loom.models?.current?.model || loom.runtime.model}
             modelSnapshot={loom.models}
             modelBusy={loom.modelBusy}
+            accountAuthenticated={account.account.authenticated}
+            onOpenAccount={() => setAccountOpen(true)}
             permissionMode={permissionMode}
             permissionModes={loom.runtime.permissionModes}
             stickerPreferences={stickersEnabled ? loom.runtime.stickerPreferences : null}

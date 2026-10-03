@@ -99,6 +99,7 @@ def test_agent_ops_http_routes(tmp_path, monkeypatch):
         assert call("/v1/telemetry/agent-event",method="POST",secret="route-secret",body={"event":"turn.started","user_id":user["id"],"device_id":"route-device","thread_id":"route-thread","turn_id":"route-turn","model":"route-model"})[0]==200
         status,overview=call("/v1/admin/agent-overview",auth=True); assert status==200 and overview["known_devices"]==1 and overview["active_runs"]==1
         status,runs=call("/v1/admin/runs",auth=True); assert status==200 and runs["runs"][0]["turn_id"]=="route-turn"; run_id=runs["runs"][0]["id"]
+        status,user_ops=call(f"/v1/admin/users/{user['id']}/agent-ops",auth=True); assert status==200 and user_ops["user_id"]==user["id"] and user_ops["runs"][0]["turn_id"]=="route-turn"
         status,queued=call("/v1/admin/runs/interrupt",method="POST",body={"run_id":run_id},auth=True); assert status==200 and queued["command"]["kind"]=="turn.interrupt"
         status,commands=call("/v1/telemetry/commands/poll",method="POST",secret="route-secret",body={"user_id":user["id"],"device_id":"route-device"}); assert status==200 and commands["commands"][0]["payload"]["turnId"]=="route-turn"
     finally:
@@ -111,3 +112,36 @@ def test_gateway_heartbeat_is_owned_by_device_socket():
     device=source.split('async def device_socket',1)[1].split('def _static_headers',1)[0]
     assert 'heartbeat' not in browser or '_record_device(peer' not in browser
     assert 'heartbeat' in device and '_record_device(peer' in device
+
+
+def test_admin_information_architecture_is_overview_first():
+    html=Path("services/loom_admin/static/index.html").read_text(encoding="utf-8")
+    js=Path("services/loom_admin/static/admin.js").read_text(encoding="utf-8")
+    assert 'id="overview" data-admin-page="overview"' in html
+    assert 'id="runs" data-admin-page="runs" hidden' in html
+    assert 'id="devices" data-admin-page="devices" hidden' in html
+    assert 'id="user" data-admin-page="user" hidden' in html
+    assert 'Global controls' in html and 'ACCOUNT WORKSPACE' in html
+    assert '<dialog id="userDialog"' not in html
+    assert 'function showPage(page)' in js and 'function applyRoute()' in js
+    assert "location.hash=`user/${u.id}`" in js
+    assert 'renderUserWorkspace' in js
+    assert "request(`/admin/users/${id}/agent-ops`)" in js
+    overview_loader=js.split('async function loadOverview',1)[1].split('async function loadPageData',1)[0]
+    assert '/admin/runs' not in overview_loader and '/admin/devices' not in overview_loader and '/admin/sessions' not in overview_loader
+    assert 'loadAll' not in js
+
+
+def test_account_scoped_agent_ops_never_mix_users(tmp_path):
+    store,owner=_store(tmp_path)
+    other=store.register_verified("other@example.com","test-hash")
+    store.telemetry_device({"event":"connected","user_id":owner["id"],"device_id":"owner-device","name":"Owner PC"})
+    store.telemetry_device({"event":"connected","user_id":other["id"],"device_id":"other-device","name":"Other PC"})
+    store.telemetry_agent_event({"event":"turn.started","user_id":owner["id"],"device_id":"owner-device","thread_id":"owner-thread","turn_id":"owner-turn","model":"owner-model"})
+    store.telemetry_agent_event({"event":"turn.started","user_id":other["id"],"device_id":"other-device","thread_id":"other-thread","turn_id":"other-turn","model":"other-model"})
+    owner_ops=store.admin_user_operations(owner["id"]); other_ops=store.admin_user_operations(other["id"])
+    assert {d["device_id"] for d in owner_ops["devices"]}=={"owner-device"}
+    assert {r["turn_id"] for r in owner_ops["runs"]}=={"owner-turn"}
+    assert {d["device_id"] for d in other_ops["devices"]}=={"other-device"}
+    assert {r["turn_id"] for r in other_ops["runs"]}=={"other-turn"}
+
