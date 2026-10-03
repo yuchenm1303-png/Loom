@@ -104,7 +104,7 @@
     const anchor = $('sessions') || $('system');
     if (!anchor) return;
     const section = document.createElement('section');
-    section.className = 'usage-accounts-section fade'; section.id = 'models';
+    section.className = 'usage-accounts-section fade loom-policy-page'; section.id = 'models'; section.dataset.adminPage = 'models'; section.hidden = true;
     section.innerHTML = `
       <div class="usage-section-head">
         <div><p class="kicker">MODEL ACCESS CONTROL</p><h2>模型权限控制台</h2><p>全局、访问分组和单账号三层策略。全局禁用是硬限制，单账号显式规则优先于 Access Group。</p></div>
@@ -150,6 +150,9 @@
       </div>
       <p id="policyError" class="loom-policy-error" role="alert"></p>`;
     anchor.parentNode.insertBefore(section, anchor);
+    // admin.js may have already routed a direct #models page before this deferred
+    // module was installed. Reconcile that one bootstrap race explicitly.
+    if (decodeURIComponent(location.hash.replace(/^#/, '')) === 'models' && $('adminContent') && !$('adminContent').hidden) section.hidden = false;
 
     section.querySelector('.loom-policy-tabs').addEventListener('click', onTabClick);
     $('policyRefresh').addEventListener('click', loadPolicyFresh);
@@ -195,8 +198,10 @@
   }
   function onTabClick(event) { const button = event.target.closest('[data-policy-tab]'); if (button) switchTab(button.dataset.policyTab); }
 
+  function modelPageActive() { const page = $('models'); const content = $('adminContent'); return Boolean(page && content && !content.hidden && !page.hidden); }
+
   async function loadPolicy() {
-    if (policyState.loading || !$('adminContent') || $('adminContent').hidden) return;
+    if (policyState.loading || !modelPageActive()) return;
     policyState.loading = true; showError(null);
     try {
       const [policy, users] = await Promise.all([policyRequest('/admin/state'), accountRequest('/admin/users')]);
@@ -365,18 +370,19 @@
       const direct = event.target.closest?.('[data-user-models],[data-open-account-console]');
       if (direct) {
         const id = Number(direct.dataset.userModels || direct.dataset.openAccountConsole); if (!id) return;
-        event.preventDefault(); $('userDialog')?.close(); switchTab('accounts', {scroll:true}); selectAccount(id).catch(showError); return;
+        event.preventDefault(); $('userDialog')?.close(); location.hash = 'models';
+        window.setTimeout(() => { switchTab('accounts'); loadPolicyFresh().then(() => selectAccount(id)).catch(showError); }, 0); return;
       }
       const user = event.target.closest?.('[data-user-detail]');
       if (user) { policyState.dialogUserId = Number(user.dataset.userDetail); setTimeout(() => renderDialogPolicy(policyState.dialogUserId), 180); }
     }, true);
     const detailBody = $('userDetailBody'), dialog = $('userDialog');
     if (detailBody) new MutationObserver(() => { if (policyState.dialogUserId && dialog?.open && !detailBody.querySelector('.loom-policy-effective')) setTimeout(() => renderDialogPolicy(policyState.dialogUserId), 30); }).observe(detailBody, {childList:true});
-    $('refreshButton')?.addEventListener('click', () => setTimeout(loadPolicyFresh, 100));
+    window.addEventListener('loom-admin:model-page-request', () => loadPolicyFresh());
     const adminContent = $('adminContent');
-    if (adminContent) new MutationObserver(() => { if (!adminContent.hidden) loadPolicyFresh(); }).observe(adminContent, {attributes:true, attributeFilter:['hidden']});
+    if (adminContent) new MutationObserver(() => { if (modelPageActive()) loadPolicyFresh(); }).observe(adminContent, {attributes:true, attributeFilter:['hidden']});
   }
 
   installUI(); installHooks();
-  if ($('adminContent') && !$('adminContent').hidden) loadPolicyFresh();
+  if (modelPageActive()) loadPolicyFresh();
 })();
