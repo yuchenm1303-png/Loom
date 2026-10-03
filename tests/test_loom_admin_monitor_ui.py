@@ -32,3 +32,14 @@ def test_nav_distinguishes_monitor_usage_and_model_access() -> None:
     assert '<a href="#runs">监控</a>' in HTML
     assert '<a href="#usage">用量</a>' in HTML
     assert '<a href="#models">模型权限</a>' in HTML
+
+
+def test_account_model_console_has_v2_management_controls() -> None:
+    assert "loom-policy-account-stats" in POLICY
+    assert "data-account-provider-action" in POLICY
+    assert "policyAccountStatusFilter" in POLICY
+    assert "data-account-bulk" in POLICY
+    assert "data-account-group-toggle" in POLICY
+    assert "/models/bulk" in POLICY
+    assert "仅硬限制" in POLICY
+    assert "筛选结果继承" in POLICY
