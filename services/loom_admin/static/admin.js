@@ -64,16 +64,30 @@
 
   function renderOverview(){
     const o=state.overview||{}, a=state.agent||{};
-    $('kpiUsers').textContent=fmtNumber(o.users); $('kpiOnlineDevices').textContent=fmtNumber(a.online_devices);
-    $('kpiActiveRuns').textContent=fmtNumber(a.active_runs); $('kpiApprovals').textContent=fmtNumber(a.waiting_approvals);
+    const users=Number(o.users||0), online=Number(a.online_devices||0), known=Number(a.known_devices||0);
+    const active=Number(a.active_runs||0), waiting=Number(a.waiting_approvals||0), runs24=Number(a.runs_24h||0), failed24=Number(a.failed_runs_24h||0);
+    $('kpiUsers').textContent=fmtNumber(users); $('kpiOnlineDevices').textContent=fmtNumber(online);
+    $('kpiActiveRuns').textContent=fmtNumber(active); $('kpiApprovals').textContent=fmtNumber(waiting);
     $('kpiTokens24').textContent=fmtCompact(a.tokens_24h); $('kpiToolCalls24').textContent=fmtNumber(a.tool_calls_24h);
     $('kpiSessions').textContent=fmtNumber(o.active_sessions); $('kpiNew').textContent=fmtNumber(o.registrations_24h);
     $('generatedAt').textContent=fmtTime(a.generated_at||o.generated_at); $('adminIdentity').textContent=`${state.me.email} · ${state.me.role}`;
     $('serviceState').textContent=state.health.account?'Healthy':'Unavailable'; $('serviceState').dataset.state=state.health.account?'ok':'bad';
     $('loomWebState').textContent=state.health.loom?'Healthy':'Unavailable'; $('loomWebState').dataset.state=state.health.loom?'ok':'bad';
-    if($('overviewRuns24')) $('overviewRuns24').textContent=fmtNumber(a.runs_24h);
-    if($('overviewFailed24')) $('overviewFailed24').textContent=fmtNumber(a.failed_runs_24h);
-    if($('overviewKnownDevices')) $('overviewKnownDevices').textContent=fmtNumber(a.known_devices);
+    $('overviewRuns24').textContent=fmtNumber(runs24); $('overviewFailed24').textContent=fmtNumber(failed24); $('overviewKnownDevices').textContent=fmtNumber(known);
+    const healthy=Boolean(state.health.account&&state.health.loom);
+    $('overviewHealthTitle').textContent=healthy?'Control plane operational':'Control plane needs attention';
+    $('overviewHealthSubtitle').textContent=healthy?'Account API 与 Loom Web 均可用':'至少有一个核心服务当前不可用';
+    $('overviewHealthMark').dataset.state=healthy?'ok':'bad';
+    const devicePct=known?Math.round((online/known)*100):0;
+    $('overviewDeviceCoverage').textContent=known?`${online} / ${known} online`:'No hosts yet';
+    $('overviewDeviceFill').style.width=`${Math.max(0,Math.min(100,devicePct))}%`;
+    const successPct=runs24?Math.max(0,Math.round(((runs24-failed24)/runs24)*100)):100;
+    $('overviewSuccessRate').textContent=runs24?`${successPct}%`:'No runs yet';
+    $('overviewSuccessFill').style.width=`${runs24?successPct:0}%`;
+    $('overviewSuccessFill').dataset.state=failed24?'warn':'ok';
+    $('overviewFailureNote').textContent=runs24?`${failed24} failed of ${runs24}`:'Waiting for telemetry';
+    $('overviewActiveInline').textContent=fmtNumber(active); $('overviewApprovalInline').textContent=fmtNumber(waiting);
+    $('overviewWorkload').textContent=waiting?'Needs attention':active?'Agent active':'Idle';
     renderOverviewControls();
   }
   function renderOverviewControls(){
