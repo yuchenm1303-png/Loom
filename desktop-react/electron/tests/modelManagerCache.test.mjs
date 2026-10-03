@@ -175,3 +175,36 @@ test("provider-key change clears launch cache and re-resolves current model", ()
   assert.equal(manager.current.apiKey, "sk-new");
   assert.equal(resolveCalls(state), before + 1);
 });
+
+test("saving a connection uses async bridges and preserves the provider catalogue", async () => {
+  const manager = makeManager();
+  const state = installFakeBridge(manager);
+  manager.registry(true);
+  const before = [...state.calls];
+  const added = profile({ selection: "saved:new", id: "new", name: "New", catalogSource: "saved", vision: false });
+  const calls = [];
+  manager.runBridgeAsync = async (command) => {
+    calls.push(command);
+    if (command === "save") return added;
+    if (command === "resolve") return { ...added, apiKey: "test-secret" };
+    throw new Error(`unexpected catalogue reload: ${command}`);
+  };
+  const saved = await manager.add({ name: "New", adapter: "openai-compatible", baseUrl: added.baseUrl, model: added.model, apiKey: "test-secret", vision: false });
+  const spec = manager.resolve(saved.selection);
+  const snapshot = manager.snapshotFor(spec);
+  assert.deepEqual(calls, ["save", "resolve"]);
+  assert.deepEqual(state.calls, before, "save and switch must not start synchronous Python bridges");
+  assert.equal(snapshot.profiles.length, 2);
+  assert.equal(spec.vision, false);
+  assert.equal(spec.apiKey, "test-secret");
+  assert.equal(JSON.stringify(snapshot).includes("test-secret"), false);
+});
+
+test("failed async save leaves the cached catalogue intact", async () => {
+  const manager = makeManager();
+  const state = installFakeBridge(manager);
+  manager.registry(true);
+  manager.runBridgeAsync = async () => { throw new Error("credential store unavailable"); };
+  await assert.rejects(manager.add({ name: "New", adapter: "openai", baseUrl: "", model: "demo", apiKey: "test-secret" }), /credential store unavailable/);
+  assert.deepEqual(manager.snapshot().profiles, state.registry.profiles);
+});

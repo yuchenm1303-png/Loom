@@ -459,9 +459,24 @@ export class DesktopModelManager {
     return spec;
   }
 
-  add(input: AddModelInput): ModelProfile {
-    const profile = this.runBridge<ModelProfile>("save", input as unknown as Record<string, unknown>);
-    this.invalidateCaches({ launchSelections: [profile.selection] });
+  async add(input: AddModelInput): Promise<ModelProfile> {
+    const profile = await this.runBridgeAsync<ModelProfile>("save", input as unknown as Record<string, unknown>);
+    this.launchCache.delete(profile.selection);
+    // Saving a local connection must not wait for every provider's catalogue.
+    // Keep the existing catalogue and add the confirmed, credential-free row.
+    if (this.registryCache) {
+      this.registryCache = {
+        ...this.registryCache,
+        profiles: [...this.registryCache.profiles.filter((item) => item.selection !== profile.selection), profile],
+      };
+    }
+    this.metadataCache = {
+      profiles: [...(this.metadataCache?.profiles ?? []).filter((item) => item.selection !== profile.selection), profile],
+    };
+    if (!this.registryCache || !this.catalogFresh()) await this.listSnapshot();
+    const base = await this.runBridgeAsync<ModelLaunchSpec>("resolve", { selection: profile.selection });
+    const spec = this.projectLaunchSpec(base, this.registryCache, this.metadataCache!);
+    this.launchCache.set(profile.selection, { base, spec });
     return profile;
   }
 
@@ -628,7 +643,7 @@ export class DesktopModelManager {
   }
 
   private runBridgeAsync<T>(
-    command: "list",
+    command: "list" | "save" | "resolve",
     payload: Record<string, unknown>,
   ): Promise<T> {
     return this.runPythonBridgeAsync<T>("loom_model_bridge.py", command, payload);
@@ -655,11 +670,28 @@ export class DesktopModelManager {
         env: { ...process.env, PYTHONUTF8: "1" },
         windowsHide: true,
         stdio: ["pipe", "pipe", "pipe"],
-        timeout: 20_000,
       });
       let stdout = "";
       let stderr = "";
       let settled = false;
+      const timer = setTimeout(() => {
+        if (settled) return;
+        settled = true;
+        // On Windows the venv launcher has a Python child that inherits the
+        // pipes. Waiting for `close` after killing just the launcher can hang.
+        if (process.platform === "win32" && child.pid) {
+          const killer = spawn("taskkill", ["/PID", String(child.pid), "/T", "/F"], {
+            windowsHide: true, stdio: "ignore",
+          });
+          killer.on("error", () => child.kill());
+        } else {
+          child.kill();
+        }
+        child.stdin.destroy();
+        child.stdout.destroy();
+        child.stderr.destroy();
+        reject(new Error(`Model connection operation timed out (${command}). Please try again.`));
+      }, 20_000);
       child.stdout.setEncoding("utf8");
       child.stderr.setEncoding("utf8");
       child.stdout.on("data", (chunk) => { stdout += String(chunk); });
@@ -667,11 +699,13 @@ export class DesktopModelManager {
       child.on("error", (error) => {
         if (settled) return;
         settled = true;
+        clearTimeout(timer);
         reject(error);
       });
       child.on("close", (code) => {
         if (settled) return;
         settled = true;
+        clearTimeout(timer);
         const raw = stdout.trim();
         if (!raw) {
           reject(new Error(stderr.trim() || `${scriptName} exited with ${code ?? "unknown status"}`));
@@ -702,6 +736,7 @@ export class DesktopModelManager {
       encoding: "utf8",
       windowsHide: true,
       maxBuffer: 1024 * 1024,
+      timeout: 20_000,
     });
 
     if (result.error) throw result.error;

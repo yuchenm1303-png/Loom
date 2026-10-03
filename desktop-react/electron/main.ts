@@ -1440,7 +1440,7 @@ async function runAddModel(
   const input = (threadScoped ? maybeInput : threadOrInput) as AddModelInput | undefined;
   if (!input) throw new Error("Model connection input is required");
   await assertSignedInForModels();
-  const profile = modelManager.add(input);
+  const profile = await modelManager.add(input);
   if (threadScoped) {
     return changeThreadModel(String(threadOrInput), modelManager.resolve(profile.selection));
   }
