@@ -98,6 +98,10 @@
     ],
     "extraResources": [
       {
+        "from": "build/icon.png",
+        "to": "loom-icon.png"
+      },
+      {
         "from": "runtime-dist/python",
         "to": "."
       },

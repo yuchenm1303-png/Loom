@@ -1,4 +1,6 @@
 import { app, BrowserWindow, dialog, Menu, nativeImage, shell, Tray } from "electron";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import WebSocket from "ws";
 import { LoomAccountClient } from "./accountClient.js";
@@ -304,10 +306,16 @@ async function openLocalLoomWeb(): Promise<void> {
 
 async function ensureHostTray(): Promise<void> {
   if (hostTray || process.platform === "darwin") return;
-  // Reuse the installed Loom executable icon instead of introducing a second
-  // "Host" brand. The tray is only Loom's background presence.
-  let icon = nativeImage.createEmpty();
-  try { icon = await app.getFileIcon(process.execPath, { size: "normal" }); } catch {}
+  // Windows shell icon extraction can return a generic application icon.
+  // Load the Loom artwork explicitly from the installer resources instead.
+  const iconPath = app.isPackaged
+    ? path.join(process.resourcesPath, "loom-icon.png")
+    : path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../build/icon.png");
+  let icon = nativeImage.createFromPath(iconPath);
+  if (icon.isEmpty()) {
+    console.warn("Loom tray icon resource is missing:", iconPath);
+    try { icon = await app.getFileIcon(process.execPath, { size: "small" }); } catch {}
+  }
   hostTray = new Tray(icon);
   hostTray.setToolTip("Loom · running in the background");
   hostTray.setContextMenu(Menu.buildFromTemplate([
