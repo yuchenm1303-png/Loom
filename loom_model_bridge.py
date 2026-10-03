@@ -1428,6 +1428,7 @@ def _write(payload: dict[str, Any]) -> None:
 
 
 def _save(store: ModelConfigStore, payload: dict[str, Any]) -> dict[str, Any]:
+    _check_connection_credentials(payload)
     entry = store.save_model(
         display_name=str(payload.get("name") or ""),
         adapter=str(payload.get("adapter") or "openai-compatible"),
@@ -1437,6 +1438,41 @@ def _save(store: ModelConfigStore, payload: dict[str, Any]) -> dict[str, Any]:
         vision=bool(payload.get("vision", True)),
     )
     return _safe_saved(entry)
+
+
+def _check_connection_credentials(payload: dict[str, Any]) -> None:
+    """Reject known authentication failures before persisting a connection."""
+    key = str(payload.get("apiKey") or "").strip()
+    base_url = (
+        "https://api.openai.com/v1"
+        if str(payload.get("adapter") or "openai-compatible") == "openai"
+        else str(payload.get("baseUrl") or "").strip().rstrip("/")
+    )
+    if not key or not base_url:
+        raise ValueError("Base URL and API key are required.")
+    if key.lower().startswith("bearer ") or any(char.isspace() for char in key):
+        raise ValueError("Paste only the API key, without 'Bearer', spaces, or line breaks.")
+    parsed = urllib.parse.urlparse(base_url)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc or parsed.username or parsed.password:
+        raise ValueError("Base URL must be an HTTP(S) URL without embedded credentials.")
+    request = urllib.request.Request(
+        f"{base_url}/models",
+        headers={"Authorization": f"Bearer {key}", "Accept": "application/json"},
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=6.0):
+            pass
+    except urllib.error.HTTPError as exc:
+        if exc.code in {401, 403}:
+            raise ValueError(
+                f"Connection was not saved: {parsed.hostname} rejected the API key (HTTP {exc.code}). "
+                "Use a key issued by this provider and check that its region and API plan match the Base URL."
+            ) from None
+        # Custom servers may implement chat completions without model discovery.
+        if exc.code not in {404, 405}:
+            raise ValueError(f"Connection was not saved: endpoint check returned HTTP {exc.code}.") from None
+    except (OSError, urllib.error.URLError) as exc:
+        raise ValueError("Connection was not saved: could not reach the endpoint. Check the Base URL and network.") from None
 
 
 def _delete(
