@@ -1,0 +1,32 @@
+name: Finalize frontend model access
+
+on:
+  push:
+    branches:
+      - feat/frontend-model-access
+
+permissions:
+  contents: write
+
+jobs:
+  finalize:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: feat/frontend-model-access
+      - name: Apply validated frontend patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git apply --check .github/frontend-model-access.patch
+          git apply .github/frontend-model-access.patch
+          node --test desktop-react/scripts/tests/model-access-ui.test.mjs
+          git diff --check
+          rm -f .github/frontend-model-access.patch .github/workflows/finalize-frontend-model-access.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "feat(models): enforce account access in picker"
+          git push origin HEAD:feat/frontend-model-access
