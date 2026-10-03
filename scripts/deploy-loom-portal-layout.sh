@@ -3,6 +3,11 @@
 set -euo pipefail
 bundle=${1:-/tmp/loom-modules-build/dist}
 [[ -f "$bundle/index.html" ]] || { echo 'Missing built frontend' >&2; exit 1; }
+# Reject stale portal bundles before replacing the running frontend.
+grep -rFq 'https://api.github.com/repos/yuchenm1303-png/Loom/releases/latest' "$bundle/assets" || {
+  echo 'Portal bundle is missing dynamic release metadata; rebuild from the updated source.' >&2
+  exit 1
+}
 compose=/opt/loom-web-deploy/compose.prod.yml
 baseline=$(sudo -n docker inspect loom-web --format '{{.Image}}')
 backup="loom-web:before-modules-$(date -u +%Y%m%dT%H%M%SZ)"
