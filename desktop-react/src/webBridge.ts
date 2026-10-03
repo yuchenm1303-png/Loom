@@ -573,6 +573,14 @@ export function installWebBridge(): void {
       if (result.ok) dispatchAuthChanged();
       return result;
     },
+    accountUpdateProfile: async (displayName, avatarDataUrl) => {
+      const result = await accountRequest<LoomAccountResult>("profile", {
+        method: "POST",
+        body: JSON.stringify({ display_name: displayName, avatar_data_url: avatarDataUrl }),
+      });
+      if (result.ok) dispatchAuthChanged();
+      return result;
+    },
     accountLogout: async () => {
       try { window.sessionStorage.removeItem(REMOTE_DEVICE_SESSION_KEY); } catch {}
       closeSocket();

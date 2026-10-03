@@ -2,6 +2,7 @@ export interface LoomAccountUser {
   id: number;
   email: string;
   display_name?: string;
+  avatar_data_url?: string;
   status: string;
   role?: string;
   email_verified?: boolean;

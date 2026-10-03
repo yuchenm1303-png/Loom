@@ -149,6 +149,7 @@ function share(part: number, whole: number): string {
 function ProfileHero({ account, data, format }: { account: LoomAccountSnapshot; data: ProfileInsightsData | null; format: Formatters }) {
   const { zh } = format;
   const displayName = account.user?.display_name?.trim() || account.user?.email?.split("@")[0] || "";
+  const avatar = account.user?.avatar_data_url?.trim() || "";
   const identity = displayName || (zh ? "本地用户" : "Local user");
   const today = data?.range.endDate;
   const last = data?.lastActivityDate;
@@ -158,8 +159,8 @@ function ProfileHero({ account, data, format }: { account: LoomAccountSnapshot; 
 
   return (
     <section className="profile-hero">
-      <div className={`profile-avatar ${displayName ? "has-initials" : ""}`} aria-hidden="true">
-        {displayName ? initialsFor(displayName) : <UserRound size={30} strokeWidth={1.6} />}
+      <div className={`profile-avatar ${avatar ? "has-image" : displayName ? "has-initials" : ""}`} aria-hidden="true">
+        {avatar ? <img src={avatar} alt="" /> : displayName ? initialsFor(displayName) : <UserRound size={30} strokeWidth={1.6} />}
       </div>
       <div className="profile-identity">
         <h1>{identity}</h1>

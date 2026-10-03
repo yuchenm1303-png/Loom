@@ -40,6 +40,7 @@ interface ThreadHeaderProps {
   agentCount?: number;
   accountAuthenticated?: boolean;
   accountLabel?: string;
+  accountAvatar?: string;
   context?: ContextReport | null;
   compacting?: boolean;
   compactionProgress?: ContextCompactionProgress | null;
@@ -93,6 +94,7 @@ export function ThreadHeader({
   agentCount = 0,
   accountAuthenticated = false,
   accountLabel = "",
+  accountAvatar = "",
   context = null,
   compacting = false,
   compactionProgress = null,
@@ -273,7 +275,9 @@ export function ThreadHeader({
           title={accountTitle}
           aria-label={accountTitle}
         >
-          {accountAuthenticated && accountLabel ? (
+          {accountAuthenticated && accountAvatar ? (
+            <img className="thread-account-avatar-image" src={accountAvatar} alt="" aria-hidden="true" />
+          ) : accountAuthenticated && accountLabel ? (
             <span className="thread-account-initial" aria-hidden="true">
               {accountLabel.slice(0, 1).toUpperCase()}
             </span>

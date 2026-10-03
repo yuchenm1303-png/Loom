@@ -7,6 +7,7 @@ export interface LoomAccountUser {
   id: number;
   email: string;
   display_name?: string;
+  avatar_data_url?: string;
   status: string;
   role?: string;
   email_verified?: boolean;
@@ -562,6 +563,32 @@ export class LoomAccountClient {
       body: JSON.stringify({ pairing_ticket: ticket }),
     });
     return this.snapshot(await this.saveSession(response));
+  }
+
+  async updateProfile(displayName: string, avatarDataUrl: string): Promise<LoomAccountSnapshot> {
+    let session = await this.loadSession();
+    if (!session) throw new AccountHttpError(401, "MISSING_TOKEN", "Sign in to update your Loom profile.");
+    if (session.expiresAt <= Date.now() + 30_000) session = await this.refresh(session);
+
+    const issue = async (active: TokenSession) => this.request<{ user: LoomAccountUser }>(
+      "/auth/profile",
+      {
+        method: "POST",
+        body: JSON.stringify({ display_name: displayName, avatar_data_url: avatarDataUrl }),
+      },
+      active.accessToken,
+    );
+
+    let result: { user: LoomAccountUser };
+    try {
+      result = await issue(session);
+    } catch (error) {
+      if (!(error instanceof AccountHttpError) || error.status !== 401) throw error;
+      session = await this.refresh(session);
+      result = await issue(session);
+    }
+    session = await this.persistSession({ ...session, user: result.user });
+    return this.snapshot(session);
   }
 
   async logout(): Promise<LoomAccountSnapshot> {

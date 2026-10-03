@@ -1,9 +1,12 @@
 import {
   AlertTriangle,
+  ArrowUpRight,
+  Camera,
   CheckCircle2,
   Eye,
   EyeOff,
   LogOut,
+  Pencil,
   ShieldCheck,
   UserRound,
   X,
@@ -38,6 +41,8 @@ interface AccountDialogProps {
   onRetry(): void | Promise<void>;
   onLogin(email: string, password: string): Promise<boolean>;
   onRegister(email: string, password: string): Promise<boolean>;
+  onUpdateProfile(displayName: string, avatarDataUrl: string): Promise<boolean>;
+  onOpenProfile?(): void;
   onLogout(): Promise<void>;
 }
 
@@ -45,6 +50,49 @@ type AuthMode = "login" | "register";
 
 const FOCUSABLE =
   'button:not([disabled]), input:not([disabled]), [href], select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+const AVATAR_MAX_BYTES = 40 * 1024;
+const AVATAR_SOURCE_MAX_BYTES = 8 * 1024 * 1024;
+const AVATAR_TYPES = new Set(["image/png", "image/jpeg", "image/webp"]);
+
+function imageFromFile(file: File): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const objectUrl = URL.createObjectURL(file);
+    const image = new Image();
+    image.onload = () => { URL.revokeObjectURL(objectUrl); resolve(image); };
+    image.onerror = () => { URL.revokeObjectURL(objectUrl); reject(new Error("Could not read that image.")); };
+    image.src = objectUrl;
+  });
+}
+
+function encodedDataUrlBytes(dataUrl: string): number {
+  const payload = dataUrl.split(",", 2)[1] || "";
+  return Math.ceil(payload.length * 3 / 4);
+}
+
+async function prepareAvatar(file: File): Promise<string> {
+  if (!AVATAR_TYPES.has(file.type)) throw new Error("Use a PNG, JPEG, or WebP image.");
+  if (file.size > AVATAR_SOURCE_MAX_BYTES) throw new Error("Choose an image smaller than 8 MB.");
+  const image = await imageFromFile(file);
+  const sourceSize = Math.max(1, Math.min(image.naturalWidth, image.naturalHeight));
+  const sourceX = Math.max(0, (image.naturalWidth - sourceSize) / 2);
+  const sourceY = Math.max(0, (image.naturalHeight - sourceSize) / 2);
+
+  for (const size of [192, 160, 128]) {
+    const canvas = document.createElement("canvas");
+    canvas.width = size;
+    canvas.height = size;
+    const context = canvas.getContext("2d");
+    if (!context) throw new Error("Image processing is unavailable.");
+    context.imageSmoothingEnabled = true;
+    context.imageSmoothingQuality = "high";
+    context.drawImage(image, sourceX, sourceY, sourceSize, sourceSize, 0, 0, size, size);
+    for (const quality of [.86, .76, .66, .56]) {
+      const dataUrl = canvas.toDataURL("image/webp", quality);
+      if (dataUrl.startsWith("data:image/webp;") && encodedDataUrlBytes(dataUrl) <= AVATAR_MAX_BYTES) return dataUrl;
+    }
+  }
+  throw new Error("This image could not be compressed enough. Try a simpler image.");
+}
 
 export function AccountDialog({
   open,
@@ -57,6 +105,8 @@ export function AccountDialog({
   onRetry,
   onLogin,
   onRegister,
+  onUpdateProfile,
+  onOpenProfile,
   onLogout,
 }: AccountDialogProps) {
   const { language } = useI18n();
@@ -68,12 +118,17 @@ export function AccountDialog({
   const [confirm, setConfirm] = useState("");
   const [revealPassword, setRevealPassword] = useState(false);
   const [localError, setLocalError] = useState("");
+  const [editingProfile, setEditingProfile] = useState(false);
+  const [profileName, setProfileName] = useState("");
+  const [profileAvatar, setProfileAvatar] = useState("");
+  const [profileError, setProfileError] = useState("");
 
   const dialogRef = useRef<HTMLElement | null>(null);
   const closeRef = useRef<HTMLButtonElement | null>(null);
   const emailRef = useRef<HTMLInputElement | null>(null);
   const passwordRef = useRef<HTMLInputElement | null>(null);
   const confirmRef = useRef<HTMLInputElement | null>(null);
+  const avatarInputRef = useRef<HTMLInputElement | null>(null);
   const restoreFocusRef = useRef<HTMLElement | null>(null);
 
   const showForm = ready && account.configured && !(account.authenticated && account.user);
@@ -100,6 +155,8 @@ export function AccountDialog({
       setConfirm("");
       setLocalError("");
       setRevealPassword(false);
+      setEditingProfile(false);
+      setProfileError("");
       return;
     }
     const timer = window.setTimeout(() => {
@@ -107,6 +164,50 @@ export function AccountDialog({
     }, 0);
     return () => window.clearTimeout(timer);
   }, [open, ready]);
+
+  useEffect(() => {
+    if (editingProfile) return;
+    setProfileName(account.user?.display_name?.trim() || "");
+    setProfileAvatar(account.user?.avatar_data_url || "");
+    setProfileError("");
+  }, [account.user?.id, account.user?.display_name, account.user?.avatar_data_url, editingProfile]);
+
+  useEffect(() => {
+    if (editingProfile && error) setProfileError(accountErrorText(error, zh));
+  }, [editingProfile, error, zh]);
+
+  const beginProfileEdit = () => {
+    onClearError();
+    setProfileName(account.user?.display_name?.trim() || "");
+    setProfileAvatar(account.user?.avatar_data_url || "");
+    setProfileError("");
+    setEditingProfile(true);
+  };
+
+  const saveProfile = async () => {
+    const name = profileName.trim();
+    if (name.length > 48) {
+      setProfileError(zh ? "昵称最多 48 个字符。" : "Nickname must be 48 characters or fewer.");
+      return;
+    }
+    const ok = await onUpdateProfile(name, profileAvatar);
+    if (ok) {
+      setEditingProfile(false);
+      setProfileError("");
+    }
+  };
+
+  const chooseAvatar = async (file: File | undefined) => {
+    if (!file) return;
+    setProfileError("");
+    try {
+      setProfileAvatar(await prepareAvatar(file));
+    } catch (cause) {
+      setProfileError(cause instanceof Error ? cause.message : String(cause));
+    } finally {
+      if (avatarInputRef.current) avatarInputRef.current.value = "";
+    }
+  };
 
   const switchMode = useCallback(
     (next: AuthMode) => {
@@ -281,8 +382,8 @@ export function AccountDialog({
           <div className="loom-account-signed-in">
             {offlineNotice}
             <div className="loom-account-profile">
-              <span className="loom-account-avatar" aria-hidden="true">
-                {displayName.slice(0, 1).toUpperCase()}
+              <span className={`loom-account-avatar ${account.user.avatar_data_url ? "has-image" : ""}`} aria-hidden="true">
+                {account.user.avatar_data_url ? <img src={account.user.avatar_data_url} alt="" /> : displayName.slice(0, 1).toUpperCase()}
               </span>
               <div>
                 <strong>{displayName}</strong>
@@ -290,6 +391,33 @@ export function AccountDialog({
               </div>
               <CheckCircle2 size={18} aria-hidden="true" />
             </div>
+            {editingProfile ? (
+              <div className="loom-account-profile-editor">
+                <div className="loom-account-avatar-editor">
+                  <button type="button" className={`loom-account-avatar loom-account-avatar-button ${profileAvatar ? "has-image" : ""}`} onClick={() => avatarInputRef.current?.click()} disabled={busy} aria-label={zh ? "更换头像" : "Change avatar"}>
+                    {profileAvatar ? <img src={profileAvatar} alt="" /> : <span>{(profileName || displayName).slice(0, 1).toUpperCase()}</span>}
+                    <i><Camera size={13} /></i>
+                  </button>
+                  <input ref={avatarInputRef} className="loom-account-avatar-input" tabIndex={-1} type="file" accept="image/png,image/jpeg,image/webp" onChange={(event) => void chooseAvatar(event.target.files?.[0])} disabled={busy} />
+                  {profileAvatar ? <button type="button" className="loom-account-text-button" onClick={() => setProfileAvatar("")} disabled={busy}>{zh ? "移除头像" : "Remove photo"}</button> : null}
+                </div>
+                <label className="loom-account-profile-name">
+                  <span>{zh ? "昵称" : "Nickname"}</span>
+                  <input value={profileName} onChange={(event) => setProfileName(event.target.value)} maxLength={48} placeholder={account.user.email.split("@")[0]} disabled={busy} />
+                  <small>{profileName.trim().length}/48</small>
+                </label>
+                {profileError ? <p className="loom-account-profile-error" role="alert">{profileError}</p> : null}
+                <div className="loom-account-profile-editor-actions">
+                  <button type="button" onClick={() => { setEditingProfile(false); setProfileError(""); }} disabled={busy}>{zh ? "取消" : "Cancel"}</button>
+                  <button type="button" className="is-primary" onClick={() => void saveProfile()} disabled={busy}>{busy ? (zh ? "保存中…" : "Saving…") : (zh ? "保存资料" : "Save profile")}</button>
+                </div>
+              </div>
+            ) : (
+              <div className="loom-account-profile-actions">
+                <button type="button" onClick={beginProfileEdit} disabled={busy}><Pencil size={14} />{zh ? "编辑资料" : "Edit profile"}</button>
+                {onOpenProfile ? <button type="button" onClick={() => { onClose(); onOpenProfile(); }} disabled={busy}><ArrowUpRight size={14} />{zh ? "个人主页" : "Profile home"}</button> : null}
+              </div>
+            )}
             <div className="loom-account-security-note">
               <ShieldCheck size={16} aria-hidden="true" />
               <span>{zh ? "登录凭据已由系统安全存储加密保存。" : "Sign-in credentials are encrypted with the operating system secure storage."}</span>

@@ -466,6 +466,42 @@ async def auth_oauth_exchange(request: Request) -> Response:
     return await _auth_action("/auth/oauth/exchange", request, body if isinstance(body, dict) else {})
 
 
+@app.post("/api/auth/profile")
+async def auth_profile(request: Request) -> Response:
+    user, rotated, identity_status = await _browser_identity(request)
+    access = str(rotated.get("access_token") or "") if rotated else request.cookies.get(ACCESS_COOKIE, "")
+    if not user or not access:
+        status = identity_status or 502
+        response = JSONResponse({"ok": False, "error": _error(
+            "AUTH_REQUIRED" if status in {401, 403} else "ACCOUNT_SERVICE_UNREACHABLE",
+            "Could not authenticate Loom Web.",
+            status,
+        )}, status_code=status)
+        if rotated:
+            _set_session_cookies(response, rotated)
+        return response
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    if not isinstance(body, dict):
+        body = {}
+    status, payload = await _account_request("POST", "/auth/profile", token=access, json_body=body)
+    updated_user = payload.get("user") if status == 200 and isinstance(payload.get("user"), dict) else None
+    if not updated_user:
+        error = payload.get("error") if isinstance(payload.get("error"), dict) else {}
+        response = JSONResponse({"ok": False, "error": _error(
+            str(error.get("code") or "PROFILE_UPDATE_FAILED"),
+            str(error.get("message") or "Could not update your Loom profile."),
+            status,
+        )}, status_code=status or 502)
+    else:
+        response = JSONResponse({"ok": True, "snapshot": _snapshot(updated_user)})
+    if rotated:
+        _set_session_cookies(response, rotated)
+    return response
+
+
 @app.post("/api/auth/logout")
 async def auth_logout(request: Request) -> Response:
     refresh = request.cookies.get(REFRESH_COOKIE, "")

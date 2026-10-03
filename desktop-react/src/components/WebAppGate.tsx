@@ -53,6 +53,7 @@ export function WebAppGate({ children }: { children: ReactNode }) {
   const [pairAttempts, setPairAttempts] = useState(0);
   const [pairingSucceeded, setPairingSucceeded] = useState(false);
   const [entered, setEntered] = useState(false);
+  const [profileRequested, setProfileRequested] = useState(false);
   const hostStateRef = useRef<HostState>("idle");
   const connectPromiseRef = useRef<Promise<void> | null>(null);
   const activeAccountId = account.account.authenticated ? String(account.account.user?.id || "") : "";
@@ -66,6 +67,7 @@ export function WebAppGate({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     setEntered(false);
+    setProfileRequested(false);
     setTrackedHostState("idle");
     setPairAttempts(0);
     setPairingSucceeded(false);
@@ -357,6 +359,28 @@ export function WebAppGate({ children }: { children: ReactNode }) {
     retry();
   }, [retry]);
 
+  const openProfile = useCallback(() => {
+    setProfileRequested(true);
+    if (hostStateRef.current === "online") {
+      setEntered(true);
+      return;
+    }
+    retry();
+  }, [retry]);
+
+  useEffect(() => {
+    if (profileRequested && hostState === "online" && !entered) setEntered(true);
+  }, [entered, hostState, profileRequested]);
+
+  useEffect(() => {
+    if (!web || !entered || !profileRequested) return;
+    const frame = window.requestAnimationFrame(() => {
+      window.dispatchEvent(new CustomEvent("loom:open-profile"));
+      setProfileRequested(false);
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [entered, profileRequested, web]);
+
   if (!web) return children;
 
   const portalState: PortalHostState = hostState === "online"
@@ -378,6 +402,7 @@ export function WebAppGate({ children }: { children: ReactNode }) {
         selectedDeviceName={localHost?.deviceName || ""}
         hostDetected={Boolean(localHost)}
         onEnter={enterOrRetry}
+        onOpenProfile={openProfile}
       />
     );
   }
