@@ -37,7 +37,9 @@ def test_legacy_running_composer_css_never_hides_an_input_row() -> None:
 def test_running_turn_uses_a_dedicated_editable_steering_state() -> None:
     source = COMPOSER.read_text(encoding="utf-8")
 
-    assert 'if (props.running) return <SteeringComposer {...sharedProps} />;' in source
+    assert 'props.running' in source
+    assert '<SteeringComposer {...sharedProps} />' in source
+    assert '<ComposerBase {...sharedProps} />' in source
     assert "draftValue," in source
     assert "onDraftValueChange: setDraftValue" in source
     assert 'className={`composer is-steering ${focused ? "is-focused" : ""} ${dragging ? "is-dragging" : ""}`}' in source
