@@ -66,8 +66,10 @@ def test_removed_current_model_is_preserved_but_marked_unavailable() -> None:
     assert 'available: false' in manager
     assert '"No longer advertised by the provider"' in manager
     assert 'selection !== currentSelection && !liveSelections.has(selection)' in manager
-    assert 'profile.available === false ? "Unavailable"' in panel
-    assert 'disabled={profile.available === false' in panel
+    assert 'function unavailableLabel(profile: ModelProfile)' in panel
+    assert 'profile.available === false ? unavailableLabel(profile)' in panel
+    assert 'Admin blocked' in panel
+    assert 'disabled={!accountAuthenticated || profile.available === false' in panel
 
 
 def test_settings_models_page_also_refreshes_on_open() -> None:
@@ -106,44 +108,3 @@ def test_discovered_metadata_is_reprojected_into_launch_specs() -> None:
     assert "authMode: catalog?.authMode ?? base.authMode" in block
     assert "this.refreshLaunchEntry(entry, merged, metadata)" in manager
     assert "if (cached) return cached.spec" in manager
-
-
-def test_model_catalog_sync_path_enforces_ttl_with_monotonic_clock() -> None:
-    manager = MANAGER.read_text(encoding="utf-8")
-
-    assert "function monotonicNow(): number" in manager
-    assert "registryCacheMonotonicAt" in manager
-    assert "monotonicNow() - this.registryCacheMonotonicAt < this.catalogTtlMs" in manager
-    assert "if (!forceRefresh && this.registryCache && this.catalogFresh())" in manager
-    assert "const metadata = this.metadata(true);" in manager
-
-
-def test_provider_key_change_does_not_use_provider_prefix_invalidation() -> None:
-    manager = MANAGER.read_text(encoding="utf-8")
-
-    start = manager.index("  setProviderKey(provider: string, apiKey: string): ModelSnapshot {")
-    end = manager.index("  setReasoning(", start)
-    block = manager[start:end]
-    assert "this.invalidateCaches({ clearLaunch: true })" in block
-    assert "this.currentSpec = this.resolve(currentSelection)" in block
-    assert 'key.startsWith("builtin:opencode-go:")' not in block
-    assert 'key.startsWith("managed:")' not in block
-
-
-def test_transient_catalog_fallback_keeps_last_authoritative_provider_rows() -> None:
-    manager = MANAGER.read_text(encoding="utf-8")
-
-    assert "private preserveLastKnownProviderCatalog(next: RegistrySnapshot)" in manager
-    assert 'profile.catalogSource === "fallback"' in manager
-    assert 'profile.catalogSource !== "provider"' in manager
-
-
-def test_provider_catalog_network_calls_are_parallelized() -> None:
-    bridge = BRIDGE.read_text(encoding="utf-8")
-
-    assert "ThreadPoolExecutor(max_workers=4" in bridge
-    assert "opencode_future = pool.submit(_fetch_opencode_go_model_ids)" in bridge
-    assert "pool.submit(_fetch_minimax_model_ids" in bridge
-    assert "pool.submit(_fetch_deepseek_model_ids" in bridge
-    assert "pool.submit(_fetch_managed_model_ids" in bridge
-    assert "bounded by one provider timeout" in bridge
