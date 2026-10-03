@@ -1,6 +1,7 @@
 import { app } from "electron";
 import fs from "node:fs";
 import path from "node:path";
+import { hostDataPath } from "./hostPaths.js";
 
 export const EMBEDDED_HOST_RUNTIME_VERSION = "1.0.0";
 export const EMBEDDED_HOST_RUNTIME_PROTOCOL = 1;
@@ -47,7 +48,7 @@ function validProtocol(value: unknown): value is number {
 }
 
 export function hostRuntimeManagerRoot(): string {
-  return path.join(app.getPath("userData"), "host-runtime");
+  return path.join(hostDataPath, "host-runtime");
 }
 
 export function hostRuntimeVersionsRoot(): string {

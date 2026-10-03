@@ -20,7 +20,7 @@ def test_host_runtime_is_selected_independently_from_desktop() -> None:
     updater = (ROOT / "desktop-react/electron/hostRuntimeUpdater.ts").read_text(encoding="utf-8")
     main = (ROOT / "desktop-react/electron/main.ts").read_text(encoding="utf-8")
     models = (ROOT / "desktop-react/electron/modelManager.ts").read_text(encoding="utf-8")
-    assert 'path.join(app.getPath("userData"), "host-runtime")' in runtime
+    assert 'path.join(hostDataPath, "host-runtime")' in runtime
     assert "current.json" in runtime
     assert "resolveHostPythonExecutable" in main
     assert "resolveHostBrowserExtensionRoot" in main

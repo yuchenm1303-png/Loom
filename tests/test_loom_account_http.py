@@ -121,6 +121,19 @@ def test_healthz_needs_no_credentials(base_url: str) -> None:
     assert payload == {"ok": True}
 
 
+def test_relay_routes_bind_to_revocable_session(base_url):
+    session = _register(base_url)
+    status, credential, _ = _call(base_url, "/v1/auth/relay-credential", body={}, token=session["access_token"])
+    assert status == 200
+    proof = credential["relay_token"]
+    status, rotated, _ = _call(base_url, "/v1/auth/refresh", body={"refresh_token": session["refresh_token"]})
+    assert status == 200
+    status, user, _ = _call(base_url, "/v1/auth/relay-me", method="GET", token=proof)
+    assert status == 200 and user["user"]["id"] == session["user"]["id"]
+    _call(base_url, "/v1/auth/logout", body={"refresh_token": rotated["refresh_token"]})
+    assert _call(base_url, "/v1/auth/relay-me", method="GET", token=proof)[0] == 401
+
+
 def test_shared_search_requires_auth_and_limits_per_user(base_url, monkeypatch):
     from services.loom_account import server as module
     calls = []

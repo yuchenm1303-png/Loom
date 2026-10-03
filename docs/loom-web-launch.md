@@ -191,11 +191,17 @@ hover/press behavior remain unchanged. Build and responsive checks passed.
 
 ### Automatic deployment source and renderer parity
 
-The production timer executes the version-controlled
-`scripts/deploy-loom-web-main.sh`. It resets `/opt/loom-web-main-src` to GitHub
+The production timer uses `scripts/loom-web-autosync-entry.sh` as its installed
+entry. This wrapper reads `scripts/deploy-loom-web-main.sh` from GitHub main on
+every run, so deployment fixes do not remain trapped in a stale server copy.
+The deployment script resets `/opt/loom-web-main-src` to GitHub
 `origin/main`, runs the same canonical `npm run build` renderer pipeline used by
 Desktop, builds the gateway image with `LOOM_BUILD_SHA=<main SHA>`, and only writes
 the deployed marker after the running container reports that exact SHA.
+The same checkout also builds the Account service when its source tree changes.
+Account is activated and health-checked before the Web gateway, so new relay
+authentication endpoints are available before clients begin using them. Existing
+deployment environment files and database volumes remain outside the checkout.
 
 There is one application renderer: `desktop-react/src/main.tsx` renders the same
 `App` for Desktop and Web. `WebAppGate` may show the pre-entry `WebPortal`, but

@@ -3,6 +3,7 @@ import { spawnSync } from "node:child_process";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
+import { isHostProcess } from "./hostProcess.js";
 import {
   activateHostRuntime,
   currentHostRuntime,
@@ -63,7 +64,7 @@ const READY_RETRY_MS = 30_000;
 const MAX_CHANNEL_BYTES = 64 * 1024;
 const MAX_RUNTIME_BYTES = 512 * 1024 * 1024;
 
-const enabled = app.isPackaged && process.platform === "win32";
+const enabled = isHostProcess && app.isPackaged && process.platform === "win32";
 let hooks: HostRuntimeUpdateHooks | null = null;
 let checkPromise: Promise<HostRuntimeUpdateState> | null = null;
 let readyVersion = "";

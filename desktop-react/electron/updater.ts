@@ -6,6 +6,7 @@ import electronUpdater, {
   type ProgressInfo,
   type UpdateInfo,
 } from "electron-updater";
+import { broadcastHostEvent, callHost, handleHostChannel, hostHasDesktopClients, isHostProcess } from "./hostProcess.js";
 
 export type SoftwareUpdatePhase =
   | "disabled"
@@ -54,7 +55,7 @@ function getAutoUpdater(): AppUpdater {
 }
 
 const autoUpdater = getAutoUpdater();
-const updateEnabled = app.isPackaged && process.platform === "win32";
+const updateEnabled = isHostProcess && app.isPackaged && process.platform === "win32";
 let state: SoftwareUpdateState = {
   enabled: updateEnabled,
   phase: updateEnabled ? "idle" : "disabled",
@@ -80,6 +81,7 @@ export function softwareUpdateState(): SoftwareUpdateState {
 
 function broadcastState(): void {
   const payload = softwareUpdateState();
+  broadcastHostEvent(STATUS_CHANNEL, payload);
   for (const window of BrowserWindow.getAllWindows()) {
     if (!window.isDestroyed() && !window.webContents.isDestroyed()) {
       window.webContents.send(STATUS_CHANNEL, payload);
@@ -124,11 +126,13 @@ function updateInFlight(): boolean {
 }
 
 function activeWindow(): BrowserWindow | undefined {
+  if (isHostProcess) return undefined;
   return BrowserWindow.getFocusedWindow()
     ?? BrowserWindow.getAllWindows().find((window) => !window.isDestroyed());
 }
 
 function hasVisibleWindow(): boolean {
+  if (isHostProcess) return hostHasDesktopClients();
   return BrowserWindow.getAllWindows().some((window) => !window.isDestroyed() && window.isVisible());
 }
 
@@ -188,7 +192,7 @@ async function maybeInstallHeadless(): Promise<boolean> {
     // and the Agent is idle, restart the Host automatically and let the web
     // reconnect to the new process without reopening the Desktop UI.
     markHeadlessUpdateRestart();
-    setTimeout(() => autoUpdater.quitAndInstall(false, true), 250).unref?.();
+    restartForUpdate();
     return true;
   })().finally(() => {
     headlessInstallAttempt = null;
@@ -284,7 +288,7 @@ async function offerDownloadedUpdate(info: UpdateInfo): Promise<void> {
     : await dialog.showMessageBox(options);
 
   if (result.response === 0 && state.phase === "downloaded") {
-    autoUpdater.quitAndInstall(false, true);
+    restartForUpdate();
   }
 }
 
@@ -326,7 +330,7 @@ export function installDownloadedUpdate(): { accepted: boolean; state: SoftwareU
     return { accepted: false, state: softwareUpdateState() };
   }
 
-  autoUpdater.quitAndInstall(false, true);
+  restartForUpdate();
   return { accepted: true, state: softwareUpdateState() };
 }
 
@@ -334,6 +338,13 @@ function maybeCheckAfterFocus(): void {
   if (!updateEnabled || !lastCheckStartedAt || checkPromise || updateInFlight()) return;
   if (Date.now() - lastCheckStartedAt < FOCUS_RECHECK_MIN_AGE_MS) return;
   void checkForUpdates();
+}
+
+function restartForUpdate(): void {
+  markHeadlessUpdateRestart();
+  // Close desktop clients before the installer replaces the shared executable.
+  broadcastHostEvent("loom:host-updating", null);
+  setTimeout(() => autoUpdater.quitAndInstall(false, true), 500);
 }
 
 function configureUpdater(): void {
@@ -417,32 +428,38 @@ function startAutomaticChecks(): void {
     const timer = setTimeout(() => {
       const index = earlyRecheckTimers.indexOf(timer);
       if (index >= 0) earlyRecheckTimers.splice(index, 1);
-      if (!updateInFlight()) void checkForUpdates();
+      if (hasVisibleWindow() && !updateInFlight()) void checkForUpdates();
     }, delay);
     timer.unref?.();
     earlyRecheckTimers.push(timer);
   }
 
   periodicTimer = setInterval(() => {
-    if (!updateInFlight()) void checkForUpdates();
+    if (hasVisibleWindow() && !updateInFlight()) void checkForUpdates();
   }, PERIODIC_CHECK_INTERVAL_MS);
   periodicTimer.unref?.();
 }
 
 configureUpdater();
 
-ipcMain.handle("loom:update-status", () => softwareUpdateState());
-ipcMain.handle("loom:update-check", () => checkForUpdates());
-ipcMain.handle("loom:update-install", () => installDownloadedUpdate());
+handleHostChannel("loom:update-status", () => softwareUpdateState());
+handleHostChannel("loom:update-check", () => checkForUpdates());
+handleHostChannel("loom:update-install", () => installDownloadedUpdate());
+handleHostChannel("loom:desktop-activity", () => {
+  if (hasVisibleWindow()) startAutomaticChecks();
+  maybeCheckAfterFocus();
+  return softwareUpdateState();
+});
 
 app.on("browser-window-created", (_event, window) => {
-  startAutomaticChecks();
+  const notifyHost = () => { void callHost("loom:desktop-activity").catch(() => undefined); };
+  if (!isHostProcess) notifyHost();
   window.webContents.once("did-finish-load", () => {
     if (!window.isDestroyed() && !window.webContents.isDestroyed()) {
-      window.webContents.send(STATUS_CHANNEL, softwareUpdateState());
+      if (isHostProcess) window.webContents.send(STATUS_CHANNEL, softwareUpdateState());
     }
   });
-  window.on("focus", maybeCheckAfterFocus);
+  if (!isHostProcess) window.on("focus", notifyHost);
   window.on("hide", () => { void maybeInstallHeadless(); });
 });
 

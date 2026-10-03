@@ -130,16 +130,17 @@ test("shared search requires sign-in and refreshes account auth without a search
   assert.deepEqual(JSON.parse(calls[1].body), { query: "docs", count: 3 });
 });
 
-test("an unconfigured build reports itself instead of calling out", async () => {
+test("a packaged build uses the production default when no URL is configured", async () => {
   delete process.env.LOOM_ACCOUNT_API_BASE_URL;
   state.isPackaged = true;
 
   const snapshot = await new LoomAccountClient().status();
 
-  assert.equal(snapshot.configured, false);
+  assert.equal(snapshot.configured, true);
+  assert.equal(snapshot.serviceUrl, "https://account.smirel.com/v1");
   assert.equal(snapshot.authenticated, false);
   assert.equal(snapshot.user, null);
-  assert.deepEqual(calls, []);
+  assert.equal(calls.length, 1);
 });
 
 test("plain HTTP is refused for a remote account host", async () => {
@@ -159,6 +160,26 @@ test("plain HTTP is allowed on loopback, and HTTPS anywhere", async () => {
 
   process.env.LOOM_ACCOUNT_API_BASE_URL = "https://account.example.com/v1";
   assert.equal((await new LoomAccountClient().status()).serviceUrl, "https://account.example.com/v1");
+});
+
+test("only HTTP on loopback and HTTPS without embedded credentials are accepted", async () => {
+  process.env.LOOM_ACCOUNT_API_BASE_URL = "http://[::1]:8787/v1";
+  assert.equal((await new LoomAccountClient().status()).configured, true);
+  for (const url of ["ftp://localhost/v1", "https://user:secret@account.example.com/v1", "invalid-url"]) {
+    process.env.LOOM_ACCOUNT_API_BASE_URL = url;
+    calls = [];
+    assert.equal((await new LoomAccountClient().status()).configured, false);
+    assert.deepEqual(calls, []);
+  }
+});
+
+test("a malformed explicit config file does not fall back to another service", async () => {
+  delete process.env.LOOM_ACCOUNT_API_BASE_URL;
+  await fs.mkdir(path.join(state.home, ".loom"));
+  await fs.writeFile(path.join(state.home, ".loom", "account-service.json"), "{broken");
+  const snapshot = await new LoomAccountClient().status();
+  assert.equal(snapshot.configured, false);
+  assert.deepEqual(calls, []);
 });
 
 test("login stores the session encrypted and never in the clear", async () => {
@@ -428,8 +449,8 @@ test("a 5xx from /auth/me is an outage, not a dead session", async () => {
   await fs.readFile(sessionPath(), "utf8");
 });
 
-test("an unconfigured build rejects sign-in with a stable code", async () => {
-  delete process.env.LOOM_ACCOUNT_API_BASE_URL;
+test("an explicitly unsafe configuration rejects sign-in with a stable code", async () => {
+  process.env.LOOM_ACCOUNT_API_BASE_URL = "http://account.example.com/v1";
   state.isPackaged = true;
 
   await assert.rejects(

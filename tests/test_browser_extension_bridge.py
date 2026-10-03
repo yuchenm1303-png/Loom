@@ -465,7 +465,7 @@ def test_reconfiguring_in_extension_mode_reuses_the_running_bridge(tmp_path, mon
         runtime.close()
 
 
-def test_a_second_loom_instance_cannot_silently_take_the_bridge_port():
+def test_a_second_loom_instance_reuses_the_bridge_without_rebinding():
     """Windows SO_REUSEADDR lets a second socket listen on a live port.
 
     A checkout and the installed build both bound 39222, the extension long-polled
@@ -481,17 +481,13 @@ def test_a_second_loom_instance_cannot_silently_take_the_bridge_port():
         second = BrowserExtensionBridge(port=first.port, token="loom-port-conflict-test")
         second.start()
         try:
-            # Losing the port must not raise out of start(): the browser is one
-            # capability and Loom still has to come up.
-            assert second.port_conflict, "a second bridge silently bound a live port"
-            assert str(first.port) in second.port_conflict
-            assert "LOOM_BROWSER_EXTENSION_PORT" in second.port_conflict
-            assert second.status()["port_conflict"] == second.port_conflict
-
-            # And a command must say that, not time out into "extension unresponsive".
-            with pytest.raises(BrowserError, match="already owns the browser bridge port"):
-                second.call("state", {}, timeout=2)
+            assert second.port_conflict == ""
+            assert second._server is None
+            assert second.status()["bridge_role"] == "client"
+            assert first.status()["runtime_clients"] == 1
         finally:
             second.stop()
+        assert first._server is not None
+        assert first.status()["runtime_clients"] == 0
     finally:
         first.stop()

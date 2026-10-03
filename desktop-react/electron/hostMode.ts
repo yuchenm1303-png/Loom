@@ -10,10 +10,10 @@ export function setLoomHostLaunchMode(mode: LoomHostLaunchMode | null): void {
 
 export function isBackgroundHostLaunch(argv: readonly string[] = process.argv): boolean {
   if (runtimeModeOverride) return runtimeModeOverride === "background";
-  return argv.includes(BACKGROUND_HOST_ARG);
+  return argv.includes(BACKGROUND_HOST_ARG) || argv.includes("--loom-host") || argv.some((arg) => /^loom:\/\//i.test(arg));
 }
 
 export function loomHostLaunchMode(argv: readonly string[] = process.argv): LoomHostLaunchMode {
   if (runtimeModeOverride) return runtimeModeOverride;
-  return argv.includes(BACKGROUND_HOST_ARG) ? "background" : "desktop";
+  return isBackgroundHostLaunch(argv) ? "background" : "desktop";
 }

@@ -76,7 +76,9 @@ function messageFromPayload(payload: unknown, fallback: string): string {
  */
 export async function discoverLocalLoomHost(signal?: AbortSignal): Promise<LocalLoomHost | null> {
   try {
-    const response = await fetch(LOCAL_HOST_STATUS_URL, requestInit({ method: "GET", signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(5000)]) : AbortSignal.timeout(5000) }));
+    const response = await fetch(LOCAL_HOST_STATUS_URL, requestInit({ method: "GET",
+      signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(5000)]) : AbortSignal.timeout(5000),
+    }));
     if (!response.ok) return null;
     const payload = await response.json() as Partial<LocalLoomHost> & { ok?: boolean };
     const deviceId = normalizeDeviceId(payload.deviceId);
@@ -160,7 +162,8 @@ export async function pairLocalLoomHost(signal?: AbortSignal): Promise<LocalPair
       method: "POST",
       cache: "no-store",
       credentials: "same-origin",
-      headers: { Accept: "application/json" }, signal: boundedSignal,
+      headers: { Accept: "application/json" },
+      signal: boundedSignal,
     });
     const issued = await issueResponse.json().catch(() => ({})) as {
       ok?: boolean;
@@ -175,7 +178,8 @@ export async function pairLocalLoomHost(signal?: AbortSignal): Promise<LocalPair
     const pairResponse = await fetch(LOCAL_HOST_PAIR_URL, requestInit({
       method: "POST",
       headers: { "Content-Type": "application/json", Accept: "application/json" },
-      body: JSON.stringify({ pairing_ticket: pairingTicket }), signal: boundedSignal,
+      body: JSON.stringify({ pairing_ticket: pairingTicket }),
+      signal: boundedSignal,
     }));
     const paired = await pairResponse.json().catch(() => ({})) as { ok?: boolean; error?: unknown; message?: unknown };
     if (!pairResponse.ok || !paired.ok) {

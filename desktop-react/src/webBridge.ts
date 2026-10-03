@@ -77,6 +77,8 @@ let socketPromise: Promise<WebSocket> | null = null;
 let socketDeviceId = "";
 let connectPromise: Promise<unknown> | null = null;
 let nextId = 1;
+let socketGeneration = 0;
+
 let heartbeatTimer: number | null = null;
 let localDeviceId = "";
 let lastDeviceStatus: WebDeviceStatus | null = null;
@@ -104,12 +106,15 @@ function captureLocalDeviceBinding(): string {
     // case the current navigation still keeps the device id in memory.
   }
 
-  if (queryDeviceId) localDeviceId = queryDeviceId;
+  if (queryDeviceId) {
+    localDeviceId = queryDeviceId;
+    return localDeviceId;
+  }
   try {
     const storedDeviceId = normalizeDeviceId(window.localStorage.getItem(LOCAL_DEVICE_STORAGE_KEY));
     if (storedDeviceId) localDeviceId = storedDeviceId;
   } catch {
-    // Keep the in-memory binding when storage is unavailable.
+    // Keep the current navigation's in-memory binding when storage is blocked.
   }
   return localDeviceId;
 }
@@ -156,7 +161,8 @@ function webSocketUrl(selectedDeviceId = selectedWebDeviceId()): string {
   const configured = String(import.meta.env.VITE_LOOM_WEB_SOCKET_URL || "").trim();
   const scheme = window.location.protocol === "https:" ? "wss:" : "ws:";
   const target = new URL(configured || `${scheme}//${window.location.host}${DEFAULT_WS_PATH}`, window.location.href);
-  if (selectedDeviceId) target.searchParams.set("device", selectedDeviceId);
+  const selected = selectedWebDeviceId();
+  if (selected) target.searchParams.set("device", selected);
   else target.searchParams.delete("device");
   return target.toString();
 }
@@ -214,6 +220,8 @@ function failPending(message: string): void {
 }
 
 function closeSocket(): void {
+  socketGeneration += 1;
+  lastDeviceStatus = null;
   const current = socket;
   socket = null;
   socketPromise = null;
@@ -265,48 +273,63 @@ async function ensureSocket(): Promise<WebSocket> {
   if (socket && socketDeviceId !== desiredDeviceId) closeSocket();
   if (socketPromise && socketDeviceId === desiredDeviceId) return socketPromise;
   if (socketPromise) closeSocket();
-
-  const account = await accountRequest("status");
-  if (!account.ok || !account.snapshot.authenticated) {
-    throw new Error("Sign in to Loom Web before connecting.");
-  }
-
-  const pendingSocket = new Promise<WebSocket>((resolve, reject) => {
-    const ws = new WebSocket(webSocketUrl(desiredDeviceId));
-    socket = ws;
-    socketDeviceId = desiredDeviceId;
-    const timeout = window.setTimeout(() => {
-      if (ws.readyState !== WebSocket.OPEN) {
-        ws.close();
+  socketDeviceId = desiredDeviceId;
+  const generation = socketGeneration;
+  const connecting = (async () => {
+    const account = await accountRequest("status");
+    if (generation !== socketGeneration) throw new Error("Loom Web connection cancelled.");
+    if (!account.ok || !account.snapshot.authenticated) {
+      throw new Error("Sign in to Loom Web before connecting.");
+    }
+    return new Promise<WebSocket>((resolve, reject) => {
+      const ws = new WebSocket(webSocketUrl(desiredDeviceId));
+      socketDeviceId = desiredDeviceId;
+      socket = ws;
+      const timeout = window.setTimeout(() => {
         reject(new Error("Could not connect to Loom Web."));
-      }
-    }, SOCKET_WAIT_MS);
-
-    ws.addEventListener("open", () => {
-      window.clearTimeout(timeout);
-      heartbeatTimer = window.setInterval(() => {
-        if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: "ping" }));
-      }, HEARTBEAT_MS);
-      resolve(ws);
-    }, { once: true });
-    ws.addEventListener("message", (event) => handleRelayMessage(String(event.data || "")));
-    ws.addEventListener("close", () => {
-      if (socket === ws) {
-        socket = null;
-        socketDeviceId = "";
+        ws.close();
+      }, SOCKET_WAIT_MS);
+      ws.addEventListener("open", () => {
+        window.clearTimeout(timeout);
+        if (socket !== ws || generation !== socketGeneration) {
+          ws.close();
+          reject(new Error("Loom Web connection cancelled."));
+          return;
+        }
         stopHeartbeat();
-        failPending("Loom Web connection closed.");
-      }
+        heartbeatTimer = window.setInterval(() => {
+          if (socket === ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: "ping" }));
+        }, HEARTBEAT_MS);
+        resolve(ws);
+      }, { once: true });
+      ws.addEventListener("message", (event) => {
+        if (socket === ws) handleRelayMessage(String(event.data || ""));
+      });
+      ws.addEventListener("close", () => {
+        window.clearTimeout(timeout);
+        reject(new Error("Loom Web connection closed."));
+        if (socket === ws) {
+          socket = null;
+          lastDeviceStatus = null;
+          stopHeartbeat();
+          failPending("Loom Web connection closed.");
+          window.dispatchEvent(new CustomEvent("loom:web-device-status", {
+            detail: { type: "device_status", online: false, selectedDeviceId: socketDeviceId },
+          }));
+        }
+      });
+      ws.addEventListener("error", () => {
+        if (ws.readyState !== WebSocket.OPEN) {
+          window.clearTimeout(timeout);
+          reject(new Error("Could not connect to Loom Web."));
+          ws.close();
+        }
+      });
     });
-    ws.addEventListener("error", () => {
-      if (ws.readyState !== WebSocket.OPEN) reject(new Error("Could not connect to Loom Web."));
-    });
-  });
-  const trackedSocketPromise = pendingSocket.finally(() => {
-    if (socketPromise === trackedSocketPromise) socketPromise = null;
-  });
-  socketPromise = trackedSocketPromise;
-  return trackedSocketPromise;
+  })();
+  socketPromise = connecting;
+  try { return await connecting; }
+  finally { if (socketPromise === connecting) socketPromise = null; }
 }
 
 async function invoke<T = unknown>(operation: string, args: unknown[] = []): Promise<T> {
@@ -405,12 +428,7 @@ export function currentWebDeviceStatus(): WebDeviceStatus | null {
 }
 
 export async function getWebDeviceStatus(): Promise<WebDeviceStatus> {
-  // Always validate the socket route before trusting cached status. Localhost
-  // discovery may have replaced the remembered device id since the previous
-  // status arrived; ensureSocket() will atomically retire a stale route.
-  await ensureSocket();
-  const afterConnect = currentWebDeviceStatus();
-  if (afterConnect) return afterConnect;
+  const ws = await ensureSocket();
   return new Promise<WebDeviceStatus>((resolve, reject) => {
     const timeout = window.setTimeout(() => {
       window.removeEventListener("loom:web-device-status", onStatus);
@@ -422,6 +440,7 @@ export async function getWebDeviceStatus(): Promise<WebDeviceStatus> {
       resolve((event as CustomEvent<WebDeviceStatus>).detail);
     };
     window.addEventListener("loom:web-device-status", onStatus);
+    ws.send(JSON.stringify({ type: "get_status" }));
   });
 }
 
@@ -460,10 +479,8 @@ export async function ensureWebHostCompatibility(
   }
 }
 
-export async function selectWebDevice(_deviceId: string): Promise<void> {
-  // Compatibility shim for older UI modules. Routing is account-scoped:
-  // there is exactly one current Host, so there is nothing to select.
-  await ensureSocket();
+export async function selectWebDevice(deviceId: string): Promise<void> {
+  activateWebRemoteDevice(deviceId);
 }
 
 export function activateWebRemoteDevice(deviceId: string): void {

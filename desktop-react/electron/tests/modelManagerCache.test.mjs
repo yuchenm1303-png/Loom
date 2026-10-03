@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
-import { test } from "node:test";
-import { DesktopModelManager } from "../../dist-electron/modelManager.js";
+import { mock, test } from "node:test";
+import os from "node:os";
+mock.module("electron", { namedExports: { app: {
+  isPackaged: false, isReady: () => false, getPath: () => os.tmpdir(),
+} } });
+const { DesktopModelManager } = await import("../../dist-electron/modelManager.js");
 
 function profile(overrides = {}) {
   return {

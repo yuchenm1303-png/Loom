@@ -194,6 +194,9 @@ def test_invalid_tool_arguments_are_rejected_before_history_and_turn_continues(t
 
     result = runtime.start_turn(session.session_id, "Inspect the path.")
 
+    # One malformed call rejects the whole native batch: nothing is executed and
+    # no assistant/tool history is committed, so the retried request carries the
+    # schema hint as a recovery instruction instead of a tool observation.
     assert result.status is AgentStatus.COMPLETED
     assert result.final_text == "recovered"
     assert executed == []

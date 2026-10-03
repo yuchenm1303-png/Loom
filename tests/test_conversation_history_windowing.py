@@ -76,7 +76,7 @@ def test_renderer_loads_latest_window_then_pages_older_turns() -> None:
 def test_gateway_bounds_old_host_thread_reads_before_browser_delivery() -> None:
     gateway = GATEWAY.read_text(encoding="utf-8")
 
-    assert "pending_invokes: dict[str, tuple[str, list[Any]]]" in gateway
+    assert "pending_invokes: dict[int, tuple[str, list[Any]]]" in gateway
     assert "def _window_legacy_thread_read_result(" in gateway
     assert 'args[0] != "thread/read"' in gateway
     assert 'bounded["hasMoreTurns"] = start > 0' in gateway

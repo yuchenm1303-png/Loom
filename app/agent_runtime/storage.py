@@ -27,6 +27,36 @@ def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="milliseconds")
 
 
+def _recent_event_lines(handle, limit: int) -> list[bytes]:
+    """Scan backwards by blocks, retaining only complete selected records."""
+    position = handle.seek(0, 2)
+    remainder = b""
+    selected: list[bytes] = []
+    tail_has_newline = True
+    first_block = True
+    while position and len(selected) < limit:
+        start = max(0, position - 8192)
+        handle.seek(start)
+        chunk = handle.read(position - start)
+        if first_block:
+            tail_has_newline = chunk.endswith(b"\n")
+            first_block = False
+        parts = (chunk + remainder).split(b"\n")
+        remainder = parts[0]
+        for line in reversed(parts[1:]):
+            if not line.strip():
+                continue
+            ending = b"" if not selected and not tail_has_newline else b"\n"
+            selected.append(line + ending)
+            if len(selected) == limit:
+                break
+        position = start
+    if not position and len(selected) < limit and remainder.strip():
+        ending = b"" if not selected and not tail_has_newline else b"\n"
+        selected.append(remainder + ending)
+    return list(reversed(selected))
+
+
 def _tool_call_to_dict(call: ToolCall) -> dict[str, Any]:
     return {"call_id": call.call_id, "name": call.name, "arguments": call.arguments}
 
@@ -358,14 +388,26 @@ class FileAgentSessionStore:
             handle.flush()
             os.fsync(handle.fileno())
 
-    def events(self, session_id: str) -> tuple[AgentEvent, ...]:
+    def recent_events(self, session_id: str, limit: int = 256) -> tuple[AgentEvent, ...]:
+        """Read a bounded tail without loading older transcript records."""
+        return self.events(session_id, limit=limit)
+
+    def events(self, session_id: str, *, limit: int | None = None) -> tuple[AgentEvent, ...]:
+        if limit is not None and limit < 0:
+            raise ValueError("event limit must not be negative")
+        if limit == 0:
+            return ()
         path = self.session_dir(session_id) / "events.jsonl"
         output: list[AgentEvent] = []
         with session_lock(path.parent):
             recover(path.parent)
             if not path.is_file():
                 return ()
-            lines = path.read_bytes().splitlines(keepends=True)
+            if limit is None:
+                lines = path.read_bytes().splitlines(keepends=True)
+            else:
+                with path.open("rb") as handle:
+                    lines = _recent_event_lines(handle, limit)
         for index, raw in enumerate(lines):
             if not raw.strip():
                 continue

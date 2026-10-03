@@ -882,6 +882,11 @@ export function useLoom() {
 
     const unsubscribe = bridge.onNotification((message) => {
       const params = message.params ?? {};
+      if (message.method === "host/disconnected") {
+        setConnection("error");
+        setError("Loom Host stopped. Reopen Loom to reconnect.");
+        return;
+      }
       if (message.method === "runtime/updated") {
         const nextRuntime = params.runtime as InitializeResult["runtime"] | undefined;
         if (nextRuntime) setRuntime((current) => ({ ...current, ...nextRuntime }));

@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>CU Probe Page</title>
+  <style>
+    body { font-family: Consolas, monospace; margin: 16px; background: #fafafa; color: #222; }
+    section { margin: 14px 0; padding: 12px; border: 1px solid #ddd; background: #fff; }
+    h2 { margin: 0 0 8px; font-size: 14px; }
+    .row { margin: 6px 0; }
+    input[type=text], textarea { width: 360px; padding: 4px; font-family: inherit; font-size: 13px; }
+    textarea { height: 80px; }
+    .editable { min-height: 60px; padding: 6px; border: 1px solid #aaa; background: #fff; }
+    .big { height: 1200px; background: linear-gradient(#fff, #eef); }
+    #menuBtn { padding: 4px 12px; }
+    #menuList { list-style: none; padding: 4px; margin: 4px 0; border: 1px solid #888; background: #fff; display: none; }
+    #menuList.open { display: block; }
+    #counter { font-weight: bold; }
+    #scrolled { font-weight: bold; color: #064; }
+  </style>
+</head>
+<body>
+  <section id="sec-input">
+    <h2>input[type=text]</h2>
+    <div class="row"><input id="iText" type="text" placeholder="plain input" /></div>
+  </section>
+
+  <section id="sec-textarea">
+    <h2>textarea</h2>
+    <div class="row"><textarea id="iArea" placeholder="plain textarea"></textarea></div>
+  </section>
+
+  <section id="sec-ce">
+    <h2>contenteditable</h2>
+    <div id="iCE" class="editable" contenteditable="true" spellcheck="false"></div>
+  </section>
+
+  <section id="sec-button">
+    <h2>button + counter (verifies real button click vs pixel noise)</h2>
+    <div class="row">
+      <button id="menuBtn" type="button">Toggle Menu</button>
+      <span>counter: <span id="counter">0</span></span>
+      <button id="bumpBtn" type="button">+1</button>
+      <button id="resetBtn" type="button">reset</button>
+    </div>
+    <ul id="menuList">
+      <li>item A</li><li>item B</li><li>item C</li>
+    </ul>
+  </section>
+
+  <section id="sec-scroll">
+    <h2>scroll target</h2>
+    <div id="iScroll" class="big">scroll me (1200px tall block)</div>
+    <div class="row">scroll position: <span id="scrolled">0</span></div>
+    <script>
+      const ce = document.getElementById('iCE');
+      const counter = document.getElementById('counter');
+      const menu = document.getElementById('menuList');
+      const scrolled = document.getElementById('scrolled');
+      document.getElementById('bumpBtn').addEventListener('click', () => counter.textContent = (parseInt(counter.textContent) || 0) + 1);
+      document.getElementById('resetBtn').addEventListener('click', () => counter.textContent = '0');
+      document.getElementById('menuBtn').addEventListener('click', () => menu.classList.toggle('open'));
+      window.addEventListener('scroll', () => scrolled.textContent = String(window.scrollY));
+      document.getElementById('iScroll').addEventListener('scroll', (e) => scrolled.textContent = 'el:' + e.target.scrollTop);
+    </script>
+  </section>
+</body>
+</html>

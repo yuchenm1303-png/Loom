@@ -65,8 +65,9 @@ not disconnect the user's other computers. Invocations and runtime notifications
 only between a browser and its selected device. This keeps streaming deltas, approvals and
 turn completion from leaking across two computers logged into the same account.
 
-The gateway already supports an explicit `select_device` browser frame for the future Loom
-Remote UI. Normal Web startup never sends one automatically for an unrelated device.
+The browser sends its explicit device binding in the WebSocket URL. Switching devices
+opens a new connection so pending calls and notifications cannot cross execution targets.
+An absent or offline binding never falls back to another online Host.
 
 ## Security boundary
 
@@ -76,6 +77,14 @@ Remote UI. Normal Web startup never sends one automatically for an unrelated dev
 - The Host authenticates with the user's Loom Account access token in the WSS Authorization
   header. Browser JavaScript never receives that token.
 - The gateway only connects browser and Host peers belonging to the same authenticated user.
+- Each handshake issues a separate, hashed-at-rest relay credential bound to the originating
+  account session. The gateway rechecks it every 30 seconds (with a 15-second account HTTP
+  timeout) and before sending when its validation window has elapsed. Normal access-token
+  rotation keeps the connection authorized; session revocation, account disablement, expiry
+  or a failed recheck closes it. The proof never grants access to account or model APIs.
+- Relay sends have a 10-second bound, and each browser is limited to 32 pending invocations.
+- Browser token refresh is shared across concurrent requests for a short overlap window.
+  Account outages do not rotate cookies or report the service as reachable.
 - A local `deviceId` is a routing identifier, not an authentication secret; account auth still
   gates every browser and Host connection.
 - Operation names are allow-listed by the Host's shared `desktopOperations` table.
@@ -100,3 +109,8 @@ loom.smirel.com {
 
 Attach `loom-web` to the same internal Docker network as Caddy. It needs no public host port,
 no model API key, no workspace volume, and no server-side Loom Agent runtime.
+
+Deploy the account service with `/v1/auth/relay-credential` and `/v1/auth/relay-me` before
+deploying the updated gateway. Schema initialization adds `relay_credentials` automatically
+without replacing existing users or sessions. This in-memory routing hub requires one
+gateway worker/instance; multiple replicas need shared routing before they are supported.

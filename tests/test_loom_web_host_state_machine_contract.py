@@ -10,7 +10,8 @@ def test_localhost_discovery_rebinds_stale_browser_socket() -> None:
     assert 'const desiredDeviceId = selectedWebDeviceId();' in WEB_BRIDGE
     assert 'socket?.readyState === WebSocket.OPEN && socketDeviceId === desiredDeviceId' in WEB_BRIDGE
     assert 'new WebSocket(webSocketUrl(desiredDeviceId))' in WEB_BRIDGE
-    assert 'await ensureSocket();\n  const afterConnect = currentWebDeviceStatus();' in WEB_BRIDGE
+    assert 'const ws = await ensureSocket();' in WEB_BRIDGE
+    assert 'ws.send(JSON.stringify({ type: "get_status" }));' in WEB_BRIDGE
     assert 'const existing = currentWebDeviceStatus();' not in WEB_BRIDGE
 
 

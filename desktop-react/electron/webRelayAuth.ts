@@ -1,9 +1,10 @@
-import { app, ipcMain, safeStorage } from "electron";
+import { app, safeStorage } from "electron";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import crypto from "node:crypto";
-import { LoomAccountClient } from "./accountClient.js";
+import { hostAccount } from "./hostAccount.js";
+import { handleHostChannel } from "./hostProcess.js";
 import { loomHostLaunchMode, type LoomHostLaunchMode } from "./hostMode.js";
 import { currentHostRuntimeProtocol, currentHostRuntimeVersion } from "./hostRuntime.js";
 
@@ -30,7 +31,7 @@ async function deviceId(): Promise<string> {
 }
 
 async function readCurrentAccessToken(): Promise<{ accessToken: string; userId: number; email: string }> {
-  const status = await new LoomAccountClient().status();
+  const status = await hostAccount.status();
   if (!status.authenticated || !status.user || !safeStorage.isEncryptionAvailable()) {
     throw new Error("Sign in to Loom before using Loom Web.");
   }
@@ -89,4 +90,4 @@ export async function webRelayAuthPayload(): Promise<WebRelayAuth> {
   return { ...identity, ...device };
 }
 
-ipcMain.handle("loom:web-relay-auth", () => webRelayAuthPayload());
+handleHostChannel("loom:web-relay-auth", () => webRelayAuthPayload());
