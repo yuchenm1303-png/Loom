@@ -217,6 +217,14 @@ function profileTooltip(profile: ModelProfile): string {
     .join(" · ");
 }
 
+function unavailableLabel(profile: ModelProfile): string {
+  const message = String(profile.statusMessage || "");
+  if (message.includes("Sign in to Loom")) return "Sign in";
+  if (message.includes("Loom Admin")) return "Admin blocked";
+  return "Unavailable";
+}
+
+
 const PICKER_ITEM = "[data-mp-item]:not(:disabled)";
 
 function focusPickerItem(item: HTMLElement) {
@@ -316,15 +324,27 @@ function PickerSearch({
   );
 }
 
-function ProviderRow({ group, current, onOpen }: { group: ModelGroup; current: boolean; onOpen(): void }) {
+function ProviderRow({
+  group, current, accountAuthenticated, onOpen,
+}: {
+  group: ModelGroup; current: boolean; accountAuthenticated: boolean; onOpen(): void;
+}) {
   const setup = providerSetup(group);
-  const count = selectableProfiles(group).length;
-  const unavailable = count === 0 && setup.statusProfiles.length > 0;
-  const meta = setup.needsKey
-    ? "Not connected"
-    : unavailable
-      ? "Unavailable"
-      : `${count} ${count === 1 ? "model" : "models"}`;
+  const total = visibleProfiles(group).length;
+  const available = selectableProfiles(group).length;
+  const unavailable = total > 0 && available === 0;
+  const adminBlocked = group.profiles.some((profile) => profile.available === false && String(profile.statusMessage || "").includes("Loom Admin"));
+  const meta = !accountAuthenticated
+    ? "Sign in required"
+    : adminBlocked
+      ? "Admin blocked"
+      : setup.needsKey
+        ? "Not connected"
+        : unavailable
+          ? "Unavailable"
+          : available < total
+            ? `${available}/${total} available`
+            : `${total} ${total === 1 ? "model" : "models"}`;
   return (
     <button
       type="button"
@@ -375,7 +395,7 @@ function ModelRow({
   return (
     <button
       type="button"
-      className={`mp-row mp-model ${current ? "is-current" : ""} ${dimmed ? "is-dimmed" : ""}`}
+      className={`mp-row mp-model ${current ? "is-current" : ""} ${dimmed ? "is-dimmed" : ""} ${disabled && dimmed ? "is-unavailable" : ""}`}
       data-mp-item=""
       aria-current={current ? "true" : undefined}
       disabled={disabled}
@@ -402,6 +422,8 @@ interface ModelPanelProps {
   snapshot: ModelSnapshot | null;
   busy?: boolean;
   running?: boolean;
+  accountAuthenticated?: boolean;
+  onOpenAccount?(): void;
   onSwitchProfile(selection: string): Promise<void> | void;
   onSwitchCurrent(model: string): Promise<void> | void;
   onConfigureProvider(provider: string, apiKey: string): Promise<void> | void;
@@ -447,6 +469,8 @@ export function ModelPanel({
   snapshot,
   busy,
   running,
+  accountAuthenticated = false,
+  onOpenAccount,
   onSwitchProfile,
   onSwitchCurrent,
   onConfigureProvider,
@@ -541,7 +565,7 @@ export function ModelPanel({
   );
   const groupsById = useMemo(() => new Map(groups.map((group) => [group.id, group])), [groups]);
   const totalModels = useMemo(
-    () => groups.reduce((sum, group) => sum + selectableProfiles(group).length, 0),
+    () => groups.reduce((sum, group) => sum + visibleProfiles(group).length, 0),
     [groups],
   );
   const searchResults = useMemo(() => {
@@ -550,7 +574,7 @@ export function ModelPanel({
     const models = groups
       .map((group) => ({
         group,
-        matches: selectableProfiles(group).filter((profile) => profileMatches(profile, group.name, tokens)),
+        matches: visibleProfiles(group).filter((profile) => profileMatches(profile, group.name, tokens)),
       }))
       .filter((entry) => entry.matches.length > 0);
     const providers = groups.filter((group) => tokens.every((token) => group.name.toLowerCase().includes(token)));
@@ -612,6 +636,14 @@ export function ModelPanel({
   }
 
   async function chooseProfile(profile: ModelProfile) {
+    if (!accountAuthenticated) {
+      setError("Sign in to Loom before using models.");
+      return;
+    }
+    if (profile.available === false) {
+      setError(profile.statusMessage || "This model is unavailable.");
+      return;
+    }
     // Picking the model already in use simply dismisses the picker.
     if (isCurrentProfile(profile)) {
       onClose();
@@ -631,6 +663,11 @@ export function ModelPanel({
   }
 
   async function submitCustom() {
+    if (!accountAuthenticated) {
+      setError("Sign in to Loom before using models.");
+      onOpenAccount?.();
+      return;
+    }
     const value = customModel.trim();
     if (!value) {
       setError("Enter a model ID first.");
@@ -639,7 +676,31 @@ export function ModelPanel({
     await run(() => onSwitchCurrent(value));
   }
 
+  function openOwnKey(group: ModelGroup, profile?: ModelProfile) {
+    if (!accountAuthenticated) {
+      setError("Sign in to Loom before adding an API connection.");
+      onOpenAccount?.();
+      return;
+    }
+    const candidate = profile ?? visibleProfiles(group).find((item) => !item.setupOnly);
+    if (!candidate) {
+      setError("This provider does not expose a model template for a personal API connection.");
+      return;
+    }
+    setName(`${group.name} personal`);
+    setAdapter(candidate.adapter === "openai" ? "openai" : "openai-compatible");
+    setBaseUrl(candidate.adapter === "openai" ? "" : candidate.baseUrl);
+    setModel(candidate.model);
+    setApiKey("");
+    navigate("add");
+  }
+
   async function configureProvider(provider: string) {
+    if (!accountAuthenticated) {
+      setError("Sign in to Loom before saving a provider credential.");
+      onOpenAccount?.();
+      return;
+    }
     const key = providerKey.trim();
     if (!key || providerConfiguring) return;
     setError("");
@@ -655,6 +716,11 @@ export function ModelPanel({
   }
 
   async function submitAdd() {
+    if (!accountAuthenticated) {
+      setError("Sign in to Loom before adding an API connection.");
+      onOpenAccount?.();
+      return;
+    }
     const input: AddModelInput = {
       name: name.trim(),
       adapter,
@@ -706,6 +772,12 @@ export function ModelPanel({
       >
         <PickerHeader title="Add connection" backLabel="Back to models" onBack={() => navigate("profiles", "back")} />
         <div className="mp-body mp-form-body">
+          {!accountAuthenticated ? (
+            <div className="mp-notice">
+              <Lock size={13} strokeWidth={2} aria-hidden="true" />
+              <span>Sign in to Loom before saving or using an API connection. <button type="button" className="mp-link" onClick={onOpenAccount}>Sign in</button></span>
+            </div>
+          ) : null}
           <div className="mp-form-lead">Connect OpenAI or any OpenAI-compatible endpoint.</div>
           <label className="mp-field">
             <span className="mp-field-label">Connection name</span>
@@ -754,7 +826,7 @@ export function ModelPanel({
         </div>
         <div className="mp-foot mp-form-foot">
           <button type="button" className="mp-foot-action" onClick={() => navigate("profiles", "back")}>Cancel</button>
-          <button type="submit" className="mp-primary" disabled={locked}>
+          <button type="submit" className="mp-primary" disabled={locked || !accountAuthenticated}>
             {busy ? <LoaderCircle size={14} strokeWidth={2} className="mp-spin" /> : null}
             Save & use
           </button>
@@ -815,7 +887,7 @@ export function ModelPanel({
         </div>
         <div className="mp-foot mp-form-foot">
           <button type="button" className="mp-foot-action" onClick={() => navigate("profiles", "back")}>Cancel</button>
-          <button type="submit" className="mp-primary" disabled={locked}>
+          <button type="submit" className="mp-primary" disabled={locked || !accountAuthenticated}>
             {busy ? <LoaderCircle size={14} strokeWidth={2} className="mp-spin" /> : null}
             Switch model
           </button>
@@ -838,7 +910,9 @@ export function ModelPanel({
       families.set(family, list);
     }
     const credentialTarget = setup.needsKey ? setup.credentialTarget : null;
-    const showSearch = availableChoices.length > 8 && !credentialTarget;
+    const showSearch = choices.length > 8 && !credentialTarget;
+    const hasBuiltinModels = choices.some((profile) => profile.kind === "builtin");
+    const blockedChoices = choices.filter((profile) => profile.available === false);
 
     return (
       <div className="mp mp-provider" data-direction={direction} onKeyDown={handlePickerKeyDown}>
@@ -849,7 +923,11 @@ export function ModelPanel({
               <span>{activeGroup.name}</span>
             </>
           )}
-          meta={`${availableChoices.length} ${availableChoices.length === 1 ? "model" : "models"}`}
+          meta={!accountAuthenticated
+            ? `${choices.length} models · sign in`
+            : blockedChoices.length
+              ? `${availableChoices.length}/${choices.length} available`
+              : `${choices.length} ${choices.length === 1 ? "model" : "models"}`}
           backLabel="Back to providers"
           onBack={() => navigate("profiles", "back")}
         />
@@ -863,6 +941,18 @@ export function ModelPanel({
         ) : null}
 
         <div className="mp-body" ref={providerListRef}>
+          {!accountAuthenticated ? (
+            <div className="mp-notice">
+              <Lock size={13} strokeWidth={2} aria-hidden="true" />
+              <span>Sign in to Loom to use any model. <button type="button" className="mp-link" onClick={onOpenAccount}>Sign in</button></span>
+            </div>
+          ) : null}
+          {blockedChoices.length && accountAuthenticated ? (
+            <div className="mp-notice is-error">
+              <Lock size={13} strokeWidth={2} aria-hidden="true" />
+              <span>{blockedChoices.length} built-in model{blockedChoices.length === 1 ? " is" : "s are"} disabled by Loom Admin. You can still add a separate personal API connection below.</span>
+            </div>
+          ) : null}
           {credentialTarget ? (
             <form
               className="mp-connect"
@@ -893,13 +983,31 @@ export function ModelPanel({
                   aria-label={credentialTarget.placeholder}
                   autoComplete="off"
                   autoFocus
+                  disabled={!accountAuthenticated}
                 />
-                <button type="submit" disabled={!providerKey.trim() || providerConfiguring}>
+                <button type="submit" disabled={!accountAuthenticated || !providerKey.trim() || providerConfiguring}>
                   {providerConfiguring ? <LoaderCircle size={14} strokeWidth={2} className="mp-spin" /> : null}
                   Connect
                 </button>
               </div>
             </form>
+          ) : null}
+
+          {hasBuiltinModels ? (
+            <div className="mp-connect">
+              <div className="mp-connect-copy">
+                <span className="mp-connect-icon" aria-hidden="true"><KeyRound size={15} strokeWidth={1.9} /></span>
+                <span className="mp-connect-text">
+                  <span className="mp-connect-title">Use your own API key</span>
+                  <span className="mp-connect-hint">Creates a separate personal connection stored in your OS credential store. It does not change or bypass the built-in Loom Admin policy.</span>
+                </span>
+              </div>
+              <div className="mp-connect-form">
+                <button type="button" onClick={() => openOwnKey(activeGroup, visible[0])}>
+                  {accountAuthenticated ? "Add personal connection" : "Sign in first"}
+                </button>
+              </div>
+            </div>
           ) : null}
 
           {setup.statusProfiles.map((profile) => (
@@ -934,11 +1042,12 @@ export function ModelPanel({
                       profile={profile}
                       current={current}
                       pending={pendingSelection === profile.selection}
-                      disabled={profile.available === false || deleting || (!current && (locked || setup.needsKey))}
-                      dimmed={profile.available === false || Boolean(running) || setup.needsKey}
-                      meta={profile.available === false ? "Unavailable" : reasoningLabel(profile)}
-                      metaAttention={profile.available === false}
-                      title={profile.available === false ? (profile.statusMessage || "No longer advertised by the provider") : undefined}
+                      disabled={!accountAuthenticated || profile.available === false || deleting || (!current && (locked || setup.needsKey))}
+                      dimmed={!accountAuthenticated || profile.available === false || Boolean(running) || setup.needsKey}
+                      meta={!accountAuthenticated ? "Sign in" : profile.available === false ? unavailableLabel(profile) : reasoningLabel(profile)}
+                      metaAttention={!accountAuthenticated || profile.available === false}
+                      end={!accountAuthenticated || profile.available === false ? <Lock size={13} strokeWidth={2} /> : undefined}
+                      title={!accountAuthenticated ? "Sign in to Loom to use models" : profile.available === false ? (profile.statusMessage || "Disabled by Loom Admin") : undefined}
                       onSelect={() => void chooseProfile(profile)}
                     />
                     {deletable ? (
@@ -982,6 +1091,7 @@ export function ModelPanel({
         key={group.id}
         group={group}
         current={group.id === currentGroupId}
+        accountAuthenticated={accountAuthenticated}
         onOpen={() => openGroup(group.id)}
       />
     );
@@ -1005,6 +1115,12 @@ export function ModelPanel({
         />
 
         <div className="mp-body">
+          {!accountAuthenticated ? (
+            <div className="mp-notice">
+              <Lock size={13} strokeWidth={2} aria-hidden="true" />
+              <span>Sign in to Loom to use any model. The catalogue stays visible so you can see what is available. <button type="button" className="mp-link" onClick={onOpenAccount}>Sign in</button></span>
+            </div>
+          ) : null}
           {running ? (
             <div className="mp-notice">
               <Lock size={13} strokeWidth={2} aria-hidden="true" />
@@ -1031,12 +1147,12 @@ export function ModelPanel({
                           profile={profile}
                           current={current}
                           pending={pendingSelection === profile.selection}
-                          disabled={!current && locked}
-                          dimmed={Boolean(running)}
-                          meta={connectFirst ? "Connect" : reasoningLabel(profile)}
-                          metaAttention={connectFirst}
-                          end={connectFirst ? <ChevronRight size={14} strokeWidth={1.9} /> : undefined}
-                          title={connectFirst ? `Connect ${group.name} to use ${profile.name}` : undefined}
+                          disabled={!accountAuthenticated || profile.available === false || (!current && locked)}
+                          dimmed={!accountAuthenticated || profile.available === false || Boolean(running)}
+                          meta={!accountAuthenticated ? "Sign in" : profile.available === false ? unavailableLabel(profile) : connectFirst ? "Connect" : reasoningLabel(profile)}
+                          metaAttention={!accountAuthenticated || profile.available === false || connectFirst}
+                          end={!accountAuthenticated || profile.available === false ? <Lock size={13} strokeWidth={2} /> : connectFirst ? <ChevronRight size={14} strokeWidth={1.9} /> : undefined}
+                          title={!accountAuthenticated ? "Sign in to Loom to use models" : profile.available === false ? (profile.statusMessage || "Disabled by Loom Admin") : connectFirst ? `Connect ${group.name} to use ${profile.name}` : undefined}
                           onSelect={() => (connectFirst ? openGroup(group.id) : void chooseProfile(profile))}
                         />
                       );
@@ -1106,11 +1222,11 @@ export function ModelPanel({
         </div>
 
         <div className="mp-foot">
-          <button type="button" className="mp-foot-action" onClick={() => navigate("add")}>
+          <button type="button" className="mp-foot-action" onClick={() => accountAuthenticated ? navigate("add") : onOpenAccount?.()}>
             <Plus size={14} strokeWidth={2} aria-hidden="true" />
-            <span>Add connection</span>
+            <span>Use own API key</span>
           </button>
-          <button type="button" className="mp-foot-action" onClick={() => navigate("custom")}>
+          <button type="button" className="mp-foot-action" onClick={() => accountAuthenticated ? navigate("custom") : onOpenAccount?.()}>
             <SlidersHorizontal size={14} strokeWidth={1.9} aria-hidden="true" />
             <span>Custom model ID</span>
           </button>
@@ -1134,8 +1250,12 @@ export function ModelPanel({
             <ChevronRight size={13} strokeWidth={1.8} aria-hidden="true" />
           </span>
           <small>
-            {currentGroupName}
-            {adapterLabel(currentAdapter) === currentGroupName ? null : ` · ${adapterLabel(currentAdapter)}`}
+            {!accountAuthenticated
+              ? "Sign in required"
+              : <>
+                  {currentGroupName}
+                  {adapterLabel(currentAdapter) === currentGroupName ? null : ` · ${adapterLabel(currentAdapter)}`}
+                </>}
           </small>
         </div>
       </button>

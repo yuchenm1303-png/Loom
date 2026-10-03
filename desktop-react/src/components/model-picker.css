@@ -372,6 +372,16 @@ html[data-loom-theme="light"] .model-manager-popover .mp {
   opacity: .45;
 }
 
+/* Policy/auth revocation must remain obvious even when the revoked model was
+   the current selection. Keep the row visible, but make it unmistakably inert. */
+.mp-row.is-unavailable:disabled > * {
+  opacity: .42;
+}
+
+.mp-row.is-unavailable:disabled {
+  background: color-mix(in srgb, var(--mp-field) 72%, transparent);
+}
+
 .mp-row-text {
   flex: 1 1 auto;
   min-width: 0;

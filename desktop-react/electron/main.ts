@@ -1295,6 +1295,17 @@ function policyAllowsSelection(access: LoomModelPolicyAccess, selection: string)
   return true;
 }
 
+function policyBlockedMessage(access: LoomModelPolicyAccess, selection: string): string {
+  const decision = access.decisions?.find((item) => item.model_id === selection);
+  const source = String(decision?.source || "policy");
+  if (source === "global_group") return "Disabled by Loom Admin · model group";
+  if (source === "global") return "Disabled by Loom Admin · global policy";
+  if (source === "account") return "Disabled by Loom Admin · account access";
+  if (source === "user") return "Disabled by Loom Admin · account rule";
+  if (source === "group") return "Disabled by Loom Admin · access group";
+  return "Disabled by Loom Admin model policy";
+}
+
 function applyModelPolicy(
   snapshot: ReturnType<DesktopModelManager["snapshot"]>,
   access: LoomModelPolicyAccess | null,
@@ -1305,13 +1316,26 @@ function applyModelPolicy(
     return {
       ...profile,
       available: false,
-      statusMessage: "Disabled by Loom Admin model policy",
+      statusMessage: policyBlockedMessage(access, profile.selection),
     };
   });
   const primary = profiles.find((profile) => profile.selection === snapshot.primary.selection) ?? snapshot.primary;
   const current = snapshot.current && !policyAllowsSelection(access, snapshot.current.selection)
-    ? { ...snapshot.current, available: false, statusMessage: "Disabled by Loom Admin model policy" }
+    ? { ...snapshot.current, available: false, statusMessage: policyBlockedMessage(access, snapshot.current.selection) }
     : snapshot.current;
+  return { ...snapshot, profiles, primary, current };
+}
+
+function applySignedOutModelGate(
+  snapshot: ReturnType<DesktopModelManager["snapshot"]>,
+  authenticated: boolean,
+): ReturnType<DesktopModelManager["snapshot"]> {
+  if (authenticated) return snapshot;
+  const message = "Sign in to Loom to use models";
+  const profiles = snapshot.profiles.map((profile) => ({ ...profile, available: false, statusMessage: message }));
+  const primary = profiles.find((profile) => profile.selection === snapshot.primary.selection)
+    ?? { ...snapshot.primary, available: false, statusMessage: message };
+  const current = snapshot.current ? { ...snapshot.current, available: false, statusMessage: message } : null;
   return { ...snapshot, profiles, primary, current };
 }
 
@@ -1328,21 +1352,34 @@ async function currentModelPolicy(): Promise<LoomModelPolicyAccess | null> {
   }
 }
 
+async function assertSignedInForModels(): Promise<void> {
+  if (!await accountClient.hasAuthenticatedSession()) {
+    throw new Error("Sign in to Loom before using models.");
+  }
+}
+
 async function assertModelSelectionAllowed(selection: string): Promise<void> {
+  await assertSignedInForModels();
   const value = String(selection || "").trim();
   if (!value || value.startsWith("saved:")) return;
   const access = await currentModelPolicy();
   if (access && !policyAllowsSelection(access, value)) {
-    throw new Error("This built-in model is disabled by Loom Admin.");
+    throw new Error(policyBlockedMessage(access, value));
   }
 }
 
 async function runListModels(forceRefresh = false): Promise<ReturnType<DesktopModelManager["snapshot"]>> {
-  const [snapshot, access] = await Promise.all([
+  const [snapshot, access, authenticated] = await Promise.all([
     modelManager.listSnapshot(Boolean(forceRefresh)),
     currentModelPolicy(),
+    accountClient.hasAuthenticatedSession(),
   ]);
-  return applyModelPolicy(snapshot, access);
+  return applySignedOutModelGate(applyModelPolicy(snapshot, access), authenticated);
+}
+
+async function runRpcCall(method: string, params: Record<string, unknown> = {}): Promise<unknown> {
+  if (method === "turn/start") await assertSignedInForModels();
+  return rpc.call(method, params);
 }
 
 async function runStageTempFile(name: string, bytes: Uint8Array): Promise<string> {
@@ -1390,6 +1427,11 @@ async function runSwitchCurrentModel(
   return changeThreadModel(threadOrModel, spec);
 }
 
+async function runTestModel(selection: string): Promise<ReturnType<DesktopModelManager["test"]>> {
+  await assertSignedInForModels();
+  return modelManager.test(String(selection || ""));
+}
+
 async function runAddModel(
   threadOrInput: string | AddModelInput,
   maybeInput?: AddModelInput,
@@ -1397,6 +1439,7 @@ async function runAddModel(
   const threadScoped = typeof threadOrInput === "string";
   const input = (threadScoped ? maybeInput : threadOrInput) as AddModelInput | undefined;
   if (!input) throw new Error("Model connection input is required");
+  await assertSignedInForModels();
   const profile = modelManager.add(input);
   if (threadScoped) {
     return changeThreadModel(String(threadOrInput), modelManager.resolve(profile.selection));
@@ -1467,7 +1510,7 @@ async function runSetReasoning(
  */
 const desktopOperations: WebRelayOperations = {
   connect: async () => rpc.connect(),
-  call: async (args) => rpc.call(String(args[0] || ""), (args[1] || {}) as Record<string, unknown>),
+  call: async (args) => runRpcCall(String(args[0] || ""), (args[1] || {}) as Record<string, unknown>),
   listModels: async (args) => runListModels(Boolean(args[0])),
   setModelProviderKey: async (args) => modelManager.setProviderKey(String(args[0] || ""), String(args[1] || "")),
   switchModelProfile: async (args) => args.length > 1
@@ -1480,7 +1523,7 @@ const desktopOperations: WebRelayOperations = {
     ? runAddModel(String(args[0] || ""), (args[1] || {}) as AddModelInput)
     : runAddModel((args[0] || {}) as AddModelInput),
   updateModel: async (args) => runUpdateModel((args[0] || {}) as EditModelInput),
-  testModel: async (args) => modelManager.test(String(args[0] || "")),
+  testModel: async (args) => runTestModel(String(args[0] || "")),
   deleteModel: async (args) => deleteModel(String(args[0] || "")),
   setReasoning: async (args) => runSetReasoning(...args.map((value) => String(value || ""))),
   exportComputerLogs: async () => exportComputerLogs(),
@@ -1507,7 +1550,7 @@ const desktopOperations: WebRelayOperations = {
 };
 
 handleHostChannel("loom:connect", () => rpc.connect());
-handleHostChannel("loom:call", (_event, method: string, params?: Record<string, unknown>) => rpc.call(method, params ?? {}));
+handleHostChannel("loom:call", (_event, method: string, params?: Record<string, unknown>) => runRpcCall(method, params ?? {}));
 // Disconnecting a UI must never stop shared web tasks or the Agent Runtime.
 ipcMain.handle("loom:disconnect", () => true);
 ipcMain.handle("loom:set-native-theme", (_event, source: "system" | "light" | "dark") => {
@@ -1638,7 +1681,7 @@ handleHostChannel("loom:model-add", (_event, threadOrInput: string | AddModelInp
   runAddModel(threadOrInput, maybeInput)
 ));
 handleHostChannel("loom:model-update", (_event, input: EditModelInput) => runUpdateModel(input));
-handleHostChannel("loom:model-test", async (_event, selection: string) => modelManager.test(selection));
+handleHostChannel("loom:model-test", async (_event, selection: string) => runTestModel(selection));
 handleHostChannel("loom:model-delete", async (_event, selection: string) => deleteModel(selection));
 handleHostChannel("loom:reasoning-set", (_event, ...args: string[]) => runSetReasoning(...args));
 
