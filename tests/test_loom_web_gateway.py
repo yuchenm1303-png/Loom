@@ -11,6 +11,21 @@ from starlette.websockets import WebSocketDisconnect
 from services.loom_web_gateway import app as gateway
 
 
+def test_public_bundles_are_compressed_but_account_responses_are_not(tmp_path, monkeypatch):
+    monkeypatch.setattr(gateway, "STATIC_DIR", tmp_path.resolve())
+    assets = tmp_path / "assets"
+    assets.mkdir()
+    text = ".loom { color: white; }\n" * 2000
+    (assets / "portal-test.css").write_bytes(text.encode("utf-8"))
+    with TestClient(gateway.app) as client:
+        result = client.get("/assets/portal-test.css", headers={"Accept-Encoding": "gzip"})
+        assert result.headers["Content-Encoding"] == "gzip"
+        assert result.text == text
+        assert int(result.headers["Content-Length"]) < len(text) // 5
+        assert "immutable" in result.headers["Cache-Control"]
+        assert "Content-Encoding" not in client.get("/api/healthz").headers
+
+
 @pytest.fixture
 def relay(monkeypatch):
     state = {"active": True, "calls": []}

@@ -14,6 +14,7 @@ from urllib.parse import urlencode
 import httpx
 from fastapi import FastAPI, Request, Response, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
+from starlette.middleware.gzip import GZipMiddleware
 
 ACCOUNT_BASE_URL = os.environ.get("LOOM_ACCOUNT_API_BASE_URL", "https://account.smirel.com/v1").rstrip("/")
 STATIC_DIR = Path(os.environ.get("LOOM_WEB_STATIC_DIR", "/app/static")).resolve()
@@ -30,6 +31,19 @@ REFRESH_MAX_AGE = 30 * 24 * 60 * 60
 # starts a second Agent Runtime on the server.
 
 app = FastAPI(title="Loom Web", docs_url=None, redoc_url=None, openapi_url=None)
+
+
+class StaticAssetCompression(GZipMiddleware):
+    async def __call__(self, scope, receive, send):
+        # Compress public bundles only; account responses and relay sockets pass
+        # through unchanged. Large CSS otherwise delays module execution.
+        if scope["type"] == "http" and scope.get("path", "").startswith("/assets/"):
+            await super().__call__(scope, receive, send)
+        else:
+            await self.app(scope, receive, send)
+
+
+app.add_middleware(StaticAssetCompression, minimum_size=1024, compresslevel=5)
 logger = logging.getLogger("uvicorn.error")
 
 
