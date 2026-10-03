@@ -19,6 +19,7 @@ ACCOUNT_BASE_URL = os.environ.get("LOOM_ACCOUNT_API_BASE_URL", "https://account.
 STATIC_DIR = Path(os.environ.get("LOOM_WEB_STATIC_DIR", "/app/static")).resolve()
 WEB_ORIGIN = os.environ.get("LOOM_WEB_ORIGIN", "https://loom.smirel.com").rstrip("/")
 BUILD_SHA = os.environ.get("LOOM_BUILD_SHA", "unknown")
+TELEMETRY_SECRET = str(os.environ.get("LOOM_TELEMETRY_SECRET", "") or "").strip()
 ACCESS_COOKIE = "loom_web_access"
 REFRESH_COOKIE = "loom_web_refresh"
 ACCESS_MAX_AGE = 15 * 60
@@ -87,6 +88,179 @@ async def _account_request(method: str, path: str, *, token: str = "", json_body
     except ValueError:
         payload = {}
     return response.status_code, payload if isinstance(payload, dict) else {}
+
+
+async def _telemetry_post(path: str, body: dict[str, Any]) -> dict[str, Any]:
+    if not TELEMETRY_SECRET:
+        return {}
+    headers = {
+        "Accept": "application/json",
+        "Content-Type": "application/json",
+        "X-Loom-Telemetry-Secret": TELEMETRY_SECRET,
+    }
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            response = await client.post(f"{ACCOUNT_BASE_URL}{path}", headers=headers, json=body)
+        if response.status_code != 200:
+            return {}
+        payload = response.json()
+        return payload if isinstance(payload, dict) else {}
+    except (httpx.HTTPError, ValueError):
+        return {}
+
+
+def _device_payload(peer: "DevicePeer", event: str) -> dict[str, Any]:
+    device = peer.device if isinstance(peer.device, dict) else {}
+    return {
+        "event": event,
+        "user_id": peer.user_id,
+        "device_id": _device_id(device.get("id")),
+        "name": str(device.get("name") or "")[:160],
+        "platform": str(device.get("platform") or "")[:64],
+        "app_version": str(device.get("version") or "")[:64],
+        "host_version": str(device.get("hostVersion") or "")[:64],
+        "host_mode": str(device.get("hostMode") or "")[:64],
+        "host_protocol": int(device.get("hostProtocol") or 0),
+        "bootstrap_protocol": int(device.get("bootstrapProtocol") or 0),
+    }
+
+
+async def _record_device(peer: "DevicePeer", event: str) -> None:
+    body = _device_payload(peer, event)
+    if body["device_id"]:
+        await _telemetry_post("/telemetry/device", body)
+
+
+def _notification_telemetry(peer: "DevicePeer", payload: dict[str, Any]) -> dict[str, Any] | None:
+    method = str(payload.get("method") or "")
+    params = payload.get("params") if isinstance(payload.get("params"), dict) else {}
+    device_id = _device_id((peer.device or {}).get("id"))
+    base: dict[str, Any] = {"user_id": peer.user_id, "device_id": device_id}
+    if method == "thread/started":
+        thread = params.get("thread") if isinstance(params.get("thread"), dict) else {}
+        thread_id = str(thread.get("id") or "").strip()
+        if not thread_id:
+            return None
+        return {
+            **base,
+            "event": "thread.started",
+            "thread_id": thread_id,
+            "model": str(thread.get("model") or "")[:160],
+            "provider": str(thread.get("modelProvider") or "")[:120],
+            "at": thread.get("updatedAt") or thread.get("createdAt"),
+        }
+    if method == "turn/started":
+        turn = params.get("turn") if isinstance(params.get("turn"), dict) else {}
+        thread_id = str(params.get("threadId") or turn.get("threadId") or "").strip()
+        turn_id = str(turn.get("id") or "").strip()
+        if not thread_id or not turn_id:
+            return None
+        return {
+            **base,
+            "event": "turn.started",
+            "thread_id": thread_id,
+            "turn_id": turn_id,
+            "model": str(turn.get("model") or "")[:160],
+            "provider": str(turn.get("modelProvider") or "")[:120],
+            "at": turn.get("startedAt"),
+        }
+    if method == "approval/requested":
+        approval = params.get("approval") if isinstance(params.get("approval"), dict) else {}
+        thread_id = str(params.get("threadId") or "").strip()
+        turn_id = str(params.get("turnId") or "").strip()
+        if not thread_id or not turn_id:
+            return None
+        call_id = str(approval.get("callId") or approval.get("call_id") or approval.get("id") or "")[:160]
+        return {
+            **base,
+            "event": "approval.requested",
+            "thread_id": thread_id,
+            "turn_id": turn_id,
+            "call_id": call_id,
+            "event_key": f"approval:{turn_id}:{call_id}" if call_id else f"approval:{turn_id}",
+            "tool_name": str(approval.get("toolName") or approval.get("tool") or "")[:160],
+        }
+    if method == "item/completed":
+        item = params.get("item") if isinstance(params.get("item"), dict) else {}
+        if str(item.get("type") or "") != "tool_call":
+            return None
+        thread_id = str(item.get("threadId") or "").strip()
+        turn_id = str(item.get("turnId") or "").strip()
+        if not thread_id or not turn_id:
+            return None
+        call_id = str(item.get("callId") or "")[:160]
+        item_id = str(item.get("id") or call_id or "")[:180]
+        return {
+            **base,
+            "event": "tool.completed",
+            "thread_id": thread_id,
+            "turn_id": turn_id,
+            "call_id": call_id,
+            "event_key": f"tool:{item_id}" if item_id else f"tool:{turn_id}:{call_id}",
+            "tool_name": str(item.get("toolName") or "")[:160],
+            "at": item.get("completedAt") or item.get("createdAt"),
+        }
+    if method == "turn/completed":
+        turn = params.get("turn") if isinstance(params.get("turn"), dict) else {}
+        thread_id = str(params.get("threadId") or turn.get("threadId") or "").strip()
+        turn_id = str(turn.get("id") or "").strip()
+        if not thread_id or not turn_id:
+            return None
+        return {
+            **base,
+            "event": "turn.completed",
+            "thread_id": thread_id,
+            "turn_id": turn_id,
+            "status": str(turn.get("status") or "completed")[:32],
+            "usage": turn.get("usage") if isinstance(turn.get("usage"), dict) else {},
+            "error_present": bool(str(turn.get("error") or "").strip()),
+            "at": turn.get("completedAt"),
+        }
+    return None
+
+
+async def _record_notification(peer: "DevicePeer", payload: dict[str, Any]) -> None:
+    body = _notification_telemetry(peer, payload)
+    if body is not None:
+        await _telemetry_post("/telemetry/agent-event", body)
+
+
+async def _command_loop(peer: "DevicePeer") -> None:
+    if not TELEMETRY_SECRET:
+        return
+    try:
+        while True:
+            await asyncio.sleep(3.0)
+            device_id = _device_id((peer.device or {}).get("id"))
+            if not device_id:
+                continue
+            payload = await _telemetry_post("/telemetry/commands/poll", {"user_id": peer.user_id, "device_id": device_id})
+            commands = payload.get("commands") if isinstance(payload.get("commands"), list) else []
+            for command in commands:
+                if not isinstance(command, dict):
+                    continue
+                command_id = int(command.get("id") or 0)
+                kind = str(command.get("kind") or "")
+                values = command.get("payload") if isinstance(command.get("payload"), dict) else {}
+                if command_id <= 0:
+                    continue
+                if kind != "turn.interrupt":
+                    await _telemetry_post("/telemetry/commands/complete", {"command_id": command_id, "ok": False, "error": "unsupported_command"})
+                    continue
+                thread_id = str(values.get("threadId") or "")
+                turn_id = str(values.get("turnId") or "")
+                if not thread_id or not turn_id:
+                    await _telemetry_post("/telemetry/commands/complete", {"command_id": command_id, "ok": False, "error": "invalid_interrupt_target"})
+                    continue
+                await peer.send({
+                    "type": "invoke",
+                    "browserId": f"ops:{command_id}",
+                    "id": command_id,
+                    "operation": "call",
+                    "args": ["turn/interrupt", {"threadId": thread_id, "turnId": turn_id}],
+                })
+    except asyncio.CancelledError:
+        return
 
 
 async def _refresh(refresh_token: str) -> tuple[int, dict[str, Any]]:
@@ -649,6 +823,7 @@ async def device_socket(websocket: WebSocket) -> None:
     await websocket.accept()
     peer = DevicePeer(user_id, websocket, identity)
     watcher = asyncio.create_task(_watch_identity(peer))
+    command_task: asyncio.Task | None = None
     try:
         while not peer.closed:
             frame = await websocket.receive_json()
@@ -660,6 +835,8 @@ async def device_socket(websocket: WebSocket) -> None:
             kind = frame.get("type")
             if kind == "ping":
                 await peer.send({"type": "pong"})
+                if peer.device_id:
+                    asyncio.create_task(_record_device(peer, "heartbeat"))
             elif kind == "device_hello":
                 payload = frame.get("device")
                 payload = dict(payload) if isinstance(payload, dict) else {}
@@ -669,6 +846,9 @@ async def device_socket(websocket: WebSocket) -> None:
                     return
                 payload["id"] = device_id
                 peer.device_id, peer.device = device_id, payload
+                asyncio.create_task(_record_device(peer, "connected"))
+                if command_task is None:
+                    command_task = asyncio.create_task(_command_loop(peer))
                 async with hub.lock:
                     old = hub.devices.get((user_id, device_id))
                     hub.devices[(user_id, device_id)] = peer
@@ -684,6 +864,19 @@ async def device_socket(websocket: WebSocket) -> None:
                 async with hub.lock:
                     current = hub.devices.get((user_id, peer.device_id))
                     browser = hub.browsers.get(browser_id)
+                if current is peer and browser_id.startswith("ops:"):
+                    try:
+                        command_id = int(browser_id.split(":", 1)[1])
+                    except (TypeError, ValueError):
+                        command_id = 0
+                    if command_id > 0:
+                        error = frame.get("error") if isinstance(frame.get("error"), dict) else None
+                        await _telemetry_post("/telemetry/commands/complete", {
+                            "command_id": command_id,
+                            "ok": error is None,
+                            "error": str((error or {}).get("message") or "")[:240],
+                        })
+                    continue
                 if (current is peer and browser and browser.user_id == user_id
                         and browser.device_id == peer.device_id and browser.pending.get(request_id) is peer):
                     browser.pending.pop(request_id, None)
@@ -703,12 +896,18 @@ async def device_socket(websocket: WebSocket) -> None:
                 async with hub.lock:
                     current = hub.devices.get((user_id, peer.device_id))
                 if isinstance(payload, dict) and current is peer:
+                    asyncio.create_task(_record_notification(peer, payload))
                     await hub.broadcast_notification(peer, payload)
     except (WebSocketDisconnect, OSError, RuntimeError, ValueError):
         pass
     finally:
+        if peer.device_id:
+            await _record_device(peer, "disconnected")
         peer.closed = True
-        await _cancel_tasks([watcher])
+        tasks_to_cancel = [watcher]
+        if command_task is not None:
+            tasks_to_cancel.append(command_task)
+        await _cancel_tasks(tasks_to_cancel)
         async with hub.lock:
             if hub.devices.get((user_id, peer.device_id)) is peer:
                 hub.devices.pop((user_id, peer.device_id), None)
