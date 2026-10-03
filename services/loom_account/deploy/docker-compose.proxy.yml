@@ -9,6 +9,9 @@ services:
   loom-model-gateway:
     networks:
       - proxy
+  loom-model-policy:
+    networks:
+      - proxy
 
 networks:
   proxy:

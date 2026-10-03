@@ -286,6 +286,7 @@ export function Composer(props: ComposerProps) {
   // remount when a turn starts or finishes, so keeping text inside either child
   // makes unsent input vanish during a normal running-state transition.
   const [drafts, setDrafts] = useState<Record<string, string>>({});
+  const [sendErrors, setSendErrors] = useState<Record<string, string>>({});
   const draftKey = props.threadId || UNBOUND_DRAFT_KEY;
   const draftValue = drafts[draftKey] ?? "";
 
@@ -304,10 +305,22 @@ export function Composer(props: ComposerProps) {
 
   const sharedProps = {
     ...props,
+    onSend: async (input: string, attachments: { path: string; name: string }[]) => {
+      setSendErrors((current) => ({ ...current, [draftKey]: "" }));
+      try {
+        await props.onSend(input, attachments);
+      } catch (cause) {
+        setSendErrors((current) => ({ ...current, [draftKey]: cause instanceof Error ? cause.message : String(cause) }));
+        setDrafts((current) => current[draftKey] ? current : { ...current, [draftKey]: input });
+        throw cause;
+      }
+    },
     draftValue,
     onDraftValueChange: setDraftValue,
   };
 
-  if (props.running) return <SteeringComposer {...sharedProps} />;
-  return <ComposerBase {...sharedProps} />;
+  return <>
+    {sendErrors[draftKey] && <p className="composer-attach-error" role="alert">Could not send: {sendErrors[draftKey]}</p>}
+    {props.running ? <SteeringComposer {...sharedProps} /> : <ComposerBase {...sharedProps} />}
+  </>;
 }

@@ -286,7 +286,11 @@ export function Composer({
     setAttachments([]);
     setAttachError("");
     setOpenPanel(null);
-    await onSend(input, sendable.map((item) => ({ path: item.path, name: item.name })));
+    try {
+      await onSend(input, sendable.map((item) => ({ path: item.path, name: item.name })));
+    } catch {
+      // The Composer owner retains the error and draft across running-state changes.
+    }
   }
 
   function onKeyDown(event: ReactKeyboardEvent<HTMLTextAreaElement>) {

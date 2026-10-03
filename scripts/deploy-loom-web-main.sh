@@ -22,6 +22,30 @@ fi
 # Deployment checkout only: GitHub main is the sole source for the shared
 # Desktop/Web renderer. No server-side UI overlay is permitted.
 git reset --hard -q origin/main
+
+# A healthy policy container is insufficient: Desktop/Host calls its public
+# account-origin route. Keep the shared edge config synchronized as well.
+caddy_file="${LOOM_EDGE_CADDYFILE:-/opt/termrelay/deploy/termrelay/Caddyfile}"
+if [[ -f "$caddy_file" && -f services/loom_model_policy/server.py ]]; then
+  route_candidate="$(mktemp)"
+  python3 scripts/ensure_model_policy_route.py "$caddy_file" "$route_candidate"
+  if ! cmp -s "$caddy_file" "$route_candidate"; then
+    docker cp "$route_candidate" termrelay-caddy:/tmp/loom-policy-Caddyfile >/dev/null
+    docker exec termrelay-caddy caddy validate --config /tmp/loom-policy-Caddyfile --adapter caddyfile >/dev/null
+    cp "$caddy_file" "$caddy_file.before-policy-route"
+    cp "$route_candidate" "$caddy_file"
+    if ! docker exec termrelay-caddy caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile; then
+      cp "$caddy_file.before-policy-route" "$caddy_file"
+      exit 14
+    fi
+  fi
+  rm -f "$route_candidate"
+  # No credential or inference request needed: missing model_id is a policy
+  # validation error. A 404/502 here must never count as a successful deploy.
+  curl -sS --max-time 15 -X POST -H 'Content-Type: application/json' \
+    -d '{}' https://account.smirel.com/policy/v1/check 2>/dev/null | \
+    python3 -c 'import json,sys; assert json.load(sys.stdin)["error"]["code"] == "INVALID_POLICY"'
+fi
 candidate="loom-web:autosync-${remote:0:12}"
 echo "$LOG_PREFIX building main=${remote:0:12}"
 docker build -q \
