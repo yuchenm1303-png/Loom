@@ -38,7 +38,7 @@
     </header>
 
     <nav class="loom-admin-section-nav fade" id="sectionNav" aria-label="后台导航" hidden>
-      <a href="#overview" aria-current="page">概览</a><a href="#users">用户</a><a href="#devices">设备</a><a href="#runs">运行</a><a href="#usage">模型与用量</a><a href="#tools">工具</a><a href="#sessions">会话</a><a href="#flags">功能开关</a><a href="#audit">审计</a><a href="#system">系统</a>
+      <a href="#overview" aria-current="page">概览</a><a href="#users">用户</a><a href="#runs">监控</a><a href="#devices">设备</a><a href="#usage">用量</a><a href="#tools">工具</a><a href="#sessions">会话</a><a href="#models">模型权限</a><a href="#flags">功能开关</a><a href="#audit">审计</a><a href="#system">系统</a>
     </nav>
 
     <section class="usage-heading fade" id="overview" data-admin-page="overview">
@@ -97,9 +97,28 @@
         <div class="account-card cards loom-admin-table-card"><div class="loom-admin-table-wrap"><table class="loom-admin-table"><thead><tr><th>User</th><th>Device</th><th>Platform</th><th>Loom</th><th>Host</th><th>Protocol</th><th>Mode</th><th>Last seen</th><th>State</th></tr></thead><tbody id="devicesBody"></tbody></table></div></div>
       </section>
 
-      <section class="usage-accounts-section fade" id="runs" data-admin-page="runs" hidden>
-        <div class="usage-section-head"><div><p class="kicker">AGENT OPERATIONS</p><h2>Runs</h2><p>运行状态、模型、工具、审批和 Token；支持中断仍在执行的 Turn。</p></div><div class="usage-audit-tools"><input id="runSearch" class="usage-audit-search" type="search" placeholder="搜索用户 / 模型 / 状态" /><span id="runsHint">0 runs</span></div></div>
-        <div class="account-card cards loom-admin-table-card"><div class="loom-admin-table-wrap"><table class="loom-admin-table"><thead><tr><th>User</th><th>Model</th><th>Status</th><th>Started</th><th>Duration</th><th>Tools</th><th>Approvals</th><th>Tokens</th><th>Action</th></tr></thead><tbody id="runsBody"></tbody></table></div></div>
+      <section class="usage-ops-section fade loom-admin-monitor-page" id="runs" data-admin-page="runs" hidden>
+        <div class="usage-section-head loom-admin-monitor-head">
+          <div><p class="kicker">LIVE AGENT MONITOR</p><h2>运行监控</h2><p>先看当前异常与执行态，再进入最近 Run 明细。页面每 10 秒自动刷新，仅展示运行元数据。</p></div>
+          <div class="loom-admin-monitor-live"><i></i><span>LIVE · 10S</span></div>
+        </div>
+        <div class="loom-admin-monitor-kpis" aria-label="运行状态摘要">
+          <article class="loom-admin-monitor-kpi is-live"><span>RUNNING</span><strong id="runKpiRunning">0</strong><small>正在执行</small></article>
+          <article class="loom-admin-monitor-kpi is-warn"><span>WAITING</span><strong id="runKpiWaiting">0</strong><small>等待审批</small></article>
+          <article class="loom-admin-monitor-kpi is-bad"><span>FAILED 24H</span><strong id="runKpiFailed">0</strong><small>失败 / 中断 / 取消</small></article>
+          <article class="loom-admin-monitor-kpi"><span>TOKENS 24H</span><strong id="runKpiTokens">0</strong><small>Agent Token</small></article>
+        </div>
+        <div class="account-card cards loom-admin-monitor-toolbar">
+          <div class="loom-admin-run-filters" id="runStatusFilter" role="group" aria-label="Run 状态筛选">
+            <button type="button" data-run-status="all" aria-pressed="true">全部</button>
+            <button type="button" data-run-status="active" aria-pressed="false">执行中</button>
+            <button type="button" data-run-status="waiting_approval" aria-pressed="false">待审批</button>
+            <button type="button" data-run-status="failed" aria-pressed="false">异常</button>
+            <button type="button" data-run-status="completed" aria-pressed="false">已完成</button>
+          </div>
+          <div class="usage-audit-tools loom-admin-monitor-search"><input id="runSearch" class="usage-audit-search" type="search" placeholder="搜索账号 / Provider / 模型 / 状态" /><span id="runsHint">0 runs</span></div>
+        </div>
+        <div class="account-card cards loom-admin-table-card loom-admin-monitor-table"><div class="loom-admin-table-wrap"><table class="loom-admin-table"><thead><tr><th>User</th><th>Model</th><th>Status</th><th>Started</th><th>Duration</th><th>Tools</th><th>Approvals</th><th>Tokens</th><th>Action</th></tr></thead><tbody id="runsBody"></tbody></table></div></div>
       </section>
 
       <section class="usage-ops-section fade" id="usage" data-admin-page="usage" hidden>
@@ -164,7 +183,7 @@
     <footer class="footer fade usage-footer"><span>© 2026 Smirel · Loom Admin</span><span>Agent operations without centralizing user content</span></footer>
   </main>
 
-  <script src="./admin.js?v=20261003.4" defer></script>
-  <script src="./model-policy.js?v=20261003.4" defer></script>
+  <script src="./admin.js?v=20261003.5" defer></script>
+  <script src="./model-policy.js?v=20261003.5" defer></script>
 </body>
 </html>

@@ -8,7 +8,7 @@
     overview: {}, agent: {}, users: [], sessions: [], system: {}, devices: [], runs: [],
     usage: {}, tools: {}, models: {}, audit: [], flags: [],
     health: { admin:false, account:false, loom:false },
-    activityRange: '24h', usageRange: '24h', selectedUser: null, selectedModelAccess: null,
+    activityRange: '24h', usageRange: '24h', runStatusFilter: 'all', selectedUser: null, selectedModelAccess: null,
     page: 'overview', selectedUserOps: null, loaded: new Set(), refreshTimer: null,
   };
 
@@ -115,11 +115,26 @@
     $('devicesBody').innerHTML=state.devices.length?state.devices.map(d=>`<tr><td>${escapeHtml(d.email)}</td><td><strong>${escapeHtml(d.name||'Loom Host')}</strong><small class="loom-admin-subline" title="${escapeHtml(d.device_id)}">${escapeHtml(shortId(d.device_id,7,4))}</small></td><td>${escapeHtml(d.platform||'—')}</td><td>${escapeHtml(d.app_version||'—')}</td><td>${escapeHtml(d.host_version||'—')}</td><td>${Number(d.host_protocol||0)} / ${Number(d.bootstrap_protocol||0)}</td><td>${escapeHtml(d.host_mode||'—')}</td><td>${fmtTime(d.last_seen_at)}</td><td><span class="loom-admin-badge ${d.online?'is-ok':'is-bad'}">${d.online?'online':'offline'}</span></td></tr>`).join(''):'<tr><td colspan="9" class="loom-admin-empty">还没有 Host telemetry。设备连接 Loom Web 后会自动出现。</td></tr>';
   }
   function runStatusBadge(status){const s=String(status||'unknown');const cls=s==='completed'?'is-ok':s==='waiting_approval'?'is-warn':['failed','interrupted','cancelled'].includes(s)?'is-bad':'is-live';return `<span class="loom-admin-badge ${cls}">${escapeHtml(s)}</span>`}
+  function runMatchesStatus(run,filter){
+    const status=String(run?.status||'');
+    if(filter==='active')return ['running','waiting_approval'].includes(status);
+    if(filter==='failed')return ['failed','interrupted','cancelled'].includes(status);
+    if(filter==='waiting_approval')return status==='waiting_approval';
+    if(filter==='completed')return status==='completed';
+    return true;
+  }
+  function renderRunMonitor(){
+    const waiting=Number(state.agent?.waiting_approvals||0);
+    const running=Math.max(0,Number(state.agent?.active_runs||0)-waiting);
+    $('runKpiRunning').textContent=fmtNumber(running);$('runKpiWaiting').textContent=fmtNumber(waiting);
+    $('runKpiFailed').textContent=fmtNumber(state.agent?.failed_runs_24h||0);$('runKpiTokens').textContent=fmtCompact(state.agent?.tokens_24h||0);
+  }
   function renderRuns(filter=''){
-    const q=filter.trim().toLowerCase(),runs=state.runs.filter(r=>!q||`${r.email} ${r.model||''} ${r.provider||''} ${r.status}`.toLowerCase().includes(q));
-    $('runsHint').textContent=`${runs.length} runs`;
+    const q=filter.trim().toLowerCase(),statusFilter=state.runStatusFilter||'all';
+    const runs=state.runs.filter(r=>runMatchesStatus(r,statusFilter)&&(!q||`${r.email} ${r.model||''} ${r.provider||''} ${r.status}`.toLowerCase().includes(q)));
+    $('runsHint').textContent=`${runs.length} / ${state.runs.length} runs`;renderRunMonitor();
     const now=Math.floor(Date.now()/1000);
-    $('runsBody').innerHTML=runs.length?runs.map(r=>{const end=Number(r.completed_at||now);const duration=Math.max(0,end-Number(r.started_at||end));const model=[r.provider,r.model].filter(Boolean).join(' · ')||'—';return `<tr><td>${escapeHtml(r.email)}</td><td><strong>${escapeHtml(model)}</strong><small class="loom-admin-subline" title="${escapeHtml(r.turn_id)}">${escapeHtml(shortId(r.turn_id,7,4))}</small></td><td>${runStatusBadge(r.status)}</td><td>${fmtTime(r.started_at)}</td><td>${fmtDuration(duration)}</td><td>${fmtNumber(r.tool_count)}</td><td>${fmtNumber(r.approval_count)}</td><td>${fmtCompact(r.total_tokens)}</td><td>${activeRun(r)?`<button class="loom-admin-action is-danger" data-interrupt-run="${r.id}">Interrupt</button>`:'—'}</td></tr>`}).join(''):'<tr><td colspan="9" class="loom-admin-empty">暂无 Agent Run telemetry。</td></tr>';
+    $('runsBody').innerHTML=runs.length?runs.map(r=>{const end=Number(r.completed_at||now);const duration=Math.max(0,end-Number(r.started_at||end));const model=[r.provider,r.model].filter(Boolean).join(' · ')||'—';return `<tr><td>${escapeHtml(r.email)}</td><td><strong>${escapeHtml(model)}</strong><small class="loom-admin-subline" title="${escapeHtml(r.turn_id)}">${escapeHtml(shortId(r.turn_id,7,4))}</small></td><td>${runStatusBadge(r.status)}</td><td>${fmtTime(r.started_at)}</td><td>${fmtDuration(duration)}</td><td>${fmtNumber(r.tool_count)}</td><td>${fmtNumber(r.approval_count)}</td><td>${fmtCompact(r.total_tokens)}</td><td>${activeRun(r)?`<button class="loom-admin-action is-danger" data-interrupt-run="${r.id}">Interrupt</button>`:'—'}</td></tr>`}).join(''):'<tr><td colspan="9" class="loom-admin-empty">当前筛选条件下没有 Run。</td></tr>';
   }
   function aggregateRuns(range){
     const cfg=rangeConfig(range),cutoff=Math.floor(Date.now()/1000)-cfg.seconds,models=new Map(),users=new Map();
@@ -173,12 +188,13 @@
     if(page==='overview')return loadOverview(force);if(page==='user')return;if(!force&&state.loaded.has(page))return;
     if(page==='users'){const p=await request('/admin/users');state.users=p.users||[];renderUsers($('userSearch').value)}
     else if(page==='devices'){const p=await request('/admin/devices');state.devices=p.devices||[];renderDevices()}
-    else if(page==='runs'){const p=await request('/admin/runs');state.runs=p.runs||[];renderRuns($('runSearch').value)}
+    else if(page==='runs'){const [p,a]=await Promise.all([request('/admin/runs'),request('/admin/agent-overview')]);state.runs=p.runs||[];state.agent=a||state.agent;renderRuns($('runSearch').value)}
     else if(page==='usage'){state.usage=await request('/admin/usage');renderUsage()}
     else if(page==='tools'){state.tools=await request('/admin/tools');renderTools()}
     else if(page==='sessions'){const p=await request('/admin/sessions');state.sessions=p.sessions||[];renderSessions()}
     else if(page==='flags'){const p=await request('/admin/feature-flags');state.flags=p.flags||[];renderFlags();renderOverviewControls()}
     else if(page==='audit'){const p=await request('/admin/audit');state.audit=p.events||[];renderAudit($('auditSearch').value)}
+    else if(page==='models'){window.dispatchEvent(new CustomEvent('loom-admin:model-page-request'))}
     else if(page==='system'){const [system,agent]=await Promise.all([request('/admin/system'),request('/admin/agent-overview'),loadHealth()]);state.system=system;state.agent=agent;renderSystem()}
     state.loaded.add(page);
   }
@@ -201,7 +217,7 @@
 
   $('loginForm').addEventListener('submit',async e=>{e.preventDefault();$('loginError').textContent='';const b=e.currentTarget.querySelector('button');b.disabled=true;try{await login($('loginEmail').value.trim(),$('loginPassword').value);$('loginPassword').value='';setAuthenticated(true);await loadOverview(true);startAutoRefresh();await applyRoute()}catch(err){$('loginError').textContent=err.code==='ADMIN_REQUIRED'?'这个 Loom 账号没有管理员权限。':(err.message||'登录失败');setHeader(false,'Access denied')}finally{b.disabled=false}});
   $('logoutButton').addEventListener('click',async()=>{const refresh=state.refresh;if(refresh){try{await fetch(API+'/auth/logout',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({refresh_token:refresh}),cache:'no-store'})}catch(_){}}clearTokens();setAuthenticated(false);setHeader(false,'Signed out')});
-  $('refreshButton').addEventListener('click',()=>void refreshCurrentPage(true).catch(showLoadError));$('userSearch').addEventListener('input',e=>renderUsers(e.target.value));$('runSearch').addEventListener('input',e=>renderRuns(e.target.value));$('auditSearch').addEventListener('input',e=>renderAudit(e.target.value));
+  $('refreshButton').addEventListener('click',()=>void refreshCurrentPage(true).catch(showLoadError));$('userSearch').addEventListener('input',e=>renderUsers(e.target.value));$('runSearch').addEventListener('input',e=>renderRuns(e.target.value));$('runStatusFilter').addEventListener('click',e=>{const b=e.target.closest('[data-run-status]');if(!b)return;state.runStatusFilter=b.dataset.runStatus||'all';document.querySelectorAll('#runStatusFilter [data-run-status]').forEach(x=>x.setAttribute('aria-pressed',x===b?'true':'false'));renderRuns($('runSearch').value)});$('auditSearch').addEventListener('input',e=>renderAudit(e.target.value));
   $('usageRangeControl').addEventListener('click',e=>{const b=e.target.closest('[data-range]');if(!b)return;state.usageRange=b.dataset.range;document.querySelectorAll('#usageRangeControl [data-range]').forEach(x=>x.setAttribute('aria-pressed',x===b?'true':'false'));renderUsage()});
   $('usersBody').addEventListener('click',async e=>{const detail=e.target.closest('[data-user-detail]'),status=e.target.closest('[data-status-user]'),revoke=e.target.closest('[data-revoke-user]');try{if(detail)return await openUserDetail(Number(detail.dataset.userDetail));if(status){const id=Number(status.dataset.statusUser),next=status.dataset.nextStatus;if(next==='disabled'&&!confirm('确认停用这个账号并立即撤销其会话？'))return;return await mutate(`/admin/users/${id}/${next==='disabled'?'disable':'enable'}`)}if(revoke){if(!confirm('确认撤销这个用户的全部有效会话？'))return;return await mutate('/admin/users/revoke-sessions',{user_id:Number(revoke.dataset.revokeUser)})}}catch(err){alert(err.message||'操作失败')}});
   $('usersBody').addEventListener('change',async e=>{const select=e.target.closest('[data-role-user]');if(!select)return;try{await mutate('/admin/users/role',{user_id:Number(select.dataset.roleUser),role:select.value})}catch(err){alert(err.message||'修改角色失败');await loadPageData('users',{force:true})}});
@@ -219,10 +235,11 @@
   $('detailStatusButton').addEventListener('click',async()=>{const u=state.selectedUser;if(!u)return;const next=u.status==='active'?'disable':'enable';if(next==='disable'&&!confirm('确认停用这个账号并立即撤销其会话？'))return;try{await mutate(`/admin/users/${u.id}/${next}`);await openUserDetail(u.id,{navigate:false})}catch(err){alert(err.message||'操作失败')}});
   $('detailRevokeButton').addEventListener('click',async()=>{const u=state.selectedUser;if(!u||!confirm('确认撤销这个用户的全部有效会话？'))return;try{await mutate('/admin/users/revoke-sessions',{user_id:Number(u.id)});await openUserDetail(u.id,{navigate:false})}catch(err){alert(err.message||'操作失败')}});
 
-  const ADMIN_PAGES=new Set(['overview','users','devices','runs','usage','tools','sessions','flags','audit','system']);
+  const ADMIN_PAGES=new Set(['overview','users','devices','runs','usage','tools','sessions','models','flags','audit','system']);
   function showPage(page){
     state.page=page;document.querySelectorAll('[data-admin-page]').forEach(el=>{el.hidden=el.dataset.adminPage!==page});
     const current=page==='user'?'users':page;document.querySelectorAll('#sectionNav a').forEach(a=>a.setAttribute('aria-current',a.getAttribute('href')===`#${current}`?'page':'false'));
+    window.dispatchEvent(new CustomEvent('loom-admin:pagechange',{detail:{page}}));
     requestAnimationFrame(()=>window.scrollTo({top:0,behavior:'auto'}));
   }
   function routeState(){const raw=decodeURIComponent(location.hash.replace(/^#/,'')||'overview');if(raw.startsWith('user/')){const id=Number(raw.split('/')[1]||0);return id>0?{page:'user',userId:id}:{page:'users'}}return{page:ADMIN_PAGES.has(raw)?raw:'overview'}}
