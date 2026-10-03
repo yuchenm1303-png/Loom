@@ -1326,6 +1326,16 @@ function TurnProcess({
     [items],
   );
   const operationCount = summary.steps + intermediateMessages;
+  const [processVisited, setProcessVisited] = useState(active || open);
+
+  useEffect(() => {
+    if (active || open) setProcessVisited(true);
+  }, [active, open]);
+
+  // Historical turns arrive already folded. Avoid constructing their entire
+  // tool/process subtree until the user actually expands that turn; after the
+  // first expansion keep it mounted so the existing fold animation stays smooth.
+  const renderProcessContent = active || open || processVisited;
 
   return (
     <section className={`turn-process ${active ? "is-live" : "is-settled"} ${open ? "is-open" : ""} ${guidanceItems.length ? "has-guidance" : ""}`.trim()}>
@@ -1354,13 +1364,15 @@ function TurnProcess({
         </div>
       ) : null}
 
-      <div className="turn-process-grid">
-        <div className="turn-process-inner">
-          <div className="turn-process-content">
-            <Sequence items={items} active={active} onApproval={onApproval} onPrompt={onPrompt} keepActivityOpen={active} promptDisabled={promptDisabled} workspace={workspace} />
+      {renderProcessContent ? (
+        <div className="turn-process-grid">
+          <div className="turn-process-inner">
+            <div className="turn-process-content">
+              <Sequence items={items} active={active} onApproval={onApproval} onPrompt={onPrompt} keepActivityOpen={active} promptDisabled={promptDisabled} workspace={workspace} />
+            </div>
           </div>
         </div>
-      </div>
+      ) : null}
     </section>
   );
 }

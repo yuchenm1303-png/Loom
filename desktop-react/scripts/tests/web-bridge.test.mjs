@@ -1,7 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import ts from "typescript";
+import { buildSync } from "esbuild";
+import { fileURLToPath } from "node:url";
 
 const source = readFileSync(new URL("../../src/webBridge.ts", import.meta.url), "utf8")
   .replaceAll("import.meta.env.VITE_LOOM_WEB_SOCKET_URL", '""');
@@ -49,9 +50,11 @@ async function setup({ deferAccount = false } = {}) {
     }
   }
   globalThis.WebSocket = Socket;
-  const compiled = ts.transpileModule(source + `\n// test instance ${generation++}`, {
-    compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 },
-  }).outputText;
+  const compiled = buildSync({
+    stdin: { contents: source + `\n// test instance ${generation++}`, loader: "ts",
+      resolveDir: fileURLToPath(new URL("../../src/", import.meta.url)) },
+    bundle: true, write: false, format: "esm", platform: "browser",
+  }).outputFiles[0].text;
   const bridge = await import(`data:text/javascript;base64,${Buffer.from(compiled).toString("base64")}`);
   bridge.installWebBridge();
   return { bridge, sockets, storage, intervals, releaseAccount,

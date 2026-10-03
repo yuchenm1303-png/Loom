@@ -5,7 +5,11 @@ import { HOST_ARG, isHostProcess, launchDesktop } from "./hostProcess.js";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import WebSocket from "ws";
 import { hostAccount } from "./hostAccount.js";
-import { webRelayDeviceIdentity } from "./webRelayAuth.js";
+import { LOOM_BOOTSTRAP_PROTOCOL_VERSION, webRelayDeviceIdentity } from "./webRelayAuth.js";
+import { ensureBootstrapUpdate, softwareUpdateState } from "./updater.js";
+import { BACKGROUND_HOST_ARG, isBackgroundHostLaunch, loomHostLaunchMode, type LoomHostLaunchMode } from "./hostMode.js";
+import { currentHostRuntimeProtocol, currentHostRuntimeVersion } from "./hostRuntime.js";
+import { ensureHostRuntimeUpdate, hostRuntimeUpdateState } from "./hostRuntimeUpdater.js";
 
 // Only the independent Host process owns discovery, relay and Agent Runtime.
 // Desktop and browser are clients; neither owns the Host's lifetime.
@@ -17,6 +21,7 @@ const LOCAL_DISCOVERY_PORT = Number(process.env.LOOM_HOST_DISCOVERY_PORT || 3922
 const LOCAL_STATUS_PATH = "/loom/status";
 const LOCAL_OPEN_PATH = "/loom/open";
 const LOCAL_PAIR_PATH = "/loom/pair";
+const LOCAL_UPDATE_PATH = "/loom/update";
 const LOCAL_BODY_LIMIT = 4 * 1024;
 const HEARTBEAT_MS = 30_000;
 const RETRY_MIN_MS = 4_000;
@@ -28,6 +33,10 @@ export type WebRelayAuth = {
   deviceName: string;
   platform: string;
   appVersion: string;
+  hostVersion: string;
+  hostMode: LoomHostLaunchMode;
+  hostProtocol: number;
+  bootstrapProtocol: number;
 };
 
 export type WebRelayOperation = (args: unknown[]) => Promise<unknown>;
@@ -56,6 +65,7 @@ let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
 let localDiscoveryServer: Server | null = null;
 
 let hostTray: Tray | null = null;
+let desktopWindowFactory: (() => void) | null = null;
 
 function normalizedOrigin(value: string): string {
   try { return new URL(value).origin; } catch { return ""; }
@@ -153,7 +163,39 @@ async function handleLocalDiscovery(request: IncomingMessage, response: ServerRe
       relayReady: ws?.readyState === WebSocket.OPEN,
       hostPid: process.pid,
       desktopRequired: false,
+      update: hostRuntimeUpdateState(),
+      bootstrapUpdate: softwareUpdateState(),
     }, origin);
+    return;
+  }
+
+  if (request.method === "POST" && url.pathname === LOCAL_UPDATE_PATH) {
+    if (!origin) {
+      writeLocalJson(response, 403, { ok: false, error: "origin_required" });
+      return;
+    }
+    try {
+      const body = await readLocalJson(request);
+      const requiredProtocol = Math.max(0, Math.min(1_000_000, Number(body.required_protocol || 0) || 0));
+      const update = await ensureHostRuntimeUpdate(requiredProtocol);
+      const hostProtocol = currentHostRuntimeProtocol();
+      writeLocalJson(response, 200, {
+        ok: true,
+        hostProtocol,
+        hostVersion: currentHostRuntimeVersion(),
+        hostMode: loomHostLaunchMode(),
+        bootstrapProtocol: LOOM_BOOTSTRAP_PROTOCOL_VERSION,
+        requiredProtocol,
+        compatible: hostProtocol >= requiredProtocol,
+        update,
+      }, origin);
+    } catch (cause) {
+      writeLocalJson(response, 500, {
+        ok: false,
+        error: "update_check_failed",
+        message: cause instanceof Error ? cause.message : String(cause),
+      }, origin);
+    }
     return;
   }
 
@@ -229,22 +271,24 @@ async function openLocalLoomWeb(): Promise<void> {
 
 async function ensureHostTray(): Promise<void> {
   if (hostTray || process.platform === "darwin") return;
-  let icon = nativeImage.createEmpty();
+  // Windows shell icon extraction can return a generic application icon.
+  // Load the Loom artwork explicitly from the installer resources instead.
   const iconPath = app.isPackaged
     ? path.join(process.resourcesPath, "loom-icon.png")
     : path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../build/icon.png");
-  icon = nativeImage.createFromPath(iconPath);
+  let icon = nativeImage.createFromPath(iconPath);
   if (icon.isEmpty()) {
+    console.warn("Loom tray icon resource is missing:", iconPath);
     try { icon = await app.getFileIcon(process.execPath, { size: "small" }); } catch {}
   }
   hostTray = new Tray(icon);
-  hostTray.setToolTip("Loom Host · local Web access available in background");
+  hostTray.setToolTip("Loom · running in the background");
   hostTray.setContextMenu(Menu.buildFromTemplate([
     { label: "Open Loom", click: () => launchDesktop() },
     { label: "Open Loom Web", click: () => void openLocalLoomWeb() },
     { type: "separator" },
     {
-      label: "Quit Loom Host",
+      label: "Quit Loom",
       click: () => {
         app.quit();
       },
@@ -311,6 +355,31 @@ async function handleInvoke(frame: InvokeFrame): Promise<void> {
     let result: unknown;
     if (operation) {
       result = await operation(args);
+    } else if (frame.operation === "hostUpdateStatus") {
+      result = {
+        hostProtocol: currentHostRuntimeProtocol(),
+        hostVersion: currentHostRuntimeVersion(),
+        hostMode: loomHostLaunchMode(),
+        bootstrapProtocol: LOOM_BOOTSTRAP_PROTOCOL_VERSION,
+        update: hostRuntimeUpdateState(),
+      };
+    } else if (frame.operation === "hostUpdateEnsure") {
+      const requiredProtocol = Math.max(0, Math.min(1_000_000, Number(args[0] || 0) || 0));
+      const update = await ensureHostRuntimeUpdate(requiredProtocol);
+      const hostProtocol = currentHostRuntimeProtocol();
+      result = {
+        hostProtocol,
+        hostVersion: currentHostRuntimeVersion(),
+        hostMode: loomHostLaunchMode(),
+        bootstrapProtocol: LOOM_BOOTSTRAP_PROTOCOL_VERSION,
+        requiredProtocol,
+        compatible: hostProtocol >= requiredProtocol,
+        update,
+      };
+    } else if (frame.operation === "bootstrapUpdateStatus") {
+      result = { bootstrapProtocol: LOOM_BOOTSTRAP_PROTOCOL_VERSION, appVersion: app.getVersion(), update: softwareUpdateState() };
+    } else if (frame.operation === "bootstrapUpdateEnsure") {
+      result = { bootstrapProtocol: LOOM_BOOTSTRAP_PROTOCOL_VERSION, appVersion: app.getVersion(), update: await ensureBootstrapUpdate() };
     } else if (frame.operation === "pickDirectory") {
       const selection = await dialog.showOpenDialog({
         title: "Add project folder",
@@ -359,6 +428,10 @@ async function connectRelay(): Promise<void> {
         name: auth.deviceName,
         platform: auth.platform,
         version: auth.appVersion,
+        hostVersion: auth.hostVersion,
+        hostMode: auth.hostMode,
+        hostProtocol: auth.hostProtocol,
+        bootstrapProtocol: auth.bootstrapProtocol,
       },
     });
     if (heartbeatTimer) clearInterval(heartbeatTimer);

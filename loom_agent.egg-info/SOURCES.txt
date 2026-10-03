@@ -216,6 +216,7 @@ tests/test_ai_platform_media_normalization.py
 tests/test_ai_runtime_connection_metadata.py
 tests/test_alignment_reliability.py
 tests/test_ant_ling_bridge.py
+tests/test_ant_ling_thread_switch.py
 tests/test_app_server.py
 tests/test_app_server_attachments.py
 tests/test_app_server_auto_titles.py
@@ -282,6 +283,7 @@ tests/test_codex_parity_lifecycle.py
 tests/test_command_approval.py
 tests/test_compaction_task.py
 tests/test_composer_draft_contract.py
+tests/test_composer_refined_contract.py
 tests/test_computer_acceptance_regressions.py
 tests/test_computer_alibaba.py
 tests/test_computer_capture_profile.py
@@ -326,7 +328,9 @@ tests/test_context_runtime.py
 tests/test_context_runtime_v2.py
 tests/test_context_scope_parity.py
 tests/test_context_window_error_recovery.py
+tests/test_conversation_history_windowing.py
 tests/test_conversation_home_contract.py
+tests/test_conversation_navigation_performance.py
 tests/test_core_action_binding_runtime.py
 tests/test_desktop_assistant_images.py
 tests/test_desktop_browser_bridge_home.py
@@ -342,6 +346,7 @@ tests/test_execution_binding_projection.py
 tests/test_execution_guidance.py
 tests/test_global_motion_contract.py
 tests/test_header_composer_contract.py
+tests/test_host_runtime_distribution.py
 tests/test_instruction_turn_snapshot.py
 tests/test_instructions_codex_parity.py
 tests/test_json_schema_semantics.py
@@ -349,15 +354,20 @@ tests/test_live_steering.py
 tests/test_live_steering_durable_parity.py
 tests/test_live_steering_interrupt.py
 tests/test_live_steering_ui_contract.py
+tests/test_loom_account_auth_v2.py
 tests/test_loom_account_http.py
 tests/test_loom_account_pairing.py
 tests/test_loom_account_service.py
 tests/test_loom_admin.py
+tests/test_loom_auth_v2_contract.py
+tests/test_loom_host_background_runtime.py
 tests/test_loom_model_gateway.py
 tests/test_loom_remote_ui_contract.py
 tests/test_loom_web_host_recovery_contract.py
+tests/test_loom_web_host_state_machine_contract.py
 tests/test_loom_web_local_first_contract.py
 tests/test_loom_web_local_host_contract.py
+tests/test_loom_web_renderer_parity.py
 tests/test_loom_web_smirel_branding.py
 tests/test_managed_process_conversation.py
 tests/test_managed_relay_models.py
@@ -455,6 +465,7 @@ tests/test_ufo_sidecar_entry.py
 tests/test_ufo_sidecar_supervisor_entry.py
 tests/test_unified_exec_pty.py
 tests/test_unknown_context_window_semantics.py
+tests/test_web_host_launch_onboarding.py
 tests/test_web_search_runtime.py
 tests/test_web_search_settings.py
 tests/test_web_ui.py

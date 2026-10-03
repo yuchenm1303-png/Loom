@@ -1,5 +1,6 @@
-import type { LoomAccountResult } from "./types/account";
+import type { LoomAccountResult, LoomAuthCapabilitiesResult, LoomAuthChallengeResult } from "./types/account";
 import type { LoomNotification } from "./types/global";
+import { LOOM_WEB_REQUIRED_HOST_PROTOCOL, type LocalHostUpdateState } from "./localHostDiscovery";
 
 const WEB_PLATFORM_MARKER = "web";
 const DEFAULT_WS_PATH = "/api/ws/browser";
@@ -19,7 +20,15 @@ type InvokeMessage = {
   args: unknown[];
 };
 
-export type WebRelayDevice = Record<string, unknown> & { id?: string; name?: string; platform?: string; version?: string };
+export type WebRelayDevice = Record<string, unknown> & {
+  id?: string;
+  name?: string;
+  platform?: string;
+  version?: string;
+  hostVersion?: string;
+  hostMode?: string;
+  hostProtocol?: number;
+};
 
 export type WebDeviceStatus = {
   type: "device_status";
@@ -28,6 +37,26 @@ export type WebDeviceStatus = {
   selectedDeviceId?: string | null;
   devices?: WebRelayDevice[];
 };
+
+export type WebHostCompatibility = {
+  compatible: boolean;
+  legacy: boolean;
+  online: boolean;
+  hostProtocol: number;
+  requiredProtocol: number;
+  update?: LocalHostUpdateState | null;
+  error?: string;
+};
+
+function relayHostProtocol(device: WebRelayDevice | null | undefined): number {
+  return Math.max(0, Number(device?.hostProtocol || 0) || 0);
+}
+
+export function webHostNeedsProtocolUpdate(status: WebDeviceStatus | null | undefined): boolean {
+  const protocol = relayHostProtocol(status?.device);
+  // Protocol 0 predates the handshake. Allow it during the migration release.
+  return Boolean(status?.online && protocol > 0 && protocol < LOOM_WEB_REQUIRED_HOST_PROTOCOL);
+}
 
 type RelayMessage =
   | WebDeviceStatus
@@ -45,10 +74,11 @@ const listeners = new Set<(payload: LoomNotification) => void>();
 const pending = new Map<number, PendingCall>();
 let socket: WebSocket | null = null;
 let socketPromise: Promise<WebSocket> | null = null;
+let socketDeviceId = "";
 let connectPromise: Promise<unknown> | null = null;
 let nextId = 1;
 let socketGeneration = 0;
-let socketDeviceId = "";
+
 let heartbeatTimer: number | null = null;
 let localDeviceId = "";
 let lastDeviceStatus: WebDeviceStatus | null = null;
@@ -81,7 +111,8 @@ function captureLocalDeviceBinding(): string {
     return localDeviceId;
   }
   try {
-    localDeviceId = normalizeDeviceId(window.localStorage.getItem(LOCAL_DEVICE_STORAGE_KEY)) || localDeviceId;
+    const storedDeviceId = normalizeDeviceId(window.localStorage.getItem(LOCAL_DEVICE_STORAGE_KEY));
+    if (storedDeviceId) localDeviceId = storedDeviceId;
   } catch {
     // Keep the current navigation's in-memory binding when storage is blocked.
   }
@@ -107,7 +138,26 @@ export function selectedWebDeviceId(): string {
   return remote || captureLocalDeviceBinding();
 }
 
-function webSocketUrl(): string {
+/**
+ * Make localhost discovery authoritative for the local execution target.
+ * If an older browser socket is still routed to a stale device id, close it
+ * immediately so the next connect/invoke is guaranteed to use this Host.
+ */
+export function bindLocalWebDevice(deviceId: string): boolean {
+  const normalized = normalizeDeviceId(deviceId);
+  if (!normalized) return false;
+
+  const previousLocalDeviceId = captureLocalDeviceBinding();
+  localDeviceId = normalized;
+  try { window.localStorage.setItem(LOCAL_DEVICE_STORAGE_KEY, normalized); } catch {}
+
+  const selectedTarget = remoteWebDeviceId() || normalized;
+  const routeMismatch = Boolean(socket || socketPromise) && socketDeviceId !== selectedTarget;
+  if (routeMismatch) closeSocket();
+  return previousLocalDeviceId !== normalized || routeMismatch;
+}
+
+function webSocketUrl(selectedDeviceId = selectedWebDeviceId()): string {
   const configured = String(import.meta.env.VITE_LOOM_WEB_SOCKET_URL || "").trim();
   const scheme = window.location.protocol === "https:" ? "wss:" : "ws:";
   const target = new URL(configured || `${scheme}//${window.location.host}${DEFAULT_WS_PATH}`, window.location.href);
@@ -121,7 +171,9 @@ function dispatchAuthChanged(): void {
   window.dispatchEvent(new CustomEvent("loom:web-auth-changed"));
 }
 
-async function accountRequest(path: string, init: RequestInit = {}): Promise<LoomAccountResult> {
+type AccountBridgeResult = LoomAccountResult | LoomAuthCapabilitiesResult | LoomAuthChallengeResult;
+
+async function accountRequest<T extends AccountBridgeResult = LoomAccountResult>(path: string, init: RequestInit = {}): Promise<T> {
   let response: Response;
   try {
     response = await fetch(`/api/auth/${path}`, {
@@ -140,10 +192,10 @@ async function accountRequest(path: string, init: RequestInit = {}): Promise<Loo
         code: "ACCOUNT_SERVICE_UNREACHABLE",
         message: cause instanceof Error ? cause.message : "Could not reach the Loom web service.",
       },
-    };
+    } as T;
   }
-  const payload = await response.json().catch(() => ({})) as LoomAccountResult;
-  if (payload && typeof payload === "object" && "ok" in payload) return payload;
+  const payload = await response.json().catch(() => ({})) as AccountBridgeResult;
+  if (payload && typeof payload === "object" && "ok" in payload) return payload as T;
   return {
     ok: false,
     error: {
@@ -151,7 +203,7 @@ async function accountRequest(path: string, init: RequestInit = {}): Promise<Loo
       message: `Loom web service returned an invalid response (${response.status}).`,
       status: response.status,
     },
-  };
+  } as T;
 }
 
 function stopHeartbeat(): void {
@@ -173,6 +225,8 @@ function closeSocket(): void {
   const current = socket;
   socket = null;
   socketPromise = null;
+  socketDeviceId = "";
+  lastDeviceStatus = null;
   stopHeartbeat();
   failPending("Loom Web connection closed.");
   if (current && current.readyState < WebSocket.CLOSING) current.close(1000, "client closed");
@@ -214,11 +268,12 @@ function handleRelayMessage(raw: string): void {
 }
 
 async function ensureSocket(): Promise<WebSocket> {
-  if (socket?.readyState === WebSocket.OPEN) {
-    if (socketDeviceId === selectedWebDeviceId()) return socket;
-    closeSocket();
-  }
-  if (socketPromise) return socketPromise;
+  const desiredDeviceId = selectedWebDeviceId();
+  if (socket?.readyState === WebSocket.OPEN && socketDeviceId === desiredDeviceId) return socket;
+  if (socket && socketDeviceId !== desiredDeviceId) closeSocket();
+  if (socketPromise && socketDeviceId === desiredDeviceId) return socketPromise;
+  if (socketPromise) closeSocket();
+  socketDeviceId = desiredDeviceId;
   const generation = socketGeneration;
   const connecting = (async () => {
     const account = await accountRequest("status");
@@ -227,8 +282,8 @@ async function ensureSocket(): Promise<WebSocket> {
       throw new Error("Sign in to Loom Web before connecting.");
     }
     return new Promise<WebSocket>((resolve, reject) => {
-      const ws = new WebSocket(webSocketUrl());
-      socketDeviceId = selectedWebDeviceId();
+      const ws = new WebSocket(webSocketUrl(desiredDeviceId));
+      socketDeviceId = desiredDeviceId;
       socket = ws;
       const timeout = window.setTimeout(() => {
         reject(new Error("Could not connect to Loom Web."));
@@ -389,6 +444,41 @@ export async function getWebDeviceStatus(): Promise<WebDeviceStatus> {
   });
 }
 
+export async function ensureWebHostCompatibility(
+  status?: WebDeviceStatus | null,
+): Promise<WebHostCompatibility> {
+  const current = status || await getWebDeviceStatus();
+  const hostProtocol = relayHostProtocol(current.device);
+  if (!current.online) {
+    return { compatible: false, legacy: false, online: false, hostProtocol, requiredProtocol: LOOM_WEB_REQUIRED_HOST_PROTOCOL };
+  }
+  if (hostProtocol <= 0) {
+    return { compatible: true, legacy: true, online: true, hostProtocol, requiredProtocol: LOOM_WEB_REQUIRED_HOST_PROTOCOL };
+  }
+  if (hostProtocol >= LOOM_WEB_REQUIRED_HOST_PROTOCOL) {
+    return { compatible: true, legacy: false, online: true, hostProtocol, requiredProtocol: LOOM_WEB_REQUIRED_HOST_PROTOCOL };
+  }
+  try {
+    const result = await invoke<{ hostProtocol?: number; requiredProtocol?: number; compatible?: boolean; update?: LocalHostUpdateState }>(
+      "hostUpdateEnsure",
+      [LOOM_WEB_REQUIRED_HOST_PROTOCOL],
+    );
+    return {
+      compatible: Boolean(result?.compatible),
+      legacy: false,
+      online: true,
+      hostProtocol: Math.max(0, Number(result?.hostProtocol || hostProtocol) || hostProtocol),
+      requiredProtocol: Math.max(0, Number(result?.requiredProtocol || LOOM_WEB_REQUIRED_HOST_PROTOCOL) || LOOM_WEB_REQUIRED_HOST_PROTOCOL),
+      update: result?.update || null,
+    };
+  } catch (cause) {
+    return {
+      compatible: false, legacy: false, online: true, hostProtocol, requiredProtocol: LOOM_WEB_REQUIRED_HOST_PROTOCOL,
+      error: cause instanceof Error ? cause.message : String(cause),
+    };
+  }
+}
+
 export async function selectWebDevice(deviceId: string): Promise<void> {
   activateWebRemoteDevice(deviceId);
 }
@@ -428,6 +518,21 @@ export function installWebBridge(): void {
         if (!account.ok || !account.snapshot.authenticated) {
           throw new Error("Sign in to Loom Web before connecting.");
         }
+        const deviceStatus = await getWebDeviceStatus();
+        const compatibility = await ensureWebHostCompatibility(deviceStatus);
+        if (!compatibility.compatible) {
+          if (!compatibility.online) {
+            const error = new Error("Loom Host is offline. Start Loom on this computer and it will reconnect automatically.") as Error & { code?: string };
+            error.code = "HOST_OFFLINE";
+            throw error;
+          }
+          const phase = String(compatibility.update?.phase || "");
+          const error = new Error(phase === "downloaded"
+            ? "Loom Host update is ready. Restart Loom on the host computer to finish updating."
+            : "Loom Host is updating to match Loom Web. It will reconnect automatically when ready.") as Error & { code?: string };
+          error.code = "HOST_UPDATE_REQUIRED";
+          throw error;
+        }
         return invoke("connect", []);
       })();
       try { return await connectPromise; } finally { connectPromise = null; }
@@ -438,14 +543,33 @@ export function installWebBridge(): void {
       if (source === "dark" || source === "light") return source;
       return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
     },
-    accountStatus: () => accountRequest("status"),
+    accountStatus: () => accountRequest<LoomAccountResult>("status"),
+    accountCapabilities: () => accountRequest<LoomAuthCapabilitiesResult>("capabilities"),
     accountLogin: async (email, password) => {
-      const result = await accountRequest("login", { method: "POST", body: JSON.stringify({ email, password }) });
+      const result = await accountRequest<LoomAccountResult>("login", { method: "POST", body: JSON.stringify({ email, password }) });
       if (result.ok) dispatchAuthChanged();
       return result;
     },
     accountRegister: async (email, password) => {
-      const result = await accountRequest("register", { method: "POST", body: JSON.stringify({ email, password }) });
+      const result = await accountRequest<LoomAccountResult>("register", { method: "POST", body: JSON.stringify({ email, password }) });
+      if (result.ok) dispatchAuthChanged();
+      return result;
+    },
+    accountRegisterStart: (email, password) => accountRequest<LoomAuthChallengeResult>("register/start", { method: "POST", body: JSON.stringify({ email, password }) }),
+    accountVerifyEmail: async (challengeId, code) => {
+      const result = await accountRequest<LoomAccountResult>("verify-email", { method: "POST", body: JSON.stringify({ challenge_id: challengeId, code }) });
+      if (result.ok) dispatchAuthChanged();
+      return result;
+    },
+    accountResendEmail: (challengeId) => accountRequest<LoomAuthChallengeResult>("resend-email", { method: "POST", body: JSON.stringify({ challenge_id: challengeId }) }),
+    accountForgotPassword: (email) => accountRequest<LoomAuthChallengeResult>("forgot-password", { method: "POST", body: JSON.stringify({ email }) }),
+    accountResetPassword: async (challengeId, code, password) => {
+      const result = await accountRequest<LoomAccountResult>("reset-password", { method: "POST", body: JSON.stringify({ challenge_id: challengeId, code, password }) });
+      if (result.ok) dispatchAuthChanged();
+      return result;
+    },
+    accountOAuthExchange: async (code) => {
+      const result = await accountRequest<LoomAccountResult>("oauth/exchange", { method: "POST", body: JSON.stringify({ code }) });
       if (result.ok) dispatchAuthChanged();
       return result;
     },

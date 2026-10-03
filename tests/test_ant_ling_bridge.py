@@ -31,5 +31,24 @@ def test_desktop_materializes_loom_account_token_only_in_main_process() -> None:
     assert 'api.ant-ling.com' not in source and 'ANT_LING_API_KEY' not in source
     assert 'authMode?: "loom-account" | string' in manager
     assert 'await this.account.modelCredential()' in main
+    assert 'LOOM_ACCOUNT_MODEL_CREDENTIAL: accountModelCredential' in main
     target=panel.split('function providerCredentialTarget',1)[1].split('// Every saved connection',1)[0]
     assert 'groupId === "ant-ling"' not in target
+
+
+def test_generic_thread_resolver_accepts_ant_ling_selection(tmp_path, monkeypatch) -> None:
+    import loom_model_bridge as generic_bridge
+
+    monkeypatch.setenv("LOOM_HOME", str(tmp_path))
+    resolved = generic_bridge.resolve_model_spec(
+        "builtin:ant-ling:Ling-2.6-flash",
+        model="Ling-2.6-flash",
+        home=tmp_path,
+    )
+
+    assert resolved["selection"] == "builtin:ant-ling:Ling-2.6-flash"
+    assert resolved["provider"] == "openai-compatible"
+    assert resolved["baseUrl"] == "https://account.smirel.com/model/v1"
+    assert resolved["model"] == "Ling-2.6-flash"
+    assert resolved["authMode"] == "loom-account"
+    assert resolved["apiKey"] == ""

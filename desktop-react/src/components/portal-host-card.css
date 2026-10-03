@@ -68,3 +68,60 @@
 @media (prefers-reduced-motion: reduce) {
   .loom-host-refined .loom-connection-track.is-working span { animation: none; left: 18%; width: 64%; transform: none; opacity: .8; will-change: auto; }
 }
+.loom-host-onboarding { margin-top: 22px; padding: 18px; border: 1px solid rgba(183,216,203,.16); border-radius: 18px; background: rgba(10,18,27,.22); backdrop-filter: blur(12px); }
+.loom-host-onboarding-head { display: grid; grid-template-columns: 36px minmax(0,1fr); gap: 12px; align-items: center; }
+.loom-host-onboarding-icon { width: 36px; height: 36px; display: grid; place-items: center; border-radius: 12px; border: 1px solid rgba(183,216,203,.2); background: rgba(183,216,203,.08); color: rgba(228,244,255,.92); }
+.loom-host-onboarding-head > div { display: grid; gap: 3px; min-width: 0; }
+.loom-host-onboarding-head strong { font-size: 13px; line-height: 1.4; font-weight: 600; color: rgba(255,255,255,.94); }
+.loom-host-onboarding-head span { font-size: 11px; line-height: 1.5; color: var(--loom-muted); }
+.loom-host-onboarding-steps { display: grid; gap: 13px; list-style: none; padding: 0; margin: 18px 0 0; }
+.loom-host-onboarding-steps li { display: grid; grid-template-columns: 24px minmax(0,1fr); gap: 10px; align-items: start; }
+.loom-host-onboarding-steps li > span { width: 24px; height: 24px; display: grid; place-items: center; border-radius: 50%; background: rgba(255,255,255,.07); color: rgba(235,245,250,.82); font-size: 10px; font-weight: 650; }
+.loom-host-onboarding-steps p { margin: 0; display: grid; gap: 2px; }
+.loom-host-onboarding-steps strong { font-size: 11px; line-height: 1.45; color: rgba(255,255,255,.88); font-weight: 580; }
+.loom-host-onboarding-steps small { font-size: 10px; line-height: 1.55; color: var(--loom-muted); }
+.loom-host-install-action { margin-top: 18px; min-height: 42px; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 0 14px; border-radius: 13px; border: 1px solid rgba(183,216,203,.24); background: rgba(183,216,203,.11); color: rgba(245,252,255,.96); text-decoration: none; font-size: 11px; font-weight: 610; transition: transform .18s ease, background .18s ease, border-color .18s ease; }
+.loom-host-install-action:hover { transform: translateY(-1px); background: rgba(183,216,203,.16); border-color: rgba(183,216,203,.34); }
+.loom-host-open-action { width: 100%; cursor: pointer; font: inherit; }
+.loom-host-open-action:disabled { cursor: wait; opacity: .66; transform: none; }
+.loom-host-onboarding-divider { height: 1px; margin: 18px 0; background: rgba(255,255,255,.08); }
+.loom-host-onboarding-note { margin: 10px 2px 0; font-size: 10px; line-height: 1.55; color: var(--loom-muted); }
+.loom-host-recovery { margin-top: 16px; display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; padding: 12px 13px; border-radius: 13px; background: rgba(229,196,156,.07); border: 1px solid rgba(229,196,156,.12); }
+.loom-host-recovery span { font-size: 10px; line-height: 1.55; color: var(--loom-muted); }
+.loom-host-recovery a { flex: none; font-size: 10px; line-height: 1.55; color: rgba(238,221,199,.9); text-decoration: none; }
+.loom-host-recovery a:hover { text-decoration: underline; }
+
+/* Height-responsive desktop composition. The onboarding card is deliberately
+   denser here rather than clipping the glass panel below the viewport. */
+@media (min-width: 1001px) and (max-height: 980px) {
+  .loom-module-grid .loom-host-refined { padding: 24px 28px 22px; }
+  .loom-host-meta .loom-connection-badge { min-height: 24px; }
+  .loom-host-summary { gap: 13px; margin-top: 15px; }
+  .loom-host-emblem { width: 46px; height: 46px; border-radius: 14px; }
+  .loom-module-grid .loom-host-summary h2 { font-size: clamp(22px, 1.35vw, 26px); }
+  .loom-module-grid .loom-host-refined .loom-control-copy { margin-top: 13px; line-height: 1.6; }
+
+  .loom-host-onboarding { margin-top: 14px; padding: 14px; border-radius: 16px; }
+  .loom-host-onboarding-head { grid-template-columns: 32px minmax(0,1fr); gap: 10px; }
+  .loom-host-onboarding-icon { width: 32px; height: 32px; border-radius: 10px; }
+  .loom-host-onboarding-head strong { font-size: 12px; }
+  .loom-host-onboarding-head span { font-size: 10px; }
+  .loom-host-onboarding-steps { grid-template-columns: repeat(3, minmax(0,1fr)); gap: 10px; margin-top: 12px; }
+  .loom-host-onboarding-steps li { grid-template-columns: 20px minmax(0,1fr); gap: 7px; }
+  .loom-host-onboarding-steps li > span { width: 20px; height: 20px; font-size: 9px; }
+  .loom-host-onboarding-steps strong { font-size: 10px; }
+  .loom-host-onboarding-steps small { font-size: 9px; line-height: 1.45; }
+  .loom-host-install-action { margin-top: 12px; min-height: 38px; }
+  .loom-host-onboarding-note { margin-top: 7px; line-height: 1.45; }
+  .loom-host-refined .loom-host-action { min-height: 44px; margin-top: 14px; }
+
+  .loom-module-grid .loom-account-refined { margin: 0 28px; padding: 15px 0 19px; }
+  .loom-identity-list { grid-template-columns: repeat(2, minmax(0,1fr)); gap: 14px 18px; margin-top: 14px; }
+  .loom-identity-row { grid-template-columns: 16px minmax(0,1fr); gap: 2px 9px; }
+  .loom-identity-row dt > svg { width: 16px; height: 16px; margin-top: 2px; }
+  .loom-identity-row dd { font-size: clamp(11px, .72vw, 13px); }
+}
+@media (max-width: 760px) {
+  .loom-host-onboarding { padding: 16px; border-radius: 16px; }
+  .loom-host-recovery { display: grid; gap: 7px; }
+}

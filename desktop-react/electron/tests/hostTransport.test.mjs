@@ -24,6 +24,7 @@ test("one Host serves desktop and other clients; closing desktop keeps work aliv
   try {
     await server.listen(address);
     await Promise.all([desktop.connect(address, "secret"), web.connect(address, "secret")]);
+    assert.deepEqual(server.clientProcessIds, [process.pid]);
     const bytes = new Uint8Array([0, 255, 42]);
     assert.deepEqual(await desktop.call("task", [bytes]), bytes);
     await assert.rejects(desktop.call("fail", []), /Expected operation error/);

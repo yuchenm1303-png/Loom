@@ -5,9 +5,14 @@ import path from "node:path";
 import crypto from "node:crypto";
 import { hostAccount } from "./hostAccount.js";
 import { handleHostChannel } from "./hostProcess.js";
+import { loomHostLaunchMode, type LoomHostLaunchMode } from "./hostMode.js";
+import { currentHostRuntimeProtocol, currentHostRuntimeVersion } from "./hostRuntime.js";
 
 const DEFAULT_ACCOUNT_URL = "https://account.smirel.com/v1";
 const DEVICE_ID_FILE = "loom-web-device-id";
+// This protocol belongs to the tiny installed bootstrap/relay. Agent/runtime
+// capability compatibility is reported separately as hostProtocol.
+export const LOOM_BOOTSTRAP_PROTOCOL_VERSION = 1;
 
 if (!String(process.env.LOOM_ACCOUNT_API_BASE_URL || "").trim()) {
   process.env.LOOM_ACCOUNT_API_BASE_URL = DEFAULT_ACCOUNT_URL;
@@ -43,6 +48,10 @@ export type WebRelayDeviceIdentity = {
   deviceName: string;
   platform: string;
   appVersion: string;
+  hostVersion: string;
+  hostMode: LoomHostLaunchMode;
+  hostProtocol: number;
+  bootstrapProtocol: number;
 };
 
 export type WebRelayAuth = WebRelayDeviceIdentity & {
@@ -62,6 +71,10 @@ export async function webRelayDeviceIdentity(): Promise<WebRelayDeviceIdentity> 
     deviceName: os.hostname(),
     platform: process.platform,
     appVersion: app.getVersion(),
+    hostVersion: currentHostRuntimeVersion(),
+    hostMode: loomHostLaunchMode(),
+    hostProtocol: currentHostRuntimeProtocol(),
+    bootstrapProtocol: LOOM_BOOTSTRAP_PROTOCOL_VERSION,
   };
 }
 

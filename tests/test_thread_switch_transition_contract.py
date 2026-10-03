@@ -21,8 +21,8 @@ def test_thread_switch_selects_immediately_and_keeps_latest_request_authoritativ
 
     assert 'const [openingThreadId, setOpeningThreadId] = useState("")' in core
     assert "setOpeningThreadId(normalized)" in open_thread
-    assert 'call<ThreadReadResult>("thread/read", { threadId: normalized, presentationOnly: true })' in open_thread
-    assert open_thread.index("setOpeningThreadId(normalized)") < open_thread.index('"thread/read"')
+    assert "const result = await readThread(normalized);" in open_thread
+    assert open_thread.index("setOpeningThreadId(normalized)") < open_thread.index("await readThread(normalized)")
     assert "if (openRequestRef.current !== requestId) return;" in open_thread
     assert 'openingThreadId,' in core
 
@@ -30,8 +30,8 @@ def test_thread_switch_selects_immediately_and_keeps_latest_request_authoritativ
 def test_recent_settled_threads_use_a_small_revalidated_snapshot_cache() -> None:
     core = read(LOOM_CORE)
 
-    assert "const THREAD_READ_CACHE_LIMIT = 3;" in core
-    assert "const THREAD_READ_CACHE_TTL_MS = 45_000;" in core
+    assert "const THREAD_READ_CACHE_LIMIT = 8;" in core
+    assert "const THREAD_READ_CACHE_TTL_MS = 5 * 60_000;" in core
     assert "threadReadCacheRef = useRef<Map<string, ThreadReadCacheEntry>>(new Map())" in core
     assert "if (threadIsRunning(result.thread)) return;" in core
     assert "Date.now() - entry.cachedAt > THREAD_READ_CACHE_TTL_MS" in core

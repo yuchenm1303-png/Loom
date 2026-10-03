@@ -1,10 +1,12 @@
 import { app, BrowserWindow, dialog, ipcMain, shell } from "electron";
+import fs from "node:fs";
+import path from "node:path";
 import electronUpdater, {
   type AppUpdater,
   type ProgressInfo,
   type UpdateInfo,
 } from "electron-updater";
-import { broadcastHostEvent, handleHostChannel, isHostProcess } from "./hostProcess.js";
+import { broadcastHostEvent, callHost, handleHostChannel, hostHasDesktopClients, isHostProcess } from "./hostProcess.js";
 
 export type SoftwareUpdatePhase =
   | "disabled"
@@ -40,8 +42,10 @@ const EARLY_RECHECK_DELAYS_MS = [2 * 60_000, 10 * 60_000];
 const PERIODIC_CHECK_INTERVAL_MS = 30 * 60_000;
 const FOCUS_RECHECK_MIN_AGE_MS = 5 * 60_000;
 const ERROR_RETRY_DELAY_MS = 60_000;
+const HEADLESS_INSTALL_RETRY_MS = 30_000;
 const STATUS_CHANNEL = "loom:update-status-changed";
 const RELEASE_BASE_URL = "https://github.com/yuchenm1303-png/Loom/releases/tag";
+const HEADLESS_RESTART_MARKER = "loom-headless-update-restart";
 
 function getAutoUpdater(): AppUpdater {
   // electron-updater is CommonJS. Destructuring the default import keeps the
@@ -65,14 +69,18 @@ let lastCheckStartedAt = 0;
 let startupTimer: NodeJS.Timeout | null = null;
 let periodicTimer: NodeJS.Timeout | null = null;
 let errorRetryTimer: NodeJS.Timeout | null = null;
+let headlessInstallGuard: (() => boolean | Promise<boolean>) | null = null;
+let headlessInstallRetryTimer: NodeJS.Timeout | null = null;
+let headlessInstallAttempt: Promise<boolean> | null = null;
+let bootstrapAutoInstallRequested = false;
 const earlyRecheckTimers: NodeJS.Timeout[] = [];
 
-function publicState(): SoftwareUpdateState {
+export function softwareUpdateState(): SoftwareUpdateState {
   return { ...state };
 }
 
 function broadcastState(): void {
-  const payload = publicState();
+  const payload = softwareUpdateState();
   broadcastHostEvent(STATUS_CHANNEL, payload);
   for (const window of BrowserWindow.getAllWindows()) {
     if (!window.isDestroyed() && !window.webContents.isDestroyed()) {
@@ -122,6 +130,95 @@ function activeWindow(): BrowserWindow | undefined {
   return BrowserWindow.getFocusedWindow()
     ?? BrowserWindow.getAllWindows().find((window) => !window.isDestroyed());
 }
+
+function hasVisibleWindow(): boolean {
+  if (isHostProcess) return hostHasDesktopClients();
+  return BrowserWindow.getAllWindows().some((window) => !window.isDestroyed() && window.isVisible());
+}
+
+function headlessInstallWanted(): boolean {
+  return bootstrapAutoInstallRequested && state.phase === "downloaded" && !hasVisibleWindow();
+}
+
+function headlessRestartMarkerPath(): string {
+  return path.join(app.getPath("userData"), HEADLESS_RESTART_MARKER);
+}
+
+function markHeadlessUpdateRestart(): void {
+  try {
+    fs.writeFileSync(headlessRestartMarkerPath(), "background\n", { encoding: "utf8", mode: 0o600 });
+  } catch (error) {
+    console.warn("Could not persist Loom Host restart mode", error);
+  }
+}
+
+export function consumeHeadlessUpdateRestart(): boolean {
+  try {
+    const marker = headlessRestartMarkerPath();
+    if (!fs.existsSync(marker)) return false;
+    fs.unlinkSync(marker);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function scheduleHeadlessInstallRetry(): void {
+  if (headlessInstallRetryTimer || !headlessInstallWanted()) return;
+  headlessInstallRetryTimer = setTimeout(() => {
+    headlessInstallRetryTimer = null;
+    void maybeInstallHeadless();
+  }, HEADLESS_INSTALL_RETRY_MS);
+  headlessInstallRetryTimer.unref?.();
+}
+
+async function maybeInstallHeadless(): Promise<boolean> {
+  if (headlessInstallAttempt) return headlessInstallAttempt;
+  if (!headlessInstallWanted()) return false;
+  headlessInstallAttempt = (async () => {
+    if (headlessInstallGuard) {
+      let safe = false;
+      try { safe = await headlessInstallGuard(); } catch { safe = false; }
+      if (!safe) {
+        scheduleHeadlessInstallRetry();
+        return false;
+      }
+    }
+    if (headlessInstallRetryTimer) {
+      clearTimeout(headlessInstallRetryTimer);
+      headlessInstallRetryTimer = null;
+    }
+    // A hidden Host has no Desktop prompt to click. Once the package is ready
+    // and the Agent is idle, restart the Host automatically and let the web
+    // reconnect to the new process without reopening the Desktop UI.
+    markHeadlessUpdateRestart();
+    restartForUpdate();
+    return true;
+  })().finally(() => {
+    headlessInstallAttempt = null;
+  });
+  return headlessInstallAttempt;
+}
+
+export function registerHeadlessUpdateGuard(guard: () => boolean | Promise<boolean>): void {
+  headlessInstallGuard = guard;
+}
+
+export async function ensureBootstrapUpdate(): Promise<SoftwareUpdateState> {
+  if (!updateEnabled) return softwareUpdateState();
+  bootstrapAutoInstallRequested = true;
+  if (state.phase === "downloaded") {
+    void maybeInstallHeadless();
+    return softwareUpdateState();
+  }
+  const next = await checkForUpdates();
+  void maybeInstallHeadless();
+  return next;
+}
+
+// Backwards-compatible export for older internal callers. New Web Host update
+// paths use hostRuntimeUpdater instead of downloading the Desktop package.
+export const ensureWebHostUpdate = ensureBootstrapUpdate;
 
 function clearErrorRetry(): void {
   if (!errorRetryTimer) return;
@@ -195,10 +292,10 @@ async function offerDownloadedUpdate(info: UpdateInfo): Promise<void> {
   }
 }
 
-async function checkForUpdates(): Promise<SoftwareUpdateState> {
-  if (!updateEnabled) return publicState();
+export async function checkForUpdates(): Promise<SoftwareUpdateState> {
+  if (!updateEnabled) return softwareUpdateState();
   if (checkPromise) return checkPromise;
-  if (updateInFlight()) return publicState();
+  if (updateInFlight()) return softwareUpdateState();
 
   clearErrorRetry();
   lastCheckStartedAt = Date.now();
@@ -220,7 +317,7 @@ async function checkForUpdates(): Promise<SoftwareUpdateState> {
       scheduleErrorRetry();
     }
 
-    return publicState();
+    return softwareUpdateState();
   })().finally(() => {
     checkPromise = null;
   });
@@ -228,13 +325,13 @@ async function checkForUpdates(): Promise<SoftwareUpdateState> {
   return checkPromise;
 }
 
-function installDownloadedUpdate(): { accepted: boolean; state: SoftwareUpdateState } {
+export function installDownloadedUpdate(): { accepted: boolean; state: SoftwareUpdateState } {
   if (!updateEnabled || state.phase !== "downloaded") {
-    return { accepted: false, state: publicState() };
+    return { accepted: false, state: softwareUpdateState() };
   }
 
   restartForUpdate();
-  return { accepted: true, state: publicState() };
+  return { accepted: true, state: softwareUpdateState() };
 }
 
 function maybeCheckAfterFocus(): void {
@@ -244,6 +341,7 @@ function maybeCheckAfterFocus(): void {
 }
 
 function restartForUpdate(): void {
+  markHeadlessUpdateRestart();
   // Close desktop clients before the installer replaces the shared executable.
   broadcastHostEvent("loom:host-updating", null);
   setTimeout(() => autoUpdater.quitAndInstall(false, true), 500);
@@ -269,13 +367,16 @@ function configureUpdater(): void {
       percent: 0,
       transferred: 0,
     });
-    availablePromptPromise = offerAvailableUpdate(info).finally(() => {
-      availablePromptPromise = null;
-    });
+    if (hasVisibleWindow()) {
+      availablePromptPromise = offerAvailableUpdate(info).finally(() => {
+        availablePromptPromise = null;
+      });
+    }
   });
 
   autoUpdater.on("update-not-available", (info) => {
     clearErrorRetry();
+    bootstrapAutoInstallRequested = false;
     setState({
       phase: "up-to-date",
       ...updateInfoPatch(info),
@@ -303,7 +404,9 @@ function configureUpdater(): void {
       percent: 100,
       error: undefined,
     });
-    void offerDownloadedUpdate(info);
+    void maybeInstallHeadless().then((accepted) => {
+      if (!accepted && !headlessInstallWanted()) void offerDownloadedUpdate(info);
+    });
   });
 
   autoUpdater.on("error", (error) => {
@@ -325,44 +428,56 @@ function startAutomaticChecks(): void {
     const timer = setTimeout(() => {
       const index = earlyRecheckTimers.indexOf(timer);
       if (index >= 0) earlyRecheckTimers.splice(index, 1);
-      if (!updateInFlight()) void checkForUpdates();
+      if (hasVisibleWindow() && !updateInFlight()) void checkForUpdates();
     }, delay);
     timer.unref?.();
     earlyRecheckTimers.push(timer);
   }
 
   periodicTimer = setInterval(() => {
-    if (!updateInFlight()) void checkForUpdates();
+    if (hasVisibleWindow() && !updateInFlight()) void checkForUpdates();
   }, PERIODIC_CHECK_INTERVAL_MS);
   periodicTimer.unref?.();
 }
 
 configureUpdater();
 
-handleHostChannel("loom:update-status", () => publicState());
+handleHostChannel("loom:update-status", () => softwareUpdateState());
 handleHostChannel("loom:update-check", () => checkForUpdates());
 handleHostChannel("loom:update-install", () => installDownloadedUpdate());
+handleHostChannel("loom:desktop-activity", () => {
+  if (hasVisibleWindow()) startAutomaticChecks();
+  maybeCheckAfterFocus();
+  return softwareUpdateState();
+});
 
 app.on("browser-window-created", (_event, window) => {
+  const notifyHost = () => { void callHost("loom:desktop-activity").catch(() => undefined); };
+  if (!isHostProcess) notifyHost();
   window.webContents.once("did-finish-load", () => {
     if (!window.isDestroyed() && !window.webContents.isDestroyed()) {
-      if (isHostProcess) window.webContents.send(STATUS_CHANNEL, publicState());
+      if (isHostProcess) window.webContents.send(STATUS_CHANNEL, softwareUpdateState());
     }
   });
-  window.on("focus", maybeCheckAfterFocus);
+  if (!isHostProcess) window.on("focus", notifyHost);
+  window.on("hide", () => { void maybeInstallHeadless(); });
 });
 
 app.whenReady().then(() => {
-  startAutomaticChecks();
+  // A pure background Host updates its independent runtime instead. Desktop
+  // update checks start lazily when a Desktop window actually exists.
+  if (hasVisibleWindow()) startAutomaticChecks();
 });
 
 app.on("before-quit", () => {
   if (startupTimer) clearTimeout(startupTimer);
   if (periodicTimer) clearInterval(periodicTimer);
   if (errorRetryTimer) clearTimeout(errorRetryTimer);
+  if (headlessInstallRetryTimer) clearTimeout(headlessInstallRetryTimer);
   for (const timer of earlyRecheckTimers) clearTimeout(timer);
   earlyRecheckTimers.length = 0;
   startupTimer = null;
   periodicTimer = null;
   errorRetryTimer = null;
+  headlessInstallRetryTimer = null;
 });

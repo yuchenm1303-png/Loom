@@ -12,7 +12,7 @@ import {
   type EditModelInput,
   type ModelLaunchSpec,
 } from "./modelManager.js";
-import { LoomAccountClient, type LoomAccountSnapshot } from "./accountClient.js";
+import { LoomAccountClient, type LoomAccountSnapshot, type LoomAuthCapabilities, type LoomAuthChallenge } from "./accountClient.js";
 import { accountErrorPayload, type AccountErrorPayload } from "./accountErrors.js";
 import { closeHudOverlayWindow, createHudOverlayWindow, sendHudUpdate } from "./hudWindow.js";
 import {
@@ -24,16 +24,21 @@ import {
 import { webRelayAuthPayload } from "./webRelayAuth.js";
 import { hostAccount } from "./hostAccount.js";
 import { createSearchRelay } from "./searchRelay.js";
-import { broadcastHostEvent, handleHostChannel, isHostProcess, prepareDesktopHost, startHostTransport } from "./hostProcess.js";
+import { broadcastHostEvent, desktopPidFile, handleHostChannel, isHostProcess, prepareDesktopHost, startHostTransport } from "./hostProcess.js";
+import { registerHeadlessUpdateGuard } from "./updater.js";
+import {
+  currentHostRuntimeVersion,
+  resolveHostBrowserExtensionRoot,
+  resolveHostPythonExecutable,
+  resolveHostSandboxExecutable,
+} from "./hostRuntime.js";
+import { registerHostRuntimeUpdateHooks } from "./hostRuntimeUpdater.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const DESKTOP_ROOT = path.resolve(__dirname, "..");
 const REPO_ROOT = path.resolve(DESKTOP_ROOT, "..");
 const DEV_WINDOW_ICON = path.join(DESKTOP_ROOT, "build", "icon.png");
-const REPO_VENV_PYTHON = process.platform === "win32"
-  ? path.join(REPO_ROOT, ".venv", "Scripts", "python.exe")
-  : path.join(REPO_ROOT, ".venv", "bin", "python");
 const HTML_ESCAPE: Record<string, string> = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
 const APP_SERVER_CONNECT_TIMEOUT_MS = 15_000;
 const APP_SERVER_CALL_TIMEOUT_MS = 120_000;
@@ -152,10 +157,7 @@ interface ReasoningUpdateResult {
 }
 
 function resolvePythonExecutable(): string {
-  const configured = process.env.LOOM_PYTHON?.trim();
-  if (configured) return configured;
-  if (fsSync.existsSync(REPO_VENV_PYTHON)) return REPO_VENV_PYTHON;
-  return process.platform === "win32" ? "python" : "python3";
+  return resolveHostPythonExecutable(REPO_ROOT);
 }
 
 function appendPythonPath(existing: string | undefined): string {
@@ -238,9 +240,7 @@ function unpackedExtensionId(absolutePath: string): string {
 }
 
 function browserExtensionSource(): string {
-  return app.isPackaged
-    ? path.join(process.resourcesPath, "browser-current-tab")
-    : path.join(REPO_ROOT, "extensions", "browser-current-tab");
+  return resolveHostBrowserExtensionRoot(REPO_ROOT);
 }
 
 function browserExtensionTarget(): string {
@@ -270,24 +270,30 @@ function legacyBrowserExtensionTargets(): string[] {
   ));
 }
 
-async function setupBrowserExtension(browser: "edge" | "chrome" = "edge", extensionConnected = false): Promise<Record<string, unknown>> {
+async function syncBrowserExtensionAssets(): Promise<{ target: string; version: string; installTargets: string[] }> {
   const source = browserExtensionSource();
   const target = browserExtensionTarget();
   if (!fsSync.existsSync(path.join(source, "manifest.json"))) {
     throw new Error(`Packaged browser extension is missing: ${source}`);
   }
   const manifest = JSON.parse(await fs.readFile(path.join(source, "manifest.json"), "utf8")) as { version?: string };
+  const version = String(manifest.version || "");
   const installTargets = [target, ...legacyBrowserExtensionTargets()];
   const bridgeConfig = JSON.stringify({ bridgeUrl: "http://127.0.0.1:39222", token: ensureBrowserBridgeToken() });
-  const updateSignal = JSON.stringify({ token: crypto.randomUUID(), version: String(manifest.version || "") });
+  const updateSignal = JSON.stringify({ token: crypto.randomUUID(), version });
   for (const installTarget of installTargets) {
     await fs.mkdir(installTarget, { recursive: true });
     await fs.cp(source, installTarget, { recursive: true, force: true });
     await fs.writeFile(path.join(installTarget, "bridge-config.json"), bridgeConfig, { encoding: "utf8", mode: 0o600 });
     // Write the signal last. A legacy extension that already has the watcher
-    // will now reload only after all code and pairing files are in place.
+    // reloads only after all code and pairing files are in place.
     await fs.writeFile(path.join(installTarget, "extension-update.json"), updateSignal, { encoding: "utf8", mode: 0o600 });
   }
+  return { target, version, installTargets };
+}
+
+async function setupBrowserExtension(browser: "edge" | "chrome" = "edge", extensionConnected = false): Promise<Record<string, unknown>> {
+  const { target, version, installTargets } = await syncBrowserExtensionAssets();
   if (!extensionConnected) clipboard.writeText(target);
   const folderError = extensionConnected ? "" : await shell.openPath(target);
   const managementUrl = browser === "chrome" ? "chrome://extensions" : "edge://extensions";
@@ -312,7 +318,7 @@ async function setupBrowserExtension(browser: "edge" | "chrome" = "edge", extens
   }
   return {
     ok: true,
-    desiredVersion: String(manifest.version || ""),
+    desiredVersion: version,
     manualInstallRequired: !extensionConnected,
     automaticUpdateRequested: extensionConnected,
     migratedLegacyInstalls: Math.max(0, installTargets.length - 1),
@@ -881,7 +887,16 @@ class LoomRpcProcess {
     const searchRelay = await sharedSearchRelay();
     const selectedSpec = this.models.current ?? this.models.ensureInitial();
     const spec = await this.materializeModelSpec(selectedSpec);
+    let accountModelCredential = spec.authMode === "loom-account" ? spec.apiKey : "";
+    if (!accountModelCredential) {
+      try {
+        accountModelCredential = await this.account.modelCredential();
+      } catch {
+        // BYOK/offline desktops remain usable without Loom account model access.
+      }
+    }
     const python = resolvePythonExecutable();
+    const sandboxExecutable = resolveHostSandboxExecutable(REPO_ROOT);
     const script = path.join(REPO_ROOT, "loom_app_server.py");
     const args = [script, "--workspace", REPO_ROOT, "--provider", spec.provider, "--model", spec.model, "--selection", spec.selection, "--local-ipc"];
     if (spec.baseUrl) args.push("--base-url", spec.baseUrl);
@@ -895,11 +910,15 @@ class LoomRpcProcess {
         PYTHONUTF8: "1",
         PYTHONPATH: appendPythonPath(process.env.PYTHONPATH),
         LOOM_DESKTOP_PYTHON: python,
+        LOOM_HOST_RUNTIME_VERSION: currentHostRuntimeVersion(REPO_ROOT),
+        LOOM_WINDOWS_SANDBOX_EXECUTABLE: sandboxExecutable || process.env.LOOM_WINDOWS_SANDBOX_EXECUTABLE,
         // Computer Use observes the foreground window, which is sometimes Loom
         // itself. Knowing which process owns Loom's own windows lets it say so
         // instead of silently automating its own UI.
         LOOM_DESKTOP_HOST_PID: String(process.pid),
+        LOOM_DESKTOP_CLIENT_PIDS_FILE: desktopPidFile,
         LOOM_API_KEY: spec.apiKey,
+        LOOM_ACCOUNT_MODEL_CREDENTIAL: accountModelCredential,
         LOOM_BROWSER_EXTENSION_TOKEN: ensureBrowserBridgeToken(),
         // The page HUD is the extension's asset, and a browser Loom launches
         // has no extension in it: the runtime injects the same file over CDP.
@@ -969,6 +988,33 @@ function handleRuntimeNotification(payload: JsonRpcResponse): void {
   if (payload.method === "hud/update") sendHudUpdate(payload.params ?? {});
 }
 const rpc = new LoomRpcProcess(handleRuntimeNotification, modelManager, accountClient);
+registerHeadlessUpdateGuard(async () => {
+  try {
+    await rpc.assertRestartSafe();
+    return true;
+  } catch {
+    return false;
+  }
+});
+registerHostRuntimeUpdateHooks({
+  canActivate: async () => {
+    try {
+      await rpc.assertRestartSafe();
+      return true;
+    } catch {
+      return false;
+    }
+  },
+  reload: async () => {
+    // Browser Use assets are part of the independently versioned Host runtime.
+    // Synchronize installed unpacked-extension folders before the App Server
+    // resumes so Browser Use and Agent code cross the version boundary together.
+    await syncBrowserExtensionAssets();
+    const wasReady = rpc.ready;
+    rpc.stop();
+    if (wasReady) await rpc.connect();
+  },
+});
 let searchRelayPromise: ReturnType<typeof createSearchRelay> | null = null;
 export function showDesktopWindow(): void {
   if (isHostProcess) return;
@@ -1132,6 +1178,9 @@ function createWindow(): void {
     icon: windowIcon,
     autoHideMenuBar: true,
     show: false,
+    // A login-started background Host must not reserve a taskbar slot. If the
+    // user opens Loom, remoteRelay restores the normal taskbar button first.
+    skipTaskbar: false,
     webPreferences: {
       preload: path.join(__dirname, "preload.cjs"),
       contextIsolation: true,
@@ -1194,9 +1243,16 @@ function createWindow(): void {
   void loadRenderer(window);
   window.on("closed", () => {
     if (mainWindow === window) mainWindow = null;
-    if (process.platform !== "darwin") app.quit();
   });
 }
+
+function ensureDesktopUi(): void {
+  if (mainWindow && !mainWindow.isDestroyed()) return;
+  createWindow();
+  createHudOverlayWindow();
+}
+
+
 
 // ---------------------------------------------------------------------------
 // Shared desktop operations
@@ -1416,6 +1472,14 @@ type AccountIpcResult =
   | { ok: true; snapshot: LoomAccountSnapshot }
   | { ok: false; error: AccountErrorPayload };
 
+type AccountCapabilitiesIpcResult =
+  | { ok: true; capabilities: LoomAuthCapabilities }
+  | { ok: false; error: AccountErrorPayload };
+
+type AccountChallengeIpcResult =
+  | { ok: true; challenge: LoomAuthChallenge }
+  | { ok: false; error: AccountErrorPayload };
+
 async function runAccountAction(
   action: () => Promise<LoomAccountSnapshot>,
 ): Promise<AccountIpcResult> {
@@ -1426,12 +1490,51 @@ async function runAccountAction(
   }
 }
 
+async function runAccountCapabilities(
+  action: () => Promise<LoomAuthCapabilities>,
+): Promise<AccountCapabilitiesIpcResult> {
+  try {
+    return { ok: true, capabilities: await action() };
+  } catch (error) {
+    return { ok: false, error: accountErrorPayload(error) };
+  }
+}
+
+async function runAccountChallenge(
+  action: () => Promise<LoomAuthChallenge>,
+): Promise<AccountChallengeIpcResult> {
+  try {
+    return { ok: true, challenge: await action() };
+  } catch (error) {
+    return { ok: false, error: accountErrorPayload(error) };
+  }
+}
+
 handleHostChannel("loom:account-status", () => runAccountAction(() => accountClient.status()));
+handleHostChannel("loom:account-capabilities", () => runAccountCapabilities(() => accountClient.capabilities()));
 handleHostChannel("loom:account-login", (_event, email: string, password: string) =>
   runAccountAction(() => accountClient.login(String(email || ""), String(password || "")))
 );
 handleHostChannel("loom:account-register", (_event, email: string, password: string) =>
   runAccountAction(() => accountClient.register(String(email || ""), String(password || "")))
+);
+handleHostChannel("loom:account-register-start", (_event, email: string, password: string) =>
+  runAccountChallenge(() => accountClient.registerStart(String(email || ""), String(password || "")))
+);
+handleHostChannel("loom:account-verify-email", (_event, challengeId: string, code: string) =>
+  runAccountAction(() => accountClient.verifyEmail(String(challengeId || ""), String(code || "")))
+);
+handleHostChannel("loom:account-resend-email", (_event, challengeId: string) =>
+  runAccountChallenge(() => accountClient.resendEmail(String(challengeId || "")))
+);
+handleHostChannel("loom:account-forgot-password", (_event, email: string) =>
+  runAccountChallenge(() => accountClient.forgotPassword(String(email || "")))
+);
+handleHostChannel("loom:account-reset-password", (_event, challengeId: string, code: string, password: string) =>
+  runAccountAction(() => accountClient.resetPassword(String(challengeId || ""), String(code || ""), String(password || "")))
+);
+handleHostChannel("loom:account-oauth-exchange", (_event, code: string) =>
+  runAccountAction(() => accountClient.oauthExchange(String(code || "")))
 );
 handleHostChannel("loom:account-logout", () => runAccountAction(() => accountClient.logout()));
 handleHostChannel("loom:model-list", (_event, forceRefresh?: boolean) => modelManager.listSnapshot(Boolean(forceRefresh)));
@@ -1465,7 +1568,7 @@ app.whenReady().then(async () => {
   if (process.platform === "win32") app.setAppUserModelId("com.loom.agent");
   if (!isHostProcess) {
     await prepareDesktopHost();
-    createWindow();
+    ensureDesktopUi();
     return;
   }
   await startHostTransport();

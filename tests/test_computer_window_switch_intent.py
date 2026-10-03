@@ -232,6 +232,20 @@ def test_ordinary_windows_are_not_labelled_as_loom():
     assert "Loom's own interface" not in _model_observation_text(snapshot)
 
 
+def test_independent_desktop_processes_follow_live_host_registry(tmp_path, monkeypatch):
+    from app.agent_runtime.computer_windows import _host_process_ids
+
+    registry = tmp_path / "desktop-pids.json"
+    monkeypatch.setenv("LOOM_DESKTOP_HOST_PID", "42")
+    monkeypatch.setenv("LOOM_DESKTOP_CLIENT_PIDS_FILE", str(registry))
+    registry.write_text('[99, 100, "invalid", -1, true]', encoding="utf-8")
+    assert _host_process_ids() == frozenset({42, 99, 100})
+    registry.write_text("[]", encoding="utf-8")
+    assert _host_process_ids() == frozenset({42})
+    registry.write_text("partial", encoding="utf-8")
+    assert _host_process_ids() == frozenset({42})
+
+
 def test_foreground_metadata_outweighs_images_embedded_inside_an_app():
     snapshot = ComputerStateSnapshot(1, _TwoWindowOperator(self_window=False).observe())
 

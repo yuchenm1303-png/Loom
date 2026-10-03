@@ -2,23 +2,28 @@ import { app, BrowserWindow, ipcMain } from "electron";
 import { spawn, spawnSync } from "node:child_process";
 import crypto from "node:crypto";
 import fs from "node:fs/promises";
+import { existsSync, unlinkSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { HostClient, HostServer, type HostHandler } from "./hostTransport.js";
+import { hostDataPath } from "./hostPaths.js";
+export { hostDataPath } from "./hostPaths.js";
 
 export const HOST_ARG = "--loom-host";
-export const isHostProcess = process.argv.includes(HOST_ARG) || process.argv.includes("--loom-background-host")
-  || process.argv.some((arg) => /^loom:\/\//i.test(arg));
 // Keep the existing account/session location in the Host. Only UI Chromium data
 // moves to a separate folder so Electron can give the two processes distinct locks.
+const restartMarker = path.join(hostDataPath, "loom-headless-update-restart");
+const restartingHost = existsSync(restartMarker);
+export const isHostProcess = process.argv.includes(HOST_ARG) || process.argv.includes("--loom-background-host")
+  || process.argv.some((arg) => /^loom:\/\//i.test(arg)) || restartingHost;
+if (restartingHost) { try { unlinkSync(restartMarker); } catch {} }
 app.setName("Loom");
-export const hostDataPath = process.env.LOOM_HOST_DATA_DIR
-  ? path.resolve(process.env.LOOM_HOST_DATA_DIR) : app.getPath("userData");
 if (isHostProcess) app.setPath("userData", hostDataPath);
 if (!isHostProcess) app.setPath("userData", path.join(hostDataPath, "desktop-ui"));
 const endpointId = crypto.createHash("sha256").update(hostDataPath).digest("hex").slice(0, 24);
 const endpoint = process.platform === "win32" ? `\\\\.\\pipe\\loom-host-${endpointId}` : path.join(hostDataPath, "host.sock");
 const credentialDirectory = path.join(hostDataPath, "host-ipc");
 const sessionFile = path.join(credentialDirectory, "session.token");
+export const desktopPidFile = path.join(credentialDirectory, "desktop-pids.json");
 const handlers = new Map<string, HostHandler>();
 let server: HostServer | null = null;
 let connection: Promise<void> | null = null;
@@ -110,6 +115,8 @@ export function broadcastHostEvent(channel: string, value: unknown): void {
   server?.broadcast(channel, value);
 }
 
+export function hostHasDesktopClients(): boolean { return Boolean(server?.hasClients); }
+
 export async function startHostTransport(): Promise<void> {
   if (!isHostProcess || server) return;
   await fs.mkdir(hostDataPath, { recursive: true });
@@ -127,7 +134,10 @@ export async function startHostTransport(): Promise<void> {
   } else await fs.chmod(credentialDirectory, 0o700);
   if (process.platform !== "win32") await fs.rm(endpoint, { force: true });
   const token = crypto.randomBytes(32).toString("hex");
-  const transport = new HostServer(token, handlers);
+  writeFileSync(desktopPidFile, "[]", { mode: 0o600 });
+  const transport = new HostServer(token, handlers, (pids) => {
+    try { writeFileSync(desktopPidFile, JSON.stringify(pids), { mode: 0o600 }); } catch {}
+  });
   await transport.listen(endpoint);
   if (process.platform !== "win32") await fs.chmod(endpoint, 0o600);
   const temporary = `${sessionFile}.${process.pid}.tmp`;

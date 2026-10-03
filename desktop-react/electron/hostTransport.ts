@@ -3,7 +3,7 @@ import { serialize, deserialize } from "node:v8";
 import { timingSafeEqual } from "node:crypto";
 
 const MAX_FRAME_BYTES = 64 * 1024 * 1024;
-type Frame = { type: string; token?: string; id?: number; channel?: string; args?: unknown[]; value?: unknown; error?: string };
+type Frame = { type: string; token?: string; pid?: number; id?: number; channel?: string; args?: unknown[]; value?: unknown; error?: string };
 export type HostHandler = (args: unknown[]) => unknown | Promise<unknown>;
 
 function write(socket: Socket, frame: Frame): void {
@@ -34,11 +34,18 @@ function read(socket: Socket, receive: (frame: Frame) => void): void {
 
 export class HostServer {
   private clients = new Set<Socket>();
+  private clientPids = new Map<Socket, number>();
   private server = net.createServer((socket) => {
     let authenticated = false;
     const timeout = setTimeout(() => socket.destroy(), 5000);
     socket.on("error", () => undefined);
-    socket.on("close", () => { clearTimeout(timeout); this.clients.delete(socket); });
+    socket.on("close", () => {
+      clearTimeout(timeout);
+      if (this.clients.delete(socket)) {
+        this.clientPids.delete(socket);
+        this.clientsChanged(this.clientProcessIds);
+      }
+    });
     read(socket, (frame) => {
       if (!authenticated) {
         const supplied = Buffer.from(frame.token ?? "");
@@ -49,6 +56,8 @@ export class HostServer {
         authenticated = true;
         clearTimeout(timeout);
         this.clients.add(socket);
+        if (Number.isSafeInteger(frame.pid) && frame.pid! > 0) this.clientPids.set(socket, frame.pid!);
+        this.clientsChanged(this.clientProcessIds);
         write(socket, { type: "ready" });
         return;
       }
@@ -67,7 +76,11 @@ export class HostServer {
     });
   });
 
-  constructor(private token: string, private handlers: Map<string, HostHandler>) {}
+  constructor(private token: string, private handlers: Map<string, HostHandler>,
+    private clientsChanged: (pids: number[]) => void = () => {}) {}
+
+  get hasClients(): boolean { return this.clients.size > 0; }
+  get clientProcessIds(): number[] { return [...new Set(this.clientPids.values())]; }
 
   async listen(endpoint: string): Promise<void> {
     await new Promise<void>((resolve, reject) => {
@@ -102,7 +115,7 @@ export class HostClient {
     const connection = new Promise<void>((resolve, reject) => {
       const socket = net.createConnection(endpoint);
       const timeout = setTimeout(() => socket.destroy(new Error("Host connection timed out")), 5000);
-      socket.on("connect", () => write(socket, { type: "auth", token }));
+        socket.on("connect", () => write(socket, { type: "auth", token, pid: process.pid }));
       socket.on("error", reject);
       socket.on("close", () => {
         clearTimeout(timeout);

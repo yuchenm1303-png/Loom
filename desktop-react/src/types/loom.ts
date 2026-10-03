@@ -149,6 +149,10 @@ export interface TurnRecord {
 export interface ThreadReadResult {
   thread: ThreadRecord;
   turns: TurnRecord[];
+  /** Whether durable transcript turns exist before the returned window. */
+  hasMoreTurns?: boolean;
+  /** First turn in the returned window, used as an exclusive older-history cursor. */
+  oldestTurnId?: string | null;
   pendingApproval?: PendingApproval | null;
   finalText?: string;
   error?: string;

@@ -13,6 +13,7 @@ import "./user-message-attachments.css";
 import "./stickers.css";
 import { useStreamingPresentation } from "./StreamingPresentation";
 import { streamingGraphemes } from "./streamingText";
+import { TerminalRunControl } from "./TerminalRunControl";
 
 interface MarkdownMessageProps {
   content: string;
@@ -213,7 +214,15 @@ function LocalImagePreview({
   );
 }
 
-function CodeBlock({ children, workspace }: { children?: ReactNode; workspace?: string }) {
+function CodeBlock({
+  children,
+  workspace,
+  executionDisabled = false,
+}: {
+  children?: ReactNode;
+  workspace?: string;
+  executionDisabled?: boolean;
+}) {
   const [copied, setCopied] = useState(false);
   const code = nodeText(children).replace(/\n$/, "");
   const language = languageLabel(children);
@@ -240,6 +249,12 @@ function CodeBlock({ children, workspace }: { children?: ReactNode; workspace?: 
           </button>
         </div>
         <pre>{children}</pre>
+        <TerminalRunControl
+          language={language}
+          command={code}
+          workspace={workspace}
+          disabled={executionDisabled}
+        />
       </div>
       {imagePath && workspace ? (
         <LocalImagePreview source={imagePath} workspace={workspace} />
@@ -248,7 +263,7 @@ function CodeBlock({ children, workspace }: { children?: ReactNode; workspace?: 
   );
 }
 
-function markdownComponents(workspace?: string): Components {
+function markdownComponents(workspace?: string, executionDisabled = false): Components {
   return {
     p({ children }) {
       const imagePath = singleLineImagePath(nodeText(children));
@@ -308,7 +323,7 @@ function markdownComponents(workspace?: string): Components {
       return <img {...props} src={src} alt={alt || ""} className={classes} loading="lazy" decoding="async" />;
     },
     pre({ children }) {
-      return <CodeBlock workspace={workspace}>{children}</CodeBlock>;
+      return <CodeBlock workspace={workspace} executionDisabled={executionDisabled}>{children}</CodeBlock>;
     },
   };
 }
@@ -401,7 +416,7 @@ const MarkdownRenderer = memo(function MarkdownRenderer({
   streaming: boolean;
   receiving: boolean;
 }) {
-  const components = useMemo(() => markdownComponents(workspace), [workspace]);
+  const components = useMemo(() => markdownComponents(workspace, receiving), [workspace, receiving]);
   const streamPhase: "a" | "b" = Math.floor(content.length / 5) % 2 === 0 ? "a" : "b";
   return (
     <div className={`markdown-body ${compact ? "markdown-compact" : ""} ${streaming ? "is-streaming" : ""} ${receiving ? "is-receiving" : ""}`} aria-busy={receiving}>

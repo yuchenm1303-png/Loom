@@ -9,13 +9,16 @@ import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlencode
 
 import httpx
 from fastapi import FastAPI, Request, Response, WebSocket, WebSocketDisconnect
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
 
 ACCOUNT_BASE_URL = os.environ.get("LOOM_ACCOUNT_API_BASE_URL", "https://account.smirel.com/v1").rstrip("/")
 STATIC_DIR = Path(os.environ.get("LOOM_WEB_STATIC_DIR", "/app/static")).resolve()
+WEB_ORIGIN = os.environ.get("LOOM_WEB_ORIGIN", "https://loom.smirel.com").rstrip("/")
+BUILD_SHA = os.environ.get("LOOM_BUILD_SHA", "unknown")
 ACCESS_COOKIE = "loom_web_access"
 REFRESH_COOKIE = "loom_web_refresh"
 ACCESS_MAX_AGE = 15 * 60
@@ -146,8 +149,8 @@ async def _browser_identity(request: Request) -> tuple[dict[str, Any] | None, di
 
 
 @app.get("/api/healthz")
-async def healthz() -> dict[str, bool]:
-    return {"ok": True}
+async def healthz() -> dict[str, Any]:
+    return {"ok": True, "buildSha": BUILD_SHA}
 
 
 @app.get("/setup")
@@ -175,23 +178,39 @@ async def _auth_form(endpoint: str, request: Request) -> Response:
         return JSONResponse({"ok": False, "error": _error("INVALID_JSON", "Request body must be a JSON object.", 400)}, status_code=400)
     if not isinstance(body, dict):
         return JSONResponse({"ok": False, "error": _error("INVALID_JSON", "Request body must be a JSON object.", 400)}, status_code=400)
-    status, payload = await _account_request("POST", endpoint, json_body={
-        "email": str(body.get("email") or ""),
-        "password": str(body.get("password") or ""),
-    })
+    return await _auth_action(endpoint, request, body)
+
+
+async def _auth_action(endpoint: str, request: Request, body: dict[str, Any] | None = None) -> Response:
+    status, payload = await _account_request("POST", endpoint, json_body=body or {})
     if status != 200:
         error = payload.get("error") if isinstance(payload.get("error"), dict) else {}
         return JSONResponse({"ok": False, "error": _error(
             str(error.get("code") or "ACCOUNT_REQUEST_FAILED"),
             str(error.get("message") or "Account request failed."),
             status,
-        )}, status_code=status or 502)
+        )})
     user = payload.get("user") if isinstance(payload.get("user"), dict) else None
-    if not user or not payload.get("access_token") or not payload.get("refresh_token"):
+    if user and payload.get("access_token") and payload.get("refresh_token"):
+        response = JSONResponse({"ok": True, "snapshot": _snapshot(user)})
+        _set_session_cookies(response, payload)
+        return response
+    if endpoint in {"/auth/login", "/auth/oauth/exchange", "/auth/verify-email", "/auth/reset-password"}:
         return JSONResponse({"ok": False, "error": _error("ACCOUNT_RESPONSE_INVALID", "Account service returned an incomplete session.", 502)}, status_code=502)
-    response = JSONResponse({"ok": True, "snapshot": _snapshot(user)})
-    _set_session_cookies(response, payload)
-    return response
+    return JSONResponse({"ok": True, **payload})
+
+
+@app.get("/api/auth/capabilities")
+async def auth_capabilities() -> Response:
+    status, payload = await _account_request("GET", "/auth/capabilities")
+    if status != 200:
+        error = payload.get("error") if isinstance(payload.get("error"), dict) else {}
+        return JSONResponse({"ok": False, "error": _error(
+            str(error.get("code") or "ACCOUNT_REQUEST_FAILED"),
+            str(error.get("message") or "Could not load sign-in methods."),
+            status,
+        )})
+    return JSONResponse({"ok": True, "capabilities": payload})
 
 
 @app.post("/api/auth/login")
@@ -202,6 +221,61 @@ async def auth_login(request: Request) -> Response:
 @app.post("/api/auth/register")
 async def auth_register(request: Request) -> Response:
     return await _auth_form("/auth/register", request)
+
+
+@app.post("/api/auth/register/start")
+async def auth_register_start(request: Request) -> Response:
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    return await _auth_action("/auth/register/start", request, body if isinstance(body, dict) else {})
+
+
+@app.post("/api/auth/verify-email")
+async def auth_verify_email(request: Request) -> Response:
+    try: body = await request.json()
+    except Exception: body = {}
+    return await _auth_action("/auth/verify-email", request, body if isinstance(body, dict) else {})
+
+
+@app.post("/api/auth/resend-email")
+async def auth_resend_email(request: Request) -> Response:
+    try: body = await request.json()
+    except Exception: body = {}
+    return await _auth_action("/auth/resend-email", request, body if isinstance(body, dict) else {})
+
+
+@app.post("/api/auth/forgot-password")
+async def auth_forgot_password(request: Request) -> Response:
+    try: body = await request.json()
+    except Exception: body = {}
+    return await _auth_action("/auth/forgot-password", request, body if isinstance(body, dict) else {})
+
+
+@app.post("/api/auth/reset-password")
+async def auth_reset_password(request: Request) -> Response:
+    try: body = await request.json()
+    except Exception: body = {}
+    return await _auth_action("/auth/reset-password", request, body if isinstance(body, dict) else {})
+
+
+@app.get("/api/auth/oauth/start/{provider}")
+async def auth_oauth_start(provider: str) -> Response:
+    provider = str(provider).casefold()
+    if provider not in {"google", "github"}:
+        return JSONResponse({"ok": False, "error": _error("OAUTH_PROVIDER_INVALID", "Unsupported sign-in provider.", 400)}, status_code=400)
+    return RedirectResponse(
+        f"{ACCOUNT_BASE_URL}/auth/oauth/{provider}/start?{urlencode({'return_to': WEB_ORIGIN + '/'})}",
+        status_code=302,
+    )
+
+
+@app.post("/api/auth/oauth/exchange")
+async def auth_oauth_exchange(request: Request) -> Response:
+    try: body = await request.json()
+    except Exception: body = {}
+    return await _auth_action("/auth/oauth/exchange", request, body if isinstance(body, dict) else {})
 
 
 @app.post("/api/auth/logout")
@@ -307,6 +381,7 @@ async def _watch_identity(peer) -> None:
                 if deadline <= time.monotonic():
                     peer.deadlines.pop(request_id, None)
                     peer.pending.pop(request_id, None)
+                    peer.pending_invokes.pop(request_id, None)
                     await peer.send({"type": "invoke_result", "id": request_id,
                                      "error": {"code": "HOST_TIMEOUT", "message": "The selected Host did not respond."}})
 
@@ -346,6 +421,7 @@ class BrowserPeer:
     closed: bool = False
     pending: dict[int, Any] = field(default_factory=dict)
     deadlines: dict[int, float] = field(default_factory=dict)
+    pending_invokes: dict[int, tuple[str, list[Any]]] = field(default_factory=dict)
 
     async def send(self, payload: dict[str, Any]) -> bool:
         return await _send(self, payload)
@@ -397,6 +473,78 @@ class RelayHub:
 hub = RelayHub()
 
 
+def _window_legacy_thread_read_result(
+    result: Any,
+    operation: str,
+    args: list[Any],
+) -> Any:
+    """Bound old-Host thread/read payloads before they reach the browser.
+
+    Loom Host 0.1.8 predates turn-window support and ignores ``turnLimit``. The
+    gateway already has to decode its response, so slicing here prevents the
+    browser from receiving/parsing/rendering a giant transcript while remaining
+    fully compatible with newer Hosts that return ``hasMoreTurns`` themselves.
+    """
+    if operation != "call" or len(args) < 2 or args[0] != "thread/read":
+        return result
+    params = args[1] if isinstance(args[1], dict) else {}
+    limit_raw = params.get("turnLimit")
+    if limit_raw is None or limit_raw == "" or not isinstance(result, dict):
+        return result
+
+    try:
+        limit = int(limit_raw)
+    except (TypeError, ValueError):
+        return result
+    if not 1 <= limit <= 100:
+        return result
+
+    # Newer Hosts have already done the expensive durable-state windowing.
+    # Still strip legacy diagnostic duplicates when the browser explicitly asked
+    # for the presentation shape.
+    bounded = dict(result)
+    if bool(params.get("presentationOnly", False)):
+        bounded.pop("messages", None)
+        bounded.pop("events", None)
+    if isinstance(result.get("hasMoreTurns"), bool):
+        return bounded
+
+    turns = result.get("turns")
+    if not isinstance(turns, list):
+        return bounded
+
+    before_turn_id = str(params.get("beforeTurnId") or "").strip()
+    end = len(turns)
+    if before_turn_id:
+        cursor = next(
+            (index for index, turn in enumerate(turns) if isinstance(turn, dict) and str(turn.get("id") or "") == before_turn_id),
+            -1,
+        )
+        if cursor < 0:
+            bounded["turns"] = []
+            bounded["hasMoreTurns"] = False
+            bounded["oldestTurnId"] = None
+            return bounded
+        end = cursor
+
+    start = max(0, end - limit)
+    window_turns = turns[start:end]
+    bounded["turns"] = window_turns
+    bounded["hasMoreTurns"] = start > 0
+    logger.info(
+        "relay legacy thread/read window total_turns=%s sent_turns=%s before=%s",
+        len(turns),
+        len(window_turns),
+        bool(before_turn_id),
+    )
+    bounded["oldestTurnId"] = (
+        str(window_turns[0].get("id") or "")
+        if window_turns and isinstance(window_turns[0], dict)
+        else None
+    )
+    return bounded
+
+
 async def _run_device_invoke(peer: BrowserPeer, request_id: int, operation: str, args: list[Any]) -> None:
     async with hub.lock:
         device = hub.devices.get((peer.user_id, peer.device_id))
@@ -409,12 +557,15 @@ async def _run_device_invoke(peer: BrowserPeer, request_id: int, operation: str,
         await peer.send({"type": "invoke_result", "id": request_id,
                          "error": {"code": "HOST_OFFLINE", "message": "The selected Loom Host is offline. Start Loom on that computer; another Host will not be used."}})
         return
+    if operation == "call" and len(args) >= 2 and args[0] == "thread/read":
+        peer.pending_invokes[request_id] = (operation, args)
     peer.pending[request_id] = device
     sent = await device.send({"type": "invoke", "browserId": peer.id, "id": request_id,
                               "operation": operation, "args": args})
     if not sent:
         peer.pending.pop(request_id, None)
         peer.deadlines.pop(request_id, None)
+        peer.pending_invokes.pop(request_id, None)
         await peer.send({"type": "invoke_result", "id": request_id,
                          "error": {"code": "HOST_OFFLINE", "message": "The selected Loom Host disconnected."}})
 
@@ -538,7 +689,14 @@ async def device_socket(websocket: WebSocket) -> None:
                     browser.pending.pop(request_id, None)
                     browser.deadlines.pop(request_id, None)
                     forwarded = {"type": "invoke_result", "id": request_id}
-                    forwarded["error" if "error" in frame else "result"] = frame.get("error" if "error" in frame else "result")
+                    invoke_meta = browser.pending_invokes.pop(request_id, None)
+                    if "error" in frame:
+                        forwarded["error"] = frame.get("error")
+                    else:
+                        result = frame.get("result")
+                        if invoke_meta is not None:
+                            result = _window_legacy_thread_read_result(result, invoke_meta[0], invoke_meta[1])
+                        forwarded["result"] = result
                     await browser.send(forwarded)
             elif kind == "notification":
                 payload = frame.get("payload")
@@ -560,18 +718,34 @@ async def device_socket(websocket: WebSocket) -> None:
                 if device is peer:
                     browser.pending.pop(request_id, None)
                     browser.deadlines.pop(request_id, None)
+                    browser.pending_invokes.pop(request_id, None)
                     await browser.send({"type": "invoke_result", "id": request_id,
                                         "error": {"code": "HOST_OFFLINE", "message": "The selected Loom Host disconnected."}})
         await hub.broadcast_device_status(user_id)
+
+def _static_headers(path: Path) -> dict[str, str]:
+    headers = {"X-Loom-Build": BUILD_SHA}
+    if path.name == "index.html":
+        headers["Cache-Control"] = "no-store, max-age=0"
+        return headers
+    try:
+        relative = path.relative_to(STATIC_DIR)
+    except ValueError:
+        relative = path
+    if relative.parts and relative.parts[0] == "assets":
+        headers["Cache-Control"] = "public, max-age=31536000, immutable"
+    else:
+        headers["Cache-Control"] = "no-cache, must-revalidate"
+    return headers
+
 
 @app.get("/{full_path:path}")
 async def spa(full_path: str) -> Response:
     relative = full_path.strip("/")
     candidate = (STATIC_DIR / relative).resolve() if relative else STATIC_DIR / "index.html"
     if STATIC_DIR in candidate.parents and candidate.is_file():
-        headers = {"Cache-Control": "no-cache, must-revalidate"} if candidate.name == "index.html" else None
-        return FileResponse(candidate, headers=headers)
+        return FileResponse(candidate, headers=_static_headers(candidate))
     index = STATIC_DIR / "index.html"
     if index.is_file():
-        return FileResponse(index, headers={"Cache-Control": "no-cache, must-revalidate"})
+        return FileResponse(index, headers=_static_headers(index))
     return JSONResponse({"error": "Loom Web frontend is not built."}, status_code=503)

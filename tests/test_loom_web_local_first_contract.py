@@ -12,7 +12,7 @@ REMOTE_RELAY = ROOT / "desktop-react" / "electron" / "remoteRelay.ts"
 def test_loopback_discovery_only_bootstraps_local_pairing() -> None:
     relay = REMOTE_RELAY.read_text(encoding="utf-8")
     assert 'const LOCAL_PAIR_PATH = "/loom/pair"' in relay
-    assert 'new LoomAccountClient().pairDevice(pairingTicket)' in relay
+    assert 'hostAccount.pairDevice(pairingTicket)' in relay
     assert 'target.searchParams.set("local_device", identity.deviceId)' in relay
     assert "127.0.0.1" in relay
 
@@ -44,3 +44,12 @@ def test_web_gate_requires_explicit_user_entry_after_host_is_online() -> None:
     assert 'hostState !== "online" || !entered' in source
     assert "onEnter={enterOrRetry}" in source
     assert "setEntered(false);" in source
+
+
+def test_web_gate_waits_for_protocol_update_and_reconnects() -> None:
+    source = WEB_GATE.read_text(encoding="utf-8")
+    assert '"updating"' in source
+    assert "webHostNeedsProtocolUpdate" in source
+    assert "ensureWebHostCompatibility" in source
+    assert "ensureLocalLoomHostCompatibility" in source
+    assert 'void connectCurrentHost({ force: true });' in source

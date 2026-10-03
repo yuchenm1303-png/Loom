@@ -12,7 +12,7 @@ installer and use the same executable, with different entry modes:
 On Windows the installed Host registers itself for login startup. After the
 initial installation/login or browser pairing, users can open Loom Web directly.
 Closing or quitting Desktop leaves Host and active tasks running. The Host tray
-opens Desktop or Web; **Quit Loom Host** explicitly stops the local runtime.
+opens Desktop or Web; **Quit Loom** in the Host tray explicitly stops the local runtime.
 The tray loads the bundled Loom icon, including during development, rather than
 relying on the generic Electron executable icon.
 
@@ -34,7 +34,15 @@ desktop attaches to the running Host and reloads persisted thread state.
 
 Host owns software updates. Update status is forwarded to Desktop. Before an
 installer starts, Host asks desktop clients to quit, then stops through its
-normal shutdown hooks; the updater restarts the installed application.
+normal shutdown hooks; a restart marker restores the Host role before acquiring
+its single-instance lock, so an update does not accidentally launch Desktop.
+
+Process lifecycle lives in `electron/hostProcess.ts`. Agent distribution lives
+in `electron/hostRuntime.ts` and `electron/hostRuntimeUpdater.ts`; these modules
+are complementary parts of one architecture. Only Host activates runtime updates,
+and both clients resolve runtime assets from the original Host data directory.
+Runtime activation waits for idle work, reloads the shared App Server and browser
+assets, and restores the prior runtime pointer if activation fails.
 
 ## Validation
 

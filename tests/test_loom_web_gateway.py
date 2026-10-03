@@ -164,3 +164,22 @@ def test_pending_requests_are_bounded(relay):
                 assert a.receive_json()["id"] == request_id
             web.send_json({"type": "invoke", "id": 1000, "operation": "call"})
             assert web.receive_json()["error"]["code"] == "HOST_BUSY"
+
+
+def test_legacy_host_history_is_windowed_over_bound_relay(relay):
+    client, _ = relay
+    with host(client, "a") as a:
+        a.send_json({"type": "device_hello", "device": {"id": "a"}})
+        a.send_json({"type": "ping"})
+        a.receive_json()
+        with browser(client) as web:
+            web.receive_json()
+            web.send_json({"type": "invoke", "id": 7, "operation": "call", "args": [
+                "thread/read", {"turnLimit": 1, "presentationOnly": True},
+            ]})
+            frame = a.receive_json()
+            a.send_json({"type": "invoke_result", "browserId": frame["browserId"], "id": 7,
+                         "result": {"turns": [{"id": "old"}, {"id": "new"}],
+                                    "messages": ["duplicate"], "events": ["duplicate"]}})
+            result = web.receive_json()["result"]
+            assert result == {"turns": [{"id": "new"}], "hasMoreTurns": True, "oldestTurnId": "new"}

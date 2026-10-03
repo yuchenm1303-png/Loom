@@ -147,7 +147,7 @@ def test_transport_retry_reuses_exact_step_and_prepared_request(tmp_path):
     assert "late_tool" not in requested_names
 
 
-def test_invalid_tool_arguments_discard_the_batch_and_the_turn_recovers(tmp_path):
+def test_invalid_tool_arguments_are_rejected_before_history_and_turn_continues(tmp_path):
     executed: list[dict[str, object]] = []
 
     def handler(_context, arguments):
@@ -201,12 +201,14 @@ def test_invalid_tool_arguments_discard_the_batch_and_the_turn_recovers(tmp_path
     assert result.final_text == "recovered"
     assert executed == []
     stored = runtime.store.load(session.session_id)
-    assert [message.role for message in stored.messages] == [MessageRole.USER, MessageRole.ASSISTANT]
-    assert not any(message.tool_calls for message in stored.messages)
-
-    recovery = [message for message in platform.requests[-1].messages if message.name == "loom_terminal_recovery"]
-    assert len(recovery) == 1
-    assert "failed schema validation" in str(recovery[0].content)
-    assert "Invalid tool: inspect_path" in str(recovery[0].content)
-    assert 'Required properties: ["path"]' in str(recovery[0].content)
+    assert not any(message.role is MessageRole.TOOL for message in stored.messages)
+    assert not any(call.call_id == "bad-1" for message in stored.messages for call in message.tool_calls)
+    rejected = [event for event in runtime.store.events(session.session_id) if event.kind.value == "model_response_rejected"]
+    assert [event.data["reason"] for event in rejected] == ["invalid_tool_arguments"]
     assert len(platform.requests) == 2
+    recovery = platform.requests[1].messages[-1]
+    assert recovery.role is MessageRole.SYSTEM
+    assert recovery.name == "loom_terminal_recovery"
+    assert "Invalid tool: inspect_path" in str(recovery.content)
+    assert '"path"' in str(recovery.content)
+    runtime.close()

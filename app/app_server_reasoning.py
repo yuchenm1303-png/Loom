@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from dataclasses import replace
 from pathlib import Path
 from typing import Any, Callable, TextIO
@@ -599,7 +600,7 @@ class ReasoningManagedLoomAppServerService(ManagedStreamingLoomAppServerService)
         provider = str(spec.get("provider") or "").strip()
         base_url = str(spec.get("baseUrl") or "").strip()
         model = str(spec.get("model") or "").strip()
-        api_key = str(spec.get("apiKey") or "").strip()
+        api_key = self._model_api_key(spec)
         vision = bool(spec.get("vision", getattr(session, "model_vision", True)))
         context_limits = spec.get("contextLimits")
         validate_runtime_reasoning(
@@ -630,6 +631,32 @@ class ReasoningManagedLoomAppServerService(ManagedStreamingLoomAppServerService)
             session.model_vision = vision
             self.store.save(session)
         return session
+
+    def _model_api_key(
+        self,
+        spec: dict[str, Any],
+        params: dict[str, Any] | None = None,
+    ) -> str:
+        # Normal saved/built-in providers resolve their own local credential.
+        # Loom-account models instead use the revocable scoped token minted by
+        # Electron. Provider identity, URL, and model still come from the
+        # authoritative server-side selection resolver.
+        if str(spec.get("authMode") or "").strip() != "loom-account":
+            return str(spec.get("apiKey") or "").strip()
+
+        supplied = ""
+        if isinstance(params, dict):
+            supplied = str(params.get("apiKey") or params.get("api_key") or "").strip()
+        if not supplied:
+            supplied = str(getattr(self, "_loom_account_model_credential", "") or "").strip()
+        if not supplied:
+            supplied = str(os.environ.get("LOOM_ACCOUNT_MODEL_CREDENTIAL") or "").strip()
+        if not supplied:
+            raise ValueError("Loom account model credential is required")
+        if not supplied.startswith("loom_model_"):
+            raise ValueError("Loom account model credential is invalid")
+        self._loom_account_model_credential = supplied
+        return supplied
 
     def _thread_model_blocked(self, session: Any) -> bool:
         return (
@@ -693,7 +720,7 @@ class ReasoningManagedLoomAppServerService(ManagedStreamingLoomAppServerService)
         provider = str(spec.get("provider") or "").strip()
         base_url = str(spec.get("baseUrl") or "").strip().rstrip("/")
         model = str(spec.get("model") or requested_model).strip()
-        api_key = str(spec.get("apiKey") or "").strip()
+        api_key = self._model_api_key(spec, params)
         if not provider:
             raise ValueError("provider is required")
         if not api_key:

@@ -3,12 +3,16 @@ WORKDIR /src/desktop-react
 COPY desktop-react/package.json desktop-react/package-lock.json ./
 RUN npm ci --no-audit --no-fund
 COPY desktop-react ./
-RUN npm run build:electron && npm run build:web
+RUN npm run build && node scripts/verify-web-portal-bundle.mjs
 
 FROM python:3.12-slim
+ARG LOOM_BUILD_SHA=unknown
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    LOOM_WEB_STATIC_DIR=/srv/loom-web/static
+    LOOM_WEB_STATIC_DIR=/srv/loom-web/static \
+    LOOM_BUILD_SHA=${LOOM_BUILD_SHA}
+
+LABEL org.opencontainers.image.revision=${LOOM_BUILD_SHA}
 
 WORKDIR /srv/loom-web
 COPY services/loom_web_gateway/requirements.txt ./requirements.txt

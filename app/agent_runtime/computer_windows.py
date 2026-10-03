@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import ctypes
 import io
+import json
 import os
 import platform
 import threading
 import time
 import uuid
+from pathlib import Path
 from collections import OrderedDict
 from typing import Protocol
 
@@ -138,6 +140,14 @@ def _host_process_ids() -> frozenset[int]:
         part = part.strip()
         if part.isdigit():
             pids.add(int(part))
+    registry = str(os.environ.get("LOOM_DESKTOP_CLIENT_PIDS_FILE") or "").strip()
+    if registry:
+        try:
+            clients = json.loads(Path(registry).read_text(encoding="utf-8"))
+            if isinstance(clients, list):
+                pids.update(pid for pid in clients if type(pid) is int and pid > 0)
+        except (OSError, ValueError):
+            pass
     return frozenset(pids)
 
 

@@ -1359,10 +1359,41 @@ def resolve_model_spec(
     reasoning_store = ReasoningConfigStore(store.home)
     selection_store = ModelSelectionStore(store.home)
     requested_model = str(model or "").strip()
+    requested_selection = str(selection or "").strip()
+
+    # Ant Ling built-ins are account-authenticated through Loom's model
+    # gateway. The desktop catalogue intentionally lives in a dedicated bridge,
+    # but thread/set_model also resolves a selection server-side to prevent a
+    # renderer from mixing one provider's selection with another provider's
+    # URL/model. Delegate that authoritative resolution here so the App Server
+    # recognizes the same built-in selections as the desktop model manager.
+    if requested_selection == "builtin:ant-ling" or requested_selection.startswith("builtin:ant-ling:"):
+        from loom_ant_ling_bridge import _describe as _describe_ant_ling_model
+        from loom_ant_ling_bridge import _resolve as _resolve_ant_ling
+
+        resolved = _resolve_ant_ling(requested_selection)
+        if requested_model and requested_model != str(resolved.get("model") or ""):
+            described = _describe_ant_ling_model(requested_selection, requested_model)
+            resolved = {
+                **resolved,
+                "selection": str(described.get("selection") or requested_selection),
+                "id": str(described.get("id") or resolved.get("id") or ""),
+                "name": str(described.get("name") or resolved.get("name") or ""),
+                "adapter": str(described.get("adapter") or resolved.get("adapter") or ""),
+                "baseUrl": str(described.get("baseUrl") or resolved.get("baseUrl") or ""),
+                "model": str(described.get("model") or requested_model),
+                "vision": bool(described.get("vision", resolved.get("vision", True))),
+                "reasoning": described.get("reasoning"),
+                "authMode": "loom-account",
+                "provider": "openai-compatible",
+                "apiKey": "",
+            }
+        return resolved
+
     effective_selection = (
-        _canonical_builtin_selection(selection, requested_model)
+        _canonical_builtin_selection(requested_selection, requested_model)
         if requested_model
-        else str(selection or "").strip()
+        else requested_selection
     )
     resolved = _resolve(store, reasoning_store, selection_store, effective_selection)
     if requested_model and requested_model != str(resolved.get("model") or ""):

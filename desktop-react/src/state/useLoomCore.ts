@@ -23,12 +23,45 @@ type ThreadCounts = { active: number; archived: number; all: number };
 type ThreadListResult = { threads: ThreadRecord[]; counts?: Partial<ThreadCounts> };
 type ThreadReadCacheEntry = { result: ThreadReadResult; cachedAt: number };
 
-const THREAD_READ_CACHE_LIMIT = 3;
-const THREAD_READ_CACHE_TTL_MS = 45_000;
+const THREAD_READ_CACHE_LIMIT = 8;
+const THREAD_READ_CACHE_TTL_MS = 5 * 60_000;
+const THREAD_READ_WINDOW_TURNS = 20;
 const MODEL_CATALOG_POLL_MS = 60_000;
 
 function flattenItems(turns: TurnRecord[]): TranscriptItem[] {
   return turns.flatMap((turn) => turn.items ?? []);
+}
+
+/**
+ * New Hosts return a bounded turn window directly. Older Hosts ignore the
+ * pagination parameters and return the whole thread; trim that response on the
+ * client so long transcripts still avoid building thousands of React nodes.
+ */
+function normalizeThreadReadWindow(result: ThreadReadResult, beforeTurnId = ""): ThreadReadResult {
+  const turns = result.turns ?? [];
+  if (typeof result.hasMoreTurns === "boolean") {
+    return {
+      ...result,
+      oldestTurnId: result.oldestTurnId ?? turns[0]?.id ?? null,
+    };
+  }
+
+  let end = turns.length;
+  if (beforeTurnId) {
+    const cursorIndex = turns.findIndex((turn) => turn.id === beforeTurnId);
+    if (cursorIndex < 0) {
+      return { ...result, turns: [], hasMoreTurns: false, oldestTurnId: null };
+    }
+    end = cursorIndex;
+  }
+  const start = Math.max(0, end - THREAD_READ_WINDOW_TURNS);
+  const windowTurns = turns.slice(start, end);
+  return {
+    ...result,
+    turns: windowTurns,
+    hasMoreTurns: start > 0,
+    oldestTurnId: windowTurns[0]?.id ?? null,
+  };
 }
 
 function buildItemIndex(items: TranscriptItem[]): Map<string, number> {
@@ -196,6 +229,7 @@ export function useLoom() {
   const [threadCounts, setThreadCounts] = useState<ThreadCounts>({ active: 0, archived: 0, all: 0 });
   const [active, setActive] = useState<ThreadReadResult | null>(null);
   const [openingThreadId, setOpeningThreadId] = useState("");
+  const [loadingOlderTurns, setLoadingOlderTurns] = useState(false);
   const [items, setItems] = useState<TranscriptItem[]>([]);
   const [turnActive, setTurnActive] = useState(false);
   const [turnStartedAt, setTurnStartedAt] = useState<number | null>(null);
@@ -206,7 +240,9 @@ export function useLoom() {
   const activeTurnIdRef = useRef("");
   const openRequestRef = useRef(0);
   const openingThreadIdRef = useRef("");
+  const loadingOlderTurnsRef = useRef(false);
   const threadReadCacheRef = useRef<Map<string, ThreadReadCacheEntry>>(new Map());
+  const threadReadInflightRef = useRef<Map<string, Promise<ThreadReadResult>>>(new Map());
   const threadsRef = useRef<ThreadRecord[]>([]);
   const threadViewRef = useRef<ThreadView>("active");
   const terminalErrorTurnRef = useRef("");
@@ -271,7 +307,9 @@ export function useLoom() {
     activeTurnIdRef.current = "";
     terminalErrorTurnRef.current = "";
     openingThreadIdRef.current = "";
+    loadingOlderTurnsRef.current = false;
     setOpeningThreadId("");
+    setLoadingOlderTurns(false);
     setActive(null);
     installItems([]);
     setTurnActive(false);
@@ -423,8 +461,47 @@ export function useLoom() {
     return entry.result;
   }, []);
 
+  const readThread = useCallback((threadId: string, beforeTurnId = ""): Promise<ThreadReadResult> => {
+    const requestKey = `${threadId}:${beforeTurnId || "latest"}`;
+    const existing = threadReadInflightRef.current.get(requestKey);
+    if (existing) return existing;
+
+    const request = requireBridge()
+      .call<ThreadReadResult>("thread/read", {
+        threadId,
+        presentationOnly: true,
+        turnLimit: THREAD_READ_WINDOW_TURNS,
+        ...(beforeTurnId ? { beforeTurnId } : {}),
+      })
+      .then((result) => normalizeThreadReadWindow(result, beforeTurnId))
+      .finally(() => {
+        if (threadReadInflightRef.current.get(requestKey) === request) {
+          threadReadInflightRef.current.delete(requestKey);
+        }
+      });
+    threadReadInflightRef.current.set(requestKey, request);
+    return request;
+  }, []);
+
+  const prefetchThread = useCallback((threadId: string) => {
+    const normalized = threadId.trim();
+    if (!normalized || normalized === activeIdRef.current) return;
+    const listed = threadsRef.current.find((thread) => thread.id === normalized);
+    if (!listed || threadIsRunning(listed)) return;
+    if (cachedThreadRead(normalized)) return;
+
+    void readThread(normalized)
+      .then((result) => rememberThreadRead(result))
+      .catch(() => {
+        // Hover/focus prefetch is opportunistic. Navigation itself will surface
+        // a real read failure if the user actually opens this conversation.
+      });
+  }, [cachedThreadRead, readThread, rememberThreadRead]);
+
   const applyThreadRead = useCallback((result: ThreadReadResult) => {
     activeIdRef.current = result.thread.id;
+    loadingOlderTurnsRef.current = false;
+    setLoadingOlderTurns(false);
     activeTurnIdRef.current = String(result.thread.currentTurnId ?? "");
     const nextItems = flattenItems(result.turns ?? []);
     const terminalTurnId = terminalErrorTurnId(nextItems, result.thread.currentTurnId);
@@ -468,30 +545,79 @@ export function useLoom() {
     setOpeningThreadId(normalized);
 
     const cached = cachedThreadRead(normalized);
-    let usedCachedSnapshot = false;
     if (cached) {
-      usedCachedSnapshot = true;
       applyThreadRead(cached);
       if (openRequestRef.current === requestId) {
         openingThreadIdRef.current = "";
         setOpeningThreadId("");
       }
+      return;
     }
 
     try {
-      const result = await requireBridge().call<ThreadReadResult>("thread/read", { threadId: normalized, presentationOnly: true });
+      const result = await readThread(normalized);
       if (openRequestRef.current !== requestId) return;
       applyThreadRead(result);
-    } catch (cause) {
-      if (!usedCachedSnapshot) throw cause;
-      console.warn("Could not refresh cached conversation", cause);
     } finally {
       if (openRequestRef.current === requestId) {
         openingThreadIdRef.current = "";
         setOpeningThreadId("");
       }
     }
-  }, [applyThreadRead, cachedThreadRead]);
+  }, [applyThreadRead, cachedThreadRead, readThread]);
+
+  const loadOlderTurns = useCallback(async () => {
+    const snapshot = active;
+    if (
+      !snapshot?.thread.id
+      || !snapshot.hasMoreTurns
+      || loadingOlderTurnsRef.current
+    ) return;
+
+    const threadId = snapshot.thread.id;
+    const oldestTurnId = snapshot.turns?.[0]?.id || snapshot.oldestTurnId || "";
+    if (!oldestTurnId) return;
+
+    loadingOlderTurnsRef.current = true;
+    setLoadingOlderTurns(true);
+    try {
+      const page = await readThread(threadId, oldestTurnId);
+      if (activeIdRef.current !== threadId) return;
+
+      const olderTurns = page.turns ?? [];
+      if (!olderTurns.length) {
+        setActive((current) => current && current.thread.id === threadId
+          ? { ...current, hasMoreTurns: false }
+          : current);
+        return;
+      }
+
+      setActive((current) => {
+        if (!current || current.thread.id !== threadId) return current;
+        const existingTurnIds = new Set((current.turns ?? []).map((turn) => turn.id));
+        const prependedTurns = olderTurns.filter((turn) => !existingTurnIds.has(turn.id));
+        return {
+          ...current,
+          turns: [...prependedTurns, ...(current.turns ?? [])],
+          hasMoreTurns: Boolean(page.hasMoreTurns),
+          oldestTurnId: prependedTurns[0]?.id ?? current.oldestTurnId ?? null,
+        };
+      });
+
+      const olderItems = flattenItems(olderTurns);
+      setItems((current) => {
+        const existingItemIds = new Set(current.map((item) => item.id));
+        const prependedItems = olderItems.filter((item) => !existingItemIds.has(item.id));
+        if (!prependedItems.length) return current;
+        const next = [...prependedItems, ...current];
+        itemIndexRef.current = buildItemIndex(next);
+        return next;
+      });
+    } finally {
+      loadingOlderTurnsRef.current = false;
+      setLoadingOlderTurns(false);
+    }
+  }, [active, readThread]);
 
   const ensureSelection = useCallback(async (list: ThreadRecord[], preferredId = activeIdRef.current) => {
     if (preferredId && list.some((thread) => thread.id === preferredId)) return;
@@ -547,7 +673,7 @@ export function useLoom() {
       terminalErrorTurnRef.current = "";
       openingThreadIdRef.current = "";
       setOpeningThreadId("");
-      setActive({ thread: result.thread, turns: [] });
+      setActive({ thread: result.thread, turns: [], hasMoreTurns: false, oldestTurnId: null });
       installItems([]);
       setTurnActive(false);
       setTurnStartedAt(null);
@@ -1053,6 +1179,8 @@ export function useLoom() {
     threadCounts,
     active,
     openingThreadId,
+    loadingOlderTurns,
+    hasOlderTurns: Boolean(active?.hasMoreTurns),
     items,
     turnActive,
     turnStartedAt,
@@ -1062,6 +1190,8 @@ export function useLoom() {
     compactContext,
     refreshContext,
     openThread,
+    prefetchThread,
+    loadOlderTurns,
     newThread,
     renameThread,
     archiveThread,
@@ -1105,6 +1235,9 @@ export function useLoom() {
     newThread,
     openThread,
     openingThreadId,
+    loadingOlderTurns,
+    prefetchThread,
+    loadOlderTurns,
     projects,
     projectsSupported,
     createProject,
