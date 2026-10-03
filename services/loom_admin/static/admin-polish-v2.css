@@ -4,10 +4,10 @@
 
 :root{
   --admin-polish-gap:18px;
-  --admin-polish-card:rgba(8,17,27,.34);
-  --admin-polish-card-strong:rgba(8,17,27,.48);
-  --admin-polish-line:rgba(220,238,255,.09);
-  --admin-polish-muted:rgba(229,240,249,.52);
+  --admin-polish-card:rgba(7,14,23,.82);
+  --admin-polish-card-strong:rgba(5,11,18,.90);
+  --admin-polish-line:rgba(220,238,255,.11);
+  --admin-polish-muted:rgba(229,240,249,.58);
 }
 
 .loom-admin-shell{
@@ -38,7 +38,7 @@
 .loom-admin-nav-compact a{
   padding:7px 9px;
   border-radius:8px;
-  color:rgba(239,247,253,.52);
+  color:rgba(239,247,253,.56);
   font-size:10px;
   font-weight:620;
   letter-spacing:.02em;
@@ -47,13 +47,13 @@
 }
 
 .loom-admin-nav-compact a:hover{
-  color:rgba(250,253,255,.92);
-  background:rgba(255,255,255,.055);
+  color:rgba(250,253,255,.94);
+  background:rgba(255,255,255,.065);
 }
 
 .loom-admin-nav-compact a[aria-current="page"]{
   color:#fff;
-  background:rgba(179,222,246,.10);
+  background:rgba(179,222,246,.12);
 }
 
 .usage-heading{
@@ -67,6 +67,11 @@
   width:min(560px,100%);
   margin:38px auto 74px;
   padding:28px 30px;
+  background:linear-gradient(145deg,rgba(12,24,37,.88),rgba(5,11,18,.93))!important;
+  border-color:var(--admin-polish-line)!important;
+  box-shadow:0 22px 54px rgba(0,0,0,.28)!important;
+  backdrop-filter:blur(22px) saturate(1.08)!important;
+  -webkit-backdrop-filter:blur(22px) saturate(1.08)!important;
 }
 
 .loom-admin-login-form{
@@ -85,6 +90,7 @@
 .loom-admin-login-form input{
   width:100%!important;
   min-width:0!important;
+  background:rgba(2,7,12,.68)!important;
 }
 
 #adminContent{display:block}
@@ -95,16 +101,23 @@
 #adminContent .usage-ops-panel,
 #adminContent .usage-activity-card{min-height:0!important}
 
-#adminContent .account-card.cards{
-  border-color:var(--admin-polish-line);
-  background:linear-gradient(135deg,rgba(255,255,255,.055),rgba(7,15,24,.24));
-  box-shadow:0 16px 44px rgba(3,9,16,.10);
+#adminContent .account-card.cards,
+#adminContent .usage-ops-panel,
+#adminContent .usage-activity-card,
+.loom-admin-table-card{
+  border-color:var(--admin-polish-line)!important;
+  background:linear-gradient(145deg,rgba(11,23,36,.86),rgba(5,11,18,.91))!important;
+  box-shadow:0 20px 50px rgba(0,0,0,.24)!important;
+  backdrop-filter:blur(22px) saturate(1.08)!important;
+  -webkit-backdrop-filter:blur(22px) saturate(1.08)!important;
 }
 
 .loom-admin-status-strip{
   margin-top:18px!important;
   border-radius:14px;
   overflow:hidden;
+  background:rgba(6,13,21,.82)!important;
+  border:1px solid var(--admin-polish-line)!important;
 }
 
 .loom-admin-kpi-grid{
@@ -115,6 +128,11 @@
 .loom-admin-kpi-grid .usage-summary-card{
   min-height:116px!important;
   padding:17px 18px!important;
+  background:linear-gradient(145deg,rgba(13,26,40,.84),rgba(6,13,21,.90))!important;
+  border:1px solid var(--admin-polish-line)!important;
+  box-shadow:0 14px 34px rgba(0,0,0,.20)!important;
+  backdrop-filter:blur(18px) saturate(1.06)!important;
+  -webkit-backdrop-filter:blur(18px) saturate(1.06)!important;
 }
 
 .loom-admin-kpi-grid .usage-summary-card h3{
@@ -164,7 +182,9 @@
   min-height:72px;
   padding:12px 14px!important;
   border-radius:12px!important;
-  background:rgba(7,15,24,.28)!important;
+  background:linear-gradient(145deg,rgba(12,24,37,.82),rgba(5,11,18,.88))!important;
+  border:1px solid var(--admin-polish-line)!important;
+  box-shadow:0 12px 28px rgba(0,0,0,.16)!important;
 }
 
 .loom-admin-mini-kpis strong{font-size:18px!important}
@@ -196,9 +216,17 @@
   gap:14px!important;
 }
 
-.loom-admin-table-card{border-radius:16px!important}
-.loom-admin-table th{background:rgba(4,10,17,.12)}
-.loom-admin-table td{padding-block:11px!important}
+.loom-admin-table-card{border-radius:16px!important;overflow:hidden!important}
+.loom-admin-table th{
+  background:rgba(4,10,17,.84)!important;
+  border-bottom-color:var(--admin-polish-line)!important;
+}
+.loom-admin-table td{
+  padding-block:11px!important;
+  background:rgba(8,17,27,.58)!important;
+  border-bottom-color:rgba(220,238,255,.07)!important;
+}
+.loom-admin-table tbody tr:hover td{background:rgba(18,33,48,.72)!important}
 
 .loom-admin-audit-list{gap:6px!important}
 .loom-admin-audit-row{border-radius:13px!important}
@@ -217,20 +245,23 @@
   min-height:0!important;
   padding:11px 12px!important;
   border-radius:12px!important;
-  background:rgba(7,15,24,.24)!important;
+  background:linear-gradient(145deg,rgba(12,24,37,.84),rgba(5,11,18,.90))!important;
+  border-color:var(--admin-polish-line)!important;
 }
 
 .loom-admin-body .loom-policy-card strong{font-size:11px!important}
-.loom-admin-body .loom-policy-card small{margin-top:2px!important;font-size:9px!important}
+.loom-admin-body .loom-policy-card small{margin-top:2px!important;font-size:9px!important;color:rgba(224,237,248,.58)!important}
 
 .loom-admin-body .loom-policy-group-button{
   padding:10px 11px!important;
   border-radius:11px!important;
+  background:rgba(7,15,24,.76)!important;
 }
 
 .loom-admin-body .loom-policy-member{
   padding:8px 10px!important;
   border-radius:10px!important;
+  background:rgba(7,15,24,.66)!important;
 }
 
 .loom-admin-body .loom-policy-subsection{
@@ -241,6 +272,24 @@
 .loom-admin-body .loom-policy-effective{
   padding:11px!important;
   border-radius:11px!important;
+  background:rgba(5,12,20,.82)!important;
+}
+
+.loom-admin-login-form input,
+.loom-admin-flag-editor input,
+.loom-admin-flag-editor textarea,
+.loom-admin-table select,
+.loom-admin-action,
+.loom-admin-switch span{
+  background:rgba(2,7,12,.68)!important;
+  border-color:var(--admin-polish-line)!important;
+}
+
+.loom-admin-nav-compact{
+  background:rgba(5,12,20,.62)!important;
+  border-radius:10px;
+  backdrop-filter:blur(18px) saturate(1.06)!important;
+  -webkit-backdrop-filter:blur(18px) saturate(1.06)!important;
 }
 
 #flags,#audit,#sessions{scroll-margin-top:92px}
