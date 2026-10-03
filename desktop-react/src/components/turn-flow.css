@@ -10,6 +10,18 @@
   margin-top: 10px;
 }
 
+/* Long transcripts can contain hundreds of completed turns. Let Chromium skip
+   style/layout/paint for history that is well outside the viewport while keeping
+   the real DOM, selection semantics, find-in-page and dynamic heights intact.
+   The `auto` intrinsic block size remembers a turn's measured height after first
+   reveal; 420px is only the cold-start estimate for never-seen history. */
+@supports (content-visibility: auto) {
+  .turn-block.is-complete {
+    content-visibility: auto;
+    contain-intrinsic-block-size: auto 420px;
+  }
+}
+
 /* Decision-card replies are transport messages, not a new visible user turn.
    Keep the marker in the transcript for durable state recovery, but remove the
    synthetic bubble and close the visual gap before the continuation turn. */
@@ -185,6 +197,22 @@
   padding: 8px 0 8px 17px;
   border-left: 1px solid rgba(139,124,246,.12);
   box-shadow: inset 1px 0 0 rgba(255,255,255,.012);
+}
+
+/* A folded process used to keep every Markdown tree, tool row and diff in the
+   renderer's layout/paint pipeline even though its grid track was 0fr. Skip the
+   whole subtree once folding completes. Discrete transition support keeps the
+   pixels alive for the existing 300ms close animation, then makes the hidden
+   history essentially free until the user expands it again. */
+@supports (content-visibility: hidden) {
+  .turn-process.is-settled .turn-process-content {
+    transition: content-visibility 320ms;
+    transition-behavior: allow-discrete;
+  }
+
+  .turn-process.is-settled:not(.is-open) .turn-process-content {
+    content-visibility: hidden;
+  }
 }
 
 /* Closing should preserve readable pixels until the geometry is already moving,
