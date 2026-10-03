@@ -113,3 +113,36 @@ def test_relay_credential_respects_disabled_account_and_session_expiry(tmp_path,
     with pytest.raises(AccountError) as expired:
         app.relay_me(f"Bearer {proof}")
     assert expired.value.code == "INVALID_RELAY_TOKEN"
+
+
+def test_profile_can_update_nickname_and_avatar(tmp_path: Path) -> None:
+    import base64
+
+    app = _app(tmp_path)
+    session = app.register({"email": "profile@example.com", "password": "abcdefgh"}, "a")
+    avatar = "data:image/png;base64," + base64.b64encode(b"\x89PNG\r\n\x1a\n" + b"avatar").decode("ascii")
+
+    updated = app.update_profile(
+        {"display_name": "Yuchen", "avatar_data_url": avatar},
+        f"Bearer {session['access_token']}",
+    )["user"]
+
+    assert updated["display_name"] == "Yuchen"
+    assert updated["avatar_data_url"] == avatar
+    current = app.me(f"Bearer {session['access_token']}")["user"]
+    assert current["display_name"] == "Yuchen"
+    assert current["avatar_data_url"] == avatar
+
+
+def test_profile_rejects_unsafe_avatar_and_long_nickname(tmp_path: Path) -> None:
+    app = _app(tmp_path)
+    session = app.register({"email": "profile@example.com", "password": "abcdefgh"}, "a")
+    authorization = f"Bearer {session['access_token']}"
+
+    with pytest.raises(AccountError) as bad_avatar:
+        app.update_profile({"avatar_data_url": "data:text/plain;base64,SGVsbG8="}, authorization)
+    assert bad_avatar.value.code == "AVATAR_INVALID"
+
+    with pytest.raises(AccountError) as long_name:
+        app.update_profile({"display_name": "x" * 49}, authorization)
+    assert long_name.value.code == "DISPLAY_NAME_TOO_LONG"

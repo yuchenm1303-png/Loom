@@ -176,6 +176,39 @@ def _validate_password(value: str) -> str:
     return password
 
 
+def _validate_display_name(value: Any) -> str:
+    name = str(value or "").strip()
+    if len(name) > 48:
+        raise AccountError(HTTPStatus.BAD_REQUEST, "DISPLAY_NAME_TOO_LONG", "Nickname must be 48 characters or fewer.")
+    if any(ord(character) < 32 or ord(character) == 127 for character in name):
+        raise AccountError(HTTPStatus.BAD_REQUEST, "DISPLAY_NAME_INVALID", "Nickname contains unsupported characters.")
+    return name
+
+
+def _validate_avatar_data_url(value: Any) -> str:
+    avatar = str(value or "").strip()
+    if not avatar:
+        return ""
+    match = re.fullmatch(r"data:(image/(?:png|jpeg|webp));base64,([A-Za-z0-9+/]+={0,2})", avatar)
+    if not match:
+        raise AccountError(HTTPStatus.BAD_REQUEST, "AVATAR_INVALID", "Use a PNG, JPEG, or WebP avatar.")
+    try:
+        payload = base64.b64decode(match.group(2), validate=True)
+    except (ValueError, base64.binascii.Error) as exc:
+        raise AccountError(HTTPStatus.BAD_REQUEST, "AVATAR_INVALID", "Avatar data is invalid.") from exc
+    if len(payload) > 40 * 1024:
+        raise AccountError(HTTPStatus.BAD_REQUEST, "AVATAR_TOO_LARGE", "Avatar must be 40 KiB or smaller after processing.")
+    mime = match.group(1)
+    valid_magic = (
+        (mime == "image/png" and payload.startswith(b"\x89PNG\r\n\x1a\n"))
+        or (mime == "image/jpeg" and payload.startswith(b"\xff\xd8\xff"))
+        or (mime == "image/webp" and len(payload) >= 12 and payload[:4] == b"RIFF" and payload[8:12] == b"WEBP")
+    )
+    if not valid_magic:
+        raise AccountError(HTTPStatus.BAD_REQUEST, "AVATAR_INVALID", "Avatar file signature does not match its image type.")
+    return avatar
+
+
 @dataclass(frozen=True)
 class AccountConfig:
     db_path: Path
@@ -221,6 +254,7 @@ class AccountStore:
                     email TEXT NOT NULL UNIQUE,
                     password_hash TEXT NOT NULL,
                     display_name TEXT NOT NULL DEFAULT '',
+                    avatar_data_url TEXT NOT NULL DEFAULT '',
                     status TEXT NOT NULL DEFAULT 'active',
                     role TEXT NOT NULL DEFAULT 'user',
                     email_verified_at INTEGER,
@@ -340,6 +374,8 @@ class AccountStore:
             columns = {str(row[1]) for row in db.execute("PRAGMA table_info(users)")}
             if "role" not in columns:
                 db.execute("ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'user'")
+            if "avatar_data_url" not in columns:
+                db.execute("ALTER TABLE users ADD COLUMN avatar_data_url TEXT NOT NULL DEFAULT ''")
             legacy_without_verification = "email_verified_at" not in columns
             if legacy_without_verification:
                 db.execute("ALTER TABLE users ADD COLUMN email_verified_at INTEGER")
@@ -360,6 +396,7 @@ class AccountStore:
             "id": int(row["id"]),
             "email": str(row["email"]),
             "display_name": str(row["display_name"] or ""),
+            "avatar_data_url": str(row["avatar_data_url"] or ""),
             "status": str(row["status"]),
             "role": str(row["role"] or "user"),
             "email_verified": bool(row["email_verified_at"]),
@@ -403,6 +440,18 @@ class AccountStore:
         with self._connect() as db:
             row = db.execute("SELECT * FROM users WHERE email = ?", (email,)).fetchone()
         return self._safe_user(row) if row is not None else None
+
+    def update_profile(self, user_id: int, display_name: str, avatar_data_url: str) -> dict[str, Any]:
+        now = _now()
+        with self._guard, self._connect() as db:
+            db.execute(
+                "UPDATE users SET display_name = ?, avatar_data_url = ?, updated_at = ? WHERE id = ?",
+                (display_name, avatar_data_url, now, int(user_id)),
+            )
+            row = db.execute("SELECT * FROM users WHERE id = ?", (int(user_id),)).fetchone()
+        if row is None:
+            raise AccountError(HTTPStatus.NOT_FOUND, "ACCOUNT_NOT_FOUND", "Account not found.")
+        return self._safe_user(row)
 
     def create_email_challenge(
         self,
@@ -1492,6 +1541,19 @@ class AccountApplication:
             )
         return {"user": self.store.user_for_access_token(token.strip())}
 
+    def update_profile(self, body: dict[str, Any], authorization: str) -> dict[str, Any]:
+        current = self.me(authorization)["user"]
+        display_name = str(current.get("display_name") or "")
+        avatar_data_url = str(current.get("avatar_data_url") or "")
+        if "display_name" in body:
+            display_name = _validate_display_name(body.get("display_name"))
+        if "avatar_data_url" in body:
+            avatar_data_url = _validate_avatar_data_url(body.get("avatar_data_url"))
+        if "display_name" not in body and "avatar_data_url" not in body:
+            raise AccountError(HTTPStatus.BAD_REQUEST, "PROFILE_EMPTY", "Choose a nickname or avatar to update.")
+        user = self.store.update_profile(int(current["id"]), display_name, avatar_data_url)
+        return {"user": user}
+
     def issue_device_pair(self, authorization: str, client_key: str) -> dict[str, Any]:
         user = self.me(authorization)["user"]
         user_id = int(user["id"])
@@ -1711,6 +1773,7 @@ class AccountRequestHandler(BaseHTTPRequestHandler):
         if path == "/v1/auth/refresh":
             return self.application.refresh(body, self._client_key())
         if path == "/v1/auth/logout": return self.application.logout(body)
+        if path == "/v1/auth/profile": return self.application.update_profile(body, authorization)
         if match := re.fullmatch(r"/v1/admin/users/(\d+)/(disable|enable)", path):
             return self.application.admin_set_user_status_by_id(int(match.group(1)), "disabled" if match.group(2) == "disable" else "active", authorization)
         if match := re.fullmatch(r"/v1/admin/sessions/([^/]+)/revoke", path):

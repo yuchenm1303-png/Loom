@@ -418,3 +418,28 @@ def test_unparseable_trusted_proxy_entries_are_skipped() -> None:
     assert _is_trusted_proxy("172.18.0.2", networks)
     assert not _is_trusted_proxy("203.0.113.9", networks)
     assert not _is_trusted_proxy("garbage", networks)
+
+
+def test_profile_update_over_http(base_url: str) -> None:
+    import base64
+
+    session = _register(base_url, "profile-http@example.com")
+    avatar = "data:image/png;base64," + base64.b64encode(b"\x89PNG\r\n\x1a\n" + b"avatar").decode("ascii")
+    status, payload, _ = _call(
+        base_url,
+        "/v1/auth/profile",
+        body={"display_name": "Loom User", "avatar_data_url": avatar},
+        token=session["access_token"],
+    )
+    assert status == 200
+    assert payload["user"]["display_name"] == "Loom User"
+    assert payload["user"]["avatar_data_url"] == avatar
+
+    status, current, _ = _call(base_url, "/v1/auth/me", method="GET", token=session["access_token"])
+    assert status == 200
+    assert current["user"]["display_name"] == "Loom User"
+    assert current["user"]["avatar_data_url"] == avatar
+
+    status, payload, _ = _call(base_url, "/v1/auth/profile", body={"display_name": "No auth"})
+    assert status == 401
+    assert payload["error"]["code"] == "MISSING_TOKEN"
