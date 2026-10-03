@@ -340,6 +340,19 @@ export function WebAppGate({ children }: { children: ReactNode }) {
     void connectCurrentHost({ force: true });
   }, [connectCurrentHost, setTrackedHostState]);
 
+  useEffect(() => {
+    if (!web || remote) return;
+    // Keep the launch guide mounted while discovery/pairing retries restart.
+    // An offline relay response must not erase the browser launch feedback.
+    const launched = () => {
+      setPairAttempts(0);
+      setPairingSucceeded(false);
+      setDiscoveryNonce((value) => value + 1);
+    };
+    window.addEventListener("loom:web-host-launch", launched);
+    return () => window.removeEventListener("loom:web-host-launch", launched);
+  }, [web, remote]);
+
   const enterOrRetry = useCallback(() => {
     if (hostStateRef.current === "online") {
       setEntered(true);

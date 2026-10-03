@@ -312,6 +312,13 @@ function configureBackgroundHostStartup(): void {
 
 app.whenReady().then(async () => {
   if (!isHostProcess) return;
+  // Repair missing protocol registration after an upgrade or a portable launch.
+  // Only packaged executables are suitable browser launch targets.
+  if (app.isPackaged && !app.isDefaultProtocolClient("loom")) {
+    if (!app.setAsDefaultProtocolClient("loom")) {
+      console.warn("Could not register loom:// launch support; reinstall Loom to repair it.");
+    }
+  }
   configureBackgroundHostStartup();
   startLocalDiscovery();
   await ensureHostTray();
