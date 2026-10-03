@@ -13,6 +13,12 @@
 .loom-module-grid .loom-stage-actions { margin-top: 24px; }
 .loom-module-grid .loom-control { display: flex; min-width: 0; padding: 0; border: 0; background: transparent; }
 .loom-sidebar-module { width: 100%; flex: 1; }
+@media (min-width: 761px) {
+  .loom-portal-page.is-modular .loom-portal-shell { height: 100dvh; min-height: 0; box-sizing: border-box; }
+  .loom-module-grid { flex: 1; min-height: 0; }
+  .loom-module-grid .loom-control { min-height: 0; }
+  .loom-module-grid :is(.loom-sidebar-module, .loom-intro-module) { min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-gutter: stable; }
+}
 .loom-module-grid :is(.loom-host-module, .loom-account-module, .loom-login-module) { min-width: 0; padding: clamp(28px, 2.6vw, 44px); }
 .loom-module-grid .loom-control-top { flex-wrap: wrap; gap: 14px; align-items: flex-start; }
 .loom-module-grid .loom-control-top h2 { margin-top: 12px; max-width: none; font-size: clamp(24px, 1.6vw, 32px); line-height: 1.2; }
