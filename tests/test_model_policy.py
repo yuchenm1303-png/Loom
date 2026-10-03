@@ -106,3 +106,29 @@ def test_legacy_ant_ling_override_does_not_disable_other_providers(tmp_path: Pat
     assert (ant_default["enabled"], ant_default["source"]) == (True, "user_legacy")
     assert (ant_vl["enabled"], ant_vl["source"]) == (False, "user_legacy")
     assert (deepseek["enabled"], deepseek["source"]) == (True, "global")
+
+
+def test_bulk_user_rules_and_memberships(tmp_path: Path) -> None:
+    store = PolicyStore(tmp_path / "policy.db", MODELS)
+    group = store.create_group(1, "pro")
+    paused = store.create_group(1, "paused")
+    store.update_group(1, paused["id"], enabled=False)
+    store.set_membership(1, group["id"], 21, True)
+    store.set_membership(1, paused["id"], 21, True)
+
+    rows = store.set_user_rules_bulk(1, 21, False, ["m1", "m3"])
+    rules = {item["model_id"]: item["enabled"] for item in rows}
+    assert rules == {"m1": False, "m3": False}
+
+    memberships = store.user_memberships(21)
+    by_name = {item["name"]: item for item in memberships}
+    assert by_name["pro"]["member"] is True
+    assert by_name["pro"]["enabled"] is True
+    assert by_name["paused"]["member"] is True
+    assert by_name["paused"]["enabled"] is False
+
+    access = store.effective_access(21, {"enabled": True, "models": [], "source": "default"})
+    decisions = {item["model_id"]: item for item in access["decisions"]}
+    assert decisions["m1"]["source"] == "user"
+    assert decisions["m1"]["enabled"] is False
+    assert decisions["m2"]["enabled"] is True

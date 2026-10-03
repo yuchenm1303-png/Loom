@@ -515,6 +515,27 @@ class PolicyStore:
             for row in rows
         ]
 
+    def user_memberships(self, user_id: int) -> list[dict[str, Any]]:
+        with self._connect() as db:
+            rows = db.execute(
+                """SELECT g.id, g.name, g.enabled,
+                          CASE WHEN m.user_id IS NULL THEN 0 ELSE 1 END AS member
+                   FROM model_groups g
+                   LEFT JOIN model_group_members m
+                     ON m.group_id = g.id AND m.user_id = ?
+                   ORDER BY g.name COLLATE NOCASE""",
+                (int(user_id),),
+            ).fetchall()
+        return [
+            {
+                "id": int(row["id"]),
+                "name": str(row["name"]),
+                "enabled": bool(row["enabled"]),
+                "member": bool(row["member"]),
+            }
+            for row in rows
+        ]
+
     def set_user_rule(self, actor_user_id: int, user_id: int, model_id: str, enabled: bool) -> dict[str, Any]:
         if int(user_id) <= 0:
             raise ValueError("user_id must be positive")
@@ -531,6 +552,41 @@ class PolicyStore:
             )
             self._audit(db, actor_user_id, "user_model.update", "user", user_id, {"model_id": model_id, "enabled": enabled})
         return {"user_id": int(user_id), "model_id": model_id, "enabled": enabled, "updated_at": now, "updated_by": actor_user_id}
+
+    def set_user_rules_bulk(
+        self,
+        actor_user_id: int,
+        user_id: int,
+        enabled: bool,
+        model_ids: Iterable[str] | None = None,
+    ) -> list[dict[str, Any]]:
+        if int(user_id) <= 0:
+            raise ValueError("user_id must be positive")
+        if not isinstance(enabled, bool):
+            raise ValueError("enabled must be a boolean")
+        targets = list(model_ids or [row["model_id"] for row in self.global_rules()])
+        normalized = list(dict.fromkeys(_normalize_model_id(item) for item in targets))
+        if not normalized:
+            return []
+        now = _now()
+        with self._guard, self._connect() as db:
+            db.executemany(
+                """INSERT INTO user_model_rules(user_id, model_id, enabled, updated_at, updated_by)
+                VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT(user_id, model_id) DO UPDATE SET
+                    enabled=excluded.enabled,
+                    updated_at=excluded.updated_at,
+                    updated_by=excluded.updated_by""",
+                [(int(user_id), model_id, 1 if enabled else 0, now, actor_user_id) for model_id in normalized],
+            )
+            self._audit(
+                db, actor_user_id, "user_model.bulk_update", "user", user_id,
+                {"enabled": enabled, "model_ids": normalized, "count": len(normalized)},
+            )
+        return [
+            {"user_id": int(user_id), "model_id": model_id, "enabled": enabled, "updated_at": now, "updated_by": actor_user_id}
+            for model_id in normalized
+        ]
 
     def clear_user_rules(self, actor_user_id: int, user_id: int, model_ids: Iterable[str] | None = None) -> None:
         with self._guard, self._connect() as db:
@@ -646,6 +702,7 @@ class PolicyStore:
         return {
             "user_id": int(user_id),
             "rules": self.user_rules(user_id),
+            "memberships": self.user_memberships(user_id),
             "access": self.effective_access(user_id, account_access),
         }
 

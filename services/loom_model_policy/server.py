@@ -253,6 +253,18 @@ class ModelPolicyApplication:
         legacy = self.accounts.admin_user_model_access(user_id, authorization)
         return {"rule": rule, "policy": self.store.user_detail(user_id, legacy)}
 
+    def set_user_models_bulk(self, user_id: int, body: dict[str, Any], authorization: str) -> dict[str, Any]:
+        actor = self.accounts.admin(authorization)
+        self.accounts.ensure_user(user_id, authorization)
+        model_ids = body.get("model_ids")
+        if model_ids is not None and not isinstance(model_ids, list):
+            raise ValueError("model_ids must be a list")
+        self.store.set_user_rules_bulk(
+            int(actor["id"]), user_id, body.get("enabled"), model_ids
+        )
+        legacy = self.accounts.admin_user_model_access(user_id, authorization)
+        return {"policy": self.store.user_detail(user_id, legacy)}
+
     def clear_user_models(self, user_id: int, body: dict[str, Any], authorization: str) -> dict[str, Any]:
         actor = self.accounts.admin(authorization)
         self.accounts.ensure_user(user_id, authorization)
@@ -426,6 +438,8 @@ class PolicyRequestHandler(BaseHTTPRequestHandler):
             return self._run(lambda: self.application.set_global_bulk(body, auth))
         if match := re.fullmatch(r"/v1/admin/users/(\d+)/models", path):
             return self._run(lambda: self.application.set_user_model(int(match.group(1)), body, auth))
+        if match := re.fullmatch(r"/v1/admin/users/(\d+)/models/bulk", path):
+            return self._run(lambda: self.application.set_user_models_bulk(int(match.group(1)), body, auth))
         if match := re.fullmatch(r"/v1/admin/users/(\d+)/models/reset", path):
             return self._run(lambda: self.application.clear_user_models(int(match.group(1)), body, auth))
         if path == "/v1/admin/groups":
