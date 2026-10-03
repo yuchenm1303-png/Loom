@@ -115,6 +115,7 @@ loopback.
 | `LOOM_ACCOUNT_DB` | `~/.loom-account/accounts.db` | `/data/accounts.db` in the image |
 | `LOOM_ACCOUNT_HOST` / `LOOM_ACCOUNT_PORT` | `127.0.0.1` / `8787` | `0.0.0.0` in the image, bound to loopback by the published port |
 | `LOOM_ACCOUNT_ACCESS_TTL` | `900` | Access token lifetime, seconds |
+| `LOOM_TELEMETRY_SECRET` | unset | Shared internal secret used only by Loom Web Gateway to submit sanitized Agent operations metadata and poll Admin commands. Set the same high-entropy value in the Account and Web Gateway runtime environments; never expose it to browsers or Desktop clients. |
 | `LOOM_ACCOUNT_REFRESH_TTL` | `2592000` | Refresh token lifetime, seconds |
 | `LOOM_ACCOUNT_TRUSTED_PROXIES` | `127.0.0.1,::1` | Peers allowed to set the client address via `X-Real-IP` / `X-Forwarded-For` |
 | `LOOM_ACCOUNT_QUIET` | unset | `1` silences per-request access logging |
@@ -220,3 +221,17 @@ docker compose -f docker-compose.yml -f docker-compose.proxy.yml up -d --build
 ```
 
 Users never receive `LOOM_ANT_LING_API_KEY`. Desktop clients mint a scoped `loom_model_*` credential from the account service; it is tied to the current login session and becomes invalid when that session is revoked.
+
+
+## Agent operations telemetry
+
+Loom Admin's Agent operations views are intentionally metadata-only. The Web Gateway may submit:
+
+- Host/device identity and version metadata (`device_id`, platform, Loom/Host versions, protocol versions, online timestamps),
+- turn lifecycle state (`thread_id`, `turn_id`, model/provider, status and timestamps),
+- aggregate token counters and tool names/counts,
+- approval counts and an error-present boolean.
+
+It must **not** submit prompts, assistant response text, tool arguments or output, files, browser page contents, or Computer Use screenshots. `tests/test_loom_admin_agent_ops.py` contains a privacy contract for this boundary.
+
+Internal telemetry endpoints live under `/v1/telemetry/*` and require `X-Loom-Telemetry-Secret`. Admin APIs remain under `/v1/admin/*` and require an `owner` or `admin` Loom access token. The interrupt action is queued server-side and is delivered only to the matching authenticated Host through the existing Web Gateway relay.
