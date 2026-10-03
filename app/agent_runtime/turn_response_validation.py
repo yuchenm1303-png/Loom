@@ -8,64 +8,21 @@ from app.ai import MessageRole, ModelResponse
 
 COMPLETE_FINISH_REASONS = {"", "stop", "tool_calls", "function_call", "completed", "end_turn"}
 RESUMABLE_TERMINAL_REASONS = frozenset({
-    "unfinished_terminal_text",
     "unterminated_code_fence",
 })
 _COMPLETE_THINK_BLOCK_RE = re.compile(r"<think>.*?</think>", re.IGNORECASE | re.DOTALL)
 _DANGLING_TERMINAL_RE = re.compile(r"(?:\[|\{|<tool_call>)\s*$", re.IGNORECASE)
-_DANGLING_DISCOURSE_RE = re.compile(r"[:：]\s*$")
 _SERIALIZED_TOOL_PROTOCOL_RE = re.compile(
     r"(?:<tool_call\b|</tool_call>|<invoke\s+name\s*=|\]\s*<\]\s*minimax\s*\[>\s*\[<)",
     re.IGNORECASE,
 )
 _INLINE_STICKER_RE = re.compile(r"\[\[AI_LEDGER_INLINE_STICKER:[a-z0-9_]{2,48}\]\]", re.I)
-_WAIT_ONLY_RE = re.compile(
-    r"(?:(?:好|好的)[，,。\s]*)?(?:请)?(?:等一下|等一等|稍等(?:一下)?|等我一下|让我想想|让我想一下|我想一下|马上|正在处理)"
-    r"|(?:please\s+)?(?:wait(?: a moment)?|hold on|one moment|just a moment|let me think|working on it)",
-    re.I,
-)
-WAIT_RECOVERY_INSTRUCTION = (
-    "Your previous response only asked the user to wait, but ended the turn without doing the task. "
-    "Continue the same task now. Use a native tool call if needed. If you cannot proceed, give the "
-    "specific blocker and required user action. Do not return another waiting/progress-only message "
-    "or claim the task is complete without a result."
-)
 TOOL_ARGUMENT_RECOVERY_INSTRUCTION = (
     "Your previous native tool call failed schema validation and was not executed. "
     "Correct its arguments using the advertised tool schema, including every required property, "
     "and emit a valid native tool call. No call in that response was executed. "
     "If you cannot proceed, explain the specific blocker; do not just ask the user to wait."
 )
-# Match an assistant's immediate commitment, not suggestions addressed to the
-# user or generic future plans. Inspect prose only so examples/quotes are safe.
-_ACTION_PROMISE_RE = re.compile(
-    r"(?:^|[。！？.!?\n]\s*)(?:"
-    r"(?:我(?:现在|接下来|这就|马上)?(?:先|再|会|将|要)|接下来我(?:会|将|先)?)"
-    r"(?:去|来|继续)?(?:去|查|搜索|检索|看|检查|读取|打开|访问|运行|执行|测试|验证|修改|修复|更新|提交|推送|下载|安装)"
-    r"|(?:I(?:['’]ll| will| am going to)|Let me)\s+(?:now\s+|first\s+|next\s+)?"
-    r"(?:check|search|look|inspect|read|open|visit|run|execute|test|verify|edit|fix|update|commit|push|download|install)\b"
-    r")",
-    re.I,
-)
-_ACTION_RESULT_RE = re.compile(
-    r"(?:已(?:经)?(?:完成|修复|修改|更新|提交|推送|检查|验证)|"
-    r"(?:检查|测试|验证|查询|运行)结果|(?:结果|结论)[：:]|"
-    r"\b(?:completed|verified|passed|the results? (?:is|are)|I (?:found|checked|ran|fixed))\b)", re.I,
-)
-
-
-def unfulfilled_action_promise(text: str) -> bool:
-    """Recognize short progress-only replies incorrectly emitted as terminal."""
-    prose = _INLINE_STICKER_RE.sub("", visible_model_text(text)).strip()
-    if not prose or len(prose) > 800:
-        return False
-    # A final answer may quote an earlier promise or include example code.
-    prose = re.sub(r"```.*?```|`[^`\n]*`|\"[^\"\n]*\"|“[^”\n]*”", "", prose, flags=re.S)
-    prose = "\n".join(line for line in prose.splitlines() if not line.lstrip().startswith((">", "-", "*")))
-    match = _ACTION_PROMISE_RE.search(prose)
-    return bool(match and not _ACTION_RESULT_RE.search(prose[match.end():]))
-
-
 TERMINAL_RECOVERY_INSTRUCTION = (
     "Your previous response was rejected because it was empty, malformed (including invalid native tool-call "
     "arguments), ended with an incomplete serialized structure, or contained reasoning without a user-visible "
@@ -79,8 +36,8 @@ TRUNCATED_RECOVERY_INSTRUCTION = (
     "a tool action, emit the native structured tool call immediately; otherwise finish with a concise answer."
 )
 UNFINISHED_RECOVERY_INSTRUCTION = (
-    "The previous assistant response ended while introducing the next action and was not committed as a final "
-    "answer. Continue the same task from that partial response without repeating it. If the promised action "
+    "The previous assistant response was structurally incomplete and was not committed as a final "
+    "answer. Continue the same task from that partial response without repeating it. If an action "
     "requires an available tool, emit the native structured tool call now; otherwise complete the answer."
 )
 
@@ -145,9 +102,6 @@ def invalid_terminal_response(response: ModelResponse) -> str:
         return "reasoning_without_visible_answer"
     if contains_serialized_tool_protocol(visible):
         return "serialized_tool_call_text"
-    waiting = _INLINE_STICKER_RE.sub("", visible).strip().strip("。.!！… \t\r\n")
-    if _WAIT_ONLY_RE.fullmatch(waiting):
-        return "waiting_only_terminal"
     if _DANGLING_TERMINAL_RE.search(visible):
         return "dangling_serialized_structure"
     # An unmatched inline backtick or emphasis marker is displayable Markdown,
@@ -155,10 +109,6 @@ def invalid_terminal_response(response: ModelResponse) -> str:
     # otherwise complete answer and starts an unnecessary model retry.
     if visible.count("```") % 2:
         return "unterminated_code_fence"
-    if _DANGLING_DISCOURSE_RE.search(visible):
-        return "unfinished_terminal_text"
-    if unfulfilled_action_promise(visible):
-        return "unfulfilled_action_promise"
     return ""
 
 

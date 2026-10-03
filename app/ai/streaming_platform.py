@@ -260,6 +260,8 @@ class StreamingAIPlatform(AIPlatform):
 
                 for event in normalized_events:
                     accumulator.consume(event)
+                    if request.purpose == "stop_review":
+                        continue
                     if event.kind is StreamEventKind.TEXT_DELTA and event.text_delta:
                         self._publish(
                             ProviderStreamEvent(
@@ -319,6 +321,8 @@ class StreamingAIPlatform(AIPlatform):
                     late_inline_reasoning,
                 ),
             )
+        if request.purpose == "stop_review":
+            return result
         self._publish(
             ProviderStreamEvent(
                 profile_id=profile.profile_id,

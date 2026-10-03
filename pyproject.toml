@@ -67,3 +67,4 @@ include = ["app*"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"
+markers = ["real_stop_hook: exercise the actual structured turn Stop hook"]

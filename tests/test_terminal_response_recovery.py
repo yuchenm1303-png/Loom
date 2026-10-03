@@ -10,94 +10,9 @@ from app.agent_runtime.turn_response_validation import (
 from app.ai import ModelResponse
 
 
-PROMISE = (
-    '注意到"蚂蚁百灵"这个搜索结果——它指向的就是 ant-ling 平台本身。'
-    '我先去 Hugging Face 的 Ling 官方仓库，那里通常写明推理接入方式'
-    '（OpenAI 兼容 base URL + 模型名）。[[AI_LEDGER_INLINE_STICKER:joy_burst]]'
-)
-
-
-@pytest.mark.parametrize("text", ["等一下。", "好，等一下。", "稍等一下…", "请稍等。", "让我想想。", "One moment.", "Hold on!", "等一下。[[AI_LEDGER_INLINE_STICKER:joy_burst]]"])
-def test_wait_only_reply_cannot_complete_a_task(text):
-    assert invalid_terminal_response(ModelResponse(text=text, finish_reason="stop")) == "waiting_only_terminal"
-
-
-@pytest.mark.parametrize("text", ["好了。", "是的。", "请稍等安装完成后再重试。", "等一下，缺少服务器地址，请提供地址。", '模型只回复了“等一下。”。', "运行已完成。"])
-def test_short_results_and_explicit_blockers_remain_valid(text):
+@pytest.mark.parametrize("text", ["等一下。", "我先检查日志。", "Let me look at the logs.", "检查完成。"])
+def test_terminal_format_validation_does_not_guess_task_completion(text):
     assert invalid_terminal_response(ModelResponse(text=text, finish_reason="stop")) == ""
-
-
-def test_wait_only_recovery_is_same_turn_and_does_not_merge_wait_text(tmp_path):
-    runtime, store, platform, session = _runtime(tmp_path, [
-        ModelResponse(text="等一下。", finish_reason="stop"),
-        ModelResponse(text="检查完成。", finish_reason="stop"),
-    ])
-    result = runtime.start_turn(session.session_id, "检查服务器")
-    assert result.status is AgentStatus.COMPLETED
-    assert result.final_text == "检查完成。"
-    assert "only asked the user to wait" in platform.requests[1][1].messages[-1].content
-    assert all(m.content != "等一下。" for m in store.load(session.session_id).messages)
-    runtime.close()
-
-
-@pytest.mark.parametrize("text", [
-    PROMISE,
-    "我先检查日志。",
-    "接下来我会运行测试。",
-    "我现在先修复这个错误。",
-    "I'll check the repository now.",
-    "Let me look at the logs.",
-])
-def test_progress_only_terminal_response_requires_continuation(text):
-    assert invalid_terminal_response(ModelResponse(text=text, finish_reason="stop")) == "unfulfilled_action_promise"
-
-
-@pytest.mark.parametrize("text", [
-    "你可以先检查日志。",
-    "要不要我再检查一次？",
-    "如果需要，我会检查日志。",
-    "我先检查日志。检查结果：没有错误。",
-    "我会运行测试。验证已完成。",
-    '模型回复了“我先检查日志。”，随后结束。',
-    "> 我先检查日志。",
-    "```text\n我先检查日志。\n```",
-    "Next, you can run the tests.",
-    "I'll check the logs. I found no errors.",
-    "修复已完成，测试通过。",
-])
-def test_completed_answers_and_quoted_promises_are_accepted(text):
-    assert invalid_terminal_response(ModelResponse(text=text, finish_reason="stop")) == ""
-
-
-def test_action_promise_retry_replaces_progress_and_preserves_same_turn(tmp_path):
-    runtime, store, platform, session = _runtime(tmp_path, [
-        ModelResponse(text=PROMISE, finish_reason="stop", reasoning="inspect repository"),
-        ModelResponse(text="查询完成，API 文档地址已确认。", finish_reason="stop"),
-    ])
-    result = runtime.start_turn(session.session_id, "直接查资料")
-    restored = store.load(session.session_id)
-    assert result.status is AgentStatus.COMPLETED
-    assert result.final_text == "查询完成，API 文档地址已确认。"
-    assert restored.current_turn_id == result.turn_id
-    assert all(PROMISE != message.content for message in restored.messages)
-    replay, instruction = platform.requests[1][1].messages[-2:]
-    assert replay.content == PROMISE
-    assert replay.reasoning == "inspect repository"
-    assert "promised action" in instruction.content
-    assert sum(e.kind.value == "turn_completed" for e in store.events(session.session_id)) == 1
-    runtime.close()
-
-
-def test_repeated_action_promises_fail_instead_of_claiming_completion(tmp_path):
-    runtime, store, platform, session = _runtime(tmp_path, [
-        ModelResponse(text=PROMISE, finish_reason="stop") for _ in range(3)
-    ])
-    result = runtime.start_turn(session.session_id, "直接查资料")
-    assert result.status is AgentStatus.FAILED
-    assert "unfulfilled_action_promise" in result.error
-    assert len(platform.requests) == 3
-    assert not any(e.kind.value == "turn_completed" for e in store.events(session.session_id))
-    runtime.close()
 
 
 class ScriptedPlatform:

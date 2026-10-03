@@ -192,13 +192,11 @@ def test_dangling_terminal_response_is_retried_without_poisoning_history(tmp_pat
 
 
 @pytest.mark.parametrize("unfinished, reason", [
-    ("我先检查日志。[[AI_LEDGER_INLINE_STICKER:joy_burst]]", "unfulfilled_action_promise"),
     (
-        "`Shell Folders` 还有 3 项指向 OneDrive。"
-        "我会一并改成绝对路径：", "unfinished_terminal_text",
+        "```text\nIncomplete code block", "unterminated_code_fence",
     ),
 ])
-def test_stop_while_introducing_next_action_is_retried_as_a_tool_call(tmp_path, unfinished, reason):
+def test_stop_with_unterminated_code_block_is_retried_as_a_tool_call(tmp_path, unfinished, reason):
     calls = []
     platform = Scripted([
         ModelResponse(text=unfinished, finish_reason="stop"),
@@ -573,7 +571,6 @@ def test_malformed_batch_is_repaired_before_any_side_effect(tmp_path):
         lambda c, a: calls.append(a["argv"]) or ToolResult(True, "done"))
     platform = Scripted([
         ModelResponse(tool_calls=(ToolCall("valid-prefix", "effect", {"argv": ["once"]}), ToolCall("bad", "effect", {})), finish_reason="tool_calls"),
-        ModelResponse(text="等一下。", finish_reason="stop"),
         ModelResponse(tool_calls=(ToolCall("fixed", "effect", {"argv": ["once"]}),), finish_reason="tool_calls"),
         ModelResponse(text="done", finish_reason="stop"),
     ])
@@ -586,17 +583,16 @@ def test_malformed_batch_is_repaired_before_any_side_effect(tmp_path):
     assert '"argv"' in platform.requests[1].messages[-1].content
     events = rt.store.events(session.session_id)
     rejected = [e for e in events if e.kind.value == "model_response_rejected"]
-    assert [e.data["reason"] for e in rejected] == ["invalid_tool_arguments", "waiting_only_terminal"]
+    assert [e.data["reason"] for e in rejected] == ["invalid_tool_arguments"]
     assert sum(e.kind.value == "tool_started" for e in events) == 1
     assert not any(c.call_id == "bad" for m in rt.store.load(session.session_id).messages for c in m.tool_calls)
     rt.close()
 
 
 @pytest.mark.parametrize("response, reason", [
-    (ModelResponse(text="等一下。", finish_reason="stop"), "waiting_only_terminal"),
     (ModelResponse(tool_calls=(ToolCall("bad", "effect", {}),)), "invalid_tool_arguments"),
 ])
-def test_repeated_wait_or_invalid_tool_fails_without_claiming_success(tmp_path, response, reason):
+def test_repeated_invalid_tool_fails_without_claiming_success(tmp_path, response, reason):
     calls = []
     tool = AgentTool("effect", "test", {"type": "object", "required": ["argv"]},
         lambda c, a: calls.append(1) or ToolResult(True, "done"))

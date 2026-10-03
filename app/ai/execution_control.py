@@ -17,6 +17,7 @@ class ModelSteered(Exception):
 
 class ExecutionControl:
     def __init__(self) -> None:
+        self.request_purpose = "generation"
         self.event = threading.Event()
         self._lock = threading.Lock()
         self._callbacks: list[Callable[[], object]] = []

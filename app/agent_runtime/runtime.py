@@ -710,6 +710,8 @@ class AgentRuntime:
             if token is None or token.cancelled or session.current_turn_id != turn_id:
                 raise ValueError("steering target is not the active turn")
             self.store.submit_steering(session_id, turn_id, value)
+            from .model_replan import request_replan
+            request_replan(token)
 
     def _consume_steering(self, session) -> bool:
         items = self.store.pending_steering(session.session_id, session.current_turn_id)

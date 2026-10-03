@@ -423,6 +423,7 @@ class DurableAgentRuntime(CoreAgentRuntime):
                 if event.kind in {
                     AgentEventKind.MODEL_RESPONSE,
                     AgentEventKind.MODEL_RESPONSE_REJECTED,
+                    AgentEventKind.TURN_STOP_CHECKED,
                 }:
                     usage = event.data.get("usage")
                 elif event.kind is AgentEventKind.CONTEXT_CHECKPOINTED:

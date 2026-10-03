@@ -106,6 +106,7 @@ class ModelExecutor:
                     raise TimeoutError("model request concurrency limit reached")
             results: queue.Queue = queue.Queue(maxsize=1)
             control = ExecutionControl()
+            control.request_purpose = getattr(request, "purpose", "generation")
             context = contextvars.copy_context()
 
             def run():

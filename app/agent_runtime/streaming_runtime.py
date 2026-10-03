@@ -381,6 +381,8 @@ class StreamingAgentRuntime(CodeModeRuntime):
         control = current_control.get()
         if control is not None and control.cancelled:
             return
+        if control is not None and control.request_purpose == "stop_review":
+            return
         context = self._stream_context.get()
         if not isinstance(context, _ModelStreamContext):
             # Detached model tasks such as memory extraction/compaction may use
