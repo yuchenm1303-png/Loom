@@ -580,6 +580,7 @@ class LoomAppServerService:
         self.settings = LoomSettingsStore(runtime_home)
         self._guard = threading.RLock()
         self._active_sessions: set[str] = set()
+        self._preparing_turns: dict[str, tuple[str, threading.Event]] = {}
         self._task_errors: dict[str, str] = {}
         self._notification_listeners: list[NotificationListener] = []
         self._sync_runtime_settings()
@@ -1032,11 +1033,37 @@ class LoomAppServerService:
             ),
         )
         content = build_turn_content(text, staged)
+        cancelled = threading.Event()
+        with self._guard:
+            self._preparing_turns[session_id] = (turn_id, cancelled)
 
-        self._launch(
-            session_id,
-            lambda: self.runtime.start_turn(session_id, content, turn_id=turn_id),
-        )
+        def run_turn() -> Any:
+            try:
+                self._prepare_turn(session)
+            except Exception as exc:
+                if cancelled.is_set():
+                    return None
+                # Preparation must remain before runtime history/inference, but
+                # network authorization must not hold the control-plane queue.
+                self._notify("item/completed", {"item": {
+                    "id": f"preparation-error-{turn_id}", "threadId": session_id,
+                    "turnId": turn_id, "type": "error", "status": "completed",
+                    "text": str(exc),
+                }})
+                self._notify("turn/completed", {"threadId": session_id, "turn": {
+                    "id": turn_id, "threadId": session_id, "status": "failed",
+                    "error": str(exc),
+                }})
+                raise
+            finally:
+                with self._guard:
+                    if self._preparing_turns.get(session_id, (None,))[0] == turn_id:
+                        self._preparing_turns.pop(session_id, None)
+            if cancelled.is_set():
+                return None
+            return self.runtime.start_turn(session_id, content, turn_id=turn_id)
+
+        self._launch(session_id, run_turn)
         return {
             "turn": {
                 "id": turn_id,
@@ -1050,6 +1077,9 @@ class LoomAppServerService:
             }
         }
 
+    def _prepare_turn(self, session: Any) -> None:
+        """Perform task preparation off the serialized RPC worker."""
+
     def turn_steer(self, params: dict[str, Any]) -> dict[str, Any]:
         session_id = self._required_text(params, "threadId")
         turn_id = self._required_text(params, "turnId")
@@ -1060,6 +1090,15 @@ class LoomAppServerService:
     def turn_interrupt(self, params: dict[str, Any]) -> dict[str, Any]:
         session_id = self._required_text(params, "threadId")
         requested_turn_id = self._required_text(params, "turnId")
+        with self._guard:
+            preparing = self._preparing_turns.get(session_id)
+            if preparing and preparing[0] == requested_turn_id:
+                preparing[1].set()
+                self._notify("turn/completed", {"threadId": session_id, "turn": {
+                    "id": requested_turn_id, "threadId": session_id, "status": "interrupted",
+                }})
+                return {"requested": True, "threadId": session_id,
+                        "turnId": requested_turn_id, "status": "interrupted"}
         session = self._load(session_id)
         if session.current_turn_id != requested_turn_id:
             raise ValueError("turnId does not match the thread's current turn")

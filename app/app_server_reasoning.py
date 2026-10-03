@@ -907,10 +907,8 @@ class ReasoningManagedLoomAppServerService(ManagedStreamingLoomAppServerService)
         result["thread"] = self._record(fork, active=False)
         return result
 
-    def turn_start(self, params: dict[str, Any]) -> dict[str, Any]:
-        session_id = self._required_text(params, "threadId")
-        self._ensure_thread_model_runtime(self._load(session_id))
-        return super().turn_start(params)
+    def _prepare_turn(self, session: Any) -> None:
+        self._ensure_thread_model_runtime(session)
 
     def _model_change_blockers(self) -> list[str]:
         with self._guard:

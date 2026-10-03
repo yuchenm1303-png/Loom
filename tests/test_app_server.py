@@ -3,6 +3,7 @@ from __future__ import annotations
 import io
 import json
 import time
+import threading
 from pathlib import Path
 
 from app.ai import AGENT_FAST_ROLE, MessageRole, ModelResponse, ModelUsage, ToolCall
@@ -75,6 +76,58 @@ def _wait_until(predicate, *, timeout: float = 3.0):
             return value
         time.sleep(0.01)
     raise AssertionError("timed out waiting for app-server state")
+
+
+def test_slow_turn_preparation_does_not_block_control_requests(tmp_path):
+    service, runtime, store, platform, workspace = _build_service(tmp_path, [])
+    thread_id = service.thread_start({"workspaceDir": str(workspace)})["thread"]["id"]
+    preparing = threading.Event()
+    release = threading.Event()
+    notifications = []
+    service.subscribe_notifications(lambda method, params: notifications.append((method, params)))
+
+    def blocked_prepare(session):
+        preparing.set()
+        assert release.wait(2)
+        raise RuntimeError("model disabled")
+
+    service._prepare_turn = blocked_prepare
+    try:
+        accepted = service.turn_start({"threadId": thread_id, "input": "hello"})
+        assert accepted["turn"]["status"] == "starting"
+        assert preparing.wait(1)
+        assert service.thread_read({"threadId": thread_id})["thread"]["id"] == thread_id
+        assert not platform.requests
+        assert not runtime.get_session(thread_id).messages
+    finally:
+        release.set()
+    _wait_until(lambda: any(method == "turn/completed" for method, _ in notifications))
+    assert any(method == "item/completed" and params["item"]["text"] == "model disabled" for method, params in notifications)
+    assert not platform.requests
+    assert not runtime.get_session(thread_id).messages
+
+
+def test_interrupt_during_preparation_never_starts_inference(tmp_path):
+    service, runtime, store, platform, workspace = _build_service(tmp_path, [])
+    thread_id = service.thread_start({"workspaceDir": str(workspace)})["thread"]["id"]
+    preparing = threading.Event()
+    release = threading.Event()
+
+    def blocked_prepare(session):
+        preparing.set()
+        assert release.wait(2)
+
+    service._prepare_turn = blocked_prepare
+    accepted = service.turn_start({"threadId": thread_id, "input": "hello"})
+    try:
+        assert preparing.wait(1)
+        stopped = service.turn_interrupt({"threadId": thread_id, "turnId": accepted["turn"]["id"]})
+        assert stopped["requested"]
+    finally:
+        release.set()
+    _wait_until(lambda: not service._is_active(thread_id))
+    assert not platform.requests
+    assert not runtime.get_session(thread_id).messages
 
 
 def _initialize(controller: LoomRpcController, request_id: int = 1):

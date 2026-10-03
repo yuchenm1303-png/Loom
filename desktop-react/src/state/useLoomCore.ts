@@ -17,6 +17,7 @@ import type {
 } from "../types/loom";
 import { PRESENTATION_FRAME_MS } from "../presentationTiming";
 import { isLoomWebRuntime } from "../webBridge";
+import { reconcilePendingUserMessage } from "../pendingUserMessage";
 import { buildApprovalResponse } from "./approvalProtocol";
 
 type ThreadView = "active" | "archived";
@@ -715,6 +716,11 @@ export function useLoom() {
     if (!active?.thread.id || active.thread.archived) return;
     if (!input.trim() && !attachments.length) return;
     threadReadCacheRef.current.delete(active.thread.id);
+    const pendingId = `pending-user-${crypto.randomUUID()}`;
+    if (input.trim()) setItems((current) => [...current, {
+      id: pendingId, threadId: active.thread.id, type: "user_message",
+      text: input.trim(), status: "sending", submittedAt: new Date().toISOString(),
+    }]);
     setTurnActive(true);
     setTurnStartedAt(Date.now());
     try {
@@ -733,6 +739,7 @@ export function useLoom() {
           }
         : current);
     } catch (cause) {
+      setItems((current) => current.filter((item) => item.id !== pendingId));
       setTurnActive(false);
       setTurnStartedAt(null);
       throw cause;
@@ -1004,6 +1011,7 @@ export function useLoom() {
           const queuedDelta = pendingItemDeltasRef.current.get(completed.id);
           pendingItemDeltasRef.current.delete(completed.id);
           setItems((current) => {
+            current = reconcilePendingUserMessage(current, completed);
             const index = indexedItemPosition(itemIndexRef.current, current, completed.id);
             if (index < 0) {
               itemIndexRef.current.set(completed.id, current.length);
@@ -1021,6 +1029,8 @@ export function useLoom() {
           }
 
           if (itemIsTerminalTurnError(completed)) {
+            setItems((current) => current.map((item) => item.threadId === completed.threadId && item.status === "sending"
+              ? { ...item, status: "failed" } : item));
             // Some provider/transport failures terminate the worker by emitting
             // a durable ERROR item before (or, on broken upstreams, without)
             // TURN_COMPLETED. Treat that item as an authoritative terminal
