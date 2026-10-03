@@ -13,7 +13,7 @@ import {
   Sparkles,
   Square,
 } from "lucide-react";
-import { FormEvent, KeyboardEvent as ReactKeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
+import { KeyboardEvent as ReactKeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
 import type { AddModelInput, Attachment, ModelSnapshot, StickerPreferences } from "../types/loom";
 import { useI18n } from "../i18n";
 import { useMotionPresence } from "../motion/useMotionPresence";
@@ -274,8 +274,7 @@ export function Composer({
     });
   };
 
-  async function submit(event?: FormEvent) {
-    event?.preventDefault();
+  async function submit() {
     const typedInput = value.trim();
     const input = formatQuotedPrompt(quote, typedInput);
     const sendable = attachments.filter((item) => imagesAllowed || !item.isImage);
@@ -335,9 +334,8 @@ export function Composer({
 
   return (
     <div className="composer-wrap composer-refined" ref={composerRootRef}>
-      <form
+      <div
         className={`composer ${focused ? "is-focused" : ""} ${running ? "is-running" : ""} ${openPanel ? "has-panel" : ""} ${dragging ? "is-dragging" : ""}`}
-        onSubmit={submit}
         onDragOver={(event) => {
           if (!event.dataTransfer.types.includes("Files")) return;
           event.preventDefault();
@@ -582,13 +580,13 @@ export function Composer({
                 <Square size={12} fill="currentColor" />
               </button>
             ) : (
-              <button type="submit" className="send-button" disabled={disabled || (!value.trim() && !quote && !attachments.some((item) => imagesAllowed || !item.isImage))} title="Send" aria-label="Send message">
+              <button type="button" className="send-button" onClick={() => void submit()} disabled={disabled || (!value.trim() && !quote && !attachments.some((item) => imagesAllowed || !item.isImage))} title="Send" aria-label="Send message">
                 <ArrowUp size={17} strokeWidth={2.2} />
               </button>
             )}
           </div>
         </div>
-      </form>
+      </div>
       <div className="composer-hint">{zh ? "Enter 发送 · Shift + Enter 换行" : "Enter to send · Shift + Enter for a new line"}</div>
     </div>
   );
