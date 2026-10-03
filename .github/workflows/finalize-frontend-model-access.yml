@@ -20,11 +20,13 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          git apply --check .github/frontend-model-access.patch
-          git apply .github/frontend-model-access.patch
+          echo "2e1dc57af39d363d71cf7493867bc9df34d7bb5dab308e2cdb60f73737863f22  .github/frontend-model-access.patch.gz" | sha256sum -c -
+          gzip -dc .github/frontend-model-access.patch.gz > /tmp/frontend-model-access.patch
+          git apply --check /tmp/frontend-model-access.patch
+          git apply /tmp/frontend-model-access.patch
           node --test desktop-react/scripts/tests/model-access-ui.test.mjs
           git diff --check
-          rm -f .github/frontend-model-access.patch .github/workflows/finalize-frontend-model-access.yml
+          rm -f .github/frontend-model-access.patch.gz .github/workflows/finalize-frontend-model-access.yml
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
