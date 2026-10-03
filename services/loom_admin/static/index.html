@@ -182,9 +182,9 @@
         <div id="usersGrid" class="loom-admin-user-card-grid" aria-live="polite"></div>
       </section>
 
-      <section class="usage-accounts-section fade" id="devices" data-admin-page="devices" hidden>
-        <div class="usage-section-head"><div><p class="kicker">HOST REGISTRY</p><h2>Devices</h2><p>每台 Loom Host 的在线状态、版本和协议兼容信息。</p></div><span id="devicesHint">0 devices</span></div>
-        <div class="account-card cards loom-admin-table-card"><div class="loom-admin-table-wrap"><table class="loom-admin-table"><thead><tr><th>User</th><th>Device</th><th>Platform</th><th>Loom</th><th>Host</th><th>Protocol</th><th>Mode</th><th>Last seen</th><th>State</th></tr></thead><tbody id="devicesBody"></tbody></table></div></div>
+      <section class="usage-accounts-section fade loom-admin-devices-page" id="devices" data-admin-page="devices" hidden>
+        <div class="usage-section-head loom-admin-devices-head"><div><p class="kicker">HOST HEALTH</p><h2>设备健康</h2><p>实时查看每台 Loom Host 的系统资源、Relay 延迟、能力状态与最近 24 小时健康趋势；仅采集机器运维元数据。</p></div><div class="loom-admin-devices-live"><i></i><span>HOST · 30S</span><b id="devicesHint">0 devices</b></div></div>
+        <div id="devicesGrid" class="loom-admin-device-card-grid" aria-live="polite"></div>
       </section>
 
       <section class="usage-ops-section fade loom-admin-monitor-page" id="runs" data-admin-page="runs" hidden>
@@ -307,7 +307,7 @@
         </article>
         <div class="loom-admin-mini-kpis loom-admin-user-kpis"><div><span>Devices</span><strong id="userKpiDevices">0</strong></div><div><span>Active runs</span><strong id="userKpiRuns">0</strong></div><div><span>Tokens 30D</span><strong id="userKpiTokens">0</strong></div><div><span>Tools 30D</span><strong id="userKpiTools">0</strong></div><div><span>Sessions</span><strong id="userKpiSessions">0</strong></div></div>
         <div class="loom-admin-user-sections">
-          <article class="account-card cards loom-admin-table-card"><div class="loom-admin-panel-head"><div><span class="utility-overline">DEVICES</span><h3>Host devices</h3></div></div><div class="loom-admin-table-wrap"><table class="loom-admin-table loom-admin-user-table"><thead><tr><th>Device</th><th>Platform</th><th>Loom</th><th>Host</th><th>Last seen</th><th>State</th></tr></thead><tbody id="userDevicesBody"></tbody></table></div></article>
+          <article class="account-card cards loom-admin-table-card"><div class="loom-admin-panel-head"><div><span class="utility-overline">DEVICES</span><h3>Host devices</h3></div></div><div class="loom-admin-table-wrap"><table class="loom-admin-table loom-admin-user-table"><thead><tr><th>Device</th><th>System</th><th>Resources</th><th>Loom / Host</th><th>Uptime</th><th>Last seen</th><th>State</th></tr></thead><tbody id="userDevicesBody"></tbody></table></div></article>
           <article class="account-card cards loom-admin-table-card"><div class="loom-admin-panel-head"><div><span class="utility-overline">RUNS</span><h3>Agent runs</h3></div></div><div class="loom-admin-table-wrap"><table class="loom-admin-table loom-admin-user-table"><thead><tr><th>Model</th><th>Status</th><th>Started</th><th>Duration</th><th>Tools</th><th>Tokens</th><th>Action</th></tr></thead><tbody id="userRunsBody"></tbody></table></div></article>
           <article class="account-card cards loom-admin-table-card"><div class="loom-admin-panel-head"><div><span class="utility-overline">SESSIONS</span><h3>Login sessions</h3></div></div><div class="loom-admin-table-wrap"><table class="loom-admin-table loom-admin-user-table"><thead><tr><th>Session ID</th><th>Created</th><th>Last active</th><th>Expires</th><th>State</th><th>Action</th></tr></thead><tbody id="userSessionsBody"></tbody></table></div></article>
         </div>

@@ -88,3 +88,26 @@ def test_user_cards_include_live_host_metrics_and_visuals():
     assert "24H ACTIVITY" in JS
     assert "TOOL MIX · 24H" in JS
     assert "success_rate_24h" in JS
+
+
+def test_user_and_device_health_visuals_are_present_and_secondary_page_is_card_based():
+    assert 'id="devicesGrid"' in HTML
+    assert 'id="devicesBody"' not in HTML
+    for marker in (
+        "function hostHealthMini(device)",
+        "function deviceHealthCard(d)",
+        "function healthTrend(device)",
+        "SYSTEM HEALTH",
+        "24H RESOURCE TREND",
+        "WAITING FOR HOST HEALTH V2",
+        "health_history_24h",
+    ):
+        assert marker in JS
+    for marker in (
+        ".loom-admin-host-health-mini",
+        ".loom-admin-health-metric",
+        ".loom-admin-capability",
+        ".loom-admin-device-card-grid",
+        ".loom-admin-device-health-trend",
+    ):
+        assert marker in CSS
