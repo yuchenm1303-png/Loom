@@ -27,7 +27,8 @@
     if (payload.refresh_token) { state.refresh=payload.refresh_token; sessionStorage.setItem('loom_admin_refresh', state.refresh); }
   }
   function clearTokens() {
-    state.access=''; state.refresh=''; state.me=null;
+    state.access=''; state.refresh=''; state.me=null;state.selectedUser=null;state.selectedUserOps=null;state.selectedModelAccess=null;
+    state.loaded.clear();state.users=[];state.sessions=[];state.devices=[];state.runs=[];state.audit=[];state.flags=[];state.usage={};state.tools={};state.models={};
     sessionStorage.removeItem('loom_admin_access'); sessionStorage.removeItem('loom_admin_refresh');
     if(state.refreshTimer){clearInterval(state.refreshTimer);state.refreshTimer=null;}
   }
@@ -181,7 +182,7 @@
     else if(page==='system'){const [system,agent]=await Promise.all([request('/admin/system'),request('/admin/agent-overview'),loadHealth()]);state.system=system;state.agent=agent;renderSystem()}
     state.loaded.add(page);
   }
-  async function refreshSelectedUserOps(){if(!state.selectedUser)return;state.selectedUserOps=await request(`/admin/users/${state.selectedUser.id}/agent-ops`);renderUserWorkspace()}
+  async function refreshSelectedUserOps(){if(!state.selectedUser)return;const id=state.selectedUser.id;const [userPayload,opsPayload]=await Promise.all([request(`/admin/users/${id}`),request(`/admin/users/${id}/agent-ops`)]);state.selectedUser=userPayload.user;state.selectedUserOps=opsPayload;renderUserWorkspace()}
   async function refreshCurrentPage(full=false){
     if(!state.me)return;if(state.page==='user'&&state.selectedUser){if(full)await openUserDetail(state.selectedUser.id,{navigate:false});else await refreshSelectedUserOps();return}
     await loadPageData(state.page,{force:true});
