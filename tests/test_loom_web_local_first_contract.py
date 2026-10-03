@@ -41,7 +41,8 @@ def test_web_gate_requires_explicit_user_entry_after_host_is_online() -> None:
     assert "const [entered, setEntered] = useState(false);" in source
     assert 'if (hostStateRef.current === "online") {' in source
     assert "setEntered(true);" in source
-    assert 'hostState !== "online" || !entered' in source
+    assert 'if (!account.ready || !account.account.authenticated || !account.account.user || !entered)' in source
+    assert '{hostState !== "online" && <div className="web-reconnect-notice"' in source
     assert "onEnter={enterOrRetry}" in source
     assert "setEntered(false);" in source
 
