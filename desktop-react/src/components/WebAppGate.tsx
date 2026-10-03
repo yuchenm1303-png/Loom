@@ -48,11 +48,15 @@ export function WebAppGate({ children }: { children: ReactNode }) {
   const [localHost, setLocalHost] = useState<LocalLoomHost | null>(null);
   const [discoveryNonce, setDiscoveryNonce] = useState(0);
   const [pairing, setPairing] = useState(false);
+  const pairingRef = useRef(false);
   const [pairAttempts, setPairAttempts] = useState(0);
   const [pairingSucceeded, setPairingSucceeded] = useState(false);
   const [entered, setEntered] = useState(false);
   const hostStateRef = useRef<HostState>("idle");
   const connectPromiseRef = useRef<Promise<void> | null>(null);
+  const activeAccountId = account.account.authenticated ? String(account.account.user?.id || "") : "";
+  const accountIdRef = useRef(activeAccountId);
+  accountIdRef.current = activeAccountId;
 
   const setTrackedHostState = useCallback((next: HostState) => {
     hostStateRef.current = next;
@@ -61,7 +65,9 @@ export function WebAppGate({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!web) return;
+    document.documentElement.dataset.loomWeb = "true";
     document.title = "Loom Web · Smirel";
+    return () => { delete document.documentElement.dataset.loomWeb; };
   }, [web]);
 
   useEffect(() => {
@@ -75,19 +81,31 @@ export function WebAppGate({ children }: { children: ReactNode }) {
     if (!account.ready || !account.account.authenticated || !account.account.user) setEntered(false);
   }, [account.account.authenticated, account.account.user, account.ready]);
 
-  const connectCurrentHost = useCallback(async (options?: { force?: boolean }) => {
+  useEffect(() => {
+    setEntered(false);
+    setTrackedHostState("idle");
+    setPairAttempts(0);
+    setPairingSucceeded(false);
+    setPairing(false);
+    setLocalHost(null);
+  }, [activeAccountId, setTrackedHostState]);
+
+  const connectCurrentHost = useCallback(async (options?: { force?: boolean; background?: boolean }) => {
     if (!web || !account.ready || !account.account.authenticated) return;
     const force = Boolean(options?.force);
     if (!force && hostStateRef.current === "online") return;
     if (connectPromiseRef.current) return connectPromiseRef.current;
 
-    if (hostStateRef.current !== "online") setTrackedHostState("connecting");
+    if (hostStateRef.current !== "online" && !options?.background) setTrackedHostState("connecting");
     const attempt = (async () => {
+      const identity = activeAccountId;
       try {
         await window.loom.connect();
+        if (accountIdRef.current !== identity) return;
         setTrackedHostState("online");
         setHostError("");
       } catch (cause) {
+        if (accountIdRef.current !== identity) return;
         const error = cause as Error & { code?: string };
         setEntered(false);
         if (error.code === "HOST_UPDATE_REQUIRED") {
@@ -106,7 +124,7 @@ export function WebAppGate({ children }: { children: ReactNode }) {
     } finally {
       if (connectPromiseRef.current === attempt) connectPromiseRef.current = null;
     }
-  }, [account.account.authenticated, account.ready, setTrackedHostState, web]);
+  }, [account.account.authenticated, account.ready, activeAccountId, setTrackedHostState, web]);
 
   useEffect(() => {
     if (!web || !account.ready || !account.account.authenticated) return;
@@ -279,6 +297,16 @@ export function WebAppGate({ children }: { children: ReactNode }) {
     };
   }, [account.account.authenticated, account.ready, connectCurrentHost, hostState, setTrackedHostState, web]);
 
+  useEffect(() => {
+    if (!web || !account.ready || !account.account.authenticated) return;
+    const timer = window.setInterval(() => {
+      if (hostStateRef.current === "offline" || hostStateRef.current === "missing") {
+        void connectCurrentHost({ background: true });
+      }
+    }, 5000);
+    return () => window.clearInterval(timer);
+  }, [account.account.authenticated, account.ready, connectCurrentHost, web]);
+
   const retry = useCallback(() => {
     setEntered(false);
     setPairAttempts(0);
@@ -317,6 +345,7 @@ export function WebAppGate({ children }: { children: ReactNode }) {
         hostState={portalState}
         hostError={hostError}
         selectedDeviceName={localHost?.deviceName || ""}
+        hostDetected={Boolean(localHost)}
         onEnter={enterOrRetry}
       />
     );

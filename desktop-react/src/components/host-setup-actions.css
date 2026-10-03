@@ -1,0 +1,12 @@
+.loom-host-setup { margin-top: 22px; padding: 18px; border: 1px solid var(--loom-line, rgba(255,255,255,.12)); border-radius: 16px; background: rgba(8,20,31,.26); }
+.loom-host-setup p { margin: 0 0 12px; font-size: 13px; line-height: 1.65; }
+.loom-host-setup .loom-host-setup-title { font-weight: 600; color: var(--loom-text, #edf5fb); }
+.loom-host-setup .loom-host-setup-note { font-size: 12px; color: var(--loom-muted, #b5c5d2); }
+.loom-host-setup .loom-form-submit, .loom-host-setup .loom-secondary-action { width: 100%; box-sizing: border-box; margin: 10px 0; text-decoration: none; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.loom-host-setup-install { margin-top: 18px; padding-top: 18px; border-top: 1px solid var(--loom-line, rgba(255,255,255,.12)); }
+.loom-host-setup-retry { border: 0; background: transparent; color: var(--loom-muted, #b5c5d2); font: inherit; font-size: 12px; text-decoration: underline; text-underline-offset: 4px; cursor: pointer; padding: 8px 0; }
+.loom-host-setup :is(a, button):focus-visible { outline: 2px solid #b5dbea; outline-offset: 4px; }
+.loom-host-error { margin-top: 14px; font-size: 12px; color: var(--loom-muted, #b5c5d2); overflow-wrap: anywhere; }
+.loom-host-error summary { cursor: pointer; }
+.loom-host-error p { margin-top: 8px; }
+@media (max-width: 480px) { .loom-host-setup { padding: 14px; } }

@@ -6,6 +6,8 @@ import { useEffect, useState } from "react";
 import { Laptop, Download, UserRound, LogOut, Check, ArrowRight, Github, Mail, KeyRound, ShieldCheck } from "lucide-react";
 import { useI18n } from "../i18n";
 import { useAccount } from "../state/useAccount";
+import { HostSetupActions } from "./HostSetupActions";
+import { FALLBACK_RELEASE, fetchPortalRelease } from "../portalRelease";
 
 export type PortalHostState = "idle" | "checking" | "online" | "offline" | "unbound";
 type AccountController = ReturnType<typeof useAccount>;
@@ -26,22 +28,17 @@ const PORTAL_STYLES = [
   "https://smirel.com/download/wallpaper-ready-v1.css",
 ] as const;
 
-const RELEASE = {
-  version: "v0.1.9",
-  package: "137.6 MiB",
-  download: "https://github.com/yuchenm1303-png/Loom/releases/latest/download/Loom-Setup-x64.exe",
-} as const;
 
 const HOST_COPY = {
   en: {
-    localSetup: "Loom Host is not running on this computer, or Loom has not been installed yet. If Loom is already installed, open it and this page will reconnect automatically.",
-    localConnecting: "Connecting securely to the Loom Host on this computer.",
-    localOffline: "Loom is installed for this account, but its Host is offline. Open Loom on this computer and this page will reconnect automatically.",
+    localSetup: "Start your local Loom Host to use files and apps on this computer. This page will connect automatically.",
+    localConnecting: "Finding and securely connecting your Host. Once connected, click Open workspace to enter.",
+    localOffline: "The connection to Loom Host was lost. Your conversations stay on this computer; reconnect to continue.",
   },
   zh: {
-    localSetup: "这台电脑上当前没有运行 Loom Host。可能是已经安装但尚未启动，也可能还没有安装。若已安装，直接启动 Loom，本页面会自动重新连接。",
-    localConnecting: "正在安全连接这台电脑上的 Loom Host。",
-    localOffline: "这台电脑的 Loom Host 当前离线。直接启动 Loom，本页面会自动重新连接。",
+    localSetup: "启动本机 Loom Host，即可使用这台电脑上的文件和应用。本页会自动连接。",
+    localConnecting: "正在查找并安全连接本机 Host，连接后点击进入工作区。",
+    localOffline: "与 Loom Host 的连接已断开。会话仍保留在本机，重新连接即可继续。",
   },
 } as const;
 
@@ -94,16 +91,26 @@ function PortalWallpaper() {
   );
 }
 
-export function WebPortal({ account, hostState, hostError, selectedDeviceName, onEnter }: {
+export function WebPortal({ account, hostState, hostError, selectedDeviceName, onEnter, hostDetected = false }: {
   account: AccountController;
   hostState: PortalHostState;
   hostError: string;
   selectedDeviceName: string;
   onEnter: () => void;
+  hostDetected?: boolean;
   remoteMode?: boolean;
   onRemote?: () => void;
 }) {
   usePortalStyles();
+  const [release, setRelease] = useState(FALLBACK_RELEASE);
+  useEffect(() => {
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), 10000);
+    fetchPortalRelease(controller.signal).then(setRelease).catch(() => {
+      // The generic latest download remains available without stale metadata.
+    }).finally(() => window.clearTimeout(timeout));
+    return () => { controller.abort(); window.clearTimeout(timeout); };
+  }, []);
   const { language } = useI18n();
   const zh = language === "zh-CN";
   const copy = HOST_COPY[zh ? "zh" : "en"];
@@ -118,7 +125,6 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
   const [challengeEmail, setChallengeEmail] = useState("");
   const [resendWait, setResendWait] = useState(0);
   const [localError, setLocalError] = useState("");
-  const [launchingLoom, setLaunchingLoom] = useState(false);
   const authenticated = Boolean(account.account.authenticated && account.account.user);
   const strength = passwordScore(password);
   const strengthLabel = !password
@@ -249,29 +255,16 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
     window.setTimeout(() => document.getElementById("emailInput")?.focus(), 220);
   }
 
-  function openInstalledLoom() {
-    setLaunchingLoom(true);
-    setLocalError("");
-    window.location.href = "loom://open?source=web";
-    window.setTimeout(() => onEnter(), 1_200);
-    window.setTimeout(() => onEnter(), 3_200);
-    window.setTimeout(() => setLaunchingLoom(false), 4_500);
-  }
-
   function primaryAction() {
     if (!authenticated) {
       focusAccount();
-      return;
-    }
-    if (hostState === "offline") {
-      openInstalledLoom();
       return;
     }
     onEnter();
   }
 
   const hostText = hostState === "online"
-    ? (zh ? "已连接，可进入 Loom Web" : "Connected · Loom Web ready")
+    ? (zh ? "Host 已连接，点击进入工作区。" : "Host connected. Click Open workspace to enter.")
     : hostState === "checking"
       ? copy.localConnecting
       : hostState === "unbound"
@@ -297,12 +290,8 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
       : hostState === "checking"
         ? (zh ? "正在连接…" : "Connecting…")
         : hostState === "unbound"
-          ? (zh ? "重新检测 Loom Host" : "Check again")
-          : hostState === "offline"
-            ? launchingLoom
-              ? (zh ? "正在启动 Loom…" : "Opening Loom…")
-              : (zh ? "启动已安装的 Loom" : "Open installed Loom")
-            : (zh ? "重新连接 Loom Host" : "Reconnect Loom Host");
+          ? (zh ? "查找本机 Loom Host" : "Find Loom Host")
+          : (zh ? "重新连接 Loom Host" : "Reconnect Loom Host");
 
   return (
     <div className="loom-portal-page is-modular">
@@ -314,7 +303,7 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
             <span className="loom-brand-divider" aria-hidden="true" />
             <span className="brand-copy"><strong>Loom</strong><small>Personal AI Agent</small></span>
           </a>
-          <div className="loom-version-chip"><span>{RELEASE.version}</span></div>
+          <div className="loom-version-chip"><span>{(release.version || (zh ? "最新稳定版" : "Latest stable"))}</span></div>
         </header>
 
         <section className="loom-module-grid">
@@ -324,16 +313,16 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
             <h1><span className="loom-heading-main">{zh ? "你的 Loom，" : "Your Loom stays"}</span>{" "}<span className="loom-heading-accent">{zh ? "始终在自己的电脑上。" : "on your computer."}</span></h1>
             <p className="loom-stage-description">
               {zh
-                ? "Loom Host 会在后台真正运行 Agent。桌面端只是可选界面，网页会安全连接同一个会话、文件、审批和 Computer Use。"
-                : "Loom Host runs the Agent in the background. Desktop is optional; the web securely connects to the same conversations, files, approvals and Computer Use."}
+                ? "Loom Host 在本机后台运行 Agent，打开网页即可继续工作。桌面界面可选，网页和桌面共享同一个会话、文件、审批和 Computer Use。"
+                : "Loom Host runs the Agent in the background on your computer. Open the web to keep working. Desktop is optional; both share the same conversations, files, approvals and Computer Use."}
             </p>
 
             {!authenticated ? <div className="loom-stage-actions"><button className="loom-primary-action" type="button" onClick={primaryAction}><span>{primaryLabel}</span><span aria-hidden="true">→</span></button></div> : null}
             </div>
           <div className="loom-download-module" aria-labelledby="loom-download-title">
-            <div className="loom-download-product"><Laptop size={26} aria-hidden="true" /><div><h2 id="loom-download-title">Loom for Windows</h2><p>Windows 10 / 11 · x64 · {RELEASE.package}</p></div></div>
-            <div className="loom-download-version"><span>{RELEASE.version} · Stable</span><a href="https://github.com/yuchenm1303-png/Loom/releases" target="_blank" rel="noreferrer">{zh ? "更新日志" : "Release notes"}<span aria-hidden="true"> ↗</span></a></div>
-            <a className="loom-secondary-action" href={RELEASE.download}><span><strong>{zh ? "下载 Windows 版" : "Download for Windows"}</strong></span><Download size={16} aria-hidden="true" /></a>
+            <div className="loom-download-product"><Laptop size={26} aria-hidden="true" /><div><h2 id="loom-download-title">Loom for Windows</h2><p>Windows 10 / 11 · x64{release.package ? ` · ${release.package}` : ""}</p><p>{zh ? "包含本机 Host · 桌面界面可选" : "Local Host included · Desktop optional"}</p></div></div>
+            <div className="loom-download-version"><span>{(release.version || (zh ? "最新稳定版" : "Latest stable"))} · Stable</span><a href={release.notes} target="_blank" rel="noreferrer">{zh ? "更新日志" : "Release notes"}<span aria-hidden="true"> ↗</span></a></div>
+            <a className="loom-secondary-action" href={release.download}><span><strong>{zh ? "下载 Windows 版" : "Download for Windows"}</strong></span><Download size={16} aria-hidden="true" /></a>
           </div>
 
           </article>
@@ -358,7 +347,7 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
               </div>
 
               {authStep === "form" ? <>
-                <p className="loom-control-copy">{zh ? "登录后会自动寻找这台电脑上的 Loom Host，由你点击进入 Loom。" : "Sign in to securely reconnect to this computer's Loom Host, then enter when you're ready."}</p>
+                <p className="loom-control-copy">{zh ? "登录后会自动连接本机 Loom Host，连接成功后点击进入工作区。" : "Sign in to automatically connect your local Host, then click Open workspace."}</p>
 
                 {(account.capabilities.google || account.capabilities.github) ? <>
                   <div className="loom-oauth-grid">
@@ -418,31 +407,11 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
                     <p className="loom-host-target">{hostState === "online" ? (zh ? "当前电脑" : "This computer") : selectedDeviceName || (zh ? "你的本地工作区" : "Your local workspace")}</p>
                   </div>
                 </div>
-                <p className="loom-control-copy">{hostError || hostText}</p>
-                {hostState === "unbound" ? <div className="loom-host-onboarding">
-                  <div className="loom-host-onboarding-head">
-                    <span className="loom-host-onboarding-icon" aria-hidden="true"><Laptop size={17} /></span>
-                    <div><strong>{zh ? "已经安装 Loom？" : "Already installed Loom?"}</strong><span>{zh ? "这种情况下通常只是 Loom 和 Host 还没有启动。" : "In this state, Loom may simply be installed but not running yet."}</span></div>
-                  </div>
-                  <button className="loom-host-install-action loom-host-open-action" type="button" onClick={openInstalledLoom} disabled={launchingLoom}>
-                    <span>{launchingLoom ? (zh ? "正在启动 Loom…" : "Opening Loom…") : (zh ? "启动已安装的 Loom" : "Open installed Loom")}</span><ArrowRight size={15} aria-hidden="true" />
-                  </button>
-                  <p className="loom-host-onboarding-note">{zh ? "若浏览器没有拉起应用，请从 Windows 开始菜单启动 Loom。启动后网页会自动重试；也可以点击下方“重新检测”。" : "If the browser does not open the app, start Loom from the Windows Start menu. This page retries automatically, or you can use Check again below."}</p>
-                  <div className="loom-host-onboarding-divider" aria-hidden="true" />
-                  <div className="loom-host-onboarding-head">
-                    <span className="loom-host-onboarding-icon" aria-hidden="true"><Download size={17} /></span>
-                    <div><strong>{zh ? "这台电脑还没安装 Loom？" : "Loom not installed on this computer?"}</strong><span>{zh ? "只需要安装一次，本机 Host 与 Agent Runtime 会一起安装。" : "Install it once; the local Host and Agent Runtime are included."}</span></div>
-                  </div>
-                  <ol className="loom-host-onboarding-steps">
-                    <li><span>1</span><p><strong>{zh ? "下载安装 Loom" : "Install Loom"}</strong><small>{zh ? "安装完成后会注册网页唤起能力。" : "The installer also registers browser-to-Loom launch support."}</small></p></li>
-                    <li><span>2</span><p><strong>{zh ? "启动 Loom" : "Open Loom"}</strong><small>{zh ? "Loom Host 启动后会自动连接你的账户。" : "Loom Host connects to your account when the app starts."}</small></p></li>
-                    <li><span>3</span><p><strong>{zh ? "继续留在这个页面" : "Stay on this page"}</strong><small>{zh ? "网页会自动发现、配对并进入当前电脑。" : "Loom Web will automatically discover, pair, and reconnect this computer."}</small></p></li>
-                  </ol>
-                  <a className="loom-host-install-action" href={RELEASE.download}><span>{zh ? "下载 Loom for Windows" : "Download Loom for Windows"}</span><Download size={15} aria-hidden="true" /></a>
-                </div> : null}
-                {hostState === "offline" ? <div className="loom-host-recovery"><span>{zh ? "这台电脑此前已经连接过 Loom，现在只是 Host 没有运行。点击下方“启动已安装的 Loom”，网页会自动重连。" : "This computer has connected before; its Host is simply not running now. Use Open installed Loom below and the web will reconnect automatically."}</span><a href={RELEASE.download}>{zh ? "需要重新安装？" : "Need to reinstall?"}</a></div> : null}
+                <p className="loom-control-copy">{hostState === "checking" && hostError ? hostError : hostText}</p>
+                {hostState === "unbound" || hostState === "offline" ? <HostSetupActions zh={zh} download={release.download} onRetry={onEnter} hostDetected={hostDetected} /> : null}
+                {hostError ? <details className="loom-host-error"><summary>{zh ? "连接详情" : "Connection details"}</summary><p>{hostError}</p></details> : null}
                 {hostState === "checking" || hostState === "online" ? <div className={`loom-connection-track${hostState === "checking" ? " is-working" : " is-online"}`} aria-hidden="true"><span /></div> : null}
-                {hostState !== "checking" ? <button className="loom-form-submit loom-host-action" type="button" onClick={primaryAction}><span>{primaryLabel}</span><ArrowRight size={15} aria-hidden="true" /></button> : null}
+                {hostState === "online" ? <button className="loom-form-submit loom-host-action" type="button" onClick={primaryAction}><span>{primaryLabel}</span><ArrowRight size={15} aria-hidden="true" /></button> : null}
               </section>
               <section className="loom-account-module loom-account-refined" aria-label={zh ? "账户与设备" : "Account and device"}>
                 <div className="loom-account-heading">
