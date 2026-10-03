@@ -94,8 +94,11 @@ def test_admin_frontend_vendors_original_usage_glass_system() -> None:
     assert 'https://smirel.com/download/wallpaper-rain-anime-v1.png' in html
     assert 'usage-summary-grid' in html
     assert 'usage-range-control' in html
-    assert 'usage-presence-rail' in html
-    assert 'usage-throughput-chart' in html
+    assert 'loom-admin-overview-snapshot' in html
+    assert 'id="runs" data-admin-page="runs" hidden' in html
+    assert 'id="user" data-admin-page="user" hidden' in html
+    assert 'async function loadPageData(page' in js
+    assert 'request(`/admin/users/${id}/agent-ops`)' in js
     assert '/admin/system' in js
 
 

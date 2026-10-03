@@ -260,6 +260,35 @@ class AgentOpsStore(base.AccountStore):
             overrides = int(db.execute("SELECT COUNT(*) FROM model_entitlements").fetchone()[0])
         return {"managed_models": self._default_model_ids(), "entitlement_overrides": overrides, "observed": [dict(r) for r in observed]}
 
+    def admin_user_operations(self, user_id: int, limit: int = 120) -> dict[str, Any]:
+        uid = int(user_id)
+        now = _now(); online_cutoff = now - 90; active_cutoff = now - 7200; month = now - 30*86400
+        with self._connect() as db:
+            user = db.execute("SELECT id, email FROM users WHERE id=?", (uid,)).fetchone()
+            if user is None:
+                raise AccountError(HTTPStatus.NOT_FOUND, "USER_NOT_FOUND", "User not found.")
+            devices = db.execute("""SELECT d.*, CASE WHEN d.last_seen_at>=? AND (d.disconnected_at IS NULL OR d.disconnected_at<d.last_seen_at) THEN 1 ELSE 0 END AS online
+                FROM agent_devices d WHERE d.user_id=? ORDER BY d.last_seen_at DESC LIMIT 100""", (online_cutoff, uid)).fetchall()
+            runs = db.execute("SELECT * FROM agent_runs WHERE user_id=? ORDER BY updated_at DESC, id DESC LIMIT ?", (uid, max(1, min(int(limit), 500)))).fetchall()
+            run_summary = db.execute("""SELECT COUNT(*) AS runs_30d, COALESCE(SUM(total_tokens),0) AS tokens_30d,
+                COALESCE(SUM(tool_count),0) AS tool_calls_30d, COALESCE(SUM(approval_count),0) AS approvals_30d
+                FROM agent_runs WHERE user_id=? AND updated_at>=?""", (uid, month)).fetchone()
+            active_runs = int(db.execute("SELECT COUNT(*) FROM agent_runs WHERE user_id=? AND status IN ('running','waiting_approval') AND updated_at>=?", (uid, active_cutoff)).fetchone()[0])
+            models = db.execute("""SELECT provider, model, COUNT(*) AS runs, COALESCE(SUM(total_tokens),0) AS total_tokens
+                FROM agent_runs WHERE user_id=? AND completed_at>=? GROUP BY provider, model ORDER BY total_tokens DESC, runs DESC LIMIT 30""", (uid, month)).fetchall()
+        device_items=[{**dict(row), "online": bool(row["online"])} for row in devices]
+        run_items=[{**dict(row), "error_present": bool(row["error_present"])} for row in runs]
+        return {
+            "user_id": uid, "email": str(user["email"]), "generated_at": now,
+            "summary": {
+                "known_devices": len(device_items), "online_devices": sum(1 for item in device_items if item["online"]),
+                "active_runs": active_runs, "runs_30d": int(run_summary["runs_30d"] or 0),
+                "tokens_30d": int(run_summary["tokens_30d"] or 0), "tool_calls_30d": int(run_summary["tool_calls_30d"] or 0),
+                "approvals_30d": int(run_summary["approvals_30d"] or 0),
+            },
+            "devices": device_items, "runs": run_items, "models": [dict(row) for row in models],
+        }
+
     def admin_queue_interrupt(self, actor: dict[str, Any], run_id: int) -> dict[str, Any]:
         with self._guard, self._connect() as db:
             run = db.execute("SELECT * FROM agent_runs WHERE id=?", (int(run_id),)).fetchone()
@@ -283,6 +312,8 @@ class AgentOpsApplication(base.AccountApplication):
     def admin_usage(self, authorization: str) -> dict[str, Any]: self._admin(authorization); return self.store.admin_usage()
     def admin_tools(self, authorization: str) -> dict[str, Any]: self._admin(authorization); return self.store.admin_tools()
     def admin_models(self, authorization: str) -> dict[str, Any]: self._admin(authorization); return self.store.admin_models()
+
+    def admin_user_operations(self, user_id: int, authorization: str) -> dict[str, Any]: self._admin(authorization); return self.store.admin_user_operations(user_id)
 
     @staticmethod
     def _require_telemetry_secret(supplied: str) -> None:
@@ -316,6 +347,12 @@ class AgentOpsRequestHandler(base.AccountRequestHandler):
             handler = routes.get(path)
             if handler is not None:
                 return handler(authorization)
+            prefix = "/v1/admin/users/"
+            suffix = "/agent-ops"
+            if path.startswith(prefix) and path.endswith(suffix):
+                raw_id = path[len(prefix):-len(suffix)].strip("/")
+                if raw_id.isdigit():
+                    return self.application.admin_user_operations(int(raw_id), authorization)
         if self.command == "POST" and path in {"/v1/telemetry/device", "/v1/telemetry/agent-event", "/v1/telemetry/commands/poll", "/v1/telemetry/commands/complete", "/v1/admin/runs/interrupt"}:
             body = self._json_body()
             if path == "/v1/admin/runs/interrupt":
