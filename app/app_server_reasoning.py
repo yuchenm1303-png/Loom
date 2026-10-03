@@ -2,8 +2,6 @@ from __future__ import annotations
 
 import json
 import os
-import urllib.error
-import urllib.request
 from dataclasses import replace
 from pathlib import Path
 from typing import Any, Callable, TextIO
@@ -18,6 +16,7 @@ from app.runtime_model_switch import build_runtime_model_platform, validate_runt
 from app.settings import SETTINGS_UPDATE_PREFIX, LoomSettingsStore
 from app.web_search_settings import WebSearchConfigurator
 from loom_model_bridge import resolve_model_spec
+from app.model_policy_snapshot import ModelPolicySnapshot
 
 from .app_server_thread_management import (
     ManagedStreamingJsonRpcStdioServer,
@@ -77,6 +76,10 @@ class ReasoningManagedLoomAppServerService(ManagedStreamingLoomAppServerService)
         self.default_model_selection = str(kwargs.pop("default_model_selection", "") or "").strip()
         self.default_model_provider = str(kwargs.pop("default_model_provider", "") or "").strip()
         self.default_model_base_url = str(kwargs.pop("default_model_base_url", "") or "").strip().rstrip("/")
+        self._policy_snapshot = None
+        initial_credential = str(os.environ.get("LOOM_ACCOUNT_MODEL_CREDENTIAL") or "").strip()
+        if initial_credential:
+            self._policy_snapshot = ModelPolicySnapshot(self._model_policy_check_url().rsplit("/", 1)[0] + "/access", initial_credential)
         super().__init__(*args, **kwargs)
         root = Path(getattr(self.store, "root", "")).expanduser().resolve()
         try:
@@ -599,39 +602,17 @@ class ReasoningManagedLoomAppServerService(ManagedStreamingLoomAppServerService)
         # scoped credential from Electron when the App Server is launched.
         if not credential:
             return
-        body = json.dumps({"model_id": selection}, separators=(",", ":")).encode("utf-8")
-        request = urllib.request.Request(
-            self._model_policy_check_url(),
-            data=body,
-            method="POST",
-            headers={
-                "Authorization": "Bearer " + credential,
-                "Content-Type": "application/json",
-                "Accept": "application/json",
-                "User-Agent": "LoomAppServer/1",
-            },
-        )
-        try:
-            with urllib.request.urlopen(request, timeout=5) as response:
-                payload = json.loads(response.read().decode("utf-8"))
-        except urllib.error.HTTPError as exc:
-            raw = exc.read().decode("utf-8", errors="replace")
-            try:
-                payload = json.loads(raw)
-                message = str(payload.get("error", {}).get("message") or "Model policy rejected this request.")
-            except json.JSONDecodeError:
-                message = "Model policy rejected this request."
-            raise RuntimeError(message) from None
-        except (OSError, urllib.error.URLError, json.JSONDecodeError) as exc:
-            raise RuntimeError("Loom model policy is temporarily unavailable; built-in model use is blocked until policy can be verified.") from exc
-        decision = payload.get("decision") if isinstance(payload, dict) else None
-        if not isinstance(decision, dict) or not bool(decision.get("enabled")):
-            source = str(decision.get("source") or "policy") if isinstance(decision, dict) else "policy"
-            raise RuntimeError(f"This built-in model is disabled by Loom Admin ({source}).")
+        snapshot = getattr(self, "_policy_snapshot", None)
+        if snapshot is None:
+            snapshot = ModelPolicySnapshot(self._model_policy_check_url().rsplit("/", 1)[0] + "/access", credential)
+            self._policy_snapshot = snapshot
+        snapshot.check(selection, credential)
 
     def _ensure_thread_model_runtime(self, session: Any) -> Any:
         session = self._ensure_thread_model_metadata(session)
-        self._assert_model_policy(str(getattr(session, "model_selection", "") or ""))
+        selection = str(getattr(session, "model_selection", "") or "")
+        if not self._gateway_enforces_policy(selection, str(getattr(session, "model_base_url", "") or "")):
+            self._assert_model_policy(selection)
         has_model = getattr(self.runtime, "has_session_model", None)
         if callable(has_model) and has_model(session.session_id):
             return session
@@ -687,6 +668,10 @@ class ReasoningManagedLoomAppServerService(ManagedStreamingLoomAppServerService)
             session.model_vision = vision
             self.store.save(session)
         return session
+
+    @staticmethod
+    def _gateway_enforces_policy(selection: str, base_url: str) -> bool:
+        return selection.startswith(("builtin:ant-ling", "managed:ant-ling")) and base_url.rstrip("/") == "https://account.smirel.com/model/v1"
 
     def _model_api_key(
         self,
@@ -773,7 +758,8 @@ class ReasoningManagedLoomAppServerService(ManagedStreamingLoomAppServerService)
             home=self._runtime_home(),
         )
         selection = str(spec.get("selection") or requested_selection).strip()
-        self._assert_model_policy(selection)
+        if not self._gateway_enforces_policy(selection, str(spec.get("baseUrl") or "")):
+            self._assert_model_policy(selection)
         provider = str(spec.get("provider") or "").strip()
         base_url = str(spec.get("baseUrl") or "").strip().rstrip("/")
         model = str(spec.get("model") or requested_model).strip()
