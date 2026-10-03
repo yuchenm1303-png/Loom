@@ -9,6 +9,7 @@ services:
     environment:
       LOOM_ACCOUNT_API_BASE_URL: https://account.smirel.com/v1
       LOOM_WEB_ORIGIN: ${LOOM_WEB_ORIGIN:-https://loom.smirel.com}
+      LOOM_TELEMETRY_SECRET: ${LOOM_TELEMETRY_SECRET:-}
     networks:
       - edge
     security_opt:
