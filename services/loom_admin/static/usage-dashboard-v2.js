@@ -3,14 +3,6 @@
   const compact = (value) => new Intl.NumberFormat('en-US', { notation: 'compact', maximumFractionDigits: 1 }).format(Number(value || 0));
   const number = (value) => new Intl.NumberFormat('en-US').format(Number(value || 0));
   const percent = (value) => `${Number.isFinite(value) ? value.toFixed(value >= 10 ? 1 : 2) : '0.0'}%`;
-  const fmtDuration = (seconds) => {
-    const s = Math.max(0, Math.round(Number(seconds || 0)));
-    if (s < 60) return `${s}s`;
-    const m = Math.floor(s / 60);
-    if (m < 60) return `${m}m ${s % 60}s`;
-    const h = Math.floor(m / 60);
-    return `${h}h ${m % 60}m`;
-  };
   const escapeHtml = (value) => String(value ?? '').replace(/[&<>'"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[ch]));
 
   let usageData = null;
@@ -28,8 +20,7 @@
   }
 
   function setText(id, value) {
-    const el = $(id);
-    if (el) el.textContent = value;
+    document.querySelectorAll(`[id="${id}"]`).forEach((el) => { el.textContent = value; });
   }
 
   function setWidth(id, value) {
