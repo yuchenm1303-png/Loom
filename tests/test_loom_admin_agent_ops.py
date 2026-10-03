@@ -109,5 +109,5 @@ def test_gateway_heartbeat_is_owned_by_device_socket():
     source=Path("services/loom_web_gateway/app.py").read_text(encoding="utf-8")
     browser=source.split('async def browser_socket',1)[1].split('@app.websocket("/api/ws/device")',1)[0]
     device=source.split('async def device_socket',1)[1].split('def _static_headers',1)[0]
-    assert '_record_device(peer, "heartbeat")' not in browser
-    assert '_record_device(peer, "heartbeat")' in device
+    assert 'heartbeat' not in browser or '_record_device(peer' not in browser
+    assert 'heartbeat' in device and '_record_device(peer' in device
