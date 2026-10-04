@@ -6,6 +6,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 TRANSCRIPT = ROOT / "desktop-react" / "src" / "components" / "Transcript.tsx"
 ACTIVITY_FLOW = ROOT / "desktop-react" / "src" / "components" / "activity-flow.css"
+BROWSER_RUNTIME = ROOT / "app" / "agent_runtime" / "browser_runtime_v1.py"
 
 
 def test_browser_screenshot_activity_is_user_visible_and_previewable() -> None:
@@ -26,3 +27,9 @@ def test_browser_screenshot_preview_has_bounded_thumbnail_surface() -> None:
     assert "grid-template-columns: repeat(auto-fit, minmax(168px, 1fr));" in source
     assert ".task-flow-image-card img {" in source
     assert "object-fit: contain;" in source
+
+
+def test_turn_start_tolerates_minimal_runtime_instances() -> None:
+    source = BROWSER_RUNTIME.read_text(encoding="utf-8")
+
+    assert 'getattr(self, "_browser_baselines", {}).pop(session_id, None)' in source
