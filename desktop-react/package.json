@@ -27,7 +27,7 @@
     "check:live-account": "npm run build:electron && node --experimental-test-module-mocks --test scripts/check-live-account.mjs",
     "dev:ready:ufo": "node scripts/dev-ready-ufo.mjs",
     "predev": "npm run prepare:stickers",
-    "prebuild:renderer": "npm run prepare:stickers",
+    "prebuild:renderer": "npm run prepare-chat-stickers",
     "build:renderer": "tsc --noEmit && vite build",
     "build:electron": "tsc -p tsconfig.electron.json",
     "build:runtime:win": "node scripts/build-windows-runtime.mjs",
@@ -139,3 +139,4 @@
     }
   }
 }
+
