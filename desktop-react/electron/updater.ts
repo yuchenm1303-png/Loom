@@ -415,12 +415,27 @@ function configureUpdater(): void {
   });
 }
 
+function runAutomaticCheck(): void {
+  if (!updateEnabled || updateInFlight()) return;
+  if (hasVisibleWindow()) {
+    void checkForUpdates();
+    return;
+  }
+  // Web-only Hosts have no Desktop window to wake the updater. Bootstrap-level
+  // changes (relay, auth, updater, telemetry) still live in Electron, so they
+  // must check the Desktop release channel as well as the independent runtime
+  // channel. ensureBootstrapUpdate() marks the download for guarded headless
+  // install; registerHeadlessUpdateGuard() prevents restart while Agent work is
+  // active.
+  if (isHostProcess) void ensureBootstrapUpdate();
+}
+
 function startAutomaticChecks(): void {
   if (!updateEnabled || startupTimer || periodicTimer) return;
 
   startupTimer = setTimeout(() => {
     startupTimer = null;
-    void checkForUpdates();
+    runAutomaticCheck();
   }, STARTUP_CHECK_DELAY_MS);
   startupTimer.unref?.();
 
@@ -428,15 +443,13 @@ function startAutomaticChecks(): void {
     const timer = setTimeout(() => {
       const index = earlyRecheckTimers.indexOf(timer);
       if (index >= 0) earlyRecheckTimers.splice(index, 1);
-      if (hasVisibleWindow() && !updateInFlight()) void checkForUpdates();
+      runAutomaticCheck();
     }, delay);
     timer.unref?.();
     earlyRecheckTimers.push(timer);
   }
 
-  periodicTimer = setInterval(() => {
-    if (hasVisibleWindow() && !updateInFlight()) void checkForUpdates();
-  }, PERIODIC_CHECK_INTERVAL_MS);
+  periodicTimer = setInterval(runAutomaticCheck, PERIODIC_CHECK_INTERVAL_MS);
   periodicTimer.unref?.();
 }
 
@@ -446,7 +459,7 @@ handleHostChannel("loom:update-status", () => softwareUpdateState());
 handleHostChannel("loom:update-check", () => checkForUpdates());
 handleHostChannel("loom:update-install", () => installDownloadedUpdate());
 handleHostChannel("loom:desktop-activity", () => {
-  if (hasVisibleWindow()) startAutomaticChecks();
+  startAutomaticChecks();
   maybeCheckAfterFocus();
   return softwareUpdateState();
 });
@@ -464,9 +477,10 @@ app.on("browser-window-created", (_event, window) => {
 });
 
 app.whenReady().then(() => {
-  // A pure background Host updates its independent runtime instead. Desktop
-  // update checks start lazily when a Desktop window actually exists.
-  if (hasVisibleWindow()) startAutomaticChecks();
+  // Always arm bootstrap checks in the packaged Host. Interactive Hosts prompt
+  // normally; web-only Hosts download in the background and install only when
+  // the restart-safety guard says Agent work is idle.
+  startAutomaticChecks();
 });
 
 app.on("before-quit", () => {
