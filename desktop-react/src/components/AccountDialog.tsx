@@ -43,6 +43,7 @@ interface AccountDialogProps {
   onRegister(email: string, password: string): Promise<boolean>;
   onUpdateProfile(displayName: string, avatarDataUrl: string): Promise<boolean>;
   initialProfileEdit?: boolean;
+  closeAfterProfileEdit?: boolean;
   onOpenProfile?(): void;
   onLogout(): Promise<void>;
 }
@@ -108,6 +109,7 @@ export function AccountDialog({
   onRegister,
   onUpdateProfile,
   initialProfileEdit = false,
+  closeAfterProfileEdit = false,
   onOpenProfile,
   onLogout,
 }: AccountDialogProps) {
@@ -222,8 +224,9 @@ export function AccountDialog({
     }
     const ok = await onUpdateProfile(name, profileAvatar);
     if (ok) {
-      setEditingProfile(false);
       setProfileError("");
+      if (closeAfterProfileEdit) onClose();
+      else setEditingProfile(false);
     }
   };
 
@@ -438,7 +441,11 @@ export function AccountDialog({
                 </label>
                 {profileError ? <p className="loom-account-profile-error" role="alert">{profileError}</p> : null}
                 <div className="loom-account-profile-editor-actions">
-                  <button type="button" onClick={() => { setEditingProfile(false); setProfileError(""); }} disabled={busy}>{zh ? "取消" : "Cancel"}</button>
+                  <button type="button" onClick={() => {
+                    setProfileError("");
+                    if (closeAfterProfileEdit) onClose();
+                    else setEditingProfile(false);
+                  }} disabled={busy}>{zh ? "取消" : "Cancel"}</button>
                   <button type="button" className="is-primary" onClick={() => void saveProfile()} disabled={busy}>{busy ? (zh ? "保存中…" : "Saving…") : (zh ? "保存资料" : "Save profile")}</button>
                 </div>
               </div>
