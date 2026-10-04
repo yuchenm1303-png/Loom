@@ -33,7 +33,7 @@
     "build:runtime:win": "node scripts/build-windows-runtime.mjs",
     "package:host-runtime": "node scripts/package-host-runtime.mjs",
     "dev": "npm run clean:electron && npm run build:electron && concurrently -k \"vite --host 127.0.0.1\" \"tsc -p tsconfig.electron.json --watch --preserveWatchOutput\" \"wait-on http://127.0.0.1:5173 && electron dist-electron/entry.js --dev-url=http://127.0.0.1:5173\"",
-    "build": "npm run clean:electron && npm run build:renderer && npm run build:electron",
+    "build": "npm run clean:electron && npm run build:electron && npm run build:renderer",
     "typecheck": "tsc --noEmit && tsc -p tsconfig.electron.json --noEmit",
     "start": "npm run build && electron dist-electron/entry.js",
     "package:win:dir": "npm run build && npm run build:runtime:win && electron-builder --win --x64 --dir",
@@ -139,3 +139,5 @@
     }
   }
 }
+
+
