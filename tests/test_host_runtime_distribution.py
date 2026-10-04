@@ -29,11 +29,12 @@ def test_host_runtime_is_selected_independently_from_desktop() -> None:
     assert "minBootstrapVersion" in updater
 
 
-def test_background_host_does_not_poll_full_desktop_updates() -> None:
+def test_background_host_keeps_bootstrap_updates_armed() -> None:
     updater = (ROOT / "desktop-react/electron/updater.ts").read_text(encoding="utf-8")
     assert "bootstrapAutoInstallRequested" in updater
-    assert "if (hasVisibleWindow()) startAutomaticChecks();" in updater
-    assert "ensureBootstrapUpdate" in updater
+    assert "function runAutomaticCheck(): void" in updater
+    assert "if (isHostProcess) void ensureBootstrapUpdate();" in updater
+    assert "periodicTimer = setInterval(runAutomaticCheck, PERIODIC_CHECK_INTERVAL_MS);" in updater
 
 
 def test_runtime_activation_synchronizes_browser_assets() -> None:
