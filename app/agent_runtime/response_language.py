@@ -89,7 +89,7 @@ def infer_user_language(
     """
     seen = 0
     for message in reversed(tuple(messages)):
-        if message.role is not MessageRole.USER:
+        if message.role is not MessageRole.USER or (message.name or "").startswith("loom_"):
             continue
         seen += 1
         signal = _script_signal(_message_text(message))

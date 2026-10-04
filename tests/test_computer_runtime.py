@@ -250,7 +250,9 @@ def test_screenshot_is_ephemeral_model_input_not_durable_history(tmp_path):
     visual_messages = [message for message in follow_up.messages if message.uses_vision]
     assert len(visual_messages) == 1
     assert any(isinstance(part, ImagePart) for part in visual_messages[0].content)
-    assert "LOOM_COMPUTER_OBSERVATION" in str(visual_messages[0].content)
+    assert visual_messages[0].name == "loom_tool_observation"
+    assert any(message.role.value == "tool" and "LOOM_COMPUTER_OBSERVATION" in str(message.content)
+               for message in follow_up.messages)
 
     durable = runtime.get_session(session.session_id)
     durable_text = repr(durable.messages)

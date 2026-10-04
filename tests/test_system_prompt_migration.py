@@ -60,7 +60,7 @@ def test_custom_prompt_is_never_rewritten(tmp_path) -> None:
 
 
 def test_default_prompt_exposes_decision_cards_without_turning_routine_work_into_questions() -> None:
-    assert DEFAULT_AGENT_SYSTEM_PROMPT_VERSION == 7
+    assert DEFAULT_AGENT_SYSTEM_PROMPT_VERSION == 8
     assert "```loom-decision" in DEFAULT_AGENT_SYSTEM_PROMPT
     assert '"title"' not in DEFAULT_AGENT_SYSTEM_PROMPT
     assert "routine implementation details" in DEFAULT_AGENT_SYSTEM_PROMPT

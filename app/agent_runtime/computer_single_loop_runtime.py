@@ -6,7 +6,7 @@ from dataclasses import dataclass, replace
 from io import BytesIO
 from typing import Any, Mapping
 
-from app.ai import AIMessage, ImagePart, MessageRole, TextPart
+from app.ai import AIMessage, ImagePart, MessageRole
 
 from .computer_diagnostics import ComputerDiagnostics
 from .computer_runtime import (
@@ -666,13 +666,9 @@ class SingleLoopComputerRuntime(ComputerUseRuntime):
         self._computer_feedback_turns.pop(session.session_id, None)
 
         observation = snapshot.observation
-        visual_message = AIMessage(
-            role=MessageRole.USER,
-            content=(
-                TextPart(_model_observation_text(snapshot)),
-                ImagePart(observation.image_data_url(), detail="auto"),
-            ),
-        )
+        from .tool_observation import attach_observation
+        messages = attach_observation(messages, _model_observation_text(snapshot),
+            tool_prefix="computer_", image=ImagePart(observation.image_data_url(), detail="auto"))
         safe_extra = dict(extra) if isinstance(extra, dict) else {}
         safe_extra["computer_observation"] = {
             "state_revision": snapshot.state_revision,
@@ -683,7 +679,7 @@ class SingleLoopComputerRuntime(ComputerUseRuntime):
             "windows_total": len(observation.windows),
             "controls_total": len(observation.controls),
         }
-        return [*messages, visual_message], safe_extra
+        return messages, safe_extra
 
     def _mark_visual_feedback(self, context: ToolContext) -> None:
         self._computer_feedback_turns[context.session_id] = context.turn_id

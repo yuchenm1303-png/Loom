@@ -96,8 +96,9 @@ def test_repeated_refusal_to_finish_is_bounded_and_never_completed(tmp_path):
     rt, session, platform = runtime(tmp_path, responses)
     try:
         result = rt.start_turn(session.session_id, "Generate report")
-        assert result.status is AgentStatus.FAILED
-        assert "stop_check_continue" in result.error
+        assert result.status is AgentStatus.LIMIT_REACHED
+        assert "Task incomplete" in result.error
+        assert "Produce the requested report" in result.error
         assert len(platform.requests) == 6
         assert not any(e.kind.value == "turn_completed" for e in rt.store.events(session.session_id))
     finally:
@@ -146,7 +147,9 @@ def test_successful_tool_is_not_proof_all_deliverables_are_done(tmp_path):
     try:
         assert rt.start_turn(session.session_id, "Run acceptance tests and report").status is AgentStatus.COMPLETED
         assert calls == [1]
-        assert any(m.role.value == "tool" for m in platform.requests[2].messages)
+        evidence = json.loads(platform.requests[2].messages[-1].content)["execution_evidence"]
+        assert evidence[0]["tool"] == "write_note"
+        assert evidence[0]["content"] == "Note saved"
     finally:
         rt.close()
 

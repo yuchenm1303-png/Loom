@@ -5,9 +5,10 @@ user's requested work is complete. Native tool calls continue through the normal
 tool loop. Text-only responses are terminal candidates, not final messages.
 
 The canonical `TurnRunner` runs a private, read-only Stop hook before committing
-a candidate. The hook receives the frozen generation context, candidate, original
-current-turn user inputs recovered from durable events (including steering), and
-the cross-turn goal if present. It assesses the requested work against execution
+a candidate. The hook receives fresh assessment context: candidate, actual user
+inputs recovered from durable events (including steering), milestone state,
+attributed execution excerpts, relevant prior results and the cross-turn goal if
+present. Actor chatter and retry instructions are excluded. It assesses requested work against execution
 evidence and returns exactly one schema-validated `loom_turn_stop_decision` call.
 This call is never dispatched to the tool orchestrator.
 
@@ -34,7 +35,9 @@ the final acceptance lock still rejects superseded samples.
 
 Malformed decisions and assessment errors have bounded retries; exhaustion fails
 the turn instead of silently accepting completion. Repeated `continue` decisions
-without action also exhaust the normal sampling recovery budget. Nonretryable
+have a separate durable turn-wide budget, including across tool batches and
+approval resumptions. Exhaustion produces an explicit `limit_reached` incomplete
+result with remaining tasks. See [task convergence](task-convergence.md). Nonretryable
 duration timeouts are not retried. Existing transport/tool safety checks remain
 separate. Waiting-phrase and action-promise regexes are removed from completion
 validation; structural/provider truncation checks remain.
