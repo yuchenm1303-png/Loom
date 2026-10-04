@@ -1,0 +1,31 @@
+name: Apply avatar crop patch
+
+on:
+  push:
+    branches:
+      - feat/avatar-cropper
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Apply cropper implementation
+        shell: bash
+        run: |
+          set -euo pipefail
+          git apply --check .github/avatar-crop.patch
+          git apply .github/avatar-crop.patch
+          rm -f .github/avatar-crop.patch .github/workflows/apply-avatar-crop.yml
+          git add -A
+          git diff --cached --check
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "feat(account): add interactive avatar cropper"
+          git push origin HEAD:feat/avatar-cropper
