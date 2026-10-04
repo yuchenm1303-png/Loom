@@ -42,6 +42,7 @@ interface AccountDialogProps {
   onLogin(email: string, password: string): Promise<boolean>;
   onRegister(email: string, password: string): Promise<boolean>;
   onUpdateProfile(displayName: string, avatarDataUrl: string): Promise<boolean>;
+  initialProfileEdit?: boolean;
   onOpenProfile?(): void;
   onLogout(): Promise<void>;
 }
@@ -106,6 +107,7 @@ export function AccountDialog({
   onLogin,
   onRegister,
   onUpdateProfile,
+  initialProfileEdit = false,
   onOpenProfile,
   onLogout,
 }: AccountDialogProps) {
@@ -130,6 +132,7 @@ export function AccountDialog({
   const confirmRef = useRef<HTMLInputElement | null>(null);
   const avatarInputRef = useRef<HTMLInputElement | null>(null);
   const restoreFocusRef = useRef<HTMLElement | null>(null);
+  const initialProfileEditConsumedRef = useRef(false);
 
   const showForm = ready && account.configured && !(account.authenticated && account.user);
 
@@ -171,6 +174,33 @@ export function AccountDialog({
     setProfileAvatar(account.user?.avatar_data_url || "");
     setProfileError("");
   }, [account.user?.id, account.user?.display_name, account.user?.avatar_data_url, editingProfile]);
+
+  useEffect(() => {
+    if (!open) {
+      initialProfileEditConsumedRef.current = false;
+      return;
+    }
+    if (
+      !initialProfileEdit
+      || initialProfileEditConsumedRef.current
+      || !ready
+      || !account.authenticated
+      || !account.user
+    ) return;
+    initialProfileEditConsumedRef.current = true;
+    onClearError();
+    setProfileName(account.user.display_name?.trim() || "");
+    setProfileAvatar(account.user.avatar_data_url || "");
+    setProfileError("");
+    setEditingProfile(true);
+  }, [
+    account.authenticated,
+    account.user,
+    initialProfileEdit,
+    onClearError,
+    open,
+    ready,
+  ]);
 
   useEffect(() => {
     if (editingProfile && error) setProfileError(accountErrorText(error, zh));
