@@ -17,7 +17,8 @@ import {
 } from "lucide-react";
 import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { useI18n } from "../i18n";
-import type { LoomAccountSnapshot } from "../types/account";
+import type { LoomAccountError, LoomAccountSnapshot } from "../types/account";
+import { AccountDialog } from "./AccountDialog";
 import {
   buildWeeks,
   daysBetween,
@@ -93,7 +94,6 @@ type ProfileInsightsData = {
 interface ProfileInsightsPageProps {
   account: LoomAccountSnapshot;
   onClose(): void;
-  onEditProfile?(): void;
 }
 
 type Formatters = {
@@ -652,7 +652,7 @@ function ProfileSkeleton() {
   );
 }
 
-export function ProfileInsightsPage({ account, onClose, onEditProfile }: ProfileInsightsPageProps) {
+export function ProfileInsightsPage({ account, onClose }: ProfileInsightsPageProps) {
   const { language } = useI18n();
   const zh = language === "zh-CN";
   const format = useFormatters(zh);
@@ -660,14 +660,22 @@ export function ProfileInsightsPage({ account, onClose, onEditProfile }: Profile
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [reloadKey, setReloadKey] = useState(0);
+  const [profileAccount, setProfileAccount] = useState(account);
+  const [profileEditOpen, setProfileEditOpen] = useState(false);
+  const [profileBusy, setProfileBusy] = useState(false);
+  const [profileError, setProfileError] = useState<LoomAccountError | null>(null);
+
+  useEffect(() => {
+    setProfileAccount(account);
+  }, [account]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
+      if (event.key === "Escape" && !profileEditOpen) onClose();
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [onClose]);
+  }, [onClose, profileEditOpen]);
 
   useEffect(() => {
     let cancelled = false;
@@ -697,6 +705,46 @@ export function ProfileInsightsPage({ account, onClose, onEditProfile }: Profile
     if (Number.isNaN(stamp.getTime())) return "";
     return new Intl.DateTimeFormat(zh ? "zh-CN" : "en-US", { hour: "2-digit", minute: "2-digit" }).format(stamp);
   }, [data, zh]);
+
+  const updateProfile = async (displayName: string, avatarDataUrl: string): Promise<boolean> => {
+    setProfileBusy(true);
+    setProfileError(null);
+    try {
+      const result = await window.loom.accountUpdateProfile(displayName, avatarDataUrl);
+      if (!result.ok) {
+        setProfileError(result.error);
+        return false;
+      }
+      setProfileAccount(result.snapshot);
+      window.dispatchEvent(new Event("loom:account-refresh"));
+      return true;
+    } catch (cause) {
+      setProfileError({
+        code: "ACCOUNT_REQUEST_FAILED",
+        message: cause instanceof Error ? cause.message : String(cause),
+      });
+      return false;
+    } finally {
+      setProfileBusy(false);
+    }
+  };
+
+  const retryProfile = async () => {
+    try {
+      const result = await window.loom.accountStatus();
+      if (result.ok) {
+        setProfileAccount(result.snapshot);
+        setProfileError(null);
+      } else {
+        setProfileError(result.error);
+      }
+    } catch (cause) {
+      setProfileError({
+        code: "ACCOUNT_REQUEST_FAILED",
+        message: cause instanceof Error ? cause.message : String(cause),
+      });
+    }
+  };
 
   return (
     <section className="profile-insights-page" aria-label={zh ? "个人主页与使用洞察" : "Profile and usage insights"}>
@@ -730,7 +778,15 @@ export function ProfileInsightsPage({ account, onClose, onEditProfile }: Profile
 
       <div className="profile-insights-scroll">
         <main className="profile-insights-content" aria-busy={loading || undefined}>
-          <ProfileHero account={account} data={data} format={format} onEditProfile={onEditProfile} />
+          <ProfileHero
+            account={profileAccount}
+            data={data}
+            format={format}
+            onEditProfile={profileAccount.authenticated && profileAccount.user ? () => {
+              setProfileError(null);
+              setProfileEditOpen(true);
+            } : undefined}
+          />
 
           {error ? (
             <div className="profile-error-state" role="alert">
@@ -756,6 +812,26 @@ export function ProfileInsightsPage({ account, onClose, onEditProfile }: Profile
           ) : null}
         </main>
       </div>
+
+      <AccountDialog
+        open={profileEditOpen}
+        account={profileAccount}
+        ready
+        busy={profileBusy}
+        error={profileError}
+        initialProfileEdit
+        closeAfterProfileEdit
+        onClose={() => {
+          setProfileEditOpen(false);
+          setProfileError(null);
+        }}
+        onClearError={() => setProfileError(null)}
+        onRetry={retryProfile}
+        onLogin={async () => false}
+        onRegister={async () => false}
+        onUpdateProfile={updateProfile}
+        onLogout={async () => undefined}
+      />
     </section>
   );
 }
