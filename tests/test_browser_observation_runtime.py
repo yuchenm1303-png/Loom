@@ -327,6 +327,8 @@ def test_dependent_action_batch_replans_from_the_actual_result_without_extra_ref
         failures = [e for e in runtime.store.events(session.session_id) if e.kind is AgentEventKind.TOOL_FAILED]
         assert [e.data["call_id"] for e in failures] == ["type-B-stale", "click-stale"]
         assert all(e.data["data"]["execution_status"] == "not_executed" for e in failures)
+        assert all(e.data["data"]["action_evidence"]["functional_verdict"] == "not_assessed" for e in failures)
+        assert all(e.data["data"]["action_evidence"]["execution_status"] == "not_executed" for e in failures)
         assert json.loads(runtime.get_session(session.session_id).messages[-2].content)["data"]["effect"] == "changed"
     finally:
         runtime.close()
@@ -449,3 +451,48 @@ def test_browser_status_documents_new_observation_contract(tmp_path):
     assert "transient ImagePart" in status["visual_feedback"]
     assert status["page_content_trust"].startswith("untrusted observation")
     runtime.close()
+
+
+def test_browser_action_evidence_reaches_actor_and_review_without_page_metadata_leak(tmp_path):
+    from app.ai import ChatRequest
+    from app.agent_runtime.turn_stop import stop_review_messages
+    runtime, workspace = _runtime(tmp_path)
+    session = _session(runtime, workspace)
+    try:
+        runtime._append_tool_result(session, ToolCall("before", "browser_state", {}),
+                                   _state_result(revision=20, dom="OLD_EVENT_13"), failed=False)
+        runtime._record(session, AgentEventKind.MODEL_RESPONSE, data={"text": "Next"})
+        result = _state_result(revision=21, dom="OLD_EVENT_13 plus changed input")
+        result = ToolResult(True, result.content, {**result.data, "page_info": {
+            "viewport_width": 1888, "viewport_height": 987,
+            "arbitrary_page_payload": "DO_NOT_PERSIST"}})
+        runtime._append_tool_result(session, ToolCall("action", "browser_click_at", {
+            "browser_id": "browser-1", "state_revision": 20, "x": 69, "y": 437}), result, failed=False)
+        payload = json.loads(session.messages[-1].content)
+        evidence = payload["data"]["action_evidence"]
+        assert evidence["call_id"] == "action"
+        assert evidence["requested_revision"] == evidence["previous_observed_revision"] == 20
+        assert evidence["returned_revision"] == 21
+        assert evidence["execution_status"] == "succeeded"
+        assert evidence["observable_effect"] == "changed"
+        assert evidence["functional_verdict"] == "not_assessed"
+        assert payload["data"]["page_geometry"] == {"viewport_width": 1888, "viewport_height": 987}
+        assert "DO_NOT_PERSIST" not in str(session.messages)
+        messages, _ = runtime._prepare_model_request(session, _step(runtime, session), None)
+        observation = next(m for m in messages if m.tool_call_id == "action")
+        assert "source_call_id: action" in observation.content[-1].text
+        assert '"viewport_width": 1888' in observation.content[-1].text
+        assert "not a list of events caused by this call" in observation.content[-1].text
+        review = stop_review_messages(runtime, session, ChatRequest(messages=tuple(messages)), ModelResponse(text="Report"))
+        review_data = json.loads(review[-1].content)
+        action = next(e for e in review_data["execution_evidence"] if e["call_id"] == "action")
+        assert action["action_evidence"] == evidence
+    finally:
+        runtime.close()
+
+
+def test_page_geometry_excludes_invalid_dimensions_and_unrelated_metadata():
+    from app.agent_runtime.browser_runtime_v1 import _page_geometry
+    state = BrowserPageState(url="https://example.test", title="", dom="", page_info={
+        "viewport_width": float("nan"), "viewport_height": True, "secret": "ignored"})
+    assert _page_geometry(state) == {}

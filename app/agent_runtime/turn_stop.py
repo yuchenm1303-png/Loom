@@ -56,6 +56,12 @@ or demand extra cleanup, alternate backends, additional audits or repeated tests
 merely to make the result more exhaustive. A blocked or uncovered case can be
 truthfully reported; do not require endless retries or equate different backends.
 Evidence excerpts may be shortened: missing detail is not proof work was omitted.
+For browser evidence, distinguish execution from the functional test verdict.
+not_executed is an observation/scheduling conflict, not a tested feature failure.
+A changed DOM only proves an observable change, not that acceptance criteria passed.
+Full page snapshots can contain historical event logs; an old event cannot establish
+the result of a later action. Require action-linked evidence for claimed coverage,
+and report unverified coverage honestly rather than requesting unrelated retests.
 A provider stop, elapsed time, many tool calls, a successful last
 tool, or a promise to continue is not completion evidence. Inspect the whole task,
 not the presence or absence of words in the candidate. A direct conversational
@@ -130,7 +136,10 @@ def stop_review_messages(rt, session, request, candidate, *, context_limits=None
         if event.kind not in {Event.TOOL_COMPLETED, Event.TOOL_FAILED, Event.TOOL_DENIED}:
             continue
         data = event.data
+        result_data = data.get("data") if isinstance(data.get("data"), dict) else {}
         evidence.append({"call_id": data.get("call_id"), "tool": data.get("tool"),
+            **({"execution_status": result_data["execution_status"]} if "execution_status" in result_data else {}),
+            **({"action_evidence": result_data["action_evidence"]} if "action_evidence" in result_data else {}),
             "arguments": _excerpt(json.dumps(calls.get(data.get("call_id"), {}).get("arguments", {}), ensure_ascii=False), 1000),
             "outcome": event.kind.value, "ok": data.get("ok"),
             "content": _excerpt(data.get("content") or data.get("reason")),

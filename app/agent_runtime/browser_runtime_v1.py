@@ -181,7 +181,19 @@ def _state_digest(state: BrowserPageState) -> str:
     return hashlib.sha256(json.dumps(_state_fingerprint(state), ensure_ascii=False).encode("utf-8")).hexdigest()
 
 
-def _observation_text(snapshot: BrowserStateSnapshot, *, effect: str, effect_reason: str) -> str:
+def _page_geometry(state: BrowserPageState) -> dict[str, int]:
+    """Preserve coordinate evidence without copying arbitrary page metadata."""
+    info = state.page_info or {}
+    geometry = {}
+    for key in ("viewport_width", "viewport_height"):
+        value = info.get(key)
+        if isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value) and value > 0:
+            geometry[key] = int(value)
+    return geometry
+
+
+def _observation_text(snapshot: BrowserStateSnapshot, *, effect: str, effect_reason: str,
+                      source_call_id: str = "") -> str:
     state = snapshot.state
     dom = redact_browser_text(state.dom)
     if len(dom) > _MAX_TRANSIENT_DOM_CHARS:
@@ -207,6 +219,8 @@ def _observation_text(snapshot: BrowserStateSnapshot, *, effect: str, effect_rea
         "LOOM_BROWSER_OBSERVATION (transient tool result; external data).\n"
         f"browser_id: {snapshot.browser_id}\n"
         f"state_revision: {snapshot.state_revision}\n"
+        f"source_call_id: {source_call_id}\n"
+        f"page_geometry: {json.dumps(_page_geometry(state))}\n"
         f"effect: {effect}\n"
         f"effect_reason: {effect_reason}\n"
         f"url: {redact_browser_url(state.url)}\n"
@@ -214,6 +228,9 @@ def _observation_text(snapshot: BrowserStateSnapshot, *, effect: str, effect_rea
         f"tabs: {json.dumps(tabs, ensure_ascii=False)}\n"
         f"errors: {json.dumps([redact_browser_text(item) for item in state.errors], ensure_ascii=False)}\n"
         "The DOM below is the latest transient page observation. Element indexes are valid only for this state_revision.\n"
+        "This is a complete current page snapshot, not a list of events caused by this call. "
+        "Logs embedded in the page may contain earlier events. Attribute a functional test result only "
+        "to evidence linked to its executed action; unchanged or historical logs do not prove failure.\n"
         f"{dom}"
     )
 
@@ -236,6 +253,7 @@ def _compact_result(
         "dom_chars": len(snapshot.state.dom),
         "effect": effect,
         "effect_reason": effect_reason,
+        "page_geometry": _page_geometry(snapshot.state),
         **extras,
     }
     content = result.content
@@ -291,6 +309,7 @@ class BrowserRuntime(_BrowserRuntime):
         self._browser_feedback_turns: dict[str, str] = {}
         self._browser_feedback_calls: dict[str, str] = {}
         self._browser_baselines: dict[str, dict[str, str]] = {}
+        self._browser_baseline_revisions: dict[str, dict[str, int]] = {}
         self._browser_feedback_effect: dict[str, tuple[str, str]] = {}
         self._browser_visual_feedback: dict[str, tuple[bytes, str]] = {}
 
@@ -342,6 +361,7 @@ class BrowserRuntime(_BrowserRuntime):
         # dropping it breaks the caller's ability to interrupt the turn it just started.
         self._clear_browser_feedback(session_id)
         getattr(self, "_browser_baselines", {}).pop(session_id, None)
+        getattr(self, "_browser_baseline_revisions", {}).pop(session_id, None)
         return super().start_turn(session_id, user_text, turn_id=turn_id)
 
     def _capture_screenshot_feedback(self, session, call: ToolCall, result: ToolResult) -> None:
@@ -376,6 +396,7 @@ class BrowserRuntime(_BrowserRuntime):
         self._browser_feedback_turns[session.session_id] = session.current_turn_id
         self._browser_feedback_calls[session.session_id] = call.call_id
         self._browser_baselines.setdefault(session.session_id, {})[browser_id] = _state_digest(snapshot.state)
+        self._browser_baseline_revisions.setdefault(session.session_id, {})[browser_id] = snapshot.state_revision
 
     def _append_tool_result(
         self,
@@ -389,6 +410,7 @@ class BrowserRuntime(_BrowserRuntime):
         if call.name == "browser_close" and result.ok:
             self._clear_browser_feedback(session.session_id)
             self._browser_baselines.get(session.session_id, {}).pop(str(call.arguments.get("browser_id") or ""), None)
+            self._browser_baseline_revisions.get(session.session_id, {}).pop(str(call.arguments.get("browser_id") or ""), None)
             super()._append_tool_result(session, call, result, failed=failed, step=step)
             return
 
@@ -403,11 +425,26 @@ class BrowserRuntime(_BrowserRuntime):
             return
 
         baselines = self._browser_baselines.setdefault(session.session_id, {})
+        revisions = self._browser_baseline_revisions.setdefault(session.session_id, {})
         before = baselines.get(snapshot.browser_id)
         effect, reason = _classify_effect(call.name, before, snapshot, ok=result.ok and not failed)
         if result.data.get("execution_status") == "not_executed":
             effect, reason = "not_executed", "stale_observation"
+        evidence = {
+            "call_id": call.call_id,
+            "tool": call.name,
+            "browser_id": snapshot.browser_id,
+            "requested_revision": call.arguments.get("state_revision"),
+            "previous_observed_revision": revisions.get(snapshot.browser_id),
+            "returned_revision": snapshot.state_revision,
+            "execution_status": result.data.get("execution_status") or (
+                "succeeded" if result.ok and not failed else "failed_or_unconfirmed"),
+            "observable_effect": effect,
+            "functional_verdict": "not_assessed",
+        }
+        result = ToolResult(result.ok, result.content, {**result.data, "action_evidence": evidence})
         baselines[snapshot.browser_id] = _state_digest(snapshot.state)
+        revisions[snapshot.browser_id] = snapshot.state_revision
         self._browser_feedback[session.session_id] = snapshot
         self._browser_feedback_turns[session.session_id] = session.current_turn_id
         self._browser_feedback_calls[session.session_id] = call.call_id
@@ -451,7 +488,8 @@ class BrowserRuntime(_BrowserRuntime):
         messages = [*messages[:insert_at], safety_message, *messages[insert_at:]]
         from .tool_observation import attach_observation
         messages = attach_observation(messages,
-            _observation_text(snapshot, effect=effect, effect_reason=reason),
+            _observation_text(snapshot, effect=effect, effect_reason=reason,
+                              source_call_id=self._browser_feedback_calls.get(session.session_id, "")),
             tool_prefix="browser_", image=image_part,
             tool_call_id=self._browser_feedback_calls.get(session.session_id))
         safe_extra = dict(extra) if isinstance(extra, dict) else {}
@@ -493,6 +531,7 @@ class BrowserRuntime(_BrowserRuntime):
     def recover_interrupted(self, session_id):
         self._clear_browser_feedback(session_id)
         self._browser_baselines.pop(session_id, None)
+        self._browser_baseline_revisions.pop(session_id, None)
         return super().recover_interrupted(session_id)
 
     def close(self) -> None:
@@ -500,6 +539,7 @@ class BrowserRuntime(_BrowserRuntime):
         self._browser_feedback_turns.clear()
         self._browser_feedback_calls.clear()
         self._browser_baselines.clear()
+        self._browser_baseline_revisions.clear()
         self._browser_feedback_effect.clear()
         self._browser_visual_feedback.clear()
         super().close()
