@@ -2,8 +2,8 @@ import "./portal-base.css";
 import "./portal-modules.css";
 import "./portal-host-card.css";
 import type { CSSProperties, FormEvent } from "react";
-import { useEffect, useState } from "react";
-import { Laptop, Download, UserRound, LogOut, Check, ArrowRight, Github, Mail, KeyRound, ShieldCheck } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { Laptop, Download, UserRound, LogOut, Check, ArrowRight, Github, Mail, KeyRound, ShieldCheck, Eye, EyeOff } from "lucide-react";
 import { useI18n } from "../i18n";
 import { useAccount } from "../state/useAccount";
 import { HostSetupActions } from "./HostSetupActions";
@@ -18,8 +18,6 @@ const PORTAL_STYLES = [
   "https://smirel.com/download/cosmic-bright-v1.css",
   "https://smirel.com/download/portal-polish-v1.css",
   "https://smirel.com/download/portal-polish-v2.css",
-  "https://smirel.com/download/portal-account-v1.css",
-  "https://smirel.com/download/portal-account-v2.css",
   "https://smirel.com/download/layout-visual-restore-v1.css",
   "https://smirel.com/download/cursor-reference-source-v1.css",
   "https://smirel.com/download/session-boot-v1.css",
@@ -120,6 +118,9 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const emailInputRef = useRef<HTMLInputElement>(null);
+  const passwordInputRef = useRef<HTMLInputElement>(null);
+  const confirmPasswordInputRef = useRef<HTMLInputElement>(null);
   const [showPassword, setShowPassword] = useState(false);
   const [verificationCode, setVerificationCode] = useState("");
   const [challengeId, setChallengeId] = useState("");
@@ -143,6 +144,35 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
     const timer = window.setInterval(() => setResendWait((value) => Math.max(0, value - 1)), 1_000);
     return () => window.clearInterval(timer);
   }, [resendWait > 0]);
+
+  // Chrome/Edge may visually autofill controlled fields without immediately
+  // dispatching the React change event. Mirror the real DOM values back into
+  // state so password strength, validation, and submit all agree with what the
+  // user actually sees.
+  useEffect(() => {
+    if (authenticated || authStep !== "form") return;
+    const syncAutofill = () => {
+      const nextEmail = emailInputRef.current?.value ?? "";
+      const nextPassword = passwordInputRef.current?.value ?? "";
+      const nextConfirm = confirmPasswordInputRef.current?.value ?? "";
+      if (nextEmail) setEmail((current) => current === nextEmail ? current : nextEmail);
+      if (nextPassword) setPassword((current) => current === nextPassword ? current : nextPassword);
+      if (authMode === "register" && nextConfirm) {
+        setConfirmPassword((current) => current === nextConfirm ? current : nextConfirm);
+      }
+    };
+    const frame = window.requestAnimationFrame(syncAutofill);
+    const timers = [80, 320, 900].map((delay) => window.setTimeout(syncAutofill, delay));
+    return () => {
+      window.cancelAnimationFrame(frame);
+      timers.forEach((timer) => window.clearTimeout(timer));
+    };
+  }, [authenticated, authStep, authMode]);
+
+  function fieldValue(form: FormData, name: string, fallback: string): string {
+    const value = form.get(name);
+    return typeof value === "string" ? value : fallback;
+  }
 
   useEffect(() => {
     const url = new URL(window.location.href);
@@ -177,21 +207,28 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
     event.preventDefault();
     setLocalError("");
     account.clearError();
+    const form = new FormData(event.currentTarget);
+    const submittedEmail = fieldValue(form, "email", email).trim();
+    const submittedPassword = fieldValue(form, "password", password);
+    const submittedConfirm = fieldValue(form, "confirmPassword", confirmPassword);
+    setEmail(submittedEmail);
+    setPassword(submittedPassword);
+    if (authMode === "register") setConfirmPassword(submittedConfirm);
     if (authMode === "login") {
-      const ok = await account.login(email.trim(), password);
+      const ok = await account.login(submittedEmail, submittedPassword);
       if (ok) setPassword("");
       return;
     }
-    if (password !== confirmPassword) {
+    if (submittedPassword !== submittedConfirm) {
       setLocalError(zh ? "两次输入的密码不一致。" : "The passwords do not match.");
       return;
     }
-    if (password.length < 8) {
+    if (submittedPassword.length < 8) {
       setLocalError(zh ? "密码至少需要 8 位。" : "Password must be at least 8 characters.");
       return;
     }
     if (account.capabilities.emailVerification) {
-      const challenge = await account.registerStart(email.trim(), password);
+      const challenge = await account.registerStart(submittedEmail, submittedPassword);
       if (!challenge) return;
       setChallengeId(challenge.id);
       setChallengeEmail(challenge.email);
@@ -200,7 +237,7 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
       setAuthStep("verify");
       return;
     }
-    const ok = await account.register(email.trim(), password);
+    const ok = await account.register(submittedEmail, submittedPassword);
     if (ok) {
       setPassword("");
       setConfirmPassword("");
@@ -210,7 +247,10 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
   async function submitVerification(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setLocalError("");
-    const ok = await account.verifyEmail(challengeId, verificationCode);
+    const form = new FormData(event.currentTarget);
+    const submittedCode = fieldValue(form, "verificationCode", verificationCode);
+    setVerificationCode(submittedCode);
+    const ok = await account.verifyEmail(challengeId, submittedCode);
     if (ok) resetAuthFlow("login");
   }
 
@@ -225,7 +265,10 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
   async function submitForgot(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setLocalError("");
-    const challenge = await account.forgotPassword(email.trim());
+    const form = new FormData(event.currentTarget);
+    const submittedEmail = fieldValue(form, "email", email).trim();
+    setEmail(submittedEmail);
+    const challenge = await account.forgotPassword(submittedEmail);
     if (!challenge) return;
     setChallengeId(challenge.id);
     setChallengeEmail(challenge.email);
@@ -239,11 +282,18 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
   async function submitReset(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setLocalError("");
-    if (password !== confirmPassword) {
+    const form = new FormData(event.currentTarget);
+    const submittedCode = fieldValue(form, "verificationCode", verificationCode);
+    const submittedPassword = fieldValue(form, "password", password);
+    const submittedConfirm = fieldValue(form, "confirmPassword", confirmPassword);
+    setVerificationCode(submittedCode);
+    setPassword(submittedPassword);
+    setConfirmPassword(submittedConfirm);
+    if (submittedPassword !== submittedConfirm) {
       setLocalError(zh ? "两次输入的密码不一致。" : "The passwords do not match.");
       return;
     }
-    const ok = await account.resetPassword(challengeId, verificationCode, password);
+    const ok = await account.resetPassword(challengeId, submittedCode, submittedPassword);
     if (ok) resetAuthFlow("login");
   }
 
@@ -328,7 +378,7 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
 
           </article>
 
-          <aside className="loom-control" id="account">
+          <aside className={`loom-control${!authenticated ? " is-auth-mode" : ""}`} id="account">
             <div className="loom-sidebar-module cards fade">
             {!authenticated ? <section className="loom-login-module loom-auth-v2">
               <div className="loom-control-top">
@@ -358,36 +408,36 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
                   <div className="loom-auth-divider"><span>{zh ? "或使用邮箱" : "or continue with email"}</span></div>
                 </> : null}
 
-                <form className="login-form loom-account-form" onSubmit={submitAuth} autoComplete="on">
-                  <label><span>{zh ? "邮箱" : "Email"}</span><div className="loom-input-shell"><Mail size={16} aria-hidden="true" /><input id="emailInput" type="email" autoComplete="email" placeholder="name@example.com" value={email} onChange={(event) => setEmail(event.target.value)} required /></div></label>
-                  <label className="password-field"><span className="loom-field-heading"><span>{zh ? "密码" : "Password"}</span>{authMode === "login" && account.capabilities.passwordReset ? <button className="loom-inline-link" type="button" onClick={() => { account.clearError(); setLocalError(""); setAuthStep("forgot"); }}>{zh ? "忘记密码？" : "Forgot password?"}</button> : null}</span><div className="loom-input-shell"><KeyRound size={16} aria-hidden="true" /><input type={showPassword ? "text" : "password"} autoComplete={authMode === "login" ? "current-password" : "new-password"} placeholder="••••••••" value={password} onChange={(event) => setPassword(event.target.value)} required /><button className="password-toggle" type="button" aria-pressed={showPassword} onClick={() => setShowPassword((value) => !value)}>{showPassword ? (zh ? "隐藏" : "Hide") : (zh ? "显示" : "Show")}</button></div></label>
+                <form className="loom-account-form" onSubmit={submitAuth} autoComplete="on">
+                  <label><span>{zh ? "邮箱" : "Email"}</span><div className="loom-input-shell"><Mail size={17} aria-hidden="true" /><input ref={emailInputRef} id="emailInput" name="email" type="email" autoComplete="email" autoCapitalize="none" spellCheck={false} placeholder="name@example.com" value={email} onInput={(event) => setEmail(event.currentTarget.value)} onChange={(event) => setEmail(event.target.value)} required /></div></label>
+                  <label className="loom-password-field"><span className="loom-field-heading"><span>{zh ? "密码" : "Password"}</span>{authMode === "login" && account.capabilities.passwordReset ? <button className="loom-inline-link" type="button" onClick={() => { account.clearError(); setLocalError(""); setAuthStep("forgot"); }}>{zh ? "忘记密码？" : "Forgot password?"}</button> : null}</span><div className="loom-input-shell"><KeyRound size={17} aria-hidden="true" /><input ref={passwordInputRef} name="password" type={showPassword ? "text" : "password"} autoComplete={authMode === "login" ? "current-password" : "new-password"} placeholder="••••••••" value={password} onInput={(event) => setPassword(event.currentTarget.value)} onChange={(event) => setPassword(event.target.value)} required /><button className="loom-password-toggle" type="button" aria-pressed={showPassword} aria-label={showPassword ? (zh ? "隐藏密码" : "Hide password") : (zh ? "显示密码" : "Show password")} title={showPassword ? (zh ? "隐藏密码" : "Hide password") : (zh ? "显示密码" : "Show password")} onClick={() => setShowPassword((value) => !value)}>{showPassword ? <EyeOff size={16} aria-hidden="true" /> : <Eye size={16} aria-hidden="true" />}</button></div></label>
                   {authMode === "register" ? <>
                     <div className="loom-password-strength" data-score={strength}><div className="loom-strength-copy"><span>{zh ? "密码强度" : "Password strength"}</span><span>{strengthLabel}</span></div><div className="loom-strength-bars">{[1,2,3,4].map((level) => <i key={level} className={strength >= level ? "is-active" : ""} />)}</div><small>{zh ? "建议至少 12 位，并混合大小写、数字和符号" : "12+ characters with mixed case, numbers and symbols is recommended"}</small></div>
-                    <label><span>{zh ? "确认密码" : "Confirm password"}</span><div className="loom-input-shell"><KeyRound size={16} aria-hidden="true" /><input type={showPassword ? "text" : "password"} autoComplete="new-password" placeholder="••••••••" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} required /></div></label>
+                    <label><span>{zh ? "确认密码" : "Confirm password"}</span><div className="loom-input-shell"><KeyRound size={17} aria-hidden="true" /><input ref={confirmPasswordInputRef} name="confirmPassword" type={showPassword ? "text" : "password"} autoComplete="new-password" placeholder="••••••••" value={confirmPassword} onInput={(event) => setConfirmPassword(event.currentTarget.value)} onChange={(event) => setConfirmPassword(event.target.value)} required /><button className="loom-password-toggle" type="button" aria-pressed={showPassword} aria-label={showPassword ? (zh ? "隐藏密码" : "Hide password") : (zh ? "显示密码" : "Show password")} onClick={() => setShowPassword((value) => !value)}>{showPassword ? <EyeOff size={16} aria-hidden="true" /> : <Eye size={16} aria-hidden="true" />}</button></div></label>
                   </> : null}
                   <button className="loom-form-submit" type="submit" disabled={!account.ready || account.busy}><span>{!account.ready ? (zh ? "加载中…" : "Loading…") : account.busy ? (zh ? "处理中…" : "Working…") : authMode === "login" ? (zh ? "登录" : "Sign in") : account.capabilities.emailVerification ? (zh ? "创建并验证邮箱" : "Create & verify email") : (zh ? "创建账户" : "Create account")}</span><span aria-hidden="true">→</span></button>
                 </form>
                 <button className="loom-account-switch" type="button" onClick={() => resetAuthFlow(authMode === "login" ? "register" : "login")}>{authMode === "login" ? (zh ? "没有账户？创建一个" : "New to Loom? Create an account") : (zh ? "已有账户？返回登录" : "Already have an account? Sign in")}</button>
               </> : authStep === "verify" ? <>
                 <p className="loom-control-copy">{zh ? `我们已向 ${challengeEmail} 发送了 6 位验证码。` : `We sent a 6-digit code to ${challengeEmail}.`}</p>
-                <form className="login-form loom-account-form" onSubmit={submitVerification}>
-                  <label><span>{zh ? "邮箱验证码" : "Email verification code"}</span><input className="loom-code-input" inputMode="numeric" autoComplete="one-time-code" maxLength={6} pattern="[0-9]{6}" placeholder="000000" value={verificationCode} onChange={(event) => setVerificationCode(event.target.value.replace(/\D/g, "").slice(0, 6))} required /></label>
+                <form className="loom-account-form" onSubmit={submitVerification}>
+                  <label><span>{zh ? "邮箱验证码" : "Email verification code"}</span><input className="loom-code-input" name="verificationCode" inputMode="numeric" autoComplete="one-time-code" maxLength={6} pattern="[0-9]{6}" placeholder="000000" value={verificationCode} onInput={(event) => setVerificationCode(event.currentTarget.value.replace(/\D/g, "").slice(0, 6))} onChange={(event) => setVerificationCode(event.target.value.replace(/\D/g, "").slice(0, 6))} required /></label>
                   <button className="loom-form-submit" type="submit" disabled={account.busy || verificationCode.length !== 6}><span>{account.busy ? (zh ? "验证中…" : "Verifying…") : (zh ? "验证并创建账户" : "Verify & create account")}</span><span aria-hidden="true">→</span></button>
                 </form>
                 <div className="loom-auth-row"><button className="loom-account-switch" type="button" disabled={account.busy || resendWait > 0} onClick={() => void resendVerification()}>{resendWait > 0 ? (zh ? `${resendWait} 秒后可重发` : `Resend in ${resendWait}s`) : (zh ? "重新发送验证码" : "Resend code")}</button><button className="loom-account-switch" type="button" onClick={() => resetAuthFlow("register")}>{zh ? "返回" : "Back"}</button></div>
               </> : authStep === "forgot" ? <>
                 <p className="loom-control-copy">{zh ? "输入你的邮箱。若账户存在，我们会发送一次性验证码。" : "Enter your email. If the account exists, we'll send a one-time recovery code."}</p>
-                <form className="login-form loom-account-form" onSubmit={submitForgot}>
-                  <label><span>{zh ? "邮箱" : "Email"}</span><div className="loom-input-shell"><Mail size={16} aria-hidden="true" /><input id="emailInput" type="email" autoComplete="email" placeholder="name@example.com" value={email} onChange={(event) => setEmail(event.target.value)} required /></div></label>
+                <form className="loom-account-form" onSubmit={submitForgot}>
+                  <label><span>{zh ? "邮箱" : "Email"}</span><div className="loom-input-shell"><Mail size={17} aria-hidden="true" /><input ref={emailInputRef} id="emailInput" name="email" type="email" autoComplete="email" autoCapitalize="none" spellCheck={false} placeholder="name@example.com" value={email} onInput={(event) => setEmail(event.currentTarget.value)} onChange={(event) => setEmail(event.target.value)} required /></div></label>
                   <button className="loom-form-submit" type="submit" disabled={account.busy}><span>{account.busy ? (zh ? "发送中…" : "Sending…") : (zh ? "发送重置验证码" : "Send reset code")}</span><span aria-hidden="true">→</span></button>
                 </form>
                 <button className="loom-account-switch" type="button" onClick={() => resetAuthFlow("login")}>{zh ? "← 返回登录" : "← Back to sign in"}</button>
               </> : <>
                 <p className="loom-control-copy">{zh ? `如果 ${challengeEmail} 已注册，你会收到 6 位验证码。` : `If ${challengeEmail} is registered, a 6-digit code is on its way.`}</p>
-                <form className="login-form loom-account-form" onSubmit={submitReset}>
-                  <label><span>{zh ? "验证码" : "Verification code"}</span><input className="loom-code-input" inputMode="numeric" autoComplete="one-time-code" maxLength={6} pattern="[0-9]{6}" placeholder="000000" value={verificationCode} onChange={(event) => setVerificationCode(event.target.value.replace(/\D/g, "").slice(0, 6))} required /></label>
-                  <label><span>{zh ? "新密码" : "New password"}</span><div className="loom-input-shell"><KeyRound size={16} aria-hidden="true" /><input type={showPassword ? "text" : "password"} autoComplete="new-password" value={password} onChange={(event) => setPassword(event.target.value)} required minLength={8} /></div></label>
-                  <label><span>{zh ? "确认新密码" : "Confirm new password"}</span><div className="loom-input-shell"><KeyRound size={16} aria-hidden="true" /><input type={showPassword ? "text" : "password"} autoComplete="new-password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} required minLength={8} /></div></label>
+                <form className="loom-account-form" onSubmit={submitReset}>
+                  <label><span>{zh ? "验证码" : "Verification code"}</span><input className="loom-code-input" name="verificationCode" inputMode="numeric" autoComplete="one-time-code" maxLength={6} pattern="[0-9]{6}" placeholder="000000" value={verificationCode} onInput={(event) => setVerificationCode(event.currentTarget.value.replace(/\D/g, "").slice(0, 6))} onChange={(event) => setVerificationCode(event.target.value.replace(/\D/g, "").slice(0, 6))} required /></label>
+                  <label><span>{zh ? "新密码" : "New password"}</span><div className="loom-input-shell"><KeyRound size={17} aria-hidden="true" /><input name="password" type={showPassword ? "text" : "password"} autoComplete="new-password" value={password} onInput={(event) => setPassword(event.currentTarget.value)} onChange={(event) => setPassword(event.target.value)} required minLength={8} /><button className="loom-password-toggle" type="button" aria-pressed={showPassword} aria-label={showPassword ? (zh ? "隐藏密码" : "Hide password") : (zh ? "显示密码" : "Show password")} onClick={() => setShowPassword((value) => !value)}>{showPassword ? <EyeOff size={16} aria-hidden="true" /> : <Eye size={16} aria-hidden="true" />}</button></div></label>
+                  <label><span>{zh ? "确认新密码" : "Confirm new password"}</span><div className="loom-input-shell"><KeyRound size={17} aria-hidden="true" /><input name="confirmPassword" type={showPassword ? "text" : "password"} autoComplete="new-password" value={confirmPassword} onInput={(event) => setConfirmPassword(event.currentTarget.value)} onChange={(event) => setConfirmPassword(event.target.value)} required minLength={8} /><button className="loom-password-toggle" type="button" aria-pressed={showPassword} aria-label={showPassword ? (zh ? "隐藏密码" : "Hide password") : (zh ? "显示密码" : "Show password")} onClick={() => setShowPassword((value) => !value)}>{showPassword ? <EyeOff size={16} aria-hidden="true" /> : <Eye size={16} aria-hidden="true" />}</button></div></label>
                   <button className="loom-form-submit" type="submit" disabled={account.busy || verificationCode.length !== 6}><span>{account.busy ? (zh ? "重置中…" : "Resetting…") : (zh ? "重置密码并登录" : "Reset password & sign in")}</span><span aria-hidden="true">→</span></button>
                 </form>
                 <button className="loom-account-switch" type="button" onClick={() => resetAuthFlow("login")}>{zh ? "← 返回登录" : "← Back to sign in"}</button>
