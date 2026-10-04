@@ -148,7 +148,21 @@ async function bridgeFetch(path, options = {}) {
   const headers = new Headers(options.headers || {});
   headers.set("X-Loom-Token", config.token);
   if (options.body && !headers.has("Content-Type")) headers.set("Content-Type", "application/json");
-  return fetch(`${config.bridgeUrl}${path}`, { ...options, headers });
+  // A poll response is a one-time command, never a cacheable resource. Bound
+  // network stalls so a dead bridge cannot strand the only command reader.
+  const controller = new AbortController();
+  const timeoutMs = path.startsWith("/browser-extension/v1/poll") ? 35000 : 15000;
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(`${config.bridgeUrl}${path}`, {
+      ...options, headers, cache: "no-store", signal: controller.signal,
+    });
+    // Consume the body inside the timeout too: headers alone are not a reply.
+    const body = await response.text();
+    return { ok: response.ok, status: response.status, json: async () => JSON.parse(body) };
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 async function register() {
@@ -1038,7 +1052,22 @@ async function hover(args) {
 }
 
 async function typeText(args) {
-  return withElement(args, "type_text", { text: String(args.text || ""), clear: args.clear !== false }, 200, { canNavigate: false });
+  const tab = await actionTab(args);
+  const loomId = await elementRefFor(tab.id, args.index);
+  const text = String(args.text || "");
+  return withNavigationWatch(tab.id, async () => {
+    const native = await withNativeInput(tab.id, async (target) => {
+      await inject(tab.id, runPageAction, ["prepare_type", {
+        loom_id: loomId, index: Number(args.index), clear: args.clear !== false,
+      }]);
+      // Let Chromium perform editing: constraints, selection, beforeinput/input,
+      // and framework state belong to the browser, not a DOM value assignment.
+      if (text) await chrome.debugger.sendCommand(target, "Input.insertText", { text });
+      else if (args.clear !== false) await sendNativeKeyChord(target, "Backspace");
+    });
+    if (!native.ok) throw new Error(`Native browser typing failed: ${native.error}`);
+    return { ok: true, native_input: true };
+  }, 200, { canNavigate: false });
 }
 
 async function clickAt(args) {
@@ -1065,7 +1094,7 @@ async function clickAt(args) {
         });
       });
       if (native.ok) return { ok: true, native_input: true };
-      return inject(tab.id, runPageAction, ["click_at", { x, y, button }]);
+      throw new Error(`Native browser click failed: ${native.error}`);
     },
     180,
   );
@@ -1109,7 +1138,7 @@ async function sendText(args) {
     async () => {
       const native = await withNativeInput(tab.id, (target) => sendNativeText(target, text));
       if (native.ok) return { ok: true, native_input: true };
-      return inject(tab.id, runPageAction, ["send_text", { text }]);
+      throw new Error(`Native browser text input failed: ${native.error}`);
     },
     120,
   );
@@ -1135,14 +1164,14 @@ async function pressKey(args) {
   const key = String(args.key || "");
   await announceAction(tab, `Press ${key || "key"}`, "Browser keyboard action");
   await restoreVisualSurfaceFocus(tab);
-  // Prefer CDP input so canvas/WebGL/remote-desktop surfaces receive real browser
-  // keyboard events. If DevTools already owns the tab, fall back to page events.
+  // Synthetic keyboard events cannot perform Tab/default browser actions.
+  // Report unavailable native input rather than silently pretending it worked.
   return withNavigationWatch(
     tab.id,
     async () => {
       const native = await withNativeInput(tab.id, (target) => sendNativeKeyChord(target, key));
       if (native.ok) return { ok: true, native_input: true };
-      return inject(tab.id, runPageAction, ["press_key", { key }]);
+      throw new Error(`Native browser key input failed: ${native.error}`);
     },
     150,
   );
@@ -1952,22 +1981,31 @@ function runPageAction(action, args = {}) {
     return true;
   }
 
-  function typeElement() {
+  function prepareType() {
     const el = targetById(args.loom_id);
-    const text = String(args.text || "");
-    showTargetHud(el, `Type into #${Number(args.index)}`, text ? `${text.length} characters` : "Empty text", "action");
-    el.focus({ preventScroll: true });
+    if (el.matches(":disabled") || el.readOnly) throw new Error("Target element is disabled or readonly");
     if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) {
-      if (args.clear !== false) el.value = "";
-      el.value += text;
-      el.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText", data: text }));
-      el.dispatchEvent(new Event("change", { bubbles: true }));
+      if (el instanceof HTMLInputElement && !["text", "search", "tel", "url", "email", "password", "number"].includes(el.type)) {
+        throw new Error("Target input does not support text editing");
+      }
+      el.focus({ preventScroll: true });
+      if (document.activeElement !== el) throw new Error("Target element did not receive focus");
+      if (args.clear !== false) el.select();
       return true;
     }
     if (el.isContentEditable) {
-      if (args.clear !== false) el.textContent = "";
-      el.textContent = `${el.textContent || ""}${text}`;
-      el.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText", data: text }));
+      const selection = window.getSelection();
+      const range = selection && selection.rangeCount ? selection.getRangeAt(0).cloneRange() : null;
+      const inside = range && el.contains(range.startContainer) && el.contains(range.endContainer);
+      el.focus({ preventScroll: true });
+      if (document.activeElement !== el && !el.contains(document.activeElement)) throw new Error("Target element did not receive focus");
+      const wanted = inside && args.clear === false ? range : document.createRange();
+      if (wanted !== range) {
+        wanted.selectNodeContents(el);
+        if (args.clear === false) wanted.collapse(false);
+      }
+      selection.removeAllRanges();
+      selection.addRange(wanted);
       return true;
     }
     throw new Error("Target element is not an input, textarea, or contenteditable element");
@@ -2233,7 +2271,7 @@ function runPageAction(action, args = {}) {
     case "click_at": return clickAtInPage();
     case "focus_visual_surface": return focusVisualSurface();
     case "hover": return hoverElement();
-    case "type_text": return typeElement();
+    case "prepare_type": return prepareType();
     case "send_text": return sendTextInPage();
     case "select_option": return selectElement();
     case "drag": return dragElement();

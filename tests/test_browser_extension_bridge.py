@@ -24,6 +24,24 @@ class NoopPlatform:
         raise AssertionError("browser extension tests must not sample a model")
 
 
+def test_registration_heartbeat_is_not_a_command_reader():
+    bridge = BrowserExtensionBridge(port=0)
+    bridge.start()
+    try:
+        request = Request(
+            bridge.url + "/browser-extension/v1/register",
+            data=json.dumps({"client_id": "heartbeat-only", "version": "0.1.20"}).encode(),
+            headers={"X-Loom-Token": bridge.token, "Content-Type": "application/json"},
+        )
+        with urlopen(request, timeout=2) as response:
+            assert response.headers["Cache-Control"] == "no-store"
+        assert bridge.status()["registered"] is True
+        assert bridge.status()["command_reader_ready"] is False
+        assert bridge.connected is False
+    finally:
+        bridge.stop()
+
+
 class FakeExtensionBridge:
     created: list["FakeExtensionBridge"] = []
 

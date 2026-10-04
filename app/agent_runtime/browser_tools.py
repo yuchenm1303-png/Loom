@@ -1479,7 +1479,11 @@ def browser_tools(runtime: "BrowserRuntime") -> tuple[AgentTool, ...]:
                 description=(
                     "Type the exact string supplied in text into an element from the latest browser_state. Pass ordinary "
                     "text such as names, URLs, and form values directly; the text is handled as a normal tool argument "
-                    "and entered as supplied. Browser v1 has no automatic credential store or secret injection channel."
+                    "and entered through native browser editing, subject to field constraints such as readonly and maxlength. "
+                    "clear=true replaces the field; clear=false inserts at its caret or replaces its selection. "
+                    "This produces editing/input events, not a physical-key or IME composition sequence; "
+                    "use browser_send_text/browser_press for keyboard events. "
+                    "Browser v1 has no automatic credential store or secret injection channel."
                 ),
                 input_schema=_schema(
                     {
