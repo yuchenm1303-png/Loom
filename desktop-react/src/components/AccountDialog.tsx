@@ -21,6 +21,7 @@ import {
 } from "react";
 import { useI18n } from "../i18n";
 import { useMotionPresence } from "../motion/useMotionPresence";
+import { AvatarCropDialog } from "./AvatarCropDialog";
 import type { LoomAccountError, LoomAccountSnapshot } from "../types/account";
 import {
   ACCOUNT_PASSWORD_MIN_LENGTH,
@@ -52,50 +53,6 @@ type AuthMode = "login" | "register";
 
 const FOCUSABLE =
   'button:not([disabled]), input:not([disabled]), [href], select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
-const AVATAR_MAX_BYTES = 40 * 1024;
-const AVATAR_SOURCE_MAX_BYTES = 8 * 1024 * 1024;
-const AVATAR_TYPES = new Set(["image/png", "image/jpeg", "image/webp"]);
-
-function imageFromFile(file: File): Promise<HTMLImageElement> {
-  return new Promise((resolve, reject) => {
-    const objectUrl = URL.createObjectURL(file);
-    const image = new Image();
-    image.onload = () => { URL.revokeObjectURL(objectUrl); resolve(image); };
-    image.onerror = () => { URL.revokeObjectURL(objectUrl); reject(new Error("Could not read that image.")); };
-    image.src = objectUrl;
-  });
-}
-
-function encodedDataUrlBytes(dataUrl: string): number {
-  const payload = dataUrl.split(",", 2)[1] || "";
-  return Math.ceil(payload.length * 3 / 4);
-}
-
-async function prepareAvatar(file: File): Promise<string> {
-  if (!AVATAR_TYPES.has(file.type)) throw new Error("Use a PNG, JPEG, or WebP image.");
-  if (file.size > AVATAR_SOURCE_MAX_BYTES) throw new Error("Choose an image smaller than 8 MB.");
-  const image = await imageFromFile(file);
-  const sourceSize = Math.max(1, Math.min(image.naturalWidth, image.naturalHeight));
-  const sourceX = Math.max(0, (image.naturalWidth - sourceSize) / 2);
-  const sourceY = Math.max(0, (image.naturalHeight - sourceSize) / 2);
-
-  for (const size of [192, 160, 128]) {
-    const canvas = document.createElement("canvas");
-    canvas.width = size;
-    canvas.height = size;
-    const context = canvas.getContext("2d");
-    if (!context) throw new Error("Image processing is unavailable.");
-    context.imageSmoothingEnabled = true;
-    context.imageSmoothingQuality = "high";
-    context.drawImage(image, sourceX, sourceY, sourceSize, sourceSize, 0, 0, size, size);
-    for (const quality of [.86, .76, .66, .56]) {
-      const dataUrl = canvas.toDataURL("image/webp", quality);
-      if (dataUrl.startsWith("data:image/webp;") && encodedDataUrlBytes(dataUrl) <= AVATAR_MAX_BYTES) return dataUrl;
-    }
-  }
-  throw new Error("This image could not be compressed enough. Try a simpler image.");
-}
-
 export function AccountDialog({
   open,
   account,
@@ -126,6 +83,7 @@ export function AccountDialog({
   const [profileName, setProfileName] = useState("");
   const [profileAvatar, setProfileAvatar] = useState("");
   const [profileError, setProfileError] = useState("");
+  const [avatarCropFile, setAvatarCropFile] = useState<File | null>(null);
 
   const dialogRef = useRef<HTMLElement | null>(null);
   const closeRef = useRef<HTMLButtonElement | null>(null);
@@ -162,6 +120,7 @@ export function AccountDialog({
       setRevealPassword(false);
       setEditingProfile(false);
       setProfileError("");
+      setAvatarCropFile(null);
       return;
     }
     const timer = window.setTimeout(() => {
@@ -230,16 +189,11 @@ export function AccountDialog({
     }
   };
 
-  const chooseAvatar = async (file: File | undefined) => {
+  const chooseAvatar = (file: File | undefined) => {
     if (!file) return;
     setProfileError("");
-    try {
-      setProfileAvatar(await prepareAvatar(file));
-    } catch (cause) {
-      setProfileError(cause instanceof Error ? cause.message : String(cause));
-    } finally {
-      if (avatarInputRef.current) avatarInputRef.current.value = "";
-    }
+    setAvatarCropFile(file);
+    if (avatarInputRef.current) avatarInputRef.current.value = "";
   };
 
   const switchMode = useCallback(
@@ -431,7 +385,7 @@ export function AccountDialog({
                     {profileAvatar ? <img src={profileAvatar} alt="" /> : <span>{(profileName || displayName).slice(0, 1).toUpperCase()}</span>}
                     <i><Camera size={13} /></i>
                   </button>
-                  <input ref={avatarInputRef} className="loom-account-avatar-input" tabIndex={-1} type="file" accept="image/png,image/jpeg,image/webp" onChange={(event) => void chooseAvatar(event.target.files?.[0])} disabled={busy} />
+                  <input ref={avatarInputRef} className="loom-account-avatar-input" tabIndex={-1} type="file" accept="image/png,image/jpeg,image/webp" onChange={(event) => chooseAvatar(event.target.files?.[0])} disabled={busy} />
                   {profileAvatar ? <button type="button" className="loom-account-text-button" onClick={() => setProfileAvatar("")} disabled={busy}>{zh ? "移除头像" : "Remove photo"}</button> : null}
                 </div>
                 <label className="loom-account-profile-name">
@@ -618,6 +572,16 @@ export function AccountDialog({
           </>
         )}
       </section>
+      <AvatarCropDialog
+        file={avatarCropFile}
+        zh={zh}
+        onCancel={() => setAvatarCropFile(null)}
+        onApply={(dataUrl) => {
+          setProfileAvatar(dataUrl);
+          setProfileError("");
+          setAvatarCropFile(null);
+        }}
+      />
     </div>
   );
 }
