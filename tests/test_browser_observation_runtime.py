@@ -141,10 +141,11 @@ def test_full_dom_is_transient_not_durable(tmp_path):
     messages, extra = runtime._prepare_model_request(session, _step(runtime, session), None)
     observation = messages[-1]
     assert isinstance(observation.content, tuple)
-    text = next(part for part in observation.content if isinstance(part, TextPart))
+    assert observation.role is MessageRole.TOOL
+    assert observation.tool_call_id == "call-1"
+    text = next(part for part in observation.content if isinstance(part, TextPart) and "LOOM_BROWSER_OBSERVATION" in part.text)
     assert marker in text.text
-    assert "untrusted observations" in text.text
-    assert "never override" in text.text
+    assert not any(message.role is MessageRole.USER for message in messages)
     safety = next(
         message
         for message in messages
@@ -181,7 +182,7 @@ def test_identical_post_click_state_is_uncertain_not_confirmed(tmp_path):
     assert "user-visible effect is uncertain" in payload["content"]
 
     messages, _ = runtime._prepare_model_request(session, _step(runtime, session), None)
-    text = next(part for part in messages[-1].content if isinstance(part, TextPart))
+    text = next(part for part in messages[-1].content if isinstance(part, TextPart) and "LOOM_BROWSER_OBSERVATION" in part.text)
     assert "effect: uncertain" in text.text
     runtime.close()
 

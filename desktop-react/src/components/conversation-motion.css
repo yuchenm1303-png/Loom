@@ -3,6 +3,23 @@
    language: soft capsule birth, quiet settling, and a single obvious live cue.
    Historical turns are intentionally still. */
 
+.task-milestones {
+  margin: 8px 0 18px;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--panel);
+  font-size: 13px;
+}
+.task-milestones-heading { display: flex; justify-content: space-between; gap: 16px; margin-bottom: 10px; }
+.task-milestones-heading > :last-child { color: var(--muted); }
+.task-milestone { display: flex; align-items: flex-start; gap: 12px; padding: 5px 0; }
+.task-milestone > span { flex: 0 0 42px; color: var(--muted); }
+.task-milestone.is-in_progress > span { color: var(--accent); }
+.task-milestone.is-blocked > span { color: #d5a65a; }
+.task-milestone small { display: block; margin-top: 3px; color: var(--muted); }
+.earlier-task-process { margin-bottom: 12px; }
+
 .conversation-stage,
 .transcript {
   --loom-motion-pop: cubic-bezier(.16, 1, .3, 1);

@@ -146,12 +146,12 @@ def model_execution_guidance(
         metadata["duplicate_sensitive_calls"] = len(sensitive_repeats)
     if threshold:
         parts.append(
-            f"This turn has reached {threshold} tool calls. Before more tools, explicitly check what is "
+            f"This turn has reached {threshold} tool calls. Before more tools, privately check what is "
             "already established, what remains, and whether the next call will add new evidence. If the task "
             "is straightforward and the leading hypothesis is already supported, stop broadening the audit "
             "and implement the smallest complete change now. Prefer one discriminating verification over "
             "rereading the same files through another search or shell tool. If progress is stalled, change "
-            "approach or request the missing input."
+            "approach or report a concrete blocker. Do not narrate this internal checkpoint or repeat the full plan."
         )
         metadata["convergence_checkpoint"] = threshold
     return AIMessage(

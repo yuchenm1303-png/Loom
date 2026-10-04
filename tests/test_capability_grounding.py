@@ -172,6 +172,7 @@ def test_runtime_injects_tool_harness_without_persisting_policy_matrix(tmp_path)
         "get_run_scratch_dir",
         "host_probe",
         "read_durable_tool_result",
+        "update_plan",
     }
 
     persisted = runtime.get_session(session.session_id)

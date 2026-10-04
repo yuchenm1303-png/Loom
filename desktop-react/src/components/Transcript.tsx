@@ -34,6 +34,7 @@ import { useI18n } from "../i18n";
 import { useMotionPresence } from "../motion/useMotionPresence";
 import { TURN_SETTLE_HOLD_MS } from "../presentationTiming";
 import type { TranscriptItem } from "../types/loom";
+import { latestTaskPlan, liveTaskProgress } from "./liveTaskProgress";
 import { ArtifactRenderSurface } from "./ArtifactRenderSurface";
 import { HomeTokenActivity } from "./HomeTokenActivity";
 import { MarkdownMessage } from "./MarkdownMessage";
@@ -1327,6 +1328,15 @@ function TurnProcess({
   );
   const operationCount = summary.steps + intermediateMessages;
   const [processVisited, setProcessVisited] = useState(active || open);
+  const [earlierOpen, setEarlierOpen] = useState(false);
+  const progress = useMemo(() => liveTaskProgress(items, new Set(items
+    .filter((item) => {
+      if (item.type !== "assistant_message") return false;
+      const parsed = parseDecisionMessage(item.text ?? "");
+      return parsed.decisions.length > 0 || parsed.incomplete;
+    })
+    .map((item) => item.id))), [items]);
+  const milestones = useMemo(() => latestTaskPlan(items), [items]);
 
   useEffect(() => {
     if (active || open) setProcessVisited(true);
@@ -1339,6 +1349,20 @@ function TurnProcess({
 
   return (
     <section className={`turn-process ${active ? "is-live" : "is-settled"} ${open ? "is-open" : ""} ${guidanceItems.length ? "has-guidance" : ""}`.trim()}>
+      {active && milestones.length ? (
+        <div className="task-milestones" aria-label="任务进度">
+          <div className="task-milestones-heading">
+            <span>任务进度</span>
+            <span>{milestones.filter((step) => step.status === "completed").length}/{milestones.length} 已完成</span>
+          </div>
+          {milestones.map((step) => (
+            <div key={step.step} className={`task-milestone is-${step.status}`}>
+              <span>{({ pending: "待处理", in_progress: "进行中", completed: "已完成", blocked: "受阻" })[step.status]}</span>
+              <div>{step.step}{step.blocker && step.status === "blocked" ? <small>{step.blocker}</small> : null}</div>
+            </div>
+          ))}
+        </div>
+      ) : null}
       {!active ? (
         <button
           type="button"
@@ -1368,7 +1392,18 @@ function TurnProcess({
         <div className="turn-process-grid">
           <div className="turn-process-inner">
             <div className="turn-process-content">
-              <Sequence items={items} active={active} onApproval={onApproval} onPrompt={onPrompt} keepActivityOpen={active} promptDisabled={promptDisabled} workspace={workspace} />
+              {active && progress.earlier.length ? (
+                <div className="earlier-task-process">
+                  <button type="button" className="turn-process-header" aria-expanded={earlierOpen}
+                    onClick={() => setEarlierOpen(!earlierOpen)}>
+                    <span>{earlierOpen ? "折叠较早过程" : "查看较早过程"} · {progress.earlier.length} 项</span>
+                    <ChevronRight size={14} aria-hidden="true" />
+                  </button>
+                  {earlierOpen ? <Sequence items={progress.earlier} active={false} onApproval={onApproval}
+                    onPrompt={onPrompt} promptDisabled={promptDisabled} workspace={workspace} /> : null}
+                </div>
+              ) : null}
+              <Sequence items={active ? progress.current : items} active={active} onApproval={onApproval} onPrompt={onPrompt} keepActivityOpen={active} promptDisabled={promptDisabled} workspace={workspace} />
             </div>
           </div>
         </div>
