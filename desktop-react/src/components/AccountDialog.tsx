@@ -316,7 +316,7 @@ export function AccountDialog({
     >
       <section
         ref={dialogRef}
-        className="loom-account-dialog"
+        className={`loom-account-dialog ${account.authenticated && account.user ? "is-signed-in" : ""}`}
         role="dialog"
         aria-modal="true"
         aria-labelledby="loom-account-title"
@@ -380,18 +380,31 @@ export function AccountDialog({
             </div>
             {editingProfile ? (
               <div className="loom-account-profile-editor">
+                <div className="loom-account-editor-heading">
+                  <div>
+                    <strong>{zh ? "编辑个人资料" : "Edit profile"}</strong>
+                    <span>{zh ? "更新头像和昵称，修改会同步到 Loom 各处。" : "Update your photo and nickname across Loom."}</span>
+                  </div>
+                </div>
                 <div className="loom-account-avatar-editor">
                   <button type="button" className={`loom-account-avatar loom-account-avatar-button ${profileAvatar ? "has-image" : ""}`} onClick={() => avatarInputRef.current?.click()} disabled={busy} aria-label={zh ? "更换头像" : "Change avatar"}>
                     {profileAvatar ? <img src={profileAvatar} alt="" /> : <span>{(profileName || displayName).slice(0, 1).toUpperCase()}</span>}
-                    <i><Camera size={13} /></i>
+                    <i><Camera size={14} /></i>
                   </button>
                   <input ref={avatarInputRef} className="loom-account-avatar-input" tabIndex={-1} type="file" accept="image/png,image/jpeg,image/webp" onChange={(event) => chooseAvatar(event.target.files?.[0])} disabled={busy} />
-                  {profileAvatar ? <button type="button" className="loom-account-text-button" onClick={() => setProfileAvatar("")} disabled={busy}>{zh ? "移除头像" : "Remove photo"}</button> : null}
+                  <div className="loom-account-avatar-copy">
+                    <button type="button" className="loom-account-change-avatar" onClick={() => avatarInputRef.current?.click()} disabled={busy}>{zh ? "更换头像" : "Change photo"}</button>
+                    <span>{zh ? "PNG、JPEG 或 WebP · 上传后可裁剪" : "PNG, JPEG or WebP · crop after upload"}</span>
+                    {profileAvatar ? <button type="button" className="loom-account-text-button" onClick={() => setProfileAvatar("")} disabled={busy}>{zh ? "移除头像" : "Remove photo"}</button> : null}
+                  </div>
                 </div>
                 <label className="loom-account-profile-name">
                   <span>{zh ? "昵称" : "Nickname"}</span>
                   <input value={profileName} onChange={(event) => setProfileName(event.target.value)} maxLength={48} placeholder={account.user.email.split("@")[0]} disabled={busy} />
-                  <small>{profileName.trim().length}/48</small>
+                  <div className="loom-account-profile-name-meta">
+                    <span>{zh ? "这是其他位置显示的名称" : "This is the name shown across Loom"}</span>
+                    <small>{profileName.trim().length} / 48</small>
+                  </div>
                 </label>
                 {profileError ? <p className="loom-account-profile-error" role="alert">{profileError}</p> : null}
                 <div className="loom-account-profile-editor-actions">
@@ -405,8 +418,23 @@ export function AccountDialog({
               </div>
             ) : (
               <div className="loom-account-profile-actions">
-                <button type="button" onClick={beginProfileEdit} disabled={busy}><Pencil size={14} />{zh ? "编辑资料" : "Edit profile"}</button>
-                {onOpenProfile ? <button type="button" onClick={() => { onClose(); onOpenProfile(); }} disabled={busy}><ArrowUpRight size={14} />{zh ? "个人主页" : "Profile home"}</button> : null}
+                <button type="button" className="loom-account-action-card" onClick={beginProfileEdit} disabled={busy}>
+                  <span className="loom-account-action-icon"><Pencil size={15} /></span>
+                  <span className="loom-account-action-copy">
+                    <strong>{zh ? "编辑资料" : "Edit profile"}</strong>
+                    <small>{zh ? "修改昵称与头像" : "Change nickname and photo"}</small>
+                  </span>
+                </button>
+                {onOpenProfile ? (
+                  <button type="button" className="loom-account-action-card" onClick={() => { onClose(); onOpenProfile(); }} disabled={busy}>
+                    <span className="loom-account-action-icon"><UserRound size={15} /></span>
+                    <span className="loom-account-action-copy">
+                      <strong>{zh ? "个人主页" : "Profile home"}</strong>
+                      <small>{zh ? "查看使用概览与账户信息" : "View usage and account details"}</small>
+                    </span>
+                    <ArrowUpRight className="loom-account-action-arrow" size={14} />
+                  </button>
+                ) : null}
               </div>
             )}
             <div className="loom-account-security-note">
@@ -414,11 +442,14 @@ export function AccountDialog({
               <span>{zh ? "登录凭据已由系统安全存储加密保存。" : "Sign-in credentials are encrypted with the operating system secure storage."}</span>
             </div>
             {serviceLabel ? (
-              <p className="loom-account-service">{zh ? "服务地址" : "Service"} · {serviceLabel}</p>
+              <div className="loom-account-service">
+                <span>{zh ? "服务地址" : "Service"}</span>
+                <code>{serviceLabel}</code>
+              </div>
             ) : null}
             <button
               type="button"
-              className="loom-account-secondary-button"
+              className="loom-account-secondary-button loom-account-signout-button"
               disabled={busy}
               onClick={() => void onLogout()}
             >
