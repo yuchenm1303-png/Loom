@@ -95,6 +95,7 @@ interface TurnProcessBreakdown {
   commands: number;
   filesEdited: number;
   filesRead: number;
+  imagesViewed: number;
   tools: number;
   added: number;
   removed: number;
@@ -475,12 +476,27 @@ function collectReadPaths(value: unknown, paths: Set<string>, keyHint = "") {
   }
 }
 
+function isBrowserScreenshotActivity(item: TranscriptItem): boolean {
+  return item.type === "tool_call"
+    && String(item.toolName ?? "").trim().toLowerCase() === "browser_screenshot";
+}
+
+function browserScreenshotPaths(item: TranscriptItem): string[] {
+  if (!isBrowserScreenshotActivity(item)) return [];
+  const result = item.result;
+  if (!result || typeof result !== "object" || Array.isArray(result)) return [];
+  const path = String((result as Record<string, unknown>).path ?? "").trim();
+  if (!path || !/\.png$/i.test(path)) return [];
+  return [path];
+}
+
 function turnProcessBreakdown(items: TranscriptItem[]): TurnProcessBreakdown {
   const editedPaths = new Set<string>();
   const readPaths = new Set<string>();
   let anonymousEdits = 0;
   let anonymousReads = 0;
   let commands = 0;
+  let imagesViewed = 0;
   let added = 0;
   let removed = 0;
 
@@ -499,17 +515,19 @@ function turnProcessBreakdown(items: TranscriptItem[]): TurnProcessBreakdown {
       collectReadPaths(item.arguments, readPaths);
       if (readPaths.size === before) anonymousReads += 1;
     }
+    imagesViewed += browserScreenshotPaths(item).length;
   }
 
   const compactItems = compactActivityItems(items.filter(isActivityItem));
   const tools = compactItems.reduce((count, item) => (
-    item.type === "tool_call" && !isFileReadTool(item) ? count + 1 : count
+    item.type === "tool_call" && !isFileReadTool(item) && !browserScreenshotPaths(item).length ? count + 1 : count
   ), 0);
 
   return {
     commands,
     filesEdited: editedPaths.size + anonymousEdits,
     filesRead: readPaths.size + anonymousReads,
+    imagesViewed,
     tools,
     added,
     removed,
@@ -521,6 +539,7 @@ function turnProcessSummaryLabel(breakdown: TurnProcessBreakdown, fallbackCount:
   if (breakdown.commands) parts.push(`运行 ${breakdown.commands} 条命令`);
   if (breakdown.filesEdited) parts.push(`编辑 ${breakdown.filesEdited} 个文件`);
   if (breakdown.filesRead) parts.push(`读取 ${breakdown.filesRead} 个文件`);
+  if (breakdown.imagesViewed) parts.push(`查看 ${breakdown.imagesViewed} 张图片`);
   if (breakdown.tools) parts.push(`使用 ${breakdown.tools} 个工具`);
   return parts.length ? parts.join(" · ") : `${fallbackCount} 个过程项`;
 }
@@ -534,6 +553,7 @@ function fileLabel(item: TranscriptItem): string {
 }
 
 function hasActivityDetail(item: TranscriptItem): boolean {
+  if (browserScreenshotPaths(item).length) return true;
   if (item.type === "process") return Boolean(String(item.stdout ?? "").trim() || String(item.stderr ?? "").trim());
   if (item.type === "file_edit") return Boolean(String(item.diff ?? "").trim());
   if (String(item.content ?? "").trim()) return true;
@@ -542,6 +562,7 @@ function hasActivityDetail(item: TranscriptItem): boolean {
 }
 
 function activityDetail(item: TranscriptItem): string {
+  if (browserScreenshotPaths(item).length) return "";
   if (item.type === "process") {
     const stdout = String(item.stdout ?? "");
     const stderr = String(item.stderr ?? "");
@@ -558,6 +579,56 @@ function activityDetail(item: TranscriptItem): string {
     }
   }
   return "";
+}
+
+function BrowserScreenshotDetail({ paths, workspace }: { paths: string[]; workspace?: string }) {
+  const pathKey = paths.join("\n");
+  const [sources, setSources] = useState<Record<string, string>>({});
+  const [failed, setFailed] = useState<Set<string>>(() => new Set());
+
+  useEffect(() => {
+    let cancelled = false;
+    setSources({});
+    setFailed(new Set());
+    const workspaceRoot = String(workspace ?? "").trim();
+    if (!workspaceRoot) return () => { cancelled = true; };
+
+    for (const path of paths) {
+      void window.loom.readLocalImage(path, workspaceRoot)
+        .then((result) => {
+          if (cancelled) return;
+          setSources((current) => ({ ...current, [path]: result.dataUrl }));
+        })
+        .catch(() => {
+          if (cancelled) return;
+          setFailed((current) => new Set(current).add(path));
+        });
+    }
+
+    return () => { cancelled = true; };
+  }, [pathKey, workspace]);
+
+  return (
+    <div className="task-flow-image-grid" aria-label={`已查看 ${paths.length} 张图片`}>
+      {paths.map((path) => {
+        const source = sources[path];
+        const unavailable = failed.has(path) || !String(workspace ?? "").trim();
+        const name = path.replaceAll("\\", "/").split("/").pop() || "browser-screenshot.png";
+        return (
+          <figure className="task-flow-image-card" key={path} title={path}>
+            {source ? (
+              <img src={source} alt={`浏览器截图 ${name}`} loading="lazy" decoding="async" />
+            ) : (
+              <div className={`task-flow-image-loading ${unavailable ? "is-unavailable" : ""}`}>
+                {unavailable ? "图片预览不可用" : "正在载入预览…"}
+              </div>
+            )}
+            <figcaption>{name}</figcaption>
+          </figure>
+        );
+      })}
+    </div>
+  );
 }
 
 function liveActivityHint(item: TranscriptItem, status: string): string {
@@ -579,11 +650,13 @@ function ActivityGlyph({ item, size = 13 }: { item: TranscriptItem; size?: numbe
 interface ActivityRowProps {
   item: TranscriptItem;
   open: boolean;
+  workspace?: string;
   onToggle(id: string): void;
 }
 
 function sameActivityRowProps(previous: ActivityRowProps, next: ActivityRowProps): boolean {
   if (previous.open !== next.open) return false;
+  if (previous.workspace !== next.workspace) return false;
   if (previous.item.id !== next.item.id || previous.item.type !== next.item.type) return false;
 
   const previousStatus = itemStatus(previous.item);
@@ -591,6 +664,7 @@ function sameActivityRowProps(previous: ActivityRowProps, next: ActivityRowProps
   if (previousStatus !== nextStatus) return false;
 
   if (previous.item.toolName !== next.item.toolName) return false;
+  if (browserScreenshotPaths(previous.item).join("\n") !== browserScreenshotPaths(next.item).join("\n")) return false;
   if (previous.item.type === "process" && processCommand(previous.item) !== processCommand(next.item)) return false;
   if (previous.item.type === "file_edit" && fileLabel(previous.item) !== fileLabel(next.item)) return false;
 
@@ -606,7 +680,7 @@ function sameActivityRowProps(previous: ActivityRowProps, next: ActivityRowProps
   return true;
 }
 
-const ActivityRow = memo(function ActivityRow({ item, open, onToggle }: ActivityRowProps) {
+const ActivityRow = memo(function ActivityRow({ item, open, workspace, onToggle }: ActivityRowProps) {
   const status = itemStatus(item);
   const active = isActiveActivityStatus(status);
   const executing = isExecutingActivityStatus(status);
@@ -617,6 +691,8 @@ const ActivityRow = memo(function ActivityRow({ item, open, onToggle }: Activity
   if (open) cachedDetailRef.current = liveDetail;
   const visibleDetail = open ? liveDetail : cachedDetailRef.current;
   const stats = item.type === "file_edit" && (!active || open) ? diffStats(item.diff) : null;
+  const screenshotPaths = browserScreenshotPaths(item);
+  const screenshotActivity = isBrowserScreenshotActivity(item);
   const verbKey = active ? "active" : "rested";
   const identity = activityIdentity(item);
 
@@ -656,6 +732,11 @@ const ActivityRow = memo(function ActivityRow({ item, open, onToggle }: Activity
                 </span>
               ) : null}
             </>
+          ) : screenshotActivity && screenshotPaths.length ? (
+            <>
+              <span className="task-flow-verb" key={verbKey}>{active ? "正在查看" : "已查看"}</span>
+              <span className="task-flow-primary">{screenshotPaths.length} 张图片</span>
+            </>
           ) : (
             <>
               <span className="task-flow-verb" key={verbKey}>{active ? "正在使用" : "已使用"}</span>
@@ -674,7 +755,9 @@ const ActivityRow = memo(function ActivityRow({ item, open, onToggle }: Activity
           <div className="task-flow-inline-detail-inner">
             {detailPresence.mounted ? (
               <div className="task-flow-inline-detail">
-                {visibleDetail ? (
+                {screenshotPaths.length ? (
+                  <BrowserScreenshotDetail paths={screenshotPaths} workspace={workspace} />
+                ) : visibleDetail ? (
                   <pre>{visibleDetail}</pre>
                 ) : active ? (
                   <div className="task-flow-live-detail" role="status">
@@ -765,10 +848,12 @@ function ActivityFlow({
   items,
   keepOpen = false,
   continuing = false,
+  workspace,
 }: {
   items: TranscriptItem[];
   keepOpen?: boolean;
   continuing?: boolean;
+  workspace?: string;
 }) {
   const compactItems = useMemo(() => compactActivityItems(items), [items]);
   const running = keepOpen;
@@ -841,6 +926,7 @@ function ActivityFlow({
                 key={item.id}
                 item={item}
                 open={openRows.has(item.id)}
+                workspace={workspace}
                 onToggle={toggleRow}
               />
             ))}
@@ -1226,6 +1312,7 @@ function Sequence({
               items={block.items}
               keepOpen={activeActivityBlocks.has(index) || continuingActivityBlock === index}
               continuing={continuingActivityBlock === index}
+              workspace={workspace}
             />
           </div>
         )) : (

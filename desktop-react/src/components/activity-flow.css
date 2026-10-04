@@ -251,6 +251,58 @@
   box-shadow: inset 0 1px 0 rgba(255,255,255,.016);
 }
 
+.task-flow-image-grid {
+  width: min(560px, 100%);
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(168px, 1fr));
+  gap: 8px;
+}
+
+.task-flow-image-card {
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  border: 1px solid #282d36;
+  border-radius: 9px;
+  background: rgba(14,16,21,.9);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.018);
+}
+
+.task-flow-image-card img,
+.task-flow-image-loading {
+  width: 100%;
+  aspect-ratio: 16 / 10;
+  display: block;
+}
+
+.task-flow-image-card img {
+  object-fit: contain;
+  background: #0c0e12;
+}
+
+.task-flow-image-loading {
+  display: grid;
+  place-items: center;
+  padding: 12px;
+  color: #777f8b;
+  background: linear-gradient(180deg, rgba(25,28,35,.74), rgba(13,15,19,.9));
+  font-size: 10px;
+}
+
+.task-flow-image-loading.is-unavailable {
+  color: #686f79;
+}
+
+.task-flow-image-card figcaption {
+  min-width: 0;
+  padding: 6px 8px 7px;
+  overflow: hidden;
+  color: #8e96a2;
+  font: 9.5px/1.3 "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .task-flow-inline-detail pre::-webkit-scrollbar {
   width: 6px;
   height: 6px;
