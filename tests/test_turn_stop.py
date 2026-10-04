@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import threading
 import json
+from types import SimpleNamespace
 
 import pytest
 
@@ -12,6 +13,38 @@ from app.agent_runtime.tools import AgentTool, ToolRegistry, ToolResult
 from app.agent_runtime.turn_stop import STOP_TOOL, parse_stop_decision
 
 pytestmark = pytest.mark.real_stop_hook
+
+
+@pytest.mark.parametrize("count,window", [(1000, None), (10000, None), (10000, 8000)])
+def test_review_rolls_up_unbounded_history_without_claiming_success(count, window):
+    from app.ai import AIMessage, ChatRequest, MessageRole
+    from app.agent_runtime.contracts import AgentEventKind as Event
+    from app.agent_runtime.context_budget import estimate_tokens
+    from app.agent_runtime.turn_stop import stop_review_messages
+    events = [SimpleNamespace(turn_id="turn", kind=Event.USER_MESSAGE,
+                              data={"text": "Report results, including failures"})]
+    events.extend(SimpleNamespace(turn_id="turn", kind=Event.TOOL_COMPLETED,
+        data={"call_id": str(i), "tool": "browser_click", "ok": i != count - 1,
+              "content": "result " + str(i), "data": {
+                  "execution_status": "not_executed" if i == count - 1 else "executed",
+                  "action_evidence": {"snapshot": "large evidence " * 1000}}})
+        for i in range(count))
+    rt = SimpleNamespace(store=SimpleNamespace(events=lambda _: events),
+                         limits=AgentLimits(context_window_tokens=window), durable_state=None)
+    session = SimpleNamespace(session_id="session", current_turn_id="turn")
+    messages = stop_review_messages(rt, session,
+        ChatRequest(messages=(AIMessage(role=MessageRole.USER, content="Report results"),)),
+        ModelResponse(text="Report: one action was not executed."))
+    data = json.loads(messages[-1].content)
+    assert data["evidence_rollup"]["total_results"] == count
+    assert data["evidence_rollup"]["adverse_results"] == 1
+    assert any(e["call_id"] == str(count - 1) and e["execution_status"] == "not_executed"
+               for e in data["execution_evidence"])
+    assert "not test verdicts" in data["evidence_rollup"]["notice"]
+    assert len(data["execution_evidence"]) <= 64
+    assert estimate_tokens(messages, (STOP_TOOL,)) < (window or 16000)
+    assert len(events) == count + 1
+    assert events[-1].data["data"]["action_evidence"]["snapshot"] == "large evidence " * 1000
 
 
 def decision(outcome="completed", **overrides):

@@ -6,6 +6,7 @@ decision is checked before any terminal response becomes durable public history.
 from __future__ import annotations
 
 import json
+from collections import Counter
 from dataclasses import dataclass, replace
 
 from app.ai import AIMessage, ChatRequest, ImagePart, MessageRole, ModelResponse, ModelUsage, TextPart, ToolChoice, ToolDefinition
@@ -56,6 +57,10 @@ or demand extra cleanup, alternate backends, additional audits or repeated tests
 merely to make the result more exhaustive. A blocked or uncovered case can be
 truthfully reported; do not require endless retries or equate different backends.
 Evidence excerpts may be shortened: missing detail is not proof work was omitted.
+Older evidence may be aggregated into counts and representative excerpts. Counts
+describe execution, not functional success. If a claim cannot be verified from
+the excerpts, return continue with a targeted request to read the durable result
+or report unverified coverage; never repeat all tests merely because of compression.
 For browser evidence, distinguish execution from the functional test verdict.
 not_executed is an observation/scheduling conflict, not a tested feature failure.
 A changed DOM only proves an observable change, not that acceptance criteria passed.
@@ -186,16 +191,53 @@ def stop_review_messages(rt, session, request, candidate, *, context_limits=None
         def detail(value):
             return _excerpt(value, excerpt_chars) if excerpt_chars else "[details omitted; recover durable result by call_id]"
         payload["execution_evidence"] = [{**entry, **{key: detail(entry[key])
-            for key in ("arguments", "content", "data")}} for entry in original_evidence]
+            for key in ("arguments", "content", "data", "action_evidence") if key in entry}}
+            for entry in original_evidence]
         payload["prior_tool_context"] = [{**entry, "content": detail(entry["content"])} for entry in original_prior]
         payload["transient_tool_observations"] = [{**entry, "observation": _excerpt(entry["observation"], excerpt_chars * 12)
             if excerpt_chars else "[transient detail omitted for review budget]"} for entry in observations]
         messages = build(payload)
         if estimate_tokens(messages, (STOP_TOOL,)) <= budget:
             return messages
-    # Preserve intent/candidate/identities instead of silently dropping evidence
-    # or retrying an over-length private request verbatim.
-    raise StopReviewLimitReached("Task incomplete: completion assessment exceeds its context budget; evidence remains durable")
+    # Shrinking each row cannot bound an arbitrarily long history. Fold older
+    # rows into an execution census, retain recent and adverse examples, and
+    # progressively reduce the number of examples as well as their size.
+    counts = Counter((str(e.get("tool")), str(e.get("outcome")),
+                      str(e.get("execution_status", "")), str(e.get("ok")))
+                     for e in original_evidence)
+    census = [{"tool": key[0], "outcome": key[1], "execution_status": key[2],
+               "ok": key[3], "count": count} for key, count in counts.items()]
+    adverse = [e for e in original_evidence if e.get("ok") is False
+               or e.get("outcome") != Event.TOOL_COMPLETED.value
+               or e.get("execution_status") == "not_executed"]
+    for keep in (32, 16, 8, 4, 2, 1, 0):
+        selected = original_evidence[-keep:] if keep else []
+        selected = selected + (adverse[-keep:] if keep else [])
+        selected = list({e.get("call_id"): e for e in selected}.values())
+        payload["execution_evidence"] = [{
+            key: _excerpt(json.dumps(value, ensure_ascii=False), 500)
+                 if key == "action_evidence" else _excerpt(value, 500)
+                 if key in {"arguments", "content", "data"} else value
+            for key, value in e.items()} for e in selected]
+        payload["evidence_rollup"] = {
+            "total_results": len(original_evidence), "adverse_results": len(adverse),
+            "groups": census[:keep], "groups_omitted": max(0, len(census) - keep),
+            "results_not_shown": len(original_evidence) - len(selected),
+            "durable_source": {"session_id": session.session_id,
+                               "turn_id": session.current_turn_id},
+            "notice": "Execution counts are not test verdicts. Full results remain durable; request targeted retrieval if needed."}
+        payload["prior_tool_context"] = original_prior[-keep:] if keep else []
+        payload["transient_tool_observations"] = observations[-keep:] if keep else []
+        payload["prior_tool_context"] = [{**e, "content": _excerpt(e["content"], 500)}
+                                         for e in payload["prior_tool_context"]]
+        payload["transient_tool_observations"] = [{**e, "observation": _excerpt(e["observation"], 1000)}
+                                                 for e in payload["transient_tool_observations"]]
+        messages = build(payload)
+        if estimate_tokens(messages, (STOP_TOOL,)) <= budget:
+            return messages
+    # Evidence cardinality is now bounded. Only irreducible user intent,
+    # authority, candidate or image input can exceed a declared model limit.
+    raise StopReviewLimitReached("Task incomplete: completion assessment essential input exceeds the model context window; shorten the answer or input")
 
 
 @dataclass(frozen=True)
