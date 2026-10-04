@@ -257,6 +257,8 @@ class BrowserUseBackend(BrowserBackend):
             downloads = str(self.downloads_dir) if self.downloads_dir else None
             profile = BrowserProfile(
                 **({"channel": channel} if channel else {}),
+                **({"executable_path": os.environ["LOOM_BUNDLED_BROWSER"]}
+                   if not attached and not channel and os.environ.get("LOOM_BUNDLED_BROWSER") else {}),
                 **({"downloads_path": downloads, "accept_downloads": True} if downloads else {}),
                 headless=self.options.headless,
                 allowed_domains=list(self.options.allowed_domains) or None,

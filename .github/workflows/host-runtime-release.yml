@@ -101,6 +101,8 @@ jobs:
           foreach ($required in @("python.exe", "wxc-exec.exe", "manifest.json", "browser-current-tab\manifest.json")) {
             if (-not (Test-Path (Join-Path $verifyDir $required))) { throw "Host runtime is missing $required" }
           }
+          & (Join-Path $verifyDir "python.exe") first-run-test
+          if ($LASTEXITCODE -ne 0) { throw "Host credential-free first-run test failed." }
           & (Join-Path $verifyDir "python.exe") self-test
           if ($LASTEXITCODE -ne 0) { throw "Standalone Host runtime self-test failed." }
           $manifest = Get-Content (Join-Path $verifyDir "manifest.json") -Raw | ConvertFrom-Json

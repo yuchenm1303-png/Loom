@@ -33,6 +33,37 @@ function registry(rows = [profile()]) {
   return { primary: rows[0] ?? profile(), profiles: rows, activeModelId: rows[0]?.id ?? null };
 }
 
+test("clean install selects account model without resolving a provider key", () => {
+  const manager = new DesktopModelManager(os.tmpdir());
+  const minimax = profile({ id: "minimax-primary", selection: "builtin:minimax", configured: false });
+  const account = profile({ id: "account", selection: "builtin:ant-ling", authMode: "loom-account" });
+  manager.registry = () => ({ primary: minimax, profiles: [minimax, account], activeModelId: minimax.id });
+  manager.resolve = (selection) => {
+    assert.equal(selection, "builtin:ant-ling");
+    return { ...account, apiKey: "", provider: "openai-compatible" };
+  };
+  assert.equal(manager.ensureInitial().authMode, "loom-account");
+});
+
+test("configured user connection remains the startup selection", () => {
+  const manager = new DesktopModelManager(os.tmpdir());
+  manager.registry = () => registry();
+  manager.resolve = (selection) => { assert.equal(selection, "saved:demo"); return profile(); };
+  assert.equal(manager.ensureInitial().selection, "saved:demo");
+});
+
+test("legacy default without configured metadata recovers from missing key", () => {
+  const manager = new DesktopModelManager(os.tmpdir());
+  const minimax = profile({ id: "minimax-primary", selection: "builtin:minimax", configured: undefined });
+  const account = profile({ id: "account", selection: "builtin:ant-ling", authMode: "loom-account" });
+  manager.registry = () => ({ primary: minimax, profiles: [minimax, account], activeModelId: minimax.id });
+  manager.resolve = (selection) => {
+    if (selection === minimax.selection) throw new Error("MiniMax API key is not configured.");
+    return { ...account, apiKey: "", provider: "openai-compatible" };
+  };
+  assert.equal(manager.ensureInitial().selection, account.selection);
+});
+
 function installFakeBridge(manager) {
   const state = {
     registry: registry(),

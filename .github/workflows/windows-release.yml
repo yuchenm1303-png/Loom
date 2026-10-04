@@ -124,6 +124,11 @@ jobs:
             throw "latest.yml version does not match package.json."
           }
 
+          $env:LOOM_SMOKE_HOST_EXECUTABLE = Join-Path $env:GITHUB_WORKSPACE "desktop-react/release/win-unpacked/Loom.exe"
+          node (Join-Path $env:GITHUB_WORKSPACE "desktop-react/scripts/host-process-smoke.mjs")
+          if ($LASTEXITCODE -ne 0) { throw "Clean packaged Host startup failed." }
+          & $runtime first-run-test
+          if ($LASTEXITCODE -ne 0) { throw "Packaged credential-free first-run test failed." }
           & $runtime self-test
           if ($LASTEXITCODE -ne 0) { throw "Packaged runtime self-test failed with exit code $LASTEXITCODE" }
 

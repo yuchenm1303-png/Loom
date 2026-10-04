@@ -42,6 +42,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--base-url")
     parser.add_argument("--model")
     parser.add_argument("--selection")
+    parser.add_argument("--allow-unconfigured-model", action="store_true",
+                        help="start local UI services before account model authorization")
     parser.add_argument("--reasoning-kind", choices=[kind.value for kind in ReasoningKind])
     parser.add_argument("--reasoning-value")
     parser.add_argument("--home", help="runtime state root; defaults to ~/.loom")

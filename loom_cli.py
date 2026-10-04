@@ -26,6 +26,7 @@ from app.ai import (
     ProviderAdapter,
     ProviderConnection,
     build_ai_platform,
+    StreamingAIPlatform,
 )
 
 
@@ -75,7 +76,11 @@ def _resolve_connection(args: argparse.Namespace) -> tuple[ProviderConnection, s
             )
         secret = _first_env("LOOM_API_KEY", "AI_API_KEY", "DASHSCOPE_API_KEY", "OPENAI_API_KEY")
 
-    if not secret:
+    if getattr(args, "allow_unconfigured_model", False):
+        # This explicit desktop mode must not borrow unrelated provider keys
+        # from the user's environment for an account gateway endpoint.
+        secret = ""
+    if not secret and not getattr(args, "allow_unconfigured_model", False):
         raise SystemExit(
             "No API key found. Set LOOM_API_KEY, or the provider-specific OPENAI_API_KEY / DASHSCOPE_API_KEY."
         )
@@ -107,6 +112,18 @@ def _vision_enabled(args: argparse.Namespace) -> bool:
     return bool(getattr(args, "vision", True))
 
 
+class _UnconfiguredModelBackend:
+    """Local services remain usable while account authorization is pending."""
+    name = "account-authorization-pending"
+
+    def complete(self, request):
+        raise RuntimeError("Sign in to Loom to use the account model. No provider API key is required.")
+
+    def stream(self, request):
+        self.complete(request)
+        yield  # retain the streaming backend contract
+
+
 def _build_runtime(args: argparse.Namespace) -> tuple[AgentRuntime, FileAgentSessionStore, str]:
     connection, model, secret = _resolve_connection(args)
     capabilities = set(AGENT_FAST_ROLE.required_capabilities)
@@ -126,11 +143,16 @@ def _build_runtime(args: argparse.Namespace) -> tuple[AgentRuntime, FileAgentSes
     resolver = CredentialResolver(
         runtime_lookup=lambda alias: secret if alias == _RUNTIME_KEY_ALIAS else None
     )
-    platform = build_ai_platform(
-        configuration,
-        credential_resolver=resolver,
-        request_timeout_seconds=float(args.timeout),
-    )
+    if not secret and getattr(args, "allow_unconfigured_model", False):
+        platform = StreamingAIPlatform()
+        for profile in configuration.profiles.all():
+            platform.register(profile, _UnconfiguredModelBackend())
+    else:
+        platform = build_ai_platform(
+            configuration,
+            credential_resolver=resolver,
+            request_timeout_seconds=float(args.timeout),
+        )
     home = Path(args.home or _first_env("LOOM_HOME") or (Path.home() / ".loom")).expanduser().resolve()
     store = FileAgentSessionStore(home)
     runtime = AgentRuntime(platform=platform, store=store, tools=loom_default_tools())

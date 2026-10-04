@@ -12,6 +12,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 const root = fileURLToPath(new URL("../", import.meta.url));
 const require = createRequire(new URL("../package.json", import.meta.url));
 const executable = require("electron");
+const packagedHost = String(process.env.LOOM_SMOKE_HOST_EXECUTABLE || "").trim();
 const temp = await mkdtemp(path.join(os.tmpdir(), "loom-host-smoke-"));
 const probe = net.createServer();
 await new Promise((resolve) => probe.listen(0, "127.0.0.1", resolve));
@@ -20,9 +21,14 @@ await new Promise((resolve) => probe.close(resolve));
 const env = { ...process.env, LOOM_HOST_DATA_DIR: path.join(temp, "host"), LOOM_HOME: path.join(temp, "runtime"),
   LOOM_HOST_DISCOVERY_PORT: String(port), LOOM_ACCOUNT_API_BASE_URL: "http://127.0.0.1:1/v1" };
 delete env.ELECTRON_RUN_AS_NODE;
+for (const name of Object.keys(env)) {
+  if (/^(MINIMAX_|OPENAI_|DASHSCOPE_|LOOM_(API_KEY|PRIMARY_API_KEY|ACCOUNT_MODEL_CREDENTIAL|PYTHON|MODEL|BASE_URL|PROVIDER))/.test(name)) {
+    delete env[name];
+  }
+}
 const children = [];
 let hostOutput = "";
-const host = spawn(executable, [root, "--loom-host"], { cwd: root, env, windowsHide: true, stdio: ["ignore", "pipe", "pipe"] });
+const host = spawn(packagedHost || executable, [...(packagedHost ? [] : [root]), "--loom-host"], { cwd: root, env, windowsHide: true, stdio: ["ignore", "pipe", "pipe"] });
 children.push(host);
 host.stdout.on("data", (chunk) => { hostOutput += chunk; });
 host.stderr.on("data", (chunk) => { hostOutput += chunk; });
@@ -50,6 +56,8 @@ async function runClient() {
     app.whenReady().then(async () => { try {
       const state = await callHost("loom:update-status");
       if (!state.currentVersion) throw new Error("Missing Host version");
+      const initialization = await callHost("loom:connect");
+      if (!initialization?.runtime) throw new Error("Credential-free local service did not initialize");
       console.log("HOST_CLIENT_OK");
       app.quit();
     } catch (error) { console.error(error); app.exit(1); } });

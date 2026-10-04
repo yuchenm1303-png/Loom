@@ -2,6 +2,10 @@ from __future__ import annotations
 
 import json
 import sys
+import argparse
+import os
+import subprocess
+from pathlib import Path
 
 from app.agent_runtime import (
     AgentEventKind,
@@ -24,6 +28,51 @@ from app.ai import (
     ProviderConnection,
     ToolCall,
 )
+
+
+def test_desktop_starts_without_any_provider_credentials(tmp_path, monkeypatch):
+    from loom_cli import _build_runtime
+    for name in ("LOOM_API_KEY", "OPENAI_API_KEY", "AI_API_KEY", "MINIMAX_API_KEY",
+                 "DASHSCOPE_API_KEY", "LOOM_HOME"):
+        monkeypatch.delenv(name, raising=False)
+    args = argparse.Namespace(provider="openai-compatible",
+        base_url="https://account.smirel.com/model/v1", model="Ling-3.0-flash",
+        allow_unconfigured_model=True, vision=False, timeout=120, home=str(tmp_path))
+    runtime, store, model = _build_runtime(args)
+    try:
+        assert model == "Ling-3.0-flash"
+        session = runtime.create_session("agent.fast", workspace_dir=tmp_path)
+        assert store.load(session.session_id).session_id == session.session_id
+        assert not getattr(runtime.platform, "_loom_model_connections", ())
+    finally:
+        runtime.close()
+
+
+def test_desktop_pending_account_does_not_reuse_unrelated_key(tmp_path, monkeypatch):
+    from loom_cli import _resolve_connection
+    monkeypatch.setenv("OPENAI_API_KEY", "unrelated-private-key")
+    args = argparse.Namespace(provider="openai-compatible",
+        base_url="https://account.smirel.com/model/v1", model="Ling-3.0-flash",
+        allow_unconfigured_model=True)
+    assert _resolve_connection(args)[2] == ""
+
+
+def test_first_run_app_server_handshake_without_user_configuration(tmp_path):
+    root = Path(__file__).resolve().parents[1]
+    environment = {key: value for key, value in os.environ.items()
+                   if not key.startswith(("LOOM_", "MINIMAX_", "OPENAI_", "DASHSCOPE_"))}
+    environment.update(PYTHONUTF8="1", PYTHONPATH=os.pathsep.join(sys.path))
+    process = subprocess.run([sys.executable, str(root / "loom_app_server.py"),
+        "--home", str(tmp_path), "--workspace", str(tmp_path),
+        "--provider", "openai-compatible", "--base-url", "https://account.smirel.com/model/v1",
+        "--model", "Ling-3.0-flash", "--selection", "builtin:ant-ling",
+        "--allow-unconfigured-model"], input=json.dumps({"jsonrpc": "2.0", "id": 1,
+            "method": "initialize", "params": {"protocolVersion": 1}}) + "\n",
+        capture_output=True, text=True, encoding="utf-8", env=environment, cwd=root, timeout=30)
+    frames = [json.loads(line) for line in process.stdout.splitlines() if line.startswith("{")]
+    response = next(frame for frame in frames if frame.get("id") == 1)
+    assert "result" in response, response.get("error")
+    assert process.returncode == 0
 
 
 class ScriptedPlatform:

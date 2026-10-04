@@ -161,8 +161,21 @@ export class DesktopModelManager {
     if (this.currentSpec) return this.currentSpec;
     const registry = this.registry();
     const active = registry.profiles.find((profile) => profile.id === registry.activeModelId);
-    const selection = active?.selection || PRIMARY_SELECTION;
-    this.currentSpec = this.resolve(selection);
+    // A clean install has no provider keys. Use the account gateway instead
+    // of resolving the developer's default MiniMax environment credential.
+    const accountDefault = registry.profiles.find((profile) => profile.authMode === "loom-account"
+      && profile.selection === ANT_LING_SELECTION);
+    const selection = (active && active.configured !== false ? active.selection : accountDefault?.selection)
+      || active?.selection || PRIMARY_SELECTION;
+    try {
+      this.currentSpec = this.resolve(selection);
+    } catch (error) {
+      // Legacy catalogue rows do not declare configured. Their credential
+      // failure must also lead to the account default on a clean installation.
+      const message = error instanceof Error ? error.message : String(error);
+      if (!accountDefault || !/API key.*(not configured|missing)|credential.*missing/i.test(message)) throw error;
+      this.currentSpec = this.resolve(accountDefault.selection);
+    }
     return this.currentSpec;
   }
 

@@ -81,13 +81,21 @@ if (!fs.existsSync(VENV_PYTHON)) {
 }
 
 run(VENV_PYTHON, ["-m", "pip", "install", "--upgrade", "pip", "wheel"]);
-run(VENV_PYTHON, ["-m", "pip", "install", "-e", ".[desktop-agent]", "pyinstaller>=6.10,<7"]);
+run(VENV_PYTHON, ["-m", "pip", "install", "--ignore-installed", "--prefix", VENV_ROOT,
+  ".[desktop-agent]", "pyinstaller>=6.10,<7", "playwright>=1.50,<2"]);
 
 fs.rmSync(DIST_ROOT, { recursive: true, force: true });
 fs.rmSync(WORK_ROOT, { recursive: true, force: true });
 fs.mkdirSync(DIST_ROOT, { recursive: true });
 fs.mkdirSync(WORK_ROOT, { recursive: true });
 prepareGeneratedConnectorConfig();
+
+// Download at build time, never on a customer's first browser action. Keep
+// the browser payload beside the frozen runtime so Host updates include it.
+const browserRoot = path.join(WORK_ROOT, "browsers");
+run(VENV_PYTHON, ["-m", "playwright", "install", "chromium"], {
+  env: { ...process.env, PYTHONUTF8: "1", PLAYWRIGHT_BROWSERS_PATH: browserRoot },
+});
 
 run(VENV_PYTHON, [
   "-m",
@@ -115,6 +123,16 @@ run(VENV_PYTHON, [
   "keyring",
   "--collect-all",
   "pywinauto",
+  "--collect-all",
+  "playwright",
+  "--collect-all",
+  "jsonschema",
+  "--collect-all",
+  "pyautogui",
+  "--collect-all",
+  "psutil",
+  "--collect-all",
+  "winpty",
   "--hidden-import",
   "keyring.backends.Windows",
   "--hidden-import",
@@ -127,7 +145,17 @@ if (!fs.existsSync(runtimeExe)) {
   console.error(`[build-runtime] Missing expected runtime executable: ${runtimeExe}`);
   process.exit(1);
 }
+fs.cpSync(browserRoot, path.join(DIST_ROOT, "python", "browsers"), { recursive: true });
+const browserExe = fs.readdirSync(browserRoot).filter((name) => name.startsWith("chromium-"))
+  .map((name) => path.join(browserRoot, name, "chrome-win64", "chrome.exe"))
+  .find((name) => fs.existsSync(name));
+if (!browserExe) throw new Error("Bundled Chromium executable is missing");
 run(runtimeExe, ["self-test"], { cwd: path.dirname(runtimeExe) });
+const cleanEnv = Object.fromEntries(Object.entries(process.env).filter(([name]) =>
+  !/^(LOOM_|MINIMAX_|OPENAI_|DASHSCOPE_|AI_API_KEY|PYTHONPATH|PYTHONHOME)/i.test(name)));
+run(runtimeExe, ["first-run-test"], {
+  cwd: path.dirname(runtimeExe), env: { ...cleanEnv, PYTHONUTF8: "1" },
+});
 run(runtimeExe, ["-c", "import mcp; from mcp.client.streamable_http import streamable_http_client; print('loom-mcp-import-ok')"], { cwd: path.dirname(runtimeExe) });
 run(runtimeExe, [
   "-c",

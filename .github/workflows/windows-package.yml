@@ -72,6 +72,14 @@ jobs:
         working-directory: desktop-react
         run: npm run package:win
 
+      - name: Verify credential-free packaged Host startup
+        working-directory: desktop-react
+        shell: pwsh
+        run: |
+          $env:LOOM_SMOKE_HOST_EXECUTABLE = Join-Path $PWD "release/win-unpacked/Loom.exe"
+          node scripts/host-process-smoke.mjs
+          if ($LASTEXITCODE -ne 0) { throw "Clean packaged Host startup failed." }
+
       - name: Verify packaged private runtime
         shell: pwsh
         run: |
@@ -82,6 +90,8 @@ jobs:
           if (-not (Test-Path $runtime)) { throw "Packaged private Python runtime was not found at $runtime" }
           if (-not (Test-Path $mxc)) { throw "Packaged MXC executable was not found at $mxc" }
           if (-not (Test-Path $browserExtension)) { throw "Packaged Current Tab Bridge extension was not found at $browserExtension" }
+          & $runtime first-run-test
+          if ($LASTEXITCODE -ne 0) { throw "Packaged credential-free first-run test failed." }
           & $runtime self-test
           if ($LASTEXITCODE -ne 0) { throw "Packaged runtime self-test failed with exit code $LASTEXITCODE" }
           & $runtime -c "import app; import mcp; from mcp.client.streamable_http import streamable_http_client; from app.app_server_local_ipc import LoomLocalAppServerClient; from app.chatgpt_mcp import build_mcp_server; import loom_chatgpt_mcp; print('loom-runtime-import-ok')"

@@ -16,6 +16,12 @@ def _prepare_frozen_environment() -> None:
     mxc = Path(sys.executable).resolve().parent / "wxc-exec.exe"
     if mxc.is_file():
         os.environ.setdefault("LOOM_WINDOWS_SANDBOX_EXECUTABLE", str(mxc))
+    browsers = Path(sys.executable).resolve().parent / "browsers"
+    if browsers.is_dir():
+        os.environ.setdefault("PLAYWRIGHT_BROWSERS_PATH", str(browsers))
+        for executable in sorted(browsers.glob("chromium-*/chrome-win*/chrome.exe")):
+            os.environ.setdefault("LOOM_BUNDLED_BROWSER", str(executable))
+            break
 
 
 _prepare_frozen_environment()
@@ -72,6 +78,44 @@ def _self_test() -> int:
     return 0
 
 
+def _first_run_test() -> int:
+    """Release gate: empty home, no provider secrets or developer tooling."""
+    import argparse
+    import tempfile
+    import importlib
+    from loom_cli import _build_runtime
+    for module in ("openai", "httpx", "jsonschema", "mcp.client.streamable_http",
+                   "keyring.backends.Windows", "winpty", "PIL", "psutil",
+                   "pyautogui", "pywinauto", "browser_use", "playwright"):
+        importlib.import_module(module)
+    if getattr(sys, "frozen", False):
+        browser = Path(os.environ.get("LOOM_BUNDLED_BROWSER", ""))
+        if not browser.is_file():
+            raise RuntimeError("Release is missing its bundled Chromium browser")
+        from playwright.sync_api import sync_playwright
+        with sync_playwright() as playwright:
+            instance = playwright.chromium.launch(executable_path=str(browser), headless=True)
+            try:
+                page = instance.new_page()
+                page.set_content("<title>Loom first run</title><p>Browser ready</p>")
+                assert page.title() == "Loom first run"
+                assert page.screenshot().startswith(b"\x89PNG")
+            finally:
+                instance.close()
+    with tempfile.TemporaryDirectory(prefix="loom-first-run-") as directory:
+        args = argparse.Namespace(provider="openai-compatible",
+            base_url="https://account.smirel.com/model/v1", model="Ling-3.0-flash",
+            allow_unconfigured_model=True, vision=False, timeout=120, home=directory)
+        runtime, store, _ = _build_runtime(args)
+        try:
+            session = runtime.create_session("agent.fast", workspace_dir=directory)
+            assert store.load(session.session_id).session_id == session.session_id
+        finally:
+            runtime.close()
+    print('{"ok":true,"first_run":"credential-free"}')
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     args = list(sys.argv[1:] if argv is None else argv)
     if not args:
@@ -83,6 +127,8 @@ def main(argv: list[str] | None = None) -> int:
         return _run_code(rest)
     if first == "self-test":
         return _self_test() if not rest else 2
+    if first == "first-run-test":
+        return _first_run_test() if not rest else 2
 
     script = Path(first).name.casefold()
     if script == "loom_app_server.py":

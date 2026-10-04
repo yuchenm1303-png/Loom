@@ -144,6 +144,9 @@ export function resolveHostPythonExecutable(repoRoot: string): string {
 
   const managedPython = path.join(currentHostRuntime(repoRoot).root, process.platform === "win32" ? "python.exe" : "python");
   if (fs.existsSync(managedPython)) return managedPython;
+  if (app.isPackaged) {
+    throw new Error("Loom installation is incomplete: its bundled local runtime is missing. Reinstall Loom.");
+  }
 
   const repoPython = process.platform === "win32"
     ? path.join(repoRoot, ".venv", "Scripts", "python.exe")

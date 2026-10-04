@@ -14,6 +14,7 @@ import {
 } from "./modelManager.js";
 import { LoomAccountClient, type LoomAccountSnapshot, type LoomAuthCapabilities, type LoomAuthChallenge, type LoomModelPolicyAccess } from "./accountClient.js";
 import { accountErrorPayload, type AccountErrorPayload } from "./accountErrors.js";
+import { startupModel } from "./startupModel.js";
 import { closeHudOverlayWindow, createHudOverlayWindow, sendHudUpdate } from "./hudWindow.js";
 import {
   sendRelayNotification,
@@ -743,6 +744,7 @@ async function openExternalUrl(value: string): Promise<boolean> {
 }
 
 class LoomRpcProcess {
+  private modelDeferred = false;
   private child: ChildProcessWithoutNullStreams | null = null;
   private nextId = 1;
   private pending = new Map<number, {
@@ -767,6 +769,12 @@ class LoomRpcProcess {
 
   async modelParams(spec: ModelLaunchSpec): Promise<Record<string, unknown>> {
     return runtimeModelParams(await this.materializeModelSpec(spec));
+  }
+
+  async ensureModelReady(): Promise<void> {
+    if (!this.modelDeferred) return;
+    await this.setModel(this.models.current ?? this.models.ensureInitial());
+    this.modelDeferred = false;
   }
 
   get ready(): boolean {
@@ -886,9 +894,11 @@ class LoomRpcProcess {
   private async startProcess(): Promise<void> {
     const searchRelay = await sharedSearchRelay();
     const selectedSpec = this.models.current ?? this.models.ensureInitial();
-    const spec = await this.materializeModelSpec(selectedSpec);
+    const launch = await startupModel(selectedSpec, () => this.account.modelCredential());
+    const spec = launch.spec;
+    this.modelDeferred = launch.deferred;
     let accountModelCredential = spec.authMode === "loom-account" ? spec.apiKey : "";
-    if (!accountModelCredential) {
+    if (!accountModelCredential && !this.modelDeferred) {
       try {
         accountModelCredential = await this.account.modelCredential();
       } catch {
@@ -899,6 +909,7 @@ class LoomRpcProcess {
     const sandboxExecutable = resolveHostSandboxExecutable(REPO_ROOT);
     const script = path.join(REPO_ROOT, "loom_app_server.py");
     const args = [script, "--workspace", REPO_ROOT, "--provider", spec.provider, "--model", spec.model, "--selection", spec.selection, "--local-ipc"];
+    if (this.modelDeferred) args.push("--allow-unconfigured-model");
     if (spec.baseUrl) args.push("--base-url", spec.baseUrl);
     if (spec.reasoning) args.push("--reasoning-kind", spec.reasoning.kind, "--reasoning-value", spec.reasoning.value);
     console.log(`[loom-app-server] launching ${python}`);
@@ -1378,7 +1389,10 @@ async function runListModels(forceRefresh = false): Promise<ReturnType<DesktopMo
 }
 
 async function runRpcCall(method: string, params: Record<string, unknown> = {}): Promise<unknown> {
-  if (method === "turn/start") await assertSignedInForModels();
+  if (method === "turn/start") {
+    await assertSignedInForModels();
+    await rpc.ensureModelReady();
+  }
   return rpc.call(method, params);
 }
 
