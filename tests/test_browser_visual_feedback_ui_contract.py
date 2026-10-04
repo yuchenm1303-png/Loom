@@ -1,3 +1,5 @@
+"""Desktop contracts for Browser Use screenshot feedback."""
+
 from pathlib import Path
 
 
