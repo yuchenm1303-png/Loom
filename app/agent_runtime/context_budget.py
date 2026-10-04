@@ -591,6 +591,12 @@ def prepare_context(rt, session, step, token):
             fallback=communication_language,
         )
     )
+    # ContextAgentRuntime overrides the core request builder. Keep task state
+    # on this production path too, including across canonical-history rollover.
+    execution_context = getattr(rt, "_execution_context", None)
+    if callable(execution_context):
+        state_messages, _ = execution_context(session)
+        transient.extend(state_messages)
 
     tools = step.tool_router.definitions()
     limits = (
@@ -729,12 +735,19 @@ def prepare_context(rt, session, step, token):
     # guard, but the default rollover policy is token-driven like Codex. A
     # provider rejection outranks every local budget and forces one compaction.
     forced_compaction = _consume_forced_compaction(rt, session)
+    from .context_tools import pending_context_rollover
+    read_events = getattr(rt.store, "events", None)
+    model_requested_rollover = pending_context_rollover(
+        read_events(session.session_id) if callable(read_events) else (),
+        getattr(session, "current_turn_id", "")
+    )
     message_count_fits = (
         rt.limits.max_messages <= 0
         or len(projected_visible) <= rt.limits.max_messages
     )
     hard_request_fits = (
         not forced_compaction
+        and not model_requested_rollover
         and (
             input_budget is None
             or calibrated(estimated_projected) <= input_budget
@@ -1022,6 +1035,7 @@ def prepare_context(rt, session, step, token):
             "compaction_attempts": response_attempts,
             "compaction_trimmed_messages": trimmed_messages,
             "forced_by_provider_context_error": forced_compaction,
+            "model_requested_rollover": model_requested_rollover,
             "pre_compaction_tool_outputs_reduced": reduction_stats.tool_outputs_reduced,
             "pre_compaction_tool_outputs_collapsed": reduction_stats.tool_outputs_collapsed,
             "post_compaction_target_tokens": post_compaction_target_tokens,

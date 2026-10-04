@@ -66,7 +66,8 @@ def test_stop_is_candidate_and_review_continues_same_turn(tmp_path, candidate):
         assert platform.requests[1].purpose == "stop_review"
         assert [t.name for t in platform.requests[1].tools] == [STOP_TOOL.name]
         assert "跑完全部测试并生成报告" in str(platform.requests[1].messages)
-        assert "Generate the report" in platform.requests[2].messages[-1].content
+        continuation = next(m for m in platform.requests[2].messages if m.name == "loom_turn_continuation")
+        assert "Generate the report" in continuation.content
         events = rt.store.events(session.session_id)
         assert sum(e.kind.value == "turn_started" for e in events) == 1
         assert sum(e.kind.value == "turn_completed" for e in events) == 1

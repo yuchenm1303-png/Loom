@@ -5,11 +5,14 @@ from app.ai import AIMessage, ImagePart, MessageRole, TextPart
 
 
 def attach_observation(messages: list[AIMessage], text: str, *, tool_prefix: str,
-                       image: ImagePart | None = None) -> list[AIMessage]:
+                       image: ImagePart | None = None,
+                       tool_call_id: str | None = None) -> list[AIMessage]:
     result = list(messages)
     for index in range(len(result) - 1, -1, -1):
         message = result[index]
-        if message.role is MessageRole.TOOL and (message.name or "").startswith(tool_prefix):
+        if (message.role is MessageRole.TOOL
+                and (message.name or "").startswith(tool_prefix)
+                and (tool_call_id is None or message.tool_call_id == tool_call_id)):
             content = (TextPart(message.content),) if isinstance(message.content, str) else message.content
             result[index] = replace(message, content=(*content, TextPart(text)))
             break

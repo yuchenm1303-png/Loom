@@ -241,6 +241,8 @@ def test_extended_element_action_rejects_stale_revision_before_backend_call(tmp_
     managed = store.start("owner")
     stale = store.snapshot("owner", managed.browser_id).state_revision
     store.state("owner", managed.browser_id)
+    current = store.snapshot("owner", managed.browser_id).state_revision
+    state_calls_before = calls.count(("state",))
 
     hover = runtime.tools.get("browser_hover")
     assert hover is not None
@@ -249,9 +251,12 @@ def test_extended_element_action_rejects_stale_revision_before_backend_call(tmp_
         {"browser_id": managed.browser_id, "index": 1, "state_revision": stale},
     )
     assert result.ok is False
-    assert "stale browser state_revision" in result.content
+    assert result.data["error_code"] == "stale_observation"
+    assert result.data["execution_status"] == "not_executed"
+    assert result.data["expected_revision"] == stale
+    assert calls.count(("state",)) == state_calls_before
     # The whole point of attaching it: the model can pick an index straight away.
-    assert int(result.data["state_revision"]) > stale
+    assert int(result.data["state_revision"]) == current
     assert "dom" in result.data
     assert ("hover", 1) not in calls
     runtime.close()

@@ -9,11 +9,6 @@ from app.ai import AIMessage, MessageRole, ToolCall
 from .contracts import AgentEvent, AgentEventKind, ToolEffect
 
 
-# Intervene before a small task turns into a long audit. These checkpoints are
-# advisory and cheap; they do not cap legitimate long-running work.
-CONVERGENCE_THRESHOLDS = (4, 8, 16, 32, 64, 96, 128, 160)
-
-
 def tool_call_fingerprint(call: ToolCall) -> str:
     payload = json.dumps(
         {"tool": call.name, "arguments": call.arguments},
@@ -78,7 +73,6 @@ def model_execution_guidance(
     events: Sequence[AgentEvent],
     *,
     turn_id: str,
-    tool_calls: int,
 ) -> tuple[AIMessage | None, dict[str, object]]:
     turn_events = [event for event in events if event.turn_id == turn_id]
     last_request_index = max(
@@ -106,21 +100,9 @@ def model_execution_guidance(
         if str(event.data.get("effect") or "") == ToolEffect.READ_ONLY.value
     ]
 
-    delivered_thresholds = {
-        int(event.data.get("convergence_checkpoint") or 0)
-        for event in turn_events
-        if event.kind is AgentEventKind.MODEL_REQUESTED
-    }
-    delivered_through = max(delivered_thresholds, default=0)
-    threshold = max(
-        (
-            value
-            for value in CONVERGENCE_THRESHOLDS
-            if tool_calls >= value and value > delivered_through
-        ),
-        default=0,
-    )
-    if not repeats and not threshold:
+    # Tool volume is not evidence that a task needs another audit/replan.
+    # Only report an observed repetition, once, without interrupting execution.
+    if not repeats:
         return None, {}
 
     parts = ["LOOM_EXECUTION_GUIDANCE v1"]
@@ -144,16 +126,6 @@ def model_execution_guidance(
             f"Repeated sensitive tools: {', '.join(tools)}."
         )
         metadata["duplicate_sensitive_calls"] = len(sensitive_repeats)
-    if threshold:
-        parts.append(
-            f"This turn has reached {threshold} tool calls. Before more tools, privately check what is "
-            "already established, what remains, and whether the next call will add new evidence. If the task "
-            "is straightforward and the leading hypothesis is already supported, stop broadening the audit "
-            "and implement the smallest complete change now. Prefer one discriminating verification over "
-            "rereading the same files through another search or shell tool. If progress is stalled, change "
-            "approach or report a concrete blocker. Do not narrate this internal checkpoint or repeat the full plan."
-        )
-        metadata["convergence_checkpoint"] = threshold
     return AIMessage(
         role=MessageRole.SYSTEM,
         name="loom_execution_guidance",
@@ -162,7 +134,6 @@ def model_execution_guidance(
 
 
 __all__ = [
-    "CONVERGENCE_THRESHOLDS",
     "model_execution_guidance",
     "recent_read_only_repeat_count",
     "recent_tool_repeat_count",

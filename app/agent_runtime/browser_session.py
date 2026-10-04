@@ -40,6 +40,18 @@ class BrowserError(RuntimeError):
     pass
 
 
+class BrowserStaleStateError(BrowserError):
+    """The action was not dispatched because its observation was superseded."""
+
+    def __init__(self, expected: int, current: int) -> None:
+        super().__init__(
+            f"stale browser state_revision {expected}; latest is {current}. "
+            "Choose the next action from the current observation."
+        )
+        self.expected_revision = expected
+        self.current_revision = current
+
+
 class BrowserSessionLimitError(BrowserError):
     """A browser slot is temporarily unavailable.
 

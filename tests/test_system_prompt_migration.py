@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 from app.agent_runtime.contracts import AgentSession
 from app.agent_runtime.runtime import (
     DEFAULT_AGENT_SYSTEM_PROMPT,
@@ -31,9 +33,9 @@ def _session(tmp_path, prompt: str, *, version: int = 0) -> AgentSession:
     )
 
 
-def test_legacy_default_prompt_is_upgraded_on_session_load(tmp_path) -> None:
+@pytest.mark.parametrize("legacy", sorted(_LEGACY_DEFAULT_AGENT_SYSTEM_PROMPTS))
+def test_legacy_default_prompt_is_upgraded_on_session_load(tmp_path, legacy) -> None:
     store = FileAgentSessionStore(tmp_path / "state")
-    legacy = next(iter(_LEGACY_DEFAULT_AGENT_SYSTEM_PROMPTS))
     store.create(_session(tmp_path, legacy))
     runtime = AgentRuntime(platform=_Platform(), store=store)
 
@@ -60,7 +62,7 @@ def test_custom_prompt_is_never_rewritten(tmp_path) -> None:
 
 
 def test_default_prompt_exposes_decision_cards_without_turning_routine_work_into_questions() -> None:
-    assert DEFAULT_AGENT_SYSTEM_PROMPT_VERSION == 8
+    assert DEFAULT_AGENT_SYSTEM_PROMPT_VERSION == 9
     assert "```loom-decision" in DEFAULT_AGENT_SYSTEM_PROMPT
     assert '"title"' not in DEFAULT_AGENT_SYSTEM_PROMPT
     assert "routine implementation details" in DEFAULT_AGENT_SYSTEM_PROMPT
@@ -68,5 +70,7 @@ def test_default_prompt_exposes_decision_cards_without_turning_routine_work_into
     assert "Put the fenced ```loom-decision block first" in DEFAULT_AGENT_SYSTEM_PROMPT
     assert "requires title and options" in DEFAULT_AGENT_SYSTEM_PROMPT
     assert "Use parallel tool calls when several actions are independent" in DEFAULT_AGENT_SYSTEM_PROMPT
+    assert "8-12" not in DEFAULT_AGENT_SYSTEM_PROMPT
+    assert "Routine tool receipts do not need an acknowledgment" in DEFAULT_AGENT_SYSTEM_PROMPT
     # Version 6 through the older decision/action defaults remain migratable.
     assert len(_LEGACY_DEFAULT_AGENT_SYSTEM_PROMPTS) >= 6
