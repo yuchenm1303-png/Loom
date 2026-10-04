@@ -36,8 +36,6 @@ def test_loom_web_loads_the_canonical_listing_studio_glass_assets():
         "cosmic-bright-v1.css",
         "portal-polish-v1.css",
         "portal-polish-v2.css",
-        "portal-account-v1.css",
-        "portal-account-v2.css",
         "layout-visual-restore-v1.css",
         "cursor-reference-source-v1.css",
         "session-boot-v1.css",
@@ -47,6 +45,12 @@ def test_loom_web_loads_the_canonical_listing_studio_glass_assets():
     ]
     for name in required:
         assert f"https://smirel.com/download/{name}" in portal
+    # The new Loom Account form is self-contained. These legacy account sheets
+    # include broad `.login-form input` / `.password-field input` rules with
+    # !important background fills that paint a second rectangle inside the
+    # current glass field shell, so they must stay out of the Portal load list.
+    for legacy in ("portal-account-v1.css", "portal-account-v2.css"):
+        assert f"https://smirel.com/download/{legacy}" not in portal
     assert "https://smirel.com/download/wallpaper-beach-blue-v1-original.png" in portal
     assert ".smirel-web-shell" not in glue
     assert "background: #06080d" not in glue
