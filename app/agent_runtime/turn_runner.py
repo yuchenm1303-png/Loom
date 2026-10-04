@@ -123,7 +123,6 @@ class TurnRunner:
                 recovery_tool_hint = ""
                 recovery_partial = ""
                 recovery_reasoning = ""
-                stop_feedback = ""
                 stop_decision = None
                 attempt = 0
                 while True:
@@ -152,7 +151,7 @@ class TurnRunner:
                     model_identity = _sample_model_identity(step)
                     tool_names = _exposed_tool_names(step)
                     request_messages = list(messages)
-                    if recovery_instruction:
+                    if recovery_instruction and recovery_instruction != "stop_check_continue":
                         if recovery_partial:
                             request_messages.append(AIMessage(
                                 role=MessageRole.ASSISTANT,
@@ -163,9 +162,7 @@ class TurnRunner:
                             role=MessageRole.SYSTEM,
                             name="loom_terminal_recovery",
                             content=(
-                                stop_feedback
-                                if recovery_instruction == "stop_check_continue"
-                                else TOOL_ARGUMENT_RECOVERY_INSTRUCTION + recovery_tool_hint
+                                TOOL_ARGUMENT_RECOVERY_INSTRUCTION + recovery_tool_hint
                                 if recovery_instruction == "invalid_tool_arguments"
                                 else
                                 _UNFINISHED_RECOVERY_INSTRUCTION
@@ -463,7 +460,6 @@ class TurnRunner:
                             session.usage = _add_usage(session.usage, response.usage)
                             recovery_instruction = ""
                             recovery_partial = ""
-                            stop_feedback = ""
                             continue
                         except StopReviewLimitReached as exc:
                             from .runtime import _add_usage
@@ -484,14 +480,8 @@ class TurnRunner:
                             raise
                         if stop_decision.outcome == "continue":
                             invalid_terminal = "stop_check_continue"
-                            stop_feedback = (
-                                "Outstanding user-requested work (internal execution state; apply silently). "
-                                "Take the next authorized action within the same scope. Do not acknowledge "
-                                "this feedback, recite the plan, add acceptance criteria, or seek redundant approval.\n"
-                                + json.dumps({"missing_result": stop_decision.reason,
-                                    "remaining_tasks": stop_decision.remaining_tasks,
-                                    "next_action": stop_decision.next_action}, ensure_ascii=False)
-                            )
+                            # Durable assessment state is projected on every next
+                            # request, including after tools, approvals and compaction.
                     if not invalid_terminal:
                         break
 

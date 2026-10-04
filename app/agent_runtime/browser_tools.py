@@ -5,7 +5,7 @@ import uuid
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable
 
-from .browser_session import BrowserSessionLimitError, BrowserTextNotFoundError, BrowserURLPolicyError
+from .browser_session import BrowserSessionLimitError, BrowserStaleStateError, BrowserTextNotFoundError, BrowserURLPolicyError
 from .contracts import ToolEffect
 from .tools import AgentTool, ToolContext, ToolResult
 
@@ -37,13 +37,11 @@ def _snapshot_result(
     return ToolResult(ok=True, content=message, data={**snapshot.to_dict(), **(extra or {})})
 
 
-# The three ways the model's view of a page goes stale: the DOM node behind an
-# index was replaced, the index is gone entirely, or the revision it held has
-# been superseded. All three are the same situation to recover from.
+# Backend compatibility for node errors that do not yet carry a typed code.
+# Host revision conflicts are typed and never require parsing error prose.
 _STALE_VIEW_MARKERS = (
     "element is no longer available",
     "element index is not available",
-    "stale browser state_revision",
 )
 
 
@@ -58,24 +56,33 @@ def _with_fresh_view(
     browser_id: str,
     action: Callable[[], ToolResult],
 ) -> ToolResult:
-    """Run an element action; when the view is stale, fail with the current page.
+    """Return current evidence without replaying an action against changed indexes.
 
-    A stale view used to come back as one sentence telling the model to call
-    browser_state and retry. Measured on a real session, that cost three round
-    trips - 35 seconds of wall clock for 0.55 seconds of actual browser work -
-    and the model spent the first of them repeating the identical call, because
-    nothing in the message distinguished "your indexes are old" from "that click
-    did not land". Re-reading the page is the cheap part, so it happens here and
-    travels back attached to the failure: the next turn can act instead of
-    asking what changed.
-
-    Still a failure, deliberately. Retrying the same index against a re-rendered
-    page is how a click lands on the wrong element, so choosing again is the
-    model's job.
+    A host revision conflict happens before dispatch; return the cached observation
+    produced by the preceding action. A backend node-replacement error requires a
+    fresh read. Neither path rewrites arguments or retries a potentially wrong
+    target: choosing an action from the new evidence remains the model's job.
     """
 
     try:
         return action()
+    except BrowserStaleStateError as exc:
+        # The preceding action already produced the current observation. Reading
+        # it again would advance revision once more and invalidate other callers.
+        # Never rewrite the submitted revision or dispatch the stale action.
+        snapshot = store.snapshot(context.session_id, browser_id)
+        return ToolResult(
+            ok=False,
+            content=(
+                "Action not executed: its page observation was superseded. "
+                "Use the attached current observation to choose the next action. "
+                "For the same browser, submit one dependent action, consume its result, "
+                "then choose the next; serial dispatch cannot repair precomputed indexes."
+            ),
+            data={**snapshot.to_dict(), "execution_status": "not_executed",
+                  "error_code": "stale_observation", "retryable": True,
+                  "expected_revision": exc.expected_revision},
+        )
     except Exception as exc:
         if not _is_stale_view(exc):
             raise
@@ -93,7 +100,7 @@ def _with_fresh_view(
                 "below and send the next action with that revision. Do not repeat the previous call "
                 "unchanged - the index it used no longer points at what you saw."
             ),
-            data=snapshot.to_dict(),
+            data={**snapshot.to_dict(), "error_code": "stale_element", "retryable": True},
         )
 
 

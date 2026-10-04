@@ -18,6 +18,7 @@ from .browser_session import (
     BrowserLaunchOptions,
     BrowserPageState,
     BrowserSessionManager,
+    BrowserStaleStateError,
     BrowserURLPolicyError,
     ManagedBrowserSession,
 )
@@ -393,10 +394,7 @@ class BrowserSessionStore(BrowserSessionManager):
         current = self._revision(item)
         expected = int(expected_revision)
         if expected != current:
-            raise RuntimeError(
-                f"stale browser state_revision {expected}; latest is {current}. "
-                "Call browser_state and retry with the latest element index."
-            )
+            raise BrowserStaleStateError(expected, current)
 
     def refresh(self, owner_session_id: str, browser_id: str) -> BrowserStateSnapshot:
         item = self._owned(owner_session_id, browser_id)

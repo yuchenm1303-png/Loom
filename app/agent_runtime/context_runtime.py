@@ -33,6 +33,9 @@ class ContextAgentRuntime(SandboxAgentRuntime):
 
     def __init__(self, *args, checkpoint_store: ContextCheckpointStore | None = None, **kwargs) -> None:
         super().__init__(*args, **kwargs)
+        from .context_tools import new_context_tool
+        if self.tools.get("new_context") is None:
+            self.tools.register(new_context_tool())
         self.checkpoint_store = checkpoint_store or ContextCheckpointStore(self.store.root)
         # Codex keeps one applied repository-instruction snapshot while the
         # environment/trust selection is unchanged. Loom currently exposes the

@@ -58,7 +58,7 @@ def test_repeat_count_stops_at_intervening_mutation():
     ) == 1
 
 
-def test_guidance_reports_new_repeat_once_and_advances_thresholds():
+def test_guidance_reports_an_observed_repeat_once():
     events = (
         _event(
             AgentEventKind.MODEL_REQUESTED,
@@ -73,19 +73,14 @@ def test_guidance_reports_new_repeat_once_and_advances_thresholds():
         ),
     )
 
-    message, metadata = model_execution_guidance(events, turn_id="turn-1", tool_calls=32)
+    message, metadata = model_execution_guidance(events, turn_id="turn-1")
 
     assert message is not None
     assert "read_workspace_text" in message.content
-    assert "32 tool calls" in message.content
-    assert "discriminating verification" in message.content
-    assert metadata == {
-        "duplicate_read_only_calls": 1,
-        "convergence_checkpoint": 32,
-    }
+    assert metadata == {"duplicate_read_only_calls": 1}
 
     delivered = (*events, _event(AgentEventKind.MODEL_REQUESTED, **metadata))
-    message, metadata = model_execution_guidance(delivered, turn_id="turn-1", tool_calls=32)
+    message, metadata = model_execution_guidance(delivered, turn_id="turn-1")
     assert message is None
     assert metadata == {}
 
@@ -122,7 +117,6 @@ def test_sensitive_repeat_is_advisory_even_across_other_sensitive_calls():
     message, metadata = model_execution_guidance(
         repeated,
         turn_id="turn-1",
-        tool_calls=3,
     )
 
     assert message is not None
@@ -130,7 +124,7 @@ def test_sensitive_repeat_is_advisory_even_across_other_sensitive_calls():
     assert "durable result" in message.content
     assert metadata == {"duplicate_sensitive_calls": 1}
 
-def test_guidance_intervenes_before_small_task_becomes_broad_audit():
+def test_distinct_progress_does_not_trigger_a_count_based_replan():
     events = (
         _event(AgentEventKind.MODEL_REQUESTED),
         _event(
@@ -163,10 +157,8 @@ def test_guidance_intervenes_before_small_task_becomes_broad_audit():
         ),
     )
 
-    message, metadata = model_execution_guidance(events, turn_id="turn-1", tool_calls=4)
+    message, metadata = model_execution_guidance(events, turn_id="turn-1")
 
-    assert message is not None
-    assert "4 tool calls" in message.content
-    assert "stop broadening the audit" in message.content
-    assert metadata == {"convergence_checkpoint": 4}
+    assert message is None
+    assert metadata == {}
 
