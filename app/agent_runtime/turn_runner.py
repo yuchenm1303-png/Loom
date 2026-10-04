@@ -127,6 +127,8 @@ class TurnRunner:
                 stop_decision = None
                 attempt = 0
                 while True:
+                    if rt._cancel_if_requested(session, token):
+                        return rt._result(session)
                     if rt.limits.max_model_steps > 0 and session.model_steps >= rt.limits.max_model_steps:
                         return rt._limit(session, "model step limit reached")
                     sample_steering_revision = _consume_steering_for_sample(rt, session, token)
@@ -512,29 +514,12 @@ class TurnRunner:
                         },
                     })
                     rt._release_step_context(step)
-                    if invalid_terminal == "stop_check_continue":
-                        stop_count = sum(e.turn_id == session.current_turn_id
-                            and e.kind is Event.TURN_STOP_CHECKED and e.data.get("outcome") == "continue"
-                            for e in rt.store.events(session.session_id))
-                        if stop_count >= rt.limits.max_stop_continuations:
-                            # Close the same late-steering race as the accepted
-                            # final-answer boundary. New human input must not be
-                            # discarded merely because the old candidate hit a cap.
-                            with rt._active_tokens_guard:
-                                if rt._cancel_if_requested(session, token):
-                                    return rt._result(session)
-                                if rt._consume_steering(session):
-                                    recovery_instruction = ""
-                                    recovery_partial = ""
-                                    stop_feedback = ""
-                                    continue
-                                rt._active_tokens.pop(session.session_id, None)
-                            from .response_language import infer_user_language
-                            prefix = ("任务尚未完成：多次收尾检查后仍有未解决事项，已停止自动重复。剩余："
-                                if infer_user_language(session.messages) == "zh" else
-                                "Task incomplete: repeated completion checks did not converge; automatic retries stopped. Remaining: ")
-                            return rt._limit(session, prefix + "; ".join(stop_decision.remaining_tasks))
-                    elif attempt >= rt.limits.model_retries:
+                    # A semantic continuation is normal task execution, not a
+                    # failed provider request. Neither successful tool batches
+                    # nor repeated candidates decide when the task is done.
+                    # Cancellation, steering and explicit resource budgets are
+                    # checked by the ordinary execution loop and model executor.
+                    if invalid_terminal != "stop_check_continue" and attempt >= rt.limits.model_retries:
                         raise RuntimeError(
                             f"model repeatedly returned an invalid terminal response ({invalid_terminal})"
                         )

@@ -91,15 +91,71 @@ def test_legitimate_turn_end_is_explicit_and_durable(tmp_path, outcome):
         rt.close()
 
 
-def test_repeated_refusal_to_finish_is_bounded_and_never_completed(tmp_path):
-    responses = [item for _ in range(3) for item in (ModelResponse(text="Working."), decision("continue"))]
+def test_text_only_continuations_are_not_a_completion_or_retry_limit(tmp_path):
+    responses = [item for _ in range(12) for item in (ModelResponse(text="Working."), decision("continue"))]
+    responses.extend([ModelResponse(text="Requested report"), decision()])
     rt, session, platform = runtime(tmp_path, responses)
     try:
         result = rt.start_turn(session.session_id, "Generate report")
+        assert result.status is AgentStatus.COMPLETED
+        assert result.final_text == "Requested report"
+        assert len(platform.requests) == 26
+        events = rt.store.events(session.session_id)
+        assert sum(e.kind.value == "turn_completed" for e in events) == 1
+        assert not any(e.kind.value == "limit_reached" for e in events)
+        assert all(m.content != "Working." for m in rt.store.load(session.session_id).messages)
+    finally:
+        rt.close()
+
+
+@pytest.mark.parametrize("outcome", ["blocked", "needs_input"])
+def test_repeated_continuations_can_end_with_an_evidenced_incomplete_result(tmp_path, outcome):
+    responses = [item for _ in range(6) for item in (ModelResponse(text="Working."), decision("continue"))]
+    responses.extend([ModelResponse(text="Specific blocker or essential missing user input."), decision(outcome)])
+    rt, session, _ = runtime(tmp_path, responses)
+    try:
+        result = rt.start_turn(session.session_id, "Generate report")
+        assert result.status is AgentStatus.COMPLETED
+        assert result.final_text == "Specific blocker or essential missing user input."
+        event = rt.store.events(session.session_id)[-1]
+        assert event.kind.value == "turn_completed"
+        assert event.data["stop_decision"]["outcome"] == outcome
+        assert event.data["stop_decision"]["remaining_tasks"]
+    finally:
+        rt.close()
+
+
+def test_cancel_after_repeated_continuations_stops_before_another_request(tmp_path):
+    responses = [item for _ in range(6) for item in (ModelResponse(text="Working."), decision("continue"))]
+    rt, session, platform = runtime(tmp_path, responses)
+    original = rt._record
+    checks = 0
+    def record(session, kind, **kwargs):
+        nonlocal checks
+        event = original(session, kind, **kwargs)
+        if kind.value == "turn_stop_checked":
+            checks += 1
+            if checks == 6:
+                rt.cancel(session.session_id)
+        return event
+    rt._record = record
+    try:
+        result = rt.start_turn(session.session_id, "Generate report")
+        assert result.status is AgentStatus.CANCELLED
+        assert len(platform.requests) == 12
+        assert not any(e.kind.value == "turn_completed" for e in rt.store.events(session.session_id))
+    finally:
+        rt.close()
+
+
+def test_explicit_model_budget_is_independent_of_semantic_continuation(tmp_path):
+    responses = [item for _ in range(6) for item in (ModelResponse(text="Working."), decision("continue"))]
+    rt, session, platform = runtime(tmp_path, responses, limits=AgentLimits(max_model_steps=8))
+    try:
+        result = rt.start_turn(session.session_id, "Generate report")
         assert result.status is AgentStatus.LIMIT_REACHED
-        assert "Task incomplete" in result.error
-        assert "Produce the requested report" in result.error
-        assert len(platform.requests) == 6
+        assert result.error == "model step limit reached"
+        assert len(platform.requests) == 8
         assert not any(e.kind.value == "turn_completed" for e in rt.store.events(session.session_id))
     finally:
         rt.close()

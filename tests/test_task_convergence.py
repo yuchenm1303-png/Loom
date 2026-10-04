@@ -7,7 +7,7 @@ import pytest
 
 from app.ai import AIMessage, ChatRequest, ImagePart, MessageRole, ModelResponse, TextPart, ToolCall
 from app.agent_runtime import AgentStatus
-from app.agent_runtime.contracts import AgentLimits, AgentEventKind as Event
+from app.agent_runtime.contracts import AgentLimits, AgentEventKind as Event, ToolEffect
 from app.agent_runtime.response_language import infer_user_language
 from app.agent_runtime.runtime import DEFAULT_AGENT_SYSTEM_PROMPT, _DEFAULT_AGENT_SYSTEM_PROMPT_V7
 from app.agent_runtime.task_plan import current_plan
@@ -18,23 +18,54 @@ from test_turn_stop import runtime, decision
 pytestmark = pytest.mark.real_stop_hook
 
 
-def test_stop_budget_survives_successful_tool_batches(tmp_path):
+def test_semantic_continuations_across_tool_batches_finish_only_when_assessed_complete(tmp_path):
     tools = ToolRegistry()
     tools.register(AgentTool("probe", "observe", {"type": "object"}, lambda c, a: ToolResult(True, "observed")))
     responses = []
-    for index in range(3):
+    for index in range(12):
         responses.extend([ModelResponse(tool_calls=(ToolCall(str(index), "probe", {}),)),
                           ModelResponse(text="Report coming"), decision("continue")])
+    responses.extend([ModelResponse(text="Requested report with all results"), decision()])
     rt, session, platform = runtime(tmp_path, responses, tools=tools, default_permission_mode="full-access")
     try:
         result = rt.start_turn(session.session_id, "Run the checks and give a report")
-        assert result.status is AgentStatus.LIMIT_REACHED
-        assert result.final_text == ""
+        assert result.status is AgentStatus.COMPLETED
+        assert result.final_text == "Requested report with all results"
         events = rt.store.events(session.session_id)
-        assert sum(e.kind is Event.TOOL_COMPLETED for e in events) == 3
-        assert sum(e.kind is Event.TURN_STOP_CHECKED for e in events) == 3
-        assert not any(e.kind is Event.TURN_COMPLETED for e in events)
-        assert len(platform.requests) == 9
+        assert sum(e.kind is Event.TOOL_COMPLETED for e in events) == 12
+        assert sum(e.kind is Event.TURN_STOP_CHECKED for e in events) == 13
+        assert sum(e.kind is Event.TURN_COMPLETED for e in events) == 1
+        assert not any(e.kind is Event.LIMIT_REACHED for e in events)
+        assert len(platform.requests) == 38
+    finally:
+        rt.close()
+
+
+def test_semantic_continuations_preserve_turn_across_approval_resumptions(tmp_path):
+    tools = ToolRegistry()
+    tools.register(AgentTool("probe", "authorized action", {"type": "object"},
+                             lambda c, a: ToolResult(True, "observed"), effect=ToolEffect.SENSITIVE))
+    responses = []
+    for index in range(5):
+        responses.append(ModelResponse(tool_calls=(ToolCall(str(index), "probe", {}),)))
+        responses.extend([ModelResponse(text="Report coming"), decision("continue")]
+            if index < 4 else [ModelResponse(text="Requested report"), decision()])
+    rt, session, platform = runtime(tmp_path, responses, tools=tools, default_permission_mode="approval")
+    try:
+        result = rt.start_turn(session.session_id, "Run authorized actions and give a report")
+        turn_id = rt.store.load(session.session_id).current_turn_id
+        for index in range(5):
+            assert result.status is AgentStatus.WAITING_APPROVAL
+            assert result.pending_approval.call_id == str(index)
+            result = rt.resume_approval(session.session_id, str(index), approved=True)
+            assert rt.store.load(session.session_id).current_turn_id == turn_id
+        assert result.status is AgentStatus.COMPLETED
+        assert result.final_text == "Requested report"
+        events = rt.store.events(session.session_id)
+        assert sum(e.kind is Event.TURN_STARTED for e in events) == 1
+        assert sum(e.kind is Event.TURN_COMPLETED for e in events) == 1
+        assert not any(e.kind is Event.LIMIT_REACHED for e in events)
+        assert len(platform.requests) == 15
     finally:
         rt.close()
 
@@ -126,11 +157,11 @@ def test_continuation_reuses_previous_turn_results(tmp_path):
         rt.close()
 
 
-def test_late_user_guidance_wins_over_completion_budget(tmp_path):
+def test_late_user_guidance_supersedes_rejected_candidate(tmp_path):
     rt, session, platform = runtime(tmp_path, [
         ModelResponse(text="Old candidate"), decision("continue"),
         ModelResponse(text="Updated result"), decision(),
-    ], limits=AgentLimits(max_stop_continuations=1))
+    ])
     original = rt._record
     sent = False
     def record(session, kind, **kwargs):
@@ -200,9 +231,3 @@ def test_existing_default_prompt_upgrades_but_custom_prompt_survives(tmp_path):
         assert rt.get_session(session.session_id).system_prompt == "Custom developer prompt"
     finally:
         rt.close()
-
-
-@pytest.mark.parametrize("limit", [0, -1, 11])
-def test_stop_continuation_budget_is_finite(limit):
-    with pytest.raises(ValueError):
-        AgentLimits(max_stop_continuations=limit)

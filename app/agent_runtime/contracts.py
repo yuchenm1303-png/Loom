@@ -89,14 +89,10 @@ class AgentLimits:
     context_window_tokens: int | None = None
     output_reserve_tokens: int | None = None
     model_retries: int = 2
-    # Shared across all tool batches and approval resumptions in one turn.
-    max_stop_continuations: int = 3
 
     def __post_init__(self) -> None:
         if self.model_retries < 0 or self.model_retries > 5:
             raise ValueError("model_retries must be within 0..5")
-        if not 1 <= self.max_stop_continuations <= 10:
-            raise ValueError("max_stop_continuations must be within 1..10")
         if (
             self.output_reserve_tokens is not None
             and self.context_window_tokens is not None

@@ -43,11 +43,14 @@ extension, not proof that all requested work is complete.
   captured model's declared input budget when known. Call identities/outcomes
   remain; if protected intent/evidence identities cannot fit, completion fails
   explicitly instead of repeatedly sending an over-length review request.
-- Semantic continuations have a durable **turn-wide** budget, default 3
-  (`AgentLimits.max_stop_continuations`, configurable 1–10). Tools and approval
-  resumptions cannot reset it. On exhaustion, status is `limit_reached` with an
-  explicit incomplete-work message and remaining tasks, never false completion.
-  Provider/schema retries remain a separate bounded policy.
+- Semantic continuations return to normal execution in the same turn, without
+  a rejection-count limit. An earlier Loom-only default of three rejections
+  incorrectly stopped work even after useful tool execution; that counter and
+  its configuration field have been removed. Completion depends on the assessed
+  request, evidence and candidate, not how often a candidate was rejected.
+  Cancellation and steering are checked at every continuation. Explicit model,
+  tool or goal budgets, provider failures and schema-recovery retries remain
+  separate interruption/error policies, never completion evidence.
 - Default prompt v8 asks for milestone changes and useful findings instead of
   per-receipt acknowledgement or trust-boundary monologues. Existing Loom default
   prompts upgrade; custom prompts are preserved.

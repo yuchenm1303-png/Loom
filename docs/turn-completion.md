@@ -34,10 +34,11 @@ boundaries. Cancellation and steering use the normal bounded model executor and
 the final acceptance lock still rejects superseded samples.
 
 Malformed decisions and assessment errors have bounded retries; exhaustion fails
-the turn instead of silently accepting completion. Repeated `continue` decisions
-have a separate durable turn-wide budget, including across tool batches and
-approval resumptions. Exhaustion produces an explicit `limit_reached` incomplete
-result with remaining tasks. See [task convergence](task-convergence.md). Nonretryable
+the turn instead of silently accepting completion. Valid `continue` decisions
+resume normal execution in the same turn. They have no rejection-count limit,
+including across tool batches and approval resumptions. Completion requires an
+accepted semantic result; cancellation, actual failures and explicitly configured
+resource budgets remain independent. See [task convergence](task-convergence.md). Nonretryable
 duration timeouts are not retried. Existing transport/tool safety checks remain
 separate. Waiting-phrase and action-promise regexes are removed from completion
 validation; structural/provider truncation checks remain.
@@ -46,3 +47,24 @@ Each candidate requires an additional model request, increasing latency and toke
 usage. Tests for other runtime subsystems stub the Stop service explicitly; the
 `real_stop_hook` suite exercises its actual requests and decisions without that
 stub. No live-provider acceptance test is implied by scripted regression tests.
+
+## Public Codex comparison
+
+The audited public source is `openai/codex@b741e480e203f037ca726bc2a76d99a8e8668e66`,
+also checked against local source `a7660cd15490875b8c22f66e577da115ed927fe3`:
+
+- [Turn loop](https://github.com/openai/codex/blob/b741e480e203f037ca726bc2a76d99a8e8668e66/codex-rs/core/src/session/turn.rs)
+  combines model follow-up and pending input. Only when neither remains does it
+  run Stop hooks; a blocking hook with continuation context returns to the loop.
+- [Hook runtime](https://github.com/openai/codex/blob/b741e480e203f037ca726bc2a76d99a8e8668e66/codex-rs/core/src/hook_runtime.rs)
+  passes `stop_hook_active` as boolean history metadata. It is not a retry counter
+  and does not impose Loom's former three-rejection limit.
+- [Official hook documentation](https://learn.chatgpt.com/docs/hooks#stop)
+  defines `decision: "block"` as a request to continue, with a reason supplied as
+  continuation context. Configured hooks can also explicitly request a stop.
+
+Codex's public flow does not establish that every task receives an independent
+model completion judge. Loom's read-only semantic assessor is an additional
+service. It must not be described as identical to Codex or as a guarantee of
+real-world completion. The removed three-rejection limit was a Loom design
+mistake, not an upstream parity requirement.
