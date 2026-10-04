@@ -592,7 +592,8 @@ def test_visual_surfaces_are_exposed_and_have_native_coordinate_input(background
 
     click = _function_body(background, "clickAt")
     assert "Input.dispatchMouseEvent" in click
-    assert '"click_at"' in click
+    assert "Native browser click failed" in click
+    assert '["click_at",' not in click
     fallback = _function_body(background, "clickAtInPage")
     assert "elementFromPoint" in fallback
     assert "pointerdown" in fallback
@@ -601,7 +602,7 @@ def test_visual_surfaces_are_exposed_and_have_native_coordinate_input(background
 def test_focused_surface_text_is_one_action_and_uses_native_keyboard_input(background):
     send = _function_body(background, "sendText")
     assert "sendNativeText" in send
-    assert '"send_text"' in send
+    assert "Native browser text input failed" in send
     native = _function_body(background, "sendNativeText")
     assert "Input.dispatchKeyEvent" not in native  # helper owns the raw protocol call
     assert "dispatchNativeKey" in native
@@ -695,7 +696,7 @@ def test_screenshots_composite_on_demand_rather_than_reusing_a_painted_frame(bac
     assert body.index("Page.captureScreenshot") < body.index("chrome.tabs.captureVisibleTab")
 
 
-def test_native_input_has_a_page_event_fallback_when_devtools_owns_the_tab(background):
+def test_native_input_failure_is_not_hidden_by_synthetic_page_events(background):
     native = _function_body(background, "withNativeInput")
     assert "chrome.debugger.attach" in native
     assert "attachedDebuggerTabs.has" in native
@@ -706,4 +707,26 @@ def test_native_input_has_a_page_event_fallback_when_devtools_owns_the_tab(backg
 
     send = _function_body(background, "sendText")
     assert "if (native.ok)" in send
-    assert "runPageAction" in send
+    assert "Native browser text input failed" in send
+    for name in ("sendText", "pressKey", "clickAt", "typeText"):
+        assert "throw new Error" in _function_body(background, name)
+
+
+def test_indexed_typing_uses_browser_editing_not_dom_value_assignment(background):
+    body = _function_body(background, "typeText")
+    assert "Input.insertText" in body
+    assert '"prepare_type"' in body
+    prepare = _function_body(background, "prepareType")
+    assert "el.readOnly" in prepare
+    assert "el.select()" in prepare
+    assert "el.value =" not in prepare
+    assert "el.value +=" not in prepare
+
+
+def test_command_transport_disables_cache_and_bounds_body_reads(background):
+    fetch = _function_body(background, "bridgeFetch")
+    assert 'cache: "no-store"' in fetch
+    assert "AbortController" in fetch
+    assert "controller.abort()" in fetch
+    assert "await response.text()" in fetch
+    assert fetch.index("await response.text()") < fetch.index("clearTimeout(timer)")
