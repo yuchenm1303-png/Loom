@@ -7,6 +7,7 @@ import {
   Gauge,
   MessagesSquare,
   Network,
+  Pencil,
   RefreshCw,
   Timer,
   TrendingUp,
@@ -92,6 +93,7 @@ type ProfileInsightsData = {
 interface ProfileInsightsPageProps {
   account: LoomAccountSnapshot;
   onClose(): void;
+  onEditProfile?(): void;
 }
 
 type Formatters = {
@@ -146,7 +148,17 @@ function share(part: number, whole: number): string {
   return percent < 1 ? "<1%" : `${Math.round(percent)}%`;
 }
 
-function ProfileHero({ account, data, format }: { account: LoomAccountSnapshot; data: ProfileInsightsData | null; format: Formatters }) {
+function ProfileHero({
+  account,
+  data,
+  format,
+  onEditProfile,
+}: {
+  account: LoomAccountSnapshot;
+  data: ProfileInsightsData | null;
+  format: Formatters;
+  onEditProfile?: () => void;
+}) {
   const { zh } = format;
   const displayName = account.user?.display_name?.trim() || account.user?.email?.split("@")[0] || "";
   const avatar = account.user?.avatar_data_url?.trim() || "";
@@ -169,6 +181,12 @@ function ProfileHero({ account, data, format }: { account: LoomAccountSnapshot; 
             <>
               <span className="profile-identity-email">{account.user.email}</span>
               <span className="profile-status-pill is-account">{zh ? "Loom 账号" : "Loom account"}</span>
+              {onEditProfile ? (
+                <button type="button" className="profile-edit-button" onClick={onEditProfile}>
+                  <Pencil size={12} strokeWidth={1.9} />
+                  <span>{zh ? "编辑资料" : "Edit profile"}</span>
+                </button>
+              ) : null}
             </>
           ) : (
             <span>{zh ? "本地档案 · 数据只保存在这台电脑上" : "Local profile · stored on this computer only"}</span>
@@ -634,7 +652,7 @@ function ProfileSkeleton() {
   );
 }
 
-export function ProfileInsightsPage({ account, onClose }: ProfileInsightsPageProps) {
+export function ProfileInsightsPage({ account, onClose, onEditProfile }: ProfileInsightsPageProps) {
   const { language } = useI18n();
   const zh = language === "zh-CN";
   const format = useFormatters(zh);
@@ -712,7 +730,7 @@ export function ProfileInsightsPage({ account, onClose }: ProfileInsightsPagePro
 
       <div className="profile-insights-scroll">
         <main className="profile-insights-content" aria-busy={loading || undefined}>
-          <ProfileHero account={account} data={data} format={format} />
+          <ProfileHero account={account} data={data} format={format} onEditProfile={onEditProfile} />
 
           {error ? (
             <div className="profile-error-state" role="alert">
