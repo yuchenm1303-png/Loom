@@ -25,9 +25,9 @@ try {
   assert.equal(await page.getByText("早期检查已经完成。", { exact: true }).count(), 0);
   await page.getByText("失败项也写入报告。", { exact: true }).waitFor();
   await page.getByText("服务端暂时不可达；结果明确记为未覆盖", { exact: true }).waitFor();
-  await page.getByRole("button", { name: "查看较早过程 · 2 项" }).click();
+  await page.getByRole("button", { name: "展开较早过程，2 项" }).click();
   await page.getByText("早期检查已经完成。", { exact: true }).waitFor();
-  await page.getByRole("button", { name: "折叠较早过程 · 2 项" }).click();
+  await page.getByRole("button", { name: "收起较早过程，2 项" }).click();
   if (process.env.LOOM_PROGRESS_SCREENSHOT) await page.screenshot({ path: process.env.LOOM_PROGRESS_SCREENSHOT });
   await page.setViewportSize({ width: 480, height: 900 });
   await page.evaluate(() => document.documentElement.dataset.loomTheme = "light");

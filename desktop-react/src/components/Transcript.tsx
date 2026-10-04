@@ -8,6 +8,7 @@ import {
   Code2,
   Copy,
   FileDiff,
+  History,
   Pencil,
   Reply,
   Search,
@@ -23,6 +24,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useId,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -1417,6 +1419,7 @@ function TurnProcess({
   );
   const [processVisited, setProcessVisited] = useState(active || open);
   const [earlierOpen, setEarlierOpen] = useState(false);
+  const earlierHistoryId = useId();
   const progress = useMemo(() => liveTaskProgress(items, new Set(items
     .filter((item) => {
       if (item.type !== "assistant_message") return false;
@@ -1486,14 +1489,21 @@ function TurnProcess({
           <div className="turn-process-inner">
             <div className="turn-process-content">
               {active && progress.earlier.length ? (
-                <div className="earlier-task-process">
-                  <button type="button" className="turn-process-header" aria-expanded={earlierOpen}
+                <div className={`earlier-task-process ${earlierOpen ? "is-open" : ""}`.trim()}>
+                  <button type="button" className="earlier-process-toggle" aria-expanded={earlierOpen}
+                    aria-controls={earlierHistoryId}
+                    aria-label={`${earlierOpen ? "收起" : "展开"}较早过程，${progress.earlier.length} 项`}
+                    title={earlierOpen ? "收起较早的进度与工具记录" : "展开较早的进度与工具记录"}
                     onClick={() => setEarlierOpen(!earlierOpen)}>
-                    <span>{earlierOpen ? "折叠较早过程" : "查看较早过程"} · {progress.earlier.length} 项</span>
-                    <ChevronRight size={14} aria-hidden="true" />
+                    <span className="earlier-process-icon" aria-hidden="true"><History size={14} strokeWidth={1.8} /></span>
+                    <span className="earlier-process-label">较早过程</span>
+                    <span className="earlier-process-count" aria-hidden="true">{progress.earlier.length} 项</span>
+                    <ChevronRight size={13} className="earlier-process-chevron" aria-hidden="true" />
                   </button>
-                  {earlierOpen ? <Sequence items={progress.earlier} active={false} onApproval={onApproval}
-                    onPrompt={onPrompt} promptDisabled={promptDisabled} workspace={workspace} /> : null}
+                  <div id={earlierHistoryId} className="earlier-process-history" hidden={!earlierOpen}>
+                    {earlierOpen ? <Sequence items={progress.earlier} active={false} onApproval={onApproval}
+                      onPrompt={onPrompt} promptDisabled={promptDisabled} workspace={workspace} /> : null}
+                  </div>
                 </div>
               ) : null}
               <Sequence items={active ? progress.current : items} active={active} onApproval={onApproval} onPrompt={onPrompt} keepActivityOpen={active} promptDisabled={promptDisabled} workspace={workspace} />
