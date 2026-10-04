@@ -421,11 +421,22 @@ class BrowserUseBackend(BrowserBackend):
         return self._run_state_action("click", self._click_async(index), args={"index": int(index)})
 
     async def _type_async(self, index: int, text: str, *, clear: bool) -> BrowserPageState:
-        from browser_use.browser.events import TypeTextEvent
-
         node = await self._node_for_index(index)
         await self._show_page_hud(f"Type into #{index}", f"{len(text)} characters", node=node)
-        await self._dispatch(TypeTextEvent(node=node, text=text, clear=clear))
+        from .browser_native_edit import prepare_edit
+
+        session = await self._ensure_session()
+        # Resolve in the node's frame, not whichever page happens to hold focus.
+        cdp = await session.cdp_client_for_node(node)
+        await prepare_edit(cdp, int(node.backend_node_id), clear=clear)
+        if text:
+            await cdp.cdp_client.send.Input.insertText(params={"text": text}, session_id=cdp.session_id)
+        elif clear:
+            for kind in ("keyDown", "keyUp"):
+                await cdp.cdp_client.send.Input.dispatchKeyEvent(
+                    params={"type": kind, "key": "Backspace", "code": "Backspace", "windowsVirtualKeyCode": 8},
+                    session_id=cdp.session_id,
+                )
         return await self._state_async()
 
     def type_text(self, index: int, text: str, *, clear: bool = True) -> BrowserPageState:

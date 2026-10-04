@@ -791,82 +791,48 @@
 
 
 /* Content-edge fade ---------------------------------------------------------
-   The transcript should disappear into the surrounding chrome rather than
-   ending on a hard horizontal cut. Keep this as a paint-only overlay instead
-   of masking the scroller: hit targets, the native scrollbar, scroll anchoring,
-   and Chromium's text rasterization remain untouched. */
-.conversation-stage {
-  --loom-edge-fade-strong: rgba(11,12,15,.90);
-  --loom-edge-fade-mid: rgba(11,12,15,.44);
-  --loom-edge-fade-soft: rgba(11,12,15,.12);
-}
-
-/* Lower edge: messages sink underneath the composer instead of colliding with
-   its top boundary. The transcript already reserves bottom padding, so at rest
-   this mostly falls over breathing room; it becomes visible while scrolling. */
-.conversation-stage:has(.transcript-entry)::before {
+   Anchor paint-only overlays to the transcript grid row so the live strip can
+   grow without covering status text. Opaque endpoints hide clipped content in
+   both themes; pointer events and scroll geometry remain untouched. */
+.conversation-stage:has(.transcript-entry)::before,
+.conversation-stage:has(.transcript-entry)::after {
   content: "";
   position: absolute;
+  grid-row: 2;
   z-index: 3;
   left: 0;
   right: 0;
-  bottom: 0;
-  height: 54px;
+  height: 48px;
   pointer-events: none;
   background: linear-gradient(
-    180deg,
-    transparent 0%,
-    var(--loom-edge-fade-soft) 36%,
-    var(--loom-edge-fade-mid) 72%,
-    var(--loom-edge-fade-strong) 100%
+    to bottom,
+    var(--bg) 0%,
+    color-mix(in srgb, var(--bg) 94%, transparent) 12%,
+    color-mix(in srgb, var(--bg) 64%, transparent) 38%,
+    color-mix(in srgb, var(--bg) 22%, transparent) 68%,
+    transparent 100%
   );
 }
 
-/* Upper edge in the idle state mirrors the lower dissolve beneath the header. */
-.conversation-stage:not(.is-running):has(.transcript-entry)::after {
-  content: "";
-  position: absolute;
-  z-index: 3;
-  left: 0;
-  right: 0;
+.conversation-stage:has(.transcript-entry)::after {
   top: 0;
-  height: 46px;
-  pointer-events: none;
-  background: linear-gradient(
-    180deg,
-    var(--loom-edge-fade-strong) 0%,
-    var(--loom-edge-fade-mid) 34%,
-    var(--loom-edge-fade-soft) 68%,
-    transparent 100%
-  );
 }
 
-/* While running, begin the same dissolve below the 38px live status strip. */
-.conversation-stage.is-running::after {
-  content: "";
-  position: absolute;
-  z-index: 6;
-  left: 0;
-  right: 0;
-  top: 38px;
-  height: 34px;
-  pointer-events: none;
-  background: linear-gradient(
-    180deg,
-    var(--loom-edge-fade-strong) 0%,
-    var(--loom-edge-fade-mid) 30%,
-    var(--loom-edge-fade-soft) 68%,
-    transparent 100%
-  );
+.conversation-stage:has(.transcript-entry)::before {
+  bottom: 0;
+  height: 56px;
+  transform: scaleY(-1);
+}
+
+/* Join the status strip to the dissolve without a horizontal rule or shadow. */
+:root .conversation-stage > .run-progress-frame.top {
+  border-bottom: 0;
+  background: var(--bg);
+  box-shadow: none;
+  backdrop-filter: none;
 }
 
 /* Light theme keeps exactly the same motion hierarchy. */
-html[data-loom-theme="light"] .conversation-stage {
-  --loom-edge-fade-strong: rgba(247,247,248,.94);
-  --loom-edge-fade-mid: rgba(247,247,248,.50);
-  --loom-edge-fade-soft: rgba(247,247,248,.14);
-}
-
 html[data-loom-theme="light"] .conversation-stage,
 html[data-loom-theme="light"] .transcript {
   --loom-pill-border: rgba(31,35,42,.075);
@@ -1007,12 +973,9 @@ html[data-loom-theme="light"] .turn-block .live-reasoning-trigger {
 }
 
 html[data-loom-theme="light"] .conversation-stage > .run-progress-frame.top {
-  border-bottom: 1px solid rgba(28,31,37,.075);
-  background:
-    linear-gradient(180deg, rgba(255,255,255,.97), rgba(249,250,252,.92));
-  box-shadow:
-    inset 0 1px rgba(255,255,255,.98),
-    0 1px 0 rgba(28,31,37,.018);
+  border-bottom: 0;
+  background: var(--bg);
+  box-shadow: none;
 }
 
 html[data-loom-theme="light"] .conversation-stage > .run-progress-frame.top .run-progress-inline {
@@ -1022,15 +985,7 @@ html[data-loom-theme="light"] .conversation-stage > .run-progress-frame.top .run
 }
 
 
-html[data-loom-theme="light"] .conversation-stage.is-running::after {
-  background: linear-gradient(
-    180deg,
-    rgba(250,251,252,.94) 0%,
-    rgba(250,251,252,.62) 30%,
-    rgba(250,251,252,.22) 68%,
-    transparent 100%
-  );
-}
+
 
 @keyframes loom-live-message-in {
   0% { opacity: 0; transform: translate3d(0, 7px, 0) scale(.992); }

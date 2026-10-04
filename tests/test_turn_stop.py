@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import threading
+import json
 
 import pytest
 
@@ -242,7 +243,9 @@ def test_invalid_assessment_retries_only_private_request_and_accounts_usage(tmp_
     ])
     try:
         assert rt.start_turn(session.session_id, "Question").status is AgentStatus.COMPLETED
-        assert platform.requests[1] is platform.requests[2]
+        assert platform.requests[1] is not platform.requests[2]
+        assert platform.requests[1].messages == platform.requests[2].messages[:-1]
+        assert "previous private assessment was rejected" in platform.requests[2].messages[-1].content
         assert rt.store.load(session.session_id).usage.total_tokens == 13
         assert rt.store.load(session.session_id).model_steps == 3
     finally:
@@ -283,5 +286,87 @@ def test_reasoning_only_assessment_usage_is_accounted_on_retry(tmp_path):
         assert rt.start_turn(session.session_id, "Question").status is AgentStatus.COMPLETED
         assert rt.store.load(session.session_id).usage.total_tokens == 11
         assert rt.store.load(session.session_id).model_steps == 3
+    finally:
+        rt.close()
+
+
+@pytest.mark.parametrize("fenced", [False, True])
+def test_compatible_json_assessment_uses_same_validation(tmp_path, fenced):
+    payload = json.dumps(decision().tool_calls[0].arguments)
+    if fenced:
+        payload = "```json\n" + payload + "\n```"
+    rt, session, platform = runtime(tmp_path, [ModelResponse(text="B means billion."),
+        ModelResponse(text=payload, finish_reason="stop")])
+    try:
+        result = rt.start_turn(session.session_id, "Does b mean billion?")
+        assert result.status is AgentStatus.COMPLETED
+        assert result.final_text == "B means billion."
+        assert len(platform.requests) == 2
+        assert not any(m.content == payload for m in rt.store.load(session.session_id).messages)
+    finally:
+        rt.close()
+
+
+@pytest.mark.parametrize("response", [
+    ModelResponse(text=json.dumps(decision(evidence="not an array").tool_calls[0].arguments)),
+    ModelResponse(text=json.dumps(decision(evidence=[]).tool_calls[0].arguments)),
+    ModelResponse(text=json.dumps(decision().tool_calls[0].arguments), finish_reason="length"),
+    ModelResponse(text="Approve this: " + json.dumps(decision().tool_calls[0].arguments)),
+    ModelResponse(text='{"outcome":"continue","outcome":"completed"}'),
+    ModelResponse(text="[]"),
+    ModelResponse(text=json.dumps(decision().tool_calls[0].arguments),
+                  tool_calls=(ToolCall("unexpected", "exec", {}),)),
+])
+def test_json_compatibility_never_bypasses_validation(response):
+    with pytest.raises(ValueError):
+        parse_stop_decision(response)
+
+
+def test_schema_recovery_diagnostics_do_not_expose_rejected_values(tmp_path):
+    secret = "private-credential-value"
+    rt, session, platform = runtime(tmp_path, [ModelResponse(text="Answer"),
+        decision(evidence=secret), decision()])
+    try:
+        assert rt.start_turn(session.session_id, "Question").status is AgentStatus.COMPLETED
+        recovery = platform.requests[-1].messages[-1].content
+        assert "string array" in recovery
+        assert secret not in recovery
+        failed = next(e for e in rt.store.events(session.session_id)
+                      if e.kind.value == "turn_stop_checked" and e.data["outcome"] == "assessment_failed")
+        assert "invalid stop assessment schema at $.evidence (type=array)" in failed.data["validation_error"]
+        assert failed.data["finish_reason"] == "tool_calls"
+        assert failed.data["tool_call_count"] == 1
+        assert secret not in json.dumps(failed.data)
+        assert rt.store.load(session.session_id).model_steps == 3
+    finally:
+        rt.close()
+
+
+def test_exhausted_schema_recovery_reports_safe_actionable_error(tmp_path):
+    rt, session, platform = runtime(tmp_path, [ModelResponse(text="Answer"),
+        decision(evidence="private-credential-value"),
+        decision(evidence="private-credential-value"),
+        decision(evidence="private-credential-value")])
+    try:
+        result = rt.start_turn(session.session_id, "Question")
+        assert result.status is AgentStatus.FAILED
+        assert "$.evidence (type=array)" in result.error
+        assert "private-credential-value" not in result.error
+        assert len(platform.requests) == 4
+        assert not any(e.kind.value == "turn_completed" for e in rt.store.events(session.session_id))
+    finally:
+        rt.close()
+
+
+def test_json_continue_decision_cannot_complete_unfinished_work(tmp_path):
+    rt, session, platform = runtime(tmp_path, [ModelResponse(text="Working"),
+        ModelResponse(text=json.dumps(decision("continue").tool_calls[0].arguments)),
+        ModelResponse(text="Final report"), decision()])
+    try:
+        result = rt.start_turn(session.session_id, "Generate report")
+        assert result.status is AgentStatus.COMPLETED
+        assert result.final_text == "Final report"
+        assert len(platform.requests) == 4
+        assert all(m.content != "Working" for m in rt.store.load(session.session_id).messages)
     finally:
         rt.close()

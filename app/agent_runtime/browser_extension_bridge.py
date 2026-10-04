@@ -159,6 +159,7 @@ class BrowserExtensionBridge:
         self._last_tab_id = ""
         self._last_window_id = ""
         self._last_poll_at = 0.0
+        self._last_register_at = 0.0
         self._last_result_at = 0.0
         self._bind_error = ""
         self._shared_service = bool(shared_service)
@@ -225,6 +226,8 @@ class BrowserExtensionBridge:
             return {
                 "url": self.url,
                 "connected": self.connected,
+                "registered": bool(self._last_register_at and time.monotonic() - self._last_register_at < 40.0),
+                "command_reader_ready": self.connected,
                 "last_client_id": self._last_client_id[-12:] if self._last_client_id else "",
                 "last_client_version": self._last_client_version,
                 "browser": self._last_browser_name,
@@ -537,6 +540,7 @@ class BrowserExtensionBridge:
             raise BrowserError(
                 "the Loom browser extension is not collecting commands "
                 f"({'never polled this bridge' if silent_ms < 0 else f'last poll {silent_ms // 1000}s ago'}). "
+                "Registration heartbeats alone do not establish a command reader. "
                 "Install/enable extensions/browser-current-tab and make sure its bridge URL/token match Loom."
             )
         elapsed_ms = int((time.monotonic() - command.created_at) * 1000)
@@ -751,7 +755,7 @@ class BrowserExtensionBridge:
                             bridge._last_tab_url = str(active_tab.get("url") or "")[:4000]
                             bridge._last_tab_id = str(active_tab.get("tab_id") or "")[:64]
                             bridge._last_window_id = str(active_tab.get("window_id") or "")[:64]
-                        bridge._last_poll_at = time.monotonic()
+                        bridge._last_register_at = time.monotonic()
                     bridge._log(
                         "bridge.client.registered",
                         client_id=bridge._last_client_id[-12:],
@@ -824,6 +828,7 @@ class BrowserExtensionBridge:
                 self.send_response(int(status))
                 self.send_header("Content-Type", "application/json; charset=utf-8")
                 self.send_header("Content-Length", str(len(data)))
+                self.send_header("Cache-Control", "no-store")
                 self.end_headers()
                 self.wfile.write(data)
 
