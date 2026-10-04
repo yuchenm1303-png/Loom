@@ -69,6 +69,12 @@ export function useAccount() {
     void Promise.all([refresh(), refreshCapabilities()]);
   }, [refresh, refreshCapabilities]);
 
+  useEffect(() => {
+    const handleAccountRefresh = () => { void refresh(); };
+    window.addEventListener("loom:account-refresh", handleAccountRefresh);
+    return () => window.removeEventListener("loom:account-refresh", handleAccountRefresh);
+  }, [refresh]);
+
   const run = useCallback(
     async (call: () => Promise<LoomAccountResult>): Promise<boolean> => {
       setBusy(true);
@@ -152,6 +158,11 @@ export function useAccount() {
     [run],
   );
 
+  const updateProfile = useCallback(
+    (displayName: string, avatarDataUrl: string) => run(() => window.loom.accountUpdateProfile(displayName, avatarDataUrl)),
+    [run],
+  );
+
   const logout = useCallback(async () => {
     await run(() => window.loom.accountLogout());
   }, [run]);
@@ -173,6 +184,7 @@ export function useAccount() {
     forgotPassword,
     resetPassword,
     oauthExchange,
+    updateProfile,
     logout,
   };
 }

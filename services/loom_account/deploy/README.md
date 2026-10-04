@@ -228,6 +228,7 @@ Users never receive `LOOM_ANT_LING_API_KEY`. Desktop clients mint a scoped `loom
 Loom Admin's Agent operations views are intentionally metadata-only. The Web Gateway may submit:
 
 - Host/device identity and version metadata (`device_id`, platform, Loom/Host versions, protocol versions, online timestamps),
+- Host Health v2 operational metrics (OS release/architecture, system uptime, CPU/memory/disk percentages, Loom Host process memory/CPU, Relay RTT, and coarse Browser/Computer Use/Terminal/Files capability availability),
 - turn lifecycle state (`thread_id`, `turn_id`, model/provider, status and timestamps),
 - aggregate token counters and tool names/counts,
 - approval counts and an error-present boolean.

@@ -7,6 +7,7 @@ import {
   Gauge,
   MessagesSquare,
   Network,
+  Pencil,
   RefreshCw,
   Timer,
   TrendingUp,
@@ -16,7 +17,8 @@ import {
 } from "lucide-react";
 import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { useI18n } from "../i18n";
-import type { LoomAccountSnapshot } from "../types/account";
+import type { LoomAccountError, LoomAccountSnapshot } from "../types/account";
+import { AccountDialog } from "./AccountDialog";
 import {
   buildWeeks,
   daysBetween,
@@ -146,9 +148,20 @@ function share(part: number, whole: number): string {
   return percent < 1 ? "<1%" : `${Math.round(percent)}%`;
 }
 
-function ProfileHero({ account, data, format }: { account: LoomAccountSnapshot; data: ProfileInsightsData | null; format: Formatters }) {
+function ProfileHero({
+  account,
+  data,
+  format,
+  onEditProfile,
+}: {
+  account: LoomAccountSnapshot;
+  data: ProfileInsightsData | null;
+  format: Formatters;
+  onEditProfile?: () => void;
+}) {
   const { zh } = format;
   const displayName = account.user?.display_name?.trim() || account.user?.email?.split("@")[0] || "";
+  const avatar = account.user?.avatar_data_url?.trim() || "";
   const identity = displayName || (zh ? "本地用户" : "Local user");
   const today = data?.range.endDate;
   const last = data?.lastActivityDate;
@@ -158,8 +171,8 @@ function ProfileHero({ account, data, format }: { account: LoomAccountSnapshot; 
 
   return (
     <section className="profile-hero">
-      <div className={`profile-avatar ${displayName ? "has-initials" : ""}`} aria-hidden="true">
-        {displayName ? initialsFor(displayName) : <UserRound size={30} strokeWidth={1.6} />}
+      <div className={`profile-avatar ${avatar ? "has-image" : displayName ? "has-initials" : ""}`} aria-hidden="true">
+        {avatar ? <img src={avatar} alt="" /> : displayName ? initialsFor(displayName) : <UserRound size={30} strokeWidth={1.6} />}
       </div>
       <div className="profile-identity">
         <h1>{identity}</h1>
@@ -168,6 +181,12 @@ function ProfileHero({ account, data, format }: { account: LoomAccountSnapshot; 
             <>
               <span className="profile-identity-email">{account.user.email}</span>
               <span className="profile-status-pill is-account">{zh ? "Loom 账号" : "Loom account"}</span>
+              {onEditProfile ? (
+                <button type="button" className="profile-edit-button" onClick={onEditProfile}>
+                  <Pencil size={12} strokeWidth={1.9} />
+                  <span>{zh ? "编辑资料" : "Edit profile"}</span>
+                </button>
+              ) : null}
             </>
           ) : (
             <span>{zh ? "本地档案 · 数据只保存在这台电脑上" : "Local profile · stored on this computer only"}</span>
@@ -641,14 +660,22 @@ export function ProfileInsightsPage({ account, onClose }: ProfileInsightsPagePro
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [reloadKey, setReloadKey] = useState(0);
+  const [profileAccount, setProfileAccount] = useState(account);
+  const [profileEditOpen, setProfileEditOpen] = useState(false);
+  const [profileBusy, setProfileBusy] = useState(false);
+  const [profileError, setProfileError] = useState<LoomAccountError | null>(null);
+
+  useEffect(() => {
+    setProfileAccount(account);
+  }, [account]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
+      if (event.key === "Escape" && !profileEditOpen) onClose();
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [onClose]);
+  }, [onClose, profileEditOpen]);
 
   useEffect(() => {
     let cancelled = false;
@@ -678,6 +705,46 @@ export function ProfileInsightsPage({ account, onClose }: ProfileInsightsPagePro
     if (Number.isNaN(stamp.getTime())) return "";
     return new Intl.DateTimeFormat(zh ? "zh-CN" : "en-US", { hour: "2-digit", minute: "2-digit" }).format(stamp);
   }, [data, zh]);
+
+  const updateProfile = async (displayName: string, avatarDataUrl: string): Promise<boolean> => {
+    setProfileBusy(true);
+    setProfileError(null);
+    try {
+      const result = await window.loom.accountUpdateProfile(displayName, avatarDataUrl);
+      if (!result.ok) {
+        setProfileError(result.error);
+        return false;
+      }
+      setProfileAccount(result.snapshot);
+      window.dispatchEvent(new Event("loom:account-refresh"));
+      return true;
+    } catch (cause) {
+      setProfileError({
+        code: "ACCOUNT_REQUEST_FAILED",
+        message: cause instanceof Error ? cause.message : String(cause),
+      });
+      return false;
+    } finally {
+      setProfileBusy(false);
+    }
+  };
+
+  const retryProfile = async () => {
+    try {
+      const result = await window.loom.accountStatus();
+      if (result.ok) {
+        setProfileAccount(result.snapshot);
+        setProfileError(null);
+      } else {
+        setProfileError(result.error);
+      }
+    } catch (cause) {
+      setProfileError({
+        code: "ACCOUNT_REQUEST_FAILED",
+        message: cause instanceof Error ? cause.message : String(cause),
+      });
+    }
+  };
 
   return (
     <section className="profile-insights-page" aria-label={zh ? "个人主页与使用洞察" : "Profile and usage insights"}>
@@ -711,7 +778,15 @@ export function ProfileInsightsPage({ account, onClose }: ProfileInsightsPagePro
 
       <div className="profile-insights-scroll">
         <main className="profile-insights-content" aria-busy={loading || undefined}>
-          <ProfileHero account={account} data={data} format={format} />
+          <ProfileHero
+            account={profileAccount}
+            data={data}
+            format={format}
+            onEditProfile={profileAccount.authenticated && profileAccount.user ? () => {
+              setProfileError(null);
+              setProfileEditOpen(true);
+            } : undefined}
+          />
 
           {error ? (
             <div className="profile-error-state" role="alert">
@@ -737,6 +812,26 @@ export function ProfileInsightsPage({ account, onClose }: ProfileInsightsPagePro
           ) : null}
         </main>
       </div>
+
+      <AccountDialog
+        open={profileEditOpen}
+        account={profileAccount}
+        ready
+        busy={profileBusy}
+        error={profileError}
+        initialProfileEdit
+        closeAfterProfileEdit
+        onClose={() => {
+          setProfileEditOpen(false);
+          setProfileError(null);
+        }}
+        onClearError={() => setProfileError(null)}
+        onRetry={retryProfile}
+        onLogin={async () => false}
+        onRegister={async () => false}
+        onUpdateProfile={updateProfile}
+        onLogout={async () => undefined}
+      />
     </section>
   );
 }

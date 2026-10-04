@@ -91,12 +91,13 @@ function PortalWallpaper() {
   );
 }
 
-export function WebPortal({ account, hostState, hostError, selectedDeviceName, onEnter, hostDetected = false }: {
+export function WebPortal({ account, hostState, hostError, selectedDeviceName, onEnter, onOpenProfile, hostDetected = false }: {
   account: AccountController;
   hostState: PortalHostState;
   hostError: string;
   selectedDeviceName: string;
   onEnter: () => void;
+  onOpenProfile?: () => void;
   hostDetected?: boolean;
   remoteMode?: boolean;
   onRemote?: () => void;
@@ -421,13 +422,16 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
                 <dl className="loom-identity-list">
                   <div className="loom-identity-row">
                     <dt><UserRound size={18} strokeWidth={1.5} aria-hidden="true" /><span>{zh ? "已登录账户" : "Signed-in account"}</span></dt>
-                    <dd><span>{account.account.user?.email}</span><Check size={13} aria-hidden="true" /></dd>
+                    <dd title={account.account.user?.email || ""}><span>{account.account.user?.display_name?.trim() || account.account.user?.email}</span><Check size={13} aria-hidden="true" /></dd>
                   </div>
                   <div className="loom-identity-row">
                     <dt><Laptop size={18} strokeWidth={1.5} aria-hidden="true" /><span>{zh ? "当前电脑" : "This computer"}</span></dt>
                     <dd><span>{selectedDeviceName || (zh ? "等待发现" : "Waiting for discovery")}</span></dd>
                   </div>
                 </dl>
+                {onOpenProfile ? <button className="loom-form-submit loom-profile-home-action" type="button" onClick={onOpenProfile}>
+                  <span>{zh ? "进入个人主页" : "Open profile home"}</span><ArrowRight size={15} aria-hidden="true" />
+                </button> : null}
               </section>
             </>}
             </div>

@@ -49,10 +49,9 @@
 
 .turn-process-header {
   position: relative;
-  width: fit-content;
-  max-width: 100%;
+  width: min(760px, 100%);
   min-height: 34px;
-  display: inline-flex;
+  display: flex;
   align-items: center;
   gap: 8px;
   padding: 4px 8px;
@@ -65,6 +64,8 @@
   transition:
     color 150ms ease,
     background 150ms ease,
+    border-color 150ms ease,
+    box-shadow 150ms ease,
     transform 150ms cubic-bezier(.2,.78,.2,1);
 }
 
@@ -81,8 +82,8 @@
 
 .turn-process.is-settled .turn-process-header {
   isolation: isolate;
-  min-height: 38px;
-  padding: 7px 12px;
+  min-height: 42px;
+  padding: 8px 11px;
   border: 1px solid rgba(255,255,255,.048);
   background:
     linear-gradient(180deg, rgba(255,255,255,.026), rgba(255,255,255,.010)),
@@ -103,13 +104,46 @@
     0 0 0 1px rgba(139,124,246,.03);
 }
 
+.turn-process-summary {
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #b8bec8;
+  font-size: 12px;
+  font-weight: 590;
+  line-height: 1.25;
+  letter-spacing: .001em;
+}
+
+.turn-process-diffstat {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0 2px;
+  font: 10.5px/1 "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+.turn-process-plus {
+  color: #79b492;
+}
+
+.turn-process-minus {
+  color: #c67c86;
+}
+
 .turn-process-time {
   flex: none;
-  color: #aeb5c0;
-  font-size: 11.9px;
-  font-weight: 660;
+  margin-left: auto;
+  color: #707884;
+  font-size: 10.4px;
+  font-weight: 560;
   letter-spacing: .002em;
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 .turn-process-meta {
@@ -128,7 +162,6 @@
   border-radius: 50%;
   background: #565d68;
 }
-
 
 .turn-process-chevron {
   flex: none;
@@ -408,7 +441,21 @@
 
 @media (max-width: 760px) {
   .turn-process-header {
+    width: 100%;
     max-width: 100%;
+    gap: 6px;
+  }
+
+  .turn-process-summary {
+    font-size: 11.4px;
+  }
+
+  .turn-process-diffstat {
+    font-size: 10px;
+  }
+
+  .turn-process-time {
+    display: none;
   }
 
   .turn-process-meta {

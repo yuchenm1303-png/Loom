@@ -89,6 +89,15 @@ interface ActivitySummaryData {
   failed: boolean;
 }
 
+interface TurnProcessBreakdown {
+  commands: number;
+  filesEdited: number;
+  filesRead: number;
+  tools: number;
+  added: number;
+  removed: number;
+}
+
 // [English, Simplified Chinese]. The prompt follows the interface language so
 // the agent answers in it too.
 const starterPrompts = [
@@ -438,6 +447,80 @@ function diffStats(diff?: string): { added: number; removed: number } {
     else if (line.startsWith("-") && !line.startsWith("---")) removed += 1;
   }
   return { added, removed };
+}
+
+function isFileReadTool(item: TranscriptItem): boolean {
+  if (item.type !== "tool_call") return false;
+  const name = String(item.toolName ?? "").trim().toLowerCase().replace(/[\s-]+/g, "_");
+  if (!name) return false;
+  const hasReadVerb = /(^|_)(read|open|fetch|get|cat)(_|$)/.test(name);
+  const hasFileObject = /(^|_)(file|files|workspace|text|document|blob)(_|$)/.test(name);
+  return hasReadVerb && hasFileObject;
+}
+
+function collectReadPaths(value: unknown, paths: Set<string>, keyHint = "") {
+  if (typeof value === "string") {
+    if (/(^|_)(path|paths|file|files|filename|filepath|file_path)$/.test(keyHint) && value.trim()) paths.add(value.trim());
+    return;
+  }
+  if (Array.isArray(value)) {
+    for (const entry of value) collectReadPaths(entry, paths, keyHint);
+    return;
+  }
+  if (!value || typeof value !== "object") return;
+  for (const [key, entry] of Object.entries(value as Record<string, unknown>)) {
+    collectReadPaths(entry, paths, key.trim().toLowerCase());
+  }
+}
+
+function turnProcessBreakdown(items: TranscriptItem[]): TurnProcessBreakdown {
+  const editedPaths = new Set<string>();
+  const readPaths = new Set<string>();
+  let anonymousEdits = 0;
+  let anonymousReads = 0;
+  let commands = 0;
+  let added = 0;
+  let removed = 0;
+
+  for (const item of items) {
+    if (item.type === "process") commands += 1;
+    if (item.type === "file_edit") {
+      const paths = (item.paths ?? []).map(String).map((path) => path.trim()).filter(Boolean);
+      if (paths.length) paths.forEach((path) => editedPaths.add(path));
+      else anonymousEdits += 1;
+      const stats = diffStats(item.diff);
+      added += stats.added;
+      removed += stats.removed;
+    }
+    if (isFileReadTool(item)) {
+      const before = readPaths.size;
+      collectReadPaths(item.arguments, readPaths);
+      if (readPaths.size === before) anonymousReads += 1;
+    }
+  }
+
+  const compactItems = compactActivityItems(items.filter(isActivityItem));
+  const tools = compactItems.reduce((count, item) => (
+    item.type === "tool_call" && !isFileReadTool(item) ? count + 1 : count
+  ), 0);
+
+  return {
+    commands,
+    filesEdited: editedPaths.size + anonymousEdits,
+    filesRead: readPaths.size + anonymousReads,
+    tools,
+    added,
+    removed,
+  };
+}
+
+function turnProcessSummaryLabel(breakdown: TurnProcessBreakdown, fallbackCount: number): string {
+  const parts: string[] = [];
+  if (breakdown.commands) parts.push(`运行 ${breakdown.commands} 条命令`);
+  if (breakdown.filesEdited) parts.push(`编辑 ${breakdown.filesEdited} 个文件`);
+  if (breakdown.filesRead) parts.push(`读取 ${breakdown.filesRead} 个文件`);
+  if (breakdown.tools) parts.push(`使用 ${breakdown.tools} 个工具`);
+  return parts.length ? parts.join(" · ") : `${fallbackCount} 个过程项`;
 }
 
 function fileLabel(item: TranscriptItem): string {
@@ -1322,11 +1405,16 @@ function TurnProcess({
   workspace?: string;
 }) {
   const summary = useMemo(() => activitySummary(items), [items]);
+  const breakdown = useMemo(() => turnProcessBreakdown(items), [items]);
   const intermediateMessages = useMemo(
     () => items.reduce((count, item) => count + (item.type === "assistant_message" ? 1 : 0), 0),
     [items],
   );
   const operationCount = summary.steps + intermediateMessages;
+  const summaryLabel = useMemo(
+    () => turnProcessSummaryLabel(breakdown, operationCount),
+    [breakdown, operationCount],
+  );
   const [processVisited, setProcessVisited] = useState(active || open);
   const [earlierOpen, setEarlierOpen] = useState(false);
   const progress = useMemo(() => liveTaskProgress(items, new Set(items
@@ -1371,10 +1459,15 @@ function TurnProcess({
           aria-expanded={open}
           title={open ? "折叠任务过程" : "展开完整任务过程"}
         >
+          <span className="turn-process-summary">{summaryLabel}</span>
+          {(breakdown.added > 0 || breakdown.removed > 0) ? (
+            <span className="turn-process-diffstat" aria-label={`新增 ${breakdown.added} 行，删除 ${breakdown.removed} 行`}>
+              <span className="turn-process-plus">+{breakdown.added}</span>
+              <span className="turn-process-minus">-{breakdown.removed}</span>
+            </span>
+          ) : null}
           <span className="turn-process-time">{elapsedLabel(allItems)}</span>
-          {operationCount ? <span className="turn-process-meta">{operationCount} 个过程项</span> : null}
           <ChevronRight size={14} className="turn-process-chevron" aria-hidden="true" />
-          <span className="turn-process-rule" aria-hidden="true" />
         </button>
       ) : null}
 

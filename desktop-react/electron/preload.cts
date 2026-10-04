@@ -54,6 +54,7 @@ const api = {
   accountForgotPassword: (email: string) => ipcRenderer.invoke("loom:account-forgot-password", email),
   accountResetPassword: (challengeId: string, code: string, password: string) => ipcRenderer.invoke("loom:account-reset-password", challengeId, code, password),
   accountOAuthExchange: (code: string) => ipcRenderer.invoke("loom:account-oauth-exchange", code),
+  accountUpdateProfile: (displayName: string, avatarDataUrl: string) => ipcRenderer.invoke("loom:account-update-profile", displayName, avatarDataUrl),
   accountLogout: () => ipcRenderer.invoke("loom:account-logout"),
   listModels: (forceRefresh = false) => ipcRenderer.invoke("loom:model-list", Boolean(forceRefresh)),
   setModelProviderKey: (provider: string, apiKey: string) => ipcRenderer.invoke("loom:model-provider-key", provider, apiKey),
