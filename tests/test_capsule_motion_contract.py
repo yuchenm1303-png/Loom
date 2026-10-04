@@ -168,7 +168,7 @@ def test_status_and_title_changes_cross_fade() -> None:
     transcript = read(TRANSCRIPT)
     motion = read(MOTION)
 
-    assert transcript.count('<span className="task-flow-verb" key={verbKey}>') == 3
+    assert transcript.count('<span className="task-flow-verb" key={verbKey}>') == 4
     assert 'const verbKey = active ? "active" : "rested";' in transcript
     assert '<span className="task-flow-group-title" key={title}>{title}</span>' in transcript
 

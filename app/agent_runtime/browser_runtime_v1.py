@@ -341,7 +341,7 @@ class BrowserRuntime(_BrowserRuntime):
         # The turn identity handed down from the app server has to survive this hop:
         # dropping it breaks the caller's ability to interrupt the turn it just started.
         self._clear_browser_feedback(session_id)
-        self._browser_baselines.pop(session_id, None)
+        getattr(self, "_browser_baselines", {}).pop(session_id, None)
         return super().start_turn(session_id, user_text, turn_id=turn_id)
 
     def _capture_screenshot_feedback(self, session, call: ToolCall, result: ToolResult) -> None:
