@@ -16,6 +16,7 @@ from urllib.error import HTTPError, URLError
 from urllib.request import urlopen
 
 from . import server as base
+from . import agent_health
 
 AccountError = base.AccountError
 _now = base._now
@@ -27,6 +28,7 @@ class AgentOpsStore(base.AccountStore):
         super()._initialize()
         with self._guard, self._connect() as db:
             db.executescript(_AGENT_SCHEMA)
+            agent_health.initialize(db)
 
     def admin_system(self) -> dict[str, Any]:
         result = super().admin_system()
@@ -92,6 +94,8 @@ class AgentOpsStore(base.AccountStore):
                  self._telemetry_text(body.get("host_mode"), 64), max(0, int(body.get("host_protocol") or 0)),
                  max(0, int(body.get("bootstrap_protocol") or 0)), connected_at, last_seen, disconnected_at),
             )
+            if event != "disconnected":
+                agent_health.store(db, user_id, device_id, body.get("health"), now)
         return {"ok": True}
 
     def telemetry_agent_event(self, body: dict[str, Any]) -> dict[str, Any]:
@@ -219,12 +223,21 @@ class AgentOpsStore(base.AccountStore):
             }
 
     def admin_devices(self, limit: int = 250) -> list[dict[str, Any]]:
-        now = _now(); cutoff = now - 90
+        now = _now(); cutoff = now - 90; day = now - 86400
         with self._connect() as db:
             rows = db.execute("""SELECT d.*, u.email, u.status AS user_status,
                 CASE WHEN d.last_seen_at>=? AND (d.disconnected_at IS NULL OR d.disconnected_at<d.last_seen_at) THEN 1 ELSE 0 END AS online
                 FROM agent_devices d JOIN users u ON u.id=d.user_id ORDER BY d.last_seen_at DESC LIMIT ?""", (cutoff, max(1, min(int(limit), 1000)))).fetchall()
-        return [{**dict(row), "online": bool(row["online"])} for row in rows]
+            health = agent_health.latest_by_device(db)
+            history = agent_health.hourly_history(db, day)
+        result = []
+        for row in rows:
+            item = {**dict(row), "online": bool(row["online"])}
+            key = (int(row["user_id"]), str(row["device_id"]))
+            item["health"] = health.get(key)
+            item["health_history_24h"] = history.get(key, [])
+            result.append(item)
+        return result
 
     def admin_runs(self, limit: int = 300) -> list[dict[str, Any]]:
         with self._connect() as db:
@@ -314,6 +327,8 @@ class AgentOpsStore(base.AccountStore):
             tool_rows = db.execute("""SELECT user_id, tool_name, COUNT(*) AS calls
                 FROM agent_tool_events WHERE kind='tool' AND created_at>=? AND tool_name<>''
                 GROUP BY user_id, tool_name ORDER BY user_id, calls DESC, tool_name ASC""", (day,)).fetchall()
+            health_by_device = agent_health.latest_by_device(db)
+            health_history = agent_health.hourly_history(db, day)
         primary_seen: set[int] = set()
         for row in device_rows:
             uid = int(row["user_id"])
@@ -328,6 +343,9 @@ class AgentOpsStore(base.AccountStore):
                 device = dict(row)
                 device["online"] = online
                 device["uptime_seconds"] = max(0, now - int(row["connected_at"])) if online else None
+                key = (uid, str(row["device_id"]))
+                device["health"] = health_by_device.get(key)
+                device["health_history_24h"] = health_history.get(key, [])
                 item["primary_device"] = device
                 primary_seen.add(uid)
         for row in run_rows:
@@ -372,7 +390,15 @@ class AgentOpsStore(base.AccountStore):
             active_runs = int(db.execute("SELECT COUNT(*) FROM agent_runs WHERE user_id=? AND status IN ('running','waiting_approval') AND updated_at>=?", (uid, active_cutoff)).fetchone()[0])
             models = db.execute("""SELECT provider, model, COUNT(*) AS runs, COALESCE(SUM(total_tokens),0) AS total_tokens
                 FROM agent_runs WHERE user_id=? AND completed_at>=? GROUP BY provider, model ORDER BY total_tokens DESC, runs DESC LIMIT 30""", (uid, month)).fetchall()
-        device_items=[{**dict(row), "online": bool(row["online"])} for row in devices]
+            health_by_device = agent_health.latest_by_device(db)
+            health_history = agent_health.hourly_history(db, now - 86400)
+        device_items=[]
+        for row in devices:
+            item={**dict(row), "online": bool(row["online"])}
+            key=(uid, str(row["device_id"]))
+            item["health"] = health_by_device.get(key)
+            item["health_history_24h"] = health_history.get(key, [])
+            device_items.append(item)
         run_items=[{**dict(row), "error_present": bool(row["error_present"])} for row in runs]
         return {
             "user_id": uid, "email": str(user["email"]), "generated_at": now,

@@ -123,9 +123,51 @@ async def _telemetry_post(path: str, body: dict[str, Any]) -> dict[str, Any]:
         return {}
 
 
-def _device_payload(peer: "DevicePeer", event: str) -> dict[str, Any]:
+def _health_number(value: Any, *, minimum: float = 0.0, maximum: float = 1_000_000_000_000_000.0) -> float | None:
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    if number != number or number < minimum:
+        return None
+    return min(maximum, number)
+
+
+def _health_payload(value: Any) -> dict[str, Any] | None:
+    health = value if isinstance(value, dict) else {}
+    if not health:
+        return None
+    capabilities = health.get("capabilities") if isinstance(health.get("capabilities"), dict) else {}
+    result: dict[str, Any] = {
+        "schema": int(_health_number(health.get("schema"), maximum=100) or 0),
+        "os_release": str(health.get("osRelease") or "")[:120],
+        "os_version": str(health.get("osVersion") or "")[:160],
+        "arch": str(health.get("arch") or "")[:32],
+        "system_uptime_seconds": int(_health_number(health.get("systemUptimeSeconds"), maximum=10_000_000_000) or 0),
+        "cpu_percent": _health_number(health.get("cpuPercent"), maximum=100),
+        "memory_total_bytes": int(_health_number(health.get("memoryTotalBytes")) or 0),
+        "memory_used_bytes": int(_health_number(health.get("memoryUsedBytes")) or 0),
+        "memory_percent": _health_number(health.get("memoryPercent"), maximum=100),
+        "disk_total_bytes": int(_health_number(health.get("diskTotalBytes")) or 0),
+        "disk_free_bytes": int(_health_number(health.get("diskFreeBytes")) or 0),
+        "disk_percent": _health_number(health.get("diskPercent"), maximum=100),
+        "host_rss_bytes": int(_health_number(health.get("hostRssBytes")) or 0),
+        "host_heap_used_bytes": int(_health_number(health.get("hostHeapUsedBytes")) or 0),
+        "host_cpu_percent": _health_number(health.get("hostCpuPercent"), maximum=100),
+        "relay_rtt_ms": _health_number(health.get("relayRttMs"), maximum=60_000),
+        "capabilities": {
+            "browser": bool(capabilities.get("browser")),
+            "computer_use": bool(capabilities.get("computerUse")),
+            "terminal": bool(capabilities.get("terminal")),
+            "files": bool(capabilities.get("files")),
+        },
+    }
+    return result
+
+
+def _device_payload(peer: "DevicePeer", event: str, health: Any = None) -> dict[str, Any]:
     device = peer.device if isinstance(peer.device, dict) else {}
-    return {
+    payload = {
         "event": event,
         "user_id": peer.user_id,
         "device_id": _device_id(device.get("id")),
@@ -137,10 +179,14 @@ def _device_payload(peer: "DevicePeer", event: str) -> dict[str, Any]:
         "host_protocol": int(device.get("hostProtocol") or 0),
         "bootstrap_protocol": int(device.get("bootstrapProtocol") or 0),
     }
+    mapped_health = _health_payload(health)
+    if mapped_health is not None:
+        payload["health"] = mapped_health
+    return payload
 
 
-async def _record_device(peer: "DevicePeer", event: str) -> None:
-    body = _device_payload(peer, event)
+async def _record_device(peer: "DevicePeer", event: str, health: Any = None) -> None:
+    body = _device_payload(peer, event, health)
     if body["device_id"]:
         await _telemetry_post("/telemetry/device", body)
 
@@ -886,7 +932,7 @@ async def device_socket(websocket: WebSocket) -> None:
             if kind == "ping":
                 await peer.send({"type": "pong"})
                 if peer.device_id:
-                    asyncio.create_task(_record_device(peer, "heartbeat"))
+                    asyncio.create_task(_record_device(peer, "heartbeat", frame.get("health")))
             elif kind == "device_hello":
                 payload = frame.get("device")
                 payload = dict(payload) if isinstance(payload, dict) else {}
@@ -896,7 +942,7 @@ async def device_socket(websocket: WebSocket) -> None:
                     return
                 payload["id"] = device_id
                 peer.device_id, peer.device = device_id, payload
-                asyncio.create_task(_record_device(peer, "connected"))
+                asyncio.create_task(_record_device(peer, "connected", frame.get("health")))
                 if command_task is None:
                     command_task = asyncio.create_task(_command_loop(peer))
                 async with hub.lock:

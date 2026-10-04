@@ -94,11 +94,12 @@ def test_agent_ops_http_routes(tmp_path, monkeypatch):
             with urllib.request.urlopen(request,timeout=5) as response: return response.status,json.loads(response.read() or b"{}")
         except urllib.error.HTTPError as error: return error.code,json.loads(error.read() or b"{}")
     try:
-        body={"event":"connected","user_id":user["id"],"device_id":"route-device"}; status,payload=call("/v1/telemetry/device",method="POST",body=body,secret="wrong"); assert status==401 and payload["error"]["code"]=="TELEMETRY_UNAUTHORIZED"
+        body={"event":"connected","user_id":user["id"],"device_id":"route-device","health":{"schema":2,"cpu_percent":21,"memory_percent":42,"relay_rtt_ms":31,"capabilities":{"browser":True,"computer_use":True,"terminal":True,"files":True}}}; status,payload=call("/v1/telemetry/device",method="POST",body=body,secret="wrong"); assert status==401 and payload["error"]["code"]=="TELEMETRY_UNAUTHORIZED"
         assert call("/v1/telemetry/device",method="POST",body=body,secret="route-secret")[0]==200
         assert call("/v1/telemetry/agent-event",method="POST",secret="route-secret",body={"event":"turn.started","user_id":user["id"],"device_id":"route-device","thread_id":"route-thread","turn_id":"route-turn","model":"route-model"})[0]==200
         status,overview=call("/v1/admin/agent-overview",auth=True); assert status==200 and overview["known_devices"]==1 and overview["active_runs"]==1
         status,user_cards=call("/v1/admin/users-operations",auth=True); assert status==200 and user_cards["users"][0]["email"]=="route-owner@example.com" and len(user_cards["users"][0]["activity_24h"])==24
+        assert user_cards["users"][0]["primary_device"]["health"]["cpu_percent"]==21.0 and user_cards["users"][0]["primary_device"]["health"]["capabilities"]["browser"] is True
         status,runs=call("/v1/admin/runs",auth=True); assert status==200 and runs["runs"][0]["turn_id"]=="route-turn"; run_id=runs["runs"][0]["id"]
         status,user_ops=call(f"/v1/admin/users/{user['id']}/agent-ops",auth=True); assert status==200 and user_ops["user_id"]==user["id"] and user_ops["runs"][0]["turn_id"]=="route-turn"
         status,queued=call("/v1/admin/runs/interrupt",method="POST",body={"run_id":run_id},auth=True); assert status==200 and queued["command"]["kind"]=="turn.interrupt"
@@ -146,3 +147,81 @@ def test_account_scoped_agent_ops_never_mix_users(tmp_path):
     assert {d["device_id"] for d in other_ops["devices"]}=={"other-device"}
     assert {r["turn_id"] for r in other_ops["runs"]}=={"other-turn"}
 
+
+
+def test_host_health_snapshot_history_retention_and_account_scope(tmp_path):
+    store, user = _store(tmp_path)
+    other = store.register_verified("health-other@example.com", "test-hash")
+    now = int(time.time())
+    base = (now // 300) * 300 - 900 + 10
+    health = {
+        "schema": 2, "os_release": "10.0.26100", "os_version": "Windows 11", "arch": "x64",
+        "system_uptime_seconds": 12345, "cpu_percent": 28.5,
+        "memory_total_bytes": 16 * 1024**3, "memory_used_bytes": 8 * 1024**3, "memory_percent": 50.0,
+        "disk_total_bytes": 1024**4, "disk_free_bytes": 512 * 1024**3, "disk_percent": 50.0,
+        "host_rss_bytes": 180 * 1024**2, "host_heap_used_bytes": 72 * 1024**2, "host_cpu_percent": 3.2,
+        "relay_rtt_ms": 42.0,
+        "capabilities": {"browser": True, "computer_use": True, "terminal": True, "files": True},
+    }
+    store.telemetry_device({"event":"connected","user_id":user["id"],"device_id":"health-pc","name":"Health PC","platform":"win32","health":health,"at":base})
+    second = {**health, "cpu_percent": 35.0, "memory_percent": 52.0, "relay_rtt_ms": 38.0}
+    store.telemetry_device({"event":"heartbeat","user_id":user["id"],"device_id":"health-pc","health":second,"at":base+30})
+    with store._connect() as db:
+        db.execute("INSERT INTO agent_device_health_samples(user_id,device_id,bucket_at,cpu_percent) VALUES (?,?,?,?)", (user["id"], "health-pc", base-31*86400, 99.0))
+    third = {**health, "cpu_percent": 44.0, "memory_percent": 54.0, "relay_rtt_ms": 45.0}
+    store.telemetry_device({"event":"heartbeat","user_id":user["id"],"device_id":"health-pc","health":third,"at":base+310})
+    store.telemetry_device({"event":"connected","user_id":other["id"],"device_id":"other-health-pc","name":"Other PC","platform":"win32","health":{**health,"cpu_percent":91.0},"at":base+310})
+
+    devices = {row["device_id"]: row for row in store.admin_devices()}
+    device = devices["health-pc"]
+    assert device["health"]["cpu_percent"] == 44.0
+    assert device["health"]["memory_percent"] == 54.0
+    assert device["health"]["relay_rtt_ms"] == 45.0
+    assert device["health"]["capabilities"]["computer_use"] is True
+    assert device["health"]["system_uptime_seconds"] == 12345
+    assert len(device["health_history_24h"]) >= 1
+
+    card = next(item for item in store.admin_users_operations()["users"] if item["id"] == user["id"])
+    assert card["primary_device"]["health"]["cpu_percent"] == 44.0
+    assert all(sample.get("cpu_percent") != 91.0 for sample in card["primary_device"]["health_history_24h"])
+    detail = store.admin_user_operations(user["id"])
+    assert {d["device_id"] for d in detail["devices"]} == {"health-pc"}
+
+    with store._connect() as db:
+        own_samples = db.execute("SELECT COUNT(*) FROM agent_device_health_samples WHERE user_id=? AND device_id=?", (user["id"], "health-pc")).fetchone()[0]
+    assert own_samples == 2
+
+
+def test_gateway_host_health_whitelist_rejects_content_fields():
+    import ast
+    source = Path("services/loom_web_gateway/app.py").read_text(encoding="utf-8")
+    module = ast.parse(source)
+    functions = [node for node in module.body if isinstance(node, ast.FunctionDef) and node.name in {"_health_number", "_health_payload"}]
+    isolated = ast.Module(body=functions, type_ignores=[]); ast.fix_missing_locations(isolated)
+    namespace = {"Any": object}
+    exec(compile(isolated, "<health_payload>", "exec"), namespace)
+    mapped = namespace["_health_payload"]({
+        "schema": "2", "osRelease": "10.0", "cpuPercent": 150, "memoryPercent": 51,
+        "relayRttMs": 32, "capabilities": {"browser": True, "computerUse": True, "terminal": True, "files": True},
+        "prompt": "PRIVATE PROMPT", "windowTitle": "PRIVATE WINDOW", "screen": "PRIVATE SCREEN",
+        "processes": ["secret.exe"], "paths": ["private.txt"],
+    })
+    assert mapped is not None
+    assert mapped["schema"] == 2 and mapped["cpu_percent"] == 100 and mapped["relay_rtt_ms"] == 32
+    serialized = repr(mapped)
+    for secret in ("PRIVATE PROMPT", "PRIVATE WINDOW", "PRIVATE SCREEN", "secret.exe", "private.txt"):
+        assert secret not in serialized
+    for forbidden in ("prompt", "windowTitle", "screen", "processes", "paths"):
+        assert forbidden not in mapped
+
+
+def test_desktop_host_health_collector_is_metadata_only_and_heartbeat_driven():
+    health = Path("desktop-react/electron/hostHealth.ts").read_text(encoding="utf-8")
+    relay = Path("desktop-react/electron/remoteRelay.ts").read_text(encoding="utf-8")
+    for marker in ("os.uptime()", "os.cpus()", "os.totalmem()", "os.freemem()", "fs.statfsSync", "process.memoryUsage()", "process.cpuUsage()"):
+        assert marker in health
+    for forbidden in ("desktopCapturer", "BrowserWindow", "active-win", "getAllWindows", "screen.capture", "child_process"):
+        assert forbidden not in health
+    assert 'send({ type: "ping", health: collectHostHealthSnapshot(relayRttMs) })' in relay
+    assert 'health: collectHostHealthSnapshot(relayRttMs)' in relay
+    assert 'frame.type === "pong"' in relay
