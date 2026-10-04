@@ -14,10 +14,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Guard transient baseline reset
+        with:
+          fetch-depth: 0
+      - name: Sync main and guard transient baseline reset
         shell: bash
         run: |
           set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin main
+          git merge --no-edit origin/main
           python - <<'PY'
           from pathlib import Path
           path = Path('app/agent_runtime/browser_runtime_v1.py')
@@ -25,12 +31,10 @@ jobs:
           old = '        self._browser_baselines.pop(session_id, None)\n'
           new = '        getattr(self, "_browser_baselines", {}).pop(session_id, None)\n'
           if old not in text:
-              raise SystemExit('expected baseline reset line not found')
+              raise SystemExit('expected baseline reset line not found after syncing main')
           path.write_text(text.replace(old, new, 1), encoding='utf-8')
           PY
           rm .github/workflows/fix-browser-baseline-reset.yml
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
           git commit -m "fix(browser): guard transient baseline reset [baseline-reset-fixed]"
           git push origin HEAD:feat/browser-visual-loop
