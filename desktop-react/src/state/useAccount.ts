@@ -69,6 +69,12 @@ export function useAccount() {
     void Promise.all([refresh(), refreshCapabilities()]);
   }, [refresh, refreshCapabilities]);
 
+  useEffect(() => {
+    const handleAccountRefresh = () => { void refresh(); };
+    window.addEventListener("loom:account-refresh", handleAccountRefresh);
+    return () => window.removeEventListener("loom:account-refresh", handleAccountRefresh);
+  }, [refresh]);
+
   const run = useCallback(
     async (call: () => Promise<LoomAccountResult>): Promise<boolean> => {
       setBusy(true);

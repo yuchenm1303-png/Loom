@@ -383,6 +383,38 @@ html[data-loom-theme="light"] .profile-error-state {
   font-weight: 600;
 }
 
+.profile-edit-button {
+  flex: none;
+  height: 24px;
+  padding: 0 8px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: transparent;
+  color: var(--profile-muted);
+  font-size: 11.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: color 140ms ease, background 140ms ease, border-color 140ms ease, transform 140ms ease;
+}
+
+.profile-edit-button:hover {
+  color: var(--profile-copy);
+  border-color: var(--profile-line);
+  background: color-mix(in srgb, var(--profile-copy) 5%, transparent);
+}
+
+.profile-edit-button:active {
+  transform: scale(.96);
+}
+
+.profile-edit-button:focus-visible {
+  outline: 2px solid var(--profile-accent);
+  outline-offset: 2px;
+}
+
 .profile-tenure {
   margin: 0;
   display: flex;
