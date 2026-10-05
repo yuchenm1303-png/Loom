@@ -18,7 +18,7 @@
 .task-milestone.is-in_progress > span { color: var(--accent); }
 .task-milestone.is-blocked > span { color: #d5a65a; }
 .task-milestone small { display: block; margin-top: 3px; color: var(--muted); }
-.earlier-task-process { margin: 4px 0 18px; }
+.earlier-task-process { margin: 2px 0 0; }
 
 /* History is a secondary disclosure, with its own sizing rather than the
    full-width summary header used for a completed turn. */

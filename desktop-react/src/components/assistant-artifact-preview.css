@@ -148,3 +148,12 @@ html[data-loom-theme="light"] .assistant-artifact-preview-footer > button:hover 
     transition: none !important;
   }
 }
+
+/* Failed/loading inline previews should never reserve a full web viewport. */
+.assistant-artifact-preview-card .artifact-render-surface.is-compact.is-error,
+.assistant-artifact-preview-card .artifact-render-surface.is-compact.is-loading {
+  height: auto; min-height: 80px; max-height: 160px; padding: 16px;
+}
+.assistant-artifact-preview-card .artifact-render-surface.is-error .artifact-render-state span {
+  overflow-wrap: anywhere; max-height: 80px; overflow-y: auto;
+}

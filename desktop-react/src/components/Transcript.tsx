@@ -1434,12 +1434,13 @@ function AssistantArtifactPreview({
   workspace: string;
   revision: number;
 }) {
+  const [previewOpen, setPreviewOpen] = useState(false);
   const descriptor = artifactRenderer(path);
   const name = artifactName(path);
 
   return (
     <div className="assistant-artifact-preview-card" data-renderer-kind={descriptor.kind}>
-      <ArtifactRenderSurface
+      {previewOpen ? <ArtifactRenderSurface
         path={path}
         workspace={workspace}
         compact
@@ -1449,12 +1450,15 @@ function AssistantArtifactPreview({
             detail: { path, workspace },
           }));
         }}
-      />
+      /> : null}
       <div className="assistant-artifact-preview-footer">
         <div className="assistant-artifact-preview-copy">
           <strong title={path}>{name}</strong>
           <span>{descriptor.label} · 可交互预览</span>
         </div>
+        <button type="button" aria-expanded={previewOpen} onClick={() => setPreviewOpen(!previewOpen)}>
+          {previewOpen ? "收起预览" : "预览"}
+        </button>
         <button
           type="button"
           onClick={() => {
