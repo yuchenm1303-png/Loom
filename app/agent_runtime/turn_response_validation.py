@@ -13,15 +13,8 @@ _SERIALIZED_TOOL_PROTOCOL_RE = re.compile(
     re.IGNORECASE,
 )
 _INLINE_STICKER_RE = re.compile(r"\[\[AI_LEDGER_INLINE_STICKER:[a-z0-9_]{2,48}\]\]", re.I)
-TOOL_ARGUMENT_RECOVERY_INSTRUCTION = (
-    "Your previous native tool call failed schema validation and was not executed. "
-    "Correct its arguments using the advertised tool schema, including every required property, "
-    "and emit a valid native tool call. No call in that response was executed. "
-    "If you cannot proceed, explain the specific blocker; do not just ask the user to wait."
-)
 TERMINAL_RECOVERY_INSTRUCTION = (
-    "Your previous response was rejected because it was empty, malformed (including invalid native tool-call "
-    "arguments), contained reasoning without a user-visible "
+    "Your previous response was rejected because it was empty, malformed, or contained reasoning without a user-visible "
     "answer. Continue the same task now. "
     "If an available tool is needed, emit a native structured tool call through the tool-calling protocol; "
     "do not print JSON, '[' or a tool-call prefix in assistant text. Otherwise return a complete final answer."

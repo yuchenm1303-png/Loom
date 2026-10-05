@@ -18,12 +18,10 @@ from .model_replan import revision as steering_revision
 from .model_replan import wait_for_signal
 from .model_execution import ModelRequestTimeout
 from .execution_state import ExecutionAction, next_execution_action
-from .tools import BLOCKED_SENSITIVE_INPUT_ARGUMENT, validate_tool_arguments
 from .turn_response_validation import (
     COMPLETE_FINISH_REASONS,
     TERMINAL_RECOVERY_INSTRUCTION,
     TRUNCATED_RECOVERY_INSTRUCTION,
-    TOOL_ARGUMENT_RECOVERY_INSTRUCTION,
     history_message_count,
     invalid_terminal_response,
     merge_recovery_text,
@@ -117,7 +115,6 @@ class TurnRunner:
                     return rt._limit(session, "model step limit reached")
 
                 recovery_instruction = ""
-                recovery_tool_hint = ""
                 recovery_partial = ""
                 recovery_reasoning = ""
                 stop_decision = None
@@ -159,9 +156,6 @@ class TurnRunner:
                             role=MessageRole.SYSTEM,
                             name="loom_terminal_recovery",
                             content=(
-                                TOOL_ARGUMENT_RECOVERY_INSTRUCTION + recovery_tool_hint
-                                if recovery_instruction == "invalid_tool_arguments"
-                                else
                                 _TRUNCATED_RECOVERY_INSTRUCTION
                                 if recovery_partial
                                 else _TERMINAL_RECOVERY_INSTRUCTION
@@ -420,29 +414,9 @@ class TurnRunner:
                         if compaction_echo_removed and not response.tool_calls
                         else _invalid_terminal_response(response)
                     )
-                    # Validate the entire native-call batch before committing any
-                    # assistant/tool history or executing even its valid prefix.
-                    # Security refusals still belong to the orchestrator; never
-                    # turn a blocked credential input into an argument retry.
-                    if not invalid_terminal and response.tool_calls:
-                        for call in response.tool_calls:
-                            tool = step.tool_router.get(call.name)
-                            if tool is None:
-                                invalid_terminal = "invalid_tool_arguments"
-                                recovery_tool_hint = " The requested tool is unavailable; choose an advertised tool."
-                                break
-                            if isinstance(call.arguments, dict) and BLOCKED_SENSITIVE_INPUT_ARGUMENT in call.arguments:
-                                continue
-                            try:
-                                validate_tool_arguments(tool.input_schema, call.arguments)
-                            except ValueError:
-                                invalid_terminal = "invalid_tool_arguments"
-                                recovery_tool_hint = (
-                                    f" Invalid tool: {tool.name}. Required properties: "
-                                    + json.dumps(tool.input_schema.get("required", []))
-                                    + ". Consult its schema for property types."
-                                )
-                                break
+                    # Tool availability and argument errors belong to dispatch:
+                    # commit the native call and return its correlated tool result.
+                    # Only malformed provider responses use model-request retries.
                     if (not invalid_terminal and not response.tool_calls and response.end_turn is not False
                             and rt.stop_hook is not None):
                         try:

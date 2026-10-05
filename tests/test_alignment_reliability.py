@@ -514,44 +514,52 @@ def test_stream_retry_does_not_duplicate_tool_side_effect(tmp_path):
     rt.close()
 
 
-def test_malformed_batch_is_repaired_before_any_side_effect(tmp_path):
+def test_mixed_batch_returns_each_result_without_replaying_valid_side_effect(tmp_path):
     calls = []
     tool = AgentTool("effect", "test", {"type": "object", "properties": {"argv": {"type": "array", "items": {"type": "string"}}}, "required": ["argv"]},
         lambda c, a: calls.append(a["argv"]) or ToolResult(True, "done"))
     platform = Scripted([
         ModelResponse(tool_calls=(ToolCall("valid-prefix", "effect", {"argv": ["once"]}), ToolCall("bad", "effect", {})), finish_reason="tool_calls"),
-        ModelResponse(tool_calls=(ToolCall("fixed", "effect", {"argv": ["once"]}),), finish_reason="tool_calls"),
+        ModelResponse(tool_calls=(ToolCall("fixed", "effect", {"argv": ["corrected"]}),), finish_reason="tool_calls"),
         ModelResponse(text="done", finish_reason="stop"),
     ])
     rt = make_runtime(tmp_path, platform, [tool])
     session = rt.create_session("agent.fast")
     result = rt.start_turn(session.session_id, "work")
     assert result.status is AgentStatus.COMPLETED
-    assert calls == [["once"]]
-    assert "Invalid tool: effect" in platform.requests[1].messages[-1].content
-    assert '"argv"' in platform.requests[1].messages[-1].content
+    assert calls == [["once"], ["corrected"]]
+    observations = [m for m in platform.requests[1].messages if m.role is MessageRole.TOOL]
+    assert [m.tool_call_id for m in observations] == ["valid-prefix", "bad"]
+    failure = json.loads(observations[-1].content)
+    assert not failure["ok"]
+    assert "argv" in failure["content"]
+    assert failure["data"]["execution_status"] == "not_executed"
     events = rt.store.events(session.session_id)
-    rejected = [e for e in events if e.kind.value == "model_response_rejected"]
-    assert [e.data["reason"] for e in rejected] == ["invalid_tool_arguments"]
-    assert sum(e.kind.value == "tool_started" for e in events) == 1
-    assert not any(c.call_id == "bad" for m in rt.store.load(session.session_id).messages for c in m.tool_calls)
+    assert not any(e.kind.value == "model_response_rejected" for e in events)
+    assert sum(e.kind.value == "tool_started" for e in events) == 2
+    assert any(c.call_id == "bad" for m in rt.store.load(session.session_id).messages for c in m.tool_calls)
     rt.close()
 
 
-@pytest.mark.parametrize("response, reason", [
-    (ModelResponse(tool_calls=(ToolCall("bad", "effect", {}),)), "invalid_tool_arguments"),
-])
-def test_repeated_invalid_tool_fails_without_claiming_success(tmp_path, response, reason):
+@pytest.mark.parametrize("tool_name, arguments", [("effect", {}), ("browser_eval", {"script": "1"})])
+def test_repeated_tool_errors_remain_results_and_model_can_recover(tmp_path, tool_name, arguments):
     calls = []
     tool = AgentTool("effect", "test", {"type": "object", "required": ["argv"]},
         lambda c, a: calls.append(1) or ToolResult(True, "done"))
-    rt = make_runtime(tmp_path, Scripted([response] * 3), [tool])
+    responses = [ModelResponse(tool_calls=(ToolCall(f"bad-{i}", tool_name, arguments),)) for i in range(4)]
+    responses += [ModelResponse(tool_calls=(ToolCall("fixed", "effect", {"argv": []}),)), ModelResponse(text="done")]
+    platform = Scripted(responses)
+    rt = make_runtime(tmp_path, platform, [tool], limits=AgentLimits(model_retries=0))
     session = rt.create_session("agent.fast")
     result = rt.start_turn(session.session_id, "work")
-    assert result.status is AgentStatus.FAILED
-    assert reason in result.error
-    assert not calls
-    assert not any(e.kind.value == "turn_completed" for e in rt.store.events(session.session_id))
+    assert result.status is AgentStatus.COMPLETED
+    assert calls == [1]
+    events = rt.store.events(session.session_id)
+    failures = [e for e in events if e.kind.value == "tool_failed"]
+    assert [e.data["call_id"] for e in failures] == [f"bad-{i}" for i in range(4)]
+    assert all(e.data["data"]["execution_status"] == "not_executed" for e in failures)
+    assert not any(e.kind.value == "model_response_rejected" for e in events)
+    assert len(platform.requests) == 6
     rt.close()
 
 

@@ -686,7 +686,9 @@ class AgentRuntime:
                 self._append_tool_result(
                     session,
                     call,
-                    ToolResult(ok=False, content=f"Invalid tool request: {exc}"),
+                    ToolResult(ok=False, content=f"Invalid tool request ({call.name}): {exc}. "
+                               "This call was not executed. Choose an advertised tool and correct its arguments.",
+                               data={"failure_kind": "invalid_tool_request", "execution_status": "not_executed"}),
                     failed=True,
                     step=execution_step,
                 )
@@ -777,7 +779,9 @@ class AgentRuntime:
             self._append_tool_result(
                 session,
                 call,
-                ToolResult(ok=False, content=f"Invalid tool request: {exc}"),
+                ToolResult(ok=False, content=f"Invalid tool request ({call.name}): {exc}. "
+                           "This call was not executed. Choose an advertised tool and correct its arguments.",
+                           data={"failure_kind": "invalid_tool_request", "execution_status": "not_executed"}),
                 failed=True,
                 step=step,
             )

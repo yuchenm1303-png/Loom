@@ -135,3 +135,29 @@ in system_prompts.py. Migration recognizes exact historical defaults, preserving
 custom prompts; older prompt data is no longer built by replacing pieces of the
 current prompt. The active default text/version is unchanged in this slice.
 Messages tool_use is treated as a completed tool request, not task completion.
+
+## Tool dispatch errors are execution observations
+
+The 0.1.21 browser acceptance run exposed a remaining duplicate validation layer:
+TurnRunner rejected native calls before tool dispatch, discarded the entire batch,
+then spent provider retries on unavailable tools or invalid arguments. Three
+consecutive requests for an unavailable browser evaluation capability terminated
+the turn, although the model response protocol itself was valid.
+
+Availability and schema validation now belong only to ToolOrchestrator.prepare.
+The existing pending-call loop commits each native call and emits its correlated
+TOOL_FAILED result when preparation fails. Such a result explicitly records
+execution_status=not_executed and the concrete validation error; it is not a
+model-response rejection and does not consume provider retry allowance. Valid
+calls in the same batch execute once and retain their own results. Permissions,
+approval, credential refusal, cancellation and binding checks still apply.
+Malformed/incomplete provider responses retain their separate recovery path.
+
+This matches the public Codex separation between tool dispatch observations
+(FunctionCallError::RespondToModel in tools/registry.rs) and provider errors.
+It does not guarantee a model will stop requesting an unavailable capability:
+the model must use the returned evidence to change approach or report a blocker.
+Regression coverage includes recovery after four consecutive tool errors with
+zero provider retries, mixed valid/invalid calls without replayed side effects,
+and preservation of credential refusal and approval boundaries. Real-model
+completion, progress quality and long-history behavior remain separate gates.

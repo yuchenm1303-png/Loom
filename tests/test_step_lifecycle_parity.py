@@ -147,7 +147,7 @@ def test_transport_retry_reuses_exact_step_and_prepared_request(tmp_path):
     assert "late_tool" not in requested_names
 
 
-def test_invalid_tool_arguments_are_rejected_before_history_and_turn_continues(tmp_path):
+def test_invalid_tool_arguments_return_correlated_result_and_turn_continues(tmp_path):
     executed: list[dict[str, object]] = []
 
     def handler(_context, arguments):
@@ -194,21 +194,17 @@ def test_invalid_tool_arguments_are_rejected_before_history_and_turn_continues(t
 
     result = runtime.start_turn(session.session_id, "Inspect the path.")
 
-    # One malformed call rejects the whole native batch: nothing is executed and
-    # no assistant/tool history is committed, so the retried request carries the
-    # schema hint as a recovery instruction instead of a tool observation.
     assert result.status is AgentStatus.COMPLETED
     assert result.final_text == "recovered"
     assert executed == []
     stored = runtime.store.load(session.session_id)
-    assert not any(message.role is MessageRole.TOOL for message in stored.messages)
-    assert not any(call.call_id == "bad-1" for message in stored.messages for call in message.tool_calls)
+    assert any(call.call_id == "bad-1" for message in stored.messages for call in message.tool_calls)
     rejected = [event for event in runtime.store.events(session.session_id) if event.kind.value == "model_response_rejected"]
-    assert [event.data["reason"] for event in rejected] == ["invalid_tool_arguments"]
+    assert rejected == []
     assert len(platform.requests) == 2
-    recovery = platform.requests[1].messages[-1]
-    assert recovery.role is MessageRole.SYSTEM
-    assert recovery.name == "loom_terminal_recovery"
-    assert "Invalid tool: inspect_path" in str(recovery.content)
-    assert '"path"' in str(recovery.content)
+    recovery = next(m for m in platform.requests[1].messages if m.tool_call_id == "bad-1")
+    assert recovery.role is MessageRole.TOOL
+    assert recovery.name == "inspect_path"
+    assert "$.path" in str(recovery.content)
+    assert "not_executed" in str(recovery.content)
     runtime.close()
