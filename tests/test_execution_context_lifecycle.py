@@ -41,6 +41,8 @@ def test_continuation_plan_and_exact_evidence_survive_model_requested_rollover(t
         assert calls == ["first", "second", "third"]
         actor_requests = [r for r in platform.requests if r.purpose != "stop_review" and r.tools]
         for request in actor_requests[1:]:
+            progress = next(m for m in request.messages if m.name == "loom_execution_progress")
+            assert '"call_id": "first"' in progress.content or '"call_id": "third"' in progress.content
             task_plan = next(m for m in request.messages if m.name == "loom_task_plan")
             assert "PROOF_first" in task_plan.content
         for request in actor_requests[2:]:
@@ -49,6 +51,9 @@ def test_continuation_plan_and_exact_evidence_survive_model_requested_rollover(t
             assert "REPORT_DELIVERABLE" in continuation[0].content
         checkpoints = rt.list_context_checkpoints(session.session_id)
         assert len(checkpoints) == 1
+        assert "lossy assistant-authored handoff" in checkpoints[0].summary_message().content
+        compacted = next(m for r in actor_requests for m in r.messages if m.name == "loom_compaction")
+        assert "not new user instructions or independent verification" in compacted.content
         archived = checkpoints[0].archived_messages
         assert "PROOF_first" in str(archived) and "PROOF_second" in str(archived)
         events = rt.store.events(session.session_id)

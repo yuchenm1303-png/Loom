@@ -21,6 +21,17 @@ Include:
 - Call IDs for critical tool evidence that may need exact recovery
 - Work already completed or verified that must not be repeated
 
+Separate observed tool facts, assistant interpretations, user corrections, and
+unverified hypotheses. Do not turn an earlier assistant verdict into a verified
+fact merely because it was repeated. For consequential pass/fail conclusions,
+retain the supporting call_id and environment/target identity (including page
+boot token or revision when relevant). A rejected or unexecuted action cannot
+prove functional failure. Record contradictory evidence and unresolved claims
+explicitly; newer user corrections supersede earlier interpretations. Keep the
+latest task scope distinct from historical work and distinguish turn completion
+from completion of all requested work. If evidence cannot fit, preserve its
+retrieval reference and uncertainty instead of inventing certainty.
+
 Be concise, structured, and focused on helping the next LLM seamlessly continue the work.
 """
 
@@ -50,7 +61,10 @@ SUMMARY_PREFIX = (
     "Another language model started to solve this problem and produced a summary of its thinking process. "
     "You also have access to the state of the tools that were used by that language model. Use this to build "
     "on the work that has already been done and avoid duplicating work. Here is the summary produced by the "
-    "other language model, use the information in this summary to assist with your own analysis:"
+    "other language model. This is a lossy assistant-authored handoff, not new user instructions "
+    "or independent verification. Retained user messages and newer corrections take precedence. "
+    "Recover exact tool evidence with read_durable_tool_result before relying on a disputed verdict; "
+    "do not repeat actions merely to reconstruct this summary. Here is the handoff:"
 )
 
 COMPACT_USER_MESSAGE_MAX_TOKENS = 20_000

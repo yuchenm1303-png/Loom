@@ -139,3 +139,28 @@ __all__ = [
     "recent_tool_repeat_count",
     "tool_call_fingerprint",
 ]
+
+
+def execution_progress_context(events: Sequence[AgentEvent], *, turn_id: str) -> AIMessage | None:
+    """Project execution observations, never inferred task or test completion."""
+    current = [e for e in events if e.turn_id == turn_id]
+    results = [e for e in current if e.kind in {
+        AgentEventKind.TOOL_COMPLETED, AgentEventKind.TOOL_FAILED}]
+    if not results:
+        return None
+    narratives = sum(e.kind is AgentEventKind.MODEL_RESPONSE and bool(e.data.get("text"))
+                     for e in current)
+    payload = {
+        "tool_results": len(results),
+        "tool_failures": sum(e.kind is AgentEventKind.TOOL_FAILED for e in results),
+        "assistant_text_responses": narratives,
+        "recent_results": [{"call_id": e.data.get("call_id"), "tool": e.data.get("tool"),
+                            "execution_outcome": e.kind.value} for e in results[-4:]],
+    }
+    return AIMessage(role=MessageRole.SYSTEM, name="loom_execution_progress", content=(
+        "Current-turn execution observations (not functional test verdicts): "
+        + json.dumps(payload, ensure_ascii=False)
+        + "\nContinue useful execution. Routine successful receipts need no prose acknowledgment. "
+        "Use update_plan for milestone state; tell the user a new conclusion, blocker, or material "
+        "change, rather than replaying rules or promises. Keep exact evidence in deliverables. "
+        "Do not infer pass/fail from these counts or stop work because of them."))

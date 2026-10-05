@@ -227,7 +227,10 @@ def _exec_handler(
 
 def _exec_schema(*, include_wait: bool = True) -> dict[str, Any]:
     properties: dict[str, Any] = {
-        "argv": {"type": "array", "items": {"type": "string"}},
+        "argv": {"type": "array", "items": {"type": "string"}, "description":
+            "Executable followed by individual literal arguments, without shell quoting. "
+            "For an external program use [program, arg1, arg2] directly. Only invoke a shell "
+            "for shell syntax; its command text must follow that shell's quoting rules."},
         "cwd": {"type": "string"},
         "stdin": {"type": "string"},
         "env": {"type": "object"},
@@ -253,7 +256,10 @@ def exec_tool() -> AgentTool:
             "Unified command execution. Executes argv directly with no implicit shell. By default "
             "waits for exit; set wait=false for a long-running or interactive process. Set pty=true "
             "for a real Unix PTY or Windows ConPTY. cwd must stay inside the workspace. Environment "
-            "overrides are explicit and secret-like names are rejected."
+            "overrides are explicit and secret-like names are rejected. On Windows prefer direct "
+            "argv for external programs (for example curl.exe); PowerShell curl can be an "
+            "Invoke-WebRequest alias. Do not wrap external argv in cmd /c or powershell -Command "
+            "unless shell features are needed. Pass scripts as files for complex shell logic."
         ),
         input_schema=_exec_schema(include_wait=True),
         handler=lambda context, arguments: _exec_handler(context, arguments),
