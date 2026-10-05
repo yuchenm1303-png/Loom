@@ -1,0 +1,191 @@
+/* Liquid cursor used only on the Loom Web portal. It mirrors Candid's
+   interaction language (spring follow, glass lens, chromatic rim and magnetic
+   morphing) without importing Framer/runtime code. */
+
+html[data-loom-liquid-portal-cursor="true"] .loom-portal-page,
+html[data-loom-liquid-portal-cursor="true"] .loom-portal-page * {
+  cursor: none !important;
+}
+
+.loom-liquid-portal-cursor-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 2147482000;
+  pointer-events: none;
+  overflow: hidden;
+  contain: strict;
+}
+
+.loom-liquid-portal-filter {
+  position: absolute;
+  width: 0;
+  height: 0;
+}
+
+.loom-liquid-portal-cursor {
+  --loom-liquid-speed: 0;
+  --loom-liquid-angle: 0deg;
+  --loom-liquid-light-x: 34%;
+  --loom-liquid-light-y: 28%;
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 80px;
+  height: 54px;
+  border-radius: 27px;
+  opacity: 0;
+  pointer-events: none;
+  transform-origin: center;
+  will-change: transform, width, height, border-radius, opacity;
+  transition: opacity 150ms ease;
+}
+
+.loom-liquid-portal-cursor.is-visible {
+  opacity: 1;
+}
+
+.loom-liquid-portal-cursor__surface,
+.loom-liquid-portal-cursor__rim {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+}
+
+.loom-liquid-portal-cursor__surface {
+  overflow: hidden;
+  background:
+    radial-gradient(circle at var(--loom-liquid-light-x) var(--loom-liquid-light-y), rgba(255,255,255,.18), transparent 38%),
+    linear-gradient(145deg, rgba(255,255,255,.085), rgba(255,255,255,.018) 42%, rgba(114,132,255,.045));
+  -webkit-backdrop-filter: blur(3px) saturate(1.3) contrast(1.055);
+  backdrop-filter: blur(3px) saturate(1.3) contrast(1.055);
+  box-shadow:
+    inset 0 1px 1px rgba(255,255,255,.58),
+    inset 0 -1px 1px rgba(255,255,255,.10),
+    inset 1px 0 1px rgba(174,208,255,.18),
+    inset -1px 0 1px rgba(255,159,220,.10),
+    0 7px 24px rgba(20,24,38,.16),
+    0 1px 4px rgba(20,24,38,.10);
+}
+
+@supports (backdrop-filter: url("#loom-liquid-portal-refraction")) {
+  .loom-liquid-portal-cursor__surface {
+    -webkit-backdrop-filter: url("#loom-liquid-portal-refraction") blur(2.5px) saturate(1.32) contrast(1.06);
+    backdrop-filter: url("#loom-liquid-portal-refraction") blur(2.5px) saturate(1.32) contrast(1.06);
+  }
+}
+
+.loom-liquid-portal-cursor__surface::before,
+.loom-liquid-portal-cursor__surface::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+}
+
+.loom-liquid-portal-cursor__surface::before {
+  inset: -12%;
+  background:
+    conic-gradient(from var(--loom-liquid-angle),
+      transparent 0 16%,
+      rgba(127,191,255,.18) 22%,
+      transparent 31% 52%,
+      rgba(255,133,205,.14) 61%,
+      transparent 70% 100%);
+  filter: blur(calc(6px + var(--loom-liquid-speed) * 3px));
+  opacity: calc(.32 + var(--loom-liquid-speed) * .34);
+  transform: rotate(var(--loom-liquid-angle));
+}
+
+.loom-liquid-portal-cursor__surface::after {
+  background:
+    radial-gradient(circle at 24% 17%, rgba(255,255,255,.62), rgba(255,255,255,.14) 12%, transparent 28%),
+    radial-gradient(circle at 78% 84%, rgba(128,154,255,.13), transparent 34%);
+  mix-blend-mode: screen;
+  opacity: .68;
+}
+
+.loom-liquid-portal-cursor__rim {
+  border: 1px solid rgba(255,255,255,.36);
+  box-shadow:
+    inset 0 0 0 .5px rgba(255,255,255,.20),
+    inset 0 0 14px rgba(255,255,255,.055),
+    0 0 0 .5px rgba(91,102,145,.10);
+  opacity: .78;
+}
+
+.loom-liquid-portal-cursor__rim::before,
+.loom-liquid-portal-cursor__rim::after {
+  content: "";
+  position: absolute;
+  border-radius: inherit;
+  pointer-events: none;
+}
+
+.loom-liquid-portal-cursor__rim::before {
+  inset: 1px;
+  border-top: 1px solid rgba(255,255,255,.72);
+  border-left: 1px solid rgba(192,224,255,.30);
+  border-right: 1px solid rgba(255,174,225,.13);
+  mask-image: linear-gradient(135deg, #000 0 34%, transparent 67%);
+}
+
+.loom-liquid-portal-cursor__rim::after {
+  inset: -1px;
+  border-bottom: 1px solid rgba(101,124,214,.17);
+  border-right: 1px solid rgba(255,143,210,.12);
+  mask-image: linear-gradient(315deg, #000 0 28%, transparent 62%);
+}
+
+.loom-liquid-portal-cursor__focus {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 3px;
+  height: 3px;
+  margin: -1.5px 0 0 -1.5px;
+  border-radius: 50%;
+  background: rgba(255,255,255,.76);
+  box-shadow: 0 0 0 1px rgba(30,34,46,.14), 0 1px 4px rgba(0,0,0,.16);
+  opacity: .82;
+  transition: opacity 120ms ease, transform 120ms cubic-bezier(.16,1,.3,1);
+}
+
+.loom-liquid-portal-cursor[data-snapped="true"] .loom-liquid-portal-cursor__surface {
+  background:
+    radial-gradient(circle at var(--loom-liquid-light-x) var(--loom-liquid-light-y), rgba(255,255,255,.20), transparent 34%),
+    linear-gradient(145deg, rgba(255,255,255,.095), rgba(255,255,255,.024) 42%, rgba(124,139,255,.052));
+  -webkit-backdrop-filter: blur(4px) saturate(1.35) contrast(1.06);
+  backdrop-filter: blur(4px) saturate(1.35) contrast(1.06);
+}
+
+.loom-liquid-portal-cursor[data-snapped="true"] .loom-liquid-portal-cursor__focus {
+  opacity: .46;
+}
+
+.loom-liquid-portal-cursor[data-pressed="true"] .loom-liquid-portal-cursor__surface,
+.loom-liquid-portal-cursor[data-pressed="true"] .loom-liquid-portal-cursor__rim {
+  transform: scale(.965);
+}
+
+.loom-liquid-portal-cursor__surface,
+.loom-liquid-portal-cursor__rim {
+  transition: transform 110ms cubic-bezier(.2,.9,.25,1);
+}
+
+html[data-loom-theme="dark"] .loom-liquid-portal-cursor__surface {
+  background:
+    radial-gradient(circle at var(--loom-liquid-light-x) var(--loom-liquid-light-y), rgba(255,255,255,.16), transparent 38%),
+    linear-gradient(145deg, rgba(255,255,255,.075), rgba(255,255,255,.018) 42%, rgba(123,136,255,.04));
+  box-shadow:
+    inset 0 1px 1px rgba(255,255,255,.42),
+    inset 0 -1px 1px rgba(255,255,255,.08),
+    inset 1px 0 1px rgba(174,208,255,.13),
+    inset -1px 0 1px rgba(255,159,220,.08),
+    0 8px 25px rgba(0,0,0,.22),
+    0 1px 4px rgba(0,0,0,.18);
+}
+
+@media (prefers-reduced-motion: reduce), (hover: none), (pointer: coarse) {
+  .loom-liquid-portal-cursor-layer { display: none; }
+}
