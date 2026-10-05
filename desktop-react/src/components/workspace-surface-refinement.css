@@ -1,0 +1,188 @@
+/* Shared Desktop/Web workspace surfaces. Keep material independent of the
+   generation state: live activity should not reintroduce glossy capsules. */
+:root .app-shell {
+  --ws-surface: #17191e;
+  --ws-canvas: #111317;
+  --ws-line: rgba(230,234,242,.10);
+  --ws-hover: rgba(230,234,242,.045);
+  --ws-selected: rgba(160,149,235,.09);
+  --ws-ink: #d5d9e1;
+  --ws-muted: #979eaa;
+  --ws-accent: #b0a6ef;
+}
+:root[data-loom-theme="light"] .app-shell {
+  --ws-surface: #ffffff;
+  --ws-canvas: #f8f9fa;
+  --ws-line: rgba(29,35,44,.10);
+  --ws-hover: rgba(29,35,44,.035);
+  --ws-selected: rgba(105,90,216,.065);
+  --ws-ink: #303640;
+  --ws-muted: #6b7380;
+  --ws-accent: #6254bd;
+}
+
+/* Header controls belong to one toolbar, with tint reserved for selection. */
+:root .app-shell .thread-header.polished-thread-header {
+  background: var(--ws-canvas) !important;
+  border-bottom-color: var(--ws-line);
+  box-shadow: none;
+}
+:root .app-shell .thread-header.polished-thread-header::before { display: none; }
+:root .app-shell .thread-header :is(.thread-review-button, .thread-header-icon-button, .context-meter-chip) {
+  background: transparent;
+  border-color: transparent;
+  border-radius: 7px;
+  box-shadow: none;
+  color: var(--ws-muted);
+}
+:root .app-shell .thread-header :is(.thread-review-button, .thread-header-icon-button, .context-meter-chip):hover:not(:disabled) {
+  background: var(--ws-hover);
+  border-color: transparent;
+  color: var(--ws-ink);
+  box-shadow: none;
+  transform: none;
+}
+:root .app-shell .thread-header :is(.thread-review-button, .thread-header-icon-button).active {
+  background: var(--ws-selected);
+  color: var(--ws-accent);
+  border-color: transparent;
+  box-shadow: none;
+}
+:root .app-shell .thread-header :is(.thread-agent-count, .thread-review-count, .thread-artifact-count) {
+  background: transparent;
+  box-shadow: none;
+  color: inherit;
+}
+:root .app-shell .thread-header .context-meter-track { box-shadow: none; }
+:root .app-shell .thread-header .context-meter-chip {
+  background: transparent !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+}
+:root .app-shell .transcript { background: transparent; }
+:root .app-shell .transcript-scroll { background: var(--ws-canvas); }
+:root .app-shell .turn-process-header {
+  background: transparent !important;
+  border-color: transparent;
+  border-bottom: 1px solid var(--ws-line);
+  border-radius: 0;
+  box-shadow: none !important;
+  color: var(--ws-muted);
+  opacity: 1;
+}
+:root .app-shell .turn-process-header .turn-process-summary { color: var(--ws-muted); }
+:root .app-shell .turn-process-header:hover { background: var(--ws-hover); box-shadow: none; }
+:root .app-shell .user-message { background: var(--ws-hover); border-color: transparent; box-shadow: none; border-radius: 10px; }
+:root .app-shell .user-message::before { display: none; }
+
+/* Activity is a readable log. Its existing status dots and disclosure controls
+   still communicate progress and expansion, without a shell on every row. */
+:root .app-shell .task-flow-row {
+  background: transparent !important;
+  border-color: transparent !important;
+  border-radius: 6px;
+  box-shadow: none !important;
+}
+:root .app-shell .task-flow-row.is-expandable:hover {
+  background: var(--ws-hover) !important;
+  transform: none;
+}
+:root .app-shell .task-flow-row-wrap.is-open > .task-flow-row {
+  background: var(--ws-hover) !important;
+}
+:root .app-shell :is(.task-flow-row-icon, .task-flow-group-icon) {
+  background: transparent !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+  border-radius: 4px;
+}
+:root .app-shell :is(.task-flow-sheen, .task-flow-group-icon::before, .task-flow-group-icon::after) { display: none; }
+:root .app-shell .task-flow-group-header {
+  background: transparent !important;
+  border-color: transparent !important;
+  border-radius: 6px;
+  box-shadow: none !important;
+}
+:root .app-shell :is(.task-flow-between-sheen, .task-flow-group-header::before, .task-flow-row::before) { display: none !important; }
+:root .app-shell .task-flow-group .task-flow-list { padding-left: 7px; border-left: 1px solid var(--ws-line); margin-left: 10px; }
+:root .app-shell .task-flow-inline-detail pre { background: var(--ws-canvas); border-color: var(--ws-line); box-shadow: none; border-radius: 6px; }
+
+/* Changed files: a single surface with rows, rather than nested button panels. */
+:root .app-shell .rich-turn-artifacts.review-summary-card {
+  background: var(--ws-surface);
+  border: 1px solid var(--ws-line);
+  border-radius: 10px;
+  box-shadow: none;
+}
+:root .app-shell .rich-turn-artifacts.review-summary-card::after { display: none; }
+:root .app-shell .review-summary-header { grid-template-columns: 22px minmax(0,1fr) auto; gap: 10px; padding: 14px 16px 10px; min-height: 48px; }
+:root .app-shell .review-summary-header:hover { background: var(--ws-hover); }
+:root .app-shell .rich-turn-artifacts .turn-artifacts-icon {
+  width: 22px;
+  height: 22px;
+  background: transparent !important;
+  border: 0;
+  box-shadow: none;
+  color: var(--ws-muted);
+}
+:root .app-shell .review-summary-action,
+:root .app-shell .review-summary-header:hover .review-summary-action {
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+  color: var(--ws-accent);
+  padding-inline: 4px;
+}
+:root .app-shell .turn-artifacts-file-strip { display: grid; gap: 2px; padding: 0 16px 10px 48px; }
+:root .app-shell .turn-artifacts-file-strip button {
+  max-width: 100%;
+  width: 100%;
+  min-height: 30px;
+  padding: 4px 0;
+  border-color: transparent;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--ws-muted);
+  box-shadow: none;
+}
+:root .app-shell .turn-artifacts-file-strip button:hover { background: var(--ws-hover); color: var(--ws-ink); border-color: transparent; }
+:root .app-shell .turn-artifacts-file-strip button:active { transform: none; }
+:root .app-shell .turn-artifacts-file-strip button code,
+:root .app-shell .turn-artifacts-file-strip button:hover code {
+  padding: 0;
+  background: transparent !important;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  color: inherit !important;
+}
+:root .app-shell :is(.turn-artifacts-preview-action, .review-summary-footer) {
+  margin: 0 16px;
+  width: calc(100% - 32px);
+  padding: 8px 0;
+  min-height: 36px;
+  border: 0;
+  border-top: 1px solid var(--ws-line);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  font-weight: 500;
+}
+:root .app-shell .turn-artifacts-preview-action { color: var(--ws-accent); }
+:root .app-shell .review-summary-footer { color: var(--ws-muted); margin-bottom: 4px; }
+:root .app-shell :is(.turn-artifacts-preview-action, .review-summary-footer):hover { background: var(--ws-hover); border-color: var(--ws-line); }
+:root .app-shell .review-summary-footer svg { color: var(--ws-muted); }
+
+/* Keep the input as the primary action surface, with a short grounding shadow. */
+:root .app-shell .composer-wrap.composer-refined {
+  --cq-shadow-rest: 0 2px 8px rgba(0,0,0,.09);
+}
+:root[data-loom-theme="light"] .app-shell .composer-wrap.composer-refined {
+  --cq-shadow-rest: 0 2px 8px rgba(24,28,38,.035);
+}
+:root .app-shell .composer-wrap.composer-refined .composer { border-radius: 14px; }
+@media (max-width: 880px) {
+  :root .app-shell .review-summary-header { padding-inline: 12px; }
+  :root .app-shell .turn-artifacts-file-strip { padding-inline: 12px; }
+  :root .app-shell :is(.turn-artifacts-preview-action, .review-summary-footer) { margin-inline: 12px; width: calc(100% - 24px); }
+}
