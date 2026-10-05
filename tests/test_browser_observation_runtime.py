@@ -496,3 +496,52 @@ def test_page_geometry_excludes_invalid_dimensions_and_unrelated_metadata():
     state = BrowserPageState(url="https://example.test", title="", dom="", page_info={
         "viewport_width": float("nan"), "viewport_height": True, "secret": "ignored"})
     assert _page_geometry(state) == {}
+
+
+def test_navigation_capabilities_follow_live_policy(tmp_path):
+    runtime, _ = _runtime(tmp_path)
+    try:
+        assert runtime.browser_status()["navigation"]["allowed_schemes"] == ["http", "https"]
+        assert runtime.browser_status()["navigation"]["allow_private_networks"] is False
+        runtime.browser_set_private_networks(True)
+        assert runtime.browser_status()["navigation"]["allow_private_networks"] is True
+        verification = runtime.browser_status()["verification"]
+        assert verification["execution_success_is_functional_pass"] is False
+        assert verification["page_properties"] == {"tool": "browser_eval", "discovery": "tool_search"}
+    finally:
+        runtime.close()
+
+
+def test_visual_surface_projection_reaches_actor_without_persisting_page_payload(tmp_path):
+    runtime, workspace = _runtime(tmp_path)
+    session = _session(runtime, workspace)
+    result = _state_result(revision=1, dom="Canvas fixture")
+    surfaces = [
+        {"surface_index": 0, "kind": "canvas", "label": "chart", "rect": {"x": -4, "y": 200, "width": 320, "height": 120}, "secret": "MUST_NOT_LEAK"},
+        {"kind": "canvas", "rect": {"x": True, "y": 0, "width": 20, "height": 20}},
+        {"kind": "canvas", "rect": {"x": 0, "y": float("nan"), "width": 20, "height": 20}},
+    ]
+    result = ToolResult(True, result.content, {**result.data, "page_info": {"visual_surfaces": surfaces}})
+    try:
+        runtime._append_tool_result(session, ToolCall("canvas-state", "browser_state", {}), result, failed=False)
+        assert "MUST_NOT_LEAK" not in str(session.messages)
+        messages, _ = runtime._prepare_model_request(session, _step(runtime, session), None)
+        observation = next(m for m in messages if m.tool_call_id == "canvas-state").content[-1].text
+        import json
+        projected = json.loads(next(line.split(": ", 1)[1] for line in observation.splitlines() if line.startswith("visual_surfaces:")))
+        assert projected == [{"surface_index": 0, "kind": "canvas", "label": "chart", "rect": {"x": -4, "y": 200, "width": 320, "height": 120}}]
+        assert "MUST_NOT_LEAK" not in observation
+    finally:
+        runtime.close()
+
+
+def test_effect_comparison_includes_projected_surface_geometry():
+    from app.agent_runtime.browser_runtime_v1 import _classify_effect, _state_digest
+    from app.agent_runtime.browser_runtime import BrowserStateSnapshot
+    def state(y):
+        return BrowserPageState(url="https://example.test", title="chart", dom="same canvas", page_info={
+            "visual_surfaces": [{"kind": "canvas", "rect": {"x": 0, "y": y, "width": 320, "height": 120}}]})
+    before = state(200)
+    after = BrowserStateSnapshot(browser_id="chart", state_revision=2, state=state(100))
+    effect, _ = _classify_effect("browser_scroll", _state_digest(before), after, ok=True)
+    assert effect == "changed"

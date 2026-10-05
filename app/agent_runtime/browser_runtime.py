@@ -872,6 +872,8 @@ class BrowserRuntime(WebSearchRuntime):
         return self.browser_status()
 
     def browser_status(self, owner_session_id: str | None = None) -> dict[str, object]:
+        from .browser_security import NAVIGATION_SCHEMES
+
         store = self.browser_sessions
         active = 0
         if store is not None and owner_session_id:
@@ -919,6 +921,11 @@ class BrowserRuntime(WebSearchRuntime):
             "downloads": False,
             "uploads": False,
             "url_policy": "execution-layer pre/post navigation plus backend redirect/popup enforcement",
+            "navigation": {
+                "allowed_schemes": list(NAVIGATION_SCHEMES),
+                "allow_private_networks": self.browser_allow_private_networks,
+                "allowed_domains": list(self.browser_allowed_domains),
+            },
         }
         if self.browser_extension_bridge is not None:
             bridge_status = self.browser_extension_bridge.status()

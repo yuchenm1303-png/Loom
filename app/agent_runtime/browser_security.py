@@ -16,6 +16,7 @@ from .browser_session import (
 )
 
 
+NAVIGATION_SCHEMES = ("http", "https")
 DNSResolver = Callable[[str], Sequence[str]]
 _UNICODE_DOTS = str.maketrans({"\u3002": ".", "\uff0e": ".", "\uff61": "."})
 # Rules that describe "somewhere on this machine or network", which the
@@ -168,7 +169,7 @@ class BrowserSecurityPolicy:
     def validate(self, url: str, *, allowed_domains: tuple[str, ...] = ()) -> str:
         value = _with_default_scheme(str(url or "").strip())
         parsed = urlsplit(value)
-        if parsed.scheme.casefold() not in {"http", "https"}:
+        if parsed.scheme.casefold() not in NAVIGATION_SCHEMES:
             raise BrowserURLPolicyError(
                 f"browser navigation only allows http/https URLs, and this is {_describe(value)}"
             )

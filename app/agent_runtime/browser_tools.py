@@ -1386,7 +1386,9 @@ def browser_tools(runtime: "BrowserRuntime") -> tuple[AgentTool, ...]:
                     "Open or resume a Loom browser session, optionally navigate to an http/https URL, and return "
                     "a bounded LLM-facing DOM state. In single-browser modes, repeated calls from the same Loom session "
                     "reuse the healthy controlled browser automatically; a stale owned handle is closed and reopened once "
-                    "instead of failing on the session limit. allowed_domains can restrict this browser session."
+                    "instead of failing on the session limit. Navigation accepts http/https only; file/data URLs are unsupported. "
+                    "browser_status.navigation reports the configured private-network and domain policy. "
+                    "allowed_domains can restrict this browser session."
                 ),
                 input_schema=_schema(
                     {
@@ -1424,14 +1426,14 @@ def browser_tools(runtime: "BrowserRuntime") -> tuple[AgentTool, ...]:
             AgentTool(
                 name="browser_state",
                 description=("Refresh the current page and return bounded DOM/tabs plus a new state_revision. "
-                    "Canvas/video/iframe/application regions are also reported in page_info.visual_surfaces with viewport rectangles."),
+                    "Canvas/video/iframe/application regions are reported as visual_surfaces with viewport rectangles in the latest observation."),
                 input_schema=_schema({"browser_id": _browser_id_schema()}, ("browser_id",)),
                 handler=state,
                 effect=sensitive,
             ),
             AgentTool(
                 name="browser_navigate",
-                description="Navigate the current browser tab or open a new tab. URL policy is enforced before and after navigation.",
+                description="Navigate the current browser tab or open a new tab using http/https only. file/data URLs are unsupported. browser_status.navigation reports the active network policy, enforced before and after navigation.",
                 input_schema=_schema(
                     {
                         "browser_id": _browser_id_schema(),
