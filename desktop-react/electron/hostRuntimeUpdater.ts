@@ -1,5 +1,6 @@
 import { app, net } from "electron";
-import { spawnSync } from "node:child_process";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
@@ -64,7 +65,9 @@ const READY_RETRY_MS = 30_000;
 const MAX_CHANNEL_BYTES = 64 * 1024;
 const MAX_RUNTIME_BYTES = 512 * 1024 * 1024;
 
-const enabled = isHostProcess && app.isPackaged && process.platform === "win32";
+const enabled = isHostProcess && app.isPackaged && process.platform === "win32"
+  && process.env.LOOM_DISABLE_AUTO_UPDATES !== "1";
+const execFileAsync = promisify(execFile);
 let hooks: HostRuntimeUpdateHooks | null = null;
 let checkPromise: Promise<HostRuntimeUpdateState> | null = null;
 let readyVersion = "";
@@ -181,10 +184,10 @@ function runtimeStagingPath(version: string): string {
   return path.join(hostRuntimeManagerRoot(), "staging", `${version}-${process.pid}-${Date.now()}`);
 }
 
-function expandArchive(archive: string, destination: string): void {
-  fs.mkdirSync(destination, { recursive: true });
+async function expandArchive(archive: string, destination: string): Promise<void> {
+  await fs.promises.mkdir(destination, { recursive: true });
   const script = "& { param($src,$dst) Expand-Archive -LiteralPath $src -DestinationPath $dst -Force }";
-  const result = spawnSync("powershell.exe", [
+  await execFileAsync("powershell.exe", [
     "-NoLogo",
     "-NoProfile",
     "-NonInteractive",
@@ -195,20 +198,16 @@ function expandArchive(archive: string, destination: string): void {
     archive,
     destination,
   ], { encoding: "utf8", windowsHide: true, timeout: 120_000 });
-  if (result.error) throw result.error;
-  if (result.status !== 0) throw new Error(String(result.stderr || result.stdout || "Could not extract Loom Host runtime.").trim());
 }
 
-function selfTestRuntime(root: string): void {
+async function selfTestRuntime(root: string): Promise<void> {
   const python = path.join(root, "python.exe");
-  const result = spawnSync(python, ["self-test"], {
+  await execFileAsync(python, ["self-test"], {
     cwd: root,
     encoding: "utf8",
     windowsHide: true,
     timeout: 120_000,
   });
-  if (result.error) throw result.error;
-  if (result.status !== 0) throw new Error(String(result.stderr || result.stdout || "Loom Host runtime self-test failed.").trim());
 }
 
 async function prepareRuntime(channel: HostRuntimeChannel): Promise<void> {
@@ -219,33 +218,33 @@ async function prepareRuntime(channel: HostRuntimeChannel): Promise<void> {
     percent: 0,
     error: undefined,
   });
-  fs.mkdirSync(path.dirname(runtimeDownloadPath(channel.version)), { recursive: true });
+  await fs.promises.mkdir(path.dirname(runtimeDownloadPath(channel.version)), { recursive: true });
   const bytes = await fetchBytes(channel.url, MAX_RUNTIME_BYTES);
   if (bytes.byteLength !== channel.size) throw new Error("Loom Host runtime size does not match the published manifest.");
   if (sha256(bytes) !== channel.sha256) throw new Error("Loom Host runtime checksum verification failed.");
-  fs.writeFileSync(runtimeDownloadPath(channel.version), bytes, { mode: 0o600 });
+  await fs.promises.writeFile(runtimeDownloadPath(channel.version), bytes, { mode: 0o600 });
   setState({ percent: 65 });
 
   const staging = runtimeStagingPath(channel.version);
-  fs.rmSync(staging, { recursive: true, force: true });
-  expandArchive(runtimeDownloadPath(channel.version), staging);
+  await fs.promises.rm(staging, { recursive: true, force: true });
+  await expandArchive(runtimeDownloadPath(channel.version), staging);
   const manifest = readHostRuntimeManifest(staging);
   if (!manifest || manifest.version !== channel.version || manifest.protocol !== channel.protocol) {
-    fs.rmSync(staging, { recursive: true, force: true });
+    await fs.promises.rm(staging, { recursive: true, force: true });
     throw new Error("Loom Host runtime manifest does not match the update channel.");
   }
   if (!fs.existsSync(path.join(staging, "wxc-exec.exe")) || !fs.existsSync(path.join(staging, "browser-current-tab", "manifest.json"))) {
-    fs.rmSync(staging, { recursive: true, force: true });
+    await fs.promises.rm(staging, { recursive: true, force: true });
     throw new Error("Loom Host runtime bundle is incomplete.");
   }
-  selfTestRuntime(staging);
+  await selfTestRuntime(staging);
   setState({ percent: 90 });
 
   const target = path.join(hostRuntimeVersionsRoot(), channel.version);
-  fs.mkdirSync(hostRuntimeVersionsRoot(), { recursive: true });
-  fs.rmSync(target, { recursive: true, force: true });
-  fs.renameSync(staging, target);
-  try { fs.unlinkSync(runtimeDownloadPath(channel.version)); } catch {}
+  await fs.promises.mkdir(hostRuntimeVersionsRoot(), { recursive: true });
+  await fs.promises.rm(target, { recursive: true, force: true });
+  await fs.promises.rename(staging, target);
+  try { await fs.promises.unlink(runtimeDownloadPath(channel.version)); } catch {}
   readyVersion = channel.version;
   setState({ phase: "ready", percent: 100, error: undefined });
 }
@@ -259,14 +258,14 @@ function scheduleReadyRetry(): void {
   retryTimer.unref?.();
 }
 
-function pruneOldRuntimes(keep: Set<string>): void {
+async function pruneOldRuntimes(keep: Set<string>): Promise<void> {
   try {
     const root = hostRuntimeVersionsRoot();
-    for (const name of fs.readdirSync(root)) {
+    for (const name of await fs.promises.readdir(root)) {
       if (keep.has(name)) continue;
       const manifest = readHostRuntimeManifest(path.join(root, name));
       if (!manifest) continue;
-      fs.rmSync(path.join(root, name), { recursive: true, force: true });
+      await fs.promises.rm(path.join(root, name), { recursive: true, force: true });
     }
   } catch {}
 }
@@ -295,7 +294,7 @@ async function maybeActivateReadyRuntime(): Promise<boolean> {
     await hooks.reload();
     const current = currentHostRuntime();
     readyVersion = "";
-    pruneOldRuntimes(new Set([current.version, before.version]));
+    await pruneOldRuntimes(new Set([current.version, before.version]));
     setState({
       phase: "up-to-date",
       currentVersion: current.version,

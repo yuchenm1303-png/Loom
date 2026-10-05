@@ -69,6 +69,7 @@ venv/
 /scratch/
 /build/
 /desktop-react/design/*.local.json
+/desktop-react/.cache/
 /label-date-generator/
 /.tmp-*/
 

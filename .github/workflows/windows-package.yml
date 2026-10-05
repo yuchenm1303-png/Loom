@@ -14,6 +14,7 @@ on:
       - "pyproject.toml"
       - "requirements*.txt"
       - ".github/workflows/windows-package.yml"
+      - ".github/actions/windows-build-setup/**"
   push:
     branches:
       - main
@@ -27,9 +28,14 @@ on:
       - "pyproject.toml"
       - "requirements*.txt"
       - ".github/workflows/windows-package.yml"
+      - ".github/actions/windows-build-setup/**"
 
 permissions:
   contents: read
+
+concurrency:
+  group: windows-package-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   package-windows-x64:
@@ -57,28 +63,15 @@ jobs:
           }
           Write-Host "GitHub Web OAuth release configuration is present."
 
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "22"
+      - uses: ./.github/actions/windows-build-setup
 
       - name: Install desktop dependencies
         working-directory: desktop-react
-        run: npm install --no-audit --no-fund
+        run: npm ci --no-audit --no-fund
 
       - name: Build Windows installer
         working-directory: desktop-react
         run: npm run package:win
-
-      - name: Verify credential-free packaged Host startup
-        working-directory: desktop-react
-        shell: pwsh
-        run: |
-          $env:LOOM_SMOKE_HOST_EXECUTABLE = Join-Path $PWD "release/win-unpacked/Loom.exe"
-          node scripts/host-process-smoke.mjs
-          if ($LASTEXITCODE -ne 0) { throw "Clean packaged Host startup failed." }
 
       - name: Verify packaged private runtime
         shell: pwsh

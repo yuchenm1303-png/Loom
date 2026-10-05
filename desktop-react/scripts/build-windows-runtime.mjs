@@ -10,6 +10,7 @@ const REPO_ROOT = path.resolve(DESKTOP_ROOT, "..");
 const VENV_ROOT = path.join(DESKTOP_ROOT, ".packaging-venv");
 const VENV_PYTHON = path.join(VENV_ROOT, "Scripts", "python.exe");
 const DIST_ROOT = path.join(DESKTOP_ROOT, "runtime-dist");
+const BROWSER_CACHE_ROOT = path.join(DESKTOP_ROOT, ".cache", "playwright");
 const WORK_ROOT = path.join(DESKTOP_ROOT, "runtime-build");
 const ENTRYPOINT = path.join(REPO_ROOT, "loom_desktop_runtime.py");
 const GENERATED_CONNECTOR_CONFIG = path.join(REPO_ROOT, "app", "connector_release_config_generated.py");
@@ -17,6 +18,7 @@ const BOOTSTRAP_PYTHON = process.env.LOOM_BOOTSTRAP_PYTHON || process.env.PYTHON
 
 function run(command, args, options = {}) {
   console.log(`[build-runtime] ${command} ${args.join(" ")}`);
+  const started = Date.now();
   const result = spawnSync(command, args, {
     cwd: REPO_ROOT,
     env: { ...process.env, PYTHONUTF8: "1" },
@@ -24,6 +26,7 @@ function run(command, args, options = {}) {
     shell: false,
     ...options,
   });
+  console.log(`[build-runtime] Step finished in ${((Date.now() - started) / 1000).toFixed(1)}s`);
   if (result.error) throw result.error;
   if (result.status !== 0) process.exit(result.status ?? 1);
 }
@@ -81,7 +84,7 @@ if (!fs.existsSync(VENV_PYTHON)) {
 }
 
 run(VENV_PYTHON, ["-m", "pip", "install", "--upgrade", "pip", "wheel"]);
-run(VENV_PYTHON, ["-m", "pip", "install", "--ignore-installed", "--prefix", VENV_ROOT,
+run(VENV_PYTHON, ["-m", "pip", "install", "--prefix", VENV_ROOT,
   ".[desktop-agent]", "pyinstaller>=6.10,<7", "playwright>=1.50,<2"]);
 
 fs.rmSync(DIST_ROOT, { recursive: true, force: true });
@@ -92,8 +95,10 @@ prepareGeneratedConnectorConfig();
 
 // Download at build time, never on a customer's first browser action. Keep
 // the browser payload beside the frozen runtime so Host updates include it.
-const browserRoot = path.join(WORK_ROOT, "browsers");
-run(VENV_PYTHON, ["-m", "playwright", "install", "chromium"], {
+const browserRoot = BROWSER_CACHE_ROOT;
+// All frozen browser launch paths pass the bundled full Chrome executable,
+// including headless mode. A second headless-shell payload is unused.
+run(VENV_PYTHON, ["-m", "playwright", "install", "chromium", "--no-shell"], {
   env: { ...process.env, PYTHONUTF8: "1", PLAYWRIGHT_BROWSERS_PATH: browserRoot },
 });
 

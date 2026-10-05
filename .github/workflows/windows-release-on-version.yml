@@ -32,13 +32,7 @@ jobs:
           ref: ${{ github.sha }}
           fetch-depth: 0
 
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "22"
+      - uses: ./.github/actions/windows-build-setup
 
       - name: Resolve immutable release version
         id: release
@@ -67,7 +61,7 @@ jobs:
 
       - name: Install desktop dependencies
         working-directory: desktop-react
-        run: npm install --no-audit --no-fund
+        run: npm ci --no-audit --no-fund
 
       - name: Build Windows release candidate
         working-directory: desktop-react
@@ -86,9 +80,6 @@ jobs:
           if (-not (Test-Path $metadata)) { throw "latest.yml was not produced." }
           if (-not $blockmap) { throw "NSIS blockmap was not produced." }
           if (-not (Test-Path $runtime)) { throw "Packaged Python runtime was not produced." }
-          $env:LOOM_SMOKE_HOST_EXECUTABLE = Join-Path $env:GITHUB_WORKSPACE "desktop-react/release/win-unpacked/Loom.exe"
-          node (Join-Path $env:GITHUB_WORKSPACE "desktop-react/scripts/host-process-smoke.mjs")
-          if ($LASTEXITCODE -ne 0) { throw "Clean packaged Host startup failed." }
           & $runtime first-run-test
           if ($LASTEXITCODE -ne 0) { throw "Packaged credential-free first-run test failed." }
           & $runtime self-test

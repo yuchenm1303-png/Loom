@@ -848,6 +848,11 @@ class LoomRpcProcess {
   }
 
   async assertRestartSafe(): Promise<void> {
+    // Both runtime and bootstrap updates use this boundary. An uninitialized
+    // child can still belong to a client awaiting its connect result.
+    if (this.connectPromise) {
+      throw new Error("Wait for the local runtime to finish connecting before restarting it.");
+    }
     if (!this.child || !this.initialized) return;
     const status = await this.call("runtime/status", {}) as RuntimeStatus;
     if (Array.isArray(status.activeThreadIds) && status.activeThreadIds.length > 0) {

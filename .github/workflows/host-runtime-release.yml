@@ -15,6 +15,7 @@ on:
       - "pyproject.toml"
       - "requirements*.txt"
       - ".github/workflows/host-runtime-release.yml"
+      - ".github/actions/windows-build-setup/**"
 
 permissions:
   contents: write
@@ -38,13 +39,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "22"
+      - uses: ./.github/actions/windows-build-setup
 
       - name: Resolve Host runtime version
         id: runtime
@@ -69,7 +64,7 @@ jobs:
 
       - name: Install Desktop build dependencies
         working-directory: desktop-react
-        run: npm install --no-audit --no-fund
+        run: npm ci --no-audit --no-fund
 
       - name: Build frozen Host runtime
         working-directory: desktop-react

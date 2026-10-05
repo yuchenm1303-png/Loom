@@ -116,7 +116,9 @@ def main(argv: list[str] | None = None) -> int:
     # stdout is reserved exclusively for JSON-RPC protocol frames. Runtime
     # construction is intentionally reused from the CLI so credentials and
     # provider configuration never enter client-visible protocol state.
+    print("[loom-startup] constructing credential-free/local runtime", file=sys.stderr, flush=True)
     runtime, store, model = _build_runtime(args)
+    print("[loom-startup] runtime constructed; configuring app-server", file=sys.stderr, flush=True)
     reasoning = ReasoningRequest.from_values(args.reasoning_kind, args.reasoning_value)
     capability = _validate_reasoning_for_runtime(
         model=model,

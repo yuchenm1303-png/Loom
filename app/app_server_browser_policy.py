@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 from typing import Any, TextIO
 
@@ -150,6 +151,7 @@ def serve_browser_policy_managed_streaming_stdio(
         )
         local_server.start()
     try:
+        print("[loom-startup] app-server ready for initialize", file=sys.stderr, flush=True)
         return server.serve(reader=reader, writer=writer)
     finally:
         if local_server is not None:

@@ -55,7 +55,8 @@ function getAutoUpdater(): AppUpdater {
 }
 
 const autoUpdater = getAutoUpdater();
-const updateEnabled = isHostProcess && app.isPackaged && process.platform === "win32";
+const updateEnabled = isHostProcess && app.isPackaged && process.platform === "win32"
+  && process.env.LOOM_DISABLE_AUTO_UPDATES !== "1";
 let state: SoftwareUpdateState = {
   enabled: updateEnabled,
   phase: updateEnabled ? "idle" : "disabled",

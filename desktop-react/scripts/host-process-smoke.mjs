@@ -13,15 +13,17 @@ import { waitForSmokeProcess } from "./host-smoke-process.mjs";
 const root = fileURLToPath(new URL("../", import.meta.url));
 const require = createRequire(new URL("../package.json", import.meta.url));
 const executable = require("electron");
-const packagedHost = String(process.env.LOOM_SMOKE_HOST_EXECUTABLE || "").trim();
+const packagedHost = String(process.env.LOOM_SMOKE_HOST_EXECUTABLE || (process.argv.includes("--packaged") ? path.join(root, "release/win-unpacked/Loom.exe") : "")).trim();
 const temp = await mkdtemp(path.join(os.tmpdir(), "loom-host-smoke-"));
 const probe = net.createServer();
 await new Promise((resolve) => probe.listen(0, "127.0.0.1", resolve));
 const port = probe.address().port;
 await new Promise((resolve) => probe.close(resolve));
 const env = { ...process.env, LOOM_HOST_DATA_DIR: path.join(temp, "host"), LOOM_HOME: path.join(temp, "runtime"),
-  LOOM_HOST_DISCOVERY_PORT: String(port), LOOM_ACCOUNT_API_BASE_URL: "http://127.0.0.1:1/v1" };
+  LOOM_DISABLE_AUTO_UPDATES: "1", LOOM_HOST_DISCOVERY_PORT: String(port), LOOM_ACCOUNT_API_BASE_URL: "http://127.0.0.1:1/v1" };
 delete env.ELECTRON_RUN_AS_NODE;
+delete env.LOOM_HOST_RUNTIME_ROOT;
+delete env.LOOM_HOST_UPDATE_CHANNEL_URL;
 for (const name of Object.keys(env)) {
   if (/^(MINIMAX_|OPENAI_|DASHSCOPE_|LOOM_(API_KEY|PRIMARY_API_KEY|ACCOUNT_MODEL_CREDENTIAL|PYTHON|MODEL|BASE_URL|PROVIDER))/.test(name)) {
     delete env[name];
@@ -70,6 +72,7 @@ async function runClient() {
       progress("connecting to Host IPC / update-status");
       const state = await callHost("loom:update-status");
       if (!state.currentVersion) throw new Error("Missing Host version");
+      if (state.enabled) throw new Error("Candidate smoke must not run the online updater");
       progress("Host IPC ready / initializing credential-free runtime");
       const initialization = await callHost("loom:connect");
       if (!initialization?.runtime) throw new Error("Credential-free local service did not initialize");

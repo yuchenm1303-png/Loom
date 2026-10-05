@@ -1,0 +1,28 @@
+name: Windows build dependencies
+description: Configure toolchains and cache downloaded dependencies, never packaged code or credentials.
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-python@v5
+      with:
+        python-version: "3.12"
+        cache: pip
+        cache-dependency-path: |
+          pyproject.toml
+          desktop-react/scripts/build-windows-runtime.mjs
+    - uses: actions/setup-node@v4
+      with:
+        node-version: "22"
+        cache: npm
+        cache-dependency-path: desktop-react/package-lock.json
+    - uses: actions/cache@v4
+      with:
+        path: desktop-react/.cache/playwright
+        key: windows-playwright-v1-${{ hashFiles('pyproject.toml', 'desktop-react/scripts/build-windows-runtime.mjs') }}
+    - uses: actions/cache@v4
+      with:
+        path: |
+          ~/AppData/Local/electron/Cache
+          ~/AppData/Local/electron-builder/Cache
+        key: windows-electron-v1-${{ hashFiles('desktop-react/package-lock.json') }}
+        restore-keys: windows-electron-v1-
