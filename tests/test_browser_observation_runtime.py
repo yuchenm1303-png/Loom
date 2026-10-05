@@ -585,6 +585,7 @@ def test_provider_failure_keeps_status_and_resume_boundary(tmp_path):
         assert event.data["provider_status_code"] == 429
         assert event.data["retryable"] is False
         assert event.data["resume"]["durable_history_preserved"] is True
-        assert event.data["browser_resources"]["resume_requires_new_session"] is True
+        # A provider failure in a browser-free turn must not invent a release.
+        assert "browser_resources" not in event.data
     finally:
         runtime.close()

@@ -22,6 +22,7 @@ from .turn_response_validation import (
     COMPLETE_FINISH_REASONS,
     TERMINAL_RECOVERY_INSTRUCTION,
     TRUNCATED_RECOVERY_INSTRUCTION,
+    DECISION_RECOVERY_INSTRUCTION,
     history_message_count,
     invalid_terminal_response,
     merge_recovery_text,
@@ -154,6 +155,9 @@ class TurnRunner:
                             role=MessageRole.SYSTEM,
                             name="loom_terminal_recovery",
                             content=(
+                                DECISION_RECOVERY_INSTRUCTION
+                                if recovery_instruction == "incomplete_decision_block"
+                                else
                                 _TRUNCATED_RECOVERY_INSTRUCTION
                                 if recovery_partial
                                 else _TERMINAL_RECOVERY_INSTRUCTION
@@ -470,7 +474,8 @@ class TurnRunner:
                     if invalid_terminal != "stop_check_continue":
                         attempt += 1
                     recovery_instruction = invalid_terminal
-                    resume_from_partial = invalid_terminal.startswith("incomplete_finish:")
+                    resume_from_partial = (invalid_terminal.startswith("incomplete_finish:")
+                                           or invalid_terminal == "incomplete_decision_block")
                     recovery_partial = str(response.text or "") if resume_from_partial else ""
                     # The replayed assistant turn must carry the reasoning that
                     # produced it, or a thinking-mode provider rejects the whole

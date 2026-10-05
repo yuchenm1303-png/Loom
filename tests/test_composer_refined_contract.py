@@ -49,11 +49,14 @@ def tokens(block: str) -> set[str]:
     return set(re.findall(r"(--cq-[\w-]+)\s*:", block))
 
 
-def test_refinement_loads_after_every_other_composer_sheet() -> None:
+def test_refinement_loads_after_base_composer_sheets_before_workspace_geometry() -> None:
     main = read(SRC / "main.tsx")
     imports = re.findall(r'import "(\./[^"]+\.css)";', main)
 
-    assert imports[-1] == "./components/composer-refined.css"
+    # 870e93c2 introduced a later workspace layer for shared surface geometry.
+    assert imports[-2:] == ["./components/composer-refined.css", "./components/workspace-surface-refinement.css"]
+    workspace = read(COMPONENTS / "workspace-surface-refinement.css")
+    assert ":root .app-shell .composer-wrap.composer-refined .composer { border-radius: 14px; }" in workspace
     for earlier in (
         "./theme.css",
         "./components/permission-popover-polish.css",

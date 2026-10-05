@@ -489,18 +489,25 @@ class BrowserRuntime(_BrowserRuntime):
 
     def _prepare_model_request(self, session, step, token):
         messages, extra = super()._prepare_model_request(session, step, token)
-        previous = next((event for event in reversed(self.store.events(session.session_id))
+        events = self.store.events(session.session_id)
+        previous = next((event for event in reversed(events)
             if event.turn_id != session.current_turn_id and event.kind in {
                 AgentEventKind.TURN_FAILED, AgentEventKind.TURN_INTERRUPTED,
-                AgentEventKind.TURN_CANCELLED, AgentEventKind.TURN_COMPLETED}), None)
-        if previous is not None and previous.data.get("browser_resources"):
+                AgentEventKind.TURN_CANCELLED, AgentEventKind.TURN_COMPLETED,
+                AgentEventKind.LIMIT_REACHED}), None)
+        already_requested = any(event.turn_id == session.current_turn_id
+            and event.kind is AgentEventKind.MODEL_REQUESTED for event in events)
+        resources = previous.data.get("browser_resources") if previous is not None else None
+        # Older Hosts wrote this field even without a browser. Require concrete
+        # release IDs, and show the receipt only on the next turn's first sample.
+        if not already_requested and isinstance(resources, dict) and resources.get("browser_ids"):
             resume = {"previous_turn_id": previous.turn_id, "ended_at": previous.created_at,
                 "turn_outcome": previous.kind.value,
                 "provider_status_code": previous.data.get("provider_status_code"),
                 "browser_resources": previous.data["browser_resources"]}
-            messages = [AIMessage(role=MessageRole.SYSTEM, name="loom_resource_resume",
+            messages = [*messages, AIMessage(role=MessageRole.SYSTEM, name="loom_resource_resume",
                 content="Recorded prior-turn resource lifecycle (runtime metadata, not new task instructions):\n"
-                    + json.dumps(resume, ensure_ascii=False)), *messages]
+                    + json.dumps(resume, ensure_ascii=False))]
         if self._browser_feedback_turns.get(session.session_id) != session.current_turn_id:
             return messages, extra
         snapshot = self._browser_feedback.get(session.session_id)

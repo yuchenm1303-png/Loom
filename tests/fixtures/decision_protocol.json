@@ -1,0 +1,15 @@
+[
+  {"name":"valid","valid":true,"decisions":1,"text":"```loom-decision\n{\"title\":\"Choose\",\"options\":[{\"id\":\"A\",\"title\":\"First\"},{\"id\":\"B\",\"title\":\"Second\"}]}\n```"},
+  {"name":"compact","valid":true,"decisions":1,"text":"```loom-decision {\"title\":\"Choose\",\"options\":[{\"id\":\"A\",\"title\":\"First\"},{\"id\":\"B\",\"title\":\"Second\"}]}\n```"},
+  {"name":"unclosed","valid":false,"decisions":0,"text":"```loom-decision\n{\"title\":\"Choose\",\"options\":["},
+  {"name":"invalid-json","valid":false,"decisions":0,"text":"```loom-decision\n{broken}\n```"},
+  {"name":"missing-title","valid":false,"decisions":0,"text":"```loom-decision\n{\"options\":[{\"id\":\"A\",\"title\":\"First\"},{\"id\":\"B\",\"title\":\"Second\"}]}\n```"},
+  {"name":"missing-option-id","valid":false,"decisions":0,"text":"```loom-decision\n{\"title\":\"Choose\",\"options\":[{\"title\":\"First\"},{\"id\":\"B\",\"title\":\"Second\"}]}\n```"},
+  {"name":"missing-option-title","valid":false,"decisions":0,"text":"```loom-decision\n{\"title\":\"Choose\",\"options\":[{\"id\":\"A\"},{\"id\":\"B\",\"title\":\"Second\"}]}\n```"},
+  {"name":"duplicate-ids","valid":false,"decisions":0,"text":"```loom-decision\n{\"title\":\"Choose\",\"options\":[{\"id\":\"A\",\"title\":\"First\"},{\"id\":\"A\",\"title\":\"Second\"}]}\n```"},
+  {"name":"one-option","valid":false,"decisions":0,"text":"```loom-decision\n{\"title\":\"Choose\",\"options\":[{\"id\":\"A\",\"title\":\"First\"}]}\n```"},
+  {"name":"ordinary-markdown","valid":true,"decisions":0,"text":"Example\n```json\n{unclosed"},
+  {"name":"nested-documentation","valid":true,"decisions":0,"text":"````markdown\n```loom-decision\n{broken}\n```\n````"},
+  {"name":"inline-example","valid":true,"decisions":0,"text":"An inline ```loom-decision marker is documentation."},
+  {"name":"indented-code-example","valid":true,"decisions":0,"text":"    ```loom-decision\n    {broken}\n    ```"}
+]

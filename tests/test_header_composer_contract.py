@@ -27,7 +27,10 @@ def test_composer_keeps_core_stylesheet_and_editable_steering_surface() -> None:
 def test_header_status_is_visible_and_state_driven() -> None:
     header = read(COMPONENTS / "ThreadHeader.tsx")
     assert 'tone: "ready"' in header
-    assert "thread-state-dot" in header
+    # 3b8c8a00 removed the duplicate title dot; the status chip owns this state.
+    assert "thread-state-dot" not in header
+    assert 'className={`thread-status-chip ${state.tone}`}' in header
+    assert 'className="thread-status-label">{state.label}' in header
     assert "thread-status-chip" in header
     assert 'status === "waiting_approval"' in header
 

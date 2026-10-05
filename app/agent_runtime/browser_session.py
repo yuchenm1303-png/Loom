@@ -468,19 +468,24 @@ class BrowserSessionManager:
         return True
 
     def close_owner(self, owner_session_id: str, *, reason: str = "owner_cleanup") -> int:
+        return len(self.close_owner_sessions(owner_session_id, reason=reason))
+
+    def close_owner_sessions(self, owner_session_id: str, *, reason: str = "owner_cleanup") -> tuple[str, ...]:
+        """Release an owner's handles and return exactly the invalidated IDs."""
         owner = _key(owner_session_id, "owner_session_id")
         with self._lock:
             self._owner_generations[owner] = self._owner_generations.get(owner, 0) + 1
             ids = [item.browser_id for item in self._sessions.values() if item.owner_session_id == owner]
-        closed = 0
+        closed: list[str] = []
         for browser_id in ids:
             try:
                 self.close(owner, browser_id, reason=reason)
-                closed += 1
             except Exception:
                 with self._lock:
                     self._sessions.pop(browser_id, None)
-        return closed
+            # close() invalidates the handle even when backend cleanup raises.
+            closed.append(browser_id)
+        return tuple(closed)
 
     def close_all(self) -> int:
         with self._lock:

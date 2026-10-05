@@ -4,6 +4,7 @@ from __future__ import annotations
 import re
 
 from app.ai import MessageRole, ModelResponse
+from .decision_protocol import invalid_decision_block
 
 
 COMPLETE_FINISH_REASONS = {"", "stop", "tool_calls", "function_call", "tool_use", "completed", "end_turn"}
@@ -22,6 +23,12 @@ TRUNCATED_RECOVERY_INSTRUCTION = (
     "The previous assistant response was cut off by the provider's output limit and was not committed. "
     "Continue the same task from that partial response without repeating its analysis. If it was leading to "
     "a tool action, emit the native structured tool call immediately; otherwise finish with a concise answer."
+)
+DECISION_RECOVERY_INSTRUCTION = (
+    "The previous reply contains an incomplete or invalid Loom decision card. "
+    "Complete the supplied partial reply or replace it with a complete reply. "
+    "Close each loom-decision fence and provide valid JSON with a nonempty title "
+    "and two to six options, each with a unique nonempty id and title."
 )
 
 
@@ -86,6 +93,10 @@ def invalid_terminal_response(response: ModelResponse) -> str:
         return "reasoning_without_visible_answer"
     if contains_serialized_tool_protocol(visible):
         return "serialized_tool_call_text"
+    # Validate against the original indentation; stripping Markdown would turn
+    # an indented code example into a protocol fence.
+    if invalid_decision_block(_COMPLETE_THINK_BLOCK_RE.sub("", raw)):
+        return "incomplete_decision_block"
     # Public Markdown shape is not transport completeness. A legitimate answer
     # may explain an opening bracket or contain an unclosed code fence.
     return ""

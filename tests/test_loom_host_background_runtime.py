@@ -60,5 +60,6 @@ def test_host_runtime_updates_independently_and_bootstrap_update_is_rare() -> No
 
 def test_web_copy_treats_desktop_as_optional_ui() -> None:
     source = PORTAL.read_text(encoding="utf-8")
-    assert "Desktop is optional" in source
-    assert "桌面界面可选" in source
+    # 23f97180 shortened the download copy without making Desktop mandatory.
+    assert "Local Host included · Desktop optional" in source
+    assert "包含本机 Host · 桌面界面可选" in source

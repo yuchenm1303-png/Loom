@@ -26,7 +26,6 @@ export interface ParsedDecisionMessage {
   incomplete: boolean;
 }
 
-const DECISION_FENCE = "loom-decision";
 const MAX_OPTIONS = 6;
 export const DECISION_RESPONSE_MARKER = "[[LOOM_DECISION_RESPONSE:v1]]";
 
@@ -38,8 +37,8 @@ function normalizeDecision(value: unknown): DecisionPromptSpec | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const payload = value as Record<string, unknown>;
   const title = cleanText(payload.title);
-  const rawOptions = Array.isArray(payload.options) ? payload.options.slice(0, MAX_OPTIONS) : [];
-  if (!title || rawOptions.length < 2) return null;
+  const rawOptions = Array.isArray(payload.options) ? payload.options : [];
+  if (!title || rawOptions.length < 2 || rawOptions.length > MAX_OPTIONS) return null;
 
   const options: DecisionPromptOption[] = [];
   const ids = new Set<string>();
@@ -47,7 +46,7 @@ function normalizeDecision(value: unknown): DecisionPromptSpec | null {
     const raw = rawOptions[index];
     if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
     const option = raw as Record<string, unknown>;
-    const id = cleanText(option.id) || String.fromCharCode(65 + index);
+    const id = cleanText(option.id);
     const optionTitle = cleanText(option.title);
     if (!id || !optionTitle || ids.has(id)) return null;
     ids.add(id);
@@ -79,40 +78,63 @@ export function parseDecisionMessage(content: string, streaming = false): Parsed
   const decisions: DecisionPromptSpec[] = [];
   const source = String(content ?? "");
   let incomplete = false;
-  // Accept both the documented newline form and compact providers that place
-  // the JSON object immediately after the fence language marker.
-  const completeFence = /```loom-decision\b[ \t]*(?:\r?\n)?([\s\S]*?)```/gi;
-
-  let text = source.replace(completeFence, (_whole, body: string) => {
+  let text = "";
+  let fence = "";
+  let decision = false;
+  let body: string[] = [];
+  let block: string[] = [];
+  const consumeDecision = (value: string) => {
     try {
-      const decision = normalizeDecision(JSON.parse(body.trim()));
-      if (!decision) {
-        incomplete = true;
-        return "\n";
-      }
-      decisions.push(decision);
-      return "\n";
+      const spec = normalizeDecision(JSON.parse(value.trim()));
+      if (spec) decisions.push(spec);
+      else incomplete = true;
     } catch {
       incomplete = true;
-      return "\n";
     }
-  });
-
-  const lowered = text.toLowerCase();
-  const marker = `\`\`\`${DECISION_FENCE}`;
-  const open = lowered.lastIndexOf(marker);
-  if (open >= 0) {
-    const close = text.indexOf("```", open + marker.length);
-    if (close < 0) {
-      // Never flash half-written JSON while the model is streaming. If the
-      // item later becomes terminal with the fence still open, surface a
-      // recovery card instead of silently swallowing the missing options.
-      if (!streaming) incomplete = true;
-      text = text.slice(0, open);
+    text += "\n";
+  };
+  // Respect ordinary fences, including four-backtick documentation containing
+  // decision examples. Only line-start protocol fences produce cards.
+  for (const raw of source.match(/[^\n]*(?:\n|$)/g) ?? []) {
+    if (!raw) continue;
+    const line = raw.replace(/\r?\n$/, "");
+    if (fence) {
+      block.push(raw);
+      const close = new RegExp(`^ {0,3}${fence[0]}{${fence.length},}[ \\t]*$`).test(line);
+      if (close) {
+        if (decision) consumeDecision(body.join("\n"));
+        else text += block.join("");
+        fence = "";
+        decision = false;
+        body = [];
+        block = [];
+      } else if (decision) body.push(line);
+      continue;
+    }
+    const opening = /^ {0,3}(`{3,}|~{3,})(.*)$/.exec(line);
+    if (!opening) {
+      text += raw;
+      continue;
+    }
+    fence = opening[1];
+    const marker = /^loom-decision\b[ \t]*(.*)$/i.exec(opening[2]);
+    decision = fence[0] === "`" && marker !== null;
+    block = [raw];
+    if (decision && marker) {
+      const inline = marker[1];
+      if (inline.endsWith(fence)) {
+        consumeDecision(inline.slice(0, -fence.length));
+        fence = "";
+        decision = false;
+        block = [];
+      } else if (inline) body.push(inline);
     }
   }
+  if (fence && decision) {
+    if (!streaming) incomplete = true; // hide partial protocol while streaming
+  } else if (fence) text += block.join("");
 
-  text = text.trim();
+  text = text.replace(/^\s*\n|\s+$/g, "");
   if (!streaming && !decisions.length && DECISION_CUE_RE.test(text)) incomplete = true;
   return { text, decisions, incomplete };
 }

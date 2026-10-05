@@ -972,8 +972,12 @@ class BrowserRuntime(WebSearchRuntime):
             AgentEventKind.TURN_INTERRUPTED,
             AgentEventKind.LIMIT_REACHED,
         } and getattr(self, "browser_sessions", None) is not None:
-            self.browser_sessions.close_owner(session.session_id, reason=kind.value)
-            data = {**data, "browser_resources": {"state": "released", "reason": kind.value, "resume_requires_new_session": True}}
+            released = self.browser_sessions.close_owner_sessions(session.session_id, reason=kind.value)
+            if released:
+                data = {**data, "browser_resources": {
+                    "state": "released", "reason": kind.value, "resume_requires_new_session": True,
+                    "count": len(released), "browser_ids": list(released),
+                }}
         return super()._record(session, kind, data=data)
 
     def recover_interrupted(self, session_id):

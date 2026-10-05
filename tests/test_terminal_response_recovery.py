@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import json
+from pathlib import Path
+
 import pytest
 
 from app.agent_runtime import AgentStatus, DurableAgentRuntime, FileAgentSessionStore
@@ -8,6 +11,36 @@ from app.agent_runtime.turn_response_validation import (
     merge_recovery_text,
 )
 from app.ai import ModelResponse
+
+
+DECISION_CASES = json.loads((Path(__file__).parent / "fixtures/decision_protocol.json").read_text(encoding="utf-8"))
+
+
+@pytest.mark.parametrize("case", DECISION_CASES, ids=lambda case: case["name"])
+def test_decision_protocol_matches_shared_frontend_contract(case):
+    reason = invalid_terminal_response(ModelResponse(text=case["text"], finish_reason="stop"))
+    assert reason == ("" if case["valid"] else "incomplete_decision_block")
+
+
+def test_production_runtime_recovers_decision_without_losing_partial(tmp_path):
+    from app.agent_runtime import AgentRuntime, SandboxManager, SandboxPolicy
+    from test_agent_request_layout import ScriptedPlatform
+    partial = '```loom-decision\n{"title":"Choose","options":[{"id":"A","title":"First"}'
+    suffix = ',{"id":"B","title":"Second"}]}\n```'
+    platform = ScriptedPlatform([ModelResponse(text=partial), ModelResponse(text=suffix)])
+    runtime = AgentRuntime(platform=platform, store=FileAgentSessionStore(tmp_path / "state"),
+                           sandbox_manager=SandboxManager(policy=SandboxPolicy.OFF))
+    try:
+        session = runtime.create_session("agent.fast", workspace_dir=tmp_path)
+        result = runtime.start_turn(session.session_id, "Choose")
+        assert result.status is AgentStatus.COMPLETED
+        assert partial + suffix in result.final_text
+        assert any(m.content == partial for m in platform.requests[1].messages)
+        assert any("incomplete or invalid Loom decision card" in str(m.content)
+                   for m in platform.requests[1].messages)
+        assert any(e.data.get("reason") == "incomplete_decision_block" for e in runtime.store.events(session.session_id))
+    finally:
+        runtime.close()
 
 
 @pytest.mark.parametrize("text", ["等一下。", "我先检查日志。", "Let me look at the logs.", "检查完成。"])
