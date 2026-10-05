@@ -1514,7 +1514,6 @@ function TurnProcess({
       return parsed.decisions.length > 0 || parsed.incomplete;
     })
     .map((item) => item.id))), [items]);
-  const milestones = useMemo(() => latestTaskPlan(items), [items]);
 
   useEffect(() => {
     if (active || open) setProcessVisited(true);
@@ -1527,20 +1526,6 @@ function TurnProcess({
 
   return (
     <section className={`turn-process ${active ? "is-live" : "is-settled"} ${open ? "is-open" : ""} ${guidanceItems.length ? "has-guidance" : ""}`.trim()}>
-      {active && milestones.length ? (
-        <div className="task-milestones" aria-label="任务进度">
-          <div className="task-milestones-heading">
-            <span>任务进度</span>
-            <span>{milestones.filter((step) => step.status === "completed").length}/{milestones.length} 已完成</span>
-          </div>
-          {milestones.map((step) => (
-            <div key={step.step} className={`task-milestone is-${step.status}`}>
-              <span>{({ pending: "待处理", in_progress: "进行中", completed: "已完成", blocked: "受阻" })[step.status]}</span>
-              <div>{step.step}{step.blocker && step.status === "blocked" ? <small>{step.blocker}</small> : null}</div>
-            </div>
-          ))}
-        </div>
-      ) : null}
       {!active ? (
         <button
           type="button"
@@ -1834,6 +1819,10 @@ function EmptyState({ disabled, onPrompt, onOpenInsights }: {
 export function Transcript({ items, running, currentTurnId, workspace, promptDisabled, onPrompt, onApproval, onOpenInsights }: TranscriptProps) {
   const turnBlocks = useStableTurnBlocks(items);
   const activeTurnId = running && currentTurnId ? String(currentTurnId) : "";
+  const milestones = useMemo(() => {
+    const block = turnBlocks.find((block) => block.kind === "turn" && block.id === activeTurnId);
+    return block?.kind === "turn" ? latestTaskPlan(block.items) : [];
+  }, [turnBlocks, activeTurnId]);
   const decisionInteractiveItemId = useMemo(() => {
     if (running || promptDisabled || !onPrompt) return "";
     for (let index = items.length - 1; index >= 0; index -= 1) {
@@ -1854,6 +1843,26 @@ export function Transcript({ items, running, currentTurnId, workspace, promptDis
         <span className="ambient-glow glow-two" />
         <span className="ambient-grid" />
       </div>
+      {milestones.length ? (
+        <div className="task-progress-dock" key={activeTurnId}>
+          <details className="task-milestones task-milestones-pinned">
+            <summary className="task-progress-summary">
+              <span>任务进度</span>
+              <span className="task-progress-current">{(milestones.find((step) => step.status === "in_progress") ?? milestones.find((step) => step.status === "blocked") ?? milestones.find((step) => step.status === "pending"))?.step ?? "计划步骤已完成"}</span>
+              <span className="task-progress-count">{milestones.filter((step) => step.status === "completed").length}/{milestones.length}</span>
+              <ChevronRight size={14} className="task-progress-chevron" aria-hidden="true" />
+            </summary>
+            <div className="task-progress-steps" aria-label="任务进度">
+          {milestones.map((step) => (
+            <div key={step.step} className={`task-milestone is-${step.status}`}>
+              <span>{({ pending: "待处理", in_progress: "进行中", completed: "已完成", blocked: "受阻" })[step.status]}</span>
+              <div>{step.step}{step.blocker && step.status === "blocked" ? <small>{step.blocker}</small> : null}</div>
+            </div>
+          ))}
+            </div>
+          </details>
+        </div>
+      ) : null}
       <main className={`transcript ${!items.length ? "is-empty" : ""}`} aria-live="polite">
         {!items.length ? (
           <EmptyState disabled={promptDisabled} onPrompt={onPrompt} onOpenInsights={onOpenInsights} />

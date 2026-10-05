@@ -1528,3 +1528,17 @@ html[data-loom-theme="light"] .task-flow-group-header::after {
   display: none;
   transition: none;
 }
+
+.task-progress-dock { position: sticky; top: 0; z-index: 8; padding: 8px 20px; background: var(--panel); }
+.task-milestones-pinned { max-width: 960px; margin: 0 auto; padding: 0; overflow: hidden; }
+.task-progress-summary { display: flex; align-items: center; gap: 12px; padding: 12px 16px; cursor: pointer; list-style: none; min-width: 0; }
+.task-progress-summary::-webkit-details-marker { display: none; }
+.task-progress-summary:focus-visible { outline: 2px solid var(--accent); outline-offset: -3px; border-radius: 12px; }
+.task-progress-summary > :first-child { flex-shrink: 0; font-weight: 600; }
+.task-progress-current { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); }
+.task-progress-count { flex-shrink: 0; color: var(--accent); font-variant-numeric: tabular-nums; }
+.task-progress-chevron { flex-shrink: 0; transition: transform 150ms ease; }
+.task-milestones-pinned[open] .task-progress-chevron { transform: rotate(90deg); }
+.task-progress-steps { padding: 4px 16px 12px; max-height: min(45vh, 360px); overflow-y: auto; border-top: 1px solid var(--border); }
+@media (max-width: 600px) { .task-progress-dock { padding: 6px 10px; } .task-progress-summary { gap: 8px; padding: 10px 12px; } }
+@media (prefers-reduced-motion: reduce) { .task-progress-chevron { transition: none; } }
