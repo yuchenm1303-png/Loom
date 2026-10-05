@@ -1003,12 +1003,19 @@ export function Sidebar({
             onClick={() => void onNew()}
             title={`${copy.newConversation} · Ctrl N`}
           >
-            <Plus size={17} strokeWidth={1.9} />
+            <svg className="sidebar-action-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M7.5 4.5h10a3 3 0 0 1 3 3v8a3 3 0 0 1-3 3h-8l-5 3v-14a3 3 0 0 1 3-3Z" fill="currentColor" fillOpacity=".08" />
+              <path d="M12 8.5v6M9 11.5h6" />
+            </svg>
             <span>{copy.newConversation}</span>
           </button>
           {projectsSupported ? (
             <button type="button" className="sidebar-secondary-action" onClick={() => void addProject()}>
-              <FolderPlus size={16} strokeWidth={1.75} />
+              <svg className="sidebar-action-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M3.5 8V6a2 2 0 0 1 2-2H9l2 2h7.5a2 2 0 0 1 2 2v1" />
+                <path d="M5.5 8.5h13a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2Z" fill="currentColor" fillOpacity=".08" />
+                <path d="M12 11.5v6M9 14.5h6" />
+              </svg>
               <span>{copy.addProject}</span>
             </button>
           ) : null}

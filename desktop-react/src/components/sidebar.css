@@ -336,6 +336,13 @@ html[data-loom-theme="light"] .codex-sidebar-brand-core {
   flex: 0 0 16px;
 }
 
+.sidebar-new-conversation > .sidebar-action-icon,
+.sidebar-secondary-action > .sidebar-action-icon {
+  width: 20px;
+  height: 20px;
+  flex-basis: 20px;
+}
+
 .sidebar-new-conversation > span,
 .sidebar-secondary-action > span {
   min-width: 0;
