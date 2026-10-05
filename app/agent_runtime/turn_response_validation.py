@@ -12,7 +12,6 @@ _SERIALIZED_TOOL_PROTOCOL_RE = re.compile(
     r"(?:<tool_call\b|</tool_call>|<invoke\s+name\s*=|\]\s*<\]\s*minimax\s*\[>\s*\[<)",
     re.IGNORECASE,
 )
-_INLINE_STICKER_RE = re.compile(r"\[\[AI_LEDGER_INLINE_STICKER:[a-z0-9_]{2,48}\]\]", re.I)
 TERMINAL_RECOVERY_INSTRUCTION = (
     "Your previous response was rejected because it was empty, malformed, or contained reasoning without a user-visible "
     "answer. Continue the same task now. "
@@ -92,49 +91,6 @@ def invalid_terminal_response(response: ModelResponse) -> str:
     return ""
 
 
-def strip_compaction_echo(messages, text: str) -> tuple[str, bool]:
-    """Remove a model's verbatim replay of private checkpoint context."""
-
-    source = str(text or "")
-    summaries = [
-        str(message.content or "")
-        for message in messages
-        if message.role is MessageRole.SYSTEM
-        and str(getattr(message, "name", "") or "") == "loom_compaction"
-        and isinstance(message.content, str)
-    ]
-    if not source or not summaries:
-        return source, False
-
-    def normalized(line: str) -> str:
-        return re.sub(r"\s+", " ", _INLINE_STICKER_RE.sub("", line)).strip()
-
-    summary_lines = {
-        value
-        for summary in summaries
-        for line in summary.splitlines()
-        if len(value := normalized(line)) >= 12
-    }
-    response_lines = source.splitlines(keepends=True)
-    matched = [
-        index for index, line in enumerate(response_lines)
-        if normalized(line) in summary_lines
-    ]
-    if len(matched) < 3 or sum(len(normalized(response_lines[i])) for i in matched) < 80:
-        return source, False
-
-    start = matched[0]
-    while start > 0:
-        previous = normalized(response_lines[start - 1])
-        if not previous or previous.startswith("#") or "压缩摘要" in previous or previous.startswith("[请求已被压缩"):
-            start -= 1
-            continue
-        break
-    cleaned = "".join(response_lines[:start]).strip()
-    cleaned = re.sub(r"\n{3,}", "\n\n", cleaned)
-    return cleaned, True
-
-
 def history_message_count(messages) -> int:
     """Count conversation messages while ignoring Loom-injected system guidance."""
 
@@ -155,5 +111,4 @@ __all__ = [
     "merge_recovery_text",
     "invalid_terminal_response",
     "visible_model_text",
-    "strip_compaction_echo",
 ]

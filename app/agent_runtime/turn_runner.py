@@ -25,7 +25,6 @@ from .turn_response_validation import (
     history_message_count,
     invalid_terminal_response,
     merge_recovery_text,
-    strip_compaction_echo,
 )
 
 
@@ -35,7 +34,6 @@ _COMPLETE_FINISH_REASONS = COMPLETE_FINISH_REASONS
 _TERMINAL_RECOVERY_INSTRUCTION = TERMINAL_RECOVERY_INSTRUCTION
 _TRUNCATED_RECOVERY_INSTRUCTION = TRUNCATED_RECOVERY_INSTRUCTION
 _invalid_terminal_response = invalid_terminal_response
-_strip_compaction_echo = strip_compaction_echo
 _history_message_count = history_message_count
 
 
@@ -403,17 +401,7 @@ class TurnRunner:
                             if not merged_invalid or retry_invalid:
                                 response = merged_response
 
-                    clean_text, compaction_echo_removed = _strip_compaction_echo(
-                        messages,
-                        response.text,
-                    )
-                    if compaction_echo_removed:
-                        response = replace(response, text=clean_text)
-                    invalid_terminal = (
-                        "compaction_echo"
-                        if compaction_echo_removed and not response.tool_calls
-                        else _invalid_terminal_response(response)
-                    )
+                    invalid_terminal = _invalid_terminal_response(response)
                     # Tool availability and argument errors belong to dispatch:
                     # commit the native call and return its correlated tool result.
                     # Only malformed provider responses use model-request retries.
@@ -493,32 +481,8 @@ class TurnRunner:
                     return rt._result(session)
                 if not isinstance(response, ModelResponse):
                     raise TypeError("agent model platform must return ModelResponse")
-                if not response.text and not response.tool_calls:
+                if not response.text and not response.tool_calls and response.end_turn is not False:
                     raise RuntimeError("agent model response contained neither text nor tool calls")
-
-                runtime_authored_commentary = False
-                if response.tool_calls and not str(response.text or "").strip():
-                    # A tool-only response is valid at the provider layer, but accepting
-                    # it verbatim leaves the user staring at an unexplained command stream.
-                    # Supply a safe, language-aware preamble without reflecting arguments,
-                    # which may contain credentials, into the public transcript.
-                    from .tool_commentary import (
-                        runtime_tool_commentary,
-                        should_emit_runtime_tool_commentary,
-                    )
-                    if should_emit_runtime_tool_commentary(
-                        rt.store.events(session.session_id),
-                        turn_id=session.current_turn_id,
-                    ):
-                        response = replace(
-                            response,
-                            text=runtime_tool_commentary(
-                                response.tool_calls,
-                                communication_language=session.communication_language,
-                                continuing=session.tool_calls > 0,
-                            ),
-                        )
-                        runtime_authored_commentary = True
 
                 # Serialize the final sample-acceptance boundary against steering
                 # submission. ModelExecutor already notices guidance during token
@@ -573,9 +537,9 @@ class TurnRunner:
                             "phase_source": "provider" if response.phase is not None else "unknown",
                             "end_turn": response.end_turn,
                             "execution_intent_source": next_execution_action(response).source,
-                            "runtime_authored": runtime_authored_commentary,
-                            "silent_tool_fallback": runtime_authored_commentary,
-                            "compaction_echo_removed": compaction_echo_removed,
+                            "runtime_authored": False,
+                            "silent_tool_fallback": False,
+                            "compaction_echo_removed": False,
                             "usage": {
                                 "input_tokens": response.usage.input_tokens,
                                 "output_tokens": response.usage.output_tokens,

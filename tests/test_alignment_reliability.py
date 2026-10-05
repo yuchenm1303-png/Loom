@@ -15,7 +15,6 @@ from app.agent_runtime import (
 from app.ai import AIMessage, ImagePart, ModelResponse, ToolCall, MessageRole, TextPart
 from app.agent_runtime.instructions import InstructionLoader
 from app.agent_runtime.context_budget import safe_split
-from app.agent_runtime.turn_runner import _strip_compaction_echo
 from app.agent_runtime.tools import validate_tool_arguments
 
 
@@ -117,48 +116,22 @@ def test_length_truncation_continues_with_ephemeral_partial_and_executes_once(tm
     runtime.close()
 
 
-def test_compaction_summary_echo_is_removed_before_canonical_commit():
-    summary = """LOOM_CONTEXT_CHECKPOINT ctx-test
-Internal checkpoint context follows.
-# 对话压缩摘要
-## 用户目标
-彻底解决 OneDrive 导致资源管理器卡死的问题。
-## 已确认的关键事实
-- OneDrive 源路径：C:\\Users\\example\\OneDrive
-- 目标备份目录：D:\\OneDrive_Backup
-## 下一步
-- 核对注册表文件内容并继续修复。
-"""
-    response = """先检查文件是否就绪，再试一次：
-
-# 对话压缩摘要
-## 用户目标
-彻底解决 OneDrive 导致资源管理器卡死的问题。
-## 已确认的关键事实
-- OneDrive 源路径：C:\\Users\\example\\OneDrive
-- 目标备份目录：D:\\OneDrive_Backup
-## 下一步
-- 核对注册表文件内容并继续修复。
-
-我来续上，先核对文件。"""
-    messages = [AIMessage(role=MessageRole.SYSTEM, name="loom_compaction", content=summary)]
-
-    cleaned, removed = _strip_compaction_echo(messages, response)
-
-    assert removed is True
-    assert "对话压缩摘要" not in cleaned
-    assert "OneDrive 源路径" not in cleaned
-    assert cleaned == "先检查文件是否就绪，再试一次："
-
-
-def test_ordinary_compaction_discussion_is_not_removed():
-    messages = [AIMessage(role=MessageRole.SYSTEM, name="loom_compaction",
-        content="line one with enough detail\nline two with enough detail\nline three with enough detail")]
-
-    cleaned, removed = _strip_compaction_echo(messages, "请解释为什么触发了对话压缩摘要。")
-
-    assert removed is False
-    assert cleaned == "请解释为什么触发了对话压缩摘要。"
+def test_answer_reusing_checkpoint_facts_keeps_its_complete_suffix(tmp_path):
+    summary = "Known fact one with enough detail\nKnown fact two with enough detail\nKnown fact three with enough detail and more context"
+    answer = summary + "\nThe remaining work is blocked; here is the actual result."
+    platform = Scripted([ModelResponse(text=answer, finish_reason="stop")])
+    runtime = make_runtime(tmp_path, platform)
+    session = runtime.create_session("agent.fast")
+    session.messages = [AIMessage(role=MessageRole.SYSTEM, name="loom_compaction", content=summary)]
+    runtime.store.save(session)
+    try:
+        result = runtime.start_turn(session.session_id, "Explain the known facts and remaining work")
+        assert result.status is AgentStatus.COMPLETED
+        assert result.final_text.startswith(answer)
+        assert len(platform.requests) == 1
+        assert not any(e.kind.value == "model_response_rejected" for e in runtime.store.events(session.session_id))
+    finally:
+        runtime.close()
 
 
 @pytest.mark.parametrize("answer", ["The opening bracket is [", "next: {", "```json", "```text\nCode sample"])

@@ -83,3 +83,19 @@ def test_explicit_provider_continuation_runs_again_without_a_completion_reviewer
         assert events[-1].data["task_completion"] == "not_assessed"
     finally:
         rt.close()
+
+
+def test_empty_native_continuation_is_preserved_and_samples_again(tmp_path):
+    rt, session, platform = make_runtime(tmp_path, [
+        ModelResponse(finish_reason="stop", end_turn=False),
+        ModelResponse(text="Final delivery", finish_reason="stop", end_turn=True)])
+    try:
+        result = rt.start_turn(session.session_id, "Work")
+        assert result.status is AgentStatus.COMPLETED
+        assert result.final_text == "Final delivery"
+        assert len(platform.requests) == 2
+        events = rt.store.events(session.session_id)
+        assert not any(e.kind in {Event.MODEL_RESPONSE_REJECTED, Event.TURN_FAILED} for e in events)
+        assert len([e for e in events if e.kind is Event.TURN_COMPLETED]) == 1
+    finally:
+        rt.close()
