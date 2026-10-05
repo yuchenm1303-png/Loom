@@ -40,9 +40,27 @@ const client = new HostClient((channel, value) => {
   }
 });
 
+// Electron resolves app.getAppPath() to the directory of the script named on the
+// command line, so `electron dist-electron/entry.js` reports `dist-electron` — a
+// folder with no package.json to load. A child spawned with that path dies on an
+// invisible "Unable to find Electron app" dialog. Walk up to the package root.
+function developmentAppPath(): string {
+  let current = app.getAppPath();
+  for (;;) {
+    if (existsSync(path.join(current, "package.json"))) return current;
+    const parent = path.dirname(current);
+    if (parent === current) return app.getAppPath();
+    current = parent;
+  }
+}
+
 function launch(args: string[]): void {
-  const child = spawn(process.execPath, [...(app.isPackaged ? [] : [app.getAppPath()]), ...args], {
-    detached: true, stdio: "ignore", windowsHide: true, env: { ...process.env },
+  const child = spawn(process.execPath, [...(app.isPackaged ? [] : [developmentAppPath()]), ...args], {
+    detached: true, stdio: "ignore", windowsHide: true,
+    // A launched window picks its own userData from the app path it is given, so
+    // the child can resolve a different Host data directory than this process and
+    // then write its credential where nobody looks. Pass ours down explicitly.
+    env: { ...process.env, LOOM_HOST_DATA_DIR: hostDataPath },
   });
   child.on("error", (error) => console.error("Loom process launch failed", error.message));
   child.unref();
@@ -125,10 +143,13 @@ export async function startHostTransport(): Promise<void> {
   // profile, so IPC uses an ephemeral credential in an OS-protected directory.
   // Actual account and provider credentials remain encrypted in the Host.
   if (process.platform === "win32") {
-    const identity = spawnSync("whoami.exe", ["/user", "/fo", "csv", "/nh"], { encoding: "utf8", windowsHide: true });
+    // Absolute paths: a bare name is resolved through the inherited PATH first,
+    // where Git's coreutils whoami shadows the Windows one and rejects "/user".
+    const system32 = path.join(process.env.SystemRoot ?? "C:\\Windows", "System32");
+    const identity = spawnSync(path.join(system32, "whoami.exe"), ["/user", "/fo", "csv", "/nh"], { encoding: "utf8", windowsHide: true });
     const sid = identity.stdout?.match(/S-1-5-\d+(?:-\d+)+/)?.[0];
     if (identity.status !== 0 || !sid) throw new Error("Cannot identify Host credential owner");
-    const acl = spawnSync("icacls.exe", [credentialDirectory, "/inheritance:r", "/grant:r",
+    const acl = spawnSync(path.join(system32, "icacls.exe"), [credentialDirectory, "/inheritance:r", "/grant:r",
       `*${sid}:(OI)(CI)F`, "*S-1-5-18:(OI)(CI)F"], { encoding: "utf8", windowsHide: true });
     if (acl.status !== 0) throw new Error("Cannot protect Host credential directory");
   } else await fs.chmod(credentialDirectory, 0o700);
