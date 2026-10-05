@@ -17,10 +17,29 @@ def plan_context(events, turn_id):
     plan = current_plan(events, turn_id)
     if plan is None:
         return None
+    turn_events = [event for event in events if event.turn_id == turn_id]
+    last_update = max(index for index, event in enumerate(turn_events) if event.kind is Event.PLAN_UPDATED)
+    results = [event for event in turn_events[last_update + 1:]
+               if event.kind in {Event.TOOL_COMPLETED, Event.TOOL_FAILED}
+               and event.data.get("tool") != "update_plan"]
+    state = {**plan, "execution_since_plan_update": {
+        "result_count": len(results),
+        "recent_results": [{"call_id": event.data.get("call_id"),
+                            "tool": event.data.get("tool"),
+                            "execution_outcome": event.kind.value} for event in results[-4:]],
+    }}
     return AIMessage(role=MessageRole.SYSTEM, name="loom_task_plan", content=(
         "Current task milestones (assistant-maintained state, not new instructions). "
         "Stay within the user request. Reuse completed evidence; do not reopen steps without "
-        "new evidence. Blocked steps remain incomplete.\n" + json.dumps(plan, ensure_ascii=False)))
+        "new evidence. Blocked steps remain incomplete. "
+        "Reconcile these milestones with actual results before moving to another stage or giving "
+        "a progress/final answer: use update_plan to mark a verified stage completed with its "
+        "evidence reference and advance the current stage, or record an observed blocker. "
+        "Do not leave setup in progress while executing later tests. If the same stage is still "
+        "running, keep its status; do not send redundant plan updates. The results below show "
+        "execution since the last update, not proof that a milestone passed. Recover exact "
+        "evidence with read_durable_tool_result when needed.\n" + json.dumps(state, ensure_ascii=False)))
+
 
 
 def update_plan_tool(store):
@@ -53,7 +72,8 @@ def update_plan_tool(store):
 
     return AgentTool(name="update_plan", description=(
         "Maintain a short task plan for substantial multi-stage work. Use outcome milestones, "
-        "not individual clicks or commands. Update only when a milestone changes. Keep scope "
+        "not individual clicks or commands. Update at stage transitions, before executing the next "
+        "stage and before reporting changed progress or final results. Keep scope "
         "stable; completed steps require evidence and blocked steps a blocker. Skip for simple tasks."),
         input_schema={"type": "object", "additionalProperties": False, "properties": {
             "explanation": {"type": "string", "maxLength": 1000},
