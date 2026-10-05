@@ -180,7 +180,6 @@ export function ThreadHeader({
         <div className="thread-header-copy">
           <div className="thread-title-line">
             <strong title={title}>{title}</strong>
-            <span className={`thread-state-dot ${state.tone}`} aria-hidden="true" />
           </div>
 
           <button
