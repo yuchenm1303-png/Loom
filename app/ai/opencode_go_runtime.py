@@ -210,7 +210,10 @@ class _OpenCodeGoResponsesBackend:
                 content = parts
 
             if content or not message.tool_calls:
-                items.append({"role": message.role.value, "content": content})
+                item = {"role": message.role.value, "content": content}
+                if message.role is MessageRole.ASSISTANT and message.phase is not None:
+                    item["phase"] = message.phase
+                items.append(item)
             for call in message.tool_calls:
                 items.append(
                     {
@@ -294,6 +297,9 @@ class _OpenCodeGoResponsesBackend:
                 getattr(usage, "output_tokens", 0) if usage is not None else 0,
             ),
             finish_reason=str(getattr(response, "status", "") or "completed"),
+            phase=next((getattr(item, "phase", None) for item in reversed(getattr(response, "output", ()) or ())
+                        if getattr(item, "type", "") == "message"), None),
+            end_turn=getattr(response, "end_turn", None),
             response_id=str(getattr(response, "id", "") or ""),
             visible_reasoning=_responses_visible_reasoning(response),
         )
@@ -318,6 +324,8 @@ class _OpenCodeGoResponsesBackend:
         usage = ModelUsage()
         response_id = ""
         finish_reason = ""
+        native_phase = None
+        native_end_turn = None
         chunks = 0
         try:
             for event in stream:
@@ -368,6 +376,9 @@ class _OpenCodeGoResponsesBackend:
                 if event_type == "response.completed":
                     response = getattr(event, "response", None)
                     response_id = str(getattr(response, "id", "") or "")
+                    native_phase = next((getattr(item, "phase", None) for item in reversed(getattr(response, "output", ()) or ())
+                                         if getattr(item, "type", "") == "message"), None)
+                    native_end_turn = getattr(response, "end_turn", None)
                     finish_reason = str(getattr(response, "status", "") or "completed")
                     raw_usage = getattr(response, "usage", None)
                     if raw_usage is not None:
@@ -386,7 +397,8 @@ class _OpenCodeGoResponsesBackend:
                 "response_id": response_id,
                 "chunk_count": chunks,
             }
-            yield StreamEvent(kind=StreamEventKind.COMPLETED, finish_reason=finish_reason)
+            yield StreamEvent(kind=StreamEventKind.COMPLETED, finish_reason=finish_reason,
+                              phase=native_phase, end_turn=native_end_turn)
         except (AITransportError, ModelCancelled):
             raise
         except Exception as exc:
@@ -555,6 +567,8 @@ class _OpenCodeGoMessagesBackend:
             tool_calls=tuple(calls),
             usage=_usage(raw_usage.get("input_tokens", 0), raw_usage.get("output_tokens", 0)),
             finish_reason=str(payload.get("stop_reason") or "end_turn"),
+            end_turn=(True if payload.get("stop_reason") == "end_turn" else
+                      False if payload.get("stop_reason") == "tool_use" else None),
             response_id=str(payload.get("id") or ""),
             visible_reasoning="".join(reasoning_parts),
         )
@@ -667,7 +681,9 @@ class _OpenCodeGoMessagesBackend:
                 "response_id": response_id,
                 "chunk_count": chunks,
             }
-            yield StreamEvent(kind=StreamEventKind.COMPLETED, finish_reason=finish_reason)
+            yield StreamEvent(kind=StreamEventKind.COMPLETED, finish_reason=finish_reason,
+                              end_turn=True if finish_reason == "end_turn" else
+                              False if finish_reason == "tool_use" else None)
         except (AITransportError, ModelCancelled):
             raise
         except Exception as exc:

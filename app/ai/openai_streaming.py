@@ -92,6 +92,8 @@ class OpenAIStreamingChatBackend(OpenAIChatBackend):
             control.on_cancel(close)
         usage = ModelUsage()
         finish_reason = ""
+        native_phase = None
+        native_end_turn = None
         response_id = ""
         chunk_count = 0
         reasoning_char_count = 0
@@ -130,6 +132,10 @@ class OpenAIStreamingChatBackend(OpenAIChatBackend):
                 ):
                     note_progress()
                 if delta is not None:
+                    if getattr(delta, "phase", None) is not None:
+                        native_phase = delta.phase
+                    if isinstance(getattr(delta, "end_turn", None), bool):
+                        native_end_turn = delta.end_turn
                     # Keep provider reasoning separate from assistant text. It
                     # remains replayable transport state and, because this
                     # provider explicitly exposed it, also flows through Loom's
@@ -187,6 +193,8 @@ class OpenAIStreamingChatBackend(OpenAIChatBackend):
             yield StreamEvent(
                 kind=StreamEventKind.COMPLETED,
                 finish_reason=finish_reason,
+                phase=native_phase,
+                end_turn=native_end_turn,
             )
         except (AITransportError, ModelCancelled):
             raise

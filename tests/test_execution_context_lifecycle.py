@@ -41,8 +41,7 @@ def test_continuation_plan_and_exact_evidence_survive_model_requested_rollover(t
         assert calls == ["first", "second", "third"]
         actor_requests = [r for r in platform.requests if r.purpose != "stop_review" and r.tools]
         for request in actor_requests[1:]:
-            progress = next(m for m in request.messages if m.name == "loom_execution_progress")
-            assert '"call_id": "first"' in progress.content or '"call_id": "third"' in progress.content
+            assert not any(m.name == "loom_execution_progress" for m in request.messages)
             task_plan = next(m for m in request.messages if m.name == "loom_task_plan")
             assert "PROOF_first" in task_plan.content
         for request in actor_requests[2:]:

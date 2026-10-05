@@ -210,13 +210,8 @@ class _BrowserSecretBoundaryPlatform:
         calls = tuple(_sanitize_browser_tool_call(call) for call in response.tool_calls)
         if calls == response.tool_calls:
             return response
-        return ModelResponse(
-            text=response.text,
-            tool_calls=calls,
-            usage=response.usage,
-            finish_reason=response.finish_reason,
-            response_id=response.response_id,
-        )
+        from dataclasses import replace
+        return replace(response, tool_calls=calls)
 
 
 def _default_browser_profile_dir(store_root: str | Path) -> Path:

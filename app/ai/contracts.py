@@ -95,6 +95,7 @@ class AIMessage:
     # require their own reasoning to be handed back with the turn that produced
     # it, so this is transport state Loom must preserve rather than display.
     reasoning: str = ""
+    phase: str | None = None
 
     def __post_init__(self) -> None:
         role = MessageRole(self.role)
@@ -248,6 +249,9 @@ class ModelResponse:
     # This is distinct from replay-only reasoning above (for example, OpenAI
     # Responses exposes summaries rather than hidden raw reasoning tokens).
     visible_reasoning: str = ""
+    # Native provider intent. Missing fields stay unknown, never inferred from prose.
+    phase: str | None = None
+    end_turn: bool | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -260,6 +264,8 @@ class StreamEvent:
     tool_name: str = ""
     arguments_delta: str = ""
     finish_reason: str = ""
+    phase: str | None = None
+    end_turn: bool | None = None
 
 
 __all__ = [

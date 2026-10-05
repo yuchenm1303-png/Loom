@@ -67,3 +67,19 @@ def test_malformed_optional_check_output_is_unavailable(tmp_path):
         assert rt.store.events(session.session_id)[-1].data["completion_check"] == "unavailable"
     finally:
         rt.close()
+
+
+def test_explicit_provider_continuation_runs_again_without_a_completion_reviewer(tmp_path):
+    rt, session, platform = make_runtime(tmp_path, [
+        ModelResponse(text="Progress so far", finish_reason="stop", phase="commentary", end_turn=False),
+        ModelResponse(text="Final delivery", finish_reason="stop", phase="final_answer", end_turn=True)])
+    try:
+        result = rt.start_turn(session.session_id, "Work")
+        assert result.final_text == "Final delivery"
+        assert len(platform.requests) == 2
+        events = rt.store.events(session.session_id)
+        assert len([e for e in events if e.kind is Event.TURN_COMPLETED]) == 1
+        assert events[-1].data["execution_end_source"] == "provider_end_turn"
+        assert events[-1].data["task_completion"] == "not_assessed"
+    finally:
+        rt.close()

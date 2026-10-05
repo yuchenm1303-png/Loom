@@ -146,10 +146,13 @@ def test_agent_tool_loop_completes(tmp_path):
     requested = [event for event in store.events(session.session_id) if event.kind is AgentEventKind.MODEL_REQUESTED]
     assert requested[-1].data["step_id"]
     responses = [event for event in store.events(session.session_id) if event.kind is AgentEventKind.MODEL_RESPONSE]
-    assert responses[0].data["phase"] == "commentary"
+    assert responses[0].data["phase"] is None
+    assert responses[0].data["display_phase"] == "commentary"
     assert responses[0].data["runtime_authored"] is True
     assert responses[0].data["text"]
-    assert responses[-1].data["phase"] == "final_answer"
+    assert responses[-1].data["phase"] is None
+    assert responses[-1].data["display_phase"] == "final_answer"
+    assert responses[-1].data["phase_source"] == "unknown"
     assert responses[-1].data["runtime_authored"] is False
     assert any(
         message.role.value == "assistant" and str(message.content).strip()

@@ -222,6 +222,8 @@ def test_opencode_responses_streams_reasoning_summary_separately() -> None:
             response=SimpleNamespace(
                 id="resp-1",
                 status="completed",
+                end_turn=False,
+                output=[SimpleNamespace(type="message", phase="commentary")],
                 usage=SimpleNamespace(input_tokens=7, output_tokens=5),
             ),
         ),
@@ -231,6 +233,8 @@ def test_opencode_responses_streams_reasoning_summary_separately() -> None:
     )
 
     streamed = list(backend.stream(_request()))
+    assert streamed[-1].phase == "commentary"
+    assert streamed[-1].end_turn is False
 
     assert [
         event.reasoning_delta

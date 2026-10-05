@@ -65,13 +65,8 @@ class ComputerTransientInputPlatform:
 
         if not changed:
             return response
-        return ModelResponse(
-            text=response.text,
-            tool_calls=tuple(calls),
-            usage=response.usage,
-            finish_reason=response.finish_reason,
-            response_id=response.response_id,
-        )
+        from dataclasses import replace
+        return replace(response, tool_calls=tuple(calls))
 
     def consume(self, value: str) -> str:
         candidate = str(value or "")

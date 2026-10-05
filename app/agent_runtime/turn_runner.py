@@ -17,13 +17,12 @@ from .history import repair_tool_history
 from .model_replan import revision as steering_revision
 from .model_replan import wait_for_signal
 from .model_execution import ModelRequestTimeout
+from .execution_state import ExecutionAction, next_execution_action
 from .tools import BLOCKED_SENSITIVE_INPUT_ARGUMENT, validate_tool_arguments
 from .turn_response_validation import (
     COMPLETE_FINISH_REASONS,
-    RESUMABLE_TERMINAL_REASONS,
     TERMINAL_RECOVERY_INSTRUCTION,
     TRUNCATED_RECOVERY_INSTRUCTION,
-    UNFINISHED_RECOVERY_INSTRUCTION,
     TOOL_ARGUMENT_RECOVERY_INSTRUCTION,
     history_message_count,
     invalid_terminal_response,
@@ -37,7 +36,6 @@ from .turn_response_validation import (
 _COMPLETE_FINISH_REASONS = COMPLETE_FINISH_REASONS
 _TERMINAL_RECOVERY_INSTRUCTION = TERMINAL_RECOVERY_INSTRUCTION
 _TRUNCATED_RECOVERY_INSTRUCTION = TRUNCATED_RECOVERY_INSTRUCTION
-_UNFINISHED_RECOVERY_INSTRUCTION = UNFINISHED_RECOVERY_INSTRUCTION
 _invalid_terminal_response = invalid_terminal_response
 _strip_compaction_echo = strip_compaction_echo
 _history_message_count = history_message_count
@@ -164,9 +162,7 @@ class TurnRunner:
                                 TOOL_ARGUMENT_RECOVERY_INSTRUCTION + recovery_tool_hint
                                 if recovery_instruction == "invalid_tool_arguments"
                                 else
-                                _UNFINISHED_RECOVERY_INSTRUCTION
-                                if recovery_instruction in RESUMABLE_TERMINAL_REASONS
-                                else _TRUNCATED_RECOVERY_INSTRUCTION
+                                _TRUNCATED_RECOVERY_INSTRUCTION
                                 if recovery_partial
                                 else _TERMINAL_RECOVERY_INSTRUCTION
                             ),
@@ -447,7 +443,8 @@ class TurnRunner:
                                     + ". Consult its schema for property types."
                                 )
                                 break
-                    if not invalid_terminal and not response.tool_calls and rt.stop_hook is not None:
+                    if (not invalid_terminal and not response.tool_calls and response.end_turn is not False
+                            and rt.stop_hook is not None):
                         try:
                             stop_decision = rt.stop_hook(rt, session, step, token, request,
                                                         response, sample_steering_revision)
@@ -511,14 +508,7 @@ class TurnRunner:
                     if invalid_terminal != "stop_check_continue":
                         attempt += 1
                     recovery_instruction = invalid_terminal
-                    resume_from_partial = (
-                        invalid_terminal.startswith("incomplete_finish:")
-                        or invalid_terminal in RESUMABLE_TERMINAL_REASONS
-                        or (
-                            invalid_terminal == "unterminated_code_fence"
-                            and "```loom-decision" in str(response.text or "")
-                        )
-                    )
+                    resume_from_partial = invalid_terminal.startswith("incomplete_finish:")
                     recovery_partial = str(response.text or "") if resume_from_partial else ""
                     # The replayed assistant turn must carry the reasoning that
                     # produced it, or a thinking-mode provider rejects the whole
@@ -590,6 +580,7 @@ class TurnRunner:
                             content=response.text,
                             tool_calls=calls,
                             reasoning=response.reasoning,
+                            phase=response.phase,
                         ))
                         rt._record(session, Event.MODEL_RESPONSE, data={
                             **model_identity,
@@ -603,7 +594,11 @@ class TurnRunner:
                                 {"call_id": c.call_id, "name": c.name, "arguments": c.arguments}
                                 for c in calls
                             ],
-                            "phase": "commentary" if calls else "final_answer",
+                            "phase": response.phase,
+                            "display_phase": "commentary" if calls or response.end_turn is False else "final_answer",
+                            "phase_source": "provider" if response.phase is not None else "unknown",
+                            "end_turn": response.end_turn,
+                            "execution_intent_source": next_execution_action(response).source,
                             "runtime_authored": runtime_authored_commentary,
                             "silent_tool_fallback": runtime_authored_commentary,
                             "compaction_echo_removed": compaction_echo_removed,
@@ -626,7 +621,8 @@ class TurnRunner:
                     continue
                 if incomplete:
                     raise RuntimeError(f"model response did not complete: {reason}")
-                if calls:
+                decision = next_execution_action(response)
+                if decision.action is ExecutionAction.EXECUTE_TOOLS:
                     session.tool_calls += len(calls)
                     if rt.limits.max_tool_calls > 0 and session.tool_calls > rt.limits.max_tool_calls:
                         session.messages = list(repair_tool_history(
@@ -656,6 +652,9 @@ class TurnRunner:
                     if not rt._process_pending_tools(session, token, step=step):
                         return rt._result(session)
                     continue
+                if decision.action is ExecutionAction.SAMPLE:
+                    rt._release_step_context(step)
+                    continue
                 with rt._active_tokens_guard:
                     if rt._consume_steering(session):
                         rt._release_step_context(step)
@@ -675,6 +674,8 @@ class TurnRunner:
                     Event.TURN_COMPLETED,
                     data={
                         "text": response.text,
+                        "execution_end_source": decision.source,
+                        "task_completion": "not_assessed",
                         "stop_decision": stop_decision.as_dict() if stop_decision is not None else None,
                         "completion_check": (
                             "not_configured" if rt.stop_hook is None

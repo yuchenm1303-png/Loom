@@ -6,12 +6,8 @@ import re
 from app.ai import MessageRole, ModelResponse
 
 
-COMPLETE_FINISH_REASONS = {"", "stop", "tool_calls", "function_call", "completed", "end_turn"}
-RESUMABLE_TERMINAL_REASONS = frozenset({
-    "unterminated_code_fence",
-})
+COMPLETE_FINISH_REASONS = {"", "stop", "tool_calls", "function_call", "tool_use", "completed", "end_turn"}
 _COMPLETE_THINK_BLOCK_RE = re.compile(r"<think>.*?</think>", re.IGNORECASE | re.DOTALL)
-_DANGLING_TERMINAL_RE = re.compile(r"(?:\[|\{|<tool_call>)\s*$", re.IGNORECASE)
 _SERIALIZED_TOOL_PROTOCOL_RE = re.compile(
     r"(?:<tool_call\b|</tool_call>|<invoke\s+name\s*=|\]\s*<\]\s*minimax\s*\[>\s*\[<)",
     re.IGNORECASE,
@@ -25,7 +21,7 @@ TOOL_ARGUMENT_RECOVERY_INSTRUCTION = (
 )
 TERMINAL_RECOVERY_INSTRUCTION = (
     "Your previous response was rejected because it was empty, malformed (including invalid native tool-call "
-    "arguments), ended with an incomplete serialized structure, or contained reasoning without a user-visible "
+    "arguments), contained reasoning without a user-visible "
     "answer. Continue the same task now. "
     "If an available tool is needed, emit a native structured tool call through the tool-calling protocol; "
     "do not print JSON, '[' or a tool-call prefix in assistant text. Otherwise return a complete final answer."
@@ -35,11 +31,7 @@ TRUNCATED_RECOVERY_INSTRUCTION = (
     "Continue the same task from that partial response without repeating its analysis. If it was leading to "
     "a tool action, emit the native structured tool call immediately; otherwise finish with a concise answer."
 )
-UNFINISHED_RECOVERY_INSTRUCTION = (
-    "The previous assistant response was structurally incomplete and was not committed as a final "
-    "answer. Continue the same task from that partial response without repeating it. If an action "
-    "requires an available tool, emit the native structured tool call now; otherwise complete the answer."
-)
+
 
 
 def visible_model_text(text: str) -> str:
@@ -102,13 +94,8 @@ def invalid_terminal_response(response: ModelResponse) -> str:
         return "reasoning_without_visible_answer"
     if contains_serialized_tool_protocol(visible):
         return "serialized_tool_call_text"
-    if _DANGLING_TERMINAL_RE.search(visible):
-        return "dangling_serialized_structure"
-    # An unmatched inline backtick or emphasis marker is displayable Markdown,
-    # not evidence of a truncated model response. Rejecting it removes an
-    # otherwise complete answer and starts an unnecessary model retry.
-    if visible.count("```") % 2:
-        return "unterminated_code_fence"
+    # Public Markdown shape is not transport completeness. A legitimate answer
+    # may explain an opening bracket or contain an unclosed code fence.
     return ""
 
 
@@ -168,10 +155,8 @@ def history_message_count(messages) -> int:
 
 __all__ = [
     "COMPLETE_FINISH_REASONS",
-    "RESUMABLE_TERMINAL_REASONS",
     "TERMINAL_RECOVERY_INSTRUCTION",
     "TRUNCATED_RECOVERY_INSTRUCTION",
-    "UNFINISHED_RECOVERY_INSTRUCTION",
     "contains_serialized_tool_protocol",
     "history_message_count",
     "merge_recovery_text",

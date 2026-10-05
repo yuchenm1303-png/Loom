@@ -93,6 +93,7 @@ def _message_to_dict(message: AIMessage) -> dict[str, Any]:
         # turn to a thinking-mode provider in the shape it requires back. Also
         # makes the estimator account for reasoning, which is really on the wire.
         "reasoning": message.reasoning,
+        "phase": message.phase,
     }
 
 
@@ -129,6 +130,7 @@ def _message_from_dict(payload: dict[str, Any]) -> AIMessage:
             if isinstance(item, dict)
         ),
         reasoning=str(payload.get("reasoning") or ""),
+        phase=payload.get("phase"),
     )
 
 

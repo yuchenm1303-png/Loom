@@ -343,7 +343,7 @@ class OpenAIChatBackend:
         text = str(getattr(message, "content", "") or "")
         tool_calls = _parse_tool_calls(message)
         reasoning = getattr(message, "reasoning_content", None)
-        if not text and not tool_calls:
+        if not text and not tool_calls and getattr(message, "end_turn", None) is not False:
             usage = _usage_from(response)
             raise AIEmptyResponseError(
                 "AI response completed without public text or tool calls",
@@ -361,6 +361,8 @@ class OpenAIChatBackend:
             finish_reason=str(getattr(choice, "finish_reason", "") or ""),
             response_id=str(getattr(response, "id", "") or ""),
             reasoning=str(reasoning or ""),
+            phase=getattr(message, "phase", None),
+            end_turn=getattr(message, "end_turn", None),
             visible_reasoning=(
                 str(reasoning or "")
                 if self.connection.adapter is ProviderAdapter.OPENAI_COMPATIBLE

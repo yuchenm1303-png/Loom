@@ -161,70 +161,19 @@ def test_ordinary_compaction_discussion_is_not_removed():
     assert cleaned == "请解释为什么触发了对话压缩摘要。"
 
 
-@pytest.mark.parametrize("fragment", ["继续诊断：[", "next: {", "```json"])
-def test_dangling_terminal_response_is_retried_without_poisoning_history(tmp_path, fragment):
-    platform = Scripted([
-        ModelResponse(
-            text=f"<think>I should call a tool next.</think>\n{fragment}",
-            finish_reason="stop",
-        ),
-        ModelResponse(text="诊断已完成。", finish_reason="stop"),
-    ])
+@pytest.mark.parametrize("answer", ["The opening bracket is [", "next: {", "```json", "```text\nCode sample"])
+def test_valid_provider_completion_is_not_retried_from_markdown_shape(tmp_path, answer, plain_text):
+    platform = Scripted([ModelResponse(text=answer, finish_reason="stop")])
     runtime = make_runtime(tmp_path, platform)
     session = runtime.create_session("agent.fast")
-
-    result = runtime.start_turn(session.session_id, "继续诊断")
-
-    assert result.status is AgentStatus.COMPLETED
-    assert result.final_text == "诊断已完成。"
-    stored = runtime.store.load(session.session_id)
-    assert all(fragment not in str(message.content) for message in stored.messages)
-    assert platform.requests[-1].messages[-1].name == "loom_terminal_recovery"
-    rejected = [
-        event for event in runtime.store.events(session.session_id)
-        if event.kind.value == "model_response_rejected"
-    ]
-    assert rejected[-1].data["reason"] in {
-        "dangling_serialized_structure",
-        "unterminated_code_fence",
-    }
-    runtime.close()
-
-
-@pytest.mark.parametrize("unfinished, reason", [
-    (
-        "```text\nIncomplete code block", "unterminated_code_fence",
-    ),
-])
-def test_stop_with_unterminated_code_block_is_retried_as_a_tool_call(tmp_path, unfinished, reason):
-    calls = []
-    platform = Scripted([
-        ModelResponse(text=unfinished, finish_reason="stop"),
-        ModelResponse(
-            tool_calls=(ToolCall("call", "echo", {"value": "fixed"}),),
-            finish_reason="tool_calls",
-        ),
-        ModelResponse(text="修复并验证完成。", finish_reason="stop"),
-    ])
-    tool = AgentTool("echo", "echo", {"type": "object"},
-        lambda c, a: calls.append(a["value"]) or ToolResult(True, a["value"]))
-    runtime = make_runtime(tmp_path, platform, [tool])
-    session = runtime.create_session("agent.fast")
-
-    result = runtime.start_turn(session.session_id, "继续修复")
-
-    assert result.status is AgentStatus.COMPLETED
-    assert result.final_text == "修复并验证完成。"
-    assert calls == ["fixed"]
-    stored = runtime.store.load(session.session_id)
-    assert all(unfinished not in str(message.content) for message in stored.messages)
-    recovery_messages = platform.requests[1].messages[-2:]
-    assert recovery_messages[0].content == unfinished
-    assert recovery_messages[1].name == "loom_terminal_recovery"
-    rejected = [event for event in runtime.store.events(session.session_id)
-        if event.kind.value == "model_response_rejected"]
-    assert rejected[-1].data["reason"] == reason
-    runtime.close()
+    try:
+        result = runtime.start_turn(session.session_id, "Explain syntax")
+        assert result.status is AgentStatus.COMPLETED
+        assert plain_text(result.final_text) == answer
+        assert len(platform.requests) == 1
+        assert not any(e.kind.value == "model_response_rejected" for e in runtime.store.events(session.session_id))
+    finally:
+        runtime.close()
 
 
 def test_completed_answer_with_internal_colon_is_accepted(tmp_path):
@@ -275,7 +224,7 @@ def test_minimax_textual_tool_protocol_is_retried_as_native_tool_call(tmp_path):
 def test_repeated_invalid_terminal_response_fails_with_diagnostic(tmp_path):
     runtime = make_runtime(
         tmp_path,
-        Scripted([ModelResponse(text="继续：[", finish_reason="stop") for _ in range(3)]),
+        Scripted([ModelResponse(text="<tool_call>bad", finish_reason="stop") for _ in range(3)]),
     )
     session = runtime.create_session("agent.fast")
 
@@ -284,7 +233,7 @@ def test_repeated_invalid_terminal_response_fails_with_diagnostic(tmp_path):
     assert result.status is AgentStatus.FAILED
     assert "invalid terminal response" in result.error
     stored = runtime.store.load(session.session_id)
-    assert all("继续：[" not in str(message.content) for message in stored.messages)
+    assert all("<tool_call>bad" not in str(message.content) for message in stored.messages)
     runtime.close()
 
 

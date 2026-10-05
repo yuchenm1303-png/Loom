@@ -456,6 +456,8 @@ class StreamingAgentRuntime(CodeModeRuntime):
                 {
                     "profile_id": event.profile_id,
                     "finish_reason": event.finish_reason,
+                    "phase": event.phase,
+                    "end_turn": event.end_turn,
                     "response_id": event.response_id,
                     "usage": {
                         "input_tokens": event.usage.input_tokens,

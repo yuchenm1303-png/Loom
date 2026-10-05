@@ -106,3 +106,32 @@ milestones and evidence accuracy, unnecessary sampling/review calls, repeated
 mutations, progress-message volume, input tokens and latency. Passing unit tests
 establishes transitions, not model efficacy. Real provider evaluation is a gate,
 not an optional claim to add after release.
+
+## First implementation slice
+
+Native phase and optional end_turn now survive adapters, stream aggregation,
+canonical response storage and Responses replay. Tool wrappers preserve the whole
+response. MODEL_RESPONSE phase is native or null; display_phase is an explicitly
+separate compatibility label consumed by the app server. An inferred display
+label never chooses a transition. A pure execution decision handles tool work,
+native continuation, pending input and legacy delivery; the existing locked
+steering/cancellation/approval handlers still own their lifecycle side effects.
+TURN_COMPLETED records its execution end source and task_completion=not_assessed.
+
+No-tool end_turn=false samples again, including an empty native continuation.
+Unknown legacy stop behavior is preserved. In particular this slice does not
+claim to fix MiniMax's Op 27 stop when it supplies no continuation signal.
+No forced control tool or hidden secondary reviewer has been enabled.
+
+Removed code-fence and trailing-bracket truncation inference. Explicit incomplete
+finish signals, actual serialized tool protocol and schema validation retain
+recovery. Deleted the obsolete prose-shape recovery branch. Plans already carry
+recent execution state, so the separate progress projection is omitted when a
+plan exists. Native phase is persisted for replay; older stored messages default
+to unknown. This remains a staged migration, not a completed harness rewrite.
+
+Default prompt versions have also moved out of runtime.py into explicit snapshots
+in system_prompts.py. Migration recognizes exact historical defaults, preserving
+custom prompts; older prompt data is no longer built by replacing pieces of the
+current prompt. The active default text/version is unchanged in this slice.
+Messages tool_use is treated as a completed tool request, not task completion.

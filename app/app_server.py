@@ -295,7 +295,7 @@ def _apply_event_to_item(item: dict[str, Any], event: AgentEvent) -> None:
         item["text"] = str(data.get("text") or "")
         item["reasoning"] = str(data.get("reasoning_summary") or "")
         item["stepId"] = str(data.get("step_id") or "") or None
-        item["phase"] = str(data.get("phase") or "commentary")
+        item["phase"] = str(data.get("phase") or data.get("display_phase") or "commentary")
         item["runtimeAuthored"] = bool(data.get("runtime_authored"))
         item["finishReason"] = str(data.get("finish_reason") or "") or None
         item["responseId"] = str(data.get("response_id") or "") or None

@@ -40,6 +40,8 @@ class ProviderStreamEvent:
     finish_reason: str = ""
     response_id: str = ""
     usage: ModelUsage = field(default_factory=ModelUsage)
+    phase: str | None = None
+    end_turn: bool | None = None
 
 
 ProviderStreamListener = Callable[[ProviderStreamEvent], None]
@@ -61,6 +63,8 @@ class _StreamAccumulator:
         self.last_tool_index: int | None = None
         self.finish_reason = ""
         self.completed = False
+        self.phase = None
+        self.end_turn = None
 
     def consume(self, event: StreamEvent) -> None:
         if event.kind is StreamEventKind.TEXT_DELTA:
@@ -76,6 +80,8 @@ class _StreamAccumulator:
             return
         if event.kind is StreamEventKind.COMPLETED:
             self.completed = True
+            self.phase = event.phase
+            self.end_turn = event.end_turn
             if event.finish_reason:
                 self.finish_reason = event.finish_reason
             return
@@ -144,7 +150,7 @@ class _StreamAccumulator:
         text = "".join(self.text_parts)
         visible_reasoning = "".join(self.visible_reasoning_parts)
         effective_reasoning_chars = max(reasoning_char_count, len(visible_reasoning))
-        if not text and not calls:
+        if not text and not calls and self.end_turn is not False:
             reason = "reasoning-only" if effective_reasoning_chars else "empty"
             raise AIEmptyResponseError(
                 f"AI stream completed with a {reason} response; it contained neither public text nor tool calls",
@@ -164,6 +170,8 @@ class _StreamAccumulator:
             response_id=str(response_id or ""),
             reasoning=str(reasoning or ""),
             visible_reasoning=visible_reasoning,
+            phase=self.phase,
+            end_turn=self.end_turn,
         )
 
 
@@ -328,6 +336,8 @@ class StreamingAIPlatform(AIPlatform):
                 profile_id=profile.profile_id,
                 kind=ProviderStreamEventKind.COMPLETED,
                 finish_reason=result.finish_reason,
+                phase=result.phase,
+                end_turn=result.end_turn,
                 response_id=result.response_id,
                 usage=result.usage,
             )
