@@ -1245,10 +1245,18 @@ function Sequence({
   );
   const blocks = useMemo(() => groupTranscript(visibleItems), [visibleItems]);
   const pendingPresentations = usePendingPresentations();
+  const revealedActivityIds = useRef(new Set<string>());
   const deferredActivityBlocks = useMemo(
-    () => deferredActivityIndices(blocks, pendingPresentations),
+    () => deferredActivityIndices(blocks, pendingPresentations, revealedActivityIds.current),
     [blocks, pendingPresentations],
   );
+  useLayoutEffect(() => {
+    blocks.forEach((block, index) => {
+      if (block.kind === "activity" && !deferredActivityBlocks.has(index)) {
+        block.items.forEach((item) => revealedActivityIds.current.add(item.id));
+      }
+    });
+  }, [blocks, deferredActivityBlocks]);
   // Only genuinely active tool rows own the "running" semantics. When the
   // turn is still alive but the previous tool batch has completed, keep the
   // latest activity group visually alive in a separate between-steps state
