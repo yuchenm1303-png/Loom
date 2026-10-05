@@ -1,3 +1,538 @@
 /* Loom Admin overview polish v4
    Presentation-only pass for the control-plane overview.
    Keep telemetry semantics, routes and data bindings unchanged. */
+
+:root {
+  --overview-surface: rgba(7, 17, 28, .66);
+  --overview-surface-strong: rgba(7, 17, 28, .78);
+  --overview-surface-soft: rgba(12, 27, 42, .52);
+  --overview-border: rgba(222, 240, 253, .13);
+  --overview-border-hover: rgba(222, 240, 253, .22);
+  --overview-text: rgba(249, 252, 255, .96);
+  --overview-copy: rgba(226, 239, 248, .68);
+  --overview-muted: rgba(218, 234, 246, .50);
+  --overview-faint: rgba(218, 234, 246, .34);
+  --overview-shadow: 0 24px 70px rgba(1, 7, 13, .22), inset 0 1px 0 rgba(255, 255, 255, .035);
+}
+
+/* The wallpaper remains visible, but no longer competes with operational data. */
+.loom-admin-body .cosmos::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(ellipse at 18% 18%, rgba(173, 222, 247, .05), transparent 34%),
+    radial-gradient(ellipse at 82% 42%, rgba(132, 170, 222, .06), transparent 38%),
+    linear-gradient(180deg, rgba(3, 10, 17, .24) 0%, rgba(4, 12, 20, .38) 52%, rgba(3, 9, 15, .52) 100%);
+}
+
+.loom-admin-shell {
+  width: min(1540px, calc(100% - 56px));
+  max-width: none;
+  margin-inline: auto;
+}
+
+/* Navigation is the primary product chrome, so give it a crisp silhouette. */
+.loom-admin-section-nav {
+  top: 16px;
+  gap: 5px;
+  margin: 12px auto 30px;
+  padding: 7px;
+  border-color: rgba(226, 242, 253, .13);
+  border-radius: 18px;
+  background: rgba(8, 18, 29, .76);
+  box-shadow: 0 18px 52px rgba(1, 7, 13, .22), inset 0 1px 0 rgba(255, 255, 255, .035);
+  backdrop-filter: blur(28px) saturate(1.28);
+  -webkit-backdrop-filter: blur(28px) saturate(1.28);
+}
+
+.loom-admin-section-nav a {
+  min-height: 38px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 14px;
+  border-radius: 12px;
+  color: rgba(224, 238, 248, .58);
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: .01em;
+}
+
+.loom-admin-section-nav a:hover {
+  color: rgba(249, 252, 255, .94);
+  background: rgba(255, 255, 255, .055);
+}
+
+.loom-admin-section-nav a[aria-current="page"] {
+  color: #f8fcff;
+  background: linear-gradient(180deg, rgba(177, 220, 245, .16), rgba(145, 193, 223, .10));
+  box-shadow: inset 0 0 0 1px rgba(205, 235, 251, .12), 0 7px 18px rgba(2, 10, 17, .13);
+}
+
+/* Header hierarchy */
+#overview.usage-heading {
+  margin-bottom: 20px;
+  padding: 2px 2px 0;
+  align-items: end;
+}
+
+#overview.usage-heading .eyebrow {
+  margin-bottom: 8px;
+  color: rgba(220, 238, 249, .48);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: .14em;
+}
+
+#overview.usage-heading h1 {
+  margin: 0;
+  color: var(--overview-text);
+  font-size: clamp(32px, 3vw, 42px);
+  line-height: 1.02;
+  font-weight: 690;
+  letter-spacing: -.045em;
+  text-shadow: 0 5px 24px rgba(0, 0, 0, .18);
+}
+
+#overview.usage-heading p:not(.eyebrow) {
+  max-width: 760px;
+  margin-top: 10px;
+  color: rgba(231, 242, 250, .64);
+  font-size: 12px;
+  line-height: 1.72;
+}
+
+#overview .usage-heading-actions,
+.usage-heading-actions {
+  gap: 10px;
+}
+
+.usage-updated span,
+.loom-admin-overview-admin > span {
+  color: rgba(220, 236, 248, .43);
+}
+
+.usage-updated strong {
+  color: rgba(244, 250, 255, .78);
+  font-size: 10px;
+}
+
+.loom-admin-privacy-pill {
+  padding: 7px 10px;
+  border-color: rgba(218, 238, 251, .12);
+  background: rgba(6, 16, 26, .42);
+  color: rgba(226, 240, 250, .58);
+}
+
+/* Shared overview glass surfaces. */
+.loom-admin-overview-hero,
+.loom-admin-primary-card,
+.loom-admin-overview-pulse,
+.loom-admin-ops-card,
+.loom-admin-control-card {
+  border-color: var(--overview-border);
+  box-shadow: var(--overview-shadow);
+  backdrop-filter: blur(26px) saturate(1.18);
+  -webkit-backdrop-filter: blur(26px) saturate(1.18);
+}
+
+/* Health strip */
+.loom-admin-overview-hero {
+  grid-template-columns: minmax(320px, 1.08fr) minmax(430px, 1.35fr) auto;
+  gap: 22px;
+  margin-bottom: 14px;
+  padding: 18px 20px;
+  border-radius: 17px;
+  background:
+    radial-gradient(circle at 7% 50%, rgba(151, 221, 207, .07), transparent 26%),
+    linear-gradient(120deg, rgba(8, 22, 34, .78), rgba(8, 18, 29, .66) 56%, rgba(12, 28, 42, .70));
+}
+
+.loom-admin-overview-hero::before {
+  width: 3px;
+  background: linear-gradient(180deg, rgba(166, 235, 216, .76), rgba(133, 201, 235, .22));
+}
+
+.loom-admin-health-orb {
+  width: 40px;
+  height: 40px;
+  flex-basis: 40px;
+  border-radius: 13px;
+  border-color: rgba(226, 242, 253, .11);
+  background: rgba(2, 10, 17, .34);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .035);
+}
+
+.loom-admin-health-orb i {
+  width: 9px;
+  height: 9px;
+}
+
+.loom-admin-overview-hero-copy {
+  gap: 4px;
+}
+
+.loom-admin-overview-hero-copy .utility-overline,
+.utility-overline {
+  color: rgba(218, 235, 247, .48);
+}
+
+.loom-admin-overview-hero-copy strong {
+  font-size: 15px;
+  font-weight: 670;
+}
+
+.loom-admin-overview-hero-copy small {
+  color: rgba(224, 238, 248, .53);
+  font-size: 10px;
+}
+
+.loom-admin-service-chips {
+  gap: 8px;
+}
+
+.loom-admin-service-chip {
+  min-height: 34px;
+  padding: 0 11px;
+  border-color: rgba(222, 240, 252, .09);
+  border-radius: 10px;
+  background: rgba(3, 11, 19, .28);
+}
+
+.loom-admin-service-chip > span {
+  color: rgba(226, 239, 248, .55);
+  font-size: 9px;
+}
+
+.loom-admin-service-chip > b {
+  color: rgba(246, 251, 255, .84);
+  font-size: 9px;
+}
+
+.loom-admin-overview-admin {
+  gap: 5px;
+}
+
+.loom-admin-overview-admin > strong {
+  color: rgba(244, 250, 255, .78);
+  font-size: 10px;
+}
+
+/* Primary KPIs */
+.loom-admin-primary-metrics {
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.loom-admin-primary-card {
+  min-height: 128px;
+  padding: 19px 20px;
+  border-radius: 17px;
+  background:
+    radial-gradient(circle at 0 0, rgba(164, 213, 240, .075), transparent 34%),
+    linear-gradient(145deg, rgba(9, 22, 34, .72), rgba(6, 14, 23, .58));
+  box-shadow: 0 18px 50px rgba(1, 7, 13, .16), inset 0 1px 0 rgba(255, 255, 255, .025);
+}
+
+.loom-admin-primary-card::after {
+  left: 20px;
+  right: 20px;
+  height: 2px;
+  opacity: .68;
+}
+
+.loom-admin-primary-card:hover {
+  transform: translateY(-3px);
+  border-color: var(--overview-border-hover);
+  background:
+    radial-gradient(circle at 0 0, rgba(175, 222, 247, .10), transparent 35%),
+    linear-gradient(145deg, rgba(12, 27, 41, .80), rgba(7, 17, 27, .65));
+  box-shadow: 0 24px 64px rgba(1, 7, 13, .22), inset 0 1px 0 rgba(255, 255, 255, .035);
+}
+
+.loom-admin-primary-card > .utility-overline {
+  color: rgba(222, 238, 248, .52);
+  font-size: 9px;
+}
+
+.loom-admin-primary-card > strong {
+  margin-top: 7px;
+  font-size: 34px;
+  font-weight: 680;
+  color: #f9fcff;
+}
+
+.loom-admin-primary-card > small {
+  margin-top: 7px;
+  color: rgba(225, 238, 247, .52);
+  font-size: 10px;
+}
+
+.loom-admin-primary-card > i {
+  color: rgba(229, 242, 250, .38);
+  font-size: 14px;
+}
+
+/* 24-hour activity bar */
+.loom-admin-overview-pulse {
+  grid-template-columns: 220px 1fr;
+  gap: 0;
+  margin-bottom: 14px;
+  border-radius: 17px;
+  background: rgba(6, 15, 24, .68);
+}
+
+.loom-admin-overview-pulse-head {
+  padding: 18px 20px;
+  border-right-color: rgba(231, 244, 252, .075);
+  background: linear-gradient(135deg, rgba(15, 34, 49, .58), rgba(7, 18, 28, .30));
+}
+
+.loom-admin-overview-pulse-head strong {
+  color: rgba(248, 252, 255, .91);
+  font-size: 15px;
+}
+
+.loom-admin-overview-pulse-head > small {
+  color: rgba(220, 235, 246, .43);
+  font-size: 9px;
+}
+
+.loom-admin-pulse-grid > div {
+  min-height: 90px;
+  padding: 16px 17px;
+}
+
+.loom-admin-pulse-grid > div + div::before {
+  top: 18px;
+  bottom: 18px;
+  background: rgba(231, 244, 252, .07);
+}
+
+.loom-admin-pulse-grid span {
+  color: rgba(219, 235, 247, .44);
+  font-size: 8px;
+}
+
+.loom-admin-pulse-grid strong {
+  color: rgba(249, 252, 255, .92);
+  font-size: 21px;
+  font-weight: 660;
+}
+
+.loom-admin-pulse-grid small {
+  color: rgba(219, 235, 247, .38);
+  font-size: 8px;
+}
+
+.loom-admin-pulse-grid .is-failure {
+  background: linear-gradient(180deg, rgba(111, 40, 54, .035), rgba(111, 40, 54, .08));
+}
+
+.loom-admin-pulse-grid .is-failure strong {
+  color: rgba(255, 205, 213, .94);
+}
+
+/* Bottom operational panels */
+.loom-admin-overview-bottom {
+  grid-template-columns: minmax(0, 1.08fr) minmax(390px, .92fr);
+  gap: 14px;
+}
+
+.loom-admin-ops-card,
+.loom-admin-control-card {
+  padding: 20px 21px;
+  border-radius: 17px;
+  background:
+    radial-gradient(circle at 0 0, rgba(158, 211, 239, .045), transparent 34%),
+    linear-gradient(145deg, rgba(8, 20, 31, .73), rgba(5, 13, 22, .60));
+}
+
+.loom-admin-card-head {
+  padding-bottom: 14px;
+  border-bottom-color: rgba(231, 244, 252, .075);
+}
+
+.loom-admin-card-head h3 {
+  margin-top: 2px;
+  color: var(--overview-text);
+  font-size: 17px;
+  font-weight: 670;
+}
+
+.loom-admin-text-action {
+  padding: 6px 0;
+  color: rgba(216, 236, 248, .53);
+  font-size: 9px;
+}
+
+.loom-admin-text-action:hover {
+  color: rgba(249, 252, 255, .92);
+}
+
+.loom-admin-ops-row {
+  grid-template-columns: minmax(175px, .8fr) minmax(180px, 1.35fr) auto;
+  gap: 16px;
+  padding: 14px 0;
+  border-bottom-color: rgba(231, 244, 252, .065);
+}
+
+.loom-admin-ops-row > div:first-child > span {
+  color: rgba(220, 236, 247, .48);
+  font-size: 9px;
+}
+
+.loom-admin-ops-row > div:first-child > strong {
+  color: rgba(248, 252, 255, .90);
+  font-size: 13px;
+}
+
+.loom-admin-ops-row > small {
+  color: rgba(220, 235, 246, .42);
+  font-size: 8px;
+}
+
+.loom-admin-progress {
+  height: 6px;
+  background: rgba(255, 255, 255, .065);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, .15);
+}
+
+.loom-admin-progress > i {
+  box-shadow: 0 0 12px rgba(142, 211, 220, .18);
+}
+
+.loom-admin-ops-inline > span {
+  color: rgba(223, 237, 247, .50);
+  font-size: 9px;
+}
+
+.loom-admin-privacy-note {
+  margin-top: 13px;
+  padding: 10px 12px;
+  border: 1px solid rgba(225, 241, 251, .055);
+  background: rgba(2, 10, 17, .22);
+  color: rgba(216, 234, 246, .41);
+  font-size: 8px;
+}
+
+.loom-admin-control-section {
+  padding: 13px 0;
+  border-bottom-color: rgba(231, 244, 252, .065);
+}
+
+.loom-admin-control-label > span {
+  color: rgba(246, 250, 255, .76);
+  font-size: 10px;
+}
+
+.loom-admin-control-label > small {
+  color: rgba(217, 234, 246, .38);
+  font-size: 8px;
+}
+
+.loom-admin-overview-flags .loom-admin-empty-block {
+  padding: 10px 11px;
+  border-color: rgba(229, 243, 252, .085);
+  background: rgba(2, 9, 15, .15);
+  color: rgba(219, 235, 247, .41);
+}
+
+.loom-admin-quick-grid {
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.loom-admin-quick-grid > button {
+  min-height: 58px;
+  padding: 11px 12px;
+  border-color: rgba(225, 241, 251, .085);
+  border-radius: 11px;
+  background: rgba(3, 11, 19, .24);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .018);
+}
+
+.loom-admin-quick-grid > button:hover {
+  transform: translateY(-1px);
+  border-color: rgba(190, 225, 245, .18);
+  background: rgba(118, 178, 210, .075);
+}
+
+.loom-admin-quick-grid span {
+  color: rgba(248, 252, 255, .86);
+  font-size: 10px;
+}
+
+.loom-admin-quick-grid small {
+  color: rgba(217, 234, 246, .41);
+  font-size: 8px;
+}
+
+.loom-admin-quick-grid i {
+  color: rgba(226, 240, 249, .42);
+}
+
+/* Keyboard focus should be as clear as hover. */
+.loom-admin-section-nav a:focus-visible,
+.loom-admin-primary-card:focus-visible,
+.loom-admin-text-action:focus-visible,
+.loom-admin-quick-grid > button:focus-visible {
+  outline: 2px solid rgba(176, 221, 245, .72);
+  outline-offset: 3px;
+}
+
+/* Preserve the dense desktop dashboard while scaling cleanly. */
+@media (max-width: 1240px) {
+  .loom-admin-shell { width: min(1180px, calc(100% - 40px)); }
+  .loom-admin-section-nav a { padding-inline: 12px; }
+  .loom-admin-overview-hero { grid-template-columns: 1fr auto; }
+  .loom-admin-service-chips { grid-column: 1 / -1; grid-row: 2; justify-content: flex-start; }
+  .loom-admin-overview-pulse { grid-template-columns: 1fr; }
+  .loom-admin-overview-pulse-head { grid-template-columns: 1fr auto; align-items: center; border-right: 0; border-bottom: 1px solid rgba(231, 244, 252, .07); }
+  .loom-admin-pulse-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .loom-admin-overview-bottom { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 860px) {
+  .loom-admin-shell { width: min(100% - 28px, 820px); }
+  .loom-admin-section-nav { top: 8px; width: 100%; box-sizing: border-box; justify-content: flex-start; margin-bottom: 22px; }
+  .loom-admin-section-nav a { min-height: 36px; padding-inline: 11px; }
+  #overview.usage-heading { align-items: flex-start; }
+  .loom-admin-overview-hero { grid-template-columns: 1fr; }
+  .loom-admin-overview-admin { justify-items: start; min-width: 0; }
+  .loom-admin-service-chips { grid-column: auto; grid-row: auto; }
+  .loom-admin-primary-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .loom-admin-primary-card { min-height: 116px; }
+  .loom-admin-pulse-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .loom-admin-pulse-grid > div:nth-child(odd)::before { display: none; }
+  .loom-admin-ops-row { grid-template-columns: 1fr; gap: 8px; }
+  .loom-admin-ops-row.is-current { grid-template-columns: 1fr; }
+  .loom-admin-ops-inline { justify-content: flex-start; }
+}
+
+@media (max-width: 560px) {
+  .loom-admin-shell { width: calc(100% - 20px); }
+  #overview.usage-heading h1 { font-size: 30px; }
+  #overview.usage-heading p:not(.eyebrow) { font-size: 11px; }
+  .loom-admin-primary-metrics { gap: 8px; }
+  .loom-admin-primary-card { min-height: 102px; padding: 14px; border-radius: 14px; }
+  .loom-admin-primary-card > strong { font-size: 26px; }
+  .loom-admin-primary-card > small { font-size: 9px; }
+  .loom-admin-overview-hero,
+  .loom-admin-ops-card,
+  .loom-admin-control-card { padding: 15px; border-radius: 14px; }
+  .loom-admin-overview-pulse { border-radius: 14px; }
+  .loom-admin-overview-pulse-head { grid-template-columns: 1fr; padding: 15px; }
+  .loom-admin-pulse-grid > div { min-height: 76px; padding: 13px; }
+  .loom-admin-pulse-grid strong { font-size: 18px; }
+  .loom-admin-quick-grid { grid-template-columns: 1fr; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .loom-admin-primary-card,
+  .loom-admin-quick-grid > button,
+  .loom-admin-section-nav a,
+  .loom-admin-text-action { transition: none !important; }
+}
