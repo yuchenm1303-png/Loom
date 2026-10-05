@@ -427,6 +427,7 @@ CI、发布状态及版本可分别查询 GitHub Actions 和 `host-runtime/stabl
 | composer refinement order | refinement 必须是最后一张样式表 | `870e93c2` 新增最后加载的 workspace geometry；锁定最后两个 import 和 geometry 规则，保留所有基础样式先加载的断言 |
 | optional desktop copy | 必须包含 `Desktop is optional` | `23f97180` 调整文案；精确断言两种语言都说明 Local Host included、Desktop optional |
 | browser-free provider failure | 失败必须带浏览器释放字段 | 原断言要求虚构释放；改为明确无释放字段，保留状态码、不可重试和持久历史断言 |
+| signed-out model access | 登录检查必须是单行 `if` | `aa51b0b3` 改成 braced guard 并添加 model readiness；执行实际 `runRpcCall` 函数，断言未登录时不初始化、不调用，已登录时 auth → readiness → dispatch 顺序正确 |
 
 验证证据：
 
@@ -439,6 +440,9 @@ CI、发布状态及版本可分别查询 GitHub Actions 和 `host-runtime/stabl
 - 本地全量仍有 10 条既有警告，主要是 Windows 子进程 UTF-8 解码与异步 transport
   清理；未据此宣称链路完全干净。跳过项和跨平台检查由 CI 进一步验证。
 - 日志留在忽略目录 `scratch/agent-chain-*.log` 和对应 junit XML；未纳入版本库。
+- 首次远端 CI 的 Python 与 Windows / browser / MCP 检查通过，React 在上述旧单行
+  登录契约失败。随后更新该契约，完整 desktop scripts **61 通过**、Electron **59 通过**、
+  portal release **3 通过**，已验证构建产物。该改动不修改任何鉴权实现。
 
 ### §5 / §7 状态表
 
