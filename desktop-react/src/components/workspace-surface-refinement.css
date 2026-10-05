@@ -24,10 +24,17 @@
 /* Header controls belong to one toolbar, with tint reserved for selection. */
 :root .app-shell .thread-header.polished-thread-header {
   background: var(--ws-canvas) !important;
-  border-bottom-color: var(--ws-line);
+  border-bottom: 0;
   box-shadow: none;
 }
 :root .app-shell .thread-header.polished-thread-header::before { display: none; }
+/* Dissolve the scrolling conversation into the header. Mask the viewport so
+   the fade stays at its top edge while the text scrolls through it. */
+:root .app-shell .transcript-scroll:not(.is-empty) {
+  -webkit-mask-image: linear-gradient(to bottom, transparent, #000 32px);
+  mask-image: linear-gradient(to bottom, transparent, #000 32px);
+}
+:root .app-shell .conversation-stage:has(.transcript-entry)::after { display: none; }
 :root .app-shell .thread-header :is(.thread-review-button, .thread-header-icon-button, .context-meter-chip) {
   background: transparent;
   border-color: transparent;
