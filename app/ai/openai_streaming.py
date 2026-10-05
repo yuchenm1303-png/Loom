@@ -6,7 +6,7 @@ from typing import Any
 
 from .contracts import ChatRequest, ModelUsage, StreamEvent, StreamEventKind
 from .errors import AITransportError
-from .execution_control import current_control, check_cancelled, note_progress, ModelCancelled
+from .execution_control import current_control, check_cancelled, note_progress, note_chunk, note_transport_retry, ModelCancelled
 from .openai_runtime import OpenAIChatBackend, _retryable_provider_error, _usage_from
 from .provider_catalog import ProviderAdapter
 
@@ -67,16 +67,12 @@ class OpenAIStreamingChatBackend(OpenAIChatBackend):
                 for marker in (
                     "stream_options",
                     "include_usage",
-                    "service temporarily unavailable",
-                    "temporarily unavailable",
-                    "503",
-                    "502",
-                    "504",
                 )
             )
             if not compatible or not retry_without_usage:
                 raise
             stream_kwargs.pop("stream_options", None)
+            note_transport_retry("unsupported_stream_usage", 1)
             return self._create(stream_kwargs)
 
     def stream(self, request: ChatRequest) -> Iterator[StreamEvent]:
@@ -104,6 +100,7 @@ class OpenAIStreamingChatBackend(OpenAIChatBackend):
         try:
             for chunk in stream:
                 check_cancelled()
+                note_chunk()
                 # Role/empty/usage envelopes do not mean generation started.
                 # Reasoning and native tool fragments count even when private.
                 chunk_count += 1
@@ -130,7 +127,8 @@ class OpenAIStreamingChatBackend(OpenAIChatBackend):
                         for call in (getattr(delta, "tool_calls", None) or ())
                     )
                 ):
-                    note_progress()
+                    note_progress(tool_fragment=any(getattr(getattr(call, "function", None), "arguments", None)
+                        for call in (getattr(delta, "tool_calls", None) or ())))
                 if delta is not None:
                     if getattr(delta, "phase", None) is not None:
                         native_phase = delta.phase

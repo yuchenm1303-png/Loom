@@ -106,6 +106,7 @@ def _strip_incomplete_sticker_control_fragments(text: str) -> str:
 
 
 class AgentStreamEventKind(str, Enum):
+    MODEL_ACTIVITY = "model_activity"
     ASSISTANT_TEXT_DELTA = "assistant_text_delta"
     ASSISTANT_REASONING_DELTA = "assistant_reasoning_delta"
     TOOL_CALL_ARGUMENT_DELTA = "tool_call_argument_delta"
@@ -350,6 +351,11 @@ class StreamingAgentRuntime(CodeModeRuntime):
             raise TypeError("runtime stream listener must be callable")
         with self._stream_listener_guard:
             self._stream_listeners.append(listener)
+
+    def _publish_model_activity(self, data: dict[str, Any]) -> None:
+        context = self._stream_context.get()
+        if isinstance(context, _ModelStreamContext):
+            self._emit_stream(context, AgentStreamEventKind.MODEL_ACTIVITY, data)
 
     def _emit_stream(
         self,

@@ -23,7 +23,7 @@ from .contracts import (
     ToolChoice,
 )
 from .errors import AIResponseError, AITransportError
-from .execution_control import ModelCancelled, check_cancelled, current_control, note_progress
+from .execution_control import ModelCancelled, check_cancelled, current_control, note_progress, note_chunk
 from .openai_streaming import OpenAIStreamingChatBackend
 from .profiles import ModelProfile
 from .provider_catalog import ProviderAdapter, ProviderConnection
@@ -330,10 +330,11 @@ class _OpenCodeGoResponsesBackend:
         try:
             for event in stream:
                 check_cancelled()
+                note_chunk()
                 chunks += 1
                 event_type = str(getattr(event, "type", "") or "")
                 if event_type.endswith(".delta") and getattr(event, "delta", None):
-                    note_progress()
+                    note_progress(tool_fragment=event_type == "response.function_call_arguments.delta")
                 if event_type == "response.output_text.delta":
                     delta = str(getattr(event, "delta", "") or "")
                     if delta:
@@ -588,6 +589,7 @@ class _OpenCodeGoMessagesBackend:
         try:
             for raw_line in response:
                 check_cancelled()
+                note_chunk()
                 line = raw_line.decode("utf-8", errors="replace").strip()
                 if not line.startswith("data:"):
                     continue
@@ -601,7 +603,7 @@ class _OpenCodeGoMessagesBackend:
                 if event_type in {"content_block_delta", "content_block_start"} and any(
                     payload.get(key) for key in ("text", "thinking", "partial_json", "signature", "name")
                 ):
-                    note_progress()
+                    note_progress(tool_fragment=bool(payload.get("partial_json")))
                 if event_type == "message_start":
                     message = event.get("message") or {}
                     response_id = str(message.get("id") or "")
@@ -708,6 +710,7 @@ class OpenCodeGoBackend:
         if connection.adapter is not ProviderAdapter.OPENCODE_GO:
             raise ValueError("OpenCodeGoBackend requires the opencode-go adapter")
         protocol = opencode_go_protocol(profile.model)
+        request_timeout_seconds = max(request_timeout_seconds, profile.stream_idle_timeout_seconds)
         self.protocol = protocol
         if protocol == "responses":
             self.backend: Any = _OpenCodeGoResponsesBackend(

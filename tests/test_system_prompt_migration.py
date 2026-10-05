@@ -60,9 +60,28 @@ def test_custom_prompt_is_never_rewritten(tmp_path) -> None:
     assert loaded.system_prompt_version == 0
 
 
+def test_app_server_patched_production_request_contains_turn_protocol(tmp_path):
+    from app.agent_runtime import AgentRuntime as ProductionRuntime, SandboxManager, SandboxPolicy
+    from app.app_server import LoomAppServerService
+    from app.ai import ModelResponse
+    from test_agent_request_layout import ScriptedPlatform
+    store = FileAgentSessionStore(tmp_path / "state")
+    platform = ScriptedPlatform([ModelResponse(text="Done")])
+    runtime = ProductionRuntime(platform=platform, store=store,
+                                sandbox_manager=SandboxManager(policy=SandboxPolicy.OFF))
+    service = LoomAppServerService(runtime=runtime, store=store, model="test", default_workspace=tmp_path)
+    try:
+        session = runtime.create_session("agent.fast", workspace_dir=tmp_path)
+        runtime.start_turn(session.session_id, "Check")
+        assert "A reply without a tool call ends your turn" in platform.requests[0].messages[0].content
+        assert "at most one short sentence" in platform.requests[0].messages[0].content
+    finally:
+        runtime.close()
+
+
 
 def test_default_prompt_exposes_decision_cards_without_turning_routine_work_into_questions() -> None:
-    assert DEFAULT_AGENT_SYSTEM_PROMPT_VERSION == 9
+    assert DEFAULT_AGENT_SYSTEM_PROMPT_VERSION == 10
     assert "```loom-decision" in DEFAULT_AGENT_SYSTEM_PROMPT
     assert '"title"' not in DEFAULT_AGENT_SYSTEM_PROMPT
     assert "routine implementation details" in DEFAULT_AGENT_SYSTEM_PROMPT

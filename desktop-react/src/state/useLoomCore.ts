@@ -235,6 +235,7 @@ export function useLoom() {
   const [items, setItems] = useState<TranscriptItem[]>([]);
   const [turnActive, setTurnActive] = useState(false);
   const [turnStartedAt, setTurnStartedAt] = useState<number | null>(null);
+  const [modelActivity, setModelActivity] = useState<{ turnId: string; active: boolean; contentGapSeconds: number } | null>(null);
   const [context, setContext] = useState<ContextReport | null>(null);
   const [compactionProgress, setCompactionProgress] = useState<ContextCompactionProgress | null>(null);
   const compacting = compactionProgress?.status === "started" || compactionProgress?.status === "running";
@@ -995,6 +996,9 @@ export function useLoom() {
             return [...current, item];
           });
         }
+      } else if (message.method === "turn/modelActivity") {
+        setModelActivity({ turnId: String(params.turnId ?? ""), active: params.active === true,
+          contentGapSeconds: Number(params.contentGapSeconds ?? 0) });
       } else if (message.method === "item/delta") {
         const itemId = String(params.itemId ?? "");
         const delta = (params.delta ?? {}) as Record<string, unknown>;
@@ -1219,6 +1223,7 @@ export function useLoom() {
     items,
     turnActive,
     turnStartedAt,
+    modelActivity,
     context,
     compacting,
     compactionProgress,
@@ -1296,5 +1301,6 @@ export function useLoom() {
     threadView,
     turnActive,
     turnStartedAt,
+    modelActivity,
   ]);
 }

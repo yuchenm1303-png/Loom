@@ -23,12 +23,19 @@ TRUNCATED_RECOVERY_INSTRUCTION = (
     "The previous assistant response was cut off by the provider's output limit and was not committed. "
     "Continue the same task from that partial response without repeating its analysis. If it was leading to "
     "a tool action, emit the native structured tool call immediately; otherwise finish with a concise answer."
+    " If tool arguments were cut off, split the content into multiple smaller tool calls; "
+    "no partial tool call was executed."
 )
 DECISION_RECOVERY_INSTRUCTION = (
     "The previous reply contains an incomplete or invalid Loom decision card. "
     "Complete the supplied partial reply or replace it with a complete reply. "
     "Close each loom-decision fence and provide valid JSON with a nonempty title "
     "and two to six options, each with a unique nonempty id and title."
+)
+STALL_RECOVERY_INSTRUCTION = (
+    "The previous model request stalled while generating output and was abandoned. "
+    "Continue the same task; if producing large tool arguments, split the content into smaller writes. "
+    "No tool from that abandoned request was executed."
 )
 
 

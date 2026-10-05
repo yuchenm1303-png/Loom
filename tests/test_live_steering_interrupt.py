@@ -47,7 +47,8 @@ class SteeringAtCommitExecutor:
         self.requests = []
         self.calls = 0
 
-    def execute(self, _platform, _profile_id, request, _token, *, steering_revision=None):
+    def execute(self, _platform, _profile_id, request, _token, *, steering_revision=None,
+                on_activity=None, on_retry=None):
         self.calls += 1
         self.requests.append(request)
         if self.calls == 1:

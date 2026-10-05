@@ -6,7 +6,7 @@ from typing import Iterable
 
 from .capabilities import ModelCapability
 from .credentials import CredentialRef
-from .profiles import ModelContextLimits, ModelProfile
+from .profiles import ModelContextLimits, ModelProfile, DEFAULT_STREAM_IDLE_TIMEOUT_SECONDS
 
 
 _ROLE_ID_RE = re.compile(r"^[a-z][a-z0-9._-]{0,127}$")
@@ -38,6 +38,7 @@ class ModelRole:
         capabilities: Iterable[ModelCapability],
         credential_ref: CredentialRef | None = None,
         context_limits: ModelContextLimits | None = None,
+        stream_idle_timeout_seconds: float = DEFAULT_STREAM_IDLE_TIMEOUT_SECONDS,
     ) -> ModelProfile:
         declared = frozenset(ModelCapability(value) for value in capabilities)
         missing = tuple(
@@ -57,6 +58,7 @@ class ModelRole:
             allow_fallback=self.allow_fallback,
             credential_ref=credential_ref,
             context_limits=context_limits or ModelContextLimits(),
+            stream_idle_timeout_seconds=stream_idle_timeout_seconds,
         )
 
 

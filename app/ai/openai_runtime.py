@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import time
 from collections.abc import Iterator
 from typing import Any
 
@@ -21,7 +20,7 @@ from .contracts import (
     ToolCall,
     ToolChoice,
 )
-from .errors import AIEmptyResponseError, AIResponseError, AITransportError
+from .errors import AIEmptyResponseError, AIResponseError, AITransportError, AITruncatedToolCallError, AIQuotaExceeded
 from .profiles import ModelProfile
 from .provider_catalog import ProviderAdapter, ProviderConnection
 from .reasoning import ReasoningKind
@@ -38,7 +37,6 @@ _RETRYABLE_ERROR_FRAGMENTS = (
     "too many requests",
     "timeout",
 )
-_PROVIDER_RETRY_DELAYS_SECONDS = (0.35, 0.9)
 
 # A dead connection says nothing about whether the request was acceptable: the
 # provider never produced a response, so nothing was committed and resending is
@@ -152,19 +150,22 @@ def _usage_from(response: Any) -> ModelUsage:
     )
 
 
-def _parse_tool_calls(message: Any) -> tuple[ToolCall, ...]:
+def _parse_tool_calls(message: Any, *, finish_reason: str = "") -> tuple[ToolCall, ...]:
     parsed: list[ToolCall] = []
     for raw_call in getattr(message, "tool_calls", None) or ():
         function = getattr(raw_call, "function", None)
         call_id = str(getattr(raw_call, "id", "") or "").strip()
         name = str(getattr(function, "name", "") or "").strip()
         raw_arguments = str(getattr(function, "arguments", "") or "").strip()
+        if finish_reason in {"length", "max_tokens"}:
+            raise AITruncatedToolCallError(finish_reason=finish_reason, tool_name=name,
+                                           argument_chars=len(raw_arguments))
         if not call_id or not name:
             raise AIResponseError("tool call is missing id or function name")
         try:
             arguments = json.loads(raw_arguments) if raw_arguments else {}
         except json.JSONDecodeError as exc:
-            raise AIResponseError(f"tool call {name!r} returned invalid JSON arguments") from exc
+            raise AIResponseError(f"tool call {name!r} returned invalid JSON arguments", finish_reason=finish_reason) from exc
         if not isinstance(arguments, dict):
             raise AIResponseError(f"tool call {name!r} arguments must be a JSON object")
         parsed.append(ToolCall(call_id=call_id, name=name, arguments=arguments))
@@ -215,6 +216,20 @@ def _retryable_provider_error(exc: BaseException) -> bool:
     return any(fragment in message for fragment in _RETRYABLE_ERROR_FRAGMENTS)
 
 
+def _quota_exhausted(exc: BaseException) -> bool:
+    body = getattr(exc, "body", None)
+    if not isinstance(body, dict):
+        return False
+    error = body.get("error", body)
+    if not isinstance(error, dict):
+        return False
+    if error.get("code") == "insufficient_quota" or error.get("type") == "insufficient_quota":
+        return True
+    # MiniMax's captured 2026-10-05 Token Plan response uses rate_limit_error
+    # for both throttling and quota. Only its business code (2056) distinguishes it.
+    return error.get("type") == "rate_limit_error" and "(2056)" in str(error.get("message", ""))
+
+
 class OpenAIChatBackend:
     """Unified Chat Completions runtime for OpenAI and OpenAI-compatible endpoints."""
 
@@ -237,7 +252,7 @@ class OpenAIChatBackend:
         api_key = str(api_key or "").strip()
         if not api_key:
             raise ValueError("api_key must not be empty")
-        timeout = float(request_timeout_seconds)
+        timeout = max(float(request_timeout_seconds), profile.stream_idle_timeout_seconds)
         if not 10.0 <= timeout <= 600.0:
             raise ValueError("request_timeout_seconds must be within 10..600")
         if client is None:
@@ -312,23 +327,27 @@ class OpenAIChatBackend:
         return kwargs
 
     def _create(self, kwargs: dict[str, Any]) -> Any:
-        attempts = len(_PROVIDER_RETRY_DELAYS_SECONDS) + 1
-        last_error: BaseException | None = None
-        for attempt in range(attempts):
+        # TurnRunner owns retry budgets and emits one durable event per attempt.
+        try:
+            return self.client.chat.completions.create(**kwargs)
+        except Exception as exc:
+            if _quota_exhausted(exc):
+                raise AIQuotaExceeded(status_code=_provider_status_code(exc)) from exc
+            headers = getattr(getattr(exc, "response", None), "headers", {})
             try:
-                return self.client.chat.completions.create(**kwargs)
-            except Exception as exc:
-                last_error = exc
-                if attempt >= attempts - 1 or not _retryable_provider_error(exc):
-                    break
-                time.sleep(_PROVIDER_RETRY_DELAYS_SECONDS[attempt])
-        assert last_error is not None
-        raise AITransportError(
-            f"AI request failed via provider {self.connection.provider_id!r}: "
-            f"{type(last_error).__name__}: {last_error}",
-            retryable=_retryable_provider_error(last_error),
-            status_code=_provider_status_code(last_error),
-        ) from last_error
+                retry_after = max(0.0, float(headers.get("Retry-After", "0")))
+            except (ValueError, TypeError):
+                from email.utils import parsedate_to_datetime
+                from datetime import datetime, timezone
+                try:
+                    retry_after = max(0.0, (parsedate_to_datetime(headers.get("Retry-After")) - datetime.now(timezone.utc)).total_seconds())
+                except (ValueError, TypeError, OverflowError):
+                    retry_after = 0.0
+            raise AITransportError(
+                f"AI request failed via provider {self.connection.provider_id!r}: {type(exc).__name__}: {exc}",
+                retryable=_retryable_provider_error(exc), status_code=_provider_status_code(exc),
+                retry_after_seconds=retry_after,
+            ) from exc
 
     def complete(self, request: ChatRequest) -> ModelResponse:
         if not isinstance(request, ChatRequest):
@@ -342,7 +361,7 @@ class OpenAIChatBackend:
         if message is None:
             raise AIResponseError("AI response choice contained no message")
         text = str(getattr(message, "content", "") or "")
-        tool_calls = _parse_tool_calls(message)
+        tool_calls = _parse_tool_calls(message, finish_reason=str(getattr(choice, "finish_reason", "") or ""))
         reasoning = getattr(message, "reasoning_content", None)
         if not text and not tool_calls and getattr(message, "end_turn", None) is not False:
             usage = _usage_from(response)

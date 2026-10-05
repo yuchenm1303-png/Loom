@@ -5,7 +5,7 @@ from typing import Iterable, Mapping
 
 from .capabilities import ModelCapability
 from .errors import AIConfigurationError
-from .profiles import ModelContextLimits, ModelProfile, ModelRegistry
+from .profiles import ModelContextLimits, ModelProfile, ModelRegistry, DEFAULT_STREAM_IDLE_TIMEOUT_SECONDS
 from .provider_catalog import ProviderCatalog, ProviderConnection
 from .roles import ModelRole
 
@@ -17,6 +17,7 @@ class ModelBinding:
     model: str
     capabilities: frozenset[ModelCapability]
     context_limits: ModelContextLimits = field(default_factory=ModelContextLimits)
+    stream_idle_timeout_seconds: float = DEFAULT_STREAM_IDLE_TIMEOUT_SECONDS
 
     def __post_init__(self) -> None:
         role_id = str(self.role_id or "").strip().casefold()
@@ -45,6 +46,7 @@ class ModelBinding:
             "model": self.model,
             "capabilities": sorted(value.value for value in self.capabilities),
             "context_limits": self.context_limits.as_safe_dict(),
+            "stream_idle_timeout_seconds": self.stream_idle_timeout_seconds,
         }
 
 
@@ -101,6 +103,7 @@ class AIConfiguration:
                     model=binding.model,
                     capabilities=binding.capabilities,
                     context_limits=binding.context_limits,
+                    stream_idle_timeout_seconds=binding.stream_idle_timeout_seconds,
                 )
             except (KeyError, RuntimeError, ValueError) as exc:
                 raise AIConfigurationError(
