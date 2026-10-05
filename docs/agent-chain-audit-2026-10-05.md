@@ -389,7 +389,8 @@
 ### 阶段 0–1（2026-10-05）
 
 代码提交：`7e3f4810`。本阶段只完成基线和止血，**阶段 2–8 未完成**。
-推送会触发 Host 自动发布；发布现在必须先通过同一源提交的完整 pytest。
+Host 发布必须先通过同一源提交的完整 pytest。之后按用户确认的发布调整
+`db65c714`，源码推送只运行 CI，Host stable 改为从 main 手动发布。
 CI、发布状态及版本可分别查询 GitHub Actions 和 `host-runtime/stable.json` 的
 `version` / `sourceSha`；不能把源代码提交当成已安装的 Host。
 
@@ -449,10 +450,10 @@ CI、发布状态及版本可分别查询 GitHub Actions 和 `host-runtime/stabl
 | 条目 | 状态 / 提交 | 验证方式 | 真实运行复验 |
 | --- | --- | --- | --- |
 | §5、P0-1 资源恢复回归 | 阶段 1 完成，`7e3f4810` | `test_resource_resume_contract.py`；typed failure 正向测试 | 更新 Host 后确认普通会话无误提示 |
-| P0-2 流式活性、配置、计时 | 阶段 2 待做 | 保留探针基线；正式测试需真实文件写入断言 | 额度恢复后 20KB 写入，采集块 / 内容间隔 |
-| P0-3 截断分类 | 阶段 2 待做 | `probe_truncated_tool_call.py` 基线仍失败 | 复验恢复路径，不执行半截调用 |
-| P0-4 v10 回合协议 | 阶段 2 待做 | 当前请求布局测试已锁定；需迁移及 App Server 测试 | 统计未完成计划下 legacy_finish 与旁白长度 |
-| P0-5 额度分类 / 重试归属 | 阶段 2 待做 | quota 探针仍是 9 次 HTTP 调用 | 对照结构化错误与事件，不额外消耗额度 |
+| P0-2 流式活性、配置、计时 | 阶段 2 完成，`10f97b7b` | `test_stream_activity_contract.py`；真实工具写入断言、停滞恢复与既有 deadline 测试 | 额度恢复后 20KB 写入，采集块 / 内容间隔 |
+| P0-3 截断分类 | 阶段 2 完成，`10f97b7b` | `test_truncated_tool_adapter.py`：流式 / 非流式、格式错误与生产恢复路径 | 复验恢复路径，不执行半截调用 |
+| P0-4 v10 回合协议 | 阶段 2 完成，`10f97b7b` | 精确默认迁移、自定义保留、App Server 构造后的生产请求 | 统计未完成计划下 legacy_finish 与旁白长度 |
+| P0-5 额度分类 / 重试归属 | 阶段 2 完成，`10f97b7b` | `test_provider_quota_contract.py`：单次 HTTP、限流回执、Retry-After | 对照结构化错误与事件，不额外消耗额度 |
 | P1-6 浏览器会话租约 | 阶段 5 待做 | 阶段 1 保留原容量 / owner cleanup 行为 | 回合失败与恢复、TTL、容量淘汰 |
 | P1-7 模型窗口 / 工作预算 | 阶段 4 待做 | profile / compaction 契约与官方元数据复核 | 每步输入量与压缩后更正保留 |
 | P1-8 稳定请求前缀 / 缓存计量 | 阶段 4 待做 | 固定当前布局；前缀探针保留 | 读取实际 cached token，不能由布局推算命中率 |
@@ -465,4 +466,64 @@ CI、发布状态及版本可分别查询 GitHub Actions 和 `host-runtime/stabl
 | P2-15 Host 发布门禁 | 阶段 1 完成，`7e3f4810` | same-SHA test 依赖；GitHub CI / Release 实际运行 | 核对安装版本与 sourceSha |
 | P2-16 事件投影缓存 | 阶段 8 待做 | 增量投影及 preparation_ms 对比 | 长会话请求准备时延 |
 
-下一阶段从流式请求可靠性开始，不将本阶段测试通过称为模型执行质量已经改善。
+### 阶段 2（2026-10-05）
+
+源码提交：`10f97b7b`。本节完成采样可靠性；阶段 3–8 的结构性工作仍未完成。
+本阶段没有添加完成关键词分类、工具次数终止或隐藏审核，也没有发送真实模型请求。
+
+主要路径：
+
+- `execution_control.py` 分别记录任意原始 chunk 与实质内容进展。OpenAI、
+  OpenCode Go Responses / Messages 的原始读循环都报告活性；规范流层为不报告
+  原始 chunk 的后端提供一次计量，不重复统计已有原始计量。
+- `profiles.py` 提供单一 300 秒默认值，通过 ModelBinding → provider catalog →
+  ModelProfile 传递可配置空闲阈值；HTTP 读超时不短于它。显式 executor 参数仍可
+  用于缩时测试。首输出、内容停滞、最大时长保留不同的错误原因。
+- `model_execution.py` 将首块、首内容、首工具参数、最大间隔和片段数附到成功响应
+  及失败异常；TurnRunner 将它们写入响应 / 驳回事件。临时活动通知每两秒更新 UI
+  的无输出秒数，不写入持久聊天历史或每秒追加事件。
+- OpenAI 流式与非流式适配器在解析 JSON 前识别显式输出上限；半截调用不会执行，
+  驳回包含 finish_reason、工具名和收到的参数字符数，恢复要求分次写入。
+- 删除后端的三次隐式重试。TurnRunner 统一负责语义重试、退避和 Retry-After。
+  额度耗尽不可重试；MiniMax 业务码识别在代码中注明实测样本与日期。
+  仅保留明确不支持 stream_options / include_usage 时的一次能力协商，并通过
+  `MODEL_TRANSPORT_RETRY` 记录；普通 502 / 503 不再触发这条隐式协商路径。
+  停滞最多原样重放一次，再次请求附明确的小块写入说明。
+- `system_prompts.py` 保留精确 v9 快照，迁移默认值到 v10，说明无工具回复结束回合、
+  工具旁进度最多一句。生产 App Server 构造路径已验证，用户自定义提示不迁移。
+
+Codex 依据：固定提交 `a7660cd15490875b8c22f66e577da115ed927fe3` 的
+[model-provider-info/src/lib.rs:63](https://github.com/openai/codex/blob/a7660cd15490875b8c22f66e577da115ed927fe3/codex-rs/model-provider-info/src/lib.rs#L63)
+声明 300 秒默认值；
+[codex-api/src/sse/responses.rs:540](https://github.com/openai/codex/blob/a7660cd15490875b8c22f66e577da115ed927fe3/codex-rs/codex-api/src/sse/responses.rs#L540)
+按下一 SSE 事件等待执行空闲超时。本阶段只依据这两处源码，不推测私有桌面实现。
+
+验证：
+
+- 修复前：流式 / 非流式截断新增测试 2 失败；两种额度样本各重放三次，2 失败；
+  限流单层归属、独立计时、UI 通知和 profile 配置测试分别失败；v10 版本断言失败。
+- 修复后：全量 **2155 通过、0 失败、6 跳过**，9 条既有环境警告；
+  前端类型检查通过，流式 / 决策共享测试 **20 通过**。
+  20KB 整块和分片场景均驱动实际 `write_workspace_text`，验证文件全文一致、
+  工具只执行一次、计时存在；临时 activity 到达订阅者且不进入持久事件。
+- 撤去实现但保留测试：**15 失败、10 通过**，随后逐字节恢复。
+  日志位于忽略目录 `scratch/agent-chain-stage2-*.log` / XML。
+- 首轮全量暴露旧 profile 替身缺少可选元数据，已通过默认值兼容且未修改原断言。
+  后续全量暴露竞态测试 executor 替身的旧接口，只增加两个可选观察参数，保留所有
+  转向、用量与持久响应断言。另两处旧测试变化是版本 9 → 10，以及进度调用增加
+  tool_fragment 参数后的源码断言；提交信息逐条说明了原因。
+
+发布：按新流程只提交 / 运行 CI，不触发 Host 构建；远端 stable 仍为 **1.0.28**，
+来源 `10134b5e`。阶段 2 源码尚未进入运行中的 runtime，不能据此评估模型效果。
+
+真实复验（有额度后执行，不由本次测试代替）：
+
+1. 在同一浏览器验收任务里要求一次约 20KB 文件写入，核对文件、工具回执与报告。
+2. 采集 `stream_timing` 的 first_tool_fragment_ms、tool_argument_fragments、
+   max_chunk_gap_ms 和 max_content_gap_ms，判断是否集中下发参数。
+3. 统计未完成计划下的 legacy_finish、旁白比例 / 长度、超时和额度失败分布。
+4. 核对 Host 版本和 sourceSha；300 秒配置与伪 provider 通过不能证明 MiniMax
+   已遵守协议或任务已经完成。MiniMax 集中下发参数仍是待实测的推断。
+
+下一阶段先锁定生产构造行为，再合并四个运行时补丁；资源租约、前缀、贴纸和证据
+规则仍按阶段 4–8 推进，不把阶段 2 当成整条链路已经整理完成。
