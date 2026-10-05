@@ -1,102 +1,1781 @@
 /* Loom Admin · Agent Control Plane
-   Product-specific layout only. The wallpaper/glass visual language stays sourced
-   from the existing Smirel portal CSS so Admin and the public Loom pages remain one family. */
-:root{color-scheme:dark;--admin-line:rgba(218,235,255,.09);--admin-line-strong:rgba(218,235,255,.15);--admin-text:rgba(246,250,255,.9);--admin-muted:rgba(218,232,247,.48);--admin-faint:rgba(218,232,247,.3);--admin-glass:rgba(7,14,23,.36);--admin-glass-soft:rgba(7,14,23,.22);--admin-good:#a9e5d4;--admin-warn:#f1d69b;--admin-bad:#ffc2c9;--admin-live:#a9d9f2}
-html{scroll-behavior:smooth;scroll-padding-top:128px}html,body{min-height:100%}.loom-admin-body{background:#21313c}.loom-admin-shell{position:relative;z-index:2}.loom-admin-logo{display:none}.loom-admin-brand::before{content:"";display:block;width:112px;height:36px;flex:0 0 112px;background:url('./smirel-logo.png') center/contain no-repeat}.loom-admin-brand{gap:12px}.loom-admin-brand-divider{width:1px;height:24px;background:rgba(255,255,255,.13)}.loom-admin-topbar{gap:18px}.loom-admin-topbar-right{display:flex;align-items:center;gap:9px}.loom-admin-logout{padding-inline:14px}
-.loom-admin-section-nav{position:sticky;top:12px;z-index:14;display:flex;gap:4px;align-items:center;margin:10px auto 28px;padding:6px;width:max-content;max-width:100%;overflow:auto;border:1px solid var(--admin-line);border-radius:13px;background:rgba(8,15,23,.48);backdrop-filter:blur(22px) saturate(1.15);box-shadow:0 10px 34px rgba(0,0,0,.12)}.loom-admin-section-nav[hidden]{display:none}.loom-admin-section-nav a{flex:0 0 auto;padding:8px 10px;border-radius:8px;color:var(--admin-muted);font-size:10px;font-weight:630;letter-spacing:.02em;text-decoration:none;transition:background .18s ease,color .18s ease}.loom-admin-section-nav a:hover{color:var(--admin-text);background:rgba(255,255,255,.055)}.loom-admin-section-nav a[aria-current="page"]{color:#f5fbff;background:rgba(173,218,242,.11);box-shadow:inset 0 0 0 1px rgba(185,225,248,.08)}
-.loom-admin-privacy-pill,.loom-admin-security-dot{display:inline-flex;align-items:center;width:max-content;padding:6px 9px;border:1px solid var(--admin-line);border-radius:999px;background:rgba(255,255,255,.055);color:rgba(232,242,252,.61);font-size:9px;font-weight:680;letter-spacing:.09em}.loom-admin-privacy-pill{margin-left:auto}.loom-admin-auth-card{max-width:560px;margin:46px auto 82px;min-height:0}.loom-admin-login-form{display:grid;gap:14px;margin-top:22px}.loom-admin-login-form label{display:grid;gap:7px;color:var(--admin-muted);font-size:10px;font-weight:620;letter-spacing:.04em}.loom-admin-login-form input,.loom-admin-flag-editor input,.loom-admin-flag-editor textarea{width:100%;box-sizing:border-box;border:1px solid var(--admin-line);border-radius:10px;padding:11px 12px;background:rgba(3,9,16,.34);color:var(--admin-text);outline:none;transition:border-color .18s ease,background .18s ease}.loom-admin-login-form input:focus,.loom-admin-flag-editor input:focus,.loom-admin-flag-editor textarea:focus{border-color:rgba(169,217,242,.26);background:rgba(3,9,16,.46)}.loom-admin-login-button{width:100%;margin-top:3px}.loom-admin-error{min-height:18px;color:rgba(255,190,198,.92);font-size:11px}.loom-admin-status-strip{display:grid;grid-template-columns:repeat(3,minmax(0,1fr))}.loom-admin-kpi-grid{grid-template-columns:repeat(4,minmax(0,1fr))}
-.loom-admin-table-card{padding:0;overflow:hidden;min-height:0}.loom-admin-table-wrap{overflow:auto;scrollbar-width:thin}.loom-admin-table{width:100%;border-collapse:collapse;min-width:1080px;font-size:12px}.loom-admin-table th{text-align:left;padding:12px 14px;color:rgba(255,255,255,.42);font-size:9px;letter-spacing:.12em;font-weight:700;border-bottom:1px solid var(--admin-line)}.loom-admin-table td{padding:13px 14px;color:rgba(255,255,255,.74);border-bottom:1px solid rgba(255,255,255,.065);vertical-align:middle}.loom-admin-table tbody tr:hover{background:rgba(255,255,255,.028)}.loom-admin-table tbody tr:last-child td{border-bottom:0}.loom-admin-user-link{display:grid;gap:4px;border:0;padding:0;background:transparent;color:inherit;text-align:left;cursor:pointer}.loom-admin-user-link strong,.loom-admin-table td>strong{color:#fff;font-weight:620}.loom-admin-user-link small,.loom-admin-subline{display:block;margin-top:4px;color:rgba(255,255,255,.36);font-size:9px;font-weight:500}.loom-admin-user-link:hover strong{text-decoration:underline;text-underline-offset:3px}.loom-admin-table code{color:rgba(217,235,247,.64);font-size:10px}.loom-admin-badge{display:inline-flex;align-items:center;width:max-content;border-radius:999px;padding:4px 8px;border:1px solid rgba(255,255,255,.1);background:rgba(0,0,0,.14);color:rgba(255,255,255,.68);font-size:10px}.loom-admin-badge.is-ok{color:var(--admin-good);border-color:rgba(169,229,212,.15)}.loom-admin-badge.is-bad{color:var(--admin-bad);border-color:rgba(255,194,201,.15)}.loom-admin-badge.is-warn{color:var(--admin-warn);border-color:rgba(241,214,155,.16)}.loom-admin-badge.is-live{color:var(--admin-live);border-color:rgba(169,217,242,.16)}.loom-admin-actions{display:flex;gap:6px;align-items:center}.loom-admin-action,.loom-admin-table select{border:1px solid var(--admin-line);border-radius:7px;padding:6px 9px;background:rgba(0,0,0,.18);color:rgba(255,255,255,.72);font-size:10px;font-weight:600;cursor:pointer}.loom-admin-table select{min-width:80px}.loom-admin-action:hover:not(:disabled){background:rgba(255,255,255,.08);color:#fff}.loom-admin-action:disabled{opacity:.35;cursor:not-allowed}.loom-admin-action.is-danger:hover:not(:disabled){color:#ffd1d5;border-color:rgba(255,160,170,.2);background:rgba(120,20,28,.12)}.loom-admin-empty{padding:26px!important;text-align:center;color:rgba(255,255,255,.4)!important;font-size:12px}.loom-admin-empty-block{margin:16px 0;color:var(--admin-muted);font-size:11px;line-height:1.6}
-.loom-admin-activity-rail{min-height:58px}.loom-admin-spark{min-height:96px;display:flex;align-items:flex-end;gap:4px}.loom-admin-spark>i{flex:1;min-width:3px;border-radius:3px 3px 1px 1px;background:rgba(154,213,239,.52);transition:height .25s ease}.loom-admin-mini-kpis{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px;margin:14px 0 16px}.loom-admin-mini-kpis-3{grid-template-columns:repeat(3,minmax(0,1fr))}.loom-admin-mini-kpis>div{display:grid;gap:6px;padding:13px 14px;border:1px solid var(--admin-line);border-radius:11px;background:var(--admin-glass-soft);backdrop-filter:blur(16px)}.loom-admin-mini-kpis span{color:var(--admin-muted);font-size:9px;text-transform:uppercase;letter-spacing:.08em}.loom-admin-mini-kpis strong{color:var(--admin-text);font-size:18px;font-weight:650}.loom-admin-usage-grid{grid-template-columns:1fr 1fr 1.25fr}.loom-admin-metric-list{display:grid;gap:2px;margin-top:12px}.loom-admin-metric-row{display:grid;grid-template-columns:minmax(0,1fr) 110px;gap:14px;align-items:center;padding:10px 0;border-top:1px solid rgba(255,255,255,.065)}.loom-admin-metric-row:first-child{border-top:0}.loom-admin-metric-row>div:first-child{display:grid;gap:3px;min-width:0}.loom-admin-metric-row strong{overflow:hidden;text-overflow:ellipsis;color:rgba(246,250,255,.83);font-size:11px;font-weight:620;white-space:nowrap}.loom-admin-metric-row small{overflow:hidden;text-overflow:ellipsis;color:var(--admin-muted);font-size:9px;white-space:nowrap}.loom-admin-metric-value{display:grid;grid-template-columns:1fr;gap:5px;text-align:right}.loom-admin-metric-value span{color:rgba(239,247,255,.7);font-size:10px}.loom-admin-metric-value i,.loom-admin-tool-row>i{position:relative;display:block;height:3px;overflow:hidden;border-radius:999px;background:rgba(255,255,255,.06)}.loom-admin-metric-value i::after,.loom-admin-tool-row>i::after{content:"";position:absolute;inset:0 auto 0 0;width:var(--metric);border-radius:inherit;background:rgba(166,216,242,.55)}.loom-admin-daily-chart{height:220px;display:flex;align-items:flex-end;gap:5px;margin-top:14px;padding:12px 2px 2px}.loom-admin-daily-chart>div{flex:1;min-width:6px;height:100%;display:grid;grid-template-rows:1fr 14px;gap:5px;align-items:end}.loom-admin-daily-chart i{display:block;width:100%;min-height:4px;align-self:end;border-radius:4px 4px 2px 2px;background:linear-gradient(180deg,rgba(173,222,247,.65),rgba(129,188,220,.24))}.loom-admin-daily-chart span{overflow:hidden;color:rgba(220,235,248,.3);font-size:7px;text-align:center;white-space:nowrap}.loom-admin-tool-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px 18px;margin-top:12px}.loom-admin-tool-row{display:grid;grid-template-columns:minmax(0,1fr) auto;grid-template-areas:"copy count" "bar bar";gap:5px 12px;padding:10px 0;border-top:1px solid rgba(255,255,255,.06)}.loom-admin-tool-row>div{grid-area:copy;display:grid;gap:3px;min-width:0}.loom-admin-tool-row strong{overflow:hidden;text-overflow:ellipsis;color:rgba(245,250,255,.82);font-size:11px;font-weight:620;white-space:nowrap}.loom-admin-tool-row small{color:var(--admin-muted);font-size:9px}.loom-admin-tool-row>span{grid-area:count;color:rgba(237,247,255,.64);font-size:10px}.loom-admin-tool-row>i{grid-area:bar}
-.loom-admin-flags-grid{grid-template-columns:minmax(280px,.72fr) minmax(0,1.4fr)}.loom-admin-flag-editor form{display:grid;gap:12px;margin-top:14px}.loom-admin-flag-editor label{display:grid;gap:6px;color:var(--admin-muted);font-size:10px}.loom-admin-flag-editor textarea{resize:vertical;min-height:98px;font:10px/1.55 ui-monospace,SFMono-Regular,Consolas,monospace}.loom-admin-check{display:flex!important;grid-auto-flow:column;justify-content:start;align-items:center;gap:8px!important}.loom-admin-check input{width:auto}.loom-admin-flags-list{display:grid;margin-top:12px}.loom-admin-flag-row{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:11px 0;border-top:1px solid rgba(255,255,255,.065)}.loom-admin-flag-row>div{display:grid;gap:4px;min-width:0}.loom-admin-flag-row strong{color:rgba(245,250,255,.82);font-size:11px;font-weight:620}.loom-admin-flag-row small{overflow:hidden;text-overflow:ellipsis;color:var(--admin-muted);font:9px/1.45 ui-monospace,SFMono-Regular,Consolas,monospace;white-space:nowrap}.loom-admin-switch{position:relative;flex:0 0 auto}.loom-admin-switch input{position:absolute;opacity:0;pointer-events:none}.loom-admin-switch span{display:block;width:32px;height:18px;border:1px solid var(--admin-line-strong);border-radius:999px;background:rgba(0,0,0,.22);cursor:pointer;transition:.18s ease}.loom-admin-switch span::after{content:"";display:block;width:12px;height:12px;margin:2px;border-radius:50%;background:rgba(236,245,252,.57);transition:.18s ease}.loom-admin-switch input:checked+span{background:rgba(92,177,157,.2);border-color:rgba(156,226,207,.2)}.loom-admin-switch input:checked+span::after{transform:translateX(14px);background:#b8eadb}.loom-admin-switch input:disabled+span{opacity:.4;cursor:wait}
-.loom-admin-audit-list{display:grid;gap:8px}.loom-admin-audit-row{display:grid;grid-template-columns:minmax(240px,.8fr) minmax(0,1.2fr);gap:18px;align-items:center;padding:13px 15px!important;min-height:0!important}.loom-admin-audit-row>div:first-child{display:grid;grid-template-columns:max-content minmax(0,1fr);gap:5px 9px;align-items:center}.loom-admin-audit-row>div:first-child small{grid-column:2;color:var(--admin-muted);font-size:9px}.loom-admin-audit-row strong{overflow:hidden;text-overflow:ellipsis;color:rgba(246,250,255,.8);font-size:11px;white-space:nowrap}.loom-admin-audit-meta{display:flex;align-items:center;justify-content:flex-end;gap:14px;min-width:0}.loom-admin-audit-meta code{overflow:hidden;text-overflow:ellipsis;color:rgba(214,232,247,.45);font-size:9px;white-space:nowrap}.loom-admin-audit-meta time{flex:0 0 auto;color:rgba(214,232,247,.36);font-size:9px}
-.loom-admin-system-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.loom-admin-health-list{display:grid;gap:0;margin-top:14px}.loom-admin-health-item{display:flex;justify-content:space-between;gap:12px;padding:10px 0;border-top:1px solid rgba(255,255,255,.075);color:rgba(255,255,255,.56);font-size:11px}.loom-admin-health-item b{color:var(--admin-good);font-weight:600}.loom-admin-health-item b.is-bad{color:var(--admin-bad)}.loom-admin-release-info{display:grid;gap:8px;margin-top:16px}.loom-admin-release-info strong{color:#f4f8ff;font-size:15px;font-weight:650;word-break:break-all}.loom-admin-release-info small{color:rgba(210,230,245,.44);font-size:10px}.loom-admin-security-copy{color:rgba(255,255,255,.50);font-size:11px;line-height:1.7}.loom-admin-security-copy code{color:rgba(210,233,249,.82)}
-.loom-admin-dialog{width:min(780px,calc(100vw - 36px));padding:0;border:0;background:transparent;color:inherit}.loom-admin-dialog::backdrop{background:rgba(2,7,12,.68);backdrop-filter:blur(10px)}.loom-admin-detail-card{margin:0;padding:24px;backdrop-filter:blur(28px) saturate(1.15)}.loom-admin-detail-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-top:18px}.loom-admin-detail-grid>div{display:grid;gap:5px;padding:12px;border:1px solid rgba(210,230,255,.08);border-radius:11px;background:rgba(5,12,20,.24)}.loom-admin-detail-grid span{color:rgba(210,230,245,.42);font-size:9px;letter-spacing:.1em;text-transform:uppercase}.loom-admin-detail-grid strong{color:rgba(244,249,255,.84);font-size:11px;font-weight:620}.loom-admin-detail-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:18px}.loom-admin-model-access{grid-column:1/-1;margin-top:6px;padding-top:16px;border-top:1px solid rgba(255,255,255,.09);display:grid;gap:12px}.loom-admin-model-access-head{display:flex;align-items:center;justify-content:space-between;gap:16px;font-weight:650}.loom-admin-model-access-head label{display:flex;align-items:center;gap:7px;color:var(--admin-muted);font-size:12px;font-weight:600}.loom-admin-model-access small{color:var(--admin-muted)}.loom-admin-model-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.loom-admin-model-toggle{display:flex;align-items:center;gap:8px;padding:9px 10px;border:1px solid rgba(255,255,255,.08);border-radius:10px;background:rgba(255,255,255,.025);font-size:12px}.loom-admin-model-toggle input,.loom-admin-model-access-head input{accent-color:#8bbbd5}
-@media(max-width:1180px){.loom-admin-kpi-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.loom-admin-usage-grid{grid-template-columns:1fr 1fr}.loom-admin-usage-grid>article:last-child{grid-column:1/-1}.loom-admin-system-grid{grid-template-columns:1fr 1fr}.loom-admin-section-nav{width:100%;box-sizing:border-box}.loom-admin-tool-grid{grid-template-columns:1fr}}
-@media(max-width:820px){html{scroll-padding-top:86px}.loom-admin-topbar{align-items:flex-start}.loom-admin-topbar-right{flex-wrap:wrap;justify-content:flex-end}.loom-admin-section-nav{top:5px;margin-bottom:18px}.loom-admin-status-strip{grid-template-columns:1fr}.loom-admin-mini-kpis,.loom-admin-mini-kpis-3{grid-template-columns:repeat(2,minmax(0,1fr))}.loom-admin-flags-grid,.loom-admin-system-grid,.loom-admin-usage-grid{grid-template-columns:1fr}.loom-admin-usage-grid>article:last-child{grid-column:auto}.loom-admin-audit-row{grid-template-columns:1fr}.loom-admin-audit-meta{justify-content:flex-start}.loom-admin-detail-grid{grid-template-columns:1fr}.loom-admin-model-grid{grid-template-columns:1fr}.loom-admin-daily-chart{height:170px}}
-@media(max-width:560px){.loom-admin-brand::before{width:88px;height:30px;flex-basis:88px}.loom-admin-brand-divider{display:none}.loom-admin-kpi-grid,.loom-admin-mini-kpis,.loom-admin-mini-kpis-3{grid-template-columns:1fr 1fr}.loom-admin-section-nav a{padding:7px 9px}.loom-admin-auth-card{margin-top:26px}.loom-admin-privacy-pill{margin-left:0}.loom-admin-audit-meta{display:grid;gap:7px}.loom-admin-daily-chart{gap:2px}.loom-admin-daily-chart span{display:none}}
+   Visual language: the Smirel portal glass system (rain wallpaper + dark frosted panels) loaded
+   from smirel.com/download in index.html. This file keeps that language and owns the admin
+   layout, a readable type scale and every component rendered by admin.js,
+   usage-dashboard-v2.js, tools-dashboard.js and model-policy.js. */
 
-/* Admin information architecture v2: overview-first, detail-on-demand. */
-[data-admin-page][hidden]{display:none!important}.loom-admin-overview-grid{grid-template-columns:minmax(0,1.15fr) minmax(280px,.85fr)}.loom-admin-quick-links{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}.loom-admin-user-workspace{display:grid;gap:16px}.loom-admin-user-workspace-head{margin-bottom:0}.loom-admin-user-kpis{margin-top:0}.loom-admin-user-sections{display:grid;gap:16px}.loom-admin-user-table{min-width:760px}.loom-admin-user-workspace .loom-admin-detail-card{margin:0}.loom-admin-panel-head{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:15px 16px 4px}.loom-admin-panel-head h3{margin:3px 0 0;color:rgba(246,250,255,.9);font-size:14px;font-weight:650}.loom-admin-overview-controls{margin-top:22px}
-@media(max-width:900px){.loom-admin-overview-grid{grid-template-columns:1fr}.loom-admin-user-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
+/* ============================================================ tokens */
+:root {
+  color-scheme: dark;
 
+  --mono: ui-monospace, "Cascadia Code", "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
 
-/* Admin navigation + live monitor v3. Keep page ownership explicit and visual hierarchy compact. */
-#adminContent>[data-admin-page][hidden],.loom-policy-page[hidden]{display:none!important}
-.loom-admin-monitor-page{display:grid;gap:14px}
-.loom-admin-monitor-head{margin-bottom:0}
-.loom-admin-monitor-live{display:inline-flex;align-items:center;gap:7px;padding:7px 10px;border:1px solid rgba(169,217,242,.13);border-radius:999px;background:rgba(5,16,25,.22);color:rgba(226,242,252,.55);font-size:9px;font-weight:700;letter-spacing:.08em;white-space:nowrap}
-.loom-admin-monitor-live i{width:6px;height:6px;border-radius:50%;background:var(--admin-good);box-shadow:0 0 0 4px rgba(169,229,212,.07),0 0 14px rgba(169,229,212,.25)}
-.loom-admin-monitor-kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
-.loom-admin-monitor-kpi{position:relative;overflow:hidden;display:grid;gap:5px;padding:15px 16px;border:1px solid var(--admin-line);border-radius:13px;background:linear-gradient(145deg,rgba(12,24,36,.38),rgba(5,12,20,.22));backdrop-filter:blur(20px) saturate(1.08)}
-.loom-admin-monitor-kpi::after{content:"";position:absolute;inset:auto 14px 0;height:1px;background:rgba(169,217,242,.18)}
-.loom-admin-monitor-kpi.is-live::after{background:rgba(169,217,242,.42)}.loom-admin-monitor-kpi.is-warn::after{background:rgba(241,214,155,.38)}.loom-admin-monitor-kpi.is-bad::after{background:rgba(255,194,201,.35)}
-.loom-admin-monitor-kpi span{color:var(--admin-muted);font-size:9px;font-weight:700;letter-spacing:.1em}.loom-admin-monitor-kpi strong{color:#f7fbff;font-size:23px;line-height:1.05;font-weight:660}.loom-admin-monitor-kpi small{color:rgba(220,235,247,.38);font-size:9px}
-.loom-admin-monitor-toolbar{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:10px 12px;min-height:0}
-.loom-admin-run-filters{display:flex;align-items:center;gap:4px;flex-wrap:wrap}.loom-admin-run-filters button{border:0;border-radius:8px;padding:7px 10px;background:transparent;color:rgba(225,238,248,.46);font:inherit;font-size:10px;font-weight:650;cursor:pointer;transition:.15s ease}.loom-admin-run-filters button:hover{color:#fff;background:rgba(255,255,255,.045)}.loom-admin-run-filters button[aria-pressed="true"]{color:#fff;background:rgba(169,217,242,.10);box-shadow:inset 0 0 0 1px rgba(169,217,242,.09)}
-.loom-admin-monitor-search{margin-left:auto}.loom-admin-monitor-search .usage-audit-search{min-width:250px}.loom-admin-monitor-table{margin-top:0}.loom-admin-monitor-table .loom-admin-table th{position:sticky;top:0;z-index:1;background:rgba(10,20,30,.88);backdrop-filter:blur(16px)}
-.loom-policy-page{display:grid;gap:12px}.loom-policy-page>.usage-section-head{margin-bottom:0}.loom-policy-page .loom-policy-tabs{margin:0 0 2px}.loom-policy-page .loom-policy-shell{margin-top:0}.loom-policy-page .account-card{background:linear-gradient(145deg,rgba(10,20,31,.38),rgba(5,12,20,.26));box-shadow:none}.loom-policy-page .loom-policy-card{min-height:54px;background:rgba(5,12,20,.18)}
-@media(max-width:980px){.loom-admin-monitor-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.loom-admin-monitor-toolbar{align-items:stretch;flex-direction:column}.loom-admin-monitor-search{margin-left:0}.loom-admin-monitor-search .usage-audit-search{min-width:0;width:100%}}
-@media(max-width:560px){.loom-admin-monitor-kpis{grid-template-columns:1fr 1fr}.loom-admin-run-filters{overflow:auto;flex-wrap:nowrap}.loom-admin-run-filters button{flex:0 0 auto}.loom-admin-monitor-kpi strong{font-size:20px}}
+  --ink-1: rgba(248, 251, 255, .96);
+  --ink-2: rgba(236, 244, 251, .8);
+  --ink-3: rgba(222, 236, 248, .62);
+  --ink-4: rgba(214, 230, 244, .44);
+  --line: rgba(218, 235, 255, .09);
 
+  --glass: rgba(4, 18, 30, .42);
+  --glass-edge: rgba(214, 235, 251, .1);
+  --glass-sheen: linear-gradient(180deg, rgba(255, 255, 255, .045), rgba(255, 255, 255, 0) 46%);
+  --tile: rgba(2, 10, 18, .2);
+  --tile-edge: rgba(214, 235, 251, .07);
+  --hi: inset 0 1px 0 rgba(255, 255, 255, .05);
+  --shadow: 0 18px 46px rgba(2, 8, 15, .14);
+  --blur: blur(22px) saturate(120%);
+  --text-shadow: 0 1px 14px rgba(3, 10, 18, .42);
 
-/* Overview v3 · hierarchy-first control plane dashboard. */
-#overview.usage-heading{margin-bottom:16px;align-items:flex-end}
-#overview.usage-heading>div:first-child{max-width:760px}
-#overview.usage-heading h1{margin-top:4px;letter-spacing:-.035em}
-#overview.usage-heading p{max-width:720px;line-height:1.6;color:rgba(230,241,249,.58)}
+  --r-card: 14px;
+  --r-tile: 11px;
+  --r-ctl: 9px;
 
-.loom-admin-overview-hero{position:relative;overflow:hidden;display:grid;grid-template-columns:minmax(320px,1.1fr) minmax(420px,1.5fr) auto;gap:18px;align-items:center;margin:0 0 12px;padding:15px 17px;min-height:0;border-color:rgba(205,232,249,.095);background:linear-gradient(120deg,rgba(10,24,35,.50),rgba(7,15,25,.32) 55%,rgba(14,29,42,.38));box-shadow:0 16px 46px rgba(2,8,14,.09);backdrop-filter:blur(26px) saturate(1.08)}
-.loom-admin-overview-hero::before{content:"";position:absolute;inset:0 auto 0 0;width:2px;background:linear-gradient(180deg,rgba(158,226,207,.62),rgba(132,199,234,.18));opacity:.8}
-.loom-admin-overview-hero-main{display:flex;align-items:center;gap:12px;min-width:0}.loom-admin-health-orb{position:relative;display:grid;place-items:center;width:34px;height:34px;flex:0 0 34px;border-radius:11px;border:1px solid rgba(255,255,255,.08);background:rgba(3,10,16,.22)}.loom-admin-health-orb i{width:8px;height:8px;border-radius:50%;background:#9fc9de;box-shadow:0 0 0 5px rgba(159,201,222,.08),0 0 18px rgba(159,201,222,.22)}.loom-admin-health-orb[data-state="ok"] i{background:var(--admin-good);box-shadow:0 0 0 5px rgba(169,229,212,.08),0 0 18px rgba(169,229,212,.28)}.loom-admin-health-orb[data-state="bad"] i{background:var(--admin-bad);box-shadow:0 0 0 5px rgba(255,194,201,.08),0 0 18px rgba(255,194,201,.25)}
-.loom-admin-overview-hero-copy{display:grid;gap:2px;min-width:0}.loom-admin-overview-hero-copy .utility-overline{font-size:8px;letter-spacing:.14em}.loom-admin-overview-hero-copy strong{overflow:hidden;text-overflow:ellipsis;color:rgba(248,252,255,.93);font-size:14px;font-weight:650;white-space:nowrap}.loom-admin-overview-hero-copy small{overflow:hidden;text-overflow:ellipsis;color:rgba(222,237,247,.44);font-size:9px;white-space:nowrap}
-.loom-admin-service-chips{display:flex;justify-content:center;gap:7px;min-width:0;flex-wrap:wrap}.loom-admin-service-chip{display:inline-flex;align-items:center;gap:6px;padding:7px 9px;border:1px solid rgba(255,255,255,.07);border-radius:9px;background:rgba(2,8,14,.12);white-space:nowrap}.loom-admin-service-chip>i{width:5px;height:5px;border-radius:50%;background:var(--admin-good)}.loom-admin-service-chip>span{color:rgba(229,241,249,.48);font-size:9px}.loom-admin-service-chip>b{color:rgba(244,250,255,.78);font-size:9px;font-weight:650}.loom-admin-service-chip>b[data-state="bad"]{color:var(--admin-bad)}.loom-admin-service-chip.is-private>i{background:#a8cbe0}.loom-admin-service-chip.is-private>b{color:rgba(214,234,246,.56)}
-.loom-admin-overview-admin{display:grid;gap:3px;justify-items:end;min-width:150px}.loom-admin-overview-admin>span{color:rgba(220,235,247,.32);font-size:8px;text-transform:uppercase;letter-spacing:.1em}.loom-admin-overview-admin>strong{max-width:220px;overflow:hidden;text-overflow:ellipsis;color:rgba(241,249,255,.69);font-size:9px;font-weight:600;white-space:nowrap}
+  --mint: #83efc7;
+  --mint-soft: rgba(131, 239, 199, .13);
+  --sky: #a9d9f2;
+  --sky-soft: rgba(169, 217, 242, .13);
+  --amber: #ffd49a;
+  --amber-soft: rgba(255, 212, 154, .14);
+  --rose: #ffb4bf;
+  --rose-soft: rgba(255, 168, 182, .13);
+  --violet: #cbc2f4;
 
-.loom-admin-primary-metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-bottom:12px}.loom-admin-primary-card{position:relative;overflow:hidden;display:grid;grid-template-columns:1fr auto;grid-template-areas:"label arrow" "value arrow" "copy arrow";gap:2px 12px;align-items:center;min-height:116px;padding:16px 17px;border:1px solid rgba(214,235,251,.085);border-radius:13px;background:linear-gradient(145deg,rgba(8,19,29,.42),rgba(5,12,20,.29));color:inherit;text-align:left;backdrop-filter:blur(24px) saturate(1.06);box-shadow:0 12px 34px rgba(2,8,14,.075);cursor:pointer;transition:transform .18s ease,border-color .18s ease,background .18s ease,box-shadow .18s ease}.loom-admin-primary-card::after{content:"";position:absolute;left:17px;right:17px;bottom:0;height:1px;background:rgba(173,218,242,.20)}.loom-admin-primary-card.is-live::after{background:rgba(169,229,212,.32)}.loom-admin-primary-card.is-attention::after{background:rgba(241,214,155,.25)}.loom-admin-primary-card:hover{transform:translateY(-2px);border-color:rgba(207,233,249,.15);background:linear-gradient(145deg,rgba(12,26,39,.50),rgba(6,14,23,.35));box-shadow:0 18px 44px rgba(2,8,14,.11)}.loom-admin-primary-card>.utility-overline{grid-area:label;color:rgba(221,237,248,.40);font-size:8px;letter-spacing:.12em}.loom-admin-primary-card>strong{grid-area:value;margin-top:5px;color:#f7fbff;font-size:29px;line-height:1;font-weight:650;letter-spacing:-.035em}.loom-admin-primary-card>small{grid-area:copy;margin-top:5px;color:rgba(219,234,245,.42);font-size:9px}.loom-admin-primary-card>i{grid-area:arrow;align-self:start;color:rgba(225,240,249,.30);font-size:13px;font-style:normal;transition:transform .18s ease,color .18s ease}.loom-admin-primary-card:hover>i{transform:translate(2px,-2px);color:rgba(241,249,255,.68)}
+  --cyan-bg: rgba(103, 193, 214, .12);
+  --cyan-bg-hover: rgba(103, 193, 214, .2);
+  --cyan-edge: rgba(157, 225, 240, .2);
+  --cyan-ink: rgba(234, 251, 255, .94);
 
-.loom-admin-overview-pulse{display:grid;grid-template-columns:190px 1fr;gap:18px;align-items:stretch;margin:0 0 12px;padding:0;min-height:0;overflow:hidden;border-color:rgba(210,232,248,.075);background:rgba(5,13,21,.28);backdrop-filter:blur(22px) saturate(1.04)}.loom-admin-overview-pulse-head{display:grid;align-content:center;gap:6px;padding:15px 17px;border-right:1px solid rgba(255,255,255,.065);background:rgba(5,14,23,.18)}.loom-admin-overview-pulse-head>div{display:grid;gap:3px}.loom-admin-overview-pulse-head strong{color:rgba(245,250,255,.85);font-size:14px;font-weight:640}.loom-admin-overview-pulse-head>small{color:rgba(218,234,246,.32);font-size:8px;line-height:1.45}.loom-admin-pulse-grid{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));min-width:0}.loom-admin-pulse-grid>div{position:relative;display:grid;align-content:center;gap:4px;min-width:0;padding:13px 14px}.loom-admin-pulse-grid>div+div::before{content:"";position:absolute;left:0;top:14px;bottom:14px;width:1px;background:rgba(255,255,255,.055)}.loom-admin-pulse-grid span{color:rgba(218,234,246,.35);font-size:8px;text-transform:uppercase;letter-spacing:.08em}.loom-admin-pulse-grid strong{overflow:hidden;text-overflow:ellipsis;color:rgba(246,251,255,.84);font-size:18px;line-height:1.1;font-weight:640;white-space:nowrap}.loom-admin-pulse-grid small{overflow:hidden;text-overflow:ellipsis;color:rgba(218,234,246,.28);font-size:8px;white-space:nowrap}.loom-admin-pulse-grid .is-failure strong{color:rgba(255,213,217,.86)}
+  --bar-grad: linear-gradient(180deg, rgba(178, 221, 244, .86), rgba(109, 165, 208, .28));
+  --fill-grad: linear-gradient(90deg, rgba(120, 192, 226, .6), rgba(131, 239, 199, .88));
+}
 
-.loom-admin-overview-bottom{display:grid;grid-template-columns:minmax(0,1.08fr) minmax(360px,.92fr);gap:12px}.loom-admin-ops-card,.loom-admin-control-card{min-height:0;padding:17px 18px;border-color:rgba(210,233,249,.075);background:linear-gradient(145deg,rgba(8,18,28,.38),rgba(5,12,20,.25));backdrop-filter:blur(24px) saturate(1.05)}.loom-admin-card-head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;padding-bottom:13px;border-bottom:1px solid rgba(255,255,255,.06)}.loom-admin-card-head>div{display:grid;gap:3px}.loom-admin-card-head h3{margin:0;color:rgba(247,251,255,.90);font-size:16px;font-weight:645;letter-spacing:-.015em}.loom-admin-text-action{border:0;padding:3px 0;background:transparent;color:rgba(211,234,247,.40);font:inherit;font-size:9px;cursor:pointer;transition:color .15s ease}.loom-admin-text-action:hover{color:rgba(244,250,255,.80)}
-.loom-admin-ops-list{display:grid}.loom-admin-ops-row{display:grid;grid-template-columns:minmax(150px,.8fr) minmax(150px,1.3fr) auto;gap:14px;align-items:center;padding:14px 0;border-bottom:1px solid rgba(255,255,255,.055)}.loom-admin-ops-row>div:first-child{display:grid;gap:3px}.loom-admin-ops-row>div:first-child>span{color:rgba(219,235,246,.38);font-size:9px}.loom-admin-ops-row>div:first-child>strong{color:rgba(244,250,255,.83);font-size:12px;font-weight:620}.loom-admin-ops-row>small{color:rgba(219,235,246,.30);font-size:8px;white-space:nowrap}.loom-admin-progress{height:4px;overflow:hidden;border-radius:999px;background:rgba(255,255,255,.055)}.loom-admin-progress>i{display:block;width:0;height:100%;border-radius:inherit;background:linear-gradient(90deg,rgba(120,192,226,.42),rgba(169,229,212,.72));transition:width .35s ease}.loom-admin-progress>i[data-state="warn"]{background:linear-gradient(90deg,rgba(241,214,155,.42),rgba(255,194,201,.64))}.loom-admin-ops-row.is-current{grid-template-columns:minmax(150px,.8fr) 1fr}.loom-admin-ops-inline{display:flex;justify-content:flex-end;gap:16px;flex-wrap:wrap}.loom-admin-ops-inline>span{display:inline-flex;align-items:center;gap:5px;color:rgba(220,236,247,.42);font-size:9px}.loom-admin-ops-inline i{width:5px;height:5px;border-radius:50%;background:var(--admin-live)}.loom-admin-ops-inline i.is-warn{background:var(--admin-warn)}.loom-admin-ops-inline b{color:rgba(244,250,255,.78);font-weight:650}.loom-admin-privacy-note{display:flex;align-items:flex-start;gap:8px;margin-top:13px;padding:10px 11px;border-radius:9px;background:rgba(7,16,24,.18);color:rgba(213,232,244,.33);font-size:8px;line-height:1.55}.loom-admin-privacy-note>i{width:5px;height:5px;flex:0 0 5px;margin-top:4px;border-radius:50%;background:rgba(158,205,230,.55)}
-.loom-admin-control-card{display:grid;align-content:start}.loom-admin-control-section{padding:13px 0;border-bottom:1px solid rgba(255,255,255,.055)}.loom-admin-control-section:last-child{padding-bottom:0;border-bottom:0}.loom-admin-control-label{display:flex;align-items:center;justify-content:space-between;gap:10px}.loom-admin-control-label>span{color:rgba(241,249,255,.68);font-size:10px;font-weight:620}.loom-admin-control-label>small{color:rgba(214,233,246,.28);font-size:8px}.loom-admin-overview-flags{margin-top:8px}.loom-admin-overview-flags .loom-admin-flag-row{padding:8px 0}.loom-admin-overview-flags .loom-admin-empty-block{margin:8px 0 1px;padding:9px 10px;border:1px dashed rgba(255,255,255,.07);border-radius:8px;color:rgba(216,234,246,.30);font-size:9px}.loom-admin-quick-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;margin-top:9px}.loom-admin-quick-grid>button{display:grid;grid-template-columns:1fr auto;grid-template-areas:"name arrow" "copy arrow";gap:2px 8px;align-items:center;padding:10px 11px;border:1px solid rgba(255,255,255,.065);border-radius:9px;background:rgba(2,8,14,.13);color:inherit;text-align:left;cursor:pointer;transition:background .15s ease,border-color .15s ease}.loom-admin-quick-grid>button:hover{border-color:rgba(181,222,244,.12);background:rgba(255,255,255,.035)}.loom-admin-quick-grid span{grid-area:name;color:rgba(243,250,255,.72);font-size:10px;font-weight:620}.loom-admin-quick-grid small{grid-area:copy;color:rgba(215,233,245,.30);font-size:8px}.loom-admin-quick-grid i{grid-area:arrow;color:rgba(220,238,248,.28);font-size:10px;font-style:normal}
+/* ============================================================ base */
+[hidden] { display: none !important; }
+#adminContent>[data-admin-page][hidden], .loom-policy-page[hidden] { display: none !important; }
+html { scroll-behavior: smooth; }
+.loom-admin-body { background: #21313c; }
+.loom-admin-body code { font-family: var(--mono); }
+.loom-admin-body ::selection { background: rgba(169, 217, 242, .32); }
+.loom-admin-body :focus-visible { outline: 2px solid rgba(169, 217, 242, .6); outline-offset: 2px; }
+.loom-admin-body select option { background: #1b2c3b; color: #eef6fc; }
+.loom-admin-shell * { scrollbar-width: thin; scrollbar-color: rgba(255, 255, 255, .2) transparent; }
 
-@media(max-width:1180px){.loom-admin-overview-hero{grid-template-columns:1fr auto}.loom-admin-service-chips{grid-column:1/-1;grid-row:2;justify-content:flex-start}.loom-admin-primary-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}.loom-admin-overview-pulse{grid-template-columns:1fr}.loom-admin-overview-pulse-head{grid-template-columns:1fr auto;align-items:center;border-right:0;border-bottom:1px solid rgba(255,255,255,.055)}.loom-admin-pulse-grid{grid-template-columns:repeat(3,minmax(0,1fr))}.loom-admin-pulse-grid>div:nth-child(4)::before{display:none}.loom-admin-overview-bottom{grid-template-columns:1fr}}
-@media(max-width:720px){.loom-admin-overview-hero{grid-template-columns:1fr}.loom-admin-overview-admin{justify-items:start;min-width:0}.loom-admin-service-chips{grid-column:auto;grid-row:auto;justify-content:flex-start}.loom-admin-primary-card{min-height:104px}.loom-admin-pulse-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.loom-admin-pulse-grid>div:nth-child(odd)::before{display:none}.loom-admin-ops-row{grid-template-columns:1fr;gap:8px}.loom-admin-ops-row.is-current{grid-template-columns:1fr}.loom-admin-ops-inline{justify-content:flex-start}.loom-admin-quick-grid{grid-template-columns:1fr 1fr}}
-@media(max-width:520px){.loom-admin-primary-metrics{grid-template-columns:1fr 1fr;gap:8px}.loom-admin-primary-card{min-height:98px;padding:13px}.loom-admin-primary-card>strong{font-size:24px}.loom-admin-overview-pulse-head{grid-template-columns:1fr}.loom-admin-pulse-grid{grid-template-columns:1fr 1fr}.loom-admin-quick-grid{grid-template-columns:1fr}.loom-admin-overview-hero,.loom-admin-ops-card,.loom-admin-control-card{padding:14px}.loom-admin-service-chip{padding:6px 8px}}
+/* ============================================================ shell + top bar */
+.loom-admin-shell {
+  position: relative;
+  z-index: 1;
+  width: min(1440px, calc(100vw - 48px));
+  padding: 14px 0 26px;
+}
+.loom-admin-shell .loom-admin-topbar { height: auto; min-height: 56px; gap: 10px 16px; margin-bottom: 8px; }
+.loom-admin-brand { gap: 14px; min-width: 0; }
+.loom-admin-logo { display: block; width: auto; height: 32px; }
+.loom-admin-brand-divider { width: 1px; height: 26px; background: rgba(255, 255, 255, .16); }
+.loom-admin-brand .brand-copy strong { font-size: 17px; font-weight: 680; }
+.loom-admin-brand .brand-copy small { color: rgba(255, 255, 255, .54); font-size: 10.5px; letter-spacing: .16em; }
+.loom-admin-topbar-right { display: flex; align-items: center; gap: 10px; }
+.loom-admin-topbar .service-status {
+  gap: 8px;
+  min-height: 36px;
+  padding: 0 14px;
+  border: 1px solid rgba(255, 255, 255, .1);
+  border-radius: 999px;
+  background: rgba(4, 14, 24, .3);
+  color: var(--ink-2);
+  font-size: 13px;
+  white-space: nowrap;
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+}
+.loom-admin-topbar .service-status i { width: 7px; height: 7px; }
+.loom-admin-topbar .service-status[data-state="bad"] i { background: var(--rose); box-shadow: 0 0 12px rgba(255, 180, 191, .55); }
 
+.loom-admin-shell .switch-account-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  width: auto;
+  min-height: 36px;
+  padding: 0 15px;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  -webkit-backdrop-filter: blur(14px);
+  backdrop-filter: blur(14px);
+}
+.loom-admin-shell .switch-account-button svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.usage-refresh:active svg { transform: rotate(-120deg); transition: transform .3s ease; }
 
-/* Overview density pass: keep the control surface visible in a laptop viewport. */
-#overview.usage-heading{padding-top:6px;padding-bottom:2px}
-.loom-admin-overview-bottom{align-items:start}
-.loom-admin-ops-card,.loom-admin-control-card{padding:15px 16px}
-.loom-admin-card-head{padding-bottom:10px}
-.loom-admin-ops-row{padding:10px 0}
-.loom-admin-privacy-note{margin-top:9px;padding:8px 10px}
-.loom-admin-control-section{padding:10px 0}
-.loom-admin-quick-grid{gap:6px;margin-top:7px}
-.loom-admin-quick-grid>button{padding:8px 10px}
-.loom-admin-overview-flags .loom-admin-empty-block{margin:6px 0 0;padding:7px 9px}
+/* ============================================================ section navigation (precision glass slider) */
+.loom-admin-section-nav {
+  --nav-item-w: 86px;
+  --nav-gap: 4px;
+  --nav-pad: 7px;
+  --nav-index: 0;
+  position: sticky;
+  top: 14px;
+  z-index: 24;
+  display: grid;
+  grid-template-columns: repeat(11, var(--nav-item-w));
+  gap: var(--nav-gap);
+  width: max-content;
+  max-width: calc(100vw - 40px);
+  min-height: 62px;
+  margin: 10px auto 30px;
+  padding: var(--nav-pad);
+  overflow-x: auto;
+  overflow-y: hidden;
+  border: 1px solid rgba(218, 235, 255, .13);
+  border-radius: 21px;
+  background:
+    radial-gradient(110% 180% at 12% -55%, rgba(198, 231, 255, .12), transparent 48%),
+    linear-gradient(180deg, rgba(13, 24, 37, .69), rgba(7, 14, 24, .59));
+  box-shadow: 0 18px 52px rgba(2, 8, 16, .24), 0 4px 16px rgba(2, 8, 16, .12), inset 0 1px 0 rgba(255, 255, 255, .09), inset 0 -1px 0 rgba(255, 255, 255, .025);
+  scrollbar-width: none;
+  isolation: isolate;
+  -webkit-backdrop-filter: blur(26px) saturate(1.25);
+  backdrop-filter: blur(26px) saturate(1.25);
+}
+.loom-admin-section-nav::-webkit-scrollbar { display: none; }
+.loom-admin-section-nav::before {
+  content: "";
+  position: absolute;
+  z-index: 0;
+  top: var(--nav-pad);
+  left: var(--nav-pad);
+  width: var(--nav-item-w);
+  height: calc(100% - (var(--nav-pad) * 2));
+  border: 1px solid rgba(211, 235, 255, .18);
+  border-radius: 15px;
+  background:
+    linear-gradient(112deg, transparent 12%, rgba(255, 255, 255, .13) 33%, transparent 49%) 0 0 / 230% 100%,
+    radial-gradient(120% 150% at 18% -20%, rgba(221, 241, 255, .19), transparent 47%),
+    linear-gradient(180deg, rgba(150, 197, 232, .17), rgba(84, 132, 177, .12));
+  box-shadow: 0 9px 24px rgba(30, 80, 126, .18), 0 2px 8px rgba(0, 0, 0, .18), inset 0 1px 0 rgba(255, 255, 255, .16), inset 0 -1px 0 rgba(202, 230, 249, .035);
+  transform: translate3d(calc(var(--nav-index) * (var(--nav-item-w) + var(--nav-gap))), 0, 0);
+  transition: transform 520ms cubic-bezier(.2, .88, .22, 1);
+  animation: loom-admin-nav-sheen 6s ease-in-out infinite;
+  pointer-events: none;
+  will-change: transform;
+}
+.loom-admin-section-nav::after {
+  content: "";
+  position: absolute;
+  z-index: 3;
+  top: 0;
+  right: 25px;
+  left: 25px;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(235, 247, 255, .33), rgba(255, 255, 255, .12), transparent);
+  opacity: .72;
+  pointer-events: none;
+}
+@keyframes loom-admin-nav-sheen {
+  0%, 64%, 100% { background-position: -120% 0, 0 0, 0 0; }
+  78% { background-position: 170% 0, 0 0, 0 0; }
+}
+.loom-admin-section-nav:has(>a:nth-child(2)[aria-current="page"]) { --nav-index: 1; }
+.loom-admin-section-nav:has(>a:nth-child(3)[aria-current="page"]) { --nav-index: 2; }
+.loom-admin-section-nav:has(>a:nth-child(4)[aria-current="page"]) { --nav-index: 3; }
+.loom-admin-section-nav:has(>a:nth-child(5)[aria-current="page"]) { --nav-index: 4; }
+.loom-admin-section-nav:has(>a:nth-child(6)[aria-current="page"]) { --nav-index: 5; }
+.loom-admin-section-nav:has(>a:nth-child(7)[aria-current="page"]) { --nav-index: 6; }
+.loom-admin-section-nav:has(>a:nth-child(8)[aria-current="page"]) { --nav-index: 7; }
+.loom-admin-section-nav:has(>a:nth-child(9)[aria-current="page"]) { --nav-index: 8; }
+.loom-admin-section-nav:has(>a:nth-child(10)[aria-current="page"]) { --nav-index: 9; }
+.loom-admin-section-nav:has(>a:nth-child(11)[aria-current="page"]) { --nav-index: 10; }
+.loom-admin-section-nav > a {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 48px;
+  padding: 0 8px;
+  border-radius: 14px;
+  color: rgba(219, 231, 243, .6);
+  font-size: 14px;
+  font-weight: 650;
+  letter-spacing: .02em;
+  line-height: 1;
+  white-space: nowrap;
+  transition: color 220ms ease, text-shadow 220ms ease, transform 260ms cubic-bezier(.2, .88, .22, 1);
+}
+.loom-admin-section-nav > a::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  inset: 5px;
+  border-radius: 11px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, .055), rgba(255, 255, 255, .012));
+  opacity: 0;
+  transform: scale(.96);
+  transition: opacity 210ms ease, transform 260ms cubic-bezier(.2, .88, .22, 1);
+}
+.loom-admin-section-nav > a:hover { color: rgba(241, 248, 255, .9); text-shadow: 0 0 17px rgba(176, 219, 248, .14); transform: translateY(-1px); }
+.loom-admin-section-nav > a:hover::before { opacity: 1; transform: scale(1); }
+.loom-admin-section-nav > a:active { transform: translateY(0) scale(.985); }
+.loom-admin-section-nav > a[aria-current="page"] { color: rgba(249, 252, 255, .98); text-shadow: 0 1px 0 rgba(255, 255, 255, .13), 0 0 16px rgba(171, 219, 249, .16); }
+.loom-admin-section-nav > a[aria-current="page"]::before { opacity: 0; }
+.loom-admin-section-nav > a:focus-visible { outline-offset: -5px; }
 
+/* ============================================================ page heads */
+.usage-heading,
+.usage-section-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 24px;
+  min-width: 0;
+  padding: 0 2px;
+}
+.usage-heading { margin: 0 0 18px; padding-top: 4px; }
+.usage-heading > div:first-child,
+.usage-section-head > div:first-child { min-width: 0; max-width: 820px; }
+.usage-heading h1 {
+  margin: 10px 0 0;
+  font-size: clamp(34px, 3.3vw, 46px);
+  font-weight: 620;
+  line-height: 1.02;
+  letter-spacing: -.04em;
+  text-shadow: 0 2px 20px rgba(3, 10, 18, .3);
+}
+.usage-heading > div > p:not(.eyebrow) {
+  max-width: 720px;
+  margin: 12px 0 0;
+  color: rgba(240, 247, 253, .8);
+  font-size: 14px;
+  line-height: 1.7;
+  text-wrap: pretty;
+  text-shadow: var(--text-shadow);
+}
+.usage-section-head h2 {
+  margin: 8px 0 0;
+  font-size: 26px;
+  font-weight: 640;
+  line-height: 1.15;
+  letter-spacing: -.03em;
+  text-shadow: 0 2px 18px rgba(3, 10, 18, .32);
+}
+.usage-section-head p:not(.kicker) {
+  max-width: 780px;
+  margin-top: 8px;
+  color: rgba(240, 247, 253, .78);
+  font-size: 13.5px;
+  line-height: 1.65;
+  text-wrap: pretty;
+  text-shadow: var(--text-shadow);
+}
+.eyebrow,
+.kicker {
+  margin: 0;
+  color: rgba(236, 245, 252, .64);
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: .16em;
+  line-height: 1.3;
+  text-transform: uppercase;
+  text-shadow: var(--text-shadow);
+}
+.loom-admin-shell .utility-overline {
+  display: block;
+  margin: 0;
+  color: var(--ink-3);
+  font-size: 10.5px;
+  font-weight: 650;
+  letter-spacing: .12em;
+  line-height: 1.35;
+  text-transform: uppercase;
+}
 
-/* Users v4 · account cards with live Agent + Host telemetry. */
-.loom-admin-users-page{display:grid;gap:14px}.loom-admin-users-head{margin-bottom:0}.loom-admin-users-live{display:inline-flex;align-items:center;gap:7px;padding:7px 10px;border:1px solid rgba(169,217,242,.12);border-radius:999px;background:rgba(5,16,25,.2);color:rgba(226,242,252,.5);font-size:9px;font-weight:700;letter-spacing:.08em}.loom-admin-users-live i{width:6px;height:6px;border-radius:50%;background:var(--admin-good);box-shadow:0 0 0 4px rgba(169,229,212,.07),0 0 14px rgba(169,229,212,.24)}
-.loom-admin-users-toolbar{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:10px 12px;min-height:0}.loom-admin-user-filters{display:flex;gap:4px;align-items:center;flex-wrap:wrap}.loom-admin-user-filters button{border:0;border-radius:8px;padding:7px 10px;background:transparent;color:rgba(225,238,248,.44);font:inherit;font-size:10px;font-weight:650;cursor:pointer;transition:.15s ease}.loom-admin-user-filters button:hover{color:#fff;background:rgba(255,255,255,.045)}.loom-admin-user-filters button[aria-pressed="true"]{color:#fff;background:rgba(169,217,242,.1);box-shadow:inset 0 0 0 1px rgba(169,217,242,.09)}.loom-admin-users-tools{display:flex;align-items:center;gap:8px;margin-left:auto}.loom-admin-users-tools .usage-audit-search{min-width:260px}.loom-admin-user-sort{height:34px;border:1px solid var(--admin-line);border-radius:9px;padding:0 30px 0 10px;background:rgba(4,12,19,.32);color:rgba(237,247,253,.68);font-size:10px;outline:none}
-.loom-admin-user-card-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(540px,100%),1fr));gap:14px}.loom-admin-user-card{position:relative;overflow:hidden;display:grid;gap:0;padding:0!important;min-height:0!important;border-color:rgba(211,234,250,.08);background:linear-gradient(145deg,rgba(8,19,29,.44),rgba(5,12,20,.3));box-shadow:0 18px 48px rgba(1,7,12,.08);backdrop-filter:blur(26px) saturate(1.08)}.loom-admin-user-card::before{content:"";position:absolute;inset:0 auto 0 0;width:2px;background:rgba(145,191,218,.22)}.loom-admin-user-card.is-ok::before{background:linear-gradient(180deg,rgba(169,229,212,.8),rgba(112,194,221,.16))}.loom-admin-user-card.is-live::before{background:linear-gradient(180deg,rgba(169,217,242,.86),rgba(113,170,219,.18))}.loom-admin-user-card.is-warn::before{background:linear-gradient(180deg,rgba(241,214,155,.82),rgba(229,161,117,.18))}.loom-admin-user-card.is-bad::before{background:linear-gradient(180deg,rgba(255,194,201,.82),rgba(226,111,126,.18))}
-.loom-admin-user-card-head{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:12px;align-items:center;padding:16px 17px 14px;border-bottom:1px solid rgba(255,255,255,.06)}.loom-admin-user-avatar{display:grid;place-items:center;width:40px;height:40px;border:1px solid rgba(220,239,251,.1);border-radius:12px;background:linear-gradient(145deg,rgba(169,217,242,.12),rgba(255,255,255,.025));color:rgba(246,251,255,.9);font-size:15px;font-weight:680;box-shadow:inset 0 1px 0 rgba(255,255,255,.035)}.loom-admin-user-identity{display:grid;gap:5px;min-width:0}.loom-admin-user-identity>div{display:flex;align-items:center;gap:8px;min-width:0}.loom-admin-user-identity strong{overflow:hidden;text-overflow:ellipsis;color:#f6fbff;font-size:13px;font-weight:650;white-space:nowrap}.loom-admin-user-identity small{overflow:hidden;text-overflow:ellipsis;color:rgba(218,234,246,.37);font-size:9px;white-space:nowrap}.loom-admin-presence-pill{display:inline-flex;align-items:center;gap:5px;flex:0 0 auto;padding:4px 7px;border:1px solid rgba(255,255,255,.08);border-radius:999px;background:rgba(0,0,0,.12);color:rgba(224,237,247,.46);font-size:8px;font-weight:680;letter-spacing:.02em}.loom-admin-presence-pill i{width:5px;height:5px;border-radius:50%;background:rgba(210,229,241,.34)}.loom-admin-presence-pill.is-ok{color:var(--admin-good);border-color:rgba(169,229,212,.12)}.loom-admin-presence-pill.is-ok i{background:var(--admin-good);box-shadow:0 0 9px rgba(169,229,212,.35)}.loom-admin-presence-pill.is-live{color:var(--admin-live);border-color:rgba(169,217,242,.13)}.loom-admin-presence-pill.is-live i{background:var(--admin-live);box-shadow:0 0 9px rgba(169,217,242,.36)}.loom-admin-presence-pill.is-warn{color:var(--admin-warn);border-color:rgba(241,214,155,.13)}.loom-admin-presence-pill.is-warn i{background:var(--admin-warn)}.loom-admin-presence-pill.is-bad{color:var(--admin-bad);border-color:rgba(255,194,201,.13)}.loom-admin-presence-pill.is-bad i{background:var(--admin-bad)}.loom-admin-user-role select{border:1px solid var(--admin-line);border-radius:8px;padding:6px 24px 6px 8px;background:rgba(3,10,17,.26);color:rgba(241,248,253,.62);font-size:9px}
-.loom-admin-user-device{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:11px;align-items:center;margin:13px 16px 0;padding:12px 13px;border:1px solid rgba(255,255,255,.065);border-radius:11px;background:rgba(2,9,15,.16)}.loom-admin-user-device.is-online{border-color:rgba(169,229,212,.10);background:linear-gradient(110deg,rgba(49,105,93,.09),rgba(3,10,17,.14))}.loom-admin-device-mark{position:relative;display:grid;place-items:center;width:30px;height:30px;border:1px solid rgba(215,235,248,.09);border-radius:8px;background:rgba(255,255,255,.025)}.loom-admin-device-mark::before{content:"";display:block;width:14px;height:9px;border:1.5px solid rgba(210,231,244,.48);border-radius:2px}.loom-admin-device-mark::after{content:"";position:absolute;bottom:7px;width:8px;height:1px;background:rgba(210,231,244,.4);box-shadow:0 3px 0 -0.2px rgba(210,231,244,.3)}.loom-admin-user-device-copy{display:grid;gap:2px;min-width:0}.loom-admin-user-device-copy>span{color:rgba(214,232,244,.28);font-size:7px;font-weight:700;letter-spacing:.12em}.loom-admin-user-device-copy strong{overflow:hidden;text-overflow:ellipsis;color:rgba(245,250,255,.82);font-size:11px;font-weight:630;white-space:nowrap}.loom-admin-user-device-copy small{overflow:hidden;text-overflow:ellipsis;color:rgba(217,233,244,.34);font-size:8px;white-space:nowrap}.loom-admin-user-device-state{display:grid;gap:3px;justify-items:end;text-align:right}.loom-admin-user-device-state b{color:rgba(218,233,244,.42);font-size:8px;font-weight:700;letter-spacing:.08em}.loom-admin-user-device.is-online .loom-admin-user-device-state b{color:var(--admin-good)}.loom-admin-user-device-state small{color:rgba(217,233,244,.32);font-size:8px;white-space:nowrap}
-.loom-admin-user-metric-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));margin:13px 16px 0;border:1px solid rgba(255,255,255,.06);border-radius:11px;overflow:hidden;background:rgba(3,10,16,.10)}.loom-admin-user-metric-grid>div{position:relative;display:grid;gap:3px;padding:11px 12px}.loom-admin-user-metric-grid>div+div::before{content:"";position:absolute;left:0;top:10px;bottom:10px;width:1px;background:rgba(255,255,255,.055)}.loom-admin-user-metric-grid span{color:rgba(216,233,245,.31);font-size:7px;font-weight:700;letter-spacing:.08em}.loom-admin-user-metric-grid strong{color:rgba(247,251,255,.88);font-size:17px;line-height:1.05;font-weight:650}.loom-admin-user-metric-grid small{overflow:hidden;text-overflow:ellipsis;color:rgba(216,233,245,.31);font-size:8px;white-space:nowrap}
-.loom-admin-user-visual-grid{display:grid;grid-template-columns:minmax(0,1.55fr) minmax(180px,.7fr);gap:10px;margin:10px 16px 0}.loom-admin-user-chart,.loom-admin-user-success{min-height:118px;padding:11px 12px;border:1px solid rgba(255,255,255,.06);border-radius:11px;background:rgba(3,10,16,.10)}.loom-admin-user-chart-head{display:flex;align-items:center;justify-content:space-between;gap:8px}.loom-admin-user-chart-head>span{color:rgba(215,232,244,.31);font-size:7px;font-weight:700;letter-spacing:.1em}.loom-admin-user-chart-head>b{color:rgba(240,248,253,.56);font-size:8px;font-weight:650}.loom-admin-user-spark{display:flex;align-items:flex-end;gap:3px;height:60px;margin-top:10px}.loom-admin-user-spark>i{position:relative;flex:1;height:100%;min-width:2px}.loom-admin-user-spark>i>span{position:absolute;inset:auto 0 0;height:var(--bar);min-height:3px;border-radius:2px 2px 1px 1px;background:rgba(137,190,220,.13);transition:height .2s ease,background .2s ease}.loom-admin-user-spark>i.is-active>span{background:linear-gradient(180deg,rgba(169,217,242,.68),rgba(113,171,204,.25))}.loom-admin-user-chart-axis{display:flex;justify-content:space-between;margin-top:5px;color:rgba(216,232,244,.22);font-size:7px}.loom-admin-user-success{display:flex;align-items:center;justify-content:center;gap:13px}.loom-admin-user-ring{position:relative;display:grid;place-items:center;width:70px;height:70px;flex:0 0 70px;border-radius:50%;background:conic-gradient(rgba(169,229,212,.76) calc(var(--score)*1%),rgba(255,255,255,.055) 0);box-shadow:inset 0 0 0 1px rgba(255,255,255,.035)}.loom-admin-user-ring::after{content:"";position:absolute;inset:6px;border-radius:50%;background:rgba(9,18,27,.96);box-shadow:inset 0 0 0 1px rgba(255,255,255,.04)}.loom-admin-user-ring strong,.loom-admin-user-ring span{position:relative;z-index:1}.loom-admin-user-ring strong{align-self:end;color:#eff9f6;font-size:14px;font-weight:660}.loom-admin-user-ring span{align-self:start;color:rgba(215,234,244,.31);font-size:6px;font-weight:700;letter-spacing:.08em}.loom-admin-user-ring.is-empty{background:rgba(255,255,255,.045)}.loom-admin-user-success>div:last-child{display:grid;gap:3px;min-width:0}.loom-admin-user-success>div:last-child b{color:rgba(243,249,253,.68);font-size:10px;font-weight:630}.loom-admin-user-success>div:last-child small{color:rgba(216,232,244,.30);font-size:8px}
-.loom-admin-user-tools{margin:10px 16px 0;padding:11px 12px;border:1px solid rgba(255,255,255,.055);border-radius:11px;background:rgba(3,10,16,.08)}.loom-admin-user-tool-bar{display:flex;height:4px;margin-top:10px;overflow:hidden;border-radius:999px;background:rgba(255,255,255,.05)}.loom-admin-user-tool-bar>i{display:block;width:var(--share);min-width:2px;height:100%}.loom-admin-user-tool-bar>i>span{display:block;width:100%;height:100%;background:rgba(164,214,239,.58)}.loom-admin-user-tool-bar>i.tool-2>span{background:rgba(169,229,212,.54)}.loom-admin-user-tool-bar>i.tool-3>span{background:rgba(198,190,238,.50)}.loom-admin-user-tool-bar>i.tool-4>span{background:rgba(241,214,155,.50)}.loom-admin-user-tool-legend{display:flex;gap:10px;margin-top:8px;flex-wrap:wrap}.loom-admin-user-tool-legend>span{display:inline-flex;align-items:center;gap:4px;color:rgba(216,233,244,.34);font-size:7px}.loom-admin-user-tool-legend>span>i{width:5px;height:5px;border-radius:2px;background:rgba(164,214,239,.58)}.loom-admin-user-tool-legend>span>i.tool-2{background:rgba(169,229,212,.54)}.loom-admin-user-tool-legend>span>i.tool-3{background:rgba(198,190,238,.50)}.loom-admin-user-tool-legend>span>i.tool-4{background:rgba(241,214,155,.50)}.loom-admin-user-tool-legend b{color:rgba(239,247,252,.55);font-weight:650}.loom-admin-user-tool-empty{display:block;margin-top:10px;color:rgba(216,232,244,.26);font-size:8px}
-.loom-admin-user-card-foot{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-top:13px;padding:12px 16px 14px;border-top:1px solid rgba(255,255,255,.055)}.loom-admin-user-times{display:flex;gap:14px;flex-wrap:wrap}.loom-admin-user-times span{color:rgba(216,232,244,.28);font-size:8px}.loom-admin-user-times b{color:rgba(237,246,252,.52);font-weight:620}.loom-admin-action.is-primary{color:rgba(236,248,255,.82);border-color:rgba(169,217,242,.13);background:rgba(93,164,202,.09)}.loom-admin-action.is-primary:hover:not(:disabled){background:rgba(93,164,202,.16);border-color:rgba(169,217,242,.20)}.loom-admin-users-empty{display:grid;place-items:center;gap:5px;min-height:180px!important;color:rgba(220,235,247,.4)}.loom-admin-users-empty strong{color:rgba(244,250,255,.72);font-size:13px}.loom-admin-users-empty span{font-size:9px}
-@media(max-width:1100px){.loom-admin-users-toolbar{align-items:stretch;flex-direction:column}.loom-admin-users-tools{margin-left:0}.loom-admin-users-tools .usage-audit-search{flex:1;min-width:0}.loom-admin-user-visual-grid{grid-template-columns:1fr}.loom-admin-user-success{justify-content:flex-start}.loom-admin-user-card-foot{align-items:flex-start;flex-direction:column}.loom-admin-user-card-foot .loom-admin-actions{width:100%;justify-content:flex-end}}
-@media(max-width:680px){.loom-admin-user-card-grid{grid-template-columns:1fr}.loom-admin-user-card-head{grid-template-columns:auto minmax(0,1fr)}.loom-admin-user-role{grid-column:2}.loom-admin-user-device{grid-template-columns:auto minmax(0,1fr)}.loom-admin-user-device-state{grid-column:2;justify-items:start;text-align:left}.loom-admin-user-metric-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.loom-admin-user-metric-grid>div:nth-child(3)::before{display:none}.loom-admin-users-tools{align-items:stretch;flex-direction:column}.loom-admin-user-sort{width:100%}.loom-admin-user-times{display:grid;gap:4px}.loom-admin-user-card-foot .loom-admin-actions{justify-content:flex-start;flex-wrap:wrap}}
+.usage-heading-actions { display: flex; align-items: center; gap: 12px; flex: 0 0 auto; }
+.loom-admin-shell .usage-updated { min-width: 0; text-align: right; }
+.loom-admin-shell .usage-updated span { color: rgba(236, 245, 252, .56); font-size: 10.5px; font-weight: 650; letter-spacing: .12em; text-shadow: var(--text-shadow); }
+.loom-admin-shell .usage-updated strong { margin-top: 5px; color: var(--ink-1); font-size: 13.5px; font-weight: 600; text-shadow: var(--text-shadow); }
 
-/* Host Health Telemetry v2 */
-.loom-admin-host-health-mini{margin:10px 16px 0;padding:12px 13px;border:1px solid rgba(255,255,255,.06);border-radius:12px;background:linear-gradient(135deg,rgba(4,13,21,.16),rgba(20,43,58,.10));box-shadow:inset 0 1px 0 rgba(255,255,255,.018)}
-.loom-admin-host-health-head{display:grid;grid-template-columns:auto minmax(0,1fr);gap:3px 10px;align-items:baseline}.loom-admin-host-health-head>span,.loom-admin-device-trend-head>span{color:rgba(214,232,244,.30);font-size:7px;font-weight:750;letter-spacing:.13em}.loom-admin-host-health-head>b{overflow:hidden;text-overflow:ellipsis;color:rgba(245,250,255,.72);font-size:9px;font-weight:650;white-space:nowrap}.loom-admin-host-health-head>small{grid-column:1/-1;color:rgba(215,232,244,.29);font-size:8px;line-height:1.45}
-.loom-admin-host-health-grid,.loom-admin-device-health-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:7px;margin-top:10px}.loom-admin-health-metric{min-width:0;padding:8px 9px;border:1px solid rgba(255,255,255,.045);border-radius:9px;background:rgba(2,8,14,.13)}.loom-admin-health-metric>div{display:flex;align-items:baseline;justify-content:space-between;gap:6px}.loom-admin-health-metric span{color:rgba(215,232,244,.31);font-size:7px;font-weight:740;letter-spacing:.09em}.loom-admin-health-metric strong{color:rgba(244,250,253,.62);font-size:10px;font-weight:680}.loom-admin-health-metric>i{display:block;height:3px;margin-top:7px;overflow:hidden;border-radius:999px;background:rgba(255,255,255,.055)}.loom-admin-health-metric>i>b{display:block;height:100%;border-radius:inherit;background:rgba(154,204,231,.52);transition:width .25s ease}.loom-admin-health-metric>small{display:block;margin-top:5px;overflow:hidden;text-overflow:ellipsis;color:rgba(214,231,242,.25);font-size:7px;white-space:nowrap}.loom-admin-health-metric.is-ok>i>b{background:rgba(160,221,203,.60)}.loom-admin-health-metric.is-warn>i>b{background:rgba(239,207,140,.62)}.loom-admin-health-metric.is-bad>i>b{background:rgba(243,151,164,.65)}
-.loom-admin-capabilities{display:flex;gap:6px;flex-wrap:wrap;margin-top:9px}.loom-admin-capability{display:inline-flex;align-items:center;gap:5px;padding:4px 7px;border:1px solid rgba(255,255,255,.05);border-radius:999px;background:rgba(0,0,0,.09);color:rgba(214,232,244,.27);font-size:7px;font-weight:650;letter-spacing:.02em}.loom-admin-capability>i{width:5px;height:5px;border-radius:50%;background:rgba(255,255,255,.13)}.loom-admin-capability.is-on{color:rgba(215,241,233,.58);border-color:rgba(156,220,201,.09);background:rgba(43,94,80,.08)}.loom-admin-capability.is-on>i{background:rgba(164,231,209,.70);box-shadow:0 0 8px rgba(164,231,209,.16)}
-.loom-admin-host-health-empty{display:grid;gap:4px;margin:10px 16px 0;padding:11px 13px;border:1px dashed rgba(255,255,255,.07);border-radius:11px;background:rgba(1,8,13,.08)}.loom-admin-host-health-empty>b{color:rgba(216,233,244,.36);font-size:7px;letter-spacing:.12em}.loom-admin-host-health-empty>span{color:rgba(215,232,244,.27);font-size:8px;line-height:1.55}
-.loom-admin-devices-head{align-items:center}.loom-admin-devices-live{display:flex;align-items:center;gap:7px;color:rgba(215,232,244,.32);font-size:8px;font-weight:650;letter-spacing:.08em}.loom-admin-devices-live>i{width:6px;height:6px;border-radius:50%;background:rgba(164,231,209,.72);box-shadow:0 0 10px rgba(164,231,209,.20)}.loom-admin-devices-live>b{margin-left:5px;color:rgba(241,248,252,.52);font-size:8px}.loom-admin-device-card-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(520px,100%),1fr));gap:14px}.loom-admin-device-card{position:relative;overflow:hidden;padding:16px!important;border-color:rgba(211,234,250,.07);background:linear-gradient(145deg,rgba(7,17,27,.46),rgba(4,11,18,.30));box-shadow:0 18px 48px rgba(0,6,11,.08)}.loom-admin-device-card::before{content:"";position:absolute;inset:0 auto 0 0;width:2px;background:rgba(143,181,204,.18)}.loom-admin-device-card.is-online::before{background:linear-gradient(180deg,rgba(163,229,207,.75),rgba(111,181,212,.16))}.loom-admin-device-card>header{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}.loom-admin-device-card>header h3{margin:3px 0 1px;color:rgba(246,251,255,.86);font-size:15px;font-weight:650}.loom-admin-device-card>header small{color:rgba(215,232,244,.32);font-size:8px}.loom-admin-device-health-grid{margin-top:14px}.loom-admin-device-trend-head{display:flex;align-items:center;justify-content:space-between;margin-top:13px}.loom-admin-device-trend-head>small{color:rgba(215,232,244,.24);font-size:7px}.loom-admin-device-health-trend{display:flex;align-items:flex-end;gap:3px;height:64px;margin-top:7px;padding:7px 1px 0;border-top:1px solid rgba(255,255,255,.035)}.loom-admin-device-health-trend>i{position:relative;flex:1;height:100%;min-width:3px}.loom-admin-device-health-trend>i>span{position:absolute;bottom:0;width:42%;height:var(--v);min-height:1px;border-radius:2px 2px 0 0}.loom-admin-device-health-trend>i>.is-cpu{left:5%;background:rgba(155,211,239,.58)}.loom-admin-device-health-trend>i>.is-mem{right:5%;background:rgba(163,226,205,.45)}.loom-admin-device-card>footer{display:flex;gap:13px;flex-wrap:wrap;margin-top:12px;padding-top:10px;border-top:1px solid rgba(255,255,255,.045);color:rgba(214,231,242,.28);font-size:7px}.loom-admin-device-card>footer b{color:rgba(240,247,252,.50);font-weight:650}
-@media(max-width:900px){.loom-admin-host-health-grid,.loom-admin-device-health-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.loom-admin-device-card-grid{grid-template-columns:1fr}}
-@media(max-width:560px){.loom-admin-host-health-head{grid-template-columns:1fr}.loom-admin-host-health-grid,.loom-admin-device-health-grid{grid-template-columns:1fr}.loom-admin-device-card>header{align-items:flex-start;flex-direction:column}.loom-admin-device-card>footer{display:grid;grid-template-columns:1fr 1fr}.loom-admin-device-health-trend{height:54px}}
+.loom-admin-privacy-pill,
+.loom-admin-security-dot,
+.loom-admin-head-note,
+.loom-admin-users-live,
+.loom-admin-monitor-live,
+.loom-admin-devices-live {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 32px;
+  padding: 0 13px;
+  border: 1px solid rgba(255, 255, 255, .1);
+  border-radius: 999px;
+  background: rgba(4, 14, 24, .3);
+  color: rgba(236, 245, 252, .74);
+  font-size: 11.5px;
+  font-weight: 650;
+  letter-spacing: .08em;
+  white-space: nowrap;
+  flex: 0 0 auto;
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+}
+.loom-admin-shell .usage-section-head > .loom-admin-head-note { color: rgba(236, 245, 252, .78); font-size: 12.5px; font-weight: 600; letter-spacing: .02em; }
+.loom-admin-privacy-pill > i,
+.loom-admin-security-dot > i { width: 6px; height: 6px; border-radius: 50%; background: var(--violet); box-shadow: 0 0 10px rgba(203, 194, 244, .5); }
+.loom-admin-security-dot > i { background: var(--mint); box-shadow: 0 0 10px rgba(131, 239, 199, .5); }
+.loom-admin-users-live > i,
+.loom-admin-monitor-live > i,
+.loom-admin-devices-live > i { width: 7px; height: 7px; border-radius: 50%; background: var(--mint); box-shadow: 0 0 12px rgba(131, 239, 199, .6); animation: loom-admin-live 2.4s ease-in-out infinite; }
+.loom-admin-devices-live > b { margin-left: 4px; padding-left: 10px; border-left: 1px solid rgba(255, 255, 255, .14); color: var(--ink-1); font-weight: 650; letter-spacing: .02em; }
+
+/* ============================================================ glass surfaces */
+.account-card {
+  position: relative;
+  display: block;
+  min-width: 0;
+  min-height: 0;
+  padding: 20px 22px;
+  border: 1px solid var(--glass-edge);
+  border-radius: var(--r-card);
+  background-image: var(--glass-sheen);
+  box-shadow: var(--shadow), var(--hi);
+}
+body.beach-wallpaper-active .loom-admin-shell .cards,
+body.beach-wallpaper-active .loom-admin-shell .cards:hover,
+body.beach-wallpaper-active .loom-admin-shell .cards:active { transform: none; }
+.loom-admin-shell .account-card h3 { margin: 6px 0 0; color: var(--ink-1); font-size: 17px; font-weight: 640; letter-spacing: -.015em; }
+.loom-admin-shell .account-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+.loom-admin-shell .account-head h2 { margin: 8px 0 0; font-size: 22px; font-weight: 640; letter-spacing: -.02em; }
+.loom-admin-shell .usage-account-email { margin-top: 8px; overflow: visible; color: var(--ink-3); font-size: 13.5px; line-height: 1.6; white-space: normal; }
+
+#adminContent { display: grid; gap: 16px; }
+.loom-admin-shell .usage-accounts-section,
+.loom-admin-shell .usage-ops-section { display: grid; gap: 16px; min-width: 0; margin-top: 0; }
+.loom-admin-shell .usage-ops-grid { display: grid; gap: 16px; min-width: 0; margin-top: 0; }
+.loom-admin-shell .usage-ops-panel { align-self: stretch; padding: 20px 22px; }
+.loom-admin-shell .loom-admin-system-grid { align-items: stretch; }
+
+/* ============================================================ controls */
+.loom-admin-shell .usage-audit-search,
+.loom-policy-search,
+.loom-admin-tool-search,
+.loom-policy-create input,
+.loom-admin-flag-editor input:not([type="checkbox"]),
+.loom-admin-flag-editor textarea,
+.loom-admin-user-sort,
+.loom-admin-tool-sort,
+.loom-policy-select,
+.loom-admin-user-role select {
+  min-width: 0;
+  height: 36px;
+  padding: 0 12px;
+  border: 1px solid rgba(255, 255, 255, .12);
+  border-radius: var(--r-ctl);
+  outline: none;
+  background-color: rgba(10, 26, 42, .4);
+  color: var(--ink-1);
+  font: inherit;
+  font-size: 13px;
+  transition: border-color .18s ease, background-color .18s ease, box-shadow .18s ease;
+}
+.loom-admin-shell .usage-audit-search:hover,
+.loom-policy-search:hover,
+.loom-admin-tool-search:hover,
+.loom-admin-user-sort:hover,
+.loom-admin-tool-sort:hover,
+.loom-policy-select:hover { border-color: rgba(255, 255, 255, .18); }
+.loom-admin-shell .usage-audit-search:focus,
+.loom-policy-search:focus,
+.loom-admin-tool-search:focus,
+.loom-policy-create input:focus,
+.loom-admin-flag-editor input:not([type="checkbox"]):focus,
+.loom-admin-flag-editor textarea:focus,
+.loom-admin-user-sort:focus,
+.loom-admin-tool-sort:focus,
+.loom-policy-select:focus,
+.loom-admin-user-role select:focus { border-color: rgba(150, 224, 242, .42); background-color: rgba(10, 26, 42, .58); box-shadow: 0 0 0 3px rgba(150, 224, 242, .1); }
+.loom-admin-shell ::placeholder { color: rgba(226, 238, 248, .42); opacity: 1; }
+.loom-admin-shell .usage-audit-search,
+.loom-policy-search,
+.loom-admin-tool-search {
+  padding-left: 34px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23b4c6d6' stroke-width='2.2' stroke-linecap='round'%3E%3Ccircle cx='11' cy='11' r='7'/%3E%3Cpath d='m20 20-3.5-3.5'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: 11px 50%;
+  background-size: 15px 15px;
+}
+.loom-admin-user-sort,
+.loom-admin-tool-sort,
+.loom-policy-select,
+.loom-admin-user-role select {
+  padding-right: 32px;
+  -webkit-appearance: none;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23c7d6e3' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  background-size: 14px 14px;
+  cursor: pointer;
+}
+.loom-admin-shell input[type="checkbox"] { accent-color: #7fcbe6; }
+
+/* segmented controls — same pill language as the portal range control */
+.loom-admin-user-filters,
+.loom-admin-run-filters,
+.loom-admin-shell .usage-range-control,
+.loom-policy-tabs,
+.loom-policy-view-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  max-width: 100%;
+  padding: 3px;
+  overflow-x: auto;
+  border: 1px solid rgba(255, 255, 255, .1);
+  border-radius: 999px;
+  background: rgba(7, 24, 39, .32);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .045);
+  scrollbar-width: none;
+}
+.loom-admin-user-filters button,
+.loom-admin-run-filters button,
+.loom-admin-shell .usage-range-control button,
+.loom-policy-tab,
+.loom-policy-view-toggle button {
+  flex: 0 0 auto;
+  min-height: 30px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--ink-3);
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 620;
+  letter-spacing: .02em;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: color .18s ease, background-color .18s ease, box-shadow .18s ease;
+}
+.loom-admin-user-filters button:hover,
+.loom-admin-run-filters button:hover,
+.loom-admin-shell .usage-range-control button:hover,
+.loom-policy-tab:hover,
+.loom-policy-view-toggle button:hover { color: var(--ink-1); background: rgba(255, 255, 255, .07); }
+.loom-admin-user-filters button[aria-pressed="true"],
+.loom-admin-run-filters button[aria-pressed="true"],
+.loom-admin-shell .usage-range-control button[aria-pressed="true"],
+.loom-policy-tab[aria-selected="true"],
+.loom-policy-view-toggle button[aria-pressed="true"] { color: #f5fbff; background: rgba(126, 188, 220, .2); box-shadow: inset 0 0 0 1px rgba(158, 213, 239, .15); }
+
+/* switches */
+.loom-admin-switch,
+.loom-policy-switch { position: relative; display: inline-flex; flex: 0 0 auto; cursor: pointer; }
+.loom-admin-switch > input,
+.loom-policy-switch > input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+.loom-admin-switch > span,
+.loom-policy-switch > span {
+  position: relative;
+  display: block;
+  width: 40px;
+  height: 22px;
+  border: 1px solid rgba(255, 255, 255, .13);
+  border-radius: 999px;
+  background: rgba(0, 0, 0, .24);
+  transition: background .2s ease, border-color .2s ease;
+}
+.loom-admin-switch > span::after,
+.loom-policy-switch > span::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: rgba(236, 245, 252, .62);
+  transition: transform .2s ease, background .2s ease;
+}
+.loom-admin-switch > input:checked + span,
+.loom-policy-switch > input:checked + span { border-color: rgba(156, 226, 207, .32); background: rgba(92, 177, 157, .34); }
+.loom-admin-switch > input:checked + span::after,
+.loom-policy-switch > input:checked + span::after { background: #c4f2e3; transform: translateX(18px); }
+.loom-admin-switch > input:focus-visible + span,
+.loom-policy-switch > input:focus-visible + span { box-shadow: 0 0 0 3px rgba(150, 224, 242, .18); }
+.loom-admin-switch > input:disabled + span,
+.loom-policy-switch > input:disabled + span { opacity: .42; cursor: not-allowed; }
+
+/* buttons */
+.loom-admin-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 0 13px;
+  border: 1px solid rgba(255, 255, 255, .12);
+  border-radius: var(--r-ctl);
+  background: rgba(255, 255, 255, .07);
+  color: var(--ink-2);
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 620;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background-color .18s ease, color .18s ease, border-color .18s ease, transform .18s ease;
+}
+.loom-admin-action:hover:not(:disabled) { border-color: rgba(255, 255, 255, .2); background: rgba(255, 255, 255, .13); color: #fff; }
+.loom-admin-action:active:not(:disabled) { transform: scale(.985); }
+.loom-admin-action:disabled { opacity: .38; cursor: not-allowed; }
+.loom-admin-action.is-primary { border-color: var(--cyan-edge); background: var(--cyan-bg); color: var(--cyan-ink); }
+.loom-admin-action.is-primary:hover:not(:disabled) { border-color: rgba(157, 225, 240, .3); background: var(--cyan-bg-hover); color: #fff; }
+.loom-admin-action.is-danger { border-color: rgba(255, 170, 182, .2); color: #ffc9d1; }
+.loom-admin-action.is-danger:hover:not(:disabled) { border-color: rgba(255, 170, 182, .34); background: rgba(150, 40, 58, .24); color: #ffe1e5; }
+.loom-admin-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.loom-admin-text-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 28px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: rgba(200, 232, 248, .78);
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background-color .18s ease, color .18s ease;
+}
+.loom-admin-text-action:hover { background: rgba(255, 255, 255, .07); color: #fff; }
+
+/* badges + presence pills */
+.loom-admin-badge,
+.loom-admin-presence-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  width: max-content;
+  min-height: 22px;
+  padding: 0 9px;
+  border: 1px solid rgba(255, 255, 255, .1);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, .055);
+  color: var(--ink-2);
+  font-size: 11.5px;
+  font-weight: 620;
+  line-height: 1;
+  white-space: nowrap;
+}
+.loom-admin-badge.is-ok::before,
+.loom-admin-badge.is-bad::before,
+.loom-admin-badge.is-warn::before,
+.loom-admin-badge.is-live::before,
+.loom-admin-presence-pill > i { content: ""; flex: 0 0 auto; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.loom-admin-presence-pill > i { background: rgba(214, 230, 244, .44); }
+.loom-admin-badge.is-ok,
+.loom-admin-presence-pill.is-ok { border-color: rgba(131, 239, 199, .2); background: var(--mint-soft); color: var(--mint); }
+.loom-admin-badge.is-live,
+.loom-admin-presence-pill.is-live { border-color: rgba(169, 217, 242, .22); background: var(--sky-soft); color: var(--sky); }
+.loom-admin-badge.is-warn,
+.loom-admin-presence-pill.is-warn { border-color: rgba(255, 212, 154, .22); background: var(--amber-soft); color: var(--amber); }
+.loom-admin-badge.is-bad,
+.loom-admin-presence-pill.is-bad { border-color: rgba(255, 180, 191, .22); background: var(--rose-soft); color: var(--rose); }
+.loom-admin-presence-pill.is-ok > i { background: var(--mint); box-shadow: 0 0 8px rgba(131, 239, 199, .5); }
+.loom-admin-presence-pill.is-live > i { background: var(--sky); box-shadow: 0 0 8px rgba(169, 217, 242, .55); animation: loom-admin-live 2.2s ease-in-out infinite; }
+.loom-admin-presence-pill.is-warn > i { background: var(--amber); }
+.loom-admin-presence-pill.is-bad > i { background: var(--rose); }
+.loom-admin-badge.is-live::before { box-shadow: 0 0 8px rgba(169, 217, 242, .55); animation: loom-admin-live 2.2s ease-in-out infinite; }
+
+/* empty + error states */
+.loom-admin-empty { padding: 36px 16px !important; color: var(--ink-3) !important; font-size: 13px; text-align: center !important; }
+.loom-admin-empty-block,
+.loom-admin-usage-empty,
+.loom-admin-tool-empty,
+.loom-policy-empty,
+.loom-policy-visible-empty {
+  margin: 12px 0 0;
+  padding: 24px 18px;
+  border: 1px dashed rgba(255, 255, 255, .12);
+  border-radius: var(--r-tile);
+  background: rgba(2, 10, 18, .12);
+  color: var(--ink-3);
+  font-size: 13px;
+  line-height: 1.65;
+  text-align: center;
+}
+.loom-admin-error,
+.loom-policy-error { min-height: 18px; margin: 0; color: #ffc2c9; font-size: 12.5px; }
+.loom-policy-error:empty { display: none; }
+
+/* ============================================================ tables */
+.loom-admin-shell .loom-admin-table-card { padding: 0; overflow: hidden; }
+.loom-admin-table-wrap { overflow: auto; }
+.loom-admin-table {
+  width: 100%;
+  min-width: 980px;
+  border-collapse: separate;
+  border-spacing: 0;
+  color: var(--ink-2);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+.loom-admin-table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--line);
+  background: rgba(9, 21, 33, .72);
+  color: var(--ink-3);
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: .1em;
+  text-align: left;
+  text-transform: uppercase;
+  white-space: nowrap;
+  -webkit-backdrop-filter: blur(16px);
+  backdrop-filter: blur(16px);
+}
+.loom-admin-table td { padding: 12px 16px; border-bottom: 1px solid rgba(255, 255, 255, .06); vertical-align: middle; white-space: nowrap; }
+.loom-admin-table tbody tr { transition: background-color .15s ease; }
+.loom-admin-table tbody tr:hover { background: rgba(255, 255, 255, .035); }
+.loom-admin-table tbody tr:last-child td { border-bottom: 0; }
+.loom-admin-table td > strong { color: var(--ink-1); font-weight: 620; }
+.loom-admin-subline { display: block; margin-top: 3px; color: var(--ink-4); font: 500 11px/1.3 var(--mono); }
+.loom-admin-table code { padding: 3px 7px; border-radius: 6px; background: rgba(255, 255, 255, .06); color: rgba(217, 235, 247, .8); font-size: 11.5px; }
+.loom-admin-table .loom-admin-action { min-height: 28px; padding: 0 11px; font-size: 12px; }
+.loom-admin-user-table { min-width: 760px; }
+.loom-admin-monitor-table .loom-admin-table-wrap { max-height: min(72vh, 860px); }
+
+/* ============================================================ sign in */
+.loom-admin-shell .loom-admin-auth-card { width: 100%; max-width: 480px; margin: 4px auto 64px; padding: 28px 30px 22px; }
+.loom-admin-auth-card .account-head { position: relative; display: block; }
+.loom-admin-shell .loom-admin-auth-card .account-head h2 { font-size: 24px; }
+.loom-admin-auth-card .loom-admin-security-dot { position: absolute; top: -4px; right: 0; }
+.loom-admin-login-form { display: grid; gap: 15px; margin-top: 22px; }
+.loom-admin-login-form label { display: grid; gap: 8px; }
+.loom-admin-login-form label > span { color: var(--ink-3); font-size: 12.5px; font-weight: 600; }
+.loom-admin-login-form input {
+  height: 46px;
+  padding: 0 14px;
+  border: 1px solid rgba(255, 255, 255, .1);
+  border-radius: 10px;
+  outline: none;
+  background: rgba(0, 0, 0, .2);
+  color: var(--ink-1);
+  font-size: 14px;
+  transition: border-color .18s ease, background-color .18s ease;
+}
+.loom-admin-login-form input:focus { border-color: rgba(150, 224, 242, .4); background: rgba(0, 0, 0, .3); }
+.loom-admin-login-button.login-button {
+  width: 100%;
+  height: 46px;
+  margin-top: 4px;
+  padding: 0 16px;
+  border: 1px solid var(--cyan-edge);
+  border-radius: 10px;
+  background: var(--cyan-bg);
+  color: var(--cyan-ink);
+  font-size: 14.5px;
+  font-weight: 650;
+  transition: background-color .18s ease, border-color .18s ease;
+}
+.loom-admin-login-button.login-button:hover { border-color: rgba(157, 225, 240, .3); background: var(--cyan-bg-hover); }
+.loom-admin-login-button.login-button:disabled { opacity: .5; cursor: wait; }
+body:has(#adminContent[hidden]) #overview { flex-direction: column; align-items: center; margin: 34px 0 26px; text-align: center; }
+body:has(#adminContent[hidden]) #overview .usage-heading-actions { display: none; }
+body:has(#adminContent[hidden]) #overview .eyebrow { color: rgba(255, 255, 255, .88); }
+body:has(#adminContent[hidden]) #overview p:not(.eyebrow) { max-width: 540px; margin-right: auto; margin-left: auto; text-wrap: balance; }
+
+/* ============================================================ overview */
+.loom-admin-shell .loom-admin-overview-hero {
+  display: grid;
+  grid-template-columns: minmax(260px, 1fr) auto auto;
+  align-items: center;
+  gap: 16px 28px;
+  padding: 16px 20px;
+}
+.loom-admin-overview-hero::before {
+  content: "";
+  position: absolute;
+  top: 14px;
+  bottom: 14px;
+  left: 0;
+  width: 2px;
+  border-radius: 2px;
+  background: linear-gradient(180deg, rgba(158, 226, 207, .7), rgba(132, 199, 234, .2));
+}
+.loom-admin-overview-hero-main { display: flex; align-items: center; gap: 14px; min-width: 0; }
+.loom-admin-health-orb {
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  flex: 0 0 42px;
+  border: 1px solid rgba(255, 255, 255, .08);
+  border-radius: 12px;
+  background: rgba(3, 10, 16, .24);
+}
+.loom-admin-health-orb > i { width: 10px; height: 10px; border-radius: 50%; background: #9fc9de; box-shadow: 0 0 0 5px rgba(159, 201, 222, .08), 0 0 18px rgba(159, 201, 222, .22); }
+.loom-admin-health-orb[data-state="ok"] > i { background: var(--mint); box-shadow: 0 0 0 5px rgba(131, 239, 199, .09), 0 0 18px rgba(131, 239, 199, .4); animation: loom-admin-live 2.4s ease-in-out infinite; }
+.loom-admin-health-orb[data-state="bad"] > i { background: var(--rose); box-shadow: 0 0 0 5px rgba(255, 180, 191, .09), 0 0 18px rgba(255, 180, 191, .35); }
+.loom-admin-overview-hero-copy { display: grid; gap: 3px; min-width: 0; }
+.loom-admin-overview-hero-copy strong { overflow: hidden; color: var(--ink-1); font-size: 16.5px; font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
+.loom-admin-overview-hero-copy small { overflow: hidden; color: var(--ink-3); font-size: 12.5px; text-overflow: ellipsis; white-space: nowrap; }
+.loom-admin-service-chips { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.loom-admin-service-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 30px;
+  padding: 0 12px;
+  border: 1px solid rgba(255, 255, 255, .08);
+  border-radius: 999px;
+  background: rgba(2, 8, 14, .16);
+  font-size: 12px;
+  white-space: nowrap;
+}
+.loom-admin-service-chip > i { width: 6px; height: 6px; border-radius: 50%; background: rgba(214, 230, 244, .4); }
+.loom-admin-service-chip:has(b[data-state="ok"]) > i { background: var(--mint); box-shadow: 0 0 8px rgba(131, 239, 199, .5); }
+.loom-admin-service-chip:has(b[data-state="bad"]) > i { background: var(--rose); }
+.loom-admin-service-chip.is-private > i { background: var(--violet); }
+.loom-admin-service-chip > span { color: var(--ink-3); }
+.loom-admin-service-chip > b { color: var(--ink-1); font-weight: 650; }
+.loom-admin-service-chip > b[data-state="bad"] { color: var(--rose); }
+.loom-admin-overview-admin { display: grid; gap: 3px; justify-items: end; min-width: 0; text-align: right; }
+.loom-admin-overview-admin > span { color: var(--ink-4); font-size: 10.5px; font-weight: 650; letter-spacing: .12em; text-transform: uppercase; }
+.loom-admin-overview-admin > strong { max-width: 280px; overflow: hidden; color: var(--ink-2); font-size: 12.5px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+
+.loom-admin-primary-metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
+.loom-admin-primary-card {
+  --tone: 169, 217, 242;
+  position: relative;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-areas: "icon label arrow" "value value value" "copy copy copy";
+  align-items: center;
+  column-gap: 12px;
+  min-width: 0;
+  min-height: 140px;
+  padding: 18px 20px 17px;
+  overflow: hidden;
+  border: 1px solid var(--glass-edge);
+  border-radius: var(--r-card);
+  background-color: var(--glass);
+  background-image: radial-gradient(160px 100px at 100% 100%, rgba(var(--tone), .1), transparent 72%), var(--glass-sheen);
+  box-shadow: var(--shadow), var(--hi);
+  color: #fff;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: transform .25s cubic-bezier(.2, .8, .2, 1), border-color .25s ease, box-shadow .25s ease;
+  -webkit-backdrop-filter: var(--blur);
+  backdrop-filter: var(--blur);
+}
+.loom-admin-primary-card::after { content: ""; position: absolute; right: 20px; bottom: 0; left: 20px; height: 1px; background: rgba(var(--tone), .36); }
+.loom-admin-primary-card.is-host { --tone: 131, 239, 199; }
+.loom-admin-primary-card.is-live { --tone: 203, 194, 244; }
+.loom-admin-primary-card.is-attention { --tone: 255, 212, 154; }
+.loom-admin-primary-card:hover { border-color: rgba(214, 235, 251, .18); box-shadow: 0 22px 52px rgba(2, 8, 15, .2), var(--hi); transform: translateY(-2px); }
+.loom-admin-primary-icon {
+  grid-area: icon;
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border: 1px solid rgba(255, 255, 255, .08);
+  border-radius: 10px;
+  background: rgba(var(--tone), .12);
+  color: rgb(var(--tone));
+}
+.loom-admin-primary-icon svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; }
+.loom-admin-primary-card > .utility-overline { grid-area: label; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.loom-admin-primary-card > strong {
+  grid-area: value;
+  margin-top: 18px;
+  color: #f7fbff;
+  font-size: 36px;
+  font-weight: 620;
+  line-height: 1;
+  letter-spacing: -.035em;
+  font-variant-numeric: tabular-nums;
+}
+.loom-admin-primary-card > small { grid-area: copy; margin-top: 8px; color: var(--ink-3); font-size: 12.5px; }
+.loom-admin-primary-card > i {
+  grid-area: arrow;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, .06);
+  color: rgba(225, 240, 249, .5);
+  font-size: 12px;
+  font-style: normal;
+  transition: background-color .2s ease, color .2s ease, transform .25s cubic-bezier(.2, .8, .2, 1);
+}
+.loom-admin-primary-card:hover > i { background: rgba(var(--tone), .2); color: #fff; transform: translate(1px, -1px); }
+
+.loom-admin-shell .loom-admin-overview-pulse { display: grid; grid-template-columns: 210px minmax(0, 1fr); padding: 0; overflow: hidden; }
+.loom-admin-overview-pulse-head { display: grid; align-content: center; gap: 8px; padding: 18px 20px; border-right: 1px solid var(--line); background: rgba(2, 10, 18, .14); }
+.loom-admin-overview-pulse-head > div { display: grid; gap: 5px; }
+.loom-admin-overview-pulse-head strong { color: var(--ink-1); font-size: 17px; font-weight: 640; }
+.loom-admin-overview-pulse-head > small { color: var(--ink-3); font-size: 12px; line-height: 1.5; }
+.loom-admin-pulse-grid { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); min-width: 0; }
+.loom-admin-pulse-grid > div { display: grid; align-content: center; gap: 4px; min-width: 0; padding: 16px 18px; }
+.loom-admin-pulse-grid > div + div { border-left: 1px solid var(--line); }
+.loom-admin-pulse-grid span { display: inline-flex; align-items: center; gap: 6px; color: var(--ink-3); font-size: 10.5px; font-weight: 650; letter-spacing: .1em; text-transform: uppercase; }
+.loom-admin-pulse-grid strong { overflow: hidden; color: var(--ink-1); font-size: 23px; font-weight: 620; line-height: 1.15; letter-spacing: -.025em; text-overflow: ellipsis; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.loom-admin-pulse-grid small { overflow: hidden; color: var(--ink-4); font-size: 11.5px; text-overflow: ellipsis; white-space: nowrap; }
+.loom-admin-pulse-grid .is-failure span::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--rose); }
+
+.loom-admin-overview-bottom { display: grid; grid-template-columns: minmax(0, 1.08fr) minmax(360px, .92fr); gap: 16px; align-items: stretch; }
+.loom-admin-shell .loom-admin-ops-card,
+.loom-admin-shell .loom-admin-control-card { display: flex; flex-direction: column; }
+.loom-admin-card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding-bottom: 14px; border-bottom: 1px solid var(--line); }
+.loom-admin-card-head > div { display: grid; gap: 4px; }
+.loom-admin-shell .loom-admin-card-head h3 { margin: 0; font-size: 18px; }
+.loom-admin-ops-list { display: grid; }
+.loom-admin-ops-row {
+  display: grid;
+  grid-template-columns: minmax(150px, .9fr) minmax(140px, 1.3fr) auto;
+  align-items: center;
+  gap: 18px;
+  padding: 15px 0;
+  border-bottom: 1px solid var(--line);
+}
+.loom-admin-ops-row > div:first-child { display: grid; gap: 3px; }
+.loom-admin-ops-row > div:first-child > span { color: var(--ink-3); font-size: 12px; }
+.loom-admin-ops-row > div:first-child > strong { color: var(--ink-1); font-size: 15px; font-weight: 640; font-variant-numeric: tabular-nums; }
+.loom-admin-ops-row > small { color: var(--ink-3); font-size: 12px; white-space: nowrap; }
+.loom-admin-ops-row > small b { color: var(--ink-1); font-weight: 650; }
+.loom-admin-ops-row.is-current { grid-template-columns: minmax(150px, .9fr) minmax(0, 1fr); }
+.loom-admin-progress { height: 6px; overflow: hidden; border-radius: 999px; background: rgba(255, 255, 255, .07); }
+.loom-admin-progress > i { display: block; width: 0; height: 100%; border-radius: inherit; background: var(--fill-grad); transition: width .45s ease; }
+.loom-admin-progress > i[data-state="warn"] { background: linear-gradient(90deg, rgba(241, 214, 155, .55), rgba(255, 212, 154, .9)); }
+.loom-admin-ops-inline { display: flex; justify-content: flex-end; gap: 10px; flex-wrap: wrap; }
+.loom-admin-ops-inline > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 28px;
+  padding: 0 11px;
+  border: 1px solid rgba(255, 255, 255, .08);
+  border-radius: 999px;
+  background: rgba(2, 8, 14, .14);
+  color: var(--ink-3);
+  font-size: 12px;
+}
+.loom-admin-ops-inline i { width: 6px; height: 6px; border-radius: 50%; background: var(--sky); }
+.loom-admin-ops-inline i.is-warn { background: var(--amber); }
+.loom-admin-ops-inline b { color: var(--ink-1); font-weight: 650; }
+.loom-admin-privacy-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-top: 18px;
+  padding: 11px 13px;
+  border: 1px solid rgba(255, 255, 255, .06);
+  border-radius: 10px;
+  background: rgba(2, 10, 18, .16);
+  color: var(--ink-3);
+  font-size: 12px;
+  line-height: 1.6;
+}
+.loom-admin-privacy-note > i { width: 6px; height: 6px; flex: 0 0 6px; margin-top: 7px; border-radius: 50%; background: rgba(158, 205, 230, .7); }
+
+.loom-admin-control-section { padding: 15px 0; border-bottom: 1px solid var(--line); }
+.loom-admin-control-section:last-child { padding-bottom: 0; border-bottom: 0; }
+.loom-admin-control-label { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.loom-admin-control-label > span { color: var(--ink-1); font-size: 13.5px; font-weight: 640; }
+.loom-admin-control-label > small { color: var(--ink-4); font-size: 11.5px; }
+.loom-admin-overview-flags { margin-top: 6px; }
+.loom-admin-overview-flags .loom-admin-empty-block { margin-top: 10px; padding: 13px; font-size: 12px; }
+.loom-admin-quick-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; margin-top: 12px; }
+.loom-admin-quick-grid > button {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas: "name arrow" "copy arrow";
+  align-items: center;
+  gap: 2px 10px;
+  padding: 11px 13px;
+  border: 1px solid rgba(255, 255, 255, .07);
+  border-radius: 10px;
+  background: rgba(2, 8, 14, .14);
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color .18s ease, border-color .18s ease;
+}
+.loom-admin-quick-grid > button:hover { border-color: rgba(181, 222, 244, .16); background: rgba(255, 255, 255, .05); }
+.loom-admin-quick-grid span { grid-area: name; color: var(--ink-1); font-size: 13.5px; font-weight: 640; }
+.loom-admin-quick-grid small { grid-area: copy; color: var(--ink-3); font-size: 11.5px; }
+.loom-admin-quick-grid i { grid-area: arrow; color: var(--ink-4); font-size: 12px; font-style: normal; transition: color .18s ease, transform .18s ease; }
+.loom-admin-quick-grid > button:hover i { color: #fff; transform: translate(1px, -1px); }
+
+/* feature flag rows (overview + flags page) */
+.loom-admin-flags-list { display: grid; }
+.loom-admin-flag-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 12px 0; border-top: 1px solid var(--line); }
+.loom-admin-flag-row:first-child { border-top: 0; }
+.loom-admin-flag-row > div { display: grid; gap: 4px; min-width: 0; }
+.loom-admin-flag-row strong { overflow: hidden; color: var(--ink-1); font: 600 13px/1.35 var(--mono); text-overflow: ellipsis; white-space: nowrap; }
+.loom-admin-flag-row small { overflow: hidden; color: var(--ink-3); font: 500 11.5px/1.4 var(--mono); text-overflow: ellipsis; white-space: nowrap; }
+
+/* ============================================================ users */
+.loom-admin-shell .loom-admin-users-toolbar,
+.loom-admin-shell .loom-admin-monitor-toolbar { display: flex; flex-direction: row; align-items: center; justify-content: space-between; gap: 12px 16px; flex-wrap: wrap; padding: 10px 12px; }
+.loom-admin-users-tools { display: flex; align-items: center; gap: 10px; margin-left: auto; }
+.loom-admin-shell .loom-admin-users-tools .usage-audit-search { width: 290px; }
+.loom-admin-users-tools > span,
+.loom-admin-shell .usage-audit-tools > span { color: var(--ink-3); font-size: 12.5px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.loom-admin-shell .usage-audit-tools { display: flex; align-items: center; gap: 12px; }
+.loom-admin-shell .usage-section-head .usage-audit-search { width: 280px; }
+.loom-admin-shell .usage-section-head .usage-audit-tools > span { color: rgba(240, 247, 253, .76); text-shadow: var(--text-shadow); }
+
+.loom-admin-user-card-grid,
+.loom-admin-device-card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(560px, 100%), 1fr)); gap: 16px; }
+.loom-admin-shell .loom-admin-user-card { display: flex; flex-direction: column; padding: 0; overflow: hidden; }
+.loom-admin-user-card::before {
+  content: "";
+  position: absolute;
+  z-index: 2;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 2px;
+  background: rgba(145, 191, 218, .24);
+}
+.loom-admin-user-card.is-ok::before { background: linear-gradient(180deg, rgba(169, 229, 212, .85), rgba(112, 194, 221, .16)); }
+.loom-admin-user-card.is-live::before { background: linear-gradient(180deg, rgba(169, 217, 242, .9), rgba(113, 170, 219, .18)); }
+.loom-admin-user-card.is-warn::before { background: linear-gradient(180deg, rgba(255, 212, 154, .88), rgba(229, 161, 117, .18)); }
+.loom-admin-user-card.is-bad::before { background: linear-gradient(180deg, rgba(255, 180, 191, .88), rgba(226, 111, 126, .18)); }
+.loom-admin-user-card-head { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 14px; padding: 18px 20px 15px; border-bottom: 1px solid var(--line); }
+.loom-admin-user-avatar {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border: 1px solid rgba(220, 239, 251, .12);
+  border-radius: 13px;
+  background: linear-gradient(145deg, rgba(169, 217, 242, .16), rgba(255, 255, 255, .03));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .05);
+  color: #f6fbff;
+  font-size: 17px;
+  font-weight: 680;
+}
+.loom-admin-user-card.is-ok .loom-admin-user-avatar { background: linear-gradient(145deg, rgba(131, 239, 199, .18), rgba(255, 255, 255, .03)); }
+.loom-admin-user-card.is-warn .loom-admin-user-avatar { background: linear-gradient(145deg, rgba(255, 212, 154, .18), rgba(255, 255, 255, .03)); }
+.loom-admin-user-card.is-bad .loom-admin-user-avatar { background: linear-gradient(145deg, rgba(255, 180, 191, .18), rgba(255, 255, 255, .03)); }
+.loom-admin-user-identity { display: grid; gap: 5px; min-width: 0; }
+.loom-admin-user-identity > div { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.loom-admin-user-identity strong { overflow: hidden; color: #f6fbff; font-size: 15px; font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
+.loom-admin-user-identity small { overflow: hidden; color: var(--ink-3); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.loom-admin-user-role select { height: 30px; padding-left: 10px; font-size: 12.5px; }
+
+.loom-admin-user-device,
+.loom-admin-host-health-mini,
+.loom-admin-host-health-empty,
+.loom-admin-user-metric-grid,
+.loom-admin-user-chart,
+.loom-admin-user-success,
+.loom-admin-user-tools { border: 1px solid var(--tile-edge); border-radius: var(--r-tile); background: var(--tile); }
+.loom-admin-user-device { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 12px; margin: 14px 20px 0; padding: 12px 13px; }
+.loom-admin-user-device.is-online { border-color: rgba(169, 229, 212, .12); background: linear-gradient(110deg, rgba(49, 105, 93, .14), rgba(3, 10, 17, .16)); }
+.loom-admin-device-mark { position: relative; display: grid; place-items: center; width: 34px; height: 34px; border: 1px solid rgba(215, 235, 248, .1); border-radius: 9px; background: rgba(255, 255, 255, .03); color: rgba(210, 231, 244, .6); }
+.loom-admin-device-mark::before { content: ""; width: 16px; height: 11px; margin-top: -4px; border: 1.6px solid currentColor; border-radius: 2px; }
+.loom-admin-device-mark::after { content: ""; position: absolute; bottom: 8px; width: 9px; height: 1.6px; border-radius: 2px; background: currentColor; }
+.loom-admin-device-mark > i { display: none; }
+.loom-admin-user-device.is-online .loom-admin-device-mark { color: var(--mint); }
+.loom-admin-user-device-copy { display: grid; gap: 2px; min-width: 0; }
+.loom-admin-user-device-copy > span { color: var(--ink-4); font-size: 10px; font-weight: 700; letter-spacing: .14em; }
+.loom-admin-user-device-copy strong { overflow: hidden; color: var(--ink-1); font-size: 14px; font-weight: 640; text-overflow: ellipsis; white-space: nowrap; }
+.loom-admin-user-device-copy small { overflow: hidden; color: var(--ink-3); font-size: 11.5px; text-overflow: ellipsis; white-space: nowrap; }
+.loom-admin-user-device-state { display: grid; gap: 3px; justify-items: end; text-align: right; }
+.loom-admin-user-device-state b { color: var(--ink-3); font-size: 11px; font-weight: 700; letter-spacing: .1em; }
+.loom-admin-user-device.is-online .loom-admin-user-device-state b { color: var(--mint); }
+.loom-admin-user-device-state small { color: var(--ink-3); font-size: 11.5px; white-space: nowrap; }
+
+.loom-admin-user-metric-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); margin: 12px 20px 0; overflow: hidden; }
+.loom-admin-user-metric-grid > div { display: grid; gap: 3px; min-width: 0; padding: 12px 13px; }
+.loom-admin-user-metric-grid > div + div { border-left: 1px solid var(--line); }
+.loom-admin-user-metric-grid span,
+.loom-admin-user-chart-head > span { color: var(--ink-3); font-size: 10.5px; font-weight: 700; letter-spacing: .1em; }
+.loom-admin-user-metric-grid strong { color: var(--ink-1); font-size: 20px; font-weight: 640; line-height: 1.15; font-variant-numeric: tabular-nums; }
+.loom-admin-user-metric-grid small { overflow: hidden; color: var(--ink-3); font-size: 11.5px; text-overflow: ellipsis; white-space: nowrap; }
+.loom-admin-user-visual-grid { display: grid; grid-template-columns: minmax(0, 1.45fr) minmax(236px, 1fr); gap: 10px; margin: 10px 20px 0; }
+.loom-admin-user-chart { padding: 12px 13px 9px; }
+.loom-admin-user-chart-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.loom-admin-user-chart-head > b { color: var(--ink-2); font-size: 12px; font-weight: 640; font-variant-numeric: tabular-nums; }
+.loom-admin-user-spark { display: flex; align-items: flex-end; gap: 3px; height: 62px; margin-top: 11px; }
+.loom-admin-user-spark > i { position: relative; flex: 1; min-width: 2px; height: 100%; }
+.loom-admin-user-spark > i > span { position: absolute; inset: auto 0 0; height: var(--bar); min-height: 3px; border-radius: 2px 2px 1px 1px; background: rgba(137, 190, 220, .14); transition: height .25s ease; }
+.loom-admin-user-spark > i.is-active > span { background: var(--bar-grad); }
+.loom-admin-user-chart-axis { display: flex; justify-content: space-between; margin-top: 6px; color: var(--ink-4); font-size: 10.5px; }
+.loom-admin-user-success { display: flex; align-items: center; justify-content: center; gap: 14px; padding: 12px 14px; }
+.loom-admin-user-ring {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 74px;
+  height: 74px;
+  flex: 0 0 74px;
+  border-radius: 50%;
+  background: conic-gradient(rgba(169, 229, 212, .8) calc(var(--score) * 1%), rgba(255, 255, 255, .07) 0);
+}
+.loom-admin-user-ring::after { content: ""; position: absolute; inset: 6px; border-radius: 50%; background: rgba(12, 25, 37, .86); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .05); }
+.loom-admin-user-ring strong,
+.loom-admin-user-ring span { position: relative; z-index: 1; }
+.loom-admin-user-ring strong { align-self: end; color: #effaf6; font-size: 16px; font-weight: 660; font-variant-numeric: tabular-nums; }
+.loom-admin-user-ring span { align-self: start; color: var(--ink-4); font-size: 9px; font-weight: 700; letter-spacing: .1em; }
+.loom-admin-user-ring.is-empty { background: rgba(255, 255, 255, .06); }
+.loom-admin-user-success > div:last-child { display: grid; gap: 3px; min-width: 0; }
+.loom-admin-user-success > div:last-child b { color: var(--ink-1); font-size: 13.5px; font-weight: 640; }
+.loom-admin-user-success > div:last-child small { color: var(--ink-3); font-size: 11.5px; white-space: nowrap; }
+.loom-admin-user-tools { margin: 10px 20px 16px; padding: 12px 13px; }
+.loom-admin-user-tool-bar { display: flex; gap: 2px; height: 6px; margin-top: 11px; overflow: hidden; border-radius: 999px; background: rgba(255, 255, 255, .06); }
+.loom-admin-user-tool-bar > i { display: block; width: var(--share); min-width: 3px; height: 100%; }
+.loom-admin-user-tool-bar > i > span { display: block; width: 100%; height: 100%; background: rgba(164, 214, 239, .66); }
+.loom-admin-user-tool-bar > i.tool-2 > span,
+.loom-admin-user-tool-legend > span > i.tool-2 { background: rgba(169, 229, 212, .64); }
+.loom-admin-user-tool-bar > i.tool-3 > span,
+.loom-admin-user-tool-legend > span > i.tool-3 { background: rgba(203, 194, 244, .62); }
+.loom-admin-user-tool-bar > i.tool-4 > span,
+.loom-admin-user-tool-legend > span > i.tool-4 { background: rgba(255, 212, 154, .62); }
+.loom-admin-user-tool-legend { display: flex; gap: 6px 16px; margin-top: 10px; flex-wrap: wrap; }
+.loom-admin-user-tool-legend > span { display: inline-flex; align-items: center; gap: 6px; color: var(--ink-3); font: 500 11.5px var(--mono); }
+.loom-admin-user-tool-legend > span > i { width: 7px; height: 7px; border-radius: 2px; background: rgba(164, 214, 239, .66); }
+.loom-admin-user-tool-legend b { color: var(--ink-1); font-weight: 650; }
+.loom-admin-user-tool-empty { display: block; margin-top: 10px; color: var(--ink-4); font-size: 12px; }
+.loom-admin-user-card-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px 16px;
+  flex-wrap: wrap;
+  margin-top: auto;
+  padding: 13px 20px 16px;
+  border-top: 1px solid var(--line);
+}
+.loom-admin-user-times { display: flex; gap: 6px 16px; flex-wrap: wrap; }
+.loom-admin-user-times span { color: var(--ink-3); font-size: 12px; }
+.loom-admin-user-times b { color: var(--ink-1); font-weight: 600; }
+.loom-admin-shell .loom-admin-users-empty { display: grid; place-items: center; align-content: center; gap: 6px; min-height: 190px; text-align: center; }
+.loom-admin-users-empty strong { color: var(--ink-1); font-size: 15px; font-weight: 640; }
+.loom-admin-users-empty span { color: var(--ink-3); font-size: 12.5px; }
+
+/* ============================================================ host health */
+.loom-admin-host-health-mini { margin: 10px 20px 0; padding: 13px; }
+.loom-admin-host-health-head { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: baseline; gap: 4px 12px; }
+.loom-admin-host-health-head > span,
+.loom-admin-device-trend-head > span { color: var(--ink-3); font-size: 10.5px; font-weight: 700; letter-spacing: .12em; }
+.loom-admin-host-health-head > b { overflow: hidden; color: var(--ink-1); font-size: 12.5px; font-weight: 640; text-overflow: ellipsis; white-space: nowrap; }
+.loom-admin-host-health-head > small { grid-column: 1 / -1; color: var(--ink-3); font-size: 11.5px; line-height: 1.5; }
+.loom-admin-host-health-grid,
+.loom-admin-device-health-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin-top: 11px; }
+.loom-admin-health-metric {
+  --gauge: rgba(154, 204, 231, .62);
+  min-width: 0;
+  padding: 9px 11px;
+  border: 1px solid rgba(255, 255, 255, .05);
+  border-radius: 9px;
+  background: rgba(2, 8, 14, .16);
+}
+.loom-admin-health-metric.is-ok { --gauge: rgba(160, 221, 203, .7); }
+.loom-admin-health-metric.is-warn { --gauge: rgba(255, 212, 154, .78); }
+.loom-admin-health-metric.is-bad { --gauge: rgba(255, 168, 182, .8); }
+.loom-admin-health-metric > div { display: flex; align-items: baseline; justify-content: space-between; gap: 6px; }
+.loom-admin-health-metric span { color: var(--ink-3); font-size: 10.5px; font-weight: 700; letter-spacing: .08em; }
+.loom-admin-health-metric strong { color: var(--ink-1); font-size: 15px; font-weight: 650; font-variant-numeric: tabular-nums; }
+.loom-admin-health-metric.is-warn strong { color: var(--amber); }
+.loom-admin-health-metric.is-bad strong { color: var(--rose); }
+.loom-admin-health-metric > i { display: block; height: 4px; margin-top: 8px; overflow: hidden; border-radius: 999px; background: rgba(255, 255, 255, .07); }
+.loom-admin-health-metric > i > b { display: block; height: 100%; border-radius: inherit; background: var(--gauge); transition: width .35s ease; }
+.loom-admin-health-metric > small { display: block; margin-top: 6px; overflow: hidden; color: var(--ink-4); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.loom-admin-capabilities { display: flex; gap: 7px; flex-wrap: wrap; margin-top: 11px; }
+.loom-admin-capability {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 24px;
+  padding: 0 10px;
+  border: 1px solid rgba(255, 255, 255, .06);
+  border-radius: 999px;
+  background: rgba(0, 0, 0, .1);
+  color: var(--ink-4);
+  font-size: 11.5px;
+  font-weight: 620;
+}
+.loom-admin-capability > i { width: 6px; height: 6px; border-radius: 50%; background: rgba(255, 255, 255, .16); }
+.loom-admin-capability.is-on { border-color: rgba(156, 220, 201, .14); background: rgba(43, 94, 80, .16); color: rgba(205, 243, 230, .82); }
+.loom-admin-capability.is-on > i { background: var(--mint); box-shadow: 0 0 8px rgba(131, 239, 199, .4); }
+.loom-admin-host-health-empty { display: grid; gap: 4px; margin: 10px 20px 0; padding: 12px 13px; border-style: dashed; border-color: rgba(255, 255, 255, .1); background: rgba(1, 8, 13, .1); }
+.loom-admin-host-health-empty > b { color: var(--ink-3); font-size: 10.5px; font-weight: 700; letter-spacing: .12em; }
+.loom-admin-host-health-empty > span { color: var(--ink-3); font-size: 12px; line-height: 1.55; }
+
+/* ============================================================ devices */
+.loom-admin-shell .loom-admin-device-card { display: flex; flex-direction: column; padding: 18px 20px; overflow: hidden; }
+.loom-admin-device-card::before { content: ""; position: absolute; top: 0; bottom: 0; left: 0; width: 2px; background: rgba(143, 181, 204, .2); }
+.loom-admin-device-card.is-online::before { background: linear-gradient(180deg, rgba(163, 229, 207, .8), rgba(111, 181, 212, .16)); }
+.loom-admin-device-card > header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.loom-admin-device-card > header > div { display: grid; gap: 2px; min-width: 0; }
+.loom-admin-device-card > header .utility-overline { overflow: hidden; letter-spacing: .04em; text-overflow: ellipsis; text-transform: none; white-space: nowrap; }
+.loom-admin-shell .loom-admin-device-card > header h3 { margin: 2px 0 0; font-size: 18px; }
+.loom-admin-device-card > header small { color: var(--ink-3); font-size: 12px; }
+.loom-admin-device-card .loom-admin-host-health-empty { margin: 14px 0 0; }
+.loom-admin-device-health-grid { margin-top: 14px; }
+.loom-admin-device-trend-head { display: flex; align-items: center; justify-content: space-between; margin-top: 15px; }
+.loom-admin-device-trend-head > small { display: inline-flex; align-items: center; gap: 9px; color: var(--ink-3); font-size: 11.5px; }
+.loom-admin-device-trend-head > small::before { content: ""; width: 22px; height: 7px; border-radius: 2px; background: linear-gradient(90deg, rgba(155, 211, 239, .8) 0 45%, transparent 45% 55%, rgba(163, 226, 205, .7) 55%); }
+.loom-admin-device-health-trend {
+  display: flex;
+  align-items: flex-end;
+  gap: 4px;
+  height: 70px;
+  margin-top: 9px;
+  padding: 0 1px;
+  border-bottom: 1px solid var(--line);
+  background-image: linear-gradient(to top, rgba(255, 255, 255, .04) 1px, transparent 1px);
+  background-size: 100% 25%;
+}
+.loom-admin-device-health-trend > i { position: relative; flex: 1; min-width: 3px; height: 100%; }
+.loom-admin-device-health-trend > i > span { position: absolute; bottom: 0; width: 42%; height: var(--v); min-height: 1px; border-radius: 2px 2px 0 0; }
+.loom-admin-device-health-trend > i > .is-cpu { left: 5%; background: rgba(155, 211, 239, .66); }
+.loom-admin-device-health-trend > i > .is-mem { right: 5%; background: rgba(163, 226, 205, .52); }
+.loom-admin-device-card > footer {
+  display: flex;
+  gap: 8px 18px;
+  flex-wrap: wrap;
+  margin-top: auto;
+  padding-top: 13px;
+  border-top: 1px solid var(--line);
+  color: var(--ink-3);
+  font-size: 12px;
+}
+.loom-admin-device-card > .loom-admin-capabilities + footer,
+.loom-admin-device-card > .loom-admin-host-health-empty + footer { margin-top: 16px; }
+.loom-admin-device-card > footer b { color: var(--ink-1); font-weight: 620; }
+
+/* ============================================================ runs monitor + shared KPI tiles */
+.loom-admin-monitor-kpis,
+.loom-admin-mini-kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
+.loom-admin-mini-kpis { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+.loom-admin-mini-kpis-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.loom-admin-monitor-kpi,
+.loom-admin-mini-kpis > div {
+  --tone: 169, 217, 242;
+  position: relative;
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  padding: 16px 18px;
+  overflow: hidden;
+  border: 1px solid var(--glass-edge);
+  border-radius: var(--r-card);
+  background-color: var(--glass);
+  background-image: var(--glass-sheen);
+  box-shadow: var(--shadow), var(--hi);
+  -webkit-backdrop-filter: var(--blur);
+  backdrop-filter: var(--blur);
+}
+.loom-admin-monitor-kpi::after,
+.loom-admin-mini-kpis > div::after { content: ""; position: absolute; right: 18px; bottom: 0; left: 18px; height: 1px; background: rgba(var(--tone), .34); }
+.loom-admin-monitor-kpi.is-warn,
+.loom-admin-mini-kpis > div.is-warn { --tone: 255, 212, 154; }
+.loom-admin-monitor-kpi.is-bad { --tone: 255, 180, 191; }
+.loom-admin-monitor-kpi.is-tokens { --tone: 203, 194, 244; }
+.loom-admin-monitor-kpi span,
+.loom-admin-mini-kpis span { display: inline-flex; align-items: center; gap: 8px; color: var(--ink-3); font-size: 10.5px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; }
+.loom-admin-monitor-kpi span::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: rgb(var(--tone)); box-shadow: 0 0 10px rgba(var(--tone), .5); }
+.loom-admin-monitor-kpi.is-live span::before { animation: loom-admin-live 2.2s ease-in-out infinite; }
+.loom-admin-monitor-kpi strong,
+.loom-admin-mini-kpis strong { color: #f7fbff; font-size: 30px; font-weight: 620; line-height: 1.08; letter-spacing: -.03em; font-variant-numeric: tabular-nums; }
+.loom-admin-mini-kpis strong { font-size: 24px; }
+.loom-admin-monitor-kpi small { color: var(--ink-3); font-size: 12px; }
+.loom-admin-monitor-search { margin-left: auto; }
+.loom-admin-shell .loom-admin-monitor-search .usage-audit-search { width: 300px; }
+
+/* ============================================================ usage */
+.loom-admin-usage-heading-meta { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 14px; color: rgba(236, 245, 252, .62); font-size: 11.5px; font-weight: 600; letter-spacing: .05em; text-shadow: var(--text-shadow); }
+.loom-admin-usage-live { display: inline-flex; align-items: center; gap: 7px; min-height: 24px; padding: 0 10px; border: 1px solid rgba(169, 228, 209, .16); border-radius: 999px; background: rgba(39, 103, 88, .16); color: rgba(196, 239, 227, .86); font-size: 10.5px; font-weight: 700; letter-spacing: .1em; text-shadow: none; }
+.loom-admin-usage-live::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--mint); box-shadow: 0 0 10px rgba(131, 239, 199, .6); }
+.loom-admin-usage-controls { display: grid; gap: 8px; justify-items: end; flex: 0 0 auto; }
+.loom-admin-usage-controls > span { color: rgba(236, 245, 252, .6); font-size: 10.5px; font-weight: 700; letter-spacing: .14em; text-shadow: var(--text-shadow); }
+.loom-admin-usage-kpis { display: grid; grid-template-columns: 1.2fr repeat(4, minmax(0, 1fr)); gap: 14px; }
+.loom-admin-usage-kpi {
+  --tone: 169, 217, 242;
+  position: relative;
+  min-width: 0;
+  padding: 16px 18px;
+  overflow: hidden;
+  border: 1px solid var(--glass-edge);
+  border-radius: var(--r-card);
+  background-color: var(--glass);
+  background-image: var(--glass-sheen);
+  box-shadow: var(--shadow), var(--hi);
+  -webkit-backdrop-filter: var(--blur);
+  backdrop-filter: var(--blur);
+}
+.loom-admin-usage-kpi.is-runs { --tone: 203, 194, 244; }
+.loom-admin-usage-kpi.is-input { --tone: 141, 205, 236; }
+.loom-admin-usage-kpi.is-output { --tone: 196, 182, 245; }
+.loom-admin-usage-kpi.is-duration { --tone: 255, 212, 154; }
+.loom-admin-usage-kpi.is-primary { border-color: rgba(188, 225, 245, .16); background-image: radial-gradient(240px 150px at 100% 0%, rgba(126, 195, 229, .2), transparent 70%), var(--glass-sheen); }
+.loom-admin-usage-kpi-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.loom-admin-usage-kpi-head span { color: var(--ink-3); font-size: 10.5px; font-weight: 700; letter-spacing: .11em; text-transform: uppercase; }
+.loom-admin-usage-kpi-head i { width: 7px; height: 7px; border-radius: 50%; background: rgb(var(--tone)); box-shadow: 0 0 12px rgba(var(--tone), .45); }
+.loom-admin-usage-kpi strong { display: block; margin-top: 11px; overflow: hidden; color: #f8fbff; font-size: 28px; font-weight: 620; line-height: 1.08; letter-spacing: -.03em; text-overflow: ellipsis; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.loom-admin-usage-kpi.is-primary strong { font-size: 33px; }
+.loom-admin-usage-kpi small { display: block; margin-top: 8px; overflow: hidden; color: var(--ink-3); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.loom-admin-usage-kpi small b { color: var(--ink-1); font-weight: 650; }
+.loom-admin-usage-insights { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+.loom-admin-usage-insight {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+  padding: 11px 15px;
+  border: 1px solid rgba(219, 236, 250, .08);
+  border-radius: var(--r-tile);
+  background: rgba(8, 16, 26, .3);
+  -webkit-backdrop-filter: blur(14px);
+  backdrop-filter: blur(14px);
+}
+.loom-admin-usage-insight span { overflow: hidden; color: var(--ink-3); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.loom-admin-usage-insight strong { color: var(--ink-1); font-size: 13.5px; font-weight: 650; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.loom-admin-usage-primary-grid { display: grid; grid-template-columns: minmax(0, 1.75fr) minmax(300px, .85fr); gap: 16px; }
+.loom-admin-usage-rankings { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.loom-admin-usage-card { min-width: 0; }
+.loom-admin-shell .loom-admin-usage-trend-card { display: flex; flex-direction: column; }
+.loom-admin-usage-card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; margin-bottom: 8px; }
+.loom-admin-usage-card-head > div:first-child { min-width: 0; }
+.loom-admin-shell .loom-admin-usage-card-head h3 { margin-top: 6px; font-size: 17px; }
+.loom-admin-usage-card-head p { margin-top: 5px; color: var(--ink-3); font-size: 12px; line-height: 1.55; }
+.loom-admin-usage-card-stat { display: grid; justify-items: end; gap: 2px; flex: 0 0 auto; text-align: right; }
+.loom-admin-usage-card-stat strong { color: var(--ink-1); font-size: 20px; font-weight: 640; font-variant-numeric: tabular-nums; }
+.loom-admin-usage-card-stat span { color: var(--ink-3); font-size: 10.5px; font-weight: 650; letter-spacing: .08em; text-transform: uppercase; }
+.loom-admin-daily-chart {
+  position: relative;
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+  height: 290px;
+  margin-top: 6px;
+  padding: 24px 4px 24px;
+  border-top: 1px solid rgba(219, 236, 250, .07);
+  border-bottom: 1px solid var(--line);
+  background-image: linear-gradient(to top, rgba(255, 255, 255, .045) 1px, transparent 1px);
+  background-size: 100% 25%;
+  background-origin: content-box;
+  background-clip: content-box;
+}
+.loom-admin-daily-chart > .loom-admin-usage-empty { flex: 1; align-self: center; margin: 0; }
+.loom-admin-usage-bar { position: relative; display: flex; flex: 1 1 18px; align-items: flex-end; justify-content: center; min-width: 6px; max-width: 34px; height: 100%; }
+.loom-admin-usage-bar > i {
+  display: block;
+  width: 70%;
+  min-width: 5px;
+  border-radius: 5px 5px 2px 2px;
+  background: var(--bar-grad);
+  box-shadow: 0 0 0 1px rgba(203, 233, 249, .05) inset;
+  transition: filter .2s ease, transform .2s ease;
+}
+.loom-admin-usage-bar:hover > i { filter: brightness(1.18); transform: translateY(-2px); }
+.loom-admin-usage-bar > span { position: absolute; bottom: -20px; left: 50%; color: var(--ink-4); font-size: 10.5px; white-space: nowrap; transform: translateX(-50%); font-variant-numeric: tabular-nums; }
+.loom-admin-usage-bar::after {
+  content: attr(data-tip);
+  position: absolute;
+  z-index: 5;
+  bottom: calc(var(--bar-height, 0%) + 12px);
+  left: 50%;
+  width: max-content;
+  max-width: 200px;
+  padding: 7px 10px;
+  border: 1px solid rgba(219, 236, 250, .14);
+  border-radius: 9px;
+  background: rgba(7, 16, 26, .94);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, .25);
+  color: rgba(240, 248, 253, .92);
+  font-size: 11.5px;
+  line-height: 1.5;
+  white-space: pre;
+  display: none;
+  pointer-events: none;
+  transform: translateX(-50%);
+}
+.loom-admin-usage-bar:hover::after { display: block; }
+.loom-admin-usage-bar:nth-child(-n+5)::after { left: 0; transform: none; }
+.loom-admin-usage-bar:nth-last-child(-n+6)::after { right: 0; left: auto; transform: none; }
+.loom-admin-usage-chart-footer { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin-top: auto; padding-top: 26px; color: var(--ink-3); font-size: 12px; }
+.loom-admin-usage-chart-footer b { color: var(--ink-1); font-weight: 650; }
+.loom-admin-usage-chart-legend { display: flex; align-items: center; gap: 12px; }
+.loom-admin-usage-chart-legend span { display: inline-flex; align-items: center; gap: 6px; }
+.loom-admin-usage-chart-legend i { width: 12px; height: 4px; border-radius: 999px; background: linear-gradient(90deg, rgba(178, 221, 244, .85), rgba(109, 165, 208, .45)); }
+.loom-admin-shell .loom-admin-usage-composition { display: flex; flex-direction: column; gap: 16px; }
+.loom-admin-usage-composition .loom-admin-usage-card-head p { color: rgba(188, 222, 240, .72); font-size: 10.5px; font-weight: 700; letter-spacing: .12em; }
+.loom-admin-usage-donut-wrap { display: grid; place-items: center; padding: 4px 0; }
+.loom-admin-usage-donut {
+  --output-share: 0deg;
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 160px;
+  height: 160px;
+  border-radius: 50%;
+  background: conic-gradient(rgba(183, 166, 243, .86) 0 var(--output-share), rgba(132, 189, 232, .78) var(--output-share) 360deg);
+  box-shadow: 0 0 0 1px rgba(219, 236, 250, .06), 0 16px 40px rgba(0, 0, 0, .14);
+}
+.loom-admin-usage-donut::before { content: ""; position: absolute; inset: 17px; border: 1px solid rgba(224, 239, 249, .1); border-radius: 50%; background: rgba(12, 25, 38, .86); }
+.loom-admin-usage-donut-center { position: relative; z-index: 1; display: grid; gap: 3px; text-align: center; }
+.loom-admin-usage-donut-center strong { color: var(--ink-1); font-size: 22px; font-weight: 650; letter-spacing: -.03em; font-variant-numeric: tabular-nums; }
+.loom-admin-usage-donut-center span { color: var(--ink-3); font-size: 10.5px; font-weight: 650; letter-spacing: .1em; text-transform: uppercase; }
+.loom-admin-usage-split { display: grid; gap: 9px; }
+.loom-admin-usage-split-row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 9px; color: var(--ink-2); font-size: 12.5px; }
+.loom-admin-usage-split-row > i { width: 7px; height: 7px; border-radius: 50%; background: rgba(132, 189, 232, .9); }
+.loom-admin-usage-split-row.is-output > i { background: rgba(183, 166, 243, .9); }
+.loom-admin-usage-split-row strong { color: var(--ink-1); font-weight: 620; font-variant-numeric: tabular-nums; }
+.loom-admin-usage-split-bar { display: flex; gap: 2px; height: 6px; overflow: hidden; border-radius: 999px; background: rgba(255, 255, 255, .06); }
+.loom-admin-usage-split-bar i { display: block; height: 100%; background: linear-gradient(90deg, rgba(133, 191, 234, .78), rgba(159, 216, 242, .75)); transition: width .3s ease; }
+.loom-admin-usage-split-bar b { display: block; height: 100%; background: linear-gradient(90deg, rgba(183, 166, 243, .85), rgba(153, 137, 225, .66)); transition: width .3s ease; }
+.loom-admin-usage-composition-note { margin-top: auto; padding-top: 12px; border-top: 1px solid var(--line); color: var(--ink-4); font-size: 11.5px; line-height: 1.6; }
+.loom-admin-metric-list { display: grid; margin-top: 6px; counter-reset: usage-rank; }
+.loom-admin-usage-rank-row {
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr) auto;
+  grid-template-areas: "rank identity value" "rank bar bar";
+  align-items: center;
+  gap: 7px 12px;
+  padding: 11px 2px;
+  border-top: 1px solid var(--line);
+  counter-increment: usage-rank;
+}
+.loom-admin-usage-rank-row:first-child { border-top: 0; }
+.loom-admin-usage-rank { grid-area: rank; display: grid; place-items: center; width: 26px; height: 26px; border: 1px solid rgba(219, 236, 250, .1); border-radius: 8px; background: rgba(255, 255, 255, .03); color: var(--ink-3); font-size: 11px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.loom-admin-usage-rank::before { content: counter(usage-rank, decimal-leading-zero); }
+.loom-admin-usage-rank-row:nth-child(-n+3) .loom-admin-usage-rank { border-color: rgba(169, 217, 242, .22); background: rgba(126, 188, 220, .14); color: #e8f6fd; }
+.loom-admin-usage-rank-copy { grid-area: identity; display: grid; gap: 4px; min-width: 0; }
+.loom-admin-usage-rank-copy strong { overflow: hidden; color: var(--ink-1); font-size: 13.5px; font-weight: 620; text-overflow: ellipsis; white-space: nowrap; }
+.loom-admin-usage-rank-copy small { display: flex; align-items: center; gap: 7px; overflow: hidden; color: var(--ink-3); font-size: 11.5px; white-space: nowrap; }
+.loom-admin-usage-provider { display: inline-flex; align-items: center; min-height: 19px; max-width: 130px; padding: 0 7px; overflow: hidden; border: 1px solid rgba(159, 216, 242, .14); border-radius: 999px; background: rgba(99, 160, 194, .1); color: rgba(198, 228, 244, .8); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.loom-admin-usage-rank-value { grid-area: value; display: grid; justify-items: end; gap: 2px; }
+.loom-admin-usage-rank-value strong { color: var(--ink-1); font-size: 14px; font-weight: 650; font-variant-numeric: tabular-nums; }
+.loom-admin-usage-rank-value small { color: var(--ink-3); font-size: 11.5px; font-variant-numeric: tabular-nums; }
+.loom-admin-usage-rank-bar { grid-area: bar; position: relative; height: 4px; overflow: hidden; border-radius: 999px; background: rgba(255, 255, 255, .06); }
+.loom-admin-usage-rank-bar::after { content: ""; position: absolute; inset: 0 auto 0 0; width: var(--metric, 0%); border-radius: inherit; background: linear-gradient(90deg, rgba(128, 190, 228, .62), rgba(171, 215, 239, .82)); transition: width .3s ease; }
+/* fallback rows rendered by admin.js before the usage module enhances them */
+.loom-admin-metric-row { display: grid; grid-template-columns: minmax(0, 1fr) 120px; align-items: center; gap: 14px; padding: 11px 0; border-top: 1px solid var(--line); }
+.loom-admin-metric-row:first-child { border-top: 0; }
+.loom-admin-metric-row > div:first-child { display: grid; gap: 3px; min-width: 0; }
+.loom-admin-metric-row strong { overflow: hidden; color: var(--ink-1); font-size: 13px; font-weight: 620; text-overflow: ellipsis; white-space: nowrap; }
+.loom-admin-metric-row small { color: var(--ink-3); font-size: 11.5px; }
+.loom-admin-metric-value { display: grid; gap: 5px; justify-items: end; color: var(--ink-2); font-size: 12.5px; }
+.loom-admin-metric-value i,
+.loom-admin-tool-row > i { position: relative; display: block; width: 100%; height: 4px; overflow: hidden; border-radius: 999px; background: rgba(255, 255, 255, .06); }
+.loom-admin-metric-value i::after,
+.loom-admin-tool-row > i::after { content: ""; position: absolute; inset: 0 auto 0 0; width: var(--metric); border-radius: inherit; background: rgba(166, 216, 242, .6); }
+
+/* ============================================================ tools */
+.loom-admin-panel-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px 16px; flex-wrap: wrap; }
+.loom-admin-shell .loom-admin-panel-head h3 { margin-top: 6px; font-size: 17px; }
+.loom-admin-table-card > .loom-admin-panel-head { padding: 16px 18px 13px; border-bottom: 1px solid var(--line); }
+.loom-admin-tool-toolbar { display: flex; align-items: center; justify-content: flex-end; gap: 10px; flex-wrap: wrap; margin-left: auto; }
+.loom-admin-tool-search { width: 260px; max-width: 100%; }
+.loom-admin-tool-sort { min-width: 136px; }
+.loom-admin-tool-toolbar > span { color: var(--ink-3); font-size: 12px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.loom-admin-tool-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 12px; margin-top: 14px; }
+.loom-admin-tool-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "copy count" "bar bar"; gap: 6px 12px; padding: 11px 0; border-top: 1px solid var(--line); }
+.loom-admin-tool-row > div { grid-area: copy; display: grid; gap: 3px; min-width: 0; }
+.loom-admin-tool-row strong { color: var(--ink-1); font: 600 13px var(--mono); }
+.loom-admin-tool-row small { color: var(--ink-3); font-size: 11.5px; }
+.loom-admin-tool-row > span { grid-area: count; color: var(--ink-1); font-weight: 650; }
+.loom-admin-tool-row > i { grid-area: bar; }
+.loom-admin-tool-card {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  padding: 13px 14px;
+  border: 1px solid rgba(218, 235, 255, .08);
+  border-radius: var(--r-tile);
+  background: rgba(4, 11, 18, .18);
+  transition: background-color .18s ease, border-color .18s ease, transform .18s ease;
+}
+.loom-admin-tool-card:hover { border-color: rgba(190, 224, 244, .15); background: rgba(7, 15, 23, .28); transform: translateY(-1px); }
+.loom-admin-tool-card-main { display: grid; grid-template-columns: 36px minmax(0, 1fr) auto; align-items: center; gap: 12px; min-width: 0; }
+.loom-admin-tool-rank { display: grid; place-items: center; width: 34px; height: 34px; border: 1px solid rgba(218, 235, 255, .1); border-radius: 9px; background: rgba(255, 255, 255, .035); color: var(--ink-3); font-size: 12px; font-weight: 680; font-variant-numeric: tabular-nums; }
+.loom-admin-tool-identity { display: grid; gap: 5px; min-width: 0; }
+.loom-admin-tool-identity > strong { overflow: hidden; color: var(--ink-1); font: 600 13.5px/1.3 var(--mono); text-overflow: ellipsis; white-space: nowrap; }
+.loom-admin-tool-meta { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.loom-admin-tool-tag { flex: 0 0 auto; max-width: 110px; overflow: hidden; padding: 2px 8px; border: 1px solid rgba(169, 217, 242, .14); border-radius: 999px; background: rgba(169, 217, 242, .07); color: rgba(195, 226, 243, .82); font-size: 11px; font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
+.loom-admin-tool-meta small { overflow: hidden; color: var(--ink-3); font-size: 11.5px; text-overflow: ellipsis; white-space: nowrap; }
+.loom-admin-tool-usage { display: grid; grid-template-columns: auto auto; grid-template-areas: "count label" "share share"; align-items: baseline; justify-items: end; column-gap: 5px; min-width: 70px; }
+.loom-admin-tool-usage strong { grid-area: count; color: var(--ink-1); font-size: 16px; font-weight: 650; font-variant-numeric: tabular-nums; }
+.loom-admin-tool-usage > span { grid-area: label; color: var(--ink-4); font-size: 11.5px; }
+.loom-admin-tool-usage small { grid-area: share; color: rgba(174, 218, 241, .82); font-size: 11.5px; font-variant-numeric: tabular-nums; }
+.loom-admin-tool-share-track { height: 4px; overflow: hidden; border-radius: 999px; background: rgba(255, 255, 255, .06); }
+.loom-admin-tool-share-track > i { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, rgba(128, 190, 228, .62), rgba(171, 215, 239, .82)); transition: width .22s ease; }
+.loom-admin-tool-empty { grid-column: 1 / -1; }
+
+/* ============================================================ flags */
+.loom-admin-shell .loom-admin-flags-grid { grid-template-columns: minmax(300px, .78fr) minmax(0, 1.22fr); align-items: start; }
+.loom-admin-flag-editor form { display: grid; gap: 14px; margin-top: 16px; }
+.loom-admin-flag-editor label { display: grid; gap: 7px; }
+.loom-admin-flag-editor label > span { color: var(--ink-3); font-size: 12.5px; font-weight: 600; }
+.loom-admin-flag-editor textarea { height: auto; min-height: 116px; padding: 10px 12px; font: 500 12.5px/1.6 var(--mono); resize: vertical; }
+.loom-admin-flag-editor input#flagKey { font-family: var(--mono); }
+.loom-admin-check { display: flex !important; align-items: center; gap: 9px !important; cursor: pointer; }
+.loom-admin-check input { width: 16px; height: 16px; margin: 0; }
+.loom-admin-flag-editor .loom-admin-action { justify-self: start; min-height: 36px; padding: 0 18px; }
+.loom-admin-flag-editor .loom-admin-error:empty { display: none; }
+.loom-admin-flags-panel .loom-admin-flags-list { margin-top: 10px; }
+
+/* ============================================================ audit */
+.loom-admin-audit-list { display: grid; gap: 9px; }
+.loom-admin-shell .loom-admin-audit-row {
+  display: grid;
+  grid-template-columns: minmax(300px, .9fr) minmax(0, 1.1fr);
+  align-items: center;
+  gap: 18px;
+  padding: 13px 17px;
+  border-radius: 12px;
+}
+.loom-admin-audit-row > div:first-child { display: grid; grid-template-columns: max-content minmax(0, 1fr); align-items: center; gap: 4px 12px; min-width: 0; }
+.loom-admin-audit-row .loom-admin-badge { border-color: rgba(169, 217, 242, .16); background: rgba(169, 217, 242, .08); color: rgba(206, 234, 248, .9); font: 600 11.5px/1 var(--mono); }
+.loom-admin-audit-row strong { overflow: hidden; color: var(--ink-1); font-size: 13px; font-weight: 620; text-overflow: ellipsis; white-space: nowrap; }
+.loom-admin-audit-row > div:first-child small { grid-column: 2; overflow: hidden; color: var(--ink-3); font: 500 11.5px var(--mono); text-overflow: ellipsis; white-space: nowrap; }
+.loom-admin-audit-meta { display: flex; align-items: center; justify-content: flex-end; gap: 14px; min-width: 0; }
+.loom-admin-audit-meta code { overflow: hidden; max-width: 100%; padding: 4px 8px; border-radius: 7px; background: rgba(255, 255, 255, .05); color: var(--ink-3); font-size: 11.5px; text-overflow: ellipsis; white-space: nowrap; }
+.loom-admin-audit-meta time { flex: 0 0 auto; color: var(--ink-3); font-size: 12px; font-variant-numeric: tabular-nums; }
+
+/* ============================================================ system */
+.loom-admin-shell .loom-admin-system-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.loom-admin-health-list { display: grid; margin-top: 12px; }
+.loom-admin-health-item { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 11px 0; border-top: 1px solid var(--line); color: var(--ink-2); font-size: 13px; }
+.loom-admin-health-item:first-child { border-top: 0; }
+.loom-admin-health-item b { display: inline-flex; align-items: center; gap: 6px; min-height: 22px; padding: 0 9px; border: 1px solid rgba(131, 239, 199, .2); border-radius: 999px; background: var(--mint-soft); color: var(--mint); font-size: 11.5px; font-weight: 640; white-space: nowrap; }
+.loom-admin-health-item b::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.loom-admin-health-item b.is-bad { border-color: rgba(255, 180, 191, .22); background: var(--rose-soft); color: var(--rose); }
+.loom-admin-release-info { display: grid; gap: 8px; margin-top: 14px; }
+.loom-admin-release-info strong { color: var(--ink-1); font: 600 15px/1.45 var(--mono); word-break: break-word; }
+.loom-admin-release-info small { color: var(--ink-3); font-size: 12.5px; }
+.loom-admin-security-copy { display: grid; gap: 9px; margin-top: 14px; color: var(--ink-2); font-size: 13px; line-height: 1.65; }
+.loom-admin-security-copy p { position: relative; padding-left: 17px; }
+.loom-admin-security-copy p::before { content: ""; position: absolute; top: .62em; left: 1px; width: 6px; height: 6px; border-radius: 50%; background: rgba(141, 240, 202, .8); box-shadow: 0 0 8px rgba(141, 240, 202, .3); }
+.loom-admin-security-copy code { padding: 2px 6px; border-radius: 6px; background: rgba(169, 217, 242, .1); color: rgba(210, 233, 249, .9); font-size: 12px; }
+
+/* ============================================================ user workspace */
+.loom-admin-user-workspace-head { align-items: center; }
+.loom-admin-user-workspace-head h2 { word-break: break-all; }
+.loom-admin-user-workspace-head .switch-account-button { flex: 0 0 auto; }
+.loom-admin-detail-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.loom-admin-detail-grid > div { display: grid; gap: 5px; padding: 12px 14px; border: 1px solid var(--tile-edge); border-radius: var(--r-tile); background: var(--tile); }
+.loom-admin-detail-grid > div > span { color: var(--ink-3); font-size: 10.5px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; }
+.loom-admin-detail-grid > div > strong { color: var(--ink-1); font-size: 14px; font-weight: 620; font-variant-numeric: tabular-nums; }
+.loom-admin-model-access { grid-column: 1 / -1; display: grid; gap: 12px; margin-top: 6px; padding-top: 16px; border-top: 1px solid var(--line); }
+.loom-admin-model-access-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; color: var(--ink-1); font-size: 14.5px; font-weight: 640; }
+.loom-admin-model-access-head label { display: inline-flex; align-items: center; gap: 8px; color: var(--ink-2); font-size: 12.5px; font-weight: 600; cursor: pointer; }
+.loom-admin-model-access > small { color: var(--ink-3); font-size: 12px; }
+.loom-admin-model-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 8px; }
+.loom-admin-model-toggle { display: flex; align-items: center; gap: 9px; padding: 9px 11px; border: 1px solid rgba(255, 255, 255, .08); border-radius: 10px; background: rgba(255, 255, 255, .025); color: var(--ink-2); font: 500 12.5px var(--mono); cursor: pointer; transition: background-color .15s ease, border-color .15s ease; }
+.loom-admin-model-toggle:hover { background: rgba(255, 255, 255, .05); }
+.loom-admin-model-toggle:has(input:checked) { border-color: rgba(157, 225, 240, .22); background: rgba(103, 193, 214, .1); color: var(--ink-1); }
+.loom-admin-model-toggle input { width: 15px; height: 15px; margin: 0; }
+.loom-admin-model-access .loom-admin-action { justify-self: start; }
+.loom-admin-detail-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--line); }
+.loom-admin-user-sections { display: grid; gap: 16px; }
+
+/* ============================================================ model policy console */
+.loom-policy-page { display: grid; gap: 16px; }
+.loom-policy-shell { min-width: 0; }
+.loom-policy-tabs { justify-self: start; }
+.loom-policy-pane { min-width: 0; }
+.loom-policy-toolbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.loom-policy-toolbar > span { color: var(--ink-3); font-size: 12px; font-weight: 600; white-space: nowrap; }
+.loom-policy-note { margin: 6px 0 0; color: var(--ink-3); font-size: 12px; line-height: 1.6; }
+.loom-policy-summary { display: flex; gap: 8px; flex-wrap: wrap; }
+.loom-policy-summary span { display: inline-flex; align-items: center; min-height: 24px; padding: 0 10px; border: 1px solid rgba(255, 255, 255, .08); border-radius: 999px; background: rgba(0, 0, 0, .12); color: var(--ink-2); font-size: 11.5px; }
+.loom-policy-subsection { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--line); }
+.loom-policy-subsection-head { display: flex; align-items: center; justify-content: space-between; gap: 10px 14px; flex-wrap: wrap; margin: 14px 0 10px; }
+.loom-policy-subsection > .loom-policy-subsection-head:first-child { margin-top: 0; }
+.loom-policy-subsection-head > strong { color: var(--ink-1); font-size: 14px; font-weight: 640; }
+.loom-policy-subsection-head > span { color: var(--ink-3); font-size: 12px; }
+.loom-policy-filter-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.loom-policy-filter-row > span { color: var(--ink-3); font-size: 12px; }
+.loom-policy-filter-row .loom-policy-search { width: 260px; max-width: 100%; }
+.loom-policy-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 9px; }
+.loom-policy-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  min-height: 58px;
+  padding: 11px 13px;
+  border: 1px solid rgba(255, 255, 255, .08);
+  border-radius: var(--r-tile);
+  background: rgba(5, 12, 20, .2);
+}
+.loom-policy-card > div { min-width: 0; }
+.loom-policy-card strong { display: block; overflow: hidden; color: var(--ink-1); font-size: 13px; font-weight: 620; text-overflow: ellipsis; white-space: nowrap; }
+.loom-policy-card small { display: block; margin-top: 3px; color: var(--ink-3); font-size: 11.5px; line-height: 1.4; }
+.loom-policy-card:has(input:not(:checked)) strong { color: var(--ink-3); }
+.loom-policy-card[data-hard-off="true"] { opacity: .58; }
+.loom-policy-layout { display: grid; grid-template-columns: minmax(260px, .62fr) minmax(0, 1.65fr); gap: 16px; align-items: start; }
+.loom-policy-side-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+.loom-admin-shell .loom-policy-side-head h3 { margin: 8px 0 2px; font-size: 18px; }
+.loom-policy-side-head small { color: var(--ink-3); font-size: 12px; }
+.loom-policy-create { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; margin-bottom: 12px; }
+.loom-policy-create .loom-admin-action { min-height: 36px; }
+#policyAccountSearch { width: 100% !important; margin-bottom: 12px !important; }
+.loom-policy-groups,
+.loom-policy-account-list { display: grid; gap: 6px; max-height: 560px; padding: 2px 4px 2px 2px; overflow: auto; }
+.loom-policy-group-button,
+.loom-policy-account-button {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid rgba(255, 255, 255, .075);
+  border-radius: 10px;
+  background: rgba(5, 12, 20, .18);
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color .15s ease, border-color .15s ease;
+}
+.loom-policy-group-button:hover,
+.loom-policy-account-button:hover { background: rgba(255, 255, 255, .045); }
+.loom-policy-group-button[aria-current="true"],
+.loom-policy-account-button[aria-current="true"] { border-color: rgba(129, 201, 237, .34); background: rgba(61, 142, 182, .16); box-shadow: inset 2px 0 0 rgba(169, 217, 242, .8); }
+.loom-policy-group-button strong,
+.loom-policy-account-button strong { display: block; overflow: hidden; color: var(--ink-1); font-size: 13px; font-weight: 620; text-overflow: ellipsis; white-space: nowrap; }
+.loom-policy-group-button small,
+.loom-policy-account-button small { display: block; margin-top: 3px; overflow: hidden; color: var(--ink-3); font-size: 11.5px; text-overflow: ellipsis; white-space: nowrap; }
+.loom-policy-group-head,
+.loom-policy-account-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 12px; }
+.loom-admin-shell .loom-policy-group-head h3,
+.loom-admin-shell .loom-policy-account-head h3 { margin: 8px 0 4px; font-size: 19px; word-break: break-all; }
+.loom-policy-members { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 8px; max-height: 340px; padding-right: 2px; overflow: auto; }
+.loom-policy-member { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 9px 11px; border: 1px solid rgba(255, 255, 255, .07); border-radius: 10px; background: rgba(5, 12, 20, .16); cursor: pointer; }
+.loom-policy-member > div { min-width: 0; }
+.loom-policy-member strong { display: block; overflow: hidden; color: var(--ink-1); font-size: 12.5px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.loom-policy-member small { display: block; margin-top: 2px; color: var(--ink-3); font-size: 11.5px; }
+.loom-policy-final { display: inline-flex; align-items: center; flex: 0 0 auto; min-height: 21px; padding: 0 8px; border: 1px solid rgba(255, 255, 255, .08); border-radius: 999px; font-size: 11px; font-weight: 700; white-space: nowrap; }
+.loom-policy-final[data-on="true"] { border-color: rgba(128, 224, 193, .2); background: rgba(131, 239, 199, .08); color: #a7e8d2; }
+.loom-policy-final[data-on="false"] { border-color: rgba(255, 155, 166, .2); background: rgba(255, 155, 166, .08); color: #ffc3c8; }
+.loom-policy-account-meta { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+.loom-policy-account-meta span { display: inline-flex; align-items: center; min-height: 22px; padding: 0 9px; border: 1px solid rgba(255, 255, 255, .08); border-radius: 999px; background: rgba(0, 0, 0, .12); color: var(--ink-2); font-size: 11.5px; }
+.loom-policy-account-master,
+.loom-policy-membership-panel { padding: 12px 14px; border: 1px solid rgba(255, 255, 255, .07); border-radius: var(--r-tile); background: rgba(5, 12, 20, .18); }
+.loom-policy-account-master { display: flex; align-items: center; gap: 12px; }
+.loom-policy-account-master > div { flex: 1; min-width: 0; }
+.loom-policy-account-master strong { display: block; color: var(--ink-1); font-size: 13.5px; font-weight: 640; }
+.loom-policy-account-master small { display: block; margin-top: 2px; color: var(--ink-3); font-size: 12px; }
+.loom-policy-membership-panel { margin-top: 10px; }
+.loom-policy-membership-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
+.loom-policy-membership-head strong { color: var(--ink-1); font-size: 13px; font-weight: 640; }
+.loom-policy-membership-head span { color: var(--ink-3); font-size: 11.5px; }
+.loom-policy-membership-chips { display: flex; gap: 7px; flex-wrap: wrap; }
+.loom-policy-membership-chip {
+  min-height: 28px;
+  padding: 0 11px;
+  border: 1px solid rgba(255, 255, 255, .1);
+  border-radius: 999px;
+  background: rgba(0, 0, 0, .12);
+  color: var(--ink-3);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color .15s ease, color .15s ease, border-color .15s ease;
+}
+.loom-policy-membership-chip:hover { color: #fff; }
+.loom-policy-membership-chip[aria-pressed="true"] { border-color: rgba(130, 205, 239, .34); background: rgba(68, 145, 184, .2); color: #dff6ff; }
+.loom-policy-membership-chip[data-paused="true"] { border-style: dashed; opacity: .7; }
+.loom-policy-account-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 9px; margin: 12px 0 0; }
+.loom-policy-account-stat { padding: 12px 14px; border: 1px solid rgba(255, 255, 255, .075); border-radius: var(--r-tile); background: rgba(5, 12, 20, .2); }
+.loom-policy-account-stat span { display: block; color: var(--ink-3); font-size: 10.5px; font-weight: 700; letter-spacing: .1em; }
+.loom-policy-account-stat strong { display: block; margin-top: 6px; color: #f4f8fb; font-size: 24px; font-weight: 640; line-height: 1; font-variant-numeric: tabular-nums; }
+.loom-policy-account-stat small { display: block; margin-top: 5px; color: var(--ink-3); font-size: 11.5px; }
+.loom-policy-account-stat[data-tone="allow"] strong { color: #a7e8d2; }
+.loom-policy-account-stat[data-tone="deny"] strong { color: #ffc3c8; }
+.loom-policy-account-stat[data-tone="override"] strong { color: #b9dcff; }
+.loom-policy-account-stat[data-tone="hard"] strong { color: #ffd2a8; }
+.loom-policy-account-controls { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
+.loom-policy-account-filters { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.loom-policy-account-filters .loom-policy-search { width: 260px; max-width: 100%; }
+.loom-policy-account-filters .loom-policy-select { min-width: 128px; }
+.loom-policy-view-toggle button { min-height: 26px; padding: 0 11px; font-size: 12px; }
+.loom-policy-bulkbar { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; padding: 9px 11px 9px 13px; border: 1px solid rgba(116, 196, 234, .14); border-radius: var(--r-tile); background: rgba(41, 123, 163, .08); }
+.loom-policy-bulkbar > span { color: var(--ink-3); font-size: 12px; }
+.loom-policy-provider-stack { display: grid; gap: 10px; }
+.loom-policy-provider-section { overflow: hidden; border: 1px solid rgba(255, 255, 255, .075); border-radius: 12px; background: rgba(5, 12, 20, .12); }
+.loom-policy-provider-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; padding: 10px 12px; border-bottom: 1px solid rgba(255, 255, 255, .06); background: rgba(255, 255, 255, .02); }
+.loom-policy-provider-head strong { color: var(--ink-1); font-size: 13.5px; font-weight: 640; }
+.loom-policy-provider-head small { display: block; margin-top: 2px; color: var(--ink-3); font-size: 11.5px; }
+.loom-policy-provider-actions,
+.loom-policy-model-actions { display: flex; gap: 4px; flex-wrap: wrap; justify-content: flex-end; }
+.loom-policy-choice {
+  min-height: 26px;
+  padding: 0 9px;
+  border: 1px solid rgba(255, 255, 255, .09);
+  border-radius: 7px;
+  background: rgba(0, 0, 0, .14);
+  color: var(--ink-3);
+  font: inherit;
+  font-size: 11.5px;
+  font-weight: 620;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background-color .15s ease, color .15s ease, border-color .15s ease;
+}
+.loom-policy-choice:hover { background: rgba(255, 255, 255, .07); color: #fff; }
+.loom-policy-choice[aria-pressed="true"] { border-color: rgba(142, 205, 237, .3); background: rgba(78, 153, 191, .2); color: #fff; }
+.loom-policy-choice.is-deny[aria-pressed="true"] { border-color: rgba(255, 158, 170, .26); background: rgba(112, 24, 34, .24); color: #ffd1d5; }
+.loom-policy-account-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 8px; padding: 10px; }
+.loom-policy-account-grid[data-view="compact"] { grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 6px; }
+.loom-policy-account-grid[data-view="compact"] .loom-policy-account-model { min-height: 0; padding: 9px 10px; }
+.loom-policy-account-grid[data-view="compact"] .loom-policy-account-model-id { display: none; }
+.loom-policy-account-model { display: grid; grid-template-rows: auto 1fr auto; gap: 8px; min-height: 108px; padding: 11px 12px; border: 1px solid rgba(255, 255, 255, .075); border-radius: 10px; background: rgba(4, 11, 18, .2); }
+.loom-policy-account-model[data-final="blocked"] { border-color: rgba(255, 145, 158, .14); }
+.loom-policy-account-model[data-explicit="true"] { box-shadow: inset 2px 0 0 rgba(115, 194, 235, .55); }
+.loom-policy-account-model[data-hard="true"] { opacity: .66; }
+.loom-policy-account-model-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
+.loom-policy-account-model-title { min-width: 0; }
+.loom-policy-account-model-title strong { display: block; color: var(--ink-1); font-size: 13px; font-weight: 640; }
+.loom-policy-account-model-title small { display: block; margin-top: 2px; color: var(--ink-3); font-size: 11.5px; }
+.loom-policy-account-model-id { color: var(--ink-4) !important; font: 500 11px var(--mono) !important; overflow-wrap: anywhere; }
+.loom-policy-account-model-reason { display: flex; align-items: flex-start; gap: 7px; color: var(--ink-3); font-size: 11.5px; line-height: 1.45; }
+.loom-policy-account-model-reason i { width: 6px; height: 6px; flex: 0 0 auto; margin-top: 5px; border-radius: 50%; background: rgba(158, 213, 241, .75); }
+.loom-policy-account-model[data-final="blocked"] .loom-policy-account-model-reason i { background: rgba(255, 158, 170, .78); }
+.loom-policy-account-model-bottom { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.loom-policy-account-model-bottom .loom-policy-note { margin: 0; font-size: 11.5px; }
+.loom-policy-account-model .loom-policy-model-actions { flex-wrap: nowrap; }
+.loom-policy-visible-empty { display: none; }
+.loom-policy-visible-empty[data-visible="true"] { display: block; }
+.loom-policy-effective { grid-column: 1 / -1; padding: 13px 15px; border: 1px solid rgba(112, 210, 255, .16); border-radius: var(--r-tile); background: rgba(50, 156, 203, .07); }
+.loom-policy-effective-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 10px; }
+.loom-policy-effective-head strong { color: var(--ink-1); font-size: 14px; font-weight: 640; }
+
+/* ============================================================ footer + motion */
+.loom-admin-shell .loom-admin-footer { margin-top: 30px; padding: 16px 4px 4px; border-top: 1px solid rgba(255, 255, 255, .1); color: rgba(240, 247, 253, .6); font-size: 12px; text-shadow: var(--text-shadow); }
+@keyframes loom-admin-live {
+  0%, 100% { opacity: 1; }
+  50% { opacity: .45; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .loom-admin-section-nav::before { animation: none; }
+  .loom-admin-shell *, .loom-admin-shell *::before, .loom-admin-shell *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
+}
+
+/* ============================================================ responsive */
+@media (max-width: 1180px) {
+  .loom-admin-section-nav { --nav-item-w: 80px; }
+  .loom-admin-section-nav > a { font-size: 13px; }
+  .loom-admin-shell .loom-admin-overview-hero { grid-template-columns: minmax(0, 1fr) auto; }
+  .loom-admin-service-chips { grid-column: 1 / -1; grid-row: 2; }
+  .loom-admin-primary-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .loom-admin-shell .loom-admin-overview-pulse { grid-template-columns: 1fr; }
+  .loom-admin-overview-pulse-head { grid-template-columns: minmax(0, 1fr) auto; align-items: center; border-right: 0; border-bottom: 1px solid var(--line); }
+  .loom-admin-pulse-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .loom-admin-pulse-grid > div:nth-child(n+4) { border-top: 1px solid var(--line); }
+  .loom-admin-pulse-grid > div:nth-child(4) { border-left: 0; }
+  .loom-admin-overview-bottom { grid-template-columns: 1fr; }
+  .loom-admin-usage-kpis { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .loom-admin-usage-insights { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .loom-admin-usage-primary-grid { grid-template-columns: 1fr; }
+  .loom-admin-tool-grid { grid-template-columns: 1fr; }
+  .loom-policy-account-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 980px) {
+  .loom-admin-monitor-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .loom-admin-mini-kpis { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .loom-admin-shell .loom-admin-monitor-toolbar,
+  .loom-admin-shell .loom-admin-users-toolbar { align-items: stretch; flex-direction: column; }
+  .loom-admin-monitor-search,
+  .loom-admin-users-tools { margin-left: 0; }
+  .loom-admin-shell .loom-admin-monitor-search .usage-audit-search,
+  .loom-admin-shell .loom-admin-users-tools .usage-audit-search { flex: 1; width: auto; }
+  .loom-admin-shell .loom-admin-flags-grid,
+  .loom-admin-shell .loom-admin-system-grid,
+  .loom-admin-usage-rankings { grid-template-columns: 1fr; }
+  .loom-policy-layout { grid-template-columns: 1fr; }
+  .loom-policy-groups,
+  .loom-policy-account-list { max-height: 300px; }
+  .loom-admin-detail-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 760px) {
+  .loom-admin-shell { width: calc(100vw - 24px); }
+  .loom-admin-brand-divider,
+  .loom-admin-brand .brand-copy small { display: none; }
+  .loom-admin-section-nav { --nav-item-w: 74px; --nav-gap: 3px; --nav-pad: 6px; top: 8px; min-height: 56px; margin: 6px 0 22px; border-radius: 18px; }
+  .loom-admin-section-nav > a { height: 44px; font-size: 12.5px; border-radius: 12px; }
+  .loom-admin-section-nav::before { border-radius: 13px; }
+  .usage-heading,
+  .usage-section-head { flex-direction: column; align-items: flex-start; gap: 14px; }
+  .loom-admin-shell .usage-updated,
+  .loom-admin-usage-controls { justify-items: start; text-align: left; }
+  .usage-section-head h2 { font-size: 23px; }
+  .loom-admin-shell .usage-audit-tools { width: 100%; }
+  .loom-admin-shell .usage-section-head .usage-audit-search { flex: 1; width: auto; }
+  .loom-admin-shell .loom-admin-overview-hero { grid-template-columns: 1fr; }
+  .loom-admin-service-chips { grid-column: auto; grid-row: auto; }
+  .loom-admin-overview-admin { justify-items: start; text-align: left; }
+  .loom-admin-ops-row,
+  .loom-admin-ops-row.is-current { grid-template-columns: 1fr; gap: 10px; }
+  .loom-admin-ops-inline { justify-content: flex-start; }
+  .loom-admin-user-card-head { grid-template-columns: auto minmax(0, 1fr); }
+  .loom-admin-user-role { grid-column: 2; }
+  .loom-admin-user-device { grid-template-columns: auto minmax(0, 1fr); }
+  .loom-admin-user-device-state { grid-column: 2; justify-items: start; text-align: left; }
+  .loom-admin-user-metric-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .loom-admin-user-metric-grid > div:nth-child(3) { border-left: 0; }
+  .loom-admin-user-metric-grid > div:nth-child(n+3) { border-top: 1px solid var(--line); }
+  .loom-admin-user-visual-grid { grid-template-columns: 1fr; }
+  .loom-admin-user-success { justify-content: flex-start; }
+  .loom-admin-host-health-grid,
+  .loom-admin-device-health-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .loom-admin-usage-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .loom-admin-usage-kpi.is-primary { grid-column: 1 / -1; }
+  .loom-admin-shell .loom-admin-audit-row { grid-template-columns: 1fr; }
+  .loom-admin-audit-meta { justify-content: space-between; }
+  .loom-admin-daily-chart { height: 210px; gap: 3px; }
+}
+@media (max-width: 560px) {
+  .loom-admin-topbar { flex-wrap: wrap; }
+  .loom-admin-topbar-right { width: 100%; justify-content: flex-end; }
+  .loom-admin-primary-metrics { gap: 10px; }
+  .loom-admin-primary-card { min-height: 124px; padding: 15px; }
+  .loom-admin-primary-card > strong { margin-top: 14px; font-size: 30px; }
+  .loom-admin-primary-card { grid-template-columns: auto minmax(0, 1fr); grid-template-areas: "icon label" "value value" "copy copy"; }
+  .loom-admin-primary-card > i { display: none; }
+  .loom-admin-primary-card > .utility-overline { line-height: 1.25; white-space: normal; }
+  .loom-admin-pulse-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .loom-admin-pulse-grid > div:nth-child(n) { border-top: 1px solid var(--line); border-left: 1px solid var(--line); }
+  .loom-admin-pulse-grid > div:nth-child(odd) { border-left: 0; }
+  .loom-admin-pulse-grid > div:nth-child(-n+2) { border-top: 0; }
+  .loom-admin-quick-grid,
+  .loom-admin-monitor-kpis,
+  .loom-admin-mini-kpis,
+  .loom-admin-mini-kpis-3,
+  .loom-admin-usage-kpis,
+  .loom-admin-usage-insights,
+  .loom-admin-detail-grid,
+  .loom-policy-account-stats { grid-template-columns: 1fr; }
+  .loom-admin-users-tools { flex-wrap: wrap; }
+  .loom-admin-shell .loom-admin-users-tools .usage-audit-search { flex-basis: 100%; }
+  .loom-admin-shell .account-card { padding: 16px; }
+  .loom-admin-shell .loom-admin-user-card,
+  .loom-admin-shell .loom-admin-overview-pulse { padding: 0; }
+  .loom-admin-user-card-head { padding: 16px 14px 13px; }
+  .loom-admin-user-device,
+  .loom-admin-host-health-mini,
+  .loom-admin-host-health-empty,
+  .loom-admin-user-metric-grid,
+  .loom-admin-user-visual-grid,
+  .loom-admin-user-tools { margin-right: 14px; margin-left: 14px; }
+  .loom-admin-user-card-foot { padding: 13px 14px 15px; }
+  .loom-admin-device-card > footer { display: grid; grid-template-columns: 1fr 1fr; }
+  .loom-admin-shell .loom-admin-auth-card { padding: 22px 18px 18px; }
+}

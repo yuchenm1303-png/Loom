@@ -45,77 +45,8 @@
   const policyRequest = (path, options = {}) => authedFetch(POLICY_API + path, options);
   const accountRequest = (path, options = {}) => authedFetch(ACCOUNT_API + path, options);
 
-  function installStyles() {
-    if ($('loomModelPolicyStyles')) return;
-    const style = document.createElement('style');
-    style.id = 'loomModelPolicyStyles';
-    style.textContent = `
-      .loom-policy-shell{margin-top:14px}
-      .loom-policy-tabs{display:flex;gap:6px;align-items:center;margin:14px 0 12px;padding:5px;width:max-content;max-width:100%;overflow:auto;border:1px solid rgba(255,255,255,.08);border-radius:10px;background:rgba(2,7,12,.24)}
-      .loom-policy-tab{border:0;border-radius:7px;padding:8px 12px;background:transparent;color:rgba(235,245,252,.52);font:inherit;font-size:11px;font-weight:650;cursor:pointer;white-space:nowrap}
-      .loom-policy-tab[aria-selected="true"]{background:rgba(255,255,255,.08);color:#fff}.loom-policy-tab:hover{color:#fff}
-      .loom-policy-pane[hidden]{display:none!important}
-      .loom-policy-toolbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.loom-policy-toolbar .loom-admin-action{min-width:auto}
-      .loom-policy-note{margin:6px 0 0;color:rgba(220,235,245,.48);font-size:11px;line-height:1.55}
-      .loom-policy-summary{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.loom-policy-summary span{padding:5px 8px;border:1px solid rgba(255,255,255,.08);border-radius:999px;background:rgba(0,0,0,.12);color:rgba(235,245,252,.58);font-size:10px}
-      .loom-policy-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:9px}
-      .loom-policy-card{display:flex;align-items:center;justify-content:space-between;gap:14px;min-height:58px;padding:11px 12px;border:1px solid rgba(255,255,255,.08);border-radius:11px;background:rgba(5,12,20,.20)}
-      .loom-policy-card strong{display:block;color:rgba(248,251,255,.88);font-size:11px;font-weight:650;overflow-wrap:anywhere}.loom-policy-card small{display:block;margin-top:3px;color:rgba(225,239,248,.46);font-size:9px;line-height:1.4}
-      .loom-policy-switch{position:relative;display:inline-flex;align-items:center;flex:0 0 auto}.loom-policy-switch input{position:absolute;opacity:0;pointer-events:none}
-      .loom-policy-switch span{width:38px;height:22px;border-radius:999px;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.11);position:relative;transition:.16s ease}
-      .loom-policy-switch span:after{content:"";position:absolute;width:16px;height:16px;left:2px;top:2px;border-radius:50%;background:rgba(255,255,255,.68);transition:.16s ease}
-      .loom-policy-switch input:checked+span{background:rgba(104,184,225,.26);border-color:rgba(136,205,239,.36)}.loom-policy-switch input:checked+span:after{transform:translateX(16px);background:#fff}.loom-policy-switch input:disabled+span{opacity:.35}
-      .loom-policy-layout{display:grid;grid-template-columns:minmax(250px,.62fr) minmax(0,1.65fr);gap:14px;align-items:start}.loom-policy-layout>.account-card{min-height:0!important}
-      .loom-policy-side-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:12px}.loom-policy-side-head h3{margin:2px 0 0;font-size:17px}.loom-policy-side-head small{color:rgba(230,241,249,.44)}
-      .loom-policy-create{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:7px;margin-bottom:10px}.loom-policy-create input,.loom-policy-search,.loom-policy-select{min-width:0;border:1px solid rgba(255,255,255,.09);border-radius:8px;padding:8px 10px;background:rgba(0,0,0,.16);color:rgba(250,252,255,.82);font:inherit;font-size:10px;outline:none}.loom-policy-create input:focus,.loom-policy-search:focus,.loom-policy-select:focus{border-color:rgba(141,205,237,.3)}
-      .loom-policy-groups,.loom-policy-account-list{display:grid;gap:6px;max-height:520px;overflow:auto;padding-right:2px}
-      .loom-policy-group-button,.loom-policy-account-button{width:100%;text-align:left;padding:10px 11px;border:1px solid rgba(255,255,255,.075);border-radius:10px;background:rgba(5,12,20,.18);color:inherit;cursor:pointer}
-      .loom-policy-group-button[aria-current="true"],.loom-policy-account-button[aria-current="true"]{border-color:rgba(129,201,237,.32);background:rgba(61,142,182,.12)}
-      .loom-policy-group-button strong,.loom-policy-group-button small,.loom-policy-account-button strong,.loom-policy-account-button small{display:block}.loom-policy-group-button strong,.loom-policy-account-button strong{font-size:11px}.loom-policy-group-button small,.loom-policy-account-button small{margin-top:3px;font-size:9px;opacity:.5}
-      .loom-policy-group-head,.loom-policy-account-head{display:flex;justify-content:space-between;gap:14px;align-items:flex-start;margin-bottom:12px}.loom-policy-group-head h3,.loom-policy-account-head h3{margin:2px 0 3px;font-size:18px}
-      .loom-policy-subsection{margin-top:15px;padding-top:14px;border-top:1px solid rgba(255,255,255,.07)}.loom-policy-subsection-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:9px}.loom-policy-subsection-head>span{color:rgba(230,241,249,.42);font-size:10px}
-      .loom-policy-filter-row{display:flex;align-items:center;gap:7px;flex-wrap:wrap}.loom-policy-filter-row .loom-policy-search{width:min(260px,100%)}
-      .loom-policy-members{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:7px;max-height:330px;overflow:auto;padding-right:2px}
-      .loom-policy-member{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 10px;border:1px solid rgba(255,255,255,.07);border-radius:9px;background:rgba(5,12,20,.16)}
-      .loom-policy-member strong{display:block;font-size:10px;overflow-wrap:anywhere}.loom-policy-member small{display:block;margin-top:2px;font-size:9px;opacity:.48}
-      .loom-policy-empty{padding:22px;text-align:center;color:rgba(235,247,255,.48);border:1px dashed rgba(255,255,255,.1);border-radius:10px;line-height:1.6}.loom-policy-empty .loom-admin-action{margin-top:10px}
-      .loom-policy-error{color:#ffb6b6;font-size:11px;margin:8px 0 0}
-      .loom-policy-source{display:inline-flex;align-items:center;gap:5px;margin-top:4px}.loom-policy-source i{width:5px;height:5px;border-radius:50%;background:rgba(158,213,241,.68)}
-      .loom-policy-final{display:inline-flex;align-items:center;border-radius:999px;padding:3px 7px;border:1px solid rgba(255,255,255,.08);font-size:9px;font-weight:700}.loom-policy-final[data-on="true"]{color:#a7e8d2;border-color:rgba(128,224,193,.14)}.loom-policy-final[data-on="false"]{color:#ffc3c8;border-color:rgba(255,155,166,.14)}
-      .loom-policy-account-meta{display:flex;gap:6px;flex-wrap:wrap;margin-top:7px}.loom-policy-account-meta span{padding:4px 7px;border-radius:999px;border:1px solid rgba(255,255,255,.07);background:rgba(0,0,0,.12);font-size:9px;color:rgba(232,243,250,.56)}
-      .loom-policy-account-master{display:flex;align-items:center;gap:10px;padding:9px 10px;border:1px solid rgba(255,255,255,.07);border-radius:10px;background:rgba(5,12,20,.18)}.loom-policy-account-master>div{flex:1}.loom-policy-account-master strong,.loom-policy-account-master small{display:block}.loom-policy-account-master strong{font-size:11px}.loom-policy-account-master small{margin-top:2px;font-size:9px;color:rgba(229,240,249,.45)}
-      .loom-policy-model-actions{display:flex;gap:4px;flex-wrap:wrap;justify-content:flex-end}.loom-policy-choice{border:1px solid rgba(255,255,255,.08);border-radius:7px;padding:5px 7px;background:rgba(0,0,0,.13);color:rgba(235,245,252,.52);font:inherit;font-size:9px;font-weight:650;cursor:pointer}.loom-policy-choice:hover{color:#fff;background:rgba(255,255,255,.06)}.loom-policy-choice[aria-pressed="true"]{color:#fff;border-color:rgba(142,205,237,.26);background:rgba(78,153,191,.16)}.loom-policy-choice.is-deny[aria-pressed="true"]{color:#ffd1d5;border-color:rgba(255,158,170,.18);background:rgba(112,24,34,.14)}
-      .loom-policy-card[data-hard-off="true"]{opacity:.58}.loom-policy-card[data-hard-off="true"] .loom-policy-choice{opacity:.55}
-      .loom-policy-effective{grid-column:1/-1;margin-top:4px;padding:12px;border:1px solid rgba(112,210,255,.15);border-radius:10px;background:rgba(50,156,203,.055)}
-      .loom-policy-effective-head{display:flex;justify-content:space-between;gap:10px;align-items:center;margin-bottom:9px}
-      .loom-policy-account-stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin:12px 0}
-      .loom-policy-account-stat{padding:11px 12px;border:1px solid rgba(255,255,255,.075);border-radius:10px;background:rgba(5,12,20,.18)}
-      .loom-policy-account-stat span,.loom-policy-account-stat strong,.loom-policy-account-stat small{display:block}.loom-policy-account-stat span{font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:rgba(220,235,245,.42)}.loom-policy-account-stat strong{margin-top:5px;font-size:20px;line-height:1;color:#f4f8fb}.loom-policy-account-stat small{margin-top:4px;font-size:9px;color:rgba(220,235,245,.42)}
-      .loom-policy-account-stat[data-tone="allow"] strong{color:#a7e8d2}.loom-policy-account-stat[data-tone="deny"] strong{color:#ffc3c8}.loom-policy-account-stat[data-tone="override"] strong{color:#b9dcff}.loom-policy-account-stat[data-tone="hard"] strong{color:#ffd2a8}
-      .loom-policy-membership-panel{margin-top:10px;padding:10px 11px;border:1px solid rgba(255,255,255,.07);border-radius:10px;background:rgba(5,12,20,.14)}
-      .loom-policy-membership-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px}.loom-policy-membership-head strong{font-size:10px}.loom-policy-membership-head span{font-size:9px;color:rgba(220,235,245,.42)}
-      .loom-policy-membership-chips{display:flex;gap:6px;flex-wrap:wrap}.loom-policy-membership-chip{border:1px solid rgba(255,255,255,.08);border-radius:999px;padding:6px 9px;background:rgba(0,0,0,.12);color:rgba(235,245,252,.54);font:inherit;font-size:9px;cursor:pointer}.loom-policy-membership-chip[aria-pressed="true"]{color:#dff6ff;border-color:rgba(130,205,239,.3);background:rgba(68,145,184,.16)}.loom-policy-membership-chip[data-paused="true"]{border-style:dashed;opacity:.68}.loom-policy-membership-chip:hover{color:#fff}
-      .loom-policy-account-controls{display:flex;align-items:center;justify-content:space-between;gap:9px;flex-wrap:wrap;margin-bottom:8px}.loom-policy-account-filters{display:flex;gap:6px;align-items:center;flex-wrap:wrap}.loom-policy-account-filters .loom-policy-search{width:min(260px,100%)}.loom-policy-account-filters .loom-policy-select{min-width:118px}
-      .loom-policy-view-toggle{display:inline-flex;padding:3px;border:1px solid rgba(255,255,255,.08);border-radius:8px;background:rgba(0,0,0,.12)}.loom-policy-view-toggle button{border:0;border-radius:6px;padding:5px 8px;background:transparent;color:rgba(235,245,252,.42);font:inherit;font-size:9px;cursor:pointer}.loom-policy-view-toggle button[aria-pressed="true"]{background:rgba(255,255,255,.08);color:#fff}
-      .loom-policy-bulkbar{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;padding:9px 10px;margin-bottom:12px;border:1px solid rgba(116,196,234,.12);border-radius:10px;background:rgba(41,123,163,.055)}.loom-policy-bulkbar>span{font-size:9px;color:rgba(220,235,245,.48)}
-      .loom-policy-provider-stack{display:grid;gap:10px}.loom-policy-provider-section{border:1px solid rgba(255,255,255,.07);border-radius:12px;background:rgba(5,12,20,.11);overflow:hidden}.loom-policy-provider-section[hidden]{display:none!important}
-      .loom-policy-provider-head{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 11px;border-bottom:1px solid rgba(255,255,255,.06);background:rgba(255,255,255,.018)}.loom-policy-provider-head strong{font-size:11px}.loom-policy-provider-head small{display:block;margin-top:2px;font-size:9px;color:rgba(220,235,245,.42)}
-      .loom-policy-provider-actions{display:flex;gap:4px;flex-wrap:wrap;justify-content:flex-end}.loom-policy-provider-actions .loom-policy-choice{padding:4px 6px}
-      .loom-policy-account-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(245px,1fr));gap:7px;padding:8px}.loom-policy-account-grid[data-view="compact"]{grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:5px}.loom-policy-account-grid[data-view="compact"] .loom-policy-account-model{padding:8px 9px;min-height:86px}.loom-policy-account-grid[data-view="compact"] .loom-policy-account-model-id{display:none}
-      .loom-policy-account-model{display:grid;grid-template-rows:auto 1fr auto;gap:7px;min-height:104px;padding:10px 11px;border:1px solid rgba(255,255,255,.07);border-radius:10px;background:rgba(4,11,18,.17)}.loom-policy-account-model[data-final="blocked"]{border-color:rgba(255,145,158,.11)}.loom-policy-account-model[data-explicit="true"]{box-shadow:inset 2px 0 0 rgba(115,194,235,.35)}.loom-policy-account-model[data-hard="true"]{opacity:.7}
-      .loom-policy-account-model-top{display:flex;justify-content:space-between;gap:8px;align-items:flex-start}.loom-policy-account-model-title strong{display:block;font-size:10px;color:rgba(248,251,255,.9)}.loom-policy-account-model-title small{display:block;margin-top:2px;font-size:8px;color:rgba(225,239,248,.42)}.loom-policy-account-model-id{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;overflow-wrap:anywhere}
-      .loom-policy-account-model-reason{display:flex;align-items:flex-start;gap:6px;font-size:8px;color:rgba(225,239,248,.43);line-height:1.4}.loom-policy-account-model-reason i{width:5px;height:5px;margin-top:3px;border-radius:50%;background:rgba(158,213,241,.68);flex:0 0 auto}.loom-policy-account-model[data-final="blocked"] .loom-policy-account-model-reason i{background:rgba(255,158,170,.72)}
-      .loom-policy-account-model-bottom{display:flex;align-items:center;justify-content:space-between;gap:8px}.loom-policy-account-model .loom-policy-model-actions{flex-wrap:nowrap}
-      .loom-policy-visible-empty{display:none;padding:22px;text-align:center;color:rgba(235,247,255,.42);border:1px dashed rgba(255,255,255,.08);border-radius:10px}.loom-policy-visible-empty[data-visible="true"]{display:block}
-      @media(max-width:1100px){.loom-policy-account-stats{grid-template-columns:repeat(2,minmax(0,1fr))}.loom-policy-account-grid{grid-template-columns:repeat(auto-fit,minmax(220px,1fr))}}
-      @media(max-width:900px){.loom-policy-layout{grid-template-columns:1fr}.loom-policy-groups,.loom-policy-account-list{max-height:280px}.loom-policy-members{grid-template-columns:1fr}}
-    `;
-    document.head.appendChild(style);
-  }
-
   function installUI() {
     if ($('models')) return;
-    installStyles();
     const nav = $('sectionNav') || document.querySelector('.loom-admin-nav');
     if (nav && !nav.querySelector('a[href="#models"]')) {
       const system = [...nav.querySelectorAll('a')].find(a => a.getAttribute('href') === '#system');
