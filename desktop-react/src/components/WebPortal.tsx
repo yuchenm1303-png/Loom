@@ -1,9 +1,10 @@
 import "./portal-base.css";
 import "./portal-modules.css";
 import "./portal-host-card.css";
+import "./portal-content.css";
 import type { CSSProperties, FormEvent } from "react";
 import { useEffect, useRef, useState } from "react";
-import { Laptop, Download, UserRound, LogOut, Check, ArrowRight, Github, Mail, KeyRound, ShieldCheck, Eye, EyeOff } from "lucide-react";
+import { Laptop, Download, UserRound, LogOut, Check, ArrowRight, Github, Mail, KeyRound, ShieldCheck, Eye, EyeOff, FolderOpen, MessagesSquare } from "lucide-react";
 import { useI18n } from "../i18n";
 import { useAccount } from "../state/useAccount";
 import { HostSetupActions } from "./HostSetupActions";
@@ -315,7 +316,7 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
   }
 
   const hostText = hostState === "online"
-    ? (zh ? "Host 已连接，点击进入工作区。" : "Host connected. Click Open workspace to enter.")
+    ? (zh ? "你的本地工作区已就绪，继续上次的工作吧。" : "Your local workspace is ready. Continue where you left off.")
     : hostState === "checking"
       ? copy.localConnecting
       : hostState === "unbound"
@@ -348,25 +349,31 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
     <div className="loom-portal-page is-modular">
       <PortalWallpaper />
       <main className="release-shell loom-portal-shell">
-        <header className="topbar fade loom-site-header">
-          <a className="brand loom-portal-brand" href="/" aria-label="Smirel Loom">
-            <img className="loom-smirel-wordmark" src={SMIREL_LOGO} alt="Smirel" />
-            <span className="loom-brand-divider" aria-hidden="true" />
-            <span className="brand-copy"><strong>Loom</strong><small>Personal AI Agent</small></span>
-          </a>
-          <div className="loom-version-chip"><span>{(release.version || (zh ? "最新稳定版" : "Latest stable"))}</span></div>
-        </header>
-
         <section className="loom-module-grid">
           <article className="loom-stage-copy loom-intro-module cards fade">
+            <header className="loom-card-brand-row">
+              <a className="brand loom-portal-brand" href="/" aria-label="Smirel Loom">
+                <img className="loom-smirel-wordmark" src={SMIREL_LOGO} alt="Smirel" />
+                <span className="loom-brand-divider" aria-hidden="true" />
+                <span className="brand-copy"><strong>Loom</strong><small>Personal AI Agent</small></span>
+              </a>
+              <div className="loom-version-chip"><span>{(release.version || (zh ? "最新稳定版" : "Latest stable"))}</span></div>
+            </header>
+
             <div className="loom-intro-copy">
             <p className="kicker">LOOM · LOCAL-FIRST AGENT</p>
             <h1><span className="loom-heading-main">{zh ? "你的 Loom，" : "Your Loom stays"}</span>{" "}<span className="loom-heading-accent">{zh ? "始终在自己的电脑上。" : "on your computer."}</span></h1>
             <p className="loom-stage-description">
               {zh
-                ? "Loom Host 在本机后台运行 Agent，打开网页即可继续工作。桌面界面可选，网页和桌面共享同一个会话、文件、审批和 Computer Use。"
-                : "Loom Host runs the Agent in the background on your computer. Open the web to keep working. Desktop is optional; both share the same conversations, files, approvals and Computer Use."}
+                ? "让 Agent 在你的电脑上持续工作。打开网页，即可接着处理文件、推进任务，继续上次的对话。"
+                : "An Agent that keeps working on your computer. Open the web to pick up your conversations, work with files, and move your tasks forward."}
             </p>
+
+            <ul className="loom-feature-list">
+              <li><FolderOpen size={19} strokeWidth={1.5} aria-hidden="true" /><div><strong>{zh ? "连接本机文件" : "Your files, within reach"}</strong><span>{zh ? "在熟悉的工作区里处理任务" : "Work in your own workspace"}</span></div></li>
+              <li><MessagesSquare size={19} strokeWidth={1.5} aria-hidden="true" /><div><strong>{zh ? "随时接着聊" : "Pick up where you left off"}</strong><span>{zh ? "网页与桌面共享同一段对话" : "One conversation, web and desktop"}</span></div></li>
+              <li><ShieldCheck size={19} strokeWidth={1.5} aria-hidden="true" /><div><strong>{zh ? "由你掌控" : "You're in control"}</strong><span>{zh ? "操作审批与 Computer Use 随时可用" : "Approvals and Computer Use built in"}</span></div></li>
+            </ul>
 
             {!authenticated ? <div className="loom-stage-actions"><button className="loom-primary-action" type="button" onClick={primaryAction}><span>{primaryLabel}</span><span aria-hidden="true">→</span></button></div> : null}
             </div>

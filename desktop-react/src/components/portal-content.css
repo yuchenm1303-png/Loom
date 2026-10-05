@@ -1,0 +1,156 @@
+/* Card interiors only; the shared Smirel glass material remains on .cards. */
+.loom-portal-page.is-modular .loom-portal-shell {
+  padding: clamp(24px, 5vh, 64px) 0;
+  justify-content: center;
+}
+.loom-portal-page.is-modular .loom-module-grid {
+  height: min(820px, calc(100dvh - 96px));
+}
+.loom-module-grid .loom-intro-module {
+  padding: clamp(28px, 3vw, 56px);
+  gap: 30px;
+}
+.loom-card-brand-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  flex: none;
+  padding-bottom: 24px;
+  border-bottom: 1px solid var(--loom-line);
+}
+.loom-card-brand-row .loom-portal-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 18px;
+  color: inherit;
+  text-decoration: none;
+}
+.loom-card-brand-row .brand-copy { display: grid; gap: 3px; }
+.loom-card-brand-row .loom-version-chip {
+  padding: 5px 10px;
+  background: rgba(255,255,255,.045);
+  border: 1px solid var(--loom-line);
+  font-size: 10px;
+}
+.loom-module-grid .loom-intro-copy { margin: auto 0; }
+.loom-module-grid .loom-intro-copy > .kicker {
+  margin: 0;
+  color: rgba(211,236,248,.7);
+  font-size: 10px;
+  letter-spacing: .18em;
+}
+.loom-module-grid .loom-stage-copy h1 {
+  margin-top: 20px;
+  font-size: clamp(34px, 3.15vw, 64px);
+  line-height: 1.08;
+  letter-spacing: -.045em;
+}
+.loom-module-grid .loom-heading-accent { margin-top: 10px; color: #d9edf7; }
+.loom-module-grid .loom-stage-description {
+  max-width: 52ch;
+  margin-top: 22px;
+  color: rgba(241,247,252,.72);
+  font-size: clamp(13px, .95vw, 16px);
+  line-height: 1.8;
+}
+.loom-feature-list {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 20px;
+  padding: 0;
+  margin: 32px 0 0;
+  list-style: none;
+}
+.loom-feature-list li { display: grid; align-content: start; gap: 12px; min-width: 0; }
+.loom-feature-list svg { color: #badbe9; }
+.loom-feature-list li > div { display: grid; gap: 6px; }
+.loom-feature-list strong { font-size: 12px; font-weight: 550; line-height: 1.5; color: rgba(255,255,255,.9); }
+.loom-feature-list span { font-size: 11px; line-height: 1.65; color: var(--loom-muted); }
+.loom-module-grid .loom-download-module { flex: none; padding-top: 24px; }
+.loom-module-grid .loom-download-product > svg {
+  box-sizing: content-box;
+  width: 22px;
+  padding: 12px;
+  border: 1px solid var(--loom-line);
+  border-radius: 14px;
+  color: #c7e0ec;
+  background: rgba(255,255,255,.035);
+}
+.loom-module-grid .loom-secondary-action { border: 1px solid rgba(255,255,255,.13); border-radius: 12px; }
+.loom-module-grid .loom-sidebar-module { display: flex; flex-direction: column; }
+.loom-module-grid .loom-host-refined { padding: clamp(28px, 3vw, 48px); }
+.loom-module-grid .loom-host-summary { margin-top: 32px; gap: 18px; }
+.loom-module-grid .loom-host-emblem {
+  width: 64px;
+  height: 64px;
+  border-radius: 20px;
+  background: rgba(195,226,239,.055);
+}
+.loom-module-grid .loom-host-summary h2 { font-size: clamp(26px, 1.9vw, 36px); }
+.loom-module-grid .loom-host-target { font-size: 12px; margin-top: 7px; }
+.loom-module-grid .loom-host-refined .loom-control-copy { margin-top: 24px; font-size: 14px; color: rgba(241,247,252,.72); }
+.loom-module-grid .loom-host-refined .loom-host-action { min-height: 54px; margin-top: 24px; border-radius: 12px; padding: 0 20px; font-size: 13px; }
+.loom-module-grid .loom-account-refined {
+  margin: auto clamp(28px, 3vw, 48px) 0;
+  padding: 26px 0 clamp(28px, 3vw, 48px);
+}
+.loom-module-grid .loom-account-refined .loom-account-heading h2 { font-size: 14px; }
+.loom-module-grid .loom-identity-list { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; margin: 22px 0; }
+.loom-module-grid .loom-identity-row {
+  padding: 14px 12px;
+  border: 1px solid var(--loom-line);
+  border-radius: 12px;
+  background: rgba(255,255,255,.025);
+}
+.loom-module-grid .loom-identity-row dd { font-size: 13px; }
+.loom-module-grid .loom-profile-home-action {
+  width: 100%;
+  min-height: 48px;
+  padding: 0 18px;
+  border: 1px solid rgba(255,255,255,.15);
+  border-radius: 12px;
+  background: rgba(255,255,255,.045);
+  font-size: 12px;
+}
+.loom-module-grid .loom-profile-home-action:hover { background: rgba(255,255,255,.09); }
+.loom-card-brand-row .loom-portal-brand:focus-visible,
+.loom-module-grid .loom-secondary-action:focus-visible {
+  outline: 2px solid #badbe9;
+  outline-offset: 4px;
+}
+@media (min-width: 761px) and (max-height: 780px) {
+  .loom-portal-page.is-modular .loom-portal-shell { padding: 22px 0; }
+  .loom-portal-page.is-modular .loom-module-grid { height: calc(100dvh - 44px); }
+  .loom-module-grid .loom-intro-module { padding: 26px 32px; gap: 22px; }
+  .loom-card-brand-row { padding-bottom: 16px; }
+  .loom-module-grid .loom-stage-copy h1 { font-size: clamp(32px, 2.8vw, 48px); margin-top: 14px; }
+  .loom-module-grid .loom-stage-description { margin-top: 16px; }
+  .loom-feature-list { margin-top: 22px; gap: 14px; }
+  .loom-module-grid .loom-host-refined { padding: 28px; }
+  .loom-module-grid .loom-account-refined { margin: auto 28px 0; padding: 22px 0 28px; }
+}
+@media (max-width: 1100px) {
+  .loom-feature-list { grid-template-columns: 1fr; gap: 16px; }
+  .loom-feature-list li { display: flex; gap: 12px; align-items: flex-start; }
+  .loom-feature-list svg { flex: none; margin-top: 3px; }
+  .loom-feature-list li > div { gap: 2px; }
+  .loom-module-grid .loom-identity-list { grid-template-columns: 1fr; }
+}
+@media (max-width: 760px) {
+  .loom-portal-page.is-modular .loom-portal-shell { padding: 20px 0 28px; }
+  .loom-portal-page.is-modular .loom-module-grid { height: auto; }
+  .loom-module-grid .loom-intro-module { padding: 26px; gap: 28px; }
+  .loom-card-brand-row .loom-portal-brand { gap: 10px; }
+  .loom-card-brand-row .loom-smirel-wordmark { width: 80px; height: 30px; }
+  .loom-card-brand-row .brand-copy small { font-size: 8px; letter-spacing: .04em; }
+  .loom-card-brand-row .loom-version-chip { padding: 4px 7px; font-size: 9px; }
+  .loom-module-grid .loom-stage-copy h1 { font-size: clamp(28px, 7vw, 42px); }
+  .loom-module-grid .loom-host-refined { padding: 26px; }
+  .loom-module-grid .loom-account-refined { margin: 0 26px; padding: 24px 0 26px; }
+  .loom-module-grid .loom-identity-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 380px) {
+  .loom-card-brand-row { flex-wrap: wrap; }
+  .loom-module-grid .loom-identity-list { grid-template-columns: 1fr; }
+}
