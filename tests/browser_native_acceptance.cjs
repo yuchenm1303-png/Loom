@@ -52,6 +52,9 @@ async function main() {
     assert.equal(await value('ro'), 'BASE');
     await type('ta', '中文 line1\nline2 🚀');
     assert.equal(await value('ta'), '中文 line1\nline2 🚀');
+    const observed = await run('inject(1, runPageAction, ["state", {show_hud: false}])');
+    assert.equal(observed.elements.find(el => el.loom_id === 'ta').value, '中文 line1\nline2 🚀');
+    assert.ok(observed.dom.includes('value="中文 line1\\nline2 🚀"'));
     await type('a', 'AAA_BBB');
     await page.$eval('#a', el => el.setSelectionRange(3, 4));
     await type('a', 'MID', false);

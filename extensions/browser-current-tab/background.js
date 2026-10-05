@@ -1820,7 +1820,9 @@ function runPageAction(action, args = {}) {
           aria: clean(el.getAttribute("aria-label") || el.getAttribute("alt") || ""),
           placeholder: clean(el.getAttribute("placeholder") || ""),
           type,
-          value: clean(valued && !secret ? el.value : ""),
+          // Field values are data, not prose: whitespace and control characters
+          // must survive the observation. Keep the existing bounded excerpt.
+          value: String(valued && !secret ? el.value : "").slice(0, 160),
           // A password value never reaches the model, but whether the field is
           // empty has to: without it a successful type looks exactly like one that
           // did nothing, so the model retries, gives up on the browser tools and
@@ -1856,7 +1858,7 @@ function runPageAction(action, args = {}) {
       if (item.aria) attrs.push(`aria="${item.aria}"`);
       if (item.placeholder) attrs.push(`placeholder="${item.placeholder}"`);
       if (item.type) attrs.push(`type="${item.type}"`);
-      if (item.value) attrs.push(`value="${item.value}"`);
+      if (item.value) attrs.push(`value=${JSON.stringify(item.value)}`);
       // Deliberately not a stand-in value: anything that looks like text invites
       // the model to type it back. This states the fact and cannot be mistaken
       // for the content.

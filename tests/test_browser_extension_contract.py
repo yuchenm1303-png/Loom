@@ -406,7 +406,7 @@ def test_a_password_field_reports_whether_it_is_filled_without_the_value(backgro
 
     collect = _function_body(background, "collectPageState")
     assert "const secret = type === \"password\"" in collect
-    assert "value: clean(valued && !secret ? el.value : \"\")" in collect, (
+    assert "value: String(valued && !secret ? el.value : \"\")" in collect, (
         "a password value must never be serialized into model-visible state"
     )
     assert "filled: secret ? Boolean(valued && el.value) : false" in collect
@@ -730,3 +730,10 @@ def test_command_transport_disables_cache_and_bounds_body_reads(background):
     assert "controller.abort()" in fetch
     assert "await response.text()" in fetch
     assert fetch.index("await response.text()") < fetch.index("clearTimeout(timer)")
+
+
+def test_field_value_observations_preserve_whitespace_and_escape_control_characters(background):
+    collect = _function_body(background, "collectPageState")
+    assert 'value: String(valued && !secret ? el.value : "").slice(0, 160)' in collect
+    assert "JSON.stringify(item.value)" in collect
+    assert 'value: clean(' not in collect
