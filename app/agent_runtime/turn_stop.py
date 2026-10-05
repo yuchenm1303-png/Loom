@@ -1,7 +1,7 @@
-"""Semantic Stop hook: provider stop is a candidate, never proof of completion.
+"""Optional host-configured semantic Stop check.
 
-This private, read-only model request cannot execute tools. Its structured
-decision is checked before any terminal response becomes durable public history.
+This read-only model request cannot execute tools. Normal turns do not invoke
+it; a configured check may request continuation without proving task success.
 """
 from __future__ import annotations
 
@@ -191,7 +191,7 @@ def stop_review_messages(rt, session, request, candidate, *, context_limits=None
         def detail(value):
             return _excerpt(value, excerpt_chars) if excerpt_chars else "[details omitted; recover durable result by call_id]"
         payload["execution_evidence"] = [{**entry, **{key: detail(entry[key])
-            for key in ("arguments", "content", "data", "action_evidence") if key in entry}}
+            for key in ("arguments", "content", "data") if key in entry}}
             for entry in original_evidence]
         payload["prior_tool_context"] = [{**entry, "content": detail(entry["content"])} for entry in original_prior]
         payload["transient_tool_observations"] = [{**entry, "observation": _excerpt(entry["observation"], excerpt_chars * 12)
@@ -215,8 +215,7 @@ def stop_review_messages(rt, session, request, candidate, *, context_limits=None
         selected = selected + (adverse[-keep:] if keep else [])
         selected = list({e.get("call_id"): e for e in selected}.values())
         payload["execution_evidence"] = [{
-            key: _excerpt(json.dumps(value, ensure_ascii=False), 500)
-                 if key == "action_evidence" else _excerpt(value, 500)
+            key: _excerpt(value, 500)
                  if key in {"arguments", "content", "data"} else value
             for key, value in e.items()} for e in selected]
         payload["evidence_rollup"] = {

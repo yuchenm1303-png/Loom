@@ -343,7 +343,11 @@ class AgentRuntime:
         process_store: ProcessStore | None = None,
         diff_trackers: DiffTrackerRegistry | None = None,
         max_parallel_tools: int | None = None,
+        stop_hook=None,
     ) -> None:
+        # Optional host-configured check, not a default second model invocation.
+        # Turn completion records execution lifecycle, not proof of task success.
+        self.stop_hook = stop_hook
         self.platform = platform
         self._session_platforms: dict[str, AgentModelPlatform] = {}
         self._session_reasoning: dict[str, object | None] = {}
@@ -751,7 +755,8 @@ class AgentRuntime:
         if plan is not None:
             messages.append(plan)
         from .turn_continuation import continuation_context
-        continuation = continuation_context(turn_events, session.current_turn_id)
+        continuation = (continuation_context(turn_events, session.current_turn_id)
+                        if self.stop_hook is not None else None)
         if continuation is not None:
             messages.append(continuation)
         return messages, guidance_metadata

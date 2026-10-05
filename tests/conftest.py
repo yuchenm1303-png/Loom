@@ -8,21 +8,6 @@ from app.agent_runtime.stickers import INLINE_STICKER_VISIBLE_MARKER_RE
 
 
 @pytest.fixture(autouse=True)
-def _isolate_stop_review_in_existing_unit_tests(request, monkeypatch):
-    """Existing runtime fixtures script generation only; isolate the new service.
-
-The real_stop_hook suite exercises the actual hook and its extra provider calls,
-including failure, continuation, cancellation and steering. Other unit suites
-keep testing their original subsystem without requiring a second scripted model.
-"""
-    if request.node.get_closest_marker("real_stop_hook"):
-        return
-    from app.agent_runtime.turn_stop import StopDecision
-    monkeypatch.setattr("app.agent_runtime.turn_runner.review_stop", lambda *args:
-        StopDecision("completed", "Unit-test stop service stub", evidence=("fixture result",)))
-
-
-@pytest.fixture(autouse=True)
 def _isolate_computer_diagnostics(tmp_path_factory, monkeypatch):
     """Keep test runs out of the real Computer Use diagnostics log.
 

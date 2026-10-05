@@ -8,6 +8,7 @@ from app.agent_runtime.sandbox import SandboxManager, SandboxPolicy
 from app.agent_runtime.storage import FileAgentSessionStore
 from app.agent_runtime.tools import AgentTool, ToolRegistry, ToolResult
 from test_turn_stop import Scripted, decision
+from app.agent_runtime.turn_stop import review_stop
 
 pytestmark = pytest.mark.real_stop_hook
 
@@ -29,7 +30,7 @@ def test_continuation_plan_and_exact_evidence_survive_model_requested_rollover(t
         ModelResponse(tool_calls=(ToolCall("third", "probe", {"id": "third"}),)),
         ModelResponse(text="Report: all three checks passed."), decision(),
     ])
-    rt = ContextAgentRuntime(platform=platform, store=FileAgentSessionStore(tmp_path / "state"),
+    rt = ContextAgentRuntime(platform=platform, store=FileAgentSessionStore(tmp_path / "state"), stop_hook=review_stop,
         tools=ToolRegistry((AgentTool("probe", "check", {"type": "object", "properties": {
             "id": {"type": "string"}}, "required": ["id"]}, probe),)),
         sandbox_manager=SandboxManager(policy=SandboxPolicy.OFF))
@@ -62,7 +63,7 @@ def test_continuation_plan_and_exact_evidence_survive_model_requested_rollover(t
 def test_user_steering_supersedes_previous_assessment_on_context_path(tmp_path):
     platform = Scripted([ModelResponse(text="Old scope"), decision("continue", remaining_tasks=["OLD_SCOPE"]),
                          ModelResponse(text="Current results only"), decision()])
-    rt = ContextAgentRuntime(platform=platform, store=FileAgentSessionStore(tmp_path / "state"),
+    rt = ContextAgentRuntime(platform=platform, store=FileAgentSessionStore(tmp_path / "state"), stop_hook=review_stop,
         sandbox_manager=SandboxManager(policy=SandboxPolicy.OFF))
     session = rt.create_session("test", workspace_dir=tmp_path)
     original = rt._record

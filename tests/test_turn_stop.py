@@ -74,6 +74,8 @@ class Scripted:
 
 def runtime(tmp_path, responses, **kwargs):
     platform = Scripted(responses)
+    from app.agent_runtime.turn_stop import review_stop
+    kwargs.setdefault("stop_hook", review_stop)
     rt = DurableAgentRuntime(platform=platform, store=FileAgentSessionStore(tmp_path / "state"), **kwargs)
     session = rt.create_session("agent.fast", workspace_dir=tmp_path)
     return rt, session, platform
@@ -211,14 +213,16 @@ def test_invalid_decision_is_not_a_completion_signal(bad):
         parse_stop_decision(bad)
 
 
-def test_assessment_failure_does_not_fall_back_to_completion(tmp_path):
+def test_assessment_failure_preserves_answer_without_success_verdict(tmp_path):
     rt, session, platform = runtime(tmp_path, [ModelResponse(text="Done"), ModelResponse(text="bad")] * 1
                                    + [ModelResponse(text="bad"), ModelResponse(text="bad")])
     try:
         result = rt.start_turn(session.session_id, "Run tests")
-        assert result.status is AgentStatus.FAILED
-        assert "stop assessment failed" in result.error
-        assert not any(e.kind.value == "turn_completed" for e in rt.store.events(session.session_id))
+        assert result.status is AgentStatus.COMPLETED
+        assert result.final_text == "Done"
+        terminal = rt.store.events(session.session_id)[-1]
+        assert terminal.data["completion_check"] == "unavailable"
+        assert terminal.data["stop_decision"] is None
         assert len(platform.requests) == 4
     finally:
         rt.close()
@@ -307,12 +311,12 @@ def test_new_input_during_stop_review_supersedes_candidate(tmp_path):
         rt.close()
 
 
-def test_nonretryable_assessment_timeout_fails_without_more_requests(tmp_path):
+def test_nonretryable_assessment_timeout_preserves_answer_without_more_requests(tmp_path):
     from app.agent_runtime.model_execution import ModelRequestTimeout
     rt, session, platform = runtime(tmp_path, [ModelResponse(text="Candidate"),
         ModelRequestTimeout("duration", reason="max_duration_timeout", retryable=False)])
     try:
-        assert rt.start_turn(session.session_id, "Work").status is AgentStatus.FAILED
+        assert rt.start_turn(session.session_id, "Work").status is AgentStatus.COMPLETED
         assert len(platform.requests) == 2
     finally:
         rt.close()
@@ -322,9 +326,9 @@ def test_review_samples_obey_model_step_budget(tmp_path):
     rt, session, platform = runtime(tmp_path, [ModelResponse(text="Candidate")],
                                    limits=AgentLimits(max_model_steps=1))
     try:
-        assert rt.start_turn(session.session_id, "Work").status is AgentStatus.LIMIT_REACHED
+        assert rt.start_turn(session.session_id, "Work").status is AgentStatus.COMPLETED
         assert len(platform.requests) == 1
-        assert not any(e.kind.value == "turn_completed" for e in rt.store.events(session.session_id))
+        assert rt.store.events(session.session_id)[-1].data["completion_check"] == "unavailable"
     finally:
         rt.close()
 
@@ -435,18 +439,18 @@ def test_schema_recovery_diagnostics_do_not_expose_rejected_values(tmp_path):
         rt.close()
 
 
-def test_exhausted_schema_recovery_reports_safe_actionable_error(tmp_path):
+def test_exhausted_schema_recovery_records_unavailable_check_safely(tmp_path):
     rt, session, platform = runtime(tmp_path, [ModelResponse(text="Answer"),
         decision(evidence="private-credential-value"),
         decision(evidence="private-credential-value"),
         decision(evidence="private-credential-value")])
     try:
         result = rt.start_turn(session.session_id, "Question")
-        assert result.status is AgentStatus.FAILED
-        assert "$.evidence (type=array)" in result.error
+        assert result.status is AgentStatus.COMPLETED
+        assert result.final_text == "Answer"
         assert "private-credential-value" not in result.error
         assert len(platform.requests) == 4
-        assert not any(e.kind.value == "turn_completed" for e in rt.store.events(session.session_id))
+        assert rt.store.events(session.session_id)[-1].data["completion_check"] == "unavailable"
     finally:
         rt.close()
 

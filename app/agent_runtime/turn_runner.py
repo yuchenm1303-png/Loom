@@ -18,7 +18,6 @@ from .model_replan import revision as steering_revision
 from .model_replan import wait_for_signal
 from .model_execution import ModelRequestTimeout
 from .tools import BLOCKED_SENSITIVE_INPUT_ARGUMENT, validate_tool_arguments
-from .turn_stop import StopReviewLimitReached, review_stop
 from .turn_response_validation import (
     COMPLETE_FINISH_REASONS,
     RESUMABLE_TERMINAL_REASONS,
@@ -448,10 +447,13 @@ class TurnRunner:
                                     + ". Consult its schema for property types."
                                 )
                                 break
-                    if not invalid_terminal and not response.tool_calls:
+                    if not invalid_terminal and not response.tool_calls and rt.stop_hook is not None:
                         try:
-                            stop_decision = review_stop(rt, session, step, token, request,
+                            stop_decision = rt.stop_hook(rt, session, step, token, request,
                                                         response, sample_steering_revision)
+                            from .turn_stop import StopDecision
+                            if not isinstance(stop_decision, StopDecision):
+                                raise ValueError("Stop check must return a structured StopDecision")
                         except ModelSteered:
                             from .runtime import _add_usage
                             rt._release_step_context(step)
@@ -461,24 +463,17 @@ class TurnRunner:
                             recovery_instruction = ""
                             recovery_partial = ""
                             continue
-                        except StopReviewLimitReached as exc:
-                            from .runtime import _add_usage
-                            session.model_steps += 1
-                            session.usage = _add_usage(session.usage, response.usage)
-                            rt._record(session, Event.MODEL_RESPONSE_REJECTED, data={
-                                **model_identity, "step_id": step.step_id, "reason": "stop_review_limit",
-                                "finish_reason": response.finish_reason, "attempt": attempt,
-                                "usage": {"input_tokens": response.usage.input_tokens,
-                                          "output_tokens": response.usage.output_tokens,
-                                          "total_tokens": response.usage.total_tokens}})
-                            rt._release_step_context(step)
-                            return rt._limit(session, str(exc))
-                        except Exception:
-                            from .runtime import _add_usage
-                            session.model_steps += 1
-                            session.usage = _add_usage(session.usage, response.usage)
+                        except ModelCancelled:
                             raise
-                        if stop_decision.outcome == "continue":
+                        except Exception as exc:
+                            # An unavailable check establishes no verdict. Keep
+                            # the candidate and record the check failure separately.
+                            stop_decision = None
+                            rt._record(session, Event.TURN_STOP_CHECKED, data={
+                                "step_id": step.step_id, "outcome": "assessment_failed",
+                                "error_type": type(exc).__name__, "answer_preserved": True,
+                            })
+                        if stop_decision is not None and stop_decision.outcome == "continue":
                             invalid_terminal = "stop_check_continue"
                             # Durable assessment state is projected on every next
                             # request, including after tools, approvals and compaction.
@@ -680,7 +675,10 @@ class TurnRunner:
                     Event.TURN_COMPLETED,
                     data={
                         "text": response.text,
-                        "stop_decision": stop_decision.as_dict(),
+                        "stop_decision": stop_decision.as_dict() if stop_decision is not None else None,
+                        "completion_check": (
+                            "not_configured" if rt.stop_hook is None
+                            else "assessed" if stop_decision is not None else "unavailable"),
                         "final_step_id": step.step_id,
                         "diff_revision": diff.revision,
                         "changed_paths": list(diff.paths),
