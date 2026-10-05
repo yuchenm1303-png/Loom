@@ -6,7 +6,7 @@ try {
   const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
   const errors = [];
   page.on("pageerror", error => errors.push(error.message));
-  await page.goto(`${process.env.LOOM_TEST_ORIGIN || "http://127.0.0.1:5173"}/scripts/fixtures/streaming.html`);
+  await page.goto(`${process.env.LOOM_TEST_ORIGIN || "http://127.0.0.1:5173"}/scripts/fixtures/streaming.html`, { waitUntil: "domcontentloaded" });
   await page.waitForFunction(() => Boolean(window.renderItems));
   await page.addStyleTag({ url: "/src/theme.css?direct" });
   const item = (id, type, fields = {}) => ({ id, type, threadId: "thread-1", turnId: "turn-1", status: "completed", ...fields });
@@ -31,8 +31,10 @@ try {
   if (process.env.LOOM_PROGRESS_SCREENSHOT) await page.screenshot({ path: process.env.LOOM_PROGRESS_SCREENSHOT });
   await page.setViewportSize({ width: 480, height: 900 });
   await page.evaluate(() => document.documentElement.dataset.loomTheme = "light");
-  const bounds = await page.locator(".task-milestones").boundingBox();
+  await page.getByRole("button", { name: "查看任务进度，1/3 已完成" }).click();
+  const bounds = await page.getByRole("dialog").boundingBox();
   assert.ok(bounds && bounds.x >= 0 && bounds.x + bounds.width <= 480, "plan fits a narrow viewport");
+  await page.getByRole("button", { name: "关闭任务进度" }).click();
   await page.evaluate(items => window.renderItems([...items, {
     id: "answer", type: "assistant_message", threadId: "thread-1", turnId: "turn-1",
     status: "completed", phase: "final_answer", text: "报告已保存，其中连接测试仍未覆盖。",

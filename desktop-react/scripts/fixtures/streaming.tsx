@@ -6,6 +6,7 @@ import { MarkdownMessage } from "../../src/components/MarkdownMessage";
 import { TranscriptScrollController } from "../../src/components/TranscriptScrollController";
 import type { TranscriptItem } from "../../src/types/loom";
 import "../../src/styles.css";
+import "../../src/components/run-progress.css";
 
 const root = createRoot(document.getElementById("root")!);
 const fixtures = window as unknown as {
@@ -25,7 +26,7 @@ fixtures.renderPlain = (content, streaming) => flushSync(() => root.render(
   <StrictMode><MarkdownMessage content={content} streaming={streaming} /></StrictMode>,
 ));
 fixtures.renderItems = (items, running) => flushSync(() => root.render(
-  <StrictMode><Transcript items={items} running={running} currentTurnId="turn-1" onApproval={() => {}} /></StrictMode>,
+  <StrictMode><div className="conversation-stage" style={{ height: 800 }}><Transcript items={items} running={running} currentTurnId="turn-1" onApproval={() => {}} /></div></StrictMode>,
 ));
 fixtures.renderScrolled = (text, running) => {
   const items: TranscriptItem[] = [{ id: "scroll-answer", threadId: "scroll-thread", turnId: "turn-1",

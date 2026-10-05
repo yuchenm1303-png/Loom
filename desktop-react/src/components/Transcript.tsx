@@ -37,6 +37,7 @@ import { useMotionPresence } from "../motion/useMotionPresence";
 import { TURN_SETTLE_HOLD_MS } from "../presentationTiming";
 import type { TranscriptItem } from "../types/loom";
 import { latestTaskPlan, liveTaskProgress } from "./liveTaskProgress";
+import { TaskProgressPanel } from "./TaskProgressPanel";
 import { ArtifactRenderSurface } from "./ArtifactRenderSurface";
 import { HomeTokenActivity } from "./HomeTokenActivity";
 import { MarkdownMessage } from "./MarkdownMessage";
@@ -1887,26 +1888,7 @@ export function Transcript({ items, running, currentTurnId, workspace, promptDis
         ))}
       </main>
     </div>
-      {milestones.length ? (
-        <aside className="task-progress-dock" aria-label="任务进度" key={activeTurnId}>
-          <details className="task-milestones task-milestones-pinned" open>
-            <summary className="task-progress-summary" aria-label="展开或折叠任务进度">
-              <span>任务进度</span>
-              <span className="task-progress-current">{(milestones.find((step) => step.status === "in_progress") ?? milestones.find((step) => step.status === "blocked") ?? milestones.find((step) => step.status === "pending"))?.step ?? "计划步骤已完成"}</span>
-              <span className="task-progress-count">{milestones.filter((step) => step.status === "completed").length}/{milestones.length}</span>
-              <ChevronRight size={14} className="task-progress-chevron" aria-hidden="true" />
-            </summary>
-            <div className="task-progress-steps" aria-label="任务进度">
-          {milestones.map((step) => (
-            <div key={step.step} className={`task-milestone is-${step.status}`}>
-              <span>{({ pending: "待处理", in_progress: "进行中", completed: "已完成", blocked: "受阻" })[step.status]}</span>
-              <div>{step.step}{step.blocker && step.status === "blocked" ? <small>{step.blocker}</small> : null}</div>
-            </div>
-          ))}
-            </div>
-          </details>
-        </aside>
-      ) : null}
+      {milestones.length ? <TaskProgressPanel key={activeTurnId} steps={milestones} /> : null}
     </>
   );
 }

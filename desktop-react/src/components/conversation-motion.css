@@ -1528,31 +1528,3 @@ html[data-loom-theme="light"] .task-flow-group-header::after {
   display: none;
   transition: none;
 }
-
-
-/* Independent right column: never overlays the conversation viewport. */
-.conversation-stage:has(> .task-progress-dock) { grid-template-columns: minmax(0, 1fr) 280px; }
-.conversation-stage > .run-progress-frame.top { grid-column: 1 / -1; }
-.conversation-stage > .transcript-scroll { grid-column: 1; }
-.task-progress-dock { grid-column: 2; grid-row: 2; min-height: 0; overflow-y: auto; padding: 16px 12px; border-left: 1px solid var(--border); background: var(--panel); }
-.task-milestones-pinned { margin: 0; padding: 0; overflow: hidden; }
-.task-progress-summary { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 14px; cursor: pointer; list-style: none; min-width: 0; }
-.task-progress-summary::-webkit-details-marker { display: none; }
-.task-progress-summary:focus-visible { outline: 2px solid var(--accent); outline-offset: -3px; border-radius: 12px; }
-.task-progress-summary > :first-child { flex: 1; font-weight: 600; }
-.task-progress-current { order: 4; width: 100%; color: var(--muted); line-height: 1.5; overflow-wrap: anywhere; }
-.task-progress-count { color: var(--accent); font-variant-numeric: tabular-nums; }
-.task-progress-chevron { flex-shrink: 0; transition: transform 150ms ease; }
-.task-milestones-pinned[open] .task-progress-chevron { transform: rotate(90deg); }
-.task-progress-steps { padding: 10px 14px 14px; border-top: 1px solid var(--border); }
-.task-progress-steps .task-milestone { gap: 8px; padding: 9px 0; font-size: 13px; line-height: 1.6; overflow-wrap: anywhere; }
-.task-progress-steps .task-milestone > div { min-width: 0; }
-.conversation-stage:has(> .task-progress-dock details:not([open])) { grid-template-columns: minmax(0, 1fr) 76px; }
-.task-milestones-pinned:not([open]) .task-progress-current,
-.task-milestones-pinned:not([open]) .task-progress-summary > :first-child { display: none; }
-.task-milestones-pinned:not([open]) .task-progress-summary { padding: 12px 6px; gap: 4px; }
-@media (max-width: 900px) {
-  .conversation-stage:has(> .task-progress-dock) { grid-template-columns: minmax(0, 1fr) 220px; }
-  .task-progress-dock { padding: 10px 6px; }
-}
-@media (prefers-reduced-motion: reduce) { .task-progress-chevron { transition: none; } }

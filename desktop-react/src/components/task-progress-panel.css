@@ -1,0 +1,45 @@
+/* One measured workspace owns both transcript and progress allocation. */
+.conversation-stage { --task-plan-width: 0px; }
+.conversation-stage:has(> .task-progress-dock) {
+  --task-plan-width: 288px;
+  grid-template-columns: minmax(0, 1fr) var(--task-plan-width);
+}
+.conversation-stage:has(> .task-progress-dock.is-rail) { --task-plan-width: 56px; }
+.conversation-stage > .run-progress-frame.top { grid-column: 1 / -1; }
+.conversation-stage > .transcript-scroll { grid-column: 1; }
+.conversation-stage > .transcript-jump-latest { left: calc((100% - var(--task-plan-width)) / 2); }
+.task-progress-dock {
+  grid-column: 2; grid-row: 2; min-height: 0; min-width: 0;
+  overflow-y: auto; overscroll-behavior: contain;
+  padding: 16px 12px; border-left: 1px solid var(--border); background: var(--bg);
+}
+.task-progress-dock.is-rail { padding: 14px 6px; }
+.task-plan-card { position: relative; border: 1px solid var(--border); border-radius: 16px; padding: 16px; background: var(--panel); }
+.task-plan-heading { display: flex; align-items: center; gap: 8px; padding-right: 18px; color: var(--text); }
+.task-plan-heading > svg { flex-shrink: 0; color: var(--accent); }
+.task-plan-heading h2 { font-size: 13px; font-weight: 600; margin: 0; }
+.task-plan-heading > span { margin-left: auto; font-size: 11px; color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.task-plan-meter { display: block; width: 100%; height: 4px; margin: 16px 0 12px; border: 0; border-radius: 8px; overflow: hidden; accent-color: var(--accent); }
+.task-plan-meter::-webkit-progress-bar { background: var(--border); }
+.task-plan-meter::-webkit-progress-value { background: var(--accent); border-radius: 8px; }
+.task-plan-current { margin: 0 0 16px; font-size: 13px; line-height: 1.6; color: var(--text); overflow-wrap: anywhere; }
+.task-plan-list { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--border); }
+.task-plan-list li { display: flex; gap: 10px; padding-top: 14px; font-size: 12px; line-height: 1.6; }
+.task-plan-list li > div { min-width: 0; }
+.task-plan-step-mark { display: grid; place-items: center; flex: 0 0 22px; height: 22px; border: 1px solid var(--border); border-radius: 50%; color: var(--muted); font-variant-numeric: tabular-nums; }
+.task-plan-status { color: var(--muted); font-size: 11px; }
+.task-plan-list p { margin: 2px 0 0; color: var(--text); overflow-wrap: anywhere; }
+.task-plan-list small { display: block; margin-top: 5px; color: var(--muted); overflow-wrap: anywhere; }
+.task-plan-list .is-in_progress .task-plan-status,
+.task-plan-list .is-in_progress .task-plan-step-mark { color: var(--accent); }
+.task-plan-list .is-completed .task-plan-step-mark { color: var(--success, #68b99a); }
+.task-plan-list .is-blocked .task-plan-status { color: var(--warning, #d5a65a); }
+.task-plan-close { position: absolute; top: 10px; right: 8px; display: grid; place-items: center; width: 26px; height: 26px; padding: 0; border: 0; border-radius: 7px; background: transparent; color: var(--muted); cursor: pointer; }
+.task-plan-close:hover { background: var(--panel-hover); color: var(--text); }
+.task-plan-trigger { display: flex; flex-direction: column; align-items: center; gap: 8px; width: 42px; padding: 12px 2px; border: 1px solid var(--border); border-radius: 12px; background: var(--panel); color: var(--accent); cursor: pointer; }
+.task-plan-trigger span { font-size: 11px; font-variant-numeric: tabular-nums; }
+.task-plan-trigger:hover { background: var(--panel-hover); border-color: var(--accent); }
+.task-plan-trigger:focus-visible, .task-plan-close:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.task-plan-dialog { position: fixed; box-sizing: border-box; inset: 0; width: min(380px, calc(100vw - 32px)); max-height: calc(100dvh - 48px); margin: auto; padding: 22px; border: 1px solid var(--border); border-radius: 18px; background: var(--panel); color: var(--text); box-shadow: 0 20px 70px #0006; overflow-y: auto; overscroll-behavior: contain; }
+.task-plan-dialog::backdrop { background: #0005; }
+.task-plan-dialog .task-plan-heading { padding-right: 24px; }
