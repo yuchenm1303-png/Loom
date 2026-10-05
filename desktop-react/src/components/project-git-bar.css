@@ -1,0 +1,8 @@
+.project-git-bar { display:flex; align-items:center; flex-wrap:wrap; gap:5px; max-width:820px; width:calc(100% - 32px); margin:0 auto 6px; color:var(--muted); font-size:11px; }
+.project-git-bar :is(button,span) { display:inline-flex; align-items:center; gap:6px; padding:4px 7px; border:0; border-radius:5px; background:transparent; color:inherit; font:inherit; }
+.project-git-bar button { cursor:pointer; max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.project-git-bar button:hover { background:var(--panel-soft); color:var(--text); }
+.project-git-bar small { color:var(--faint); font-size:10px; }
+.project-git-bar .project-git-pr { margin-left:auto; }
+.project-git-bar .git-additions { padding:0; color:var(--success); }
+.project-git-bar .git-deletions { padding:0; color:var(--danger); }

@@ -19,6 +19,7 @@ import { useMotionPresence } from "../motion/useMotionPresence";
 import type { ProjectRecord, ThreadRecord, TranscriptItem } from "../types/loom";
 import { ProjectAgentFilesCard } from "./ProjectAgentFilesCard";
 import { ProjectMemoryCard } from "./ProjectMemoryCard";
+import { ProjectRepositoryCard } from "./ProjectRepositoryCard";
 import "./project-details-panel.css";
 import "./project-details-git.css";
 
@@ -31,6 +32,7 @@ interface ProjectDetailsPanelProps {
   onNewThread(project: ProjectRecord): Promise<void> | void;
   onOpenThread(threadId: string): Promise<void> | void;
   onSetInstructions(projectId: string, instructions: string): Promise<ProjectRecord> | void;
+  onGitChanged?(): void;
 }
 
 interface ProjectGitFile {
@@ -212,6 +214,7 @@ export function ProjectDetailsPanel({
   onNewThread,
   onOpenThread,
   onSetInstructions,
+  onGitChanged,
 }: ProjectDetailsPanelProps) {
   const presence = useMotionPresence(open && Boolean(projectProp), 420);
   const lastProjectRef = useRef<ProjectRecord | null>(projectProp);
@@ -453,6 +456,7 @@ export function ProjectDetailsPanel({
           </div>
         ) : null}
 
+        {projectId && <ProjectRepositoryCard projectId={projectId} blocked={Boolean(busyThreads.length || gitBusy)} onBusyChange={busy => setGitBusy(busy ? "repository" : "")} onNewThread={project => { void onNewThread(project); }} onChanged={() => { void loadWorkspaceStatus(); onGitChanged?.(); }}/ >}
         <section className="project-workspace-card">
           <div className="project-card-heading">
             <div>

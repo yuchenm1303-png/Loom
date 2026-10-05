@@ -1,0 +1,22 @@
+.project-repository-card { display:grid; gap:12px; padding:16px; border:1px solid var(--border); border-radius:10px; background:var(--panel); color:var(--text); }
+.project-repository-card header,.project-repository-card header>div,.repository-status,.repository-actions { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+.project-repository-card header { justify-content:space-between; }
+.project-repository-card label { display:grid; gap:6px; font-size:12px; }
+.project-repository-card form { display:flex; align-items:end; gap:8px; }
+.project-repository-card form label { flex:1; min-width:0; }
+.project-repository-card :is(input,select,textarea) { min-width:0; width:100%; padding:8px 10px; border:1px solid var(--border); border-radius:6px; background:var(--bg); color:inherit; font:inherit; }
+.project-repository-card button { display:inline-flex; align-items:center; gap:6px; padding:7px 10px; border:1px solid var(--border); border-radius:6px; background:transparent; color:inherit; cursor:pointer; }
+.project-repository-card button:hover:not(:disabled) { background:var(--panel-hover); }
+.project-repository-card button:disabled { opacity:.45; cursor:default; }
+.project-repository-card :is(small,p,.repository-status span) { color:var(--muted); font-size:12px; margin:0; line-height:1.6; }
+.project-repository-card a { color:var(--accent); font-size:13px; overflow-wrap:anywhere; }
+.repository-worktrees { list-style:none; padding:0; margin:0; display:grid; gap:8px; }
+.repository-worktrees li { display:grid; gap:3px; font-size:12px; }
+.repository-worktrees code { color:var(--muted); overflow-wrap:anywhere; }
+.project-repository-card details { border-top:1px solid var(--border); padding-top:12px; }
+.project-repository-card details[open] { display:grid; gap:10px; }
+.project-repository-card summary { cursor:pointer; font-size:13px; }
+.project-repository-card summary svg { vertical-align:middle; margin-right:6px; }
+.project-repository-card .repository-draft { display:flex; align-items:center; gap:8px; }
+.repository-draft input { width:auto; }
+.project-repository-card .repository-error { color:var(--semantic-danger-strong); overflow-wrap:anywhere; }

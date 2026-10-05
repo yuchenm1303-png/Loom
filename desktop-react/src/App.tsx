@@ -17,6 +17,7 @@ import { Inspector } from "./components/Inspector";
 import { LanguageSettingsDock } from "./components/LanguageSettingsDock";
 import { ProfileInsightsPage } from "./components/ProfileInsightsPage";
 import { ProjectDetailsPanel } from "./components/ProjectDetailsPanel";
+import { ProjectGitBar } from "./components/ProjectGitBar";
 import { ReviewInteractionBridge } from "./components/ReviewInteractionBridge";
 import { ReviewWorkspace } from "./components/ReviewWorkspace";
 import { RunProgress } from "./components/RunProgress";
@@ -1228,6 +1229,10 @@ export default function App() {
         </div>
 
         <div className="composer-stage">
+          {(() => {
+            const currentProject = loom.projects.find(project => project.id === thread?.projectId);
+            return currentProject ? <ProjectGitBar project={currentProject} onOpen={() => openProjectDetails(currentProject.id)}/> : null;
+          })()}
           {petEnabled && thread && <LoomPet key={thread.id} running={running}
             approval={thread.status === "waiting_approval" || transcriptItems.some((item) => item.type === "approval" && !isResolvedApproval(item))}
             completed={thread.status === "completed"} />}
@@ -1305,6 +1310,7 @@ export default function App() {
         onNewThread={(project) => loom.newThread(project.root || undefined, project.id)}
         onOpenThread={loom.openThread}
         onSetInstructions={loom.setProjectInstructions}
+        onGitChanged={() => { void loom.refreshProjects(); }}
       />
       <ReviewWorkspace items={loom.items} open={reviewOpen} onClose={() => runLayoutTransition(() => setReviewOpen(false), "right-close")} />
       <SubAgentDock

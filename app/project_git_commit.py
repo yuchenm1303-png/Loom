@@ -212,12 +212,19 @@ def patch(module: Any) -> None:
         result = original_initialize(self, params)
         capabilities = dict(result.get("capabilities") or {})
         projects = dict(capabilities.get("projects") or {})
-        projects.update({"gitStage": True, "gitUnstage": True, "gitCommit": True})
+        projects.update({"gitStage": True, "gitUnstage": True, "gitCommit": True,
+                         "gitRepository": True, "gitBranches": True, "gitWorktrees": True,
+                         "gitSync": True, "gitPullRequest": True})
         capabilities["projects"] = projects
         result["capabilities"] = capabilities
         return result
 
     def dispatch(self: Any, method: str, params: dict[str, Any]) -> Any:
+        if method.startswith("project/git_") and method.removeprefix("project/git_") in {
+            "repository", "init", "bind", "switch_branch", "delete_branch", "fetch", "pull", "push", "create_worktree", "remove_worktree", "create_pr"
+        }:
+            from app.project_git_workflow import execute
+            return execute(self.service, method.removeprefix("project/git_"), params, JsonRpcError)
         if method == "project/git_stage":
             return self.service.project_git_stage(params)
         if method == "project/git_unstage":
