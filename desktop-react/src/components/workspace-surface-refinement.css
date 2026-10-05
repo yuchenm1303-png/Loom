@@ -28,13 +28,23 @@
   box-shadow: none;
 }
 :root .app-shell .thread-header.polished-thread-header::before { display: none; }
-/* Dissolve the scrolling conversation into the header. Mask the viewport so
-   the fade stays at its top edge while the text scrolls through it. */
+/* Anchor the dissolve outside the scrolling layer. A mask on the scroll
+   container can move with its contents in Chromium, exposing the clip edge. */
 :root .app-shell .transcript-scroll:not(.is-empty) {
-  -webkit-mask-image: linear-gradient(to bottom, transparent, #000 32px);
-  mask-image: linear-gradient(to bottom, transparent, #000 32px);
+  -webkit-mask-image: none;
+  mask-image: none;
 }
-:root .app-shell .conversation-stage:has(.transcript-entry)::after { display: none; }
+:root .app-shell .conversation-stage:has(.transcript-entry)::after {
+  display: block;
+  height: 64px;
+  background: linear-gradient(to bottom,
+    var(--ws-canvas) 0%,
+    var(--ws-canvas) 8%,
+    color-mix(in srgb, var(--ws-canvas) 92%, transparent) 25%,
+    color-mix(in srgb, var(--ws-canvas) 55%, transparent) 55%,
+    color-mix(in srgb, var(--ws-canvas) 16%, transparent) 80%,
+    transparent 100%);
+}
 :root .app-shell .thread-header :is(.thread-review-button, .thread-header-icon-button, .context-meter-chip) {
   background: transparent;
   border-color: transparent;
