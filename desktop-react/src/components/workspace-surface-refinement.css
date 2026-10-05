@@ -68,17 +68,32 @@
 }
 :root .app-shell .transcript { background: transparent; }
 :root .app-shell .transcript-scroll { background: var(--ws-canvas); }
-:root .app-shell .turn-process-header {
+:root .app-shell .turn-process .turn-process-header {
   background: transparent !important;
-  border-color: transparent;
-  border-bottom: 1px solid var(--ws-line);
-  border-radius: 0;
+  border: 0;
+  border-radius: 6px;
+  min-height: 34px;
+  padding: 6px 8px;
+  gap: 12px;
   box-shadow: none !important;
   color: var(--ws-muted);
   opacity: 1;
 }
 :root .app-shell .turn-process-header .turn-process-summary { color: var(--ws-muted); }
-:root .app-shell .turn-process-header:hover { background: var(--ws-hover); box-shadow: none; }
+:root .app-shell .turn-process .turn-process-header:hover {
+  background: var(--ws-hover) !important;
+  box-shadow: none;
+  transform: none;
+}
+:root .app-shell .turn-process-header .turn-process-time {
+  color: var(--ws-muted);
+  font-variant-numeric: tabular-nums;
+  font-weight: 400;
+}
+:root .app-shell .turn-process.is-settled .turn-process-content {
+  border-left-color: transparent;
+  box-shadow: none;
+}
 :root .app-shell .user-message { background: var(--ws-hover); border-color: transparent; box-shadow: none; border-radius: 10px; }
 :root .app-shell .user-message::before { display: none; }
 
@@ -112,6 +127,36 @@
 }
 :root .app-shell :is(.task-flow-between-sheen, .task-flow-group-header::before, .task-flow-row::before) { display: none !important; }
 :root .app-shell .task-flow-group .task-flow-list { padding-left: 7px; border-left: 1px solid var(--ws-line); margin-left: 10px; }
+:root .app-shell .task-flow-group .task-flow-group-header {
+  gap: 8px;
+  padding-block: 4px;
+  color: var(--ws-muted);
+}
+:root .app-shell .task-flow-group .task-flow-group-title {
+  color: var(--ws-muted);
+  font-weight: 550;
+}
+:root .app-shell .task-flow-group .task-flow-list {
+  margin-top: 6px;
+  gap: 3px;
+  padding-left: 10px;
+}
+:root .app-shell .task-flow-group .task-flow-row {
+  min-height: 32px;
+  gap: 8px;
+  padding-block: 3px;
+}
+:root .app-shell .task-flow-row .task-flow-verb {
+  color: var(--ws-muted);
+  font-weight: 450;
+}
+:root .app-shell .task-flow-row .task-flow-primary { color: var(--ws-ink); }
+:root .app-shell .task-flow-row :is(.task-flow-chevron, .task-flow-row-icon) { color: var(--ws-muted); }
+:root .app-shell .task-flow-status:is(.completed, .changed, .failed, .denied) .task-flow-status-dot {
+  box-shadow: none !important;
+  width: 5px;
+  height: 5px;
+}
 :root .app-shell .task-flow-inline-detail pre { background: var(--ws-canvas); border-color: var(--ws-line); box-shadow: none; border-radius: 6px; }
 
 /* Changed files: a single surface with rows, rather than nested button panels. */
