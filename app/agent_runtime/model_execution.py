@@ -6,6 +6,9 @@ import logging
 import queue
 import threading
 import time
+from dataclasses import replace
+from app.ai.contracts import ModelResponse
+from app.ai.profiles import DEFAULT_STREAM_IDLE_TIMEOUT_SECONDS
 
 from app.ai.execution_control import ExecutionControl, ModelCancelled, ModelSteered, current_control
 
@@ -50,13 +53,14 @@ class ModelExecutor:
     def __init__(
         self,
         max_inflight: int = 16,
-        timeout: float = 150.0,
-        stall_timeout: float = 60.0,
+        timeout: float = DEFAULT_STREAM_IDLE_TIMEOUT_SECONDS,
+        stall_timeout: float | None = None,
         max_duration: float = 900.0,
     ) -> None:
         self._slots = threading.BoundedSemaphore(max_inflight)
         self.timeout = timeout
-        self.stall_timeout = max(1.0, float(stall_timeout))
+        self._explicit_stall_timeout = stall_timeout is not None
+        self.stall_timeout = max(0.01, float(stall_timeout if stall_timeout is not None else DEFAULT_STREAM_IDLE_TIMEOUT_SECONDS))
         self.max_duration = max(float(timeout), float(max_duration))
 
     @staticmethod
@@ -70,7 +74,7 @@ class ModelExecutor:
 
     def _check_deadlines(self, control, started: float, deadline: float) -> None:
         now = time.monotonic()
-        progress_at = control.progress_at
+        progress_at = control.progress_at or getattr(control, "last_chunk_at", 0)
         if not progress_at:
             # Still waiting for the first sign of life. Non-streaming backends
             # never report any, which is why this path keeps the old meaning.
@@ -82,10 +86,11 @@ class ModelExecutor:
                 )
             return
         idle = now - progress_at
-        if idle >= self.stall_timeout:
+        stall_timeout = getattr(control, "stall_timeout", self.stall_timeout)
+        if idle >= stall_timeout:
             raise ModelRequestTimeout(
                 f"model stopped producing output for {int(idle)}s "
-                f"(stall timeout {int(self.stall_timeout)}s)",
+                f"(stall timeout {int(stall_timeout)}s)",
                 reason="stream_stall_timeout", retryable=True,
             )
         if now - started >= self.max_duration:
@@ -95,7 +100,7 @@ class ModelExecutor:
                 reason="max_duration_timeout", retryable=False,
             )
 
-    def execute(self, platform, profile_id, request, token, *, steering_revision: int | None = None):
+    def execute(self, platform, profile_id, request, token, *, steering_revision: int | None = None, on_activity=None, on_retry=None):
         started = time.monotonic()
         deadline = started + self.timeout
         begin_sampling(token)
@@ -106,6 +111,12 @@ class ModelExecutor:
                     raise TimeoutError("model request concurrency limit reached")
             results: queue.Queue = queue.Queue(maxsize=1)
             control = ExecutionControl()
+            control.retry_observer = on_retry
+            control.stall_timeout = self.stall_timeout
+            registry = getattr(platform, "registry", None)
+            if registry is not None and not self._explicit_stall_timeout:
+                control.stall_timeout = getattr(registry.get(profile_id), "stream_idle_timeout_seconds", self.stall_timeout)
+                deadline = started + max(self.timeout, control.stall_timeout)
             control.request_purpose = getattr(request, "purpose", "generation")
             context = contextvars.copy_context()
 
@@ -122,8 +133,12 @@ class ModelExecutor:
 
             threading.Thread(target=lambda: context.run(run), daemon=True, name="loom-model-request").start()
             try:
+                next_activity = 0.0
                 while True:
                     self._check_signal(token, steering_revision)
+                    if on_activity is not None and time.monotonic() >= next_activity:
+                        on_activity({"active": True, "contentGapSeconds": max(0, time.monotonic() - (control.progress_at or control.started_at))})
+                        next_activity = time.monotonic() + 2.0
                     try:
                         ok, result = results.get(timeout=0.05)
                     except queue.Empty:
@@ -131,9 +146,13 @@ class ModelExecutor:
                         continue
                     self._check_signal(token, steering_revision)
                     if not ok:
+                        result.stream_timing = control.stream_timing()
                         raise result
+                    if isinstance(result, ModelResponse):
+                        result = replace(result, stream_timing=control.stream_timing())
                     return result
             except BaseException as exc:
+                exc.stream_timing = control.stream_timing()
                 if isinstance(exc, TimeoutError):
                     progress_at = control.progress_at
                     _log.warning(
@@ -150,5 +169,8 @@ class ModelExecutor:
                 # leaving the turn's CancellationToken untouched.
                 control.cancel()
                 raise
+            finally:
+                if on_activity is not None:
+                    on_activity({"active": False, "contentGapSeconds": 0})
         finally:
             end_sampling(token)

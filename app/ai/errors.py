@@ -22,14 +22,36 @@ class AITransportError(AIPlatformError):
     adapters, while allowing adapters that know the status to fail closed.
     """
 
-    def __init__(self, message: str, *, retryable: bool = True, status_code: int | None = None) -> None:
+    def __init__(self, message: str, *, retryable: bool = True, status_code: int | None = None,
+                 retry_after_seconds: float = 0.0) -> None:
         super().__init__(message)
         self.retryable = bool(retryable)
         self.status_code = status_code
+        self.retry_after_seconds = retry_after_seconds
 
 
 class AIResponseError(AIPlatformError):
-    pass
+    def __init__(self, message: str, *, finish_reason: str = "") -> None:
+        super().__init__(message)
+        self.finish_reason = finish_reason
+
+
+class AIQuotaExceeded(AITransportError):
+    """A provider's exhausted allowance cannot recover through backoff."""
+
+    def __init__(self, *, status_code: int | None = None) -> None:
+        super().__init__("模型服务额度已耗尽，请补充额度或切换可用模型后继续。",
+                         retryable=False, status_code=status_code)
+
+
+class AITruncatedToolCallError(AIResponseError):
+    """An explicit provider output limit prevented an atomic tool request."""
+
+    def __init__(self, *, finish_reason: str, tool_name: str, argument_chars: int) -> None:
+        super().__init__(f"tool call {tool_name!r} was truncated by the provider output limit")
+        self.finish_reason = finish_reason
+        self.tool_name = tool_name
+        self.argument_chars = argument_chars
 
 
 class AIEmptyResponseError(AIResponseError):
@@ -69,4 +91,5 @@ __all__ = [
     "AIPlatformError",
     "AIResponseError",
     "AITransportError",
+    "AITruncatedToolCallError",
 ]

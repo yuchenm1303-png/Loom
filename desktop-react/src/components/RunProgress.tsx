@@ -6,6 +6,7 @@ import type { TranscriptItem } from "../types/loom";
 import "./run-progress.css";
 
 interface RunProgressProps {
+  modelActivity?: { turnId: string; active: boolean; contentGapSeconds: number } | null;
   items: TranscriptItem[];
   startedAt?: number | null;
   threadStatus?: string;
@@ -155,7 +156,7 @@ function formatTokens(tokens: number | undefined, language: LoomLanguage): strin
   return `${tokens} ${suffix}`;
 }
 
-export function RunProgress({ items, startedAt, threadStatus, currentTurnId, totalTokens, placement }: RunProgressProps) {
+export function RunProgress({ items, startedAt, threadStatus, currentTurnId, totalTokens, placement, modelActivity }: RunProgressProps) {
   const { language } = useI18n();
   const [now, setNow] = useState(() => Date.now());
   const runItems = useMemo(() => currentRunItems(items, currentTurnId), [currentTurnId, items]);
@@ -183,7 +184,10 @@ export function RunProgress({ items, startedAt, threadStatus, currentTurnId, tot
             {zh ? "Loom 正在工作" : "Loom is working"}
           </span>
           <span className="run-progress-divider" aria-hidden="true" />
-          <span key={phase} className="run-progress-phase">{phase}</span>
+          <span key={phase} className="run-progress-phase">{modelActivity?.active && modelActivity.turnId === currentTurnId
+            ? (zh ? `模型仍在生成，已有 ${Math.floor(modelActivity.contentGapSeconds)} 秒无输出`
+              : `Model generating · ${Math.floor(modelActivity.contentGapSeconds)}s without output`)
+            : phase}</span>
         </div>
 
         <div className="run-progress-meta">

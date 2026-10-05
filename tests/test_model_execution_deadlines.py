@@ -206,7 +206,7 @@ def test_progress_is_recorded_per_provider_chunk_not_per_public_event():
     source = Path("app/ai/openai_streaming.py").read_text(encoding="utf-8")
     chunk_loop = source.index("for chunk in stream:")
     first_yield = source.index("yield StreamEvent", chunk_loop)
-    assert "note_progress()" in source[chunk_loop:first_yield], (
+    assert "note_progress(tool_fragment=" in source[chunk_loop:first_yield], (
         "progress must be recorded before any StreamEvent is produced, or "
         "reasoning-only responses report no progress at all"
     )

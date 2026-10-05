@@ -8,7 +8,7 @@ from urllib.parse import urlsplit, urlunsplit
 
 from .capabilities import ModelCapability
 from .credentials import CredentialRef
-from .profiles import ModelContextLimits, ModelProfile
+from .profiles import ModelContextLimits, ModelProfile, DEFAULT_STREAM_IDLE_TIMEOUT_SECONDS
 from .roles import ModelRole
 
 
@@ -138,6 +138,7 @@ class ProviderConnection:
         model: str,
         capabilities: Iterable[ModelCapability],
         context_limits: ModelContextLimits | None = None,
+        stream_idle_timeout_seconds: float = DEFAULT_STREAM_IDLE_TIMEOUT_SECONDS,
     ) -> ModelProfile:
         if not self.executable:
             raise RuntimeError(
@@ -149,6 +150,7 @@ class ProviderConnection:
             capabilities=capabilities,
             credential_ref=self.credential_ref,
             context_limits=context_limits,
+            stream_idle_timeout_seconds=stream_idle_timeout_seconds,
         )
 
 
@@ -187,6 +189,7 @@ class ProviderCatalog:
         model: str,
         capabilities: Iterable[ModelCapability],
         context_limits: ModelContextLimits | None = None,
+        stream_idle_timeout_seconds: float = DEFAULT_STREAM_IDLE_TIMEOUT_SECONDS,
     ) -> ModelProfile:
         connection = self.require_executable(provider_id)
         return connection.bind_role(
@@ -194,6 +197,7 @@ class ProviderCatalog:
             model=model,
             capabilities=capabilities,
             context_limits=context_limits,
+            stream_idle_timeout_seconds=stream_idle_timeout_seconds,
         )
 
     def all(self) -> tuple[ProviderConnection, ...]:

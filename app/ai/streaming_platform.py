@@ -14,8 +14,8 @@ from .contracts import (
     StreamEventKind,
     ToolCall,
 )
-from .errors import AIEmptyResponseError, AIResponseError, AITransportError
-from .execution_control import check_cancelled, note_progress
+from .errors import AIEmptyResponseError, AIResponseError, AITransportError, AITruncatedToolCallError
+from .execution_control import check_cancelled, note_progress, current_control
 from .platform import AIPlatform
 from .reasoning_text import InlineReasoningDemux, merge_visible_reasoning, split_inline_reasoning
 
@@ -132,6 +132,10 @@ class _StreamAccumulator:
         calls: list[ToolCall] = []
         for index in sorted(self.tool_calls):
             buffer = self.tool_calls[index]
+            effective_finish = str(finish_reason or self.finish_reason or "")
+            if effective_finish in {"length", "max_tokens"}:
+                raise AITruncatedToolCallError(finish_reason=effective_finish, tool_name=buffer.name.strip(),
+                                               argument_chars=len("".join(buffer.argument_parts)))
             call_id = buffer.call_id.strip()
             name = buffer.name.strip()
             if not call_id or not name:
@@ -141,7 +145,7 @@ class _StreamAccumulator:
                 arguments = json.loads(raw_arguments) if raw_arguments else {}
             except json.JSONDecodeError as exc:
                 raise AIResponseError(
-                    f"tool call {name!r} returned invalid streamed JSON arguments"
+                    f"tool call {name!r} returned invalid streamed JSON arguments", finish_reason=effective_finish
                 ) from exc
             if not isinstance(arguments, dict):
                 raise AIResponseError(f"tool call {name!r} arguments must be a JSON object")
@@ -230,9 +234,12 @@ class StreamingAIPlatform(AIPlatform):
                 # remain distinguishable from a dead connection.
                 if not isinstance(raw_event, StreamEvent):
                     raise TypeError("streaming model backend must yield StreamEvent values")
-                if (raw_event.text_delta or raw_event.reasoning_delta
+                control = current_control.get()
+                if control is not None and not control.raw_chunk_reporting:
+                    control.note_chunk()
+                if (control is None or not control.raw_chunk_reporting) and (raw_event.text_delta or raw_event.reasoning_delta
                         or raw_event.tool_call_id or raw_event.tool_name or raw_event.arguments_delta):
-                    note_progress()
+                    note_progress(tool_fragment=bool(raw_event.arguments_delta))
                 normalized_events: list[StreamEvent]
                 if raw_event.kind is StreamEventKind.TEXT_DELTA:
                     normalized_events = [

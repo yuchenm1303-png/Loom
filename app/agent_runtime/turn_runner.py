@@ -6,7 +6,7 @@ import time
 from dataclasses import replace
 
 from app.ai import AIMessage, ChatRequest, MessageRole, ModelResponse, ModelUsage, ToolChoice
-from app.ai.errors import AIEmptyResponseError, AIResponseError, AITransportError
+from app.ai.errors import AIEmptyResponseError, AIResponseError, AITransportError, AITruncatedToolCallError, AIQuotaExceeded
 from app.ai.execution_control import ModelCancelled, ModelSteered
 
 from .context_budget import is_context_window_error, request_forced_compaction
@@ -22,6 +22,7 @@ from .turn_response_validation import (
     COMPLETE_FINISH_REASONS,
     TERMINAL_RECOVERY_INSTRUCTION,
     TRUNCATED_RECOVERY_INSTRUCTION,
+    STALL_RECOVERY_INSTRUCTION,
     DECISION_RECOVERY_INSTRUCTION,
     history_message_count,
     invalid_terminal_response,
@@ -155,11 +156,14 @@ class TurnRunner:
                             role=MessageRole.SYSTEM,
                             name="loom_terminal_recovery",
                             content=(
+                                STALL_RECOVERY_INSTRUCTION
+                                if recovery_instruction == "stream_stall_timeout"
+                                else
                                 DECISION_RECOVERY_INSTRUCTION
                                 if recovery_instruction == "incomplete_decision_block"
                                 else
                                 _TRUNCATED_RECOVERY_INSTRUCTION
-                                if recovery_partial
+                                if recovery_partial or recovery_instruction == "truncated_tool_call"
                                 else _TERMINAL_RECOVERY_INSTRUCTION
                             ),
                         ))
@@ -215,6 +219,9 @@ class TurnRunner:
                                 request,
                                 token,
                                 steering_revision=sample_steering_revision,
+                                on_activity=getattr(rt, "_publish_model_activity", None),
+                                on_retry=lambda data: rt._record(session, Event.MODEL_TRANSPORT_RETRY,
+                                    data={**model_identity, "step_id": step.step_id, **data}),
                             )
                             model_execution_ms = round((time.perf_counter() - model_request_started) * 1000)
                             break
@@ -252,6 +259,7 @@ class TurnRunner:
                                 "step_id": step.step_id,
                                 "reason": "reasoning_only_response" if exc.reasoning_char_count else "empty_response",
                                 "finish_reason": exc.finish_reason,
+                                "stream_timing": getattr(exc, "stream_timing", {}),
                                 "response_id": exc.response_id,
                                 "reasoning_char_count": exc.reasoning_char_count,
                                 "stream_chunk_count": exc.chunk_count,
@@ -279,6 +287,7 @@ class TurnRunner:
                             # it verbatim cannot work, and the recovery instruction
                             # below would only make it longer. Compact instead.
                             over_length = is_context_window_error(exc)
+                            truncated = isinstance(exc, AITruncatedToolCallError)
                             session.model_steps += 1
                             rt._record(session, Event.MODEL_RESPONSE_REJECTED, data={
                                 **model_identity,
@@ -286,11 +295,15 @@ class TurnRunner:
                                 "reason": (
                                     "context_window_exceeded"
                                     if over_length
-                                    else "invalid_provider_response"
+                                    else "truncated_tool_call" if truncated else "invalid_provider_response"
                                 ),
                                 "error_type": type(exc).__name__,
                                 "error": str(exc),
                                 "attempt": attempt,
+                                "finish_reason": getattr(exc, "finish_reason", ""),
+                                "truncated_tool_name": getattr(exc, "tool_name", ""),
+                                "argument_chars": getattr(exc, "argument_chars", 0),
+                                "stream_timing": getattr(exc, "stream_timing", {}),
                                 # The size the provider refused. For a model with
                                 # no declared window this is the only hard fact
                                 # available about it, so record it as a bound
@@ -321,22 +334,25 @@ class TurnRunner:
                                 request_forced_compaction(rt, session)
                                 recovery_instruction = ""
                             else:
-                                recovery_instruction = "invalid_provider_response"
+                                recovery_instruction = "truncated_tool_call" if truncated else "invalid_provider_response"
                             recovery_partial = ""
                             recovery_reasoning = ""
                             retry_sampling = True
                             break
                         except (AITransportError, ModelRequestTimeout) as exc:
-                            if isinstance(exc, ModelRequestTimeout):
+                            if isinstance(exc, (ModelRequestTimeout, AITransportError)):
                                 rt._record(session, Event.MODEL_RESPONSE_REJECTED, data={
                                     **model_identity,
                                     "step_id": step.step_id,
-                                    "reason": exc.reason,
+                                    "reason": getattr(exc, "reason", "quota_exhausted" if isinstance(exc, AIQuotaExceeded) else "transport_error"),
+                                    "error_kind": "quota_exhausted" if isinstance(exc, AIQuotaExceeded) else "transport_error",
+                                    "provider_status_code": getattr(exc, "status_code", None),
                                     "error_type": type(exc).__name__,
                                     "error": str(exc),
                                     "attempt": attempt,
                                     "retryable": exc.retryable,
                                     "will_retry": exc.retryable and attempt < rt.limits.model_retries,
+                                    "stream_timing": getattr(exc, "stream_timing", {}),
                                 })
                             if not exc.retryable or attempt >= rt.limits.model_retries:
                                 raise
@@ -344,7 +360,7 @@ class TurnRunner:
                             signal = wait_for_signal(
                                 token,
                                 sample_steering_revision,
-                                min(2.0, 0.25 * 2 ** (next_attempt - 1)),
+                                max(getattr(exc, "retry_after_seconds", 0.0), min(2.0, 0.25 * 2 ** (next_attempt - 1))),
                             )
                             if signal == "cancel":
                                 raise ModelCancelled()
@@ -363,6 +379,8 @@ class TurnRunner:
                                 break
                             attempt = next_attempt
                             if isinstance(exc, ModelRequestTimeout):
+                                if next_attempt >= 2:
+                                    recovery_instruction = "stream_stall_timeout"
                                 # A timed-out sample may already have streamed a
                                 # partial reply. Give the retry a fresh step so
                                 # its deltas cannot append to that abandoned text.
@@ -452,6 +470,7 @@ class TurnRunner:
                         "step_id": step.step_id,
                         "reason": invalid_terminal,
                         "finish_reason": response.finish_reason,
+                        "stream_timing": response.stream_timing,
                         "response_id": response.response_id,
                         "text_preview": str(response.text or "")[-240:],
                         "attempt": attempt,
@@ -532,6 +551,7 @@ class TurnRunner:
                             "finish_reason": response.finish_reason,
                             "response_id": response.response_id,
                             "model_execution_ms": model_execution_ms,
+                            "stream_timing": response.stream_timing,
                             "reasoning_summary": response.visible_reasoning,
                             "tool_calls": [
                                 {"call_id": c.call_id, "name": c.name, "arguments": c.arguments}

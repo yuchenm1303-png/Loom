@@ -9,6 +9,7 @@ from .credentials import CredentialRef
 
 
 _PROFILE_ID_RE = re.compile(r"^[a-z][a-z0-9._-]{0,127}$")
+DEFAULT_STREAM_IDLE_TIMEOUT_SECONDS = 300.0
 
 
 @dataclass(frozen=True, slots=True)
@@ -83,6 +84,7 @@ class ModelProfile:
     allow_fallback: bool = False
     credential_ref: CredentialRef | None = None
     context_limits: ModelContextLimits = field(default_factory=ModelContextLimits)
+    stream_idle_timeout_seconds: float = DEFAULT_STREAM_IDLE_TIMEOUT_SECONDS
 
     def __post_init__(self) -> None:
         profile_id = str(self.profile_id or "").strip().casefold()
@@ -107,6 +109,8 @@ class ModelProfile:
         object.__setattr__(self, "provider", provider)
         object.__setattr__(self, "model", model)
         object.__setattr__(self, "capabilities", capabilities)
+        if not 0 < float(self.stream_idle_timeout_seconds) <= 600:
+            raise ValueError("stream_idle_timeout_seconds must be within 0..600")
 
     def supports(self, *required: ModelCapability) -> bool:
         return all(ModelCapability(value) in self.capabilities for value in required)
@@ -122,6 +126,7 @@ class ModelProfile:
                 self.credential_ref.as_safe_dict() if self.credential_ref is not None else None
             ),
             "context_limits": self.context_limits.as_safe_dict(),
+            "stream_idle_timeout_seconds": self.stream_idle_timeout_seconds,
         }
 
 

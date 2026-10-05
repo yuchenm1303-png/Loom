@@ -1080,6 +1080,7 @@ export default function App() {
   }
 
   const progressProps = {
+    modelActivity: loom.modelActivity,
     items: loom.items,
     startedAt: loom.turnStartedAt,
     threadStatus: thread?.status,

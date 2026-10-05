@@ -106,6 +106,12 @@ class StreamingLoomAppServerService(LoomAppServerService):
         )
 
     def _on_runtime_stream(self, event: AgentStreamEvent) -> None:
+        if event.kind is AgentStreamEventKind.MODEL_ACTIVITY:
+            self._notify("turn/modelActivity", {
+                "threadId": event.session_id, "turnId": event.turn_id,
+                "stepId": event.step_id, **event.data,
+            })
+            return
         if event.kind in {
             AgentStreamEventKind.ASSISTANT_TEXT_DELTA,
             AgentStreamEventKind.ASSISTANT_REASONING_DELTA,

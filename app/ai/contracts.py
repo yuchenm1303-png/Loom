@@ -252,6 +252,7 @@ class ModelResponse:
     # Native provider intent. Missing fields stay unknown, never inferred from prose.
     phase: str | None = None
     end_turn: bool | None = None
+    stream_timing: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True, slots=True)
