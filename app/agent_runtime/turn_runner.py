@@ -647,5 +647,8 @@ class TurnRunner:
                 )
                 rt._release_turn_steps(session)
                 rt.store.save(session)
-                rt._record(session, Event.TURN_FAILED, data={"error": session.error})
+                rt._record(session, Event.TURN_FAILED, data={"error": session.error,
+                    "provider_status_code": getattr(exc, "status_code", None),
+                    "retryable": getattr(exc, "retryable", None),
+                    "resume": {"durable_history_preserved": True, "new_turn_required": True}})
         return rt._result(session)

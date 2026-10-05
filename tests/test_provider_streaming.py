@@ -352,6 +352,7 @@ def test_permanent_provider_rejection_preserves_non_retryable_classification():
         backend.complete(_request())
 
     assert failure.value.retryable is False
+    assert failure.value.status_code == 402
     assert completions.calls == 1
 
 

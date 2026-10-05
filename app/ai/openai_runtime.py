@@ -327,6 +327,7 @@ class OpenAIChatBackend:
             f"AI request failed via provider {self.connection.provider_id!r}: "
             f"{type(last_error).__name__}: {last_error}",
             retryable=_retryable_provider_error(last_error),
+            status_code=_provider_status_code(last_error),
         ) from last_error
 
     def complete(self, request: ChatRequest) -> ModelResponse:
@@ -464,6 +465,7 @@ class OpenAIChatBackend:
                 f"AI stream failed via provider {self.connection.provider_id!r}: "
                 f"{type(exc).__name__}: {exc}",
                 retryable=_retryable_provider_error(exc),
+                status_code=_provider_status_code(exc),
             ) from exc
 
 

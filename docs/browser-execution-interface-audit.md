@@ -29,3 +29,24 @@ would lose user requirements and evidence. This patch does not invent such a rul
 No claim is made that these interface fixes guarantee concise model behavior or
 complete the ongoing acceptance run. Validate with the next run's setup time,
 call correctness, evidence-linked verdicts, and commentary volume.
+
+## Resource recovery and structured evidence
+
+Browser manager retains bounded owner-scoped resource tombstones. Turn cleanup records
+its actual terminal event kind; missing resources return not_executed plus lifecycle
+metadata. New turns receive the durable prior-turn release receipt. A Host restart
+without a local tombstone is reported as unknown, never guessed as idle timeout.
+Provider transport errors retain typed HTTP status when available. Failed turns retain
+history and record a new-turn recovery boundary; these changes preserve the existing provider retry contract and do not reinterpret
+rate limits as task completion or continue a single-session test across a failed turn.
+
+append_workspace_jsonl accepts object records, validates existing JSONL, serializes
+Unicode/newlines, writes via a verified same-directory temporary file, and replaces
+atomically. Same-Host calls are serialized. External shell writers must not concurrently
+modify the same file. Invalid existing evidence is preserved and diagnosed, not repaired
+or reinterpreted automatically. The receipt confirms file integrity, not a verdict's truth.
+
+Plan status describes workflow execution; optional outcome separately represents passed,
+failed, interrupted, not_covered, and not_assessed. UI displays an explicit adverse outcome
+rather than a green test-pass implication. Models remain responsible for supplying accurate
+outcomes grounded in evidence; no prose matching or extra completion reviewer was added.

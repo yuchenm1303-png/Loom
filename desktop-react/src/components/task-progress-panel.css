@@ -43,3 +43,6 @@
 .task-plan-dialog { position: fixed; box-sizing: border-box; inset: 0; width: min(380px, calc(100vw - 32px)); max-height: calc(100dvh - 48px); margin: auto; padding: 22px; border: 1px solid var(--border); border-radius: 18px; background: var(--panel); color: var(--text); box-shadow: 0 20px 70px #0006; overflow-y: auto; overscroll-behavior: contain; }
 .task-plan-dialog::backdrop { background: #0005; }
 .task-plan-dialog .task-plan-heading { padding-right: 24px; }
+
+.task-plan-outcome.is-failed, .task-plan-outcome.is-interrupted { color: var(--danger, #d87b88); }
+.task-plan-outcome.is-not_covered { color: var(--warning, #d5a65a); }

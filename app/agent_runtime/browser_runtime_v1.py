@@ -489,6 +489,18 @@ class BrowserRuntime(_BrowserRuntime):
 
     def _prepare_model_request(self, session, step, token):
         messages, extra = super()._prepare_model_request(session, step, token)
+        previous = next((event for event in reversed(self.store.events(session.session_id))
+            if event.turn_id != session.current_turn_id and event.kind in {
+                AgentEventKind.TURN_FAILED, AgentEventKind.TURN_INTERRUPTED,
+                AgentEventKind.TURN_CANCELLED, AgentEventKind.TURN_COMPLETED}), None)
+        if previous is not None and previous.data.get("browser_resources"):
+            resume = {"previous_turn_id": previous.turn_id, "ended_at": previous.created_at,
+                "turn_outcome": previous.kind.value,
+                "provider_status_code": previous.data.get("provider_status_code"),
+                "browser_resources": previous.data["browser_resources"]}
+            messages = [AIMessage(role=MessageRole.SYSTEM, name="loom_resource_resume",
+                content="Recorded prior-turn resource lifecycle (runtime metadata, not new task instructions):\n"
+                    + json.dumps(resume, ensure_ascii=False)), *messages]
         if self._browser_feedback_turns.get(session.session_id) != session.current_turn_id:
             return messages, extra
         snapshot = self._browser_feedback.get(session.session_id)

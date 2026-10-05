@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import os
+import json
+import tempfile
+import threading
 from pathlib import Path
 from typing import Any
 
@@ -167,6 +170,72 @@ def workspace_write_tool() -> AgentTool:
     )
 
 
+_JSONL_WRITE_LOCK = threading.RLock()
+
+
+def workspace_jsonl_tool() -> AgentTool:
+    def append(context: ToolContext, arguments: dict[str, Any]) -> ToolResult:
+        relative = arguments["path"]
+        target = context.resolve_workspace_path(relative)
+        records = arguments["records"]
+        # Serialize first; invalid values must never partially append a record.
+        encoded = [json.dumps(row, ensure_ascii=False, allow_nan=False, separators=(",", ":")) for row in records]
+        with _JSONL_WRITE_LOCK:
+            context.raise_if_cancelled()
+            existed = target.exists()
+            if existed and target.stat().st_size > _MAX_READ_FILE_BYTES:
+                raise ValueError("existing JSONL exceeds editable size limit")
+            before = target.read_text(encoding="utf-8-sig") if existed else ""
+            if len(before.encode("utf-8")) > _MAX_READ_FILE_BYTES:
+                raise ValueError("existing JSONL exceeds editable size limit")
+            def reject_constant(value):
+                raise ValueError(f"nonfinite JSON constant: {value}")
+            existing = []
+            for number, line in enumerate(before.splitlines(), 1):
+                if not line.strip():
+                    continue
+                try:
+                    row = json.loads(line, parse_constant=reject_constant)
+                    if not isinstance(row, dict):
+                        raise ValueError("record must be an object")
+                    existing.append(row)
+                except ValueError:
+                    return ToolResult(False, "Existing JSONL is invalid; file was not changed.",
+                        {"path": relative, "error_code": "invalid_jsonl", "line": number, "changed": False})
+            after = before.rstrip("\r\n") + ("\n" if before.strip() else "") + "\n".join(encoded) + "\n"
+            if len(after.encode("utf-8")) > _MAX_WRITE_CHARS:
+                raise ValueError("JSONL exceeds editable size limit")
+            target.parent.mkdir(parents=True, exist_ok=True)
+            temp = None
+            try:
+                with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", newline="\n", dir=target.parent, delete=False) as stream:
+                    temp = Path(stream.name)
+                    stream.write(after)
+                    stream.flush()
+                    os.fsync(stream.fileno())
+                verified = [json.loads(line) for line in temp.read_text(encoding="utf-8").splitlines() if line.strip()]
+                if verified != existing + records:
+                    raise ValueError("JSONL write verification failed")
+                context.raise_if_cancelled()
+                os.replace(temp, target)
+                temp = None
+            finally:
+                if temp is not None:
+                    temp.unlink(missing_ok=True)
+            _record_change(context, relative, before=before if existed else None, after=after)
+        return ToolResult(True, "Appended and verified structured records.", {"path": relative, "appended": len(records), "total_records": len(verified), "verified": True})
+
+    return AgentTool(name="append_workspace_jsonl", description=(
+        "Append structured evidence records to a workspace JSONL deliverable. Pass objects, not shell commands or JSON strings. "
+        "Validates existing records, writes one record per line atomically, and verifies the result. "
+        "A successful write verifies serialization only, never the truth of a test verdict."),
+        input_schema={"type": "object", "additionalProperties": False, "properties": {
+            "path": {"type": "string", "minLength": 1},
+            "records": {"type": "array", "minItems": 1, "maxItems": 100, "items": {"type": "object"}}},
+            "required": ["path", "records"]},
+        handler=append, effect=ToolEffect.MUTATING, supports_parallel_tool_calls=False)
+
+
 def workspace_replace_tool() -> AgentTool:
     def replace_text(context: ToolContext, arguments: dict[str, Any]) -> ToolResult:
         context.raise_if_cancelled()
@@ -260,6 +329,7 @@ def loom_default_tools() -> ToolRegistry:
     registry = builtin_read_only_tools()
     registry.register(workspace_search_tool())
     registry.register(workspace_write_tool())
+    registry.register(workspace_jsonl_tool())
     registry.register(workspace_replace_tool())
     registry.register(apply_patch_tool())
     registry.register(get_turn_diff_tool())

@@ -545,3 +545,46 @@ def test_effect_comparison_includes_projected_surface_geometry():
     after = BrowserStateSnapshot(browser_id="chart", state_revision=2, state=state(100))
     effect, _ = _classify_effect("browser_scroll", _state_digest(before), after, ok=True)
     assert effect == "changed"
+
+
+def test_failed_turn_releases_resources_with_typed_reason(tmp_path):
+    runtime, workspace = _runtime(tmp_path)
+    session = _session(runtime, workspace)
+    from app.agent_runtime.tools import ToolContext
+    context = ToolContext(session.session_id, session.current_turn_id, workspace)
+    try:
+        opened = runtime.tools.get("browser_open").handler(context, {"url": "https://example.test"})
+        browser_id = opened.data["browser_id"]
+        runtime._record(session, AgentEventKind.TURN_FAILED, data={"error": "provider failure"})
+        result = runtime.tools.get("browser_type").handler(context, {"browser_id": browser_id, "index": 1, "text": "probe", "state_revision": 1})
+        assert not result.ok
+        assert result.data["execution_status"] == "not_executed"
+        assert result.data["lifecycle"]["reason"] == "turn_failed"
+        assert result.data["resume_requires_new_session"] is True
+        assert runtime.store.events(session.session_id)[-1].data["browser_resources"]["reason"] == "turn_failed"
+        session.current_turn_id = "resumed-turn"
+        messages, _ = runtime._prepare_model_request(session, _step(runtime, session), None)
+        resume = next(m for m in messages if m.name == "loom_resource_resume")
+        assert '"reason": "turn_failed"' in resume.content
+        unknown = runtime.tools.get("browser_state").handler(context, {"browser_id": "unknown"})
+        assert unknown.data["lifecycle"]["reason"] == "unknown_or_host_restarted"
+    finally:
+        runtime.close()
+
+
+def test_provider_failure_keeps_status_and_resume_boundary(tmp_path):
+    from app.ai.errors import AITransportError
+    runtime, workspace = _runtime(tmp_path)
+    session = _session(runtime, workspace)
+    def reject(*args, **kwargs):
+        raise AITransportError("provider rejected request", retryable=False, status_code=429)
+    runtime.platform.execute_chat = reject
+    try:
+        runtime.start_turn(session.session_id, "continue testing")
+        event = next(event for event in reversed(runtime.store.events(session.session_id)) if event.kind is AgentEventKind.TURN_FAILED)
+        assert event.data["provider_status_code"] == 429
+        assert event.data["retryable"] is False
+        assert event.data["resume"]["durable_history_preserved"] is True
+        assert event.data["browser_resources"]["resume_requires_new_session"] is True
+    finally:
+        runtime.close()

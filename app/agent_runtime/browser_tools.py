@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import json
 import uuid
+from dataclasses import replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable
 
-from .browser_session import BrowserSessionLimitError, BrowserStaleStateError, BrowserTextNotFoundError, BrowserURLPolicyError
+from .browser_session import BrowserSessionUnavailable, BrowserSessionLimitError, BrowserStaleStateError, BrowserTextNotFoundError, BrowserURLPolicyError
 from .contracts import ToolEffect
 from .tools import AgentTool, ToolContext, ToolResult
 
@@ -1951,7 +1952,17 @@ def browser_tools(runtime: "BrowserRuntime") -> tuple[AgentTool, ...]:
             ),
         ]
     )
-    return tuple(tools)
+    def lifecycle_handler(handler):
+        def execute(context, arguments):
+            try:
+                return handler(context, arguments)
+            except BrowserSessionUnavailable as exc:
+                return ToolResult(False, "Browser resource is unavailable. The previous session cannot be resumed; create a new session only if the task allows a separate run.",
+                    data={"error_code": "browser_session_unavailable", "execution_status": "not_executed",
+                          "lifecycle": exc.lifecycle, "resume_requires_new_session": True})
+        return execute
+
+    return tuple(replace(tool, handler=lifecycle_handler(tool.handler)) for tool in tools)
 
 
 __all__ = ["browser_tools"]

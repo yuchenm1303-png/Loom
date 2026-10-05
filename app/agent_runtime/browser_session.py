@@ -222,6 +222,12 @@ class ManagedBrowserSession:
         }
 
 
+class BrowserSessionUnavailable(KeyError):
+    def __init__(self, browser_id: str, lifecycle: dict[str, object] | None = None):
+        self.lifecycle = lifecycle or {"browser_id": browser_id, "reason": "unknown_or_host_restarted"}
+        super().__init__(f"browser session not found: {browser_id}; lifecycle={self.lifecycle['reason']}")
+
+
 class BrowserSessionManager:
     """Owns ephemeral browser sessions and enforces Loom-session ownership."""
 
@@ -241,6 +247,7 @@ class BrowserSessionManager:
         self.max_sessions_total = max(1, int(max_sessions_total))
         self._lock = threading.RLock()
         self._sessions: dict[str, ManagedBrowserSession] = {}
+        self._closed_sessions: dict[str, tuple[str, dict[str, object]]] = {}
         self._starting_total = 0
         self._starting_by_owner: dict[str, int] = {}
         self._owner_generations: dict[str, int] = {}
@@ -447,16 +454,20 @@ class BrowserSessionManager:
             raise BrowserError("browser screenshot exceeds 25 MB")
         return bytes(data)
 
-    def close(self, owner_session_id: str, browser_id: str) -> bool:
+    def close(self, owner_session_id: str, browser_id: str, *, reason: str = "explicit_close") -> bool:
         item = self._owned(owner_session_id, browser_id)
         try:
             item.backend.close()
         finally:
             with self._lock:
                 self._sessions.pop(item.browser_id, None)
+                self._closed_sessions[item.browser_id] = (item.owner_session_id, {"browser_id": item.browser_id, "reason": reason, "closed_at": utc_now()})
+                # Bounded resource diagnostics, not a task/retry limit.
+                while len(self._closed_sessions) > 256:
+                    self._closed_sessions.pop(next(iter(self._closed_sessions)))
         return True
 
-    def close_owner(self, owner_session_id: str) -> int:
+    def close_owner(self, owner_session_id: str, *, reason: str = "owner_cleanup") -> int:
         owner = _key(owner_session_id, "owner_session_id")
         with self._lock:
             self._owner_generations[owner] = self._owner_generations.get(owner, 0) + 1
@@ -464,7 +475,7 @@ class BrowserSessionManager:
         closed = 0
         for browser_id in ids:
             try:
-                self.close(owner, browser_id)
+                self.close(owner, browser_id, reason=reason)
                 closed += 1
             except Exception:
                 with self._lock:
@@ -495,7 +506,9 @@ class BrowserSessionManager:
         with self._lock:
             item = self._sessions.get(key)
         if item is None:
-            raise KeyError(f"browser session not found: {key}")
+            tombstone = self._closed_sessions.get(key)
+            lifecycle = tombstone[1] if tombstone and tombstone[0] == owner else None
+            raise BrowserSessionUnavailable(key, lifecycle)
         if item.owner_session_id != owner:
             raise PermissionError("browser session belongs to a different Loom session")
         return item

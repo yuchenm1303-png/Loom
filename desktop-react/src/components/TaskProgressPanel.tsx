@@ -1,4 +1,4 @@
-import { Check, ChevronLeft, ListChecks, X } from "lucide-react";
+import { Check, CircleAlert, ChevronLeft, ListChecks, X } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
 import type { TaskMilestone } from "./liveTaskProgress";
 import "./task-progress-panel.css";
@@ -41,9 +41,10 @@ export function TaskProgressPanel({ steps }: { steps: TaskMilestone[] }) {
       <ol className="task-plan-list">
         {steps.map((step, index) => (
           <li key={`${index}:${step.step}`} className={`is-${step.status}`} aria-current={step.status === "in_progress" ? "step" : undefined}>
-            <span className="task-plan-step-mark" aria-hidden="true">{step.status === "completed" ? <Check size={13} /> : index + 1}</span>
+            <span className="task-plan-step-mark" aria-hidden="true">{step.outcome === "failed" || step.outcome === "interrupted" || step.outcome === "not_covered" ? <CircleAlert size={13} /> : step.status === "completed" ? <Check size={13} /> : index + 1}</span>
             <div><span className="task-plan-status">{({ pending: "待处理", in_progress: "进行中", completed: "已完成", blocked: "受阻" })[step.status]}</span>
               <p>{step.step}</p>
+              {step.outcome && step.outcome !== "not_assessed" ? <small className={`task-plan-outcome is-${step.outcome}`}>{({ passed: "验收通过", failed: "验收失败", interrupted: "测试中断", not_covered: "未覆盖" })[step.outcome]}</small> : null}
               {step.status === "blocked" && step.blocker ? <small>{step.blocker}</small> : null}
             </div>
           </li>

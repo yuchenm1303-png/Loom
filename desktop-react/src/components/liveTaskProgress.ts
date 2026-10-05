@@ -4,6 +4,7 @@ export interface TaskMilestone {
   step: string;
   status: "pending" | "in_progress" | "completed" | "blocked";
   evidence?: string;
+  outcome?: "passed" | "failed" | "interrupted" | "not_covered" | "not_assessed";
   blocker?: string;
 }
 

@@ -28,7 +28,7 @@ test("steering, approvals, failures, decisions and explicit finals stay visible"
 });
 
 test("latest successful durable plan wins; failed update cannot overwrite it", () => {
-  const plan = [{ step: "Checks", status: "completed" }, { step: "Report", status: "blocked", blocker: "server offline" }];
+  const plan = [{ step: "Checks", status: "completed", outcome: "interrupted" }, { step: "Report", status: "blocked", blocker: "server offline" }];
   assert.deepEqual(model.latestTaskPlan([
     item("plan", "tool_call", { toolName: "update_plan", result: { plan } }),
     item("failed", "tool_call", { toolName: "update_plan", status: "failed", result: { plan: [] } }),

@@ -74,13 +74,15 @@ def update_plan_tool(store):
         "Maintain a short task plan for substantial multi-stage work. Use outcome milestones, "
         "not individual clicks or commands. Update at stage transitions, before executing the next "
         "stage and before reporting changed progress or final results. Keep scope "
-        "stable; completed steps require evidence and blocked steps a blocker. Skip for simple tasks."),
+        "stable; completed steps require evidence and blocked steps a blocker. "
+        "status describes stage execution, not test acceptance. Use outcome to separately record passed, failed, interrupted, not_covered or not_assessed. Skip for simple tasks."),
         input_schema={"type": "object", "additionalProperties": False, "properties": {
             "explanation": {"type": "string", "maxLength": 1000},
             "plan": {"type": "array", "minItems": 2, "maxItems": 8, "items": {
                 "type": "object", "additionalProperties": False, "properties": {
                     "step": {"type": "string", "minLength": 1, "maxLength": 240},
                     "status": {"enum": ["pending", "in_progress", "completed", "blocked"]},
+                    "outcome": {"enum": ["passed", "failed", "interrupted", "not_covered", "not_assessed"]},
                     "evidence": {"type": "string", "maxLength": 1000},
                     "blocker": {"type": "string", "maxLength": 1000}},
                 "required": ["step", "status"]}}}, "required": ["plan"]},

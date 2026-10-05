@@ -26,3 +26,18 @@ def test_plan_projection_exposes_new_results_without_automatically_completing_se
     updated = json.loads(plan_context(events, "current").content.split("\n", 1)[1])
     assert updated["execution_since_plan_update"]["result_count"] == 0
     assert updated["plan"][1]["status"] == "in_progress"
+
+
+def test_execution_completion_does_not_promote_interrupted_acceptance_to_pass(tmp_path):
+    from types import SimpleNamespace
+    from app.agent_runtime.task_plan import update_plan_tool
+    from app.agent_runtime.tools import ToolContext, validate_tool_arguments
+    events = []
+    context = ToolContext("session", "current", tmp_path, emit_event=lambda kind, data: events.append(event(kind, data)))
+    tool = update_plan_tool(SimpleNamespace(events=lambda _: events))
+    arguments = {"plan": [{"step": "Pressure test", "status": "completed", "outcome": "interrupted", "evidence": "tool-failed-receipt"}, {"step": "Report", "status": "in_progress"}]}
+    validate_tool_arguments(tool.input_schema, arguments)
+    result = tool.handler(context, arguments)
+    assert result.ok
+    state = json.loads(plan_context(events, "current").content.split("\n", 1)[1])
+    assert state["plan"][0]["outcome"] == "interrupted"
