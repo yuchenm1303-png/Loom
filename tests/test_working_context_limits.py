@@ -208,3 +208,53 @@ def test_no_work_budget_preserves_unknown_model_no_compaction():
     assert metadata["working_context_tokens"] is None
     assert metadata.get("auto_compacted") is not True
     assert not runtime.model_executor.requests
+
+
+def test_saved_working_only_policy_is_authoritative_for_cold_and_hot_configuration(monkeypatch):
+    from app import runtime_model_switch as config
+    from app.ai import ProviderAdapter
+    policy = ModelContextLimits(working_context_tokens=80000)
+    monkeypatch.setattr(config, "ModelConfigStore", lambda: SimpleNamespace(list_models=lambda: [
+        SimpleNamespace(adapter=ProviderAdapter.OPENAI_COMPATIBLE, model="unknown",
+            base_url="https://example.test/v1", context_limits=policy)]))
+    assert config.resolve_runtime_context_limits(adapter=ProviderAdapter.OPENAI_COMPATIBLE,
+        base_url="https://example.test/v1", model="unknown") == policy
+    assert config.resolve_runtime_context_limits(adapter=ProviderAdapter.OPENAI_COMPATIBLE,
+        base_url="https://other.test/v1", model="unknown").working_context_tokens is None
+
+
+def test_working_budget_includes_accumulated_runtime_frames_and_checkpoints_them(tmp_path):
+    import argparse
+    from loom_cli import _build_runtime
+    from app.ai import AIMessage, MessageRole, ModelResponse
+    from app.agent_runtime.context_budget import prepare_context, estimate_tokens
+    from app.agent_runtime.storage import _message_to_dict
+    from test_context_runtime_v2 import Token
+    from test_unknown_context_window_semantics import _history_over
+    runtime, store, _ = _build_runtime(argparse.Namespace(provider="openai-compatible",
+        base_url="https://example.test/v1", model="declared", allow_unconfigured_model=True,
+        vision=False, timeout=120, home=str(tmp_path / "state"),
+        context_limits={"contextWindowTokens": 512000, "workingContextTokens": 64000}))
+    session = runtime.create_session("agent.fast", workspace_dir=tmp_path)
+    history = _history_over(3000)
+    session.messages = list(history)
+    session.request_context_frames = [{"step_id": str(index), "after_message_count": len(history),
+        "messages": [_message_to_dict(AIMessage(role=MessageRole.USER, name="loom_runtime_state",
+            content=f"snapshot {index}: " + "runtime observation " * 4000))], "metadata": {}} for index in range(10)]
+    requests = []
+    def summarize(*args, **kwargs):
+        requests.append(args)
+        return ModelResponse(text="Completed evidence remains durable; continue the current task.")
+    runtime.model_executor = SimpleNamespace(execute=summarize)
+    try:
+        messages, metadata = prepare_context(runtime, session,
+            runtime._build_step_context(session, next_model_step=False), Token())
+        assert metadata["auto_compacted"] is True
+        assert estimate_tokens(messages) < 64000
+        assert len(session.request_context_frames) == 1
+        assert "snapshot 9:" in str(messages)
+        assert len(requests) == 1
+        checkpoint = runtime.list_context_checkpoints(session.session_id)[0]
+        assert checkpoint.archived_messages == tuple(history)
+    finally:
+        runtime.close()

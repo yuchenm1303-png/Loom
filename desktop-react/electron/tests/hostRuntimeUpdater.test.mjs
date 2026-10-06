@@ -28,14 +28,16 @@ mock.module("node:child_process", { namedExports: { execFile: (command, args, op
   }, 50);
 } } });
 mock.module("electron", { namedExports: {
-  app: { isPackaged: true, getVersion: () => "0.1.38", whenReady: () => ({ then() {} }), on() {} },
+  app: { isPackaged: true, getPath: () => temp, getVersion: () => "0.1.38", whenReady: () => ({ then() {} }), on() {} },
   net: { fetch: async (url) => new Response(url.includes("stable.json") ? JSON.stringify({
     ...manifest, channel: "stable", minBootstrapVersion: "0.1.11", url: "https://github.com/yuchenm1303-png/Loom/releases/download/host-v1.0.2/runtime.zip",
     sha256: crypto.createHash("sha256").update(bytes).digest("hex"), size: bytes.length,
   }) : bytes) },
 } });
 mock.module("../../dist-electron/hostProcess.js", { namedExports: { isHostProcess: true } });
+const { compareHostRuntimeBuilds } = await import("../../dist-electron/hostRuntime.js");
 mock.module("../../dist-electron/hostRuntime.js", { namedExports: {
+  compareHostRuntimeBuilds,
   currentHostRuntime: () => ({ ...manifest, version: "1.0.1" }),
   hostRuntimeManagerRoot: () => temp, hostRuntimeVersionsRoot: () => path.join(temp, "versions"),
   readHostRuntimeManifest: (root) => JSON.parse(fs.readFileSync(path.join(root, "manifest.json"))),

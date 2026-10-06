@@ -161,24 +161,3 @@ def test_distinct_progress_does_not_trigger_a_count_based_replan():
 
     assert message is None
     assert metadata == {}
-
-
-
-def test_progress_projection_is_turn_scoped_and_preserves_execution_uncertainty():
-    import json
-    from dataclasses import replace
-    from app.agent_runtime.execution_guidance import execution_progress_context
-    old = replace(_event(AgentEventKind.TOOL_COMPLETED, call_id="old", tool="browser_type"),
-                  turn_id="older-turn")
-    current = [_event(AgentEventKind.TOOL_COMPLETED, call_id="click", tool="browser_click"),
-               _event(AgentEventKind.TOOL_FAILED, call_id="rejected", tool="browser_type"),
-               _event(AgentEventKind.MODEL_RESPONSE, text="All tests passed")]
-    message = execution_progress_context([old, *current], turn_id="turn-1")
-    payload = json.JSONDecoder().raw_decode(message.content.split(": ", 1)[1])[0]
-    assert payload["tool_results"] == 2
-    assert payload["tool_failures"] == 1
-    assert payload["assistant_text_responses"] == 1
-    assert [r["call_id"] for r in payload["recent_results"]] == ["click", "rejected"]
-    assert "All tests passed" not in message.content
-    assert "not functional test verdicts" in message.content
-    assert execution_progress_context([old], turn_id="turn-1") is None

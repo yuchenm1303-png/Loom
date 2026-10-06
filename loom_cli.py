@@ -16,6 +16,7 @@ from app.agent_runtime import (
     PermissionMode,
 )
 from app.agent_runtime.workspace_tools import loom_default_tools
+from app.runtime_model_switch import resolve_runtime_context_limits
 from app.ai import (
     AGENT_FAST_ROLE,
     AIConfiguration,
@@ -134,6 +135,9 @@ def _build_runtime(args: argparse.Namespace) -> tuple[AgentRuntime, FileAgentSes
         provider_id=connection.provider_id,
         model=model,
         capabilities=frozenset(capabilities),
+        context_limits=resolve_runtime_context_limits(
+            adapter=connection.adapter, base_url=connection.base_url, model=model,
+            context_limits=getattr(args, "context_limits", None)),
     )
     configuration = AIConfiguration.build(
         roles=(AGENT_FAST_ROLE,),
@@ -576,6 +580,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--provider", choices=["openai", "openai-compatible"])
     parser.add_argument("--base-url")
     parser.add_argument("--model")
+    parser.add_argument("--context-limits", type=json.loads, help="selected model context metadata as JSON")
     parser.add_argument("--home", help="runtime state root; defaults to ~/.loom")
     parser.add_argument(
         "--workspace",

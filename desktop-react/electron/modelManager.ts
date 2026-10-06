@@ -42,6 +42,7 @@ export interface ModelProfile {
     autoCompactTokenLimit?: number;
     outputReserveTokens?: number;
     toolOutputTokenLimit?: number;
+    workingContextTokens?: number;
   };
   reasoning?: ModelReasoningState | null;
   authMode?: "loom-account" | string;

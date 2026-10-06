@@ -15,6 +15,7 @@ import {
 } from "./modelManager.js";
 import { LoomAccountClient, type LoomAccountSnapshot, type LoomAuthCapabilities, type LoomAuthChallenge, type LoomModelPolicyAccess } from "./accountClient.js";
 import { accountErrorPayload, type AccountErrorPayload } from "./accountErrors.js";
+import { runtimeModelParams, runtimeModelArguments } from "./runtimeModelConfig.js";
 import { startupModel } from "./startupModel.js";
 import { closeHudOverlayWindow, createHudOverlayWindow, sendHudUpdate } from "./hudWindow.js";
 import {
@@ -171,20 +172,6 @@ function appendPythonPath(existing: string | undefined): string {
 function initializationFromRuntime(payload: unknown): unknown {
   if (payload && typeof payload === "object" && "runtime" in payload) return payload;
   return { runtime: payload };
-}
-
-function runtimeModelParams(spec: ModelLaunchSpec): Record<string, unknown> {
-  return {
-    selection: spec.selection,
-    provider: spec.provider,
-    baseUrl: spec.baseUrl,
-    model: spec.model,
-    apiKey: spec.apiKey,
-    vision: spec.vision !== false,
-    contextLimits: spec.contextLimits,
-    reasoningKind: spec.reasoning?.kind ?? "",
-    reasoningValue: spec.reasoning?.value ?? "",
-  };
 }
 
 function missingHotSwitchMethod(error: unknown): boolean {
@@ -909,7 +896,7 @@ class LoomRpcProcess {
     const python = resolvePythonExecutable();
     const sandboxExecutable = resolveHostSandboxExecutable(REPO_ROOT);
     const script = path.join(REPO_ROOT, "loom_app_server.py");
-    const args = [script, "--workspace", REPO_ROOT, "--provider", spec.provider, "--model", spec.model, "--selection", spec.selection, "--local-ipc"];
+    const args = [script, "--workspace", REPO_ROOT, "--provider", spec.provider, "--model", spec.model, "--selection", spec.selection, "--local-ipc", ...runtimeModelArguments(spec)];
     if (this.modelDeferred) args.push("--allow-unconfigured-model");
     if (spec.baseUrl) args.push("--base-url", spec.baseUrl);
     if (spec.reasoning) args.push("--reasoning-kind", spec.reasoning.kind, "--reasoning-value", spec.reasoning.value);

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from pathlib import Path
 from typing import TextIO
@@ -41,6 +42,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--provider", choices=["openai", "openai-compatible", "opencode-go"])
     parser.add_argument("--base-url")
     parser.add_argument("--model")
+    parser.add_argument("--context-limits", type=json.loads, help="selected model context metadata as JSON")
     parser.add_argument("--selection")
     parser.add_argument("--allow-unconfigured-model", action="store_true",
                         help="start local UI services before account model authorization")

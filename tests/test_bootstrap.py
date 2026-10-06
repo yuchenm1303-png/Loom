@@ -66,6 +66,7 @@ def test_first_run_app_server_handshake_without_user_configuration(tmp_path):
         "--home", str(tmp_path), "--workspace", str(tmp_path),
         "--provider", "openai-compatible", "--base-url", "https://account.smirel.com/model/v1",
         "--model", "Ling-3.0-flash", "--selection", "builtin:ant-ling",
+        "--context-limits", json.dumps({"contextWindowTokens": 128000, "workingContextTokens": 64000}),
         "--allow-unconfigured-model"], input=json.dumps({"jsonrpc": "2.0", "id": 1,
             "method": "initialize", "params": {"protocolVersion": 1}}) + "\n",
         capture_output=True, text=True, encoding="utf-8", env=environment, cwd=root, timeout=30)
@@ -564,3 +565,35 @@ def test_command_tool_strips_secret_environment(tmp_path, monkeypatch):
         and event.data.get("tool") == "exec"
     ]
     assert completed[-1].data["data"]["stdout"].strip() == "missing"
+
+
+def test_cold_bootstrap_preserves_host_context_metadata(tmp_path, monkeypatch):
+    from loom_cli import _build_runtime
+    monkeypatch.setenv("LOOM_MODEL_CONTEXT_WINDOW_TOKENS", "512000")
+    monkeypatch.setenv("LOOM_MODEL_WORKING_CONTEXT_TOKENS", "128000")
+    args = argparse.Namespace(provider="openai-compatible", base_url="https://example.test/v1",
+        model="declared-model", allow_unconfigured_model=True, vision=False, timeout=120, home=str(tmp_path))
+    runtime, _, _ = _build_runtime(args)
+    try:
+        session = runtime.create_session("agent.fast", workspace_dir=tmp_path)
+        limits = runtime.platform.registry.get(session.profile_id).context_limits
+        assert limits.context_window_tokens == 512000
+        assert limits.working_context_tokens == 128000
+    finally:
+        runtime.close()
+
+
+def test_explicit_launch_limits_override_saved_or_environment_defaults(tmp_path, monkeypatch):
+    from loom_cli import _build_runtime
+    monkeypatch.setenv("LOOM_MODEL_CONTEXT_WINDOW_TOKENS", "64000")
+    args = argparse.Namespace(provider="openai-compatible", base_url="https://example.test/v1",
+        model="declared-model", allow_unconfigured_model=True, vision=False, timeout=120,
+        home=str(tmp_path), context_limits={"contextWindowTokens": 512000, "workingContextTokens": 128000})
+    runtime, _, _ = _build_runtime(args)
+    try:
+        session = runtime.create_session("agent.fast", workspace_dir=tmp_path)
+        limits = runtime.platform.registry.get(session.profile_id).context_limits
+        assert limits.context_window_tokens == 512000
+        assert limits.working_context_tokens == 128000
+    finally:
+        runtime.close()

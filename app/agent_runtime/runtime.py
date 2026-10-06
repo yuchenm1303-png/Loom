@@ -536,7 +536,7 @@ class AgentRuntime:
 
     def _execution_context(self, session):
         """Shared task state for both core and context-managed request builders."""
-        from .execution_guidance import model_execution_guidance, execution_progress_context
+        from .execution_guidance import model_execution_guidance
         turn_events = self.store.events(session.session_id)
         guidance, guidance_metadata = model_execution_guidance(
             turn_events,
@@ -547,10 +547,6 @@ class AgentRuntime:
         plan = plan_context(turn_events, session.current_turn_id)
         if plan is not None:
             messages.append(plan)
-        else:
-            progress = execution_progress_context(turn_events, turn_id=session.current_turn_id)
-            if progress is not None:
-                messages.append(progress)
         return messages, guidance_metadata
 
     def steer(

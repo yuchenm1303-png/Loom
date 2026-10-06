@@ -42,6 +42,7 @@ def _has_authoritative_context_limits(limits: ModelContextLimits) -> bool:
             limits.auto_compact_token_limit,
             limits.output_reserve_tokens,
             limits.tool_output_token_limit,
+            limits.working_context_tokens,
         )
     )
 
@@ -119,6 +120,33 @@ def validate_runtime_reasoning(
     return capability
 
 
+def resolve_runtime_context_limits(
+    *,
+    adapter: ProviderAdapter,
+    base_url: str,
+    model: str,
+    context_limits: ModelContextLimits | Mapping[str, object] | None = None,
+) -> ModelContextLimits:
+    """One configuration resolver for cold bootstrap and runtime model changes."""
+    env_limits = model_context_limits_from_env()
+    saved_limits = _stored_context_limits(
+        adapter=adapter,
+        base_url=base_url,
+        model=model,
+    )
+    if isinstance(context_limits, ModelContextLimits):
+        return context_limits
+    elif isinstance(context_limits, Mapping):
+        return model_context_limits_from_mapping(
+            context_limits,
+            fallback=saved_limits or env_limits,
+        )
+    elif saved_limits is not None:
+        return saved_limits
+    else:
+        return env_limits
+
+
 def build_runtime_model_platform(
     *,
     provider: str,
@@ -165,23 +193,10 @@ def build_runtime_model_platform(
     if bool(vision):
         capabilities.add(ModelCapability.VISION)
 
-    env_limits = model_context_limits_from_env()
-    saved_limits = _stored_context_limits(
-        adapter=adapter,
-        base_url=resolved_base_url,
-        model=selected_model,
+    resolved_context_limits = resolve_runtime_context_limits(
+        adapter=adapter, base_url=resolved_base_url, model=selected_model,
+        context_limits=context_limits,
     )
-    if isinstance(context_limits, ModelContextLimits):
-        resolved_context_limits = context_limits
-    elif isinstance(context_limits, Mapping):
-        resolved_context_limits = model_context_limits_from_mapping(
-            context_limits,
-            fallback=saved_limits or env_limits,
-        )
-    elif saved_limits is not None:
-        resolved_context_limits = saved_limits
-    else:
-        resolved_context_limits = env_limits
 
     binding = ModelBinding(
         role_id=AGENT_FAST_ROLE.role_id,

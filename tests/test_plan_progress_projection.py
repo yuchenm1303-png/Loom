@@ -41,3 +41,31 @@ def test_execution_completion_does_not_promote_interrupted_acceptance_to_pass(tm
     assert result.ok
     state = json.loads(plan_context(events, "current").content.split("\n", 1)[1])
     assert state["plan"][0]["outcome"] == "interrupted"
+
+
+def test_schema_advertises_status_dependent_requirements():
+    import pytest
+    from app.agent_runtime.task_plan import update_plan_tool
+    from app.agent_runtime.tools import validate_tool_arguments
+    tool = update_plan_tool(None)
+    for item in ({"step": "Test", "status": "completed"},
+                 {"step": "Test", "status": "blocked"}):
+        with pytest.raises(ValueError):
+            validate_tool_arguments(tool.input_schema, {"plan": [item, {"step": "Report", "status": "pending"}]})
+    validate_tool_arguments(tool.input_schema, {"plan": [
+        {"step": f"Stage {index}", "status": "pending"} for index in range(9)]})
+
+
+def test_invalid_plan_reports_all_missing_evidence_in_one_atomic_response(tmp_path):
+    from types import SimpleNamespace
+    from app.agent_runtime.task_plan import update_plan_tool
+    from app.agent_runtime.tools import ToolContext
+    emitted = []
+    result = update_plan_tool(SimpleNamespace(events=lambda _: [])).handler(
+        ToolContext("session", "turn", tmp_path, emit_event=lambda *args: emitted.append(args)),
+        {"plan": [{"step": name, "status": "completed"} for name in ("Check", "Report")]})
+    assert not result.ok
+    invalid = result.data["invalid_references"]
+    assert {item["step"] for item in invalid} == {"Check", "Report"}
+    assert len(invalid) == 4
+    assert not emitted

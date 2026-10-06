@@ -55,3 +55,26 @@ def test_continuation_plan_and_exact_evidence_survive_model_requested_rollover(t
         assert not any(e.kind in {Event.TURN_FAILED, Event.LIMIT_REACHED} for e in events)
     finally:
         rt.close()
+
+
+def test_no_plan_does_not_reinject_tool_counts_as_model_instructions(tmp_path):
+    platform = Scripted([
+        ModelResponse(tool_calls=(ToolCall("first", "probe", {}),)),
+        ModelResponse(tool_calls=(ToolCall("second", "probe", {}),)),
+        ModelResponse(text="Both checks completed."),
+    ])
+    rt = ContextAgentRuntime(platform=platform, store=FileAgentSessionStore(tmp_path / "state"),
+        tools=ToolRegistry((AgentTool("probe", "check", {"type": "object"},
+            lambda *_: ToolResult(True, "durable receipt")),)),
+        sandbox_manager=SandboxManager(policy=SandboxPolicy.OFF))
+    session = rt.create_session("test", workspace_dir=tmp_path, permission_mode="full-access")
+    try:
+        result = rt.start_turn(session.session_id, "Perform two checks")
+        assert result.status is AgentStatus.COMPLETED
+        assert len(platform.requests) == 3
+        for request in platform.requests:
+            assert not any(m.name == "loom_execution_progress" for m in request.messages)
+        receipts = [m for m in platform.requests[-1].messages if m.role is MessageRole.TOOL]
+        assert {m.tool_call_id for m in receipts} == {"first", "second"}
+    finally:
+        rt.close()

@@ -44,20 +44,20 @@ def update_plan_tool(store):
             raise ValueError("plan steps must be nonblank and unique")
         if sum(item["status"] == "in_progress" for item in plan) > 1:
             raise ValueError("only one milestone may be in progress")
+        invalid = []
         for item in plan:
             if item["status"] == "completed":
                 refs = item.get("evidence_refs") or []
-                invalid = []
                 if not item.get("outcome"):
                     invalid.append({"step": item["step"], "reason": "completed milestone requires outcome"})
                 if not refs:
                     invalid.append({"step": item["step"], "reason": "completed milestone requires evidence_refs"})
                 _, invalid_refs = resolve_evidence(store, context, refs)
                 invalid.extend(invalid_refs)
-                if invalid:
-                    return rejected_evidence(invalid)
             if item["status"] == "blocked" and not item.get("blocker", "").strip():
                 raise ValueError("blocked milestones require the observed blocker")
+        if invalid:
+            return rejected_evidence(invalid)
         previous = current_plan(store.events(context.session_id), context.turn_id)
         if previous is not None:
             old = {item["step"].strip(): item for item in previous["plan"]}
@@ -81,7 +81,7 @@ def update_plan_tool(store):
         "status describes stage execution, not test acceptance. Use outcome to separately record passed, failed, interrupted, not_covered or not_assessed. Skip for simple tasks."),
         input_schema={"type": "object", "additionalProperties": False, "properties": {
             "explanation": {"type": "string", "maxLength": 1000},
-            "plan": {"type": "array", "minItems": 2, "maxItems": 8, "items": {
+            "plan": {"type": "array", "minItems": 2, "items": {
                 "type": "object", "additionalProperties": False, "properties": {
                     "step": {"type": "string", "minLength": 1, "maxLength": 240},
                     "status": {"enum": ["pending", "in_progress", "completed", "blocked"]},
@@ -89,5 +89,11 @@ def update_plan_tool(store):
                     "evidence": {"type": "string", "maxLength": 1000},
                     "evidence_refs": EVIDENCE_REFS_SCHEMA,
                     "blocker": {"type": "string", "maxLength": 1000}},
-                "required": ["step", "status"]}}}, "required": ["plan"]},
+                "required": ["step", "status"],
+                "allOf": [
+                    {"if": {"properties": {"status": {"const": "completed"}}},
+                     "then": {"required": ["outcome", "evidence_refs"]}},
+                    {"if": {"properties": {"status": {"const": "blocked"}}},
+                     "then": {"required": ["blocker"], "properties": {"blocker": {"minLength": 1}}}},
+                ]}}}, "required": ["plan"]},
         handler=update, effect=ToolEffect.READ_ONLY, supports_parallel_tool_calls=False)
