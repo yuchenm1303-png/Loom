@@ -2,6 +2,9 @@ import {
   Archive,
   Check,
   Copy,
+  FileDiff,
+  GitFork,
+  PanelsTopLeft,
   PanelRightClose,
   PanelRightOpen,
   Settings,
@@ -71,77 +74,11 @@ async function copyText(value: string): Promise<void> {
 }
 
 
-function AgentBranchIcon({ size = 16 }: { size?: number }) {
-  return (
-    <svg
-      className="header-agent-branch"
-      width={size}
-      height={size}
-      viewBox="0 0 20 20"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.5"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-      focusable="false"
-    >
-      <circle className="header-agent-parent" cx="5.25" cy="10" r="1.6" />
-      <path className="header-agent-link header-agent-link-top" d="M6.9 9.3 11.2 6.4" />
-      <path className="header-agent-link header-agent-link-bottom" d="m6.9 10.7 4.3 2.9" />
-      <g className="header-agent-children">
-        <circle cx="14.15" cy="5.9" r="1.55" />
-        <circle cx="14.15" cy="14.1" r="1.55" />
-      </g>
-    </svg>
-  );
+// Keep workspace icons on the same grid with a consistent stroke weight.
+function WorkspaceEntryIcon({ kind }: { kind: "agents" | "review" | "preview" }) {
+  const Icon = { agents: GitFork, review: FileDiff, preview: PanelsTopLeft }[kind];
+  return <Icon className="header-workspace-icon" size={18} strokeWidth={1.75} aria-hidden="true" focusable="false" />;
 }
-
-function ReviewCheckIcon({ size = 16 }: { size?: number }) {
-  return (
-    <svg
-      className="header-review-check"
-      width={size}
-      height={size}
-      viewBox="0 0 20 20"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.45"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-      focusable="false"
-    >
-      <rect className="header-review-document" x="4.15" y="2.75" width="11.7" height="14.5" rx="2.05" />
-      <path className="header-review-line" d="M6.65 7.1h6.1" />
-      <path className="header-review-checkmark" d="m6.7 11.55 1.65 1.65 3.7-3.7" />
-    </svg>
-  );
-}
-
-function PreviewCanvasIcon({ size = 16 }: { size?: number }) {
-  return (
-    <svg
-      className="header-preview-canvas"
-      width={size}
-      height={size}
-      viewBox="0 0 20 20"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.45"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-      focusable="false"
-    >
-      <rect className="header-preview-window" x="2.75" y="3.15" width="14.5" height="13.7" rx="2.25" />
-      <path className="header-preview-chrome" d="M3.25 6.35h13.5" />
-      <circle className="header-preview-dot" cx="5.15" cy="4.75" r=".55" fill="currentColor" stroke="none" />
-      <rect className="header-preview-viewport" x="5.25" y="8.15" width="9.5" height="5.8" rx="1.45" />
-    </svg>
-  );
-}
-
 function ActivityTraceIcon({ size = 16 }: { size?: number }) {
   const trace = "M2.25 10h3.2l1.8-5.6 3.25 11.15 2.2-7.2 1.55 3.05h3.5";
   return (
@@ -309,7 +246,7 @@ export function ThreadHeader({
           aria-label={agentsTitle}
           aria-pressed={agentsOpen}
         >
-          <AgentBranchIcon size={15.5} />
+          <WorkspaceEntryIcon kind="agents" />
           <span className="thread-agent-label">{agentsLabel}</span>
           {agentCount > 0 ? <span className="thread-agent-count">{agentCount}</span> : null}
         </button>
@@ -322,7 +259,7 @@ export function ThreadHeader({
           aria-label={reviewTitle}
           aria-pressed={reviewOpen}
         >
-          <ReviewCheckIcon size={15.5} />
+          <WorkspaceEntryIcon kind="review" />
           <span className="thread-review-label">{reviewLabel}</span>
           {reviewCount > 0 ? <span className="thread-review-count">{reviewCount}</span> : null}
         </button>
@@ -336,7 +273,7 @@ export function ThreadHeader({
           aria-pressed={artifactOpen}
           disabled={artifactCount <= 0}
         >
-          <PreviewCanvasIcon size={15.5} />
+          <WorkspaceEntryIcon kind="preview" />
           <span className="thread-artifact-label">{artifactLabel}</span>
           {artifactCount > 0 ? <span className="thread-artifact-count">{artifactCount}</span> : null}
         </button>
