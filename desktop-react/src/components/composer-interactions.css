@@ -655,3 +655,266 @@ html[data-loom-reduced-motion="true"] .composer-refined .composer .send-button .
   translate: none !important;
   filter: none !important;
 }
+
+
+/* Composer interaction pass 2 -----------------------------------------------
+   The first pass was intentionally too quiet in light mode. This pass makes
+   the interaction legible without turning the composer into a glowing card:
+   a pointer-following interior light, a slow edge trace, and a breathing focus
+   halo. None of these move the text or change the box geometry. */
+
+.composer-refined .composer {
+  --composer-pointer-x: 50%;
+  --composer-pointer-y: 38%;
+}
+
+/* Keep the optical layer above the surface background but below real content. */
+.composer-refined .composer > .composer-pointer-glow {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  opacity: 0;
+  background:
+    radial-gradient(
+      240px 130px at var(--composer-pointer-x) var(--composer-pointer-y),
+      color-mix(in srgb, var(--composer-accent) 10%, transparent),
+      color-mix(in srgb, var(--composer-accent) 3.5%, transparent) 42%,
+      transparent 76%
+    );
+  transition:
+    opacity 320ms ease,
+    filter 420ms ease;
+}
+
+.composer-refined .composer > :not(.composer-pointer-glow):not(.composer-glow) {
+  position: relative;
+  z-index: 1;
+}
+
+.composer-refined .composer:hover > .composer-pointer-glow {
+  opacity: .66;
+}
+
+.composer-refined .composer:is(.is-focused, :focus-within, .has-panel) > .composer-pointer-glow {
+  opacity: .82;
+}
+
+.composer-refined .composer.is-dragging > .composer-pointer-glow {
+  opacity: 1;
+  filter: saturate(1.16);
+}
+
+/* A short light trace skims the upper edge. It is deliberately narrow so it
+   reads as material catching light rather than a loading indicator. */
+.composer-refined .composer-glow {
+  top: 0;
+  left: 0;
+  right: auto;
+  width: 210px;
+  height: 1px;
+  opacity: 0;
+  transform: translateX(-118%);
+  transform-origin: center;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    color-mix(in srgb, var(--composer-accent) 26%, transparent) 22%,
+    color-mix(in srgb, var(--composer-accent) 82%, white 18%) 50%,
+    color-mix(in srgb, var(--composer-accent) 26%, transparent) 78%,
+    transparent
+  );
+  box-shadow:
+    0 1px 6px color-mix(in srgb, var(--composer-accent) 16%, transparent),
+    0 2px 14px color-mix(in srgb, var(--composer-accent) 7%, transparent);
+}
+
+.composer-refined .composer:hover .composer-glow {
+  opacity: .72;
+  animation: composer-edge-glide-once 1.55s var(--composer-ease) both;
+}
+
+.composer-refined .composer:is(.is-focused, :focus-within, .has-panel) .composer-glow {
+  opacity: .62;
+  animation: composer-edge-glide 4.8s var(--composer-ease-soft) infinite;
+}
+
+@keyframes composer-edge-glide-once {
+  0% { transform: translateX(-118%); opacity: 0; }
+  18% { opacity: .70; }
+  82% { opacity: .50; }
+  100% { transform: translateX(calc(var(--content-width, 860px) + 120px)); opacity: 0; }
+}
+
+@keyframes composer-edge-glide {
+  0%, 18% { transform: translateX(-118%); opacity: 0; }
+  28% { opacity: .58; }
+  60% { opacity: .42; }
+  76% { transform: translateX(calc(var(--content-width, 860px) + 120px)); opacity: 0; }
+  100% { transform: translateX(calc(var(--content-width, 860px) + 120px)); opacity: 0; }
+}
+
+/* Focus breath: only the outer optical halo changes, so the composer never
+   appears to resize. */
+.composer-refined .composer:is(.is-focused, :focus-within):not(.is-dragging) {
+  animation: composer-focus-breathe 3.8s ease-in-out infinite;
+}
+
+@keyframes composer-focus-breathe {
+  0%, 100% {
+    box-shadow:
+      0 16px 38px rgba(27,31,40,.075),
+      0 0 0 3px color-mix(in srgb, var(--composer-accent) 5%, transparent),
+      0 0 20px color-mix(in srgb, var(--composer-accent) 3.5%, transparent),
+      inset 0 1px rgba(255,255,255,.98);
+  }
+  50% {
+    box-shadow:
+      0 18px 42px rgba(27,31,40,.082),
+      0 0 0 4px color-mix(in srgb, var(--composer-accent) 8%, transparent),
+      0 0 30px color-mix(in srgb, var(--composer-accent) 6%, transparent),
+      inset 0 1px rgba(255,255,255,.98);
+  }
+}
+
+/* Engaged controls receive a slightly clearer hover surface. The surface
+   appears from opacity, while icon-motion.css still owns semantic glyph motion. */
+.composer-refined .composer .composer-tool,
+.composer-refined .composer .composer-chip {
+  position: relative;
+}
+
+.composer-refined .composer .composer-tool::after,
+.composer-refined .composer .composer-chip::after {
+  content: "";
+  position: absolute;
+  inset: 2px;
+  z-index: -1;
+  border-radius: 7px;
+  opacity: 0;
+  transform: scale(.94);
+  background: radial-gradient(
+    90px 30px at 50% 50%,
+    color-mix(in srgb, var(--composer-accent) 8%, transparent),
+    transparent 72%
+  );
+  transition:
+    opacity 300ms ease,
+    transform 420ms var(--composer-ease);
+  pointer-events: none;
+}
+
+.composer-refined .composer .composer-tool:hover:not(:disabled)::after,
+.composer-refined .composer .composer-chip:hover:not(:disabled)::after,
+.composer-refined .composer .composer-chip.is-open::after {
+  opacity: 1;
+  transform: scale(1);
+}
+
+/* The toolbar's separator becomes a visible focus tether, but only slightly. */
+.composer-refined .composer:is(.is-focused, :focus-within, .has-panel) .composer-toolbar::before {
+  opacity: .58;
+}
+
+/* Empty state keeps the send target neutral; once content exists, a very soft
+   accent appears even before the button becomes the primary action. */
+.composer-refined .composer.has-content .send-button.is-ready::before {
+  content: "";
+  position: absolute;
+  inset: -3px;
+  z-index: -1;
+  border-radius: 13px;
+  background: radial-gradient(
+    circle,
+    color-mix(in srgb, var(--composer-accent) 10%, transparent),
+    transparent 72%
+  );
+  opacity: .52;
+  transition: opacity 320ms ease;
+}
+
+.composer-refined .composer.has-content .send-button.is-ready:hover::before {
+  opacity: .90;
+}
+
+/* Light mode needs a little more local contrast than dark mode because the
+   white surface otherwise swallows micro-interactions. */
+html[data-loom-theme="light"] .composer-refined .composer > .composer-pointer-glow {
+  background:
+    radial-gradient(
+      250px 135px at var(--composer-pointer-x) var(--composer-pointer-y),
+      rgba(105,90,216,.095),
+      rgba(105,90,216,.032) 42%,
+      transparent 76%
+    );
+}
+
+html[data-loom-theme="light"] .composer-refined .composer:hover {
+  border-color: rgba(105,90,216,.24);
+}
+
+html[data-loom-theme="light"] .composer-refined .composer:is(.is-focused, :focus-within, .has-panel) {
+  border-color: rgba(105,90,216,.42);
+}
+
+html[data-loom-theme="light"] .composer-refined .composer .composer-tool:hover:not(:disabled),
+html[data-loom-theme="light"] .composer-refined .composer .composer-chip:hover:not(:disabled) {
+  box-shadow:
+    inset 0 1px rgba(255,255,255,.96),
+    0 4px 12px rgba(54,48,94,.035);
+}
+
+/* On narrow composers, use percentage travel so the edge trace does not rely
+   on the desktop content-width token. */
+@media (max-width: 920px) {
+  .composer-refined .composer-glow {
+    width: 160px;
+  }
+
+  @keyframes composer-edge-glide-once {
+    0% { transform: translateX(-118%); opacity: 0; }
+    18% { opacity: .70; }
+    82% { opacity: .50; }
+    100% { transform: translateX(calc(100vw - 80px)); opacity: 0; }
+  }
+
+  @keyframes composer-edge-glide {
+    0%, 18% { transform: translateX(-118%); opacity: 0; }
+    28% { opacity: .58; }
+    60% { opacity: .42; }
+    76%, 100% { transform: translateX(calc(100vw - 80px)); opacity: 0; }
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .composer-refined .composer > .composer-pointer-glow,
+  .composer-refined .composer-glow,
+  .composer-refined .composer:is(.is-focused, :focus-within),
+  .composer-refined .composer .composer-tool::after,
+  .composer-refined .composer .composer-chip::after,
+  .composer-refined .composer.has-content .send-button.is-ready::before {
+    animation: none !important;
+    transition: none !important;
+    transform: none !important;
+  }
+
+  .composer-refined .composer-glow {
+    display: none;
+  }
+}
+
+html[data-loom-reduced-motion="true"] .composer-refined .composer > .composer-pointer-glow,
+html[data-loom-reduced-motion="true"] .composer-refined .composer-glow,
+html[data-loom-reduced-motion="true"] .composer-refined .composer:is(.is-focused, :focus-within),
+html[data-loom-reduced-motion="true"] .composer-refined .composer .composer-tool::after,
+html[data-loom-reduced-motion="true"] .composer-refined .composer .composer-chip::after,
+html[data-loom-reduced-motion="true"] .composer-refined .composer.has-content .send-button.is-ready::before {
+  animation: none !important;
+  transition: none !important;
+  transform: none !important;
+}
+
+html[data-loom-reduced-motion="true"] .composer-refined .composer-glow {
+  display: none;
+}
