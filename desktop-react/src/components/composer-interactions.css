@@ -918,3 +918,170 @@ html[data-loom-reduced-motion="true"] .composer-refined .composer.has-content .s
 html[data-loom-reduced-motion="true"] .composer-refined .composer-glow {
   display: none;
 }
+
+
+/* Composer focus refinement v3 ----------------------------------------------
+   Focus should feel like the surface becoming attentive, not like a neon ring.
+   Replace the continuous breathing loop with one slow settle: a faint edge
+   bloom arrives, a single highlight passes, then the composer rests quietly. */
+
+/* Remove the persistent breathing animation from the previous pass. */
+.composer-refined .composer:is(.is-focused, :focus-within):not(.is-dragging) {
+  animation: composer-focus-settle 820ms cubic-bezier(.16,.72,.20,1) both;
+}
+
+/* Final focused state: one hairline accent + soft ambient depth. */
+.composer-refined .composer.is-focused,
+.composer-refined .composer:focus-within {
+  border-color: color-mix(in srgb, var(--composer-accent) 29%, rgba(104,110,126,.54));
+  box-shadow:
+    0 15px 36px rgba(0,0,0,.22),
+    0 0 0 1px color-mix(in srgb, var(--composer-accent) 8%, transparent),
+    0 0 18px color-mix(in srgb, var(--composer-accent) 3.8%, transparent),
+    inset 0 1px rgba(255,255,255,.045);
+}
+
+/* Opening a toolbar panel keeps the same quiet engaged state instead of
+   reintroducing a second focus ring. */
+.composer-refined .composer.has-panel {
+  border-color: color-mix(in srgb, var(--composer-accent) 27%, rgba(104,110,126,.52));
+  box-shadow:
+    0 15px 36px rgba(0,0,0,.22),
+    0 0 0 1px color-mix(in srgb, var(--composer-accent) 7%, transparent),
+    0 0 16px color-mix(in srgb, var(--composer-accent) 3.2%, transparent),
+    inset 0 1px rgba(255,255,255,.045);
+}
+
+/* Focus entry: briefly brighten the edge, then settle. There is no periodic
+   pulsing after this animation finishes. */
+@keyframes composer-focus-settle {
+  0% {
+    border-color: color-mix(in srgb, var(--composer-accent) 17%, rgba(104,110,126,.50));
+    box-shadow:
+      0 12px 30px rgba(0,0,0,.18),
+      0 0 0 0 color-mix(in srgb, var(--composer-accent) 0%, transparent),
+      0 0 0 color-mix(in srgb, var(--composer-accent) 0%, transparent),
+      inset 0 1px rgba(255,255,255,.045);
+  }
+  42% {
+    border-color: color-mix(in srgb, var(--composer-accent) 36%, rgba(104,110,126,.54));
+    box-shadow:
+      0 16px 38px rgba(0,0,0,.22),
+      0 0 0 2px color-mix(in srgb, var(--composer-accent) 8%, transparent),
+      0 0 24px color-mix(in srgb, var(--composer-accent) 5.5%, transparent),
+      inset 0 1px rgba(255,255,255,.05);
+  }
+  100% {
+    border-color: color-mix(in srgb, var(--composer-accent) 29%, rgba(104,110,126,.54));
+    box-shadow:
+      0 15px 36px rgba(0,0,0,.22),
+      0 0 0 1px color-mix(in srgb, var(--composer-accent) 8%, transparent),
+      0 0 18px color-mix(in srgb, var(--composer-accent) 3.8%, transparent),
+      inset 0 1px rgba(255,255,255,.045);
+  }
+}
+
+/* The pointer-following light remains useful on hover, but dims once typing
+   starts so it does not compete with the caret or text. */
+.composer-refined .composer:hover > .composer-pointer-glow {
+  opacity: .46;
+}
+
+.composer-refined .composer:is(.is-focused, :focus-within) > .composer-pointer-glow {
+  opacity: .24;
+}
+
+.composer-refined .composer.has-panel > .composer-pointer-glow {
+  opacity: .18;
+}
+
+/* The broad under-composer glow is also restrained during focus. */
+.composer-refined.composer-wrap:focus-within::before,
+.composer-refined.composer-wrap:has(.composer.has-panel)::before {
+  opacity: .38;
+  transform: translateX(-50%) scale(.985);
+}
+
+/* One light pass on focus, then silence. Hover still gets a single pass. */
+.composer-refined .composer:is(.is-focused, :focus-within, .has-panel) .composer-glow {
+  opacity: 0;
+  animation: composer-focus-edge-pass 1.18s cubic-bezier(.18,.72,.22,1) both;
+}
+
+@keyframes composer-focus-edge-pass {
+  0% {
+    transform: translateX(-118%);
+    opacity: 0;
+  }
+  18% {
+    opacity: .48;
+  }
+  54% {
+    opacity: .40;
+  }
+  100% {
+    transform: translateX(calc(var(--content-width, 860px) + 120px));
+    opacity: 0;
+  }
+}
+
+/* Once focused, the internal toolbar divider should nearly disappear; the
+   outer edge is the only active boundary. */
+.composer-refined .composer:is(.is-focused, :focus-within, .has-panel) .composer-toolbar::before {
+  opacity: .24;
+}
+
+/* Light theme: lower the purple saturation and let shadow depth do more work. */
+html[data-loom-theme="light"] .composer-refined .composer.is-focused,
+html[data-loom-theme="light"] .composer-refined .composer:focus-within {
+  border-color: rgba(105,90,216,.29);
+  box-shadow:
+    0 14px 34px rgba(27,31,40,.070),
+    0 0 0 1px rgba(105,90,216,.075),
+    0 0 18px rgba(105,90,216,.032),
+    inset 0 1px rgba(255,255,255,.98);
+}
+
+html[data-loom-theme="light"] .composer-refined .composer.has-panel {
+  border-color: rgba(105,90,216,.26);
+  box-shadow:
+    0 14px 34px rgba(27,31,40,.068),
+    0 0 0 1px rgba(105,90,216,.065),
+    0 0 15px rgba(105,90,216,.028),
+    inset 0 1px rgba(255,255,255,.98);
+}
+
+html[data-loom-theme="light"] .composer-refined .composer:is(.is-focused, :focus-within) > .composer-pointer-glow {
+  opacity: .18;
+}
+
+@media (max-width: 920px) {
+  @keyframes composer-focus-edge-pass {
+    0% {
+      transform: translateX(-118%);
+      opacity: 0;
+    }
+    18% {
+      opacity: .48;
+    }
+    54% {
+      opacity: .40;
+    }
+    100% {
+      transform: translateX(calc(100vw - 80px));
+      opacity: 0;
+    }
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .composer-refined .composer:is(.is-focused, :focus-within):not(.is-dragging),
+  .composer-refined .composer:is(.is-focused, :focus-within, .has-panel) .composer-glow {
+    animation: none !important;
+  }
+}
+
+html[data-loom-reduced-motion="true"] .composer-refined .composer:is(.is-focused, :focus-within):not(.is-dragging),
+html[data-loom-reduced-motion="true"] .composer-refined .composer:is(.is-focused, :focus-within, .has-panel) .composer-glow {
+  animation: none !important;
+}

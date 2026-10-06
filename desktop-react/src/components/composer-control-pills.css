@@ -724,3 +724,90 @@ html[data-loom-theme="light"] .composer .composer-chip.is-open .composer-glyph-w
     0 2px 8px rgba(var(--composer-accent-rgb), .07);
 }
 
+/* Composer icon finish v4 --------------------------------------------------
+   The three primary toolbar glyphs should read as crafted symbols rather than
+   generic icon-font marks. Keep the well almost invisible until interaction. */
+.composer .composer-tool { --composer-accent-rgb: 105, 116, 132; }
+.composer .permission-chip { --composer-accent-rgb: 176, 132, 56; }
+.composer .model-chip { --composer-accent-rgb: 108, 98, 196; }
+
+.composer .composer-glyph-well {
+  width: 19px;
+  height: 19px;
+  border-radius: 5.5px;
+  background: transparent;
+  box-shadow: none;
+}
+
+.composer .composer-glyph-well::before {
+  inset: 0;
+  border-radius: inherit;
+  background: radial-gradient(
+    circle at 38% 30%,
+    rgba(var(--composer-accent-rgb), .16),
+    rgba(var(--composer-accent-rgb), .045) 50%,
+    transparent 74%
+  );
+}
+
+.composer .composer-tool:hover:not(:disabled) .composer-glyph-well,
+.composer .composer-chip:hover:not(:disabled) .composer-glyph-well,
+.composer .composer-chip.is-open .composer-glyph-well {
+  background: rgba(var(--composer-accent-rgb), .026);
+  box-shadow:
+    inset 0 0 0 1px rgba(var(--composer-accent-rgb), .055),
+    0 2px 8px rgba(var(--composer-accent-rgb), .055);
+}
+
+.composer .composer-tool .composer-glyph-well {
+  color: #6f7a87;
+}
+
+.composer .permission-chip .composer-glyph-well {
+  color: #a67a33;
+}
+
+.composer .model-chip .composer-glyph-well {
+  color: #7169bd;
+}
+
+.composer .composer-tool:hover:not(:disabled) .composer-glyph-well {
+  color: #8f99a6;
+}
+
+.composer .permission-chip:hover:not(:disabled) .composer-glyph-well,
+.composer .permission-chip.is-open .composer-glyph-well {
+  color: #b88635;
+}
+
+.composer .model-chip:hover:not(:disabled) .composer-glyph-well,
+.composer .model-chip.is-open .composer-glyph-well {
+  color: #8075d6;
+}
+
+html[data-loom-theme="light"] .composer .composer-glyph-well {
+  background: transparent;
+  box-shadow: none;
+}
+
+html[data-loom-theme="light"] .composer .composer-tool .composer-glyph-well {
+  color: #687481;
+}
+
+html[data-loom-theme="light"] .composer .permission-chip .composer-glyph-well {
+  color: #9a7130;
+}
+
+html[data-loom-theme="light"] .composer .model-chip .composer-glyph-well {
+  color: #655db4;
+}
+
+html[data-loom-theme="light"] .composer .composer-tool:hover:not(:disabled) .composer-glyph-well,
+html[data-loom-theme="light"] .composer .composer-chip:hover:not(:disabled) .composer-glyph-well,
+html[data-loom-theme="light"] .composer .composer-chip.is-open .composer-glyph-well {
+  background: rgba(var(--composer-accent-rgb), .025);
+  box-shadow:
+    inset 0 0 0 1px rgba(var(--composer-accent-rgb), .055),
+    0 2px 7px rgba(var(--composer-accent-rgb), .045);
+}
+

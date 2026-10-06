@@ -2271,3 +2271,211 @@
   filter: none !important;
 }
 
+/* ==========================================================================
+   Composer glyph motion v4
+   Final pass for Attach / Full access / Model. Each glyph gets one readable
+   signature gesture with restrained overshoot, rather than generic scaling.
+   ========================================================================== */
+
+/* Attach: the latch slides into place and gives one tiny contact spark. */
+.app-shell .composer-attach-latch {
+  transform-box: fill-box;
+  transform-origin: center;
+  transition:
+    transform 320ms cubic-bezier(.16,.86,.22,1),
+    opacity 220ms ease;
+}
+
+.app-shell .composer-attach-spark {
+  opacity: 0;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.app-shell .composer-tool:hover:not(:disabled) .composer-attach-outer {
+  transform: translateY(-.38px) rotate(-1.7deg);
+}
+
+.app-shell .composer-tool:hover:not(:disabled) .composer-attach-latch {
+  animation: loom-attach-latch-v4 480ms cubic-bezier(.16,.86,.22,1) both;
+}
+
+.app-shell .composer-tool:hover:not(:disabled) .composer-attach-spark {
+  animation: loom-attach-spark-v4 480ms cubic-bezier(.16,.86,.22,1) both;
+}
+
+@keyframes loom-attach-latch-v4 {
+  0% { transform: translate(-1px,1px); opacity: .28; }
+  56% { transform: translate(.48px,-.48px); opacity: 1; }
+  78% { transform: translate(-.12px,.12px); opacity: .95; }
+  100% { transform: translate(0,0); opacity: .9; }
+}
+
+@keyframes loom-attach-spark-v4 {
+  0%, 28% { opacity: 0; transform: scale(.35); }
+  58% { opacity: .9; transform: scale(1.28); }
+  100% { opacity: 0; transform: scale(.55); }
+}
+
+/* Full access: keyhole reads as permission, while a single perimeter glint
+   gives the shield a premium, "unlocked capability" response. */
+.app-shell .composer-access-keyhole,
+.app-shell .composer-access-stem {
+  transform-box: fill-box;
+  transform-origin: center;
+  transition:
+    transform 340ms cubic-bezier(.16,.86,.22,1),
+    opacity 220ms ease,
+    filter 260ms ease;
+}
+
+.app-shell .composer-access-sheen {
+  opacity: 0;
+  stroke-width: 1.7;
+  stroke-dasharray: 5 32;
+  stroke-dashoffset: 24;
+  filter: drop-shadow(0 0 1.4px color-mix(in srgb, currentColor 24%, transparent));
+}
+
+.app-shell .permission-chip:hover:not(:disabled) .composer-access-sheen,
+.app-shell .permission-chip.is-open .composer-access-sheen {
+  animation: loom-access-sheen-v4 720ms cubic-bezier(.2,.68,.2,1) both;
+}
+
+.app-shell .permission-chip:hover:not(:disabled) .composer-access-keyhole,
+.app-shell .permission-chip.is-open .composer-access-keyhole {
+  transform: translateY(-.18px) scale(1.08);
+  filter: drop-shadow(0 0 1.4px color-mix(in srgb, currentColor 22%, transparent));
+}
+
+.app-shell .permission-chip:hover:not(:disabled) .composer-access-stem,
+.app-shell .permission-chip.is-open .composer-access-stem {
+  transform: translateY(.38px) scaleY(1.08);
+}
+
+.app-shell .permission-chip:hover:not(:disabled) .composer-access-shield,
+.app-shell .permission-chip.is-open .composer-access-shield {
+  opacity: .86;
+  filter: drop-shadow(0 0 1.6px color-mix(in srgb, currentColor 16%, transparent));
+}
+
+@keyframes loom-access-sheen-v4 {
+  0% { opacity: 0; stroke-dashoffset: 24; }
+  18% { opacity: .82; }
+  82% { opacity: .66; }
+  100% { opacity: 0; stroke-dashoffset: -18; }
+}
+
+/* Model: a calm core focus. The outer ring expands, four axes breathe outward,
+   and one faint halo leaves the center. No broken-corner / scan-frame look. */
+.app-shell .composer-model-ring,
+.app-shell .composer-model-axes,
+.app-shell .composer-model-core,
+.app-shell .composer-model-halo {
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.app-shell .composer-model-ring {
+  opacity: .78;
+  transition:
+    transform 390ms cubic-bezier(.16,.86,.22,1),
+    opacity 220ms ease,
+    filter 260ms ease;
+}
+
+.app-shell .composer-model-axes {
+  opacity: .62;
+  transition:
+    transform 390ms cubic-bezier(.16,.86,.22,1),
+    opacity 220ms ease;
+}
+
+.app-shell .composer-model-core {
+  opacity: .82;
+  transition:
+    transform 390ms cubic-bezier(.16,.86,.22,1),
+    opacity 220ms ease,
+    filter 280ms ease;
+}
+
+.app-shell .composer-model-halo {
+  opacity: 0;
+  stroke-width: 1;
+}
+
+.app-shell .model-chip:hover:not(:disabled) .composer-model-ring,
+.app-shell .model-chip.is-open .composer-model-ring {
+  transform: scale(1.075);
+  opacity: 1;
+  filter: drop-shadow(0 0 1.4px color-mix(in srgb, currentColor 18%, transparent));
+}
+
+.app-shell .model-chip:hover:not(:disabled) .composer-model-axes,
+.app-shell .model-chip.is-open .composer-model-axes {
+  transform: scale(1.12);
+  opacity: .96;
+}
+
+.app-shell .model-chip:hover:not(:disabled) .composer-model-core,
+.app-shell .model-chip.is-open .composer-model-core {
+  transform: scale(1.24);
+  opacity: 1;
+  filter: drop-shadow(0 0 2px color-mix(in srgb, currentColor 30%, transparent));
+}
+
+.app-shell .model-chip:hover:not(:disabled) .composer-model-halo {
+  animation: loom-model-halo-v4 620ms cubic-bezier(.16,.82,.22,1) both;
+}
+
+@keyframes loom-model-halo-v4 {
+  0% { opacity: 0; transform: scale(.66); }
+  24% { opacity: .38; }
+  100% { opacity: 0; transform: scale(1.34); }
+}
+
+/* The new glyphs own their geometry; cancel legacy transforms that targeted
+   earlier composer icon designs. */
+.app-shell .composer-tool .composer-attach-glyph,
+.app-shell .permission-chip .composer-access-glyph,
+.app-shell .model-chip .composer-model-glyph {
+  translate: none !important;
+  rotate: 0deg !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-shell :is(
+    .composer-attach-latch,
+    .composer-attach-spark,
+    .composer-access-keyhole,
+    .composer-access-stem,
+    .composer-access-sheen,
+    .composer-model-ring,
+    .composer-model-axes,
+    .composer-model-core,
+    .composer-model-halo
+  ) {
+    animation: none !important;
+    transition-duration: .001ms !important;
+    transform: none !important;
+    filter: none !important;
+  }
+}
+
+:root[data-loom-reduced-motion="true"] .app-shell :is(
+  .composer-attach-latch,
+  .composer-attach-spark,
+  .composer-access-keyhole,
+  .composer-access-stem,
+  .composer-access-sheen,
+  .composer-model-ring,
+  .composer-model-axes,
+  .composer-model-core,
+  .composer-model-halo
+) {
+  animation: none !important;
+  transition-duration: .001ms !important;
+  transform: none !important;
+  filter: none !important;
+}
+
