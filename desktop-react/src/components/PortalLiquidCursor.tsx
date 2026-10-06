@@ -237,6 +237,57 @@ function drawTextNode(
   ctx.restore();
 }
 
+function drawSvgIcon(ctx: CanvasRenderingContext2D, svg: SVGSVGElement, roiLeft: number, roiTop: number, opacity: number) {
+  for (const shape of Array.from(svg.querySelectorAll<SVGGeometryElement>("path, rect, circle, ellipse, line, polyline, polygon"))) {
+    const style = getComputedStyle(shape);
+    const matrix = shape.getScreenCTM();
+    if (!matrix || style.display === "none" || style.visibility === "hidden") continue;
+    const number = (name: string) => cssNumber(shape.getAttribute(name) ?? "0");
+    const path = new Path2D(shape.tagName === "path" ? shape.getAttribute("d") ?? "" : undefined);
+    switch (shape.tagName) {
+      case "rect": path.roundRect(number("x"), number("y"), number("width"), number("height"), { x: number("rx"), y: shape.hasAttribute("ry") ? number("ry") : number("rx") }); break;
+      case "circle": path.arc(number("cx"), number("cy"), number("r"), 0, Math.PI * 2); break;
+      case "ellipse": path.ellipse(number("cx"), number("cy"), number("rx"), number("ry"), 0, 0, Math.PI * 2); break;
+      case "line": path.moveTo(number("x1"), number("y1")); path.lineTo(number("x2"), number("y2")); break;
+      case "polyline":
+      case "polygon": {
+        const points = (shape as SVGPolylineElement).points;
+        for (let i = 0; i < points.numberOfItems; i++) {
+          const point = points.getItem(i);
+          if (i === 0) path.moveTo(point.x, point.y);
+          else path.lineTo(point.x, point.y);
+        }
+        if (shape.tagName === "polygon") path.closePath();
+        break;
+      }
+    }
+    ctx.save();
+    ctx.translate(-roiLeft, -roiTop);
+    ctx.transform(matrix.a, matrix.b, matrix.c, matrix.d, matrix.e, matrix.f);
+    let alpha = opacity;
+    for (let element: Element | null = shape; element && element !== svg; element = element.parentElement) {
+      alpha *= cssNumber(getComputedStyle(element).opacity, 1);
+    }
+    ctx.globalAlpha = alpha * cssNumber(style.fillOpacity, 1);
+    if (style.fill !== "none") {
+      ctx.fillStyle = style.fill === "currentcolor" ? style.color : style.fill;
+      ctx.fill(path, style.fillRule === "evenodd" ? "evenodd" : "nonzero");
+    }
+    if (style.stroke !== "none") {
+      ctx.globalAlpha = alpha * cssNumber(style.strokeOpacity, 1);
+      ctx.strokeStyle = style.stroke === "currentcolor" ? style.color : style.stroke;
+      ctx.lineWidth = cssNumber(style.strokeWidth, 1);
+      ctx.lineCap = style.strokeLinecap as CanvasLineCap;
+      ctx.lineJoin = style.strokeLinejoin as CanvasLineJoin;
+      ctx.miterLimit = cssNumber(style.strokeMiterlimit, 4);
+      ctx.setLineDash(style.strokeDasharray === "none" ? [] : style.strokeDasharray.split(/[ ,]+/).map(value => cssNumber(value)));
+      ctx.lineDashOffset = cssNumber(style.strokeDashoffset);
+      ctx.stroke(path);
+    }
+    ctx.restore();
+  }
+}
+
 function parseBackdropBlur(style: CSSStyleDeclaration) {
   const extended = style as CSSStyleDeclaration & { webkitBackdropFilter?: string };
   const raw = style.backdropFilter || extended.webkitBackdropFilter || "";
@@ -355,6 +406,11 @@ function rasterizePortal(
         drawTextNode(ctx, child as Text, style, roiLeft, roiTop, roiWidth, roiHeight, opacity);
       } else if (child instanceof HTMLElement) {
         renderElement(child, opacity);
+      } else if (child instanceof SVGSVGElement) {
+        const svgStyle = getComputedStyle(child);
+        if (svgStyle.display !== "none" && svgStyle.visibility !== "hidden" && intersects(child.getBoundingClientRect(), roiLeft, roiTop, roiWidth, roiHeight)) {
+          drawSvgIcon(ctx, child, roiLeft, roiTop, opacity * cssNumber(svgStyle.opacity, 1));
+        }
       }
     }
   };
