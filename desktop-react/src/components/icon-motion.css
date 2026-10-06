@@ -26,7 +26,7 @@
   .project-disclosure-button,
   .project-group-actions button,
   .thread-quick-actions button,
-  .app-shell-group-header button,
+  .workspace-group-header button,
   .message-action-button,
   .composer-tool,
   .composer-chip,
@@ -644,7 +644,7 @@
 .app-shell :is(
   .sidebar-section-title button,
   .project-group-actions button,
-  .app-shell-group-header button,
+  .workspace-group-header button,
   .thread-context-menu button
 ):hover:not(:disabled) .lucide-plus path:first-child {
   transform: scaleX(1.10);
@@ -652,7 +652,7 @@
 .app-shell :is(
   .sidebar-section-title button,
   .project-group-actions button,
-  .app-shell-group-header button,
+  .workspace-group-header button,
   .thread-context-menu button
 ):hover:not(:disabled) .lucide-plus path:last-child {
   transform: scaleY(1.10);
