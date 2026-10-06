@@ -915,7 +915,7 @@
 /* Join the status strip to the dissolve without a horizontal rule or shadow. */
 :root .conversation-stage > .run-progress-frame.top {
   border-bottom: 0;
-  background: var(--bg);
+  background: transparent;
   box-shadow: none;
   backdrop-filter: none;
 }
