@@ -32,7 +32,17 @@ RUNTIME_STATE_PREAMBLE = (
 )
 
 
+# Step identifiers change on every model request. Rendering them made every
+# step's snapshot unique, so append-only context frames repeated the whole state
+# once per step. The model never needs them; the envelope payload keeps them.
+_PER_STEP_IDENTITY = ("step_id", "model_step")
+
+
 def render_runtime_state_text(payload: dict[str, Any]) -> str:
+    identity = payload.get("identity")
+    if isinstance(identity, dict):
+        payload = {**payload, "identity": {
+            key: value for key, value in identity.items() if key not in _PER_STEP_IDENTITY}}
     return RUNTIME_STATE_PREAMBLE + json.dumps(
         payload, ensure_ascii=False, sort_keys=True, indent=2
     )
