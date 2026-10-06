@@ -1,12 +1,14 @@
-import { ExternalLink, FileCode2, RefreshCw, X } from "lucide-react";
+import { ArrowLeft, ExternalLink, FileCode2, RefreshCw, X, Search, Package, ChevronRight, Image, FileText, Music, Film, Globe } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from "react";
 import { createPortal } from "react-dom";
-import { artifactName, artifactRenderer } from "../artifactRenderers";
+import { artifactName, artifactRenderer, canRenderArtifact, normalizeArtifactPath } from "../artifactRenderers";
+import type { TranscriptItem } from "../types/loom";
 import { useMotionPresence } from "../motion/useMotionPresence";
 import { ArtifactRenderSurface } from "./ArtifactRenderSurface";
 import "./artifact-preview-dock.css";
 
 interface ArtifactPreviewDockProps {
+  items: TranscriptItem[];
   open: boolean;
   path: string;
   workspace: string;
@@ -15,6 +17,7 @@ interface ArtifactPreviewDockProps {
 
 const ARTIFACT_DOCK_WIDTH_KEY = "loom.layout.artifactPreviewWidth";
 const ARTIFACT_DOCK_DEFAULT = 620;
+const artifactIcons = { web: Globe, image: Image, pdf: FileText, text: FileText, audio: Music, video: Film, code: FileCode2, data: FileCode2, file: FileText };
 
 function previewBounds(): { min: number; max: number } {
   const viewport = Math.max(360, window.innerWidth || 0);
@@ -54,6 +57,7 @@ function persistPreviewWidth(value: number): void {
 }
 
 export function ArtifactPreviewDock({
+  items,
   open,
   path,
   workspace,
@@ -62,14 +66,34 @@ export function ArtifactPreviewDock({
   const presence = useMotionPresence(open, 420);
   const [width, setWidth] = useState(readPreviewWidth);
   const [revision, setRevision] = useState(0);
+  const [selected, setSelected] = useState(path);
+  const [query, setQuery] = useState("");
+  useEffect(() => { setSelected(path); setQuery(""); }, [path, open, workspace]);
+  const artifacts = useMemo(() => {
+    const entries = new Map<string, { path: string; revision: number; running: boolean }>();
+    for (const item of items) {
+      if (item.type !== "file_edit") continue;
+      for (const raw of item.paths ?? []) {
+        const value = normalizeArtifactPath(raw);
+        if (!value || !canRenderArtifact(value)) continue;
+        const key = value.toLowerCase();
+        const previous = entries.get(key);
+        entries.delete(key);
+        entries.set(key, { path: value, revision: (previous?.revision ?? 0) + 1,
+          running: item.status === "running" });
+      }
+    }
+    return [...entries.values()].reverse();
+  }, [items]);
+  const selectedArtifact = artifacts.find(item => item.path === selected);
   const resizeRef = useRef<{
     pointerId: number;
     startX: number;
     startWidth: number;
     currentWidth: number;
   } | null>(null);
-  const name = useMemo(() => artifactName(path), [path]);
-  const renderer = useMemo(() => artifactRenderer(path), [path]);
+  const name = useMemo(() => artifactName(selected), [selected]);
+  const renderer = useMemo(() => artifactRenderer(selected), [selected]);
 
   useEffect(() => {
     document.documentElement.style.setProperty("--artifact-preview-pane-width", `${width}px`);
@@ -163,7 +187,7 @@ export function ArtifactPreviewDock({
       className="artifact-preview-dock"
       data-motion-phase={presence.phase}
       data-open={open ? "true" : "false"}
-      aria-label="网页与文件渲染预览"
+      aria-label="产物侧栏"
     >
       <div
         className="artifact-preview-resizer"
@@ -184,38 +208,54 @@ export function ArtifactPreviewDock({
       />
 
       <header className="artifact-preview-header">
-        <span className="artifact-preview-mark" aria-hidden="true">
-          <FileCode2 size={17} strokeWidth={1.8} />
+        <span className="artifact-preview-mark" aria-hidden={selected ? undefined : true}>
+          {selected ? <button type="button" className="artifact-back" aria-label="返回产物列表" onClick={() => setSelected("")}><ArrowLeft size={17} /></button> : <Package size={17} strokeWidth={1.8} />}
         </span>
         <div className="artifact-preview-heading">
-          <span>渲染预览</span>
-          <strong title={name}>{name}</strong>
-          <code title={path}>{path.replaceAll("\\", "/")}</code>
+          <span>{selected ? "产物 / 预览" : "当前对话"}</span>
+          <strong title={selected ? name : undefined}>{selected ? name : `产物 · ${artifacts.length}`}</strong>
+          {selected ? <code title={selected}>{selected.replaceAll("\\", "/")}</code> : null}
         </div>
         <div className="artifact-preview-actions">
-          <button type="button" onClick={() => setRevision((value) => value + 1)} title="重新加载预览" aria-label="重新加载预览">
+          {selected ? <><button type="button" onClick={() => setRevision((value) => value + 1)} title="重新加载预览" aria-label="重新加载预览">
             <RefreshCw size={15} strokeWidth={1.8} />
           </button>
           <button
             type="button"
-            onClick={() => void window.loom.openLocalArtifact(path, workspace)}
+            onClick={() => void window.loom.openLocalArtifact(selected, workspace)}
             title="在独立窗口打开"
             aria-label="在独立窗口打开"
           >
             <ExternalLink size={15} strokeWidth={1.8} />
-          </button>
+          </button></> : null}
           <button type="button" onClick={onClose} title="关闭预览" aria-label="关闭预览">
             <X size={16} strokeWidth={1.9} />
           </button>
         </div>
       </header>
 
-      <div className="artifact-preview-canvas" data-renderer-kind={renderer.kind}>
+      {!selected ? <div className="artifact-library">
+        <label className="artifact-search"><Search size={15} /><input value={query} onChange={event => setQuery(event.target.value)} placeholder="查找产物…" aria-label="查找产物" /></label>
+        <p className="artifact-library-note">网页、文件与交互内容集中在这里，同一文件的更新会合并。</p>
+        <div className="artifact-library-list">
+          {artifacts.filter(item => item.path.toLowerCase().includes(query.toLowerCase())).map(item => {
+            const Icon = artifactIcons[artifactRenderer(item.path).kind];
+            return <article className="artifact-library-card" key={item.path}>
+            <button className="artifact-card-main" type="button" onClick={() => setSelected(item.path)}>
+              <span className="artifact-card-icon"><Icon size={21} /></span>
+              <span className="artifact-card-copy"><strong>{artifactName(item.path)}</strong><span>{artifactRenderer(item.path).label} · {item.running ? "更新中" : "可预览"}{item.revision > 1 ? ` · ${item.revision} 次更新` : ""}</span><small title={item.path}>{item.path}</small></span>
+              <ChevronRight size={16} />
+            </button>
+            <button className="artifact-card-external" type="button" aria-label={`打开 ${artifactName(item.path)}`} title="在独立窗口打开" onClick={() => void window.loom.openLocalArtifact(item.path, workspace)}><ExternalLink size={14} /></button>
+          </article>; })}
+          {!artifacts.length || !artifacts.some(item => item.path.toLowerCase().includes(query.toLowerCase())) ? <div className="artifact-library-empty"><Package size={30} /><strong>{query ? "没有匹配的产物" : "产物会出现在这里"}</strong><span>{query ? "试试其他文件名" : "生成的网页、图片、文档和文件会自动收集。"}</span></div> : null}
+        </div>
+      </div> : <div className="artifact-preview-canvas" data-renderer-kind={renderer.kind}>
         {renderer.side ? (
           <ArtifactRenderSurface
-            path={path}
+            path={selected}
             workspace={workspace}
-            revision={revision}
+            revision={revision + (selectedArtifact?.revision ?? 0)}
           />
         ) : (
           <div className="artifact-preview-state">
@@ -223,7 +263,7 @@ export function ArtifactPreviewDock({
             <span>可以在独立窗口或系统默认程序中打开。</span>
           </div>
         )}
-      </div>
+      </div>}
     </aside>,
     document.body,
   );

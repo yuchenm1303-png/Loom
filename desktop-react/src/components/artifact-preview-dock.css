@@ -1,6 +1,36 @@
 :root {
   --artifact-preview-pane-width: clamp(460px, 44vw, 680px);
 }
+.artifact-library { min-height: 0; overflow: auto; padding: 20px; color: #e3e5ee; }
+.artifact-search { display: flex; align-items: center; gap: 9px; padding: 11px 13px; border: 1px solid rgba(145,140,170,.2); border-radius: 12px; color: #9398aa; background: rgba(145,140,170,.05); }
+.artifact-search:focus-within { border-color: #9182e4; box-shadow: 0 0 0 3px rgba(145,130,228,.1); }
+.artifact-search input { min-width: 0; width: 100%; border: 0; outline: 0; background: transparent; color: inherit; font: inherit; }
+.artifact-library-note { font-size: 12px; line-height: 1.7; color: #969bab; margin: 13px 2px 20px; }
+.artifact-library-list { display: grid; gap: 12px; }
+.artifact-library-card { position: relative; border: 1px solid rgba(145,140,170,.18); border-radius: 16px; background: rgba(145,140,170,.045); transition: background 180ms ease, border-color 180ms ease, transform 180ms ease; animation: artifact-card-arrive 220ms ease-out both; }
+.artifact-library-card:hover { border-color: rgba(145,130,228,.48); background: rgba(145,130,228,.08); transform: translateY(-2px); }
+.artifact-card-main { width: 100%; display: flex; align-items: center; gap: 13px; padding: 17px 45px 17px 15px; border: 0; background: transparent; color: inherit; text-align: left; cursor: pointer; border-radius: inherit; }
+.artifact-card-icon { display: grid; place-items: center; flex-shrink: 0; width: 42px; height: 46px; border-radius: 12px; color: #aa9ef7; background: rgba(145,130,228,.1); }
+.artifact-card-copy { min-width: 0; flex: 1; display: grid; gap: 6px; }
+.artifact-card-copy strong { font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.artifact-card-copy span { font-size: 11px; color: #999eb0; }
+.artifact-card-copy small { color: #828899; font-size: 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.artifact-card-external { position: absolute; right: 10px; top: 50%; transform: translateY(-50%); display: grid; place-items: center; width: 30px; height: 30px; border: 0; border-radius: 8px; color: #9990d7; background: transparent; cursor: pointer; }
+.artifact-card-external:hover { background: rgba(145,130,228,.15); }
+.artifact-library-empty { display: grid; justify-items: center; gap: 13px; padding: 64px 18px; text-align: center; color: #9791b4; }
+.artifact-library-empty strong { font-size: 14px; }
+.artifact-library-empty span { font-size: 12px; line-height: 1.7; color: #9298a7; }
+.artifact-back { display: grid; place-items: center; width: 100%; height: 100%; border: 0; background: transparent; color: inherit; cursor: pointer; border-radius: inherit; }
+.artifact-transcript-link { display: inline-flex; max-width: 100%; align-items: center; gap: 8px; margin: 10px 0; padding: 7px 10px; border: 1px solid transparent; border-radius: 9px; background: transparent; color: #8c82c7; font-size: 12px; cursor: pointer; transition: background 180ms ease, border-color 180ms ease; }
+.artifact-transcript-link strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 550; }
+.artifact-transcript-link:hover { background: rgba(145,130,228,.08); border-color: rgba(145,130,228,.17); }
+.artifact-card-main:focus-visible, .artifact-card-external:focus-visible, .artifact-back:focus-visible, .artifact-transcript-link:focus-visible { outline: 2px solid #9182e4; outline-offset: 3px; }
+html[data-loom-theme="light"] .artifact-library { color: #30323e; background: #f8f9fc; }
+html[data-loom-theme="light"] .artifact-library-card { background: #fff; box-shadow: 0 3px 12px rgba(40,35,75,.025); }
+html[data-loom-theme="light"] .artifact-library-card:hover { background: #fbfaff; }
+@keyframes artifact-card-arrive { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .artifact-library-card { animation: none; transition: none; } }
+html[data-loom-reduced-motion="true"] .artifact-library-card { animation: none; transition: none; }
 
 .app-shell.with-artifact-preview {
   padding-right: var(--artifact-preview-pane-width);

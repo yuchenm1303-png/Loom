@@ -1,0 +1,34 @@
+import assert from "node:assert/strict";
+const { chromium } = await import(process.env.LOOM_PLAYWRIGHT_MODULE || "playwright-core");
+const browser = await chromium.launch({ executablePath: process.env.LOOM_CHROMIUM_PATH, headless: true });
+try {
+  const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+  const errors = [];
+  page.on("pageerror", error => errors.push(error.message));
+  await page.goto(`${process.env.LOOM_TEST_ORIGIN || "http://127.0.0.1:5188"}/scripts/fixtures/artifacts.html`);
+  await page.getByText("产物 · 3", { exact: true }).waitFor();
+  assert.equal(await page.locator(".artifact-library-card").count(), 3);
+  await page.getByText("网页 · 可预览 · 2 次更新", { exact: true }).waitFor();
+  await page.getByRole("textbox", { name: "查找产物" }).fill("test_page");
+  assert.equal(await page.locator(".artifact-library-card").count(), 1);
+  await page.locator(".artifact-card-main").click();
+  await page.getByTitle("预览 test_page.html", { exact: true }).waitFor();
+  await page.getByRole("button", { name: "返回产物列表" }).click();
+  await page.getByRole("textbox", { name: "查找产物" }).fill("missing");
+  await page.getByText("没有匹配的产物", { exact: true }).waitFor();
+  await page.getByRole("textbox", { name: "查找产物" }).fill("");
+  await page.getByRole("button", { name: "打开 report.md", exact: true }).click();
+  assert.equal(await page.evaluate(() => document.body.dataset.opened), "report.md");
+  await page.screenshot({ path: process.env.LOOM_ARTIFACT_SCREENSHOT || "C:/Windows/Temp/loom-artifacts-light.png" });
+  await page.evaluate(() => document.documentElement.dataset.loomTheme = "dark");
+  await page.waitForTimeout(250);
+  await page.screenshot({ path: "C:/Windows/Temp/loom-artifacts-dark.png" });
+  await page.setViewportSize({ width: 480, height: 800 });
+  const bounds = await page.getByRole("complementary", { name: "产物侧栏" }).boundingBox();
+  assert.ok(bounds && bounds.x >= 0 && bounds.x + bounds.width <= 480, "dock fits narrow window");
+  await page.keyboard.press("Escape");
+  await page.waitForTimeout(450);
+  assert.equal(await page.locator(".artifact-preview-dock").count(), 0);
+  assert.deepEqual(errors, []);
+  console.log("Artifact deduplication, search, preview, return, external open, themes and narrow layout passed.");
+} finally { await browser.close(); }

@@ -8,6 +8,7 @@ import {
   Code2,
   Copy,
   FileDiff,
+  FileCode2,
   History,
   Pencil,
   Reply,
@@ -31,14 +32,14 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { artifactName, artifactRenderer, canInlineRenderArtifact } from "../artifactRenderers";
+import { artifactName, canRenderArtifact } from "../artifactRenderers";
 import { useI18n } from "../i18n";
 import { useMotionPresence } from "../motion/useMotionPresence";
 import { TURN_SETTLE_HOLD_MS } from "../presentationTiming";
 import type { TranscriptItem } from "../types/loom";
 import { latestTaskPlan, liveTaskProgress } from "./liveTaskProgress";
 import { TaskProgressPanel } from "./TaskProgressPanel";
-import { ArtifactRenderSurface } from "./ArtifactRenderSurface";
+
 import { HomeTokenActivity } from "./HomeTokenActivity";
 import { MarkdownMessage } from "./MarkdownMessage";
 import { DecisionPromptCard, DecisionPromptRecoveryCard, parseDecisionMessage } from "./DecisionPromptCard";
@@ -1432,7 +1433,7 @@ function latestInlineArtifact(items: TranscriptItem[]): { path: string; revision
     const paths = item.paths ?? [];
     for (let pathIndex = paths.length - 1; pathIndex >= 0; pathIndex -= 1) {
       const target = String(paths[pathIndex] || "").trim();
-      if (target && canInlineRenderArtifact(target)) return { path: target, revision };
+      if (target && canRenderArtifact(target)) return { path: target, revision };
     }
   }
   return null;
@@ -1447,43 +1448,11 @@ function AssistantArtifactPreview({
   workspace: string;
   revision: number;
 }) {
-  const [previewOpen, setPreviewOpen] = useState(false);
-  const descriptor = artifactRenderer(path);
-  const name = artifactName(path);
-
   return (
-    <div className="assistant-artifact-preview-card" data-renderer-kind={descriptor.kind}>
-      {previewOpen ? <ArtifactRenderSurface
-        path={path}
-        workspace={workspace}
-        compact
-        revision={revision}
-        onOpenSide={() => {
-          window.dispatchEvent(new CustomEvent("loom:artifact-preview-open", {
-            detail: { path, workspace },
-          }));
-        }}
-      /> : null}
-      <div className="assistant-artifact-preview-footer">
-        <div className="assistant-artifact-preview-copy">
-          <strong title={path}>{name}</strong>
-          <span>{descriptor.label} · 可交互预览</span>
-        </div>
-        <button type="button" aria-expanded={previewOpen} onClick={() => setPreviewOpen(!previewOpen)}>
-          {previewOpen ? "收起预览" : "预览"}
-        </button>
-        <button
-          type="button"
-          onClick={() => {
-            window.dispatchEvent(new CustomEvent("loom:artifact-preview-open", {
-              detail: { path, workspace },
-            }));
-          }}
-        >
-          打开
-        </button>
-      </div>
-    </div>
+    <button type="button" className="artifact-transcript-link" title={`${path} · ${revision} 次更新`}
+      onClick={() => window.dispatchEvent(new CustomEvent("loom:artifact-preview-open", { detail: { path, workspace } }))}>
+      <FileCode2 size={15} /><span>查看产物</span><strong>{artifactName(path)}</strong><ChevronRight size={13} />
+    </button>
   );
 }
 

@@ -160,8 +160,8 @@ function renderableArtifactPaths(items: TranscriptItem[]): string[] {
     if (item.type !== "file_edit") continue;
     for (const rawPath of item.paths ?? []) {
       const normalized = String(rawPath || "").trim().replaceAll("\\", "/").replace(/^\.\//, "");
-      if (!normalized || seen.has(normalized) || !canRenderArtifact(normalized)) continue;
-      seen.add(normalized);
+      if (!normalized || seen.has(normalized.toLowerCase()) || !canRenderArtifact(normalized)) continue;
+      seen.add(normalized.toLowerCase());
       paths.push(normalized);
     }
   }
@@ -432,7 +432,6 @@ export default function App() {
   const changedFileCount = reviewFileCount(loom.items);
   const renderableArtifacts = renderableArtifactPaths(loom.items);
   const artifactCount = renderableArtifacts.length;
-  const latestArtifactPath = renderableArtifacts.at(-1) || "";
   const agentCount = subAgentCount(loom.items);
   const selectedProject = selectedProjectId
     ? loom.projects.find((project) => project.id === selectedProjectId) ?? null
@@ -605,7 +604,7 @@ export default function App() {
   const openArtifactPreview = useCallback((targetPath: string, targetWorkspace?: string) => {
     const nextPath = String(targetPath || "").trim();
     const nextWorkspace = String(targetWorkspace || workspace || "").trim();
-    if (!nextPath || !nextWorkspace) return;
+    if (!nextWorkspace) return;
 
     runLayoutTransition(() => {
       setReviewOpen(false);
@@ -687,7 +686,7 @@ export default function App() {
       closeArtifactPreview();
       return;
     }
-    if (latestArtifactPath) openArtifactPreview(latestArtifactPath, workspace);
+    openArtifactPreview("", workspace);
   }
 
   function toggleInspector(): void {
@@ -1321,6 +1320,7 @@ export default function App() {
         onClose={() => runLayoutTransition(() => setAgentsOpen(false), "right-close")}
       />
       <ArtifactPreviewDock
+        items={loom.items}
         open={artifactPreviewOpen}
         path={artifactPreview?.path || ""}
         workspace={artifactPreview?.workspace || workspace}

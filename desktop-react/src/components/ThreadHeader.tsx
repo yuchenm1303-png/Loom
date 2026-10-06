@@ -169,10 +169,10 @@ export function ThreadHeader({
     : (language === "zh-CN" ? "展开会话侧栏" : "Open conversation sidebar");
   const reviewLabel = language === "zh-CN" ? "审查" : "Review";
   const reviewTitle = language === "zh-CN" ? "审查当前对话中的文件更改" : "Review file changes from this conversation";
-  const artifactLabel = language === "zh-CN" ? "预览" : "Preview";
+  const artifactLabel = language === "zh-CN" ? "产物" : "Artifacts";
   const artifactTitle = artifactCount > 0
-    ? (language === "zh-CN" ? `打开渲染器 · ${artifactCount} 个可预览文件` : `Open renderer · ${artifactCount} previewable files`)
-    : (language === "zh-CN" ? "当前还没有可渲染的文件" : "No renderable files yet");
+    ? (language === "zh-CN" ? `查看产物 · ${artifactCount} 个文件` : `View artifacts · ${artifactCount} files`)
+    : (language === "zh-CN" ? "打开产物侧栏" : "Open artifacts");
   const agentsLabel = language === "zh-CN" ? "子代理" : "Agents";
   const agentsTitle = language === "zh-CN" ? "打开子代理工作区" : "Open sub-agent workspace";
   const profileTitle = language === "zh-CN" ? "个人主页与使用洞察" : "Profile & usage insights";
@@ -271,7 +271,6 @@ export function ThreadHeader({
           title={artifactTitle}
           aria-label={artifactTitle}
           aria-pressed={artifactOpen}
-          disabled={artifactCount <= 0}
         >
           <WorkspaceEntryIcon kind="preview" />
           <span className="thread-artifact-label">{artifactLabel}</span>
