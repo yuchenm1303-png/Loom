@@ -7,7 +7,6 @@ import {
   FolderCog,
   KeyRound,
   LockKeyhole,
-  Paperclip,
   ShieldCheck,
   Smile,
   Sparkles,
