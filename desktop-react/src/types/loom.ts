@@ -82,6 +82,8 @@ export interface TranscriptItem {
   inputId?: string;
   /** Original user submission time; steering may be consumed later at a safe boundary. */
   submittedAt?: string;
+  /** Renderer identity retained when a pending send receives its server id. */
+  clientMessageId?: string;
   /** Runtime-authored assistant phase. Never infer finality from transcript order. */
   phase?: "commentary" | "final_answer" | string;
   /** True when Loom supplied a safe progress preamble for a tool-only model response. */

@@ -17,7 +17,7 @@ import type {
 } from "../types/loom";
 import { PRESENTATION_FRAME_MS } from "../presentationTiming";
 import { isLoomWebRuntime } from "../webBridge";
-import { reconcilePendingUserMessage } from "../pendingUserMessage";
+import { preservePendingUserIdentity, reconcilePendingUserMessage } from "../pendingUserMessage";
 import { buildApprovalResponse } from "./approvalProtocol";
 
 type ThreadView = "active" | "archived";
@@ -741,7 +741,7 @@ export function useLoom() {
     threadReadCacheRef.current.delete(thread.id);
     const pendingId = `pending-user-${crypto.randomUUID()}`;
     if (input.trim()) setItems((current) => [...current, {
-      id: pendingId, threadId: thread.id, type: "user_message",
+      id: pendingId, clientMessageId: pendingId, threadId: thread.id, type: "user_message",
       text: input.trim(), status: "sending", submittedAt: new Date().toISOString(),
     }]);
     setTurnActive(true);
@@ -1012,10 +1012,12 @@ export function useLoom() {
           setTurnActive(true);
           setTurnStartedAt((current) => current ?? Date.now());
           setItems((current) => {
+            const resolved = preservePendingUserIdentity(current, item);
+            current = reconcilePendingUserMessage(current, resolved);
             const existing = indexedItemPosition(itemIndexRef.current, current, item.id);
             if (existing >= 0) return current;
             itemIndexRef.current.set(item.id, current.length);
-            return [...current, item];
+            return [...current, resolved];
           });
         }
       } else if (message.method === "turn/modelActivity") {
@@ -1037,15 +1039,16 @@ export function useLoom() {
           const queuedDelta = pendingItemDeltasRef.current.get(completed.id);
           pendingItemDeltasRef.current.delete(completed.id);
           setItems((current) => {
-            current = reconcilePendingUserMessage(current, completed);
+            const resolved = preservePendingUserIdentity(current, completed);
+            current = reconcilePendingUserMessage(current, resolved);
             const index = indexedItemPosition(itemIndexRef.current, current, completed.id);
             if (index < 0) {
               itemIndexRef.current.set(completed.id, current.length);
-              return [...current, completed];
+              return [...current, resolved];
             }
             const next = [...current];
             const withQueuedDelta = queuedDelta ? mergeDelta(current[index], queuedDelta) : current[index];
-            next[index] = { ...withQueuedDelta, ...completed };
+            next[index] = { ...withQueuedDelta, ...resolved };
             return next;
           });
           if (completed.type === "approval" && completed.callId) {

@@ -315,7 +315,7 @@ function groupTurns(items: TranscriptItem[]): TurnBlock[] {
   const blocks: TurnBlock[] = [];
 
   for (const item of items) {
-    const turnId = String(item.turnId ?? "");
+    const turnId = String(item.turnId || (item.type === "user_message" && item.status === "sending" ? item.clientMessageId || item.id : ""));
     if (!turnId) {
       blocks.push({ kind: "loose", item });
       continue;
@@ -1722,7 +1722,7 @@ const TurnView = memo(function TurnView({
     <PendingThinkingContext.Provider value={pendingThinking}>
     <section className={`turn-block ${active ? "is-active" : "is-complete"} ${settling ? "is-settling" : ""}`.trim()} data-turn-id={turnId}>
       {derived.initialUser ? (
-        <div className={`transcript-entry entry-user_message ${sending ? "is-sending" : ""}`} key={derived.initialUser.id}>
+        <div className={`transcript-entry entry-user_message ${sending ? "is-sending" : ""}`} key={derived.initialUser.clientMessageId || derived.initialUser.id}>
           <ItemView item={derived.initialUser} onApproval={onApproval} onPrompt={onPrompt} promptDisabled={promptDisabled} workspace={workspace} />
         </div>
       ) : null}
@@ -1880,10 +1880,10 @@ export function Transcript({ items, running, currentTurnId, workspace, promptDis
         ) : turnBlocks.map((block, index) => (
           block.kind === "turn" ? (
             <TurnView
-              key={block.id}
+              key={block.items.find((item) => item.type === "user_message" && item.source !== "steering")?.clientMessageId || block.id}
               turnId={block.id}
               items={block.items}
-              active={Boolean(running && block.id === activeTurnId)}
+              active={Boolean(running && (block.id === activeTurnId || block.items.some((item) => item.status === "sending")))}
               onApproval={onApproval}
               onPrompt={onPrompt}
               decisionInteractiveItemId={decisionInteractiveItemId}
