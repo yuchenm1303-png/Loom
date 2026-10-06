@@ -1,13 +1,15 @@
 import { useEffect, useRef } from "react";
 
-const ROI_SIZE = 600;
+const FREE_ROI_SIZE = 420;
+const SNAP_ROI_PADDING = 160;
+const MAX_ROI_SIZE = 1200;
 const BASE_WIDTH = 80;
 const BASE_HEIGHT = 54;
 const FREE_OFFSET_Y = -32;
 const SNAP_DISTANCE = 12;
 const RELEASE_DISTANCE = 17;
 const SNAP_PADDING = 10;
-const ROI_PADDING = 48;
+const FREE_ROI_PADDING = 64;
 const ROI_DEADZONE = 35;
 const WALLPAPER_URL = "https://smirel.com/download/wallpaper-beach-blue-v1-original.png";
 const SNAP_SELECTOR = [
@@ -56,8 +58,8 @@ function rectDistance(rect: DOMRect, x: number, y: number) {
   return Math.hypot(dx, dy);
 }
 
-function intersects(rect: DOMRect, left: number, top: number, size: number) {
-  return rect.right >= left && rect.left <= left + size && rect.bottom >= top && rect.top <= top + size;
+function intersects(rect: DOMRect, left: number, top: number, width: number, height: number) {
+  return rect.right >= left && rect.left <= left + width && rect.bottom >= top && rect.top <= top + height;
 }
 
 function cssNumber(value: string, fallback = 0) {
@@ -143,9 +145,11 @@ function drawWallpaper(
   roiTop: number,
   viewportWidth: number,
   viewportHeight: number,
+  roiWidth: number,
+  roiHeight: number,
 ) {
   ctx.fillStyle = "#21313c";
-  ctx.fillRect(0, 0, ROI_SIZE, ROI_SIZE);
+  ctx.fillRect(0, 0, roiWidth, roiHeight);
   if (image?.complete && image.naturalWidth > 0 && image.naturalHeight > 0) {
     const scale = Math.max(viewportWidth / image.naturalWidth, viewportHeight / image.naturalHeight);
     const drawnWidth = image.naturalWidth * scale;
@@ -155,8 +159,8 @@ function drawWallpaper(
 
     const srcX = Math.max(0, (roiLeft - pageX) / scale);
     const srcY = Math.max(0, (roiTop - pageY) / scale);
-    const srcRight = Math.min(image.naturalWidth, (roiLeft + ROI_SIZE - pageX) / scale);
-    const srcBottom = Math.min(image.naturalHeight, (roiTop + ROI_SIZE - pageY) / scale);
+    const srcRight = Math.min(image.naturalWidth, (roiLeft + roiWidth - pageX) / scale);
+    const srcBottom = Math.min(image.naturalHeight, (roiTop + roiHeight - pageY) / scale);
     const srcWidth = Math.max(0, srcRight - srcX);
     const srcHeight = Math.max(0, srcBottom - srcY);
     if (srcWidth > 0 && srcHeight > 0) {
@@ -170,7 +174,7 @@ function drawWallpaper(
   veil.addColorStop(0, "rgba(4,10,16,.17)");
   veil.addColorStop(1, "rgba(4,10,16,.28)");
   ctx.fillStyle = veil;
-  ctx.fillRect(0, 0, ROI_SIZE, ROI_SIZE);
+  ctx.fillRect(0, 0, roiWidth, roiHeight);
 
   const cx = viewportWidth * 0.5 - roiLeft;
   const cy = viewportHeight * 0.34 - roiTop;
@@ -179,7 +183,7 @@ function drawWallpaper(
   vignette.addColorStop(0, "rgba(3,8,14,0)");
   vignette.addColorStop(1, "rgba(3,8,14,.22)");
   ctx.fillStyle = vignette;
-  ctx.fillRect(0, 0, ROI_SIZE, ROI_SIZE);
+  ctx.fillRect(0, 0, roiWidth, roiHeight);
 }
 
 function drawTextNode(
@@ -188,6 +192,8 @@ function drawTextNode(
   style: CSSStyleDeclaration,
   roiLeft: number,
   roiTop: number,
+  roiWidth: number,
+  roiHeight: number,
   inheritedOpacity: number,
 ) {
   const value = node.data;
@@ -214,7 +220,7 @@ function drawTextNode(
       range.setStart(node, index);
       range.setEnd(node, end);
       for (const rect of Array.from(range.getClientRects())) {
-        if (!intersects(rect, roiLeft, roiTop, ROI_SIZE)) continue;
+        if (!intersects(rect, roiLeft, roiTop, roiWidth, roiHeight)) continue;
         let text = match[0].replace(/\s+$/g, "");
         if (!text) continue;
         if (transform === "uppercase") text = text.toUpperCase();
@@ -245,6 +251,8 @@ function rasterizePortal(
   wallpaper: HTMLImageElement | null,
   roiLeft: number,
   roiTop: number,
+  roiWidth: number,
+  roiHeight: number,
   dpr: number,
 ) {
   const ctx = canvas.getContext("2d", { alpha: true });
@@ -254,7 +262,7 @@ function rasterizePortal(
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  drawWallpaper(ctx, wallpaper, roiLeft, roiTop, window.innerWidth, window.innerHeight);
+  drawWallpaper(ctx, wallpaper, roiLeft, roiTop, window.innerWidth, window.innerHeight, roiWidth, roiHeight);
 
   const content = root.querySelector<HTMLElement>(".loom-portal-shell") ?? root;
 
@@ -268,7 +276,7 @@ function rasterizePortal(
     if (opacity <= 0.002) return;
 
     const rect = el.getBoundingClientRect();
-    if (!intersects(rect, roiLeft, roiTop, ROI_SIZE)) return;
+    if (!intersects(rect, roiLeft, roiTop, roiWidth, roiHeight)) return;
 
     const localX = rect.left - roiLeft;
     const localY = rect.top - roiTop;
@@ -344,7 +352,7 @@ function rasterizePortal(
 
     for (const child of Array.from(el.childNodes)) {
       if (child.nodeType === Node.TEXT_NODE) {
-        drawTextNode(ctx, child as Text, style, roiLeft, roiTop, opacity);
+        drawTextNode(ctx, child as Text, style, roiLeft, roiTop, roiWidth, roiHeight, opacity);
       } else if (child instanceof HTMLElement) {
         renderElement(child, opacity);
       }
@@ -499,11 +507,23 @@ export function PortalLiquidCursor() {
     const capture = document.createElement("canvas");
     const scratch = document.createElement("canvas");
     const dpr = Math.max(1, Math.min(window.devicePixelRatio || 1, 1.75));
-    const pixelSize = Math.round(ROI_SIZE * dpr);
-    for (const target of [canvas, capture, scratch]) {
-      target.width = pixelSize;
-      target.height = pixelSize;
-    }
+    let roiWidth = FREE_ROI_SIZE;
+    let roiHeight = FREE_ROI_SIZE;
+
+    const resizeSurfaces = (cssWidth: number, cssHeight: number) => {
+      const nextWidth = Math.max(1, Math.round(cssWidth * dpr));
+      const nextHeight = Math.max(1, Math.round(cssHeight * dpr));
+      if (canvas.width === nextWidth && canvas.height === nextHeight) return false;
+      for (const target of [canvas, capture, scratch]) {
+        target.width = nextWidth;
+        target.height = nextHeight;
+      }
+      canvas.style.width = `${cssWidth}px`;
+      canvas.style.height = `${cssHeight}px`;
+      return true;
+    };
+
+    resizeSurfaces(roiWidth, roiHeight);
 
     const position = gl.createBuffer();
     const uv = gl.createBuffer();
@@ -559,6 +579,7 @@ export function PortalLiquidCursor() {
     let lastRoiTop = Number.NaN;
     let roiLeft = Number.NaN;
     let roiTop = Number.NaN;
+    let roiLockedTarget: HTMLElement | null = null;
     let rasterDirty = true;
     let textureReady = false;
     let snapDirty = true;
@@ -639,9 +660,9 @@ export function PortalLiquidCursor() {
         stepSpring(state.x, dt, 250, 21);
         stepSpring(state.y, dt, 250, 21);
 
-        const nextX = Math.round(state.x.value * 4) / 4;
-        const nextY = Math.round(state.y.value * 4) / 4;
-        if (Math.abs(nextX - state.appliedX) >= 0.24 || Math.abs(nextY - state.appliedY) >= 0.24) {
+        const nextX = Math.round(state.x.value * 2) / 2;
+        const nextY = Math.round(state.y.value * 2) / 2;
+        if (Math.abs(nextX - state.appliedX) >= 0.49 || Math.abs(nextY - state.appliedY) >= 0.49) {
           state.appliedX = nextX;
           state.appliedY = nextY;
           if (Math.abs(nextX) < 0.125 && Math.abs(nextY) < 0.125 && state.x.target === 0 && state.y.target === 0) {
@@ -700,8 +721,8 @@ export function PortalLiquidCursor() {
         const rect = target.getBoundingClientRect();
         x.target = rect.left + rect.width / 2;
         y.target = rect.top + rect.height / 2;
-        width.target = Math.min(ROI_SIZE - 56, Math.max(38, rect.width + SNAP_PADDING * 2));
-        height.target = Math.min(ROI_SIZE - 56, Math.max(34, rect.height + SNAP_PADDING * 2));
+        width.target = Math.min(Math.max(38, window.innerWidth - 20), Math.max(38, rect.width + SNAP_PADDING * 2));
+        height.target = Math.min(Math.max(34, window.innerHeight - 20), Math.max(34, rect.height + SNAP_PADDING * 2));
         snap.target = 1;
       } else {
         x.target = pointerX;
@@ -713,23 +734,65 @@ export function PortalLiquidCursor() {
     };
 
     const updateRoi = (lensX: number, lensY: number, lensWidth: number, lensHeight: number) => {
-      const maxLeft = Math.max(0, window.innerWidth - ROI_SIZE);
-      const maxTop = Math.max(0, window.innerHeight - ROI_SIZE);
+      const target = activeTarget?.isConnected ? activeTarget : null;
+      const desiredWidth = target
+        ? Math.min(MAX_ROI_SIZE, Math.max(FREE_ROI_SIZE, Math.ceil((lensWidth + SNAP_ROI_PADDING * 2) / 16) * 16))
+        : FREE_ROI_SIZE;
+      const desiredHeight = target
+        ? Math.min(MAX_ROI_SIZE, Math.max(FREE_ROI_SIZE, Math.ceil((lensHeight + SNAP_ROI_PADDING * 2) / 16) * 16))
+        : FREE_ROI_SIZE;
+
+      const boundedWidth = Math.max(1, Math.min(window.innerWidth, desiredWidth));
+      const boundedHeight = Math.max(1, Math.min(window.innerHeight, desiredHeight));
+      if (boundedWidth !== roiWidth || boundedHeight !== roiHeight) {
+        roiWidth = boundedWidth;
+        roiHeight = boundedHeight;
+        if (resizeSurfaces(roiWidth, roiHeight)) {
+          textureReady = false;
+          lastRoiLeft = Number.NaN;
+          lastRoiTop = Number.NaN;
+        }
+        roiLeft = Number.NaN;
+        roiTop = Number.NaN;
+        roiLockedTarget = null;
+        rasterDirty = true;
+      }
+
+      const maxLeft = Math.max(0, window.innerWidth - roiWidth);
+      const maxTop = Math.max(0, window.innerHeight - roiHeight);
+
+      if (target) {
+        const state = magneticStates.get(target);
+        const rect = target.getBoundingClientRect();
+        // Lock the capture window to the target's non-magnetic base position.
+        // The button can still wobble inside this texture without dragging the ROI.
+        const baseCenterX = rect.left + rect.width / 2 - (state?.appliedX ?? 0);
+        const baseCenterY = rect.top + rect.height / 2 - (state?.appliedY ?? 0);
+        if (roiLockedTarget !== target || !Number.isFinite(roiLeft) || !Number.isFinite(roiTop)) {
+          roiLeft = Math.round(Math.max(0, Math.min(maxLeft, baseCenterX - roiWidth / 2)));
+          roiTop = Math.round(Math.max(0, Math.min(maxTop, baseCenterY - roiHeight / 2)));
+          roiLockedTarget = target;
+          rasterDirty = true;
+        }
+        return;
+      }
+
+      roiLockedTarget = null;
       if (!Number.isFinite(roiLeft) || !Number.isFinite(roiTop)) {
-        roiLeft = Math.round(Math.max(0, Math.min(maxLeft, lensX - ROI_SIZE / 2)));
-        roiTop = Math.round(Math.max(0, Math.min(maxTop, lensY - ROI_SIZE / 2)));
+        roiLeft = Math.round(Math.max(0, Math.min(maxLeft, lensX - roiWidth / 2)));
+        roiTop = Math.round(Math.max(0, Math.min(maxTop, lensY - roiHeight / 2)));
         rasterDirty = true;
         return;
       }
 
       const halfW = lensWidth / 2;
       const halfH = lensHeight / 2;
-      const marginX = Math.max(8, Math.min(ROI_PADDING, (ROI_SIZE - lensWidth) / 2 - 8));
-      const marginY = Math.max(8, Math.min(ROI_PADDING, (ROI_SIZE - lensHeight) / 2 - 8));
+      const marginX = Math.max(8, Math.min(FREE_ROI_PADDING, (roiWidth - lensWidth) / 2 - 8));
+      const marginY = Math.max(8, Math.min(FREE_ROI_PADDING, (roiHeight - lensHeight) / 2 - 8));
       const minX = roiLeft + halfW + marginX;
-      const maxX = roiLeft + ROI_SIZE - halfW - marginX;
+      const maxX = roiLeft + roiWidth - halfW - marginX;
       const minY = roiTop + halfH + marginY;
-      const maxY = roiTop + ROI_SIZE - halfH - marginY;
+      const maxY = roiTop + roiHeight - halfH - marginY;
 
       let nextLeft = roiLeft;
       let nextTop = roiTop;
@@ -746,7 +809,6 @@ export function PortalLiquidCursor() {
         rasterDirty = true;
       }
     };
-
     const uploadTexture = (roiLeft: number, roiTop: number, now: number) => {
       const moved = Math.abs(roiLeft - lastRoiLeft) >= 0.75 || Math.abs(roiTop - lastRoiTop) >= 0.75;
       if (!rasterDirty && !moved) return;
@@ -755,7 +817,7 @@ export function PortalLiquidCursor() {
       lastRoiLeft = roiLeft;
       lastRoiTop = roiTop;
       rasterDirty = false;
-      if (!rasterizePortal(root, capture, scratch, wallpaper.complete ? wallpaper : null, roiLeft, roiTop, dpr)) return;
+      if (!rasterizePortal(root, capture, scratch, wallpaper.complete ? wallpaper : null, roiLeft, roiTop, roiWidth, roiHeight, dpr)) return;
       try {
         gl.bindTexture(gl.TEXTURE_2D, texture);
         if (!textureReady) {
@@ -866,6 +928,7 @@ export function PortalLiquidCursor() {
     const handleResize = () => {
       roiLeft = Number.NaN;
       roiTop = Number.NaN;
+      roiLockedTarget = null;
       rasterDirty = true;
       snapDirty = true;
       wake();
