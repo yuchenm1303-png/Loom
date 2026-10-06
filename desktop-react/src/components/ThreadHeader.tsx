@@ -6,7 +6,6 @@ import {
   Copy,
   FileCode2,
   FileDiff,
-  Folder,
   PanelLeftClose,
   PanelLeftOpen,
   PanelRightClose,
@@ -189,7 +188,6 @@ export function ThreadHeader({
             title={workspace ? t("common.copyWorkspacePath", { path: workspace }) : localWorkspace}
             disabled={!workspace}
           >
-            <Folder size={12.5} strokeWidth={1.75} aria-hidden="true" />
             <span className="workspace-leaf">{workspace ? workspaceName(workspace, workspaceFallback) : localWorkspace}</span>
             {workspace ? <span className="workspace-full-path">{workspace}</span> : null}
             <span className="workspace-copy-icon" aria-hidden="true">
