@@ -740,27 +740,61 @@ html[data-loom-theme="light"] .thread-header .workspace-path-button:not(:disable
   }
 }
 
-
 /* Triangle sidebar toggle ---------------------------------------------------
-   Replace the panel glyph with a single quiet directional triangle. */
-.thread-sidebar-triangle {
-  position: relative;
+   A compact filled wedge with softer geometry and no persistent tile. */
+.thread-header-leading .thread-sidebar-triangle {
+  width: 26px;
+  height: 26px;
+  border: 0 !important;
+  border-radius: 7px;
+  background: transparent !important;
+  box-shadow: none !important;
+  color: #7f8793;
+}
+
+.thread-header-leading .thread-sidebar-triangle:hover {
+  background: rgba(255, 255, 255, .032) !important;
+  color: #c5cad2;
+}
+
+.thread-header-leading .thread-sidebar-triangle.active {
+  background: transparent !important;
+  border-color: transparent !important;
+  color: #8a91a0;
 }
 
 .thread-sidebar-triangle-mark {
-  width: 0;
-  height: 0;
+  width: 8px;
+  height: 10px;
   display: block;
-  border-top: 4.5px solid transparent;
-  border-bottom: 4.5px solid transparent;
-  border-left: 6.5px solid currentColor;
-  transform: translateX(.5px);
-  transform-origin: 38% 50%;
-  transition: transform 140ms cubic-bezier(.2,.8,.2,1);
+  fill: currentColor;
+  stroke: none;
+  transform: translateX(.35px);
+  transform-origin: 50% 50%;
+  transition:
+    transform 150ms cubic-bezier(.22,.8,.22,1),
+    opacity 120ms ease;
 }
 
 .thread-sidebar-triangle.is-open .thread-sidebar-triangle-mark {
-  transform: rotate(180deg) translateX(.5px);
+  transform: rotate(180deg) translateX(.35px);
+}
+
+html[data-loom-theme="light"] .thread-header-leading .thread-sidebar-triangle {
+  background: transparent !important;
+  border-color: transparent !important;
+  color: #8a9099;
+}
+
+html[data-loom-theme="light"] .thread-header-leading .thread-sidebar-triangle:hover {
+  background: rgba(28, 31, 37, .035) !important;
+  color: #4b515a;
+}
+
+html[data-loom-theme="light"] .thread-header-leading .thread-sidebar-triangle.active {
+  background: transparent !important;
+  border-color: transparent !important;
+  color: #747b86;
 }
 
 @media (prefers-reduced-motion: reduce) {
