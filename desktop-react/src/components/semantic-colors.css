@@ -4,31 +4,54 @@
    values converge on one shared palette without changing component behavior. */
 
 :root {
-  --success: #75bd99;
-  --danger: #e18492;
+  --success: #43e68f;
+  --danger: #ff5a72;
   --warning: #f7c85d;
   --info: #73b4ff;
 
-  --semantic-success: #75bd99;
-  --semantic-success-text: #8affbd;
-  --semantic-success-strong: #95d6b4;
-  --semantic-success-soft: rgba(53, 237, 145, 0.14);
-  --semantic-success-fill: rgba(37, 210, 124, 0.18);
-  --semantic-success-border: rgba(53, 237, 145, 0.40);
-  --semantic-success-glow: rgba(53, 237, 145, 0.06);
+  --semantic-success: #43e68f;
+  --semantic-success-text: #72f5ac;
+  --semantic-success-strong: #55ef9b;
+  --semantic-success-soft: rgba(67, 230, 143, 0.17);
+  --semantic-success-fill: rgba(43, 211, 123, 0.22);
+  --semantic-success-border: rgba(67, 230, 143, 0.48);
+  --semantic-success-glow: rgba(67, 230, 143, 0.22);
 
-  --semantic-danger: #e18492;
-  --semantic-danger-text: #ff9aaa;
-  --semantic-danger-strong: #ed9daa;
-  --semantic-danger-soft: rgba(255, 82, 107, 0.14);
-  --semantic-danger-fill: rgba(235, 55, 82, 0.06);
-  --semantic-danger-border: rgba(255, 82, 107, 0.40);
-  --semantic-danger-glow: rgba(255, 82, 107, 0.21);
+  --semantic-danger: #ff5a72;
+  --semantic-danger-text: #ff7b8e;
+  --semantic-danger-strong: #ff6b80;
+  --semantic-danger-soft: rgba(255, 72, 99, 0.17);
+  --semantic-danger-fill: rgba(238, 52, 82, 0.13);
+  --semantic-danger-border: rgba(255, 72, 99, 0.48);
+  --semantic-danger-glow: rgba(255, 72, 99, 0.28);
 
   --semantic-info: #73b4ff;
   --semantic-info-text: #9ac9ff;
   --semantic-info-soft: rgba(115, 180, 255, 0.12);
   --semantic-info-border: rgba(115, 180, 255, 0.30);
+}
+
+/* Light surfaces need the same saturation, but with deeper foreground tones
+   so vivid status colors stay crisp instead of turning pastel on white. */
+html[data-loom-theme="light"] {
+  --success: #168b52;
+  --danger: #d93650;
+
+  --semantic-success: #168b52;
+  --semantic-success-text: #0f7e47;
+  --semantic-success-strong: #149357;
+  --semantic-success-soft: rgba(22, 139, 82, 0.10);
+  --semantic-success-fill: rgba(22, 139, 82, 0.105);
+  --semantic-success-border: rgba(22, 139, 82, 0.34);
+  --semantic-success-glow: rgba(22, 139, 82, 0.14);
+
+  --semantic-danger: #d93650;
+  --semantic-danger-text: #c62f47;
+  --semantic-danger-strong: #d93650;
+  --semantic-danger-soft: rgba(217, 54, 80, 0.095);
+  --semantic-danger-fill: rgba(217, 54, 80, 0.095);
+  --semantic-danger-border: rgba(217, 54, 80, 0.34);
+  --semantic-danger-glow: rgba(217, 54, 80, 0.14);
 }
 
 /* Diff / file-change counters. */
@@ -73,48 +96,48 @@ html[data-loom-theme="light"] .review-code-row.is-add,
 html[data-loom-theme="light"] .review-code-row.is-add code,
 html[data-loom-theme="light"] .inline-diff-row.is-add,
 html[data-loom-theme="light"] .inline-diff-row.is-add code {
-  background: rgba(47, 122, 88, .085) !important;
-  color: #285b44 !important;
+  background: rgba(22, 139, 82, .105) !important;
+  color: #146c43 !important;
 }
 
 html[data-loom-theme="light"] .review-code-row.is-delete,
 html[data-loom-theme="light"] .review-code-row.is-delete code,
 html[data-loom-theme="light"] .inline-diff-row.is-delete,
 html[data-loom-theme="light"] .inline-diff-row.is-delete code {
-  background: rgba(178, 75, 90, .08) !important;
-  color: #7f3440 !important;
+  background: rgba(217, 54, 80, .095) !important;
+  color: #873040 !important;
 }
 
 html[data-loom-theme="light"] .review-code-row.is-add .review-line-number,
 html[data-loom-theme="light"] .inline-diff-row.is-add .inline-diff-number {
-  color: #4d896b !important;
+  color: #2f9666 !important;
 }
 
 html[data-loom-theme="light"] .review-code-row.is-delete .review-line-number,
 html[data-loom-theme="light"] .inline-diff-row.is-delete .inline-diff-number {
-  color: #a9616c !important;
+  color: #c45164 !important;
 }
 
 html[data-loom-theme="light"] .review-code-row.is-add .review-line-marker,
 html[data-loom-theme="light"] .inline-diff-row.is-add .inline-diff-marker {
-  color: #2f7a58 !important;
+  color: #168b52 !important;
   text-shadow: none;
 }
 
 html[data-loom-theme="light"] .review-code-row.is-delete .review-line-marker,
 html[data-loom-theme="light"] .inline-diff-row.is-delete .inline-diff-marker {
-  color: #b24b5a !important;
+  color: #d93650 !important;
   text-shadow: none;
 }
 
 .review-code-row.is-add .review-line-number,
 .inline-diff-row.is-add .inline-diff-number {
-  color: rgba(92, 247, 160, 0.82) !important;
+  color: rgba(85, 239, 155, 0.94) !important;
 }
 
 .review-code-row.is-delete .review-line-number,
 .inline-diff-row.is-delete .inline-diff-number {
-  color: rgba(255, 112, 133, 0.84) !important;
+  color: rgba(255, 107, 128, 0.95) !important;
 }
 
 .review-code-row.is-add .review-line-marker,
