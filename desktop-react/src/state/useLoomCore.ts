@@ -239,6 +239,8 @@ export function useLoom() {
   const [context, setContext] = useState<ContextReport | null>(null);
   const [compactionProgress, setCompactionProgress] = useState<ContextCompactionProgress | null>(null);
   const compacting = compactionProgress?.status === "started" || compactionProgress?.status === "running";
+  const draftThreadParamsRef = useRef<Record<string, unknown>>({});
+  const homeSendPendingRef = useRef(false);
   const activeIdRef = useRef("");
   const activeTurnIdRef = useRef("");
   const openRequestRef = useRef(0);
@@ -306,6 +308,8 @@ export function useLoom() {
   }, []);
 
   const clearActive = useCallback(() => {
+    openRequestRef.current += 1;
+    draftThreadParamsRef.current = {};
     activeIdRef.current = "";
     activeTurnIdRef.current = "";
     terminalErrorTurnRef.current = "";
@@ -646,13 +650,20 @@ export function useLoom() {
   }, [clearActive, refreshThreads]);
 
   const newThread = useCallback(async (workspace?: string, projectId?: string) => {
-    const requestId = ++openRequestRef.current;
-    const params: Record<string, unknown> = projectId?.trim()
+    clearActive();
+    threadViewRef.current = "active";
+    setThreadViewState("active");
+    draftThreadParamsRef.current = projectId?.trim()
       ? { projectId: projectId.trim() }
       : workspace?.trim()
         ? { workspace: workspace.trim() }
         : {};
-    const result = await requireBridge().call<{ thread: ThreadRecord }>("thread/start", params);
+    void refreshThreads("active");
+  }, [clearActive, refreshThreads]);
+
+  const startThread = useCallback(async () => {
+    const requestId = ++openRequestRef.current;
+    const result = await requireBridge().call<{ thread: ThreadRecord }>("thread/start", draftThreadParamsRef.current);
     threadViewRef.current = "active";
     setThreadViewState("active");
     setThreads((current) => {
@@ -684,6 +695,7 @@ export function useLoom() {
       setCompactionProgress(null);
     }
     void refreshThreads("active");
+    return openRequestRef.current === requestId ? result.thread : null;
   }, [installItems, refreshThreads]);
 
   const renameThread = useCallback(async (threadId: string, title: string) => {
@@ -701,9 +713,9 @@ export function useLoom() {
 
   const deleteThread = useCallback(async (threadId: string) => {
     await requireBridge().call("thread/delete", { threadId });
-    const list = await refreshThreads();
-    await ensureSelection(list, activeIdRef.current === threadId ? "" : activeIdRef.current);
-  }, [ensureSelection, refreshThreads]);
+    if (activeIdRef.current === threadId || openingThreadIdRef.current === threadId) clearActive();
+    await refreshThreads();
+  }, [clearActive, refreshThreads]);
 
   const forkThread = useCallback(async (threadId: string) => {
     const result = await requireBridge().call<{ thread: ThreadRecord }>("thread/fork", { threadId });
@@ -714,22 +726,32 @@ export function useLoom() {
   }, [openThread, refreshThreads]);
 
   const send = useCallback(async (input: string, attachments: { path: string; name: string }[] = []) => {
-    if (!active?.thread.id || active.thread.archived) return;
     if (!input.trim() && !attachments.length) return;
-    threadReadCacheRef.current.delete(active.thread.id);
+    if (active?.thread.archived || homeSendPendingRef.current) return;
+    let thread = active?.thread;
+    if (!thread) {
+      homeSendPendingRef.current = true;
+      try {
+        thread = (await startThread()) ?? undefined;
+      } finally {
+        homeSendPendingRef.current = false;
+      }
+      if (!thread) return;
+    }
+    threadReadCacheRef.current.delete(thread.id);
     const pendingId = `pending-user-${crypto.randomUUID()}`;
     if (input.trim()) setItems((current) => [...current, {
-      id: pendingId, threadId: active.thread.id, type: "user_message",
+      id: pendingId, threadId: thread.id, type: "user_message",
       text: input.trim(), status: "sending", submittedAt: new Date().toISOString(),
     }]);
     setTurnActive(true);
     setTurnStartedAt(Date.now());
     try {
-      const params: Record<string, unknown> = { threadId: active.thread.id, input: input.trim() };
+      const params: Record<string, unknown> = { threadId: thread.id, input: input.trim() };
       if (attachments.length) params.attachments = attachments;
       const result = await requireBridge().call<{ turn: TurnRecord }>("turn/start", params);
       const turn = result.turn;
-      setActive((current) => current && current.thread.id === active.thread.id
+      setActive((current) => current && current.thread.id === thread.id
         ? {
             ...current,
             pendingApproval: null,
@@ -745,7 +767,7 @@ export function useLoom() {
       setTurnStartedAt(null);
       throw cause;
     }
-  }, [active?.thread.archived, active?.thread.id]);
+  }, [active?.thread, startThread]);
 
   const interrupt = useCallback(async () => {
     if (!active?.thread.id || !active.thread.currentTurnId) return;
@@ -941,7 +963,7 @@ export function useLoom() {
         const deletedId = String(params.threadId ?? "");
         threadReadCacheRef.current.delete(deletedId);
         setThreads((current) => current.filter((entry) => entry.id !== deletedId));
-        if (deletedId && deletedId === activeId) clearActive();
+        if (deletedId && (deletedId === activeId || deletedId === openingThreadIdRef.current)) clearActive();
         return;
       }
       if (message.method === "turn/started") {
