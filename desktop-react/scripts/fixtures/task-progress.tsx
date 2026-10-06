@@ -7,6 +7,8 @@ import type { TranscriptItem } from "../../src/types/loom";
 import "../../src/styles.css";
 import "../../src/theme.css";
 import "../../src/components/run-progress.css";
+import "../../src/components/conversation-motion.css";
+import "../../src/components/workspace-surface-refinement.css";
 
 const root = createRoot(document.getElementById("root")!);
 (window as unknown as { renderPlan(width: number, completed?: boolean, nextTurn?: boolean): void }).renderPlan = (width, completed = false, nextTurn = false) => {
@@ -22,11 +24,11 @@ const root = createRoot(document.getElementById("root")!);
     { id: "text", threadId: "thread", turnId, type: "assistant_message", status: "completed", phase: "commentary", text: Array.from({ length: 30 }, (_, i) => `第 ${i + 1} 段正文。浏览器检查正在进行。`).join("\n\n") },
   ];
   flushSync(() => root.render(<StrictMode>
-    <div className="conversation-stage" style={{ width, height: 650, maxWidth: "100vw" }}>
+    <div className="app-shell" style={{ display: "block" }}><div className="conversation-stage" style={{ width, height: 650, maxWidth: "100vw" }}>
       <style>{"body { margin: 0; } .conversation-stage { grid-template-rows: auto minmax(0, 1fr); } .transcript-scroll { overflow-y: auto; }"}</style>
       <div className="run-progress-frame top">Loom 正在工作</div>
       <Transcript items={items} running currentTurnId={turnId} onApproval={() => {}} />
       <TranscriptScrollController items={items} running threadId="thread" currentTurnId={turnId} />
-    </div>
+    </div></div>
   </StrictMode>));
 };

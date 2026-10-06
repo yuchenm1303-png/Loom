@@ -14,14 +14,28 @@ try {
     const card = await page.locator(".task-progress-dock").boundingBox();
     assert.ok(text.x + text.width <= card.x + 1);
     assert.ok(text.width >= Math.min(480, (await page.locator(".conversation-stage").boundingBox()).width - 56));
+    const fade = await page.locator(".conversation-stage").evaluate(el => {
+      const stage = el.getBoundingClientRect();
+      const style = getComputedStyle(el, "::after");
+      return { rightEdge: stage.right - parseFloat(style.right), opacity: style.display };
+    });
+    assert.equal(fade.opacity, "block");
+    assert.ok(fade.rightEdge <= card.x + 1, "transcript fade must never cover the progress column");
     assert.ok(card.x + card.width <= (await page.locator(".conversation-stage").boundingBox()).width + 1);
   }
   await noOverlap();
+  const headingY = (await page.locator(".task-plan-card .task-plan-heading").boundingBox()).y;
+  const list = page.locator(".task-plan-card .task-plan-list");
+  assert.ok(await list.evaluate(el => el.scrollHeight > el.clientHeight), "long plans scroll inside the card");
+  await list.evaluate(el => el.scrollTop = el.scrollHeight);
+  assert.equal((await page.locator(".task-plan-card .task-plan-heading").boundingBox()).y, headingY);
+  await list.evaluate(el => el.scrollTop = 0);
   const cardY = (await page.locator(".task-progress-dock").boundingBox()).y;
   await page.locator(".transcript-scroll").evaluate(el => el.scrollTop = 300);
   assert.equal((await page.locator(".task-progress-dock").boundingBox()).y, cardY);
   await page.getByRole("button", { name: "折叠任务进度" }).click();
   await page.locator(".task-progress-dock.is-rail").waitFor();
+  await noOverlap();
   await page.evaluate(() => window.renderPlan(1200, true));
   await page.getByRole("button", { name: "查看任务进度，2/15 已完成" }).click();
   await page.locator(".task-progress-dock.is-expanded").waitFor();
@@ -45,6 +59,9 @@ try {
     const bounds = await page.getByRole("dialog").boundingBox();
     assert.ok(bounds.x >= 0 && bounds.x + bounds.width <= width);
     assert.ok(bounds.y >= 0 && bounds.y + bounds.height <= 700);
+    const dialogHeadingY = (await page.getByRole("dialog").locator(".task-plan-heading").boundingBox()).y;
+    await page.getByRole("dialog").locator(".task-plan-list").evaluate(el => el.scrollTop = el.scrollHeight);
+    assert.equal((await page.getByRole("dialog").locator(".task-plan-heading").boundingBox()).y, dialogHeadingY);
     await page.getByRole("button", { name: "关闭任务进度" }).click();
   }
   await page.setViewportSize({ width: 1440, height: 900 });

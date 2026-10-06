@@ -886,9 +886,10 @@
   content: "";
   position: absolute;
   grid-row: 2;
+  grid-column: 1;
   z-index: 3;
   left: 0;
-  right: 0;
+  right: var(--task-plan-width, 0px);
   height: 48px;
   pointer-events: none;
   background: linear-gradient(
