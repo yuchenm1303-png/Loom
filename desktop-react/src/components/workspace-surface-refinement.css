@@ -238,6 +238,9 @@
 /* Keep the input as the primary action surface, with a short grounding shadow. */
 :root .app-shell .composer-wrap.composer-refined {
   --cq-shadow-rest: 0 2px 8px rgba(0,0,0,.09);
+  /* Share the workspace canvas instead of painting the legacy near-black
+     footer gradient. Focus lighting belongs to the input itself. */
+  background: transparent;
 }
 :root[data-loom-theme="light"] .app-shell .composer-wrap.composer-refined {
   --cq-shadow-rest: 0 2px 8px rgba(24,28,38,.035);
