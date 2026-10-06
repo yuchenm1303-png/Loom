@@ -740,30 +740,116 @@ html[data-loom-theme="light"] .thread-header .workspace-path-button:not(:disable
   }
 }
 
-
 /* Triangle sidebar toggle ---------------------------------------------------
-   Replace the panel glyph with a single quiet directional triangle. */
-.thread-sidebar-triangle {
+   Quiet by default, with a short spring turn and a soft halo on interaction. */
+.thread-header-leading .thread-sidebar-triangle {
   position: relative;
+  width: 26px;
+  height: 26px;
+  border: 0 !important;
+  border-radius: 8px;
+  background: transparent !important;
+  box-shadow: none !important;
+  color: #7f8793;
+  isolation: isolate;
+  transition:
+    color 150ms ease,
+    transform 120ms cubic-bezier(.2,.8,.2,1);
+}
+
+.thread-header-leading .thread-sidebar-triangle::before {
+  content: "";
+  position: absolute;
+  inset: 2px;
+  z-index: -1;
+  border-radius: 7px;
+  background:
+    radial-gradient(circle at 50% 45%,
+      rgba(150, 141, 245, .14),
+      rgba(150, 141, 245, .055) 48%,
+      transparent 74%);
+  opacity: 0;
+  transform: scale(.72);
+  transition:
+    opacity 150ms ease,
+    transform 190ms cubic-bezier(.2,.9,.2,1);
+  pointer-events: none;
+}
+
+.thread-header-leading .thread-sidebar-triangle:hover {
+  color: #c8cdd5;
+}
+
+.thread-header-leading .thread-sidebar-triangle:hover::before {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.thread-header-leading .thread-sidebar-triangle:active {
+  transform: scale(.91);
+}
+
+.thread-header-leading .thread-sidebar-triangle.active {
+  background: transparent !important;
+  border-color: transparent !important;
+  color: #979da8;
 }
 
 .thread-sidebar-triangle-mark {
-  width: 0;
-  height: 0;
+  width: 8px;
+  height: 10px;
   display: block;
-  border-top: 4.5px solid transparent;
-  border-bottom: 4.5px solid transparent;
-  border-left: 6.5px solid currentColor;
-  transform: translateX(.5px);
-  transform-origin: 38% 50%;
-  transition: transform 140ms cubic-bezier(.2,.8,.2,1);
+  fill: currentColor;
+  stroke: none;
+  opacity: .96;
+  transform: translateX(.35px) rotate(0deg) scale(1);
+  transform-origin: 50% 50%;
+  will-change: transform;
+  transition:
+    transform 320ms cubic-bezier(.34,1.56,.64,1),
+    opacity 120ms ease,
+    filter 150ms ease;
+}
+
+.thread-sidebar-triangle:hover .thread-sidebar-triangle-mark {
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, .16));
 }
 
 .thread-sidebar-triangle.is-open .thread-sidebar-triangle-mark {
-  transform: rotate(180deg) translateX(.5px);
+  transform: translateX(-.35px) rotate(180deg) scale(.98);
+}
+
+.thread-sidebar-triangle:active .thread-sidebar-triangle-mark {
+  opacity: .82;
+}
+
+html[data-loom-theme="light"] .thread-header-leading .thread-sidebar-triangle {
+  background: transparent !important;
+  border-color: transparent !important;
+  color: #8a9099;
+}
+
+html[data-loom-theme="light"] .thread-header-leading .thread-sidebar-triangle::before {
+  background:
+    radial-gradient(circle at 50% 45%,
+      rgba(105, 90, 216, .13),
+      rgba(105, 90, 216, .045) 48%,
+      transparent 74%);
+}
+
+html[data-loom-theme="light"] .thread-header-leading .thread-sidebar-triangle:hover {
+  color: #555c66;
+}
+
+html[data-loom-theme="light"] .thread-header-leading .thread-sidebar-triangle.active {
+  background: transparent !important;
+  border-color: transparent !important;
+  color: #747b86;
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .thread-header-leading .thread-sidebar-triangle,
+  .thread-header-leading .thread-sidebar-triangle::before,
   .thread-sidebar-triangle-mark {
     transition: none !important;
   }

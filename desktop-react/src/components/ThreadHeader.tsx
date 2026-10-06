@@ -167,7 +167,9 @@ export function ThreadHeader({
           aria-label={sidebarLabel}
           aria-pressed={sidebarOpen}
         >
-          <span className="thread-sidebar-triangle-mark" aria-hidden="true" />
+          <svg className="thread-sidebar-triangle-mark" viewBox="0 0 12 14" aria-hidden="true">
+            <path d="M2.55 1.42c-.82-.48-1.85.11-1.85 1.06v9.04c0 .95 1.03 1.54 1.85 1.06l7.82-4.52c.82-.47.82-1.65 0-2.12L2.55 1.42Z" />
+          </svg>
         </button>
       </div>
 
