@@ -120,30 +120,23 @@ function permissionPresentation(mode: string, chinese = false): PermissionPresen
   };
 }
 
-function PermissionIcon({ mode }: { mode: string }) {
-  if (mode === "read-only") return <Eye size={15} />;
-  if (mode === "workspace") return <FolderCog size={15} />;
-  if (mode === "full-access") return <KeyRound size={15} />;
-  return <ShieldCheck size={15} />;
+function PermissionIcon({ mode, toolbar = false }: { mode: string; toolbar?: boolean }) {
+  const Icon = mode === "read-only" ? Eye : mode === "workspace" ? FolderCog : mode === "full-access" ? KeyRound : ShieldCheck;
+  return <Icon size={toolbar ? 18 : 15} strokeWidth={toolbar ? 1.75 : 2}
+    className={toolbar ? "composer-control-icon composer-permission-icon" : undefined}
+    aria-hidden="true" focusable="false" />;
 }
 
 
 // A shared 24px grid keeps the toolbar silhouettes equally legible.
-function ComposerControlIcon({ kind }: { kind: "attach" | "access" | "model" }) {
+function ComposerControlIcon({ kind }: { kind: "attach" | "model" }) {
   return (
     <svg className="composer-control-icon" data-control-icon={kind} width={18} height={18}
       viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75"
       strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false">
       {kind === "attach" ? (
         <>
-          <path className="control-clip-frame" d="m8 12 7-7a4 4 0 0 1 5.66 5.66l-8.5 8.5a5.5 5.5 0 0 1-7.78-7.78L12 3.75" />
-          <path className="control-clip-latch" d="m8 12 6.25-6.25a1.75 1.75 0 0 1 2.48 2.48L10 15" />
-        </>
-      ) : kind === "access" ? (
-        <>
-          <circle className="control-key-bow" cx="8" cy="8" r="4.5" />
-          <circle className="control-key-eye" cx="7" cy="7" r=".8" fill="currentColor" stroke="none" />
-          <path className="control-key-stem" d="m11.2 11.2 8.3 8.3h2v-3h-3v-3h-3" />
+          <path className="control-clip-frame" d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
         </>
       ) : (
         <>
@@ -467,7 +460,7 @@ export function Composer({
                 aria-expanded={openPanel === "permission"}
                 onClick={() => togglePanel("permission")}
               >
-                <span className="composer-glyph-well access" aria-hidden="true"><ComposerControlIcon kind="access" /></span>
+                <span className="composer-glyph-well access" aria-hidden="true"><PermissionIcon mode={permissionMode || "approval"} toolbar /></span>
                 <span>{currentPermission.label}</span>
                 <ChevronDown size={13} className="composer-chip-chevron" />
               </button>

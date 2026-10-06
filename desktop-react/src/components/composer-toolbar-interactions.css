@@ -66,12 +66,21 @@ html[data-loom-theme="light"] .app-shell .composer .composer-refined-control {
   color: var(--control-ink);
 }
 
-/* The clip closes, the key turns, and model layers gently separate. */
-.composer-refined-control:is(:hover, :focus-visible):not(:disabled) .control-clip-latch {
-  animation: loom-toolbar-clip 480ms cubic-bezier(.2,.8,.2,1);
+/* Animate complete silhouettes so the clip never breaks into loose strokes. */
+.composer-refined-control:is(:hover, :focus-visible):not(:disabled) [data-control-icon="attach"] {
+  animation: loom-toolbar-clip 420ms cubic-bezier(.2,.8,.2,1);
 }
-.composer-refined-control:is(:hover, :focus-visible):not(:disabled) [data-control-icon="access"] {
-  animation: loom-toolbar-key 520ms cubic-bezier(.2,.8,.2,1);
+.composer-refined-control:is(:hover, :focus-visible):not(:disabled) .composer-permission-icon {
+  animation: loom-toolbar-permission 400ms cubic-bezier(.2,.8,.2,1);
+}
+.composer-refined-control:is(:hover, :focus-visible):not(:disabled) .composer-permission-icon.lucide-key-round {
+  animation-name: loom-toolbar-key;
+}
+.composer-refined-control:is(:hover, :focus-visible):not(:disabled) .composer-permission-icon.lucide-eye {
+  animation-name: loom-toolbar-eye;
+}
+.composer-refined-control:is(:hover, :focus-visible):not(:disabled) .composer-permission-icon.lucide-shield-check path:last-child {
+  animation: loom-toolbar-confirm 420ms ease;
 }
 .composer-refined-control:is(:hover, :focus-visible):not(:disabled) .control-model-top {
   animation: loom-toolbar-layer-top 520ms cubic-bezier(.2,.8,.2,1);
@@ -83,11 +92,27 @@ html[data-loom-theme="light"] .app-shell .composer .composer-refined-control {
   animation: loom-toolbar-open 320ms cubic-bezier(.2,.8,.2,1);
 }
 @keyframes loom-toolbar-clip {
-  40% { transform: translate(1px,-1px); }
+  0%, 100% { transform: rotate(0deg) translateY(0); }
+  40% { transform: rotate(-6deg) translateY(-.6px); }
+  72% { transform: rotate(1.5deg) translateY(0); }
 }
 @keyframes loom-toolbar-key {
-  40% { transform: rotate(-12deg); }
-  70% { transform: rotate(3deg); }
+  0%, 100% { transform: rotate(0deg); }
+  40% { transform: rotate(-7deg); }
+  72% { transform: rotate(1.5deg); }
+}
+@keyframes loom-toolbar-permission {
+  0%, 100% { transform: scale(1); }
+  45% { transform: scale(1.055); }
+}
+@keyframes loom-toolbar-eye {
+  0%, 100% { transform: scaleY(1); }
+  42% { transform: scaleY(.78); }
+  70% { transform: scaleY(1.025); }
+}
+@keyframes loom-toolbar-confirm {
+  0%, 100% { opacity: 1; }
+  35% { opacity: .4; }
 }
 @keyframes loom-toolbar-layer-top {
   40% { transform: translateY(-1.5px); }
