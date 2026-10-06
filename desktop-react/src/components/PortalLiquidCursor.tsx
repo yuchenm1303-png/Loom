@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 
-const ROI_SIZE = 260;
+const ROI_SIZE = 600;
 const BASE_WIDTH = 80;
 const BASE_HEIGHT = 54;
 const FREE_OFFSET_Y = -32;
@@ -11,13 +11,18 @@ const ROI_PADDING = 48;
 const ROI_DEADZONE = 35;
 const WALLPAPER_URL = "https://smirel.com/download/wallpaper-beach-blue-v1-original.png";
 const SNAP_SELECTOR = [
-  "button:not(:disabled)",
-  "a[href]",
-  "input:not(:disabled)",
-  "textarea:not(:disabled)",
-  "select:not(:disabled)",
-  "[role='button']",
-  "[data-liquid-snap]",
+  ".loom-primary-action:not(:disabled)",
+  ".loom-secondary-action",
+  ".loom-download-version a",
+  ".loom-oauth-button:not(:disabled)",
+  ".loom-input-shell",
+  ".loom-code-input:not(:disabled)",
+  ".loom-inline-link:not(:disabled)",
+  ".loom-form-submit:not(:disabled)",
+  ".loom-account-switch:not(:disabled)",
+  ".loom-host-setup-retry:not(:disabled)",
+  ".loom-profile-home-action:not(:disabled)",
+  "[data-liquid-snap='true']",
 ].join(",");
 
 type SpringValue = { value: number; velocity: number; target: number };
@@ -580,8 +585,8 @@ export function PortalLiquidCursor() {
         const rect = target.getBoundingClientRect();
         x.target = rect.left + rect.width / 2;
         y.target = rect.top + rect.height / 2;
-        width.target = Math.min(ROI_SIZE - 20, Math.max(BASE_WIDTH, rect.width + SNAP_PADDING * 2));
-        height.target = Math.min(ROI_SIZE - 20, Math.max(BASE_HEIGHT, rect.height + SNAP_PADDING * 2));
+        width.target = Math.min(ROI_SIZE - 56, Math.max(38, rect.width + SNAP_PADDING * 2));
+        height.target = Math.min(ROI_SIZE - 56, Math.max(34, rect.height + SNAP_PADDING * 2));
         snap.target = 1;
       } else {
         x.target = pointerX;
@@ -662,11 +667,12 @@ export function PortalLiquidCursor() {
       lastTime = now;
       updateTargets();
 
-      stepSpring(x, dt, 500, 60);
-      stepSpring(y, dt, 500, 60);
-      stepSpring(width, dt, 280, 30);
-      stepSpring(height, dt, 280, 30);
-      stepSpring(snap, dt, 240, 28);
+      const snapping = Boolean(activeTarget) || snap.target > 0.001;
+      stepSpring(x, dt, snapping ? 300 : 500, snapping ? 25 : 60);
+      stepSpring(y, dt, snapping ? 300 : 500, snapping ? 25 : 60);
+      stepSpring(width, dt, snapping ? 235 : 310, snapping ? 19 : 32);
+      stepSpring(height, dt, snapping ? 235 : 310, snapping ? 19 : 32);
+      stepSpring(snap, dt, 220, 18);
 
       updateRoi(x.value, y.value, width.value, height.value);
       uploadTexture(roiLeft, roiTop, now);
@@ -678,11 +684,11 @@ export function PortalLiquidCursor() {
 
       if (textureReady) {
         const pressWeight = pressed ? 1 : 0;
-        const strength = (0.95 + (1.4 - 0.95) * snap.value) * (1 - pressWeight) + 4.05 * pressWeight;
-        const pinch = (7.7 + (7.0 - 7.7) * snap.value) * (1 - pressWeight) + 5.5 * pressWeight;
-        const aberration = 0.12 + (0.18 - 0.12) * Math.max(snap.value, pressWeight);
-        const zoom = (1 + (1.22 - 1) * snap.value) * (1 - pressWeight) + 1.1 * pressWeight;
-        const wobble = (0.14 + 0.08 * snap.value) * (1 - pressWeight) + 0.50 * pressWeight;
+        const strength = (0.95 + (1.14 - 0.95) * snap.value) * (1 - pressWeight) + 3.2 * pressWeight;
+        const pinch = (7.7 + (7.35 - 7.7) * snap.value) * (1 - pressWeight) + 5.7 * pressWeight;
+        const aberration = 0.10 + (0.13 - 0.10) * Math.max(snap.value, pressWeight);
+        const zoom = (1 + (1.055 - 1) * snap.value) * (1 - pressWeight) + 1.08 * pressWeight;
+        const wobble = (0.12 + 0.05 * snap.value) * (1 - pressWeight) + 0.42 * pressWeight;
 
         gl.viewport(0, 0, canvas.width, canvas.height);
         gl.clearColor(0, 0, 0, 0);
