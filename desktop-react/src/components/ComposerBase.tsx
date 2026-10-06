@@ -396,11 +396,6 @@ export function Composer({
     <div className="composer-wrap composer-refined" ref={composerRootRef}>
       <div
         className={`composer ${focused ? "is-focused" : ""} ${running ? "is-running" : ""} ${openPanel ? "has-panel" : ""} ${dragging ? "is-dragging" : ""} ${hasDraftContent ? "has-content" : "is-empty"}`}
-        onPointerMove={(event) => {
-          const rect = event.currentTarget.getBoundingClientRect();
-          event.currentTarget.style.setProperty("--composer-pointer-x", `${event.clientX - rect.left}px`);
-          event.currentTarget.style.setProperty("--composer-pointer-y", `${event.clientY - rect.top}px`);
-        }}
         onDragOver={(event) => {
           if (!event.dataTransfer.types.includes("Files")) return;
           event.preventDefault();
@@ -412,8 +407,8 @@ export function Composer({
         }}
         onDrop={(event) => void onDrop(event)}
       >
-        <span className="composer-pointer-glow" aria-hidden="true" />
-        <span className="composer-glow" aria-hidden="true" />
+        <span className="composer-focus-aura" aria-hidden="true" />
+        <span className="composer-focus-rim" aria-hidden="true" />
 
         {quote ? <QuoteReplyBar quote={quote} onClear={() => setQuote(null)} /> : null}
         <ComposerAttachmentStrip attachments={attachments} imagesAllowed={imagesAllowed} onRemove={removeAttachment} />

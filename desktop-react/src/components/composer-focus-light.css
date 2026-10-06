@@ -1,0 +1,88 @@
+/* One focus-light system. The rim is masked to the border, away from text. */
+:root .app-shell .composer-wrap.composer-refined {
+  --focus-edge: rgba(167,155,235,.44);
+  --focus-light: rgba(187,175,255,.85);
+  --focus-halo: rgba(152,131,229,.085);
+  --focus-depth: 0 3px 8px rgba(0,0,0,.12), 0 14px 30px -14px rgba(0,0,0,.38);
+}
+:root[data-loom-theme="light"] .app-shell .composer-wrap.composer-refined {
+  --focus-edge: rgba(124,108,199,.36);
+  --focus-light: rgba(152,132,224,.8);
+  --focus-halo: rgba(131,110,206,.055);
+  --focus-depth: 0 2px 6px rgba(32,36,52,.035), 0 12px 26px -12px rgba(32,36,52,.12);
+}
+
+/* Cancel older focus breathing and whole-card shadow keyframes. */
+:root .app-shell .composer-wrap.composer-refined .composer {
+  animation: none !important;
+  transition: border-color 260ms ease, box-shadow 380ms cubic-bezier(.2,.8,.2,1),
+    background-color 260ms ease;
+}
+:root .app-shell .composer-wrap.composer-refined .composer:is(.is-focused, :focus-within, .has-panel):not(.is-dragging) {
+  border-color: var(--focus-edge);
+  box-shadow: var(--focus-depth), 0 0 0 1px var(--focus-halo), 0 0 18px var(--focus-halo);
+}
+
+:root .app-shell .composer-wrap.composer-refined .composer > :is(.composer-focus-aura, .composer-focus-rim) {
+  display: block;
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  opacity: 0;
+  z-index: 0;
+  transition: opacity 320ms ease;
+}
+
+/* Very low-intensity corner illumination settles beneath the content. */
+:root .app-shell .composer-wrap.composer-refined .composer > .composer-focus-aura {
+  background: radial-gradient(ellipse at 12% 0%, var(--focus-halo), transparent 42%),
+    radial-gradient(ellipse at 88% 100%, var(--focus-halo), transparent 40%);
+}
+:root .app-shell .composer-wrap.composer-refined .composer.is-focused:not(.is-dragging) > .composer-focus-aura {
+  opacity: .65;
+}
+
+/* A responsive border sweep uses the actual container width, including corners. */
+:root .app-shell .composer-wrap.composer-refined .composer > .composer-focus-rim {
+  inset: -1px;
+  z-index: 2;
+  padding: 1px;
+  background: linear-gradient(105deg, transparent 32%, var(--focus-light) 48%,
+    rgba(226,220,255,.85) 50%, var(--focus-light) 52%, transparent 68%);
+  background-size: 300% 100%;
+  background-position: 100% 0;
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  mask-composite: exclude;
+}
+:root .app-shell .composer-wrap.composer-refined .composer.is-focused:not(.is-dragging) > .composer-focus-rim {
+  animation: loom-composer-focus-light 1100ms cubic-bezier(.22,.68,.3,1) both;
+}
+@keyframes loom-composer-focus-light {
+  0% { opacity: 0; background-position: 100% 0; }
+  20% { opacity: .75; }
+  65% { opacity: .55; }
+  100% { opacity: 0; background-position: 0% 0; }
+}
+
+/* Reduced motion retains a clear static focus border. */
+@media (prefers-reduced-motion: reduce) {
+  :root .app-shell .composer-wrap.composer-refined .composer,
+  :root .app-shell .composer-wrap.composer-refined .composer > :is(.composer-focus-aura, .composer-focus-rim) {
+    animation: none !important;
+    transition: none !important;
+  }
+  :root .app-shell .composer-wrap.composer-refined .composer > .composer-focus-rim {
+    display: none;
+  }
+}
+:root[data-loom-reduced-motion="true"] .app-shell .composer-wrap.composer-refined .composer,
+:root[data-loom-reduced-motion="true"] .app-shell .composer-wrap.composer-refined .composer > :is(.composer-focus-aura, .composer-focus-rim) {
+  animation: none !important;
+  transition: none !important;
+}
+:root[data-loom-reduced-motion="true"] .app-shell .composer-wrap.composer-refined .composer > .composer-focus-rim {
+  display: none;
+}
