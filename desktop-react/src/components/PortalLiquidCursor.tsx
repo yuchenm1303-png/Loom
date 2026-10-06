@@ -11,6 +11,7 @@ const ROI_PADDING = 48;
 const ROI_DEADZONE = 35;
 const WALLPAPER_URL = "https://smirel.com/download/wallpaper-beach-blue-v1-original.png";
 const SNAP_SELECTOR = [
+  ".loom-portal-brand",
   ".loom-primary-action:not(:disabled)",
   ".loom-secondary-action",
   ".loom-download-version a",
@@ -23,6 +24,21 @@ const SNAP_SELECTOR = [
   ".loom-host-setup-retry:not(:disabled)",
   ".loom-profile-home-action:not(:disabled)",
   "[data-liquid-snap='true']",
+].join(",");
+
+const MAGNETIC_SELECTOR = [
+  ".loom-portal-brand",
+  ".loom-primary-action:not(:disabled)",
+  ".loom-secondary-action",
+  ".loom-download-version a",
+  ".loom-oauth-button:not(:disabled)",
+  ".loom-inline-link:not(:disabled)",
+  ".loom-password-toggle:not(:disabled)",
+  ".loom-form-submit:not(:disabled)",
+  ".loom-account-switch:not(:disabled)",
+  ".loom-host-setup-retry:not(:disabled)",
+  ".loom-profile-home-action:not(:disabled)",
+  "[data-magnetic-hover='true']",
 ].join(",");
 
 type SpringValue = { value: number; velocity: number; target: number };
@@ -554,6 +570,105 @@ export function PortalLiquidCursor() {
     const height: SpringValue = { value: BASE_HEIGHT, velocity: 0, target: BASE_HEIGHT };
     const snap: SpringValue = { value: 0, velocity: 0, target: 0 };
 
+    type MagneticState = {
+      x: SpringValue;
+      y: SpringValue;
+      appliedX: number;
+      appliedY: number;
+    };
+
+    const magneticStates = new Map<HTMLElement, MagneticState>();
+    let magneticTargets: HTMLElement[] = [];
+
+    const refreshMagneticTargets = () => {
+      const next = Array.from(root.querySelectorAll<HTMLElement>(MAGNETIC_SELECTOR));
+      const nextSet = new Set(next);
+      for (const [element] of magneticStates) {
+        if (!nextSet.has(element)) {
+          element.style.removeProperty("translate");
+          magneticStates.delete(element);
+        }
+      }
+      magneticTargets = next;
+      for (const element of magneticTargets) {
+        if (!magneticStates.has(element)) {
+          magneticStates.set(element, {
+            x: { value: 0, velocity: 0, target: 0 },
+            y: { value: 0, velocity: 0, target: 0 },
+            appliedX: 0,
+            appliedY: 0,
+          });
+        }
+      }
+    };
+
+    const updateMagneticTargets = (dt: number) => {
+      let settled = true;
+      for (const element of magneticTargets) {
+        const state = magneticStates.get(element);
+        if (!state || !element.isConnected) continue;
+
+        const rect = element.getBoundingClientRect();
+        const baseLeft = rect.left - state.appliedX;
+        const baseTop = rect.top - state.appliedY;
+        const baseRight = baseLeft + rect.width;
+        const baseBottom = baseTop + rect.height;
+        const hoverArea = element.classList.contains("loom-portal-brand") ? 22 : 18;
+        const inside =
+          pointerInside &&
+          pointerX >= baseLeft - hoverArea &&
+          pointerX <= baseRight + hoverArea &&
+          pointerY >= baseTop - hoverArea &&
+          pointerY <= baseBottom + hoverArea;
+
+        if (inside) {
+          const centerX = baseLeft + rect.width / 2;
+          const centerY = baseTop + rect.height / 2;
+          const normalizedX = Math.max(-1, Math.min(1, (pointerX - centerX) / Math.max(rect.width / 2, 1)));
+          const normalizedY = Math.max(-1, Math.min(1, (pointerY - centerY) / Math.max(rect.height / 2, 1)));
+          const distance = element.classList.contains("loom-portal-brand") ? 8 : (activeTarget === element ? 7 : 10);
+          state.x.target = normalizedX * distance;
+          state.y.target = normalizedY * distance;
+        } else {
+          state.x.target = 0;
+          state.y.target = 0;
+        }
+
+        // Slightly under-damped on purpose: the target follows the pointer and
+        // gives one restrained elastic swing when it is released.
+        stepSpring(state.x, dt, 250, 21);
+        stepSpring(state.y, dt, 250, 21);
+
+        const nextX = Math.round(state.x.value * 4) / 4;
+        const nextY = Math.round(state.y.value * 4) / 4;
+        if (Math.abs(nextX - state.appliedX) >= 0.24 || Math.abs(nextY - state.appliedY) >= 0.24) {
+          state.appliedX = nextX;
+          state.appliedY = nextY;
+          if (Math.abs(nextX) < 0.125 && Math.abs(nextY) < 0.125 && state.x.target === 0 && state.y.target === 0) {
+            element.style.removeProperty("translate");
+            state.appliedX = 0;
+            state.appliedY = 0;
+          } else {
+            element.style.setProperty("translate", `${nextX}px ${nextY}px`);
+          }
+          rasterDirty = true;
+          snapDirty = true;
+        }
+
+        if (
+          Math.abs(state.x.target - state.x.value) >= 0.08 ||
+          Math.abs(state.y.target - state.y.value) >= 0.08 ||
+          Math.abs(state.x.velocity) >= 0.08 ||
+          Math.abs(state.y.velocity) >= 0.08
+        ) {
+          settled = false;
+        }
+      }
+      return settled;
+    };
+
+    refreshMagneticTargets();
+
     const findSnapTarget = () => {
       if (activeTarget?.isConnected) {
         if (rectDistance(activeTarget.getBoundingClientRect(), pointerX, pointerY) <= RELEASE_DISTANCE) return activeTarget;
@@ -665,6 +780,7 @@ export function PortalLiquidCursor() {
     const frame = (now: number) => {
       const dt = Math.min(0.032, Math.max(0.001, (now - lastTime) / 1000));
       lastTime = now;
+      const magneticSettled = updateMagneticTargets(dt);
       updateTargets();
 
       const snapping = Boolean(activeTarget) || snap.target > 0.001;
@@ -717,7 +833,8 @@ export function PortalLiquidCursor() {
         Math.abs(x.velocity) < 0.08 &&
         Math.abs(y.velocity) < 0.08 &&
         Math.abs(width.velocity) < 0.08 &&
-        Math.abs(height.velocity) < 0.08;
+        Math.abs(height.velocity) < 0.08 &&
+        magneticSettled;
 
       if (!pointerInside && settled) {
         running = false;
@@ -754,7 +871,12 @@ export function PortalLiquidCursor() {
       wake();
     };
 
-    const observer = new MutationObserver(() => { rasterDirty = true; snapDirty = true; wake(); });
+    const observer = new MutationObserver(() => {
+      refreshMagneticTargets();
+      rasterDirty = true;
+      snapDirty = true;
+      wake();
+    });
     observer.observe(root, { childList: true, subtree: true, characterData: true });
     const resizeObserver = new ResizeObserver(() => { rasterDirty = true; snapDirty = true; wake(); });
     resizeObserver.observe(root);
@@ -789,6 +911,8 @@ export function PortalLiquidCursor() {
       window.removeEventListener("resize", handleResize);
       window.removeEventListener("blur", handlePointerLeave);
       document.documentElement.classList.remove("loom-liquid-cursor-active");
+      for (const element of magneticTargets) element.style.removeProperty("translate");
+      magneticStates.clear();
       gl.deleteTexture(texture);
       gl.deleteBuffer(position);
       gl.deleteBuffer(uv);
