@@ -7,8 +7,8 @@ html.loom-liquid-cursor-active.loom-liquid-cursor-active body .loom-portal-page.
   position: fixed;
   left: 0;
   top: 0;
-  width: 600px;
-  height: 600px;
+  width: 420px;
+  height: 420px;
   z-index: 2147483000;
   pointer-events: none;
   opacity: 0;
