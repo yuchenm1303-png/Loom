@@ -9,7 +9,7 @@ from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
 from contextlib import nullcontext
 from dataclasses import replace
 from pathlib import Path
-from typing import Callable, Protocol
+from typing import Any, Callable, Protocol
 
 from app.ai import AIMessage, ChatRequest, MessageRole, ModelResponse, ModelUsage, ToolCall, ToolChoice
 
@@ -38,6 +38,10 @@ from .response_language import infer_user_language
 from .step import RequestStateSnapshot, StepContext
 from .storage import FileAgentSessionStore, utc_now
 from .turn_input import TurnInput, normalize_turn_input
+from .steering import (_content_record, _content_from_record, _content_digest, _input_id,
+                       _submit_once, _receipt, _consumed_duplicate,
+                       _STEERING_PROMPT, _STEERING_PROMPT_MARKER)
+from .model_replan import request_replan
 from .tools import ToolContext, ToolPolicy, ToolRegistry, ToolResult
 
 
@@ -531,31 +535,201 @@ class AgentRuntime:
             messages.append(continuation)
         return messages, guidance_metadata
 
-    def steer(self, session_id: str, text: str, *, turn_id: str) -> None:
-        value = str(text).strip()
-        if not value:
-            raise ValueError("steering input must not be empty")
-        with self._active_tokens_guard:
-            token = self._active_tokens.get(session_id)
-            session = self.store.load(session_id)
-            if token is None or token.cancelled or session.current_turn_id != turn_id:
-                raise ValueError("steering target is not the active turn")
-            self.store.submit_steering(session_id, turn_id, value)
-            from .model_replan import request_replan
-            request_replan(token)
+    def steer(
+        self: Any,
+        session_id: str,
+        content: Any,
+        *,
+        turn_id: str,
+        input_id: str | None = None,
+    ) -> dict[str, Any]:
+        normalized_content, value = normalize_turn_input(content)
+        content_record = _content_record(normalized_content)
+        digest = _content_digest(content_record)
+        resolved_session_id = str(session_id or "").strip()
+        resolved_turn_id = str(turn_id or "").strip()
+        if not resolved_session_id or not resolved_turn_id:
+            raise ValueError("steering requires session_id and turn_id")
+        resolved_input_id = _input_id(input_id)
 
-    def _consume_steering(self, session) -> bool:
+        # The active path intentionally shares the terminal-commit guard used by
+        # TurnRunner. Either the guidance enters the inbox before completion or
+        # the completed turn wins. A retry of an already-consumed id remains an
+        # idempotent success even if completion (or queue auto-drain) has since
+        # moved the session beyond the target turn.
+        with self._active_tokens_guard:
+            token = self._active_tokens.get(resolved_session_id)
+            session = self.store.load(resolved_session_id)
+            consumed = _consumed_duplicate(
+                self,
+                session,
+                turn_id=resolved_turn_id,
+                text=value,
+                input_id=resolved_input_id,
+                content_digest=digest,
+            )
+            if consumed is not None:
+                return consumed
+            if session.current_turn_id != resolved_turn_id:
+                raise ValueError("steering target is not the active turn")
+            if (
+                token is not None
+                and not token.cancelled
+                and session.status is AgentStatus.RUNNING
+            ):
+                identifier, duplicate, submitted_at = _submit_once(
+                    self.store,
+                    session_id=resolved_session_id,
+                    turn_id=resolved_turn_id,
+                    text=value,
+                    input_id=resolved_input_id,
+                    content_record=content_record,
+                    content_digest=digest,
+                )
+                sampling = request_replan(token) if not duplicate else False
+                return _receipt(
+                    input_id=identifier,
+                    duplicate=duplicate,
+                    delivery="model_replan_requested" if sampling else "next_safe_boundary",
+                    submitted_at=submitted_at,
+                )
+
+        # WAITING_APPROVAL has no active token: the worker intentionally returned
+        # control to the app server. Acquire the normal session lease so an
+        # approval response and a steer cannot both win this boundary.
+        lock = self._session_lock(resolved_session_id)
+        with lock:
+            # Re-check the active case after waiting for the lease. A concurrent
+            # approval may already have resumed the turn while we were waiting.
+            with self._active_tokens_guard:
+                token = self._active_tokens.get(resolved_session_id)
+                session = self.store.load(resolved_session_id)
+                consumed = _consumed_duplicate(
+                    self,
+                    session,
+                    turn_id=resolved_turn_id,
+                    text=value,
+                    input_id=resolved_input_id,
+                    content_digest=digest,
+                )
+                if consumed is not None:
+                    return consumed
+                if session.current_turn_id != resolved_turn_id:
+                    raise ValueError("steering target is not the active turn")
+                if (
+                    token is not None
+                    and not token.cancelled
+                    and session.status is AgentStatus.RUNNING
+                ):
+                    identifier, duplicate, submitted_at = _submit_once(
+                        self.store,
+                        session_id=resolved_session_id,
+                        turn_id=resolved_turn_id,
+                        text=value,
+                        input_id=resolved_input_id,
+                        content_record=content_record,
+                        content_digest=digest,
+                    )
+                    sampling = request_replan(token) if not duplicate else False
+                    return _receipt(
+                        input_id=identifier,
+                        duplicate=duplicate,
+                        delivery="model_replan_requested" if sampling else "next_safe_boundary",
+                        submitted_at=submitted_at,
+                    )
+
+            session = self.store.load(resolved_session_id)
+            consumed = _consumed_duplicate(
+                self,
+                session,
+                turn_id=resolved_turn_id,
+                text=value,
+                input_id=resolved_input_id,
+                content_digest=digest,
+            )
+            if consumed is not None:
+                return consumed
+            if session.current_turn_id != resolved_turn_id:
+                raise ValueError("steering target is not the active turn")
+            if session.status is not AgentStatus.WAITING_APPROVAL or session.pending_approval is None:
+                raise ValueError("steering target is not the active turn")
+
+            approval_call_id = session.pending_approval.call_id
+            pending_calls = list(session.pending_tool_calls)
+            if not pending_calls or not any(call.call_id == approval_call_id for call in pending_calls):
+                raise RuntimeError("pending approval state is inconsistent")
+
+            identifier, duplicate, submitted_at = _submit_once(
+                self.store,
+                session_id=resolved_session_id,
+                turn_id=resolved_turn_id,
+                text=value,
+                input_id=resolved_input_id,
+                content_record=content_record,
+                content_digest=digest,
+            )
+
+            # The user's new direction supersedes this sampled action set. All
+            # calls are still unexecuted at this boundary, so close their model
+            # history explicitly instead of carrying stale calls into replanning.
+            step_id = str(session.pending_step_id or "")
+            session.status = AgentStatus.RUNNING
+            session.pending_approval = None
+            session.pending_tool_calls.clear()
+            session.pending_step_id = ""
+            for call in pending_calls:
+                session.pending_bindings.pop(call.call_id, None)
+            self._release_turn_steps(session)
+
+            for call in pending_calls:
+                if call.call_id == approval_call_id:
+                    self._record(
+                        session,
+                        AgentEventKind.TOOL_DENIED,
+                        data={
+                            "call_id": call.call_id,
+                            "tool": call.name,
+                            "source": "user",
+                            "reason": "superseded by new user guidance",
+                            "steering": True,
+                            "steering_input_id": identifier,
+                            "step_id": step_id,
+                        },
+                    )
+                self._append_tool_result(
+                    session,
+                    call,
+                    ToolResult(
+                        ok=False,
+                        content="Not executed: superseded by new user guidance; reconsider this action.",
+                    ),
+                    failed=True,
+                )
+
+            self._consume_steering(session)
+            return _receipt(
+                input_id=identifier,
+                duplicate=duplicate,
+                delivery="approval_superseded",
+                submitted_at=submitted_at,
+                resume_required=True,
+                applied=True,
+            )
+
+    def _consume_steering(self: Any, session: Any) -> bool:
         items = self.store.pending_steering(session.session_id, session.current_turn_id)
         consumed = False
         for item in items:
             if item["id"] in session.steering_ids:
                 continue
-            session.messages.append(AIMessage(role=MessageRole.USER, content=item["text"]))
+            content = _content_from_record(item.get("content", item.get("text", "")))
+            session.messages.append(AIMessage(role=MessageRole.USER, content=content))
             session.steering_ids.append(item["id"])
             event_data = {
-                "text": item["text"],
+                "text": str(item.get("text") or ""),
                 "source": "steering",
                 "input_id": item["id"],
+                "content_digest": str(item.get("content_digest") or ""),
             }
             submitted_at = str(item.get("submitted_at") or "").strip()
             if submitted_at:
@@ -1169,7 +1343,8 @@ class AgentRuntime:
             if step.request_state.captured
             else session.system_prompt
         )
-        return f"{base_prompt}\n\n{capability_contract}"
+        prompt = f"{base_prompt}\n\n{capability_contract}"
+        return prompt if _STEERING_PROMPT_MARKER in prompt else f"{prompt}\n\n{_STEERING_PROMPT}"
 
     def _append_tool_history(
         self,
@@ -1343,6 +1518,35 @@ class AgentRuntime:
         with self._active_tokens_guard:
             if self._active_tokens.get(session_id) is token:
                 self._active_tokens.pop(session_id, None)
+
+    def resume_steered_turn(self: Any, session_id: str, turn_id: str):
+        """Continue an approval-superseded turn through the normal durable layers."""
+
+        resolved_session_id = str(session_id or "").strip()
+        resolved_turn_id = str(turn_id or "").strip()
+        lock = self._session_lock(resolved_session_id)
+        with lock:
+            session = self.store.load(resolved_session_id)
+            if session.current_turn_id != resolved_turn_id:
+                raise ValueError("turn_id does not match the steered turn")
+            if session.status is not AgentStatus.RUNNING:
+                return self._result(session)
+            if session.pending_approval is not None or session.pending_tool_calls:
+                raise RuntimeError("steered turn still owns unresolved tool actions")
+            with self._active_tokens_guard:
+                existing = self._active_tokens.get(resolved_session_id)
+                if existing is not None and not existing.cancelled:
+                    return self._result(session)
+            token = self._activate(resolved_session_id)
+            try:
+                result = self._drive(session, token)
+            finally:
+                self._deactivate(resolved_session_id, token)
+
+        return result
+
+    def _before_turn_completed(self, session: AgentSession) -> None:
+        """Lifecycle boundary invoked before a terminal result becomes observable."""
 
 
 def _add_usage(left: ModelUsage, right: ModelUsage) -> ModelUsage:

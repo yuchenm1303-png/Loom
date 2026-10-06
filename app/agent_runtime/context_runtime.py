@@ -14,6 +14,10 @@ from .history import HistoryRepair, repair_tool_history
 from .instructions import AppliedInstructionCache
 from .response_language import communication_language_message, infer_user_language
 from .runtime import CancellationToken
+from typing import Any
+from .continuity import (_latest_captured_step, _recent_durable_evidence,
+                         _reference_message, _reference_payload, _fit_reference_without_breaking_budget)
+from .compaction_fallback import _invalid_compaction_error, build_deterministic_compaction_summary
 from .sandbox_runtime import SandboxAgentRuntime
 
 
@@ -94,17 +98,17 @@ class ContextAgentRuntime(SandboxAgentRuntime):
         return repaired, messages, ()
 
     def _commit_compaction_locked(
-        self,
-        session: AgentSession,
+        self: Any,
+        session: Any,
         *,
         summary: str,
-        repaired: HistoryRepair,
-        archived: tuple[AIMessage, ...],
-        retained: tuple[AIMessage, ...],
+        repaired: Any,
+        archived: tuple[Any, ...],
+        retained: tuple[Any, ...],
         summary_source: str,
-        summary_usage: ModelUsage | None = None,
-        replacement_override: tuple[AIMessage, ...] | None = None,
-    ) -> ContextCheckpoint:
+        summary_usage: Any | None = None,
+        replacement_override: tuple[Any, ...] | None = None,
+    ) -> Any:
         text = str(summary or "").strip()
         if not text:
             raise ValueError("context summary must not be empty")
@@ -117,15 +121,26 @@ class ContextAgentRuntime(SandboxAgentRuntime):
             fallback=session.communication_language,
         )
         session.communication_language = communication_language
-        step = self._build_step_context(session, next_model_step=False)
+
+        mid_turn = (
+            str(summary_source) == "auto"
+            and getattr(getattr(session, "status", None), "value", "") == "running"
+        )
+        step = _latest_captured_step(self, session) if mid_turn else None
+        if step is None:
+            # Standalone/manual compaction and defensive fallback both use a
+            # non-authorizing snapshot. Normal mid-turn auto compaction always
+            # has its already-captured request Step available here.
+            step = self._build_step_context(session, next_model_step=False)
         envelope = self._context_envelope(session, step)
 
-        from .context_budget import estimate_tokens
+        from app.agent_runtime.context_budget import estimate_tokens
+        from app.agent_runtime import context_compaction as compaction
 
         replacement = (
             tuple(replacement_override)
             if replacement_override is not None
-            else build_compacted_history(
+            else compaction.build_compacted_history(
                 canonical_before,
                 text,
                 token_counter=lambda messages: estimate_tokens(messages),
@@ -133,12 +148,81 @@ class ContextAgentRuntime(SandboxAgentRuntime):
         )
         if not replacement:
             raise ValueError("context checkpoint replacement must not be empty")
-        replacement_estimated_tokens = estimate_tokens(replacement)
+
+        reference_payload: dict[str, object] | None = None
+        reference_injected = False
+        if mid_turn and replacement_override is not None:
+            durable_evidence = _recent_durable_evidence(self, session)
+            reference = _reference_message(
+                step,
+                envelope,
+                durable_evidence=durable_evidence,
+            )
+            replacement, reference_injected = _fit_reference_without_breaking_budget(
+                self,
+                session,
+                step,
+                envelope,
+                communication_language,
+                replacement,
+                reference,
+                compaction,
+            )
+            if reference_injected:
+                reference_payload = _reference_payload(
+                    step,
+                    envelope,
+                    durable_evidence=durable_evidence,
+                )
+
+        # A checkpoint is useful only if its replacement leaves an operable
+        # request. Prefer more headroom by dropping the oldest retained user
+        # messages, but keep the newest user request and the handoff summary.
+        context_after = _compacted_context_record(
+            self, session, step, envelope, communication_language, replacement
+        )
+        limits_after = context_after["context_limits"]
+        hard_budget = int(limits_after["input_budget_tokens"])
+        auto_limit = int(limits_after["auto_compact_token_limit"])
+        safety = int(limits_after["safety_tokens"])
+        # Some test/provider profiles intentionally use a tiny explicit trigger
+        # to request immediate compaction. It is not a feasible post-compaction
+        # target; the actual model input budget remains the hard constraint.
+        target = hard_budget - safety
+        if auto_limit >= hard_budget // 2:
+            target = min(target, auto_limit * 4 // 5)
+        target = max(1, target)
+        while int(context_after["calibrated_input_tokens_after"]) > target:
+            real_users = [
+                index for index, message in enumerate(replacement)
+                if compaction.is_real_user_message(message)
+            ]
+            if len(real_users) <= 1:
+                break
+            oldest = real_users[0]
+            replacement = tuple(message for index, message in enumerate(replacement) if index != oldest)
+            context_after = _compacted_context_record(
+                self, session, step, envelope, communication_language, replacement
+            )
+        if int(context_after["calibrated_input_tokens_after"]) > hard_budget:
+            from app.agent_runtime.context_budget import ContextBudgetExceeded
+
+            raise ContextBudgetExceeded(
+                estimated_tokens=int(context_after["calibrated_input_tokens_after"]),
+                input_budget_tokens=hard_budget,
+                tool_schema_tokens=int(context_after["tool_schema_tokens"]),
+                message_count=int(context_after["message_count"]),
+                reason="compacted history still exceeds the model input budget",
+            )
+
+        retained_message_count = sum(
+            1 for message in replacement if compaction.is_real_user_message(message)
+        )
         checkpoint = self.checkpoint_store.create(
             session_id=session.session_id,
             summary=text,
             archived_messages=canonical_before,
-            retained_message_count=max(0, len(replacement) - 1),
+            retained_message_count=retained_message_count,
             world_state_digest=envelope.digest,
         )
         session.messages = list(replacement)
@@ -152,14 +236,13 @@ class ContextAgentRuntime(SandboxAgentRuntime):
                 "archived_messages": checkpoint.archived_message_count,
                 "retained_messages": checkpoint.retained_message_count,
                 "replacement_messages": len(replacement),
-                # This estimate covers the newly committed canonical replacement
-                # only. The next real model request supersedes it with a full
-                # request measurement including transient context/tool schemas.
-                "replacement_estimated_tokens": replacement_estimated_tokens,
-                "measurement_pending": True,
                 "world_state_digest": checkpoint.world_state_digest,
                 "history_repaired": repaired.changed,
                 "summary_source": summary_source,
+                "context_after_compaction": context_after,
+                "compaction_phase": "mid_turn" if mid_turn else "standalone",
+                "continuity_reference_injected": reference_injected,
+                "continuity_reference": reference_payload,
                 "communication_language": communication_language,
                 "summary_usage": (
                     {
@@ -199,7 +282,7 @@ class ContextAgentRuntime(SandboxAgentRuntime):
                 summary_source="caller",
             )
 
-    def compact_context_with_model(
+    def _compact_context_model_attempt(
         self,
         session_id: str,
         *,
@@ -306,6 +389,38 @@ class ContextAgentRuntime(SandboxAgentRuntime):
 
         return prepare_context(self, session, step, token)
 
+    def compact_context_with_model(self: Any, session_id: str, *, keep_recent: int = 24):
+        invalid: RuntimeError | None = None
+        attempts = max(1, int(self.limits.model_retries) + 1)
+        for _ in range(attempts):
+            try:
+                return self._compact_context_model_attempt(session_id, keep_recent=keep_recent)
+            except RuntimeError as exc:
+                if not _invalid_compaction_error(exc):
+                    raise
+                invalid = exc
+
+        lock = self._session_lock(session_id)
+        with lock:
+            session = self.store.load(session_id)
+            if session.status in {AgentStatus.RUNNING, AgentStatus.WAITING_APPROVAL}:
+                raise RuntimeError("cannot compact context while a turn is active")
+            repaired, archived, retained = self._prepare_compaction_locked(
+                session,
+                keep_recent=keep_recent,
+            )
+            summary = build_deterministic_compaction_summary(tuple((*archived, *retained)))
+            checkpoint = self._commit_compaction_locked(
+                session,
+                summary=summary,
+                repaired=repaired,
+                archived=archived,
+                retained=retained,
+                summary_source="model_fallback",
+            )
+        _ = invalid
+        return checkpoint
+
 
 def _add_usage(left: ModelUsage, right: ModelUsage) -> ModelUsage:
     return ModelUsage(
@@ -316,3 +431,54 @@ def _add_usage(left: ModelUsage, right: ModelUsage) -> ModelUsage:
 
 
 __all__ = ["ContextAgentRuntime"]
+
+
+def _compacted_context_record(
+    runtime: Any,
+    session: Any,
+    step: Any,
+    envelope: Any,
+    communication_language: str,
+    replacement: tuple[Any, ...],
+) -> dict[str, Any]:
+    from app.ai import AIMessage, MessageRole
+    from app.agent_runtime.context_budget import estimate_tokens, estimate_tool_schema_tokens
+    from app.agent_runtime.context_limits import resolve_context_limits
+
+    request_state = getattr(step, "request_state", None)
+    captured = bool(getattr(request_state, "captured", False))
+    transient = [
+        message
+        for message in runtime._request_context_messages(session, step, envelope)
+        if message.name != "loom_communication_language"
+    ]
+    project_instructions = (
+        request_state.project_instructions
+        if captured
+        else runtime.instruction_loader.load(session.workspace_dir)
+    )
+    if project_instructions:
+        transient.append(
+            AIMessage(role=MessageRole.USER, name="loom_project_instructions", content=project_instructions)
+        )
+    transient.append(communication_language_message((), fallback=communication_language))
+    tools = step.tool_router.definitions()
+    limits = (
+        request_state.context_limits
+        if captured and request_state.context_limits is not None
+        else resolve_context_limits(runtime, session)
+    )
+    visible = (*transient, *replacement)
+    estimated = estimate_tokens(visible, tools)
+    return {
+        "context_limits": limits.as_dict(),
+        "estimated_input_tokens_after": estimated,
+        "calibrated_input_tokens_after": estimated,
+        "active_context_tokens": estimated,
+        "token_accounting_source": "post_compaction_estimate",
+        "tool_schema_tokens": estimate_tool_schema_tokens(tools),
+        "message_count": len(visible),
+        "tool_outputs_reduced": 0,
+        "tool_outputs_collapsed": 0,
+        "user_messages_truncated": 0,
+    }

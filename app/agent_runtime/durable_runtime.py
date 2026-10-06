@@ -37,6 +37,7 @@ class DurableAgentRuntime(CoreAgentRuntime):
         for tool in durable_thread_tools(self.durable_state):
             if self.tools.get(tool.name) is None:
                 self.tools.register(tool)
+        self._steered_usage_states: dict[str, dict[str, object]] = {}
         self.auto_drain_queue = bool(auto_drain_queue)
         self.max_auto_queued_turns = max(1, int(max_auto_queued_turns))
 
@@ -405,6 +406,10 @@ class DurableAgentRuntime(CoreAgentRuntime):
         *,
         before_tokens: int | None = None,
     ) -> AgentRunResult:
+        state = self._steered_usage_states.get(result.session_id)
+        if (state and state["accounted"] and state["turn_id"] == result.turn_id
+                and before_tokens is not None and before_tokens == state["before_tokens"]):
+            return result
         goal = self.durable_state.get_goal(result.session_id)
         if goal is None:
             return result
@@ -475,6 +480,89 @@ class DurableAgentRuntime(CoreAgentRuntime):
             except Exception:
                 continue
         return event
+
+    def _before_turn_completed(self, session: AgentSession) -> None:
+        super()._before_turn_completed(session)
+        state = self._steered_usage_states.get(session.session_id)
+        if state and not state["accounted"] and state["turn_id"] == session.current_turn_id:
+            self._track_goal_usage(self._result(session), before_tokens=int(state["before_tokens"]))
+            state["accounted"] = True
+
+    def resume_steered_turn(self, session_id: str, turn_id: str) -> AgentRunResult:
+        session_id, turn_id = str(session_id or "").strip(), str(turn_id or "").strip()
+        before_tokens = self.store.load(session_id).usage.total_tokens
+        self._steered_usage_states[session_id] = {
+            "turn_id": turn_id, "before_tokens": before_tokens, "accounted": False,
+        }
+        try:
+            result = super().resume_steered_turn(session_id, turn_id)
+            result = self._track_goal_usage(result, before_tokens=before_tokens)
+            if self.auto_drain_queue and result.status is AgentStatus.COMPLETED:
+                drained = self._drain_queue(session_id, result)
+                if drained is not None:
+                    result = drained
+            return result
+        finally:
+            self._steered_usage_states.pop(session_id, None)
+
+    def recover_turn_if_idle(self, session_id: str, existing_turn_id: str) -> AgentRunResult:
+        """Resume one explicitly authorized safe handoff under the same turn id.
+
+        This never converts ambiguous execution state into a retry.  A pending
+        tool call, approval, or step means the old process may have admitted an
+        action whose outcome is not safely reconstructable, so that state must go
+        through unclean-loss finalization instead.
+        """
+
+        resolved_session_id = str(session_id or "").strip()
+        resolved_turn_id = str(existing_turn_id or "").strip()
+        if not resolved_session_id or not resolved_turn_id:
+            raise ValueError("safe-handoff recovery requires session_id and existing_turn_id")
+
+        lock = self._session_lock(resolved_session_id)
+        with lock:
+            session = self.get_session(resolved_session_id)
+            if session.current_turn_id != resolved_turn_id:
+                raise ValueError("existing_turn_id does not match the unfinished turn")
+            with self._active_tokens_guard:
+                active = self._active_tokens.get(session.session_id)
+                if active is not None and not active.cancelled:
+                    raise RuntimeError("unfinished turn still has a live runtime owner")
+
+            self._validate_idle_turn_recovery(session)
+            before_tokens = session.usage.total_tokens
+
+            # Binding digests without pending calls are stale evidence, not live
+            # authority. Never carry them into the fresh execution stack.
+            session.pending_bindings.clear()
+            self._release_turn_steps(session)
+            token = self._activate(session.session_id)
+            try:
+                result = self._drive(session, token)
+            finally:
+                self._deactivate(session.session_id, token)
+
+        result = self._track_goal_usage(result, before_tokens=before_tokens)
+        if self.auto_drain_queue and result.status is AgentStatus.COMPLETED:
+            drained = self._drain_queue(session.session_id, result)
+            if drained is not None:
+                return drained
+        return result
+
+    def _validate_idle_turn_recovery(self, session: AgentSession) -> None:
+        """Reject unresolved authority before acquiring a fresh execution token."""
+        if session.status is not AgentStatus.RUNNING:
+            raise RuntimeError(
+                f"same-turn recovery requires a safely suspended running turn; got {session.status.value}"
+            )
+        if session.pending_approval is not None:
+            raise RuntimeError(
+                "same-turn recovery cannot replay a persisted approval; fresh approval authority is required"
+            )
+        if session.pending_tool_calls or session.pending_step_id:
+            raise RuntimeError(
+                "same-turn recovery found pending execution state with unknown outcome; finalize as interrupted"
+            )
 
 
 __all__ = ["DurableAgentRuntime"]
