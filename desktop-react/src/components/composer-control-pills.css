@@ -309,3 +309,199 @@ html[data-loom-theme="light"] .composer .model-chip > span {
     line-height: 1.3;
   }
 }
+
+/* ==========================================================================
+   Composer toolbar visual refinement v2
+   Quiet, flat controls at rest; semantic color lives in the glyphs, not in
+   heavy pill chrome. Interaction is visible but deliberately compact.
+   ========================================================================== */
+
+.composer .composer-tool,
+.composer .composer-chip {
+  height: 30px;
+  min-height: 30px;
+  border-radius: 8px;
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+  color: #858d99;
+  transform: none;
+}
+
+.composer .composer-tool {
+  padding: 0 8px;
+  gap: 6.5px;
+  font-size: 10.7px;
+  font-weight: 560;
+}
+
+.composer .composer-chip {
+  padding: 0 8px;
+  gap: 6.5px;
+  font-size: 10.7px;
+  font-weight: 590;
+}
+
+.composer .composer-chip::before {
+  display: none;
+}
+
+.composer .composer-tool:hover:not(:disabled),
+.composer .composer-chip:hover:not(:disabled) {
+  transform: none;
+  color: #c4cad2;
+  border-color: rgba(255,255,255,.038);
+  background: rgba(255,255,255,.028);
+  box-shadow: none;
+}
+
+.composer .composer-tool:active:not(:disabled),
+.composer .composer-chip:active:not(:disabled) {
+  transform: none;
+  background: rgba(255,255,255,.042);
+  box-shadow: none;
+}
+
+.composer .composer-chip:focus-visible,
+.composer .composer-tool:focus-visible {
+  outline: none;
+  border-color: rgba(139,124,246,.18);
+  box-shadow: 0 0 0 3px rgba(139,124,246,.06);
+}
+
+.composer .composer-chip.is-open {
+  transform: none;
+  color: #c9c5e8;
+  border-color: rgba(123,109,207,.085);
+  background: rgba(123,109,207,.045);
+  box-shadow: none;
+}
+
+.composer .composer-divider {
+  height: 14px;
+  margin-inline: 2px 3px;
+  background: linear-gradient(
+    180deg,
+    transparent,
+    rgba(128,136,149,.24) 22%,
+    rgba(128,136,149,.24) 78%,
+    transparent
+  );
+}
+
+.composer .composer-tool > svg,
+.composer .composer-chip > svg:not(.composer-chip-chevron) {
+  width: 15px;
+  height: 15px;
+  color: #747d89;
+  transform: none;
+}
+
+.composer .composer-tool:hover:not(:disabled) > svg,
+.composer .composer-chip:hover:not(:disabled) > svg:not(.composer-chip-chevron),
+.composer .composer-chip.is-open > svg:not(.composer-chip-chevron) {
+  transform: none;
+  color: #a7afb9;
+}
+
+/* Semantic accents remain intentionally restrained. */
+.composer .permission-chip > .composer-access-glyph {
+  color: #a98448;
+}
+
+.composer .permission-chip:hover:not(:disabled) > .composer-access-glyph,
+.composer .permission-chip.is-open > .composer-access-glyph {
+  color: #c49a57;
+}
+
+.composer .model-chip > .composer-model-glyph {
+  color: #7f85a7;
+}
+
+.composer .model-chip:hover:not(:disabled) > .composer-model-glyph,
+.composer .model-chip.is-open > .composer-model-glyph {
+  color: #9a91d2;
+}
+
+.composer .sticker-chip > .composer-expression-glyph,
+.composer .composer-tool > .composer-attach-glyph {
+  color: #76808c;
+}
+
+.composer .sticker-chip:hover:not(:disabled) > .composer-expression-glyph,
+.composer .sticker-chip.is-open > .composer-expression-glyph,
+.composer .composer-tool:hover:not(:disabled) > .composer-attach-glyph {
+  color: #a6aeb8;
+}
+
+.composer .composer-chip-chevron {
+  width: 11px;
+  height: 11px;
+  margin-left: 1px;
+  color: #66707d;
+  opacity: .68;
+  transition:
+    transform 260ms cubic-bezier(.2,.78,.22,1),
+    translate 220ms cubic-bezier(.2,.78,.22,1),
+    opacity 180ms ease,
+    color 180ms ease;
+}
+
+.composer .composer-chip:hover:not(:disabled) .composer-chip-chevron {
+  opacity: .95;
+  color: #8f98a5;
+  translate: 0 .6px;
+}
+
+.composer .composer-chip.is-open .composer-chip-chevron {
+  opacity: 1;
+  color: #9e96cf;
+  translate: 0 0;
+  transform: rotate(180deg);
+}
+
+html[data-loom-theme="light"] .composer .composer-tool,
+html[data-loom-theme="light"] .composer .composer-chip {
+  color: #5f6975;
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+}
+
+html[data-loom-theme="light"] .composer .composer-tool:hover:not(:disabled),
+html[data-loom-theme="light"] .composer .composer-chip:hover:not(:disabled) {
+  color: #303740;
+  border-color: rgba(31,36,43,.038);
+  background: rgba(31,36,43,.032);
+  box-shadow: none;
+}
+
+html[data-loom-theme="light"] .composer .composer-chip.is-open {
+  color: #4f487b;
+  border-color: rgba(105,90,216,.07);
+  background: rgba(105,90,216,.045);
+  box-shadow: none;
+}
+
+html[data-loom-theme="light"] .composer .composer-tool > svg,
+html[data-loom-theme="light"] .composer .composer-chip > svg:not(.composer-chip-chevron) {
+  color: #6e7884;
+}
+
+html[data-loom-theme="light"] .composer .permission-chip > .composer-access-glyph {
+  color: #9a7537;
+}
+
+html[data-loom-theme="light"] .composer .model-chip > .composer-model-glyph {
+  color: #6f7894;
+}
+
+html[data-loom-theme="light"] .composer .sticker-chip > .composer-expression-glyph,
+html[data-loom-theme="light"] .composer .composer-tool > .composer-attach-glyph {
+  color: #697481;
+}
+
+html[data-loom-theme="light"] .composer .composer-chip-chevron {
+  color: #7c8692;
+}
+

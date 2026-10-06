@@ -106,37 +106,38 @@ function ReviewCheckIcon({ size = 16 }: { size?: number }) {
       viewBox="0 0 20 20"
       fill="none"
       stroke="currentColor"
-      strokeWidth="1.5"
+      strokeWidth="1.45"
       strokeLinecap="round"
       strokeLinejoin="round"
       aria-hidden="true"
       focusable="false"
     >
-      <path className="header-review-document" d="M5.2 2.8h6.1l3.5 3.5v10.9H5.2a2 2 0 0 1-2-2V4.8a2 2 0 0 1 2-2Z" />
-      <path className="header-review-corner" d="M11.3 3.05v3.5h3.3" />
-      <path className="header-review-checkmark" d="m6.7 11.2 1.8 1.8 4.2-4.2" />
+      <rect className="header-review-document" x="4.15" y="2.75" width="11.7" height="14.5" rx="2.05" />
+      <path className="header-review-line" d="M6.65 7.1h6.1" />
+      <path className="header-review-checkmark" d="m6.7 11.55 1.65 1.65 3.7-3.7" />
     </svg>
   );
 }
 
-function PreviewEyeIcon({ size = 16 }: { size?: number }) {
+function PreviewCanvasIcon({ size = 16 }: { size?: number }) {
   return (
     <svg
-      className="header-preview-eye"
+      className="header-preview-canvas"
       width={size}
       height={size}
       viewBox="0 0 20 20"
       fill="none"
       stroke="currentColor"
-      strokeWidth="1.5"
+      strokeWidth="1.45"
       strokeLinecap="round"
       strokeLinejoin="round"
       aria-hidden="true"
       focusable="false"
     >
-      <rect className="header-preview-window" x="2.75" y="3.3" width="14.5" height="13.4" rx="2.25" />
-      <path className="header-preview-eye-shape" d="M5.6 10s1.75-2.55 4.4-2.55S14.4 10 14.4 10s-1.75 2.55-4.4 2.55S5.6 10 5.6 10Z" />
-      <circle className="header-preview-pupil" cx="10" cy="10" r="1.15" />
+      <rect className="header-preview-window" x="2.75" y="3.15" width="14.5" height="13.7" rx="2.25" />
+      <path className="header-preview-chrome" d="M3.25 6.35h13.5" />
+      <circle className="header-preview-dot" cx="5.15" cy="4.75" r=".55" fill="currentColor" stroke="none" />
+      <rect className="header-preview-viewport" x="5.25" y="8.15" width="9.5" height="5.8" rx="1.45" />
     </svg>
   );
 }
@@ -335,7 +336,7 @@ export function ThreadHeader({
           aria-pressed={artifactOpen}
           disabled={artifactCount <= 0}
         >
-          <PreviewEyeIcon size={15.5} />
+          <PreviewCanvasIcon size={15.5} />
           <span className="thread-artifact-label">{artifactLabel}</span>
           {artifactCount > 0 ? <span className="thread-artifact-count">{artifactCount}</span> : null}
         </button>

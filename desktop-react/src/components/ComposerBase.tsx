@@ -7,7 +7,6 @@ import {
   FolderCog,
   KeyRound,
   LockKeyhole,
-  Paperclip,
   ShieldCheck,
   Smile,
   Sparkles,
@@ -126,6 +125,93 @@ function PermissionIcon({ mode }: { mode: string }) {
   if (mode === "workspace") return <FolderCog size={15} />;
   if (mode === "full-access") return <KeyRound size={15} />;
   return <ShieldCheck size={15} />;
+}
+
+
+function ComposerAttachIcon({ size = 16 }: { size?: number }) {
+  return (
+    <svg
+      className="composer-attach-glyph"
+      width={size}
+      height={size}
+      viewBox="0 0 20 20"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.55"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <path className="composer-attach-outer" d="M7.05 10.85 12 5.9a3 3 0 0 1 4.25 4.24l-6.37 6.37a4.2 4.2 0 0 1-5.94-5.94l6.13-6.13" />
+      <path className="composer-attach-inner" d="m8.45 12.25 5-5" />
+    </svg>
+  );
+}
+
+function ComposerAccessIcon({ size = 16 }: { size?: number }) {
+  return (
+    <svg
+      className="composer-access-glyph"
+      width={size}
+      height={size}
+      viewBox="0 0 20 20"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.45"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <path className="composer-access-shield" d="M10 2.65 15.5 4.8v4.4c0 3.65-2.13 6.22-5.5 8.1-3.37-1.88-5.5-4.45-5.5-8.1V4.8L10 2.65Z" />
+      <path className="composer-access-mark" d="m7.45 10.15 1.55 1.6 3.55-3.65" />
+    </svg>
+  );
+}
+
+function ComposerModelIcon({ size = 16 }: { size?: number }) {
+  return (
+    <svg
+      className="composer-model-glyph"
+      width={size}
+      height={size}
+      viewBox="0 0 20 20"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <rect className="composer-model-frame" x="4.2" y="4.2" width="11.6" height="11.6" rx="2.2" />
+      <rect className="composer-model-core" x="7.4" y="7.4" width="5.2" height="5.2" rx="1.2" />
+      <path className="composer-model-pins" d="M7 2.7v1.5M10 2.7v1.5M13 2.7v1.5M7 15.8v1.5M10 15.8v1.5M13 15.8v1.5M2.7 7h1.5M2.7 10h1.5M2.7 13h1.5M15.8 7h1.5M15.8 10h1.5M15.8 13h1.5" />
+    </svg>
+  );
+}
+
+function ComposerExpressionIcon({ size = 16 }: { size?: number }) {
+  return (
+    <svg
+      className="composer-expression-glyph"
+      width={size}
+      height={size}
+      viewBox="0 0 20 20"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.45"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <circle className="composer-expression-ring" cx="10" cy="10" r="7.1" />
+      <path className="composer-expression-eyes" d="M7.1 8.25h.01M12.9 8.25h.01" strokeWidth="2.1" />
+      <path className="composer-expression-smile" d="M6.8 11.55c.8 1.35 1.9 2.05 3.2 2.05s2.4-.7 3.2-2.05" />
+    </svg>
+  );
 }
 
 export function Composer({
@@ -335,11 +421,17 @@ export function Composer({
   const currentPermission = permissionPresentation(permissionMode || "approval", zh);
   const currentModel = modelSnapshot?.current?.model || model || "Model";
   const stickersOff = stickerPreferences?.frequency === 0;
+  const hasDraftContent = Boolean(value.trim() || quote || attachments.length);
+  const canSend = Boolean(
+    !disabled
+    && !running
+    && (value.trim() || quote || attachments.some((item) => imagesAllowed || !item.isImage))
+  );
 
   return (
     <div className="composer-wrap composer-refined" ref={composerRootRef}>
       <div
-        className={`composer ${focused ? "is-focused" : ""} ${running ? "is-running" : ""} ${openPanel ? "has-panel" : ""} ${dragging ? "is-dragging" : ""}`}
+        className={`composer ${focused ? "is-focused" : ""} ${running ? "is-running" : ""} ${openPanel ? "has-panel" : ""} ${dragging ? "is-dragging" : ""} ${hasDraftContent ? "has-content" : "is-empty"}`}
         onDragOver={(event) => {
           if (!event.dataTransfer.types.includes("Files")) return;
           event.preventDefault();
@@ -395,7 +487,7 @@ export function Composer({
               onClick={() => void pickAttachments()}
               disabled={disabled}
             >
-              <Paperclip size={15} />
+              <ComposerAttachIcon size={16} />
               <span>{zh ? "附件" : "Attach"}</span>
             </button>
             <span className="composer-divider" />
@@ -410,7 +502,7 @@ export function Composer({
                 aria-expanded={openPanel === "permission"}
                 onClick={() => togglePanel("permission")}
               >
-                <ShieldCheck size={13} />
+                <ComposerAccessIcon size={15} />
                 <span>{currentPermission.label}</span>
                 <ChevronDown size={13} className="composer-chip-chevron" />
               </button>
@@ -485,7 +577,7 @@ export function Composer({
                 aria-expanded={openPanel === "model"}
                 onClick={() => togglePanel("model")}
               >
-                <Cpu size={13} />
+                <ComposerModelIcon size={15} />
                 <span>{currentModel}</span>
                 <ChevronDown size={13} className="composer-chip-chevron" />
               </button>
@@ -551,7 +643,7 @@ export function Composer({
                 aria-expanded={openPanel === "sticker"}
                 onClick={() => togglePanel("sticker")}
               >
-                <Smile size={13} />
+                <ComposerExpressionIcon size={15} />
                 <span>{stickersOff ? "Stickers off" : "Stickers"}</span>
                 <ChevronDown size={13} className="composer-chip-chevron" />
               </button>
@@ -588,7 +680,7 @@ export function Composer({
                 <Square size={12} fill="currentColor" />
               </button>
             ) : (
-              <button type="button" className="send-button" onClick={() => void submit()} disabled={disabled || (!value.trim() && !quote && !attachments.some((item) => imagesAllowed || !item.isImage))} title="Send" aria-label="Send message">
+              <button type="button" className={`send-button ${canSend ? "is-ready" : "is-idle"}`} onClick={() => void submit()} disabled={!canSend} title="Send" aria-label="Send message">
                 <ArrowUp size={17} strokeWidth={2.2} />
               </button>
             )}
