@@ -36,8 +36,8 @@ html[data-loom-theme="light"] {
   --accent: #695ad8;
   --accent-soft: #7567de;
   --accent-faint: rgba(105,90,216,.09);
-  --success: #39765a;
-  --danger: #b8505d;
+  --success: #168b52;
+  --danger: #d93650;
   --warning: #936c2d;
 
   --loom-canvas: #f7f7f8;
@@ -814,7 +814,7 @@ html[data-loom-theme="light"] .composer-hint {
 html[data-loom-theme="light"] .error-row {
   color: var(--semantic-danger-text) !important;
   border-color: var(--semantic-danger-border) !important;
-  background: rgba(177,76,90,.07) !important;
+  background: rgba(217,54,80,.085) !important;
 }
 
 html[data-loom-theme="light"] .error-icon {
@@ -936,8 +936,8 @@ html[data-loom-theme="light"] .composer .send-button:disabled {
 
 html[data-loom-theme="light"] .composer .send-button.stop {
   color: #9f3f4d;
-  background: rgba(177,76,90,.10);
-  box-shadow: inset 0 0 0 1px rgba(177,76,90,.18);
+  background: rgba(217,54,80,.12);
+  box-shadow: inset 0 0 0 1px rgba(217,54,80,.22);
 }
 
 /* Light theme prose + review surfaces ------------------------------------- */
@@ -1179,7 +1179,7 @@ html[data-loom-theme="light"] .models-lock-banner {
 }
 
 html[data-loom-theme="light"] .models-error-banner {
-  border-color: rgba(177,76,90,.20);
+  border-color: rgba(217,54,80,.24);
   background: rgba(177,76,90,.065);
   color: #a13f4d;
 }
@@ -3051,23 +3051,23 @@ html[data-loom-theme="light"] .composer .send-button:disabled {
 }
 
 html[data-loom-theme="light"] .composer .send-button.stop {
-  border-color: rgba(177,76,90,.18);
-  background: rgba(177,76,90,.085);
-  color: #a74452;
+  border-color: rgba(217,54,80,.22);
+  background: rgba(217,54,80,.10);
+  color: #c62f47;
   box-shadow: none;
 }
 
 html[data-loom-theme="light"] .composer .send-button.stop:hover:not(:disabled) {
-  border-color: rgba(177,76,90,.26);
-  background: rgba(177,76,90,.12);
-  color: #963846;
+  border-color: rgba(217,54,80,.32);
+  background: rgba(217,54,80,.14);
+  color: #b4253d;
   transform: translateY(-1px);
 }
 
 html[data-loom-theme="light"] .composer .send-button.stop:disabled {
-  border-color: rgba(177,76,90,.10);
-  background: rgba(177,76,90,.045);
-  color: #c59aa1;
+  border-color: rgba(217,54,80,.12);
+  background: rgba(217,54,80,.055);
+  color: #d08f9a;
 }
 
 /* Steering has slightly more breathing room because its left side is status,
@@ -3218,9 +3218,9 @@ html[data-loom-theme="light"] .runtime-health.live {
 }
 
 html[data-loom-theme="light"] .runtime-health.warning {
-  border-color: rgba(177,76,90,.18);
-  background: rgba(177,76,90,.06);
-  color: #a34553;
+  border-color: rgba(217,54,80,.22);
+  background: rgba(217,54,80,.075);
+  color: #c62f47;
 }
 
 html[data-loom-theme="light"] .runtime-close {
@@ -3305,8 +3305,8 @@ html[data-loom-theme="light"] .runtime-event.is-running {
 }
 
 html[data-loom-theme="light"] .runtime-event.is-failed {
-  border-color: rgba(177,76,90,.07);
-  background: linear-gradient(90deg, rgba(177,76,90,.060), rgba(177,76,90,.008) 72%, transparent);
+  border-color: rgba(217,54,80,.085);
+  background: linear-gradient(90deg, rgba(217,54,80,.075), rgba(217,54,80,.012) 72%, transparent);
 }
 
 html[data-loom-theme="light"] .runtime-event:not(:last-child)::after {
@@ -3337,9 +3337,9 @@ html[data-loom-theme="light"] .runtime-event.is-running .runtime-event-icon {
 }
 
 html[data-loom-theme="light"] .runtime-event.is-failed .runtime-event-icon {
-  color: #a74452;
-  border-color: rgba(177,76,90,.20);
-  background: rgba(177,76,90,.055);
+  color: #c62f47;
+  border-color: rgba(217,54,80,.24);
+  background: rgba(217,54,80,.07);
 }
 
 html[data-loom-theme="light"] .runtime-event-title {
@@ -3430,13 +3430,13 @@ html[data-loom-theme="light"] .review-summary span:first-child {
 html[data-loom-theme="light"] .review-additions,
 html[data-loom-theme="light"] .review-file-stats b,
 html[data-loom-theme="light"] .review-tree-stats b {
-  color: #2f7a58 !important;
+  color: #168b52 !important;
 }
 
 html[data-loom-theme="light"] .review-deletions,
 html[data-loom-theme="light"] .review-file-stats em,
 html[data-loom-theme="light"] .review-tree-stats em {
-  color: #b24b5a !important;
+  color: #d93650 !important;
 }
 
 html[data-loom-theme="light"] .review-close {
@@ -3540,13 +3540,13 @@ html[data-loom-theme="light"] .review-code-row:hover {
 }
 
 html[data-loom-theme="light"] .review-code-row.is-add {
-  background: rgba(47,122,88,.085);
-  color: #285b44;
+  background: rgba(22,139,82,.105);
+  color: #146c43;
 }
 
 html[data-loom-theme="light"] .review-code-row.is-delete {
-  background: rgba(178,75,90,.080);
-  color: #7f3440;
+  background: rgba(217,54,80,.095);
+  color: #873040;
 }
 
 html[data-loom-theme="light"] .review-line-number {
@@ -3555,11 +3555,11 @@ html[data-loom-theme="light"] .review-line-number {
 }
 
 html[data-loom-theme="light"] .review-code-row.is-add .review-line-number {
-  color: #5c9b7c;
+  color: #2f9666;
 }
 
 html[data-loom-theme="light"] .review-code-row.is-delete .review-line-number {
-  color: #c07b85;
+  color: #c45164;
 }
 
 html[data-loom-theme="light"] .review-line-marker {
@@ -3567,11 +3567,11 @@ html[data-loom-theme="light"] .review-line-marker {
 }
 
 html[data-loom-theme="light"] .review-code-row.is-add .review-line-marker {
-  color: #2f7a58;
+  color: #168b52;
 }
 
 html[data-loom-theme="light"] .review-code-row.is-delete .review-line-marker {
-  color: #b24b5a;
+  color: #d93650;
 }
 
 html[data-loom-theme="light"] .review-fold-row,
