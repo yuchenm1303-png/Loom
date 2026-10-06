@@ -77,7 +77,7 @@ async function copyText(value: string): Promise<void> {
 // Keep workspace icons on the same grid with a consistent stroke weight.
 function WorkspaceEntryIcon({ kind }: { kind: "agents" | "review" | "preview" }) {
   const Icon = { agents: GitFork, review: FileDiff, preview: PanelsTopLeft }[kind];
-  return <Icon className="header-workspace-icon" size={18} strokeWidth={1.75} aria-hidden="true" focusable="false" />;
+  return <Icon className="header-workspace-icon" data-workspace-icon={kind} size={18} strokeWidth={1.75} aria-hidden="true" focusable="false" />;
 }
 function ActivityTraceIcon({ size = 16 }: { size?: number }) {
   const trace = "M2.25 10h3.2l1.8-5.6 3.25 11.15 2.2-7.2 1.55 3.05h3.5";
@@ -240,7 +240,7 @@ export function ThreadHeader({
 
         <button
           type="button"
-          className={`thread-review-button thread-agent-button ${agentsOpen ? "active" : ""} ${agentCount > 0 ? "has-agents" : "is-empty"}`}
+          className={`thread-review-button header-workspace-entry thread-agent-button ${agentsOpen ? "active" : ""} ${agentCount > 0 ? "has-agents" : "is-empty"}`}
           onClick={onToggleAgents}
           title={agentsTitle}
           aria-label={agentsTitle}
@@ -253,7 +253,7 @@ export function ThreadHeader({
 
         <button
           type="button"
-          className={`thread-review-button thread-review-check-button ${reviewOpen ? "active" : ""}`}
+          className={`thread-review-button header-workspace-entry thread-review-check-button ${reviewOpen ? "active" : ""}`}
           onClick={onToggleReview}
           title={reviewTitle}
           aria-label={reviewTitle}
@@ -266,7 +266,7 @@ export function ThreadHeader({
 
         <button
           type="button"
-          className={`thread-review-button thread-artifact-button ${artifactOpen ? "active" : ""} ${artifactCount > 0 ? "has-artifacts" : "is-empty"}`}
+          className={`thread-review-button header-workspace-entry thread-artifact-button ${artifactOpen ? "active" : ""} ${artifactCount > 0 ? "has-artifacts" : "is-empty"}`}
           onClick={onToggleArtifacts}
           title={artifactTitle}
           aria-label={artifactTitle}
