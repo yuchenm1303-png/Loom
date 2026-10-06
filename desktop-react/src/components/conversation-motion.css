@@ -1707,3 +1707,28 @@ html[data-loom-theme="light"] .turn-process.is-settled .task-flow-group .task-fl
     transition: none !important;
   }
 }
+
+
+/* Task row chevron cleanup --------------------------------------------------
+   Individual task rows no longer need a second disclosure arrow in front of
+   the tool glyph. The whole row stays clickable for details; the group-level
+   chevron remains the single hierarchy control. */
+.task-flow-row,
+.task-flow-group .task-flow-row {
+  grid-template-columns: 20px minmax(0, 1fr) 8px;
+}
+
+.task-flow-group .task-flow-inline-detail-grid {
+  margin-left: 27px;
+}
+
+@media (max-width: 760px) {
+  .task-flow-row,
+  .task-flow-group .task-flow-row {
+    grid-template-columns: 19px minmax(0, 1fr) 7px;
+  }
+
+  .task-flow-group .task-flow-inline-detail-grid {
+    margin-left: 25px;
+  }
+}
