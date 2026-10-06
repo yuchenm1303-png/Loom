@@ -17,7 +17,7 @@
 /* Main workspace controls: keep the button geometry stable. The hover surface
    fades in slowly and the icon itself carries the semantic motion. */
 
-.workspace :is(
+.app-shell :is(
   .thread-header-icon-button,
   .thread-review-button,
   .sidebar-new-conversation,
@@ -26,7 +26,7 @@
   .project-disclosure-button,
   .project-group-actions button,
   .thread-quick-actions button,
-  .workspace-group-header button,
+  .app-shell-group-header button,
   .message-action-button,
   .composer-tool,
   .composer-chip,
@@ -36,7 +36,7 @@
   transition-timing-function: var(--loom-icon-ease) !important;
 }
 
-.workspace :is(
+.app-shell :is(
   .thread-header-icon-button,
   .thread-review-button,
   .message-action-button,
@@ -44,7 +44,7 @@
   .composer-chip,
   .send-button
 ):hover:not(:disabled),
-.workspace :is(
+.app-shell :is(
   .thread-header-icon-button,
   .thread-review-button,
   .message-action-button,
@@ -56,23 +56,23 @@
 }
 
 /* The send halo should arrive after the pointer, not flash ahead of it. */
-.workspace .send-button::after {
+.app-shell .send-button::after {
   transition:
     opacity 340ms var(--loom-icon-ease),
     transform 440ms var(--loom-icon-ease) !important;
 }
 
-.workspace .send-button:hover:not(:disabled)::after {
+.app-shell .send-button:hover:not(:disabled)::after {
   opacity: .82;
   transform: scale(.96);
 }
 
 /* Header/sidebar hover backgrounds are deliberately quieter. */
-.workspace .thread-header-icon-button:hover,
-.workspace .compact-sidebar-actions button:hover,
-.workspace .sidebar-section-title button:hover,
-.workspace .project-group-actions button:hover,
-.workspace .thread-quick-actions button:hover:not(:disabled) {
+.app-shell .thread-header-icon-button:hover,
+.app-shell .compact-sidebar-actions button:hover,
+.app-shell .sidebar-section-title button:hover,
+.app-shell .project-group-actions button:hover,
+.app-shell .thread-quick-actions button:hover:not(:disabled) {
   transition-duration: 300ms !important;
 }
 
@@ -80,9 +80,9 @@
 /* Shared optical transition. No default movement: semantics below decide what
    moves and in which direction. */
 
-.workspace :is(button, [role="button"], a[href], summary) svg,
-.workspace .activity-row .tool-identity-glyph,
-.workspace .mp-row .mp-mark {
+.app-shell :is(button, [role="button"], a[href], summary) svg,
+.app-shell .activity-row .tool-identity-glyph,
+.app-shell .mp-row .mp-mark {
   transition:
     color var(--loom-icon-ink) ease,
     opacity var(--loom-icon-ink) ease,
@@ -93,28 +93,35 @@
 
 /* New chat / edit ---------------------------------------------------------- */
 /* Keep the square stationary; the pen makes one small writing reach. */
-.workspace .sidebar-compose-icon {
+.app-shell .sidebar-compose-icon {
   overflow: visible;
 }
 
-.workspace .sidebar-compose-icon path:last-child {
+.app-shell .sidebar-compose-icon path:last-child {
   transform-box: fill-box;
   transform-origin: center;
   transition: transform var(--loom-icon-motion-long) var(--loom-icon-ease);
 }
 
-.workspace .sidebar-new-conversation:hover .sidebar-compose-icon path:last-child {
-  transform: translate(.72px, -.68px) rotate(-1.6deg);
+.app-shell .sidebar-new-conversation:hover .sidebar-compose-icon path:last-child {
+  animation: loom-compose-pen-write 620ms var(--loom-icon-ease) both;
 }
 
-.workspace :is(.lucide-pencil, .lucide-file-pen-line, .lucide-pen-line) {
+@keyframes loom-compose-pen-write {
+  0% { transform: translate(0, 0) rotate(0deg); }
+  38% { transform: translate(.95px, -.9px) rotate(-2.4deg); }
+  68% { transform: translate(-.38px, .32px) rotate(1.1deg); }
+  100% { transform: translate(.42px, -.38px) rotate(-1deg); }
+}
+
+.app-shell :is(.lucide-pencil, .lucide-file-pen-line, .lucide-pen-line) {
   transition:
     translate var(--loom-icon-motion-long) var(--loom-icon-ease),
     rotate var(--loom-icon-motion-long) var(--loom-icon-ease),
     color var(--loom-icon-ink) ease !important;
 }
 
-.workspace :is(button, [role="button"], a[href]):hover:not(:disabled)
+.app-shell :is(button, [role="button"], a[href]):hover:not(:disabled)
   :is(.lucide-pencil, .lucide-file-pen-line, .lucide-pen-line) {
   translate: .55px -.55px;
   rotate: -1.4deg;
@@ -122,28 +129,28 @@
 
 /* Search ------------------------------------------------------------------ */
 /* A lens scans; it does not zoom. */
-.workspace :is(button, [role="button"], a[href]):hover:not(:disabled) .lucide-search {
+.app-shell :is(button, [role="button"], a[href]):hover:not(:disabled) .lucide-search {
   translate: .8px 0;
   filter: drop-shadow(-.8px 0 0 color-mix(in srgb, currentColor 7%, transparent));
 }
 
 /* Direction / disclosure --------------------------------------------------- */
-.workspace :is(button, [role="button"], a[href]):hover:not(:disabled)
+.app-shell :is(button, [role="button"], a[href]):hover:not(:disabled)
   :is(.lucide-chevron-right, .project-disclosure-chevron, .menu-chevron, .mp-row-chevron) {
   translate: .85px 0;
 }
 
-.workspace :is(button, [role="button"], a[href]):hover:not(:disabled)
+.app-shell :is(button, [role="button"], a[href]):hover:not(:disabled)
   :is(.lucide-chevron-left, .lucide-arrow-left, .lucide-panel-left-open, .lucide-panel-left-close) {
   translate: -.85px 0;
 }
 
-.workspace :is(button, [role="button"], a[href]):hover:not(:disabled)
+.app-shell :is(button, [role="button"], a[href]):hover:not(:disabled)
   :is(.lucide-arrow-right, .lucide-panel-right-open, .lucide-panel-right-close) {
   translate: .85px 0;
 }
 
-.workspace .composer-chip-chevron {
+.app-shell .composer-chip-chevron {
   transition:
     transform 460ms var(--loom-icon-ease),
     translate 420ms var(--loom-icon-ease),
@@ -151,47 +158,47 @@
     color 280ms ease !important;
 }
 
-.workspace .composer-chip:hover .composer-chip-chevron {
+.app-shell .composer-chip:hover .composer-chip-chevron {
   translate: 0 .45px;
 }
 
 /* The custom sidebar triangle already owns its rotation state. Slow it down
    and soften the halo so opening/closing feels attached to the panel. */
-.workspace .thread-header-leading .thread-sidebar-triangle {
+.app-shell .thread-header-leading .thread-sidebar-triangle {
   transition:
     color 300ms ease,
     transform 220ms var(--loom-icon-ease) !important;
 }
 
-.workspace .thread-header-leading .thread-sidebar-triangle::before {
+.app-shell .thread-header-leading .thread-sidebar-triangle::before {
   transition:
     opacity 300ms ease,
     transform 460ms var(--loom-icon-ease) !important;
 }
 
-.workspace .thread-sidebar-triangle-mark {
+.app-shell .thread-sidebar-triangle-mark {
   transition:
     transform 480ms cubic-bezier(.16,.76,.22,1),
     opacity 240ms ease !important;
 }
 
 /* Settings ---------------------------------------------------------------- */
-.workspace :is(button, [role="button"], a[href]):hover:not(:disabled) .lucide-settings {
+.app-shell :is(button, [role="button"], a[href]):hover:not(:disabled) .lucide-settings {
   rotate: 10deg;
 }
 
 /* Attachment -------------------------------------------------------------- */
-.workspace .lucide-paperclip {
+.app-shell .lucide-paperclip {
   transform-origin: 52% 52%;
 }
 
-.workspace :is(button, [role="button"], a[href]):hover:not(:disabled) .lucide-paperclip {
+.app-shell :is(button, [role="button"], a[href]):hover:not(:disabled) .lucide-paperclip {
   translate: 0 -.5px;
   rotate: -3deg;
 }
 
 /* Permissions ------------------------------------------------------------- */
-.workspace .lucide-shield-check path:last-child {
+.app-shell .lucide-shield-check path:last-child {
   transform-box: fill-box;
   transform-origin: center;
   transition:
@@ -199,13 +206,13 @@
     opacity 300ms ease;
 }
 
-.workspace :is(button, [role="button"], a[href]):hover:not(:disabled)
+.app-shell :is(button, [role="button"], a[href]):hover:not(:disabled)
   .lucide-shield-check path:last-child {
   transform: translateY(-.45px);
 }
 
 /* Model / compute --------------------------------------------------------- */
-.workspace .lucide-cpu rect {
+.app-shell .lucide-cpu rect {
   transform-box: fill-box;
   transform-origin: center;
   transition:
@@ -213,94 +220,94 @@
     opacity 300ms ease;
 }
 
-.workspace :is(button, [role="button"], a[href]):hover:not(:disabled) .lucide-cpu rect {
+.app-shell :is(button, [role="button"], a[href]):hover:not(:disabled) .lucide-cpu rect {
   transform: scale(.95);
   opacity: .88;
 }
 
 /* Smile ------------------------------------------------------------------- */
-.workspace .lucide-smile path:last-child {
+.app-shell .lucide-smile path:last-child {
   transform-box: fill-box;
   transform-origin: center;
   transition: transform var(--loom-icon-motion-long) var(--loom-icon-ease);
 }
 
-.workspace :is(button, [role="button"], a[href]):hover:not(:disabled) .lucide-smile path:last-child {
+.app-shell :is(button, [role="button"], a[href]):hover:not(:disabled) .lucide-smile path:last-child {
   transform: translateY(.45px);
 }
 
 /* Send / stop ------------------------------------------------------------- */
-.workspace .send-button .lucide-arrow-up {
+.app-shell .send-button .lucide-arrow-up {
   transition:
     translate 480ms var(--loom-icon-ease),
     opacity 260ms ease;
 }
 
-.workspace .send-button:hover:not(:disabled) .lucide-arrow-up {
+.app-shell .send-button:hover:not(:disabled) .lucide-arrow-up {
   translate: 0 -1.15px;
 }
 
-.workspace .send-button.stop .lucide-square {
+.app-shell .send-button.stop .lucide-square {
   transition:
     opacity 300ms ease,
     filter 360ms ease;
 }
 
-.workspace .send-button.stop:hover:not(:disabled) .lucide-square {
+.app-shell .send-button.stop:hover:not(:disabled) .lucide-square {
   opacity: .82;
   filter: drop-shadow(0 0 3px color-mix(in srgb, currentColor 20%, transparent));
 }
 
 /* Add / project ----------------------------------------------------------- */
-.workspace .lucide-folder-plus path:last-child {
+.app-shell .lucide-folder-plus path:last-child {
   transform-box: fill-box;
   transform-origin: center;
   transition: transform var(--loom-icon-motion-long) var(--loom-icon-ease);
 }
 
-.workspace :is(button, [role="button"], a[href]):hover:not(:disabled) > .lucide-plus {
+.app-shell :is(button, [role="button"], a[href]):hover:not(:disabled) > .lucide-plus {
   filter: drop-shadow(0 0 2px color-mix(in srgb, currentColor 14%, transparent));
 }
 
-.workspace :is(button, [role="button"], a[href]):hover:not(:disabled)
+.app-shell :is(button, [role="button"], a[href]):hover:not(:disabled)
   .lucide-folder-plus path:last-child {
   transform: scale(1.08);
 }
 
-.workspace :is(.lucide-folder, .lucide-folder-open, .lucide-folder-plus) path:first-child {
+.app-shell :is(.lucide-folder, .lucide-folder-open, .lucide-folder-plus) path:first-child {
   transform-box: fill-box;
   transform-origin: 50% 35%;
   transition: transform var(--loom-icon-motion-long) var(--loom-icon-ease);
 }
 
-.workspace :is(button, [role="button"], a[href]):hover:not(:disabled)
+.app-shell :is(button, [role="button"], a[href]):hover:not(:disabled)
   :is(.lucide-folder, .lucide-folder-open, .lucide-folder-plus) path:first-child {
   transform: translateY(-.55px);
 }
 
 /* Copy -------------------------------------------------------------------- */
-.workspace .lucide-copy rect {
+.app-shell .lucide-copy rect {
   transform-box: fill-box;
   transition: transform var(--loom-icon-motion-long) var(--loom-icon-ease);
 }
 
-.workspace :is(button, [role="button"], a[href]):hover:not(:disabled) .lucide-copy rect {
+.app-shell :is(button, [role="button"], a[href]):hover:not(:disabled) .lucide-copy rect {
   transform: translate(.55px, -.55px);
 }
 
 /* Reply ------------------------------------------------------------------- */
-.workspace .lucide-reply {
+.app-shell .lucide-reply {
   transition:
     translate var(--loom-icon-motion-long) var(--loom-icon-ease),
     color var(--loom-icon-ink) ease !important;
 }
 
-.workspace :is(button, [role="button"], a[href]):hover:not(:disabled) .lucide-reply {
+.app-shell :is(button, [role="button"], a[href]):hover:not(:disabled) .lucide-reply {
   translate: -.7px 0;
 }
 
 /* Feedback --------------------------------------------------------------- */
-.workspace :is(.lucide-thumbs-up, .lucide-thumbs-down) {
+.app-shell :is(.lucide-thumbs-up, .lucide-thumbs-down) {
   transform-origin: 45% 58%;
   transition:
     translate var(--loom-icon-motion-long) var(--loom-icon-ease),
@@ -308,81 +315,81 @@
     color var(--loom-icon-ink) ease !important;
 }
 
-.workspace :is(button, [role="button"], a[href]):hover:not(:disabled) .lucide-thumbs-up {
+.app-shell :is(button, [role="button"], a[href]):hover:not(:disabled) .lucide-thumbs-up {
   translate: 0 -.55px;
   rotate: -1.8deg;
 }
 
-.workspace :is(button, [role="button"], a[href]):hover:not(:disabled) .lucide-thumbs-down {
+.app-shell :is(button, [role="button"], a[href]):hover:not(:disabled) .lucide-thumbs-down {
   translate: 0 .55px;
   rotate: 1.8deg;
 }
 
 /* Archive / restore ------------------------------------------------------- */
-.workspace :is(.lucide-archive, .lucide-archive-restore) > :first-child {
+.app-shell :is(.lucide-archive, .lucide-archive-restore) > :first-child {
   transform-box: fill-box;
   transition: transform var(--loom-icon-motion-long) var(--loom-icon-ease);
 }
 
-.workspace :is(button, [role="button"], a[href]):hover:not(:disabled)
+.app-shell :is(button, [role="button"], a[href]):hover:not(:disabled)
   :is(.lucide-archive, .lucide-archive-restore) > :first-child {
   transform: translateY(-.7px);
 }
 
 /* Delete ------------------------------------------------------------------ */
-.workspace .lucide-trash-2 > :first-child {
+.app-shell .lucide-trash-2 > :first-child {
   transform-box: fill-box;
   transform-origin: center;
   transition: transform var(--loom-icon-motion-long) var(--loom-icon-ease);
 }
 
-.workspace :is(button, [role="button"], a[href]):hover:not(:disabled)
+.app-shell :is(button, [role="button"], a[href]):hover:not(:disabled)
   .lucide-trash-2 > :first-child {
   transform: translateY(-.8px);
 }
 
 /* Pin --------------------------------------------------------------------- */
-.workspace :is(.lucide-pin, .lucide-pin-off) {
+.app-shell :is(.lucide-pin, .lucide-pin-off) {
   transition:
     translate var(--loom-icon-motion-long) var(--loom-icon-ease),
     color var(--loom-icon-ink) ease !important;
 }
 
-.workspace :is(button, [role="button"], a[href]):hover:not(:disabled)
+.app-shell :is(button, [role="button"], a[href]):hover:not(:disabled)
   :is(.lucide-pin, .lucide-pin-off) {
   translate: 0 .55px;
 }
 
 /* Ellipsis ---------------------------------------------------------------- */
 /* Dots lift in sequence. The small delay is the only stagger on the page. */
-.workspace .lucide-ellipsis circle {
+.app-shell .lucide-ellipsis circle {
   transform-box: fill-box;
   transform-origin: center;
   transition: transform 420ms var(--loom-icon-ease);
 }
 
-.workspace .lucide-ellipsis circle:nth-of-type(2) { transition-delay: 45ms; }
-.workspace .lucide-ellipsis circle:nth-of-type(3) { transition-delay: 90ms; }
+.app-shell .lucide-ellipsis circle:nth-of-type(2) { transition-delay: 45ms; }
+.app-shell .lucide-ellipsis circle:nth-of-type(3) { transition-delay: 90ms; }
 
-.workspace :is(button, [role="button"], a[href]):hover:not(:disabled)
+.app-shell :is(button, [role="button"], a[href]):hover:not(:disabled)
   .lucide-ellipsis circle {
   transform: translateY(-.65px);
 }
 
 /* Eye --------------------------------------------------------------------- */
-.workspace .lucide-eye circle {
+.app-shell .lucide-eye circle {
   transform-box: fill-box;
   transform-origin: center;
   transition: transform var(--loom-icon-motion-long) var(--loom-icon-ease);
 }
 
-.workspace :is(button, [role="button"], a[href]):hover:not(:disabled)
+.app-shell :is(button, [role="button"], a[href]):hover:not(:disabled)
   .lucide-eye circle {
   transform: translateX(.65px);
 }
 
 /* Check appears as a quiet stroke completion after copy/select. */
-.workspace :is(.message-action-button.is-copied, .composer-option-check)
+.app-shell :is(.message-action-button.is-copied, .composer-option-check)
   .lucide-check path {
   stroke-dasharray: 28;
   animation: loom-check-settle 520ms var(--loom-icon-ease) both;
@@ -394,25 +401,25 @@
 }
 
 /* Bot / sub-agent --------------------------------------------------------- */
-.workspace .lucide-bot {
+.app-shell .lucide-bot {
   transition:
     translate var(--loom-icon-motion-long) var(--loom-icon-ease),
     filter 360ms ease !important;
 }
 
-.workspace :is(button, [role="button"], a[href]):hover:not(:disabled) .lucide-bot {
+.app-shell :is(button, [role="button"], a[href]):hover:not(:disabled) .lucide-bot {
   translate: 0 -.45px;
   filter: drop-shadow(0 1px 2px color-mix(in srgb, currentColor 11%, transparent));
 }
 
 /* Profile / account ------------------------------------------------------- */
-.workspace .lucide-user-round circle {
+.app-shell .lucide-user-round circle {
   transform-box: fill-box;
   transform-origin: center;
   transition: transform var(--loom-icon-motion-long) var(--loom-icon-ease);
 }
 
-.workspace :is(button, [role="button"], a[href]):hover:not(:disabled)
+.app-shell :is(button, [role="button"], a[href]):hover:not(:disabled)
   .lucide-user-round circle {
   transform: translateY(-.45px);
 }
@@ -422,35 +429,35 @@
    than Lucide's Activity path, so its left-hand segment was permanently
    clipped. Motion now happens on the complete glyph instead of drawing a
    partial stroke. */
-.workspace .lucide-activity {
+.app-shell .lucide-activity {
   overflow: visible;
 }
 
-.workspace .lucide-activity path {
+.app-shell .lucide-activity path {
   stroke-dasharray: none;
   stroke-dashoffset: 0;
   transition: opacity 280ms ease;
 }
 
-.workspace :is(button, [role="button"], a[href]):hover:not(:disabled)
+.app-shell :is(button, [role="button"], a[href]):hover:not(:disabled)
   .lucide-activity {
   translate: .55px 0;
   filter: drop-shadow(-.55px 0 0 color-mix(in srgb, currentColor 7%, transparent));
 }
 
 /* Review / preview -------------------------------------------------------- */
-.workspace :is(.lucide-file-diff, .lucide-file-code-2) > :nth-child(2),
-.workspace :is(.lucide-file-diff, .lucide-file-code-2) > :nth-child(3) {
+.app-shell :is(.lucide-file-diff, .lucide-file-code-2) > :nth-child(2),
+.app-shell :is(.lucide-file-diff, .lucide-file-code-2) > :nth-child(3) {
   transform-box: fill-box;
   transition: transform var(--loom-icon-motion-long) var(--loom-icon-ease);
 }
 
-.workspace :is(button, [role="button"], a[href]):hover:not(:disabled)
+.app-shell :is(button, [role="button"], a[href]):hover:not(:disabled)
   :is(.lucide-file-diff, .lucide-file-code-2) > :nth-child(2) {
   transform: translateX(-.5px);
 }
 
-.workspace :is(button, [role="button"], a[href]):hover:not(:disabled)
+.app-shell :is(button, [role="button"], a[href]):hover:not(:disabled)
   :is(.lucide-file-diff, .lucide-file-code-2) > :nth-child(3) {
   transform: translateX(.5px);
 }
@@ -459,7 +466,7 @@
 /* Tool/activity icons: brands remain geometrically stable; capabilities use a
    gesture that matches their job. */
 
-.workspace .activity-row .tool-identity-glyph {
+.app-shell .activity-row .tool-identity-glyph {
   transition:
     color var(--loom-icon-ink) ease,
     opacity var(--loom-icon-ink) ease,
@@ -467,11 +474,11 @@
     translate var(--loom-icon-motion-long) var(--loom-icon-ease);
 }
 
-.workspace .activity-row:hover .tool-identity-glyph.is-brand {
+.app-shell .activity-row:hover .tool-identity-glyph.is-brand {
   filter: brightness(1.08);
 }
 
-.workspace .activity-row:hover
+.app-shell .activity-row:hover
   :is(
     .tool-identity-glyph[data-tool-family="terminal"],
     .tool-identity-glyph[data-tool-family="terminal-group"],
@@ -480,7 +487,7 @@
   translate: .65px 0;
 }
 
-.workspace .activity-row:hover
+.app-shell .activity-row:hover
   :is(
     .tool-identity-glyph[data-tool-family="file"],
     .tool-identity-glyph[data-tool-family="file-group"],
@@ -489,74 +496,74 @@
   translate: 0 -.55px;
 }
 
-.workspace .activity-row:hover .tool-identity-glyph[data-tool-family="search"] {
+.app-shell .activity-row:hover .tool-identity-glyph[data-tool-family="search"] {
   translate: .7px 0;
 }
 
-.workspace .activity-row:hover .tool-identity-glyph[data-tool-family="calculator"] {
+.app-shell .activity-row:hover .tool-identity-glyph[data-tool-family="calculator"] {
   translate: 0 .45px;
 }
 
-.workspace .activity-row:hover .tool-identity-glyph[data-tool-family="skills"] {
+.app-shell .activity-row:hover .tool-identity-glyph[data-tool-family="skills"] {
   filter: brightness(1.12)
     drop-shadow(0 0 3px color-mix(in srgb, currentColor 15%, transparent));
 }
 
-.workspace .tool-identity-glyph[data-tool-family="computer"]::before,
-.workspace .tool-identity-glyph[data-tool-family="computer"]::after {
+.app-shell .tool-identity-glyph[data-tool-family="computer"]::before,
+.app-shell .tool-identity-glyph[data-tool-family="computer"]::after {
   transition: transform var(--loom-icon-motion-long) var(--loom-icon-ease);
 }
 
-.workspace .activity-row:hover .tool-identity-glyph[data-tool-family="computer"]::before,
-.workspace .activity-row:hover .tool-identity-glyph[data-tool-family="computer"]::after {
+.app-shell .activity-row:hover .tool-identity-glyph[data-tool-family="computer"]::before,
+.app-shell .activity-row:hover .tool-identity-glyph[data-tool-family="computer"]::after {
   transform: translate(.65px, -.65px);
 }
 
-.workspace .tool-identity-glyph[data-tool-family="subagent"] circle {
+.app-shell .tool-identity-glyph[data-tool-family="subagent"] circle {
   transform-box: fill-box;
   transform-origin: center;
   transition: transform var(--loom-icon-motion-long) var(--loom-icon-ease);
 }
 
-.workspace .activity-row:hover
+.app-shell .activity-row:hover
   .tool-identity-glyph[data-tool-family="subagent"] circle:nth-of-type(2) {
   transform: translateX(-.45px);
 }
 
-.workspace .activity-row:hover
+.app-shell .activity-row:hover
   .tool-identity-glyph[data-tool-family="subagent"] circle:nth-of-type(3) {
   transform: translateX(.45px);
 }
 
 /* Provider/model logos should feel premium, not rubbery. No geometric change;
    only the mark surface gains a little contrast. */
-.workspace .mp-row .mp-mark {
+.app-shell .mp-row .mp-mark {
   transition:
     background-color 280ms ease,
     color 280ms ease,
     box-shadow 380ms var(--loom-icon-ease);
 }
 
-.workspace .mp-row:hover:not(:disabled) .mp-mark {
+.app-shell .mp-row:hover:not(:disabled) .mp-mark {
   box-shadow:
     inset 0 0 0 1px color-mix(in srgb, currentColor 13%, transparent),
     0 0 0 3px color-mix(in srgb, currentColor 4%, transparent);
 }
 
 /* Press feedback: opacity only. The icon no longer collapses or snaps. */
-.workspace :is(button, [role="button"], a[href], summary):active:not(:disabled) svg {
+.app-shell :is(button, [role="button"], a[href], summary):active:not(:disabled) svg {
   opacity: .86;
   transition-duration: var(--loom-icon-press) !important;
 }
 
 /* Reduced motion keeps colour affordances but removes geometry changes. */
 @media (prefers-reduced-motion: reduce) {
-  .workspace :is(button, [role="button"], a[href], summary) svg,
-  .workspace .activity-row .tool-identity-glyph,
-  .workspace .activity-row .tool-identity-glyph::before,
-  .workspace .activity-row .tool-identity-glyph::after,
-  .workspace .activity-row .tool-identity-glyph svg *,
-  .workspace .mp-row .mp-mark {
+  .app-shell :is(button, [role="button"], a[href], summary) svg,
+  .app-shell .activity-row .tool-identity-glyph,
+  .app-shell .activity-row .tool-identity-glyph::before,
+  .app-shell .activity-row .tool-identity-glyph::after,
+  .app-shell .activity-row .tool-identity-glyph svg *,
+  .app-shell .mp-row .mp-mark {
     animation: none !important;
     transition-duration: .001ms !important;
     transform: none !important;
@@ -566,12 +573,12 @@
   }
 }
 
-:root[data-loom-reduced-motion="true"] .workspace :is(button, [role="button"], a[href], summary) svg,
-:root[data-loom-reduced-motion="true"] .workspace .activity-row .tool-identity-glyph,
-:root[data-loom-reduced-motion="true"] .workspace .activity-row .tool-identity-glyph::before,
-:root[data-loom-reduced-motion="true"] .workspace .activity-row .tool-identity-glyph::after,
-:root[data-loom-reduced-motion="true"] .workspace .activity-row .tool-identity-glyph svg *,
-:root[data-loom-reduced-motion="true"] .workspace .mp-row .mp-mark {
+:root[data-loom-reduced-motion="true"] .app-shell :is(button, [role="button"], a[href], summary) svg,
+:root[data-loom-reduced-motion="true"] .app-shell .activity-row .tool-identity-glyph,
+:root[data-loom-reduced-motion="true"] .app-shell .activity-row .tool-identity-glyph::before,
+:root[data-loom-reduced-motion="true"] .app-shell .activity-row .tool-identity-glyph::after,
+:root[data-loom-reduced-motion="true"] .app-shell .activity-row .tool-identity-glyph svg *,
+:root[data-loom-reduced-motion="true"] .app-shell .mp-row .mp-mark {
   animation: none !important;
   transition-duration: .001ms !important;
   transform: none !important;
@@ -590,7 +597,7 @@
    ========================================================================== */
 
 /* Optical baseline --------------------------------------------------------- */
-.workspace :is(
+.app-shell :is(
   .codex-sidebar,
   .thread-header,
   .composer,
@@ -600,7 +607,7 @@
   overflow: visible;
 }
 
-.workspace :is(
+.app-shell :is(
   .codex-sidebar,
   .thread-header,
   .composer,
@@ -612,8 +619,8 @@
 
 /* Search: the lens makes one tiny scan, while the search field keeps the same
    focused geometry. */
-.workspace .compact-sidebar-actions button:hover:not(:disabled) .lucide-search,
-.workspace .compact-search:focus-within .lucide-search {
+.app-shell .compact-sidebar-actions button:hover:not(:disabled) .lucide-search,
+.app-shell .compact-search:focus-within .lucide-search {
   translate: .82px 0;
   rotate: -1.6deg;
   filter: drop-shadow(-.8px 0 0 color-mix(in srgb, currentColor 8%, transparent));
@@ -621,29 +628,31 @@
 
 /* New conversation: the frame stays anchored; the pen tip performs a short
    writing stroke. Existing path-specific motion above owns the actual pen. */
-.workspace .sidebar-new-conversation:hover:not(:disabled) .sidebar-compose-icon {
-  filter: drop-shadow(0 1px 2px color-mix(in srgb, currentColor 12%, transparent));
+.app-shell .sidebar-new-conversation:hover:not(:disabled) .sidebar-compose-icon {
+  filter:
+    brightness(1.06)
+    drop-shadow(0 1px 2px color-mix(in srgb, currentColor 18%, transparent));
 }
 
 /* Add: expand the two strokes independently instead of spinning the plus into
    an X. This reads as "make room / add" without changing meaning. */
-.workspace .lucide-plus path {
+.app-shell .lucide-plus path {
   transform-box: fill-box;
   transform-origin: center;
   transition: transform var(--loom-icon-motion-long) var(--loom-icon-ease);
 }
-.workspace :is(
+.app-shell :is(
   .sidebar-section-title button,
   .project-group-actions button,
-  .workspace-group-header button,
+  .app-shell-group-header button,
   .thread-context-menu button
 ):hover:not(:disabled) .lucide-plus path:first-child {
   transform: scaleX(1.10);
 }
-.workspace :is(
+.app-shell :is(
   .sidebar-section-title button,
   .project-group-actions button,
-  .workspace-group-header button,
+  .app-shell-group-header button,
   .thread-context-menu button
 ):hover:not(:disabled) .lucide-plus path:last-child {
   transform: scaleY(1.10);
@@ -651,25 +660,25 @@
 
 /* Close / clear: a very small twist feels like dismissing a layer, not a
    destructive spin. */
-.workspace .lucide-x {
+.app-shell .lucide-x {
   transition:
     rotate 460ms var(--loom-icon-ease),
     opacity 260ms ease,
     color 260ms ease !important;
 }
-.workspace :is(button, [role="button"]):hover:not(:disabled) .lucide-x {
+.app-shell :is(button, [role="button"]):hover:not(:disabled) .lucide-x {
   rotate: 8deg;
 }
 
 /* Folders: the tab lifts as the project becomes actionable. Open folders also
    lower their inner flap by a fraction, suggesting depth. */
-.workspace :is(.lucide-folder, .lucide-folder-open, .lucide-folder-plus, .lucide-folder-cog)
+.app-shell :is(.lucide-folder, .lucide-folder-open, .lucide-folder-plus, .lucide-folder-cog)
   > :first-child {
   transform-box: fill-box;
   transform-origin: 50% 38%;
   transition: transform var(--loom-icon-motion-long) var(--loom-icon-ease);
 }
-.workspace :is(
+.app-shell :is(
   .project-group-main,
   .thread-context-menu button,
   .thread-project-submenu button,
@@ -679,118 +688,118 @@
   > :first-child {
   transform: translateY(-.58px);
 }
-.workspace .project-group:not(.is-collapsed) .project-group-main .lucide-folder-open {
+.app-shell .project-group:not(.is-collapsed) .project-group-main .lucide-folder-open {
   filter: drop-shadow(0 1px 2px color-mix(in srgb, currentColor 8%, transparent));
 }
 
 /* Pin: a pin settles downward into the surface. Pin-off moves in the reverse
    direction so the state change feels physically connected. */
-.workspace :is(.lucide-pin, .lucide-pin-off) {
+.app-shell :is(.lucide-pin, .lucide-pin-off) {
   transition:
     translate var(--loom-icon-motion-long) var(--loom-icon-ease),
     rotate var(--loom-icon-motion-long) var(--loom-icon-ease),
     color 260ms ease,
     filter 320ms ease !important;
 }
-.workspace :is(button, [role="button"]):hover:not(:disabled) .lucide-pin {
+.app-shell :is(button, [role="button"]):hover:not(:disabled) .lucide-pin {
   translate: 0 .65px;
   rotate: -2.4deg;
 }
-.workspace :is(button, [role="button"]):hover:not(:disabled) .lucide-pin-off {
+.app-shell :is(button, [role="button"]):hover:not(:disabled) .lucide-pin-off {
   translate: 0 -.55px;
   rotate: 2.2deg;
 }
-.workspace .thread-quick-actions button.is-active .lucide-pin {
+.app-shell .thread-quick-actions button.is-active .lucide-pin {
   filter: drop-shadow(0 0 2.5px color-mix(in srgb, currentColor 24%, transparent));
 }
 
 /* Archive: lift the lid; restore additionally lets its arrow rise out. */
-.workspace :is(.lucide-archive, .lucide-archive-restore) > :first-child {
+.app-shell :is(.lucide-archive, .lucide-archive-restore) > :first-child {
   transform-box: fill-box;
   transform-origin: center;
   transition: transform var(--loom-icon-motion-long) var(--loom-icon-ease);
 }
-.workspace :is(button, [role="button"]):hover:not(:disabled)
+.app-shell :is(button, [role="button"]):hover:not(:disabled)
   :is(.lucide-archive, .lucide-archive-restore) > :first-child {
   transform: translateY(-.72px);
 }
-.workspace .lucide-archive-restore > :last-child {
+.app-shell .lucide-archive-restore > :last-child {
   transform-box: fill-box;
   transform-origin: center;
   transition: transform var(--loom-icon-motion-long) var(--loom-icon-ease);
 }
-.workspace :is(button, [role="button"]):hover:not(:disabled)
+.app-shell :is(button, [role="button"]):hover:not(:disabled)
   .lucide-archive-restore > :last-child {
   transform: translate(-.45px, -.55px);
 }
 
 /* Delete: the lid opens slightly, while the can stays planted. */
-.workspace .lucide-trash-2 > :first-child {
+.app-shell .lucide-trash-2 > :first-child {
   transform-box: fill-box;
   transform-origin: center;
 }
-.workspace :is(button, [role="button"]):hover:not(:disabled)
+.app-shell :is(button, [role="button"]):hover:not(:disabled)
   .lucide-trash-2 > :first-child {
   transform: translateY(-.82px) rotate(-1deg);
 }
 
 /* More: three dots lift in a quiet left-to-right wave. */
-.workspace .lucide-ellipsis circle {
+.app-shell .lucide-ellipsis circle {
   transform-box: fill-box;
   transform-origin: center;
   transition: transform 460ms var(--loom-icon-ease);
 }
-.workspace .lucide-ellipsis circle:nth-of-type(2) { transition-delay: 48ms; }
-.workspace .lucide-ellipsis circle:nth-of-type(3) { transition-delay: 96ms; }
-.workspace :is(button, [role="button"]):hover:not(:disabled)
+.app-shell .lucide-ellipsis circle:nth-of-type(2) { transition-delay: 48ms; }
+.app-shell .lucide-ellipsis circle:nth-of-type(3) { transition-delay: 96ms; }
+.app-shell :is(button, [role="button"]):hover:not(:disabled)
   .lucide-ellipsis circle {
   transform: translateY(-.72px);
 }
 
 /* Eye: glance toward the content. Eye-off keeps its slash steady so the icon
    never becomes visually ambiguous. */
-.workspace .lucide-eye circle {
+.app-shell .lucide-eye circle {
   transform-box: fill-box;
   transform-origin: center;
   transition: transform var(--loom-icon-motion-long) var(--loom-icon-ease);
 }
-.workspace :is(button, [role="button"]):hover:not(:disabled)
+.app-shell :is(button, [role="button"]):hover:not(:disabled)
   .lucide-eye circle {
   transform: translateX(.7px);
 }
-.workspace .lucide-eye-off {
+.app-shell .lucide-eye-off {
   transition:
     translate var(--loom-icon-motion-long) var(--loom-icon-ease),
     opacity 260ms ease !important;
 }
-.workspace :is(button, [role="button"]):hover:not(:disabled)
+.app-shell :is(button, [role="button"]):hover:not(:disabled)
   .lucide-eye-off {
   translate: -.45px 0;
 }
 
 /* Copy: separate the stacked sheets; the existing copied check animation then
    finishes the interaction. */
-.workspace .lucide-copy rect {
+.app-shell .lucide-copy rect {
   transform-box: fill-box;
   transform-origin: center;
   transition: transform var(--loom-icon-motion-long) var(--loom-icon-ease);
 }
-.workspace :is(button, [role="button"]):hover:not(:disabled)
+.app-shell :is(button, [role="button"]):hover:not(:disabled)
   .lucide-copy rect:first-of-type {
   transform: translate(-.38px, .38px);
 }
-.workspace :is(button, [role="button"]):hover:not(:disabled)
+.app-shell :is(button, [role="button"]):hover:not(:disabled)
   .lucide-copy rect:last-of-type {
   transform: translate(.55px, -.55px);
 }
 
 /* Fork: branches open by a fraction, useful in the conversation context menu. */
-.workspace .lucide-git-fork {
+.app-shell .lucide-git-fork {
   transition:
     translate var(--loom-icon-motion-long) var(--loom-icon-ease),
     filter 320ms ease !important;
 }
-.workspace :is(button, [role="button"]):hover:not(:disabled) .lucide-git-fork {
+.app-shell :is(button, [role="button"]):hover:not(:disabled) .lucide-git-fork {
   translate: 0 -.45px;
   filter: drop-shadow(0 1px 2px color-mix(in srgb, currentColor 11%, transparent));
 }
@@ -798,166 +807,166 @@
 /* Header: each tool tells you what it opens -------------------------------- */
 
 /* Sub-agent: antenna/head rises; the bot body remains anchored. */
-.workspace .thread-agent-button .lucide-bot circle {
+.app-shell .thread-agent-button .lucide-bot circle {
   transform-box: fill-box;
   transform-origin: center;
   transition: transform var(--loom-icon-motion-long) var(--loom-icon-ease);
 }
-.workspace .thread-agent-button:hover:not(:disabled) .lucide-bot circle {
+.app-shell .thread-agent-button:hover:not(:disabled) .lucide-bot circle {
   transform: translateY(-.62px);
 }
-.workspace .thread-agent-button:hover:not(:disabled) .lucide-bot {
+.app-shell .thread-agent-button:hover:not(:disabled) .lucide-bot {
   filter: drop-shadow(0 1px 2px color-mix(in srgb, currentColor 13%, transparent));
 }
-.workspace .thread-agent-button.active .lucide-bot {
+.app-shell .thread-agent-button.active .lucide-bot {
   color: color-mix(in srgb, currentColor 88%, #9d94ff 12%);
 }
 
 /* Review / preview: the inner diff/code marks separate just enough to imply
    opening a review surface. */
-.workspace :is(.lucide-file-diff, .lucide-file-code-2) > :nth-child(2),
-.workspace :is(.lucide-file-diff, .lucide-file-code-2) > :nth-child(3) {
+.app-shell :is(.lucide-file-diff, .lucide-file-code-2) > :nth-child(2),
+.app-shell :is(.lucide-file-diff, .lucide-file-code-2) > :nth-child(3) {
   transform-box: fill-box;
   transform-origin: center;
   transition: transform var(--loom-icon-motion-long) var(--loom-icon-ease);
 }
-.workspace .thread-review-button:hover:not(:disabled)
+.app-shell .thread-review-button:hover:not(:disabled)
   :is(.lucide-file-diff, .lucide-file-code-2) > :nth-child(2) {
   transform: translateX(-.58px);
 }
-.workspace .thread-review-button:hover:not(:disabled)
+.app-shell .thread-review-button:hover:not(:disabled)
   :is(.lucide-file-diff, .lucide-file-code-2) > :nth-child(3) {
   transform: translateX(.58px);
 }
 
 /* Activity/profile: the full waveform glides like a live trace. Never use a
    short dash-array here; it can visually crop Lucide's path. */
-.workspace .thread-profile-button:hover:not(:disabled) .lucide-activity,
-.workspace .home-token-activity:hover .home-token-label .lucide-activity {
+.app-shell .thread-profile-button:hover:not(:disabled) .lucide-activity,
+.app-shell .home-token-activity:hover .home-token-label .lucide-activity {
   translate: .62px 0;
   filter: drop-shadow(-.6px 0 0 color-mix(in srgb, currentColor 9%, transparent));
 }
 
 /* Account avatar: no zoom. A mild contrast lift avoids the cheap "bouncing
    profile photo" feel while still acknowledging the pointer. */
-.workspace .thread-account-button .thread-account-avatar-image {
+.app-shell .thread-account-button .thread-account-avatar-image {
   transition:
     filter 360ms var(--loom-icon-ease),
     opacity 260ms ease;
 }
-.workspace .thread-account-button:hover:not(:disabled) .thread-account-avatar-image {
+.app-shell .thread-account-button:hover:not(:disabled) .thread-account-avatar-image {
   filter:
     brightness(1.055)
     saturate(1.035)
     drop-shadow(0 1px 2px rgba(22, 25, 34, .16));
 }
-.workspace .thread-account-button:hover:not(:disabled) .thread-account-initial {
+.app-shell .thread-account-button:hover:not(:disabled) .thread-account-initial {
   filter: brightness(1.08);
 }
 
 /* Settings: one deliberate gear turn, not a continuous spin. */
-.workspace .thread-header-icon-button:hover:not(:disabled) .lucide-settings {
+.app-shell .thread-header-icon-button:hover:not(:disabled) .lucide-settings {
   rotate: 12deg;
   filter: drop-shadow(0 0 2px color-mix(in srgb, currentColor 12%, transparent));
 }
 
 /* Inspector: the panel icon slides toward the edge it will affect. */
-.workspace .thread-header-icon-button:hover:not(:disabled) .lucide-panel-right-open {
+.app-shell .thread-header-icon-button:hover:not(:disabled) .lucide-panel-right-open {
   translate: .72px 0;
 }
-.workspace .thread-header-icon-button:hover:not(:disabled) .lucide-panel-right-close {
+.app-shell .thread-header-icon-button:hover:not(:disabled) .lucide-panel-right-close {
   translate: -.72px 0;
 }
 
 /* Composer ---------------------------------------------------------------- */
 
 /* Attachment: a paperclip hooks upward rather than scaling. */
-.workspace .composer-tool:hover:not(:disabled) .lucide-paperclip {
+.app-shell .composer-tool:hover:not(:disabled) .lucide-paperclip {
   translate: 0 -.62px;
   rotate: -3.2deg;
   filter: drop-shadow(0 1px 1.5px color-mix(in srgb, currentColor 10%, transparent));
 }
 
 /* Permission shield: the check settles upward inside the stationary shield. */
-.workspace .composer-chip.permission-chip .lucide-shield-check path:last-child {
+.app-shell .composer-chip.permission-chip .lucide-shield-check path:last-child {
   transform-box: fill-box;
   transform-origin: center;
   transition:
     transform var(--loom-icon-motion-long) var(--loom-icon-ease),
     opacity 300ms ease;
 }
-.workspace .composer-chip.permission-chip:hover:not(:disabled)
+.app-shell .composer-chip.permission-chip:hover:not(:disabled)
   .lucide-shield-check path:last-child,
-.workspace .composer-chip.permission-chip.is-open
+.app-shell .composer-chip.permission-chip.is-open
   .lucide-shield-check path:last-child {
   transform: translateY(-.5px);
 }
 
 /* Permission variants in the menu: each gets its own physical cue. */
-.workspace .permission-option:hover:not(:disabled) .lucide-eye circle {
+.app-shell .permission-option:hover:not(:disabled) .lucide-eye circle {
   transform: translateX(.62px);
 }
-.workspace .permission-option:hover:not(:disabled) .lucide-folder-cog {
+.app-shell .permission-option:hover:not(:disabled) .lucide-folder-cog {
   translate: 0 -.45px;
 }
-.workspace .permission-option:hover:not(:disabled) .lucide-key-round {
+.app-shell .permission-option:hover:not(:disabled) .lucide-key-round {
   translate: .4px -.25px;
   rotate: -3.5deg;
 }
-.workspace .permission-option:hover:not(:disabled) .lucide-shield-check path:last-child {
+.app-shell .permission-option:hover:not(:disabled) .lucide-shield-check path:last-child {
   transform: translateY(-.42px);
 }
 
 /* Model / CPU: the die compresses subtly while the pins stay still, suggesting
    compute becoming active without a generic bounce. */
-.workspace .composer-chip.model-chip .lucide-cpu rect {
+.app-shell .composer-chip.model-chip .lucide-cpu rect {
   transform-box: fill-box;
   transform-origin: center;
   transition:
     transform var(--loom-icon-motion-long) var(--loom-icon-ease),
     opacity 300ms ease;
 }
-.workspace .composer-chip.model-chip:hover:not(:disabled) .lucide-cpu rect,
-.workspace .composer-chip.model-chip.is-open .lucide-cpu rect {
+.app-shell .composer-chip.model-chip:hover:not(:disabled) .lucide-cpu rect,
+.app-shell .composer-chip.model-chip.is-open .lucide-cpu rect {
   transform: scale(.94);
   opacity: .9;
 }
 
 /* Sticker smile: only the mouth settles down a fraction. */
-.workspace .composer-chip.sticker-chip .lucide-smile path:last-child {
+.app-shell .composer-chip.sticker-chip .lucide-smile path:last-child {
   transform-box: fill-box;
   transform-origin: center;
   transition: transform var(--loom-icon-motion-long) var(--loom-icon-ease);
 }
-.workspace .composer-chip.sticker-chip:hover:not(:disabled) .lucide-smile path:last-child,
-.workspace .composer-chip.sticker-chip.is-open .lucide-smile path:last-child {
+.app-shell .composer-chip.sticker-chip:hover:not(:disabled) .lucide-smile path:last-child,
+.app-shell .composer-chip.sticker-chip.is-open .lucide-smile path:last-child {
   transform: translateY(.48px);
 }
 
 /* Dropdown chevrons already rotate for open state; hover adds only a tiny
    downward invitation so the two states remain visually distinct. */
-.workspace .composer-chip:not(.is-open):hover:not(:disabled) .composer-chip-chevron {
+.app-shell .composer-chip:not(.is-open):hover:not(:disabled) .composer-chip-chevron {
   translate: 0 .5px;
 }
 
 /* Send: arrow accelerates toward the top edge while the button stays perfectly
    still. Stop remains planted and only gains a restrained signal shadow. */
-.workspace .send-button:hover:not(:disabled) .lucide-arrow-up {
+.app-shell .send-button:hover:not(:disabled) .lucide-arrow-up {
   translate: 0 -1.18px;
   filter: drop-shadow(0 1px 2px color-mix(in srgb, currentColor 15%, transparent));
 }
-.workspace .send-button.stop:hover:not(:disabled) .lucide-square {
+.app-shell .send-button.stop:hover:not(:disabled) .lucide-square {
   opacity: .82;
   filter: drop-shadow(0 0 3px color-mix(in srgb, currentColor 22%, transparent));
 }
 
 /* Runtime/task icons ------------------------------------------------------ */
 /* Provider marks never distort. Capability marks make one job-specific move. */
-.workspace :is(.task-flow-row, .task-flow-group-header):hover
+.app-shell :is(.task-flow-row, .task-flow-group-header):hover
   .tool-identity-glyph.is-brand {
   filter: brightness(1.07);
 }
-.workspace :is(.task-flow-row, .task-flow-group-header):hover
+.app-shell :is(.task-flow-row, .task-flow-group-header):hover
   :is(
     .tool-identity-glyph[data-tool-family="terminal"],
     .tool-identity-glyph[data-tool-family="terminal-group"],
@@ -965,7 +974,7 @@
   ) {
   translate: .58px 0;
 }
-.workspace :is(.task-flow-row, .task-flow-group-header):hover
+.app-shell :is(.task-flow-row, .task-flow-group-header):hover
   :is(
     .tool-identity-glyph[data-tool-family="file"],
     .tool-identity-glyph[data-tool-family="file-group"],
@@ -973,22 +982,22 @@
   ) {
   translate: 0 -.5px;
 }
-.workspace :is(.task-flow-row, .task-flow-group-header):hover
+.app-shell :is(.task-flow-row, .task-flow-group-header):hover
   .tool-identity-glyph[data-tool-family="search"] {
   translate: .64px 0;
 }
-.workspace :is(.task-flow-row, .task-flow-group-header):hover
+.app-shell :is(.task-flow-row, .task-flow-group-header):hover
   .tool-identity-glyph[data-tool-family="computer"]::before,
-.workspace :is(.task-flow-row, .task-flow-group-header):hover
+.app-shell :is(.task-flow-row, .task-flow-group-header):hover
   .tool-identity-glyph[data-tool-family="computer"]::after {
   transform: translate(.56px, -.56px);
 }
 
 /* Reduced motion ---------------------------------------------------------- */
 @media (prefers-reduced-motion: reduce) {
-  .workspace :is(button, [role="button"], a[href], summary) svg *,
-  .workspace .home-token-activity svg *,
-  .workspace .thread-account-avatar-image {
+  .app-shell :is(button, [role="button"], a[href], summary) svg *,
+  .app-shell .home-token-activity svg *,
+  .app-shell .thread-account-avatar-image {
     animation: none !important;
     transition-duration: .001ms !important;
     transform: none !important;
@@ -998,9 +1007,9 @@
   }
 }
 
-:root[data-loom-reduced-motion="true"] .workspace :is(button, [role="button"], a[href], summary) svg *,
-:root[data-loom-reduced-motion="true"] .workspace .home-token-activity svg *,
-:root[data-loom-reduced-motion="true"] .workspace .thread-account-avatar-image {
+:root[data-loom-reduced-motion="true"] .app-shell :is(button, [role="button"], a[href], summary) svg *,
+:root[data-loom-reduced-motion="true"] .app-shell .home-token-activity svg *,
+:root[data-loom-reduced-motion="true"] .app-shell .thread-account-avatar-image {
   animation: none !important;
   transition-duration: .001ms !important;
   transform: none !important;
