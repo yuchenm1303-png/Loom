@@ -625,21 +625,21 @@ html[data-loom-theme="light"] {
   --loom-text-muted: #626a75;
   --loom-text-faint: #737c88;
 
-  --semantic-success: #39765a;
-  --semantic-success-text: #2f6d50;
-  --semantic-success-strong: #39765a;
-  --semantic-success-soft: rgba(57,118,90,.10);
-  --semantic-success-fill: rgba(57,118,90,.11);
-  --semantic-success-border: rgba(57,118,90,.30);
-  --semantic-success-glow: rgba(57,118,90,.08);
+  --semantic-success: #168b52;
+  --semantic-success-text: #0f7e47;
+  --semantic-success-strong: #149357;
+  --semantic-success-soft: rgba(22,139,82,.10);
+  --semantic-success-fill: rgba(22,139,82,.105);
+  --semantic-success-border: rgba(22,139,82,.34);
+  --semantic-success-glow: rgba(22,139,82,.14);
 
-  --semantic-danger: #b14c5a;
-  --semantic-danger-text: #a13f4d;
-  --semantic-danger-strong: #b14c5a;
-  --semantic-danger-soft: rgba(177,76,90,.09);
-  --semantic-danger-fill: rgba(177,76,90,.08);
-  --semantic-danger-border: rgba(177,76,90,.28);
-  --semantic-danger-glow: rgba(177,76,90,.08);
+  --semantic-danger: #d93650;
+  --semantic-danger-text: #c62f47;
+  --semantic-danger-strong: #d93650;
+  --semantic-danger-soft: rgba(217,54,80,.095);
+  --semantic-danger-fill: rgba(217,54,80,.095);
+  --semantic-danger-border: rgba(217,54,80,.34);
+  --semantic-danger-glow: rgba(217,54,80,.14);
 
   --semantic-info: #3f70b5;
   --semantic-info-text: #35649f;
@@ -872,7 +872,7 @@ html[data-loom-theme="light"] .thread-review-button.active > svg {
 }
 
 html[data-loom-theme="light"] .thread-review-count {
-  color: #347052;
+  color: #168b52;
   background: rgba(57,118,90,.10);
 }
 
@@ -935,7 +935,7 @@ html[data-loom-theme="light"] .composer .send-button:disabled {
 }
 
 html[data-loom-theme="light"] .composer .send-button.stop {
-  color: #9f3f4d;
+  color: #c62f47;
   background: rgba(217,54,80,.12);
   box-shadow: inset 0 0 0 1px rgba(217,54,80,.22);
 }
@@ -1090,7 +1090,7 @@ html[data-loom-theme="light"] .review-summary-header .turn-artifacts-copy strong
 
 html[data-loom-theme="light"] .review-summary-header .turn-artifacts-stats b,
 html[data-loom-theme="light"] .turn-artifacts-file-strip small b {
-  color: #347052;
+  color: #168b52;
 }
 
 html[data-loom-theme="light"] .review-summary-header .turn-artifacts-stats i,
@@ -1180,8 +1180,8 @@ html[data-loom-theme="light"] .models-lock-banner {
 
 html[data-loom-theme="light"] .models-error-banner {
   border-color: rgba(217,54,80,.24);
-  background: rgba(177,76,90,.065);
-  color: #a13f4d;
+  background: rgba(217,54,80,.075);
+  color: #c62f47;
 }
 
 /* Primary active-model surface ------------------------------------------- */
@@ -1212,7 +1212,7 @@ html[data-loom-theme="light"] .models-active-copy > span {
 html[data-loom-theme="light"] .models-ready-badge {
   border-color: rgba(57,118,90,.18);
   background: rgba(57,118,90,.08);
-  color: #347052;
+  color: #168b52;
 }
 
 html[data-loom-theme="light"] .models-test-button,
@@ -1305,11 +1305,11 @@ html[data-loom-theme="light"] .models-form-grid select {
 
 html[data-loom-theme="light"] .models-test-result {
   border-top-color: rgba(28,31,37,.075);
-  color: #347052;
+  color: #168b52;
 }
 
 html[data-loom-theme="light"] .models-test-result.error {
-  color: #a13f4d;
+  color: #c62f47;
 }
 
 html[data-loom-theme="light"] .models-test-result span {
@@ -1415,27 +1415,27 @@ html[data-loom-theme="light"] .models-profile-data > div {
 }
 
 html[data-loom-theme="light"] .models-card-diagnostic {
-  color: #347052;
+  color: #168b52;
 }
 
 html[data-loom-theme="light"] .models-card-diagnostic.error {
-  color: #a13f4d;
+  color: #c62f47;
 }
 
 html[data-loom-theme="light"] .models-profile-actions button.active {
-  color: #347052;
-  border-color: rgba(57,118,90,.16);
-  background: rgba(57,118,90,.07);
+  color: #168b52;
+  border-color: rgba(22,139,82,.22);
+  background: rgba(22,139,82,.09);
 }
 
 html[data-loom-theme="light"] .models-profile-actions button.danger {
-  color: #a7535f;
+  color: #c45164;
 }
 
 html[data-loom-theme="light"] .models-profile-actions button.danger.confirm {
-  border-color: rgba(177,76,90,.22);
-  background: rgba(177,76,90,.08);
-  color: #a13f4d;
+  border-color: rgba(217,54,80,.28);
+  background: rgba(217,54,80,.095);
+  color: #c62f47;
 }
 
 html[data-loom-theme="light"] .models-empty-state {
