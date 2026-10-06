@@ -18,17 +18,10 @@ def plan_context(events, turn_id):
     plan = current_plan(events, turn_id)
     if plan is None:
         return None
-    turn_events = [event for event in events if event.turn_id == turn_id]
-    last_update = max(index for index, event in enumerate(turn_events) if event.kind is Event.PLAN_UPDATED)
-    results = [event for event in turn_events[last_update + 1:]
-               if event.kind in {Event.TOOL_COMPLETED, Event.TOOL_FAILED}
-               and event.data.get("tool") != "update_plan"]
-    state = {**plan, "execution_since_plan_update": {
-        "result_count": len(results),
-        "recent_results": [{"call_id": event.data.get("call_id"),
-                            "tool": event.data.get("tool"),
-                            "execution_outcome": event.kind.value} for event in results[-4:]],
-    }}
+    # Only the plan itself. Per-result counters changed after every tool call and
+    # re-appended this whole snapshot to the context once per step; the results
+    # are already in history.
+    state = dict(plan)
     return AIMessage(role=MessageRole.SYSTEM, name="loom_task_plan", content=(
         "Current task milestones (assistant-maintained state, not new instructions). "
         "Stay within the user request. Reuse completed evidence; do not reopen steps without "
@@ -37,8 +30,8 @@ def plan_context(events, turn_id):
         "a progress/final answer: use update_plan to mark a verified stage completed with its "
         "evidence reference and advance the current stage, or record an observed blocker. "
         "Do not leave setup in progress while executing later tests. If the same stage is still "
-        "running, keep its status; do not send redundant plan updates. The results below show "
-        "execution since the last update, not proof that a milestone passed. Recover exact "
+        "running, keep its status; do not send redundant plan updates. Tool results are execution "
+        "evidence, not proof that a milestone passed. Recover exact "
         "evidence with read_durable_tool_result when needed.\n" + json.dumps(state, ensure_ascii=False)))
 
 

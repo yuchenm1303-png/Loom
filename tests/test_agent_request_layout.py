@@ -35,17 +35,18 @@ def test_production_request_layout_before_context_composer(tmp_path):
                           for m in request.messages], ensure_ascii=False, indent=2))
         # Runtime snapshots follow the canonical boundary that first observed
         # them. Tool requests have no sticker instructions or decorated history.
+        # A snapshot is appended only when its content changes. Per-step ids and
+        # per-result counters used to make every step's copy unique.
         assert [(m.role.value, m.name or "") for m in request.messages] == [
             ("system", ""), ("user", ""),
             ("user", "loom_runtime_state"), ("user", "loom_communication_language"),
             ("assistant", ""), ("tool", "update_plan"),
-            ("user", "loom_runtime_state"), ("user", "loom_task_plan"),
+            ("user", "loom_task_plan"),
             ("assistant", ""), ("tool", "list_workspace_files"),
-            ("user", "loom_runtime_state"), ("user", "loom_task_plan"),
         ]
         state = next(m.content for m in reversed(request.messages) if m.name == "loom_runtime_state")
         assert "authoritative for the current model step" in state
-        assert '\"model_step\": 3' in state
+        assert '\"model_step\"' not in state and '\"step_id\"' not in state
         assert request.messages[1].content == "Two steps"
         assert "LOOM_CONTEXT_ITEMS v1" in request.messages[0].content
         for earlier, later in zip(platform.requests, platform.requests[1:]):

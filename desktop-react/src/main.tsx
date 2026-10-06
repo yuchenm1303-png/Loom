@@ -40,6 +40,7 @@ import "./components/generation-motion.css";
 import "./components/conversation-home.css";
 import "./components/composer-refined.css";
 import "./components/workspace-surface-refinement.css";
+import "./components/icon-motion.css";
 
 installWebBridge();
 

@@ -9,60 +9,96 @@ const browser = await chromium.launch({ executablePath: process.env.LOOM_CHROMIU
 try {
   const page = await browser.newPage();
   for (const [filename, color] of [["yukino-cursor.png", "#000"], ["yukino-cursor-white.png", "#fff"]]) {
-  const png = await page.evaluate(async ({ character, arrow }) => {
-    const load = async (url) => {
-      const image = new Image();
-      image.src = url;
-      await image.decode();
-      return image;
-    };
-    const [decoration, pointer] = await Promise.all([load(character), load(arrow)]);
-    const canvas = document.createElement("canvas");
-    const ctx = canvas.getContext("2d");
-    // Separate the original marker from the decoration before laying them out.
-    const characterLayer = document.createElement("canvas");
-    characterLayer.width = decoration.naturalWidth;
-    characterLayer.height = decoration.naturalHeight;
-    const characterContext = characterLayer.getContext("2d");
-    characterContext.drawImage(decoration, 0, 0);
-    characterContext.clearRect(0, 0, 10, 9);
-    const pixels = characterContext.getImageData(0, 0, characterLayer.width, characterLayer.height).data;
-    let right = 0;
-    let bottom = 0;
-    for (let y = 0; y < characterLayer.height; y++) {
-      for (let x = 0; x < characterLayer.width; x++) {
-        if (pixels[(y * characterLayer.width + x) * 4 + 3]) {
-          right = Math.max(right, x + 1);
-          bottom = Math.max(bottom, y + 1);
+    const png = await page.evaluate(async ({ character, arrow }) => {
+      const load = async (url) => {
+        const image = new Image();
+        image.src = url;
+        await image.decode();
+        return image;
+      };
+      const [decoration, pointer] = await Promise.all([load(character), load(arrow)]);
+
+      // yukino-mouse.png is now a pure, high-resolution character source. Crop
+      // transparent padding first, then downsample once into the native cursor.
+      // Keeping the source larger than the final 53px decoration preserves much
+      // more face/hair detail than repeatedly rescaling an already tiny bitmap.
+      const sourceLayer = document.createElement("canvas");
+      sourceLayer.width = decoration.naturalWidth;
+      sourceLayer.height = decoration.naturalHeight;
+      const sourceContext = sourceLayer.getContext("2d");
+      sourceContext.drawImage(decoration, 0, 0);
+      const pixels = sourceContext.getImageData(0, 0, sourceLayer.width, sourceLayer.height).data;
+      let left = sourceLayer.width;
+      let top = sourceLayer.height;
+      let right = 0;
+      let bottom = 0;
+      for (let y = 0; y < sourceLayer.height; y++) {
+        for (let x = 0; x < sourceLayer.width; x++) {
+          if (pixels[(y * sourceLayer.width + x) * 4 + 3]) {
+            left = Math.min(left, x);
+            top = Math.min(top, y);
+            right = Math.max(right, x + 1);
+            bottom = Math.max(bottom, y + 1);
+          }
         }
       }
-    }
-    // Equal X/Y offsets put the pointer diagonally upper-left of the character,
-    // not directly above it. Trim unused padding to keep the native cursor compact.
-    const offset = 12;
-    const size = Math.max(offset + right, offset + bottom, pointer.naturalWidth, pointer.naturalHeight) + 2;
-    canvas.width = size;
-    canvas.height = size;
-    ctx.drawImage(characterLayer, offset, offset);
-    // The SVG defines the enlarged arm lengths, retaining the original stroke thickness.
-    // Draw at its native size and keep the click hotspot at (0, 0).
-    ctx.imageSmoothingEnabled = false;
-    ctx.drawImage(pointer, 0, 0);
-    // Chromium skips oversized native cursors near viewport edges. A pointer-only
-    // second CSS candidate stays below 32px and retains the exact same hotspot.
-    const edgeCanvas = document.createElement("canvas");
-    edgeCanvas.width = pointer.naturalWidth;
-    edgeCanvas.height = pointer.naturalHeight;
-    edgeCanvas.getContext("2d").drawImage(pointer, 0, 0);
-    return {
-      full: canvas.toDataURL("image/png").split(",")[1],
-      edge: edgeCanvas.toDataURL("image/png").split(",")[1],
-    };
-  }, {
-    character: `data:image/png;base64,${character.toString("base64")}`,
-    arrow: `data:image/svg+xml;base64,${Buffer.from(arrow.toString().replace('fill="#000"', `fill="${color}"`)).toString("base64")}`,
-  });
-  await writeFile(new URL(filename, assets), Buffer.from(png.full, "base64"));
-  await writeFile(new URL(filename.replace("yukino-cursor", "yukino-pointer"), assets), Buffer.from(png.edge, "base64"));
+      if (right <= left || bottom <= top) throw new Error("cursor character source is empty");
+
+      const characterMax = 53;
+      const cropWidth = right - left;
+      const cropHeight = bottom - top;
+      const scale = Math.min(characterMax / cropWidth, characterMax / cropHeight);
+      const characterWidth = Math.max(1, Math.round(cropWidth * scale));
+      const characterHeight = Math.max(1, Math.round(cropHeight * scale));
+      const offset = 12;
+      const size = Math.max(
+        offset + characterWidth,
+        offset + characterHeight,
+        pointer.naturalWidth,
+        pointer.naturalHeight,
+      ) + 2;
+
+      const canvas = document.createElement("canvas");
+      canvas.width = size;
+      canvas.height = size;
+      const ctx = canvas.getContext("2d");
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = "high";
+      ctx.drawImage(
+        sourceLayer,
+        left,
+        top,
+        cropWidth,
+        cropHeight,
+        offset,
+        offset,
+        characterWidth,
+        characterHeight,
+      );
+
+      // The pointer stays independent from the character source. Draw the SVG at
+      // native size with no smoothing so its shape/thickness and (0, 0) hotspot
+      // remain exactly controllable from cursor-arrow.svg.
+      ctx.imageSmoothingEnabled = false;
+      ctx.drawImage(pointer, 0, 0);
+
+      // Chromium skips oversized native cursors near viewport edges. A pointer-only
+      // second CSS candidate stays below 32px and retains the exact same hotspot.
+      const edgeCanvas = document.createElement("canvas");
+      edgeCanvas.width = pointer.naturalWidth;
+      edgeCanvas.height = pointer.naturalHeight;
+      edgeCanvas.getContext("2d").drawImage(pointer, 0, 0);
+      return {
+        full: canvas.toDataURL("image/png").split(",")[1],
+        edge: edgeCanvas.toDataURL("image/png").split(",")[1],
+      };
+    }, {
+      character: `data:image/png;base64,${character.toString("base64")}`,
+      arrow: `data:image/svg+xml;base64,${Buffer.from(arrow.toString().replace('fill="#000"', `fill="${color}"`)).toString("base64")}`,
+    });
+    await writeFile(new URL(filename, assets), Buffer.from(png.full, "base64"));
+    await writeFile(new URL(filename.replace("yukino-cursor", "yukino-pointer"), assets), Buffer.from(png.edge, "base64"));
   }
-} finally { await browser.close(); }
+} finally {
+  await browser.close();
+}

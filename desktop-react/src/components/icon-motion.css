@@ -1,0 +1,210 @@
+/* Loom icon interaction system -----------------------------------------------
+   A single restrained motion language for interactive icons across the app.
+   Use transform longhands so existing component transforms (chevrons, arrows,
+   disclosure rotations) keep composing instead of being overwritten. */
+
+:root {
+  --loom-icon-motion-fast: 130ms;
+  --loom-icon-motion: 190ms;
+  --loom-icon-motion-spring: 300ms;
+  --loom-icon-ease: cubic-bezier(.2,.78,.2,1);
+  --loom-icon-ease-spring: cubic-bezier(.34,1.45,.64,1);
+}
+
+/* Core interactive icon motion. */
+:is(button, [role="button"], a[href], summary)
+  :is(svg:not(.tool-identity-glyph > svg), .tool-identity-glyph, .mp-mark, .capability-icon):not(.thread-sidebar-triangle-mark) {
+  transform-origin: center;
+  transform-box: fill-box;
+  transition:
+    translate var(--loom-icon-motion) var(--loom-icon-ease),
+    scale var(--loom-icon-motion-spring) var(--loom-icon-ease-spring),
+    rotate var(--loom-icon-motion) var(--loom-icon-ease),
+    color var(--loom-icon-motion-fast) ease,
+    opacity var(--loom-icon-motion-fast) ease,
+    filter var(--loom-icon-motion-fast) ease;
+}
+
+:is(button, [role="button"], a[href], summary):hover:not(:disabled)
+  :is(svg:not(.tool-identity-glyph > svg), .tool-identity-glyph, .mp-mark, .capability-icon):not(.thread-sidebar-triangle-mark) {
+  translate: 0 -1px;
+  scale: 1.055;
+}
+
+:is(button, [role="button"], a[href], summary):active:not(:disabled)
+  :is(svg:not(.tool-identity-glyph > svg), .tool-identity-glyph, .mp-mark, .capability-icon):not(.thread-sidebar-triangle-mark) {
+  translate: 0 .35px;
+  scale: .94;
+  transition-duration: 90ms;
+}
+
+/* Icon-only controls can afford a touch more lift without moving text. */
+:is(
+  .thread-header-icon-button,
+  .compact-sidebar-actions button,
+  .sidebar-section-title button,
+  .project-disclosure-button,
+  .project-group-actions button,
+  .thread-quick-actions button,
+  .workspace-group-header button,
+  .mp-back,
+  .mp-search-clear
+):hover:not(:disabled) > svg:not(.thread-sidebar-triangle-mark) {
+  translate: 0 -1.25px;
+  scale: 1.075;
+}
+
+/* Directional glyphs travel in the direction they point. */
+:is(button, [role="button"], a[href]):hover:not(:disabled)
+  :is(.lucide-chevron-right, .project-disclosure-chevron, .menu-chevron, .mp-row-chevron) {
+  translate: 1.75px 0;
+  scale: 1.02;
+}
+
+:is(button, [role="button"], a[href]):hover:not(:disabled) .lucide-chevron-left {
+  translate: -1.75px 0;
+  scale: 1.02;
+}
+
+:is(button, [role="button"], a[href]):hover:not(:disabled)
+  :is(.lucide-arrow-right, .lucide-panel-right-open, .lucide-panel-right-close) {
+  translate: 1.4px 0;
+}
+
+:is(button, [role="button"], a[href]):hover:not(:disabled)
+  :is(.lucide-arrow-left, .lucide-panel-left-open, .lucide-panel-left-close) {
+  translate: -1.4px 0;
+}
+
+/* A few semantic glyphs get a distinctive but quiet gesture. */
+:is(button, [role="button"], a[href]):hover:not(:disabled) .lucide-settings {
+  rotate: 14deg;
+  scale: 1.06;
+}
+
+:is(button, [role="button"], a[href]):hover:not(:disabled)
+  :is(.lucide-plus, .lucide-folder-plus) {
+  rotate: 7deg;
+  scale: 1.08;
+}
+
+:is(button, [role="button"], a[href]):hover:not(:disabled)
+  :is(.lucide-pencil, .lucide-square-pen, .lucide-file-pen-line) {
+  translate: .8px -1.1px;
+  rotate: -3deg;
+  scale: 1.055;
+}
+
+:is(button, [role="button"], a[href]):hover:not(:disabled) .lucide-search {
+  scale: 1.075;
+}
+
+:is(button, [role="button"], a[href]):hover:not(:disabled)
+  :is(.lucide-folder, .lucide-folder-open) {
+  translate: 0 -1px;
+  scale: 1.045;
+}
+
+:is(button, [role="button"], a[href]):hover:not(:disabled)
+  :is(.lucide-trash-2, .lucide-x) {
+  scale: 1.045;
+}
+
+/* Rich rows whose icon is not itself inside the interactive element. */
+.activity-row .tool-identity-glyph,
+.capability-row .capability-icon {
+  transform-origin: center;
+  transition:
+    translate var(--loom-icon-motion) var(--loom-icon-ease),
+    scale var(--loom-icon-motion-spring) var(--loom-icon-ease-spring),
+    rotate var(--loom-icon-motion) var(--loom-icon-ease),
+    color var(--loom-icon-motion-fast) ease,
+    opacity var(--loom-icon-motion-fast) ease;
+}
+
+.activity-row:hover .tool-identity-glyph,
+.capability-row:hover .capability-icon {
+  translate: 0 -1px;
+  scale: 1.055;
+}
+
+/* Model/provider marks feel alive without turning into badges that bounce. */
+.mp-row .mp-mark {
+  transition:
+    translate var(--loom-icon-motion) var(--loom-icon-ease),
+    scale var(--loom-icon-motion-spring) var(--loom-icon-ease-spring),
+    box-shadow var(--loom-icon-motion-fast) ease,
+    color var(--loom-icon-motion-fast) ease,
+    background-color var(--loom-icon-motion-fast) ease;
+}
+
+.mp-row:hover:not(:disabled) .mp-mark {
+  translate: 0 -1px;
+  scale: 1.055;
+}
+
+/* New-conversation compose mark: the frame stays calm while the pencil moves. */
+.sidebar-compose-icon {
+  overflow: visible;
+}
+
+.sidebar-compose-icon .sidebar-compose-frame,
+.sidebar-compose-icon .sidebar-compose-pencil {
+  transform-box: fill-box;
+  transform-origin: center;
+  transition:
+    transform 240ms var(--loom-icon-ease),
+    opacity var(--loom-icon-motion-fast) ease;
+}
+
+.sidebar-new-conversation:hover .sidebar-compose-pencil {
+  transform: translate(1px, -1px) rotate(-3deg);
+}
+
+.sidebar-new-conversation:active .sidebar-compose-pencil {
+  transform: translate(.25px, -.2px) rotate(-1deg);
+}
+
+/* Keep animated/status glyphs driven by their own components. */
+:is(
+  [class*="spinner"],
+  [class*="loading"],
+  [class*="progress-ring"],
+  .thinking-glyph,
+  .codex-sidebar-brand-mark,
+  .codex-sidebar-brand-orbit,
+  .thread-sidebar-triangle-mark
+) {
+  will-change: auto;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :is(button, [role="button"], a[href], summary)
+    :is(svg, .tool-identity-glyph, .mp-mark, .capability-icon),
+  .activity-row .tool-identity-glyph,
+  .capability-row .capability-icon,
+  .mp-row .mp-mark,
+  .sidebar-compose-icon .sidebar-compose-frame,
+  .sidebar-compose-icon .sidebar-compose-pencil {
+    transition: none !important;
+    translate: none !important;
+    scale: 1 !important;
+    rotate: 0deg !important;
+    filter: none !important;
+  }
+}
+
+:root[data-loom-reduced-motion="true"]
+  :is(button, [role="button"], a[href], summary)
+  :is(svg, .tool-identity-glyph, .mp-mark, .capability-icon),
+:root[data-loom-reduced-motion="true"] .activity-row .tool-identity-glyph,
+:root[data-loom-reduced-motion="true"] .capability-row .capability-icon,
+:root[data-loom-reduced-motion="true"] .mp-row .mp-mark,
+:root[data-loom-reduced-motion="true"] .sidebar-compose-icon .sidebar-compose-frame,
+:root[data-loom-reduced-motion="true"] .sidebar-compose-icon .sidebar-compose-pencil {
+  transition: none !important;
+  translate: none !important;
+  scale: 1 !important;
+  rotate: 0deg !important;
+  filter: none !important;
+}
