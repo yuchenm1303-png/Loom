@@ -2,6 +2,7 @@ import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { hostRuntimeIdentity } from "./host-runtime-identity.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -167,21 +168,7 @@ run(runtimeExe, [
   "import tempfile; from pathlib import Path; import keyring.backends.Windows; from app.connector_web_oauth import WebOAuthConnectorManager; m=WebOAuthConnectorManager(Path(tempfile.mkdtemp()), environment={}); s=m.github_status(); assert s.get('id') == 'github'; assert 'connected' in s; assert 'webOAuthAvailable' in s; print('loom-connector-status-ok')",
 ], { cwd: path.dirname(runtimeExe) });
 
-const hostRuntimeVersion = String(process.env.LOOM_HOST_RUNTIME_VERSION || "1.0.0").trim();
-const hostRuntimeProtocol = Number(process.env.LOOM_HOST_RUNTIME_PROTOCOL || "1");
-const hostMinBootstrapVersion = String(process.env.LOOM_HOST_MIN_BOOTSTRAP_VERSION || "0.1.11").trim();
-if (!/^\d+\.\d+\.\d+$/.test(hostRuntimeVersion)) throw new Error(`Invalid Host runtime version: ${hostRuntimeVersion}`);
-if (!Number.isInteger(hostRuntimeProtocol) || hostRuntimeProtocol < 0) throw new Error(`Invalid Host runtime protocol: ${hostRuntimeProtocol}`);
-const hostManifest = {
-  schema: 1,
-  version: hostRuntimeVersion,
-  protocol: hostRuntimeProtocol,
-  platform: "win32",
-  arch: "x64",
-  minBootstrapVersion: hostMinBootstrapVersion,
-  sourceSha: String(process.env.GITHUB_SHA || "").trim() || undefined,
-  publishedAt: new Date().toISOString(),
-};
+const hostManifest = hostRuntimeIdentity(REPO_ROOT);
 fs.writeFileSync(path.join(DIST_ROOT, "python", "manifest.json"), `${JSON.stringify(hostManifest, null, 2)}\n`, "utf8");
-console.log(`[build-runtime] Host manifest: ${hostRuntimeVersion} protocol=${hostRuntimeProtocol}`);
+console.log(`[build-runtime] Host manifest: ${hostManifest.version} protocol=${hostManifest.protocol}`);
 console.log(`[build-runtime] Ready: ${runtimeExe}`);

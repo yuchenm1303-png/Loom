@@ -46,5 +46,9 @@ assert.equal(exportsObject.currentHostRuntime().source,'managed');
 missing.clear();
 missing.add(path.join(managedRoot,'python.exe'));
 assert.equal(exportsObject.currentHostRuntime().source,'embedded');
-assert.equal(exportsObject.compareHostRuntimeBuilds({publishedAt:'invalid'},{publishedAt:'invalid'}),null);
+assert.equal(exportsObject.compareHostRuntimeBuilds({version:'1.0.0',publishedAt:'invalid'},{version:'1.0.28',publishedAt:'invalid'}),null);
+assert.equal(exportsObject.compareHostRuntimeBuilds({version:'1.0.1791000000',publishedAt:'2026-10-01'},
+  {version:'1.0.28',publishedAt:'2026-10-09'}),1);
+assert.equal(exportsObject.compareHostRuntimeBuilds({version:'1.0.1791000000',publishedAt:'2026-10-01'},
+  {version:'1.0.1791000000',publishedAt:'2026-10-09'}),0);
 console.log('Host runtime selection regression passed');

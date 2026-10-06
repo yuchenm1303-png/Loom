@@ -83,6 +83,20 @@ jobs:
           if (-not (Test-Path $runtime)) { throw "Packaged private Python runtime was not found at $runtime" }
           if (-not (Test-Path $mxc)) { throw "Packaged MXC executable was not found at $mxc" }
           if (-not (Test-Path $browserExtension)) { throw "Packaged Current Tab Bridge extension was not found at $browserExtension" }
+          $expectedIdentity = node desktop-react/scripts/host-runtime-identity.mjs | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0) { throw "Cannot resolve packaged runtime source identity." }
+          $actualIdentity = Get-Content (Join-Path $resources "manifest.json") -Raw | ConvertFrom-Json
+          foreach ($field in @("version", "protocol", "sourceSha", "publishedAt")) {
+            if ($actualIdentity.$field -ne $expectedIdentity.$field) { throw "Packaged runtime identity mismatch: $field" }
+          }
+          $extensionSource = Join-Path $env:GITHUB_WORKSPACE "extensions\browser-current-tab"
+          Get-ChildItem $extensionSource -Recurse -File | ForEach-Object {
+            $relative = [IO.Path]::GetRelativePath($extensionSource, $_.FullName)
+            $installed = Join-Path (Join-Path $resources "browser-current-tab") $relative
+            if (-not (Test-Path $installed) -or (Get-FileHash $_.FullName).Hash -ne (Get-FileHash $installed).Hash) {
+              throw "Packaged extension asset mismatch: $relative"
+            }
+          }
           & $runtime first-run-test
           if ($LASTEXITCODE -ne 0) { throw "Packaged credential-free first-run test failed." }
           & $runtime self-test

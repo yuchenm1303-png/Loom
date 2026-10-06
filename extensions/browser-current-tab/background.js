@@ -355,6 +355,9 @@ async function applyInstalledUpdateAtCommandBoundary() {
     const previous = String(stored[UPDATE_TOKEN_KEY] || "");
     if (!previous) {
       await chrome.storage.local.set({ [UPDATE_TOKEN_KEY]: token });
+      // An already-loaded worker may first see the signal only after Desktop
+      // replaced its files. Do not baseline an update without applying it.
+      if (payload.version && String(payload.version) !== chrome.runtime.getManifest().version) chrome.runtime.reload();
       return;
     }
     if (previous !== token) {

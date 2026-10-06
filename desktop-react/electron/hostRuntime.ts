@@ -47,7 +47,17 @@ function validProtocol(value: unknown): value is number {
   return Number.isInteger(value) && Number(value) >= 0 && Number(value) <= 1_000_000;
 }
 
-export function compareHostRuntimeBuilds(left: Pick<HostRuntimeManifest, "publishedAt">, right: Pick<HostRuntimeManifest, "publishedAt">): number | null {
+export function compareHostRuntimeBuilds(left: Pick<HostRuntimeManifest, "publishedAt" | "version">, right: Pick<HostRuntimeManifest, "publishedAt" | "version">): number | null {
+  // Only legacy desktop bundles used a placeholder version. New builds from
+  // both channels use the same source-derived version, regardless of build time.
+  if (left.version !== "1.0.0" && right.version !== "1.0.0") {
+    const a = left.version.split(/[+-]/, 1)[0].split(".").map(Number);
+    const b = right.version.split(/[+-]/, 1)[0].split(".").map(Number);
+    for (let index = 0; index < 3; index += 1) {
+      if (a[index] !== b[index]) return Math.sign(a[index] - b[index]);
+    }
+    return 0;
+  }
   const leftDate = Date.parse(left.publishedAt || "");
   const rightDate = Date.parse(right.publishedAt || "");
   return Number.isFinite(leftDate) && Number.isFinite(rightDate) ? Math.sign(leftDate - rightDate) : null;
@@ -121,7 +131,7 @@ export function currentHostRuntime(repoRoot?: string): HostRuntimeDescriptor {
   const embedded = readHostRuntimeManifest(embeddedRoot);
   if (embedded && runtimeRootLooksUsable(embeddedRoot)) {
     // Desktop bundles and standalone Host releases use independent version
-    // numbering (desktop bundles historically say 1.0.0). Compare build dates
+    // numbering (legacy desktop bundles say 1.0.0). Compare source identities
     // across those channels rather than letting a cached Host shadow every
     // subsequent desktop installation. Keep the entire runtime together.
     if (managed) {

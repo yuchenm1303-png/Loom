@@ -46,16 +46,9 @@ fs.cpSync(RUNTIME_SOURCE, stage, { recursive: true, force: true });
 fs.copyFileSync(MXC_SOURCE, path.join(stage, "wxc-exec.exe"));
 fs.cpSync(EXTENSION_SOURCE, path.join(stage, "browser-current-tab"), { recursive: true, force: true });
 
-const manifest = {
-  schema: 1,
-  version,
-  protocol,
-  platform: "win32",
-  arch: "x64",
-  minBootstrapVersion,
-  sourceSha: sourceSha || undefined,
-  publishedAt: new Date().toISOString(),
-};
+const manifest = JSON.parse(fs.readFileSync(path.join(RUNTIME_SOURCE, "manifest.json"), "utf8"));
+if (manifest.version !== version || manifest.protocol !== protocol || manifest.minBootstrapVersion !== minBootstrapVersion
+  || (sourceSha && manifest.sourceSha !== sourceSha)) fail("Frozen runtime identity does not match requested release; rebuild it first.");
 fs.writeFileSync(path.join(stage, "manifest.json"), `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
 
 const runtimeExe = path.join(stage, "python.exe");

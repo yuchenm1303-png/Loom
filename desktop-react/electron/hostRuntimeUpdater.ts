@@ -340,8 +340,7 @@ export async function ensureHostRuntimeUpdate(requiredProtocol = 0): Promise<Hos
         });
       }
       const buildOrder = compareHostRuntimeBuilds(channel, current);
-      const needsVersion = current.source === "embedded" && buildOrder !== null
-        ? buildOrder > 0 : compareVersions(channel.version, current.version) > 0;
+      const needsVersion = buildOrder !== null ? buildOrder > 0 : compareVersions(channel.version, current.version) > 0;
       const needsProtocol = current.protocol < requiredProtocol;
       if (!needsVersion && !needsProtocol) {
         return setState({

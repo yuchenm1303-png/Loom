@@ -11,7 +11,16 @@ def test_runtime_selection_behavior() -> None:
     node = shutil.which("node")
     if not node:
         pytest.skip("Node.js required for runtime selection regression")
+    if not (ROOT / "desktop-react/node_modules/typescript").is_dir():
+        pytest.skip("Desktop TypeScript dependencies required for runtime regression")
     subprocess.run([node, str(ROOT / "tests/host_runtime_selection.cjs")], cwd=ROOT, check=True)
+
+
+def test_extension_install_behavior() -> None:
+    node = shutil.which("node")
+    if not node or not (ROOT / "desktop-react/node_modules/typescript").is_dir():
+        pytest.skip("Desktop Node/TypeScript dependencies required")
+    subprocess.run([node, str(ROOT / "tests/browser_extension_install.cjs")], cwd=ROOT, check=True)
 
 
 def test_host_runtime_has_its_own_release_channel() -> None:

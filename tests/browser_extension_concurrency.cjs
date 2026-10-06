@@ -59,6 +59,23 @@ function harness() {
 }
 
 async function main() {
+  const updates = harness();
+  updates.run(`chrome.runtime.getURL = path => path;
+    let reloadCount = 0;
+    chrome.runtime.reload = () => { reloadCount += 1; };
+    fetch = async () => ({ok: true, json: async () => ({token:'first-update',version:'0.1.23'})});`);
+  await updates.run(`applyInstalledUpdateAtCommandBoundary()`);
+  assert.equal(updates.run('reloadCount'),1,'first signal with newer installed files must reload');
+  updates.run(`chrome.runtime.getManifest = () => ({version:'0.1.23'});`);
+  await updates.run(`applyInstalledUpdateAtCommandBoundary()`);
+  assert.equal(updates.run('reloadCount'),1,'same signal must not reload repeatedly');
+  const firstInstall = harness();
+  firstInstall.run(`chrome.runtime.getURL = path => path;
+    let reloadCount = 0;
+    chrome.runtime.reload = () => { reloadCount += 1; };
+    fetch = async () => ({ok: true, json: async () => ({token:'initial',version:'0.1.18'})});`);
+  await firstInstall.run(`applyInstalledUpdateAtCommandBoundary()`);
+  assert.equal(firstInstall.run('reloadCount'),0,'matching first install only stores baseline');
   const anchors = harness();
   anchors.tabs.get(1).url = 'https://anchor.example/page?session=live#old';
   await anchors.run(`dispatchCommand('navigate', {session_id: 'anchor', url: 'https://anchor.example/page#first'})`);

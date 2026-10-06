@@ -6,6 +6,7 @@ import fs from "node:fs/promises";
 import fsSync from "node:fs";
 import crypto from "node:crypto";
 import readline from "node:readline";
+import { syncExtensionInstall } from "./browserExtensionAssets.js";
 import {
   DesktopModelManager,
   type AddModelInput,
@@ -283,12 +284,7 @@ async function syncBrowserExtensionAssets(): Promise<{ target: string; version: 
   const bridgeConfig = JSON.stringify({ bridgeUrl: "http://127.0.0.1:39222", token: ensureBrowserBridgeToken() });
   const updateSignal = JSON.stringify({ token: crypto.randomUUID(), version });
   for (const installTarget of installTargets) {
-    await fs.mkdir(installTarget, { recursive: true });
-    await fs.cp(source, installTarget, { recursive: true, force: true });
-    await fs.writeFile(path.join(installTarget, "bridge-config.json"), bridgeConfig, { encoding: "utf8", mode: 0o600 });
-    // Write the signal last. A legacy extension that already has the watcher
-    // reloads only after all code and pairing files are in place.
-    await fs.writeFile(path.join(installTarget, "extension-update.json"), updateSignal, { encoding: "utf8", mode: 0o600 });
+    await syncExtensionInstall(source, installTarget, bridgeConfig, updateSignal);
   }
   return { target, version, installTargets };
 }
@@ -1719,6 +1715,11 @@ app.whenReady().then(async () => {
     await prepareDesktopHost();
     ensureDesktopUi();
     return;
+  }
+  // Startup and runtime activation use exactly the same selected asset source.
+  // Do not create an unsolicited first install; update existing paired installs.
+  if (fsSync.existsSync(path.join(browserExtensionTarget(), "manifest.json")) || legacyBrowserExtensionTargets().length) {
+    await syncBrowserExtensionAssets();
   }
   await startHostTransport();
   createHudOverlayWindow();

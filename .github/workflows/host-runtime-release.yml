@@ -62,7 +62,9 @@ jobs:
           if ($config.schema -ne 1) { throw "Unsupported Host runtime config schema." }
           $series = [string]$config.series
           if ($series -notmatch '^\d+\.\d+$') { throw "Invalid Host runtime series: $series" }
-          $version = "$series.${{ github.run_number }}"
+          $identity = node desktop-react/scripts/host-runtime-identity.mjs | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0) { throw "Failed to resolve Host source identity." }
+          $version = [string]$identity.version
           $tag = "host-v$version"
           "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
           "tag=$tag" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
@@ -116,6 +118,14 @@ jobs:
           $manifest = Get-Content (Join-Path $verifyDir "manifest.json") -Raw | ConvertFrom-Json
           if ($manifest.version -ne $version) { throw "Host runtime manifest version mismatch." }
           if ([int]$manifest.protocol -ne [int]"${{ steps.runtime.outputs.protocol }}") { throw "Host runtime manifest protocol mismatch." }
+          $extensionSource = Join-Path $env:GITHUB_WORKSPACE "extensions\browser-current-tab"
+          Get-ChildItem $extensionSource -Recurse -File | ForEach-Object {
+            $relative = [IO.Path]::GetRelativePath($extensionSource, $_.FullName)
+            $installed = Join-Path (Join-Path $verifyDir "browser-current-tab") $relative
+            if (-not (Test-Path $installed) -or (Get-FileHash $_.FullName).Hash -ne (Get-FileHash $installed).Hash) {
+              throw "Host extension asset mismatch: $relative"
+            }
+          }
 
       - name: Publish immutable Host runtime prerelease
         shell: pwsh
@@ -164,7 +174,7 @@ jobs:
             sha256 = $sha
             size = $size
             sourceSha = "${{ github.sha }}"
-            publishedAt = (Get-Date).ToUniversalTime().ToString("o")
+            publishedAt = (Get-Content (Join-Path $env:GITHUB_WORKSPACE "desktop-react\host-runtime-release\host-runtime-manifest.json") -Raw | ConvertFrom-Json).publishedAt
           } | ConvertTo-Json
 
           git fetch origin main
