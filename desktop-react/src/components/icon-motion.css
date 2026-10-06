@@ -418,16 +418,24 @@
 }
 
 /* Activity --------------------------------------------------------------- */
+/* Keep the whole waveform visible at rest. The old dash pattern was shorter
+   than Lucide's Activity path, so its left-hand segment was permanently
+   clipped. Motion now happens on the complete glyph instead of drawing a
+   partial stroke. */
+.workspace .lucide-activity {
+  overflow: visible;
+}
+
 .workspace .lucide-activity path {
-  stroke-dasharray: 34;
-  transition:
-    stroke-dashoffset 620ms var(--loom-icon-ease-soft),
-    opacity 280ms ease;
+  stroke-dasharray: none;
+  stroke-dashoffset: 0;
+  transition: opacity 280ms ease;
 }
 
 .workspace :is(button, [role="button"], a[href]):hover:not(:disabled)
-  .lucide-activity path {
-  stroke-dashoffset: -5;
+  .lucide-activity {
+  translate: .55px 0;
+  filter: drop-shadow(-.55px 0 0 color-mix(in srgb, currentColor 7%, transparent));
 }
 
 /* Review / preview -------------------------------------------------------- */
