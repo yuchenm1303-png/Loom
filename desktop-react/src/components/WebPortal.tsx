@@ -365,7 +365,7 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
 
             <div className="loom-intro-copy">
             <p className="kicker">LOOM · LOCAL-FIRST AGENT</p>
-            <h1><span className="loom-heading-main">{zh ? "你的 Loom，" : "Your Loom stays"}</span>{" "}<span className="loom-heading-accent">{zh ? "始终在自己的电脑上。" : "on your computer."}</span></h1>
+            <h1 data-liquid-snap="true" data-magnetic-hover="true"><span className="loom-heading-main">{zh ? "你的 Loom，" : "Your Loom stays"}</span>{" "}<span className="loom-heading-accent">{zh ? "始终在自己的电脑上。" : "on your computer."}</span></h1>
             <p className="loom-stage-description">
               {zh
                 ? "让 Agent 在你的电脑上持续工作。打开网页，即可接着处理文件、推进任务，继续上次的对话。"
