@@ -17,7 +17,7 @@ class ChildPlatform:
 
     def execute_chat(self, profile_id, request):
         self.requests.append((profile_id, request))
-        last = request.messages[-1]
+        last = next(m for m in reversed(request.messages) if not (m.name or "").startswith("loom_"))
         assert last.role is MessageRole.USER
         if last.content == "initial child task":
             return ModelResponse(text="initial child result")

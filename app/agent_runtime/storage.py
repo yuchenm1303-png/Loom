@@ -10,6 +10,7 @@ from typing import Any
 from app.ai import AIMessage, ImagePart, MessageRole, ModelUsage, TextPart, ToolCall
 
 from .journal import atomic_json, session_lock, recover, repair_tail
+from .event_cache import EventParseCache
 
 from .contracts import (
     AgentEvent,
@@ -167,6 +168,7 @@ def _usage_to_dict(usage: ModelUsage) -> dict[str, int]:
         "input_tokens": int(usage.input_tokens),
         "output_tokens": int(usage.output_tokens),
         "total_tokens": int(usage.total_tokens),
+        "cached_input_tokens": int(usage.cached_input_tokens),
     }
 
 
@@ -176,6 +178,7 @@ def _usage_from_dict(payload: Any) -> ModelUsage:
         input_tokens=int(data.get("input_tokens") or 0),
         output_tokens=int(data.get("output_tokens") or 0),
         total_tokens=int(data.get("total_tokens") or 0),
+        cached_input_tokens=int(data.get("cached_input_tokens") or 0),
     )
 
 
@@ -202,6 +205,7 @@ def session_to_dict(session: AgentSession) -> dict[str, Any]:
         "reasoning_kind": session.reasoning_kind,
         "reasoning_value": session.reasoning_value,
         "messages": [_message_to_dict(message) for message in session.messages],
+        "request_context_frames": session.request_context_frames,
         "pending_tool_calls": [_tool_call_to_dict(call) for call in session.pending_tool_calls],
         "pending_step_id": session.pending_step_id,
         "pending_bindings": session.pending_bindings,
@@ -253,6 +257,7 @@ def session_from_dict(payload: dict[str, Any]) -> AgentSession:
         pending_bindings=dict(payload.get("pending_bindings") or {}),
         steering_ids=list(payload.get("steering_ids") or []),
         active_skills=dict(payload.get("active_skills") or {}),
+        request_context_frames=list(payload.get("request_context_frames") or []),
         pending_approval=_approval_from_dict(payload.get("pending_approval")),
         model_steps=int(payload.get("model_steps") or 0),
         tool_calls=int(payload.get("tool_calls") or 0),
@@ -273,6 +278,7 @@ class FileAgentSessionStore:
     def __init__(self, runtime_root: str | Path) -> None:
         self.root = Path(runtime_root).expanduser().resolve() / "agent_runtime" / "sessions"
         self.root.mkdir(parents=True, exist_ok=True)
+        self._event_cache = EventParseCache()
 
     def session_dir(self, session_id: str) -> Path:
         value = str(session_id or "").strip()
@@ -403,22 +409,8 @@ class FileAgentSessionStore:
         output: list[AgentEvent] = []
         with session_lock(path.parent):
             recover(path.parent)
-            if not path.is_file():
-                return ()
-            if limit is None:
-                lines = path.read_bytes().splitlines(keepends=True)
-            else:
-                with path.open("rb") as handle:
-                    lines = _recent_event_lines(handle, limit)
-        for index, raw in enumerate(lines):
-            if not raw.strip():
-                continue
-            try:
-                payload = json.loads(raw)
-            except (json.JSONDecodeError, UnicodeDecodeError):
-                if index == len(lines) - 1 and not raw.endswith(b"\n"):
-                    break
-                raise
+            payloads = self._event_cache.read(path, limit, _recent_event_lines)
+        for payload in payloads:
             output.append(
                 AgentEvent(
                     event_id=str(payload.get("event_id") or ""),

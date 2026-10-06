@@ -45,6 +45,22 @@ def _build_service(tmp_path: Path):
     return service, runtime, store, workspace
 
 
+def test_archive_delete_release_resources_but_restore_does_not(tmp_path):
+    service, runtime, _store, workspace = _build_service(tmp_path)
+    calls = []
+    runtime.release_session_resources = lambda session_id, *, reason: calls.append((session_id, reason))
+    try:
+        session = runtime.create_session("test-model", workspace_dir=workspace)
+        service.thread_archive({"threadId": session.session_id})
+        assert calls == [(session.session_id, "thread_archived")]
+        service.thread_archive({"threadId": session.session_id, "archived": False})
+        assert len(calls) == 1
+        service.thread_delete({"threadId": session.session_id})
+        assert calls[-1] == (session.session_id, "thread_deleted")
+    finally:
+        runtime.close()
+
+
 def test_thread_library_rename_archive_restore_and_read_only_boundary(tmp_path: Path) -> None:
     service, runtime, store, workspace = _build_service(tmp_path)
     try:

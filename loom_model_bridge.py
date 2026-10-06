@@ -105,10 +105,10 @@ _OPENCODE_GO_VISION_MODELS = frozenset(
         "omen-alpha",
     }
 )
-# Context limits a provider published about its own models, keyed by folded
-# model id and filled in as `/models` listings are fetched. Empty until a
+# Context limits a provider published about its own models, keyed by endpoint
+# and folded model id and filled in as `/models` listings are fetched. Empty until a
 # provider actually says something, so nothing here is ever a guess.
-_DISCOVERED_CONTEXT_LIMITS: dict[str, ModelContextLimits] = {}
+_DISCOVERED_CONTEXT_LIMITS: dict[tuple[str, str], ModelContextLimits] = {}
 _MANAGED_RELAY_CATALOG_ERROR = ""
 _KEYRING_SERVICE = "loom-agent"
 _MANAGED_RELAY_CREDENTIAL_ALIAS = "managed/relay"
@@ -486,7 +486,7 @@ def _fetch_opencode_go_model_ids(timeout: float = 3.5) -> list[str]:
         result.append(model_id)
         limits = model_context_limits_from_provider_listing(item)
         if limits.context_window_tokens or limits.output_reserve_tokens:
-            _DISCOVERED_CONTEXT_LIMITS[folded] = limits
+            _DISCOVERED_CONTEXT_LIMITS[(_normalize_url(OPENCODE_GO_BASE_URL), folded)] = limits
     return result
 
 
@@ -532,7 +532,7 @@ def _fetch_minimax_model_ids(
         result.append(model_id)
         limits = model_context_limits_from_provider_listing(item)
         if limits.context_window_tokens or limits.output_reserve_tokens:
-            _DISCOVERED_CONTEXT_LIMITS[folded] = limits
+            _DISCOVERED_CONTEXT_LIMITS[(_normalize_url(_legacy_minimax_base_url(environ)), folded)] = limits
     return result
 
 
@@ -598,7 +598,7 @@ def _fetch_managed_model_ids(
         # stays undeclared rather than invented.
         limits = model_context_limits_from_provider_listing(item)
         if limits.context_window_tokens or limits.output_reserve_tokens:
-            _DISCOVERED_CONTEXT_LIMITS[key] = limits
+            _DISCOVERED_CONTEXT_LIMITS[(_normalize_url(_managed_relay_base_url(environ)), key)] = limits
     return models
 
 
@@ -651,7 +651,7 @@ def _fetch_deepseek_model_ids(
         # stays undeclared rather than invented.
         limits = model_context_limits_from_provider_listing(item)
         if limits.context_window_tokens or limits.output_reserve_tokens:
-            _DISCOVERED_CONTEXT_LIMITS[key] = limits
+            _DISCOVERED_CONTEXT_LIMITS[(_normalize_url(_deepseek_base_url(environ)), key)] = limits
     return models
 
 
@@ -854,7 +854,7 @@ def _safe_minimax(
     model = str(model or "").strip()
     if not _is_minimax_model(model):
         raise ValueError(f"unsupported MiniMax model id: {model!r}")
-    return {
+    profile = {
         "selection": _minimax_selection_for_model(model),
         "id": _managed_profile_id(model),
         "kind": "builtin",
@@ -866,11 +866,18 @@ def _safe_minimax(
         "baseUrl": _legacy_minimax_base_url(environ),
         "model": model,
     }
+    # Official M3 API guarantees 512K; up to 1M requires route-specific metadata.
+    # https://www.minimax.io/models/text/m3 (verified 2026-10-05).
+    official = {MINIMAX_BASE_URL, "https://api.minimax.io/v1"}
+    if model.casefold() == "minimax-m3" and _normalize_url(profile["baseUrl"]) in official:
+        profile["contextLimits"] = {"contextWindowTokens": 512_000, "workingContextTokens": 128_000}
+        profile["contextLimitsSource"] = "minimax.io/models/text/m3"
+    return profile
 
 
-def _discovered_context_limits(model: str) -> dict[str, Any] | None:
+def _discovered_context_limits(model: str, base_url: str) -> dict[str, Any] | None:
     """Camel-cased limits this provider published for ``model``, if any."""
-    limits = _DISCOVERED_CONTEXT_LIMITS.get(str(model or "").strip().casefold())
+    limits = _DISCOVERED_CONTEXT_LIMITS.get((_normalize_url(base_url), str(model or "").strip().casefold()))
     if limits is None:
         return None
     payload = {
@@ -883,10 +890,11 @@ def _discovered_context_limits(model: str) -> dict[str, Any] | None:
 
 def _with_discovered_limits(profile: dict[str, Any]) -> dict[str, Any]:
     """Attach published limits so the runtime binds a real window, not a guess."""
-    limits = _discovered_context_limits(profile.get("model", ""))
+    limits = _discovered_context_limits(profile.get("model", ""), profile.get("baseUrl", ""))
     if limits is None:
         return profile
-    return {**profile, "contextLimits": limits}
+    return {**profile, "contextLimits": {**profile.get("contextLimits", {}), **limits},
+            "contextLimitsSource": "provider/models"}
 
 
 def _safe_deepseek(
@@ -896,7 +904,7 @@ def _safe_deepseek(
     model = str(model or "").strip()
     if not model:
         raise ValueError("DeepSeek model id must not be empty")
-    return {
+    profile = {
         "selection": _deepseek_selection_for_model(model),
         "id": _deepseek_profile_id(model),
         "kind": "builtin",
@@ -908,6 +916,13 @@ def _safe_deepseek(
         "baseUrl": _deepseek_base_url(environ),
         "model": model,
     }
+    # Exact model IDs and capacity published by the official /models API.
+    # https://api-docs.deepseek.com/api/list-models/ (verified 2026-10-05).
+    if (model.casefold() in {"deepseek-flash", "deepseek-v4-pro"}
+            and _normalize_url(profile["baseUrl"]) in {DEEPSEEK_BASE_URL, DEEPSEEK_BASE_URL + "/v1"}):
+        profile["contextLimits"] = {"contextWindowTokens": 1_048_576, "workingContextTokens": 128_000}
+        profile["contextLimitsSource"] = "api-docs.deepseek.com/api/list-models"
+    return profile
 
 
 def _managed_group(model: str) -> tuple[str, str, int]:
@@ -990,7 +1005,7 @@ def _safe_opencode_go(model: str, *, configured: bool) -> dict[str, Any]:
         "model": model,
         "vision": model.casefold() in _OPENCODE_GO_VISION_MODELS,
     }
-    discovered = _discovered_context_limits(model)
+    discovered = _discovered_context_limits(model, OPENCODE_GO_BASE_URL)
     if discovered is not None:
         return {**profile, "contextLimits": discovered}
     catalog = opencode_go_model_limits(model)
@@ -1005,18 +1020,8 @@ def _safe_opencode_go(model: str, *, configured: bool) -> dict[str, Any]:
             "contextLimitsSource": "models.dev/opencode-go",
             "maxOutputTokens": catalog.max_output_tokens,
         }
-    # Truly unknown future models retain a conservative safety envelope until
-    # either OpenCode publishes limits or the bundled catalog is refreshed.
-    return {
-        **profile,
-        "contextLimits": {
-            "contextWindowTokens": 65_536,
-            "effectiveContextPercent": 90,
-            "autoCompactTokenLimit": 49_152,
-            "outputReserveTokens": 8_192,
-            "toolOutputTokenLimit": 4_000,
-        },
-    }
+    # A future name alone is not a declaration about context or output caps.
+    return profile
 
 
 def _safe_primary() -> dict[str, Any]:

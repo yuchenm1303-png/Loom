@@ -406,12 +406,12 @@ def _build_summary_request(
     communication_language: str,
     max_output_tokens: int | None,
     session_id: str,
+    render_history=None,
 ) -> ChatRequest:
     return ChatRequest(
         messages=tuple(
             [
-                *transient,
-                *history,
+                *(render_history(history) if render_history is not None else (*transient, *history)),
                 AIMessage(
                     role=MessageRole.USER,
                     content=summarization_prompt(communication_language),
@@ -439,6 +439,7 @@ def _metadata(
     calibration: float = 1.0,
     calibration_samples: int = 0,
     input_budget: int | None = None,
+    working_context_attainable: bool | None = None,
 ) -> dict[str, object]:
     metadata: dict[str, object] = {
         "context_digest": envelope.digest,
@@ -456,6 +457,12 @@ def _metadata(
         # size, so every threshold below is a guess about someone else's model.
         "context_window_fallback": limits.source == "runtime_fallback",
         "effective_input_budget_tokens": input_budget,
+        "working_context_tokens": limits.working_context_tokens,
+        "working_input_budget_tokens": limits.working_input_budget_tokens,
+        "working_context_source": limits.working_context_source,
+        "working_context_attainable": working_context_attainable,
+        "working_budget_satisfied_after": (None if limits.working_input_budget_tokens is None else
+            int(math.ceil(estimated_after * calibration)) <= limits.working_input_budget_tokens),
         "context_budget_source": (
             "model_metadata"
             if limits.window_known
@@ -485,6 +492,7 @@ def _single_user_emergency_projection(
     tools,
     *,
     target_tokens: int,
+    render_history=None,
 ) -> tuple[list[AIMessage], int] | None:
     """Clip one oversized real-user item for this request without mutating history.
 
@@ -513,7 +521,8 @@ def _single_user_emergency_projection(
             content = original[:head] + _EMERGENCY_OMISSION_MARKER + original[-tail:]
         else:
             content = original[:head] + _EMERGENCY_OMISSION_MARKER
-        return [*transient, replace(message, content=content)]
+        item = replace(message, content=content)
+        return render_history((item,)) if render_history is not None else [*transient, item]
 
     minimum = candidate(0)
     minimum_tokens = estimate_tokens(minimum, tools)
@@ -556,48 +565,15 @@ def _prepare_context_with_model(rt, session, step, token):
     """Project canonical history from the captured Step and compact when required."""
     _raise_if_cancelled(token)
     envelope = rt._context_envelope(session, step)
-    transient = [
-        message
-        for message in rt._request_context_messages(session, step, envelope)
-        if message.name != "loom_communication_language"
-    ]
-
+    from .context_composer import stable_prefix, render_request
+    transient = stable_prefix(rt, session, step)
     request_state = getattr(step, "request_state", None)
     captured = bool(getattr(request_state, "captured", False))
-    project_instructions = (
-        request_state.project_instructions
-        if captured
-        else rt.instruction_loader.load(session.workspace_dir)
-    )
-    if project_instructions:
-        transient.append(
-            AIMessage(
-                role=MessageRole.USER,
-                name="loom_project_instructions",
-                content=project_instructions,
-            )
-        )
-
-    if captured:
-        communication_language = request_state.communication_language
-    else:
-        communication_language = infer_user_language(
-            session.messages,
-            fallback=session.communication_language,
-        )
+    communication_language = (request_state.communication_language if captured else
+                              infer_user_language(session.messages, fallback=session.communication_language))
     session.communication_language = communication_language
-    transient.append(
-        communication_language_message(
-            () if captured else session.messages,
-            fallback=communication_language,
-        )
-    )
-    # ContextAgentRuntime overrides the core request builder. Keep task state
-    # on this production path too, including across canonical-history rollover.
-    execution_context = getattr(rt, "_execution_context", None)
-    if callable(execution_context):
-        state_messages, _ = execution_context(session)
-        transient.extend(state_messages)
+    def render(history, *, replacement=False):
+        return render_request(rt, session, transient, history, replacement=replacement)
 
     tools = step.tool_router.definitions()
     limits = (
@@ -606,7 +582,7 @@ def _prepare_context_with_model(rt, session, step, token):
         else resolve_context_limits(rt, session)
     )
     canonical_history = tuple(session.messages)
-    visible_messages = [*transient, *canonical_history]
+    visible_messages = render(canonical_history)
     estimated_before = estimate_tokens(visible_messages, tools)
     calibration, calibration_samples = _estimator_calibration(rt, session)
     publish_calibration = getattr(rt, "_publish_estimator_calibration", None)
@@ -622,7 +598,7 @@ def _prepare_context_with_model(rt, session, step, token):
     # make the next request fit. This is a structural impossibility check rather
     # than a compaction decision, so it keeps using the resolved limits even when
     # the window is a fallback: that number is then an absolute sanity ceiling.
-    fixed_tokens = estimate_tokens(transient, tools)
+    fixed_tokens = estimate_tokens(render((), replacement=True), tools)
     if calibrated(fixed_tokens) >= limits.input_budget_tokens:
         raise ContextBudgetExceeded(
             estimated_tokens=estimated_before,
@@ -642,6 +618,15 @@ def _prepare_context_with_model(rt, session, step, token):
         limits,
         fixed_tokens=calibrated(fixed_tokens),
     )
+    # Operating policy is separate from provider capacity. If fixed context
+    # already consumes the work budget, it cannot be reduced by checkpointing;
+    # keep the real hard limit and do not manufacture an error or compact loop.
+    working_input_budget = limits.working_input_budget_tokens
+    working_attainable = (None if working_input_budget is None else
+        calibrated(fixed_tokens) + max(1, limits.safety_tokens) < working_input_budget)
+    compaction_trigger = limits.auto_compact_token_limit if limits.window_known else None
+    if working_attainable:
+        compaction_trigger = min(compaction_trigger, limits.working_context_tokens) if compaction_trigger is not None else limits.working_context_tokens
 
     provider_tokens = _latest_provider_context_tokens(rt, session)
     if provider_tokens is None:
@@ -673,6 +658,7 @@ def _prepare_context_with_model(rt, session, step, token):
             # The projection searches in raw estimator units, so the target has
             # to be converted back out of provider accounting.
             target_tokens=raw_hard_target,
+            render_history=render,
         )
         if emergency is not None:
             emergency_visible, emergency_tokens = emergency
@@ -687,7 +673,8 @@ def _prepare_context_with_model(rt, session, step, token):
                 token_accounting_source=accounting_source,
                 calibration=calibration,
                 calibration_samples=calibration_samples,
-            input_budget=input_budget,
+                input_budget=input_budget,
+                working_context_attainable=working_attainable,
             )
             metadata.update(
                 {
@@ -708,7 +695,7 @@ def _prepare_context_with_model(rt, session, step, token):
         canonical_history,
         per_output_token_limit=limits.tool_output_token_limit,
     )
-    projected_visible = [*transient, *projected_history]
+    projected_visible = render(projected_history)
     estimated_projected = estimate_tokens(projected_visible, tools)
 
     calibrated_active_context_tokens = active_context_tokens
@@ -758,10 +745,7 @@ def _prepare_context_with_model(rt, session, step, token):
     # Codex leaves `auto_compact_token_limit` unset for a model it has no metadata
     # for, so this trigger simply never fires there. Guessing a threshold instead
     # is what made a 21k conversation compact four times in three minutes.
-    token_limit_reached = (
-        limits.window_known
-        and compaction_context_tokens >= limits.auto_compact_token_limit
-    )
+    token_limit_reached = compaction_trigger is not None and compaction_context_tokens >= compaction_trigger
     if hard_request_fits and not token_limit_reached:
         return projected_visible, _metadata(
             envelope=envelope,
@@ -776,6 +760,7 @@ def _prepare_context_with_model(rt, session, step, token):
             calibration=calibration,
             calibration_samples=calibration_samples,
             input_budget=input_budget,
+            working_context_attainable=working_attainable,
         )
 
     # The compaction model may use the request-only reduced projection, but the
@@ -812,6 +797,8 @@ def _prepare_context_with_model(rt, session, step, token):
     output_budget_tokens = max(1, limits.output_reserve_tokens)
     summary_output_cap = output_budget_tokens if limits.output_reserve_declared else None
     summary_request_ceiling = limits.effective_context_window_tokens
+    if working_attainable:
+        summary_request_ceiling = min(summary_request_ceiling, limits.working_context_tokens)
 
     while True:
         _raise_if_cancelled(token)
@@ -821,10 +808,17 @@ def _prepare_context_with_model(rt, session, step, token):
             communication_language=communication_language,
             max_output_tokens=summary_output_cap,
             session_id=session.session_id,
+            render_history=lambda history: render(history, replacement=True),
         )
         request_tokens = estimate_tokens(request.messages)
         if calibrated(request_tokens) + output_budget_tokens > summary_request_ceiling:
             if len(compact_input) <= 1:
+                if (summary_request_ceiling < limits.effective_context_window_tokens
+                        and calibrated(request_tokens) + output_budget_tokens <= limits.effective_context_window_tokens):
+                    # The remaining indivisible item plus summarization protocol
+                    # cannot fit the soft policy; the provider still has room.
+                    summary_request_ceiling = limits.effective_context_window_tokens
+                    continue
                 raise ContextBudgetExceeded(
                     estimated_tokens=request_tokens,
                     input_budget_tokens=limits.input_budget_tokens,
@@ -874,6 +868,7 @@ def _prepare_context_with_model(rt, session, step, token):
             input_tokens=summary_usage.input_tokens + candidate.usage.input_tokens,
             output_tokens=summary_usage.output_tokens + candidate.usage.output_tokens,
             total_tokens=summary_usage.total_tokens + candidate.usage.total_tokens,
+            cached_input_tokens=summary_usage.cached_input_tokens + candidate.usage.cached_input_tokens,
         )
         # Reasoning models put `<think>` in the same channel as the answer, and
         # some providers print tool calls as text instead of calling. Either one
@@ -921,7 +916,7 @@ def _prepare_context_with_model(rt, session, step, token):
     )
     replacement = _fit_replacement_message_limit(
         replacement,
-        transient_count=len(transient),
+        transient_count=len(render((), replacement=True)),
         max_messages=rt.limits.max_messages,
     )
 
@@ -933,10 +928,14 @@ def _prepare_context_with_model(rt, session, step, token):
     # against an immediate compaction loop.
     post_compaction_trimmed_messages = 0
     post_compaction_target_tokens = input_budget
-    if input_budget is not None and limits.window_known:
-        trigger = min(input_budget, limits.auto_compact_token_limit)
+    target_budget = input_budget
+    if working_attainable:
+        target_budget = min(target_budget, working_input_budget) if target_budget is not None else working_input_budget
+        post_compaction_target_tokens = target_budget
+    if target_budget is not None and compaction_trigger is not None:
+        trigger = min(target_budget, compaction_trigger)
         fixed_floor = min(
-            input_budget,
+            target_budget,
             calibrated(fixed_tokens) + max(1, limits.safety_tokens),
         )
         # Only impose a healthy low-water mark when the configured trigger is
@@ -945,11 +944,11 @@ def _prepare_context_with_model(rt, session, step, token):
         # discard every retained user message even after a successful compact.
         if trigger > fixed_floor:
             post_compaction_target_tokens = min(
-                input_budget,
+                target_budget,
                 max(fixed_floor, trigger * 3 // 4),
             )
 
-    compacted_visible = [*transient, *replacement]
+    compacted_visible = render(replacement, replacement=True)
     estimated_after = estimate_tokens(compacted_visible, tools)
     while (
         post_compaction_target_tokens is not None
@@ -958,7 +957,7 @@ def _prepare_context_with_model(rt, session, step, token):
     ):
         replacement = replacement[1:]
         post_compaction_trimmed_messages += 1
-        compacted_visible = [*transient, *replacement]
+        compacted_visible = render(replacement, replacement=True)
         estimated_after = estimate_tokens(compacted_visible, tools)
     # Judge the compacted result by whatever gate let the request in, so an
     # unbudgeted session cannot be failed for producing a history it would have
@@ -1012,7 +1011,7 @@ def _prepare_context_with_model(rt, session, step, token):
         replacement_override=replacement,
     )
 
-    committed_visible = [*transient, *session.messages]
+    committed_visible = render_request(rt, session, transient, session.messages)
     metadata = _metadata(
         envelope=envelope,
         communication_language=communication_language,
@@ -1029,12 +1028,14 @@ def _prepare_context_with_model(rt, session, step, token):
         calibration=calibration,
         calibration_samples=calibration_samples,
         input_budget=input_budget,
+        working_context_attainable=working_attainable,
     )
     metadata.update(
         {
             "auto_compacted": True,
             "compaction_attempts": response_attempts,
             "compaction_trimmed_messages": trimmed_messages,
+            "summary_request_ceiling_tokens": summary_request_ceiling,
             "forced_by_provider_context_error": forced_compaction,
             "model_requested_rollover": model_requested_rollover,
             "pre_compaction_tool_outputs_reduced": reduction_stats.tool_outputs_reduced,
@@ -1093,7 +1094,8 @@ def prepare_context(runtime: Any, session: Any, step: Any, token: Any):
         summary_usage=None,
         replacement_override=replacement,
     )
-    committed_visible = [*transient, *session.messages]
+    from .context_composer import render_request
+    committed_visible = render_request(runtime, session, transient, session.messages)
     committed_tokens = estimate_tokens(committed_visible, tools)
     metadata = _metadata(
         envelope=runtime._context_envelope(session, step),

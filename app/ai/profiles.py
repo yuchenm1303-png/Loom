@@ -26,6 +26,9 @@ class ModelContextLimits:
     auto_compact_token_limit: int | None = None
     output_reserve_tokens: int | None = None
     tool_output_token_limit: int | None = None
+    # Agent operating budget, independent of the provider's actual capacity.
+    # None leaves compaction policy governed solely by declared model limits.
+    working_context_tokens: int | None = None
 
     def __post_init__(self) -> None:
         for name in (
@@ -33,6 +36,7 @@ class ModelContextLimits:
             "auto_compact_token_limit",
             "output_reserve_tokens",
             "tool_output_token_limit",
+            "working_context_tokens",
         ):
             raw = getattr(self, name)
             if raw is None:
@@ -65,6 +69,7 @@ class ModelContextLimits:
             "auto_compact_token_limit": self.auto_compact_token_limit,
             "output_reserve_tokens": self.output_reserve_tokens,
             "tool_output_token_limit": self.tool_output_token_limit,
+            "working_context_tokens": self.working_context_tokens,
         }
 
 

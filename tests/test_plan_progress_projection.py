@@ -32,10 +32,11 @@ def test_execution_completion_does_not_promote_interrupted_acceptance_to_pass(tm
     from types import SimpleNamespace
     from app.agent_runtime.task_plan import update_plan_tool
     from app.agent_runtime.tools import ToolContext, validate_tool_arguments
-    events = []
+    events = [event(E.TOOL_STARTED, {"call_id": "tool-failed-receipt"}),
+              event(E.TOOL_FAILED, {"call_id": "tool-failed-receipt", "data": {}})]
     context = ToolContext("session", "current", tmp_path, emit_event=lambda kind, data: events.append(event(kind, data)))
     tool = update_plan_tool(SimpleNamespace(events=lambda _: events))
-    arguments = {"plan": [{"step": "Pressure test", "status": "completed", "outcome": "interrupted", "evidence": "tool-failed-receipt"}, {"step": "Report", "status": "in_progress"}]}
+    arguments = {"plan": [{"step": "Pressure test", "status": "completed", "outcome": "interrupted", "evidence": "tool-failed-receipt", "evidence_refs": [{"call_id": "tool-failed-receipt"}]}, {"step": "Report", "status": "in_progress"}]}
     validate_tool_arguments(tool.input_schema, arguments)
     result = tool.handler(context, arguments)
     assert result.ok

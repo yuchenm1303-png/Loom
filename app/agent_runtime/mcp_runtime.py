@@ -900,19 +900,149 @@ class MCPRuntime(BrowserRuntime):
             if self.tools.get(tool.name) is not None:
                 raise MCPConfigurationError(f"MCP tool conflicts with existing Loom tool: {tool.name}")
             self.tools.register(tool)
+        for tool in (self._local_status_tool(), self._local_template_tool()):
+            if self.tools.get(tool.name) is None:
+                self.tools.register(tool)
+
+    def _local_status_tool(self):  # noqa: ANN001
+        def handler(context: Any, arguments: dict[str, Any]):  # noqa: ANN001
+            _ = context, arguments
+            status = self.mcp_status()
+            return ToolResult(
+                ok=True,
+                content=json.dumps(status, ensure_ascii=False, indent=2),
+                data=status,
+            )
+
+        return AgentTool(
+            name="mcp.local.status",
+            description=(
+                "Report Loom's MCP backend readiness, SDK availability, configured servers, "
+                "and the config files Loom checked. This tool is available even before a remote MCP server is configured."
+            ),
+            input_schema={"type": "object", "properties": {}, "additionalProperties": False},
+            handler=handler,
+            effect=ToolEffect.READ_ONLY,
+            exposure=ToolExposure.DIRECT,
+            binding_key="loom-mcp-local-status",
+        )
+
+    def _local_template_tool(self):  # noqa: ANN001
+        def handler(context: Any, arguments: dict[str, Any]):  # noqa: ANN001
+            _ = context, arguments
+            config_path = str(getattr(self, "mcp_config_path", "") or "")
+            template = (
+                "[mcp_servers.filesystem]\n"
+                "transport = \"stdio\"\n"
+                "command = \"npx\"\n"
+                "args = [\"-y\", \"@modelcontextprotocol/server-filesystem\", \"<workspace-path>\"]\n"
+                "default_effect = \"read_only\"\n"
+            )
+            payload = {"config_path": config_path, "template": template}
+            return ToolResult(
+                ok=True,
+                content=(
+                    "Add an MCP server to Loom's config.toml, then restart the App Server.\n\n"
+                    f"Target config: {config_path or '<runtime-home>/config.toml'}\n\n{template}"
+                ),
+                data=payload,
+            )
+
+        return AgentTool(
+            name="mcp.local.config_template",
+            description="Return a safe TOML template for adding a real MCP server to Loom.",
+            input_schema={"type": "object", "properties": {}, "additionalProperties": False},
+            handler=handler,
+            effect=ToolEffect.READ_ONLY,
+            exposure=ToolExposure.DIRECT,
+            binding_key="loom-mcp-local-template",
+        )
 
     def mcp_status(self) -> dict[str, object]:
-        return self.mcp_clients.status()
+        status = dict(self.mcp_clients.status())
+        local_tools = ["mcp.local.status", "mcp.local.config_template"]
+        status.update(backend_available=True, enabled=True, local_tools=local_tools,
+                      tool_count=int(status.get("tool_count") or 0) + len(local_tools),
+                      configured=bool(self.mcp_clients.configs))
+        if not status["configured"]:
+            status.setdefault("message", "No remote MCP servers configured yet; Loom local MCP backend tools are available.")
+        return status
 
     def close(self) -> None:
         self.mcp_clients.close()
         super().close()
 
 
+def _redacted_env_value(value: Any) -> str:
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    if text.startswith("${") and text.endswith("}"):
+        return text[2:-1].strip()
+    if text.startswith("$") and len(text) > 1:
+        return text[1:].strip()
+    # Claude/Cursor configs often contain literal secrets. Loom intentionally
+    # does not copy them into its own config model. Use the variable name when
+    # the value looks like one, otherwise omit it.
+    if re.fullmatch(r"[A-Z][A-Z0-9_]{2,}", text):
+        return text
+    return ""
+
+
+def _json_mcp_servers(source: Path) -> tuple[Any, ...]:
+    try:
+        payload = json.loads(source.read_text(encoding="utf-8"))
+    except Exception:
+        return ()
+    raw_servers = payload.get("mcpServers") or payload.get("mcp_servers") or {}
+    if not isinstance(raw_servers, dict):
+        return ()
+    configs: list[Any] = []
+    for name, raw in raw_servers.items():
+        if not isinstance(raw, dict):
+            continue
+        command = str(raw.get("command") or "").strip()
+        url = str(raw.get("url") or "").strip()
+        transport = str(raw.get("transport") or ("stdio" if command else "http")).strip().casefold()
+        args = raw.get("args") or []
+        if not isinstance(args, list):
+            args = []
+        env_from: list[tuple[str, str]] = []
+        raw_env = raw.get("env") or raw.get("env_from") or {}
+        if isinstance(raw_env, dict):
+            for child, parent in raw_env.items():
+                parent_name = _redacted_env_value(parent)
+                if parent_name:
+                    env_from.append((str(child), parent_name))
+        try:
+            configs.append(
+                MCPServerConfig(
+                    name=str(name),
+                    transport=transport,
+                    command=command,
+                    args=tuple(str(item) for item in args),
+                    cwd=str(raw.get("cwd") or ""),
+                    url=url,
+                    env_from=tuple(env_from),
+                    bearer_token_env=_redacted_env_value(raw.get("bearer_token_env") or raw.get("bearerTokenEnv")),
+                    enabled=bool(raw.get("enabled", True)),
+                    required=bool(raw.get("required", False)),
+                    timeout_seconds=float(raw.get("timeout_seconds") or raw.get("timeoutSeconds") or 30.0),
+                    default_effect=ToolEffect(str(raw.get("default_effect") or raw.get("defaultEffect") or ToolEffect.SENSITIVE.value)),
+                    exposure=ToolExposure(str(raw.get("exposure") or ToolExposure.DIRECT.value)),
+                )
+            )
+        except Exception:
+            continue
+    return tuple(configs)
+
+
 def load_mcp_server_configs(path: str | Path) -> tuple[MCPServerConfig, ...]:
     source = Path(path).expanduser()
     if not source.is_file():
         return ()
+    if source.suffix.casefold() == ".json":
+        return _json_mcp_servers(source)
     data = tomllib.loads(source.read_text(encoding="utf-8"))
     raw_servers = data.get("mcp_servers") or {}
     if not isinstance(raw_servers, dict):

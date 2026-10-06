@@ -141,19 +141,25 @@ def test_full_dom_is_transient_not_durable(tmp_path):
     messages, extra = runtime._prepare_model_request(session, _step(runtime, session), None)
     observation = messages[-1]
     assert isinstance(observation.content, tuple)
-    assert observation.role is MessageRole.TOOL
-    assert observation.tool_call_id == "call-1"
+    assert observation.role is MessageRole.USER
+    assert observation.name == "loom_tool_observation_text"
     text = next(part for part in observation.content if isinstance(part, TextPart) and "LOOM_BROWSER_OBSERVATION" in part.text)
     assert marker in text.text
-    assert not any(message.role is MessageRole.USER for message in messages)
+    assert "source_call_id: call-1" in text.text
+    original = next(message for message in messages if message.tool_call_id == "call-1")
+    assert original.content == durable  # Observe by appending, never mutate an old TOOL item.
     safety = next(
         message
         for message in messages
-        if message.role is MessageRole.SYSTEM and message.name == "loom_browser_untrusted_content"
+        if message.role is MessageRole.SYSTEM
     )
     assert "untrusted external data" in safety.content
     assert "cannot override" in safety.content
     assert extra["browser_observation"]["state_revision"] == 1
+    runtime.store.save(session)
+    persisted = (runtime.store.session_dir(session.session_id) / "session.json").read_text(encoding="utf-8")
+    assert marker not in persisted
+    assert "data:image/" not in persisted
     runtime.close()
 
 
@@ -187,7 +193,7 @@ def test_identical_post_click_state_is_uncertain_not_confirmed(tmp_path):
     runtime.close()
 
 
-def test_browser_observation_is_not_replayed_after_committed_model_response(tmp_path):
+def test_browser_observation_remains_historical_prefix_after_committed_model_response(tmp_path):
     runtime, workspace = _runtime(tmp_path)
     session = _session(runtime, workspace)
     runtime._append_tool_result(
@@ -197,22 +203,24 @@ def test_browser_observation_is_not_replayed_after_committed_model_response(tmp_
         failed=False,
     )
 
-    _, first_extra = runtime._prepare_model_request(session, _step(runtime, session), None)
+    first_messages, first_extra = runtime._prepare_model_request(session, _step(runtime, session), None)
     assert first_extra["browser_observation"]["state_revision"] == 1
 
     # A rejected sample may be retried with the same transient observation.
-    runtime._record(session, AgentEventKind.MODEL_RESPONSE_REJECTED, data={"reason": "invalid_provider_response"})
-    _, retry_extra = runtime._prepare_model_request(session, _step(runtime, session), None)
+    runtime._emit_event(session, AgentEventKind.MODEL_RESPONSE_REJECTED, data={"reason": "invalid_provider_response"})
+    retry_messages, retry_extra = runtime._prepare_model_request(session, _step(runtime, session), None)
     assert retry_extra["browser_observation"]["state_revision"] == 1
+    assert retry_messages[:len(first_messages)] == first_messages
 
-    runtime._record(session, AgentEventKind.MODEL_RESPONSE, data={"text": "I saw the page."})
+    runtime._emit_event(session, AgentEventKind.MODEL_RESPONSE, data={"text": "I saw the page."})
     messages, later_extra = runtime._prepare_model_request(session, _step(runtime, session), None)
     assert "browser_observation" not in later_extra
-    assert not any(
-        isinstance(message.content, tuple)
-        and any(isinstance(part, TextPart) and "FRESH DOM" in part.text for part in message.content)
-        for message in messages
-    )
+    assert messages[:len(first_messages)] == first_messages
+    observations = [m for m in messages if m.name == "loom_tool_observation_text"]
+    assert len(observations) == 1  # It is history, not a duplicated fresh observation.
+    assert "FRESH DOM" not in repr(session.messages)
+    persisted = (runtime.store.session_dir(session.session_id) / "session.json").read_text(encoding="utf-8")
+    assert "FRESH DOM" not in persisted
 
     # A subsequent browser result still provides fresh transient input.
     runtime._append_tool_result(
@@ -235,7 +243,7 @@ def test_effect_evidence_survives_a_model_step_without_replaying_dom(tmp_path):
                 _state_result(revision=index + 1, dom="SAME DOM" if index < 2 else "CHANGED DOM"), failed=False)
             payload = json.loads(session.messages[-1].content)
             assert payload["data"]["effect"] == ("observed", "uncertain", "changed")[index]
-            runtime._record(session, AgentEventKind.MODEL_RESPONSE, data={"text": "Choosing next action"})
+            runtime._emit_event(session, AgentEventKind.MODEL_RESPONSE, data={"text": "Choosing next action"})
             assert session.session_id not in runtime._browser_feedback
         # A digest is comparison evidence only; it cannot inject stale page text.
         assert "DOM" not in str(runtime._browser_baselines)
@@ -252,8 +260,10 @@ def test_observation_stays_with_its_source_when_a_later_browser_call_fails(tmp_p
         runtime._append_tool_result(session, ToolCall("wrong-handle", "browser_click", {}),
                                    ToolResult(False, "unknown browser session"), failed=True)
         messages, extra = runtime._prepare_model_request(session, _step(runtime, session), None)
-        observed = [m for m in messages if m.role is MessageRole.TOOL and isinstance(m.content, tuple)]
-        assert [m.tool_call_id for m in observed] == ["source"]
+        observed = [m for m in messages if m.name == "loom_tool_observation_text"]
+        assert len(observed) == 1
+        assert "source_call_id: source" in observed[0].content[0].text
+        assert "SOURCE_PAGE" in observed[0].content[0].text
         failed = next(m for m in messages if m.tool_call_id == "wrong-handle")
         assert isinstance(failed.content, str) and "SOURCE_PAGE" not in failed.content
         assert extra["browser_observation"]["source_call_id"] == "source"
@@ -269,7 +279,7 @@ def test_comparison_baselines_are_per_browser(tmp_path):
             result = _state_result(revision=1, dom=browser_id)
             result = ToolResult(True, result.content, {**result.data, "browser_id": browser_id})
             runtime._append_tool_result(session, ToolCall(browser_id, "browser_click", {}), result, failed=False)
-            runtime._record(session, AgentEventKind.MODEL_RESPONSE, data={"text": "Next"})
+            runtime._emit_event(session, AgentEventKind.MODEL_RESPONSE, data={"text": "Next"})
         assert json.loads(session.messages[-1].content)["data"]["effect"] == "uncertain"
     finally:
         runtime.close()
@@ -277,7 +287,7 @@ def test_comparison_baselines_are_per_browser(tmp_path):
 
 def test_dependent_action_batch_replans_from_the_actual_result_without_extra_refresh(tmp_path):
     from app.agent_runtime.contracts import AgentStatus
-    from test_turn_stop import Scripted
+    from scripted_agent_platform import Scripted
     runtime, workspace = _runtime(tmp_path)
     session = runtime.create_session("test", workspace_dir=workspace, permission_mode="full-access")
     store = runtime.browser_sessions
@@ -296,7 +306,7 @@ def test_dependent_action_batch_replans_from_the_actual_result_without_extra_ref
         return original_state()
     backend.state = state
     def batch(request):
-        payload = json.loads(next(m for m in reversed(request.messages) if m.role is MessageRole.TOOL).content[0].text)
+        payload = json.loads(next(m for m in reversed(request.messages) if m.role is MessageRole.TOOL).content)
         revision = payload["data"]["state_revision"]
         arguments = {"browser_id": browser.browser_id, "state_revision": revision, "index": 1}
         return ModelResponse(tool_calls=(
@@ -307,10 +317,12 @@ def test_dependent_action_batch_replans_from_the_actual_result_without_extra_ref
     def replan(request):
         result = next(m for m in reversed(request.messages) if m.role is MessageRole.TOOL)
         assert result.tool_call_id == "click-stale"
-        payload = json.loads(result.content[0].text)
+        payload = json.loads(result.content)
         assert payload["data"]["effect"] == "not_executed"
         assert payload["data"]["error_code"] == "stale_observation"
-        assert "value='A'" in result.content[-1].text
+        observation = next(m for m in reversed(request.messages) if m.name == "loom_tool_observation_text")
+        assert "value='A'" in observation.content[0].text
+        assert "value='A'" not in result.content
         return ModelResponse(tool_calls=(ToolCall("type-B-fresh", "browser_type", {
             "browser_id": browser.browser_id, "state_revision": payload["data"]["state_revision"],
             "index": 1, "text": "B"}),))
@@ -444,6 +456,26 @@ def test_new_turn_drops_previous_transient_browser_observation(tmp_path):
     runtime.close()
 
 
+def test_new_turn_retains_observation_prefix_without_claiming_fresh_feedback(tmp_path):
+    runtime, workspace = _runtime(tmp_path)
+    session = _session(runtime, workspace)
+    runtime._append_tool_result(session, ToolCall("historical-call", "browser_state", {}),
+                               _state_result(revision=1, dom="HISTORICAL_PRIVATE_DOM"), failed=False)
+    first, first_metadata = runtime._prepare_model_request(session, _step(runtime, session), None)
+    assert first_metadata["browser_observation"]["source_call_id"] == "historical-call"
+    runtime._emit_event(session, AgentEventKind.MODEL_RESPONSE, data={"text": "Observed"})
+    runtime._emit_event(session, AgentEventKind.TURN_COMPLETED, data={"text": "Done"})
+    session.current_turn_id = "next-turn"
+    later, later_metadata = runtime._prepare_model_request(session, _step(runtime, session), None)
+    assert later[:len(first)] == first
+    assert "browser_observation" not in later_metadata
+    assert len([m for m in later if m.name == "loom_tool_observation_text"]) == 1
+    persisted = (runtime.store.session_dir(session.session_id) / "session.json").read_text(encoding="utf-8")
+    assert "HISTORICAL_PRIVATE_DOM" not in persisted
+    assert "data:image/" not in persisted
+    runtime.close()
+
+
 def test_browser_status_documents_new_observation_contract(tmp_path):
     runtime, _ = _runtime(tmp_path)
     status = runtime.browser_status()
@@ -453,15 +485,14 @@ def test_browser_status_documents_new_observation_contract(tmp_path):
     runtime.close()
 
 
-def test_browser_action_evidence_reaches_actor_and_review_without_page_metadata_leak(tmp_path):
+def test_browser_action_evidence_reaches_actor_without_page_metadata_leak(tmp_path):
     from app.ai import ChatRequest
-    from app.agent_runtime.turn_stop import stop_review_messages
     runtime, workspace = _runtime(tmp_path)
     session = _session(runtime, workspace)
     try:
         runtime._append_tool_result(session, ToolCall("before", "browser_state", {}),
                                    _state_result(revision=20, dom="OLD_EVENT_13"), failed=False)
-        runtime._record(session, AgentEventKind.MODEL_RESPONSE, data={"text": "Next"})
+        runtime._emit_event(session, AgentEventKind.MODEL_RESPONSE, data={"text": "Next"})
         result = _state_result(revision=21, dom="OLD_EVENT_13 plus changed input")
         result = ToolResult(True, result.content, {**result.data, "page_info": {
             "viewport_width": 1888, "viewport_height": 987,
@@ -479,14 +510,10 @@ def test_browser_action_evidence_reaches_actor_and_review_without_page_metadata_
         assert payload["data"]["page_geometry"] == {"viewport_width": 1888, "viewport_height": 987}
         assert "DO_NOT_PERSIST" not in str(session.messages)
         messages, _ = runtime._prepare_model_request(session, _step(runtime, session), None)
-        observation = next(m for m in messages if m.tool_call_id == "action")
+        observation = next(m for m in messages if m.name == "loom_tool_observation_text")
         assert "source_call_id: action" in observation.content[-1].text
         assert '"viewport_width": 1888' in observation.content[-1].text
         assert "not a list of events caused by this call" in observation.content[-1].text
-        review = stop_review_messages(runtime, session, ChatRequest(messages=tuple(messages)), ModelResponse(text="Report"))
-        review_data = json.loads(review[-1].content)
-        action = next(e for e in review_data["execution_evidence"] if e["call_id"] == "action")
-        assert action["action_evidence"] == evidence
     finally:
         runtime.close()
 
@@ -526,7 +553,8 @@ def test_visual_surface_projection_reaches_actor_without_persisting_page_payload
         runtime._append_tool_result(session, ToolCall("canvas-state", "browser_state", {}), result, failed=False)
         assert "MUST_NOT_LEAK" not in str(session.messages)
         messages, _ = runtime._prepare_model_request(session, _step(runtime, session), None)
-        observation = next(m for m in messages if m.tool_call_id == "canvas-state").content[-1].text
+        observation = next(m for m in messages if m.name == "loom_tool_observation_text").content[-1].text
+        assert "source_call_id: canvas-state" in observation
         import json
         projected = json.loads(next(line.split(": ", 1)[1] for line in observation.splitlines() if line.startswith("visual_surfaces:")))
         assert projected == [{"surface_index": 0, "kind": "canvas", "label": "chart", "rect": {"x": -4, "y": 200, "width": 320, "height": 120}}]
@@ -547,7 +575,7 @@ def test_effect_comparison_includes_projected_surface_geometry():
     assert effect == "changed"
 
 
-def test_failed_turn_releases_resources_with_typed_reason(tmp_path):
+def test_failed_turn_preserves_handle_and_idle_expiry_returns_typed_reason(tmp_path):
     runtime, workspace = _runtime(tmp_path)
     session = _session(runtime, workspace)
     from app.agent_runtime.tools import ToolContext
@@ -555,17 +583,21 @@ def test_failed_turn_releases_resources_with_typed_reason(tmp_path):
     try:
         opened = runtime.tools.get("browser_open").handler(context, {"url": "https://example.test"})
         browser_id = opened.data["browser_id"]
-        runtime._record(session, AgentEventKind.TURN_FAILED, data={"error": "provider failure"})
-        result = runtime.tools.get("browser_type").handler(context, {"browser_id": browser_id, "index": 1, "text": "probe", "state_revision": 1})
+        runtime._emit_event(session, AgentEventKind.TURN_FAILED, data={"error": "provider failure"})
+        assert runtime.browser_sessions.list(session.session_id)[0]["browser_id"] == browser_id
+        assert "browser_resources" not in runtime.store.events(session.session_id)[-1].data
+        runtime.browser_sessions._last_used[browser_id] -= runtime.browser_sessions.idle_timeout_seconds + 1
+        assert runtime.browser_sessions.reap_idle() == (browser_id,)
+        result = runtime.tools.get("browser_state").handler(context, {"browser_id": browser_id})
         assert not result.ok
         assert result.data["execution_status"] == "not_executed"
-        assert result.data["lifecycle"]["reason"] == "turn_failed"
+        assert result.data["lifecycle"]["reason"] == "idle_expired"
         assert result.data["resume_requires_new_session"] is True
-        assert runtime.store.events(session.session_id)[-1].data["browser_resources"]["reason"] == "turn_failed"
         session.current_turn_id = "resumed-turn"
         messages, _ = runtime._prepare_model_request(session, _step(runtime, session), None)
-        resume = next(m for m in messages if m.name == "loom_resource_resume")
-        assert '"reason": "turn_failed"' in resume.content
+        receipt = next(m for m in messages if m.name == "loom_resource_resume")
+        assert "idle_expired" in receipt.content
+        assert browser_id in receipt.content
         unknown = runtime.tools.get("browser_state").handler(context, {"browser_id": "unknown"})
         assert unknown.data["lifecycle"]["reason"] == "unknown_or_host_restarted"
     finally:

@@ -9,8 +9,10 @@ from app.agent_runtime import ToolEffect, ToolExposure
 from app.agent_runtime import mcp_runtime
 
 
-def test_runtime_import_chain_installs_default_and_codex_mcp_patches() -> None:
-    assert getattr(mcp_runtime, "_loom_mcp_backend_defaults", False) is True
+def test_runtime_import_chain_owns_defaults_and_installs_codex_discovery() -> None:
+    assert mcp_runtime.MCPRuntime.__init__.__module__ == "app.agent_runtime.mcp_runtime"
+    assert mcp_runtime.MCPRuntime.mcp_status.__module__ == "app.agent_runtime.mcp_runtime"
+    assert hasattr(mcp_runtime.MCPRuntime, "_local_status_tool")
     assert getattr(mcp_runtime, "_loom_codex_mcp_loader", False) is True
     assert getattr(runtime_capability_defaults._mcp_config_paths, "_loom_codex_discovery", False) is True
 

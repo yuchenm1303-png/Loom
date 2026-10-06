@@ -285,7 +285,7 @@ def test_two_sessions_can_sample_concurrently_without_cross_session_serializatio
             user = next(
                 str(message.content)
                 for message in reversed(request.messages)
-                if message.role is MessageRole.USER
+                if message.role is MessageRole.USER and not message.name and not (message.name or "").startswith("loom_")
             )
             entered.append(user)
             barrier.wait(timeout=3)

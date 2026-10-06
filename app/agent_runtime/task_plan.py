@@ -6,6 +6,7 @@ import json
 from app.ai import AIMessage, MessageRole
 from .contracts import AgentEventKind as Event, ToolEffect
 from .tools import AgentTool, ToolResult
+from .evidence import EVIDENCE_REFS_SCHEMA, resolve_evidence, rejected_evidence
 
 
 def current_plan(events, turn_id):
@@ -51,8 +52,17 @@ def update_plan_tool(store):
         if sum(item["status"] == "in_progress" for item in plan) > 1:
             raise ValueError("only one milestone may be in progress")
         for item in plan:
-            if item["status"] == "completed" and not item.get("evidence", "").strip():
-                raise ValueError("completed milestones require a concrete evidence reference")
+            if item["status"] == "completed":
+                refs = item.get("evidence_refs") or []
+                invalid = []
+                if not item.get("outcome"):
+                    invalid.append({"step": item["step"], "reason": "completed milestone requires outcome"})
+                if not refs:
+                    invalid.append({"step": item["step"], "reason": "completed milestone requires evidence_refs"})
+                _, invalid_refs = resolve_evidence(store, context, refs)
+                invalid.extend(invalid_refs)
+                if invalid:
+                    return rejected_evidence(invalid)
             if item["status"] == "blocked" and not item.get("blocker", "").strip():
                 raise ValueError("blocked milestones require the observed blocker")
         previous = current_plan(store.events(context.session_id), context.turn_id)
@@ -74,7 +84,7 @@ def update_plan_tool(store):
         "Maintain a short task plan for substantial multi-stage work. Use outcome milestones, "
         "not individual clicks or commands. Update at stage transitions, before executing the next "
         "stage and before reporting changed progress or final results. Keep scope "
-        "stable; completed steps require evidence and blocked steps a blocker. "
+        "stable; completed steps require outcome and evidence_refs containing executed call_id or existing workspace path objects; evidence is optional explanation. Blocked steps require a blocker. "
         "status describes stage execution, not test acceptance. Use outcome to separately record passed, failed, interrupted, not_covered or not_assessed. Skip for simple tasks."),
         input_schema={"type": "object", "additionalProperties": False, "properties": {
             "explanation": {"type": "string", "maxLength": 1000},
@@ -84,6 +94,7 @@ def update_plan_tool(store):
                     "status": {"enum": ["pending", "in_progress", "completed", "blocked"]},
                     "outcome": {"enum": ["passed", "failed", "interrupted", "not_covered", "not_assessed"]},
                     "evidence": {"type": "string", "maxLength": 1000},
+                    "evidence_refs": EVIDENCE_REFS_SCHEMA,
                     "blocker": {"type": "string", "maxLength": 1000}},
                 "required": ["step", "status"]}}}, "required": ["plan"]},
         handler=update, effect=ToolEffect.READ_ONLY, supports_parallel_tool_calls=False)

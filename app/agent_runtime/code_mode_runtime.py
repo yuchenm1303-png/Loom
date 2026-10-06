@@ -145,7 +145,7 @@ class CodeModeRuntime(SkillRuntime):
             return False
 
         call = prepared.call
-        self._record(
+        self._emit_event(
             session,
             AgentEventKind.TOOL_STARTED,
             data={"call_id": call.call_id, "tool": call.name, "step_id": step.step_id},
@@ -247,7 +247,7 @@ class CodeModeRuntime(SkillRuntime):
                 tool_names=tuple(tool.name for tool in router.all()),
             ),
         )
-        self._record(
+        self._emit_event(
             session,
             AgentEventKind.TOOL_REQUESTED,
             data={
@@ -275,7 +275,7 @@ class CodeModeRuntime(SkillRuntime):
             return payload
 
         if prepared.decision is PermissionDecision.DENY:
-            self._record(
+            self._emit_event(
                 session,
                 AgentEventKind.TOOL_DENIED,
                 data={
@@ -296,7 +296,7 @@ class CodeModeRuntime(SkillRuntime):
             }
 
         if prepared.decision is PermissionDecision.APPROVAL:
-            self._record(
+            self._emit_event(
                 session,
                 AgentEventKind.TOOL_DENIED,
                 data={
@@ -334,7 +334,7 @@ class CodeModeRuntime(SkillRuntime):
             if prepared.tool.effect is ToolEffect.READ_ONLY
             else 0
         )
-        self._record(
+        self._emit_event(
             session,
             AgentEventKind.TOOL_STARTED,
             data={
@@ -363,7 +363,7 @@ class CodeModeRuntime(SkillRuntime):
                 "active_skills": session.active_skills,
                 "diff_tracker": tracker,
             },
-            emit_event=lambda kind, data: self._record(session, kind, data=data),
+            emit_event=lambda kind, data: self._emit_event(session, kind, data=data),
         )
         try:
             nested_result = prepared.tool.handler(context, nested_call.arguments)
@@ -374,7 +374,7 @@ class CodeModeRuntime(SkillRuntime):
 
         if tracker.revision != diff_revision_before:
             snapshot = tracker.snapshot(max_chars=self.limits.max_tool_result_chars)
-            self._record(
+            self._emit_event(
                 session,
                 AgentEventKind.TURN_DIFF_UPDATED,
                 data={
@@ -414,7 +414,7 @@ class CodeModeRuntime(SkillRuntime):
         failed: bool,
         parent_call_id: str,
     ) -> None:
-        self._record(
+        self._emit_event(
             session,
             AgentEventKind.TOOL_FAILED if failed else AgentEventKind.TOOL_COMPLETED,
             data={

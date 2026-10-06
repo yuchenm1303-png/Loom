@@ -161,7 +161,7 @@ def _runtime(tmp_path, responses, *, mode=PermissionMode.APPROVAL):
     return runtime, platform, session, calls, created, workspace
 
 
-def test_completed_turn_releases_browser_capacity_for_another_task(tmp_path):
+def test_completed_turn_retains_browser_until_inactive_capacity_reclamation(tmp_path):
     runtime, _, session, _, created, _ = _runtime(
         tmp_path, [ModelResponse(text="Done")], mode=PermissionMode.FULL_ACCESS
     )
@@ -171,9 +171,10 @@ def test_completed_turn_releases_browser_capacity_for_another_task(tmp_path):
     try:
         runtime.start_turn(session.session_id, "Finish")
         assert runtime.get_session(session.session_id).status is AgentStatus.COMPLETED
-        assert created[0].closed
-        assert store.active_count() == 0
+        assert not created[0].closed
+        assert store.active_count() == 1
         store.start("another-task")
+        assert created[0].closed  # LRU resource pressure, not the turn ending.
         assert store.active_count() == 1
     finally:
         runtime.close()
@@ -183,16 +184,16 @@ def test_completed_turn_releases_browser_capacity_for_another_task(tmp_path):
     AgentEventKind.TURN_FAILED, AgentEventKind.TURN_CANCELLED,
     AgentEventKind.TURN_INTERRUPTED, AgentEventKind.LIMIT_REACHED,
 ])
-def test_terminal_events_release_only_their_owners_browser(tmp_path, kind):
+def test_terminal_events_preserve_both_owners_browsers(tmp_path, kind):
     runtime, _, session, _, created, _ = _runtime(tmp_path, [])
     store = runtime.browser_sessions
     store.start(session.session_id)
     other = store.start("another-task")
     try:
-        runtime._record(session, kind, data={})
-        assert created[0].closed
+        runtime._emit_event(session, kind, data={})
+        assert not created[0].closed
         assert not created[1].closed
-        assert not store.list(session.session_id)
+        assert len(store.list(session.session_id)) == 1
         assert store.list("another-task")[0]["browser_id"] == other.browser_id
     finally:
         runtime.close()
@@ -488,6 +489,7 @@ def test_browser_open_reports_other_owner_capacity_as_retryable(tmp_path):
     assert store is not None
     store.max_sessions_per_owner = 1
     store.max_sessions_total = 1
+    store.set_owner_active(first_session.session_id, True)
     tool = runtime.tools.get("browser_open")
     assert tool is not None
 

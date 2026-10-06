@@ -11,94 +11,24 @@ from app.agent_runtime.contracts import AgentLimits, AgentEventKind as Event, To
 from app.agent_runtime.response_language import infer_user_language
 from app.agent_runtime.runtime import DEFAULT_AGENT_SYSTEM_PROMPT, _DEFAULT_AGENT_SYSTEM_PROMPT_V7
 from app.agent_runtime.task_plan import current_plan
-from app.agent_runtime.turn_stop import STOP_TOOL, stop_review_messages, StopReviewLimitReached
 from app.agent_runtime.tools import AgentTool, ToolRegistry, ToolResult
-from test_turn_stop import runtime, decision
-
-pytestmark = pytest.mark.real_stop_hook
+from scripted_agent_platform import runtime
 
 
-def test_semantic_continuations_across_tool_batches_finish_only_when_assessed_complete(tmp_path):
-    tools = ToolRegistry()
-    tools.register(AgentTool("probe", "observe", {"type": "object"}, lambda c, a: ToolResult(True, "observed")))
-    responses = []
-    for index in range(12):
-        responses.extend([ModelResponse(tool_calls=(ToolCall(str(index), "probe", {}),)),
-                          ModelResponse(text="Report coming"), decision("continue")])
-    responses.extend([ModelResponse(text="Requested report with all results"), decision()])
-    rt, session, platform = runtime(tmp_path, responses, tools=tools, default_permission_mode="full-access")
-    try:
-        result = rt.start_turn(session.session_id, "Run the checks and give a report")
-        assert result.status is AgentStatus.COMPLETED
-        assert result.final_text == "Requested report with all results"
-        events = rt.store.events(session.session_id)
-        assert sum(e.kind is Event.TOOL_COMPLETED for e in events) == 12
-        assert sum(e.kind is Event.TURN_STOP_CHECKED for e in events) == 13
-        assert sum(e.kind is Event.TURN_COMPLETED for e in events) == 1
-        assert not any(e.kind is Event.LIMIT_REACHED for e in events)
-        assert len(platform.requests) == 38
-    finally:
-        rt.close()
 
 
-def test_semantic_continuations_preserve_turn_across_approval_resumptions(tmp_path):
-    tools = ToolRegistry()
-    tools.register(AgentTool("probe", "authorized action", {"type": "object"},
-                             lambda c, a: ToolResult(True, "observed"), effect=ToolEffect.SENSITIVE))
-    responses = []
-    for index in range(5):
-        responses.append(ModelResponse(tool_calls=(ToolCall(str(index), "probe", {}),)))
-        responses.extend([ModelResponse(text="Report coming"), decision("continue")]
-            if index < 4 else [ModelResponse(text="Requested report"), decision()])
-    rt, session, platform = runtime(tmp_path, responses, tools=tools, default_permission_mode="approval")
-    try:
-        result = rt.start_turn(session.session_id, "Run authorized actions and give a report")
-        turn_id = rt.store.load(session.session_id).current_turn_id
-        for index in range(5):
-            assert result.status is AgentStatus.WAITING_APPROVAL
-            assert result.pending_approval.call_id == str(index)
-            result = rt.resume_approval(session.session_id, str(index), approved=True)
-            assert rt.store.load(session.session_id).current_turn_id == turn_id
-        assert result.status is AgentStatus.COMPLETED
-        assert result.final_text == "Requested report"
-        events = rt.store.events(session.session_id)
-        assert sum(e.kind is Event.TURN_STARTED for e in events) == 1
-        assert sum(e.kind is Event.TURN_COMPLETED for e in events) == 1
-        assert not any(e.kind is Event.LIMIT_REACHED for e in events)
-        assert len(platform.requests) == 15
-    finally:
-        rt.close()
 
 
-def test_assessor_excludes_actor_promises_reasoning_and_visual_transport(tmp_path):
-    rt, session, platform = runtime(tmp_path, [ModelResponse(text="Report", reasoning="PRIVATE_ACTOR_REASONING"), decision()])
-    original = rt._prepare_model_request
-    def prepare(session, step, token):
-        messages, extra = original(session, step, token)
-        messages.extend([
-            AIMessage(role=MessageRole.ASSISTANT, content="SELF_IMPOSED_EXTRA_AUDIT"),
-            AIMessage(role=MessageRole.USER, name="loom_tool_observation", content="TRANSPORT_IS_NOT_USER_INTENT"),
-            AIMessage(role=MessageRole.SYSTEM, name="loom_terminal_recovery", content="STALE_STOP_FEEDBACK"),
-        ])
-        return messages, extra
-    rt._prepare_model_request = prepare
-    try:
-        assert rt.start_turn(session.session_id, "Produce the requested report").status is AgentStatus.COMPLETED
-        context = str(platform.requests[-1].messages)
-        assert "Produce the requested report" in context
-        assert "Report" in context
-        assert all(value not in context for value in ("SELF_IMPOSED_EXTRA_AUDIT", "PRIVATE_ACTOR_REASONING",
-                                                      "TRANSPORT_IS_NOT_USER_INTENT", "STALE_STOP_FEEDBACK"))
-    finally:
-        rt.close()
+
 
 
 def test_plan_is_durable_and_reinjected_after_history_loss(tmp_path):
-    plan = [{"step": "Run checks", "status": "completed", "evidence": "test-output.txt: 12 passed"},
+    (tmp_path / "test-output.txt").write_text("12 passed", encoding="utf-8")
+    plan = [{"step": "Run checks", "status": "completed", "outcome": "passed", "evidence": "test-output.txt: 12 passed", "evidence_refs": [{"path": "test-output.txt"}]},
             {"step": "Write report", "status": "in_progress"}]
     rt, session, platform = runtime(tmp_path, [
         ModelResponse(tool_calls=(ToolCall("plan", "update_plan", {"plan": plan}),)),
-        ModelResponse(text="Report with test results"), decision(),
+        ModelResponse(text="Report with test results"),
     ], default_permission_mode="full-access")
     try:
         assert rt.start_turn(session.session_id, "Run checks and write a report").status is AgentStatus.COMPLETED
@@ -122,7 +52,7 @@ def test_plan_is_durable_and_reinjected_after_history_loss(tmp_path):
 def test_invalid_plan_never_replaces_durable_state(tmp_path, plan):
     rt, session, _ = runtime(tmp_path, [
         ModelResponse(tool_calls=(ToolCall("plan", "update_plan", {"plan": plan}),)),
-        ModelResponse(text="Specific failed plan result"), decision("blocked"),
+        ModelResponse(text="Specific failed plan result"),
     ], default_permission_mode="full-access")
     try:
         rt.start_turn(session.session_id, "Run checks and report")
@@ -139,84 +69,12 @@ def test_visual_observations_do_not_change_user_language():
     ]) == "zh"
 
 
-def test_continuation_reuses_previous_turn_results(tmp_path):
-    tools = ToolRegistry()
-    tools.register(AgentTool("probe", "observe", {"type": "object"}, lambda c, a: ToolResult(True, "CHECK_ALREADY_PASSED")))
-    rt, session, platform = runtime(tmp_path, [
-        ModelResponse(tool_calls=(ToolCall("prior-proof", "probe", {}),)),
-        ModelResponse(text="Check passed; report remains"), decision("blocked"),
-        ModelResponse(text="Report with previous results"), decision(),
-    ], tools=tools, default_permission_mode="full-access")
-    try:
-        rt.start_turn(session.session_id, "Run checks and write the report")
-        assert rt.start_turn(session.session_id, "Continue with the report").status is AgentStatus.COMPLETED
-        payload = json.loads(platform.requests[-1].messages[-1].content)
-        assert "CHECK_ALREADY_PASSED" in str(payload["prior_tool_context"])
-        assert payload["prior_turn_results"][-1]["answer"] == "Check passed; report remains"
-    finally:
-        rt.close()
 
 
-def test_late_user_guidance_supersedes_rejected_candidate(tmp_path):
-    rt, session, platform = runtime(tmp_path, [
-        ModelResponse(text="Old candidate"), decision("continue"),
-        ModelResponse(text="Updated result"), decision(),
-    ])
-    original = rt._record
-    sent = False
-    def record(session, kind, **kwargs):
-        nonlocal sent
-        result = original(session, kind, **kwargs)
-        if kind is Event.TURN_STOP_CHECKED and not sent:
-            sent = True
-            rt.steer(session.session_id, "Report the current results only", turn_id=session.current_turn_id)
-        return result
-    rt._record = record
-    try:
-        result = rt.start_turn(session.session_id, "Run checks and report")
-        assert result.status is AgentStatus.COMPLETED
-        assert result.final_text == "Updated result"
-        assert "Report the current results only" in str(platform.requests[2].messages)
-    finally:
-        rt.close()
 
 
-def test_review_bounds_evidence_without_losing_call_identity_or_result_tails():
-    from app.agent_runtime.context_budget import estimate_tokens
-    events = [SimpleNamespace(turn_id="turn", kind=Event.TOOL_COMPLETED, data={
-        "call_id": f"proof-{index}", "tool": "exec", "ok": False,
-        "content": "start\n" + "verbose command output\n" * 4000 + "TAIL_FAILURE_EVIDENCE",
-        "data": {"exit_code": 1}}) for index in range(100)]
-    rt = SimpleNamespace(store=SimpleNamespace(events=lambda session: events), limits=AgentLimits())
-    session = SimpleNamespace(session_id="session", current_turn_id="turn")
-    request = ChatRequest(messages=(AIMessage(role=MessageRole.USER, content="Report the failures"),))
-    messages = stop_review_messages(rt, session, request, ModelResponse(text="Failure report"))
-    payload = json.loads(messages[-1].content)
-    assert len(payload["execution_evidence"]) == 100
-    assert all(item["content"].endswith("TAIL_FAILURE_EVIDENCE") for item in payload["execution_evidence"])
-    assert payload["execution_evidence"][-1]["call_id"] == "proof-99"
-    assert estimate_tokens(messages, (STOP_TOOL,)) < 14_000
-    # A declared small context cannot be replaced by a guessed larger window.
-    with pytest.raises(StopReviewLimitReached):
-        stop_review_messages(rt, session, request, ModelResponse(text="Failure report"),
-            context_limits=SimpleNamespace(window_known=True, input_budget_tokens=100, safety_tokens=0))
 
 
-def test_assessment_uses_transient_dom_and_image_as_evidence_not_human_intent():
-    rt = SimpleNamespace(store=SimpleNamespace(events=lambda session: []), limits=AgentLimits())
-    session = SimpleNamespace(session_id="session", current_turn_id="turn")
-    image = ImagePart("data:image/png;base64,UE5H")
-    request = ChatRequest(messages=(
-        AIMessage(role=MessageRole.USER, content="What is on the page?"),
-        AIMessage(role=MessageRole.TOOL, name="browser_state", tool_call_id="screen",
-                  content=(TextPart("Page metadata"), TextPart("TRANSIENT_DOM_EVIDENCE"))),
-        AIMessage(role=MessageRole.USER, name="loom_tool_observation", content=(TextPart("Tool visual attachment"), image)),
-    ))
-    messages = stop_review_messages(rt, session, request, ModelResponse(text="Page answer"))
-    payload = json.loads(messages[-1].content[0].text)
-    assert payload["user_context"] == ["What is on the page?"]
-    assert payload["transient_tool_observations"] == [{"call_id": "screen", "tool": "browser_state", "observation": "TRANSIENT_DOM_EVIDENCE"}]
-    assert image in messages[-1].content
 
 
 def test_existing_default_prompt_upgrades_but_custom_prompt_survives(tmp_path):

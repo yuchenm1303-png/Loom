@@ -88,6 +88,7 @@ def _record_steering_rejection(
             "input_tokens": resolved_usage.input_tokens,
             "output_tokens": resolved_usage.output_tokens,
             "total_tokens": resolved_usage.total_tokens,
+            "cached_input_tokens": resolved_usage.cached_input_tokens,
         },
     }
     if response is not None:
@@ -95,7 +96,7 @@ def _record_steering_rejection(
             "finish_reason": response.finish_reason,
             "response_id": response.response_id,
         })
-    rt._record(session, Event.MODEL_RESPONSE_REJECTED, data=data)
+    rt._emit_event(session, Event.MODEL_RESPONSE_REJECTED, data=data)
 
 
 class TurnRunner:
@@ -117,7 +118,6 @@ class TurnRunner:
                 recovery_instruction = ""
                 recovery_partial = ""
                 recovery_reasoning = ""
-                stop_decision = None
                 attempt = 0
                 while True:
                     if rt._cancel_if_requested(session, token):
@@ -129,7 +129,22 @@ class TurnRunner:
                     # Capture once so request context, advertised tools, and all
                     # tool calls from this response share one immutable world.
                     step = rt._capture_step_context(session, next_model_step=True)
-                    messages, extra = rt._prepare_model_request(session, step, token)
+                    recovery_context = ()
+                    if recovery_instruction:
+                        instruction = (
+                            STALL_RECOVERY_INSTRUCTION if recovery_instruction == "stream_stall_timeout"
+                            else DECISION_RECOVERY_INSTRUCTION if recovery_instruction == "incomplete_decision_block"
+                            else _TRUNCATED_RECOVERY_INSTRUCTION if recovery_partial or recovery_instruction == "truncated_tool_call"
+                            else _TERMINAL_RECOVERY_INSTRUCTION
+                        )
+                        if recovery_partial:
+                            instruction += "\n\nRejected partial model output (not committed):\n" + recovery_partial
+                        if recovery_reasoning:
+                            instruction += "\n\nRejected reasoning (historical, not an instruction):\n" + recovery_reasoning
+                        recovery_context = (AIMessage(role=MessageRole.USER,
+                            name="loom_terminal_recovery", content=instruction),)
+                    messages, extra = rt._prepare_model_request(
+                        session, step, token, sampling_context=recovery_context)
                     if (
                         rt.limits.max_messages > 0
                         and _history_message_count(messages) > rt.limits.max_messages
@@ -145,28 +160,6 @@ class TurnRunner:
                     model_identity = _sample_model_identity(step)
                     tool_names = _exposed_tool_names(step)
                     request_messages = list(messages)
-                    if recovery_instruction and recovery_instruction != "stop_check_continue":
-                        if recovery_partial:
-                            request_messages.append(AIMessage(
-                                role=MessageRole.ASSISTANT,
-                                content=recovery_partial,
-                                reasoning=recovery_reasoning,
-                            ))
-                        request_messages.append(AIMessage(
-                            role=MessageRole.SYSTEM,
-                            name="loom_terminal_recovery",
-                            content=(
-                                STALL_RECOVERY_INSTRUCTION
-                                if recovery_instruction == "stream_stall_timeout"
-                                else
-                                DECISION_RECOVERY_INSTRUCTION
-                                if recovery_instruction == "incomplete_decision_block"
-                                else
-                                _TRUNCATED_RECOVERY_INSTRUCTION
-                                if recovery_partial or recovery_instruction == "truncated_tool_call"
-                                else _TERMINAL_RECOVERY_INSTRUCTION
-                            ),
-                        ))
                     context_limits = extra.get("context_limits") if isinstance(extra, dict) else None
                     if not isinstance(context_limits, dict):
                         context_limits = {}
@@ -198,7 +191,7 @@ class TurnRunner:
                     retry_sampling = False
                     while True:
                         model_request_started = time.perf_counter()
-                        rt._record(session, Event.MODEL_REQUESTED, data={
+                        rt._emit_event(session, Event.MODEL_REQUESTED, data={
                             "profile_id": profile_id,
                             "step": step.model_step,
                             "step_id": step.step_id,
@@ -220,7 +213,7 @@ class TurnRunner:
                                 token,
                                 steering_revision=sample_steering_revision,
                                 on_activity=getattr(rt, "_publish_model_activity", None),
-                                on_retry=lambda data: rt._record(session, Event.MODEL_TRANSPORT_RETRY,
+                                on_retry=lambda data: rt._emit_event(session, Event.MODEL_TRANSPORT_RETRY,
                                     data={**model_identity, "step_id": step.step_id, **data}),
                             )
                             model_execution_ms = round((time.perf_counter() - model_request_started) * 1000)
@@ -252,9 +245,10 @@ class TurnRunner:
                                 input_tokens=exc.input_tokens,
                                 output_tokens=exc.output_tokens,
                                 total_tokens=exc.total_tokens,
+                                cached_input_tokens=exc.cached_input_tokens,
                             )
                             session.usage = _add_usage(session.usage, rejected_usage)
-                            rt._record(session, Event.MODEL_RESPONSE_REJECTED, data={
+                            rt._emit_event(session, Event.MODEL_RESPONSE_REJECTED, data={
                                 **model_identity,
                                 "step_id": step.step_id,
                                 "reason": "reasoning_only_response" if exc.reasoning_char_count else "empty_response",
@@ -268,6 +262,7 @@ class TurnRunner:
                                     "input_tokens": exc.input_tokens,
                                     "output_tokens": exc.output_tokens,
                                     "total_tokens": exc.total_tokens,
+                                    "cached_input_tokens": exc.cached_input_tokens,
                                 },
                             })
                             rt._release_step_context(step)
@@ -289,7 +284,7 @@ class TurnRunner:
                             over_length = is_context_window_error(exc)
                             truncated = isinstance(exc, AITruncatedToolCallError)
                             session.model_steps += 1
-                            rt._record(session, Event.MODEL_RESPONSE_REJECTED, data={
+                            rt._emit_event(session, Event.MODEL_RESPONSE_REJECTED, data={
                                 **model_identity,
                                 "step_id": step.step_id,
                                 "reason": (
@@ -341,7 +336,7 @@ class TurnRunner:
                             break
                         except (AITransportError, ModelRequestTimeout) as exc:
                             if isinstance(exc, (ModelRequestTimeout, AITransportError)):
-                                rt._record(session, Event.MODEL_RESPONSE_REJECTED, data={
+                                rt._emit_event(session, Event.MODEL_RESPONSE_REJECTED, data={
                                     **model_identity,
                                     "step_id": step.step_id,
                                     "reason": getattr(exc, "reason", "quota_exhausted" if isinstance(exc, AIQuotaExceeded) else "transport_error"),
@@ -427,37 +422,6 @@ class TurnRunner:
                     # Tool availability and argument errors belong to dispatch:
                     # commit the native call and return its correlated tool result.
                     # Only malformed provider responses use model-request retries.
-                    if (not invalid_terminal and not response.tool_calls and response.end_turn is not False
-                            and rt.stop_hook is not None):
-                        try:
-                            stop_decision = rt.stop_hook(rt, session, step, token, request,
-                                                        response, sample_steering_revision)
-                            from .turn_stop import StopDecision
-                            if not isinstance(stop_decision, StopDecision):
-                                raise ValueError("Stop check must return a structured StopDecision")
-                        except ModelSteered:
-                            from .runtime import _add_usage
-                            rt._release_step_context(step)
-                            _record_steering_rejection(rt, session, step, attempt=attempt,
-                                                      response=response, usage=response.usage)
-                            session.usage = _add_usage(session.usage, response.usage)
-                            recovery_instruction = ""
-                            recovery_partial = ""
-                            continue
-                        except ModelCancelled:
-                            raise
-                        except Exception as exc:
-                            # An unavailable check establishes no verdict. Keep
-                            # the candidate and record the check failure separately.
-                            stop_decision = None
-                            rt._record(session, Event.TURN_STOP_CHECKED, data={
-                                "step_id": step.step_id, "outcome": "assessment_failed",
-                                "error_type": type(exc).__name__, "answer_preserved": True,
-                            })
-                        if stop_decision is not None and stop_decision.outcome == "continue":
-                            invalid_terminal = "stop_check_continue"
-                            # Durable assessment state is projected on every next
-                            # request, including after tools, approvals and compaction.
                     if not invalid_terminal:
                         break
 
@@ -465,7 +429,7 @@ class TurnRunner:
 
                     session.model_steps += 1
                     session.usage = _add_usage(session.usage, response.usage)
-                    rt._record(session, Event.MODEL_RESPONSE_REJECTED, data={
+                    rt._emit_event(session, Event.MODEL_RESPONSE_REJECTED, data={
                         **model_identity,
                         "step_id": step.step_id,
                         "reason": invalid_terminal,
@@ -478,20 +442,15 @@ class TurnRunner:
                             "input_tokens": response.usage.input_tokens,
                             "output_tokens": response.usage.output_tokens,
                             "total_tokens": response.usage.total_tokens,
+                            "cached_input_tokens": response.usage.cached_input_tokens,
                         },
                     })
                     rt._release_step_context(step)
-                    # A semantic continuation is normal task execution, not a
-                    # failed provider request. Neither successful tool batches
-                    # nor repeated candidates decide when the task is done.
-                    # Cancellation, steering and explicit resource budgets are
-                    # checked by the ordinary execution loop and model executor.
-                    if invalid_terminal != "stop_check_continue" and attempt >= rt.limits.model_retries:
+                    if attempt >= rt.limits.model_retries:
                         raise RuntimeError(
                             f"model repeatedly returned an invalid terminal response ({invalid_terminal})"
                         )
-                    if invalid_terminal != "stop_check_continue":
-                        attempt += 1
+                    attempt += 1
                     recovery_instruction = invalid_terminal
                     resume_from_partial = (invalid_terminal.startswith("incomplete_finish:")
                                            or invalid_terminal == "incomplete_decision_block")
@@ -544,7 +503,7 @@ class TurnRunner:
                             reasoning=response.reasoning,
                             phase=response.phase,
                         ))
-                        rt._record(session, Event.MODEL_RESPONSE, data={
+                        rt._emit_event(session, Event.MODEL_RESPONSE, data={
                             **model_identity,
                             "step_id": step.step_id,
                             "text": response.text,
@@ -569,6 +528,7 @@ class TurnRunner:
                                 "input_tokens": response.usage.input_tokens,
                                 "output_tokens": response.usage.output_tokens,
                                 "total_tokens": response.usage.total_tokens,
+                                "cached_input_tokens": response.usage.cached_input_tokens,
                             },
                         })
 
@@ -606,7 +566,7 @@ class TurnRunner:
                         if (tool := step.tool_router.get(c.name)) is not None
                     }
                     for call in calls:
-                        rt._record(session, Event.TOOL_REQUESTED, data={
+                        rt._emit_event(session, Event.TOOL_REQUESTED, data={
                             "call_id": call.call_id,
                             "tool": call.name,
                             "arguments": call.arguments,
@@ -632,17 +592,13 @@ class TurnRunner:
                 session.error = ""
                 diff = rt.diff_trackers.snapshot(session.session_id, session.current_turn_id)
                 rt.store.save(session)
-                rt._record(
+                rt._emit_event(
                     session,
                     Event.TURN_COMPLETED,
                     data={
                         "text": response.text,
                         "execution_end_source": decision.source,
                         "task_completion": "not_assessed",
-                        "stop_decision": stop_decision.as_dict() if stop_decision is not None else None,
-                        "completion_check": (
-                            "not_configured" if rt.stop_hook is None
-                            else "assessed" if stop_decision is not None else "unavailable"),
                         "final_step_id": step.step_id,
                         "diff_revision": diff.revision,
                         "changed_paths": list(diff.paths),
@@ -672,7 +628,7 @@ class TurnRunner:
                 )
                 rt._release_turn_steps(session)
                 rt.store.save(session)
-                rt._record(session, Event.TURN_FAILED, data={"error": session.error,
+                rt._emit_event(session, Event.TURN_FAILED, data={"error": session.error,
                     "provider_status_code": getattr(exc, "status_code", None),
                     "retryable": getattr(exc, "retryable", None),
                     "resume": {"durable_history_preserved": True, "new_turn_required": True}})

@@ -107,8 +107,8 @@ def test_length_truncation_continues_with_ephemeral_partial_and_executes_once(tm
     assert result.status is AgentStatus.COMPLETED
     assert calls == [1]
     retry = platform.requests[1].messages
-    assert any(message.role is MessageRole.ASSISTANT and
-        message.content == "I will write the file now:" for message in retry)
+    assert any(message.role is MessageRole.USER and message.name == "loom_terminal_recovery" and
+        "I will write the file now:" in message.content for message in retry)
     assert any(message.name == "loom_terminal_recovery" and
         "cut off" in message.content for message in retry)
     stored = runtime.store.load(session.session_id)

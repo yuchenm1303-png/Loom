@@ -34,3 +34,11 @@ test("latest successful durable plan wins; failed update cannot overwrite it", (
     item("failed", "tool_call", { toolName: "update_plan", status: "failed", result: { plan: [] } }),
   ]), plan);
 });
+
+test("milestone evidence is displayed separately from acceptance and never inferred as passed", () => {
+  const step = { step: "Pressure", status: "completed", outcome: "interrupted", evidence_refs: [{call_id:"call-17"}, {path:"reports/result.json"}], evidence:"Connection closed" };
+  assert.deepEqual(model.milestoneEvidenceLabels(step), ["工具记录：call-17", "文件：reports/result.json"]);
+  assert.equal(model.milestoneOutcomeLabel(step), "测试中断");
+  assert.equal(model.milestoneOutcomeLabel({step:"Legacy",status:"completed"}), "未记录验收结论");
+  assert.deepEqual(model.latestTaskPlan([item("plan", "tool_call", {toolName:"update_plan",result:{plan:[step]}})])[0].evidence_refs, step.evidence_refs);
+});

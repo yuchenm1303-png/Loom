@@ -105,6 +105,8 @@ class Session:
     def __init__(self, messages):
         self.session_id = "session-calibration"
         self.messages = list(messages)
+        self.request_context_frames = [{"step_id": "fixture", "after_message_count": len(messages),
+            "messages": [{"role": "user", "name": "loom_communication_language", "content": "User language."}], "metadata": {}}]
         self.workspace_dir = "/tmp/project"
         self.profile_id = "agent.fast"
         self.communication_language = "auto"
@@ -112,6 +114,13 @@ class Session:
 
 
 class FakeRuntime:
+    # Budget-only fixture implements the unified composer protocol.
+    def _request_stable_contracts(self):
+        return ()
+
+    def _model_system_prompt(self, session, step):
+        return self._request_context_messages(session, step, self._context_envelope(session, step))[0].content
+
     def __init__(self, responses, *, events=(), profile_cls=None, limits=None):
         self.limits = limits or Limits()
         self.model_executor = ScriptedExecutor(responses)

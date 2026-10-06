@@ -251,17 +251,22 @@ def test_screenshot_is_ephemeral_model_input_not_durable_history(tmp_path):
     assert len(visual_messages) == 1
     assert any(isinstance(part, ImagePart) for part in visual_messages[0].content)
     assert visual_messages[0].name == "loom_tool_observation"
-    assert any(message.role.value == "tool" and "LOOM_COMPUTER_OBSERVATION" in str(message.content)
-               for message in follow_up.messages)
+    assert any(message.role.value == "user" and message.name == "loom_tool_observation_text"
+               and "LOOM_COMPUTER_OBSERVATION" in str(message.content) for message in follow_up.messages)
+    original = next(message for message in follow_up.messages if message.tool_call_id == "screen-1")
+    assert "LOOM_COMPUTER_OBSERVATION" not in str(original.content)
 
     durable = runtime.get_session(session.session_id)
     durable_text = repr(durable.messages)
     assert "data:image/" not in durable_text
     assert "private draft" not in durable_text
+    persisted = (runtime.store.session_dir(session.session_id) / "session.json").read_text(encoding="utf-8")
+    assert "data:image/" not in persisted
+    assert "private draft" not in persisted
     runtime.close()
 
 
-def test_screenshot_feedback_is_consumed_by_only_the_next_model_request(tmp_path):
+def test_screenshot_feedback_is_consumed_once_and_retained_as_immutable_history(tmp_path):
     runtime, platform, _, session = _runtime(
         tmp_path,
         [
@@ -294,7 +299,10 @@ def test_screenshot_feedback_is_consumed_by_only_the_next_model_request(tmp_path
     assert len(platform.requests) == 3
     assert not any(message.uses_vision for message in platform.requests[0][1].messages)
     assert sum(message.uses_vision for message in platform.requests[1][1].messages) == 1
-    assert not any(message.uses_vision for message in platform.requests[2][1].messages)
+    second = platform.requests[1][1].messages
+    third = platform.requests[2][1].messages
+    assert third[:len(second)] == second
+    assert sum(message.uses_vision for message in third) == 1  # No duplicate fresh attachment.
     assert runtime._computer_feedback_turns == {}
     runtime.close()
 
@@ -303,7 +311,7 @@ def test_terminal_event_clears_unconsumed_computer_feedback(tmp_path):
     runtime, _, _, session = _runtime(tmp_path, [ModelResponse(text="unused")])
     runtime._computer_feedback_turns[session.session_id] = "stale-turn"
 
-    runtime._record(session, AgentEventKind.TURN_FAILED, data={"error": "test"})
+    runtime._emit_event(session, AgentEventKind.TURN_FAILED, data={"error": "test"})
 
     assert runtime._computer_feedback_turns == {}
     runtime.close()

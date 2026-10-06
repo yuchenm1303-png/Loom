@@ -96,6 +96,7 @@ class Session:
     def __init__(self, messages):
         self.session_id = "session-1"
         self.messages = list(messages)
+        self.request_context_frames = []
         self.workspace_dir = "/tmp/project"
         self.profile_id = "agent.fast"
         self.communication_language = "auto"
@@ -111,6 +112,14 @@ class EventStore:
 
 
 class FakeRuntime:
+    # The budget fixture implements the composer protocol; execution assertions
+    # below remain unchanged. Full context-frame capture is tested in production.
+    def _request_stable_contracts(self):
+        return ()
+
+    def _model_system_prompt(self, session, step):
+        return self._request_context_messages(session, step, self._context_envelope(session, step))[0].content
+
     def __init__(self, *, limits=None, context_limits=None, responses=(), events=()):
         self.limits = limits or Limits()
         self.platform = Platform(context_limits)

@@ -68,8 +68,8 @@ def test_model_compaction_is_separate_no_tool_task_and_counts_usage(tmp_path):
     assert request.messages[0].role is MessageRole.SYSTEM
     assert request.messages[-1].role is MessageRole.USER
     assert request.messages[-1].content == summarization_prompt("latin")
-    assert request.messages[1].name == "loom_communication_language"
-    assert [message.content for message in request.messages[2:-1]] == [
+    assert any(m.name == "loom_communication_language" and m.role is MessageRole.USER for m in request.messages)
+    assert [message.content for message in request.messages[1:-1] if not (message.name or "").startswith("loom_")] == [
         "question one",
         "answer one",
         "question two",

@@ -63,6 +63,7 @@ def _context_limits_from_dict(payload: object) -> ModelContextLimits:
         auto_compact_token_limit=_optional_int(payload, "auto_compact_token_limit"),
         output_reserve_tokens=_optional_int(payload, "output_reserve_tokens"),
         tool_output_token_limit=_optional_int(payload, "tool_output_token_limit"),
+        working_context_tokens=_optional_int(payload, "working_context_tokens"),
     )
 
 

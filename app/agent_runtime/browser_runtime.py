@@ -3,6 +3,7 @@ from __future__ import annotations
 import ipaddress
 import os
 import re
+import uuid
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, Sequence
@@ -24,6 +25,8 @@ from .browser_session import (
 )
 from .browser_use_backend import browser_use_available
 from .memory_store import redact_secrets
+from .contracts import AgentEvent, AgentEventKind
+from .storage import utc_now
 from .tools import BLOCKED_SENSITIVE_INPUT_ARGUMENT, ToolRegistry
 from .web_search_runtime import WebSearchRuntime
 
@@ -374,53 +377,53 @@ class BrowserSessionStore(BrowserSessionManager):
         )
 
     def snapshot(self, owner_session_id: str, browser_id: str, *, refresh: bool = False) -> BrowserStateSnapshot:
-        item = self._owned(owner_session_id, browser_id)
-        if refresh:
-            self.state(owner_session_id, browser_id)
-            item = self._owned(owner_session_id, browser_id)
-        return BrowserStateSnapshot(
-            browser_id=item.browser_id,
-            state_revision=self._revision(item),
-            state=item.last_state,
-        )
+        with self.operation(owner_session_id, browser_id) as item:
+            if refresh:
+                self.state(owner_session_id, browser_id)
+                item = self._owned(owner_session_id, browser_id)
+            return BrowserStateSnapshot(
+                browser_id=item.browser_id,
+                state_revision=self._revision(item),
+                state=item.last_state,
+            )
 
     def ensure_revision(self, owner_session_id: str, browser_id: str, expected_revision: int) -> None:
-        item = self._owned(owner_session_id, browser_id)
-        current = self._revision(item)
-        expected = int(expected_revision)
-        if expected != current:
-            raise BrowserStaleStateError(expected, current)
+        with self.operation(owner_session_id, browser_id) as item:
+            current = self._revision(item)
+            expected = int(expected_revision)
+            if expected != current:
+                raise BrowserStaleStateError(expected, current)
 
     def refresh(self, owner_session_id: str, browser_id: str) -> BrowserStateSnapshot:
-        item = self._owned(owner_session_id, browser_id)
-        method = getattr(item.backend, "refresh", None)
-        if not callable(method):
-            raise RuntimeError("browser backend does not support refresh")
-        self._update_state(item, method())
-        return self.snapshot(owner_session_id, browser_id)
+        with self.operation(owner_session_id, browser_id) as item:
+            method = getattr(item.backend, "refresh", None)
+            if not callable(method):
+                raise RuntimeError("browser backend does not support refresh")
+            self._update_state(item, method())
+            return self.snapshot(owner_session_id, browser_id)
 
     def tabs(self, owner_session_id: str, browser_id: str) -> BrowserStateSnapshot:
-        item = self._owned(owner_session_id, browser_id)
-        method = getattr(item.backend, "tabs", None)
-        state = method() if callable(method) else item.backend.state()
-        self._update_state(item, state)
-        return self.snapshot(owner_session_id, browser_id)
+        with self.operation(owner_session_id, browser_id) as item:
+            method = getattr(item.backend, "tabs", None)
+            state = method() if callable(method) else item.backend.state()
+            self._update_state(item, state)
+            return self.snapshot(owner_session_id, browser_id)
 
     def switch_tab(self, owner_session_id: str, browser_id: str, tab_id: str) -> BrowserStateSnapshot:
-        item = self._owned(owner_session_id, browser_id)
-        method = getattr(item.backend, "switch_tab", None)
-        if not callable(method):
-            raise RuntimeError("browser backend does not support tab switching")
-        self._update_state(item, method(str(tab_id)))
-        return self.snapshot(owner_session_id, browser_id)
+        with self.operation(owner_session_id, browser_id) as item:
+            method = getattr(item.backend, "switch_tab", None)
+            if not callable(method):
+                raise RuntimeError("browser backend does not support tab switching")
+            self._update_state(item, method(str(tab_id)))
+            return self.snapshot(owner_session_id, browser_id)
 
     def close_tab(self, owner_session_id: str, browser_id: str, tab_id: str) -> BrowserStateSnapshot:
-        item = self._owned(owner_session_id, browser_id)
-        method = getattr(item.backend, "close_tab", None)
-        if not callable(method):
-            raise RuntimeError("browser backend does not support tab closing")
-        self._update_state(item, method(str(tab_id)))
-        return self.snapshot(owner_session_id, browser_id)
+        with self.operation(owner_session_id, browser_id) as item:
+            method = getattr(item.backend, "close_tab", None)
+            if not callable(method):
+                raise RuntimeError("browser backend does not support tab closing")
+            self._update_state(item, method(str(tab_id)))
+            return self.snapshot(owner_session_id, browser_id)
 
     @staticmethod
     def _revision(item: ManagedBrowserSession) -> int:
@@ -441,6 +444,7 @@ class BrowserRuntime(WebSearchRuntime):
         browser_persist_profile: bool = True,
         browser_profile_dir: str | Path | None = None,
         browser_cdp_url: str | None = None,
+        browser_idle_timeout_seconds: float = 1200,
         **kwargs,
     ) -> None:
         super().__init__(*args, **kwargs)
@@ -449,6 +453,9 @@ class BrowserRuntime(WebSearchRuntime):
         self.platform = _BrowserSecretBoundaryPlatform(self.platform)
 
         self.browser_headless = bool(browser_headless)
+        self.browser_idle_timeout_seconds = float(browser_idle_timeout_seconds)
+        if self.browser_idle_timeout_seconds <= 0:
+            raise ValueError("browser idle timeout must be positive")
         self.browser_allowed_domains = tuple(str(item) for item in browser_allowed_domains)
         self.browser_security_policy = browser_security_policy or BrowserSecurityPolicy()
         # Remember how this runtime was constructed so a later connection change
@@ -605,6 +612,9 @@ class BrowserRuntime(WebSearchRuntime):
         # however, support independent tab controllers; do not make one task's
         # handle consume the entire runtime's capacity.
         exclusive_browser = profile_persistence
+        previous_store = getattr(self, "browser_sessions", None)
+        if previous_store is not None:
+            previous_store.shutdown()
         self.browser_sessions = (
             BrowserSessionStore(
                 factory,
@@ -612,10 +622,16 @@ class BrowserRuntime(WebSearchRuntime):
                 max_sessions_per_owner=1 if exclusive_browser or cdp_attached or extension_attached else 2,
                 max_sessions_total=1 if exclusive_browser else 8,
                 filter_unsafe_background_tabs=cdp_attached or extension_attached,
+                idle_timeout_seconds=self.browser_idle_timeout_seconds,
+                lifecycle_callback=self._record_browser_lifecycle,
+                lifecycle_lookup=self._lookup_browser_lifecycle,
             )
             if factory is not None
             else None
         )
+
+        if self.browser_sessions is not None:
+            self.browser_sessions.start_idle_reaper()
 
         from .browser_tools import browser_tools
 
@@ -911,6 +927,8 @@ class BrowserRuntime(WebSearchRuntime):
             "owned_sessions": active,
             "total_active_sessions": store.active_count() if store is not None else 0,
             "max_sessions_total": store.max_sessions_total if store is not None else 0,
+            "session_lifetime": "conversation_with_idle_timeout",
+            "idle_timeout_seconds": store.idle_timeout_seconds if store is not None else 0,
             "session_persistence": persistence,
             "crash_recovery": recovery,
             "secret_injection": False,
@@ -959,35 +977,68 @@ class BrowserRuntime(WebSearchRuntime):
     def set_permission_mode(self, session_id, mode):
         current = self.get_session(session_id)
         if self.browser_sessions is not None and str(current.permission_mode.value) != str(getattr(mode, "value", mode)):
-            self.browser_sessions.close_owner(session_id)
+            self.browser_sessions.close_owner_sessions(session_id, reason="permission_changed")
         return super().set_permission_mode(session_id, mode)
 
-    def _record(self, session, kind, *, data):
-        from .contracts import AgentEventKind
+    def _record_browser_lifecycle(self, owner, state, data):
+        try:
+            directory = self.store.session_dir(owner)
+        except ValueError:
+            return
+        if not directory.is_dir():
+            return
+        payload = dict(data)
+        payload["time"] = utc_now()
+        self.store.append_event(AgentEvent(
+            event_id=str(uuid.uuid4()), session_id=owner, turn_id="",
+            kind=AgentEventKind.BROWSER_SESSION_OPENED if state == "opened" else AgentEventKind.BROWSER_SESSION_RELEASED,
+            created_at=payload["time"], data=payload,
+        ))
 
-        if kind in {
-            AgentEventKind.TURN_COMPLETED,
-            AgentEventKind.TURN_FAILED,
-            AgentEventKind.TURN_CANCELLED,
-            AgentEventKind.TURN_INTERRUPTED,
-            AgentEventKind.LIMIT_REACHED,
-        } and getattr(self, "browser_sessions", None) is not None:
-            released = self.browser_sessions.close_owner_sessions(session.session_id, reason=kind.value)
-            if released:
-                data = {**data, "browser_resources": {
-                    "state": "released", "reason": kind.value, "resume_requires_new_session": True,
-                    "count": len(released), "browser_ids": list(released),
-                }}
-        return super()._record(session, kind, data=data)
+    def _lookup_browser_lifecycle(self, owner, browser_id):
+        try:
+            events = self.store.events(owner)
+        except (ValueError, FileNotFoundError):
+            return None
+        for event in reversed(events):
+            if event.data.get("browser_id") != browser_id:
+                continue
+            if event.kind == AgentEventKind.BROWSER_SESSION_RELEASED:
+                return dict(event.data)
+            if event.kind == AgentEventKind.BROWSER_SESSION_OPENED:
+                data = {"browser_id": browser_id, "reason": "host_restart", "closed_at": utc_now()}
+                self._record_browser_lifecycle(owner, "released", data)
+                return data
+        return None
+
+    def release_session_resources(self, session_id, *, reason):
+        store = self.browser_sessions
+        return store.close_owner_sessions(session_id, reason=reason) if store is not None else ()
+
+    def _on_turn_activated(self, session_id, token):
+        super()._on_turn_activated(session_id, token)
+        if self.browser_sessions is not None:
+            self.browser_sessions.reap_idle()
+            self.browser_sessions.set_owner_active(session_id, True)
+
+    def _on_turn_deactivated(self, session_id, token):
+        if self.browser_sessions is not None:
+            self.browser_sessions.set_owner_active(session_id, False)
+        super()._on_turn_deactivated(session_id, token)
+
+    def _on_turn_finished(self, session, event):
+        # A model turn ending is not a browser session ending. Retain handles
+        # across retries, user follow-ups and approvals; deactivation starts TTL.
+        if self.browser_sessions is not None:
+            self.browser_sessions.finish_owner_turn(session.session_id)
+        super()._on_turn_finished(session, event)
 
     def recover_interrupted(self, session_id):
-        if self.browser_sessions is not None:
-            self.browser_sessions.close_owner(session_id)
         return super().recover_interrupted(session_id)
 
     def close(self) -> None:
         if self.browser_sessions is not None:
-            self.browser_sessions.close_all()
+            self.browser_sessions.shutdown()
         if self.browser_extension_bridge is not None:
             self.browser_extension_bridge.stop()
         super().close()

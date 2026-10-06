@@ -867,6 +867,10 @@ class ManagedStreamingLoomAppServerService(StreamingLoomAppServerService):
             )
         except FileNotFoundError as exc:
             raise JsonRpcError(-32004, "thread not found") from exc
+        if archived:
+            release = getattr(self.runtime, "release_session_resources", None)
+            if callable(release):
+                release(session.session_id, reason="thread_archived")
         record = self._managed_record(session)
         self._notify(
             "thread/updated",
@@ -905,6 +909,9 @@ class ManagedStreamingLoomAppServerService(StreamingLoomAppServerService):
                 )
 
         try:
+            release = getattr(self.runtime, "release_session_resources", None)
+            if callable(release):
+                release(session.session_id, reason="thread_deleted")
             self.thread_library.delete_session(session.session_id)
         except FileNotFoundError as exc:
             raise JsonRpcError(-32004, "thread not found") from exc

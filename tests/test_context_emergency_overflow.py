@@ -48,6 +48,8 @@ class Step:
 class Session:
     def __init__(self, messages):
         self.messages = list(messages)
+        self.request_context_frames = []
+        self.session_id = "emergency"
         self.workspace_dir = "/tmp/project"
         self.profile_id = "agent.fast"
         self.communication_language = "auto"
@@ -55,6 +57,12 @@ class Session:
 
 
 class Runtime:
+    def _request_stable_contracts(self):
+        return ()
+
+    def _model_system_prompt(self, session, step):
+        return "runtime state"
+
     def __init__(self):
         self.limits = Limits()
         self.platform = Platform()

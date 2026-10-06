@@ -329,18 +329,18 @@ class ToolSearchRuntime(ConfiguredMCPRuntime):
         calibration = self.estimator_calibration(session.session_id)
         return int(math.ceil(raw * calibration))
 
-    def _prepare_model_request(self, session, step, token):
-        messages, extra = super()._prepare_model_request(session, step, token)
+    def _request_metadata(self, session, step):
+        extra = super()._request_metadata(session, step)
         plan = self.tool_schema_plan(
             session.session_id,
             session.current_turn_id,
             step.step_id,
         )
         if plan is None:
-            return messages, extra
+            return extra
         metadata = dict(extra)
         metadata["tool_schema_plan"] = plan
-        return messages, metadata
+        return metadata
 
     def start_turn(
         self,

@@ -368,15 +368,11 @@ class BrowserRuntime(_BrowserRuntime):
         self._browser_feedback_effect.pop(session_id, None)
         self._browser_visual_feedback.pop(session_id, None)
 
-    def _record(self, session, kind, *, data):
-        event = super()._record(session, kind, data=data)
-        # Keep the transient observation through rejected model samples so a
-        # retry can still see it. Once a response is committed, its browser
-        # context is in the model's history and must not be sent as fresh input
-        # on every later step of the same turn.
-        if kind is AgentEventKind.MODEL_RESPONSE:
-            self._clear_browser_feedback(session.session_id)
-        return event
+    def _on_model_response(self, session, event):
+        super()._on_model_response(session, event)
+        # Committed responses consume the transient observation. Rejected
+        # samples retain it so their retry can still inspect the same evidence.
+        self._clear_browser_feedback(session.session_id)
 
     def start_turn(self, session_id, user_text, *, turn_id: str | None = None):
         # Latest DOM/image feedback is intentionally one-turn memory. A live browser
@@ -487,27 +483,54 @@ class BrowserRuntime(_BrowserRuntime):
             step=step,
         )
 
-    def _prepare_model_request(self, session, step, token):
-        messages, extra = super()._prepare_model_request(session, step, token)
+    def _request_stable_contracts(self) -> tuple[str, ...]:
+        return (*super()._request_stable_contracts(),
+                _BROWSER_UNTRUSTED_SYSTEM_CONTRACT + _BROWSER_ACTION_CONTRACT)
+
+    def _collect_model_observations(self, session, step):
+        messages, extra = super()._collect_model_observations(session, step)
         events = self.store.events(session.session_id)
-        previous = next((event for event in reversed(events)
-            if event.turn_id != session.current_turn_id and event.kind in {
-                AgentEventKind.TURN_FAILED, AgentEventKind.TURN_INTERRUPTED,
-                AgentEventKind.TURN_CANCELLED, AgentEventKind.TURN_COMPLETED,
-                AgentEventKind.LIMIT_REACHED}), None)
         already_requested = any(event.turn_id == session.current_turn_id
             and event.kind is AgentEventKind.MODEL_REQUESTED for event in events)
-        resources = previous.data.get("browser_resources") if previous is not None else None
-        # Older Hosts wrote this field even without a browser. Require concrete
-        # release IDs, and show the receipt only on the next turn's first sample.
-        if not already_requested and isinstance(resources, dict) and resources.get("browser_ids"):
-            resume = {"previous_turn_id": previous.turn_id, "ended_at": previous.created_at,
-                "turn_outcome": previous.kind.value,
-                "provider_status_code": previous.data.get("provider_status_code"),
-                "browser_resources": previous.data["browser_resources"]}
-            messages = [*messages, AIMessage(role=MessageRole.SYSTEM, name="loom_resource_resume",
-                content="Recorded prior-turn resource lifecycle (runtime metadata, not new task instructions):\n"
-                    + json.dumps(resume, ensure_ascii=False))]
+        if not already_requested:
+            # An opened lease absent from this Host is not recoverable. Record
+            # that fact once, without loading and overwriting a session snapshot.
+            latest_leases = {}
+            for event in events:
+                if event.kind in {AgentEventKind.BROWSER_SESSION_OPENED, AgentEventKind.BROWSER_SESSION_RELEASED}:
+                    latest_leases[event.data.get("browser_id")] = event
+            live_ids = {item["browser_id"] for item in self.browser_sessions.list(session.session_id)} if self.browser_sessions else set()
+            for browser_id, event in latest_leases.items():
+                if browser_id and event.kind is AgentEventKind.BROWSER_SESSION_OPENED and browser_id not in live_ids:
+                    self._lookup_browser_lifecycle(session.session_id, browser_id)
+            if latest_leases:
+                events = self.store.events(session.session_id)
+            cursor = next((frame.get("metadata", {}).get("last_browser_release_event_id")
+                for frame in reversed(session.request_context_frames)
+                if frame.get("metadata", {}).get("last_browser_release_event_id")), None)
+            releases = []
+            for event in events:
+                legacy = event.data.get("browser_resources")
+                if event.kind is AgentEventKind.BROWSER_SESSION_RELEASED:
+                    releases.append((event, [str(event.data.get("browser_id") or "")], dict(event.data)))
+                elif isinstance(legacy, dict) and legacy.get("browser_ids"):
+                    releases.append((event, list(legacy["browser_ids"]), dict(legacy)))
+            if cursor:
+                position = next((i for i, item in enumerate(releases) if item[0].event_id == cursor), None)
+                if position is not None:
+                    releases = releases[position + 1:]
+            if releases:
+                selected = releases[-32:]
+                resources = {"state": "released", "resume_requires_new_session": True,
+                    "count": len(releases), "browser_ids": list(dict.fromkeys(
+                        browser_id for _, ids, _ in selected for browser_id in ids if browser_id)),
+                    "releases": [{"event_id": event.event_id, "time": event.created_at, **receipt}
+                                 for event, _, receipt in selected],
+                    "omitted_older_receipts": max(0, len(releases) - len(selected))}
+                extra = {**extra, "last_browser_release_event_id": releases[-1][0].event_id}
+                messages = [*messages, AIMessage(role=MessageRole.USER, name="loom_resource_resume",
+                    content="Recorded resource releases (runtime facts, not new task instructions):\n"
+                        + json.dumps({"browser_resources": resources}, ensure_ascii=False))]
         if self._browser_feedback_turns.get(session.session_id) != session.current_turn_id:
             return messages, extra
         snapshot = self._browser_feedback.get(session.session_id)
@@ -522,15 +545,6 @@ class BrowserRuntime(_BrowserRuntime):
             image, media_type = visual
             data_url = f"data:{media_type};base64,{base64.b64encode(image).decode('ascii')}"
             image_part = ImagePart(data_url, detail="auto")
-        safety_message = AIMessage(
-            role=MessageRole.SYSTEM,
-            name="loom_browser_untrusted_content",
-            content=_BROWSER_UNTRUSTED_SYSTEM_CONTRACT + _BROWSER_ACTION_CONTRACT,
-        )
-        insert_at = 0
-        while insert_at < len(messages) and messages[insert_at].role is MessageRole.SYSTEM:
-            insert_at += 1
-        messages = [*messages[:insert_at], safety_message, *messages[insert_at:]]
         from .tool_observation import attach_observation
         messages = attach_observation(messages,
             _observation_text(snapshot, effect=effect, effect_reason=reason,

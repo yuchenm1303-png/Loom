@@ -254,7 +254,7 @@ class DurableAgentRuntime(CoreAgentRuntime):
                 "Process-local approval bindings, pending tool execution, and live process ownership "
                 "were invalidated; any action without a durable completion observation has unknown outcome."
             )
-            self._record(
+            self._emit_event(
                 session,
                 AgentEventKind.TURN_INTERRUPTED,
                 data={
@@ -283,7 +283,7 @@ class DurableAgentRuntime(CoreAgentRuntime):
             )
             if repair.changed:
                 session.messages = list(repair.messages)
-                self._record(
+                self._emit_event(
                     session,
                     AgentEventKind.HISTORY_REPAIRED,
                     data={
@@ -339,15 +339,15 @@ class DurableAgentRuntime(CoreAgentRuntime):
             }
             if queue_item is not None:
                 start_data["queue_id"] = queue_item.queue_id
-            self._record(session, AgentEventKind.TURN_STARTED, data=start_data)
+            self._emit_event(session, AgentEventKind.TURN_STARTED, data=start_data)
             if not retrying_failed_input:
-                self._record(
+                self._emit_event(
                     session,
                     AgentEventKind.USER_MESSAGE,
                     data={"text": text, "source": source},
                 )
             if queue_item is not None:
-                self._record(
+                self._emit_event(
                     session,
                     AgentEventKind.QUEUE_DISPATCHED,
                     data={

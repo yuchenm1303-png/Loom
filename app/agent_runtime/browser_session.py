@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import ipaddress
 import threading
+import time
+from contextlib import contextmanager
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
@@ -238,6 +240,10 @@ class BrowserSessionManager:
         url_policy: BrowserURLPolicy | None = None,
         max_sessions_per_owner: int = 2,
         max_sessions_total: int = 8,
+        idle_timeout_seconds: float = 1200,
+        clock: Callable[[], float] = time.monotonic,
+        lifecycle_callback: Callable[[str, str, dict[str, object]], None] | None = None,
+        lifecycle_lookup: Callable[[str, str], dict[str, object] | None] | None = None,
     ) -> None:
         if not callable(backend_factory):
             raise TypeError("browser backend_factory must be callable")
@@ -251,6 +257,105 @@ class BrowserSessionManager:
         self._starting_total = 0
         self._starting_by_owner: dict[str, int] = {}
         self._owner_generations: dict[str, int] = {}
+        self.idle_timeout_seconds = float(idle_timeout_seconds)
+        if self.idle_timeout_seconds <= 0:
+            raise ValueError("browser idle timeout must be positive")
+        self._clock = clock
+        self._last_used: dict[str, float] = {}
+        self._active_owners: set[str] = set()
+        self._busy: dict[str, int] = {}
+        self._reaper_stop = threading.Event()
+        self._reaper_thread: threading.Thread | None = None
+        self._lifecycle_callback = lifecycle_callback
+        self._lifecycle_lookup = lifecycle_lookup
+        self._pending_lifecycle: list[tuple[str, dict[str, object]]] = []
+
+    def set_owner_active(self, owner_session_id: str, active: bool) -> None:
+        owner = _key(owner_session_id, "owner_session_id")
+        with self._lock:
+            if active:
+                self._active_owners.add(owner)
+            else:
+                self._active_owners.discard(owner)
+                now = self._clock()
+                for item in self._sessions.values():
+                    if item.owner_session_id == owner:
+                        self._last_used[item.browser_id] = now
+
+    def _retire_locked(self, item: ManagedBrowserSession, reason: str) -> None:
+        self._sessions.pop(item.browser_id, None)
+        self._last_used.pop(item.browser_id, None)
+        self._closed_sessions[item.browser_id] = (item.owner_session_id, {
+            "browser_id": item.browser_id, "reason": reason, "closed_at": utc_now()})
+        self._pending_lifecycle.append((item.owner_session_id, dict(self._closed_sessions[item.browser_id][1])))
+        while len(self._closed_sessions) > 256:
+            self._closed_sessions.pop(next(iter(self._closed_sessions)))
+
+    def _flush_lifecycle(self) -> None:
+        with self._lock:
+            pending, self._pending_lifecycle = self._pending_lifecycle, []
+        if self._lifecycle_callback is not None:
+            for owner, data in pending:
+                self._lifecycle_callback(owner, "released", data)
+
+    def _close_retired(self, items: Sequence[ManagedBrowserSession]) -> None:
+        self._flush_lifecycle()
+        for item in items:
+            try:
+                item.backend.close()
+            except Exception:
+                pass
+
+    def reap_idle(self) -> tuple[str, ...]:
+        with self._lock:
+            now = self._clock()
+            retired = [item for item in self._sessions.values()
+                       if item.owner_session_id not in self._active_owners
+                       and not self._busy.get(item.browser_id)
+                       and now - self._last_used.get(item.browser_id, now) >= self.idle_timeout_seconds]
+            for item in retired:
+                self._retire_locked(item, "idle_expired")
+        self._close_retired(retired)
+        return tuple(item.browser_id for item in retired)
+
+    def start_idle_reaper(self) -> None:
+        """Host-owned housekeeping; no model loop or turn completion decision."""
+        with self._lock:
+            if self._reaper_thread is not None:
+                return
+            self._reaper_stop.clear()
+            def sweep():
+                interval = min(60.0, max(1.0, self.idle_timeout_seconds / 4))
+                while not self._reaper_stop.wait(interval):
+                    self.reap_idle()
+            self._reaper_thread = threading.Thread(target=sweep, name="loom-browser-idle", daemon=True)
+            self._reaper_thread.start()
+
+    def shutdown(self) -> None:
+        self._reaper_stop.set()
+        thread = self._reaper_thread
+        if thread is not None and thread is not threading.current_thread():
+            thread.join(timeout=2)
+        self.close_all()
+
+    @contextmanager
+    def operation(self, owner_session_id: str, browser_id: str):
+        """Lease a backend while it is executing outside the manager lock."""
+        with self._lock:
+            item = self._owned(owner_session_id, browser_id)
+            self._busy[item.browser_id] = self._busy.get(item.browser_id, 0) + 1
+        try:
+            yield item
+        finally:
+            with self._lock:
+                remaining = self._busy.get(item.browser_id, 1) - 1
+                if remaining:
+                    self._busy[item.browser_id] = remaining
+                else:
+                    self._busy.pop(item.browser_id, None)
+                if item.browser_id in self._sessions:
+                    self._last_used[item.browser_id] = self._clock()
+            self._flush_lifecycle()
 
     def start(
         self,
@@ -278,24 +383,35 @@ class BrowserSessionManager:
         if not callable(factory):
             raise TypeError("browser backend_factory must be callable")
 
+        self.reap_idle()
+        retired: list[ManagedBrowserSession] = []
         with self._lock:
+            owned = sum(1 for item in self._sessions.values() if item.owner_session_id == owner)
+            owned += self._starting_by_owner.get(owner, 0)
+            if owned >= self.max_sessions_per_owner:
+                raise BrowserSessionLimitError(
+                    f"browser session limit for Loom session reached ({self.max_sessions_per_owner})",
+                    scope="owner", limit=self.max_sessions_per_owner)
+            if len(self._sessions) + self._starting_total >= self.max_sessions_total:
+                candidates = [item for item in self._sessions.values()
+                              if item.owner_session_id != owner
+                              and item.owner_session_id not in self._active_owners
+                              and not self._busy.get(item.browser_id)]
+                if candidates:
+                    item = min(candidates, key=lambda candidate: self._last_used.get(candidate.browser_id, 0))
+                    self._retire_locked(item, "evicted_for_capacity")
+                    retired.append(item)
             if len(self._sessions) + self._starting_total >= self.max_sessions_total:
                 raise BrowserSessionLimitError(
                     f"browser session limit reached ({self.max_sessions_total})",
                     scope="total",
                     limit=self.max_sessions_total,
                 )
-            owned = sum(1 for item in self._sessions.values() if item.owner_session_id == owner)
-            owned += self._starting_by_owner.get(owner, 0)
-            if owned >= self.max_sessions_per_owner:
-                raise BrowserSessionLimitError(
-                    f"browser session limit for Loom session reached ({self.max_sessions_per_owner})",
-                    scope="owner",
-                    limit=self.max_sessions_per_owner,
-                )
             self._starting_total += 1
             self._starting_by_owner[owner] = self._starting_by_owner.get(owner, 0) + 1
             generation = self._owner_generations.get(owner, 0)
+
+        self._close_retired(retired)
 
         backend: BrowserBackend | None = None
         try:
@@ -327,11 +443,14 @@ class BrowserSessionManager:
             retired = generation != self._owner_generations.get(owner, 0)
             if not retired:
                 self._sessions[managed.browser_id] = managed
+                self._last_used[managed.browser_id] = self._clock()
         if retired:
             try:
                 backend.close()
             finally:
                 raise BrowserUnavailableError("browser owner ended while the connection was opening")
+        if self._lifecycle_callback is not None:
+            self._lifecycle_callback(owner, "opened", {"browser_id": managed.browser_id, "opened_at": now})
         return managed
 
     def _release_start_reservation_locked(self, owner: str) -> None:
@@ -369,25 +488,25 @@ class BrowserSessionManager:
         every destination and returned page. Other backends may cache their
         launch policy internally and must still be restarted.
         """
-        item = self._owned(owner_session_id, browser_id)
-        if item.backend.backend_name != "browser-extension":
-            raise BrowserError("this browser backend requires a restart to change domains")
-        options = BrowserLaunchOptions(
-            headless=item.options.headless,
-            allowed_domains=tuple(allowed_domains),
-            external_browser=item.options.external_browser,
-        )
-        # A policy change cannot make the currently visible page readable if it
-        # falls outside the new scope. The next navigate/state applies the new
-        # policy and fails closed in the usual way.
-        with self._lock:
-            item.options = options
-            item.backend.options = options
+        with self.operation(owner_session_id, browser_id) as item:
+            if item.backend.backend_name != "browser-extension":
+                raise BrowserError("this browser backend requires a restart to change domains")
+            options = BrowserLaunchOptions(
+                headless=item.options.headless,
+                allowed_domains=tuple(allowed_domains),
+                external_browser=item.options.external_browser,
+            )
+            # A policy change cannot make the currently visible page readable if it
+            # falls outside the new scope. The next navigate/state applies the new
+            # policy and fails closed in the usual way.
+            with self._lock:
+                item.options = options
+                item.backend.options = options
 
     def state(self, owner_session_id: str, browser_id: str) -> BrowserPageState:
-        item = self._owned(owner_session_id, browser_id)
-        state = item.backend.state()
-        return self._update_state(item, state)
+        with self.operation(owner_session_id, browser_id) as item:
+            state = item.backend.state()
+            return self._update_state(item, state)
 
     def navigate(
         self,
@@ -397,15 +516,15 @@ class BrowserSessionManager:
         *,
         new_tab: bool = False,
     ) -> BrowserPageState:
-        item = self._owned(owner_session_id, browser_id)
-        target = self.url_policy.validate(url, allowed_domains=item.options.allowed_domains)
-        state = item.backend.navigate(target, new_tab=bool(new_tab))
-        return self._update_state(item, state)
+        with self.operation(owner_session_id, browser_id) as item:
+            target = self.url_policy.validate(url, allowed_domains=item.options.allowed_domains)
+            state = item.backend.navigate(target, new_tab=bool(new_tab))
+            return self._update_state(item, state)
 
     def click(self, owner_session_id: str, browser_id: str, index: int) -> BrowserPageState:
-        item = self._owned(owner_session_id, browser_id)
-        state = item.backend.click(int(index))
-        return self._update_state(item, state)
+        with self.operation(owner_session_id, browser_id) as item:
+            state = item.backend.click(int(index))
+            return self._update_state(item, state)
 
     def type_text(
         self,
@@ -416,12 +535,12 @@ class BrowserSessionManager:
         *,
         clear: bool = True,
     ) -> BrowserPageState:
-        item = self._owned(owner_session_id, browser_id)
-        value = str(text)
-        if len(value) > 100_000:
-            raise ValueError("browser typed text exceeds 100,000 characters")
-        state = item.backend.type_text(int(index), value, clear=bool(clear))
-        return self._update_state(item, state)
+        with self.operation(owner_session_id, browser_id) as item:
+            value = str(text)
+            if len(value) > 100_000:
+                raise ValueError("browser typed text exceeds 100,000 characters")
+            state = item.backend.type_text(int(index), value, clear=bool(clear))
+            return self._update_state(item, state)
 
     def scroll(
         self,
@@ -430,41 +549,36 @@ class BrowserSessionManager:
         direction: str,
         amount: int,
     ) -> BrowserPageState:
-        item = self._owned(owner_session_id, browser_id)
-        resolved_direction = str(direction or "").casefold()
-        if resolved_direction not in {"up", "down", "left", "right"}:
-            raise ValueError("browser scroll direction must be up/down/left/right")
-        pixels = int(amount)
-        if not 1 <= pixels <= 20_000:
-            raise ValueError("browser scroll amount must be within 1..20000 pixels")
-        state = item.backend.scroll(resolved_direction, pixels)
-        return self._update_state(item, state)
+        with self.operation(owner_session_id, browser_id) as item:
+            resolved_direction = str(direction or "").casefold()
+            if resolved_direction not in {"up", "down", "left", "right"}:
+                raise ValueError("browser scroll direction must be up/down/left/right")
+            pixels = int(amount)
+            if not 1 <= pixels <= 20_000:
+                raise ValueError("browser scroll amount must be within 1..20000 pixels")
+            state = item.backend.scroll(resolved_direction, pixels)
+            return self._update_state(item, state)
 
     def go_back(self, owner_session_id: str, browser_id: str) -> BrowserPageState:
-        item = self._owned(owner_session_id, browser_id)
-        state = item.backend.go_back()
-        return self._update_state(item, state)
+        with self.operation(owner_session_id, browser_id) as item:
+            state = item.backend.go_back()
+            return self._update_state(item, state)
 
     def screenshot(self, owner_session_id: str, browser_id: str, *, full_page: bool = False) -> bytes:
-        item = self._owned(owner_session_id, browser_id)
-        data = item.backend.screenshot(full_page=bool(full_page))
-        if not isinstance(data, (bytes, bytearray)) or not data:
-            raise BrowserError("browser backend returned an empty screenshot")
-        if len(data) > 25_000_000:
-            raise BrowserError("browser screenshot exceeds 25 MB")
-        return bytes(data)
+        with self.operation(owner_session_id, browser_id) as item:
+            data = item.backend.screenshot(full_page=bool(full_page))
+            if not isinstance(data, (bytes, bytearray)) or not data:
+                raise BrowserError("browser backend returned an empty screenshot")
+            if len(data) > 25_000_000:
+                raise BrowserError("browser screenshot exceeds 25 MB")
+            return bytes(data)
 
     def close(self, owner_session_id: str, browser_id: str, *, reason: str = "explicit_close") -> bool:
-        item = self._owned(owner_session_id, browser_id)
-        try:
-            item.backend.close()
-        finally:
-            with self._lock:
-                self._sessions.pop(item.browser_id, None)
-                self._closed_sessions[item.browser_id] = (item.owner_session_id, {"browser_id": item.browser_id, "reason": reason, "closed_at": utc_now()})
-                # Bounded resource diagnostics, not a task/retry limit.
-                while len(self._closed_sessions) > 256:
-                    self._closed_sessions.pop(next(iter(self._closed_sessions)))
+        with self._lock:
+            item = self._owned(owner_session_id, browser_id)
+            self._retire_locked(item, reason)
+        self._flush_lifecycle()
+        item.backend.close()
         return True
 
     def close_owner(self, owner_session_id: str, *, reason: str = "owner_cleanup") -> int:
@@ -482,7 +596,7 @@ class BrowserSessionManager:
                 self.close(owner, browser_id, reason=reason)
             except Exception:
                 with self._lock:
-                    self._sessions.pop(browser_id, None)
+                    self._last_used.pop(browser_id, None)
             # close() invalidates the handle even when backend cleanup raises.
             closed.append(browser_id)
         return tuple(closed)
@@ -493,6 +607,10 @@ class BrowserSessionManager:
             for owner in owners:
                 self._owner_generations[owner] = self._owner_generations.get(owner, 0) + 1
             items = list(self._sessions.values())
+            for item in items:
+                self._retire_locked(item, "host_shutdown")
+            self._active_owners.clear()
+        self._flush_lifecycle()
         closed = 0
         for item in items:
             try:
@@ -500,9 +618,6 @@ class BrowserSessionManager:
                 closed += 1
             except Exception:
                 pass
-            finally:
-                with self._lock:
-                    self._sessions.pop(item.browser_id, None)
         return closed
 
     def _owned(self, owner_session_id: str, browser_id: str) -> ManagedBrowserSession:
@@ -513,10 +628,28 @@ class BrowserSessionManager:
         if item is None:
             tombstone = self._closed_sessions.get(key)
             lifecycle = tombstone[1] if tombstone and tombstone[0] == owner else None
+            if lifecycle is None and self._lifecycle_lookup is not None:
+                lifecycle = self._lifecycle_lookup(owner, key)
             raise BrowserSessionUnavailable(key, lifecycle)
         if item.owner_session_id != owner:
             raise PermissionError("browser session belongs to a different Loom session")
+        with self._lock:
+            self._last_used[item.browser_id] = self._clock()
         return item
+
+    def finish_owner_turn(self, owner_session_id: str) -> None:
+        """Withdraw transient presentation while keeping browser ownership."""
+        with self._lock:
+            browser_ids = [item.browser_id for item in self._sessions.values() if item.owner_session_id == owner_session_id]
+        for browser_id in browser_ids:
+            try:
+                with self.operation(owner_session_id, browser_id) as item:
+                    callback = getattr(item.backend, "finish_turn", None)
+                    if callable(callback):
+                        callback()
+            except Exception:
+                # HUD cleanup is best effort and cannot change a turn outcome.
+                pass
 
     def _update_state(self, item: ManagedBrowserSession, state: BrowserPageState) -> BrowserPageState:
         try:
@@ -533,7 +666,7 @@ class BrowserSessionManager:
                 item.backend.close()
             finally:
                 with self._lock:
-                    self._sessions.pop(item.browser_id, None)
+                    self._retire_locked(item, "url_policy_violation")
             raise
         except Exception:
             # A click/type/back action can navigate. If the backend-level navigation
@@ -543,7 +676,7 @@ class BrowserSessionManager:
                 item.backend.close()
             finally:
                 with self._lock:
-                    self._sessions.pop(item.browser_id, None)
+                    self._retire_locked(item, "invalid_backend_state")
             raise
         item.last_state = checked
         item.updated_at = utc_now()

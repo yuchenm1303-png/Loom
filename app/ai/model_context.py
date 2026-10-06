@@ -12,6 +12,7 @@ _ENV_FIELDS = {
     "auto_compact_token_limit": "LOOM_MODEL_AUTO_COMPACT_TOKEN_LIMIT",
     "output_reserve_tokens": "LOOM_MODEL_OUTPUT_RESERVE_TOKENS",
     "tool_output_token_limit": "LOOM_MODEL_TOOL_OUTPUT_TOKEN_LIMIT",
+    "working_context_tokens": "LOOM_MODEL_WORKING_CONTEXT_TOKENS",
 }
 _MAPPING_KEYS = {
     "context_window_tokens": ("context_window_tokens", "contextWindowTokens"),
@@ -19,6 +20,7 @@ _MAPPING_KEYS = {
     "auto_compact_token_limit": ("auto_compact_token_limit", "autoCompactTokenLimit"),
     "output_reserve_tokens": ("output_reserve_tokens", "outputReserveTokens"),
     "tool_output_token_limit": ("tool_output_token_limit", "toolOutputTokenLimit"),
+    "working_context_tokens": ("working_context_tokens", "workingContextTokens"),
 }
 
 
@@ -112,6 +114,7 @@ def model_context_limits_from_env(
         auto_compact_token_limit=_optional_int(env, _ENV_FIELDS["auto_compact_token_limit"]),
         output_reserve_tokens=_optional_int(env, _ENV_FIELDS["output_reserve_tokens"]),
         tool_output_token_limit=_optional_int(env, _ENV_FIELDS["tool_output_token_limit"]),
+        working_context_tokens=_optional_int(env, _ENV_FIELDS["working_context_tokens"]),
     )
 
 
@@ -129,6 +132,7 @@ def model_context_limits_from_mapping(
     auto_compact = _first_int(source, _MAPPING_KEYS["auto_compact_token_limit"])
     reserve = _first_int(source, _MAPPING_KEYS["output_reserve_tokens"])
     tool_output = _first_int(source, _MAPPING_KEYS["tool_output_token_limit"])
+    working_context = _first_int(source, _MAPPING_KEYS["working_context_tokens"])
 
     return ModelContextLimits(
         context_window_tokens=window if window is not None else base.context_window_tokens,
@@ -144,6 +148,9 @@ def model_context_limits_from_mapping(
         tool_output_token_limit=(
             tool_output if tool_output is not None else base.tool_output_token_limit
         ),
+        working_context_tokens=(
+            working_context if working_context is not None else base.working_context_tokens
+        ),
     )
 
 
@@ -154,6 +161,7 @@ def model_context_limits_to_camel(limits: ModelContextLimits) -> dict[str, int |
         "autoCompactTokenLimit": limits.auto_compact_token_limit,
         "outputReserveTokens": limits.output_reserve_tokens,
         "toolOutputTokenLimit": limits.tool_output_token_limit,
+        "workingContextTokens": limits.working_context_tokens,
     }
 
 

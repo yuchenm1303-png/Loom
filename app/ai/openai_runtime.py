@@ -143,10 +143,14 @@ def _usage_from(response: Any) -> ModelUsage:
         or 0
     )
     total_tokens = int(getattr(usage, "total_tokens", None) or input_tokens + output_tokens)
+    details = (getattr(usage, "prompt_tokens_details", None)
+               or getattr(usage, "input_tokens_details", None))
+    cached_input_tokens = max(0, int(getattr(details, "cached_tokens", 0) or 0))
     return ModelUsage(
         input_tokens=input_tokens,
         output_tokens=output_tokens,
         total_tokens=total_tokens,
+        cached_input_tokens=cached_input_tokens,
     )
 
 
@@ -373,6 +377,7 @@ class OpenAIChatBackend:
                 input_tokens=usage.input_tokens,
                 output_tokens=usage.output_tokens,
                 total_tokens=usage.total_tokens,
+                cached_input_tokens=usage.cached_input_tokens,
             )
         return ModelResponse(
             text=text,

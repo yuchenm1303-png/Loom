@@ -336,7 +336,7 @@ def test_active_goal_can_continue_after_runtime_restart(tmp_path):
     assert result.status is AgentStatus.COMPLETED
     assert without_stickers(result.final_text) == "continued successfully"
     request = platform.requests[0][1]
-    user_messages = [message for message in request.messages if message.role is MessageRole.USER]
+    user_messages = [message for message in request.messages if message.role is MessageRole.USER and not message.name and not (message.name or "").startswith("loom_")]
     assert "implement durable recovery" in str(user_messages[-1].content)
     assert restarted.get_goal(session.session_id).status is GoalStatus.ACTIVE
 

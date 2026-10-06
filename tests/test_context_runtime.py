@@ -57,8 +57,8 @@ def test_model_request_contains_authoritative_runtime_state(tmp_path):
     assert result.status is AgentStatus.COMPLETED
     request = runtime.platform.requests[0][1]
     assert request.messages[0].role is MessageRole.SYSTEM
-    context = request.messages[1]
-    assert context.role is MessageRole.SYSTEM
+    context = next(m for m in request.messages if m.name == "loom_runtime_state")
+    assert context.role is MessageRole.USER
     assert context.name == "loom_runtime_state"
     assert "LOOM_RUNTIME_STATE v1" in context.content
     runtime_payload = json.loads(context.content.split("\n", 2)[2])
@@ -67,8 +67,8 @@ def test_model_request_contains_authoritative_runtime_state(tmp_path):
     assert runtime_payload["state"]["goal"]["objective"] == "Finish the refactor"
     assert runtime_payload["state"]["sandbox"]["policy"] == "off"
 
-    language = request.messages[2]
-    assert language.role is MessageRole.SYSTEM
+    language = next(m for m in request.messages if m.name == "loom_communication_language")
+    assert language.role is MessageRole.USER
     assert language.name == "loom_communication_language"
     assert "Current user communication language" in language.content
 

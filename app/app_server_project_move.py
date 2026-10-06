@@ -376,31 +376,13 @@ class ProjectMovableLoomAppServerService(ReasoningManagedLoomAppServerService):
         self._install_project_instruction_context()
 
     def _install_project_instruction_context(self) -> None:
-        """Inject durable project instructions at model-request time.
+        """Register snapshots with the renderer before request budgeting."""
+        self.runtime.register_request_context_provider("registered_project", self._project_request_messages)
 
-        The Agent Runtime owns the durable conversation history, so project
-        settings should not be written into ``session.system_prompt`` or old
-        messages. Wrapping the request builder keeps project Instructions live:
-        edits apply to the next turn, while the snapshot captured when a turn
-        actually starts protects an already-running turn from mid-run settings
-        changes.
-        """
-
-        base_prepare = getattr(self.runtime, "_loom_base_prepare_model_request", None)
-        if not callable(base_prepare):
-            base_prepare = getattr(self.runtime, "_prepare_model_request", None)
-            if not callable(base_prepare):
-                return
-            setattr(self.runtime, "_loom_base_prepare_model_request", base_prepare)
-
-        def prepare_with_project_context(session: Any, step: Any, token: Any) -> Any:
-            prepared = base_prepare(session, step, token)
-            if not isinstance(prepared, tuple) or len(prepared) != 2:
-                return prepared
-            messages, request_options = prepared
-            return self._inject_project_instruction_message(session, messages), request_options
-
-        setattr(self.runtime, "_prepare_model_request", prepare_with_project_context)
+    def _project_request_messages(self, session: Any, step: Any):
+        context = self._project_instruction_context_for_request(session)
+        return (AIMessage(role=MessageRole.USER, name=_PROJECT_CONTEXT_MESSAGE_NAME,
+                          content=context),) if context else ()
 
     def _project_instruction_context(self, session: Any) -> str:
         project_id = self._resolved_project_id(session)

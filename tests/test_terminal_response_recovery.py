@@ -35,7 +35,8 @@ def test_production_runtime_recovers_decision_without_losing_partial(tmp_path):
         result = runtime.start_turn(session.session_id, "Choose")
         assert result.status is AgentStatus.COMPLETED
         assert partial + suffix in result.final_text
-        assert any(m.content == partial for m in platform.requests[1].messages)
+        assert any(m.name == "loom_terminal_recovery" and partial in str(m.content)
+                   for m in platform.requests[1].messages)
         assert any("incomplete or invalid Loom decision card" in str(m.content)
                    for m in platform.requests[1].messages)
         assert any(e.data.get("reason") == "incomplete_decision_block" for e in runtime.store.events(session.session_id))

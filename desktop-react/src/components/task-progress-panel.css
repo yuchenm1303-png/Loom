@@ -46,3 +46,7 @@
 
 .task-plan-outcome.is-failed, .task-plan-outcome.is-interrupted { color: var(--danger, #d87b88); }
 .task-plan-outcome.is-not_covered { color: var(--warning, #d5a65a); }
+
+.task-plan-evidence { margin-top: 6px; color: var(--muted); font-size: 11px; }
+.task-plan-evidence summary { cursor: pointer; }
+.task-plan-evidence small { overflow-wrap: anywhere; }

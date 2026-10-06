@@ -103,6 +103,8 @@ class Session:
     def __init__(self, messages):
         self.session_id = "session-unknown-window"
         self.messages = list(messages)
+        self.request_context_frames = [{"step_id": "fixture", "after_message_count": len(messages),
+            "messages": [{"role": "user", "name": "loom_communication_language", "content": "Communicate in the user language."}], "metadata": {}}]
         self.workspace_dir = "/tmp/project"
         self.profile_id = "agent.fast"
         self.communication_language = "auto"
@@ -110,6 +112,14 @@ class Session:
 
 
 class FakeRuntime:
+    # The budget fixture implements the composer protocol; execution assertions
+    # below remain unchanged. Full context-frame capture is tested in production.
+    def _request_stable_contracts(self):
+        return ()
+
+    def _model_system_prompt(self, session, step):
+        return self._request_context_messages(session, step, self._context_envelope(session, step))[0].content
+
     def __init__(self, responses=(), *, events=(), profile_cls=UndeclaredProfile):
         self.limits = Limits()
         self.model_executor = ScriptedExecutor(responses)

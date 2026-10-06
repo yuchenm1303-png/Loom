@@ -374,7 +374,7 @@ class SandboxAgentRuntime(DurableAgentRuntime):
         )
         session.status = AgentStatus.WAITING_APPROVAL
         attempt = current_sandbox_attempt()
-        self._record(
+        self._emit_event(
             session,
             AgentEventKind.TOOL_FAILED,
             data={
@@ -388,7 +388,7 @@ class SandboxAgentRuntime(DurableAgentRuntime):
                 "retry_pending": True,
             },
         )
-        self._record(
+        self._emit_event(
             session,
             AgentEventKind.TOOL_APPROVAL_REQUIRED,
             data={
@@ -467,7 +467,7 @@ class SandboxAgentRuntime(DurableAgentRuntime):
 
         call = prepared.call
         attempt = current_sandbox_attempt()
-        self._record(
+        self._emit_event(
             session,
             AgentEventKind.TOOL_STARTED,
             data={
@@ -492,7 +492,7 @@ class SandboxAgentRuntime(DurableAgentRuntime):
                 "active_skills": session.active_skills,
                 "diff_tracker": tracker,
             },
-            emit_event=lambda kind, data: self._record(session, kind, data=data),
+            emit_event=lambda kind, data: self._emit_event(session, kind, data=data),
         )
         result = self._run_prepared_once(
             prepared,
@@ -502,7 +502,7 @@ class SandboxAgentRuntime(DurableAgentRuntime):
 
         if tracker.revision != diff_revision_before:
             snapshot = tracker.snapshot(max_chars=self.limits.max_tool_result_chars)
-            self._record(
+            self._emit_event(
                 session,
                 AgentEventKind.TURN_DIFF_UPDATED,
                 data={
@@ -528,7 +528,7 @@ class SandboxAgentRuntime(DurableAgentRuntime):
                     return False
                 retry_attempt = SandboxAttempt.retry_without_sandbox(plan.retry_reason)
                 with sandbox_attempt_scope(retry_attempt):
-                    self._record(
+                    self._emit_event(
                         session,
                         AgentEventKind.TOOL_STARTED,
                         data={

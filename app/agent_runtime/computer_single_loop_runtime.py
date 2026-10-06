@@ -639,8 +639,8 @@ class SingleLoopComputerRuntime(ComputerUseRuntime):
         )
         return status
 
-    def _prepare_model_request(self, session, step, token):
-        messages, extra = super()._prepare_model_request(session, step, token)
+    def _collect_model_observations(self, session, step):
+        messages, extra = super()._collect_model_observations(session, step)
         store = self.computer_sessions
         if store is None:
             return messages, extra
@@ -666,11 +666,16 @@ class SingleLoopComputerRuntime(ComputerUseRuntime):
         self._computer_feedback_turns.pop(session.session_id, None)
 
         observation = snapshot.observation
+        source_call_id = next((message.tool_call_id for message in reversed(session.messages)
+                               if message.role is MessageRole.TOOL
+                               and (message.name or "").startswith("computer_")), "")
         from .tool_observation import attach_observation
         messages = attach_observation(messages, _model_observation_text(snapshot),
-            tool_prefix="computer_", image=ImagePart(observation.image_data_url(), detail="auto"))
+            tool_prefix="computer_", tool_call_id=source_call_id,
+            image=ImagePart(observation.image_data_url(), detail="auto"))
         safe_extra = dict(extra) if isinstance(extra, dict) else {}
         safe_extra["computer_observation"] = {
+            "source_call_id": source_call_id,
             "state_revision": snapshot.state_revision,
             "image_bytes": len(observation.image_data),
             "image_media_type": observation.image_media_type,
@@ -940,17 +945,9 @@ class SingleLoopComputerRuntime(ComputerUseRuntime):
         for key in stale:
             self._computer_attempts.pop(key, None)
 
-    def _record(self, session, kind, *, data):
-        event = super()._record(session, kind, data=data)
-        if kind in {
-            AgentEventKind.TURN_COMPLETED,
-            AgentEventKind.TURN_FAILED,
-            AgentEventKind.TURN_CANCELLED,
-            AgentEventKind.TURN_INTERRUPTED,
-            AgentEventKind.LIMIT_REACHED,
-        }:
-            self.clear_computer_single_loop_state(session.session_id)
-        return event
+    def _on_turn_finished(self, session, event):
+        super()._on_turn_finished(session, event)
+        self.clear_computer_single_loop_state(session.session_id)
 
     def set_permission_mode(self, session_id, mode):
         self.clear_computer_single_loop_state(session_id)

@@ -1,82 +1,53 @@
 # Agent 执行链路当前架构
 
-更新：2026-10-05，阶段 3。阶段 4–8 未完成；本文件记录现状，不是全部重构完成声明。
+更新：2026-10-05。阶段 0–8 的源码重构和离线回归记录见 `agent-chain-refactor-validation-2026-10-05.md`。真实 MiniMax 长任务尚未复验，不能据此声称模型效率已达标。源码推送不会自动发布 Host。
 
-## 正式实现的归属
+## 请求与规范历史
 
-| 行为 | 唯一实现位置 | 边界 |
-| --- | --- | --- |
-| 新指令提交、去重、采样失效、审批替换、消费与恢复 | `agent_runtime/runtime.py` | 活跃路径与终止提交共用锁；运行中的工具完成后再转向 |
-| 收尾前目标用量统计、队列排空与安全交接恢复 | `agent_runtime/durable_runtime.py` | 终止事件可见前统计转向续跑的用量；不重放未知结果的工具 |
-| 转向内容记录、摘要与回执 | `agent_runtime/steering.py` | 普通函数；不替换任何类方法 |
-| RPC 转向、附件与能力声明 | `app_server.py` | 构造 service 不改变 runtime 类型或方法 |
-| 压缩提交与人工压缩重试策略 | `agent_runtime/context_runtime.py` | 独立 provider 尝试与确定性回退；检查模型预算后提交 checkpoint |
-| 自动压缩及失败回退入口 | `agent_runtime/context_budget.py` | 导入后直接可调用，不依赖导入顺序安装 wrapper |
-| 连续性引用与近期工具证据索引 | `agent_runtime/continuity.py` | 只读转换；引用不是用户任务或执行授权 |
-| 确定性压缩回退 | `agent_runtime/compaction_fallback.py` | 保留原策略，不新增完成判断或工具执行 |
-| 连续性引用的用户消息分类 | `agent_runtime/context_compaction.py` | 显式协议名称排除，不匹配用户正文 |
+`runtime.py::_prepare_model_request` 是生产 MRO 中唯一请求入口；`context_composer.py` 是传输、自动压缩、人工压缩和预算投影共用的 renderer。最终请求只有一个稳定 SYSTEM 前缀（主提示与固定协议），随后是规范历史与按历史锚点追加的具名 USER 上下文。具名项明确属于 runtime，不是人的新授权。
 
-已删除 `live_steering_contract`、`live_steering_interrupt_contract`、
-`compaction_resilience_contract` 的补丁实现，并移除四个补丁器的安装。
-`agent_continuity_contract.py` 仅保留常量兼容导出；没有 finder、loader、patch 或安装器。
-两个阶段的转向现在在同一个 `steer` 中处理，目标统计归属于 Durable 层。
-MCP 层保留 `_validate_idle_turn_recovery` 的授权检查，不再拥有第二套恢复循环。
+规范 `session.messages` 只记录用户、模型、工具协议。项目说明、runtime 状态、计划、语言、记忆及工具观察使用独立 `request_context_frames`。状态变更追加新快照，不改写此前前缀；项目 service 显式注册贡献者，不替换请求方法。修复孤立工具历史时，identity/occurrence 锚点避免把快照插入未闭合的工具协议。旧数字锚点保留兼容，但已经受旧 Host 修复影响的位置无法精确恢复。
 
-## 有意差异与尚存问题
+完整 DOM、桌面观察及图片只在 Host 内存；持久化记录摘要与指纹。Host 重启后明确显示观察不可用，需要重新观察，不能把历史页面当当前状态。checkpoint 保留最新上下文版本并回收旧 overlay。
 
-- 直接构造 runtime 现在拥有原来仅在 service 构造后才有的完整转向协议。
-  service 构造前后方法身份和行为一致；已有生产路径的审批、附件、竞态、队列和用量行为保持。
-- 方法来源复查发现 MCP 的恢复覆盖曾绕过 Durable 的目标统计和队列排空。
-  此次统一恢复入口后，生产恢复也累计新增用量、处理已经授权的队列；记录恢复前
-  usage 基线，避免把此前已计入的 token 再累计一次。MCP 的审批、活跃 owner、
-  未闭合 step 与持久 binding 拒绝规则保留；不同层的错误文案统一后仍返回同类拒绝。
-- 本阶段没有改变请求布局。检查发现 Context 层的请求组装不调用核心
-  `_model_system_prompt`；因此该 hook 中的转向说明不能单凭 hook 测试证明进入完整生产请求。
-  阶段 4 的统一组装器必须同时覆盖实际发送的稳定契约与预算计算。
-- 生产类的继承链仍然存在，七层请求组装和 `_record` 副作用尚未整理。
-  阶段 4 统一请求组装；阶段 5 显式生命周期；阶段 6 分离贴纸展示与历史。
-- 确定性回退仍使用原有压缩错误分类；本阶段只移动归属，未修改分类策略。
+每次 `model_requested` 记录实际渲染布局、各消息估算、工具 schema 摘要及预算。缓存依赖整个前缀、工具和 provider；换模型/权限、压缩、Host 重启后丢失视觉观察均可能失去缓存。`cached_input_tokens` 使用 provider 返回值，不凭前缀相等宣称真实命中。
 
-阶段 4 的缓存验证依据：官方 [Prompt caching](https://developers.openai.com/api/docs/guides/prompt-caching)
-要求完整渲染前缀匹配，工具定义与相关设置也影响复用。只比较稳定的 system 文本
-不足以证明整个前缀可复用，更不能证明实际缓存命中。本阶段未实现缓存计量，
-后续需同时验证请求历史、工具 schema 和 provider 返回的 cached tokens。
-也已复查固定 Codex 源码
-[`session/mod.rs:4635`](https://github.com/openai/codex/blob/a7660cd15490875b8c22f66e577da115ed927fe3/codex-rs/core/src/session/mod.rs#L4635)：
-`record_context_updates_and_set_reference_context_item` 在无基线时注入完整上下文，
-之后记录上下文变化并更新 reference。阶段 4 需明确 Loom 自己的历史与瞬时上下文
-归属，不能把不断变化的 snapshot 插在全部历史前面后仍声称已对齐这种做法。
+## 上下文预算
 
-## 保留的启动期集成
+硬窗口、输出预留和工作窗口分别声明。官方直连 MiniMax M3 使用 512K 硬窗口、128K 工作目标；官方 DeepSeek 指定型号使用其声明的窗口。代理路由不继承直连保证，模型发现缓存按 endpoint/model 隔离。未知模型没有虚构窗口或输出上限；用户/服务自己的明确声明优先。
 
-下面 15 个安装入口仍在 `app/__init__.py`。阶段 3 按范围限制未改这些功能，
-不能把移除四个执行链路补丁描述为移除所有补丁。
+工作窗口触发较早压缩，是软目标：固定协议和不可分割工具记录超出目标时仍可使用 provider 硬预算，不能因工作目标无法达到就停止任务。压缩请求、压缩后的请求与真实发送使用同一 renderer。模型切换重新捕获限制，不带入旧型号的限制。
 
-| 保留入口 | 后续处理计划 |
-| --- | --- |
-| connector_product_config | 连接器配置归属专项：先固定打包环境与授权契约，再显式初始化 |
-| model_name_compat | 模型配置专项：将兼容迁移归到配置读取入口 |
-| runtime_capability_defaults | 能力配置专项：合入对应后端工厂，保留默认就绪状态契约 |
-| codex_mcp_discovery | MCP 专项：合入发现服务，保留用户配置优先级 |
-| thread_title_override | 标题专项：统一标题处理入口 |
-| thread_title_backfill | 标题专项：统一历史迁移入口 |
-| thread_title_rescue | 标题专项：合并失败恢复，避免再次覆盖标题方法 |
-| ordinary_conversations | 会话产品专项：直接归入 service 的普通会话入口 |
-| project_git_commit | 项目 Git 专项：显式注册项目 RPC |
-| project_agent_files | 项目说明专项：统一说明文件加载策略 |
-| connector_cross_agent_sync | 连接器专项：显式配置同步服务 |
-| connector_app_server | 连接器专项：正式注册服务与 RPC |
-| app_server_recovery_contract | 阶段 5 / 8 审查恢复入口与生命周期后合入 service |
-| code_block_terminal | 终端 UI 协议专项：显式注册协议转换 |
-| live_steering_stream_contract | 阶段 5 / 8 合入流式服务事件处理，保留 superseded 临时项清理 |
+## 回合生命周期
 
-这些专项未纳入本轮阶段 3 的“行为不变”合并。后续修改需各自证明生产入口和测试入口一致。
+`TurnRunner` 根据结构化模型响应选择工具执行、继续采样或回合结束。没有工具且协议表示结束，会结束这一回合；这不等于证明整个用户任务完成。没有文本关键词完成判断、第二模型收尾审查或累计驳回次数停止逻辑。历史 Stop 事件与旧用量回放仅用于兼容，不能重新创建 reviewer。
 
-## 验证与发布
+`_record` 唯一归属 Core，只提交事件与通知；`_emit_event` 显式安排展示投影和生命周期 hook。模型请求创建流上下文，响应提交消费观察/清理流，终止 hook 隐藏前台控制痕迹、清理 Computer Use 和贴纸流。资源所有权直到 finally 才释放，关闭 steering inbox 不会漏掉资源 deactivation。目标用量仍在终止可见前入账，保持转向竞态约束。
 
-方法归属守护遍历实际生产类整个 MRO，禁止任何方法来自本阶段移除的四个补丁模块。
-基础 service 和 Streaming service 构造前后均检查方法身份、提示 hook 与实际请求一致性。
-生产类采样中断测试分别覆盖直接构造与 Streaming service 构造，使用伪 provider，
-验证同一 turn、去重、持久新指令及旧采样取消；没有发送真实模型请求。
+service 的恢复入口及流式 superseded 清理由源码正式实现，移除对应两个 import patch。读会话不会根据持久 RUNNING 自行宣布崩溃；安全交接恢复需要明确 recoverTurnId。其余连接器、标题和产品集成不属于本轮执行链路拍平范围。
 
-阶段 3 与后续阶段按源码提交、CI 验证推进；稳定 Host 仍需单独手动发布。
+## 超时与重试
+
+provider 采样与流式传输拥有超时/重试；工具执行拥有自己的取消与超时。连接活动和内容进展分别计时，事件保留 chunk/content gap。模型输出截断先按 finish reason 分类，再进行参数格式验证；恢复提示及未提交片段也在 renderer 捕获后计算预算，片段只存 Host overlay，不能在预算后偷偷附加；额度耗尽不会继续重试。没有更改真实 provider 的输出能力；一次性大工具参数仍需真实复验。
+
+## 浏览器资源
+
+浏览器按对话保留，成功、失败、取消、审批等待不再销毁 browser_id。默认闲置 20 分钟释放；活动回合、启动预留和执行中的操作受到保护。容量不足只回收其他无活动回合的最久闲置会话。显式关闭、权限变化、归档/删除和 Host 关闭拥有正式释放路径。对真实浏览器，回合结束只移除 HUD 等前台痕迹，保留逻辑 session。
+
+每次逻辑 lease 开启/释放记录独立 durable event，不覆盖会话快照。Host 重启后未关闭的旧 lease 明确记录 host_restart；首采样只追加此前尚未报告的实际释放事实。单个上下文项展示最新 32 条收据并标明省略量，全部事实仍在 journal；失效 ID 的工具回执可查真实原因。无法恢复底层连接时必须重新连接，不得冒充仍然存活。
+
+## 展示与证据
+
+贴纸在最终展示投影中生成；不注入模型执行提示，不改变模型原文或 canonical 工具历史。service 的 text 为显示内容，rawText 保留原文。工具调用旁的原始模型说明不被运行时删减。
+
+计划 completed 必须给 outcome 及可解析 evidence_refs。引用执行过的同会话 call_id 或 workspace 文件；not_executed 不能作为执行证据。`record_check` 将模型判断与运行时事实分开记录，时间差由引用事件计算；`read_check_ledger` 读取台账。运行时验证引用，不裁定 passed/failed 是否正确。UI 分开显示阶段完成与验收结论。
+
+## 事件索引
+
+`event_cache.py` 按会话增量解析 journal；默认 8 MB、16 个 LRU 条目。冷 recent 只读尾部。追加、正常恢复、截断、同尺寸重写、原子替换、不完整尾部有回归；返回值深复制，调用方不能污染缓存。绕过 journal 锁并在追加时偷偷改写遥远中间字节不在低成本增量检测保证内，正式写入仍必须使用 journal。
+
+## 对照依据
+
+固定 Codex 源码 [`session/mod.rs:4635`](https://github.com/openai/codex/blob/a7660cd15490875b8c22f66e577da115ed927fe3/codex-rs/core/src/session/mod.rs#L4635) 记录上下文 baseline 和后续变化；Loom 采用自身明确的投影/历史边界，不能把架构相似称为效果等同。
+
+[OpenAI Prompt caching](https://developers.openai.com/api/docs/guides/prompt-caching) 要求实际前缀匹配；[MiniMax M3](https://www.minimax.io/models/text/m3) 与 [DeepSeek 模型声明](https://api-docs.deepseek.com/api/list-models/) 支持直连元数据，不能保证代理窗口。

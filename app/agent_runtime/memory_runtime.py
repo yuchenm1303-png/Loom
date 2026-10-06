@@ -147,13 +147,13 @@ class MemoryRuntime(MultiAgentRuntime):
                 consolidate=consolidate,
             )
             session.usage = _add_usage(session.usage, result.usage)
-            self._record(
+            self._emit_event(
                 session,
                 AgentEventKind.MEMORY_EXTRACTED,
                 data=_memory_extracted_event_data(result),
             )
             if consolidate:
-                self._record(
+                self._emit_event(
                     session,
                     AgentEventKind.MEMORY_CONSOLIDATED,
                     data=_memory_consolidated_event_data(result),
@@ -334,7 +334,7 @@ class MemoryRuntime(MultiAgentRuntime):
             lock = self._session_lock(session_id)
             with lock:
                 session = self.store.load(session_id)
-                self._record(
+                self._emit_event(
                     session,
                     AgentEventKind.MEMORY_CONSOLIDATED,
                     data={
@@ -412,7 +412,7 @@ class MemoryRuntime(MultiAgentRuntime):
                 raise PermissionError("memory belongs to a different workspace")
             forgotten = self.memory_store.delete(record.memory_id)
             if forgotten:
-                self._record(
+                self._emit_event(
                     session,
                     AgentEventKind.MEMORY_FORGOTTEN,
                     data={
@@ -560,6 +560,7 @@ def _memory_extracted_event_data(result: MemoryExtractionResult) -> dict[str, ob
             "input_tokens": result.usage.input_tokens,
             "output_tokens": result.usage.output_tokens,
             "total_tokens": result.usage.total_tokens,
+            "cached_input_tokens": result.usage.cached_input_tokens,
         },
     }
 
@@ -783,6 +784,7 @@ def _add_usage(left: ModelUsage, right: ModelUsage) -> ModelUsage:
         input_tokens=left.input_tokens + right.input_tokens,
         output_tokens=left.output_tokens + right.output_tokens,
         total_tokens=left.total_tokens + right.total_tokens,
+        cached_input_tokens=left.cached_input_tokens + right.cached_input_tokens,
     )
 
 

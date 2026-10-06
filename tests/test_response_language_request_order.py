@@ -41,6 +41,7 @@ def test_language_anchor_is_last_transient_system_context(tmp_path):
         if message.role is MessageRole.USER and not message.name
     )
 
-    assert project_index < language_index < user_index
+    assert user_index < project_index < language_index
+    assert request.messages[language_index].role is MessageRole.USER
     assert "Current user communication language: Chinese" in request.messages[language_index].content
     runtime.close()

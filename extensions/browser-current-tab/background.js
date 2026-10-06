@@ -490,6 +490,18 @@ async function markSessionActive(active) {
   }
 }
 
+async function finishTurn(args = {}) {
+  return withOwnershipLock(async () => {
+    const session = commandSession(args);
+    const leases = await chrome.storage.session.get(TAB_SESSION_IDS_KEY);
+    const tabs = Object.keys(leases[TAB_SESSION_IDS_KEY] || {}).filter((id) => leases[TAB_SESSION_IDS_KEY][id] === session).map(Number);
+    await Promise.all(tabs.map((id) => inject(id, () => document.getElementById("loom-browser-page-hud-root")?.remove()).catch(() => {})));
+    const hud = await hudTabIds();
+    await chrome.storage.session.set({ [HUD_TAB_IDS_KEY]: hud.filter((id) => !tabs.includes(id)) });
+    return { hidden: tabs.length };
+  });
+}
+
 async function releaseTabs(args = {}) {
   return withOwnershipLock(async () => {
     const session = commandSession(args);
@@ -1397,7 +1409,7 @@ async function screenshot(args) {
 }
 
 async function dispatchCommand(action, args) {
-  if (action !== "release_tabs" && action !== "downloads") {
+  if (action !== "release_tabs" && action !== "finish_turn" && action !== "downloads") {
     let tab = await tabFromArgs(args);
     try {
       await claimTab(tab, args);
@@ -1440,11 +1452,11 @@ async function resetBroker(brokerId) {
 }
 
 async function performCommand(action, args) {
-  // Any command means Loom is driving this browser, and release_tabs is the one
-  // that ends the session. Recording it here rather than at a session-start hook
+  // Driving commands restore presentation; finish_turn only withdraws it,
+  // whereas release_tabs ends ownership. Recording the active flag here
   // keeps the flag true for the whole time commands are arriving, including after
   // a page load the HUD cannot otherwise know about.
-  if (action !== "release_tabs") await markSessionActive(true);
+  if (action !== "release_tabs" && action !== "finish_turn") await markSessionActive(true);
   switch (action) {
     case "state": return collectStateForTab(await actionTab(args), { showHud: true });
     case "navigate": return navigate(args);
@@ -1473,6 +1485,7 @@ async function performCommand(action, args) {
     case "clear_cookies": return clearCookies(args);
     case "downloads": return listDownloads(args);
     case "release_tabs": return releaseTabs(args);
+    case "finish_turn": return finishTurn(args);
     default: throw new Error(`Unsupported Loom browser extension action: ${action}`);
   }
 }

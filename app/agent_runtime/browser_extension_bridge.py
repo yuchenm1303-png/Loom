@@ -1055,6 +1055,10 @@ class BrowserExtensionSessionBackend:
         self._log("backend.action.completed", action="screenshot", state_revision=self.state_revision, tab_id=self._tab_id, bytes=len(data))
         return data
 
+    def finish_turn(self) -> None:
+        if self._started:
+            self.bridge.call("finish_turn", {"session_id": self._session_id}, timeout=5.0)
+
     def close(self) -> None:
         was_started = self._started
         self._started = False

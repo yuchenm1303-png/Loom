@@ -485,9 +485,12 @@ def test_the_hud_is_driven_by_session_state_not_by_the_current_action(background
         "content scripts cannot read storage.session without this"
     )
 
-    # Set on any command, cleared when the browser is handed back.
+    # Driving commands restore presentation; finish_turn withdraws the HUD
+    # while retaining the logical session until release_tabs.
     dispatch = _function_body(background, "performCommand")
-    assert 'if (action !== "release_tabs") await markSessionActive(true)' in dispatch
+    assert 'if (action !== "release_tabs" && action !== "finish_turn") await markSessionActive(true)' in dispatch
+    assert "HUD_TAB_IDS_KEY" in _function_body(background, "finishTurn")
+    assert "chrome.debugger.detach" not in _function_body(background, "finishTurn")
     assert "markSessionActive(Object.keys(owners).length > 0)" in _function_body(background, "releaseTabs")
     # Only on a transition, or every command wakes the listener in every page.
     mark = _function_body(background, "markSessionActive")

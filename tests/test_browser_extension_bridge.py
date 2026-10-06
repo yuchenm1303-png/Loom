@@ -98,6 +98,19 @@ class FakeExtensionBridge:
         }
 
 
+def test_extension_finish_turn_hides_hud_without_releasing_ownership():
+    bridge = FakeExtensionBridge()
+    backend = BrowserExtensionSessionBackend(options=BrowserLaunchOptions(), bridge=bridge)
+    backend.start()
+    backend.finish_turn()
+    assert bridge.calls[-1][0] == "finish_turn"
+    assert not any(action == "release_tabs" for action, _args in bridge.calls)
+    assert backend._started is True
+    backend.state()
+    backend.close()
+    assert bridge.calls[-1][0] == "release_tabs"
+
+
 def test_extension_backend_maps_browser_actions_to_bridge_commands():
     bridge = FakeExtensionBridge()
     backend = BrowserExtensionSessionBackend(options=BrowserLaunchOptions(), bridge=bridge)
