@@ -29,6 +29,14 @@
      Keep the capsule, its entrance travel and glow inside the measured row. */
   margin: 8px;
 }
+.app-shell .turn-process .live-reasoning {
+  /* This is a different capsule from PendingThinking. Its outer process grid
+     clips for folding, so include the shadow's footprint in the measured box. */
+  padding: 8px 8px 20px;
+}
+.app-shell .turn-process .live-reasoning-trigger {
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.025);
+}
 .app-shell :is(.earlier-process-history, .pending-thinking-presence, .tool-hint-presence)[data-motion-phase="entered"] {
   grid-template-rows: 1fr;
   opacity: 1;

@@ -1,4 +1,7 @@
 /* One focus-light system. The rim is masked to the border, away from text. */
+:root .app-shell .composer-wrap.composer-refined .composer-toolbar::before {
+  display: none;
+}
 :root .app-shell .composer-wrap.composer-refined {
   --focus-edge: rgba(167,155,235,.44);
   --focus-light: rgba(187,175,255,.85);
