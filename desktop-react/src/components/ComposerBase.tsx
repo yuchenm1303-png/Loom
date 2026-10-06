@@ -143,15 +143,25 @@ function ComposerAttachIcon({ size = 16 }: { size?: number }) {
       aria-hidden="true"
       focusable="false"
     >
-      <path className="composer-attach-outer" d="M7.15 10.75 12 5.9a3 3 0 0 1 4.25 4.24l-6.35 6.35a4.15 4.15 0 0 1-5.87-5.87l6.05-6.05" />
-      <path className="composer-attach-inner" d="m8.45 12.05 4.9-4.9" />
-      <circle className="composer-attach-snap" cx="13.55" cy="6.95" r=".8" fill="currentColor" stroke="none" />
+      <path
+        className="composer-attach-outer"
+        d="M7.15 10.8 12 5.95a3 3 0 0 1 4.24 4.24l-6.28 6.28a4.1 4.1 0 0 1-5.8-5.8l6-6"
+      />
+      <path className="composer-attach-latch" d="m8.55 12.1 4.8-4.8" />
+      <circle
+        className="composer-attach-spark"
+        cx="13.55"
+        cy="6.95"
+        r=".72"
+        fill="currentColor"
+        stroke="none"
+      />
     </svg>
   );
 }
 
 function ComposerAccessIcon({ size = 16 }: { size?: number }) {
-  const shield = "M10 2.55 15.45 4.7v4.5c0 3.62-2.08 6.18-5.45 8.05-3.37-1.87-5.45-4.43-5.45-8.05V4.7L10 2.55Z";
+  const shield = "M10 2.6 15.4 4.75v4.45c0 3.58-2.08 6.1-5.4 7.95-3.32-1.85-5.4-4.37-5.4-7.95V4.75L10 2.6Z";
   return (
     <svg
       className="composer-access-glyph"
@@ -168,7 +178,8 @@ function ComposerAccessIcon({ size = 16 }: { size?: number }) {
     >
       <path className="composer-access-shield" d={shield} />
       <path className="composer-access-sheen" d={shield} />
-      <path className="composer-access-mark" d="m7.4 10.05 1.55 1.65 3.65-3.75" />
+      <circle className="composer-access-keyhole" cx="10" cy="8.85" r="1.25" />
+      <path className="composer-access-stem" d="M10 10.1v2.15" />
     </svg>
   );
 }
@@ -188,10 +199,20 @@ function ComposerModelIcon({ size = 16 }: { size?: number }) {
       aria-hidden="true"
       focusable="false"
     >
-      <path className="composer-model-corners" d="M7 3.2H5.4a2.2 2.2 0 0 0-2.2 2.2V7M13 3.2h1.6a2.2 2.2 0 0 1 2.2 2.2V7M7 16.8H5.4a2.2 2.2 0 0 1-2.2-2.2V13M13 16.8h1.6a2.2 2.2 0 0 0 2.2-2.2V13" />
-      <path className="composer-model-core" d="m10 6.65 3.35 3.35L10 13.35 6.65 10 10 6.65Z" />
-      <circle className="composer-model-dot" cx="10" cy="10" r=".9" fill="currentColor" stroke="none" />
-      <circle className="composer-model-pulse" cx="10" cy="10" r="4.35" />
+      <circle className="composer-model-ring" cx="10" cy="10" r="4.95" />
+      <path
+        className="composer-model-axes"
+        d="M10 2.95v1.55M10 15.5v1.55M2.95 10h1.55M15.5 10h1.55"
+      />
+      <circle
+        className="composer-model-core"
+        cx="10"
+        cy="10"
+        r="1.42"
+        fill="currentColor"
+        stroke="none"
+      />
+      <circle className="composer-model-halo" cx="10" cy="10" r="6.1" />
     </svg>
   );
 }
