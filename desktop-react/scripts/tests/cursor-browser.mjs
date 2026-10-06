@@ -5,54 +5,63 @@ try {
   const page = await browser.newPage();
   await page.goto(`${process.env.LOOM_TEST_ORIGIN || "http://127.0.0.1:5173"}/scripts/fixtures/cursor.html`);
   const pointerAsset = await page.evaluate(async () => {
+    const load = async (src) => {
+      const image = new Image();
+      image.src = src;
+      await image.decode();
+      return image;
+    };
     const cursor = getComputedStyle(document.body).cursor;
-    const image = new Image();
-    image.src = cursor.match(/url\("?([^"\)]+)"?\)/)[1];
-    await image.decode();
-    const canvas = document.createElement("canvas");
-    canvas.width = image.naturalWidth;
-    canvas.height = image.naturalHeight;
-    const ctx = canvas.getContext("2d");
-    ctx.drawImage(image, 0, 0);
-    const composite = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
-    const original = new Image();
-    original.src = "/src/assets/yukino-mouse.png";
-    await original.decode();
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    ctx.drawImage(original, 12, 12);
-    ctx.clearRect(12, 12, 10, 9);
-    const source = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
-    let left = canvas.width, top = canvas.height, right = 0, bottom = 0;
-    for (let y = 0; y < canvas.height; y++) {
-      for (let x = 0; x < canvas.width; x++) {
-        if (!source[(y * canvas.width + x) * 4 + 3]) continue;
-        left = Math.min(left, x); top = Math.min(top, y);
-        right = Math.max(right, x); bottom = Math.max(bottom, y);
+    const full = await load(cursor.match(/url\("?([^"\)]+)"?\)/)[1]);
+    const blackFull = await load("/src/assets/yukino-cursor.png");
+    const pointer = await load("/src/assets/yukino-pointer-white.png");
+
+    const fullCanvas = document.createElement("canvas");
+    fullCanvas.width = full.naturalWidth;
+    fullCanvas.height = full.naturalHeight;
+    const fullContext = fullCanvas.getContext("2d");
+    fullContext.drawImage(full, 0, 0);
+    const composite = fullContext.getImageData(0, 0, fullCanvas.width, fullCanvas.height).data;
+    let decorationPixels = 0;
+    for (let y = 0; y < fullCanvas.height; y++) {
+      for (let x = 0; x < fullCanvas.width; x++) {
+        if (x < pointer.naturalWidth && y < pointer.naturalHeight) continue;
+        if (composite[(y * fullCanvas.width + x) * 4 + 3]) decorationPixels++;
       }
     }
+
+    const pointerCanvas = document.createElement("canvas");
+    pointerCanvas.width = pointer.naturalWidth;
+    pointerCanvas.height = pointer.naturalHeight;
+    const ctx = pointerCanvas.getContext("2d");
+    ctx.drawImage(pointer, 0, 0);
+    const pixels = ctx.getImageData(0, 0, pointerCanvas.width, pointerCanvas.height).data;
+    const alpha = (x, y) => pixels[(y * pointerCanvas.width + x) * 4 + 3];
+    const red = (x, y) => pixels[(y * pointerCanvas.width + x) * 4];
     return {
-      width: canvas.width, height: canvas.height,
-      pointerAngle: Math.atan2((top + bottom) / 2, -(left + right) / 2) * 180 / Math.PI,
-      whiteFill: composite[(2 * canvas.width + 2) * 4] === 255,
-      extendedArms: [[15, 2], [2, 13]].every(([x, y]) => {
-        const offset = (y * canvas.width + x) * 4;
-        return composite[offset] === 255 && composite[offset + 3] > 180;
-      }),
-      openCorner: [[6, 5], [10, 10], [17, 2], [2, 15]].every(([x, y]) =>
-        composite[(y * canvas.width + x) * 4 + 3] === 0),
-      preserved: composite.every((value, index) => {
-        const pixel = Math.floor(index / 4);
-        return (pixel % canvas.width < 16 && Math.floor(pixel / canvas.width) < 14) || value === source[index];
-      }),
+      width: full.naturalWidth,
+      height: full.naturalHeight,
+      blackWidth: blackFull.naturalWidth,
+      blackHeight: blackFull.naturalHeight,
+      pointerWidth: pointer.naturalWidth,
+      pointerHeight: pointer.naturalHeight,
+      whiteFill: red(2, 2) === 255,
+      extendedArms: [[15, 2], [2, 13]].every(([x, y]) => red(x, y) === 255 && alpha(x, y) > 180),
+      openCorner: [[6, 5], [10, 10]].every(([x, y]) => alpha(x, y) === 0),
+      decorationPixels,
     };
   });
-  assert.equal(pointerAsset.width, 67);
-  assert.equal(pointerAsset.height, 67);
-  assert.ok(Math.abs(pointerAsset.pointerAngle - 135) < 0.1, "pointer must sit at 135 degrees upper-left of the character center");
+  assert.deepEqual(
+    [pointerAsset.width, pointerAsset.height, pointerAsset.blackWidth, pointerAsset.blackHeight],
+    [32, 32, 32, 32],
+    "full native cursor assets must stay within the Windows/Chromium 32x32 surface",
+  );
+  assert.deepEqual([pointerAsset.pointerWidth, pointerAsset.pointerHeight], [16, 14]);
   assert.ok(pointerAsset.whiteFill, "dark surfaces must use a white pointer");
-  assert.ok(pointerAsset.extendedArms, "both arms must reach the shortened 16x14 bounds");
-  assert.ok(pointerAsset.openCorner, "the enlarged pointer must retain its open corner and original stroke thickness");
-  assert.ok(pointerAsset.preserved, "all character pixels must remain unchanged at an equal X/Y offset from the hotspot");
+  assert.ok(pointerAsset.extendedArms, "both pointer arms must keep the 16x14 SVG bounds");
+  assert.ok(pointerAsset.openCorner, "the pointer must retain its open corner");
+  assert.ok(pointerAsset.decorationPixels > 40, "the full cursor must contain visible character pixels outside the pointer");
+
   await page.evaluate(() => {
     const surface = document.createElement("div");
     surface.id = "contrast-surface";
@@ -69,6 +78,7 @@ try {
   await page.waitForFunction(() => document.documentElement.dataset.loomPointerTone === "white");
   assert.match(await page.locator("#contrast-child").evaluate(el => getComputedStyle(el).cursor), /yukino-cursor-white.*0 0/);
   await page.evaluate(() => document.querySelector("#contrast-surface").remove());
+
   for (const selector of [".stop", ".stop svg", ".stop rect", "input", "#portal button"]) {
     await page.locator(selector).hover();
     const cursor = await page.locator(selector).evaluate((el) => getComputedStyle(el).cursor);
@@ -118,6 +128,6 @@ try {
   await page.emulateMedia({ reducedMotion: "reduce" });
   await page.mouse.click(150, 150);
   assert.equal(await page.locator(".loom-pointer-click-ripple").count(), 0);
-  console.log("PASS: stop button, SVG children, hover, disabled, pseudo-element, input and portal cursor");
-  console.log("PASS: click ripple, click passthrough, cleanup, bounded rapid clicks, right-click and reduced motion");
+  console.log("PASS: native cursor stays within 32x32 and retains the full character decoration");
+  console.log("PASS: contrast switching, viewport edges, click passthrough and reduced motion");
 } finally { await browser.close(); }
