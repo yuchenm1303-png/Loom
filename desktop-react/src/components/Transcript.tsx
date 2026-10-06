@@ -1678,6 +1678,9 @@ const TurnView = memo(function TurnView({
   }, [active, items]);
 
   const [processOpen, setProcessOpen] = useState(active);
+  // Sending owns its full animation even if the runtime completes immediately.
+  // History mounts inactive, so opening a past turn does not launch its bubble.
+  const [sending] = useState(active);
   const [settling, setSettling] = useState(false);
   const wasActiveRef = useRef(active);
 
@@ -1719,7 +1722,7 @@ const TurnView = memo(function TurnView({
     <PendingThinkingContext.Provider value={pendingThinking}>
     <section className={`turn-block ${active ? "is-active" : "is-complete"} ${settling ? "is-settling" : ""}`.trim()} data-turn-id={turnId}>
       {derived.initialUser ? (
-        <div className="transcript-entry entry-user_message" key={derived.initialUser.id}>
+        <div className={`transcript-entry entry-user_message ${sending ? "is-sending" : ""}`} key={derived.initialUser.id}>
           <ItemView item={derived.initialUser} onApproval={onApproval} onPrompt={onPrompt} promptDisabled={promptDisabled} workspace={workspace} />
         </div>
       ) : null}
