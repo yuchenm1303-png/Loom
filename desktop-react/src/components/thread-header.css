@@ -548,3 +548,177 @@ html[data-loom-reduced-motion="true"] .thread-header [class*="context"][role="me
   animation: none !important;
   transition-duration: .001ms !important;
 }
+
+
+/* Left-side header refinement ----------------------------------------------
+   Make the conversation identity read like a quiet title area, not a stack of
+   controls. The sidebar toggle becomes an icon-only affordance, the decorative
+   accent rule is removed, and the workspace path behaves like subdued metadata
+   instead of a second button/card. */
+.workspace {
+  grid-template-rows: 64px minmax(0, 1fr) auto;
+}
+
+.thread-header.polished-thread-header {
+  height: 64px;
+  padding-left: 14px;
+  gap: 11px;
+}
+
+.thread-header.polished-thread-header::before {
+  display: none !important;
+}
+
+.thread-header-leading {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.thread-header-leading .thread-header-icon-button {
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
+  border-color: transparent;
+  background: transparent;
+  color: #7d8490;
+  box-shadow: none;
+}
+
+.thread-header-leading .thread-header-icon-button:hover {
+  color: #c7cbd3;
+  border-color: transparent;
+  background: rgba(255, 255, 255, .035);
+}
+
+.thread-header-leading .thread-header-icon-button.active {
+  color: #aaa2f0;
+  border-color: transparent;
+  background: transparent;
+}
+
+.thread-header-main {
+  gap: 0;
+}
+
+.thread-header-copy {
+  gap: 1px;
+  transform: none;
+}
+
+.thread-title-line {
+  height: 20px;
+}
+
+.thread-header.polished-thread-header .thread-title-line strong {
+  max-width: min(520px, 44vw);
+  font-size: 14.4px !important;
+  line-height: 20px;
+  font-weight: 650;
+  letter-spacing: -.014em;
+}
+
+.thread-header .workspace-path-button {
+  height: 17px;
+  margin: 0;
+  padding: 0;
+  gap: 5px;
+  border: 0 !important;
+  border-radius: 4px;
+  background: transparent !important;
+  box-shadow: none !important;
+  color: #747b86;
+}
+
+.thread-header .workspace-path-button:not(:disabled):hover {
+  border-color: transparent !important;
+  background: transparent !important;
+  color: #9ca3ae;
+  transform: none;
+}
+
+.thread-header .workspace-path-button > svg {
+  width: 10.5px;
+  height: 10.5px;
+  color: #69717d;
+  opacity: .78;
+}
+
+.thread-header .workspace-leaf {
+  color: #7d8490;
+  font-size: 11.5px !important;
+  line-height: 1;
+  font-weight: 520;
+  letter-spacing: .002em;
+}
+
+.thread-header .workspace-copy-icon {
+  width: 13px;
+  height: 13px;
+  margin-left: 1px;
+  border-radius: 4px;
+  color: #727986;
+  background: transparent !important;
+}
+
+.thread-header .workspace-path-button:not(:disabled):hover .workspace-copy-icon,
+.thread-header .workspace-path-button.copied .workspace-copy-icon {
+  background: transparent !important;
+}
+
+html[data-loom-theme="light"] .thread-header-leading .thread-header-icon-button {
+  color: #8b919a;
+  border-color: transparent;
+  background: transparent;
+}
+
+html[data-loom-theme="light"] .thread-header-leading .thread-header-icon-button:hover {
+  color: #363b43;
+  border-color: transparent;
+  background: rgba(28, 31, 37, .035);
+}
+
+html[data-loom-theme="light"] .thread-header-leading .thread-header-icon-button.active {
+  color: #675bc5;
+  border-color: transparent;
+  background: transparent;
+}
+
+html[data-loom-theme="light"] .thread-header.polished-thread-header .thread-title-line strong {
+  color: #181b20;
+}
+
+html[data-loom-theme="light"] .thread-header .workspace-path-button,
+html[data-loom-theme="light"] .thread-header .workspace-path-button:not(:disabled):hover {
+  background: transparent !important;
+  border-color: transparent !important;
+}
+
+html[data-loom-theme="light"] .thread-header .workspace-path-button > svg {
+  color: #969ca5;
+}
+
+html[data-loom-theme="light"] .thread-header .workspace-leaf {
+  color: #858b94;
+}
+
+html[data-loom-theme="light"] .thread-header .workspace-path-button:not(:disabled):hover .workspace-leaf {
+  color: #555c66;
+}
+
+@media (max-width: 760px) {
+  .thread-header.polished-thread-header {
+    gap: 8px;
+  }
+
+  .thread-header-leading .thread-header-icon-button {
+    width: 27px;
+    height: 27px;
+  }
+
+  .thread-header.polished-thread-header .thread-title-line strong {
+    max-width: 42vw;
+    font-size: 13.8px !important;
+  }
+}
