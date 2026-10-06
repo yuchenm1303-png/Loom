@@ -1,0 +1,41 @@
+html.loom-liquid-cursor-active.loom-liquid-cursor-active body .loom-portal-page.loom-portal-page,
+html.loom-liquid-cursor-active.loom-liquid-cursor-active body .loom-portal-page.loom-portal-page * {
+  cursor: none !important;
+}
+
+.loom-liquid-cursor-canvas {
+  position: fixed;
+  left: 0;
+  top: 0;
+  width: 260px;
+  height: 260px;
+  z-index: 2147483000;
+  pointer-events: none;
+  opacity: 0;
+  background: transparent;
+  will-change: transform, opacity;
+  transition: opacity 90ms linear;
+}
+
+.loom-liquid-cursor-dot {
+  position: fixed;
+  left: 0;
+  top: 0;
+  width: 3.5px;
+  height: 3.5px;
+  border-radius: 999px;
+  z-index: 2147483001;
+  pointer-events: none;
+  opacity: 0;
+  background: rgba(255, 255, 255, .94);
+  box-shadow: 0 0 0 1px rgba(8, 18, 28, .2), 0 0 7px rgba(255, 255, 255, .36);
+  will-change: transform, opacity;
+  transition: opacity 90ms linear;
+}
+
+@media (pointer: coarse), (prefers-reduced-motion: reduce) {
+  .loom-liquid-cursor-canvas,
+  .loom-liquid-cursor-dot {
+    display: none !important;
+  }
+}
