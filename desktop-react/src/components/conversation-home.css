@@ -88,10 +88,9 @@ html[data-loom-theme="light"] .empty-state {
 }
 
 .empty-intro .empty-hero {
-  flex: none;
-  width: 104px;
-  height: 84px;
-  margin: 0 0 12px;
+  /* Hide the existing mark without reserving space above the heading.
+     The intro, activity and starters remain centred as one composition. */
+  display: none;
 }
 
 .empty-intro h1 {
@@ -282,22 +281,11 @@ html[data-loom-theme="light"] .starter-card:hover:not(:disabled) .starter-icon {
 /* Short and narrow conversation panes --------------------------------------
    Queries resolve against .transcript-scroll.is-empty, the pane between the
    header and the composer, not the window. Each step gives up the least useful
-   piece first so the starters stay on screen: the emblem shrinks, then goes,
-   then the copy lines do. */
+   piece first so the starters stay on screen: the heading shrinks, then the
+   copy lines go. */
 @container (max-height: 640px) {
-  .empty-intro .empty-hero {
-    width: 84px;
-    height: 66px;
-    margin-bottom: 8px;
-    scale: .8;
-  }
-
   .empty-intro h1 { font-size: 25px; }
   .empty-state { --home-section-gap: 18px; }
-}
-
-@container (max-height: 560px) {
-  .empty-intro .empty-hero { display: none; }
 }
 
 @container (max-height: 480px) {
