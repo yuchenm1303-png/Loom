@@ -1018,3 +1018,116 @@
   filter: none !important;
 }
 
+/* ==========================================================================
+   Conversation-surface completeness pass
+   Every interactive icon on the main conversation screen gets a semantic cue.
+   Pure status/legend glyphs stay calm unless their surrounding state changes.
+   ========================================================================== */
+
+/* Composer sparkle: only wakes when the input itself is focused. */
+.app-shell .composer-spark .lucide-sparkles {
+  transition:
+    rotate 560ms var(--loom-icon-ease),
+    translate 560ms var(--loom-icon-ease),
+    filter 360ms ease,
+    opacity 300ms ease !important;
+}
+.app-shell .composer.is-focused .composer-spark .lucide-sparkles {
+  rotate: 7deg;
+  translate: 0 -.45px;
+  filter: drop-shadow(0 0 3px color-mix(in srgb, currentColor 18%, transparent));
+}
+
+/* Context budget details: informational icons react to the row, not by
+   constantly animating on their own. */
+.app-shell .context-meter-row .lucide-wrench,
+.app-shell .context-meter-row .lucide-layers {
+  transition:
+    translate 480ms var(--loom-icon-ease),
+    rotate 480ms var(--loom-icon-ease),
+    opacity 280ms ease !important;
+}
+.app-shell .context-meter-row:hover .lucide-wrench {
+  rotate: -5deg;
+  translate: .35px 0;
+}
+.app-shell .context-meter-row:hover .lucide-layers {
+  translate: 0 -.45px;
+}
+
+/* External-link arrows leave the current surface by a fraction. */
+.app-shell :is(button, [role="button"], a[href]):hover:not(:disabled)
+  .lucide-external-link {
+  translate: .62px -.62px;
+  filter: drop-shadow(-.5px .5px 0 color-mix(in srgb, currentColor 8%, transparent));
+}
+
+/* Preview/maximize: the mark opens outward without scaling the whole button. */
+.app-shell :is(
+  .assistant-local-image-preview,
+  .user-message-image-preview,
+  .user-message-image-lightbox-actions button
+):hover:not(:disabled) .lucide-maximize-2 {
+  translate: .4px -.4px;
+  filter: drop-shadow(0 0 2px color-mix(in srgb, currentColor 12%, transparent));
+}
+
+/* Play: a tiny forward nudge reads as launch, not hover bounce. */
+.app-shell .user-message-attachment-card:hover:not(:disabled) .lucide-play {
+  translate: .72px 0;
+  filter: drop-shadow(-.5px 0 0 color-mix(in srgb, currentColor 10%, transparent));
+}
+
+/* Media/document marks remain stable but gain a small optical lift when their
+   card is actionable. */
+.app-shell .user-message-attachment-card:hover:not(:disabled)
+  :is(
+    .lucide-file,
+    .lucide-file-archive,
+    .lucide-file-code-2,
+    .lucide-file-image,
+    .lucide-file-spreadsheet,
+    .lucide-file-text,
+    .lucide-music-2,
+    .lucide-video
+  ) {
+  translate: 0 -.45px;
+  filter: brightness(1.06);
+}
+
+/* Long-message disclosure follows the direction it promises. */
+.app-shell :is(button, [role="button"]):hover:not(:disabled) .lucide-chevron-down {
+  translate: 0 .62px;
+}
+.app-shell :is(button, [role="button"]):hover:not(:disabled) .lucide-chevron-up {
+  translate: 0 -.62px;
+}
+
+/* Markdown/code copy gets the same layered-sheet gesture as message copy. */
+.app-shell .markdown-code-head button:hover:not(:disabled) .lucide-copy rect:first-of-type {
+  transform: translate(-.38px, .38px);
+}
+.app-shell .markdown-code-head button:hover:not(:disabled) .lucide-copy rect:last-of-type {
+  transform: translate(.55px, -.55px);
+}
+
+/* Quote clear uses the shared X twist; the reply mark acknowledges the quote
+   when the whole quote strip is hovered. */
+.app-shell .composer-quote-reply:hover .lucide-reply {
+  translate: -.55px 0;
+}
+
+/* File reveal affordance mirrors ExternalLink but is scoped to the trailing
+   affordance so the file-type glyph remains independently readable. */
+.app-shell .user-message-attachment-card:hover:not(:disabled)
+  .user-message-file-open .lucide-external-link {
+  translate: .58px -.58px;
+}
+
+/* Loader2 already spins through component CSS; explicitly protect it from any
+   inherited hover rotation so progress animation stays mechanically correct. */
+.app-shell .context-meter-spin {
+  translate: none !important;
+  filter: none !important;
+}
+
