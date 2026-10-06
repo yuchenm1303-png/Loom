@@ -335,11 +335,17 @@ export function Composer({
   const currentPermission = permissionPresentation(permissionMode || "approval", zh);
   const currentModel = modelSnapshot?.current?.model || model || "Model";
   const stickersOff = stickerPreferences?.frequency === 0;
+  const hasDraftContent = Boolean(value.trim() || quote || attachments.length);
+  const canSend = Boolean(
+    !disabled
+    && !running
+    && (value.trim() || quote || attachments.some((item) => imagesAllowed || !item.isImage))
+  );
 
   return (
     <div className="composer-wrap composer-refined" ref={composerRootRef}>
       <div
-        className={`composer ${focused ? "is-focused" : ""} ${running ? "is-running" : ""} ${openPanel ? "has-panel" : ""} ${dragging ? "is-dragging" : ""}`}
+        className={`composer ${focused ? "is-focused" : ""} ${running ? "is-running" : ""} ${openPanel ? "has-panel" : ""} ${dragging ? "is-dragging" : ""} ${hasDraftContent ? "has-content" : "is-empty"}`}
         onDragOver={(event) => {
           if (!event.dataTransfer.types.includes("Files")) return;
           event.preventDefault();
@@ -588,7 +594,7 @@ export function Composer({
                 <Square size={12} fill="currentColor" />
               </button>
             ) : (
-              <button type="button" className="send-button" onClick={() => void submit()} disabled={disabled || (!value.trim() && !quote && !attachments.some((item) => imagesAllowed || !item.isImage))} title="Send" aria-label="Send message">
+              <button type="button" className={`send-button ${canSend ? "is-ready" : "is-idle"}`} onClick={() => void submit()} disabled={!canSend} title="Send" aria-label="Send message">
                 <ArrowUp size={17} strokeWidth={2.2} />
               </button>
             )}
