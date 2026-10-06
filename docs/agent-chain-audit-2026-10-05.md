@@ -574,3 +574,14 @@ Codex 依据：固定提交 `a7660cd15490875b8c22f66e577da115ed927fe3` 的
 源码提交与 Host 发布分离。本阶段不自动发布或激活 Host；仍需后续稳定发布与
 真实长任务复验。22 层继承结构、请求组装覆盖、贴纸历史改写及资源生命周期的
 剩余工作仍按阶段 4–8 推进，不能据此称整条链路已彻底重构。
+
+
+## 阶段 4–8 后续处理状态（2026-10-05）
+
+本节补充源码处理结果，不覆盖上面的独立审计原始结论。完整归属、测试依据、删除的旧 feature 测试理由及真实复验清单见 [当前架构](agent-chain-current-architecture.md) 和 [重构验证记录](agent-chain-refactor-validation-2026-10-05.md)。
+
+请求/压缩/预算现在共用一个 renderer，service 不再替换请求方法；context frames 独立于规范历史，历史修复有持久 identity 锚点。官方路由声明硬/工作窗口，代理声明独立；cached tokens 使用 provider 返回值。模型/工具响应、流清理、Computer Use 和浏览器资源通过显式生命周期，不在 _record 中处理。生产 runtime 的 MCP 默认 constructor/status 补丁合入正式源码，整个 MRO 有方法来源守护。恢复 service、superseded 流清理也移除 import patch。
+
+浏览器按会话保留、默认 20 分钟 TTL，活动回合/执行中操作受到保护；释放记 durable event，归档/删除有正式路径，真实浏览器收尾只移除 HUD。贴纸改成最终展示投影；completed plan 要有 outcome 和真实引用，check 台账记录事件时间差。休眠 Stop reviewer 已删除；事件解析增加有界增量缓存。
+
+**待真实复验：** MiniMax 是否批量发出工具参数仍是推断；此次没有额度请求。旁白比例、长任务效率、真实缓存命中与测试 verdict 可靠性只能用真实日志判断。不能因为本轮源码测试通过，就宣称这些模型表现已改善或不会再失败。未拍平剩余产品/连接器/标题继承与集成，这些不再修改生产 runtime 执行方法。源码发布与 Host 发布继续分离。

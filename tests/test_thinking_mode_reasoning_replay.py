@@ -5,8 +5,9 @@ the `reasoning_content` that produced it:
 
     400 - The `reasoning_content` in the thinking mode must be passed back to the API.
 
-Loom must preserve that field as replay transport state so truncated-response
-recovery remains valid. Provider-visible reasoning is now a separate stream/UI
+Loom preserves that field on committed assistant history. Rejected truncated
+output and its reasoning use a named user-role runtime observation instead of
+creating an incomplete provider-specific assistant prefill. Provider-visible reasoning is now a separate stream/UI
 field; the replay field tested here remains transport state and must never be
 used as the UI source by itself.
 """
@@ -214,14 +215,17 @@ def test_truncation_recovery_replays_the_partial_turn_with_its_reasoning(tmp_pat
     assert result.status is AgentStatus.COMPLETED
 
     retry = platform.requests[-1]
-    partial = next(
-        m
-        for m in retry.messages
-        if m.role is MessageRole.ASSISTANT and not m.tool_calls and m.content
-    )
-    assert partial.reasoning == "I checked the admin endpoints and 2FA state"
-    # and it survives serialization to the provider
-    assert _message_payload(partial)["reasoning_content"] == partial.reasoning
+    partial = next(m for m in retry.messages if m.name == "loom_terminal_recovery")
+    assert partial.role is MessageRole.USER
+    assert "管理后台可登录（无 2FA），我具备完整的 admin API" in partial.content
+    assert "I checked the admin endpoints and 2FA state" in partial.content
+    # Rejected sampling context is serialized as an observation, not a partial
+    # assistant prefill requiring provider-specific reasoning fields.
+    payload = _message_payload(partial)
+    assert payload["role"] == "user"
+    assert "I checked the admin endpoints and 2FA state" in payload["content"]
+    assert "reasoning_content" not in payload
+    assert not any(m.role is MessageRole.ASSISTANT for m in retry.messages)
     runtime.close()
 
 

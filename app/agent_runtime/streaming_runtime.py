@@ -6,12 +6,12 @@ import re
 import threading
 from contextlib import contextmanager
 from contextvars import ContextVar
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
 from typing import Any, Callable, Mapping
 
-from app.ai import AIMessage, MessageRole
+from app.ai import MessageRole
 from app.ai.execution_control import current_control
 from app.ai.streaming_platform import ProviderStreamEvent, ProviderStreamEventKind
 
@@ -24,12 +24,14 @@ from .stickers import (
     StickerStreamSanitizer,
     _STICKER_OPT_IN_RE,
     _STICKER_OPT_OUT_RE,
-    build_sticker_system_prompt,
     finalize_reply,
     is_catalog_or_test_request,
     reconcile_stream_reply,
 )
 from .storage import utc_now
+from .sticker_projection import strip_legacy_sticker_protocol
+
+
 
 
 _INLINE_STICKER_CONTROL_PREFIX = "[[AI_LEDGER_INLINE_STICKER:"
@@ -48,7 +50,7 @@ def _strip_incomplete_sticker_control_fragments(text: str) -> str:
     """Remove truncated canonical sticker control data without touching valid markers."""
 
     source = str(text or "")
-    # Provider near-misses are control data too. Never persist them as prose.
+    # Provider near-misses are suppressed only in the rendered projection.
     # Preserve exact canonical markers for normal sticker materialization.
     source = _DAMAGED_INLINE_STICKER_RE.sub(
         lambda match: match.group(0)
@@ -142,10 +144,9 @@ class StreamingAgentRuntime(CodeModeRuntime):
     thread history. The normal MODEL_RESPONSE event remains the atomic durable
     commit boundary, so disconnecting a UI cannot corrupt a Turn.
 
-    The AI Ledger inline-sticker protocol is attached here because this is the
-    one layer that sees both the provider stream and the final durable response.
-    The sticker module owns the ported policy; this class only supplies Loom
-    context, forwards sanitized deltas, and commits the already-finalized text.
+    Sticker policy decorates only display projections. Canonical response text
+    and model history retain provider output. Legacy control tokens are
+    sanitized on the transient stream without injecting execution instructions.
     """
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
@@ -319,33 +320,6 @@ class StreamingAgentRuntime(CodeModeRuntime):
             allow_stickers=allow_stickers,
         )
 
-    def _prepare_model_request(self, session, step, token):
-        messages, extra = super()._prepare_model_request(session, step, token)
-        with self._sticker_guard:
-            preferences = self._sticker_preferences
-        context = self._sticker_context_for_session(
-            session,
-            streaming=self.provider_streaming_enabled,
-        )
-        sticker_prompt = build_sticker_system_prompt(preferences, context)
-        insert_at = 0
-        while insert_at < len(messages) and messages[insert_at].role is MessageRole.SYSTEM:
-            insert_at += 1
-        messages.insert(
-            insert_at,
-            AIMessage(
-                role=MessageRole.SYSTEM,
-                name="loom_inline_sticker_protocol",
-                content=sticker_prompt,
-            ),
-        )
-        merged_extra = dict(extra)
-        merged_extra.update({
-            "sticker_protocol": "ai_ledger_inline_sticker_v4_structured_sidecar",
-            "sticker_preferences": preferences.to_dict(),
-        })
-        return messages, merged_extra
-
     def subscribe_stream(self, listener: AgentStreamListener) -> None:
         if not callable(listener):
             raise TypeError("runtime stream listener must be callable")
@@ -386,8 +360,6 @@ class StreamingAgentRuntime(CodeModeRuntime):
     def _on_provider_stream(self, event: ProviderStreamEvent) -> None:
         control = current_control.get()
         if control is not None and control.cancelled:
-            return
-        if control is not None and control.request_purpose == "stop_review":
             return
         context = self._stream_context.get()
         if not isinstance(context, _ModelStreamContext):
@@ -524,34 +496,25 @@ class StreamingAgentRuntime(CodeModeRuntime):
             self._sticker_final_by_turn[(session.session_id, session.current_turn_id)] = finalized.text
         return StickerResult(finalized.text, finalized.keys, diagnostics)
 
-    def _record(
-        self,
-        session: AgentSession,
-        kind: AgentEventKind,
-        *,
-        data: dict[str, object],
-    ) -> AgentEvent:
-        payload = dict(data)
+    def _project_event_payload(self, session, kind, data):
+        payload = dict(super()._project_event_payload(session, kind, data))
 
         if kind is AgentEventKind.MODEL_RESPONSE:
             step_id = str(payload.get("step_id") or "").strip()
             raw_text = str(payload.get("text") or "")
-            if step_id:
+            if step_id and not payload.get("tool_calls"):
                 finalized = self._finalize_sticker_model_text(
                     session,
                     step_id=step_id,
                     raw_text=raw_text,
                 )
-                payload["text"] = finalized.text
+                payload["display_text"] = finalized.text
+                payload["display_runtime_authored"] = finalized.text != raw_text
                 payload["sticker_protocol"] = {
                     "schema": "inline_sticker_diagnostics_v4_structured_sidecar",
                     "keys": list(finalized.keys),
                     "output_marker_count": len(finalized.keys),
                 }
-                if session.messages:
-                    last = session.messages[-1]
-                    if last.role is MessageRole.ASSISTANT and isinstance(last.content, str):
-                        session.messages[-1] = replace(last, content=finalized.text)
 
         elif kind is AgentEventKind.TURN_COMPLETED:
             with self._sticker_guard:
@@ -559,68 +522,68 @@ class StreamingAgentRuntime(CodeModeRuntime):
                     (session.session_id, session.current_turn_id)
                 )
             if final_text is not None:
-                session.final_text = final_text
-                payload["text"] = final_text
+                payload["display_text"] = final_text
+                payload["display_runtime_authored"] = final_text != str(payload.get("text") or "")
 
-        event = super()._record(session, kind, data=payload)
+        return payload
 
-        if kind is AgentEventKind.MODEL_REQUESTED:
-            step_id = str(payload.get("step_id") or "").strip()
-            context = _ModelStreamContext(
-                session_id=session.session_id,
-                turn_id=session.current_turn_id,
-                step_id=step_id,
-                profile_id=session.profile_id,
-            )
-            self._stream_context.set(context)
-            if self.provider_streaming_enabled and step_id:
-                with self._sticker_guard:
-                    preferences = self._sticker_preferences
-                sanitizer = StickerStreamSanitizer(
-                    preferences,
-                    self._sticker_context_for_session(session, streaming=True),
-                )
-                with self._sticker_guard:
-                    self._sticker_streams[self._sticker_stream_key(context)] = sanitizer
-                    if any(
-                        message.role is MessageRole.SYSTEM
-                        and str(getattr(message, "name", "") or "") == "loom_compaction"
-                        for message in session.messages
-                    ):
-                        self._buffered_checkpoint_streams.add(self._sticker_stream_key(context))
-
-        if kind is AgentEventKind.MODEL_RESPONSE:
-            step_id = str(payload.get("step_id") or "").strip()
-            if step_id:
-                key = (session.session_id, session.current_turn_id, step_id)
-                with self._sticker_guard:
-                    self._sticker_streams.pop(key, None)
-                    self._sticker_stream_text.pop(key, None)
-                    self._buffered_checkpoint_streams.discard(key)
-            self._stream_context.set(None)
-
-        if kind in {
-            AgentEventKind.TURN_COMPLETED,
-            AgentEventKind.TURN_FAILED,
-            AgentEventKind.TURN_CANCELLED,
-            AgentEventKind.TURN_INTERRUPTED,
-            AgentEventKind.LIMIT_REACHED,
-        }:
-            self._stream_context.set(None)
+    def _on_model_requested(self, session, event):
+        super()._on_model_requested(session, event)
+        payload = event.data
+        step_id = str(payload.get("step_id") or "").strip()
+        context = _ModelStreamContext(
+            session_id=session.session_id,
+            turn_id=session.current_turn_id,
+            step_id=step_id,
+            profile_id=session.profile_id,
+        )
+        self._stream_context.set(context)
+        if self.provider_streaming_enabled and step_id:
             with self._sticker_guard:
-                turn_key = (session.session_id, session.current_turn_id)
-                self._sticker_final_by_turn.pop(turn_key, None)
-                stale = [
-                    key
-                    for key in self._sticker_streams
-                    if key[0] == session.session_id and key[1] == session.current_turn_id
-                ]
-                for key in stale:
-                    self._sticker_streams.pop(key, None)
-                    self._sticker_stream_text.pop(key, None)
-                    self._sticker_diagnostics.pop(key, None)
-                    self._buffered_checkpoint_streams.discard(key)
-        return event
+                preferences = self._sticker_preferences
+            sanitizer = StickerStreamSanitizer(
+                preferences,
+                self._sticker_context_for_session(session, streaming=True),
+            )
+            with self._sticker_guard:
+                self._sticker_streams[self._sticker_stream_key(context)] = sanitizer
+                if any(
+                    message.role is MessageRole.SYSTEM
+                    and str(getattr(message, "name", "") or "") == "loom_compaction"
+                    for message in session.messages
+                ):
+                    self._buffered_checkpoint_streams.add(self._sticker_stream_key(context))
+
+
+    def _on_model_response(self, session, event):
+        super()._on_model_response(session, event)
+        payload = event.data
+        step_id = str(payload.get("step_id") or "").strip()
+        if step_id:
+            key = (session.session_id, session.current_turn_id, step_id)
+            with self._sticker_guard:
+                self._sticker_streams.pop(key, None)
+                self._sticker_stream_text.pop(key, None)
+                self._buffered_checkpoint_streams.discard(key)
+        self._stream_context.set(None)
+
+
+    def _on_turn_finished(self, session, event):
+        super()._on_turn_finished(session, event)
+        self._stream_context.set(None)
+        with self._sticker_guard:
+            turn_key = (session.session_id, session.current_turn_id)
+            self._sticker_final_by_turn.pop(turn_key, None)
+            stale = [
+                key
+                for key in self._sticker_streams
+                if key[0] == session.session_id and key[1] == session.current_turn_id
+            ]
+            for key in stale:
+                self._sticker_streams.pop(key, None)
+                self._sticker_stream_text.pop(key, None)
+                self._sticker_diagnostics.pop(key, None)
+                self._buffered_checkpoint_streams.discard(key)
 
     def close(self) -> None:
         with self._stream_listener_guard:

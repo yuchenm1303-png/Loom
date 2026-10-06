@@ -1046,6 +1046,10 @@ class BrowserUseBackend(BrowserBackend):
             self._runner.close()
             self._log("browser_use.loop.closed")
 
+    def finish_turn(self) -> None:
+        if not self._closed and self._session is not None:
+            self._runner.run(self._hide_page_hud(), timeout=_HUD_TIMEOUT_SECONDS)
+
 
 def _serialize_state(state: Any) -> BrowserPageState:
     dom_state = getattr(state, "dom_state", None)

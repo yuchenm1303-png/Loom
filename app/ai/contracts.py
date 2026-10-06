@@ -194,7 +194,7 @@ class ChatRequest:
         parallel_tool_calls = self.parallel_tool_calls
         if parallel_tool_calls is not None and not isinstance(parallel_tool_calls, bool):
             raise TypeError("parallel_tool_calls must be bool or None")
-        if self.purpose not in {"generation", "stop_review"}:
+        if self.purpose != "generation":
             raise ValueError("unsupported internal request purpose")
         object.__setattr__(self, "messages", messages)
         object.__setattr__(self, "tools", tools)
@@ -234,6 +234,9 @@ class ModelUsage:
     input_tokens: int = 0
     output_tokens: int = 0
     total_tokens: int = 0
+    # Provider-reported cache reads are a subset of input_tokens, never an
+    # additional charge to total_tokens or a discount to context occupancy.
+    cached_input_tokens: int = 0
 
 
 @dataclass(frozen=True, slots=True)

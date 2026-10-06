@@ -105,38 +105,12 @@ def _projection_context(runtime: Any, session: Any, step: Any, envelope: Any):
     from app.agent_runtime.context_limits import resolve_context_limits
     from app.agent_runtime.response_language import communication_language_message, infer_user_language
 
-    transient = [
-        message
-        for message in runtime._request_context_messages(session, step, envelope)
-        if str(getattr(message, "name", "") or "") != "loom_communication_language"
-    ]
+    from .context_composer import stable_prefix
+    transient = stable_prefix(runtime, session, step)
     request_state = getattr(step, "request_state", None)
     captured = bool(getattr(request_state, "captured", False))
-    project_instructions = (
-        request_state.project_instructions
-        if captured
-        else runtime.instruction_loader.load(session.workspace_dir)
-    )
-    if project_instructions:
-        transient.append(
-            AIMessage(
-                role=MessageRole.USER,
-                name="loom_project_instructions",
-                content=project_instructions,
-            )
-        )
-    communication_language = (
-        request_state.communication_language
-        if captured
-        else infer_user_language(session.messages, fallback=session.communication_language)
-    )
-    session.communication_language = communication_language
-    transient.append(
-        communication_language_message(
-            () if captured else session.messages,
-            fallback=communication_language,
-        )
-    )
+    communication_language = (request_state.communication_language if captured else
+                              infer_user_language(session.messages, fallback=session.communication_language))
     limits = (
         request_state.context_limits
         if captured and request_state.context_limits is not None
@@ -155,6 +129,7 @@ def _fit_fallback_replacement(
 ) -> tuple[tuple[Any, ...], list[Any], str, Any, Any, int]:
     from app.ai import AIMessage
     from . import context_budget as budget
+    from .context_composer import render_request
     from app.agent_runtime import context_compaction as compaction
 
     envelope = runtime._context_envelope(session, step)
@@ -168,12 +143,13 @@ def _fit_fallback_replacement(
     )
     replacement = budget._fit_replacement_message_limit(
         replacement,
-        transient_count=len(transient),
+        transient_count=len(render_request(runtime, session, transient, (), replacement=True)),
         max_messages=runtime.limits.max_messages,
     )
 
     def projected_tokens(items: Sequence[Any]) -> int:
-        return budget.estimate_tokens([*transient, *items], tools)
+        from .context_composer import render_request
+        return budget.estimate_tokens(render_request(runtime, session, transient, items, replacement=True), tools)
 
     while (
         projected_tokens(replacement) > limits.input_budget_tokens

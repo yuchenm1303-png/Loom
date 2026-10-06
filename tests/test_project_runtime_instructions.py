@@ -67,6 +67,44 @@ def _project_context_messages(messages: list[AIMessage]) -> list[AIMessage]:
     return [message for message in messages if message.name == PROJECT_CONTEXT_NAME]
 
 
+def test_project_service_contributes_before_budget_without_replacing_builder(service, tmp_path):
+    from app.agent_runtime.context_budget import estimate_tokens
+    assert "_prepare_model_request" not in vars(service.runtime)
+    workspace = _folder(tmp_path, "compose")
+    project = service.project_create({"root": str(workspace)})["project"]
+    service.project_set_instructions({"projectId": project["id"], "instructions": "Exact project rule."})
+    thread = service.thread_start({"projectId": project["id"]})["thread"]
+    session = service.runtime.get_session(thread["id"])
+    step = service.runtime._build_step_context(session, next_model_step=True)
+    messages, metadata = service.runtime._prepare_model_request(session, step, None)
+    assert metadata["estimated_input_tokens_after"] == estimate_tokens(messages, step.tool_router.definitions())
+    assert _project_context_messages(messages)[-1].role is MessageRole.USER
+
+
+def test_service_registers_project_context_without_replacing_request_builder(service):
+    runtime = service.runtime
+    assert "_prepare_model_request" not in vars(runtime)
+    assert "_loom_base_prepare_model_request" not in vars(runtime)
+    assert runtime._prepare_model_request.__func__ is type(runtime)._prepare_model_request
+
+
+def test_project_snapshot_is_budgeted_before_render_and_unchanged_prefix_is_reused(service, tmp_path):
+    from app.agent_runtime.context_budget import estimate_tokens
+    workspace = _folder(tmp_path, "budgeted-project")
+    project = service.project_create({"root": str(workspace)})["project"]
+    service.project_set_instructions({"projectId": project["id"], "instructions": "Budget this project rule. " * 150})
+    thread = service.thread_start({"projectId": project["id"]})["thread"]
+    session = service.runtime.get_session(thread["id"])
+    step = service.runtime._build_step_context(session, next_model_step=True)
+    first, metadata = service.runtime._prepare_model_request(session, step, None)
+    assert _project_context_messages(first)[0].role is MessageRole.USER
+    assert metadata["estimated_input_tokens_after"] == estimate_tokens(first, step.tool_router.definitions())
+    second, second_metadata = service.runtime._prepare_model_request(session, step, None)
+    assert second == first
+    assert len(_project_context_messages(second)) == 1
+    assert second_metadata["estimated_input_tokens_after"] == metadata["estimated_input_tokens_after"]
+
+
 def test_project_instructions_are_injected_after_workspace_instructions(service, tmp_path):
     workspace = _folder(tmp_path, "loom")
     (workspace / "AGENTS.md").write_text("Prefer small focused patches.", encoding="utf-8")
@@ -143,7 +181,7 @@ def test_active_turn_uses_the_runtime_start_instruction_snapshot(service, tmp_pa
     service.project_set_instructions({"projectId": project["id"], "instructions": "Next-turn rule."})
 
     messages = _prepared_messages(service, thread["id"])
-    content = _project_context_messages(messages)[0].content
+    content = _project_context_messages(messages)[-1].content
     assert "Starting rule." in content
     assert "Next-turn rule." not in content
 
@@ -159,5 +197,5 @@ def test_active_turn_uses_the_runtime_start_instruction_snapshot(service, tmp_pa
     )
 
     messages = _prepared_messages(service, thread["id"])
-    content = _project_context_messages(messages)[0].content
+    content = _project_context_messages(messages)[-1].content
     assert "Next-turn rule." in content

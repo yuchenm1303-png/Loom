@@ -12,9 +12,7 @@ from .project_git_commit import install as _install_project_git_commit
 from .project_agent_files import install as _install_project_agent_files
 from .connector_cross_agent_sync import install as _install_connector_cross_agent_sync
 from .connector_app_server import install as _install_connector_app_server
-from .app_server_recovery_contract import install as _install_app_server_recovery_contract
 from .code_block_terminal import install as _install_code_block_terminal
-from .live_steering_stream_contract import install as _install_live_steering_stream_contract
 
 # Release-time connector metadata must be installed before any runtime or
 # connector module samples its environment. This keeps packaged builds and the
@@ -32,9 +30,7 @@ _install_project_git_commit()
 _install_project_agent_files()
 _install_connector_cross_agent_sync()
 _install_connector_app_server()
-_install_app_server_recovery_contract()
 _install_code_block_terminal()
-_install_live_steering_stream_contract()
 del (
     _install_connector_product_config,
     _install_model_name_compat,
@@ -48,7 +44,5 @@ del (
     _install_project_agent_files,
     _install_connector_cross_agent_sync,
     _install_connector_app_server,
-    _install_app_server_recovery_contract,
     _install_code_block_terminal,
-    _install_live_steering_stream_contract,
 )

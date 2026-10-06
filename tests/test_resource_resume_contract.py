@@ -56,21 +56,28 @@ def test_real_release_is_reported_only_in_next_turn_first_request(tmp_path):
         ModelResponse(text="Done"), ModelResponse(text="Done"),
     ])
     try:
-        for _ in range(3):
-            runtime.start_turn(session.session_id, "Continue")
-        releases = [e for e in runtime.store.events(session.session_id) if "browser_resources" in e.data]
-        assert len(releases) == 1, [(e.kind.value, e.data) for e in runtime.store.events(session.session_id)
-                                    if e.kind in {AgentEventKind.TOOL_FAILED, AgentEventKind.TURN_FAILED}]
-        resources = releases[0].data["browser_resources"]
-        assert resources["count"] == 1
+        runtime.start_turn(session.session_id, "Continue")
         opened = next(e.data for e in runtime.store.events(session.session_id)
                       if e.kind is AgentEventKind.TOOL_COMPLETED and e.data.get("call_id") == "open")
-        assert resources["browser_ids"] == [opened["data"]["browser_id"]]
+        assert runtime.browser_sessions.active_count() == 1
+        runtime.release_session_resources(session.session_id, reason="explicit_close")
+        runtime.start_turn(session.session_id, "Continue")
+        runtime.start_turn(session.session_id, "Continue")
+        releases = [e for e in runtime.store.events(session.session_id)
+                    if e.kind is AgentEventKind.BROWSER_SESSION_RELEASED]
+        assert len(releases) == 1
+        assert releases[0].data["browser_id"] == opened["data"]["browser_id"]
+        assert releases[0].data["reason"] == "explicit_close"
         assert all(r.messages[0].name == "" for r in platform.requests)
         resume_counts = [sum(m.name == "loom_resource_resume" for m in r.messages) for r in platform.requests]
-        assert resume_counts == [0, 0, 1, 0, 0]
+        assert resume_counts == [0, 0, 1, 1, 1]
+        for previous, following in zip(platform.requests[2:], platform.requests[3:]):
+            assert following.messages[:len(previous.messages)] == previous.messages
         resume = next(m for m in platform.requests[2].messages if m.name == "loom_resource_resume")
-        assert platform.requests[2].messages[-1] == resume
-        assert json.loads(resume.content.split("\n", 1)[1])["browser_resources"] == resources
+        assert all(next(m for m in r.messages if m.name == "loom_resource_resume") == resume
+                   for r in platform.requests[2:])
+        resources = json.loads(resume.content.split("\n", 1)[1])["browser_resources"]
+        assert resources["browser_ids"] == [opened["data"]["browser_id"]]
+        assert resources["releases"][0]["event_id"] == releases[0].event_id
     finally:
         runtime.close()

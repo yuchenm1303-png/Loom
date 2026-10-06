@@ -1,41 +1,29 @@
 # Turn completion lifecycle
 
-Normal execution no longer runs a mandatory secondary completion model. A valid
-terminal actor response ends the turn after tool execution, pending user input,
-steering, approvals, and response validation have been handled by the existing
-execution loop. A completed turn means the response was delivered; it does not
-assert that every task or test passed. Task plans, actual tool results, and the
-actor answer retain their own meaning. There is no keyword-based completion
-classifier or fixed count of rejected completion assessments.
+A turn ends when the provider gives no native tool calls and does not explicitly
+request another sample (`end_turn=False`), after pending user input, steering,
+approval, cancellation and response validation are handled. Ordinary tool calls
+continue the same turn. This is a response-delivery protocol, not proof that the
+user task or every test has passed.
 
-## Optional checks
+There is no hidden completion model, optional `stop_hook` constructor argument,
+Stop assessment context budget, rejection-count policy, or natural-language
+completion classifier. Plans and checks retain explicit outcomes and references
+to executed evidence. They do not override provider continuation signals or
+silently invent user requirements. `task_completion=not_assessed` describes the
+turn protocol's limited claim; the actor reports actual results.
 
-Hosts may explicitly pass `stop_hook=review_stop` to AgentRuntime or
-ContextAgentRuntime. Production constructors leave this unset. The callback
-returns a structured StopDecision; `continue` feeds durable remaining work
-back into execution. Cancellation and user steering retain their existing
-control flow. Disabling the hook also disables projection of its old
-continuation feedback into model requests.
+`_emit_event` routes explicit response/terminal lifecycle hooks. `_record` appends
+an event without lifecycle side effects. Tests simulating production events must
+use the former; event inspection can use the latter.
 
-A checker timeout, context-budget failure, or invalid result establishes no
-completion verdict. The runtime preserves the actor answer, records
-TURN_STOP_CHECKED with assessment_failed and answer_preserved, and records
-completion_check=unavailable with no stop_decision on TURN_COMPLETED. It does
-not label the check successful, fail the task, or consume another actor retry.
-Actual actor/provider failures and explicit host execution limits still use
-their existing error paths. This is isolation of an optional check, not a
-promise that genuine execution failures cannot occur.
+The fixed comparison source is
+[Codex session/turn.rs:566](https://github.com/openai/codex/blob/a7660cd15490875b8c22f66e577da115ed927fe3/codex-rs/core/src/session/turn.rs#L566):
+model follow-up and pending input determine continued execution. Codex also has
+configured hooks; Loom does not implement its previous semantic reviewer as such
+a parity requirement.
 
-## Source comparison and regression coverage
-
-Compared with public OpenAI Codex revision
-a7660cd15490875b8c22f66e577da115ed927fe3, codex-rs/core/src/codex/session/turn.rs:
-the default loop follows execution and pending input; Stop hooks are configured
-extensions. Loom uses its own provider finish signals and is not an exact copy
-of Codex transport. Earlier mandatory-review assumptions are superseded here.
-
-Tests cover long-history follow-up without an extra model call, optional check
-failures without fabricated success, malformed callback results, explicit
-semantic continuation, steering, cancellation, context rollover, and durable
-browser action evidence. Ordinary runtime tests no longer replace the stop
-reviewer with an automatically successful fixture.
+Regression coverage retains explicit provider continuation, empty native
+continuation, long-history delivery without a reviewer, same-turn steering,
+cancellation, approvals, real context rollover, durable plans and browser action
+evidence. A constructor/source guard rejects reintroducing the removed reviewer.

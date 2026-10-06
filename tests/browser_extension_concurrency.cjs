@@ -91,6 +91,15 @@ async function main() {
   const ownedB = Object.keys(h.storage.loomTabSessionIds).filter((id) => h.storage.loomTabSessionIds[id] === 'b').map(Number);
   await h.run(`for (const id of ${JSON.stringify([...ownedA, ...ownedB])}) attachedDebuggerTabs.add(id)`);
   h.storage.loomAdoptedTabIds = [...ownedA, ...ownedB];
+  const leasesBefore = JSON.stringify(h.storage.loomTabSessionIds);
+  const adoptedBefore = [...h.storage.loomAdoptedTabIds];
+  await h.run(`dispatchCommand('finish_turn', { session_id: 'a' })`);
+  assert.equal(JSON.stringify(h.storage.loomTabSessionIds), leasesBefore);
+  assert.deepEqual(h.storage.loomAdoptedTabIds, adoptedBefore);
+  assert.deepEqual(h.detached, []);
+  assert.equal(h.storage.loomBrowserSessionActive, true);
+  assert(ownedB.every((id) => h.storage.loomHudTabIds.includes(id)));
+  assert(ownedA.every((id) => !h.storage.loomHudTabIds.includes(id)));
   await h.run(`dispatchCommand('release_tabs', { session_id: 'a' })`);
   assert.deepEqual(h.detached.sort(), ownedA.sort());
   assert.deepEqual(h.storage.loomAdoptedTabIds, ownedB);

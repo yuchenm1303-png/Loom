@@ -245,7 +245,9 @@ class PipeProcessBackend:
             subprocess.run(
                 ["taskkill", "/PID", str(self.pid), "/T", "/F"],
                 capture_output=True,
-                text=True,
+                # taskkill writes localized OEM bytes; its output is unused.
+                # Keep it binary instead of decoding under Python UTF-8 mode.
+                text=False,
                 check=False,
             )
             return
@@ -510,7 +512,8 @@ class WindowsConPtyProcessBackend:
         subprocess.run(
             ["taskkill", "/PID", str(self.pid), "/T", "/F"],
             capture_output=True,
-            text=True,
+            # Localized taskkill output is not part of the model tool result.
+            text=False,
             check=False,
         )
         if self.poll() is None:

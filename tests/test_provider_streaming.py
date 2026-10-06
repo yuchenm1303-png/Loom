@@ -551,20 +551,6 @@ def test_streaming_platform_accumulates_text_tool_arguments_and_metadata():
     assert backend.complete_calls == 0
 
 
-def test_private_stop_assessment_stream_never_reaches_public_subscribers():
-    from dataclasses import replace
-    backend = FakeStreamBackend()
-    platform = StreamingAIPlatform(prefer_streaming=True)
-    platform.register(_profile(), backend)
-    observed = []
-    platform.subscribe_stream(observed.append)
-    result = platform.execute_chat(AGENT_FAST_ROLE.role_id, replace(_request(), purpose="stop_review"))
-    assert result.text == "Hello"
-    assert result.tool_calls
-    assert result.usage.total_tokens == 11
-    assert observed == []
-
-
 def test_streaming_platform_opt_out_keeps_legacy_completion_path():
     backend = FakeStreamBackend()
     platform = StreamingAIPlatform(prefer_streaming=False)

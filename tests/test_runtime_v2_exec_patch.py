@@ -3,6 +3,8 @@ from __future__ import annotations
 import sys
 import time
 
+import pytest
+
 from app.agent_runtime import (
     AgentEventKind,
     AgentRuntime,
@@ -60,6 +62,7 @@ def test_process_store_timeout_terminates_process_tree(tmp_path):
     assert time.monotonic() - started < 5
 
 
+@pytest.mark.filterwarnings("error::pytest.PytestUnhandledThreadExceptionWarning")
 def test_process_store_cancellation_terminates_process(tmp_path):
     store = ProcessStore()
     started = time.monotonic()

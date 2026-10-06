@@ -41,8 +41,36 @@ class ConfiguredMCPRuntime(BrowserBackendRegistryMixin, SingleLoopComputerRuntim
         mcp_config_path: str | Path | None = None,
         **kwargs: Any,
     ) -> None:
+        from .. import runtime_capability_defaults as discovery
+
         resolved_servers = mcp_servers
         self.mcp_config_path = ""
+        self.mcp_config_checked_paths = ()
+        self.mcp_config_rejected_paths = ()
+        store = kwargs.get("store")
+        runtime_home = ""
+        if store is not None:
+            try:
+                runtime_home = Path(getattr(store, "root", "")).expanduser().resolve().parents[1]
+            except (OSError, IndexError):
+                pass
+        candidates = tuple(discovery._mcp_config_paths(runtime_home))
+        self.mcp_config_checked_paths = tuple(str(path) for path in candidates)
+        rejected = []
+        if mcp_servers is None and mcp_config_path is None and not os.environ.get("LOOM_CONFIG"):
+            for candidate in candidates:
+                if not candidate.is_file():
+                    continue
+                # Opportunistic adoption is best-effort; explicit paths below
+                # remain strict so operator configuration errors stay visible.
+                try:
+                    _mcp_runtime.load_mcp_server_configs(candidate)
+                except Exception as exc:
+                    rejected.append((str(candidate), f"{type(exc).__name__}: {exc}"))
+                    continue
+                mcp_config_path = candidate
+                break
+        self.mcp_config_rejected_paths = tuple(rejected)
         if resolved_servers is None:
             store = kwargs.get("store")
             if store is None:
@@ -176,6 +204,12 @@ class ConfiguredMCPRuntime(BrowserBackendRegistryMixin, SingleLoopComputerRuntim
     def mcp_status(self) -> dict[str, object]:
         status = dict(super().mcp_status())
         status["config_path"] = self.mcp_config_path
+        status["checked_config_paths"] = list(self.mcp_config_checked_paths)
+        if self.mcp_config_rejected_paths:
+            status["rejected_config_paths"] = [
+                {"path": path, "reason": reason}
+                for path, reason in self.mcp_config_rejected_paths
+            ]
         return status
 
 

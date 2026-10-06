@@ -133,12 +133,30 @@ def _responses_visible_reasoning(response: Any) -> str:
     return "\n\n".join(part for part in parts if part).strip()
 
 
-def _usage(input_tokens: int = 0, output_tokens: int = 0) -> ModelUsage:
+def _usage(input_tokens: int = 0, output_tokens: int = 0, cached_input_tokens: int = 0,
+           cache_creation_input_tokens: int = 0) -> ModelUsage:
+    # Anthropic input_tokens excludes cache reads and cache creation. Responses
+    # input_tokens already includes cache reads, so its callers pass those only
+    # as the cached subset through _responses_usage below.
+    cached = max(0, int(cached_input_tokens or 0))
+    inputs = max(0, int(input_tokens or 0)) + cached + max(0, int(cache_creation_input_tokens or 0))
     return ModelUsage(
-        input_tokens=max(0, int(input_tokens or 0)),
+        input_tokens=inputs,
         output_tokens=max(0, int(output_tokens or 0)),
-        total_tokens=max(0, int(input_tokens or 0)) + max(0, int(output_tokens or 0)),
+        total_tokens=inputs + max(0, int(output_tokens or 0)),
+        cached_input_tokens=cached,
     )
+
+
+def _responses_usage(raw: Any) -> ModelUsage:
+    if raw is None:
+        return ModelUsage()
+    details = getattr(raw, "input_tokens_details", None)
+    inputs = max(0, int(getattr(raw, "input_tokens", 0) or 0))
+    outputs = max(0, int(getattr(raw, "output_tokens", 0) or 0))
+    return ModelUsage(inputs, outputs,
+                      int(getattr(raw, "total_tokens", 0) or inputs + outputs),
+                      max(0, int(getattr(details, "cached_tokens", 0) or 0)))
 
 
 class _OpenCodeGoChatBackend(OpenAIStreamingChatBackend):
@@ -292,10 +310,7 @@ class _OpenCodeGoResponsesBackend:
         return ModelResponse(
             text=str(getattr(response, "output_text", "") or ""),
             tool_calls=self._response_calls(response),
-            usage=_usage(
-                getattr(usage, "input_tokens", 0) if usage is not None else 0,
-                getattr(usage, "output_tokens", 0) if usage is not None else 0,
-            ),
+            usage=_responses_usage(usage),
             finish_reason=str(getattr(response, "status", "") or "completed"),
             phase=next((getattr(item, "phase", None) for item in reversed(getattr(response, "output", ()) or ())
                         if getattr(item, "type", "") == "message"), None),
@@ -383,10 +398,7 @@ class _OpenCodeGoResponsesBackend:
                     finish_reason = str(getattr(response, "status", "") or "completed")
                     raw_usage = getattr(response, "usage", None)
                     if raw_usage is not None:
-                        usage = _usage(
-                            getattr(raw_usage, "input_tokens", 0),
-                            getattr(raw_usage, "output_tokens", 0),
-                        )
+                        usage = _responses_usage(raw_usage)
                     break
                 if event_type in {"response.failed", "response.incomplete"}:
                     raise AITransportError(f"OpenCode Go Responses ended as {event_type}")
@@ -566,7 +578,9 @@ class _OpenCodeGoMessagesBackend:
         return ModelResponse(
             text="".join(text_parts),
             tool_calls=tuple(calls),
-            usage=_usage(raw_usage.get("input_tokens", 0), raw_usage.get("output_tokens", 0)),
+            usage=_usage(raw_usage.get("input_tokens", 0), raw_usage.get("output_tokens", 0),
+                         raw_usage.get("cache_read_input_tokens", 0),
+                         raw_usage.get("cache_creation_input_tokens", 0)),
             finish_reason=str(payload.get("stop_reason") or "end_turn"),
             end_turn=(True if payload.get("stop_reason") == "end_turn" else
                       False if payload.get("stop_reason") == "tool_use" else None),
@@ -608,7 +622,9 @@ class _OpenCodeGoMessagesBackend:
                     message = event.get("message") or {}
                     response_id = str(message.get("id") or "")
                     raw_usage = message.get("usage") or {}
-                    usage = _usage(raw_usage.get("input_tokens", 0), raw_usage.get("output_tokens", 0))
+                    usage = _usage(raw_usage.get("input_tokens", 0), raw_usage.get("output_tokens", 0),
+                                   raw_usage.get("cache_read_input_tokens", 0),
+                                   raw_usage.get("cache_creation_input_tokens", 0))
                     continue
                 if event_type == "content_block_start":
                     index = int(event.get("index") or 0)
@@ -666,10 +682,9 @@ class _OpenCodeGoMessagesBackend:
                     finish_reason = str(delta.get("stop_reason") or finish_reason or "")
                     raw_usage = event.get("usage") or {}
                     if raw_usage:
-                        usage = _usage(
-                            usage.input_tokens,
-                            raw_usage.get("output_tokens", usage.output_tokens),
-                        )
+                        outputs = max(0, int(raw_usage.get("output_tokens", usage.output_tokens) or 0))
+                        usage = ModelUsage(usage.input_tokens, outputs,
+                                           usage.input_tokens + outputs, usage.cached_input_tokens)
                     continue
                 if event_type == "message_stop":
                     finish_reason = finish_reason or "end_turn"

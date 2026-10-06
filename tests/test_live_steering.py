@@ -198,7 +198,7 @@ def test_steering_during_tool_execution_applies_after_safe_boundary_once(tmp_pat
         second_request_users = [
             message.content
             for message in platform.requests[1].messages
-            if message.role is MessageRole.USER
+            if message.role is MessageRole.USER and not message.name and not (message.name or "").startswith("loom_")
         ]
         assert second_request_users.count(
             "Do not continue with the old plan; inspect the safer path instead."
@@ -269,7 +269,7 @@ def test_live_steering_can_attach_an_image_to_the_same_turn(tmp_path: Path) -> N
         user_messages = [
             message
             for message in platform.requests[1].messages
-            if message.role is MessageRole.USER
+            if message.role is MessageRole.USER and not message.name and not (message.name or "").startswith("loom_")
         ]
         steering = user_messages[-1]
         assert steering.uses_vision

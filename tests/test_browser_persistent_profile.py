@@ -80,8 +80,17 @@ def test_browser_use_runtime_uses_private_persistent_default_profile(tmp_path, m
         # Chromium locks one user-data directory to one browser process. Loom
         # therefore makes the persistent profile single-session and expects tabs
         # to be reused inside that process instead of racing a second Chrome.
+        store.set_owner_active("owner", True)
         with pytest.raises(BrowserError, match="session limit reached"):
             store.start("another-owner")
+        store.set_owner_active("owner", False)
+        original_factory = store.backend_factory
+        def replacement_factory(options):
+            assert item.backend.closed, "old profile process must close before replacement launch"
+            return original_factory(options)
+        store.backend_factory = replacement_factory
+        replacement = store.start("another-owner")
+        assert replacement.backend is not item.backend
 
         open_tool = runtime.tools.get("browser_open")
         assert open_tool is not None

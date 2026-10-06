@@ -27,7 +27,7 @@ class DelegationPlatform:
         with self._lock:
             self.requests.append((profile_id, request))
 
-        last = request.messages[-1]
+        last = next(m for m in reversed(request.messages) if not (m.name or "").startswith("loom_"))
         if last.role is MessageRole.USER and last.content == "Inspect delegated task":
             return ModelResponse(text="child-result: inspected")
 
@@ -127,7 +127,7 @@ def test_model_can_spawn_wait_and_receive_independent_child_result(tmp_path):
 
     parent_requests = [
         request for _, request in platform.requests
-        if request.messages[-1].content != "Inspect delegated task"
+        if next(m for m in reversed(request.messages) if not (m.name or "").startswith("loom_")).content != "Inspect delegated task"
     ]
     # Tool-schema pressure is allowed to shed unrelated direct definitions. The
     # contract that matters here is that each tool the model actually calls was
@@ -136,8 +136,8 @@ def test_model_can_spawn_wait_and_receive_independent_child_result(tmp_path):
     assert "spawn_agent" in first_tools
     spawn_follow_up = next(
         request for request in parent_requests
-        if request.messages[-1].role is MessageRole.TOOL
-        and request.messages[-1].name == "spawn_agent"
+        if (last := next(m for m in reversed(request.messages) if not (m.name or "").startswith("loom_"))).role is MessageRole.TOOL
+        and last.name == "spawn_agent"
     )
     assert "wait_agent" in {tool.name for tool in spawn_follow_up.tools}
     assert any(

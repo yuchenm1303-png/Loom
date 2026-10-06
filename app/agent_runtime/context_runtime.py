@@ -225,10 +225,12 @@ class ContextAgentRuntime(SandboxAgentRuntime):
             retained_message_count=retained_message_count,
             world_state_digest=envelope.digest,
         )
+        from .context_composer import compact_frames
+        compact_frames(self, session, len(replacement))
         session.messages = list(replacement)
         if summary_usage is not None:
             session.usage = _add_usage(session.usage, summary_usage)
-        self._record(
+        self._emit_event(
             session,
             AgentEventKind.CONTEXT_CHECKPOINTED,
             data={
@@ -249,6 +251,7 @@ class ContextAgentRuntime(SandboxAgentRuntime):
                         "input_tokens": summary_usage.input_tokens,
                         "output_tokens": summary_usage.output_tokens,
                         "total_tokens": summary_usage.total_tokens,
+                        "cached_input_tokens": summary_usage.cached_input_tokens,
                     }
                     if summary_usage is not None
                     else None
@@ -304,31 +307,18 @@ class ContextAgentRuntime(SandboxAgentRuntime):
             )
             session.communication_language = communication_language
 
-            request_messages: list[AIMessage] = [
-                AIMessage(role=MessageRole.SYSTEM, content=session.system_prompt),
-                communication_language_message(archived, fallback=communication_language),
-            ]
-            project_instructions = self.instruction_loader.load(session.workspace_dir)
-            if project_instructions:
-                request_messages.append(
-                    AIMessage(
-                        role=MessageRole.USER,
-                        name="loom_project_instructions",
-                        content=project_instructions,
-                    )
-                )
-            request_messages.extend(archived)
-            request_messages.append(
-                AIMessage(
-                    role=MessageRole.USER,
-                    content=summarization_prompt(communication_language),
-                )
-            )
+            from .context_composer import capture_context, stable_prefix, render_request
+            step = self._build_step_context(session, next_model_step=False)
+            capture_context(self, session, step)
+            request_messages = render_request(self, session, stable_prefix(self, session, step), archived)
+            request_messages.append(AIMessage(role=MessageRole.USER,
+                content=summarization_prompt(communication_language)))
             request = ChatRequest(
                 messages=tuple(request_messages),
                 tools=(),
                 tool_choice=ToolChoice.NONE,
-                max_output_tokens=self.limits.output_reserve_tokens,
+                max_output_tokens=(step.request_state.context_limits.output_reserve_tokens
+                    if step.request_state.context_limits.output_reserve_declared else None),
                 session_id=session.session_id,
             )
             response = self.platform_for_session(session.session_id).execute_chat(
@@ -384,11 +374,6 @@ class ContextAgentRuntime(SandboxAgentRuntime):
             ),
         )
 
-    def _prepare_model_request(self, session, step, token):
-        from .context_budget import prepare_context
-
-        return prepare_context(self, session, step, token)
-
     def compact_context_with_model(self: Any, session_id: str, *, keep_recent: int = 24):
         invalid: RuntimeError | None = None
         attempts = max(1, int(self.limits.model_retries) + 1)
@@ -427,6 +412,7 @@ def _add_usage(left: ModelUsage, right: ModelUsage) -> ModelUsage:
         input_tokens=left.input_tokens + right.input_tokens,
         output_tokens=left.output_tokens + right.output_tokens,
         total_tokens=left.total_tokens + right.total_tokens,
+        cached_input_tokens=left.cached_input_tokens + right.cached_input_tokens,
     )
 
 
@@ -447,28 +433,15 @@ def _compacted_context_record(
 
     request_state = getattr(step, "request_state", None)
     captured = bool(getattr(request_state, "captured", False))
-    transient = [
-        message
-        for message in runtime._request_context_messages(session, step, envelope)
-        if message.name != "loom_communication_language"
-    ]
-    project_instructions = (
-        request_state.project_instructions
-        if captured
-        else runtime.instruction_loader.load(session.workspace_dir)
-    )
-    if project_instructions:
-        transient.append(
-            AIMessage(role=MessageRole.USER, name="loom_project_instructions", content=project_instructions)
-        )
-    transient.append(communication_language_message((), fallback=communication_language))
+    from .context_composer import stable_prefix, render_request
+    transient = stable_prefix(runtime, session, step)
     tools = step.tool_router.definitions()
     limits = (
         request_state.context_limits
         if captured and request_state.context_limits is not None
         else resolve_context_limits(runtime, session)
     )
-    visible = (*transient, *replacement)
+    visible = render_request(runtime, session, transient, replacement, replacement=True)
     estimated = estimate_tokens(visible, tools)
     return {
         "context_limits": limits.as_dict(),

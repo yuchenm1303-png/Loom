@@ -73,6 +73,7 @@ class AIEmptyResponseError(AIResponseError):
         input_tokens: int = 0,
         output_tokens: int = 0,
         total_tokens: int = 0,
+        cached_input_tokens: int = 0,
     ) -> None:
         super().__init__(message)
         self.finish_reason = str(finish_reason or "")
@@ -82,6 +83,7 @@ class AIEmptyResponseError(AIResponseError):
         self.input_tokens = max(0, int(input_tokens))
         self.output_tokens = max(0, int(output_tokens))
         self.total_tokens = max(0, int(total_tokens))
+        self.cached_input_tokens = max(0, int(cached_input_tokens))
 
 
 __all__ = [

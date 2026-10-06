@@ -152,27 +152,8 @@ def _fit_reference_without_breaking_budget(
     candidate = _insert_reference(replacement, reference, compaction)
     request_state = getattr(step, "request_state", None)
     captured = bool(getattr(request_state, "captured", False))
-    transient = [
-        message
-        for message in runtime._request_context_messages(session, step, envelope)
-        if message.name != "loom_communication_language"
-    ]
-    project_instructions = (
-        request_state.project_instructions
-        if captured
-        else runtime.instruction_loader.load(session.workspace_dir)
-    )
-    if project_instructions:
-        transient.append(
-            AIMessage(
-                role=MessageRole.USER,
-                name="loom_project_instructions",
-                content=project_instructions,
-            )
-        )
-    transient.append(
-        communication_language_message((), fallback=communication_language)
-    )
+    from .context_composer import stable_prefix, render_request
+    transient = stable_prefix(runtime, session, step)
     limits = (
         request_state.context_limits
         if captured and request_state.context_limits is not None
@@ -181,7 +162,7 @@ def _fit_reference_without_breaking_budget(
     tools = step.tool_router.definitions()
 
     def fits(items: tuple[Any, ...]) -> bool:
-        visible = [*transient, *items]
+        visible = render_request(runtime, session, transient, items, replacement=True)
         return (
             (
                 runtime.limits.max_messages <= 0

@@ -238,6 +238,7 @@ class StreamingLoomAppServerService(LoomAppServerService):
                                 "inputTokens": int(usage.get("input_tokens") or 0),
                                 "outputTokens": int(usage.get("output_tokens") or 0),
                                 "totalTokens": int(usage.get("total_tokens") or 0),
+                                "cachedInputTokens": int(usage.get("cached_input_tokens") or 0),
                             },
                         },
                     },
@@ -302,6 +303,67 @@ class StreamingLoomAppServerService(LoomAppServerService):
             )
 
     def _on_runtime_event(self, event: AgentEvent) -> None:
+        if (
+            event.kind is AgentEventKind.MODEL_RESPONSE_REJECTED
+            and str(event.data.get("reason") or "") == "superseded_by_steering"
+        ):
+            step_id = str(event.data.get("step_id") or "").strip()
+            assistant_item_id = _assistant_step_item_id(step_id) if step_id else ""
+            assistant_started = False
+            streamed_tools: list[dict[str, Any]] = []
+            with self._guard:
+                if step_id:
+                    assistant_key = (event.session_id, event.turn_id, step_id)
+                    assistant_started = assistant_key in self._streamed_assistant_steps
+                    self._streamed_assistant_steps.discard(assistant_key)
+                    self._stream_last_tool_index.pop(assistant_key, None)
+                    stale_tool_keys = [
+                        key
+                        for key in self._streamed_tool_calls
+                        if key[0] == event.session_id
+                        and key[1] == event.turn_id
+                        and key[2] == step_id
+                    ]
+                    for key in stale_tool_keys:
+                        streamed_tools.append(dict(self._streamed_tool_calls.pop(key)))
+
+            # `type: superseded` is a transient tombstone, not a durable transcript
+            # item. The renderer merges it over the provisional item, making that
+            # abandoned sample disappear immediately; thread/read never contains it.
+            if assistant_started and assistant_item_id:
+                self._notify(
+                    "item/completed",
+                    {
+                        "item": {
+                            "id": assistant_item_id,
+                            "threadId": event.session_id,
+                            "turnId": event.turn_id,
+                            "type": "superseded",
+                            "status": "superseded",
+                            "text": "",
+                            "updatedAt": event.created_at,
+                        }
+                    },
+                )
+            for state in streamed_tools:
+                call_id = str(state.get("call_id") or "").strip()
+                if not call_id or not state.get("started"):
+                    continue
+                self._notify(
+                    "item/completed",
+                    {
+                        "item": {
+                            "id": _tool_item_id(call_id),
+                            "threadId": event.session_id,
+                            "turnId": event.turn_id,
+                            "type": "superseded",
+                            "status": "superseded",
+                            "callId": call_id,
+                            "updatedAt": event.created_at,
+                        }
+                    },
+                )
+
         if event.kind is AgentEventKind.MODEL_REQUESTED and int(event.data.get("attempt") or 0) > 0:
             # A failed sampling attempt has no canonical response. Close its live
             # items before the new step starts so retries never leave phantom spinners.

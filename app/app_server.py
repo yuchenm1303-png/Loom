@@ -106,6 +106,7 @@ def _usage_record(usage: Any) -> dict[str, int]:
         "inputTokens": int(getattr(usage, "input_tokens", 0) or 0),
         "outputTokens": int(getattr(usage, "output_tokens", 0) or 0),
         "totalTokens": int(getattr(usage, "total_tokens", 0) or 0),
+        "cachedInputTokens": int(getattr(usage, "cached_input_tokens", 0) or 0),
     }
 
 
@@ -293,7 +294,9 @@ def _apply_event_to_item(item: dict[str, Any], event: AgentEvent) -> None:
             item["createdAt"] = submitted_at
     elif kind is AgentEventKind.MODEL_RESPONSE:
         item["status"] = "completed"
-        item["text"] = str(data.get("text") or "")
+        item["text"] = str(data.get("display_text", data.get("text")) or "")
+        item["rawText"] = str(data.get("text") or "")
+        item["displayRuntimeAuthored"] = bool(data.get("display_runtime_authored"))
         item["reasoning"] = str(data.get("reasoning_summary") or "")
         item["stepId"] = str(data.get("step_id") or "") or None
         item["phase"] = str(data.get("phase") or data.get("display_phase") or "commentary")
@@ -306,6 +309,7 @@ def _apply_event_to_item(item: dict[str, Any], event: AgentEvent) -> None:
                 "inputTokens": int(usage.get("input_tokens") or 0),
                 "outputTokens": int(usage.get("output_tokens") or 0),
                 "totalTokens": int(usage.get("total_tokens") or 0),
+                "cachedInputTokens": int(usage.get("cached_input_tokens") or 0),
             }
     elif kind is AgentEventKind.TOOL_REQUESTED:
         item["status"] = "started"
@@ -412,11 +416,11 @@ def _turn_records(session: Any, events: tuple[AgentEvent, ...]) -> list[dict[str
                 "finalStepId": None,
                 "finalItemId": None,
                 "items": [],
-                "usage": {"inputTokens": 0, "outputTokens": 0, "totalTokens": 0},
+                "usage": {"inputTokens": 0, "outputTokens": 0, "totalTokens": 0, "cachedInputTokens": 0},
             }
             turns[event.turn_id] = turn
             item_maps[event.turn_id] = OrderedDict()
-            usage_by_turn[event.turn_id] = {"inputTokens": 0, "outputTokens": 0, "totalTokens": 0}
+            usage_by_turn[event.turn_id] = {"inputTokens": 0, "outputTokens": 0, "totalTokens": 0, "cachedInputTokens": 0}
 
         if event.kind is AgentEventKind.TURN_STARTED:
             turn["startedAt"] = event.created_at
@@ -437,6 +441,7 @@ def _turn_records(session: Any, events: tuple[AgentEvent, ...]) -> list[dict[str
                 aggregate["inputTokens"] += int(usage.get("input_tokens") or 0)
                 aggregate["outputTokens"] += int(usage.get("output_tokens") or 0)
                 aggregate["totalTokens"] += int(usage.get("total_tokens") or 0)
+                aggregate["cachedInputTokens"] += int(usage.get("cached_input_tokens") or 0)
 
         identity = _event_item_identity(event)
         if identity is None:
@@ -495,7 +500,7 @@ def _turn_records(session: Any, events: tuple[AgentEvent, ...]) -> list[dict[str
                             item
                             for item in reversed(turn["items"])
                             if item.get("type") == "assistant_message"
-                            and str(item.get("text") or "") == final_text
+                            and str(item.get("rawText", item.get("text")) or "") == final_text
                         ),
                         None,
                     )
@@ -626,11 +631,8 @@ class LoomAppServerService:
             return session_id in self._active_sessions
 
     def _load(self, session_id: str):
-        session = self.runtime.get_session(str(session_id or "").strip())
-        if session.status is AgentStatus.RUNNING and not self._is_active(session.session_id):
-            self.runtime.recover_interrupted(session.session_id)
-            session = self.runtime.get_session(session.session_id)
-        return session
+        # Reads do not establish crash ownership. Recovery is explicit.
+        return self.runtime.get_session(str(session_id or "").strip())
 
     def _is_sub_agent_session(self, session_id: str) -> bool:
         """Return whether a durable session belongs to the internal agent graph.
@@ -892,6 +894,16 @@ class LoomAppServerService:
 
     def thread_resume(self, params: dict[str, Any]) -> dict[str, Any]:
         session_id = self._required_text(params, "threadId")
+        recover_turn_id = str(params.get("recoverTurnId") or "").strip()
+        if recover_turn_id:
+            session = self._load(session_id)
+            if session.current_turn_id != recover_turn_id:
+                raise ValueError("recoverTurnId does not match the unfinished turn")
+            if not self._is_active(session_id):
+                recover = getattr(self.runtime, "recover_turn_if_idle", None)
+                if not callable(recover):
+                    raise RuntimeError("runtime does not support safe-handoff turn recovery")
+                self._launch(session_id, lambda: recover(session_id, recover_turn_id))
         session = self._load(session_id)
         record = self._record(session, active=self._is_active(session_id))
         self._notify("thread/started", {"thread": record, "resumed": True})
@@ -942,7 +954,11 @@ class LoomAppServerService:
             "thread": thread,
             "turns": turns,
             "pendingApproval": pending_approval_record(session, events),
-            "finalText": session.final_text,
+            "finalText": next((str(event.data.get("display_text", event.data.get("text")) or "")
+                               for event in reversed(events)
+                               if event.kind is AgentEventKind.TURN_COMPLETED and event.turn_id == session.current_turn_id),
+                              session.final_text),
+            "rawFinalText": session.final_text,
             "error": session.error,
         }
         if has_more_turns is not None:
@@ -1073,7 +1089,7 @@ class LoomAppServerService:
                 "startedAt": None,
                 "completedAt": None,
                 "items": [],
-                "usage": {"inputTokens": 0, "outputTokens": 0, "totalTokens": 0},
+                "usage": {"inputTokens": 0, "outputTokens": 0, "totalTokens": 0, "cachedInputTokens": 0},
                 "attachments": [item.as_record() for item in staged],
             }
         }
@@ -1508,9 +1524,11 @@ class LoomAppServerService:
                 final_text = session.final_text
                 error = session.error
             except Exception:
-                usage = {"inputTokens": 0, "outputTokens": 0, "totalTokens": 0}
+                usage = {"inputTokens": 0, "outputTokens": 0, "totalTokens": 0, "cachedInputTokens": 0}
                 final_text = str(data.get("text") or "")
                 error = str(data.get("error") or data.get("reason") or "")
+            raw_final_text = final_text
+            final_text = str(data.get("display_text", final_text) or "")
             final_step_id = str(data.get("final_step_id") or "").strip()
             final_item_id = _assistant_step_item_id(final_step_id) if final_step_id else None
             self._notify(
@@ -1523,6 +1541,8 @@ class LoomAppServerService:
                         "status": terminal,
                         "completedAt": event.created_at,
                         "finalText": final_text,
+                        "rawFinalText": raw_final_text,
+                        "displayRuntimeAuthored": bool(data.get("display_runtime_authored")),
                         "finalStepId": final_step_id or None,
                         "finalItemId": final_item_id,
                         "error": error,
@@ -1636,6 +1656,7 @@ class LoomRpcController:
                     "list": True,
                     "read": True,
                     "fork": True,
+                    "safeHandoffRecover": True,
                 },
                 "projects": {
                     "list": True,

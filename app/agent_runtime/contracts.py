@@ -40,6 +40,9 @@ class AgentEventKind(str, Enum):
     TURN_STOP_REQUESTED = "turn_stop_requested"
     TURN_STOP_CHECKED = "turn_stop_checked"
     PLAN_UPDATED = "plan_updated"
+    CHECK_RECORDED = "check_recorded"
+    BROWSER_SESSION_OPENED = "browser_session_opened"
+    BROWSER_SESSION_RELEASED = "browser_session_released"
     TOOL_REQUESTED = "tool_requested"
     TOOL_APPROVAL_REQUIRED = "tool_approval_required"
     TOOL_APPROVED = "tool_approved"
@@ -173,6 +176,7 @@ class AgentSession:
     reasoning_kind: str = ""
     reasoning_value: str = ""
     messages: list[AIMessage] = field(default_factory=list)
+    request_context_frames: list[dict[str, Any]] = field(default_factory=list)
     pending_tool_calls: list[ToolCall] = field(default_factory=list)
     pending_step_id: str = ""
     pending_bindings: dict[str, str] = field(default_factory=dict)

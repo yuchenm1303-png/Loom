@@ -49,11 +49,13 @@ class ResolvedContextLimits:
     # provider-side ``max_tokens``: a reasoning model spends this budget on its
     # chain of thought and gets truncated mid-answer by a limit nobody chose.
     output_reserve_declared: bool = False
-    # False when no authoritative metadata declared this model's window, so every
-    # token limit above is a guess about somebody else's model. Codex leaves the
-    # window ``None`` in that case and lets the provider be the authority instead
-    # of budgeting against a number it invented.
+    # False when no authoritative metadata declared this model's window. The
+    # fallback is a structural safety envelope, not provider capacity. A separate
+    # explicitly configured working budget can still guide context rollover.
     window_known: bool = True
+    working_context_tokens: int | None = None
+    working_input_budget_tokens: int | None = None
+    working_context_source: str = "undeclared"
 
     def as_dict(self) -> dict[str, object]:
         return {
@@ -69,6 +71,9 @@ class ResolvedContextLimits:
             "source": self.source,
             "output_reserve_declared": self.output_reserve_declared,
             "window_known": self.window_known,
+            "working_context_tokens": self.working_context_tokens,
+            "working_input_budget_tokens": self.working_input_budget_tokens,
+            "working_context_source": self.working_context_source,
         }
 
 
@@ -101,13 +106,11 @@ def resolve_context_limits(rt: Any, session: Any) -> ResolvedContextLimits:
     separate hard usability cap. Re-running this function for every model step
     also means a profile/model change immediately changes the threshold.
 
-    Unknown/custom models use Codex's conservative 272k fallback and a 95%
-    effective window instead of silently behaving like 32k models. Explicit
-    environment overrides and authoritative model-profile metadata remain higher
-    priority. Loom historically constructed AgentRuntime with a hard-coded 32k
-    default; that legacy value is normalized only on the unknown-model fallback
-    path. A real 32k model remains representable through profile metadata or an
-    explicit LOOM_CONTEXT_WINDOW_TOKENS override.
+    Unknown/custom models retain an explicitly marked structural safety envelope
+    rather than a guessed provider capacity. Automatic model-window budgeting is
+    disabled for these models unless metadata declares the window. A working
+    budget is a separate opt-in policy and never declares provider capacity.
+    Environment overrides and authoritative profile metadata remain higher priority.
 
     Current Loom model-profile metadata has no field for Codex's optional
     ``body_after_prefix`` scope and no AutoCompactWindow prefill baseline. The
@@ -126,6 +129,7 @@ def resolve_context_limits(rt: Any, session: Any) -> ResolvedContextLimits:
 
     env_window = _positive_env("LOOM_CONTEXT_WINDOW_TOKENS")
     env_reserve = _positive_env("LOOM_OUTPUT_RESERVE_TOKENS")
+    env_working = _positive_env("LOOM_WORKING_CONTEXT_TOKENS")
 
     profile_window = getattr(profile_limits, "context_window_tokens", None)
     profile_reserve = getattr(profile_limits, "output_reserve_tokens", None)
@@ -185,6 +189,18 @@ def resolve_context_limits(rt: Any, session: Any) -> ResolvedContextLimits:
     input_budget = effective_window - output_reserve
     safety_tokens = max(0, min(2048, input_budget // 100))
 
+    profile_working = getattr(profile_limits, "working_context_tokens", None)
+    working_context = env_working if env_working is not None else profile_working
+    working_source = "runtime_env" if env_working is not None else "model_profile" if profile_working is not None else "undeclared"
+    working_input_budget = None
+    if working_context is not None:
+        working_context = int(working_context)
+        if working_context <= output_reserve:
+            raise ValueError("working context must exceed the output reserve")
+        if window_known:
+            working_context = min(working_context, effective_window)
+        working_input_budget = working_context - output_reserve
+
     configured_auto = getattr(profile_limits, "auto_compact_token_limit", None)
     if configured_auto is None:
         auto_compact = context_window * 9 // 10
@@ -227,6 +243,9 @@ def resolve_context_limits(rt: Any, session: Any) -> ResolvedContextLimits:
         source=source,
         output_reserve_declared=output_reserve_declared,
         window_known=window_known,
+        working_context_tokens=working_context,
+        working_input_budget_tokens=working_input_budget,
+        working_context_source=working_source,
     )
 
 

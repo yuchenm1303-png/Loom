@@ -113,19 +113,20 @@ class AgentRuntime:
         process_store: ProcessStore | None = None,
         diff_trackers: DiffTrackerRegistry | None = None,
         max_parallel_tools: int | None = None,
-        stop_hook=None,
     ) -> None:
         # Optional host-configured check, not a default second model invocation.
         # Turn completion records execution lifecycle, not proof of task success.
-        self.stop_hook = stop_hook
         self.platform = platform
         self._session_platforms: dict[str, AgentModelPlatform] = {}
         self._session_reasoning: dict[str, object | None] = {}
         self.store = store
         self.tools = tools or ToolRegistry()
+        self._request_context_providers = {}
         from .evidence_tools import durable_tool_result_tool, run_scratch_dir_tool
         from .task_plan import update_plan_tool
-        for runtime_tool in (durable_tool_result_tool(store), run_scratch_dir_tool(store), update_plan_tool(store)):
+        from .evidence import record_check_tool, read_check_ledger_tool
+        for runtime_tool in (durable_tool_result_tool(store), run_scratch_dir_tool(store), update_plan_tool(store),
+                             record_check_tool(store), read_check_ledger_tool(store)):
             if self.tools.get(runtime_tool.name) is None:
                 self.tools.register(runtime_tool)
         self.policy = policy or ToolPolicy()
@@ -156,6 +157,9 @@ class AgentRuntime:
         self._session_locks: dict[str, ExecutionLease] = {}
         self._session_locks_guard = threading.Lock()
         self._active_tokens: dict[str, CancellationToken] = {}
+        # Resource ownership outlives the point where terminal commit closes
+        # the steering inbox; finally releases it exactly once.
+        self._turn_lifecycle_tokens: dict[str, CancellationToken] = {}
         self._active_tokens_guard = threading.RLock()
         # Python adaptation of Codex's Arc<StepContext> ownership. This is
         # intentionally ephemeral: durable recovery owns persistence semantics,
@@ -217,6 +221,7 @@ class AgentRuntime:
         return getattr(self, "reasoning", None)
 
     def close(self) -> None:
+        getattr(self, "_request_ephemeral_frames", {}).clear()
         self._session_platforms.clear()
         self._session_reasoning.clear()
         with self._active_tokens_guard:
@@ -273,7 +278,7 @@ class AgentRuntime:
         )
         self.store.create(session)
         if emit_session_created:
-            self._record(
+            self._emit_event(
                 session,
                 AgentEventKind.SESSION_CREATED,
                 data={
@@ -322,7 +327,7 @@ class AgentRuntime:
             # was applied to them.
             self.process_store.terminate_session(session.session_id)
             session.permission_mode = resolved
-            self._record(
+            self._emit_event(
                 session,
                 AgentEventKind.PERMISSION_CHANGED,
                 data={"previous": previous.value, "current": resolved.value},
@@ -361,7 +366,7 @@ class AgentRuntime:
             self.diff_trackers.for_turn(session.session_id, turn_id)
             if not retrying_failed_input:
                 session.messages.append(AIMessage(role=MessageRole.USER, content=content))
-            self._record(
+            self._emit_event(
                 session,
                 AgentEventKind.TURN_STARTED,
                 data={
@@ -370,7 +375,7 @@ class AgentRuntime:
                 },
             )
             if not retrying_failed_input:
-                self._record(session, AgentEventKind.USER_MESSAGE, data={"text": text})
+                self._emit_event(session, AgentEventKind.USER_MESSAGE, data={"text": text})
             token = self._activate(session.session_id)
             try:
                 return self._drive(session, token)
@@ -419,7 +424,7 @@ class AgentRuntime:
             token = self._activate(session.session_id)
             try:
                 if approved:
-                    self._record(
+                    self._emit_event(
                         session,
                         AgentEventKind.TOOL_APPROVED,
                         data={"call_id": call.call_id, "tool": call.name, "step_id": step.step_id},
@@ -433,7 +438,7 @@ class AgentRuntime:
                     ):
                         return self._result(session)
                 else:
-                    self._record(
+                    self._emit_event(
                         session,
                         AgentEventKind.TOOL_DENIED,
                         data={
@@ -485,31 +490,49 @@ class AgentRuntime:
                 session.pending_step_id = ""
                 self._release_turn_steps(session)
                 session.error = "Agent process stopped before the active turn reached a durable terminal state."
-                self._record(session, AgentEventKind.TURN_INTERRUPTED, data={"error": session.error})
+                self._emit_event(session, AgentEventKind.TURN_INTERRUPTED, data={"error": session.error})
             return self._result(session)
 
     def _drive(self, session: AgentSession, token: CancellationToken) -> AgentRunResult:
         from .turn_runner import TurnRunner
         return TurnRunner(self).run(session, token)
 
-    def _prepare_model_request(self, session, step, token):
-        request_state = step.request_state
-        captured = request_state.captured
-        messages = [AIMessage(role=MessageRole.SYSTEM, content=self._model_system_prompt(session, step))]
-        instructions = (
-            request_state.project_instructions
-            if captured
-            else self.instruction_loader.load(session.workspace_dir)
-        )
-        if instructions:
-            messages.append(AIMessage(role=MessageRole.SYSTEM, name="loom_project_instructions", content=instructions))
-        extra: dict[str, object] = {}
-        if captured and request_state.context_limits is not None:
-            extra["context_limits"] = request_state.context_limits.as_dict()
-        state_messages, state_metadata = self._execution_context(session)
-        messages.extend(state_messages)
-        extra.update(state_metadata)
-        return [*messages, *session.messages], extra
+    def _request_stable_contracts(self):
+        return ()
+
+    def register_request_context_provider(self, name, provider):
+        """Register an owner contribution, never a request-builder wrapper."""
+        if not callable(provider):
+            raise TypeError("request context provider must be callable")
+        self._request_context_providers[str(name)] = provider
+
+    def _request_context_provider_messages(self, session, step):
+        return tuple(message for provider in self._request_context_providers.values()
+                     for message in provider(session, step))
+
+    def _collect_model_observations(self, session, step):
+        return [], {}
+
+    def _request_metadata(self, session, step):
+        return {}
+
+    def _prepare_model_request(self, session, step, token, *, sampling_context=()):
+        from .context_composer import capture_context, stable_prefix, render_request, request_metadata
+        from .context_budget import prepare_context, estimate_tokens
+        capture_context(self, session, step, sampling_context=sampling_context)
+        if callable(getattr(self, "_context_envelope", None)):
+            messages, extra = prepare_context(self, session, step, token)
+        else:
+            messages = render_request(self, session, stable_prefix(self, session, step), session.messages)
+            extra = {}
+        extra = dict(extra)
+        if step.request_state.context_limits is not None:
+            extra["context_limits"] = step.request_state.context_limits.as_dict()
+        extra.update(self._request_metadata(session, step))
+        extra.update(session.request_context_frames[-1].get("metadata", {}) if session.request_context_frames else {})
+        extra["estimated_input_tokens_after"] = estimate_tokens(messages, step.tool_router.definitions())
+        extra["request_layout"] = request_metadata(self, session, messages, step.tool_router.definitions())
+        return messages, extra
 
     def _execution_context(self, session):
         """Shared task state for both core and context-managed request builders."""
@@ -528,11 +551,6 @@ class AgentRuntime:
             progress = execution_progress_context(turn_events, turn_id=session.current_turn_id)
             if progress is not None:
                 messages.append(progress)
-        from .turn_continuation import continuation_context
-        continuation = (continuation_context(turn_events, session.current_turn_id)
-                        if self.stop_hook is not None else None)
-        if continuation is not None:
-            messages.append(continuation)
         return messages, guidance_metadata
 
     def steer(
@@ -683,7 +701,7 @@ class AgentRuntime:
 
             for call in pending_calls:
                 if call.call_id == approval_call_id:
-                    self._record(
+                    self._emit_event(
                         session,
                         AgentEventKind.TOOL_DENIED,
                         data={
@@ -734,7 +752,7 @@ class AgentRuntime:
             submitted_at = str(item.get("submitted_at") or "").strip()
             if submitted_at:
                 event_data["submitted_at"] = submitted_at
-            self._record(session, AgentEventKind.USER_MESSAGE, data=event_data)
+            self._emit_event(session, AgentEventKind.USER_MESSAGE, data=event_data)
             consumed = True
         if items:
             self.store.ack_steering(session.session_id, {item["id"] for item in items})
@@ -768,7 +786,7 @@ class AgentRuntime:
         session.status = AgentStatus.FAILED
         session.error = "pending tool binding changed; execution stopped"
         self._release_step_context(step)
-        self._record(session, AgentEventKind.TURN_FAILED, data={"error": session.error})
+        self._emit_event(session, AgentEventKind.TURN_FAILED, data={"error": session.error})
 
     def _prepared_supports_parallel(
         self,
@@ -870,7 +888,7 @@ class AgentRuntime:
 
             if prepared.decision is PermissionDecision.DENY:
                 session.pending_tool_calls.pop(0)
-                self._record(
+                self._emit_event(
                     session,
                     AgentEventKind.TOOL_DENIED,
                     data={
@@ -900,7 +918,7 @@ class AgentRuntime:
                     reason=prepared.reason,
                 )
                 session.status = AgentStatus.WAITING_APPROVAL
-                self._record(
+                self._emit_event(
                     session,
                     AgentEventKind.TOOL_APPROVAL_REQUIRED,
                     data={
@@ -1025,7 +1043,7 @@ class AgentRuntime:
                 "parallel_index": parallel_index,
                 "parallel_size": parallel_size,
             })
-        self._record(session, AgentEventKind.TOOL_STARTED, data=data)
+        self._emit_event(session, AgentEventKind.TOOL_STARTED, data=data)
 
     def _tool_context(
         self,
@@ -1087,7 +1105,7 @@ class AgentRuntime:
     def _record_diff_snapshot(self, session: AgentSession, snapshot) -> None:
         if snapshot is None:
             return
-        self._record(
+        self._emit_event(
             session,
             AgentEventKind.TURN_DIFF_UPDATED,
             data={
@@ -1115,7 +1133,7 @@ class AgentRuntime:
             prepared,
             token=token,
             step=step,
-            emit_event=lambda kind, data: self._record(session, kind, data=data),
+            emit_event=lambda kind, data: self._emit_event(session, kind, data=data),
             approval_granted=approval_granted,
         )
         self._record_diff_snapshot(session, diff_snapshot)
@@ -1180,7 +1198,7 @@ class AgentRuntime:
                     break
                 data = dict(data)
                 data.setdefault("parallel_batch_id", batch_id)
-                self._record(session, kind, data=data)
+                self._emit_event(session, kind, data=data)
 
         while pending:
             done, pending = wait(pending, timeout=0.05, return_when=FIRST_COMPLETED)
@@ -1398,7 +1416,7 @@ class AgentRuntime:
                 "parallel_index": parallel_index,
                 "parallel_size": parallel_size,
             })
-        self._record(
+        self._emit_event(
             session,
             AgentEventKind.TOOL_FAILED if failed else AgentEventKind.TOOL_COMPLETED,
             data=data,
@@ -1423,7 +1441,7 @@ class AgentRuntime:
         session.pending_tool_calls.clear()
         session.pending_step_id = ""
         self._release_turn_steps(session)
-        self._record(session, AgentEventKind.LIMIT_REACHED, data={"reason": reason})
+        self._emit_event(session, AgentEventKind.LIMIT_REACHED, data={"reason": reason})
         return self._result(session)
 
     def _cancel_if_requested(self, session: AgentSession, token: CancellationToken) -> bool:
@@ -1439,18 +1457,31 @@ class AgentRuntime:
         session.error = "cancelled by user"
         from .history import repair_tool_history
         session.messages = list(repair_tool_history(session.messages, max_tool_result_chars=self.limits.max_tool_result_chars).messages)
-        self._record(session, AgentEventKind.TURN_CANCELLED, data={})
+        self._emit_event(session, AgentEventKind.TURN_CANCELLED, data={})
         return True
 
-    def _record(
-        self,
-        session: AgentSession,
-        kind: AgentEventKind,
-        *,
-        data: dict[str, object],
-    ) -> AgentEvent:
+    def _project_event_payload(self, session, kind, data):
+        return dict(data)
+
+    def _on_model_requested(self, session, event):
+        pass
+
+    def _on_model_response(self, session, event):
+        pass
+
+    def _on_turn_finished(self, session, event):
+        pass
+
+    def _on_turn_activated(self, session_id, token):
+        pass
+
+    def _on_turn_deactivated(self, session_id, token):
+        pass
+
+    def _emit_event(self, session, kind, *, data):
+        """Commit an event and explicitly dispatch its runtime lifecycle."""
+        payload = self._project_event_payload(session, kind, data)
         created_at = utc_now()
-        payload = dict(data)
         # Keep diagnostics off the model/tool hot path. A single terminal
         # aggregation preserves the useful latency breakdown without rereading
         # a long events.jsonl before every action.
@@ -1471,6 +1502,28 @@ class AgentRuntime:
             )
             for key, value in timing.items():
                 payload.setdefault(key, value)
+        event = self._record(session, kind, data=payload)
+        if kind is AgentEventKind.MODEL_REQUESTED:
+            self._on_model_requested(session, event)
+        elif kind is AgentEventKind.MODEL_RESPONSE:
+            self._on_model_response(session, event)
+        elif kind in {
+            AgentEventKind.TURN_COMPLETED, AgentEventKind.TURN_FAILED,
+            AgentEventKind.TURN_CANCELLED, AgentEventKind.TURN_INTERRUPTED,
+            AgentEventKind.LIMIT_REACHED,
+        }:
+            self._on_turn_finished(session, event)
+        return event
+
+    def _record(
+        self,
+        session: AgentSession,
+        kind: AgentEventKind,
+        *,
+        data: dict[str, object],
+    ) -> AgentEvent:
+        created_at = utc_now()
+        payload = dict(data)
         json.dumps(payload, ensure_ascii=False)
         event = AgentEvent(
             event_id=str(uuid.uuid4()),
@@ -1512,12 +1565,24 @@ class AgentRuntime:
             if session_id in self._active_tokens:
                 raise RuntimeError("agent session already has an active turn")
             self._active_tokens[session_id] = token
+            self._turn_lifecycle_tokens[session_id] = token
+        try:
+            self._on_turn_activated(session_id, token)
+        except BaseException:
+            self._deactivate(session_id, token)
+            raise
         return token
 
     def _deactivate(self, session_id: str, token: CancellationToken) -> None:
+        removed = False
         with self._active_tokens_guard:
             if self._active_tokens.get(session_id) is token:
                 self._active_tokens.pop(session_id, None)
+            if self._turn_lifecycle_tokens.get(session_id) is token:
+                self._turn_lifecycle_tokens.pop(session_id, None)
+                removed = True
+        if removed:
+            self._on_turn_deactivated(session_id, token)
 
     def resume_steered_turn(self: Any, session_id: str, turn_id: str):
         """Continue an approval-superseded turn through the normal durable layers."""
@@ -1554,6 +1619,7 @@ def _add_usage(left: ModelUsage, right: ModelUsage) -> ModelUsage:
         input_tokens=left.input_tokens + right.input_tokens,
         output_tokens=left.output_tokens + right.output_tokens,
         total_tokens=left.total_tokens + right.total_tokens,
+        cached_input_tokens=left.cached_input_tokens + right.cached_input_tokens,
     )
 
 

@@ -4,8 +4,6 @@ import re
 from dataclasses import replace
 from typing import Any, Iterable
 
-from app.ai import AIMessage, MessageRole
-
 from .contracts import AgentSession
 from .stickers import (
     INLINE_STICKER_VISIBLE_MARKER_RE,
@@ -285,33 +283,6 @@ def ensure_visible_body_sticker(
 
 class BalancedStickerStreamingAgentRuntime(StreamingAgentRuntime):
     """Production runtime with dynamic, evenly distributed rendered stickers."""
-
-    def _prepare_model_request(self, session, step, token):
-        messages, extra = super()._prepare_model_request(session, step, token)
-        guard_prompt = (
-            "【Loom 表情均匀分布规则｜高优先级】\n"
-            "表情候选可以出现在 <think>...</think> Thought process，也可以出现在最终正文；两部分都是可渲染区域。\n"
-            "整体密度保持克制：比密集版少一些，优先留白，不要为了覆盖每一段而机械塞表情。\n"
-            "数量仍然跟随发送频率、回复长度和自然表达节点动态增长；短到中等回复通常只需要 1 个自然位置，明显长回复再逐步增加。\n"
-            "有多个候选时尽量均匀覆盖整条输出的前段、中段、后段，不要集中塞在开头、结尾或同一段。\n"
-            "最终正文优先保证：只要允许表情且正文形成完整自然表达节点，正文至少给 1 个自然候选。\n"
-            "Thought process 可以有表情，但默认频率下不要求每段思考都放；只有思考明显较长、位置很自然或发送频率较高时再提供候选。\n"
-            "标题、代码、表格、公式和未完句中间仍然不要放候选。"
-        )
-        insert_at = 0
-        while insert_at < len(messages) and messages[insert_at].role is MessageRole.SYSTEM:
-            insert_at += 1
-        messages.insert(
-            insert_at,
-            AIMessage(
-                role=MessageRole.SYSTEM,
-                name="loom_balanced_sticker_distribution",
-                content=guard_prompt,
-            ),
-        )
-        merged_extra = dict(extra)
-        merged_extra["sticker_coverage"] = "balanced_reasoning_and_answer_restrained_v3"
-        return messages, merged_extra
 
     def _finalize_sticker_model_text(
         self,

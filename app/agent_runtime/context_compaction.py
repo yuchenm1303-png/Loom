@@ -91,6 +91,10 @@ def is_real_user_message(message: AIMessage) -> bool:
         message.role is MessageRole.USER
         and str(getattr(message, "name", "") or "") not in {
             COMPACTION_MESSAGE_NAME, COMPACTION_REFERENCE_MESSAGE_NAME,
+            "loom_runtime_state", "loom_communication_language", "loom_project_instructions",
+            "loom_memory", "loom_active_skills", "loom_task_plan", "loom_execution_progress",
+            "loom_execution_guidance", "loom_tool_observation", "loom_tool_observation_text",
+            "loom_resource_resume", "loom_registered_project_instructions", "loom_terminal_recovery",
         }
     )
 
