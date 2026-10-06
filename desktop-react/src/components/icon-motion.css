@@ -1713,3 +1713,120 @@
   filter: none !important;
 }
 
+/* ==========================================================================
+   Header glyph polish v4
+   Keep the approved branching Agents glyph. Review becomes a flatter document
+   mark, and Preview becomes a clean renderer window with a nested viewport.
+   ========================================================================== */
+
+/* Review: flatter document geometry. The supporting line dims slightly while
+   the check writes, so the icon stays legible at 15–16 px. */
+.app-shell .header-review-check {
+  overflow: visible;
+}
+
+.app-shell .header-review-line {
+  opacity: .58;
+  transition:
+    opacity 220ms ease,
+    transform 280ms cubic-bezier(.2,.76,.22,1);
+  transform-box: fill-box;
+  transform-origin: left center;
+}
+
+.app-shell .thread-review-check-button:hover:not(:disabled) .header-review-line {
+  opacity: .34;
+  transform: scaleX(.9);
+}
+
+.app-shell .thread-review-check-button:hover:not(:disabled) .header-review-checkmark {
+  animation: loom-review-check-write 420ms cubic-bezier(.2,.72,.2,1) both;
+}
+
+.app-shell .thread-review-check-button.active .header-review-document {
+  filter: drop-shadow(0 0 1.6px color-mix(in srgb, currentColor 14%, transparent));
+}
+
+/* Preview: renderer window rather than an eye. The inner viewport lifts by a
+   fraction and gains contrast; the chrome dot quietly acknowledges hover. */
+.app-shell .header-preview-canvas {
+  overflow: visible;
+}
+
+.app-shell .header-preview-window,
+.app-shell .header-preview-chrome {
+  transition:
+    opacity 220ms ease,
+    filter 260ms ease;
+}
+
+.app-shell .header-preview-viewport {
+  transform-box: fill-box;
+  transform-origin: center;
+  transition:
+    transform 320ms cubic-bezier(.2,.78,.22,1),
+    opacity 220ms ease,
+    filter 280ms ease;
+  opacity: .72;
+}
+
+.app-shell .header-preview-dot {
+  opacity: .48;
+  transform-box: fill-box;
+  transform-origin: center;
+  transition:
+    transform 280ms cubic-bezier(.2,.78,.22,1),
+    opacity 220ms ease;
+}
+
+.app-shell .thread-artifact-button:hover:not(:disabled) .header-preview-viewport {
+  transform: translateY(-.55px) scale(1.035);
+  opacity: 1;
+  filter: drop-shadow(0 1px 1.5px color-mix(in srgb, currentColor 12%, transparent));
+}
+
+.app-shell .thread-artifact-button:hover:not(:disabled) .header-preview-dot {
+  transform: scale(1.32);
+  opacity: .82;
+}
+
+.app-shell .thread-artifact-button:hover:not(:disabled) .header-preview-window {
+  opacity: .86;
+}
+
+.app-shell .thread-artifact-button:hover:not(:disabled) .header-preview-chrome {
+  opacity: .62;
+}
+
+.app-shell .thread-artifact-button.active .header-preview-viewport {
+  opacity: 1;
+  transform: translateY(-.25px);
+}
+
+/* Keep motion optical rather than moving the whole text button. */
+.app-shell .polished-thread-header-actions :is(
+  .thread-agent-button,
+  .thread-review-check-button,
+  .thread-artifact-button
+):hover:not(:disabled) {
+  transform: none !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-shell .header-review-check *,
+  .app-shell .header-preview-canvas * {
+    animation: none !important;
+    transition-duration: .001ms !important;
+    transform: none !important;
+    filter: none !important;
+  }
+}
+
+:root[data-loom-reduced-motion="true"] .app-shell .header-review-check *,
+:root[data-loom-reduced-motion="true"] .app-shell .header-preview-canvas * {
+  animation: none !important;
+  transition-duration: .001ms !important;
+  transform: none !important;
+  filter: none !important;
+}
+
