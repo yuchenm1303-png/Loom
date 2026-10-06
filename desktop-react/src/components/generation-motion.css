@@ -106,7 +106,7 @@
    with a clip anchored at the lower-right corner. */
 .turn-block.is-active > .entry-user_message,
 .turn-process.is-live .entry-steering-user {
-  animation: loom-user-send-entry 190ms cubic-bezier(.2,.76,.18,1) both !important;
+  animation: loom-user-send-entry 460ms cubic-bezier(.2,.78,.22,1) both !important;
   transform-origin: right bottom;
 }
 
@@ -122,7 +122,7 @@
 .turn-process.is-live .entry-steering-user .user-message.has-attachments .user-message-copy-shell {
   position: relative;
   isolation: isolate;
-  animation: loom-user-bubble-unfold 235ms cubic-bezier(.18,.82,.18,1) both !important;
+  animation: loom-user-bubble-unfold 460ms cubic-bezier(.2,.78,.22,1) both !important;
 }
 
 /* A tiny accent edge blooms and disappears as the capsule settles. It is an
@@ -142,7 +142,7 @@
   box-shadow:
     inset -1px -1px 0 rgba(162,149,244,.14),
     0 0 14px rgba(108,92,220,.045);
-  animation: loom-user-bubble-edge 340ms ease-out both;
+  animation: loom-user-bubble-edge 540ms ease-out both;
 }
 
 .turn-block.is-active > .entry-user_message .user-message:not(.has-attachments) > *,
@@ -157,13 +157,13 @@
    delayed. That prevents the bubble from gaining height after it has landed. */
 .turn-block.is-active > .entry-user_message .user-message-meta,
 .turn-process.is-live .entry-steering-user .user-message-meta {
-  animation: loom-user-send-meta 175ms ease-out 88ms both;
+  animation: loom-user-send-meta 180ms ease-out 280ms both;
 }
 
 /* Media should follow the capsule instead of scaling with it. */
 .turn-block.is-active > .entry-user_message :is(.user-link-card,.user-rich-code-block,.user-message-image-preview,.user-message-attachment-card,.user-message-media-preview),
 .turn-process.is-live .entry-steering-user :is(.user-link-card,.user-rich-code-block,.user-message-image-preview,.user-message-attachment-card,.user-message-media-preview) {
-  animation: loom-user-send-media 220ms cubic-bezier(.2,.76,.18,1) 42ms both !important;
+  animation: loom-user-send-media 260ms cubic-bezier(.2,.76,.18,1) 140ms both !important;
 }
 
 /* Completion handoff --------------------------------------------------------
@@ -299,11 +299,15 @@ html[data-loom-theme="light"] .turn-process.is-live .entry-steering-user .user-m
 @keyframes loom-user-send-entry {
   0% {
     opacity: 0;
-    transform: translate3d(6px,5px,0);
+    transform: translate3d(-12px,32px,0);
   }
-  64% {
+  32% {
     opacity: 1;
-    transform: translate3d(-.6px,0,0);
+    transform: translate3d(-4px,9px,0);
+  }
+  72% {
+    opacity: 1;
+    transform: translate3d(0,-2px,0);
   }
   100% {
     opacity: 1;
@@ -313,28 +317,32 @@ html[data-loom-theme="light"] .turn-process.is-live .entry-steering-user .user-m
 
 @keyframes loom-user-bubble-unfold {
   0% {
-    opacity: .26;
-    clip-path: inset(16% 0 0 16% round 16px);
+    opacity: .35;
+    clip-path: inset(48% 0 0 24% round 32px);
   }
-  46% {
-    opacity: .9;
-    clip-path: inset(3% 0 0 4% round 16px);
+  38% {
+    opacity: 1;
+    clip-path: inset(10% 0 0 8% round 24px);
+  }
+  76% {
+    opacity: 1;
+    clip-path: inset(0 0 0 0 round 16px);
   }
   100% {
     opacity: 1;
-    clip-path: inset(0 0 0 0 round 16px);
+    clip-path: inset(0 0 0 0 round 0);
   }
 }
 
 @keyframes loom-user-bubble-edge {
   0%, 100% { opacity: 0; }
-  38% { opacity: .72; }
-  68% { opacity: .34; }
+  30% { opacity: .65; }
+  70% { opacity: .22; }
 }
 
 @keyframes loom-user-send-meta {
-  from { opacity: 0; }
-  to { opacity: .78; }
+  from { opacity: 0; translate: 0 3px; }
+  to { opacity: .78; translate: 0 0; }
 }
 
 @keyframes loom-user-send-media {
