@@ -603,12 +603,19 @@ html[data-loom-reduced-motion="true"] .thread-header [class*="context"][role="me
 }
 
 .thread-header-copy {
-  gap: 1px;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
   transform: none;
 }
 
 .thread-title-line {
+  min-width: 0;
   height: 20px;
+  display: flex;
+  align-items: center;
+  flex: 0 1 auto;
 }
 
 .thread-header.polished-thread-header .thread-title-line strong {
@@ -620,7 +627,9 @@ html[data-loom-reduced-motion="true"] .thread-header [class*="context"][role="me
 }
 
 .thread-header .workspace-path-button {
-  height: 17px;
+  flex: none;
+  max-width: min(220px, 22vw);
+  height: 20px;
   margin: 0;
   padding: 0;
   gap: 5px;
@@ -717,8 +726,16 @@ html[data-loom-theme="light"] .thread-header .workspace-path-button:not(:disable
     height: 27px;
   }
 
+  .thread-header-copy {
+    gap: 8px;
+  }
+
   .thread-header.polished-thread-header .thread-title-line strong {
     max-width: 42vw;
     font-size: 13.8px !important;
+  }
+
+  .thread-header .workspace-path-button {
+    max-width: 116px;
   }
 }
