@@ -437,13 +437,24 @@ function createProgram(gl: WebGLRenderingContext) {
       float distNorm = clamp(1.0 + d / radius, 0.0, 1.0);
       float effectivePinch = u_pinch * (radius / 100.0);
       float displacement = pow(distNorm, max(0.12, effectivePinch)) * u_strength * 40.0;
+
+      // When the lens is physically close to a viewport/capture boundary there is
+      // no real off-screen texture to refract. Fade the displacement there instead
+      // of CLAMP_TO_EDGE stretching one texture column into a blank-looking slab.
+      float textureEdgeDistance = min(
+        min(screenUv.x, 1.0 - screenUv.x),
+        min(screenUv.y, 1.0 - screenUv.y)
+      );
+      float edgeSafety = smoothstep(0.012, 0.075, textureEdgeDistance);
+      displacement *= edgeSafety;
+
       vec2 sampleUv = screenUv - normal * (displacement / u_resolution);
 
       vec2 centerUv = u_lensCenter / u_resolution;
       sampleUv = (sampleUv - centerUv) / max(u_zoom, 1.0) + centerUv;
       sampleUv = clamp(sampleUv, vec2(0.001), vec2(0.999));
 
-      vec2 chroma = normal * u_aberration * 0.02 * distNorm;
+      vec2 chroma = normal * u_aberration * 0.02 * distNorm * edgeSafety;
       vec3 color;
       color.r = texture2D(u_texture, clamp(sampleUv + chroma, 0.0, 1.0)).r;
       color.g = texture2D(u_texture, sampleUv).g;
@@ -580,6 +591,8 @@ export function PortalLiquidCursor() {
     let roiLeft = Number.NaN;
     let roiTop = Number.NaN;
     let roiLockedTarget: HTMLElement | null = null;
+    let snappedRoiWidth = FREE_ROI_SIZE;
+    let snappedRoiHeight = FREE_ROI_SIZE;
     let rasterDirty = true;
     let textureReady = false;
     let snapDirty = true;
@@ -716,7 +729,23 @@ export function PortalLiquidCursor() {
       snapDirty = false;
       const previousTarget = activeTarget;
       const target = findSnapTarget();
-      if (target !== previousTarget) rasterDirty = true;
+      if (target !== previousTarget) {
+        rasterDirty = true;
+        roiLockedTarget = null;
+        if (target) {
+          const rect = target.getBoundingClientRect();
+          const finalLensWidth = Math.min(Math.max(38, window.innerWidth - 20), Math.max(38, rect.width + SNAP_PADDING * 2));
+          const finalLensHeight = Math.min(Math.max(34, window.innerHeight - 20), Math.max(34, rect.height + SNAP_PADDING * 2));
+          snappedRoiWidth = Math.min(
+            MAX_ROI_SIZE,
+            Math.max(FREE_ROI_SIZE, Math.ceil((finalLensWidth + SNAP_ROI_PADDING * 2) / 16) * 16),
+          );
+          snappedRoiHeight = Math.min(
+            MAX_ROI_SIZE,
+            Math.max(FREE_ROI_SIZE, Math.ceil((finalLensHeight + SNAP_ROI_PADDING * 2) / 16) * 16),
+          );
+        }
+      }
       if (target) {
         const rect = target.getBoundingClientRect();
         x.target = rect.left + rect.width / 2;
@@ -735,12 +764,21 @@ export function PortalLiquidCursor() {
 
     const updateRoi = (lensX: number, lensY: number, lensWidth: number, lensHeight: number) => {
       const target = activeTarget?.isConnected ? activeTarget : null;
-      const desiredWidth = target
-        ? Math.min(MAX_ROI_SIZE, Math.max(FREE_ROI_SIZE, Math.ceil((lensWidth + SNAP_ROI_PADDING * 2) / 16) * 16))
-        : FREE_ROI_SIZE;
-      const desiredHeight = target
-        ? Math.min(MAX_ROI_SIZE, Math.max(FREE_ROI_SIZE, Math.ceil((lensHeight + SNAP_ROI_PADDING * 2) / 16) * 16))
-        : FREE_ROI_SIZE;
+      // Hold the snapped ROI at its final size for the entire morph and release.
+      // Resizing the backing canvas while width/height springs are moving invalidates
+      // the WebGL texture and was the source of the visible flashing.
+      const holdSnappedRoi =
+        Boolean(target) ||
+        snap.value > 0.025 ||
+        lensWidth > BASE_WIDTH + 4 ||
+        lensHeight > BASE_HEIGHT + 4;
+      const desiredWidth = holdSnappedRoi ? snappedRoiWidth : FREE_ROI_SIZE;
+      const desiredHeight = holdSnappedRoi ? snappedRoiHeight : FREE_ROI_SIZE;
+
+      if (!holdSnappedRoi) {
+        snappedRoiWidth = FREE_ROI_SIZE;
+        snappedRoiHeight = FREE_ROI_SIZE;
+      }
 
       const boundedWidth = Math.max(1, Math.min(window.innerWidth, desiredWidth));
       const boundedHeight = Math.max(1, Math.min(window.innerHeight, desiredHeight));
@@ -812,7 +850,8 @@ export function PortalLiquidCursor() {
     const uploadTexture = (roiLeft: number, roiTop: number, now: number) => {
       const moved = Math.abs(roiLeft - lastRoiLeft) >= 0.75 || Math.abs(roiTop - lastRoiTop) >= 0.75;
       if (!rasterDirty && !moved) return;
-      if (now - lastCapture < 32) return;
+      const minCaptureInterval = activeTarget ? 16 : 32;
+      if (now - lastCapture < minCaptureInterval) return;
       lastCapture = now;
       lastRoiLeft = roiLeft;
       lastRoiTop = roiTop;
