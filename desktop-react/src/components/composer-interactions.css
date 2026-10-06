@@ -1,0 +1,657 @@
+/* Composer interaction refinement -------------------------------------------
+   The composer should feel like a calm instrument panel, not a giant button.
+   Geometry stays fixed; depth, edge light, and semantic icon motion carry the
+   interaction. This file is loaded after the shared icon system on purpose. */
+
+.composer-refined {
+  --composer-accent: #695ad8;
+  --composer-ease: cubic-bezier(.18,.72,.22,1);
+  --composer-ease-soft: cubic-bezier(.22,.66,.26,1);
+  --composer-fast: 240ms;
+  --composer-motion: 380ms;
+  --composer-long: 520ms;
+}
+
+/* Ambient field ----------------------------------------------------------- */
+.composer-refined.composer-wrap::before {
+  bottom: 4px;
+  width: min(720px, 78%);
+  height: 72px;
+  background: radial-gradient(
+    ellipse at center,
+    color-mix(in srgb, var(--composer-accent) 10%, transparent),
+    transparent 72%
+  );
+  filter: blur(28px);
+  opacity: 0;
+  transition:
+    opacity 460ms ease,
+    transform 560ms var(--composer-ease);
+  transform: translateX(-50%) scale(.94);
+}
+
+.composer-refined.composer-wrap:focus-within::before,
+.composer-refined.composer-wrap:has(.composer.has-panel)::before {
+  opacity: .72;
+  transform: translateX(-50%) scale(1);
+}
+
+/* Shell ------------------------------------------------------------------- */
+.composer-refined .composer {
+  border-radius: 20px;
+  transform: none !important;
+  transition:
+    border-color 340ms ease,
+    background 420ms var(--composer-ease-soft),
+    box-shadow 460ms var(--composer-ease);
+}
+
+.composer-refined .composer:hover {
+  transform: none !important;
+}
+
+.composer-refined .composer::before {
+  opacity: .34;
+  transform: scale(.985);
+  transition:
+    opacity 420ms ease,
+    transform 560ms var(--composer-ease);
+}
+
+.composer-refined .composer:hover::before {
+  opacity: .50;
+  transform: scale(1);
+}
+
+.composer-refined .composer.is-focused,
+.composer-refined .composer:focus-within,
+.composer-refined .composer.has-panel {
+  transform: none !important;
+  border-color: color-mix(in srgb, var(--composer-accent) 36%, rgba(104,110,126,.64));
+  box-shadow:
+    0 18px 44px rgba(0,0,0,.24),
+    0 0 0 3px color-mix(in srgb, var(--composer-accent) 6%, transparent),
+    0 0 26px color-mix(in srgb, var(--composer-accent) 5%, transparent),
+    inset 0 1px rgba(255,255,255,.045);
+}
+
+.composer-refined .composer.is-focused::before,
+.composer-refined .composer:focus-within::before,
+.composer-refined .composer.has-panel::before {
+  opacity: .78;
+  transform: scale(1);
+}
+
+/* Hairline focus trace. It grows from the centre rather than flashing on. */
+.composer-refined .composer-glow {
+  left: 11%;
+  right: 11%;
+  height: 1px;
+  opacity: .10;
+  transform: scaleX(.42);
+  transform-origin: center;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    color-mix(in srgb, var(--composer-accent) 38%, transparent) 24%,
+    color-mix(in srgb, var(--composer-accent) 74%, white 26%) 50%,
+    color-mix(in srgb, var(--composer-accent) 38%, transparent) 76%,
+    transparent
+  );
+  box-shadow: 0 1px 8px color-mix(in srgb, var(--composer-accent) 8%, transparent);
+  transition:
+    opacity 360ms ease,
+    transform 560ms var(--composer-ease),
+    box-shadow 440ms ease;
+}
+
+.composer-refined .composer:hover .composer-glow {
+  opacity: .24;
+  transform: scaleX(.70);
+}
+
+.composer-refined .composer:is(.is-focused, .has-panel, :focus-within) .composer-glow {
+  opacity: .62;
+  transform: scaleX(1);
+  box-shadow: 0 1px 12px color-mix(in srgb, var(--composer-accent) 13%, transparent);
+}
+
+.composer-refined .composer.has-content .composer-glow {
+  opacity: .34;
+}
+
+/* Dragging files gets a clear but non-alarming acceptance state. */
+.composer-refined .composer.is-dragging {
+  border-color: color-mix(in srgb, var(--composer-accent) 58%, transparent);
+  background:
+    linear-gradient(180deg,
+      color-mix(in srgb, var(--composer-accent) 5%, rgba(24,26,32,.99)),
+      color-mix(in srgb, var(--composer-accent) 3%, rgba(18,20,25,.99)));
+  box-shadow:
+    0 18px 44px rgba(0,0,0,.24),
+    0 0 0 4px color-mix(in srgb, var(--composer-accent) 8%, transparent),
+    inset 0 0 0 1px color-mix(in srgb, var(--composer-accent) 9%, transparent);
+}
+
+.composer-refined .composer.is-dragging .composer-glow {
+  opacity: .88;
+  transform: scaleX(1);
+}
+
+/* Input ------------------------------------------------------------------- */
+.composer-refined .composer textarea {
+  caret-color: color-mix(in srgb, var(--composer-accent) 76%, white 24%);
+  transition:
+    color 280ms ease,
+    opacity 280ms ease;
+}
+
+.composer-refined .composer textarea::placeholder {
+  transition:
+    color 320ms ease,
+    opacity 320ms ease;
+}
+
+.composer-refined .composer.is-focused textarea::placeholder,
+.composer-refined .composer:focus-within textarea::placeholder {
+  opacity: .74;
+}
+
+.composer-refined .composer textarea::selection {
+  background: color-mix(in srgb, var(--composer-accent) 21%, transparent);
+}
+
+/* The decorative spark answers focus with a small twinkle, not a scale pop. */
+.composer-refined .composer-spark {
+  transform: translateY(2px) !important;
+  transition:
+    color 320ms ease,
+    opacity 320ms ease,
+    filter 380ms ease !important;
+}
+
+.composer-refined .composer:is(.is-focused, :focus-within) .composer-spark {
+  transform: translateY(2px) !important;
+  filter: drop-shadow(0 0 4px color-mix(in srgb, var(--composer-accent) 18%, transparent));
+}
+
+/* Toolbar ----------------------------------------------------------------- */
+.composer-refined .composer-toolbar {
+  position: relative;
+  isolation: isolate;
+}
+
+/* A very soft divider appears only while the composer is engaged. */
+.composer-refined .composer-toolbar::before {
+  content: "";
+  position: absolute;
+  top: -4px;
+  left: 8px;
+  right: 8px;
+  height: 1px;
+  pointer-events: none;
+  opacity: .12;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    color-mix(in srgb, currentColor 12%, transparent) 18%,
+    color-mix(in srgb, var(--composer-accent) 12%, transparent) 50%,
+    color-mix(in srgb, currentColor 12%, transparent) 82%,
+    transparent
+  );
+  transition:
+    opacity 380ms ease,
+    transform 520ms var(--composer-ease);
+  transform: scaleX(.82);
+}
+
+.composer-refined .composer:is(.is-focused, :focus-within, .has-panel) .composer-toolbar::before {
+  opacity: .42;
+  transform: scaleX(1);
+}
+
+/* Basic tool button. The surface fades in; the paperclip's own semantic motion
+   is owned by icon-motion.css. */
+.composer-refined .composer .composer-tool {
+  border-radius: 9px;
+  transform: none !important;
+  transition:
+    color 300ms ease,
+    border-color 320ms ease,
+    background 340ms var(--composer-ease-soft),
+    box-shadow 360ms ease !important;
+}
+
+.composer-refined .composer .composer-tool:hover:not(:disabled) {
+  transform: none !important;
+  border-color: rgba(139,124,246,.10);
+  background: color-mix(in srgb, var(--composer-accent) 4.5%, rgba(255,255,255,.025));
+  box-shadow:
+    inset 0 1px rgba(255,255,255,.025),
+    0 3px 10px rgba(0,0,0,.04);
+}
+
+.composer-refined .composer .composer-tool:active:not(:disabled) {
+  transform: none !important;
+  background: color-mix(in srgb, var(--composer-accent) 6%, rgba(255,255,255,.025));
+}
+
+/* Control pills ----------------------------------------------------------- */
+/* Remove the old fast glass sweep; open/hover state is conveyed through a
+   quieter surface change and the meaningful icon/chevron motion. */
+.composer-refined .composer .composer-chip {
+  transform: none !important;
+  transition:
+    color 300ms ease,
+    border-color 320ms ease,
+    background 340ms var(--composer-ease-soft),
+    box-shadow 380ms ease !important;
+}
+
+.composer-refined .composer .composer-chip::before {
+  display: none !important;
+}
+
+.composer-refined .composer .composer-chip:hover:not(:disabled),
+.composer-refined .composer .composer-chip.is-open {
+  transform: none !important;
+}
+
+.composer-refined .composer .composer-chip:active:not(:disabled) {
+  transform: none !important;
+}
+
+.composer-refined .composer .composer-chip > svg:not(.composer-chip-chevron) {
+  transform: none !important;
+  transition:
+    color 300ms ease,
+    opacity 280ms ease,
+    filter 360ms ease !important;
+}
+
+.composer-refined .composer .composer-chip:hover:not(:disabled) > svg:not(.composer-chip-chevron),
+.composer-refined .composer .composer-chip.is-open > svg:not(.composer-chip-chevron) {
+  transform: none !important;
+}
+
+.composer-refined .composer .composer-chip-chevron {
+  opacity: .52;
+  translate: 0 0 !important;
+  transition:
+    transform 460ms var(--composer-ease),
+    opacity 300ms ease,
+    color 300ms ease !important;
+}
+
+.composer-refined .composer .composer-chip:hover .composer-chip-chevron {
+  opacity: .84;
+  translate: 0 0 !important;
+  transform: translateY(.55px);
+}
+
+.composer-refined .composer .composer-chip.is-open .composer-chip-chevron {
+  opacity: 1;
+  translate: 0 0 !important;
+  transform: rotate(180deg);
+}
+
+/* Permission: the shield receives a soft trust glow; no rubber scaling. */
+.composer-refined .composer .permission-chip:hover:not(:disabled) > svg:not(.composer-chip-chevron),
+.composer-refined .composer .permission-chip.is-open > svg:not(.composer-chip-chevron) {
+  filter: drop-shadow(0 0 3px color-mix(in srgb, #5b9a7c 18%, transparent));
+}
+
+/* Model: the CPU gains a quiet internal-light impression. */
+.composer-refined .composer .model-chip:hover:not(:disabled) > svg:not(.composer-chip-chevron),
+.composer-refined .composer .model-chip.is-open > svg:not(.composer-chip-chevron) {
+  filter: drop-shadow(0 0 3px color-mix(in srgb, var(--composer-accent) 18%, transparent));
+}
+
+/* Sticker: the smile stays stable; only contrast rises. */
+.composer-refined .composer .sticker-chip:hover:not(:disabled) > svg:not(.composer-chip-chevron),
+.composer-refined .composer .sticker-chip.is-open > svg:not(.composer-chip-chevron) {
+  filter: drop-shadow(0 1px 2px rgba(0,0,0,.10));
+}
+
+/* Divider participates in focus, so the control strip feels connected. */
+.composer-refined .composer-divider {
+  transition:
+    background 360ms ease,
+    opacity 360ms ease;
+}
+
+.composer-refined .composer:is(.is-focused, :focus-within, .has-panel) .composer-divider {
+  background: color-mix(in srgb, var(--composer-accent) 12%, #2d313a);
+}
+
+/* Send -------------------------------------------------------------------- */
+.composer-refined .composer .send-button {
+  overflow: visible;
+  transform: none !important;
+  transition:
+    color 300ms ease,
+    border-color 340ms ease,
+    background 360ms var(--composer-ease-soft),
+    box-shadow 420ms var(--composer-ease),
+    opacity 300ms ease !important;
+}
+
+.composer-refined .composer .send-button::after {
+  inset: -6px;
+  border-radius: 15px;
+  opacity: 0;
+  transform: scale(.88);
+  background: radial-gradient(
+    circle,
+    color-mix(in srgb, var(--composer-accent) 15%, transparent),
+    transparent 70%
+  );
+  transition:
+    opacity 360ms ease,
+    transform 520ms var(--composer-ease) !important;
+}
+
+.composer-refined .composer .send-button.is-ready:hover::after {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.composer-refined .composer .send-button.is-ready:hover {
+  transform: none !important;
+}
+
+.composer-refined .composer .send-button.is-ready:active {
+  transform: none !important;
+  box-shadow:
+    0 3px 10px color-mix(in srgb, var(--composer-accent) 14%, transparent),
+    inset 0 1px rgba(255,255,255,.18);
+}
+
+.composer-refined .composer .send-button .lucide-arrow-up {
+  translate: 0 0;
+  transition:
+    translate 520ms var(--composer-ease),
+    opacity 280ms ease,
+    filter 340ms ease !important;
+}
+
+.composer-refined .composer .send-button.is-ready:hover .lucide-arrow-up {
+  translate: 0 -1.25px;
+  filter: drop-shadow(0 1px 2px rgba(0,0,0,.12));
+}
+
+.composer-refined .composer .send-button.is-ready:active .lucide-arrow-up {
+  translate: 0 -.25px;
+}
+
+/* Idle send remains readable but visually dormant. */
+.composer-refined .composer .send-button.is-idle:disabled {
+  opacity: 1;
+}
+
+/* Stop is intentionally distinct and does not inherit the purple halo. */
+.composer-refined .composer .send-button.stop::after {
+  background: radial-gradient(circle, rgba(217,54,80,.12), transparent 70%);
+}
+
+.composer-refined .composer .send-button.stop:hover:not(:disabled)::after {
+  opacity: 1;
+  transform: scale(1);
+}
+
+/* Popover connection ------------------------------------------------------- */
+/* When one of the bottom controls is open, keep the composer engaged so the
+   popover reads as an extension of the same surface. */
+.composer-refined .composer.has-panel {
+  box-shadow:
+    0 18px 44px rgba(0,0,0,.24),
+    0 0 0 3px color-mix(in srgb, var(--composer-accent) 5%, transparent),
+    0 0 24px color-mix(in srgb, var(--composer-accent) 4%, transparent),
+    inset 0 1px rgba(255,255,255,.045);
+}
+
+/* Light theme ------------------------------------------------------------- */
+html[data-loom-theme="light"] .composer-refined.composer-wrap::before {
+  background: radial-gradient(
+    ellipse at center,
+    rgba(105,90,216,.11),
+    transparent 72%
+  );
+}
+
+html[data-loom-theme="light"] .composer-refined .composer {
+  border-color: rgba(49,55,65,.14);
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.995), rgba(251,251,252,.99));
+  box-shadow:
+    0 12px 32px rgba(27,31,40,.065),
+    inset 0 1px rgba(255,255,255,.96);
+}
+
+html[data-loom-theme="light"] .composer-refined .composer:hover {
+  border-color: rgba(105,90,216,.20);
+  background:
+    linear-gradient(180deg, #fff, rgba(252,252,254,.995));
+  box-shadow:
+    0 15px 36px rgba(27,31,40,.075),
+    inset 0 1px rgba(255,255,255,.98);
+}
+
+html[data-loom-theme="light"] .composer-refined .composer.is-focused,
+html[data-loom-theme="light"] .composer-refined .composer:focus-within,
+html[data-loom-theme="light"] .composer-refined .composer.has-panel {
+  border-color: rgba(105,90,216,.34);
+  background:
+    linear-gradient(180deg, #fff, rgba(252,252,255,.998));
+  box-shadow:
+    0 16px 38px rgba(27,31,40,.075),
+    0 0 0 3px rgba(105,90,216,.055),
+    0 0 24px rgba(105,90,216,.045),
+    inset 0 1px rgba(255,255,255,.98);
+}
+
+html[data-loom-theme="light"] .composer-refined .composer::before {
+  background:
+    radial-gradient(520px 160px at 13% -16%, rgba(105,90,216,.065), transparent 60%),
+    radial-gradient(360px 130px at 100% 116%, rgba(83,116,205,.025), transparent 64%);
+}
+
+html[data-loom-theme="light"] .composer-refined .composer-glow {
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(105,90,216,.18) 24%,
+    rgba(126,111,225,.56) 50%,
+    rgba(105,90,216,.18) 76%,
+    transparent
+  );
+}
+
+html[data-loom-theme="light"] .composer-refined .composer textarea::placeholder {
+  color: #8d96a1;
+}
+
+html[data-loom-theme="light"] .composer-refined .composer.is-focused textarea::placeholder,
+html[data-loom-theme="light"] .composer-refined .composer:focus-within textarea::placeholder {
+  color: #9aa2ac;
+  opacity: .72;
+}
+
+html[data-loom-theme="light"] .composer-refined .composer-toolbar::before {
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(28,31,37,.055) 18%,
+    rgba(105,90,216,.10) 50%,
+    rgba(28,31,37,.055) 82%,
+    transparent
+  );
+}
+
+html[data-loom-theme="light"] .composer-refined .composer .composer-tool:hover:not(:disabled) {
+  color: #343b45;
+  border-color: rgba(105,90,216,.10);
+  background: rgba(105,90,216,.045);
+  box-shadow:
+    inset 0 1px rgba(255,255,255,.86),
+    0 3px 10px rgba(27,31,40,.025);
+}
+
+html[data-loom-theme="light"] .composer-refined .composer .composer-chip {
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+  color: #59636f;
+}
+
+html[data-loom-theme="light"] .composer-refined .composer .composer-chip:hover:not(:disabled) {
+  color: #333a44;
+  border-color: rgba(28,31,37,.065);
+  background: rgba(28,31,37,.030);
+  box-shadow:
+    inset 0 1px rgba(255,255,255,.92),
+    0 3px 10px rgba(27,31,40,.022);
+}
+
+html[data-loom-theme="light"] .composer-refined .composer .permission-chip:hover:not(:disabled) {
+  border-color: rgba(57,118,90,.10);
+  background: rgba(57,118,90,.035);
+}
+
+html[data-loom-theme="light"] .composer-refined .composer .permission-chip.is-open {
+  color: #39765a;
+  border-color: rgba(57,118,90,.14);
+  background: rgba(57,118,90,.055);
+  box-shadow: 0 0 0 3px rgba(57,118,90,.025);
+}
+
+html[data-loom-theme="light"] .composer-refined .composer .model-chip:hover:not(:disabled) {
+  border-color: rgba(105,90,216,.10);
+  background: rgba(105,90,216,.035);
+}
+
+html[data-loom-theme="light"] .composer-refined .composer .model-chip.is-open,
+html[data-loom-theme="light"] .composer-refined .composer .sticker-chip.is-open {
+  color: #584abd;
+  border-color: rgba(105,90,216,.14);
+  background: rgba(105,90,216,.055);
+  box-shadow: 0 0 0 3px rgba(105,90,216,.025);
+}
+
+html[data-loom-theme="light"] .composer-refined .composer-divider {
+  background: rgba(28,31,37,.10);
+  opacity: .68;
+}
+
+html[data-loom-theme="light"] .composer-refined .composer:is(.is-focused, :focus-within, .has-panel) .composer-divider {
+  background: rgba(105,90,216,.13);
+}
+
+/* Disabled send is intentionally a quiet neutral square. */
+html[data-loom-theme="light"] .composer-refined .composer .send-button.is-idle:disabled {
+  border-color: rgba(28,31,37,.035);
+  background: #f2f3f5;
+  color: #969da7;
+  box-shadow: inset 0 1px rgba(255,255,255,.90);
+}
+
+/* Ready send is an accent endpoint, but never blooms until the user points at it. */
+html[data-loom-theme="light"] .composer-refined .composer .send-button.is-ready {
+  border-color: rgba(105,90,216,.18);
+  background:
+    linear-gradient(180deg, #7264df, #6556d0);
+  color: #fff;
+  box-shadow:
+    0 5px 14px rgba(105,90,216,.16),
+    inset 0 1px rgba(255,255,255,.20);
+}
+
+html[data-loom-theme="light"] .composer-refined .composer .send-button.is-ready:hover {
+  border-color: rgba(105,90,216,.24);
+  background:
+    linear-gradient(180deg, #7567e3, #6252cb);
+  box-shadow:
+    0 7px 18px rgba(105,90,216,.21),
+    inset 0 1px rgba(255,255,255,.25);
+}
+
+/* Dark theme ready/idle distinction --------------------------------------- */
+html:not([data-loom-theme="light"]) .composer-refined .composer .send-button.is-idle:disabled {
+  border-color: rgba(255,255,255,.035);
+  background: #24272e;
+  color: #6f7784;
+  box-shadow: inset 0 1px rgba(255,255,255,.02);
+}
+
+html:not([data-loom-theme="light"]) .composer-refined .composer .send-button.is-ready {
+  border-color: rgba(176,164,255,.26);
+  background:
+    linear-gradient(180deg, #f8f7ff, #dedaf4);
+  color: #17141f;
+  box-shadow:
+    0 6px 16px rgba(0,0,0,.22),
+    0 0 0 1px rgba(139,124,246,.04),
+    inset 0 1px rgba(255,255,255,.82);
+}
+
+html:not([data-loom-theme="light"]) .composer-refined .composer .send-button.is-ready:hover {
+  background:
+    linear-gradient(180deg, #fff, #e8e4fb);
+  box-shadow:
+    0 8px 20px rgba(0,0,0,.28),
+    0 0 18px rgba(139,124,246,.08),
+    inset 0 1px rgba(255,255,255,.92);
+}
+
+/* Focus accessibility ----------------------------------------------------- */
+.composer-refined .composer :is(.composer-tool, .composer-chip, .send-button):focus-visible {
+  outline: none;
+  box-shadow:
+    0 0 0 3px color-mix(in srgb, var(--composer-accent) 10%, transparent),
+    inset 0 1px color-mix(in srgb, white 5%, transparent);
+}
+
+/* Reduced motion ---------------------------------------------------------- */
+@media (prefers-reduced-motion: reduce) {
+  .composer-refined.composer-wrap::before,
+  .composer-refined .composer,
+  .composer-refined .composer::before,
+  .composer-refined .composer-glow,
+  .composer-refined .composer-toolbar::before,
+  .composer-refined .composer textarea,
+  .composer-refined .composer textarea::placeholder,
+  .composer-refined .composer-spark,
+  .composer-refined .composer .composer-tool,
+  .composer-refined .composer .composer-chip,
+  .composer-refined .composer .composer-chip-chevron,
+  .composer-refined .composer .send-button,
+  .composer-refined .composer .send-button::after,
+  .composer-refined .composer .send-button .lucide-arrow-up {
+    animation: none !important;
+    transition: none !important;
+    transform: none !important;
+    translate: none !important;
+    filter: none !important;
+  }
+}
+
+html[data-loom-reduced-motion="true"] .composer-refined.composer-wrap::before,
+html[data-loom-reduced-motion="true"] .composer-refined .composer,
+html[data-loom-reduced-motion="true"] .composer-refined .composer::before,
+html[data-loom-reduced-motion="true"] .composer-refined .composer-glow,
+html[data-loom-reduced-motion="true"] .composer-refined .composer-toolbar::before,
+html[data-loom-reduced-motion="true"] .composer-refined .composer textarea,
+html[data-loom-reduced-motion="true"] .composer-refined .composer textarea::placeholder,
+html[data-loom-reduced-motion="true"] .composer-refined .composer-spark,
+html[data-loom-reduced-motion="true"] .composer-refined .composer .composer-tool,
+html[data-loom-reduced-motion="true"] .composer-refined .composer .composer-chip,
+html[data-loom-reduced-motion="true"] .composer-refined .composer .composer-chip-chevron,
+html[data-loom-reduced-motion="true"] .composer-refined .composer .send-button,
+html[data-loom-reduced-motion="true"] .composer-refined .composer .send-button::after,
+html[data-loom-reduced-motion="true"] .composer-refined .composer .send-button .lucide-arrow-up {
+  animation: none !important;
+  transition: none !important;
+  transform: none !important;
+  translate: none !important;
+  filter: none !important;
+}
