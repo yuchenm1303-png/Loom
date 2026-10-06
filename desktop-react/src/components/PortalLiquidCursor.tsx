@@ -7,6 +7,8 @@ const FREE_OFFSET_Y = -32;
 const SNAP_DISTANCE = 12;
 const RELEASE_DISTANCE = 17;
 const SNAP_PADDING = 10;
+const ROI_PADDING = 48;
+const ROI_DEADZONE = 35;
 const WALLPAPER_URL = "https://smirel.com/download/wallpaper-beach-blue-v1-original.png";
 const SNAP_SELECTOR = [
   "button:not(:disabled)",
@@ -418,18 +420,18 @@ function createProgram(gl: WebGLRenderingContext) {
       color.g = texture2D(u_texture, sampleUv).g;
       color.b = texture2D(u_texture, clamp(sampleUv - chroma, 0.0, 1.0)).b;
 
-      float edge = smoothstep(0.62, 1.0, distNorm);
-      vec3 reflected = texture2D(u_texture, clamp(sampleUv + normal * 0.012 * edge, 0.0, 1.0)).rgb;
-      color = mix(color, reflected, edge * 0.10);
-      color = mix(color, vec3(1.0), 0.035);
+      // Keep the surface almost optically clear.
+      float edge = smoothstep(0.76, 1.0, distNorm);
+      vec3 reflected = texture2D(u_texture, clamp(sampleUv + normal * 0.008 * edge, 0.0, 1.0)).rgb;
+      color = mix(color, reflected, edge * 0.035);
 
       vec2 lightDir = normalize(vec2(-0.62, -0.78));
-      float directional = pow(max(dot(normal, lightDir), 0.0), 5.0);
-      float rim = edge * (0.035 + directional * 0.22);
-      color += vec3(0.78, 0.92, 1.0) * rim;
+      float directional = pow(max(dot(normal, lightDir), 0.0), 7.0);
+      float rim = edge * (0.008 + directional * 0.070);
+      color += vec3(0.62, 0.78, 0.88) * rim;
 
       float mask = 1.0 - smoothstep(-1.15, 0.9, d);
-      float edgeGlass = smoothstep(0.78, 1.0, distNorm) * 0.08;
+      float edgeGlass = smoothstep(0.90, 1.0, distNorm) * 0.015;
       gl_FragColor = vec4((color + vec3(edgeGlass)) * mask, mask);
     }
   `);
@@ -534,6 +536,8 @@ export function PortalLiquidCursor() {
     let lastCapture = 0;
     let lastRoiLeft = Number.NaN;
     let lastRoiTop = Number.NaN;
+    let roiLeft = Number.NaN;
+    let roiTop = Number.NaN;
     let rasterDirty = true;
     let textureReady = false;
     let snapDirty = true;
@@ -569,7 +573,9 @@ export function PortalLiquidCursor() {
     const updateTargets = () => {
       if (!snapDirty && !activeTarget) return;
       snapDirty = false;
+      const previousTarget = activeTarget;
       const target = findSnapTarget();
+      if (target !== previousTarget) rasterDirty = true;
       if (target) {
         const rect = target.getBoundingClientRect();
         x.target = rect.left + rect.width / 2;
@@ -583,6 +589,41 @@ export function PortalLiquidCursor() {
         width.target = BASE_WIDTH;
         height.target = BASE_HEIGHT;
         snap.target = 0;
+      }
+    };
+
+    const updateRoi = (lensX: number, lensY: number, lensWidth: number, lensHeight: number) => {
+      const maxLeft = Math.max(0, window.innerWidth - ROI_SIZE);
+      const maxTop = Math.max(0, window.innerHeight - ROI_SIZE);
+      if (!Number.isFinite(roiLeft) || !Number.isFinite(roiTop)) {
+        roiLeft = Math.round(Math.max(0, Math.min(maxLeft, lensX - ROI_SIZE / 2)));
+        roiTop = Math.round(Math.max(0, Math.min(maxTop, lensY - ROI_SIZE / 2)));
+        rasterDirty = true;
+        return;
+      }
+
+      const halfW = lensWidth / 2;
+      const halfH = lensHeight / 2;
+      const marginX = Math.max(8, Math.min(ROI_PADDING, (ROI_SIZE - lensWidth) / 2 - 8));
+      const marginY = Math.max(8, Math.min(ROI_PADDING, (ROI_SIZE - lensHeight) / 2 - 8));
+      const minX = roiLeft + halfW + marginX;
+      const maxX = roiLeft + ROI_SIZE - halfW - marginX;
+      const minY = roiTop + halfH + marginY;
+      const maxY = roiTop + ROI_SIZE - halfH - marginY;
+
+      let nextLeft = roiLeft;
+      let nextTop = roiTop;
+      if (lensX < minX) nextLeft -= Math.max(ROI_DEADZONE, minX - lensX);
+      else if (lensX > maxX) nextLeft += Math.max(ROI_DEADZONE, lensX - maxX);
+      if (lensY < minY) nextTop -= Math.max(ROI_DEADZONE, minY - lensY);
+      else if (lensY > maxY) nextTop += Math.max(ROI_DEADZONE, lensY - maxY);
+
+      nextLeft = Math.round(Math.max(0, Math.min(maxLeft, nextLeft)));
+      nextTop = Math.round(Math.max(0, Math.min(maxTop, nextTop)));
+      if (nextLeft !== roiLeft || nextTop !== roiTop) {
+        roiLeft = nextLeft;
+        roiTop = nextTop;
+        rasterDirty = true;
       }
     };
 
@@ -627,8 +668,7 @@ export function PortalLiquidCursor() {
       stepSpring(height, dt, 280, 30);
       stepSpring(snap, dt, 240, 28);
 
-      const roiLeft = Math.max(0, Math.min(Math.max(0, window.innerWidth - ROI_SIZE), x.value - ROI_SIZE / 2));
-      const roiTop = Math.max(0, Math.min(Math.max(0, window.innerHeight - ROI_SIZE), y.value - ROI_SIZE / 2));
+      updateRoi(x.value, y.value, width.value, height.value);
       uploadTexture(roiLeft, roiTop, now);
 
       canvas.style.transform = `translate3d(${roiLeft}px, ${roiTop}px, 0)`;
@@ -642,7 +682,7 @@ export function PortalLiquidCursor() {
         const pinch = (7.7 + (7.0 - 7.7) * snap.value) * (1 - pressWeight) + 5.5 * pressWeight;
         const aberration = 0.12 + (0.18 - 0.12) * Math.max(snap.value, pressWeight);
         const zoom = (1 + (1.22 - 1) * snap.value) * (1 - pressWeight) + 1.1 * pressWeight;
-        const wobble = (0.25 + 0.12 * snap.value) * (1 - pressWeight) + 0.65 * pressWeight;
+        const wobble = (0.14 + 0.08 * snap.value) * (1 - pressWeight) + 0.50 * pressWeight;
 
         gl.viewport(0, 0, canvas.width, canvas.height);
         gl.clearColor(0, 0, 0, 0);
@@ -685,12 +725,11 @@ export function PortalLiquidCursor() {
       pointerX = event.clientX;
       pointerY = event.clientY;
       pointerInside = true;
-      rasterDirty = true;
       snapDirty = true;
       wake();
     };
-    const handlePointerDown = () => { pressed = true; rasterDirty = true; snapDirty = true; wake(); };
-    const handlePointerUp = () => { pressed = false; rasterDirty = true; snapDirty = true; wake(); };
+    const handlePointerDown = () => { pressed = true; snapDirty = true; wake(); };
+    const handlePointerUp = () => { pressed = false; snapDirty = true; wake(); };
     const handlePointerLeave = () => {
       pointerInside = false;
       pressed = false;
@@ -699,9 +738,15 @@ export function PortalLiquidCursor() {
       snapDirty = true;
       wake();
     };
-    const handlePointerEnter = () => { pointerInside = true; rasterDirty = true; snapDirty = true; wake(); };
+    const handlePointerEnter = () => { pointerInside = true; snapDirty = true; wake(); };
     const handleScroll = () => { rasterDirty = true; snapDirty = true; wake(); };
-    const handleResize = () => { rasterDirty = true; snapDirty = true; wake(); };
+    const handleResize = () => {
+      roiLeft = Number.NaN;
+      roiTop = Number.NaN;
+      rasterDirty = true;
+      snapDirty = true;
+      wake();
+    };
 
     const observer = new MutationObserver(() => { rasterDirty = true; snapDirty = true; wake(); });
     observer.observe(root, { childList: true, subtree: true, characterData: true });
