@@ -16,6 +16,7 @@ import {
   PinOff,
   Plus,
   Search,
+  SquarePen,
   Trash2,
   X,
 } from "lucide-react";
@@ -1003,10 +1004,7 @@ export function Sidebar({
             onClick={() => void onNew()}
             title={`${copy.newConversation} · Ctrl N`}
           >
-            <svg className="sidebar-action-icon sidebar-compose-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-              <path className="sidebar-compose-frame" d="M12 4H6.8A2.8 2.8 0 0 0 4 6.8v10.4A2.8 2.8 0 0 0 6.8 20h10.4a2.8 2.8 0 0 0 2.8-2.8V12" />
-              <path className="sidebar-compose-pencil" d="m14.1 5.9 4-4a1.55 1.55 0 0 1 2.2 2.2l-4 4-5.15 1.05L12.2 4Z" />
-            </svg>
+            <SquarePen className="sidebar-action-icon sidebar-compose-icon" size={20} strokeWidth={1.8} aria-hidden="true" />
             <span>{copy.newConversation}</span>
           </button>
         </div>
