@@ -47,6 +47,12 @@ function validProtocol(value: unknown): value is number {
   return Number.isInteger(value) && Number(value) >= 0 && Number(value) <= 1_000_000;
 }
 
+export function compareHostRuntimeBuilds(left: Pick<HostRuntimeManifest, "publishedAt">, right: Pick<HostRuntimeManifest, "publishedAt">): number | null {
+  const leftDate = Date.parse(left.publishedAt || "");
+  const rightDate = Date.parse(right.publishedAt || "");
+  return Number.isFinite(leftDate) && Number.isFinite(rightDate) ? Math.sign(leftDate - rightDate) : null;
+}
+
 export function hostRuntimeManagerRoot(): string {
   return path.join(hostDataPath, "host-runtime");
 }
@@ -111,13 +117,19 @@ export function currentHostRuntime(repoRoot?: string): HostRuntimeDescriptor {
   }
 
   const managed = managedHostRuntime();
-  if (managed) return managed;
-
   const embeddedRoot = embeddedHostRuntimeRoot(repoRoot);
   const embedded = readHostRuntimeManifest(embeddedRoot);
   if (embedded && runtimeRootLooksUsable(embeddedRoot)) {
+    // Desktop bundles and standalone Host releases use independent version
+    // numbering (desktop bundles historically say 1.0.0). Compare build dates
+    // across those channels rather than letting a cached Host shadow every
+    // subsequent desktop installation. Keep the entire runtime together.
+    if (managed) {
+      if ((compareHostRuntimeBuilds(embedded, managed) ?? 0) <= 0) return managed;
+    }
     return { ...embedded, root: embeddedRoot, source: app.isPackaged ? "embedded" : "development" };
   }
+  if (managed) return managed;
 
   return {
     schema: HOST_RUNTIME_SCHEMA,

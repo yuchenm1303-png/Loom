@@ -1,6 +1,17 @@
 from pathlib import Path
+import shutil
+import subprocess
+
+import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def test_runtime_selection_behavior() -> None:
+    node = shutil.which("node")
+    if not node:
+        pytest.skip("Node.js required for runtime selection regression")
+    subprocess.run([node, str(ROOT / "tests/host_runtime_selection.cjs")], cwd=ROOT, check=True)
 
 
 def test_host_runtime_has_its_own_release_channel() -> None:

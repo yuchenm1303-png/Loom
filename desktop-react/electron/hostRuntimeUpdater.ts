@@ -7,6 +7,7 @@ import path from "node:path";
 import { isHostProcess } from "./hostProcess.js";
 import {
   activateHostRuntime,
+  compareHostRuntimeBuilds,
   currentHostRuntime,
   hostRuntimeManagerRoot,
   hostRuntimeVersionsRoot,
@@ -338,7 +339,9 @@ export async function ensureHostRuntimeUpdate(requiredProtocol = 0): Promise<Hos
           error: undefined,
         });
       }
-      const needsVersion = compareVersions(channel.version, current.version) > 0;
+      const buildOrder = compareHostRuntimeBuilds(channel, current);
+      const needsVersion = current.source === "embedded" && buildOrder !== null
+        ? buildOrder > 0 : compareVersions(channel.version, current.version) > 0;
       const needsProtocol = current.protocol < requiredProtocol;
       if (!needsVersion && !needsProtocol) {
         return setState({
