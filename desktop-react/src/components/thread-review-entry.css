@@ -265,3 +265,150 @@ html[data-loom-theme="light"] .thread-agent-button.is-empty:hover {
   background: rgba(105,90,216,.045);
   border-color: rgba(105,90,216,.12);
 }
+
+/* Minimal premium header actions -------------------------------------------
+   Keep these three entries visually quiet at rest. Interaction is carried by
+   the icon itself and one restrained surface response, not permanent tinting. */
+.thread-review-button {
+  min-width: 64px;
+  height: 30px;
+  padding: 0 8px;
+  gap: 6px;
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+  color: #8d949e;
+  font-size: 10.8px;
+  font-weight: 620;
+}
+
+.thread-review-button > svg {
+  color: #747c88;
+}
+
+.thread-review-button:hover:not(:disabled) {
+  color: #d3d7de;
+  background: rgba(255,255,255,.035);
+  border-color: rgba(255,255,255,.045);
+}
+
+.thread-review-button:hover:not(:disabled) > svg {
+  color: #aeb5bf;
+}
+
+.thread-review-button.active {
+  color: #c6c2e8;
+  background: rgba(139,124,246,.05);
+  border-color: rgba(139,124,246,.09);
+}
+
+.thread-review-button.active > svg {
+  color: #aaa3df;
+}
+
+.thread-agent-button,
+.thread-artifact-button {
+  min-width: 68px;
+}
+
+.thread-agent-button.is-empty,
+.thread-agent-button.has-agents,
+.thread-artifact-button.has-artifacts {
+  color: #8d949e;
+  background: transparent;
+  border-color: transparent;
+}
+
+.thread-agent-button.is-empty > svg,
+.thread-agent-button.has-agents > svg,
+.thread-artifact-button > svg {
+  color: #747c88;
+  opacity: 1;
+}
+
+.thread-agent-button.is-empty:hover,
+.thread-agent-button.has-agents:hover,
+.thread-artifact-button:hover:not(:disabled) {
+  color: #d3d7de;
+  background: rgba(255,255,255,.035);
+  border-color: rgba(255,255,255,.045);
+}
+
+.thread-agent-button.is-empty:hover > svg,
+.thread-agent-button.has-agents:hover > svg,
+.thread-artifact-button:hover:not(:disabled) > svg {
+  color: #aeb5bf;
+}
+
+.thread-review-count,
+.thread-agent-count,
+.thread-artifact-count {
+  min-width: 0;
+  height: auto;
+  padding: 0;
+  margin-left: 1px;
+  border-radius: 0;
+  background: transparent;
+  color: #757d89;
+  font-size: 9.8px;
+  font-weight: 650;
+}
+
+.thread-artifact-button:disabled {
+  opacity: .46;
+}
+
+html[data-loom-theme="light"] .thread-review-button,
+html[data-loom-theme="light"] .thread-agent-button,
+html[data-loom-theme="light"] .thread-agent-button.is-empty,
+html[data-loom-theme="light"] .thread-artifact-button {
+  color: #68717c;
+  background: transparent;
+  border-color: transparent;
+}
+
+html[data-loom-theme="light"] .thread-review-button > svg,
+html[data-loom-theme="light"] .thread-agent-button > svg,
+html[data-loom-theme="light"] .thread-agent-button.is-empty > svg,
+html[data-loom-theme="light"] .thread-artifact-button > svg {
+  color: #687381;
+}
+
+html[data-loom-theme="light"] .thread-review-button:hover:not(:disabled),
+html[data-loom-theme="light"] .thread-agent-button:hover:not(:disabled),
+html[data-loom-theme="light"] .thread-agent-button.is-empty:hover,
+html[data-loom-theme="light"] .thread-artifact-button:hover:not(:disabled) {
+  color: #2f3640;
+  background: rgba(30,35,42,.045);
+  border-color: rgba(30,35,42,.055);
+}
+
+html[data-loom-theme="light"] .thread-review-button:hover:not(:disabled) > svg,
+html[data-loom-theme="light"] .thread-agent-button:hover:not(:disabled) > svg,
+html[data-loom-theme="light"] .thread-artifact-button:hover:not(:disabled) > svg {
+  color: #4d5866;
+}
+
+html[data-loom-theme="light"] .thread-review-button.active,
+html[data-loom-theme="light"] .thread-agent-button.active,
+html[data-loom-theme="light"] .thread-artifact-button.active {
+  color: #514a86;
+  background: rgba(105,90,216,.055);
+  border-color: rgba(105,90,216,.085);
+}
+
+html[data-loom-theme="light"] .thread-review-button.active > svg,
+html[data-loom-theme="light"] .thread-agent-button.active > svg,
+html[data-loom-theme="light"] .thread-artifact-button.active > svg {
+  color: #665cc0;
+}
+
+html[data-loom-theme="light"] :is(
+  .thread-review-count,
+  .thread-agent-count,
+  .thread-artifact-count
+) {
+  background: transparent;
+  color: #6f7884;
+}
+

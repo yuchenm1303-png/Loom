@@ -801,3 +801,263 @@ html[data-loom-theme="light"] .context-meter-progress-card.failed .context-meter
 html[data-loom-reduced-motion="true"] .context-meter-progress-segment.active i {
   animation: none !important;
 }
+
+
+/* Context meter micro-interaction -------------------------------------------
+   The meter behaves like a tiny instrument, not a generic progress bar:
+   the rail gains depth, the live edge answers hover/open, and one slow light
+   sweep follows the filled budget without changing layout. */
+.context-meter-chip {
+  --context-meter-color: var(--accent, #695ad8);
+  position: relative;
+  isolation: isolate;
+  overflow: visible;
+  transition:
+    color 280ms ease,
+    border-color 320ms ease,
+    background 340ms cubic-bezier(.18,.72,.22,1),
+    box-shadow 380ms ease !important;
+}
+
+.context-meter-chip.warm {
+  --context-meter-color: var(--warning, #936c2d);
+}
+
+.context-meter-chip.hot {
+  --context-meter-color: var(--danger, #b8505d);
+}
+
+.context-meter-chip::before {
+  content: "";
+  position: absolute;
+  inset: -4px -6px;
+  z-index: -1;
+  border-radius: 999px;
+  pointer-events: none;
+  opacity: 0;
+  transform: scale(.94);
+  background: radial-gradient(
+    72px 30px at 40% 50%,
+    color-mix(in srgb, var(--context-meter-color) 12%, transparent),
+    transparent 74%
+  );
+  transition:
+    opacity 320ms ease,
+    transform 460ms cubic-bezier(.18,.72,.22,1);
+}
+
+.context-meter-chip:hover::before,
+.context-meter-chip[aria-expanded="true"]::before {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.context-meter-chip:hover {
+  border-color: color-mix(in srgb, var(--context-meter-color) 24%, var(--border-soft, rgba(255,255,255,.08)));
+  background: color-mix(in srgb, var(--context-meter-color) 4%, var(--panel-soft, rgba(255,255,255,.03)));
+  box-shadow:
+    inset 0 1px color-mix(in srgb, white 4%, transparent),
+    0 0 0 1px color-mix(in srgb, var(--context-meter-color) 3%, transparent);
+}
+
+.context-meter-chip:active {
+  transform: none !important;
+}
+
+.context-meter-track {
+  --context-used-percent: 0%;
+  position: relative;
+  width: 48px;
+  height: 6px;
+  flex: 0 0 48px;
+  overflow: hidden;
+  border-radius: 999px;
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.045), rgba(255,255,255,.012)),
+    var(--panel-hover, rgba(255,255,255,.08));
+  box-shadow:
+    inset 0 1px 1px rgba(0,0,0,.14),
+    inset 0 0 0 1px rgba(255,255,255,.018);
+  transition:
+    background 320ms ease,
+    box-shadow 320ms ease;
+}
+
+.context-meter-track::before {
+  content: "";
+  position: absolute;
+  z-index: 3;
+  top: 0;
+  bottom: 0;
+  left: -42%;
+  width: 34%;
+  border-radius: inherit;
+  pointer-events: none;
+  opacity: 0;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255,255,255,.48),
+    color-mix(in srgb, var(--context-meter-color) 28%, white 72%),
+    transparent
+  );
+  mix-blend-mode: screen;
+}
+
+.context-meter-track::after {
+  content: "";
+  position: absolute;
+  z-index: 4;
+  top: 50%;
+  left: var(--context-used-percent);
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  pointer-events: none;
+  opacity: 0;
+  transform: translate(-50%, -50%) scale(.65);
+  background: color-mix(in srgb, var(--context-meter-color) 76%, white 24%);
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, white 36%, transparent),
+    0 0 5px color-mix(in srgb, var(--context-meter-color) 34%, transparent);
+  transition:
+    opacity 260ms ease,
+    transform 420ms cubic-bezier(.18,.72,.22,1);
+}
+
+.context-meter-chip:hover .context-meter-track::before {
+  animation: context-meter-hover-sweep 1050ms cubic-bezier(.2,.7,.24,1) both;
+}
+
+.context-meter-chip:hover .context-meter-track::after,
+.context-meter-chip[aria-expanded="true"] .context-meter-track::after {
+  opacity: .92;
+  transform: translate(-50%, -50%) scale(1);
+}
+
+.context-meter-chip[aria-expanded="true"] .context-meter-track {
+  box-shadow:
+    inset 0 1px 1px rgba(0,0,0,.14),
+    inset 0 0 0 1px color-mix(in srgb, var(--context-meter-color) 14%, transparent),
+    0 0 7px color-mix(in srgb, var(--context-meter-color) 8%, transparent);
+}
+
+.context-meter-fill {
+  position: relative;
+  z-index: 1;
+  transition:
+    width 620ms cubic-bezier(.18,.72,.22,1),
+    filter 340ms ease !important;
+}
+
+.context-meter-fill.conversation {
+  background:
+    linear-gradient(
+      90deg,
+      color-mix(in srgb, var(--context-meter-color) 92%, #5143bd 8%),
+      color-mix(in srgb, var(--context-meter-color) 78%, #a99fff 22%)
+    ) !important;
+}
+
+.context-meter-fill.toolSchemas {
+  background:
+    linear-gradient(
+      90deg,
+      color-mix(in srgb, var(--warning, #936c2d) 88%, #d3a14f 12%),
+      color-mix(in srgb, var(--warning, #936c2d) 72%, #f2c777 28%)
+    );
+  opacity: .92;
+}
+
+.context-meter-chip:hover .context-meter-fill {
+  filter: saturate(1.06) brightness(1.04);
+}
+
+.context-meter-value {
+  min-width: 28px;
+  color: inherit;
+  transition:
+    color 280ms ease,
+    translate 420ms cubic-bezier(.18,.72,.22,1),
+    opacity 280ms ease;
+}
+
+.context-meter-chip:hover .context-meter-value {
+  translate: 1px 0;
+}
+
+.context-meter-chip[aria-expanded="true"] .context-meter-value {
+  color: color-mix(in srgb, var(--context-meter-color) 64%, var(--text, #e8eaee));
+}
+
+@keyframes context-meter-hover-sweep {
+  0% {
+    transform: translateX(0);
+    opacity: 0;
+  }
+  18% {
+    opacity: .26;
+  }
+  52% {
+    opacity: .46;
+  }
+  100% {
+    transform: translateX(410%);
+    opacity: 0;
+  }
+}
+
+html[data-loom-theme="light"] .context-meter-track {
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.92), rgba(235,238,242,.78)),
+    #e5e8ed;
+  box-shadow:
+    inset 0 1px 1px rgba(52,58,68,.08),
+    inset 0 0 0 1px rgba(28,31,37,.045);
+}
+
+html[data-loom-theme="light"] .context-meter-chip:hover {
+  border-color: color-mix(in srgb, var(--context-meter-color) 18%, rgba(28,31,37,.09));
+  background: color-mix(in srgb, var(--context-meter-color) 3.5%, rgba(255,255,255,.72));
+  box-shadow:
+    inset 0 1px rgba(255,255,255,.94),
+    0 3px 10px rgba(28,31,37,.035);
+}
+
+html[data-loom-theme="light"] .context-meter-track::before {
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255,255,255,.72),
+    color-mix(in srgb, var(--context-meter-color) 20%, white 80%),
+    transparent
+  );
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .context-meter-chip::before,
+  .context-meter-track::before,
+  .context-meter-track::after,
+  .context-meter-fill,
+  .context-meter-value {
+    animation: none !important;
+    transition: none !important;
+  }
+
+  .context-meter-chip:hover .context-meter-value {
+    translate: none;
+  }
+}
+
+html[data-loom-reduced-motion="true"] .context-meter-chip::before,
+html[data-loom-reduced-motion="true"] .context-meter-track::before,
+html[data-loom-reduced-motion="true"] .context-meter-track::after,
+html[data-loom-reduced-motion="true"] .context-meter-fill,
+html[data-loom-reduced-motion="true"] .context-meter-value {
+  animation: none !important;
+  transition: none !important;
+}
+
+html[data-loom-reduced-motion="true"] .context-meter-chip:hover .context-meter-value {
+  translate: none;
+}

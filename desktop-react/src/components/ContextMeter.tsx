@@ -1,5 +1,5 @@
 import { Layers, Loader2, Wrench } from "lucide-react";
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 import { useI18n } from "../i18n";
 import { useMotionPresence } from "../motion/useMotionPresence";
 import type { ContextCompactionProgress, ContextReport } from "../types/loom";
@@ -130,7 +130,11 @@ export function ContextMeter({ report, compacting, progress, busy, onCompact }: 
             ))}
           </span>
         ) : (
-          <span className="context-meter-track" aria-hidden="true">
+          <span
+            className="context-meter-track"
+            aria-hidden="true"
+            style={{ "--context-used-percent": `${Math.min(100, Math.max(0, report.usedPercent))}%` } as CSSProperties}
+          >
             {segments.map((segment) => (
               <span
                 key={segment.key}

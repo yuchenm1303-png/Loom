@@ -71,38 +71,10 @@ async function copyText(value: string): Promise<void> {
 }
 
 
-function AgentOrbitIcon({ size = 16 }: { size?: number }) {
+function AgentBranchIcon({ size = 16 }: { size?: number }) {
   return (
     <svg
-      className="header-agent-orbit"
-      width={size}
-      height={size}
-      viewBox="0 0 20 20"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.45"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-      focusable="false"
-    >
-      <g className="header-agent-orbit-rings">
-        <ellipse cx="10" cy="10" rx="7.15" ry="3.35" transform="rotate(28 10 10)" />
-        <ellipse cx="10" cy="10" rx="7.15" ry="3.35" transform="rotate(-28 10 10)" />
-      </g>
-      <circle className="header-agent-orbit-core" cx="10" cy="10" r="2.05" />
-      <g className="header-agent-orbit-nodes" fill="currentColor" stroke="none">
-        <circle cx="15.65" cy="6.5" r="1.05" />
-        <circle cx="4.4" cy="13.55" r=".9" />
-      </g>
-    </svg>
-  );
-}
-
-function ReviewDiffIcon({ size = 16 }: { size?: number }) {
-  return (
-    <svg
-      className="header-review-diff"
+      className="header-agent-branch"
       width={size}
       height={size}
       viewBox="0 0 20 20"
@@ -114,21 +86,21 @@ function ReviewDiffIcon({ size = 16 }: { size?: number }) {
       aria-hidden="true"
       focusable="false"
     >
-      <path className="header-review-sheet" d="M5 2.75h6.2l3.8 3.8v10.7H5a2 2 0 0 1-2-2V4.75a2 2 0 0 1 2-2Z" />
-      <path className="header-review-fold" d="M11.2 3.05v3.7h3.55" />
-      <path className="header-review-minus" d="M6.7 9.15h4.1" />
-      <g className="header-review-plus">
-        <path d="M10.3 13.15h4" />
-        <path d="M12.3 11.15v4" />
+      <circle className="header-agent-parent" cx="5.25" cy="10" r="1.6" />
+      <path className="header-agent-link header-agent-link-top" d="M6.9 9.3 11.2 6.4" />
+      <path className="header-agent-link header-agent-link-bottom" d="m6.9 10.7 4.3 2.9" />
+      <g className="header-agent-children">
+        <circle cx="14.15" cy="5.9" r="1.55" />
+        <circle cx="14.15" cy="14.1" r="1.55" />
       </g>
     </svg>
   );
 }
 
-function PreviewStageIcon({ size = 16 }: { size?: number }) {
+function ReviewCheckIcon({ size = 16 }: { size?: number }) {
   return (
     <svg
-      className="header-preview-stage"
+      className="header-review-check"
       width={size}
       height={size}
       viewBox="0 0 20 20"
@@ -140,11 +112,31 @@ function PreviewStageIcon({ size = 16 }: { size?: number }) {
       aria-hidden="true"
       focusable="false"
     >
-      <rect className="header-preview-frame" x="2.75" y="3.25" width="14.5" height="13.5" rx="2.35" />
-      <path className="header-preview-bar" d="M3.25 6.7h13.5" />
-      <path className="header-preview-left" d="m8.3 9-2 1.75 2 1.75" />
-      <path className="header-preview-right" d="m11.7 9 2 1.75-2 1.75" />
-      <path className="header-preview-scan" d="M5.25 7.85h9.5" />
+      <path className="header-review-document" d="M5.2 2.8h6.1l3.5 3.5v10.9H5.2a2 2 0 0 1-2-2V4.8a2 2 0 0 1 2-2Z" />
+      <path className="header-review-corner" d="M11.3 3.05v3.5h3.3" />
+      <path className="header-review-checkmark" d="m6.7 11.2 1.8 1.8 4.2-4.2" />
+    </svg>
+  );
+}
+
+function PreviewEyeIcon({ size = 16 }: { size?: number }) {
+  return (
+    <svg
+      className="header-preview-eye"
+      width={size}
+      height={size}
+      viewBox="0 0 20 20"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <rect className="header-preview-window" x="2.75" y="3.3" width="14.5" height="13.4" rx="2.25" />
+      <path className="header-preview-eye-shape" d="M5.6 10s1.75-2.55 4.4-2.55S14.4 10 14.4 10s-1.75 2.55-4.4 2.55S5.6 10 5.6 10Z" />
+      <circle className="header-preview-pupil" cx="10" cy="10" r="1.15" />
     </svg>
   );
 }
@@ -316,20 +308,20 @@ export function ThreadHeader({
           aria-label={agentsTitle}
           aria-pressed={agentsOpen}
         >
-          <AgentOrbitIcon size={15.5} />
+          <AgentBranchIcon size={15.5} />
           <span className="thread-agent-label">{agentsLabel}</span>
           {agentCount > 0 ? <span className="thread-agent-count">{agentCount}</span> : null}
         </button>
 
         <button
           type="button"
-          className={`thread-review-button thread-review-diff-button ${reviewOpen ? "active" : ""}`}
+          className={`thread-review-button thread-review-check-button ${reviewOpen ? "active" : ""}`}
           onClick={onToggleReview}
           title={reviewTitle}
           aria-label={reviewTitle}
           aria-pressed={reviewOpen}
         >
-          <ReviewDiffIcon size={15.5} />
+          <ReviewCheckIcon size={15.5} />
           <span className="thread-review-label">{reviewLabel}</span>
           {reviewCount > 0 ? <span className="thread-review-count">{reviewCount}</span> : null}
         </button>
@@ -343,7 +335,7 @@ export function ThreadHeader({
           aria-pressed={artifactOpen}
           disabled={artifactCount <= 0}
         >
-          <PreviewStageIcon size={15.5} />
+          <PreviewEyeIcon size={15.5} />
           <span className="thread-artifact-label">{artifactLabel}</span>
           {artifactCount > 0 ? <span className="thread-artifact-count">{artifactCount}</span> : null}
         </button>
