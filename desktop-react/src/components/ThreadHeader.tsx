@@ -1,11 +1,7 @@
 import {
-  Activity,
   Archive,
-  Bot,
   Check,
   Copy,
-  FileCode2,
-  FileDiff,
   PanelRightClose,
   PanelRightOpen,
   Settings,
@@ -72,6 +68,107 @@ async function copyText(value: string): Promise<void> {
   textarea.select();
   document.execCommand("copy");
   textarea.remove();
+}
+
+
+function AgentOrbitIcon({ size = 16 }: { size?: number }) {
+  return (
+    <svg
+      className="header-agent-orbit"
+      width={size}
+      height={size}
+      viewBox="0 0 20 20"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.45"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <g className="header-agent-orbit-rings">
+        <ellipse cx="10" cy="10" rx="7.15" ry="3.35" transform="rotate(28 10 10)" />
+        <ellipse cx="10" cy="10" rx="7.15" ry="3.35" transform="rotate(-28 10 10)" />
+      </g>
+      <circle className="header-agent-orbit-core" cx="10" cy="10" r="2.05" />
+      <g className="header-agent-orbit-nodes" fill="currentColor" stroke="none">
+        <circle cx="15.65" cy="6.5" r="1.05" />
+        <circle cx="4.4" cy="13.55" r=".9" />
+      </g>
+    </svg>
+  );
+}
+
+function ReviewDiffIcon({ size = 16 }: { size?: number }) {
+  return (
+    <svg
+      className="header-review-diff"
+      width={size}
+      height={size}
+      viewBox="0 0 20 20"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <path className="header-review-sheet" d="M5 2.75h6.2l3.8 3.8v10.7H5a2 2 0 0 1-2-2V4.75a2 2 0 0 1 2-2Z" />
+      <path className="header-review-fold" d="M11.2 3.05v3.7h3.55" />
+      <path className="header-review-minus" d="M6.7 9.15h4.1" />
+      <g className="header-review-plus">
+        <path d="M10.3 13.15h4" />
+        <path d="M12.3 11.15v4" />
+      </g>
+    </svg>
+  );
+}
+
+function PreviewStageIcon({ size = 16 }: { size?: number }) {
+  return (
+    <svg
+      className="header-preview-stage"
+      width={size}
+      height={size}
+      viewBox="0 0 20 20"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <rect className="header-preview-frame" x="2.75" y="3.25" width="14.5" height="13.5" rx="2.35" />
+      <path className="header-preview-bar" d="M3.25 6.7h13.5" />
+      <path className="header-preview-left" d="m8.3 9-2 1.75 2 1.75" />
+      <path className="header-preview-right" d="m11.7 9 2 1.75-2 1.75" />
+      <path className="header-preview-scan" d="M5.25 7.85h9.5" />
+    </svg>
+  );
+}
+
+function ActivityTraceIcon({ size = 16 }: { size?: number }) {
+  const trace = "M2.25 10h3.2l1.8-5.6 3.25 11.15 2.2-7.2 1.55 3.05h3.5";
+  return (
+    <svg
+      className="header-activity-trace"
+      width={size}
+      height={size}
+      viewBox="0 0 20 20"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.55"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <path className="header-activity-base" d={trace} />
+      <path className="header-activity-runner" d={trace} />
+    </svg>
+  );
 }
 
 export function ThreadHeader({
@@ -219,20 +316,20 @@ export function ThreadHeader({
           aria-label={agentsTitle}
           aria-pressed={agentsOpen}
         >
-          <Bot size={14.5} strokeWidth={1.8} />
+          <AgentOrbitIcon size={15.5} />
           <span className="thread-agent-label">{agentsLabel}</span>
           {agentCount > 0 ? <span className="thread-agent-count">{agentCount}</span> : null}
         </button>
 
         <button
           type="button"
-          className={`thread-review-button ${reviewOpen ? "active" : ""}`}
+          className={`thread-review-button thread-review-diff-button ${reviewOpen ? "active" : ""}`}
           onClick={onToggleReview}
           title={reviewTitle}
           aria-label={reviewTitle}
           aria-pressed={reviewOpen}
         >
-          <FileDiff size={14.5} strokeWidth={1.8} />
+          <ReviewDiffIcon size={15.5} />
           <span className="thread-review-label">{reviewLabel}</span>
           {reviewCount > 0 ? <span className="thread-review-count">{reviewCount}</span> : null}
         </button>
@@ -246,7 +343,7 @@ export function ThreadHeader({
           aria-pressed={artifactOpen}
           disabled={artifactCount <= 0}
         >
-          <FileCode2 size={14.5} strokeWidth={1.8} />
+          <PreviewStageIcon size={15.5} />
           <span className="thread-artifact-label">{artifactLabel}</span>
           {artifactCount > 0 ? <span className="thread-artifact-count">{artifactCount}</span> : null}
         </button>
@@ -260,7 +357,7 @@ export function ThreadHeader({
           title={profileTitle}
           aria-label={profileTitle}
         >
-          <Activity size={16} strokeWidth={1.75} />
+          <ActivityTraceIcon size={17} />
         </button>
 
         <button
@@ -284,7 +381,7 @@ export function ThreadHeader({
 
         <button
           type="button"
-          className="thread-header-icon-button"
+          className="thread-header-icon-button thread-settings-button"
           onClick={onOpenSettings}
           title={settingsLabel}
           aria-label={settingsLabel}
@@ -294,7 +391,7 @@ export function ThreadHeader({
 
         <button
           type="button"
-          className={`thread-header-icon-button panel-toggle-button ${inspectorOpen ? "active" : ""}`}
+          className={`thread-header-icon-button panel-toggle-button thread-inspector-button ${inspectorOpen ? "active" : ""}`}
           onClick={onToggleInspector}
           title={inspectorLabel}
           aria-label={inspectorLabel}

@@ -1131,3 +1131,420 @@
   filter: none !important;
 }
 
+/* ==========================================================================
+   Header motion redesign v2
+   Visible, semantic motion for the controls shown in the conversation header.
+   The icon itself performs the action; the button chrome stays composed.
+   ========================================================================== */
+
+/* Shared response ---------------------------------------------------------- */
+.app-shell .polished-thread-header-actions :is(
+  .thread-review-button,
+  .thread-header-icon-button,
+  .context-meter-chip
+) {
+  transition:
+    color 220ms ease,
+    background-color 240ms ease,
+    border-color 240ms ease,
+    box-shadow 280ms ease,
+    transform 300ms cubic-bezier(.18,.76,.22,1) !important;
+}
+
+.app-shell .polished-thread-header-actions :is(
+  .thread-review-button,
+  .thread-header-icon-button,
+  .context-meter-chip
+):hover:not(:disabled) {
+  transform: translateY(-1px);
+}
+
+/* Ready / running state ---------------------------------------------------- */
+.app-shell .thread-status-chip {
+  position: relative;
+  overflow: visible;
+}
+
+.app-shell .thread-status-orb {
+  position: relative;
+  isolation: isolate;
+}
+
+.app-shell .thread-status-orb::after {
+  content: "";
+  position: absolute;
+  inset: -5px;
+  z-index: -1;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  opacity: 0;
+  scale: .55;
+  pointer-events: none;
+}
+
+.app-shell .thread-status-chip.ready .thread-status-orb::after {
+  animation: loom-header-ready-sonar 4.8s cubic-bezier(.2,.72,.2,1) infinite;
+}
+
+.app-shell .thread-status-chip.working .thread-status-orb::after,
+.app-shell .thread-status-chip.connecting .thread-status-orb::after {
+  animation: loom-header-live-sonar 1.75s cubic-bezier(.2,.72,.2,1) infinite;
+}
+
+@keyframes loom-header-ready-sonar {
+  0%, 72%, 100% { opacity: 0; scale: .55; }
+  78% { opacity: .28; scale: .72; }
+  92% { opacity: 0; scale: 1.55; }
+}
+
+@keyframes loom-header-live-sonar {
+  0% { opacity: .3; scale: .62; }
+  75%, 100% { opacity: 0; scale: 1.65; }
+}
+
+/* Context budget: energy sweeps across the meter, rather than merely nudging
+   the whole chip. */
+.app-shell .context-meter-track::after {
+  content: "";
+  position: absolute;
+  top: -1px;
+  bottom: -1px;
+  left: -38%;
+  width: 34%;
+  border-radius: inherit;
+  pointer-events: none;
+  opacity: 0;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255,255,255,.08) 22%,
+    rgba(255,255,255,.76) 52%,
+    rgba(255,255,255,.10) 78%,
+    transparent 100%
+  );
+  transform: skewX(-16deg);
+}
+
+.app-shell .context-meter-chip:hover .context-meter-track::after {
+  animation: loom-context-energy-pass 820ms cubic-bezier(.2,.72,.2,1) both;
+}
+
+.app-shell .context-meter-chip:hover .context-meter-fill {
+  filter: brightness(1.15) saturate(1.08);
+}
+
+.app-shell .context-meter-chip:hover .context-meter-value {
+  color: color-mix(in srgb, currentColor 86%, white 14%);
+}
+
+@keyframes loom-context-energy-pass {
+  0% { translate: 0 0; opacity: 0; }
+  18% { opacity: .72; }
+  100% { translate: 245% 0; opacity: 0; }
+}
+
+/* Sub-agent: custom orbital orchestration mark ----------------------------- */
+.app-shell .header-agent-orbit {
+  overflow: visible;
+}
+
+.app-shell .header-agent-orbit-rings,
+.app-shell .header-agent-orbit-nodes {
+  transform-box: view-box;
+  transform-origin: center;
+  transition:
+    transform 480ms cubic-bezier(.16,.82,.22,1),
+    opacity 260ms ease;
+}
+
+.app-shell .header-agent-orbit-core {
+  fill: currentColor;
+  fill-opacity: .12;
+  transform-box: fill-box;
+  transform-origin: center;
+  transition:
+    transform 380ms cubic-bezier(.18,.82,.2,1),
+    fill-opacity 260ms ease,
+    filter 300ms ease;
+}
+
+.app-shell .thread-agent-button:hover:not(:disabled) .header-agent-orbit-rings {
+  transform: rotate(26deg) scale(1.035);
+}
+
+.app-shell .thread-agent-button:hover:not(:disabled) .header-agent-orbit-nodes {
+  transform: rotate(-58deg);
+}
+
+.app-shell .thread-agent-button:hover:not(:disabled) .header-agent-orbit-core {
+  transform: scale(1.28);
+  fill-opacity: .78;
+  filter: drop-shadow(0 0 2.8px color-mix(in srgb, currentColor 36%, transparent));
+}
+
+.app-shell .thread-agent-button.active .header-agent-orbit-rings {
+  transform: rotate(14deg);
+}
+
+.app-shell .thread-agent-button.active .header-agent-orbit-core {
+  fill-opacity: .58;
+}
+
+/* Review: split additions/deletions away from the document center. */
+.app-shell .header-review-diff :is(.header-review-minus, .header-review-plus) {
+  transform-box: fill-box;
+  transform-origin: center;
+  transition:
+    transform 360ms cubic-bezier(.16,.82,.22,1),
+    opacity 260ms ease;
+}
+
+.app-shell .header-review-fold {
+  transition:
+    opacity 260ms ease,
+    filter 300ms ease;
+}
+
+.app-shell .thread-review-diff-button:hover:not(:disabled) .header-review-minus {
+  transform: translateX(-1.45px);
+}
+
+.app-shell .thread-review-diff-button:hover:not(:disabled) .header-review-plus {
+  transform: translateX(1.45px);
+}
+
+.app-shell .thread-review-diff-button:hover:not(:disabled) .header-review-fold {
+  opacity: .72;
+  filter: drop-shadow(0 0 2px color-mix(in srgb, currentColor 22%, transparent));
+}
+
+.app-shell .thread-review-diff-button.active .header-review-minus {
+  transform: translateX(-.72px);
+}
+
+.app-shell .thread-review-diff-button.active .header-review-plus {
+  transform: translateX(.72px);
+}
+
+/* Preview: brackets open while a scan line passes through the preview frame. */
+.app-shell .header-preview-stage {
+  overflow: visible;
+}
+
+.app-shell .header-preview-left,
+.app-shell .header-preview-right {
+  transform-box: fill-box;
+  transform-origin: center;
+  transition: transform 360ms cubic-bezier(.16,.82,.22,1);
+}
+
+.app-shell .header-preview-scan {
+  opacity: 0;
+  stroke-width: 1.2;
+}
+
+.app-shell .thread-artifact-button:hover:not(:disabled) .header-preview-left {
+  transform: translateX(-1.25px);
+}
+
+.app-shell .thread-artifact-button:hover:not(:disabled) .header-preview-right {
+  transform: translateX(1.25px);
+}
+
+.app-shell .thread-artifact-button:hover:not(:disabled) .header-preview-scan {
+  animation: loom-preview-scan 720ms cubic-bezier(.24,.68,.2,1) both;
+}
+
+.app-shell .thread-artifact-button.active .header-preview-left {
+  transform: translateX(-.65px);
+}
+
+.app-shell .thread-artifact-button.active .header-preview-right {
+  transform: translateX(.65px);
+}
+
+@keyframes loom-preview-scan {
+  0% { opacity: 0; transform: translateY(-.8px) scaleX(.48); }
+  22% { opacity: .76; }
+  72% { opacity: .5; }
+  100% { opacity: 0; transform: translateY(5.4px) scaleX(1); }
+}
+
+/* Activity: a bright pulse actually travels along the waveform. */
+.app-shell .header-activity-trace {
+  overflow: visible;
+}
+
+.app-shell .header-activity-base {
+  opacity: .78;
+  transition: opacity 260ms ease;
+}
+
+.app-shell .header-activity-runner {
+  opacity: 0;
+  stroke-width: 2.05;
+  stroke-dasharray: 4 26;
+  stroke-dashoffset: 22;
+  filter: drop-shadow(0 0 2px color-mix(in srgb, currentColor 38%, transparent));
+}
+
+.app-shell .thread-profile-button:hover:not(:disabled) .header-activity-base {
+  opacity: .48;
+}
+
+.app-shell .thread-profile-button:hover:not(:disabled) .header-activity-runner {
+  animation: loom-activity-trace-pass 840ms cubic-bezier(.22,.64,.2,1) both;
+}
+
+@keyframes loom-activity-trace-pass {
+  0% { opacity: 0; stroke-dashoffset: 22; }
+  16% { opacity: .95; }
+  84% { opacity: .95; }
+  100% { opacity: 0; stroke-dashoffset: -25; }
+}
+
+/* Account: a single orbiting ring acknowledges the avatar; the picture itself
+   never bounces or zooms. */
+.app-shell .thread-account-button::before {
+  content: "";
+  position: absolute;
+  inset: 2px;
+  border: 1.2px solid transparent;
+  border-top-color: color-mix(in srgb, currentColor 62%, transparent);
+  border-right-color: color-mix(in srgb, currentColor 28%, transparent);
+  border-radius: 999px;
+  opacity: 0;
+  scale: .86;
+  rotate: -54deg;
+  pointer-events: none;
+}
+
+.app-shell .thread-account-button:hover:not(:disabled)::before {
+  animation: loom-account-ring 620ms cubic-bezier(.16,.8,.2,1) both;
+}
+
+.app-shell .thread-account-button:hover:not(:disabled) .thread-account-avatar-image {
+  filter:
+    brightness(1.08)
+    saturate(1.05)
+    drop-shadow(0 1px 2px rgba(22,25,34,.18));
+}
+
+.app-shell .thread-account-button:hover:not(:disabled) .thread-account-dot {
+  transform: scale(1.34);
+  box-shadow:
+    0 0 0 3px color-mix(in srgb, currentColor 10%, transparent),
+    0 0 7px color-mix(in srgb, currentColor 28%, transparent);
+}
+
+@keyframes loom-account-ring {
+  0% { opacity: 0; scale: .82; rotate: -54deg; }
+  24% { opacity: .8; }
+  100% { opacity: 0; scale: 1.05; rotate: 176deg; }
+}
+
+/* Settings: a short mechanical engagement, with the hub compressing while the
+   outer gear advances. */
+.app-shell .thread-settings-button .lucide-settings {
+  transition:
+    rotate 420ms cubic-bezier(.18,.76,.2,1),
+    filter 300ms ease !important;
+}
+
+.app-shell .thread-settings-button .lucide-settings circle {
+  transform-box: fill-box;
+  transform-origin: center;
+  transition: transform 360ms cubic-bezier(.18,.76,.2,1);
+}
+
+.app-shell .thread-settings-button:hover:not(:disabled) .lucide-settings {
+  rotate: 23deg;
+  filter: drop-shadow(0 0 2.5px color-mix(in srgb, currentColor 20%, transparent));
+}
+
+.app-shell .thread-settings-button:hover:not(:disabled) .lucide-settings circle {
+  transform: scale(.76);
+}
+
+/* Inspector: the right-hand panel behaves like a drawer. The frame stays put,
+   while the divider/arrow visibly travel in the direction of the action. */
+.app-shell .thread-inspector-button :is(.lucide-panel-right-open, .lucide-panel-right-close) {
+  translate: none !important;
+  transition:
+    filter 300ms ease,
+    opacity 260ms ease !important;
+}
+
+.app-shell .thread-inspector-button :is(.lucide-panel-right-open, .lucide-panel-right-close) path {
+  transform-box: fill-box;
+  transform-origin: center;
+  transition: transform 380ms cubic-bezier(.16,.82,.22,1);
+}
+
+.app-shell .thread-inspector-button:hover:not(:disabled) .lucide-panel-right-open path:last-of-type {
+  transform: translateX(1.55px);
+}
+
+.app-shell .thread-inspector-button:hover:not(:disabled) .lucide-panel-right-open path:first-of-type {
+  transform: translateX(.75px);
+}
+
+.app-shell .thread-inspector-button:hover:not(:disabled) .lucide-panel-right-close path:last-of-type {
+  transform: translateX(-1.55px);
+}
+
+.app-shell .thread-inspector-button:hover:not(:disabled) .lucide-panel-right-close path:first-of-type {
+  transform: translateX(-.75px);
+}
+
+.app-shell .thread-inspector-button:hover:not(:disabled)
+  :is(.lucide-panel-right-open, .lucide-panel-right-close) {
+  filter: drop-shadow(0 0 2px color-mix(in srgb, currentColor 15%, transparent));
+}
+
+/* These custom header animations are deliberately disabled with reduced motion. */
+@media (prefers-reduced-motion: reduce) {
+  .app-shell .thread-status-orb::after,
+  .app-shell .context-meter-track::after,
+  .app-shell .header-agent-orbit-rings,
+  .app-shell .header-agent-orbit-nodes,
+  .app-shell .header-agent-orbit-core,
+  .app-shell .header-review-diff *,
+  .app-shell .header-preview-stage *,
+  .app-shell .header-activity-trace *,
+  .app-shell .thread-account-button::before,
+  .app-shell .thread-settings-button .lucide-settings,
+  .app-shell .thread-settings-button .lucide-settings circle,
+  .app-shell .thread-inspector-button svg *,
+  .app-shell .polished-thread-header-actions :is(.thread-review-button, .thread-header-icon-button, .context-meter-chip) {
+    animation: none !important;
+    transition-duration: .001ms !important;
+    transform: none !important;
+    translate: none !important;
+    rotate: 0deg !important;
+    scale: 1 !important;
+    filter: none !important;
+  }
+}
+
+:root[data-loom-reduced-motion="true"] .app-shell .thread-status-orb::after,
+:root[data-loom-reduced-motion="true"] .app-shell .context-meter-track::after,
+:root[data-loom-reduced-motion="true"] .app-shell .header-agent-orbit-rings,
+:root[data-loom-reduced-motion="true"] .app-shell .header-agent-orbit-nodes,
+:root[data-loom-reduced-motion="true"] .app-shell .header-agent-orbit-core,
+:root[data-loom-reduced-motion="true"] .app-shell .header-review-diff *,
+:root[data-loom-reduced-motion="true"] .app-shell .header-preview-stage *,
+:root[data-loom-reduced-motion="true"] .app-shell .header-activity-trace *,
+:root[data-loom-reduced-motion="true"] .app-shell .thread-account-button::before,
+:root[data-loom-reduced-motion="true"] .app-shell .thread-settings-button .lucide-settings,
+:root[data-loom-reduced-motion="true"] .app-shell .thread-settings-button .lucide-settings circle,
+:root[data-loom-reduced-motion="true"] .app-shell .thread-inspector-button svg * {
+  animation: none !important;
+  transition-duration: .001ms !important;
+  transform: none !important;
+  translate: none !important;
+  rotate: 0deg !important;
+  scale: 1 !important;
+  filter: none !important;
+}
+
