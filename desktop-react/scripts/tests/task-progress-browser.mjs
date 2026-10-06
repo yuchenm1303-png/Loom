@@ -9,6 +9,8 @@ try {
   await page.goto(`${process.env.LOOM_TEST_ORIGIN || "http://127.0.0.1:5173"}/scripts/fixtures/streaming.html`, { waitUntil: "domcontentloaded" });
   await page.waitForFunction(() => Boolean(window.renderItems));
   await page.addStyleTag({ url: "/src/theme.css?direct" });
+  const lifecycleCss = await (await page.request.get(new URL("/src/components/task-lifecycle-motion.css?direct", page.url()).href)).text();
+  await page.addStyleTag({ content: lifecycleCss.replaceAll(".app-shell", ":root") });
   const item = (id, type, fields = {}) => ({ id, type, threadId: "thread-1", turnId: "turn-1", status: "completed", ...fields });
   const items = [item("user", "user_message", { text: "完成测试并交付报告" }),
     item("old-progress", "assistant_message", { text: "早期检查已经完成。", phase: "commentary" }),
@@ -27,6 +29,25 @@ try {
   await page.getByText("服务端暂时不可达；结果明确记为未覆盖", { exact: true }).waitFor();
   await page.getByRole("button", { name: "展开较早过程，2 项" }).click();
   await page.getByText("早期检查已经完成。", { exact: true }).waitFor();
+  await page.evaluate(() => {
+    window.historyNode = document.querySelector(".earlier-process-history-inner > *");
+  });
+  await page.getByRole("button", { name: "收起较早过程，2 项" }).click();
+  await page.waitForTimeout(350);
+  assert.ok(await page.evaluate(() => window.historyNode?.isConnected), "folded history retains its content after exit");
+  await page.getByRole("button", { name: "展开较早过程，2 项" }).click();
+  assert.ok(await page.evaluate(() => window.historyNode === document.querySelector(".earlier-process-history-inner > *")), "reopening preserves the same history DOM");
+  await page.waitForTimeout(350);
+  const heights = await page.evaluate(async () => {
+    const inner = document.querySelector(".earlier-process-history-inner > *");
+    const samples = [];
+    for (let frame = 0; frame < 12; frame++) {
+      await new Promise(requestAnimationFrame);
+      samples.push(inner.getBoundingClientRect().height);
+    }
+    return samples;
+  });
+  assert.ok(Math.max(...heights) - Math.min(...heights) < 1, "historical content geometry stays stable without replaying text");
   await page.getByRole("button", { name: "收起较早过程，2 项" }).click();
   if (process.env.LOOM_PROGRESS_SCREENSHOT) await page.screenshot({ path: process.env.LOOM_PROGRESS_SCREENSHOT });
   await page.setViewportSize({ width: 480, height: 900 });

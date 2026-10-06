@@ -1523,6 +1523,9 @@ function TurnProcess({
   );
   const [processVisited, setProcessVisited] = useState(active || open);
   const [earlierOpen, setEarlierOpen] = useState(false);
+  // Retain visited history and isolate its completed text from the live turn's
+  // partial paint snapshots; replaying those changes height during unfolding.
+  const [earlierVisited, setEarlierVisited] = useState(false);
   const earlierPresence = useMotionPresence(earlierOpen, 280);
   const earlierHistoryId = useId();
   const progress = useMemo(() => liveTaskProgress(items, new Set(items
@@ -1586,7 +1589,10 @@ function TurnProcess({
                     aria-controls={earlierHistoryId}
                     aria-label={`${earlierOpen ? "收起" : "展开"}较早过程，${progress.earlier.length} 项`}
                     title={earlierOpen ? "收起较早的进度与工具记录" : "展开较早的进度与工具记录"}
-                    onClick={() => setEarlierOpen(!earlierOpen)}>
+                    onClick={() => {
+                      setEarlierVisited(true);
+                      setEarlierOpen(!earlierOpen);
+                    }}>
                     <span className="earlier-process-icon" aria-hidden="true"><History size={14} strokeWidth={1.8} /></span>
                     <span className="earlier-process-label">较早过程</span>
                     <span className="earlier-process-count" aria-hidden="true">{progress.earlier.length} 项</span>
@@ -1594,8 +1600,10 @@ function TurnProcess({
                   </button>
                   <div id={earlierHistoryId} className="earlier-process-history" data-motion-phase={earlierPresence.phase} inert={!earlierOpen}>
                     <div className="earlier-process-history-inner">
-                    {earlierPresence.mounted ? <Sequence items={progress.earlier} active={false} onApproval={onApproval}
-                      onPrompt={onPrompt} promptDisabled={promptDisabled} workspace={workspace} /> : null}
+                    {earlierVisited ? <StreamingPresentation>
+                      <Sequence items={progress.earlier} active={false} onApproval={onApproval}
+                        onPrompt={onPrompt} promptDisabled={promptDisabled} workspace={workspace} />
+                    </StreamingPresentation> : null}
                     </div>
                   </div>
                 </div>
