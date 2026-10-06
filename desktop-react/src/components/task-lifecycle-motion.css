@@ -24,6 +24,11 @@
   min-height: 0;
   overflow: hidden;
 }
+.app-shell .pending-thinking-presence-inner > .inline-thinking {
+  /* The legacy -5px top margin crossed the fold container's clipping edge.
+     Keep the capsule, its entrance travel and glow inside the measured row. */
+  margin: 8px;
+}
 .app-shell :is(.earlier-process-history, .pending-thinking-presence, .tool-hint-presence)[data-motion-phase="entered"] {
   grid-template-rows: 1fr;
   opacity: 1;
