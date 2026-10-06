@@ -1,0 +1,108 @@
+/* Shared treatment for header actions. ContextMeter owns its own styling. */
+.app-shell .thread-header .polished-thread-header-actions {
+  --header-ink: #929ba9;
+  --header-hover-ink: #dedbe9;
+  --header-accent: #b4abef;
+  --header-wash: rgba(154,139,230,.075);
+}
+html[data-loom-theme="light"] .app-shell .thread-header .polished-thread-header-actions {
+  --header-ink: #6c7786;
+  --header-hover-ink: #414a59;
+  --header-accent: #7264bd;
+  --header-wash: rgba(114,100,189,.065);
+}
+
+.app-shell .thread-header .polished-thread-header-actions > :is(.thread-review-button, .thread-header-icon-button) {
+  --entry-accent: var(--header-accent);
+  --entry-wash: var(--header-wash);
+  height: 30px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  box-shadow: none;
+  color: var(--header-ink);
+  transition: color 180ms ease, background-color 180ms ease,
+    border-color 180ms ease, box-shadow 220ms ease,
+    transform 240ms cubic-bezier(.2,.8,.2,1) !important;
+}
+.app-shell .thread-header .polished-thread-header-actions > .thread-header-icon-button {
+  width: 30px;
+  flex: 0 0 30px;
+}
+.app-shell .thread-header .polished-thread-header-actions > .thread-review-button {
+  gap: 7px;
+  font-weight: 560;
+}
+.app-shell .thread-header .polished-thread-header-actions > :is(.thread-review-button, .thread-header-icon-button) > svg {
+  width: 18px;
+  height: 18px;
+  stroke-width: 1.75;
+  color: inherit;
+}
+.app-shell .thread-header .polished-thread-header-actions > :is(.thread-review-button, .thread-header-icon-button):is(:hover, :focus-visible):not(:disabled) {
+  color: var(--header-hover-ink);
+  background: var(--header-wash);
+  border-color: transparent;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.05);
+  transform: translateY(-1px);
+}
+.app-shell .thread-header .polished-thread-header-actions > :is(.thread-review-button, .thread-header-icon-button):is(:hover, :focus-visible, .active):not(:disabled) > svg {
+  color: var(--header-accent);
+}
+.app-shell .thread-header .polished-thread-header-actions > :is(.thread-review-button, .thread-header-icon-button).active {
+  color: var(--header-accent);
+  background: var(--header-wash);
+  border-color: transparent;
+}
+.app-shell .thread-header .polished-thread-header-actions > :is(.thread-review-button, .thread-header-icon-button):active:not(:disabled) {
+  transform: translateY(0) scale(.96);
+  transition-duration: 80ms !important;
+}
+.app-shell .thread-header .polished-thread-header-actions > :is(.thread-review-button, .thread-header-icon-button):focus-visible {
+  outline: 2px solid var(--header-accent);
+  outline-offset: 3px;
+}
+.app-shell .thread-header .polished-thread-header-actions .thread-review-button :is(.thread-review-count, .thread-agent-count, .thread-artifact-count) {
+  color: inherit;
+  opacity: .8;
+  font-weight: 560;
+}
+
+/* Status remains semantic, but shares the row's neutral surface and baseline. */
+.app-shell .thread-header .polished-thread-header-actions > .thread-status-chip {
+  height: 30px;
+  border-radius: 8px;
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+  font-weight: 560;
+}
+.app-shell .thread-header .polished-thread-header-actions > .thread-status-chip.ready {
+  color: var(--header-ink);
+}
+.app-shell .thread-header .polished-thread-header-actions > .thread-status-chip.ready .thread-status-orb {
+  background: #719782;
+  color: #719782;
+}
+.app-shell .thread-header .polished-thread-header-actions > .thread-header-divider {
+  height: 16px;
+  opacity: .65;
+}
+.app-shell .thread-header .polished-thread-header-actions .thread-account-avatar-image,
+.app-shell .thread-header .polished-thread-header-actions .thread-account-initial {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  font-size: 10px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-shell .thread-header .polished-thread-header-actions > :is(.thread-review-button, .thread-header-icon-button) {
+    transition: none !important;
+    transform: none !important;
+  }
+}
+:root[data-loom-reduced-motion="true"] .app-shell .thread-header .polished-thread-header-actions > :is(.thread-review-button, .thread-header-icon-button) {
+  transition: none !important;
+  transform: none !important;
+}

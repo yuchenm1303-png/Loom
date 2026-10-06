@@ -45,6 +45,7 @@ import "./components/header-workspace-interactions.css";
 import "./components/composer-interactions.css";
 import "./components/composer-toolbar-interactions.css";
 import "./components/composer-focus-light.css";
+import "./components/header-action-family.css";
 
 installWebBridge();
 
