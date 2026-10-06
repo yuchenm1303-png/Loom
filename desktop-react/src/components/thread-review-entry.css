@@ -412,3 +412,124 @@ html[data-loom-theme="light"] :is(
   color: #6f7884;
 }
 
+/* Header action polish v2 --------------------------------------------------
+   Three actions read as one quiet control family: neutral at rest, precise on
+   hover, with counts aligned as metadata instead of decorative badges. */
+.thread-review-button {
+  min-width: 66px;
+  height: 29px;
+  padding: 0 8px;
+  gap: 6.5px;
+  border-radius: 7px;
+  color: #868e99;
+  font-size: 10.9px;
+  font-weight: 610;
+  letter-spacing: .004em;
+}
+
+.thread-review-button > svg {
+  width: 15.5px;
+  height: 15.5px;
+  color: #727b87;
+  stroke-width: 1.45;
+}
+
+.thread-agent-button,
+.thread-artifact-button {
+  min-width: 69px;
+}
+
+.thread-review-button:hover:not(:disabled),
+.thread-agent-button.is-empty:hover,
+.thread-agent-button.has-agents:hover,
+.thread-artifact-button:hover:not(:disabled) {
+  color: #c8cdd4;
+  background: rgba(255,255,255,.028);
+  border-color: rgba(255,255,255,.035);
+}
+
+.thread-review-button:hover:not(:disabled) > svg,
+.thread-agent-button.is-empty:hover > svg,
+.thread-agent-button.has-agents:hover > svg,
+.thread-artifact-button:hover:not(:disabled) > svg {
+  color: #9fa8b4;
+}
+
+.thread-review-button.active,
+.thread-agent-button.active,
+.thread-artifact-button.active {
+  color: #bcb7df;
+  background: rgba(116,101,207,.042);
+  border-color: rgba(116,101,207,.065);
+}
+
+.thread-review-button.active > svg,
+.thread-agent-button.active > svg,
+.thread-artifact-button.active > svg {
+  color: #9f98d4;
+}
+
+.thread-review-count,
+.thread-agent-count,
+.thread-artifact-count {
+  margin-left: 2px;
+  color: #6f7782;
+  font-size: 9.65px;
+  font-weight: 650;
+  line-height: 1;
+  transform: translateY(.15px);
+}
+
+.thread-review-button.active :is(
+  .thread-review-count,
+  .thread-agent-count,
+  .thread-artifact-count
+) {
+  color: #8f89bd;
+}
+
+html[data-loom-theme="light"] .thread-review-button,
+html[data-loom-theme="light"] .thread-agent-button,
+html[data-loom-theme="light"] .thread-agent-button.is-empty,
+html[data-loom-theme="light"] .thread-artifact-button {
+  color: #66707b;
+}
+
+html[data-loom-theme="light"] .thread-review-button > svg,
+html[data-loom-theme="light"] .thread-agent-button > svg,
+html[data-loom-theme="light"] .thread-agent-button.is-empty > svg,
+html[data-loom-theme="light"] .thread-artifact-button > svg {
+  color: #6f7a87;
+}
+
+html[data-loom-theme="light"] .thread-review-button:hover:not(:disabled),
+html[data-loom-theme="light"] .thread-agent-button:hover:not(:disabled),
+html[data-loom-theme="light"] .thread-agent-button.is-empty:hover,
+html[data-loom-theme="light"] .thread-artifact-button:hover:not(:disabled) {
+  color: #343b45;
+  background: rgba(31,36,43,.032);
+  border-color: rgba(31,36,43,.04);
+}
+
+html[data-loom-theme="light"] .thread-review-button:hover:not(:disabled) > svg,
+html[data-loom-theme="light"] .thread-agent-button:hover:not(:disabled) > svg,
+html[data-loom-theme="light"] .thread-artifact-button:hover:not(:disabled) > svg {
+  color: #525e6c;
+}
+
+html[data-loom-theme="light"] .thread-review-button.active,
+html[data-loom-theme="light"] .thread-agent-button.active,
+html[data-loom-theme="light"] .thread-artifact-button.active {
+  color: #514b82;
+  background: rgba(105,90,216,.045);
+  border-color: rgba(105,90,216,.065);
+}
+
+html[data-loom-theme="light"] :is(
+  .thread-review-count,
+  .thread-agent-count,
+  .thread-artifact-count
+) {
+  color: #727b86;
+}
+
