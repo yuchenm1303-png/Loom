@@ -1548,3 +1548,168 @@
   filter: none !important;
 }
 
+/* ==========================================================================
+   Minimal header glyph motion v3
+   Replaces the busier orbit/diff/scan treatment for Agents, Review and Preview
+   with quieter, more legible interactions.
+   ========================================================================== */
+
+/* Agents: one parent delegates to two children. The branches open slightly;
+   no orbiting, spinning or glowing atom metaphor. */
+.app-shell .header-agent-branch {
+  overflow: visible;
+}
+
+.app-shell .header-agent-parent,
+.app-shell .header-agent-children circle {
+  fill: currentColor;
+  fill-opacity: .08;
+  transition:
+    transform 280ms cubic-bezier(.2,.76,.22,1),
+    fill-opacity 220ms ease;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.app-shell .header-agent-link {
+  opacity: .72;
+  transition:
+    opacity 220ms ease,
+    transform 300ms cubic-bezier(.2,.76,.22,1);
+  transform-box: fill-box;
+  transform-origin: left center;
+}
+
+.app-shell .thread-agent-button:hover:not(:disabled) .header-agent-parent {
+  fill-opacity: .2;
+}
+
+.app-shell .thread-agent-button:hover:not(:disabled) .header-agent-children circle:first-child {
+  transform: translate(1px,-.55px);
+  fill-opacity: .18;
+}
+
+.app-shell .thread-agent-button:hover:not(:disabled) .header-agent-children circle:last-child {
+  transform: translate(1px,.55px);
+  fill-opacity: .18;
+}
+
+.app-shell .thread-agent-button:hover:not(:disabled) .header-agent-link {
+  opacity: 1;
+  transform: scaleX(1.08);
+}
+
+.app-shell .thread-agent-button.active .header-agent-parent,
+.app-shell .thread-agent-button.active .header-agent-children circle {
+  fill-opacity: .18;
+}
+
+/* Review: the document stays still; the check simply writes itself once. */
+.app-shell .header-review-check {
+  overflow: visible;
+}
+
+.app-shell .header-review-document,
+.app-shell .header-review-corner {
+  transition:
+    opacity 220ms ease,
+    filter 260ms ease;
+}
+
+.app-shell .header-review-checkmark {
+  stroke-dasharray: 10;
+  stroke-dashoffset: 0;
+  opacity: .78;
+}
+
+.app-shell .thread-review-check-button:hover:not(:disabled) .header-review-document {
+  opacity: .82;
+}
+
+.app-shell .thread-review-check-button:hover:not(:disabled) .header-review-checkmark {
+  animation: loom-review-check-write 440ms cubic-bezier(.2,.72,.2,1) both;
+}
+
+.app-shell .thread-review-check-button.active .header-review-checkmark {
+  opacity: 1;
+  filter: drop-shadow(0 0 1.8px color-mix(in srgb, currentColor 22%, transparent));
+}
+
+@keyframes loom-review-check-write {
+  0% { stroke-dashoffset: 10; opacity: .28; }
+  100% { stroke-dashoffset: 0; opacity: 1; }
+}
+
+/* Preview: a window with an eye. The eye opens a fraction and the pupil settles
+   forward; there is no scanning beam or code-bracket choreography. */
+.app-shell .header-preview-eye {
+  overflow: visible;
+}
+
+.app-shell .header-preview-window {
+  transition:
+    opacity 220ms ease,
+    filter 260ms ease;
+}
+
+.app-shell .header-preview-eye-shape,
+.app-shell .header-preview-pupil {
+  transform-box: fill-box;
+  transform-origin: center;
+  transition:
+    transform 300ms cubic-bezier(.2,.76,.22,1),
+    opacity 220ms ease,
+    fill-opacity 220ms ease;
+}
+
+.app-shell .header-preview-pupil {
+  fill: currentColor;
+  fill-opacity: .16;
+}
+
+.app-shell .thread-artifact-button:hover:not(:disabled) .header-preview-eye-shape {
+  transform: scaleY(1.08);
+}
+
+.app-shell .thread-artifact-button:hover:not(:disabled) .header-preview-pupil {
+  transform: translateX(.65px) scale(1.12);
+  fill-opacity: .32;
+}
+
+.app-shell .thread-artifact-button:hover:not(:disabled) .header-preview-window {
+  opacity: .86;
+}
+
+.app-shell .thread-artifact-button.active .header-preview-pupil {
+  fill-opacity: .34;
+}
+
+/* Do not lift the whole three text buttons; the glyph motion is enough. */
+.app-shell .polished-thread-header-actions :is(
+  .thread-agent-button,
+  .thread-review-check-button,
+  .thread-artifact-button
+):hover:not(:disabled) {
+  transform: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-shell .header-agent-branch *,
+  .app-shell .header-review-check *,
+  .app-shell .header-preview-eye * {
+    animation: none !important;
+    transition-duration: .001ms !important;
+    transform: none !important;
+    filter: none !important;
+  }
+}
+
+:root[data-loom-reduced-motion="true"] .app-shell .header-agent-branch *,
+:root[data-loom-reduced-motion="true"] .app-shell .header-review-check *,
+:root[data-loom-reduced-motion="true"] .app-shell .header-preview-eye * {
+  animation: none !important;
+  transition-duration: .001ms !important;
+  transform: none !important;
+  filter: none !important;
+}
+
