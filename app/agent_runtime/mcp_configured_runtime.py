@@ -157,43 +157,21 @@ class ConfiguredMCPRuntime(BrowserBackendRegistryMixin, SingleLoopComputerRuntim
             mcp_binding=binding,
         )
 
-    def recover_turn_if_idle(self, session_id: str, turn_id: str):
-        """Resume a trusted safe handoff using the existing logical turn id.
-
-        This is deliberately narrower than crash recovery: it adds no new user
-        message and creates a fresh execution/Step stack. Pending approval or
-        pending tool execution is rejected after process restart because the
-        original sampled Step and process-local approval authority no longer
-        exist; Loom must fail closed rather than reconstruct equivalent-looking
-        execution authority from live state.
-        """
-        resolved_turn_id = str(turn_id or "").strip()
-        if not resolved_turn_id:
-            raise ValueError("turn_id must not be empty")
-        lock = self._session_lock(session_id)
-        with lock:
-            session = self.get_session(session_id)
-            if session.current_turn_id != resolved_turn_id:
-                raise ValueError("turn_id does not match the unfinished turn")
-            with self._active_tokens_guard:
-                if session.session_id in self._active_tokens:
-                    raise RuntimeError("turn is still live in this runtime; rejoin it instead")
-            if session.status is AgentStatus.WAITING_APPROVAL:
-                raise RuntimeError(
-                    "pending approval recovery requires the original captured StepContext and "
-                    "process-local approval authority"
-                )
-            if session.status is not AgentStatus.RUNNING:
-                raise RuntimeError("thread has no safely suspended unfinished turn")
-            if session.pending_tool_calls or session.pending_step_id or session.pending_bindings:
-                raise RuntimeError(
-                    "safe handoff contains unresolved execution authority; fail closed instead"
-                )
-            token = self._activate(session.session_id)
-            try:
-                return self._drive(session, token)
-            finally:
-                self._deactivate(session.session_id, token)
+    def _validate_idle_turn_recovery(self, session) -> None:
+        """Keep MCP authority checks without owning a second recovery loop."""
+        with self._active_tokens_guard:
+            if session.session_id in self._active_tokens:
+                raise RuntimeError("turn is still live in this runtime; rejoin it instead")
+        if session.status is AgentStatus.WAITING_APPROVAL:
+            raise RuntimeError(
+                "pending approval recovery requires the original captured StepContext and "
+                "process-local approval authority"
+            )
+        if session.pending_bindings:
+            raise RuntimeError(
+                "safe handoff contains unresolved execution authority; fail closed instead"
+            )
+        super()._validate_idle_turn_recovery(session)
 
     def mcp_status(self) -> dict[str, object]:
         status = dict(super().mcp_status())

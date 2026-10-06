@@ -15,6 +15,7 @@ from typing import Any, Callable, TextIO
 from app.ai import AGENT_FAST_ROLE, ImagePart, MessageRole, TextPart
 from app.agent_runtime import AgentEvent, AgentEventKind, AgentStatus, PermissionMode
 from app.agent_runtime.storage import utc_now
+from app.agent_runtime.steering import _input_id, _receipt
 from app.agent_runtime.tools import set_tool_capability_settings, tool_capability_name
 from app.agent_runtime.shell_environment import (
     build_environment_from_settings,
@@ -1080,12 +1081,75 @@ class LoomAppServerService:
     def _prepare_turn(self, session: Any) -> None:
         """Perform task preparation off the serialized RPC worker."""
 
-    def turn_steer(self, params: dict[str, Any]) -> dict[str, Any]:
+    def turn_steer(self: Any, params: dict[str, Any]) -> dict[str, Any]:
+        from app.attachments import build_turn_content, stage_attachments
+        from app.agent_runtime.turn_input import turn_input_text
+
         session_id = self._required_text(params, "threadId")
         turn_id = self._required_text(params, "turnId")
-        text = self._required_text(params, "input")
-        self.runtime.steer(session_id, text, turn_id=turn_id)
-        return {"threadId": session_id, "turnId": turn_id, "accepted": True}
+        text = str(params.get("input") or "").strip()
+        attachments = params.get("attachments") or ()
+        if not text and not attachments:
+            raise ValueError("turn/steer requires input or attachments")
+        client_input_id = _input_id(params.get("clientInputId"))
+        session = self._load(session_id)
+        staged = stage_attachments(
+            attachments,
+            workspace=session.workspace_dir,
+            turn_id=turn_id,
+            allow_images=bool(getattr(session, "model_vision", self.vision)),
+        )
+        content = build_turn_content(text, staged)
+        display_text = turn_input_text(content)
+        receipt = self.runtime.steer(
+            session_id,
+            content,
+            turn_id=turn_id,
+            input_id=client_input_id,
+        )
+        if not isinstance(receipt, dict):
+            receipt = _receipt(
+                input_id=client_input_id,
+                duplicate=False,
+                delivery="next_safe_boundary",
+            )
+
+        if bool(receipt.get("resume_required")):
+            resume = getattr(self.runtime, "resume_steered_turn", None)
+            if not callable(resume):
+                raise RuntimeError("runtime cannot resume an approval superseded by steering")
+
+            # Reserve the app-server slot before notifying the renderer, but gate
+            # execution so `thread/updated: running` cannot arrive after a very
+            # fast resumed turn has already completed.
+            gate = threading.Event()
+
+            def continue_turn() -> Any:
+                gate.wait()
+                return resume(session_id, turn_id)
+
+            self._launch(session_id, continue_turn)
+            try:
+                session = self.store.load(session_id)
+                self._notify(
+                    "thread/updated",
+                    {"thread": self._record(session, active=True)},
+                )
+            finally:
+                gate.set()
+
+        return {
+            "threadId": session_id,
+            "turnId": turn_id,
+            "accepted": bool(receipt.get("accepted", True)),
+            "inputId": str(receipt.get("input_id") or client_input_id),
+            "duplicate": bool(receipt.get("duplicate")),
+            "delivery": str(receipt.get("delivery") or "next_safe_boundary"),
+            "submittedAt": str(receipt.get("submittedAt") or "") or None,
+            "applied": bool(receipt.get("applied")),
+            "displayText": display_text,
+            "attachments": [item.as_record() for item in staged],
+        }
 
     def turn_interrupt(self, params: dict[str, Any]) -> dict[str, Any]:
         session_id = self._required_text(params, "threadId")
@@ -1590,7 +1654,15 @@ class LoomRpcController:
                     ),
                 },
                 "settings": {"get": True, "set": True},
-                "turns": {"start": True, "interrupt": True},
+                "turns": {
+                    "start": True, "interrupt": True, "steer": True,
+                    "steering": {
+                        "sameTurn": True, "delivery": "safeBoundary",
+                        "idempotencyKey": "clientInputId", "approvalSupersedesPending": True,
+                        "attachments": True, "interruptsInFlightModel": True,
+                        "runningToolPolicy": "finish_then_replan",
+                    },
+                },
                 "approvals": True,
                 "approvalProtocol": {
                     "requestTransport": "correlatedNotification",

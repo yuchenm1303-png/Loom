@@ -5,7 +5,8 @@ import json
 import math
 from contextlib import nullcontext
 from dataclasses import replace
-from typing import Sequence
+from typing import Any, Sequence
+from .compaction_fallback import (_invalid_compaction_error, build_deterministic_compaction_summary, _fit_fallback_replacement)
 
 from app.ai import AIMessage, ChatRequest, MessageRole, ModelResponse, ModelUsage, ToolChoice
 from app.ai.errors import AIResponseError, AITransportError
@@ -551,7 +552,7 @@ def _fit_replacement_message_limit(
     return items
 
 
-def prepare_context(rt, session, step, token):
+def _prepare_context_with_model(rt, session, step, token):
     """Project canonical history from the captured Step and compact when required."""
     _raise_if_cancelled(token)
     envelope = rt._context_envelope(session, step)
@@ -1054,3 +1055,64 @@ __all__ = [
     "request_forced_compaction",
     "safe_split",
 ]
+
+
+def prepare_context(runtime: Any, session: Any, step: Any, token: Any):
+    try:
+        return _prepare_context_with_model(runtime, session, step, token)
+    except RuntimeError as exc:
+        if not _invalid_compaction_error(exc):
+            raise
+
+    # The model path has already exhausted its bounded retry budget.  Build a
+    # local handoff from canonical history; never execute the returned calls.
+    _raise_if_cancelled(token)
+    repair = repair_tool_history(
+        tuple(session.messages),
+        max_tool_result_chars=runtime.limits.max_tool_result_chars,
+    )
+    if not repair.messages:
+        raise ContextBudgetExceeded(
+            estimated_tokens=0,
+            input_budget_tokens=0,
+            tool_schema_tokens=0,
+            message_count=0,
+            reason="empty canonical history cannot be compacted",
+        )
+    summary = build_deterministic_compaction_summary(tuple(repair.messages))
+    replacement, transient, communication_language, limits, tools, estimated_after = _fit_fallback_replacement(
+        runtime, session, step, repair, summary
+    )
+    runtime._commit_compaction_locked(
+        session,
+        summary=summary,
+        repaired=repair,
+        archived=tuple(repair.messages),
+        retained=(),
+        summary_source="auto",
+        summary_usage=None,
+        replacement_override=replacement,
+    )
+    committed_visible = [*transient, *session.messages]
+    committed_tokens = estimate_tokens(committed_visible, tools)
+    metadata = _metadata(
+        envelope=runtime._context_envelope(session, step),
+        communication_language=communication_language,
+        limits=limits,
+        tools=tools,
+        estimated_before=committed_tokens,
+        estimated_after=committed_tokens,
+        active_context_tokens=committed_tokens,
+        token_accounting_source="deterministic_fallback",
+    )
+    metadata.update(
+        {
+            "auto_compacted": True,
+            "compaction_attempts": int(runtime.limits.model_retries) + 1,
+            "compaction_trimmed_messages": 0,
+            "compaction_fallback": "deterministic",
+            "compaction_provider_response_invalid": True,
+            "estimated_input_tokens_after": min(estimated_after, committed_tokens),
+        }
+    )
+    return committed_visible, metadata

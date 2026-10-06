@@ -9,6 +9,7 @@ from __future__ import annotations
 from collections.abc import Callable, Sequence
 
 from app.ai import AIMessage, ImagePart, MessageRole, TextPart
+from .continuity import COMPACTION_REFERENCE_MESSAGE_NAME
 
 
 SUMMARIZATION_PROMPT = """You are performing a CONTEXT CHECKPOINT COMPACTION. Create a handoff summary for another LLM that will resume the task.
@@ -88,7 +89,9 @@ def _content_text(message: AIMessage) -> str:
 def is_real_user_message(message: AIMessage) -> bool:
     return (
         message.role is MessageRole.USER
-        and str(getattr(message, "name", "") or "") != COMPACTION_MESSAGE_NAME
+        and str(getattr(message, "name", "") or "") not in {
+            COMPACTION_MESSAGE_NAME, COMPACTION_REFERENCE_MESSAGE_NAME,
+        }
     )
 
 
