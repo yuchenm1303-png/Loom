@@ -730,7 +730,7 @@ async function navigate(args) {
     ? await placeInLoomGroup(await chrome.tabs.create({ url, active: false }))
     : destination.preserveUrl
       ? await focusExistingTab(destination.tab)
-      : await chrome.tabs.update(destination.tab.id, { url });
+      : await chrome.tabs.update(destination.tab.id, { url: destination.url || url });
   await claimTab(tab, args);
   await markHudTab(tab.id);
   if (!destination.preserveUrl) await waitForTabComplete(tab.id);
@@ -801,10 +801,17 @@ async function resolveNavigationDestination(args, url) {
       if (!String(cause.message).includes("another Loom task")) throw cause;
       return { create: true, tab: current };
     }
+    // Reuse the tab, not its old navigation intent. An explicit fragment is
+    // an anchor/SPA destination and must be applied even on the same pathname.
+    // Retain a live session query only when the request omitted a query.
+    const navigationUrl = new URL(targetUrl);
+    if (target.hash && !target.search) navigationUrl.search = new URL(reusable.url).search;
+    const changeFragment = Boolean(target.hash) && navigationUrl.href !== new URL(reusable.url).href;
     return {
       create: false,
       tab: (await isLoomWorkTab(reusable)) ? reusable : await placeInLoomGroup(reusable, { adopted: true }),
-      preserveUrl: true,
+      preserveUrl: !changeFragment,
+      url: navigationUrl.href,
     };
   }
   if (await isLoomWorkTab(current)) {

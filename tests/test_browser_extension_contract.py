@@ -96,7 +96,7 @@ def test_navigation_reuses_a_tokenized_page_across_all_windows(background):
     assert "existing.pathname === target.pathname" in body
     assert "search.length" in body
     assert "target.search ? (exact || samePage) : (samePage || exact)" in body
-    assert "preserveUrl: true" in body
+    assert "preserveUrl: !changeFragment" in body
     assert "args.new_tab" in body
 
 
@@ -119,7 +119,7 @@ def test_loom_works_beside_the_user_instead_of_taking_the_foreground(background)
     navigate = _function_body(background, "navigate")
     assert "active: true" not in navigate, "new navigation steals the foreground from the user"
     assert "chrome.tabs.create({ url, active: false })" in navigate
-    assert "chrome.tabs.update(destination.tab.id, { url })" in navigate
+    assert "chrome.tabs.update(destination.tab.id, { url: destination.url || url })" in navigate
 
     # Screenshots are the one exception - captureVisibleTab only returns the
     # visible tab - so they front Loom's tab briefly and hand focus back.

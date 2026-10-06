@@ -59,6 +59,17 @@ function harness() {
 }
 
 async function main() {
+  const anchors = harness();
+  anchors.tabs.get(1).url = 'https://anchor.example/page?session=live#old';
+  await anchors.run(`dispatchCommand('navigate', {session_id: 'anchor', url: 'https://anchor.example/page#first'})`);
+  assert.equal(anchors.tabs.size, 1, 'fragment navigation must reuse the existing tab');
+  assert.equal(anchors.tabs.get(1).url, 'https://anchor.example/page?session=live#first');
+  await anchors.run(`dispatchCommand('navigate', {session_id: 'anchor', tab_id: '1', url: 'https://anchor.example/page#second'})`);
+  assert.equal(anchors.tabs.get(1).url, 'https://anchor.example/page?session=live#second');
+  await anchors.run(`dispatchCommand('navigate', {session_id: 'anchor', tab_id: '1', url: 'https://anchor.example/page?explicit=yes#third'})`);
+  assert.equal(anchors.tabs.get(1).url, 'https://anchor.example/page?explicit=yes#third');
+  await anchors.run(`dispatchCommand('navigate', {session_id: 'anchor', tab_id: '1', url: 'https://anchor.example/page'})`);
+  assert.equal(anchors.tabs.get(1).url, 'https://anchor.example/page?explicit=yes#third', 'tokenless adoption must still preserve the live session URL');
   const h = harness();
   const [a, b] = await h.run(`Promise.all([
     dispatchCommand('state', { session_id: 'a' }),
