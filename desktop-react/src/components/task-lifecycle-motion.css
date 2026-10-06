@@ -1,0 +1,102 @@
+/* Task lifecycle: entrances on live content; retained DOM for real exits. */
+.app-shell .turn-process.is-live .has-lifecycle-motion.entry-assistant_message,
+.app-shell .turn-process.is-live .has-lifecycle-motion.entry-error,
+.app-shell .turn-process.is-live .has-lifecycle-motion.entry-approval {
+  animation: loom-task-copy-arrive 280ms cubic-bezier(.2,.8,.2,1) both !important;
+}
+.app-shell .turn-process.is-live .has-lifecycle-motion.entry-activity {
+  animation: loom-task-copy-arrive 240ms cubic-bezier(.2,.8,.2,1) both !important;
+}
+@keyframes loom-task-copy-arrive {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: none; }
+}
+
+/* Keep the content geometry mounted while it folds, rather than hiding it. */
+.app-shell :is(.earlier-process-history, .pending-thinking-presence, .tool-hint-presence) {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  transition: grid-template-rows 240ms cubic-bezier(.2,.8,.2,1),
+    opacity 180ms ease, margin 240ms cubic-bezier(.2,.8,.2,1);
+}
+.app-shell :is(.earlier-process-history-inner, .pending-thinking-presence-inner, .tool-hint-presence-inner) {
+  min-height: 0;
+  overflow: hidden;
+}
+.app-shell :is(.earlier-process-history, .pending-thinking-presence, .tool-hint-presence)[data-motion-phase="entered"] {
+  grid-template-rows: 1fr;
+  opacity: 1;
+}
+.app-shell .earlier-process-history {
+  margin-top: 0;
+  margin-bottom: 0;
+}
+.app-shell .earlier-process-history[data-motion-phase="entered"] {
+  margin-top: 14px;
+  margin-bottom: 2px;
+}
+.app-shell .tool-hint-presence {
+  transition-duration: 180ms;
+}
+.app-shell .tool-hint-presence .task-flow-live-detail {
+  animation: none !important;
+}
+.app-shell .turn-block:has(.task-flow-group.is-running) > .pending-thinking-presence {
+  grid-template-rows: 0fr;
+  opacity: 0;
+}
+.app-shell .pending-thinking-presence[data-motion-phase="exiting"] .thinking-shimmer,
+.app-shell .turn-block:has(.task-flow-group.is-running) .pending-thinking-presence .thinking-shimmer {
+  animation-play-state: paused;
+}
+
+/* Shared fold timing, with a faster fade so the shrinking text stays quiet. */
+.app-shell :is(.disclosure-grid, .task-flow-group-grid, .task-flow-inline-detail-grid,
+  .turn-process-grid, .live-reasoning-grid) {
+  transition: grid-template-rows 280ms cubic-bezier(.2,.8,.2,1), opacity 180ms ease !important;
+}
+.app-shell :is(.disclosure-chevron, .task-flow-group-chevron, .turn-process-chevron, .earlier-process-chevron) {
+  transition: transform 240ms cubic-bezier(.2,.8,.2,1), color 180ms ease;
+}
+.app-shell .has-lifecycle-motion .task-flow-group-title,
+.app-shell .has-lifecycle-motion .task-flow-verb {
+  animation: loom-task-label-change 220ms ease both;
+}
+@keyframes loom-task-label-change {
+  from { opacity: .2; transform: translateY(2px); }
+  to { opacity: 1; transform: none; }
+}
+.app-shell .task-flow-row .task-flow-row-icon,
+.app-shell .task-flow-row .task-flow-status {
+  transition: color 220ms ease, opacity 180ms ease, background-color 220ms ease;
+}
+
+/* Read-only history must not replay live label transitions. */
+.app-shell .turn-process.is-settled :is(.task-flow-group-title, .task-flow-verb) {
+  animation: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .app-shell .has-lifecycle-motion,
+  .app-shell :is(.task-flow-group-title, .task-flow-verb) {
+    animation: none !important;
+    transform: none !important;
+  }
+  .app-shell :is(.earlier-process-history, .pending-thinking-presence, .tool-hint-presence,
+    .disclosure-grid, .task-flow-group-grid, .task-flow-inline-detail-grid, .turn-process-grid,
+    .live-reasoning-grid, .disclosure-chevron, .task-flow-group-chevron,
+    .turn-process-chevron, .earlier-process-chevron) {
+    transition: none !important;
+  }
+}
+:root[data-loom-reduced-motion="true"] .app-shell .has-lifecycle-motion,
+:root[data-loom-reduced-motion="true"] .app-shell :is(.task-flow-group-title, .task-flow-verb) {
+  animation: none !important;
+  transform: none !important;
+}
+:root[data-loom-reduced-motion="true"] .app-shell :is(.earlier-process-history,
+  .pending-thinking-presence, .tool-hint-presence, .disclosure-grid, .task-flow-group-grid,
+  .task-flow-inline-detail-grid, .turn-process-grid, .live-reasoning-grid,
+  .disclosure-chevron, .task-flow-group-chevron, .turn-process-chevron, .earlier-process-chevron) {
+  transition: none !important;
+}

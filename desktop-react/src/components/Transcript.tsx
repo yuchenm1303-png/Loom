@@ -216,6 +216,8 @@ function pendingThinkingOnScreen(pending: PendingThinkingHandle | null): boolean
   const element = pending?.element;
   if (!element?.isConnected) return false;
   if (performance.now() - pending!.mountedAt < PENDING_THINKING_SEEN_MS) return false;
+  const presence = element.closest(".pending-thinking-presence");
+  if (presence && (presence.getBoundingClientRect().height < 16 || Number(getComputedStyle(presence).opacity) <= .5)) return false;
   return element.getBoundingClientRect().height >= 16 && Number(getComputedStyle(element).opacity) > 0.5;
 }
 
@@ -694,6 +696,7 @@ const ActivityRow = memo(function ActivityRow({ item, open, workspace, onToggle 
   const stats = item.type === "file_edit" && (!active || open) ? diffStats(item.diff) : null;
   const screenshotPaths = browserScreenshotPaths(item);
   const screenshotActivity = isBrowserScreenshotActivity(item);
+  const hintPresence = useMotionPresence(open && active && !visibleDetail && !screenshotPaths.length, 200);
   const verbKey = active ? "active" : "rested";
   const identity = activityIdentity(item);
 
@@ -759,11 +762,13 @@ const ActivityRow = memo(function ActivityRow({ item, open, workspace, onToggle 
                   <BrowserScreenshotDetail paths={screenshotPaths} workspace={workspace} />
                 ) : visibleDetail ? (
                   <pre>{visibleDetail}</pre>
-                ) : active ? (
-                  <div className="task-flow-live-detail" role="status">
+                ) : null}
+                {hintPresence.mounted ? (
+                  <div className="tool-hint-presence" data-motion-phase={hintPresence.phase} inert={hintPresence.phase === "exiting"}>
+                  <div className="tool-hint-presence-inner"><div className="task-flow-live-detail" role="status">
                     <span className="task-flow-live-detail-glow" aria-hidden="true" />
                     <span>{liveActivityHint(item, status)}</span>
-                  </div>
+                  </div></div></div>
                 ) : null}
               </div>
             ) : null}
@@ -1315,7 +1320,7 @@ function Sequence({
 
       {blocks.map((block, index) => (
         block.kind === "activity" ? (deferredActivityBlocks.has(index) ? null : (
-          <div className="transcript-entry entry-activity" key={`activity-${block.items[0]?.id ?? index}`}>
+          <div className={`transcript-entry entry-activity ${active ? "has-lifecycle-motion" : ""}`} key={`activity-${block.items[0]?.id ?? index}`}>
             <ActivityFlow
               items={block.items}
               keepOpen={activeActivityBlocks.has(index) || continuingActivityBlock === index}
@@ -1325,7 +1330,7 @@ function Sequence({
           </div>
         )) : (
           <div
-            className={`transcript-entry entry-${block.item.type} ${isSteeringUserMessage(block.item) ? "entry-steering-user" : ""}`.trim()}
+            className={`transcript-entry entry-${block.item.type} ${active ? "has-lifecycle-motion" : ""} ${isSteeringUserMessage(block.item) ? "entry-steering-user" : ""}`.trim()}
             key={block.item.id}
           >
             <ItemView
@@ -1518,6 +1523,7 @@ function TurnProcess({
   );
   const [processVisited, setProcessVisited] = useState(active || open);
   const [earlierOpen, setEarlierOpen] = useState(false);
+  const earlierPresence = useMotionPresence(earlierOpen, 280);
   const earlierHistoryId = useId();
   const progress = useMemo(() => liveTaskProgress(items, new Set(items
     .filter((item) => {
@@ -1586,9 +1592,11 @@ function TurnProcess({
                     <span className="earlier-process-count" aria-hidden="true">{progress.earlier.length} 项</span>
                     <ChevronRight size={13} className="earlier-process-chevron" aria-hidden="true" />
                   </button>
-                  <div id={earlierHistoryId} className="earlier-process-history" hidden={!earlierOpen}>
-                    {earlierOpen ? <Sequence items={progress.earlier} active={false} onApproval={onApproval}
+                  <div id={earlierHistoryId} className="earlier-process-history" data-motion-phase={earlierPresence.phase} inert={!earlierOpen}>
+                    <div className="earlier-process-history-inner">
+                    {earlierPresence.mounted ? <Sequence items={progress.earlier} active={false} onApproval={onApproval}
                       onPrompt={onPrompt} promptDisabled={promptDisabled} workspace={workspace} /> : null}
+                    </div>
                   </div>
                 </div>
               ) : null}
@@ -1704,6 +1712,7 @@ const TurnView = memo(function TurnView({
     && !latestAssistantState?.answer.trim(),
   );
   const pendingThinking = useRef<PendingThinkingHandle>({ element: null, mountedAt: 0 }).current;
+  const thinkingPresence = useMotionPresence(showPendingThinking, 240);
 
   return (
     <StreamingPresentation>
@@ -1760,7 +1769,11 @@ const TurnView = memo(function TurnView({
       )) : null}
 
       {!active ? <TurnArtifacts items={items} workspace={workspace} /> : null}
-      {showPendingThinking ? <PendingThinking /> : null}
+      {thinkingPresence.mounted ? (
+        <div className="pending-thinking-presence" data-motion-phase={thinkingPresence.phase} inert={!showPendingThinking}>
+          <div className="pending-thinking-presence-inner"><PendingThinking /></div>
+        </div>
+      ) : null}
     </section>
     </PendingThinkingContext.Provider>
     </StreamingPresentation>
