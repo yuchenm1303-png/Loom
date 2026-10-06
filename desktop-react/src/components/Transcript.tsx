@@ -1547,14 +1547,16 @@ function TurnProcess({
           aria-expanded={open}
           title={open ? "折叠任务过程" : "展开完整任务过程"}
         >
-          <span className="turn-process-summary">{summaryLabel}</span>
-          {(breakdown.added > 0 || breakdown.removed > 0) ? (
-            <span className="turn-process-diffstat" aria-label={`新增 ${breakdown.added} 行，删除 ${breakdown.removed} 行`}>
-              <span className="turn-process-plus">+{breakdown.added}</span>
-              <span className="turn-process-minus">-{breakdown.removed}</span>
-            </span>
-          ) : null}
-          <span className="turn-process-time">{elapsedLabel(allItems)}</span>
+          <span className="turn-process-primary">
+            <span className="turn-process-summary">{summaryLabel}</span>
+            {(breakdown.added > 0 || breakdown.removed > 0) ? (
+              <span className="turn-process-diffstat" aria-label={`新增 ${breakdown.added} 行，删除 ${breakdown.removed} 行`}>
+                <span className="turn-process-plus">+{breakdown.added}</span>
+                <span className="turn-process-minus">-{breakdown.removed}</span>
+              </span>
+            ) : null}
+            <span className="turn-process-time">{elapsedLabel(allItems)}</span>
+          </span>
           <ChevronRight size={14} className="turn-process-chevron" aria-hidden="true" />
         </button>
       ) : null}
