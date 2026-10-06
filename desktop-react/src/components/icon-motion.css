@@ -2018,3 +2018,256 @@
   filter: none !important;
 }
 
+/* ==========================================================================
+   Composer glyph motion v3
+   More alive, but still controlled: each icon has one signature gesture and
+   one optical accent. The glyph well provides depth; the SVG provides motion.
+   ========================================================================== */
+
+/* Attach: magnetic snap ---------------------------------------------------- */
+.app-shell .composer-attach-snap {
+  opacity: 0;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.app-shell .composer-tool:hover:not(:disabled) .composer-attach-outer {
+  transform: translateY(-.45px) rotate(-2deg);
+}
+
+.app-shell .composer-tool:hover:not(:disabled) .composer-attach-inner {
+  animation: loom-attach-thread-v3 520ms cubic-bezier(.16,.86,.22,1) both;
+}
+
+.app-shell .composer-tool:hover:not(:disabled) .composer-attach-snap {
+  animation: loom-attach-snap 520ms cubic-bezier(.16,.86,.22,1) both;
+}
+
+@keyframes loom-attach-thread-v3 {
+  0% { transform: translate(-1.15px,1.1px); opacity: .28; }
+  48% { transform: translate(.65px,-.65px); opacity: 1; }
+  72% { transform: translate(-.18px,.18px); opacity: .92; }
+  100% { transform: translate(0,0); opacity: .88; }
+}
+
+@keyframes loom-attach-snap {
+  0%, 24% { opacity: 0; transform: scale(.3) translate(-1px,1px); }
+  52% { opacity: .9; transform: scale(1.35) translate(.2px,-.2px); }
+  76% { opacity: .5; transform: scale(.8); }
+  100% { opacity: 0; transform: scale(.45); }
+}
+
+/* Access: perimeter glint + confident check ------------------------------- */
+.app-shell .composer-access-sheen {
+  opacity: 0;
+  stroke-width: 1.8;
+  stroke-dasharray: 4.5 30;
+  stroke-dashoffset: 22;
+  filter: drop-shadow(0 0 1.6px color-mix(in srgb, currentColor 30%, transparent));
+}
+
+.app-shell .permission-chip:hover:not(:disabled) .composer-access-sheen,
+.app-shell .permission-chip.is-open .composer-access-sheen {
+  animation: loom-access-perimeter 760ms cubic-bezier(.2,.68,.2,1) both;
+}
+
+.app-shell .permission-chip:hover:not(:disabled) .composer-access-mark,
+.app-shell .permission-chip.is-open .composer-access-mark {
+  animation: loom-access-check-v3 500ms cubic-bezier(.18,.78,.22,1) both;
+}
+
+.app-shell .permission-chip:hover:not(:disabled) .composer-access-shield,
+.app-shell .permission-chip.is-open .composer-access-shield {
+  opacity: .84;
+}
+
+@keyframes loom-access-perimeter {
+  0% { opacity: 0; stroke-dashoffset: 22; }
+  18% { opacity: .82; }
+  82% { opacity: .7; }
+  100% { opacity: 0; stroke-dashoffset: -18; }
+}
+
+@keyframes loom-access-check-v3 {
+  0% { stroke-dashoffset: 9; opacity: .2; }
+  70% { stroke-dashoffset: -.6; opacity: 1; }
+  100% { stroke-dashoffset: 0; opacity: 1; }
+}
+
+/* Model: aperture opens around a living core ------------------------------ */
+.app-shell .composer-model-corners {
+  transform-box: view-box;
+  transform-origin: center;
+  transition:
+    transform 420ms cubic-bezier(.16,.86,.22,1),
+    opacity 220ms ease;
+  opacity: .8;
+}
+
+.app-shell .composer-model-core {
+  transform-box: fill-box;
+  transform-origin: center;
+  transition:
+    transform 420ms cubic-bezier(.16,.86,.22,1),
+    opacity 220ms ease,
+    filter 280ms ease;
+  opacity: .88;
+}
+
+.app-shell .composer-model-dot {
+  transform-box: fill-box;
+  transform-origin: center;
+  transition:
+    transform 360ms cubic-bezier(.16,.86,.22,1),
+    opacity 220ms ease;
+  opacity: .72;
+}
+
+.app-shell .composer-model-pulse {
+  opacity: 0;
+  transform-box: fill-box;
+  transform-origin: center;
+  stroke-width: 1;
+}
+
+.app-shell .model-chip:hover:not(:disabled) .composer-model-corners,
+.app-shell .model-chip.is-open .composer-model-corners {
+  transform: scale(1.08);
+  opacity: 1;
+}
+
+.app-shell .model-chip:hover:not(:disabled) .composer-model-core,
+.app-shell .model-chip.is-open .composer-model-core {
+  transform: rotate(45deg) scale(.92);
+  opacity: 1;
+  filter: drop-shadow(0 0 1.8px color-mix(in srgb, currentColor 24%, transparent));
+}
+
+.app-shell .model-chip:hover:not(:disabled) .composer-model-dot,
+.app-shell .model-chip.is-open .composer-model-dot {
+  transform: scale(1.35);
+  opacity: 1;
+}
+
+.app-shell .model-chip:hover:not(:disabled) .composer-model-pulse {
+  animation: loom-model-pulse 620ms cubic-bezier(.16,.82,.22,1) both;
+}
+
+@keyframes loom-model-pulse {
+  0% { opacity: 0; transform: scale(.62); }
+  22% { opacity: .46; }
+  100% { opacity: 0; transform: scale(1.48); }
+}
+
+/* Expression: blink + smile + tiny sparkle ------------------------------- */
+.app-shell .composer-expression-spark {
+  opacity: .18;
+  stroke-dasharray: 5;
+  stroke-dashoffset: 5;
+  transform-box: fill-box;
+  transform-origin: center;
+  transition:
+    opacity 220ms ease,
+    transform 360ms cubic-bezier(.16,.86,.22,1);
+}
+
+.app-shell .composer-expression-ring {
+  transform-box: fill-box;
+  transform-origin: center;
+  transition:
+    transform 420ms cubic-bezier(.16,.86,.22,1),
+    opacity 220ms ease;
+}
+
+.app-shell .sticker-chip:hover:not(:disabled) .composer-expression-ring,
+.app-shell .sticker-chip.is-open .composer-expression-ring {
+  transform: rotate(-2deg) scale(1.025);
+}
+
+.app-shell .sticker-chip:hover:not(:disabled) .composer-expression-eyes {
+  animation: loom-expression-blink-v3 560ms ease both;
+}
+
+.app-shell .sticker-chip:hover:not(:disabled) .composer-expression-smile,
+.app-shell .sticker-chip.is-open .composer-expression-smile {
+  transform: translateY(.6px) scaleX(1.08);
+}
+
+.app-shell .sticker-chip:hover:not(:disabled) .composer-expression-spark,
+.app-shell .sticker-chip.is-open .composer-expression-spark {
+  animation: loom-expression-spark 620ms cubic-bezier(.18,.78,.22,1) both;
+}
+
+@keyframes loom-expression-blink-v3 {
+  0%, 34%, 54%, 100% { transform: scaleY(1); }
+  44% { transform: scaleY(.12); }
+}
+
+@keyframes loom-expression-spark {
+  0% { opacity: .1; stroke-dashoffset: 5; transform: scale(.55) rotate(-18deg); }
+  58% { opacity: 1; stroke-dashoffset: 0; transform: scale(1.15) rotate(4deg); }
+  100% { opacity: .46; stroke-dashoffset: 0; transform: scale(1) rotate(0deg); }
+}
+
+/* The glyph well itself has a soft spring so the motion reads at normal UI
+   scale without moving labels or destabilizing the toolbar. */
+.app-shell .composer :is(.composer-tool, .composer-chip):hover:not(:disabled) .composer-glyph-well {
+  animation: loom-composer-well-lift 430ms cubic-bezier(.16,.9,.22,1) both;
+}
+
+.app-shell .composer .composer-chip.is-open .composer-glyph-well {
+  transform: translateY(-.55px);
+}
+
+@keyframes loom-composer-well-lift {
+  0% { transform: translateY(0) scale(1); }
+  48% { transform: translateY(-1.2px) scale(1.045); }
+  74% { transform: translateY(-.35px) scale(.995); }
+  100% { transform: translateY(-.55px) scale(1); }
+}
+
+/* Chevron gets a small spring instead of a linear nudge. */
+.app-shell .composer .composer-chip:not(.is-open):hover:not(:disabled) .composer-chip-chevron {
+  animation: loom-chevron-invite 360ms cubic-bezier(.18,.9,.24,1) both;
+}
+
+@keyframes loom-chevron-invite {
+  0% { translate: 0 0; }
+  55% { translate: 0 1.35px; }
+  100% { translate: 0 .75px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-shell .composer-glyph-well,
+  .app-shell .composer-glyph-well::before,
+  .app-shell :is(
+    .composer-attach-glyph,
+    .composer-access-glyph,
+    .composer-model-glyph,
+    .composer-expression-glyph
+  ) *,
+  .app-shell .composer-chip-chevron {
+    animation: none !important;
+    transition-duration: .001ms !important;
+    transform: none !important;
+    translate: none !important;
+    filter: none !important;
+  }
+}
+
+:root[data-loom-reduced-motion="true"] .app-shell .composer-glyph-well,
+:root[data-loom-reduced-motion="true"] .app-shell .composer-glyph-well::before,
+:root[data-loom-reduced-motion="true"] .app-shell :is(
+  .composer-attach-glyph,
+  .composer-access-glyph,
+  .composer-model-glyph,
+  .composer-expression-glyph
+) *,
+:root[data-loom-reduced-motion="true"] .app-shell .composer-chip-chevron {
+  animation: none !important;
+  transition-duration: .001ms !important;
+  transform: none !important;
+  translate: none !important;
+  filter: none !important;
+}
+

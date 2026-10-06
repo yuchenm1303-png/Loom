@@ -505,3 +505,222 @@ html[data-loom-theme="light"] .composer .composer-chip-chevron {
   color: #7c8692;
 }
 
+/* ==========================================================================
+   Composer toolbar visual refinement v3
+   Premium micro-surfaces: the controls stay flat, while each glyph sits in a
+   tiny optical well that blooms only on interaction.
+   ========================================================================== */
+
+.composer .composer-tool,
+.composer .composer-chip {
+  --composer-accent-rgb: 112, 122, 136;
+  height: 31px;
+  min-height: 31px;
+  padding-inline: 7px;
+  gap: 6px;
+  border-radius: 9px;
+  color: #7e8793;
+  letter-spacing: .002em;
+  transition:
+    color 220ms ease,
+    background-color 240ms ease,
+    border-color 240ms ease,
+    box-shadow 280ms ease;
+}
+
+.composer .permission-chip { --composer-accent-rgb: 184, 137, 63; }
+.composer .model-chip { --composer-accent-rgb: 116, 103, 200; }
+.composer .sticker-chip { --composer-accent-rgb: 102, 116, 132; }
+
+.composer .composer-tool:hover:not(:disabled),
+.composer .composer-chip:hover:not(:disabled) {
+  color: #b8c0ca;
+  background:
+    radial-gradient(circle at 15px 50%, rgba(var(--composer-accent-rgb), .075), transparent 42%),
+    rgba(255,255,255,.018);
+  border-color: rgba(var(--composer-accent-rgb), .075);
+  box-shadow:
+    inset 0 1px rgba(255,255,255,.032),
+    0 1px 4px rgba(0,0,0,.035);
+}
+
+.composer .composer-chip.is-open {
+  color: #c7c3df;
+  background:
+    radial-gradient(circle at 15px 50%, rgba(var(--composer-accent-rgb), .10), transparent 46%),
+    rgba(var(--composer-accent-rgb), .035);
+  border-color: rgba(var(--composer-accent-rgb), .11);
+  box-shadow:
+    inset 0 1px rgba(255,255,255,.04),
+    0 3px 10px rgba(0,0,0,.045);
+}
+
+.composer .composer-glyph-well {
+  position: relative;
+  flex: 0 0 auto;
+  width: 20px;
+  height: 20px;
+  display: grid;
+  place-items: center;
+  border-radius: 6px;
+  color: #707a87;
+  background: rgba(255,255,255,.012);
+  box-shadow:
+    inset 0 0 0 1px rgba(255,255,255,.022),
+    inset 0 1px rgba(255,255,255,.028);
+  transition:
+    color 220ms ease,
+    background-color 260ms ease,
+    box-shadow 280ms ease,
+    transform 360ms cubic-bezier(.18,.9,.24,1);
+}
+
+.composer .composer-glyph-well::before {
+  content: "";
+  position: absolute;
+  inset: 1px;
+  border-radius: 5px;
+  pointer-events: none;
+  opacity: 0;
+  background: radial-gradient(
+    circle at 35% 28%,
+    rgba(var(--composer-accent-rgb), .20),
+    rgba(var(--composer-accent-rgb), .06) 46%,
+    transparent 72%
+  );
+  transform: scale(.78);
+  transition:
+    opacity 260ms ease,
+    transform 420ms cubic-bezier(.18,.9,.24,1);
+}
+
+.composer .composer-glyph-well > svg {
+  position: relative;
+  z-index: 1;
+  width: 15.5px;
+  height: 15.5px;
+  overflow: visible;
+}
+
+.composer .composer-tool:hover:not(:disabled) .composer-glyph-well,
+.composer .composer-chip:hover:not(:disabled) .composer-glyph-well,
+.composer .composer-chip.is-open .composer-glyph-well {
+  color: rgb(var(--composer-accent-rgb));
+  background: rgba(var(--composer-accent-rgb), .035);
+  box-shadow:
+    inset 0 0 0 1px rgba(var(--composer-accent-rgb), .09),
+    inset 0 1px rgba(255,255,255,.04),
+    0 2px 7px rgba(var(--composer-accent-rgb), .08);
+  transform: translateY(-.55px);
+}
+
+.composer .composer-tool:hover:not(:disabled) .composer-glyph-well::before,
+.composer .composer-chip:hover:not(:disabled) .composer-glyph-well::before,
+.composer .composer-chip.is-open .composer-glyph-well::before {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.composer .permission-chip .composer-glyph-well {
+  color: #aa7f3c;
+}
+
+.composer .model-chip .composer-glyph-well {
+  color: #777fa0;
+}
+
+.composer .sticker-chip .composer-glyph-well,
+.composer .composer-tool .composer-glyph-well {
+  color: #6f7a87;
+}
+
+.composer .composer-divider {
+  height: 16px;
+  margin-inline: 3px 4px;
+  opacity: .8;
+  background: linear-gradient(
+    180deg,
+    transparent 0%,
+    rgba(115,125,138,.13) 18%,
+    rgba(115,125,138,.28) 50%,
+    rgba(115,125,138,.13) 82%,
+    transparent 100%
+  );
+}
+
+.composer .composer-chip > span:not(.composer-glyph-well) {
+  transition:
+    color 220ms ease,
+    transform 260ms cubic-bezier(.18,.9,.24,1);
+}
+
+.composer .composer-chip:hover:not(:disabled) > span:not(.composer-glyph-well),
+.composer .composer-chip.is-open > span:not(.composer-glyph-well) {
+  transform: translateX(.35px);
+}
+
+.composer .composer-chip-chevron {
+  width: 10.5px;
+  height: 10.5px;
+  opacity: .62;
+  transition:
+    transform 320ms cubic-bezier(.18,.95,.25,1),
+    translate 280ms cubic-bezier(.18,.95,.25,1),
+    opacity 220ms ease,
+    color 220ms ease;
+}
+
+.composer .composer-chip:hover:not(:disabled) .composer-chip-chevron {
+  translate: 0 .85px;
+  opacity: .92;
+}
+
+.composer .composer-chip.is-open .composer-chip-chevron {
+  translate: 0 0;
+  transform: rotate(180deg);
+  opacity: 1;
+}
+
+/* Light theme: keep the wells almost invisible until interaction. */
+html[data-loom-theme="light"] .composer .composer-tool,
+html[data-loom-theme="light"] .composer .composer-chip {
+  color: #5e6874;
+}
+
+html[data-loom-theme="light"] .composer .composer-tool:hover:not(:disabled),
+html[data-loom-theme="light"] .composer .composer-chip:hover:not(:disabled) {
+  color: #2f3740;
+  background:
+    radial-gradient(circle at 15px 50%, rgba(var(--composer-accent-rgb), .065), transparent 42%),
+    rgba(34,40,48,.018);
+  border-color: rgba(var(--composer-accent-rgb), .07);
+  box-shadow:
+    inset 0 1px rgba(255,255,255,.72),
+    0 2px 7px rgba(31,36,43,.035);
+}
+
+html[data-loom-theme="light"] .composer .composer-chip.is-open {
+  color: #484266;
+  background:
+    radial-gradient(circle at 15px 50%, rgba(var(--composer-accent-rgb), .09), transparent 46%),
+    rgba(var(--composer-accent-rgb), .03);
+  border-color: rgba(var(--composer-accent-rgb), .10);
+}
+
+html[data-loom-theme="light"] .composer .composer-glyph-well {
+  background: rgba(42,48,56,.012);
+  box-shadow:
+    inset 0 0 0 1px rgba(42,48,56,.025),
+    inset 0 1px rgba(255,255,255,.7);
+}
+
+html[data-loom-theme="light"] .composer .composer-tool:hover:not(:disabled) .composer-glyph-well,
+html[data-loom-theme="light"] .composer .composer-chip:hover:not(:disabled) .composer-glyph-well,
+html[data-loom-theme="light"] .composer .composer-chip.is-open .composer-glyph-well {
+  background: rgba(var(--composer-accent-rgb), .045);
+  box-shadow:
+    inset 0 0 0 1px rgba(var(--composer-accent-rgb), .10),
+    inset 0 1px rgba(255,255,255,.82),
+    0 2px 8px rgba(var(--composer-accent-rgb), .07);
+}
+

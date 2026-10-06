@@ -137,19 +137,21 @@ function ComposerAttachIcon({ size = 16 }: { size?: number }) {
       viewBox="0 0 20 20"
       fill="none"
       stroke="currentColor"
-      strokeWidth="1.55"
+      strokeWidth="1.5"
       strokeLinecap="round"
       strokeLinejoin="round"
       aria-hidden="true"
       focusable="false"
     >
-      <path className="composer-attach-outer" d="M7.05 10.85 12 5.9a3 3 0 0 1 4.25 4.24l-6.37 6.37a4.2 4.2 0 0 1-5.94-5.94l6.13-6.13" />
-      <path className="composer-attach-inner" d="m8.45 12.25 5-5" />
+      <path className="composer-attach-outer" d="M7.15 10.75 12 5.9a3 3 0 0 1 4.25 4.24l-6.35 6.35a4.15 4.15 0 0 1-5.87-5.87l6.05-6.05" />
+      <path className="composer-attach-inner" d="m8.45 12.05 4.9-4.9" />
+      <circle className="composer-attach-snap" cx="13.55" cy="6.95" r=".8" fill="currentColor" stroke="none" />
     </svg>
   );
 }
 
 function ComposerAccessIcon({ size = 16 }: { size?: number }) {
+  const shield = "M10 2.55 15.45 4.7v4.5c0 3.62-2.08 6.18-5.45 8.05-3.37-1.87-5.45-4.43-5.45-8.05V4.7L10 2.55Z";
   return (
     <svg
       className="composer-access-glyph"
@@ -164,8 +166,9 @@ function ComposerAccessIcon({ size = 16 }: { size?: number }) {
       aria-hidden="true"
       focusable="false"
     >
-      <path className="composer-access-shield" d="M10 2.65 15.5 4.8v4.4c0 3.65-2.13 6.22-5.5 8.1-3.37-1.88-5.5-4.45-5.5-8.1V4.8L10 2.65Z" />
-      <path className="composer-access-mark" d="m7.45 10.15 1.55 1.6 3.55-3.65" />
+      <path className="composer-access-shield" d={shield} />
+      <path className="composer-access-sheen" d={shield} />
+      <path className="composer-access-mark" d="m7.4 10.05 1.55 1.65 3.65-3.75" />
     </svg>
   );
 }
@@ -179,15 +182,16 @@ function ComposerModelIcon({ size = 16 }: { size?: number }) {
       viewBox="0 0 20 20"
       fill="none"
       stroke="currentColor"
-      strokeWidth="1.4"
+      strokeWidth="1.45"
       strokeLinecap="round"
       strokeLinejoin="round"
       aria-hidden="true"
       focusable="false"
     >
-      <rect className="composer-model-frame" x="4.2" y="4.2" width="11.6" height="11.6" rx="2.2" />
-      <rect className="composer-model-core" x="7.4" y="7.4" width="5.2" height="5.2" rx="1.2" />
-      <path className="composer-model-pins" d="M7 2.7v1.5M10 2.7v1.5M13 2.7v1.5M7 15.8v1.5M10 15.8v1.5M13 15.8v1.5M2.7 7h1.5M2.7 10h1.5M2.7 13h1.5M15.8 7h1.5M15.8 10h1.5M15.8 13h1.5" />
+      <path className="composer-model-corners" d="M7 3.2H5.4a2.2 2.2 0 0 0-2.2 2.2V7M13 3.2h1.6a2.2 2.2 0 0 1 2.2 2.2V7M7 16.8H5.4a2.2 2.2 0 0 1-2.2-2.2V13M13 16.8h1.6a2.2 2.2 0 0 0 2.2-2.2V13" />
+      <path className="composer-model-core" d="m10 6.65 3.35 3.35L10 13.35 6.65 10 10 6.65Z" />
+      <circle className="composer-model-dot" cx="10" cy="10" r=".9" fill="currentColor" stroke="none" />
+      <circle className="composer-model-pulse" cx="10" cy="10" r="4.35" />
     </svg>
   );
 }
@@ -207,9 +211,10 @@ function ComposerExpressionIcon({ size = 16 }: { size?: number }) {
       aria-hidden="true"
       focusable="false"
     >
-      <circle className="composer-expression-ring" cx="10" cy="10" r="7.1" />
-      <path className="composer-expression-eyes" d="M7.1 8.25h.01M12.9 8.25h.01" strokeWidth="2.1" />
-      <path className="composer-expression-smile" d="M6.8 11.55c.8 1.35 1.9 2.05 3.2 2.05s2.4-.7 3.2-2.05" />
+      <circle className="composer-expression-ring" cx="9.55" cy="10.25" r="6.65" />
+      <path className="composer-expression-eyes" d="M6.85 8.65h.01M12.25 8.65h.01" strokeWidth="2.1" />
+      <path className="composer-expression-smile" d="M6.65 11.75c.75 1.2 1.75 1.82 2.9 1.82s2.15-.62 2.9-1.82" />
+      <path className="composer-expression-spark" d="M15.25 3.15v2.1M14.2 4.2h2.1" />
     </svg>
   );
 }
@@ -432,6 +437,11 @@ export function Composer({
     <div className="composer-wrap composer-refined" ref={composerRootRef}>
       <div
         className={`composer ${focused ? "is-focused" : ""} ${running ? "is-running" : ""} ${openPanel ? "has-panel" : ""} ${dragging ? "is-dragging" : ""} ${hasDraftContent ? "has-content" : "is-empty"}`}
+        onPointerMove={(event) => {
+          const rect = event.currentTarget.getBoundingClientRect();
+          event.currentTarget.style.setProperty("--composer-pointer-x", `${event.clientX - rect.left}px`);
+          event.currentTarget.style.setProperty("--composer-pointer-y", `${event.clientY - rect.top}px`);
+        }}
         onDragOver={(event) => {
           if (!event.dataTransfer.types.includes("Files")) return;
           event.preventDefault();
@@ -443,6 +453,7 @@ export function Composer({
         }}
         onDrop={(event) => void onDrop(event)}
       >
+        <span className="composer-pointer-glow" aria-hidden="true" />
         <span className="composer-glow" aria-hidden="true" />
 
         {quote ? <QuoteReplyBar quote={quote} onClear={() => setQuote(null)} /> : null}
@@ -487,7 +498,7 @@ export function Composer({
               onClick={() => void pickAttachments()}
               disabled={disabled}
             >
-              <ComposerAttachIcon size={16} />
+              <span className="composer-glyph-well attach" aria-hidden="true"><ComposerAttachIcon size={16} /></span>
               <span>{zh ? "附件" : "Attach"}</span>
             </button>
             <span className="composer-divider" />
@@ -502,7 +513,7 @@ export function Composer({
                 aria-expanded={openPanel === "permission"}
                 onClick={() => togglePanel("permission")}
               >
-                <ComposerAccessIcon size={15} />
+                <span className="composer-glyph-well access" aria-hidden="true"><ComposerAccessIcon size={15.5} /></span>
                 <span>{currentPermission.label}</span>
                 <ChevronDown size={13} className="composer-chip-chevron" />
               </button>
@@ -577,7 +588,7 @@ export function Composer({
                 aria-expanded={openPanel === "model"}
                 onClick={() => togglePanel("model")}
               >
-                <ComposerModelIcon size={15} />
+                <span className="composer-glyph-well model" aria-hidden="true"><ComposerModelIcon size={15.5} /></span>
                 <span>{currentModel}</span>
                 <ChevronDown size={13} className="composer-chip-chevron" />
               </button>
@@ -643,7 +654,7 @@ export function Composer({
                 aria-expanded={openPanel === "sticker"}
                 onClick={() => togglePanel("sticker")}
               >
-                <ComposerExpressionIcon size={15} />
+                <span className="composer-glyph-well expression" aria-hidden="true"><ComposerExpressionIcon size={15.5} /></span>
                 <span>{stickersOff ? "Stickers off" : "Stickers"}</span>
                 <ChevronDown size={13} className="composer-chip-chevron" />
               </button>
