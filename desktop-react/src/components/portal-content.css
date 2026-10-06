@@ -41,6 +41,7 @@
   letter-spacing: .18em;
 }
 .loom-module-grid .loom-stage-copy h1 {
+  width: fit-content;
   margin-top: 20px;
   font-size: clamp(34px, 3.15vw, 64px);
   line-height: 1.08;
