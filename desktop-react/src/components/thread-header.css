@@ -739,3 +739,32 @@ html[data-loom-theme="light"] .thread-header .workspace-path-button:not(:disable
     max-width: 116px;
   }
 }
+
+
+/* Triangle sidebar toggle ---------------------------------------------------
+   Replace the panel glyph with a single quiet directional triangle. */
+.thread-sidebar-triangle {
+  position: relative;
+}
+
+.thread-sidebar-triangle-mark {
+  width: 0;
+  height: 0;
+  display: block;
+  border-top: 4.5px solid transparent;
+  border-bottom: 4.5px solid transparent;
+  border-left: 6.5px solid currentColor;
+  transform: translateX(.5px);
+  transform-origin: 38% 50%;
+  transition: transform 140ms cubic-bezier(.2,.8,.2,1);
+}
+
+.thread-sidebar-triangle.is-open .thread-sidebar-triangle-mark {
+  transform: rotate(180deg) translateX(.5px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .thread-sidebar-triangle-mark {
+    transition: none !important;
+  }
+}

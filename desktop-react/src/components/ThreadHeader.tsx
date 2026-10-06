@@ -6,8 +6,6 @@ import {
   Copy,
   FileCode2,
   FileDiff,
-  PanelLeftClose,
-  PanelLeftOpen,
   PanelRightClose,
   PanelRightOpen,
   Settings,
@@ -163,15 +161,13 @@ export function ThreadHeader({
       <div className="thread-header-leading">
         <button
           type="button"
-          className={`thread-header-icon-button panel-toggle-button ${sidebarOpen ? "active" : ""}`}
+          className={`thread-header-icon-button panel-toggle-button thread-sidebar-triangle ${sidebarOpen ? "active is-open" : ""}`}
           onClick={onToggleSidebar}
           title={sidebarLabel}
           aria-label={sidebarLabel}
           aria-pressed={sidebarOpen}
         >
-          {sidebarOpen
-            ? <PanelLeftClose size={16} strokeWidth={1.75} />
-            : <PanelLeftOpen size={16} strokeWidth={1.75} />}
+          <span className="thread-sidebar-triangle-mark" aria-hidden="true" />
         </button>
       </div>
 
