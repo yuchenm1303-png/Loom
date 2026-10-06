@@ -41,6 +41,7 @@ import "./components/conversation-home.css";
 import "./components/composer-refined.css";
 import "./components/workspace-surface-refinement.css";
 import "./components/icon-motion.css";
+import "./components/composer-interactions.css";
 
 installWebBridge();
 
