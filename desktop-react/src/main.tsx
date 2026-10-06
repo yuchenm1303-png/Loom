@@ -43,6 +43,7 @@ import "./components/workspace-surface-refinement.css";
 import "./components/icon-motion.css";
 import "./components/header-workspace-interactions.css";
 import "./components/composer-interactions.css";
+import "./components/composer-toolbar-interactions.css";
 
 installWebBridge();
 

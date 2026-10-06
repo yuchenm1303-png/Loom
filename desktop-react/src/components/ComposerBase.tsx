@@ -128,95 +128,33 @@ function PermissionIcon({ mode }: { mode: string }) {
 }
 
 
-function ComposerAttachIcon({ size = 16 }: { size?: number }) {
+// A shared 24px grid keeps the toolbar silhouettes equally legible.
+function ComposerControlIcon({ kind }: { kind: "attach" | "access" | "model" }) {
   return (
-    <svg
-      className="composer-attach-glyph"
-      width={size}
-      height={size}
-      viewBox="0 0 20 20"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.5"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-      focusable="false"
-    >
-      <path
-        className="composer-attach-outer"
-        d="M7.15 10.8 12 5.95a3 3 0 0 1 4.24 4.24l-6.28 6.28a4.1 4.1 0 0 1-5.8-5.8l6-6"
-      />
-      <path className="composer-attach-latch" d="m8.55 12.1 4.8-4.8" />
-      <circle
-        className="composer-attach-spark"
-        cx="13.55"
-        cy="6.95"
-        r=".72"
-        fill="currentColor"
-        stroke="none"
-      />
+    <svg className="composer-control-icon" data-control-icon={kind} width={18} height={18}
+      viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75"
+      strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false">
+      {kind === "attach" ? (
+        <>
+          <path className="control-clip-frame" d="m8 12 7-7a4 4 0 0 1 5.66 5.66l-8.5 8.5a5.5 5.5 0 0 1-7.78-7.78L12 3.75" />
+          <path className="control-clip-latch" d="m8 12 6.25-6.25a1.75 1.75 0 0 1 2.48 2.48L10 15" />
+        </>
+      ) : kind === "access" ? (
+        <>
+          <circle className="control-key-bow" cx="8" cy="8" r="4.5" />
+          <circle className="control-key-eye" cx="7" cy="7" r=".8" fill="currentColor" stroke="none" />
+          <path className="control-key-stem" d="m11.2 11.2 8.3 8.3h2v-3h-3v-3h-3" />
+        </>
+      ) : (
+        <>
+          <path className="control-model-top" d="m12 3 9 5-9 5-9-5 9-5Z" />
+          <path className="control-model-middle" d="m3 12 9 5 9-5" />
+          <path className="control-model-bottom" d="m3 16 9 5 9-5" />
+        </>
+      )}
     </svg>
   );
 }
-
-function ComposerAccessIcon({ size = 16 }: { size?: number }) {
-  const shield = "M10 2.6 15.4 4.75v4.45c0 3.58-2.08 6.1-5.4 7.95-3.32-1.85-5.4-4.37-5.4-7.95V4.75L10 2.6Z";
-  return (
-    <svg
-      className="composer-access-glyph"
-      width={size}
-      height={size}
-      viewBox="0 0 20 20"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.45"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-      focusable="false"
-    >
-      <path className="composer-access-shield" d={shield} />
-      <path className="composer-access-sheen" d={shield} />
-      <circle className="composer-access-keyhole" cx="10" cy="8.85" r="1.25" />
-      <path className="composer-access-stem" d="M10 10.1v2.15" />
-    </svg>
-  );
-}
-
-function ComposerModelIcon({ size = 16 }: { size?: number }) {
-  return (
-    <svg
-      className="composer-model-glyph"
-      width={size}
-      height={size}
-      viewBox="0 0 20 20"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.45"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-      focusable="false"
-    >
-      <circle className="composer-model-ring" cx="10" cy="10" r="4.95" />
-      <path
-        className="composer-model-axes"
-        d="M10 2.95v1.55M10 15.5v1.55M2.95 10h1.55M15.5 10h1.55"
-      />
-      <circle
-        className="composer-model-core"
-        cx="10"
-        cy="10"
-        r="1.42"
-        fill="currentColor"
-        stroke="none"
-      />
-      <circle className="composer-model-halo" cx="10" cy="10" r="6.1" />
-    </svg>
-  );
-}
-
 function ComposerExpressionIcon({ size = 16 }: { size?: number }) {
   return (
     <svg
@@ -514,12 +452,12 @@ export function Composer({
           <div className="composer-left">
             <button
               type="button"
-              className="composer-tool"
+              className="composer-tool composer-refined-control"
               title={zh ? "添加附件，也可以粘贴或拖入文件" : "Attach files, or paste and drop them here"}
               onClick={() => void pickAttachments()}
               disabled={disabled}
             >
-              <span className="composer-glyph-well attach" aria-hidden="true"><ComposerAttachIcon size={16} /></span>
+              <span className="composer-glyph-well attach" aria-hidden="true"><ComposerControlIcon kind="attach" /></span>
               <span>{zh ? "附件" : "Attach"}</span>
             </button>
             <span className="composer-divider" />
@@ -527,14 +465,14 @@ export function Composer({
             <div className="composer-control-anchor">
               <button
                 type="button"
-                className={`composer-chip permission-chip ${openPanel === "permission" ? "is-open" : ""}`}
+                className={`composer-chip permission-chip composer-refined-control ${openPanel === "permission" ? "is-open" : ""}`}
                 data-mode={permissionMode || "approval"}
                 title={zh ? "权限设置" : "Permission profile"}
                 aria-haspopup="menu"
                 aria-expanded={openPanel === "permission"}
                 onClick={() => togglePanel("permission")}
               >
-                <span className="composer-glyph-well access" aria-hidden="true"><ComposerAccessIcon size={15.5} /></span>
+                <span className="composer-glyph-well access" aria-hidden="true"><ComposerControlIcon kind="access" /></span>
                 <span>{currentPermission.label}</span>
                 <ChevronDown size={13} className="composer-chip-chevron" />
               </button>
@@ -603,13 +541,13 @@ export function Composer({
             <div className="composer-control-anchor model-control-anchor">
               <button
                 type="button"
-                className={`composer-chip model-chip ${openPanel === "model" ? "is-open" : ""}`}
+                className={`composer-chip model-chip composer-refined-control ${openPanel === "model" ? "is-open" : ""}`}
                 title={currentModel}
                 aria-haspopup="menu"
                 aria-expanded={openPanel === "model"}
                 onClick={() => togglePanel("model")}
               >
-                <span className="composer-glyph-well model" aria-hidden="true"><ComposerModelIcon size={15.5} /></span>
+                <span className="composer-glyph-well model" aria-hidden="true"><ComposerControlIcon kind="model" /></span>
                 <span>{currentModel}</span>
                 <ChevronDown size={13} className="composer-chip-chevron" />
               </button>
