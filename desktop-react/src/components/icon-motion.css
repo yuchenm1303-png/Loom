@@ -13,7 +13,7 @@
 
 /* Core interactive icon motion. */
 :is(button, [role="button"], a[href], summary)
-  :is(svg, .tool-identity-glyph, .mp-mark, .capability-icon):not(.thread-sidebar-triangle-mark) {
+  :is(svg:not(.tool-identity-glyph > svg), .tool-identity-glyph, .mp-mark, .capability-icon):not(.thread-sidebar-triangle-mark) {
   transform-origin: center;
   transform-box: fill-box;
   transition:
@@ -23,17 +23,16 @@
     color var(--loom-icon-motion-fast) ease,
     opacity var(--loom-icon-motion-fast) ease,
     filter var(--loom-icon-motion-fast) ease;
-  will-change: translate, scale;
 }
 
 :is(button, [role="button"], a[href], summary):hover:not(:disabled)
-  :is(svg, .tool-identity-glyph, .mp-mark, .capability-icon):not(.thread-sidebar-triangle-mark) {
+  :is(svg:not(.tool-identity-glyph > svg), .tool-identity-glyph, .mp-mark, .capability-icon):not(.thread-sidebar-triangle-mark) {
   translate: 0 -1px;
   scale: 1.055;
 }
 
 :is(button, [role="button"], a[href], summary):active:not(:disabled)
-  :is(svg, .tool-identity-glyph, .mp-mark, .capability-icon):not(.thread-sidebar-triangle-mark) {
+  :is(svg:not(.tool-identity-glyph > svg), .tool-identity-glyph, .mp-mark, .capability-icon):not(.thread-sidebar-triangle-mark) {
   translate: 0 .35px;
   scale: .94;
   transition-duration: 90ms;
