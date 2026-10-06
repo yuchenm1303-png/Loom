@@ -1,10 +1,22 @@
 import assert from "node:assert/strict";
+import { readdir, readFile } from "node:fs/promises";
+import { assertIntactPng } from "../png-integrity.mjs";
+
+// A damaged PNG renders as a blank or partial character without failing decode().
+const assets = new URL("../../src/assets/", import.meta.url);
+for (const name of (await readdir(assets)).filter((name) => /^yukino-.*\.png$/.test(name))) {
+  assertIntactPng(name, await readFile(new URL(name, assets)));
+}
+
+const CURSOR_SIZE = 66;
+const SCALES = [1, 1.5, 2, 3];
+const origin = process.env.LOOM_TEST_ORIGIN || "http://127.0.0.1:5173";
 const { chromium } = await import(process.env.LOOM_PLAYWRIGHT_MODULE || "playwright-core");
 const browser = await chromium.launch({ executablePath: process.env.LOOM_CHROMIUM_PATH, headless: true });
 try {
   const page = await browser.newPage();
-  await page.goto(`${process.env.LOOM_TEST_ORIGIN || "http://127.0.0.1:5173"}/scripts/fixtures/cursor.html`);
-  const pointerAsset = await page.evaluate(async () => {
+  await page.goto(`${origin}/scripts/fixtures/cursor.html`);
+  const pointerAsset = await page.evaluate(async (scales) => {
     const load = async (src) => {
       const image = new Image();
       image.src = src;
@@ -13,8 +25,14 @@ try {
     };
     const cursor = getComputedStyle(document.body).cursor;
     const full = await load(cursor.match(/url\("?([^"\)]+)"?\)/)[1]);
-    const blackFull = await load("/src/assets/yukino-cursor.png");
     const pointer = await load("/src/assets/yukino-pointer-white.png");
+    const sizes = [];
+    for (const scale of scales) {
+      const suffix = scale === 1 ? "" : `@${scale}x`;
+      const images = await Promise.all(["yukino-cursor", "yukino-cursor-white", "yukino-pointer", "yukino-pointer-white"]
+        .map((name) => load(`/src/assets/${name}${suffix}.png`)));
+      sizes.push(images.map((image) => [image.naturalWidth, image.naturalHeight]));
+    }
 
     const fullCanvas = document.createElement("canvas");
     fullCanvas.width = full.naturalWidth;
@@ -23,10 +41,16 @@ try {
     fullContext.drawImage(full, 0, 0);
     const composite = fullContext.getImageData(0, 0, fullCanvas.width, fullCanvas.height).data;
     let decorationPixels = 0;
+    const decoration = [fullCanvas.width, fullCanvas.height, 0, 0];
     for (let y = 0; y < fullCanvas.height; y++) {
       for (let x = 0; x < fullCanvas.width; x++) {
         if (x < pointer.naturalWidth && y < pointer.naturalHeight) continue;
-        if (composite[(y * fullCanvas.width + x) * 4 + 3]) decorationPixels++;
+        if (!composite[(y * fullCanvas.width + x) * 4 + 3]) continue;
+        decorationPixels++;
+        decoration[0] = Math.min(decoration[0], x);
+        decoration[1] = Math.min(decoration[1], y);
+        decoration[2] = Math.max(decoration[2], x + 1);
+        decoration[3] = Math.max(decoration[3], y + 1);
       }
     }
 
@@ -41,26 +65,53 @@ try {
     return {
       width: full.naturalWidth,
       height: full.naturalHeight,
-      blackWidth: blackFull.naturalWidth,
-      blackHeight: blackFull.naturalHeight,
+      sizes,
       pointerWidth: pointer.naturalWidth,
       pointerHeight: pointer.naturalHeight,
       whiteFill: red(2, 2) === 255,
       extendedArms: [[15, 2], [2, 13]].every(([x, y]) => red(x, y) === 255 && alpha(x, y) > 180),
       openCorner: [[6, 5], [10, 10]].every(([x, y]) => alpha(x, y) === 0),
       decorationPixels,
+      decoration,
     };
+  }, SCALES);
+  assert.deepEqual([pointerAsset.width, pointerAsset.height], [CURSOR_SIZE, CURSOR_SIZE]);
+  pointerAsset.sizes.forEach((sizes, index) => {
+    const scale = SCALES[index];
+    const full = CURSOR_SIZE * scale;
+    const edge = [16 * scale, 14 * scale];
+    assert.deepEqual(sizes, [[full, full], [full, full], edge, edge], `${scale}x cursor and pointer bitmaps`);
   });
-  assert.deepEqual(
-    [pointerAsset.width, pointerAsset.height, pointerAsset.blackWidth, pointerAsset.blackHeight],
-    [32, 32, 32, 32],
-    "full native cursor assets must stay within the Windows/Chromium 32x32 surface",
-  );
   assert.deepEqual([pointerAsset.pointerWidth, pointerAsset.pointerHeight], [16, 14]);
   assert.ok(pointerAsset.whiteFill, "dark surfaces must use a white pointer");
   assert.ok(pointerAsset.extendedArms, "both pointer arms must keep the 16x14 SVG bounds");
   assert.ok(pointerAsset.openCorner, "the pointer must retain its open corner");
-  assert.ok(pointerAsset.decorationPixels > 40, "the full cursor must contain visible character pixels outside the pointer");
+  const [left, top, right, bottom] = pointerAsset.decoration;
+  assert.ok(pointerAsset.decorationPixels > 1200 && right - left >= 44 && bottom - top >= 50,
+    `the whole character must be visible, got ${right - left}x${bottom - top} (${pointerAsset.decorationPixels} px)`);
+  assert.ok(left >= 12 && top >= 12, "the character must stay clear of the pointer");
+  assert.ok(Math.abs(left + right - top - bottom) <= 2, "the pointer must sit diagonally upper-left of the character");
+
+  // image-set() must pick the bitmap drawn for the display (the lowest
+  // resolution >= devicePixelRatio) and pointerContrast must warm exactly that
+  // resolution for both tones; any other variant showing up means a mismatch.
+  for (const [deviceScaleFactor, suffix] of [[1, ""], [1.25, "@1.5x"], [1.5, "@1.5x"], [2, "@2x"]]) {
+    const context = await browser.newContext({ deviceScaleFactor });
+    const scaled = await context.newPage();
+    await scaled.goto(`${origin}/scripts/fixtures/cursor.html`);
+    await scaled.mouse.move(300, 300);
+    const loaded = await (await scaled.waitForFunction(() => {
+      // Vite dev also fetches every glob-matched asset as a JS module (?import).
+      const names = [...new Set(performance.getEntriesByType("resource")
+        .filter((entry) => entry.initiatorType === "img" || entry.initiatorType === "css")
+        .map((entry) => decodeURIComponent(new URL(entry.name).pathname.split("/").pop()))
+        .filter((name) => /^yukino-(cursor|pointer)/.test(name)))];
+      return names.length >= 4 && names.sort();
+    }, null, { timeout: 5000 })).jsonValue();
+    assert.deepEqual(loaded, ["yukino-cursor", "yukino-cursor-white", "yukino-pointer", "yukino-pointer-white"]
+      .map((name) => `${name}${suffix}.png`).sort(), `devicePixelRatio ${deviceScaleFactor}`);
+    await context.close();
+  }
 
   await page.evaluate(() => {
     const surface = document.createElement("div");
@@ -128,6 +179,6 @@ try {
   await page.emulateMedia({ reducedMotion: "reduce" });
   await page.mouse.click(150, 150);
   assert.equal(await page.locator(".loom-pointer-click-ripple").count(), 0);
-  console.log("PASS: native cursor stays within 32x32 and retains the full character decoration");
+  console.log("PASS: intact assets, full 66px character, per-scale image-set bitmaps and matching preloads");
   console.log("PASS: contrast switching, viewport edges, click passthrough and reduced motion");
 } finally { await browser.close(); }

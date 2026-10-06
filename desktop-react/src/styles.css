@@ -31,6 +31,18 @@
   box-sizing: border-box;
 }
 
+/* image-set() hands Chromium the bitmap drawn for the display scale, so the
+   character is never stretched. Above 32px a cursor is shown only while it
+   fits inside the viewport; the browser then chooses the compact pointer at
+   the right/bottom edges without a JS movement loop. */
+:root {
+  --loom-cursor-white:
+    image-set(url("./assets/yukino-cursor-white.png") 1x, url("./assets/yukino-cursor-white@1.5x.png") 1.5x, url("./assets/yukino-cursor-white@2x.png") 2x, url("./assets/yukino-cursor-white@3x.png") 3x) 0 0,
+    image-set(url("./assets/yukino-pointer-white.png") 1x, url("./assets/yukino-pointer-white@1.5x.png") 1.5x, url("./assets/yukino-pointer-white@2x.png") 2x, url("./assets/yukino-pointer-white@3x.png") 3x) 0 0;
+  --loom-cursor-black:
+    image-set(url("./assets/yukino-cursor.png") 1x, url("./assets/yukino-cursor@1.5x.png") 1.5x, url("./assets/yukino-cursor@2x.png") 2x, url("./assets/yukino-cursor@3x.png") 3x) 0 0,
+    image-set(url("./assets/yukino-pointer.png") 1x, url("./assets/yukino-pointer@1.5x.png") 1.5x, url("./assets/yukino-pointer@2x.png") 2x, url("./assets/yukino-pointer@3x.png") 3x) 0 0;
+}
 /* Include body-mounted portals and pseudo-elements. Component hover/disabled
    rules (including resize handles) must not replace the chosen cursor. */
 :root,
@@ -39,12 +51,11 @@
 :root :is(body, #root) *::before,
 :root :is(body, #root) *::after {
   /* The arrow at the top-left owns the hotspot; the character is decoration. */
-  cursor: var(--loom-native-cursor, url("./assets/yukino-cursor-white.png") 0 0, url("./assets/yukino-pointer-white.png") 0 0), auto !important;
+  cursor: var(--loom-native-cursor, var(--loom-cursor-white)), auto !important;
 }
-/* The browser chooses the compact candidate at edges without a JS movement loop. */
-:root[data-loom-theme="light"] { --loom-native-cursor: url("./assets/yukino-cursor.png") 0 0, url("./assets/yukino-pointer.png") 0 0; }
-:root[data-loom-pointer-tone="white"] { --loom-native-cursor: url("./assets/yukino-cursor-white.png") 0 0, url("./assets/yukino-pointer-white.png") 0 0; }
-:root[data-loom-pointer-tone="black"] { --loom-native-cursor: url("./assets/yukino-cursor.png") 0 0, url("./assets/yukino-pointer.png") 0 0; }
+:root[data-loom-theme="light"] { --loom-native-cursor: var(--loom-cursor-black); }
+:root[data-loom-pointer-tone="white"] { --loom-native-cursor: var(--loom-cursor-white); }
+:root[data-loom-pointer-tone="black"] { --loom-native-cursor: var(--loom-cursor-black); }
 html, body, #root {
   width: 100%;
   height: 100%;

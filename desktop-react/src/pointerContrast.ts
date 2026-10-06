@@ -1,14 +1,30 @@
-import blackCursor from "./assets/yukino-cursor.png";
-import whiteCursor from "./assets/yukino-cursor-white.png";
-import blackPointer from "./assets/yukino-pointer.png";
-import whitePointer from "./assets/yukino-pointer-white.png";
-
 // Switch native resources at surface boundaries, never move a DOM cursor.
-const preloaded = [blackCursor, whiteCursor, blackPointer, whitePointer].map((src) => {
-  const image = new Image();
-  image.src = src;
-  return image;
-});
+const cursorAssets = Object.entries(import.meta.glob<string>("./assets/yukino-{cursor,pointer}*.png", {
+  eager: true,
+  import: "default",
+})).map(([path, src]) => ({ src, scale: Number(/@([\d.]+)x\.png$/.exec(path)?.[1] ?? 1) }));
+const cursorScales = [...new Set(cursorAssets.map((asset) => asset.scale))].sort((a, b) => a - b);
+const preloaded = new Map<string, HTMLImageElement>();
+let resolutionQuery: MediaQueryList | undefined;
+
+// Warm both tones at the resolution image-set() picks for this display (the
+// lowest one >= devicePixelRatio, else the largest) so a tone switch never
+// flashes the system arrow while a cursor image loads.
+function preloadForResolution() {
+  const ratio = window.devicePixelRatio || 1;
+  const scale = cursorScales.find((value) => value >= ratio) ?? cursorScales[cursorScales.length - 1];
+  for (const asset of cursorAssets) {
+    if (asset.scale !== scale || preloaded.has(asset.src)) continue;
+    const image = new Image();
+    image.src = asset.src;
+    preloaded.set(asset.src, image);
+  }
+  // Moving to another monitor or zooming changes the chosen resolution.
+  resolutionQuery?.removeEventListener("change", preloadForResolution);
+  resolutionQuery = window.matchMedia?.(`(resolution: ${ratio}dppx)`);
+  resolutionQuery?.addEventListener("change", preloadForResolution);
+}
+preloadForResolution();
 let target: Element | null = null;
 let frame = 0;
 let themeTimer = 0;
@@ -54,5 +70,6 @@ if (import.meta.hot) import.meta.hot.dispose(() => {
   cancelAnimationFrame(frame);
   clearTimeout(themeTimer);
   delete document.documentElement.dataset.loomPointerTone;
-  preloaded.length = 0;
+  resolutionQuery?.removeEventListener("change", preloadForResolution);
+  preloaded.clear();
 });

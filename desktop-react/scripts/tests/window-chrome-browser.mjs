@@ -9,7 +9,7 @@ try {
   await page.locator(".loom-titlebar").waitFor();
   await page.waitForFunction(() => document.querySelectorAll(".loom-scroll-track:not([hidden])").length === 2);
   for (const selector of [".loom-titlebar-drag", ".loom-titlebar button", ".loom-scroll-thumb"]) {
-    assert.match(await page.locator(selector).first().evaluate((el) => getComputedStyle(el).cursor), /yukino-mouse.*0 0/);
+    assert.match(await page.locator(selector).first().evaluate((el) => getComputedStyle(el).cursor), /yukino-cursor.*0 0/);
   }
   await page.getByRole("button", { name: "Minimize window" }).click();
   await page.getByRole("button", { name: "Maximize window" }).click();
