@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { advanceStreamingText, streamingFrameInterval } from "./streamingText";
 import { useReducedMotion } from "../motion/useReducedMotion";
+import { STREAM_FINISH_MS } from "../presentationTiming";
 
 // Scoped to a mounted turn: moving its final answer must not lose paint progress.
 // Leaving a thread discards this state, so reopening history never replays it.
@@ -116,7 +117,7 @@ export function useStreamingPresentation(content: string, streaming: boolean, me
       // Finish before the process fold (460ms). Large final chunks must not
       // hold tool entrances or keep the final answer typing for many seconds.
       if ((!receivingRef.current && drainStartedAtRef.current !== null
-        && now - drainStartedAtRef.current >= 420) || elapsed > 1000) {
+        && now - drainStartedAtRef.current >= STREAM_FINISH_MS) || elapsed > 1000) {
         commit(target);
         lastPaintAtRef.current = now;
         return;
@@ -127,7 +128,9 @@ export function useStreamingPresentation(content: string, streaming: boolean, me
       }
 
       lastPaintAtRef.current = now;
-      const next = advanceStreamingText(current, target, elapsed, !receivingRef.current);
+      const remainingMs = drainStartedAtRef.current === null ? Infinity
+        : STREAM_FINISH_MS - (now - drainStartedAtRef.current);
+      const next = advanceStreamingText(current, target, elapsed, !receivingRef.current, remainingMs);
       commit(next);
       if (next !== targetRef.current) frameRef.current = requestAnimationFrame(tick);
     };

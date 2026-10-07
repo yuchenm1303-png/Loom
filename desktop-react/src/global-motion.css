@@ -5,8 +5,8 @@
 
 :root {
   --loom-motion-control: 170ms;
-  --loom-motion-popover: 310ms;
-  --loom-motion-dialog: 380ms;
+  --loom-motion-popover: 220ms;
+  --loom-motion-dialog: 300ms;
   --loom-motion-panel: 390ms;
   --loom-motion-page: 420ms;
   --loom-motion-exit: 240ms;

@@ -1,6 +1,7 @@
 import { Check, MessageSquareText, Send } from "lucide-react";
-import { useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useI18n } from "../i18n";
+import { useMotionPresence } from "../motion/useMotionPresence";
 import "./decision-prompt-card.css";
 
 export interface DecisionPromptOption {
@@ -264,16 +265,24 @@ export function DecisionPromptCard({
   const rootRef = useRef<HTMLElement | null>(null);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [customOpen, setCustomOpen] = useState(false);
+  const customPresence = useMotionPresence(customOpen, 220);
+  const customInputId = useId();
+  const submissionPending = useRef(false);
+  const [justSubmitted, setJustSubmitted] = useState(false);
   const [note, setNote] = useState("");
   const [sending, setSending] = useState(false);
   const [submitted, setSubmitted] = useState<DecisionPromptOption[] | null | undefined>(undefined);
   const [error, setError] = useState("");
+  const cardPresence = useMotionPresence(submitted === undefined, justSubmitted ? 300 : 0);
+  useLayoutEffect(() => {
+    if (justSubmitted && !cardPresence.mounted) setJustSubmitted(false);
+  }, [justSubmitted, cardPresence.mounted]);
 
   const selected = useMemo(
     () => spec.options.filter((option) => selectedIds.includes(option.id)),
     [selectedIds, spec.options],
   );
-  const canSubmit = Boolean(onSubmit && !disabled && !sending && (selected.length || note.trim()));
+  const canSubmit = Boolean(onSubmit && !disabled && !sending && submitted === undefined && (selected.length || note.trim()));
 
   // The selection receipt is part of the persisted transcript, not just local
   // component state. A completed turn can be rebuilt after the continuation
@@ -287,147 +296,162 @@ export function DecisionPromptCard({
   });
 
   async function submitSelection(nextSelected = selected) {
-    if (!onSubmit || disabled || sending || (!nextSelected.length && !note.trim())) return;
+    if (!onSubmit || disabled || submitted !== undefined || submissionPending.current || (!nextSelected.length && !note.trim())) return;
+    submissionPending.current = true;
     setSending(true);
     setError("");
     try {
       await onSubmit(decisionResponse(spec, nextSelected, note, zh));
+      setJustSubmitted(true);
       setSubmitted(nextSelected.length ? nextSelected : null);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
     } finally {
+      submissionPending.current = false;
       setSending(false);
     }
   }
 
   const locked = disabled || sending || submitted !== undefined;
 
-  if (submitted !== undefined) {
-    const summary = submitted?.length
-      ? submitted.map((option) => option.title).join(zh ? "、" : ", ")
-      : (zh ? "已提交补充意见" : "Additional guidance sent");
-
-    return (
-      <div className="decision-inline-receipt" role="status" aria-live="polite">
-        <span className="decision-inline-receipt-check" aria-hidden="true"><Check size={12.5} strokeWidth={2.15} /></span>
-        <span className="decision-inline-receipt-label">{zh ? "已选择" : "Selected"}</span>
-        <span className="decision-inline-receipt-value" title={summary}>{summary}</span>
-      </div>
-    );
-  }
+  const summary = submitted?.length
+    ? submitted.map((option) => option.title).join(zh ? "、" : ", ")
+    : (zh ? "已提交补充意见" : "Additional guidance sent");
+  const receipt = submitted !== undefined ? (
+    <div className={`decision-inline-receipt ${justSubmitted ? "is-new" : ""}`} role="status" aria-live="polite">
+      <span className="decision-inline-receipt-check" aria-hidden="true"><Check size={12.5} strokeWidth={2.15} /></span>
+      <span className="decision-inline-receipt-label">{zh ? "已选择" : "Selected"}</span>
+      <span className="decision-inline-receipt-value" title={summary}>{summary}</span>
+    </div>
+  ) : null;
 
   return (
-    <section ref={rootRef} className={`decision-card ${spec.multiple ? "is-multiple" : "is-single"}`} aria-label={spec.title}>
-      <header className="decision-card-head">
-        <span className="decision-card-icon" aria-hidden="true"><MessageSquareText size={16} /></span>
-        <div className="decision-card-heading">
-          <div className="decision-card-title-row">
-            <strong>{spec.title}</strong>
-            {spec.multiple ? <span className="decision-mode-badge">{zh ? "可多选" : "Multi-select"}</span> : null}
-          </div>
-          {spec.description ? <p>{spec.description}</p> : null}
-        </div>
-      </header>
+    <div className={`decision-response ${submitted !== undefined ? "is-resolved" : ""} ${justSubmitted ? "is-new" : ""}`}>
+      <div className="decision-response-fold" data-motion-phase={cardPresence.phase} inert={submitted !== undefined}>
+        <div className="decision-response-fold-inner">
+          {cardPresence.mounted ? (
+            <section ref={rootRef} className={`decision-card ${spec.multiple ? "is-multiple" : "is-single"}`} aria-label={spec.title}>
+              <header className="decision-card-head">
+                <span className="decision-card-icon" aria-hidden="true"><MessageSquareText size={16} /></span>
+                <div className="decision-card-heading">
+                  <div className="decision-card-title-row">
+                    <strong>{spec.title}</strong>
+                    {spec.multiple ? <span className="decision-mode-badge">{zh ? "可多选" : "Multi-select"}</span> : null}
+                  </div>
+                  {spec.description ? <p>{spec.description}</p> : null}
+                </div>
+              </header>
 
-      <div
-        className="decision-options"
-        role={spec.multiple ? "group" : "radiogroup"}
-        aria-label={spec.title}
-        aria-multiselectable={spec.multiple || undefined}
-      >
-        {spec.options.map((option) => {
-          const active = selectedIds.includes(option.id);
-          return (
-            <button
-              key={option.id}
-              type="button"
-              className={`decision-option ${active ? "is-selected" : ""}`}
-              role={spec.multiple ? "checkbox" : "radio"}
-              aria-checked={active}
-              disabled={locked}
-              onClick={() => {
-                setError("");
-                if (!spec.multiple) {
-                  setSelectedIds([option.id]);
-                  void submitSelection([option]);
-                  return;
-                }
-                setSelectedIds((current) => (
-                  current.includes(option.id)
-                    ? current.filter((id) => id !== option.id)
-                    : [...current, option.id]
-                ));
-              }}
-            >
-              <span className="decision-option-marker" aria-hidden="true">
-                <span className="decision-option-marker-core">
-                  {active ? <Check size={12} strokeWidth={2.2} /> : null}
-                </span>
-              </span>
-              <span className="decision-option-copy">
-                <span className="decision-option-title-row">
-                  <strong>{option.title}</strong>
-                  {option.recommended ? <em>{zh ? "建议" : "Suggested"}</em> : null}
-                </span>
-                {option.description ? <span>{option.description}</span> : null}
-              </span>
-            </button>
-          );
-        })}
-      </div>
-
-      <div className="decision-card-foot">
-          {spec.allowCustomInput ? (
-            <div className={`decision-custom ${customOpen ? "is-open" : ""}`}>
-              <button
-                type="button"
-                className="decision-custom-toggle"
-                disabled={disabled || sending}
-                onClick={() => setCustomOpen((current) => !current)}
+              <div
+                className="decision-options"
+                role={spec.multiple ? "group" : "radiogroup"}
+                aria-label={spec.title}
+                aria-multiselectable={spec.multiple || undefined}
               >
-                <MessageSquareText size={13} />
-                <span>{zh ? "补充或提出自己的意见" : "Add or propose your own preference"}</span>
-              </button>
-              {customOpen ? (
-                <textarea
-                  value={note}
-                  onChange={(event) => {
-                    setNote(event.target.value);
-                    setError("");
-                  }}
-                  placeholder={spec.customPlaceholder || (zh ? "例如：选 A，但不要包含之前的未提交改动…" : "For example: choose A, but leave the earlier uncommitted changes out…")}
-                  disabled={disabled || sending}
-                  rows={2}
-                />
-              ) : null}
-            </div>
-          ) : null}
+                {spec.options.map((option) => {
+                  const active = selectedIds.includes(option.id);
+                  return (
+                    <button
+                      key={option.id}
+                      type="button"
+                      className={`decision-option ${active ? "is-selected" : ""}`}
+                      role={spec.multiple ? "checkbox" : "radio"}
+                      aria-checked={active}
+                      disabled={locked}
+                      onClick={() => {
+                        setError("");
+                        if (!spec.multiple) {
+                          setSelectedIds([option.id]);
+                          void submitSelection([option]);
+                          return;
+                        }
+                        setSelectedIds((current) => (
+                          current.includes(option.id)
+                            ? current.filter((id) => id !== option.id)
+                            : [...current, option.id]
+                        ));
+                      }}
+                    >
+                      <span className="decision-option-marker" aria-hidden="true">
+                        <span className="decision-option-marker-core">
+                          {active ? <Check size={12} strokeWidth={2.2} /> : null}
+                        </span>
+                      </span>
+                      <span className="decision-option-copy">
+                        <span className="decision-option-title-row">
+                          <strong>{option.title}</strong>
+                          {option.recommended ? <em>{zh ? "建议" : "Suggested"}</em> : null}
+                        </span>
+                        {option.description ? <span>{option.description}</span> : null}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
 
-          <div className="decision-actions">
-            {error ? (
-              <span className="decision-error">{error}</span>
-            ) : (
-              <span className="decision-hint">
-                {spec.multiple
-                  ? (zh ? "可以选择多个方案，再一起确认。" : "Select one or more options, then confirm together.")
-                  : (zh ? "选择一个方案，也可以补充条件。" : "Choose an option and optionally add guidance.")}
-              </span>
-            )}
-            <button
-              type="button"
-              className="decision-submit"
-              disabled={!canSubmit}
-              onClick={() => void submitSelection()}
-            >
-              <span>{sending
-                ? (zh ? "正在发送…" : "Sending…")
-                : selected.length
-                  ? (zh ? `确认 ${selected.length} 项` : `Confirm ${selected.length}`)
-                  : (zh ? "发送意见" : "Send preference")}</span>
-              <Send size={13} />
-            </button>
-          </div>
+              <div className="decision-card-foot">
+                  {spec.allowCustomInput ? (
+                    <div className={`decision-custom ${customOpen ? "is-open" : ""}`}>
+                      <button
+                        type="button"
+                        className="decision-custom-toggle"
+                        aria-expanded={customOpen}
+                        aria-controls={customInputId}
+                        disabled={disabled || sending}
+                        onClick={() => setCustomOpen((current) => !current)}
+                      >
+                        <MessageSquareText size={13} />
+                        <span>{zh ? "补充或提出自己的意见" : "Add or propose your own preference"}</span>
+                      </button>
+                      {customPresence.mounted ? (
+                        <div className="decision-custom-presence" data-motion-phase={customPresence.phase} inert={!customOpen}>
+                          <div className="decision-custom-presence-inner">
+                            <textarea id={customInputId}
+                              value={note}
+                              onChange={(event) => {
+                                setNote(event.target.value);
+                                setError("");
+                              }}
+                              placeholder={spec.customPlaceholder || (zh ? "例如：选 A，但不要包含之前的未提交改动…" : "For example: choose A, but leave the earlier uncommitted changes out…")}
+                              disabled={disabled || sending}
+                              rows={2}
+                            />
+                          </div>
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : null}
+
+                  <div className="decision-actions">
+                    {error ? (
+                      <span className="decision-error">{error}</span>
+                    ) : (
+                      <span className="decision-hint">
+                        {spec.multiple
+                          ? (zh ? "可以选择多个方案，再一起确认。" : "Select one or more options, then confirm together.")
+                          : (zh ? "选择一个方案，也可以补充条件。" : "Choose an option and optionally add guidance.")}
+                      </span>
+                    )}
+                    <button
+                      type="button"
+                      className="decision-submit"
+                      disabled={!canSubmit}
+                      onClick={() => void submitSelection()}
+                    >
+                      <span>{sending
+                        ? (zh ? "正在发送…" : "Sending…")
+                        : selected.length
+                          ? (zh ? `确认 ${selected.length} 项` : `Confirm ${selected.length}`)
+                          : (zh ? "发送意见" : "Send preference")}</span>
+                      <Send size={13} />
+                    </button>
+                  </div>
+                </div>
+            </section>
+          ) : null}
         </div>
-    </section>
+      </div>
+      {receipt}
+    </div>
   );
 }

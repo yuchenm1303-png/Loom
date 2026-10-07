@@ -8,3 +8,5 @@
 export const PRESENTATION_FRAME_MS = 28;
 export const RUN_PHASE_PRESENTATION_HOLD_MS = 130;
 export const TURN_SETTLE_HOLD_MS = 460;
+// Leave one presentation frame between the last glyph and process folding.
+export const STREAM_FINISH_MS = TURN_SETTLE_HOLD_MS - 40;

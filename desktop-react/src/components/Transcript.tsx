@@ -35,6 +35,7 @@ import {
 import { artifactName, canRenderArtifact } from "../artifactRenderers";
 import { useI18n } from "../i18n";
 import { useMotionPresence } from "../motion/useMotionPresence";
+import { useReducedMotion } from "../motion/useReducedMotion";
 import { TURN_SETTLE_HOLD_MS } from "../presentationTiming";
 import type { TranscriptItem } from "../types/loom";
 import { latestTaskPlan, liveTaskProgress } from "./liveTaskProgress";
@@ -755,6 +756,7 @@ const ActivityRow = memo(function ActivityRow({ item, open, workspace, onToggle 
         <div
           className={`task-flow-inline-detail-grid ${open ? "open" : ""}`}
           data-motion-phase={detailPresence.phase}
+          inert={!open}
         >
           <div className="task-flow-inline-detail-inner">
             {detailPresence.mounted ? (
@@ -1657,15 +1659,17 @@ const TurnView = memo(function TurnView({
   const [processOpen, setProcessOpen] = useState(active);
   // Sending owns its full animation even if the runtime completes immediately.
   // History mounts inactive, so opening a past turn does not launch its bubble.
-  const [sending] = useState(active);
+  const reduce = useReducedMotion();
+  const [sending, setSending] = useState(active && !reduce);
   const [settling, setSettling] = useState(false);
   const wasActiveRef = useRef(active);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
+    if (reduce) setSending(false);
     if (active) {
       setProcessOpen(true);
       setSettling(false);
-    } else if (wasActiveRef.current) {
+    } else if (wasActiveRef.current && !reduce) {
       // Only a live -> complete transition owns completion motion. Historical
       // turns mount already settled and therefore never replay the handoff.
       setSettling(true);
@@ -1678,9 +1682,10 @@ const TurnView = memo(function TurnView({
       };
     } else {
       setSettling(false);
+      if (reduce) setProcessOpen(false);
     }
     wasActiveRef.current = active;
-  }, [active]);
+  }, [active, reduce]);
 
   const inlineArtifact = useMemo(() => latestInlineArtifact(derived.orderedItems), [derived.orderedItems]);
   const latestAssistantState = derived.latestAssistant ? splitReasoning(derived.latestAssistant.text ?? "") : null;
@@ -1699,7 +1704,10 @@ const TurnView = memo(function TurnView({
     <PendingThinkingContext.Provider value={pendingThinking}>
     <section className={`turn-block ${active ? "is-active" : "is-complete"} ${settling ? "is-settling" : ""}`.trim()} data-turn-id={turnId}>
       {derived.initialUser ? (
-        <div className={`transcript-entry entry-user_message ${sending ? "is-sending" : ""}`} key={derived.initialUser.clientMessageId || derived.initialUser.id}>
+        <div className={`transcript-entry entry-user_message ${sending ? "is-sending" : ""}`} key={derived.initialUser.clientMessageId || derived.initialUser.id}
+          onAnimationEnd={(event) => {
+            if (event.target === event.currentTarget && event.animationName === "loom-user-send-entry") setSending(false);
+          }}>
           <ItemView item={derived.initialUser} onApproval={onApproval} onPrompt={onPrompt} promptDisabled={promptDisabled} workspace={workspace} />
         </div>
       ) : null}

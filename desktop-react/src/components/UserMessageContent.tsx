@@ -12,11 +12,10 @@ import {
   Music2,
   Play,
   Video,
-  X,
   type LucideIcon,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import { createPortal } from "react-dom";
+import { ImageLightbox } from "./ImageLightbox";
 import "./user-message-attachments.css";
 import { UserRichText } from "./UserRichText";
 
@@ -273,45 +272,11 @@ function ImageAttachmentPreview({ attachment, workspace }: { attachment: Display
     };
   }, [attachment.path, workspace]);
 
-  useEffect(() => {
-    if (!previewing) return;
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setPreviewing(false);
-    };
-    window.addEventListener("keydown", onKeyDown, true);
-    return () => window.removeEventListener("keydown", onKeyDown, true);
-  }, [previewing]);
 
   if (!source || failed) return <FileAttachmentCard attachment={attachment} />;
 
-  const lightbox = previewing ? createPortal(
-    <div
-      className="user-message-image-lightbox"
-      role="presentation"
-      onMouseDown={(event) => {
-        if (event.target === event.currentTarget) setPreviewing(false);
-      }}
-    >
-      <div className="user-message-image-lightbox-panel" role="dialog" aria-modal="true" aria-label={`查看图片 ${attachment.name}`}>
-        <div className="user-message-image-lightbox-toolbar">
-          <strong title={attachment.name}>{attachment.name}</strong>
-          <div className="user-message-image-lightbox-actions">
-            <button type="button" onClick={() => void revealAttachment(attachment)} title="在文件夹中查看">
-              <ExternalLink size={15} strokeWidth={1.8} />
-              <span>原文件</span>
-            </button>
-            <button type="button" className="icon-only" onClick={() => setPreviewing(false)} title="关闭图片预览" aria-label="关闭图片预览">
-              <X size={17} strokeWidth={1.9} />
-            </button>
-          </div>
-        </div>
-        <div className="user-message-image-lightbox-canvas">
-          <img src={source} alt={attachment.name} draggable={false} data-loom-image-path={attachmentAbsolutePath(attachment)} />
-        </div>
-      </div>
-    </div>,
-    document.body,
-  ) : null;
+  const lightbox = <ImageLightbox open={previewing} source={source} label={attachment.name} path={attachmentAbsolutePath(attachment)}
+    onClose={() => setPreviewing(false)} onReveal={() => { void revealAttachment(attachment); }} />;
 
   return (
     <>

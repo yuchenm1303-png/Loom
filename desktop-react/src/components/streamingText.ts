@@ -39,15 +39,23 @@ export function advanceStreamingText(
   target: string,
   elapsedMs = 32,
   finalizing = false,
+  finishWithinMs = Infinity,
 ): string {
   if (!target.startsWith(current)) return target;
   if (current === target) return target;
+  if (finalizing && finishWithinMs <= elapsedMs) return target;
 
   const remaining = target.length - current.length;
   const batches = streamingFrameInterval(target.length) > 28
     ? Math.max(1, Math.min(4, Math.floor(elapsedMs / 28)))
     : 1;
-  const budget = paintBudget(remaining, elapsedMs / batches, finalizing) * batches;
+  const normalBudget = paintBudget(remaining, elapsedMs / batches, finalizing) * batches;
+  // Spread a final provider burst over the remaining handoff window instead
+  // of revealing a few glyphs and dumping the entire backlog at its deadline.
+  const deadlineBudget = finalizing && Number.isFinite(finishWithinMs)
+    ? Math.ceil(remaining * Math.min(1, Math.max(12, elapsedMs) / Math.max(1, finishWithinMs)))
+    : 0;
+  const budget = Math.max(normalBudget, deadlineBudget);
   const softBoundaryFloor = Math.max(3, Math.floor(budget * 0.72));
 
   let end = current.length;
@@ -56,7 +64,7 @@ export function advanceStreamingText(
     end += part.segment.length;
     count += 1;
     if (count >= budget) break;
-    if (count >= 2 * batches && SENTENCE_BREAK.test(part.segment)) break;
+    if (count >= Math.max(2 * batches, deadlineBudget) && SENTENCE_BREAK.test(part.segment)) break;
     if (count >= softBoundaryFloor && SOFT_BREAK.test(part.segment)) break;
   }
   return target.slice(0, end);

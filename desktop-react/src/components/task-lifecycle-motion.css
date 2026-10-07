@@ -1,11 +1,11 @@
 /* Task lifecycle: entrances on live content; retained DOM for real exits. */
-.app-shell .turn-process.is-live .has-lifecycle-motion.entry-assistant_message,
 .app-shell .turn-process.is-live .has-lifecycle-motion.entry-error,
 .app-shell .turn-process.is-live .has-lifecycle-motion.entry-approval {
   animation: loom-task-copy-arrive 280ms cubic-bezier(.2,.8,.2,1) both !important;
 }
-.app-shell .turn-process.is-live .has-lifecycle-motion.entry-activity {
-  animation: loom-task-copy-arrive 240ms cubic-bezier(.2,.8,.2,1) both !important;
+/* Shells/capsules own their entrance; a second parent fade multiplies it. */
+.app-shell .turn-process.is-live .has-lifecycle-motion:is(.entry-assistant_message,.entry-activity) {
+  animation: none !important;
 }
 @keyframes loom-task-copy-arrive {
   from { opacity: 0; transform: translateY(6px); }
@@ -76,18 +76,10 @@
 /* Shared fold timing, with a faster fade so the shrinking text stays quiet. */
 .app-shell :is(.disclosure-grid, .task-flow-group-grid, .task-flow-inline-detail-grid,
   .turn-process-grid, .live-reasoning-grid) {
-  transition: grid-template-rows 280ms cubic-bezier(.2,.8,.2,1), opacity 180ms ease !important;
+  transition: grid-template-rows 240ms cubic-bezier(.2,.8,.2,1), opacity 180ms ease !important;
 }
 .app-shell :is(.disclosure-chevron, .task-flow-group-chevron, .turn-process-chevron, .earlier-process-chevron) {
   transition: transform 240ms cubic-bezier(.2,.8,.2,1), color 180ms ease;
-}
-.app-shell .has-lifecycle-motion .task-flow-group-title,
-.app-shell .has-lifecycle-motion .task-flow-verb {
-  animation: loom-task-label-change 220ms ease both;
-}
-@keyframes loom-task-label-change {
-  from { opacity: .2; transform: translateY(2px); }
-  to { opacity: 1; transform: none; }
 }
 .app-shell .task-flow-row .task-flow-row-icon,
 .app-shell .task-flow-row .task-flow-status {

@@ -208,7 +208,7 @@ export function Composer({
   const [dragging, setDragging] = useState(false);
   const [focused, setFocused] = useState(false);
   const [openPanel, setOpenPanel] = useState<OpenPanel>(null);
-  const panelPresence = useMotionPresence(Boolean(openPanel), 215);
+  const panelPresence = useMotionPresence(Boolean(openPanel), 215, openPanel);
   const lastOpenPanelRef = useRef<Exclude<OpenPanel, null> | null>(openPanel);
   if (openPanel) lastOpenPanelRef.current = openPanel;
   const renderedPanel = openPanel ?? (panelPresence.mounted ? lastOpenPanelRef.current : null);
@@ -267,6 +267,11 @@ export function Composer({
 
     function handleEscape(event: KeyboardEvent) {
       if (event.key === "Escape") {
+        const trigger = composerRootRef.current?.querySelector<HTMLButtonElement>('.composer-chip[aria-expanded="true"]');
+        if (trigger) {
+          event.preventDefault();
+          trigger.focus();
+        }
         setOpenPanel(null);
         setPanelError("");
       }
@@ -340,6 +345,8 @@ export function Composer({
   }
 
   function onKeyDown(event: ReactKeyboardEvent<HTMLTextAreaElement>) {
+    // Enter confirms Chinese/Japanese IME candidates before it submits a draft.
+    if (event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229) return;
     if (event.key === "Escape" && quote) {
       event.preventDefault();
       setQuote(null);
@@ -466,7 +473,7 @@ export function Composer({
               </button>
 
               {renderedPanel === "permission" ? (
-                <div className={`composer-popover permission-popover ${running ? "is-locked" : ""}`} data-motion-phase={panelPresence.phase} role="menu" aria-label="Permission profiles">
+                <div className={`composer-popover permission-popover ${running ? "is-locked" : ""}`} data-motion-phase={panelPresence.phase} inert={!openPanel} role="menu" aria-label="Permission profiles">
                   <div className="composer-popover-head">
                     <div className="composer-popover-heading">
                       <span className="composer-popover-icon permission"><ShieldCheck size={16} /></span>
@@ -541,7 +548,7 @@ export function Composer({
               </button>
 
               {renderedPanel === "model" ? (
-                <div className="composer-popover model-popover model-manager-popover" data-motion-phase={panelPresence.phase} role="dialog" aria-label="Model manager">
+                <div className="composer-popover model-popover model-manager-popover" data-motion-phase={panelPresence.phase} inert={!openPanel} role="dialog" aria-label="Model manager">
                   <div className="composer-popover-head">
                     <div className="composer-popover-heading">
                       <span className="composer-popover-icon model"><Cpu size={16} /></span>
@@ -607,7 +614,7 @@ export function Composer({
               </button>
 
               {renderedPanel === "sticker" ? (
-                <div className="composer-popover sticker-popover" data-motion-phase={panelPresence.phase} role="dialog" aria-label="Chat expression settings">
+                <div className="composer-popover sticker-popover" data-motion-phase={panelPresence.phase} inert={!openPanel} role="dialog" aria-label="Chat expression settings">
                   <div className="composer-popover-head">
                     <div className="composer-popover-heading">
                       <span className="composer-popover-icon model"><Smile size={16} /></span>

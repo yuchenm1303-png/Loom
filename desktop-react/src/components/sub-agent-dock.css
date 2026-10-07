@@ -38,7 +38,7 @@
 
 .sub-agent-dock[data-motion-phase="exiting"] {
   pointer-events: none;
-  opacity: .82;
+  opacity: 0;
   transform: translate3d(14px,0,0);
   will-change: transform, opacity;
   transition-duration: 250ms;

@@ -1,0 +1,20 @@
+.user-message-image-lightbox[data-motion-phase] {
+  animation: none;
+  transition: opacity 180ms ease;
+}
+.user-message-image-lightbox[data-motion-phase] .user-message-image-lightbox-panel {
+  transition: transform 220ms cubic-bezier(.2,.8,.2,1);
+}
+.user-message-image-lightbox:is([data-motion-phase="entering"],[data-motion-phase="exiting"]) { opacity: 0; }
+.user-message-image-lightbox:is([data-motion-phase="entering"],[data-motion-phase="exiting"]) .user-message-image-lightbox-panel {
+  transform: translateY(6px);
+}
+.user-message-image-lightbox[data-motion-phase="exiting"] .user-message-image-lightbox-panel { transition-duration: 180ms; }
+@media (prefers-reduced-motion: reduce) {
+  .user-message-image-lightbox[data-motion-phase],
+  .user-message-image-lightbox[data-motion-phase] .user-message-image-lightbox-panel { transition: none; transform: none; }
+}
+:root[data-loom-reduced-motion="true"] .user-message-image-lightbox[data-motion-phase],
+:root[data-loom-reduced-motion="true"] .user-message-image-lightbox[data-motion-phase] .user-message-image-lightbox-panel {
+  transition: none; transform: none;
+}

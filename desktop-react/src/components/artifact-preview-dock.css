@@ -68,7 +68,7 @@ html[data-loom-reduced-motion="true"] .artifact-library-card { animation: none; 
 
 .artifact-preview-dock[data-motion-phase="exiting"] {
   pointer-events: none;
-  opacity: .82;
+  opacity: 0;
   transform: translate3d(14px,0,0);
   transition-duration: 250ms;
   transition-timing-function: var(--loom-ease-in,cubic-bezier(.42,0,.72,.2));

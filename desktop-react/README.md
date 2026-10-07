@@ -65,3 +65,23 @@ URL for an external Windows path), `LOOM_CHROMIUM_PATH` selects a browser, and
 `LOOM_TEST_ORIGIN` selects the Vite server. Set `LOOM_WORKSPACE_SCREENSHOTS` to save
 theme and interaction screenshots. The check covers native scrollbar alignment,
 narrow windows, decision submission, composer controls and the English home.
+
+`src/renderer-styles.ts` is the shared production stylesheet cascade; fixtures
+must import it instead of copying a list that can drift from the application.
+StreamingPresentation owns grapheme pacing and spreads final bursts over the
+420ms handoff window before the process folds at 460ms. Markdown blocks enter
+once during reception; later bursts update their existing DOM without replay.
+The top RunProgress owns generation status, so prose has no trailing cursor.
+
+Transient surfaces use useMotionPresence: logical closure makes retained DOM
+inert, an interrupted exit reverses in place, and changing motion preferences
+settles an active transition immediately. Pass an identity for different
+surfaces sharing one presence owner (the composer popovers). Live sends finish
+at 380ms; historical messages and persisted decision receipts stay still.
+
+Run `node scripts/tests/runtime-motion-browser.mjs` using the same browser
+environment variables above. It checks the production cascade in both themes,
+stream bursts, exit/reopen races, live reduced-motion changes, preview keyboard
+focus, historical/send lifetimes, IME confirmation and popover exits. Open
+`/scripts/fixtures/task-flow-motion.html` to replay thinking, tool activity,
+reasoning and answer handoffs, or use its film mode to inspect animation frames.

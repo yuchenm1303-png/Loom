@@ -186,6 +186,7 @@ export function ArtifactPreviewDock({
     <aside
       className="artifact-preview-dock"
       data-motion-phase={presence.phase}
+      inert={!open}
       data-open={open ? "true" : "false"}
       aria-label="产物侧栏"
     >

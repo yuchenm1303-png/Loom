@@ -387,36 +387,4 @@
   }
 }
 
-/* Streaming cadence is owned by StreamingPresentation. Avoid per-grapheme
-   elements/animations here: they make Markdown reconciliation scale with every
-   visible character. One quiet tail cue is enough to communicate that more
-   content is still arriving. */
-.markdown-body.is-receiving::after {
-  content: "";
-  display: inline-block;
-  width: 11px;
-  height: 4px;
-  margin-left: 6px;
-  border-radius: 999px;
-  background: linear-gradient(90deg, rgba(167,157,243,.42), rgba(203,195,255,.92));
-  box-shadow: 0 0 8px rgba(139,124,246,.12);
-  vertical-align: middle;
-  transform-origin: left center;
-  animation: stream-tail-breathe 1.7s cubic-bezier(.4,0,.2,1) infinite;
-}
-
-@keyframes stream-tail-breathe {
-  0%, 100% { opacity: .28; transform: scaleX(.58); }
-  48% { opacity: .78; transform: scaleX(1); }
-}
-
-html[data-loom-reduced-motion="true"] .markdown-body.is-receiving::after {
-  animation: none;
-  opacity: .5;
-}
-@media (prefers-reduced-motion: reduce) {
-  .markdown-body.is-receiving::after {
-    animation: none;
-    opacity: .5;
-  }
-}
+/* Live generation status belongs to RunProgress; no trailing cursor below prose. */

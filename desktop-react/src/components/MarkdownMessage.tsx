@@ -1,6 +1,6 @@
-import { Check, Copy, ExternalLink, Maximize2, X } from "lucide-react";
+import { Check, Copy, Maximize2 } from "lucide-react";
 import { isValidElement, memo, useEffect, useMemo, useState, type ReactNode } from "react";
-import { createPortal } from "react-dom";
+import { ImageLightbox } from "./ImageLightbox";
 import ReactMarkdown, { defaultUrlTransform, type Components } from "react-markdown";
 import rehypeHighlight from "rehype-highlight";
 import rehypeKatex from "rehype-katex";
@@ -143,14 +143,6 @@ function LocalImagePreview({
     return () => { disposed = true; };
   }, [target, workspace]);
 
-  useEffect(() => {
-    if (!previewing) return;
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setPreviewing(false);
-    };
-    window.addEventListener("keydown", onKeyDown, true);
-    return () => window.removeEventListener("keydown", onKeyDown, true);
-  }, [previewing]);
 
   if (!target || !workspace || failed) {
     return (
@@ -165,34 +157,8 @@ function LocalImagePreview({
   }
 
   const label = alt?.trim() || payload.name;
-  const lightbox = previewing ? createPortal(
-    <div
-      className="user-message-image-lightbox"
-      role="presentation"
-      onMouseDown={(event) => {
-        if (event.target === event.currentTarget) setPreviewing(false);
-      }}
-    >
-      <div className="user-message-image-lightbox-panel" role="dialog" aria-modal="true" aria-label={`查看图片 ${label}`}>
-        <div className="user-message-image-lightbox-toolbar">
-          <strong title={payload.path}>{label}</strong>
-          <div className="user-message-image-lightbox-actions">
-            <button type="button" onClick={() => void window.loom.revealPath(payload.path)} title="在文件夹中查看">
-              <ExternalLink size={15} strokeWidth={1.8} />
-              <span>原文件</span>
-            </button>
-            <button type="button" className="icon-only" onClick={() => setPreviewing(false)} title="关闭图片预览" aria-label="关闭图片预览">
-              <X size={17} strokeWidth={1.9} />
-            </button>
-          </div>
-        </div>
-        <div className="user-message-image-lightbox-canvas">
-          <img src={payload.dataUrl} alt={label} draggable={false} data-loom-image-path={payload.path} />
-        </div>
-      </div>
-    </div>,
-    document.body,
-  ) : null;
+  const lightbox = <ImageLightbox open={previewing} source={payload.dataUrl} label={label} path={payload.path}
+    onClose={() => setPreviewing(false)} onReveal={() => { void window.loom.revealPath(payload.path); }} />;
 
   return (
     <>
@@ -338,7 +304,6 @@ interface StreamNode {
 
 interface StreamTailOptions {
   enabled: boolean;
-  phase: "a" | "b";
 }
 
 interface StreamTailMatch {
@@ -346,7 +311,7 @@ interface StreamTailMatch {
   childIndex: number;
 }
 
-const STREAM_TAIL_GRAPHEMES = 12;
+const STREAM_TAIL_GRAPHEMES = 6;
 const STREAM_TAIL_BLOCKED = new Set(["pre", "code", "math", "svg"]);
 
 function findStreamingTail(node: StreamNode): StreamTailMatch | null {
@@ -370,9 +335,8 @@ function findStreamingTail(node: StreamNode): StreamTailMatch | null {
 /**
  * Give only the newest visible prose a soft reveal without recreating the old
  * per-character DOM. The transform finds the last eligible text node and wraps
- * at most twelve graphemes in one span. Alternating animation names restart the
- * reveal every few presented characters while the rest of the Markdown tree
- * stays structurally stable and crisp.
+ * at most six graphemes in one stable span. Its entrance plays once per stream,
+ * rather than dimming already-read characters again on every presentation tick.
  */
 function rehypeStreamingTail(options: StreamTailOptions) {
   return (tree: StreamNode) => {
@@ -396,7 +360,7 @@ function rehypeStreamingTail(options: StreamTailOptions) {
     replacement.push({
       type: "element",
       tagName: "span",
-      properties: { className: ["stream-text-tail", `stream-text-tail-${options.phase}`] },
+      properties: { className: ["stream-text-tail"] },
       children: [{ type: "text", value: tail }],
     });
     children.splice(match.childIndex, 1, ...replacement);
@@ -417,13 +381,12 @@ const MarkdownRenderer = memo(function MarkdownRenderer({
   receiving: boolean;
 }) {
   const components = useMemo(() => markdownComponents(workspace, receiving), [workspace, receiving]);
-  const streamPhase: "a" | "b" = Math.floor(content.length / 5) % 2 === 0 ? "a" : "b";
   return (
     <div className={`markdown-body ${compact ? "markdown-compact" : ""} ${streaming ? "is-streaming" : ""} ${receiving ? "is-receiving" : ""}`} aria-busy={receiving}>
       <ReactMarkdown
         remarkPlugins={[remarkGfm, remarkMath]}
         rehypePlugins={[
-          [rehypeStreamingTail, { enabled: streaming, phase: streamPhase }],
+          [rehypeStreamingTail, { enabled: streaming || receiving }],
           rehypeKatex,
           [rehypeHighlight, { detect: false, ignoreMissing: true }],
         ]}

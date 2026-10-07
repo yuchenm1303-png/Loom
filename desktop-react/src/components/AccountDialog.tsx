@@ -303,6 +303,7 @@ export function AccountDialog({
     <div
       className="loom-account-backdrop"
       data-motion-phase={presence.phase}
+      inert={!open}
       role="presentation"
       onMouseDown={
         presence.phase === "exiting"

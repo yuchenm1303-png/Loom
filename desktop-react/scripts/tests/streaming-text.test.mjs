@@ -58,6 +58,20 @@ test("presentation budget responds to elapsed time, backlog and finalization", (
   assert.ok(finalizingFrame.length <= 28);
 });
 
+test("final provider bursts progress across the handoff window instead of dumping at its end", () => {
+  const target = "完成。段落，内容。\n".repeat(1000);
+  let visible = "";
+  const checkpoints = [];
+  for (let elapsed = 0; elapsed < 420; elapsed += 28) {
+    visible = advanceStreamingText(visible, target, 28, true, 420 - elapsed);
+    assert.ok(target.startsWith(visible));
+    checkpoints.push(visible.length);
+  }
+  assert.ok(checkpoints[3] > target.length * .15, "meaningful early progress despite punctuation");
+  assert.ok(checkpoints[9] > target.length * .5, "most text lands before the final frame");
+  assert.equal(visible, target);
+});
+
 test("sentence boundaries can end a paint before the hard budget", () => {
   const target = "这是第一句。这里是第二句，会继续生成。";
   const next = advanceStreamingText("", target, 96);

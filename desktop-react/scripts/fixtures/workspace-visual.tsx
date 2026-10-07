@@ -41,6 +41,9 @@ const profile = { selection: "builtin:minimax", id: "minimax-m3", kind: "builtin
 const models = { primary: profile, profiles: [profile], activeModelId: profile.id,
   current: { ...profile, provider: profile.adapter }, recentModels: [] };
 const handlers: Record<string, (args: Record<string, unknown>) => unknown> = {
+  "project/workspace_status": args => ({ projectId: args.projectId, root: workspace, exists: true, isDirectory: true,
+    git: { available: true, isRepo: false, branch: "", summary: "", changedCount: 0, changedFiles: [], truncated: false },
+    tree: { entries: [], truncated: false, limit: 100, maxDepth: 2 } }),
   "profile/insights": () => ({
     range: { startDate: "2025-10-01", endDate: "2026-10-07", totalTokens: 0 },
     totals: { activeDays: 0, modelCalls: 0 }, streaks: { current: 0 }, peakDay: null,

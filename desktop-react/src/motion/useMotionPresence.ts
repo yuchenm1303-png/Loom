@@ -1,11 +1,7 @@
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
+import { useReducedMotion } from "./useReducedMotion";
 
 export type MotionPresencePhase = "entering" | "entered" | "exiting";
-
-function reducedMotion(): boolean {
-  return document.documentElement.dataset.loomReducedMotion === "true"
-    || Boolean(window.matchMedia?.("(prefers-reduced-motion: reduce)").matches);
-}
 
 /**
  * Keep transient UI mounted long enough to animate its exit.
@@ -15,15 +11,18 @@ function reducedMotion(): boolean {
  * lifetime so dialogs, menus and full-page surfaces share one predictable
  * enter/exit contract.
  */
-export function useMotionPresence(open: boolean, exitMs = 240): {
+export function useMotionPresence(open: boolean, exitMs = 240, identity?: string | number | null): {
   mounted: boolean;
   phase: MotionPresencePhase;
 } {
   const mountedRef = useRef(open);
   const [mounted, setMounted] = useState(open);
-  const [phase, setPhase] = useState<MotionPresencePhase>(open ? "entered" : "exiting");
+  const [phase, setPhase] = useState<MotionPresencePhase>(open ? "entering" : "exiting");
+  const enteringRef = useRef(open);
+  const identityRef = useRef(identity);
   const exitTimerRef = useRef<number | null>(null);
   const frameRef = useRef<number | null>(null);
+  const reduce = useReducedMotion();
 
   useLayoutEffect(() => {
     if (exitTimerRef.current !== null) {
@@ -36,18 +35,25 @@ export function useMotionPresence(open: boolean, exitMs = 240): {
     }
 
     if (open) {
+      const arriving = !mountedRef.current || identityRef.current !== identity;
+      identityRef.current = identity;
       if (!mountedRef.current) {
         mountedRef.current = true;
         setMounted(true);
       }
-      if (reducedMotion()) {
+      // Reverse an interrupted exit from its current painted position. Sending
+      // a retained surface back to "entering" would teleport it off-screen.
+      if (reduce || document.hidden || (!arriving && !enteringRef.current)) {
+        enteringRef.current = false;
         setPhase("entered");
         return;
       }
       setPhase("entering");
+      enteringRef.current = true;
       frameRef.current = requestAnimationFrame(() => {
         frameRef.current = requestAnimationFrame(() => {
           frameRef.current = null;
+          enteringRef.current = false;
           setPhase("entered");
         });
       });
@@ -55,8 +61,9 @@ export function useMotionPresence(open: boolean, exitMs = 240): {
     }
 
     if (!mountedRef.current) return;
+    enteringRef.current = false;
     setPhase("exiting");
-    if (reducedMotion()) {
+    if (reduce || document.hidden) {
       mountedRef.current = false;
       setMounted(false);
       return;
@@ -66,9 +73,17 @@ export function useMotionPresence(open: boolean, exitMs = 240): {
       mountedRef.current = false;
       setMounted(false);
     }, exitMs);
-  }, [exitMs, open]);
+    // StrictMode and rapid toggles must cancel the previous lifecycle before
+    // scheduling its replacement, including the second entrance frame.
+    return () => {
+      if (exitTimerRef.current !== null) window.clearTimeout(exitTimerRef.current);
+      if (frameRef.current !== null) cancelAnimationFrame(frameRef.current);
+      exitTimerRef.current = null;
+      frameRef.current = null;
+    };
+  }, [exitMs, open, reduce, identity]);
 
-  useEffect(() => () => {
+  useLayoutEffect(() => () => {
     if (exitTimerRef.current !== null) window.clearTimeout(exitTimerRef.current);
     if (frameRef.current !== null) cancelAnimationFrame(frameRef.current);
   }, []);

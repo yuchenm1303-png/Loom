@@ -112,7 +112,7 @@
   line-height: 1.6;
 }
 .decision-card-foot { border-top: 1px solid var(--loom-workspace-line); padding: 12px 20px; display: grid; gap: 10px; }
-.decision-custom { display: grid; gap: 7px; }
+.decision-custom { display: grid; gap: 0; }
 .decision-custom-toggle {
   justify-self: start;
   display: inline-flex;
@@ -336,8 +336,22 @@
   background: color-mix(in srgb, var(--success) 4%, transparent);
   color: var(--muted);
   box-shadow: none;
-  animation: decision-receipt-in 180ms cubic-bezier(.2,.82,.2,1) both;
 }
+
+.decision-inline-receipt.is-new {
+  animation: decision-receipt-in 180ms cubic-bezier(.2,.82,.2,1) 100ms both;
+}
+
+.decision-custom-presence {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  margin-top: 0;
+  transition: grid-template-rows 200ms cubic-bezier(.2,.8,.2,1), opacity 140ms ease, margin-top 200ms ease;
+}
+.decision-custom-presence[data-motion-phase="entered"] { grid-template-rows: 1fr; opacity: 1; margin-top: 7px; }
+.decision-custom-presence-inner { min-height: 0; overflow: hidden; }
+.decision-custom-presence textarea { display: block; width: 100%; }
 
 .decision-inline-receipt-check {
   width: 17px;
@@ -353,7 +367,7 @@
 .decision-inline-receipt-label {
   flex: 0 0 auto;
   color: color-mix(in srgb, var(--success) 72%, var(--text-2));
-  font-size: 9.5px;
+  font-size: 12px;
   line-height: 1;
   font-weight: 650;
 }
@@ -363,7 +377,7 @@
   max-width: 430px;
   overflow: hidden;
   color: var(--muted);
-  font-size: 9.5px;
+  font-size: 12px;
   line-height: 1.25;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -386,10 +400,14 @@ html[data-loom-theme="light"] .decision-inline-receipt {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .decision-custom-presence { transition: none; }
   .decision-inline-receipt {
     animation: none !important;
   }
 }
+
+:root[data-loom-reduced-motion="true"] .decision-custom-presence { transition: none; }
+:root[data-loom-reduced-motion="true"] .decision-inline-receipt { animation: none; }
 
 
 /* 2026-09-23 decision shadow clipping fix ------------------------------- */
@@ -431,3 +449,17 @@ html[data-loom-theme="light"] .decision-inline-receipt {
   .decision-submit { margin-left: auto; }
   .decision-option-title-row { flex-wrap: wrap; }
 }
+
+/* Resolve in place: the receipt stays anchored while the old card folds away. */
+.decision-response { display: grid; min-width: 0; }
+.decision-response-fold, .decision-response > .decision-inline-receipt { grid-area: 1 / 1; align-self: start; }
+.decision-response-fold { display: grid; grid-template-rows: 1fr; opacity: 1; }
+.decision-response.is-new .decision-response-fold {
+  transition: grid-template-rows 240ms cubic-bezier(.2,.8,.2,1), opacity 140ms ease;
+}
+.decision-response.is-resolved .decision-response-fold { grid-template-rows: 0fr; opacity: 0; }
+.decision-response-fold-inner { min-height: 0; }
+.decision-response.is-resolved .decision-response-fold-inner { overflow: hidden; }
+.decision-response > .decision-inline-receipt { justify-self: start; z-index: 1; }
+@media (prefers-reduced-motion: reduce) { .decision-response.is-new .decision-response-fold { transition: none; } }
+:root[data-loom-reduced-motion="true"] .decision-response.is-new .decision-response-fold { transition: none; }

@@ -38,6 +38,7 @@ import "./components/thread-switch-transition.css";
 import { canRenderArtifact } from "./artifactRenderers";
 import { useI18n } from "./i18n";
 import { useMotionPresence } from "./motion/useMotionPresence";
+import { useReducedMotion } from "./motion/useReducedMotion";
 import {
   SHORTCUTS_CHANGED_EVENT,
   eventMatchesShortcut,
@@ -368,6 +369,19 @@ export default function App() {
   const resizeReleaseFrameRef = useRef<number | null>(null);
   const layoutViewTransitionRef = useRef<LayoutViewTransition | null>(null);
   const layoutTransitionSerialRef = useRef(0);
+  const reduceMotion = useReducedMotion();
+  useLayoutEffect(() => {
+    if (!reduceMotion) return;
+    layoutTransitionSerialRef.current += 1;
+    layoutViewTransitionRef.current?.skipTransition();
+    layoutViewTransitionRef.current = null;
+    settleLayoutAnchorAnimations(shellRef.current);
+    clearLayoutAnchorStyles(shellRef.current);
+    delete document.documentElement.dataset.loomLayoutTransition;
+    delete document.documentElement.dataset.loomLayoutIntent;
+    document.body.classList.remove("loom-panel-motion");
+    window.dispatchEvent(new Event("loom:panel-resize-end"));
+  }, [reduceMotion]);
   const [inspectorOpen, setInspectorOpen] = useState(() => {
     try { return localStorage.getItem("loom.inspector.open") === "true"; }
     catch { return false; }
@@ -524,6 +538,10 @@ export default function App() {
 
     const transitionDocument = document as LayoutTransitionDocument;
     if (typeof transitionDocument.startViewTransition !== "function") {
+      // Snapshot-only rules hide the old surface immediately. Without that
+      // API, let the real panel own its enter/exit transition instead.
+      delete document.documentElement.dataset.loomLayoutTransition;
+      delete document.documentElement.dataset.loomLayoutIntent;
       flushSync(update);
       const animations = animateLayoutAnchors(captures, intent);
       if (!animations.length) {
@@ -1349,7 +1367,7 @@ export default function App() {
       </div>
 
       {profilePresence.mounted ? (
-        <div className="profile-insights-host" data-motion-phase={profilePresence.phase}>
+        <div className="profile-insights-host" data-motion-phase={profilePresence.phase} inert={!profileOpen}>
           <ProfileInsightsPage
             account={account.account}
             onClose={() => setProfileOpen(false)}
@@ -1358,7 +1376,7 @@ export default function App() {
       ) : null}
 
       {settingsPresence.mounted ? (
-        <div className="settings-host" data-motion-phase={settingsPresence.phase}>
+        <div className="settings-host" data-motion-phase={settingsPresence.phase} inert={!settingsOpen}>
           <SettingsPage
             runtime={loom.runtime}
             models={loom.models}

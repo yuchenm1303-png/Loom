@@ -26,33 +26,7 @@ import "../../src/components/BootErrorBoundary";
 import "../../src/components/GlobalContextMenu";
 import { I18nProvider } from "../../src/i18n";
 import { applyThemePreference } from "../../src/theme";
-import "../../src/styles.css";
-import "../../src/shell-fix.css";
-import "../../src/components/model-panel-overrides.css";
-import "../../src/components/inline-thinking.css";
-import "../../src/components/composer-stability.css";
-import "../../src/components/composer-attachment-polish.css";
-import "../../src/typography-scale.css";
-import "../../src/components/settings-simple.css";
-import "../../src/components/settings-icon-alignment.css";
-import "../../src/components/computer-use-hud.css";
-import "../../src/components/inspector-tabs.css";
-import "../../src/components/semantic-colors.css";
-import "../../src/components/thread-header-mark-refinement.css";
-import "../../src/components/settings-models-polish.css";
-import "../../src/components/settings-capabilities-polish.css";
-import "../../src/components/review-motion.css";
-import "../../src/components/sidebar-clarity-fix.css";
-import "../../src/components/renderer-crispness.css";
-import "../../src/components/model-core-redesign.css";
-import "../../src/theme.css";
-import "../../src/components/sidebar-primary-actions-polish.css";
-import "../../src/components/permission-popover-polish.css";
-import "../../src/components/model-picker.css";
-import "../../src/components/composer-control-pills.css";
-import "../../src/components/project-details-panel-theme.css";
-import "../../src/global-motion.css";
-import "../../src/components/generation-motion.css";
+import "../../src/renderer-styles";
 import { RunProgress } from "../../src/components/RunProgress";
 import { Transcript } from "../../src/components/Transcript";
 import { TranscriptScrollController } from "../../src/components/TranscriptScrollController";
@@ -92,7 +66,7 @@ applyThemePreference(params.get("theme") === "dark" ? "dark" : "light", { animat
 
 const harnessCss = document.createElement("style");
 harnessCss.textContent = `
-  .motion-harness { height: 100%; display: grid; grid-template-rows: auto minmax(0, 1fr); background: var(--bg); }
+  .motion-harness { height: 100%; display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); background: var(--bg); }
   .motion-bar { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 7px 12px; border-bottom: 1px solid var(--border-soft); font: 12px/1.2 "Segoe UI", sans-serif; color: var(--muted); }
   .motion-bar button { font: inherit; padding: 4px 10px; border-radius: 999px; border: 1px solid var(--border); background: var(--panel); color: var(--text-2); cursor: pointer; }
   .motion-bar button[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
@@ -287,7 +261,7 @@ function LiveHarness() {
   const liveTurn = scene.running ? LIVE_TURN : null;
 
   return (
-    <div className="motion-harness">
+    <div className="app-shell motion-harness">
       <div className="motion-bar">
         <button type="button" onClick={() => void directorRef.current!.play()}>▶ Replay</button>
         {[1, 0.5, 0.25, 0.1].map((value) => (
@@ -464,7 +438,7 @@ function FilmHarness() {
     .map((value) => Number(value.trim()))
     .filter((value) => Number.isFinite(value));
   return (
-    <div className="motion-harness" style={{ gridTemplateRows: "minmax(0,1fr)" }}>
+    <div className="app-shell motion-harness" style={{ gridTemplateRows: "minmax(0,1fr)" }}>
       <div className="motion-film">
         {frames.map((time) => <FilmFrame key={time} time={time} spec={spec} />)}
       </div>

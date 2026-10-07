@@ -8,21 +8,10 @@
   --loom-generation-settle: cubic-bezier(.22, .78, .2, 1);
 }
 
-/* Streaming prose -----------------------------------------------------------
-   MarkdownMessage wraps only the final twelve graphemes in a single span. Two
-   equivalent keyframes alternate so the tiny reveal can restart without
-   allocating a span for every character. */
-.markdown-body.is-streaming .stream-text-tail {
+/* A stable tail softens the first paint without dimming already-read text. */
+.markdown-body .stream-text-tail {
   display: inline;
-  will-change: opacity;
-}
-
-.markdown-body.is-streaming .stream-text-tail-a {
-  animation: loom-stream-tail-reveal-a 190ms cubic-bezier(.2,.72,.2,1) both;
-}
-
-.markdown-body.is-streaming .stream-text-tail-b {
-  animation: loom-stream-tail-reveal-b 190ms cubic-bezier(.2,.72,.2,1) both;
+  animation: loom-stream-tail-reveal 120ms ease-out backwards;
 }
 
 /* Inline stickers pop on a soft spring as the stream reaches them. They carry
@@ -38,9 +27,9 @@
 
 /* New block-level Markdown should form instead of popping from plain text into
    a large surface. No scale is used so glyph rasterization remains crisp. */
-.markdown-body.is-streaming > :is(h1,h2,h3,h4,h5,h6,blockquote,table,.markdown-code-block,.katex-display),
-.markdown-body.is-streaming > p > .assistant-local-image-preview,
-.markdown-body.is-streaming > .assistant-local-image-preview {
+.markdown-body.is-receiving > :is(h1,h2,h3,h4,h5,h6,blockquote,table,.markdown-code-block,.katex-display),
+.markdown-body.is-receiving > p > .assistant-local-image-preview,
+.markdown-body.is-receiving > .assistant-local-image-preview {
   transform-origin: left top;
   animation: loom-stream-surface-form 235ms var(--loom-generation-pop) both;
 }
@@ -104,9 +93,13 @@
    viewport snapped to the bottom. Keep glyphs on final pixel geometry instead:
    the full-width row only travels a few pixels, then the capsule is revealed
    with a clip anchored at the lower-right corner. */
+.turn-block > .entry-user_message,
+.turn-block > .entry-user_message .user-message {
+  animation: none !important;
+}
 .turn-block > .entry-user_message.is-sending,
 .turn-process.is-live .entry-steering-user {
-  animation: loom-user-send-entry 1000ms linear both !important;
+  animation: loom-user-send-entry 380ms var(--loom-generation-pop) both !important;
   transform-origin: right bottom;
 }
 
@@ -122,7 +115,7 @@
 .turn-process.is-live .entry-steering-user .user-message.has-attachments .user-message-copy-shell {
   position: relative;
   isolation: isolate;
-  animation: loom-user-bubble-unfold 1000ms linear both !important;
+  animation: loom-user-bubble-unfold 300ms var(--loom-generation-pop) both !important;
 }
 
 /* A tiny accent edge blooms and disappears as the capsule settles. It is an
@@ -142,7 +135,7 @@
   box-shadow:
     inset -1px -1px 0 rgba(162,149,244,.14),
     0 0 14px rgba(108,92,220,.045);
-  animation: loom-user-bubble-edge 1100ms ease-out both;
+  animation: loom-user-bubble-edge 380ms ease-out both;
 }
 
 .turn-block > .entry-user_message.is-sending .user-message:not(.has-attachments) > *,
@@ -157,13 +150,13 @@
    delayed. That prevents the bubble from gaining height after it has landed. */
 .turn-block > .entry-user_message.is-sending .user-message-meta,
 .turn-process.is-live .entry-steering-user .user-message-meta {
-  animation: loom-user-send-meta 260ms ease-out 740ms both;
+  animation: loom-user-send-meta 160ms ease-out 180ms both;
 }
 
 /* Media should follow the capsule instead of scaling with it. */
 .turn-block > .entry-user_message.is-sending :is(.user-link-card,.user-rich-code-block,.user-message-image-preview,.user-message-attachment-card,.user-message-media-preview),
 .turn-process.is-live .entry-steering-user :is(.user-link-card,.user-rich-code-block,.user-message-image-preview,.user-message-attachment-card,.user-message-media-preview) {
-  animation: loom-user-send-media 400ms cubic-bezier(.2,.76,.18,1) 400ms both !important;
+  animation: loom-user-send-media 220ms cubic-bezier(.2,.76,.18,1) 80ms both !important;
 }
 
 /* Completion handoff --------------------------------------------------------
@@ -171,7 +164,7 @@
    the answer landing, process recap and toolbar so the eye follows one motion
    instead of three unrelated state changes. */
 .turn-block.is-settling .turn-final-answer {
-  animation: loom-generation-final-handoff 420ms var(--loom-generation-pop) both !important;
+  animation: loom-generation-final-handoff 280ms var(--loom-generation-pop) both !important;
   transform-origin: left top;
 }
 
@@ -212,13 +205,6 @@
   transform-origin: left center;
 }
 
-/* Light theme uses the same geometry; only the streaming tail starts a little
-   closer to its final opacity because dark-on-light text reveals more sharply. */
-html[data-loom-theme="light"] .markdown-body.is-streaming .stream-text-tail-a,
-html[data-loom-theme="light"] .markdown-body.is-streaming .stream-text-tail-b {
-  animation-duration: 175ms;
-}
-
 html[data-loom-theme="light"] .turn-block > .entry-user_message.is-sending .user-message:not(.has-attachments)::before,
 html[data-loom-theme="light"] .turn-process.is-live .entry-steering-user .user-message:not(.has-attachments)::before,
 html[data-loom-theme="light"] .turn-block > .entry-user_message.is-sending .user-message.has-attachments .user-message-copy-shell::before,
@@ -228,15 +214,8 @@ html[data-loom-theme="light"] .turn-process.is-live .entry-steering-user .user-m
     0 0 12px rgba(105,90,216,.035);
 }
 
-@keyframes loom-stream-tail-reveal-a {
-  from { opacity: .34; }
-  58% { opacity: .82; }
-  to { opacity: 1; }
-}
-
-@keyframes loom-stream-tail-reveal-b {
-  from { opacity: .34; }
-  58% { opacity: .82; }
+@keyframes loom-stream-tail-reveal {
+  from { opacity: .78; }
   to { opacity: 1; }
 }
 
@@ -297,30 +276,8 @@ html[data-loom-theme="light"] .turn-process.is-live .entry-steering-user .user-m
 }
 
 @keyframes loom-user-send-entry {
-  0% {
-    opacity: .15;
-    transform: translate3d(-20px,56px,0);
-    animation-timing-function: cubic-bezier(.42,0,.6,1);
-  }
-  24% {
-    opacity: .9;
-    transform: translate3d(-14px,40px,0);
-    animation-timing-function: cubic-bezier(.24,.45,.28,1);
-  }
-  68% {
-    opacity: 1;
-    transform: translate3d(0,-3px,0);
-    animation-timing-function: cubic-bezier(.4,0,.3,1);
-  }
-  88% {
-    opacity: 1;
-    transform: translate3d(0,1px,0);
-    animation-timing-function: ease-out;
-  }
-  100% {
-    opacity: 1;
-    transform: translate3d(0,0,0);
-  }
+  from { opacity: .4; transform: translate3d(-6px,16px,0); }
+  to { opacity: 1; transform: translate3d(0,0,0); }
 }
 
 @keyframes loom-user-bubble-unfold {
@@ -367,18 +324,8 @@ html[data-loom-theme="light"] .turn-process.is-live .entry-steering-user .user-m
 }
 
 @keyframes loom-generation-final-handoff {
-  0% {
-    opacity: .54;
-    transform: translateY(5px);
-  }
-  52% {
-    opacity: 1;
-    transform: translateY(-.7px);
-  }
-  100% {
-    opacity: 1;
-    transform: translateY(0);
-  }
+  from { opacity: .7; transform: translateY(3px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 @keyframes loom-generation-actions-in {
@@ -426,10 +373,10 @@ html[data-loom-theme="light"] .turn-process.is-live .entry-steering-user .user-m
     animation: none !important;
   }
 
-  .markdown-body.is-streaming .stream-text-tail,
-  .markdown-body.is-streaming > :is(h1,h2,h3,h4,h5,h6,blockquote,table,.markdown-code-block,.katex-display),
-  .markdown-body.is-streaming > p > .assistant-local-image-preview,
-  .markdown-body.is-streaming > .assistant-local-image-preview,
+  .markdown-body .stream-text-tail,
+  .markdown-body.is-receiving > :is(h1,h2,h3,h4,h5,h6,blockquote,table,.markdown-code-block,.katex-display),
+  .markdown-body.is-receiving > p > .assistant-local-image-preview,
+  .markdown-body.is-receiving > .assistant-local-image-preview,
   .turn-process.is-live .assistant-message-shell,
   .turn-process.is-live .decision-prompt-card,
   .turn-block > .entry-user_message.is-sending,
@@ -467,8 +414,8 @@ html[data-loom-theme="light"] .turn-process.is-live .entry-steering-user .user-m
   animation: none !important;
 }
 
-:root[data-loom-reduced-motion="true"] .markdown-body.is-streaming .stream-text-tail,
-:root[data-loom-reduced-motion="true"] .markdown-body.is-streaming > :is(h1,h2,h3,h4,h5,h6,blockquote,table,.markdown-code-block,.katex-display),
+:root[data-loom-reduced-motion="true"] .markdown-body .stream-text-tail,
+:root[data-loom-reduced-motion="true"] .markdown-body.is-receiving > :is(h1,h2,h3,h4,h5,h6,blockquote,table,.markdown-code-block,.katex-display),
 :root[data-loom-reduced-motion="true"] .turn-process.is-live .assistant-message-shell,
 :root[data-loom-reduced-motion="true"] .turn-block > .entry-user_message.is-sending,
 :root[data-loom-reduced-motion="true"] .turn-process.is-live .entry-steering-user,
