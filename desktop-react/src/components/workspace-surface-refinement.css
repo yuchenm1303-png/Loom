@@ -269,7 +269,10 @@
   background: transparent;
   padding: 12px calc(var(--ws-gutter) + var(--ws-scroll-inset, 0px)) 16px;
 }
-:root .app-shell .composer-wrap.composer-refined .composer { border-radius: var(--ws-radius); }
+:root .app-shell .composer-wrap.composer-refined .composer {
+  --composer-radius: 24px;
+  border-radius: var(--composer-radius);
+}
 :root .app-shell .composer-stage { background: var(--ws-canvas); }
 :root .app-shell .project-git-bar {
   width: min(var(--content-width), calc(100% - 2 * (var(--ws-gutter) + var(--ws-scroll-inset, 0px))));
