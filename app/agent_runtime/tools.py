@@ -13,6 +13,7 @@ from typing import Any, Callable, Mapping, Sequence
 
 from app.ai import ToolDefinition
 
+from .account_tool_access import account_capability_allowed
 from .contracts import AgentEventKind, ToolEffect
 
 
@@ -71,12 +72,12 @@ def get_tool_capability_settings() -> dict[str, bool]:
 def _capability_allows(tool: "AgentTool", capability_settings: CapabilitySettings) -> bool:
     if capability_settings is None:
         capability_settings = _GLOBAL_CAPABILITY_SETTINGS
-    if not capability_settings:
-        return True
     capability = tool_capability_name(tool.name)
     if not capability:
         return True
-    return capability_settings.get(capability) is not False
+    if capability_settings and capability_settings.get(capability) is False:
+        return False
+    return account_capability_allowed(capability)
 
 
 class ToolExposure(str, Enum):
