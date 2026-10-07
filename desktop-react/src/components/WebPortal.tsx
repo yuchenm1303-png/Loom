@@ -2,14 +2,12 @@ import "./portal-base.css";
 import "./portal-modules.css";
 import "./portal-host-card.css";
 import "./portal-content.css";
-import "./portal-liquid-cursor.css";
 import type { CSSProperties, FormEvent } from "react";
 import { useEffect, useRef, useState } from "react";
 import { Laptop, Download, UserRound, LogOut, Check, ArrowRight, Github, Mail, KeyRound, ShieldCheck, Eye, EyeOff, FolderOpen, MessagesSquare } from "lucide-react";
 import { useI18n } from "../i18n";
 import { useAccount } from "../state/useAccount";
 import { HostSetupActions } from "./HostSetupActions";
-import { PortalLiquidCursor } from "./PortalLiquidCursor";
 import { FALLBACK_RELEASE, fetchPortalRelease } from "../portalRelease";
 
 export type PortalHostState = "idle" | "checking" | "online" | "offline" | "unbound";
@@ -350,7 +348,6 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
   return (
     <div className="loom-portal-page is-modular">
       <PortalWallpaper />
-      <PortalLiquidCursor />
       <main className="release-shell loom-portal-shell">
         <section className="loom-module-grid">
           <article className="loom-stage-copy loom-intro-module cards fade">

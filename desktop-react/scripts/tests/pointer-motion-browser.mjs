@@ -82,4 +82,22 @@ try {
   await page.evaluate(() => document.documentElement.classList.add("loom-liquid-cursor-active"));
   await page.waitForFunction(() => !document.documentElement.hasAttribute("data-loom-cursor-frame"));
   console.log("PASS: 88 native animation bitmaps preserve character pixels and hotspot; movement, settling, hover, press/rebound, reduced motion, blur, cancellation and portal coexistence");
+  // Exercise the actual login/connection page. A fixture alone cannot catch
+  // a competing cursor component disabling native animation at mount time.
+  await page.goto(origin);
+  await page.locator(".loom-portal-page").waitFor();
+  assert.equal(await page.evaluate(() => document.documentElement.classList.contains("loom-liquid-cursor-active")), false);
+  assert.equal(await page.locator(".loom-liquid-cursor-canvas").count(), 0);
+  await page.locator(".loom-portal-brand").hover();
+  await page.waitForFunction(() => document.documentElement.dataset.loomCursorFrame === "hover");
+  assert.match(await page.locator(".loom-portal-brand").evaluate(el => getComputedStyle(el).cursor), /hover-yukino-cursor.*0 0/);
+  await page.mouse.move(800, 50);
+  await page.mouse.move(900, 50);
+  await page.waitForFunction(() => /^right-/.test(document.documentElement.dataset.loomCursorFrame || ""));
+  await page.waitForFunction(() => !document.documentElement.hasAttribute("data-loom-cursor-frame"));
+  await page.mouse.down();
+  await page.waitForFunction(() => document.documentElement.dataset.loomCursorFrame === "press");
+  await page.mouse.up();
+  await page.waitForFunction(() => document.documentElement.dataset.loomCursorFrame === "rebound");
+  console.log("PASS: real login/connection page uses the animated character cursor for movement, hover and click");
 } finally { await browser.close(); }
