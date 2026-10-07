@@ -389,7 +389,9 @@ function rasterizePortal(
     }
 
     if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) {
-      const text = el.value || el.placeholder;
+      const text = el instanceof HTMLInputElement && el.type === "password"
+        ? (el.value ? "•".repeat(el.value.length) : el.placeholder)
+        : el.value || el.placeholder;
       if (text && visibleColor(style.color)) {
         ctx.save();
         ctx.globalAlpha = opacity;
@@ -1020,6 +1022,8 @@ export function PortalLiquidCursor() {
     };
     const handlePointerEnter = () => { pointerInside = true; snapDirty = true; wake(); };
     const handleScroll = () => { rasterDirty = true; snapDirty = true; wake(); };
+    // Editing changes input.value without mutating DOM text or attributes.
+    const handleInput = () => { rasterDirty = true; wake(); };
     const handleResize = () => {
       roiLeft = Number.NaN;
       roiTop = Number.NaN;
@@ -1035,7 +1039,7 @@ export function PortalLiquidCursor() {
       snapDirty = true;
       wake();
     });
-    observer.observe(root, { childList: true, subtree: true, characterData: true });
+    observer.observe(root, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ["type", "value", "placeholder"] });
     const resizeObserver = new ResizeObserver(() => { rasterDirty = true; snapDirty = true; wake(); });
     resizeObserver.observe(root);
 
@@ -1048,6 +1052,8 @@ export function PortalLiquidCursor() {
     root.addEventListener("pointercancel", handlePointerUp);
     root.addEventListener("pointerleave", handlePointerLeave);
     root.addEventListener("pointerenter", handlePointerEnter);
+    root.addEventListener("input", handleInput, true);
+    root.addEventListener("change", handleInput, true);
     window.addEventListener("scroll", handleScroll, true);
     window.addEventListener("resize", handleResize);
     window.addEventListener("blur", handlePointerLeave);
@@ -1065,6 +1071,8 @@ export function PortalLiquidCursor() {
       root.removeEventListener("pointercancel", handlePointerUp);
       root.removeEventListener("pointerleave", handlePointerLeave);
       root.removeEventListener("pointerenter", handlePointerEnter);
+      root.removeEventListener("input", handleInput, true);
+      root.removeEventListener("change", handleInput, true);
       window.removeEventListener("scroll", handleScroll, true);
       window.removeEventListener("resize", handleResize);
       window.removeEventListener("blur", handlePointerLeave);
