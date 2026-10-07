@@ -12,6 +12,7 @@ import { installWebBridge, isLoomWebRuntime } from "./webBridge";
 import "./starterCardPointerGlow";
 import "./pointerClick";
 import "./pointerContrast";
+import "./pointerMotion";
 import "./renderer-styles";
 
 installWebBridge();

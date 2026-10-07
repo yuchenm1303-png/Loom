@@ -70,7 +70,32 @@ app.whenReady().then(async () => {
       assert.equal(Math.round(cursor.size.width / cursor.scale), 66, "returning inward should restore the character");
     }
     }
+    // Also inspect Chromium's actual animated native cursors, including the
+    // compact frame selected at the viewport edge and the click/release states.
+    window.webContents.setZoomFactor(1);
+    await window.webContents.executeJavaScript('import("/src/pointerMotion.ts").then(() => true)');
+    await delay(400);
+    window.webContents.sendInputEvent({ type: "mouseMove", x: 400, y: 400 });
+    await delay(400);
+    window.webContents.sendInputEvent({ type: "mouseDown", x: 400, y: 400, button: "left", clickCount: 1 });
+    await delay(50);
+    assert.equal(await window.webContents.executeJavaScript('document.documentElement.dataset.loomCursorFrame'), "press");
+    assert.equal(cursor?.type, "custom");
+    assert.deepEqual(cursor.hotspot, { x: 0, y: 0 });
+    assert.equal(Math.round(cursor.size.width / cursor.scale), 66);
+    window.webContents.sendInputEvent({ type: "mouseUp", x: 400, y: 400, button: "left", clickCount: 1 });
+    await delay(35);
+    assert.equal(await window.webContents.executeJavaScript('document.documentElement.dataset.loomCursorFrame'), "rebound");
+    assert.deepEqual(cursor.hotspot, { x: 0, y: 0 });
+    window.webContents.sendInputEvent({ type: "mouseMove", x: width - 1, y: 300 });
+    window.webContents.sendInputEvent({ type: "mouseDown", x: width - 1, y: 300, button: "left", clickCount: 1 });
+    await delay(50);
+    assert.equal(cursor?.type, "custom");
+    assert.deepEqual(cursor.hotspot, { x: 0, y: 0 });
+    assert.equal(Math.round(cursor.size.width / cursor.scale), 20, "animated edge should retain the compact custom pointer");
+    window.webContents.sendInputEvent({ type: "mouseUp", x: width - 1, y: 300, button: "left", clickCount: 1 });
     console.log(`PASS (display scale ${deviceScaleFactor}): native cursor on right/bottom/corner, dark/light surfaces, 100%/130% zoom, per-scale bitmap, hotspot and character restoration`);
+    console.log("PASS: Chromium native press/rebound and animated edge fallback retain the exact hotspot");
     clearTimeout(timeout);
     app.exit(0);
   } catch (error) {
