@@ -16,6 +16,20 @@
 }
 
 /* Header controls belong to one toolbar, with tint reserved for selection. */
+:root .app-shell :is(.inline-thinking, .live-reasoning .live-reasoning-trigger) {
+  background: transparent !important;
+  border: 0 !important;
+  border-radius: 0;
+  box-shadow: none !important;
+  padding: 4px 0;
+  min-height: 0;
+  animation: inline-thinking-enter 180ms ease-out both !important;
+}
+:root .app-shell :is(.inline-thinking, .live-reasoning-trigger)::before,
+:root .app-shell :is(.inline-thinking, .live-reasoning-trigger)::after {
+  display: none;
+}
+:root .app-shell :is(.inline-thinking, .live-reasoning-trigger) .tg { display: none; }
 :root .app-shell .thread-header .workspace-path-button { display: none; }
 :root .app-shell .thread-header .thread-sidebar-triangle-mark {
   width: 16px;
