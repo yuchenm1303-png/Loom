@@ -1,5 +1,9 @@
 html.loom-liquid-cursor-active.loom-liquid-cursor-active body .loom-portal-page.loom-portal-page,
-html.loom-liquid-cursor-active.loom-liquid-cursor-active body .loom-portal-page.loom-portal-page * {
+html.loom-liquid-cursor-active.loom-liquid-cursor-active body .loom-portal-page.loom-portal-page *,
+html.loom-liquid-cursor-active body #root .loom-portal-page,
+html.loom-liquid-cursor-active body #root .loom-portal-page *,
+html.loom-liquid-cursor-active body #root .loom-portal-page *::before,
+html.loom-liquid-cursor-active body #root .loom-portal-page *::after {
   cursor: none !important;
 }
 

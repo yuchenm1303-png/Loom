@@ -86,23 +86,23 @@ try {
   await page.evaluate(() => document.documentElement.classList.add("loom-liquid-cursor-active"));
   await page.waitForFunction(() => !document.documentElement.hasAttribute("data-loom-cursor-frame"));
   console.log("PASS: 96 native animation bitmaps preserve character pixels and hotspot; stable movement, eased hover/press/release, reduced motion, blur and cancellation");
-  // Exercise the actual login/connection page. A fixture alone cannot catch
-  // a competing cursor component disabling native animation at mount time.
+  // The portal retains its separate liquid-glass cursor. It must hide the
+  // native character cursor and suspend native animation while mounted.
   await page.goto(origin, { waitUntil: "domcontentloaded" });
   await page.locator(".loom-portal-page").waitFor();
-  assert.equal(await page.evaluate(() => document.documentElement.classList.contains("loom-liquid-cursor-active")), false);
-  assert.equal(await page.locator(".loom-liquid-cursor-canvas").count(), 0);
+  await page.waitForFunction(() => document.documentElement.classList.contains("loom-liquid-cursor-active"));
+  assert.equal(await page.locator(".loom-liquid-cursor-canvas").count(), 1);
   await page.locator(".loom-portal-brand").hover();
-  await page.waitForFunction(() => document.documentElement.dataset.loomCursorFrame === "scale-14");
-  assert.match(await page.locator(".loom-portal-brand").evaluate(el => getComputedStyle(el).cursor), /scale-14-yukino-cursor.*0 0/);
+  assert.equal(await page.locator(".loom-portal-brand").evaluate(el => getComputedStyle(el).cursor), "none");
+  await page.waitForFunction(() => getComputedStyle(document.querySelector(".loom-liquid-cursor-canvas")).opacity === "1");
+  const before = await page.locator(".loom-liquid-cursor-canvas").evaluate(el => el.style.transform);
   await page.mouse.move(800, 50);
   await page.mouse.move(900, 50);
+  await page.waitForFunction(before => document.querySelector(".loom-liquid-cursor-canvas").style.transform !== before, before);
   await page.waitForFunction(() => !document.documentElement.hasAttribute("data-loom-cursor-frame"));
   await page.mouse.down();
-  await page.waitForFunction(() => document.documentElement.dataset.loomCursorFrame === "scale-2");
   await page.mouse.up();
-  await page.waitForFunction(() => /^scale-[3-9]$/.test(document.documentElement.dataset.loomCursorFrame || ""));
   await page.waitForFunction(() => !document.documentElement.hasAttribute("data-loom-cursor-frame"));
   assert.equal(await page.locator(".loom-pointer-click-layer").count(), 0, "the refined pointer should not emit a large click ripple");
-  console.log("PASS: actual login/connection page uses the refined native pointer with eased interaction and no click ripple");
+  console.log("PASS: login/connection page restores moving liquid glass, hides the native pointer and suspends native animation");
 } finally { await browser.close(); }
