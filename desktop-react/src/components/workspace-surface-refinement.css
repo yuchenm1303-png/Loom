@@ -16,6 +16,14 @@
 }
 
 /* Header controls belong to one toolbar, with tint reserved for selection. */
+:root .app-shell .thread-header .workspace-path-button { display: none; }
+:root .app-shell .thread-header .thread-sidebar-triangle-mark {
+  width: 16px;
+  height: 18px;
+  align-self: center;
+}
+:root .app-shell .thread-header-leading,
+:root .app-shell .thread-header-main { align-self: center; }
 :root .app-shell .thread-header :is(.thread-status-chip, .thread-agent-button, .thread-review-check-button, .thread-artifact-button) {
   display: none !important;
 }
