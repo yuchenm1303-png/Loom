@@ -130,6 +130,12 @@ test("shared search requires sign-in and refreshes account auth without a search
   assert.deepEqual(JSON.parse(calls[1].body), { query: "docs", count: 3 });
 });
 
+test("serviceUrl exposes the exact validated account endpoint used by the client", async () => {
+  process.env.LOOM_ACCOUNT_API_BASE_URL = SERVICE_URL;
+  const client = newClient();
+  assert.equal(client.serviceUrl, SERVICE_URL);
+});
+
 test("a packaged build uses the production default when no URL is configured", async () => {
   delete process.env.LOOM_ACCOUNT_API_BASE_URL;
   state.isPackaged = true;
