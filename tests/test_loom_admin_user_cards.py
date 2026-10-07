@@ -111,3 +111,16 @@ def test_user_and_device_health_visuals_are_present_and_secondary_page_is_card_b
         ".loom-admin-device-health-trend",
     ):
         assert marker in CSS
+
+
+def test_user_detail_exposes_account_gated_automation_controls():
+    for marker in (
+        "request(`/admin/users/${id}/tool-access`)",
+        "Automation access",
+        'id="computerUseAccessEnabled"',
+        'id="browserUseAccessEnabled"',
+        'id="saveToolAccessButton"',
+        "request('/admin/users/tool-access'",
+        "Disabled by default",
+    ):
+        assert marker in JS
