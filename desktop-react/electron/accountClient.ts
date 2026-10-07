@@ -453,7 +453,7 @@ export class LoomAccountClient {
    * session immediately; transient account-service outages preserve Loom's
    * existing offline/BYOK behavior.
    */
-  async verifyAuthenticatedSession(maxAgeMs = 5_000): Promise<boolean> {
+  async verifyAuthenticatedSession(maxAgeMs = 30_000): Promise<boolean> {
     let session = await this.loadSession();
     if (!session?.user) return false;
     if (session.expiresAt <= Date.now() + 30_000) {
