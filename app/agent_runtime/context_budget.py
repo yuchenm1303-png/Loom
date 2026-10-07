@@ -181,24 +181,33 @@ def _latest_provider_context_tokens(rt, session) -> int | None:
         events = recent(session.session_id, _CALIBRATION_EVENT_SCAN_LIMIT) if bounded else rt.store.events(session.session_id)
     except Exception:
         return None
-    found, tokens = _provider_context_usage(events)
+    found, tokens = _provider_context_usage(events,
+        accounting_events=_events_for_current_model(rt, session, events))
     if found or not bounded or len(events) < _CALIBRATION_EVENT_SCAN_LIMIT:
         return tokens
     # An unusually long tool-only interval may put the latest usage outside
     # the tail. Retain the original full-history semantics in that case.
     try:
-        return _provider_context_usage(rt.store.events(session.session_id))[1]
+        events = rt.store.events(session.session_id)
+        return _provider_context_usage(events,
+            accounting_events=_events_for_current_model(rt, session, events))[1]
     except Exception:
         return None
 
 
-def _provider_context_usage(events) -> tuple[bool, int | None]:
+def _provider_context_usage(events, *, accounting_events=None) -> tuple[bool, int | None]:
+    attributed = None if accounting_events is None else {id(event) for event in accounting_events}
     for event in reversed(events):
         kind = getattr(event.kind, "value", str(event.kind))
         if kind == "context_checkpointed":
             return True, None
         if kind not in {"model_response", "model_response_rejected"}:
             continue
+        # An intervening different-model response changed active history. Its
+        # tokenizer accounting cannot be reused, nor can older matching usage:
+        # local additions are measured after the latest assistant message.
+        if attributed is not None and id(event) not in attributed:
+            return True, None
         usage = event.data.get("usage") if isinstance(event.data, dict) else None
         if not isinstance(usage, dict):
             continue
@@ -237,8 +246,42 @@ def _local_tokens_after_latest_model_message(messages: Sequence[AIMessage]) -> i
 def _calibration_events(rt, session):
     recent = getattr(rt.store, "recent_events", None)
     if callable(recent):
-        return recent(session.session_id, _CALIBRATION_EVENT_SCAN_LIMIT)
-    return rt.store.events(session.session_id)[-_CALIBRATION_EVENT_SCAN_LIMIT:]
+        events = recent(session.session_id, _CALIBRATION_EVENT_SCAN_LIMIT)
+    else:
+        events = rt.store.events(session.session_id)[-_CALIBRATION_EVENT_SCAN_LIMIT:]
+    return _events_for_current_model(rt, session, events)
+
+
+def _events_for_current_model(rt, session, events):
+    """Provider accounting belongs to its model, not the whole conversation.
+
+    Runtime model switches keep the logical profile ID and durable history.
+    Reusing a different model's tokenizer bias, latest usage, or rejected size
+    can compact early or invent a false capacity bound. Sampling events already
+    carry attribution from their immutable request snapshot; use that identity.
+    Legacy events without attribution cannot establish current-model accounting.
+    """
+    platform_for_session = getattr(rt, "platform_for_session", None)
+    platform = platform_for_session(session.session_id) if callable(platform_for_session) else getattr(rt, "platform", None)
+    registry = getattr(platform, "registry", None)
+    try:
+        profile = registry.get(session.profile_id) if registry is not None else None
+    except (AttributeError, KeyError, TypeError, ValueError):
+        profile = None
+    model = str(getattr(profile, "model", "") or "")
+    provider = str(getattr(profile, "provider", "") or "")
+    if not model or not provider:
+        return tuple(events)
+    identity = (session.profile_id, provider, model)
+    selected = []
+    for event in events:
+        kind = getattr(event.kind, "value", str(event.kind))
+        if kind in {"model_requested", "model_response", "model_response_rejected"}:
+            data = event.data if isinstance(event.data, dict) else {}
+            if tuple(str(data.get(key) or "") for key in ("profile_id", "provider", "model")) != identity:
+                continue
+        selected.append(event)
+    return tuple(selected)
 
 
 def _observed_context_ceiling(rt, session) -> int | None:
@@ -796,9 +839,13 @@ def _prepare_context_with_model(rt, session, step, token):
     # summary, which this loop then has to reject and retry.
     output_budget_tokens = max(1, limits.output_reserve_tokens)
     summary_output_cap = output_budget_tokens if limits.output_reserve_declared else None
-    summary_request_ceiling = limits.effective_context_window_tokens
-    if working_attainable:
-        summary_request_ceiling = min(summary_request_ceiling, limits.working_context_tokens)
+    # A working target chooses when to summarize and how small the replacement
+    # should be. It is not a provider bound on the history the summarizer reads.
+    # Use the same authoritative/observed input budget as execution; unknown
+    # capacity remains unknown, with provider overflow recovery below.
+    summary_request_ceiling = (
+        input_budget + output_budget_tokens if input_budget is not None else None
+    )
 
     while True:
         _raise_if_cancelled(token)
@@ -811,14 +858,9 @@ def _prepare_context_with_model(rt, session, step, token):
             render_history=lambda history: render(history, replacement=True),
         )
         request_tokens = estimate_tokens(request.messages)
-        if calibrated(request_tokens) + output_budget_tokens > summary_request_ceiling:
+        if (summary_request_ceiling is not None
+                and calibrated(request_tokens) + output_budget_tokens > summary_request_ceiling):
             if len(compact_input) <= 1:
-                if (summary_request_ceiling < limits.effective_context_window_tokens
-                        and calibrated(request_tokens) + output_budget_tokens <= limits.effective_context_window_tokens):
-                    # The remaining indivisible item plus summarization protocol
-                    # cannot fit the soft policy; the provider still has room.
-                    summary_request_ceiling = limits.effective_context_window_tokens
-                    continue
                 raise ContextBudgetExceeded(
                     estimated_tokens=request_tokens,
                     input_budget_tokens=limits.input_budget_tokens,
@@ -894,14 +936,9 @@ def _prepare_context_with_model(rt, session, step, token):
                     f"context compaction model repeatedly returned {reason}"
                 )
             response_retries += 1
-            # Historical native calls can prime compatible providers to keep
-            # acting even though compaction is text-only. Retry from a smaller
-            # complete history unit; canonical history remains untouched and is
-            # still what the eventual checkpoint archives.
-            if len(compact_input) > 1:
-                previous = len(compact_input)
-                compact_input = _trim_oldest_compaction_unit(compact_input)
-                trimmed_messages += previous - len(compact_input)
+            # Invalid output is not evidence that the input exceeded capacity.
+            # Retry the same evidence window; only a real capacity constraint
+            # or provider context-length rejection may trim input history.
             transport_retries = 0
             continue
         summary = candidate_summary
@@ -1036,6 +1073,8 @@ def _prepare_context_with_model(rt, session, step, token):
             "compaction_attempts": response_attempts,
             "compaction_trimmed_messages": trimmed_messages,
             "summary_request_ceiling_tokens": summary_request_ceiling,
+            "compaction_trigger_tokens": compaction_trigger,
+            "compaction_trigger_usage_tokens": compaction_context_tokens,
             "forced_by_provider_context_error": forced_compaction,
             "model_requested_rollover": model_requested_rollover,
             "pre_compaction_tool_outputs_reduced": reduction_stats.tool_outputs_reduced,

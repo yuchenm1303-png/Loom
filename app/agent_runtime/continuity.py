@@ -144,44 +144,28 @@ def _fit_reference_without_breaking_budget(
     extra item is injected.
     """
 
-    from app.ai import AIMessage, MessageRole
-    from .response_language import communication_language_message
-    from app.agent_runtime.context_budget import estimate_tokens
-    from app.agent_runtime.context_limits import resolve_context_limits
-
     candidate = _insert_reference(replacement, reference, compaction)
-    request_state = getattr(step, "request_state", None)
-    captured = bool(getattr(request_state, "captured", False))
-    from .context_composer import stable_prefix, render_request
-    transient = stable_prefix(runtime, session, step)
-    limits = (
-        request_state.context_limits
-        if captured and request_state.context_limits is not None
-        else resolve_context_limits(runtime, session)
-    )
-    tools = step.tool_router.definitions()
+    from .context_runtime import _compacted_context_record
 
     def fits(items: tuple[Any, ...]) -> bool:
-        visible = render_request(runtime, session, transient, items, replacement=True)
+        record = _compacted_context_record(runtime, session, step, envelope,
+            communication_language, items)
+        input_budget = record["resolved_input_budget_tokens"]
         return (
             (
                 runtime.limits.max_messages <= 0
-                or len(visible) <= runtime.limits.max_messages
+                or record["message_count"] <= runtime.limits.max_messages
             )
-            and estimate_tokens(visible, tools) <= limits.input_budget_tokens
+            and (input_budget is None or record["calibrated_input_tokens_after"] <= input_budget)
         )
 
     while not fits(candidate):
-        removable = next(
-            (
-                index
-                for index, message in enumerate(candidate)
-                if compaction.is_real_user_message(message)
-            ),
-            None,
-        )
-        if removable is None:
+        real_users = [index for index, message in enumerate(candidate)
+            if compaction.is_real_user_message(message)]
+        # Optional continuity metadata must never evict the latest user request.
+        if len(real_users) <= 1:
             return replacement, False
+        removable = real_users[0]
         candidate = tuple(
             message for index, message in enumerate(candidate) if index != removable
         )

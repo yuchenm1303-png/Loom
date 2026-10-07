@@ -26,7 +26,7 @@ def test_builtin_minimax_declares_only_guaranteed_direct_window(monkeypatch):
     monkeypatch.delenv("MINIMAX_BASE_URL", raising=False)
     profile = bridge._safe_minimax("MiniMax-M3", {})
     assert profile["contextLimits"]["contextWindowTokens"] == 512_000
-    assert profile["contextLimits"]["workingContextTokens"] == 128_000
+    assert "workingContextTokens" not in profile["contextLimits"]
 
 
 def test_unknown_model_does_not_acquire_a_default_work_budget():
@@ -72,7 +72,7 @@ def test_official_metadata_never_leaks_to_proxy_or_unknown_model():
 def test_exact_official_deepseek_ids_have_declared_capacity(model):
     profile = bridge._safe_deepseek(model, {})
     assert profile["contextLimits"]["contextWindowTokens"] == 1_048_576
-    assert profile["contextLimits"]["workingContextTokens"] == 128_000
+    assert "workingContextTokens" not in profile["contextLimits"]
 
 
 def test_discovery_is_keyed_by_route_and_overrides_only_its_route(monkeypatch):
@@ -83,7 +83,7 @@ def test_discovery_is_keyed_by_route_and_overrides_only_its_route(monkeypatch):
     official = bridge._with_discovered_limits(bridge._safe_minimax("MiniMax-M3", {}))
     managed = bridge._with_discovered_limits(bridge._safe_managed("MiniMax-M3", {}))
     assert official["contextLimits"]["contextWindowTokens"] == 1_000_000
-    assert official["contextLimits"]["workingContextTokens"] == 128_000
+    assert "workingContextTokens" not in official["contextLimits"]
     assert managed["contextLimits"]["contextWindowTokens"] == 64_000
     assert "workingContextTokens" not in managed["contextLimits"]
 
@@ -129,7 +129,11 @@ def test_work_budget_triggers_real_compaction_below_provider_hard_window():
     assert metadata["working_context_tokens"] == 8000
     assert len(runtime.model_executor.requests) == 1
     summary_request = runtime.model_executor.requests[0][1]
-    assert estimate_tokens(summary_request.messages) + 1000 <= 8000
+    assert estimate_tokens(summary_request.messages) + 1000 > 8000
+    assert estimate_tokens(summary_request.messages) + 1000 <= 95_000
+    for item in history:
+        assert item in summary_request.messages
+    assert metadata["compaction_trimmed_messages"] == 0
     assert runtime.commits[0]["archived"] == tuple(history)
     assert metadata["effective_input_budget_tokens"] == 94_000
     assert estimate_tokens(messages) < 8000

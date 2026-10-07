@@ -44,10 +44,12 @@ def test_each_home_part_has_one_stylesheet_owner() -> None:
 
 def test_retired_override_layers_stay_gone() -> None:
     main = read(SRC / "main.tsx")
+    assert 'import "./renderer-styles";' in main
+    cascade = read(SRC / "renderer-styles.ts")
 
-    assert 'import "./components/conversation-home.css";' in main
+    assert 'import "./components/conversation-home.css";' in cascade
     for name in RETIRED_LAYERS:
-        assert name not in main
+        assert name not in main and name not in cascade
         assert not (COMPONENTS / f"{name}.css").exists()
 
 

@@ -870,7 +870,7 @@ def _safe_minimax(
     # https://www.minimax.io/models/text/m3 (verified 2026-10-05).
     official = {MINIMAX_BASE_URL, "https://api.minimax.io/v1"}
     if model.casefold() == "minimax-m3" and _normalize_url(profile["baseUrl"]) in official:
-        profile["contextLimits"] = {"contextWindowTokens": 512_000, "workingContextTokens": 128_000}
+        profile["contextLimits"] = {"contextWindowTokens": 512_000}
         profile["contextLimitsSource"] = "minimax.io/models/text/m3"
     return profile
 
@@ -920,7 +920,7 @@ def _safe_deepseek(
     # https://api-docs.deepseek.com/api/list-models/ (verified 2026-10-05).
     if (model.casefold() in {"deepseek-flash", "deepseek-v4-pro"}
             and _normalize_url(profile["baseUrl"]) in {DEEPSEEK_BASE_URL, DEEPSEEK_BASE_URL + "/v1"}):
-        profile["contextLimits"] = {"contextWindowTokens": 1_048_576, "workingContextTokens": 128_000}
+        profile["contextLimits"] = {"contextWindowTokens": 1_048_576}
         profile["contextLimitsSource"] = "api-docs.deepseek.com/api/list-models"
     return profile
 

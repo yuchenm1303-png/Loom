@@ -51,12 +51,15 @@ def tokens(block: str) -> set[str]:
 
 def test_refinement_loads_after_base_composer_sheets_before_workspace_geometry() -> None:
     main = read(SRC / "main.tsx")
-    imports = re.findall(r'import "(\./[^"]+\.css)";', main)
+    assert 'import "./renderer-styles";' in main
+    imports = re.findall(r'import "(\./[^"]+\.css)";', read(SRC / "renderer-styles.ts"))
 
     # 870e93c2 introduced a later workspace layer for shared surface geometry.
     assert imports.index("./components/composer-refined.css") < imports.index("./components/workspace-surface-refinement.css")
     workspace = read(COMPONENTS / "workspace-surface-refinement.css")
-    assert ":root .app-shell .composer-wrap.composer-refined .composer { border-radius: 14px; }" in workspace
+    geometry = body_of(workspace, ":root .app-shell .composer-wrap.composer-refined .composer")
+    assert "border-radius: var(--composer-radius);" in geometry
+    assert "--composer-radius: 24px;" in geometry
     for earlier in (
         "./theme.css",
         "./components/permission-popover-polish.css",
@@ -106,7 +109,16 @@ def test_both_themes_define_the_same_tokens() -> None:
     for shared in ("--cq-accent", "--cq-warn", "--cq-safe", "--cq-danger"):
         assert shared in tokens(dark)
     for essential in ("--cq-surface", "--cq-pop", "--cq-line", "--cq-hover", "--cq-selected", "--cq-ink", "--cq-ink-4", "--cq-send", "--cq-shadow-pop"):
-        assert essential in tokens(light), essential
+        if essential in tokens(light):
+            continue
+        # Shared workspace tokens follow the active theme without restating the
+        # composer alias. Require that both theme roots supply the referenced
+        # token; a missing light definition must still fail this contract.
+        alias = re.search(rf"{re.escape(essential)}:\s*var\((--loom-workspace-[\w-]+)\)", dark)
+        assert alias, essential
+        theme = read(SRC / "theme.css")
+        for selector in (":root", 'html[data-loom-theme="light"]'):
+            assert f"{alias.group(1)}:" in body_of(theme, selector), (selector, essential)
 
 
 def test_nothing_glossy_survives() -> None:

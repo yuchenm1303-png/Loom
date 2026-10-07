@@ -28,7 +28,7 @@ def test_transient_surfaces_have_symmetric_presence() -> None:
 
     assert "useMotionPresence(open, 235)" in account
     assert "data-motion-phase={presence.phase}" in account
-    assert "panelPresence = useMotionPresence(Boolean(openPanel), 215)" in composer
+    assert "panelPresence = useMotionPresence(Boolean(openPanel), 215, openPanel)" in composer
     assert composer.count("data-motion-phase={panelPresence.phase}") >= 3
     assert "useMotionPresence(open, 420)" in review
     assert "useMotionPresence(open, 420)" in agents
@@ -60,7 +60,7 @@ def test_global_motion_uses_shared_tokens_and_double_frame_presence() -> None:
     motion = read("desktop-react/src/global-motion.css")
     presence = read("desktop-react/src/motion/useMotionPresence.ts")
 
-    assert "--loom-motion-popover: 310ms" in motion
-    assert "--loom-motion-dialog: 380ms" in motion
+    assert "--loom-motion-popover: 220ms" in motion
+    assert "--loom-motion-dialog: 300ms" in motion
     assert "--loom-motion-panel: 390ms" in motion
     assert presence.count("requestAnimationFrame") >= 2

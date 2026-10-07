@@ -209,7 +209,7 @@ def resolve_context_limits(rt: Any, session: Any) -> ResolvedContextLimits:
     # Codex independently enforces the effective context window as a hard cap.
     # Loom exposes one trigger threshold here, so clamp the 90%-of-raw default to
     # that hard cap to preserve the same earliest compaction point.
-    auto_compact = max(1, min(auto_compact, effective_window))
+    auto_compact = max(1, min(auto_compact, context_window * 9 // 10, effective_window))
 
     configured_tool = getattr(profile_limits, "tool_output_token_limit", None)
     if configured_tool is not None:

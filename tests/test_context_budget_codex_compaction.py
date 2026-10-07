@@ -311,7 +311,8 @@ def test_unexpected_compaction_tool_call_retries_without_failing_turn():
         total_tokens=210,
     )
     assert metadata["compaction_attempts"] == 2
-    assert metadata["compaction_trimmed_messages"] > 0
+    assert metadata["compaction_trimmed_messages"] == 0
+    assert runtime.model_executor.requests[0][1].messages == runtime.model_executor.requests[1][1].messages
 
 
 def test_repeated_compaction_tool_calls_fall_back_without_failing_turn():

@@ -175,24 +175,14 @@ class ContextAgentRuntime(SandboxAgentRuntime):
                     durable_evidence=durable_evidence,
                 )
 
-        # A checkpoint is useful only if its replacement leaves an operable
-        # request. Prefer more headroom by dropping the oldest retained user
-        # messages, but keep the newest user request and the handoff summary.
+        # Use the same declared/observed provider bound and token calibration as
+        # request preparation. A trigger is not a second, smaller capacity gate.
+        # Unknown model capacity remains unknown after checkpointing, too.
         context_after = _compacted_context_record(
             self, session, step, envelope, communication_language, replacement
         )
-        limits_after = context_after["context_limits"]
-        hard_budget = int(limits_after["input_budget_tokens"])
-        auto_limit = int(limits_after["auto_compact_token_limit"])
-        safety = int(limits_after["safety_tokens"])
-        # Some test/provider profiles intentionally use a tiny explicit trigger
-        # to request immediate compaction. It is not a feasible post-compaction
-        # target; the actual model input budget remains the hard constraint.
-        target = hard_budget - safety
-        if auto_limit >= hard_budget // 2:
-            target = min(target, auto_limit * 4 // 5)
-        target = max(1, target)
-        while int(context_after["calibrated_input_tokens_after"]) > target:
+        hard_budget = context_after["resolved_input_budget_tokens"]
+        while hard_budget is not None and int(context_after["calibrated_input_tokens_after"]) > hard_budget:
             real_users = [
                 index for index, message in enumerate(replacement)
                 if compaction.is_real_user_message(message)
@@ -204,7 +194,7 @@ class ContextAgentRuntime(SandboxAgentRuntime):
             context_after = _compacted_context_record(
                 self, session, step, envelope, communication_language, replacement
             )
-        if int(context_after["calibrated_input_tokens_after"]) > hard_budget:
+        if hard_budget is not None and int(context_after["calibrated_input_tokens_after"]) > hard_budget:
             from app.agent_runtime.context_budget import ContextBudgetExceeded
 
             raise ContextBudgetExceeded(
@@ -427,8 +417,10 @@ def _compacted_context_record(
     communication_language: str,
     replacement: tuple[Any, ...],
 ) -> dict[str, Any]:
-    from app.ai import AIMessage, MessageRole
-    from app.agent_runtime.context_budget import estimate_tokens, estimate_tool_schema_tokens
+    import math
+    from app.agent_runtime.context_budget import (
+        estimate_tokens, estimate_tool_schema_tokens, _estimator_calibration, _resolved_input_budget,
+    )
     from app.agent_runtime.context_limits import resolve_context_limits
 
     request_state = getattr(step, "request_state", None)
@@ -443,11 +435,18 @@ def _compacted_context_record(
     )
     visible = render_request(runtime, session, transient, replacement, replacement=True)
     estimated = estimate_tokens(visible, tools)
+    calibration, samples = _estimator_calibration(runtime, session)
+    fixed = render_request(runtime, session, transient, (), replacement=True)
+    input_budget = _resolved_input_budget(runtime, session, limits,
+        fixed_tokens=math.ceil(estimate_tokens(fixed, tools) * calibration))
     return {
         "context_limits": limits.as_dict(),
+        "resolved_input_budget_tokens": input_budget,
         "estimated_input_tokens_after": estimated,
-        "calibrated_input_tokens_after": estimated,
-        "active_context_tokens": estimated,
+        "calibrated_input_tokens_after": math.ceil(estimated * calibration),
+        "active_context_tokens": math.ceil(estimated * calibration),
+        "token_estimator_calibration": calibration,
+        "token_estimator_calibration_samples": samples,
         "token_accounting_source": "post_compaction_estimate",
         "tool_schema_tokens": estimate_tool_schema_tokens(tools),
         "message_count": len(visible),
