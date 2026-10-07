@@ -331,3 +331,38 @@ def test_manual_compaction_publishes_visible_lifecycle(tmp_path: Path) -> None:
         assert not any(item["status"] == "failed" for item in progress)
     finally:
         runtime.close()
+
+
+def test_unknown_capacity_never_reports_fallback_as_full_model_window():
+    report = context_report_from_request({"context_limits": {
+        "context_window_tokens": 272000, "input_budget_tokens": 254304,
+        "auto_compact_token_limit": 244800, "window_known": False, "source": "runtime_fallback"},
+        "active_context_tokens": 377721, "effective_input_budget_tokens": None})
+    assert report["windowTokens"] is None
+    assert report["inputBudgetTokens"] is None
+    assert report["usedPercent"] is None
+    assert report["freeTokens"] is None
+    assert report["autoCompactTokens"] is None
+    assert report["usedTokens"] == 377721
+
+
+def test_working_policy_is_displayed_without_inventing_provider_capacity():
+    report = context_report_from_request({"context_limits": {
+        "window_known": False, "context_window_tokens": 272000, "input_budget_tokens": 254304,
+        "working_context_tokens": 128000, "working_input_budget_tokens": 123904},
+        "active_context_tokens": 64000})
+    assert report["budgetBasis"] == "working"
+    assert report["inputBudgetTokens"] == 123904
+    assert report["windowTokens"] is None
+    assert report["autoCompactTokens"] == 128000
+    assert report["usedPercent"] == 51.7
+
+
+def test_observed_provider_input_budget_overrides_catalog_envelope():
+    report = context_report_from_request({"context_limits": {
+        "window_known": False, "input_budget_tokens": 254304},
+        "effective_input_budget_tokens": 32000, "active_context_tokens": 16000})
+    assert report["budgetBasis"] == "observed"
+    assert report["inputBudgetTokens"] == 32000
+    assert report["usedPercent"] == 50
+    assert report["windowTokens"] is None

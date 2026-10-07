@@ -25,7 +25,10 @@ def test_unpacked_extension_uses_a_stable_absolute_install_folder():
 def test_existing_extension_updates_without_reopening_browser_setup():
     source = MAIN.read_text(encoding="utf-8")
     assert "extensionConnected = false" in source
-    assert 'path.join(installTarget, "extension-update.json")' in source
+    assets = MAIN.with_name("browserExtensionAssets.ts").read_text(encoding="utf-8")
+    assert "await syncExtensionInstall(source, installTarget, bridgeConfig, updateSignal)" in source
+    assert 'path.join(target, "extension-update.json")' in assets
+    assert assets.index("await fs.cp(source, target") < assets.index('path.join(target, "extension-update.json")')
     assert "automaticUpdateRequested: extensionConnected" in source
     assert "if (!extensionConnected && executable)" in source
 

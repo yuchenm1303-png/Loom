@@ -101,7 +101,6 @@ def test_binding_digest_ignores_prompt_only_schema_projection(tmp_path: Path):
     plan = plan_tool_schema_pressure(
         ToolRouter((tool,)),
         max_schema_tokens=1,
-        allow_shedding=False,
     )
     projected = plan.router.get(tool.name)
     assert projected is not None
@@ -136,7 +135,8 @@ def test_binding_digest_still_changes_for_validating_schema_change(tmp_path: Pat
 
 def test_schema_projected_sensitive_tool_fails_closed_after_restart(tmp_path: Path):
     calls: list[str] = []
-    target = _sensitive_tool("zebra_sensitive_action", enum_size=320, calls=calls)
+    target = replace(_sensitive_tool("zebra_sensitive_action", enum_size=320, calls=calls),
+        exposure=ToolExposure.DEFERRED)
     fillers = tuple(
         AgentTool(
             name=f"bulk_tool_{index}",

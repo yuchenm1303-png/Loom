@@ -70,10 +70,11 @@ def test_first_run_app_server_handshake_without_user_configuration(tmp_path):
         "--allow-unconfigured-model"], input=json.dumps({"jsonrpc": "2.0", "id": 1,
             "method": "initialize", "params": {"protocolVersion": 1}}) + "\n",
         capture_output=True, text=True, encoding="utf-8", env=environment, cwd=root, timeout=30)
+    assert process.returncode == 0, process.stderr or process.stdout
     frames = [json.loads(line) for line in process.stdout.splitlines() if line.startswith("{")]
-    response = next(frame for frame in frames if frame.get("id") == 1)
+    response = next((frame for frame in frames if frame.get("id") == 1), None)
+    assert response is not None, (process.stdout, process.stderr)
     assert "result" in response, response.get("error")
-    assert process.returncode == 0
 
 
 class ScriptedPlatform:

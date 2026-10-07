@@ -54,14 +54,7 @@ def _tool_match_score(tool: AgentTool, query: str) -> int:
 
 
 class ToolSearchRuntime(ConfiguredMCPRuntime):
-    """Runtime layer that discovers deferred and schema-shed tools on demand.
-
-    Deferred activation is intentionally scoped to one active turn. Context
-    Runtime v2 can additionally shed direct tool schemas when their fixed prompt
-    cost crowds out useful task context. Shedding is request-scoped only: the
-    full registry remains intact, ``tool_search`` can still discover shed tools,
-    and a discovered tool is pinned back into the next model step.
-    """
+    """Discover explicitly deferred tools while keeping direct tools stable."""
 
     def __init__(
         self,
@@ -71,7 +64,6 @@ class ToolSearchRuntime(ConfiguredMCPRuntime):
     ) -> None:
         self._tool_search_guard = threading.RLock()
         self._turn_activations: dict[tuple[str, str], set[str]] = {}
-        self._turn_schema_shed: dict[tuple[str, str], set[str]] = {}
         self._turn_schema_plan: dict[tuple[str, str, str], dict[str, object]] = {}
         self.defer_mcp_tools = bool(defer_mcp_tools)
         super().__init__(*args, **kwargs)
@@ -98,8 +90,7 @@ class ToolSearchRuntime(ConfiguredMCPRuntime):
             name="tool_search",
             description=(
                 "Search tools that are registered but deferred from the model context. "
-                "This also discovers direct tools temporarily omitted because tool schemas are consuming too much "
-                "context. Matching tools become available on the next model step for this turn only. "
+                "Matching tools become available on the next model step for this turn only. "
                 "Use a concise capability query such as 'github create issue', 'wait process', or 'calendar events'."
             ),
             input_schema={
@@ -123,29 +114,6 @@ class ToolSearchRuntime(ConfiguredMCPRuntime):
             exposure=ToolExposure.DIRECT,
         )
 
-    def _schema_shed_names(self, session_id: str, turn_id: str) -> tuple[str, ...]:
-        key = (str(session_id), str(turn_id))
-        with self._tool_search_guard:
-            return tuple(sorted(self._turn_schema_shed.get(key, set())))
-
-    def _set_context_shed_tools(
-        self,
-        session_id: str,
-        turn_id: str,
-        names,
-    ) -> None:
-        key = (str(session_id), str(turn_id))
-        resolved = {
-            str(name)
-            for name in names
-            if str(name) and self.tools.get(str(name)) is not None
-        }
-        with self._tool_search_guard:
-            if resolved:
-                self._turn_schema_shed[key] = resolved
-            else:
-                self._turn_schema_shed.pop(key, None)
-
     def _search_tools(self, context: ToolContext, arguments: dict[str, Any]) -> ToolResult:
         context.raise_if_cancelled()
         query = str(arguments.get("query") or "").strip()
@@ -157,11 +125,6 @@ class ToolSearchRuntime(ConfiguredMCPRuntime):
             tool.name: tool
             for tool in self.tools.deferred()
         }
-        for name in self._schema_shed_names(context.session_id, context.turn_id):
-            tool = self.tools.get(name)
-            if tool is not None:
-                candidates[tool.name] = tool
-
         scored: list[tuple[int, str, AgentTool]] = []
         for tool in candidates.values():
             score = _tool_match_score(tool, query)
@@ -175,20 +138,19 @@ class ToolSearchRuntime(ConfiguredMCPRuntime):
             with self._tool_search_guard:
                 self._turn_activations.setdefault(key, set()).update(names)
 
-        shed = set(self._schema_shed_names(context.session_id, context.turn_id))
         records = [
             {
                 "name": tool.name,
                 "description": tool.description[:800],
                 "effect": tool.effect.value,
-                "source": "schema_pressure" if tool.name in shed else "deferred",
+                "source": "deferred",
             }
             for tool in matches
         ]
         if records:
             content = "Tools activated for the next model step: " + ", ".join(names)
         else:
-            content = f"No deferred or context-shed tools matched: {query}"
+            content = f"No deferred tools matched: {query}"
         return ToolResult(
             ok=True,
             content=content,
@@ -206,8 +168,6 @@ class ToolSearchRuntime(ConfiguredMCPRuntime):
             return tuple(sorted(self._turn_activations.get(key, set())))
 
     def _activate_deferred_name(self, session_id: str, turn_id: str, tool_name: str) -> None:
-        # The name is historical. Runtime v2 also uses this path to pin a direct
-        # tool that was temporarily shed from a request because of schema pressure.
         tool = self.tools.get(tool_name)
         if tool is None or tool.exposure in {ToolExposure.HIDDEN, ToolExposure.CODE_MODE_ONLY}:
             return
@@ -221,9 +181,6 @@ class ToolSearchRuntime(ConfiguredMCPRuntime):
             stale = [key for key in self._turn_activations if key[0] == wanted]
             for key in stale:
                 self._turn_activations.pop(key, None)
-            stale_shed = [key for key in self._turn_schema_shed if key[0] == wanted]
-            for key in stale_shed:
-                self._turn_schema_shed.pop(key, None)
             stale_plans = [key for key in self._turn_schema_plan if key[0] == wanted]
             for key in stale_plans:
                 self._turn_schema_plan.pop(key, None)
@@ -287,9 +244,8 @@ class ToolSearchRuntime(ConfiguredMCPRuntime):
             if step.request_state.captured and frozen_limits is not None
             else resolve_context_limits(self, session)
         )
-        # Definitions and observations compete for one input budget. Measure what
-        # canonical history already needs so the planner sheds definitions before
-        # the context reducer has to start collapsing the agent's own results.
+        # Schema projection preserves the Step's capability surface. The unified
+        # request budget handles history pressure with the entire schema included.
         plan = plan_tool_schema_pressure(
             base_router,
             max_schema_tokens=schema_token_budget(
@@ -297,12 +253,6 @@ class ToolSearchRuntime(ConfiguredMCPRuntime):
                 conversation_tokens=self._conversation_pressure(session),
             ),
             pinned_names=activations,
-            allow_shedding=True,
-        )
-        self._set_context_shed_tools(
-            session.session_id,
-            session.current_turn_id,
-            plan.omitted_names,
         )
         with self._tool_search_guard:
             self._turn_schema_plan[(session.session_id, session.current_turn_id, step.step_id)] = (
@@ -323,7 +273,7 @@ class ToolSearchRuntime(ConfiguredMCPRuntime):
 
         Deliberately excludes tool schemas: this is the number the schema budget
         is being weighed against, so counting definitions on both sides would
-        make the planner shed against its own footprint.
+        count the same definitions twice when choosing annotation compression.
         """
         raw = estimate_tokens(tuple(session.messages))
         calibration = self.estimator_calibration(session.session_id)
@@ -381,7 +331,6 @@ class ToolSearchRuntime(ConfiguredMCPRuntime):
     def close(self) -> None:
         with self._tool_search_guard:
             self._turn_activations.clear()
-            self._turn_schema_shed.clear()
             self._turn_schema_plan.clear()
         super().close()
 

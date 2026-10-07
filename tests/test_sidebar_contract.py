@@ -1,4 +1,5 @@
 import re
+from ui_stylesheet_ownership import owns_component_layout
 from pathlib import Path
 
 
@@ -45,7 +46,7 @@ def rule_body(css: str, selector: str) -> str:
 
 
 def test_sidebar_classes_have_one_stylesheet() -> None:
-    styled_by = sorted(path.name for path in SRC.rglob("*.css") if SIDEBAR_SELECTORS.search(rules(path)))
+    styled_by = sorted(path.name for path in SRC.rglob("*.css") if owns_component_layout(path, SIDEBAR_SELECTORS, rules(path)))
 
     assert styled_by == ["sidebar.css"]
 

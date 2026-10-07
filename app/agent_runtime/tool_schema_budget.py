@@ -9,41 +9,6 @@ from .json_schema_semantics import validating_schema
 from .tools import AgentTool, ToolRouter
 
 
-_CORE_TOOL_NAMES = frozenset(
-    {
-        "tool_search",
-        "exec",
-        "apply_patch",
-        "read_workspace_text",
-        "list_workspace_files",
-        "get_turn_diff",
-        "web_search",
-    }
-)
-
-# A capability is unusable without its own verbs. Ranking shedding purely by
-# schema size once dropped browser_click and browser_type, leaving a browser the
-# model could open and inspect but never interact with, and dropped spawn_agent,
-# the only entry point to delegation. Keep the ordinary Browser driving loop
-# resident; specialized/high-authority Browser tools now live behind tool_search
-# by default and therefore do not need to compete for this tier.
-_CAPABILITY_ACTION_NAMES = frozenset(
-    {
-        "browser_open",
-        "browser_state",
-        "browser_navigate",
-        "browser_click",
-        "browser_type",
-        "browser_select",
-        "browser_scroll",
-        "browser_screenshot",
-        "computer_action",
-        "spawn_agent",
-        "wait_agent",
-    }
-)
-
-
 _MIN_SCHEMA_TOKENS = 1_200
 _MAX_SCHEMA_TOKENS = 12_000
 
@@ -77,33 +42,13 @@ def schema_token_budget(
     *,
     conversation_tokens: int = 0,
 ) -> int:
-    """Bound fixed tool-schema overhead before it crowds out task context.
-
-    Twenty percent is deliberately a soft budget, not a hard provider limit. It
-    leaves most of the window for instructions, conversation, observations and
-    output headroom while still allowing a substantial direct tool surface.
-
-    That ceiling only holds while there is room. Definitions and observations are
-    paid for out of the same input budget, and they are not worth the same: an
-    omitted tool stays reachable through ``tool_search``, while a collapsed
-    observation is simply gone from the model's view -- it can no longer read the
-    result of the command it just ran. Holding definitions at a flat twenty
-    percent inverted that: on a small window Loom kept 8k of definitions for
-    tools the agent was not using, and blinded it instead.
-
-    ``conversation_tokens`` is what canonical history already needs, in the
-    provider's own accounting. Zero means no measurement is available yet, which
-    keeps the plain ceiling.
-    """
+    """Soft target for compacting annotations; never removes capabilities."""
 
     budget = max(1, int(input_budget_tokens))
     ceiling = max(_MIN_SCHEMA_TOKENS, min(_MAX_SCHEMA_TOKENS, budget // 5))
     conversation = max(0, int(conversation_tokens))
     if conversation <= 0:
         return ceiling
-    # The floor is deliberately not zero. Shedding every definition would leave
-    # the agent unable to act at all, which is a worse failure than a crowded
-    # request the hard context budget can still report precisely.
     return max(_MIN_SCHEMA_TOKENS, min(ceiling, budget - conversation))
 
 
@@ -141,12 +86,6 @@ def _project_tool(tool: AgentTool, *, mode: str) -> AgentTool:
             description=_short_description(tool.description, limit=240),
             input_schema=validating_schema(tool.input_schema),
         )
-    if mode == "structural":
-        return replace(
-            tool,
-            description=_short_description(tool.description, limit=112),
-            input_schema=validating_schema(tool.input_schema),
-        )
     raise ValueError(f"unknown tool schema projection mode: {mode}")
 
 
@@ -154,31 +93,12 @@ def _project_router(
     router: ToolRouter,
     *,
     mode: str,
-    names: Iterable[str] | None = None,
 ) -> ToolRouter:
-    wanted = None if names is None else {str(name) for name in names}
     tools = tuple(
         _project_tool(tool, mode=mode)
         for tool in router.all()
-        if wanted is None or tool.name in wanted
     )
     return ToolRouter(tools)
-
-
-def _priority(name: str, pinned: set[str]) -> int:
-    if name in pinned:
-        return 0
-    if name == "tool_search":
-        return 1
-    if name in _CORE_TOOL_NAMES:
-        return 2
-    if name in _CAPABILITY_ACTION_NAMES:
-        return 3
-    if name.startswith("exec_"):
-        return 4
-    if name.startswith(("read_", "list_", "get_", "search_")):
-        return 5
-    return 6
 
 
 def plan_tool_schema_pressure(
@@ -186,15 +106,13 @@ def plan_tool_schema_pressure(
     *,
     max_schema_tokens: int,
     pinned_names: Iterable[str] = (),
-    allow_shedding: bool = True,
 ) -> ToolSchemaPlan:
-    """Create a request-scoped tool router that fits a soft schema budget.
+    """Reduce prompt overhead without changing execution capabilities.
 
-    The planner never mutates the registry. First it removes non-validating JSON
-    Schema annotations while preserving argument structure. Only when that is
-    insufficient, and ``tool_search`` is available, does it temporarily omit
-    lower-priority direct tools. Those omitted names can be made searchable by
-    ToolSearchRuntime and pinned back into the next request after discovery.
+    The schema budget is a soft preference. If every schema cannot fit that
+    preference, retain the callable set and let the unified context budget
+    compact history with the full schema cost included. Exposure belongs to the
+    tool registry and explicit deferred activation, never to token pressure.
     """
 
     soft_limit = max(1, int(max_schema_tokens))
@@ -215,69 +133,11 @@ def plan_tool_schema_pressure(
 
     compact_router = _project_router(router, mode="compact")
     compact_tokens = estimate_tool_schema_tokens(compact_router.all())
-    if compact_tokens <= soft_limit:
-        return ToolSchemaPlan(
-            router=compact_router,
-            mode="compact",
-            original_schema_tokens=original_tokens,
-            planned_schema_tokens=compact_tokens,
-            pinned_names=tuple(sorted(pinned)),
-        )
-
-    # Shedding without a discovery path would silently remove capabilities. In
-    # that case keep every compacted tool and let ContextBudgetExceeded report a
-    # precise hard-limit failure instead of making the agent deceptively weaker.
-    if not allow_shedding or "tool_search" not in present:
-        return ToolSchemaPlan(
-            router=compact_router,
-            mode="compact",
-            original_schema_tokens=original_tokens,
-            planned_schema_tokens=compact_tokens,
-            pinned_names=tuple(sorted(pinned)),
-        )
-
-    projected = {
-        tool.name: _project_tool(tool, mode="structural")
-        for tool in original_tools
-    }
-    per_tool_tokens = {
-        name: estimate_tool_schema_tokens((tool,))
-        for name, tool in projected.items()
-    }
-
-    selected: set[str] = set()
-    mandatory = set(pinned)
-    mandatory.add("tool_search")
-    for name in sorted(mandatory, key=lambda item: (_priority(item, pinned), item)):
-        if name in projected:
-            selected.add(name)
-
-    # Within one capability tier, prefer smaller schemas so the same fixed budget
-    # retains more callable surface area. Names are only the deterministic final
-    # tie-breaker, never the capacity policy.
-    candidates = sorted(
-        (name for name in projected if name not in selected),
-        key=lambda name: (_priority(name, pinned), per_tool_tokens[name], name),
-    )
-    for name in candidates:
-        candidate_tokens = estimate_tool_schema_tokens(
-            projected[item] for item in (*sorted(selected), name)
-        )
-        if candidate_tokens <= soft_limit:
-            selected.add(name)
-
-    # If the soft budget is smaller than mandatory discovery/pinned tools, keep
-    # them anyway. The hard context budget remains authoritative and will emit a
-    # precise diagnostic if even this minimal viable tool surface cannot fit.
-    planned_router = ToolRouter(tuple(projected[name] for name in sorted(selected)))
-    planned_tokens = estimate_tool_schema_tokens(planned_router.all())
-    omitted = tuple(sorted(present - selected))
     return ToolSchemaPlan(
-        router=planned_router,
-        mode="structural",
+        router=compact_router,
+        mode="compact",
         original_schema_tokens=original_tokens,
-        planned_schema_tokens=planned_tokens,
-        omitted_names=omitted,
+        planned_schema_tokens=compact_tokens,
         pinned_names=tuple(sorted(pinned)),
     )
 

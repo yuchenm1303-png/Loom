@@ -181,16 +181,19 @@ export interface ContextPressure {
 export interface ContextReport {
   threadId?: string;
   windowTokens: number | null;
-  effectiveWindowTokens: number;
-  inputBudgetTokens: number;
+  effectiveWindowTokens: number | null;
+  inputBudgetTokens: number | null;
+  budgetBasis?: "model" | "observed" | "working" | "unknown";
+  workingContextTokens?: number | null;
+  workingInputBudgetTokens?: number | null;
   outputReserveTokens: number;
-  autoCompactTokens: number;
+  autoCompactTokens: number | null;
   toolOutputTokenLimit: number;
   windowKnown: boolean;
   limitsSource: string;
   usedTokens: number;
-  usedPercent: number;
-  freeTokens: number;
+  usedPercent: number | null;
+  freeTokens: number | null;
   accounting: string;
   messageCount: number;
   segments: ContextSegment[];

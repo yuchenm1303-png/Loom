@@ -23,24 +23,32 @@ def _int(value: Any, default: int = 0) -> int:
         return default
 
 
-def _percent(part: int, whole: int) -> float:
-    if whole <= 0:
-        return 0.0
-    return round(min(100.0, max(0.0, part / whole * 100.0)), 1)
+def _percent(part: int, whole: int | None) -> float | None:
+    if not whole or whole <= 0:
+        return None
+    return round(max(0.0, part / whole * 100.0), 1)
 
 
 def limits_record(limits: Mapping[str, Any]) -> dict[str, Any]:
     """Restate resolved context limits in the app server's wire shape."""
 
-    window = limits.get("context_window_tokens")
+    known = bool(limits.get("window_known"))
+    working = _int(limits.get("working_context_tokens")) or None
+    working_budget = _int(limits.get("working_input_budget_tokens")) or None
+    budget = _int(limits.get("input_budget_tokens")) if known else working_budget
+    declared_compact = _int(limits.get("auto_compact_token_limit")) if known else 0
+    compact_targets = [value for value in (working, declared_compact) if value and value > 0]
     return {
-        "windowTokens": _int(window) if window else None,
-        "effectiveWindowTokens": _int(limits.get("effective_context_window_tokens")),
-        "inputBudgetTokens": _int(limits.get("input_budget_tokens")),
+        "windowTokens": (_int(limits.get("context_window_tokens")) or None) if known else None,
+        "effectiveWindowTokens": _int(limits.get("effective_context_window_tokens")) if known else None,
+        "inputBudgetTokens": budget,
+        "budgetBasis": "model" if known else "working" if working_budget else "unknown",
+        "workingContextTokens": working,
+        "workingInputBudgetTokens": working_budget,
         "outputReserveTokens": _int(limits.get("output_reserve_tokens")),
-        "autoCompactTokens": _int(limits.get("auto_compact_token_limit")),
+        "autoCompactTokens": min(compact_targets) if compact_targets else None,
         "toolOutputTokenLimit": _int(limits.get("tool_output_token_limit")),
-        "windowKnown": bool(limits.get("window_known")),
+        "windowKnown": known,
         "limitsSource": str(limits.get("source") or ""),
     }
 
@@ -53,14 +61,14 @@ def empty_context_report(limits: Mapping[str, Any]) -> dict[str, Any]:
     record.update(
         {
             "usedTokens": 0,
-            "usedPercent": 0.0,
-            "freeTokens": max(0, budget),
+            "usedPercent": 0.0 if budget else None,
+            "freeTokens": max(0, budget) if budget is not None else None,
             "accounting": "none",
             "messageCount": 0,
             "segments": [
                 {"key": "conversation", "tokens": 0},
                 {"key": "toolSchemas", "tokens": 0},
-                {"key": "free", "tokens": max(0, budget)},
+                {"key": "free", "tokens": max(0, budget or 0)},
             ],
             "pressure": {
                 "schemaMode": "",
@@ -99,7 +107,7 @@ def post_compaction_context_report(
     record = limits_record(limits)
     budget = record["inputBudgetTokens"]
     used = max(0, _int(estimated_tokens))
-    free = max(0, budget - used)
+    free = max(0, budget - used) if budget is not None else None
     record.update(
         {
             "usedTokens": used,
@@ -110,7 +118,7 @@ def post_compaction_context_report(
             "segments": [
                 {"key": "conversation", "tokens": used},
                 {"key": "toolSchemas", "tokens": 0},
-                {"key": "free", "tokens": free},
+                {"key": "free", "tokens": free or 0},
             ],
             "pressure": {
                 "schemaMode": "",
@@ -149,6 +157,14 @@ def context_report_from_request(
     limits = limits if isinstance(limits, Mapping) else {}
     record = limits_record(limits)
 
+    # An observed provider rejection can declare an enforceable input bound even
+    # when the model catalog does not publish its total context window.
+    enforced = data.get("effective_input_budget_tokens")
+    if enforced is not None and _int(enforced) > 0:
+        record["inputBudgetTokens"] = _int(enforced)
+        if not record["windowKnown"]:
+            record["budgetBasis"] = "observed"
+
     used = _int(data.get("calibrated_input_tokens_after"))
     if used <= 0:
         used = _int(data.get("active_context_tokens"))
@@ -166,7 +182,7 @@ def context_report_from_request(
     # Definitions are counted separately because they are the one part of a
     # request the agent never chose: everything else is its own conversation.
     conversation = max(0, used - schema_tokens)
-    free = max(0, budget - used)
+    free = max(0, budget - used) if budget is not None else None
 
     record.update(
         {
@@ -178,7 +194,7 @@ def context_report_from_request(
             "segments": [
                 {"key": "conversation", "tokens": conversation},
                 {"key": "toolSchemas", "tokens": schema_tokens},
-                {"key": "free", "tokens": free},
+                {"key": "free", "tokens": free or 0},
             ],
             "pressure": {
                 "schemaMode": str(plan.get("mode") or ""),

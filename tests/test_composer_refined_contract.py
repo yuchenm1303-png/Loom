@@ -54,7 +54,7 @@ def test_refinement_loads_after_base_composer_sheets_before_workspace_geometry()
     imports = re.findall(r'import "(\./[^"]+\.css)";', main)
 
     # 870e93c2 introduced a later workspace layer for shared surface geometry.
-    assert imports[-2:] == ["./components/composer-refined.css", "./components/workspace-surface-refinement.css"]
+    assert imports.index("./components/composer-refined.css") < imports.index("./components/workspace-surface-refinement.css")
     workspace = read(COMPONENTS / "workspace-surface-refinement.css")
     assert ":root .app-shell .composer-wrap.composer-refined .composer { border-radius: 14px; }" in workspace
     for earlier in (
@@ -75,9 +75,15 @@ def test_both_composer_surfaces_opt_in() -> None:
     assert '<div className="composer-wrap composer-refined live-steering-composer">' in steering
     # The permission chip carries its mode, so unrestricted access can look different.
     assert 'data-mode={permissionMode || "approval"}' in base
-    # Other contracts rely on these elements existing; the layer hides them in CSS.
+    # The base surface retired its glow; retained glyph/glow decoration is hidden
+    # by the shared refinement on both surfaces, independent of DOM presence.
+    assert 'className="composer-glow" aria-hidden="true"' not in base
+    assert 'className="composer-spark" aria-hidden="true"' in base
     for element in ('className="composer-glow" aria-hidden="true"', 'className="composer-spark" aria-hidden="true"'):
-        assert element in base and element in steering
+        assert element in steering
+    css = read(REFINED)
+    assert "display: none" in body_of(css, SCOPE + " .composer-glow")
+    assert "display: none" in body_of(css, SCOPE + " .composer-spark")
 
 
 def test_every_rule_is_scoped_to_the_composer() -> None:

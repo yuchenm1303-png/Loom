@@ -78,7 +78,6 @@ def test_schema_pressure_strips_annotations_without_changing_validation_shape():
     plan = plan_tool_schema_pressure(
         router,
         max_schema_tokens=1600,
-        allow_shedding=False,
     )
 
     assert plan.mode == "compact"
@@ -94,7 +93,7 @@ def test_schema_pressure_strips_annotations_without_changing_validation_shape():
     assert "title" not in projected.input_schema
 
 
-def test_schema_pressure_sheds_only_with_discovery_and_keeps_pinned_tool():
+def test_schema_pressure_keeps_every_tool_even_above_soft_budget():
     calls: list[str] = []
     search = _tool("tool_search")
     target = _tool("zebra_special_action", enum_size=260, calls=calls)
@@ -105,15 +104,14 @@ def test_schema_pressure_sheds_only_with_discovery_and_keeps_pinned_tool():
         router,
         max_schema_tokens=2800,
         pinned_names=("zebra_special_action",),
-        allow_shedding=True,
     )
 
     visible = {tool.name for tool in plan.router.all()}
-    assert plan.mode == "structural"
+    assert plan.mode == "compact"
     assert "tool_search" in visible
     assert "zebra_special_action" in visible
-    assert plan.omitted_names
-    assert set(plan.omitted_names).isdisjoint({"tool_search", "zebra_special_action"})
+    assert not plan.omitted_names
+    assert visible == {tool.name for tool in router.all()}
 
 
 def test_definitions_keep_their_ceiling_until_the_conversation_needs_the_room():
@@ -132,14 +130,8 @@ def test_definitions_keep_their_ceiling_until_the_conversation_needs_the_room():
     assert schema_token_budget(budget, conversation_tokens=budget * 2) == 1_200
 
 
-def test_a_crowded_conversation_sheds_definitions_instead_of_observations():
-    """The priority inversion this fixes.
-
-    Definitions and observations are paid for out of the same budget. Held at a
-    flat twenty percent, definitions won: Loom kept schemas for tools the agent
-    was not using and let the reducer collapse the results of the commands it had
-    just run, so the agent could no longer see its own work.
-    """
+def test_crowded_conversation_compacts_schema_without_removing_tools():
+    """History growth may change schema verbosity, never callable identities."""
 
     search = _tool("tool_search")
     # Sized to sit inside the plain ceiling, so only the conversation's own
@@ -151,22 +143,21 @@ def test_a_crowded_conversation_sheds_definitions_instead_of_observations():
     roomy = plan_tool_schema_pressure(
         router,
         max_schema_tokens=schema_token_budget(budget, conversation_tokens=10_000),
-        allow_shedding=True,
     )
     crowded = plan_tool_schema_pressure(
         router,
         max_schema_tokens=schema_token_budget(budget, conversation_tokens=48_758),
-        allow_shedding=True,
     )
 
     # With room, every tool stays directly callable at full fidelity.
     assert roomy.mode == "full"
     assert roomy.omitted_names == ()
-    # Crowded, the planner gives the tokens back to the conversation.
-    assert crowded.mode == "structural"
-    assert crowded.omitted_names
-    assert crowded.planned_schema_tokens < roomy.planned_schema_tokens
-    # Discovery survives, so nothing shed becomes unreachable.
+    # Crowded, argument annotations are compacted and every handler remains.
+    assert crowded.mode == "compact"
+    assert not crowded.omitted_names
+    assert crowded.planned_schema_tokens <= roomy.planned_schema_tokens
+    assert {tool.name for tool in crowded.router.all()} == {tool.name for tool in roomy.router.all()}
+    # Explicit deferred discovery also stays available.
     assert "tool_search" in {tool.name for tool in crowded.router.all()}
 
 
@@ -179,11 +170,10 @@ def test_a_squeezed_runtime_keeps_web_search_resident():
     plan = plan_tool_schema_pressure(
         router,
         max_schema_tokens=1800,
-        allow_shedding=True,
     )
 
     visible = {tool.name for tool in plan.router.all()}
-    assert plan.mode == "structural"
+    assert plan.mode == "compact"
     assert "tool_search" in visible
     assert "web_search" in visible
 
@@ -220,15 +210,15 @@ def test_a_squeezed_browser_keeps_the_ordinary_driving_loop():
         browser_security_policy=BrowserSecurityPolicy(resolve_dns=False),
     )
     try:
-        # Shedding only engages when omitted tools stay discoverable.
+        # Discovery is independent of the direct tool set.
         runtime.tools = ToolRegistry(tuple(runtime.tools.all()) + (_tool("tool_search"),))
         router = runtime.tools.router(capability_settings={})
 
-        plan = plan_tool_schema_pressure(router, max_schema_tokens=3500, allow_shedding=True)
+        plan = plan_tool_schema_pressure(router, max_schema_tokens=3500)
 
         visible = {tool.name for tool in plan.router.all()}
-        assert plan.mode == "structural"
-        assert plan.omitted_names
+        assert plan.mode == "compact"
+        assert not plan.omitted_names
         assert {
             "browser_open",
             "browser_state",
@@ -282,9 +272,10 @@ def test_a_crowded_history_reaches_the_planner_through_the_runtime(tmp_path: Pat
         runtime.close()
 
 
-def test_context_shed_direct_tool_can_be_searched_pinned_and_executed(tmp_path: Path):
+def test_explicitly_deferred_tool_can_be_searched_activated_and_executed(tmp_path: Path):
     calls: list[str] = []
-    target = _tool("zebra_special_action", enum_size=320, calls=calls)
+    from dataclasses import replace
+    target = replace(_tool("zebra_special_action", enum_size=320, calls=calls), exposure=ToolExposure.DEFERRED)
     fillers = tuple(_tool(f"bulk_tool_{index}", enum_size=320) for index in range(8))
     platform = RecordingPlatform(
         [
@@ -339,7 +330,63 @@ def test_context_shed_direct_tool_can_be_searched_pinned_and_executed(tmp_path: 
             for event in runtime.store.events(session.session_id)
             if event.kind.value == "model_requested" and event.data.get("tool_schema_plan")
         )
-        assert first_step_plan["omitted_count"] >= 1
+        assert first_step_plan["omitted_count"] == 0
         assert first_step_plan["planned_schema_tokens"] < first_step_plan["original_schema_tokens"]
+    finally:
+        runtime.close()
+
+
+def test_long_history_does_not_remove_direct_execution_capabilities(tmp_path):
+    from app.ai import AIMessage, MessageRole
+    tools = tuple(_tool(f"action_{index}", enum_size=260) for index in range(7))
+    runtime = ToolSearchRuntime(platform=RecordingPlatform([]),
+        store=FileAgentSessionStore(tmp_path / "state"), tools=ToolRegistry(tools),
+        mcp_servers=(), auto_configure_browser=False, auto_configure_web_search=False)
+    session = runtime.create_session(AGENT_FAST_ROLE.role_id, workspace_dir=tmp_path,
+        permission_mode=PermissionMode.FULL_ACCESS)
+    try:
+        session.messages = [AIMessage(role=MessageRole.USER, content="x" * 400000)]
+        step = runtime._build_step_context(session, next_model_step=True)
+        assert ({tool.name for tool in tools} | {"tool_search"}).issubset(
+            {tool.name for tool in step.tool_router.all()})
+        assert runtime.tool_schema_plan(session.session_id, session.current_turn_id, step.step_id)["omitted_names"] == []
+    finally:
+        runtime.close()
+
+
+def test_cold_started_agent_compacts_history_then_executes_direct_tool(tmp_path):
+    import argparse
+    from types import SimpleNamespace
+    from loom_cli import _build_runtime
+    from test_unknown_context_window_semantics import _history_over
+    runtime, store, _ = _build_runtime(argparse.Namespace(provider="openai-compatible",
+        base_url="https://example.test/v1", model="declared", allow_unconfigured_model=True,
+        vision=False, timeout=120, home=str(tmp_path / "state"),
+        context_limits={"contextWindowTokens": 512000, "workingContextTokens": 64000}))
+    calls, requests = [], []
+    runtime.tools.register(_tool("zebra_special_action", enum_size=260, calls=calls))
+    actors = iter([ModelResponse(tool_calls=(ToolCall("action", "zebra_special_action",
+        {"value": "value-0001-xxxxxxxxxxxx"}),)), ModelResponse(text="Action completed.")])
+    def execute(_profile, request):
+        requests.append(request)
+        return next(actors) if request.tools else ModelResponse(text="Prior work is archived. Execute the requested action.")
+    runtime.platform = SimpleNamespace(registry=runtime.platform.registry, execute_chat=execute)
+    session = runtime.create_session(AGENT_FAST_ROLE.role_id, workspace_dir=tmp_path,
+        permission_mode=PermissionMode.FULL_ACCESS)
+    session.messages = list(_history_over(150000))
+    store.save(session)
+    try:
+        result = runtime.start_turn(session.session_id, "Execute the zebra special action.")
+        assert result.status is AgentStatus.COMPLETED
+        assert calls == ["value-0001-xxxxxxxxxxxx"]
+        events = store.events(session.session_id)
+        assert any(e.kind.value == "context_checkpointed" for e in events)
+        assert not any(e.kind.value in {"tool_failed", "turn_failed"} for e in events)
+        for request in requests:
+            if request.tools:
+                assert "zebra_special_action" in {tool.name for tool in request.tools}
+        for event in events:
+            if event.kind.value == "model_requested":
+                assert event.data["tool_schema_plan"]["omitted_names"] == []
     finally:
         runtime.close()

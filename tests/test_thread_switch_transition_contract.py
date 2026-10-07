@@ -36,7 +36,10 @@ def test_recent_settled_threads_use_a_small_revalidated_snapshot_cache() -> None
     assert "if (threadIsRunning(result.thread)) return;" in core
     assert "Date.now() - entry.cachedAt > THREAD_READ_CACHE_TTL_MS" in core
     assert "listed.updatedAt !== entry.result.thread.updatedAt" in core
-    assert "threadReadCacheRef.current.delete(active.thread.id);" in core
+    assert "const activeId = activeIdRef.current;" in core
+    terminal = core[core.index("if (itemIsTerminalTurnError(completed)) {"):]
+    terminal = terminal[:terminal.index("setTurnActive(false);")]
+    assert "threadReadCacheRef.current.delete(activeId);" in terminal
     assert "threadReadCacheRef.current.delete(thread.id);" in core
 
 

@@ -1,4 +1,5 @@
 import re
+from ui_stylesheet_ownership import owns_component_layout
 from pathlib import Path
 
 
@@ -36,7 +37,7 @@ def rules(path: Path) -> str:
 
 def test_each_home_part_has_one_stylesheet_owner() -> None:
     for owner, selectors in OWNERS.items():
-        styled_by = sorted(path.name for path in SRC.rglob("*.css") if selectors.search(rules(path)))
+        styled_by = sorted(path.name for path in SRC.rglob("*.css") if owns_component_layout(path, selectors, rules(path)))
 
         assert styled_by == [owner]
 

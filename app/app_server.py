@@ -1876,9 +1876,12 @@ class JsonRpcStdioServer:
                     )
         finally:
             self._ingress.put(self._STOP)
-            worker.join(timeout=5)
+            # EOF stops admission, not already accepted requests. Closing the
+            # writer on a join timeout silently loses delayed initialize/RPC
+            # responses. Drain the request queue before its response queue.
+            worker.join()
             self._outbound.put(self._STOP)
-            output.join(timeout=5)
+            output.join()
         return 0
 
 

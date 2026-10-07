@@ -75,12 +75,13 @@ def test_changed_artifacts_render_in_the_conversation_and_expand_to_the_side_ren
     assert "latestInlineArtifact" in transcript
     assert "AssistantArtifactPreview" in transcript
     assert "entry-artifact-preview" in transcript
-    assert "<ArtifactRenderSurface" in transcript
+    assert "<ArtifactRenderSurface" not in transcript
+    assert '<button type="button" className="artifact-transcript-link"' in transcript
     assert 'new CustomEvent("loom:artifact-preview-open"' in transcript
     assert "TurnArtifactsPreview items={items} workspace={workspace}" in transcript
 
     # The review/audit summary keeps file stats and actions, but the large
-    # rendered canvas belongs to the conversation flow instead.
+    # rendered canvas opens explicitly in the side dock, preserving scroll space.
     assert "turn-artifacts-inline-preview" not in artifacts
     assert "<ArtifactRenderSurface" not in artifacts
 
@@ -100,4 +101,5 @@ def test_right_side_artifact_renderer_is_wired_into_the_workspace_shell() -> Non
     assert "with-artifact-preview" in app
     assert "<ArtifactPreviewDock" in app
     assert "<ArtifactRenderSurface" in dock
-    assert "openLocalArtifact(path, workspace)" in dock
+    assert "openLocalArtifact(selected, workspace)" in dock
+    assert "openLocalArtifact(item.path, workspace)" in dock

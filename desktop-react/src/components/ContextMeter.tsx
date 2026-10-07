@@ -4,6 +4,7 @@ import { useI18n } from "../i18n";
 import { useMotionPresence } from "../motion/useMotionPresence";
 import type { ContextCompactionProgress, ContextReport } from "../types/loom";
 import "./context-meter.css";
+import { contextMeterModel } from "./contextMeterModel";
 
 interface ContextMeterProps {
   report: ContextReport | null;
@@ -23,8 +24,8 @@ function formatTokens(value: number): string {
 /** Green while there is room, amber once compaction is near, red once it bites. */
 function tone(report: ContextReport): "calm" | "warm" | "hot" {
   if (report.pressure.blinded) return "hot";
-  if (report.usedPercent >= 90) return "hot";
-  if (report.usedPercent >= 70) return "warm";
+  if ((contextMeterModel(report).percent ?? 0) >= 90) return "hot";
+  if ((contextMeterModel(report).percent ?? 0) >= 70) return "warm";
   return "calm";
 }
 
@@ -63,10 +64,11 @@ export function ContextMeter({ report, compacting, progress, busy, onCompact }: 
 
   if (!report) return null;
 
-  const budget = Math.max(1, report.inputBudgetTokens);
+  const meter = contextMeterModel(report);
+  const budget = meter.budget ?? 1;
   const segments = report.segments.filter((segment) => segment.key !== "free");
   const level = tone(report);
-  const percent = Math.round(report.usedPercent);
+  const percent = meter.percent;
   const measurementPending = Boolean(report.measurementPending);
 
   const segmentLabel = (key: string): string => {
@@ -75,13 +77,22 @@ export function ContextMeter({ report, compacting, progress, busy, onCompact }: 
     return zh ? "空闲" : "Free";
   };
 
-  const summary = measurementPending
+  const budgetLabel = report.budgetBasis === "working"
+    ? zh ? "工作上下文目标" : "Working context target"
+    : report.budgetBasis === "observed"
+      ? zh ? "已观测输入预算" : "Observed input budget"
+      : zh ? "上下文预算" : "Context budget";
+  const summary = meter.unknown
+    ? zh
+      ? `模型容量未声明；当前用量 ${formatTokens(report.usedTokens)} tokens`
+      : `Model capacity undeclared; current usage ${formatTokens(report.usedTokens)} tokens`
+    : measurementPending
     ? zh
       ? `压缩后估算 ~${percent}%（${formatTokens(report.usedTokens)} / ${formatTokens(budget)}），等待下一次模型请求实测`
       : `Post-compaction estimate ~${percent}% (${formatTokens(report.usedTokens)} / ${formatTokens(budget)}); waiting for the next measured request`
     : zh
-      ? `上下文预算 ${percent}%（${formatTokens(report.usedTokens)} / ${formatTokens(budget)}）`
-      : `Context budget ${percent}% (${formatTokens(report.usedTokens)} / ${formatTokens(budget)})`;
+      ? `${budgetLabel} ${percent}%（${formatTokens(report.usedTokens)} / ${formatTokens(budget)}）`
+      : `${budgetLabel} ${percent}% (${formatTokens(report.usedTokens)} / ${formatTokens(budget)})`;
 
   const compactionStage = (() => {
     const stage = String(progress?.stage || "queued").toLowerCase();
@@ -129,11 +140,13 @@ export function ContextMeter({ report, compacting, progress, busy, onCompact }: 
               />
             ))}
           </span>
+        ) : meter.unknown ? (
+          <Layers size={12} strokeWidth={1.9} aria-hidden="true" />
         ) : (
           <span
             className="context-meter-track"
             aria-hidden="true"
-            style={{ "--context-used-percent": `${Math.min(100, Math.max(0, report.usedPercent))}%` } as CSSProperties}
+            style={{ "--context-used-percent": `${Math.min(100, Math.max(0, percent ?? 0))}%` } as CSSProperties}
           >
             {segments.map((segment) => (
               <span
@@ -146,7 +159,7 @@ export function ContextMeter({ report, compacting, progress, busy, onCompact }: 
         )}
         <span className="context-meter-value">
           {compacting ? <Loader2 size={12} strokeWidth={2} className="context-meter-spin" /> : null}
-          {compacting ? compactionStage.label : `${measurementPending ? "~" : ""}${percent}%`}
+          {compacting ? compactionStage.label : meter.unknown ? `${formatTokens(report.usedTokens)} tokens` : `${measurementPending ? "~" : ""}${percent}%`}
         </span>
         {report.pressure.blinded ? <span className="context-meter-alarm" aria-hidden="true" /> : null}
       </button>
@@ -161,14 +174,14 @@ export function ContextMeter({ report, compacting, progress, busy, onCompact }: 
           inert={!open}
         >
           <header className="context-meter-panel-head">
-            <span>{zh ? "上下文预算" : "Context budget"}</span>
+            <span>{meter.unknown ? zh ? "上下文用量" : "Context usage" : budgetLabel}</span>
             <strong>
-              {measurementPending ? "~" : ""}{formatTokens(report.usedTokens)} / {formatTokens(budget)}
+              {measurementPending ? "~" : ""}{formatTokens(report.usedTokens)}{meter.unknown ? " tokens" : ` / ${formatTokens(budget)}`}
             </strong>
           </header>
 
           <ul className="context-meter-rows">
-            {report.segments.map((segment) => (
+            {report.segments.filter((segment) => !meter.unknown || segment.key !== "free").map((segment) => (
               <li key={segment.key} className={`context-meter-row ${segment.key}`}>
                 <span className="context-meter-swatch" aria-hidden="true" />
                 <span className="context-meter-row-label">
@@ -178,7 +191,7 @@ export function ContextMeter({ report, compacting, progress, busy, onCompact }: 
                 </span>
                 <span className="context-meter-row-tokens">{formatTokens(segment.tokens)}</span>
                 <span className="context-meter-row-percent">
-                  {Math.round((segment.tokens / budget) * 100)}%
+                  {meter.unknown ? "—" : `${Math.round((segment.tokens / budget) * 100)}%`}
                 </span>
               </li>
             ))}
@@ -188,12 +201,12 @@ export function ContextMeter({ report, compacting, progress, busy, onCompact }: 
             <div>
               <dt>{zh ? "模型窗口" : "Model window"}</dt>
               <dd>
-                {report.windowTokens ? formatTokens(report.windowTokens) : zh ? "未声明" : "undeclared"}
+                {meter.windowTokens ? formatTokens(meter.windowTokens) : zh ? "未声明" : "undeclared"}
               </dd>
             </div>
             <div>
               <dt>{zh ? "自动压缩线" : "Auto-compacts at"}</dt>
-              <dd>{formatTokens(report.autoCompactTokens)}</dd>
+              <dd>{meter.autoCompactTokens ? formatTokens(meter.autoCompactTokens) : zh ? "未声明" : "undeclared"}</dd>
             </div>
             <div>
               <dt>{zh ? "已压缩" : "Compactions"}</dt>
