@@ -8,9 +8,9 @@
  */
 
 :root {
-  --loom-font-body: 15.5px;
-  --loom-font-ui: 13.5px;
-  --loom-font-meta: 12.5px;
+  --loom-font-body: 15px;
+  --loom-font-ui: 13px;
+  --loom-font-meta: 12px;
   --loom-font-micro: 11.5px;
   /* Count badges are pills pinned to fixed corner geometry, not body copy.
      They keep their own compact optical step so the 11.5px micro floor cannot
@@ -39,7 +39,7 @@ body {
 
 /* Main transcript -------------------------------------------------------- */
 .user-message,
-.assistant-message { font-size: 15.5px !important; }
+.assistant-message { font-size: var(--loom-font-body) !important; }
 .streaming-placeholder { font-size: 13px !important; }
 .disclosure-trigger { font-size: 13px !important; }
 .reasoning-copy { font-size: 14.5px !important; }
@@ -88,7 +88,7 @@ body {
 .turn-artifacts pre { font-size: 12.5px !important; }
 
 /* Composer --------------------------------------------------------------- */
-.composer textarea { font-size: 16px !important; }
+.composer textarea { font-size: var(--loom-font-body) !important; }
 .composer-tool,
 .composer-chip { font-size: 13px !important; }
 .composer-keycap { font-size: var(--loom-font-micro) !important; }
@@ -176,7 +176,7 @@ small { font-size: var(--loom-font-micro) !important; }
   /* Keep the readability gain on smaller desktop windows instead of shrinking type. */
   .user-message,
   .assistant-message { font-size: 15px !important; }
-  .composer textarea { font-size: 15.5px !important; }
+  .composer textarea { font-size: var(--loom-font-body) !important; }
   .thread-title-line strong { font-size: 15px !important; }
 }
 

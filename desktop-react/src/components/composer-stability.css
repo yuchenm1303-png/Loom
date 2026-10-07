@@ -7,7 +7,7 @@
 
 /* Keep prompt guidance quieter than the user's actual typed text. */
 .composer textarea::placeholder {
-  font-size: 14px !important;
+  font-size: inherit;
 }
 
 /* Toolbar/popover focus should not make the input surface look focused. */
@@ -68,14 +68,14 @@
 
 /* Give writing its own space above the controls, in both themes. Keep the
    textarea's auto-grow behaviour; min-height only establishes the empty state. */
-:root .composer-wrap .composer { padding: 15px 18px 12px; }
-:root .composer-wrap .composer-input-row { display: flex; min-height: 48px; }
+:root .composer-wrap .composer { padding: 16px 18px 12px; }
+:root .composer-wrap .composer-input-row { display: flex; min-height: 42px; }
 :root .composer-wrap .composer textarea {
-  min-height: 48px;
+  min-height: 42px;
   padding: 3px 2px 12px;
   line-height: 1.65;
 }
-:root .composer-wrap .composer-toolbar { margin-top: 6px; gap: 12px; }
+:root .composer-wrap .composer-toolbar { margin-top: 4px; gap: 12px; }
 :root .composer-wrap .composer-left { height: auto; min-height: 34px; gap: 8px; }
 :root .composer-wrap .composer-chip,
 :root .composer-wrap .composer-tool { height: 34px; padding-inline: 10px; }

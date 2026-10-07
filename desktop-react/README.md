@@ -46,3 +46,22 @@ Agent Runtime / tools / providers / sessions
 6. Neutral dark surfaces, restrained borders, no glassy/dashboard chrome.
 
 See `../docs/react-desktop-architecture.md` for workstream ownership and migration rules.
+
+## Workspace styling and visual checks
+
+`src/theme.css` owns the shared `--loom-workspace-*` palette, border, radius and
+shadow tokens. `workspace-surface-refinement.css` owns transcript/card alignment
+and spacing; sidebar and composer sheets consume the same material tokens.
+Keep component state styling in its existing owner rather than adding another
+late override sheet.
+
+Run Vite and open `/scripts/fixtures/workspace-visual.html` for the real App with
+an isolated in-memory host. Query parameters include `theme=dark`, `multiple=1`,
+`empty=1`, `lang=en` and `motion=1`. The fixture never calls a real account or model.
+
+Run `node scripts/tests/workspace-visual-browser.mjs` with Playwright Core
+available. `LOOM_PLAYWRIGHT_MODULE` accepts an ESM module specifier (use a `file:///`
+URL for an external Windows path), `LOOM_CHROMIUM_PATH` selects a browser, and
+`LOOM_TEST_ORIGIN` selects the Vite server. Set `LOOM_WORKSPACE_SCREENSHOTS` to save
+theme and interaction screenshots. The check covers native scrollbar alignment,
+narrow windows, decision submission, composer controls and the English home.

@@ -1,21 +1,21 @@
 /* Shared treatment for header actions. ContextMeter owns its own styling. */
 .app-shell .thread-header .polished-thread-header-actions {
-  --header-ink: #929ba9;
-  --header-hover-ink: #dedbe9;
-  --header-accent: #b4abef;
-  --header-wash: rgba(154,139,230,.075);
+  --header-ink: var(--loom-workspace-muted);
+  --header-hover-ink: var(--loom-workspace-ink);
+  --header-accent: var(--loom-workspace-accent);
+  --header-wash: var(--loom-workspace-selection);
 }
 html[data-loom-theme="light"] .app-shell .thread-header .polished-thread-header-actions {
-  --header-ink: #6c7786;
-  --header-hover-ink: #414a59;
-  --header-accent: #7264bd;
-  --header-wash: rgba(114,100,189,.065);
+  --header-ink: var(--loom-workspace-muted);
+  --header-hover-ink: var(--loom-workspace-ink);
+  --header-accent: var(--loom-workspace-accent);
+  --header-wash: var(--loom-workspace-selection);
 }
 
 .app-shell .thread-header .polished-thread-header-actions > :is(.thread-review-button, .thread-header-icon-button) {
   --entry-accent: var(--header-accent);
   --entry-wash: var(--header-wash);
-  height: 30px;
+  height: 32px;
   border: 1px solid transparent;
   border-radius: 8px;
   background: transparent;
@@ -44,7 +44,7 @@ html[data-loom-theme="light"] .app-shell .thread-header .polished-thread-header-
   background: var(--header-wash);
   border-color: transparent;
   box-shadow: inset 0 1px 0 rgba(255,255,255,.05);
-  transform: translateY(-1px);
+  transform: none;
 }
 .app-shell .thread-header .polished-thread-header-actions > :is(.thread-review-button, .thread-header-icon-button):is(:hover, :focus-visible, .active):not(:disabled) > svg {
   color: var(--header-accent);

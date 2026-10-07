@@ -8,32 +8,32 @@
    transform: on Windows both soften glyphs (see renderer-crispness.css). */
 
 .sidebar.compact-sidebar {
-  --sb-font: "Segoe UI Variable Text", "Segoe UI", Inter, ui-sans-serif, sans-serif;
-  --sb-bg: #0f1013;
-  --sb-glow: rgba(139,124,246,.07);
+  --sb-font: var(--loom-font-family);
+  --sb-bg: var(--loom-workspace-navigation);
+  --sb-glow: transparent;
   --sb-edge: rgba(255,255,255,.065);
-  --sb-ink: #eef0f3;
-  --sb-ink-2: #c5c9d1;
-  --sb-ink-3: #8b919c;
+  --sb-ink: var(--loom-workspace-ink);
+  --sb-ink-2: var(--loom-workspace-secondary);
+  --sb-ink-3: var(--loom-workspace-muted);
   --sb-ink-4: #646a75;
   --sb-hover: rgba(255,255,255,.05);
   --sb-press: rgba(255,255,255,.075);
   --sb-accent: #a99ff8;
   --sb-accent-rgb: 139,124,246;
-  --sb-active: rgba(255,255,255,.085);
+  --sb-active: var(--loom-workspace-selection);
   --sb-active-ink: #f7f8fa;
   --sb-field: rgba(255,255,255,.055);
   --sb-guide: rgba(255,255,255,.07);
   --sb-thumb: rgba(255,255,255,.14);
   --sb-thumb-hover: rgba(255,255,255,.24);
   --sb-danger: #ec9aa3;
-  --sb-row-h: 34px;
+  --sb-row-h: 32px;
   --sb-radius: 8px;
 
   min-width: 0;
   display: flex;
   flex-direction: column;
-  padding: 10px 8px 8px;
+  padding: 12px 10px 10px;
   overflow: hidden;
   isolation: isolate;
   border-right: 1px solid var(--sb-edge);
@@ -48,18 +48,18 @@
 }
 
 html[data-loom-theme="light"] .sidebar.compact-sidebar {
-  --sb-bg: #f3f4f6;
-  --sb-glow: rgba(105,90,216,.055);
+  --sb-bg: var(--loom-workspace-navigation);
+  --sb-glow: transparent;
   --sb-edge: rgba(28,31,37,.085);
-  --sb-ink: #1c1f26;
-  --sb-ink-2: #3a404a;
-  --sb-ink-3: #6a717c;
+  --sb-ink: var(--loom-workspace-ink);
+  --sb-ink-2: var(--loom-workspace-secondary);
+  --sb-ink-3: var(--loom-workspace-muted);
   --sb-ink-4: #979ea8;
   --sb-hover: rgba(28,31,37,.05);
   --sb-press: rgba(28,31,37,.075);
   --sb-accent: #6152cc;
   --sb-accent-rgb: 105,90,216;
-  --sb-active: rgba(28,31,37,.075);
+  --sb-active: var(--loom-workspace-selection);
   --sb-active-ink: #1c1f26;
   --sb-field: #ffffff;
   --sb-guide: rgba(28,31,37,.08);
@@ -592,7 +592,7 @@ html[data-loom-theme="light"] .compact-search {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 14px;
+  font-size: 13px;
   line-height: 20px;
   font-weight: 600;
 }
@@ -805,7 +805,7 @@ html[data-loom-theme="light"] .compact-search {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 14px;
+  font-size: 13px;
   line-height: 20px;
   font-weight: 400;
 }
@@ -813,6 +813,10 @@ html[data-loom-theme="light"] .compact-search {
 .compact-thread-row.active .compact-thread-title,
 .compact-thread-row.unread .compact-thread-title {
   font-weight: 600;
+}
+
+.compact-thread-row.active {
+  box-shadow: inset 2px 0 var(--sb-accent);
 }
 
 /* Only running and unread conversations carry a mark, at the end of the row. */

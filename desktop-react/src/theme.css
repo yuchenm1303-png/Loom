@@ -3,6 +3,21 @@
    without rewriting every component at once. Dark remains the visual baseline. */
 
 :root {
+  /* Shared workspace material. Navigation, cards and composer consume these
+     tokens instead of maintaining independent light/dark palettes. */
+  --loom-workspace-canvas: #111317;
+  --loom-workspace-panel: #191c22;
+  --loom-workspace-navigation: #0e1014;
+  --loom-workspace-ink: #eceef3;
+  --loom-workspace-secondary: #bbc1cc;
+  --loom-workspace-muted: #949dab;
+  --loom-workspace-line: rgba(224,230,242,.12);
+  --loom-workspace-hover: rgba(224,230,242,.055);
+  --loom-workspace-selection: rgba(167,151,245,.12);
+  --loom-workspace-accent: #b5a7f5;
+  --loom-workspace-radius: 12px;
+  --loom-workspace-shadow: 0 2px 6px rgba(0,0,0,.12);
+  --loom-workspace-gutter: 32px;
   --loom-canvas: #0b0c0f;
   --loom-sidebar: #101115;
   --loom-surface: #15171b;
@@ -20,6 +35,17 @@ html[data-loom-theme="dark"] {
 
 html[data-loom-theme="light"] {
   color-scheme: light;
+  --loom-workspace-canvas: #fafbfc;
+  --loom-workspace-panel: #ffffff;
+  --loom-workspace-navigation: #f0f2f5;
+  --loom-workspace-ink: #20242d;
+  --loom-workspace-secondary: #444c5a;
+  --loom-workspace-muted: #626d7d;
+  --loom-workspace-line: rgba(32,42,58,.12);
+  --loom-workspace-hover: rgba(32,42,58,.04);
+  --loom-workspace-selection: rgba(105,82,199,.085);
+  --loom-workspace-accent: #6047b8;
+  --loom-workspace-shadow: 0 2px 6px rgba(32,42,58,.035);
   --bg: #f7f7f8;
   --bg-deep: #f1f2f4;
   --panel: #ffffff;

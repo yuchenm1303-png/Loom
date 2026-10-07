@@ -434,6 +434,7 @@ body.loom-panel-resizing * {
   .thread-title-line strong { max-width: 58cqw; font-size: 13.4px; }
   .workspace-path-button { max-width: 50cqw; }
   .polished-thread-header-actions { gap: 2px; }
+  .thread-header .workspace-path-button { display: none; }
 }
 
 /* The four runtime tabs are icon + label and *both* live inside .runtime-tab-content.

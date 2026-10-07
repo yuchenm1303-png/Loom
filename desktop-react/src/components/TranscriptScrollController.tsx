@@ -78,6 +78,25 @@ export function TranscriptScrollController({
   loadingOlder = false,
   onLoadOlder,
 }: TranscriptScrollControllerProps) {
+  useLayoutEffect(() => {
+    const scroller = transcriptScroller();
+    const workspace = scroller?.closest<HTMLElement>(".workspace");
+    if (!scroller || !workspace) return;
+    // Native scrollbars reserve real layout space. Match that space in the
+    // fixed composer so both columns align even on narrow Windows windows.
+    const syncGutter = () => {
+      const inset = Math.max(0, scroller.offsetWidth - scroller.clientWidth) / 2;
+      workspace.style.setProperty("--ws-scroll-inset", `${inset}px`);
+    };
+    syncGutter();
+    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(syncGutter);
+    observer?.observe(scroller);
+    return () => {
+      observer?.disconnect();
+      workspace.style.removeProperty("--ws-scroll-inset");
+    };
+  }, [threadId]);
+
   const followingRef = useRef(true);
   const forceBottomRef = useRef(false);
   const lastThreadIdRef = useRef(String(threadId ?? ""));

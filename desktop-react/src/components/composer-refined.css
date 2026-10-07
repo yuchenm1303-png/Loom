@@ -27,22 +27,22 @@
 /* -------------------------------------------------------------------------- */
 
 :root .composer-wrap.composer-refined {
-  --cq-surface: #15171c;
-  --cq-pop: #181a20;
+  --cq-surface: var(--loom-workspace-panel);
+  --cq-pop: var(--loom-workspace-panel);
   --cq-field: rgba(255, 255, 255, .04);
-  --cq-line: rgba(255, 255, 255, .08);
+  --cq-line: var(--loom-workspace-line);
   --cq-line-strong: rgba(255, 255, 255, .14);
-  --cq-hover: rgba(255, 255, 255, .05);
+  --cq-hover: var(--loom-workspace-hover);
   --cq-press: rgba(255, 255, 255, .08);
   --cq-selected: rgba(255, 255, 255, .07);
 
-  --cq-ink: #eceef3;
-  --cq-ink-2: #b5bbc6;
-  --cq-ink-3: #8f96a3;
-  --cq-ink-4: #6f7684;
+  --cq-ink: var(--loom-workspace-ink);
+  --cq-ink-2: var(--loom-workspace-secondary);
+  --cq-ink-3: var(--loom-workspace-muted);
+  --cq-ink-4: var(--loom-workspace-muted);
 
   --cq-accent: var(--accent);
-  --cq-accent-ink: #b9b0ff;
+  --cq-accent-ink: var(--loom-workspace-accent);
   --cq-focus-line: color-mix(in srgb, var(--accent) 42%, rgba(255, 255, 255, .1));
   --cq-ring: color-mix(in srgb, var(--accent) 11%, transparent);
 
@@ -59,21 +59,11 @@
 }
 
 :root[data-loom-theme="light"] .composer-wrap.composer-refined {
-  --cq-surface: #ffffff;
-  --cq-pop: #ffffff;
   --cq-field: rgba(24, 28, 38, .035);
-  --cq-line: rgba(24, 28, 38, .09);
   --cq-line-strong: rgba(24, 28, 38, .16);
-  --cq-hover: rgba(24, 28, 38, .045);
   --cq-press: rgba(24, 28, 38, .075);
   --cq-selected: rgba(24, 28, 38, .06);
 
-  --cq-ink: #1b1e26;
-  --cq-ink-2: #454b57;
-  --cq-ink-3: #656c79;
-  --cq-ink-4: #858c99;
-
-  --cq-accent-ink: #5547b6;
   --cq-focus-line: color-mix(in srgb, var(--accent) 38%, rgba(24, 28, 38, .1));
   --cq-ring: color-mix(in srgb, var(--accent) 9%, transparent);
 
@@ -107,7 +97,7 @@
 :root .composer-wrap.composer-refined .composer:hover,
 :root .composer-wrap.composer-refined .composer:focus-within:not(.is-focused) {
   border: 1px solid var(--cq-line);
-  border-radius: 18px;
+  border-radius: var(--loom-workspace-radius);
   background: var(--cq-surface);
   box-shadow: var(--cq-shadow-rest);
   transform: none;

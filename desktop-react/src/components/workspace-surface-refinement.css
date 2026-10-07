@@ -1,24 +1,18 @@
 /* Shared Desktop/Web workspace surfaces. Keep material independent of the
    generation state: live activity should not reintroduce glossy capsules. */
 :root .app-shell {
-  --ws-surface: #17191e;
-  --ws-canvas: #111317;
-  --ws-line: rgba(230,234,242,.10);
-  --ws-hover: rgba(230,234,242,.045);
-  --ws-selected: rgba(160,149,235,.09);
-  --ws-ink: #d5d9e1;
-  --ws-muted: #979eaa;
-  --ws-accent: #b0a6ef;
-}
-:root[data-loom-theme="light"] .app-shell {
-  --ws-surface: #ffffff;
-  --ws-canvas: #f8f9fa;
-  --ws-line: rgba(29,35,44,.10);
-  --ws-hover: rgba(29,35,44,.035);
-  --ws-selected: rgba(105,90,216,.065);
-  --ws-ink: #303640;
-  --ws-muted: #6b7380;
-  --ws-accent: #6254bd;
+  --ws-surface: var(--loom-workspace-panel);
+  --ws-canvas: var(--loom-workspace-canvas);
+  --ws-line: var(--loom-workspace-line);
+  --ws-hover: var(--loom-workspace-hover);
+  --ws-selected: var(--loom-workspace-selection);
+  --ws-ink: var(--loom-workspace-ink);
+  --ws-muted: var(--loom-workspace-muted);
+  --ws-accent: var(--loom-workspace-accent);
+  --ws-secondary: var(--loom-workspace-secondary);
+  --ws-radius: var(--loom-workspace-radius);
+  --ws-shadow: var(--loom-workspace-shadow);
+  --ws-gutter: var(--loom-workspace-gutter);
 }
 
 /* Header controls belong to one toolbar, with tint reserved for selection. */
@@ -27,7 +21,7 @@
 }
 :root .app-shell .thread-header.polished-thread-header {
   background: var(--ws-canvas) !important;
-  border-bottom: 0;
+  border-bottom: 1px solid var(--ws-line);
   box-shadow: none;
 }
 :root .app-shell .thread-header.polished-thread-header::before { display: none; }
@@ -49,7 +43,7 @@
 :root .app-shell .conversation-stage:has(.transcript-entry)::before,
 :root .app-shell .conversation-stage:has(.transcript-entry)::after {
   display: block;
-  height: 64px;
+  height: 12px;
   background: linear-gradient(to bottom,
     var(--ws-canvas) 0%,
     var(--ws-canvas) 8%,
@@ -89,8 +83,17 @@
   border-color: transparent !important;
   box-shadow: none !important;
 }
-:root .app-shell .transcript { background: transparent; }
-:root .app-shell .transcript-scroll { background: var(--ws-canvas); }
+:root .app-shell .transcript {
+  background: transparent;
+  width: min(var(--content-width), calc(100% - 2 * var(--ws-gutter)));
+  padding: 24px 0 28px;
+  gap: 20px;
+}
+:root .app-shell .transcript-scroll { background: var(--ws-canvas); scrollbar-gutter: stable both-edges; }
+:root .app-shell .turn-block { gap: 14px; }
+:root .app-shell :is(.turn-process, .turn-process-header, .turn-artifacts, .assistant-artifact-preview-card) { width: 100%; }
+:root .app-shell .turn-process.has-guidance .turn-process-content > .transcript-entry:not(.entry-steering-user) { width: 100%; }
+:root .app-shell .assistant-message { color: var(--ws-ink); }
 :root .app-shell .turn-process .turn-process-header {
   background: transparent !important;
   border: 0;
@@ -186,11 +189,12 @@
 :root .app-shell .rich-turn-artifacts.review-summary-card {
   background: var(--ws-surface);
   border: 1px solid var(--ws-line);
-  border-radius: 10px;
-  box-shadow: none;
+  border-radius: var(--ws-radius);
+  box-shadow: var(--ws-shadow);
 }
 :root .app-shell .rich-turn-artifacts.review-summary-card::after { display: none; }
-:root .app-shell .review-summary-header { grid-template-columns: 22px minmax(0,1fr) auto; gap: 10px; padding: 14px 16px 10px; min-height: 48px; }
+:root .app-shell .review-summary-header { grid-template-columns: 22px minmax(0,1fr) auto; gap: 10px; padding: 16px 20px 12px; min-height: 48px; }
+:root .app-shell .turn-artifacts-copy strong { color: var(--ws-ink); font-weight: 600; }
 :root .app-shell .review-summary-header:hover { background: var(--ws-hover); }
 :root .app-shell .rich-turn-artifacts .turn-artifacts-icon {
   width: 22px;
@@ -208,7 +212,7 @@
   color: var(--ws-accent);
   padding-inline: 4px;
 }
-:root .app-shell .turn-artifacts-file-strip { display: grid; gap: 2px; padding: 0 16px 10px 48px; }
+:root .app-shell .turn-artifacts-file-strip { display: grid; gap: 2px; padding: 0 20px 12px 52px; }
 :root .app-shell .turn-artifacts-file-strip button {
   max-width: 100%;
   width: 100%;
@@ -217,7 +221,7 @@
   border-color: transparent;
   border-radius: 4px;
   background: transparent;
-  color: var(--ws-muted);
+  color: var(--ws-secondary);
   box-shadow: none;
 }
 :root .app-shell .turn-artifacts-file-strip button:hover { background: var(--ws-hover); color: var(--ws-ink); border-color: transparent; }
@@ -232,8 +236,8 @@
   color: inherit !important;
 }
 :root .app-shell :is(.turn-artifacts-preview-action, .review-summary-footer) {
-  margin: 0 16px;
-  width: calc(100% - 32px);
+  margin: 0 20px;
+  width: calc(100% - 40px);
   padding: 8px 0;
   min-height: 36px;
   border: 0;
@@ -242,6 +246,7 @@
   background: transparent;
   box-shadow: none;
   font-weight: 500;
+  font-size: 12px;
 }
 :root .app-shell .turn-artifacts-preview-action { color: var(--ws-accent); }
 :root .app-shell .review-summary-footer { color: var(--ws-muted); margin-bottom: 4px; }
@@ -250,15 +255,41 @@
 
 /* Keep the input as the primary action surface, with a short grounding shadow. */
 :root .app-shell .composer-wrap.composer-refined {
-  --cq-shadow-rest: 0 2px 8px rgba(0,0,0,.09);
+  --cq-shadow-rest: var(--ws-shadow);
   /* Share the workspace canvas instead of painting the legacy near-black
      footer gradient. Focus lighting belongs to the input itself. */
   background: transparent;
+  padding: 12px calc(var(--ws-gutter) + var(--ws-scroll-inset, 0px)) 16px;
 }
-:root[data-loom-theme="light"] .app-shell .composer-wrap.composer-refined {
-  --cq-shadow-rest: 0 2px 8px rgba(24,28,38,.035);
+:root .app-shell .composer-wrap.composer-refined .composer { border-radius: var(--ws-radius); }
+:root .app-shell .composer-stage { background: var(--ws-canvas); }
+:root .app-shell .project-git-bar {
+  width: min(var(--content-width), calc(100% - 2 * (var(--ws-gutter) + var(--ws-scroll-inset, 0px))));
+  max-width: none;
+  color: var(--ws-muted);
+  font-size: 12px;
+  line-height: 18px;
 }
-:root .app-shell .composer-wrap.composer-refined .composer { border-radius: 14px; }
+:root .app-shell .assistant-artifact-preview-card {
+  margin: 0;
+  border-color: var(--ws-line);
+  border-radius: var(--ws-radius);
+  background: var(--ws-surface);
+  box-shadow: var(--ws-shadow);
+}
+:root .app-shell .assistant-artifact-preview-footer { background: var(--ws-surface); border-color: var(--ws-line); padding: 12px 20px; }
+:root .app-shell .assistant-artifact-preview-copy strong { color: var(--ws-ink); font-size: 13px; font-weight: 600; }
+:root .app-shell .assistant-artifact-preview-copy span { color: var(--ws-muted); font-size: 12px; line-height: 18px; }
+:root .app-shell .assistant-artifact-preview-footer > button { color: var(--ws-accent); font-size: 12px; }
+@media (max-width: 760px) {
+  :root .app-shell { --ws-gutter: 20px; }
+  :root .app-shell .transcript { padding-block: 20px; }
+}
+@container loom-workspace (max-width: 640px) {
+  :root .app-shell .transcript { width: calc(100% - 32px); }
+  :root .app-shell .composer-wrap.composer-refined { padding-inline: calc(16px + var(--ws-scroll-inset, 0px)); }
+  :root .app-shell .project-git-bar { width: calc(100% - 32px - 2 * var(--ws-scroll-inset, 0px)); }
+}
 @media (max-width: 880px) {
   :root .app-shell .review-summary-header { padding-inline: 12px; }
   :root .app-shell .turn-artifacts-file-strip { padding-inline: 12px; }
