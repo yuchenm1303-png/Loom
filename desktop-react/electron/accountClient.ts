@@ -140,6 +140,8 @@ export class LoomAccountClient {
   private memorySession: TokenSession | null = null;
   private readonly baseUrl: string;
   private refreshInFlight: Promise<TokenSession> | null = null;
+  private authVerifiedAt = 0;
+  private authVerifiedUserId = 0;
 
   constructor() {
     this.baseUrl = configuredAccountBaseUrl();
@@ -213,6 +215,8 @@ export class LoomAccountClient {
 
   private async clearSession(): Promise<void> {
     this.memorySession = null;
+    this.authVerifiedAt = 0;
+    this.authVerifiedUserId = 0;
     try {
       await fs.rm(this.sessionPath(), { force: true });
     } catch {
@@ -234,6 +238,7 @@ export class LoomAccountClient {
     endpoint: string,
     init: RequestInit = {},
     accessToken = "",
+    timeoutMs = 15_000,
   ): Promise<T> {
     if (!this.configured) {
       throw new AccountHttpError(
@@ -243,7 +248,7 @@ export class LoomAccountClient {
       );
     }
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 15_000);
+    const timer = setTimeout(() => controller.abort(), Math.max(250, timeoutMs));
     try {
       const headers = new Headers(init.headers);
       headers.set("Accept", "application/json");
@@ -439,6 +444,59 @@ export class LoomAccountClient {
     } catch (error) {
       if (isAuthRejection(error)) await this.clearSession();
       return false;
+    }
+  }
+
+  /**
+   * Re-check account state at turn boundaries without adding a network round
+   * trip to every rapid steering message. Auth rejections clear the local
+   * session immediately; transient account-service outages preserve Loom's
+   * existing offline/BYOK behavior.
+   */
+  async verifyAuthenticatedSession(maxAgeMs = 5_000): Promise<boolean> {
+    let session = await this.loadSession();
+    if (!session?.user) return false;
+    if (session.expiresAt <= Date.now() + 30_000) {
+      try {
+        session = await this.refresh(session);
+      } catch (error) {
+        if (isAuthRejection(error)) {
+          await this.clearSession();
+          return false;
+        }
+        return true;
+      }
+    }
+
+    const userId = Number(session.user.id || 0);
+    const now = Date.now();
+    if (userId > 0 && this.authVerifiedUserId === userId && now - this.authVerifiedAt < Math.max(0, maxAgeMs)) {
+      return true;
+    }
+
+    try {
+      const result = await this.request<{ user: LoomAccountUser }>(
+        "/auth/me",
+        { method: "GET" },
+        session.accessToken,
+        1_200,
+      );
+      session = { ...session, user: result.user };
+      this.memorySession = session;
+      this.authVerifiedUserId = Number(result.user.id || 0);
+      this.authVerifiedAt = Date.now();
+      return true;
+    } catch (error) {
+      if (isAuthRejection(error)) {
+        await this.clearSession();
+        return false;
+      }
+      // Do not turn an account-service outage into a local Loom outage.
+      // Cache the attempted verification briefly so rapid turns do not stack
+      // repeated timeout penalties while offline.
+      this.authVerifiedUserId = userId;
+      this.authVerifiedAt = Date.now();
+      return true;
     }
   }
 
