@@ -147,6 +147,10 @@ export class LoomAccountClient {
     this.baseUrl = configuredAccountBaseUrl();
   }
 
+  get serviceUrl(): string {
+    return this.baseUrl;
+  }
+
   private get configured(): boolean {
     return Boolean(this.baseUrl);
   }
