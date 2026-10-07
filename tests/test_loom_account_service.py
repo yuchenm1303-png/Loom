@@ -270,3 +270,26 @@ def test_admin_ban_requires_reason_and_owner_for_privileged_targets(tmp_path: Pa
     with pytest.raises(AccountError) as self_ban:
         app.admin_ban_user(owner["user"]["id"], {"reason": "mistake"}, owner_auth)
     assert self_ban.value.code == "SELF_BAN_FORBIDDEN"
+
+
+def test_unban_restores_the_status_that_existed_before_ban(tmp_path: Path) -> None:
+    app = _app(tmp_path)
+    owner = app.register({"email": "owner2@example.com", "password": "abcdefgh"}, "owner")
+    user = app.register({"email": "disabled@example.com", "password": "abcdefgh"}, "user")
+    with app.store._connect() as db:
+        db.execute("UPDATE users SET role='owner' WHERE id=?", (owner["user"]["id"],))
+
+    owner_auth = f"Bearer {owner['access_token']}"
+    disabled = app.admin_set_user_status_by_id(user["user"]["id"], "disabled", owner_auth)["user"]
+    assert disabled["status"] == "disabled"
+
+    banned = app.admin_ban_user(
+        user["user"]["id"],
+        {"reason": "Escalated enforcement"},
+        owner_auth,
+    )["user"]
+    assert banned["status"] == "banned"
+    assert banned["ban_previous_status"] == "disabled"
+
+    restored = app.admin_unban_user(user["user"]["id"], owner_auth)["user"]
+    assert restored["status"] == "disabled"
