@@ -22,12 +22,13 @@ def test_panel_tracks_have_one_direct_layout_source_of_truth() -> None:
     assert "const projectDetailsLayoutOpen = projectDetailsOpen" in app
 
 
-def test_inspector_content_stays_warm_across_panel_toggles() -> None:
+def test_inspector_retains_exit_content_then_releases_hidden_event_rows() -> None:
     app = read("desktop-react/src/App.tsx")
 
     assert "const inspectorPresence = useMotionPresence(inspectorVisible, 420)" in app
-    assert "items={loom.items}" in app
-    assert "items={inspectorPresence.mounted ? loom.items : EMPTY_TRANSCRIPT_ITEMS}" not in app
+    # Keep the shell and selected tab warm, not every historical runtime row.
+    # The browser performance regression covers teardown and rapid reversal.
+    assert "items={inspectorPresence.mounted ? loom.items : EMPTY_TRANSCRIPT_ITEMS}" in app
 
 
 def test_transcript_reanchors_once_when_final_layout_commits() -> None:
@@ -46,7 +47,8 @@ def test_every_visible_panel_close_path_uses_the_same_coordinator() -> None:
 
     assert 'onToggleSidebar={() => runLayoutTransition(' in app
     assert 'sidebarOpen ? "left-close" : "left-open"' in app
-    assert 'onClose={() => runLayoutTransition(() => setInspectorOpen(false), "right-close")}' in app
+    assert 'runLayoutTransition(() => setInspectorOpen(false), "right-close")' in app
+    assert 'onClose={handleCloseInspector}' in app
     assert 'onClose={() => runLayoutTransition(() => setReviewOpen(false), "right-close")}' in app
     assert 'onClose={() => runLayoutTransition(() => setAgentsOpen(false), "right-close")}' in app
 

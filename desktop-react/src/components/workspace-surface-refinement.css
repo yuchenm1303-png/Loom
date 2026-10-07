@@ -35,7 +35,6 @@
 :root .app-shell :is(.inline-thinking, .live-reasoning-trigger)::after {
   display: none;
 }
-:root .app-shell :is(.inline-thinking, .live-reasoning-trigger) .tg { display: none; }
 :root .app-shell .thread-header .workspace-path-button { display: none; }
 :root .app-shell .thread-header .thread-sidebar-triangle-mark {
   width: 16px;

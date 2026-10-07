@@ -1872,7 +1872,7 @@ function EmptyState({ disabled, onPrompt, onOpenInsights }: {
   );
 }
 
-export function Transcript({ items, running, currentTurnId, workspace, promptDisabled, onPrompt, onApproval, onOpenInsights }: TranscriptProps) {
+export const Transcript = memo(function Transcript({ items, running, currentTurnId, workspace, promptDisabled, onPrompt, onApproval, onOpenInsights }: TranscriptProps) {
   const turnBlocks = useStableTurnBlocks(items);
   const activeTurnId = running && currentTurnId ? String(currentTurnId) : "";
   const milestones = useMemo(() => {
@@ -1934,4 +1934,4 @@ export function Transcript({ items, running, currentTurnId, workspace, promptDis
       {milestones.length ? <TaskProgressPanel key={activeTurnId} steps={milestones} /> : null}
     </>
   );
-}
+});

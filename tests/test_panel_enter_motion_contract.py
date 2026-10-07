@@ -106,13 +106,13 @@ def test_portal_surfaces_capture_only_their_logical_endpoint() -> None:
     assert '.review-workspace[data-open="false"]' in css
 
 
-def test_large_inspector_keeps_rows_mounted_and_virtualizes_offscreen_paint() -> None:
+def test_large_inspector_releases_closed_rows_and_skips_offscreen_paint_when_open() -> None:
     app = read("desktop-react/src/App.tsx")
     inspector = read("desktop-react/src/components/Inspector.tsx")
     inspector_css = read("desktop-react/src/components/Inspector.css")
 
-    assert "items={loom.items}" in app
-    assert "items={inspectorPresence.mounted ? loom.items : EMPTY_TRANSCRIPT_ITEMS}" not in app
+    assert "items={inspectorPresence.mounted ? loom.items : EMPTY_TRANSCRIPT_ITEMS}" in app
+    assert "memo(function Inspector" in inspector
     assert "memo(function RuntimeEvent" in inspector
     assert "onToggle={toggleEvent}" in inspector
     assert "scrollbar-gutter: stable" in inspector_css

@@ -36,6 +36,32 @@ const items = [
   { id: "answer", type: "assistant_message", phase: "final_answer", text: "配置材料已经准备好。\n\n```loom-decision\n" + JSON.stringify(decision) + "\n```" },
   { id: "file", type: "file_edit", paths: ["docs/login-setup.md"], diff: "+# 登录配置\n+域名验证\n+OAuth 回调地址\n-旧配置", status: "completed" },
 ].map(item => ({ ...item, threadId: "visual-0", turnId: "turn-1", createdAt: at }));
+const performanceTurns = params.get("performance") === "1" ? Array.from({ length: 20 }, (_, turn) => ({
+  id: `history-${turn}`, threadId: "visual-0", status: "completed", startedAt: at, completedAt: at,
+  finalItemId: `history-answer-${turn}`,
+  items: [
+    { id: `history-user-${turn}`, type: "user_message", text: `History ${turn}` },
+    ...Array.from({ length: 100 }, (_, index) => ({ id: `history-tool-${turn}-${index}`,
+      type: "process", argv: ["echo", "fixture"], stdout: "fixture output\n".repeat(300), status: "completed" })),
+    { id: `history-answer-${turn}`, type: "assistant_message", phase: "final_answer", text: `Result ${turn}\n\n` + "A completed task. ".repeat(50), status: "completed" },
+  ].map(item => ({ ...item, threadId: "visual-0", turnId: `history-${turn}`, createdAt: at })),
+})) : [];
+const notificationListeners = new Set<(event: unknown) => void>();
+let historyReads = 0;
+if (params.get("performance") === "1") for (const turn of performanceTurns) for (const item of turn.items) {
+  const type = item.type;
+  Object.defineProperty(item, "type", { enumerable: true, get() { historyReads++; return type; } });
+}
+Object.assign(window, { performanceFixture: {
+  emit(event: unknown) { notificationListeners.forEach(listener => listener(event)); },
+  listenerCount() { return notificationListeners.size; },
+  historyReads() { return historyReads; },
+  backgroundUpdate(index: number) {
+    notificationListeners.forEach(listener => listener({ method: "thread/updated", params: {
+      thread: { ...threads[1], status: "running", updatedAt: `2026-10-07T12:01:${String(index % 60).padStart(2, "0")}Z` },
+    } }));
+  },
+} });
 const profile = { selection: "builtin:minimax", id: "minimax-m3", kind: "builtin", name: "MiniMax-M3",
   adapter: "openai-compatible", model: "MiniMax-M3", configured: true, vision: true };
 const models = { primary: profile, profiles: [profile], activeModelId: profile.id,
@@ -59,7 +85,7 @@ const navigation = {
 Object.assign(window, { navigationFixture: navigation });
 function threadSnapshot(id: string) {
   return { thread: threads.find(thread => thread.id === id) || threads[0],
-    turns: params.get("empty") === "1" ? [] : [{ id: "turn-1", threadId: id, status: "completed",
+    turns: params.get("performance") === "1" && id === "visual-0" ? performanceTurns : params.get("empty") === "1" ? [] : [{ id: "turn-1", threadId: id, status: "completed",
       startedAt: at, completedAt: at, finalItemId: "answer", items: items.map(item => ({ ...item, threadId: id,
         ...(params.get("navigation") === "1" && item.type === "assistant_message" ? { text: `Loaded ${id}` } : {}) })) }] };
 }
@@ -94,7 +120,10 @@ const bridge: Record<string, unknown> = {
   listModels: async () => models,
   accountStatus: async () => ({ ok: true, snapshot: { configured: true, reachable: true, authenticated: true,
     user: { id: "visual-user", name: "Loom Designer", email: "visual@example.invalid" }, serviceUrl: "" } }),
-  onNotification: () => () => undefined,
+  onNotification: (listener: (event: unknown) => void) => {
+    notificationListeners.add(listener);
+    return () => notificationListeners.delete(listener);
+  },
   setZoomFactor: (factor: number) => factor,
   setNativeTheme: async (source: string) => source === "dark" ? "dark" : "light",
   filePathFor: () => "",

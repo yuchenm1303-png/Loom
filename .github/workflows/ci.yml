@@ -58,6 +58,20 @@ jobs:
       - name: Verify deployable web portal
         run: node --test scripts/tests/portal-release.test.mjs && node scripts/verify-web-portal-bundle.mjs
 
+      - name: Renderer long-session performance regression
+        shell: bash
+        run: |
+          npm install --prefix "$RUNNER_TEMP/loom-renderer-browser" --no-package-lock --no-audit --no-fund playwright-core@1.63.0
+          export LOOM_PLAYWRIGHT_MODULE="$RUNNER_TEMP/loom-renderer-browser/node_modules/playwright-core/index.mjs"
+          export LOOM_CHROMIUM_PATH="$(command -v google-chrome)"
+          test -n "$LOOM_CHROMIUM_PATH"
+          export LOOM_TEST_ORIGIN="http://127.0.0.1:5191"
+          node node_modules/vite/bin/vite.js --host 127.0.0.1 --port 5191 --strictPort > "$RUNNER_TEMP/loom-renderer-vite.log" 2>&1 &
+          vite_pid=$!
+          trap 'kill "$vite_pid"' EXIT
+          node node_modules/wait-on/bin/wait-on --timeout 60000 "$LOOM_TEST_ORIGIN/scripts/fixtures/workspace-visual.html"
+          node scripts/tests/renderer-performance-browser.mjs
+
   windows-context-smoke:
     runs-on: windows-latest
     steps:

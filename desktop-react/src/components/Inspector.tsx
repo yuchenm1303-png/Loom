@@ -272,7 +272,7 @@ function sectionTitle(tab: Tab): string {
   return "Process output";
 }
 
-export function Inspector({ items, onClose }: InspectorProps) {
+export const Inspector = memo(function Inspector({ items, onClose }: InspectorProps) {
   const { language } = useI18n();
   const zh = language === "zh-CN";
   const [tab, setTab] = useState<Tab>("activity");
@@ -463,4 +463,4 @@ export function Inspector({ items, onClose }: InspectorProps) {
       <ReviewWorkspace items={changes} open={reviewOpen} onClose={() => setReviewOpen(false)} />
     </>
   );
-}
+});

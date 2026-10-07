@@ -170,8 +170,10 @@ def test_checkpoint_invalidates_the_pre_compaction_meter_snapshot(tmp_path: Path
 def test_thread_context_reports_the_last_real_request(tmp_path: Path) -> None:
     service, runtime, workspace = _build_service(tmp_path, [ModelResponse(text="done")])
     try:
+        # This fixture scripts one turn response. Give the thread a title so
+        # background auto-title inference cannot consume that response first.
         thread_id = service.thread_start(
-            {"workspace": str(workspace), "permissionMode": "workspace"}
+            {"workspace": str(workspace), "permissionMode": "workspace", "title": "Context report test"}
         )["thread"]["id"]
 
         # Before any model step the budget is knowable and nothing is spent.

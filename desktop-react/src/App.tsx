@@ -3,6 +3,7 @@ import {
   useCallback,
   useEffect,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
   type CSSProperties,
@@ -444,10 +445,10 @@ export default function App() {
   const capabilitySettings = loom.runtime.settings?.capabilities ?? {};
   const attachmentsEnabled = capabilitySettings.attachments !== false;
   const stickersEnabled = capabilitySettings.stickers !== false;
-  const changedFileCount = reviewFileCount(loom.items);
-  const renderableArtifacts = renderableArtifactPaths(loom.items);
+  const changedFileCount = useMemo(() => reviewFileCount(loom.items), [loom.items]);
+  const renderableArtifacts = useMemo(() => renderableArtifactPaths(loom.items), [loom.items]);
   const artifactCount = renderableArtifacts.length;
-  const agentCount = subAgentCount(loom.items);
+  const agentCount = useMemo(() => subAgentCount(loom.items), [loom.items]);
   const selectedProject = selectedProjectId
     ? loom.projects.find((project) => project.id === selectedProjectId) ?? null
     : null;
@@ -910,11 +911,11 @@ export default function App() {
     return () => window.removeEventListener("keydown", handleShortcut, true);
   }, [loom, reviewOpen, runLayoutTransition, running, shortcuts, sidebarOpen]);
 
-  const transcriptItems = loom.items.filter((item) => {
+  const transcriptItems = useMemo(() => loom.items.filter((item) => {
     if (item.type !== "approval") return true;
     if (isResolvedApproval(item)) return false;
     return !dismissedApprovalIds.has(item.id);
-  });
+  }), [loom.items, dismissedApprovalIds]);
   const transcriptRunning = Boolean(
     runtimeTurnRunning
     && thread?.currentTurnId
@@ -1046,7 +1047,7 @@ export default function App() {
     commitPanelWidth(panel, current + delta);
   };
 
-  async function handleApproval(item: TranscriptItem, approved: boolean): Promise<void> {
+  const handleApproval = useCallback(async (item: TranscriptItem, approved: boolean): Promise<void> => {
     setDismissedApprovalIds((current) => {
       const next = new Set(current);
       next.add(item.id);
@@ -1063,7 +1064,16 @@ export default function App() {
       });
       console.error("Failed to respond to approval", cause);
     }
-  }
+  }, [loom.respondApproval]);
+
+  const handlePrompt = useCallback((prompt: string) => loom.send(prompt), [loom.send]);
+  const handleOpenInsights = useCallback(() => {
+    setSettingsOpen(false);
+    setProfileOpen(true);
+  }, []);
+  const handleCloseInspector = useCallback(() => {
+    runLayoutTransition(() => setInspectorOpen(false), "right-close");
+  }, [runLayoutTransition]);
 
   async function handleMoveProject(threadId: string, projectId: string): Promise<void> {
     const movingThread = loom.threads.find((entry) => entry.id === threadId);
@@ -1230,12 +1240,9 @@ export default function App() {
             currentTurnId={thread?.currentTurnId}
             workspace={workspace}
             promptDisabled={conversationDisabled}
-            onPrompt={(prompt) => loom.send(prompt)}
+            onPrompt={handlePrompt}
             onApproval={handleApproval}
-            onOpenInsights={() => {
-              setSettingsOpen(false);
-              setProfileOpen(true);
-            }}
+            onOpenInsights={handleOpenInsights}
           />
           <TranscriptScrollController
             items={transcriptItems}
@@ -1318,8 +1325,8 @@ export default function App() {
       />
 
       <Inspector
-        items={loom.items}
-        onClose={() => runLayoutTransition(() => setInspectorOpen(false), "right-close")}
+        items={inspectorPresence.mounted ? loom.items : EMPTY_TRANSCRIPT_ITEMS}
+        onClose={handleCloseInspector}
       />
       <ProjectDetailsPanel
         project={selectedProject}

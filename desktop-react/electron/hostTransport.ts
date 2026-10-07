@@ -14,22 +14,59 @@ function write(socket: Socket, frame: Frame): void {
   socket.write(Buffer.concat([header, body]));
 }
 
-function read(socket: Socket, receive: (frame: Frame) => void): void {
-  let buffered = Buffer.alloc(0);
-  socket.on("data", (chunk) => {
-    buffered = Buffer.concat([buffered, chunk]);
-    try {
-      while (buffered.length >= 4) {
-        const length = buffered.readUInt32BE(0);
-        if (length > MAX_FRAME_BYTES) throw new Error("Oversized Host message");
-        if (buffered.length < length + 4) break;
-        const frame = deserialize(buffered.subarray(4, length + 4)) as Frame;
-        buffered = buffered.subarray(length + 4);
-        if (!frame || typeof frame.type !== "string") throw new Error("Invalid Host message");
-        receive(frame);
+/** Retain fragments, then assemble a frame once. Recopying the accumulated
+ * prefix on every socket chunk blocks the desktop main process on long reads. */
+export class HostFrameDecoder {
+  private header = Buffer.alloc(4);
+  private headerBytes = 0;
+  private length = 0;
+  private bodyBytes = 0;
+  private parts: Buffer[] = [];
+
+  constructor(private receive: (frame: Frame) => void) {}
+
+  push(chunk: Buffer): void {
+    let offset = 0;
+    while (offset < chunk.length) {
+      if (this.headerBytes < 4) {
+        const count = Math.min(4 - this.headerBytes, chunk.length - offset);
+        chunk.copy(this.header, this.headerBytes, offset, offset + count);
+        this.headerBytes += count;
+        offset += count;
+        if (this.headerBytes < 4) return;
+        this.length = this.header.readUInt32BE(0);
+        if (!this.length || this.length > MAX_FRAME_BYTES) throw new Error("Invalid Host frame length");
       }
-    } catch { socket.destroy(); }
+      const count = Math.min(this.length - this.bodyBytes, chunk.length - offset);
+      if (count) {
+        this.parts.push(chunk.subarray(offset, offset + count));
+        this.bodyBytes += count;
+        offset += count;
+      }
+      if (this.bodyBytes < this.length) return;
+      const body = this.parts.length === 1 ? this.parts[0] : Buffer.concat(this.parts, this.length);
+      this.reset();
+      const frame = deserialize(body) as Frame;
+      if (!frame || typeof frame.type !== "string") throw new Error("Invalid Host message");
+      this.receive(frame);
+    }
+  }
+
+  reset(): void {
+    this.headerBytes = 0;
+    this.length = 0;
+    this.bodyBytes = 0;
+    this.parts = [];
+  }
+}
+
+function read(socket: Socket, receive: (frame: Frame) => void): void {
+  const decoder = new HostFrameDecoder(receive);
+  socket.on("data", (chunk) => {
+    try { decoder.push(chunk); }
+    catch { decoder.reset(); socket.destroy(); }
   });
+  socket.on("close", () => decoder.reset());
 }
 
 export class HostServer {
