@@ -384,6 +384,13 @@ class AccountStore:
                 db.execute("ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'user'")
             if "avatar_data_url" not in columns:
                 db.execute("ALTER TABLE users ADD COLUMN avatar_data_url TEXT NOT NULL DEFAULT ''")
+            if "ban_reason" not in columns:
+                db.execute("ALTER TABLE users ADD COLUMN ban_reason TEXT NOT NULL DEFAULT ''")
+            if "banned_at" not in columns:
+                db.execute("ALTER TABLE users ADD COLUMN banned_at INTEGER")
+            if "banned_by" not in columns:
+                db.execute("ALTER TABLE users ADD COLUMN banned_by INTEGER")
+            db.execute("UPDATE users SET status = 'disabled' WHERE status NOT IN ('active', 'disabled', 'banned')")
             legacy_without_verification = "email_verified_at" not in columns
             if legacy_without_verification:
                 db.execute("ALTER TABLE users ADD COLUMN email_verified_at INTEGER")
@@ -399,7 +406,25 @@ class AccountStore:
                 )
 
     @staticmethod
+    def _assert_active_user(row: sqlite3.Row) -> None:
+        status = str(row["status"] or "").strip().casefold()
+        if status == "active":
+            return
+        if status == "banned":
+            raise AccountError(
+                HTTPStatus.FORBIDDEN,
+                "ACCOUNT_BANNED",
+                "This Loom account has been banned by an administrator.",
+            )
+        raise AccountError(
+            HTTPStatus.FORBIDDEN,
+            "ACCOUNT_DISABLED",
+            "This account is not active.",
+        )
+
+    @staticmethod
     def _safe_user(row: sqlite3.Row) -> dict[str, Any]:
+        keys = set(row.keys())
         return {
             "id": int(row["id"]),
             "email": str(row["email"]),
@@ -409,6 +434,9 @@ class AccountStore:
             "role": str(row["role"] or "user"),
             "email_verified": bool(row["email_verified_at"]),
             "created_at": int(row["created_at"]),
+            "ban_reason": str(row["ban_reason"] or "") if "ban_reason" in keys else "",
+            "banned_at": int(row["banned_at"]) if "banned_at" in keys and row["banned_at"] is not None else None,
+            "banned_by": int(row["banned_by"]) if "banned_by" in keys and row["banned_by"] is not None else None,
         }
 
     def register(self, email: str, password: str) -> dict[str, Any]:
@@ -688,12 +716,7 @@ class AccountStore:
                 "INVALID_CREDENTIALS",
                 "Email or password is incorrect.",
             )
-        if str(row["status"]) != "active":
-            raise AccountError(
-                HTTPStatus.FORBIDDEN,
-                "ACCOUNT_DISABLED",
-                "This account is not active.",
-            )
+        self._assert_active_user(row)
         return self._safe_user(row)
 
     def _issue_session(self, user_id: int, *, session_id: str | None = None) -> dict[str, Any]:
@@ -705,6 +728,10 @@ class AccountStore:
         refresh_expires_at = now + self.config.refresh_ttl_seconds
 
         with self._guard, self._connect() as db:
+            user_row = db.execute("SELECT * FROM users WHERE id = ?", (int(user_id),)).fetchone()
+            if user_row is None:
+                raise AccountError(HTTPStatus.NOT_FOUND, "USER_NOT_FOUND", "User not found.")
+            self._assert_active_user(user_row)
             if session_id:
                 db.execute(
                     """
@@ -779,12 +806,7 @@ class AccountStore:
                 "INVALID_TOKEN",
                 "Your session has expired. Sign in again.",
             )
-        if str(row["status"]) != "active":
-            raise AccountError(
-                HTTPStatus.FORBIDDEN,
-                "ACCOUNT_DISABLED",
-                "This account is not active.",
-            )
+        self._assert_active_user(row)
         return self._safe_user(row)
 
     def issue_model_credential(self, access_token: str) -> dict[str, Any]:
@@ -800,8 +822,7 @@ class AccountStore:
             ).fetchone()
             if row is None:
                 raise AccountError(HTTPStatus.UNAUTHORIZED, "INVALID_TOKEN", "Your session has expired. Sign in again.")
-            if str(row["status"]) != "active":
-                raise AccountError(HTTPStatus.FORBIDDEN, "ACCOUNT_DISABLED", "This account is not active.")
+            self._assert_active_user(row)
             token = _new_token("loom_model")
             expires_at = int(row["refresh_expires_at"])
             db.execute(
@@ -831,8 +852,7 @@ class AccountStore:
                 db.execute("UPDATE model_credentials SET last_used_at = ? WHERE token_hash = ?", (now, hashed))
         if row is None:
             raise AccountError(HTTPStatus.UNAUTHORIZED, "INVALID_MODEL_TOKEN", "Built-in model authorization has expired. Sign in again.")
-        if str(row["status"]) != "active":
-            raise AccountError(HTTPStatus.FORBIDDEN, "ACCOUNT_DISABLED", "This account is not active.")
+        self._assert_active_user(row)
         return self._safe_user(row)
 
     def issue_relay_credential(self, access_token: str) -> dict[str, Any]:
@@ -848,8 +868,7 @@ class AccountStore:
             ).fetchone()
             if row is None:
                 raise AccountError(HTTPStatus.UNAUTHORIZED, "INVALID_TOKEN", "Your session has expired. Sign in again.")
-            if str(row["status"]) != "active":
-                raise AccountError(HTTPStatus.FORBIDDEN, "ACCOUNT_DISABLED", "This account is not active.")
+            self._assert_active_user(row)
             token = _new_token("loom_relay")
             expires_at = int(row["refresh_expires_at"])
             db.execute(
@@ -879,8 +898,7 @@ class AccountStore:
                 db.execute("UPDATE relay_credentials SET last_used_at = ? WHERE token_hash = ?", (now, hashed))
         if row is None:
             raise AccountError(HTTPStatus.UNAUTHORIZED, "INVALID_RELAY_TOKEN", "Relay authorization has expired. Sign in again.")
-        if str(row["status"]) != "active":
-            raise AccountError(HTTPStatus.FORBIDDEN, "ACCOUNT_DISABLED", "This account is not active.")
+        self._assert_active_user(row)
         return self._safe_user(row)
 
     def refresh(self, refresh_token: str) -> tuple[dict[str, Any], dict[str, Any]]:
@@ -904,12 +922,7 @@ class AccountStore:
                     "INVALID_REFRESH_TOKEN",
                     "This sign-in session is no longer valid.",
                 )
-            if str(row["status"]) != "active":
-                raise AccountError(
-                    HTTPStatus.FORBIDDEN,
-                    "ACCOUNT_DISABLED",
-                    "This account is not active.",
-                )
+            self._assert_active_user(row)
 
             access_token = _new_token("loom_access")
             next_refresh = _new_token("loom_refresh")
@@ -969,10 +982,13 @@ class AccountStore:
         with self._connect() as db:
             users = int(db.execute("SELECT COUNT(*) FROM users").fetchone()[0])
             active_users = int(db.execute("SELECT COUNT(*) FROM users WHERE status = 'active'").fetchone()[0])
+            disabled_users = int(db.execute("SELECT COUNT(*) FROM users WHERE status = 'disabled'").fetchone()[0])
+            banned_users = int(db.execute("SELECT COUNT(*) FROM users WHERE status = 'banned'").fetchone()[0])
             return {
                 "users": users,
                 "active_users": active_users,
-                "disabled_users": users - active_users,
+                "disabled_users": disabled_users,
+                "banned_users": banned_users,
                 "active_sessions": int(db.execute("SELECT COUNT(*) FROM sessions WHERE revoked_at IS NULL AND refresh_expires_at > ?", (now,)).fetchone()[0]),
                 "active_24h": int(db.execute("SELECT COUNT(DISTINCT user_id) FROM sessions WHERE last_used_at >= ?", (day_ago,)).fetchone()[0]),
                 "registrations_24h": int(db.execute("SELECT COUNT(*) FROM users WHERE created_at >= ?", (day_ago,)).fetchone()[0]),
@@ -1185,14 +1201,121 @@ class AccountStore:
 
     def admin_set_user_status(self, actor: dict[str, Any], user_id: int, status: str) -> dict[str, Any]:
         status = str(status or "").strip().casefold()
-        if status not in {"active", "disabled"}: raise AccountError(HTTPStatus.BAD_REQUEST, "INVALID_STATUS", "Status must be active or disabled.")
-        if int(actor["id"]) == int(user_id) and status != "active": raise AccountError(HTTPStatus.BAD_REQUEST, "SELF_DISABLE_FORBIDDEN", "You cannot disable your own administrator account.")
+        if status not in {"active", "disabled"}:
+            raise AccountError(HTTPStatus.BAD_REQUEST, "INVALID_STATUS", "Status must be active or disabled.")
+        if int(actor["id"]) == int(user_id) and status != "active":
+            raise AccountError(HTTPStatus.BAD_REQUEST, "SELF_DISABLE_FORBIDDEN", "You cannot disable your own administrator account.")
         with self._guard, self._connect() as db:
             row = db.execute("SELECT * FROM users WHERE id = ?", (int(user_id),)).fetchone()
-            if row is None: raise AccountError(HTTPStatus.NOT_FOUND, "USER_NOT_FOUND", "User not found.")
-            now = _now(); db.execute("UPDATE users SET status = ?, updated_at = ? WHERE id = ?", (status, now, int(user_id)))
-            if status == "disabled": db.execute("UPDATE sessions SET revoked_at = COALESCE(revoked_at, ?) WHERE user_id = ?", (now, int(user_id)))
-            self._audit(db, int(actor["id"]), "user.status", target_type="user", target_id=str(user_id), metadata={"status": status})
+            if row is None:
+                raise AccountError(HTTPStatus.NOT_FOUND, "USER_NOT_FOUND", "User not found.")
+            if str(row["status"]) == "banned":
+                raise AccountError(
+                    HTTPStatus.CONFLICT,
+                    "ACCOUNT_BANNED_USE_UNBAN",
+                    "This account is banned. Use the explicit unban action instead.",
+                )
+            now = _now()
+            db.execute(
+                "UPDATE users SET status = ?, updated_at = ? WHERE id = ?",
+                (status, now, int(user_id)),
+            )
+            if status == "disabled":
+                db.execute(
+                    "UPDATE sessions SET revoked_at = COALESCE(revoked_at, ?) WHERE user_id = ?",
+                    (now, int(user_id)),
+                )
+            self._audit(
+                db,
+                int(actor["id"]),
+                "user.status",
+                target_type="user",
+                target_id=str(user_id),
+                metadata={"status": status},
+            )
+            updated = db.execute("SELECT * FROM users WHERE id = ?", (int(user_id),)).fetchone()
+        return self._safe_user(updated)
+
+    def admin_ban_user(self, actor: dict[str, Any], user_id: int, reason: str) -> dict[str, Any]:
+        normalized_reason = " ".join(str(reason or "").split()).strip()
+        if not normalized_reason:
+            raise AccountError(HTTPStatus.BAD_REQUEST, "BAN_REASON_REQUIRED", "A ban reason is required.")
+        if len(normalized_reason) > 500:
+            raise AccountError(HTTPStatus.BAD_REQUEST, "BAN_REASON_TOO_LONG", "Ban reason must be 500 characters or fewer.")
+        if int(actor["id"]) == int(user_id):
+            raise AccountError(HTTPStatus.BAD_REQUEST, "SELF_BAN_FORBIDDEN", "You cannot ban your own administrator account.")
+
+        now = _now()
+        with self._guard, self._connect() as db:
+            row = db.execute("SELECT * FROM users WHERE id = ?", (int(user_id),)).fetchone()
+            if row is None:
+                raise AccountError(HTTPStatus.NOT_FOUND, "USER_NOT_FOUND", "User not found.")
+            target_role = str(row["role"] or "user")
+            if target_role in {"admin", "owner"} and str(actor.get("role") or "") != "owner":
+                raise AccountError(
+                    HTTPStatus.FORBIDDEN,
+                    "OWNER_REQUIRED",
+                    "Owner access is required to ban an administrator or owner.",
+                )
+            if str(row["status"]) == "banned":
+                raise AccountError(HTTPStatus.CONFLICT, "ACCOUNT_ALREADY_BANNED", "This account is already banned.")
+
+            db.execute(
+                """UPDATE users
+                SET status = 'banned', ban_reason = ?, banned_at = ?, banned_by = ?, updated_at = ?
+                WHERE id = ?""",
+                (normalized_reason, now, int(actor["id"]), now, int(user_id)),
+            )
+            db.execute(
+                "UPDATE sessions SET revoked_at = COALESCE(revoked_at, ?) WHERE user_id = ?",
+                (now, int(user_id)),
+            )
+            db.execute("DELETE FROM model_credentials WHERE user_id = ?", (int(user_id),))
+            db.execute("DELETE FROM relay_credentials WHERE user_id = ?", (int(user_id),))
+            db.execute("DELETE FROM oauth_exchange_codes WHERE user_id = ?", (int(user_id),))
+            self._audit(
+                db,
+                int(actor["id"]),
+                "user.ban",
+                target_type="user",
+                target_id=str(user_id),
+                metadata={"reason": normalized_reason, "previous_status": str(row["status"])},
+            )
+            updated = db.execute("SELECT * FROM users WHERE id = ?", (int(user_id),)).fetchone()
+        return self._safe_user(updated)
+
+    def admin_unban_user(self, actor: dict[str, Any], user_id: int) -> dict[str, Any]:
+        if int(actor["id"]) == int(user_id):
+            raise AccountError(HTTPStatus.BAD_REQUEST, "SELF_UNBAN_FORBIDDEN", "You cannot unban your own account.")
+        now = _now()
+        with self._guard, self._connect() as db:
+            row = db.execute("SELECT * FROM users WHERE id = ?", (int(user_id),)).fetchone()
+            if row is None:
+                raise AccountError(HTTPStatus.NOT_FOUND, "USER_NOT_FOUND", "User not found.")
+            if str(row["status"]) != "banned":
+                raise AccountError(HTTPStatus.CONFLICT, "ACCOUNT_NOT_BANNED", "This account is not banned.")
+            target_role = str(row["role"] or "user")
+            if target_role in {"admin", "owner"} and str(actor.get("role") or "") != "owner":
+                raise AccountError(
+                    HTTPStatus.FORBIDDEN,
+                    "OWNER_REQUIRED",
+                    "Owner access is required to unban an administrator or owner.",
+                )
+            previous_reason = str(row["ban_reason"] or "")
+            db.execute(
+                """UPDATE users
+                SET status = 'active', ban_reason = '', banned_at = NULL, banned_by = NULL, updated_at = ?
+                WHERE id = ?""",
+                (now, int(user_id)),
+            )
+            self._audit(
+                db,
+                int(actor["id"]),
+                "user.unban",
+                target_type="user",
+                target_id=str(user_id),
+                metadata={"previous_reason": previous_reason},
+            )
             updated = db.execute("SELECT * FROM users WHERE id = ?", (int(user_id),)).fetchone()
         return self._safe_user(updated)
 
@@ -1732,6 +1855,12 @@ class AccountApplication:
         actor=self._admin(authorization); return {"user": self.store.admin_set_user_status(actor, self._user_id(body), str(body.get("status") or ""))}
     def admin_set_user_status_by_id(self, user_id: int, status: str, authorization: str) -> dict[str, Any]:
         actor=self._admin(authorization); return {"user": self.store.admin_set_user_status(actor, int(user_id), status)}
+    def admin_ban_user(self, user_id: int, body: dict[str, Any], authorization: str) -> dict[str, Any]:
+        actor = self._admin(authorization)
+        return {"user": self.store.admin_ban_user(actor, int(user_id), str(body.get("reason") or ""))}
+    def admin_unban_user(self, user_id: int, authorization: str) -> dict[str, Any]:
+        actor = self._admin(authorization)
+        return {"user": self.store.admin_unban_user(actor, int(user_id))}
     def admin_set_user_role(self, body: dict[str, Any], authorization: str) -> dict[str, Any]:
         actor=self._admin(authorization); return {"user": self.store.admin_set_user_role(actor, self._user_id(body), str(body.get("role") or ""))}
     def admin_revoke_user_sessions(self, body: dict[str, Any], authorization: str) -> dict[str, Any]:
@@ -1870,6 +1999,10 @@ class AccountRequestHandler(BaseHTTPRequestHandler):
             return self.application.refresh(body, self._client_key())
         if path == "/v1/auth/logout": return self.application.logout(body)
         if path == "/v1/auth/profile": return self.application.update_profile(body, authorization)
+        if match := re.fullmatch(r"/v1/admin/users/(\d+)/ban", path):
+            return self.application.admin_ban_user(int(match.group(1)), body, authorization)
+        if match := re.fullmatch(r"/v1/admin/users/(\d+)/unban", path):
+            return self.application.admin_unban_user(int(match.group(1)), authorization)
         if match := re.fullmatch(r"/v1/admin/users/(\d+)/(disable|enable)", path):
             return self.application.admin_set_user_status_by_id(int(match.group(1)), "disabled" if match.group(2) == "disable" else "active", authorization)
         if match := re.fullmatch(r"/v1/admin/sessions/([^/]+)/revoke", path):
