@@ -115,7 +115,7 @@ def test_user_and_device_health_visuals_are_present_and_secondary_page_is_card_b
 
 def test_user_detail_exposes_account_gated_automation_controls():
     for marker in (
-        "request(\`/admin/users/\${id}/tool-access\`)",
+        "request(`/admin/users/${id}/tool-access`)",
         "Automation access",
         'id="computerUseAccessEnabled"',
         'id="browserUseAccessEnabled"',
