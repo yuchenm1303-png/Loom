@@ -918,6 +918,7 @@ class LoomRpcProcess {
         LOOM_DESKTOP_HOST_PID: String(process.pid),
         LOOM_DESKTOP_CLIENT_PIDS_FILE: desktopPidFile,
         LOOM_API_KEY: spec.apiKey,
+        LOOM_ACCOUNT_API_BASE_URL: this.account.serviceUrl,
         LOOM_ACCOUNT_MODEL_CREDENTIAL: accountModelCredential,
         LOOM_ACCOUNT_TOOL_ACCESS_ENFORCED: "1",
         LOOM_BROWSER_EXTENSION_TOKEN: ensureBrowserBridgeToken(),

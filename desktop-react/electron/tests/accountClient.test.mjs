@@ -130,6 +130,12 @@ test("shared search requires sign-in and refreshes account auth without a search
   assert.deepEqual(JSON.parse(calls[1].body), { query: "docs", count: 3 });
 });
 
+test("serviceUrl exposes the exact validated account endpoint used by the client", async () => {
+  process.env.LOOM_ACCOUNT_API_BASE_URL = SERVICE_URL;
+  const client = newClient();
+  assert.equal(client.serviceUrl, SERVICE_URL);
+});
+
 test("a packaged build uses the production default when no URL is configured", async () => {
   delete process.env.LOOM_ACCOUNT_API_BASE_URL;
   state.isPackaged = true;
@@ -531,4 +537,11 @@ test("turn-boundary verification is briefly cached and preserves offline BYOK be
     throw new TypeError("network down");
   };
   assert.equal(await client.verifyAuthenticatedSession(0), true, "an outage must not disable local BYOK use");
+});
+
+
+test("desktop runtime receives the validated account service URL for automation entitlements", async () => {
+  const mainSource = await fs.readFile(new URL("../main.ts", import.meta.url), "utf8");
+  assert.match(mainSource, /LOOM_ACCOUNT_API_BASE_URL:\s*this\.account\.serviceUrl/);
+  assert.match(mainSource, /LOOM_ACCOUNT_TOOL_ACCESS_ENFORCED:\s*"1"/);
 });
