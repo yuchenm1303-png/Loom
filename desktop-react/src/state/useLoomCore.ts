@@ -740,9 +740,9 @@ export function useLoom() {
     }
     threadReadCacheRef.current.delete(thread.id);
     const pendingId = `pending-user-${crypto.randomUUID()}`;
-    if (input.trim()) setItems((current) => [...current, {
+    if (input.trim() || attachments.length) setItems((current) => [...current, {
       id: pendingId, clientMessageId: pendingId, threadId: thread.id, type: "user_message",
-      text: input.trim(), status: "sending", submittedAt: new Date().toISOString(),
+      text: input.trim(), hasAttachments: attachments.length > 0, status: "sending", submittedAt: new Date().toISOString(),
     }]);
     setTurnActive(true);
     setTurnStartedAt(Date.now());
@@ -751,6 +751,7 @@ export function useLoom() {
       if (attachments.length) params.attachments = attachments;
       const result = await requireBridge().call<{ turn: TurnRecord }>("turn/start", params);
       const turn = result.turn;
+      setItems((current) => current.map((item) => item.id === pendingId ? { ...item, turnId: turn.id } : item));
       setActive((current) => current && current.thread.id === thread.id
         ? {
             ...current,
