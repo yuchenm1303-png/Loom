@@ -191,3 +191,105 @@ def test_automation_access_defaults_disabled_and_admin_controls_each_capability(
     )["access"]
     assert revoked["computerUse"] is False
     assert revoked["browserUse"] is False
+
+
+def test_admin_ban_revokes_credentials_blocks_login_and_requires_explicit_unban(tmp_path: Path) -> None:
+    app = _app(tmp_path)
+    owner = app.register({"email": "owner@example.com", "password": "abcdefgh"}, "owner")
+    user = app.register({"email": "user@example.com", "password": "abcdefgh"}, "user")
+    with app.store._connect() as db:
+        db.execute("UPDATE users SET role='owner' WHERE id=?", (owner["user"]["id"],))
+
+    owner_auth = f"Bearer {owner['access_token']}"
+    user_auth = f"Bearer {user['access_token']}"
+    model_token = app.model_credential(user_auth)["model_token"]
+    relay_token = app.relay_credential(user_auth)["relay_token"]
+
+    banned = app.admin_ban_user(
+        user["user"]["id"],
+        {"reason": "Repeated automation abuse"},
+        owner_auth,
+    )["user"]
+    assert banned["status"] == "banned"
+    assert banned["ban_reason"] == "Repeated automation abuse"
+    assert banned["banned_at"] is not None
+    assert banned["banned_by"] == owner["user"]["id"]
+
+    with pytest.raises(AccountError) as login_error:
+        app.login({"email": "user@example.com", "password": "abcdefgh"}, "user-after-ban")
+    assert login_error.value.code == "ACCOUNT_BANNED"
+
+    with pytest.raises(AccountError) as access_error:
+        app.me(user_auth)
+    assert access_error.value.code == "INVALID_TOKEN"
+
+    with pytest.raises(AccountError) as model_error:
+        app.model_access(f"Bearer {model_token}")
+    assert model_error.value.code == "INVALID_MODEL_TOKEN"
+
+    with pytest.raises(AccountError) as relay_error:
+        app.relay_me(f"Bearer {relay_token}")
+    assert relay_error.value.code == "INVALID_RELAY_TOKEN"
+
+    with pytest.raises(AccountError) as issue_error:
+        app.store.create_session(user["user"]["id"])
+    assert issue_error.value.code == "ACCOUNT_BANNED"
+
+    with pytest.raises(AccountError) as legacy_enable:
+        app.admin_set_user_status_by_id(user["user"]["id"], "active", owner_auth)
+    assert legacy_enable.value.code == "ACCOUNT_BANNED_USE_UNBAN"
+
+    unbanned = app.admin_unban_user(user["user"]["id"], owner_auth)["user"]
+    assert unbanned["status"] == "active"
+    assert unbanned["ban_reason"] == ""
+    assert unbanned["banned_at"] is None
+    assert unbanned["banned_by"] is None
+    assert app.login({"email": "user@example.com", "password": "abcdefgh"}, "user-after-unban")["user"]["id"] == user["user"]["id"]
+
+
+def test_admin_ban_requires_reason_and_owner_for_privileged_targets(tmp_path: Path) -> None:
+    app = _app(tmp_path)
+    owner = app.register({"email": "owner@example.com", "password": "abcdefgh"}, "owner")
+    admin = app.register({"email": "admin@example.com", "password": "abcdefgh"}, "admin")
+    user = app.register({"email": "user@example.com", "password": "abcdefgh"}, "user")
+    with app.store._connect() as db:
+        db.execute("UPDATE users SET role='owner' WHERE id=?", (owner["user"]["id"],))
+        db.execute("UPDATE users SET role='admin' WHERE id=?", (admin["user"]["id"],))
+
+    owner_auth = f"Bearer {owner['access_token']}"
+    admin_auth = f"Bearer {admin['access_token']}"
+
+    with pytest.raises(AccountError) as missing_reason:
+        app.admin_ban_user(user["user"]["id"], {"reason": "   "}, owner_auth)
+    assert missing_reason.value.code == "BAN_REASON_REQUIRED"
+
+    with pytest.raises(AccountError) as privileged:
+        app.admin_ban_user(owner["user"]["id"], {"reason": "nope"}, admin_auth)
+    assert privileged.value.code == "OWNER_REQUIRED"
+
+    with pytest.raises(AccountError) as self_ban:
+        app.admin_ban_user(owner["user"]["id"], {"reason": "mistake"}, owner_auth)
+    assert self_ban.value.code == "SELF_BAN_FORBIDDEN"
+
+
+def test_unban_restores_the_status_that_existed_before_ban(tmp_path: Path) -> None:
+    app = _app(tmp_path)
+    owner = app.register({"email": "owner2@example.com", "password": "abcdefgh"}, "owner")
+    user = app.register({"email": "disabled@example.com", "password": "abcdefgh"}, "user")
+    with app.store._connect() as db:
+        db.execute("UPDATE users SET role='owner' WHERE id=?", (owner["user"]["id"],))
+
+    owner_auth = f"Bearer {owner['access_token']}"
+    disabled = app.admin_set_user_status_by_id(user["user"]["id"], "disabled", owner_auth)["user"]
+    assert disabled["status"] == "disabled"
+
+    banned = app.admin_ban_user(
+        user["user"]["id"],
+        {"reason": "Escalated enforcement"},
+        owner_auth,
+    )["user"]
+    assert banned["status"] == "banned"
+    assert banned["ban_previous_status"] == "disabled"
+
+    restored = app.admin_unban_user(user["user"]["id"], owner_auth)["user"]
+    assert restored["status"] == "disabled"
