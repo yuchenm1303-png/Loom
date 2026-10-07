@@ -390,6 +390,20 @@ function capabilityLabel(status: Record<string, unknown> | undefined, userEnable
 }
 
 function capabilityStatusText(status: Record<string, unknown> | undefined): string {
+  const authorization = status?.accountAuthorization as Record<string, unknown> | undefined;
+  if (authorization) {
+    const state = String(authorization.status || "not_checked");
+    if (state === "confirmed" && authorization.allowed === false) return "Account automation permission disabled";
+    const labels: Record<string, string> = {
+      credential_missing: "Sign in to verify automation access",
+      authentication_failed: "Account session expired; sign in again",
+      service_unavailable: "Authorization service unavailable; not a permission denial",
+      invalid_response: "Invalid authorization service response",
+      configuration_invalid: "Account service configuration invalid",
+      not_checked: "Checking account automation access",
+    };
+    if (labels[state]) return labels[state];
+  }
   const available = runtimeAvailable(status);
   if (available === null) return "Not reported";
   if (!available) return "Backend missing";

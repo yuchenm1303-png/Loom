@@ -895,6 +895,8 @@ class LoomRpcProcess {
       }
     }
     const python = resolvePythonExecutable();
+    let accountAutomationCredential = "";
+    try { accountAutomationCredential = await this.account.automationCredential(); } catch {}
     const sandboxExecutable = resolveHostSandboxExecutable(REPO_ROOT);
     const script = path.join(REPO_ROOT, "loom_app_server.py");
     const args = [script, "--workspace", REPO_ROOT, "--provider", spec.provider, "--model", spec.model, "--selection", spec.selection, "--local-ipc", ...runtimeModelArguments(spec)];
@@ -920,6 +922,7 @@ class LoomRpcProcess {
         LOOM_API_KEY: spec.apiKey,
         LOOM_ACCOUNT_API_BASE_URL: this.account.serviceUrl,
         LOOM_ACCOUNT_MODEL_CREDENTIAL: accountModelCredential,
+        LOOM_ACCOUNT_AUTOMATION_CREDENTIAL: accountAutomationCredential,
         LOOM_ACCOUNT_TOOL_ACCESS_ENFORCED: "1",
         LOOM_BROWSER_EXTENSION_TOKEN: ensureBrowserBridgeToken(),
         // The page HUD is the extension's asset, and a browser Loom launches
@@ -1622,11 +1625,15 @@ async function runAccountAction(
   }
 }
 
+let accountAuthorizationSyncInFlight = false;
 async function syncAccountToolAccessCredential(): Promise<void> {
+  if (accountAuthorizationSyncInFlight) return;
+  accountAuthorizationSyncInFlight = true;
+  try {
   let credential = "";
   try {
     if (await accountClient.hasAuthenticatedSession()) {
-      credential = await accountClient.modelCredential();
+      credential = await accountClient.automationCredential();
     }
   } catch {
     // A transient refresh failure is not sign-out. Keep the existing credential;
@@ -1638,6 +1645,9 @@ async function syncAccountToolAccessCredential(): Promise<void> {
     await rpc.call("account/tool-access-credential", { credential }, 5_000);
   } catch {
     // Runtime restarts also receive the latest credential through the env.
+  }
+  } finally {
+    accountAuthorizationSyncInFlight = false;
   }
 }
 
@@ -1739,6 +1749,9 @@ app.whenReady().then(async () => {
     await syncBrowserExtensionAssets();
   }
   await startHostTransport();
+  const authorizationRefresh = setInterval(() => { void syncAccountToolAccessCredential(); }, 30_000);
+  authorizationRefresh.unref();
+  app.once("before-quit", () => clearInterval(authorizationRefresh));
   createHudOverlayWindow();
   // The relay owns its own reconnect loop; it stays idle until an account
   // session exists, and a failed auth lookup just schedules a retry.

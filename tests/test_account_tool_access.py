@@ -136,3 +136,33 @@ def test_old_account_response_cannot_restore_access(monkeypatch):
         assert gate.account_tool_access_status()["status"] == "credential_missing"
     finally:
         set_account_tool_access_credential(None)
+
+
+def test_tool_exposure_is_nonblocking_and_credentials_are_separate(monkeypatch):
+    import threading
+    from app.agent_runtime import account_tool_access as gate
+    monkeypatch.setenv("LOOM_ACCOUNT_TOOL_ACCESS_ENFORCED", "1")
+    monkeypatch.setenv("LOOM_ACCOUNT_API_BASE_URL", "https://example.test/v1")
+    monkeypatch.setenv("LOOM_ACCOUNT_MODEL_CREDENTIAL", "model-only")
+    monkeypatch.setenv("LOOM_ACCOUNT_AUTOMATION_CREDENTIAL", "account-only")
+    set_account_tool_access_credential(None)
+    assert gate._credential() == "account-only"
+    entered, release, finished = threading.Event(), threading.Event(), threading.Event()
+    def fetch(*args, **kwargs):
+        entered.set()
+        release.wait(3)
+        finished.set()
+        raise TimeoutError()
+    monkeypatch.setattr(gate, "urlopen", fetch)
+    try:
+        assert not gate.account_capability_allowed("browserUse", cache_only=True)
+        assert entered.wait(1)
+        # A pending network request must not block the next schema lookup.
+        assert not gate.account_capability_allowed("browserUse", cache_only=True)
+    finally:
+        release.set()
+        assert finished.wait(2)
+        # Wait for the single-flight lock before resetting test account state.
+        with gate._FETCH_LOCK:
+            set_account_tool_access_credential("")
+        set_account_tool_access_credential(None)

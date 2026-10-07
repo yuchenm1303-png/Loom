@@ -256,7 +256,7 @@ class ReasoningManagedLoomAppServerService(ManagedStreamingLoomAppServerService)
         }
         authorization = account_tool_access_status()
         for key in ("computerUse", "browserUse"):
-            statuses[key]["accountAuthorization"] = authorization
+            statuses[key]["accountAuthorization"] = {**authorization, "allowed": bool(authorization.get("access", {}).get(key))}
         for key, payload in statuses.items():
             user_enabled = bool(preferences.get(key, True))
             backend_enabled = payload.get("enabled")

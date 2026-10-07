@@ -382,6 +382,13 @@ export class LoomAccountClient {
   }
 
   /** Mint/cache a scoped built-in-model token tied to the current Loom login session. */
+  async automationCredential(): Promise<string> {
+    let session = await this.loadSession();
+    if (!session) return "";
+    if (session.expiresAt <= Date.now() + 30_000) session = await this.refresh(session);
+    return session.accessToken;
+  }
+
   async modelCredential(): Promise<string> {
     let session = await this.loadSession();
     if (!session) throw new AccountHttpError(401, "MISSING_TOKEN", "Sign in to Loom to use built-in models.");

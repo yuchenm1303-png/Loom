@@ -77,7 +77,7 @@ def _capability_allows(tool: "AgentTool", capability_settings: CapabilitySetting
         return True
     if capability_settings and capability_settings.get(capability) is False:
         return False
-    return account_capability_allowed(capability)
+    return account_capability_allowed(capability, cache_only=True)
 
 
 class ToolExposure(str, Enum):
