@@ -67,6 +67,72 @@ def test_execution_rechecks_account_gate_before_sensitive_automation(monkeypatch
     assert result.data["failure_kind"] == "account_entitlement"
     assert result.data["execution_status"] == "not_executed"
     assert result.data["capability"] == "computerUse"
-    assert "not enabled for this Loom account" in result.content
+    assert result.data["authorization"]["status"] == "credential_missing"
+    assert "could not be verified" in result.content
     assert ran == []
     set_account_tool_access_credential(None)
+
+
+def test_authorization_cache_and_failure_diagnostics(monkeypatch):
+    import json
+    from app.agent_runtime import account_tool_access as gate
+
+    monkeypatch.setenv("LOOM_ACCOUNT_TOOL_ACCESS_ENFORCED", "1")
+    monkeypatch.setenv("LOOM_ACCOUNT_API_BASE_URL", "https://example.test/v1")
+    set_account_tool_access_credential("test-token-cache")
+    calls = []
+
+    class Response:
+        status = 200
+        def __enter__(self): return self
+        def __exit__(self, *args): pass
+        def read(self, size): return json.dumps({"access": {"browserUse": True, "computerUse": False}}).encode()
+
+    def fetch(*args, **kwargs):
+        calls.append(1)
+        return Response()
+
+    monkeypatch.setattr(gate, "urlopen", fetch)
+    try:
+        for _ in range(50):
+            assert gate.account_capability_allowed("browserUse")
+        assert len(calls) == 1
+        assert gate.account_tool_access_status()["status"] == "confirmed"
+        import concurrent.futures
+        monkeypatch.setattr(gate, "_CACHE_EXPIRES_AT", 0)
+        with concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:
+            assert all(pool.map(lambda _: gate.account_capability_allowed("browserUse"), range(16)))
+        assert len(calls) == 2
+        monkeypatch.setattr(Response, "read", lambda self, size: b'{"access":{"browserUse":false,"computerUse":false}}')
+        monkeypatch.setattr(gate, "_CACHE_EXPIRES_AT", 0)
+        assert not gate.account_capability_allowed("browserUse")
+        assert gate.account_tool_access_status()["status"] == "confirmed"
+        monkeypatch.setattr(gate, "_CACHE_EXPIRES_AT", 0)
+        monkeypatch.setattr(gate, "urlopen", lambda *a, **k: (_ for _ in ()).throw(TimeoutError()))
+        assert not gate.account_capability_allowed("browserUse")
+        assert gate.account_tool_access_status()["status"] == "service_unavailable"
+        set_account_tool_access_credential("")
+        assert not gate.account_capability_allowed("browserUse")
+    finally:
+        set_account_tool_access_credential(None)
+
+
+def test_old_account_response_cannot_restore_access(monkeypatch):
+    import json
+    from app.agent_runtime import account_tool_access as gate
+    monkeypatch.setenv("LOOM_ACCOUNT_TOOL_ACCESS_ENFORCED", "1")
+    monkeypatch.setenv("LOOM_ACCOUNT_API_BASE_URL", "https://example.test/v1")
+    set_account_tool_access_credential("old-account")
+    class Response:
+        status = 200
+        def __enter__(self): return self
+        def __exit__(self, *args): pass
+        def read(self, size):
+            set_account_tool_access_credential("")
+            return json.dumps({"access": {"browserUse": True, "computerUse": True}}).encode()
+    monkeypatch.setattr(gate, "urlopen", lambda *a, **k: Response())
+    try:
+        assert not gate.account_capability_allowed("browserUse")
+        assert gate.account_tool_access_status()["status"] == "credential_missing"
+    finally:
+        set_account_tool_access_credential(None)

@@ -11,6 +11,7 @@ from app.ai.model_selection_store import ModelSelectionStore
 from app.ai.model_store import ModelConfigStore, model_id_from_selection
 from app.agent_runtime import AgentEvent, AgentEventKind, AgentStatus, PermissionMode
 from app.agent_runtime.tools import ToolExposure, ToolRegistry
+from app.agent_runtime.account_tool_access import account_tool_access_status
 from app.attachments import MAX_ATTACHMENTS, MAX_FILE_BYTES, MAX_IMAGE_BYTES
 from app.runtime_model_switch import build_runtime_model_platform, validate_runtime_reasoning
 from app.settings import SETTINGS_UPDATE_PREFIX, LoomSettingsStore
@@ -253,6 +254,9 @@ class ReasoningManagedLoomAppServerService(ManagedStreamingLoomAppServerService)
             "toolSearch": tool_search,
             "codeMode": code_mode,
         }
+        authorization = account_tool_access_status()
+        for key in ("computerUse", "browserUse"):
+            statuses[key]["accountAuthorization"] = authorization
         for key, payload in statuses.items():
             user_enabled = bool(preferences.get(key, True))
             backend_enabled = payload.get("enabled")
@@ -260,6 +264,8 @@ class ReasoningManagedLoomAppServerService(ManagedStreamingLoomAppServerService)
                 backend_enabled = payload.get("available", False)
             payload["userEnabled"] = user_enabled
             payload["active"] = bool(user_enabled and backend_enabled)
+            if key in {"computerUse", "browserUse"}:
+                payload["active"] = bool(payload["active"] and authorization.get("access", {}).get(key))
         return statuses
 
     @staticmethod

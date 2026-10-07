@@ -14,14 +14,19 @@ import time
 from typing import Mapping
 from urllib.parse import urlsplit, urlunsplit
 from urllib.request import Request, urlopen
+from urllib.error import HTTPError
 
 _TARGET_CAPABILITIES = frozenset({"computerUse", "browserUse"})
-_CACHE_TTL_SECONDS = 2.0
+_CACHE_TTL_SECONDS = 30.0
+_ERROR_TTL_SECONDS = 5.0
 _GUARD = threading.RLock()
 _CACHE_KEY = ""
 _CACHE_EXPIRES_AT = 0.0
 _CACHE_ACCESS: dict[str, bool] = {"computerUse": False, "browserUse": False}
 _CREDENTIAL_OVERRIDE: str | None = None
+_DIAGNOSTIC: dict[str, object] = {"status": "not_checked"}
+_FETCH_LOCK = threading.Lock()
+_GENERATION = 0
 
 
 def _truthy(value: object) -> bool:
@@ -36,13 +41,17 @@ def account_tool_access_enforced(environ: Mapping[str, str] | None = None) -> bo
 def set_account_tool_access_credential(value: str | None) -> None:
     """Replace the runtime credential after sign-in/sign-out without a restart."""
 
-    global _CREDENTIAL_OVERRIDE, _CACHE_KEY, _CACHE_EXPIRES_AT, _CACHE_ACCESS
+    global _CREDENTIAL_OVERRIDE, _CACHE_KEY, _CACHE_EXPIRES_AT, _CACHE_ACCESS, _GENERATION, _DIAGNOSTIC
     credential = None if value is None else str(value).strip()
     with _GUARD:
+        if credential == _CREDENTIAL_OVERRIDE:
+            return
+        _GENERATION += 1
         _CREDENTIAL_OVERRIDE = credential
         _CACHE_KEY = ""
         _CACHE_EXPIRES_AT = 0.0
         _CACHE_ACCESS = {"computerUse": False, "browserUse": False}
+        _DIAGNOSTIC = {"status": "not_checked"}
 
 
 def _credential() -> str:
@@ -78,7 +87,13 @@ def _denied() -> dict[str, bool]:
 
 
 def _fetch_access(*, force_refresh: bool = False) -> dict[str, bool]:
-    global _CACHE_KEY, _CACHE_EXPIRES_AT, _CACHE_ACCESS
+    # Single flight; callers recheck the cache after waiting for another query.
+    with _FETCH_LOCK:
+        return _fetch_access_locked(force_refresh=force_refresh)
+
+
+def _fetch_access_locked(*, force_refresh: bool = False) -> dict[str, bool]:
+    global _CACHE_KEY, _CACHE_EXPIRES_AT, _CACHE_ACCESS, _DIAGNOSTIC
 
     token = _credential()
     endpoint = _access_endpoint()
@@ -86,10 +101,12 @@ def _fetch_access(*, force_refresh: bool = False) -> dict[str, bool]:
     now = time.monotonic()
 
     with _GUARD:
+        generation = _GENERATION
         if not force_refresh and key == _CACHE_KEY and now < _CACHE_EXPIRES_AT:
             return dict(_CACHE_ACCESS)
 
     access = _denied()
+    diagnostic: dict[str, object] = {"status": "credential_missing" if not token else "configuration_invalid"}
     if endpoint and token:
         request = Request(
             endpoint,
@@ -100,7 +117,7 @@ def _fetch_access(*, force_refresh: bool = False) -> dict[str, bool]:
             method="GET",
         )
         try:
-            with urlopen(request, timeout=2.5) as response:
+            with urlopen(request, timeout=5.0) as response:
                 if int(getattr(response, "status", 200)) != 200:
                     raise RuntimeError("account tool access rejected")
                 raw = response.read(64 * 1024 + 1)
@@ -109,20 +126,44 @@ def _fetch_access(*, force_refresh: bool = False) -> dict[str, bool]:
             payload = json.loads(raw.decode("utf-8"))
             record = payload.get("access") if isinstance(payload, dict) else None
             if isinstance(record, dict):
+                if not all(isinstance(record.get(name), bool) for name in _TARGET_CAPABILITIES):
+                    raise ValueError("invalid authorization response")
                 access = {
                     "computerUse": record.get("computerUse") is True,
                     "browserUse": record.get("browserUse") is True,
                 }
-        except Exception:
+                diagnostic = {"status": "confirmed", "checked_at": time.time()}
+            else:
+                raise ValueError("missing authorization response")
+        except HTTPError as exc:
+            diagnostic = {"status": "authentication_failed" if exc.code == 401 else "service_unavailable", "http_status": exc.code}
+            access = _denied()
+        except ValueError:
+            diagnostic = {"status": "invalid_response"}
+            access = _denied()
+        except Exception as exc:
             # Sensitive automation is deliberately fail-closed. An account
             # service outage must never silently convert into an entitlement.
             access = _denied()
+            diagnostic = {"status": "service_unavailable", "error_type": type(exc).__name__}
 
     with _GUARD:
+        if generation != _GENERATION:
+            # Never publish results for a signed-out or different account.
+            return _denied()
         _CACHE_KEY = key
         _CACHE_ACCESS = dict(access)
-        _CACHE_EXPIRES_AT = time.monotonic() + _CACHE_TTL_SECONDS
+        _DIAGNOSTIC = diagnostic
+        _CACHE_EXPIRES_AT = time.monotonic() + (_CACHE_TTL_SECONDS if diagnostic["status"] == "confirmed" else _ERROR_TTL_SECONDS)
     return access
+
+
+def account_tool_access_status() -> dict[str, object]:
+    if not account_tool_access_enforced():
+        return {"status": "not_enforced", "access": {name: True for name in _TARGET_CAPABILITIES}}
+    access = _fetch_access()
+    with _GUARD:
+        return {**_DIAGNOSTIC, "access": access, "refresh_in_seconds": max(0.0, _CACHE_EXPIRES_AT - time.monotonic())}
 
 
 def account_capability_allowed(capability: str, *, force_refresh: bool = False) -> bool:

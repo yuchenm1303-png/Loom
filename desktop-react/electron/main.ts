@@ -1629,7 +1629,9 @@ async function syncAccountToolAccessCredential(): Promise<void> {
       credential = await accountClient.modelCredential();
     }
   } catch {
-    // The Python runtime will fail closed for Computer/Browser automation.
+    // A transient refresh failure is not sign-out. Keep the existing credential;
+    // the runtime still validates its authorization/expiry at the next query.
+    return;
   }
   if (!rpc.ready) return;
   try {
