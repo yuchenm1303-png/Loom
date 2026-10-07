@@ -172,6 +172,7 @@
       const initial=escapeHtml((u.display_name||u.email||'?').trim().charAt(0).toUpperCase());
       const deviceTitle=d?escapeHtml(d.name||'Loom Host'):'未连接 Loom Host',deviceMeta=d?[d.platform,d.host_version?`Host ${d.host_version}`:'',d.app_version?`App ${d.app_version}`:''].filter(Boolean).map(escapeHtml).join(' · '):'等待该账号的 Host 首次连接';
       const deviceState=d?.online?`已在线 ${fmtDuration(d.uptime_seconds||0)}`:d?`最后心跳 ${fmtRelative(d.last_seen_at)}`:'No telemetry';
+      const banAction=u.status==='banned'?'<button class="loom-admin-action is-primary" data-unban-user="'+u.id+'" '+(canBan?'':'disabled')+'>Unban</button>':'<button class="loom-admin-action is-danger" data-ban-user="'+u.id+'" data-ban-email="'+escapeHtml(u.email)+'" '+(canBan?'':'disabled')+'>Ban</button>';
       return `<article class="account-card cards loom-admin-user-card ${presence.cls}" data-user-card="${u.id}">
         <header class="loom-admin-user-card-head">
           <div class="loom-admin-user-avatar">${initial}</div>
@@ -194,7 +195,7 @@
           <div class="loom-admin-user-success"><div class="loom-admin-user-ring ${score==null?'is-empty':''}" style="--score:${score??0}"><strong>${score==null?'—':score+'%'}</strong><span>SUCCESS</span></div><div><b>${fmtNumber(u.failed_runs_24h)} failed</b><small>24 小时异常 Run</small><small>平均耗时 ${fmtDuration(u.avg_duration_24h)}</small></div></div>
         </div>
         <div class="loom-admin-user-tools"><div class="loom-admin-user-chart-head"><span>TOOL MIX · 24H</span><b>${fmtNumber(u.tool_calls_24h)} calls</b></div>${userToolMix(u)}</div>
-        <footer class="loom-admin-user-card-foot"><div class="loom-admin-user-times"><span>最近账号活动 <b>${fmtRelative(u.last_seen_at)}</b></span><span>Host 心跳 <b>${d?fmtRelative(d.last_seen_at):'—'}</b></span></div><div class="loom-admin-actions"><button class="loom-admin-action is-primary" data-user-detail="${u.id}">打开账号</button><button class="loom-admin-action" data-status-user="${u.id}" data-next-status="${u.status==='active'?'disabled':'active'}" ${self&&u.status==='active'?'disabled':''}>${u.status==='active'?'Disable':'Enable'}</button><button class="loom-admin-action is-danger" data-revoke-user="${u.id}">Revoke</button></div></footer>
+        <footer class="loom-admin-user-card-foot"><div class="loom-admin-user-times"><span>最近账号活动 <b>${fmtRelative(u.last_seen_at)}</b></span><span>Host 心跳 <b>${d?fmtRelative(d.last_seen_at):'—'}</b></span></div><div class="loom-admin-actions"><button class="loom-admin-action is-primary" data-user-detail="${u.id}">打开账号</button><button class="loom-admin-action" data-status-user="${u.id}" data-next-status="${u.status==='active'?'disabled':'active'}" ${u.status==='banned'||(self&&u.status==='active')?'disabled':''}>${u.status==='banned'?'Banned':u.status==='active'?'Disable':'Enable'}</button>${banAction}<button class="loom-admin-action is-danger" data-revoke-user="${u.id}">Revoke</button></div></footer>
       </article>`;
     }).join(''):'<div class="account-card cards loom-admin-users-empty"><strong>没有匹配账号</strong><span>调整搜索词或状态筛选后再试。</span></div>';
   }
