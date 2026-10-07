@@ -21,7 +21,7 @@ _GUARD = threading.RLock()
 _CACHE_KEY = ""
 _CACHE_EXPIRES_AT = 0.0
 _CACHE_ACCESS: dict[str, bool] = {"computerUse": False, "browserUse": False}
-_CREDENTIAL_OVERRIDE = ""
+_CREDENTIAL_OVERRIDE: str | None = None
 
 
 def _truthy(value: object) -> bool:
@@ -48,7 +48,9 @@ def set_account_tool_access_credential(value: str | None) -> None:
 def _credential() -> str:
     with _GUARD:
         override = _CREDENTIAL_OVERRIDE
-    return override or str(os.environ.get("LOOM_ACCOUNT_MODEL_CREDENTIAL") or "").strip()
+    if override is not None:
+        return override
+    return str(os.environ.get("LOOM_ACCOUNT_MODEL_CREDENTIAL") or "").strip()
 
 
 def _access_endpoint() -> str:
