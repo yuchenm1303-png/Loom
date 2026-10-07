@@ -13,6 +13,7 @@ rate-limit assertions cannot leak into unrelated cases.
 from __future__ import annotations
 
 import json
+import sqlite3
 import threading
 import urllib.error
 import urllib.request
@@ -443,3 +444,51 @@ def test_profile_update_over_http(base_url: str) -> None:
     status, payload, _ = _call(base_url, "/v1/auth/profile", body={"display_name": "No auth"})
     assert status == 401
     assert payload["error"]["code"] == "MISSING_TOKEN"
+
+
+def test_admin_ban_and_unban_routes_are_explicit_and_block_login(base_url: str, tmp_path: Path) -> None:
+    owner = _register(base_url, "owner@example.com")
+    user = _register(base_url, "target@example.com")
+    with sqlite3.connect(tmp_path / "accounts.db") as db:
+        db.execute("UPDATE users SET role='owner' WHERE id=?", (owner["user"]["id"],))
+
+    status, payload, _ = _call(
+        base_url,
+        f"/v1/admin/users/{user['user']['id']}/ban",
+        body={"reason": "Policy abuse"},
+        token=owner["access_token"],
+    )
+    assert status == 200
+    assert payload["user"]["status"] == "banned"
+    assert payload["user"]["ban_reason"] == "Policy abuse"
+
+    status, payload, _ = _call(
+        base_url,
+        "/v1/auth/login",
+        body={"email": "target@example.com", "password": _PASSWORD},
+    )
+    assert (status, payload["error"]["code"]) == (403, "ACCOUNT_BANNED")
+
+    status, payload, _ = _call(
+        base_url,
+        f"/v1/admin/users/{user['user']['id']}/enable",
+        body={},
+        token=owner["access_token"],
+    )
+    assert (status, payload["error"]["code"]) == (409, "ACCOUNT_BANNED_USE_UNBAN")
+
+    status, payload, _ = _call(
+        base_url,
+        f"/v1/admin/users/{user['user']['id']}/unban",
+        body={},
+        token=owner["access_token"],
+    )
+    assert status == 200
+    assert payload["user"]["status"] == "active"
+
+    status, _, _ = _call(
+        base_url,
+        "/v1/auth/login",
+        body={"email": "target@example.com", "password": _PASSWORD},
+    )
+    assert status == 200
