@@ -24,6 +24,7 @@
     "test:profile": "node --test scripts/tests/profile-insights.test.mjs",
     "test:electron": "npm run build:electron && node --experimental-test-module-mocks --test electron/tests/*.test.mjs",
     "test:host-process": "npm run build:electron && node scripts/host-process-smoke.mjs",
+    "test:installer": "node scripts/windows-installer-smoke.mjs",
     "check:live-account": "npm run build:electron && node --experimental-test-module-mocks --test scripts/check-live-account.mjs",
     "dev:ready:ufo": "node scripts/dev-ready-ufo.mjs",
     "predev": "npm run prepare:stickers",
@@ -37,8 +38,8 @@
     "typecheck": "tsc --noEmit && tsc -p tsconfig.electron.json --noEmit",
     "start": "npm run build && electron dist-electron/entry.js",
     "package:win:dir": "npm run build && npm run build:runtime:win && electron-builder --win --x64 --dir",
-    "package:win": "npm run build && npm run build:runtime:win && electron-builder --win --x64 --dir --publish never && node scripts/host-process-smoke.mjs --packaged && node scripts/verify-packaged-renderer.mjs && electron-builder --win nsis --x64 --prepackaged release/win-unpacked --publish never",
-    "package:win:publish": "npm run build && npm run build:runtime:win && electron-builder --win nsis --x64 --publish always",
+    "package:win": "npm run build && npm run build:runtime:win && electron-builder --win --x64 --dir --publish never && node scripts/host-process-smoke.mjs --packaged && node scripts/verify-packaged-renderer.mjs && electron-builder --win nsis --x64 --prepackaged release/win-unpacked --publish never && npm run test:installer",
+    "package:win:publish": "npm run package:win && electron-builder --win nsis --x64 --prepackaged release/win-unpacked --publish always",
     "build:web": "npm run build:renderer"
   },
   "dependencies": {

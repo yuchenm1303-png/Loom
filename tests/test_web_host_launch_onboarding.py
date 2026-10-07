@@ -15,7 +15,8 @@ def test_windows_installer_registers_loom_launch_protocol() -> None:
     assert "!macro customInstall" in nsis
     assert '"URL Protocol"' in nsis
     assert "APP_EXECUTABLE_FILENAME" in nsis
-    assert '"Software\\Classes\\loom\\shell\\open\\command"' in nsis
+    assert '!define /ifndef LOOM_PROTOCOL_SCHEME "loom"' in nsis
+    assert '"Software\\Classes\\${LOOM_PROTOCOL_SCHEME}\\shell\\open\\command"' in nsis
     assert "SHChangeNotify" in nsis
 
 
