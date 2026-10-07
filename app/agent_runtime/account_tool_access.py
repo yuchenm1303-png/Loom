@@ -37,7 +37,7 @@ def set_account_tool_access_credential(value: str | None) -> None:
     """Replace the runtime credential after sign-in/sign-out without a restart."""
 
     global _CREDENTIAL_OVERRIDE, _CACHE_KEY, _CACHE_EXPIRES_AT, _CACHE_ACCESS
-    credential = str(value or "").strip()
+    credential = None if value is None else str(value).strip()
     with _GUARD:
         _CREDENTIAL_OVERRIDE = credential
         _CACHE_KEY = ""
