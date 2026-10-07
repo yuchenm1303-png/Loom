@@ -17,6 +17,7 @@ from app.agent_runtime import AgentEvent, AgentEventKind, AgentStatus, Permissio
 from app.agent_runtime.storage import utc_now
 from app.agent_runtime.steering import _input_id, _receipt
 from app.agent_runtime.tools import set_tool_capability_settings, tool_capability_name
+from app.agent_runtime.account_tool_access import set_account_tool_access_credential
 from app.agent_runtime.shell_environment import (
     build_environment_from_settings,
     set_default_environment_policy,
@@ -675,6 +676,13 @@ class LoomAppServerService:
         set_tool_capability_settings(capabilities)
         set_default_environment_policy(build_environment_from_settings(current))
         return current
+
+    def account_tool_access_credential_set(self, params: dict[str, Any]) -> dict[str, bool]:
+        credential = params.get("credential")
+        if credential is not None and not isinstance(credential, str):
+            raise ValueError("credential must be a string")
+        set_account_tool_access_credential(str(credential or ""))
+        return {"ok": True}
 
     def _status_owner_session_id(self) -> str:
         with self._guard:
@@ -1710,6 +1718,7 @@ class LoomRpcController:
     def _dispatch(self, method: str, params: dict[str, Any]) -> Any:
         handlers: dict[str, Callable[[dict[str, Any]], Any]] = {
             "runtime/status": lambda value: self.service.runtime_status(),
+            "account/tool-access-credential": self.service.account_tool_access_credential_set,
             "settings/get": self.service.settings_get,
             "settings/set": self.service.settings_set,
             "project/list": self.service.project_list,
