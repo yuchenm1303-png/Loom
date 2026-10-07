@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 from app.ai import ToolCall
 from app.agent_runtime.account_tool_access import set_account_tool_access_credential
 from app.agent_runtime.contracts import ToolEffect
@@ -22,7 +24,7 @@ def _tool(name: str, ran: list[str]) -> AgentTool:
     )
 
 
-def test_account_gate_hides_computer_and_browser_tools_fail_closed(monkeypatch):
+def test_discovery_stays_stable_without_account_authorization(monkeypatch):
     monkeypatch.setenv("LOOM_ACCOUNT_TOOL_ACCESS_ENFORCED", "1")
     monkeypatch.delenv("LOOM_ACCOUNT_API_BASE_URL", raising=False)
     monkeypatch.delenv("LOOM_ACCOUNT_MODEL_CREDENTIAL", raising=False)
@@ -36,7 +38,8 @@ def test_account_gate_hides_computer_and_browser_tools_fail_closed(monkeypatch):
         )
     )
 
-    assert {tool.name for tool in registry.router().all()} == {"ordinary_probe"}
+    assert {tool.name for tool in registry.router().all()} == {"ordinary_probe", "computer_screenshot", "browser_snapshot"}
+    assert {tool.name for tool in registry.router(capability_settings={"browserUse": False}).all()} == {"ordinary_probe", "computer_screenshot"}
     assert ran == []
 
 
@@ -139,7 +142,6 @@ def test_old_account_response_cannot_restore_access(monkeypatch):
 
 
 def test_tool_exposure_is_nonblocking_and_credentials_are_separate(monkeypatch):
-    import threading
     from app.agent_runtime import account_tool_access as gate
     monkeypatch.setenv("LOOM_ACCOUNT_TOOL_ACCESS_ENFORCED", "1")
     monkeypatch.setenv("LOOM_ACCOUNT_API_BASE_URL", "https://example.test/v1")
@@ -147,22 +149,52 @@ def test_tool_exposure_is_nonblocking_and_credentials_are_separate(monkeypatch):
     monkeypatch.setenv("LOOM_ACCOUNT_AUTOMATION_CREDENTIAL", "account-only")
     set_account_tool_access_credential(None)
     assert gate._credential() == "account-only"
-    entered, release, finished = threading.Event(), threading.Event(), threading.Event()
     def fetch(*args, **kwargs):
-        entered.set()
-        release.wait(3)
-        finished.set()
-        raise TimeoutError()
+        raise AssertionError("Tool discovery must not query authorization")
     monkeypatch.setattr(gate, "urlopen", fetch)
     try:
-        assert not gate.account_capability_allowed("browserUse", cache_only=True)
-        assert entered.wait(1)
-        # A pending network request must not block the next schema lookup.
-        assert not gate.account_capability_allowed("browserUse", cache_only=True)
+        registry = ToolRegistry((_tool("browser_click", []),))
+        for _ in range(50):
+            assert registry.router().get("browser_click") is not None
+            monkeypatch.setattr(gate, "_CACHE_EXPIRES_AT", 0)
     finally:
-        release.set()
-        assert finished.wait(2)
-        # Wait for the single-flight lock before resetting test account state.
-        with gate._FETCH_LOCK:
-            set_account_tool_access_credential("")
+        set_account_tool_access_credential("")
+        set_account_tool_access_credential(None)
+
+
+@pytest.mark.parametrize("mode", ["revoked", "timeout", "expired"])
+def test_known_tool_remains_discoverable_but_cannot_execute_when_denied(monkeypatch, tmp_path, mode):
+    from urllib.error import HTTPError
+    from app.agent_runtime import account_tool_access as gate
+    monkeypatch.setenv("LOOM_ACCOUNT_TOOL_ACCESS_ENFORCED", "1")
+    monkeypatch.setenv("LOOM_ACCOUNT_API_BASE_URL", "https://example.test/v1")
+    set_account_tool_access_credential("test-execution-account")
+    class Response:
+        status = 200
+        def __enter__(self): return self
+        def __exit__(self, *args): pass
+        def read(self, size): return b'{"access":{"browserUse":false,"computerUse":false}}'
+    def fetch(*args, **kwargs):
+        if mode == "timeout": raise TimeoutError()
+        if mode == "expired": raise HTTPError("https://example.test", 401, "expired", {}, None)
+        return Response()
+    monkeypatch.setattr(gate, "urlopen", fetch)
+    ran = []
+    tool = _tool("browser_click", ran)
+    registry = ToolRegistry((tool,))
+    try:
+        assert registry.router().get(tool.name) is not None
+        result = ToolOrchestrator().execute(
+            PreparedToolCall(call=ToolCall(call_id="blocked", name=tool.name, arguments={}),
+                             tool=tool, decision=PermissionDecision.ALLOW, reason="test"),
+            ToolContext(session_id="session", turn_id="turn", workspace=tmp_path),
+        )
+        assert not result.ok
+        assert ran == []
+        assert result.data["execution_status"] == "not_executed"
+        assert result.data["authorization"]["status"] == {
+            "revoked":"confirmed", "timeout":"service_unavailable", "expired":"authentication_failed"
+        }[mode]
+        assert registry.router().get(tool.name) is not None
+    finally:
         set_account_tool_access_credential(None)

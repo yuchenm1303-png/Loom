@@ -27,7 +27,6 @@ _CREDENTIAL_OVERRIDE: str | None = None
 _DIAGNOSTIC: dict[str, object] = {"status": "not_checked"}
 _FETCH_LOCK = threading.Lock()
 _GENERATION = 0
-_BACKGROUND_PENDING = False
 
 
 def _truthy(value: object) -> bool:
@@ -167,29 +166,12 @@ def account_tool_access_status() -> dict[str, object]:
         return {**_DIAGNOSTIC, "access": access, "refresh_in_seconds": max(0.0, _CACHE_EXPIRES_AT - time.monotonic())}
 
 
-def account_capability_allowed(capability: str, *, force_refresh: bool = False, cache_only: bool = False) -> bool:
+def account_capability_allowed(capability: str, *, force_refresh: bool = False) -> bool:
     name = str(capability or "").strip()
     if name not in _TARGET_CAPABILITIES:
         return True
     if not account_tool_access_enforced():
         return True
-    if cache_only:
-        global _BACKGROUND_PENDING
-        with _GUARD:
-            valid = _CACHE_KEY == _access_endpoint() + "\n" + _credential() and time.monotonic() < _CACHE_EXPIRES_AT
-            if valid:
-                return _CACHE_ACCESS.get(name) is True
-            if not _BACKGROUND_PENDING:
-                _BACKGROUND_PENDING = True
-                def refresh():
-                    global _BACKGROUND_PENDING
-                    try:
-                        _fetch_access()
-                    finally:
-                        with _GUARD:
-                            _BACKGROUND_PENDING = False
-                threading.Thread(target=refresh, name="loom-authorization-refresh", daemon=True).start()
-            return False
     return _fetch_access(force_refresh=force_refresh).get(name) is True
 
 

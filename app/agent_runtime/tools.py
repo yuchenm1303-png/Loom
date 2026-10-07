@@ -13,7 +13,6 @@ from typing import Any, Callable, Mapping, Sequence
 
 from app.ai import ToolDefinition
 
-from .account_tool_access import account_capability_allowed
 from .contracts import AgentEventKind, ToolEffect
 
 
@@ -77,7 +76,10 @@ def _capability_allows(tool: "AgentTool", capability_settings: CapabilitySetting
         return True
     if capability_settings and capability_settings.get(capability) is False:
         return False
-    return account_capability_allowed(capability, cache_only=True)
+    # Discovery is not authorization. A transient account lookup must not change
+    # the model's schema or turn known tools into "unknown" requests. Execution
+    # is gated centrally by ToolOrchestrator before any handler can run.
+    return True
 
 
 class ToolExposure(str, Enum):
