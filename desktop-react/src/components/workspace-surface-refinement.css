@@ -22,6 +22,9 @@
 }
 
 /* Header controls belong to one toolbar, with tint reserved for selection. */
+:root .app-shell .thread-header :is(.thread-agent-button, .thread-review-check-button, .thread-artifact-button) {
+  display: none !important;
+}
 :root .app-shell .thread-header.polished-thread-header {
   background: var(--ws-canvas) !important;
   border-bottom: 0;
