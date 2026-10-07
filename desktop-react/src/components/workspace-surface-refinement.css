@@ -16,6 +16,12 @@
 }
 
 /* Header controls belong to one toolbar, with tint reserved for selection. */
+:root .app-shell .task-flow-group-header { align-items: baseline; }
+:root .app-shell .task-flow-group-header :is(.task-flow-group-icon, .task-flow-group-chevron) { align-self: center; }
+:root .app-shell .task-flow-group-title,
+:root .app-shell .task-flow-between-label { line-height: 24px; }
+:root .app-shell .task-flow-between-label { align-items: baseline; }
+:root .app-shell .task-flow-between-label > i { align-self: center; }
 :root .app-shell :is(.inline-thinking, .live-reasoning .live-reasoning-trigger) {
   background: transparent !important;
   border: 0 !important;
