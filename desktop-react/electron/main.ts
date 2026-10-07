@@ -1354,8 +1354,7 @@ async function currentModelPolicy(): Promise<LoomModelPolicyAccess | null> {
 }
 
 async function assertSignedInForModels(): Promise<void> {
-  const snapshot = await accountClient.status();
-  if (!snapshot.authenticated) {
+  if (!await accountClient.verifyAuthenticatedSession()) {
     throw new Error("Sign in to Loom before using models.");
   }
 }
