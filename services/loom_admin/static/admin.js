@@ -120,6 +120,7 @@
     if(delta<60)return `${delta}s 前`;if(delta<3600)return `${Math.floor(delta/60)}m 前`;if(delta<86400)return `${Math.floor(delta/3600)}h 前`;return `${Math.floor(delta/86400)}d 前`;
   }
   function userPresence(u){
+    if(u.status==='banned')return{key:'attention',label:'账号已封禁',cls:'is-bad'};
     if(u.status!=='active')return{key:'attention',label:'账号已停用',cls:'is-bad'};
     if(Number(u.waiting_approvals||0)>0)return{key:'attention',label:'等待审批',cls:'is-warn'};
     if(Number(u.active_runs||0)>0)return{key:'running',label:'Agent 运行中',cls:'is-live'};
@@ -167,7 +168,7 @@
     users.sort((a,b)=>{if(sort==='runs')return Number(b.runs_24h||0)-Number(a.runs_24h||0);if(sort==='tokens')return Number(b.tokens_24h||0)-Number(a.tokens_24h||0);if(sort==='created')return Number(b.created_at||0)-Number(a.created_at||0);const ar=Math.max(Number(a.last_seen_at||0),Number(a.primary_device?.last_seen_at||0)),br=Math.max(Number(b.last_seen_at||0),Number(b.primary_device?.last_seen_at||0));return br-ar});
     $('usersHint').textContent=`${users.length} / ${state.users.length} users`;
     $('usersGrid').innerHTML=users.length?users.map(u=>{
-      const self=Number(u.id)===Number(state.me.id),presence=userPresence(u),d=u.primary_device||null,verified=Boolean(u.email_verified??u.verified),score=u.success_rate_24h==null?null:Number(u.success_rate_24h),activity=userActivityBars(u);
+      const self=Number(u.id)===Number(state.me.id),presence=userPresence(u),d=u.primary_device||null,verified=Boolean(u.email_verified??u.verified),score=u.success_rate_24h==null?null:Number(u.success_rate_24h),activity=userActivityBars(u),privileged=['admin','owner'].includes(String(u.role||'')),canBan=!self&&(!privileged||state.me?.role==='owner');
       const initial=escapeHtml((u.display_name||u.email||'?').trim().charAt(0).toUpperCase());
       const deviceTitle=d?escapeHtml(d.name||'Loom Host'):'未连接 Loom Host',deviceMeta=d?[d.platform,d.host_version?`Host ${d.host_version}`:'',d.app_version?`App ${d.app_version}`:''].filter(Boolean).map(escapeHtml).join(' · '):'等待该账号的 Host 首次连接';
       const deviceState=d?.online?`已在线 ${fmtDuration(d.uptime_seconds||0)}`:d?`最后心跳 ${fmtRelative(d.last_seen_at)}`:'No telemetry';
