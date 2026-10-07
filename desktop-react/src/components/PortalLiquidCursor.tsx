@@ -640,6 +640,7 @@ export function PortalLiquidCursor() {
     let pointerY = window.innerHeight / 2;
     let pointerInside = false;
     let pressed = false;
+    const pressure: SpringValue = { value: 0, velocity: 0, target: 0 };
     let activeTarget: HTMLElement | null = null;
     let raf = 0;
     let lastTime = performance.now();
@@ -948,6 +949,9 @@ export function PortalLiquidCursor() {
       stepSpring(width, dt, snapping ? 235 : 310, snapping ? 19 : 32);
       stepSpring(height, dt, snapping ? 235 : 310, snapping ? 19 : 32);
       stepSpring(snap, dt, 220, 18);
+      // Firm compression on contact, then one softer elastic release.
+      stepSpring(pressure, dt, pressed ? 620 : 400, pressed ? 38 : 23);
+      const deformation = Math.max(-0.22, Math.min(1.08, pressure.value));
 
       updateRoi(x.value, y.value, width.value, height.value);
       uploadTexture(roiLeft, roiTop, now);
@@ -958,12 +962,13 @@ export function PortalLiquidCursor() {
       dot.style.opacity = pointerInside ? (snap.value > 0.4 ? ".42" : ".86") : "0";
 
       if (textureReady) {
-        const pressWeight = pressed ? 1 : 0;
-        const strength = (0.95 + (1.14 - 0.95) * snap.value) * (1 - pressWeight) + 3.2 * pressWeight;
-        const pinch = (7.7 + (7.35 - 7.7) * snap.value) * (1 - pressWeight) + 5.7 * pressWeight;
+        const pressWeight = Math.max(0, Math.min(1, deformation));
+        const releaseWeight = Math.max(0, -deformation);
+        const strength = (0.95 + (1.14 - 0.95) * snap.value) + 0.62 * pressWeight;
+        const pinch = (7.7 + (7.35 - 7.7) * snap.value) - 0.85 * pressWeight;
         const aberration = 0.10 + (0.13 - 0.10) * Math.max(snap.value, pressWeight);
-        const zoom = (1 + (1.055 - 1) * snap.value) * (1 - pressWeight) + 1.08 * pressWeight;
-        const wobble = (0.12 + 0.05 * snap.value) * (1 - pressWeight) + 0.42 * pressWeight;
+        const zoom = 1 + 0.055 * snap.value + 0.025 * pressWeight;
+        const wobble = 0.12 + 0.05 * snap.value + 0.06 * pressWeight + 0.18 * releaseWeight;
 
         gl.viewport(0, 0, canvas.width, canvas.height);
         gl.clearColor(0, 0, 0, 0);
@@ -973,7 +978,7 @@ export function PortalLiquidCursor() {
         gl.uniform1i(uniforms.texture, 0);
         gl.uniform2f(uniforms.resolution, canvas.width, canvas.height);
         gl.uniform2f(uniforms.lensCenter, (x.value - roiLeft) * dpr, (y.value - roiTop) * dpr);
-        gl.uniform2f(uniforms.lensSize, width.value * dpr * (pressed ? 0.96 : 1), height.value * dpr * (pressed ? 0.92 : 1));
+        gl.uniform2f(uniforms.lensSize, width.value * dpr * (1 + 0.025 * deformation), height.value * dpr * (1 - 0.085 * deformation));
         gl.uniform1f(uniforms.strength, strength);
         gl.uniform1f(uniforms.pinch, pinch);
         gl.uniform1f(uniforms.aberration, aberration);
@@ -993,6 +998,8 @@ export function PortalLiquidCursor() {
         Math.abs(y.velocity) < 0.08 &&
         Math.abs(width.velocity) < 0.08 &&
         Math.abs(height.velocity) < 0.08 &&
+        Math.abs(pressure.target - pressure.value) < 0.001 &&
+        Math.abs(pressure.velocity) < 0.01 &&
         magneticSettled;
 
       if (!pointerInside && settled) {
@@ -1010,11 +1017,30 @@ export function PortalLiquidCursor() {
       snapDirty = true;
       wake();
     };
-    const handlePointerDown = () => { pressed = true; snapDirty = true; wake(); };
-    const handlePointerUp = () => { pressed = false; snapDirty = true; wake(); };
+    const handlePointerDown = (event: PointerEvent) => {
+      if (event.button !== 0) return;
+      pressed = true;
+      pressure.target = 1;
+      // A brief tap still has a visible contact phase before its release.
+      pressure.velocity = Math.max(pressure.velocity, 5);
+      rasterDirty = true;
+      snapDirty = true;
+      wake();
+    };
+    const handlePointerUp = () => {
+      if (!pressed) return;
+      pressed = false;
+      pressure.target = 0;
+      pressure.value = Math.max(pressure.value, 0.22);
+      pressure.velocity = Math.min(pressure.velocity, -3.5);
+      rasterDirty = true;
+      snapDirty = true;
+      wake();
+    };
     const handlePointerLeave = () => {
       pointerInside = false;
       pressed = false;
+      pressure.target = 0;
       activeTarget = null;
       snap.target = 0;
       snapDirty = true;
@@ -1057,6 +1083,8 @@ export function PortalLiquidCursor() {
     window.addEventListener("scroll", handleScroll, true);
     window.addEventListener("resize", handleResize);
     window.addEventListener("blur", handlePointerLeave);
+    window.addEventListener("pointerup", handlePointerUp);
+    window.addEventListener("pointercancel", handlePointerUp);
     document.documentElement.classList.add("loom-liquid-cursor-active");
 
     ensureFrame();
@@ -1076,6 +1104,8 @@ export function PortalLiquidCursor() {
       window.removeEventListener("scroll", handleScroll, true);
       window.removeEventListener("resize", handleResize);
       window.removeEventListener("blur", handlePointerLeave);
+      window.removeEventListener("pointerup", handlePointerUp);
+      window.removeEventListener("pointercancel", handlePointerUp);
       document.documentElement.classList.remove("loom-liquid-cursor-active");
       for (const element of magneticTargets) element.style.removeProperty("translate");
       magneticStates.clear();
