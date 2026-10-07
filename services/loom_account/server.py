@@ -390,6 +390,8 @@ class AccountStore:
                 db.execute("ALTER TABLE users ADD COLUMN banned_at INTEGER")
             if "banned_by" not in columns:
                 db.execute("ALTER TABLE users ADD COLUMN banned_by INTEGER")
+            if "ban_previous_status" not in columns:
+                db.execute("ALTER TABLE users ADD COLUMN ban_previous_status TEXT NOT NULL DEFAULT 'active'")
             db.execute("UPDATE users SET status = 'disabled' WHERE status NOT IN ('active', 'disabled', 'banned')")
             legacy_without_verification = "email_verified_at" not in columns
             if legacy_without_verification:
@@ -437,6 +439,7 @@ class AccountStore:
             "ban_reason": str(row["ban_reason"] or "") if "ban_reason" in keys else "",
             "banned_at": int(row["banned_at"]) if "banned_at" in keys and row["banned_at"] is not None else None,
             "banned_by": int(row["banned_by"]) if "banned_by" in keys and row["banned_by"] is not None else None,
+            "ban_previous_status": str(row["ban_previous_status"] or "active") if "ban_previous_status" in keys else "active",
         }
 
     def register(self, email: str, password: str) -> dict[str, Any]:
@@ -1262,9 +1265,10 @@ class AccountStore:
 
             db.execute(
                 """UPDATE users
-                SET status = 'banned', ban_reason = ?, banned_at = ?, banned_by = ?, updated_at = ?
+                SET status = 'banned', ban_reason = ?, banned_at = ?, banned_by = ?,
+                    ban_previous_status = ?, updated_at = ?
                 WHERE id = ?""",
-                (normalized_reason, now, int(actor["id"]), now, int(user_id)),
+                (normalized_reason, now, int(actor["id"]), str(row["status"]), now, int(user_id)),
             )
             db.execute(
                 "UPDATE sessions SET revoked_at = COALESCE(revoked_at, ?) WHERE user_id = ?",
@@ -1302,11 +1306,14 @@ class AccountStore:
                     "Owner access is required to unban an administrator or owner.",
                 )
             previous_reason = str(row["ban_reason"] or "")
+            previous_status = str(row["ban_previous_status"] or "active")
+            restore_status = previous_status if previous_status in {"active", "disabled"} else "active"
             db.execute(
                 """UPDATE users
-                SET status = 'active', ban_reason = '', banned_at = NULL, banned_by = NULL, updated_at = ?
+                SET status = ?, ban_reason = '', banned_at = NULL, banned_by = NULL,
+                    ban_previous_status = 'active', updated_at = ?
                 WHERE id = ?""",
-                (now, int(user_id)),
+                (restore_status, now, int(user_id)),
             )
             self._audit(
                 db,
@@ -1314,7 +1321,7 @@ class AccountStore:
                 "user.unban",
                 target_type="user",
                 target_id=str(user_id),
-                metadata={"previous_reason": previous_reason},
+                metadata={"previous_reason": previous_reason, "restored_status": restore_status},
             )
             updated = db.execute("SELECT * FROM users WHERE id = ?", (int(user_id),)).fetchone()
         return self._safe_user(updated)
