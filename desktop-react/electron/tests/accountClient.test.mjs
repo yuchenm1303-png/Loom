@@ -538,3 +538,10 @@ test("turn-boundary verification is briefly cached and preserves offline BYOK be
   };
   assert.equal(await client.verifyAuthenticatedSession(0), true, "an outage must not disable local BYOK use");
 });
+
+
+test("desktop runtime receives the validated account service URL for automation entitlements", async () => {
+  const mainSource = await fs.readFile(new URL("../main.ts", import.meta.url), "utf8");
+  assert.match(mainSource, /LOOM_ACCOUNT_API_BASE_URL:\s*this\.account\.serviceUrl/);
+  assert.match(mainSource, /LOOM_ACCOUNT_TOOL_ACCESS_ENFORCED:\s*"1"/);
+});
