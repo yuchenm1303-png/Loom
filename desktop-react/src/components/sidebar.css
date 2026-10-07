@@ -22,6 +22,8 @@
   --sb-accent-rgb: 139,124,246;
   --sb-active: var(--loom-workspace-selection);
   --sb-active-ink: #f7f8fa;
+  --sb-selection-surface: color-mix(in srgb, #f0f2f5 7%, transparent);
+  --sb-selection-shadow: none;
   --sb-field: rgba(255,255,255,.055);
   --sb-guide: rgba(255,255,255,.07);
   --sb-thumb: rgba(255,255,255,.14);
@@ -61,6 +63,8 @@ html[data-loom-theme="light"] .sidebar.compact-sidebar {
   --sb-accent-rgb: 105,90,216;
   --sb-active: var(--loom-workspace-selection);
   --sb-active-ink: #1c1f26;
+  --sb-selection-surface: #ffffff;
+  --sb-selection-shadow: 0 1px 2px rgba(22,26,40,.08), 0 0 0 1px rgba(28,31,38,.07);
   --sb-field: #ffffff;
   --sb-guide: rgba(28,31,37,.08);
   --sb-thumb: rgba(28,31,37,.16);
@@ -775,14 +779,42 @@ html[data-loom-theme="light"] .compact-search {
 
 .compact-thread-row.active {
   color: var(--sb-active-ink);
-  background: var(--sb-active);
+  background: transparent;
 }
+
+/* Same raised pill and short accent rail as Settings navigation. Each pill is
+   anchored to its row, so scrolling, filtering and resizing need no pixel sync. */
+.compact-thread-scroll { position: relative; isolation: isolate; }
+.thread-selection-pill {
+  position: absolute;
+  z-index: 0;
+  inset: 1px;
+  border-radius: 9px;
+  background: linear-gradient(90deg, rgba(var(--sb-accent-rgb),.07), transparent 72%), var(--sb-selection-surface);
+  box-shadow: var(--sb-selection-shadow);
+  opacity: 0;
+  pointer-events: none;
+  transform-origin: center;
+}
+.compact-thread-row.active .thread-selection-pill { opacity: 1; }
+.thread-selection-pill::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 50%;
+  width: 3px;
+  height: 16px;
+  margin-top: -8px;
+  border-radius: 0 3px 3px 0;
+  background: var(--sb-accent);
+}
+.compact-thread-row > .compact-thread-main { position: relative; z-index: 1; }
 
 .compact-thread-main {
   width: 100%;
   min-width: 0;
   height: var(--sb-row-h);
-  padding: 0 10px;
+  padding: 0 12px;
   border: 0;
   border-radius: inherit;
   display: flex;
@@ -815,9 +847,7 @@ html[data-loom-theme="light"] .compact-search {
   font-weight: 600;
 }
 
-.compact-thread-row.active {
-  box-shadow: inset 2px 0 var(--sb-accent);
-}
+.compact-thread-row.active { box-shadow: none; }
 
 /* Only running and unread conversations carry a mark, at the end of the row. */
 .compact-thread-dot {

@@ -40,6 +40,29 @@ const profile = { selection: "builtin:minimax", id: "minimax-m3", kind: "builtin
   adapter: "openai-compatible", model: "MiniMax-M3", configured: true, vision: true };
 const models = { primary: profile, profiles: [profile], activeModelId: profile.id,
   current: { ...profile, provider: profile.adapter }, recentModels: [] };
+const navigation = {
+  held: new Set<string>(),
+  reads: [] as string[],
+  pending: new Map<string, { resolve(value: unknown): void; reject(error: Error): void }>(),
+  hold(id: string) { this.held.add(id); },
+  release(id: string) {
+    this.held.delete(id);
+    this.pending.get(id)?.resolve(threadSnapshot(id));
+    this.pending.delete(id);
+  },
+  fail(id: string) {
+    this.held.delete(id);
+    this.pending.get(id)?.reject(new Error(`Read failed: ${id}`));
+    this.pending.delete(id);
+  },
+};
+Object.assign(window, { navigationFixture: navigation });
+function threadSnapshot(id: string) {
+  return { thread: threads.find(thread => thread.id === id) || threads[0],
+    turns: params.get("empty") === "1" ? [] : [{ id: "turn-1", threadId: id, status: "completed",
+      startedAt: at, completedAt: at, finalItemId: "answer", items: items.map(item => ({ ...item, threadId: id,
+        ...(params.get("navigation") === "1" && item.type === "assistant_message" ? { text: `Loaded ${id}` } : {}) })) }] };
+}
 const handlers: Record<string, (args: Record<string, unknown>) => unknown> = {
   "project/workspace_status": args => ({ projectId: args.projectId, root: workspace, exists: true, isDirectory: true,
     git: { available: true, isRepo: false, branch: "", summary: "", changedCount: 0, changedFiles: [], truncated: false },
@@ -51,9 +74,12 @@ const handlers: Record<string, (args: Record<string, unknown>) => unknown> = {
   }),
   "thread/list": () => ({ threads, counts: { active: threads.length, archived: 50, all: threads.length + 50 } }),
   "project/list": () => ({ projects, unfiledThreadCount: 0 }),
-  "thread/read": args => ({ thread: threads.find(thread => thread.id === args.threadId) || threads[0],
-    turns: params.get("empty") === "1" ? [] : [{ id: "turn-1", threadId: args.threadId, status: "completed",
-      startedAt: at, completedAt: at, finalItemId: "answer", items }] }),
+  "thread/read": args => {
+    const id = String(args.threadId);
+    navigation.reads.push(id);
+    if (navigation.held.has(id)) return new Promise((resolve, reject) => navigation.pending.set(id, { resolve, reject }));
+    return threadSnapshot(id);
+  },
   "thread/context": () => ({ context: null }),
   "turn/start": args => {
     document.body.dataset.submitted = String(args.input || args.text || JSON.stringify(args));

@@ -16,12 +16,17 @@
     translate 210ms cubic-bezier(.2,.74,.18,1);
 }
 
-.workspace.is-thread-switching > .thread-header,
 .workspace.is-thread-switching > .conversation-stage,
 .workspace.is-thread-switching > .composer-stage {
   opacity: .28;
   translate: 0 2px;
   pointer-events: none;
+}
+
+/* The selected title changes on click, independently of the pending transcript. */
+.workspace.is-thread-switching > .thread-header {
+  opacity: 1;
+  translate: none;
 }
 
 .workspace.is-thread-entering > .thread-header {
@@ -39,7 +44,7 @@
 .thread-switch-overlay {
   position: absolute;
   z-index: 40;
-  inset: 0;
+  inset: 60px 0 0;
   display: grid;
   place-items: center;
   overflow: hidden;

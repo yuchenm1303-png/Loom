@@ -66,6 +66,19 @@ URL for an external Windows path), `LOOM_CHROMIUM_PATH` selects a browser, and
 theme and interaction screenshots. The check covers native scrollbar alignment,
 narrow windows, decision submission, composer controls and the English home.
 
+The conversation selection pill matches settings navigation and moves on click,
+before history arrives. `useSidebarSelectionMotion` animates only the surface;
+text stays fixed and interrupted glides continue from their current position.
+Selection and title updates are urgent; loaded transcripts render in a React
+transition. Superseded responses and failures cannot steal the current selection.
+Desktop preview reads use a bounded parallel worker pool, with history parsing
+outside the store-wide cache lock; other RPCs retain their ordering.
+
+Run `node scripts/tests/sidebar-navigation-browser.mjs` with the same browser
+environment. Its `navigation=1` fixture can hold, release or fail individual reads
+to verify immediate clicks, out-of-order completion, switch-back, scrolling and
+reduced motion in both themes. Set `LOOM_SIDEBAR_SCREENSHOTS` to save screenshots.
+
 `src/renderer-styles.ts` is the shared production stylesheet cascade; fixtures
 must import it instead of copying a list that can drift from the application.
 StreamingPresentation owns grapheme pacing and spreads final bursts over the

@@ -7,8 +7,9 @@ import threading
 
 
 class _CountingReader:
-    def __init__(self, handle, cache):
-        self.handle, self.cache = handle, cache
+    def __init__(self, handle):
+        self.handle = handle
+        self.bytes_read = 0
 
     def seek(self, *args):
         return self.handle.seek(*args)
@@ -18,7 +19,7 @@ class _CountingReader:
 
     def read(self, *args):
         raw = self.handle.read(*args)
-        self.cache._read += len(raw)
+        self.bytes_read += len(raw)
         return raw
 
 
@@ -35,11 +36,10 @@ class EventParseCache:
                     "cache_hits": self._hits, "entries": len(self._entries),
                     "cached_bytes": sum(e["weight"] for e in self._entries.values())}
 
-    def _read_bytes(self, handle, start, size=-1):
+    @staticmethod
+    def _read_bytes(handle, start, size=-1):
         handle.seek(start)
-        raw = handle.read(size)
-        self._read += len(raw)
-        return raw
+        return handle.read(size)
 
     @staticmethod
     def _weight(value, seen=None):
@@ -58,19 +58,31 @@ class EventParseCache:
         return size
 
     def read(self, path, limit, tail_reader):
-        with self._lock:
-            key = (str(path), limit)
-            if not path.is_file():
+        key = (str(path), limit)
+        if not path.is_file():
+            with self._lock:
                 self._entries.pop(key, None)
-                return []
-            stat = path.stat()
-            signature = (stat.st_dev, stat.st_ino, stat.st_size, stat.st_mtime_ns)
+            return []
+        stat = path.stat()
+        signature = (stat.st_dev, stat.st_ino, stat.st_size, stat.st_mtime_ns)
+        with self._lock:
             entry = self._entries.get(key)
             if entry is not None and entry["signature"] == signature:
                 self._entries.move_to_end(key)
                 self._hits += 1
-                return deepcopy(entry["visible"])
-            with path.open("rb") as handle:
+                cached = entry["visible"]
+            else:
+                cached = None
+        if cached is not None:
+            return deepcopy(cached)
+
+        # Callers hold the journal lock for this session. Only shared LRU
+        # bookkeeping needs the store-wide lock: IO, parsing and copying a long
+        # transcript must not prevent another session from loading its preview.
+        parsed = 0
+        with path.open("rb") as file:
+            handle = _CountingReader(file)
+            try:
                 incremental = (limit is None and entry is not None and signature[:2] == entry["signature"][:2]
                                and stat.st_size > entry["signature"][2])
                 if incremental:
@@ -88,7 +100,7 @@ class EventParseCache:
                         offset = 0
                     else:
                         # A cold bounded read never parses or retains old history.
-                        lines = tail_reader(_CountingReader(handle, self), limit)
+                        lines = tail_reader(handle, limit)
                         raw = b"".join(lines)
                         offset = stat.st_size - len(raw)
                 complete_end = raw.rfind(b"\n") + 1
@@ -97,14 +109,14 @@ class EventParseCache:
                 for line in complete.splitlines():
                     if line.strip():
                         records.append(json.loads(line))
-                        self._parsed += 1
+                        parsed += 1
                 if limit is not None:
                     records = records[-limit:]
                 visible = list(records)
                 if trailing.strip():
                     try:
                         visible.append(json.loads(trailing))
-                        self._parsed += 1
+                        parsed += 1
                     except (json.JSONDecodeError, UnicodeDecodeError):
                         pass
                 if limit is not None:
@@ -118,10 +130,15 @@ class EventParseCache:
                            "offset": offset, "prefix": prefix, "boundary": boundary}
                 weight = self._weight(updated) + sys.getsizeof(trailing)
                 updated["weight"] = weight
+            finally:
+                with self._lock:
+                    self._read += handle.bytes_read
+                    self._parsed += parsed
+        with self._lock:
             self._entries.pop(key, None)
             if weight <= self.max_bytes:
                 self._entries[key] = updated
             while (len(self._entries) > self.max_entries
                    or sum(e["weight"] for e in self._entries.values()) > self.max_bytes):
                 self._entries.popitem(last=False)
-            return deepcopy(visible)
+        return deepcopy(visible)

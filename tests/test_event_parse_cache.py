@@ -1,5 +1,8 @@
 import json
 import os
+import threading
+from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
 import pytest
 from app.agent_runtime.storage import FileAgentSessionStore
 from app.agent_runtime.contracts import AgentEvent, AgentEventKind as E
@@ -132,3 +135,34 @@ def test_same_size_rewrite_and_truncate_regrow_invalidate(tmp_path):
     assert [e.event_id for e in store.events("abcdef")] == ["2"]
     path.write_bytes(raw_event(3) + b"\n" + raw_event(4) + b"\n")
     assert [e.event_id for e in store.events("abcdef")] == ["3", "4"]
+
+
+def test_slow_session_parse_does_not_block_another_session(tmp_path, monkeypatch):
+    from app.agent_runtime import storage
+
+    store = FileAgentSessionStore(tmp_path)
+    for session in ("aaa", "bbb"):
+        path = store.session_dir(session) / "events.jsonl"
+        path.parent.mkdir(parents=True)
+        path.write_bytes(raw_event(1) + b"\n")
+    started, release = threading.Event(), threading.Event()
+    tail_reader = storage._recent_event_lines
+
+    def delayed_tail(handle, limit):
+        if Path(handle.handle.name).parent.name == "aaa":
+            started.set()
+            assert release.wait(3)
+        return tail_reader(handle, limit)
+
+    monkeypatch.setattr(storage, "_recent_event_lines", delayed_tail)
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        slow = pool.submit(store.recent_events, "aaa", 1)
+        try:
+            assert started.wait(2)
+            fast = pool.submit(store.recent_events, "bbb", 1)
+            assert [e.event_id for e in fast.result(timeout=2)] == ["1"]
+            assert not slow.done()
+        finally:
+            release.set()
+        assert [e.event_id for e in slow.result(timeout=2)] == ["1"]
+    assert store._event_cache.metrics()["parsed_records"] == 2

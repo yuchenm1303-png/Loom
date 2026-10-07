@@ -23,6 +23,7 @@ interface ThreadHeaderProps {
   connection: "connecting" | "ready" | "error";
   status?: string;
   running: boolean;
+  loading?: boolean;
   archived: boolean;
   model?: string;
   permissionMode?: string;
@@ -107,6 +108,7 @@ export function ThreadHeader({
   connection,
   status,
   running,
+  loading = false,
   archived,
   sidebarOpen,
   inspectorOpen,
@@ -136,13 +138,14 @@ export function ThreadHeader({
   const [copied, setCopied] = useState(false);
 
   const state = useMemo(() => {
+    if (loading) return { label: language === "zh-CN" ? "加载中" : "Loading", tone: "connecting" };
     if (archived) return { label: t("common.archived"), tone: "archived" };
     if (status === "waiting_approval") return { label: t("common.approval"), tone: "approval" };
     if (running) return { label: t("common.working"), tone: "working" };
     if (connection === "error") return { label: language === "zh-CN" ? "连接中断" : "Disconnected", tone: "error" };
     if (connection === "connecting") return { label: t("common.connecting"), tone: "connecting" };
     return { label: t("common.ready"), tone: "ready" };
-  }, [archived, connection, running, status, t, language]);
+  }, [archived, connection, loading, running, status, t, language]);
 
   useEffect(() => {
     if (!copied) return;
@@ -233,7 +236,7 @@ export function ThreadHeader({
             report={context}
             compacting={compacting}
             progress={compactionProgress}
-            busy={running}
+            busy={running || loading}
             onCompact={onCompactContext}
           />
         ) : null}
@@ -242,6 +245,7 @@ export function ThreadHeader({
           type="button"
           className={`thread-review-button header-workspace-entry thread-agent-button ${agentsOpen ? "active" : ""} ${agentCount > 0 ? "has-agents" : "is-empty"}`}
           onClick={onToggleAgents}
+          disabled={loading}
           title={agentsTitle}
           aria-label={agentsTitle}
           aria-pressed={agentsOpen}
@@ -255,6 +259,7 @@ export function ThreadHeader({
           type="button"
           className={`thread-review-button header-workspace-entry thread-review-check-button ${reviewOpen ? "active" : ""}`}
           onClick={onToggleReview}
+          disabled={loading}
           title={reviewTitle}
           aria-label={reviewTitle}
           aria-pressed={reviewOpen}
@@ -268,6 +273,7 @@ export function ThreadHeader({
           type="button"
           className={`thread-review-button header-workspace-entry thread-artifact-button ${artifactOpen ? "active" : ""} ${artifactCount > 0 ? "has-artifacts" : "is-empty"}`}
           onClick={onToggleArtifacts}
+          disabled={loading}
           title={artifactTitle}
           aria-label={artifactTitle}
           aria-pressed={artifactOpen}
@@ -322,6 +328,7 @@ export function ThreadHeader({
           type="button"
           className={`thread-header-icon-button panel-toggle-button thread-inspector-button ${inspectorOpen ? "active" : ""}`}
           onClick={onToggleInspector}
+          disabled={loading}
           title={inspectorLabel}
           aria-label={inspectorLabel}
           aria-pressed={inspectorOpen}

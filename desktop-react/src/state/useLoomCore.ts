@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { startTransition, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
   AddModelInput,
   ContextCompactionProgress,
@@ -537,6 +537,7 @@ export function useLoom() {
   const openThread = useCallback(async (threadId: string) => {
     const normalized = threadId.trim();
     if (!normalized) return;
+    if (openingThreadIdRef.current === normalized) return;
 
     if (normalized === activeIdRef.current) {
       if (openingThreadIdRef.current && openingThreadIdRef.current !== normalized) {
@@ -553,20 +554,29 @@ export function useLoom() {
 
     const cached = cachedThreadRead(normalized);
     if (cached) {
-      applyThreadRead(cached);
-      if (openRequestRef.current === requestId) {
+      startTransition(() => {
+        applyThreadRead(cached);
         openingThreadIdRef.current = "";
         setOpeningThreadId("");
-      }
+      });
       return;
     }
 
     try {
       const result = await readThread(normalized);
       if (openRequestRef.current !== requestId) return;
-      applyThreadRead(result);
+      // Selection is urgent. Parsing/rendering a loaded transcript is allowed
+      // to yield to another click instead of trapping navigation in that render.
+      startTransition(() => {
+        applyThreadRead(result);
+        openingThreadIdRef.current = "";
+        setOpeningThreadId("");
+      });
+    } catch (cause) {
+      if (openRequestRef.current !== requestId) return;
+      throw cause;
     } finally {
-      if (openRequestRef.current === requestId) {
+      if (openRequestRef.current === requestId && openingThreadIdRef.current === normalized) {
         openingThreadIdRef.current = "";
         setOpeningThreadId("");
       }

@@ -431,12 +431,13 @@ export default function App() {
   const thread = loom.active?.thread;
   const activeThreadId = thread?.id ?? "";
   const selectedThreadId = loom.openingThreadId || activeThreadId;
-  const threadSwitching = Boolean(activeThreadId && loom.openingThreadId && loom.openingThreadId !== activeThreadId);
+  const threadSwitching = Boolean(loom.openingThreadId && loom.openingThreadId !== activeThreadId);
+  const selectedThread = loom.threads.find(candidate => candidate.id === selectedThreadId) ?? thread;
   const runtimeTurnRunning = thread?.status === "running" || thread?.status === "waiting_approval";
   const running = loom.turnActive || runtimeTurnRunning;
   const archived = Boolean(thread?.archived);
   const conversationDisabled = !thread || loom.connection !== "ready" || running || archived;
-  const threadTitle = thread?.title || (loom.connection === "connecting" ? t("app.startingLoom") : t("app.newConversation"));
+  const threadTitle = selectedThread?.title || (loom.connection === "connecting" ? t("app.startingLoom") : t("app.newConversation"));
   const workspace = thread?.workspace || loom.runtime.defaultWorkspace || "";
   const currentModel = loom.models?.current?.name || loom.models?.current?.model || loom.runtime.model;
   const permissionMode = thread?.permissionMode || loom.runtime.defaultPermissionMode;
@@ -1179,27 +1180,28 @@ export default function App() {
       >
         <ThreadHeader
           title={threadTitle}
-          workspace={workspace}
+          workspace={selectedThread?.workspace || workspace}
           connection={loom.connection}
           status={thread?.status}
           running={running}
+          loading={threadSwitching}
           archived={archived}
           model={currentModel}
           permissionMode={permissionMode}
           sidebarOpen={sidebarOpen}
           inspectorOpen={inspectorVisible}
           reviewOpen={reviewOpen}
-          reviewCount={changedFileCount}
+          reviewCount={threadSwitching ? 0 : changedFileCount}
           artifactOpen={artifactPreviewOpen}
-          artifactCount={artifactCount}
+          artifactCount={threadSwitching ? 0 : artifactCount}
           agentsOpen={agentsOpen}
-          agentCount={agentCount}
+          agentCount={threadSwitching ? 0 : agentCount}
           accountAuthenticated={account.account.authenticated}
           accountLabel={account.account.user?.display_name?.trim() || account.account.user?.email || ""}
           accountAvatar={account.account.user?.avatar_data_url || ""}
-          context={loom.context}
-          compacting={loom.compacting}
-          compactionProgress={loom.compactionProgress}
+          context={threadSwitching ? null : loom.context}
+          compacting={!threadSwitching && loom.compacting}
+          compactionProgress={threadSwitching ? null : loom.compactionProgress}
           onCompactContext={() => void loom.compactContext()}
           onOpenProfile={() => {
             setSettingsOpen(false);

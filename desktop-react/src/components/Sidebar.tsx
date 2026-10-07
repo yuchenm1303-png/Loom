@@ -25,6 +25,7 @@ import { createPortal } from "react-dom";
 import { useI18n } from "../i18n";
 import type { ProjectRecord, ThreadRecord } from "../types/loom";
 import "./sidebar.css";
+import { useSidebarSelectionMotion } from "./useSidebarSelectionMotion";
 
 type ThreadView = "active" | "archived";
 type Notice = { kind: "success" | "error"; text: string };
@@ -356,6 +357,8 @@ export function Sidebar({
   const [renameValue, setRenameValue] = useState("");
   const [notice, setNotice] = useState<Notice | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  useSidebarSelectionMotion(scrollRef, activeId);
   const renameRef = useRef<HTMLInputElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const renameCommittingRef = useRef(false);
@@ -509,7 +512,11 @@ export function Sidebar({
   const openThread = async (thread: ThreadRecord) => {
     markRead(thread.id);
     closeContextMenu();
-    await onOpen(thread.id);
+    try {
+      await onOpen(thread.id);
+    } catch (cause) {
+      setNotice({ kind: "error", text: cause instanceof Error ? cause.message : String(cause) });
+    }
   };
 
   const beginRename = (thread: ThreadRecord) => {
@@ -771,11 +778,13 @@ export function Sidebar({
         key={thread.id}
         className={`compact-thread-row ${active ? "active" : ""} ${pinned ? "pinned" : ""} ${unread ? "unread" : ""} ${renaming ? "renaming" : ""}`}
         data-loom-own-menu=""
+        data-thread-id={thread.id}
         onContextMenu={(event) => {
           event.preventDefault();
           openContextMenu(thread, event.clientX, event.clientY);
         }}
       >
+        <span className="thread-selection-pill" aria-hidden="true" />
         {renaming ? (
           <div className="compact-thread-main rename-main">
             <input
@@ -1035,7 +1044,7 @@ export function Sidebar({
         </div>
       </div>
 
-      <div className="compact-thread-scroll" aria-label={threadView === "archived" ? copy.archive : copy.conversations}>
+      <div ref={scrollRef} className="compact-thread-scroll" aria-label={threadView === "archived" ? copy.archive : copy.conversations}>
         {renderProjects()}
         {renderRecent()}
 
