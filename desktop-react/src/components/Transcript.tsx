@@ -411,11 +411,21 @@ function processCommand(item: TranscriptItem): string {
 }
 
 function itemStatus(item: TranscriptItem): string {
+  if (item.type === "tool_call") {
+    const result = item.result as Record<string, unknown> | undefined;
+    const evidence = result?.action_evidence as Record<string, unknown> | undefined;
+    if (result?.execution_status === "not_executed" || evidence?.execution_status === "not_executed") return "not_executed";
+    if (result?.effect === "uncertain") return "uncertain";
+    if (item.status === "failed" && ["stale_observation", "stale_element"].includes(String(result?.error_code || ""))) return "refresh_required";
+  }
   if (item.type === "file_edit") return item.status || "changed";
   return item.status || "completed";
 }
 
 function statusLabel(status: string): string {
+  if (status === "not_executed") return "Not executed";
+  if (status === "uncertain") return "Effect unconfirmed";
+  if (status === "refresh_required") return "Refresh required";
   if (status === "started" || status === "running" || status === "streaming" || status === "streaming_arguments") return "Running";
   if (status === "waiting" || status === "waiting_approval" || status === "pending") return "Waiting";
   if (status === "completed") return "Completed";

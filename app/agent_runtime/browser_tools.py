@@ -1306,15 +1306,23 @@ def browser_tools(runtime: "BrowserRuntime") -> tuple[AgentTool, ...]:
                 raise RuntimeError(
                     f"browser backend {item.backend.backend_name!r} does not support dropdown_options"
                 )
-            options = list(reader(int(arguments["index"])))
+            info_reader = getattr(item.backend, "dropdown_options_info", None)
+            info = info_reader(int(arguments["index"])) if callable(info_reader) else {}
+            options = list(info["options"] if "options" in info else reader(int(arguments["index"])))
+            control_kind = str(info.get("control_kind") or "unknown")
             return ToolResult(
                 ok=True,
                 content=(
                     f"Read {len(options)} option(s). Pass one option's text to browser_select."
                     if options
-                    else "That element exposed no options; it may not be a select."
+                    else ("Target is not a native select. Use browser_click to open it, then choose a visible option "
+                          "from the returned browser_state with its new state_revision; do not use browser_select."
+                          if control_kind == "non_native_select" else
+                          "No native options are exposed. This is not an execution failure: the select may be empty "
+                          "or the control may be custom. Inspect browser_state before choosing the next action.")
                 ),
-                data={"browser_id": browser_id, "index": int(arguments["index"]), "options": options},
+                data={"browser_id": browser_id, "index": int(arguments["index"]), "options": options,
+                      "control_kind": control_kind, "effect": "observed", "execution_status": "succeeded"},
             )
 
         return _with_fresh_view(context, store, browser_id, run)

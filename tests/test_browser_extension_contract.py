@@ -197,6 +197,11 @@ def test_installed_extension_can_reload_itself_after_desktop_update(background):
     assert "setInterval(() => void checkForInstalledUpdate()" not in background
 
 
+def test_dropdown_result_distinguishes_empty_native_and_custom_controls(background):
+    assert 'control_kind: "non_native_select"' in background
+    assert 'control_kind: "native_select"' in background
+
+
 def test_extension_update_never_reloads_during_a_browser_command(background):
     check = _function_body(background, "applyInstalledUpdateAtCommandBoundary")
     loop = _function_body(background, "startPolling")

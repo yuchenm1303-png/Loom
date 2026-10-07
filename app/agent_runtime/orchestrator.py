@@ -422,7 +422,9 @@ class ToolOrchestrator:
     ) -> PreparedToolCall:
         tool = step.tool_router.get(call.name)
         if tool is None:
-            raise ValueError(f"Unknown or unavailable tool: {call.name}")
+            raise ValueError(f"Unknown or unavailable tool: {call.name}. If tool_search is advertised, "
+                             f"search for {call.name!r}, wait for the next model step, and use its returned schema. "
+                             "Do not guess argument names or infer a browser disconnection from this rejection")
         validate_tool_arguments(tool.input_schema, call.arguments)
 
         if tool.name == "exec":

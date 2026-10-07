@@ -950,11 +950,15 @@ class BrowserExtensionSessionBackend:
         return self._state_from_result(result)
 
     def dropdown_options(self, index: int) -> list[dict[str, Any]]:
+        return self.dropdown_options_info(index)["options"]
+
+    def dropdown_options_info(self, index: int) -> dict[str, Any]:
         result = self.bridge.call(
             "dropdown_options", self._target_args({"index": int(index)})
         )
         raw = result.get("options")
-        return [dict(item) for item in raw][:300] if isinstance(raw, list) else []
+        return {"options": [dict(item) for item in raw][:300] if isinstance(raw, list) else [],
+                "control_kind": str(result.get("control_kind") or "unknown")}
 
     def evaluate(self, expression: str, *, await_promise: bool = True) -> dict[str, Any]:
         source = str(expression or "")

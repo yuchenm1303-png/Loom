@@ -1233,7 +1233,7 @@ async function dropdownOptions(args) {
     "dropdown_options",
     { loom_id: loomId, index: Number(args.index) },
   ]);
-  return { options: (outcome && outcome.options) || [] };
+  return { options: (outcome && outcome.options) || [], control_kind: outcome && outcome.control_kind || "unknown" };
 }
 
 async function evaluate(args) {
@@ -2208,7 +2208,7 @@ function runPageAction(action, args = {}) {
 
   function readDropdownOptions() {
     const el = targetById(args.loom_id);
-    if (!(el instanceof HTMLSelectElement)) return { options: [] };
+    if (!(el instanceof HTMLSelectElement)) return { options: [], control_kind: "non_native_select" };
     showTargetHud(el, `Read options of #${Number(args.index)}`, `${el.options.length} options`, "target");
     const options = [];
     for (let i = 0; i < el.options.length && i < 300; i += 1) {
@@ -2219,7 +2219,7 @@ function runPageAction(action, args = {}) {
         selected: Boolean(option.selected),
       });
     }
-    return { options };
+    return { options, control_kind: "native_select" };
   }
 
   function evaluateInPage() {
