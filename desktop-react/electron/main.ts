@@ -886,11 +886,12 @@ class LoomRpcProcess {
     const spec = launch.spec;
     this.modelDeferred = launch.deferred;
     let accountModelCredential = spec.authMode === "loom-account" ? spec.apiKey : "";
-    if (!accountModelCredential && !this.modelDeferred) {
+    if (!accountModelCredential) {
       try {
         accountModelCredential = await this.account.modelCredential();
       } catch {
-        // BYOK/offline desktops remain usable without Loom account model access.
+        // BYOK/offline desktops remain usable. Account-gated automation stays
+        // fail-closed until a Loom account credential becomes available.
       }
     }
     const python = resolvePythonExecutable();
@@ -918,6 +919,7 @@ class LoomRpcProcess {
         LOOM_DESKTOP_CLIENT_PIDS_FILE: desktopPidFile,
         LOOM_API_KEY: spec.apiKey,
         LOOM_ACCOUNT_MODEL_CREDENTIAL: accountModelCredential,
+        LOOM_ACCOUNT_TOOL_ACCESS_ENFORCED: "1",
         LOOM_BROWSER_EXTENSION_TOKEN: ensureBrowserBridgeToken(),
         // The page HUD is the extension's asset, and a browser Loom launches
         // has no extension in it: the runtime injects the same file over CDP.
@@ -1352,7 +1354,7 @@ async function currentModelPolicy(): Promise<LoomModelPolicyAccess | null> {
 }
 
 async function assertSignedInForModels(): Promise<void> {
-  if (!await accountClient.hasAuthenticatedSession()) {
+  if (!await accountClient.verifyAuthenticatedSession()) {
     throw new Error("Sign in to Loom before using models.");
   }
 }
@@ -1619,6 +1621,31 @@ async function runAccountAction(
   }
 }
 
+async function syncAccountToolAccessCredential(): Promise<void> {
+  let credential = "";
+  try {
+    if (await accountClient.hasAuthenticatedSession()) {
+      credential = await accountClient.modelCredential();
+    }
+  } catch {
+    // The Python runtime will fail closed for Computer/Browser automation.
+  }
+  if (!rpc.ready) return;
+  try {
+    await rpc.call("account/tool-access-credential", { credential }, 5_000);
+  } catch {
+    // Runtime restarts also receive the latest credential through the env.
+  }
+}
+
+async function runAccountMutation(
+  action: () => Promise<LoomAccountSnapshot>,
+): Promise<AccountIpcResult> {
+  const result = await runAccountAction(action);
+  if (result.ok) await syncAccountToolAccessCredential();
+  return result;
+}
+
 async function runAccountCapabilities(
   action: () => Promise<LoomAuthCapabilities>,
 ): Promise<AccountCapabilitiesIpcResult> {
@@ -1642,16 +1669,16 @@ async function runAccountChallenge(
 handleHostChannel("loom:account-status", () => runAccountAction(() => accountClient.status()));
 handleHostChannel("loom:account-capabilities", () => runAccountCapabilities(() => accountClient.capabilities()));
 handleHostChannel("loom:account-login", (_event, email: string, password: string) =>
-  runAccountAction(() => accountClient.login(String(email || ""), String(password || "")))
+  runAccountMutation(() => accountClient.login(String(email || ""), String(password || "")))
 );
 handleHostChannel("loom:account-register", (_event, email: string, password: string) =>
-  runAccountAction(() => accountClient.register(String(email || ""), String(password || "")))
+  runAccountMutation(() => accountClient.register(String(email || ""), String(password || "")))
 );
 handleHostChannel("loom:account-register-start", (_event, email: string, password: string) =>
   runAccountChallenge(() => accountClient.registerStart(String(email || ""), String(password || "")))
 );
 handleHostChannel("loom:account-verify-email", (_event, challengeId: string, code: string) =>
-  runAccountAction(() => accountClient.verifyEmail(String(challengeId || ""), String(code || "")))
+  runAccountMutation(() => accountClient.verifyEmail(String(challengeId || ""), String(code || "")))
 );
 handleHostChannel("loom:account-resend-email", (_event, challengeId: string) =>
   runAccountChallenge(() => accountClient.resendEmail(String(challengeId || "")))
@@ -1660,15 +1687,15 @@ handleHostChannel("loom:account-forgot-password", (_event, email: string) =>
   runAccountChallenge(() => accountClient.forgotPassword(String(email || "")))
 );
 handleHostChannel("loom:account-reset-password", (_event, challengeId: string, code: string, password: string) =>
-  runAccountAction(() => accountClient.resetPassword(String(challengeId || ""), String(code || ""), String(password || "")))
+  runAccountMutation(() => accountClient.resetPassword(String(challengeId || ""), String(code || ""), String(password || "")))
 );
 handleHostChannel("loom:account-oauth-exchange", (_event, code: string) =>
-  runAccountAction(() => accountClient.oauthExchange(String(code || "")))
+  runAccountMutation(() => accountClient.oauthExchange(String(code || "")))
 );
 handleHostChannel("loom:account-update-profile", (_event, displayName: string, avatarDataUrl: string) =>
   runAccountAction(() => accountClient.updateProfile(String(displayName || ""), String(avatarDataUrl || "")))
 );
-handleHostChannel("loom:account-logout", () => runAccountAction(() => accountClient.logout()));
+handleHostChannel("loom:account-logout", () => runAccountMutation(() => accountClient.logout()));
 handleHostChannel("loom:model-list", (_event, forceRefresh?: boolean) => runListModels(Boolean(forceRefresh)));
 handleHostChannel("loom:model-provider-key", (_event, provider: string, apiKey: string) =>
   modelManager.setProviderKey(String(provider || ""), String(apiKey || ""))

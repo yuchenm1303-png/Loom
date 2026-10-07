@@ -492,3 +492,43 @@ test("a request that never returns is reported as a timeout", async () => {
     },
   );
 });
+
+
+test("turn-boundary verification clears a server-rejected banned session", async () => {
+  installFetch({
+    "/v1/auth/me": () => reply(403, { error: { code: "ACCOUNT_BANNED", message: "This Loom account has been banned by an administrator." } }),
+  });
+  await seedSession({
+    accessToken: "loom_access_live",
+    refreshToken: "loom_refresh_live",
+    expiresAt: Date.now() + 10 * 60 * 1000,
+    user: USER,
+  });
+
+  const client = newClient();
+  assert.equal(await client.verifyAuthenticatedSession(), false);
+  assert.deepEqual(calls.map((call) => call.pathname), ["/v1/auth/me"]);
+  await assert.rejects(() => fs.readFile(sessionPath()), "banned session should be removed locally");
+});
+
+test("turn-boundary verification is briefly cached and preserves offline BYOK behavior", async () => {
+  installFetch({
+    "/v1/auth/me": () => reply(200, { user: USER }),
+  });
+  await seedSession({
+    accessToken: "loom_access_live",
+    refreshToken: "loom_refresh_live",
+    expiresAt: Date.now() + 10 * 60 * 1000,
+    user: USER,
+  });
+
+  const client = newClient();
+  assert.equal(await client.verifyAuthenticatedSession(), true);
+  assert.equal(await client.verifyAuthenticatedSession(), true);
+  assert.equal(calls.length, 1, "rapid turns should reuse the recent account verification");
+
+  globalThis.fetch = async () => {
+    throw new TypeError("network down");
+  };
+  assert.equal(await client.verifyAuthenticatedSession(0), true, "an outage must not disable local BYOK use");
+});

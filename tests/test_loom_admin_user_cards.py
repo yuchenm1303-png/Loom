@@ -111,3 +111,32 @@ def test_user_and_device_health_visuals_are_present_and_secondary_page_is_card_b
         ".loom-admin-device-health-trend",
     ):
         assert marker in CSS
+
+
+def test_user_detail_exposes_account_gated_automation_controls():
+    for marker in (
+        "request(`/admin/users/${id}/tool-access`)",
+        "Automation access",
+        'id="computerUseAccessEnabled"',
+        'id="browserUseAccessEnabled"',
+        'id="saveToolAccessButton"',
+        "request('/admin/users/tool-access'",
+        "Disabled by default",
+    ):
+        assert marker in JS
+
+
+def test_user_admin_exposes_hard_ban_controls_and_reason_dialog():
+    for marker in (
+        'id="detailBanButton"',
+        'id="banDialog"',
+        'id="banReason"',
+        'id="confirmBanButton"',
+        "data-ban-user",
+        "data-unban-user",
+        "/unban",
+        "/ban",
+        "Ban reason",
+        "账号已封禁",
+    ):
+        assert marker in HTML or marker in JS
