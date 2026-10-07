@@ -305,6 +305,17 @@
     renderUserWorkspace();state.loaded.add('user');
     if(navigate)location.hash=`user/${u.id}`;else showPage('user');
   }
+  function closeBanDialog(){
+    const dialog=$('banDialog');if(dialog?.open)dialog.close();$('banDialogError').textContent='';$('banReason').value='';if(dialog)delete dialog.dataset.userId;
+  }
+  function openBanDialog(userId,email){
+    const dialog=$('banDialog');dialog.dataset.userId=String(userId);$('banDialogTarget').textContent=String(email||'');$('banDialogError').textContent='';$('banReason').value='';dialog.showModal();requestAnimationFrame(()=>$('banReason').focus());
+  }
+  async function unbanUser(userId){
+    if(!confirm('确认解封这个账号？解封后可以重新登录，但之前已撤销的 Session 不会恢复。'))return;
+    await mutate('/admin/users/'+Number(userId)+'/unban');
+  }
+
   async function saveFlag(key,enabled,value){const result=await request('/admin/feature-flags',{method:'POST',body:JSON.stringify({key,enabled,value})});const next=result.flag;const i=state.flags.findIndex(f=>f.key===next.key);if(i>=0)state.flags[i]=next;else state.flags.push(next);state.flags.sort((a,b)=>a.key.localeCompare(b.key));renderFlags();renderOverviewControls();}
 
   $('loginForm').addEventListener('submit',async e=>{e.preventDefault();$('loginError').textContent='';const b=e.currentTarget.querySelector('button');b.disabled=true;try{await login($('loginEmail').value.trim(),$('loginPassword').value);$('loginPassword').value='';setAuthenticated(true);await loadOverview(true);startAutoRefresh();await applyRoute()}catch(err){$('loginError').textContent=err.code==='ADMIN_REQUIRED'?'这个 Loom 账号没有管理员权限。':(err.message||'登录失败');setHeader(false,'Access denied')}finally{b.disabled=false}});
