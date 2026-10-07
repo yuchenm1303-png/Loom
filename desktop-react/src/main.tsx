@@ -10,7 +10,6 @@ import { bootstrapTheme } from "./theme";
 import { applyRendererScale, installNativeRendererScaleSync } from "./rendererScale";
 import { installWebBridge, isLoomWebRuntime } from "./webBridge";
 import "./starterCardPointerGlow";
-import "./pointerClick";
 import "./pointerContrast";
 import "./pointerMotion";
 import "./renderer-styles";

@@ -68,9 +68,9 @@ try {
       sizes,
       pointerWidth: pointer.naturalWidth,
       pointerHeight: pointer.naturalHeight,
-      whiteFill: red(2, 2) === 255,
-      extendedArms: [[15, 2], [2, 13]].every(([x, y]) => red(x, y) === 255 && alpha(x, y) > 180),
-      openCorner: [[6, 5], [10, 10]].every(([x, y]) => alpha(x, y) === 0),
+      whiteFill: red(3, 7) === 255,
+      slenderArrow: alpha(2, 7) > 180 && alpha(8, 10) > 180 && alpha(8, 16) === 0,
+      cleanOutside: [[14, 2], [12, 17]].every(([x, y]) => alpha(x, y) === 0),
       decorationPixels,
       decoration,
     };
@@ -79,13 +79,13 @@ try {
   pointerAsset.sizes.forEach((sizes, index) => {
     const scale = SCALES[index];
     const full = CURSOR_SIZE * scale;
-    const edge = [16 * scale, 14 * scale];
+    const edge = [16 * scale, 20 * scale];
     assert.deepEqual(sizes, [[full, full], [full, full], edge, edge], `${scale}x cursor and pointer bitmaps`);
   });
-  assert.deepEqual([pointerAsset.pointerWidth, pointerAsset.pointerHeight], [16, 14]);
+  assert.deepEqual([pointerAsset.pointerWidth, pointerAsset.pointerHeight], [16, 20]);
   assert.ok(pointerAsset.whiteFill, "dark surfaces must use a white pointer");
-  assert.ok(pointerAsset.extendedArms, "both pointer arms must keep the 16x14 SVG bounds");
-  assert.ok(pointerAsset.openCorner, "the pointer must retain its open corner");
+  assert.ok(pointerAsset.slenderArrow, "the triangular silhouette must stay filled and have no stem");
+  assert.ok(pointerAsset.cleanOutside, "the arrow must have a clean silhouette without detached decoration");
   const [left, top, right, bottom] = pointerAsset.decoration;
   assert.ok(pointerAsset.decorationPixels > 1200 && right - left >= 44 && bottom - top >= 50,
     `the whole character must be visible, got ${right - left}x${bottom - top} (${pointerAsset.decorationPixels} px)`);

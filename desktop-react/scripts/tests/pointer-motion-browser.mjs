@@ -30,74 +30,79 @@ try {
       for (let y = 0; y < base.height; y++) for (let x = 0; x < base.width; x++) {
         const index = (y * base.width + x) * 4;
         for (let c = 0; c < 4; c++) if (base.data[index + c] !== frame.data[index + c]) {
-          if (x >= 20 * scale || y >= 18 * scale) throw Error(`${name}: character pixel changed at ${x},${y}`);
+          if (x >= 16 * scale || y >= 20 * scale) throw Error(`${name}: character pixel changed at ${x},${y}`);
           pointerChanged = true;
         }
       }
       if (!pointerChanged) throw Error(`${name}: pointer did not change`);
-      // Both tones retain an opaque, fixed (0,0) hotspot.
-      if (frame.data[3] !== 255) throw Error(`${name}: hotspot lost`);
+      // Anti-alias the sharp tip while keeping the native hotspot fixed.
+      if (frame.data[3] === 0) throw Error(`${name}: hotspot lost`);
       checked++;
     }
     return checked;
   }, names);
-  assert.equal(pixelCheck, 88);
+  assert.equal(pixelCheck, 96);
   await page.evaluate(async () => { await import("/src/pointerMotion.ts"); });
   await page.locator("#portal button").hover();
-  await page.waitForFunction(() => document.documentElement.dataset.loomCursorFrame === "hover");
-  assert.match(await page.locator("#portal button").evaluate(el => getComputedStyle(el).cursor), /cursor-motion\/hover-yukino-cursor-white.*0 0/);
+  await page.waitForFunction(() => document.documentElement.dataset.loomCursorFrame === "scale-14");
+  assert.match(await page.locator("#portal button").evaluate(el => getComputedStyle(el).cursor), /cursor-motion\/scale-14-yukino-cursor-white.*0 0/);
+  await page.evaluate(() => {
+    window.cursorTransitions = [];
+    new MutationObserver(() => window.cursorTransitions.push(document.documentElement.dataset.loomCursorFrame))
+      .observe(document.documentElement, { attributes: true, attributeFilter: ["data-loom-cursor-frame"] });
+  });
   await page.mouse.down();
-  await page.waitForFunction(() => document.documentElement.dataset.loomCursorFrame === "press");
+  await page.waitForFunction(() => document.documentElement.dataset.loomCursorFrame === "scale-2");
   await page.mouse.up();
-  await page.waitForFunction(() => document.documentElement.dataset.loomCursorFrame === "rebound");
-  await page.waitForFunction(() => document.documentElement.dataset.loomCursorFrame === "hover");
+  await page.waitForFunction(() => /^scale-(?:[3-9]|1[0-3])$/.test(document.documentElement.dataset.loomCursorFrame || ""));
+  await page.waitForFunction(() => document.documentElement.dataset.loomCursorFrame === "scale-14");
+  assert.ok(await page.evaluate(() => new Set(window.cursorTransitions.filter(Boolean)).size >= 6), "click should traverse intermediate frames rather than jump between two bitmaps");
   await page.mouse.move(300, 300);
   await page.mouse.move(500, 300);
-  await page.waitForFunction(() => /^right-/.test(document.documentElement.dataset.loomCursorFrame || ""));
   await page.waitForFunction(() => !document.documentElement.hasAttribute("data-loom-cursor-frame"));
   await page.mouse.move(300, 300);
-  await page.waitForFunction(() => /^left-/.test(document.documentElement.dataset.loomCursorFrame || ""));
   await page.waitForFunction(() => !document.documentElement.hasAttribute("data-loom-cursor-frame"));
   await page.locator("#portal button").hover();
-  await page.waitForFunction(() => document.documentElement.dataset.loomCursorFrame === "hover");
+  await page.waitForFunction(() => document.documentElement.dataset.loomCursorFrame === "scale-14");
   await page.evaluate(() => { document.documentElement.dataset.loomReducedMotion = "true"; });
   await page.waitForFunction(() => !document.documentElement.hasAttribute("data-loom-cursor-frame"));
   await page.mouse.down(); await page.mouse.up();
   await page.waitForTimeout(220);
   assert.equal(await page.evaluate(() => document.documentElement.dataset.loomCursorFrame), undefined);
   await page.evaluate(() => { document.documentElement.dataset.loomReducedMotion = "false"; });
-  await page.waitForFunction(() => document.documentElement.dataset.loomCursorFrame === "hover");
+  await page.waitForFunction(() => document.documentElement.dataset.loomCursorFrame === "scale-14");
   await page.emulateMedia({ reducedMotion: "reduce" });
   await page.waitForFunction(() => !document.documentElement.hasAttribute("data-loom-cursor-frame"));
   await page.emulateMedia({ reducedMotion: "no-preference" });
-  await page.waitForFunction(() => document.documentElement.dataset.loomCursorFrame === "hover");
+  await page.waitForFunction(() => document.documentElement.dataset.loomCursorFrame === "scale-14");
   await page.evaluate(() => window.dispatchEvent(new Event("blur")));
   await page.waitForFunction(() => !document.documentElement.hasAttribute("data-loom-cursor-frame"));
   await page.mouse.move(310, 310);
   await page.mouse.down();
-  await page.waitForFunction(() => document.documentElement.dataset.loomCursorFrame === "press");
+  await page.waitForFunction(() => document.documentElement.dataset.loomCursorFrame === "scale-2");
   await page.evaluate(() => window.dispatchEvent(new PointerEvent("pointercancel", { pointerType: "mouse" })));
-  await page.waitForFunction(() => document.documentElement.dataset.loomCursorFrame !== "press");
+  await page.waitForFunction(() => document.documentElement.dataset.loomCursorFrame !== "scale-2");
   await page.mouse.up();
   await page.evaluate(() => document.documentElement.classList.add("loom-liquid-cursor-active"));
   await page.waitForFunction(() => !document.documentElement.hasAttribute("data-loom-cursor-frame"));
-  console.log("PASS: 88 native animation bitmaps preserve character pixels and hotspot; movement, settling, hover, press/rebound, reduced motion, blur, cancellation and portal coexistence");
+  console.log("PASS: 96 native animation bitmaps preserve character pixels and hotspot; stable movement, eased hover/press/release, reduced motion, blur and cancellation");
   // Exercise the actual login/connection page. A fixture alone cannot catch
   // a competing cursor component disabling native animation at mount time.
-  await page.goto(origin);
+  await page.goto(origin, { waitUntil: "domcontentloaded" });
   await page.locator(".loom-portal-page").waitFor();
   assert.equal(await page.evaluate(() => document.documentElement.classList.contains("loom-liquid-cursor-active")), false);
   assert.equal(await page.locator(".loom-liquid-cursor-canvas").count(), 0);
   await page.locator(".loom-portal-brand").hover();
-  await page.waitForFunction(() => document.documentElement.dataset.loomCursorFrame === "hover");
-  assert.match(await page.locator(".loom-portal-brand").evaluate(el => getComputedStyle(el).cursor), /hover-yukino-cursor.*0 0/);
+  await page.waitForFunction(() => document.documentElement.dataset.loomCursorFrame === "scale-14");
+  assert.match(await page.locator(".loom-portal-brand").evaluate(el => getComputedStyle(el).cursor), /scale-14-yukino-cursor.*0 0/);
   await page.mouse.move(800, 50);
   await page.mouse.move(900, 50);
-  await page.waitForFunction(() => /^right-/.test(document.documentElement.dataset.loomCursorFrame || ""));
   await page.waitForFunction(() => !document.documentElement.hasAttribute("data-loom-cursor-frame"));
   await page.mouse.down();
-  await page.waitForFunction(() => document.documentElement.dataset.loomCursorFrame === "press");
+  await page.waitForFunction(() => document.documentElement.dataset.loomCursorFrame === "scale-2");
   await page.mouse.up();
-  await page.waitForFunction(() => document.documentElement.dataset.loomCursorFrame === "rebound");
-  console.log("PASS: real login/connection page uses the animated character cursor for movement, hover and click");
+  await page.waitForFunction(() => /^scale-[3-9]$/.test(document.documentElement.dataset.loomCursorFrame || ""));
+  await page.waitForFunction(() => !document.documentElement.hasAttribute("data-loom-cursor-frame"));
+  assert.equal(await page.locator(".loom-pointer-click-layer").count(), 0, "the refined pointer should not emit a large click ripple");
+  console.log("PASS: actual login/connection page uses the refined native pointer with eased interaction and no click ripple");
 } finally { await browser.close(); }

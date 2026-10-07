@@ -18,11 +18,8 @@ let raf = 0;
 let inside = false;
 let hover = false;
 let pressed = false;
-let previous: { x: number; y: number; time: number } | undefined;
-let lastMove = 0;
-let energy = 0;
-let releaseUntil = 0;
-let direction = "right";
+let size = 1;
+let lastTick = 0;
 
 function allowed() {
   return ready && inside && !document.hidden && finePointer.matches
@@ -39,29 +36,26 @@ function setFrame(name = "") {
 function reset() {
   cancelAnimationFrame(raf);
   raf = 0;
-  energy = 0;
+  size = 1;
+  lastTick = 0;
   pressed = false;
-  previous = undefined;
-  releaseUntil = 0;
   setFrame();
 }
 function tick(now: number) {
   raf = 0;
   if (!allowed()) { reset(); return; }
-  if (pressed) { setFrame("press"); return; }
-  if (releaseUntil > now) {
-    setFrame(releaseUntil - now > 85 ? "rebound" : hover ? "hover" : "");
-    raf = requestAnimationFrame(tick);
-    return;
-  }
-  const amount = energy * Math.exp(-Math.max(0, now - lastMove - 30) / 65);
-  if (amount > .18) {
-    setFrame(`${direction}-${amount > .8 ? 2 : 1}`);
-    raf = requestAnimationFrame(tick);
-  } else {
-    energy = 0;
-    setFrame(hover ? "hover" : "");
-  }
+  const target = pressed ? .92 : hover ? 1.04 : 1;
+  const dt = lastTick ? Math.min(32, now - lastTick) : 16;
+  lastTick = now;
+  // Monotonic easing: press in ~90ms, hover in ~120ms, release in ~180ms.
+  // No directional warping, overshoot, positional lag or idle movement.
+  const duration = pressed ? 26 : target > size ? 44 : 36;
+  size += (target - size) * (1 - Math.exp(-dt / duration));
+  if (Math.abs(size - target) < .0007) size = target;
+  const step = Math.max(2, Math.min(14, Math.round((size - .9) * 100)));
+  setFrame(step === 10 ? "" : `scale-${step}`);
+  if (size !== target) raf = requestAnimationFrame(tick);
+  else lastTick = 0;
 }
 function wake() {
   if (!raf) raf = requestAnimationFrame(tick);
@@ -91,18 +85,6 @@ async function preload() {
 function onMove(event: PointerEvent) {
   if ((event.pointerType && event.pointerType !== "mouse") || !event.isPrimary) return;
   inside = true;
-  const now = performance.now();
-  if (previous) {
-    const dx = event.clientX - previous.x;
-    const dy = event.clientY - previous.y;
-    const dt = Math.max(8, now - previous.time);
-    if (dx || dy) {
-      direction = Math.abs(dx) >= Math.abs(dy) ? dx < 0 ? "left" : "right" : dy < 0 ? "up" : "down";
-      energy = Math.min(2, Math.hypot(dx, dy) / dt * 1.8);
-      lastMove = now;
-    }
-  }
-  previous = { x: event.clientX, y: event.clientY, time: now };
   wake();
 }
 function onOver(event: PointerEvent) {
@@ -117,14 +99,11 @@ function onDown(event: PointerEvent) {
   if ((event.pointerType && event.pointerType !== "mouse") || !event.isPrimary || event.button !== 0) return;
   inside = true;
   pressed = true;
-  releaseUntil = 0;
-  if (allowed()) setFrame("press");
+  wake();
 }
 function onUp(event: PointerEvent) {
   if ((event.pointerType && event.pointerType !== "mouse") || event.button !== 0 || !pressed) return;
   pressed = false;
-  energy = 0;
-  releaseUntil = performance.now() + 165;
   wake();
 }
 function onLeave(event: PointerEvent) {
