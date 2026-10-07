@@ -13,6 +13,62 @@
 }
 
 /* Keep the content geometry mounted while it folds, rather than hiding it. */
+.app-shell .earlier-process-entry {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  margin-bottom: 0;
+  transition: grid-template-rows 200ms cubic-bezier(.2,.8,.2,1), opacity 160ms ease,
+    margin-bottom 200ms cubic-bezier(.2,.8,.2,1);
+}
+.app-shell .earlier-process-entry > .earlier-task-process {
+  min-height: 0;
+  overflow: hidden;
+  margin: 0;
+}
+.app-shell .earlier-process-entry[data-motion-phase="entered"] {
+  grid-template-rows: 1fr;
+  opacity: 1;
+  margin-bottom: 11px;
+}
+/* The outgoing DOM stays in its original keyed slot. Fade first, then draw
+   its height toward the history receipt; never scale or squash readable text. */
+.app-shell .process-handoff-slot {
+  display: grid;
+  grid-template-rows: 1fr;
+  margin-bottom: 11px;
+  transition: grid-template-rows 300ms cubic-bezier(.2,.8,.2,1) 40ms,
+    margin-bottom 300ms cubic-bezier(.2,.8,.2,1) 40ms;
+}
+.app-shell .turn-process.is-live .turn-process-content { gap: 0; }
+.app-shell .process-handoff-slot:last-child { margin-bottom: 0; }
+.app-shell .process-handoff-slot-inner {
+  min-height: 0;
+  overflow: hidden;
+  opacity: 1;
+  translate: none;
+  transition: opacity 150ms ease, translate 180ms cubic-bezier(.2,.8,.2,1);
+}
+.app-shell .process-handoff-slot[data-handoff-phase="folding"] { grid-template-rows: 0fr; margin-bottom: 0; }
+.app-shell .process-handoff-slot[data-handoff-phase="folding"] > .process-handoff-slot-inner {
+  opacity: 0;
+  translate: 0 -4px;
+}
+.app-shell .earlier-process-icon,
+.app-shell .earlier-process-count { transition: background-color 180ms ease, color 180ms ease; }
+.app-shell .earlier-task-process.is-receiving :is(.earlier-process-icon, .earlier-process-count) {
+  background-color: var(--accent-faint);
+  color: var(--accent-soft);
+}
+@media (prefers-reduced-motion: reduce) {
+  .app-shell :is(.earlier-process-entry, .process-handoff-slot, .process-handoff-slot-inner,
+    .earlier-process-icon, .earlier-process-count) { transition: none !important; }
+}
+:root[data-loom-reduced-motion="true"] .app-shell :is(.earlier-process-entry,
+  .process-handoff-slot, .process-handoff-slot-inner, .earlier-process-icon, .earlier-process-count) {
+  transition: none !important;
+}
+
 .app-shell :is(.earlier-process-history, .pending-thinking-presence, .tool-hint-presence) {
   display: grid;
   grid-template-rows: 0fr;
@@ -49,6 +105,7 @@
   margin-top: 14px;
   margin-bottom: 2px;
 }
+.app-shell .earlier-process-history-inner { display: flex; flex-direction: column; gap: 11px; }
 /* A disclosure has one motion envelope: rows arrive together before the
    height transition ends, without delayed springs or painted glow pulses. */
 .app-shell .task-flow-group.is-unfolding .task-flow-row {

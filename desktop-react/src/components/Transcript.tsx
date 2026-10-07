@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import {
   createContext,
+  Fragment,
   memo,
   useCallback,
   useContext,
@@ -36,6 +37,7 @@ import { artifactName, canRenderArtifact } from "../artifactRenderers";
 import { useI18n } from "../i18n";
 import { useMotionPresence } from "../motion/useMotionPresence";
 import { useReducedMotion } from "../motion/useReducedMotion";
+import { useEarlierProcessHandoff } from "./useEarlierProcessHandoff";
 import { TURN_SETTLE_HOLD_MS } from "../presentationTiming";
 import type { TranscriptItem } from "../types/loom";
 import { latestTaskPlan, liveTaskProgress } from "./liveTaskProgress";
@@ -311,6 +313,13 @@ function groupTranscript(items: TranscriptItem[]): TranscriptBlock[] {
 
   flush();
   return blocks;
+}
+
+function processHandoffGroups(items: TranscriptItem[]): string[][] {
+  const agents = items.filter(isSubAgentToolItem);
+  return [...(agents.length ? [agents.map(item => item.id)] : []),
+    ...groupTranscript(items.filter(item => !isSubAgentToolItem(item)))
+      .map(block => block.kind === "activity" ? block.items.map(item => item.id) : [block.item.id])];
 }
 
 function groupTurns(items: TranscriptItem[]): TurnBlock[] {
@@ -1247,6 +1256,7 @@ function Sequence({
   active = false,
   promptDisabled,
   workspace,
+  handoff,
 }: {
   items: TranscriptItem[];
   onApproval(item: TranscriptItem, approved: boolean): void;
@@ -1255,6 +1265,7 @@ function Sequence({
   active?: boolean;
   promptDisabled?: boolean;
   workspace?: string;
+  handoff?: { retained: ReadonlySet<string>; folding: ReadonlySet<string> };
 }) {
   const subAgentItems = useMemo(() => items.filter(isSubAgentToolItem), [items]);
   const visibleItems = useMemo(
@@ -1323,16 +1334,28 @@ function Sequence({
     return "";
   }, [active, visibleItems]);
 
+  const envelope = (key: string, ids: string[], content: ReactNode) => handoff ? (
+    <div key={key} className="process-handoff-slot" data-process-items={ids.join(" ")}
+      data-handoff-phase={ids.every(id => handoff.folding.has(id)) ? "folding"
+        : ids.some(id => handoff.retained.has(id)) ? "holding" : "current"}
+      inert={ids.every(id => handoff.folding.has(id))}>
+      <div className="process-handoff-slot-inner">{content}</div>
+    </div>
+  ) : <Fragment key={key}>{content}</Fragment>;
+
   return (
     <>
       {subAgentItems.length ? (
+        envelope("sub-agent-workspace", subAgentItems.map(item => item.id),
         <div className="transcript-entry entry-sub-agent-workspace">
           <SubAgentActivityNotice items={subAgentItems} />
         </div>
+        )
       ) : null}
 
       {blocks.map((block, index) => (
         block.kind === "activity" ? (deferredActivityBlocks.has(index) ? null : (
+          envelope(`activity-${block.items[0]?.id ?? index}`, block.items.map(item => item.id),
           <div className={`transcript-entry entry-activity ${active ? "has-lifecycle-motion" : ""}`} key={`activity-${block.items[0]?.id ?? index}`}>
             <ActivityFlow
               items={block.items}
@@ -1341,7 +1364,9 @@ function Sequence({
               workspace={workspace}
             />
           </div>
+          )
         )) : (
+          envelope(block.item.id, [block.item.id],
           <div
             className={`transcript-entry entry-${block.item.type} ${active ? "has-lifecycle-motion" : ""} ${isSteeringUserMessage(block.item) ? "entry-steering-user" : ""}`.trim()}
             key={block.item.id}
@@ -1355,6 +1380,7 @@ function Sequence({
               workspace={workspace}
             />
           </div>
+          )
         )
       ))}
     </>
@@ -1516,6 +1542,9 @@ function TurnProcess({
       return parsed.decisions.length > 0 || parsed.incomplete;
     })
     .map((item) => item.id))), [items]);
+  const pendingPresentations = usePendingPresentations();
+  const handoff = useEarlierProcessHandoff(items, progress, active, earlierOpen, pendingPresentations, processHandoffGroups);
+  const earlierEntry = useMotionPresence(active && progress.earlier.length > 0, 200);
 
   useEffect(() => {
     if (active || open) setProcessVisited(true);
@@ -1564,8 +1593,9 @@ function TurnProcess({
         <div className="turn-process-grid">
           <div className="turn-process-inner">
             <div className="turn-process-content">
-              {active && progress.earlier.length ? (
-                <div className={`earlier-task-process ${earlierOpen ? "is-open" : ""}`.trim()}>
+              {active && earlierEntry.mounted ? (
+                <div className="earlier-process-entry" data-motion-phase={earlierEntry.phase} inert={!progress.earlier.length}>
+                <div className={`earlier-task-process ${earlierOpen ? "is-open" : ""} ${handoff.folding.size ? "is-receiving" : ""}`.trim()}>
                   <button type="button" className="earlier-process-toggle" aria-expanded={earlierOpen}
                     aria-controls={earlierHistoryId}
                     aria-label={`${earlierOpen ? "收起" : "展开"}较早过程，${progress.earlier.length} 项`}
@@ -1582,14 +1612,15 @@ function TurnProcess({
                   <div id={earlierHistoryId} className="earlier-process-history" data-motion-phase={earlierPresence.phase} inert={!earlierOpen}>
                     <div className="earlier-process-history-inner">
                     {earlierVisited ? <StreamingPresentation>
-                      <Sequence items={progress.earlier} active={false} onApproval={onApproval}
+                      <Sequence items={handoff.earlier} active={false} onApproval={onApproval}
                         onPrompt={onPrompt} promptDisabled={promptDisabled} workspace={workspace} />
                     </StreamingPresentation> : null}
                     </div>
                   </div>
                 </div>
+                </div>
               ) : null}
-              <Sequence items={active ? progress.current : items} active={active} onApproval={onApproval} onPrompt={onPrompt} keepActivityOpen={active} promptDisabled={promptDisabled} workspace={workspace} />
+              <Sequence items={active ? handoff.current : items} handoff={active ? handoff : undefined} active={active} onApproval={onApproval} onPrompt={onPrompt} keepActivityOpen={active} promptDisabled={promptDisabled} workspace={workspace} />
             </div>
           </div>
         </div>

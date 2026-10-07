@@ -92,6 +92,15 @@ settles an active transition immediately. Pass an identity for different
 surfaces sharing one presence owner (the composer popovers). Live sends finish
 at 380ms; historical messages and persisted decision receipts stay still.
 
+Live earlier-process handoff retains outgoing records in their original keyed
+slots. Finish any pending glyph burst, hold readable text for 120ms, then fade
+and contract the slot plus its spacing over 340ms before transferring it to
+history. A tool group retires only after every row is eligible. Expanding during
+retirement reverses the fold and cancels removal; reduced motion settles at once.
+Run `node scripts/tests/earlier-process-browser.mjs` with the browser environment
+above to check these races in both themes. `LOOM_EARLIER_SCREENSHOTS` saves frames
+during the real height transition.
+
 Run `node scripts/tests/runtime-motion-browser.mjs` using the same browser
 environment variables above. It checks the production cascade in both themes,
 stream bursts, exit/reopen races, live reduced-motion changes, preview keyboard
