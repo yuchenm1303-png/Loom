@@ -146,3 +146,48 @@ def test_profile_rejects_unsafe_avatar_and_long_nickname(tmp_path: Path) -> None
     with pytest.raises(AccountError) as long_name:
         app.update_profile({"display_name": "x" * 49}, authorization)
     assert long_name.value.code == "DISPLAY_NAME_TOO_LONG"
+
+
+def test_automation_access_defaults_disabled_and_admin_controls_each_capability(tmp_path: Path) -> None:
+    app = _app(tmp_path)
+    owner = app.register({"email": "owner@example.com", "password": "abcdefgh"}, "owner")
+    user = app.register({"email": "user@example.com", "password": "abcdefgh"}, "user")
+    with app.store._connect() as db:
+        db.execute("UPDATE users SET role='owner' WHERE id=?", (owner["user"]["id"],))
+
+    user_auth = f"Bearer {user['access_token']}"
+    owner_auth = f"Bearer {owner['access_token']}"
+    initial = app.tool_access(user_auth)["access"]
+    assert initial == {
+        "computerUse": False,
+        "browserUse": False,
+        "source": "default",
+        "updated_at": None,
+        "updated_by": None,
+    }
+
+    granted = app.admin_set_user_tool_access(
+        {
+            "user_id": user["user"]["id"],
+            "computerUse": True,
+            "browserUse": False,
+        },
+        owner_auth,
+    )["access"]
+    assert granted["computerUse"] is True
+    assert granted["browserUse"] is False
+    assert granted["source"] == "override"
+
+    credential = app.model_credential(user_auth)["model_token"]
+    assert app.tool_access(f"Bearer {credential}")["access"]["computerUse"] is True
+
+    revoked = app.admin_set_user_tool_access(
+        {
+            "user_id": user["user"]["id"],
+            "computerUse": False,
+            "browserUse": False,
+        },
+        owner_auth,
+    )["access"]
+    assert revoked["computerUse"] is False
+    assert revoked["browserUse"] is False
