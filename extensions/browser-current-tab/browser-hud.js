@@ -2,7 +2,7 @@
   'use strict';
 
   const INSTALL_KEY = '__loomBrowserHudRuntimeV2';
-  const GENERATION = '0.1.15';
+  const GENERATION = '0.1.24';
   const SOURCE_HOST_ID = 'loom-browser-page-hud-root';
   const HOST_ID = 'loom-browser-hud-root-v2';
   const LEGACY_HOST_IDS = ['loom-browser-hud-root', 'loom-browser-computer-hud-root'];
@@ -57,6 +57,9 @@
   let sessionActive = false;
   let drivenTabs = [];
   let standalone = false;
+  let refreshInFlight = null;
+  let recoveryTimer = null;
+  let storageListener = null;
 
   const phases = ['观察', '分析', '移动', '点击', '完成'];
   const clean = (value, fallback = '') => String(value || fallback).replace(/\s+/g, ' ').trim().slice(0, 220);
@@ -207,6 +210,9 @@
 
   function sync() {
     ensureLegacySuppression();
+    // SPA frameworks can replace the document's children without a navigation.
+    // Recreate the renderer from ownership, not from an expiring action marker.
+    if (driven() && !renderer?.host?.isConnected) applySession(true);
     attachSource(document.getElementById(SOURCE_HOST_ID));
   }
 
@@ -267,6 +273,7 @@
   // answer cannot change under it, so the pending request is shared rather than
   // repeated for every storage change that arrives before it lands.
   function ensureTabId() {
+    if (tabId !== null) return Promise.resolve();
     if (tabIdRequest) return tabIdRequest;
     tabIdRequest = (async () => {
       try {
@@ -278,10 +285,14 @@
         tabId = null;
       }
     })();
+    tabIdRequest = tabIdRequest.finally(() => { tabIdRequest = null; });
     return tabIdRequest;
   }
 
   async function refreshSession() {
+    if (standalone) return;
+    if (refreshInFlight) return refreshInFlight;
+    refreshInFlight = (async () => {
     try {
       await ensureTabId();
       const stored = await chrome.storage.session.get(SESSION_ACTIVE_KEY);
@@ -293,17 +304,20 @@
       // An older worker has not opened session storage to content scripts yet.
       // Staying hidden is right: nothing here proves a session is running.
     }
+    })();
+    try { await refreshInFlight; } finally { refreshInFlight = null; }
   }
 
   function watchSession() {
     try {
-      chrome.storage.onChanged.addListener((changes, area) => {
+      storageListener = (changes, area) => {
         if (area !== 'session') return;
         if (!(SESSION_ACTIVE_KEY in changes) && !(HUD_TAB_IDS_KEY in changes)) return;
         if (SESSION_ACTIVE_KEY in changes) sessionActive = Boolean(changes[SESSION_ACTIVE_KEY].newValue);
         if (HUD_TAB_IDS_KEY in changes) drivenTabs = normalizeIds(changes[HUD_TAB_IDS_KEY].newValue);
         void ensureTabId().then(syncVisibility);
-      });
+      };
+      chrome.storage.onChanged.addListener(storageListener);
     } catch (_) {}
   }
 
@@ -312,6 +326,8 @@
   }
 
   function dispose() {
+    clearInterval(recoveryTimer);
+    try { if (storageListener) chrome.storage.onChanged.removeListener(storageListener); } catch (_) {}
     sourceObserver?.disconnect();
     documentObserver?.disconnect();
     removeEventListener('resize', onResize);
@@ -330,6 +346,9 @@
     // renderer calls ensureRenderer() itself.
     sync();
     void refreshSession();
+    // document_start can race worker startup/session-storage availability.
+    // Failed identity reads are retried, never interpreted as ownership.
+    recoveryTimer = setInterval(() => { void refreshSession(); sync(); }, 2000);
     watchSession();
     documentObserver = new MutationObserver(sync);
     documentObserver.observe(document.documentElement, { childList: true, subtree: true });
