@@ -1487,6 +1487,32 @@ body:has(#adminContent[hidden]) #overview p:not(.eyebrow) { max-width: 540px; ma
 .loom-admin-detail-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--line); }
 .loom-admin-user-sections { display: grid; gap: 16px; }
 
+.loom-admin-ban-dialog {
+  width: min(520px, calc(100vw - 32px));
+  max-width: 520px;
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, .12);
+  border-radius: 20px;
+  background: rgba(15, 18, 24, .96);
+  color: var(--ink-1);
+  box-shadow: 0 28px 90px rgba(0, 0, 0, .48);
+  backdrop-filter: blur(24px);
+}
+.loom-admin-ban-dialog::backdrop { background: rgba(2, 5, 9, .68); backdrop-filter: blur(8px); }
+.loom-admin-ban-dialog-card { display: grid; gap: 16px; padding: 22px; }
+.loom-admin-ban-dialog-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+.loom-admin-ban-dialog-head h3 { margin: 4px 0 0; font-size: 20px; font-weight: 670; letter-spacing: -.025em; }
+.loom-admin-ban-dialog-target { margin: 0; padding: 10px 12px; border: 1px solid rgba(255, 170, 182, .16); border-radius: 11px; background: rgba(150, 40, 58, .09); color: var(--ink-2); font: 500 12.5px var(--mono); overflow-wrap: anywhere; }
+.loom-admin-ban-reason { display: grid; gap: 8px; }
+.loom-admin-ban-reason > span { color: var(--ink-2); font-size: 12px; font-weight: 650; letter-spacing: .04em; text-transform: uppercase; }
+.loom-admin-ban-reason textarea { min-height: 104px; resize: vertical; padding: 12px 13px; border: 1px solid rgba(255, 255, 255, .1); border-radius: 12px; outline: none; background: rgba(255, 255, 255, .035); color: var(--ink-1); font: 500 13px/1.55 var(--sans); transition: border-color .16s ease, background-color .16s ease, box-shadow .16s ease; }
+.loom-admin-ban-reason textarea:focus { border-color: rgba(255, 170, 182, .32); background: rgba(255, 255, 255, .05); box-shadow: 0 0 0 3px rgba(255, 106, 128, .08); }
+.loom-admin-ban-reason > small { color: var(--ink-3); font-size: 11.5px; }
+.loom-admin-ban-dialog-actions { display: flex; justify-content: flex-end; gap: 9px; padding-top: 4px; }
+.loom-admin-form-error { min-height: 18px; margin: -6px 0 0; color: #ffc9d1; font-size: 12px; }
+.loom-admin-icon-button { width: 32px; height: 32px; border: 1px solid rgba(255,255,255,.08); border-radius: 10px; background: rgba(255,255,255,.035); color: var(--ink-2); font-size: 20px; line-height: 1; cursor: pointer; }
+.loom-admin-icon-button:hover { background: rgba(255,255,255,.07); color: var(--ink-1); }
+
 /* ============================================================ model policy console */
 .loom-policy-page { display: grid; gap: 16px; }
 .loom-policy-shell { min-width: 0; }
