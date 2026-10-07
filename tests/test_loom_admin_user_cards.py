@@ -124,3 +124,19 @@ def test_user_detail_exposes_account_gated_automation_controls():
         "Disabled by default",
     ):
         assert marker in JS
+
+
+def test_user_admin_exposes_hard_ban_controls_and_reason_dialog():
+    for marker in (
+        'id="detailBanButton"',
+        'id="banDialog"',
+        'id="banReason"',
+        'id="confirmBanButton"',
+        "data-ban-user",
+        "data-unban-user",
+        "/unban",
+        "/ban",
+        "Ban reason",
+        "账号已封禁",
+    ):
+        assert marker in HTML or marker in JS
