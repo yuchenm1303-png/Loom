@@ -348,6 +348,14 @@ class AccountStore:
                     updated_by INTEGER REFERENCES users(id) ON DELETE SET NULL
                 );
 
+                CREATE TABLE IF NOT EXISTS tool_entitlements (
+                    user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+                    computer_use_enabled INTEGER NOT NULL DEFAULT 0,
+                    browser_use_enabled INTEGER NOT NULL DEFAULT 0,
+                    updated_at INTEGER NOT NULL,
+                    updated_by INTEGER REFERENCES users(id) ON DELETE SET NULL
+                );
+
                 CREATE TABLE IF NOT EXISTS model_credentials (
                     token_hash TEXT PRIMARY KEY,
                     session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
@@ -1112,6 +1120,69 @@ class AccountStore:
             self._audit(db, int(actor["id"]), "user.model_access", target_type="user", target_id=str(user_id), metadata={"enabled": enabled, "models": normalized})
         return self.model_access(user_id)
 
+    def tool_access(self, user_id: int) -> dict[str, Any]:
+        with self._connect() as db:
+            row = db.execute("SELECT * FROM tool_entitlements WHERE user_id = ?", (int(user_id),)).fetchone()
+        if row is None:
+            return {
+                "computerUse": False,
+                "browserUse": False,
+                "source": "default",
+                "updated_at": None,
+                "updated_by": None,
+            }
+        return {
+            "computerUse": bool(row["computer_use_enabled"]),
+            "browserUse": bool(row["browser_use_enabled"]),
+            "source": "override",
+            "updated_at": int(row["updated_at"]),
+            "updated_by": int(row["updated_by"]) if row["updated_by"] is not None else None,
+        }
+
+    def admin_set_tool_access(
+        self,
+        actor: dict[str, Any],
+        user_id: int,
+        computer_use: bool,
+        browser_use: bool,
+    ) -> dict[str, Any]:
+        if not isinstance(computer_use, bool) or not isinstance(browser_use, bool):
+            raise AccountError(
+                HTTPStatus.BAD_REQUEST,
+                "INVALID_TOOL_ACCESS",
+                "computerUse and browserUse must be booleans.",
+            )
+        now = _now()
+        with self._guard, self._connect() as db:
+            if db.execute("SELECT 1 FROM users WHERE id = ?", (int(user_id),)).fetchone() is None:
+                raise AccountError(HTTPStatus.NOT_FOUND, "USER_NOT_FOUND", "User not found.")
+            db.execute(
+                """INSERT INTO tool_entitlements(
+                    user_id, computer_use_enabled, browser_use_enabled, updated_at, updated_by
+                ) VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT(user_id) DO UPDATE SET
+                    computer_use_enabled=excluded.computer_use_enabled,
+                    browser_use_enabled=excluded.browser_use_enabled,
+                    updated_at=excluded.updated_at,
+                    updated_by=excluded.updated_by""",
+                (
+                    int(user_id),
+                    1 if computer_use else 0,
+                    1 if browser_use else 0,
+                    now,
+                    int(actor["id"]),
+                ),
+            )
+            self._audit(
+                db,
+                int(actor["id"]),
+                "user.tool_access",
+                target_type="user",
+                target_id=str(user_id),
+                metadata={"computerUse": computer_use, "browserUse": browser_use},
+            )
+        return self.tool_access(user_id)
+
     def admin_set_user_status(self, actor: dict[str, Any], user_id: int, status: str) -> dict[str, Any]:
         status = str(status or "").strip().casefold()
         if status not in {"active", "disabled"}: raise AccountError(HTTPStatus.BAD_REQUEST, "INVALID_STATUS", "Status must be active or disabled.")
@@ -1630,6 +1701,28 @@ class AccountApplication:
         access = self.store.admin_set_model_access(actor, user_id, body.get("enabled"), body.get("models"))
         return {"access": access}
 
+    def tool_access(self, authorization: str) -> dict[str, Any]:
+        token = self._bearer_token(authorization)
+        user = self.store.user_for_model_token(token) if token.startswith("loom_model_") else self.store.user_for_access_token(token)
+        return {"access": self.store.tool_access(int(user["id"]))}
+
+    def admin_user_tool_access(self, user_id: int, authorization: str) -> dict[str, Any]:
+        self._admin(authorization)
+        return {"access": self.store.tool_access(int(user_id))}
+
+    def admin_set_user_tool_access(self, body: dict[str, Any], authorization: str) -> dict[str, Any]:
+        actor = self._admin(authorization)
+        user_id = int(body.get("user_id") or 0)
+        if user_id <= 0:
+            raise AccountError(HTTPStatus.BAD_REQUEST, "INVALID_USER_ID", "user_id is required.")
+        access = self.store.admin_set_tool_access(
+            actor,
+            user_id,
+            body.get("computerUse"),
+            body.get("browserUse"),
+        )
+        return {"access": access}
+
     @staticmethod
     def _user_id(body: dict[str, Any]) -> int:
         try: return int(body.get("user_id"))
@@ -1743,8 +1836,11 @@ class AccountRequestHandler(BaseHTTPRequestHandler):
         if self.command == "GET" and path == "/v1/admin/audit": return self.application.admin_audit(authorization)
         if self.command == "GET" and path == "/v1/admin/feature-flags": return self.application.admin_feature_flags(authorization)
         if self.command == "GET" and path == "/v1/models/access": return self.application.model_access(authorization)
+        if self.command == "GET" and path == "/v1/tools/access": return self.application.tool_access(authorization)
         if self.command == "GET" and (match := re.fullmatch(r"/v1/admin/users/(\d+)/model-access", path)):
             return self.application.admin_user_model_access(int(match.group(1)), authorization)
+        if self.command == "GET" and (match := re.fullmatch(r"/v1/admin/users/(\d+)/tool-access", path)):
+            return self.application.admin_user_tool_access(int(match.group(1)), authorization)
         if self.command != "POST": raise AccountError(HTTPStatus.NOT_FOUND, "NOT_FOUND", "Endpoint not found.")
 
         body = self._json_body()
@@ -1785,6 +1881,7 @@ class AccountRequestHandler(BaseHTTPRequestHandler):
         if path == "/v1/admin/users/revoke-sessions": return self.application.admin_revoke_user_sessions(body, authorization)
         if path == "/v1/admin/feature-flags": return self.application.admin_set_feature_flag(body, authorization)
         if path == "/v1/admin/users/model-access": return self.application.admin_set_user_model_access(body, authorization)
+        if path == "/v1/admin/users/tool-access": return self.application.admin_set_user_tool_access(body, authorization)
         raise AccountError(HTTPStatus.NOT_FOUND, "NOT_FOUND", "Endpoint not found.")
 
     def _redirect(self, location: str) -> None:
