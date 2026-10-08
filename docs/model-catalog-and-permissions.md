@@ -34,7 +34,9 @@ outside built-in policy.
 
 Rebuild the policy service, Ant Ling model gateway and desktop client together.
 The account deployment now loads its existing private `.env.models` into the
-policy container as well as the gateway. Keep all credentials in that server
+policy container as well as the gateway. Additional directory-discovery keys
+belong in the policy-only `.env.catalog`, so other providers' credentials are
+not unnecessarily passed to the Ant Ling gateway. Keep all credentials in that server
 environment, never in Git. Configure discovery credentials for every provider
 whose complete directory must update automatically:
 
