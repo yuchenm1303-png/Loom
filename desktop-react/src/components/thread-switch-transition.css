@@ -2,6 +2,11 @@
  * Conversation switching deliberately animates only opacity and compositor
  * translation. Large transcripts stay mounted while thread/read resolves, so a
  * slow durable read feels continuous without forcing a second layout pass.
+ *
+ * Most reads resolve in a frame or two (cached snapshots). Those must not
+ * flash anything: the dim, the wash and the indicator each wait a beat, and
+ * only the transcript itself arrives. The header title already changed on the
+ * click and the composer is the same surface, so neither blinks.
  */
 .workspace {
   position: relative;
@@ -12,15 +17,16 @@
 .workspace > .conversation-stage,
 .workspace > .composer-stage {
   transition:
-    opacity 120ms ease,
+    opacity 160ms ease,
     translate 210ms cubic-bezier(.2,.74,.18,1);
 }
 
 .workspace.is-thread-switching > .conversation-stage,
 .workspace.is-thread-switching > .composer-stage {
-  opacity: .28;
+  opacity: .42;
   translate: 0 2px;
   pointer-events: none;
+  transition-delay: 140ms;
 }
 
 /* The selected title changes on click, independently of the pending transcript. */
@@ -29,16 +35,8 @@
   translate: none;
 }
 
-.workspace.is-thread-entering > .thread-header {
-  animation: loom-thread-surface-in 210ms cubic-bezier(.2,.74,.18,1) both;
-}
-
 .workspace.is-thread-entering > .conversation-stage {
-  animation: loom-thread-surface-in 250ms cubic-bezier(.2,.74,.18,1) both;
-}
-
-.workspace.is-thread-entering > .composer-stage {
-  animation: loom-thread-surface-in 235ms cubic-bezier(.2,.74,.18,1) both;
+  animation: loom-thread-surface-in 280ms cubic-bezier(.2,.74,.18,1) both;
 }
 
 .thread-switch-overlay {
@@ -52,14 +50,15 @@
   pointer-events: none;
   background:
     radial-gradient(circle at 50% 48%, rgba(113,95,225,.075), transparent 18%),
-    rgba(11,12,15,.72);
-  transition: opacity 105ms ease;
+    rgba(11,12,15,.46);
+  transition: opacity 180ms ease;
   contain: paint;
 }
 
 .workspace.is-thread-switching > .thread-switch-overlay {
   opacity: 1;
   pointer-events: auto;
+  transition-delay: 160ms;
 }
 
 .thread-switch-mark {
@@ -194,7 +193,7 @@
 html[data-loom-theme="light"] .thread-switch-overlay {
   background:
     radial-gradient(circle at 50% 48%, rgba(119,101,222,.08), transparent 18%),
-    rgba(248,248,250,.78);
+    rgba(248,248,250,.52);
 }
 
 html[data-loom-theme="light"] .thread-switch-aura {
@@ -203,8 +202,8 @@ html[data-loom-theme="light"] .thread-switch-aura {
 
 @keyframes loom-thread-surface-in {
   from {
-    opacity: .18;
-    translate: 0 3px;
+    opacity: .3;
+    translate: 0 4px;
   }
   to {
     opacity: 1;
@@ -240,9 +239,7 @@ html[data-loom-theme="light"] .thread-switch-aura {
     translate: none !important;
   }
 
-  .workspace.is-thread-entering > .thread-header,
   .workspace.is-thread-entering > .conversation-stage,
-  .workspace.is-thread-entering > .composer-stage,
   .thread-switch-aura,
   .thread-switch-orbit,
   .thread-switch-core {
@@ -263,9 +260,7 @@ html[data-loom-theme="light"] .thread-switch-aura {
   translate: none !important;
 }
 
-:root[data-loom-reduced-motion="true"] .workspace.is-thread-entering > .thread-header,
 :root[data-loom-reduced-motion="true"] .workspace.is-thread-entering > .conversation-stage,
-:root[data-loom-reduced-motion="true"] .workspace.is-thread-entering > .composer-stage,
 :root[data-loom-reduced-motion="true"] .thread-switch-aura,
 :root[data-loom-reduced-motion="true"] .thread-switch-orbit,
 :root[data-loom-reduced-motion="true"] .thread-switch-core {

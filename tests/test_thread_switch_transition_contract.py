@@ -32,7 +32,7 @@ def test_recent_settled_threads_use_a_small_revalidated_snapshot_cache() -> None
 
     assert "const THREAD_READ_CACHE_LIMIT = 8;" in core
     assert "const THREAD_READ_CACHE_TTL_MS = 5 * 60_000;" in core
-    assert "threadReadCacheRef = useRef<Map<string, ThreadReadCacheEntry>>(new Map())" in core
+    assert "threadReadCacheRef = useRef<Map<string, ThreadReadCacheEntry>>(new RetainedBudgetMap(THREAD_READ_CACHE_LIMIT, 16 * 1024 * 1024))" in core
     assert "if (threadIsRunning(result.thread)) return;" in core
     assert "Date.now() - entry.cachedAt > THREAD_READ_CACHE_TTL_MS" in core
     assert "listed.updatedAt !== entry.result.thread.updatedAt" in core
@@ -49,13 +49,20 @@ def test_workspace_uses_loom_native_delayed_transition_instead_of_blocking_sideb
 
     assert 'activeId={selectedThreadId}' in app
     assert 'const selectedThreadId = loom.openingThreadId || activeThreadId;' in app
-    assert 'setThreadSwitchIndicatorVisible(true), 72' in app
+    assert 'setThreadSwitchIndicatorVisible(true), THREAD_SWITCH_INDICATOR_DELAY_MS' in app
+    timing = read(ROOT / "desktop-react" / "src" / "presentationTiming.ts")
+    assert "export const THREAD_SWITCH_INDICATOR_DELAY_MS = 360;" in timing
     assert '"is-thread-switching"' in app
     assert '"is-thread-entering"' in app
     assert 'className="thread-switch-orbit thread-switch-orbit-a"' in app
     assert 'className="thread-switch-orbit thread-switch-orbit-b"' in app
 
     assert ".workspace.is-thread-switching > .conversation-stage" in css
+    # Fast reads never flash: the dim and the wash both wait a beat, and only
+    # the transcript arrives (the title changed on click; the composer stays).
+    assert "transition-delay: 140ms;" in css and "transition-delay: 160ms;" in css
+    assert ".workspace.is-thread-entering > .thread-header" not in css
+    assert ".workspace.is-thread-entering > .composer-stage" not in css
     assert ".thread-switch-overlay.is-indicator-visible .thread-switch-mark" in css
     assert "pointer-events: auto;" in css
     assert "backdrop-filter" not in css

@@ -40,7 +40,7 @@ import { canRenderArtifact } from "./artifactRenderers";
 import { useI18n } from "./i18n";
 import { useMotionPresence } from "./motion/useMotionPresence";
 import { useReducedMotion } from "./motion/useReducedMotion";
-import { RUN_STRIP_EXIT_MS } from "./presentationTiming";
+import { RUN_STRIP_EXIT_MS, THREAD_SWITCH_INDICATOR_DELAY_MS } from "./presentationTiming";
 import {
   SHORTCUTS_CHANGED_EVENT,
   eventMatchesShortcut,
@@ -472,7 +472,9 @@ export default function App() {
       setThreadSwitchIndicatorVisible(false);
       return;
     }
-    const timer = window.setTimeout(() => setThreadSwitchIndicatorVisible(true), 72);
+    // Only a read that is genuinely slow earns the indicator; cached and fast
+    // reads finish before anything but the sidebar selection has moved.
+    const timer = window.setTimeout(() => setThreadSwitchIndicatorVisible(true), THREAD_SWITCH_INDICATOR_DELAY_MS);
     return () => window.clearTimeout(timer);
   }, [threadSwitching]);
 
