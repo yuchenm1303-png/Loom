@@ -106,7 +106,16 @@ const handlers: Record<string, (args: Record<string, unknown>) => unknown> = {
     if (navigation.held.has(id)) return new Promise((resolve, reject) => navigation.pending.set(id, { resolve, reject }));
     return threadSnapshot(id);
   },
-  "thread/context": () => ({ context: null }),
+  "thread/context": () => ({ context: params.get("context") === "1" ? {
+    windowTokens: 512000, effectiveWindowTokens: 482000, inputBudgetTokens: 482000,
+    outputReserveTokens: 30000, autoCompactTokens: 460000, toolOutputTokenLimit: 4000,
+    windowKnown: true, limitsSource: "fixture", usedTokens: 154240, usedPercent: 32,
+    freeTokens: 327760, accounting: "fixture", messageCount: 20, compactions: 0,
+    lastCompactedAt: "", measuredAt: "fixture", segments: [
+      { key: "conversation", tokens: 140000 }, { key: "toolSchemas", tokens: 14240 },
+      { key: "free", tokens: 327760 }], pressure: { blinded: false,
+      toolOutputsReduced: 0, toolOutputsCollapsed: 0, userMessagesTruncated: 0, toolsOmitted: [] },
+  } : null }),
   "turn/start": args => {
     document.body.dataset.submitted = String(args.input || args.text || JSON.stringify(args));
     return { turn: { id: "turn-2", threadId: "visual-0", status: "running", items: [] } };

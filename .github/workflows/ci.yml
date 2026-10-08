@@ -71,6 +71,7 @@ jobs:
           trap 'kill "$vite_pid"' EXIT
           node node_modules/wait-on/bin/wait-on --timeout 60000 "$LOOM_TEST_ORIGIN/scripts/fixtures/workspace-visual.html"
           node scripts/tests/renderer-performance-browser.mjs
+          node scripts/tests/control-popover-response-browser.mjs
 
   windows-context-smoke:
     runs-on: windows-latest

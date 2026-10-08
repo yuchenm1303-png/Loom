@@ -77,17 +77,23 @@
 
 .context-meter-panel {
   position: absolute;
-  top: calc(100% + 8px);
-  right: 0;
-  z-index: 40;
-  width: 296px;
+  top: calc(100% + 6px);
+  right: -4px;
+  z-index: 100;
+  width: min(296px, calc(100vw - 32px));
+  max-height: min(520px, calc(100vh - 88px));
+  overflow-y: auto;
+  overflow-x: hidden;
   padding: 13px 14px 12px;
-  border: 1px solid var(--border, rgba(255, 255, 255, .09));
-  border-radius: 13px;
+  border: 1px solid var(--border, rgba(255,255,255,.09));
+  border-radius: 14px;
   background: var(--loom-surface-raised, #191b20);
-  box-shadow: var(--loom-shadow, 0 18px 48px rgba(0, 0, 0, .24));
+  box-shadow: var(--loom-shadow, 0 18px 48px rgba(0,0,0,.24));
   color: var(--text, #e8eaee);
   font-size: 12px;
+  transform-origin: top right;
+  animation: none;
+  transition: opacity 100ms ease, transform 160ms cubic-bezier(.16,1,.3,1);
 }
 
 .context-meter-panel-head {
@@ -253,12 +259,11 @@
 }
 
 
-/* Animate the shell independently so text never stretches with the capsule. */
+/* Meter control; the popover keeps fixed geometry throughout its lifecycle. */
 .context-meter {
   z-index: 5;
   display: inline-flex;
   align-items: center;
-  --context-chip-width: 104px;
   --context-unfold: cubic-bezier(.16,1,.3,1);
 }
 .context-meter-chip {
@@ -274,95 +279,30 @@
   outline: 2px solid var(--accent, #695ad8);
   outline-offset: 3px;
 }
-.context-meter-panel {
-  top: calc(100% + 6px);
-  right: -4px;
-  z-index: 100;
-  isolation: isolate;
-  contain: paint;
-  transform-origin: top right;
-  border-color: transparent;
-  border-radius: 18px;
-  background: none;
-  box-shadow: none;
-  animation: none !important;
-}
-.context-meter-panel::before {
-  content: "";
-  position: absolute;
-  z-index: -1;
-  inset: -1px;
-  border: 1px solid var(--border, rgba(255,255,255,.09));
-  border-radius: 18px;
-  background: var(--loom-surface-raised, #191b20);
-  box-shadow: var(--loom-shadow, 0 18px 48px rgba(0,0,0,.24));
+/* The component owns one fixed surface. Content is readable at mount;
+   the presence lifecycle only retains the surface for exit/reversal. */
+.context-meter-panel[data-motion-phase="entering"],
+.context-meter-panel[data-motion-phase="entered"] {
   opacity: 1;
-  transform: translateY(0);
-  transition: inset 440ms var(--context-unfold), border-radius 440ms var(--context-unfold), transform 440ms var(--context-unfold), opacity 160ms ease, box-shadow 360ms ease;
+  transform: translate3d(0,0,0) scale(1);
 }
-.context-meter-panel[data-motion-phase="entering"]::before {
-  inset: 0 4px calc(100% - 26px) calc(100% - var(--context-chip-width) - 4px);
-  border-radius: 999px;
-  transform: translateY(-4px);
-  opacity: 0;
-  box-shadow: 0 2px 6px rgba(0,0,0,.04);
+@starting-style {
+  .context-meter-panel[data-motion-phase="entering"] {
+    opacity: .72;
+    transform: translate3d(0,-4px,0) scale(.995);
+  }
 }
-
-/* Closing used to animate the pseudo-shell's inset on every frame while the
-   header also applied its own popover animation/backdrop blur. That forced a
-   full paint/layout path and produced the visible hitch at the end. Keep the
-   shell geometry fixed and let one compositor-friendly parent transform own
-   the exit. */
 .context-meter-panel[data-motion-phase="exiting"] {
   pointer-events: none;
   opacity: 0;
-  transform: translate3d(0,-5px,0) scale(.985);
+  transform: translate3d(0,-3px,0) scale(.99);
   will-change: opacity, transform;
-  transition:
-    opacity 155ms ease,
-    transform 220ms cubic-bezier(.4,0,.2,1);
-}
-.context-meter-panel[data-motion-phase="exiting"]::before {
-  inset: -1px;
-  border-radius: 18px;
-  transform: none;
-  opacity: 1;
-  box-shadow: var(--loom-shadow, 0 18px 48px rgba(0,0,0,.24));
-  transition: none;
-}
-.context-meter-panel > :not(style) {
-  opacity: 1;
-  transform: translateY(0);
-  transition: opacity 180ms ease 90ms, transform 300ms var(--context-unfold) 90ms;
-}
-.context-meter-panel[data-motion-phase="entered"] > .context-meter-rows { transition-delay: 120ms; }
-.context-meter-panel[data-motion-phase="entered"] > .context-meter-facts { transition-delay: 150ms; }
-.context-meter-panel[data-motion-phase="entered"] > .context-meter-compact { transition-delay: 180ms; }
-.context-meter-panel[data-motion-phase="entering"] > :not(style) {
-  opacity: 0;
-  transform: translateY(-6px);
-  transition: opacity 80ms ease, transform 140ms ease;
-}
-
-.context-meter-panel[data-motion-phase="exiting"] > :not(style) {
-  opacity: 1;
-  transform: none;
-  transition: none;
+  transition: opacity 155ms ease, transform 220ms cubic-bezier(.4,0,.2,1);
 }
 .context-meter-fill { transition: width 480ms var(--context-unfold); }
-html[data-loom-theme="light"] .context-meter-panel::before {
+html[data-loom-theme="light"] .context-meter-panel {
   background: linear-gradient(180deg, #fff, #f9fafc);
   box-shadow: 0 14px 38px rgba(27,31,40,.12), 0 3px 10px rgba(27,31,40,.055), inset 0 1px rgba(255,255,255,.98);
-}
-html[data-loom-theme="light"] .context-meter-panel[data-motion-phase="entering"]::before {
-  box-shadow: 0 2px 6px rgba(27,31,40,.04);
-}
-
-html[data-loom-theme="light"] .context-meter-panel[data-motion-phase="exiting"]::before {
-  box-shadow:
-    0 14px 38px rgba(27,31,40,.12),
-    0 3px 10px rgba(27,31,40,.055),
-    inset 0 1px rgba(255,255,255,.98);
 }
 html[data-loom-theme="light"] .context-meter-panel-head { min-height: 25px; margin-bottom: 8px; align-items: center; }
 html[data-loom-theme="light"] .context-meter-rows { gap: 5px; margin-bottom: 10px; }
