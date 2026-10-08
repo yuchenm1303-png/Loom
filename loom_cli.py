@@ -60,12 +60,17 @@ def _resolve_connection(args: argparse.Namespace) -> tuple[ProviderConnection, s
     except ValueError as exc:
         raise SystemExit(f"Unsupported provider adapter: {provider_text}") from exc
 
-    if adapter not in {ProviderAdapter.OPENAI, ProviderAdapter.OPENAI_COMPATIBLE}:
+    if adapter not in {ProviderAdapter.OPENAI, ProviderAdapter.OPENAI_COMPATIBLE, ProviderAdapter.OPENCODE_GO}:
         raise SystemExit(f"Provider adapter is not executable yet: {adapter.value}")
 
     if adapter is ProviderAdapter.OPENAI:
         base_url = ""
         secret = _first_env("LOOM_API_KEY", "OPENAI_API_KEY")
+    elif adapter is ProviderAdapter.OPENCODE_GO:
+        # This adapter owns its endpoint and selects messages/responses/chat
+        # by model. Do not feed its display URL into ProviderConnection.
+        base_url = ""
+        secret = _first_env("LOOM_API_KEY", "OPENCODE_GO_API_KEY")
     else:
         base_url = requested_base
         if not base_url and _first_env("DASHSCOPE_API_KEY", "AI_API_KEY"):

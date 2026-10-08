@@ -5,6 +5,7 @@ import sys
 import argparse
 import os
 import subprocess
+import pytest
 from pathlib import Path
 
 from app.agent_runtime import (
@@ -48,6 +49,38 @@ def test_desktop_starts_without_any_provider_credentials(tmp_path, monkeypatch):
         runtime.close()
 
 
+def test_opencode_go_desktop_runtime_can_start_with_its_selected_adapter(tmp_path, monkeypatch):
+    from loom_cli import _build_runtime, _resolve_connection
+    args = argparse.Namespace(provider="opencode-go",
+        base_url="https://opencode.ai/zen/go/v1", model="muse-spark-1.3-contributor",
+        allow_unconfigured_model=True, vision=False, timeout=120, home=str(tmp_path))
+    connection, model, secret = _resolve_connection(args)
+    assert connection.adapter is ProviderAdapter.OPENCODE_GO
+    assert connection.base_url == ""
+    assert model == args.model and secret == ""
+    runtime, store, _ = _build_runtime(args)
+    try:
+        session = runtime.create_session("agent.fast", workspace_dir=tmp_path)
+        assert store.load(session.session_id).session_id == session.session_id
+    finally:
+        runtime.close()
+
+
+def test_opencode_go_launch_uses_its_credential_and_executable_backend(tmp_path, monkeypatch):
+    from loom_cli import _build_runtime, _resolve_connection
+    monkeypatch.setenv("LOOM_API_KEY", "opencode-test-key")
+    monkeypatch.setenv("OPENAI_API_KEY", "unrelated-openai-key")
+    args = argparse.Namespace(provider="opencode-go", base_url="", model="muse-spark-1.3-contributor",
+        allow_unconfigured_model=False, vision=False, timeout=120, home=str(tmp_path))
+    assert _resolve_connection(args)[2] == "opencode-test-key"
+    runtime, _, model = _build_runtime(args)
+    try:
+        assert model == args.model
+        assert runtime.platform._loom_model_connections[0]["provider"] == "opencode-go"
+    finally:
+        runtime.close()
+
+
 def test_desktop_pending_account_does_not_reuse_unrelated_key(tmp_path, monkeypatch):
     from loom_cli import _resolve_connection
     monkeypatch.setenv("OPENAI_API_KEY", "unrelated-private-key")
@@ -57,15 +90,19 @@ def test_desktop_pending_account_does_not_reuse_unrelated_key(tmp_path, monkeypa
     assert _resolve_connection(args)[2] == ""
 
 
-def test_first_run_app_server_handshake_without_user_configuration(tmp_path):
+@pytest.mark.parametrize("provider,base_url,model,selection", [
+    ("openai-compatible", "https://account.smirel.com/model/v1", "Ling-3.0-flash", "builtin:ant-ling"),
+    ("opencode-go", "https://opencode.ai/zen/go/v1", "muse-spark-1.3-contributor", "builtin:opencode-go:muse-spark-1.3-contributor"),
+])
+def test_first_run_app_server_handshake_without_user_configuration(tmp_path, provider, base_url, model, selection):
     root = Path(__file__).resolve().parents[1]
     environment = {key: value for key, value in os.environ.items()
                    if not key.startswith(("LOOM_", "MINIMAX_", "OPENAI_", "DASHSCOPE_"))}
     environment.update(PYTHONUTF8="1", PYTHONPATH=os.pathsep.join(sys.path))
     process = subprocess.run([sys.executable, str(root / "loom_app_server.py"),
         "--home", str(tmp_path), "--workspace", str(tmp_path),
-        "--provider", "openai-compatible", "--base-url", "https://account.smirel.com/model/v1",
-        "--model", "Ling-3.0-flash", "--selection", "builtin:ant-ling",
+        "--provider", provider, "--base-url", base_url,
+        "--model", model, "--selection", selection,
         "--context-limits", json.dumps({"contextWindowTokens": 128000, "workingContextTokens": 64000}),
         "--allow-unconfigured-model"], input=json.dumps({"jsonrpc": "2.0", "id": 1,
             "method": "initialize", "params": {"protocolVersion": 1}}) + "\n",
