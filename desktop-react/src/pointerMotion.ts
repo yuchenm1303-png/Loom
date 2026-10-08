@@ -20,17 +20,31 @@ let hover = false;
 let pressed = false;
 let size = 1;
 let lastTick = 0;
+let frameTarget: Element | null = null;
+
+// Cursor variables are inherited by every message and pseudo-element. Changing
+// them on html for each press frame restyles the whole transcript; keep the
+// animated resources on the hit element and clear the previous owner.
+function selectTarget(event: PointerEvent) {
+  const next = event.target instanceof Element ? event.target : null;
+  const local = next && next !== root && next !== document.body && next.id !== "root" ? next : null;
+  if (local === frameTarget) return;
+  frameTarget?.removeAttribute("data-loom-cursor-frame");
+  frameTarget = local;
+}
 
 function allowed() {
-  return ready && inside && !document.hidden && finePointer.matches
+  return ready && inside && !!frameTarget && !document.hidden && finePointer.matches
     && !reducedMotion.matches && root.dataset.loomReducedMotion !== "true"
     && !root.classList.contains("loom-liquid-cursor-active");
 }
 function setFrame(name = "") {
+  const target = frameTarget;
+  if (!target) return;
   if (name) {
-    if (root.dataset.loomCursorFrame !== name) root.dataset.loomCursorFrame = name;
-  } else if (root.hasAttribute("data-loom-cursor-frame")) {
-    delete root.dataset.loomCursorFrame;
+    if (target.getAttribute("data-loom-cursor-frame") !== name) target.setAttribute("data-loom-cursor-frame", name);
+  } else if (target.hasAttribute("data-loom-cursor-frame")) {
+    target.removeAttribute("data-loom-cursor-frame");
   }
 }
 function reset() {
@@ -85,11 +99,13 @@ async function preload() {
 function onMove(event: PointerEvent) {
   if ((event.pointerType && event.pointerType !== "mouse") || !event.isPrimary) return;
   inside = true;
+  selectTarget(event);
   wake();
 }
 function onOver(event: PointerEvent) {
   if (event.pointerType && event.pointerType !== "mouse") return;
   inside = true;
+  selectTarget(event);
   const target = event.target instanceof Element ? event.target : null;
   const control = target?.closest("button, a[href], [role='button'], summary, label, select, [data-magnetic-hover='true']");
   hover = !!control && !control.matches(":disabled, [aria-disabled='true'], [inert], [inert] *");
@@ -98,6 +114,7 @@ function onOver(event: PointerEvent) {
 function onDown(event: PointerEvent) {
   if ((event.pointerType && event.pointerType !== "mouse") || !event.isPrimary || event.button !== 0) return;
   inside = true;
+  selectTarget(event);
   pressed = true;
   wake();
 }

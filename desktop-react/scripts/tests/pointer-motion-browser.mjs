@@ -44,48 +44,82 @@ try {
   assert.equal(pixelCheck, 96);
   await page.evaluate(async () => { await import("/src/pointerMotion.ts"); });
   await page.locator("#portal button").hover();
-  await page.waitForFunction(() => document.documentElement.dataset.loomCursorFrame === "scale-14");
+  await page.waitForFunction(() => document.querySelector("[data-loom-cursor-frame]")?.getAttribute("data-loom-cursor-frame") === "scale-14");
+  assert.equal(await page.locator("html").getAttribute("data-loom-cursor-frame"), null,
+    "pointer animation must not invalidate inherited cursor resources across the document");
+  assert.equal(await page.locator("[data-loom-cursor-frame]").count(), 1);
   assert.match(await page.locator("#portal button").evaluate(el => getComputedStyle(el).cursor), /cursor-motion\/scale-14-yukino-cursor-white.*0 0/);
   await page.evaluate(() => {
     window.cursorTransitions = [];
-    new MutationObserver(() => window.cursorTransitions.push(document.documentElement.dataset.loomCursorFrame))
-      .observe(document.documentElement, { attributes: true, attributeFilter: ["data-loom-cursor-frame"] });
+    new MutationObserver(() => window.cursorTransitions.push(document.querySelector("[data-loom-cursor-frame]")?.getAttribute("data-loom-cursor-frame")))
+      .observe(document.body, { subtree: true, attributes: true, attributeFilter: ["data-loom-cursor-frame"] });
   });
   await page.mouse.down();
-  await page.waitForFunction(() => document.documentElement.dataset.loomCursorFrame === "scale-2");
+  await page.waitForFunction(() => document.querySelector("[data-loom-cursor-frame]")?.getAttribute("data-loom-cursor-frame") === "scale-2");
   await page.mouse.up();
-  await page.waitForFunction(() => /^scale-(?:[3-9]|1[0-3])$/.test(document.documentElement.dataset.loomCursorFrame || ""));
-  await page.waitForFunction(() => document.documentElement.dataset.loomCursorFrame === "scale-14");
+  await page.waitForFunction(() => /^scale-(?:[3-9]|1[0-3])$/.test(document.querySelector("[data-loom-cursor-frame]")?.getAttribute("data-loom-cursor-frame") || ""));
+  await page.waitForFunction(() => document.querySelector("[data-loom-cursor-frame]")?.getAttribute("data-loom-cursor-frame") === "scale-14");
   assert.ok(await page.evaluate(() => new Set(window.cursorTransitions.filter(Boolean)).size >= 6), "click should traverse intermediate frames rather than jump between two bitmaps");
   await page.mouse.move(300, 300);
   await page.mouse.move(500, 300);
-  await page.waitForFunction(() => !document.documentElement.hasAttribute("data-loom-cursor-frame"));
+  await page.waitForFunction(() => !!!document.querySelector("[data-loom-cursor-frame]"));
   await page.mouse.move(300, 300);
-  await page.waitForFunction(() => !document.documentElement.hasAttribute("data-loom-cursor-frame"));
+  await page.waitForFunction(() => !!!document.querySelector("[data-loom-cursor-frame]"));
   await page.locator("#portal button").hover();
-  await page.waitForFunction(() => document.documentElement.dataset.loomCursorFrame === "scale-14");
+  await page.waitForFunction(() => document.querySelector("[data-loom-cursor-frame]")?.getAttribute("data-loom-cursor-frame") === "scale-14");
   await page.evaluate(() => { document.documentElement.dataset.loomReducedMotion = "true"; });
-  await page.waitForFunction(() => !document.documentElement.hasAttribute("data-loom-cursor-frame"));
+  await page.waitForFunction(() => !!!document.querySelector("[data-loom-cursor-frame]"));
   await page.mouse.down(); await page.mouse.up();
   await page.waitForTimeout(220);
-  assert.equal(await page.evaluate(() => document.documentElement.dataset.loomCursorFrame), undefined);
+  assert.equal(await page.evaluate(() => document.querySelector("[data-loom-cursor-frame]")?.getAttribute("data-loom-cursor-frame")), undefined);
   await page.evaluate(() => { document.documentElement.dataset.loomReducedMotion = "false"; });
-  await page.waitForFunction(() => document.documentElement.dataset.loomCursorFrame === "scale-14");
+  await page.waitForFunction(() => document.querySelector("[data-loom-cursor-frame]")?.getAttribute("data-loom-cursor-frame") === "scale-14");
   await page.emulateMedia({ reducedMotion: "reduce" });
-  await page.waitForFunction(() => !document.documentElement.hasAttribute("data-loom-cursor-frame"));
+  await page.waitForFunction(() => !!!document.querySelector("[data-loom-cursor-frame]"));
   await page.emulateMedia({ reducedMotion: "no-preference" });
-  await page.waitForFunction(() => document.documentElement.dataset.loomCursorFrame === "scale-14");
+  await page.waitForFunction(() => document.querySelector("[data-loom-cursor-frame]")?.getAttribute("data-loom-cursor-frame") === "scale-14");
   await page.evaluate(() => window.dispatchEvent(new Event("blur")));
-  await page.waitForFunction(() => !document.documentElement.hasAttribute("data-loom-cursor-frame"));
-  await page.mouse.move(310, 310);
+  await page.waitForFunction(() => !!!document.querySelector("[data-loom-cursor-frame]"));
+  await page.locator("#portal button").hover();
   await page.mouse.down();
-  await page.waitForFunction(() => document.documentElement.dataset.loomCursorFrame === "scale-2");
+  await page.waitForFunction(() => document.querySelector("[data-loom-cursor-frame]")?.getAttribute("data-loom-cursor-frame") === "scale-2");
   await page.evaluate(() => window.dispatchEvent(new PointerEvent("pointercancel", { pointerType: "mouse" })));
-  await page.waitForFunction(() => document.documentElement.dataset.loomCursorFrame !== "scale-2");
+  await page.waitForFunction(() => document.querySelector("[data-loom-cursor-frame]")?.getAttribute("data-loom-cursor-frame") !== "scale-2");
   await page.mouse.up();
   await page.evaluate(() => document.documentElement.classList.add("loom-liquid-cursor-active"));
-  await page.waitForFunction(() => !document.documentElement.hasAttribute("data-loom-cursor-frame"));
+  await page.waitForFunction(() => !!!document.querySelector("[data-loom-cursor-frame]"));
   console.log("PASS: 96 native animation bitmaps preserve character pixels and hotspot; stable movement, eased hover/press/release, reduced motion, blur and cancellation");
+  // A long transcript must not pay a full-tree style update for each cursor
+  // frame. Compare identical inherited resource changes at the old root and
+  // at the new local owner, using browser counters rather than wall time.
+  await page.evaluate(() => {
+    const history = document.createElement("section");
+    history.id = "cursor-perf-history";
+    history.innerHTML = "<span>Historical tool output</span>".repeat(10000);
+    document.querySelector("#root").append(history);
+  });
+  const session = await page.context().newCDPSession(page);
+  await session.send("Performance.enable");
+  const styleCost = async local => {
+    const metrics = async () => (await session.send("Performance.getMetrics")).metrics
+      .find(metric => metric.name === "RecalcStyleDuration").value;
+    const before = await metrics();
+    await page.evaluate(async local => {
+      const owner = local ? document.querySelector("#portal button") : document.documentElement;
+      for (let index = 0; index < 20; index++) {
+        owner.style.setProperty("--loom-cursor-white", index % 2 ? "pointer" : "default");
+        await new Promise(requestAnimationFrame);
+      }
+      owner.style.removeProperty("--loom-cursor-white");
+      await new Promise(requestAnimationFrame);
+    }, local);
+    return await metrics() - before;
+  };
+  const rootCost = await styleCost(false);
+  const localCost = await styleCost(true);
+  assert.ok(localCost < rootCost / 5, `cursor style cost: root=${rootCost}s local=${localCost}s`);
+  console.log(JSON.stringify({ rootStyleMs: rootCost * 1000, localStyleMs: localCost * 1000 }));
+  await session.detach();
   // The portal retains its separate liquid-glass cursor. It must hide the
   // native character cursor and suspend native animation while mounted.
   await page.goto(origin, { waitUntil: "domcontentloaded" });
@@ -99,10 +133,10 @@ try {
   await page.mouse.move(800, 50);
   await page.mouse.move(900, 50);
   await page.waitForFunction(before => document.querySelector(".loom-liquid-cursor-canvas").style.transform !== before, before);
-  await page.waitForFunction(() => !document.documentElement.hasAttribute("data-loom-cursor-frame"));
+  await page.waitForFunction(() => !!!document.querySelector("[data-loom-cursor-frame]"));
   await page.mouse.down();
   await page.mouse.up();
-  await page.waitForFunction(() => !document.documentElement.hasAttribute("data-loom-cursor-frame"));
+  await page.waitForFunction(() => !!!document.querySelector("[data-loom-cursor-frame]"));
   assert.equal(await page.locator(".loom-pointer-click-layer").count(), 0, "the refined pointer should not emit a large click ripple");
   console.log("PASS: login/connection page restores moving liquid glass, hides the native pointer and suspends native animation");
 } finally { await browser.close(); }
