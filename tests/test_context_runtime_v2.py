@@ -372,8 +372,11 @@ def test_provider_usage_is_primary_auto_compact_signal(monkeypatch):
 
     _messages, metadata = prepare_context(runtime, session, Step(), Token())
 
-    assert metadata["token_accounting_source"] == "provider_usage"
-    assert metadata["active_context_tokens"] == 4500
+    assert metadata["compaction_trigger_accounting_source"] == "provider_usage"
+    assert metadata["compaction_trigger_usage_tokens"] == 4500
+    assert metadata["token_accounting_source"] == "post_compaction_estimate"
+    assert metadata["active_context_tokens"] == metadata["calibrated_input_tokens_after"]
+    assert metadata["active_context_tokens"] < 4500
     assert metadata["auto_compacted"] is True
 
 

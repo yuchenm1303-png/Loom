@@ -1088,6 +1088,7 @@ def _prepare_context_with_model(rt, session, step, token):
             "summary_request_ceiling_tokens": summary_request_ceiling,
             "compaction_trigger_tokens": compaction_trigger,
             "compaction_trigger_usage_tokens": compaction_context_tokens,
+            "compaction_trigger_accounting_source": accounting_source,
             "forced_by_provider_context_error": forced_compaction,
             "model_requested_rollover": model_requested_rollover,
             "pre_compaction_tool_outputs_reduced": reduction_stats.tool_outputs_reduced,
