@@ -52,6 +52,8 @@ services:
     env_file:
       - path: .env.models
         required: false
+      - path: .env.catalog
+        required: false
     environment:
       LOOM_ACCOUNT_INTERNAL_URL: http://loom-account:8787/v1
       LOOM_ACCOUNT_DB_READONLY: /account-data/accounts.db
