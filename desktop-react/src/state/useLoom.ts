@@ -6,7 +6,7 @@ function threadIsRunning(thread?: ThreadRecord | null): boolean {
   return thread?.status === "running" || thread?.status === "waiting_approval";
 }
 
-function currentTurnHasTerminalError(items: TranscriptItem[], currentTurnId?: string | null): boolean {
+export function currentTurnHasTerminalError(items: TranscriptItem[], currentTurnId?: string | null): boolean {
   const targetTurnId = String(currentTurnId ?? "").trim();
   if (!targetTurnId) return false;
   for (let index = items.length - 1; index >= 0; index -= 1) {
