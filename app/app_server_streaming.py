@@ -263,7 +263,6 @@ class StreamingLoomAppServerService(LoomAppServerService):
         event: AgentEvent,
         *,
         close_started: bool,
-        status: str = "",
     ) -> None:
         with self._guard:
             stale = [
@@ -293,8 +292,11 @@ class StreamingLoomAppServerService(LoomAppServerService):
                         "id": _tool_item_id(call_id),
                         "threadId": event.session_id,
                         "turnId": event.turn_id,
-                        "type": "tool_call",
-                        "status": status or event.kind.value.removeprefix("turn_"),
+                        # These calls never crossed TOOL_REQUESTED (which removes
+                        # them from this map). Discard proposals, rather than
+                        # reporting commands that were never executed.
+                        "type": "superseded",
+                        "status": "superseded",
                         "updatedAt": event.created_at,
                         "callId": call_id,
                         "toolName": str(state.get("tool_name") or "") or None,
@@ -383,9 +385,7 @@ class StreamingLoomAppServerService(LoomAppServerService):
                     "threadId": event.session_id, "turnId": event.turn_id,
                     "type": "assistant_message", "status": "interrupted", "text": "",
                     "reasoning": "", "updatedAt": event.created_at}})
-            # ``model_requested`` is not a turn outcome, so the shared status
-            # derivation would stamp these tool items with that event's own name.
-            self._clear_turn_tool_streams(event, close_started=True, status="interrupted")
+            self._clear_turn_tool_streams(event, close_started=True)
         if event.kind is AgentEventKind.MODEL_RESPONSE:
             step_id = str(event.data.get("step_id") or "").strip()
             key = (event.session_id, event.turn_id, step_id)

@@ -336,6 +336,7 @@ class _OpenCodeGoResponsesBackend:
             control.on_cancel(close)
 
         call_indexes: dict[str, int] = {}
+        item_calls: dict[str, str] = {}
         usage = ModelUsage()
         response_id = ""
         finish_reason = ""
@@ -370,6 +371,9 @@ class _OpenCodeGoResponsesBackend:
                         call_id = str(getattr(item, "call_id", "") or getattr(item, "id", "") or "")
                         if call_id:
                             call_indexes[call_id] = index
+                        item_id = str(getattr(item, "id", "") or "")
+                        if item_id:
+                            item_calls[item_id] = call_id
                         yield StreamEvent(
                             kind=StreamEventKind.TOOL_CALL_DELTA,
                             tool_call_index=index,
@@ -378,7 +382,10 @@ class _OpenCodeGoResponsesBackend:
                         )
                     continue
                 if event_type == "response.function_call_arguments.delta":
-                    call_id = str(getattr(event, "call_id", "") or getattr(event, "item_id", "") or "")
+                    # Responses identifies argument deltas by output item ID,
+                    # which is distinct from the function call ID used in history.
+                    item_id = str(getattr(event, "item_id", "") or "")
+                    call_id = str(getattr(event, "call_id", "") or item_calls.get(item_id, ""))
                     index = getattr(event, "output_index", None)
                     if index is None and call_id:
                         index = call_indexes.get(call_id)

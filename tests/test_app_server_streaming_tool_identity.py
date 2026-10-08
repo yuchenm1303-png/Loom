@@ -248,8 +248,9 @@ def test_retrying_a_model_step_clears_the_abandoned_attempts_streamed_text(tmp_p
         if method == "item/completed" and params["item"]["id"] == "tool:call-dropped"
     ]
     assert len(dropped_tool) == 1
-    # Not "model_requested": the item is being abandoned, not reporting an outcome.
-    assert dropped_tool[0]["status"] == "interrupted"
+    # A proposed call is not an executed/interrupted tool operation.
+    assert dropped_tool[0]["status"] == "superseded"
+    assert dropped_tool[0]["type"] == "superseded"
 
     assert ("thread-1", "turn-1", "step-1") not in service._streamed_assistant_steps
     assert not any(
@@ -402,6 +403,9 @@ def test_failed_turn_clears_uncommitted_streamed_assistant_text(tmp_path) -> Non
     assert runtime.stream_listener is not None
     assert runtime.runtime_listener is not None
     runtime.stream_listener(_assistant_stream_event("这是一条被中途掐断的半截回复"))
+    runtime.stream_listener(
+        _stream_event(call_id="never-executed", fragment='{"value":', tool="echo")
+    )
 
     runtime.runtime_listener(
         _runtime_event(
@@ -421,3 +425,7 @@ def test_failed_turn_clears_uncommitted_streamed_assistant_text(tmp_path) -> Non
     assert closed[0]["status"] == "failed"
     assert closed[0]["text"] == ""
     assert closed[0]["reasoning"] == ""
+    abandoned = [params["item"] for method, params in observed
+                 if method == "item/completed" and params["item"]["id"] == "tool:never-executed"]
+    assert len(abandoned) == 1
+    assert abandoned[0]["type"] == "superseded"

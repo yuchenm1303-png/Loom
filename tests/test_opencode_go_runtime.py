@@ -201,6 +201,39 @@ class _FakeMessagesStream:
         self.closed = True
 
 
+def test_opencode_responses_keeps_item_ids_separate_from_call_ids() -> None:
+    from app.ai.streaming_platform import _StreamAccumulator
+
+    backend = _OpenCodeGoResponsesBackend(
+        profile=SimpleNamespace(model="muse-spark-1.3-contributor"),
+        api_key="test-only-key", request_timeout_seconds=1.0,
+    )
+    events = [SimpleNamespace(type="response.output_text.delta", delta="Checking.")]
+    for index in (1, 2):
+        events.append(SimpleNamespace(
+            type="response.output_item.added", output_index=index,
+            item=SimpleNamespace(type="function_call", id=f"fc_{index}",
+                                 call_id=f"call_{index}", name="read_file"),
+        ))
+    for index in (2, 1):
+        events.append(SimpleNamespace(
+            type="response.function_call_arguments.delta", item_id=f"fc_{index}",
+            delta=json.dumps({"path": f"file{index}"}),
+        ))
+    events.append(SimpleNamespace(type="response.completed", response=SimpleNamespace(
+        id="resp-1", status="completed", output=[], usage=None,
+    )))
+    backend.client = SimpleNamespace(responses=SimpleNamespace(create=lambda **kwargs: iter(events)))
+    accumulator = _StreamAccumulator()
+    for event in backend.stream(_request()):
+        accumulator.consume(event)
+    response = accumulator.finalize()
+    assert response.text == "Checking."
+    assert [(call.call_id, call.arguments) for call in response.tool_calls] == [
+        ("call_1", {"path": "file1"}), ("call_2", {"path": "file2"}),
+    ]
+
+
 def test_opencode_responses_streams_reasoning_summary_separately() -> None:
     backend = _OpenCodeGoResponsesBackend(
         profile=SimpleNamespace(model="gpt-5.6-luna"),
