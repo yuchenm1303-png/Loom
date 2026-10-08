@@ -1,7 +1,5 @@
 from types import SimpleNamespace
 
-import pytest
-
 from app.agent_runtime import AgentStatus
 from app.app_server_reasoning import ReasoningManagedLoomAppServerService
 
@@ -56,3 +54,11 @@ def test_unsupported_recovery_fails_closed():
     assert service._recover_orphaned_thread_model_turn(original) is original
     assert calls == []
     assert service._thread_model_blocked(original)
+
+
+def test_legacy_thread_without_status_does_not_crash_model_switch():
+    # Older thread fixtures and some migrated records omit this field.
+    original = SimpleNamespace(session_id="legacy-thread")
+    service, calls, _replacement = _service(original)
+    assert service._recover_orphaned_thread_model_turn(original) is original
+    assert calls == []
