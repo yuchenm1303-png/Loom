@@ -28,6 +28,14 @@ const FINAL_SETTLE_PIN_DELAY_MS = LIVE_SETTLE_WINDOW_MS + 90;
 const PANEL_RESIZE_END_EVENT = "loom:panel-resize-end";
 const PANEL_LAYOUT_COMMIT_EVENT = "loom:panel-layout-commit";
 
+// One shared query: the follow loop asks every frame, and matchMedia() itself
+// is not free.
+const reducedMotionQuery = typeof window !== "undefined" ? window.matchMedia?.("(prefers-reduced-motion: reduce)") : undefined;
+
+function prefersReducedMotion(): boolean {
+  return Boolean(reducedMotionQuery?.matches) || document.documentElement.dataset.loomReducedMotion === "true";
+}
+
 function transcriptScroller(): HTMLDivElement | null {
   return document.querySelector<HTMLDivElement>(".conversation-stage > .transcript-scroll");
 }
@@ -219,8 +227,7 @@ export function TranscriptScrollController({
       const distance = target - currentTop;
       let nextTop = target;
       const absoluteDistance = Math.abs(distance);
-      const reducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches
-        || document.documentElement.dataset.loomReducedMotion === "true";
+      const reducedMotion = prefersReducedMotion();
       const liveMotion = runningRef.current || performance.now() < settleUntilRef.current;
       const easeLiveGrowth = Boolean(
         (liveMotion || forced)

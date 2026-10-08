@@ -234,6 +234,58 @@
     opacity 210ms ease;
 }
 
+/* Completion ----------------------------------------------------------------
+   The runtime turns idle while the finished live layout is still on screen.
+   It holds for a beat (.is-settle-hold) exactly as the user last saw it, then
+   folds (.is-settle-fold) while its summary line grows in above it. The final
+   answer below rides the shrinking height, so the whole hand-off is one upward
+   motion: no re-expanded history, no second entrance for the answer. */
+.turn-process-header-shell {
+  display: grid;
+  grid-template-rows: 1fr;
+}
+
+.turn-process-header-inner {
+  min-width: 0;
+  min-height: 0;
+}
+
+.turn-process.is-settling .turn-process-header-inner {
+  overflow: hidden;
+}
+
+.turn-process.is-settle-hold .turn-process-header-shell {
+  grid-template-rows: 0fr;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.turn-process.is-settle-fold .turn-process-header-shell {
+  transition:
+    grid-template-rows 380ms cubic-bezier(.3,.72,.2,1),
+    opacity 260ms ease 110ms;
+}
+
+.turn-process.is-live.is-settle-fold .turn-process-grid {
+  grid-template-rows: 0fr;
+  opacity: 0;
+  transition:
+    grid-template-rows 380ms cubic-bezier(.3,.72,.2,1),
+    opacity 200ms ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .turn-process-header-shell,
+  .turn-process.is-live.is-settle-fold .turn-process-grid {
+    transition: none !important;
+  }
+}
+
+:root[data-loom-reduced-motion="true"] .turn-process-header-shell,
+:root[data-loom-reduced-motion="true"] .turn-process.is-live.is-settle-fold .turn-process-grid {
+  transition: none !important;
+}
+
 .turn-process-content .entry-steering-user {
   align-items: flex-end;
   margin: 4px 0 3px;

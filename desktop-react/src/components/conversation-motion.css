@@ -1,7 +1,17 @@
 /* Unified live-conversation motion ------------------------------------------
    Runtime truth remains immediate. This file owns only the presentation
-   language: soft capsule birth, quiet settling, and a single obvious live cue.
-   Historical turns are intentionally still. */
+   language of a live turn: quiet births, readable state changes and a single
+   obvious live cue. Historical turns are intentionally still.
+
+   One-shot motion is bound to moments, never to classes that can toggle:
+   - [data-born="live"]  a group or row appearing for the first time in a live
+                          turn (Transcript: useBornLive). A group regaining its
+                          running state, history and thread switches never
+                          replay it.
+   - [data-settled]       a row that finished while the user watched.
+   - .is-unfolding        the user opened a group (one beat, set by a click).
+   Continuous live state (an executing row's light, the running group's
+   beacon) follows the runtime state directly. */
 
 .task-milestones {
   margin: 8px 0 18px;
@@ -69,6 +79,10 @@
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
+/* The count is keyed on its value: each record that arrives ticks it once. */
+.turn-process.is-live .earlier-process-count {
+  animation: loom-count-tick 300ms ease-out backwards;
+}
 .earlier-process-chevron {
   flex: none;
   margin-left: 1px;
@@ -86,9 +100,11 @@
 }
 @media (prefers-reduced-motion: reduce) {
   .earlier-process-toggle, .earlier-process-chevron { transition: none; }
+  .turn-process.is-live .earlier-process-count { animation: none; }
 }
 :root[data-loom-reduced-motion="true"] .earlier-process-toggle,
 :root[data-loom-reduced-motion="true"] .earlier-process-chevron { transition: none; }
+:root[data-loom-reduced-motion="true"] .turn-process.is-live .earlier-process-count { animation: none; }
 
 .conversation-stage,
 .transcript {
@@ -98,18 +114,17 @@
      dots), "soft" ~4% (stickers). Only text-free elements ride these curves. */
   --loom-spring-pop: linear(0, 0.035, 0.125, 0.248, 0.387, 0.528, 0.662, 0.781, 0.881, 0.962, 1.023, 1.065, 1.091, 1.104, 1.107, 1.101, 1.091, 1.077, 1.062, 1.047, 1.033, 1.021, 1.01, 1.002, 0.996, 0.992, 0.99, 0.989, 0.989, 0.989, 0.991, 0.992, 0.994, 0.995, 0.997, 0.998, 0.999, 1, 1.001, 1.001, 1);
   --loom-spring-soft: linear(0, 0.035, 0.121, 0.235, 0.361, 0.486, 0.603, 0.707, 0.795, 0.867, 0.924, 0.966, 0.997, 1.018, 1.03, 1.037, 1.038, 1.037, 1.034, 1.03, 1.025, 1.02, 1.015, 1.011, 1.008, 1.005, 1.003, 1.001, 1, 0.999, 0.999, 0.999, 1);
-  /* Capsule unroll drives clip-path, where overshoot would be invisible. */
-  --loom-motion-unroll: cubic-bezier(.19, 1, .22, 1);
-  --loom-pill-border: rgba(255,255,255,.065);
-  --loom-pill-border-live: rgba(154,143,239,.19);
-  --loom-pill-bg: rgba(18,20,25,.48);
-  --loom-pill-bg-live: rgba(31,29,43,.64);
-  --loom-pill-shadow: 0 7px 20px rgba(0,0,0,.09), inset 0 1px 0 rgba(255,255,255,.025);
-  /* Live-task palette is cool and slightly desaturated. The shoulder carries
-     the colour; the core only catches light for a few frames. */
+  /* Live-task palette is cool and slightly desaturated. */
   --loom-live-accent: 153, 145, 226;
   --loom-live-accent-strong: 181, 174, 244;
   --loom-live-core: 226, 223, 247;
+}
+
+html[data-loom-theme="light"] .conversation-stage,
+html[data-loom-theme="light"] .transcript {
+  --loom-live-accent: 96, 84, 194;
+  --loom-live-accent-strong: 112, 100, 210;
+  --loom-live-core: 255, 255, 255;
 }
 
 /* Do not replay old history just because a thread remounted. Live turns own
@@ -120,10 +135,9 @@
 }
 
 /* Assistant entries are deliberately absent: their live surfaces (thinking
-   capsule, message shell, decision card) own their entrances, and a second
-   entry-level rise stacked on top doubled the travel and squared the fade. */
-.turn-block.is-active > .entry-user_message,
-.turn-process.is-live .entry-user_message,
+   header, answer text, decision card) own their entrances, and a second
+   entry-level rise stacked on top doubled the travel and squared the fade.
+   User bubbles own theirs in generation-motion.css. */
 .turn-process.is-live .entry-approval,
 .turn-process.is-live .entry-error,
 .turn-process.is-live .entry-sub-agent-workspace {
@@ -135,26 +149,12 @@
   animation: none;
 }
 
-.turn-block.is-active > .entry-user_message .user-message,
-.turn-process.is-live .entry-steering-user .user-message {
-  animation: loom-user-pill-land 300ms var(--loom-motion-pop) both;
-  transform-origin: right bottom;
-}
-
 .turn-final-answer {
   animation: none !important;
 }
 
-.turn-block.is-settling .turn-final-answer {
-  animation: loom-final-answer-land 340ms var(--loom-motion-pop) both !important;
-}
-
 .turn-process.is-settled.is-open .turn-process-header {
   animation: none;
-}
-
-.turn-block.is-settling .turn-process.is-settled.is-open .turn-process-header {
-  animation: loom-process-handoff-in 230ms var(--loom-motion-pop) both;
 }
 
 /* Rich surfaces arrive as one unit instead of every child running its own
@@ -176,114 +176,51 @@
   animation: loom-content-surface-in 260ms var(--loom-motion-pop) both;
 }
 
-/* Task group = anchor capsule. The rows underneath feel like child capsules
-   growing out of the anchor rather than log lines appearing in a terminal. */
+/* Task flow: static geometry ------------------------------------------------
+   Rows read as one quiet timeline. Material (transparent rows, the hairline
+   rail) is owned by workspace-surface-refinement.css. Task-flow copy keeps
+   whole CSS-pixel font geometry: combined with native Electron page zoom, this
+   avoids the soft glyph edges Chromium can produce on Windows when fractional
+   font sizes meet DPI scaling. */
+.task-flow-group {
+  width: min(740px, 100%);
+}
+
 .task-flow-group-header {
-  min-height: 32px;
-  padding: 4px 10px 4px 4px;
-  border: 1px solid transparent;
-  border-radius: 999px;
-  background: transparent;
+  position: relative;
+  min-height: 30px;
+  padding: 3px 7px 3px 2px;
   gap: 7px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
   transition:
-    color 180ms ease,
-    border-color 220ms ease,
-    background 220ms ease,
-    box-shadow 220ms ease;
+    color 260ms ease,
+    background 300ms cubic-bezier(.18,.72,.22,1);
 }
 
 .task-flow-group-header:hover {
-  background: rgba(255,255,255,.018);
+  background: rgba(255,255,255,.016);
 }
 
-.task-flow-group.is-running .task-flow-group-header {
-  border-color: rgba(var(--loom-live-accent), .18);
-  background:
-    radial-gradient(circle at 18px 50%, rgba(var(--loom-live-accent), .075), transparent 48px),
-    linear-gradient(180deg, rgba(255,255,255,.022), rgba(255,255,255,.004)),
-    rgba(23,23,31,.60);
-  box-shadow:
-    0 8px 22px rgba(0,0,0,.085),
-    0 0 0 1px rgba(var(--loom-live-accent), .012),
-    inset 0 1px 0 rgba(255,255,255,.021);
-}
-
-/* When one tool batch has finished but the turn is still alive, don't leave a
-   dead-looking completed block on screen. Keep the completed semantics, then
-   carry motion through the handoff with one very soft ambient sweep. */
-.task-flow-group.is-between-steps .task-flow-group-header {
-  border-color: rgba(var(--loom-live-accent), .13);
-  background:
-    radial-gradient(circle at 18px 50%, rgba(var(--loom-live-accent), .052), transparent 50px),
-    linear-gradient(180deg, rgba(255,255,255,.018), rgba(255,255,255,.003)),
-    rgba(20,21,28,.50);
-  box-shadow:
-    0 6px 18px rgba(0,0,0,.06),
-    inset 0 1px 0 rgba(255,255,255,.018);
-}
-
-.task-flow-between-sheen {
-  position: absolute;
-  inset: 0;
-  z-index: 0;
-  overflow: hidden;
-  border-radius: inherit;
-  pointer-events: none;
-}
-
-.task-flow-between-sheen > i {
-  position: absolute;
-  inset: -1px auto -1px -34%;
-  width: 28%;
-  border-radius: inherit;
-  background: linear-gradient(
-    102deg,
-    transparent 0%,
-    rgba(var(--loom-live-accent), .012) 20%,
-    rgba(var(--loom-live-accent), .045) 40%,
-    rgba(var(--loom-live-accent-strong), .090) 50%,
-    rgba(var(--loom-live-core), .055) 56%,
-    rgba(var(--loom-live-accent), .020) 72%,
-    transparent 100%
-  );
-  transform: translate3d(0,0,0) skewX(-9deg);
-  will-change: transform, opacity;
-  animation: loom-task-between-sheen 5.9s cubic-bezier(.32,0,.18,1) .55s infinite;
-}
-
-.task-flow-group-header > :not(.task-flow-between-sheen) {
+.task-flow-group-header > * {
   position: relative;
   z-index: 1;
 }
 
-.task-flow-between-label {
-  flex: none;
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  margin-left: 2px;
-  color: rgba(var(--loom-live-accent-strong), .72);
-  font-size: 9.5px;
-  line-height: 1;
-  font-weight: 590;
-  white-space: nowrap;
-}
-
-.task-flow-between-label > i {
-  width: 4px;
-  height: 4px;
-  flex: none;
-  border-radius: 50%;
-  background: rgb(var(--loom-live-accent-strong));
-  box-shadow: 0 0 0 2px rgba(var(--loom-live-accent), .045);
-  animation: loom-task-between-dot 2.4s cubic-bezier(.4,0,.2,1) infinite;
-}
-
 .task-flow-group-icon {
   position: relative;
-  width: 23px;
-  height: 23px;
-  border-radius: 999px;
+  width: 20px;
+  height: 20px;
+  border-radius: 6px;
+  border-color: rgba(255,255,255,.055);
+  background: rgba(255,255,255,.018);
+  box-shadow: none;
+  transition:
+    color 280ms ease,
+    border-color 300ms ease,
+    background 300ms ease,
+    box-shadow 320ms ease;
 }
 
 .task-flow-group-icon > svg {
@@ -291,33 +228,24 @@
   z-index: 1;
 }
 
-.task-flow-group.is-running .task-flow-group-icon::before {
-  content: "";
-  position: absolute;
-  inset: -7px;
-  z-index: 0;
-  border-radius: 999px;
-  pointer-events: none;
-  background: radial-gradient(
-    circle,
-    rgba(var(--loom-live-accent), .12) 0%,
-    rgba(var(--loom-live-accent), .050) 34%,
-    rgba(var(--loom-live-accent), .012) 56%,
-    transparent 74%
-  );
-  opacity: .30;
-  scale: .80;
-  will-change: opacity, scale;
-  animation: loom-live-anchor-aura 3.2s cubic-bezier(.4,0,.2,1) infinite;
-}
-
-/* Task-flow copy is intentionally kept on whole CSS-pixel font geometry.
-   Combined with native Electron page zoom, this avoids the soft glyph edges
-   Chromium can produce on Windows when fractional font sizes meet DPI scaling. */
 .task-flow-group-title {
   font-size: 12px;
   line-height: 16px;
+  font-weight: 620;
   letter-spacing: 0;
+}
+
+.task-flow-group-chevron {
+  margin-left: 1px;
+  opacity: .72;
+  transition:
+    transform 380ms cubic-bezier(.18,.72,.22,1),
+    color 260ms ease,
+    opacity 260ms ease;
+}
+
+.task-flow-group-header:hover .task-flow-group-chevron {
+  opacity: 1;
 }
 
 .task-flow-verb,
@@ -339,364 +267,80 @@
   line-height: 15px;
 }
 
-.task-flow-group.is-running .task-flow-group-icon::after {
-  content: "";
-  position: absolute;
-  z-index: 2;
-  right: -1px;
-  bottom: -1px;
-  width: 5px;
-  height: 5px;
-  border: 2px solid #17171d;
-  border-radius: 999px;
-  background: rgb(var(--loom-live-accent-strong));
-  box-shadow:
-    0 0 0 2px rgba(var(--loom-live-accent), .040),
-    0 0 8px rgba(var(--loom-live-accent), .20);
-  animation: loom-live-beacon 2.9s cubic-bezier(.4,0,.2,1) infinite;
-}
-
 .task-flow-group .task-flow-list {
-  gap: 3px;
+  gap: 4px;
   margin-top: 5px;
-  padding-left: 7px;
+  padding-left: 9px;
 }
 
-.task-flow-row {
+.task-flow-row,
+.task-flow-group .task-flow-row {
   min-height: 30px;
+  grid-template-columns: 20px minmax(0, 1fr) 8px;
+  gap: 7px;
   padding: 2px 7px 2px 3px;
-  border: 1px solid rgba(255,255,255,.035);
-  border-radius: 999px;
-  background: rgba(15,17,22,.28);
-  box-shadow: inset 0 1px 0 rgba(255,255,255,.012);
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  box-shadow: none;
   transition:
-    color 170ms ease,
-    border-color 210ms ease,
-    background 210ms ease,
-    box-shadow 210ms ease;
+    color 260ms ease,
+    border-color 300ms ease,
+    background 300ms cubic-bezier(.18,.72,.22,1),
+    box-shadow 320ms ease;
 }
 
-.task-flow-row.is-expandable:hover {
+.task-flow-row.is-expandable:hover,
+.task-flow-group .task-flow-row.is-expandable:hover {
   /* activity-flow.css used to translate the whole text-bearing row on hover.
      Explicitly cancel that older rule so Chromium never has to rasterize task
      copy onto a transformed layer just because the pointer passed over it. */
   transform: none;
   border-color: rgba(255,255,255,.065);
-  background: rgba(255,255,255,.026);
+  background: rgba(255,255,255,.024);
 }
 
-.task-flow-row-icon {
-  border-radius: 999px;
-}
-
-.task-flow-row.is-active {
-  border-color: rgba(var(--loom-live-accent), .15);
-  background:
-    linear-gradient(
-      90deg,
-      rgba(var(--loom-live-accent), .060) 0%,
-      rgba(var(--loom-live-accent), .024) 44%,
-      rgba(var(--loom-live-accent), .006) 74%,
-      transparent 100%
-    ),
-    rgba(18,19,27,.60);
-  box-shadow:
-    0 6px 18px rgba(0,0,0,.07),
-    inset 0 1px 0 rgba(255,255,255,.021);
-}
-
-.task-flow-row.is-executing {
-  border-color: rgba(var(--loom-live-accent), .19);
-  background:
-    linear-gradient(
-      90deg,
-      rgba(var(--loom-live-accent), .078) 0%,
-      rgba(var(--loom-live-accent), .030) 42%,
-      rgba(var(--loom-live-accent), .008) 72%,
-      transparent 100%
-    ),
-    rgba(20,20,28,.65);
-  box-shadow:
-    0 7px 19px rgba(0,0,0,.075),
-    inset 1px 0 0 rgba(var(--loom-live-accent), .055),
-    inset 0 1px 0 rgba(255,255,255,.021);
-}
-
-/* One deliberate light pass per executing row. The band is wider and softer
-   than the old narrow white streak, with a short luminous core and a long
-   violet shoulder. It pauses between passes so the row reads as "alive", not
-   as a loading skeleton. A separate opacity wrapper lets the moving band
-   freeze and fade on completion without snapping off or restarting. */
-.task-flow-row > .task-flow-sheen {
-  position: absolute;
-  inset: 0;
-  z-index: 0;
-  overflow: hidden;
-  border-radius: inherit;
-  pointer-events: none;
-  opacity: 0;
-  transition: opacity 240ms ease;
-}
-
-.task-flow-row.is-executing > .task-flow-sheen { opacity: 1; }
-
-.task-flow-sheen > i {
-  position: absolute;
-  z-index: 0;
-  top: -1px;
-  bottom: -1px;
-  left: -32%;
-  width: 30%;
-  border-radius: inherit;
-  pointer-events: none;
-  /* The band is a soft body plus two hairline glints. The <i> overhangs its
-     clip by 1px, so the glints sit 1px inside: as the band travels it catches
-     the pill's upper rim (cool white) and lower rim (accent), like light
-     crossing a glass capsule. Still one moving layer. */
-  background:
-    linear-gradient(90deg, transparent 4%, rgba(255,255,255,.55) 50%, transparent 96%) 0 1px / 100% 1px no-repeat,
-    linear-gradient(90deg, transparent 4%, rgba(var(--loom-live-accent-strong), .46) 52%, transparent 96%) 0 calc(100% - 1px) / 100% 1px no-repeat,
-    linear-gradient(
-      102deg,
-      transparent 0%,
-      rgba(var(--loom-live-accent), .025) 18%,
-      rgba(var(--loom-live-accent), .09) 35%,
-      rgba(var(--loom-live-accent-strong), .20) 47%,
-      rgba(var(--loom-live-core), .22) 53%,
-      rgba(var(--loom-live-accent-strong), .12) 60%,
-      rgba(var(--loom-live-accent), .035) 73%,
-      transparent 100%
-    );
-  transform: translate3d(0,0,0) skewX(-9deg);
-  animation: loom-task-running-sheen 4.8s linear 480ms infinite both paused;
-}
-
-.task-flow-row.is-executing .task-flow-sheen > i { animation-play-state: running; }
-
-.task-flow-row.is-resting {
-  color: #868e99;
+.task-flow-row-icon,
+.task-flow-group .task-flow-row-icon {
+  width: 18px;
+  height: 18px;
+  border-radius: 5px;
+  border-color: rgba(255,255,255,.045);
+  background: rgba(255,255,255,.018);
+  box-shadow: none;
 }
 
 .task-flow-row.is-resting .task-flow-row-icon {
   opacity: .86;
 }
 
-/* Kind is carried on the wrapper so the distinction survives text truncation
-   without turning the whole row into a different color. */
-.task-flow-row-wrap[data-kind="process"] .task-flow-row-icon {
-  color: #9ba8c5;
-  border-color: rgba(125,142,184,.16);
-  background: rgba(88,103,139,.07);
+.task-flow-group .task-flow-verb {
+  color: #929aa6;
+  font-weight: 590;
 }
 
-.task-flow-row-wrap[data-kind="file_edit"] .task-flow-row-icon {
-  color: #91b19e;
-  border-color: rgba(108,156,129,.16);
-  background: rgba(82,127,101,.07);
+.task-flow-group .task-flow-primary,
+.task-flow-group .task-flow-primary.code {
+  color: #aeb5bf;
 }
 
-.task-flow-row-wrap[data-kind="tool_call"] .task-flow-row-icon {
-  color: #a79fe7;
-  border-color: rgba(139,124,246,.17);
-  background: rgba(139,124,246,.065);
+.task-flow-group .task-flow-status-dot {
+  width: 4.5px;
+  height: 4.5px;
 }
 
-/* Capsule birth ---------------------------------------------------------------
-   Only the live anchor animates: the group the running turn is still working
-   in (.is-running, decided by Transcript's Sequence). Groups that later
-   content has followed are history and stay still, even when a live turn
-   remounts.
-
-   Task capsules are born by one gesture: the pill inflates from a slightly
-   smaller pill while its body is lit from inside, then the light drains away.
-   - The inflate is a clip-path (never a transform) that starts at 94% width /
-     8px shorter, so every command is readable from the first frame and the
-     text is never scaled or moved.
-   - The light is a text-free ::before that tracks the same clip edge. Both are
-     paint-only, so no text layer is ever promoted (no LCD -> greyscale flip).
-   - Elasticity lives on the parts without text: the icon bead springs, the
-     chevron unfurls, the status dot pops.
-   - The same light returns in the outcome colour when a task settles
-     (--capsule-glow: green / red), and once more, softly, when the user opens
-     a group (.is-unfolding, set by Transcript for one beat, never on mount).
-   Thinking capsules retain their separate unroll choreography. */
-.task-flow-group-header {
-  /* The bead is the icon's circle; the unroll starts from exactly this disc. */
-  --capsule-bead-start: 0px;
-  --capsule-bead-end: 33px;
+/* A failed step says so in words as well as colour. */
+.task-flow-row.is-failed .task-flow-verb {
+  color: color-mix(in srgb, var(--semantic-danger-strong, #c7727c) 82%, #929aa6);
 }
 
-.task-flow-group .task-flow-row {
-  --capsule-bead-start: 16px;
-  --capsule-bead-end: 43px;
-  --capsule-glow: rgb(var(--loom-live-accent-strong));
+.task-flow-row > .task-flow-sheen {
+  display: none;
 }
 
-.task-flow-group-header {
-  --capsule-glow: rgb(var(--loom-live-accent-strong));
-}
-
-/* Outcome colours come from the shared semantic palette, so light and dark
-   themes inherit their own contrast. They belong to the live anchor only: that
-   is where a task settles. Opening a group later is not a verdict, so its rows
-   keep the accent light. */
-.turn-process.is-live .task-flow-group.is-running .task-flow-row.is-resting {
-  --capsule-glow: var(--semantic-success-strong, #70a186);
-}
-
-.turn-process.is-live .task-flow-group.is-running .task-flow-row.is-resting:has(.task-flow-status:is(.failed, .denied)) {
-  --capsule-glow: var(--semantic-danger-strong, #c7727c);
-}
-
-.turn-process.is-live .task-flow-group.is-running .task-flow-row.is-resting:has(.task-flow-status:is(.cancelled, .interrupted)) {
-  --capsule-glow: color-mix(in srgb, currentColor 70%, transparent);
-}
-
-.turn-process.is-live .task-flow-group.is-running .task-flow-group-header {
-  animation: loom-task-capsule-land 240ms var(--loom-motion-unroll) backwards,
-    loom-capsule-swell-header 420ms linear backwards;
-}
-
-.turn-process.is-live .task-flow-group.is-running .task-flow-group-header::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  z-index: 0;
-  border-radius: inherit;
-  pointer-events: none;
-  animation: loom-capsule-glow 440ms linear backwards;
-}
-
-.turn-process.is-live .task-flow-group.is-running .task-flow-group-icon {
-  animation: loom-task-icon-spring 560ms var(--loom-spring-pop) backwards;
-}
-
-.turn-process.is-live .task-flow-group.is-running .task-flow-group-icon::after {
-  /* The beacon lands after the bead, ending on loom-live-beacon's first frame
-     so the hand-off into the idle pulse is seamless. */
-  animation:
-    loom-live-beacon 1.9s ease-in-out 660ms infinite,
-    loom-task-beacon-in 360ms var(--loom-spring-pop) 300ms backwards;
-}
-
-/* Titles and verbs are keyed on their text, so 正在运行 -> 已运行 and a group
-   settling to 运行了命令 cross-fade instead of swapping in one frame. */
-.turn-process.is-live .task-flow-group-title,
-.turn-process.is-live .task-flow-group.is-running .task-flow-verb {
-  animation: loom-task-verb-in 280ms ease-out backwards;
-}
-
-.turn-process.is-live .task-flow-group.is-running .task-flow-row-wrap {
-  contain: layout style;
-  --capsule-lead: 0ms;
-  /* The row owns its entrance; never multiply its fade by a wrapper fade. */
-  animation: none !important;
-}
-
-/* The anchor leads by one beat: a group is born with its first row, which
-   follows the header capsule by 50ms. Rows appended later join an anchor that
-   already exists and start at once. Commands stay readable either way, since
-   the pending state already shows the smaller pill with its text. */
-.turn-process.is-live .task-flow-group.is-running .task-flow-row-wrap:first-child {
-  --capsule-lead: 50ms;
-}
-
-.turn-process.is-live .task-flow-group.is-running .task-flow-row {
-  animation: loom-task-capsule-land 320ms var(--loom-motion-unroll) var(--capsule-lead) backwards,
-    loom-capsule-swell 440ms linear var(--capsule-lead) backwards;
-}
-
-.turn-process.is-live .task-flow-group.is-running .task-flow-row::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  z-index: 0;
-  border-radius: inherit;
-  pointer-events: none;
-}
-
-/* Two names for the same light: a status flip swaps the animation name, which
-   is what restarts it, so a running row ignites in the accent colour and a
-   settling row confirms in its outcome colour. */
-.turn-process.is-live .task-flow-group.is-running .task-flow-row.is-active::before {
-  animation: loom-capsule-glow 460ms linear var(--capsule-lead) backwards;
-}
-
-.turn-process.is-live .task-flow-group.is-running .task-flow-row.is-resting::before {
-  animation: loom-capsule-confirm 520ms linear var(--capsule-lead) backwards;
-}
-
-.turn-process.is-live .task-flow-group.is-running .task-flow-chevron {
-  /* Only the from-frame is authored, so rows without detail keep their own
-     resting opacity (0) instead of flashing visible. */
-  animation: loom-task-chevron-in 300ms cubic-bezier(.2,.8,.2,1) calc(var(--capsule-lead) + 40ms) backwards;
-}
-
-.turn-process.is-live .task-flow-group.is-running .task-flow-row-icon {
-  /* The icon keeps the spring; it contains no text. */
-  animation: loom-task-icon-spring 560ms var(--loom-spring-pop) var(--capsule-lead) backwards;
-}
-
-.turn-process.is-live .task-flow-group.is-running .task-flow-row-main {
-  /* Text only fades. Sliding the glyph surface itself is what caused the
-     intermittent low-resolution look on Windows/HiDPI renderers. */
-  animation: none;
-}
-
-.turn-process.is-live .task-flow-group.is-running .task-flow-status {
-  position: relative;
-  /* The dot pops once the capsule has mostly inflated. */
-  animation: loom-task-status-in 240ms var(--loom-spring-pop) calc(var(--capsule-lead) + 90ms) backwards;
-}
-
-/* Completion: the dot settles with a spring tick and one expanding ring. The
-   status element survives the class change, so this fires on the transition
-   itself; history never matches because only the live anchor is .is-running. */
-.task-flow-status:is(.completed, .changed) {
-  --task-dot-ring: var(--semantic-success-strong, #70a186);
-}
-
-.task-flow-status:is(.failed, .denied) {
-  --task-dot-ring: var(--semantic-danger-strong, #c7727c);
-}
-
-.turn-process.is-live .task-flow-group.is-running .task-flow-status:is(.completed, .changed, .failed, .denied) .task-flow-status-dot {
-  animation: loom-task-dot-settle 520ms var(--loom-spring-pop) backwards;
-}
-
-.turn-process.is-live .task-flow-group.is-running .task-flow-status:is(.completed, .changed, .failed, .denied)::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  width: 5px;
-  height: 5px;
-  margin: auto;
-  border-radius: 50%;
-  pointer-events: none;
-  box-shadow: 0 0 0 1.25px var(--task-dot-ring);
-  opacity: 0;
-  animation: loom-task-dot-ring 640ms cubic-bezier(.2,.7,.25,1) backwards;
-}
-
-.turn-process.is-live .task-flow-list {
-  contain: layout;
-}
-
-/* One live beacon is enough. Stop every task row from independently pulsing. */
-.task-flow-status.running .task-flow-status-dot,
-.task-flow-status.started .task-flow-status-dot,
-.task-flow-status.streaming .task-flow-status-dot,
-.task-flow-status.streaming_arguments .task-flow-status-dot {
-  animation: none !important;
-  opacity: .92;
-  background: rgb(var(--loom-live-accent-strong));
-  box-shadow:
-    0 0 0 2px rgba(var(--loom-live-accent), .055),
-    0 0 7px rgba(var(--loom-live-accent), .18);
-}
-
-.task-flow-inline-detail-grid {
-  margin-left: 38px;
+.task-flow-inline-detail-grid,
+.task-flow-group .task-flow-inline-detail-grid {
+  margin-left: 27px;
   overflow-anchor: none;
   transition:
     grid-template-rows 260ms cubic-bezier(.22,.74,.18,1),
@@ -774,112 +418,210 @@
     opacity 180ms ease;
 }
 
-/* Completed process capsule folds with the same geometry as live task pills. */
-.turn-process.is-settled .turn-process-header {
-  border-radius: 999px;
-  min-height: 36px;
-  padding: 5px 12px 5px 10px;
-  box-shadow:
-    0 6px 18px rgba(0,0,0,.065),
-    inset 0 1px 0 rgba(255,255,255,.02);
-}
+@media (max-width: 760px) {
+  .task-flow-row,
+  .task-flow-group .task-flow-row {
+    grid-template-columns: 19px minmax(0, 1fr) 7px;
+  }
 
-.turn-process-grid {
-  transition:
-    grid-template-rows 320ms var(--loom-motion-settle),
-    opacity 220ms ease;
-}
-
-/* Thinking is a small live capsule, not a second banner. */
-.turn-block .inline-thinking,
-.turn-block .live-reasoning-trigger {
-  min-height: 31px;
-  padding: 3px 10px 3px 4px;
-  border: 1px solid rgba(139,124,246,.12);
-  border-radius: 999px;
-  background:
-    linear-gradient(180deg, rgba(139,124,246,.045), rgba(139,124,246,.018)),
-    rgba(17,18,24,.44);
-  box-shadow: inset 0 1px 0 rgba(255,255,255,.018);
-}
-
-/* Once real task activity exists, RunProgress + the task anchor already explain
-   what Loom is doing. Suppress the generic pending-thinking capsule so the live
-   hierarchy stays singular instead of stacking three status animations. */
-.turn-block:has(.task-flow-group.is-running) > .inline-thinking {
-  display: none;
-}
-
-/* The top run state becomes a quiet floating capsule. The task timeline keeps
-   the expressive motion; this remains the stable global status anchor. */
-.conversation-stage > .run-progress-frame.top {
-  display: flex;
-  align-items: center;
-  min-height: 38px;
-  padding: 0;
-  border-bottom: 1px solid rgba(255,255,255,.04);
-  background:
-    linear-gradient(180deg, rgba(18,19,24,.88), rgba(12,13,17,.80));
-  backdrop-filter: blur(10px);
-  box-shadow: inset 0 1px 0 rgba(255,255,255,.016);
-}
-
-.conversation-stage > .run-progress-frame.top .run-progress-inline {
-  width: 100%;
-  box-sizing: border-box;
-  min-height: 38px;
-  margin: 0;
-  padding: 3px 16px;
-  border: 0;
-  border-radius: 0;
-  background: transparent;
-  box-shadow: none;
-  animation: loom-run-pill-in 300ms var(--loom-motion-pop) both;
-}
-
-.conversation-stage > .run-progress-frame.top .run-progress-track {
-  display: none;
-}
-
-.conversation-stage > .run-progress-frame.top .run-progress-live-dot {
-  width: 6px;
-  height: 6px;
-  animation: none;
-  opacity: .9;
-  box-shadow: 0 0 0 3px rgba(139,124,246,.06), 0 0 9px rgba(139,124,246,.16);
-}
-
-.conversation-stage > .run-progress-frame.top .run-progress-phase {
-  animation: loom-phase-swap 220ms var(--loom-motion-pop) both;
-}
-
-/* Own the final strip geometry instead of inheriting competing theme/mobile
-   padding and min-height rules from run-progress.css. Equal padding is applied
-   around the actual content, so font scaling cannot consume the top inset. */
-:root .conversation-stage > .run-progress-frame.top {
-  display: flex;
-  align-items: center;
-  padding: 0;
-  min-height: 44px;
-}
-
-:root .conversation-stage > .run-progress-frame.top .run-progress-inline {
-  box-sizing: border-box;
-  min-height: 44px;
-  padding: 10px 16px;
-  align-items: center;
-}
-
-@media (max-width: 900px) {
-  :root .conversation-stage > .run-progress-frame.top .run-progress-inline {
-    padding: 8px 14px;
+  .task-flow-inline-detail-grid,
+  .task-flow-group .task-flow-inline-detail-grid {
+    margin-left: 25px;
   }
 }
 
+/* Task flow: live state -----------------------------------------------------
+   While a step executes, its verb carries the same soft light as the thinking
+   label (one hue brightening and fading, painted through the text itself), and
+   its status dot breathes. Nothing else on the row moves. */
+.task-flow-row.is-executing .task-flow-verb {
+  --shimmer-base: #8e96a2;
+  --shimmer-peak: #e6e3f8;
+  color: var(--shimmer-base);
+  background-image: linear-gradient(
+    100deg,
+    var(--shimmer-base) 0%,
+    var(--shimmer-base) 35%,
+    color-mix(in srgb, var(--shimmer-peak) 50%, var(--shimmer-base)) 42.5%,
+    var(--shimmer-peak) 50%,
+    color-mix(in srgb, var(--shimmer-peak) 50%, var(--shimmer-base)) 57.5%,
+    var(--shimmer-base) 65%,
+    var(--shimmer-base) 100%
+  );
+  background-size: 300% 100%;
+  background-repeat: no-repeat;
+  background-position: 98% 0;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: thinking-text-shimmer 2.2s cubic-bezier(.33,.1,.67,.9) infinite;
+}
+
+.task-flow-status.running .task-flow-status-dot,
+.task-flow-status.started .task-flow-status-dot,
+.task-flow-status.streaming .task-flow-status-dot,
+.task-flow-status.streaming_arguments .task-flow-status-dot {
+  opacity: .92;
+  background: rgb(var(--loom-live-accent-strong));
+  box-shadow:
+    0 0 0 2px rgba(var(--loom-live-accent), .055),
+    0 0 7px rgba(var(--loom-live-accent), .18);
+  animation: loom-task-dot-breathe 1.8s ease-in-out infinite;
+}
+
+/* The running group carries one beacon on its icon, only while one of its
+   steps actually executes (not in the quiet gap between steps). */
+.task-flow-group.is-running:not(.is-between-steps) .task-flow-group-icon {
+  color: #aaa1ef;
+}
+
+.task-flow-group.is-running:not(.is-between-steps) .task-flow-group-icon::after {
+  content: "";
+  position: absolute;
+  z-index: 2;
+  right: -2px;
+  bottom: -2px;
+  width: 5px;
+  height: 5px;
+  border: 2px solid var(--ws-canvas, #111318);
+  border-radius: 999px;
+  background: rgb(var(--loom-live-accent-strong));
+  box-shadow: 0 0 6px rgba(var(--loom-live-accent), .28);
+  animation:
+    loom-task-beacon-in 360ms var(--loom-spring-pop) backwards,
+    loom-live-beacon 1.9s ease-in-out 360ms infinite;
+}
+
+/* Task flow: births ---------------------------------------------------------
+   A group is born with its first row. The icon bead springs (it carries no
+   text); copy only fades, so glyphs never leave their native raster. The row
+   follows the header by one beat; rows appended later start at once. */
+.task-flow-group[data-born="live"] > .task-flow-group-header .task-flow-group-icon {
+  animation: loom-task-icon-spring 520ms var(--loom-spring-pop) backwards;
+}
+
+/* Titles are keyed on their text, so a tense change (正在运行命令 ->
+   运行了命令) cross-fades with the same rule that brings the title in. */
+.task-flow-group[data-born="live"] .task-flow-group-title {
+  animation: loom-task-verb-in 280ms ease-out 40ms backwards;
+}
+
+.task-flow-group[data-born="live"] > .task-flow-group-header .task-flow-group-chevron {
+  animation: loom-task-chevron-in 300ms cubic-bezier(.2,.8,.2,1) 120ms backwards;
+}
+
+.task-flow-group[data-born="live"] .task-flow-row-wrap:first-child {
+  --row-lead: 70ms;
+}
+
+.task-flow-row-wrap[data-born="live"] > .task-flow-row .task-flow-row-icon {
+  animation: loom-task-icon-spring 520ms var(--loom-spring-pop) var(--row-lead, 0ms) backwards;
+}
+
+.task-flow-row-wrap[data-born="live"] > .task-flow-row .task-flow-primary,
+.task-flow-row-wrap[data-born="live"] > .task-flow-row .task-flow-diffstat {
+  animation: loom-task-copy-in 260ms ease-out calc(var(--row-lead, 0ms) + 60ms) backwards;
+}
+
+/* Verbs are keyed on their text too: birth and every tense change share one
+   cross-fade. An executing verb keeps its light running underneath. */
+.task-flow-row-wrap[data-born="live"] .task-flow-verb {
+  animation: loom-task-verb-in 260ms ease-out calc(var(--row-lead, 0ms) + 40ms) backwards;
+}
+
+.task-flow-row-wrap[data-born="live"] > .task-flow-row.is-executing .task-flow-verb {
+  animation:
+    loom-task-verb-in 260ms ease-out calc(var(--row-lead, 0ms) + 40ms) backwards,
+    thinking-text-shimmer 2.2s cubic-bezier(.33,.1,.67,.9) infinite;
+}
+
+.task-flow-row-wrap[data-born="live"] > .task-flow-row .task-flow-status {
+  position: relative;
+  animation: loom-task-status-in 260ms var(--loom-spring-pop) calc(var(--row-lead, 0ms) + 110ms) backwards;
+}
+
+/* Task flow: settling -------------------------------------------------------
+   A step that finishes while the user watches confirms once: the dot ticks
+   on a spring and sends out a single ring in the outcome colour. */
+.task-flow-status:is(.completed, .changed) {
+  --task-dot-ring: var(--semantic-success-strong, #70a186);
+}
+
+.task-flow-status:is(.failed, .denied) {
+  --task-dot-ring: var(--semantic-danger-strong, #c7727c);
+}
+
+.task-flow-status:is(.cancelled, .interrupted, .not_executed) {
+  --task-dot-ring: color-mix(in srgb, currentColor 60%, transparent);
+}
+
+.task-flow-row-wrap[data-settled] .task-flow-status {
+  position: relative;
+}
+
+.task-flow-row-wrap[data-settled] .task-flow-status-dot {
+  animation: loom-task-dot-settle 520ms var(--loom-spring-pop) backwards;
+}
+
+.task-flow-row-wrap[data-settled] .task-flow-status::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  width: 5px;
+  height: 5px;
+  margin: auto;
+  border-radius: 50%;
+  pointer-events: none;
+  box-shadow: 0 0 0 1.25px var(--task-dot-ring);
+  opacity: 0;
+  animation: loom-task-dot-ring 640ms cubic-bezier(.2,.7,.25,1) backwards;
+}
+
+/* Unfold: opening a group lets its rows arrive one after another, 35ms apart.
+   Transcript sets .is-unfolding for a single beat after the user's click, so
+   remounted history never replays it. Opacity only. */
+.task-flow-group.is-unfolding .task-flow-row-wrap:nth-child(1) { --fold-lead: 20ms; }
+.task-flow-group.is-unfolding .task-flow-row-wrap:nth-child(2) { --fold-lead: 55ms; }
+.task-flow-group.is-unfolding .task-flow-row-wrap:nth-child(3) { --fold-lead: 90ms; }
+.task-flow-group.is-unfolding .task-flow-row-wrap:nth-child(4) { --fold-lead: 125ms; }
+.task-flow-group.is-unfolding .task-flow-row-wrap:nth-child(5) { --fold-lead: 160ms; }
+.task-flow-group.is-unfolding .task-flow-row-wrap:nth-child(n + 6) { --fold-lead: 195ms; }
+
+.task-flow-group.is-unfolding .task-flow-row {
+  animation: loom-task-copy-in 240ms ease-out var(--fold-lead, 0ms) backwards;
+}
+
+/* Lens: a soft pointer light inside expandable rows. taskCapsuleLens.ts
+   writes --lens-x/--lens-y (px, row-relative) while the pointer moves; with no
+   pointer data the light rests near the icon. It fades in and out and never
+   moves anything but its own gradient. */
+.task-flow-group .task-flow-row.is-expandable::after,
+.task-flow-group-header::after {
+  content: "";
+  display: block;
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background: radial-gradient(
+    160px 46px at var(--lens-x, 34px) var(--lens-y, 50%),
+    rgba(var(--loom-live-accent), .12),
+    rgba(var(--loom-live-accent), .04) 55%,
+    transparent 100%
+  );
+  opacity: 0;
+  transition: opacity 220ms ease;
+}
+
+.task-flow-group .task-flow-row.is-expandable:hover::after,
+.task-flow-group-header:hover::after {
+  opacity: 1;
+}
 
 /* Content-edge fade ---------------------------------------------------------
    Anchor paint-only overlays to the transcript grid row so the live strip can
-   grow without covering status text. Opaque endpoints hide clipped content in
+   float without covering status text. Opaque endpoints hide clipped content in
    both themes; pointer events and scroll geometry remain untouched. */
 .conversation-stage:has(.transcript-entry)::before,
 .conversation-stage:has(.transcript-entry)::after {
@@ -912,138 +654,58 @@
   transform: scaleY(-1);
 }
 
-/* Join the status strip to the dissolve without a horizontal rule or shadow. */
-:root .conversation-stage > .run-progress-frame.top {
-  border-bottom: 0;
-  background: transparent;
-  box-shadow: none;
-  backdrop-filter: none;
+/* Light theme ---------------------------------------------------------------- */
+html[data-loom-theme="light"] .task-flow-group-header:hover {
+  background: rgba(28,31,37,.026);
 }
 
-/* Light theme keeps exactly the same motion hierarchy. */
-html[data-loom-theme="light"] .conversation-stage,
-html[data-loom-theme="light"] .transcript {
-  --loom-pill-border: rgba(31,35,42,.075);
-  --loom-pill-border-live: rgba(105,90,216,.15);
-  --loom-pill-bg: rgba(255,255,255,.60);
-  --loom-pill-bg-live: rgba(245,243,255,.82);
-  --loom-pill-shadow: 0 7px 18px rgba(38,34,60,.055), inset 0 1px 0 rgba(255,255,255,.72);
+html[data-loom-theme="light"] .task-flow-group-icon {
+  color: #66707b;
+  border-color: rgba(28,31,37,.075);
+  background: rgba(28,31,37,.025);
+  box-shadow: inset 0 1px rgba(255,255,255,.72);
 }
 
-html[data-loom-theme="light"] .conversation-stage,
-html[data-loom-theme="light"] .transcript {
-  --loom-live-accent: 96, 84, 194;
-  --loom-live-accent-strong: 112, 100, 210;
-  --loom-live-core: 255, 255, 255;
+html[data-loom-theme="light"] .task-flow-group.is-running:not(.is-between-steps) .task-flow-group-icon {
+  color: #5b4fc4;
 }
 
-html[data-loom-theme="light"] .task-flow-group.is-running .task-flow-group-header {
-  border-color: rgba(var(--loom-live-accent), .13);
-  background:
-    radial-gradient(circle at 18px 50%, rgba(var(--loom-live-accent), .052), transparent 48px),
-    linear-gradient(180deg, rgba(255,255,255,.96), rgba(250,249,255,.90));
-  box-shadow:
-    0 7px 20px rgba(48,42,76,.05),
-    0 0 0 1px rgba(var(--loom-live-accent), .011),
-    inset 0 1px rgba(255,255,255,.94);
+html[data-loom-theme="light"] .task-flow-group-title {
+  color: #4b535e;
 }
 
-html[data-loom-theme="light"] .task-flow-group.is-between-steps .task-flow-group-header {
-  border-color: rgba(var(--loom-live-accent), .10);
-  background:
-    radial-gradient(circle at 18px 50%, rgba(var(--loom-live-accent), .036), transparent 50px),
-    linear-gradient(180deg, rgba(255,255,255,.93), rgba(249,249,252,.82));
-  box-shadow:
-    0 5px 15px rgba(43,38,66,.035),
-    inset 0 1px rgba(255,255,255,.92);
+html[data-loom-theme="light"] .task-flow-group .task-flow-row {
+  color: #626b76;
 }
 
-html[data-loom-theme="light"] .task-flow-between-sheen > i {
-  background: linear-gradient(
-    102deg,
-    transparent 0%,
-    rgba(var(--loom-live-accent), .006) 20%,
-    rgba(var(--loom-live-accent), .020) 40%,
-    rgba(var(--loom-live-accent), .046) 50%,
-    rgba(255,255,255,.34) 56%,
-    rgba(var(--loom-live-accent), .012) 72%,
-    transparent 100%
-  );
+html[data-loom-theme="light"] .task-flow-group .task-flow-row.is-expandable:hover {
+  border-color: rgba(105,90,216,.12);
+  background: rgba(105,90,216,.032);
 }
 
-html[data-loom-theme="light"] .task-flow-between-label {
-  color: rgba(var(--loom-live-accent-strong), .72);
+html[data-loom-theme="light"] .task-flow-group .task-flow-row-icon {
+  color: #6d7580;
+  border-color: rgba(28,31,37,.065);
+  background: rgba(28,31,37,.025);
+  box-shadow: inset 0 1px rgba(255,255,255,.76);
 }
 
-html[data-loom-theme="light"] .task-flow-group.is-running .task-flow-group-icon::before {
-  background: radial-gradient(
-    circle,
-    rgba(var(--loom-live-accent), .075) 0%,
-    rgba(var(--loom-live-accent), .030) 36%,
-    transparent 72%
-  );
+html[data-loom-theme="light"] .task-flow-group .task-flow-verb {
+  color: #68717c;
 }
 
-html[data-loom-theme="light"] .task-flow-group.is-running .task-flow-group-icon::after {
-  border-color: #f7f6fb;
-  background: rgb(var(--loom-live-accent-strong));
-  box-shadow:
-    0 0 0 2px rgba(var(--loom-live-accent), .032),
-    0 0 7px rgba(var(--loom-live-accent), .12);
+html[data-loom-theme="light"] .task-flow-row.is-executing .task-flow-verb {
+  --shimmer-base: #6f7884;
+  --shimmer-peak: #4f47b0;
 }
 
-html[data-loom-theme="light"] .task-flow-row {
-  border-color: rgba(31,35,42,.055);
-  background: rgba(255,255,255,.50);
-  box-shadow: inset 0 1px rgba(255,255,255,.82);
+html[data-loom-theme="light"] .task-flow-group .task-flow-primary,
+html[data-loom-theme="light"] .task-flow-group .task-flow-primary.code {
+  color: #4e5762;
 }
 
-html[data-loom-theme="light"] .task-flow-row.is-active {
-  border-color: rgba(var(--loom-live-accent), .11);
-  background:
-    linear-gradient(
-      90deg,
-      rgba(var(--loom-live-accent), .048),
-      rgba(var(--loom-live-accent), .015) 52%,
-      transparent 86%
-    ),
-    rgba(255,255,255,.80);
-  box-shadow: 0 5px 14px rgba(43,38,66,.04), inset 0 1px rgba(255,255,255,.9);
-}
-
-html[data-loom-theme="light"] .task-flow-row.is-executing {
-  border-color: rgba(var(--loom-live-accent), .145);
-  background:
-    linear-gradient(
-      90deg,
-      rgba(var(--loom-live-accent), .060),
-      rgba(var(--loom-live-accent), .020) 48%,
-      transparent 84%
-    ),
-    rgba(255,255,255,.86);
-  box-shadow:
-    0 6px 17px rgba(43,38,66,.045),
-    inset 1px 0 0 rgba(var(--loom-live-accent), .038),
-    inset 0 1px rgba(255,255,255,.94);
-}
-
-html[data-loom-theme="light"] .task-flow-sheen > i {
-  /* White cannot read against the light pill's own inner highlight, so both
-     rim glints are accent-tinted here. */
-  background:
-    linear-gradient(90deg, transparent 4%, rgba(var(--loom-live-accent-strong), .40) 50%, transparent 96%) 0 1px / 100% 1px no-repeat,
-    linear-gradient(90deg, transparent 4%, rgba(var(--loom-live-accent-strong), .34) 52%, transparent 96%) 0 calc(100% - 1px) / 100% 1px no-repeat,
-    linear-gradient(
-      102deg,
-      transparent 0%,
-      rgba(var(--loom-live-accent), .018) 18%,
-      rgba(var(--loom-live-accent), .065) 35%,
-      rgba(var(--loom-live-accent), .14) 47%,
-      rgba(255,255,255,.65) 53%,
-      rgba(var(--loom-live-accent), .09) 61%,
-      rgba(var(--loom-live-accent), .025) 73%,
-      transparent 100%
-    );
+html[data-loom-theme="light"] .task-flow-row.is-failed .task-flow-verb {
+  color: color-mix(in srgb, var(--semantic-danger-strong, #b4505c) 85%, #68717c);
 }
 
 html[data-loom-theme="light"] .task-flow-live-detail {
@@ -1053,78 +715,26 @@ html[data-loom-theme="light"] .task-flow-live-detail {
   box-shadow: inset 0 1px rgba(255,255,255,.9);
 }
 
-html[data-loom-theme="light"] .turn-block .inline-thinking,
-html[data-loom-theme="light"] .turn-block .live-reasoning-trigger {
-  border-color: rgba(105,90,216,.12);
-  background: linear-gradient(180deg, rgba(255,255,255,.9), rgba(246,244,255,.74));
-  box-shadow: 0 5px 14px rgba(43,38,66,.04), inset 0 1px rgba(255,255,255,.9);
+html[data-loom-theme="light"] .task-flow-group .task-flow-row.is-expandable::after,
+html[data-loom-theme="light"] .task-flow-group-header::after {
+  background: radial-gradient(
+    170px 46px at var(--lens-x, 34px) var(--lens-y, 50%),
+    rgba(var(--loom-live-accent), .09),
+    rgba(var(--loom-live-accent), .03) 55%,
+    transparent 100%
+  );
 }
 
-html[data-loom-theme="light"] .conversation-stage > .run-progress-frame.top {
-  border-bottom: 0;
-  background: var(--bg);
-  box-shadow: none;
-}
-
-html[data-loom-theme="light"] .conversation-stage > .run-progress-frame.top .run-progress-inline {
-  border: 0;
-  background: transparent;
-  box-shadow: none;
-}
-
-
-
-
+/* Keyframes ------------------------------------------------------------------ */
 @keyframes loom-live-message-in {
   0% { opacity: 0; transform: translate3d(0, 7px, 0) scale(.992); }
   72% { opacity: 1; transform: translate3d(0, -1px, 0) scale(1.001); }
   100% { opacity: 1; transform: translate3d(0, 0, 0) scale(1); }
 }
 
-@keyframes loom-user-pill-land {
-  0% { opacity: .2; transform: translate3d(5px, 6px, 0) scale(.97); }
-  72% { opacity: 1; transform: translate3d(-1px, -1px, 0) scale(1.002); }
-  100% { opacity: 1; transform: translate3d(0, 0, 0) scale(1); }
-}
-
-@keyframes loom-final-answer-land {
-  0% { opacity: .62; transform: translate3d(0, 6px, 0) scale(.995); }
-  68% { opacity: 1; transform: translate3d(0, -1px, 0) scale(1); }
-  100% { opacity: 1; transform: translate3d(0, 0, 0) scale(1); }
-}
-
-@keyframes loom-process-handoff-in {
-  from { opacity: .28; transform: translate3d(0, -2px, 0) scale(.985); }
-  to { opacity: 1; transform: translate3d(0, 0, 0) scale(1); }
-}
-
 @keyframes loom-content-surface-in {
   from { opacity: .38; transform: translate3d(0, 4px, 0) scale(.985); }
   to { opacity: 1; transform: translate3d(0, 0, 0) scale(1); }
-}
-
-/* Two beats per segment-eased keyframe: the shell swells from the bead's
-   centre into a disc, then that disc stretches into the full capsule. */
-@keyframes loom-capsule-unroll {
-  0% {
-    clip-path: inset(50% calc(100% - (var(--capsule-bead-start, 0px) + var(--capsule-bead-end, 32px)) / 2) 50% calc((var(--capsule-bead-start, 0px) + var(--capsule-bead-end, 32px)) / 2) round 999px);
-  }
-  18% {
-    clip-path: inset(0 calc(100% - var(--capsule-bead-end, 32px)) 0 var(--capsule-bead-start, 0px) round 999px);
-  }
-  82% {
-    clip-path: inset(0 0 0 0 round 999px);
-  }
-  100% {
-    /* Grow past the border box so the capsule's own drop shadow is revealed
-       before the clip is released, instead of snapping in on the last frame. */
-    clip-path: inset(-32px -32px -32px -32px round 999px);
-  }
-}
-
-@keyframes loom-task-row-enter {
-  from { opacity: 0; }
-  to { opacity: 1; }
 }
 
 /* Individual transform properties, so no base transform is ever clobbered.
@@ -1160,6 +770,11 @@ html[data-loom-theme="light"] .conversation-stage > .run-progress-frame.top .run
   to { opacity: 1; }
 }
 
+@keyframes loom-count-tick {
+  from { opacity: .3; }
+  to { opacity: 1; }
+}
+
 @keyframes loom-task-dot-settle {
   from { scale: 1.8; }
   to { scale: 1; }
@@ -1170,6 +785,11 @@ html[data-loom-theme="light"] .conversation-stage > .run-progress-frame.top .run
   to { opacity: 0; scale: 3.6; }
 }
 
+@keyframes loom-task-dot-breathe {
+  0%, 100% { opacity: .62; scale: .88; }
+  50% { opacity: 1; scale: 1.08; }
+}
+
 /* Ends exactly where loom-live-beacon begins (opacity .58, scale .91).
    Keep the entrance landing frame identical to the pulse's idle frame so the
    compositor hand-off never introduces a one-frame size tick. */
@@ -1178,50 +798,10 @@ html[data-loom-theme="light"] .conversation-stage > .run-progress-frame.top .run
   to { opacity: .58; scale: .91; }
 }
 
-@keyframes loom-task-running-sheen {
-  0% {
-    opacity: 0;
-    transform: translate3d(0,0,0) skewX(-9deg);
-  }
-  8% { opacity: .7; }
-  24% { opacity: .9; }
-  44% {
-    opacity: .6;
-    transform: translate3d(450%,0,0) skewX(-9deg);
-  }
-  48%, 100% {
-    opacity: 0;
-    transform: translate3d(450%,0,0) skewX(-9deg);
-  }
-}
-
-@keyframes loom-task-between-sheen {
-  0%, 6% {
-    opacity: 0;
-    transform: translate3d(0,0,0) skewX(-9deg);
-  }
-  12% { opacity: .10; }
-  24% { opacity: .46; }
-  42% {
-    opacity: .24;
-    transform: translate3d(520%,0,0) skewX(-9deg);
-  }
-  50%, 100% {
-    opacity: 0;
-    transform: translate3d(520%,0,0) skewX(-9deg);
-  }
-}
-
-@keyframes loom-task-between-dot {
-  0%, 100% { opacity: .48; scale: .88; }
-  48% { opacity: .92; scale: 1.06; }
-  72% { opacity: .68; scale: .98; }
-}
-
-@keyframes loom-live-anchor-aura {
-  0%, 100% { opacity: .24; scale: .80; }
-  48% { opacity: .44; scale: 1.02; }
-  72% { opacity: .34; scale: .95; }
+@keyframes loom-live-beacon {
+  0%, 100% { opacity: .58; transform: scale(.91); }
+  44% { opacity: .90; transform: scale(1.045); }
+  70% { opacity: .74; transform: scale(.98); }
 }
 
 @keyframes loom-live-detail-breathe {
@@ -1230,35 +810,16 @@ html[data-loom-theme="light"] .conversation-stage > .run-progress-frame.top .run
   68% { opacity: .58; transform: scaleX(.82); }
 }
 
-@keyframes loom-run-pill-in {
-  from { opacity: 0; transform: translate3d(0, -4px, 0) scale(.985); }
-  to { opacity: 1; transform: translate3d(0, 0, 0) scale(1); }
+/* The chevron unfurls from the left. `translate` is an individual property,
+   so the open-state rotation on transform is never clobbered. */
+@keyframes loom-task-chevron-in {
+  from { opacity: 0; translate: -4px 0; }
 }
 
-@keyframes loom-phase-swap {
-  from { opacity: .28; transform: translate3d(0, 2px, 0); }
-  to { opacity: 1; transform: translate3d(0, 0, 0); }
-}
-
-@keyframes loom-live-beacon {
-  0%, 100% { opacity: .58; transform: scale(.91); }
-  44% { opacity: .90; transform: scale(1.045); }
-  70% { opacity: .74; transform: scale(.98); }
-}
-
-@media (max-width: 900px) {
-  .conversation-stage > .run-progress-frame.top .run-progress-inline {
-    padding-inline: 14px;
-  }
-}
-
+/* Reduced motion -------------------------------------------------------------- */
 @media (prefers-reduced-motion: reduce) {
-  .turn-block.is-active > .transcript-entry,
   .turn-process.is-live .transcript-entry,
-  .turn-block.is-active .user-message,
-  .turn-process.is-live .entry-steering-user .user-message,
   .turn-final-answer,
-  .turn-block.is-settling .turn-process.is-settled.is-open .turn-process-header,
   .turn-block.is-active .user-link-card,
   .turn-block.is-active .user-rich-code-block,
   .turn-block.is-active .user-message-image-preview,
@@ -1268,468 +829,61 @@ html[data-loom-theme="light"] .conversation-stage > .run-progress-frame.top .run
   .markdown-body.is-receiving .assistant-local-image-preview,
   .markdown-body.is-receiving > table,
   .markdown-body.is-receiving > blockquote,
-  .turn-process.is-live .task-flow-group.is-running .task-flow-group-header,
-  .turn-process.is-live .task-flow-group.is-running .task-flow-group-icon,
-  .turn-process.is-live .task-flow-group-title,
-  .turn-process.is-live .task-flow-group.is-running .task-flow-verb,
-  .turn-process.is-live .task-flow-group.is-running .task-flow-row-wrap,
-  .turn-process.is-live .task-flow-group.is-running .task-flow-row,
-  .turn-process.is-live .task-flow-row-icon,
-  .turn-process.is-live .task-flow-row-main,
-  .turn-process.is-live .task-flow-status,
-  .turn-process.is-live .task-flow-status::after,
-  .turn-process.is-live .task-flow-status-dot,
-  .turn-process.is-live .task-flow-group.is-running .task-flow-group-header::before,
-  .turn-process.is-live .task-flow-group.is-running .task-flow-row::before,
-  .turn-process.is-live .task-flow-group.is-running .task-flow-chevron,
+  .task-flow-group[data-born="live"] > .task-flow-group-header .task-flow-group-icon,
+  .task-flow-group[data-born="live"] .task-flow-group-title,
+  .task-flow-group[data-born="live"] > .task-flow-group-header .task-flow-group-chevron,
+  .task-flow-row-wrap[data-born="live"] > .task-flow-row .task-flow-row-icon,
+  .task-flow-row-wrap[data-born="live"] > .task-flow-row .task-flow-primary,
+  .task-flow-row-wrap[data-born="live"] > .task-flow-row .task-flow-diffstat,
+  .task-flow-row-wrap[data-born="live"] .task-flow-verb,
+  .task-flow-row-wrap[data-born="live"] > .task-flow-row.is-executing .task-flow-verb,
+  .task-flow-row-wrap[data-born="live"] > .task-flow-row .task-flow-status,
+  .task-flow-row-wrap[data-settled] .task-flow-status-dot,
+  .task-flow-row-wrap[data-settled] .task-flow-status::after,
   .task-flow-group.is-unfolding .task-flow-row,
-  .task-flow-group.is-unfolding .task-flow-row::before,
-  .task-flow-group.is-unfolding .task-flow-row-icon,
-  .task-flow-sheen > i,
+  .task-flow-row.is-executing .task-flow-verb,
+  .task-flow-status .task-flow-status-dot,
   .task-flow-live-detail-glow,
-  .task-flow-between-sheen > i,
-  .task-flow-between-label > i,
-  .task-flow-group.is-running .task-flow-group-icon::before,
-  .task-flow-group.is-running .task-flow-group-icon::after,
-  .conversation-stage > .run-progress-frame.top .run-progress-inline,
-  .conversation-stage > .run-progress-frame.top .run-progress-live-dot,
-  .conversation-stage > .run-progress-frame.top .run-progress-phase {
+  .task-flow-group.is-running .task-flow-group-icon::after {
     animation: none !important;
   }
-}
 
-:root[data-loom-reduced-motion="true"] .turn-block.is-active > .transcript-entry,
-:root[data-loom-reduced-motion="true"] .turn-process.is-live .transcript-entry,
-:root[data-loom-reduced-motion="true"] .turn-block.is-active .user-message,
-:root[data-loom-reduced-motion="true"] .turn-process.is-live .entry-steering-user .user-message,
-:root[data-loom-reduced-motion="true"] .turn-final-answer,
-:root[data-loom-reduced-motion="true"] .turn-process.is-live .task-flow-group.is-running .task-flow-group-header,
-:root[data-loom-reduced-motion="true"] .turn-process.is-live .task-flow-group.is-running .task-flow-group-icon,
-:root[data-loom-reduced-motion="true"] .turn-process.is-live .task-flow-group-title,
-:root[data-loom-reduced-motion="true"] .turn-process.is-live .task-flow-group.is-running .task-flow-verb,
-:root[data-loom-reduced-motion="true"] .turn-process.is-live .task-flow-group.is-running .task-flow-row-wrap,
-:root[data-loom-reduced-motion="true"] .turn-process.is-live .task-flow-group.is-running .task-flow-row,
-:root[data-loom-reduced-motion="true"] .turn-process.is-live .task-flow-row-icon,
-:root[data-loom-reduced-motion="true"] .turn-process.is-live .task-flow-row-main,
-:root[data-loom-reduced-motion="true"] .turn-process.is-live .task-flow-status,
-:root[data-loom-reduced-motion="true"] .turn-process.is-live .task-flow-status::after,
-:root[data-loom-reduced-motion="true"] .turn-process.is-live .task-flow-status-dot,
-:root[data-loom-reduced-motion="true"] .turn-process.is-live .task-flow-group.is-running .task-flow-group-header::before,
-:root[data-loom-reduced-motion="true"] .turn-process.is-live .task-flow-group.is-running .task-flow-row::before,
-:root[data-loom-reduced-motion="true"] .turn-process.is-live .task-flow-group.is-running .task-flow-chevron,
-:root[data-loom-reduced-motion="true"] .task-flow-group.is-unfolding .task-flow-row,
-:root[data-loom-reduced-motion="true"] .task-flow-group.is-unfolding .task-flow-row::before,
-:root[data-loom-reduced-motion="true"] .task-flow-group.is-unfolding .task-flow-row-icon,
-:root[data-loom-reduced-motion="true"] .task-flow-sheen > i,
-:root[data-loom-reduced-motion="true"] .task-flow-live-detail-glow,
-:root[data-loom-reduced-motion="true"] .task-flow-between-sheen > i,
-:root[data-loom-reduced-motion="true"] .task-flow-between-label > i,
-:root[data-loom-reduced-motion="true"] .task-flow-group.is-running .task-flow-group-icon::before,
-:root[data-loom-reduced-motion="true"] .task-flow-group.is-running .task-flow-group-icon::after,
-:root[data-loom-reduced-motion="true"] .conversation-stage > .run-progress-frame.top .run-progress-inline,
-:root[data-loom-reduced-motion="true"] .conversation-stage > .run-progress-frame.top .run-progress-live-dot,
-:root[data-loom-reduced-motion="true"] .conversation-stage > .run-progress-frame.top .run-progress-phase {
-  animation: none !important;
-}
-
-/* Keep the full row readable from its first frame. A bead-sized clip hid
-   commands for hundreds of milliseconds and looked like broken layout. */
-@keyframes loom-task-capsule-land {
-  from { opacity: .84; }
-  to { opacity: 1; }
-}
-
-/* Capsule inflate. Text is never scaled: the visible pill is a rounded clip
-   that grows from 94% width / 8px shorter to its full box, then opens past it
-   (-26px) so the capsule's own drop shadow is revealed before the clip is
-   released instead of snapping in on the last frame. Every segment is eased
-   per keyframe, hence the linear() on the animation itself. */
-@keyframes loom-capsule-swell {
-  0% {
-    clip-path: inset(4px 6% 4px 6% round 999px);
-    animation-timing-function: cubic-bezier(.2,.85,.25,1);
-  }
-  58% {
-    clip-path: inset(0 0 0 0 round 999px);
-    animation-timing-function: ease-out;
-  }
-  100% {
-    clip-path: inset(-26px -26px -26px -26px round 999px);
-  }
-}
-
-/* The header hugs its content, so its inflate is measured in pixels. */
-@keyframes loom-capsule-swell-header {
-  0% {
-    clip-path: inset(4px 8px 4px 8px round 999px);
-    animation-timing-function: cubic-bezier(.2,.85,.25,1);
-  }
-  58% {
-    clip-path: inset(0 0 0 0 round 999px);
-    animation-timing-function: ease-out;
-  }
-  100% {
-    clip-path: inset(-26px -26px -26px -26px round 999px);
-  }
-}
-
-/* Body lit from inside. The inset tracks the clip above (same stops, same
-   clock), so the glow edge rides the growing capsule; the falloff is a soft
-   inner shadow, not a line. Only paint properties: no transform, no opacity,
-   no filter, therefore no compositor layer over the text. */
-@keyframes loom-capsule-glow {
-  0% {
-    inset: 4px 6%;
-    box-shadow:
-      inset 0 0 0 1px color-mix(in srgb, var(--capsule-glow) 0%, transparent),
-      inset 0 0 0 0 color-mix(in srgb, var(--capsule-glow) 0%, transparent);
-    animation-timing-function: cubic-bezier(.2,.85,.25,1);
-  }
-  18% {
-    box-shadow:
-      inset 0 0 0 1px color-mix(in srgb, var(--capsule-glow) 24%, transparent),
-      inset 0 0 15px 1px color-mix(in srgb, var(--capsule-glow) 30%, transparent);
-  }
-  58% {
-    inset: 0;
-    box-shadow:
-      inset 0 0 0 1px color-mix(in srgb, var(--capsule-glow) 14%, transparent),
-      inset 0 0 14px 0 color-mix(in srgb, var(--capsule-glow) 15%, transparent);
-    animation-timing-function: ease-out;
-  }
-  100% {
-    inset: 0;
-    box-shadow:
-      inset 0 0 0 1px color-mix(in srgb, var(--capsule-glow) 0%, transparent),
-      inset 0 0 12px 0 color-mix(in srgb, var(--capsule-glow) 0%, transparent);
-  }
-}
-
-/* The same light under another name, slightly brighter and starting nearer
-   the edge: a pill that is already full size answers a status change with a
-   pulse that travels out to its rim. */
-@keyframes loom-capsule-confirm {
-  0% {
-    inset: 4px 3%;
-    box-shadow:
-      inset 0 0 0 1px color-mix(in srgb, var(--capsule-glow) 0%, transparent),
-      inset 0 0 0 0 color-mix(in srgb, var(--capsule-glow) 0%, transparent);
-    animation-timing-function: cubic-bezier(.2,.85,.25,1);
-  }
-  20% {
-    box-shadow:
-      inset 0 0 0 1px color-mix(in srgb, var(--capsule-glow) 34%, transparent),
-      inset 0 0 15px 1px color-mix(in srgb, var(--capsule-glow) 30%, transparent);
-  }
-  58% {
-    inset: 0;
-    box-shadow:
-      inset 0 0 0 1px color-mix(in srgb, var(--capsule-glow) 18%, transparent),
-      inset 0 0 14px 0 color-mix(in srgb, var(--capsule-glow) 15%, transparent);
-    animation-timing-function: ease-out;
-  }
-  100% {
-    inset: 0;
-    box-shadow:
-      inset 0 0 0 1px color-mix(in srgb, var(--capsule-glow) 0%, transparent),
-      inset 0 0 12px 0 color-mix(in srgb, var(--capsule-glow) 0%, transparent);
-  }
-}
-
-/* The chevron unfurls from the left. `translate` is an individual property,
-   so the open-state rotation on transform is never clobbered. */
-@keyframes loom-task-chevron-in {
-  from { opacity: 0; translate: -4px 0; }
-}
-
-/* Unfold: opening a group pops its rows out one after another. Transcript sets
-   .is-unfolding for a single beat after the user's click, so remounted history
-   never replays it. Softer than a live birth: the rows cascade 40ms apart and
-   the beads spring. */
-.task-flow-group.is-unfolding .task-flow-row-wrap:nth-child(1) { --fold-lead: 30ms; }
-.task-flow-group.is-unfolding .task-flow-row-wrap:nth-child(2) { --fold-lead: 70ms; }
-.task-flow-group.is-unfolding .task-flow-row-wrap:nth-child(3) { --fold-lead: 110ms; }
-.task-flow-group.is-unfolding .task-flow-row-wrap:nth-child(4) { --fold-lead: 150ms; }
-.task-flow-group.is-unfolding .task-flow-row-wrap:nth-child(5) { --fold-lead: 190ms; }
-.task-flow-group.is-unfolding .task-flow-row-wrap:nth-child(n + 6) { --fold-lead: 230ms; }
-
-.task-flow-group.is-unfolding .task-flow-row {
-  --capsule-glow: rgb(var(--loom-live-accent-strong));
-  animation: loom-task-capsule-land 320ms var(--loom-motion-unroll) var(--fold-lead, 0ms) backwards,
-    loom-capsule-swell 440ms linear var(--fold-lead, 0ms) backwards;
-}
-
-.task-flow-group.is-unfolding .task-flow-row::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  z-index: 0;
-  border-radius: inherit;
-  pointer-events: none;
-  animation: loom-capsule-glow 460ms linear var(--fold-lead, 0ms) backwards;
-}
-
-.task-flow-group.is-unfolding .task-flow-row-icon {
-  animation: loom-task-icon-spring 520ms var(--loom-spring-pop) var(--fold-lead, 0ms) backwards;
-}
-
-/* Lens: a soft pointer light inside expandable capsules. taskCapsuleLens.ts
-   writes --lens-x/--lens-y (px, capsule-relative) while the pointer moves; with
-   no pointer data the light rests near the bead. It fades in and out and never
-   moves anything but its own gradient. */
-.task-flow-group .task-flow-row.is-expandable::after,
-.task-flow-group-header::after {
-  content: "";
-  display: block;
-  position: absolute;
-  inset: 0;
-  z-index: 0;
-  border-radius: inherit;
-  pointer-events: none;
-  background: radial-gradient(
-    160px 46px at var(--lens-x, 34px) var(--lens-y, 50%),
-    rgba(var(--loom-live-accent), .14),
-    rgba(var(--loom-live-accent), .045) 55%,
-    transparent 100%
-  );
-  opacity: 0;
-  transition: opacity 220ms ease;
-}
-
-.task-flow-group .task-flow-row.is-expandable:hover::after,
-.task-flow-group-header:hover::after {
-  opacity: 1;
-}
-
-html[data-loom-theme="light"] .task-flow-group .task-flow-row.is-expandable::after,
-html[data-loom-theme="light"] .task-flow-group-header::after {
-  background: radial-gradient(
-    170px 46px at var(--lens-x, 34px) var(--lens-y, 50%),
-    rgba(var(--loom-live-accent), .10),
-    rgba(var(--loom-live-accent), .03) 55%,
-    transparent 100%
-  );
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .task-flow-group .task-flow-row.is-expandable::after,
-  .task-flow-group-header::after { transition: none; }
-}
-
-:root[data-loom-reduced-motion="true"] .task-flow-group .task-flow-row.is-expandable::after,
-:root[data-loom-reduced-motion="true"] .task-flow-group-header::after {
-  transition: none;
-}
-
-/* Reduced motion keeps the static executing tint and status indicator. */
-@media (prefers-reduced-motion: reduce) {
-  .task-flow-row > .task-flow-sheen { display: none; transition: none; }
-}
-:root[data-loom-reduced-motion="true"] .task-flow-row > .task-flow-sheen {
-  display: none;
-  transition: none;
-}
-
-
-/* Task flow visual refinement -----------------------------------------------
-   Completed/runtime rows read as one quiet timeline rather than a stack of
-   heavy pills. Hover is slower and the icon/status hierarchy is cleaner. */
-.task-flow-group {
-  width: min(740px, 100%);
-}
-
-.task-flow-group-header {
-  min-height: 30px;
-  padding: 3px 7px 3px 2px;
-  gap: 7px;
-  border-radius: 8px;
-  transition:
-    color 260ms ease,
-    background 300ms cubic-bezier(.18,.72,.22,1);
-}
-
-.task-flow-group-header:hover {
-  background: rgba(255,255,255,.016);
-}
-
-.task-flow-group-icon {
-  width: 20px;
-  height: 20px;
-  border-radius: 6px;
-  border-color: rgba(255,255,255,.055);
-  background: rgba(255,255,255,.018);
-  box-shadow: none;
-  transition:
-    color 280ms ease,
-    border-color 300ms ease,
-    background 300ms ease,
-    box-shadow 320ms ease;
-}
-
-.task-flow-group-title {
-  font-size: 11.9px;
-  font-weight: 620;
-  letter-spacing: -.004em;
-}
-
-.task-flow-group-chevron {
-  margin-left: 1px;
-  opacity: .72;
-  transition:
-    transform 380ms cubic-bezier(.18,.72,.22,1),
-    color 260ms ease,
-    opacity 260ms ease;
-}
-
-.task-flow-group-header:hover .task-flow-group-chevron {
-  opacity: 1;
-}
-
-.task-flow-group .task-flow-list {
-  gap: 4px;
-  margin-top: 5px;
-  padding-left: 9px;
-}
-
-.task-flow-group .task-flow-row {
-  min-height: 30px;
-  grid-template-columns: 10px 20px minmax(0, 1fr) 8px;
-  gap: 7px;
-  padding: 2px 7px 2px 3px;
-  border-color: rgba(255,255,255,.03);
-  border-radius: 8px;
-  background: rgba(255,255,255,.010);
-  box-shadow: none;
-  transition:
-    color 260ms ease,
-    border-color 300ms ease,
-    background 300ms cubic-bezier(.18,.72,.22,1),
-    box-shadow 320ms ease;
-}
-
-.task-flow-group .task-flow-row.is-expandable:hover {
-  border-color: rgba(255,255,255,.065);
-  background: rgba(255,255,255,.024);
-  box-shadow: inset 0 1px rgba(255,255,255,.018);
-}
-
-.task-flow-group .task-flow-row-icon {
-  width: 18px;
-  height: 18px;
-  border-radius: 5px;
-  border-color: rgba(255,255,255,.045);
-  background: rgba(255,255,255,.018);
-  box-shadow: none;
-}
-
-.task-flow-group .task-flow-chevron {
-  color: #68717d;
-  transition:
-    transform 380ms cubic-bezier(.18,.72,.22,1),
-    color 260ms ease,
-    opacity 260ms ease;
-}
-
-.task-flow-group .task-flow-verb {
-  color: #929aa6;
-  font-weight: 590;
-}
-
-.task-flow-group .task-flow-primary,
-.task-flow-group .task-flow-primary.code {
-  color: #aeb5bf;
-}
-
-.task-flow-group .task-flow-status-dot {
-  width: 4.5px;
-  height: 4.5px;
-}
-
-.turn-process.is-settled .task-flow-group .task-flow-row {
-  background: rgba(255,255,255,.006);
-}
-
-html[data-loom-theme="light"] .task-flow-group-header:hover {
-  background: rgba(28,31,37,.026);
-}
-
-html[data-loom-theme="light"] .task-flow-group-icon {
-  color: #66707b;
-  border-color: rgba(28,31,37,.075);
-  background: rgba(28,31,37,.025);
-  box-shadow: inset 0 1px rgba(255,255,255,.72);
-}
-
-html[data-loom-theme="light"] .task-flow-group-title {
-  color: #4b535e;
-}
-
-html[data-loom-theme="light"] .task-flow-group .task-flow-row {
-  color: #626b76;
-  border-color: rgba(28,31,37,.055);
-  background: rgba(255,255,255,.48);
-  box-shadow: inset 0 1px rgba(255,255,255,.72);
-}
-
-html[data-loom-theme="light"] .task-flow-group .task-flow-row.is-expandable:hover {
-  border-color: rgba(105,90,216,.12);
-  background: rgba(105,90,216,.032);
-  box-shadow:
-    inset 0 1px rgba(255,255,255,.90),
-    0 3px 10px rgba(28,31,37,.025);
-}
-
-html[data-loom-theme="light"] .task-flow-group .task-flow-row-icon {
-  color: #6d7580;
-  border-color: rgba(28,31,37,.065);
-  background: rgba(28,31,37,.025);
-  box-shadow: inset 0 1px rgba(255,255,255,.76);
-}
-
-html[data-loom-theme="light"] .task-flow-group .task-flow-verb {
-  color: #68717c;
-}
-
-html[data-loom-theme="light"] .task-flow-group .task-flow-primary,
-html[data-loom-theme="light"] .task-flow-group .task-flow-primary.code {
-  color: #4e5762;
-}
-
-html[data-loom-theme="light"] .turn-process.is-settled .task-flow-group .task-flow-row {
-  background: rgba(255,255,255,.40);
-}
-
-@media (prefers-reduced-motion: reduce) {
   .task-flow-group-header,
   .task-flow-group-icon,
   .task-flow-group-chevron,
   .task-flow-group .task-flow-row,
-  .task-flow-group .task-flow-chevron {
+  .task-flow-group .task-flow-row.is-expandable::after,
+  .task-flow-group-header::after {
     transition: none !important;
   }
 }
 
-
-/* Task row chevron cleanup --------------------------------------------------
-   Individual task rows no longer need a second disclosure arrow in front of
-   the tool glyph. The whole row stays clickable for details; the group-level
-   chevron remains the single hierarchy control. */
-.task-flow-row,
-.task-flow-group .task-flow-row {
-  grid-template-columns: 20px minmax(0, 1fr) 8px;
+:root[data-loom-reduced-motion="true"] .turn-process.is-live .transcript-entry,
+:root[data-loom-reduced-motion="true"] .turn-final-answer,
+:root[data-loom-reduced-motion="true"] .task-flow-group[data-born="live"] > .task-flow-group-header .task-flow-group-icon,
+:root[data-loom-reduced-motion="true"] .task-flow-group[data-born="live"] .task-flow-group-title,
+:root[data-loom-reduced-motion="true"] .task-flow-group[data-born="live"] > .task-flow-group-header .task-flow-group-chevron,
+:root[data-loom-reduced-motion="true"] .task-flow-row-wrap[data-born="live"] > .task-flow-row .task-flow-row-icon,
+:root[data-loom-reduced-motion="true"] .task-flow-row-wrap[data-born="live"] > .task-flow-row .task-flow-primary,
+:root[data-loom-reduced-motion="true"] .task-flow-row-wrap[data-born="live"] > .task-flow-row .task-flow-diffstat,
+:root[data-loom-reduced-motion="true"] .task-flow-row-wrap[data-born="live"] .task-flow-verb,
+:root[data-loom-reduced-motion="true"] .task-flow-row-wrap[data-born="live"] > .task-flow-row.is-executing .task-flow-verb,
+:root[data-loom-reduced-motion="true"] .task-flow-row-wrap[data-born="live"] > .task-flow-row .task-flow-status,
+:root[data-loom-reduced-motion="true"] .task-flow-row-wrap[data-settled] .task-flow-status-dot,
+:root[data-loom-reduced-motion="true"] .task-flow-row-wrap[data-settled] .task-flow-status::after,
+:root[data-loom-reduced-motion="true"] .task-flow-group.is-unfolding .task-flow-row,
+:root[data-loom-reduced-motion="true"] .task-flow-row.is-executing .task-flow-verb,
+:root[data-loom-reduced-motion="true"] .task-flow-status .task-flow-status-dot,
+:root[data-loom-reduced-motion="true"] .task-flow-live-detail-glow,
+:root[data-loom-reduced-motion="true"] .task-flow-group.is-running .task-flow-group-icon::after {
+  animation: none !important;
 }
 
-.task-flow-group .task-flow-inline-detail-grid {
-  margin-left: 27px;
-}
-
-@media (max-width: 760px) {
-  .task-flow-row,
-  .task-flow-group .task-flow-row {
-    grid-template-columns: 19px minmax(0, 1fr) 7px;
-  }
-
-  .task-flow-group .task-flow-inline-detail-grid {
-    margin-left: 25px;
-  }
+:root[data-loom-reduced-motion="true"] .task-flow-group-header,
+:root[data-loom-reduced-motion="true"] .task-flow-group-icon,
+:root[data-loom-reduced-motion="true"] .task-flow-group-chevron,
+:root[data-loom-reduced-motion="true"] .task-flow-group .task-flow-row,
+:root[data-loom-reduced-motion="true"] .task-flow-group .task-flow-row.is-expandable::after,
+:root[data-loom-reduced-motion="true"] .task-flow-group-header::after {
+  transition: none !important;
 }

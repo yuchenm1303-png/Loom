@@ -6,90 +6,59 @@
   display: none !important;
 }
 
-/* Keep the thinking bead visible beside the live status text. The runtime now
-   closes stale reasoning steps correctly, so this no longer leaves an orphaned
-   mark after tool activity. The glyph itself lives in thinking-glyph.css. */
-.turn-block > .inline-thinking {
-  gap: 5px;
-  margin-left: 0;
-}
+/* Live thinking ---------------------------------------------------------------
+   One surface speaks for a quiet live turn: the bead (thinking-glyph.css) and a
+   shimmering 「正在思考…」 label at the growth edge. It is either the standalone
+   capsule (Transcript: ThinkingCapsule) or the header of the message the model
+   is thinking about (ReasoningBlock). The two hand off in place; a header that
+   continues a capsule the user has seen is marked .is-handoff and is not born
+   again. Once the answer starts, the header settles into a quiet 「思考过程」
+   disclosure: the bead folds away and the two labels cross-fade.
 
-/* One cadence for the whole row, and one light: the bead gives off a pulse, the
-   same soft light passes over the label as the pulse leaves, then both rest. */
+   Text-bearing parts only fade or clip. Transforms are reserved for the bead,
+   the chevron and other glyph-free marks (Windows/HiDPI glyph softness). */
+
 .inline-thinking,
 .live-reasoning {
   --thinking-cycle: 2.6s;
+  --thinking-row: 28px;
+  --thinking-bead: 22px;
   align-self: flex-start;
   min-width: 0;
   color: #8f95a1;
 }
 
 .inline-thinking {
-  min-height: 28px;
+  min-height: var(--thinking-row);
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  margin-top: -5px;
-  padding: 1px 0;
-  animation: inline-thinking-enter 180ms cubic-bezier(.2,.8,.2,1) both;
+  margin: 0;
+  padding: 0;
 }
 
-/* Birth: the same bead -> capsule unroll as the task anchor, with the glyph as
-   the bead (keyframes and springs live in conversation-motion.css). It waits a
-   beat so the user's bubble lands first. The label only fades: clip-path and
-   opacity never move glyphs off their native raster. */
-.turn-block > .inline-thinking {
-  --capsule-bead-start: 0px;
-  --capsule-bead-end: 32px;
-  animation: loom-capsule-unroll 480ms var(--loom-motion-unroll) 140ms backwards;
+/* Birth: the bead springs in and the label lights up a beat later. The first
+   capsule of a turn waits for the user's bubble to land. */
+.inline-thinking .tg,
+.turn-process.is-live .live-reasoning.is-thinking:not(.is-handoff) .live-reasoning-bead .tg {
+  animation: loom-task-icon-spring 560ms var(--loom-spring-pop) var(--thinking-lead, 0ms) backwards;
 }
 
-.turn-block > .inline-thinking .tg {
-  animation: loom-task-icon-spring 560ms var(--loom-spring-pop) 100ms backwards;
+.inline-thinking .thinking-shimmer {
+  animation:
+    loom-thinking-label-in 280ms cubic-bezier(.2,.82,.2,1) calc(var(--thinking-lead, 0ms) + 120ms) backwards,
+    var(--thinking-sweep);
 }
 
-.turn-block > .inline-thinking .thinking-shimmer {
-  animation: loom-task-copy-in 260ms cubic-bezier(.2,.82,.2,1) 250ms backwards, var(--thinking-sweep);
+.turn-process.is-live .live-reasoning.is-thinking:not(.is-handoff) .live-reasoning-label.is-live {
+  animation:
+    loom-thinking-label-in 280ms cubic-bezier(.2,.82,.2,1) 110ms backwards,
+    var(--thinking-sweep);
 }
 
-/* The live reasoning capsule is born the same way, unless it replaces a pending
-   capsule that was on screen (Transcript marks it .is-handoff). Then it simply
-   continues that capsule and extends to reveal its new chevron: being born a
-   second time in the same spot read as a blink. */
-.turn-process.is-live .live-reasoning {
-  animation: none;
-}
-
-.turn-process.is-live .live-reasoning:not(.is-handoff) .live-reasoning-trigger {
-  --capsule-bead-start: 0px;
-  --capsule-bead-end: 32px;
-  animation: loom-capsule-unroll 480ms var(--loom-motion-unroll) 40ms backwards;
-}
-
-.turn-process.is-live .live-reasoning:not(.is-handoff) .live-reasoning-trigger .tg {
-  animation: loom-task-icon-spring 560ms var(--loom-spring-pop) backwards;
-}
-
-.turn-process.is-live .live-reasoning:not(.is-handoff) .live-reasoning-trigger .thinking-shimmer {
-  animation: loom-task-copy-in 260ms cubic-bezier(.2,.82,.2,1) 150ms backwards, var(--thinking-sweep);
-}
-
-.turn-process.is-live .live-reasoning.is-handoff .live-reasoning-trigger {
-  animation: loom-reasoning-handoff 320ms var(--loom-motion-unroll) backwards;
-}
-
-@keyframes loom-reasoning-handoff {
-  0% { clip-path: inset(0 21px 0 0 round 999px); }
-  82% { clip-path: inset(0 0 0 0 round 999px); }
-  100% { clip-path: inset(-24px -24px -24px -24px round 999px); }
-}
-
-/* A capsule that has yielded to task activity stays mounted but collapsed
-   (generation-motion.css); pause its light instead of repainting it unseen. */
-.turn-block:has(.task-flow-group.is-running) > .inline-thinking .tg-pulse,
-.turn-block:has(.task-flow-group.is-running) > .inline-thinking .tg-bead,
-.turn-block:has(.task-flow-group.is-running) > .inline-thinking .thinking-shimmer {
-  animation-play-state: paused;
+/* A turn that has produced nothing yet: let the send animation finish first. */
+.turn-process.is-live .turn-process-content > .pending-thinking-presence:first-child .inline-thinking {
+  --thinking-lead: 150ms;
 }
 
 /* The label is lit by a single soft band that passes over it. It is the label's
@@ -142,27 +111,26 @@
   }
 }
 
+/* Reasoning header ------------------------------------------------------------ */
 .live-reasoning {
   width: min(720px, 100%);
   display: grid;
   gap: 0;
-  /* The process content has only 3px top padding and clips for folding.
-     A -5px margin pulled the capsule's top 2px outside that clip. */
+  /* The process content clips for folding; nothing here may reach outside. */
   margin-top: 0;
-  animation: inline-thinking-enter 180ms cubic-bezier(.2,.8,.2,1) both;
 }
 
 .live-reasoning-trigger {
   width: fit-content;
   max-width: 100%;
-  min-height: 32px;
-  padding: 2px 2px 2px 0;
+  min-height: var(--thinking-row);
+  padding: 0;
   border: 0;
   background: transparent;
   display: inline-flex;
   align-items: center;
-  gap: 5px;
-  color: #8f95a1;
+  color: inherit;
+  font: inherit;
   cursor: pointer;
   text-align: left;
 }
@@ -171,14 +139,98 @@
   cursor: default;
 }
 
+.live-reasoning-trigger:focus-visible {
+  outline: 1px solid color-mix(in srgb, var(--accent, #8b7cf6) 55%, transparent);
+  outline-offset: 3px;
+  border-radius: 6px;
+}
+
+/* The bead folds away once thinking is over; its box animates so the label
+   glides left instead of jumping. */
+.live-reasoning-bead {
+  width: var(--thinking-bead);
+  margin-right: 5px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  overflow: visible;
+  opacity: 1;
+  transition:
+    width 300ms cubic-bezier(.2,.8,.2,1),
+    margin-right 300ms cubic-bezier(.2,.8,.2,1),
+    opacity 180ms ease;
+}
+
+.live-reasoning.is-done .live-reasoning-bead {
+  width: 0;
+  margin-right: 0;
+  opacity: 0;
+}
+
+.live-reasoning.is-done .live-reasoning-bead .tg-pulse,
+.live-reasoning.is-done .live-reasoning-bead .tg-bead {
+  animation-play-state: paused;
+}
+
+/* Both labels share one grid cell, so the swap is a cross-fade in place. */
+.live-reasoning-labels {
+  display: inline-grid;
+  align-items: center;
+  min-width: 0;
+}
+
+.live-reasoning-label {
+  grid-area: 1 / 1;
+  white-space: nowrap;
+  transition: opacity 220ms ease;
+}
+
+.live-reasoning-label.is-rest {
+  color: #7f8692;
+  font-size: 12.5px;
+  font-weight: 560;
+  line-height: 1.45;
+  letter-spacing: .005em;
+  opacity: 0;
+}
+
+.live-reasoning.is-done .live-reasoning-label.is-live {
+  opacity: 0;
+  animation: none;
+}
+
+.live-reasoning.is-done .live-reasoning-label.is-rest {
+  opacity: 1;
+  transition-delay: 60ms;
+}
+
+.live-reasoning.is-thinking .live-reasoning-label.is-rest {
+  visibility: hidden;
+}
+
+.live-reasoning.is-done .live-reasoning-trigger:not(:disabled):hover .live-reasoning-label.is-rest,
+.live-reasoning.is-done.open .live-reasoning-label.is-rest {
+  color: #b3b9c4;
+}
+
 .live-reasoning-trigger:not(:disabled):hover .thinking-shimmer {
   filter: brightness(1.08);
 }
 
 .live-reasoning-chevron {
   flex: none;
-  color: #727a87;
-  transition: transform 160ms cubic-bezier(.2,.8,.2,1), color 140ms ease;
+  margin-left: 4px;
+  color: #6d7581;
+  transition: transform 220ms cubic-bezier(.2,.8,.2,1), color 160ms ease;
+}
+
+/* Reasoning text arriving reveals the disclosure affordance. */
+.turn-process.is-live .live-reasoning.is-thinking .live-reasoning-chevron {
+  animation: loom-reasoning-chevron-in 300ms cubic-bezier(.2,.8,.2,1) backwards;
+}
+
+.live-reasoning-trigger:not(:disabled):hover .live-reasoning-chevron {
+  color: #a59cf0;
 }
 
 .live-reasoning.open .live-reasoning-chevron {
@@ -191,8 +243,8 @@
   grid-template-rows: 0fr;
   opacity: 0;
   transition:
-    grid-template-rows 210ms cubic-bezier(.2,.8,.2,1),
-    opacity 150ms ease;
+    grid-template-rows 260ms cubic-bezier(.2,.8,.2,1),
+    opacity 180ms ease;
 }
 
 .live-reasoning.open .live-reasoning-grid {
@@ -207,19 +259,18 @@
 
 .live-reasoning-copy {
   position: relative;
-  margin: 7px 0 3px 28px;
-  padding: 9px 12px 9px 13px;
-  border-left: 1px solid rgba(148,132,237,.30);
+  margin: 6px 0 4px 10px;
+  padding: 6px 12px 6px 14px;
+  border-left: 1px solid rgba(148,132,237,.24);
   color: #969daa;
-  font-size: 11.5px;
-  line-height: 1.65;
+  font-size: 12.5px;
+  line-height: 1.66;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
-  background:
-    linear-gradient(90deg, rgba(125,105,230,.05), transparent 72%);
 }
 
-.live-reasoning-copy::before {
+/* While the model still thinks, a soft light travels down the rail. */
+.live-reasoning.is-thinking .live-reasoning-copy::before {
   content: "";
   position: absolute;
   top: 0;
@@ -234,8 +285,46 @@
     rgba(140,124,244,.5),
     transparent
   );
+  background-size: 100% 60%;
+  background-repeat: no-repeat;
   box-shadow: 0 0 6px rgba(122,106,236,.16);
   animation: reasoning-rail-sweep var(--thinking-cycle, 2.6s) ease-in-out infinite;
+}
+
+/* A thinking header retires when the answer arrives with nothing to disclose:
+   it folds away above the first line instead of vanishing. */
+.live-reasoning-presence {
+  display: grid;
+  grid-template-rows: 1fr;
+  opacity: 1;
+  transition:
+    grid-template-rows 240ms cubic-bezier(.4,0,.2,1),
+    opacity 150ms ease;
+}
+
+.live-reasoning-presence-inner {
+  min-height: 0;
+}
+
+.live-reasoning-presence[data-motion-phase="exiting"] {
+  grid-template-rows: 0fr;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.live-reasoning-presence[data-motion-phase="exiting"] .live-reasoning-presence-inner {
+  overflow: hidden;
+}
+
+/* Inherited on mount (the capsule was on screen when the text arrived): there
+   is no earlier frame to transition from, so the fold is a keyframe. */
+.live-reasoning-presence.is-inherited[data-motion-phase="exiting"] {
+  animation: loom-thinking-header-retire 240ms cubic-bezier(.4,0,.2,1) both;
+}
+
+/* Space between the disclosure and the answer it introduces. */
+.assistant-message > .live-reasoning-presence + .markdown-body {
+  margin-top: 2px;
 }
 
 html[data-loom-theme="light"] .thinking-shimmer {
@@ -243,22 +332,30 @@ html[data-loom-theme="light"] .thinking-shimmer {
   --shimmer-peak: #4f47b0;
 }
 
-html[data-loom-theme="light"] .live-reasoning-chevron {
-  color: #7c8592;
+html[data-loom-theme="light"] .live-reasoning-label.is-rest {
+  color: #7a8390;
 }
 
-html[data-loom-theme="light"] .live-reasoning.open .live-reasoning-chevron {
+html[data-loom-theme="light"] .live-reasoning.is-done .live-reasoning-trigger:not(:disabled):hover .live-reasoning-label.is-rest,
+html[data-loom-theme="light"] .live-reasoning.is-done.open .live-reasoning-label.is-rest {
+  color: #3f4650;
+}
+
+html[data-loom-theme="light"] .live-reasoning-chevron {
+  color: #8a929e;
+}
+
+html[data-loom-theme="light"] .live-reasoning.open .live-reasoning-chevron,
+html[data-loom-theme="light"] .live-reasoning-trigger:not(:disabled):hover .live-reasoning-chevron {
   color: #6553c5;
 }
 
 html[data-loom-theme="light"] .live-reasoning-copy {
-  border-left-color: rgba(105,90,216,.28);
+  border-left-color: rgba(105,90,216,.24);
   color: #505a68;
-  background:
-    linear-gradient(90deg, rgba(105,90,216,.05), transparent 74%);
 }
 
-html[data-loom-theme="light"] .live-reasoning-copy::before {
+html[data-loom-theme="light"] .live-reasoning.is-thinking .live-reasoning-copy::before {
   background: linear-gradient(
     180deg,
     transparent,
@@ -267,6 +364,8 @@ html[data-loom-theme="light"] .live-reasoning-copy::before {
     rgba(100,84,214,.5),
     transparent
   );
+  background-size: 100% 60%;
+  background-repeat: no-repeat;
   box-shadow: 0 0 6px rgba(91,73,199,.14);
 }
 
@@ -281,33 +380,53 @@ html[data-loom-theme="light"] .live-reasoning-copy::before {
 
 @keyframes reasoning-rail-sweep {
   0% {
-    background-position: 0 135%;
+    background-position: 0 -120%;
     opacity: .34;
   }
   45% {
     opacity: .9;
   }
   100% {
-    background-position: 0 -135%;
+    background-position: 0 220%;
     opacity: .34;
   }
 }
 
-@keyframes inline-thinking-enter {
-  from { opacity: 0; transform: translateY(4px); }
-  to { opacity: 1; transform: translateY(0); }
+/* Light reaches the label after the bead: opacity only, glyphs stay native. */
+@keyframes loom-thinking-label-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes loom-thinking-header-retire {
+  0% { grid-template-rows: 1fr; opacity: 1; }
+  45% { opacity: .35; }
+  100% { grid-template-rows: 0fr; opacity: 0; }
+}
+
+@keyframes loom-reasoning-chevron-in {
+  from { opacity: 0; translate: -4px 0; }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .live-reasoning-copy::before,
-  .inline-thinking,
-  .turn-block > .inline-thinking .tg,
+  .inline-thinking .tg,
   .thinking-shimmer,
-  .turn-block > .inline-thinking .thinking-shimmer,
-  .live-reasoning,
-  .live-reasoning .live-reasoning-trigger,
-  .live-reasoning .live-reasoning-trigger .tg,
-  .live-reasoning .live-reasoning-trigger .thinking-shimmer {
+  .inline-thinking .thinking-shimmer,
+  .live-reasoning .live-reasoning-bead .tg,
+  .live-reasoning .live-reasoning-label,
+  .live-reasoning .live-reasoning-chevron {
+    animation: none !important;
+  }
+
+  .live-reasoning-bead,
+  .live-reasoning-label,
+  .live-reasoning-grid,
+  .live-reasoning-presence {
+    transition: none !important;
+  }
+
+  .live-reasoning-presence.is-inherited {
     animation: none !important;
   }
 
@@ -317,14 +436,23 @@ html[data-loom-theme="light"] .live-reasoning-copy::before {
 }
 
 :root[data-loom-reduced-motion="true"] .live-reasoning-copy::before,
-:root[data-loom-reduced-motion="true"] .inline-thinking,
-:root[data-loom-reduced-motion="true"] .turn-block > .inline-thinking .tg,
+:root[data-loom-reduced-motion="true"] .inline-thinking .tg,
 :root[data-loom-reduced-motion="true"] .thinking-shimmer,
-:root[data-loom-reduced-motion="true"] .turn-block > .inline-thinking .thinking-shimmer,
-:root[data-loom-reduced-motion="true"] .live-reasoning,
-:root[data-loom-reduced-motion="true"] .live-reasoning .live-reasoning-trigger,
-:root[data-loom-reduced-motion="true"] .live-reasoning .live-reasoning-trigger .tg,
-:root[data-loom-reduced-motion="true"] .live-reasoning .live-reasoning-trigger .thinking-shimmer {
+:root[data-loom-reduced-motion="true"] .inline-thinking .thinking-shimmer,
+:root[data-loom-reduced-motion="true"] .live-reasoning .live-reasoning-bead .tg,
+:root[data-loom-reduced-motion="true"] .live-reasoning .live-reasoning-label,
+:root[data-loom-reduced-motion="true"] .live-reasoning .live-reasoning-chevron {
+  animation: none !important;
+}
+
+:root[data-loom-reduced-motion="true"] .live-reasoning-bead,
+:root[data-loom-reduced-motion="true"] .live-reasoning-label,
+:root[data-loom-reduced-motion="true"] .live-reasoning-grid,
+:root[data-loom-reduced-motion="true"] .live-reasoning-presence {
+  transition: none !important;
+}
+
+:root[data-loom-reduced-motion="true"] .live-reasoning-presence.is-inherited {
   animation: none !important;
 }
 

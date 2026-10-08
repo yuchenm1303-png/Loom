@@ -38,7 +38,7 @@ import { useI18n } from "../i18n";
 import { useMotionPresence } from "../motion/useMotionPresence";
 import { useReducedMotion } from "../motion/useReducedMotion";
 import { useEarlierProcessHandoff } from "./useEarlierProcessHandoff";
-import { TURN_SETTLE_HOLD_MS } from "../presentationTiming";
+import { LIVE_STATUS_GRACE_MS, TURN_FOLD_MS, TURN_SETTLE_HOLD_MS } from "../presentationTiming";
 import type { TranscriptItem } from "../types/loom";
 import { latestTaskPlan, liveTaskProgress } from "./liveTaskProgress";
 import { TaskProgressPanel } from "./TaskProgressPanel";
@@ -54,6 +54,18 @@ import { TurnArtifactsPreview } from "./TurnArtifactsPreview";
 import { UserMessageContent, parseUserMessageContent } from "./UserMessageContent";
 import { dispatchQuoteReply } from "./quoteReply";
 import { ActivityGlyph as ToolIdentityGlyph, ActivityGroupGlyph, activityGroupIdentity, activityIdentity, activityToolLabel } from "./ToolIdentity";
+import {
+  commandFromItem,
+  describeActivity,
+  isCommandTool,
+  isEditTool,
+  normalizedToolName,
+  useRuntimeCopy,
+  type ActivityCategory,
+  type ActivityDescription,
+  type ProcessSummaryParts,
+  type RuntimeCopy,
+} from "./runtimeCopy";
 import "./activity-flow.css";
 import "./assistant-artifact-preview.css";
 import "./message-actions.css";
@@ -84,6 +96,8 @@ type TurnBlock =
 
 type ReasoningState = "none" | "streaming" | "closed";
 type MessageFeedback = "up" | "down" | null;
+/** Live -> complete hand-off: hold the live layout, then fold it into the summary. */
+type SettlePhase = "hold" | "fold" | null;
 
 interface ReasoningSplit {
   reasoning: string;
@@ -96,12 +110,28 @@ interface ActivitySummaryData {
   failed: boolean;
 }
 
-interface TurnProcessBreakdown {
-  commands: number;
-  filesEdited: number;
-  filesRead: number;
-  imagesViewed: number;
-  tools: number;
+interface TurnProcessBreakdown extends ProcessSummaryParts {
+  added: number;
+  removed: number;
+}
+
+/**
+ * One visible task row. A tool call that only launches a process or writes a
+ * file (`exec`, `write_workspace_text`, ...) and the process/diff it produces
+ * are the same step, so they share one row keyed by the call that appeared
+ * first. The row keeps its DOM, motion and disclosure state while the outcome
+ * item arrives, instead of swapping "使用 exec" for "运行 …" a moment later.
+ */
+interface ActivityRowModel {
+  key: string;
+  item: TranscriptItem;
+  wrapper: TranscriptItem | null;
+}
+
+/** Per-step view of the cumulative turn diff snapshots. */
+interface FileEditDelta {
+  paths: string[];
+  diff: string;
   added: number;
   removed: number;
 }
@@ -183,67 +213,122 @@ function splitReasoning(text: string): ReasoningSplit {
   return { reasoning: "", answer: raw, state: "none" };
 }
 
-function Disclosure({ label, children, openByDefault = false }: { label: string; children: ReactNode; openByDefault?: boolean }) {
-  const [open, setOpen] = useState(openByDefault);
-  return (
-    <div className={`disclosure ${open ? "open" : ""}`}>
-      <button className="disclosure-trigger" onClick={() => setOpen((value) => !value)} aria-expanded={open}>
-        <ChevronRight size={14} className="disclosure-chevron" />
-        <span>{label}</span>
-      </button>
-      <div className="disclosure-grid">
-        <div className="disclosure-inner">{children}</div>
-      </div>
-    </div>
-  );
-}
-
-interface PendingThinkingHandle {
-  element: HTMLDivElement | null;
+/**
+ * The visible "thinking" surface of a live turn, registered while mounted.
+ * The standalone capsule and a message's reasoning header take turns at the
+ * growth edge; a header that replaces a capsule the user has seen continues it
+ * in place instead of being born again (which read as a blink).
+ */
+interface ThinkingHandle {
+  element: HTMLElement | null;
   mountedAt: number;
 }
 
-/** The turn's pending "thinking" capsule, registered while it is mounted. */
-const PendingThinkingContext = createContext<PendingThinkingHandle | null>(null);
-
-// Its birth waits a beat, so a capsule younger than this has not been seen.
-const PENDING_THINKING_SEEN_MS = 240;
+const ThinkingHandleContext = createContext<ThinkingHandle | null>(null);
+/** True inside the live sequence of an active turn (not its earlier history). */
+const LiveSequenceContext = createContext(false);
 
 /**
- * Called while rendering the live reasoning capsule, before the commit that
- * removes the pending one, so the old capsule can still be measured. Only a
- * capsule the user has actually seen counts: not one mounted for the single
- * frame between an empty streaming item and its first delta, and not one
- * collapsed behind a running task group.
+ * Activity rows and groups the renderer has already shown. One-shot motion is
+ * bound to a row's first appearance in a live turn, never to a class that can
+ * toggle later (a group regaining its running state used to replay every
+ * row's birth), and never to history or a remount after switching threads.
  */
-function pendingThinkingOnScreen(pending: PendingThinkingHandle | null): boolean {
-  const element = pending?.element;
+const seenActivity = new Set<string>();
+
+function useBornLive(key: string): boolean {
+  const live = useContext(LiveSequenceContext);
+  const [born] = useState(() => live && !seenActivity.has(key));
+  useLayoutEffect(() => {
+    seenActivity.add(key);
+  }, [key]);
+  return born;
+}
+/** Turn-wide view of each diff snapshot, so a row shows only its own files. */
+const FileEditDeltaContext = createContext<ReadonlyMap<string, FileEditDelta>>(new Map());
+
+// A capsule younger than this has not been seen. Opacity and size are checked
+// as well, so this only filters the single-frame mounts of runtime races.
+const THINKING_SEEN_MS = 90;
+
+/**
+ * Evaluated while rendering the new surface, before the commit that removes
+ * the old one, so the old capsule can still be measured. Only a capsule the
+ * user has actually seen counts: not one mounted for a single frame, and not
+ * one collapsed behind running task rows.
+ */
+function thinkingOnScreen(handle: ThinkingHandle | null): boolean {
+  const element = handle?.element;
   if (!element?.isConnected) return false;
-  if (performance.now() - pending!.mountedAt < PENDING_THINKING_SEEN_MS) return false;
+  if (performance.now() - handle!.mountedAt < THINKING_SEEN_MS) return false;
   const presence = element.closest(".pending-thinking-presence");
   if (presence && (presence.getBoundingClientRect().height < 16 || Number(getComputedStyle(presence).opacity) <= .5)) return false;
   return element.getBoundingClientRect().height >= 16 && Number(getComputedStyle(element).opacity) > 0.5;
 }
 
-function LiveReasoning({ reasoning, workspace, streaming, messageKey, interrupted }: { reasoning: string; workspace?: string; streaming: boolean; messageKey: string; interrupted: boolean }) {
+function useThinkingRegistration(enabled: boolean) {
+  const handle = useContext(ThinkingHandleContext);
+  const ref = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    if (!enabled || !handle) return;
+    const element = ref.current;
+    handle.element = element;
+    handle.mountedAt = performance.now();
+    return () => {
+      if (handle.element === element) handle.element = null;
+    };
+  }, [enabled, handle]);
+  return ref;
+}
+
+/**
+ * A message's reasoning header. While the model thinks it is the live capsule
+ * ("正在思考…" with the pulsing bead); once the answer starts, the same element
+ * settles into a quiet "思考过程" disclosure above the text. Keeping one element
+ * through that change lets CSS morph it instead of swapping two surfaces.
+ */
+function ReasoningBlock({
+  reasoning,
+  thinking,
+  live,
+  workspace,
+  messageKey,
+  interrupted,
+}: {
+  reasoning: string;
+  thinking: boolean;
+  live: boolean;
+  workspace?: string;
+  messageKey: string;
+  interrupted: boolean;
+}) {
+  const copy = useRuntimeCopy();
   const [open, setOpen] = useState(false);
-  const pendingThinking = useContext(PendingThinkingContext);
-  // Replacing a capsule that is on screen continues it instead of being born
-  // a second time in the same spot, which read as a blink.
-  const [handoff] = useState(() => pendingThinkingOnScreen(pendingThinking));
+  const handle = useContext(ThinkingHandleContext);
+  const [handoff] = useState(() => thinking && thinkingOnScreen(handle));
+  const ref = useThinkingRegistration(thinking);
   const hasReasoning = Boolean(reasoning.trim());
 
   return (
-    <div className={`live-reasoning ${open ? "open" : ""} ${handoff ? "is-handoff" : ""}`}>
+    <div
+      ref={ref}
+      className={`live-reasoning ${thinking ? "is-thinking" : "is-done"} ${open ? "open" : ""} ${handoff ? "is-handoff" : ""} ${hasReasoning ? "has-reasoning" : ""}`.replace(/\s+/g, " ").trim()}
+      role={thinking ? "status" : undefined}
+      aria-live={thinking ? "polite" : undefined}
+    >
       <button
         type="button"
         className="live-reasoning-trigger"
         onClick={() => hasReasoning && setOpen((value) => !value)}
         aria-expanded={hasReasoning ? open : undefined}
         disabled={!hasReasoning}
+        title={hasReasoning ? (open ? copy.hideReasoning : copy.showReasoning) : undefined}
       >
-        <ThinkingGlyph />
-        <span className="thinking-shimmer">正在思考…</span>
+        <span className="live-reasoning-bead" aria-hidden="true"><ThinkingGlyph /></span>
+        <span className="live-reasoning-labels">
+          <span className="live-reasoning-label is-live thinking-shimmer" aria-hidden={!thinking}>{copy.thinking}</span>
+          <span className="live-reasoning-label is-rest" aria-hidden={thinking}>{copy.thoughtProcess}</span>
+        </span>
         {hasReasoning ? <ChevronRight size={13} className="live-reasoning-chevron" aria-hidden="true" /> : null}
       </button>
 
@@ -251,7 +336,14 @@ function LiveReasoning({ reasoning, workspace, streaming, messageKey, interrupte
         <div className="live-reasoning-grid">
           <div className="live-reasoning-inner">
             <div className="live-reasoning-copy">
-              <MarkdownMessage content={reasoning} compact workspace={workspace} streaming={streaming && open} messageKey={messageKey} interrupted={interrupted || !open} />
+              <MarkdownMessage
+                content={reasoning}
+                compact
+                workspace={workspace}
+                streaming={live && thinking && open}
+                messageKey={messageKey}
+                interrupted={interrupted || !open}
+              />
             </div>
           </div>
         </div>
@@ -260,26 +352,34 @@ function LiveReasoning({ reasoning, workspace, streaming, messageKey, interrupte
   );
 }
 
-function PendingThinking() {
-  const pending = useContext(PendingThinkingContext);
-  const ref = useRef<HTMLDivElement>(null);
-
-  useLayoutEffect(() => {
-    if (!pending) return;
-    const element = ref.current;
-    pending.element = element;
-    pending.mountedAt = performance.now();
-    return () => {
-      if (pending.element === element) pending.element = null;
-    };
-  }, [pending]);
-
+/** The standalone live capsule for the gaps no message or tool row explains. */
+function ThinkingCapsule() {
+  const copy = useRuntimeCopy();
+  const ref = useThinkingRegistration(true);
   return (
     <div ref={ref} className="inline-thinking" role="status" aria-live="polite">
       <ThinkingGlyph />
-      <span className="thinking-shimmer">正在思考…</span>
+      <span className="thinking-shimmer">{copy.thinking}</span>
     </div>
   );
+}
+
+/** True once `value` has held for `delayMs`; drops immediately. */
+function useSettledFlag(value: boolean, delayMs: number): boolean {
+  const [settled, setSettled] = useState(value && delayMs <= 0);
+  useEffect(() => {
+    if (!value) {
+      setSettled(false);
+      return;
+    }
+    if (delayMs <= 0) {
+      setSettled(true);
+      return;
+    }
+    const timer = window.setTimeout(() => setSettled(true), delayMs);
+    return () => window.clearTimeout(timer);
+  }, [delayMs, value]);
+  return value && settled;
 }
 
 function isActivityItem(item: TranscriptItem): boolean {
@@ -414,11 +514,6 @@ function useStableTurnBlocks(items: TranscriptItem[]): TurnBlock[] {
   }, [items]);
 }
 
-function processCommand(item: TranscriptItem): string {
-  if (Array.isArray(item.argv)) return item.argv.map(String).join(" ");
-  return String(item.command ?? item.toolName ?? "Process");
-}
-
 function itemStatus(item: TranscriptItem): string {
   if (item.type === "tool_call") {
     const result = item.result as Record<string, unknown> | undefined;
@@ -431,21 +526,6 @@ function itemStatus(item: TranscriptItem): string {
   return item.status || "completed";
 }
 
-function statusLabel(status: string): string {
-  if (status === "not_executed") return "Not executed";
-  if (status === "uncertain") return "Effect unconfirmed";
-  if (status === "refresh_required") return "Refresh required";
-  if (status === "started" || status === "running" || status === "streaming" || status === "streaming_arguments") return "Running";
-  if (status === "waiting" || status === "waiting_approval" || status === "pending") return "Waiting";
-  if (status === "completed") return "Completed";
-  if (status === "changed") return "Changed";
-  if (status === "failed") return "Failed";
-  if (status === "denied") return "Denied";
-  if (status === "cancelled") return "Cancelled";
-  if (status === "interrupted") return "Interrupted";
-  return status;
-}
-
 function isActiveActivityStatus(status: string): boolean {
   return ["started", "running", "streaming", "streaming_arguments", "waiting", "waiting_approval", "pending"].includes(status);
 }
@@ -454,15 +534,49 @@ function isExecutingActivityStatus(status: string): boolean {
   return ["started", "running", "streaming", "streaming_arguments"].includes(status);
 }
 
-function ActivityStatus({ status }: { status: string }) {
-  const quiet = status === "completed" || status === "changed";
-  const label = statusLabel(status);
-  return (
-    <span className={`task-flow-status ${status}`} title={label} aria-label={label}>
-      <span className="task-flow-status-dot" />
-      {!quiet ? <span>{label}</span> : null}
-    </span>
-  );
+function isFailureStatus(status: string): boolean {
+  return status === "failed" || status === "denied" || status === "cancelled" || status === "interrupted";
+}
+
+/** The wrapper's verdict wins when it reports a problem the outcome item cannot. */
+function rowStatus(row: ActivityRowModel): string {
+  const status = itemStatus(row.item);
+  if (!row.wrapper || row.wrapper === row.item) return status;
+  const wrapper = itemStatus(row.wrapper);
+  if (isFailureStatus(wrapper) || ["not_executed", "uncertain", "refresh_required", "waiting", "waiting_approval"].includes(wrapper)) return wrapper;
+  return status;
+}
+
+function buildActivityRows(items: TranscriptItem[]): ActivityRowModel[] {
+  const rows: ActivityRowModel[] = [];
+  const commandWrappers: ActivityRowModel[] = [];
+  const editWrappers: ActivityRowModel[] = [];
+
+  for (const item of items) {
+    if (item.type === "tool_call" && (isCommandTool(item) || isEditTool(item))) {
+      const row = { key: item.id, item, wrapper: item };
+      rows.push(row);
+      (isCommandTool(item) ? commandWrappers : editWrappers).push(row);
+      continue;
+    }
+    if (item.type === "process" && commandWrappers.length) {
+      const command = commandFromItem(item);
+      const exact = commandWrappers.findIndex((row) => commandFromItem(row.wrapper) === command);
+      const [row] = commandWrappers.splice(exact >= 0 ? exact : 0, 1);
+      row.item = item;
+      continue;
+    }
+    if (item.type === "file_edit") {
+      const index = editWrappers.findIndex((row) => !isFailureStatus(itemStatus(row.item)));
+      if (index >= 0) {
+        const [row] = editWrappers.splice(index, 1);
+        row.item = item;
+        continue;
+      }
+    }
+    rows.push({ key: item.id, item, wrapper: null });
+  }
+  return rows;
 }
 
 function diffStats(diff?: string): { added: number; removed: number } {
@@ -476,9 +590,67 @@ function diffStats(diff?: string): { added: number; removed: number } {
   return { added, removed };
 }
 
+/** Split a unified diff into per-file chunks (path -> chunk text). */
+function splitDiffByFile(diff: string): Map<string, string> {
+  const files = new Map<string, string>();
+  const lines = diff.split("\n");
+  let path = "";
+  let chunk: string[] = [];
+  let sawHunk = false;
+  const flush = () => {
+    if (chunk.length && path) files.set(path, chunk.join("\n"));
+    chunk = [];
+    sawHunk = false;
+  };
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index];
+    const git = line.match(/^diff --git a\/(.+?) b\/(.+)$/);
+    const pair = line.startsWith("--- ") && lines[index + 1]?.startsWith("+++ ");
+    if (git || (pair && (sawHunk || !chunk.length || !path))) {
+      if (!(pair && chunk.length && !sawHunk && path)) flush();
+      if (git) path = git[2].trim();
+    }
+    if (pair) {
+      const target = lines[index + 1].slice(4).trim().replace(/^b\//, "");
+      const source = line.slice(4).trim().replace(/^a\//, "");
+      path = target && target !== "/dev/null" ? target : source;
+    }
+    if (line.startsWith("@@")) sawHunk = true;
+    chunk.push(line);
+  }
+  flush();
+  return files;
+}
+
+function fileEditDeltas(items: TranscriptItem[]): Map<string, FileEditDelta> {
+  const deltas = new Map<string, FileEditDelta>();
+  const previousChunks = new Map<string, string>();
+  const previousPaths = new Set<string>();
+  for (const item of items) {
+    if (item.type !== "file_edit") continue;
+    const diff = String(item.diff ?? "");
+    const paths = (item.paths ?? []).map(String).map((path) => path.trim()).filter(Boolean);
+    const chunks = splitDiffByFile(diff);
+    const changed = [...chunks].filter(([path, text]) => previousChunks.get(path) !== text);
+    const changedPaths = new Set(changed.map(([path]) => path));
+    for (const path of paths) {
+      if (!previousPaths.has(path) && ![...chunks.keys()].some((known) => known.endsWith(path) || path.endsWith(known))) changedPaths.add(path);
+    }
+    chunks.forEach((text, path) => previousChunks.set(path, text));
+    paths.forEach((path) => previousPaths.add(path));
+    if (!changedPaths.size) {
+      deltas.set(item.id, { paths, diff, ...diffStats(diff) });
+      continue;
+    }
+    const deltaDiff = changed.length ? changed.map(([, text]) => text).join("\n") : diff;
+    deltas.set(item.id, { paths: [...changedPaths], diff: deltaDiff, ...diffStats(deltaDiff) });
+  }
+  return deltas;
+}
+
 function isFileReadTool(item: TranscriptItem): boolean {
   if (item.type !== "tool_call") return false;
-  const name = String(item.toolName ?? "").trim().toLowerCase().replace(/[\s-]+/g, "_");
+  const name = normalizedToolName(item);
   if (!name) return false;
   const hasReadVerb = /(^|_)(read|open|fetch|get|cat)(_|$)/.test(name);
   const hasFileObject = /(^|_)(file|files|workspace|text|document|blob)(_|$)/.test(name);
@@ -515,38 +687,45 @@ function browserScreenshotPaths(item: TranscriptItem): string[] {
 }
 
 function turnProcessBreakdown(items: TranscriptItem[]): TurnProcessBreakdown {
+  const rows = buildActivityRows(items.filter(isActivityItem));
   const editedPaths = new Set<string>();
   const readPaths = new Set<string>();
   let anonymousEdits = 0;
   let anonymousReads = 0;
   let commands = 0;
   let imagesViewed = 0;
-  let added = 0;
-  let removed = 0;
+  let tools = 0;
+  let lastDiff = "";
 
-  for (const item of items) {
-    if (item.type === "process") commands += 1;
-    if (item.type === "file_edit") {
-      const paths = (item.paths ?? []).map(String).map((path) => path.trim()).filter(Boolean);
+  for (const row of rows) {
+    const source = row.wrapper ?? row.item;
+    if (row.item.type === "process" || isCommandTool(source)) {
+      commands += 1;
+      continue;
+    }
+    if (row.item.type === "file_edit" || isEditTool(source)) {
+      const paths = (row.item.type === "file_edit" ? row.item.paths ?? [] : []).map(String).map((path) => path.trim()).filter(Boolean);
       if (paths.length) paths.forEach((path) => editedPaths.add(path));
-      else anonymousEdits += 1;
-      const stats = diffStats(item.diff);
-      added += stats.added;
-      removed += stats.removed;
+      else if (row.item.type === "file_edit") anonymousEdits += 1;
+      if (row.item.type === "file_edit" && String(row.item.diff ?? "").trim()) lastDiff = String(row.item.diff);
+      continue;
     }
-    if (isFileReadTool(item)) {
+    if (isFileReadTool(row.item)) {
       const before = readPaths.size;
-      collectReadPaths(item.arguments, readPaths);
+      collectReadPaths(row.item.arguments, readPaths);
       if (readPaths.size === before) anonymousReads += 1;
+      continue;
     }
-    imagesViewed += browserScreenshotPaths(item).length;
+    const screenshots = browserScreenshotPaths(row.item).length;
+    if (screenshots) {
+      imagesViewed += screenshots;
+      continue;
+    }
+    tools += 1;
   }
 
-  const compactItems = compactActivityItems(items.filter(isActivityItem));
-  const tools = compactItems.reduce((count, item) => (
-    item.type === "tool_call" && !isFileReadTool(item) && !browserScreenshotPaths(item).length ? count + 1 : count
-  ), 0);
-
+  // Diff items are cumulative turn snapshots: the latest one is the turn's diff.
+  const { added, removed } = diffStats(lastDiff);
   return {
     commands,
     filesEdited: editedPaths.size + anonymousEdits,
@@ -556,24 +735,6 @@ function turnProcessBreakdown(items: TranscriptItem[]): TurnProcessBreakdown {
     added,
     removed,
   };
-}
-
-function turnProcessSummaryLabel(breakdown: TurnProcessBreakdown, fallbackCount: number): string {
-  const parts: string[] = [];
-  if (breakdown.commands) parts.push(`运行 ${breakdown.commands} 条命令`);
-  if (breakdown.filesEdited) parts.push(`编辑 ${breakdown.filesEdited} 个文件`);
-  if (breakdown.filesRead) parts.push(`读取 ${breakdown.filesRead} 个文件`);
-  if (breakdown.imagesViewed) parts.push(`查看 ${breakdown.imagesViewed} 张图片`);
-  if (breakdown.tools) parts.push(`使用 ${breakdown.tools} 个工具`);
-  return parts.length ? parts.join(" · ") : `${fallbackCount} 个过程项`;
-}
-
-function fileLabel(item: TranscriptItem): string {
-  const paths = item.paths ?? [];
-  if (!paths.length) return "workspace";
-  if (paths.length === 1) return paths[0];
-  if (paths.length === 2) return `${paths[0]}, ${paths[1]}`;
-  return `${paths[0]}, ${paths[1]} +${paths.length - 2}`;
 }
 
 function hasActivityDetail(item: TranscriptItem): boolean {
@@ -605,7 +766,19 @@ function activityDetail(item: TranscriptItem): string {
   return "";
 }
 
+function rowHasDetail(row: ActivityRowModel): boolean {
+  return hasActivityDetail(row.item) || Boolean(row.wrapper && row.wrapper !== row.item && hasActivityDetail(row.wrapper));
+}
+
+function rowDetail(row: ActivityRowModel, delta?: FileEditDelta): string {
+  if (row.item.type === "file_edit" && delta?.diff.trim()) return delta.diff.trim();
+  const primary = activityDetail(row.item);
+  if (primary || !row.wrapper || row.wrapper === row.item) return primary;
+  return activityDetail(row.wrapper);
+}
+
 function BrowserScreenshotDetail({ paths, workspace }: { paths: string[]; workspace?: string }) {
+  const copy = useRuntimeCopy();
   const pathKey = paths.join("\n");
   const [sources, setSources] = useState<Record<string, string>>({});
   const [failed, setFailed] = useState<Set<string>>(() => new Set());
@@ -633,7 +806,7 @@ function BrowserScreenshotDetail({ paths, workspace }: { paths: string[]; worksp
   }, [pathKey, workspace]);
 
   return (
-    <div className="task-flow-image-grid" aria-label={`已查看 ${paths.length} 张图片`}>
+    <div className="task-flow-image-grid" aria-label={copy.imagesViewed(paths.length)}>
       {paths.map((path) => {
         const source = sources[path];
         const unavailable = failed.has(path) || !String(workspace ?? "").trim();
@@ -641,10 +814,10 @@ function BrowserScreenshotDetail({ paths, workspace }: { paths: string[]; worksp
         return (
           <figure className="task-flow-image-card" key={path} title={path}>
             {source ? (
-              <img src={source} alt={`浏览器截图 ${name}`} loading="lazy" decoding="async" />
+              <img src={source} alt={copy.imageAlt(name)} loading="lazy" decoding="async" />
             ) : (
               <div className={`task-flow-image-loading ${unavailable ? "is-unavailable" : ""}`}>
-                {unavailable ? "图片预览不可用" : "正在载入预览…"}
+                {unavailable ? copy.imageUnavailable : copy.imageLoading}
               </div>
             )}
             <figcaption>{name}</figcaption>
@@ -655,120 +828,167 @@ function BrowserScreenshotDetail({ paths, workspace }: { paths: string[]; worksp
   );
 }
 
-function liveActivityHint(item: TranscriptItem, status: string): string {
-  if (status === "waiting_approval") return "正在等待权限确认…";
-  if (status === "waiting" || status === "pending") return "任务已就绪，等待继续…";
-  if (item.type === "process") return "命令正在执行，等待输出…";
-  if (item.type === "file_edit") return "正在生成文件修改…";
-  return "工具正在执行，等待结果…";
+function liveHintKind(row: ActivityRowModel, status: string): "approval" | "waiting" | "command" | "edit" | "tool" {
+  if (status === "waiting_approval") return "approval";
+  if (status === "waiting" || status === "pending") return "waiting";
+  const source = row.wrapper ?? row.item;
+  if (row.item.type === "process" || isCommandTool(source)) return "command";
+  if (row.item.type === "file_edit" || isEditTool(source)) return "edit";
+  return "tool";
 }
 
-function ActivityGlyph({ item, size = 13 }: { item: TranscriptItem; size?: number }) {
-  const identity = activityIdentity(item);
+/** The item whose identity (icon, family) represents a row from its first frame. */
+function identitySource(row: ActivityRowModel): TranscriptItem {
+  const source = row.wrapper ?? row.item;
+  if (row.item.type === "process" || isCommandTool(source)) return row.item.type === "process" ? row.item : { ...source, type: "process" };
+  if (row.item.type === "file_edit" || isEditTool(source)) return row.item.type === "file_edit" ? row.item : { ...source, type: "file_edit" };
+  return source;
+}
+
+function RowGlyph({ row, category, size = 13 }: { row: ActivityRowModel; category: ActivityCategory; size?: number }) {
+  if (category === "command") return <Terminal size={size} />;
+  if (category === "edit") return <FileDiff size={size} />;
+  const source = identitySource(row);
+  const identity = activityIdentity(source);
   if (identity.family === "terminal") return <Terminal size={size} />;
   if (identity.family === "file") return <FileDiff size={size} />;
   if (identity.family === "generic") return <Wrench size={size} />;
-  return <ToolIdentityGlyph item={item} size={size} />;
+  return <ToolIdentityGlyph item={source} size={size} />;
+}
+
+function ActivityStatus({ status, copy }: { status: string; copy: RuntimeCopy }) {
+  const quiet = status === "completed" || status === "changed";
+  const label = copy.statusLabel(status);
+  return (
+    <span className={`task-flow-status ${status}`} title={label} aria-label={label}>
+      <span className="task-flow-status-dot" />
+      {!quiet ? <span>{label}</span> : null}
+    </span>
+  );
+}
+
+function describeRow(row: ActivityRowModel, copy: RuntimeCopy, delta?: FileEditDelta): ActivityDescription {
+  const status = rowStatus(row);
+  const screenshots = browserScreenshotPaths(row.item).length;
+  const primary = row.item.type === "file_edit" && delta ? { ...row.item, paths: delta.paths } : row.item;
+  return describeActivity(primary, row.wrapper, status, copy, {
+    fallbackToolLabel: activityToolLabel(row.wrapper ?? row.item),
+    screenshotCount: screenshots,
+  });
 }
 
 interface ActivityRowProps {
-  item: TranscriptItem;
+  row: ActivityRowModel;
   open: boolean;
   workspace?: string;
+  copy: RuntimeCopy;
+  delta?: FileEditDelta;
   onToggle(id: string): void;
 }
 
 function sameActivityRowProps(previous: ActivityRowProps, next: ActivityRowProps): boolean {
   if (previous.open !== next.open) return false;
-  if (previous.workspace !== next.workspace) return false;
-  if (previous.item.id !== next.item.id || previous.item.type !== next.item.type) return false;
+  if (previous.workspace !== next.workspace || previous.copy !== next.copy || previous.delta !== next.delta) return false;
+  if (previous.row.key !== next.row.key) return false;
+  if (previous.row.item.id !== next.row.item.id || previous.row.item.type !== next.row.item.type) return false;
+  if ((previous.row.wrapper?.id ?? "") !== (next.row.wrapper?.id ?? "")) return false;
 
-  const previousStatus = itemStatus(previous.item);
-  const nextStatus = itemStatus(next.item);
+  const previousStatus = rowStatus(previous.row);
+  const nextStatus = rowStatus(next.row);
   if (previousStatus !== nextStatus) return false;
 
-  if (previous.item.toolName !== next.item.toolName) return false;
-  if (browserScreenshotPaths(previous.item).join("\n") !== browserScreenshotPaths(next.item).join("\n")) return false;
-  if (previous.item.type === "process" && processCommand(previous.item) !== processCommand(next.item)) return false;
-  if (previous.item.type === "file_edit" && fileLabel(previous.item) !== fileLabel(next.item)) return false;
+  if (previous.row.item.toolName !== next.row.item.toolName) return false;
+  if (browserScreenshotPaths(previous.row.item).join("\n") !== browserScreenshotPaths(next.row.item).join("\n")) return false;
+  if (commandFromItem(previous.row.item) !== commandFromItem(next.row.item)) return false;
+  if ((previous.row.item.paths ?? []).join("\n") !== (next.row.item.paths ?? []).join("\n")) return false;
+  if (previous.row.wrapper && next.row.wrapper && previous.row.wrapper.arguments !== next.row.wrapper.arguments) return false;
+  if (previous.row.item.arguments !== next.row.item.arguments && !isActiveActivityStatus(nextStatus)) return false;
 
   // Collapsed rows intentionally ignore stdout/stderr/content/argument deltas.
   // Those can arrive every presentation frame and used to make the task pill
   // reconcile while its entrance animation was still running. When expanded,
   // the detail panel remains fully live.
-  if (next.open) return activityDetail(previous.item) === activityDetail(next.item);
+  if (next.open) return rowDetail(previous.row, previous.delta) === rowDetail(next.row, next.delta);
 
   const active = isActiveActivityStatus(nextStatus);
-  if (!active && hasActivityDetail(previous.item) !== hasActivityDetail(next.item)) return false;
-  if (!active && next.item.type === "file_edit" && previous.item.diff !== next.item.diff) return false;
+  if (!active && rowHasDetail(previous.row) !== rowHasDetail(next.row)) return false;
+  if (!active && next.row.item.type === "file_edit" && previous.row.item.diff !== next.row.item.diff) return false;
   return true;
 }
 
-const ActivityRow = memo(function ActivityRow({ item, open, workspace, onToggle }: ActivityRowProps) {
-  const status = itemStatus(item);
+const ActivityRow = memo(function ActivityRow({ row, open, workspace, copy, delta, onToggle }: ActivityRowProps) {
+  const status = rowStatus(row);
   const active = isActiveActivityStatus(status);
   const executing = isExecutingActivityStatus(status);
-  const expandable = active || hasActivityDetail(item);
+  const born = useBornLive(row.key);
+  // A row that finishes while the user watches confirms once, in its outcome
+  // colour. The marker lives on the row, so nothing else can replay it.
+  const live = useContext(LiveSequenceContext);
+  const previousStatusRef = useRef(status);
+  const [settled, setSettled] = useState<"done" | "failed" | null>(null);
+  useLayoutEffect(() => {
+    const previous = previousStatusRef.current;
+    previousStatusRef.current = status;
+    if (!live || previous === status || !isActiveActivityStatus(previous) || isActiveActivityStatus(status)) return;
+    setSettled(isFailureStatus(status) ? "failed" : "done");
+  }, [live, status]);
+  useEffect(() => {
+    if (!settled) return;
+    const timer = window.setTimeout(() => setSettled(null), 760);
+    return () => window.clearTimeout(timer);
+  }, [settled]);
+  const expandable = active || rowHasDetail(row);
   const detailPresence = useMotionPresence(open, 260);
   const cachedDetailRef = useRef("");
-  const liveDetail = open ? activityDetail(item) : "";
+  const liveDetail = open ? rowDetail(row, delta) : "";
   if (open) cachedDetailRef.current = liveDetail;
   const visibleDetail = open ? liveDetail : cachedDetailRef.current;
-  const stats = item.type === "file_edit" && (!active || open) ? diffStats(item.diff) : null;
-  const screenshotPaths = browserScreenshotPaths(item);
-  const screenshotActivity = isBrowserScreenshotActivity(item);
+  const description = describeRow(row, copy, delta);
+  const stats = row.item.type === "file_edit" && (!active || open)
+    ? (delta ? { added: delta.added, removed: delta.removed } : diffStats(row.item.diff))
+    : null;
+  const screenshotPaths = browserScreenshotPaths(row.item);
   const hintPresence = useMotionPresence(open && active && !visibleDetail && !screenshotPaths.length, 200);
-  const verbKey = active ? "active" : "rested";
-  const identity = activityIdentity(item);
+  const identity = activityIdentity(identitySource(row));
+  const kind = description.category === "command" ? "process" : description.category === "edit" ? "file_edit" : row.item.type;
 
   return (
     <div
       className={`task-flow-row-wrap ${open ? "is-open" : ""}`}
-      data-kind={item.type}
+      data-kind={kind}
+      data-row-key={row.key}
+      data-born={born ? "live" : undefined}
+      data-settled={settled ?? undefined}
     >
       <button
         type="button"
-        className={`task-flow-row task-flow-kind-${item.type} ${active ? "is-active" : "is-resting"} ${executing ? "is-executing" : ""} ${expandable ? "is-expandable" : "no-detail"}`.trim()}
-        data-tool-family={identity.family}
-        onClick={() => expandable && onToggle(item.id)}
+        className={`task-flow-row task-flow-kind-${kind} ${active ? "is-active" : "is-resting"} ${executing ? "is-executing" : ""} ${expandable ? "is-expandable" : "no-detail"} ${isFailureStatus(status) ? "is-failed" : ""}`.replace(/\s+/g, " ").trim()}
+        data-tool-family={description.category === "command" ? "terminal" : description.category === "edit" ? "file" : identity.family}
+        onClick={() => expandable && onToggle(row.key)}
         aria-expanded={expandable ? open : undefined}
         disabled={!expandable}
-        title={expandable ? (open ? "Collapse details" : "Expand details") : undefined}
+        title={expandable ? (open ? copy.collapseDetails : copy.expandDetails) : undefined}
       >
         <span className="task-flow-sheen" aria-hidden="true"><i /></span>
-        <span className="task-flow-row-icon" title={identity.label}><ActivityGlyph item={item} /></span>
+        <span className="task-flow-row-icon" title={identity.label}><RowGlyph row={row} category={description.category} /></span>
         <span className="task-flow-row-main">
-          {/* Verbs are keyed on the live/rested state so the tense change
+          {/* Verbs are keyed on their text so a tense change (正在运行 -> 已运行)
               remounts the span and cross-fades (conversation-motion.css). */}
-          {item.type === "process" ? (
-            <>
-              <span className="task-flow-verb" key={verbKey}>{active ? "正在运行" : "已运行"}</span>
-              <span className="task-flow-primary code">{processCommand(item)}</span>
-            </>
-          ) : item.type === "file_edit" ? (
-            <>
-              <span className="task-flow-verb" key={verbKey}>{active ? "正在编辑" : "已编辑"}</span>
-              <span className="task-flow-primary task-flow-path">{fileLabel(item)}</span>
-              {stats && (stats.added > 0 || stats.removed > 0) ? (
-                <span className="task-flow-diffstat">
-                  <span className="task-flow-plus">+{stats.added}</span>
-                  <span className="task-flow-minus">-{stats.removed}</span>
-                </span>
-              ) : null}
-            </>
-          ) : screenshotActivity && screenshotPaths.length ? (
-            <>
-              <span className="task-flow-verb" key={verbKey}>{active ? "正在查看" : "已查看"}</span>
-              <span className="task-flow-primary">{screenshotPaths.length} 张图片</span>
-            </>
-          ) : (
-            <>
-              <span className="task-flow-verb" key={verbKey}>{active ? "正在使用" : "已使用"}</span>
-              <span className="task-flow-primary">{activityToolLabel(item)}</span>
-            </>
-          )}
+          <span className="task-flow-verb" key={description.verb}>{description.verb}</span>
+          <span
+            className={`task-flow-primary ${description.code ? "code" : ""} ${description.category === "edit" || description.category === "read" ? "task-flow-path" : ""}`.replace(/\s+/g, " ").trim()}
+            title={description.title}
+          >
+            {description.target}
+          </span>
+          {stats && (stats.added > 0 || stats.removed > 0) ? (
+            <span className="task-flow-diffstat">
+              <span className="task-flow-plus">+{stats.added}</span>
+              <span className="task-flow-minus">-{stats.removed}</span>
+            </span>
+          ) : null}
         </span>
-        <ActivityStatus status={status} />
+        <ActivityStatus status={status} copy={copy} />
       </button>
 
       {expandable ? (
@@ -789,7 +1009,7 @@ const ActivityRow = memo(function ActivityRow({ item, open, workspace, onToggle 
                   <div className="tool-hint-presence" data-motion-phase={hintPresence.phase} inert={hintPresence.phase === "exiting"}>
                   <div className="tool-hint-presence-inner"><div className="task-flow-live-detail" role="status">
                     <span className="task-flow-live-detail-glow" aria-hidden="true" />
-                    <span>{liveActivityHint(item, status)}</span>
+                    <span>{copy.liveHint(liveHintKind(row, status))}</span>
                   </div></div></div>
                 ) : null}
               </div>
@@ -801,34 +1021,6 @@ const ActivityRow = memo(function ActivityRow({ item, open, workspace, onToggle 
   );
 }, sameActivityRowProps);
 
-function isFailureStatus(status: string): boolean {
-  return status === "failed" || status === "denied" || status === "cancelled" || status === "interrupted";
-}
-
-function isRedundantToolWrapper(item: TranscriptItem, hasProcess: boolean, hasFileEdit: boolean): boolean {
-  if (item.type !== "tool_call" || isFailureStatus(itemStatus(item))) return false;
-  const name = String(item.toolName ?? "").trim().toLowerCase();
-
-  if (hasProcess && /^(exec|execute|shell|run_command|run-command|command|powershell|bash|cmd)$/.test(name)) return true;
-  if (
-    hasFileEdit
-    && /^(write_workspace_text|write_file|write-file|edit_file|edit-file|apply_patch|apply-patch|patch_file|patch-file|replace_text|replace-text)$/.test(name)
-  ) return true;
-  return false;
-}
-
-function compactActivityItems(items: TranscriptItem[]): TranscriptItem[] {
-  let hasProcess = false;
-  let hasFileEdit = false;
-  for (const item of items) {
-    if (item.type === "process") hasProcess = true;
-    else if (item.type === "file_edit") hasFileEdit = true;
-  }
-
-  const compact = items.filter((item) => !isRedundantToolWrapper(item, hasProcess, hasFileEdit));
-  return compact.length ? compact : items;
-}
-
 function activitySummary(items: TranscriptItem[]): ActivitySummaryData {
   const activityItems: TranscriptItem[] = [];
   let failed = false;
@@ -839,28 +1031,18 @@ function activitySummary(items: TranscriptItem[]): ActivitySummaryData {
   }
 
   return {
-    steps: compactActivityItems(activityItems).length,
+    steps: buildActivityRows(activityItems).length,
     failed,
   };
 }
 
-function activityGroupTitle(items: TranscriptItem[], running = false): string {
-  let hasProcess = false;
-  let hasEdit = false;
-  let hasTool = false;
-  for (const item of items) {
-    if (item.type === "process") hasProcess = true;
-    else if (item.type === "file_edit") hasEdit = true;
-    else if (item.type === "tool_call") hasTool = true;
+function groupCategories(rows: ActivityRowModel[], copy: RuntimeCopy, deltas: ReadonlyMap<string, FileEditDelta>): ActivityCategory[] {
+  const categories: ActivityCategory[] = [];
+  for (const row of rows) {
+    const category = describeRow(row, copy, deltas.get(row.item.id)).category;
+    if (!categories.includes(category)) categories.push(category);
   }
-
-  if (hasEdit && hasProcess && hasTool) return running ? "正在编辑文件、运行命令并使用工具" : "编辑了文件、运行了命令并使用了工具";
-  if (hasEdit && hasProcess) return running ? "正在编辑文件并运行命令" : "编辑了文件并运行了命令";
-  if (hasProcess && hasTool) return running ? "正在运行命令并使用工具" : "运行了命令并使用了工具";
-  if (hasEdit && hasTool) return running ? "正在编辑文件并使用工具" : "编辑了文件并使用了工具";
-  if (hasProcess) return running ? "正在运行命令" : "运行了命令";
-  if (hasEdit) return running ? "正在编辑文件" : "编辑了文件";
-  return running ? "正在使用工具" : "使用了工具";
+  return categories;
 }
 
 function ActivityGroupIcon({ items }: { items: TranscriptItem[] }) {
@@ -871,20 +1053,37 @@ function ActivityGroupIcon({ items }: { items: TranscriptItem[] }) {
   return <ActivityGroupGlyph items={items} size={14} />;
 }
 
-function ActivityFlow({
-  items,
-  keepOpen = false,
-  continuing = false,
-  workspace,
-}: {
+interface ActivityFlowProps {
   items: TranscriptItem[];
   keepOpen?: boolean;
   continuing?: boolean;
   workspace?: string;
-}) {
-  const compactItems = useMemo(() => compactActivityItems(items), [items]);
+}
+
+/** Grouping rebuilds the array on every delta; the group only changes with its items. */
+function sameActivityFlowProps(previous: ActivityFlowProps, next: ActivityFlowProps): boolean {
+  return previous.keepOpen === next.keepOpen
+    && previous.continuing === next.continuing
+    && previous.workspace === next.workspace
+    && sameItemReferences(previous.items, next.items);
+}
+
+const ActivityFlow = memo(function ActivityFlow({
+  items,
+  keepOpen = false,
+  continuing = false,
+  workspace,
+}: ActivityFlowProps) {
+  const copy = useRuntimeCopy();
+  const deltas = useContext(FileEditDeltaContext);
+  const rows = useMemo(() => buildActivityRows(items), [items]);
+  const born = useBornLive(`group:${items[0]?.id ?? ""}`);
   const running = keepOpen;
-  const hasActiveRows = compactItems.some((item) => isActiveActivityStatus(itemStatus(item)));
+  const hasActiveRows = rows.some((row) => isActiveActivityStatus(rowStatus(row)));
+  // The latest group of a live turn stays the motion anchor between tool
+  // batches (so rows appended later still animate), but it only *looks* busy
+  // while a row is genuinely active. The quiet gap belongs to the thinking
+  // capsule below the group, not to a second "continuing" label here.
   const betweenSteps = Boolean(running && continuing && !hasActiveRows);
   const [open, setOpen] = useState(true);
   // Opening a group pops its rows out once (.is-unfolding in conversation-motion.css).
@@ -915,14 +1114,17 @@ function ActivityFlow({
     return () => window.clearTimeout(timer);
   }, [unfolding]);
 
-  const title = activityGroupTitle(compactItems, running && !betweenSteps);
-  const groupIdentity = activityGroupIdentity(compactItems);
+  const categories = useMemo(() => groupCategories(rows, copy, deltas), [copy, deltas, rows]);
+  const title = copy.groupTitle(categories, running && !betweenSteps);
+  const groupItems = useMemo(() => rows.map(identitySource), [rows]);
+  const groupIdentity = activityGroupIdentity(groupItems);
 
   return (
     <section
-      className={`task-flow task-flow-group ${open ? "is-open" : ""} ${running ? "is-running" : ""} ${betweenSteps ? "is-between-steps" : ""} ${unfolding ? "is-unfolding" : ""}`}
+      className={`task-flow task-flow-group ${open ? "is-open" : ""} ${running ? "is-running" : ""} ${betweenSteps ? "is-between-steps" : ""} ${unfolding ? "is-unfolding" : ""}`.replace(/\s+/g, " ").trim()}
       data-tool-family={groupIdentity.family}
-      aria-label="Task activity"
+      data-born={born ? "live" : undefined}
+      aria-label={copy.activityRegion}
     >
       <button
         type="button"
@@ -933,27 +1135,22 @@ function ActivityFlow({
         }}
         aria-expanded={open}
       >
-        {betweenSteps ? <span className="task-flow-between-sheen" aria-hidden="true"><i /></span> : null}
-        <span className="task-flow-group-icon" aria-hidden="true" title={groupIdentity.label}><ActivityGroupIcon items={compactItems} /></span>
+        <span className="task-flow-group-icon" aria-hidden="true" title={groupIdentity.label}><ActivityGroupIcon items={groupItems} /></span>
         <span className="task-flow-group-title" key={title}>{title}</span>
-        {betweenSteps ? (
-          <span className="task-flow-between-label" role="status" aria-live="polite">
-            <i aria-hidden="true" />
-            <span>继续处理中</span>
-          </span>
-        ) : null}
         <ChevronRight size={13} className="task-flow-group-chevron" aria-hidden="true" />
       </button>
 
       <div className="task-flow-group-grid">
         <div className="task-flow-group-inner">
           <div className="task-flow-list">
-            {compactItems.map((item) => (
+            {rows.map((row) => (
               <ActivityRow
-                key={item.id}
-                item={item}
-                open={openRows.has(item.id)}
+                key={row.key}
+                row={row}
+                open={openRows.has(row.key)}
                 workspace={workspace}
+                copy={copy}
+                delta={row.item.type === "file_edit" ? deltas.get(row.item.id) : undefined}
                 onToggle={toggleRow}
               />
             ))}
@@ -962,9 +1159,10 @@ function ActivityFlow({
       </div>
     </section>
   );
-}
+}, sameActivityFlowProps);
 
 function SubAgentActivityNotice({ items }: { items: TranscriptItem[] }) {
+  const copy = useRuntimeCopy();
   const spawned = items.filter((item) => String(item.toolName || "") === "spawn_agent");
   const count = spawned.length || items.length;
   const running = items.some((item) => isActiveActivityStatus(itemStatus(item)));
@@ -974,29 +1172,28 @@ function SubAgentActivityNotice({ items }: { items: TranscriptItem[] }) {
       type="button"
       className={`sub-agent-inline-notice ${running ? "is-running" : ""}`}
       onClick={() => window.dispatchEvent(new Event("loom:sub-agents-open"))}
-      title="在右侧打开子代理工作区"
+      title={copy.subAgentsTitle}
     >
       <span className="sub-agent-inline-icon" aria-hidden="true"><Bot size={13} /></span>
       <span className="sub-agent-inline-copy">
-        {running ? "子代理正在并行工作" : "本轮使用了子代理"}
+        {running ? copy.subAgentsRunning : copy.subAgentsUsed}
       </span>
       <span className="sub-agent-inline-count">{count}</span>
-      <span className="sub-agent-inline-action">查看工作区</span>
+      <span className="sub-agent-inline-action">{copy.subAgentsOpen}</span>
       <ChevronRight size={12} aria-hidden="true" />
     </button>
   );
 }
+
+// Constructing an Intl formatter is expensive; toolbars render on every delta.
+const TIME_FORMAT = new Intl.DateTimeFormat(undefined, { hour: "2-digit", minute: "2-digit", hour12: false });
 
 function messageTimestamp(item: TranscriptItem): string {
   const value = item.createdAt || item.updatedAt;
   if (!value) return "";
   const parsed = Date.parse(value);
   if (!Number.isFinite(parsed)) return "";
-  return new Intl.DateTimeFormat(undefined, {
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  }).format(new Date(parsed));
+  return TIME_FORMAT.format(new Date(parsed));
 }
 
 async function copyMessageText(value: string): Promise<void> {
@@ -1046,6 +1243,7 @@ function MessageToolbar({
   editable?: boolean;
   disabled?: boolean;
 }) {
+  const copy = useRuntimeCopy();
   const [copied, setCopied] = useState(false);
   const [feedback, setFeedback] = useState<MessageFeedback>(null);
   const time = messageTimestamp(item);
@@ -1057,7 +1255,7 @@ function MessageToolbar({
     return () => window.clearTimeout(timer);
   }, [copied]);
 
-  const copy = async () => {
+  const copyText = async () => {
     if (!canCopy) return;
     try {
       await copyMessageText(text);
@@ -1084,14 +1282,14 @@ function MessageToolbar({
   return (
     <div className={`message-meta ${kind}-message-meta`}>
       {time ? <span className="message-time">{time}</span> : null}
-      <span className="message-actions" aria-label={kind === "user" ? "User message actions" : "Assistant message actions"}>
+      <span className="message-actions" aria-label={kind === "user" ? copy.userActions : copy.assistantActions}>
         <button
           type="button"
           className={`message-action-button ${copied ? "is-copied" : ""}`}
-          onClick={() => void copy()}
+          onClick={() => void copyText()}
           disabled={!canCopy}
-          title={copied ? "已复制" : "复制"}
-          aria-label={copied ? "已复制" : "复制消息"}
+          title={copied ? copy.copied : copy.copy}
+          aria-label={copied ? copy.copied : copy.copyMessage}
         >
           {copied ? <Check size={14} strokeWidth={2.1} /> : <Copy size={14} strokeWidth={1.75} />}
         </button>
@@ -1101,8 +1299,8 @@ function MessageToolbar({
           className="message-action-button message-quote-action"
           onClick={quote}
           disabled={disabled || !canCopy}
-          title={kind === "assistant" ? "引用回答" : "引用消息"}
-          aria-label={kind === "assistant" ? "引用这段回答" : "引用这条消息"}
+          title={kind === "assistant" ? copy.quoteAnswer : copy.quoteMessage}
+          aria-label={kind === "assistant" ? copy.quoteAnswerLabel : copy.quoteMessageLabel}
         >
           <Reply size={14} strokeWidth={1.75} />
         </button>
@@ -1113,8 +1311,8 @@ function MessageToolbar({
             className="message-action-button"
             onClick={edit}
             disabled={!editable || disabled || !canCopy}
-            title="放到输入框里编辑"
-            aria-label="编辑这条消息"
+            title={copy.editMessage}
+            aria-label={copy.editMessageLabel}
           >
             <Pencil size={14} strokeWidth={1.75} />
           </button>
@@ -1124,8 +1322,8 @@ function MessageToolbar({
               type="button"
               className={`message-action-button ${feedback === "up" ? "active" : ""}`}
               onClick={() => setFeedback((current) => (current === "up" ? null : "up"))}
-              title="有帮助"
-              aria-label="标记回复有帮助"
+              title={copy.helpful}
+              aria-label={copy.helpfulLabel}
               aria-pressed={feedback === "up"}
             >
               <ThumbsUp size={14} strokeWidth={1.75} />
@@ -1134,8 +1332,8 @@ function MessageToolbar({
               type="button"
               className={`message-action-button ${feedback === "down" ? "active" : ""}`}
               onClick={() => setFeedback((current) => (current === "down" ? null : "down"))}
-              title="没帮助"
-              aria-label="标记回复没帮助"
+              title={copy.notHelpful}
+              aria-label={copy.notHelpfulLabel}
               aria-pressed={feedback === "down"}
             >
               <ThumbsDown size={14} strokeWidth={1.75} />
@@ -1147,7 +1345,122 @@ function MessageToolbar({
   );
 }
 
-function ItemView({
+interface AssistantMessageProps {
+  item: TranscriptItem;
+  streaming: boolean;
+  onPrompt?(prompt: string): Promise<void> | void;
+  decisionInteractive: boolean;
+  promptDisabled?: boolean;
+  workspace?: string;
+}
+
+function AssistantMessage({ item, streaming, onPrompt, decisionInteractive, promptDisabled, workspace }: AssistantMessageProps) {
+  const copy = useRuntimeCopy();
+  const parsed = splitReasoning(item.text ?? "");
+  const providerReasoning = String(item.reasoning ?? "").trim();
+  // New providers stream reasoning on its own field. Legacy tag parsing remains
+  // only as a compatibility fallback for models that embed thinking in text.
+  const reasoning = providerReasoning || parsed.reasoning;
+  const interrupted = ["interrupted", "cancelled", "failed"].includes(item.status || "");
+  const live = streaming && !interrupted && (item.status === "streaming" || isActiveActivityStatus(item.status || "running"));
+  const decisionMessage = parseDecisionMessage(parsed.answer, live);
+  const answer = decisionMessage.text.trim();
+  // The model is still thinking about this message: nothing to read yet.
+  const thinking = live && !answer && !decisionMessage.decisions.length;
+  const showReasoning = thinking || Boolean(reasoning);
+  // Only a live message can retire its thinking header (answer arrived without
+  // any reasoning to disclose); history never pays for presence bookkeeping.
+  const retiring = useMotionPresence(live && showReasoning, 240);
+  // A message whose first frame already has text, while the thinking capsule
+  // is on screen, continues that capsule as its header and folds it away above
+  // the first line, instead of letting the capsule vanish under the text.
+  const handle = useContext(ThinkingHandleContext);
+  const [inheritsCapsule, setInheritsCapsule] = useState(() => live && !showReasoning && thinkingOnScreen(handle));
+  useEffect(() => {
+    if (!inheritsCapsule) return;
+    const timer = window.setTimeout(() => setInheritsCapsule(false), 260);
+    return () => window.clearTimeout(timer);
+  }, [inheritsCapsule]);
+  const reasoningExiting = !showReasoning && (retiring.mounted || inheritsCapsule);
+
+  if (!showReasoning && !reasoningExiting && !answer && !decisionMessage.decisions.length && !decisionMessage.incomplete) return null;
+
+  return (
+    <div
+      className={`message-shell assistant-message-shell ${thinking ? "is-thinking" : ""}`.trim()}
+      data-message-id={item.id}
+      data-loom-message-kind="assistant"
+      data-loom-message-text={answer || reasoning}
+    >
+      <div className="assistant-message">
+        {showReasoning || reasoningExiting ? (
+          <div
+            className={`live-reasoning-presence ${inheritsCapsule && !showReasoning ? "is-inherited" : ""}`.trim()}
+            data-motion-phase={reasoningExiting ? "exiting" : "entered"}
+            inert={reasoningExiting}
+          >
+            <div className="live-reasoning-presence-inner">
+              <ReasoningBlock
+                reasoning={reasoning}
+                thinking={thinking || (inheritsCapsule && !showReasoning)}
+                live={live}
+                workspace={workspace}
+                messageKey={`${item.id}:reasoning`}
+                interrupted={interrupted}
+              />
+            </div>
+          </div>
+        ) : null}
+        {answer ? <MarkdownMessage content={answer} workspace={workspace} streaming={live} messageKey={`${item.id}:answer`} interrupted={interrupted} /> : null}
+        {decisionMessage.decisions.map((decision, index) => (
+          <DecisionPromptCard
+            key={decision.id || `${item.id}:decision:${index}`}
+            spec={decision}
+            disabled={!decisionInteractive || Boolean(promptDisabled)}
+            onSubmit={decisionInteractive ? onPrompt : undefined}
+          />
+        ))}
+        {decisionMessage.incomplete && !live ? (
+          <DecisionPromptRecoveryCard
+            disabled={!decisionInteractive || Boolean(promptDisabled)}
+            onRetry={decisionInteractive && onPrompt
+              ? () => onPrompt(copy.decisionRetryPrompt)
+              : undefined}
+          />
+        ) : null}
+      </div>
+      {thinking || decisionMessage.decisions.length || decisionMessage.incomplete || (!answer && !reasoning) ? null : (
+        <MessageToolbar kind="assistant" item={item} text={answer || reasoning} disabled={promptDisabled} />
+      )}
+    </div>
+  );
+}
+
+function ApprovalCard({ item, onApproval }: { item: TranscriptItem; onApproval(item: TranscriptItem, approved: boolean): void }) {
+  const copy = useRuntimeCopy();
+  return (
+    <div className="approval-card">
+      <div className="approval-icon"><CircleAlert size={16} /></div>
+      <div className="approval-main">
+        <div className="approval-title">{copy.approvalTitle}</div>
+        <div className="approval-copy">{item.toolName || copy.approvalTool}{item.reason ? ` · ${item.reason}` : ""}</div>
+      </div>
+      <div className="approval-actions">
+        <button className="button secondary" onClick={() => onApproval(item, false)}>{copy.deny}</button>
+        <button className="button primary" onClick={() => onApproval(item, true)}><Check size={14} /> {copy.allow}</button>
+      </div>
+    </div>
+  );
+}
+
+function ErrorRow({ item }: { item: TranscriptItem }) {
+  const copy = useRuntimeCopy();
+  return <div className="error-row"><span className="error-icon"><CircleAlert size={14} /></span><span>{item.error || copy.turnFailed}</span></div>;
+}
+
+// Items are immutable snapshots: an unchanged item (same object) renders the
+// same view, so a delta on the live message does not re-render its neighbours.
+const ItemView = memo(function ItemView({
   item,
   streaming = false,
   onApproval,
@@ -1176,77 +1489,24 @@ function ItemView({
   }
 
   if (item.type === "assistant_message") {
-    const parsed = splitReasoning(item.text ?? "");
-    const providerReasoning = String(item.reasoning ?? "").trim();
-    // New providers stream reasoning on its own field. Legacy tag parsing remains
-    // only as a compatibility fallback for models that embed thinking in text.
-    const reasoning = providerReasoning || parsed.reasoning;
-    const interrupted = ["interrupted", "cancelled", "failed"].includes(item.status || "");
-    const live = streaming && !interrupted && (item.status === "streaming" || isActiveActivityStatus(item.status || "running"));
-    const decisionMessage = parseDecisionMessage(parsed.answer, live);
-    const answer = decisionMessage.text.trim();
-
-    if (live && !answer && (reasoning || parsed.state === "streaming")) {
-      return <div className="assistant-message"><LiveReasoning reasoning={reasoning} workspace={workspace} streaming={live} messageKey={`${item.id}:reasoning`} interrupted={interrupted} /></div>;
-    }
-
-    if (!reasoning && !answer && !decisionMessage.decisions.length) return null;
-
     return (
-      <div className="message-shell assistant-message-shell" data-message-id={item.id} data-loom-message-kind="assistant" data-loom-message-text={answer || reasoning}>
-        <div className="assistant-message">
-          {reasoning ? (
-            <Disclosure label="Thought process">
-              <div className="reasoning-copy">
-                <MarkdownMessage content={reasoning} compact workspace={workspace} messageKey={`${item.id}:reasoning`} interrupted={interrupted} />
-              </div>
-            </Disclosure>
-          ) : null}
-          {answer ? <MarkdownMessage content={answer} workspace={workspace} streaming={live} messageKey={`${item.id}:answer`} interrupted={interrupted} /> : null}
-          {decisionMessage.decisions.map((decision, index) => (
-            <DecisionPromptCard
-              key={decision.id || `${item.id}:decision:${index}`}
-              spec={decision}
-              disabled={!decisionInteractive || Boolean(promptDisabled)}
-              onSubmit={decisionInteractive ? onPrompt : undefined}
-            />
-          ))}
-          {decisionMessage.incomplete && !live ? (
-            <DecisionPromptRecoveryCard
-              disabled={!decisionInteractive || Boolean(promptDisabled)}
-              onRetry={decisionInteractive && onPrompt
-                ? () => onPrompt("刚才的选项没有生成完整。请只重新给出完整的选项卡，不要重复前面的分析。")
-                : undefined}
-            />
-          ) : null}
-        </div>
-        {decisionMessage.decisions.length || decisionMessage.incomplete ? null : (
-          <MessageToolbar kind="assistant" item={item} text={answer || reasoning} disabled={promptDisabled} />
-        )}
-      </div>
+      <AssistantMessage
+        item={item}
+        streaming={streaming}
+        onPrompt={onPrompt}
+        decisionInteractive={decisionInteractive}
+        promptDisabled={promptDisabled}
+        workspace={workspace}
+      />
     );
   }
 
-  if (item.type === "approval") return (
-    <div className="approval-card">
-      <div className="approval-icon"><CircleAlert size={16} /></div>
-      <div className="approval-main">
-        <div className="approval-title">Permission required</div>
-        <div className="approval-copy">{item.toolName || "Tool"}{item.reason ? ` · ${item.reason}` : ""}</div>
-      </div>
-      <div className="approval-actions">
-        <button className="button secondary" onClick={() => onApproval(item, false)}>Deny</button>
-        <button className="button primary" onClick={() => onApproval(item, true)}><Check size={14} /> Allow</button>
-      </div>
-    </div>
-  );
+  if (item.type === "approval") return <ApprovalCard item={item} onApproval={onApproval} />;
 
-  if (item.type === "error") {
-    return <div className="error-row"><span className="error-icon"><CircleAlert size={14} /></span><span>{item.error || "Turn failed"}</span></div>;
-  }
+  if (item.type === "error") return <ErrorRow item={item} />;
 
   return null;
-}
+});
 
 function Sequence({
   items,
@@ -1288,7 +1548,7 @@ function Sequence({
   }, [blocks, deferredActivityBlocks]);
   // Only genuinely active tool rows own the "running" semantics. When the
   // turn is still alive but the previous tool batch has completed, keep the
-  // latest activity group visually alive in a separate between-steps state
+  // latest activity group as the motion anchor in a quiet between-steps state
   // instead of pretending the completed command is still executing.
   const activeActivityBlocks = useMemo(() => {
     const live = new Set<number>();
@@ -1344,7 +1604,7 @@ function Sequence({
   ) : <Fragment key={key}>{content}</Fragment>;
 
   return (
-    <>
+    <LiveSequenceContext.Provider value={active}>
       {subAgentItems.length ? (
         envelope("sub-agent-workspace", subAgentItems.map(item => item.id),
         <div className="transcript-entry entry-sub-agent-workspace">
@@ -1383,7 +1643,7 @@ function Sequence({
           )
         )
       ))}
-    </>
+    </LiveSequenceContext.Provider>
   );
 }
 
@@ -1393,7 +1653,7 @@ function parseTimestamp(value: unknown): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
-function elapsedLabel(items: TranscriptItem[]): string {
+function elapsedSeconds(items: TranscriptItem[]): number | null {
   let earliest = Number.POSITIVE_INFINITY;
   let latest = Number.NEGATIVE_INFINITY;
 
@@ -1404,15 +1664,8 @@ function elapsedLabel(items: TranscriptItem[]): string {
     if (end !== null) latest = Math.max(latest, end);
   }
 
-  if (!Number.isFinite(earliest) || !Number.isFinite(latest)) return "任务过程";
-  const seconds = Math.max(1, Math.round((latest - earliest) / 1000));
-  if (seconds < 60) return `用时 ${seconds}s`;
-  const minutes = Math.floor(seconds / 60);
-  const remainingSeconds = seconds % 60;
-  if (minutes < 60) return `用时 ${minutes}m${remainingSeconds ? ` ${remainingSeconds}s` : ""}`;
-  const hours = Math.floor(minutes / 60);
-  const remainingMinutes = minutes % 60;
-  return `用时 ${hours}h${remainingMinutes ? ` ${remainingMinutes}m` : ""}`;
+  if (!Number.isFinite(earliest) || !Number.isFinite(latest)) return null;
+  return Math.max(1, (latest - earliest) / 1000);
 }
 
 function finalAssistantForTurn(items: TranscriptItem[]): TranscriptItem | null {
@@ -1486,12 +1739,37 @@ function AssistantArtifactPreview({
   workspace: string;
   revision: number;
 }) {
+  const copy = useRuntimeCopy();
   return (
-    <button type="button" className="artifact-transcript-link" title={`${path} · ${revision} 次更新`}
+    <button type="button" className="artifact-transcript-link" title={copy.artifactUpdates(path, revision)}
       onClick={() => window.dispatchEvent(new CustomEvent("loom:artifact-preview-open", { detail: { path, workspace } }))}>
-      <FileCode2 size={15} /><span>查看产物</span><strong>{artifactName(path)}</strong><ChevronRight size={13} />
+      <FileCode2 size={15} /><span>{copy.openArtifact}</span><strong>{artifactName(path)}</strong><ChevronRight size={13} />
     </button>
   );
+}
+
+/**
+ * What the growth edge of a live turn is doing right now. The thinking capsule
+ * only speaks for the quiet gaps: while text streams, a tool row runs or an
+ * approval waits, those surfaces already say what Loom is doing.
+ */
+function liveEdgeState(items: TranscriptItem[]): { quiet: boolean; started: boolean } {
+  let started = false;
+  for (const item of items) {
+    if (item.type === "user_message") continue;
+    started = true;
+    if (isActivityItem(item) && isActiveActivityStatus(itemStatus(item))) return { quiet: false, started };
+    if (item.type === "approval" && isActiveActivityStatus(itemStatus(item))) return { quiet: false, started };
+  }
+  for (let index = items.length - 1; index >= 0; index -= 1) {
+    const item = items[index];
+    if (item.type !== "assistant_message") continue;
+    const status = itemStatus(item);
+    const live = item.status === "streaming" || isActiveActivityStatus(status) || splitReasoning(item.text ?? "").state === "streaming";
+    if (live) return { quiet: false, started };
+    break;
+  }
+  return { quiet: true, started };
 }
 
 function TurnProcess({
@@ -1499,6 +1777,7 @@ function TurnProcess({
   allItems,
   guidanceItems,
   active,
+  settle,
   open,
   onOpenChange,
   onApproval,
@@ -1510,6 +1789,7 @@ function TurnProcess({
   allItems: TranscriptItem[];
   guidanceItems: TranscriptItem[];
   active: boolean;
+  settle: SettlePhase;
   open: boolean;
   onOpenChange(open: boolean): void;
   onApproval(item: TranscriptItem, approved: boolean): void;
@@ -1517,6 +1797,10 @@ function TurnProcess({
   promptDisabled?: boolean;
   workspace?: string;
 }) {
+  const copy = useRuntimeCopy();
+  // A just-completed turn keeps its live layout until the fold has finished,
+  // so completion never re-expands the earlier history for a frame.
+  const live = active || settle !== null;
   const summary = useMemo(() => activitySummary(items), [items]);
   const breakdown = useMemo(() => turnProcessBreakdown(items), [items]);
   const intermediateMessages = useMemo(
@@ -1525,8 +1809,8 @@ function TurnProcess({
   );
   const operationCount = summary.steps + intermediateMessages;
   const summaryLabel = useMemo(
-    () => turnProcessSummaryLabel(breakdown, operationCount),
-    [breakdown, operationCount],
+    () => copy.processSummary(breakdown, operationCount),
+    [breakdown, copy, operationCount],
   );
   const [processVisited, setProcessVisited] = useState(active || open);
   const [earlierOpen, setEarlierOpen] = useState(false);
@@ -1543,8 +1827,26 @@ function TurnProcess({
     })
     .map((item) => item.id))), [items]);
   const pendingPresentations = usePendingPresentations();
-  const handoff = useEarlierProcessHandoff(items, progress, active, earlierOpen, pendingPresentations, processHandoffGroups);
-  const earlierEntry = useMotionPresence(active && progress.earlier.length > 0, 200);
+  // The finished live layout is held through the settle fold, including records
+  // still retained in place, so nothing disappears at the moment of completion.
+  const handoff = useEarlierProcessHandoff(items, progress, live, earlierOpen, pendingPresentations, processHandoffGroups);
+  const earlierEntry = useMotionPresence(live && progress.earlier.length > 0, 200);
+
+  // The standalone thinking capsule: shown at once while the turn has produced
+  // nothing yet, and after a short grace during later quiet gaps.
+  const edge = useMemo(() => liveEdgeState(items), [items]);
+  const wantsCapsule = active && edge.quiet && pendingPresentations.size === 0;
+  const capsuleVisible = useSettledFlag(wantsCapsule, edge.started ? LIVE_STATUS_GRACE_MS : 0);
+  const capsulePresence = useMotionPresence(capsuleVisible, 240);
+  // A message that starts thinking takes the capsule's place in the same
+  // frame: the capsule leaves without an exit so nothing is drawn twice.
+  const handedOff = active && !edge.quiet && items.some((item) => item.type === "assistant_message"
+    && (item.status === "streaming" || isActiveActivityStatus(itemStatus(item))));
+  const handedOffRef = useRef(false);
+  if (handedOff) handedOffRef.current = true;
+  if (capsuleVisible) handedOffRef.current = false;
+  const renderCapsule = active && capsulePresence.mounted && !handedOff
+    && !(capsulePresence.phase === "exiting" && handedOffRef.current);
 
   useEffect(() => {
     if (active || open) setProcessVisited(true);
@@ -1553,34 +1855,41 @@ function TurnProcess({
   // Historical turns arrive already folded. Avoid constructing their entire
   // tool/process subtree until the user actually expands that turn; after the
   // first expansion keep it mounted so the existing fold animation stays smooth.
-  const renderProcessContent = active || open || processVisited;
+  const renderProcessContent = live || open || processVisited;
 
   return (
-    <section className={`turn-process ${active ? "is-live" : "is-settled"} ${open ? "is-open" : ""} ${guidanceItems.length ? "has-guidance" : ""}`.trim()}>
+    <section
+      className={`turn-process ${live ? "is-live" : "is-settled"} ${settle ? `is-settling is-settle-${settle}` : ""} ${open ? "is-open" : ""} ${guidanceItems.length ? "has-guidance" : ""}`.replace(/\s+/g, " ").trim()}
+    >
       {!active ? (
-        <button
-          type="button"
-          className="turn-process-header"
-          onClick={() => onOpenChange(!open)}
-          aria-expanded={open}
-          title={open ? "折叠任务过程" : "展开完整任务过程"}
-        >
-          <span className="turn-process-primary">
-            <span className="turn-process-summary">{summaryLabel}</span>
-            {(breakdown.added > 0 || breakdown.removed > 0) ? (
-              <span className="turn-process-diffstat" aria-label={`新增 ${breakdown.added} 行，删除 ${breakdown.removed} 行`}>
-                <span className="turn-process-plus">+{breakdown.added}</span>
-                <span className="turn-process-minus">-{breakdown.removed}</span>
+        <div className="turn-process-header-shell">
+          <div className="turn-process-header-inner">
+            <button
+              type="button"
+              className="turn-process-header"
+              onClick={() => onOpenChange(!open)}
+              aria-expanded={open}
+              title={copy.processToggleTitle(open)}
+              tabIndex={settle === "hold" ? -1 : undefined}
+            >
+              <span className="turn-process-primary">
+                <span className="turn-process-summary">{summaryLabel}</span>
+                {(breakdown.added > 0 || breakdown.removed > 0) ? (
+                  <span className="turn-process-diffstat" aria-label={copy.diffLabel(breakdown.added, breakdown.removed)}>
+                    <span className="turn-process-plus">+{breakdown.added}</span>
+                    <span className="turn-process-minus">-{breakdown.removed}</span>
+                  </span>
+                ) : null}
+                <span className="turn-process-time">{copy.elapsed(elapsedSeconds(allItems))}</span>
               </span>
-            ) : null}
-            <span className="turn-process-time">{elapsedLabel(allItems)}</span>
-          </span>
-          <ChevronRight size={14} className="turn-process-chevron" aria-hidden="true" />
-        </button>
+              <ChevronRight size={14} className="turn-process-chevron" aria-hidden="true" />
+            </button>
+          </div>
+        </div>
       ) : null}
 
-      {!active && !open && guidanceItems.length ? (
-        <div className="turn-guidance-recap" aria-label="Guidance added during this turn">
+      {!live && !open && guidanceItems.length ? (
+        <div className="turn-guidance-recap" aria-label={copy.guidanceRecap}>
           {guidanceItems.map((item) => (
             <div className="transcript-entry entry-user_message entry-steering-user" key={`guidance-${item.id}`}>
               <ItemView item={item} onApproval={onApproval} onPrompt={onPrompt} promptDisabled={promptDisabled} workspace={workspace} />
@@ -1593,20 +1902,20 @@ function TurnProcess({
         <div className="turn-process-grid">
           <div className="turn-process-inner">
             <div className="turn-process-content">
-              {active && earlierEntry.mounted ? (
+              {live && earlierEntry.mounted ? (
                 <div className="earlier-process-entry" data-motion-phase={earlierEntry.phase} inert={!progress.earlier.length}>
                 <div className={`earlier-task-process ${earlierOpen ? "is-open" : ""} ${handoff.folding.size ? "is-receiving" : ""}`.trim()}>
                   <button type="button" className="earlier-process-toggle" aria-expanded={earlierOpen}
                     aria-controls={earlierHistoryId}
-                    aria-label={`${earlierOpen ? "收起" : "展开"}较早过程，${progress.earlier.length} 项`}
-                    title={earlierOpen ? "收起较早的进度与工具记录" : "展开较早的进度与工具记录"}
+                    aria-label={copy.earlierToggleLabel(earlierOpen, progress.earlier.length)}
+                    title={copy.earlierToggleTitle(earlierOpen)}
                     onClick={() => {
                       setEarlierVisited(true);
                       setEarlierOpen(!earlierOpen);
                     }}>
                     <span className="earlier-process-icon" aria-hidden="true"><History size={14} strokeWidth={1.8} /></span>
-                    <span className="earlier-process-label">较早过程</span>
-                    <span className="earlier-process-count" aria-hidden="true">{progress.earlier.length} 项</span>
+                    <span className="earlier-process-label">{copy.earlier}</span>
+                    <span className="earlier-process-count" key={progress.earlier.length} aria-hidden="true">{copy.earlierCount(progress.earlier.length)}</span>
                     <ChevronRight size={13} className="earlier-process-chevron" aria-hidden="true" />
                   </button>
                   <div id={earlierHistoryId} className="earlier-process-history" data-motion-phase={earlierPresence.phase} inert={!earlierOpen}>
@@ -1620,7 +1929,12 @@ function TurnProcess({
                 </div>
                 </div>
               ) : null}
-              <Sequence items={active ? handoff.current : items} handoff={active ? handoff : undefined} active={active} onApproval={onApproval} onPrompt={onPrompt} keepActivityOpen={active} promptDisabled={promptDisabled} workspace={workspace} />
+              <Sequence items={live ? handoff.current : items} handoff={live ? handoff : undefined} active={active} onApproval={onApproval} onPrompt={onPrompt} keepActivityOpen={active} promptDisabled={promptDisabled} workspace={workspace} />
+              {renderCapsule ? (
+                <div className="pending-thinking-presence" data-motion-phase={capsulePresence.phase} inert={!capsuleVisible}>
+                  <div className="pending-thinking-presence-inner"><ThinkingCapsule /></div>
+                </div>
+              ) : null}
             </div>
           </div>
         </div>
@@ -1664,11 +1978,9 @@ const TurnView = memo(function TurnView({
     const initialUser = userItems.find((item) => !isSteeringUserMessage(item)) ?? userItems[0] ?? null;
     const guidanceItems = userItems.filter((item) => item.id !== initialUser?.id);
     const errorItems: TranscriptItem[] = [];
-    let latestAssistant: TranscriptItem | null = null;
 
     for (const item of orderedItems) {
       if (!active && item.type === "error") errorItems.push(item);
-      if (item.type === "assistant_message") latestAssistant = item;
     }
 
     const finalAssistant = active ? null : finalAssistantForTurn(orderedItems);
@@ -1690,7 +2002,6 @@ const TurnView = memo(function TurnView({
       initialUser,
       guidanceItems,
       errorItems,
-      latestAssistant,
       finalAssistant,
       processItems,
       hasProcess,
@@ -1702,47 +2013,46 @@ const TurnView = memo(function TurnView({
   // History mounts inactive, so opening a past turn does not launch its bubble.
   const reduce = useReducedMotion();
   const [sending, setSending] = useState(active && !reduce);
-  const [settling, setSettling] = useState(false);
+  const [settle, setSettle] = useState<SettlePhase>(null);
   const wasActiveRef = useRef(active);
 
   useLayoutEffect(() => {
     if (reduce) setSending(false);
     if (active) {
       setProcessOpen(true);
-      setSettling(false);
-    } else if (wasActiveRef.current && !reduce) {
+      setSettle(null);
+    } else if (wasActiveRef.current && !reduce && !document.hidden) {
       // Only a live -> complete transition owns completion motion. Historical
-      // turns mount already settled and therefore never replay the handoff.
-      setSettling(true);
-      const foldTimer = window.setTimeout(() => setProcessOpen(false), TURN_SETTLE_HOLD_MS);
-      const settleTimer = window.setTimeout(() => setSettling(false), TURN_SETTLE_HOLD_MS + 360);
+      // turns mount already settled and therefore never replay the hand-off:
+      // hold the finished live layout for a beat, fold it into its summary,
+      // then swap the (now hidden) content for the full history.
       wasActiveRef.current = active;
+      setSettle("hold");
+      const foldTimer = window.setTimeout(() => {
+        setSettle("fold");
+        setProcessOpen(false);
+      }, TURN_SETTLE_HOLD_MS);
+      const settleTimer = window.setTimeout(() => setSettle(null), TURN_SETTLE_HOLD_MS + TURN_FOLD_MS);
       return () => {
         window.clearTimeout(foldTimer);
         window.clearTimeout(settleTimer);
       };
     } else {
-      setSettling(false);
-      if (reduce) setProcessOpen(false);
+      setSettle(null);
+      if (wasActiveRef.current || reduce) setProcessOpen(false);
     }
     wasActiveRef.current = active;
   }, [active, reduce]);
 
   const inlineArtifact = useMemo(() => latestInlineArtifact(derived.orderedItems), [derived.orderedItems]);
-  const latestAssistantState = derived.latestAssistant ? splitReasoning(derived.latestAssistant.text ?? "") : null;
-  const latestProviderReasoning = String(derived.latestAssistant?.reasoning ?? "").trim();
-  const showPendingThinking = Boolean(
-    active
-    && !latestProviderReasoning
-    && latestAssistantState?.state !== "streaming"
-    && !latestAssistantState?.answer.trim(),
-  );
-  const pendingThinking = useRef<PendingThinkingHandle>({ element: null, mountedAt: 0 }).current;
-  const thinkingPresence = useMotionPresence(showPendingThinking, 240);
+  const fileDeltas = useMemo(() => fileEditDeltas(derived.orderedItems), [derived.orderedItems]);
+  const thinkingHandle = useRef<ThinkingHandle>({ element: null, mountedAt: 0 }).current;
+  const settling = settle !== null;
 
   return (
     <StreamingPresentation>
-    <PendingThinkingContext.Provider value={pendingThinking}>
+    <ThinkingHandleContext.Provider value={thinkingHandle}>
+    <FileEditDeltaContext.Provider value={fileDeltas}>
     <section className={`turn-block ${active ? "is-active" : "is-complete"} ${settling ? "is-settling" : ""}`.trim()} data-turn-id={turnId}>
       {derived.initialUser ? (
         <div className={`transcript-entry entry-user_message ${sending ? "is-sending" : ""}`} key={derived.initialUser.clientMessageId || derived.initialUser.id}
@@ -1753,12 +2063,13 @@ const TurnView = memo(function TurnView({
         </div>
       ) : null}
 
-      {derived.hasProcess ? (
+      {derived.hasProcess || active ? (
         <TurnProcess
           items={derived.processItems}
           allItems={derived.orderedItems}
           guidanceItems={derived.guidanceItems}
           active={active}
+          settle={settle}
           open={processOpen}
           onOpenChange={setProcessOpen}
           onApproval={onApproval}
@@ -1798,13 +2109,9 @@ const TurnView = memo(function TurnView({
       )) : null}
 
       {!active ? <TurnArtifacts items={items} workspace={workspace} /> : null}
-      {thinkingPresence.mounted ? (
-        <div className="pending-thinking-presence" data-motion-phase={thinkingPresence.phase} inert={!showPendingThinking}>
-          <div className="pending-thinking-presence-inner"><PendingThinking /></div>
-        </div>
-      ) : null}
     </section>
-    </PendingThinkingContext.Provider>
+    </FileEditDeltaContext.Provider>
+    </ThinkingHandleContext.Provider>
     </StreamingPresentation>
   );
 }, (previous, next) => (

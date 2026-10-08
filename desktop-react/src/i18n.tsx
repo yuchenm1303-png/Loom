@@ -648,6 +648,16 @@ export function useI18n(): I18nContextValue {
   return value;
 }
 
+/**
+ * Display language for surfaces that can render without the provider, such as
+ * isolated transcript fixtures. Follows the provider when present.
+ */
+export function useLoomLanguage(): LoomLanguage {
+  const value = useContext(I18nContext);
+  if (value) return value.language;
+  return normalizeLanguage(document.documentElement.dataset.loomLanguage) ?? detectInitialLanguage();
+}
+
 export function currentLanguageLabel(language: LoomLanguage): string {
   return LOOM_LANGUAGES.find((item) => item.value === language)?.nativeLabel ?? language;
 }

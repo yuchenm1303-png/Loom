@@ -86,6 +86,25 @@ StreamingPresentation owns grapheme pacing and spreads final bursts over the
 once during reception; later bursts update their existing DOM without replay.
 The top RunProgress owns generation status, so prose has no trailing cursor.
 
+Live-turn choreography (`Transcript.tsx`, timings in `presentationTiming.ts`):
+- One thinking surface speaks for quiet gaps: the standalone capsule at the
+  growth edge, or the header of the message the model is thinking about. A
+  header that replaces a visible capsule continues it in place (`.is-handoff`)
+  and later settles into the 「思考过程」 disclosure in the same element. After the
+  first output the capsule only returns once a gap lasts `LIVE_STATUS_GRACE_MS`.
+- A tool call that only launches a process or writes a file shares one row
+  with the process/diff it produces (`buildActivityRows`), keyed by the call,
+  so 「正在运行」 never swaps from a raw `exec` row. Row copy comes from
+  `runtimeCopy.ts` (both UI languages); unknown tools fall back to their name.
+- Group/row births are bound to `[data-born="live"]` (first appearance in a live
+  turn, once per renderer session) and confirmations to `[data-settled]`, never
+  to `.is-running`, which toggles between tool batches.
+- Completion holds the finished live layout for `TURN_SETTLE_HOLD_MS`, then
+  folds it into the summary line over `TURN_FOLD_MS`; history never re-expands.
+- RunProgress floats over the transcript's top edge (the transcript reserves its
+  height), keeps work labels prompt and gap labels debounced, and says how the
+  run ended for a moment before fading.
+
 Transient surfaces use useMotionPresence: logical closure makes retained DOM
 inert, an interrupted exit reverses in place, and changing motion preferences
 settles an active transition immediately. Pass an identity for different

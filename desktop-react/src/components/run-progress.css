@@ -1,4 +1,5 @@
 .conversation-stage {
+  position: relative;
   min-height: 0;
   min-width: 0;
   display: grid;
@@ -6,15 +7,10 @@
   overflow: hidden;
 }
 
-/* Keep the transcript pinned while the transient run strip mounts above it. */
 .conversation-stage > .transcript-scroll {
   grid-row: 2;
   min-height: 0;
   min-width: 0;
-}
-
-.conversation-stage > .run-progress-frame.top {
-  grid-row: 1;
 }
 
 .composer-stage {
@@ -22,38 +18,59 @@
   position: relative;
 }
 
+/* Live run strip --------------------------------------------------------------
+   The strip floats over the transcript's top edge instead of taking a grid
+   row, so starting or finishing a run never moves the conversation. The
+   transcript reserves the strip's height in its top padding
+   (workspace-surface-refinement.css), and content scrolling underneath fades
+   into the strip's canvas-coloured backdrop. The text column matches the
+   conversation column. When the run ends the strip says how it ended for a
+   moment, then fades (App keeps it mounted for RUN_STRIP_EXIT_MS). */
 .run-progress-frame {
   position: relative;
   z-index: 7;
   min-width: 0;
-  padding-inline: 22px;
   pointer-events: none;
 }
 
-.run-progress-frame.top {
-  padding-top: 6px;
-  padding-bottom: 5px;
-  border-bottom: 0;
-  background: transparent;
+.conversation-stage > .run-progress-frame.top {
+  position: absolute;
+  top: 0;
+  left: var(--ws-scroll-inset, 0px);
+  right: calc(var(--task-plan-width, 0px) + var(--ws-scroll-inset, 0px));
+  height: 40px;
+  display: flex;
+  justify-content: center;
+  background: linear-gradient(
+    to bottom,
+    var(--ws-canvas, var(--bg)) 0%,
+    var(--ws-canvas, var(--bg)) 52%,
+    color-mix(in srgb, var(--ws-canvas, var(--bg)) 72%, transparent) 76%,
+    transparent 100%
+  );
+  opacity: 1;
+  transition: opacity 260ms ease;
 }
 
-.run-progress-frame.bottom {
-  padding-top: 5px;
-  padding-bottom: 0;
-  background: linear-gradient(180deg, rgba(13,14,17,0), rgba(13,14,17,.62));
+.conversation-stage > .run-progress-frame.top[data-motion-phase="entering"] {
+  opacity: 0;
+}
+
+/* Finishing: hold the outcome readable, then dissolve. */
+.conversation-stage > .run-progress-frame.top[data-motion-phase="exiting"] {
+  opacity: 0;
+  transition: opacity 320ms cubic-bezier(.42,0,.72,.2) 560ms;
 }
 
 .run-progress-inline {
-  width: 100%;
+  width: min(var(--content-width, 860px), calc(100% - 2 * var(--ws-gutter, 26px)));
   min-width: 0;
-  min-height: 28px;
+  height: 32px;
   margin: 0;
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   column-gap: 18px;
-  row-gap: 4px;
-  animation: run-progress-enter 150ms cubic-bezier(.2,.78,.2,1) both;
 }
 
 .run-progress-primary,
@@ -65,69 +82,81 @@
 }
 
 .run-progress-primary {
+  gap: 9px;
   overflow: hidden;
 }
 
-.run-progress-primary {
-  gap: 8px;
-}
-
+/* The live dot breathes while Loom works and becomes the outcome mark. */
 .run-progress-live-dot {
   position: relative;
   width: 7px;
   height: 7px;
   flex: none;
+  display: grid;
+  place-items: center;
+  margin-inline: 2px 0;
   border-radius: 50%;
   background: #a79df3;
-  box-shadow: 0 0 0 3px rgba(139,124,246,.075), 0 0 9px rgba(139,124,246,.2);
-  animation: run-progress-pulse 2.35s ease-in-out infinite;
+  color: transparent;
+  box-shadow: 0 0 0 3px rgba(139,124,246,.07), 0 0 9px rgba(139,124,246,.18);
+  animation: run-progress-pulse 2.4s ease-in-out infinite;
+  transition:
+    width 260ms cubic-bezier(.2,.8,.2,1),
+    height 260ms cubic-bezier(.2,.8,.2,1),
+    margin 260ms cubic-bezier(.2,.8,.2,1),
+    background-color 220ms ease,
+    box-shadow 220ms ease,
+    color 220ms ease;
 }
 
-.run-progress-live-dot::after {
-  content: none;
+.run-progress-live-dot > svg {
+  animation: run-progress-mark-in 360ms var(--loom-spring-pop, cubic-bezier(.2,.8,.2,1)) 60ms backwards;
 }
 
-.run-progress-brand {
-  flex: none;
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  color: #7f8793;
-  font-size: 10.8px;
-  font-weight: 620;
-  letter-spacing: .006em;
+.run-progress-frame.is-finished .run-progress-live-dot,
+.run-progress-frame.is-stopped .run-progress-live-dot {
+  width: 15px;
+  height: 15px;
+  margin-inline: 0 -2px;
+  animation: none;
+  color: #0f1a14;
+  background: var(--semantic-success-strong, #70a186);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--semantic-success-strong, #70a186) 16%, transparent);
 }
 
-.run-progress-brand svg {
-  color: #978deb;
-  opacity: .86;
-}
-
-.run-progress-divider {
-  width: 1px;
-  height: 13px;
-  flex: none;
-  background: linear-gradient(180deg, transparent, rgba(255,255,255,.105), transparent);
+.run-progress-frame.is-stopped .run-progress-live-dot {
+  color: #1a1418;
+  background: #9a92a6;
+  box-shadow: 0 0 0 3px rgba(154,146,166,.14);
 }
 
 .run-progress-phase {
   min-width: 0;
-  flex: 1 1 auto;
+  flex: 0 1 auto;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: #dce1ea;
-  font-size: 12px;
-  font-weight: 670;
-  line-height: 1.15;
-  animation: run-progress-phase-in 170ms cubic-bezier(.2,.78,.2,1) both;
+  color: #c9ced8;
+  font-size: 12.5px;
+  font-weight: 620;
+  line-height: 20px;
+  letter-spacing: .005em;
+  animation: run-progress-phase-in 240ms ease-out both;
+}
+
+.run-progress-phase-note {
+  flex: none;
+  color: #747c88;
+  font-size: 11.5px;
+  font-weight: 540;
+  font-variant-numeric: tabular-nums;
 }
 
 .run-progress-meta {
   justify-content: flex-end;
-  gap: 7px;
-  color: #707884;
-  font-size: 10.2px;
+  gap: 8px;
+  color: #6f7783;
+  font-size: 11.5px;
   font-weight: 540;
   line-height: 1;
   font-variant-numeric: tabular-nums;
@@ -167,396 +196,6 @@
   background: #434a54;
 }
 
-.run-progress-track {
-  position: relative;
-  grid-column: 1 / -1;
-  width: 100%;
-  height: 1px;
-  margin: 0;
-  overflow: hidden;
-  border-radius: 999px;
-  background: linear-gradient(90deg, rgba(139,124,246,.06), rgba(255,255,255,.032) 26%, rgba(255,255,255,.016) 78%, transparent);
-}
-
-.run-progress-track > span {
-  position: absolute;
-  inset-block: 0;
-  left: -18%;
-  width: 18%;
-  border-radius: inherit;
-  background: linear-gradient(90deg, transparent, rgba(154,143,239,.18) 20%, rgba(190,181,255,.52) 54%, transparent);
-  filter: blur(.1px);
-  animation: run-progress-sweep 1.8s cubic-bezier(.45,.05,.55,.95) infinite;
-}
-
-.run-progress-frame.bottom .run-progress-inline {
-  min-height: 20px;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 4px;
-}
-
-.run-progress-frame.bottom .run-progress-meta {
-  justify-content: flex-start;
-  padding-left: 15px;
-}
-
-.run-progress-frame.bottom .run-progress-brand,
-.run-progress-frame.bottom .run-progress-phase {
-  font-size: 10.4px;
-}
-
-.run-progress-frame.bottom .run-progress-meta {
-  font-size: 9.5px;
-}
-
-.run-progress-frame.bottom .run-progress-track {
-  margin-top: 1px;
-  opacity: .72;
-}
-
-/* The global strip replaces the old duplicate assistant streaming placeholder. */
-.entry-assistant_message:has(.streaming-placeholder) {
-  display: none !important;
-}
-
-@keyframes run-progress-enter {
-  from { opacity: 0; transform: translateY(-2px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
-@keyframes run-progress-pulse {
-  0%, 100% {
-    transform: scale(.94);
-    opacity: .66;
-    box-shadow: 0 0 0 3px rgba(139,124,246,.055), 0 0 7px rgba(139,124,246,.12);
-  }
-  50% {
-    transform: scale(1.035);
-    opacity: 1;
-    box-shadow: 0 0 0 3px rgba(139,124,246,.085), 0 0 9px rgba(139,124,246,.18);
-  }
-}
-
-@keyframes run-progress-phase-in {
-  from { opacity: .35; transform: translateY(1px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
-@media (max-width: 1050px) {
-  .run-progress-meta-item.subtle {
-    display: none;
-  }
-}
-
-@media (max-width: 900px) {
-  .run-progress-inline {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .run-progress-meta {
-    justify-content: flex-start;
-    padding-left: 15px;
-  }
-}
-
-@media (max-width: 760px) {
-  .run-progress-frame {
-    padding-inline: 18px;
-  }
-
-  .run-progress-frame.top {
-    padding-top: 8px;
-    padding-bottom: 7px;
-  }
-
-  .run-progress-inline {
-    min-height: 0;
-    row-gap: 5px;
-  }
-
-  .run-progress-primary,
-  .run-progress-meta {
-    width: 100%;
-  }
-
-  .run-progress-meta {
-    gap: 6px;
-    padding-left: 15px;
-    font-size: 9.8px;
-    overflow-x: auto;
-    scrollbar-width: none;
-  }
-
-  .run-progress-meta::-webkit-scrollbar {
-    display: none;
-  }
-
-  .run-progress-brand {
-    font-size: 10.3px;
-  }
-
-  .run-progress-phase {
-    font-size: 11.7px;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .run-progress-inline,
-  .run-progress-live-dot,
-  .run-progress-live-dot::after,
-  .run-progress-phase,
-  .run-progress-track > span {
-    animation: none !important;
-  }
-
-  .run-progress-live-dot {
-    opacity: .92;
-  }
-
-  .run-progress-live-dot::after {
-    opacity: .18;
-  }
-
-  .run-progress-track > span {
-    left: 0;
-    width: 34%;
-    opacity: .36;
-  }
-}
-
-/* Light theme: clean inline run progress -----------------------------------
-   The default run strip is intentionally dark for the dark theme. In light
-   mode keep the same live information, but remove the banner treatment so the
-   status reads as part of the page instead of a dark block. */
-html[data-loom-theme="light"] .run-progress-frame.top {
-  padding-top: 6px;
-  padding-bottom: 5px;
-  border-bottom-color: rgba(28,31,37,.065);
-  background: transparent;
-  backdrop-filter: none;
-}
-
-html[data-loom-theme="light"] .run-progress-frame.bottom {
-  background: transparent;
-}
-
-html[data-loom-theme="light"] .run-progress-inline {
-  color: #4b535e;
-}
-
-html[data-loom-theme="light"] .run-progress-live-dot {
-  background: #695ad8;
-  box-shadow: 0 0 0 3px rgba(105,90,216,.08);
-}
-
-html[data-loom-theme="light"] .run-progress-live-dot::after {
-  border-color: rgba(105,90,216,.14);
-}
-
-html[data-loom-theme="light"] .run-progress-brand {
-  color: #59626d;
-}
-
-html[data-loom-theme="light"] .run-progress-brand svg {
-  color: #695ad8;
-  opacity: .9;
-}
-
-html[data-loom-theme="light"] .run-progress-divider {
-  background: linear-gradient(180deg, transparent, rgba(28,31,37,.14), transparent);
-}
-
-html[data-loom-theme="light"] .run-progress-phase {
-  color: #30363e;
-}
-
-html[data-loom-theme="light"] .run-progress-meta {
-  color: #737c87;
-}
-
-html[data-loom-theme="light"] .run-progress-meta-item:first-child {
-  color: #5f6873;
-}
-
-html[data-loom-theme="light"] .run-progress-meta-item svg {
-  color: #77808b;
-}
-
-html[data-loom-theme="light"] .run-progress-meta-item.subtle {
-  color: #737c87;
-}
-
-html[data-loom-theme="light"] .run-progress-meta-item.subtle svg {
-  color: #7b848f;
-}
-
-html[data-loom-theme="light"] .run-progress-meta-dot {
-  background: #c5cad1;
-}
-
-/* The animated underline makes sense on the dark banner, but looks like a
-   second separator on white. Hide it and keep only the live status dot. */
-html[data-loom-theme="light"] .run-progress-track {
-  display: none;
-}
-
-
-
-/* Top run strip: optical vertical alignment + clipping fix ---------------- */
-/* The strip sits directly under the thread header, so mathematical centering
-   reads too high. Give it a little more room above the text and one pixel more
-   optical weight below, while keeping animated rings unclipped. */
-.conversation-stage > .run-progress-frame.top {
-  align-self: stretch;
-  min-height: 38px;
-  overflow: hidden;
-}
-
-.run-progress-frame.top {
-  min-height: 38px;
-  padding-top: 5px;
-  padding-bottom: 4px;
-  box-sizing: border-box;
-}
-
-.run-progress-frame.top .run-progress-inline {
-  min-height: 28px;
-  overflow: hidden;
-  align-items: center;
-}
-
-.run-progress-frame.top .run-progress-primary,
-.run-progress-frame.top .run-progress-meta {
-  min-height: 28px;
-  align-items: center;
-}
-
-.run-progress-brand {
-  min-height: 21px;
-  display: inline-flex;
-  align-items: center;
-  line-height: 1.2;
-}
-
-.run-progress-brand svg {
-  flex: none;
-}
-
-.run-progress-phase {
-  min-height: 22px;
-  display: inline-flex;
-  align-items: center;
-  line-height: 1.2;
-}
-
-.run-progress-meta {
-  min-height: 22px;
-  line-height: 1.2;
-}
-
-.run-progress-meta-item {
-  min-height: 21px;
-  display: inline-flex;
-  align-items: center;
-  line-height: 1.2;
-}
-
-/* Keep the animated dot/ring visible outside its own 7px geometry. */
-.run-progress-live-dot {
-  margin-inline: 2px 1px;
-}
-
-/* Light theme: a quiet white strip with enough top breathing room that the
-   status copy no longer looks trapped against the header above. */
-html[data-loom-theme="light"] .run-progress-frame.top {
-  min-height: 38px;
-  padding-top: 5px;
-  padding-bottom: 4px;
-  border-bottom: 0;
-  background: transparent;
-  box-shadow: none;
-}
-
-html[data-loom-theme="light"] .run-progress-inline {
-  min-height: 28px;
-}
-
-html[data-loom-theme="light"] .run-progress-primary {
-  gap: 10px;
-}
-
-html[data-loom-theme="light"] .run-progress-brand {
-  color: #56606c;
-  font-size: 11px;
-}
-
-html[data-loom-theme="light"] .run-progress-phase {
-  color: #2f353d;
-  font-size: 12.1px;
-  font-weight: 680;
-}
-
-html[data-loom-theme="light"] .run-progress-meta {
-  gap: 7px;
-  color: #707985;
-  font-size: 10.2px;
-}
-
-html[data-loom-theme="light"] .run-progress-meta-item:first-child {
-  color: #59636f;
-}
-
-html[data-loom-theme="light"] .run-progress-meta-dot {
-  width: 3px;
-  height: 3px;
-  background: #c4c9d0;
-}
-
-html[data-loom-theme="light"] .run-progress-live-dot {
-  background: #695ad8;
-  box-shadow:
-    0 0 0 3px rgba(105,90,216,.075),
-    0 0 10px rgba(105,90,216,.10);
-}
-
-/* At medium widths retain elapsed + step count first, then progressively hide
-   low-priority diagnostics instead of clipping the whole status strip. */
-@media (max-width: 1180px) {
-  .run-progress-meta {
-    gap: 6px;
-  }
-
-  .run-progress-meta-item.subtle {
-    display: none;
-  }
-}
-
-@media (max-width: 900px) {
-  .run-progress-frame.top {
-    min-height: 56px;
-    padding-top: 5px;
-    padding-bottom: 4px;
-  }
-
-  .run-progress-frame.top .run-progress-inline {
-    min-height: 44px;
-    row-gap: 2px;
-  }
-
-  .run-progress-frame.top .run-progress-meta {
-    min-height: 20px;
-    padding-left: 18px;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .run-progress-live-dot,
-  .run-progress-live-dot::after {
-    overflow: visible;
-  }
-}
-
-
 .run-progress-agent-button {
   min-height: 22px;
   padding: 0 7px;
@@ -568,7 +207,7 @@ html[data-loom-theme="light"] .run-progress-live-dot {
   background: rgba(139,124,246,.045);
   color: #8f87d5;
   font: inherit;
-  font-size: 9.8px;
+  font-size: 11px;
   font-weight: 620;
   cursor: pointer;
   pointer-events: auto;
@@ -589,6 +228,138 @@ html[data-loom-theme="light"] .run-progress-live-dot {
   transform: scale(.96);
 }
 
+/* The bottom placement (narrow layouts) keeps the same parts, stacked. */
+.run-progress-frame.bottom {
+  padding: 5px 18px 0;
+  background: linear-gradient(180deg, rgba(13,14,17,0), rgba(13,14,17,.62));
+}
+
+.run-progress-frame.bottom .run-progress-inline {
+  width: 100%;
+  height: auto;
+  min-height: 20px;
+  grid-template-columns: minmax(0, 1fr);
+  row-gap: 4px;
+}
+
+.run-progress-frame.bottom .run-progress-meta {
+  justify-content: flex-start;
+  padding-left: 16px;
+}
+
+/* The global strip replaces the old duplicate assistant streaming placeholder. */
+.entry-assistant_message:has(.streaming-placeholder) {
+  display: none !important;
+}
+
+@keyframes run-progress-pulse {
+  0%, 100% {
+    opacity: .7;
+    box-shadow: 0 0 0 3px rgba(139,124,246,.05), 0 0 7px rgba(139,124,246,.12);
+  }
+  50% {
+    opacity: 1;
+    box-shadow: 0 0 0 4px rgba(139,124,246,.09), 0 0 10px rgba(139,124,246,.2);
+  }
+}
+
+/* Text never moves: a phase change is a short cross-fade. */
+@keyframes run-progress-phase-in {
+  from { opacity: .2; }
+  to { opacity: 1; }
+}
+
+@keyframes run-progress-mark-in {
+  from { opacity: 0; scale: .4; }
+}
+
+@media (max-width: 1180px) {
+  .run-progress-meta {
+    gap: 6px;
+  }
+
+  .run-progress-meta-item.subtle {
+    display: none;
+  }
+}
+
+@media (max-width: 900px) {
+  .conversation-stage > .run-progress-frame.top .run-progress-inline {
+    width: calc(100% - 32px);
+  }
+
+  .run-progress-meta-item.subtle,
+  .run-progress-meta-item:not(:first-child),
+  .run-progress-meta-dot {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .run-progress-live-dot,
+  .run-progress-live-dot > svg,
+  .run-progress-phase {
+    animation: none !important;
+  }
+
+  .conversation-stage > .run-progress-frame.top,
+  .run-progress-live-dot {
+    transition: none !important;
+  }
+}
+
+:root[data-loom-reduced-motion="true"] .run-progress-live-dot,
+:root[data-loom-reduced-motion="true"] .run-progress-live-dot > svg,
+:root[data-loom-reduced-motion="true"] .run-progress-phase {
+  animation: none !important;
+}
+
+:root[data-loom-reduced-motion="true"] .conversation-stage > .run-progress-frame.top,
+:root[data-loom-reduced-motion="true"] .run-progress-live-dot {
+  transition: none !important;
+}
+
+/* Light theme ---------------------------------------------------------------- */
+html[data-loom-theme="light"] .run-progress-live-dot {
+  background: #695ad8;
+  box-shadow: 0 0 0 3px rgba(105,90,216,.08), 0 0 10px rgba(105,90,216,.10);
+}
+
+html[data-loom-theme="light"] .run-progress-frame.is-finished .run-progress-live-dot {
+  color: #ffffff;
+  background: var(--semantic-success-strong, #3f8f62);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--semantic-success-strong, #3f8f62) 14%, transparent);
+}
+
+html[data-loom-theme="light"] .run-progress-frame.is-stopped .run-progress-live-dot {
+  color: #ffffff;
+  background: #8b8496;
+  box-shadow: 0 0 0 3px rgba(139,132,150,.14);
+}
+
+html[data-loom-theme="light"] .run-progress-phase {
+  color: #2f353d;
+}
+
+html[data-loom-theme="light"] .run-progress-phase-note,
+html[data-loom-theme="light"] .run-progress-meta {
+  color: #737c87;
+}
+
+html[data-loom-theme="light"] .run-progress-meta-item:first-child {
+  color: #5f6873;
+}
+
+html[data-loom-theme="light"] .run-progress-meta-item svg,
+html[data-loom-theme="light"] .run-progress-meta-item.subtle,
+html[data-loom-theme="light"] .run-progress-meta-item.subtle svg {
+  color: #7b848f;
+}
+
+html[data-loom-theme="light"] .run-progress-meta-dot {
+  background: #c5cad1;
+}
+
 html[data-loom-theme="light"] .run-progress-agent-button {
   border-color: rgba(105,90,216,.11);
   background: rgba(105,90,216,.045);
@@ -605,15 +376,6 @@ html[data-loom-theme="light"] .run-progress-agent-button:hover {
   color: #4e43a8;
 }
 
-
-/* Compact full-width top strip --------------------------------------------- */
-@media (min-width: 901px) {
-  .conversation-stage > .run-progress-frame.top .run-progress-inline {
-    grid-template-columns: minmax(240px, 1fr) auto;
-    column-gap: 14px;
-  }
-
-  .conversation-stage > .run-progress-frame.top .run-progress-meta {
-    justify-self: end;
-  }
+html[data-loom-theme="light"] .run-progress-frame.bottom {
+  background: transparent;
 }

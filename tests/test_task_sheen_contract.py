@@ -1,89 +1,97 @@
+"""Contracts for the live light of an executing task row.
+
+The moving sheen band (one wide gradient sweeping each running pill) was
+retired with the pill material: on flat log rows it read as a loading
+skeleton. An executing step now carries the same soft light as the thinking
+label, painted through its verb, and its status dot breathes. These tests pin
+that it stays one paint-only layer, follows the runtime state, keeps separate
+dark and light palettes and stops under reduced motion.
+"""
+
+import re
 from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-MOTION = ROOT / "desktop-react" / "src" / "components" / "conversation-motion.css"
+COMPONENTS = ROOT / "desktop-react" / "src" / "components"
+MOTION = COMPONENTS / "conversation-motion.css"
+THINKING = COMPONENTS / "inline-thinking.css"
+TRANSCRIPT = COMPONENTS / "Transcript.tsx"
 
 
-def test_running_task_uses_one_sheen_layer() -> None:
-    source = MOTION.read_text(encoding="utf-8")
-
-    assert ".task-flow-sheen > i" in source
-    assert "loom-task-running-sheen" in source
-    assert ".turn-process.is-live .task-flow-row::after" not in source
-    assert "loom-task-capsule-bloom" not in source
+def read(path: Path) -> str:
+    return path.read_text(encoding="utf-8")
 
 
-def test_running_sheen_is_single_soft_pass_with_idle_time() -> None:
-    source = MOTION.read_text(encoding="utf-8")
-
-    block = source[source.index(".task-flow-sheen > i"):source.index(".task-flow-row.is-resting")]
-    assert "width: 30%;" in block
-    assert "4.8s" in block
-    assert "loom-task-running-sheen" in block
-    assert "filter:" not in block
-    assert "infinite both paused" in block
-    assert "animation-play-state: running" in block
-    assert "will-change:" not in block
-
-    keyframes = source[source.index("@keyframes loom-task-running-sheen"):source.index("@keyframes loom-live-anchor-aura")]
-    assert "translate3d(450%,0,0)" in keyframes
-    assert "48%, 100%" in keyframes
-    assert "24% { opacity: .9; }" in keyframes
+def block(source: str, start: str) -> str:
+    begin = source.index(start)
+    return source[begin:source.index("\n}\n", begin)]
 
 
-def test_running_sheen_has_separate_restrained_dark_and_light_palettes() -> None:
-    source = MOTION.read_text(encoding="utf-8")
+def test_executing_verb_is_lit_by_the_thinking_light() -> None:
+    motion = read(MOTION)
 
-    assert "--loom-live-accent: 153, 145, 226;" in source
-    assert "--loom-live-accent-strong: 181, 174, 244;" in source
-    assert "--loom-live-accent: 96, 84, 194;" in source
-    assert "--loom-live-accent-strong: 112, 100, 210;" in source
-
-    light_start = source.index('html[data-loom-theme="light"] .task-flow-sheen > i')
-    light_end = source.index('html[data-loom-theme="light"] .task-flow-live-detail', light_start)
-    light_sheen = source[light_start:light_end]
-    assert "rgba(255,255,255,.65) 53%" in light_sheen
-
-
-def test_live_task_anchor_uses_one_small_composited_aura() -> None:
-    source = MOTION.read_text(encoding="utf-8")
-
-    aura = source[source.index(".task-flow-group.is-running .task-flow-group-icon::before"):source.index("/* Task-flow copy")]
-    assert "loom-live-anchor-aura" in aura
-    assert "will-change: opacity, scale;" in aura
-    assert "filter:" not in aura
-    assert "@keyframes loom-live-anchor-aura" in source
+    rule = block(motion, ".task-flow-row.is-executing .task-flow-verb {")
+    # The verb's own glyphs painted through a gradient: no overlay layer.
+    assert "-webkit-background-clip: text;" in rule and "background-clip: text;" in rule
+    assert "-webkit-text-fill-color: transparent;" in rule
+    assert "animation: thinking-text-shimmer 2.2s" in rule
+    assert "will-change" not in rule and "filter" not in rule
+    # One hue: the gradient only mixes the verb's two tones.
+    gradient = rule[rule.index("background-image: linear-gradient("):]
+    gradient = gradient[:gradient.index(");")]
+    assert re.findall(r"#[0-9a-fA-F]{3,8}\b|rgba?\(", gradient) == []
+    # The sweep itself only moves the background.
+    shimmer = read(THINKING)
+    sweep = shimmer[shimmer.index("@keyframes thinking-text-shimmer"):]
+    sweep = sweep[:sweep.index("\n}\n")]
+    assert set(re.findall(r"([a-z-]+)\s*:", re.sub(r"@keyframes[^{]+", "", sweep))) == {"background-position"}
 
 
-def test_sheen_fades_after_execution_and_obeys_reduced_motion() -> None:
-    source = MOTION.read_text(encoding="utf-8")
-    transcript = (MOTION.parent / "Transcript.tsx").read_text(encoding="utf-8")
-    assert transcript.count('className="task-flow-sheen" aria-hidden="true"') == 1
-    assert ".task-flow-row.is-executing::before" not in source
-    wrapper = source[source.index(".task-flow-row > .task-flow-sheen {"):source.index(".task-flow-sheen > i {")]
-    assert "opacity: 0;" in wrapper and "opacity: 1;" in wrapper
-    assert "transition: opacity 240ms ease;" in wrapper
-    assert "pointer-events: none;" in wrapper
-    reduced = source[source.index("@media (prefers-reduced-motion: reduce)"):]
-    assert ".task-flow-row > .task-flow-sheen { display: none;" in reduced
-    assert ':root[data-loom-reduced-motion="true"] .task-flow-row > .task-flow-sheen' in reduced
+def test_live_light_follows_runtime_state_only() -> None:
+    motion = read(MOTION)
+    transcript = read(TRANSCRIPT)
+
+    # The class is the runtime truth; nothing replays when it goes away.
+    assert '${executing ? "is-executing" : ""}' in transcript
+    dot = block(motion, ".task-flow-status.running .task-flow-status-dot,")
+    assert "animation: loom-task-dot-breathe 1.8s ease-in-out infinite;" in dot
+    breathe = motion[motion.index("@keyframes loom-task-dot-breathe"):]
+    breathe = breathe[:breathe.index("\n}\n")]
+    assert "opacity" in breathe and "scale:" in breathe and "transform:" not in breathe
 
 
-def test_running_band_catches_both_rims_without_a_second_layer() -> None:
-    source = MOTION.read_text(encoding="utf-8")
+def test_live_light_has_separate_dark_and_light_palettes() -> None:
+    motion = read(MOTION)
 
-    block = source[source.index(".task-flow-sheen > i"):source.index(".task-flow-row.is-resting")]
-    # Two 1px glints (upper and lower rim) live in the same moving element's
-    # background, so the sheen is still one layer and one animation.
-    assert block.count("no-repeat") == 2
-    assert "0 1px / 100% 1px no-repeat" in block
-    assert "0 calc(100% - 1px) / 100% 1px no-repeat" in block
-    assert block.count("animation:") == 1
+    assert "--loom-live-accent: 153, 145, 226;" in motion
+    assert "--loom-live-accent-strong: 181, 174, 244;" in motion
+    assert "--loom-live-accent: 96, 84, 194;" in motion
+    assert "--loom-live-accent-strong: 112, 100, 210;" in motion
 
-    light_start = source.index('html[data-loom-theme="light"] .task-flow-sheen > i')
-    light_end = source.index('html[data-loom-theme="light"] .task-flow-live-detail', light_start)
-    light = source[light_start:light_end]
-    # White cannot read against the light pill's own highlight: both glints tint.
-    assert light.count("no-repeat") == 2
-    assert "rgba(255,255,255,.55)" not in light
+    dark = block(motion, ".task-flow-row.is-executing .task-flow-verb {")
+    light = block(motion, 'html[data-loom-theme="light"] .task-flow-row.is-executing .task-flow-verb {')
+    assert "--shimmer-peak: #e6e3f8;" in dark
+    assert "--shimmer-peak: #4f47b0;" in light
+
+
+def test_retired_sheen_band_stays_gone() -> None:
+    motion = read(MOTION)
+
+    assert "loom-task-running-sheen" not in motion
+    assert ".task-flow-sheen > i" not in motion
+    assert "loom-live-anchor-aura" not in motion
+    # The legacy element is still rendered by Transcript for old CSS overrides;
+    # it is never shown.
+    assert ".task-flow-row > .task-flow-sheen {\n  display: none;\n}" in motion
+
+
+def test_live_light_obeys_reduced_motion() -> None:
+    motion = read(MOTION)
+
+    reduced = motion[motion.index("/* Reduced motion"):]
+    media = reduced[:reduced.index(':root[data-loom-reduced-motion="true"]')]
+    setting = reduced[reduced.index(':root[data-loom-reduced-motion="true"]'):]
+    for selector in (".task-flow-row.is-executing .task-flow-verb", ".task-flow-status .task-flow-status-dot"):
+        assert selector + "," in media
+        assert ':root[data-loom-reduced-motion="true"] ' + selector + "," in setting

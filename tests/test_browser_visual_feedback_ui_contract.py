@@ -13,8 +13,10 @@ def test_browser_screenshot_activity_is_user_visible_and_previewable() -> None:
     source = TRANSCRIPT.read_text(encoding="utf-8")
 
     assert 'String(item.toolName ?? "").trim().toLowerCase() === "browser_screenshot"' in source
-    assert 'parts.push(`查看 ${breakdown.imagesViewed} 张图片`);' in source
-    assert '<span className="task-flow-primary">{screenshotPaths.length} 张图片</span>' in source
+    copy = (TRANSCRIPT.parent / "runtimeCopy.ts").read_text(encoding="utf-8")
+    assert 'items.push(`查看 ${parts.imagesViewed} 张图片`);' in copy
+    assert 'imagesViewed: (count) => `${count} 张图片`,' in copy
+    assert "screenshotCount: screenshots," in source
     assert '<BrowserScreenshotDetail paths={screenshotPaths} workspace={workspace} />' in source
     assert 'window.loom.readLocalImage(path, workspaceRoot)' in source
     assert 'workspace={workspace}' in source

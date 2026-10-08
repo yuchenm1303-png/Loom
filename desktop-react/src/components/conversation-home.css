@@ -62,8 +62,11 @@ html[data-loom-theme="light"] .empty-state {
   container-type: size;
 }
 
-.transcript.is-empty {
-  padding-block: 0;
+/* The conversation transcript reserves room for the floating run strip
+   (workspace-surface-refinement.css); the home keeps its own, tighter inset. */
+.transcript.is-empty,
+:root .app-shell .transcript.is-empty {
+  padding-block: 24px 28px;
 }
 
 /* Staggered entrance: intro, then activity, then actions. `backwards` keeps

@@ -89,6 +89,6 @@ def test_folded_historical_turns_do_not_mount_heavy_process_subtrees() -> None:
     transcript = TRANSCRIPT.read_text(encoding="utf-8")
 
     assert "const [processVisited, setProcessVisited] = useState(active || open);" in transcript
-    assert "const renderProcessContent = active || open || processVisited;" in transcript
+    assert "const renderProcessContent = live || open || processVisited;" in transcript
     assert "{renderProcessContent ? (" in transcript
-    assert "<Sequence items={active ? handoff.current : items}" in transcript
+    assert "<Sequence items={live ? handoff.current : items}" in transcript

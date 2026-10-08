@@ -94,7 +94,7 @@ def test_steering_uses_submission_time_and_remains_visible_when_process_folds() 
     assert "const value = item.submittedAt ?? item.createdAt;" in source
     assert "candidateAt > submittedAt" in source
     assert 'guidanceItems={derived.guidanceItems}' in source
-    assert '!active && !open && guidanceItems.length' in source
+    assert '!live && !open && guidanceItems.length' in source
     assert 'className="turn-guidance-recap"' in source
 
     assert ".turn-process.has-guidance" in styles

@@ -81,17 +81,9 @@
   overflow: hidden;
 }
 .app-shell .pending-thinking-presence-inner > .inline-thinking {
-  /* The legacy -5px top margin crossed the fold container's clipping edge.
-     Keep the capsule, its entrance travel and glow inside the measured row. */
-  margin: 8px;
-}
-.app-shell .turn-process .live-reasoning {
-  /* This is a different capsule from PendingThinking. Its outer process grid
-     clips for folding, so include the shadow's footprint in the measured box. */
-  padding: 8px 8px 20px;
-}
-.app-shell .turn-process .live-reasoning-trigger {
-  box-shadow: inset 0 1px 0 rgba(255,255,255,.025);
+  /* The standalone capsule and a message's thinking header occupy the same
+     row geometry, so a hand-off between them never moves the bead. */
+  margin: 0;
 }
 .app-shell :is(.earlier-process-history, .pending-thinking-presence, .tool-hint-presence)[data-motion-phase="entered"] {
   grid-template-rows: 1fr;
@@ -106,33 +98,20 @@
   margin-bottom: 2px;
 }
 .app-shell .earlier-process-history-inner { display: flex; flex-direction: column; gap: 11px; }
-/* A disclosure has one motion envelope: rows arrive together before the
-   height transition ends, without delayed springs or painted glow pulses. */
-.app-shell .task-flow-group.is-unfolding .task-flow-row {
-  animation: loom-task-copy-arrive 180ms ease-out both !important;
-}
-.app-shell .task-flow-group.is-unfolding .task-flow-row::before,
-.app-shell .task-flow-group.is-unfolding .task-flow-row-icon {
-  animation: none !important;
-}
 .app-shell .tool-hint-presence {
   transition-duration: 180ms;
 }
 .app-shell .tool-hint-presence .task-flow-live-detail {
   animation: none !important;
 }
-.app-shell .turn-block:has(.task-flow-group.is-running) > .pending-thinking-presence {
-  grid-template-rows: 0fr;
-  opacity: 0;
-}
-.app-shell .pending-thinking-presence[data-motion-phase="exiting"] .thinking-shimmer,
-.app-shell .turn-block:has(.task-flow-group.is-running) .pending-thinking-presence .thinking-shimmer {
+.app-shell .pending-thinking-presence[data-motion-phase="exiting"] .thinking-shimmer {
   animation-play-state: paused;
 }
 
-/* Shared fold timing, with a faster fade so the shrinking text stays quiet. */
-.app-shell :is(.disclosure-grid, .task-flow-group-grid, .task-flow-inline-detail-grid,
-  .turn-process-grid, .live-reasoning-grid) {
+/* Shared fold timing, with a faster fade so the shrinking text stays quiet.
+   The turn-process fold (turn-flow.css) and the reasoning disclosure
+   (inline-thinking.css) own their own, longer curves. */
+.app-shell :is(.disclosure-grid, .task-flow-group-grid, .task-flow-inline-detail-grid) {
   transition: grid-template-rows 240ms cubic-bezier(.2,.8,.2,1), opacity 180ms ease !important;
 }
 .app-shell :is(.disclosure-chevron, .task-flow-group-chevron, .turn-process-chevron, .earlier-process-chevron) {

@@ -107,16 +107,25 @@ try {
     assert.equal(await slot('newest').count(), 1);
     await page.waitForTimeout(500);
     assert.equal(await slot('newest').count(), 1);
-    // The completed-turn summary replaces live history without duplicating it.
+    // Completion holds the finished live layout for a beat, then folds it into
+    // the summary. History is never re-expanded or duplicated on the way.
     await page.evaluate(() => document.documentElement.dataset.loomReducedMotion = 'false');
     await toggle();
     await page.locator('.earlier-process-history[data-motion-phase="entered"]').waitFor();
     await page.evaluate(items => window.motionFixture.turn(items, false),
       [user, message('latest'), message('newest'), { ...message('final', '最终答复'), phase: 'final' }]);
+    // One synchronous read: the hold is shorter than a few protocol round trips.
+    const held = await page.evaluate(() => ({
+      hold: document.querySelectorAll('.turn-process.is-settle-hold').length,
+      latest: document.querySelectorAll('[data-message-id="latest"]').length,
+      header: document.querySelector('.turn-process-header-shell')?.getBoundingClientRect().height,
+    }));
+    assert.equal(held.hold, 1, 'the finished live layout holds');
+    assert.equal(held.latest, 1);
+    assert.equal(held.header, 0, 'the summary line waits for the fold instead of pushing the live layout down');
+    await page.waitForFunction(() => document.querySelector('.turn-process.is-settled:not(.is-open)'));
     assert.equal(await page.locator('.earlier-process-toggle').count(), 0);
     assert.equal(await page.locator('[data-message-id="latest"]').count(), 1);
-    await page.waitForTimeout(520);
-    assert.equal(await page.locator('.turn-process.is-settled:not(.is-open)').count(), 1);
     await page.evaluate(() => window.motionFixture.reset());
   }
   assert.deepEqual(errors, []);

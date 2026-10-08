@@ -311,6 +311,14 @@ interface StreamTailMatch {
   childIndex: number;
 }
 
+// rehype-highlight registers ~37 grammars every time its attacher runs, and
+// react-markdown re-attaches plugins on every render (every streaming tick).
+// The returned transformer is stateless, so build it once.
+const highlightCodeBlocks = rehypeHighlight({ detect: false });
+function rehypeHighlightOnce() {
+  return highlightCodeBlocks;
+}
+
 const STREAM_TAIL_GRAPHEMES = 6;
 const STREAM_TAIL_BLOCKED = new Set(["pre", "code", "math", "svg"]);
 
@@ -388,7 +396,7 @@ const MarkdownRenderer = memo(function MarkdownRenderer({
         rehypePlugins={[
           [rehypeStreamingTail, { enabled: streaming || receiving }],
           rehypeKatex,
-          [rehypeHighlight, { detect: false, ignoreMissing: true }],
+          rehypeHighlightOnce,
         ]}
         components={components}
         urlTransform={markdownUrlTransform}

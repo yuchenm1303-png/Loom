@@ -6,13 +6,24 @@ RUN_PROGRESS = ROOT / "desktop-react" / "src" / "components" / "run-progress.css
 MOTION = ROOT / "desktop-react" / "src" / "components" / "conversation-motion.css"
 
 
-def test_top_run_strip_is_compact_but_full_width() -> None:
+def test_top_run_strip_floats_without_moving_the_conversation() -> None:
     progress = RUN_PROGRESS.read_text(encoding="utf-8")
-    motion = MOTION.read_text(encoding="utf-8")
+    refinement = (RUN_PROGRESS.parent / "workspace-surface-refinement.css").read_text(encoding="utf-8")
+    app = (RUN_PROGRESS.parents[1] / "App.tsx").read_text(encoding="utf-8")
 
-    assert "min-height: 38px;" in motion
-    assert "padding: 3px 16px;" in motion
-    assert "align-self: stretch;" in progress
+    # The strip is an overlay on the transcript's top edge, aligned with the
+    # conversation column; starting or ending a run never shifts the transcript.
+    strip = progress[progress.index(".conversation-stage > .run-progress-frame.top {"):]
+    strip = strip[:strip.index("}")]
+    assert "position: absolute;" in strip and "top: 0;" in strip
+    assert "right: calc(var(--task-plan-width, 0px) + var(--ws-scroll-inset, 0px));" in strip
+    assert "width: min(var(--content-width, 860px), calc(100% - 2 * var(--ws-gutter, 26px)));" in progress
+    # The transcript reserves the strip's height permanently.
+    assert "padding: 40px 0 28px;" in refinement
+    # It enters and leaves through presence, holding the outcome readable first.
+    assert "useMotionPresence(Boolean(running), RUN_STRIP_EXIT_MS)" in app
+    assert '.run-progress-frame.top[data-motion-phase="exiting"] {' in progress
+    assert "transition: opacity 320ms cubic-bezier(.42,0,.72,.2) 560ms;" in progress
 
 
 def test_transcript_content_fades_before_reaching_top_status() -> None:

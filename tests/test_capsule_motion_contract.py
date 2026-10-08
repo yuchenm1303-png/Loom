@@ -1,12 +1,13 @@
-"""Contracts for the live capsule motion language in the transcript.
+"""Contracts for the live motion language of the transcript.
 
-Thinking capsules unroll from their bead. Task capsules inflate from a shallow
-clip with their body lit from inside, so commands are readable from frame 0;
-the same light returns in the outcome colour when a task settles and, softly,
-when the user opens a group. Icons retain their spring motion. These tests pin
-the parts that are easy to regress silently: text-bearing surfaces never
-animate transforms, only the live anchor animates, and history never replays
-motion.
+The thinking capsule (standalone or a message's reasoning header) is born
+from its bead and hands off in place. Task groups and rows are born once, when
+they first appear in a live turn, and a row that finishes while the user
+watches confirms once; neither is ever tied to a class that can toggle later
+(a group regaining its running state used to replay every row's birth). These
+tests pin the parts that are easy to regress silently: text-bearing surfaces
+never animate transforms, one-shot motion hangs off moments rather than state
+classes, history never replays motion, and reduced motion outranks all of it.
 """
 
 import re
@@ -30,12 +31,28 @@ TEXT_BEARING_SUBJECTS = (
     ".task-flow-group-header",
     ".task-flow-group-title",
     ".task-flow-verb",
+    ".task-flow-primary",
+    ".task-flow-diffstat",
     ".task-flow-row-wrap",
     ".task-flow-row",
     ".task-flow-row-main",
     ".inline-thinking",
     ".thinking-shimmer",
     ".live-reasoning-trigger",
+    ".live-reasoning-label",
+    ".live-reasoning-presence",
+)
+
+# Keyframes that play once per moment. Binding them to a state class that can
+# toggle would replay them.
+ONE_SHOT = (
+    "loom-task-icon-spring",
+    "loom-task-copy-in",
+    "loom-task-verb-in",
+    "loom-task-status-in",
+    "loom-task-dot-settle",
+    "loom-task-dot-ring",
+    "loom-task-chevron-in",
 )
 
 
@@ -70,7 +87,7 @@ def animation_names(body: str) -> list[str]:
     names: list[str] = []
     for declaration in re.findall(r"animation\s*:([^;]+)", body):
         # Keyframe names only; `var(--loom-...)` easing tokens are not animations.
-        names.extend(re.findall(r"(?<![\w-])loom-[\w-]+", declaration))
+        names.extend(re.findall(r"(?<![\w-])(?:loom-[\w-]+|thinking-text-shimmer)", declaration))
     return names
 
 
@@ -84,7 +101,7 @@ def test_text_bearing_surfaces_never_animate_transforms() -> None:
             for selector in selector_list.split(","):
                 last = subject(selector)
                 if "::" in last or not any(
-                    last == name or last.startswith(name + ".") or last.startswith(name + ":")
+                    last == name or last.startswith(name + ".") or last.startswith(name + ":") or last.startswith(name + "[")
                     for name in TEXT_BEARING_SUBJECTS
                 ):
                     continue
@@ -93,32 +110,36 @@ def test_text_bearing_surfaces_never_animate_transforms() -> None:
                     assert not TRANSFORM_PROPERTY.search(frames), (selector.strip(), name)
                     checked.add(name)
 
-    # The walk must actually reach the capsule birth, not pass vacuously.
-    assert {"loom-capsule-unroll", "loom-task-capsule-land", "loom-task-copy-in", "loom-task-verb-in"} <= checked
-    assert "loom-reasoning-handoff" in checked
+    # The walk must actually reach the births, not pass vacuously.
+    assert {"loom-task-copy-in", "loom-task-verb-in", "thinking-text-shimmer", "loom-thinking-label-in",
+            "loom-thinking-header-retire"} <= checked
 
 
-def test_capsule_unrolls_from_its_bead_through_clip_path_only() -> None:
+def test_one_shot_motion_hangs_off_moments_not_state_classes() -> None:
     motion = read(MOTION)
-    unroll = keyframes(motion, "loom-capsule-unroll")
+    transcript = read(TRANSCRIPT)
 
-    assert "opacity" not in unroll and not TRANSFORM_PROPERTY.search(unroll)
-    # Point at the bead centre -> bead disc -> full capsule -> past the border
-    # box, so the capsule's own shadow is revealed before the clip is released.
-    assert "inset(50% calc(100% - (var(--capsule-bead-start" in unroll
-    assert "inset(0 calc(100% - var(--capsule-bead-end, 32px)) 0 var(--capsule-bead-start, 0px) round 999px)" in unroll
-    assert "inset(-32px -32px -32px -32px round 999px)" in unroll
+    for selector_list, body in rules(motion):
+        names = set(animation_names(body)) & set(ONE_SHOT)
+        if not names:
+            continue
+        for selector in selector_list.split(","):
+            # Births and settles key on markers React sets once per moment.
+            assert ".is-running" not in selector and ".is-live" not in selector, (selector.strip(), names)
+            assert any(marker in selector for marker in ('[data-born="live"]', "[data-settled]", ".is-unfolding")), selector.strip()
 
-    assert "--capsule-bead-end: 33px;" in motion
-    assert "--capsule-bead-end: 43px;" in motion
-    # Thinking still unrolls; task commands must be readable from first paint.
-    assert "animation: loom-capsule-unroll" in read(THINKING)
-    land = keyframes(motion, "loom-task-capsule-land")
-    assert "clip-path" not in land and not TRANSFORM_PROPERTY.search(land)
-    assert "opacity: 0;" not in land
-    copy_rules = [body for selector, body in rules(motion)
-                  if selector == ".turn-process.is-live .task-flow-group.is-running .task-flow-row-main"]
-    assert len(copy_rules) == 1 and "animation: none;" in copy_rules[0]
+    # The markers themselves: a row/group is born once per renderer session,
+    # only inside the live sequence of an active turn.
+    assert "const seenActivity = new Set<string>();" in transcript
+    assert "const [born] = useState(() => live && !seenActivity.has(key));" in transcript
+    assert "seenActivity.add(key);" in transcript
+    assert 'data-born={born ? "live" : undefined}' in transcript
+    assert transcript.count('data-born={born ? "live" : undefined}') == 2
+    assert "<LiveSequenceContext.Provider value={active}>" in transcript
+    # Settling is observed on the row itself, then cleared.
+    assert "data-settled={settled ?? undefined}" in transcript
+    assert "!isActiveActivityStatus(previous) || isActiveActivityStatus(status)" in transcript
+    assert "window.setTimeout(() => setSettled(null), 760)" in transcript
 
 
 def test_beads_pop_on_sampled_springs() -> None:
@@ -135,41 +156,15 @@ def test_beads_pop_on_sampled_springs() -> None:
     spring = keyframes(motion, "loom-task-icon-spring")
     # Individual transform properties never clobber an element's own transform.
     assert "transform:" not in spring and "scale:" in spring and "rotate:" in spring
-    assert "animation: loom-task-icon-spring 560ms var(--loom-spring-pop) backwards;" in motion
-
-
-def test_only_the_live_anchor_group_animates() -> None:
-    transcript = read(TRANSCRIPT)
-    motion = read(MOTION)
-
-    # A group is the live anchor while one of its rows is genuinely active, or
-    # (between tool batches) while it is the latest group of a turn that is
-    # still alive. Everything else is history.
-    assert "const activeActivityBlocks = useMemo(() => {" in transcript
-    assert "if (block.items.some((item) => isActiveActivityStatus(itemStatus(item)))) live.add(index);" in transcript
-    assert "keepOpen={activeActivityBlocks.has(index) || continuingActivityBlock === index}" in transcript
-    assert "keepOpen={keepActivityOpen}" not in transcript
-
-    # Every birth/tick rule is scoped to the running anchor of a live turn, so
-    # finished groups and remounted history stay still.
-    for selector in (
-        ".task-flow-group-header {\n  animation: loom-task-capsule-land",
-        ".task-flow-group-icon {\n  animation: loom-task-icon-spring",
-        ".task-flow-row-wrap {\n  contain: layout style;",
-        ".task-flow-row {\n  animation: loom-task-capsule-land",
-        ".task-flow-status-dot {\n  animation: loom-task-dot-settle",
-    ):
-        start = motion.index(selector)
-        line_start = motion.rindex("\n", 0, start) + 1
-        assert motion[line_start:start].startswith(".turn-process.is-live .task-flow-group.is-running ")
+    assert "animation: loom-task-icon-spring 520ms var(--loom-spring-pop) backwards;" in motion
+    assert "loom-task-icon-spring 560ms var(--loom-spring-pop) var(--thinking-lead, 0ms) backwards" in read(THINKING)
 
 
 def test_status_and_title_changes_cross_fade() -> None:
     transcript = read(TRANSCRIPT)
     motion = read(MOTION)
 
-    assert transcript.count('<span className="task-flow-verb" key={verbKey}>') == 4
-    assert 'const verbKey = active ? "active" : "rested";' in transcript
+    assert '<span className="task-flow-verb" key={description.verb}>{description.verb}</span>' in transcript
     assert '<span className="task-flow-group-title" key={title}>{title}</span>' in transcript
 
     verb = keyframes(motion, "loom-task-verb-in")
@@ -179,7 +174,9 @@ def test_status_and_title_changes_cross_fade() -> None:
     ring = keyframes(motion, "loom-task-dot-ring")
     assert "scale:" in tick and "transform:" not in tick
     assert "opacity" in ring and "scale:" in ring
-    assert ".task-flow-status:is(.completed, .changed, .failed, .denied)::after" in motion
+    assert '.task-flow-row-wrap[data-settled] .task-flow-status::after' in motion
+    assert "--task-dot-ring: var(--semantic-success-strong" in motion
+    assert "--task-dot-ring: var(--semantic-danger-strong" in motion
 
 
 def test_beacon_lands_on_the_first_frame_of_its_pulse() -> None:
@@ -189,20 +186,27 @@ def test_beacon_lands_on_the_first_frame_of_its_pulse() -> None:
     pulse = keyframes(motion, "loom-live-beacon")
     assert "to { opacity: .58; scale: .91; }" in beacon_in
     assert "0%, 100% { opacity: .58; transform: scale(.91); }" in pulse
-    assert "loom-live-beacon 1.9s ease-in-out 660ms infinite" in motion
-    assert "loom-task-beacon-in 360ms var(--loom-spring-pop) 300ms backwards" in motion
+    # Only while a step actually executes: the quiet gap between steps belongs
+    # to the thinking capsule, not to a second live cue on the group.
+    assert ".task-flow-group.is-running:not(.is-between-steps) .task-flow-group-icon::after {" in motion
+    assert "loom-live-beacon 1.9s ease-in-out 360ms infinite" in motion
 
 
-def test_dead_or_duplicate_task_motion_is_gone() -> None:
+def test_retired_capsule_layers_are_gone() -> None:
+    motion = read(MOTION)
     generation = read(GENERATION)
     theme = read(THEME)
+    transcript = read(TRANSCRIPT)
 
-    # task-flow-runtime-performance.css pins `.turn-process.is-live .task-flow`
-    # to `animation: none !important`, so a group-level entrance can never run.
+    # The inflate clip, inner glow and outcome ring painted outlines around
+    # flat log rows; the between-steps label and sheen flickered in short gaps.
+    for retired in ("loom-capsule-swell", "loom-capsule-glow", "loom-capsule-confirm", "loom-capsule-unroll",
+                    "loom-task-capsule-land", "loom-task-between-sheen", "loom-task-between-dot",
+                    "task-flow-between-label", "task-flow-between-sheen"):
+        assert retired not in motion and retired not in transcript, retired
+    assert "继续处理中" not in transcript
     assert "loom-generation-task-anchor-in" not in generation
     assert ".turn-process.is-live .task-flow-group {" not in generation
-    # The light theme used to force live rows transparent after the capsule
-    # fill was defined, and to breathe the anchor icon against its beacon.
     assert 'html[data-loom-theme="light"] .task-flow-row.is-active {' not in theme
     assert "task-flow-group-breathe-light" not in theme
     assert "task-flow-shimmer-light" not in theme
@@ -217,11 +221,14 @@ def test_history_never_replays_settle_entrances() -> None:
     assert "\n.turn-final-answer .assistant-message-meta {" not in generation
     assert ".turn-final-answer .decision-prompt-card" not in generation
     assert "turn-artifacts-preview" not in generation
+    # The final answer is already on screen when it leaves the live process: it
+    # moves without an entrance of its own.
+    assert "loom-generation-final-handoff" not in generation
+    assert ".turn-final-answer {\n  animation: none !important;\n}" in motion
 
     # Assistant entries leave their entrance to the surfaces inside them.
     assert ".turn-process.is-live .entry-assistant_message {\n  animation: none;\n}" in motion
-    live_list = motion[motion.index("/* Assistant entries are deliberately absent"):motion.index("loom-live-message-in 280ms")]
-    assert ".entry-assistant_message" not in live_list.split("*/", 1)[1]
+    assert ".has-lifecycle-motion .assistant-message > .markdown-body {" in generation
 
 
 def test_thinking_capsules_hand_off_instead_of_blinking() -> None:
@@ -229,26 +236,41 @@ def test_thinking_capsules_hand_off_instead_of_blinking() -> None:
     thinking = read(THINKING)
     generation = read(GENERATION)
 
-    assert "const PendingThinkingContext = createContext<PendingThinkingHandle | null>(null);" in transcript
-    assert "const [handoff] = useState(() => pendingThinkingOnScreen(pendingThinking));" in transcript
+    assert "const ThinkingHandleContext = createContext<ThinkingHandle | null>(null);" in transcript
+    assert "const [handoff] = useState(() => thinking && thinkingOnScreen(handle));" in transcript
     assert '${handoff ? "is-handoff" : ""}' in transcript
-    # Only a capsule the user has actually seen hands off. The streaming
-    # runtime starts an empty assistant item one presentation frame before its
-    # first delta; the pending capsule mounted (or un-collapsed) for that frame
-    # must not swallow the reasoning capsule's birth.
-    on_screen = transcript[transcript.index("function pendingThinkingOnScreen("):transcript.index("function LiveReasoning(")]
+    # Only a capsule the user has actually seen hands off: not one mounted for
+    # a single frame between an empty streaming item and its first delta.
+    on_screen = transcript[transcript.index("function thinkingOnScreen("):transcript.index("function useThinkingRegistration(")]
     assert "if (!element?.isConnected) return false;" in on_screen
-    assert "performance.now() - pending!.mountedAt < PENDING_THINKING_SEEN_MS" in on_screen
+    assert "performance.now() - handle!.mountedAt < THINKING_SEEN_MS" in on_screen
     assert "element.getBoundingClientRect().height >= 16 && Number(getComputedStyle(element).opacity) > 0.5" in on_screen
-    assert "const PENDING_THINKING_SEEN_MS = 240;" in transcript
+    # A message that starts writing while the capsule is visible continues it
+    # and folds it away above the first line.
+    assert "useState(() => live && !showReasoning && thinkingOnScreen(handle))" in transcript
+    assert ".live-reasoning-presence.is-inherited[data-motion-phase=\"exiting\"]" in thinking
+    # The capsule leaves without an exit when a message takes its place.
+    assert "!(capsulePresence.phase === \"exiting\" && handedOffRef.current)" in transcript
 
-    assert ".turn-process.is-live .live-reasoning.is-handoff .live-reasoning-trigger {" in thinking
-    assert ".turn-process.is-live .live-reasoning:not(.is-handoff) .live-reasoning-trigger {" in thinking
-    assert ".turn-block > .inline-thinking {\n  --capsule-bead-start: 0px;" in thinking
+    assert ".turn-process.is-live .live-reasoning.is-thinking:not(.is-handoff) .live-reasoning-bead .tg" in thinking
     assert "loom-generation-reasoning-in" not in generation
 
     answer = keyframes(generation, "loom-generation-answer-in")
     assert "opacity: .25;" in answer and "opacity: 0;" not in answer
+    assert not TRANSFORM_PROPERTY.search(answer)
+
+
+def test_thinking_header_morphs_into_the_disclosure_in_place() -> None:
+    transcript = read(TRANSCRIPT)
+    thinking = read(THINKING)
+
+    # One element through the change: the bead folds away and the two labels
+    # cross-fade in one grid cell, instead of swapping two surfaces.
+    assert 'className="live-reasoning-label is-live thinking-shimmer"' in transcript
+    assert 'className="live-reasoning-label is-rest"' in transcript
+    assert ".live-reasoning.is-done .live-reasoning-bead {\n  width: 0;" in thinking
+    assert ".live-reasoning-label {\n  grid-area: 1 / 1;" in thinking
+    assert "transition: opacity 220ms ease;" in thinking
 
 
 def test_stickers_pop_once_in_the_live_process() -> None:
@@ -273,92 +295,33 @@ def test_stickers_pop_once_in_the_live_process() -> None:
     assert "transform: none" not in sticker_rule[:sticker_rule.index("}")]
 
 
-def test_reduced_motion_outranks_every_capsule_birth() -> None:
+def test_reduced_motion_outranks_every_birth_and_settle() -> None:
     motion = read(MOTION)
-    media = motion[motion.index("@media (prefers-reduced-motion: reduce)"):]
-    setting = motion[motion.index(':root[data-loom-reduced-motion="true"]'):]
+    media = motion[motion.index("/* Reduced motion"):]
+    setting = media[media.index(':root[data-loom-reduced-motion="true"]'):]
 
     for selector in (
-        ".turn-process.is-live .task-flow-group.is-running .task-flow-group-header",
-        ".turn-process.is-live .task-flow-group.is-running .task-flow-group-icon",
-        ".turn-process.is-live .task-flow-group.is-running .task-flow-row-wrap",
-        ".turn-process.is-live .task-flow-group.is-running .task-flow-row",
-        ".turn-process.is-live .task-flow-group-title",
-        ".turn-process.is-live .task-flow-status::after",
-        ".turn-process.is-live .task-flow-status-dot",
-        ".turn-process.is-live .task-flow-group.is-running .task-flow-group-header::before",
-        ".turn-process.is-live .task-flow-group.is-running .task-flow-row::before",
-        ".turn-process.is-live .task-flow-group.is-running .task-flow-chevron",
+        '.task-flow-group[data-born="live"] > .task-flow-group-header .task-flow-group-icon',
+        '.task-flow-group[data-born="live"] .task-flow-group-title',
+        '.task-flow-row-wrap[data-born="live"] > .task-flow-row .task-flow-row-icon',
+        '.task-flow-row-wrap[data-born="live"] > .task-flow-row .task-flow-primary',
+        '.task-flow-row-wrap[data-born="live"] .task-flow-verb',
+        '.task-flow-row-wrap[data-born="live"] > .task-flow-row .task-flow-status',
+        ".task-flow-row-wrap[data-settled] .task-flow-status-dot",
+        ".task-flow-row-wrap[data-settled] .task-flow-status::after",
         ".task-flow-group.is-unfolding .task-flow-row",
-        ".task-flow-group.is-unfolding .task-flow-row::before",
-        ".task-flow-group.is-unfolding .task-flow-row-icon",
+        ".task-flow-row.is-executing .task-flow-verb",
     ):
-        assert selector + "," in media
-        assert ':root[data-loom-reduced-motion="true"] ' + selector + "," in setting
+        assert selector + "," in media[:media.index(':root[data-loom-reduced-motion="true"]')], selector
+        assert ':root[data-loom-reduced-motion="true"] ' + selector + "," in setting, selector
 
 
-def test_reasoning_capsule_stays_inside_folding_clip() -> None:
+def test_reasoning_header_stays_inside_folding_clip() -> None:
     thinking = read(THINKING)
     layout = next(body for selector, body in rules(thinking)
                   if selector == ".live-reasoning" and "display: grid" in body)
     assert "margin-top: 0;" in layout
     assert not re.search(r"margin-top:\s*-", layout)
-
-
-def test_capsule_inflate_is_a_shallow_clip_that_never_hides_text() -> None:
-    motion = read(MOTION)
-
-    for name, horizontal in (("loom-capsule-swell", "6%"), ("loom-capsule-swell-header", "8px")):
-        frames = keyframes(motion, name)
-        # A clip, never a transform or a fade: text-bearing surfaces stay native.
-        assert "clip-path" in frames
-        assert not TRANSFORM_PROPERTY.search(frames) and "opacity" not in frames
-        # The first frame is only a little smaller than the capsule, so every
-        # command is readable from frame 0 (the bead-sized clip that once hid
-        # commands is reserved for thinking capsules).
-        assert f"clip-path: inset(4px {horizontal} 4px {horizontal} round 999px)" in frames
-        # It opens past the border box so the capsule's own shadow is revealed
-        # before the clip is released.
-        assert "inset(-26px -26px -26px -26px round 999px)" in frames
-
-    row_rules = [body for selector, body in rules(motion)
-                 if selector == ".turn-process.is-live .task-flow-group.is-running .task-flow-row"]
-    assert len(row_rules) == 1
-    assert "loom-task-capsule-land" in row_rules[0] and "loom-capsule-swell" in row_rules[0]
-    assert "loom-capsule-unroll" not in row_rules[0]
-
-
-def test_capsule_light_is_paint_only_and_rides_the_clip() -> None:
-    motion = read(MOTION)
-    swell = keyframes(motion, "loom-capsule-swell")
-
-    for name in ("loom-capsule-glow", "loom-capsule-confirm"):
-        frames = keyframes(motion, name)
-        # The light tracks the clip edge (inset) and paints an inner shadow.
-        assert "inset:" in frames and "box-shadow" in frames
-        # Paint properties only: no compositor layer is ever created over text.
-        assert not TRANSFORM_PROPERTY.search(frames)
-        assert "opacity" not in frames and "filter" not in frames
-        # Same stops as the clip it rides, so the glow edge hugs the capsule.
-        for stop in ("0% {", "58% {", "100% {"):
-            assert stop in frames and stop in swell
-
-
-def test_status_flip_restarts_the_light_in_the_outcome_colour() -> None:
-    motion = read(MOTION)
-
-    # A running row ignites in the accent colour; a settling row confirms in its
-    # outcome colour. The animation *name* differs, and that is what restarts it.
-    assert (".turn-process.is-live .task-flow-group.is-running .task-flow-row.is-active::before {\n"
-            "  animation: loom-capsule-glow") in motion
-    assert (".turn-process.is-live .task-flow-group.is-running .task-flow-row.is-resting::before {\n"
-            "  animation: loom-capsule-confirm") in motion
-    assert "--capsule-glow: var(--semantic-success-strong" in motion
-    assert "--capsule-glow: var(--semantic-danger-strong" in motion
-    assert ".task-flow-row.is-resting:has(.task-flow-status:is(.failed, .denied))" in motion
-    # Outcome colours belong to the live anchor; opening a group later is not a
-    # verdict, so those rows keep the accent light.
-    assert "\n.task-flow-group .task-flow-row.is-resting {" not in motion
 
 
 def test_unfold_is_user_initiated_and_transient() -> None:
@@ -370,16 +333,13 @@ def test_unfold_is_user_initiated_and_transient() -> None:
     assert '${unfolding ? "is-unfolding" : ""}' in transcript
     assert "window.setTimeout(() => setUnfolding(false), 900)" in transcript
 
-    for selector in (
-        ".task-flow-group.is-unfolding .task-flow-row {",
-        ".task-flow-group.is-unfolding .task-flow-row::before {",
-        ".task-flow-group.is-unfolding .task-flow-row-icon {",
-    ):
-        assert selector in motion
+    assert ".task-flow-group.is-unfolding .task-flow-row {" in motion
     # The cascade hangs off the transient class only: an open group that is
     # merely mounted (history) never plays it.
-    assert ".task-flow-group.is-open .task-flow-row" not in motion
-    assert "--fold-lead: 230ms" in motion
+    assert ".task-flow-group.is-open .task-flow-row {" not in motion
+    assert "--fold-lead: 195ms" in motion
+    unfold = keyframes(motion, "loom-task-copy-in")
+    assert "opacity" in unfold and not TRANSFORM_PROPERTY.search(unfold)
 
 
 def test_pointer_lens_writes_two_variables_and_respects_reduced_motion() -> None:

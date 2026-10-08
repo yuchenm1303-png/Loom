@@ -12,31 +12,26 @@ def test_collapsed_activity_rows_do_not_reconcile_detail_streams() -> None:
     source = TRANSCRIPT.read_text(encoding="utf-8")
 
     assert "sameActivityRowProps" in source
-    assert "if (next.open) return activityDetail(previous.item) === activityDetail(next.item);" in source
+    assert "if (next.open) return rowDetail(previous.row, previous.delta) === rowDetail(next.row, next.delta);" in source
     assert "animationDelay" not in source
-    assert "openRows.has(item.id)" in source
+    assert "openRows.has(row.key)" in source
 
 
 def test_task_capsule_motion_keeps_text_on_native_rasterization_layer() -> None:
     source = MOTION.read_text(encoding="utf-8")
 
-    row_start = source.index("@keyframes loom-task-row-enter")
-    row_end = source.index("@keyframes loom-task-icon-spring", row_start)
-    row_motion = source[row_start:row_end]
-    assert "transform:" not in row_motion
-
     copy_start = source.index("@keyframes loom-task-copy-in")
     copy_end = source.index("@keyframes loom-task-status-in", copy_start)
     copy_motion = source[copy_start:copy_end]
-    assert "transform:" not in copy_motion
+    assert "transform:" not in copy_motion and "translate" not in copy_motion
 
-    live_start = source.index(".turn-process.is-live .task-flow-group.is-running .task-flow-row-wrap {")
-    live_end = source.index(".turn-process.is-live .task-flow-list {", live_start)
-    live_motion = source[live_start:live_end]
-    assert "will-change:" not in live_motion
-    assert " backwards" in live_motion
-    assert " both" not in live_motion
-    assert ".task-flow-row.is-expandable:hover {\n  /* activity-flow.css used to translate" in source
+    births_start = source.index("/* Task flow: births")
+    births_end = source.index("/* Task flow: settling", births_start)
+    births = source[births_start:births_end]
+    assert "will-change:" not in births
+    assert " backwards" in births
+    assert " both" not in births
+    assert ".task-flow-row.is-expandable:hover,\n.task-flow-group .task-flow-row.is-expandable:hover {\n  /* activity-flow.css used to translate" in source
     assert "transform: none;" in source
     assert ".turn-process.is-live .task-flow-row::after" not in source
     assert "loom-task-icon-spring" in source
@@ -170,25 +165,27 @@ def test_between_tool_steps_keep_one_live_handoff_surface() -> None:
     transcript = TRANSCRIPT.read_text(encoding="utf-8")
     motion = MOTION.read_text(encoding="utf-8")
 
+    # The latest group stays the motion anchor between tool batches, so rows
+    # appended later are still born live...
     assert "const activeActivityBlocks = useMemo(() => {" in transcript
     assert "const latestActivityBlockIndex = useMemo(() => {" in transcript
     assert "const continuingActivityBlock = useMemo(() => {" in transcript
     assert 'continuing={continuingActivityBlock === index}' in transcript
     assert 'betweenSteps ? "is-between-steps" : ""' in transcript
-    assert "继续处理中" in transcript
-
-    assert ".task-flow-group.is-between-steps .task-flow-group-header {" in motion
-    assert ".task-flow-between-sheen > i {" in motion
-    assert "animation: loom-task-between-sheen 5.9s" in motion
-    assert "@keyframes loom-task-between-sheen" in motion
-    assert "@keyframes loom-task-between-dot" in motion
+    # ...but the quiet gap itself belongs to the one thinking capsule, shown only
+    # once the gap is real, never to a second "continuing" label on the group.
+    assert "继续处理中" not in transcript
+    assert "LIVE_STATUS_GRACE_MS" in transcript
+    assert "useSettledFlag(wantsCapsule, edge.started ? LIVE_STATUS_GRACE_MS : 0)" in transcript
+    assert ".task-flow-group.is-running:not(.is-between-steps) .task-flow-group-icon::after {" in motion
+    assert "loom-task-between-sheen" not in motion
 
 
 def test_between_tool_handoff_keeps_completed_copy_semantics() -> None:
     transcript = TRANSCRIPT.read_text(encoding="utf-8")
 
     assert "const betweenSteps = Boolean(running && continuing && !hasActiveRows);" in transcript
-    assert "activityGroupTitle(compactItems, running && !betweenSteps)" in transcript
+    assert "const title = copy.groupTitle(categories, running && !betweenSteps);" in transcript
 
 
 def test_inline_task_detail_preserves_content_through_collapse() -> None:

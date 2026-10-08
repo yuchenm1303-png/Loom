@@ -123,10 +123,11 @@ def test_label_is_lit_by_one_monochrome_band() -> None:
 
 
 def test_birth_keeps_the_sweep_running_beside_the_label_fade() -> None:
-    row = read(COMPONENTS / "inline-thinking.css")
+    row = re.sub(r"\s+", " ", read(COMPONENTS / "inline-thinking.css"))
 
     # The label's fade-in and the sweep are both `animation` on one element; the
     # more specific birth rules would otherwise replace the sweep with the fade.
+    # Two births: the standalone capsule and a message's thinking header.
     assert row.count("backwards, var(--thinking-sweep);") == 2
     assert "--thinking-sweep: thinking-text-shimmer var(--thinking-cycle, 2.6s)" in row
 
@@ -162,11 +163,18 @@ def test_glyph_and_label_hold_still_under_reduced_motion() -> None:
 def test_unseen_glyph_does_not_keep_animating() -> None:
     row = read(COMPONENTS / "inline-thinking.css")
     panels = read(COMPONENTS / "workspace-panels.css")
+    lifecycle = read(COMPONENTS / "task-lifecycle-motion.css")
+    transcript = read(COMPONENTS / "Transcript.tsx")
 
-    collapsed = block(row, ".turn-block:has(.task-flow-group.is-running) > .inline-thinking .tg-pulse,", "}")
-    for part in (".tg-pulse", ".tg-bead", ".thinking-shimmer"):
-        assert f".inline-thinking {part}" in collapsed
-    assert "animation-play-state: paused;" in collapsed
+    # The standalone capsule is unmounted (not merely collapsed) while task rows
+    # or text speak for the turn, and pauses its light while it fades out.
+    assert "const wantsCapsule = active && edge.quiet && pendingPresentations.size === 0;" in transcript
+    exiting = block(lifecycle, '.app-shell .pending-thinking-presence[data-motion-phase="exiting"] .thinking-shimmer', "}")
+    assert "animation-play-state: paused;" in exiting
+    # A header that has settled into its disclosure keeps a folded, paused bead.
+    settled = block(row, ".live-reasoning.is-done .live-reasoning-bead .tg-pulse,", "}")
+    assert ".live-reasoning.is-done .live-reasoning-bead .tg-bead" in settled
+    assert "animation-play-state: paused;" in settled
     guard = block(panels, "Unified panel-transition performance guard", "}")
     for part in (".tg-pulse", ".tg-bead", ".thinking-shimmer"):
         assert f"body.loom-panel-motion .workspace-panels {part}" in guard

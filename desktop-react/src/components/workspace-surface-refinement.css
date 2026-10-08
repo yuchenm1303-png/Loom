@@ -18,23 +18,7 @@
 /* Header controls belong to one toolbar, with tint reserved for selection. */
 :root .app-shell .task-flow-group-header { align-items: baseline; }
 :root .app-shell .task-flow-group-header :is(.task-flow-group-icon, .task-flow-group-chevron) { align-self: center; }
-:root .app-shell .task-flow-group-title,
-:root .app-shell .task-flow-between-label { line-height: 24px; }
-:root .app-shell .task-flow-between-label { align-items: baseline; }
-:root .app-shell .task-flow-between-label > i { align-self: center; }
-:root .app-shell :is(.inline-thinking, .live-reasoning .live-reasoning-trigger) {
-  background: transparent !important;
-  border: 0 !important;
-  border-radius: 0;
-  box-shadow: none !important;
-  padding: 4px 0;
-  min-height: 0;
-  animation: inline-thinking-enter 180ms ease-out both !important;
-}
-:root .app-shell :is(.inline-thinking, .live-reasoning-trigger)::before,
-:root .app-shell :is(.inline-thinking, .live-reasoning-trigger)::after {
-  display: none;
-}
+:root .app-shell .task-flow-group-title { line-height: 24px; }
 :root .app-shell .thread-header .workspace-path-button { display: none; }
 :root .app-shell .thread-header .thread-sidebar-triangle-mark {
   width: 16px;
@@ -60,12 +44,6 @@
 }
 :root .app-shell .conversation-stage {
   background: var(--ws-canvas);
-}
-:root .app-shell .conversation-stage > .run-progress-frame.top {
-  background: transparent;
-  border: 0;
-  box-shadow: none;
-  backdrop-filter: none;
 }
 :root .app-shell .conversation-stage:has(.transcript-entry)::before,
 :root .app-shell .conversation-stage:has(.transcript-entry)::after {
@@ -113,7 +91,9 @@
 :root .app-shell .transcript {
   background: transparent;
   width: min(var(--content-width), calc(100% - 2 * var(--ws-gutter)));
-  padding: 24px 0 28px;
+  /* The top inset reserves the floating run strip (run-progress.css), so a
+     run starting or ending never shifts the conversation. */
+  padding: 40px 0 28px;
   gap: 20px;
 }
 :root .app-shell .transcript-scroll { background: var(--ws-canvas); scrollbar-gutter: stable both-edges; }
@@ -171,14 +151,13 @@
   box-shadow: none !important;
   border-radius: 4px;
 }
-:root .app-shell :is(.task-flow-sheen, .task-flow-group-icon::before, .task-flow-group-icon::after) { display: none; }
+:root .app-shell .task-flow-sheen { display: none; }
 :root .app-shell .task-flow-group-header {
   background: transparent !important;
   border-color: transparent !important;
   border-radius: 6px;
   box-shadow: none !important;
 }
-:root .app-shell :is(.task-flow-between-sheen, .task-flow-group-header::before, .task-flow-row::before) { display: none !important; }
 :root .app-shell .task-flow-group .task-flow-list { padding-left: 7px; border-left: 1px solid var(--ws-line); margin-left: 10px; }
 :root .app-shell .task-flow-group .task-flow-group-header {
   gap: 8px;
@@ -202,6 +181,9 @@
 :root .app-shell .task-flow-row .task-flow-verb {
   color: var(--ws-muted);
   font-weight: 450;
+}
+:root .app-shell .task-flow-row.is-failed .task-flow-verb {
+  color: color-mix(in srgb, var(--semantic-danger-strong, #c7727c) 80%, var(--ws-muted));
 }
 :root .app-shell .task-flow-row .task-flow-primary { color: var(--ws-ink); }
 :root .app-shell .task-flow-row :is(.task-flow-chevron, .task-flow-row-icon) { color: var(--ws-muted); }
@@ -313,7 +295,7 @@
 :root .app-shell .assistant-artifact-preview-footer > button { color: var(--ws-accent); font-size: 12px; }
 @media (max-width: 760px) {
   :root .app-shell { --ws-gutter: 20px; }
-  :root .app-shell .transcript { padding-block: 20px; }
+  :root .app-shell .transcript { padding-block: 40px 20px; }
 }
 @container loom-workspace (max-width: 640px) {
   :root .app-shell .transcript { width: calc(100% - 32px); }

@@ -40,6 +40,7 @@ import { canRenderArtifact } from "./artifactRenderers";
 import { useI18n } from "./i18n";
 import { useMotionPresence } from "./motion/useMotionPresence";
 import { useReducedMotion } from "./motion/useReducedMotion";
+import { RUN_STRIP_EXIT_MS } from "./presentationTiming";
 import {
   SHORTCUTS_CHANGED_EVENT,
   eventMatchesShortcut,
@@ -439,6 +440,13 @@ export default function App() {
   // still says running. Match the steering router so the model picker reappears.
   const running = (loom.turnActive || runtimeTurnRunning)
     && !currentTurnHasTerminalError(loom.items, thread?.currentTurnId);
+  // The run strip floats over the transcript and says how a run ended before
+  // it fades. Leaving the thread is not an ending: a strip that belonged to
+  // another thread is never shown, even while it would still be exiting.
+  const runStripThreadRef = useRef<string | undefined>(undefined);
+  if (running) runStripThreadRef.current = thread?.id;
+  const runStripPresence = useMotionPresence(Boolean(running), RUN_STRIP_EXIT_MS);
+  const runStripVisible = runStripPresence.mounted && runStripThreadRef.current === thread?.id;
   const archived = Boolean(thread?.archived);
   const conversationDisabled = !thread || loom.connection !== "ready" || running || archived;
   const threadTitle = selectedThread?.title || (loom.connection === "connecting" ? t("app.startingLoom") : t("app.newConversation"));
@@ -1236,7 +1244,7 @@ export default function App() {
         />
 
         <div className={`conversation-stage ${running ? "is-running" : ""}`}>
-          {running ? <RunProgress {...progressProps} placement="top" /> : null}
+          {runStripVisible ? <RunProgress {...progressProps} placement="top" motionPhase={runStripPresence.phase} /> : null}
           <Transcript
             items={transcriptItems}
             running={transcriptRunning}

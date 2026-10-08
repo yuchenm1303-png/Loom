@@ -105,7 +105,7 @@ def test_identity_glyphs_are_self_describing_and_transcript_uses_them() -> None:
     assert 'className={`tool-identity-glyph is-${identity.kind}`}' in identity
     assert "data-tool-kind={identity.kind}" in identity
     assert "data-tool-family={identity.family}" in identity
-    assert "activityToolLabel(item)" in transcript
+    assert "fallbackToolLabel: activityToolLabel(row.wrapper ?? row.item)," in transcript
     assert "ActivityGroupGlyph" in transcript
 
 

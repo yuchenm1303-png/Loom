@@ -25,6 +25,8 @@ import "../../src/App";
 import "../../src/components/BootErrorBoundary";
 import "../../src/components/GlobalContextMenu";
 import { I18nProvider } from "../../src/i18n";
+import { useMotionPresence } from "../../src/motion/useMotionPresence";
+import { RUN_STRIP_EXIT_MS } from "../../src/presentationTiming";
 import { applyThemePreference } from "../../src/theme";
 import "../../src/renderer-styles";
 import { RunProgress } from "../../src/components/RunProgress";
@@ -35,6 +37,8 @@ import type { TranscriptItem } from "../../src/types/loom";
 const THREAD = "thread-motion";
 const LIVE_TURN = "turn-live";
 const params = new URLSearchParams(window.location.search);
+// The fixture replays a Chinese session; ?lang=en previews the English copy.
+window.localStorage.setItem("loom.settings.language", params.get("lang") === "en" ? "en" : "zh-CN");
 
 interface Scene {
   items: TranscriptItem[];
@@ -221,8 +225,12 @@ class Director {
   }
 }
 
+const NOOP = () => {};
+
 function useAnimationRate(speed: number): void {
   useEffect(() => {
+    // Rescaling every animation each frame is costly; real time needs none.
+    if (speed === 1) return;
     let frame = 0;
     const tick = () => {
       for (const animation of document.getAnimations()) {
@@ -259,6 +267,7 @@ function LiveHarness() {
   }, []);
 
   const liveTurn = scene.running ? LIVE_TURN : null;
+  const strip = useMotionPresence(scene.running, RUN_STRIP_EXIT_MS);
 
   return (
     <div className="app-shell motion-harness">
@@ -279,10 +288,10 @@ function LiveHarness() {
         }}>reduced motion</button>
       </div>
       <div className={`conversation-stage ${scene.running ? "is-running" : ""}`}>
-        {scene.running ? (
-          <RunProgress items={scene.items} startedAt={scene.startedAt} threadStatus="running" currentTurnId={liveTurn} totalTokens={18_400} placement="top" />
+        {strip.mounted ? (
+          <RunProgress items={scene.items} startedAt={scene.startedAt} threadStatus={scene.running ? "running" : "completed"} currentTurnId={LIVE_TURN} totalTokens={18_400} placement="top" motionPhase={strip.phase} />
         ) : null}
-        <Transcript items={scene.items} running={scene.running} currentTurnId={liveTurn} workspace="C:\\demo" onApproval={() => {}} onPrompt={() => {}} />
+        <Transcript items={scene.items} running={scene.running} currentTurnId={liveTurn} workspace="C:\\demo" onApproval={NOOP} onPrompt={NOOP} />
         <TranscriptScrollController items={scene.items} threadId={THREAD} currentTurnId={liveTurn} running={scene.running} />
       </div>
     </div>
@@ -420,7 +429,7 @@ function FilmFrame({ time, spec }: { time: number; spec: FilmCase }) {
     <div className="motion-film-frame" data-step={step}>
       <b>{time}ms</b>
       <div ref={ref} className="conversation-stage">
-        <Transcript items={step ? steps[step - 1].items : spec.items} running={spec.running} currentTurnId={spec.running ? LIVE_TURN : null} onApproval={() => {}} />
+        <Transcript items={step ? steps[step - 1].items : spec.items} running={spec.running} currentTurnId={spec.running ? LIVE_TURN : null} onApproval={NOOP} />
       </div>
     </div>
   );
