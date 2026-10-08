@@ -102,3 +102,44 @@ def test_run_scratch_directory_is_outside_workspace_and_scoped_to_turn(tmp_path)
     assert path.name == "turn-special"
     assert workspace.resolve() not in path.resolve().parents
     assert result.data["outside_workspace"] is True
+
+
+def test_switching_back_to_archived_task_recovers_reports_and_actual_call(tmp_path):
+    from app.agent_runtime.evidence_tools import task_history_tool
+    store = FileAgentSessionStore(tmp_path)
+    sid = "33333333-3333-3333-3333-333333333333"
+    # Older target is followed by an unrelated long task. Latest-results-only cannot recover it.
+    records = [(AgentEventKind.TOOL_COMPLETED, "deploy", {"call_id": "ssh-verify", "tool": "exec",
+                "ok": True, "content": "/opt/loom/.env.auth mode 0600, checked on remote host"}),
+               (AgentEventKind.TURN_COMPLETED, "deploy", {"text": "Loom .env.auth deployed and verified"})]
+    records += [(AgentEventKind.TOOL_COMPLETED, "other", {"call_id": f"other-{i}", "tool": "exec",
+                 "ok": True, "content": "Listing Studio observation"}) for i in range(70)]
+    for i, (kind, turn, data) in enumerate(records):
+        store.append_event(AgentEvent(f"e-{i}", sid, turn, kind, utc_now(), data))
+    # Fresh store models a Host restart; recovery does not depend on in-memory summaries.
+    reopened = FileAgentSessionStore(tmp_path)
+    context = _context(tmp_path, sid, "return-to-loom")
+    history = task_history_tool(reopened).handler(context, {"query": "Loom .env.auth"})
+    assert history.data["records"][0]["turn_id"] == "deploy"
+    assert history.data["records"][0]["assessment_source"] == "assistant_report_not_independent_verification"
+    results = durable_tool_result_tool(reopened).handler(context, {"recent": 5, "query": "/opt/loom", "turn_id": "deploy", "tool": "exec"})
+    assert [r["call_id"] for r in results.data["results"]] == ["ssh-verify"]
+    exact = durable_tool_result_tool(reopened).handler(context, {"call_id": "ssh-verify"})
+    assert "0600" in exact.content
+
+
+def test_task_history_pagination_and_truncation_are_explicit(tmp_path):
+    from app.agent_runtime.evidence_tools import task_history_tool
+    store = FileAgentSessionStore(tmp_path)
+    sid = "33333333-3333-3333-3333-333333333333"
+    for i in range(3):
+        store.append_event(AgentEvent(f"e-{i}", sid, f"turn-{i}", AgentEventKind.TURN_COMPLETED,
+                                     utc_now(), {"text": str(i) * 1000}))
+    tool = task_history_tool(store)
+    first = tool.handler(_context(tmp_path, sid), {"limit": 1, "max_chars": 256})
+    assert first.data["next_offset"] == 1
+    assert first.data["records"][0]["text_truncated"]
+    assert len(first.data["records"][0]["text"]) == 256
+    second = tool.handler(_context(tmp_path, sid), {"offset": 1, "limit": 2})
+    assert [r["turn_id"] for r in second.data["records"]] == ["turn-1", "turn-0"]
+    assert second.data["next_offset"] is None

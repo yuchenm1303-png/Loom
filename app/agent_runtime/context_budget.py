@@ -176,6 +176,11 @@ def _consume_forced_compaction(rt, session) -> bool:
 def _latest_provider_context_tokens(rt, session) -> int | None:
     """Return the newest surviving provider-reported context usage."""
     try:
+        projected = getattr(rt.store, "context_events", None)
+        if callable(projected):
+            events = projected(session.session_id)
+            return _provider_context_usage(events,
+                accounting_events=_events_for_current_model(rt, session, events))[1]
         recent = getattr(rt.store, "recent_events", None)
         bounded = callable(recent)
         events = recent(session.session_id, _CALIBRATION_EVENT_SCAN_LIMIT) if bounded else rt.store.events(session.session_id)
@@ -244,6 +249,10 @@ def _local_tokens_after_latest_model_message(messages: Sequence[AIMessage]) -> i
 
 
 def _calibration_events(rt, session):
+    projected = getattr(rt.store, "context_events", None)
+    if callable(projected):
+        events = projected(session.session_id)[-_CALIBRATION_EVENT_SCAN_LIMIT:]
+        return _events_for_current_model(rt, session, events)
     recent = getattr(rt.store, "recent_events", None)
     if callable(recent):
         events = recent(session.session_id, _CALIBRATION_EVENT_SCAN_LIMIT)
@@ -1049,6 +1058,10 @@ def _prepare_context_with_model(rt, session, step, token):
     )
 
     committed_visible = render_request(rt, session, transient, session.messages)
+    # The latest provider usage describes the archived request, not this new
+    # history generation. Publish the returned request's calibrated estimate
+    # until a response to this generation supplies authoritative usage.
+    estimated_after = estimate_tokens(committed_visible, tools)
     metadata = _metadata(
         envelope=envelope,
         communication_language=communication_language,
@@ -1056,8 +1069,8 @@ def _prepare_context_with_model(rt, session, step, token):
         tools=tools,
         estimated_before=estimated_before,
         estimated_after=estimated_after,
-        active_context_tokens=calibrated_active_context_tokens,
-        token_accounting_source=accounting_source,
+        active_context_tokens=calibrated(estimated_after),
+        token_accounting_source="post_compaction_estimate",
         # The request being returned now contains the compacted replacement, not
         # the pre-compaction tool previews. Reporting those old reduction stats
         # made the UI claim the freshly compacted agent was still blind.

@@ -2230,7 +2230,8 @@ function runPageAction(action, args = {}) {
       const value = (0, eval)(source);
       return { ok: true, value: serializeValue(value), value_type: typeof value };
     } catch (cause) {
-      return { ok: false, error: String(cause && cause.message ? cause.message : cause).slice(0, 2000) };
+      return { ok: false, error_name: String(cause && cause.name ? cause.name : "Error"),
+        error: String(cause && cause.message ? cause.message : cause).slice(0, 2000) };
     }
   }
 

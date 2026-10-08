@@ -489,7 +489,8 @@ class BrowserRuntime(_BrowserRuntime):
 
     def _collect_model_observations(self, session, step):
         messages, extra = super()._collect_model_observations(session, step)
-        events = self.store.events(session.session_id)
+        context_events = getattr(self.store, "context_events", self.store.events)
+        events = context_events(session.session_id)
         already_requested = any(event.turn_id == session.current_turn_id
             and event.kind is AgentEventKind.MODEL_REQUESTED for event in events)
         if not already_requested:
@@ -504,7 +505,7 @@ class BrowserRuntime(_BrowserRuntime):
                 if browser_id and event.kind is AgentEventKind.BROWSER_SESSION_OPENED and browser_id not in live_ids:
                     self._lookup_browser_lifecycle(session.session_id, browser_id)
             if latest_leases:
-                events = self.store.events(session.session_id)
+                events = context_events(session.session_id)
             cursor = next((frame.get("metadata", {}).get("last_browser_release_event_id")
                 for frame in reversed(session.request_context_frames)
                 if frame.get("metadata", {}).get("last_browser_release_event_id")), None)

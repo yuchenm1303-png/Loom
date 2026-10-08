@@ -37,6 +37,7 @@ class TurnDiffTracker:
         self._lock = threading.RLock()
         self._files: dict[str, _TrackedFile] = {}
         self._revision = 0
+        self._snapshot_cache: tuple[int, int, DiffSnapshot] | None = None
 
     @property
     def revision(self) -> int:
@@ -65,10 +66,15 @@ class TurnDiffTracker:
             if tracked.baseline == tracked.current:
                 self._files.pop(relative, None)
             self._revision += 1
+            self._snapshot_cache = None
 
     def snapshot(self, *, max_chars: int = _MAX_DIFF_CHARS) -> DiffSnapshot:
+        limit = max(1, int(max_chars))
         with self._lock:
             revision = self._revision
+            cached = self._snapshot_cache
+            if cached is not None and cached[:2] == (revision, limit):
+                return cached[2]
             files = {
                 path: _TrackedFile(item.baseline, item.current)
                 for path, item in self._files.items()
@@ -90,16 +96,19 @@ class TurnDiffTracker:
                 )
             )
         diff = "".join(chunks)
-        limit = max(1, int(max_chars))
         truncated = len(diff) > limit
         if truncated:
             diff = diff[:limit] + "\n... diff truncated ...\n"
-        return DiffSnapshot(
+        result = DiffSnapshot(
             revision=revision,
             paths=tuple(sorted(files)),
             diff=diff,
             truncated=truncated,
         )
+        with self._lock:
+            if self._revision == revision:
+                self._snapshot_cache = (revision, limit, result)
+        return result
 
 
 class DiffTrackerRegistry:

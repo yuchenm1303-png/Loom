@@ -269,6 +269,28 @@ def session_from_dict(payload: dict[str, Any]) -> AgentSession:
     )
 
 
+def _context_event_projection(payload):
+    """Execution context needs milestones/lifecycle, not large observation bodies.
+
+    Raw events stay durable and are read through events(). This projection keeps
+    chronology and IDs so it can share the append/truncate-safe parse cache.
+    """
+    data = payload.get("data") or {}
+    kind = payload.get("kind")
+    if kind in {"plan_updated", "browser_session_opened", "browser_session_released"}:
+        selected = dict(data)
+    elif kind == "tool_started":
+        selected = {key: data[key] for key in ("call_id", "tool", "effect", "call_fingerprint", "repeat_count") if key in data}
+    elif kind in {"model_requested", "model_response", "model_response_rejected"}:
+        selected = {key: data[key] for key in ("profile_id", "provider", "model", "usage", "reason",
+                    "estimated_input_tokens_before", "estimated_input_tokens_after", "rejected_input_tokens") if key in data}
+    else:
+        selected = {}
+    if "browser_resources" in data:
+        selected["browser_resources"] = data["browser_resources"]
+    return {**payload, "data": selected}
+
+
 class FileAgentSessionStore:
     """Local durable state for Loom Agent Runtime.
 
@@ -427,7 +449,11 @@ class FileAgentSessionStore:
         """Read a bounded tail without loading older transcript records."""
         return self.events(session_id, limit=limit)
 
-    def events(self, session_id: str, *, limit: int | None = None) -> tuple[AgentEvent, ...]:
+    def context_events(self, session_id: str) -> tuple[AgentEvent, ...]:
+        """Lightweight state/accounting projection; never inspect tool bodies here."""
+        return self.events(session_id, context_only=True)
+
+    def events(self, session_id: str, *, limit: int | None = None, context_only: bool = False) -> tuple[AgentEvent, ...]:
         if limit is not None and limit < 0:
             raise ValueError("event limit must not be negative")
         if limit == 0:
@@ -436,7 +462,8 @@ class FileAgentSessionStore:
         output: list[AgentEvent] = []
         with session_lock(path.parent):
             recover(path.parent)
-            payloads = self._event_cache.read(path, limit, _recent_event_lines)
+            payloads = self._event_cache.read(path, limit, _recent_event_lines,
+                                             project=_context_event_projection if context_only else None)
         for payload in payloads:
             output.append(
                 AgentEvent(

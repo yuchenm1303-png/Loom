@@ -18,6 +18,9 @@ def durable_tool_result_tool(store: FileAgentSessionStore) -> AgentTool:
         recent = int(arguments.get("recent") or 0)
         offset = int(arguments.get("offset") or 0)
         max_chars = int(arguments.get("max_chars") or 2000)
+        query = str(arguments.get("query") or "").strip().casefold()
+        turn_id = str(arguments.get("turn_id") or "").strip()
+        tool_name = str(arguments.get("tool") or "").strip()
         if not call_id and recent <= 0:
             raise ValueError("provide call_id or a positive recent count")
         if recent < 0 or recent > 50:
@@ -60,7 +63,11 @@ def durable_tool_result_tool(store: FileAgentSessionStore) -> AgentTool:
                 },
             )
 
-        selected = results[-recent:]
+        # Search is retrieval, never an interpretation of task completion.
+        selected = [event for event in results
+                    if (not turn_id or event.turn_id == turn_id)
+                    and (not tool_name or event.data.get("tool") == tool_name)
+                    and (not query or query in str(event.data.get("content") or "").casefold())][-recent:]
         return ToolResult(
             ok=True,
             content=f"Found {len(selected)} recent durable tool results.",
@@ -68,6 +75,7 @@ def durable_tool_result_tool(store: FileAgentSessionStore) -> AgentTool:
                 "results": [
                     {
                         "call_id": str(event.data.get("call_id") or ""),
+                        "turn_id": event.turn_id,
                         "tool": str(event.data.get("tool") or ""),
                         "ok": bool(event.data.get("ok")),
                         "created_at": event.created_at,
@@ -84,13 +92,17 @@ def durable_tool_result_tool(store: FileAgentSessionStore) -> AgentTool:
             "Read a previously recorded tool result from this task by call_id, or list a small number "
             "of recent results. Long results are read in stable chunks using offset/max_chars so exact "
             "evidence can be recovered without rerunning the original tool. Use this after context "
-            "reduction or compaction instead of rerunning an unchanged command or file read."
+            "reduction or compaction instead of rerunning an unchanged command or file read. "
+            "Search older results across this conversation with query, tool or turn_id plus recent."
         ),
         input_schema={
             "type": "object",
             "properties": {
                 "call_id": {"type": "string"},
                 "recent": {"type": "integer", "minimum": 1, "maximum": 50},
+                "query": {"type": "string", "maxLength": 240},
+                "turn_id": {"type": "string"},
+                "tool": {"type": "string"},
                 "offset": {"type": "integer", "minimum": 0},
                 "max_chars": {"type": "integer", "minimum": 256, "maximum": 20000},
             },
@@ -100,6 +112,44 @@ def durable_tool_result_tool(store: FileAgentSessionStore) -> AgentTool:
         effect=ToolEffect.READ_ONLY,
         supports_parallel_tool_calls=True,
     )
+
+
+def task_history_tool(store: FileAgentSessionStore) -> AgentTool:
+    """Retrieve historical reports and milestones without promoting them to facts."""
+    def read(context, arguments):
+        query = str(arguments.get("query") or "").strip().casefold()
+        turn_id = str(arguments.get("turn_id") or "").strip()
+        offset = int(arguments.get("offset", 0))
+        limit = int(arguments.get("limit", 10))
+        max_chars = int(arguments.get("max_chars", 2000))
+        records = []
+        for event in reversed(store.events(context.session_id)):
+            if event.kind not in {AgentEventKind.TURN_COMPLETED, AgentEventKind.PLAN_UPDATED}:
+                continue
+            if turn_id and event.turn_id != turn_id:
+                continue
+            text = str(event.data.get("text") or "")
+            plan = event.data.get("plan") or []
+            if query and query not in (text + str(plan)).casefold():
+                continue
+            records.append({"event_id": event.event_id, "turn_id": event.turn_id,
+                            "recorded_at": event.created_at, "kind": event.kind.value,
+                            "assessment_source": "assistant_report_not_independent_verification",
+                            "text": text[:max_chars], "text_chars": len(text),
+                            "text_truncated": len(text) > max_chars, "plan": plan})
+        selected = records[offset:offset + limit]
+        return ToolResult(True, "Historical reports and milestones; verify claims with referenced tool results.",
+                          {"records": selected, "total": len(records),
+                           "next_offset": offset + len(selected) if offset + len(selected) < len(records) else None})
+    return AgentTool("read_task_history",
+        "Recover earlier task reports and plan milestones in this conversation after compaction or switching back to a previous target. "
+        "Search with query (target name, path or domain) or turn_id; paginate with offset/limit. Reports are assistant assessments, "
+        "not current external state. Recover supporting call evidence with read_durable_tool_result before declaring previous work undone or repeating it.",
+        {"type": "object", "additionalProperties": False, "properties": {
+            "query": {"type": "string", "maxLength": 240}, "turn_id": {"type": "string"},
+            "offset": {"type": "integer", "minimum": 0}, "limit": {"type": "integer", "minimum": 1, "maximum": 20},
+            "max_chars": {"type": "integer", "minimum": 256, "maximum": 20000}}},
+        read, effect=ToolEffect.READ_ONLY, supports_parallel_tool_calls=True)
 
 
 def run_scratch_dir_tool(store: FileAgentSessionStore) -> AgentTool:

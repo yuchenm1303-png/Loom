@@ -122,11 +122,11 @@ class AgentRuntime:
         self.store = store
         self.tools = tools or ToolRegistry()
         self._request_context_providers = {}
-        from .evidence_tools import durable_tool_result_tool, run_scratch_dir_tool
+        from .evidence_tools import durable_tool_result_tool, run_scratch_dir_tool, task_history_tool
         from .task_plan import update_plan_tool
         from .evidence import record_check_tool, read_check_ledger_tool
         for runtime_tool in (durable_tool_result_tool(store), run_scratch_dir_tool(store), update_plan_tool(store),
-                             record_check_tool(store), read_check_ledger_tool(store)):
+                             record_check_tool(store), read_check_ledger_tool(store), task_history_tool(store)):
             if self.tools.get(runtime_tool.name) is None:
                 self.tools.register(runtime_tool)
         self.policy = policy or ToolPolicy()
@@ -537,7 +537,7 @@ class AgentRuntime:
     def _execution_context(self, session):
         """Shared task state for both core and context-managed request builders."""
         from .execution_guidance import model_execution_guidance
-        turn_events = self.store.events(session.session_id)
+        turn_events = getattr(self.store, "context_events", self.store.events)(session.session_id)
         guidance, guidance_metadata = model_execution_guidance(
             turn_events,
             turn_id=session.current_turn_id,

@@ -899,7 +899,9 @@ def browser_tools(runtime: "BrowserRuntime") -> tuple[AgentTool, ...]:
             return ToolResult(
                 ok=False,
                 content=f"The page script raised: {outcome.get('error') or 'unknown error'}",
-                data={"browser_id": browser_id, "error": outcome.get("error") or ""},
+                data={"browser_id": browser_id, "error": outcome.get("error") or "",
+                      "error_name": outcome.get("error_name") or "",
+                      "recovery": "Use browser_state and supported DOM actions when page script evaluation is unavailable. Page policy may block string evaluation; do not repeat unchanged scripts or try to disable the page's security policy."},
             )
         value, truncated = _bounded_json_value(outcome.get("value"))
         return ToolResult(
@@ -961,6 +963,7 @@ def browser_tools(runtime: "BrowserRuntime") -> tuple[AgentTool, ...]:
         browser_id = str(arguments["browser_id"])
         item = store._owned(context.session_id, browser_id)
         action = str(arguments.get("action") or "list").strip().casefold()
+
         if action == "clear":
             clear = getattr(item.backend, "clear_cookies", None)
             if not callable(clear):
@@ -1118,6 +1121,13 @@ def browser_tools(runtime: "BrowserRuntime") -> tuple[AgentTool, ...]:
         browser_id = str(arguments["browser_id"])
         item = store._owned(context.session_id, browser_id)
         action = str(arguments.get("action") or "list").strip().casefold()
+
+        if not callable(getattr(item.backend, "network_start", None)):
+            return ToolResult(False,
+                "This browser backend does not support network capture. Use supported page observations or an authorized HTTP/command tool to inspect public endpoints; those do not reproduce the signed-in browser's network state.",
+                {"browser_id": browser_id, "backend": item.backend.backend_name,
+                 "capability": "network_capture", "supported": False,
+                 "execution_status": "not_executed"})
 
         def backend_call(name: str):
             method = getattr(item.backend, name, None)
@@ -1783,7 +1793,7 @@ def browser_tools(runtime: "BrowserRuntime") -> tuple[AgentTool, ...]:
                     "recorded until then and earlier requests cannot be recovered; then action=list to "
                     "see method, URL, status and size, optionally filtered by url_contains or "
                     "failures_only; then action=body with a request_id to read one response. This is "
-                    "how to tell a failing API call from a rendering problem. The browser keeps "
+                    "how to tell a failing API call from a rendering problem. Network capture requires a backend that implements it; the browser-extension backend does not. The browser keeps "
                     "response bodies only briefly, so read one soon after the request."
                 ),
                 input_schema=_schema(

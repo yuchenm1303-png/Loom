@@ -194,6 +194,20 @@ def test_compaction_request_uses_codex_prompt_as_final_user_message_and_no_tools
     assert runtime.model_executor.platforms == [runtime.session_platform]
 
 
+def test_first_request_after_compaction_accounts_for_replacement_not_archived_usage(monkeypatch):
+    import app.agent_runtime.context_budget as budget
+    runtime = FakeRuntime([ModelResponse(text="summary", finish_reason="stop")])
+    session = Session(_history())
+    # A provider receipt for the old request must not survive the generation change.
+    monkeypatch.setattr(budget, "_latest_provider_context_tokens", lambda *_: 11000)
+    messages, metadata = prepare_context(runtime, session, Step(), Token())
+    assert metadata["auto_compacted"]
+    assert metadata["token_accounting_source"] == "post_compaction_estimate"
+    assert metadata["active_context_tokens"] == metadata["calibrated_input_tokens_after"]
+    assert metadata["active_context_tokens"] < 11000
+    assert metadata["estimated_input_tokens_after"] == estimate_tokens(messages, ())
+
+
 def test_auto_compaction_never_falls_back_to_global_default_provider():
     runtime = FakeRuntime([ModelResponse(text="summary")])
     default_minimax = runtime.platform
