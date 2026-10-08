@@ -586,7 +586,7 @@ html[data-loom-theme="light"] .compact-search {
 }
 
 .project-group-row:hover .project-group-main > svg,
-.project-group-row:has(.project-disclosure-button:focus-visible) .project-group-main > svg {
+.project-group-row > .project-disclosure-button:focus-visible + .project-group-main > svg {
   opacity: 0;
 }
 

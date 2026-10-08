@@ -190,6 +190,13 @@
   animation: loom-thread-core 1.9s ease-in-out infinite;
 }
 
+/* The mark is only ever seen after a slow thread read (.is-indicator-visible).
+   Hidden, its four infinite animations would still be resolved again on every
+   main-thread frame for nothing. */
+.thread-switch-overlay:not(.is-indicator-visible) :is(.thread-switch-aura, .thread-switch-orbit, .thread-switch-core) {
+  animation-play-state: paused;
+}
+
 html[data-loom-theme="light"] .thread-switch-overlay {
   background:
     radial-gradient(circle at 50% 48%, rgba(119,101,222,.08), transparent 18%),

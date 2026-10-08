@@ -2,11 +2,11 @@
    Keep this page quiet and operational: one vertical list, restrained chrome,
    no hero treatment, gradients, floating cards, or decorative motion. */
 
-.settings-content:has(.capability-list) {
+.settings-content[data-settings-page="capabilities"] {
   gap: 18px;
 }
 
-.settings-content:has(.capability-list) > .settings-page-heading {
+.settings-content[data-settings-page="capabilities"] > .settings-page-heading {
   position: static;
   min-height: 0;
   margin-bottom: 6px;
@@ -19,30 +19,30 @@
   box-shadow: none;
 }
 
-.settings-content:has(.capability-list) > .settings-page-heading::before,
-.settings-content:has(.capability-list) > .settings-page-heading::after {
+.settings-content[data-settings-page="capabilities"] > .settings-page-heading::before,
+.settings-content[data-settings-page="capabilities"] > .settings-page-heading::after {
   content: none;
 }
 
-.settings-content:has(.capability-list) > .settings-page-heading > div,
-.settings-content:has(.capability-list) > .settings-page-heading > .settings-tool-count {
+.settings-content[data-settings-page="capabilities"] > .settings-page-heading > div,
+.settings-content[data-settings-page="capabilities"] > .settings-page-heading > .settings-tool-count {
   position: static;
 }
 
-.settings-content:has(.capability-list) > .settings-page-heading h1 {
+.settings-content[data-settings-page="capabilities"] > .settings-page-heading h1 {
   margin-top: 4px;
   margin-bottom: 8px;
   font-size: 27px;
   letter-spacing: -.025em;
 }
 
-.settings-content:has(.capability-list) > .settings-page-heading p {
+.settings-content[data-settings-page="capabilities"] > .settings-page-heading p {
   max-width: 700px;
   color: #8b929e;
   line-height: 1.55;
 }
 
-.settings-content:has(.capability-list) .settings-tool-count {
+.settings-content[data-settings-page="capabilities"] .settings-tool-count {
   min-width: 0;
   min-height: 30px;
   margin-top: 2px;
@@ -60,22 +60,22 @@
   box-shadow: none;
 }
 
-.settings-content:has(.capability-list) .settings-tool-count::before {
+.settings-content[data-settings-page="capabilities"] .settings-tool-count::before {
   content: none;
 }
 
-.settings-content:has(.capability-list) .settings-callout.warning {
+.settings-content[data-settings-page="capabilities"] .settings-callout.warning {
   margin-top: 0;
   border-radius: 10px;
   box-shadow: none;
 }
 
-.settings-content:has(.capability-list) .settings-section:has(.capability-list) {
+.settings-content[data-settings-page="capabilities"] .settings-section.has-capability-list {
   margin-top: 10px;
   gap: 10px;
 }
 
-.settings-content:has(.capability-list) .settings-section:has(.capability-list) > .settings-section-heading {
+.settings-content[data-settings-page="capabilities"] .settings-section.has-capability-list > .settings-section-heading {
   padding: 0;
   margin-bottom: 2px;
   display: grid;
@@ -84,12 +84,12 @@
   gap: 4px;
 }
 
-.settings-content:has(.capability-list) .settings-section:has(.capability-list) > .settings-section-heading h2 {
+.settings-content[data-settings-page="capabilities"] .settings-section.has-capability-list > .settings-section-heading h2 {
   font-size: 15px;
   font-weight: 650;
 }
 
-.settings-content:has(.capability-list) .settings-section:has(.capability-list) > .settings-section-heading p {
+.settings-content[data-settings-page="capabilities"] .settings-section.has-capability-list > .settings-section-heading p {
   max-width: 700px;
   color: #7f8793;
 }
@@ -243,12 +243,12 @@
 }
 
 @media (max-width: 760px) {
-  .settings-content:has(.capability-list) > .settings-page-heading {
+  .settings-content[data-settings-page="capabilities"] > .settings-page-heading {
     flex-direction: column;
     gap: 12px;
   }
 
-  .settings-content:has(.capability-list) .settings-tool-count {
+  .settings-content[data-settings-page="capabilities"] .settings-tool-count {
     align-self: flex-start;
   }
 

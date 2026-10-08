@@ -3,51 +3,6 @@
    This layer intentionally keeps the existing model-management logic intact
    and only upgrades hierarchy, spacing, state clarity, and responsive layout. */
 
-.settings-content:has(.model-summary-card) {
-  max-width: 1240px;
-}
-
-.settings-content:has(.model-summary-card) .settings-page-heading {
-  margin-bottom: 28px;
-}
-
-.settings-content:has(.model-summary-card) .settings-page-heading > div:first-child {
-  max-width: 760px;
-}
-
-.settings-content:has(.model-summary-card) .settings-page-heading h1 {
-  font-size: 29px;
-  letter-spacing: -.03em;
-}
-
-.settings-content:has(.model-summary-card) .mature-action-button {
-  min-height: 36px;
-  padding-inline: 13px;
-  border-radius: 9px;
-  background: #14171c;
-}
-
-.settings-content:has(.model-summary-card) .settings-section {
-  margin-top: 30px;
-}
-
-.settings-content:has(.model-summary-card) .settings-section-heading {
-  margin-bottom: 11px;
-}
-
-.settings-content:has(.model-summary-card) .settings-section-heading h2 {
-  font-size: 15px;
-  font-weight: 680;
-  letter-spacing: -.012em;
-}
-
-.settings-content:has(.model-summary-card) .settings-section-heading p {
-  margin-top: 5px;
-  color: #747c89;
-  font-size: 12.5px;
-  line-height: 1.45;
-}
-
 /* Active model hero ------------------------------------------------------- */
 .model-summary-card {
   position: relative;
@@ -332,17 +287,8 @@
   font-size: 12.5px;
 }
 
-/* Running lock: section remains legible instead of looking broken. */
-.settings-content:has(.model-summary-card) .mature-model-card button:disabled:not(:only-child) {
-  cursor: default;
-}
-
 /* Responsive density ------------------------------------------------------ */
 @media (min-width: 1500px) {
-  .settings-content:has(.model-summary-card) {
-    max-width: 1320px;
-  }
-
   .mature-model-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
   }

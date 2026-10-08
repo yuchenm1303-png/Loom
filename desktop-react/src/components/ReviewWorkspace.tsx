@@ -9,7 +9,7 @@ import {
   Search,
   X,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useI18n } from "../i18n";
 import { useMotionPresence } from "../motion/useMotionPresence";
@@ -256,13 +256,38 @@ function lineMarker(kind: ReviewRow["kind"]): string {
   return "";
 }
 
+const NO_REVIEW_FILES: ReviewFile[] = [];
+
+/**
+ * `items` is a new array on every streamed delta, but the file edits inside it
+ * almost never change. Keep the previous array while its members are the same
+ * objects, so the (large) patch model below is not rebuilt for unrelated deltas.
+ */
+function useFileEditItems(items: TranscriptItem[]): TranscriptItem[] {
+  const previous = useRef<TranscriptItem[]>([]);
+  // Keyed on `items` so unrelated renders (a background thread update, a
+  // header toggle) never walk the whole transcript.
+  return useMemo(() => {
+    const edits = items.filter((item) => item.type === "file_edit");
+    if (edits.length === previous.current.length && edits.every((item, index) => item === previous.current[index])) {
+      return previous.current;
+    }
+    previous.current = edits;
+    return edits;
+  }, [items]);
+}
+
 export function ReviewWorkspace({ items, open, onClose }: ReviewWorkspaceProps) {
   const presence = useMotionPresence(open, 420);
   const { language } = useI18n();
   const c = language === "zh-CN" ? COPY_TEXT.zh : COPY_TEXT.en;
   const [externalReview, setExternalReview] = useState<ExternalReview | null>(null);
-  const sourceItems = externalReview?.items ?? items;
-  const files = useMemo(() => buildReviewFiles(sourceItems), [sourceItems]);
+  const edits = useFileEditItems(items);
+  const sourceItems = externalReview?.items ?? edits;
+  // Parsing every historical patch is O(conversation) work. The closed panel
+  // renders nothing, so it must not pay that on each message delta.
+  const visible = open || presence.mounted;
+  const files = useMemo(() => (visible ? buildReviewFiles(sourceItems) : NO_REVIEW_FILES), [visible, sourceItems]);
   const [query, setQuery] = useState("");
   const [selectedPath, setSelectedPath] = useState("");
   const [copied, setCopied] = useState(false);

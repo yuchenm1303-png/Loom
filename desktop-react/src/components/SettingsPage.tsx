@@ -509,9 +509,9 @@ function StatusPill({ tone, children }: { tone: string; children: ReactNode }) {
   return <span className={`settings-status-pill ${tone}`}><span className="settings-status-dot" />{children}</span>;
 }
 
-function Section({ title, caption, children }: { title: string; caption?: string; children: ReactNode }) {
+function Section({ title, caption, className, children }: { title: string; caption?: string; className?: string; children: ReactNode }) {
   return (
-    <section className="settings-section">
+    <section className={className ? `settings-section ${className}` : "settings-section"}>
       <div className="settings-section-heading"><h2>{title}</h2>{caption ? <p>{caption}</p> : null}</div>
       {children}
     </section>
@@ -1085,7 +1085,7 @@ export function SettingsPage({ runtime, models, threadId, running, onRefreshMode
     <>
       <div className="settings-page-heading"><div><span className="settings-eyebrow">Agent runtime</span><h1>Capabilities</h1><p>Choose which major tool families Loom can expose to the model.</p></div><span className="settings-tool-count">{runtime.exposedToolCount ?? "—"} / {runtime.registeredToolCount ?? "—"} tools exposed</span></div>
       {running ? <div className="settings-callout warning"><CircleAlert size={16} /><div><strong>Finish or stop the active turn first.</strong><span>Tool exposure cannot change mid-execution.</span></div></div> : null}
-      <Section title="Agent capabilities" caption="Preference and runtime readiness are intentionally shown separately.">
+      <Section title="Agent capabilities" caption="Preference and runtime readiness are intentionally shown separately." className="has-capability-list">
         <div className="settings-card capability-list">
           {CAPABILITIES.map((item) => {
             const Icon = item.icon;
@@ -1511,7 +1511,7 @@ export function SettingsPage({ runtime, models, threadId, running, onRefreshMode
         </nav>
         <div className="settings-sidebar-footer" data-running={running ? "true" : "false"}><span className="settings-runtime-dot" /><div><strong>Loom runtime</strong><span>{running ? "Turn active" : "Ready for changes"}</span></div></div>
       </aside>
-      <main className="settings-main"><div className="settings-main-scroll" ref={settingsScrollRef}><div className="settings-content"><div className="settings-page-surface" data-page={page} ref={surfaceRef}><Fragment key={page}>{content}</Fragment></div></div></div></main>
+      <main className="settings-main"><div className="settings-main-scroll" ref={settingsScrollRef}><div className="settings-content" data-settings-page={page}><div className="settings-page-surface" data-page={page} ref={surfaceRef}><Fragment key={page}>{content}</Fragment></div></div></div></main>
       {noticePresence.mounted && visibleNotice ? (
         <div className={`settings-toast ${visibleNotice.tone}`} data-motion-phase={noticePresence.phase}>
           {visibleNotice.tone === "success" ? <Check size={15} /> : <CircleAlert size={15} />}
