@@ -165,7 +165,9 @@ def test_provider_usage_crosses_work_watermark_without_crossing_hard_limit():
     session.request_context_frames = []
     _, metadata = prepare_context(runtime, session, Step(), Token())
     assert metadata["auto_compacted"] is True
-    assert metadata["token_accounting_source"] == "provider_usage"
+    assert metadata["compaction_trigger_accounting_source"] == "provider_usage"
+    assert metadata["token_accounting_source"] == "post_compaction_estimate"
+    assert metadata["active_context_tokens"] == metadata["calibrated_input_tokens_after"]
     assert metadata["effective_input_budget_tokens"] == 94_000
 
 
