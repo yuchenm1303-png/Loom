@@ -2040,7 +2040,8 @@ const TurnView = memo(function TurnView({
       };
     } else {
       setSettle(null);
-      if (wasActiveRef.current || reduce) setProcessOpen(false);
+      // A motion preference change must preserve a manually opened history.
+      if (wasActiveRef.current) setProcessOpen(false);
     }
     wasActiveRef.current = active;
   }, [active, reduce]);
