@@ -713,7 +713,7 @@ class ReasoningManagedLoomAppServerService(ManagedStreamingLoomAppServerService)
         provides an interruption recovery path that persists a terminal event.
         Never use it for live operations or pending approval decisions.
         """
-        if session.status is AgentStatus.RUNNING and not self._is_active(session.session_id):
+        if getattr(session, "status", None) is AgentStatus.RUNNING and not self._is_active(session.session_id):
             recover = getattr(self.runtime, "recover_interrupted", None)
             if callable(recover):
                 recover(session.session_id)
