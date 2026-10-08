@@ -52,7 +52,7 @@ def test_picker_open_forces_background_refresh_and_runtime_polls_ttl() -> None:
     composer = COMPOSER.read_text(encoding="utf-8")
     panel = PANEL.read_text(encoding="utf-8")
 
-    assert "const MODEL_CATALOG_POLL_MS = 60_000;" in core
+    assert "const MODEL_CATALOG_POLL_MS = 10_000;" in core
     assert "listModels<ModelSnapshot>(forceRefresh)" in core
     assert 'window.setInterval(refreshIfVisible, MODEL_CATALOG_POLL_MS)' in core
     assert "onRefreshModels?.(true)" in composer

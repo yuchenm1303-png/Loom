@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import sqlite3
 import threading
 import time
@@ -8,7 +9,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterable
 
-from .catalog import GROUPS, GROUP_BY_ID, MODEL_BY_ID, MODELS, group_for_selection
+from .catalog import GROUPS, GROUP_BY_ID, MODEL_BY_ID, MODELS, group_for_selection, model_for_selection, selection_for_model
 
 DEFAULT_MODEL_IDS = tuple(item.id for item in MODELS)
 
@@ -79,6 +80,22 @@ class PolicyStore:
                     enabled INTEGER NOT NULL DEFAULT 1,
                     updated_at INTEGER NOT NULL,
                     updated_by INTEGER
+                );
+
+                CREATE TABLE IF NOT EXISTS provider_catalog (
+                    model_id TEXT PRIMARY KEY,
+                    group_id TEXT NOT NULL,
+                    model TEXT NOT NULL,
+                    name TEXT NOT NULL,
+                    available INTEGER NOT NULL DEFAULT 1,
+                    source TEXT NOT NULL,
+                    last_seen INTEGER NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS provider_catalog_status (
+                    group_id TEXT PRIMARY KEY,
+                    last_success INTEGER,
+                    last_attempt INTEGER,
+                    error TEXT NOT NULL DEFAULT ''
                 );
 
                 CREATE TABLE IF NOT EXISTS global_model_group_rules (
@@ -155,6 +172,16 @@ class PolicyStore:
                     VALUES (?, 1, ?, NULL)""",
                     (group.id, now),
                 )
+            # Migrate existing rules, preserving decisions from earlier builds.
+            for row in db.execute("SELECT model_id FROM global_model_rules").fetchall():
+                selection = str(row["model_id"])
+                group_id = group_for_selection(selection)
+                if group_id:
+                    meta = MODEL_BY_ID.get(selection)
+                    db.execute(
+                        "INSERT OR IGNORE INTO provider_catalog VALUES (?, ?, ?, ?, 1, 'bundled', ?)",
+                        (selection, group_id, model_for_selection(selection), meta.name if meta else model_for_selection(selection), now),
+                    )
             # Upgrade the first policy prototype, which stored Ant Ling raw
             # model IDs instead of canonical Loom selections. Preserve switch
             # state and access-group intent if that DB ever existed.
@@ -212,6 +239,7 @@ class PolicyStore:
     # Global model + provider/model-group control
     # ------------------------------------------------------------------
     def global_rules(self) -> list[dict[str, Any]]:
+        catalog = {item["model_id"]: item for item in self.catalog()["models"]}
         with self._connect() as db:
             rows = db.execute(
                 "SELECT model_id, enabled, updated_at, updated_by FROM global_model_rules ORDER BY model_id COLLATE NOCASE"
@@ -220,13 +248,16 @@ class PolicyStore:
         for row in rows:
             model_id = str(row["model_id"])
             meta = MODEL_BY_ID.get(model_id)
+            entry = catalog.get(model_id)
             result.append(
                 {
                     "model_id": model_id,
-                    "name": meta.name if meta else model_id,
+                    "name": entry["name"] if entry else (meta.name if meta else model_id),
                     "group_id": meta.group_id if meta else (group_for_selection(model_id) or "other"),
                     "group_name": meta.group_name if meta else (GROUP_BY_ID[group_for_selection(model_id)].name if group_for_selection(model_id) else "Other"),
                     "enabled": bool(row["enabled"]),
+                    "available": entry["available"] if entry else not model_id.startswith(("builtin:", "managed:")),
+                    "catalog_source": entry["source"] if entry else "legacy",
                     "updated_at": int(row["updated_at"]),
                     "updated_by": int(row["updated_by"]) if row["updated_by"] is not None else None,
                 }
@@ -234,7 +265,7 @@ class PolicyStore:
         return result
 
     def register_catalog(self, model_ids: Iterable[str]) -> None:
-        """Record discovered built-ins without changing any existing policy."""
+        """Trusted migration helper, never exposed to desktop requests."""
         normalized = list(dict.fromkeys(_normalize_model_id(item) for item in model_ids))
         if len(normalized) > 2000 or any(group_for_selection(item) is None for item in normalized):
             raise ValueError("invalid built-in model catalog")
@@ -243,8 +274,60 @@ class PolicyStore:
                 "INSERT OR IGNORE INTO global_model_rules(model_id, enabled, updated_at, updated_by) VALUES (?, 1, ?, NULL)",
                 [(item, _now()) for item in normalized],
             )
+            db.executemany(
+                "INSERT OR IGNORE INTO provider_catalog VALUES (?, ?, ?, ?, 1, 'imported', ?)",
+                [(item, group_for_selection(item), model_for_selection(item), model_for_selection(item), _now()) for item in normalized],
+            )
+
+    def catalog(self) -> dict[str, Any]:
+        with self._guard, self._connect() as db:
+            models = [dict(row) for row in db.execute("SELECT * FROM provider_catalog ORDER BY group_id, model_id")]
+            providers = [dict(row) for row in db.execute("SELECT * FROM provider_catalog_status ORDER BY group_id")]
+        for row in models:
+            row["available"] = bool(row["available"])
+            row["group_name"] = GROUP_BY_ID[row["group_id"]].name
+        content = {"models": models, "providers": providers}
+        versioned = [{key: value for key, value in row.items() if key != "last_seen"} for row in models]
+        content["revision"] = hashlib.sha256(json.dumps(versioned, sort_keys=True).encode()).hexdigest()
+        return content
+
+    def replace_provider_catalog(self, group_id: str, models: list[dict[str, str]], source: str = "provider") -> None:
+        if group_id not in GROUP_BY_ID or not models or len(models) > 2000:
+            raise ValueError("invalid or empty provider catalog")
+        if any(group_for_selection(item["model_id"]) != group_id
+            or selection_for_model(group_id, item["model"]) != item["model_id"] for item in models):
+            raise ValueError("model does not belong to provider")
+        now = _now()
+        with self._guard, self._connect() as db:
+            db.execute("BEGIN IMMEDIATE")
+            db.execute("UPDATE provider_catalog SET available=0 WHERE group_id=?", (group_id,))
+            for item in models:
+                db.execute(
+                    """INSERT INTO provider_catalog VALUES (?, ?, ?, ?, 1, ?, ?)
+                    ON CONFLICT(model_id) DO UPDATE SET model=excluded.model, name=excluded.name,
+                    available=1, source=excluded.source, last_seen=excluded.last_seen""",
+                    (item["model_id"], group_id, item["model"], item["name"], source, now),
+                )
+                db.execute("INSERT OR IGNORE INTO global_model_rules VALUES (?, 1, ?, NULL)", (item["model_id"], now))
+            db.execute(
+                """INSERT INTO provider_catalog_status VALUES (?, ?, ?, '')
+                ON CONFLICT(group_id) DO UPDATE SET last_success=excluded.last_success,
+                last_attempt=excluded.last_attempt, error=''""", (group_id, now, now),
+            )
+            db.execute("COMMIT")
+
+    def catalog_failure(self, group_id: str, message: str) -> None:
+        with self._guard, self._connect() as db:
+            db.execute(
+                """INSERT INTO provider_catalog_status(group_id, last_attempt, error) VALUES (?, ?, ?)
+                ON CONFLICT(group_id) DO UPDATE SET last_attempt=excluded.last_attempt, error=excluded.error""",
+                (group_id, _now(), message),
+            )
 
     def global_model_groups(self) -> list[dict[str, Any]]:
+        counts: dict[str, int] = {}
+        for item in self.global_rules():
+            counts[item["group_id"]] = counts.get(item["group_id"], 0) + 1
         with self._connect() as db:
             rows = {
                 str(row["group_id"]): row
@@ -262,7 +345,7 @@ class PolicyStore:
                     "enabled": True if row is None else bool(row["enabled"]),
                     "updated_at": None if row is None else int(row["updated_at"]),
                     "updated_by": None if row is None or row["updated_by"] is None else int(row["updated_by"]),
-                    "model_count": sum(1 for item in self.global_rules() if item["group_id"] == group.id),
+                    "model_count": counts.get(group.id, 0),
                 }
             )
         return result
@@ -617,11 +700,13 @@ class PolicyStore:
     # Effective policy resolution
     # ------------------------------------------------------------------
     def snapshot(self) -> dict[str, Any]:
-        return {
-            "models": self.global_rules(),
-            "model_groups": self.global_model_groups(),
-            "groups": self.groups(),
-        }
+        with self._guard:
+            return {
+                "models": self.global_rules(),
+                "model_groups": self.global_model_groups(),
+                "groups": self.groups(),
+                "catalog": self.catalog(),
+            }
 
     def _active_group_rows(self, user_id: int) -> list[sqlite3.Row]:
         with self._connect() as db:
@@ -640,6 +725,12 @@ class PolicyStore:
         account_access: dict[str, Any],
         extra_model_ids: Iterable[str] | None = None,
     ) -> dict[str, Any]:
+        with self._guard:
+            return self._effective_access(user_id, account_access, extra_model_ids)
+
+    def _effective_access(self, user_id: int, account_access: dict[str, Any], extra_model_ids=None) -> dict[str, Any]:
+        catalog = self.catalog()
+        catalog_models = {item["model_id"]: item for item in catalog["models"]}
         global_rows = self.global_rules()
         global_enabled = {str(row["model_id"]): bool(row["enabled"]) for row in global_rows}
         provider_groups = {str(row["id"]): bool(row["enabled"]) for row in self.global_model_groups()}
@@ -672,6 +763,9 @@ class PolicyStore:
         decisions: list[Decision] = []
         for model_id in targets:
             provider_group_id = group_for_selection(model_id)
+            if (provider_group_id or model_id.startswith(("builtin:", "managed:"))) and (model_id not in catalog_models or not catalog_models[model_id]["available"]):
+                decisions.append(Decision(model_id, False, "catalog"))
+                continue
             if provider_group_id and not provider_groups.get(provider_group_id, True):
                 decisions.append(Decision(model_id, False, "global_group", (provider_group_id,)))
                 continue
@@ -686,6 +780,9 @@ class PolicyStore:
                 continue
 
             meta = MODEL_BY_ID.get(model_id)
+            if legacy_override and provider_group_id == "ant-ling" and (meta is None or not meta.legacy_account_id):
+                decisions.append(Decision(model_id, model_for_selection(model_id).casefold() in legacy_allowed, "user_legacy"))
+                continue
             if legacy_override and meta is not None and meta.legacy_account_id:
                 decisions.append(Decision(model_id, meta.legacy_account_id.casefold() in legacy_allowed, "user_legacy"))
                 continue
@@ -698,7 +795,7 @@ class PolicyStore:
             decisions.append(Decision(model_id, True, "global"))
 
         allowed = [item.model_id for item in decisions if item.enabled]
-        return {
+        result = {
             "enabled": account_enabled and bool(allowed),
             "models": allowed,
             "source": "policy",
@@ -707,7 +804,12 @@ class PolicyStore:
             "model_groups": self.global_model_groups(),
             "user_rules": user_rule_rows,
             "decisions": [item.payload() for item in decisions],
+            "catalog": catalog,
+            "schema_version": 2,
         }
+        versioned = {"enabled": result["enabled"], "decisions": result["decisions"], "catalog": catalog["revision"]}
+        result["revision"] = hashlib.sha256(json.dumps(versioned, sort_keys=True).encode()).hexdigest()
+        return result
 
     def user_detail(self, user_id: int, account_access: dict[str, Any]) -> dict[str, Any]:
         return {

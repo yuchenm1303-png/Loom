@@ -3,7 +3,7 @@
   const ACCOUNT_API = '/api/v1';
   const $ = (id) => document.getElementById(id);
   const policyState = {
-    models: [], modelGroups: [], groups: [], users: [],
+    models: [], modelGroups: [], groups: [], users: [], catalog: null,
     selectedGroupId: null, selectedGroup: null,
     selectedAccountId: null, selectedAccountPolicy: null, selectedAccountAccess: null,
     dialogUserId: null, activeTab: 'global', loading: false,
@@ -60,7 +60,7 @@
     section.innerHTML = `
       <div class="usage-section-head">
         <div><p class="kicker">MODEL ACCESS CONTROL</p><h2>模型权限控制台</h2><p>全局、访问分组和单账号三层策略。全局禁用是硬限制，单账号显式规则优先于 Access Group。</p></div>
-        <div class="loom-policy-toolbar"><button id="policyRefresh" class="loom-admin-action" type="button">刷新策略</button></div>
+        <div class="loom-policy-toolbar"><button id="policyCatalogRefresh" class="loom-admin-action" type="button">同步模型目录</button><button id="policyRefresh" class="loom-admin-action" type="button">刷新策略</button></div>
       </div>
       <div class="loom-policy-tabs" role="tablist" aria-label="模型权限范围">
         <button class="loom-policy-tab" type="button" role="tab" data-policy-tab="global" aria-selected="true">全局模型</button>
@@ -108,6 +108,11 @@
 
     section.querySelector('.loom-policy-tabs').addEventListener('click', onTabClick);
     $('policyRefresh').addEventListener('click', loadPolicyFresh);
+    $('policyCatalogRefresh').addEventListener('click', async () => {
+      const button = $('policyCatalogRefresh'); button.disabled = true;
+      try { await policyRequest('/admin/catalog/refresh', {method:'POST', body:'{}'}); await loadPolicyFresh(); }
+      catch (error) { showError(error); } finally { button.disabled = false; }
+    });
     $('policyGlobalEnableAll').addEventListener('click', () => bulkGlobal(true));
     $('policyGlobalDisableAll').addEventListener('click', () => bulkGlobal(false));
     $('policyGlobalGrid').addEventListener('change', onGlobalToggle);
@@ -130,6 +135,7 @@
   function sourceLabel(decision) {
     const source = String(decision?.source || 'global');
     if (source === 'global_group') return '模型大组全局禁用';
+    if (source === 'catalog') return '模型已下架或未进入服务端目录';
     if (source === 'global') return '全局策略';
     if (source === 'account') return '账号总开关';
     if (source === 'user') return '账号单独规则';
@@ -158,6 +164,7 @@
     try {
       const [policy, users] = await Promise.all([policyRequest('/admin/state'), accountRequest('/admin/users')]);
       policyState.models = policy.models || []; policyState.modelGroups = policy.model_groups || []; policyState.groups = policy.groups || []; policyState.users = users.users || [];
+      policyState.catalog = policy.catalog || null;
       renderGlobal(); renderGroups(); renderAccounts();
       if (policyState.selectedGroupId && policyState.groups.some(g => Number(g.id) === Number(policyState.selectedGroupId))) await selectGroup(policyState.selectedGroupId);
       else { policyState.selectedGroupId = null; policyState.selectedGroup = null; renderGroupDetail(); }
@@ -172,6 +179,10 @@
     const grid = $('policyGlobalGrid'), groupGrid = $('policyModelGroupGrid'); if (!grid || !groupGrid) return;
     const enabled = policyState.models.filter(m => m.enabled).length;
     $('policyGlobalHint').textContent = `${enabled} / ${policyState.models.length} 已启用`;
+    const providers = policyState.catalog?.providers || [];
+    const pending = providers.filter(provider => provider.error).length;
+    if (pending) $('policyGlobalHint').textContent += ` · ${pending} 个目录同步待处理`;
+    $('policyGlobalHint').title = providers.map(provider => `${provider.group_id}: ${provider.error || (provider.last_success ? '最近同步 ' + new Date(provider.last_success * 1000).toLocaleString() : '使用内置目录')}`).join('\n');
     groupGrid.innerHTML = policyState.modelGroups.map(group => `<div class="loom-policy-card"><div><strong>${escapeHtml(group.name)}</strong><small>${group.enabled ? '大组已启用' : '硬禁用'} · ${group.model_count || 0} 个模型</small></div><label class="loom-policy-switch" title="模型大组总开关"><input type="checkbox" data-global-model-group="${escapeHtml(group.id)}" ${group.enabled ? 'checked' : ''}><span></span></label></div>`).join('') || '<div class="loom-policy-empty">没有模型大组。</div>';
     const select = $('policyGlobalGroupFilter');
     const current = select.value || 'all';
@@ -179,7 +190,7 @@
     if ([...select.options].some(o => o.value === current)) select.value = current;
     const q = $('policyGlobalSearch').value.trim().toLowerCase(), group = select.value;
     const models = policyState.models.filter(m => (!q || modelSearchText(m).includes(q)) && (group === 'all' || String(m.group_id) === group));
-    grid.innerHTML = models.map(model => `<div class="loom-policy-card"><div><strong>${escapeHtml(model.name || model.model_id)}</strong><small>${escapeHtml(model.group_name || model.group_id || '')} · ${model.enabled ? '全局可用' : '全局硬禁用'}</small></div><label class="loom-policy-switch"><input type="checkbox" data-global-model="${escapeHtml(model.model_id)}" ${model.enabled ? 'checked' : ''}><span></span></label></div>`).join('') || '<div class="loom-policy-empty">没有匹配的模型。</div>';
+    grid.innerHTML = models.map(model => `<div class="loom-policy-card"><div><strong>${escapeHtml(model.name || model.model_id)}</strong><small>${escapeHtml(model.group_name || model.group_id || '')} · ${model.available === false ? '已下架 · 保留权限规则' : model.enabled ? '全局可用' : '全局硬禁用'}</small></div><label class="loom-policy-switch"><input type="checkbox" data-global-model="${escapeHtml(model.model_id)}" ${model.enabled ? 'checked' : ''}><span></span></label></div>`).join('') || '<div class="loom-policy-empty">没有匹配的模型。</div>';
   }
 
   function renderGroups() {

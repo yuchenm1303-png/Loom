@@ -7,6 +7,21 @@ from app.model_policy_snapshot import ModelPolicySnapshot
 from app.app_server_reasoning import ReasoningManagedLoomAppServerService
 
 
+def test_authoritative_snapshot_distinguishes_unknown_retired_and_admin_denied():
+    cache = ModelPolicySnapshot("https://example.invalid/access", "account-a", start=False,
+        fetch=lambda token: {"access": {"schema_version": 2, "enabled": True,
+            "models": ["builtin:minimax"], "decisions": [
+                {"model_id": "builtin:minimax:retired", "enabled": False, "source": "catalog"},
+                {"model_id": "builtin:deepseek", "enabled": False, "source": "global"},
+            ]}})
+    cache.refresh()
+    for selection in ("builtin:minimax:retired", "builtin:minimax:unknown"):
+        with pytest.raises(RuntimeError, match="no longer available"):
+            cache.check(selection, "account-a")
+    with pytest.raises(RuntimeError, match="disabled by Loom Admin"):
+        cache.check("builtin:deepseek", "account-a")
+
+
 @pytest.mark.parametrize("enabled", [True, False])
 def test_dynamic_model_uses_authoritative_check_and_refresh_invalidates_cache(monkeypatch, enabled):
     import io

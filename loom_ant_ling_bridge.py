@@ -83,7 +83,7 @@ def _registry() -> dict[str, Any]:
 
 def _resolve(selection: str) -> dict[str, Any]:
     model = _model_from_selection(selection)
-    if not model or not _is_ant_ling_model(model): raise ValueError(f"unknown Ant Ling selection: {selection!r}")
+    if not model: raise ValueError(f"unknown Ant Ling selection: {selection!r}")
     profile = _profile(model, reasoning_store=ReasoningConfigStore(_home()))
     return {**profile, "provider": "openai-compatible", "apiKey": "", "authMode": "loom-account"}
 
@@ -114,13 +114,14 @@ def _write(payload: dict[str, Any]) -> None:
     sys.stdout.write(json.dumps(payload, ensure_ascii=False, separators=(",", ":")) + "\n")
 
 def main(argv: list[str] | None = None) -> int:
-    args = list(sys.argv[1:] if argv is None else argv); commands = {"list", "resolve", "describe-model", "set-key", "set-active", "set-reasoning"}
+    args = list(sys.argv[1:] if argv is None else argv); commands = {"list", "resolve", "describe-model", "describe-models", "set-key", "set-active", "set-reasoning"}
     if len(args) != 1 or args[0] not in commands: _write({"ok": False, "error": "unsupported Ant Ling bridge command"}); return 2
     command = args[0]; payload = _read_payload()
     try:
         if command == "list": result = _registry()
         elif command == "resolve": result = _resolve(str(payload.get("selection") or ""))
         elif command == "describe-model": result = _describe(str(payload.get("selection") or ""), str(payload.get("model") or ""))
+        elif command == "describe-models": result = [_describe(item["selection"], item["model"]) for item in payload["models"]]
         elif command == "set-key": raise RuntimeError("Ant Ling built-in models use your Loom account. Use Add connection for your own Ant Ling API key.")
         elif command == "set-active":
             selection = str(payload.get("selection") or "").strip()

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from urllib.parse import quote
+from urllib.parse import quote, unquote
 
 
 @dataclass(frozen=True)
@@ -149,3 +149,34 @@ def ant_ling_policy_id(model: str) -> str:
 def is_managed_builtin_selection(selection: str) -> bool:
     value = str(selection or "").strip()
     return value.startswith("builtin:") or value.startswith("managed:")
+
+
+DEFAULT_MODELS = {
+    "minimax": "MiniMax-M3", "deepseek": "deepseek-flash",
+    "ant-ling": "Ling-3.0-flash", "managed-relay": "cqu-default",
+}
+
+
+def selection_for_model(group_id: str, model: str) -> str:
+    if group_id not in GROUP_BY_ID:
+        raise ValueError("unknown provider group")
+    if not isinstance(model, str) or not model.strip() or len(model) > 160:
+        raise ValueError("invalid provider model ID")
+    model = model.strip()
+    if any(ord(ch) < 32 for ch in model):
+        raise ValueError("invalid provider model ID")
+    if group_id == "managed-relay":
+        return "builtin:cqu" if model == "cqu-default" else "managed:" + quote(model, safe="")
+    return _selection("builtin:" + group_id + ":", model, DEFAULT_MODELS.get(group_id, ""))
+
+
+def model_for_selection(selection: str) -> str:
+    group_id = group_for_selection(selection)
+    if group_id is None:
+        return selection
+    if selection == "builtin:cqu":
+        return "cqu-default"
+    if selection == "builtin:" + group_id:
+        return DEFAULT_MODELS[group_id]
+    prefix = "managed:" if group_id == "managed-relay" else "builtin:" + group_id + ":"
+    return unquote(selection[len(prefix):])

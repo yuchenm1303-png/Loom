@@ -12,6 +12,7 @@ import {
   type AddModelInput,
   type EditModelInput,
   type ModelLaunchSpec,
+  type ModelProfile,
 } from "./modelManager.js";
 import { LoomAccountClient, type LoomAccountSnapshot, type LoomAuthCapabilities, type LoomAuthChallenge, type LoomModelPolicyAccess } from "./accountClient.js";
 import { accountErrorPayload, type AccountErrorPayload } from "./accountErrors.js";
@@ -1291,6 +1292,8 @@ function policyAllowsSelection(access: LoomModelPolicyAccess, selection: string)
   if (!access.enabled && Array.isArray(access.decisions) && access.decisions.length) return false;
   const decision = access.decisions?.find((item) => item.model_id === value);
   if (decision) return Boolean(decision.enabled);
+  if (access.schema_version === 2) return false;
+  if (!Array.isArray(access.decisions)) return access.enabled && access.models.includes(value);
   const groupId = modelPolicyGroup(value);
   const group = groupId ? access.model_groups?.find((item) => item.id === groupId) : undefined;
   if (group && group.enabled === false) return false;
@@ -1303,6 +1306,7 @@ function policyAllowsSelection(access: LoomModelPolicyAccess, selection: string)
 function policyBlockedMessage(access: LoomModelPolicyAccess, selection: string): string {
   const decision = access.decisions?.find((item) => item.model_id === selection);
   const source = String(decision?.source || "policy");
+  if (source === "catalog" || (!decision && access.schema_version === 2)) return "Model is no longer available from this provider";
   if (source === "global_group") return "Disabled by Loom Admin · model group";
   if (source === "global") return "Disabled by Loom Admin · global policy";
   if (source === "account") return "Disabled by Loom Admin · account access";
@@ -1315,7 +1319,13 @@ function applyModelPolicy(
   snapshot: ReturnType<DesktopModelManager["snapshot"]>,
   access: LoomModelPolicyAccess | null,
 ): ReturnType<DesktopModelManager["snapshot"]> {
-  if (!access) return snapshot;
+  if (!access) {
+    const gate = <T extends ModelProfile>(profile: T): T => profile.kind === "builtin"
+      ? { ...profile, available: false, statusMessage: "Model permissions unavailable. Retry shortly." }
+      : profile;
+    return { ...snapshot, profiles: snapshot.profiles.map(gate), primary: gate(snapshot.primary),
+      current: snapshot.current ? gate(snapshot.current) : null };
+  }
   const profiles = snapshot.profiles.map((profile) => {
     if (profile.kind !== "builtin" || policyAllowsSelection(access, profile.selection)) return profile;
     return {
@@ -1344,9 +1354,9 @@ function applySignedOutModelGate(
   return { ...snapshot, profiles, primary, current };
 }
 
-async function currentModelPolicy(modelIds: string[] = []): Promise<LoomModelPolicyAccess | null> {
+async function currentModelPolicy(): Promise<LoomModelPolicyAccess | null> {
   try {
-    return await accountClient.modelPolicyAccess(modelIds);
+    return await accountClient.modelPolicyAccess();
   } catch (error) {
     // The App Server performs fail-closed enforcement before every signed-in
     // built-in turn. Keeping the last local catalogue visible during an outage
@@ -1367,8 +1377,9 @@ async function assertModelSelectionAllowed(selection: string): Promise<void> {
   await assertSignedInForModels();
   const value = String(selection || "").trim();
   if (!value || value.startsWith("saved:")) return;
-  const access = await currentModelPolicy();
-  if (access && !policyAllowsSelection(access, value)) {
+  const access = await accountClient.modelPolicyCheck(value);
+  if (!access) throw new Error("Model permissions unavailable. Retry shortly.");
+  if (!policyAllowsSelection(access, value)) {
     throw new Error(policyBlockedMessage(access, value));
   }
 }
@@ -1378,10 +1389,11 @@ async function runListModels(forceRefresh = false): Promise<ReturnType<DesktopMo
     modelManager.listSnapshot(Boolean(forceRefresh)),
     accountClient.hasAuthenticatedSession(),
   ]);
-  const access = await currentModelPolicy(snapshot.profiles
-    .filter((profile) => profile.kind === "builtin")
-    .map((profile) => profile.selection));
-  return applySignedOutModelGate(applyModelPolicy(snapshot, access), authenticated);
+  const access = await currentModelPolicy();
+  const authoritative = access?.catalog
+    ? await modelManager.applyServerCatalog(snapshot, access.catalog.models)
+    : snapshot;
+  return applySignedOutModelGate(applyModelPolicy(authoritative, access), authenticated && await accountClient.hasAuthenticatedSession());
 }
 
 async function runRpcCall(method: string, params: Record<string, unknown> = {}): Promise<unknown> {

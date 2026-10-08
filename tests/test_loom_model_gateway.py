@@ -46,3 +46,23 @@ def test_gateway_never_uses_client_authorization_as_upstream_key(monkeypatch) ->
     monkeypatch.setattr(gateway, "_account_access", lambda _auth: {"enabled": True, "models": ["Ling-3.0-flash"]})
     gateway.authorize_model("Bearer loom-user-token", "Ling-3.0-flash")
     assert gateway.config.ant_ling_api_key == "server-only-secret"
+
+
+def test_gateway_uses_authoritative_dynamic_catalog_for_listing_and_authorization(monkeypatch):
+    gateway = LoomModelGateway(GatewayConfig(account_base_url="http://account/v1",
+        ant_ling_base_url="https://api.ant-ling.com/v1", ant_ling_api_key="server-only-secret",
+        model_policy_base_url="http://policy/v1"))
+    access = {"enabled": True, "models": ["builtin:ant-ling:Ling-new"], "catalog": {"models": [
+        {"group_id": "ant-ling", "model": "Ling-new", "available": True},
+        {"group_id": "ant-ling", "model": "Ling-retired", "available": False},
+    ]}}
+    monkeypatch.setattr(gateway, "_account_access", lambda auth: access)
+    assert [item["id"] for item in gateway.catalog("Bearer test")["data"]] == ["Ling-new"]
+    gateway.authorize_model("Bearer test", "Ling-new")
+    with pytest.raises(GatewayError) as error:
+        gateway.authorize_model("Bearer test", "Ling-retired")
+    assert error.value.status == HTTPStatus.NOT_FOUND
+    access["models"] = []
+    with pytest.raises(GatewayError) as error:
+        gateway.authorize_model("Bearer test", "Ling-new")
+    assert error.value.status == HTTPStatus.FORBIDDEN

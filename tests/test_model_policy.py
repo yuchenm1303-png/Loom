@@ -29,7 +29,7 @@ def test_discovered_catalog_is_visible_and_preserves_denials(tmp_path):
         store.register_catalog(["builtin:minimax-invalid"])
 
 
-def test_access_registers_all_discovered_providers_after_authentication(tmp_path):
+def test_legacy_client_cannot_modify_authoritative_catalog(tmp_path):
     from types import SimpleNamespace
     from services.loom_model_policy.server import ModelPolicyApplication
     app = object.__new__(ModelPolicyApplication)
@@ -41,8 +41,9 @@ def test_access_registers_all_discovered_providers_after_authentication(tmp_path
     models = ["builtin:minimax:future", "builtin:deepseek:future", "builtin:ant-ling:future",
         "builtin:opencode-go:future", "managed:future"]
     response = app.access("Bearer test", {"model_ids": models})
-    assert set(models) <= set(response["access"]["models"])
-    assert set(models) <= {row["model_id"] for row in app.store.snapshot()["models"]}
+    assert not set(models) & set(response["access"]["models"])
+    assert not set(models) & {row["model_id"] for row in app.store.snapshot()["models"]}
+    assert all(item["source"] == "catalog" for item in response["access"]["decisions"] if item["model_id"] in models)
 
 
 def test_global_off_is_hard_deny(tmp_path: Path) -> None:

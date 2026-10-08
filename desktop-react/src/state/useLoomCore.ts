@@ -29,7 +29,7 @@ type ThreadReadCacheEntry = { result: ThreadReadResult; cachedAt: number };
 const THREAD_READ_CACHE_LIMIT = 8;
 const THREAD_READ_CACHE_TTL_MS = 5 * 60_000;
 const THREAD_READ_WINDOW_TURNS = 20;
-const MODEL_CATALOG_POLL_MS = 60_000;
+const MODEL_CATALOG_POLL_MS = 10_000;
 
 function flattenItems(turns: TurnRecord[]): TranscriptItem[] {
   return turns.flatMap((turn) => turn.items ?? []);

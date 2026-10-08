@@ -20,6 +20,9 @@ class ModelPolicySnapshot:
         self.known: frozenset[str] = frozenset()
         self.dynamic: dict[str, tuple[bool, float]] = {}
         self.resolves_dynamic = False
+        self.schema_version = 1
+        self.denial_sources: dict[str, str] = {}
+        self.generation = 0
         self.expires = 0.0
         self.error = "Model permissions are synchronizing. Retry shortly."
         if start:
@@ -47,6 +50,10 @@ class ModelPolicySnapshot:
                 if credential != self.credential:
                     return
                 self.allowed, self.expires, self.error = allowed, started + 10, ""
+                self.generation += 1
+                self.schema_version = access.get("schema_version", 1)
+                self.denial_sources = {str(item["model_id"]): str(item.get("source", ""))
+                    for item in access.get("decisions", []) if isinstance(item, dict) and "model_id" in item}
                 self.dynamic.clear()
                 self.known = frozenset(
                     str(item["model_id"]) for item in access.get("decisions", [])
@@ -80,16 +87,22 @@ class ModelPolicySnapshot:
                 self.allowed = frozenset()
                 self.known = frozenset()
                 self.dynamic.clear()
+                self.generation += 1
+                self.denial_sources.clear()
                 self.ready.clear()
                 self.wake.set()
         # Only cold/account-switch initialization waits; warm sends are local.
         self.ready.wait(5)
         with self.lock:
+            if credential != self.credential:
+                raise RuntimeError("Model account changed. Retry shortly.")
             if self.clock() >= self.expires:
                 self.wake.set()
                 raise RuntimeError(self.error or "Model permission snapshot expired. Retry shortly.")
             if selection in self.allowed:
                 return
+            if self.denial_sources.get(selection) == "catalog" or (self.schema_version == 2 and selection not in self.known):
+                raise RuntimeError("Model is no longer available from this provider.")
             if selection in self.known or not self.resolves_dynamic:
                 raise RuntimeError("This built-in model is disabled by Loom Admin.")
             # Legacy snapshots without decisions are explicit allow-lists.
@@ -100,6 +113,7 @@ class ModelPolicySnapshot:
                 enabled = cached[0]
             else:
                 enabled = None
+            generation = self.generation
         if enabled is None:
             started = self.clock()
             try:
@@ -118,7 +132,7 @@ class ModelPolicySnapshot:
             except Exception as exc:
                 raise RuntimeError("Model permissions could not be refreshed. Retry when the account service is available.") from exc
             with self.lock:
-                if credential != self.credential or self.clock() >= started + 10:
+                if credential != self.credential or generation != self.generation or self.clock() >= started + 10:
                     raise RuntimeError("Model permission snapshot expired. Retry shortly.")
                 self.dynamic[selection] = (enabled, started + 10)
         if not enabled:

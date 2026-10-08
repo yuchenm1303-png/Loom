@@ -615,6 +615,8 @@ export function ModelPanel({
       onClose();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
+      // A policy change may have landed after the picker was opened.
+      void Promise.resolve(refreshRef.current?.()).catch(() => {});
     }
   }
 

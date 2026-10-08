@@ -16,6 +16,8 @@ from typing import Any
 from urllib.parse import urlsplit
 
 from .policy import DEFAULT_MODEL_IDS, PolicyStore
+from .catalog_sync import CatalogSynchronizer
+from .catalog import is_managed_builtin_selection
 
 
 class PolicyError(RuntimeError):
@@ -178,6 +180,7 @@ class ModelPolicyApplication:
         self.config = config
         self.store = PolicyStore(config.db_path, config.model_ids)
         self.accounts = AccountReader(config)
+        self.catalog_sync = CatalogSynchronizer(self.store)
 
     def health(self) -> dict[str, Any]:
         return {"ok": True, "service": "loom-model-policy"}
@@ -189,12 +192,16 @@ class ModelPolicyApplication:
             models = body.get("model_ids")
             if not isinstance(models, list) or any(not isinstance(item, str) for item in models):
                 raise ValueError("model_ids must be a list of selections")
-            self.store.register_catalog(models)
+            # Compatibility with the previous client's POST /access: inputs
+            # request decisions only, never modify the authoritative catalog.
+            if len(models) > 2000:
+                raise ValueError("too many requested models")
+            return {"access": self.store.effective_access(user_id, legacy, models)}
         return {"access": self.store.effective_access(user_id, legacy)}
 
     def check(self, body: dict[str, Any], authorization: str) -> dict[str, Any]:
         model_id = str(body.get("model_id") or "").strip()
-        if not model_id:
+        if not model_id or len(model_id) > 240 or not is_managed_builtin_selection(model_id):
             raise ValueError("model_id is required")
         user_id = self.accounts.user_id_for_authorization(authorization)
         legacy = self.accounts.model_access(authorization)
@@ -207,6 +214,11 @@ class ModelPolicyApplication:
     def admin_state(self, authorization: str) -> dict[str, Any]:
         self.accounts.admin(authorization)
         return self.store.snapshot()
+
+    def refresh_catalog(self, authorization: str) -> dict[str, Any]:
+        self.accounts.admin(authorization)
+        refreshed = self.catalog_sync.refresh()
+        return {"refreshed": refreshed, "catalog": self.store.catalog()}
 
     def admin_group(self, group_id: int, authorization: str) -> dict[str, Any]:
         self.accounts.admin(authorization)
@@ -432,7 +444,13 @@ class PolicyRequestHandler(BaseHTTPRequestHandler):
         import re
         path = self._path()
         auth = self._authorization()
-        body = self._json_body()
+        try:
+            body = self._json_body()
+        except PolicyError as exc:
+            self._write(exc.status, {"error": {"code": exc.code, "message": exc.message}})
+            return
+        if path == "/v1/admin/catalog/refresh":
+            return self._run(lambda: self.application.refresh_catalog(auth))
         if path == "/v1/access":
             return self._run(lambda: self.application.access(auth, body))
         if path == "/v1/check":
@@ -509,12 +527,14 @@ def main(argv: list[str] | None = None) -> int:
         model_ids=_model_ids_from_env(),
     )
     server = PolicyServer((str(args.host), int(args.port)), ModelPolicyApplication(config))
+    server.application.catalog_sync.start()
     print(f"Loom Model Policy listening on http://{args.host}:{args.port}")
     try:
         server.serve_forever()
     except KeyboardInterrupt:
         pass
     finally:
+        server.application.catalog_sync.close()
         server.server_close()
     return 0
 

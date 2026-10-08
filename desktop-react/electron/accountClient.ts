@@ -42,6 +42,13 @@ export interface LoomModelPolicyAccess {
   models: string[];
   model_groups?: Array<{ id: string; name: string; enabled: boolean }>;
   decisions?: LoomModelPolicyDecision[];
+  schema_version?: number;
+  revision?: string;
+  catalog?: {
+    revision: string;
+    models: Array<{ model_id: string; model: string; name: string; group_id: string; group_name: string; available: boolean; source: string }>;
+    providers: Array<{ group_id: string; last_success: number | null; last_attempt: number | null; error: string }>;
+  };
 }
 
 export interface LoomAccountSnapshot {
@@ -327,7 +334,15 @@ export class LoomAccountClient {
     return parsed.toString();
   }
 
-  async modelPolicyAccess(modelIds: string[] = []): Promise<LoomModelPolicyAccess | null> {
+  async modelPolicyAccess(): Promise<LoomModelPolicyAccess | null> {
+    return this.requestModelPolicy("access");
+  }
+
+  async modelPolicyCheck(selection: string): Promise<LoomModelPolicyAccess | null> {
+    return this.requestModelPolicy("check", { model_id: selection });
+  }
+
+  private async requestModelPolicy(endpoint: "access" | "check", payload?: Record<string, unknown>): Promise<LoomModelPolicyAccess | null> {
     let session = await this.loadSession();
     if (!session) return null;
     if (session.expiresAt <= Date.now() + 30_000) session = await this.refresh(session);
@@ -338,9 +353,9 @@ export class LoomAccountClient {
       try {
         let response: Response;
         try {
-          response = await fetch(this.modelPolicyAccessUrl(), {
-            method: modelIds.length ? "POST" : "GET",
-            body: modelIds.length ? JSON.stringify({ model_ids: modelIds }) : undefined,
+          response = await fetch(this.modelPolicyAccessUrl().replace(/\/access$/, "/" + endpoint), {
+            method: payload ? "POST" : "GET",
+            body: payload ? JSON.stringify(payload) : undefined,
             headers: {
               Accept: "application/json",
               "Content-Type": "application/json",
@@ -367,6 +382,16 @@ export class LoomAccountClient {
         }
         if (!body.access || !Array.isArray(body.access.models)) {
           throw new AccountHttpError(0, "MODEL_POLICY_INVALID", "Model policy returned invalid access data.");
+        }
+        if (body.access.schema_version === 2 && (!Array.isArray(body.access.decisions)
+          || !Array.isArray(body.access.catalog?.models)
+          || body.access.catalog.models.some((item) => typeof item.model_id !== "string"
+            || typeof item.model !== "string" || typeof item.available !== "boolean"))) {
+          throw new AccountHttpError(0, "MODEL_POLICY_INVALID", "Model policy returned an invalid catalog.");
+        }
+        const currentSession = await this.loadSession();
+        if (!currentSession || currentSession.user.id !== active.user.id) {
+          throw new AccountHttpError(0, "MODEL_ACCOUNT_CHANGED", "Model account changed. Retry shortly.");
         }
         return body.access;
       } finally {

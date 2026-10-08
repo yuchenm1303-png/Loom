@@ -145,6 +145,7 @@ export class DesktopModelManager {
   private metadataCache: ModelMetadataSnapshot | null = null;
   private launchCache = new Map<string, LaunchCacheEntry>();
   private catalogRefreshPromise: Promise<ModelSnapshot> | null = null;
+  private serverProfiles = new Map<string, ModelProfile>();
   private readonly catalogTtlMs: number;
 
   constructor(private readonly repoRoot: string) {
@@ -213,6 +214,33 @@ export class DesktopModelManager {
     return isAntLingSelection(selection)
       ? this.runPythonBridge<ModelProfile>("loom_ant_ling_bridge.py", "describe-model", { selection, model })
       : this.runBridge<ModelProfile>("describe-model", { selection, model });
+  }
+
+  async applyServerCatalog(snapshot: ModelSnapshot, models: Array<{
+    model_id: string; model: string; name: string; group_id: string; group_name: string; available: boolean;
+  }>): Promise<ModelSnapshot> {
+    const existing = new Map(snapshot.profiles.map((profile) => [profile.selection, profile]));
+    const missing = models.filter((row) => !existing.has(row.model_id) && !this.serverProfiles.has(row.model_id));
+    const batches = await Promise.all([false, true].map(async (antLing) => {
+      const requests = missing.filter((row) => isAntLingSelection(row.model_id) === antLing)
+        .map((row) => ({ selection: row.model_id, model: row.model }));
+      if (!requests.length) return [] as ModelProfile[];
+      return this.runPythonBridgeAsync<ModelProfile[]>(antLing ? "loom_ant_ling_bridge.py" : "loom_model_bridge.py",
+        "describe-models", { models: requests });
+    }));
+    for (const profile of batches.flat()) this.serverProfiles.set(profile.selection, profile);
+    const profiles = models.map((row) => {
+      const profile = existing.get(row.model_id) ?? this.serverProfiles.get(row.model_id);
+      if (!profile) throw new Error("Model catalog metadata is unavailable");
+      return { ...profile, name: row.name, groupId: row.group_id, groupName: row.group_name,
+        catalogSource: "server", available: row.available,
+        statusMessage: row.available ? undefined : "Model is no longer available from this provider" };
+    });
+    const merged = [...profiles, ...snapshot.profiles.filter((profile) => profile.kind === "saved")];
+    const currentProfile = snapshot.current && merged.find((profile) => profile.selection === snapshot.current?.selection);
+    return { ...snapshot, profiles: merged,
+      current: snapshot.current && currentProfile ? { ...snapshot.current, ...currentProfile } : snapshot.current,
+      primary: merged.find((profile) => profile.selection === snapshot.primary.selection) ?? snapshot.primary };
   }
 
   private mergeRegistry(registry: RegistrySnapshot, metadata: ModelMetadataSnapshot): RegistrySnapshot {
@@ -346,6 +374,7 @@ export class DesktopModelManager {
     this.registryCacheAt = 0;
     this.registryCacheMonotonicAt = 0;
     this.metadataCache = null;
+    this.serverProfiles.clear();
     if (options.clearLaunch) {
       this.launchCache.clear();
       return;
@@ -438,6 +467,7 @@ export class DesktopModelManager {
       return this.snapshotFromRegistry(this.currentSpec, this.registryCache);
     }
     if (this.catalogRefreshPromise) return this.catalogRefreshPromise;
+    this.serverProfiles.clear();
 
     this.catalogRefreshPromise = (async () => {
       try {
@@ -571,6 +601,7 @@ export class DesktopModelManager {
           value,
         });
     if (!profile.reasoning) throw new Error("Selected model does not expose reasoning controls");
+    this.serverProfiles.set(profile.selection, profile);
     this.currentSpec = { ...current, reasoning: profile.reasoning };
     const entry = this.launchCache.get(current.selection);
     this.launchCache.set(current.selection, {

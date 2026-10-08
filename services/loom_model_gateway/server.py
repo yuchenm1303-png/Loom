@@ -99,9 +99,10 @@ class LoomModelGateway:
         return {str(model).strip().casefold() for model in models if str(model).strip()}
 
     def catalog(self, authorization: str) -> dict[str, Any]:
-        allowed = self._allowed_models(self._account_access(authorization))
+        access = self._account_access(authorization)
+        allowed = self._allowed_models(access)
         data = []
-        for model in ANT_LING_MODELS:
+        for model in self._catalog_models(access):
             access_id = _policy_model_id(model) if self.config.model_policy_base_url else model
             if access_id.casefold() not in allowed:
                 continue
@@ -114,14 +115,22 @@ class LoomModelGateway:
             })
         return {"object": "list", "data": data}
 
+    def _catalog_models(self, access: dict[str, Any]) -> list[str]:
+        catalog = access.get("catalog")
+        if self.config.model_policy_base_url and isinstance(catalog, dict):
+            return [str(item["model"]) for item in catalog.get("models", [])
+                if item.get("group_id") == "ant-ling" and item.get("available")]
+        return list(ANT_LING_MODELS)
+
     def authorize_model(self, authorization: str, model: str) -> None:
         normalized = str(model or "").strip()
         if not normalized:
             raise GatewayError(HTTPStatus.BAD_REQUEST, "MODEL_REQUIRED", "model is required.")
-        supported = {item.casefold() for item in ANT_LING_MODELS}
+        access = self._account_access(authorization)
+        supported = {item.casefold() for item in self._catalog_models(access)}
         if normalized.casefold() not in supported:
             raise GatewayError(HTTPStatus.NOT_FOUND, "MODEL_NOT_FOUND", f"Model {normalized!r} is not a Loom built-in model.")
-        allowed = self._allowed_models(self._account_access(authorization))
+        allowed = self._allowed_models(access)
         access_id = _policy_model_id(normalized) if self.config.model_policy_base_url else normalized
         if access_id.casefold() not in allowed:
             raise GatewayError(

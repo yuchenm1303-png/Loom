@@ -1562,7 +1562,7 @@ def _set_reasoning(
 
 def main(argv: list[str] | None = None) -> int:
     args = list(sys.argv[1:] if argv is None else argv)
-    commands = {"list", "resolve", "describe-model", "save", "delete", "set-active", "persist-active", "set-reasoning", "set-provider-key"}
+    commands = {"list", "resolve", "describe-model", "describe-models", "save", "delete", "set-active", "persist-active", "set-reasoning", "set-provider-key"}
     if len(args) != 1 or args[0] not in commands:
         sys.stderr.write(
             "usage: loom_model_bridge.py {list|resolve|describe-model|save|delete|set-active|persist-active|set-reasoning|set-provider-key}\n"
@@ -1584,6 +1584,8 @@ def main(argv: list[str] | None = None) -> int:
                 selection_store,
                 str(payload.get("selection") or "") or None,
             )
+        elif command == "describe-models":
+            result = [_describe_model(store, reasoning_store, item["selection"], item["model"]) for item in payload["models"]]
         elif command == "describe-model":
             result = _describe_model(
                 store,
