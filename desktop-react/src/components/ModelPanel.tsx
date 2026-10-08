@@ -1250,8 +1250,6 @@ export function ModelPanel({
         type="button"
         className="model-core-identity model-core-selector"
         aria-label={`Choose model. Current model ${currentModel}`}
-        // Catalog browsing must stay available during background work.
-        // Only the actual model change is blocked while busy or running.
         onClick={() => navigate("profiles")}
       >
         <div className="model-core-copy" key={`${currentSelection}:${currentModel}`}>
