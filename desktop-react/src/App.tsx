@@ -1280,6 +1280,7 @@ export default function App() {
             onCustomModelChange={loom.switchCurrentModel}
             onConfigureModelProvider={loom.configureModelProvider}
             onRefreshModels={loom.refreshModels}
+            onRefreshActiveThread={loom.refreshActiveThreadState}
             onAddModel={loom.addModel}
             onDeleteModel={loom.deleteModel}
             onReasoningChange={loom.setReasoning}
