@@ -1,12 +1,12 @@
 import { PET_ARTWORK } from "./loomPetArtwork";
-import { useId } from "react";
+import { memo, useId } from "react";
 
 export type PetPose = 0 | 1 | 2;
 type Layer = keyof typeof PET_ARTWORK;
 
-function Contours({ layer }: { layer: Layer }) {
+const Contours = memo(function Contours({ layer }: { layer: Layer }) {
   return <>{PET_ARTWORK[layer].map(({ fill, d }) => <path key={fill} fill={fill} d={d} />)}</>;
-}
+});
 
 /** Reference-derived vector pixels. Small integer poses retain the original
  * proportions; the tail root is covered by the body in every animation frame. */

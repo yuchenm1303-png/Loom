@@ -20,6 +20,7 @@ import { isLoomWebRuntime } from "../webBridge";
 import { preservePendingUserIdentity, reconcilePendingUserMessage } from "../pendingUserMessage";
 import { buildApprovalResponse } from "./approvalProtocol";
 import { switchCurrentModelForThread, switchModelProfileForThread } from "./modelSwitchRouting";
+import { RetainedBudgetMap } from "./retainedBudgetMap";
 
 type ThreadView = "active" | "archived";
 type ThreadCounts = { active: number; archived: number; all: number };
@@ -247,7 +248,7 @@ export function useLoom() {
   const openRequestRef = useRef(0);
   const openingThreadIdRef = useRef("");
   const loadingOlderTurnsRef = useRef(false);
-  const threadReadCacheRef = useRef<Map<string, ThreadReadCacheEntry>>(new Map());
+  const threadReadCacheRef = useRef<Map<string, ThreadReadCacheEntry>>(new RetainedBudgetMap(THREAD_READ_CACHE_LIMIT, 16 * 1024 * 1024));
   const threadReadInflightRef = useRef<Map<string, Promise<ThreadReadResult>>>(new Map());
   const threadsRef = useRef<ThreadRecord[]>([]);
   const threadViewRef = useRef<ThreadView>("active");
@@ -466,7 +467,6 @@ export function useLoom() {
       threadReadCacheRef.current.delete(threadId);
       return null;
     }
-    threadReadCacheRef.current.delete(threadId);
     threadReadCacheRef.current.set(threadId, entry);
     return entry.result;
   }, []);

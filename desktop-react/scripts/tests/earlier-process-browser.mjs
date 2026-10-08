@@ -63,7 +63,12 @@ try {
     assert.equal(await page.locator('[data-message-id="c2"]').count(), 1);
     await toggle();
     await waitGone('c2');
+    assert.equal(await page.locator('.earlier-process-history [data-message-id="c2"]').count(), 0,
+      'closed history releases its DOM after the exit, while retaining its data');
+    await toggle();
+    await page.locator('.earlier-process-history[data-motion-phase="entered"]').waitFor();
     assert.equal(await page.locator('.earlier-process-history [data-message-id="c2"]').count(), 1);
+    await toggle();
 
     // Consecutive updates preserve independent retirement lifetimes.
     await render([...next, message('c4')]);

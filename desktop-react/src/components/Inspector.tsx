@@ -11,10 +11,11 @@ import {
   Terminal,
   Wrench,
 } from "lucide-react";
-import { memo, useCallback, useMemo, useState } from "react";
+import { memo, useCallback, useMemo, useRef, useState } from "react";
 import type { TranscriptItem } from "../types/loom";
 import { useI18n } from "../i18n";
 import { ReviewWorkspace } from "./ReviewWorkspace";
+import { WindowedList } from "./WindowedList";
 import "./Inspector.css";
 import "./InspectorMark.css";
 import "./ComputerLogExport.css";
@@ -276,6 +277,7 @@ export const Inspector = memo(function Inspector({ items, onClose }: InspectorPr
   const { language } = useI18n();
   const zh = language === "zh-CN";
   const [tab, setTab] = useState<Tab>("activity");
+  const scrollRef = useRef<HTMLDivElement>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [reviewOpen, setReviewOpen] = useState(false);
   const [exportingLogs, setExportingLogs] = useState(false);
@@ -384,6 +386,7 @@ export const Inspector = memo(function Inspector({ items, onClose }: InspectorPr
               type="button"
               onClick={() => {
                 if (id === tab) return;
+                if (scrollRef.current) scrollRef.current.scrollTop = 0;
                 setTab(id);
                 setExpandedId(null);
               }}
@@ -427,7 +430,7 @@ export const Inspector = memo(function Inspector({ items, onClose }: InspectorPr
             </span>
           </div>
 
-          <div className="runtime-scroll">
+          <div className="runtime-scroll" ref={scrollRef}>
             <div className="runtime-pane">
               {tab === "computer" && (exportArchivePath || exportError) ? (
                 <div className={`computer-log-export-note ${exportError ? "error" : "success"}`}>
@@ -441,14 +444,14 @@ export const Inspector = memo(function Inspector({ items, onClose }: InspectorPr
                 <EmptyState tab={tab} />
               ) : (
                 <div className="runtime-timeline">
-                  {visible.map((item) => (
+                  <WindowedList key={tab} items={visible} scrollRef={scrollRef} renderItem={(item) => (
                     <RuntimeEvent
                       item={item}
                       key={item.id}
                       expanded={expandedId === item.id}
                       onToggle={toggleEvent}
                     />
-                  ))}
+                  )} />
                 </div>
               )}
             </div>

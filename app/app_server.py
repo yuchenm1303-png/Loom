@@ -655,8 +655,9 @@ class LoomAppServerService:
             # runtime failure.
             return False
 
-    def _list_session_objects(self) -> list[Any]:
+    def _list_session_objects(self, *, overview: bool = False) -> list[Any]:
         sessions: list[Any] = []
+        loader = getattr(self.store, "load_overview", self.store.load) if overview else self.store.load
         if self.store.root.is_dir():
             for directory in self.store.root.iterdir():
                 if not (directory / "session.json").is_file():
@@ -664,7 +665,7 @@ class LoomAppServerService:
                 if self._is_sub_agent_session(directory.name):
                     continue
                 try:
-                    sessions.append(self.store.load(directory.name))
+                    sessions.append(loader(directory.name))
                 except Exception:
                     continue
         sessions.sort(key=lambda item: item.updated_at, reverse=True)
@@ -921,7 +922,7 @@ class LoomAppServerService:
         limit = int(params.get("limit", 100))
         if not 1 <= limit <= 200:
             raise ValueError("thread/list limit must be within 1..200")
-        sessions = self._list_session_objects()[:limit]
+        sessions = self._list_session_objects(overview=True)[:limit]
         return {
             "threads": [
                 self._record(session, active=self._is_active(session.session_id))

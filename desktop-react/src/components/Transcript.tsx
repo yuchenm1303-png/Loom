@@ -1812,11 +1812,9 @@ function TurnProcess({
     () => copy.processSummary(breakdown, operationCount),
     [breakdown, copy, operationCount],
   );
-  const [processVisited, setProcessVisited] = useState(active || open);
+  const processPresence = useMotionPresence(live || open, TURN_FOLD_MS);
   const [earlierOpen, setEarlierOpen] = useState(false);
-  // Retain visited history and isolate its completed text from the live turn's
-  // partial paint snapshots; replaying those changes height during unfolding.
-  const [earlierVisited, setEarlierVisited] = useState(false);
+  // Completed text has its own presentation snapshots while the fold is visible.
   const earlierPresence = useMotionPresence(earlierOpen, 280);
   const earlierHistoryId = useId();
   const progress = useMemo(() => liveTaskProgress(items, new Set(items
@@ -1848,14 +1846,9 @@ function TurnProcess({
   const renderCapsule = active && capsulePresence.mounted && !handedOff
     && !(capsulePresence.phase === "exiting" && handedOffRef.current);
 
-  useEffect(() => {
-    if (active || open) setProcessVisited(true);
-  }, [active, open]);
-
-  // Historical turns arrive already folded. Avoid constructing their entire
-  // tool/process subtree until the user actually expands that turn; after the
-  // first expansion keep it mounted so the existing fold animation stays smooth.
-  const renderProcessContent = live || open || processVisited;
+  // Retain pixels through exit/reversal, then release hidden React trees. A
+  // visited long conversation must return to its original folded DOM budget.
+  const renderProcessContent = live || open || processPresence.mounted;
 
   return (
     <section
@@ -1910,7 +1903,6 @@ function TurnProcess({
                     aria-label={copy.earlierToggleLabel(earlierOpen, progress.earlier.length)}
                     title={copy.earlierToggleTitle(earlierOpen)}
                     onClick={() => {
-                      setEarlierVisited(true);
                       setEarlierOpen(!earlierOpen);
                     }}>
                     <span className="earlier-process-icon" aria-hidden="true"><History size={14} strokeWidth={1.8} /></span>
@@ -1920,7 +1912,7 @@ function TurnProcess({
                   </button>
                   <div id={earlierHistoryId} className="earlier-process-history" data-motion-phase={earlierPresence.phase} inert={!earlierOpen}>
                     <div className="earlier-process-history-inner">
-                    {earlierVisited ? <StreamingPresentation>
+                    {earlierPresence.mounted ? <StreamingPresentation>
                       <Sequence items={handoff.earlier} active={false} onApproval={onApproval}
                         onPrompt={onPrompt} promptDisabled={promptDisabled} workspace={workspace} />
                     </StreamingPresentation> : null}

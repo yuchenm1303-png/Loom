@@ -780,7 +780,7 @@ class ManagedStreamingLoomAppServerService(StreamingLoomAppServerService):
             )
         query_folded = query.casefold()
 
-        all_records = [self._managed_record(session) for session in self._list_session_objects()]
+        all_records = [self._managed_record(session) for session in self._list_session_objects(overview=True)]
         active_count = sum(not bool(record.get("archived")) for record in all_records)
         archived_count = len(all_records) - active_count
 

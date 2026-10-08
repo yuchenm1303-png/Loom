@@ -24,15 +24,31 @@ try {
     "background thread updates must not scan or rebuild the active transcript");
   assert.equal(await page.locator('.compact-thread-row[data-thread-id="visual-1"] .compact-thread-dot.running').count(), 1,
     "background status still reaches the sidebar");
+  // Visiting history used to retain 30,000 hidden elements after every fold.
+  for (let index = 0; index < 20; index++) {
+    const header = page.locator(".turn-process-header").nth(index);
+    await header.evaluate(el => el.click());
+    await page.waitForFunction(index => document.querySelectorAll(".turn-process")[index].querySelector(".task-flow-row"), index);
+    await header.evaluate(el => el.click());
+  }
+  await page.waitForFunction(() => !document.querySelector(".task-flow-row"));
+  const visitedNodes = await page.evaluate(() => document.querySelectorAll("*").length);
+  assert.ok(visitedNodes <= beforeNodes + 50, `folded visited history retained DOM: ${beforeNodes} -> ${visitedNodes}`);
   const inspector = page.locator(".thread-inspector-button");
   await inspector.click();
-  await page.waitForFunction(() => document.querySelectorAll(".runtime-event").length === 2000);
+  await page.locator(".runtime-event").first().waitFor();
+  assert.ok(await page.locator(".runtime-event").count() < 64, "2,000 events must use a bounded viewport");
+  await page.locator(".runtime-scroll").evaluate(el => { el.scrollTop = el.scrollHeight; });
+  await page.locator('[data-windowed-id="history-tool-19-99"]').waitFor();
+  assert.ok(await page.locator(".runtime-event").count() < 64);
+  await page.locator(".runtime-scroll").evaluate(el => { el.scrollTop = 0; });
+  await page.locator('[data-windowed-id="history-tool-0-0"]').waitFor();
   await page.locator(".runtime-event-main").first().evaluate(el => el.click());
   assert.match(await page.locator(".runtime-event-detail.open pre").textContent(), /fixture output/);
   await inspector.click();
   await page.waitForTimeout(60);
   await inspector.click();
-  assert.equal(await page.locator(".runtime-event").count(), 2000, "reversing an exit preserves the panel until the new lifecycle settles");
+  assert.ok(await page.locator(".runtime-event").count() > 0, "reversing an exit preserves the panel until the new lifecycle settles");
   await inspector.click();
   await page.waitForFunction(() => !document.querySelector(".runtime-event"));
   assert.ok(await page.evaluate(() => document.querySelectorAll("*").length) < 3000);
@@ -73,6 +89,6 @@ try {
   assert.equal(await page.locator(".runtime-event").count(), 0);
   assert.equal(await page.locator(".turn-block").count(), 0);
   assert.deepEqual(errors, []);
-  console.log(JSON.stringify({ beforeNodes, baseline, final }));
+  console.log(JSON.stringify({ beforeNodes, visitedNodes, baseline, final }));
   console.log("PASS: hidden inspector teardown, background update isolation, exit reversal, 12 long-history switches and new conversation");
 } finally { await browser.close(); }

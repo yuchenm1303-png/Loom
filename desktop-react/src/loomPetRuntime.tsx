@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
+import { memo, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
 import { LoomPetArt, type PetPose } from "./LoomPetArt";
 import "./loom-pet.css";
 
@@ -9,7 +9,7 @@ type Zone = "head" | "body" | "tail";
 const REACTION_MS: Record<Reaction, number> = { hello: 700, petting: 1400, tickle: 1000, hop: 900, delight: 1500, wake: 900 };
 
 /** React owns this pet alongside the composer. No page-wide observers or extra roots. */
-export function LoomPet({ running, approval, completed }: Props) {
+export const LoomPet = memo(function LoomPet({ running, approval, completed }: Props) {
   const buttonRef = useRef<HTMLButtonElement>(null);
   const [focused, setFocused] = useState(false);
   const [sleeping, setSleeping] = useState(false);
@@ -338,4 +338,4 @@ export function LoomPet({ running, approval, completed }: Props) {
     <span className="sr-only" aria-live="polite">{state === "approval"
       ? (zh ? "Loom 等待你的确认" : "Loom is waiting for approval") : state === "working" ? description : ""}</span>
   </button>;
-}
+});

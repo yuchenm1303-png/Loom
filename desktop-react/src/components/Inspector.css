@@ -337,7 +337,8 @@
 .runtime-event.is-failed {
   background: linear-gradient(90deg, rgba(220,124,134,.045), transparent 72%);
 }
-.runtime-event:not(:last-child)::after {
+.runtime-event:not(:last-child)::after,
+.windowed-list [data-windowed-id]:not([data-windowed-last]) .runtime-event::after {
   content: "";
   position: absolute;
   z-index: 0;

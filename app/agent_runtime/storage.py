@@ -5,12 +5,14 @@ import os
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 from app.ai import AIMessage, ImagePart, MessageRole, ModelUsage, TextPart, ToolCall
 
 from .journal import atomic_json, session_lock, recover, repair_tail
 from .event_cache import EventParseCache
+from .session_overview import SessionOverviewCache
 
 from .contracts import (
     AgentEvent,
@@ -279,6 +281,7 @@ class FileAgentSessionStore:
         self.root = Path(runtime_root).expanduser().resolve() / "agent_runtime" / "sessions"
         self.root.mkdir(parents=True, exist_ok=True)
         self._event_cache = EventParseCache()
+        self._overview_cache = SessionOverviewCache()
 
     def session_dir(self, session_id: str) -> Path:
         value = str(session_id or "").strip()
@@ -300,6 +303,30 @@ class FileAgentSessionStore:
         if Path(session.workspace_dir).resolve() == internal_workspace:
             internal_workspace.mkdir(parents=True, exist_ok=True)
         self.save(session)
+
+    def load_overview(self, session_id: str) -> SimpleNamespace:
+        """Sidebar metadata only; callers must use load() to execute/resume."""
+        directory = self.session_dir(session_id)
+        with session_lock(directory):
+            recover(directory)
+            payload = self._overview_cache.read(directory / "session.json")
+        # This intentionally is not an executable AgentSession: no prompt,
+        # model context, approvals or tool bindings can escape the list path.
+        text_fields = ("session_id", "profile_id", "workspace_dir", "created_at", "updated_at",
+                       "current_turn_id", "forked_from_id", "model_selection", "model",
+                       "model_provider", "model_base_url", "reasoning_kind", "reasoning_value")
+        fields = {key: str(payload.get(key) or "").strip() for key in text_fields}
+        fields["profile_id"] = fields["profile_id"].casefold()
+        fields["model_provider"] = fields["model_provider"].casefold()
+        fields["model_base_url"] = fields["model_base_url"].rstrip("/")
+        if not all(fields[key] for key in ("session_id", "profile_id", "workspace_dir")):
+            raise ValueError("session overview requires identity, profile and workspace")
+        return SimpleNamespace(**fields,
+            permission_mode=PermissionMode(payload.get("permission_mode") or PermissionMode.APPROVAL.value),
+            status=AgentStatus(payload.get("status") or AgentStatus.IDLE.value),
+            model_vision=bool(payload.get("model_vision", True)),
+            usage=_usage_from_dict(payload.get("usage")),
+            messages=[_message_from_dict(message) for message in payload.get("messages", [])])
 
     def save(self, session: AgentSession) -> None:
         directory = self.session_dir(session.session_id)
