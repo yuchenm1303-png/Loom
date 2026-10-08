@@ -649,7 +649,12 @@ export function ModelPanel({
       onClose();
       return;
     }
-    if (locked) return;
+    if (locked) {
+      setError(running
+        ? "This conversation is still running. Stop its active turn before switching models."
+        : "Another model change is in progress. Try again when it finishes.");
+      return;
+    }
     setPendingSelection(profile.selection);
     try {
       await run(() => onSwitchProfile(profile.selection));
@@ -1019,6 +1024,7 @@ export function ModelPanel({
             </div>
           ) : null}
 
+          {error ? <div className="mp-notice is-error" role="alert">{error}</div> : null}
           {setup.statusProfiles.map((profile) => (
             <div className="mp-notice is-error" key={profile.id}>{profile.statusMessage}</div>
           ))}
@@ -1051,13 +1057,19 @@ export function ModelPanel({
                       profile={profile}
                       current={current}
                       pending={pendingSelection === profile.selection}
-                      disabled={!accountAuthenticated || profile.available === false || deleting || (!current && (locked || setup.needsKey))}
+                      disabled={!accountAuthenticated || profile.available === false || deleting}
                       dimmed={!accountAuthenticated || profile.available === false || Boolean(running) || setup.needsKey}
                       meta={!accountAuthenticated ? "Sign in" : profile.available === false ? unavailableLabel(profile) : reasoningLabel(profile)}
                       metaAttention={!accountAuthenticated || profile.available === false}
                       end={!accountAuthenticated || profile.available === false ? <Lock size={13} strokeWidth={2} /> : undefined}
                       title={!accountAuthenticated ? "Sign in to Loom to use models" : profile.available === false ? (profile.statusMessage || "Disabled by Loom Admin") : undefined}
-                      onSelect={() => void chooseProfile(profile)}
+                      onSelect={() => {
+                        if (!current && setup.needsKey) {
+                          setError(`Connect ${activeGroup.name} before selecting one of its models.`);
+                          return;
+                        }
+                        void chooseProfile(profile);
+                      }}
                     />
                     {deletable ? (
                       <button
@@ -1085,7 +1097,6 @@ export function ModelPanel({
           {confirmDelete ? (
             <div className="mp-notice is-error">Click the trash icon again to delete this saved connection.</div>
           ) : null}
-          {error ? <div className="mp-notice is-error">{error}</div> : null}
         </div>
       </div>
     );
@@ -1124,6 +1135,7 @@ export function ModelPanel({
         />
 
         <div className="mp-body">
+          {error ? <div className="mp-notice is-error" role="alert">{error}</div> : null}
           {!accountAuthenticated ? (
             <div className="mp-notice">
               <Lock size={13} strokeWidth={2} aria-hidden="true" />
@@ -1156,7 +1168,7 @@ export function ModelPanel({
                           profile={profile}
                           current={current}
                           pending={pendingSelection === profile.selection}
-                          disabled={!accountAuthenticated || profile.available === false || (!current && locked)}
+                          disabled={!accountAuthenticated || profile.available === false}
                           dimmed={!accountAuthenticated || profile.available === false || Boolean(running)}
                           meta={!accountAuthenticated ? "Sign in" : profile.available === false ? unavailableLabel(profile) : connectFirst ? "Connect" : reasoningLabel(profile)}
                           metaAttention={!accountAuthenticated || profile.available === false || connectFirst}
@@ -1208,7 +1220,7 @@ export function ModelPanel({
                         profile={profile}
                         current={false}
                         pending={pendingSelection === profile.selection}
-                        disabled={locked}
+                        disabled={!accountAuthenticated}
                         dimmed={Boolean(running)}
                         leading={<ProviderMark id={groupId} name={providerName || profile.name} small />}
                         meta={providerName}
@@ -1227,7 +1239,6 @@ export function ModelPanel({
             </>
           )}
 
-          {error ? <div className="mp-notice is-error">{error}</div> : null}
         </div>
 
         <div className="mp-foot">
