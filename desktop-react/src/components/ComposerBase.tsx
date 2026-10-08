@@ -550,7 +550,7 @@ export function Composer({
                     });
                   }
                   togglePanel("model");
-                }
+                }}
               >
                 <span className="composer-glyph-well model" aria-hidden="true"><ComposerControlIcon kind="model" /></span>
                 <span>{currentModel}</span>
