@@ -272,10 +272,6 @@
   background: transparent;
   padding: 12px calc(var(--ws-gutter) + var(--ws-scroll-inset, 0px)) 16px;
 }
-:root .app-shell .composer-wrap.composer-refined .composer {
-  --composer-radius: 24px;
-  border-radius: var(--composer-radius);
-}
 :root .app-shell .composer-stage { background: var(--ws-canvas); }
 :root .app-shell .project-git-bar {
   width: min(var(--content-width), calc(100% - 2 * (var(--ws-gutter) + var(--ws-scroll-inset, 0px))));
@@ -283,12 +279,6 @@
   color: var(--ws-muted);
   font-size: 12px;
   line-height: 18px;
-}
-  margin: 0;
-  border-color: var(--ws-line);
-  border-radius: var(--ws-radius);
-  background: var(--ws-surface);
-  box-shadow: var(--ws-shadow);
 }
 @media (max-width: 760px) {
   :root .app-shell { --ws-gutter: 20px; }

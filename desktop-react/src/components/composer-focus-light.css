@@ -1,4 +1,5 @@
-/* A stable focus border and ring keep attention on writing. */
+/* One surface for idle, focused, panel-open and live-steering composers.
+   Own the radius here so older state skins cannot switch the outline. */
 :root .app-shell .composer-wrap.composer-refined .composer-toolbar::before,
 :root .app-shell .composer-wrap.composer-refined .composer > :is(.composer-focus-aura, .composer-focus-rim) {
   display: none;
@@ -6,12 +7,17 @@
 
 :root .app-shell .composer-wrap.composer-refined .composer {
   animation: none !important;
-  transition: border-color 160ms ease, box-shadow 180ms ease, background-color 160ms ease;
+  --composer-radius: 24px;
+  border-radius: var(--composer-radius);
+  transition: none;
 }
 
-:root .app-shell .composer-wrap.composer-refined .composer:is(.is-focused, :focus-within, .has-panel):not(.is-dragging) {
-  border-color: var(--cq-focus-line);
-  box-shadow: var(--cq-shadow-rest), 0 0 0 3px var(--cq-ring);
+:root .app-shell .composer-wrap.composer-refined .composer:is(.composer, :hover, .is-focused, :focus-within, .has-panel):not(.is-dragging) {
+  border: 1px solid var(--cq-line);
+  border-radius: var(--composer-radius);
+  background: var(--cq-surface);
+  box-shadow: var(--cq-shadow-rest);
+  transform: none;
 }
 
 @media (prefers-reduced-motion: reduce) {

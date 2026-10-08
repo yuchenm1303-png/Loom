@@ -410,9 +410,6 @@ export function Composer({
         }}
         onDrop={(event) => void onDrop(event)}
       >
-        <span className="composer-focus-aura" aria-hidden="true" />
-        <span className="composer-focus-rim" aria-hidden="true" />
-
         {quote ? <QuoteReplyBar quote={quote} onClear={() => setQuote(null)} /> : null}
         <ComposerAttachmentStrip attachments={attachments} imagesAllowed={imagesAllowed} onRemove={removeAttachment} />
 

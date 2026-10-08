@@ -201,8 +201,6 @@ function SteeringComposer({
         }}
         onDrop={(event) => void onDrop(event)}
       >
-        <span className="composer-glow" aria-hidden="true" />
-
         {quote ? <QuoteReplyBar quote={quote} onClear={() => setQuote(null)} /> : null}
         <ComposerAttachmentStrip attachments={attachments} imagesAllowed={imagesAllowed} onRemove={removeAttachment} />
         {attachError ? <p className="composer-attach-error">{attachError}</p> : null}
