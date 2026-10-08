@@ -32,7 +32,11 @@ def plan_context(events, turn_id):
         "Do not leave setup in progress while executing later tests. If the same stage is still "
         "running, keep its status; do not send redundant plan updates. Tool results are execution "
         "evidence, not proof that a milestone passed. Recover exact "
-        "evidence with read_durable_tool_result when needed.\n" + json.dumps(state, ensure_ascii=False)))
+        "evidence with read_durable_tool_result when needed. For remote or outside-workspace "
+        "work, reference the executed verification call_id, not the target file path. "
+        "Use read_durable_tool_result(recent=5) to recover missing call IDs. "
+        "Resolve plan bookkeeping through tools; user-facing reports should describe results "
+        "and material blockers, not internal evidence formatting.\n" + json.dumps(state, ensure_ascii=False)))
 
 
 
@@ -77,7 +81,9 @@ def update_plan_tool(store):
         "Maintain a short task plan for substantial multi-stage work. Use outcome milestones, "
         "not individual clicks or commands. Update at stage transitions, before executing the next "
         "stage and before reporting changed progress or final results. Keep scope "
-        "stable; completed steps require outcome and evidence_refs containing executed call_id or existing workspace path objects; evidence is optional explanation. Blocked steps require a blocker. "
+        "stable; completed steps require outcome and evidence_refs containing executed call_id or existing workspace path objects; evidence is optional explanation. "
+        "For remote deployments or files outside the workspace, cite the tool call that verified the result, e.g. evidence_refs: [{\"call_id\": \"verification-call-id\"}]. "
+        "A remote path is not a local workspace file; it does not prevent completing the plan using call evidence. Recover missing call IDs with read_durable_tool_result(recent=5). Blocked steps require a blocker. "
         "status describes stage execution, not test acceptance. Use outcome to separately record passed, failed, interrupted, not_covered or not_assessed. Skip for simple tasks."),
         input_schema={"type": "object", "additionalProperties": False, "properties": {
             "explanation": {"type": "string", "maxLength": 1000},

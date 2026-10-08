@@ -7,9 +7,11 @@ from .tools import AgentTool, ToolResult
 
 EVIDENCE_REFS_SCHEMA = {"type": "array", "minItems": 1, "maxItems": 64, "items": {
     "oneOf": [
-        {"type": "object", "properties": {"call_id": {"type": "string", "minLength": 1}},
+        {"type": "object", "properties": {"call_id": {"type": "string", "minLength": 1,
+         "description": "ID of an executed tool call in this session, including remote commands. Use the call that observed or verified the result."}},
          "required": ["call_id"], "additionalProperties": False},
-        {"type": "object", "properties": {"path": {"type": "string", "minLength": 1}},
+        {"type": "object", "properties": {"path": {"type": "string", "minLength": 1,
+         "description": "Existing local file inside the active workspace. For remote or outside-workspace files, cite the verifying tool call_id instead."}},
          "required": ["path"], "additionalProperties": False}]}}
 
 
@@ -52,7 +54,8 @@ def resolve_evidence(store, context, refs):
 
 def rejected_evidence(invalid):
     return ToolResult(False, "Evidence references are invalid; no state was changed.",
-                      {"execution_status": "not_executed", "invalid_references": invalid})
+                      {"execution_status": "not_executed", "invalid_references": invalid,
+                       "recovery": "For remote or outside-workspace results, cite the executed verification call as {\"call_id\": \"...\"}, not the target path. Recover missing IDs with read_durable_tool_result(recent=5), inspect the relevant result, and retry with valid references. Do not rerun unchanged work just to create a local evidence file."})
 
 
 def check_ledger(events):

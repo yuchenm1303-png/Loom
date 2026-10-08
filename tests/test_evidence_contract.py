@@ -83,3 +83,32 @@ def test_completed_plan_requires_outcome_even_with_valid_file(tmp_path):
     assert not result.ok
     assert "outcome" in result.data["invalid_references"][0]["reason"]
     assert not events
+
+
+def test_remote_verification_recovers_call_reference_and_completes_plan(tmp_path):
+    from app.agent_runtime.evidence_tools import durable_tool_result_tool
+
+    events = [event(E.TOOL_STARTED, {"call_id": "ssh-verify", "tool": "exec"}),
+              event(E.TOOL_COMPLETED, {"call_id": "ssh-verify", "tool": "exec", "ok": True,
+                    "content": "/opt/service/result.json verified on remote host", "data": {}})]
+    store = SimpleNamespace(events=lambda _: events)
+    context = ToolContext("abcdef", "turn", tmp_path,
+                          emit_event=lambda k, d: events.append(event(k, d)))
+    plan = [{"step": "Verify remote deployment", "status": "completed", "outcome": "passed",
+             "evidence_refs": [{"path": "/opt/service/result.json"}]},
+            {"step": "Report", "status": "pending"}]
+    rejected = update_plan_tool(store).handler(context, {"plan": plan})
+    assert not rejected.ok
+    assert len(events) == 2
+    assert "read_durable_tool_result(recent=5)" in rejected.data["recovery"]
+    assert "call_id" in rejected.data["recovery"]
+    recent = durable_tool_result_tool(store).handler(context, {"recent": 5})
+    call_id = recent.data["results"][0]["call_id"]
+    exact = durable_tool_result_tool(store).handler(context, {"call_id": call_id})
+    assert exact.ok and "verified on remote host" in exact.content
+    plan[0]["evidence_refs"] = [{"call_id": call_id}]
+    accepted = update_plan_tool(store).handler(context, {"plan": plan})
+    assert accepted.ok
+    assert events[-1].kind == E.PLAN_UPDATED
+    assert events[-1].data["plan"][0]["status"] == "completed"
+    assert not list(tmp_path.iterdir())  # No local evidence copy is necessary.
