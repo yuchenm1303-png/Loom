@@ -14,7 +14,7 @@ test("a terminal failed old turn cannot permanently hide its model picker", () =
 test("picker requests an authoritative short status refresh without replacing transcript", () => {
   assert.match(composer, /onRefreshActiveThread\?\.\(\)/);
   assert.match(core, /turnLimit: 1/);
-  assert.match(core, /if \(activeIdRef\.current !== threadId \|\| activeTurnIdRef\.current !== turnId\) return/);
+  assert.match(core, /threadStateRevisionRef\.current !== revision/);
 });
 
 test("busy models show an actionable status instead of silent disabled clicks", () => {
