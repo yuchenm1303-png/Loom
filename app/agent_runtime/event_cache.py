@@ -57,8 +57,8 @@ class EventParseCache:
             size += sum(EventParseCache._weight(item, seen) for item in value)
         return size
 
-    def read(self, path, limit, tail_reader):
-        key = (str(path), limit)
+    def read(self, path, limit, tail_reader, *, project=None):
+        key = (str(path), limit, project)
         if not path.is_file():
             with self._lock:
                 self._entries.pop(key, None)
@@ -108,14 +108,16 @@ class EventParseCache:
                 trailing = raw[complete_end:]
                 for line in complete.splitlines():
                     if line.strip():
-                        records.append(json.loads(line))
+                        payload = json.loads(line)
+                        records.append(project(payload) if project is not None else payload)
                         parsed += 1
                 if limit is not None:
                     records = records[-limit:]
                 visible = list(records)
                 if trailing.strip():
                     try:
-                        visible.append(json.loads(trailing))
+                        payload = json.loads(trailing)
+                        visible.append(project(payload) if project is not None else payload)
                         parsed += 1
                     except (json.JSONDecodeError, UnicodeDecodeError):
                         pass

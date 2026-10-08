@@ -12,6 +12,29 @@ def event(index):
     return AgentEvent(str(index), "abcdef", "turn", E.TOOL_COMPLETED, "2026-10-05T00:00:00Z", {"nested": {"index": index}})
 
 
+def test_context_projection_caches_large_history_without_losing_durable_results(tmp_path):
+    store = FileAgentSessionStore(tmp_path)
+    payload = "large observation " * 600000  # exceeds full-payload cache budget
+    store.append_event(AgentEvent("large", "abcdef", "turn", E.TOOL_COMPLETED, "2026-10-05T00:00:00Z",
+                                  {"call_id": "verify", "content": payload}))
+    plan = {"plan": [{"step": "Verify", "status": "completed", "outcome": "passed",
+                      "evidence_refs": [{"call_id": "verify"}]}]}
+    store.append_event(AgentEvent("plan", "abcdef", "turn", E.PLAN_UPDATED, "2026-10-05T00:00:01Z", plan))
+    projected = store.context_events("abcdef")
+    assert projected[0].data == {}
+    assert projected[1].data == plan
+    metrics = store._event_cache.metrics()
+    assert store.context_events("abcdef") == projected
+    assert store._event_cache.metrics()["parsed_records"] == metrics["parsed_records"]
+    # A newly appended event extends the projection; older bodies aren't reparsed.
+    store.append_event(event(3))
+    assert len(store.context_events("abcdef")) == 3
+    assert store._event_cache.metrics()["parsed_records"] == metrics["parsed_records"] + 1
+    projected[1].data["plan"][0]["step"] = "caller mutation"
+    assert store.context_events("abcdef")[1].data == plan
+    assert store.events("abcdef")[0].data["content"] == payload
+
+
 def test_repeated_reads_parse_only_external_append(tmp_path):
     store = FileAgentSessionStore(tmp_path)
     for index in range(3):

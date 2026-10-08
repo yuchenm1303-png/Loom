@@ -51,6 +51,10 @@ def test_single_request_owner_and_raw_history(tmp_path):
         assert all(not m.name.startswith("loom_") for m in stored.messages)
         assert stored.messages[-1].content == "Done"
         assert stored.request_context_frames
+        phases = stored.request_context_frames[-1]["metadata"]["context_capture_phases_ms"]
+        assert set(phases) == {"envelope_and_context", "instructions_and_providers", "execution_state",
+                               "observations", "frame_serialization", "session_save"}
+        assert all(value >= 0 for value in phases.values())
         assert all(m.role is not MessageRole.SYSTEM for m in platform.requests[-1].messages[1:])
     finally:
         runtime.close()
