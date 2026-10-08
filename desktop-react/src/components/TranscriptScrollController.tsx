@@ -534,6 +534,19 @@ export function TranscriptScrollController({
       if (followingRef.current || forceBottomRef.current) scheduleBottomSync(scroller);
     };
 
+    // A disclosure is explicit reading intent, just like scrolling upward.
+    // Capture before React changes its height: otherwise ResizeObserver starts
+    // a second bottom-follow animation on every frame of the CSS fold, pushing
+    // all preceding messages upward and chasing a continuously moving target.
+    // Delegated click also covers keyboard activation and rapid reversals.
+    const onDisclosureClick = (event: MouseEvent) => {
+      const target = event.target instanceof Element ? event.target : null;
+      const disclosure = target?.closest<HTMLButtonElement>("button[aria-expanded]");
+      if (!disclosure || disclosure.disabled || !content.contains(disclosure)) return;
+      detachFromLiveFollow(scroller);
+    };
+
+    scroller.addEventListener("click", onDisclosureClick, true);
     scroller.addEventListener("scroll", onScroll, { passive: true });
     scroller.addEventListener("wheel", onWheel, { passive: true });
     scroller.addEventListener("touchstart", onTouchStart, { passive: true });
@@ -564,6 +577,7 @@ export function TranscriptScrollController({
     observer?.observe(content);
 
     return () => {
+      scroller.removeEventListener("click", onDisclosureClick, true);
       scroller.removeEventListener("scroll", onScroll);
       scroller.removeEventListener("wheel", onWheel);
       scroller.removeEventListener("touchstart", onTouchStart);
