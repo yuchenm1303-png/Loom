@@ -120,7 +120,8 @@ def test_anthropic_stream_cache_start_survives_output_delta(monkeypatch):
                  "usage": {"output_tokens": 7}},
                 {"type": "message_stop"},
             ]
-            return iter(("data: " + json.dumps(e) + "\n").encode() for e in events)
+            return iter(line for e in events
+                        for line in [("data: " + json.dumps(e) + "\n").encode(), b"\n"])
         def close(self):
             pass
     backend = _OpenCodeGoMessagesBackend(profile=NS(model="minimax-m3"),

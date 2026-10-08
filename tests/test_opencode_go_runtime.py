@@ -189,8 +189,8 @@ def test_opencode_messages_sends_qwen_budget_presets() -> None:
 class _FakeMessagesStream:
     def __init__(self, events):
         self._lines = [
-            ("data: " + json.dumps(event) + "\n").encode("utf-8")
-            for event in events
+            line for event in events
+            for line in [("data: " + json.dumps(event) + "\n").encode("utf-8"), b"\n"]
         ]
         self.closed = False
 

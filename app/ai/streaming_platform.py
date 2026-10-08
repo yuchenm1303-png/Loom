@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import threading
 from dataclasses import dataclass, field, replace
 from enum import Enum
@@ -14,9 +13,10 @@ from .contracts import (
     StreamEventKind,
     ToolCall,
 )
-from .errors import AIEmptyResponseError, AIResponseError, AITransportError, AITruncatedToolCallError
+from .errors import AIEmptyResponseError, AIResponseError, AITransportError
 from .execution_control import check_cancelled, note_progress, current_control
 from .platform import AIPlatform
+from .tool_protocol import parse_tool_call
 from .reasoning_text import InlineReasoningDemux, merge_visible_reasoning, split_inline_reasoning
 
 
@@ -67,6 +67,8 @@ class _StreamAccumulator:
         self.end_turn = None
 
     def consume(self, event: StreamEvent) -> None:
+        if self.completed:
+            raise AIResponseError("model stream emitted data after completion")
         if event.kind is StreamEventKind.TEXT_DELTA:
             if event.text_delta:
                 self.text_parts.append(event.text_delta)
@@ -95,6 +97,8 @@ class _StreamAccumulator:
             elif event.tool_call_id:
                 index = len(self.tool_calls)
             elif self.last_tool_index is not None:
+                if len(self.tool_calls) > 1:
+                    raise AIResponseError("parallel tool delta is missing an unambiguous identity")
                 index = self.last_tool_index
             else:
                 index = len(self.tool_calls)
@@ -105,6 +109,9 @@ class _StreamAccumulator:
         buffer = self.tool_calls.setdefault(index, _ToolCallBuffer())
         self.last_tool_index = index
         if event.tool_call_id:
+            existing = self.call_indexes.get(event.tool_call_id)
+            if existing is not None and existing != index:
+                raise AIResponseError("tool call stream reused call id for another index")
             if buffer.call_id and buffer.call_id != event.tool_call_id:
                 raise AIResponseError("tool call stream changed call id for the same index")
             buffer.call_id = event.tool_call_id
@@ -133,23 +140,8 @@ class _StreamAccumulator:
         for index in sorted(self.tool_calls):
             buffer = self.tool_calls[index]
             effective_finish = str(finish_reason or self.finish_reason or "")
-            if effective_finish in {"length", "max_tokens"}:
-                raise AITruncatedToolCallError(finish_reason=effective_finish, tool_name=buffer.name.strip(),
-                                               argument_chars=len("".join(buffer.argument_parts)))
-            call_id = buffer.call_id.strip()
-            name = buffer.name.strip()
-            if not call_id or not name:
-                raise AIResponseError("streamed tool call is missing id or function name")
-            raw_arguments = "".join(buffer.argument_parts).strip()
-            try:
-                arguments = json.loads(raw_arguments) if raw_arguments else {}
-            except json.JSONDecodeError as exc:
-                raise AIResponseError(
-                    f"tool call {name!r} returned invalid streamed JSON arguments", finish_reason=effective_finish
-                ) from exc
-            if not isinstance(arguments, dict):
-                raise AIResponseError(f"tool call {name!r} arguments must be a JSON object")
-            calls.append(ToolCall(call_id=call_id, name=name, arguments=arguments))
+            calls.append(parse_tool_call(buffer.call_id, buffer.name,
+                                         "".join(buffer.argument_parts), finish_reason=effective_finish))
 
         text = "".join(self.text_parts)
         visible_reasoning = "".join(self.visible_reasoning_parts)

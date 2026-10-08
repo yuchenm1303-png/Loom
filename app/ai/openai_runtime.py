@@ -20,13 +20,13 @@ from .contracts import (
     ToolCall,
     ToolChoice,
 )
-from .errors import AIEmptyResponseError, AIResponseError, AITransportError, AITruncatedToolCallError, AIQuotaExceeded
+from .errors import AIEmptyResponseError, AIResponseError, AITransportError, AIQuotaExceeded
 from .profiles import ModelProfile
 from .provider_catalog import ProviderAdapter, ProviderConnection
 from .reasoning import ReasoningKind
+from .tool_protocol import parse_tool_call, validate_unique_calls
 
 
-_RETRYABLE_STATUS_CODES = {408, 409, 425, 429, 500, 502, 503, 504}
 _RETRYABLE_ERROR_FRAGMENTS = (
     "temporarily unavailable",
     "service unavailable",
@@ -161,19 +161,9 @@ def _parse_tool_calls(message: Any, *, finish_reason: str = "") -> tuple[ToolCal
         call_id = str(getattr(raw_call, "id", "") or "").strip()
         name = str(getattr(function, "name", "") or "").strip()
         raw_arguments = str(getattr(function, "arguments", "") or "").strip()
-        if finish_reason in {"length", "max_tokens"}:
-            raise AITruncatedToolCallError(finish_reason=finish_reason, tool_name=name,
-                                           argument_chars=len(raw_arguments))
-        if not call_id or not name:
-            raise AIResponseError("tool call is missing id or function name")
-        try:
-            arguments = json.loads(raw_arguments) if raw_arguments else {}
-        except json.JSONDecodeError as exc:
-            raise AIResponseError(f"tool call {name!r} returned invalid JSON arguments", finish_reason=finish_reason) from exc
-        if not isinstance(arguments, dict):
-            raise AIResponseError(f"tool call {name!r} arguments must be a JSON object")
-        parsed.append(ToolCall(call_id=call_id, name=name, arguments=arguments))
-    return tuple(parsed)
+        parsed.append(parse_tool_call(call_id, name, raw_arguments, finish_reason=finish_reason))
+
+    return validate_unique_calls(parsed)
 
 
 def _provider_status_code(exc: BaseException) -> int | None:
@@ -212,8 +202,10 @@ def _transport_failure(exc: BaseException) -> bool:
 
 def _retryable_provider_error(exc: BaseException) -> bool:
     status = _provider_status_code(exc)
-    if status in _RETRYABLE_STATUS_CODES:
-        return True
+    if status is not None:
+        # A concrete provider status takes precedence over incidental wording
+        # (for example an authentication error mentioning a "timeout").
+        return status in {408, 409, 425, 429} or status >= 500
     if _transport_failure(exc):
         return True
     message = str(exc).casefold()
