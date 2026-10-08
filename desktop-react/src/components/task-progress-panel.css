@@ -1,5 +1,16 @@
 /* One measured workspace owns both transcript and progress allocation. */
-.conversation-stage { --task-plan-width: 0px; }
+.workspace { --task-plan-width: 0px; --task-plan-motion: 280ms; --task-plan-ease: cubic-bezier(.22, 1, .36, 1); }
+.workspace:has(> .conversation-stage > .task-progress-dock) { --task-plan-width: 288px; }
+.workspace:has(> .conversation-stage > .task-progress-dock.is-rail) { --task-plan-width: 56px; }
+.workspace > .composer-stage {
+  margin-right: var(--task-plan-width);
+  transition: margin-right var(--task-plan-motion) var(--task-plan-ease);
+}
+.conversation-stage {
+  --task-plan-width: 0px;
+  grid-template-columns: minmax(0, 1fr) var(--task-plan-width);
+  transition: grid-template-columns var(--task-plan-motion, 280ms) var(--task-plan-ease, cubic-bezier(.22, 1, .36, 1));
+}
 .conversation-stage:has(> .task-progress-dock) {
   --task-plan-width: 288px;
   grid-template-columns: minmax(0, 1fr) var(--task-plan-width);
@@ -8,10 +19,15 @@
 .conversation-stage > .run-progress-frame.top { grid-column: 1 / -1; }
 .conversation-stage > .transcript-scroll { grid-column: 1; }
 .conversation-stage > .transcript-jump-latest { left: calc((100% - var(--task-plan-width)) / 2); }
+.conversation-stage > .transcript-jump-latest { transition: left var(--task-plan-motion, 280ms) var(--task-plan-ease, cubic-bezier(.22, 1, .36, 1)); }
+:root .app-shell .conversation-stage:has(.transcript-entry)::before,
+:root .app-shell .conversation-stage:has(.transcript-entry)::after { transition: right var(--task-plan-motion, 280ms) var(--task-plan-ease, cubic-bezier(.22, 1, .36, 1)); }
 .task-progress-dock {
+  position: relative;
   grid-column: 2; grid-row: 2; min-height: 0; min-width: 0;
   overflow: hidden;
   padding: 16px 12px; border-left: 1px solid var(--border); background: var(--bg);
+  transition: padding 280ms cubic-bezier(.22, 1, .36, 1);
 }
 .task-progress-dock.is-rail { padding: 14px 6px; }
 .task-plan-card { position: relative; display: flex; flex-direction: column; max-height: 100%; min-height: 0; box-sizing: border-box; border: 1px solid var(--border); border-radius: 14px; padding: 16px; background: var(--panel); }
@@ -52,3 +68,48 @@
 .task-plan-evidence { margin-top: 6px; color: var(--muted); font-size: 11px; }
 .task-plan-evidence summary { cursor: pointer; }
 .task-plan-evidence small { overflow-wrap: anywhere; }
+
+/* Keep the desktop card mounted so collapse can finish its exit motion. */
+.task-plan-card { width: 262px; transition: opacity 180ms ease, transform 280ms cubic-bezier(.22, 1, .36, 1), visibility 280ms; }
+.task-progress-dock.is-rail .task-plan-card { position: absolute; top: 16px; bottom: 16px; left: 12px; opacity: 0; transform: translateX(24px); visibility: hidden; pointer-events: none; }
+.task-progress-dock.is-expanded .task-plan-card { animation: task-plan-enter 280ms cubic-bezier(.22, 1, .36, 1); }
+.task-plan-trigger { animation: task-plan-enter 220ms ease; }
+.task-plan-trigger, .task-plan-close { transition: background 160ms ease, border-color 160ms ease, color 160ms ease, transform 160ms ease; }
+.task-plan-trigger:hover { transform: translateY(-2px); }
+.task-plan-trigger:active, .task-plan-close:active { transform: scale(.94); }
+.task-plan-close:hover svg { transform: translateX(-2px); }
+.task-plan-close svg { transition: transform 160ms ease; }
+.task-plan-list li { transition: background 220ms ease; animation: task-plan-enter 240ms ease; }
+.task-plan-list li:hover { background: var(--panel-hover); }
+.task-plan-status, .task-plan-step-mark, .task-plan-outcome { transition: color 220ms ease, border-color 220ms ease, background 220ms ease; }
+.task-plan-list .is-in_progress .task-plan-step-mark { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); }
+.task-plan-step-mark svg { animation: task-plan-mark 240ms ease; }
+.task-plan-meter::-webkit-progress-value { transition: width 280ms ease; }
+.task-plan-evidence summary { transition: color 160ms ease; }
+.task-plan-evidence summary:hover { color: var(--text); }
+.task-plan-evidence summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.task-plan-evidence[open] small { animation: task-plan-enter 180ms ease; }
+.task-plan-dialog {
+  opacity: 0; transform: translateY(12px) scale(.97);
+  transition: opacity 200ms ease, transform 240ms cubic-bezier(.22, 1, .36, 1), display 240ms allow-discrete, overlay 240ms allow-discrete;
+}
+.task-plan-dialog[open] { opacity: 1; transform: translateY(0) scale(1); }
+.task-plan-dialog::backdrop { opacity: 0; transition: opacity 240ms ease, display 240ms allow-discrete, overlay 240ms allow-discrete; }
+.task-plan-dialog[open]::backdrop { opacity: 1; }
+@starting-style {
+  .task-plan-dialog[open] { opacity: 0; transform: translateY(12px) scale(.97); }
+  .task-plan-dialog[open]::backdrop { opacity: 0; }
+}
+@keyframes task-plan-enter { from { opacity: 0; transform: translateX(10px); } to { opacity: 1; transform: translateX(0); } }
+@keyframes task-plan-mark { from { opacity: 0; transform: scale(.65); } to { opacity: 1; transform: scale(1); } }
+@media (prefers-reduced-motion: reduce) {
+  .workspace > .composer-stage, .conversation-stage, .conversation-stage::before, .conversation-stage::after, .conversation-stage > .transcript-jump-latest, .task-progress-dock, .task-progress-dock *, .task-plan-dialog::backdrop { animation: none !important; transition: none !important; }
+}
+:root[data-loom-reduced-motion="true"] .workspace > .composer-stage,
+:root[data-loom-reduced-motion="true"] .conversation-stage,
+:root[data-loom-reduced-motion="true"] .conversation-stage::before,
+:root[data-loom-reduced-motion="true"] .conversation-stage::after,
+:root[data-loom-reduced-motion="true"] .conversation-stage > .transcript-jump-latest,
+:root[data-loom-reduced-motion="true"] .task-progress-dock,
+:root[data-loom-reduced-motion="true"] .task-progress-dock *,
+:root[data-loom-reduced-motion="true"] .task-plan-dialog::backdrop { animation: none !important; transition: none !important; }

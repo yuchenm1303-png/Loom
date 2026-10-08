@@ -29,6 +29,10 @@ export function TaskProgressPanel({ steps }: { steps: TaskMilestone[] }) {
     if (!compact && dialog.current?.open) dialog.current.close();
   }, [compact]);
 
+  useEffect(() => {
+    if (collapsed && !compact) trigger.current?.focus();
+  }, [collapsed, compact]);
+
   const content = (
     <>
       <div className="task-plan-heading">
@@ -65,12 +69,13 @@ export function TaskProgressPanel({ steps }: { steps: TaskMilestone[] }) {
           onClick={() => { if (compact) { dialog.current?.showModal(); setDialogOpen(true); } else setCollapsed(false); }}>
           <ListChecks size={18} aria-hidden="true" /><span>{completed}/{steps.length}</span>
         </button>
-      ) : (
-        <section className="task-plan-card">
+      ) : null}
+      {!compact ? (
+        <section className="task-plan-card" inert={rail} aria-hidden={rail || undefined}>
           <button type="button" className="task-plan-close" aria-label="折叠任务进度" onClick={() => setCollapsed(true)}><ChevronLeft size={16} /></button>
           {content}
         </section>
-      )}
+      ) : null}
       <dialog ref={dialog} className="task-plan-dialog" aria-labelledby={titleId}
         onClose={() => { setDialogOpen(false); trigger.current?.focus(); }}
         onClick={event => { if (event.target === event.currentTarget) { const rect = event.currentTarget.getBoundingClientRect(); if (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom) dialog.current?.close(); } }}>

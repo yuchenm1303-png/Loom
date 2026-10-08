@@ -7,18 +7,23 @@ try {
   page.on("pageerror", error => errors.push(error.message));
   await page.goto(`${process.env.LOOM_TEST_ORIGIN || "http://127.0.0.1:5173"}/scripts/fixtures/task-progress.html`, { waitUntil: "domcontentloaded" });
   await page.waitForFunction(() => Boolean(window.renderPlan));
+  await page.evaluate(() => document.documentElement.dataset.loomReducedMotion = "true");
   await page.evaluate(() => window.renderPlan(1200));
   await page.locator(".task-progress-dock.is-expanded").waitFor();
   async function noOverlap() {
-    const text = await page.locator(".transcript-scroll").boundingBox();
-    const card = await page.locator(".task-progress-dock").boundingBox();
+    const { boxes: [text, card, composer, input], fade } = await page.evaluate(() => {
+      const stage = document.querySelector(".conversation-stage");
+      const style = getComputedStyle(stage, "::after");
+      return { fade: { rightEdge: stage.getBoundingClientRect().right - parseFloat(style.right), opacity: style.display },
+        boxes: [".transcript-scroll", ".task-progress-dock", ".composer-stage", ".task-test-composer"].map(selector => {
+        const rect = document.querySelector(selector).getBoundingClientRect();
+        return { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
+      }) };
+    });
+    assert.ok(Math.abs(composer.width - text.width) <= 1, "composer must share the transcript column width");
+    assert.ok(Math.abs(input.x + input.width / 2 - (text.x + text.width / 2)) <= 1, "input must be centered in the transcript column");
     assert.ok(text.x + text.width <= card.x + 1);
     assert.ok(text.width >= Math.min(480, (await page.locator(".conversation-stage").boundingBox()).width - 56));
-    const fade = await page.locator(".conversation-stage").evaluate(el => {
-      const stage = el.getBoundingClientRect();
-      const style = getComputedStyle(el, "::after");
-      return { rightEdge: stage.right - parseFloat(style.right), opacity: style.display };
-    });
     assert.equal(fade.opacity, "block");
     assert.ok(fade.rightEdge <= card.x + 1, "transcript fade must never cover the progress column");
     assert.ok(card.x + card.width <= (await page.locator(".conversation-stage").boundingBox()).width + 1);
@@ -73,6 +78,15 @@ try {
   await page.evaluate(() => window.renderPlan(1200, false, true));
   await page.locator(".task-progress-dock.is-expanded").waitFor();
   await page.evaluate(() => document.documentElement.dataset.loomTheme = "light");
+  await noOverlap();
+  await page.evaluate(() => delete document.documentElement.dataset.loomReducedMotion);
+  await page.getByRole("button", { name: "折叠任务进度" }).click();
+  await page.waitForTimeout(100);
+  await noOverlap();
+  await page.waitForTimeout(250);
+  await noOverlap();
+  await page.locator(".task-plan-trigger").click();
+  await page.waitForTimeout(350);
   await noOverlap();
   if (process.env.LOOM_PROGRESS_SCREENSHOT) await page.screenshot({ path: process.env.LOOM_PROGRESS_SCREENSHOT });
   assert.deepEqual(errors, []);

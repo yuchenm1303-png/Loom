@@ -24,11 +24,11 @@ const root = createRoot(document.getElementById("root")!);
     { id: "text", threadId: "thread", turnId, type: "assistant_message", status: "completed", phase: "commentary", text: Array.from({ length: 30 }, (_, i) => `第 ${i + 1} 段正文。浏览器检查正在进行。`).join("\n\n") },
   ];
   flushSync(() => root.render(<StrictMode>
-    <div className="app-shell" style={{ display: "block" }}><div className="conversation-stage" style={{ width, height: 650, maxWidth: "100vw" }}>
+    <div className="app-shell" style={{ display: "block" }}><div className="workspace" style={{ width, maxWidth: "100vw", display: "block" }}><div className="conversation-stage" style={{ height: 650 }}>
       <style>{"body { margin: 0; } .conversation-stage { grid-template-rows: auto minmax(0, 1fr); } .transcript-scroll { overflow-y: auto; }"}</style>
       <div className="run-progress-frame top">Loom 正在工作</div>
       <Transcript items={items} running currentTurnId={turnId} onApproval={() => {}} />
       <TranscriptScrollController items={items} running threadId="thread" currentTurnId={turnId} />
-    </div></div>
+    </div><div className="composer-stage"><div className="task-test-composer" style={{ maxWidth: 760, height: 60, margin: "0 auto", background: "var(--panel)" }}>补充要求，调整当前任务…</div></div></div></div>
   </StrictMode>));
 };
