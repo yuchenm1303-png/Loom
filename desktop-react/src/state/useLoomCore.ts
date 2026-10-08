@@ -812,18 +812,25 @@ export function useLoom() {
     const list = await refreshThreads();
     if (preferredId && list.some((thread) => thread.id === preferredId)) {
       await openThread(preferredId);
-    } else if (list.length) {
+    } else if (preferredId && list.length) {
       await openThread(list[0].id);
-    } else {
+    } else if (preferredId) {
       clearActive();
     }
+    // No previous thread means a new-conversation draft. Keep its workspace
+    // and project parameters intact even if the model change restarts the host.
   }, [clearActive, openThread, refreshThreads]);
 
   const switchModelProfile = useCallback(async (selection: string) => {
-    if (!active?.thread.id) return;
+    const threadId = active?.thread.id;
     setModelBusy(true);
     try {
-      const result = await requireBridge().switchModelProfile<ModelRestartResult>(active.thread.id, selection);
+      const bridge = requireBridge();
+      // Before the first message a conversation is only a draft. Use the
+      // existing default-model endpoint rather than silently ignoring clicks.
+      const result = threadId
+        ? await bridge.switchModelProfile<ModelRestartResult>(threadId, selection)
+        : await bridge.switchModelProfile<ModelRestartResult>(selection);
       await applyModelRestart(result);
     } finally {
       setModelBusy(false);
@@ -831,16 +838,15 @@ export function useLoom() {
   }, [active?.thread.id, applyModelRestart]);
 
   const switchCurrentModel = useCallback(async (model: string) => {
-    if (!active?.thread.id) return;
-    const selection = active.thread.modelSelection || models?.current?.selection || "";
-    if (!selection) return;
+    const threadId = active?.thread.id;
+    const selection = active?.thread.modelSelection || models?.current?.selection || "";
+    if (threadId && !selection) throw new Error("No model profile is associated with this conversation.");
     setModelBusy(true);
     try {
-      const result = await requireBridge().switchCurrentModel<ModelRestartResult>(
-        active.thread.id,
-        selection,
-        model,
-      );
+      const bridge = requireBridge();
+      const result = threadId
+        ? await bridge.switchCurrentModel<ModelRestartResult>(threadId, selection, model)
+        : await bridge.switchCurrentModel<ModelRestartResult>(model);
       await applyModelRestart(result);
     } finally {
       setModelBusy(false);

@@ -1248,9 +1248,8 @@ export function ModelPanel({
     <div className="model-manager-view model-manager-home model-core-home" data-direction={direction}>
       <button
         type="button"
-        className={`model-core-identity model-core-selector ${locked ? "locked" : ""}`}
+        className="model-core-identity model-core-selector"
         aria-label={`Choose model. Current model ${currentModel}`}
-        disabled={locked}
         onClick={() => navigate("profiles")}
       >
         <div className="model-core-copy" key={`${currentSelection}:${currentModel}`}>
