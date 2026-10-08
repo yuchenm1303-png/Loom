@@ -19,6 +19,7 @@ import { PRESENTATION_FRAME_MS } from "../presentationTiming";
 import { isLoomWebRuntime } from "../webBridge";
 import { preservePendingUserIdentity, reconcilePendingUserMessage } from "../pendingUserMessage";
 import { buildApprovalResponse } from "./approvalProtocol";
+import { switchCurrentModelForThread, switchModelProfileForThread } from "./modelSwitchRouting";
 
 type ThreadView = "active" | "archived";
 type ThreadCounts = { active: number; archived: number; all: number };
@@ -251,6 +252,7 @@ export function useLoom() {
   const threadsRef = useRef<ThreadRecord[]>([]);
   const threadViewRef = useRef<ThreadView>("active");
   const terminalErrorTurnRef = useRef("");
+  const threadStateRevisionRef = useRef(0);
   const itemIndexRef = useRef<Map<string, number>>(new Map());
   const pendingItemDeltasRef = useRef<Map<string, Record<string, unknown>>>(new Map());
   const deltaFlushTimerRef = useRef<number | null>(null);
@@ -308,6 +310,7 @@ export function useLoom() {
   }, []);
 
   const clearActive = useCallback(() => {
+    threadStateRevisionRef.current += 1;
     openRequestRef.current += 1;
     draftThreadParamsRef.current = {};
     activeIdRef.current = "";
@@ -506,6 +509,7 @@ export function useLoom() {
   }, [cachedThreadRead, readThread, rememberThreadRead]);
 
   const applyThreadRead = useCallback((result: ThreadReadResult) => {
+    threadStateRevisionRef.current += 1;
     activeIdRef.current = result.thread.id;
     loadingOlderTurnsRef.current = false;
     setLoadingOlderTurns(false);
@@ -533,6 +537,32 @@ export function useLoom() {
     rememberThreadRead(normalizedResult);
     void refreshContext(normalizedResult.thread.id);
   }, [installItems, refreshContext, rememberThreadRead]);
+
+  // Refresh the active thread before showing model controls. The UI may have
+  // missed a terminal event during relay reconnect; a short authoritative read
+  // clears stale `running`/approval badges without replacing conversation items.
+  const refreshActiveThreadState = useCallback(async () => {
+    const threadId = activeIdRef.current;
+    if (!threadId) return;
+    const turnId = activeTurnIdRef.current;
+    const revision = threadStateRevisionRef.current;
+    const result = await requireBridge().call<ThreadReadResult>("thread/read", {
+      threadId,
+      presentationOnly: true,
+      turnLimit: 1,
+    });
+    if (activeIdRef.current !== threadId
+      || activeTurnIdRef.current !== turnId
+      || threadStateRevisionRef.current !== revision) return;
+    const next = result.thread;
+    if (!next || next.id !== threadId) return;
+    threadStateRevisionRef.current += 1;
+    setActive((current) => current?.thread.id === threadId ? { ...current, thread: next } : current);
+    setThreads((current) => current.map((thread) => thread.id === threadId ? next : thread));
+    const running = threadIsRunning(next);
+    setTurnActive(running);
+    if (!running) setTurnStartedAt(null);
+  }, []);
 
   const openThread = useCallback(async (threadId: string) => {
     const normalized = threadId.trim();
@@ -754,6 +784,7 @@ export function useLoom() {
       id: pendingId, clientMessageId: pendingId, threadId: thread.id, type: "user_message",
       text: input.trim(), hasAttachments: attachments.length > 0, status: "sending", submittedAt: new Date().toISOString(),
     }]);
+    threadStateRevisionRef.current += 1;
     setTurnActive(true);
     setTurnStartedAt(Date.now());
     try {
@@ -828,9 +859,7 @@ export function useLoom() {
       const bridge = requireBridge();
       // Before the first message a conversation is only a draft. Use the
       // existing default-model endpoint rather than silently ignoring clicks.
-      const result = threadId
-        ? await bridge.switchModelProfile<ModelRestartResult>(threadId, selection)
-        : await bridge.switchModelProfile<ModelRestartResult>(selection);
+      const result = await switchModelProfileForThread<ModelRestartResult>(bridge, threadId, selection);
       await applyModelRestart(result);
     } finally {
       setModelBusy(false);
@@ -840,13 +869,10 @@ export function useLoom() {
   const switchCurrentModel = useCallback(async (model: string) => {
     const threadId = active?.thread.id;
     const selection = active?.thread.modelSelection || models?.current?.selection || "";
-    if (threadId && !selection) throw new Error("No model profile is associated with this conversation.");
     setModelBusy(true);
     try {
       const bridge = requireBridge();
-      const result = threadId
-        ? await bridge.switchCurrentModel<ModelRestartResult>(threadId, selection, model)
-        : await bridge.switchCurrentModel<ModelRestartResult>(model);
+      const result = await switchCurrentModelForThread<ModelRestartResult>(bridge, threadId, selection, model);
       await applyModelRestart(result);
     } finally {
       setModelBusy(false);
@@ -967,6 +993,7 @@ export function useLoom() {
             return [thread, ...current];
           });
           if (thread.id === activeId) {
+            threadStateRevisionRef.current += 1;
             setActive((current) => current && current.thread.id === thread.id ? { ...current, thread } : current);
             const running = threadIsRunning(thread);
             setTurnActive(running);
@@ -986,6 +1013,7 @@ export function useLoom() {
       if (message.method === "turn/started") {
         const turn = params.turn as TurnRecord | undefined;
         if (turn && threadId === activeId) {
+          threadStateRevisionRef.current += 1;
           activeTurnIdRef.current = turn.id;
           terminalErrorTurnRef.current = "";
           threadReadCacheRef.current.delete(threadId);
@@ -1132,6 +1160,7 @@ export function useLoom() {
         // Keep a terminal-error guard for this turn until TURN_STARTED names a
         // genuinely new turn. Late/stale thread updates from the failed worker
         // must not resurrect steering mode after completion.
+        threadStateRevisionRef.current += 1;
         flushPendingItemDeltas();
         setTurnActive(false);
         setTurnStartedAt(null);
@@ -1282,6 +1311,7 @@ export function useLoom() {
     setThreadView,
     refreshProjects,
     refreshModels,
+    refreshActiveThreadState,
     createProject,
     renameProject,
     setProjectInstructions,
@@ -1325,6 +1355,7 @@ export function useLoom() {
     createProject,
     refreshContext,
     refreshModels,
+    refreshActiveThreadState,
     refreshProjects,
     removeProject,
     renameProject,

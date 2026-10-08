@@ -51,6 +51,7 @@ test("first home send creates once and sends text or attachments to the new conv
       startThread: async () => { starts++; return { id: "new" }; },
       threadReadCacheRef: { current: new Map() }, crypto: { randomUUID: () => "id" },
       setItems: () => {}, setTurnActive: () => {}, setTurnStartedAt: () => {}, setActive: () => {},
+      threadStateRevisionRef: { current: 0 },
       requireBridge: () => ({ call: async (method, params) => { calls.push({ method, params }); return { turn: { id: "turn" } }; } }),
     });
     await send("", []);

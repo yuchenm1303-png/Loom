@@ -51,6 +51,7 @@ interface ComposerProps {
   onCustomModelChange?(model: string): Promise<void> | void;
   onConfigureModelProvider?(provider: string, apiKey: string): Promise<void> | void;
   onRefreshModels?(forceRefresh?: boolean): Promise<unknown> | void;
+  onRefreshActiveThread?(): Promise<void> | void;
   onAddModel?(input: AddModelInput): Promise<void> | void;
   onDeleteModel?(selection: string): Promise<void> | void;
   onReasoningChange?(kind: string, value: string): Promise<void> | void;
@@ -190,6 +191,7 @@ export function Composer({
   onCustomModelChange,
   onConfigureModelProvider,
   onRefreshModels,
+  onRefreshActiveThread,
   onAddModel,
   onDeleteModel,
   onReasoningChange,
@@ -540,7 +542,15 @@ export function Composer({
                 title={currentModel}
                 aria-haspopup="menu"
                 aria-expanded={openPanel === "model"}
-                onClick={() => togglePanel("model")}
+                onClick={() => {
+                  if (openPanel !== "model") {
+                    void Promise.resolve(onRefreshActiveThread?.()).catch(() => {
+                      // The existing model list stays usable if Host status
+                      // refresh fails; choosing a model surfaces RPC errors.
+                    });
+                  }
+                  togglePanel("model");
+                }}
               >
                 <span className="composer-glyph-well model" aria-hidden="true"><ComposerControlIcon kind="model" /></span>
                 <span>{currentModel}</span>

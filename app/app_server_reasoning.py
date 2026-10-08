@@ -705,6 +705,21 @@ class ReasoningManagedLoomAppServerService(ManagedStreamingLoomAppServerService)
         self._loom_account_model_credential = supplied
         return supplied
 
+    def _recover_orphaned_thread_model_turn(self, session: Any) -> Any:
+        """Finish an abandoned old turn before allowing its model to change.
+
+        A crashed/restarted Host has no live App Server operation, but the
+        persisted conversation may still say RUNNING. The runtime already
+        provides an interruption recovery path that persists a terminal event.
+        Never use it for live operations or pending approval decisions.
+        """
+        if getattr(session, "status", None) is AgentStatus.RUNNING and not self._is_active(session.session_id):
+            recover = getattr(self.runtime, "recover_interrupted", None)
+            if callable(recover):
+                recover(session.session_id)
+                return self._load(session.session_id)
+        return session
+
     def _thread_model_blocked(self, session: Any) -> bool:
         return (
             self._is_active(session.session_id)
@@ -742,7 +757,7 @@ class ReasoningManagedLoomAppServerService(ManagedStreamingLoomAppServerService)
 
     def thread_set_model(self, params: dict[str, Any]) -> dict[str, Any]:
         session_id = self._required_text(params, "threadId")
-        session = self._load(session_id)
+        session = self._recover_orphaned_thread_model_turn(self._load(session_id))
         if self._thread_model_blocked(session):
             raise RuntimeError("finish or stop this thread's active turn before changing its model")
 
@@ -828,7 +843,8 @@ class ReasoningManagedLoomAppServerService(ManagedStreamingLoomAppServerService)
 
     def thread_set_reasoning(self, params: dict[str, Any]) -> dict[str, Any]:
         session_id = self._required_text(params, "threadId")
-        session = self._ensure_thread_model_metadata(self._load(session_id))
+        session = self._recover_orphaned_thread_model_turn(self._load(session_id))
+        session = self._ensure_thread_model_metadata(session)
         if self._thread_model_blocked(session):
             raise RuntimeError("finish or stop this thread's active turn before changing reasoning")
 
@@ -866,7 +882,10 @@ class ReasoningManagedLoomAppServerService(ManagedStreamingLoomAppServerService)
 
     def thread_read(self, params: dict[str, Any]) -> dict[str, Any]:
         session_id = self._required_text(params, "threadId")
-        self._ensure_thread_model_metadata(self._load(session_id))
+        # Opening an older conversation must not leave a crashed RUNNING turn
+        # stuck in steering mode, where the model selector is unavailable.
+        session = self._recover_orphaned_thread_model_turn(self._load(session_id))
+        self._ensure_thread_model_metadata(session)
         return super().thread_read(params)
 
     def thread_resume(self, params: dict[str, Any]) -> dict[str, Any]:

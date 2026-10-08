@@ -47,7 +47,7 @@ import {
   type ShortcutSettings,
 } from "./keyboardShortcuts";
 import { useAccount } from "./state/useAccount";
-import { useLoom } from "./state/useLoom";
+import { currentTurnHasTerminalError, useLoom } from "./state/useLoom";
 import type { ThreadRecord, TranscriptItem } from "./types/loom";
 
 const RESOLVED_APPROVAL_STATUSES = new Set([
@@ -435,7 +435,10 @@ export default function App() {
   const threadSwitching = Boolean(loom.openingThreadId && loom.openingThreadId !== activeThreadId);
   const selectedThread = loom.threads.find(candidate => candidate.id === selectedThreadId) ?? thread;
   const runtimeTurnRunning = thread?.status === "running" || thread?.status === "waiting_approval";
-  const running = loom.turnActive || runtimeTurnRunning;
+  // A terminal error ends an orphaned turn even when the last thread snapshot
+  // still says running. Match the steering router so the model picker reappears.
+  const running = (loom.turnActive || runtimeTurnRunning)
+    && !currentTurnHasTerminalError(loom.items, thread?.currentTurnId);
   const archived = Boolean(thread?.archived);
   const conversationDisabled = !thread || loom.connection !== "ready" || running || archived;
   const threadTitle = selectedThread?.title || (loom.connection === "connecting" ? t("app.startingLoom") : t("app.newConversation"));
@@ -1280,6 +1283,7 @@ export default function App() {
             onCustomModelChange={loom.switchCurrentModel}
             onConfigureModelProvider={loom.configureModelProvider}
             onRefreshModels={loom.refreshModels}
+            onRefreshActiveThread={loom.refreshActiveThreadState}
             onAddModel={loom.addModel}
             onDeleteModel={loom.deleteModel}
             onReasoningChange={loom.setReasoning}
