@@ -252,6 +252,7 @@ export function useLoom() {
   const threadsRef = useRef<ThreadRecord[]>([]);
   const threadViewRef = useRef<ThreadView>("active");
   const terminalErrorTurnRef = useRef("");
+  const threadStateRevisionRef = useRef(0);
   const itemIndexRef = useRef<Map<string, number>>(new Map());
   const pendingItemDeltasRef = useRef<Map<string, Record<string, unknown>>>(new Map());
   const deltaFlushTimerRef = useRef<number | null>(null);
@@ -309,6 +310,7 @@ export function useLoom() {
   }, []);
 
   const clearActive = useCallback(() => {
+    threadStateRevisionRef.current += 1;
     openRequestRef.current += 1;
     draftThreadParamsRef.current = {};
     activeIdRef.current = "";
@@ -507,6 +509,7 @@ export function useLoom() {
   }, [cachedThreadRead, readThread, rememberThreadRead]);
 
   const applyThreadRead = useCallback((result: ThreadReadResult) => {
+    threadStateRevisionRef.current += 1;
     activeIdRef.current = result.thread.id;
     loadingOlderTurnsRef.current = false;
     setLoadingOlderTurns(false);
@@ -542,14 +545,18 @@ export function useLoom() {
     const threadId = activeIdRef.current;
     if (!threadId) return;
     const turnId = activeTurnIdRef.current;
+    const revision = threadStateRevisionRef.current;
     const result = await requireBridge().call<ThreadReadResult>("thread/read", {
       threadId,
       presentationOnly: true,
       turnLimit: 1,
     });
-    if (activeIdRef.current !== threadId || activeTurnIdRef.current !== turnId) return;
+    if (activeIdRef.current !== threadId
+      || activeTurnIdRef.current !== turnId
+      || threadStateRevisionRef.current !== revision) return;
     const next = result.thread;
     if (!next || next.id !== threadId) return;
+    threadStateRevisionRef.current += 1;
     setActive((current) => current?.thread.id === threadId ? { ...current, thread: next } : current);
     setThreads((current) => current.map((thread) => thread.id === threadId ? next : thread));
     const running = threadIsRunning(next);
@@ -777,6 +784,7 @@ export function useLoom() {
       id: pendingId, clientMessageId: pendingId, threadId: thread.id, type: "user_message",
       text: input.trim(), hasAttachments: attachments.length > 0, status: "sending", submittedAt: new Date().toISOString(),
     }]);
+    threadStateRevisionRef.current += 1;
     setTurnActive(true);
     setTurnStartedAt(Date.now());
     try {
@@ -985,6 +993,7 @@ export function useLoom() {
             return [thread, ...current];
           });
           if (thread.id === activeId) {
+            threadStateRevisionRef.current += 1;
             setActive((current) => current && current.thread.id === thread.id ? { ...current, thread } : current);
             const running = threadIsRunning(thread);
             setTurnActive(running);
@@ -1004,6 +1013,7 @@ export function useLoom() {
       if (message.method === "turn/started") {
         const turn = params.turn as TurnRecord | undefined;
         if (turn && threadId === activeId) {
+          threadStateRevisionRef.current += 1;
           activeTurnIdRef.current = turn.id;
           terminalErrorTurnRef.current = "";
           threadReadCacheRef.current.delete(threadId);
@@ -1150,6 +1160,7 @@ export function useLoom() {
         // Keep a terminal-error guard for this turn until TURN_STARTED names a
         // genuinely new turn. Late/stale thread updates from the failed worker
         // must not resurrect steering mode after completion.
+        threadStateRevisionRef.current += 1;
         flushPendingItemDeltas();
         setTurnActive(false);
         setTurnStartedAt(null);
