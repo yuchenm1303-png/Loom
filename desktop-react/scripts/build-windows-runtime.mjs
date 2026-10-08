@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { hostRuntimeIdentity } from "./host-runtime-identity.mjs";
+import { verifyPackagedRuntime } from "./verify-packaged-runtime.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -16,6 +17,9 @@ const WORK_ROOT = path.join(DESKTOP_ROOT, "runtime-build");
 const ENTRYPOINT = path.join(REPO_ROOT, "loom_desktop_runtime.py");
 const GENERATED_CONNECTOR_CONFIG = path.join(REPO_ROOT, "app", "connector_release_config_generated.py");
 const BOOTSTRAP_PYTHON = process.env.LOOM_BOOTSTRAP_PYTHON || process.env.PYTHON || "python";
+// Capture identity before compilation; a concurrent commit must not label an
+// already compiled executable as containing that later source revision.
+const hostManifest = hostRuntimeIdentity(REPO_ROOT);
 
 function run(command, args, options = {}) {
   console.log(`[build-runtime] ${command} ${args.join(" ")}`);
@@ -168,7 +172,7 @@ run(runtimeExe, [
   "import tempfile; from pathlib import Path; import keyring.backends.Windows; from app.connector_web_oauth import WebOAuthConnectorManager; m=WebOAuthConnectorManager(Path(tempfile.mkdtemp()), environment={}); s=m.github_status(); assert s.get('id') == 'github'; assert 'connected' in s; assert 'webOAuthAvailable' in s; print('loom-connector-status-ok')",
 ], { cwd: path.dirname(runtimeExe) });
 
-const hostManifest = hostRuntimeIdentity(REPO_ROOT);
+verifyPackagedRuntime(path.dirname(runtimeExe));
 fs.writeFileSync(path.join(DIST_ROOT, "python", "manifest.json"), `${JSON.stringify(hostManifest, null, 2)}\n`, "utf8");
 console.log(`[build-runtime] Host manifest: ${hostManifest.version} protocol=${hostManifest.protocol}`);
 console.log(`[build-runtime] Ready: ${runtimeExe}`);

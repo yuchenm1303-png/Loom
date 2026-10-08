@@ -5,9 +5,11 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import asar from "@electron/asar";
 import { verifyPackagedUpdateConfig } from "./packaged-update-config.mjs";
+import { verifyPackagedRuntime } from "./verify-packaged-runtime.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const archive = path.join(root, "release/win-unpacked/resources/app.asar");
+verifyPackagedRuntime(path.dirname(archive));
 const digest = (bytes) => createHash("sha256").update(bytes).digest("hex");
 const localPackage = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8"));
 await verifyPackagedUpdateConfig(path.dirname(archive), localPackage);

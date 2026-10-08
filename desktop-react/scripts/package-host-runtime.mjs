@@ -2,6 +2,7 @@ import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { verifyPackagedRuntime } from "./verify-packaged-runtime.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -57,6 +58,7 @@ if (selfTest.error) throw selfTest.error;
 if (selfTest.status !== 0) fail(String(selfTest.stderr || selfTest.stdout || "Host runtime self-test failed."));
 
 const archive = path.join(OUTPUT_ROOT, `Loom-Host-Runtime-${version}-win-x64.zip`);
+verifyPackagedRuntime(stage);
 const script = "& { param($src,$dst) Compress-Archive -Path (Join-Path $src '*') -DestinationPath $dst -CompressionLevel Optimal -Force }";
 const zipped = spawnSync("powershell.exe", ["-NoLogo", "-NoProfile", "-NonInteractive", "-Command", script, stage, archive], {
   encoding: "utf8",
