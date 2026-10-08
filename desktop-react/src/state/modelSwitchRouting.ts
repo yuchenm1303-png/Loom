@@ -6,8 +6,10 @@
  * switch changes this conversation without rewriting every other thread.
  */
 export interface ModelSwitchBridge {
-  switchModelProfile<T>(first: string, second?: string): Promise<T>;
-  switchCurrentModel<T>(first: string, second?: string, third?: string): Promise<T>;
+  switchModelProfile<T>(selection: string): Promise<T>;
+  switchModelProfile<T>(threadId: string, selection: string): Promise<T>;
+  switchCurrentModel<T>(model: string): Promise<T>;
+  switchCurrentModel<T>(threadId: string, selection: string, model: string): Promise<T>;
 }
 
 export function switchModelProfileForThread<T>(
