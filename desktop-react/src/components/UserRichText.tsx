@@ -1,7 +1,7 @@
 import { Check, Copy, ExternalLink, Globe2 } from "lucide-react";
-import { isValidElement, useMemo, useState, type ReactNode } from "react";
+import { isValidElement, memo, useMemo, useState, type ReactNode } from "react";
 import ReactMarkdown, { defaultUrlTransform, type Components } from "react-markdown";
-import rehypeHighlight from "rehype-highlight";
+import { rehypeHighlightOnce } from "./markdownHighlight";
 import rehypeKatex from "rehype-katex";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
@@ -102,7 +102,7 @@ function withoutStandaloneLinks(source: string, links: { href: string }[]): stri
   return source.split(/\r?\n/).filter((line) => !values.has(line.trim())).join("\n").trim();
 }
 
-export function UserRichText({ text }: { text: string }) {
+export const UserRichText = memo(function UserRichText({ text }: { text: string }) {
   const links = useMemo(() => standaloneLinks(text), [text]);
   const markdown = useMemo(() => withoutStandaloneLinks(text, links), [links, text]);
   const renderer = useMemo(() => components(), []);
@@ -112,7 +112,7 @@ export function UserRichText({ text }: { text: string }) {
       {markdown ? (
         <ReactMarkdown
           remarkPlugins={[remarkGfm, remarkMath]}
-          rehypePlugins={[rehypeKatex, [rehypeHighlight, { detect: false, ignoreMissing: true }]]}
+          rehypePlugins={[rehypeKatex, rehypeHighlightOnce]}
           components={renderer}
           urlTransform={safeUrlTransform}
           skipHtml
@@ -136,4 +136,4 @@ export function UserRichText({ text }: { text: string }) {
       ) : null}
     </div>
   );
-}
+});

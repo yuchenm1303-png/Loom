@@ -2,7 +2,7 @@ import { Check, Copy, Maximize2 } from "lucide-react";
 import { isValidElement, memo, useEffect, useMemo, useState, type ReactNode } from "react";
 import { ImageLightbox } from "./ImageLightbox";
 import ReactMarkdown, { defaultUrlTransform, type Components } from "react-markdown";
-import rehypeHighlight from "rehype-highlight";
+import { rehypeHighlightOnce } from "./markdownHighlight";
 import rehypeKatex from "rehype-katex";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
@@ -309,14 +309,6 @@ interface StreamTailOptions {
 interface StreamTailMatch {
   parent: StreamNode;
   childIndex: number;
-}
-
-// rehype-highlight registers ~37 grammars every time its attacher runs, and
-// react-markdown re-attaches plugins on every render (every streaming tick).
-// The returned transformer is stateless, so build it once.
-const highlightCodeBlocks = rehypeHighlight({ detect: false });
-function rehypeHighlightOnce() {
-  return highlightCodeBlocks;
 }
 
 const STREAM_TAIL_GRAPHEMES = 6;

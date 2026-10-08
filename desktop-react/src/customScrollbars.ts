@@ -5,6 +5,7 @@ const entries = new Map<HTMLElement, Bar[]>();
 const observedChildren = new Map<HTMLElement, Element>();
 const dirty = new Set<HTMLElement>();
 const added = new Set<Element>();
+const restyled = new Set<HTMLElement>();
 let frame = 0;
 let host: HTMLDivElement;
 const candidates = "div,main,section,aside,pre,textarea,ul";
@@ -148,8 +149,19 @@ function discover(node: Element) {
 
 function flush() {
   frame = 0;
-  for (const node of added) if (node.isConnected) discover(node);
+  // Mutation batches often contain both a parent and its newly mounted children.
+  // Walk each subtree once, rather than repeating discovery for nested records.
+  for (const node of added) {
+    if (!node.isConnected) continue;
+    let covered = false;
+    for (let parent = node.parentElement; parent; parent = parent.parentElement) {
+      if (added.has(parent)) { covered = true; break; }
+    }
+    if (!covered) discover(node);
+  }
   added.clear();
+  for (const target of restyled) if (target.isConnected) register(target);
+  restyled.clear();
   for (const [target, bars] of entries) if (!target.isConnected) {
     bars.forEach((bar) => bar.track.remove()); resize.unobserve(target);
     const child = observedChildren.get(target);
@@ -192,7 +204,14 @@ const mutation = new MutationObserver((records) => {
     if (!target || host.contains(target)) continue;
     markAncestors(target);
     if (record.type === "attributes") {
-      added.add(target); schedule();
+      if (record.attributeName === "class" || inheritedStyleChanged(record.oldValue, target.getAttribute("style"))) {
+        added.add(target);
+      } else if (target instanceof HTMLElement && target.matches(candidates)) {
+        // A transform/height/opacity animation cannot change descendants' CSS
+        // overflow rules. Only inspect this element for new inline overflow.
+        restyled.add(target);
+      }
+      schedule();
       for (const el of entries.keys()) if (target.contains(el)) schedule(el);
     }
     for (const node of record.addedNodes) if (node instanceof Element) {
@@ -206,11 +225,16 @@ const mutation = new MutationObserver((records) => {
     }
   }
 });
+function inheritedStyleChanged(previous: string | null, next: string | null): boolean {
+  // Custom properties and `all` can alter descendant overflow declarations.
+  const inherited = (value: string | null) => (value?.match(/(?:^|;)\s*(?:--[^:;]+|all)\s*:[^;]*/g) ?? []).join(";");
+  return inherited(previous) !== inherited(next);
+}
 host = document.createElement("div");
 host.className = "loom-scrollbar-layer";
 document.body.append(host);
 discover(document.body);
-mutation.observe(document.body, { subtree: true, childList: true, attributes: true, attributeFilter: ["class", "style"], characterData: true });
+mutation.observe(document.body, { subtree: true, childList: true, attributes: true, attributeOldValue: true, attributeFilter: ["class", "style"], characterData: true });
 document.addEventListener("scroll", onScroll, true);
 const onInput = (event: Event) => { if (event.target instanceof Element) markAncestors(event.target); };
 document.addEventListener("input", onInput, true);

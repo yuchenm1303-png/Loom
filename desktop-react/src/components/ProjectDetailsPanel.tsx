@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMotionPresence } from "../motion/useMotionPresence";
+import { startVisiblePolling } from "../visiblePolling";
 import type { ProjectRecord, ThreadRecord, TranscriptItem } from "../types/loom";
 import { ProjectAgentFilesCard } from "./ProjectAgentFilesCard";
 import { ProjectMemoryCard } from "./ProjectMemoryCard";
@@ -269,9 +270,12 @@ export function ProjectDetailsPanel({
       return undefined;
     }
     if (!open) return undefined;
-    void loadWorkspaceStatus();
-    const timer = window.setInterval(() => void loadWorkspaceStatus(true), 12000);
-    return () => window.clearInterval(timer);
+    let initial = true;
+    return startVisiblePolling(() => {
+      const result = loadWorkspaceStatus(!initial);
+      initial = false;
+      return result;
+    }, 12000);
   }, [loadWorkspaceStatus, open, presence.mounted, projectId]);
 
   const projectThreads = useMemo(() => {
