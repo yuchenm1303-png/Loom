@@ -1002,7 +1002,9 @@ export function PortalLiquidCursor() {
         Math.abs(pressure.velocity) < 0.01 &&
         magneticSettled;
 
-      if (!pointerInside && settled) {
+      // Pointer/input/layout events wake the loop. A stationary cursor does
+      // not need continuous DOM measurements and WebGL draws once springs settle.
+      if (settled && !rasterDirty && !snapDirty) {
         running = false;
         return;
       }

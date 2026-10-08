@@ -9,7 +9,7 @@ try {
     const body = ts.transpileModule(readFileSync(process.env.LOOM_SCROLLBAR_BASELINE, "utf8"), {
       compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 },
     }).outputText;
-    await page.route("**/src/customScrollbars.ts", route => route.fulfill({ contentType: "application/javascript", body }));
+    await page.route("**/src/customScrollbars.ts*", route => route.fulfill({ contentType: "application/javascript", body }));
   }
   await page.goto(`${process.env.LOOM_TEST_ORIGIN || "http://127.0.0.1:5173"}/scripts/fixtures/window-chrome.html`);
   await page.locator(".loom-titlebar").waitFor();
@@ -48,6 +48,30 @@ try {
   for (const key of ["TaskDuration", "ScriptDuration", "RecalcStyleDuration", "LayoutDuration"]) result[`${key}Ms`] = (after[key] - before[key]) * 1000;
   console.log(JSON.stringify(result));
   if (!process.env.LOOM_SCROLLBAR_BASELINE) assert.ok(result.reads < 100, `animation rescanned history: ${result.reads} style reads`);
+  const glow = await page.evaluate(async () => {
+    const root = document.getElementById("scrollbar-benchmark");
+    const original = window.getComputedStyle;
+    let reads = 0;
+    window.getComputedStyle = function(element, ...args) {
+      if (root.contains(element)) reads++;
+      return original.call(this, element, ...args);
+    };
+    try {
+      for (let index = 0; index < 20; index++) {
+        root.style.setProperty("--lens-x", `${index}px`);
+        root.style.setProperty("--lens-y", `${index}px`);
+        root.style.setProperty("--starter-x", `${index}%`);
+        root.style.setProperty("--starter-y", `${index}%`);
+        root.style.transform = `translateX(${index % 2}px)`;
+        await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+      }
+      for (const name of ["--lens-x", "--lens-y", "--starter-x", "--starter-y"]) root.style.removeProperty(name);
+      await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+      return { reads };
+    } finally { window.getComputedStyle = original; }
+  });
+  console.log(JSON.stringify({ glow }));
+  if (!process.env.LOOM_SCROLLBAR_BASELINE) assert.ok(glow.reads < 100, `pointer glow rescanned history: ${glow.reads} style reads`);
   // Class and inherited-variable changes may enable descendant scrollports.
   await page.evaluate(() => {
     const style = document.createElement("style");

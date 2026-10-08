@@ -202,6 +202,10 @@ const mutation = new MutationObserver((records) => {
   for (const record of records) {
     const target = record.target instanceof Element ? record.target : record.target.parentElement;
     if (!target || host.contains(target)) continue;
+    // Pointer lights only repaint backgrounds. They run on every pointer frame
+    // and must not rediscover every descendant or remeasure ancestor scrollports.
+    if (record.type === "attributes" && record.attributeName === "style"
+      && scrollRelevantStyle(record.oldValue) === scrollRelevantStyle(target.getAttribute("style"))) continue;
     markAncestors(target);
     if (record.type === "attributes") {
       if (record.attributeName === "class" || inheritedStyleChanged(record.oldValue, target.getAttribute("style"))) {
@@ -225,10 +229,17 @@ const mutation = new MutationObserver((records) => {
     }
   }
 });
+function scrollRelevantStyle(value: string | null): string {
+  // Keep unknown variables: application CSS can use them to enable overflow.
+  // These four owned variables are used exclusively as gradient coordinates.
+  return (value?.match(/(?:^|;)\s*[^:;]+\s*:[^;]*/g) ?? [])
+    .filter((declaration) => !/^(?:;)?\s*--(?:lens|starter)-[xy]\s*:/.test(declaration))
+    .map((declaration) => declaration.replace(/^;\s*/, "").trim()).join(";");
+}
 function inheritedStyleChanged(previous: string | null, next: string | null): boolean {
   // Custom properties and `all` can alter descendant overflow declarations.
   const inherited = (value: string | null) => (value?.match(/(?:^|;)\s*(?:--[^:;]+|all)\s*:[^;]*/g) ?? []).join(";");
-  return inherited(previous) !== inherited(next);
+  return inherited(scrollRelevantStyle(previous)) !== inherited(scrollRelevantStyle(next));
 }
 host = document.createElement("div");
 host.className = "loom-scrollbar-layer";

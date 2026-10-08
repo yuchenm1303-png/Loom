@@ -411,19 +411,25 @@ function translateAttributes(element: Element, language: LoomLanguage): void {
     const value = element.getAttribute(attr);
     if (!value) continue;
     const translated = table[value.trim()];
-    if (translated) element.setAttribute(attr, translated);
+    if (translated && translated !== value) element.setAttribute(attr, translated);
   }
 }
 
-function applyStaticSettingsLanguage(language: LoomLanguage): void {
-  const root = document.querySelector(".settings-shell");
+function applyStaticSettingsLanguage(language: LoomLanguage, root: Node | null = document.querySelector(".settings-shell")): void {
   if (!root) return;
+  if (root instanceof Text) {
+    translateTextNode(root, language);
+    return;
+  }
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
   const nodes: Text[] = [];
   while (walker.nextNode()) nodes.push(walker.currentNode as Text);
   for (const node of nodes) translateTextNode(node, language);
-  for (const element of root.querySelectorAll("[title], [aria-label], [placeholder]")) {
-    translateAttributes(element, language);
+  if (root instanceof Element) {
+    translateAttributes(root, language);
+    for (const element of root.querySelectorAll("[title], [aria-label], [placeholder]")) {
+      translateAttributes(element, language);
+    }
   }
 }
 
@@ -439,8 +445,23 @@ export function LanguageSettingsDock() {
     applyStaticSettingsLanguage(language);
     const root = document.querySelector(".settings-shell");
     if (!root) return;
-    const observer = new MutationObserver(() => applyStaticSettingsLanguage(language));
-    observer.observe(root, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ["title", "aria-label", "placeholder"] });
+    const options = { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ["title", "aria-label", "placeholder"] };
+    const observer = new MutationObserver((records) => {
+      // Translate only new/changed content. Observing our own translations used
+      // to trigger another full settings-tree traversal for each update.
+      observer.disconnect();
+      try {
+        for (const record of records) {
+          if (!root.contains(record.target)) continue;
+          if (record.type === "attributes") translateAttributes(record.target as Element, language);
+          else if (record.type === "characterData") applyStaticSettingsLanguage(language, record.target);
+          else for (const node of record.addedNodes) {
+            if (root.contains(node)) applyStaticSettingsLanguage(language, node);
+          }
+        }
+      } finally { observer.observe(root, options); }
+    });
+    observer.observe(root, options);
     return () => observer.disconnect();
   }, [language]);
 
