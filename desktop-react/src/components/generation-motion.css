@@ -126,19 +126,8 @@
 /* Completion handoff --------------------------------------------------------
    Runtime flips to idle before the process stack finishes folding. The final
    answer is already on screen when it leaves the live process, so it moves
-   without any entrance of its own; the process folds above it (turn-flow.css)
-   and only the toolbar and artifacts arrive. */
-
-/* Scoped to the live -> complete hand-off. History mounts already settled, and
-   relocating the final answer out of the process remounts its toolbar and any
-   decision card; neither may replay on every thread switch. */
-.turn-block.is-settling .turn-final-answer .assistant-message-meta {
-  animation: loom-generation-actions-in 240ms var(--loom-generation-pop) 150ms both;
-}
-
-.turn-block.is-settling > .turn-artifacts {
-  animation: loom-generation-artifact-in 300ms var(--loom-generation-pop) 80ms both;
-}
+   without any entrance of its own. Its toolbar and the changed-files card
+   unfold together with the process fold (turn-flow.css). */
 
 /* Small live-state refinements --------------------------------------------- */
 .task-flow-inline-detail-grid.open .task-flow-inline-detail {
@@ -263,27 +252,7 @@ html[data-loom-theme="light"] .turn-process.is-live .entry-steering-user .user-m
   }
 }
 
-@keyframes loom-generation-actions-in {
-  from {
-    opacity: 0;
-    transform: translateY(-3px);
-  }
-  to {
-    opacity: .78;
-    transform: translateY(0);
-  }
-}
 
-@keyframes loom-generation-artifact-in {
-  from {
-    opacity: 0;
-    transform: translateY(4px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
 
 @keyframes loom-generation-detail-in {
   from {
@@ -324,8 +293,6 @@ html[data-loom-theme="light"] .turn-process.is-live .entry-steering-user .user-m
   .turn-process.is-live .entry-steering-user .user-message-meta,
   .turn-block > .entry-user_message.is-sending :is(.user-link-card,.user-rich-code-block,.user-message-image-preview,.user-message-attachment-card,.user-message-media-preview),
   .turn-process.is-live .entry-steering-user :is(.user-link-card,.user-rich-code-block,.user-message-image-preview,.user-message-attachment-card,.user-message-media-preview),
-  .turn-block.is-settling .turn-final-answer .assistant-message-meta,
-  .turn-block.is-settling > .turn-artifacts,
   .task-flow-inline-detail-grid.open .task-flow-inline-detail {
     animation: none !important;
     transform: none !important;
@@ -356,8 +323,6 @@ html[data-loom-theme="light"] .turn-process.is-live .entry-steering-user .user-m
 :root[data-loom-reduced-motion="true"] .turn-process.is-live .entry-steering-user .user-message-copy-shell,
 :root[data-loom-reduced-motion="true"] .turn-block > .entry-user_message.is-sending .user-message-meta,
 :root[data-loom-reduced-motion="true"] .turn-process.is-live .entry-steering-user .user-message-meta,
-:root[data-loom-reduced-motion="true"] .turn-block.is-settling .turn-final-answer .assistant-message-meta,
-:root[data-loom-reduced-motion="true"] .turn-block.is-settling > .turn-artifacts,
 :root[data-loom-reduced-motion="true"] .task-flow-inline-detail-grid.open .task-flow-inline-detail {
   animation: none !important;
   transform: none !important;

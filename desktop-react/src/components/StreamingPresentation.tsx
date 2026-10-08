@@ -1,5 +1,5 @@
-import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
-import { advanceStreamingText, streamingFrameInterval } from "./streamingText";
+import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { advanceStreamingText, healStreamingMarkdown, streamingFrameInterval } from "./streamingText";
 import { useReducedMotion } from "../motion/useReducedMotion";
 import { STREAM_FINISH_MS } from "../presentationTiming";
 
@@ -145,8 +145,13 @@ export function useStreamingPresentation(content: string, streaming: boolean, me
     frameRef.current = null;
   }, []);
 
+  const shown = reduce || interrupted ? content : visible;
+  // Text still arriving or still painting may stop mid-syntax; heal its edge.
+  const unsettled = !interrupted && (streaming || shown !== content);
+  const healed = useMemo(() => (unsettled ? healStreamingMarkdown(shown) : shown), [shown, unsettled]);
+
   return {
-    visible: reduce || interrupted ? content : visible,
+    visible: healed,
     painting,
     // Already visible content must not reanimate when moved out of the process area.
     fadeFrom: initial.length,

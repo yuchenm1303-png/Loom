@@ -176,6 +176,59 @@ html[data-loom-theme="light"] .transcript {
   animation: loom-content-surface-in 260ms var(--loom-motion-pop) both;
 }
 
+/* Preview of a page, image or document an edit row wrote. It sits at the end
+   of its row, never inside the disclosure button, and appears with the row. */
+.task-flow-row-wrap.has-preview {
+  position: relative;
+}
+
+.task-flow-row-wrap.has-preview > .task-flow-row {
+  padding-right: 76px;
+}
+
+.task-flow-row-preview {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0 9px 0 8px;
+  border: 1px solid color-mix(in srgb, var(--loom-workspace-accent, #9b8ff0) 22%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--loom-workspace-accent, #9b8ff0) 7%, transparent);
+  color: var(--loom-workspace-accent, #a59cf0);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 560;
+  line-height: 1;
+  cursor: pointer;
+  transition: background 160ms ease, border-color 160ms ease, color 160ms ease;
+}
+
+.task-flow-row-preview:hover {
+  border-color: color-mix(in srgb, var(--loom-workspace-accent, #9b8ff0) 40%, transparent);
+  background: color-mix(in srgb, var(--loom-workspace-accent, #9b8ff0) 13%, transparent);
+}
+
+.task-flow-row-preview:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--loom-workspace-accent, #9b8ff0) 55%, transparent);
+  outline-offset: 2px;
+}
+
+.task-flow-row-preview > svg {
+  transition: scale 200ms var(--loom-spring-pop, ease);
+}
+
+.task-flow-row-preview:hover > svg {
+  scale: 1.12;
+}
+
+.task-flow-row-wrap[data-born="live"] > .task-flow-row-preview {
+  animation: loom-task-copy-in 260ms ease-out 140ms backwards;
+}
+
 /* Task flow: static geometry ------------------------------------------------
    Rows read as one quiet timeline. Material (transparent rows, the hairline
    rail) is owned by workspace-surface-refinement.css. Task-flow copy keeps

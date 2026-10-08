@@ -379,10 +379,19 @@ body.loom-panel-resizing * {
 }
 
 /* Completed turns can be skipped entirely while they are outside the viewport.
-   This matters for the single final reflow after a resize on very long chats. */
-.workspace-panels .turn-block.is-complete {
-  content-visibility: auto;
+   This matters for the single final reflow after a resize on very long chats.
+   Every turn records its rendered height (contain-intrinsic-size: auto), and
+   a turn only becomes skippable once it has stopped settling and is no longer
+   the newest one. A turn that turned skippable at the moment it completed had
+   no remembered size yet: Chromium laid it out at the 240px placeholder until
+   its first visibility check, so the transcript collapsed, the viewport
+   clamped to the top and then scrolled back down. */
+.workspace-panels .turn-block {
   contain-intrinsic-size: auto 240px;
+}
+
+.workspace-panels .turn-block.is-complete:not(.is-settling):not(:last-child) {
+  content-visibility: auto;
 }
 
 .runtime-inspector {

@@ -21,10 +21,7 @@
 .artifact-library-empty strong { font-size: 14px; }
 .artifact-library-empty span { font-size: 12px; line-height: 1.7; color: #9298a7; }
 .artifact-back { display: grid; place-items: center; width: 100%; height: 100%; border: 0; background: transparent; color: inherit; cursor: pointer; border-radius: inherit; }
-.artifact-transcript-link { display: inline-flex; max-width: 100%; align-items: center; gap: 8px; margin: 0; padding: 7px 0; border: 1px solid transparent; border-radius: 8px; background: transparent; color: var(--loom-workspace-accent); font-size: 13px; cursor: pointer; transition: background 180ms ease, border-color 180ms ease; }
-.artifact-transcript-link strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 550; }
-.artifact-transcript-link:hover { background: rgba(145,130,228,.08); border-color: rgba(145,130,228,.17); }
-.artifact-card-main:focus-visible, .artifact-card-external:focus-visible, .artifact-back:focus-visible, .artifact-transcript-link:focus-visible { outline: 2px solid #9182e4; outline-offset: 3px; }
+.artifact-card-main:focus-visible, .artifact-card-external:focus-visible, .artifact-back:focus-visible { outline: 2px solid #9182e4; outline-offset: 3px; }
 html[data-loom-theme="light"] .artifact-library { color: #30323e; background: #f8f9fc; }
 html[data-loom-theme="light"] .artifact-library-card { background: #fff; box-shadow: 0 3px 12px rgba(40,35,75,.025); }
 html[data-loom-theme="light"] .artifact-library-card:hover { background: #fbfaff; }

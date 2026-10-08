@@ -97,8 +97,8 @@
   gap: 20px;
 }
 :root .app-shell .transcript-scroll { background: var(--ws-canvas); scrollbar-gutter: stable both-edges; }
-:root .app-shell .turn-block { gap: 14px; }
-:root .app-shell :is(.turn-process, .turn-process-header, .turn-artifacts, .assistant-artifact-preview-card) { width: 100%; }
+:root .app-shell .turn-block { --turn-gap: 14px; gap: var(--turn-gap); }
+:root .app-shell :is(.turn-process, .turn-process-header, .turn-artifacts) { width: 100%; }
 :root .app-shell .turn-process.has-guidance .turn-process-content > .transcript-entry:not(.entry-steering-user) { width: 100%; }
 :root .app-shell .assistant-message { color: var(--ws-ink); }
 :root .app-shell .turn-process .turn-process-header {
@@ -244,23 +244,25 @@
   box-shadow: none;
   color: inherit !important;
 }
-:root .app-shell :is(.turn-artifacts-preview-action, .review-summary-footer) {
-  margin: 0 20px;
-  width: calc(100% - 40px);
-  padding: 8px 0;
+/* The one follow-up action closes the card: a full-width row under a hairline. */
+:root .app-shell .turn-artifacts-preview-action {
+  margin: 0 12px 6px;
+  width: calc(100% - 24px);
+  padding: 8px 8px;
   min-height: 36px;
   border: 0;
   border-top: 1px solid var(--ws-line);
-  border-radius: 0;
+  border-radius: 0 0 8px 8px;
   background: transparent;
   box-shadow: none;
+  color: var(--ws-accent);
   font-weight: 500;
   font-size: 12px;
+  transition: background 160ms ease, color 160ms ease;
 }
-:root .app-shell .turn-artifacts-preview-action { color: var(--ws-accent); }
-:root .app-shell .review-summary-footer { color: var(--ws-muted); margin-bottom: 4px; }
-:root .app-shell :is(.turn-artifacts-preview-action, .review-summary-footer):hover { background: var(--ws-hover); border-color: var(--ws-line); }
-:root .app-shell .review-summary-footer svg { color: var(--ws-muted); }
+:root .app-shell .turn-artifacts-preview-action:hover { background: var(--ws-hover); border-color: var(--ws-line); }
+:root .app-shell .turn-artifacts-preview-action > svg:last-child { transition: translate 200ms cubic-bezier(.2,.8,.2,1); }
+:root .app-shell .turn-artifacts-preview-action:hover > svg:last-child { translate: 2px 0; }
 
 /* Keep the input as the primary action surface, with a short grounding shadow. */
 :root .app-shell .composer-wrap.composer-refined {
@@ -282,17 +284,12 @@
   font-size: 12px;
   line-height: 18px;
 }
-:root .app-shell .assistant-artifact-preview-card {
   margin: 0;
   border-color: var(--ws-line);
   border-radius: var(--ws-radius);
   background: var(--ws-surface);
   box-shadow: var(--ws-shadow);
 }
-:root .app-shell .assistant-artifact-preview-footer { background: var(--ws-surface); border-color: var(--ws-line); padding: 12px 20px; }
-:root .app-shell .assistant-artifact-preview-copy strong { color: var(--ws-ink); font-size: 13px; font-weight: 600; }
-:root .app-shell .assistant-artifact-preview-copy span { color: var(--ws-muted); font-size: 12px; line-height: 18px; }
-:root .app-shell .assistant-artifact-preview-footer > button { color: var(--ws-accent); font-size: 12px; }
 @media (max-width: 760px) {
   :root .app-shell { --ws-gutter: 20px; }
   :root .app-shell .transcript { padding-block: 40px 20px; }
@@ -305,5 +302,5 @@
 @media (max-width: 880px) {
   :root .app-shell .review-summary-header { padding-inline: 12px; }
   :root .app-shell .turn-artifacts-file-strip { padding-inline: 12px; }
-  :root .app-shell :is(.turn-artifacts-preview-action, .review-summary-footer) { margin-inline: 12px; width: calc(100% - 24px); }
+  :root .app-shell .turn-artifacts-preview-action { margin-inline: 8px; width: calc(100% - 16px); }
 }

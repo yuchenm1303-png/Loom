@@ -3,7 +3,6 @@
   width: 100%;
   display: flex;
   flex-direction: column;
-  gap: 16px;
 }
 
 .turn-block + .turn-block {
@@ -236,10 +235,19 @@
 
 /* Completion ----------------------------------------------------------------
    The runtime turns idle while the finished live layout is still on screen.
-   It holds for a beat (.is-settle-hold) exactly as the user last saw it, then
-   folds (.is-settle-fold) while its summary line grows in above it. The final
-   answer below rides the shrinking height, so the whole hand-off is one upward
-   motion: no re-expanded history, no second entrance for the answer. */
+   It holds for a beat (.is-settle-hold) exactly as the user last saw it: the
+   final answer finishes painting and nothing new takes space. Then everything
+   moves in one beat (.is-settle-fold): the work log folds into its summary
+   line while the answer's toolbar and the changed-files card unfold below it.
+   The height the fold gives back is roughly what the toolbar and card take,
+   so the conversation glides instead of jumping down and back up. History
+   mounts settled and never plays any of this. */
+.turn-block {
+  --turn-gap: 16px;
+  --turn-fold-ease: cubic-bezier(.3,.72,.2,1);
+  gap: var(--turn-gap);
+}
+
 .turn-process-header-shell {
   display: grid;
   grid-template-rows: 1fr;
@@ -262,7 +270,7 @@
 
 .turn-process.is-settle-fold .turn-process-header-shell {
   transition:
-    grid-template-rows 380ms cubic-bezier(.3,.72,.2,1),
+    grid-template-rows 380ms var(--turn-fold-ease, ease),
     opacity 260ms ease 110ms;
 }
 
@@ -270,19 +278,71 @@
   grid-template-rows: 0fr;
   opacity: 0;
   transition:
-    grid-template-rows 380ms cubic-bezier(.3,.72,.2,1),
+    grid-template-rows 380ms var(--turn-fold-ease, ease),
     opacity 200ms ease;
+}
+
+/* The changed-files card: its slot is empty space during the hold (the turn's
+   flex gap included), then grows with the fold and the card fades up into it. */
+.turn-artifacts-slot {
+  display: grid;
+  grid-template-rows: 1fr;
+}
+
+.turn-artifacts-slot-inner {
+  min-width: 0;
+  min-height: 0;
+}
+
+.turn-block.is-settling > .turn-artifacts-slot > .turn-artifacts-slot-inner {
+  overflow: hidden;
+}
+
+.turn-block.is-settle-hold > .turn-artifacts-slot {
+  grid-template-rows: 0fr;
+  margin-top: calc(-1 * var(--turn-gap, 16px));
+  opacity: 0;
+}
+
+.turn-block.is-settle-fold > .turn-artifacts-slot {
+  transition:
+    grid-template-rows 380ms var(--turn-fold-ease, ease),
+    margin-top 380ms var(--turn-fold-ease, ease),
+    opacity 280ms ease 100ms;
+}
+
+/* The final answer's toolbar appears with the summary, not before it. */
+.turn-block.is-settle-hold .turn-final-answer .assistant-message-meta {
+  height: 0;
+  min-height: 0;
+  margin-top: 0;
+  opacity: 0;
+  overflow: hidden;
+}
+
+.turn-block.is-settle-fold .turn-final-answer .assistant-message-meta {
+  height: 25px;
+  overflow: hidden;
+  transition:
+    height 340ms var(--turn-fold-ease, ease),
+    min-height 340ms var(--turn-fold-ease, ease),
+    margin-top 340ms var(--turn-fold-ease, ease),
+    opacity 240ms ease 140ms;
 }
 
 @media (prefers-reduced-motion: reduce) {
   .turn-process-header-shell,
-  .turn-process.is-live.is-settle-fold .turn-process-grid {
+  .turn-process.is-live.is-settle-fold .turn-process-grid,
+  .turn-block.is-settle-fold > .turn-artifacts-slot,
+  .turn-block.is-settle-fold .turn-final-answer .assistant-message-meta {
     transition: none !important;
   }
 }
 
 :root[data-loom-reduced-motion="true"] .turn-process-header-shell,
-:root[data-loom-reduced-motion="true"] .turn-process.is-live.is-settle-fold .turn-process-grid {
+:root[data-loom-reduced-motion="true"] .turn-process.is-live.is-settle-fold .turn-process-grid,
+:root[data-loom-reduced-motion="true"] .turn-block.is-settle-fold > .turn-artifacts-slot,
+:root[data-loom-reduced-motion="true"] .turn-block.is-settle-fold .turn-final-answer .assistant-message-meta {
   transition: none !important;
 }
 

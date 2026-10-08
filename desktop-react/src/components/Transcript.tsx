@@ -5,10 +5,11 @@ import {
   Check,
   ChevronRight,
   CircleAlert,
+  CircleStop,
   Code2,
   Copy,
+  Eye,
   FileDiff,
-  FileCode2,
   History,
   Pencil,
   Reply,
@@ -33,7 +34,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { artifactName, canRenderArtifact } from "../artifactRenderers";
+import { artifactName, artifactRenderer } from "../artifactRenderers";
 import { useI18n } from "../i18n";
 import { useMotionPresence } from "../motion/useMotionPresence";
 import { useReducedMotion } from "../motion/useReducedMotion";
@@ -67,9 +68,7 @@ import {
   type RuntimeCopy,
 } from "./runtimeCopy";
 import "./activity-flow.css";
-import "./assistant-artifact-preview.css";
 import "./message-actions.css";
-import "./task-flow-folding.css";
 import "./turn-flow.css";
 import "./conversation-motion.css";
 import "../taskCapsuleLens";
@@ -579,6 +578,17 @@ function buildActivityRows(items: TranscriptItem[]): ActivityRowModel[] {
   return rows;
 }
 
+const VISUAL_ARTIFACTS = new Set(["web", "image", "pdf", "video", "audio"]);
+
+/** The last written file worth looking at rather than reading as a diff. */
+function visualArtifactPath(paths: readonly unknown[]): string {
+  for (let index = paths.length - 1; index >= 0; index -= 1) {
+    const path = String(paths[index] ?? "").trim();
+    if (path && VISUAL_ARTIFACTS.has(artifactRenderer(path).kind)) return path;
+  }
+  return "";
+}
+
 function diffStats(diff?: string): { added: number; removed: number } {
   if (!diff) return { added: 0, removed: 0 };
   let added = 0;
@@ -951,10 +961,14 @@ const ActivityRow = memo(function ActivityRow({ row, open, workspace, copy, delt
   const hintPresence = useMotionPresence(open && active && !visibleDetail && !screenshotPaths.length, 200);
   const identity = activityIdentity(identitySource(row));
   const kind = description.category === "command" ? "process" : description.category === "edit" ? "file_edit" : row.item.type;
+  // A page, image or document being written can be watched while it grows.
+  const previewPath = description.category === "edit" && workspace && !active
+    ? visualArtifactPath(row.item.type === "file_edit" ? (delta?.paths ?? row.item.paths ?? []) : [])
+    : "";
 
   return (
     <div
-      className={`task-flow-row-wrap ${open ? "is-open" : ""}`}
+      className={`task-flow-row-wrap ${open ? "is-open" : ""} ${previewPath ? "has-preview" : ""}`.replace(/\s+/g, " ").trim()}
       data-kind={kind}
       data-row-key={row.key}
       data-born={born ? "live" : undefined}
@@ -983,13 +997,26 @@ const ActivityRow = memo(function ActivityRow({ row, open, workspace, copy, delt
           </span>
           {stats && (stats.added > 0 || stats.removed > 0) ? (
             <span className="task-flow-diffstat">
-              <span className="task-flow-plus">+{stats.added}</span>
-              <span className="task-flow-minus">-{stats.removed}</span>
+              {stats.added ? <span className="task-flow-plus">+{stats.added}</span> : null}
+              {stats.removed ? <span className="task-flow-minus">-{stats.removed}</span> : null}
             </span>
           ) : null}
         </span>
         <ActivityStatus status={status} copy={copy} />
       </button>
+
+      {previewPath ? (
+        <button
+          type="button"
+          className="task-flow-row-preview"
+          onClick={() => window.dispatchEvent(new CustomEvent("loom:artifact-preview-open", { detail: { path: previewPath, workspace } }))}
+          title={copy.previewArtifactTitle(previewPath)}
+          aria-label={copy.previewArtifact(artifactName(previewPath))}
+        >
+          <Eye size={12} strokeWidth={1.9} aria-hidden="true" />
+          <span>{copy.preview}</span>
+        </button>
+      ) : null}
 
       {expandable ? (
         <div
@@ -1453,9 +1480,17 @@ function ApprovalCard({ item, onApproval }: { item: TranscriptItem; onApproval(i
   );
 }
 
+/** A turn's ending: a failure reads as an error, the user's own stop does not. */
 function ErrorRow({ item }: { item: TranscriptItem }) {
   const copy = useRuntimeCopy();
-  return <div className="error-row"><span className="error-icon"><CircleAlert size={14} /></span><span>{item.error || copy.turnFailed}</span></div>;
+  const ending = copy.turnEnding(String(item.error || ""));
+  const stopped = ending.tone === "stopped";
+  return (
+    <div className={`error-row ${stopped ? "is-stopped" : ""}`.trim()} role={stopped ? "status" : "alert"}>
+      <span className="error-icon">{stopped ? <CircleStop size={14} /> : <CircleAlert size={14} />}</span>
+      <span>{ending.text}</span>
+    </div>
+  );
 }
 
 // Items are immutable snapshots: an unchanged item (same object) renders the
@@ -1711,42 +1746,6 @@ function changedPaths(items: TranscriptItem[]): string[] {
   return [...paths];
 }
 
-function latestInlineArtifact(items: TranscriptItem[]): { path: string; revision: number } | null {
-  let revision = 0;
-  for (const item of items) {
-    if (item.type !== "file_edit") continue;
-    revision += 1;
-  }
-
-  for (let index = items.length - 1; index >= 0; index -= 1) {
-    const item = items[index];
-    if (item.type !== "file_edit") continue;
-    const paths = item.paths ?? [];
-    for (let pathIndex = paths.length - 1; pathIndex >= 0; pathIndex -= 1) {
-      const target = String(paths[pathIndex] || "").trim();
-      if (target && canRenderArtifact(target)) return { path: target, revision };
-    }
-  }
-  return null;
-}
-
-function AssistantArtifactPreview({
-  path,
-  workspace,
-  revision,
-}: {
-  path: string;
-  workspace: string;
-  revision: number;
-}) {
-  const copy = useRuntimeCopy();
-  return (
-    <button type="button" className="artifact-transcript-link" title={copy.artifactUpdates(path, revision)}
-      onClick={() => window.dispatchEvent(new CustomEvent("loom:artifact-preview-open", { detail: { path, workspace } }))}>
-      <FileCode2 size={15} /><span>{copy.openArtifact}</span><strong>{artifactName(path)}</strong><ChevronRight size={13} />
-    </button>
-  );
-}
 
 /**
  * What the growth edge of a live turn is doing right now. The thinking capsule
@@ -1869,8 +1868,8 @@ function TurnProcess({
                 <span className="turn-process-summary">{summaryLabel}</span>
                 {(breakdown.added > 0 || breakdown.removed > 0) ? (
                   <span className="turn-process-diffstat" aria-label={copy.diffLabel(breakdown.added, breakdown.removed)}>
-                    <span className="turn-process-plus">+{breakdown.added}</span>
-                    <span className="turn-process-minus">-{breakdown.removed}</span>
+                    {breakdown.added ? <span className="turn-process-plus">+{breakdown.added}</span> : null}
+                    {breakdown.removed ? <span className="turn-process-minus">-{breakdown.removed}</span> : null}
                   </span>
                 ) : null}
                 <span className="turn-process-time">{copy.elapsed(elapsedSeconds(allItems))}</span>
@@ -1940,7 +1939,12 @@ function TurnArtifacts({ items, workspace }: { items: TranscriptItem[]; workspac
   const paths = changedPaths(items);
   const diff = String(edit?.diff ?? "").trim();
   if (!paths.length && !diff) return null;
-  return <TurnArtifactsPreview items={items} workspace={workspace} />;
+  // The slot owns the unfold at completion; the card keeps its own surface.
+  return (
+    <div className="turn-artifacts-slot">
+      <div className="turn-artifacts-slot-inner"><TurnArtifactsPreview items={items} workspace={workspace} /></div>
+    </div>
+  );
 }
 
 interface TurnViewProps {
@@ -2036,16 +2040,19 @@ const TurnView = memo(function TurnView({
     wasActiveRef.current = active;
   }, [active, reduce]);
 
-  const inlineArtifact = useMemo(() => latestInlineArtifact(derived.orderedItems), [derived.orderedItems]);
   const fileDeltas = useMemo(() => fileEditDeltas(derived.orderedItems), [derived.orderedItems]);
   const thinkingHandle = useRef<ThinkingHandle>({ element: null, mountedAt: 0 }).current;
   const settling = settle !== null;
 
+  // Completion is one motion: while the finished layout holds, nothing new
+  // takes space; when the process folds, the answer's toolbar and the changed
+  // files unfold in the same beat (turn-flow.css), so the height the fold
+  // gives back is what they take and the viewport barely travels.
   return (
     <StreamingPresentation>
     <ThinkingHandleContext.Provider value={thinkingHandle}>
     <FileEditDeltaContext.Provider value={fileDeltas}>
-    <section className={`turn-block ${active ? "is-active" : "is-complete"} ${settling ? "is-settling" : ""}`.trim()} data-turn-id={turnId}>
+    <section className={`turn-block ${active ? "is-active" : "is-complete"} ${settling ? `is-settling is-settle-${settle}` : ""}`.replace(/\s+/g, " ").trim()} data-turn-id={turnId}>
       {derived.initialUser ? (
         <div className={`transcript-entry entry-user_message ${sending ? "is-sending" : ""}`} key={derived.initialUser.clientMessageId || derived.initialUser.id}
           onAnimationEnd={(event) => {
@@ -2080,16 +2087,6 @@ const TurnView = memo(function TurnView({
             decisionInteractive={derived.finalAssistant.id === decisionInteractiveItemId}
             promptDisabled={promptDisabled}
             workspace={workspace}
-          />
-        </div>
-      ) : null}
-
-      {inlineArtifact && workspace ? (
-        <div className="transcript-entry entry-artifact-preview" key={`artifact-preview:${inlineArtifact.path}`}>
-          <AssistantArtifactPreview
-            path={inlineArtifact.path}
-            workspace={workspace}
-            revision={inlineArtifact.revision}
           />
         </div>
       ) : null}

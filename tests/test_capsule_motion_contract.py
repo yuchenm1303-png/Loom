@@ -21,6 +21,7 @@ TRANSCRIPT = COMPONENTS / "Transcript.tsx"
 MOTION = COMPONENTS / "conversation-motion.css"
 GENERATION = COMPONENTS / "generation-motion.css"
 THINKING = COMPONENTS / "inline-thinking.css"
+TURN_FLOW = COMPONENTS / "turn-flow.css"
 THEME = SRC / "theme.css"
 
 TRANSFORM_PROPERTY = re.compile(r"(?<![\w-])(transform|translate|scale|rotate)\s*:")
@@ -216,8 +217,19 @@ def test_history_never_replays_settle_entrances() -> None:
     generation = read(GENERATION)
     motion = read(MOTION)
 
-    assert ".turn-block.is-settling .turn-final-answer .assistant-message-meta {" in generation
-    assert ".turn-block.is-settling > .turn-artifacts {" in generation
+    flow = read(TURN_FLOW)
+    transcript = read(TRANSCRIPT)
+    # The answer's toolbar and the changed-files card arrive with the process
+    # fold, scoped to the settle phases only a live -> complete turn passes
+    # through. During the hold they take no space, so completion does not push
+    # the conversation down and pull it back up a moment later.
+    assert "is-settling is-settle-${settle}" in transcript
+    assert ".turn-block.is-settle-hold .turn-final-answer .assistant-message-meta {" in flow
+    assert ".turn-block.is-settle-fold .turn-final-answer .assistant-message-meta {" in flow
+    assert ".turn-block.is-settle-hold > .turn-artifacts-slot {" in flow
+    assert ".turn-block.is-settle-fold > .turn-artifacts-slot {" in flow
+    assert '<div className="turn-artifacts-slot">' in transcript
+    assert ".turn-block.is-settling > .turn-artifacts {" not in generation
     assert "\n.turn-final-answer .assistant-message-meta {" not in generation
     assert ".turn-final-answer .decision-prompt-card" not in generation
     assert "turn-artifacts-preview" not in generation

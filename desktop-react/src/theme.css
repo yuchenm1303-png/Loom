@@ -849,6 +849,18 @@ html[data-loom-theme="light"] .error-icon {
   background: var(--semantic-danger-soft) !important;
 }
 
+html[data-loom-theme="light"] .error-row.is-stopped {
+  color: var(--loom-workspace-muted, #66707b) !important;
+  border-color: var(--loom-workspace-line, rgba(28,31,37,.1)) !important;
+  background: transparent !important;
+}
+
+html[data-loom-theme="light"] .error-row.is-stopped .error-icon {
+  color: inherit !important;
+  border-color: transparent !important;
+  background: transparent !important;
+}
+
 /* Light theme control-surface polish -------------------------------------- */
 /* Header controls and composer actions still inherit
    dark-surface literals from their component styles. Keep light mode airy and
@@ -1115,12 +1127,12 @@ html[data-loom-theme="light"] .review-summary-header .turn-artifacts-copy strong
 }
 
 html[data-loom-theme="light"] .review-summary-header .turn-artifacts-stats b,
-html[data-loom-theme="light"] .turn-artifacts-file-strip small b {
+html[data-loom-theme="light"] .turn-artifacts-file-stats b {
   color: #168b52;
 }
 
 html[data-loom-theme="light"] .review-summary-header .turn-artifacts-stats i,
-html[data-loom-theme="light"] .turn-artifacts-file-strip small i {
+html[data-loom-theme="light"] .turn-artifacts-file-stats i {
   color: #ac4654;
 }
 
@@ -1160,23 +1172,6 @@ html[data-loom-theme="light"] .turn-artifacts-file-strip button:hover > svg {
 
 html[data-loom-theme="light"] .turn-artifacts-file-strip code {
   color: inherit;
-}
-
-/* Bottom hint row is intentionally subtle, but no longer a dark inset panel. */
-html[data-loom-theme="light"] .review-summary-footer {
-  border-color: rgba(28,31,37,.085);
-  background: #f7f8fa;
-  color: #68717c;
-}
-
-html[data-loom-theme="light"] .review-summary-footer:hover {
-  color: #414952;
-  border-color: rgba(105,90,216,.16);
-  background: #f2f1fa;
-}
-
-html[data-loom-theme="light"] .review-summary-footer svg {
-  color: #695ad8;
 }
 
 /* Light theme: models settings manager ------------------------------------ */

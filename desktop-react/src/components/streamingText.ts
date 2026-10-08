@@ -73,3 +73,137 @@ export function advanceStreamingText(
 export function streamingGraphemes(value: string): string[] {
   return Array.from(segmenter.segment(value), (part) => part.segment);
 }
+
+const FENCE_LINE = /^ {0,3}(`{3,}|~{3,})(.*)$/;
+const PARTIAL_FENCE_LINE = /^ {0,3}(`{1,2}|~{1,2})$/;
+const BARE_BLOCK_MARKER = /^ {0,3}(#{1,6}|[-*+]|\d{1,9}[.)]|>)\s*$/;
+const TABLE_DELIMITER = /^\s*\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)*\|?\s*$/;
+
+type Span = [number, number];
+
+/** Close (or drop) the code span left open at the end of `block`. */
+function healCodeSpans(block: string): { text: string; spans: Span[] } {
+  const spans: Span[] = [];
+  let open = -1;
+  let openLength = 0;
+  for (let index = 0; index < block.length;) {
+    if (block[index] !== "`") {
+      index += 1;
+      continue;
+    }
+    let end = index;
+    while (block[end] === "`") end += 1;
+    const length = end - index;
+    if (open < 0) {
+      open = index;
+      openLength = length;
+    } else if (length === openLength) {
+      spans.push([open, end]);
+      open = -1;
+    }
+    index = end;
+  }
+  if (open < 0) return { text: block, spans };
+  // An opener with nothing after it yet is held back; one with content is
+  // closed, so the chip grows with its text instead of a stray backtick.
+  if (!block.slice(open + openLength).trim()) return { text: block.slice(0, open), spans };
+  spans.push([open, block.length + openLength]);
+  return { text: `${block}${"`".repeat(openLength)}`, spans };
+}
+
+/** Close a `**` or `~~` delimiter left open outside code spans. */
+function healDelimiter(block: string, marker: "**" | "~~", inCode: (index: number) => boolean): string {
+  const positions: number[] = [];
+  for (let index = block.indexOf(marker); index >= 0; index = block.indexOf(marker, index + marker.length)) {
+    if (!inCode(index)) positions.push(index);
+  }
+  if (positions.length % 2 === 0) return block;
+  const last = positions[positions.length - 1];
+  const content = block.slice(last + marker.length);
+  if (!content.trim()) return block.slice(0, last);
+  // A closing delimiter may not follow whitespace; keep the space outside it.
+  const trailing = content.match(/\s*$/)?.[0] ?? "";
+  return `${block.slice(0, block.length - trailing.length)}${marker}${trailing}`;
+}
+
+/** A link or image still arriving at the end shows its label (links) or nothing (images). */
+function healTrailingLink(block: string, inCode: (index: number) => boolean): string {
+  const bracket = block.lastIndexOf("[");
+  if (bracket < 0 || inCode(bracket)) return block;
+  // Sticker control markers ("[[AI_LEDGER_...") have their own parser.
+  if (block[bracket - 1] === "[" || block[bracket + 1] === "[") return block;
+  const tail = block.slice(bracket);
+  const image = block[bracket - 1] === "!";
+  const start = image ? bracket - 1 : bracket;
+  const label = /^\[([^\]\n]*)(\]\([^)\s]*)?$/.exec(tail);
+  if (!label) return block;
+  // "items[0" is an index being typed, not a link label.
+  if (!label[2] && !image && /[A-Za-z0-9_\])]/.test(block[bracket - 1] ?? "")) return block;
+  return `${block.slice(0, start)}${image ? "" : label[1]}`;
+}
+
+/**
+ * The visible prefix of a streaming Markdown message, made safe to render.
+ *
+ * Text can stop anywhere: inside an inline code span, between two bold
+ * markers, after a fence's opening backticks, halfway through a link target.
+ * Rendering that prefix verbatim flashes raw syntax ("`validators", "**粗"),
+ * an empty code block labelled "code", or a pipe-separated paragraph that
+ * becomes a table a moment later. This closes what is open at the growth edge
+ * and holds back syntax whose meaning is not settled yet. Only presentation
+ * changes; canonical text is untouched and a finished message never passes
+ * through here.
+ */
+export function healStreamingMarkdown(text: string): string {
+  if (!text) return text;
+  const lines = text.split("\n");
+  let fenceMarker = "";
+  let fenceOpenedAt = -1;
+  let blockStart = 0;
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index];
+    const fence = FENCE_LINE.exec(line);
+    if (fence) {
+      if (!fenceMarker) {
+        fenceMarker = fence[1];
+        fenceOpenedAt = index;
+      } else if (fence[1][0] === fenceMarker[0] && fence[1].length >= fenceMarker.length && !fence[2].trim()) {
+        fenceMarker = "";
+        fenceOpenedAt = -1;
+        blockStart = index + 1;
+      }
+      continue;
+    }
+    if (!fenceMarker && !line.trim()) blockStart = index + 1;
+  }
+
+  const last = lines.length - 1;
+  if (fenceMarker) {
+    // The opening fence is still being typed: its language is unknown and
+    // there is no code yet. Hold the line back instead of an empty block.
+    if (fenceOpenedAt === last) return lines.slice(0, last).join("\n");
+    // A closing fence half typed would show as a line of backticks in the code.
+    if (PARTIAL_FENCE_LINE.test(lines[last])) return lines.slice(0, last).join("\n");
+    return text;
+  }
+
+  const head = lines.slice(0, blockStart).join("\n");
+  let blockLines = lines.slice(blockStart);
+  // An opening fence whose backticks are still arriving ("`", "``").
+  if (PARTIAL_FENCE_LINE.test(blockLines[blockLines.length - 1] ?? "")) blockLines = blockLines.slice(0, -1);
+  // A heading, list or quote marker with no words after it yet.
+  if (BARE_BLOCK_MARKER.test(blockLines[blockLines.length - 1] ?? "")) blockLines = blockLines.slice(0, -1);
+  // Pipes become a table only once the delimiter row arrives.
+  if (blockLines.length && blockLines.every((line) => line.trimStart().startsWith("|"))
+    && !blockLines.slice(1).some((line) => TABLE_DELIMITER.test(line))) {
+    blockLines = [];
+  }
+  if (!blockLines.length) return head.replace(/\n+$/, "");
+
+  const code = healCodeSpans(blockLines.join("\n"));
+  const inCode = (index: number) => code.spans.some(([start, end]) => index >= start && index < end);
+  let block = healTrailingLink(code.text, inCode);
+  block = healDelimiter(block, "**", inCode);
+  block = healDelimiter(block, "~~", inCode);
+  return head ? `${head}\n${block}` : block;
+}

@@ -72,13 +72,17 @@ def test_changed_artifacts_render_in_the_conversation_and_expand_to_the_side_ren
     transcript = TRANSCRIPT.read_text(encoding="utf-8")
     surface = ARTIFACT_SURFACE.read_text(encoding="utf-8")
 
-    assert "latestInlineArtifact" in transcript
-    assert "AssistantArtifactPreview" in transcript
-    assert "entry-artifact-preview" in transcript
+    # A page, image or document being written can be previewed from its edit
+    # row while the turn runs; once it ends, the changed-files card offers the
+    # latest renderable file. No separate link sits at the growth edge.
+    assert "visualArtifactPath" in transcript
+    assert 'className="task-flow-row-preview"' in transcript
+    assert "artifact-transcript-link" not in transcript
     assert "<ArtifactRenderSurface" not in transcript
-    assert '<button type="button" className="artifact-transcript-link"' in transcript
     assert 'new CustomEvent("loom:artifact-preview-open"' in transcript
     assert "TurnArtifactsPreview items={items} workspace={workspace}" in transcript
+    assert 'className="turn-artifacts-preview-action"' in artifacts
+    assert "b.lastChange - a.lastChange" in artifacts
 
     # The review/audit summary keeps file stats and actions, but the large
     # rendered canvas opens explicitly in the side dock, preserving scroll space.

@@ -333,8 +333,22 @@ export interface RuntimeCopy {
   decisionRetryPrompt: string;
   guidanceRecap: string;
   activityRegion: string;
+  /** Changed-files card under a finished turn. */
+  changedFilesTitle(count: number, name: string): string;
+  changedFilesRegion: string;
+  review: string;
+  reviewTitle: string;
+  openInReview(path: string): string;
+  preview: string;
+  previewArtifact(name: string): string;
+  previewArtifactTitle(path: string): string;
+  /** How a turn's terminal error item reads; a user's own stop is not a failure. */
+  turnEnding(error: string): { tone: "stopped" | "error"; text: string };
   verb(spec: VerbKey, tense: ActivityTense): string;
 }
+
+const USER_STOP = /^(cancelled by user|turn_cancelled|turn_interrupted|interrupted by user)\.?$/i;
+const PROCESS_STOP = /^agent process stopped before the active turn reached a durable terminal state\.?$/i;
 
 export interface ProcessSummaryParts {
   commands: number;
@@ -524,6 +538,20 @@ const ZH: RuntimeCopy = {
   decisionRetryPrompt: "刚才的选项没有生成完整。请只重新给出完整的选项卡，不要重复前面的分析。",
   guidanceRecap: "本轮补充的要求",
   activityRegion: "任务活动",
+  changedFilesTitle: (count, name) => (count === 1 ? `已编辑 ${name}` : `已修改 ${count} 个文件`),
+  changedFilesRegion: "本轮改动的文件",
+  review: "审查",
+  reviewTitle: "在右侧审查面板查看代码改动",
+  openInReview: (path) => `在审查中打开 ${path}`,
+  preview: "预览",
+  previewArtifact: (name) => `预览 ${name}`,
+  previewArtifactTitle: (path) => `在侧栏预览 ${path}`,
+  turnEnding: (error) => {
+    const text = error.trim();
+    if (USER_STOP.test(text)) return { tone: "stopped", text: "你停止了这一轮" };
+    if (PROCESS_STOP.test(text)) return { tone: "stopped", text: "Loom 在这一轮完成前停止了运行" };
+    return { tone: "error", text: text || "这一轮没有完成" };
+  },
   verb: (spec, tense) => zhVerb(VERBS[spec].zh, tense),
 };
 
@@ -615,6 +643,20 @@ const EN: RuntimeCopy = {
   decisionRetryPrompt: "The previous options were incomplete. Please send the complete option card again without repeating the earlier analysis.",
   guidanceRecap: "Guidance added during this turn",
   activityRegion: "Task activity",
+  changedFilesTitle: (count, name) => (count === 1 ? `Edited ${name}` : `Changed ${plural(count, "file", "files")}`),
+  changedFilesRegion: "Changed files",
+  review: "Review",
+  reviewTitle: "Open the changes in the review panel",
+  openInReview: (path) => `Open ${path} in review`,
+  preview: "Preview",
+  previewArtifact: (name) => `Preview ${name}`,
+  previewArtifactTitle: (path) => `Preview ${path} in the side panel`,
+  turnEnding: (error) => {
+    const text = error.trim();
+    if (USER_STOP.test(text)) return { tone: "stopped", text: "You stopped this turn" };
+    if (PROCESS_STOP.test(text)) return { tone: "stopped", text: "Loom stopped before this turn finished" };
+    return { tone: "error", text: text || "This turn didn't finish" };
+  },
   verb: (spec, tense) => enVerb(VERBS[spec].en, tense),
 };
 
