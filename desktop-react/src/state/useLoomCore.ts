@@ -814,11 +814,11 @@ export function useLoom() {
       await openThread(preferredId);
     } else if (preferredId && list.length) {
       await openThread(list[0].id);
-    } else {
-      // A draft conversation has no thread id. Do not activate an unrelated
-      // existing conversation when a model change requires a runtime restart.
+    } else if (preferredId) {
       clearActive();
     }
+    // No previous thread means a new-conversation draft. Keep its workspace
+    // and project parameters intact even if the model change restarts the host.
   }, [clearActive, openThread, refreshThreads]);
 
   const switchModelProfile = useCallback(async (selection: string) => {
