@@ -882,7 +882,10 @@ class ReasoningManagedLoomAppServerService(ManagedStreamingLoomAppServerService)
 
     def thread_read(self, params: dict[str, Any]) -> dict[str, Any]:
         session_id = self._required_text(params, "threadId")
-        self._ensure_thread_model_metadata(self._load(session_id))
+        # Opening an older conversation must not leave a crashed RUNNING turn
+        # stuck in steering mode, where the model selector is unavailable.
+        session = self._recover_orphaned_thread_model_turn(self._load(session_id))
+        self._ensure_thread_model_metadata(session)
         return super().thread_read(params)
 
     def thread_resume(self, params: dict[str, Any]) -> dict[str, Any]:
