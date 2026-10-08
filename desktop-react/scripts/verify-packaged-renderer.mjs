@@ -4,11 +4,13 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import asar from "@electron/asar";
+import { verifyPackagedUpdateConfig } from "./packaged-update-config.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const archive = path.join(root, "release/win-unpacked/resources/app.asar");
 const digest = (bytes) => createHash("sha256").update(bytes).digest("hex");
 const localPackage = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8"));
+await verifyPackagedUpdateConfig(path.dirname(archive), localPackage);
 const packedPackage = JSON.parse(asar.extractFile(archive, "package.json").toString());
 assert.equal(packedPackage.version, localPackage.version, "Packaged version differs from the workspace");
 

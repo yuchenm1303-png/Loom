@@ -80,6 +80,7 @@
       }
     ],
     "asar": true,
+    "afterPack": "scripts/packaged-update-config.mjs",
     "electronUpdaterCompatibility": ">=2.16",
     "publish": [
       {
