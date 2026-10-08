@@ -1896,7 +1896,7 @@ function TurnProcess({
       ) : null}
 
       {renderProcessContent ? (
-        <div className="turn-process-grid">
+        <div className="turn-process-grid" data-motion-phase={processPresence.phase}>
           <div className="turn-process-inner">
             <div className="turn-process-content">
               {live && earlierEntry.mounted ? (

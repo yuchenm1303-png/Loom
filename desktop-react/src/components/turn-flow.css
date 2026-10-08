@@ -186,6 +186,11 @@
   opacity: .72;
 }
 
+.turn-process.is-settled.is-open .turn-process-grid[data-motion-phase="entering"] {
+  grid-template-rows: 0fr;
+  opacity: 0;
+}
+
 .turn-process-grid {
   display: grid;
   grid-template-rows: 0fr;

@@ -37,6 +37,27 @@ try {
     await page.waitForFunction(() => !document.querySelector(".crossfade-out"));
     await page.evaluate(items => window.motionFixture.turn(items, false), [user, search]);
     assert.match(await page.locator(".turn-process-summary").textContent(), language === "en" ? /Searched 1 time/ : /搜索 1 次/);
+    await page.evaluate(() => document.documentElement.dataset.loomReducedMotion = "false");
+    await page.evaluate(items => window.motionFixture.turn(items, false), [user, { ...search, result: "Condition met after 5004ms." }]);
+    const sampleExpansion = async (trigger, selector) => {
+      const samples = await page.evaluate(async ({ trigger, selector }) => {
+        document.querySelector(trigger).click();
+        const heights = [];
+        const start = performance.now();
+        while (performance.now() - start < 430) {
+          await new Promise(requestAnimationFrame);
+          heights.push(document.querySelector(selector)?.getBoundingClientRect().height || 0);
+        }
+        return heights;
+      }, { trigger, selector });
+      const full = samples.at(-1);
+      assert.ok(full > 20, `${selector} renders detail`);
+      assert.ok(samples[0] < full * .3, `${selector} starts collapsed on first expansion`);
+      assert.ok(samples.some(height => height > full * .1 && height < full * .9), `${selector} grows through intermediate frames`);
+    };
+    await sampleExpansion(".turn-process-header", ".turn-process-grid");
+    await sampleExpansion(".task-flow-row", ".task-flow-inline-detail-grid");
+    await page.evaluate(() => document.documentElement.dataset.loomReducedMotion = "true");
     await page.setViewportSize({ width: 720, height: 900 });
     await page.evaluate(items => window.motionFixture.turn(items, true), [user, wrapper, processItem, { ...search, status: "running" }]);
     await page.locator(".task-flow-row").first().waitFor();

@@ -225,6 +225,11 @@
   opacity: 1;
 }
 
+.task-flow-inline-detail-grid.open[data-motion-phase="entering"] {
+  grid-template-rows: 0fr;
+  opacity: 0;
+}
+
 .task-flow-inline-detail-inner {
   min-height: 0;
   overflow: hidden;
