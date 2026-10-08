@@ -7,6 +7,30 @@ from app.model_policy_snapshot import ModelPolicySnapshot
 from app.app_server_reasoning import ReasoningManagedLoomAppServerService
 
 
+@pytest.mark.parametrize("enabled", [True, False])
+def test_dynamic_model_uses_authoritative_check_and_refresh_invalidates_cache(monkeypatch, enabled):
+    import io
+    import json
+    selection = "builtin:minimax:future-model"
+    requests = []
+    def urlopen(request, timeout):
+        requests.append(json.loads(request.data))
+        return io.BytesIO(json.dumps({"decision": {"model_id": selection, "enabled": enabled}}).encode())
+    monkeypatch.setattr("urllib.request.urlopen", urlopen)
+    cache = ModelPolicySnapshot("https://example.invalid/access", "account-a", start=False,
+        fetch=lambda token: {"access": {"enabled": True, "models": ["builtin:minimax"], "decisions": []}})
+    cache.refresh()
+    for _ in range(2):
+        if enabled:
+            cache.check(selection, "account-a")
+        else:
+            with pytest.raises(RuntimeError, match="disabled"):
+                cache.check(selection, "account-a")
+    assert requests == [{"model_id": selection}]
+    cache.refresh()
+    assert cache.dynamic == {}
+
+
 def test_warm_sends_do_not_request_network_and_revocation_is_applied():
     requests = []
     allowed = ["builtin:minimax"]

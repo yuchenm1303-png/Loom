@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterable
 
-from .catalog import GROUPS, MODEL_BY_ID, MODELS, group_for_selection
+from .catalog import GROUPS, GROUP_BY_ID, MODEL_BY_ID, MODELS, group_for_selection
 
 DEFAULT_MODEL_IDS = tuple(item.id for item in MODELS)
 
@@ -225,13 +225,24 @@ class PolicyStore:
                     "model_id": model_id,
                     "name": meta.name if meta else model_id,
                     "group_id": meta.group_id if meta else (group_for_selection(model_id) or "other"),
-                    "group_name": meta.group_name if meta else "Other",
+                    "group_name": meta.group_name if meta else (GROUP_BY_ID[group_for_selection(model_id)].name if group_for_selection(model_id) else "Other"),
                     "enabled": bool(row["enabled"]),
                     "updated_at": int(row["updated_at"]),
                     "updated_by": int(row["updated_by"]) if row["updated_by"] is not None else None,
                 }
             )
         return result
+
+    def register_catalog(self, model_ids: Iterable[str]) -> None:
+        """Record discovered built-ins without changing any existing policy."""
+        normalized = list(dict.fromkeys(_normalize_model_id(item) for item in model_ids))
+        if len(normalized) > 2000 or any(group_for_selection(item) is None for item in normalized):
+            raise ValueError("invalid built-in model catalog")
+        with self._guard, self._connect() as db:
+            db.executemany(
+                "INSERT OR IGNORE INTO global_model_rules(model_id, enabled, updated_at, updated_by) VALUES (?, 1, ?, NULL)",
+                [(item, _now()) for item in normalized],
+            )
 
     def global_model_groups(self) -> list[dict[str, Any]]:
         with self._connect() as db:

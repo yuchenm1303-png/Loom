@@ -38,7 +38,10 @@ def _selection(prefix: str, model: str, default_model: str) -> str:
     return prefix + quote(value, safe="")
 
 
-_MINIMAX = ("MiniMax-M3", "MiniMax-M2.7", "MiniMax-M2.5")
+_MINIMAX = (
+    "MiniMax-M3", "MiniMax-M2", "MiniMax-M2.1", "MiniMax-M2.1-highspeed",
+    "MiniMax-M2.5", "MiniMax-M2.5-highspeed", "MiniMax-M2.7", "MiniMax-M2.7-highspeed",
+)
 _DEEPSEEK = ("deepseek-flash", "deepseek-v4-pro")
 _ANT_LING = (
     "Ling-3.0-flash",
@@ -131,7 +134,7 @@ def group_for_selection(selection: str) -> str | None:
     if model is not None:
         return model.group_id
     for group in GROUPS:
-        if any(value == prefix or value.startswith(prefix) for prefix in group.selection_prefixes):
+        if any(value == prefix or value.startswith(prefix if prefix.endswith(":") else prefix + ":") for prefix in group.selection_prefixes):
             return group.id
     return None
 

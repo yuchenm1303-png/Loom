@@ -37,7 +37,10 @@ LEGACY_MANAGED_RELAY_BASE_URL = "https://relay.smirel.com/v1"
 MINIMAX_BASE_URL = "https://api.minimaxi.com/v1"
 DEEPSEEK_BASE_URL = "https://api.deepseek.com"
 MINIMAX_DEFAULT_MODEL = "MiniMax-M3"
-MINIMAX_MODEL_IDS = ("MiniMax-M3", "MiniMax-M2.7", "MiniMax-M2.5")
+MINIMAX_MODEL_IDS = (
+    "MiniMax-M3", "MiniMax-M2", "MiniMax-M2.1", "MiniMax-M2.1-highspeed",
+    "MiniMax-M2.5", "MiniMax-M2.5-highspeed", "MiniMax-M2.7", "MiniMax-M2.7-highspeed",
+)
 DEEPSEEK_DEFAULT_MODEL = "deepseek-flash"
 DEEPSEEK_FALLBACK_MODEL_IDS = ("deepseek-flash", "deepseek-v4-pro")
 OPENCODE_GO_FALLBACK_MODEL_IDS = (

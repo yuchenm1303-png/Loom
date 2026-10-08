@@ -17,6 +17,9 @@ class ModelPolicySnapshot:
         self.ready = threading.Event()
         self.stopped = threading.Event()
         self.allowed: frozenset[str] = frozenset()
+        self.known: frozenset[str] = frozenset()
+        self.dynamic: dict[str, tuple[bool, float]] = {}
+        self.resolves_dynamic = False
         self.expires = 0.0
         self.error = "Model permissions are synchronizing. Retry shortly."
         if start:
@@ -44,6 +47,15 @@ class ModelPolicySnapshot:
                 if credential != self.credential:
                     return
                 self.allowed, self.expires, self.error = allowed, started + 10, ""
+                self.dynamic.clear()
+                self.known = frozenset(
+                    str(item["model_id"]) for item in access.get("decisions", [])
+                    if isinstance(item, dict) and "model_id" in item
+                ) | allowed
+                self.resolves_dynamic = isinstance(access.get("decisions"), list)
+                if not access.get("enabled", True):
+                    self.dynamic.clear()
+                    self.resolves_dynamic = False
         except Exception:
             with self.lock:
                 if credential != self.credential:
@@ -66,6 +78,8 @@ class ModelPolicySnapshot:
             if credential != self.credential:
                 self.credential, self.expires = credential, 0
                 self.allowed = frozenset()
+                self.known = frozenset()
+                self.dynamic.clear()
                 self.ready.clear()
                 self.wake.set()
         # Only cold/account-switch initialization waits; warm sends are local.
@@ -74,8 +88,41 @@ class ModelPolicySnapshot:
             if self.clock() >= self.expires:
                 self.wake.set()
                 raise RuntimeError(self.error or "Model permission snapshot expired. Retry shortly.")
-            if selection not in self.allowed:
+            if selection in self.allowed:
+                return
+            if selection in self.known or not self.resolves_dynamic:
                 raise RuntimeError("This built-in model is disabled by Loom Admin.")
+            # Legacy snapshots without decisions are explicit allow-lists.
+            # Modern policy snapshots resolve newly discovered models through
+            # /check rather than mistaking an incomplete catalog for a deny.
+            cached = self.dynamic.get(selection)
+            if cached and self.clock() < cached[1]:
+                enabled = cached[0]
+            else:
+                enabled = None
+        if enabled is None:
+            started = self.clock()
+            try:
+                request = urllib.request.Request(
+                    self.url.rsplit("/", 1)[0] + "/check",
+                    data=json.dumps({"model_id": selection}).encode("utf-8"),
+                    headers={"Authorization": "Bearer " + credential, "Content-Type": "application/json"},
+                    method="POST",
+                )
+                with urllib.request.urlopen(request, timeout=5) as response:
+                    payload = json.loads(response.read().decode("utf-8"))
+                decision = payload.get("decision", {})
+                if decision.get("model_id") != selection or not isinstance(decision.get("enabled"), bool):
+                    raise ValueError("Invalid model policy decision")
+                enabled = decision["enabled"]
+            except Exception as exc:
+                raise RuntimeError("Model permissions could not be refreshed. Retry when the account service is available.") from exc
+            with self.lock:
+                if credential != self.credential or self.clock() >= started + 10:
+                    raise RuntimeError("Model permission snapshot expired. Retry shortly.")
+                self.dynamic[selection] = (enabled, started + 10)
+        if not enabled:
+            raise RuntimeError("This built-in model is disabled by Loom Admin.")
 
     def close(self) -> None:
         self.stopped.set()

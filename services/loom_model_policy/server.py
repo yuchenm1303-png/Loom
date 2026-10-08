@@ -182,9 +182,14 @@ class ModelPolicyApplication:
     def health(self) -> dict[str, Any]:
         return {"ok": True, "service": "loom-model-policy"}
 
-    def access(self, authorization: str) -> dict[str, Any]:
+    def access(self, authorization: str, body: dict[str, Any] | None = None) -> dict[str, Any]:
         user_id = self.accounts.user_id_for_authorization(authorization)
         legacy = self.accounts.model_access(authorization)
+        if body is not None:
+            models = body.get("model_ids")
+            if not isinstance(models, list) or any(not isinstance(item, str) for item in models):
+                raise ValueError("model_ids must be a list of selections")
+            self.store.register_catalog(models)
         return {"access": self.store.effective_access(user_id, legacy)}
 
     def check(self, body: dict[str, Any], authorization: str) -> dict[str, Any]:
@@ -428,6 +433,8 @@ class PolicyRequestHandler(BaseHTTPRequestHandler):
         path = self._path()
         auth = self._authorization()
         body = self._json_body()
+        if path == "/v1/access":
+            return self._run(lambda: self.application.access(auth, body))
         if path == "/v1/check":
             return self._run(lambda: self.application.check(body, auth))
         if path == "/v1/admin/global":

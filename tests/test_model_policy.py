@@ -8,6 +8,43 @@ from services.loom_model_policy.policy import PolicyStore
 MODELS = ("m1", "m2", "m3")
 
 
+def test_discovered_catalog_is_visible_and_preserves_denials(tmp_path):
+    import pytest
+    store = PolicyStore(tmp_path / "policy.db")
+    models = ["builtin:minimax:MiniMax-M2.1", "managed:new-relay-model", "builtin:opencode-go:new-model"]
+    store.set_global_rule(1, models[0], False)
+    store.set_global_model_group(1, "managed-relay", False)
+    store.register_catalog(models)
+    store.register_catalog(models)
+    rows = {row["model_id"]: row for row in store.global_rules()}
+    assert rows[models[0]]["enabled"] is False
+    assert rows[models[1]]["group_name"] == "Muxway Relay"
+    access = store.effective_access(7, {"enabled": True})
+    assert models[0] not in access["models"]
+    assert models[1] not in access["models"]
+    assert models[2] in access["models"]
+    with pytest.raises(ValueError):
+        store.register_catalog(["saved:personal"])
+    with pytest.raises(ValueError):
+        store.register_catalog(["builtin:minimax-invalid"])
+
+
+def test_access_registers_all_discovered_providers_after_authentication(tmp_path):
+    from types import SimpleNamespace
+    from services.loom_model_policy.server import ModelPolicyApplication
+    app = object.__new__(ModelPolicyApplication)
+    app.store = PolicyStore(tmp_path / "policy.db")
+    app.accounts = SimpleNamespace(
+        user_id_for_authorization=lambda auth: 7,
+        model_access=lambda auth: {"enabled": True},
+    )
+    models = ["builtin:minimax:future", "builtin:deepseek:future", "builtin:ant-ling:future",
+        "builtin:opencode-go:future", "managed:future"]
+    response = app.access("Bearer test", {"model_ids": models})
+    assert set(models) <= set(response["access"]["models"])
+    assert set(models) <= {row["model_id"] for row in app.store.snapshot()["models"]}
+
+
 def test_global_off_is_hard_deny(tmp_path: Path) -> None:
     store = PolicyStore(tmp_path / "policy.db", MODELS)
     group = store.create_group(1, "team")

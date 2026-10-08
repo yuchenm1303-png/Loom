@@ -327,7 +327,7 @@ export class LoomAccountClient {
     return parsed.toString();
   }
 
-  async modelPolicyAccess(): Promise<LoomModelPolicyAccess | null> {
+  async modelPolicyAccess(modelIds: string[] = []): Promise<LoomModelPolicyAccess | null> {
     let session = await this.loadSession();
     if (!session) return null;
     if (session.expiresAt <= Date.now() + 30_000) session = await this.refresh(session);
@@ -339,9 +339,11 @@ export class LoomAccountClient {
         let response: Response;
         try {
           response = await fetch(this.modelPolicyAccessUrl(), {
-            method: "GET",
+            method: modelIds.length ? "POST" : "GET",
+            body: modelIds.length ? JSON.stringify({ model_ids: modelIds }) : undefined,
             headers: {
               Accept: "application/json",
+              "Content-Type": "application/json",
               Authorization: "Bearer " + active.accessToken,
             },
             signal: controller.signal,

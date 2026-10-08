@@ -1344,9 +1344,9 @@ function applySignedOutModelGate(
   return { ...snapshot, profiles, primary, current };
 }
 
-async function currentModelPolicy(): Promise<LoomModelPolicyAccess | null> {
+async function currentModelPolicy(modelIds: string[] = []): Promise<LoomModelPolicyAccess | null> {
   try {
-    return await accountClient.modelPolicyAccess();
+    return await accountClient.modelPolicyAccess(modelIds);
   } catch (error) {
     // The App Server performs fail-closed enforcement before every signed-in
     // built-in turn. Keeping the last local catalogue visible during an outage
@@ -1374,11 +1374,13 @@ async function assertModelSelectionAllowed(selection: string): Promise<void> {
 }
 
 async function runListModels(forceRefresh = false): Promise<ReturnType<DesktopModelManager["snapshot"]>> {
-  const [snapshot, access, authenticated] = await Promise.all([
+  const [snapshot, authenticated] = await Promise.all([
     modelManager.listSnapshot(Boolean(forceRefresh)),
-    currentModelPolicy(),
     accountClient.hasAuthenticatedSession(),
   ]);
+  const access = await currentModelPolicy(snapshot.profiles
+    .filter((profile) => profile.kind === "builtin")
+    .map((profile) => profile.selection));
   return applySignedOutModelGate(applyModelPolicy(snapshot, access), authenticated);
 }
 
