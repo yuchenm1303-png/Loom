@@ -55,8 +55,8 @@
   cursor: var(--loom-native-cursor, var(--loom-cursor-white)), auto !important;
 }
 :root[data-loom-theme="light"] { --loom-native-cursor: var(--loom-cursor-black); }
-:root[data-loom-pointer-tone="white"] { --loom-native-cursor: var(--loom-cursor-white); }
-:root[data-loom-pointer-tone="black"] { --loom-native-cursor: var(--loom-cursor-black); }
+[data-loom-pointer-tone="white"] { --loom-native-cursor: var(--loom-cursor-white); }
+[data-loom-pointer-tone="black"] { --loom-native-cursor: var(--loom-cursor-black); }
 html, body, #root {
   width: 100%;
   height: 100%;

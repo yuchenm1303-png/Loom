@@ -26,6 +26,7 @@ function preloadForResolution() {
 }
 preloadForResolution();
 let target: Element | null = null;
+let toneTarget: Element | null = null;
 let frame = 0;
 let themeTimer = 0;
 
@@ -44,7 +45,15 @@ function update() {
   // Images/gradients use the underlying solid background and theme baseline.
   luminance += (1 - opacity) * (root.dataset.loomTheme === "light" ? 1 : 0);
   const tone = luminance < 0.5 ? "white" : "black";
-  if (root.dataset.loomPointerTone !== tone) root.dataset.loomPointerTone = tone;
+  // A root cursor variable invalidates every historical Markdown node. Scope
+  // contrast to the hit element, just like the native cursor animation frames.
+  if (toneTarget !== target) {
+    toneTarget?.removeAttribute("data-loom-pointer-tone");
+    toneTarget = target;
+  }
+  if (toneTarget && toneTarget !== root && toneTarget !== document.body && toneTarget.id !== "root") {
+    if (toneTarget.getAttribute("data-loom-pointer-tone") !== tone) toneTarget.setAttribute("data-loom-pointer-tone", tone);
+  }
 }
 function schedule() {
   if (!frame) frame = requestAnimationFrame(update);
@@ -56,7 +65,8 @@ function onPointerOver(event: PointerEvent) {
 }
 function onThemeChanged() {
   // Use the new theme immediately, then inspect the surface after its color transition.
-  delete document.documentElement.dataset.loomPointerTone;
+  toneTarget?.removeAttribute("data-loom-pointer-tone");
+  toneTarget = null;
   cancelAnimationFrame(frame);
   frame = 0;
   clearTimeout(themeTimer);
@@ -69,7 +79,7 @@ if (import.meta.hot) import.meta.hot.dispose(() => {
   window.removeEventListener("loom-theme-changed", onThemeChanged);
   cancelAnimationFrame(frame);
   clearTimeout(themeTimer);
-  delete document.documentElement.dataset.loomPointerTone;
+  toneTarget?.removeAttribute("data-loom-pointer-tone");
   resolutionQuery?.removeEventListener("change", preloadForResolution);
   preloaded.clear();
 });

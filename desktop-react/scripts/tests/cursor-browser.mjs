@@ -121,12 +121,13 @@ try {
     document.body.append(surface);
   });
   await page.locator("#contrast-child").hover();
-  await page.waitForFunction(() => document.documentElement.dataset.loomPointerTone === "black");
+  await page.waitForFunction(() => document.querySelector("#contrast-child").dataset.loomPointerTone === "black");
   assert.match(await page.locator("#contrast-child").evaluate(el => getComputedStyle(el).cursor), /yukino-cursor\.png.*0 0/);
   await page.evaluate(() => { document.querySelector("#contrast-surface").style.background = "black"; });
   await page.mouse.move(400, 400);
   await page.locator("#contrast-child").hover();
-  await page.waitForFunction(() => document.documentElement.dataset.loomPointerTone === "white");
+  await page.waitForFunction(() => document.querySelector("#contrast-child").dataset.loomPointerTone === "white");
+  assert.equal(await page.evaluate(() => document.documentElement.hasAttribute("data-loom-pointer-tone")), false);
   assert.match(await page.locator("#contrast-child").evaluate(el => getComputedStyle(el).cursor), /yukino-cursor-white.*0 0/);
   await page.evaluate(() => document.querySelector("#contrast-surface").remove());
 

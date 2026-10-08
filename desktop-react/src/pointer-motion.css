@@ -52,9 +52,11 @@
    static bitmap even when the hovered element supplies animated resources. */
 [data-loom-cursor-frame] { --loom-native-cursor: var(--loom-cursor-white); }
 :root[data-loom-theme="light"] [data-loom-cursor-frame],
-:root[data-loom-pointer-tone="black"] [data-loom-cursor-frame] {
+:root[data-loom-pointer-tone="black"] [data-loom-cursor-frame],
+:root [data-loom-cursor-frame][data-loom-pointer-tone="black"] {
   --loom-native-cursor: var(--loom-cursor-black);
 }
-:root[data-loom-pointer-tone="white"] [data-loom-cursor-frame] {
+:root[data-loom-pointer-tone="white"] [data-loom-cursor-frame],
+:root [data-loom-cursor-frame][data-loom-pointer-tone="white"] {
   --loom-native-cursor: var(--loom-cursor-white);
 }

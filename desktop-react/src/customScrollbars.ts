@@ -6,6 +6,7 @@ const observedChildren = new Map<HTMLElement, Element>();
 const dirty = new Set<HTMLElement>();
 const added = new Set<Element>();
 const restyled = new Set<HTMLElement>();
+const visibleTargets = new Set<HTMLElement>();
 let frame = 0;
 let host: HTMLDivElement;
 const candidates = "div,main,section,aside,pre,textarea,ul";
@@ -17,6 +18,9 @@ function schedule(target?: HTMLElement) {
 
 function update(bar: Bar) {
   const el = bar.target;
+  // Never force layout of offscreen Markdown/code for a hover or animation
+  // elsewhere. IntersectionObserver also respects clipped nested scrollports.
+  if (!visibleTargets.has(el)) { bar.track.hidden = true; return; }
   const rect = el.getBoundingClientRect();
   const vertical = bar.axis === "y";
   const viewport = vertical ? el.clientHeight : el.clientWidth;
@@ -66,6 +70,14 @@ function update(bar: Bar) {
 
 const resize = new ResizeObserver((events) => {
   for (const event of events) if (event.target instanceof HTMLElement) markAncestors(event.target);
+});
+const visibility = new IntersectionObserver((events) => {
+  for (const event of events) {
+    const target = event.target as HTMLElement;
+    if (event.isIntersecting) visibleTargets.add(target);
+    else visibleTargets.delete(target);
+    schedule(target);
+  }
 });
 
 function markAncestors(node: Element) {
@@ -135,6 +147,7 @@ function register(el: HTMLElement) {
     return { target: el, axis, track, thumb };
   });
   entries.set(el, bars);
+  visibility.observe(el);
   el.classList.add("loom-custom-scrollable");
   resize.observe(el);
   if (el.firstElementChild) { resize.observe(el.firstElementChild); observedChildren.set(el, el.firstElementChild); }
@@ -164,6 +177,7 @@ function flush() {
   restyled.clear();
   for (const [target, bars] of entries) if (!target.isConnected) {
     bars.forEach((bar) => bar.track.remove()); resize.unobserve(target);
+    visibility.unobserve(target); visibleTargets.delete(target);
     const child = observedChildren.get(target);
     if (child) resize.unobserve(child);
     observedChildren.delete(target); entries.delete(target); dirty.delete(target);
@@ -195,9 +209,24 @@ function onScroll(event: Event) {
   // Parent scrolling also repositions nested viewport overlays.
   const target = event.target;
   if (!(target instanceof Element)) return;
-  for (const el of entries.keys()) if (el === target || target.contains(el)) schedule(el);
+  for (const el of visibleTargets) if (el === target || target.contains(el)) schedule(el);
 }
-function updateAll() { for (const el of entries.keys()) schedule(el); }
+function updateAll() { for (const el of visibleTargets) schedule(el); }
+function onTransitionEnd(event: TransitionEvent) {
+  const target = event.target;
+  if (!(target instanceof Element) || host.contains(target)) return;
+  // Geometry transitions can reposition sibling scrollports, and portal fades
+  // change occlusion. Refresh all visible controls for those transitions.
+  if (!/^(?:color|background-color|border-(?:top-|right-|bottom-|left-)?color|opacity|box-shadow|text-shadow)$/.test(event.propertyName)
+    || target.closest('[role="dialog"], [role="menu"], .settings-host, .global-context-menu')) {
+    updateAll();
+    return;
+  }
+  // A button's color/opacity transition cannot move every historical code
+  // viewport. Ancestor controls and visible descendants are the affected set.
+  markAncestors(target);
+  for (const el of visibleTargets) if (target.contains(el)) schedule(el);
+}
 const mutation = new MutationObserver((records) => {
   for (const record of records) {
     const target = record.target instanceof Element ? record.target : record.target.parentElement;
@@ -250,11 +279,11 @@ document.addEventListener("scroll", onScroll, true);
 const onInput = (event: Event) => { if (event.target instanceof Element) markAncestors(event.target); };
 document.addEventListener("input", onInput, true);
 window.addEventListener("resize", updateAll);
-document.addEventListener("transitionend", updateAll);
+document.addEventListener("transitionend", onTransitionEnd);
 if (import.meta.hot) import.meta.hot.dispose(() => {
-  mutation.disconnect(); resize.disconnect(); cancelAnimationFrame(frame);
+  mutation.disconnect(); resize.disconnect(); visibility.disconnect(); cancelAnimationFrame(frame);
   entries.forEach((_bars, target) => target.classList.remove("loom-custom-scrollable"));
   host.remove(); document.removeEventListener("scroll", onScroll, true);
   document.removeEventListener("input", onInput, true);
-  window.removeEventListener("resize", updateAll); document.removeEventListener("transitionend", updateAll);
+  window.removeEventListener("resize", updateAll); document.removeEventListener("transitionend", onTransitionEnd);
 });
