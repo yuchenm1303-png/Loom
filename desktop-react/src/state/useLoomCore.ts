@@ -19,6 +19,7 @@ import { PRESENTATION_FRAME_MS } from "../presentationTiming";
 import { isLoomWebRuntime } from "../webBridge";
 import { preservePendingUserIdentity, reconcilePendingUserMessage } from "../pendingUserMessage";
 import { buildApprovalResponse } from "./approvalProtocol";
+import { switchCurrentModelForThread, switchModelProfileForThread } from "./modelSwitchRouting";
 
 type ThreadView = "active" | "archived";
 type ThreadCounts = { active: number; archived: number; all: number };
@@ -534,6 +535,28 @@ export function useLoom() {
     void refreshContext(normalizedResult.thread.id);
   }, [installItems, refreshContext, rememberThreadRead]);
 
+  // Refresh the active thread before showing model controls. The UI may have
+  // missed a terminal event during relay reconnect; a short authoritative read
+  // clears stale `running`/approval badges without replacing conversation items.
+  const refreshActiveThreadState = useCallback(async () => {
+    const threadId = activeIdRef.current;
+    if (!threadId) return;
+    const turnId = activeTurnIdRef.current;
+    const result = await requireBridge().call<ThreadReadResult>("thread/read", {
+      threadId,
+      presentationOnly: true,
+      turnLimit: 1,
+    });
+    if (activeIdRef.current !== threadId || activeTurnIdRef.current !== turnId) return;
+    const next = result.thread;
+    if (!next || next.id !== threadId) return;
+    setActive((current) => current?.thread.id === threadId ? { ...current, thread: next } : current);
+    setThreads((current) => current.map((thread) => thread.id === threadId ? next : thread));
+    const running = threadIsRunning(next);
+    setTurnActive(running);
+    if (!running) setTurnStartedAt(null);
+  }, []);
+
   const openThread = useCallback(async (threadId: string) => {
     const normalized = threadId.trim();
     if (!normalized) return;
@@ -828,9 +851,7 @@ export function useLoom() {
       const bridge = requireBridge();
       // Before the first message a conversation is only a draft. Use the
       // existing default-model endpoint rather than silently ignoring clicks.
-      const result = threadId
-        ? await bridge.switchModelProfile<ModelRestartResult>(threadId, selection)
-        : await bridge.switchModelProfile<ModelRestartResult>(selection);
+      const result = await switchModelProfileForThread<ModelRestartResult>(bridge, threadId, selection);
       await applyModelRestart(result);
     } finally {
       setModelBusy(false);
@@ -840,13 +861,10 @@ export function useLoom() {
   const switchCurrentModel = useCallback(async (model: string) => {
     const threadId = active?.thread.id;
     const selection = active?.thread.modelSelection || models?.current?.selection || "";
-    if (threadId && !selection) throw new Error("No model profile is associated with this conversation.");
     setModelBusy(true);
     try {
       const bridge = requireBridge();
-      const result = threadId
-        ? await bridge.switchCurrentModel<ModelRestartResult>(threadId, selection, model)
-        : await bridge.switchCurrentModel<ModelRestartResult>(model);
+      const result = await switchCurrentModelForThread<ModelRestartResult>(bridge, threadId, selection, model);
       await applyModelRestart(result);
     } finally {
       setModelBusy(false);
@@ -1282,6 +1300,7 @@ export function useLoom() {
     setThreadView,
     refreshProjects,
     refreshModels,
+    refreshActiveThreadState,
     createProject,
     renameProject,
     setProjectInstructions,
@@ -1325,6 +1344,7 @@ export function useLoom() {
     createProject,
     refreshContext,
     refreshModels,
+    refreshActiveThreadState,
     refreshProjects,
     removeProject,
     renameProject,
