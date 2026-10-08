@@ -13,13 +13,15 @@ export function useEarlierProcessHandoff(items: TranscriptItem[], progress: Prog
   open: boolean, pending: ReadonlySet<string>, groups: (items: TranscriptItem[]) => string[][]) {
   const reduce = useReducedMotion();
   const [state, setState] = useState<Snapshot>(() => ({ progress, active, open, reduce,
-    retained: new Set(), folding: new Set() }));
+    retained: new Set(active ? progress.earlier.map(item => item.id) : []), folding: new Set() }));
+  const rootRef = useRef<HTMLElement>(null);
+  const [viewportRevision, setViewportRevision] = useState(0);
   const timers = useRef(new Map<string, { phase: string; timer: number }>());
   let snapshot = state;
   if (progress !== state.progress || active !== state.active || open !== state.open || reduce !== state.reduce) {
     const earlierIds = new Set(progress.earlier.map(item => item.id));
-    const retained = active && !reduce && !document.hidden
-      ? new Set([...state.retained, ...(state.active ? state.progress.current.map(item => item.id) : [])]
+    const retained = active
+      ? new Set([...state.retained, ...(state.active ? state.progress.current.map(item => item.id) : progress.earlier.map(item => item.id))]
         .filter(id => earlierIds.has(id))) : new Set<string>();
     snapshot = { progress, active, open, reduce, retained,
       folding: new Set(open ? [] : [...state.folding].filter(id => retained.has(id))) };
@@ -31,17 +33,59 @@ export function useEarlierProcessHandoff(items: TranscriptItem[], progress: Prog
   const current = items.filter(item => currentIds.has(item.id) || snapshot.retained.has(item.id));
   const earlier = progress.earlier.filter(item => !snapshot.retained.has(item.id));
 
+  const offscreen = (ids: string[]) => {
+    const scroller = rootRef.current?.closest<HTMLElement>(".transcript-scroll");
+    if (!scroller || scroller.dataset.following !== "true" || document.hidden) return false;
+    const top = scroller.getBoundingClientRect().top;
+    const slots = [...rootRef.current!.querySelectorAll<HTMLElement>("[data-process-items]")];
+    return ids.every(id => {
+      const slot = slots.find(node => node.dataset.processItems?.split(" ").includes(id));
+      return slot && slot.getBoundingClientRect().bottom <= top;
+    });
+  };
+
   useLayoutEffect(() => {
+    if (!active) return;
+    const scroller = rootRef.current?.closest<HTMLElement>(".transcript-scroll");
+    if (!scroller) return;
+    let frame = 0;
+    const refresh = () => {
+      if (!frame) frame = requestAnimationFrame(() => { frame = 0; setViewportRevision(value => value + 1); });
+    };
+    scroller.addEventListener("scroll", refresh, { passive: true });
+    document.addEventListener("visibilitychange", refresh);
+    const resize = new ResizeObserver(refresh);
+    resize.observe(rootRef.current!);
+    resize.observe(scroller);
+    const attributes = new MutationObserver(refresh);
+    attributes.observe(scroller, { attributes: true, attributeFilter: ["data-following"] });
+    refresh();
+    return () => {
+      cancelAnimationFrame(frame);
+      scroller.removeEventListener("scroll", refresh);
+      document.removeEventListener("visibilitychange", refresh);
+      resize.disconnect();
+      attributes.disconnect();
+    };
+  }, [active]);
+
+  useLayoutEffect(() => {
+    if (!active) return;
     const eligible = new Set<string>();
     const batches = new Map<string, string[]>();
     if (!open) for (const ids of groups(current)) {
       // A tool group is one envelope. Never hide a live row together with its
       // completed neighbours, or fold text that is still draining its last burst.
       if (ids.every(id => snapshot.retained.has(id)
-        && ![...pending].some(key => key.startsWith(`${id}:`)))) {
+        && ![...pending].some(key => key.startsWith(`${id}:`))) && offscreen(ids)) {
         ids.forEach(id => eligible.add(id));
         batches.set(JSON.stringify(ids), ids);
       }
+    }
+    if (reduce && eligible.size) {
+      setState(previous => ({ ...previous,
+        retained: new Set([...previous.retained].filter(id => !eligible.has(id))), folding: new Set() }));
+      return;
     }
     const reversing = [...snapshot.folding].filter(id => !eligible.has(id));
     if (reversing.length) setState(previous => ({ ...previous,
@@ -60,7 +104,7 @@ export function useEarlierProcessHandoff(items: TranscriptItem[], progress: Prog
       const timer = window.setTimeout(() => {
         timers.current.delete(key);
         setState(previous => {
-          if (!previous.active || previous.open || !ids.every(id => previous.retained.has(id))) return previous;
+          if (!previous.active || previous.open || !offscreen(ids) || !ids.every(id => previous.retained.has(id))) return previous;
           const retained = new Set(previous.retained);
           const folding = new Set(previous.folding);
           for (const id of ids) {
@@ -72,18 +116,13 @@ export function useEarlierProcessHandoff(items: TranscriptItem[], progress: Prog
       }, phase === "holding" ? READ_HOLD_MS : FOLD_LIFETIME_MS);
       timers.current.set(key, { phase, timer });
     }
-  }, [current, groups, open, pending, snapshot]);
+  }, [current, groups, open, pending, snapshot, viewportRevision, reduce, active]);
 
   useLayoutEffect(() => {
-    const settleHidden = () => {
-      if (document.hidden) setState(previous => ({ ...previous, retained: new Set(), folding: new Set() }));
-    };
-    document.addEventListener("visibilitychange", settleHidden);
     return () => {
-      document.removeEventListener("visibilitychange", settleHidden);
       timers.current.forEach(({ timer }) => clearTimeout(timer));
       timers.current.clear();
     };
   }, []);
-  return { current, earlier, retained: snapshot.retained, folding: snapshot.folding };
+  return { rootRef, current, earlier, retained: snapshot.retained, folding: snapshot.folding };
 }

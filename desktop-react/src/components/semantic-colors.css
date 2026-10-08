@@ -153,8 +153,6 @@ html[data-loom-theme="light"] .inline-diff-row.is-delete .inline-diff-marker {
 }
 
 /* Compact activity status dots. */
-.task-flow-status.completed .task-flow-status-dot,
-.task-flow-status.changed .task-flow-status-dot,
 .runtime-status-dot.status-completed,
 .runtime-status-dot.status-success,
 .runtime-status-dot.status-succeeded {
@@ -281,4 +279,12 @@ html[data-loom-theme="light"] .inline-diff-row.is-delete .inline-diff-marker {
 .status-info,
 .text-info {
   color: var(--semantic-info) !important;
+}
+
+/* Finished inline work is a quiet receipt; live/error states carry emphasis. */
+.task-flow-status.completed .task-flow-status-dot,
+.task-flow-status.changed .task-flow-status-dot {
+  background: var(--flow-faint) !important;
+  box-shadow: none !important;
+  opacity: .5;
 }

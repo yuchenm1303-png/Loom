@@ -141,7 +141,7 @@
   font-weight: 620;
   line-height: 20px;
   letter-spacing: .005em;
-  animation: run-progress-phase-in 240ms ease-out both;
+
 }
 
 .run-progress-phase-note {
@@ -196,38 +196,6 @@
   background: #434a54;
 }
 
-.run-progress-agent-button {
-  min-height: 22px;
-  padding: 0 7px;
-  border: 1px solid rgba(139,124,246,.12);
-  border-radius: 7px;
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  background: rgba(139,124,246,.045);
-  color: #8f87d5;
-  font: inherit;
-  font-size: 11px;
-  font-weight: 620;
-  cursor: pointer;
-  pointer-events: auto;
-  transition: color 130ms ease, border-color 130ms ease, background 130ms ease, transform 130ms ease;
-}
-
-.run-progress-agent-button svg {
-  color: #978deb;
-}
-
-.run-progress-agent-button:hover {
-  color: #c8c2f6;
-  border-color: rgba(139,124,246,.20);
-  background: rgba(139,124,246,.08);
-}
-
-.run-progress-agent-button:active {
-  transform: scale(.96);
-}
-
 /* The bottom placement (narrow layouts) keeps the same parts, stacked. */
 .run-progress-frame.bottom {
   padding: 5px 18px 0;
@@ -263,22 +231,18 @@
   }
 }
 
-/* Text never moves: a phase change is a short cross-fade. */
-@keyframes run-progress-phase-in {
-  from { opacity: .2; }
-  to { opacity: 1; }
-}
-
 @keyframes run-progress-mark-in {
   from { opacity: 0; scale: .4; }
 }
+
+.run-progress-token-group { display: inline-flex; align-items: center; gap: 8px; }
 
 @media (max-width: 1180px) {
   .run-progress-meta {
     gap: 6px;
   }
 
-  .run-progress-meta-item.subtle {
+  .run-progress-token-group {
     display: none;
   }
 }
@@ -360,22 +324,8 @@ html[data-loom-theme="light"] .run-progress-meta-dot {
   background: #c5cad1;
 }
 
-html[data-loom-theme="light"] .run-progress-agent-button {
-  border-color: rgba(105,90,216,.11);
-  background: rgba(105,90,216,.045);
-  color: #6357bd;
-}
-
-html[data-loom-theme="light"] .run-progress-agent-button svg {
-  color: #695ad8;
-}
-
-html[data-loom-theme="light"] .run-progress-agent-button:hover {
-  border-color: rgba(105,90,216,.18);
-  background: rgba(105,90,216,.075);
-  color: #4e43a8;
-}
-
 html[data-loom-theme="light"] .run-progress-frame.bottom {
   background: transparent;
 }
+
+.run-progress-phase > span { overflow: hidden; text-overflow: ellipsis; }

@@ -24,31 +24,10 @@ try {
     item("command", "tool_call", { toolName: "exec", status: "running", arguments: { cmd: "build report" } })];
   await page.evaluate(items => window.renderItems(items, true), items);
   await page.getByText("1/3 已完成", { exact: true }).waitFor();
-  assert.equal(await page.getByText("早期检查已经完成。", { exact: true }).count(), 0);
+  assert.equal(await page.getByText("早期检查已经完成。", { exact: true }).count(), 1, "visible earlier records remain in place");
+  assert.equal(await page.locator(".earlier-process-toggle").count(), 0);
   await page.getByText("失败项也写入报告。", { exact: true }).waitFor();
   await page.getByText("服务端暂时不可达；结果明确记为未覆盖", { exact: true }).waitFor();
-  await page.getByRole("button", { name: "展开较早过程，2 项" }).click();
-  await page.getByText("早期检查已经完成。", { exact: true }).waitFor();
-  await page.evaluate(() => {
-    window.historyNode = document.querySelector(".earlier-process-history-inner > *");
-  });
-  await page.getByRole("button", { name: "收起较早过程，2 项" }).click();
-  await page.waitForTimeout(350);
-  assert.ok(await page.evaluate(() => window.historyNode?.isConnected), "folded history retains its content after exit");
-  await page.getByRole("button", { name: "展开较早过程，2 项" }).click();
-  assert.ok(await page.evaluate(() => window.historyNode === document.querySelector(".earlier-process-history-inner > *")), "reopening preserves the same history DOM");
-  await page.waitForTimeout(350);
-  const heights = await page.evaluate(async () => {
-    const inner = document.querySelector(".earlier-process-history-inner > *");
-    const samples = [];
-    for (let frame = 0; frame < 12; frame++) {
-      await new Promise(requestAnimationFrame);
-      samples.push(inner.getBoundingClientRect().height);
-    }
-    return samples;
-  });
-  assert.ok(Math.max(...heights) - Math.min(...heights) < 1, "historical content geometry stays stable without replaying text");
-  await page.getByRole("button", { name: "收起较早过程，2 项" }).click();
   if (process.env.LOOM_PROGRESS_SCREENSHOT) await page.screenshot({ path: process.env.LOOM_PROGRESS_SCREENSHOT });
   await page.setViewportSize({ width: 480, height: 900 });
   await page.evaluate(() => document.documentElement.dataset.loomTheme = "light");

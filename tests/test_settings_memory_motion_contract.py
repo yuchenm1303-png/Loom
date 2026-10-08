@@ -39,15 +39,15 @@ def test_memory_uses_the_same_page_entrance_as_every_other_section() -> None:
     assert "transition-delay: 34ms;" not in motion
 
 
-def test_settings_page_motion_is_compositor_only_and_directional() -> None:
+def test_settings_page_motion_keeps_readable_blocks_stationary() -> None:
     page = PAGE.read_text(encoding="utf-8")
     motion = MOTION.read_text(encoding="utf-8")
 
-    # No exit phase: the destination commits at once and the page rises in from the
-    # side the sidebar highlight is travelling toward.
+    # The destination commits immediately; readable page blocks fade in place.
     assert "SETTINGS_SECTION_EXIT_MS" not in page
-    assert 'data-flow="backward"' in motion
-    assert "@keyframes settings-block-rise" in motion and "@keyframes settings-block-fall" in motion
+    assert "@keyframes settings-block-fade" in motion
+    assert "@keyframes settings-block-rise" not in motion
+    assert "@keyframes settings-block-fall" not in motion
     assert "filter:" not in motion
     assert "backdrop-filter:" not in motion
 

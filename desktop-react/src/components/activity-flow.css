@@ -39,7 +39,7 @@
   color: var(--flow-muted);
   text-align: left;
   cursor: pointer;
-  transition: background 130ms ease, color 130ms ease, transform 130ms cubic-bezier(.2,.8,.2,1);
+  transition: background 130ms ease, color 130ms ease;
 }
 
 .task-flow-row > * {
@@ -55,7 +55,7 @@
 .task-flow-row.is-expandable:hover {
   background: var(--flow-hover);
   color: #aeb5c0;
-  transform: translateX(1px);
+
 }
 
 .task-flow-row.is-expandable:focus-visible {
@@ -191,7 +191,7 @@
 
 .task-flow-status.completed .task-flow-status-dot,
 .task-flow-status.changed .task-flow-status-dot {
-  background: #70a186;
+  background: var(--flow-faint);
 }
 
 .task-flow-status.failed .task-flow-status-dot,
@@ -503,3 +503,5 @@
     transition: none !important;
   }
 }
+
+.task-flow-row-main .task-flow-status { align-self: center; margin-left: 1px; }

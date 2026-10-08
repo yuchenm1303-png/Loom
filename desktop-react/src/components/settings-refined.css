@@ -28,7 +28,7 @@
 
   --sr-page: #0c0e11;
   --sr-sidebar: #101216;
-  --sr-card: #14171c;
+  --sr-card: var(--loom-workspace-panel, #14171c);
   --sr-raised: #1a1d23;
   --sr-inset: #0e1013;
   --sr-well: #0f1114;
@@ -61,7 +61,7 @@
   --sr-seg-thumb: linear-gradient(180deg, color-mix(in srgb, var(--sr-accent) 24%, transparent), color-mix(in srgb, var(--sr-accent) 13%, transparent));
   --sr-seg-thumb-line: color-mix(in srgb, var(--sr-accent) 38%, transparent);
   --sr-seg-thumb-shadow: 0 4px 12px -4px color-mix(in srgb, var(--sr-accent) 40%, transparent), inset 0 1px 0 rgba(255, 255, 255, .09);
-  --sr-shadow-card: inset 0 1px 0 rgba(255, 255, 255, .028), 0 1px 2px rgba(0, 0, 0, .3);
+  --sr-shadow-card: 0 1px 2px rgba(0, 0, 0, .12);
   --sr-shadow-control: none;
   --sr-shadow-pop: 0 18px 40px -14px rgba(0, 0, 0, .65), 0 2px 8px rgba(0, 0, 0, .3);
   --sr-thumb-shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 2px 6px rgba(0, 0, 0, .18);
@@ -585,7 +585,7 @@ html[data-loom-theme="light"] .settings-host {
 .settings-shell.settings-refined .mature-model-card button:active:not(:disabled),
 .settings-shell.settings-refined .general-copy-button:active,
 .settings-shell.settings-refined .general-reset-button:active {
-  transform: scale(.98);
+  transform: none;
 }
 
 .settings-shell.settings-refined .mature-action-button > .lucide-refresh-cw {
@@ -771,7 +771,7 @@ html[data-loom-theme="light"] .settings-host {
 }
 
 .settings-shell.settings-refined .appearance-segmented button:active {
-  transform: scale(.94);
+  transform: none;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -877,7 +877,7 @@ html[data-loom-theme="light"] .settings-host {
 .settings-shell.settings-refined .general-quick-card:hover {
   border-color: var(--sr-line-strong);
   background: var(--sr-card);
-  transform: translate3d(0, -1px, 0);
+  transform: none;
   box-shadow: var(--sr-shadow-card);
 }
 
@@ -1005,9 +1005,9 @@ html[data-loom-theme="light"] .settings-host {
 }
 
 @keyframes settings-value-settle {
-  from { opacity: 0; transform: translate3d(0, 4px, 0); }
+  from { opacity: 0; }
   55% { opacity: 1; }
-  to { opacity: 1; transform: translate3d(0, 0, 0); }
+  to { opacity: 1; }
 }
 
 /* Mock workspace. Every layout preference arrives as a custom property (see
@@ -1234,7 +1234,7 @@ html[data-loom-theme="light"] .settings-host {
 .settings-shell.settings-refined .appearance-theme-option:hover {
   border-color: var(--sr-line-strong);
   background: var(--sr-card);
-  transform: translate3d(0, -1px, 0);
+  transform: none;
 }
 
 .settings-shell.settings-refined .appearance-theme-option.active {

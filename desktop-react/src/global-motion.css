@@ -50,10 +50,9 @@
 .settings-host .settings-sidebar,
 .settings-host .settings-main {
   opacity: 1;
-  transform: translate3d(0, 0, 0);
+  transform: none;
   will-change: auto;
   transition:
-    transform var(--loom-motion-page) var(--loom-ease-out),
     opacity 220ms ease;
 }
 
@@ -61,23 +60,23 @@
 .settings-host[data-motion-phase="entering"] .settings-main,
 .settings-host[data-motion-phase="exiting"] .settings-sidebar,
 .settings-host[data-motion-phase="exiting"] .settings-main {
-  will-change: transform, opacity;
+  will-change: opacity;
 }
 
 .settings-host[data-motion-phase="entering"] .settings-sidebar {
   opacity: 0;
-  transform: translate3d(-10px, 0, 0);
+  transform: none;
 }
 
 .settings-host[data-motion-phase="entering"] .settings-main {
   opacity: 0;
-  transform: translate3d(0, 7px, 0);
+  transform: none;
 }
 
 .settings-host[data-motion-phase="entered"] .settings-sidebar,
 .settings-host[data-motion-phase="entered"] .settings-main {
   opacity: 1;
-  transform: translate3d(0, 0, 0);
+  transform: none;
   will-change: auto;
 }
 
@@ -87,7 +86,7 @@
 
 .settings-host[data-motion-phase="exiting"] .settings-sidebar {
   opacity: 0;
-  transform: translate3d(-6px, 0, 0);
+  transform: none;
   transition-duration: 205ms, 175ms;
   transition-delay: 0ms;
   transition-timing-function: var(--loom-ease-in), ease;
@@ -95,7 +94,7 @@
 
 .settings-host[data-motion-phase="exiting"] .settings-main {
   opacity: 0;
-  transform: translate3d(0, -4px, 0);
+  transform: none;
   transition-duration: 205ms, 175ms;
   transition-delay: 0ms;
   transition-timing-function: var(--loom-ease-in), ease;
@@ -141,26 +140,25 @@
    set of component-specific keyframes. */
 .settings-toast {
   animation: none !important;
-  will-change: transform, opacity;
+  will-change: opacity;
   transition:
-    transform var(--loom-motion-popover) var(--loom-ease-out),
     opacity 220ms ease;
 }
 
 .settings-toast[data-motion-phase="entering"] {
   opacity: 0;
-  transform: translate3d(0,8px,0) scale(.985);
+  transform: none;
 }
 
 .settings-toast[data-motion-phase="entered"] {
   opacity: 1;
-  transform: translate3d(0,0,0) scale(1);
+  transform: none;
 }
 
 .settings-toast[data-motion-phase="exiting"] {
   pointer-events: none;
   opacity: 0;
-  transform: translate3d(0,4px,0) scale(.992);
+  transform: none;
   transition-duration: 195ms;
   transition-timing-function: var(--loom-ease-in);
 }

@@ -112,10 +112,13 @@ surfaces sharing one presence owner (the composer popovers). Live sends finish
 at 380ms; historical messages and persisted decision receipts stay still.
 
 Live earlier-process handoff retains outgoing records in their original keyed
-slots. Finish any pending glyph burst, hold readable text for 120ms, then fade
-and contract the slot plus its spacing over 340ms before transferring it to
-history. A tool group retires only after every row is eligible. Expanding during
-retirement reverses the fold and cancels removal; reduced motion settles at once.
+slots while any part is visible or the user is reading above the growth edge.
+TranscriptScrollController exposes its intent through `data-following` on the
+scroller. Only fully above-viewport records retire while follow is active;
+pending glyph bursts finish first. A tool group retires as one envelope.
+Scrolling up or opening history reverses pending retirement; reduced motion
+removes only eligible records immediately. The history capsule counts transferred
+records, so an empty capsule never appears beside retained content.
 Run `node scripts/tests/earlier-process-browser.mjs` with the browser environment
 above to check these races in both themes. `LOOM_EARLIER_SCREENSHOTS` saves frames
 during the real height transition.
@@ -126,3 +129,16 @@ stream bursts, exit/reopen races, live reduced-motion changes, preview keyboard
 focus, historical/send lifetimes, IME confirmation and popover exits. Open
 `/scripts/fixtures/task-flow-motion.html` to replay thinking, tool activity,
 reasoning and answer handoffs, or use its film mode to inspect animation frames.
+
+RunProgress counts the same merged activity rows as the transcript, and shares
+phase vocabulary with task group titles. Labels and composer mode changes use
+Crossfade: outgoing layers become inert immediately; text stays at its origin;
+initial mount and reduced motion do not animate. Thread selection does not
+replay composer mode motion. Settings pages, sidebar menus and account dialogs
+also reveal through opacity, leaving movement to text-free selection marks.
+
+Run `node scripts/tests/runtime-choreography-browser.mjs` for phase overlap,
+merged step counts, responsive separators, tool status placement and composer
+send/stop draft retention. `component-surfaces-browser.mjs` covers the composer
+popovers, account dialog, sidebar menu and settings in both themes; set
+`LOOM_SURFACE_SCREENSHOTS` to retain its screenshots.

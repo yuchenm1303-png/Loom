@@ -107,11 +107,11 @@ try {
   await input.evaluate(el => el.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', isComposing: true, bubbles: true })));
   assert.equal(await page.locator('body').getAttribute('data-submitted'), null);
   assert.equal(await input.inputValue(), '输入法候选');
-  await page.locator('.permission-chip').click();
+  await page.locator('.composer-mode-crossfade > :not(.crossfade-out) .permission-chip').click();
   await page.locator('.permission-popover[data-motion-phase="entered"]').waitFor();
   await page.locator('.permission-option').first().focus();
   await page.keyboard.press('Escape');
-  assert.ok(await page.locator('.permission-chip').evaluate(el => el === document.activeElement));
+  assert.ok(await page.locator('.composer-mode-crossfade > :not(.crossfade-out) .permission-chip').evaluate(el => el === document.activeElement));
   assert.equal(await page.locator('.permission-popover').getAttribute('inert'), '');
   await page.locator('.permission-popover').waitFor({ state: 'detached' });
   // Exercise the real fallback when View Transitions are not available.

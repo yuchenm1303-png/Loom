@@ -89,16 +89,14 @@
   border: 1px solid color-mix(in srgb, var(--border, #292d38) 88%, transparent);
   border-radius: 18px;
   background:
-    radial-gradient(140% 82% at 50% -22%, color-mix(in srgb, var(--accent, #8b7cf6) 7%, transparent), transparent 62%),
-    var(--panel, #101217);
+    var(--loom-workspace-panel, var(--panel, #101217));
   box-shadow:
     var(--loom-shadow, 0 18px 48px rgba(0, 0, 0, .24)),
     0 2px 8px rgba(0, 0, 0, .14);
   contain: layout paint style;
   backface-visibility: hidden;
-  will-change: transform, opacity;
+  will-change: opacity;
   transition:
-    transform var(--loom-motion-dialog,380ms) var(--loom-ease-out,cubic-bezier(.2,.74,.18,1)),
     opacity var(--loom-motion-opacity,260ms) ease;
 }
 
@@ -108,13 +106,13 @@
 
 .loom-account-backdrop[data-motion-phase="entering"] .loom-account-dialog {
   opacity: 0;
-  transform: translate3d(0, 9px, 0) scale(.991);
-  will-change: transform, opacity;
+  transform: none;
+  will-change: opacity;
 }
 
 .loom-account-backdrop[data-motion-phase="entered"] .loom-account-dialog {
   opacity: 1;
-  transform: translate3d(0, 0, 0) scale(1);
+  transform: none;
 }
 
 .loom-account-backdrop[data-motion-phase="exiting"] {
@@ -124,8 +122,8 @@
 
 .loom-account-backdrop[data-motion-phase="exiting"] .loom-account-dialog {
   opacity: 0;
-  transform: translate3d(0, 5px, 0) scale(.994);
-  will-change: transform, opacity;
+  transform: none;
+  will-change: opacity;
   transition-duration: 225ms;
   transition-timing-function: var(--loom-ease-in,cubic-bezier(.42,0,.72,.2));
 }
@@ -388,14 +386,14 @@
 }
 
 .loom-account-primary-button:hover:not(:disabled) {
-  transform: translateY(-1px);
+  transform: none;
   box-shadow:
     0 6px 18px color-mix(in srgb, var(--accent, #8b7cf6) 24%, transparent),
     0 1px 2px rgba(0, 0, 0, .18);
 }
 
 .loom-account-primary-button:active:not(:disabled) {
-  transform: translateY(0);
+  transform: none;
   box-shadow: 0 1px 2px rgba(0, 0, 0, .16);
 }
 
@@ -888,7 +886,7 @@
 }
 
 .loom-account-profile-actions .loom-account-action-card:hover:not(:disabled) {
-  transform: translateY(-1px);
+  transform: none;
   border-color: color-mix(in srgb, var(--accent, #8b7cf6) 32%, var(--border, #292d38));
   background:
     linear-gradient(135deg, color-mix(in srgb, var(--accent, #8b7cf6) 8%, transparent), transparent 70%),
@@ -1258,12 +1256,12 @@
 }
 
 @keyframes loom-account-dialog-in {
-  from { opacity: 0; transform: translateY(9px) scale(.986); }
+  from { opacity: 0; }
   to { opacity: 1; transform: none; }
 }
 
 @keyframes loom-account-rise {
-  from { opacity: 0; transform: translateY(5px); }
+  from { opacity: 0; }
   to { opacity: 1; transform: none; }
 }
 

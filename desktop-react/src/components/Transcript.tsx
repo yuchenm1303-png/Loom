@@ -546,7 +546,7 @@ function rowStatus(row: ActivityRowModel): string {
   return status;
 }
 
-function buildActivityRows(items: TranscriptItem[]): ActivityRowModel[] {
+export function buildActivityRows(items: TranscriptItem[]): ActivityRowModel[] {
   const rows: ActivityRowModel[] = [];
   const commandWrappers: ActivityRowModel[] = [];
   const editWrappers: ActivityRowModel[] = [];
@@ -696,7 +696,7 @@ function browserScreenshotPaths(item: TranscriptItem): string[] {
   return [path];
 }
 
-function turnProcessBreakdown(items: TranscriptItem[]): TurnProcessBreakdown {
+function turnProcessBreakdown(items: TranscriptItem[], copyForSummary: RuntimeCopy): TurnProcessBreakdown {
   const rows = buildActivityRows(items.filter(isActivityItem));
   const editedPaths = new Set<string>();
   const readPaths = new Set<string>();
@@ -705,6 +705,7 @@ function turnProcessBreakdown(items: TranscriptItem[]): TurnProcessBreakdown {
   let commands = 0;
   let imagesViewed = 0;
   let tools = 0;
+  let searches = 0;
   let lastDiff = "";
 
   for (const row of rows) {
@@ -720,6 +721,8 @@ function turnProcessBreakdown(items: TranscriptItem[]): TurnProcessBreakdown {
       if (row.item.type === "file_edit" && String(row.item.diff ?? "").trim()) lastDiff = String(row.item.diff);
       continue;
     }
+    const category = describeActivity(row.item, row.wrapper, itemStatus(row.item), copyForSummary, { fallbackToolLabel: "", screenshotCount: 0 }).category;
+    if (category === "search" || category === "web") { searches += 1; continue; }
     if (isFileReadTool(row.item)) {
       const before = readPaths.size;
       collectReadPaths(row.item.arguments, readPaths);
@@ -741,6 +744,7 @@ function turnProcessBreakdown(items: TranscriptItem[]): TurnProcessBreakdown {
     filesEdited: editedPaths.size + anonymousEdits,
     filesRead: readPaths.size + anonymousReads,
     imagesViewed,
+    searches,
     tools,
     added,
     removed,
@@ -1001,8 +1005,8 @@ const ActivityRow = memo(function ActivityRow({ row, open, workspace, copy, delt
               {stats.removed ? <span className="task-flow-minus">-{stats.removed}</span> : null}
             </span>
           ) : null}
+          <ActivityStatus status={status} copy={copy} />
         </span>
-        <ActivityStatus status={status} copy={copy} />
       </button>
 
       {previewPath ? (
@@ -1801,7 +1805,7 @@ function TurnProcess({
   // so completion never re-expands the earlier history for a frame.
   const live = active || settle !== null;
   const summary = useMemo(() => activitySummary(items), [items]);
-  const breakdown = useMemo(() => turnProcessBreakdown(items), [items]);
+  const breakdown = useMemo(() => turnProcessBreakdown(items, copy), [items, copy]);
   const intermediateMessages = useMemo(
     () => items.reduce((count, item) => count + (item.type === "assistant_message" ? 1 : 0), 0),
     [items],
@@ -1827,7 +1831,7 @@ function TurnProcess({
   // The finished live layout is held through the settle fold, including records
   // still retained in place, so nothing disappears at the moment of completion.
   const handoff = useEarlierProcessHandoff(items, progress, live, earlierOpen, pendingPresentations, processHandoffGroups);
-  const earlierEntry = useMotionPresence(live && progress.earlier.length > 0, 200);
+  const earlierEntry = useMotionPresence(live && handoff.earlier.length > 0, 200);
 
   // The standalone thinking capsule: shown at once while the turn has produced
   // nothing yet, and after a short grace during later quiet gaps.
@@ -1851,6 +1855,7 @@ function TurnProcess({
 
   return (
     <section
+      ref={handoff.rootRef}
       className={`turn-process ${live ? "is-live" : "is-settled"} ${settle ? `is-settling is-settle-${settle}` : ""} ${open ? "is-open" : ""} ${guidanceItems.length ? "has-guidance" : ""}`.replace(/\s+/g, " ").trim()}
     >
       {!active ? (
@@ -1895,18 +1900,18 @@ function TurnProcess({
           <div className="turn-process-inner">
             <div className="turn-process-content">
               {live && earlierEntry.mounted ? (
-                <div className="earlier-process-entry" data-motion-phase={earlierEntry.phase} inert={!progress.earlier.length}>
+                <div className="earlier-process-entry" data-motion-phase={earlierEntry.phase} inert={!handoff.earlier.length}>
                 <div className={`earlier-task-process ${earlierOpen ? "is-open" : ""} ${handoff.folding.size ? "is-receiving" : ""}`.trim()}>
                   <button type="button" className="earlier-process-toggle" aria-expanded={earlierOpen}
                     aria-controls={earlierHistoryId}
-                    aria-label={copy.earlierToggleLabel(earlierOpen, progress.earlier.length)}
+                    aria-label={copy.earlierToggleLabel(earlierOpen, handoff.earlier.length)}
                     title={copy.earlierToggleTitle(earlierOpen)}
                     onClick={() => {
                       setEarlierOpen(!earlierOpen);
                     }}>
                     <span className="earlier-process-icon" aria-hidden="true"><History size={14} strokeWidth={1.8} /></span>
                     <span className="earlier-process-label">{copy.earlier}</span>
-                    <span className="earlier-process-count" key={progress.earlier.length} aria-hidden="true">{copy.earlierCount(progress.earlier.length)}</span>
+                    <span className="earlier-process-count" key={handoff.earlier.length} aria-hidden="true">{copy.earlierCount(handoff.earlier.length)}</span>
                     <ChevronRight size={13} className="earlier-process-chevron" aria-hidden="true" />
                   </button>
                   <div id={earlierHistoryId} className="earlier-process-history" data-motion-phase={earlierPresence.phase} inert={!earlierOpen}>

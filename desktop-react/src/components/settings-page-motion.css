@@ -1,25 +1,6 @@
-/* Settings navigation motion
-   ==========================
-   One gesture in three parts, every moving piece transform/opacity on few or
-   small things:
-
-   1. The sidebar highlight glides to the new row (settingsMotion.ts, FLIP). It is
-      text-free, so it may stretch while it is fast, and it passes *under* every
-      label on its way.
-   2. The new page rises into place in a short cascade. Only the page's top-level
-      blocks move (heading first, then each section), each on the compositor, each
-      starting on the very first painted frame. The direction follows the
-      highlight: going down the sidebar the page lifts up from below, going up it
-      settles down from above.
-   3. Light: the rail of the new row flares as the highlight lands, and the small
-      dash in front of the page eyebrow draws itself out.
-
-   The destination is committed immediately and the old page is never kept around:
-   nothing waits and nothing re-renders while it plays. settingsMotion.ts marks the
-   blocks for a moment (data-flow on the persistent surface, data-flow-block on
-   each block) and removes the marks afterwards, so sections that appear later on
-   the same page (a toggle revealing a card, a list finishing loading) never replay
-   the entrance. */
+/* Settings navigation: the text-free selection pill glides; readable page
+   blocks reveal through opacity only. Blocks enter once on navigation and
+   late asynchronous content never restarts the page entrance. */
 
 /* Set inline on each block by settingsMotion.ts. Registered as non-inherited so
    that writing them never restyles a block's descendants (a page can be hundreds
@@ -46,9 +27,7 @@
   position: relative;
   min-width: 0;
   isolation: isolate;
-  /* Blocks start a few px off their mark. Paint containment clips them to the
-     surface, so they can never stretch the scroller (no scrollbar flicker on
-     short pages) or bleed over the sidebar. */
+  /* Clip page content without creating horizontal overflow. */
   contain: paint style;
 }
 
@@ -56,29 +35,14 @@
   from { opacity: 0; }
 }
 
-@keyframes settings-block-rise {
-  from { transform: translate3d(0, var(--flow-distance), 0); }
-}
-
-@keyframes settings-block-fall {
-  from { transform: translate3d(0, calc(var(--flow-distance) * -.55), 0); }
-}
-
 @keyframes settings-eyebrow-draw {
   from { transform: scaleX(0); opacity: 0; }
 }
 
-/* Two animations, not one: the page is readable almost at once (fast fade) while
-   the lift keeps gliding for a beat longer. The delay is per block, set inline by
-   settingsMotion.ts from a short ladder. */
+/* A short opacity ladder keeps the heading and sections readable in order. */
 .settings-shell.settings-refined .settings-page-surface[data-flow] [data-flow-block] {
   animation:
-    settings-block-fade var(--flow-fade) ease-out var(--flow-delay) backwards,
-    settings-block-rise var(--flow-move) var(--flow-ease) var(--flow-delay) backwards;
-}
-
-.settings-shell.settings-refined .settings-page-surface[data-flow="backward"] [data-flow-block] {
-  animation-name: settings-block-fade, settings-block-fall;
+    settings-block-fade var(--flow-fade) ease-out var(--flow-delay) backwards;
 }
 
 /* The dash before the page eyebrow draws out of its left end just after the
@@ -128,7 +92,7 @@
 }
 
 .settings-shell.settings-refined .settings-nav button:active {
-  transform: scale(.985);
+  background-color: var(--sr-press);
 }
 
 .settings-shell.settings-refined .settings-nav-pip {
@@ -177,7 +141,7 @@
 }
 
 .settings-shell.settings-refined .settings-nav button.active > span:not(.settings-nav-pip) {
-  transform: translate3d(1px, 0, 0);
+  transform: none;
 }
 
 /* The new row is only "selected" once the pill has travelled there (script sets

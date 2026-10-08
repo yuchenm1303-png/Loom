@@ -16,6 +16,7 @@ import { KeyboardEvent as ReactKeyboardEvent, useEffect, useMemo, useRef, useSta
 import type { AddModelInput, Attachment, ModelSnapshot, StickerPreferences } from "../types/loom";
 import { useI18n } from "../i18n";
 import { useMotionPresence } from "../motion/useMotionPresence";
+import { Crossfade } from "./Crossfade";
 import { ModelPanel } from "./ModelPanel";
 import { ComposerAttachmentStrip } from "./ComposerAttachmentStrip";
 import {
@@ -649,8 +650,17 @@ export function Composer({
           </div>
 
           <div className="composer-right">
-            {!running ? <span className="composer-keycap">Enter ↵</span> : <span className="composer-running-label" role="status"><i aria-hidden="true" /><span className="composer-running-copy">{stopping ? (zh ? "正在停止…" : "Stopping…") : (zh ? "任务进行中" : "Working")}</span></span>}
-            {running ? (
+            <Crossfade identity={`${Boolean(running)}:${stopping}`}>
+              {!running ? <span className="composer-keycap">Enter ↵</span> : (
+                <span className="composer-running-label" role="status">
+                  <i aria-hidden="true" />
+                  <span className="composer-running-copy">
+                    {stopping ? (zh ? "正在停止…" : "Stopping…") : (zh ? "任务进行中" : "Working")}
+                  </span>
+                </span>
+              )}
+            </Crossfade>
+            <Crossfade identity={String(Boolean(running))}>{running ? (
               <button type="button" className="send-button stop" disabled={stopping} onClick={() => void handleInterrupt()} title="Stop current turn" aria-label="Stop current turn">
                 <Square size={12} fill="currentColor" />
               </button>
@@ -658,7 +668,7 @@ export function Composer({
               <button type="button" className={`send-button ${canSend ? "is-ready" : "is-idle"}`} onClick={() => void submit()} disabled={!canSend} title="Send" aria-label="Send message">
                 <ArrowUp size={17} strokeWidth={2.2} />
               </button>
-            )}
+            )}</Crossfade>
           </div>
         </div>
       </div>

@@ -1,0 +1,15 @@
+.crossfade { display: inline-grid; min-width: 0; }
+.crossfade > * { grid-area: 1 / 1; min-width: 0; }
+.crossfade-out { pointer-events: none; animation: crossfade-out var(--crossfade-ms) ease both; }
+.crossfade-in { animation: crossfade-in var(--crossfade-ms) ease both; }
+@keyframes crossfade-out { to { opacity: 0; } }
+@keyframes crossfade-in { from { opacity: 0; } to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) {
+  .crossfade-out { display: none; }
+  .crossfade-in { animation: none; }
+}
+:root[data-loom-reduced-motion="true"] .crossfade-out { display: none; }
+:root[data-loom-reduced-motion="true"] .crossfade-in { animation: none; }
+
+.composer-mode-crossfade { display: grid; position: relative; width: 100%; }
+.composer-mode-crossfade > .crossfade-out { position: absolute; inset: 0; overflow: hidden; }

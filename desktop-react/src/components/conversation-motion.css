@@ -36,23 +36,23 @@
   display: inline-flex;
   width: fit-content;
   max-width: 100%;
-  min-height: 34px;
+  min-height: 28px;
   align-items: center;
-  gap: 8px;
-  padding: 6px 10px 6px 8px;
-  border: 1px solid var(--loom-border, var(--border));
-  border-radius: 11px;
-  background: var(--loom-surface-soft, var(--panel));
+  gap: 7px;
+  padding: 3px 6px 3px 2px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
   color: var(--text-2);
-  font-size: var(--loom-font-ui, 13.5px);
+  font-size: 12px;
   line-height: 20px;
   text-align: left;
   cursor: pointer;
   transition: background 160ms ease, border-color 160ms ease, color 160ms ease;
 }
 .earlier-process-toggle:hover {
-  background: color-mix(in srgb, var(--accent) 5%, var(--loom-surface-soft, var(--panel)));
-  border-color: color-mix(in srgb, var(--accent) 28%, var(--loom-border, var(--border)));
+  background: color-mix(in srgb, var(--muted) 5%, transparent);
+  border-color: transparent;
   color: var(--text);
 }
 .earlier-process-toggle:focus-visible {
@@ -62,11 +62,10 @@
 .earlier-process-icon {
   display: grid;
   place-items: center;
-  flex: 0 0 22px;
-  height: 22px;
-  border-radius: 7px;
-  background: var(--accent-faint);
-  color: var(--accent-soft);
+  flex: 0 0 18px;
+  height: 18px;
+  background: transparent;
+  color: var(--muted);
 }
 .earlier-process-label { font-weight: 500; white-space: nowrap; }
 .earlier-process-count {
@@ -91,7 +90,7 @@
 }
 .earlier-task-process.is-open .earlier-process-chevron { transform: rotate(90deg); color: var(--accent-soft); }
 .earlier-task-process.is-open .earlier-process-toggle {
-  border-color: color-mix(in srgb, var(--accent) 22%, var(--loom-border, var(--border)));
+  border-color: transparent;
 }
 .earlier-process-history {
   margin: 14px 0 2px 11px;
@@ -329,7 +328,7 @@ html[data-loom-theme="light"] .transcript {
 .task-flow-row,
 .task-flow-group .task-flow-row {
   min-height: 30px;
-  grid-template-columns: 20px minmax(0, 1fr) 8px;
+  grid-template-columns: 20px minmax(0, 1fr);
   gap: 7px;
   padding: 2px 7px 2px 3px;
   border: 1px solid transparent;
@@ -474,7 +473,7 @@ html[data-loom-theme="light"] .transcript {
 @media (max-width: 760px) {
   .task-flow-row,
   .task-flow-group .task-flow-row {
-    grid-template-columns: 19px minmax(0, 1fr) 7px;
+    grid-template-columns: 19px minmax(0, 1fr);
   }
 
   .task-flow-inline-detail-grid,

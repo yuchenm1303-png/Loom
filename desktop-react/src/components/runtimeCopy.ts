@@ -284,6 +284,10 @@ const TOOL_SPECS: Record<string, ToolSpec> = {
 export interface RuntimeCopy {
   lang: RuntimeLanguage;
   thinking: string;
+  runPhase: { thinking: string; next: string; reply: string; approval: string; commandOutput: string; agentProgress: string;
+    stalled: string; done: string; failed: string; stopped: string; limit: string };
+  runSteps(count: number): string;
+  runWait(seconds: number): string;
   thoughtProcess: string;
   showReasoning: string;
   hideReasoning: string;
@@ -355,6 +359,7 @@ export interface ProcessSummaryParts {
   filesEdited: number;
   filesRead: number;
   imagesViewed: number;
+  searches: number;
   tools: number;
 }
 
@@ -451,6 +456,9 @@ function formatDuration(seconds: number): string {
 const ZH: RuntimeCopy = {
   lang: "zh",
   thinking: "正在思考…",
+  runPhase: { thinking: "正在思考", next: "正在思考下一步", reply: "正在回复", approval: "等待你确认", commandOutput: "正在分析命令结果", agentProgress: "正在汇总子代理进度", stalled: "模型仍在思考", done: "已完成", failed: "未能完成", stopped: "已停止", limit: "已达到用量上限" },
+  runSteps: count => `${count} 步`,
+  runWait: seconds => `已等待 ${seconds} 秒`,
   thoughtProcess: "思考过程",
   showReasoning: "展开思考过程",
   hideReasoning: "收起思考过程",
@@ -465,6 +473,7 @@ const ZH: RuntimeCopy = {
     if (parts.filesEdited) items.push(`编辑 ${parts.filesEdited} 个文件`);
     if (parts.filesRead) items.push(`读取 ${parts.filesRead} 个文件`);
     if (parts.imagesViewed) items.push(`查看 ${parts.imagesViewed} 张图片`);
+    if (parts.searches) items.push(`搜索 ${parts.searches} 次`);
     if (parts.tools) items.push(`使用 ${parts.tools} 个工具`);
     return items.length ? items.join(" · ") : `${fallback} 个步骤`;
   },
@@ -558,6 +567,9 @@ const ZH: RuntimeCopy = {
 const EN: RuntimeCopy = {
   lang: "en",
   thinking: "Thinking…",
+  runPhase: { thinking: "Thinking", next: "Thinking about the next step", reply: "Writing a reply", approval: "Waiting for your approval", commandOutput: "Reading the command output", agentProgress: "Reviewing sub-agent progress", stalled: "The model is still thinking", done: "Done", failed: "Didn't finish", stopped: "Stopped", limit: "Usage limit reached" },
+  runSteps: count => plural(count, "step", "steps"),
+  runWait: seconds => `${seconds}s`,
   thoughtProcess: "Thought process",
   showReasoning: "Show thought process",
   hideReasoning: "Hide thought process",
@@ -572,6 +584,7 @@ const EN: RuntimeCopy = {
     if (parts.filesEdited) items.push(`edited ${plural(parts.filesEdited, "file", "files")}`);
     if (parts.filesRead) items.push(`read ${plural(parts.filesRead, "file", "files")}`);
     if (parts.imagesViewed) items.push(`viewed ${plural(parts.imagesViewed, "image", "images")}`);
+    if (parts.searches) items.push(`searched ${plural(parts.searches, "time", "times")}`);
     if (parts.tools) items.push(`used ${plural(parts.tools, "tool", "tools")}`);
     if (!items.length) return plural(fallback, "step", "steps");
     const sentence = items.join(" · ");

@@ -133,6 +133,8 @@ const bridge: Record<string, unknown> = {
     notificationListeners.add(listener);
     return () => notificationListeners.delete(listener);
   },
+  onUpdateStatus: () => () => {},
+  getUpdateStatus: async () => ({ enabled: false, phase: "disabled", currentVersion: "0.1.0-fixture" }),
   setZoomFactor: (factor: number) => factor,
   setNativeTheme: async (source: string) => source === "dark" ? "dark" : "light",
   filePathFor: () => "",

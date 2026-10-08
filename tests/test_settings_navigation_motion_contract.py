@@ -158,23 +158,18 @@ def test_page_motion_only_animates_top_level_blocks_with_compositor_properties()
     assert "data-page-motion" not in css
     assert 'data-page-motion="leaving-forward"' not in css
 
-    for name in ("settings-block-fade", "settings-block-rise", "settings-block-fall"):
-        frames = keyframes(css, name)
-        body = re.sub(r"@keyframes[^{]+", "", frames)
-        properties = set(re.findall(r"([a-z-]+)\s*:", body))
-        assert properties <= {"opacity", "transform"}, (name, properties)
-    fall = keyframes(css, "settings-block-fall")
-    rise = keyframes(css, "settings-block-rise")
-    assert "var(--flow-distance)" in rise and "calc(var(--flow-distance) * -.55)" in fall
-    assert 'data-flow="backward"' in css
+    frames = keyframes(css, "settings-block-fade")
+    body = re.sub(r"@keyframes[^{]+", "", frames)
+    assert set(re.findall(r"([a-z-]+)\s*:", body)) == {"opacity"}
+    assert "@keyframes settings-block-rise" not in css
+    assert "@keyframes settings-block-fall" not in css
 
     # Compositor-only, once, short.
     for forbidden in ("filter:", "backdrop-filter:", "will-change", "infinite", "box-shadow 180ms"):
         assert forbidden not in css, forbidden
     assert int(re.search(r"--flow-fade: (\d+)ms", css).group(1)) <= 260
     assert int(re.search(r"--flow-move: (\d+)ms", css).group(1)) <= 520
-    # Blocks that start a few px off their mark are clipped by the surface, so
-    # they can never stretch the scroller (no scrollbar flicker on short pages).
+    # Page content is clipped without stretching the scrollport.
     assert "contain: paint style;" in rule(css, ".settings-shell.settings-refined .settings-page-surface")
 
 

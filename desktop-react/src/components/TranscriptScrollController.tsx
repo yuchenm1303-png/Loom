@@ -40,6 +40,12 @@ function transcriptScroller(): HTMLDivElement | null {
   return document.querySelector<HTMLDivElement>(".conversation-stage > .transcript-scroll");
 }
 
+/** Publish intent changes only, rather than an attribute mutation every frame. */
+function publishFollowing(scroller: HTMLDivElement, following: boolean) {
+  const value = following ? "true" : "false";
+  if (scroller.dataset.following !== value) scroller.dataset.following = value;
+}
+
 function isPanelResizeActive(): boolean {
   return document.body.classList.contains("loom-panel-resizing")
     || document.body.classList.contains("loom-panel-motion");
@@ -187,6 +193,7 @@ export function TranscriptScrollController({
     // scroll anchoring clamps the viewport.
     userDetachedRef.current = true;
     followingRef.current = false;
+    publishFollowing(scroller, false);
     forceBottomRef.current = false;
     snapBottomRef.current = false;
     returnIntentUntilRef.current = 0;
@@ -258,6 +265,7 @@ export function TranscriptScrollController({
 
       lastScrollTopRef.current = nextTop;
       followingRef.current = true;
+      publishFollowing(scroller, true);
       setJumpVisible(false);
 
       if (easeLiveGrowth && Math.abs(target - nextTop) > SCROLL_EPSILON_PX) {
@@ -337,6 +345,7 @@ export function TranscriptScrollController({
       // the previous conversation's scroll position would expose stale geometry.
       userDetachedRef.current = false;
       followingRef.current = true;
+      publishFollowing(scroller, true);
       returnIntentUntilRef.current = 0;
       setJumpVisible(false);
       scheduleBottomSync(scroller, true, true);
@@ -351,6 +360,7 @@ export function TranscriptScrollController({
       );
       userDetachedRef.current = false;
       followingRef.current = true;
+      publishFollowing(scroller, true);
       returnIntentUntilRef.current = 0;
       setJumpVisible(false);
       scheduleBottomSync(scroller, true);
@@ -376,6 +386,7 @@ export function TranscriptScrollController({
 
     userDetachedRef.current = false;
     followingRef.current = true;
+    publishFollowing(scroller, true);
     forceBottomRef.current = true;
     returnIntentUntilRef.current = 0;
     lastScrollTopRef.current = scroller.scrollTop;
@@ -392,6 +403,7 @@ export function TranscriptScrollController({
       ) {
         userDetachedRef.current = false;
         followingRef.current = true;
+        publishFollowing(scroller, true);
         returnIntentUntilRef.current = 0;
         setJumpVisible(false);
         scheduleBottomSync(scroller);
@@ -512,6 +524,7 @@ export function TranscriptScrollController({
       scroller.scrollTop = Math.max(0, scroller.scrollHeight - scroller.clientHeight);
       lastScrollTopRef.current = scroller.scrollTop;
       followingRef.current = true;
+      publishFollowing(scroller, true);
       forceBottomRef.current = false;
       snapBottomRef.current = false;
       setJumpVisible(false);
@@ -574,6 +587,7 @@ export function TranscriptScrollController({
 
     userDetachedRef.current = false;
     followingRef.current = true;
+    publishFollowing(scroller, true);
     forceBottomRef.current = false;
     returnIntentUntilRef.current = 0;
     setJumpVisible(false);

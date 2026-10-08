@@ -78,7 +78,7 @@
 }
 
 .permission-popover .permission-option:hover:not(:disabled) {
-  transform: translateY(-1px);
+  transform: none;
 }
 
 .permission-popover .permission-option.active {

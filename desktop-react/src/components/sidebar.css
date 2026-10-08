@@ -1062,7 +1062,7 @@ html[data-loom-theme="light"] .sidebar-notice.error { color: #b23a48; }
 /* Conversation context menu ----------------------------------------------------
    Portaled to <body>, so it carries its own tokens. */
 .thread-context-menu {
-  --menu-bg: rgba(31,31,33,.985);
+  --menu-bg: var(--loom-workspace-panel, #191c22);
   --menu-edge: rgba(255,255,255,.095);
   --menu-ink: #f1f2f4;
   --menu-ink-2: #c4c8cf;
@@ -1331,19 +1331,19 @@ html[data-loom-theme="light"] .thread-context-menu {
 }
 
 @keyframes sidebar-notice-in {
-  from { opacity: 0; transform: translateY(5px); }
+  from { opacity: 0; }
 }
 
 @keyframes thread-menu-in {
-  from { opacity: 0; transform: translate3d(0,-4px,0) scale(.99); }
+  from { opacity: 0; }
 }
 
 @keyframes thread-menu-out {
-  to { opacity: 0; transform: translate3d(0,-2px,0) scale(.995); }
+  to { opacity: 0; }
 }
 
 @keyframes thread-project-submenu-in {
-  from { opacity: 0; transform: translateY(-3px); }
+  from { opacity: 0; }
 }
 
 :root[data-loom-reduced-motion="true"] :is(.compact-sidebar, .thread-context-menu),
@@ -1360,4 +1360,11 @@ html[data-loom-theme="light"] .thread-context-menu {
     animation: none !important;
     transition-duration: .001ms !important;
   }
+}
+
+/* Keyboard navigation has the same quiet focus boundary as settings. */
+.compact-thread-main:focus-visible,
+.thread-context-menu > button:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent) 55%, transparent);
+  outline-offset: -2px;
 }

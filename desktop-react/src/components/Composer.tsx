@@ -19,6 +19,7 @@ import {
   resolveComposerFiles,
 } from "./composerAttachments";
 import { QuoteReplyBar, formatQuotedPrompt, useQuoteReply } from "./quoteReply";
+import { Crossfade } from "./Crossfade";
 import "./composer.css";
 
 
@@ -268,13 +269,13 @@ function SteeringComposer({
           </div>
         </div>
       </form>
-      <div className="composer-hint">
+      <div className="composer-hint"><Crossfade identity={`${pendingSends > 0}:${acknowledged}:${zh}`}>
         {pendingSends > 0
           ? (zh ? "消息已立即显示，正在后台确认…" : "Shown immediately · confirming in the background…")
           : acknowledged
             ? (zh ? "已确认，Loom 将根据补充要求继续。" : "Confirmed. Loom will continue with your guidance.")
             : (zh ? "可以随时补充要求，或点击停止结束任务。" : "Add guidance anytime, or stop to end this task.")}
-      </div>
+      </Crossfade></div>
     </div>
   );
 }
@@ -321,6 +322,8 @@ export function Composer(props: ComposerProps) {
 
   return <>
     {sendErrors[draftKey] && <p className="composer-attach-error" role="alert">Could not send: {sendErrors[draftKey]}</p>}
-    {props.running ? <SteeringComposer {...sharedProps} /> : <ComposerBase {...sharedProps} />}
+    <Crossfade block identity={String(Boolean(props.running))} className="composer-mode-crossfade">
+      {props.running ? <SteeringComposer {...sharedProps} /> : <ComposerBase {...sharedProps} />}
+    </Crossfade>
   </>;
 }
