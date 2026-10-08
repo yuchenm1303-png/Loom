@@ -6,6 +6,39 @@ mock.module("electron", { namedExports: { app: {
 } } });
 const { DesktopModelManager } = await import("../../dist-electron/modelManager.js");
 
+test("one unsupported server model cannot fail startup or discard compatible rows", async () => {
+  const manager = new DesktopModelManager(os.tmpdir());
+  const known = profile({ selection: "builtin:ant-ling", model: "Ling-3.0-flash", kind: "builtin" });
+  const saved = profile();
+  const models = [
+    { model_id: known.selection, model: known.model, name: "Known", group_id: "ant-ling", group_name: "Ant Ling", available: true },
+    { model_id: "builtin:ant-ling:New", model: "New", name: "New", group_id: "ant-ling", group_name: "Ant Ling", available: true },
+    { model_id: "builtin:ant-ling:AntAngelMed", model: "AntAngelMed", name: "AntAngelMed", group_id: "ant-ling", group_name: "Ant Ling", available: true },
+  ];
+  let repaired = false;
+  manager.runPythonBridgeAsync = async (_script, command, payload) => {
+    if (command === "describe-models") {
+      if (!repaired) throw new Error("unsupported Ant Ling built-in model id: 'AntAngelMed'");
+      return payload.models.map(row => profile({ selection: row.selection, model: row.model, kind: "builtin" }));
+    }
+    if (payload.model === "AntAngelMed") throw new Error("unsupported model");
+    return profile({ selection: payload.selection, model: payload.model, kind: "builtin" });
+  };
+  const snapshot = { ...registry([known, saved]), current: null, recentModels: [] };
+  const result = await manager.applyServerCatalog(snapshot, models);
+  assert.equal(result.profiles.length, 4);
+  assert.equal(result.profiles[0].available, true);
+  assert.equal(result.profiles[1].available, true);
+  assert.equal(result.profiles[2].available, false);
+  assert.equal(result.profiles[2].configured, false);
+  assert.equal(result.profiles[2].baseUrl, "");
+  assert.match(result.profiles[2].statusMessage, /Host runtime/);
+  assert.equal(result.profiles[3].selection, saved.selection);
+  repaired = true;
+  const retry = await manager.applyServerCatalog(snapshot, models);
+  assert.equal(retry.profiles[2].available, true, "metadata failures are not cached as permanent exclusions");
+});
+
 function profile(overrides = {}) {
   return {
     selection: "saved:demo",

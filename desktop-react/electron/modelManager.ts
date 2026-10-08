@@ -220,18 +220,36 @@ export class DesktopModelManager {
     model_id: string; model: string; name: string; group_id: string; group_name: string; available: boolean;
   }>): Promise<ModelSnapshot> {
     const existing = new Map(snapshot.profiles.map((profile) => [profile.selection, profile]));
+    const unavailable = new Set<string>();
     const missing = models.filter((row) => !existing.has(row.model_id) && !this.serverProfiles.has(row.model_id));
     const batches = await Promise.all([false, true].map(async (antLing) => {
       const requests = missing.filter((row) => isAntLingSelection(row.model_id) === antLing)
         .map((row) => ({ selection: row.model_id, model: row.model }));
       if (!requests.length) return [] as ModelProfile[];
-      return this.runPythonBridgeAsync<ModelProfile[]>(antLing ? "loom_ant_ling_bridge.py" : "loom_model_bridge.py",
-        "describe-models", { models: requests });
+      const script = antLing ? "loom_ant_ling_bridge.py" : "loom_model_bridge.py";
+      try {
+        return await this.runPythonBridgeAsync<ModelProfile[]>(script, "describe-models", { models: requests });
+      } catch {
+        // Older Hosts may reject a newly advertised model. Recover metadata
+        // independently so one incompatible row cannot block Desktop startup.
+        const recovered: ModelProfile[] = [];
+        for (const request of requests) {
+          try {
+            recovered.push(await this.runPythonBridgeAsync<ModelProfile>(script, "describe-model", request));
+          } catch { unavailable.add(request.selection); }
+        }
+        return recovered;
+      }
     }));
     for (const profile of batches.flat()) this.serverProfiles.set(profile.selection, profile);
     const profiles = models.map((row) => {
       const profile = existing.get(row.model_id) ?? this.serverProfiles.get(row.model_id);
-      if (!profile) throw new Error("Model catalog metadata is unavailable");
+      if (!profile || unavailable.has(row.model_id)) return {
+        selection: row.model_id, id: row.model_id, kind: "builtin" as const,
+        name: row.name, model: row.model, groupId: row.group_id, groupName: row.group_name,
+        adapter: "openai-compatible", baseUrl: "", configured: false, available: false,
+        catalogSource: "server", statusMessage: "Model metadata unavailable. Update the Host runtime or retry.",
+      };
       return { ...profile, name: row.name, groupId: row.group_id, groupName: row.group_name,
         catalogSource: "server", available: row.available,
         statusMessage: row.available ? undefined : "Model is no longer available from this provider" };

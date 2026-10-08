@@ -47,10 +47,6 @@ def _model_from_selection(selection: str) -> str | None:
         return model or None
     return None
 
-def _is_ant_ling_model(model: str) -> bool:
-    folded = str(model or "").strip().casefold()
-    return any(folded == item.casefold() for item in ANT_LING_MODEL_IDS)
-
 def _display_name(model: str) -> str:
     value = str(model or "").strip(); return _DISPLAY_NAMES.get(value.casefold(), value)
 
@@ -63,7 +59,10 @@ def _reasoning_key(selection: str, model: str) -> str:
 
 def _profile(model: str, *, reasoning_store: ReasoningConfigStore) -> dict[str, Any]:
     model = str(model or "").strip()
-    if not _is_ant_ling_model(model): raise ValueError(f"unsupported Ant Ling built-in model id: {model!r}")
+    # The server catalog can advertise newer model IDs than this bootstrap's
+    # fallback list. Requests still use the fixed Loom gateway, which enforces
+    # account permissions and upstream availability for the selected model.
+    if not model: raise ValueError("Ant Ling model id must not be empty")
     selection = _selection_for_model(model); base_url = _gateway_base_url()
     capability, selected = resolved_reasoning(model=model, adapter="openai-compatible", base_url=base_url, saved=reasoning_store.get(_reasoning_key(selection, model)) or reasoning_store.get(selection))
     payload: dict[str, Any] = {

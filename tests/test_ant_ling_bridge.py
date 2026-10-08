@@ -2,6 +2,16 @@ from pathlib import Path
 import loom_ant_ling_bridge as bridge
 ROOT = Path(__file__).resolve().parents[1]
 
+def test_server_discovered_model_is_described_and_resolved_without_a_bootstrap_allowlist(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("LOOM_HOME", str(tmp_path))
+    selection = "builtin:ant-ling:AntAngelMed"
+    described = bridge._describe(selection, "AntAngelMed")
+    resolved = bridge._resolve(selection)
+    assert described["selection"] == resolved["selection"] == selection
+    assert resolved["model"] == "AntAngelMed"
+    assert resolved["baseUrl"] == "https://account.smirel.com/model/v1"
+    assert resolved["authMode"] == "loom-account" and resolved["apiKey"] == ""
+
 def test_registry_uses_loom_gateway(tmp_path, monkeypatch) -> None:
     monkeypatch.setenv("LOOM_HOME", str(tmp_path)); monkeypatch.delenv("LOOM_MODEL_GATEWAY_BASE_URL", raising=False)
     profiles = bridge._registry()["profiles"]
