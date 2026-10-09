@@ -452,7 +452,7 @@ export default function App() {
   const threadTitle = selectedThread?.title || (loom.connection === "connecting" ? t("app.startingLoom") : t("app.newConversation"));
   const workspace = thread?.workspace || loom.runtime.defaultWorkspace || "";
   const currentModel = loom.models?.current?.name || loom.models?.current?.model || loom.runtime.model;
-  const permissionMode = thread?.permissionMode || loom.runtime.defaultPermissionMode;
+  const permissionMode = thread?.permissionMode || loom.draftPermissionMode || loom.runtime.defaultPermissionMode;
   const capabilitySettings = loom.runtime.settings?.capabilities ?? {};
   const attachmentsEnabled = capabilitySettings.attachments !== false;
   const stickersEnabled = capabilitySettings.stickers !== false;

@@ -242,6 +242,7 @@ export function useLoom() {
   const [compactionProgress, setCompactionProgress] = useState<ContextCompactionProgress | null>(null);
   const compacting = compactionProgress?.status === "started" || compactionProgress?.status === "running";
   const draftThreadParamsRef = useRef<Record<string, unknown>>({});
+  const [draftPermissionMode, setDraftPermissionMode] = useState<string | undefined>(undefined);
   const homeSendPendingRef = useRef(false);
   const activeIdRef = useRef("");
   const activeTurnIdRef = useRef("");
@@ -314,6 +315,7 @@ export function useLoom() {
     threadStateRevisionRef.current += 1;
     openRequestRef.current += 1;
     draftThreadParamsRef.current = {};
+    setDraftPermissionMode(undefined);
     activeIdRef.current = "";
     activeTurnIdRef.current = "";
     terminalErrorTurnRef.current = "";
@@ -820,7 +822,12 @@ export function useLoom() {
   }, [active?.thread.currentTurnId, active?.thread.id]);
 
   const setPermissionMode = useCallback(async (permissionMode: string) => {
-    if (!active?.thread.id || active.thread.archived) return;
+    if (!active?.thread.id) {
+      draftThreadParamsRef.current = { ...draftThreadParamsRef.current, permissionMode };
+      setDraftPermissionMode(permissionMode);
+      return;
+    }
+    if (active.thread.archived) return;
     const result = await requireBridge().call<{ thread: ThreadRecord }>("thread/set_permission_mode", {
       threadId: active.thread.id,
       permissionMode,
@@ -1280,6 +1287,7 @@ export function useLoom() {
     connection,
     error,
     runtime,
+    draftPermissionMode,
     models: activeModels,
     modelBusy,
     threads,
@@ -1363,6 +1371,7 @@ export function useLoom() {
     renameThread,
     respondApproval,
     runtime,
+    draftPermissionMode,
     send,
     setPermissionMode,
     setReasoning,
