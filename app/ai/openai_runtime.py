@@ -25,6 +25,7 @@ from .profiles import ModelProfile
 from .provider_catalog import ProviderAdapter, ProviderConnection
 from .reasoning import ReasoningKind
 from .tool_protocol import parse_tool_call, validate_unique_calls
+from .tool_policy import exposes_tools, tool_choice_payload
 
 
 _RETRYABLE_ERROR_FRAGMENTS = (
@@ -287,9 +288,9 @@ class OpenAIChatBackend:
             ],
             "timeout": self.request_timeout_seconds,
         }
-        if request.tools:
+        if exposes_tools(request):
             kwargs["tools"] = [_tool_payload(tool) for tool in request.tools]
-            kwargs["tool_choice"] = request.tool_choice.value
+            kwargs["tool_choice"] = tool_choice_payload(request)
             # OpenAI's native Chat Completions contract has an explicit
             # parallel_tool_calls switch. Keep it off the generic compatible
             # wire: many third-party OpenAI-shaped servers reject unknown
@@ -300,12 +301,6 @@ class OpenAIChatBackend:
                 and self.connection.adapter is ProviderAdapter.OPENAI
             ):
                 kwargs["parallel_tool_calls"] = request.parallel_tool_calls
-        elif request.tool_choice is ToolChoice.NONE:
-            # A no-tools request is not enough for every OpenAI-compatible
-            # provider to disable tool generation.  Compaction and other
-            # internal text-only tasks can contain historical tool calls, so
-            # preserve the caller's explicit protocol boundary on the wire.
-            kwargs["tool_choice"] = ToolChoice.NONE.value
         if request.temperature is not None:
             kwargs["temperature"] = request.temperature
         if request.max_output_tokens is not None:

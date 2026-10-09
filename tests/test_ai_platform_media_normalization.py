@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+from dataclasses import replace
+
+import pytest
+
 from app.ai import (
     AGENT_FAST_ROLE,
     AIMessage,
@@ -15,6 +19,8 @@ from app.ai import (
     StreamingAIPlatform,
     StructuredRequest,
     TextPart,
+    ToolChoice,
+    ToolDefinition,
 )
 
 
@@ -37,6 +43,27 @@ class _RecordingBackend:
     def complete_structured(self, request: StructuredRequest):
         self.requests.append(request.chat)
         return {"ok": True}
+
+
+@pytest.mark.parametrize("path", ["complete", "stream", "structured", "streaming_complete"])
+def test_disabled_tools_do_not_require_tool_capability_or_mutate_request(path):
+    backend = _RecordingBackend()
+    platform = StreamingAIPlatform() if path == "streaming_complete" else AIPlatform()
+    profile = _profile(vision=False, structured=True)
+    platform.register(replace(profile, capabilities=profile.capabilities - {ModelCapability.TOOL_CALLING}), backend)
+    original = ChatRequest(
+        messages=(AIMessage(role=MessageRole.USER, content="title"),),
+        tools=(ToolDefinition(name="read_file", description="Read", input_schema={"type": "object"}),),
+        tool_choice=ToolChoice.NONE,
+    )
+    if path == "stream":
+        list(platform.stream_chat(profile.profile_id, original))
+    elif path == "structured":
+        platform.execute_structured_chat(profile.profile_id, StructuredRequest(chat=original, json_schema={"type": "object"}))
+    else:
+        platform.execute_chat(profile.profile_id, original)
+    assert backend.requests[0].tools == ()
+    assert len(original.tools) == 1
 
 
 def _profile(*, vision: bool, structured: bool = False) -> ModelProfile:

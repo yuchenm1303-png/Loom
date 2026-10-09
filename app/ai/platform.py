@@ -13,6 +13,7 @@ from .contracts import (
     StreamEvent,
     StructuredRequest,
     TextPart,
+    ToolChoice,
 )
 from .profiles import ModelProfile, ModelRegistry
 from .reasoning_text import merge_visible_reasoning, split_inline_reasoning
@@ -91,6 +92,8 @@ class AIPlatform:
         visible text fragment in this request copy only.
         """
 
+        if request.tool_choice is ToolChoice.NONE and request.tools:
+            request = replace(request, tools=())
         profile = self.registry.get(profile_id)
         if ModelCapability.VISION in profile.capabilities or not request.uses_vision:
             return request

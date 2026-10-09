@@ -310,7 +310,7 @@ def test_compatible_provider_omits_auto_but_preserves_explicit_image_detail():
     }
 
 
-def test_text_only_request_sends_explicit_tool_choice_none_to_compatible_provider():
+def test_text_only_request_omits_tool_choice_to_compatible_provider():
     backend = OpenAIStreamingChatBackend(
         connection=ProviderConnection(
             provider_id="test-provider",
@@ -331,7 +331,7 @@ def test_text_only_request_sends_explicit_tool_choice_none_to_compatible_provide
     kwargs = backend._request_kwargs(request)
 
     assert "tools" not in kwargs
-    assert kwargs["tool_choice"] == "none"
+    assert "tool_choice" not in kwargs
 
 
 def test_permanent_provider_rejection_preserves_non_retryable_classification():

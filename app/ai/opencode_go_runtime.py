@@ -33,6 +33,7 @@ from .openai_streaming import OpenAIStreamingChatBackend
 from .profiles import ModelProfile
 from .provider_catalog import ProviderAdapter, ProviderConnection
 from .reasoning import ReasoningKind
+from .tool_policy import exposes_tools, tool_choice_payload
 
 
 OPENCODE_GO_BASE_URL = "https://opencode.ai/zen/go/v1"
@@ -272,7 +273,7 @@ class _OpenCodeGoResponsesBackend:
             "input": self._input(request),
             "extra_headers": _session_headers(request),
         }
-        if request.tools:
+        if exposes_tools(request):
             kwargs["tools"] = [
                 {
                     "type": "function",
@@ -282,9 +283,7 @@ class _OpenCodeGoResponsesBackend:
                 }
                 for tool in request.tools
             ]
-            kwargs["tool_choice"] = request.tool_choice.value
-        # With no tools, omission already prevents tool calls. Some Responses
-        # models (including Muse Spark) reject an explicit tool_choice="none".
+            kwargs["tool_choice"] = tool_choice_payload(request)
         if request.temperature is not None:
             kwargs["temperature"] = request.temperature
         if request.max_output_tokens is not None:
@@ -545,7 +544,7 @@ class _OpenCodeGoMessagesBackend:
         }
         if system:
             payload["system"] = system
-        if request.tools and request.tool_choice is not ToolChoice.NONE:
+        if exposes_tools(request):
             payload["tools"] = [
                 {
                     "name": tool.name,
@@ -554,10 +553,7 @@ class _OpenCodeGoMessagesBackend:
                 }
                 for tool in request.tools
             ]
-            if request.tool_choice is ToolChoice.REQUIRED:
-                payload["tool_choice"] = {"type": "any"}
-            elif request.tool_choice is ToolChoice.AUTO:
-                payload["tool_choice"] = {"type": "auto"}
+            payload["tool_choice"] = tool_choice_payload(request, messages=True)
         if request.temperature is not None:
             payload["temperature"] = request.temperature
         payload.update(_messages_reasoning_payload(self.profile.model, request.reasoning))
