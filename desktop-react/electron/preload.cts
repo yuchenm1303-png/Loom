@@ -54,6 +54,12 @@ const api = {
   accountForgotPassword: (email: string) => ipcRenderer.invoke("loom:account-forgot-password", email),
   accountResetPassword: (challengeId: string, code: string, password: string) => ipcRenderer.invoke("loom:account-reset-password", challengeId, code, password),
   accountOAuthExchange: (code: string) => ipcRenderer.invoke("loom:account-oauth-exchange", code),
+  accountOAuthStart: (provider: "google" | "github") => ipcRenderer.invoke("loom:account-oauth-start", provider),
+  onAccountOAuthResult: (listener: (result: { ok: boolean; error?: { code: string; message: string } }) => void) => {
+    const callback = (_event: Electron.IpcRendererEvent, result: { ok: boolean; error?: { code: string; message: string } }) => listener(result);
+    ipcRenderer.on("loom:account-oauth-result", callback);
+    return () => ipcRenderer.removeListener("loom:account-oauth-result", callback);
+  },
   accountUpdateProfile: (displayName: string, avatarDataUrl: string) => ipcRenderer.invoke("loom:account-update-profile", displayName, avatarDataUrl),
   accountLogout: () => ipcRenderer.invoke("loom:account-logout"),
   listModels: (forceRefresh = false) => ipcRenderer.invoke("loom:model-list", Boolean(forceRefresh)),

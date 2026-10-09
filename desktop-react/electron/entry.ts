@@ -6,9 +6,24 @@ import { isHostProcess } from "./hostProcess.js";
 if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
-  if (!isHostProcess) app.on("second-instance", () => {
-    void import("./main.js").then(({ showDesktopWindow }) => showDesktopWindow());
-  });
+  if (!isHostProcess) {
+    const callbackFromArgs = (args: string[]) =>
+      args.find((arg) => arg.startsWith("loom://auth/callback?")) || "";
+    app.on("second-instance", (_event, argv) => {
+      void import("./main.js").then(({ showDesktopWindow, handleDesktopOAuthUrl }) => {
+        showDesktopWindow();
+        const callback = callbackFromArgs(argv);
+        if (callback) void handleDesktopOAuthUrl(callback);
+      });
+    });
+    app.on("open-url", (event, url) => {
+      event.preventDefault();
+      void import("./main.js").then(({ showDesktopWindow, handleDesktopOAuthUrl }) => {
+        showDesktopWindow();
+        void handleDesktopOAuthUrl(url);
+      });
+    });
+  }
   await import("./updater.js");
   await import("./webRelayAuth.js");
   await import("./main.js");

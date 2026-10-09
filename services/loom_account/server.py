@@ -1584,6 +1584,22 @@ class AccountApplication:
             expected = urlsplit(origin)
             if parsed.scheme == expected.scheme and parsed.netloc == expected.netloc:
                 return candidate
+            # The installed desktop app owns this registered protocol. Only a
+            # fixed callback with a high-entropy one-time nonce is allowed.
+            # Never permit arbitrary custom-protocol redirect destinations.
+            if (
+                parsed.scheme == "loom"
+                and parsed.netloc == "auth"
+                and parsed.path == "/callback"
+                and not parsed.fragment
+                and not parsed.username
+                and not parsed.password
+                and parsed.port is None
+            ):
+                query = parse_qs(parsed.query)
+                nonce = query.get("nonce", [])
+                if len(query) == 1 and len(nonce) == 1 and re.fullmatch(r"[0-9a-f]{48}", nonce[0]):
+                    return f"loom://auth/callback?nonce={nonce[0]}"
         except ValueError:
             pass
         return origin + "/"
