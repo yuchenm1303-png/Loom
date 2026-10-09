@@ -720,17 +720,25 @@ class RelayHub:
     async def browser_status(self, browser: BrowserPeer) -> None:
         async with self.lock:
             device = self.devices.get((browser.user_id, browser.device_id))
+            # Return only a mismatch flag, never another account's identity or
+            # device metadata. Device IDs are routing hints, not authorization.
+            account_mismatch = (device is None or device.closed) and bool(browser.device_id) and any(
+                device_id == browser.device_id and user_id != browser.user_id and not peer.closed
+                for (user_id, device_id), peer in self.devices.items()
+            )
             devices = [dict(peer.device) for (user_id, _), peer in self.devices.items()
                        if user_id == browser.user_id and not peer.closed]
         online = device is not None and not device.closed
         await browser.send({"type": "device_status", "online": online,
+                            "accountMismatch": bool(account_mismatch),
                             "selectedDeviceId": browser.device_id,
                             "devices": devices,
                             "device": dict(device.device) if online and device else None})
 
-    async def broadcast_device_status(self, user_id: int) -> None:
+    async def broadcast_device_status(self, user_id: int, device_id: str = "") -> None:
         async with self.lock:
-            peers = [peer for peer in self.browsers.values() if peer.user_id == user_id]
+            peers = [peer for peer in self.browsers.values()
+                     if peer.user_id == user_id or (device_id and peer.device_id == device_id)]
         await asyncio.gather(*(self.browser_status(peer) for peer in peers), return_exceptions=True)
 
     async def broadcast_notification(self, device: DevicePeer, payload: dict[str, Any]) -> None:
@@ -951,7 +959,7 @@ async def device_socket(websocket: WebSocket) -> None:
                 if old is not None and old is not peer:
                     old.closed = True
                     await old.websocket.close(code=4001, reason="newer connection for this device")
-                await hub.broadcast_device_status(user_id)
+                await hub.broadcast_device_status(user_id, device_id)
             elif kind == "invoke_result":
                 browser_id = str(frame.get("browserId") or "")
                 request_id = frame.get("id")
@@ -1016,7 +1024,7 @@ async def device_socket(websocket: WebSocket) -> None:
                     browser.pending_invokes.pop(request_id, None)
                     await browser.send({"type": "invoke_result", "id": request_id,
                                         "error": {"code": "HOST_OFFLINE", "message": "The selected Loom Host disconnected."}})
-        await hub.broadcast_device_status(user_id)
+        await hub.broadcast_device_status(user_id, peer.device_id)
 
 def _static_headers(path: Path) -> dict[str, str]:
     headers = {"X-Loom-Build": BUILD_SHA}

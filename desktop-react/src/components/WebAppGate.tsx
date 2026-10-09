@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useAccount } from "../state/useAccount";
+import { useI18n } from "../i18n";
 import { webExecutionMode, ensureWebHostCompatibility, isLoomWebRuntime, webHostNeedsProtocolUpdate, type WebDeviceStatus } from "../webBridge";
 import {
   discoverLocalLoomHost,
@@ -13,7 +14,7 @@ import {
 } from "../localHostDiscovery";
 import { WebPortal, type PortalHostState } from "./WebPortal";
 
-type HostState = "idle" | "discovering" | "pairing" | "connecting" | "updating" | "online" | "missing" | "offline";
+type HostState = "idle" | "discovering" | "pairing" | "connecting" | "updating" | "online" | "missing" | "offline" | "account-mismatch";
 type DeviceStatus = WebDeviceStatus;
 
 const DISCOVERY_INTERVAL_MS = 1_500;
@@ -42,6 +43,8 @@ function hostUpdateMessage(update?: LocalHostUpdateState | null): string {
 
 export function WebAppGate({ children }: { children: ReactNode }) {
   const account = useAccount();
+  const { language } = useI18n();
+  const zh = language === "zh-CN";
   const web = isLoomWebRuntime();
   const remote = webExecutionMode() === "remote";
   const [hostState, setHostState] = useState<HostState>("idle");
@@ -99,7 +102,7 @@ export function WebAppGate({ children }: { children: ReactNode }) {
     if (!force && hostStateRef.current === "online") return;
     if (connectPromiseRef.current) return connectPromiseRef.current;
 
-    if (hostStateRef.current !== "online" && !options?.background) setTrackedHostState("connecting");
+    if (hostStateRef.current !== "online" && hostStateRef.current !== "account-mismatch" && !options?.background) setTrackedHostState("connecting");
     const attempt = (async () => {
       const identity = activeAccountId;
       try {
@@ -111,7 +114,10 @@ export function WebAppGate({ children }: { children: ReactNode }) {
       } catch (cause) {
         if (accountIdRef.current !== identity) return;
         const error = cause as Error & { code?: string };
-        if (error.code === "HOST_UPDATE_REQUIRED") {
+        if (error.code === "HOST_ACCOUNT_MISMATCH") {
+          setTrackedHostState("account-mismatch");
+          setHostError("");
+        } else if (error.code === "HOST_UPDATE_REQUIRED") {
           setTrackedHostState("updating");
           setHostError(error.message || hostUpdateMessage());
         } else {
@@ -137,7 +143,7 @@ export function WebAppGate({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!web || !account.ready || !account.account.authenticated) return;
     const timer = window.setInterval(() => {
-      if (hostStateRef.current === "offline" || hostStateRef.current === "missing") {
+      if (hostStateRef.current === "offline" || hostStateRef.current === "missing" || hostStateRef.current === "account-mismatch") {
         void connectCurrentHost({ background: true });
       }
     }, 5000);
@@ -148,6 +154,11 @@ export function WebAppGate({ children }: { children: ReactNode }) {
     if (!web || !account.ready || !account.account.authenticated) return;
     const onDeviceStatus = (event: Event) => {
       const detail = (event as CustomEvent<DeviceStatus>).detail;
+      if (detail?.accountMismatch && !detail.online) {
+        setTrackedHostState("account-mismatch");
+        setHostError("");
+        return;
+      }
       if (detail?.online) {
         if (webHostNeedsProtocolUpdate(detail)) {
           setTrackedHostState("updating");
@@ -160,7 +171,7 @@ export function WebAppGate({ children }: { children: ReactNode }) {
         if (hostStateRef.current !== "online") void connectCurrentHost();
         return;
       }
-      if (hostStateRef.current === "online") {
+      if (hostStateRef.current === "online" || hostStateRef.current === "account-mismatch") {
         setTrackedHostState("offline");
       }
     };
@@ -194,7 +205,7 @@ export function WebAppGate({ children }: { children: ReactNode }) {
         } else if (host.relayReady) {
           setPairAttempts(0);
           setPairingSucceeded(false);
-          if (hostStateRef.current !== "online") void connectCurrentHost();
+          if (hostStateRef.current !== "online" && hostStateRef.current !== "account-mismatch") void connectCurrentHost();
         } else if (pairing && hostStateRef.current !== "online") {
           setTrackedHostState("pairing");
         } else if (pairingSucceeded && hostStateRef.current !== "online") {
@@ -237,6 +248,7 @@ export function WebAppGate({ children }: { children: ReactNode }) {
       || !account.account.authenticated
       || !localHost
       || localHost.relayReady
+      || hostStateRef.current === "account-mismatch"
       || pairingRef.current
       || localHostNeedsProtocolUpdate(localHost)
       || pairingSucceeded
@@ -318,22 +330,12 @@ export function WebAppGate({ children }: { children: ReactNode }) {
     };
   }, [account.account.authenticated, account.ready, connectCurrentHost, hostState, setTrackedHostState, web]);
 
-  useEffect(() => {
-    if (!web || !account.ready || !account.account.authenticated) return;
-    const timer = window.setInterval(() => {
-      if (hostStateRef.current === "offline" || hostStateRef.current === "missing") {
-        void connectCurrentHost({ background: true });
-      }
-    }, 5000);
-    return () => window.clearInterval(timer);
-  }, [account.account.authenticated, account.ready, connectCurrentHost, web]);
-
   const retry = useCallback(() => {
     setPairAttempts(0);
     setPairingSucceeded(false);
     setPairing(false);
     setHostError("");
-    setTrackedHostState("discovering");
+    if (hostStateRef.current !== "account-mismatch") setTrackedHostState("discovering");
     setDiscoveryNonce((value) => value + 1);
     void connectCurrentHost({ force: true });
   }, [connectCurrentHost, setTrackedHostState]);
@@ -389,9 +391,11 @@ export function WebAppGate({ children }: { children: ReactNode }) {
       ? "checking"
       : hostState === "missing"
         ? "unbound"
-        : hostState === "offline"
-          ? "offline"
-          : "idle";
+        : hostState === "account-mismatch"
+          ? "account-mismatch"
+          : hostState === "offline"
+            ? "offline"
+            : "idle";
 
   if (!account.ready || !account.account.authenticated || !account.account.user || !entered) {
     return (
@@ -412,8 +416,9 @@ export function WebAppGate({ children }: { children: ReactNode }) {
   return <>
     {children}
     {hostState !== "online" && <div className="web-reconnect-notice" role="status">
-      <span>{hostState === "updating" ? "Loom Host is updating…" : "Reconnecting to Loom Host…"}</span>
-      <button type="button" onClick={retry}>Retry connection</button>
+      <span>{hostState === "account-mismatch" ? (zh ? "本机 Loom Host 与网页登录的账号不同。请在网页和 Loom 桌面端使用同一账号。" : "Loom Host is signed in to a different account. Use the same account on the website and in Loom Desktop.") : hostState === "updating" ? "Loom Host is updating…" : "Reconnecting to Loom Host…"}</span>
+      {hostState === "account-mismatch" && <button type="button" disabled={account.busy} onClick={() => void account.logout()}>{zh ? "切换网页账号" : "Switch web account"}</button>}
+      <button type="button" onClick={retry}>{zh ? "重试连接" : "Retry connection"}</button>
     </div>}
   </>;
 }

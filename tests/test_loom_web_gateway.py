@@ -97,6 +97,41 @@ def test_missing_target_does_not_fall_back(relay, selected):
             assert web.receive_json()["error"]["code"] == "HOST_OFFLINE"
 
 
+def test_account_mismatch_reports_no_other_account_metadata_and_recovers(relay, monkeypatch):
+    client, _ = relay
+    original = gateway._account_request
+
+    async def account(method, path, *, token="", json_body=None):
+        if token in {"other-account", "other-proof"}:
+            if path in {"/auth/me", "/auth/relay-me"}:
+                return 200, {"user": {"id": 8, "email": "private@example.com"}}
+            if path == "/auth/relay-credential":
+                return 200, {"relay_token": "other-proof"}
+        return await original(method, path, token=token, json_body=json_body)
+
+    monkeypatch.setattr(gateway, "_account_request", account)
+    with browser(client, "a") as web:
+        assert web.receive_json()["accountMismatch"] is False
+        with client.websocket_connect("/api/ws/device", headers={"authorization": "Bearer other-account"}) as other:
+            other.send_json({"type": "device_hello", "device": {"id": "a", "name": "Private computer"}})
+            status = web.receive_json()
+            assert status == {
+                "type": "device_status", "online": False, "accountMismatch": True,
+                "selectedDeviceId": "a", "devices": [], "device": None,
+            }
+            web.send_json({"type": "invoke", "id": 1, "operation": "call"})
+            assert web.receive_json()["error"]["code"] == "HOST_OFFLINE"
+            # Another account's unrelated device never creates a mismatch.
+            with browser(client, "unrelated") as unrelated:
+                assert unrelated.receive_json()["accountMismatch"] is False
+        status = web.receive_json()
+        assert status["online"] is False and status["accountMismatch"] is False
+        with host(client, "a") as matching:
+            matching.send_json({"type": "device_hello", "device": {"id": "a"}})
+            status = web.receive_json()
+            assert status["online"] is True and status["accountMismatch"] is False
+
+
 def test_open_connection_is_closed_when_session_is_revoked(relay, monkeypatch):
     client, state = relay
     monkeypatch.setattr(gateway, "AUTH_RECHECK_SECONDS", 0.02)

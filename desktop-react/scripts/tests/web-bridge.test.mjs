@@ -8,7 +8,7 @@ const source = readFileSync(new URL("../../src/webBridge.ts", import.meta.url), 
   .replaceAll("import.meta.env.VITE_LOOM_WEB_SOCKET_URL", '""');
 let generation = 0;
 
-async function setup({ deferAccount = false } = {}) {
+async function setup({ deferAccount = false, deviceStatus = {} } = {}) {
   const storage = new Map([["loom.web.localDeviceId", "host-a"]]);
   const localStorage = { getItem: (key) => storage.get(key) || null, setItem: (key, value) => storage.set(key, value), removeItem: (key) => storage.delete(key) };
   const target = new EventTarget();
@@ -46,7 +46,7 @@ async function setup({ deferAccount = false } = {}) {
     send(raw) {
       const message = JSON.parse(raw);
       if (message.type === "invoke") queueMicrotask(() => this.message({ type: "invoke_result", id: message.id, result: "ok" }));
-      if (message.type === "get_status") queueMicrotask(() => this.message({ type: "device_status", online: true, selectedDeviceId: new URL(this.url).searchParams.get("device"), devices: [{ id: "host-a" }] }));
+      if (message.type === "get_status") queueMicrotask(() => this.message({ type: "device_status", online: true, selectedDeviceId: new URL(this.url).searchParams.get("device"), devices: [{ id: "host-a" }], ...deviceStatus }));
     }
   }
   globalThis.WebSocket = Socket;
@@ -75,6 +75,19 @@ test("concurrent calls share account lookup and the same selected Host socket", 
     assert.equal(env.intervals.size, 1);
   } finally { await env.close(); }
   assert.equal(env.intervals.size, 0);
+});
+
+test("account mismatch is distinct from offline and recovers after account alignment", async () => {
+  const status = { online: false, accountMismatch: true, devices: [] };
+  const env = await setup({ deviceStatus: status });
+  try {
+    await assert.rejects(window.loom.connect(), { code: "HOST_ACCOUNT_MISMATCH" });
+    assert.equal(env.bridge.currentWebDeviceStatus().accountMismatch, true);
+    status.accountMismatch = false;
+    await assert.rejects(window.loom.connect(), { code: "HOST_OFFLINE" });
+    status.online = true;
+    assert.equal(await window.loom.connect(), "ok");
+  } finally { await env.close(); }
 });
 
 test("disconnect during account lookup cancels a stale connection", async () => {
