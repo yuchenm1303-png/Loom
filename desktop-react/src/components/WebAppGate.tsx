@@ -48,6 +48,7 @@ export function WebAppGate({ children }: { children: ReactNode }) {
   const web = isLoomWebRuntime();
   const remote = webExecutionMode() === "remote";
   const [hostState, setHostState] = useState<HostState>("idle");
+  const accountMismatch = hostState === "account-mismatch";
   const [hostError, setHostError] = useState("");
   const [localHost, setLocalHost] = useState<LocalLoomHost | null>(null);
   const [discoveryNonce, setDiscoveryNonce] = useState(0);
@@ -196,7 +197,7 @@ export function WebAppGate({ children }: { children: ReactNode }) {
       if (host) {
         rememberLocalLoomHost(host.deviceId);
         setLocalHost(host);
-        if (localHostNeedsProtocolUpdate(host)) {
+        if (localHostNeedsProtocolUpdate(host) && hostStateRef.current !== "account-mismatch") {
           setTrackedHostState("updating");
           setHostError(hostUpdateMessage(host.update));
           void ensureLocalLoomHostCompatibility().then((result) => {
@@ -206,9 +207,9 @@ export function WebAppGate({ children }: { children: ReactNode }) {
           setPairAttempts(0);
           setPairingSucceeded(false);
           if (hostStateRef.current !== "online" && hostStateRef.current !== "account-mismatch") void connectCurrentHost();
-        } else if (pairing && hostStateRef.current !== "online") {
+        } else if (pairing && hostStateRef.current !== "online" && hostStateRef.current !== "account-mismatch") {
           setTrackedHostState("pairing");
-        } else if (pairingSucceeded && hostStateRef.current !== "online") {
+        } else if (pairingSucceeded && hostStateRef.current !== "online" && hostStateRef.current !== "account-mismatch") {
           setTrackedHostState("connecting");
         }
       } else {
@@ -248,7 +249,7 @@ export function WebAppGate({ children }: { children: ReactNode }) {
       || !account.account.authenticated
       || !localHost
       || localHost.relayReady
-      || hostStateRef.current === "account-mismatch"
+      || accountMismatch
       || pairingRef.current
       || localHostNeedsProtocolUpdate(localHost)
       || pairingSucceeded
@@ -291,6 +292,7 @@ export function WebAppGate({ children }: { children: ReactNode }) {
     };
   }, [
     account.account.authenticated,
+    accountMismatch,
     activeAccountId,
     account.ready,
     localHost?.deviceId,
