@@ -50,6 +50,8 @@ from .system_prompts import (
     DEFAULT_AGENT_SYSTEM_PROMPT_VERSION,
     _LEGACY_DEFAULT_AGENT_SYSTEM_PROMPTS,
     _DEFAULT_AGENT_SYSTEM_PROMPT_V7,
+    PROGRESS_FEEDBACK_MODES,
+    system_prompt_with_feedback,
 )
 
 
@@ -116,6 +118,7 @@ class AgentRuntime:
     ) -> None:
         # Optional host-configured check, not a default second model invocation.
         # Turn completion records execution lifecycle, not proof of task success.
+        self.progress_feedback = "balanced"
         self.platform = platform
         self._session_platforms: dict[str, AgentModelPlatform] = {}
         self._session_reasoning: dict[str, object | None] = {}
@@ -174,6 +177,11 @@ class AgentRuntime:
         # scanning the log a second time.
         self._estimator_calibration: dict[str, float] = {}
         self._estimator_calibration_guard = threading.Lock()
+
+    def set_progress_feedback(self, mode: str) -> None:
+        if mode not in PROGRESS_FEEDBACK_MODES:
+            raise ValueError(f"unsupported progress feedback mode: {mode}")
+        self.progress_feedback = mode
 
     def _publish_estimator_calibration(self, session_id: str, calibration: float) -> None:
         with self._estimator_calibration_guard:
@@ -1274,7 +1282,7 @@ class AgentRuntime:
         model_step = session.model_steps + (1 if next_model_step else 0)
         platform = self.platform_for_session(session.session_id)
         request_state = RequestStateSnapshot.build(
-            system_prompt=session.system_prompt,
+            system_prompt=system_prompt_with_feedback(session.system_prompt, self.progress_feedback),
             project_instructions=self.instruction_loader.load(session.workspace_dir),
             communication_language=infer_user_language(
                 session.messages,
@@ -1364,7 +1372,7 @@ class AgentRuntime:
         base_prompt = (
             step.request_state.system_prompt
             if step.request_state.captured
-            else session.system_prompt
+            else system_prompt_with_feedback(session.system_prompt, self.progress_feedback)
         )
         prompt = f"{base_prompt}\n\n{capability_contract}"
         return prompt if _STEERING_PROMPT_MARKER in prompt else f"{prompt}\n\n{_STEERING_PROMPT}"

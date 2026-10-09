@@ -358,6 +358,8 @@ export interface LoomPrivacySettings {
   crashReports?: boolean;
 }
 
+export type ProgressFeedbackMode = "quiet" | "balanced" | "detailed";
+
 export interface LoomSettings {
   schemaVersion: number;
   capabilities: {
@@ -374,6 +376,7 @@ export interface LoomSettings {
     [key: string]: boolean | undefined;
   };
   appearance?: LoomAppearanceSettings;
+  agent?: { progressFeedback?: ProgressFeedbackMode };
   shortcuts?: LoomShortcutSettings;
   terminal?: LoomTerminalSettings;
   browser?: LoomBrowserSettings;

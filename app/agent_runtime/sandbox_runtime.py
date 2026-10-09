@@ -582,7 +582,7 @@ class SandboxAgentRuntime(DurableAgentRuntime):
         )
         platform = self.platform_for_session(session.session_id)
         request_state = RequestStateSnapshot.build(
-            system_prompt=session.system_prompt,
+            system_prompt=step.request_state.system_prompt,
             project_instructions=self.instruction_loader.load(session.workspace_dir),
             communication_language=infer_user_language(
                 session.messages,

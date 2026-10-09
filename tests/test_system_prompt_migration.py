@@ -74,7 +74,7 @@ def test_app_server_patched_production_request_contains_turn_protocol(tmp_path):
         session = runtime.create_session("agent.fast", workspace_dir=tmp_path)
         runtime.start_turn(session.session_id, "Check")
         assert "A reply without a tool call ends your turn" in platform.requests[0].messages[0].content
-        assert "at most one short sentence" in platform.requests[0].messages[0].content
+        assert "one short sentence" in platform.requests[0].messages[0].content
         assert platform.requests[0].messages[0].content.count("[LOOM_COMMUNICATION]") == 1
     finally:
         runtime.close()
@@ -82,7 +82,7 @@ def test_app_server_patched_production_request_contains_turn_protocol(tmp_path):
 
 
 def test_default_prompt_exposes_decision_cards_without_turning_routine_work_into_questions() -> None:
-    assert DEFAULT_AGENT_SYSTEM_PROMPT_VERSION == 11
+    assert DEFAULT_AGENT_SYSTEM_PROMPT_VERSION == 12
     assert "```loom-decision" in DEFAULT_AGENT_SYSTEM_PROMPT
     assert '"title"' not in DEFAULT_AGENT_SYSTEM_PROMPT
     assert "routine implementation details" in DEFAULT_AGENT_SYSTEM_PROMPT

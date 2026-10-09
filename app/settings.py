@@ -23,6 +23,7 @@ DEFAULT_SETTINGS: dict[str, Any] = {
         "attachments": True,
         "stickers": True,
     },
+    "agent": {"progressFeedback": "balanced"},
     "appearance": {
         "scale": "100",
         "density": "comfortable",
@@ -110,6 +111,7 @@ DEFAULT_SETTINGS: dict[str, Any] = {
 }
 
 _ALLOWED_SETTING_PATHS: dict[str, tuple[type, Any]] = {
+    "agent.progressFeedback": (str, {"quiet", "balanced", "detailed"}),
     "appearance.scale": (str, {"90", "100", "110", "120", "130"}),
     "appearance.density": (str, {"compact", "comfortable", "spacious"}),
     "appearance.reducedMotion": (bool, None),

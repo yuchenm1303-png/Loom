@@ -451,8 +451,10 @@ class ProjectMovableLoomAppServerService(ReasoningManagedLoomAppServerService):
                 with self._guard:
                     self._project_instruction_context_snapshots.pop(event.session_id, None)
 
-    def _sync_runtime_settings(self, snapshot: dict[str, Any] | None = None) -> dict[str, Any]:
-        current = super()._sync_runtime_settings(snapshot)
+    def _sync_runtime_settings(self, snapshot: dict[str, Any] | None = None, *, changed_path: str | None = None) -> dict[str, Any]:
+        current = super()._sync_runtime_settings(snapshot, changed_path=changed_path)
+        if changed_path == "agent.progressFeedback":
+            return current
         memory = dict(current.get("memory") or {})
         configure = getattr(self.runtime, "configure_memory", None)
         if callable(configure):
@@ -469,12 +471,14 @@ class ProjectMovableLoomAppServerService(ReasoningManagedLoomAppServerService):
         # set a typed durable path directly without the legacy envelope hack.
         if "path" not in params:
             return super().settings_set(params)
-        with self._guard:
-            if self._active_sessions:
-                raise RuntimeError("finish active turns before changing settings")
         path = self._required_text(params, "path")
+        with self._guard:
+            # Progress preferences affect only the next captured request; they
+            # neither interrupt generation nor change tool/permission state.
+            if self._active_sessions and path != "agent.progressFeedback":
+                raise RuntimeError("finish active turns before changing settings")
         snapshot = self.settings.set_value(path, params.get("value"))
-        self._sync_runtime_settings(snapshot)
+        self._sync_runtime_settings(snapshot, changed_path=path)
         status = self.runtime_status()
         self._notify("runtime/updated", {"runtime": status})
         return {"settings": snapshot, "runtime": status}

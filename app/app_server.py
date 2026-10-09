@@ -671,8 +671,12 @@ class LoomAppServerService:
         sessions.sort(key=lambda item: item.updated_at, reverse=True)
         return sessions
 
-    def _sync_runtime_settings(self, snapshot: dict[str, Any] | None = None) -> dict[str, Any]:
+    def _sync_runtime_settings(self, snapshot: dict[str, Any] | None = None, *, changed_path: str | None = None) -> dict[str, Any]:
         current = snapshot or self.settings.snapshot()
+        feedback = dict(current.get("agent") or {}).get("progressFeedback", "balanced")
+        self.runtime.set_progress_feedback(feedback)
+        if changed_path == "agent.progressFeedback":
+            return current
         capabilities = dict(current.get("capabilities") or {})
         set_tool_capability_settings(capabilities)
         set_default_environment_policy(build_environment_from_settings(current))

@@ -1123,6 +1123,8 @@ class ReasoningManagedLoomAppServerService(ManagedStreamingLoomAppServerService)
         web_search_change = _is_web_search_setting(capability)
         previous = self.settings_store.snapshot() if browser_change else None
         settings = self.settings_store.set_capability(capability, enabled)
+        if _setting_path(capability) == "agent.progressFeedback":
+            self._sync_runtime_settings(settings, changed_path="agent.progressFeedback")
         self._apply_capability_settings(settings)
         browser_error = ""
         if browser_change:

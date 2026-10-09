@@ -1,3 +1,5 @@
+import { ProgressFeedbackControl } from "./ProgressFeedbackControl";
+import type { ProgressFeedbackMode } from "../types/loom";
 import {
   Activity,
   ArrowLeft,
@@ -442,6 +444,7 @@ function mergedSettings(runtime: RuntimeView): DesktopSettings {
     ...server,
     ...local,
     schemaVersion: Number(server.schemaVersion || local.schemaVersion || 2),
+    agent: server.agent,
     capabilities: {
       ...DEFAULT_CAPABILITIES,
       ...(server.capabilities ?? {}),
@@ -458,7 +461,8 @@ function mergedSettings(runtime: RuntimeView): DesktopSettings {
 
 function writeLocalSettings(settings: DesktopSettings): void {
   try {
-    window.localStorage.setItem(LOCAL_DESKTOP_SETTINGS_KEY, JSON.stringify(settings));
+    const { agent: _hostPreference, ...localSettings } = settings;
+    window.localStorage.setItem(LOCAL_DESKTOP_SETTINGS_KEY, JSON.stringify(localSettings));
   } catch {
     // Keep the current in-memory state when renderer storage is unavailable.
   }
@@ -585,6 +589,7 @@ export function SettingsPage({ runtime, models, threadId, running, onRefreshMode
   const pageFlowRef = useRef<{ flow: PageFlow; travel: number } | null>(null);
   const [query, setQuery] = useState("");
   const [settings, setSettings] = useState<DesktopSettings>(() => mergedSettings(runtime));
+  const [feedbackSaving, setFeedbackSaving] = useState(false);
   const [modelState, setModelState] = useState<ModelSnapshot | null>(models);
   const [busyCapability, setBusyCapability] = useState<CapabilityKey | null>(null);
   const [notice, setNoticeState] = useState<SettingsNotice | null>(null);
@@ -640,7 +645,7 @@ export function SettingsPage({ runtime, models, threadId, running, onRefreshMode
 
   useEffect(() => {
     const merged = mergedSettings(runtime);
-    setSettings((current) => ({ ...merged, ...current, capabilities: { ...merged.capabilities, ...current.capabilities } }));
+    setSettings((current) => ({ ...merged, ...current, agent: merged.agent ?? current.agent, capabilities: { ...merged.capabilities, ...current.capabilities } }));
   }, [runtime.settings]);
 
   useEffect(() => {
@@ -674,6 +679,7 @@ export function SettingsPage({ runtime, models, threadId, running, onRefreshMode
         const next = {
           ...result.settings,
           ...local,
+          agent: result.settings.agent,
           capabilities: { ...DEFAULT_CAPABILITIES, ...(result.settings.capabilities ?? {}), ...(local.capabilities ?? {}) },
           appearance: { ...DEFAULT_APPEARANCE, ...(result.settings.appearance ?? {}), ...(local.appearance ?? {}) },
           shortcuts: mergeShortcutSettings({ ...(result.settings.shortcuts ?? {}), ...(local.shortcuts ?? {}) }),
@@ -776,6 +782,23 @@ export function SettingsPage({ runtime, models, threadId, running, onRefreshMode
     }, 1000);
     return () => { disposed = true; window.clearInterval(timer); };
   }, [browserSetup, browserConnectionCheck === "connected"]);
+
+  const saveProgressFeedback = async (mode: ProgressFeedbackMode) => {
+    if (feedbackSaving || settings.agent?.progressFeedback === mode) return;
+    setFeedbackSaving(true);
+    try {
+      const result = await window.loom.call<{ settings?: DesktopSettings }>("settings/set", {
+        path: "agent.progressFeedback", value: mode,
+      });
+      if (result.settings?.agent?.progressFeedback !== mode) throw new Error("Host did not confirm this preference");
+      setSettings(current => ({ ...current, agent: result.settings!.agent }));
+      setNotice({ tone: "success", text: language === "zh-CN" ? "进度反馈已保存，从下一次模型请求生效。" : "Progress feedback saved for the next model request." });
+    } catch (error) {
+      setNotice({ tone: "error", text: (language === "zh-CN" ? "进度反馈未保存：" : "Progress feedback was not saved: ") + String((error as Error)?.message || error) });
+    } finally {
+      setFeedbackSaving(false);
+    }
+  };
 
   const saveSetting = async (path: string, value: unknown, successText?: string) => {
     const next = setNestedSetting(settings, path, value);
@@ -923,6 +946,10 @@ export function SettingsPage({ runtime, models, threadId, running, onRefreshMode
             <div className="general-stat"><Blocks size={17} /><div><span>Capabilities</span><strong>{enabledCapabilities} / {CAPABILITIES.length} enabled</strong></div></div>
           </div>
         </div>
+
+        <Section title={language === "zh-CN" ? "进度反馈" : "Progress feedback"} caption={language === "zh-CN" ? "选择工作过程中的反馈节奏。实际频率会因模型和任务而异。" : "Choose how much progress the agent shares. Actual frequency varies by model and task."}>
+          <ProgressFeedbackControl mode={settings.agent?.progressFeedback} saving={feedbackSaving} onChange={mode => void saveProgressFeedback(mode)} />
+        </Section>
 
         <Section title="Runtime defaults" caption="Defaults currently reported by the App Server for new conversations.">
           <div className="general-default-grid">
