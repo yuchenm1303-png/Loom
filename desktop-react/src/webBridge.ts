@@ -574,6 +574,12 @@ export function installWebBridge(): void {
       if (result.ok) dispatchAuthChanged();
       return result;
     },
+    accountOAuthStart: async (provider) => {
+      // Browser OAuth is already handled by WebPortal's current-tab redirect.
+      window.location.assign("/api/auth/oauth/start/" + provider);
+      return { ok: true as const };
+    },
+    onAccountOAuthResult: () => () => {},
     accountOAuthExchange: async (code) => {
       const result = await accountRequest<LoomAccountResult>("oauth/exchange", { method: "POST", body: JSON.stringify({ code }) });
       if (result.ok) dispatchAuthChanged();

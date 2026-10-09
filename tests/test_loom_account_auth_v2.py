@@ -146,3 +146,23 @@ def test_capabilities_only_advertise_configured_auth_methods(tmp_path: Path) -> 
     assert caps["passwordReset"] is True
     assert caps["google"] is True
     assert caps["github"] is True
+
+
+def test_desktop_oauth_return_is_exact_and_nonce_bound(tmp_path: Path) -> None:
+    app = _verified_app(tmp_path)
+    nonce = "f" * 48
+    callback = "loom://auth/callback?nonce=" + nonce
+    assert app._safe_return_to(callback) == callback
+    assert app._append_query(callback, loom_oauth_provider="google", loom_oauth_code="once") == (
+        callback + "&loom_oauth_provider=google&loom_oauth_code=once"
+    )
+    for unsafe in (
+        "loom://evil/callback?nonce=" + nonce,
+        "loom://auth/anything?nonce=" + nonce,
+        "loom://auth/callback?nonce=short",
+        "loom://auth/callback?nonce=" + nonce + "&loom_oauth_code=forged",
+        "loom://auth/callback?nonce=" + nonce + "#fragment",
+        "loom://auth:1234/callback?nonce=" + nonce,
+        "https://evil.example/redirect",
+    ):
+        assert app._safe_return_to(unsafe) != unsafe

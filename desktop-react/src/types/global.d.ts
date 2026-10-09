@@ -39,6 +39,8 @@ export interface LoomBridge {
   accountForgotPassword(email: string): Promise<LoomAuthChallengeResult>;
   accountResetPassword(challengeId: string, code: string, password: string): Promise<LoomAccountResult>;
   accountOAuthExchange(code: string): Promise<LoomAccountResult>;
+  accountOAuthStart(provider: "google" | "github"): Promise<{ ok: true } | { ok: false; error: LoomAccountError }>;
+  onAccountOAuthResult(listener: (result: { ok: boolean; error?: LoomAccountError }) => void): () => void;
   accountUpdateProfile(displayName: string, avatarDataUrl: string): Promise<LoomAccountResult>;
   accountLogout(): Promise<LoomAccountResult>;
   listModels<T = unknown>(forceRefresh?: boolean): Promise<T>;

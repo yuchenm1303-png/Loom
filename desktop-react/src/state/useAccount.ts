@@ -75,6 +75,14 @@ export function useAccount() {
     void Promise.all([refresh(), refreshCapabilities()]);
   }, [refresh, refreshCapabilities]);
 
+  useEffect(() => window.loom.onAccountOAuthResult((result) => {
+    if (result.ok) void refresh();
+    else setError(result.error || {
+      code: "OAUTH_PROVIDER_FAILED",
+      message: "Quick sign-in could not be completed.",
+    });
+  }), [refresh]);
+
   useEffect(() => {
     const handleAccountRefresh = () => { void refresh(); };
     window.addEventListener("loom:account-refresh", handleAccountRefresh);

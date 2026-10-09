@@ -988,6 +988,67 @@ const artifactWindows = new Set<BrowserWindow>();
 const artifactPreviewRoots = new Map<string, string>();
 const modelManager = new DesktopModelManager(REPO_ROOT);
 const accountClient = hostAccount;
+type DesktopOAuthProvider = "google" | "github";
+const DESKTOP_OAUTH_TTL_MS = 10 * 60 * 1000;
+let pendingDesktopOAuth: { provider: DesktopOAuthProvider; nonce: string; expiresAt: number } | null = null;
+
+async function startDesktopOAuth(provider: string): Promise<void> {
+  if (isHostProcess || (provider !== "google" && provider !== "github")) {
+    throw new Error("Invalid desktop OAuth provider");
+  }
+  const capabilities = await accountClient.capabilities();
+  if (!capabilities[provider]) throw new Error("This sign-in provider is currently unavailable");
+  const account = await accountClient.status();
+  if (!account.configured || !account.reachable) throw new Error("Account service is not reachable");
+  const base = new URL(account.serviceUrl);
+  if (base.protocol !== "https:") throw new Error("Secure HTTPS is required for desktop OAuth");
+  const nonce = crypto.randomBytes(24).toString("hex");
+  const returnTo = "loom://auth/callback?nonce=" + nonce;
+  const startUrl = new URL(base.toString().replace(/\/$/, "") + "/auth/oauth/" + provider + "/start");
+  startUrl.searchParams.set("return_to", returnTo);
+  pendingDesktopOAuth = { provider, nonce, expiresAt: Date.now() + DESKTOP_OAUTH_TTL_MS };
+  try {
+    await shell.openExternal(startUrl.toString());
+  } catch (error) {
+    pendingDesktopOAuth = null;
+    throw error;
+  }
+}
+
+export async function handleDesktopOAuthUrl(value: string): Promise<void> {
+  if (isHostProcess) return;
+  const pending = pendingDesktopOAuth;
+  if (!pending || pending.expiresAt < Date.now()) {
+    pendingDesktopOAuth = null;
+    return;
+  }
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    return;
+  }
+  if (url.protocol !== "loom:" || url.hostname !== "auth" || url.pathname !== "/callback") return;
+  if (url.searchParams.get("nonce") !== pending.nonce) return;
+  if (url.searchParams.get("loom_oauth_provider") &&
+      url.searchParams.get("loom_oauth_provider") !== pending.provider) return;
+  pendingDesktopOAuth = null;
+  showDesktopWindow();
+  const oauthError = url.searchParams.get("loom_oauth_error");
+  const code = url.searchParams.get("loom_oauth_code");
+  if (oauthError || !code) {
+    mainWindow?.webContents.send("loom:account-oauth-result", {
+      ok: false,
+      error: { code: oauthError || "OAUTH_CODE_MISSING", message: "Quick sign-in was cancelled or could not be completed." },
+    });
+    return;
+  }
+  const result = await runAccountMutation(() => accountClient.oauthExchange(code));
+  mainWindow?.webContents.send("loom:account-oauth-result", result.ok
+    ? { ok: true }
+    : { ok: false, error: result.error });
+}
+
 function handleRuntimeNotification(payload: JsonRpcResponse): void {
   mainWindow?.webContents.send("loom:notification", payload);
   broadcastHostEvent("loom:notification", payload);
@@ -1694,6 +1755,14 @@ async function runAccountChallenge(
 
 handleHostChannel("loom:account-status", () => runAccountAction(() => accountClient.status()));
 handleHostChannel("loom:account-capabilities", () => runAccountCapabilities(() => accountClient.capabilities()));
+ipcMain.handle("loom:account-oauth-start", async (_event, provider: string) => {
+  try {
+    await startDesktopOAuth(String(provider || ""));
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, error: accountErrorPayload(error) };
+  }
+});
 handleHostChannel("loom:account-login", (_event, email: string, password: string) =>
   runAccountMutation(() => accountClient.login(String(email || ""), String(password || "")))
 );
@@ -1751,6 +1820,9 @@ app.whenReady().then(async () => {
   // Windows notifications on the same application identity. electron-builder
   // stamps the executable with the icon configured for this appId.
   if (process.platform === "win32") app.setAppUserModelId("com.loom.agent");
+  // electron-builder registers loom:// for the installed application.
+  // Reassert ownership on packaged launches without registering a dev instance.
+  if (!isHostProcess && app.isPackaged) app.setAsDefaultProtocolClient("loom");
   if (!isHostProcess) {
     await prepareDesktopHost();
     ensureDesktopUi();
