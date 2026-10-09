@@ -35,6 +35,24 @@ export function initialUpdateIds(items: TranscriptItem[]): ReadonlySet<string> {
   return ids;
 }
 
+/**
+ * Commentary sent in the same model step as a plan update. The model itself marks a stage
+ * boundary there, so that sentence is its report for the stage. This reads the explicit
+ * step identity of the plan call, never the wording of the message.
+ */
+export function planUpdateNoteIds(items: TranscriptItem[]): ReadonlySet<string> {
+  const planSteps = new Set<string>();
+  for (const item of items) {
+    if (item.toolName === "update_plan" && item.stepId) planSteps.add(String(item.stepId));
+  }
+  const ids = new Set<string>();
+  if (!planSteps.size) return ids;
+  for (const item of items) {
+    if (item.type === "assistant_message" && item.phase === "commentary" && item.stepId && planSteps.has(String(item.stepId))) ids.add(item.id);
+  }
+  return ids;
+}
+
 /** Explicit phases only: never infer importance or finality from message text. */
 export function groupExecutionSequence(items: TranscriptItem[], protectedIds: ReadonlySet<string> = new Set()): TranscriptBlock[] {
   const blocks: TranscriptBlock[] = [];

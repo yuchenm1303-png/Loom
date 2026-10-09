@@ -89,8 +89,9 @@ class ToolSearchRuntime(ConfiguredMCPRuntime):
         return AgentTool(
             name="tool_search",
             description=(
-                "Search tools that are registered but deferred from the model context. "
-                "Matching tools become available on the next model step for this turn only. "
+                "Search registered tools by capability. Deferred matches become available on the next model step "
+                "for this turn only. Matches reported as already in your tool list can be called directly, so do not "
+                "search for them again. "
                 "Use a concise capability query such as 'github create issue', 'wait process', or 'calendar events'."
             ),
             input_schema={
@@ -121,9 +122,18 @@ class ToolSearchRuntime(ConfiguredMCPRuntime):
             raise ValueError("tool search query must not be empty")
         limit = max(1, min(20, int(arguments.get("limit", 5))))
 
+        key = (context.session_id, context.turn_id)
+        with self._tool_search_guard:
+            activated_before = set(self._turn_activations.get(key, ()))
+        exposed = self._current_step_tool_names(context.session_id, context.turn_id)
+
+        # Search everything the model can call, not only the deferred tools. A model that looks up a
+        # tool it already holds otherwise gets an empty or unrelated list, decides the tool does not
+        # exist and searches again; one real run spent a fifth of its steps that way.
         candidates: dict[str, AgentTool] = {
             tool.name: tool
-            for tool in self.tools.deferred()
+            for tool in self.tools.all()
+            if tool.name != "tool_search" and tool.exposure in (ToolExposure.DIRECT, ToolExposure.DEFERRED)
         }
         scored: list[tuple[int, str, AgentTool]] = []
         for tool in candidates.values():
@@ -132,9 +142,15 @@ class ToolSearchRuntime(ConfiguredMCPRuntime):
                 scored.append((score, tool.name, tool))
         scored.sort(key=lambda item: (-item[0], item[1]))
         matches = tuple(item[2] for item in scored[:limit])
-        names = tuple(tool.name for tool in matches)
+        # The step's frozen tool surface is the authority on what is callable right now; the registry
+        # flags only stand in when no step is captured.
+        available = tuple(
+            tool.name for tool in matches
+            if tool.name in activated_before
+            or (tool.name in exposed if exposed is not None else tool.exposure is ToolExposure.DIRECT)
+        )
+        names = tuple(tool.name for tool in matches if tool.name not in available)
         if names:
-            key = (context.session_id, context.turn_id)
             with self._tool_search_guard:
                 self._turn_activations.setdefault(key, set()).update(names)
 
@@ -143,14 +159,19 @@ class ToolSearchRuntime(ConfiguredMCPRuntime):
                 "name": tool.name,
                 "description": tool.description[:800],
                 "effect": tool.effect.value,
-                "source": "deferred",
+                "source": "active" if tool.name in available else "deferred",
             }
             for tool in matches
         ]
-        if records:
-            content = "Tools activated for the next model step: " + ", ".join(names)
-        else:
-            content = f"No deferred tools matched: {query}"
+        sentences = []
+        if names:
+            sentences.append("Tools activated for the next model step: " + ", ".join(names))
+        if available:
+            sentences.append("Already in your tool list, call them directly without searching again: " + ", ".join(available))
+        content = ". ".join(sentences) if sentences else (
+            f"No tools matched: {query}. Tools in your tool list are called by name; "
+            "search only finds tools that are not in it yet."
+        )
         return ToolResult(
             ok=True,
             content=content,
@@ -158,9 +179,19 @@ class ToolSearchRuntime(ConfiguredMCPRuntime):
                 "query": query,
                 "count": len(records),
                 "activated": list(names),
+                "already_available": list(available),
                 "tools": records,
             },
         )
+
+    def _current_step_tool_names(self, session_id: str, turn_id: str) -> frozenset[str] | None:
+        """Names the model can call in this turn's newest captured step, or None when none is captured."""
+        with self._captured_steps_guard:
+            steps = [step for key, step in self._captured_steps.items() if key[0] == session_id and key[1] == turn_id]
+        if not steps:
+            return None
+        newest = max(steps, key=lambda step: step.model_step)
+        return frozenset(tool.name for tool in newest.tool_router.all())
 
     def _activation_names(self, session: AgentSession) -> tuple[str, ...]:
         key = (session.session_id, session.current_turn_id)

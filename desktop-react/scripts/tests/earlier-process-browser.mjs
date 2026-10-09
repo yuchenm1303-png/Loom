@@ -19,6 +19,9 @@ try {
     await page.evaluate(() => window.firstNode = document.querySelector('[data-message-id="first"]'));
     await render([user, message("first"), message("second")]);
     await page.waitForTimeout(700);
+    // Per-step narration is hidden by default; these rules are about prose that is drawn.
+    await page.locator(".process-notes-toggle").click();
+    await page.waitForTimeout(300);
     assert.equal(await page.locator(slot("first")).getAttribute("data-handoff-phase"), "holding", "visible prose must not fold when commentary arrives");
     assert.equal(await page.locator(".earlier-process-toggle").count(), 0, "no empty history capsule while all records are retained");
     assert.ok(await page.evaluate(() => window.firstNode === document.querySelector('[data-message-id="first"]')));
@@ -60,6 +63,8 @@ try {
     const batch = [user, message("intro"), tool("t1"), tool("t2", "running")];
     await render(batch);
     await render([...batch, long]);
+    await page.locator(".process-notes-toggle").click();
+    await page.waitForTimeout(300);
     // A long note is clamped by design. Open it so it takes the height this handoff geometry needs,
     // then follow the live edge again: the click itself detaches the reader, which is not under test here.
     await page.locator('[data-message-id="long"] .note-toggle').click();
@@ -83,6 +88,8 @@ try {
     await render([user, { ...message("intro"), ...at(1) }, { ...tool("s1"), ...at(2) }, steer,
       { ...message("reply"), ...at(4) }, { ...tool("s2"), ...at(5) }, { ...long, ...at(6) }]);
     await page.waitForTimeout(700);
+    await page.locator(".process-notes-toggle").click();
+    await page.waitForTimeout(300);
     await page.locator('[data-message-id="long"] .note-toggle').click();
     await page.waitForTimeout(400);
     await page.locator(".transcript-jump-latest").evaluate(el => el.click());

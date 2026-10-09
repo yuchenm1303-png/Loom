@@ -297,6 +297,11 @@ export interface RuntimeCopy {
   earlierToggleTitle(open: boolean): string;
   noteExpand: string;
   noteCollapse: string;
+  /** One line for a run of same-kind steps, e.g. "查找工具 7 次". */
+  clusterTitle(category: ActivityCategory, count: number, toolName: string): string;
+  clusterFailed(count: number): string;
+  notesShow(count: number): string;
+  notesHide: string;
   processToggleTitle(open: boolean): string;
   processSummary(parts: ProcessSummaryParts, fallbackCount: number): string;
   diffLabel(added: number, removed: number): string;
@@ -470,6 +475,26 @@ const ZH: RuntimeCopy = {
   earlierToggleTitle: (open) => (open ? "收起较早的进度与工具记录" : "展开较早的进度与工具记录"),
   noteExpand: "展开全文",
   noteCollapse: "收起",
+  clusterTitle: (category, count, toolName) => {
+    switch (category) {
+      case "command": return `运行 ${count} 条命令`;
+      case "edit": return `修改文件 ${count} 次`;
+      case "read": return `读取 ${count} 个文件`;
+      case "list": return `浏览 ${count} 个目录`;
+      case "search": return `搜索 ${count} 次`;
+      case "web": return `联网搜索 ${count} 次`;
+      case "browser": return `操作浏览器 ${count} 次`;
+      case "computer": return `操作电脑 ${count} 次`;
+      case "agent": return `调用子代理 ${count} 次`;
+      case "plan": return `更新计划 ${count} 次`;
+      case "memory": return `查阅记忆 ${count} 次`;
+      case "image": return `查看 ${count} 张图片`;
+      default: return toolName === "tool_search" ? `查找工具 ${count} 次` : `使用工具 ${count} 次`;
+    }
+  },
+  clusterFailed: count => `失败 ${count}`,
+  notesShow: count => `显示模型过程说明 · ${count}`,
+  notesHide: "隐藏模型过程说明",
   processToggleTitle: (open) => (open ? "收起任务过程" : "展开完整任务过程"),
   processSummary: (parts, fallback) => {
     const items: string[] = [];
@@ -583,6 +608,27 @@ const EN: RuntimeCopy = {
   earlierToggleTitle: (open) => (open ? "Hide earlier progress and tool records" : "Show earlier progress and tool records"),
   noteExpand: "Show full note",
   noteCollapse: "Show less",
+  clusterTitle: (category, count, toolName) => {
+    const times = plural(count, "time", "times");
+    switch (category) {
+      case "command": return `Ran ${plural(count, "command", "commands")}`;
+      case "edit": return `Made ${plural(count, "file change", "file changes")}`;
+      case "read": return `Read ${plural(count, "file", "files")}`;
+      case "list": return `Listed ${plural(count, "folder", "folders")}`;
+      case "search": return `Searched ${times}`;
+      case "web": return `Searched the web ${times}`;
+      case "browser": return `Used the browser ${times}`;
+      case "computer": return `Used the computer ${times}`;
+      case "agent": return `Called sub-agents ${times}`;
+      case "plan": return `Updated the plan ${times}`;
+      case "memory": return `Checked memory ${times}`;
+      case "image": return `Viewed ${plural(count, "image", "images")}`;
+      default: return toolName === "tool_search" ? `Searched for tools ${times}` : `Used ${plural(count, "tool", "tools")}`;
+    }
+  },
+  clusterFailed: count => `${count} failed`,
+  notesShow: count => `Show model notes · ${count}`,
+  notesHide: "Hide model notes",
   processToggleTitle: (open) => (open ? "Collapse the work log" : "Expand the full work log"),
   processSummary: (parts, fallback) => {
     const items: string[] = [];
