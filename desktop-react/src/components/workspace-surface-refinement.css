@@ -45,8 +45,8 @@
 :root .app-shell .conversation-stage {
   background: var(--ws-canvas);
 }
-:root .app-shell .conversation-stage:has(.transcript-entry)::before,
-:root .app-shell .conversation-stage:has(.transcript-entry)::after {
+:root .app-shell .conversation-stage[data-has-entries]::before,
+:root .app-shell .conversation-stage[data-has-entries]::after {
   display: block;
   height: 12px;
   background: linear-gradient(to bottom,

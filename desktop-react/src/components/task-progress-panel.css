@@ -1,7 +1,7 @@
 /* One measured workspace owns both transcript and progress allocation. */
 .workspace { --task-plan-width: 0px; --task-plan-motion: 280ms; --task-plan-ease: cubic-bezier(.22, 1, .36, 1); }
-.workspace:has(> .conversation-stage > .task-progress-dock) { --task-plan-width: 288px; }
-.workspace:has(> .conversation-stage > .task-progress-dock.is-rail) { --task-plan-width: 56px; }
+.workspace[data-task-plan="expanded"] { --task-plan-width: 288px; }
+.workspace[data-task-plan="rail"] { --task-plan-width: 56px; }
 .workspace > .composer-stage {
   margin-right: var(--task-plan-width);
   transition: margin-right var(--task-plan-motion) var(--task-plan-ease);
@@ -11,17 +11,17 @@
   grid-template-columns: minmax(0, 1fr) var(--task-plan-width);
   transition: grid-template-columns var(--task-plan-motion, 280ms) var(--task-plan-ease, cubic-bezier(.22, 1, .36, 1));
 }
-.conversation-stage:has(> .task-progress-dock) {
-  --task-plan-width: 288px;
+.conversation-stage[data-task-plan] {
   grid-template-columns: minmax(0, 1fr) var(--task-plan-width);
 }
-.conversation-stage:has(> .task-progress-dock.is-rail) { --task-plan-width: 56px; }
+.conversation-stage[data-task-plan="expanded"] { --task-plan-width: 288px; }
+.conversation-stage[data-task-plan="rail"] { --task-plan-width: 56px; }
 .conversation-stage > .run-progress-frame.top { grid-column: 1 / -1; }
 .conversation-stage > .transcript-scroll { grid-column: 1; }
 .conversation-stage > .transcript-jump-latest { left: calc((100% - var(--task-plan-width)) / 2); }
 .conversation-stage > .transcript-jump-latest { transition: left var(--task-plan-motion, 280ms) var(--task-plan-ease, cubic-bezier(.22, 1, .36, 1)); }
-:root .app-shell .conversation-stage:has(.transcript-entry)::before,
-:root .app-shell .conversation-stage:has(.transcript-entry)::after { transition: right var(--task-plan-motion, 280ms) var(--task-plan-ease, cubic-bezier(.22, 1, .36, 1)); }
+:root .app-shell .conversation-stage[data-has-entries]::before,
+:root .app-shell .conversation-stage[data-has-entries]::after { transition: right var(--task-plan-motion, 280ms) var(--task-plan-ease, cubic-bezier(.22, 1, .36, 1)); }
 .task-progress-dock {
   position: relative;
   grid-column: 2; grid-row: 2; min-height: 0; min-width: 0;

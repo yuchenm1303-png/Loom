@@ -1,5 +1,5 @@
 import { Check, CircleAlert, ChevronLeft, ListChecks, X } from "lucide-react";
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { milestoneEvidenceLabels, milestoneOutcomeLabel, type TaskMilestone } from "./liveTaskProgress";
 import "./task-progress-panel.css";
 
@@ -16,6 +16,22 @@ export function TaskProgressPanel({ steps }: { steps: TaskMilestone[] }) {
   const current = steps.find(step => step.status === "in_progress")
     ?? steps.find(step => step.status === "blocked") ?? steps.find(step => step.status === "pending");
   const rail = compact || collapsed;
+
+  // The dock reserves a column on its stage and on the workspace. Publish its
+  // state as attributes: `:has(> .task-progress-dock)` anchored on those two
+  // containers made every DOM change in the transcript restyle the whole chat.
+  useLayoutEffect(() => {
+    const stage = panel.current?.parentElement;
+    const workspace = stage?.parentElement;
+    if (!stage || !workspace) return;
+    const state = rail ? "rail" : "expanded";
+    stage.dataset.taskPlan = state;
+    workspace.dataset.taskPlan = state;
+    return () => {
+      delete stage.dataset.taskPlan;
+      delete workspace.dataset.taskPlan;
+    };
+  }, [rail]);
 
   useEffect(() => {
     const stage = panel.current?.parentElement;

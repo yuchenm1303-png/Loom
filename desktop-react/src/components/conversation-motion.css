@@ -675,8 +675,8 @@ html[data-loom-theme="light"] .transcript {
    Anchor paint-only overlays to the transcript grid row so the live strip can
    float without covering status text. Opaque endpoints hide clipped content in
    both themes; pointer events and scroll geometry remain untouched. */
-.conversation-stage:has(.transcript-entry)::before,
-.conversation-stage:has(.transcript-entry)::after {
+.conversation-stage[data-has-entries]::before,
+.conversation-stage[data-has-entries]::after {
   content: "";
   position: absolute;
   grid-row: 2;
@@ -696,11 +696,11 @@ html[data-loom-theme="light"] .transcript {
   );
 }
 
-.conversation-stage:has(.transcript-entry)::after {
+.conversation-stage[data-has-entries]::after {
   top: 0;
 }
 
-.conversation-stage:has(.transcript-entry)::before {
+.conversation-stage[data-has-entries]::before {
   bottom: 0;
   height: 56px;
   transform: scaleY(-1);

@@ -101,3 +101,55 @@ test("no stylesheet has a :has() selector whose rightmost compound is a bare tag
   }
   assert.deepEqual(offenders, [], "tag-keyed :has() selectors restyle every matching element under the anchor on each DOM change");
 });
+
+// A `:has()` anchored on a container that holds the whole transcript is evaluated again
+// for every node React inserts or removes below it. State for those containers is
+// published as a data attribute by the component that owns it (`data-has-entries`,
+// `data-task-plan`, `data-composer-popover`).
+const CHAT_WIDE_ANCHORS = /(?:^|[^\w-])(?:\.workspace|\.conversation-stage|\.transcript-scroll|\.transcript|\.app-shell|\.workspace-panels)(?![\w-])|^(?:html|body|:root|#root)\b/;
+
+function compoundsOf(selector) {
+  const compounds = [];
+  let depth = 0;
+  let current = "";
+  for (const char of selector) {
+    if (char === "(" || char === "[") depth += 1;
+    if (char === ")" || char === "]") depth -= 1;
+    if (depth === 0 && /[\s>+~]/.test(char)) {
+      if (current) compounds.push(current);
+      current = "";
+    } else current += char;
+  }
+  if (current) compounds.push(current);
+  return compounds;
+}
+
+export function chatWideHasAnchors(css) {
+  const found = [];
+  for (const prelude of preludes(css)) {
+    for (const selector of splitSelectorList(prelude)) {
+      for (const compound of compoundsOf(selector)) {
+        const index = compound.indexOf(":has(");
+        if (index > 0 && CHAT_WIDE_ANCHORS.test(compound.slice(0, index))) found.push(selector);
+      }
+    }
+  }
+  return found;
+}
+
+test("the anchor detector flags chat-wide containers and accepts local ones", () => {
+  assert.deepEqual(chatWideHasAnchors(".workspace:has(.x) .y { top: 0 }"), [".workspace:has(.x) .y"]);
+  assert.deepEqual(chatWideHasAnchors(":root .app-shell .conversation-stage:has(.transcript-entry)::before { top: 0 }"), [":root .app-shell .conversation-stage:has(.transcript-entry)::before"]);
+  assert.deepEqual(chatWideHasAnchors(".workspace .composer:has(.popover), .row:has(> svg) { top: 0 }"), []);
+  assert.deepEqual(chatWideHasAnchors(".turn-block.is-complete:has(.decision-card) { top: 0 }"), []);
+});
+
+test("no :has() is anchored on a container that holds the whole transcript", () => {
+  const offenders = [];
+  for (const file of cssFiles(SRC)) {
+    for (const selector of chatWideHasAnchors(readFileSync(file, "utf8"))) {
+      offenders.push(`${relative(SRC, file).replaceAll("\\", "/")}: ${selector}`);
+    }
+  }
+  assert.deepEqual(offenders, [], "publish the state as a data attribute from the owning component instead");
+});

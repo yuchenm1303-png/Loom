@@ -12,7 +12,7 @@ import {
   Sparkles,
   Square,
 } from "lucide-react";
-import { KeyboardEvent as ReactKeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
+import { KeyboardEvent as ReactKeyboardEvent, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { AddModelInput, Attachment, ModelSnapshot, StickerPreferences } from "../types/loom";
 import { useI18n } from "../i18n";
 import { useMotionPresence } from "../motion/useMotionPresence";
@@ -222,6 +222,18 @@ export function Composer({
   const [quote, setQuote] = useQuoteReply();
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const composerRootRef = useRef<HTMLDivElement | null>(null);
+
+  // The transcript's jump button hides while a popover is mounted. Publish that
+  // as an attribute on the workspace: `.workspace:has(.composer-popover)` was
+  // re-evaluated on every DOM change in the transcript.
+  const popoverMounted = renderedPanel !== null;
+  useLayoutEffect(() => {
+    if (!popoverMounted) return;
+    const workspace = composerRootRef.current?.closest(".workspace");
+    if (!workspace) return;
+    workspace.setAttribute("data-composer-popover", "");
+    return () => workspace.removeAttribute("data-composer-popover");
+  }, [popoverMounted]);
 
   useEffect(() => {
     if (!running) setStopping(false);

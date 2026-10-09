@@ -2175,6 +2175,17 @@ function EmptyState({ disabled, onPrompt, onOpenInsights }: {
 }
 
 export const Transcript = memo(function Transcript({ items, running, currentTurnId, workspace, promptDisabled, onPrompt, onApproval, onOpenInsights }: TranscriptProps) {
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const hasItems = items.length > 0;
+  // The stage draws its edge fades once there is a transcript. Publishing that as an
+  // attribute replaces `.conversation-stage:has(.transcript-entry)`, a :has() anchored on
+  // this large container that was re-evaluated on every DOM change below it.
+  useLayoutEffect(() => {
+    const stage = scrollRef.current?.closest<HTMLElement>(".conversation-stage");
+    if (!stage || !hasItems) return;
+    stage.dataset.hasEntries = "";
+    return () => { delete stage.dataset.hasEntries; };
+  }, [hasItems]);
   const turnBlocks = useStableTurnBlocks(items);
   const activeTurnId = running && currentTurnId ? String(currentTurnId) : "";
   const milestones = useMemo(() => {
@@ -2196,7 +2207,7 @@ export const Transcript = memo(function Transcript({ items, running, currentTurn
 
   return (
     <>
-    <div className={`transcript-scroll ${!items.length ? "is-empty" : ""}`}>
+    <div ref={scrollRef} className={`transcript-scroll ${!items.length ? "is-empty" : ""}`}>
       <div className="chat-ambient" aria-hidden="true">
         <span className="ambient-glow glow-one" />
         <span className="ambient-glow glow-two" />

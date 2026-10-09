@@ -70,7 +70,7 @@
  * for the lifetime of that popover avoids a competing circular control showing
  * through / on top of model, permission, or sticker cards.
  */
-.workspace:has(.composer-popover) .transcript-jump-latest {
+.workspace[data-composer-popover] .transcript-jump-latest {
   opacity: 0;
   pointer-events: none;
   transform: translate(-50%, 6px) scale(.96);

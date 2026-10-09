@@ -14,8 +14,10 @@
 //   ?real=<url>      replay a JSON file of TurnRecord[] (the thread/read shape)
 //
 // Drive it from a test through window.perfFixture: startLive({ tools, deltaMs,
-// toolMs, finalChars }) streams a turn, emit(method, params) sends any host
-// notification, progress() reports the live turn's completed tool cycles.
+// toolMs, finalChars, plan, hold }) streams a turn (plan: the first tool is
+// update_plan so the task dock shows; hold: leave the turn running for static
+// visual checks), emit(method, params) sends any host notification, and
+// progress() reports the live turn's completed tool cycles.
 const params = new URLSearchParams(location.search);
 const num = (name: string, fallback: number) => {
   const value = Number(params.get(name));
@@ -167,7 +169,7 @@ const listeners = new Set<(event: unknown) => void>();
 const emit = (method: string, params: Record<string, unknown>) => listeners.forEach(listener => listener({ method, params }));
 
 // ---- live turn -----------------------------------------------------------
-interface LiveOptions { tools?: number; deltaMs?: number; toolMs?: number; finalChars?: number; finalSections?: number; context?: boolean; text?: string }
+interface LiveOptions { tools?: number; deltaMs?: number; toolMs?: number; finalChars?: number; finalSections?: number; context?: boolean; text?: string; plan?: boolean; hold?: boolean }
 let liveTurnSerial = 0;
 let liveProgress = 0;
 let liveDone: Promise<void> = Promise.resolve();
@@ -204,7 +206,7 @@ function startLive(options: LiveOptions = {}): Promise<void> {
         await wait(deltaMs);
       }
       trackCompleted(item(messageId, "assistant_message", { status: "completed", text, rawText: text, phase: "commentary", stepId: `${turnId}-s${cycle}` }) as Item);
-      const shape = pickShape();
+      const shape = options.plan && cycle === 0 ? toolShapes.find(entry => entry.name === "update_plan")! : pickShape();
       const callId = `${turnId}-call-${cycle}`;
       const args = shape.args();
       emit("item/started", { threadId: mainThreadId, item: item(`tool-${callId}`, "tool_call", { callId, toolName: shape.name, arguments: args, nested: false }) });
@@ -224,6 +226,8 @@ function startLive(options: LiveOptions = {}): Promise<void> {
           : blob(shape.result) }) as Item);
       if (context) emit("context/updated", { threadId: mainThreadId, context: contextReport(cycle) });
     }
+    // Leave the turn running (status, plan dock, composer) for static visual checks.
+    if (options.hold) await new Promise<never>(() => {});
     const finalId = `${turnId}-final`;
     emit("item/started", { threadId: mainThreadId, item: item(finalId, "assistant_message", { status: "streaming", text: "", phase: "final_answer", stepId: `${turnId}-sf` }) });
     for (let at2 = 0; at2 < finalText.length; at2 += 8) {
