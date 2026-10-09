@@ -931,6 +931,15 @@ class LoomAppServerService:
             "nextCursor": None,
         }
 
+    def _transcript_events(self, session_id: str) -> tuple[AgentEvent, ...]:
+        """Events for what a person sees: turns, items, approvals and final text.
+
+        A store that offers the lighter view omits the model request payloads,
+        which are most of a long session's log and which none of those read.
+        """
+        reader = getattr(self.store, "presentation_events", None)
+        return reader(session_id) if callable(reader) else self.store.events(session_id)
+
     def thread_read(self, params: dict[str, Any]) -> dict[str, Any]:
         session_id = self._required_text(params, "threadId")
         session = self._load(session_id)
@@ -943,7 +952,11 @@ class LoomAppServerService:
         if bool(params.get("threadOnly", False)):
             return {"thread": thread}
 
-        events = self.store.events(session_id)
+        events = (
+            self._transcript_events(session_id)
+            if bool(params.get("presentationOnly", False))
+            else self.store.events(session_id)
+        )
         turn_limit_raw = params.get("turnLimit")
         window_events = events
         has_more_turns: bool | None = None
@@ -1226,7 +1239,7 @@ class LoomAppServerService:
             raise RuntimeError("thread has no pending approval")
         if pending.call_id != call_id:
             raise ValueError("callId does not match the pending approval")
-        approval = pending_approval_record(session, self.store.events(session_id))
+        approval = pending_approval_record(session, self._transcript_events(session_id))
         if approval is None:
             raise RuntimeError("thread has no pending approval")
         expected_request_id = str(approval.get("requestId") or "").strip()

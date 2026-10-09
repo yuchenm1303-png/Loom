@@ -536,7 +536,7 @@ class ManagedStreamingLoomAppServerService(StreamingLoomAppServerService):
         for session in sessions:
             session_id = str(getattr(session, "session_id", "") or "")
             try:
-                events = self.store.events(session_id)
+                events = self._transcript_events(session_id)
             except Exception:
                 continue
 
@@ -1064,41 +1064,46 @@ class ManagedStreamingLoomAppServerService(StreamingLoomAppServerService):
             with self._auto_title_guard:
                 self._auto_title_inflight.discard(thread_id)
 
+    def _context_state(self, session_id: str) -> tuple[tuple[AgentEvent, ...], AgentEvent | None]:
+        """Checkpoints so far, and whichever of request or checkpoint came last.
+
+        The report only needs those, so a store that can find them without
+        parsing the transcript is asked to; others are read in full.
+        """
+        reader = getattr(self.store, "context_state", None)
+        if callable(reader):
+            return reader(session_id)
+        checkpoints: list[AgentEvent] = []
+        newest: AgentEvent | None = None
+        for event in self.store.events(session_id):
+            if event.kind is AgentEventKind.CONTEXT_CHECKPOINTED:
+                checkpoints.append(event)
+                newest = event
+            elif event.kind is AgentEventKind.MODEL_REQUESTED:
+                newest = event
+        return tuple(checkpoints), newest
+
     def _context_history(self, session_id: str) -> tuple[int, str]:
         """How often this thread has been compacted, and when it last was."""
         try:
-            events = self.store.events(session_id)
+            checkpoints, _ = self._context_state(session_id)
         except Exception:
             return 0, ""
-        count = 0
-        last = ""
-        for event in events:
-            if event.kind is AgentEventKind.CONTEXT_CHECKPOINTED:
-                count += 1
-                last = event.created_at
-        return count, last
+        return len(checkpoints), (checkpoints[-1].created_at if checkpoints else "")
 
     def thread_context(self, params: dict[str, Any]) -> dict[str, Any]:
         """Report what this thread's active model context is currently made of."""
         session_id = self._required_text(params, "threadId")
         session = self._load(session_id)
-        events = self.store.events(session_id)
+        checkpoints, newest = self._context_state(session_id)
 
-        compactions = 0
-        last_compacted_at = ""
-        latest_request: AgentEvent | None = None
-        latest_checkpoint: AgentEvent | None = None
-        for event in events:
-            if event.kind is AgentEventKind.CONTEXT_CHECKPOINTED:
-                compactions += 1
-                last_compacted_at = event.created_at
-                # A checkpoint rewrites the active history. Any request sampled
-                # before it no longer measures the current context.
-                latest_request = None
-                latest_checkpoint = event
-            elif event.kind is AgentEventKind.MODEL_REQUESTED:
-                latest_request = event
-                latest_checkpoint = None
+        compactions = len(checkpoints)
+        last_compacted_at = checkpoints[-1].created_at if checkpoints else ""
+        # A checkpoint rewrites the active history. Any request sampled before
+        # it no longer measures the current context, so only the newer of the
+        # two can describe it.
+        latest_checkpoint = newest if newest is not None and newest.kind is AgentEventKind.CONTEXT_CHECKPOINTED else None
+        latest_request = newest if newest is not None and newest.kind is AgentEventKind.MODEL_REQUESTED else None
 
         if latest_request is None and latest_checkpoint is not None:
             data = latest_checkpoint.data if isinstance(latest_checkpoint.data, dict) else {}

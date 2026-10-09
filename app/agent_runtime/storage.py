@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -291,6 +292,108 @@ def _context_event_projection(payload):
     return {**payload, "data": selected}
 
 
+# Records are written with ``data`` last, so what a line is can be read from its
+# first few hundred bytes. Views that only need some records use that to avoid
+# parsing the rest: on a long session most of the log is request payloads.
+_DATA_KEY = b',"data":'
+_KIND_FIELD = re.compile(rb'"kind":"([^"\\]*)"')
+_HEADER_FIELDS = frozenset(("event_id", "session_id", "turn_id", "kind", "created_at"))
+_CONTEXT_STATE_KINDS = frozenset(("model_requested", "context_checkpointed"))
+
+
+def _header_kind(line):
+    """The kind of a record, or None when the line does not have the usual shape."""
+    end = line.find(_DATA_KEY, 0, 512)
+    if end < 0:
+        return None
+    found = _KIND_FIELD.search(line, 0, end)
+    return found.group(1) if found else None
+
+
+def _header(line):
+    """The fields in front of ``data``, parsed without touching the body."""
+    end = line.find(_DATA_KEY, 0, 512)
+    if end < 0:
+        return None
+    try:
+        head = json.loads(line[:end] + b"}")
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return None
+    return head if isinstance(head, dict) and _HEADER_FIELDS <= head.keys() else None
+
+
+def _presentation_line(line):
+    """A record without the body of a model request, which no transcript reads.
+
+    A ``model_requested`` payload repeats the request layout, which grows with the
+    conversation and is most of a long session's log. The record itself stays, so
+    turns, ordering and timing are unchanged.
+    """
+    if _header_kind(line) == b"model_requested":
+        head = _header(line)
+        if head is not None and head["kind"] == "model_requested":
+            head["data"] = {}
+            return head
+    return json.loads(line)
+
+
+def _checkpoint_line(line):
+    """Compaction checkpoints only, so counting them does not parse the whole log."""
+    kind = _header_kind(line)
+    if kind is not None and kind != b"context_checkpointed":
+        return None
+    payload = json.loads(line)
+    return payload if payload.get("kind") == "context_checkpointed" else None
+
+
+def _newest_payload(path, kinds):
+    """The newest record whose kind is in ``kinds``, found by reading from the end."""
+    if not path.is_file():
+        return None
+    wanted = {kind.encode() for kind in kinds}
+    with path.open("rb") as handle:
+        size = handle.seek(0, 2)
+        span = 1 << 16
+        while True:
+            start = max(0, size - span)
+            handle.seek(start)
+            lines = handle.read(size - start).split(b"\n")
+            if start:
+                lines = lines[1:]  # begins inside a record
+            tail = lines.pop() if lines else b""
+            if tail.strip():
+                # An unterminated last line only counts once it is a whole record.
+                try:
+                    payload = json.loads(tail)
+                except (json.JSONDecodeError, UnicodeDecodeError):
+                    payload = None
+                if isinstance(payload, dict) and payload.get("kind") in kinds:
+                    return payload
+            for line in reversed(lines):
+                if not line.strip():
+                    continue
+                kind = _header_kind(line)
+                if kind is not None and kind not in wanted:
+                    continue
+                payload = json.loads(line)
+                if payload.get("kind") in kinds:
+                    return payload
+            if not start:
+                return None
+            span *= 8
+
+
+def _event_from_payload(payload):
+    return AgentEvent(
+        event_id=str(payload.get("event_id") or ""),
+        session_id=str(payload.get("session_id") or ""),
+        turn_id=str(payload.get("turn_id") or ""),
+        kind=AgentEventKind(str(payload.get("kind") or "")),
+        created_at=str(payload.get("created_at") or ""),
+        data=dict(payload.get("data") or {}),
+    )
+
+
 class FileAgentSessionStore:
     """Local durable state for Loom Agent Runtime.
 
@@ -458,24 +561,38 @@ class FileAgentSessionStore:
             raise ValueError("event limit must not be negative")
         if limit == 0:
             return ()
+        return self._view(session_id, limit=limit, project=_context_event_projection if context_only else None)
+
+    def presentation_events(self, session_id: str) -> tuple[AgentEvent, ...]:
+        """Every event a transcript is built from, without the request payloads it never reads."""
+        return self._view(session_id, parse=_presentation_line)
+
+    def checkpoint_events(self, session_id: str) -> tuple[AgentEvent, ...]:
+        """The context checkpoints so far, in order, at the cost of a view that holds only them."""
+        return self._view(session_id, parse=_checkpoint_line)
+
+    def context_state(self, session_id: str) -> tuple[tuple[AgentEvent, ...], AgentEvent | None]:
+        """Compaction checkpoints so far and the newest model request or checkpoint.
+
+        That is what the active context is made of, from one consistent read
+        that parses neither the older requests nor the tool output between them.
+        """
         path = self.session_dir(session_id) / "events.jsonl"
-        output: list[AgentEvent] = []
         with session_lock(path.parent):
             recover(path.parent)
-            payloads = self._event_cache.read(path, limit, _recent_event_lines,
-                                             project=_context_event_projection if context_only else None)
-        for payload in payloads:
-            output.append(
-                AgentEvent(
-                    event_id=str(payload.get("event_id") or ""),
-                    session_id=str(payload.get("session_id") or ""),
-                    turn_id=str(payload.get("turn_id") or ""),
-                    kind=AgentEventKind(str(payload.get("kind") or "")),
-                    created_at=str(payload.get("created_at") or ""),
-                    data=dict(payload.get("data") or {}),
-                )
-            )
-        return tuple(output)
+            payloads = self._event_cache.read(path, None, _recent_event_lines, parse=_checkpoint_line)
+            newest = _newest_payload(path, _CONTEXT_STATE_KINDS)
+        return (
+            tuple(_event_from_payload(payload) for payload in payloads),
+            _event_from_payload(newest) if newest is not None else None,
+        )
+
+    def _view(self, session_id: str, *, limit: int | None = None, project=None, parse=None) -> tuple[AgentEvent, ...]:
+        path = self.session_dir(session_id) / "events.jsonl"
+        with session_lock(path.parent):
+            recover(path.parent)
+            payloads = self._event_cache.read(path, limit, _recent_event_lines, project=project, parse=parse)
+        return tuple(_event_from_payload(payload) for payload in payloads)
 
 
 __all__ = [

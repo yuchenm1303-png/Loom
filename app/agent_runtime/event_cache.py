@@ -93,8 +93,16 @@ class EventParseCache:
                 pending.extend(item)
         return total
 
-    def read(self, path, limit, tail_reader, *, project=None):
-        key = (str(path), limit, project)
+    def read(self, path, limit, tail_reader, *, project=None, parse=None):
+        """Parsed records of ``path``, one per line, shared by every reader of this view.
+
+        ``project`` reshapes a parsed record. ``parse`` replaces ``json.loads`` for
+        complete lines, so a view can leave out the body of records it never reads
+        or return ``None`` to drop a line altogether. An unterminated final line is
+        always validated as a whole before it is shown.
+        """
+        key = (str(path), limit, project, parse)
+        parse_line = json.loads if parse is None else parse
         if not path.is_file():
             with self._lock:
                 self._entries.pop(key, None)
@@ -145,17 +153,21 @@ class EventParseCache:
                 trailing = raw[complete_end:]
                 for line in complete.splitlines():
                     if line.strip():
-                        payload = json.loads(line)
-                        records.append(project(payload) if project is not None else payload)
+                        payload = parse_line(line)
                         parsed += 1
+                        if payload is not None:
+                            records.append(project(payload) if project is not None else payload)
                 if limit is not None:
                     records = records[-limit:]
                 visible = list(records)
                 if trailing.strip():
                     try:
                         payload = json.loads(trailing)
-                        visible.append(project(payload) if project is not None else payload)
+                        if parse is not None:
+                            payload = parse(trailing)
                         parsed += 1
+                        if payload is not None:
+                            visible.append(project(payload) if project is not None else payload)
                     except (json.JSONDecodeError, UnicodeDecodeError):
                         pass
                 if limit is not None:
