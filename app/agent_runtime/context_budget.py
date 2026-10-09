@@ -776,7 +776,10 @@ def _prepare_context_with_model(rt, session, step, token):
     # provider rejection outranks every local budget and forces one compaction.
     forced_compaction = _consume_forced_compaction(rt, session)
     from .context_tools import pending_context_rollover
-    read_events = getattr(rt.store, "events", None)
+    # Only the kinds and turns of events decide this, so the lifecycle projection
+    # is enough; parsing every tool result in a long log before each model step
+    # was most of the preparation time.
+    read_events = getattr(rt.store, "context_events", None) or getattr(rt.store, "events", None)
     model_requested_rollover = pending_context_rollover(
         read_events(session.session_id) if callable(read_events) else (),
         getattr(session, "current_turn_id", "")

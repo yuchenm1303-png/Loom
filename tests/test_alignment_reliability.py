@@ -351,10 +351,10 @@ def test_pending_approval_fails_closed_after_runtime_restart(tmp_path):
 def test_commit_recovers_snapshot_after_event_write_failure(tmp_path, monkeypatch):
     rt = make_runtime(tmp_path, Scripted([]))
     session = rt.create_session("agent.fast")
-    original = rt.store._save
-    def broken(session):
+    original = rt.store._write_session
+    def broken(session, data):
         raise OSError("injected disk failure")
-    monkeypatch.setattr(rt.store, "_save", broken)
+    monkeypatch.setattr(rt.store, "_write_session", broken)
     session.final_text = "committed state"
     from app.agent_runtime import AgentEventKind
     with pytest.raises(OSError):
@@ -363,7 +363,7 @@ def test_commit_recovers_snapshot_after_event_write_failure(tmp_path, monkeypatc
     assert restarted.load(session.session_id).final_text == "committed state"
     events = restarted.events(session.session_id)
     assert sum(e.kind is AgentEventKind.TURN_COMPLETED for e in events) == 1
-    monkeypatch.setattr(rt.store, "_save", original)
+    monkeypatch.setattr(rt.store, "_write_session", original)
     rt.close()
 
 

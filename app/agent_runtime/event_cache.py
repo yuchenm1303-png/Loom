@@ -93,13 +93,23 @@ class EventParseCache:
                 pending.extend(item)
         return total
 
-    def read(self, path, limit, tail_reader, *, project=None, parse=None):
+    @staticmethod
+    def _deliver(records, build, shared):
+        """Hand records to a caller; ``shared`` ones belong to the cache and are copied."""
+        if build is None:
+            return _clone(records) if shared else records
+        return [build(record, shared) for record in records]
+
+    def read(self, path, limit, tail_reader, *, project=None, parse=None, build=None):
         """Parsed records of ``path``, one per line, shared by every reader of this view.
 
         ``project`` reshapes a parsed record. ``parse`` replaces ``json.loads`` for
         complete lines, so a view can leave out the body of records it never reads
         or return ``None`` to drop a line altogether. An unterminated final line is
         always validated as a whole before it is shown.
+
+        Records are returned as copies. ``build(record, shared)`` makes the caller's
+        own object from one instead, so only what the caller keeps is copied.
         """
         key = (str(path), limit, project, parse)
         parse_line = json.loads if parse is None else parse
@@ -119,7 +129,7 @@ class EventParseCache:
             else:
                 cached = None
         if cached is not None:
-            return _clone(cached)
+            return self._deliver(cached, build, shared=True)
 
         # Callers hold the journal lock for this session. Only shared LRU
         # bookkeeping needs the store-wide lock: IO, parsing and copying a long
@@ -151,12 +161,14 @@ class EventParseCache:
                 complete_end = raw.rfind(b"\n") + 1
                 complete = raw[:complete_end]
                 trailing = raw[complete_end:]
+                fresh = []
                 for line in complete.splitlines():
                     if line.strip():
                         payload = parse_line(line)
                         parsed += 1
                         if payload is not None:
-                            records.append(project(payload) if project is not None else payload)
+                            fresh.append(project(payload) if project is not None else payload)
+                records.extend(fresh)
                 if limit is not None:
                     records = records[-limit:]
                 visible = list(records)
@@ -181,9 +193,21 @@ class EventParseCache:
                            "offset": offset, "prefix": prefix, "boundary": boundary}
                 too_large = self._oversized.get(key) if limit is None else None
                 if too_large is not None and too_large[:2] == signature[:2] and signature[2] >= too_large[2]:
-                    weight = self.max_bytes + 1
+                    record_weight, weight = 0, self.max_bytes + 1
                 else:
-                    weight = self._weight(updated, limit=self.max_bytes) + sys.getsizeof(trailing)
+                    # A log grows by appending, so only what was just parsed needs
+                    # weighing. Walking every kept record again for each new event
+                    # made reading a long session's projection cost more with each step.
+                    record_weight = entry["record_weight"] if incremental else 0
+                    for record in (fresh if limit is None else records):
+                        record_weight += self._weight(record)
+                        if record_weight > self.max_bytes:
+                            break
+                    held = {id(record) for record in records}
+                    weight = (record_weight + sys.getsizeof(updated) + sys.getsizeof(records) + sys.getsizeof(visible)
+                              + sys.getsizeof(prefix) + sys.getsizeof(boundary) + sys.getsizeof(trailing)
+                              + sum(self._weight(record) for record in visible if id(record) not in held))
+                updated["record_weight"] = record_weight
                 updated["weight"] = weight
             finally:
                 with self._lock:
@@ -206,4 +230,4 @@ class EventParseCache:
         # What the cache did not keep has no other holder, so the caller can
         # have the parsed objects themselves; copying them would only repeat
         # the cost of parsing a history too large to cache.
-        return _clone(visible) if retained else visible
+        return self._deliver(visible, build, shared=retained)

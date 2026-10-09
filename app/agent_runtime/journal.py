@@ -99,6 +99,19 @@ def atomic_json(path, value):
         temp.unlink(missing_ok=True)
 
 
+def atomic_text(path, text):
+    """atomic_json for text that is already encoded."""
+    temp = path.with_name(f".{path.name}.{uuid.uuid4().hex}.tmp")
+    try:
+        with temp.open("w", encoding="utf-8", newline="\n") as handle:
+            handle.write(text)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temp, path)
+    finally:
+        temp.unlink(missing_ok=True)
+
+
 def repair_tail(path):
     if not path.exists():
         return

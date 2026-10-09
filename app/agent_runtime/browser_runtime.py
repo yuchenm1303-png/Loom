@@ -997,7 +997,9 @@ class BrowserRuntime(WebSearchRuntime):
 
     def _lookup_browser_lifecycle(self, owner, browser_id):
         try:
-            events = self.store.events(owner)
+            # Opened and released leases keep their whole record in the lifecycle
+            # projection, which is all this looks at.
+            events = self._lifecycle_events(owner)
         except (ValueError, FileNotFoundError):
             return None
         for event in reversed(events):

@@ -11,8 +11,8 @@ from typing import Any
 
 from app.ai import AIMessage, ImagePart, MessageRole, ModelUsage, TextPart, ToolCall
 
-from .journal import atomic_json, session_lock, recover, repair_tail
-from .event_cache import EventParseCache
+from .journal import atomic_json, atomic_text, session_lock, recover, repair_tail
+from .event_cache import EventParseCache, _clone
 from .session_overview import SessionOverviewCache
 
 from .contracts import (
@@ -394,6 +394,19 @@ def _event_from_payload(payload):
     )
 
 
+def _build_event(record, shared):
+    """An AgentEvent from a cached record. Only the body can be mutated through it, so only it is copied."""
+    body = record.get("data") or {}
+    return AgentEvent(
+        event_id=str(record.get("event_id") or ""),
+        session_id=str(record.get("session_id") or ""),
+        turn_id=str(record.get("turn_id") or ""),
+        kind=AgentEventKind(str(record.get("kind") or "")),
+        created_at=str(record.get("created_at") or ""),
+        data=_clone(body) if shared and type(body) is dict else dict(body),
+    )
+
+
 class FileAgentSessionStore:
     """Local durable state for Loom Agent Runtime.
 
@@ -461,11 +474,17 @@ class FileAgentSessionStore:
 
     def _save(self, session: AgentSession) -> None:
         session.updated_at = utc_now()
+        self._write_session(session, self._session_text(session))
+
+    @staticmethod
+    def _session_text(session: AgentSession) -> str:
+        return json.dumps(session_to_dict(session), ensure_ascii=False, indent=2, sort_keys=True)
+
+    def _write_session(self, session: AgentSession, data: str) -> None:
         directory = self.session_dir(session.session_id)
         directory.mkdir(parents=True, exist_ok=True)
         target = directory / "session.json"
         temp = directory / f".session.{os.getpid()}.{uuid.uuid4().hex}.tmp"
-        data = json.dumps(session_to_dict(session), ensure_ascii=False, indent=2, sort_keys=True)
         try:
             with temp.open("w", encoding="utf-8", newline="\n") as handle:
                 handle.write(data)
@@ -486,6 +505,18 @@ class FileAgentSessionStore:
         if not isinstance(payload, dict):
             raise ValueError("agent session snapshot must be a JSON object")
         return session_from_dict(payload)
+
+    def require_session(self, session_id: str) -> None:
+        """Raise FileNotFoundError unless the session exists, without parsing it.
+
+        Goal and queue lookups only need to know the thread is real. Parsing a
+        long session.json for that cost tens of milliseconds, twice per model step.
+        """
+        directory = self.session_dir(session_id)
+        with session_lock(directory):
+            recover(directory)
+            if not (directory / "session.json").is_file():
+                raise FileNotFoundError(str(directory / "session.json"))
 
     def submit_steering(self, session_id: str, turn_id: str, text: str) -> None:
         directory = self.session_dir(session_id)
@@ -518,9 +549,13 @@ class FileAgentSessionStore:
             session.updated_at = utc_now()
             payload = {"event_id": event.event_id, "session_id": event.session_id,
                 "turn_id": event.turn_id, "kind": event.kind.value, "created_at": event.created_at, "data": event.data}
-            atomic_json(directory / ".pending-commit.json", {"session": session_to_dict(session), "event": payload})
+            # Encode the snapshot once and keep that text in the journal: a long
+            # session is megabytes, and it used to be encoded twice for every event.
+            snapshot = self._session_text(session)
+            atomic_text(directory / ".pending-commit.json",
+                        '{"session":' + snapshot + ',"event":' + json.dumps(payload, ensure_ascii=False, separators=(",", ":")) + "}")
             self._append_event(event)
-            self._save(session)
+            self._write_session(session, snapshot)
             (directory / ".pending-commit.json").unlink()
 
     def append_event(self, event: AgentEvent) -> None:
@@ -563,6 +598,19 @@ class FileAgentSessionStore:
             return ()
         return self._view(session_id, limit=limit, project=_context_event_projection if context_only else None)
 
+    def last_event(self, session_id: str, kinds) -> AgentEvent | None:
+        """The newest event of one of ``kinds``, found by reading the log from its end.
+
+        Asking whether a session ever finished a turn must not cost a parse of
+        everything it did.
+        """
+        wanted = frozenset(getattr(kind, "value", kind) for kind in kinds)
+        path = self.session_dir(session_id) / "events.jsonl"
+        with session_lock(path.parent):
+            recover(path.parent)
+            payload = _newest_payload(path, wanted)
+        return _event_from_payload(payload) if payload is not None else None
+
     def presentation_events(self, session_id: str) -> tuple[AgentEvent, ...]:
         """Every event a transcript is built from, without the request payloads it never reads."""
         return self._view(session_id, parse=_presentation_line)
@@ -580,10 +628,11 @@ class FileAgentSessionStore:
         path = self.session_dir(session_id) / "events.jsonl"
         with session_lock(path.parent):
             recover(path.parent)
-            payloads = self._event_cache.read(path, None, _recent_event_lines, parse=_checkpoint_line)
+            checkpoints = self._event_cache.read(path, None, _recent_event_lines, parse=_checkpoint_line,
+                                                 build=_build_event)
             newest = _newest_payload(path, _CONTEXT_STATE_KINDS)
         return (
-            tuple(_event_from_payload(payload) for payload in payloads),
+            tuple(checkpoints),
             _event_from_payload(newest) if newest is not None else None,
         )
 
@@ -591,8 +640,9 @@ class FileAgentSessionStore:
         path = self.session_dir(session_id) / "events.jsonl"
         with session_lock(path.parent):
             recover(path.parent)
-            payloads = self._event_cache.read(path, limit, _recent_event_lines, project=project, parse=parse)
-        return tuple(_event_from_payload(payload) for payload in payloads)
+            events = self._event_cache.read(path, limit, _recent_event_lines, project=project, parse=parse,
+                                            build=_build_event)
+        return tuple(events)
 
 
 __all__ = [

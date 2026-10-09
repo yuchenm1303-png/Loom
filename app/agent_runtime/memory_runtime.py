@@ -527,15 +527,21 @@ class MemoryRuntime(MultiAgentRuntime):
                 continue
             session_id = directory.name
             try:
-                events = self.store.events(session_id)
-                terminal = next(
-                    (
-                        event
-                        for event in reversed(events)
-                        if event.kind is AgentEventKind.TURN_COMPLETED
-                    ),
-                    None,
-                )
+                # Only the newest completed turn matters here. This runs for every
+                # session on the first request after the Host starts, so parsing
+                # each whole log delayed that request by the size of the store.
+                last_event = getattr(self.store, "last_event", None)
+                if callable(last_event):
+                    terminal = last_event(session_id, (AgentEventKind.TURN_COMPLETED,))
+                else:
+                    terminal = next(
+                        (
+                            event
+                            for event in reversed(self.store.events(session_id))
+                            if event.kind is AgentEventKind.TURN_COMPLETED
+                        ),
+                        None,
+                    )
                 if terminal is None:
                     continue
                 state = self.memory_store.thread_state(session_id)

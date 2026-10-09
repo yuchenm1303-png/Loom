@@ -220,3 +220,36 @@ def test_context_state_waits_for_the_log_lock(tmp_path):
     assert finished.wait(3)
     worker.join()
     assert result[0][1].event_id == "event-1"
+
+
+@pytest.mark.parametrize("name,events,tail", list(_arrangements()), ids=[name for name, *_ in _arrangements()])
+def test_last_event_matches_a_reverse_scan_of_the_whole_log(tmp_path, name, events, tail):
+    store = FileAgentSessionStore(tmp_path)
+    _write(store, [_raw(event) for event in events], tail)
+    full = store.events(SESSION)
+
+    for kinds in ((E.MODEL_REQUESTED,), (E.CONTEXT_CHECKPOINTED,), (E.TOOL_COMPLETED,), (E.MODEL_REQUESTED, E.CONTEXT_CHECKPOINTED),
+                  (E.TURN_COMPLETED,), ("tool_completed", "user_message")):
+        wanted = {getattr(kind, "value", kind) for kind in kinds}
+        expected = next((event for event in reversed(full) if event.kind.value in wanted), None)
+        assert store.last_event(SESSION, kinds) == expected, kinds
+
+
+def test_last_event_of_a_session_without_a_log_is_none(tmp_path):
+    assert FileAgentSessionStore(tmp_path).last_event(SESSION, (E.TURN_COMPLETED,)) is None
+
+
+def test_last_event_reads_the_end_of_the_log_not_all_of_it(tmp_path, monkeypatch):
+    store = FileAgentSessionStore(tmp_path)
+    _write(store, [_raw(_event(0, E.TURN_COMPLETED))]
+           + [_raw(_event(index, E.TOOL_COMPLETED, call_id=str(index), content="z" * 3000)) for index in range(1, 300)])
+    parsed = _spy_on_json(monkeypatch)
+
+    event = store.last_event(SESSION, (E.TURN_COMPLETED,))
+
+    assert event.event_id == "event-0"
+    # Finding the only completed turn at the very start does need the whole file; asking for
+    # the newest tool result must not.
+    parsed.clear()
+    assert store.last_event(SESSION, (E.TOOL_COMPLETED,)).event_id == "event-299"
+    assert sum(len(text) for text in parsed) < 10_000

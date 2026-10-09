@@ -71,8 +71,16 @@ class DurableAgentRuntime(CoreAgentRuntime):
         )
         return goal
 
+    def _require_session(self, session_id: str) -> None:
+        """Fail like load() for an unknown thread, without parsing a long session to find out."""
+        require = getattr(self.store, "require_session", None)
+        if callable(require):
+            require(session_id)
+        else:
+            self.store.load(session_id)
+
     def get_goal(self, session_id: str) -> ThreadGoal | None:
-        self.store.load(session_id)
+        self._require_session(session_id)
         return self.durable_state.get_goal(session_id)
 
     def set_goal_status(self, session_id: str, status: GoalStatus | str) -> ThreadGoal:
@@ -114,7 +122,7 @@ class DurableAgentRuntime(CoreAgentRuntime):
         return item
 
     def list_queued_turns(self, session_id: str) -> tuple[QueuedTurn, ...]:
-        self.store.load(session_id)
+        self._require_session(session_id)
         return self.durable_state.list_queue(session_id)
 
     def remove_queued_turn(self, session_id: str, queue_id: str) -> bool:

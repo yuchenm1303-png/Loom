@@ -5,7 +5,7 @@ import threading
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 import pytest
-from app.agent_runtime import event_cache
+from app.agent_runtime import event_cache, storage
 from app.agent_runtime.event_cache import EventParseCache, _clone
 from app.agent_runtime.storage import FileAgentSessionStore
 from app.agent_runtime.contracts import AgentEvent, AgentEventKind as E
@@ -230,46 +230,77 @@ def test_weight_counts_each_object_once_and_can_stop_early():
     assert 1000 < stopped < exact // 10
 
 
+def _count_weighing_and_copies(monkeypatch):
+    """Record every record weighed and every event body copied from the cache."""
+    weighed, copies = [], []
+    original = EventParseCache._weight
+
+    def counting(value, seen=None, limit=None):
+        weighed.append(value)
+        return original(value, seen, limit)
+
+    def counting_clone(value):
+        if isinstance(value, dict) and "nested" in value:  # an event body; _clone recurses through this name
+            copies.append(value)
+        return _clone(value)
+
+    monkeypatch.setattr(EventParseCache, "_weight", staticmethod(counting))
+    monkeypatch.setattr(event_cache, "_clone", counting_clone)
+    monkeypatch.setattr(storage, "_clone", counting_clone)  # the store copies the bodies it builds events from
+    return weighed, copies
+
+
 def test_history_too_large_to_keep_is_not_copied_or_weighed_again(tmp_path, monkeypatch):
     store = FileAgentSessionStore(tmp_path)
     store._event_cache = EventParseCache(max_bytes=6000)
     for index in range(20):
         store.append_event(event(index))
-    weighed = []
-    original = EventParseCache._weight
+    weighed, copies = _count_weighing_and_copies(monkeypatch)
 
-    def counting(value, seen=None, limit=None):
-        weighed.append(limit)
-        return original(value, seen, limit)
-
-    monkeypatch.setattr(EventParseCache, "_weight", staticmethod(counting))
-    copies = []  # one entry per whole-history copy; _clone recurses through the same name
-
-    def counting_clone(value):
-        if isinstance(value, list):
-            copies.append(len(value))
-        return _clone(value)
-
-    monkeypatch.setattr(event_cache, "_clone", counting_clone)
     first = store.events("abcdef")
     assert len(first) == 20 and store._event_cache.metrics()["entries"] == 0
-    assert len(weighed) == 1 and copies == []
+    # Weighing stops once the history is known not to fit, and nothing is copied.
+    assert 0 < len(weighed) < 10 and copies == []
     # The caller owns what the cache refused to keep, and a later read is not
     # affected by what was done to it.
     first[0].data["nested"]["index"] = "poison"
     assert store.events("abcdef")[0].data["nested"]["index"] == 0
     store.append_event(event(20))
     assert len(store.events("abcdef")) == 21
-    assert len(weighed) == 1
+    stopped = len(weighed)
+    assert store.events("abcdef") and len(weighed) == stopped, "an oversized log is not weighed again"
     # Replacing the log restarts the accounting: a small one is kept again.
     path = store.session_dir("abcdef") / "events.jsonl"
     replacement = path.with_suffix(".new")
     replacement.write_bytes(raw_event(7) + b"\n")
     os.replace(replacement, path)
     assert [e.event_id for e in store.events("abcdef")] == ["7"]
-    assert len(weighed) == 2 and store._event_cache.metrics()["entries"] == 1
+    assert len(weighed) > stopped and store._event_cache.metrics()["entries"] == 1
     # What the cache does keep is still handed out as a copy.
     assert len(copies) == 1
+
+
+def test_a_kept_log_is_weighed_by_what_was_appended(tmp_path, monkeypatch):
+    store = FileAgentSessionStore(tmp_path)
+    for index in range(30):
+        store.append_event(event(index))
+    weighed, copies = _count_weighing_and_copies(monkeypatch)
+
+    assert len(store.events("abcdef")) == 30
+    assert len(weighed) == 30 and len(copies) == 30
+    kept = store._event_cache.metrics()["cached_bytes"]
+
+    weighed.clear()
+    copies.clear()
+    store.append_event(event(30))
+    assert len(store.events("abcdef")) == 31
+    assert len(weighed) == 1, "only the new record is walked, not the 30 already kept"
+    assert store._event_cache.metrics()["cached_bytes"] > kept
+    # An unchanged log is a hit: nothing is parsed or weighed, and every body is copied for the caller.
+    weighed.clear()
+    copies.clear()
+    assert len(store.events("abcdef")) == 31
+    assert weighed == [] and len(copies) == 31
 
 
 def test_log_that_outgrows_the_cache_is_dropped_not_served_stale(tmp_path):
