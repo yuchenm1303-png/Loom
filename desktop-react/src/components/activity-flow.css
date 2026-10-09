@@ -20,7 +20,7 @@
 /* A reply that answers the user keeps the message presentation inside a group too. */
 .task-flow-reply {
   min-width: 0;
-  padding: 10px 0;
+  padding: 10px 0 10px 10px;
   color: var(--flow-text);
 }
 
@@ -34,7 +34,8 @@
  * newest note is the live narration and keeps full contrast. */
 .task-flow-commentary {
   min-width: 0;
-  padding: 3px 8px 6px 44px;
+  /* 53px puts the text under the row labels: list padding, row icon column and gap. */
+  padding: 3px 8px 6px 53px;
   color: var(--flow-muted);
   /* The newest note hands its contrast to the next one instead of snapping. */
   transition: color 180ms ease;
@@ -224,7 +225,7 @@
 .task-flow-row-main {
   min-width: 0;
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: 6px;
   overflow: hidden;
   white-space: nowrap;
@@ -235,6 +236,7 @@
   color: #a8aeb8;
   font-size: 11.5px;
   font-weight: 620;
+  line-height: 1.35;
   letter-spacing: .001em;
 }
 
@@ -616,3 +618,92 @@
 }
 
 .task-flow-row-main .task-flow-status { align-self: center; margin-left: 1px; }
+
+/* A run of same-kind steps is one line; its rows mount only while it is open. */
+.task-flow-cluster {
+  min-width: 0;
+}
+
+.task-flow-cluster-latest {
+  color: var(--flow-faint);
+}
+
+.task-flow-cluster-failed {
+  flex: none;
+  color: #c27a83;
+  font-size: var(--loom-font-micro);
+}
+
+.task-flow-row-main .task-flow-cluster-chevron {
+  flex: none;
+  margin-left: 2px;
+  color: #626a77;
+  transition: transform 150ms cubic-bezier(.2, .8, .2, 1), color 130ms ease;
+}
+
+.task-flow-cluster.is-open .task-flow-cluster-chevron {
+  transform: rotate(90deg);
+  color: #8f96a2;
+}
+
+/* The step still running stays visible under a closed line: it is what the reader waits on.
+ * It sits where the opened body would, so opening the line never moves it sideways. */
+.task-flow-cluster-live {
+  margin: 1px 0 4px 11px;
+  padding-left: 8px;
+  border-left: 1px solid rgba(139, 124, 246, .12);
+}
+
+.task-flow-cluster-grid {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 190ms cubic-bezier(.22, .74, .18, 1);
+}
+
+.task-flow-cluster-grid.open {
+  grid-template-rows: 1fr;
+}
+
+.task-flow-cluster-inner {
+  min-height: 0;
+  overflow: hidden;
+}
+
+.task-flow-cluster-body {
+  margin: 1px 0 4px 11px;
+  padding-left: 8px;
+  border-left: 1px solid rgba(139, 124, 246, .12);
+}
+
+:root[data-loom-reduced-motion="true"] .task-flow-cluster-grid,
+:root[data-loom-reduced-motion="true"] .task-flow-cluster-chevron {
+  transition: none;
+}
+
+/* One switch per turn for the model's per-step narration, which is hidden by default. */
+.process-notes-row {
+  display: flex;
+  justify-content: flex-end;
+  padding: 0 2px 2px;
+}
+
+.process-notes-toggle {
+  padding: 2px 4px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--faint);
+  font: inherit;
+  font-size: var(--loom-font-micro);
+  cursor: pointer;
+  transition: color 130ms ease;
+}
+
+.process-notes-toggle:hover {
+  color: var(--muted);
+}
+
+.process-notes-toggle:focus-visible {
+  outline: 1px solid rgba(139, 124, 246, .42);
+  outline-offset: 1px;
+}

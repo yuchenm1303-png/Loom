@@ -314,6 +314,9 @@ def _apply_event_to_item(item: dict[str, Any], event: AgentEvent) -> None:
             }
     elif kind is AgentEventKind.TOOL_REQUESTED:
         item["status"] = "started"
+        # The same model step id the assistant item carries, so a client can tell which
+        # sentence and which tool calls were produced together.
+        item["stepId"] = str(data.get("step_id") or "") or None
         item["callId"] = str(data.get("call_id") or "")
         item["toolName"] = str(data.get("tool") or "")
         item["arguments"] = copy.deepcopy(data.get("arguments") or {})

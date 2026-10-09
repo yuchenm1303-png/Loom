@@ -41,7 +41,8 @@ import { useReducedMotion } from "../motion/useReducedMotion";
 import { useEarlierProcessHandoff } from "./useEarlierProcessHandoff";
 import { LIVE_STATUS_GRACE_MS, TURN_FOLD_MS, TURN_SETTLE_HOLD_MS } from "../presentationTiming";
 import type { TranscriptItem } from "../types/loom";
-import { groupExecutionSequence, initialUpdateIds, isActivityItem, isProcessCommentary } from "./executionSequence";
+import { groupExecutionSequence, initialUpdateIds, isActivityItem, isProcessCommentary, planUpdateNoteIds } from "./executionSequence";
+import { CLUSTER_MIN_ROWS, runsOf } from "./activityClusters";
 import { latestTaskPlan, liveTaskProgress } from "./liveTaskProgress";
 import { isLongNote } from "./processNote";
 import { TaskProgressPanel } from "./TaskProgressPanel";
@@ -224,6 +225,8 @@ interface ThinkingHandle {
 const ThinkingHandleContext = createContext<ThinkingHandle | null>(null);
 /** True inside the live sequence of an active turn (not its earlier history). */
 const LiveSequenceContext = createContext(false);
+/** The model's per-step narration stays out of the log unless the reader asks for it, once per turn. */
+const ProcessNotesContext = createContext<{ show: boolean }>({ show: false });
 
 /**
  * Activity rows and groups the renderer has already shown. One-shot motion is
@@ -387,7 +390,7 @@ function decisionMessageIds(items: TranscriptItem[]): Set<string> {
     }).map(item => item.id));
 }
 
-const NO_INITIAL_UPDATES: ReadonlySet<string> = new Set();
+const NO_MESSAGE_IDS: ReadonlySet<string> = new Set();
 
 function processHandoffGroups(items: TranscriptItem[]): string[][] {
   const agents = items.filter(isSubAgentToolItem);
@@ -1074,6 +1077,110 @@ function ActivityGroupIcon({ items }: { items: TranscriptItem[] }) {
   return <ActivityGroupGlyph items={items} size={14} />;
 }
 
+function clusterKeyOf(row: ActivityRowModel, copy: RuntimeCopy): string {
+  const { category } = describeRow(row, copy);
+  return category === "tool" ? `tool:${String((row.wrapper ?? row.item).toolName ?? "")}` : category;
+}
+
+interface ClusterRowProps {
+  row: ActivityRowModel;
+  openRows: ReadonlySet<string>;
+  workspace?: string;
+  copy: RuntimeCopy;
+  onToggleRow(id: string): void;
+}
+
+/** Reads the edit deltas itself so a closed cluster never re-renders for them. */
+function ClusterRow({ row, openRows, workspace, copy, onToggleRow }: ClusterRowProps) {
+  const deltas = useContext(FileEditDeltaContext);
+  return (
+    <ActivityRow
+      row={row}
+      open={openRows.has(row.key)}
+      workspace={workspace}
+      copy={copy}
+      delta={row.item.type === "file_edit" ? deltas.get(row.item.id) : undefined}
+      onToggle={onToggleRow}
+    />
+  );
+}
+
+interface ActivityClusterProps {
+  rows: ActivityRowModel[];
+  category: ActivityCategory;
+  toolName: string;
+  openRows: ReadonlySet<string>;
+  workspace?: string;
+  copy: RuntimeCopy;
+  onToggleRow(id: string): void;
+}
+
+function sameClusterProps(previous: ActivityClusterProps, next: ActivityClusterProps): boolean {
+  if (previous.category !== next.category || previous.toolName !== next.toolName || previous.workspace !== next.workspace
+    || previous.copy !== next.copy || previous.openRows !== next.openRows || previous.onToggleRow !== next.onToggleRow
+    || previous.rows.length !== next.rows.length) return false;
+  for (let index = 0; index < next.rows.length; index += 1) {
+    const before = previous.rows[index];
+    const after = next.rows[index];
+    if (before.key !== after.key || before.item !== after.item || before.wrapper !== after.wrapper) return false;
+  }
+  return true;
+}
+
+/**
+ * A run of same-kind steps (seven tool searches, a dozen browser actions) as one line. Its rows
+ * mount only while it is open, so a long chain costs one row instead of one per call. A step that
+ * is still running stays visible under the line, because it is what the reader is waiting on.
+ */
+const ActivityCluster = memo(function ActivityCluster({ rows, category, toolName, openRows, workspace, copy, onToggleRow }: ActivityClusterProps) {
+  const [open, setOpen] = useState(false);
+  const presence = useMotionPresence(open, 200);
+  const bodyId = useId();
+  const first = rows[0];
+  const activeRow = [...rows].reverse().find((row) => isActiveActivityStatus(rowStatus(row)));
+  const failed = rows.reduce((count, row) => count + (isFailureStatus(rowStatus(row)) ? 1 : 0), 0);
+  const latest = describeRow(rows[rows.length - 1], copy).target;
+  const identity = activityIdentity(identitySource(first));
+  return (
+    <div className={`task-flow-cluster ${open ? "is-open" : ""} ${activeRow ? "has-active" : ""}`.replace(/\s+/g, " ").trim()} data-category={category}>
+      <button
+        type="button"
+        className={`task-flow-row task-flow-kind-cluster is-expandable ${activeRow ? "is-active" : "is-resting"} ${failed ? "is-failed" : ""}`.replace(/\s+/g, " ").trim()}
+        data-tool-family={category === "command" ? "terminal" : category === "edit" ? "file" : identity.family}
+        aria-expanded={open}
+        aria-controls={bodyId}
+        onClick={() => setOpen((value) => !value)}
+        title={open ? copy.collapseDetails : copy.expandDetails}
+      >
+        <span className="task-flow-sheen" aria-hidden="true"><i /></span>
+        <span className="task-flow-row-icon" title={identity.label}><RowGlyph row={first} category={category} /></span>
+        <span className="task-flow-row-main">
+          <span className="task-flow-verb">{copy.clusterTitle(category, rows.length, toolName)}</span>
+          {latest ? <span className="task-flow-primary task-flow-cluster-latest">{latest}</span> : null}
+          {failed ? <span className="task-flow-cluster-failed">{copy.clusterFailed(failed)}</span> : null}
+          <ChevronRight size={12} className="task-flow-cluster-chevron" aria-hidden="true" />
+        </span>
+      </button>
+      {!open && activeRow ? (
+        <div className="task-flow-cluster-live">
+          <ClusterRow row={activeRow} openRows={openRows} workspace={workspace} copy={copy} onToggleRow={onToggleRow} />
+        </div>
+      ) : null}
+      <div id={bodyId} className={`task-flow-cluster-grid ${open ? "open" : ""}`} data-motion-phase={presence.phase} inert={!open}>
+        <div className="task-flow-cluster-inner">
+          {presence.mounted ? (
+            <div className="task-flow-cluster-body">
+              {rows.map((row) => (
+                <ClusterRow key={row.key} row={row} openRows={openRows} workspace={workspace} copy={copy} onToggleRow={onToggleRow} />
+              ))}
+            </div>
+          ) : null}
+        </div>
+      </div>
+    </div>
+  );
+}, sameClusterProps);
+
 type ProcessHandoff = { retained: ReadonlySet<string>; folding: ReadonlySet<string> };
 
 interface ActivityFlowProps {
@@ -1084,7 +1191,7 @@ interface ActivityFlowProps {
   liveAssistantId?: string;
   handoff?: ProcessHandoff;
   /** Replies that answer the user keep the message presentation wherever they sit. */
-  initialIds?: ReadonlySet<string>;
+  messageIds?: ReadonlySet<string>;
   onPrompt?(prompt: string): Promise<void> | void;
   promptDisabled?: boolean;
   onApproval(item: TranscriptItem, approved: boolean): void;
@@ -1096,7 +1203,7 @@ function sameActivityFlowProps(previous: ActivityFlowProps, next: ActivityFlowPr
     && previous.continuing === next.continuing
     && previous.workspace === next.workspace
     && previous.handoff === next.handoff
-    && previous.initialIds === next.initialIds
+    && previous.messageIds === next.messageIds
     && previous.liveAssistantId === next.liveAssistantId
     && previous.onPrompt === next.onPrompt
     && previous.onApproval === next.onApproval
@@ -1111,15 +1218,23 @@ const ActivityFlow = memo(function ActivityFlow({
   workspace,
   liveAssistantId,
   handoff,
-  initialIds,
+  messageIds,
   onPrompt,
   onApproval,
   promptDisabled,
 }: ActivityFlowProps) {
   const copy = useRuntimeCopy();
   const deltas = useContext(FileEditDeltaContext);
+  const notes = useContext(ProcessNotesContext);
   const rows = useMemo(() => buildActivityRows(items), [items]);
-  const segments = useMemo(() => activitySegments(rows), [rows]);
+  // Per-step narration stays out of the log unless asked for. The replies that answer the user and
+  // the model's own plan-update reports are messages and always show. Hidden narration is simply
+  // not rendered, so neighbouring steps of one kind form a single run.
+  const shownRows = useMemo(
+    () => rows.filter((row) => row.item.type !== "assistant_message" || notes.show || messageIds?.has(row.item.id)),
+    [rows, notes.show, messageIds],
+  );
+  const segments = useMemo(() => activitySegments(shownRows), [shownRows]);
   const pending = usePendingPresentations();
   const revealed = useRef(new Set<string>());
   const orderingBlocks = useMemo(() => segments.map(segment => isActivityItem(segment[0].item)
@@ -1169,8 +1284,13 @@ const ActivityFlow = memo(function ActivityFlow({
   }, [unfolding]);
 
   const toolRows = useMemo(() => rows.filter(row => isActivityItem(row.item)), [rows]);
-  const latestCommentary = [...items].reverse().find(item => item.type === "assistant_message");
-  const commentaryView = (item: TranscriptItem) => initialIds?.has(item.id)
+  const latestCommentary = useMemo(() => {
+    for (let index = shownRows.length - 1; index >= 0; index -= 1) {
+      if (shownRows[index].item.type === "assistant_message") return shownRows[index].item;
+    }
+    return undefined;
+  }, [shownRows]);
+  const commentaryView = (item: TranscriptItem) => messageIds?.has(item.id)
     // The reply to the user stays a message here too, so it never changes size when it moves between views.
     ? <div className="task-flow-reply" key={item.id}>
       <ItemView item={item} streaming={item.id === liveAssistantId} onApproval={onApproval}
@@ -1194,6 +1314,32 @@ const ActivityFlow = memo(function ActivityFlow({
   const title = copy.groupTitle(categories, running && !betweenSteps);
   const groupItems = useMemo(() => toolRows.map(identitySource), [toolRows]);
   const groupIdentity = activityGroupIdentity(groupItems);
+  const renderTools = (segment: ActivityRowModel[]) => (
+    <div className="task-flow-list">
+      {runsOf(segment, (row) => clusterKeyOf(row, copy), (row) => row.key).map((run) => run.entries.length >= CLUSTER_MIN_ROWS ? (
+        <ActivityCluster
+          key={run.id}
+          rows={run.entries}
+          category={describeRow(run.entries[0], copy).category}
+          toolName={String((run.entries[0].wrapper ?? run.entries[0].item).toolName ?? "")}
+          openRows={openRows}
+          workspace={workspace}
+          copy={copy}
+          onToggleRow={toggleRow}
+        />
+      ) : run.entries.map((row) => (
+        <ActivityRow
+          key={row.key}
+          row={row}
+          open={openRows.has(row.key)}
+          workspace={workspace}
+          copy={copy}
+          delta={row.item.type === "file_edit" ? deltas.get(row.item.id) : undefined}
+          onToggle={toggleRow}
+        />
+      )))}
+    </div>
+  );
 
   return (
     <section
@@ -1219,18 +1365,13 @@ const ActivityFlow = memo(function ActivityFlow({
       <div className="task-flow-group-grid">
         <div className="task-flow-group-inner">
           <div className="task-flow-list">
-            {segments.map((segment, index) => deferred.has(index) || (!open && latestCommentary && !segment.some(row => row.item.id === latestCommentary.id)) ? null
-              : rowEnvelope(segment, segment[0].item.type === "assistant_message" ? commentaryView(segment[0].item) : <div className="task-flow-list">{segment.map(row => (
-              <ActivityRow
-                key={row.key}
-                row={row}
-                open={openRows.has(row.key)}
-                workspace={workspace}
-                copy={copy}
-                delta={row.item.type === "file_edit" ? deltas.get(row.item.id) : undefined}
-                onToggle={toggleRow}
-              />
-            ))}</div>))}
+            {segments.map((segment, index) => {
+              if (deferred.has(index)) return null;
+              const message = segment[0].item.type === "assistant_message";
+              // A closed group mounts nothing but its newest message, when it has one.
+              if (!open && !(message && segment[0].item.id === latestCommentary?.id)) return null;
+              return rowEnvelope(segment, message ? commentaryView(segment[0].item) : renderTools(segment));
+            })}
           </div>
         </div>
       </div>
@@ -1616,7 +1757,7 @@ function Sequence({
   promptDisabled,
   workspace,
   handoff,
-  initialIds = NO_INITIAL_UPDATES,
+  messageIds = NO_MESSAGE_IDS,
 }: {
   items: TranscriptItem[];
   onApproval(item: TranscriptItem, approved: boolean): void;
@@ -1627,7 +1768,7 @@ function Sequence({
   workspace?: string;
   handoff?: { retained: ReadonlySet<string>; folding: ReadonlySet<string> };
   /** Commentary that answers the user directly; it stays an ordinary message. */
-  initialIds?: ReadonlySet<string>;
+  messageIds?: ReadonlySet<string>;
 }) {
   const subAgentItems = useMemo(() => items.filter(isSubAgentToolItem), [items]);
   const visibleItems = useMemo(
@@ -1639,7 +1780,8 @@ function Sequence({
   // The live slice starts at its newest commentary, so that note arrives with no tool
   // before it. It is still log narration: give it the note presentation from its first
   // frame instead of drawing a full message that later shrinks into the work log.
-  const isLeadNote = (item: TranscriptItem) => isProcessCommentary(item, decisionIds) && !initialIds.has(item.id);
+  const notes = useContext(ProcessNotesContext);
+  const isLeadNote = (item: TranscriptItem) => isProcessCommentary(item, decisionIds) && !messageIds.has(item.id);
   const latestAssistantId = useMemo(() => {
     for (let index = visibleItems.length - 1; index >= 0; index -= 1) {
       if (visibleItems[index].type === "assistant_message") return visibleItems[index].id;
@@ -1737,14 +1879,14 @@ function Sequence({
               workspace={workspace}
               liveAssistantId={liveAssistantId}
               handoff={handoff}
-              initialIds={initialIds}
+              messageIds={messageIds}
               onApproval={onApproval}
               onPrompt={onPrompt}
               promptDisabled={promptDisabled}
             />
           </div>, true
           )
-        )) : (
+        )) : (isLeadNote(block.item) && !notes.show ? null : (
           envelope(block.item.id, [block.item.id],
           <div
             className={`transcript-entry entry-${block.item.type} ${active ? "has-lifecycle-motion" : ""} ${isSteeringUserMessage(block.item) ? "entry-steering-user" : ""} ${isLeadNote(block.item) ? `task-flow-commentary is-lead ${block.item.id === latestAssistantId ? "is-latest" : ""}` : ""}`.replace(/\s+/g, " ").trim()}
@@ -1761,7 +1903,7 @@ function Sequence({
             />
           </div>
           )
-        )
+        ))
       ))}
     </LiveSequenceContext.Provider>
   );
@@ -1908,22 +2050,38 @@ function TurnProcess({
       return parsed.decisions.length > 0 || parsed.incomplete;
     })
     .map((item) => item.id))), [items]);
-  const initialIds = useMemo(() => initialUpdateIds(items), [items]);
+  // Commentary that is a message to the reader: the reply to them and the model's own report at a
+  // plan update. All other narration is log detail, hidden unless the reader asks for it.
+  const messageIds = useMemo(() => new Set([...initialUpdateIds(items), ...planUpdateNoteIds(items)]), [items]);
+  const decisionIds = useMemo(() => decisionMessageIds(items), [items]);
+  const [showNotes, setShowNotes] = useState(false);
+  const isQuietNote = useCallback(
+    (item: TranscriptItem) => isProcessCommentary(item, decisionIds) && !messageIds.has(item.id) && String(item.text ?? "").trim().length > 0,
+    [decisionIds, messageIds],
+  );
+  const noteCount = useMemo(() => items.reduce((count, item) => count + (isQuietNote(item) ? 1 : 0), 0), [items, isQuietNote]);
+  const notesValue = useMemo(() => ({ show: showNotes }), [showNotes]);
+  // Hidden narration draws nothing, so it must not count as a message that is "speaking".
+  const shownItems = useMemo(() => (showNotes ? items : items.filter((item) => !isQuietNote(item))), [items, showNotes, isQuietNote]);
   const pendingPresentations = usePendingPresentations();
   // The finished live layout is held through the settle fold, including records
   // still retained in place, so nothing disappears at the moment of completion.
   const handoff = useEarlierProcessHandoff(items, progress, live, earlierOpen, pendingPresentations, processHandoffGroups);
-  const earlierEntry = useMotionPresence(live && handoff.earlier.length > 0, 200);
+  const earlierShown = useMemo(
+    () => (showNotes ? handoff.earlier.length : handoff.earlier.filter((item) => !isQuietNote(item)).length),
+    [handoff.earlier, showNotes, isQuietNote],
+  );
+  const earlierEntry = useMotionPresence(live && earlierShown > 0, 200);
 
   // The standalone thinking capsule: shown at once while the turn has produced
   // nothing yet, and after a short grace during later quiet gaps.
-  const edge = useMemo(() => liveEdgeState(items), [items]);
+  const edge = useMemo(() => liveEdgeState(shownItems), [shownItems]);
   const wantsCapsule = active && edge.quiet && pendingPresentations.size === 0;
   const capsuleVisible = useSettledFlag(wantsCapsule, edge.started ? LIVE_STATUS_GRACE_MS : 0);
   const capsulePresence = useMotionPresence(capsuleVisible, 240);
   // A message that starts thinking takes the capsule's place in the same
   // frame: the capsule leaves without an exit so nothing is drawn twice.
-  const handedOff = active && !edge.quiet && items.some((item) => item.type === "assistant_message"
+  const handedOff = active && !edge.quiet && shownItems.some((item) => item.type === "assistant_message"
     && (item.status === "streaming" || isActiveActivityStatus(itemStatus(item))));
   const handedOffRef = useRef(false);
   if (handedOff) handedOffRef.current = true;
@@ -1936,6 +2094,7 @@ function TurnProcess({
   const renderProcessContent = live || open || processPresence.mounted;
 
   return (
+    <ProcessNotesContext.Provider value={notesValue}>
     <section
       ref={handoff.rootRef}
       className={`turn-process ${live ? "is-live" : "is-settled"} ${settle ? `is-settling is-settle-${settle}` : ""} ${open ? "is-open" : ""} ${guidanceItems.length ? "has-guidance" : ""}`.replace(/\s+/g, " ").trim()}
@@ -1981,25 +2140,32 @@ function TurnProcess({
         <div className="turn-process-grid" data-motion-phase={processPresence.phase}>
           <div className="turn-process-inner">
             <div className="turn-process-content">
+              {noteCount > 0 ? (
+                <div className="process-notes-row">
+                  <button type="button" className="process-notes-toggle" aria-pressed={showNotes} onClick={() => setShowNotes((value) => !value)}>
+                    {showNotes ? copy.notesHide : copy.notesShow(noteCount)}
+                  </button>
+                </div>
+              ) : null}
               {live && earlierEntry.mounted ? (
-                <div className="earlier-process-entry" data-motion-phase={earlierEntry.phase} inert={!handoff.earlier.length}>
+                <div className="earlier-process-entry" data-motion-phase={earlierEntry.phase} inert={!earlierShown}>
                 <div className={`earlier-task-process ${earlierOpen ? "is-open" : ""} ${handoff.folding.size ? "is-receiving" : ""}`.trim()}>
                   <button type="button" className="earlier-process-toggle" aria-expanded={earlierOpen}
                     aria-controls={earlierHistoryId}
-                    aria-label={copy.earlierToggleLabel(earlierOpen, handoff.earlier.length)}
+                    aria-label={copy.earlierToggleLabel(earlierOpen, earlierShown)}
                     title={copy.earlierToggleTitle(earlierOpen)}
                     onClick={() => {
                       setEarlierOpen(!earlierOpen);
                     }}>
                     <span className="earlier-process-icon" aria-hidden="true"><History size={14} strokeWidth={1.8} /></span>
                     <span className="earlier-process-label">{copy.earlier}</span>
-                    <span className="earlier-process-count" key={handoff.earlier.length} aria-hidden="true">{copy.earlierCount(handoff.earlier.length)}</span>
+                    <span className="earlier-process-count" key={earlierShown} aria-hidden="true">{copy.earlierCount(earlierShown)}</span>
                     <ChevronRight size={13} className="earlier-process-chevron" aria-hidden="true" />
                   </button>
                   <div id={earlierHistoryId} className="earlier-process-history" data-motion-phase={earlierPresence.phase} inert={!earlierOpen}>
                     <div className="earlier-process-history-inner">
                     {earlierPresence.mounted ? <StreamingPresentation>
-                      <Sequence items={handoff.earlier} active={false} initialIds={initialIds} onApproval={onApproval}
+                      <Sequence items={handoff.earlier} active={false} messageIds={messageIds} onApproval={onApproval}
                         onPrompt={onPrompt} promptDisabled={promptDisabled} workspace={workspace} />
                     </StreamingPresentation> : null}
                     </div>
@@ -2007,7 +2173,7 @@ function TurnProcess({
                 </div>
                 </div>
               ) : null}
-              <Sequence items={live ? handoff.current : items} handoff={live ? handoff : undefined} active={active} initialIds={initialIds} onApproval={onApproval} onPrompt={onPrompt} keepActivityOpen={active} promptDisabled={promptDisabled} workspace={workspace} />
+              <Sequence items={live ? handoff.current : items} handoff={live ? handoff : undefined} active={active} messageIds={messageIds} onApproval={onApproval} onPrompt={onPrompt} keepActivityOpen={active} promptDisabled={promptDisabled} workspace={workspace} />
               {renderCapsule ? (
                 <div className="pending-thinking-presence" data-motion-phase={capsulePresence.phase} inert={!capsuleVisible}>
                   <div className="pending-thinking-presence-inner"><ThinkingCapsule /></div>
@@ -2018,6 +2184,7 @@ function TurnProcess({
         </div>
       ) : null}
     </section>
+    </ProcessNotesContext.Provider>
   );
 }
 
