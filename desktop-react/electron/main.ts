@@ -16,6 +16,7 @@ import {
 } from "./modelManager.js";
 import { LoomAccountClient, type LoomAccountSnapshot, type LoomAuthCapabilities, type LoomAuthChallenge, type LoomModelPolicyAccess } from "./accountClient.js";
 import { accountErrorPayload, type AccountErrorPayload } from "./accountErrors.js";
+import { latestSync } from "./latestSync.js";
 import { runtimeModelParams, runtimeModelArguments } from "./runtimeModelConfig.js";
 import { startupModel } from "./startupModel.js";
 import { closeHudOverlayWindow, createHudOverlayWindow, sendHudUpdate } from "./hudWindow.js";
@@ -1639,11 +1640,7 @@ async function runAccountAction(
   }
 }
 
-let accountAuthorizationSyncInFlight = false;
-async function syncAccountToolAccessCredential(): Promise<void> {
-  if (accountAuthorizationSyncInFlight) return;
-  accountAuthorizationSyncInFlight = true;
-  try {
+const syncAccountToolAccessCredential = latestSync(async () => {
   let credential = "";
   try {
     if (await accountClient.hasAuthenticatedSession()) {
@@ -1660,10 +1657,7 @@ async function syncAccountToolAccessCredential(): Promise<void> {
   } catch {
     // Runtime restarts also receive the latest credential through the env.
   }
-  } finally {
-    accountAuthorizationSyncInFlight = false;
-  }
-}
+});
 
 async function runAccountMutation(
   action: () => Promise<LoomAccountSnapshot>,

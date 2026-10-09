@@ -147,6 +147,14 @@ export class LoomAccountClient {
   private memorySession: TokenSession | null = null;
   private readonly baseUrl: string;
   private refreshInFlight: Promise<TokenSession> | null = null;
+  private refreshTokenInFlight = "";
+  private persistence: Promise<unknown> = Promise.resolve();
+
+  private assertCurrentSession(session: TokenSession): void {
+    if (this.memorySession?.refreshToken !== session.refreshToken) {
+      throw new AccountHttpError(0, "ACCOUNT_CHANGED", "Account changed while the request was running. Retry with the current account.");
+    }
+  }
   private authVerifiedAt = 0;
   private authVerifiedUserId = 0;
 
@@ -190,11 +198,15 @@ export class LoomAccountClient {
 
   private async persistSession(session: TokenSession): Promise<TokenSession> {
     this.memorySession = session;
-    if (safeStorage.isEncryptionAvailable()) {
-      const target = this.sessionPath();
-      await fs.mkdir(path.dirname(target), { recursive: true });
-      await fs.writeFile(target, safeStorage.encryptString(JSON.stringify(session)), { mode: 0o600 });
-    }
+    const write = this.persistence.catch(() => {}).then(async () => {
+      if (safeStorage.isEncryptionAvailable()) {
+        const target = this.sessionPath();
+        await fs.mkdir(path.dirname(target), { recursive: true });
+        await fs.writeFile(target, safeStorage.encryptString(JSON.stringify(session)), { mode: 0o600 });
+      }
+    });
+    this.persistence = write;
+    await write;
     return session;
   }
 
@@ -228,11 +240,15 @@ export class LoomAccountClient {
     this.memorySession = null;
     this.authVerifiedAt = 0;
     this.authVerifiedUserId = 0;
-    try {
-      await fs.rm(this.sessionPath(), { force: true });
-    } catch {
-      // Local sign-out is authoritative even when the old session file is missing.
-    }
+    const removal = this.persistence.catch(() => {}).then(async () => {
+      try {
+        await fs.rm(this.sessionPath(), { force: true });
+      } catch {
+        // Local sign-out is authoritative even when the old session file is missing.
+      }
+    });
+    this.persistence = removal;
+    await removal;
   }
 
   private snapshot(session: TokenSession | null, reachable = this.configured): LoomAccountSnapshot {
@@ -304,19 +320,30 @@ export class LoomAccountClient {
   }
 
   private async refresh(session: TokenSession): Promise<TokenSession> {
-    if (this.memorySession && this.memorySession.refreshToken !== session.refreshToken) return this.memorySession;
-    if (this.refreshInFlight) return this.refreshInFlight;
-    this.refreshInFlight = (async () => {
+    this.assertCurrentSession(session);
+    if (this.refreshInFlight && this.refreshTokenInFlight === session.refreshToken) return this.refreshInFlight;
+    const job = (async () => {
       const response = await this.request<AuthResponse>("/auth/refresh", {
         method: "POST",
         body: JSON.stringify({ refresh_token: session.refreshToken }),
       });
+      this.assertCurrentSession(session);
       return this.saveSession(response);
     })();
+    this.refreshInFlight = job;
+    this.refreshTokenInFlight = session.refreshToken;
     try {
-      return await this.refreshInFlight;
+      return await job;
+    } catch (error) {
+      // A late rejection from the old account must not make callers clear the
+      // new session as though its own credentials had been rejected.
+      this.assertCurrentSession(session);
+      throw error;
     } finally {
-      this.refreshInFlight = null;
+      if (this.refreshInFlight === job) {
+        this.refreshInFlight = null;
+        this.refreshTokenInFlight = "";
+      }
     }
   }
 
@@ -520,11 +547,13 @@ export class LoomAccountClient {
         1_200,
       );
       session = { ...session, user: result.user };
+      this.assertCurrentSession(session);
       this.memorySession = session;
       this.authVerifiedUserId = Number(result.user.id || 0);
       this.authVerifiedAt = Date.now();
       return true;
     } catch (error) {
+      this.assertCurrentSession(session);
       if (isAuthRejection(error)) {
         await this.clearSession();
         return false;
@@ -563,9 +592,11 @@ export class LoomAccountClient {
         session.accessToken,
       );
       session = { ...session, user: result.user };
+      this.assertCurrentSession(session);
       this.memorySession = session;
       return this.snapshot(session);
     } catch (error) {
+      this.assertCurrentSession(session);
       if (!isAuthRejection(error)) return this.snapshot(session, false);
       try {
         session = await this.refresh(session);
@@ -683,12 +714,14 @@ export class LoomAccountClient {
       session = await this.refresh(session);
       result = await issue(session);
     }
+    this.assertCurrentSession(session);
     session = await this.persistSession({ ...session, user: result.user });
     return this.snapshot(session);
   }
 
   async logout(): Promise<LoomAccountSnapshot> {
     const session = await this.loadSession();
+    await this.clearSession();
     if (session && this.configured) {
       try {
         await this.request<{ ok: boolean }>("/auth/logout", {
@@ -699,7 +732,6 @@ export class LoomAccountClient {
         // Always clear the local credential even if the service is temporarily offline.
       }
     }
-    await this.clearSession();
     return this.snapshot(null);
   }
 }

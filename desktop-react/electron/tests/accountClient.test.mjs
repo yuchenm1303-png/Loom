@@ -55,6 +55,28 @@ mock.module("electron", {
 });
 
 const { LoomAccountClient } = await import("../../dist-electron/accountClient.js");
+const { latestSync } = await import("../../dist-electron/latestSync.js");
+
+test("latest sync drains an account switch arriving during an older update", async () => {
+  let release;
+  let started;
+  const entered = new Promise(resolve => { started = resolve; });
+  const blocked = new Promise(resolve => { release = resolve; });
+  const sent = [];
+  let account = "denied";
+  const sync = latestSync(async () => {
+    const captured = account;
+    if (!sent.length) { started(); await blocked; }
+    sent.push(captured);
+  });
+  const first = sync();
+  await entered;
+  account = "allowed";
+  const second = sync();
+  release();
+  await Promise.all([first, second]);
+  assert.deepEqual(sent, ["denied", "allowed"]);
+});
 
 const SERVICE_URL = "https://account.test/v1";
 const USER = { id: 7, email: "user@example.com", display_name: "User", status: "active" };
@@ -545,3 +567,35 @@ test("desktop runtime receives the validated account service URL for automation 
   assert.match(mainSource, /LOOM_ACCOUNT_API_BASE_URL:\s*this\.account\.serviceUrl/);
   assert.match(mainSource, /LOOM_ACCOUNT_TOOL_ACCESS_ENFORCED:\s*"1"/);
 });
+
+for (const destination of ["other-account", "logout"]) {
+  test(`late refresh cannot restore the old account after ${destination}`, async () => {
+    let release;
+    let started;
+    const entered = new Promise(resolve => { started = resolve; });
+    installFetch({
+      "/v1/auth/refresh": () => { started(); return new Promise(resolve => { release = resolve; }); },
+      "/v1/auth/login": () => reply(200, sessionBody({
+        access_token: "new-account-access", refresh_token: "new-account-refresh",
+        user: { ...USER, id: 99 },
+      })),
+      "/v1/auth/logout": () => reply(200, { ok: true }),
+    });
+    await seedSession({ accessToken: "old", refreshToken: "old-refresh", expiresAt: 0, user: USER });
+    const client = newClient();
+    const refreshing = client.automationCredential();
+    // Attach the rejection handler before releasing the delayed response.
+    const rejected = assert.rejects(refreshing, error => error.code === "ACCOUNT_CHANGED");
+    await entered;
+    if (destination === "logout") await client.logout();
+    else await client.login("other@example.com", "test-password");
+    release(reply(200, sessionBody()));
+    await rejected;
+    assert.equal(await client.automationCredential(), destination === "logout" ? "" : "new-account-access");
+    if (destination === "logout") await assert.rejects(fs.readFile(sessionPath()));
+    else {
+      const stored = JSON.parse(fakeSafeStorage.decryptString(await fs.readFile(sessionPath())));
+      assert.equal(stored.user.id, 99);
+    }
+  });
+}
