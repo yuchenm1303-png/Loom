@@ -15,6 +15,10 @@ class Platform:
         self.on_first = None
 
     def execute_chat(self, profile, request):
+        # The app server asks the model for a conversation title on a background thread. That is not
+        # an agent request, and counting it would make these tests depend on thread timing.
+        if "生成一个简短的对话标题" in str(request.messages[0].content):
+            return ModelResponse(text="Title")
         self.requests.append(request)
         if len(self.requests) == 1 and self.on_first:
             self.on_first()

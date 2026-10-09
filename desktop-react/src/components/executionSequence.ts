@@ -8,6 +8,33 @@ export function isActivityItem(item: TranscriptItem): boolean {
   return item.type === "tool_call" || item.type === "process" || item.type === "file_edit";
 }
 
+/** Commentary that may join a work log. Decisions and failed prose stay ordinary messages. */
+export function isProcessCommentary(item: TranscriptItem, protectedIds: ReadonlySet<string> = new Set()): boolean {
+  return item.type === "assistant_message" && item.phase === "commentary"
+    && !protectedIds.has(item.id) && !["failed", "denied", "interrupted"].includes(item.status ?? "");
+}
+
+/**
+ * The first commentary after each user message, before any tool work, answers that
+ * person. It stays an ordinary message; every other commentary is log narration.
+ * Position alone decides this, never the text.
+ */
+export function initialUpdateIds(items: TranscriptItem[]): ReadonlySet<string> {
+  const ids = new Set<string>();
+  let expecting = true;
+  for (const item of items) {
+    if (item.type === "user_message") {
+      expecting = true;
+    } else if (item.type === "assistant_message" && item.phase === "commentary") {
+      if (expecting) ids.add(item.id);
+      expecting = false;
+    } else {
+      expecting = false;
+    }
+  }
+  return ids;
+}
+
 /** Explicit phases only: never infer importance or finality from message text. */
 export function groupExecutionSequence(items: TranscriptItem[], protectedIds: ReadonlySet<string> = new Set()): TranscriptBlock[] {
   const blocks: TranscriptBlock[] = [];
@@ -21,8 +48,7 @@ export function groupExecutionSequence(items: TranscriptItem[], protectedIds: Re
   for (const item of items) {
     const nextTurn = String(item.turnId ?? "");
     if (activity.length && nextTurn !== turn) flush();
-    const commentary = item.type === "assistant_message" && item.phase === "commentary"
-      && !protectedIds.has(item.id) && !["failed", "denied", "interrupted"].includes(item.status ?? "");
+    const commentary = isProcessCommentary(item, protectedIds);
     // Keep the initial update outside the execution disclosure. Subsequent
     // commentary belongs to the same ordered run, including streaming text.
     if (isActivityItem(item) || (commentary && activity.length)) {

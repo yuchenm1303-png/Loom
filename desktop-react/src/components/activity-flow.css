@@ -17,6 +17,17 @@
   padding: 0;
 }
 
+/* A reply that answers the user keeps the message presentation inside a group too. */
+.task-flow-reply {
+  min-width: 0;
+  padding: 10px 0;
+  color: var(--flow-text);
+}
+
+.task-flow-reply .assistant-message {
+  margin: 0;
+}
+
 /* Process notes. The model's running commentary keeps its native message
  * renderer, full text and document order, but reads as a quiet caption aligned
  * with the row labels instead of a paragraph competing with the answer. The
@@ -31,6 +42,13 @@
 
 .task-flow-commentary.is-latest {
   color: var(--flow-text);
+}
+
+/* The newest note arrives before its tools, above their group. It aligns with the
+ * group title so it reads as that group's caption, and keeps the same type from
+ * its first frame to the moment it folds into the earlier steps. */
+.task-flow-commentary.is-lead {
+  padding: 4px 8px 2px 31px;
 }
 
 :root[data-loom-reduced-motion="true"] .task-flow-commentary {
