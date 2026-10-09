@@ -29,13 +29,21 @@ try {
     await render([user, message("first"), message("second"), long]);
     await page.waitForTimeout(900);
     assert.equal(await page.locator(slot("first")).count(), 1, "detached reading retains earlier records");
+    // The newest narration is a quiet note, so it takes little room until opened. Open it so it is
+    // the tall live record this geometry needs; the jump below follows the live edge again.
+    await page.locator('[data-message-id="long"] .note-toggle').click();
     // Return through the actual controller; only fully offscreen slots retire.
     await page.locator(".transcript-jump-latest").evaluate(el => el.click());
     await page.waitForFunction(() => !document.querySelector('.process-handoff-slot[data-process-items~="first"]'));
     await page.waitForFunction(() => !document.querySelector('.process-handoff-slot[data-process-items~="second"]'));
+    assert.equal(await page.locator('[data-message-id="long"]').evaluate(el => el.classList.contains("is-note")), true,
+      "the newest narration is a note from its first frame, not a full message that later shrinks");
     await page.locator(".earlier-process-toggle").click();
     await page.locator('.earlier-process-history[data-motion-phase="entered"]').waitFor();
     assert.equal(await page.locator('.earlier-process-history [data-message-id="first"]').count(), 1);
+    assert.deepEqual(await page.evaluate(() => ["first", "second"].map(id =>
+      document.querySelector(`.earlier-process-history [data-message-id="${id}"]`)?.classList.contains("is-note"))), [false, true],
+      "the reply that answers the user stays a message; later narration is a note");
     await page.locator(".earlier-process-toggle").click();
     await page.waitForTimeout(350);
     assert.equal(await page.locator('.earlier-process-history [data-message-id="first"]').count(), 0);
@@ -66,6 +74,27 @@ try {
     assert.equal(await page.locator(slot("t2")).getAttribute("data-handoff-phase"), "holding", "scrolling up reverses a pending retirement");
     await page.locator(".transcript-jump-latest").evaluate(el => el.click());
     await page.waitForFunction(() => !document.querySelector('.process-handoff-slot[data-process-items~="t2"]'));
+    await page.evaluate(() => window.motionFixture.reset());
+    // The reply to a mid-run user message keeps the message presentation after it folds into
+    // earlier steps, where it now follows tool work and would otherwise shrink into a note.
+    // Steering is placed by submission time, so every record carries one, like a real run.
+    const at = second => ({ createdAt: new Date(Date.UTC(2026, 9, 9, 7, 0, second)).toISOString() });
+    const steer = { ...base, id: "steer", type: "user_message", source: "steering", text: "补测 current-browser", submittedAt: at(3).createdAt };
+    await render([user, { ...message("intro"), ...at(1) }, { ...tool("s1"), ...at(2) }, steer,
+      { ...message("reply"), ...at(4) }, { ...tool("s2"), ...at(5) }, { ...long, ...at(6) }]);
+    await page.waitForTimeout(700);
+    await page.locator('[data-message-id="long"] .note-toggle').click();
+    await page.waitForTimeout(400);
+    await page.locator(".transcript-jump-latest").evaluate(el => el.click());
+    await page.waitForFunction(() => !document.querySelector('.process-handoff-slot[data-process-items~="s2"]'));
+    await page.locator(".earlier-process-toggle").click();
+    await page.locator('.earlier-process-history[data-motion-phase="entered"]').waitFor();
+    assert.deepEqual(await page.evaluate(() => ["intro", "reply"].map(id => {
+      const el = document.querySelector(`.earlier-process-history [data-message-id="${id}"]`);
+      return el ? { note: el.classList.contains("is-note"), size: getComputedStyle(el.querySelector(".assistant-message")).fontSize } : null;
+    })), [{ note: false, size: "15px" }, { note: false, size: "15px" }], "replies to the user keep message size after folding");
+    await page.locator(".earlier-process-toggle").click();
+    await page.waitForTimeout(350);
     await page.evaluate(() => window.motionFixture.reset());
   }
   assert.deepEqual(errors, []);

@@ -41,7 +41,7 @@ import { useReducedMotion } from "../motion/useReducedMotion";
 import { useEarlierProcessHandoff } from "./useEarlierProcessHandoff";
 import { LIVE_STATUS_GRACE_MS, TURN_FOLD_MS, TURN_SETTLE_HOLD_MS } from "../presentationTiming";
 import type { TranscriptItem } from "../types/loom";
-import { groupExecutionSequence, isActivityItem, type TranscriptBlock } from "./executionSequence";
+import { groupExecutionSequence, initialUpdateIds, isActivityItem, isProcessCommentary } from "./executionSequence";
 import { latestTaskPlan, liveTaskProgress } from "./liveTaskProgress";
 import { isLongNote } from "./processNote";
 import { TaskProgressPanel } from "./TaskProgressPanel";
@@ -379,14 +379,15 @@ function useSettledFlag(value: boolean, delayMs: number): boolean {
   return value && settled;
 }
 
-function groupTranscript(items: TranscriptItem[]): TranscriptBlock[] {
-  const decisions = new Set(items.filter(item => item.type === "assistant_message"
+function decisionMessageIds(items: TranscriptItem[]): Set<string> {
+  return new Set(items.filter(item => item.type === "assistant_message"
     && item.phase === "commentary").filter(item => {
       const parsed = parseDecisionMessage(item.text ?? "");
       return parsed.decisions.length > 0 || parsed.incomplete;
     }).map(item => item.id));
-  return groupExecutionSequence(items, decisions);
 }
+
+const NO_INITIAL_UPDATES: ReadonlySet<string> = new Set();
 
 function processHandoffGroups(items: TranscriptItem[]): string[][] {
   const agents = items.filter(isSubAgentToolItem);
@@ -1082,6 +1083,8 @@ interface ActivityFlowProps {
   workspace?: string;
   liveAssistantId?: string;
   handoff?: ProcessHandoff;
+  /** Replies that answer the user keep the message presentation wherever they sit. */
+  initialIds?: ReadonlySet<string>;
   onPrompt?(prompt: string): Promise<void> | void;
   promptDisabled?: boolean;
   onApproval(item: TranscriptItem, approved: boolean): void;
@@ -1093,6 +1096,7 @@ function sameActivityFlowProps(previous: ActivityFlowProps, next: ActivityFlowPr
     && previous.continuing === next.continuing
     && previous.workspace === next.workspace
     && previous.handoff === next.handoff
+    && previous.initialIds === next.initialIds
     && previous.liveAssistantId === next.liveAssistantId
     && previous.onPrompt === next.onPrompt
     && previous.onApproval === next.onApproval
@@ -1107,6 +1111,7 @@ const ActivityFlow = memo(function ActivityFlow({
   workspace,
   liveAssistantId,
   handoff,
+  initialIds,
   onPrompt,
   onApproval,
   promptDisabled,
@@ -1165,10 +1170,16 @@ const ActivityFlow = memo(function ActivityFlow({
 
   const toolRows = useMemo(() => rows.filter(row => isActivityItem(row.item)), [rows]);
   const latestCommentary = [...items].reverse().find(item => item.type === "assistant_message");
-  const commentaryView = (item: TranscriptItem) => <div className={`task-flow-commentary ${item.id === latestCommentary?.id ? "is-latest" : ""}`.trim()} key={item.id}>
-    <ItemView item={item} variant="note" streaming={item.id === liveAssistantId} onApproval={onApproval}
-      onPrompt={onPrompt} promptDisabled={promptDisabled} workspace={workspace} />
-  </div>;
+  const commentaryView = (item: TranscriptItem) => initialIds?.has(item.id)
+    // The reply to the user stays a message here too, so it never changes size when it moves between views.
+    ? <div className="task-flow-reply" key={item.id}>
+      <ItemView item={item} streaming={item.id === liveAssistantId} onApproval={onApproval}
+        onPrompt={onPrompt} promptDisabled={promptDisabled} workspace={workspace} />
+    </div>
+    : <div className={`task-flow-commentary ${item.id === latestCommentary?.id ? "is-latest" : ""}`.trim()} key={item.id}>
+      <ItemView item={item} variant="note" streaming={item.id === liveAssistantId} onApproval={onApproval}
+        onPrompt={onPrompt} promptDisabled={promptDisabled} workspace={workspace} />
+    </div>;
   const rowEnvelope = (segment: ActivityRowModel[], content: ReactNode) => {
     const row = segment[0];
     const ids = [...new Set(segment.flatMap(entry => [entry.key, entry.item.id]))];
@@ -1605,6 +1616,7 @@ function Sequence({
   promptDisabled,
   workspace,
   handoff,
+  initialIds = NO_INITIAL_UPDATES,
 }: {
   items: TranscriptItem[];
   onApproval(item: TranscriptItem, approved: boolean): void;
@@ -1614,13 +1626,26 @@ function Sequence({
   promptDisabled?: boolean;
   workspace?: string;
   handoff?: { retained: ReadonlySet<string>; folding: ReadonlySet<string> };
+  /** Commentary that answers the user directly; it stays an ordinary message. */
+  initialIds?: ReadonlySet<string>;
 }) {
   const subAgentItems = useMemo(() => items.filter(isSubAgentToolItem), [items]);
   const visibleItems = useMemo(
     () => subAgentItems.length ? items.filter((item) => !isSubAgentToolItem(item)) : items,
     [items, subAgentItems.length],
   );
-  const blocks = useMemo(() => groupTranscript(visibleItems), [visibleItems]);
+  const decisionIds = useMemo(() => decisionMessageIds(visibleItems), [visibleItems]);
+  const blocks = useMemo(() => groupExecutionSequence(visibleItems, decisionIds), [visibleItems, decisionIds]);
+  // The live slice starts at its newest commentary, so that note arrives with no tool
+  // before it. It is still log narration: give it the note presentation from its first
+  // frame instead of drawing a full message that later shrinks into the work log.
+  const isLeadNote = (item: TranscriptItem) => isProcessCommentary(item, decisionIds) && !initialIds.has(item.id);
+  const latestAssistantId = useMemo(() => {
+    for (let index = visibleItems.length - 1; index >= 0; index -= 1) {
+      if (visibleItems[index].type === "assistant_message") return visibleItems[index].id;
+    }
+    return "";
+  }, [visibleItems]);
   const pendingPresentations = usePendingPresentations();
   const revealedActivityIds = useRef(new Set<string>());
   const deferredActivityBlocks = useMemo(
@@ -1712,6 +1737,7 @@ function Sequence({
               workspace={workspace}
               liveAssistantId={liveAssistantId}
               handoff={handoff}
+              initialIds={initialIds}
               onApproval={onApproval}
               onPrompt={onPrompt}
               promptDisabled={promptDisabled}
@@ -1721,11 +1747,12 @@ function Sequence({
         )) : (
           envelope(block.item.id, [block.item.id],
           <div
-            className={`transcript-entry entry-${block.item.type} ${active ? "has-lifecycle-motion" : ""} ${isSteeringUserMessage(block.item) ? "entry-steering-user" : ""}`.trim()}
+            className={`transcript-entry entry-${block.item.type} ${active ? "has-lifecycle-motion" : ""} ${isSteeringUserMessage(block.item) ? "entry-steering-user" : ""} ${isLeadNote(block.item) ? `task-flow-commentary is-lead ${block.item.id === latestAssistantId ? "is-latest" : ""}` : ""}`.replace(/\s+/g, " ").trim()}
             key={block.item.id}
           >
             <ItemView
               item={block.item}
+              variant={isLeadNote(block.item) ? "note" : undefined}
               streaming={Boolean(active && block.item.type === "assistant_message" && block.item.id === liveAssistantId)}
               onApproval={onApproval}
               onPrompt={onPrompt}
@@ -1881,6 +1908,7 @@ function TurnProcess({
       return parsed.decisions.length > 0 || parsed.incomplete;
     })
     .map((item) => item.id))), [items]);
+  const initialIds = useMemo(() => initialUpdateIds(items), [items]);
   const pendingPresentations = usePendingPresentations();
   // The finished live layout is held through the settle fold, including records
   // still retained in place, so nothing disappears at the moment of completion.
@@ -1971,7 +1999,7 @@ function TurnProcess({
                   <div id={earlierHistoryId} className="earlier-process-history" data-motion-phase={earlierPresence.phase} inert={!earlierOpen}>
                     <div className="earlier-process-history-inner">
                     {earlierPresence.mounted ? <StreamingPresentation>
-                      <Sequence items={handoff.earlier} active={false} onApproval={onApproval}
+                      <Sequence items={handoff.earlier} active={false} initialIds={initialIds} onApproval={onApproval}
                         onPrompt={onPrompt} promptDisabled={promptDisabled} workspace={workspace} />
                     </StreamingPresentation> : null}
                     </div>
@@ -1979,7 +2007,7 @@ function TurnProcess({
                 </div>
                 </div>
               ) : null}
-              <Sequence items={live ? handoff.current : items} handoff={live ? handoff : undefined} active={active} onApproval={onApproval} onPrompt={onPrompt} keepActivityOpen={active} promptDisabled={promptDisabled} workspace={workspace} />
+              <Sequence items={live ? handoff.current : items} handoff={live ? handoff : undefined} active={active} initialIds={initialIds} onApproval={onApproval} onPrompt={onPrompt} keepActivityOpen={active} promptDisabled={promptDisabled} workspace={workspace} />
               {renderCapsule ? (
                 <div className="pending-thinking-presence" data-motion-phase={capsulePresence.phase} inert={!capsuleVisible}>
                   <div className="pending-thinking-presence-inner"><ThinkingCapsule /></div>
