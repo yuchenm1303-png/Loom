@@ -61,6 +61,22 @@ def _request(reasoning: ReasoningRequest | None = None) -> ChatRequest:
     )
 
 
+@pytest.mark.parametrize("model", ["muse-spark-1.3-contributor", "gpt-5.6-luna", "grok-4.7"])
+def test_responses_title_request_omits_tool_choice_without_tools(model: str) -> None:
+    from app.thread_title_override import _build_auto_title_request
+
+    backend = object.__new__(_OpenCodeGoResponsesBackend)
+    backend.profile = SimpleNamespace(model=model)
+    request, _ = _build_auto_title_request(
+        SimpleNamespace(), SimpleNamespace(session_id="title-thread"), user_prompt="检查 API 密钥格式"
+    )
+    kwargs = backend._kwargs(request)
+
+    assert "tools" not in kwargs
+    assert "tool_choice" not in kwargs
+    assert kwargs["extra_headers"]["x-opencode-session"] == "title-thread"
+
+
 def test_opencode_chat_backend_sends_coding_agent_identity() -> None:
     backend = object.__new__(_OpenCodeGoChatBackend)
     backend.connection = SimpleNamespace(adapter=SimpleNamespace(value="openai-compatible"))

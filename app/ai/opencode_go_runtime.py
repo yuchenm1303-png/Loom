@@ -283,8 +283,8 @@ class _OpenCodeGoResponsesBackend:
                 for tool in request.tools
             ]
             kwargs["tool_choice"] = request.tool_choice.value
-        elif request.tool_choice is ToolChoice.NONE:
-            kwargs["tool_choice"] = "none"
+        # With no tools, omission already prevents tool calls. Some Responses
+        # models (including Muse Spark) reject an explicit tool_choice="none".
         if request.temperature is not None:
             kwargs["temperature"] = request.temperature
         if request.max_output_tokens is not None:
