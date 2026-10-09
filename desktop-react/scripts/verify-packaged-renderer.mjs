@@ -32,4 +32,9 @@ function verifyDirectory(directory) {
 }
 verifyDirectory(path.join(root, "dist"));
 assert.ok(checked > 0, "Renderer build is empty");
+const rendererScripts = asar.listPackage(archive)
+  .filter(file => /[\\/]dist[\\/]assets[\\/].*\.js$/.test(file))
+  .map(file => asar.extractFile(archive, file.replace(/^[\\/]/, "")).toString());
+assert.ok(rendererScripts.some(script => script.includes("draftPermissionMode")),
+  "Packaged renderer lacks draft permission support; rebuild from current source before releasing");
 console.log(`Packaged renderer verified: ${checked} files match the current build (v${localPackage.version}).`);
