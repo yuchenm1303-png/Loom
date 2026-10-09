@@ -534,10 +534,19 @@ class AgentRuntime:
         extra["request_layout"] = request_metadata(self, session, messages, step.tool_router.definitions())
         return messages, extra
 
+    def _lifecycle_events(self, session_id):
+        """Chronology and per-call bookkeeping without tool or request bodies.
+
+        Repeat detection and latency diagnostics read this before every tool call
+        and at every turn end. Parsing the whole transcript for them is what made
+        long conversations slow to act.
+        """
+        return getattr(self.store, "context_events", self.store.events)(session_id)
+
     def _execution_context(self, session):
         """Shared task state for both core and context-managed request builders."""
         from .execution_guidance import model_execution_guidance
-        turn_events = getattr(self.store, "context_events", self.store.events)(session.session_id)
+        turn_events = self._lifecycle_events(session.session_id)
         guidance, guidance_metadata = model_execution_guidance(
             turn_events,
             turn_id=session.current_turn_id,
@@ -1000,13 +1009,13 @@ class AgentRuntime:
         call_fingerprint = tool_call_fingerprint(prepared.call)
         if prepared.tool.effect is ToolEffect.READ_ONLY:
             repeat_count = recent_read_only_repeat_count(
-                self.store.events(session.session_id),
+                self._lifecycle_events(session.session_id),
                 turn_id=session.current_turn_id,
                 fingerprint=call_fingerprint,
             )
         elif prepared.tool.effect is ToolEffect.SENSITIVE:
             repeat_count = recent_tool_repeat_count(
-                self.store.events(session.session_id),
+                self._lifecycle_events(session.session_id),
                 turn_id=session.current_turn_id,
                 fingerprint=call_fingerprint,
             )
@@ -1491,7 +1500,7 @@ class AgentRuntime:
             from .turn_timing import turn_timing_metadata
 
             timing = turn_timing_metadata(
-                self.store.events(session.session_id),
+                self._lifecycle_events(session.session_id),
                 turn_id=session.current_turn_id,
                 kind=kind,
                 now=created_at,

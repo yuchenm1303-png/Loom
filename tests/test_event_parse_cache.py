@@ -1,9 +1,12 @@
 import json
 import os
+import sys
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 import pytest
+from app.agent_runtime import event_cache
+from app.agent_runtime.event_cache import EventParseCache, _clone
 from app.agent_runtime.storage import FileAgentSessionStore
 from app.agent_runtime.contracts import AgentEvent, AgentEventKind as E
 
@@ -14,7 +17,8 @@ def event(index):
 
 def test_context_projection_caches_large_history_without_losing_durable_results(tmp_path):
     store = FileAgentSessionStore(tmp_path)
-    payload = "large observation " * 600000  # exceeds full-payload cache budget
+    store._event_cache = EventParseCache(max_bytes=8_000_000)
+    payload = "large observation " * 600000  # exceeds this full-payload cache budget
     store.append_event(AgentEvent("large", "abcdef", "turn", E.TOOL_COMPLETED, "2026-10-05T00:00:00Z",
                                   {"call_id": "verify", "content": payload}))
     plan = {"plan": [{"step": "Verify", "status": "completed", "outcome": "passed",
@@ -121,7 +125,6 @@ def test_malformed_complete_record_remains_an_error(tmp_path):
 
 
 def test_cache_memory_and_entries_are_bounded(tmp_path):
-    from app.agent_runtime.event_cache import EventParseCache
     store = FileAgentSessionStore(tmp_path)
     store._event_cache = EventParseCache(max_bytes=2000, max_entries=2)
     for session in ("a", "b", "c", "d"):
@@ -189,3 +192,95 @@ def test_slow_session_parse_does_not_block_another_session(tmp_path, monkeypatch
             release.set()
         assert [e.event_id for e in slow.result(timeout=2)] == ["1"]
     assert store._event_cache.metrics()["parsed_records"] == 2
+
+
+def test_clone_copies_parsed_json_without_sharing_containers():
+    original = {"a": [1, {"b": "text", "c": None}, 2.5, True], "d": {"e": []}}
+    copy = _clone(original)
+    assert copy == original
+    assert copy is not original and copy["a"] is not original["a"]
+    assert copy["a"][1] is not original["a"][1] and copy["d"]["e"] is not original["d"]["e"]
+    copy["a"][1]["b"] = "changed"
+    assert original["a"][1]["b"] == "text"
+    # Anything JSON cannot produce still copies the way it always did.
+    assert _clone({"pair": (1, [2])}) == {"pair": (1, [2])}
+    assert _clone({"pair": (1, [2])})["pair"][1] is not None
+
+
+def test_weight_counts_each_object_once_and_can_stop_early():
+    shared = "x" * 100
+    value = {"first": [shared, shared, {"nested": [shared, 1.5, None]}], "second": {"k": shared}}
+
+    def reference(item, seen=None):
+        seen = set() if seen is None else seen
+        if id(item) in seen:
+            return 0
+        seen.add(id(item))
+        size = sys.getsizeof(item)
+        if isinstance(item, dict):
+            size += sum(reference(k, seen) + reference(v, seen) for k, v in item.items())
+        elif isinstance(item, (list, tuple)):
+            size += sum(reference(child, seen) for child in item)
+        return size
+
+    assert EventParseCache._weight(value) == reference(value)
+    big = [{"index": index, "text": "y" * 50} for index in range(2000)]
+    exact = EventParseCache._weight(big)
+    stopped = EventParseCache._weight(big, limit=1000)
+    assert 1000 < stopped < exact // 10
+
+
+def test_history_too_large_to_keep_is_not_copied_or_weighed_again(tmp_path, monkeypatch):
+    store = FileAgentSessionStore(tmp_path)
+    store._event_cache = EventParseCache(max_bytes=6000)
+    for index in range(20):
+        store.append_event(event(index))
+    weighed = []
+    original = EventParseCache._weight
+
+    def counting(value, seen=None, limit=None):
+        weighed.append(limit)
+        return original(value, seen, limit)
+
+    monkeypatch.setattr(EventParseCache, "_weight", staticmethod(counting))
+    copies = []  # one entry per whole-history copy; _clone recurses through the same name
+
+    def counting_clone(value):
+        if isinstance(value, list):
+            copies.append(len(value))
+        return _clone(value)
+
+    monkeypatch.setattr(event_cache, "_clone", counting_clone)
+    first = store.events("abcdef")
+    assert len(first) == 20 and store._event_cache.metrics()["entries"] == 0
+    assert len(weighed) == 1 and copies == []
+    # The caller owns what the cache refused to keep, and a later read is not
+    # affected by what was done to it.
+    first[0].data["nested"]["index"] = "poison"
+    assert store.events("abcdef")[0].data["nested"]["index"] == 0
+    store.append_event(event(20))
+    assert len(store.events("abcdef")) == 21
+    assert len(weighed) == 1
+    # Replacing the log restarts the accounting: a small one is kept again.
+    path = store.session_dir("abcdef") / "events.jsonl"
+    replacement = path.with_suffix(".new")
+    replacement.write_bytes(raw_event(7) + b"\n")
+    os.replace(replacement, path)
+    assert [e.event_id for e in store.events("abcdef")] == ["7"]
+    assert len(weighed) == 2 and store._event_cache.metrics()["entries"] == 1
+    # What the cache does keep is still handed out as a copy.
+    assert len(copies) == 1
+
+
+def test_log_that_outgrows_the_cache_is_dropped_not_served_stale(tmp_path):
+    store = FileAgentSessionStore(tmp_path)
+    store._event_cache = EventParseCache(max_bytes=6000)
+    store.append_event(event(0))
+    assert len(store.events("abcdef")) == 1 and store._event_cache.metrics()["entries"] == 1
+    for index in range(1, 40):
+        store.append_event(event(index))
+    grown = store.events("abcdef")
+    assert [e.event_id for e in grown] == [str(index) for index in range(40)]
+    assert store._event_cache.metrics()["entries"] == 0
+    grown[3].data["nested"]["index"] = "poison"
+    assert store.events("abcdef")[3].data["nested"]["index"] == 3

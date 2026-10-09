@@ -5,6 +5,26 @@ import json
 import sys
 import threading
 
+_ATOMS = frozenset((str, int, float, bool, type(None)))
+
+
+def _clone(value):
+    """Copy parsed JSON so a caller cannot reach the cached objects.
+
+    ``copy.deepcopy`` records every object it visits so that shared and cyclic
+    references survive the copy. ``json.loads`` produces neither, and that
+    bookkeeping made copying a long transcript several times slower than
+    parsing it.
+    """
+    kind = type(value)
+    if kind is dict:
+        return {key: _clone(item) for key, item in value.items()}
+    if kind is list:
+        return [_clone(item) for item in value]
+    if kind in _ATOMS:
+        return value
+    return deepcopy(value)
+
 
 class _CountingReader:
     def __init__(self, handle):
@@ -24,9 +44,13 @@ class _CountingReader:
 
 
 class EventParseCache:
-    def __init__(self, *, max_bytes=8_000_000, max_entries=16):
+    def __init__(self, *, max_bytes=32_000_000, max_entries=16):
         self.max_bytes, self.max_entries = max_bytes, max_entries
         self._entries = OrderedDict()
+        # Where a complete read last proved too large to keep. An append-only log
+        # only grows, so until it is replaced or truncated there is no need to
+        # weigh the same oversized parse again on every call.
+        self._oversized = {}
         self._lock = threading.RLock()
         self._parsed = self._read = self._hits = 0
 
@@ -42,26 +66,39 @@ class EventParseCache:
         return handle.read(size)
 
     @staticmethod
-    def _weight(value, seen=None):
-        """Account for retained Python objects, including nested JSON values."""
+    def _weight(value, seen=None, limit=None):
+        """Account for retained Python objects, including nested JSON values.
+
+        With ``limit`` the walk stops as soon as the total passes it. Whoever
+        asks only needs to know an entry is too large to keep, and measuring a
+        70 MB parse tree to the last object cost more than parsing it.
+        """
         seen = set() if seen is None else seen
-        identity = id(value)
-        if identity in seen:
-            return 0
-        seen.add(identity)
-        size = sys.getsizeof(value)
-        if isinstance(value, dict):
-            size += sum(EventParseCache._weight(k, seen) + EventParseCache._weight(v, seen)
-                        for k, v in value.items())
-        elif isinstance(value, (list, tuple)):
-            size += sum(EventParseCache._weight(item, seen) for item in value)
-        return size
+        total = 0
+        pending = [value]
+        while pending:
+            item = pending.pop()
+            identity = id(item)
+            if identity in seen:
+                continue
+            seen.add(identity)
+            total += sys.getsizeof(item)
+            if limit is not None and total > limit:
+                return total
+            if isinstance(item, dict):
+                for key, child in item.items():
+                    pending.append(key)
+                    pending.append(child)
+            elif isinstance(item, (list, tuple)):
+                pending.extend(item)
+        return total
 
     def read(self, path, limit, tail_reader, *, project=None):
         key = (str(path), limit, project)
         if not path.is_file():
             with self._lock:
                 self._entries.pop(key, None)
+                self._oversized.pop(key, None)
             return []
         stat = path.stat()
         signature = (stat.st_dev, stat.st_ino, stat.st_size, stat.st_mtime_ns)
@@ -74,7 +111,7 @@ class EventParseCache:
             else:
                 cached = None
         if cached is not None:
-            return deepcopy(cached)
+            return _clone(cached)
 
         # Callers hold the journal lock for this session. Only shared LRU
         # bookkeeping needs the store-wide lock: IO, parsing and copying a long
@@ -130,17 +167,31 @@ class EventParseCache:
                 boundary = self._read_bytes(handle, max(0, offset - 256), min(256, offset)) if limit is None else b""
                 updated = {"signature": signature, "records": records, "visible": visible,
                            "offset": offset, "prefix": prefix, "boundary": boundary}
-                weight = self._weight(updated) + sys.getsizeof(trailing)
+                too_large = self._oversized.get(key) if limit is None else None
+                if too_large is not None and too_large[:2] == signature[:2] and signature[2] >= too_large[2]:
+                    weight = self.max_bytes + 1
+                else:
+                    weight = self._weight(updated, limit=self.max_bytes) + sys.getsizeof(trailing)
                 updated["weight"] = weight
             finally:
                 with self._lock:
                     self._read += handle.bytes_read
                     self._parsed += parsed
+        retained = weight <= self.max_bytes
         with self._lock:
             self._entries.pop(key, None)
-            if weight <= self.max_bytes:
+            if retained:
                 self._entries[key] = updated
+                self._oversized.pop(key, None)
+            elif limit is None:
+                self._oversized.pop(key, None)
+                self._oversized[key] = signature[:3]
+                while len(self._oversized) > 1024:
+                    self._oversized.pop(next(iter(self._oversized)))
             while (len(self._entries) > self.max_entries
                    or sum(e["weight"] for e in self._entries.values()) > self.max_bytes):
                 self._entries.popitem(last=False)
-        return deepcopy(visible)
+        # What the cache did not keep has no other holder, so the caller can
+        # have the parsed objects themselves; copying them would only repeat
+        # the cost of parsing a history too large to cache.
+        return _clone(visible) if retained else visible
