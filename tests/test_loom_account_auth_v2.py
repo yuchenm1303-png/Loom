@@ -18,6 +18,41 @@ def _verified_app(tmp_path: Path) -> AccountApplication:
     )))
 
 
+def test_resend_delivery_uses_application_user_agent(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    import io
+    import json
+    from urllib.error import HTTPError
+
+    app = AccountApplication(AccountStore(AccountConfig(
+        db_path=tmp_path / "accounts.db",
+        email_provider="resend",
+        email_from="Loom <account@example.com>",
+        resend_api_key="test-key",
+    )))
+    requests = []
+
+    def provider(request, timeout):
+        # Reproduce the provider edge's rejection of unidentified urllib requests.
+        if request.get_header("User-agent") != "Loom-Account/1.0":
+            raise HTTPError(request.full_url, 403, "Forbidden", {}, io.BytesIO(b"error code: 1010"))
+        requests.append(request)
+        response = io.BytesIO(b'{"id":"test-email"}')
+        response.status = 200
+        return response
+
+    monkeypatch.setattr(account_server, "urlopen", provider)
+    app.register_start({"email": "new@example.com", "password": "correct-horse"}, "client")
+
+    assert len(requests) == 1
+    request = requests[0]
+    assert request.full_url == "https://api.resend.com/emails"
+    assert request.get_method() == "POST"
+    assert request.get_header("Authorization") == "Bearer test-key"
+    payload = json.loads(request.data)
+    assert payload["to"] == ["new@example.com"]
+    assert payload["subject"] == "Verify your Loom account"
+
+
 def test_verified_registration_requires_code_and_consumes_it_once(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(account_server.secrets, "randbelow", lambda _limit: 123456)
     app = _verified_app(tmp_path)
