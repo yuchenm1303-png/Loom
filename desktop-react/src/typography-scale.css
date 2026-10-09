@@ -68,6 +68,8 @@ body {
 .task-flow-inline-detail pre { font-size: 12.5px !important; }
 .task-flow-detail .task-flow-detail-empty { font-size: 12.5px !important; }
 .task-flow-group-title { font-size: 13px !important; }
+/* Work-log notes sit on the row scale, below the 15px message body. */
+.task-flow-commentary .assistant-message { font-size: var(--loom-font-ui) !important; }
 .task-flow-group-failed { font-size: var(--loom-font-micro) !important; }
 .task-flow-group .task-flow-verb,
 .task-flow-group .task-flow-primary { font-size: 12.75px !important; }

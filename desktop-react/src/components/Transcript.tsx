@@ -43,6 +43,7 @@ import { LIVE_STATUS_GRACE_MS, TURN_FOLD_MS, TURN_SETTLE_HOLD_MS } from "../pres
 import type { TranscriptItem } from "../types/loom";
 import { groupExecutionSequence, isActivityItem, type TranscriptBlock } from "./executionSequence";
 import { latestTaskPlan, liveTaskProgress } from "./liveTaskProgress";
+import { isLongNote } from "./processNote";
 import { TaskProgressPanel } from "./TaskProgressPanel";
 
 import { HomeTokenActivity } from "./HomeTokenActivity";
@@ -1164,8 +1165,8 @@ const ActivityFlow = memo(function ActivityFlow({
 
   const toolRows = useMemo(() => rows.filter(row => isActivityItem(row.item)), [rows]);
   const latestCommentary = [...items].reverse().find(item => item.type === "assistant_message");
-  const commentaryView = (item: TranscriptItem) => <div className="task-flow-commentary" key={item.id}>
-    <ItemView item={item} streaming={item.id === liveAssistantId} onApproval={onApproval}
+  const commentaryView = (item: TranscriptItem) => <div className={`task-flow-commentary ${item.id === latestCommentary?.id ? "is-latest" : ""}`.trim()} key={item.id}>
+    <ItemView item={item} variant="note" streaming={item.id === liveAssistantId} onApproval={onApproval}
       onPrompt={onPrompt} promptDisabled={promptDisabled} workspace={workspace} />
   </div>;
   const rowEnvelope = (segment: ActivityRowModel[], content: ReactNode) => {
@@ -1413,13 +1414,15 @@ function MessageToolbar({
 interface AssistantMessageProps {
   item: TranscriptItem;
   streaming: boolean;
+  /** "note" renders work-log commentary as a quiet caption instead of a message. */
+  variant?: "note";
   onPrompt?(prompt: string): Promise<void> | void;
   decisionInteractive: boolean;
   promptDisabled?: boolean;
   workspace?: string;
 }
 
-function AssistantMessage({ item, streaming, onPrompt, decisionInteractive, promptDisabled, workspace }: AssistantMessageProps) {
+function AssistantMessage({ item, streaming, onPrompt, decisionInteractive, promptDisabled, workspace, variant }: AssistantMessageProps) {
   const copy = useRuntimeCopy();
   const parsed = splitReasoning(item.text ?? "");
   const providerReasoning = String(item.reasoning ?? "").trim();
@@ -1430,6 +1433,9 @@ function AssistantMessage({ item, streaming, onPrompt, decisionInteractive, prom
   const live = streaming && !interrupted && (item.status === "streaming" || isActiveActivityStatus(item.status || "running"));
   const decisionMessage = parseDecisionMessage(parsed.answer, live);
   const answer = decisionMessage.text.trim();
+  const note = variant === "note";
+  const [noteOpen, setNoteOpen] = useState(false);
+  const longNote = note && isLongNote(answer);
   // The model is still thinking about this message: nothing to read yet.
   const thinking = live && !answer && !decisionMessage.decisions.length;
   const showReasoning = thinking || Boolean(reasoning);
@@ -1452,7 +1458,7 @@ function AssistantMessage({ item, streaming, onPrompt, decisionInteractive, prom
 
   return (
     <div
-      className={`message-shell assistant-message-shell ${thinking ? "is-thinking" : ""}`.trim()}
+      className={`message-shell assistant-message-shell ${note ? "is-note" : ""} ${longNote && !noteOpen ? "is-clamped" : ""} ${thinking ? "is-thinking" : ""}`.replace(/\s+/g, " ").trim()}
       data-message-id={item.id}
       data-loom-message-kind="assistant"
       data-loom-message-text={answer || reasoning}
@@ -1494,7 +1500,13 @@ function AssistantMessage({ item, streaming, onPrompt, decisionInteractive, prom
           />
         ) : null}
       </div>
-      {thinking || decisionMessage.decisions.length || decisionMessage.incomplete || (!answer && !reasoning) ? null : (
+      {thinking || decisionMessage.decisions.length || decisionMessage.incomplete || (!answer && !reasoning) ? null : note ? (
+        longNote ? (
+          <button type="button" className="note-toggle" aria-expanded={noteOpen} onClick={() => setNoteOpen((open) => !open)}>
+            {noteOpen ? copy.noteCollapse : copy.noteExpand}
+          </button>
+        ) : null
+      ) : (
         <MessageToolbar kind="assistant" item={item} text={answer || reasoning} disabled={promptDisabled} />
       )}
     </div>
@@ -1541,6 +1553,7 @@ const ItemView = memo(function ItemView({
   decisionInteractive = false,
   promptDisabled,
   workspace,
+  variant,
 }: {
   item: TranscriptItem;
   streaming?: boolean;
@@ -1549,6 +1562,7 @@ const ItemView = memo(function ItemView({
   decisionInteractive?: boolean;
   promptDisabled?: boolean;
   workspace?: string;
+  variant?: "note";
 }) {
   if (item.type === "user_message") {
     const rawText = String(item.text ?? "");
@@ -1570,6 +1584,7 @@ const ItemView = memo(function ItemView({
         decisionInteractive={decisionInteractive}
         promptDisabled={promptDisabled}
         workspace={workspace}
+        variant={variant}
       />
     );
   }

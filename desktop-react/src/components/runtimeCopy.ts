@@ -295,6 +295,8 @@ export interface RuntimeCopy {
   earlierCount(count: number): string;
   earlierToggleLabel(open: boolean, count: number): string;
   earlierToggleTitle(open: boolean): string;
+  noteExpand: string;
+  noteCollapse: string;
   processToggleTitle(open: boolean): string;
   processSummary(parts: ProcessSummaryParts, fallbackCount: number): string;
   diffLabel(added: number, removed: number): string;
@@ -466,6 +468,8 @@ const ZH: RuntimeCopy = {
   earlierCount: (count) => `${count} 项`,
   earlierToggleLabel: (open, count) => `${open ? "收起" : "展开"}较早过程，${count} 项`,
   earlierToggleTitle: (open) => (open ? "收起较早的进度与工具记录" : "展开较早的进度与工具记录"),
+  noteExpand: "展开全文",
+  noteCollapse: "收起",
   processToggleTitle: (open) => (open ? "收起任务过程" : "展开完整任务过程"),
   processSummary: (parts, fallback) => {
     const items: string[] = [];
@@ -577,6 +581,8 @@ const EN: RuntimeCopy = {
   earlierCount: (count) => String(count),
   earlierToggleLabel: (open, count) => `${open ? "Hide" : "Show"} ${plural(count, "earlier step", "earlier steps")}`,
   earlierToggleTitle: (open) => (open ? "Hide earlier progress and tool records" : "Show earlier progress and tool records"),
+  noteExpand: "Show full note",
+  noteCollapse: "Show less",
   processToggleTitle: (open) => (open ? "Collapse the work log" : "Expand the full work log"),
   processSummary: (parts, fallback) => {
     const items: string[] = [];

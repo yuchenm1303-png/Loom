@@ -17,6 +17,7 @@ from .history import repair_tool_history
 from .model_replan import revision as steering_revision
 from .model_replan import wait_for_signal
 from .model_execution import ModelRequestTimeout
+from .system_prompts import progress_feedback_mode
 from .execution_state import ExecutionAction, next_execution_action
 from .turn_response_validation import (
     COMPLETE_FINISH_REASONS,
@@ -202,6 +203,7 @@ class TurnRunner:
                             "reasoning": reasoning.as_safe_dict() if reasoning is not None else None,
                             "attempt": attempt,
                             "request_preparation_ms": request_preparation_ms,
+                            "progress_feedback": progress_feedback_mode(step.request_state.system_prompt),
                             **extra,
                             **model_identity,
                         })

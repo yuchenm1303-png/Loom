@@ -4,7 +4,7 @@ import pytest
 
 from app.agent_runtime import AgentRuntime, FileAgentSessionStore, SandboxManager, SandboxPolicy
 from app.agent_runtime.builtin_tools import builtin_read_only_tools
-from app.agent_runtime.system_prompts import communication_policy, system_prompt_with_feedback
+from app.agent_runtime.system_prompts import communication_policy, progress_feedback_mode, system_prompt_with_feedback
 from app.ai import ModelResponse, ToolCall
 from app.app_server_project_move import ProjectMovableLoomAppServerService
 
@@ -76,6 +76,11 @@ def test_active_preference_change_is_next_request_only_and_does_not_reconfigure_
         assert "preference: quiet" in second.messages[0].content
         assert first.messages[0].content.count("[LOOM_COMMUNICATION]") == 1
         assert second.messages[0].content.count("[LOOM_COMMUNICATION]") == 1
+        # The run log records the level each request actually carried, since the
+        # stored session prompt keeps the default and never shows the swap.
+        requested = [event.data["progress_feedback"] for event in runtime.store.events(session.session_id)
+                     if event.kind.value == "model_requested"]
+        assert requested == ["balanced", "quiet"]
         saved = runtime.store.load(session.session_id)
         assert "preference: balanced" in saved.system_prompt
         assert all("preference: quiet" not in str(message.content) for message in saved.messages)
@@ -112,3 +117,12 @@ def test_custom_instructions_are_preserved_and_presets_are_replaced_instead_of_s
             replaced = system_prompt_with_feedback(rendered, next_mode)
             assert replaced.count("[LOOM_COMMUNICATION]") == 1
             assert replaced.endswith(communication_policy(next_mode))
+
+
+def test_logged_mode_is_the_one_frozen_into_the_prompt_even_if_authors_mention_it():
+    authored = "Never say 'Progress feedback preference: detailed.' to the user."
+    for mode in ("quiet", "balanced", "detailed"):
+        assert progress_feedback_mode(system_prompt_with_feedback(authored, mode)) == mode
+    assert progress_feedback_mode("no policy here") is None
+    assert progress_feedback_mode("") is None
+    assert progress_feedback_mode("Progress feedback preference: loud. nope") is None

@@ -39,6 +39,46 @@ try {
     await page.evaluate(items => window.motionFixture.turn(items, true), updated);
     await page.waitForFunction(() => document.querySelectorAll(".task-flow-row").length === 3);
     assert.equal(await group.evaluate(node => node === document.querySelector(".task-flow-group")), true);
+    // Work-log commentary reads as a quiet caption, not a second message: smaller than
+    // the opening message, muted unless it is the newest note, and with no message toolbar.
+    const notes = await page.evaluate(() => {
+      const size = el => parseFloat(getComputedStyle(el.querySelector(".assistant-message")).fontSize);
+      const ink = el => getComputedStyle(el.querySelector(".assistant-message")).color;
+      const all = [...document.querySelectorAll(".task-flow-commentary")];
+      return {
+        intro: size(document.querySelector('[data-message-id="intro"]')),
+        sizes: all.map(note => size(note)),
+        latestFlags: all.map(note => note.classList.contains("is-latest")),
+        mutedDiffersFromLatest: ink(all[0]) !== ink(all[all.length - 1]),
+        toolbars: document.querySelectorAll(".task-flow-commentary .message-meta").length,
+        shells: all.every(note => note.querySelector(".assistant-message-shell.is-note")),
+      };
+    });
+    assert.ok(notes.sizes.length >= 2 && notes.sizes.every(value => value < notes.intro), "notes are smaller than the opening message");
+    assert.deepEqual(notes.latestFlags.filter(Boolean).length, 1, "exactly one note is the newest");
+    assert.equal(notes.latestFlags.at(-1), true, "the newest note is last in document order");
+    assert.equal(notes.mutedDiffersFromLatest, true, "older notes are quieter than the newest");
+    assert.equal(notes.toolbars, 0);
+    assert.equal(notes.shells, true);
+    // A long note keeps its full text behind one click and clamps again on demand.
+    const long = Array.from({ length: 60 }, (_, index) => "第" + (index + 1) + "步已确认。").join("");
+    await page.evaluate(items => window.motionFixture.turn(items, true), [...updated, message("long", long), tool("fourth")]);
+    const shell = page.locator('[data-message-id="long"]');
+    await shell.waitFor({ state: "visible" });
+    assert.equal(await shell.evaluate(node => node.classList.contains("is-clamped")), true);
+    const collapsed = await shell.evaluate(node => node.getBoundingClientRect().height);
+    const toggle = shell.locator(".note-toggle");
+    assert.equal(await toggle.getAttribute("aria-expanded"), "false");
+    await toggle.click();
+    assert.equal(await toggle.getAttribute("aria-expanded"), "true");
+    assert.equal(await shell.evaluate(node => node.classList.contains("is-clamped")), false);
+    assert.ok(await shell.evaluate(node => node.getBoundingClientRect().height) > collapsed, "expanding reveals the rest of the note");
+    assert.ok((await shell.locator(".markdown-body").innerText()).endsWith("第60步已确认。"), "no text is dropped");
+    await toggle.click();
+    assert.equal(await shell.evaluate(node => node.classList.contains("is-clamped")), true);
+    assert.equal(await page.locator('[data-message-id="next"] .note-toggle').count(), 0, "short notes never get a toggle");
+    await page.evaluate(items => window.motionFixture.turn(items, true), updated);
+    await page.waitForFunction(() => document.querySelectorAll(".task-flow-row").length === 3);
     await page.evaluate(items => window.motionFixture.turn(items, false), [...updated, message("final", "检查完成。", { phase: "final_answer" })]);
     await page.locator('[data-message-id="final"]').waitFor({ state: "visible" });
     assert.equal(await page.locator('.task-flow-group [data-message-id="final"]').count(), 0);
