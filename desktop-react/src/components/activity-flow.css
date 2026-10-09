@@ -17,6 +17,17 @@
   padding: 0;
 }
 
+/* Process explanations keep their native message renderer and document order. */
+.task-flow-commentary {
+  min-width: 0;
+  padding: 10px 0;
+  color: var(--flow-text);
+}
+
+.task-flow-commentary .assistant-message {
+  margin: 0;
+}
+
 .task-flow-row-wrap {
   min-width: 0;
 }
@@ -400,7 +411,8 @@
   transition: grid-template-rows 190ms cubic-bezier(.22,.74,.18,1), opacity 150ms ease;
 }
 
-.task-flow-group.is-open .task-flow-group-grid {
+.task-flow-group.is-open .task-flow-group-grid,
+.task-flow-group.has-progress-preview .task-flow-group-grid {
   grid-template-rows: 1fr;
   opacity: 1;
 }

@@ -41,6 +41,7 @@ import { useReducedMotion } from "../motion/useReducedMotion";
 import { useEarlierProcessHandoff } from "./useEarlierProcessHandoff";
 import { LIVE_STATUS_GRACE_MS, TURN_FOLD_MS, TURN_SETTLE_HOLD_MS } from "../presentationTiming";
 import type { TranscriptItem } from "../types/loom";
+import { groupExecutionSequence, isActivityItem, type TranscriptBlock } from "./executionSequence";
 import { latestTaskPlan, liveTaskProgress } from "./liveTaskProgress";
 import { TaskProgressPanel } from "./TaskProgressPanel";
 
@@ -84,10 +85,6 @@ interface TranscriptProps {
   /** Opens the usage insights page from the home activity card. */
   onOpenInsights?(): void;
 }
-
-type TranscriptBlock =
-  | { kind: "item"; item: TranscriptItem }
-  | { kind: "activity"; items: TranscriptItem[] };
 
 type TurnBlock =
   | { kind: "turn"; id: string; items: TranscriptItem[] }
@@ -381,44 +378,20 @@ function useSettledFlag(value: boolean, delayMs: number): boolean {
   return value && settled;
 }
 
-function isActivityItem(item: TranscriptItem): boolean {
-  return item.type === "tool_call" || item.type === "process" || item.type === "file_edit";
-}
-
 function groupTranscript(items: TranscriptItem[]): TranscriptBlock[] {
-  const blocks: TranscriptBlock[] = [];
-  let activity: TranscriptItem[] = [];
-  let activityTurn = "";
-
-  const flush = () => {
-    if (!activity.length) return;
-    blocks.push({ kind: "activity", items: activity });
-    activity = [];
-    activityTurn = "";
-  };
-
-  for (const item of items) {
-    if (!isActivityItem(item)) {
-      flush();
-      blocks.push({ kind: "item", item });
-      continue;
-    }
-
-    const nextTurn = String(item.turnId ?? "");
-    if (activity.length && activityTurn && nextTurn && nextTurn !== activityTurn) flush();
-    if (!activity.length) activityTurn = nextTurn;
-    activity.push(item);
-  }
-
-  flush();
-  return blocks;
+  const decisions = new Set(items.filter(item => item.type === "assistant_message"
+    && item.phase === "commentary").filter(item => {
+      const parsed = parseDecisionMessage(item.text ?? "");
+      return parsed.decisions.length > 0 || parsed.incomplete;
+    }).map(item => item.id));
+  return groupExecutionSequence(items, decisions);
 }
 
 function processHandoffGroups(items: TranscriptItem[]): string[][] {
   const agents = items.filter(isSubAgentToolItem);
   return [...(agents.length ? [agents.map(item => item.id)] : []),
-    ...groupTranscript(items.filter(item => !isSubAgentToolItem(item)))
-      .map(block => block.kind === "activity" ? block.items.map(item => item.id) : [block.item.id])];
+    ...activitySegments(buildActivityRows(items.filter(item => !isSubAgentToolItem(item))))
+      .map(rows => [...new Set(rows.flatMap(row => [row.key, row.item.id]))])];
 }
 
 function groupTurns(items: TranscriptItem[]): TurnBlock[] {
@@ -552,6 +525,10 @@ export function buildActivityRows(items: TranscriptItem[]): ActivityRowModel[] {
   const editWrappers: ActivityRowModel[] = [];
 
   for (const item of items) {
+    if (item.type === "assistant_message") {
+      commandWrappers.length = 0;
+      editWrappers.length = 0;
+    }
     if (item.type === "tool_call" && (isCommandTool(item) || isEditTool(item))) {
       const row = { key: item.id, item, wrapper: item };
       rows.push(row);
@@ -576,6 +553,17 @@ export function buildActivityRows(items: TranscriptItem[]): ActivityRowModel[] {
     rows.push({ key: item.id, item, wrapper: null });
   }
   return rows;
+}
+
+/** Tool neighbours retire together; commentary supplies independent viewport anchors. */
+function activitySegments(rows: ActivityRowModel[]): ActivityRowModel[][] {
+  const segments: ActivityRowModel[][] = [];
+  for (const row of rows) {
+    const previous = segments[segments.length - 1];
+    if (isActivityItem(row.item) && previous && isActivityItem(previous[0].item)) previous.push(row);
+    else segments.push([row]);
+  }
+  return segments;
 }
 
 const VISUAL_ARTIFACTS = new Set(["web", "image", "pdf", "video", "audio"]);
@@ -1084,11 +1072,18 @@ function ActivityGroupIcon({ items }: { items: TranscriptItem[] }) {
   return <ActivityGroupGlyph items={items} size={14} />;
 }
 
+type ProcessHandoff = { retained: ReadonlySet<string>; folding: ReadonlySet<string> };
+
 interface ActivityFlowProps {
   items: TranscriptItem[];
   keepOpen?: boolean;
   continuing?: boolean;
   workspace?: string;
+  liveAssistantId?: string;
+  handoff?: ProcessHandoff;
+  onPrompt?(prompt: string): Promise<void> | void;
+  promptDisabled?: boolean;
+  onApproval(item: TranscriptItem, approved: boolean): void;
 }
 
 /** Grouping rebuilds the array on every delta; the group only changes with its items. */
@@ -1096,6 +1091,11 @@ function sameActivityFlowProps(previous: ActivityFlowProps, next: ActivityFlowPr
   return previous.keepOpen === next.keepOpen
     && previous.continuing === next.continuing
     && previous.workspace === next.workspace
+    && previous.handoff === next.handoff
+    && previous.liveAssistantId === next.liveAssistantId
+    && previous.onPrompt === next.onPrompt
+    && previous.onApproval === next.onApproval
+    && previous.promptDisabled === next.promptDisabled
     && sameItemReferences(previous.items, next.items);
 }
 
@@ -1104,13 +1104,30 @@ const ActivityFlow = memo(function ActivityFlow({
   keepOpen = false,
   continuing = false,
   workspace,
+  liveAssistantId,
+  handoff,
+  onPrompt,
+  onApproval,
+  promptDisabled,
 }: ActivityFlowProps) {
   const copy = useRuntimeCopy();
   const deltas = useContext(FileEditDeltaContext);
   const rows = useMemo(() => buildActivityRows(items), [items]);
+  const segments = useMemo(() => activitySegments(rows), [rows]);
+  const pending = usePendingPresentations();
+  const revealed = useRef(new Set<string>());
+  const orderingBlocks = useMemo(() => segments.map(segment => isActivityItem(segment[0].item)
+    ? { kind: "activity" as const, items: segment.map(row => ({ id: row.key })) }
+    : { kind: "item" as const, item: segment[0].item }), [segments]);
+  const deferred = deferredActivityIndices(orderingBlocks, pending, revealed.current);
+  useLayoutEffect(() => {
+    segments.forEach((segment, index) => {
+      if (!deferred.has(index)) segment.forEach(row => revealed.current.add(row.key));
+    });
+  }, [segments, pending]);
   const born = useBornLive(`group:${items[0]?.id ?? ""}`);
   const running = keepOpen;
-  const hasActiveRows = rows.some((row) => isActiveActivityStatus(rowStatus(row)));
+  const hasActiveRows = rows.some((row) => isActivityItem(row.item) && isActiveActivityStatus(rowStatus(row)));
   // The latest group of a live turn stays the motion anchor between tool
   // batches (so rows appended later still animate), but it only *looks* busy
   // while a row is genuinely active. The quiet gap belongs to the thinking
@@ -1145,14 +1162,30 @@ const ActivityFlow = memo(function ActivityFlow({
     return () => window.clearTimeout(timer);
   }, [unfolding]);
 
-  const categories = useMemo(() => groupCategories(rows, copy, deltas), [copy, deltas, rows]);
+  const toolRows = useMemo(() => rows.filter(row => isActivityItem(row.item)), [rows]);
+  const latestCommentary = [...items].reverse().find(item => item.type === "assistant_message");
+  const commentaryView = (item: TranscriptItem) => <div className="task-flow-commentary" key={item.id}>
+    <ItemView item={item} streaming={item.id === liveAssistantId} onApproval={onApproval}
+      onPrompt={onPrompt} promptDisabled={promptDisabled} workspace={workspace} />
+  </div>;
+  const rowEnvelope = (segment: ActivityRowModel[], content: ReactNode) => {
+    const row = segment[0];
+    const ids = [...new Set(segment.flatMap(entry => [entry.key, entry.item.id]))];
+    return handoff ? <div key={row.key} className="process-handoff-slot" data-process-items={ids.join(" ")}
+      data-handoff-phase={ids.every(id => handoff.folding.has(id)) ? "folding"
+        : ids.some(id => handoff.retained.has(id)) ? "holding" : "current"}
+      inert={ids.every(id => handoff.folding.has(id))}>
+      <div className="process-handoff-slot-inner">{content}</div>
+    </div> : <Fragment key={row.key}>{content}</Fragment>;
+  };
+  const categories = useMemo(() => groupCategories(toolRows, copy, deltas), [copy, deltas, toolRows]);
   const title = copy.groupTitle(categories, running && !betweenSteps);
-  const groupItems = useMemo(() => rows.map(identitySource), [rows]);
+  const groupItems = useMemo(() => toolRows.map(identitySource), [toolRows]);
   const groupIdentity = activityGroupIdentity(groupItems);
 
   return (
     <section
-      className={`task-flow task-flow-group ${open ? "is-open" : ""} ${running ? "is-running" : ""} ${betweenSteps ? "is-between-steps" : ""} ${unfolding ? "is-unfolding" : ""}`.replace(/\s+/g, " ").trim()}
+      className={`task-flow task-flow-group ${open ? "is-open" : ""} ${latestCommentary ? "has-progress-preview" : ""} ${running ? "is-running" : ""} ${betweenSteps ? "is-between-steps" : ""} ${unfolding ? "is-unfolding" : ""}`.replace(/\s+/g, " ").trim()}
       data-tool-family={groupIdentity.family}
       data-born={born ? "live" : undefined}
       aria-label={copy.activityRegion}
@@ -1174,7 +1207,8 @@ const ActivityFlow = memo(function ActivityFlow({
       <div className="task-flow-group-grid">
         <div className="task-flow-group-inner">
           <div className="task-flow-list">
-            {rows.map((row) => (
+            {segments.map((segment, index) => deferred.has(index) || (!open && latestCommentary && !segment.some(row => row.item.id === latestCommentary.id)) ? null
+              : rowEnvelope(segment, segment[0].item.type === "assistant_message" ? commentaryView(segment[0].item) : <div className="task-flow-list">{segment.map(row => (
               <ActivityRow
                 key={row.key}
                 row={row}
@@ -1184,7 +1218,7 @@ const ActivityFlow = memo(function ActivityFlow({
                 delta={row.item.type === "file_edit" ? deltas.get(row.item.id) : undefined}
                 onToggle={toggleRow}
               />
-            ))}
+            ))}</div>))}
           </div>
         </div>
       </div>
@@ -1594,7 +1628,7 @@ function Sequence({
     if (!keepActivityOpen) return live;
     blocks.forEach((block, index) => {
       if (block.kind !== "activity") return;
-      if (block.items.some((item) => isActiveActivityStatus(itemStatus(item)))) live.add(index);
+      if (block.items.some((item) => isActivityItem(item) && isActiveActivityStatus(itemStatus(item)))) live.add(index);
     });
     return live;
   }, [blocks, keepActivityOpen]);
@@ -1633,7 +1667,7 @@ function Sequence({
     return "";
   }, [active, visibleItems]);
 
-  const envelope = (key: string, ids: string[], content: ReactNode) => handoff ? (
+  const envelope = (key: string, ids: string[], content: ReactNode, activity = false) => handoff && !activity ? (
     <div key={key} className="process-handoff-slot" data-process-items={ids.join(" ")}
       data-handoff-phase={ids.every(id => handoff.folding.has(id)) ? "folding"
         : ids.some(id => handoff.retained.has(id)) ? "holding" : "current"}
@@ -1661,8 +1695,13 @@ function Sequence({
               keepOpen={activeActivityBlocks.has(index) || continuingActivityBlock === index}
               continuing={continuingActivityBlock === index}
               workspace={workspace}
+              liveAssistantId={liveAssistantId}
+              handoff={handoff}
+              onApproval={onApproval}
+              onPrompt={onPrompt}
+              promptDisabled={promptDisabled}
             />
-          </div>
+          </div>, true
           )
         )) : (
           envelope(block.item.id, [block.item.id],

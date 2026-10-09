@@ -17,6 +17,13 @@ try {
     await page.goto(`${origin}/scripts/fixtures/runtime-motion.html?theme=${theme}`);
     await page.waitForFunction(() => window.motionFixture);
     await page.evaluate(items => window.motionFixture.turn(items,false), items);
+    // Start timing after the cold fixture has painted. Otherwise its first
+    // style/font/layout pass can consume the entire animation sample window.
+    await page.evaluate(async () => {
+      await document.fonts.ready;
+      await new Promise(requestAnimationFrame);
+      await new Promise(requestAnimationFrame);
+    });
     const check = async (trigger, selector) => {
       const frames = await page.evaluate(async ({trigger,selector}) => {
         document.querySelector(trigger).click();
