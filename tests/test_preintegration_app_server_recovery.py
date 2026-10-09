@@ -18,6 +18,9 @@ class _Runtime:
         self.unclean_calls = []
         self.safe_calls = []
 
+    def set_progress_feedback(self, mode):
+        self.progress_feedback = mode
+
     def subscribe(self, listener):
         self.listener = listener
 

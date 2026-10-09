@@ -153,7 +153,10 @@ def test_runtime_injects_tool_harness_without_persisting_policy_matrix(tmp_path)
     system = request.messages[0]
     assert system.role is MessageRole.SYSTEM
     assert isinstance(system.content, str)
-    assert system.content.startswith("CUSTOM BASE PROMPT\n\n<loom_tool_harness>")
+    # The author's prompt stays first and verbatim; Loom's own communication policy and
+    # the capability harness follow it, in that order.
+    assert system.content.startswith("CUSTOM BASE PROMPT\n\n[LOOM_COMMUNICATION]")
+    assert system.content.index("[LOOM_COMMUNICATION]") < system.content.index("<loom_tool_harness>")
     assert "authoritative capability surface" in system.content
     assert "pre-authorize" in system.content
     assert "permission_mode=" not in system.content

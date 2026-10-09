@@ -17,15 +17,91 @@
   padding: 0;
 }
 
-/* Process explanations keep their native message renderer and document order. */
+/* Process notes. The model's running commentary keeps its native message
+ * renderer, full text and document order, but reads as a quiet caption aligned
+ * with the row labels instead of a paragraph competing with the answer. The
+ * newest note is the live narration and keeps full contrast. */
 .task-flow-commentary {
   min-width: 0;
-  padding: 10px 0;
+  padding: 3px 8px 6px 44px;
+  color: var(--flow-muted);
+  /* The newest note hands its contrast to the next one instead of snapping. */
+  transition: color 180ms ease;
+}
+
+.task-flow-commentary.is-latest {
   color: var(--flow-text);
+}
+
+:root[data-loom-reduced-motion="true"] .task-flow-commentary {
+  transition: none;
 }
 
 .task-flow-commentary .assistant-message {
   margin: 0;
+  line-height: 1.55;
+}
+
+/* The workspace surface pins message ink at (0,3,0); notes take the flow tone. */
+:root .app-shell .task-flow-commentary .assistant-message {
+  color: inherit;
+}
+
+.task-flow-commentary .assistant-message::before {
+  content: none;
+}
+
+.task-flow-commentary .markdown-body {
+  color: inherit;
+}
+
+.task-flow-commentary .markdown-body p {
+  margin: 0 0 5px;
+}
+
+.task-flow-commentary .markdown-body :is(h1, h2, h3, h4, h5, h6) {
+  margin: 6px 0 3px;
+  font-size: 1em;
+}
+
+.task-flow-commentary .markdown-body :is(ul, ol) {
+  margin: 3px 0 5px;
+  padding-left: 18px;
+}
+
+.task-flow-commentary .markdown-body strong {
+  color: var(--flow-text);
+}
+
+/* Long notes show their first lines; the rest is one click away, never dropped. */
+.task-flow-commentary .assistant-message-shell.is-clamped .markdown-body {
+  max-height: calc(1.55em * 5);
+  overflow: hidden;
+  -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 1.7em), transparent);
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 1.7em), transparent);
+}
+
+.task-flow-commentary .note-toggle {
+  margin: 2px 0 0;
+  padding: 1px 0;
+  border: 0;
+  background: transparent;
+  color: var(--flow-faint);
+  font: inherit;
+  font-size: var(--loom-font-micro);
+  cursor: pointer;
+  transition: color 130ms ease;
+}
+
+.task-flow-commentary .note-toggle:hover {
+  color: var(--flow-muted);
+  text-decoration: underline;
+}
+
+.task-flow-commentary .note-toggle:focus-visible {
+  outline: 1px solid rgba(139, 124, 246, .42);
+  outline-offset: 2px;
+  border-radius: 4px;
 }
 
 .task-flow-row-wrap {

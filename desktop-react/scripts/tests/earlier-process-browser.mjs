@@ -52,6 +52,10 @@ try {
     const batch = [user, message("intro"), tool("t1"), tool("t2", "running")];
     await render(batch);
     await render([...batch, long]);
+    // A long note is clamped by design. Open it so it takes the height this handoff geometry needs,
+    // then follow the live edge again: the click itself detaches the reader, which is not under test here.
+    await page.locator('[data-message-id="long"] .note-toggle').click();
+    await page.locator(".transcript-jump-latest").evaluate(el => el.click());
     await page.waitForTimeout(850);
     assert.equal(await page.locator(slot("t1")).count(), 1, "a mixed tool envelope keeps completed neighbours of live rows");
     assert.notEqual(await page.locator(slot("t1")).getAttribute("data-handoff-phase"), "folding");

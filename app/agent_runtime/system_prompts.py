@@ -129,6 +129,23 @@ def communication_policy(mode: str = "balanced") -> str:
 
 
 EXECUTION_COMMUNICATION_POLICY = communication_policy()
+
+_PROGRESS_FEEDBACK_MARKER = "Progress feedback preference: "
+
+
+def progress_feedback_mode(prompt: str) -> str | None:
+    """The preference frozen into one request's system prompt, for the run log.
+
+    The event log otherwise cannot say which level a model actually saw, because
+    the stored session prompt keeps the default and the level is swapped in only
+    when a request is built. The Loom-owned policy is always the suffix, so the
+    last marker is Loom's even if an author's own text mentions it earlier.
+    """
+    start = str(prompt or "").rfind(_PROGRESS_FEEDBACK_MARKER)
+    if start < 0:
+        return None
+    word = prompt[start + len(_PROGRESS_FEEDBACK_MARKER):].split(".", 1)[0].strip()
+    return word if word in PROGRESS_FEEDBACK_MODES else None
 DEFAULT_AGENT_SYSTEM_PROMPT = _DEFAULT_AGENT_TASK_PROMPT + EXECUTION_COMMUNICATION_POLICY
 _V11_DEFAULT_AGENT_SYSTEM_PROMPT = _DEFAULT_AGENT_TASK_PROMPT + _V11_EXECUTION_COMMUNICATION_POLICY
 

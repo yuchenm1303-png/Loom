@@ -14,6 +14,9 @@ class _RuntimeStub:
         self.runtime_listener = None
         self.stream_listener = None
 
+    def set_progress_feedback(self, mode: str) -> None:
+        self.progress_feedback = mode
+
     def subscribe(self, listener) -> None:
         self.runtime_listener = listener
 
