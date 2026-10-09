@@ -2,6 +2,27 @@ from __future__ import annotations
 
 import pytest
 
+
+def test_http_diagnostic_keeps_code_not_sensitive_body(monkeypatch):
+    import io
+    from urllib.error import HTTPError
+    from app.agent_runtime import account_tool_access as gate
+    monkeypatch.setenv("LOOM_ACCOUNT_TOOL_ACCESS_ENFORCED", "1")
+    monkeypatch.setenv("LOOM_ACCOUNT_API_BASE_URL", "https://example.test/v1?secret=hidden")
+    gate.set_account_tool_access_credential("secret-token-diagnostic")
+    def fail(*args, **kwargs):
+        raise HTTPError("https://example.test", 404, "missing", {},
+                        io.BytesIO(b'{"error":{"code":"NOT_FOUND","message":"secret-token-diagnostic"}}'))
+    monkeypatch.setattr(gate, "urlopen", fail)
+    try:
+        status = gate.account_tool_access_status()
+        assert status["server_error_code"] == "NOT_FOUND"
+        assert status["endpoint"] == "https://example.test/v1/tools/access"
+        assert "secret" not in str(status)
+        assert status["access"]["browserUse"] is False
+    finally:
+        gate.set_account_tool_access_credential(None)
+
 from app.ai import ToolCall
 from app.agent_runtime.account_tool_access import set_account_tool_access_credential
 from app.agent_runtime.contracts import ToolEffect

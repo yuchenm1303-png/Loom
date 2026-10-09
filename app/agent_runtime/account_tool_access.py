@@ -9,6 +9,7 @@ keep their existing behavior.
 
 import json
 import os
+import re
 import threading
 import time
 from typing import Mapping
@@ -133,10 +134,25 @@ def _fetch_access_locked(*, force_refresh: bool = False) -> dict[str, bool]:
                     "browserUse": record.get("browserUse") is True,
                 }
                 diagnostic = {"status": "confirmed", "checked_at": time.time()}
+                if record.get("source") in {"default", "override"}:
+                    diagnostic["source"] = record["source"]
+                if isinstance(record.get("updated_at"), int):
+                    diagnostic["updated_at"] = record["updated_at"]
+                subject = payload.get("subject_ref")
+                if isinstance(subject, str) and re.fullmatch(r"[a-f0-9]{24}", subject):
+                    diagnostic["subject_ref"] = subject
             else:
                 raise ValueError("missing authorization response")
         except HTTPError as exc:
             diagnostic = {"status": "authentication_failed" if exc.code == 401 else "service_unavailable", "http_status": exc.code}
+            # Keep only a bounded machine code, never the body/message/token.
+            try:
+                body = json.loads(exc.read(8193))
+                code = body.get("error", {}).get("code")
+                if isinstance(code, str) and re.fullmatch(r"[A-Z][A-Z0-9_]{0,63}", code):
+                    diagnostic["server_error_code"] = code
+            except Exception:
+                pass
             access = _denied()
         except ValueError:
             diagnostic = {"status": "invalid_response"}
@@ -153,7 +169,7 @@ def _fetch_access_locked(*, force_refresh: bool = False) -> dict[str, bool]:
             return _denied()
         _CACHE_KEY = key
         _CACHE_ACCESS = dict(access)
-        _DIAGNOSTIC = diagnostic
+        _DIAGNOSTIC = {**diagnostic, "endpoint": endpoint, "credential_generation": generation}
         _CACHE_EXPIRES_AT = time.monotonic() + (_CACHE_TTL_SECONDS if diagnostic["status"] == "confirmed" else _ERROR_TTL_SECONDS)
     return access
 

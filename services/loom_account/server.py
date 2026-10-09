@@ -1839,7 +1839,10 @@ class AccountApplication:
     def tool_access(self, authorization: str) -> dict[str, Any]:
         token = self._bearer_token(authorization)
         user = self.store.user_for_model_token(token) if token.startswith("loom_model_") else self.store.user_for_access_token(token)
-        return {"access": self.store.tool_access(int(user["id"]))}
+        return {
+            "access": self.store.tool_access(int(user["id"])),
+            "subject_ref": hashlib.sha256(f"loom-tool-access:{user['id']}".encode()).hexdigest()[:24],
+        }
 
     def admin_user_tool_access(self, user_id: int, authorization: str) -> dict[str, Any]:
         self._admin(authorization)
