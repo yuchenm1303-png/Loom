@@ -39,9 +39,9 @@ import { useI18n } from "../i18n";
 import { useMotionPresence } from "../motion/useMotionPresence";
 import { useReducedMotion } from "../motion/useReducedMotion";
 import { useEarlierProcessHandoff } from "./useEarlierProcessHandoff";
-import { LIVE_STATUS_GRACE_MS, TURN_FOLD_MS, TURN_SETTLE_HOLD_MS } from "../presentationTiming";
+import { LIVE_STATUS_GRACE_MS, LIVE_TEXT_HOLD_MS, TURN_FOLD_MS, TURN_SETTLE_HOLD_MS } from "../presentationTiming";
 import type { TranscriptItem } from "../types/loom";
-import { groupExecutionSequence, initialUpdateIds, isActivityItem, isProcessCommentary, planUpdateNoteIds } from "./executionSequence";
+import { groupExecutionSequence, initialUpdateIds, isActivityItem, isProcessCommentary, planUpdateNoteIds, settleLiveText } from "./executionSequence";
 import { CLUSTER_MIN_ROWS, runsOf } from "./activityClusters";
 import { latestTaskPlan, liveTaskProgress } from "./liveTaskProgress";
 import { isLongNote } from "./processNote";
@@ -1139,7 +1139,9 @@ const ActivityCluster = memo(function ActivityCluster({ rows, category, toolName
   const first = rows[0];
   const activeRow = [...rows].reverse().find((row) => isActiveActivityStatus(rowStatus(row)));
   const failed = rows.reduce((count, row) => count + (isFailureStatus(rowStatus(row)) ? 1 : 0), 0);
-  const latest = describeRow(rows[rows.length - 1], copy).target;
+  // A step still receiving its arguments has no target yet: the line names the latest one that has.
+  const named = rows.filter((row) => rowStatus(row) !== "streaming_arguments");
+  const latest = named.length ? describeRow(named[named.length - 1], copy).target : "";
   const identity = activityIdentity(identitySource(first));
   return (
     <div className={`task-flow-cluster ${open ? "is-open" : ""} ${activeRow ? "has-active" : ""}`.replace(/\s+/g, " ").trim()} data-category={category}>
@@ -1998,8 +2000,24 @@ function liveEdgeState(items: TranscriptItem[]): { quiet: boolean; started: bool
   return { quiet: true, started };
 }
 
+/**
+ * What a live turn draws: a sentence still streaming after tool work stays out of sight until
+ * its role is known (see settleLiveText). The hold is bounded, so a slow stream still shows up.
+ */
+function useSettledLiveText(items: TranscriptItem[], active: boolean): TranscriptItem[] {
+  const [released, setReleased] = useState("");
+  const settled = useMemo(() => (active ? settleLiveText(items, released) : { items, held: "" }), [active, items, released]);
+  const { held } = settled;
+  useEffect(() => {
+    if (!held) return;
+    const timer = window.setTimeout(() => setReleased(held), LIVE_TEXT_HOLD_MS);
+    return () => window.clearTimeout(timer);
+  }, [held]);
+  return settled.items;
+}
+
 function TurnProcess({
-  items,
+  items: streamedItems,
   allItems,
   guidanceItems,
   active,
@@ -2024,6 +2042,7 @@ function TurnProcess({
   workspace?: string;
 }) {
   const copy = useRuntimeCopy();
+  const items = useSettledLiveText(streamedItems, active);
   // A just-completed turn keeps its live layout until the fold has finished,
   // so completion never re-expands the earlier history for a frame.
   const live = active || settle !== null;

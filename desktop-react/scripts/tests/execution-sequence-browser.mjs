@@ -6,6 +6,8 @@ const base = { threadId: "thread-1", turnId: "turn-1", status: "completed" };
 const user = { ...base, id: "user", type: "user_message", text: "检查任务" };
 const message = (id, text, extra = {}) => ({ ...base, id, type: "assistant_message", phase: "commentary", text, ...extra });
 const tool = (id, extra = {}) => ({ ...base, id, type: "tool_call", toolName: "read_workspace_text", arguments: { path: `${id}.txt` }, result: id, ...extra });
+/** A step's sentence while it streams: the runtime only gives it a phase when the response completes. */
+const streaming = (id, text, extra = {}) => ({ ...base, id, type: "assistant_message", status: "streaming", text, ...extra });
 
 /** Vertical offset between a row's icon and its text, and the left edge of the text, in pixels. */
 const rowGeometry = selector => document.querySelectorAll(selector).length && [...document.querySelectorAll(selector)].map(row => {
@@ -120,6 +122,59 @@ try {
     await render([...updated, message("final", "检查完成。", { phase: "final_answer" })], false);
     await page.locator('[data-message-id="final"]').waitFor({ state: "visible" });
     assert.equal(await page.locator('.task-flow-group [data-message-id="final"]').count(), 0);
+
+    // A step's sentence streams before the runtime knows its role. Once its tool call is streaming
+    // it is plainly narration, and a short one after tool work may yet become narration: neither
+    // is drawn, so nothing pops up and then disappears.
+    await page.evaluate(() => window.motionFixture.reset());
+    const sentence = "argv 里中文 GBK 编码被吞。改用全英文查询。";
+    await page.evaluate(sentence => {
+      window.__shown = false;
+      window.__observer = new MutationObserver(() => { if (document.body.textContent.includes(sentence)) window.__shown = true; });
+      window.__observer.observe(document.body, { subtree: true, childList: true, characterData: true });
+    }, sentence);
+    const worked = [user, message("intro", "先看一下环境。"), tool("a", { status: "failed" }), tool("b", { status: "failed" }), tool("c", { status: "failed" })];
+    await render(worked);
+    await render([...worked, streaming("n4", sentence)]);
+    await page.waitForTimeout(200);
+    await render([...worked, streaming("n4", sentence), tool("d", { status: "streaming_arguments", arguments: "" })]);
+    await page.waitForTimeout(200);
+    assert.equal(await page.locator(".task-flow-group").count(), 1, "the streaming command joins the same group");
+    assert.equal(await page.locator(".task-flow-cluster-latest").innerText(), "c.txt", "the line names the latest step whose arguments are known");
+    await render([...worked, message("n4", sentence), tool("d", { status: "running" })]);
+    await page.waitForTimeout(300);
+    assert.equal(await page.evaluate(() => window.__shown), false, "narration was never on screen, not even while it streamed");
+    await page.evaluate(() => window.__observer.disconnect());
+    // Asked for, it is a note from the first moment it streams, never a message that shrinks into one.
+    await render([...worked, streaming("n4", sentence), tool("d", { status: "streaming_arguments" })]);
+    await page.locator(".process-notes-toggle").click();
+    await page.locator('[data-message-id="n4"]').waitFor({ state: "visible" });
+    assert.equal(await page.locator('.task-flow-commentary [data-message-id="n4"]').count(), 1, "shown as a note");
+    await page.locator(".process-notes-toggle").click();
+
+    // What is long enough, or has waited long enough, is the answer on its way and is shown as it streams.
+    await render([...worked, streaming("answer", "已经确认完毕。".repeat(30))]);
+    await page.locator('[data-message-id="answer"]').waitFor({ state: "visible", timeout: 500 });
+    assert.equal(await page.locator('.task-flow-commentary [data-message-id="answer"]').count(), 0, "a message, not a note");
+    await render([...worked, streaming("slow", "还在写的回答")]);
+    await page.waitForTimeout(400);
+    assert.equal(await page.locator('[data-message-id="slow"]').count(), 0, "held back while its role is unknown");
+    await page.locator('[data-message-id="slow"]').waitFor({ state: "visible", timeout: 5000 });
+
+    // The first sentence of a turn answers the person at once, and stays that message.
+    await page.evaluate(() => window.motionFixture.reset());
+    await render([user, streaming("lead", "先看一下环境。")]);
+    await page.locator('[data-message-id="lead"]').waitFor({ state: "visible", timeout: 500 });
+    await render([user, streaming("lead", "先看一下环境。"), tool("a", { status: "streaming_arguments" })]);
+    await page.waitForTimeout(200);
+    assert.equal(await page.locator('[data-message-id="lead"]').count(), 1);
+    assert.equal(await page.locator('.task-flow-commentary [data-message-id="lead"]').count(), 0);
+    // So is the first sentence after a message sent mid-run, even though tool work came before it.
+    const at = seconds => new Date(Date.UTC(2026, 9, 9, 12, 0, seconds)).toISOString();
+    await render([{ ...user, createdAt: at(0) }, message("intro", { createdAt: at(1) }), tool("a", { createdAt: at(2) }),
+      { ...base, id: "steer", type: "user_message", source: "steering", text: "再看看日志", submittedAt: at(3), createdAt: at(3) },
+      streaming("reply", "好，看日志。", { createdAt: at(4) })]);
+    await page.locator('[data-message-id="reply"]').waitFor({ state: "visible", timeout: 500 });
     assert.deepEqual(errors, []);
     if (process.env.LOOM_EXECUTION_SCREENSHOTS) await page.screenshot({ path: `${process.env.LOOM_EXECUTION_SCREENSHOTS}/execution-${theme}.png` });
     await page.close();

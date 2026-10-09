@@ -21,6 +21,13 @@ export const STREAM_FINISH_MS = TURN_SETTLE_HOLD_MS - 40;
  * read as flicker.
  */
 export const LIVE_STATUS_GRACE_MS = 420;
+/**
+ * A short sentence streaming after tool work is narration or the answer on its way, and the
+ * runtime only says which when its response completes. It waits this long before it is drawn,
+ * so quiet narration (whose tool call follows within a second or two) never flashes, and a
+ * slow stream still shows up.
+ */
+export const LIVE_TEXT_HOLD_MS = 2000;
 /** Run strip after the run ends: outcome readable for ~560ms, then a 320ms fade. */
 export const RUN_STRIP_EXIT_MS = 900;
 /** A thread read slower than this shows the switching indicator. */
