@@ -582,6 +582,26 @@ test("desktop runtime receives the validated account service URL for automation 
 });
 
 for (const destination of ["other-account", "logout"]) {
+  test(`late model credential cannot restore the old account after ${destination}`, async () => {
+    let release, started;
+    const entered = new Promise(resolve => { started = resolve; });
+    installFetch({
+      "/v1/models/credential": () => { started(); return new Promise(resolve => { release = resolve; }); },
+      "/v1/auth/login": () => reply(200, sessionBody({ access_token: "new-access", refresh_token: "new-refresh", user: { ...USER, id: 99 } })),
+      "/v1/auth/logout": () => reply(200, { ok: true }),
+    });
+    await seedSession({ accessToken: "old", refreshToken: "old-refresh", expiresAt: Date.now() + 3600000, user: USER });
+    const client = newClient();
+    const issuing = client.modelCredential();
+    const rejected = assert.rejects(issuing, error => error.code === "ACCOUNT_CHANGED");
+    await entered;
+    if (destination === "logout") await client.logout();
+    else await client.login("other@example.com", "test-password");
+    release(reply(200, { model_token: "loom_model_old", expires_in: 3600 }));
+    await rejected;
+    assert.equal(await client.automationCredential(), destination === "logout" ? "" : "new-access");
+  });
+
   test(`late refresh cannot restore the old account after ${destination}`, async () => {
     let release;
     let started;

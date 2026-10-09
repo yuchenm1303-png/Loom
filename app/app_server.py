@@ -695,6 +695,9 @@ class LoomAppServerService:
         set_account_tool_access_credential(str(credential or ""))
         if model_credential is not None:
             self._loom_account_model_credential = model_credential
+            snapshot = getattr(self, "_policy_snapshot", None)
+            if snapshot is not None:
+                snapshot.set_credential(model_credential)
         return {"ok": True}
 
     def _status_owner_session_id(self) -> str:

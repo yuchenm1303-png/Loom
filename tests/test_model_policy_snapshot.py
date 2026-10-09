@@ -92,16 +92,48 @@ def test_slow_refresh_does_not_extend_lease_from_response_time():
         cache.check("builtin:minimax", "account-a")
 
 
-def test_gateway_enforcement_is_only_used_for_the_trusted_account_route():
+def test_gateway_enforcement_is_only_used_for_the_trusted_account_route(monkeypatch):
     service = object.__new__(ReasoningManagedLoomAppServerService)
     service._ensure_thread_model_metadata = lambda session: session
-    service.runtime = SimpleNamespace(has_session_model=lambda thread_id: True)
+    rebuilt = []
+    service.runtime = SimpleNamespace(has_session_model=lambda thread_id: True,
+        clear_session_model=lambda thread_id: rebuilt.append(thread_id),
+        set_session_model=lambda *args, **kwargs: None)
+    service._session_reasoning = lambda session: None
+    service._thread_uses_default_model = lambda session: False
+    service._runtime_home = lambda: None
+    service._model_api_key = lambda spec: "new-account-key"
+    monkeypatch.setattr("app.app_server_reasoning.resolve_model_spec", lambda *a, **kw: {"model": "test", "provider": "openai-compatible", "baseUrl": "https://account.smirel.com/model/v1"})
+    monkeypatch.setattr("app.app_server_reasoning.validate_runtime_reasoning", lambda **kw: None)
+    monkeypatch.setattr("app.app_server_reasoning.build_runtime_model_platform", lambda **kw: object())
+    service.vision = True
     checked = []
     service._assert_model_policy = checked.append
     for url in ("https://account.smirel.com/model/v1", "https://other.example/v1"):
-        session = SimpleNamespace(session_id="thread", model_selection="builtin:ant-ling", model_base_url=url)
+        session = SimpleNamespace(session_id="thread", model_selection="builtin:ant-ling", model_base_url=url, model_vision=True)
         service._ensure_thread_model_runtime(session)
     assert checked == ["builtin:ant-ling"]
+    assert rebuilt == ["thread"]
+
+
+def test_explicit_signout_never_falls_back_to_startup_identity(monkeypatch):
+    service = object.__new__(ReasoningManagedLoomAppServerService)
+    service._loom_account_model_credential = ""
+    monkeypatch.setenv("LOOM_ACCOUNT_MODEL_CREDENTIAL", "old-account")
+    with pytest.raises(RuntimeError, match="Sign in"):
+        service._assert_model_policy("builtin:minimax")
+    with pytest.raises(ValueError, match="required"):
+        service._model_api_key({"authMode": "loom-account"})
+
+
+def test_switch_immediately_invalidates_permission_snapshot():
+    cache = ModelPolicySnapshot("https://example.invalid/access", "old", start=False,
+        fetch=lambda token: {"access": {"models": ["builtin:minimax"]}})
+    cache.refresh()
+    cache.set_credential("new")
+    assert cache.allowed == frozenset()
+    assert cache.expires == 0
+    assert not cache.ready.is_set()
 
 
 def test_account_switch_cannot_reuse_previous_accounts_grants():

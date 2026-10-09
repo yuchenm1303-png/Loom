@@ -443,6 +443,16 @@ export class LoomAccountClient {
     return session.accessToken;
   }
 
+  async authorizationCredentials(): Promise<{ credential: string; modelCredential: string }> {
+    const credential = await this.automationCredential();
+    if (!credential) return { credential: "", modelCredential: "" };
+    const modelCredential = await this.modelCredential();
+    if (this.memorySession?.accessToken !== credential) {
+      throw new AccountHttpError(0, "ACCOUNT_CHANGED", "Account changed while synchronizing permissions. Retry.");
+    }
+    return { credential, modelCredential };
+  }
+
   async modelCredential(): Promise<string> {
     let session = await this.loadSession();
     if (!session) throw new AccountHttpError(401, "MISSING_TOKEN", "Sign in to Loom to use built-in models.");
@@ -466,6 +476,7 @@ export class LoomAccountClient {
     }
     const token = String(result.model_token || "").trim();
     if (!token) throw new AccountHttpError(0, "MODEL_CREDENTIAL_INVALID", "Loom did not return a model credential.");
+    this.assertCurrentSession(session);
     session = {
       ...session,
       modelToken: token,

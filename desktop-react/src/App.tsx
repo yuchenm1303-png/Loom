@@ -365,6 +365,9 @@ export default function App() {
   const petEnabled = usePetEnabled();
   const loom = useLoom();
   const account = useAccount();
+  useEffect(() => {
+    if (account.ready) void loom.refreshModels().catch(() => {});
+  }, [account.ready, account.account.authenticated, account.account.user?.id, loom.refreshModels]);
   const { t } = useI18n();
   const shellRef = useRef<HTMLDivElement | null>(null);
   const resizeRef = useRef<ResizeSession | null>(null);

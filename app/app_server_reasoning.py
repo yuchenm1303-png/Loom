@@ -600,9 +600,10 @@ class ReasoningManagedLoomAppServerService(ManagedStreamingLoomAppServerService)
             return
         if not (selection.startswith("builtin:") or selection.startswith("managed:")):
             return
-        credential = str(getattr(self, "_loom_account_model_credential", "") or "").strip()
-        if not credential:
-            credential = str(os.environ.get("LOOM_ACCOUNT_MODEL_CREDENTIAL") or "").strip()
+        credential = str(getattr(self, "_loom_account_model_credential",
+            os.environ.get("LOOM_ACCOUNT_MODEL_CREDENTIAL", "")) or "").strip()
+        if hasattr(self, "_loom_account_model_credential") and not credential:
+            raise RuntimeError("Sign in to Loom to use built-in models.")
         # A signed-out BYOK/offline desktop has no account identity to which an
         # admin policy can be attached. Signed-in desktops always receive this
         # scoped credential from Electron when the App Server is launched.
@@ -620,11 +621,16 @@ class ReasoningManagedLoomAppServerService(ManagedStreamingLoomAppServerService)
         if not self._gateway_enforces_policy(selection, str(getattr(session, "model_base_url", "") or "")):
             self._assert_model_policy(selection)
         has_model = getattr(self.runtime, "has_session_model", None)
+        if self._gateway_enforces_policy(selection, str(getattr(session, "model_base_url", "") or "")):
+            # Gateway backends carry account credentials. Rebuild them at turn
+            # boundaries instead of reusing the previous account's connection.
+            self.runtime.clear_session_model(session.session_id)
+            has_model = None
         if callable(has_model) and has_model(session.session_id):
             return session
 
         reasoning = self._session_reasoning(session)
-        if self._thread_uses_default_model(session):
+        if self._thread_uses_default_model(session) and not self._gateway_enforces_policy(selection, str(getattr(session, "model_base_url", "") or "")):
             self.runtime.set_session_model(
                 session.session_id,
                 self.runtime.platform,
@@ -695,9 +701,8 @@ class ReasoningManagedLoomAppServerService(ManagedStreamingLoomAppServerService)
         if isinstance(params, dict):
             supplied = str(params.get("apiKey") or params.get("api_key") or "").strip()
         if not supplied:
-            supplied = str(getattr(self, "_loom_account_model_credential", "") or "").strip()
-        if not supplied:
-            supplied = str(os.environ.get("LOOM_ACCOUNT_MODEL_CREDENTIAL") or "").strip()
+            supplied = str(getattr(self, "_loom_account_model_credential",
+                os.environ.get("LOOM_ACCOUNT_MODEL_CREDENTIAL", "")) or "").strip()
         if not supplied:
             raise ValueError("Loom account model credential is required")
         if not supplied.startswith("loom_model_"):

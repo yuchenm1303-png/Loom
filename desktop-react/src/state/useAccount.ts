@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type {
   LoomAccountError,
   LoomAccountResult,
@@ -32,6 +32,8 @@ function transportFailure(cause: unknown): LoomAccountError {
 }
 
 export function useAccount() {
+  const revision = useRef(0);
+  const mutating = useRef(false);
   const [account, setAccount] = useState<LoomAccountSnapshot>(EMPTY_ACCOUNT);
   const [capabilities, setCapabilities] = useState<LoomAuthCapabilities>(EMPTY_CAPABILITIES);
   const [ready, setReady] = useState(false);
@@ -41,8 +43,11 @@ export function useAccount() {
   const clearError = useCallback(() => setError(null), []);
 
   const refresh = useCallback(async () => {
+    if (mutating.current) return;
+    const current = ++revision.current;
     try {
       const result = await window.loom.accountStatus();
+      if (current !== revision.current) return;
       if (result.ok) {
         setAccount(result.snapshot);
         setError(null);
@@ -50,9 +55,10 @@ export function useAccount() {
         setError(result.error);
       }
     } catch (cause) {
+      if (current !== revision.current) return;
       setError(transportFailure(cause));
     } finally {
-      setReady(true);
+      if (current === revision.current) setReady(true);
     }
   }, []);
 
@@ -77,10 +83,13 @@ export function useAccount() {
 
   const run = useCallback(
     async (call: () => Promise<LoomAccountResult>): Promise<boolean> => {
+      const current = ++revision.current;
+      mutating.current = true;
       setBusy(true);
       setError(null);
       try {
         const result = await call();
+        if (current !== revision.current) return false;
         if (result.ok) {
           setAccount(result.snapshot);
           return true;
@@ -88,11 +97,15 @@ export function useAccount() {
         setError(result.error);
         return false;
       } catch (cause) {
+        if (current !== revision.current) return false;
         setError(transportFailure(cause));
         return false;
       } finally {
-        setBusy(false);
-        setReady(true);
+        if (current === revision.current) {
+          mutating.current = false;
+          setBusy(false);
+          setReady(true);
+        }
       }
     },
     [],

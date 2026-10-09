@@ -81,6 +81,12 @@ class ModelPolicySnapshot:
             self.wake.wait(5)
 
     def check(self, selection: str, credential: str) -> None:
+        self.set_credential(credential)
+        # Only cold/account-switch initialization waits; warm sends are local.
+        self.ready.wait(5)
+        self._check(selection, credential)
+
+    def set_credential(self, credential: str) -> None:
         with self.lock:
             if credential != self.credential:
                 self.credential, self.expires = credential, 0
@@ -91,8 +97,8 @@ class ModelPolicySnapshot:
                 self.denial_sources.clear()
                 self.ready.clear()
                 self.wake.set()
-        # Only cold/account-switch initialization waits; warm sends are local.
-        self.ready.wait(5)
+
+    def _check(self, selection: str, credential: str) -> None:
         with self.lock:
             if credential != self.credential:
                 raise RuntimeError("Model account changed. Retry shortly.")
