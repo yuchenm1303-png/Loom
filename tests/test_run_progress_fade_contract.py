@@ -32,7 +32,7 @@ def test_transcript_content_fades_before_reaching_top_status() -> None:
 
     # The dissolve follows the transcript grid row, independently of a live
     # strip's height. A fixed top offset would cover a wrapped status strip.
-    assert ".conversation-stage:has(.transcript-entry)::after" in motion
+    assert ".conversation-stage[data-has-entries]::after" in motion
     assert "grid-row: 2;" in motion
     assert "top: 0;" in motion
     assert "transparent 100%" in motion
@@ -43,11 +43,11 @@ def test_transcript_content_fades_before_reaching_top_status() -> None:
 def test_transcript_edges_dissolve_into_header_and_composer() -> None:
     motion = MOTION.read_text(encoding="utf-8")
 
-    assert ".conversation-stage:has(.transcript-entry)::before" in motion
+    assert ".conversation-stage[data-has-entries]::before" in motion
     assert "bottom: 0;" in motion
     assert "transform: scaleY(-1);" in motion
 
-    assert ".conversation-stage:has(.transcript-entry)::after" in motion
+    assert ".conversation-stage[data-has-entries]::after" in motion
     assert "top: 0;" in motion
     assert "var(--bg) 0%" in motion
     assert 'html[data-loom-theme="light"] .conversation-stage,' in motion

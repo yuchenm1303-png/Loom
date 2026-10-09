@@ -215,7 +215,7 @@ def test_jump_to_latest_yields_to_transient_composer_surfaces() -> None:
     assert "z-index: 4;" in jump_rule
     assert "z-index: 32;" not in jump_rule
 
-    occlusion_start = source.index(".workspace:has(.composer-popover) .transcript-jump-latest {")
+    occlusion_start = source.index(".workspace[data-composer-popover] .transcript-jump-latest {")
     occlusion_end = source.index("}", occlusion_start)
     occlusion_rule = source[occlusion_start:occlusion_end]
     assert "opacity: 0;" in occlusion_rule
