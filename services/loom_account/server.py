@@ -1457,7 +1457,12 @@ class AccountApplication:
                 "https://api.resend.com/emails",
                 data=payload,
                 method="POST",
-                headers={"Authorization": f"Bearer {cfg.resend_api_key}", "Content-Type": "application/json"},
+                headers={
+                    "Authorization": f"Bearer {cfg.resend_api_key}",
+                    "Content-Type": "application/json",
+                    # Resend's edge rejects the default Python-urllib User-Agent.
+                    "User-Agent": "Loom-Account/1.0",
+                },
             )
             try:
                 with urlopen(request, timeout=15) as response:
