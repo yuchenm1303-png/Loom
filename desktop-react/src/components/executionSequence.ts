@@ -53,6 +53,59 @@ export function planUpdateNoteIds(items: TranscriptItem[]): ReadonlySet<string> 
   return ids;
 }
 
+/** A sentence this long, streaming after tool work, is taken to be the answer on its way. */
+export const LIVE_TEXT_REVEAL_CHARS = 160;
+
+const commentaryVariants = new WeakMap<TranscriptItem, TranscriptItem>();
+
+function asCommentary(item: TranscriptItem): TranscriptItem {
+  let variant = commentaryVariants.get(item);
+  if (!variant) {
+    variant = { ...item, phase: "commentary" };
+    commentaryVariants.set(item, variant);
+  }
+  return variant;
+}
+
+function isReadableAnswer(item: TranscriptItem): boolean {
+  const text = String(item.text ?? "");
+  return Boolean(String(item.reasoning ?? "").trim()) || /<think/i.test(text) || text.trim().length >= LIVE_TEXT_REVEAL_CHARS;
+}
+
+/**
+ * The runtime gives a step's sentence its phase only when the response completes, so while it
+ * streams it has none, and drawing it as a message makes narration pop up and then vanish.
+ * The list itself already says most of what is needed:
+ * - a tool call streaming after the sentence, in the same step, makes it narration;
+ * - the first sentence after a user message, before any tool work, answers that message;
+ * - any other short sentence after tool work is narration or the answer on its way, and nobody
+ *   knows yet: it is held back until it is long enough to be an answer, or `released` names it
+ *   because the hold ran out. Reasoning shown while it streams is never held.
+ * Position and length only, never the wording. Returns what to draw and the id of the held sentence.
+ */
+export function settleLiveText(items: TranscriptItem[], released = ""): { items: TranscriptItem[]; held: string } {
+  let lastWork = -1;
+  items.forEach((item, index) => { if (isActivityItem(item)) lastWork = index; });
+  let worked = false;
+  let changed = false;
+  let held = "";
+  const settled: TranscriptItem[] = [];
+  items.forEach((item, index) => {
+    if (item.type === "user_message") worked = false;
+    else if (isActivityItem(item)) worked = true;
+    const unclassified = item.type === "assistant_message" && item.status === "streaming" && !item.phase;
+    if (!unclassified) settled.push(item);
+    else if (lastWork > index) {
+      settled.push(asCommentary(item));
+      changed = true;
+    } else if (worked && item.id !== released && !isReadableAnswer(item)) {
+      held = item.id;
+      changed = true;
+    } else settled.push(item);
+  });
+  return { items: changed ? settled : items, held };
+}
+
 /** Explicit phases only: never infer importance or finality from message text. */
 export function groupExecutionSequence(items: TranscriptItem[], protectedIds: ReadonlySet<string> = new Set()): TranscriptBlock[] {
   const blocks: TranscriptBlock[] = [];
