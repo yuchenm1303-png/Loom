@@ -33,6 +33,7 @@ export type WebRelayDevice = Record<string, unknown> & {
 export type WebDeviceStatus = {
   type: "device_status";
   online: boolean;
+  accountMismatch?: boolean;
   device?: WebRelayDevice | null;
   selectedDeviceId?: string | null;
   devices?: WebRelayDevice[];
@@ -519,6 +520,11 @@ export function installWebBridge(): void {
           throw new Error("Sign in to Loom Web before connecting.");
         }
         const deviceStatus = await getWebDeviceStatus();
+        if (deviceStatus.accountMismatch && !deviceStatus.online) {
+          const error = new Error("Loom Host is signed in to a different account. Sign in to the same account on the website and in Loom Desktop, then retry.") as Error & { code?: string };
+          error.code = "HOST_ACCOUNT_MISMATCH";
+          throw error;
+        }
         const compatibility = await ensureWebHostCompatibility(deviceStatus);
         if (!compatibility.compatible) {
           if (!compatibility.online) {

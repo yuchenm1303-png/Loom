@@ -12,7 +12,7 @@ import { HostSetupActions } from "./HostSetupActions";
 import { PortalLiquidCursor } from "./PortalLiquidCursor";
 import { FALLBACK_RELEASE, fetchPortalRelease } from "../portalRelease";
 
-export type PortalHostState = "idle" | "checking" | "online" | "offline" | "unbound";
+export type PortalHostState = "idle" | "checking" | "online" | "offline" | "unbound" | "account-mismatch";
 type AccountController = ReturnType<typeof useAccount>;
 
 const SMIREL_LOGO = "/smirel-logo.png";
@@ -319,6 +319,8 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
 
   const hostText = hostState === "online"
     ? (zh ? "你的本地工作区已就绪，继续上次的工作吧。" : "Your local workspace is ready. Continue where you left off.")
+    : hostState === "account-mismatch"
+      ? (zh ? "本机 Loom Host 与网页登录的账号不同。请切换网页账号，或在 Loom 桌面端登录当前网页账号，再重试连接。" : "This computer’s Loom Host is signed in to a different account. Switch the web account, or sign in to the current web account in Loom Desktop, then retry.")
     : hostState === "checking"
       ? copy.localConnecting
       : hostState === "unbound"
@@ -329,6 +331,8 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
 
   const hostLabel = hostState === "online"
     ? (selectedDeviceName || (zh ? "已连接" : "Connected"))
+    : hostState === "account-mismatch"
+      ? (zh ? "账号不一致" : "Account mismatch")
     : hostState === "checking"
       ? (zh ? "正在连接" : "Connecting")
       : hostState === "offline"
@@ -458,7 +462,7 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
                 <div className="loom-host-meta">
                   <p className="kicker">LOOM HOST</p>
                   <span className={`loom-connection-badge${hostState === "online" ? " is-online" : hostState === "checking" ? " is-working" : ""}`}>
-                    <i aria-hidden="true" />{hostState === "online" ? (zh ? "在线" : "Online") : hostState === "checking" ? (zh ? "连接中" : "Connecting") : hostState === "idle" ? (zh ? "等待中" : "Waiting") : hostState === "unbound" ? (zh ? "未发现" : "Not found") : (zh ? "离线" : "Offline")}
+                    <i aria-hidden="true" />{hostState === "account-mismatch" ? (zh ? "账号不一致" : "Account mismatch") : hostState === "online" ? (zh ? "在线" : "Online") : hostState === "checking" ? (zh ? "连接中" : "Connecting") : hostState === "idle" ? (zh ? "等待中" : "Waiting") : hostState === "unbound" ? (zh ? "未发现" : "Not found") : (zh ? "离线" : "Offline")}
                   </span>
                 </div>
                 <div className="loom-host-summary">
@@ -468,7 +472,11 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
                     <p className="loom-host-target">{hostState === "online" ? (zh ? "当前电脑" : "This computer") : selectedDeviceName || (zh ? "你的本地工作区" : "Your local workspace")}</p>
                   </div>
                 </div>
-                <p className="loom-control-copy">{hostState === "checking" && hostError ? hostError : hostText}</p>
+                <p className="loom-control-copy" role="status">{hostState === "checking" && hostError ? hostError : hostText}</p>
+                {hostState === "account-mismatch" ? <div className="loom-auth-row">
+                  <button className="loom-account-switch" type="button" disabled={account.busy} onClick={() => void account.logout()}>{zh ? "切换网页账号" : "Switch web account"}</button>
+                  <button className="loom-account-switch" type="button" onClick={onEnter}>{zh ? "重试连接" : "Retry connection"}</button>
+                </div> : null}
                 {hostState === "unbound" || hostState === "offline" ? <HostSetupActions zh={zh} download={release.download} onRetry={onEnter} hostDetected={hostDetected} /> : null}
                 {hostError ? <details className="loom-host-error"><summary>{zh ? "连接详情" : "Connection details"}</summary><p>{hostError}</p></details> : null}
                 {hostState === "checking" || hostState === "online" ? <div className={`loom-connection-track${hostState === "checking" ? " is-working" : " is-online"}`} aria-hidden="true"><span /></div> : null}

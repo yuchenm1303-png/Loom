@@ -9,7 +9,7 @@
 .loom-host-emblem i { position: absolute; width: 7px; height: 7px; bottom: 8px; right: 8px; border-radius: 50%; background: rgba(255,255,255,.35); }
 .loom-host-refined[data-host-state="checking"] .loom-host-emblem i { background: #b5dbea; }
 .loom-host-refined[data-host-state="online"] .loom-host-emblem i { background: #88e6c4; }
-.loom-host-refined:is([data-host-state="offline"], [data-host-state="unbound"]) :is(.loom-host-emblem i, .loom-connection-badge i) { background: #e5c49c; }
+.loom-host-refined:is([data-host-state="offline"], [data-host-state="unbound"], [data-host-state="account-mismatch"]) :is(.loom-host-emblem i, .loom-connection-badge i) { background: #e5c49c; }
 .loom-module-grid .loom-host-summary h2 { margin: 0; font-size: clamp(24px, 1.6vw, 30px); font-weight: 590; letter-spacing: -.035em; line-height: 1.2; overflow-wrap: anywhere; }
 .loom-host-target { margin: 5px 0 0; font-size: 11px; line-height: 1.5; color: var(--loom-muted); overflow-wrap: anywhere; }
 .loom-module-grid .loom-host-refined .loom-control-copy { margin: 20px 0 0; font-size: clamp(12px, .8vw, 14px); line-height: 1.75; overflow-wrap: anywhere; }
