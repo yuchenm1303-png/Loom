@@ -16,6 +16,8 @@
 }
 
 /* Header controls belong to one toolbar, with tint reserved for selection. */
+:root .app-shell .run-progress-frame.top .run-progress-primary { display: none; }
+:root .app-shell .run-progress-frame.top .run-progress-meta { grid-column: 2; justify-self: end; }
 :root .app-shell .task-flow-group-header { align-items: baseline; }
 :root .app-shell .task-flow-group-header :is(.task-flow-group-icon, .task-flow-group-chevron) { align-self: center; }
 :root .app-shell .task-flow-group-title { line-height: 24px; }
