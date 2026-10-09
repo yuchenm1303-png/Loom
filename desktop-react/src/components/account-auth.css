@@ -1370,3 +1370,72 @@ html[data-loom-theme="light"] .loom-account-primary-button:disabled {
 :root[data-loom-reduced-motion="true"] .loom-account-dialog {
   transition: none !important;
 }
+
+/* ------------------------------------------------------ account quick sign-in */
+.loom-account-oauth {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 18px;
+}
+.loom-account-oauth-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 9px;
+}
+.loom-account-oauth-grid:has(> :only-child) { grid-template-columns: 1fr; }
+.loom-account-oauth-button {
+  height: 42px;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  border: 1px solid var(--border, #292d38);
+  border-radius: 11px;
+  background: color-mix(in srgb, var(--panel-soft, #191c24) 90%, transparent);
+  color: var(--text, #f0f1f4);
+  font: inherit;
+  font-size: .77rem;
+  font-weight: 660;
+  cursor: pointer;
+  transition: border-color 160ms ease, background 160ms ease, box-shadow 160ms ease, transform 160ms ease;
+}
+.loom-account-oauth-button:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--accent, #8b7cf6) 45%, var(--border, #292d38));
+  background: color-mix(in srgb, var(--accent, #8b7cf6) 8%, var(--panel-soft, #191c24));
+  box-shadow: 0 3px 12px color-mix(in srgb, var(--accent, #8b7cf6) 9%, transparent);
+  transform: translateY(-1px);
+}
+.loom-account-oauth-button:focus-visible {
+  outline: 2px solid var(--accent, #8b7cf6);
+  outline-offset: 2px;
+}
+.loom-account-oauth-button:disabled { opacity: .52; cursor: not-allowed; }
+.loom-account-google-mark {
+  font-size: 1.1rem;
+  font-weight: 760;
+  line-height: 1;
+  color: #4285f4;
+  text-shadow: -1px 0 #34a853, 1px 0 #ea4335, 0 1px #fbbc05;
+}
+.loom-account-oauth-divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--muted, #858c99);
+  font-size: .685rem;
+  white-space: nowrap;
+}
+.loom-account-oauth-divider::before,
+.loom-account-oauth-divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--border, #292d38);
+}
+.loom-account-oauth + .loom-account-form { margin-top: 0; }
+@media (prefers-reduced-motion: reduce) {
+  .loom-account-oauth-button { transition: none; }
+  .loom-account-oauth-button:hover:not(:disabled) { transform: none; }
+}

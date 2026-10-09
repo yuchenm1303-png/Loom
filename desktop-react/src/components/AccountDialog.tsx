@@ -5,6 +5,7 @@ import {
   CheckCircle2,
   Eye,
   EyeOff,
+  Github,
   LogOut,
   Pencil,
   ShieldCheck,
@@ -22,7 +23,7 @@ import {
 import { useI18n } from "../i18n";
 import { useMotionPresence } from "../motion/useMotionPresence";
 import { AvatarCropDialog } from "./AvatarCropDialog";
-import type { LoomAccountError, LoomAccountSnapshot } from "../types/account";
+import type { LoomAccountError, LoomAccountSnapshot, LoomAuthCapabilities } from "../types/account";
 import {
   ACCOUNT_PASSWORD_MIN_LENGTH,
   accountErrorText,
@@ -42,6 +43,7 @@ interface AccountDialogProps {
   onRetry(): void | Promise<void>;
   onLogin(email: string, password: string): Promise<boolean>;
   onRegister(email: string, password: string): Promise<boolean>;
+  capabilities?: LoomAuthCapabilities;
   onUpdateProfile(displayName: string, avatarDataUrl: string): Promise<boolean>;
   initialProfileEdit?: boolean;
   closeAfterProfileEdit?: boolean;
@@ -64,6 +66,7 @@ export function AccountDialog({
   onRetry,
   onLogin,
   onRegister,
+  capabilities,
   onUpdateProfile,
   initialProfileEdit = false,
   closeAfterProfileEdit = false,
@@ -79,6 +82,7 @@ export function AccountDialog({
   const [confirm, setConfirm] = useState("");
   const [revealPassword, setRevealPassword] = useState(false);
   const [localError, setLocalError] = useState("");
+  const [oauthOpening, setOauthOpening] = useState<"google" | "github" | null>(null);
   const [editingProfile, setEditingProfile] = useState(false);
   const [profileName, setProfileName] = useState("");
   const [profileAvatar, setProfileAvatar] = useState("");
@@ -284,6 +288,20 @@ export function AccountDialog({
     }
   };
 
+  const startOAuth = async (provider: "google" | "github") => {
+    onClearError();
+    setLocalError("");
+    setOauthOpening(provider);
+    try {
+      const result = await window.loom.accountOAuthStart(provider);
+      if (!result.ok) setLocalError(result.error.message || (zh ? "无法打开快捷登录。" : "Could not start quick sign-in."));
+    } catch {
+      setLocalError(zh ? "无法打开浏览器授权，请重试。" : "Could not open browser sign-in. Try again.");
+    } finally {
+      setOauthOpening(null);
+    }
+  };
+
   const displayName = account.user?.display_name?.trim() || account.user?.email || "";
   const offline = account.configured && !account.reachable;
   const message = localError || accountErrorText(error, zh);
@@ -484,6 +502,26 @@ export function AccountDialog({
                 {zh ? "注册" : "Create account"}
               </button>
             </div>
+
+            {(capabilities?.google || capabilities?.github) ? (
+              <div className="loom-account-oauth">
+                <div className="loom-account-oauth-grid">
+                  {capabilities?.google ? (
+                    <button type="button" className="loom-account-oauth-button" disabled={busy || oauthOpening !== null} onClick={() => void startOAuth("google")}>
+                      <span className="loom-account-google-mark" aria-hidden="true">G</span>
+                      <span>{oauthOpening === "google" ? (zh ? "正在打开…" : "Opening…") : "Google"}</span>
+                    </button>
+                  ) : null}
+                  {capabilities?.github ? (
+                    <button type="button" className="loom-account-oauth-button" disabled={busy || oauthOpening !== null} onClick={() => void startOAuth("github")}>
+                      <Github size={17} aria-hidden="true" />
+                      <span>{oauthOpening === "github" ? (zh ? "正在打开…" : "Opening…") : "GitHub"}</span>
+                    </button>
+                  ) : null}
+                </div>
+                <div className="loom-account-oauth-divider"><span>{zh ? "或使用邮箱继续" : "or continue with email"}</span></div>
+              </div>
+            ) : null}
 
             <form className="loom-account-form" onSubmit={(event) => void submit(event)} noValidate>
               <div className="loom-account-field">

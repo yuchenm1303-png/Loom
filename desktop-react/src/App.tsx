@@ -1382,6 +1382,7 @@ export default function App() {
         onRetry={account.refresh}
         onLogin={account.login}
         onRegister={account.register}
+        capabilities={account.capabilities}
         onUpdateProfile={account.updateProfile}
         onOpenProfile={() => {
           setAccountOpen(false);
