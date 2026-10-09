@@ -1642,9 +1642,11 @@ async function runAccountAction(
 
 const syncAccountToolAccessCredential = latestSync(async () => {
   let credential = "";
+  let modelCredential = "";
   try {
     if (await accountClient.hasAuthenticatedSession()) {
       credential = await accountClient.automationCredential();
+      modelCredential = await accountClient.modelCredential();
     }
   } catch {
     // A transient refresh failure is not sign-out. Keep the existing credential;
@@ -1653,7 +1655,7 @@ const syncAccountToolAccessCredential = latestSync(async () => {
   }
   if (!rpc.ready) return;
   try {
-    await rpc.call("account/tool-access-credential", { credential }, 5_000);
+    await rpc.call("account/tool-access-credential", { credential, modelCredential }, 5_000);
   } catch {
     // Runtime restarts also receive the latest credential through the env.
   }

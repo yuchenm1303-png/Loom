@@ -152,6 +152,19 @@ test("shared search requires sign-in and refreshes account auth without a search
   assert.deepEqual(JSON.parse(calls[1].body), { query: "docs", count: 3 });
 });
 
+test("same-user login discards model credentials from the previous login session", async () => {
+  await seedSession({ accessToken: "old", refreshToken: "old-refresh", expiresAt: Date.now() + 3600000, user: USER,
+    modelToken: "loom_model_revoked", modelExpiresAt: Date.now() + 3600000 });
+  installFetch({
+    "/v1/auth/login": () => reply(200, sessionBody()),
+    "/v1/models/credential": () => reply(200, { model_token: "loom_model_new", expires_in: 3600 }),
+  });
+  const client = newClient();
+  await client.status();
+  await client.login("user@example.com", "test-password");
+  assert.equal(await client.modelCredential(), "loom_model_new");
+});
+
 test("serviceUrl exposes the exact validated account endpoint used by the client", async () => {
   process.env.LOOM_ACCOUNT_API_BASE_URL = SERVICE_URL;
   const client = newClient();

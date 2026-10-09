@@ -210,7 +210,7 @@ export class LoomAccountClient {
     return session;
   }
 
-  private async saveSession(response: AuthResponse): Promise<TokenSession> {
+  private async saveSession(response: AuthResponse, preserveModelCredential = false): Promise<TokenSession> {
     const previous = this.memorySession;
     const session: TokenSession = {
       accessToken: String(response.access_token || ""),
@@ -218,7 +218,7 @@ export class LoomAccountClient {
       expiresAt: Date.now() + Math.max(1, Number(response.expires_in || 900)) * 1000,
       user: response.user,
       ...(
-        previous?.user?.id === response.user?.id
+        preserveModelCredential && previous?.user?.id === response.user?.id
         && previous.modelToken
         && Number(previous.modelExpiresAt || 0) > Date.now() + 60_000
           ? { modelToken: previous.modelToken, modelExpiresAt: previous.modelExpiresAt }
@@ -328,7 +328,7 @@ export class LoomAccountClient {
         body: JSON.stringify({ refresh_token: session.refreshToken }),
       });
       this.assertCurrentSession(session);
-      return this.saveSession(response);
+      return this.saveSession(response, true);
     })();
     this.refreshInFlight = job;
     this.refreshTokenInFlight = session.refreshToken;

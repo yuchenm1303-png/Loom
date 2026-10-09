@@ -1687,7 +1687,7 @@ function ApprovalCard({ item, onApproval }: { item: TranscriptItem; onApproval(i
 /** A turn's ending: a failure reads as an error, the user's own stop does not. */
 function ErrorRow({ item }: { item: TranscriptItem }) {
   const copy = useRuntimeCopy();
-  const ending = copy.turnEnding(String(item.error || ""));
+  const ending = copy.turnEnding(String(item.error || item.text || ""));
   const stopped = ending.tone === "stopped";
   return (
     <div className={`error-row ${stopped ? "is-stopped" : ""}`.trim()} role={stopped ? "status" : "alert"}>

@@ -689,7 +689,12 @@ class LoomAppServerService:
         credential = params.get("credential")
         if credential is not None and not isinstance(credential, str):
             raise ValueError("credential must be a string")
+        model_credential = params.get("modelCredential")
+        if model_credential is not None and not isinstance(model_credential, str):
+            raise ValueError("modelCredential must be a string")
         set_account_tool_access_credential(str(credential or ""))
+        if model_credential is not None:
+            self._loom_account_model_credential = model_credential
         return {"ok": True}
 
     def _status_owner_session_id(self) -> str:
