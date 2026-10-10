@@ -318,6 +318,7 @@ const bridge: Record<string, unknown> = {
   filePathFor: () => "",
 };
 (window as unknown as { loom: unknown }).loom = new Proxy(bridge, {
-  get: (target, key: string) => key in target ? target[key] : async () => ({}),
+  // A subscription (onSomething) hands back its unsubscribe function; anything else is an async call.
+  get: (target, key: string) => key in target ? target[key] : /^on[A-Z]/.test(key) ? () => () => {} : async () => ({}),
 });
 void import("../../src/main");
