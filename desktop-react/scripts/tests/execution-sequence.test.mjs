@@ -157,9 +157,24 @@ test("the first sentence after a user message answers it, so it is never held", 
   assert.equal(settleLiveText([user("u"), tool("t"), streaming("s", "好")]).held, "s");
 });
 
-test("reasoning that is on screen is never held, and finished items are untouched", () => {
+test("reasoning stays on screen while the sentence after it waits for its role, and finished items are untouched", () => {
   const worked = [user("u"), tool("t")];
-  for (const extra of [{ reasoning: "先想想" }, { text: "<think>先想想" }]) assert.equal(settleLiveText([...worked, streaming("s", "好", extra)]).held, "");
+  // The model is thinking: that is shown. The words that follow are held like any other short sentence after
+  // tool work, so quiet narration is never typed out and then taken back.
+  const thinking = streaming("s", "好", { reasoning: "先想想" });
+  const waiting = settleLiveText([...worked, thinking]);
+  assert.equal(waiting.held, "s");
+  assert.deepEqual(waiting.items.map(i => i.id), ["u", "t", "s"]);
+  assert.equal(waiting.items.at(-1).text, "");
+  assert.equal(waiting.items.at(-1).reasoning, "先想想");
+  assert.strictEqual(settleLiveText([...worked, thinking]).items.at(-1), waiting.items.at(-1), "one item, one view of it: nothing is rebuilt per render");
+  // Reasoning that arrives inside the text stays up to where its block closes.
+  assert.equal(settleLiveText([...worked, streaming("s", "<think>先想想")]).items.at(-1).text, "<think>先想想");
+  assert.equal(settleLiveText([...worked, streaming("s", "<think>先想想</think>好")]).items.at(-1).text, "<think>先想想</think>");
+  // When the hold runs out the words are drawn, and a long sentence or a reaction to a failure is never held at all.
+  assert.equal(settleLiveText([...worked, streaming("s", "好", { reasoning: "先想想" })], new Set(["s"])).items.at(-1).text, "好");
+  assert.equal(settleLiveText([...worked, streaming("s", "字".repeat(SUBSTANTIAL_TEXT_CHARS), { reasoning: "先想想" })]).held, "");
+  assert.equal(settleLiveText([user("u"), failedTool("t"), streaming("s", "好", { reasoning: "先想想" })]).held, "");
   const done = [...worked, message("c"), message("f", { phase: "final_answer" }), item("legacy", "assistant_message", { text: "x" }), message("late", { status: "streaming" })];
   assert.strictEqual(settleLiveText(done).items, done);
 });

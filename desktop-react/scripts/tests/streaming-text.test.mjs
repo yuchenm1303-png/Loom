@@ -58,6 +58,21 @@ test("presentation budget responds to elapsed time, backlog and finalization", (
   assert.ok(finalizingFrame.length <= 28);
 });
 
+test("the typing tempo follows the backlog continuously, with no gears", () => {
+  // The same paint (33 ms, a 60 Hz frame pair) at every backlog from empty to a long burst.
+  const sizes = [];
+  for (let backlog = 1; backlog <= 2000; backlog += 1) sizes.push(advanceStreamingText("", "x".repeat(backlog), 33).length);
+  for (let index = 1; index < sizes.length; index += 1) {
+    assert.ok(sizes[index] >= sizes[index - 1], `a larger backlog never types slower (${index}: ${sizes[index - 1]} -> ${sizes[index]})`);
+    assert.ok(sizes[index] - sizes[index - 1] <= 1, `and speeds up one grapheme at a time, not in steps (${index}: ${sizes[index - 1]} -> ${sizes[index]})`);
+  }
+  assert.equal(sizes[0], 1, "a single waiting grapheme still appears");
+  assert.equal(sizes.at(-1), 11, "and the catch-up is bounded by its top speed (330 graphemes a second)");
+  // With next to nothing waiting, the pace is the one it always was on both 60 Hz and 165 Hz displays.
+  const steady = elapsed => advanceStreamingText("", "x".repeat(6), elapsed).length;
+  assert.deepEqual([steady(33), steady(30)], [3, 2]);
+});
+
 test("final provider bursts progress across the handoff window instead of dumping at its end", () => {
   const target = "完成。段落，内容。\n".repeat(1000);
   let visible = "";

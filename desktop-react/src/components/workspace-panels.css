@@ -482,8 +482,7 @@ body.loom-panel-motion .workspace-panels .run-progress-live-dot,
 body.loom-panel-motion .workspace-panels .tg-pulse,
 body.loom-panel-motion .workspace-panels .tg-bead,
 body.loom-panel-motion .workspace-panels .thinking-shimmer,
-body.loom-panel-motion .workspace-panels .composer-running-label i,
-body.loom-panel-motion .workspace-panels .task-flow-live-detail::before {
+body.loom-panel-motion .workspace-panels .composer-running-label i {
   animation-play-state: paused !important;
 }
 

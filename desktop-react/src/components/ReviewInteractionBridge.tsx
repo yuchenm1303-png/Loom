@@ -50,8 +50,8 @@ export function ReviewInteractionBridge({ onOpen }: ReviewInteractionBridgeProps
         return;
       }
 
-      const taskRow = target.closest<HTMLElement>(".task-flow-row");
-      const taskPath = taskRow?.querySelector<HTMLElement>(".task-flow-path");
+      const taskRow = target.closest<HTMLElement>(".wv-row");
+      const taskPath = taskRow?.querySelector<HTMLElement>(".wv-path");
       if (taskPath) {
         clearExternalReview();
         onOpen(cleanPath(taskPath.getAttribute("title") || taskPath.textContent));

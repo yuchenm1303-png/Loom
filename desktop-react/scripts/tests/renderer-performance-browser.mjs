@@ -28,10 +28,10 @@ try {
   for (let index = 0; index < 20; index++) {
     const header = page.locator(".turn-process-header").nth(index);
     await header.evaluate(el => el.click());
-    await page.waitForFunction(index => document.querySelectorAll(".turn-process")[index].querySelector(".task-flow-row"), index);
+    await page.waitForFunction(index => document.querySelectorAll(".turn-process")[index].querySelector(".wv-row"), index);
     await header.evaluate(el => el.click());
   }
-  await page.waitForFunction(() => !document.querySelector(".task-flow-row"));
+  await page.waitForFunction(() => !document.querySelector(".wv-row"));
   const visitedNodes = await page.evaluate(() => document.querySelectorAll("*").length);
   assert.ok(visitedNodes <= beforeNodes + 50, `folded visited history retained DOM: ${beforeNodes} -> ${visitedNodes}`);
   const inspector = page.locator(".thread-inspector-button");

@@ -961,38 +961,6 @@
 }
 
 /* Runtime/task icons ------------------------------------------------------ */
-/* Provider marks never distort. Capability marks make one job-specific move. */
-.app-shell :is(.task-flow-row, .task-flow-group-header):hover
-  .tool-identity-glyph.is-brand {
-  filter: brightness(1.07);
-}
-.app-shell :is(.task-flow-row, .task-flow-group-header):hover
-  :is(
-    .tool-identity-glyph[data-tool-family="terminal"],
-    .tool-identity-glyph[data-tool-family="terminal-group"],
-    .tool-identity-glyph[data-tool-family="automation"]
-  ) {
-  translate: .58px 0;
-}
-.app-shell :is(.task-flow-row, .task-flow-group-header):hover
-  :is(
-    .tool-identity-glyph[data-tool-family="file"],
-    .tool-identity-glyph[data-tool-family="file-group"],
-    .tool-identity-glyph[data-tool-family="workspace"]
-  ) {
-  translate: 0 -.5px;
-}
-.app-shell :is(.task-flow-row, .task-flow-group-header):hover
-  .tool-identity-glyph[data-tool-family="search"] {
-  translate: .64px 0;
-}
-.app-shell :is(.task-flow-row, .task-flow-group-header):hover
-  .tool-identity-glyph[data-tool-family="computer"]::before,
-.app-shell :is(.task-flow-row, .task-flow-group-header):hover
-  .tool-identity-glyph[data-tool-family="computer"]::after {
-  transform: translate(.56px, -.56px);
-}
-
 /* Reduced motion ---------------------------------------------------------- */
 @media (prefers-reduced-motion: reduce) {
   .app-shell :is(button, [role="button"], a[href], summary) svg *,

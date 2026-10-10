@@ -616,7 +616,7 @@
 }
 
 
-/* Refined task-flow summary -------------------------------------------------
+/* Refined process summary ---------------------------------------------------
    Keep count, duration and disclosure as one compact cluster. The summary no
    longer stretches to fill 760px, so elapsed time stays visually attached to
    the work it describes. */

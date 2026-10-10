@@ -43,8 +43,13 @@ interface VerbSpec {
 
 export interface ActivityDescription {
   category: ActivityCategory;
+  /** Tense and outcome in words ("已运行", "运行失败"): for labels read aloud and tooltips. */
   verb: string;
+  /** The same verb with no tense ("运行"): what a row shows, because its node carries the state. */
+  label: string;
   target: string;
+  /** Set when the target is one file path, so it can be set as folder and file name. */
+  path?: string;
   /** Full value for the tooltip when the visible target is shortened. */
   title?: string;
   code?: boolean;
@@ -94,6 +99,8 @@ interface ToolSpec {
   verb: VerbKey;
   target(args: Record<string, unknown>, item: TranscriptItem, lang: RuntimeLanguage): string;
   code?: boolean;
+  /** The target is the file named by `path` / `file_path`. */
+  path?: boolean;
 }
 
 const COMMAND_TOOL = /^(exec|execute|exec_command|shell|run_command|run-command|command|powershell|pwsh|bash|sh|cmd)$/;
@@ -214,10 +221,10 @@ export function pathsLabel(paths: string[], lang: RuntimeLanguage): string {
 const fixed = (zh: string, en: string) => (_: Record<string, unknown>, __: TranscriptItem, lang: RuntimeLanguage) => (lang === "zh" ? zh : en);
 
 const TOOL_SPECS: Record<string, ToolSpec> = {
-  read_workspace_text: { category: "read", verb: "read", target: (a, _, lang) => displayPath(text(a.path)) || fixed("文件", "a file")(a, _, lang) },
-  read_file: { category: "read", verb: "read", target: (a, _, lang) => displayPath(text(a.path) || text(a.file_path)) || fixed("文件", "a file")(a, _, lang) },
+  read_workspace_text: { category: "read", verb: "read", target: (a, _, lang) => displayPath(text(a.path)) || fixed("文件", "a file")(a, _, lang), path: true },
+  read_file: { category: "read", verb: "read", target: (a, _, lang) => displayPath(text(a.path) || text(a.file_path)) || fixed("文件", "a file")(a, _, lang), path: true },
   read_durable_tool_result: { category: "read", verb: "read", target: fixed("完整输出", "the full output") },
-  list_workspace_files: { category: "list", verb: "browse", target: (a, _, lang) => displayPath(text(a.path)) || (lang === "zh" ? "工作区" : "the workspace") },
+  list_workspace_files: { category: "list", verb: "browse", target: (a, _, lang) => displayPath(text(a.path)) || (lang === "zh" ? "工作区" : "the workspace"), path: true },
   search_workspace_text: { category: "search", verb: "search", target: (a, _, lang) => quoted(text(a.query) || text(a.pattern), lang) },
   get_run_scratch_dir: { category: "tool", verb: "prepare", target: fixed("临时目录", "a scratch folder") },
   list_workspace_processes: { category: "command", verb: "inspect", target: fixed("运行中的命令", "running commands") },
@@ -243,7 +250,7 @@ const TOOL_SPECS: Record<string, ToolSpec> = {
   browser_screenshot: { category: "image", verb: "capture", target: fixed("页面截图", "a screenshot") },
   browser_select: { category: "browser", verb: "select", target: (a, _, lang) => (text(a.value) ? quoted(text(a.value), lang, 24) : lang === "zh" ? "选项" : "an option") },
   browser_dropdown_options: { category: "browser", verb: "read", target: fixed("下拉选项", "dropdown options") },
-  browser_upload: { category: "browser", verb: "upload", target: (a, _, lang) => displayPath(text(a.path)) || (lang === "zh" ? "文件" : "a file") },
+  browser_upload: { category: "browser", verb: "upload", target: (a, _, lang) => displayPath(text(a.path)) || (lang === "zh" ? "文件" : "a file"), path: true },
   browser_back: { category: "browser", verb: "back", target: fixed("上一页", "the previous page") },
   browser_refresh: { category: "browser", verb: "refresh", target: fixed("页面", "the page") },
   browser_close: { category: "browser", verb: "close", target: fixed("浏览器", "the browser") },
@@ -401,6 +408,13 @@ const EN_GROUP: Record<ActivityCategory, [string, string]> = {
   image: ["viewing screenshots", "viewed screenshots"],
   tool: ["using tools", "used tools"],
 };
+
+/** The bare verb a row shows: "运行" / "Run". English keeps its preposition ("Wait for"). */
+function verbLabel(spec: VerbKey, lang: RuntimeLanguage): string {
+  if (lang === "zh") return VERBS[spec].zh;
+  const base = VERBS[spec].en.base;
+  return base.charAt(0).toUpperCase() + base.slice(1);
+}
 
 function zhVerb(stem: string, tense: ActivityTense): string {
   switch (tense) {
@@ -792,6 +806,7 @@ export function describeActivity(
     return {
       category: "command",
       verb: copy.verb("run", tense),
+      label: verbLabel("run", lang),
       target: command || (lang === "zh" ? "命令" : "a command"),
       title: command || undefined,
       code: Boolean(command),
@@ -804,7 +819,9 @@ export function describeActivity(
     return {
       category: "edit",
       verb: copy.verb(writes ? "write" : "edit", tense),
+      label: verbLabel(writes ? "write" : "edit", lang),
       target: pathsLabel(paths, lang),
+      path: paths.length === 1 ? displayPath(paths[0]) : undefined,
       title: paths.join("\n") || undefined,
     };
   }
@@ -813,6 +830,7 @@ export function describeActivity(
     return {
       category: "image",
       verb: copy.verb("inspect", tense),
+      label: verbLabel("inspect", lang),
       target: copy.imagesViewed(options.screenshotCount),
     };
   }
@@ -820,26 +838,31 @@ export function describeActivity(
   const name = normalizedToolName(source);
   const spec = TOOL_SPECS[name];
   if (spec) {
-    const target = spec.target(args(source), source, lang);
+    const parameters = args(source);
+    const target = spec.target(parameters, source, lang);
+    const rawPath = spec.path ? text(parameters.path) || text(parameters.file_path) : "";
     return {
       category: spec.category,
       verb: copy.verb(spec.verb, tense),
+      label: verbLabel(spec.verb, lang),
       target: target || genericToolLabel(source, options.fallbackToolLabel, lang),
+      path: rawPath && target ? target : undefined,
       title: target || undefined,
       code: spec.code,
     };
   }
 
   if (name.startsWith("browser")) {
-    return { category: "browser", verb: copy.verb("operate", tense), target: lang === "zh" ? "浏览器" : "the browser" };
+    return { category: "browser", verb: copy.verb("operate", tense), label: verbLabel("operate", lang), target: lang === "zh" ? "浏览器" : "the browser" };
   }
   if (name.startsWith("computer")) {
-    return { category: "computer", verb: copy.verb("operate", tense), target: lang === "zh" ? "电脑" : "the computer" };
+    return { category: "computer", verb: copy.verb("operate", tense), label: verbLabel("operate", lang), target: lang === "zh" ? "电脑" : "the computer" };
   }
 
   return {
     category: "tool",
     verb: copy.verb("call", tense),
+    label: verbLabel("call", lang),
     target: genericToolLabel(source, options.fallbackToolLabel, lang),
   };
 }

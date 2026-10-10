@@ -56,16 +56,19 @@ try {
       assert.ok(samples.some(height => height > full * .1 && height < full * .9), `${selector} grows through intermediate frames`);
     };
     await sampleExpansion(".turn-process-header", ".turn-process-grid");
-    await sampleExpansion(".task-flow-row", ".task-flow-inline-detail-grid");
+    await sampleExpansion(".wv-row", ".wv-detail");
     await page.evaluate(() => document.documentElement.dataset.loomReducedMotion = "true");
     await page.setViewportSize({ width: 720, height: 900 });
     await page.evaluate(items => window.motionFixture.turn(items, true), [user, wrapper, processItem, { ...search, status: "running" }]);
-    await page.locator(".task-flow-row").first().waitFor();
-    const gap = await page.locator(".task-flow-row").first().evaluate(row => {
-      const target = row.querySelector(".task-flow-primary").getBoundingClientRect();
-      return row.querySelector(".task-flow-status").getBoundingClientRect().left - target.right;
+    await page.locator(".wv-row").first().waitFor();
+    // A narrow row ellipsizes its target and keeps its meta (time, outcome) beside it, never on top of it.
+    const fit = await page.locator(".wv-row").first().evaluate(row => {
+      const box = row.getBoundingClientRect();
+      const target = row.querySelector(".wv-target").getBoundingClientRect();
+      const meta = row.querySelector(".wv-meta").getBoundingClientRect();
+      return { overflow: row.scrollWidth - row.clientWidth, overlap: target.right - meta.left, outside: meta.right - box.right };
     });
-    assert.ok(gap >= 0 && gap <= 12, "the status follows the content at 720px");
+    assert.ok(fit.overflow <= 1 && fit.overlap <= 1 && fit.outside <= 1, `the row fits at 720px: ${JSON.stringify(fit)}`);
     await page.close();
   }
   const page = await browser.newPage({ viewport: { width: 1200, height: 800 } });

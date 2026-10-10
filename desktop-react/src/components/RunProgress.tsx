@@ -4,7 +4,7 @@ import { useLoomLanguage, type LoomLanguage } from "../i18n";
 import type { MotionPresencePhase } from "../motion/useMotionPresence";
 import { RUN_PHASE_MIN_DWELL_MS, RUN_PHASE_PRESENTATION_HOLD_MS } from "../presentationTiming";
 import type { TranscriptItem } from "../types/loom";
-import { buildActivityRows } from "./Transcript";
+import { buildActivityRows } from "./activityModel";
 import { runtimeCopy, describeActivity } from "./runtimeCopy";
 import { Crossfade } from "./Crossfade";
 import "./run-progress.css";

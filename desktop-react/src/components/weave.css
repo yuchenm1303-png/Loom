@@ -1,0 +1,1033 @@
+/* The work log, drawn as a thread (WeaveFlow.tsx) ------------------------------------------------
+   One stage of tool work is a run of steps on a thin thread. Every step is a node on it: the glyph says
+   what kind of step it is, and its state is how it looks, so a row's words never change when it ends and
+   nothing reflows. A stage that is over is one line of beads, one bead per step.
+
+   This file is the only owner of the log's geometry and motion. Rules:
+   - One height motion. Everything that opens, closes, appears or is folded away moves a grid track
+     (0fr <-> 1fr) with the same curves, so whatever is below it glides instead of jumping.
+   - Text only fades. Transforms and springs belong to glyphs, beads and halos, which carry no text, so type
+     stays on its native raster (Windows/HiDPI softness).
+   - One-shot motion is bound to a moment ([data-born], [data-settled]) and uses fill-mode `backwards`, so a
+     finished animation never pins a value over a transition that has to run later.
+   - No :has(): state is attributes the component sets. */
+
+:root {
+  --wv-ink: var(--loom-workspace-ink);
+  --wv-ink-2: var(--loom-workspace-secondary);
+  --wv-muted: var(--loom-workspace-muted);
+  --wv-faint: color-mix(in srgb, var(--loom-workspace-muted) 72%, transparent);
+  --wv-rail: color-mix(in srgb, var(--loom-workspace-muted) 36%, transparent);
+  --wv-line: var(--loom-workspace-line);
+  --wv-hover: var(--loom-workspace-hover);
+  --wv-accent: rgb(var(--loom-live-accent-strong, 181, 174, 244));
+  --wv-danger: var(--semantic-danger-strong, #ff6b80);
+  --wv-danger-text: var(--semantic-danger-text, #ff7b8e);
+  --wv-ok: var(--semantic-success-strong, #55ef9b);
+  --wv-warn: #e0b45a;
+
+  --wv-row: 28px;
+  --wv-node: 22px;
+  --wv-mid: 14px;
+  --wv-gap: 10px;
+  --wv-pad: 8px;
+
+  /* One curve and one length for every height motion, going in and going out, so that what grows and what
+     shrinks in the same moment always sum to a monotonic change: nothing bumps. */
+  --wv-ease: cubic-bezier(.22, .74, .18, 1);
+  --wv-ease-out: var(--wv-ease);
+  /* A damped spring sampled into linear(): overshoots ~10%. Only text-free marks ride it. */
+  --wv-spring: linear(0, 0.035, 0.125, 0.248, 0.387, 0.528, 0.662, 0.781, 0.881, 0.962, 1.023, 1.065, 1.091, 1.104, 1.107, 1.101, 1.091, 1.077, 1.062, 1.047, 1.033, 1.021, 1.01, 1.002, 0.996, 0.992, 0.99, 0.989, 0.989, 0.989, 0.991, 0.992, 0.994, 0.995, 0.997, 0.998, 0.999, 1, 1.001, 1.001, 1);
+  --wv-fold: 300ms;
+}
+
+html[data-loom-theme="light"] {
+  --wv-warn: #9a6b0f;
+}
+
+.wv-stage {
+  --wv-tone: var(--wv-faint);
+  position: relative;
+  width: min(760px, 100%);
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--wv-muted);
+}
+
+/* The one height motion ---------------------------------------------------------------------------
+   Closing fades first (the words go quickly) while the track shrinks; opening grows first and the words
+   arrive a beat later. */
+.wv-fold,
+.wv-sub-fold,
+.wv-detail {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  transition:
+    grid-template-rows var(--wv-fold) var(--wv-ease),
+    opacity 140ms ease;
+}
+
+.wv-fold[data-open="true"],
+.wv-sub-fold[data-open="true"],
+.wv-detail[data-open="true"] {
+  grid-template-rows: 1fr;
+  opacity: 1;
+  transition:
+    grid-template-rows var(--wv-fold) var(--wv-ease),
+    opacity 220ms ease 40ms;
+}
+
+.wv-fold-inner,
+.wv-sub-inner,
+.wv-detail-inner {
+  min-height: 0;
+  overflow: clip;
+}
+
+/* The stage and its list ---------------------------------------------------------------------------- */
+.wv-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.wv-body-slot {
+  min-width: 0;
+}
+
+/* One step. A step born while the reader watches grows into its place: its height is a track that opens
+   from 0fr, so the next thing down glides; only the end state is the element's own, which is why the
+   keyframes name no `to`. */
+.wv-step {
+  position: relative;
+  display: grid;
+  grid-template-rows: 1fr;
+  --wv-tone: var(--wv-faint);
+  transition:
+    grid-template-rows var(--wv-fold) var(--wv-ease),
+    opacity 160ms ease;
+}
+
+.wv-step-inner {
+  position: relative;
+  min-height: 0;
+  overflow: clip;
+}
+
+.wv-step[data-born="live"],
+.wv-earlier {
+  animation: wv-grow var(--wv-fold) var(--wv-ease) backwards;
+}
+
+/* The line the older steps fold into is itself born growing, like any step. */
+.wv-earlier {
+  display: grid;
+  grid-template-rows: 1fr;
+}
+
+.wv-earlier-inner {
+  min-height: 0;
+  overflow: clip;
+}
+
+/* A step folded into the stage's earlier line collapses where it stands. */
+.wv-step[data-retired="true"] {
+  grid-template-rows: 0fr;
+  opacity: 0;
+}
+
+/* The thread: a hairline behind the nodes, broken short of each glyph so it reads as beads on a string. */
+.wv-step::before,
+.wv-step::after,
+.wv-note::before,
+.wv-earlier .wv-line::after {
+  content: "";
+  position: absolute;
+  left: calc(var(--wv-node) / 2 - .5px);
+  width: 1px;
+  background: var(--wv-rail);
+  pointer-events: none;
+  transition: opacity 200ms ease, background-color 240ms ease;
+}
+
+.wv-step::before {
+  top: 0;
+  height: calc(var(--wv-mid) - var(--wv-gap));
+}
+
+.wv-step::after {
+  top: calc(var(--wv-mid) + var(--wv-gap));
+  bottom: 0;
+}
+
+.wv-list > .wv-step:first-child::before,
+.wv-list > .wv-step:last-child::after {
+  opacity: 0;
+}
+
+.wv-list.is-nested > .wv-step:first-child::before,
+.wv-list.is-nested > .wv-step:last-child::after {
+  opacity: 1;
+}
+
+.wv-earlier .wv-line::after {
+  top: calc(var(--wv-mid) + var(--wv-gap));
+  bottom: 0;
+}
+
+.wv-note::before {
+  top: 0;
+  bottom: 0;
+}
+
+.wv-step[data-born="live"]::before {
+  transform-origin: top;
+  animation: wv-rail-draw 240ms var(--wv-ease-out) backwards;
+}
+
+/* The row ------------------------------------------------------------------------------------------- */
+.wv-row {
+  position: relative;
+  width: 100%;
+  min-width: 0;
+  min-height: var(--wv-row);
+  display: grid;
+  grid-template-columns: var(--wv-node) minmax(0, 1fr) auto 14px;
+  align-items: center;
+  column-gap: var(--wv-pad);
+  padding: 0 2px 0 0;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 160ms ease;
+}
+
+.wv-row:disabled {
+  opacity: 1;
+  cursor: default;
+}
+
+.wv-row.is-expandable:hover {
+  background: var(--wv-hover);
+}
+
+.wv-row:focus-visible,
+.wv-line:focus-visible,
+.wv-preview:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--wv-accent) 60%, transparent);
+  outline-offset: -2px;
+}
+
+.wv-step.has-preview .wv-row {
+  padding-right: 78px;
+}
+
+/* The node: kind of step while it is fine, its own mark when it is not. */
+.wv-node {
+  position: relative;
+  width: var(--wv-node);
+  height: var(--wv-row);
+  display: grid;
+  place-items: center;
+  color: color-mix(in srgb, var(--wv-muted) 90%, transparent);
+}
+
+.wv-glyph {
+  position: relative;
+  z-index: 1;
+  width: 14px;
+  height: 14px;
+  display: grid;
+  place-items: center;
+  color: inherit;
+  transition: color 240ms ease;
+}
+
+.wv-glyph svg {
+  display: block;
+  stroke-width: 1.75;
+}
+
+.wv-halo {
+  transition: opacity 240ms ease, transform 240ms ease;
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 22px;
+  height: 22px;
+  margin: -11px 0 0 -11px;
+  border-radius: 50%;
+  background: radial-gradient(circle closest-side, rgba(var(--loom-live-accent, 153, 145, 226), .34), transparent);
+  opacity: 0;
+  transform: scale(.5);
+  pointer-events: none;
+}
+
+.wv-main {
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.wv-verb {
+  flex: none;
+  font-size: 13px;
+  line-height: 20px;
+  font-weight: 500;
+  color: var(--wv-muted);
+  transition: color 240ms ease;
+}
+
+.wv-target {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--wv-ink-2);
+}
+
+.wv-target.is-code {
+  font-family: var(--loom-code-font, ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace);
+  font-size: 12px;
+  letter-spacing: 0;
+}
+
+/* A path is set so that the file name is never the part that is cut: the folder gives way first. */
+.wv-target.is-path {
+  display: flex;
+}
+
+.wv-dir {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--wv-muted);
+}
+
+.wv-base {
+  flex: none;
+  color: var(--wv-ink);
+  font-weight: 520;
+}
+
+/* What the row says on its right: how many lines it changed, how it ended, how long it took. */
+.wv-meta {
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--wv-faint);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.wv-time {
+  min-width: 2.4em;
+  text-align: right;
+}
+
+.wv-diffstat {
+  display: inline-flex;
+  gap: 5px;
+  font-family: var(--loom-code-font, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
+  font-size: 11px;
+}
+
+.wv-plus { color: var(--wv-ok); }
+.wv-minus { color: var(--wv-danger-text); }
+
+.wv-tag {
+  padding: 0 7px;
+  border-radius: 999px;
+  font-size: 12px;
+  line-height: 18px;
+  font-weight: 560;
+  color: var(--wv-tone);
+  background: color-mix(in srgb, var(--wv-tone) 13%, transparent);
+  animation: wv-fade-in 200ms ease-out backwards;
+}
+
+.wv-chevron-cell {
+  width: 14px;
+  display: grid;
+  place-items: center;
+  color: var(--wv-faint);
+  opacity: 0;
+  transition: opacity 140ms ease;
+}
+
+.wv-row.is-expandable:hover .wv-chevron-cell,
+.wv-row:focus-visible .wv-chevron-cell,
+.wv-step.is-open .wv-chevron-cell {
+  opacity: 1;
+}
+
+.wv-chevron {
+  transition: transform 220ms var(--wv-ease-out), color 160ms ease;
+}
+
+.wv-step.is-open .wv-chevron,
+.wv-line.is-open .wv-chevron {
+  transform: rotate(90deg);
+}
+
+/* Tones ---------------------------------------------------------------------------------------------- */
+.wv-step[data-tone="running"] { --wv-tone: var(--wv-accent); }
+.wv-step[data-tone="waiting"] { --wv-tone: var(--wv-warn); }
+.wv-step[data-tone="caution"] { --wv-tone: var(--wv-warn); }
+.wv-step[data-tone="failed"] { --wv-tone: var(--wv-danger-text); }
+.wv-step[data-tone="stopped"] { --wv-tone: var(--wv-muted); }
+
+.wv-step[data-tone="running"] .wv-node,
+.wv-step[data-tone="waiting"] .wv-node,
+.wv-step[data-tone="caution"] .wv-node,
+.wv-step[data-tone="failed"] .wv-node {
+  color: var(--wv-tone);
+}
+
+.wv-step[data-tone="stopped"] .wv-node {
+  color: var(--wv-muted);
+}
+
+.wv-step[data-tone="failed"] .wv-verb {
+  color: var(--wv-danger-text);
+}
+
+.wv-step[data-tone="failed"] .wv-row,
+.wv-step[data-tone="caution"] .wv-row {
+  background: color-mix(in srgb, var(--wv-tone) 5.5%, transparent);
+}
+
+.wv-step[data-tone="stopped"] .wv-verb,
+.wv-step[data-tone="stopped"] .wv-target {
+  color: var(--wv-faint);
+}
+
+/* Running: the node breathes a soft halo, the verb carries the same light as the thinking label, and
+   the clock runs. Nothing else on the row moves. */
+.wv-step[data-tone="running"] .wv-halo,
+.wv-step[data-tone="waiting"] .wv-halo {
+  animation: wv-halo 2s ease-out infinite;
+}
+
+.wv-step[data-tone="waiting"] .wv-halo {
+  background: radial-gradient(circle closest-side, color-mix(in srgb, var(--wv-warn) 38%, transparent), transparent);
+  animation-duration: 3s;
+}
+
+.wv-row.is-executing .wv-verb {
+  --shimmer-base: var(--wv-muted);
+  --shimmer-peak: color-mix(in srgb, var(--wv-ink) 92%, var(--wv-accent));
+  color: var(--shimmer-base);
+  background-image: linear-gradient(
+    100deg,
+    var(--shimmer-base) 0%,
+    var(--shimmer-base) 35%,
+    color-mix(in srgb, var(--shimmer-peak) 50%, var(--shimmer-base)) 42.5%,
+    var(--shimmer-peak) 50%,
+    color-mix(in srgb, var(--shimmer-peak) 50%, var(--shimmer-base)) 57.5%,
+    var(--shimmer-base) 65%,
+    var(--shimmer-base) 100%
+  );
+  background-size: 300% 100%;
+  background-repeat: no-repeat;
+  background-position: 98% 0;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: thinking-text-shimmer 2.2s cubic-bezier(.33, .1, .67, .9) infinite;
+}
+
+.wv-step[data-tone="running"] .wv-time {
+  color: var(--wv-muted);
+}
+
+/* Births: the step grows into its place (above), its thread is drawn to it, its glyph springs in, and its
+   words fade up a beat later. */
+.wv-step[data-born="live"] .wv-glyph {
+  animation: wv-glyph-in 460ms var(--wv-spring) 60ms backwards;
+}
+
+.wv-step[data-born="live"] :is(.wv-verb, .wv-target) {
+  animation: wv-fade-in 220ms ease-out 90ms backwards;
+}
+
+.wv-step[data-born="live"] .wv-row.is-executing .wv-verb {
+  animation:
+    wv-fade-in 220ms ease-out 90ms backwards,
+    thinking-text-shimmer 2.2s cubic-bezier(.33, .1, .67, .9) 310ms infinite;
+}
+
+.wv-step[data-born="live"] .wv-meta,
+.wv-step[data-born="live"] .wv-preview {
+  animation: wv-fade-in 220ms ease-out 140ms backwards;
+}
+
+/* A step that finishes while the reader watches confirms once: its colour settles and one ring leaves it,
+   in the colour of the outcome. */
+.wv-step[data-settled="done"] { --wv-settle: var(--wv-ok); }
+.wv-step[data-settled="failed"] { --wv-settle: var(--wv-danger); }
+
+.wv-step[data-settled] .wv-node::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 14px;
+  height: 14px;
+  margin: -7px 0 0 -7px;
+  border-radius: 50%;
+  border: 1.25px solid var(--wv-settle);
+  opacity: 0;
+  pointer-events: none;
+  animation: wv-ring 640ms cubic-bezier(.2, .7, .25, 1) backwards;
+}
+
+/* Hover: a glyph makes the one small move its job suggests, and a provider mark brightens. */
+.wv-row.is-expandable:hover .tool-identity-glyph.is-brand {
+  filter: brightness(1.08);
+}
+
+.wv-row.is-expandable:hover :is(
+  .tool-identity-glyph[data-tool-family="file"],
+  .tool-identity-glyph[data-tool-family="workspace"]
+) {
+  translate: 0 -.5px;
+}
+
+.wv-row.is-expandable:hover .tool-identity-glyph[data-tool-family="search"] {
+  translate: .64px 0;
+}
+
+/* Opening a line (a folded stage, the older steps of a live one) lets its rows arrive one after another, 28ms
+   apart. WeaveStage sets data-opening for a single beat after the reader's click, so a stage that is merely
+   mounted (history) or a row that is merely appended never plays it. Opacity only. */
+.wv-stage[data-opening="true"] .wv-step:nth-child(1) { --k: 0; }
+.wv-stage[data-opening="true"] .wv-step:nth-child(2) { --k: 1; }
+.wv-stage[data-opening="true"] .wv-step:nth-child(3) { --k: 2; }
+.wv-stage[data-opening="true"] .wv-step:nth-child(4) { --k: 3; }
+.wv-stage[data-opening="true"] .wv-step:nth-child(5) { --k: 4; }
+.wv-stage[data-opening="true"] .wv-step:nth-child(n + 6) { --k: 5; }
+
+.wv-stage[data-opening="true"] .wv-step .wv-row {
+  animation: wv-fade-in 240ms ease-out calc(var(--k, 0) * 28ms + 40ms) backwards;
+}
+
+/* Under the row: the last line a running command printed, or why a step failed. --------------------- */
+.wv-sub {
+  padding: 0 var(--wv-pad) 5px calc(var(--wv-node) + var(--wv-pad));
+  font-family: var(--loom-code-font, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--wv-faint);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.wv-sub.is-failure {
+  color: var(--wv-danger-text);
+}
+
+.wv-sub-text {
+  animation: wv-fade-in 160ms ease-out backwards;
+}
+
+/* The drawer a row opens. ---------------------------------------------------------------------------- */
+.wv-sheet {
+  margin: 2px 2px 9px calc(var(--wv-node) + var(--wv-pad));
+  border: 1px solid var(--wv-line);
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--wv-ink) 3.2%, transparent);
+  overflow: hidden;
+}
+
+.wv-sheet-command {
+  display: flex;
+  gap: 8px;
+  padding: 8px 11px;
+  border-bottom: 1px solid var(--wv-line);
+  font-family: var(--loom-code-font, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--wv-ink-2);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.wv-sheet-command span {
+  flex: none;
+  color: var(--wv-accent);
+  user-select: none;
+}
+
+.wv-sheet-command code {
+  font: inherit;
+  min-width: 0;
+}
+
+.wv-sheet-output {
+  margin: 0;
+  max-height: 280px;
+  overflow: auto;
+  padding: 9px 11px;
+  font-family: var(--loom-code-font, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--wv-ink-2);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  scrollbar-width: thin;
+}
+
+.wv-sheet-output.is-diff {
+  padding-inline: 0;
+  white-space: pre;
+  overflow-wrap: normal;
+}
+
+.wv-diff-line {
+  display: block;
+  padding: 0 11px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.wv-diff-line.is-add { color: var(--wv-ok); background: color-mix(in srgb, var(--wv-ok) 9%, transparent); }
+.wv-diff-line.is-del { color: var(--wv-danger-text); background: color-mix(in srgb, var(--wv-danger) 9%, transparent); }
+.wv-diff-line.is-hunk { color: var(--wv-accent); }
+.wv-diff-line.is-meta { color: var(--wv-faint); }
+
+.wv-hint {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 8px 11px;
+  font-size: 12px;
+  color: var(--wv-muted);
+  opacity: 1;
+  transition: opacity 160ms ease;
+}
+
+.wv-hint[data-open="false"] {
+  opacity: 0;
+}
+
+.wv-hint-glow {
+  width: 18px;
+  height: 3px;
+  flex: none;
+  border-radius: 999px;
+  transform-origin: left center;
+  background: linear-gradient(90deg, rgba(var(--loom-live-accent, 153, 145, 226), .2), var(--wv-accent));
+  animation: wv-breathe 1.8s var(--wv-ease-inout) infinite;
+}
+
+.wv-shots {
+  width: min(560px, 100%);
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(168px, 1fr));
+  gap: 8px;
+  padding: 8px;
+}
+
+.wv-shot {
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  border: 1px solid var(--wv-line);
+  border-radius: 8px;
+}
+
+.wv-shot img,
+.wv-shot-wait {
+  width: 100%;
+  aspect-ratio: 16 / 10;
+  display: block;
+}
+
+.wv-shot img {
+  object-fit: contain;
+  background: color-mix(in srgb, var(--wv-ink) 5%, transparent);
+}
+
+.wv-shot-wait {
+  display: grid;
+  place-items: center;
+  padding: 12px;
+  font-size: 12px;
+  color: var(--wv-faint);
+}
+
+.wv-shot figcaption {
+  padding: 6px 8px 7px;
+  overflow: hidden;
+  font-family: var(--loom-code-font, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
+  font-size: 11px;
+  line-height: 1.3;
+  color: var(--wv-muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Preview of a page, image or document an edit wrote. It sits at the end of its row, never inside the
+   disclosure button, and appears with the row. */
+.wv-preview {
+  position: absolute;
+  top: 3px;
+  right: 4px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0 9px 0 8px;
+  border: 1px solid color-mix(in srgb, var(--wv-accent) 24%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--wv-accent) 8%, transparent);
+  color: var(--wv-accent);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 560;
+  line-height: 1;
+  cursor: pointer;
+  transition: background-color 160ms ease, border-color 160ms ease;
+}
+
+.wv-preview:hover {
+  border-color: color-mix(in srgb, var(--wv-accent) 42%, transparent);
+  background: color-mix(in srgb, var(--wv-accent) 14%, transparent);
+}
+
+/* Lines: a stage that is over, or the older steps of a live one. ------------------------------------- */
+.wv-line {
+  position: relative;
+  width: 100%;
+  min-height: var(--wv-row);
+  display: flex;
+  align-items: center;
+  gap: var(--wv-pad);
+  /* The same right edge as a row's time (its chevron cell and the gap before it), so the times form one column. */
+  padding: 0 calc(2px + 14px + var(--wv-pad)) 0 0;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--wv-muted);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 160ms ease, color 160ms ease;
+}
+
+.wv-line:hover {
+  background: var(--wv-hover);
+  color: var(--wv-ink-2);
+}
+
+.wv-line-lead {
+  width: var(--wv-node);
+  flex: none;
+  display: grid;
+  place-items: center;
+  color: var(--wv-faint);
+}
+
+.wv-line:hover .wv-line-lead,
+.wv-line.is-open .wv-line-lead {
+  color: var(--wv-muted);
+}
+
+.wv-line-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  animation: wv-fade-in 180ms ease-out backwards;
+}
+
+.wv-line-failed {
+  flex: none;
+  padding: 0 7px;
+  border-radius: 999px;
+  font-size: 12px;
+  line-height: 18px;
+  font-weight: 560;
+  color: var(--wv-danger-text);
+  background: color-mix(in srgb, var(--wv-danger) 11%, transparent);
+}
+
+.wv-line-time {
+  margin-left: auto;
+}
+
+.wv-beads {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.wv-beads i {
+  --wv-bead: var(--wv-faint);
+  width: 6px;
+  height: 6px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--wv-bead);
+}
+
+.wv-beads i[data-tone="running"] { --wv-bead: var(--wv-accent); }
+.wv-beads i[data-tone="waiting"],
+.wv-beads i[data-tone="caution"] { --wv-bead: var(--wv-warn); }
+.wv-beads i[data-tone="failed"] { --wv-bead: var(--wv-danger); }
+.wv-beads i[data-tone="stopped"] { background: transparent; box-shadow: inset 0 0 0 1.25px var(--wv-faint); }
+
+.wv-beads-more {
+  margin-right: 2px;
+  font-size: 11px;
+  font-weight: 560;
+  color: var(--wv-faint);
+  font-variant-numeric: tabular-nums;
+}
+
+.wv-beads[data-animate="true"] i {
+  animation: wv-bead-in 360ms var(--wv-spring) calc(var(--i, 0) * 24ms) backwards;
+}
+
+/* The pointer's light, inside lines and rows that open. taskCapsuleLens.ts writes the position. */
+.wv-row.is-expandable::after,
+.wv-line::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background: radial-gradient(
+    160px 40px at var(--lens-x, 30px) var(--lens-y, 50%),
+    rgba(var(--loom-live-accent, 153, 145, 226), .11),
+    transparent 100%
+  );
+  opacity: 0;
+  transition: opacity 200ms ease;
+}
+
+.wv-row.is-expandable:hover::after,
+.wv-line:hover::after {
+  opacity: 1;
+}
+
+/* Notes: what the model said between steps, when the reader asks for it. ------------------------------ */
+.wv-note {
+  position: relative;
+  min-width: 0;
+  padding: 3px 8px 6px calc(var(--wv-node) + var(--wv-pad));
+  color: var(--wv-muted);
+  transition: color 180ms ease;
+}
+
+.wv-note.is-latest {
+  color: var(--wv-ink-2);
+}
+
+/* The newest note arrives before its steps and is the group's caption: same type from its first frame. */
+.wv-note.is-lead {
+  padding-top: 4px;
+  padding-bottom: 2px;
+}
+
+.wv-note::before {
+  display: none;
+}
+
+.wv-list .wv-note::before {
+  display: block;
+}
+
+.wv-note .assistant-message {
+  margin: 0;
+  line-height: 1.55;
+}
+
+/* The workspace surface pins message ink; notes take the log's tone. */
+:root .app-shell .wv-note .assistant-message {
+  color: inherit;
+}
+
+.wv-note .assistant-message::before {
+  content: none;
+}
+
+.wv-note .markdown-body {
+  color: inherit;
+}
+
+.wv-note .markdown-body p {
+  margin: 0 0 5px;
+}
+
+.wv-note .markdown-body :is(h1, h2, h3, h4, h5, h6) {
+  margin: 6px 0 3px;
+  font-size: 1em;
+}
+
+.wv-note .markdown-body :is(ul, ol) {
+  margin: 3px 0 5px;
+  padding-left: 18px;
+}
+
+.wv-note .markdown-body strong {
+  color: var(--wv-ink-2);
+}
+
+/* Long notes show their first lines; the rest is one click away, never dropped. */
+.wv-note .assistant-message-shell.is-clamped .markdown-body {
+  max-height: calc(1.55em * 5);
+  overflow: hidden;
+  -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 1.7em), transparent);
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 1.7em), transparent);
+}
+
+.wv-note .note-toggle {
+  margin: 2px 0 0;
+  padding: 1px 0;
+  border: 0;
+  background: transparent;
+  color: var(--wv-faint);
+  font: inherit;
+  font-size: var(--loom-font-micro);
+  cursor: pointer;
+  transition: color 130ms ease;
+}
+
+.wv-note .note-toggle:hover {
+  color: var(--wv-muted);
+  text-decoration: underline;
+}
+
+.wv-note .note-toggle:focus-visible {
+  outline: 1px solid color-mix(in srgb, var(--wv-accent) 55%, transparent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* One switch per turn for the model's per-step narration, which is hidden by default. It appears the first time a
+   note is held back, above everything else in a live turn, so it grows into its place like a step instead of
+   shoving the whole turn down by a line in one frame. */
+.process-notes-row {
+  display: grid;
+  grid-template-rows: 1fr;
+}
+
+.process-notes-row[data-born="live"] {
+  animation: wv-grow var(--wv-fold) var(--wv-ease) backwards;
+}
+
+.process-notes-row-inner {
+  min-height: 0;
+  overflow: clip;
+  display: flex;
+  justify-content: flex-end;
+  padding: 0 2px 2px;
+}
+
+.process-notes-toggle {
+  padding: 2px 4px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--faint);
+  font: inherit;
+  font-size: var(--loom-font-micro);
+  cursor: pointer;
+  transition: color 130ms ease;
+}
+
+.process-notes-toggle:hover {
+  color: var(--muted);
+}
+
+.process-notes-toggle:focus-visible {
+  outline: 1px solid color-mix(in srgb, var(--wv-accent) 55%, transparent);
+  outline-offset: 1px;
+}
+
+/* Keyframes ----------------------------------------------------------------------------------------- */
+@keyframes wv-grow {
+  from { grid-template-rows: 0fr; }
+}
+
+@keyframes wv-rail-draw {
+  from { transform: scaleY(0); }
+}
+
+@keyframes wv-fade-in {
+  from { opacity: 0; }
+}
+
+@keyframes wv-glyph-in {
+  from { opacity: 0; scale: .5; rotate: -12deg; }
+}
+
+@keyframes wv-bead-in {
+  from { opacity: 0; scale: .2; }
+}
+
+@keyframes wv-halo {
+  0% { opacity: 0; transform: scale(.5); }
+  18% { opacity: 1; }
+  100% { opacity: 0; transform: scale(1.12); }
+}
+
+@keyframes wv-ring {
+  from { opacity: .8; scale: .8; }
+  to { opacity: 0; scale: 1.6; }
+}
+
+@keyframes wv-breathe {
+  0%, 100% { opacity: .35; transform: scaleX(.56); }
+  46% { opacity: .9; transform: scaleX(1); }
+  68% { opacity: .6; transform: scaleX(.82); }
+}
+
+/* Reduced motion: the same states, with nothing travelling. Named elements, not a universal selector: this
+   list is matched against every element of every log on every style recalculation. */
+@media (prefers-reduced-motion: reduce) {
+  :is(.wv-fold, .wv-sub-fold, .wv-detail, .wv-step, .wv-earlier, .wv-row, .wv-node, .wv-glyph, .wv-halo, .wv-verb,
+    .wv-target, .wv-meta, .wv-tag, .wv-chevron-cell, .wv-chevron, .wv-sub-text, .wv-line, .wv-line-text, .wv-preview,
+    .wv-hint, .wv-hint-glow, .wv-note, .wv-beads i),
+  :is(.wv-step, .wv-note, .wv-line, .wv-row)::before,
+  :is(.wv-step, .wv-line, .wv-row, .wv-node)::after {
+    animation: none !important;
+    transition: none !important;
+  }
+
+  .process-notes-row {
+    animation: none !important;
+  }
+}
+
+:root[data-loom-reduced-motion="true"] :is(.wv-fold, .wv-sub-fold, .wv-detail, .wv-step, .wv-earlier, .wv-row, .wv-node,
+    .wv-glyph, .wv-halo, .wv-verb, .wv-target, .wv-meta, .wv-tag, .wv-chevron-cell, .wv-chevron, .wv-sub-text, .wv-line,
+    .wv-line-text, .wv-preview, .wv-hint, .wv-hint-glow, .wv-note, .wv-beads i),
+:root[data-loom-reduced-motion="true"] :is(.wv-step, .wv-note, .wv-line, .wv-row)::before,
+:root[data-loom-reduced-motion="true"] :is(.wv-step, .wv-line, .wv-row, .wv-node)::after {
+  animation: none !important;
+  transition: none !important;
+}
+
+@media (max-width: 760px) {
+  .wv-row {
+    column-gap: 6px;
+  }
+}

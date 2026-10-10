@@ -1,6 +1,6 @@
 /* Tool identity -------------------------------------------------------------
    Vendor marks keep their authentic silhouette, while Loom capability marks
-   share one stroke language. The task-flow badge owns background/border; this
+   share one stroke language. The work-log node (weave.css) owns its colour; this
    layer only normalizes optical size and alignment. */
 
 .tool-identity-glyph {
@@ -18,7 +18,7 @@
 
 /* Computer Use uses a compact filled pointer mark: no monitor, click rays or
    cursor stem. A thin white keyline and restrained shadow keep the black wedge
-   crisp inside the task-flow badge without making it look like a separate app
+   crisp inside the work-log node without making it look like a separate app
    icon. The hidden SVG still owns the layout box, so row alignment is stable. */
 .tool-identity-glyph[data-tool-family="computer"] {
   position: relative;

@@ -1,48 +1,62 @@
+import re
 from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
 TRANSCRIPT = ROOT / "desktop-react" / "src" / "components" / "Transcript.tsx"
+WEAVE_TSX = ROOT / "desktop-react" / "src" / "components" / "WeaveFlow.tsx"
+WEAVE = ROOT / "desktop-react" / "src" / "components" / "weave.css"
 MOTION = ROOT / "desktop-react" / "src" / "components" / "conversation-motion.css"
 TURN_FLOW = ROOT / "desktop-react" / "src" / "components" / "turn-flow.css"
 SCROLL = ROOT / "desktop-react" / "src" / "components" / "TranscriptScrollController.tsx"
 
 
 def test_collapsed_activity_rows_do_not_reconcile_detail_streams() -> None:
-    source = TRANSCRIPT.read_text(encoding="utf-8")
+    source = WEAVE_TSX.read_text(encoding="utf-8")
 
-    assert "sameActivityRowProps" in source
+    assert "sameRowProps" in source
     assert "if (next.open) return rowDetail(previous.row, previous.delta) === rowDetail(next.row, next.delta);" in source
+    # What a running command last printed is on its row; the rest of its output is not until it is opened.
+    assert "if (rowTail(previous.row) !== rowTail(next.row)) return false;" in source
     assert "animationDelay" not in source
     assert "openRows.has(row.key)" in source
 
 
-def test_task_capsule_motion_keeps_text_on_native_rasterization_layer() -> None:
-    source = MOTION.read_text(encoding="utf-8")
+def test_task_motion_keeps_text_on_native_rasterization_layer() -> None:
+    source = WEAVE.read_text(encoding="utf-8")
 
-    copy_start = source.index("@keyframes loom-task-copy-in")
-    copy_end = source.index("@keyframes loom-task-status-in", copy_start)
-    copy_motion = source[copy_start:copy_end]
-    assert "transform:" not in copy_motion and "translate" not in copy_motion
+    fade_start = source.index("@keyframes wv-fade-in")
+    fade_end = source.index("@keyframes wv-glyph-in", fade_start)
+    fade = source[fade_start:fade_end]
+    assert "transform:" not in fade and "translate" not in fade
 
-    births_start = source.index("/* Task flow: births")
-    births_end = source.index("/* Task flow: settling", births_start)
-    births = source[births_start:births_end]
-    assert "will-change:" not in births
-    assert " backwards" in births
-    assert " both" not in births
-    assert ".task-flow-row.is-expandable:hover,\n.task-flow-group .task-flow-row.is-expandable:hover {\n  /* activity-flow.css used to translate" in source
-    assert "transform: none;" in source
-    assert ".turn-process.is-live .task-flow-row::after" not in source
-    assert "loom-task-icon-spring" in source
+    assert "will-change:" not in source
+    assert "filter:" not in source.replace("filter: brightness(1.08);", "")
+    # A finished animation must not pin a value over a transition that runs later.
+    assert "wv-grow var(--wv-fold) var(--wv-ease) backwards" in source
+    assert "wv-glyph-in 460ms var(--wv-spring) 60ms backwards" in source
+    assert "wv-fade-in 220ms ease-out 90ms backwards" in source
+    # Hovering a row lights its background; it never moves the copy.
+    hover = source[source.index(".wv-row.is-expandable:hover {"):]
+    assert "transform" not in hover[:hover.index("}")]
+    assert "loom-task-icon-spring" in MOTION.read_text(encoding="utf-8")
 
 
 def test_task_flow_copy_uses_whole_pixel_font_geometry() -> None:
-    source = MOTION.read_text(encoding="utf-8")
+    source = WEAVE.read_text(encoding="utf-8")
 
-    assert ".task-flow-group-title {\n  font-size: 12px;\n  line-height: 16px;" in source
-    assert ".task-flow-primary.code {\n  font-size: 11px;\n  line-height: 16px;" in source
-    assert ".task-flow-group .task-flow-primary.code {\n  font-size: 11px;\n  line-height: 15px;" in source
+    def declarations(selector: str) -> str:
+        start = source.index(selector + " {")
+        return source[start:source.index("}", start)]
+
+    verb = declarations(".wv-verb")
+    assert "font-size: 13px;" in verb and "line-height: 20px;" in verb
+    target = declarations(".wv-target")
+    assert "font-size: 13px;" in target and "line-height: 20px;" in target
+    assert "font-size: 12px;" in declarations(".wv-target.is-code")
+    # Combined with native page zoom, fractional sizes soften glyph edges on Windows: every size the log sets is whole.
+    sizes = re.findall(r"font-size:\s*([0-9.]+)px", source)
+    assert sizes and all(float(size).is_integer() for size in sizes), sizes
 
 
 def test_new_activity_rows_use_live_follow_without_hard_snap() -> None:
@@ -163,47 +177,52 @@ def test_jump_to_latest_reuses_owned_follow_scheduler() -> None:
 
 def test_between_tool_steps_keep_one_live_handoff_surface() -> None:
     transcript = TRANSCRIPT.read_text(encoding="utf-8")
-    motion = MOTION.read_text(encoding="utf-8")
+    weave = WEAVE.read_text(encoding="utf-8")
 
-    # The latest group stays the motion anchor between tool batches, so rows
+    # The latest stage stays the motion anchor between tool batches, so rows
     # appended later are still born live...
     assert "const activeActivityBlocks = useMemo(() => {" in transcript
     assert "const latestActivityBlockIndex = useMemo(() => {" in transcript
     assert "const continuingActivityBlock = useMemo(() => {" in transcript
-    assert 'continuing={continuingActivityBlock === index}' in transcript
-    assert 'betweenSteps ? "is-between-steps" : ""' in transcript
+    assert "keepOpen={activeActivityBlocks.has(index) || continuingActivityBlock === index}" in transcript
     # ...but the quiet gap itself belongs to the one thinking capsule, shown only
-    # once the gap is real, never to a second "continuing" label on the group.
+    # once the gap is real, never to a second "continuing" label on the stage.
     assert "继续处理中" not in transcript
+    assert "is-between-steps" not in transcript and "is-between-steps" not in weave
     assert "LIVE_STATUS_GRACE_MS" in transcript
     assert "useSettledFlag(wantsCapsule, edge.started ? LIVE_STATUS_GRACE_MS : 0)" in transcript
-    assert ".task-flow-group.is-running:not(.is-between-steps) .task-flow-group-icon::after {" in motion
-    assert "loom-task-between-sheen" not in motion
+    assert "loom-task-between-sheen" not in weave
 
 
-def test_between_tool_handoff_keeps_completed_copy_semantics() -> None:
-    transcript = TRANSCRIPT.read_text(encoding="utf-8")
+def test_only_a_step_that_is_running_looks_busy() -> None:
+    weave = WEAVE.read_text(encoding="utf-8")
+    flow = WEAVE_TSX.read_text(encoding="utf-8")
+    model = (WEAVE_TSX.parent / "activityModel.ts").read_text(encoding="utf-8")
 
-    assert "const betweenSteps = Boolean(running && continuing && !hasActiveRows);" in transcript
-    assert "const title = copy.groupTitle(categories, running && !betweenSteps);" in transcript
+    # The live look is a property of a step's own state, never of its stage being the latest one.
+    assert "if (isExecutingActivityStatus(status)) return \"running\";" in model
+    assert 'data-tone={tone}' in flow
+    assert ".wv-step[data-tone=\"running\"] .wv-halo," in weave
+    assert ".wv-stage.is-running" not in weave
+    assert ".wv-row.is-executing .wv-verb {" in weave
 
 
 def test_inline_task_detail_preserves_content_through_collapse() -> None:
-    transcript = TRANSCRIPT.read_text(encoding="utf-8")
-    motion = MOTION.read_text(encoding="utf-8")
+    flow = WEAVE_TSX.read_text(encoding="utf-8")
+    weave = WEAVE.read_text(encoding="utf-8")
 
-    assert "const detailPresence = useMotionPresence(open, 260);" in transcript
-    assert 'const cachedDetailRef = useRef("");' in transcript
-    assert "const visibleDetail = open ? liveDetail : cachedDetailRef.current;" in transcript
-    assert "detailPresence.mounted ? (" in transcript
-    assert "data-motion-phase={detailPresence.phase}" in transcript
+    assert "const detailPresence = useMotionPresence(open, 260);" in flow
+    assert 'const cachedDetailRef = useRef("");' in flow
+    assert "const visibleDetail = open ? liveDetail : cachedDetailRef.current;" in flow
+    assert "detailPresence.mounted ? (" in flow
+    assert "data-motion-phase={detailPresence.phase}" in flow
 
-    closed_start = motion.index(".task-flow-inline-detail-grid:not(.open) {")
-    open_start = motion.index(".task-flow-inline-detail-grid.open {", closed_start)
-    closed = motion[closed_start:open_start]
-    assert "grid-template-rows 260ms" in closed
-    assert "opacity 150ms ease 62ms" in closed
-    assert "overflow-anchor: none;" in motion
+    # Closing keeps the pixels alive while the track shrinks and fades first: the words go quickly, the
+    # space follows on the same curve as every other fold.
+    closed = weave[weave.index(".wv-fold,\n.wv-sub-fold,\n.wv-detail {"):]
+    closed = closed[:closed.index("}")]
+    assert "grid-template-rows var(--wv-fold) var(--wv-ease)" in closed
+    assert "opacity 140ms ease" in closed
 
 
 def test_jump_to_latest_yields_to_transient_composer_surfaces() -> None:

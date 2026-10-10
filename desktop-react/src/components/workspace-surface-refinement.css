@@ -18,9 +18,6 @@
 /* Header controls belong to one toolbar, with tint reserved for selection. */
 :root .app-shell .run-progress-frame.top .run-progress-primary { display: none; }
 :root .app-shell .run-progress-frame.top .run-progress-meta { grid-column: 2; justify-self: end; }
-:root .app-shell .task-flow-group-header { align-items: baseline; }
-:root .app-shell .task-flow-group-header :is(.task-flow-group-icon, .task-flow-group-chevron) { align-self: center; }
-:root .app-shell .task-flow-group-title { line-height: 24px; }
 :root .app-shell .thread-header .workspace-path-button { display: none; }
 :root .app-shell .thread-header .thread-sidebar-triangle-mark {
   width: 16px;
@@ -131,77 +128,6 @@
 }
 :root .app-shell .user-message { background: var(--ws-hover); border-color: transparent; box-shadow: none; border-radius: 10px; }
 :root .app-shell .user-message::before { display: none; }
-
-/* Activity is a readable log. Its existing status dots and disclosure controls
-   still communicate progress and expansion, without a shell on every row. */
-:root .app-shell .task-flow-row {
-  background: transparent !important;
-  border-color: transparent !important;
-  border-radius: 6px;
-  box-shadow: none !important;
-}
-:root .app-shell .task-flow-row.is-expandable:hover {
-  background: var(--ws-hover) !important;
-  transform: none;
-}
-:root .app-shell .task-flow-row-wrap.is-open > .task-flow-row {
-  background: var(--ws-hover) !important;
-}
-:root .app-shell :is(.task-flow-row-icon, .task-flow-group-icon) {
-  background: transparent !important;
-  border-color: transparent !important;
-  box-shadow: none !important;
-  border-radius: 4px;
-}
-:root .app-shell .task-flow-sheen { display: none; }
-:root .app-shell .task-flow-group-header {
-  background: transparent !important;
-  border-color: transparent !important;
-  border-radius: 6px;
-  box-shadow: none !important;
-}
-:root .app-shell .task-flow-group .task-flow-list { padding-left: 7px; border-left: 1px solid var(--ws-line); margin-left: 10px; }
-:root .app-shell .task-flow-group .task-flow-group-header {
-  gap: 8px;
-  padding-block: 4px;
-  color: var(--ws-muted);
-}
-:root .app-shell .task-flow-group .task-flow-group-title {
-  color: var(--ws-muted);
-  font-weight: 550;
-}
-:root .app-shell .task-flow-group .task-flow-list {
-  margin-top: 6px;
-  gap: 3px;
-  padding-left: 10px;
-}
-/* A stage of one step is that step's row, set where a header would be: no rail and no body indent. */
-:root .app-shell .task-flow-group.is-single .task-flow-list {
-  margin: 0;
-  padding-left: 0;
-  border-left: 0;
-}
-:root .app-shell .task-flow-group.is-single .process-handoff-slot { margin-bottom: 0; }
-:root .app-shell .task-flow-group .task-flow-row {
-  min-height: 32px;
-  gap: 8px;
-  padding-block: 3px;
-}
-:root .app-shell .task-flow-row .task-flow-verb {
-  color: var(--ws-muted);
-  font-weight: 450;
-}
-:root .app-shell .task-flow-row.is-failed .task-flow-verb {
-  color: color-mix(in srgb, var(--semantic-danger-strong, #c7727c) 80%, var(--ws-muted));
-}
-:root .app-shell .task-flow-row .task-flow-primary { color: var(--ws-ink); }
-:root .app-shell .task-flow-row :is(.task-flow-chevron, .task-flow-row-icon) { color: var(--ws-muted); }
-:root .app-shell .task-flow-status:is(.completed, .changed, .failed, .denied) .task-flow-status-dot {
-  box-shadow: none !important;
-  width: 5px;
-  height: 5px;
-}
-:root .app-shell .task-flow-inline-detail pre { background: var(--ws-canvas); border-color: var(--ws-line); box-shadow: none; border-radius: 6px; }
 
 /* Changed files: a single surface with rows, rather than nested button panels. */
 :root .app-shell .rich-turn-artifacts.review-summary-card {

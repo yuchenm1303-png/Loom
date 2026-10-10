@@ -158,19 +158,19 @@ const LOGIN_DIFF = `${VALIDATOR_DIFF}\ndiff --git a/src/pages/Login.tsx b/src/pa
 async function runScript(turnId: string, token: number) {
   if (scenario === "quick") {
     await wait(900, token);
-    const answer = start(turnId, { id: `${turnId}-a`, type: "assistant_message", phase: "final_answer", status: "streaming", text: "", reasoning: "" });
+    const answer = start(turnId, { id: `${turnId}-a`, type: "assistant_message", status: "streaming", text: "", reasoning: "" });
     await stream(answer, "text", english ? "Sure — the login form only checks required fields right now." : "好的，目前登录表单只检查了必填项。", token);
-    complete(answer);
+    complete(answer, { phase: "final_answer" });
     return "completed";
   }
 
   await wait(700, token);
-  const a1 = start(turnId, { id: `${turnId}-a1`, type: "assistant_message", phase: "commentary", status: "streaming", text: "", reasoning: "" });
+  const a1 = start(turnId, { id: `${turnId}-a1`, type: "assistant_message", status: "streaming", text: "", reasoning: "" });
   await wait(500, token);
   await stream(a1, "reasoning", COPY.r1, token);
   await wait(240, token);
   await stream(a1, "text", COPY.t1, token);
-  complete(a1);
+  complete(a1, { phase: "commentary" });
   await wait(260, token);
 
   await tool(turnId, `${turnId}-read1`, "read_workspace_text", { path: "src/pages/Login.tsx" }, 420, token, "export function Login() { … }");
@@ -194,12 +194,12 @@ async function runScript(turnId: string, token: number) {
     await wait(400, token);
   }
 
-  const a2 = start(turnId, { id: `${turnId}-a2`, type: "assistant_message", phase: "commentary", status: "streaming", text: "", reasoning: "" });
+  const a2 = start(turnId, { id: `${turnId}-a2`, type: "assistant_message", status: "streaming", text: "", reasoning: "" });
   await wait(380, token);
   await stream(a2, "reasoning", COPY.r2, token);
   await wait(200, token);
   await stream(a2, "text", COPY.t2, token);
-  complete(a2);
+  complete(a2, { phase: "commentary" });
   await wait(300, token);
 
   await edit(turnId, `${turnId}-edit1`, "src/utils/validators.ts", VALIDATOR_DIFF, 520, token);
@@ -207,10 +207,10 @@ async function runScript(turnId: string, token: number) {
   await edit(turnId, `${turnId}-edit2`, "src/pages/Login.tsx", LOGIN_DIFF, 640, token);
   await wait(420, token);
 
-  const a3 = start(turnId, { id: `${turnId}-a3`, type: "assistant_message", phase: "commentary", status: "streaming", text: "" });
+  const a3 = start(turnId, { id: `${turnId}-a3`, type: "assistant_message", status: "streaming", text: "" });
   await wait(300, token);
   await stream(a3, "text", COPY.t3, token);
-  complete(a3);
+  complete(a3, { phase: "commentary" });
   await wait(240, token);
 
   if (scenario === "error") {
@@ -225,7 +225,7 @@ async function runScript(turnId: string, token: number) {
     " PASS  src/utils/validators.test.ts\n  isEmail\n    ✓ accepts a plain address (2 ms)\n    ✓ trims surrounding spaces (1 ms)\n    ✓ rejects a missing @ (1 ms)\n    ✓ rejects two @ (1 ms)\n    ✓ rejects a domain without a dot\n    ✓ rejects whitespace inside\n\nTests: 6 passed, 6 total", token);
   await wait(700, token);
 
-  const final = start(turnId, { id: `${turnId}-final`, type: "assistant_message", phase: "final_answer", status: "streaming", text: "" });
+  const final = start(turnId, { id: `${turnId}-final`, type: "assistant_message", status: "streaming", text: "" });
   await wait(260, token);
   if (scenario === "decision") {
     const decision = { id: "next", title: english ? "What next?" : "接下来做什么？", description: english ? "Validation is in. Pick a follow-up." : "校验已经加好，选一个后续方向。", allowCustomInput: true,
@@ -235,7 +235,7 @@ async function runScript(turnId: string, token: number) {
   } else {
     await stream(final, "text", COPY.final, token, 5, 40);
   }
-  complete(final);
+  complete(final, { phase: "final_answer" });
   return "completed";
 }
 

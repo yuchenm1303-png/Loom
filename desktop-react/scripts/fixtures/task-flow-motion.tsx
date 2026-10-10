@@ -320,23 +320,23 @@ const FILM_REASONING = "先确认磁盘总量和剩余空间，再挑能放心�
 const FILM_CASES: Record<string, FilmCase> = {
   group: {
     running: true,
-    focus: ".task-flow-group",
+    focus: ".wv-stage",
     items: [FILM_USER, live({ id: "p1", type: "process", status: "running", argv: COMMANDS.drive })],
   },
   row: {
     running: true,
-    focus: ".task-flow-row-wrap:last-child",
+    focus: ".wv-step:last-child",
     items: [FILM_USER, FILM_P1_DONE, live({ id: "p2", type: "process", status: "running", argv: COMMANDS.recycle })],
   },
   settle: {
     running: true,
-    focus: ".task-flow-row-wrap:last-child",
+    focus: ".wv-step:last-child",
     items: [FILM_USER, live({ id: "p1", type: "process", status: "running", argv: COMMANDS.drive })],
     steps: [{ after: 120, items: [FILM_USER, FILM_P1_DONE] }],
   },
   handoff: {
     running: true,
-    focus: ".task-flow-group",
+    focus: ".wv-stage",
     items: [FILM_USER, FILM_P1_DONE],
     steps: [{ after: 120, items: [FILM_USER, FILM_P1_DONE, live({ id: "a1", type: "assistant_message", phase: "commentary", text: "C 盘剩余 39.4GB。" })] }],
   },

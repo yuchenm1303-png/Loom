@@ -34,10 +34,6 @@
   animation: loom-stream-surface-form 235ms var(--loom-generation-pop) both;
 }
 
-/* The task anchor that takes over from the thinking capsule is born in
-   conversation-motion.css (bead pop -> capsule unroll). The group section
-   itself never animates; task-flow-runtime-performance.css pins that. */
-
 /* Reasoning -> answer ------------------------------------------------------- */
 /* The message shell mounts while the model is still thinking (its header is
    the live capsule, inline-thinking.css). The answer text is what arrives
@@ -130,16 +126,6 @@
    unfold together with the process fold (turn-flow.css). */
 
 /* Small live-state refinements --------------------------------------------- */
-.task-flow-inline-detail-grid.open .task-flow-inline-detail {
-  animation: loom-generation-detail-in 210ms var(--loom-generation-pop) both;
-}
-
-.approval-card,
-.error-row,
-.sub-agent-inline-notice {
-  transform-origin: left center;
-}
-
 html[data-loom-theme="light"] .turn-block > .entry-user_message.is-sending .user-message:not(.has-attachments)::before,
 html[data-loom-theme="light"] .turn-process.is-live .entry-steering-user .user-message:not(.has-attachments)::before,
 html[data-loom-theme="light"] .turn-block > .entry-user_message.is-sending .user-message.has-attachments .user-message-copy-shell::before,
@@ -254,17 +240,6 @@ html[data-loom-theme="light"] .turn-process.is-live .entry-steering-user .user-m
 
 
 
-@keyframes loom-generation-detail-in {
-  from {
-    opacity: .28;
-    transform: translateY(-2px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
 @media (prefers-reduced-motion: reduce) {
   .turn-block > .entry-user_message.is-sending .user-message::before,
   .turn-block > .entry-user_message.is-sending .user-message-copy-shell::before,
@@ -292,8 +267,7 @@ html[data-loom-theme="light"] .turn-process.is-live .entry-steering-user .user-m
   .turn-block > .entry-user_message.is-sending .user-message-meta,
   .turn-process.is-live .entry-steering-user .user-message-meta,
   .turn-block > .entry-user_message.is-sending :is(.user-link-card,.user-rich-code-block,.user-message-image-preview,.user-message-attachment-card,.user-message-media-preview),
-  .turn-process.is-live .entry-steering-user :is(.user-link-card,.user-rich-code-block,.user-message-image-preview,.user-message-attachment-card,.user-message-media-preview),
-  .task-flow-inline-detail-grid.open .task-flow-inline-detail {
+  .turn-process.is-live .entry-steering-user :is(.user-link-card,.user-rich-code-block,.user-message-image-preview,.user-message-attachment-card,.user-message-media-preview) {
     animation: none !important;
     transform: none !important;
     clip-path: none !important;
@@ -322,8 +296,7 @@ html[data-loom-theme="light"] .turn-process.is-live .entry-steering-user .user-m
 :root[data-loom-reduced-motion="true"] .turn-block > .entry-user_message.is-sending .user-message-copy-shell,
 :root[data-loom-reduced-motion="true"] .turn-process.is-live .entry-steering-user .user-message-copy-shell,
 :root[data-loom-reduced-motion="true"] .turn-block > .entry-user_message.is-sending .user-message-meta,
-:root[data-loom-reduced-motion="true"] .turn-process.is-live .entry-steering-user .user-message-meta,
-:root[data-loom-reduced-motion="true"] .task-flow-inline-detail-grid.open .task-flow-inline-detail {
+:root[data-loom-reduced-motion="true"] .turn-process.is-live .entry-steering-user .user-message-meta {
   animation: none !important;
   transform: none !important;
   clip-path: none !important;

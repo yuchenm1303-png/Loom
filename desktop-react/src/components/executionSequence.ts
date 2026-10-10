@@ -112,6 +112,27 @@ function showsReasoning(item: TranscriptItem): boolean {
   return Boolean(String(item.reasoning ?? "").trim()) || /<think/i.test(String(item.text ?? ""));
 }
 
+const thinkingOnly = new WeakMap<TranscriptItem, TranscriptItem>();
+
+/**
+ * The item as far as the reader may see it while its words wait: its reasoning (the model is thinking) and
+ * nothing of the sentence that follows. Reasoning that arrives inside the text (a <think> block) is kept up to
+ * where the block closes.
+ */
+function withoutWords(item: TranscriptItem): TranscriptItem {
+  const text = String(item.text ?? "");
+  const open = text.search(/<think>/i);
+  const close = open < 0 ? -1 : text.toLowerCase().indexOf("</think>");
+  const kept = open >= 0 && close >= 0 ? text.slice(0, close + "</think>".length) : open >= 0 ? text : "";
+  if (kept === text) return item;
+  let variant = thinkingOnly.get(item);
+  if (!variant || variant.text !== kept) {
+    variant = { ...item, text: kept };
+    thinkingOnly.set(item, variant);
+  }
+  return variant;
+}
+
 /**
  * The runtime gives a step's sentence its phase only when the response completes, so while it
  * streams it has none, and drawing it as a message makes narration pop up and then vanish.
@@ -121,7 +142,8 @@ function showsReasoning(item: TranscriptItem): boolean {
  * - after tool work, any other sentence is narration or the answer on its way and nobody knows
  *   yet. If it would be a message as narration (see reportIds) it is drawn now and stays; if not,
  *   it is held back until it is long enough, or `released` names it because the hold ran out.
- * Reasoning shown while it streams is never held. Returns what to draw and the id of the held sentence.
+ * Reasoning is the model thinking, not words about to be taken back: it stays on screen while its sentence
+ * waits. Returns what to draw and the id of the held sentence.
  */
 export function settleLiveText(items: TranscriptItem[], released: ReadonlySet<string> = NO_IDS): { items: TranscriptItem[]; held: string } {
   let lastWork = -1;
@@ -138,7 +160,7 @@ export function settleLiveText(items: TranscriptItem[], released: ReadonlySet<st
   for (const item of base) {
     if (item.type === "user_message") worked = false;
     else if (isActivityItem(item)) worked = true;
-    if (!worked || !isUnclassified(item) || showsReasoning(item)) {
+    if (!worked || !isUnclassified(item)) {
       settled.push(item);
       continue;
     }
@@ -146,6 +168,7 @@ export function settleLiveText(items: TranscriptItem[], released: ReadonlySet<st
     if (!reportIds(base.map((other) => (other === item ? probe : other)), released).has(item.id)) {
       held = item.id;
       changed = true;
+      if (showsReasoning(item)) settled.push(withoutWords(item));
     } else if (String(item.text ?? "").trim().length < SUBSTANTIAL_TEXT_CHARS) {
       // Drawn at once. A short one answers a failed step or waited out its hold: it is narration, so it
       // sits in the work log from its first word and does not move when its tool call arrives.

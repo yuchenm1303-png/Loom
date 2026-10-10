@@ -779,7 +779,6 @@ button, textarea, input { -webkit-tap-highlight-color: transparent; }
   gap: 10px;
   background: linear-gradient(145deg, rgba(27,24,35,.94), rgba(20,19,27,.94));
   box-shadow: 0 10px 28px rgba(0,0,0,.12), inset 0 1px 0 rgba(255,255,255,.02);
-  animation: approval-in 280ms var(--ease-out) both;
 }
 .approval-icon { width: 31px; height: 31px; border-radius: 9px; border: 1px solid rgba(215,173,109,.18); display: grid; place-items: center; color: #d9b982; background: rgba(215,173,109,.055); }
 .approval-main { min-width: 0; display: grid; gap: 3px; }
@@ -1021,11 +1020,6 @@ button, textarea, input { -webkit-tap-highlight-color: transparent; }
   from { transform: translate3d(-18px, -8px, 0) scale(.96); }
   to { transform: translate3d(22px, 12px, 0) scale(1.06); }
 }
-@keyframes approval-in {
-  from { opacity: 0; transform: translateY(6px) scale(.992); }
-  to { opacity: 1; transform: translateY(0) scale(1); }
-}
-
 @media (max-width: 1180px) {
   :root { --sidebar-width: 224px; --inspector-width: 284px; --content-width: 800px; }
   .transcript { width: min(var(--content-width), calc(100% - 36px)); }

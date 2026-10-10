@@ -70,16 +70,19 @@ def test_artifact_renderer_registry_covers_primary_agent_artifact_types() -> Non
 def test_changed_artifacts_render_in_the_conversation_and_expand_to_the_side_renderer() -> None:
     artifacts = ARTIFACTS.read_text(encoding="utf-8")
     transcript = TRANSCRIPT.read_text(encoding="utf-8")
+    flow = (TRANSCRIPT.parent / "WeaveFlow.tsx").read_text(encoding="utf-8")
+    model = (TRANSCRIPT.parent / "activityModel.ts").read_text(encoding="utf-8")
     surface = ARTIFACT_SURFACE.read_text(encoding="utf-8")
 
     # A page, image or document being written can be previewed from its edit
     # row while the turn runs; once it ends, the changed-files card offers the
     # latest renderable file. No separate link sits at the growth edge.
-    assert "visualArtifactPath" in transcript
-    assert 'className="task-flow-row-preview"' in transcript
+    assert "export function visualArtifactPath" in model
+    assert "visualArtifactPath(" in flow
+    assert 'className="wv-preview"' in flow
     assert "artifact-transcript-link" not in transcript
     assert "<ArtifactRenderSurface" not in transcript
-    assert 'new CustomEvent("loom:artifact-preview-open"' in transcript
+    assert 'new CustomEvent("loom:artifact-preview-open"' in flow
     assert "TurnArtifactsPreview items={items} workspace={workspace}" in transcript
     assert 'className="turn-artifacts-preview-action"' in artifacts
     assert "b.lastChange - a.lastChange" in artifacts

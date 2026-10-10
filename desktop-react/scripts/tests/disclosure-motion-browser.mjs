@@ -9,7 +9,7 @@ const base = { threadId:'thread-1', turnId:'turn-1', status:'completed' };
 const items = [
   {...base,id:'user',type:'user_message',text:'检查工作区'},
   {...base,id:'tool',type:'tool_call',toolName:'search_workspace_text',arguments:{query:'login'},result:'Condition met after 5004ms.\nFound login handler.'},
-  // A stage of one step has no header of its own, so a second step keeps the group's disclosure under test.
+  // A second step, so a stage has more than one row to open and to fold.
   {...base,id:'tool-2',type:'tool_call',toolName:'read_workspace_text',arguments:{path:'login.ts'},result:'export const login = true;'},
 ];
 try {
@@ -55,10 +55,19 @@ try {
       if(directory) await writeFile(`${directory}/${theme}-${selector.slice(1)}.json`,JSON.stringify(frames,null,2));
     };
     await check('.turn-process-header','.turn-process-grid');
-    await check('.task-flow-row-wrap:nth-child(1) > .task-flow-row','.task-flow-row-wrap:nth-child(1) .task-flow-inline-detail-grid');
-    // Groups start expanded; first collapse then exercise their first user expansion.
-    await page.locator('.task-flow-group-header').click(); await page.waitForTimeout(350);
-    await check('.task-flow-group-header','.task-flow-group-grid');
+    await check('.wv-step:nth-child(1) .wv-row','.wv-step:nth-child(1) .wv-detail');
+    // A stage that is over is one line while the run is live: that line is its disclosure.
+    await page.evaluate(items => {
+      window.motionFixture.reset();
+      window.motionFixture.turn(items, true);
+    }, [...items, {...base,id:'report',type:'assistant_message',phase:'commentary',text:'报告：前两步都读到了，下一步继续往下查。'.repeat(8)}, {...base,id:'tool-3',type:'tool_call',toolName:'read_workspace_text',arguments:{path:'next.ts'},status:'running'}]);
+    await page.locator('.wv-line').waitFor();
+    await page.evaluate(() => document.querySelector('.wv-stage').dataset.testFirst = '');
+    await check('[data-test-first] .wv-line','[data-test-first] .wv-body-slot > .wv-fold');
+    await page.evaluate(items => {
+      window.motionFixture.reset();
+      window.motionFixture.turn(items, false);
+    }, items);
     await page.evaluate(items => {
       window.motionFixture.reset();
       window.motionFixture.turn(items, false);

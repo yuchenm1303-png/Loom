@@ -9,19 +9,23 @@ export function streamingFrameInterval(length: number): number {
   return length >= 12000 ? 120 : length >= 4000 ? 80 : 28;
 }
 
+// Graphemes per second with nothing waiting, and the most a paint may catch up at.
+const BASE_RATE = 78;
+const FINAL_RATE = 112;
+const MAX_RATE = 330;
+const MAX_FINAL_RATE = 560;
+// The tempo follows the backlog continuously: it would drain in about this long. Stepped gears (the old
+// thresholds at 72, 180, 480 and 1200 graphemes) shifted the typing speed by a third at a time, which
+// reads as a stutter in the rhythm of the text.
+const DRAIN_SECONDS = 2;
+
 function paintBudget(remaining: number, elapsedMs: number, finalizing: boolean): number {
   const elapsed = Math.min(96, Math.max(12, Number.isFinite(elapsedMs) ? elapsedMs : 32));
-  const backlogBoost = remaining > 1200
-    ? 5
-    : remaining > 480
-      ? 3.4
-      : remaining > 180
-        ? 2.2
-        : remaining > 72
-          ? 1.5
-          : 1;
-  const baseRate = finalizing ? 112 : 66;
-  const budget = Math.ceil((baseRate * backlogBoost * elapsed) / 1000);
+  const rate = Math.min(
+    finalizing ? MAX_FINAL_RATE : MAX_RATE,
+    (finalizing ? FINAL_RATE : BASE_RATE) + remaining / DRAIN_SECONDS,
+  );
+  const budget = Math.round((rate * elapsed) / 1000);
   const catchupFloor = remaining > 420 ? 4 : remaining > 160 ? 2 : 1;
   return Math.min(finalizing ? 28 : 18, Math.max(catchupFloor, budget));
 }

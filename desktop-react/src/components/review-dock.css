@@ -104,13 +104,11 @@
 
 /* Make transcript affordances feel connected to the review pane. */
 .turn-artifacts-header,
-.task-flow-row:has(.task-flow-path),
 .markdown-code-block pre {
   cursor: pointer;
 }
 
-.turn-artifacts-header:hover .turn-artifacts-action,
-.task-flow-row:has(.task-flow-path):hover .task-flow-path {
+.turn-artifacts-header:hover .turn-artifacts-action {
   color: #b9b1ff;
 }
 

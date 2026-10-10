@@ -57,7 +57,6 @@ html[data-loom-theme="light"] {
 /* Diff / file-change counters. */
 .turn-artifacts-stats b,
 .turn-artifacts-file-stats b,
-.task-flow-plus,
 .review-additions,
 .review-file-stats b,
 .review-tree-stats b,
@@ -67,8 +66,6 @@ html[data-loom-theme="light"] {
 
 .turn-artifacts-stats i,
 .turn-artifacts-file-stats i,
-.task-flow-minus,
-.task-flow-group-failed,
 .review-deletions,
 .review-file-stats em,
 .review-tree-stats em,
@@ -160,8 +157,6 @@ html[data-loom-theme="light"] .inline-diff-row.is-delete .inline-diff-marker {
   box-shadow: 0 0 0 3px var(--semantic-success-soft), 0 0 10px var(--semantic-success-glow) !important;
 }
 
-.task-flow-status.failed .task-flow-status-dot,
-.task-flow-status.denied .task-flow-status-dot,
 .runtime-status-dot.status-failed,
 .runtime-status-dot.status-error,
 .runtime-status-dot.status-denied {
@@ -281,10 +276,3 @@ html[data-loom-theme="light"] .inline-diff-row.is-delete .inline-diff-marker {
   color: var(--semantic-info) !important;
 }
 
-/* Finished inline work is a quiet receipt; live/error states carry emphasis. */
-.task-flow-status.completed .task-flow-status-dot,
-.task-flow-status.changed .task-flow-status-dot {
-  background: var(--flow-faint) !important;
-  box-shadow: none !important;
-  opacity: .5;
-}

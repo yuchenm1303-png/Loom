@@ -8,16 +8,12 @@ import {
   CircleStop,
   Code2,
   Copy,
-  Eye,
-  FileDiff,
   History,
   Pencil,
   Reply,
   Search,
-  Terminal,
   ThumbsDown,
   ThumbsUp,
-  Wrench,
   Zap,
 } from "lucide-react";
 import {
@@ -34,7 +30,6 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { artifactName, artifactRenderer } from "../artifactRenderers";
 import { useI18n } from "../i18n";
 import { useMotionPresence } from "../motion/useMotionPresence";
 import { useReducedMotion } from "../motion/useReducedMotion";
@@ -42,7 +37,16 @@ import { useEarlierProcessHandoff } from "./useEarlierProcessHandoff";
 import { LIVE_STATUS_GRACE_MS, LIVE_TEXT_HOLD_MS, TURN_FOLD_MS, TURN_SETTLE_HOLD_MS } from "../presentationTiming";
 import type { TranscriptItem } from "../types/loom";
 import { groupExecutionSequence, isActivityItem, isProcessCommentary, reportIds, settleLiveText } from "./executionSequence";
-import { CLUSTER_MIN_ROWS, runsOf } from "./activityClusters";
+import {
+  activitySegments,
+  buildActivityRows,
+  fileEditDeltas,
+  isActiveActivityStatus,
+  isFailureStatus,
+  itemStatus,
+  rowTone,
+  turnProcessBreakdown,
+} from "./activityModel";
 import { latestTaskPlan, liveTaskProgress } from "./liveTaskProgress";
 import { isLongNote } from "./processNote";
 import { TaskProgressPanel } from "./TaskProgressPanel";
@@ -57,20 +61,9 @@ import { ThinkingGlyph } from "./ThinkingGlyph";
 import { TurnArtifactsPreview } from "./TurnArtifactsPreview";
 import { UserMessageContent, parseUserMessageContent } from "./UserMessageContent";
 import { dispatchQuoteReply } from "./quoteReply";
-import { ActivityGlyph as ToolIdentityGlyph, ActivityGroupGlyph, activityGroupIdentity, activityIdentity, activityToolLabel } from "./ToolIdentity";
-import {
-  commandFromItem,
-  describeActivity,
-  isCommandTool,
-  isEditTool,
-  normalizedToolName,
-  useRuntimeCopy,
-  type ActivityCategory,
-  type ActivityDescription,
-  type ProcessSummaryParts,
-  type RuntimeCopy,
-} from "./runtimeCopy";
-import "./activity-flow.css";
+import { FileEditDeltaContext, LiveSequenceContext, ProcessNotesContext, useBornLive } from "./transcriptContexts";
+import { Beads, WeaveStage, type ProcessHandoff } from "./WeaveFlow";
+import { useRuntimeCopy } from "./runtimeCopy";
 import "./message-actions.css";
 import "./turn-flow.css";
 import "./conversation-motion.css";
@@ -106,32 +99,6 @@ interface ReasoningSplit {
 interface ActivitySummaryData {
   steps: number;
   failed: boolean;
-}
-
-interface TurnProcessBreakdown extends ProcessSummaryParts {
-  added: number;
-  removed: number;
-}
-
-/**
- * One visible task row. A tool call that only launches a process or writes a
- * file (`exec`, `write_workspace_text`, ...) and the process/diff it produces
- * are the same step, so they share one row keyed by the call that appeared
- * first. The row keeps its DOM, motion and disclosure state while the outcome
- * item arrives, instead of swapping "使用 exec" for "运行 …" a moment later.
- */
-interface ActivityRowModel {
-  key: string;
-  item: TranscriptItem;
-  wrapper: TranscriptItem | null;
-}
-
-/** Per-step view of the cumulative turn diff snapshots. */
-interface FileEditDelta {
-  paths: string[];
-  diff: string;
-  added: number;
-  removed: number;
 }
 
 // [English, Simplified Chinese]. The prompt follows the interface language so
@@ -223,30 +190,6 @@ interface ThinkingHandle {
 }
 
 const ThinkingHandleContext = createContext<ThinkingHandle | null>(null);
-/** True inside the live sequence of an active turn (not its earlier history). */
-const LiveSequenceContext = createContext(false);
-/** The model's per-step narration stays out of the log unless the reader asks for it, once per turn. */
-const ProcessNotesContext = createContext<{ show: boolean }>({ show: false });
-
-/**
- * Activity rows and groups the renderer has already shown. One-shot motion is
- * bound to a row's first appearance in a live turn, never to a class that can
- * toggle later (a group regaining its running state used to replay every
- * row's birth), and never to history or a remount after switching threads.
- */
-const seenActivity = new Set<string>();
-
-function useBornLive(key: string): boolean {
-  const live = useContext(LiveSequenceContext);
-  const [born] = useState(() => live && !seenActivity.has(key));
-  useLayoutEffect(() => {
-    seenActivity.add(key);
-  }, [key]);
-  return born;
-}
-/** Turn-wide view of each diff snapshot, so a row shows only its own files. */
-const FileEditDeltaContext = createContext<ReadonlyMap<string, FileEditDelta>>(new Map());
-
 // A capsule younger than this has not been seen. Opacity and size are checked
 // as well, so this only filters the single-frame mounts of runtime races.
 const THINKING_SEEN_MS = 90;
@@ -491,560 +434,7 @@ function useStableTurnBlocks(items: TranscriptItem[]): TurnBlock[] {
   }, [items]);
 }
 
-function itemStatus(item: TranscriptItem): string {
-  if (item.type === "tool_call") {
-    const result = item.result as Record<string, unknown> | undefined;
-    const evidence = result?.action_evidence as Record<string, unknown> | undefined;
-    if (result?.execution_status === "not_executed" || evidence?.execution_status === "not_executed") return "not_executed";
-    if (result?.effect === "uncertain") return "uncertain";
-    if (item.status === "failed" && ["stale_observation", "stale_element"].includes(String(result?.error_code || ""))) return "refresh_required";
-  }
-  if (item.type === "file_edit") return item.status || "changed";
-  return item.status || "completed";
-}
-
-function isActiveActivityStatus(status: string): boolean {
-  return ["started", "running", "streaming", "streaming_arguments", "waiting", "waiting_approval", "pending"].includes(status);
-}
-
-function isExecutingActivityStatus(status: string): boolean {
-  return ["started", "running", "streaming", "streaming_arguments"].includes(status);
-}
-
-function isFailureStatus(status: string): boolean {
-  return status === "failed" || status === "denied" || status === "cancelled" || status === "interrupted";
-}
-
-/** The wrapper's verdict wins when it reports a problem the outcome item cannot. */
-function rowStatus(row: ActivityRowModel): string {
-  const status = itemStatus(row.item);
-  if (!row.wrapper || row.wrapper === row.item) return status;
-  const wrapper = itemStatus(row.wrapper);
-  if (isFailureStatus(wrapper) || ["not_executed", "uncertain", "refresh_required", "waiting", "waiting_approval"].includes(wrapper)) return wrapper;
-  return status;
-}
-
-export function buildActivityRows(items: TranscriptItem[]): ActivityRowModel[] {
-  const rows: ActivityRowModel[] = [];
-  const commandWrappers: ActivityRowModel[] = [];
-  const editWrappers: ActivityRowModel[] = [];
-
-  for (const item of items) {
-    if (item.type === "assistant_message") {
-      commandWrappers.length = 0;
-      editWrappers.length = 0;
-    }
-    if (item.type === "tool_call" && (isCommandTool(item) || isEditTool(item))) {
-      const row = { key: item.id, item, wrapper: item };
-      rows.push(row);
-      (isCommandTool(item) ? commandWrappers : editWrappers).push(row);
-      continue;
-    }
-    if (item.type === "process" && commandWrappers.length) {
-      const command = commandFromItem(item);
-      const exact = commandWrappers.findIndex((row) => commandFromItem(row.wrapper) === command);
-      const [row] = commandWrappers.splice(exact >= 0 ? exact : 0, 1);
-      row.item = item;
-      continue;
-    }
-    if (item.type === "file_edit") {
-      const index = editWrappers.findIndex((row) => !isFailureStatus(itemStatus(row.item)));
-      if (index >= 0) {
-        const [row] = editWrappers.splice(index, 1);
-        row.item = item;
-        continue;
-      }
-    }
-    rows.push({ key: item.id, item, wrapper: null });
-  }
-  return rows;
-}
-
-/** Tool neighbours retire together; commentary supplies independent viewport anchors. */
-function activitySegments(rows: ActivityRowModel[]): ActivityRowModel[][] {
-  const segments: ActivityRowModel[][] = [];
-  for (const row of rows) {
-    const previous = segments[segments.length - 1];
-    if (isActivityItem(row.item) && previous && isActivityItem(previous[0].item)) previous.push(row);
-    else segments.push([row]);
-  }
-  return segments;
-}
-
-const VISUAL_ARTIFACTS = new Set(["web", "image", "pdf", "video", "audio"]);
-
-/** The last written file worth looking at rather than reading as a diff. */
-function visualArtifactPath(paths: readonly unknown[]): string {
-  for (let index = paths.length - 1; index >= 0; index -= 1) {
-    const path = String(paths[index] ?? "").trim();
-    if (path && VISUAL_ARTIFACTS.has(artifactRenderer(path).kind)) return path;
-  }
-  return "";
-}
-
-function diffStats(diff?: string): { added: number; removed: number } {
-  if (!diff) return { added: 0, removed: 0 };
-  let added = 0;
-  let removed = 0;
-  for (const line of diff.split("\n")) {
-    if (line.startsWith("+") && !line.startsWith("+++")) added += 1;
-    else if (line.startsWith("-") && !line.startsWith("---")) removed += 1;
-  }
-  return { added, removed };
-}
-
-/** Split a unified diff into per-file chunks (path -> chunk text). */
-function splitDiffByFile(diff: string): Map<string, string> {
-  const files = new Map<string, string>();
-  const lines = diff.split("\n");
-  let path = "";
-  let chunk: string[] = [];
-  let sawHunk = false;
-  const flush = () => {
-    if (chunk.length && path) files.set(path, chunk.join("\n"));
-    chunk = [];
-    sawHunk = false;
-  };
-  for (let index = 0; index < lines.length; index += 1) {
-    const line = lines[index];
-    const git = line.match(/^diff --git a\/(.+?) b\/(.+)$/);
-    const pair = line.startsWith("--- ") && lines[index + 1]?.startsWith("+++ ");
-    if (git || (pair && (sawHunk || !chunk.length || !path))) {
-      if (!(pair && chunk.length && !sawHunk && path)) flush();
-      if (git) path = git[2].trim();
-    }
-    if (pair) {
-      const target = lines[index + 1].slice(4).trim().replace(/^b\//, "");
-      const source = line.slice(4).trim().replace(/^a\//, "");
-      path = target && target !== "/dev/null" ? target : source;
-    }
-    if (line.startsWith("@@")) sawHunk = true;
-    chunk.push(line);
-  }
-  flush();
-  return files;
-}
-
-function fileEditDeltas(items: TranscriptItem[]): Map<string, FileEditDelta> {
-  const deltas = new Map<string, FileEditDelta>();
-  const previousChunks = new Map<string, string>();
-  const previousPaths = new Set<string>();
-  for (const item of items) {
-    if (item.type !== "file_edit") continue;
-    const diff = String(item.diff ?? "");
-    const paths = (item.paths ?? []).map(String).map((path) => path.trim()).filter(Boolean);
-    const chunks = splitDiffByFile(diff);
-    const changed = [...chunks].filter(([path, text]) => previousChunks.get(path) !== text);
-    const changedPaths = new Set(changed.map(([path]) => path));
-    for (const path of paths) {
-      if (!previousPaths.has(path) && ![...chunks.keys()].some((known) => known.endsWith(path) || path.endsWith(known))) changedPaths.add(path);
-    }
-    chunks.forEach((text, path) => previousChunks.set(path, text));
-    paths.forEach((path) => previousPaths.add(path));
-    if (!changedPaths.size) {
-      deltas.set(item.id, { paths, diff, ...diffStats(diff) });
-      continue;
-    }
-    const deltaDiff = changed.length ? changed.map(([, text]) => text).join("\n") : diff;
-    deltas.set(item.id, { paths: [...changedPaths], diff: deltaDiff, ...diffStats(deltaDiff) });
-  }
-  return deltas;
-}
-
-function isFileReadTool(item: TranscriptItem): boolean {
-  if (item.type !== "tool_call") return false;
-  const name = normalizedToolName(item);
-  if (!name) return false;
-  const hasReadVerb = /(^|_)(read|open|fetch|get|cat)(_|$)/.test(name);
-  const hasFileObject = /(^|_)(file|files|workspace|text|document|blob)(_|$)/.test(name);
-  return hasReadVerb && hasFileObject;
-}
-
-function collectReadPaths(value: unknown, paths: Set<string>, keyHint = "") {
-  if (typeof value === "string") {
-    if (/(^|_)(path|paths|file|files|filename|filepath|file_path)$/.test(keyHint) && value.trim()) paths.add(value.trim());
-    return;
-  }
-  if (Array.isArray(value)) {
-    for (const entry of value) collectReadPaths(entry, paths, keyHint);
-    return;
-  }
-  if (!value || typeof value !== "object") return;
-  for (const [key, entry] of Object.entries(value as Record<string, unknown>)) {
-    collectReadPaths(entry, paths, key.trim().toLowerCase());
-  }
-}
-
-function isBrowserScreenshotActivity(item: TranscriptItem): boolean {
-  return item.type === "tool_call"
-    && String(item.toolName ?? "").trim().toLowerCase() === "browser_screenshot";
-}
-
-function browserScreenshotPaths(item: TranscriptItem): string[] {
-  if (!isBrowserScreenshotActivity(item)) return [];
-  const result = item.result;
-  if (!result || typeof result !== "object" || Array.isArray(result)) return [];
-  const path = String((result as Record<string, unknown>).path ?? "").trim();
-  if (!path || !/\.png$/i.test(path)) return [];
-  return [path];
-}
-
-function turnProcessBreakdown(items: TranscriptItem[], copyForSummary: RuntimeCopy): TurnProcessBreakdown {
-  const rows = buildActivityRows(items.filter(isActivityItem));
-  const editedPaths = new Set<string>();
-  const readPaths = new Set<string>();
-  let anonymousEdits = 0;
-  let anonymousReads = 0;
-  let commands = 0;
-  let imagesViewed = 0;
-  let tools = 0;
-  let searches = 0;
-  let lastDiff = "";
-
-  for (const row of rows) {
-    const source = row.wrapper ?? row.item;
-    if (row.item.type === "process" || isCommandTool(source)) {
-      commands += 1;
-      continue;
-    }
-    if (row.item.type === "file_edit" || isEditTool(source)) {
-      const paths = (row.item.type === "file_edit" ? row.item.paths ?? [] : []).map(String).map((path) => path.trim()).filter(Boolean);
-      if (paths.length) paths.forEach((path) => editedPaths.add(path));
-      else if (row.item.type === "file_edit") anonymousEdits += 1;
-      if (row.item.type === "file_edit" && String(row.item.diff ?? "").trim()) lastDiff = String(row.item.diff);
-      continue;
-    }
-    const category = describeActivity(row.item, row.wrapper, itemStatus(row.item), copyForSummary, { fallbackToolLabel: "", screenshotCount: 0 }).category;
-    if (category === "search" || category === "web") { searches += 1; continue; }
-    if (isFileReadTool(row.item)) {
-      const before = readPaths.size;
-      collectReadPaths(row.item.arguments, readPaths);
-      if (readPaths.size === before) anonymousReads += 1;
-      continue;
-    }
-    const screenshots = browserScreenshotPaths(row.item).length;
-    if (screenshots) {
-      imagesViewed += screenshots;
-      continue;
-    }
-    tools += 1;
-  }
-
-  // Diff items are cumulative turn snapshots: the latest one is the turn's diff.
-  const { added, removed } = diffStats(lastDiff);
-  return {
-    commands,
-    filesEdited: editedPaths.size + anonymousEdits,
-    filesRead: readPaths.size + anonymousReads,
-    imagesViewed,
-    searches,
-    tools,
-    added,
-    removed,
-  };
-}
-
-function hasActivityDetail(item: TranscriptItem): boolean {
-  if (browserScreenshotPaths(item).length) return true;
-  if (item.type === "process") return Boolean(String(item.stdout ?? "").trim() || String(item.stderr ?? "").trim());
-  if (item.type === "file_edit") return Boolean(String(item.diff ?? "").trim());
-  if (String(item.content ?? "").trim()) return true;
-  if (String(item.stdout ?? "").trim() || String(item.stderr ?? "").trim()) return true;
-  return item.arguments !== undefined;
-}
-
-function activityDetail(item: TranscriptItem): string {
-  if (browserScreenshotPaths(item).length) return "";
-  if (item.type === "process") {
-    const stdout = String(item.stdout ?? "");
-    const stderr = String(item.stderr ?? "");
-    return `${stdout}${stderr ? `${stdout ? "\n" : ""}${stderr}` : ""}`.trim();
-  }
-  if (item.type === "file_edit") return String(item.diff ?? "").trim();
-  if (item.content) return String(item.content);
-  if (item.stdout || item.stderr) return `${String(item.stdout ?? "")}${item.stderr ? `\n${String(item.stderr)}` : ""}`.trim();
-  if (item.arguments !== undefined) {
-    try {
-      return JSON.stringify(item.arguments, null, 2);
-    } catch {
-      return String(item.arguments);
-    }
-  }
-  return "";
-}
-
-function rowHasDetail(row: ActivityRowModel): boolean {
-  return hasActivityDetail(row.item) || Boolean(row.wrapper && row.wrapper !== row.item && hasActivityDetail(row.wrapper));
-}
-
-function rowDetail(row: ActivityRowModel, delta?: FileEditDelta): string {
-  if (row.item.type === "file_edit" && delta?.diff.trim()) return delta.diff.trim();
-  const primary = activityDetail(row.item);
-  if (primary || !row.wrapper || row.wrapper === row.item) return primary;
-  return activityDetail(row.wrapper);
-}
-
-function BrowserScreenshotDetail({ paths, workspace }: { paths: string[]; workspace?: string }) {
-  const copy = useRuntimeCopy();
-  const pathKey = paths.join("\n");
-  const [sources, setSources] = useState<Record<string, string>>({});
-  const [failed, setFailed] = useState<Set<string>>(() => new Set());
-
-  useEffect(() => {
-    let cancelled = false;
-    setSources({});
-    setFailed(new Set());
-    const workspaceRoot = String(workspace ?? "").trim();
-    if (!workspaceRoot) return () => { cancelled = true; };
-
-    for (const path of paths) {
-      void window.loom.readLocalImage(path, workspaceRoot)
-        .then((result) => {
-          if (cancelled) return;
-          setSources((current) => ({ ...current, [path]: result.dataUrl }));
-        })
-        .catch(() => {
-          if (cancelled) return;
-          setFailed((current) => new Set(current).add(path));
-        });
-    }
-
-    return () => { cancelled = true; };
-  }, [pathKey, workspace]);
-
-  return (
-    <div className="task-flow-image-grid" aria-label={copy.imagesViewed(paths.length)}>
-      {paths.map((path) => {
-        const source = sources[path];
-        const unavailable = failed.has(path) || !String(workspace ?? "").trim();
-        const name = path.replaceAll("\\", "/").split("/").pop() || "browser-screenshot.png";
-        return (
-          <figure className="task-flow-image-card" key={path} title={path}>
-            {source ? (
-              <img src={source} alt={copy.imageAlt(name)} loading="lazy" decoding="async" />
-            ) : (
-              <div className={`task-flow-image-loading ${unavailable ? "is-unavailable" : ""}`}>
-                {unavailable ? copy.imageUnavailable : copy.imageLoading}
-              </div>
-            )}
-            <figcaption>{name}</figcaption>
-          </figure>
-        );
-      })}
-    </div>
-  );
-}
-
-function liveHintKind(row: ActivityRowModel, status: string): "approval" | "waiting" | "command" | "edit" | "tool" {
-  if (status === "waiting_approval") return "approval";
-  if (status === "waiting" || status === "pending") return "waiting";
-  const source = row.wrapper ?? row.item;
-  if (row.item.type === "process" || isCommandTool(source)) return "command";
-  if (row.item.type === "file_edit" || isEditTool(source)) return "edit";
-  return "tool";
-}
-
-/** The item whose identity (icon, family) represents a row from its first frame. */
-function identitySource(row: ActivityRowModel): TranscriptItem {
-  const source = row.wrapper ?? row.item;
-  if (row.item.type === "process" || isCommandTool(source)) return row.item.type === "process" ? row.item : { ...source, type: "process" };
-  if (row.item.type === "file_edit" || isEditTool(source)) return row.item.type === "file_edit" ? row.item : { ...source, type: "file_edit" };
-  return source;
-}
-
-function RowGlyph({ row, category, size = 13 }: { row: ActivityRowModel; category: ActivityCategory; size?: number }) {
-  if (category === "command") return <Terminal size={size} />;
-  if (category === "edit") return <FileDiff size={size} />;
-  const source = identitySource(row);
-  const identity = activityIdentity(source);
-  if (identity.family === "terminal") return <Terminal size={size} />;
-  if (identity.family === "file") return <FileDiff size={size} />;
-  if (identity.family === "generic") return <Wrench size={size} />;
-  return <ToolIdentityGlyph item={source} size={size} />;
-}
-
-function ActivityStatus({ status, copy }: { status: string; copy: RuntimeCopy }) {
-  const quiet = status === "completed" || status === "changed";
-  const label = copy.statusLabel(status);
-  return (
-    <span className={`task-flow-status ${status}`} title={label} aria-label={label}>
-      <span className="task-flow-status-dot" />
-      {!quiet ? <span>{label}</span> : null}
-    </span>
-  );
-}
-
-function describeRow(row: ActivityRowModel, copy: RuntimeCopy, delta?: FileEditDelta): ActivityDescription {
-  const status = rowStatus(row);
-  const screenshots = browserScreenshotPaths(row.item).length;
-  const primary = row.item.type === "file_edit" && delta ? { ...row.item, paths: delta.paths } : row.item;
-  return describeActivity(primary, row.wrapper, status, copy, {
-    fallbackToolLabel: activityToolLabel(row.wrapper ?? row.item),
-    screenshotCount: screenshots,
-  });
-}
-
-interface ActivityRowProps {
-  row: ActivityRowModel;
-  open: boolean;
-  workspace?: string;
-  copy: RuntimeCopy;
-  delta?: FileEditDelta;
-  onToggle(id: string): void;
-}
-
-function sameActivityRowProps(previous: ActivityRowProps, next: ActivityRowProps): boolean {
-  if (previous.open !== next.open) return false;
-  if (previous.workspace !== next.workspace || previous.copy !== next.copy || previous.delta !== next.delta) return false;
-  if (previous.row.key !== next.row.key) return false;
-  if (previous.row.item.id !== next.row.item.id || previous.row.item.type !== next.row.item.type) return false;
-  if ((previous.row.wrapper?.id ?? "") !== (next.row.wrapper?.id ?? "")) return false;
-
-  const previousStatus = rowStatus(previous.row);
-  const nextStatus = rowStatus(next.row);
-  if (previousStatus !== nextStatus) return false;
-
-  if (previous.row.item.toolName !== next.row.item.toolName) return false;
-  if (browserScreenshotPaths(previous.row.item).join("\n") !== browserScreenshotPaths(next.row.item).join("\n")) return false;
-  if (commandFromItem(previous.row.item) !== commandFromItem(next.row.item)) return false;
-  if ((previous.row.item.paths ?? []).join("\n") !== (next.row.item.paths ?? []).join("\n")) return false;
-  if (previous.row.wrapper && next.row.wrapper && previous.row.wrapper.arguments !== next.row.wrapper.arguments) return false;
-  if (previous.row.item.arguments !== next.row.item.arguments && !isActiveActivityStatus(nextStatus)) return false;
-
-  // Collapsed rows intentionally ignore stdout/stderr/content/argument deltas.
-  // Those can arrive every presentation frame and used to make the task pill
-  // reconcile while its entrance animation was still running. When expanded,
-  // the detail panel remains fully live.
-  if (next.open) return rowDetail(previous.row, previous.delta) === rowDetail(next.row, next.delta);
-
-  const active = isActiveActivityStatus(nextStatus);
-  if (!active && rowHasDetail(previous.row) !== rowHasDetail(next.row)) return false;
-  if (!active && next.row.item.type === "file_edit" && previous.row.item.diff !== next.row.item.diff) return false;
-  return true;
-}
-
-const ActivityRow = memo(function ActivityRow({ row, open, workspace, copy, delta, onToggle }: ActivityRowProps) {
-  const status = rowStatus(row);
-  const active = isActiveActivityStatus(status);
-  const executing = isExecutingActivityStatus(status);
-  const born = useBornLive(row.key);
-  // A row that finishes while the user watches confirms once, in its outcome
-  // colour. The marker lives on the row, so nothing else can replay it.
-  const live = useContext(LiveSequenceContext);
-  const previousStatusRef = useRef(status);
-  const [settled, setSettled] = useState<"done" | "failed" | null>(null);
-  useLayoutEffect(() => {
-    const previous = previousStatusRef.current;
-    previousStatusRef.current = status;
-    if (!live || previous === status || !isActiveActivityStatus(previous) || isActiveActivityStatus(status)) return;
-    setSettled(isFailureStatus(status) ? "failed" : "done");
-  }, [live, status]);
-  useEffect(() => {
-    if (!settled) return;
-    const timer = window.setTimeout(() => setSettled(null), 760);
-    return () => window.clearTimeout(timer);
-  }, [settled]);
-  const expandable = active || rowHasDetail(row);
-  const detailPresence = useMotionPresence(open, 260);
-  const cachedDetailRef = useRef("");
-  const liveDetail = open ? rowDetail(row, delta) : "";
-  if (open) cachedDetailRef.current = liveDetail;
-  const visibleDetail = open ? liveDetail : cachedDetailRef.current;
-  const description = describeRow(row, copy, delta);
-  const stats = row.item.type === "file_edit" && (!active || open)
-    ? (delta ? { added: delta.added, removed: delta.removed } : diffStats(row.item.diff))
-    : null;
-  const screenshotPaths = browserScreenshotPaths(row.item);
-  const hintPresence = useMotionPresence(open && active && !visibleDetail && !screenshotPaths.length, 200);
-  const identity = activityIdentity(identitySource(row));
-  const kind = description.category === "command" ? "process" : description.category === "edit" ? "file_edit" : row.item.type;
-  // A page, image or document being written can be watched while it grows.
-  const previewPath = description.category === "edit" && workspace && !active
-    ? visualArtifactPath(row.item.type === "file_edit" ? (delta?.paths ?? row.item.paths ?? []) : [])
-    : "";
-
-  return (
-    <div
-      className={`task-flow-row-wrap ${open ? "is-open" : ""} ${previewPath ? "has-preview" : ""}`.replace(/\s+/g, " ").trim()}
-      data-kind={kind}
-      data-row-key={row.key}
-      data-born={born ? "live" : undefined}
-      data-settled={settled ?? undefined}
-    >
-      <button
-        type="button"
-        className={`task-flow-row task-flow-kind-${kind} ${active ? "is-active" : "is-resting"} ${executing ? "is-executing" : ""} ${expandable ? "is-expandable" : "no-detail"} ${isFailureStatus(status) ? "is-failed" : ""}`.replace(/\s+/g, " ").trim()}
-        data-tool-family={description.category === "command" ? "terminal" : description.category === "edit" ? "file" : identity.family}
-        onClick={() => expandable && onToggle(row.key)}
-        aria-expanded={expandable ? open : undefined}
-        disabled={!expandable}
-        title={expandable ? (open ? copy.collapseDetails : copy.expandDetails) : undefined}
-      >
-        <span className="task-flow-sheen" aria-hidden="true"><i /></span>
-        <span className="task-flow-row-icon" title={identity.label}><RowGlyph row={row} category={description.category} /></span>
-        <span className="task-flow-row-main">
-          {/* Verbs are keyed on their text so a tense change (正在运行 -> 已运行)
-              remounts the span and cross-fades (conversation-motion.css). */}
-          <span className="task-flow-verb" key={description.verb}>{description.verb}</span>
-          <span
-            className={`task-flow-primary ${description.code ? "code" : ""} ${description.category === "edit" || description.category === "read" ? "task-flow-path" : ""}`.replace(/\s+/g, " ").trim()}
-            title={description.title}
-          >
-            {description.target}
-          </span>
-          {stats && (stats.added > 0 || stats.removed > 0) ? (
-            <span className="task-flow-diffstat">
-              {stats.added ? <span className="task-flow-plus">+{stats.added}</span> : null}
-              {stats.removed ? <span className="task-flow-minus">-{stats.removed}</span> : null}
-            </span>
-          ) : null}
-          <ActivityStatus status={status} copy={copy} />
-        </span>
-      </button>
-
-      {previewPath ? (
-        <button
-          type="button"
-          className="task-flow-row-preview"
-          onClick={() => window.dispatchEvent(new CustomEvent("loom:artifact-preview-open", { detail: { path: previewPath, workspace } }))}
-          title={copy.previewArtifactTitle(previewPath)}
-          aria-label={copy.previewArtifact(artifactName(previewPath))}
-        >
-          <Eye size={12} strokeWidth={1.9} aria-hidden="true" />
-          <span>{copy.preview}</span>
-        </button>
-      ) : null}
-
-      {expandable ? (
-        <div
-          className={`task-flow-inline-detail-grid ${open ? "open" : ""}`}
-          data-motion-phase={detailPresence.phase}
-          inert={!open}
-        >
-          <div className="task-flow-inline-detail-inner">
-            {detailPresence.mounted ? (
-              <div className="task-flow-inline-detail">
-                {screenshotPaths.length ? (
-                  <BrowserScreenshotDetail paths={screenshotPaths} workspace={workspace} />
-                ) : visibleDetail ? (
-                  <pre>{visibleDetail}</pre>
-                ) : null}
-                {hintPresence.mounted ? (
-                  <div className="tool-hint-presence" data-motion-phase={hintPresence.phase} inert={hintPresence.phase === "exiting"}>
-                  <div className="tool-hint-presence-inner"><div className="task-flow-live-detail" role="status">
-                    <span className="task-flow-live-detail-glow" aria-hidden="true" />
-                    <span>{copy.liveHint(liveHintKind(row, status))}</span>
-                  </div></div></div>
-                ) : null}
-              </div>
-            ) : null}
-          </div>
-        </div>
-      ) : null}
-    </div>
-  );
-}, sameActivityRowProps);
-
+/** How many tool steps a turn took, and whether any step or the turn itself went wrong. */
 function activitySummary(items: TranscriptItem[]): ActivitySummaryData {
   const activityItems: TranscriptItem[] = [];
   let failed = false;
@@ -1059,362 +449,6 @@ function activitySummary(items: TranscriptItem[]): ActivitySummaryData {
     failed,
   };
 }
-
-function groupCategories(rows: ActivityRowModel[], copy: RuntimeCopy, deltas: ReadonlyMap<string, FileEditDelta>): ActivityCategory[] {
-  const categories: ActivityCategory[] = [];
-  for (const row of rows) {
-    const category = describeRow(row, copy, deltas.get(row.item.id)).category;
-    if (!categories.includes(category)) categories.push(category);
-  }
-  return categories;
-}
-
-/** What a stage did, in counts: "运行 2 条命令 · 操作浏览器 3 次". This is the one line of a collapsed stage. */
-function groupSummary(rows: ActivityRowModel[], copy: RuntimeCopy): string {
-  const kinds = new Map<string, { category: ActivityCategory; count: number; toolName: string }>();
-  for (const row of rows) {
-    const { category } = describeRow(row, copy);
-    const toolName = String((row.wrapper ?? row.item).toolName ?? "");
-    const key = category === "tool" && toolName === "tool_search" ? "tool_search" : category;
-    const kind = kinds.get(key);
-    if (kind) kind.count += 1;
-    else kinds.set(key, { category, count: 1, toolName });
-  }
-  const phrases = [...kinds.values()].slice(0, 3).map((kind) => copy.clusterTitle(kind.category, kind.count, kind.toolName));
-  return phrases.join(" · ") + (kinds.size > 3 ? " …" : "");
-}
-
-function ActivityGroupIcon({ items }: { items: TranscriptItem[] }) {
-  const identity = activityGroupIdentity(items);
-  if (identity.family === "terminal") return <Terminal size={14} />;
-  if (identity.family === "file") return <FileDiff size={14} />;
-  if (identity.family === "generic") return <Wrench size={14} />;
-  return <ActivityGroupGlyph items={items} size={14} />;
-}
-
-function clusterKeyOf(row: ActivityRowModel, copy: RuntimeCopy): string {
-  const { category } = describeRow(row, copy);
-  return category === "tool" ? `tool:${String((row.wrapper ?? row.item).toolName ?? "")}` : category;
-}
-
-interface ClusterRowProps {
-  row: ActivityRowModel;
-  openRows: ReadonlySet<string>;
-  workspace?: string;
-  copy: RuntimeCopy;
-  onToggleRow(id: string): void;
-}
-
-/** Reads the edit deltas itself so a closed cluster never re-renders for them. */
-function ClusterRow({ row, openRows, workspace, copy, onToggleRow }: ClusterRowProps) {
-  const deltas = useContext(FileEditDeltaContext);
-  return (
-    <ActivityRow
-      row={row}
-      open={openRows.has(row.key)}
-      workspace={workspace}
-      copy={copy}
-      delta={row.item.type === "file_edit" ? deltas.get(row.item.id) : undefined}
-      onToggle={onToggleRow}
-    />
-  );
-}
-
-interface ActivityClusterProps {
-  rows: ActivityRowModel[];
-  category: ActivityCategory;
-  toolName: string;
-  openRows: ReadonlySet<string>;
-  workspace?: string;
-  copy: RuntimeCopy;
-  onToggleRow(id: string): void;
-}
-
-function sameClusterProps(previous: ActivityClusterProps, next: ActivityClusterProps): boolean {
-  if (previous.category !== next.category || previous.toolName !== next.toolName || previous.workspace !== next.workspace
-    || previous.copy !== next.copy || previous.openRows !== next.openRows || previous.onToggleRow !== next.onToggleRow
-    || previous.rows.length !== next.rows.length) return false;
-  for (let index = 0; index < next.rows.length; index += 1) {
-    const before = previous.rows[index];
-    const after = next.rows[index];
-    if (before.key !== after.key || before.item !== after.item || before.wrapper !== after.wrapper) return false;
-  }
-  return true;
-}
-
-/**
- * A run of same-kind steps (seven tool searches, a dozen browser actions) as one line. Its rows
- * mount only while it is open, so a long chain costs one row instead of one per call. A step that
- * is still running stays visible under the line, because it is what the reader is waiting on.
- */
-const ActivityCluster = memo(function ActivityCluster({ rows, category, toolName, openRows, workspace, copy, onToggleRow }: ActivityClusterProps) {
-  const [open, setOpen] = useState(false);
-  const presence = useMotionPresence(open, 200);
-  const bodyId = useId();
-  const first = rows[0];
-  const activeRow = [...rows].reverse().find((row) => isActiveActivityStatus(rowStatus(row)));
-  const failed = rows.reduce((count, row) => count + (isFailureStatus(rowStatus(row)) ? 1 : 0), 0);
-  // A step still receiving its arguments has no target yet: the line names the latest one that has.
-  const named = rows.filter((row) => rowStatus(row) !== "streaming_arguments");
-  const latest = named.length ? describeRow(named[named.length - 1], copy).target : "";
-  const identity = activityIdentity(identitySource(first));
-  return (
-    <div className={`task-flow-cluster ${open ? "is-open" : ""} ${activeRow ? "has-active" : ""}`.replace(/\s+/g, " ").trim()} data-category={category}>
-      <button
-        type="button"
-        className={`task-flow-row task-flow-kind-cluster is-expandable ${activeRow ? "is-active" : "is-resting"} ${failed ? "is-failed" : ""}`.replace(/\s+/g, " ").trim()}
-        data-tool-family={category === "command" ? "terminal" : category === "edit" ? "file" : identity.family}
-        aria-expanded={open}
-        aria-controls={bodyId}
-        onClick={() => setOpen((value) => !value)}
-        title={open ? copy.collapseDetails : copy.expandDetails}
-      >
-        <span className="task-flow-sheen" aria-hidden="true"><i /></span>
-        <span className="task-flow-row-icon" title={identity.label}><RowGlyph row={first} category={category} /></span>
-        <span className="task-flow-row-main">
-          <span className="task-flow-verb">{copy.clusterTitle(category, rows.length, toolName)}</span>
-          {latest ? <span className="task-flow-primary task-flow-cluster-latest">{latest}</span> : null}
-          {failed ? <span className="task-flow-cluster-failed">{copy.clusterFailed(failed)}</span> : null}
-          <ChevronRight size={12} className="task-flow-cluster-chevron" aria-hidden="true" />
-        </span>
-      </button>
-      {!open && activeRow ? (
-        <div className="task-flow-cluster-live">
-          <ClusterRow row={activeRow} openRows={openRows} workspace={workspace} copy={copy} onToggleRow={onToggleRow} />
-        </div>
-      ) : null}
-      <div id={bodyId} className={`task-flow-cluster-grid ${open ? "open" : ""}`} data-motion-phase={presence.phase} inert={!open}>
-        <div className="task-flow-cluster-inner">
-          {presence.mounted ? (
-            <div className="task-flow-cluster-body">
-              {rows.map((row) => (
-                <ClusterRow key={row.key} row={row} openRows={openRows} workspace={workspace} copy={copy} onToggleRow={onToggleRow} />
-              ))}
-            </div>
-          ) : null}
-        </div>
-      </div>
-    </div>
-  );
-}, sameClusterProps);
-
-type ProcessHandoff = { retained: ReadonlySet<string>; folding: ReadonlySet<string> };
-
-interface ActivityFlowProps {
-  items: TranscriptItem[];
-  keepOpen?: boolean;
-  continuing?: boolean;
-  /** A later tool group exists in this live turn: this stage is over, so it is one line unless opened. */
-  superseded?: boolean;
-  workspace?: string;
-  liveAssistantId?: string;
-  handoff?: ProcessHandoff;
-  /** Replies that answer the user keep the message presentation wherever they sit. */
-  messageIds?: ReadonlySet<string>;
-  onPrompt?(prompt: string): Promise<void> | void;
-  promptDisabled?: boolean;
-  onApproval(item: TranscriptItem, approved: boolean): void;
-}
-
-/** Grouping rebuilds the array on every delta; the group only changes with its items. */
-function sameActivityFlowProps(previous: ActivityFlowProps, next: ActivityFlowProps): boolean {
-  return previous.keepOpen === next.keepOpen
-    && previous.continuing === next.continuing
-    && previous.superseded === next.superseded
-    && previous.workspace === next.workspace
-    && previous.handoff === next.handoff
-    && previous.messageIds === next.messageIds
-    && previous.liveAssistantId === next.liveAssistantId
-    && previous.onPrompt === next.onPrompt
-    && previous.onApproval === next.onApproval
-    && previous.promptDisabled === next.promptDisabled
-    && sameItemReferences(previous.items, next.items);
-}
-
-const ActivityFlow = memo(function ActivityFlow({
-  items,
-  keepOpen = false,
-  continuing = false,
-  superseded = false,
-  workspace,
-  liveAssistantId,
-  handoff,
-  messageIds,
-  onPrompt,
-  onApproval,
-  promptDisabled,
-}: ActivityFlowProps) {
-  const copy = useRuntimeCopy();
-  const deltas = useContext(FileEditDeltaContext);
-  const notes = useContext(ProcessNotesContext);
-  const rows = useMemo(() => buildActivityRows(items), [items]);
-  // Per-step narration stays out of the log unless asked for. The replies that answer the user and
-  // the model's own plan-update reports are messages and always show. Hidden narration is simply
-  // not rendered, so neighbouring steps of one kind form a single run.
-  const shownRows = useMemo(
-    () => rows.filter((row) => row.item.type !== "assistant_message" || notes.show || messageIds?.has(row.item.id)),
-    [rows, notes.show, messageIds],
-  );
-  const segments = useMemo(() => activitySegments(shownRows), [shownRows]);
-  const pending = usePendingPresentations();
-  const revealed = useRef(new Set<string>());
-  const orderingBlocks = useMemo(() => segments.map(segment => isActivityItem(segment[0].item)
-    ? { kind: "activity" as const, items: segment.map(row => ({ id: row.key })) }
-    : { kind: "item" as const, item: segment[0].item }), [segments]);
-  const deferred = deferredActivityIndices(orderingBlocks, pending, revealed.current);
-  useLayoutEffect(() => {
-    segments.forEach((segment, index) => {
-      if (!deferred.has(index)) segment.forEach(row => revealed.current.add(row.key));
-    });
-  }, [segments, pending]);
-  const born = useBornLive(`group:${items[0]?.id ?? ""}`);
-  const running = keepOpen;
-  const hasActiveRows = rows.some((row) => isActivityItem(row.item) && isActiveActivityStatus(rowStatus(row)));
-  // The latest group of a live turn stays the motion anchor between tool
-  // batches (so rows appended later still animate), but it only *looks* busy
-  // while a row is genuinely active. The quiet gap belongs to the thinking
-  // capsule below the group, not to a second "continuing" label here.
-  const betweenSteps = Boolean(running && continuing && !hasActiveRows);
-  // A stage that is over (a later one exists in the live layout) is one line, as a collapsed tool group is in
-  // Claude Code. The latest stage and any still running stay open, and a click overrides until it runs again.
-  const [chosen, setChosen] = useState<boolean | null>(null);
-  const open = chosen ?? (keepOpen || !superseded);
-  const presence = useMotionPresence(open, 190);
-  // Opening a group pops its rows out once (.is-unfolding in conversation-motion.css).
-  // It is only ever set by the user's click, never on mount, so remounted
-  // history stays still.
-  const [unfolding, setUnfolding] = useState(false);
-  const [openRows, setOpenRows] = useState<Set<string>>(() => new Set());
-  const wasRunningRef = useRef(false);
-
-  const toggleRow = useCallback((id: string) => {
-    setOpenRows((current) => {
-      const next = new Set(current);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  }, []);
-
-  useEffect(() => {
-    if (running && !wasRunningRef.current) setChosen(null);
-    wasRunningRef.current = running;
-  }, [running]);
-
-  useEffect(() => {
-    if (!unfolding) return;
-    // Long enough for the last staggered row (230ms lead + 460ms glow).
-    const timer = window.setTimeout(() => setUnfolding(false), 900);
-    return () => window.clearTimeout(timer);
-  }, [unfolding]);
-
-  const toolRows = useMemo(() => rows.filter(row => isActivityItem(row.item)), [rows]);
-  const latestCommentary = useMemo(() => {
-    for (let index = shownRows.length - 1; index >= 0; index -= 1) {
-      if (shownRows[index].item.type === "assistant_message") return shownRows[index].item;
-    }
-    return undefined;
-  }, [shownRows]);
-  const commentaryView = (item: TranscriptItem) => messageIds?.has(item.id)
-    // The reply to the user stays a message here too, so it never changes size when it moves between views.
-    ? <div className="task-flow-reply" key={item.id}>
-      <ItemView item={item} streaming={item.id === liveAssistantId} onApproval={onApproval}
-        onPrompt={onPrompt} promptDisabled={promptDisabled} workspace={workspace} />
-    </div>
-    : <div className={`task-flow-commentary ${item.id === latestCommentary?.id ? "is-latest" : ""}`.trim()} key={item.id}>
-      <ItemView item={item} variant="note" streaming={item.id === liveAssistantId} onApproval={onApproval}
-        onPrompt={onPrompt} promptDisabled={promptDisabled} workspace={workspace} />
-    </div>;
-  const rowEnvelope = (segment: ActivityRowModel[], content: ReactNode) => {
-    const row = segment[0];
-    const ids = [...new Set(segment.flatMap(entry => [entry.key, entry.item.id]))];
-    return handoff ? <div key={row.key} className="process-handoff-slot" data-process-items={ids.join(" ")}
-      data-handoff-phase={ids.every(id => handoff.folding.has(id)) ? "folding"
-        : ids.some(id => handoff.retained.has(id)) ? "holding" : "current"}
-      inert={ids.every(id => handoff.folding.has(id))}>
-      <div className="process-handoff-slot-inner">{content}</div>
-    </div> : <Fragment key={row.key}>{content}</Fragment>;
-  };
-  const categories = useMemo(() => groupCategories(toolRows, copy, deltas), [copy, deltas, toolRows]);
-  const title = copy.groupTitle(categories, running && !betweenSteps);
-  const summary = useMemo(() => groupSummary(toolRows, copy), [toolRows, copy]);
-  const groupItems = useMemo(() => toolRows.map(identitySource), [toolRows]);
-  const groupIdentity = activityGroupIdentity(groupItems);
-  const failedSteps = useMemo(() => toolRows.reduce((count, row) => count + (isFailureStatus(rowStatus(row)) ? 1 : 0), 0), [toolRows]);
-  // One step with nothing around it needs no header: it already is one line.
-  const single = segments.length === 1 && segments[0].length === 1 && isActivityItem(segments[0][0].item);
-  const renderTools = (segment: ActivityRowModel[]) => (
-    <div className="task-flow-list">
-      {runsOf(segment, (row) => clusterKeyOf(row, copy), (row) => row.key).map((run) => run.entries.length >= CLUSTER_MIN_ROWS ? (
-        <ActivityCluster
-          key={run.id}
-          rows={run.entries}
-          category={describeRow(run.entries[0], copy).category}
-          toolName={String((run.entries[0].wrapper ?? run.entries[0].item).toolName ?? "")}
-          openRows={openRows}
-          workspace={workspace}
-          copy={copy}
-          onToggleRow={toggleRow}
-        />
-      ) : run.entries.map((row) => (
-        <ActivityRow
-          key={row.key}
-          row={row}
-          open={openRows.has(row.key)}
-          workspace={workspace}
-          copy={copy}
-          delta={row.item.type === "file_edit" ? deltas.get(row.item.id) : undefined}
-          onToggle={toggleRow}
-        />
-      )))}
-    </div>
-  );
-
-  return (
-    <section
-      className={`task-flow task-flow-group ${single ? "is-single" : ""} ${open && !single ? "is-open" : ""} ${latestCommentary && !single ? "has-progress-preview" : ""} ${running ? "is-running" : ""} ${betweenSteps ? "is-between-steps" : ""} ${unfolding ? "is-unfolding" : ""}`.replace(/\s+/g, " ").trim()}
-      data-tool-family={groupIdentity.family}
-      data-born={born ? "live" : undefined}
-      aria-label={copy.activityRegion}
-    >
-      {single ? (deferred.has(0) ? null : rowEnvelope(segments[0], renderTools(segments[0]))) : (
-        <>
-          <button
-            type="button"
-            className="task-flow-group-header"
-            onClick={() => {
-              setUnfolding(!open);
-              setChosen(!open);
-            }}
-            aria-expanded={open}
-          >
-            <span className="task-flow-group-icon" aria-hidden="true" title={groupIdentity.label}><ActivityGroupIcon items={groupItems} /></span>
-            {/* An open stage says what it is doing; a collapsed one says what it did, in counts. */}
-            {open ? <span className="task-flow-group-title" key={title}>{title}</span>
-              : <span className="task-flow-group-title is-summary" key="summary">{summary}</span>}
-            {!open && failedSteps ? <span className="task-flow-group-failed">{copy.clusterFailed(failedSteps)}</span> : null}
-            <ChevronRight size={13} className="task-flow-group-chevron" aria-hidden="true" />
-          </button>
-
-          <div className="task-flow-group-grid">
-            <div className="task-flow-group-inner">
-              <div className="task-flow-list">
-                {segments.map((segment, index) => {
-                  if (deferred.has(index)) return null;
-                  const message = segment[0].item.type === "assistant_message";
-                  // A closed group mounts nothing but its newest message, when it has one. Its rows stay for the
-                  // length of the closing motion.
-                  if (!presence.mounted && !(message && segment[0].item.id === latestCommentary?.id)) return null;
-                  return rowEnvelope(segment, message ? commentaryView(segment[0].item) : renderTools(segment));
-                })}
-              </div>
-            </div>
-          </div>
-        </>
-      )}
-    </section>
-  );
-}, sameActivityFlowProps);
 
 function SubAgentActivityNotice({ items }: { items: TranscriptItem[] }) {
   const copy = useRuntimeCopy();
@@ -1804,7 +838,7 @@ function Sequence({
   active?: boolean;
   promptDisabled?: boolean;
   workspace?: string;
-  handoff?: { retained: ReadonlySet<string>; folding: ReadonlySet<string> };
+  handoff?: ProcessHandoff;
   /** Commentary that answers the user directly; it stays an ordinary message. */
   messageIds?: ReadonlySet<string>;
   /**
@@ -1900,6 +934,24 @@ function Sequence({
     return "";
   }, [active, visibleItems]);
 
+  // A note the reader asked for, drawn inside a stage. Stable, so a stage only re-renders with its own items.
+  const renderNote = useCallback((item: TranscriptItem) => (
+    <ItemView item={item} variant="note" streaming={item.id === liveAssistantId} onApproval={onApproval}
+      onPrompt={onPrompt} promptDisabled={promptDisabled} workspace={workspace} />
+  ), [liveAssistantId, onApproval, onPrompt, promptDisabled, workspace]);
+
+  const renderEntry = (item: TranscriptItem) => (
+    <ItemView
+      item={item}
+      variant={isLeadNote(item) ? "note" : undefined}
+      streaming={Boolean(active && item.type === "assistant_message" && item.id === liveAssistantId)}
+      onApproval={onApproval}
+      onPrompt={onPrompt}
+      promptDisabled={promptDisabled}
+      workspace={workspace}
+    />
+  );
+
   const envelope = (key: string, ids: string[], content: ReactNode, activity = false) => handoff && !activity ? (
     <div key={key} className="process-handoff-slot" data-process-items={ids.join(" ")}
       data-handoff-phase={ids.every(id => handoff.folding.has(id)) ? "folding"
@@ -1914,7 +966,7 @@ function Sequence({
       {subAgentItems.length ? (
         envelope("sub-agent-workspace", subAgentItems.map(item => item.id),
         <div className="transcript-entry entry-sub-agent-workspace">
-          <SubAgentActivityNotice items={subAgentItems} />
+          <div className="entry-body"><SubAgentActivityNotice items={subAgentItems} /></div>
         </div>
         )
       ) : null}
@@ -1923,36 +975,26 @@ function Sequence({
         block.kind === "activity" ? (deferredActivityBlocks.has(index) ? null : (
           envelope(`activity-${block.items[0]?.id ?? index}`, block.items.map(item => item.id),
           <div className={`transcript-entry entry-activity ${active ? "has-lifecycle-motion" : ""}`} key={`activity-${block.items[0]?.id ?? index}`}>
-            <ActivityFlow
+            <WeaveStage
               items={block.items}
               keepOpen={activeActivityBlocks.has(index) || continuingActivityBlock === index}
-              continuing={continuingActivityBlock === index}
               superseded={liveLayout && index < latestActivityBlockIndex}
+              live={liveLayout}
               workspace={workspace}
-              liveAssistantId={liveAssistantId}
               handoff={handoff}
-              messageIds={messageIds}
-              onApproval={onApproval}
-              onPrompt={onPrompt}
-              promptDisabled={promptDisabled}
+              renderNote={renderNote}
             />
           </div>, true
           )
         )) : (isLeadNote(block.item) && !notes.show ? null : (
           envelope(block.item.id, [block.item.id],
           <div
-            className={`transcript-entry entry-${block.item.type} ${active ? "has-lifecycle-motion" : ""} ${isSteeringUserMessage(block.item) ? "entry-steering-user" : ""} ${isLeadNote(block.item) ? `task-flow-commentary is-lead ${block.item.id === latestAssistantId ? "is-latest" : ""}` : ""}`.replace(/\s+/g, " ").trim()}
+            className={`transcript-entry entry-${block.item.type} ${active ? "has-lifecycle-motion" : ""} ${isSteeringUserMessage(block.item) ? "entry-steering-user" : ""} ${block.item.leaving ? "is-leaving" : ""} ${isLeadNote(block.item) ? `wv-note is-lead ${block.item.id === latestAssistantId ? "is-latest" : ""}` : ""}`.replace(/\s+/g, " ").trim()}
             key={block.item.id}
+            inert={Boolean(block.item.leaving)}
           >
-            <ItemView
-              item={block.item}
-              variant={isLeadNote(block.item) ? "note" : undefined}
-              streaming={Boolean(active && block.item.type === "assistant_message" && block.item.id === liveAssistantId)}
-              onApproval={onApproval}
-              onPrompt={onPrompt}
-              promptDisabled={promptDisabled}
-              workspace={workspace}
-            />
+            {/* What arrives between tool groups folds in and out on a plain wrapper: a padded card cannot shrink past its own padding. */}
+            {block.item.type === "approval" || block.item.type === "error" ? <div className="entry-body">{renderEntry(block.item)}</div> : renderEntry(block.item)}
           </div>
           )
         ))
@@ -2067,6 +1109,19 @@ function useSettledLiveText(items: TranscriptItem[], active: boolean): { items: 
   return { items: settled.items, released };
 }
 
+/** The switch for the model's per-step narration. It is born once, the first time a note is held back, and grows into its place. */
+function NotesSwitch({ turnKey, live, label, pressed, onToggle }: { turnKey: string; live: boolean; label: string; pressed: boolean; onToggle(): void }) {
+  // It is rendered beside the live sequence, not inside it, so the turn says whether it is live.
+  const born = useBornLive(`notes:${turnKey}`, live);
+  return (
+    <div className="process-notes-row" data-born={born ? "live" : undefined}>
+      <div className="process-notes-row-inner">
+        <button type="button" className="process-notes-toggle" aria-pressed={pressed} onClick={onToggle}>{label}</button>
+      </div>
+    </div>
+  );
+}
+
 function TurnProcess({
   items: streamedItems,
   allItems,
@@ -2104,6 +1159,8 @@ function TurnProcess({
     [items],
   );
   const operationCount = summary.steps + intermediateMessages;
+  // One bead per step, in order, coloured by how it went: the shape of the run at a glance.
+  const stepTones = useMemo(() => buildActivityRows(items.filter(isActivityItem)).map(rowTone), [items]);
   const summaryLabel = useMemo(
     () => copy.processSummary(breakdown, operationCount),
     [breakdown, copy, operationCount],
@@ -2181,6 +1238,7 @@ function TurnProcess({
               tabIndex={settle === "hold" ? -1 : undefined}
             >
               <span className="turn-process-primary">
+                {stepTones.length ? <Beads tones={stepTones} max={14} animated={settle !== null} /> : null}
                 <span className="turn-process-summary">{summaryLabel}</span>
                 {(breakdown.added > 0 || breakdown.removed > 0) ? (
                   <span className="turn-process-diffstat" aria-label={copy.diffLabel(breakdown.added, breakdown.removed)}>
@@ -2211,11 +1269,7 @@ function TurnProcess({
           <div className="turn-process-inner">
             <div className="turn-process-content">
               {noteCount > 0 ? (
-                <div className="process-notes-row">
-                  <button type="button" className="process-notes-toggle" aria-pressed={showNotes} onClick={() => setShowNotes((value) => !value)}>
-                    {showNotes ? copy.notesHide : copy.notesShow(noteCount)}
-                  </button>
-                </div>
+                <NotesSwitch turnKey={allItems[0]?.id ?? ""} live={active} label={showNotes ? copy.notesHide : copy.notesShow(noteCount)} pressed={showNotes} onToggle={() => setShowNotes((value) => !value)} />
               ) : null}
               {live && earlierEntry.mounted ? (
                 <div className="earlier-process-entry" data-motion-phase={earlierEntry.phase} inert={!earlierShown}>

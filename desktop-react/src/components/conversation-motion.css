@@ -1,33 +1,9 @@
-/* Unified live-conversation motion ------------------------------------------
-   Runtime truth remains immediate. This file owns only the presentation
-   language of a live turn: quiet births, readable state changes and a single
-   obvious live cue. Historical turns are intentionally still.
+/* Live-conversation motion ---------------------------------------------------
+   Runtime truth remains immediate. This file owns the shared curves and the
+   live entrances of a turn's messages, approvals and the "earlier steps"
+   history. The work log itself (steps, stages, beads) is weave.css. Historical
+   turns are intentionally still. */
 
-   One-shot motion is bound to moments, never to classes that can toggle:
-   - [data-born="live"]  a group or row appearing for the first time in a live
-                          turn (Transcript: useBornLive). A group regaining its
-                          running state, history and thread switches never
-                          replay it.
-   - [data-settled]       a row that finished while the user watched.
-   - .is-unfolding        the user opened a group (one beat, set by a click).
-   Continuous live state (an executing row's light, the running group's
-   beacon) follows the runtime state directly. */
-
-.task-milestones {
-  margin: 8px 0 18px;
-  padding: 14px 16px;
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  background: var(--panel);
-  font-size: 13px;
-}
-.task-milestones-heading { display: flex; justify-content: space-between; gap: 16px; margin-bottom: 10px; }
-.task-milestones-heading > :last-child { color: var(--muted); }
-.task-milestone { display: flex; align-items: flex-start; gap: 12px; padding: 5px 0; }
-.task-milestone > span { flex: 0 0 42px; color: var(--muted); }
-.task-milestone.is-in_progress > span { color: var(--accent); }
-.task-milestone.is-blocked > span { color: #d5a65a; }
-.task-milestone small { display: block; margin-top: 3px; color: var(--muted); }
 .earlier-task-process { margin: 2px 0 0; }
 
 /* History is a secondary disclosure, with its own sizing rather than the
@@ -137,11 +113,32 @@ html[data-loom-theme="light"] .transcript {
    header, answer text, decision card) own their entrances, and a second
    entry-level rise stacked on top doubled the travel and squared the fade.
    User bubbles own theirs in generation-motion.css. */
-.turn-process.is-live .entry-approval,
-.turn-process.is-live .entry-error,
-.turn-process.is-live .entry-sub-agent-workspace {
-  animation: loom-live-message-in 280ms var(--loom-motion-pop) both;
-  transform-origin: 50% 100%;
+/* What arrives between tool groups (an approval, a sub-agent notice) grows into its place on the same height
+   motion as a step, so nothing below it jumps, and only its copy fades. This is the one entrance these
+   entries have: the card's own animation and the entry's inherited message-in used to stack on top of it. */
+.turn-process.is-live :is(.entry-approval, .entry-error, .entry-sub-agent-workspace) {
+  display: grid;
+  grid-template-rows: 1fr;
+  animation: wv-grow var(--wv-fold) var(--wv-ease) backwards;
+}
+
+.turn-process.is-live :is(.entry-approval, .entry-error, .entry-sub-agent-workspace) > .entry-body {
+  min-height: 0;
+  overflow: clip;
+  overflow-clip-margin: 4px;
+  animation: wv-fade-in 220ms ease-out 80ms backwards;
+}
+
+/* An approval the reader has answered folds away on the same motion (App keeps it for that long, marked leaving):
+   its words go first, then the space. */
+.turn-process.is-live .entry-approval {
+  transition: grid-template-rows var(--wv-fold) var(--wv-ease), opacity 140ms ease;
+}
+
+.turn-process.is-live .entry-approval.is-leaving {
+  grid-template-rows: 0fr;
+  opacity: 0;
+  pointer-events: none;
 }
 
 .turn-process.is-live .entry-assistant_message {
@@ -173,502 +170,6 @@ html[data-loom-theme="light"] .transcript {
 .markdown-body.is-receiving > table,
 .markdown-body.is-receiving > blockquote {
   animation: loom-content-surface-in 260ms var(--loom-motion-pop) both;
-}
-
-/* Preview of a page, image or document an edit row wrote. It sits at the end
-   of its row, never inside the disclosure button, and appears with the row. */
-.task-flow-row-wrap.has-preview {
-  position: relative;
-}
-
-.task-flow-row-wrap.has-preview > .task-flow-row {
-  padding-right: 76px;
-}
-
-.task-flow-row-preview {
-  position: absolute;
-  top: 4px;
-  right: 4px;
-  height: 24px;
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  padding: 0 9px 0 8px;
-  border: 1px solid color-mix(in srgb, var(--loom-workspace-accent, #9b8ff0) 22%, transparent);
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--loom-workspace-accent, #9b8ff0) 7%, transparent);
-  color: var(--loom-workspace-accent, #a59cf0);
-  font: inherit;
-  font-size: 11px;
-  font-weight: 560;
-  line-height: 1;
-  cursor: pointer;
-  transition: background 160ms ease, border-color 160ms ease, color 160ms ease;
-}
-
-.task-flow-row-preview:hover {
-  border-color: color-mix(in srgb, var(--loom-workspace-accent, #9b8ff0) 40%, transparent);
-  background: color-mix(in srgb, var(--loom-workspace-accent, #9b8ff0) 13%, transparent);
-}
-
-.task-flow-row-preview:focus-visible {
-  outline: 2px solid color-mix(in srgb, var(--loom-workspace-accent, #9b8ff0) 55%, transparent);
-  outline-offset: 2px;
-}
-
-.task-flow-row-preview > svg {
-  transition: scale 200ms var(--loom-spring-pop, ease);
-}
-
-.task-flow-row-preview:hover > svg {
-  scale: 1.12;
-}
-
-.task-flow-row-wrap[data-born="live"] > .task-flow-row-preview {
-  animation: loom-task-copy-in 260ms ease-out 140ms backwards;
-}
-
-/* Task flow: static geometry ------------------------------------------------
-   Rows read as one quiet timeline. Material (transparent rows, the hairline
-   rail) is owned by workspace-surface-refinement.css. Task-flow copy keeps
-   whole CSS-pixel font geometry: combined with native Electron page zoom, this
-   avoids the soft glyph edges Chromium can produce on Windows when fractional
-   font sizes meet DPI scaling. */
-.task-flow-group {
-  width: min(740px, 100%);
-}
-
-.task-flow-group-header {
-  position: relative;
-  min-height: 30px;
-  padding: 3px 7px 3px 2px;
-  gap: 7px;
-  border: 1px solid transparent;
-  border-radius: 8px;
-  background: transparent;
-  transition:
-    color 260ms ease,
-    background 300ms cubic-bezier(.18,.72,.22,1);
-}
-
-.task-flow-group-header:hover {
-  background: rgba(255,255,255,.016);
-}
-
-.task-flow-group-header > * {
-  position: relative;
-  z-index: 1;
-}
-
-.task-flow-group-icon {
-  position: relative;
-  width: 20px;
-  height: 20px;
-  border-radius: 6px;
-  border-color: rgba(255,255,255,.055);
-  background: rgba(255,255,255,.018);
-  box-shadow: none;
-  transition:
-    color 280ms ease,
-    border-color 300ms ease,
-    background 300ms ease,
-    box-shadow 320ms ease;
-}
-
-.task-flow-group-icon > svg {
-  position: relative;
-  z-index: 1;
-}
-
-.task-flow-group-title {
-  font-size: 12px;
-  line-height: 16px;
-  font-weight: 620;
-  letter-spacing: 0;
-}
-
-.task-flow-group-chevron {
-  margin-left: 1px;
-  opacity: .72;
-  transition:
-    transform 380ms cubic-bezier(.18,.72,.22,1),
-    color 260ms ease,
-    opacity 260ms ease;
-}
-
-.task-flow-group-header:hover .task-flow-group-chevron {
-  opacity: 1;
-}
-
-.task-flow-verb,
-.task-flow-primary {
-  font-size: 12px;
-  line-height: 16px;
-}
-
-.task-flow-primary.code {
-  font-size: 11px;
-  line-height: 16px;
-  letter-spacing: 0;
-}
-
-.task-flow-group .task-flow-verb,
-.task-flow-group .task-flow-primary,
-.task-flow-group .task-flow-primary.code {
-  font-size: 11px;
-  line-height: 15px;
-}
-
-.task-flow-group .task-flow-list {
-  gap: 4px;
-  margin-top: 5px;
-  padding-left: 9px;
-}
-
-.task-flow-row,
-.task-flow-group .task-flow-row {
-  min-height: 30px;
-  grid-template-columns: 20px minmax(0, 1fr);
-  gap: 7px;
-  padding: 2px 7px 2px 3px;
-  border: 1px solid transparent;
-  border-radius: 8px;
-  background: transparent;
-  box-shadow: none;
-  transition:
-    color 260ms ease,
-    border-color 300ms ease,
-    background 300ms cubic-bezier(.18,.72,.22,1),
-    box-shadow 320ms ease;
-}
-
-.task-flow-row.is-expandable:hover,
-.task-flow-group .task-flow-row.is-expandable:hover {
-  /* activity-flow.css used to translate the whole text-bearing row on hover.
-     Explicitly cancel that older rule so Chromium never has to rasterize task
-     copy onto a transformed layer just because the pointer passed over it. */
-  transform: none;
-  border-color: rgba(255,255,255,.065);
-  background: rgba(255,255,255,.024);
-}
-
-.task-flow-row-icon,
-.task-flow-group .task-flow-row-icon {
-  width: 18px;
-  height: 18px;
-  border-radius: 5px;
-  border-color: rgba(255,255,255,.045);
-  background: rgba(255,255,255,.018);
-  box-shadow: none;
-}
-
-.task-flow-row.is-resting .task-flow-row-icon {
-  opacity: .86;
-}
-
-.task-flow-group .task-flow-verb {
-  color: #929aa6;
-  font-weight: 590;
-}
-
-.task-flow-group .task-flow-primary,
-.task-flow-group .task-flow-primary.code {
-  color: #aeb5bf;
-}
-
-.task-flow-group .task-flow-status-dot {
-  width: 4.5px;
-  height: 4.5px;
-}
-
-/* A failed step says so in words as well as colour. */
-.task-flow-row.is-failed .task-flow-verb {
-  color: color-mix(in srgb, var(--semantic-danger-strong, #c7727c) 82%, #929aa6);
-}
-
-.task-flow-row > .task-flow-sheen {
-  display: none;
-}
-
-.task-flow-inline-detail-grid,
-.task-flow-group .task-flow-inline-detail-grid {
-  margin-left: 27px;
-  overflow-anchor: none;
-  transition:
-    grid-template-rows 260ms cubic-bezier(.22,.74,.18,1),
-    opacity 180ms ease;
-}
-
-/* Closing used to drop the <pre> in the same React commit that removed
-   .open, so the grid lost its intrinsic height before the 0fr animation could
-   interpolate. Keep the pixels alive through the collapse and let geometry
-   move first; fade only after the fold is already underway. */
-.task-flow-inline-detail-grid:not(.open) {
-  transition:
-    grid-template-rows 260ms cubic-bezier(.4,0,.2,1),
-    opacity 150ms ease 62ms;
-}
-
-.task-flow-inline-detail-grid.open {
-  transition:
-    grid-template-rows 270ms cubic-bezier(.22,.74,.18,1),
-    opacity 185ms ease;
-}
-
-.task-flow-inline-detail-grid[data-motion-phase="exiting"] {
-  pointer-events: none;
-}
-
-.task-flow-inline-detail-grid[data-motion-phase="exiting"] .task-flow-inline-detail {
-  opacity: 1;
-}
-
-.task-flow-inline-detail pre {
-  border-radius: 12px;
-}
-
-.task-flow-live-detail {
-  min-height: 38px;
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 7px 11px;
-  border: 1px solid rgba(139,124,246,.095);
-  border-radius: 12px;
-  background:
-    linear-gradient(180deg, rgba(139,124,246,.035), rgba(139,124,246,.012)),
-    rgba(15,17,22,.58);
-  color: #858d99;
-  font-size: 10.5px;
-  line-height: 1.4;
-  box-shadow: inset 0 1px 0 rgba(255,255,255,.018);
-}
-
-.task-flow-live-detail-glow {
-  width: 18px;
-  height: 3px;
-  flex: none;
-  border-radius: 999px;
-  background: linear-gradient(
-    90deg,
-    rgba(var(--loom-live-accent), .18),
-    rgba(var(--loom-live-accent-strong), .88) 58%,
-    rgba(var(--loom-live-core), .72)
-  );
-  box-shadow: 0 0 8px rgba(var(--loom-live-accent), .10);
-  transform-origin: left center;
-}
-
-/* Every running row mounts this hint; only breathe it while it can be seen. */
-.task-flow-inline-detail-grid.open .task-flow-live-detail-glow {
-  animation: loom-live-detail-breathe 1.8s cubic-bezier(.4,0,.2,1) infinite;
-}
-
-.task-flow-group-grid {
-  transition:
-    grid-template-rows 250ms var(--loom-motion-settle),
-    opacity 180ms ease;
-}
-
-@media (max-width: 760px) {
-  .task-flow-row,
-  .task-flow-group .task-flow-row {
-    grid-template-columns: 19px minmax(0, 1fr);
-  }
-
-  .task-flow-inline-detail-grid,
-  .task-flow-group .task-flow-inline-detail-grid {
-    margin-left: 25px;
-  }
-}
-
-/* Task flow: live state -----------------------------------------------------
-   While a step executes, its verb carries the same soft light as the thinking
-   label (one hue brightening and fading, painted through the text itself), and
-   its status dot breathes. Nothing else on the row moves. */
-.task-flow-row.is-executing .task-flow-verb {
-  --shimmer-base: #8e96a2;
-  --shimmer-peak: #e6e3f8;
-  color: var(--shimmer-base);
-  background-image: linear-gradient(
-    100deg,
-    var(--shimmer-base) 0%,
-    var(--shimmer-base) 35%,
-    color-mix(in srgb, var(--shimmer-peak) 50%, var(--shimmer-base)) 42.5%,
-    var(--shimmer-peak) 50%,
-    color-mix(in srgb, var(--shimmer-peak) 50%, var(--shimmer-base)) 57.5%,
-    var(--shimmer-base) 65%,
-    var(--shimmer-base) 100%
-  );
-  background-size: 300% 100%;
-  background-repeat: no-repeat;
-  background-position: 98% 0;
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
-  animation: thinking-text-shimmer 2.2s cubic-bezier(.33,.1,.67,.9) infinite;
-}
-
-.task-flow-status.running .task-flow-status-dot,
-.task-flow-status.started .task-flow-status-dot,
-.task-flow-status.streaming .task-flow-status-dot,
-.task-flow-status.streaming_arguments .task-flow-status-dot {
-  opacity: .92;
-  background: rgb(var(--loom-live-accent-strong));
-  box-shadow:
-    0 0 0 2px rgba(var(--loom-live-accent), .055),
-    0 0 7px rgba(var(--loom-live-accent), .18);
-  animation: loom-task-dot-breathe 1.8s ease-in-out infinite;
-}
-
-/* The running group carries one beacon on its icon, only while one of its
-   steps actually executes (not in the quiet gap between steps). */
-.task-flow-group.is-running:not(.is-between-steps) .task-flow-group-icon {
-  color: #aaa1ef;
-}
-
-.task-flow-group.is-running:not(.is-between-steps) .task-flow-group-icon::after {
-  content: "";
-  position: absolute;
-  z-index: 2;
-  right: -2px;
-  bottom: -2px;
-  width: 5px;
-  height: 5px;
-  border: 2px solid var(--ws-canvas, #111318);
-  border-radius: 999px;
-  background: rgb(var(--loom-live-accent-strong));
-  box-shadow: 0 0 6px rgba(var(--loom-live-accent), .28);
-  animation:
-    loom-task-beacon-in 360ms var(--loom-spring-pop) backwards,
-    loom-live-beacon 1.9s ease-in-out 360ms infinite;
-}
-
-/* Task flow: births ---------------------------------------------------------
-   A group is born with its first row. The icon bead springs (it carries no
-   text); copy only fades, so glyphs never leave their native raster. The row
-   follows the header by one beat; rows appended later start at once. */
-.task-flow-group[data-born="live"] > .task-flow-group-header .task-flow-group-icon {
-  animation: loom-task-icon-spring 520ms var(--loom-spring-pop) backwards;
-}
-
-/* Titles are keyed on their text, so a tense change (正在运行命令 ->
-   运行了命令) cross-fades with the same rule that brings the title in. */
-.task-flow-group[data-born="live"] .task-flow-group-title {
-  animation: loom-task-verb-in 280ms ease-out 40ms backwards;
-}
-
-.task-flow-group[data-born="live"] > .task-flow-group-header .task-flow-group-chevron {
-  animation: loom-task-chevron-in 300ms cubic-bezier(.2,.8,.2,1) 120ms backwards;
-}
-
-.task-flow-group[data-born="live"] .task-flow-row-wrap:first-child {
-  --row-lead: 70ms;
-}
-
-.task-flow-row-wrap[data-born="live"] > .task-flow-row .task-flow-row-icon {
-  animation: loom-task-icon-spring 520ms var(--loom-spring-pop) var(--row-lead, 0ms) backwards;
-}
-
-.task-flow-row-wrap[data-born="live"] > .task-flow-row .task-flow-primary,
-.task-flow-row-wrap[data-born="live"] > .task-flow-row .task-flow-diffstat {
-  animation: loom-task-copy-in 260ms ease-out calc(var(--row-lead, 0ms) + 60ms) backwards;
-}
-
-/* Verbs are keyed on their text too: birth and every tense change share one
-   cross-fade. An executing verb keeps its light running underneath. */
-.task-flow-row-wrap[data-born="live"] .task-flow-verb {
-  animation: loom-task-verb-in 260ms ease-out calc(var(--row-lead, 0ms) + 40ms) backwards;
-}
-
-.task-flow-row-wrap[data-born="live"] > .task-flow-row.is-executing .task-flow-verb {
-  animation:
-    loom-task-verb-in 260ms ease-out calc(var(--row-lead, 0ms) + 40ms) backwards,
-    thinking-text-shimmer 2.2s cubic-bezier(.33,.1,.67,.9) infinite;
-}
-
-.task-flow-row-wrap[data-born="live"] > .task-flow-row .task-flow-status {
-  position: relative;
-  animation: loom-task-status-in 260ms var(--loom-spring-pop) calc(var(--row-lead, 0ms) + 110ms) backwards;
-}
-
-/* Task flow: settling -------------------------------------------------------
-   A step that finishes while the user watches confirms once: the dot ticks
-   on a spring and sends out a single ring in the outcome colour. */
-.task-flow-status:is(.completed, .changed) {
-  --task-dot-ring: var(--semantic-success-strong, #70a186);
-}
-
-.task-flow-status:is(.failed, .denied) {
-  --task-dot-ring: var(--semantic-danger-strong, #c7727c);
-}
-
-.task-flow-status:is(.cancelled, .interrupted, .not_executed) {
-  --task-dot-ring: color-mix(in srgb, currentColor 60%, transparent);
-}
-
-.task-flow-row-wrap[data-settled] .task-flow-status {
-  position: relative;
-}
-
-.task-flow-row-wrap[data-settled] .task-flow-status-dot {
-  animation: loom-task-dot-settle 520ms var(--loom-spring-pop) backwards;
-}
-
-.task-flow-row-wrap[data-settled] .task-flow-status::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  width: 5px;
-  height: 5px;
-  margin: auto;
-  border-radius: 50%;
-  pointer-events: none;
-  box-shadow: 0 0 0 1.25px var(--task-dot-ring);
-  opacity: 0;
-  animation: loom-task-dot-ring 640ms cubic-bezier(.2,.7,.25,1) backwards;
-}
-
-/* Unfold: opening a group lets its rows arrive one after another, 35ms apart.
-   Transcript sets .is-unfolding for a single beat after the user's click, so
-   remounted history never replays it. Opacity only. */
-.task-flow-group.is-unfolding .task-flow-row-wrap:nth-child(1) { --fold-lead: 20ms; }
-.task-flow-group.is-unfolding .task-flow-row-wrap:nth-child(2) { --fold-lead: 55ms; }
-.task-flow-group.is-unfolding .task-flow-row-wrap:nth-child(3) { --fold-lead: 90ms; }
-.task-flow-group.is-unfolding .task-flow-row-wrap:nth-child(4) { --fold-lead: 125ms; }
-.task-flow-group.is-unfolding .task-flow-row-wrap:nth-child(5) { --fold-lead: 160ms; }
-.task-flow-group.is-unfolding .task-flow-row-wrap:nth-child(n + 6) { --fold-lead: 195ms; }
-
-.task-flow-group.is-unfolding .task-flow-row {
-  animation: loom-task-copy-in 240ms ease-out var(--fold-lead, 0ms) backwards;
-}
-
-/* Lens: a soft pointer light inside expandable rows. taskCapsuleLens.ts
-   writes --lens-x/--lens-y (px, row-relative) while the pointer moves; with no
-   pointer data the light rests near the icon. It fades in and out and never
-   moves anything but its own gradient. */
-.task-flow-group .task-flow-row.is-expandable::after,
-.task-flow-group-header::after {
-  content: "";
-  display: block;
-  position: absolute;
-  inset: 0;
-  z-index: 0;
-  border-radius: inherit;
-  pointer-events: none;
-  background: radial-gradient(
-    160px 46px at var(--lens-x, 34px) var(--lens-y, 50%),
-    rgba(var(--loom-live-accent), .12),
-    rgba(var(--loom-live-accent), .04) 55%,
-    transparent 100%
-  );
-  opacity: 0;
-  transition: opacity 220ms ease;
-}
-
-.task-flow-group .task-flow-row.is-expandable:hover::after,
-.task-flow-group-header:hover::after {
-  opacity: 1;
 }
 
 /* Content-edge fade ---------------------------------------------------------
@@ -706,84 +207,7 @@ html[data-loom-theme="light"] .transcript {
   transform: scaleY(-1);
 }
 
-/* Light theme ---------------------------------------------------------------- */
-html[data-loom-theme="light"] .task-flow-group-header:hover {
-  background: rgba(28,31,37,.026);
-}
-
-html[data-loom-theme="light"] .task-flow-group-icon {
-  color: #66707b;
-  border-color: rgba(28,31,37,.075);
-  background: rgba(28,31,37,.025);
-  box-shadow: inset 0 1px rgba(255,255,255,.72);
-}
-
-html[data-loom-theme="light"] .task-flow-group.is-running:not(.is-between-steps) .task-flow-group-icon {
-  color: #5b4fc4;
-}
-
-html[data-loom-theme="light"] .task-flow-group-title {
-  color: #4b535e;
-}
-
-html[data-loom-theme="light"] .task-flow-group .task-flow-row {
-  color: #626b76;
-}
-
-html[data-loom-theme="light"] .task-flow-group .task-flow-row.is-expandable:hover {
-  border-color: rgba(105,90,216,.12);
-  background: rgba(105,90,216,.032);
-}
-
-html[data-loom-theme="light"] .task-flow-group .task-flow-row-icon {
-  color: #6d7580;
-  border-color: rgba(28,31,37,.065);
-  background: rgba(28,31,37,.025);
-  box-shadow: inset 0 1px rgba(255,255,255,.76);
-}
-
-html[data-loom-theme="light"] .task-flow-group .task-flow-verb {
-  color: #68717c;
-}
-
-html[data-loom-theme="light"] .task-flow-row.is-executing .task-flow-verb {
-  --shimmer-base: #6f7884;
-  --shimmer-peak: #4f47b0;
-}
-
-html[data-loom-theme="light"] .task-flow-group .task-flow-primary,
-html[data-loom-theme="light"] .task-flow-group .task-flow-primary.code {
-  color: #4e5762;
-}
-
-html[data-loom-theme="light"] .task-flow-row.is-failed .task-flow-verb {
-  color: color-mix(in srgb, var(--semantic-danger-strong, #b4505c) 85%, #68717c);
-}
-
-html[data-loom-theme="light"] .task-flow-live-detail {
-  border-color: rgba(105,90,216,.10);
-  background: rgba(255,255,255,.66);
-  color: #707986;
-  box-shadow: inset 0 1px rgba(255,255,255,.9);
-}
-
-html[data-loom-theme="light"] .task-flow-group .task-flow-row.is-expandable::after,
-html[data-loom-theme="light"] .task-flow-group-header::after {
-  background: radial-gradient(
-    170px 46px at var(--lens-x, 34px) var(--lens-y, 50%),
-    rgba(var(--loom-live-accent), .09),
-    rgba(var(--loom-live-accent), .03) 55%,
-    transparent 100%
-  );
-}
-
 /* Keyframes ------------------------------------------------------------------ */
-@keyframes loom-live-message-in {
-  0% { opacity: 0; transform: translate3d(0, 7px, 0) scale(.992); }
-  72% { opacity: 1; transform: translate3d(0, -1px, 0) scale(1.001); }
-  100% { opacity: 1; transform: translate3d(0, 0, 0) scale(1); }
-}
-
 @keyframes loom-content-surface-in {
   from { opacity: .38; transform: translate3d(0, 4px, 0) scale(.985); }
   to { opacity: 1; transform: translate3d(0, 0, 0) scale(1); }
@@ -807,70 +231,16 @@ html[data-loom-theme="light"] .task-flow-group-header::after {
   }
 }
 
-@keyframes loom-task-copy-in {
-  from { opacity: 0; }
-  to { opacity: 1; }
-}
-
-@keyframes loom-task-status-in {
-  from { opacity: 0; scale: .2; }
-  to { opacity: .78; scale: 1; }
-}
-
-@keyframes loom-task-verb-in {
-  from { opacity: .18; }
-  to { opacity: 1; }
-}
-
 @keyframes loom-count-tick {
   from { opacity: .3; }
   to { opacity: 1; }
 }
 
-@keyframes loom-task-dot-settle {
-  from { scale: 1.8; }
-  to { scale: 1; }
-}
-
-@keyframes loom-task-dot-ring {
-  from { opacity: .75; scale: 1; }
-  to { opacity: 0; scale: 3.6; }
-}
-
-@keyframes loom-task-dot-breathe {
-  0%, 100% { opacity: .62; scale: .88; }
-  50% { opacity: 1; scale: 1.08; }
-}
-
-/* Ends exactly where loom-live-beacon begins (opacity .58, scale .91).
-   Keep the entrance landing frame identical to the pulse's idle frame so the
-   compositor hand-off never introduces a one-frame size tick. */
-@keyframes loom-task-beacon-in {
-  from { opacity: 0; scale: 0; }
-  to { opacity: .58; scale: .91; }
-}
-
-@keyframes loom-live-beacon {
-  0%, 100% { opacity: .58; transform: scale(.91); }
-  44% { opacity: .90; transform: scale(1.045); }
-  70% { opacity: .74; transform: scale(.98); }
-}
-
-@keyframes loom-live-detail-breathe {
-  0%, 100% { opacity: .28; transform: scaleX(.56); }
-  46% { opacity: .84; transform: scaleX(1); }
-  68% { opacity: .58; transform: scaleX(.82); }
-}
-
-/* The chevron unfurls from the left. `translate` is an individual property,
-   so the open-state rotation on transform is never clobbered. */
-@keyframes loom-task-chevron-in {
-  from { opacity: 0; translate: -4px 0; }
-}
-
 /* Reduced motion -------------------------------------------------------------- */
 @media (prefers-reduced-motion: reduce) {
   .turn-process.is-live .transcript-entry,
+  .turn-process.is-live :is(.entry-approval, .entry-error, .entry-sub-agent-workspace) > .entry-body,
+  .turn-process.is-live .entry-approval,
   .turn-final-answer,
   .turn-block.is-active .user-link-card,
   .turn-block.is-active .user-rich-code-block,
@@ -880,62 +250,14 @@ html[data-loom-theme="light"] .task-flow-group-header::after {
   .markdown-body.is-receiving .markdown-code-block,
   .markdown-body.is-receiving .assistant-local-image-preview,
   .markdown-body.is-receiving > table,
-  .markdown-body.is-receiving > blockquote,
-  .task-flow-group[data-born="live"] > .task-flow-group-header .task-flow-group-icon,
-  .task-flow-group[data-born="live"] .task-flow-group-title,
-  .task-flow-group[data-born="live"] > .task-flow-group-header .task-flow-group-chevron,
-  .task-flow-row-wrap[data-born="live"] > .task-flow-row .task-flow-row-icon,
-  .task-flow-row-wrap[data-born="live"] > .task-flow-row .task-flow-primary,
-  .task-flow-row-wrap[data-born="live"] > .task-flow-row .task-flow-diffstat,
-  .task-flow-row-wrap[data-born="live"] .task-flow-verb,
-  .task-flow-row-wrap[data-born="live"] > .task-flow-row.is-executing .task-flow-verb,
-  .task-flow-row-wrap[data-born="live"] > .task-flow-row .task-flow-status,
-  .task-flow-row-wrap[data-settled] .task-flow-status-dot,
-  .task-flow-row-wrap[data-settled] .task-flow-status::after,
-  .task-flow-group.is-unfolding .task-flow-row,
-  .task-flow-row.is-executing .task-flow-verb,
-  .task-flow-status .task-flow-status-dot,
-  .task-flow-live-detail-glow,
-  .task-flow-group.is-running .task-flow-group-icon::after {
+  .markdown-body.is-receiving > blockquote {
     animation: none !important;
-  }
-
-  .task-flow-group-header,
-  .task-flow-group-icon,
-  .task-flow-group-chevron,
-  .task-flow-group .task-flow-row,
-  .task-flow-group .task-flow-row.is-expandable::after,
-  .task-flow-group-header::after {
-    transition: none !important;
   }
 }
 
 :root[data-loom-reduced-motion="true"] .turn-process.is-live .transcript-entry,
-:root[data-loom-reduced-motion="true"] .turn-final-answer,
-:root[data-loom-reduced-motion="true"] .task-flow-group[data-born="live"] > .task-flow-group-header .task-flow-group-icon,
-:root[data-loom-reduced-motion="true"] .task-flow-group[data-born="live"] .task-flow-group-title,
-:root[data-loom-reduced-motion="true"] .task-flow-group[data-born="live"] > .task-flow-group-header .task-flow-group-chevron,
-:root[data-loom-reduced-motion="true"] .task-flow-row-wrap[data-born="live"] > .task-flow-row .task-flow-row-icon,
-:root[data-loom-reduced-motion="true"] .task-flow-row-wrap[data-born="live"] > .task-flow-row .task-flow-primary,
-:root[data-loom-reduced-motion="true"] .task-flow-row-wrap[data-born="live"] > .task-flow-row .task-flow-diffstat,
-:root[data-loom-reduced-motion="true"] .task-flow-row-wrap[data-born="live"] .task-flow-verb,
-:root[data-loom-reduced-motion="true"] .task-flow-row-wrap[data-born="live"] > .task-flow-row.is-executing .task-flow-verb,
-:root[data-loom-reduced-motion="true"] .task-flow-row-wrap[data-born="live"] > .task-flow-row .task-flow-status,
-:root[data-loom-reduced-motion="true"] .task-flow-row-wrap[data-settled] .task-flow-status-dot,
-:root[data-loom-reduced-motion="true"] .task-flow-row-wrap[data-settled] .task-flow-status::after,
-:root[data-loom-reduced-motion="true"] .task-flow-group.is-unfolding .task-flow-row,
-:root[data-loom-reduced-motion="true"] .task-flow-row.is-executing .task-flow-verb,
-:root[data-loom-reduced-motion="true"] .task-flow-status .task-flow-status-dot,
-:root[data-loom-reduced-motion="true"] .task-flow-live-detail-glow,
-:root[data-loom-reduced-motion="true"] .task-flow-group.is-running .task-flow-group-icon::after {
+:root[data-loom-reduced-motion="true"] .turn-process.is-live :is(.entry-approval, .entry-error, .entry-sub-agent-workspace) > .entry-body,
+:root[data-loom-reduced-motion="true"] .turn-process.is-live .entry-approval,
+:root[data-loom-reduced-motion="true"] .turn-final-answer {
   animation: none !important;
-}
-
-:root[data-loom-reduced-motion="true"] .task-flow-group-header,
-:root[data-loom-reduced-motion="true"] .task-flow-group-icon,
-:root[data-loom-reduced-motion="true"] .task-flow-group-chevron,
-:root[data-loom-reduced-motion="true"] .task-flow-group .task-flow-row,
-:root[data-loom-reduced-motion="true"] .task-flow-group .task-flow-row.is-expandable::after,
-:root[data-loom-reduced-motion="true"] .task-flow-group-header::after {
-  transition: none !important;
 }

@@ -100,13 +100,14 @@ def test_group_icons_do_not_fall_back_to_legacy_lucide_special_cases() -> None:
 
 def test_identity_glyphs_are_self_describing_and_transcript_uses_them() -> None:
     identity = IDENTITY.read_text(encoding="utf-8")
-    transcript = TRANSCRIPT.read_text(encoding="utf-8")
+    model = (TRANSCRIPT.parent / "activityModel.ts").read_text(encoding="utf-8")
+    flow = (TRANSCRIPT.parent / "WeaveFlow.tsx").read_text(encoding="utf-8")
 
     assert 'className={`tool-identity-glyph is-${identity.kind}`}' in identity
     assert "data-tool-kind={identity.kind}" in identity
     assert "data-tool-family={identity.family}" in identity
-    assert "fallbackToolLabel: activityToolLabel(row.wrapper ?? row.item)," in transcript
-    assert "ActivityGroupGlyph" in transcript
+    assert "fallbackToolLabel: activityToolLabel(row.wrapper ?? row.item)," in model
+    assert "ToolIdentityGlyph" in flow
 
 
 def test_brand_mcp_labels_drop_internal_canonical_prefix() -> None:

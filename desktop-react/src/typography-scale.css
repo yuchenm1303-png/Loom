@@ -53,32 +53,8 @@ body {
 .button { font-size: 12.5px !important; }
 .message-meta { font-size: 12px !important; }
 
-/* Compact task/activity flow -------------------------------------------- */
-.task-flow-summary-copy strong { font-size: 14px !important; }
-.task-flow-summary-copy span { font-size: 12px !important; }
-.task-flow-verb { font-size: 13px !important; }
-.task-flow-primary { font-size: 13.5px !important; }
-.task-flow-primary.code { font-size: 12.5px !important; }
-.task-flow-diffstat { font-size: var(--loom-font-micro) !important; }
-.task-flow-status { font-size: var(--loom-font-micro) !important; }
-.task-flow-disclosure .disclosure-trigger { font-size: 12.5px !important; }
-.task-flow-detail-title { font-size: 13px !important; }
-.task-flow-detail-kind { font-size: var(--loom-font-micro) !important; }
-.task-flow-detail pre,
-.task-flow-inline-detail pre { font-size: 12.5px !important; }
-.task-flow-detail .task-flow-detail-empty { font-size: 12.5px !important; }
-.task-flow-group-title { font-size: 13px !important; }
 /* Work-log notes sit on the row scale, below the 15px message body. */
-.task-flow-commentary .assistant-message { font-size: var(--loom-font-ui) !important; }
-.task-flow-group-failed { font-size: var(--loom-font-micro) !important; }
-.task-flow-group .task-flow-verb,
-.task-flow-group .task-flow-primary { font-size: 12.75px !important; }
-.task-flow-group .task-flow-primary.code { font-size: 12.25px !important; }
-.task-flow-group-summary,
-.task-flow-summary-pill,
-.task-flow-summary-file,
-.task-flow-summary-more { font-size: var(--loom-font-micro) !important; }
-
+.wv-note .assistant-message { font-size: var(--loom-font-ui) !important; }
 .turn-process-time { font-size: 13px !important; }
 .turn-process-meta { font-size: 12px !important; }
 .turn-process-failed { font-size: var(--loom-font-micro) !important; }

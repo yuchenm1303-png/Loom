@@ -30,6 +30,7 @@ import { Sidebar } from "./components/Sidebar";
 import { SubAgentDock } from "./components/SubAgentDock";
 import { ThreadHeader } from "./components/ThreadHeader";
 import { Transcript } from "./components/Transcript";
+import { useLeavingItems } from "./components/leavingItems";
 import { TranscriptScrollController } from "./components/TranscriptScrollController";
 import "./components/inline-thinking.css";
 import "./components/review-dock.css";
@@ -60,6 +61,8 @@ const RESOLVED_APPROVAL_STATUSES = new Set([
   "failed",
 ]);
 
+/** How long an answered approval stays to fold away (the log's fold: weave.css --wv-fold). */
+const APPROVAL_EXIT_MS = 300;
 const SIDEBAR_WIDTH_KEY = "loom.layout.sidebarWidth";
 const INSPECTOR_WIDTH_KEY = "loom.layout.inspectorWidth";
 const SIDEBAR_MIN = 210;
@@ -927,11 +930,14 @@ export default function App() {
     return () => window.removeEventListener("keydown", handleShortcut, true);
   }, [loom, reviewOpen, runLayoutTransition, running, shortcuts, sidebarOpen]);
 
-  const transcriptItems = useMemo(() => loom.items.filter((item) => {
-    if (item.type !== "approval") return true;
-    if (isResolvedApproval(item)) return false;
-    return !dismissedApprovalIds.has(item.id);
-  }), [loom.items, dismissedApprovalIds]);
+  // An approval the reader answers folds away instead of taking its height back in one frame.
+  const transcriptItems = useLeavingItems(
+    loom.items,
+    (item) => !isResolvedApproval(item) && !dismissedApprovalIds.has(item.id),
+    (item) => item.type === "approval",
+    reduceMotion ? 0 : APPROVAL_EXIT_MS,
+    [dismissedApprovalIds],
+  );
   const transcriptRunning = Boolean(
     runtimeTurnRunning
     && thread?.currentTurnId
@@ -1277,7 +1283,7 @@ export default function App() {
             return currentProject ? <ProjectGitBar project={currentProject} onOpen={() => openProjectDetails(currentProject.id)}/> : null;
           })()}
           {petEnabled && thread && <LoomPet key={thread.id} running={running}
-            approval={thread.status === "waiting_approval" || transcriptItems.some((item) => item.type === "approval" && !isResolvedApproval(item))}
+            approval={thread.status === "waiting_approval" || transcriptItems.some((item) => item.type === "approval" && !item.leaving && !isResolvedApproval(item))}
             completed={thread.status === "completed"} />}
           <Composer
             threadId={thread?.id}
