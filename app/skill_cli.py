@@ -17,7 +17,7 @@ def _default_home() -> Path:
 def build_skill_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="loom skill",
-        description="Install and manage reusable Agent Skills bundles.",
+        description="Install and manage reusable Agent Skills bundles with inert-by-default safety boundaries.",
     )
     parser.add_argument(
         "--home",
@@ -30,17 +30,33 @@ def build_skill_parser() -> argparse.ArgumentParser:
     )
     sub = parser.add_subparsers(dest="command", required=True)
 
-    install = sub.add_parser("install", help="install from a local directory/zip, remote zip, or Git repository")
+    install = sub.add_parser(
+        "install",
+        help="install from a local directory/ZIP or public HTTPS GitHub repository/tree URL",
+    )
     install.add_argument("source")
-    install.add_argument("--name", action="append", default=[], help="install one named skill from a multi-skill source")
+    install.add_argument(
+        "--name",
+        action="append",
+        default=[],
+        help="install one named skill from a multi-skill source",
+    )
     install.add_argument("--all", action="store_true", help="install every skill discovered in the source")
-    install.add_argument("--force", action="store_true", help="replace an already installed skill")
+    install.add_argument(
+        "--force",
+        action="store_true",
+        help="replace an already installed Loom-managed skill; unmanaged/manual skills are protected",
+    )
 
-    update = sub.add_parser("update", help="reinstall a skill from its recorded source")
+    update = sub.add_parser("update", help="reinstall a Loom-managed skill from its recorded source")
     update.add_argument("name", nargs="?")
-    update.add_argument("--all", action="store_true", help="update every installed skill with recorded provenance")
+    update.add_argument("--all", action="store_true", help="update every Loom-managed skill with recorded provenance")
 
-    remove = sub.add_parser("remove", aliases=["uninstall"], help="remove an installed skill")
+    remove = sub.add_parser(
+        "remove",
+        aliases=["uninstall"],
+        help="remove a Loom-managed skill; manual/unmanaged skills are protected",
+    )
     remove.add_argument("name")
 
     sub.add_parser("list", help="list installed user skills")
@@ -83,7 +99,7 @@ def run_skill_cli(argv: Sequence[str]) -> int:
                 return _emit_rows(
                     rows,
                     json_mode=args.json,
-                    empty_message="No installed skills to update.",
+                    empty_message="No Loom-managed skills to update.",
                     verb="Updated",
                 )
             if not args.name:
