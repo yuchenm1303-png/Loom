@@ -123,43 +123,69 @@ try {
     await page.locator('[data-message-id="final"]').waitFor({ state: "visible" });
     assert.equal(await page.locator('.task-flow-group [data-message-id="final"]').count(), 0);
 
-    // A step's sentence streams before the runtime knows its role. Once its tool call is streaming
-    // it is plainly narration, and a short one after tool work may yet become narration: neither
-    // is drawn, so nothing pops up and then disappears.
+    // A step's sentence streams before the runtime knows its role. Routine narration is never drawn,
+    // not even while it streams; the reaction to a failed step is a message from its first word, and
+    // either way nothing is drawn and then taken back.
     await page.evaluate(() => window.motionFixture.reset());
-    const sentence = "argv 里中文 GBK 编码被吞。改用全英文查询。";
-    await page.evaluate(sentence => {
+    const watch = text => page.evaluate(text => {
       window.__shown = false;
-      window.__observer = new MutationObserver(() => { if (document.body.textContent.includes(sentence)) window.__shown = true; });
+      window.__observer?.disconnect();
+      window.__observer = new MutationObserver(() => { if (document.body.textContent.includes(text)) window.__shown = true; });
       window.__observer.observe(document.body, { subtree: true, childList: true, characterData: true });
-    }, sentence);
-    const worked = [user, message("intro", "先看一下环境。"), tool("a", { status: "failed" }), tool("b", { status: "failed" }), tool("c", { status: "failed" })];
+    }, text);
+    const routine = "继续看下一处。";
+    await watch(routine);
+    const worked = [user, message("intro", "先看一下环境。"), tool("a"), tool("b"), tool("c")];
     await render(worked);
-    await render([...worked, streaming("n4", sentence)]);
+    await render([...worked, streaming("n4", routine)]);
     await page.waitForTimeout(200);
-    await render([...worked, streaming("n4", sentence), tool("d", { status: "streaming_arguments", arguments: "" })]);
+    await render([...worked, streaming("n4", routine), tool("d", { status: "streaming_arguments", arguments: "" })]);
     await page.waitForTimeout(200);
     assert.equal(await page.locator(".task-flow-group").count(), 1, "the streaming command joins the same group");
     assert.equal(await page.locator(".task-flow-cluster-latest").innerText(), "c.txt", "the line names the latest step whose arguments are known");
-    await render([...worked, message("n4", sentence), tool("d", { status: "running" })]);
+    await render([...worked, message("n4", routine), tool("d", { status: "running" })]);
     await page.waitForTimeout(300);
-    assert.equal(await page.evaluate(() => window.__shown), false, "narration was never on screen, not even while it streamed");
-    await page.evaluate(() => window.__observer.disconnect());
+    assert.equal(await page.evaluate(() => window.__shown), false, "routine narration was never on screen, not even while it streamed");
     // Asked for, it is a note from the first moment it streams, never a message that shrinks into one.
-    await render([...worked, streaming("n4", sentence), tool("d", { status: "streaming_arguments" })]);
+    await render([...worked, streaming("n4", routine), tool("d", { status: "streaming_arguments" })]);
     await page.locator(".process-notes-toggle").click();
     await page.locator('[data-message-id="n4"]').waitFor({ state: "visible" });
     assert.equal(await page.locator('.task-flow-commentary [data-message-id="n4"]').count(), 1, "shown as a note");
     await page.locator(".process-notes-toggle").click();
 
+    // The model's reaction to a failed step is what the reader wants to hear: drawn from its first word,
+    // inside the same work log, and still there when its command has started and finished.
+    const reaction = "argv 里中文 GBK 编码被吞。改用全英文查询。";
+    const failed = [user, message("intro", "先看一下环境。"), tool("a", { status: "failed" })];
+    await render(failed);
+    await watch(reaction);
+    await render([...failed, streaming("r", reaction)]);
+    await page.locator('.task-flow-group .task-flow-reply [data-message-id="r"]').waitFor({ state: "visible", timeout: 500 });
+    await render([...failed, streaming("r", reaction), tool("b", { status: "streaming_arguments", arguments: "" })]);
+    await page.waitForTimeout(250);
+    await render([...failed, message("r", reaction), tool("b", { status: "running" })]);
+    await page.waitForTimeout(250);
+    await render([...failed, message("r", reaction), tool("b", { status: "failed" }), message("r2", "引号也被吞了。", {}), tool("c")]);
+    await page.waitForTimeout(250);
+    assert.equal(await page.locator(".task-flow-group").count(), 1, "one work log, with the reactions inside it");
+    assert.deepEqual(await page.locator(".task-flow-group .task-flow-reply [data-message-id]").evaluateAll(nodes => nodes.map(node => node.dataset.messageId)), ["r", "r2"]);
+    assert.equal(await page.locator(".process-notes-toggle").count(), 0, "nothing was held back, so there is no switch");
+    assert.equal(await page.locator('.task-flow-reply [data-message-id="r"]').evaluate(node => getComputedStyle(node.querySelector(".assistant-message")).fontSize), "15px", "a message, not a note");
+    await page.evaluate(() => window.__observer.disconnect());
+
     // What is long enough, or has waited long enough, is the answer on its way and is shown as it streams.
     await render([...worked, streaming("answer", "已经确认完毕。".repeat(30))]);
     await page.locator('[data-message-id="answer"]').waitFor({ state: "visible", timeout: 500 });
     assert.equal(await page.locator('.task-flow-commentary [data-message-id="answer"]').count(), 0, "a message, not a note");
+    assert.equal(await page.locator('.task-flow-group [data-message-id="answer"]').count(), 0, "a long one may be the answer, so it is not tucked into the log");
     await render([...worked, streaming("slow", "还在写的回答")]);
     await page.waitForTimeout(400);
     assert.equal(await page.locator('[data-message-id="slow"]').count(), 0, "held back while its role is unknown");
     await page.locator('[data-message-id="slow"]').waitFor({ state: "visible", timeout: 5000 });
+    // Once drawn it stays, even when its step turns out to be narration.
+    await render([...worked, message("slow", "还在写的回答"), tool("e", { status: "running" })]);
+    await page.waitForTimeout(250);
+    assert.equal(await page.locator('[data-message-id="slow"]').count(), 1, "a sentence that was drawn is not taken back");
 
     // The first sentence of a turn answers the person at once, and stays that message.
     await page.evaluate(() => window.motionFixture.reset());
@@ -175,6 +201,11 @@ try {
       { ...base, id: "steer", type: "user_message", source: "steering", text: "再看看日志", submittedAt: at(3), createdAt: at(3) },
       streaming("reply", "好，看日志。", { createdAt: at(4) })]);
     await page.locator('[data-message-id="reply"]').waitFor({ state: "visible", timeout: 500 });
+    // Even before its first word: that reply is still thinking, and shows it instead of leaving a gap.
+    await render([{ ...user, createdAt: at(0) }, message("intro", { createdAt: at(1) }), tool("a", { createdAt: at(2) }),
+      { ...base, id: "steer", type: "user_message", source: "steering", text: "再看看日志", submittedAt: at(3), createdAt: at(3) },
+      streaming("thinking", "", { createdAt: at(4) })]);
+    await page.locator('[data-message-id="thinking"]').waitFor({ state: "attached", timeout: 500 });
     assert.deepEqual(errors, []);
     if (process.env.LOOM_EXECUTION_SCREENSHOTS) await page.screenshot({ path: `${process.env.LOOM_EXECUTION_SCREENSHOTS}/execution-${theme}.png` });
     await page.close();

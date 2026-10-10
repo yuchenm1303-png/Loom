@@ -32,15 +32,14 @@ try {
     await render([user, message("first"), message("second"), long]);
     await page.waitForTimeout(900);
     assert.equal(await page.locator(slot("first")).count(), 1, "detached reading retains earlier records");
-    // The newest narration is a quiet note, so it takes little room until opened. Open it so it is
-    // the tall live record this geometry needs; the jump below follows the live edge again.
-    await page.locator('[data-message-id="long"] .note-toggle').click();
+    // A long sentence is a message and is drawn in full, so it is the tall live record this geometry
+    // needs; the jump below follows the live edge again.
     // Return through the actual controller; only fully offscreen slots retire.
     await page.locator(".transcript-jump-latest").evaluate(el => el.click());
     await page.waitForFunction(() => !document.querySelector('.process-handoff-slot[data-process-items~="first"]'));
     await page.waitForFunction(() => !document.querySelector('.process-handoff-slot[data-process-items~="second"]'));
-    assert.equal(await page.locator('[data-message-id="long"]').evaluate(el => el.classList.contains("is-note")), true,
-      "the newest narration is a note from its first frame, not a full message that later shrinks");
+    assert.equal(await page.locator('[data-message-id="long"]').evaluate(el => el.classList.contains("is-note")), false,
+      "a long sentence is a message from its first frame, not one that later shrinks into a note");
     await page.locator(".earlier-process-toggle").click();
     await page.locator('.earlier-process-history[data-motion-phase="entered"]').waitFor();
     assert.equal(await page.locator('.earlier-process-history [data-message-id="first"]').count(), 1);
@@ -63,11 +62,11 @@ try {
     const batch = [user, message("intro"), tool("t1"), tool("t2", "running")];
     await render(batch);
     await render([...batch, long]);
-    await page.locator(".process-notes-toggle").click();
     await page.waitForTimeout(300);
-    // A long note is clamped by design. Open it so it takes the height this handoff geometry needs,
-    // then follow the live edge again: the click itself detaches the reader, which is not under test here.
-    await page.locator('[data-message-id="long"] .note-toggle').click();
+    // A long sentence is a message and takes the height this handoff geometry needs. Detach and follow
+    // the live edge again, as a reader scrolling up and back would.
+    await page.locator(".transcript-scroll").dispatchEvent("wheel", { deltaY: -200 });
+    await page.waitForFunction(() => document.querySelector(".transcript-scroll").dataset.following === "false");
     await page.locator(".transcript-jump-latest").evaluate(el => el.click());
     await page.waitForTimeout(850);
     assert.equal(await page.locator(slot("t1")).count(), 1, "a mixed tool envelope keeps completed neighbours of live rows");
@@ -88,9 +87,8 @@ try {
     await render([user, { ...message("intro"), ...at(1) }, { ...tool("s1"), ...at(2) }, steer,
       { ...message("reply"), ...at(4) }, { ...tool("s2"), ...at(5) }, { ...long, ...at(6) }]);
     await page.waitForTimeout(700);
-    await page.locator(".process-notes-toggle").click();
-    await page.waitForTimeout(300);
-    await page.locator('[data-message-id="long"] .note-toggle').click();
+    await page.locator(".transcript-scroll").dispatchEvent("wheel", { deltaY: -200 });
+    await page.waitForFunction(() => document.querySelector(".transcript-scroll").dataset.following === "false");
     await page.waitForTimeout(400);
     await page.locator(".transcript-jump-latest").evaluate(el => el.click());
     await page.waitForFunction(() => !document.querySelector('.process-handoff-slot[data-process-items~="s2"]'));

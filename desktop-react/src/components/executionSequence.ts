@@ -53,8 +53,47 @@ export function planUpdateNoteIds(items: TranscriptItem[]): ReadonlySet<string> 
   return ids;
 }
 
-/** A sentence this long, streaming after tool work, is taken to be the answer on its way. */
-export const LIVE_TEXT_REVEAL_CHARS = 160;
+/** A sentence this long says enough to be a message to the reader, wherever it comes. */
+export const SUBSTANTIAL_TEXT_CHARS = 160;
+
+const NO_IDS: ReadonlySet<string> = new Set();
+
+/** A tool step that went wrong: a failed command, a denied call. */
+const isFailedStep = (item: TranscriptItem): boolean =>
+  item.type === "tool_call" && !item.nested && ["failed", "denied"].includes(String(item.status ?? ""));
+
+/**
+ * The model's sentences that are messages to the reader. Most models introduce nearly every tool
+ * call, and a log of that is noise; but an agent that says nothing after its first sentence leaves
+ * the reader guessing. A person speaks when something happens, not on a timer, so narration stays
+ * in the log except for:
+ * - the reply to the user (the first sentence after a user message, before any tool work);
+ * - the sentence sent with a plan update, which is the model's own stage report;
+ * - the sentence that answers a failed step: the model's reading of what went wrong and what it
+ *   will do instead, which is what the reader wants to know when the log turns red;
+ * - any sentence long enough to carry real content.
+ * `released` names sentences that were already drawn because they waited out their hold; they stay.
+ * Position, step status and length only, never the wording. Each verdict depends only on what came
+ * before the sentence and on its own length, so it never changes once the sentence is drawn.
+ */
+export function reportIds(items: TranscriptItem[], released: ReadonlySet<string> = NO_IDS): ReadonlySet<string> {
+  const initial = initialUpdateIds(items);
+  const plan = planUpdateNoteIds(items);
+  const ids = new Set<string>();
+  // A step failed since the model last said anything: its next sentence is the reaction.
+  let failed = false;
+  for (const item of items) {
+    if (item.type === "user_message") failed = false;
+    else if (isFailedStep(item)) failed = true;
+    else if (item.type === "assistant_message" && item.phase === "commentary") {
+      const text = String(item.text ?? "").trim();
+      if (!text) continue;
+      if (initial.has(item.id) || plan.has(item.id) || released.has(item.id) || failed || text.length >= SUBSTANTIAL_TEXT_CHARS) ids.add(item.id);
+      failed = false;
+    }
+  }
+  return ids;
+}
 
 const commentaryVariants = new WeakMap<TranscriptItem, TranscriptItem>();
 
@@ -67,9 +106,10 @@ function asCommentary(item: TranscriptItem): TranscriptItem {
   return variant;
 }
 
-function isReadableAnswer(item: TranscriptItem): boolean {
-  const text = String(item.text ?? "");
-  return Boolean(String(item.reasoning ?? "").trim()) || /<think/i.test(text) || text.trim().length >= LIVE_TEXT_REVEAL_CHARS;
+const isUnclassified = (item: TranscriptItem): boolean => item.type === "assistant_message" && item.status === "streaming" && !item.phase;
+
+function showsReasoning(item: TranscriptItem): boolean {
+  return Boolean(String(item.reasoning ?? "").trim()) || /<think/i.test(String(item.text ?? ""));
 }
 
 /**
@@ -78,31 +118,41 @@ function isReadableAnswer(item: TranscriptItem): boolean {
  * The list itself already says most of what is needed:
  * - a tool call streaming after the sentence, in the same step, makes it narration;
  * - the first sentence after a user message, before any tool work, answers that message;
- * - any other short sentence after tool work is narration or the answer on its way, and nobody
- *   knows yet: it is held back until it is long enough to be an answer, or `released` names it
- *   because the hold ran out. Reasoning shown while it streams is never held.
- * Position and length only, never the wording. Returns what to draw and the id of the held sentence.
+ * - after tool work, any other sentence is narration or the answer on its way and nobody knows
+ *   yet. If it would be a message as narration (see reportIds) it is drawn now and stays; if not,
+ *   it is held back until it is long enough, or `released` names it because the hold ran out.
+ * Reasoning shown while it streams is never held. Returns what to draw and the id of the held sentence.
  */
-export function settleLiveText(items: TranscriptItem[], released = ""): { items: TranscriptItem[]; held: string } {
+export function settleLiveText(items: TranscriptItem[], released: ReadonlySet<string> = NO_IDS): { items: TranscriptItem[]; held: string } {
   let lastWork = -1;
   items.forEach((item, index) => { if (isActivityItem(item)) lastWork = index; });
-  let worked = false;
   let changed = false;
+  const base = items.map((item, index) => {
+    if (!isUnclassified(item) || lastWork <= index) return item;
+    changed = true;
+    return asCommentary(item);
+  });
   let held = "";
+  let worked = false;
   const settled: TranscriptItem[] = [];
-  items.forEach((item, index) => {
+  for (const item of base) {
     if (item.type === "user_message") worked = false;
     else if (isActivityItem(item)) worked = true;
-    const unclassified = item.type === "assistant_message" && item.status === "streaming" && !item.phase;
-    if (!unclassified) settled.push(item);
-    else if (lastWork > index) {
-      settled.push(asCommentary(item));
-      changed = true;
-    } else if (worked && item.id !== released && !isReadableAnswer(item)) {
+    if (!worked || !isUnclassified(item) || showsReasoning(item)) {
+      settled.push(item);
+      continue;
+    }
+    const probe = asCommentary(item);
+    if (!reportIds(base.map((other) => (other === item ? probe : other)), released).has(item.id)) {
       held = item.id;
       changed = true;
-    } else settled.push(item);
-  });
+    } else if (String(item.text ?? "").trim().length < SUBSTANTIAL_TEXT_CHARS) {
+      // Drawn at once. A short one answers a failed step or waited out its hold: it is narration, so it
+      // sits in the work log from its first word and does not move when its tool call arrives.
+      settled.push(probe);
+      changed = true;
+    } else settled.push(item); // A long one may be the answer itself: an ordinary message until its step says otherwise.
+  }
   return { items: changed ? settled : items, held };
 }
 
