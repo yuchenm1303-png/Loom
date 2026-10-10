@@ -41,7 +41,7 @@ import { useReducedMotion } from "../motion/useReducedMotion";
 import { useEarlierProcessHandoff } from "./useEarlierProcessHandoff";
 import { LIVE_STATUS_GRACE_MS, LIVE_TEXT_HOLD_MS, TURN_FOLD_MS, TURN_SETTLE_HOLD_MS } from "../presentationTiming";
 import type { TranscriptItem } from "../types/loom";
-import { groupExecutionSequence, initialUpdateIds, isActivityItem, isProcessCommentary, planUpdateNoteIds, settleLiveText } from "./executionSequence";
+import { groupExecutionSequence, isActivityItem, isProcessCommentary, reportIds, settleLiveText } from "./executionSequence";
 import { CLUSTER_MIN_ROWS, runsOf } from "./activityClusters";
 import { latestTaskPlan, liveTaskProgress } from "./liveTaskProgress";
 import { isLongNote } from "./processNote";
@@ -2002,18 +2002,19 @@ function liveEdgeState(items: TranscriptItem[]): { quiet: boolean; started: bool
 
 /**
  * What a live turn draws: a sentence still streaming after tool work stays out of sight until
- * its role is known (see settleLiveText). The hold is bounded, so a slow stream still shows up.
+ * its role is known (see settleLiveText). The hold is bounded, so a slow stream still shows up,
+ * and a sentence drawn that way stays a message after its step completes.
  */
-function useSettledLiveText(items: TranscriptItem[], active: boolean): TranscriptItem[] {
-  const [released, setReleased] = useState("");
+function useSettledLiveText(items: TranscriptItem[], active: boolean): { items: TranscriptItem[]; released: ReadonlySet<string> } {
+  const [released, setReleased] = useState<ReadonlySet<string>>(NO_MESSAGE_IDS);
   const settled = useMemo(() => (active ? settleLiveText(items, released) : { items, held: "" }), [active, items, released]);
   const { held } = settled;
   useEffect(() => {
     if (!held) return;
-    const timer = window.setTimeout(() => setReleased(held), LIVE_TEXT_HOLD_MS);
+    const timer = window.setTimeout(() => setReleased((current) => new Set(current).add(held)), LIVE_TEXT_HOLD_MS);
     return () => window.clearTimeout(timer);
   }, [held]);
-  return settled.items;
+  return { items: settled.items, released };
 }
 
 function TurnProcess({
@@ -2042,7 +2043,7 @@ function TurnProcess({
   workspace?: string;
 }) {
   const copy = useRuntimeCopy();
-  const items = useSettledLiveText(streamedItems, active);
+  const { items, released } = useSettledLiveText(streamedItems, active);
   // A just-completed turn keeps its live layout until the fold has finished,
   // so completion never re-expands the earlier history for a frame.
   const live = active || settle !== null;
@@ -2069,9 +2070,9 @@ function TurnProcess({
       return parsed.decisions.length > 0 || parsed.incomplete;
     })
     .map((item) => item.id))), [items]);
-  // Commentary that is a message to the reader: the reply to them and the model's own report at a
-  // plan update. All other narration is log detail, hidden unless the reader asks for it.
-  const messageIds = useMemo(() => new Set([...initialUpdateIds(items), ...planUpdateNoteIds(items)]), [items]);
+  // Commentary that is a message to the reader: the reply to them, the model's own plan reports, long
+  // sentences, and one now and then so a long run is never silent. The rest is log detail, hidden unless asked for.
+  const messageIds = useMemo(() => reportIds(items, released), [items, released]);
   const decisionIds = useMemo(() => decisionMessageIds(items), [items]);
   const [showNotes, setShowNotes] = useState(false);
   const isQuietNote = useCallback(
