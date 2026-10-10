@@ -106,18 +106,19 @@ try {
     await head.click();
     await render(burst);
 
-    // The model's own report at a plan update is a message, not hidden narration.
+    // The model's own report at a plan update is a message, not hidden narration. Like the first reply it is
+    // body text: it stands between the tool groups, never inside one.
     const reported = [user, message("intro", "先检查入口。"), tool("a"),
       message("report", "第一阶段通过。", { stepId: "step-plan" }), tool("plan", { toolName: "update_plan", arguments: { plan: [] }, stepId: "step-plan" })];
     await render(reported);
     await page.locator('[data-message-id="report"]').waitFor({ state: "visible" });
-    assert.equal(await page.locator(".task-flow-reply").count(), 1);
-    assert.equal(await page.locator(".task-flow-reply .assistant-message").evaluate(node => getComputedStyle(node).fontSize), "15px");
-    const title = await page.evaluate(() => {
+    assert.equal(await page.locator('.task-flow-group [data-message-id="report"]').count(), 0, "a message is not tucked into a tool group");
+    assert.equal(await page.locator('[data-message-id="report"] .assistant-message').evaluate(node => getComputedStyle(node).fontSize), "15px");
+    const edge = await page.evaluate(() => {
       const left = element => { const range = document.createRange(); range.selectNodeContents(element); return range.getBoundingClientRect().left; };
-      return { title: left(document.querySelector(".task-flow-group-title")), reply: left(document.querySelector(".task-flow-reply .assistant-message")) };
+      return { intro: left(document.querySelector('[data-message-id="intro"] .assistant-message')), report: left(document.querySelector('[data-message-id="report"] .assistant-message')) };
     });
-    assert.ok(Math.abs(title.title - title.reply) <= 1, `a message in a group lines up with its title (${title.reply} vs ${title.title})`);
+    assert.ok(Math.abs(edge.intro - edge.report) <= 1, `every message starts at the same left edge (${edge.report} vs ${edge.intro})`);
 
     await render([...updated, message("final", "检查完成。", { phase: "final_answer" })], false);
     await page.locator('[data-message-id="final"]').waitFor({ state: "visible" });
@@ -153,24 +154,30 @@ try {
     assert.equal(await page.locator('.task-flow-commentary [data-message-id="n4"]').count(), 1, "shown as a note");
     await page.locator(".process-notes-toggle").click();
 
-    // The model's reaction to a failed step is what the reader wants to hear: drawn from its first word,
-    // inside the same work log, and still there when its command has started and finished.
+    // The model's reaction to a failed step is what the reader wants to hear: body text from its first word,
+    // standing between the tool groups, and still there when its command has started and finished.
     const reaction = "argv 里中文 GBK 编码被吞。改用全英文查询。";
     const failed = [user, message("intro", "先看一下环境。"), tool("a", { status: "failed" })];
+    // The page as a reader sees it, top to bottom: the user's message, messages and tool groups.
+    const outline = () => page.evaluate(() => [...document.querySelectorAll(".task-flow-group, [data-message-id]")]
+      .map(node => node.matches(".task-flow-group") ? "group" : (node.closest(".task-flow-group") ? `in-group:${node.dataset.messageId}` : node.dataset.messageId)));
     await render(failed);
     await watch(reaction);
     await render([...failed, streaming("r", reaction)]);
-    await page.locator('.task-flow-group .task-flow-reply [data-message-id="r"]').waitFor({ state: "visible", timeout: 500 });
+    await page.locator('[data-message-id="r"]').waitFor({ state: "visible", timeout: 500 });
+    const reactionNode = await page.locator('[data-message-id="r"]').elementHandle();
+    assert.deepEqual(await outline(), ["user", "intro", "group", "r"]);
     await render([...failed, streaming("r", reaction), tool("b", { status: "streaming_arguments", arguments: "" })]);
     await page.waitForTimeout(250);
+    assert.deepEqual(await outline(), ["user", "intro", "group", "r", "group"], "its command starts a group of its own below it");
     await render([...failed, message("r", reaction), tool("b", { status: "running" })]);
     await page.waitForTimeout(250);
     await render([...failed, message("r", reaction), tool("b", { status: "failed" }), message("r2", "引号也被吞了。", {}), tool("c")]);
     await page.waitForTimeout(250);
-    assert.equal(await page.locator(".task-flow-group").count(), 1, "one work log, with the reactions inside it");
-    assert.deepEqual(await page.locator(".task-flow-group .task-flow-reply [data-message-id]").evaluateAll(nodes => nodes.map(node => node.dataset.messageId)), ["r", "r2"]);
+    assert.deepEqual(await outline(), ["user", "intro", "group", "r", "group", "r2", "group"], "failure, reaction, failure, reaction, next try");
+    assert.equal(await reactionNode.evaluate(node => node.isConnected && node === document.querySelector('[data-message-id="r"]')), true, "the sentence never moved or was redrawn");
     assert.equal(await page.locator(".process-notes-toggle").count(), 0, "nothing was held back, so there is no switch");
-    assert.equal(await page.locator('.task-flow-reply [data-message-id="r"]').evaluate(node => getComputedStyle(node.querySelector(".assistant-message")).fontSize), "15px", "a message, not a note");
+    assert.equal(await page.locator('[data-message-id="r"]').evaluate(node => node.classList.contains("is-note") || getComputedStyle(node.querySelector(".assistant-message")).fontSize), "15px", "a message, not a note");
     await page.evaluate(() => window.__observer.disconnect());
 
     // What is long enough, or has waited long enough, is the answer on its way and is shown as it streams.
@@ -206,9 +213,39 @@ try {
       { ...base, id: "steer", type: "user_message", source: "steering", text: "再看看日志", submittedAt: at(3), createdAt: at(3) },
       streaming("thinking", "", { createdAt: at(4) })]);
     await page.locator('[data-message-id="thinking"]').waitFor({ state: "attached", timeout: 500 });
+    // Body text and tool groups are separate: messages stand between the groups, and when the turn
+    // completes only the tool detail folds. What the model said stays on screen, in order.
+    await page.evaluate(() => window.motionFixture.reset());
+    const story = [user, message("a1", "先看一下环境。"), tool("t1", { status: "failed" }), message("a2", "引号被吞了，改用单引号。"), tool("t2"),
+      message("quiet", "继续。"), tool("t3", { status: "failed" }), message("a3", "编码问题，改用 PowerShell。"), tool("t4")];
+    const answer = message("final", "环境探完了。", { phase: "final_answer" });
+    await render(story);
+    await page.waitForTimeout(400);
+    assert.deepEqual(await outline(), ["user", "a1", "group", "a2", "group", "a3", "group"], "messages between tool groups, hidden narration nowhere");
+    await render([...story, answer], false);
+    // During the hold the finished layout is exactly as it was: the messages are drawn once, in the log.
+    assert.deepEqual(await page.evaluate(() => ({ recap: document.querySelector(".turn-message-recap-slot")?.getBoundingClientRect().height, log: document.querySelector(".turn-process-grid")?.getBoundingClientRect().height > 100 })), { recap: 0, log: true });
+    await page.waitForFunction(() => !document.querySelector(".turn-process-grid") && document.querySelector(".turn-message-recap"), null, { timeout: 5000 });
+    const recapIds = () => page.locator(".turn-message-recap [data-message-id]").evaluateAll(nodes => nodes.map(node => node.dataset.messageId));
+    assert.deepEqual(await recapIds(), ["a1", "a2", "a3"], "the model's messages stay; hidden narration and tool rows are what folded");
+    assert.equal(await page.locator(".task-flow-group").count(), 0);
+    assert.equal(await page.locator('[data-message-id="a2"]').count(), 1, "nothing is drawn twice once the fold is done");
+    assert.equal(await page.locator(".turn-message-recap .message-meta").first().evaluate(node => getComputedStyle(node).display), "none", "no toolbar on every message");
+    // Opening the log shows everything in place, and the recap yields to it; closing brings the recap back.
+    await page.locator(".turn-process-header").click();
+    await page.waitForFunction(() => document.querySelector(".turn-process.is-open") && document.querySelector(".task-flow-group") && !document.querySelector(".turn-message-recap"));
+    assert.equal(await page.locator('[data-message-id="a2"]').count(), 1, "open: the message is in the log, not also in a recap");
+    await page.locator(".turn-process-header").click();
+    await page.waitForFunction(() => document.querySelector(".turn-message-recap") && !document.querySelector(".turn-process-grid"), null, { timeout: 5000 });
+    assert.deepEqual(await recapIds(), ["a1", "a2", "a3"]);
+    // History mounts folded and plays nothing: the messages are simply there.
+    await page.evaluate(() => window.motionFixture.reset());
+    await render([...story, answer], false);
+    await page.locator(".turn-message-recap").waitFor({ state: "visible", timeout: 500 });
+    assert.deepEqual(await recapIds(), ["a1", "a2", "a3"]);
     assert.deepEqual(errors, []);
     if (process.env.LOOM_EXECUTION_SCREENSHOTS) await page.screenshot({ path: `${process.env.LOOM_EXECUTION_SCREENSHOTS}/execution-${theme}.png` });
     await page.close();
   }
-  console.log("Execution sequence: hidden narration, ordered switch, lazy summary lines, running step, plan report, alignment and final boundary passed in both themes.");
+  console.log("Execution sequence: hidden narration, ordered switch, lazy summary lines, running step, body messages between tool groups, folded recap, alignment and final boundary passed in both themes.");
 } finally { await browser.close(); }
