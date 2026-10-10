@@ -175,6 +175,13 @@
   gap: 3px;
   padding-left: 10px;
 }
+/* A stage of one step is that step's row, set where a header would be: no rail and no body indent. */
+:root .app-shell .task-flow-group.is-single .task-flow-list {
+  margin: 0;
+  padding-left: 0;
+  border-left: 0;
+}
+:root .app-shell .task-flow-group.is-single .process-handoff-slot { margin-bottom: 0; }
 :root .app-shell .task-flow-group .task-flow-row {
   min-height: 32px;
   gap: 8px;

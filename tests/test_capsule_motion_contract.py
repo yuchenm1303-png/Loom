@@ -341,7 +341,8 @@ def test_unfold_is_user_initiated_and_transient() -> None:
     motion = read(MOTION)
 
     assert "const [unfolding, setUnfolding] = useState(false);" in transcript
-    assert "setUnfolding(!open);" in transcript and "setOpen(!open);" in transcript
+    # A click opens or closes the stage and starts the one-shot unfold; the choice overrides the automatic state.
+    assert "setUnfolding(!open);" in transcript and "setChosen(!open);" in transcript
     assert '${unfolding ? "is-unfolding" : ""}' in transcript
     assert "window.setTimeout(() => setUnfolding(false), 900)" in transcript
 
