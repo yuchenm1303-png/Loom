@@ -165,7 +165,11 @@ try {
 } finally {
   for (const child of children) {
     if (child.exitCode === null) {
+      const exited = new Promise((resolve) => child.once("exit", resolve));
       await run(path.join(process.env.SystemRoot, "System32", "taskkill.exe"), ["/F", "/T", "/PID", String(child.pid)]);
+      if (child.exitCode === null && child.signalCode === null) {
+        await Promise.race([exited, new Promise((_, reject) => setTimeout(() => reject(new Error(`Fixture process ${child.pid} did not exit during cleanup`)), 10_000))]);
+      }
     }
   }
   const uninstaller = path.join(installDir, `Uninstall ${appName}.exe`);
@@ -179,7 +183,8 @@ try {
   if (passed) {
     assert.equal(path.dirname(workspace), path.resolve(os.tmpdir()));
     assert.ok(path.basename(workspace).startsWith("loom-installer-smoke-"));
-    await fs.rm(workspace, { recursive: true, force: true });
+    // Windows may retain executable handles briefly after taskkill exits.
+    await fs.rm(workspace, { recursive: true, force: true, maxRetries: 10, retryDelay: 250 });
     const smokeCache = path.join(process.env.LOCALAPPDATA, `${protocol}-updater`, "installer.exe");
     await fs.rm(smokeCache, { force: true });
     try { await fs.rmdir(path.dirname(smokeCache)); } catch {}
