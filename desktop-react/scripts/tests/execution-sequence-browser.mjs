@@ -213,44 +213,77 @@ try {
       { ...base, id: "steer", type: "user_message", source: "steering", text: "再看看日志", submittedAt: at(3), createdAt: at(3) },
       streaming("thinking", "", { createdAt: at(4) })]);
     await page.locator('[data-message-id="thinking"]').waitFor({ state: "attached", timeout: 500 });
-    // Body text and tool groups are separate: messages stand between the groups, and when the turn
-    // completes only the tool detail folds. What the model said stays on screen, in order.
-    await page.evaluate(() => window.motionFixture.reset());
-    const story = [user, message("a1", "先看一下环境。"), tool("t1", { status: "failed" }), message("a2", "引号被吞了，改用单引号。"), tool("t2"),
-      message("quiet", "继续。"), tool("t3", { status: "failed" }), message("a3", "编码问题，改用 PowerShell。"), tool("t4")];
-    const answer = message("final", "环境探完了。", { phase: "final_answer" });
-    await render(story);
-    await page.waitForTimeout(400);
-    assert.deepEqual(await outline(), ["user", "a1", "group", "a2", "group", "a3", "group"], "messages between tool groups, hidden narration nowhere");
-    await render([...story, answer], false);
-    // During the hold the finished layout is exactly as it was: the messages are drawn once, in the log.
-    assert.deepEqual(await page.evaluate(() => ({ recap: document.querySelector(".turn-message-recap-slot")?.getBoundingClientRect().height, log: document.querySelector(".turn-process-grid")?.getBoundingClientRect().height > 100 })), { recap: 0, log: true });
-    await page.waitForFunction(() => !document.querySelector(".turn-process-grid") && document.querySelector(".turn-message-recap"), null, { timeout: 5000 });
-    const recapIds = () => page.locator(".turn-message-recap [data-message-id]").evaluateAll(nodes => nodes.map(node => node.dataset.messageId));
-    assert.deepEqual(await recapIds(), ["a1", "a2", "a3"], "the model's messages stay; hidden narration and tool rows are what folded");
-    assert.equal(await page.locator(".task-flow-group").count(), 0);
-    assert.equal(await page.locator('[data-message-id="a2"]').count(), 1, "nothing is drawn twice once the fold is done");
-    assert.equal(await page.locator(".turn-message-recap .message-meta").first().evaluate(node => getComputedStyle(node).display), "none", "no toolbar on every message");
-    // Opening the log shows everything in place, and the recap yields to it; closing brings the recap back.
-    await page.locator(".turn-process-header").click();
-    await page.waitForFunction(() => document.querySelector(".turn-process.is-open") && document.querySelector(".task-flow-group") && !document.querySelector(".turn-message-recap"));
-    assert.equal(await page.locator('[data-message-id="a2"]').count(), 1, "open: the message is in the log, not also in a recap");
-    await page.locator(".turn-process-header").click();
-    await page.waitForFunction(() => document.querySelector(".turn-message-recap") && !document.querySelector(".turn-process-grid"), null, { timeout: 5000 });
-    assert.deepEqual(await recapIds(), ["a1", "a2", "a3"]);
-    // History mounts folded and plays nothing: the messages are simply there.
-    await page.evaluate(() => window.motionFixture.reset());
-    await render([...story, answer], false);
-    await page.locator(".turn-message-recap").waitFor({ state: "visible", timeout: 500 });
-    assert.deepEqual(await recapIds(), ["a1", "a2", "a3"]);
-    // A stage is one line. A stage of one step is that step's row and has no header of its own; a stage
-    // that is over (a later one exists while the turn is live) is one summary line, and only the latest
-    // stage stays open. A click on a line opens it, and it stays as the reader left it.
+    // While the run is live the model's messages are body text between the tool groups. When it completes the
+    // whole process folds: the summary line and the final report are all that remain, and the messages and
+    // tool groups come back, in order, only when the reader opens the log.
     await page.evaluate(() => window.motionFixture.reset());
     const stages = () => page.evaluate(() => [...document.querySelectorAll(".task-flow-group")].map(group => ({
       single: group.classList.contains("is-single"), open: group.classList.contains("is-open"),
       title: group.querySelector(".task-flow-group-title")?.textContent ?? null, failed: group.querySelector(".task-flow-group-failed")?.textContent ?? null,
       rows: group.querySelectorAll(".task-flow-row-wrap").length })));
+    const gridHeight = () => page.evaluate(() => document.querySelector(".turn-process-grid")?.getBoundingClientRect().height ?? null);
+    const story = [user, message("a1", "先看一下环境。"), tool("t1", { status: "failed" }), message("a2", "引号被吞了，改用单引号。"), tool("t2"),
+      message("quiet", "继续。"), tool("t3", { status: "failed" }), message("a3", "编码问题，改用 PowerShell。"), tool("t4")];
+    const answer = message("final", "环境探完了。", { phase: "final_answer" });
+    const liveOutline = ["user", "a1", "group", "a2", "group", "a3", "group"];
+    await render(story);
+    await page.waitForTimeout(400);
+    assert.deepEqual(await outline(), liveOutline, "messages between tool groups, hidden narration nowhere");
+    const liveStages = await stages();
+    assert.deepEqual(liveStages[1], { single: false, open: false, title: "读取 2 个文件", failed: "失败 1", rows: 0 }, "the stage that is over is one line while the run is live");
+    const liveHeight = await gridHeight();
+    await render([...story, answer], false);
+    assert.deepEqual(await stages(), liveStages, "completion opens and closes no stage: the layout is as the reader last saw it");
+    assert.deepEqual(await outline(), [...liveOutline, "final"], "during the hold the finished layout is exactly as the reader last saw it");
+    // The height of the process, frame by frame from completion: it holds, then folds as a motion, then is gone.
+    const frames = await page.evaluate(async () => {
+      const samples = [];
+      const start = performance.now();
+      while (performance.now() - start < 1300) {
+        const grid = document.querySelector(".turn-process-grid");
+        samples.push({ at: performance.now() - start, height: grid ? grid.getBoundingClientRect().height : null,
+          folding: Boolean(document.querySelector(".turn-process.is-settle-fold")) });
+        await new Promise(requestAnimationFrame);
+      }
+      return samples;
+    });
+    const holding = frames.filter(frame => frame.at < 250);
+    assert.ok(holding.length > 5 && holding.every(frame => frame.height !== null && Math.abs(frame.height - liveHeight) <= 1),
+      `the hold holds the layout at ${liveHeight}px: ${JSON.stringify(holding.map(frame => Math.round(frame.height ?? -1)))}`);
+    assert.ok(frames.some(frame => frame.height !== null && frame.height > liveHeight * .08 && frame.height < liveHeight * .92), "the fold is a motion, not a jump");
+    // Relative to the fold phase, not to the clock: once the process is in its fold, it is already closing.
+    const foldStart = frames.find(frame => frame.folding)?.at;
+    assert.ok(foldStart !== undefined, "the process has a fold phase");
+    const closing = frames.filter(frame => frame.folding && frame.at > foldStart + 150);
+    assert.ok(closing.length > 3 && closing.every(frame => frame.height === null || frame.height < liveHeight * .7),
+      `the fold phase is the fold: ${JSON.stringify(closing.map(frame => Math.round(frame.height ?? -1)))}`);
+    assert.ok(frames.at(-1).height === null, "and the process is gone when it ends");
+    await page.waitForFunction(() => !document.querySelector(".turn-process-grid"), null, { timeout: 5000 });
+    assert.deepEqual(await outline(), ["user", "final"], "folded: the final report is all that is left of the run");
+    const folded = await page.evaluate(() => ({ summary: document.querySelector(".turn-process-summary")?.textContent ?? "", text: document.body.textContent ?? "" }));
+    assert.match(folded.summary, /读取 4 个文件/, "the summary line says what was done");
+    for (const gone of ["先看一下环境", "引号被吞了", "编码问题"]) {
+      assert.equal(folded.text.includes(gone), false, `"${gone}": the model's messages fold away with the rest of the process`);
+    }
+    // Opening the log shows everything in order, and closing it folds everything again. A finished turn's log
+    // is detail the reader asked for, so no stage is collapsed there.
+    await page.locator(".turn-process-header").click();
+    await page.waitForFunction(() => document.querySelector(".turn-process.is-open") && document.querySelector(".task-flow-group"));
+    await page.waitForTimeout(400);
+    assert.deepEqual(await outline(), [...liveOutline, "final"], "opened: every message and tool group, in the order they happened");
+    assert.deepEqual((await stages()).map(stage => stage.rows), [1, 2, 1], "opened: every stage shows its steps");
+    await page.locator(".turn-process-header").click();
+    await page.waitForFunction(() => !document.querySelector(".turn-process-grid"), null, { timeout: 5000 });
+    assert.deepEqual(await outline(), ["user", "final"], "closed again: only the final report");
+    // History mounts folded and plays nothing.
+    await page.evaluate(() => window.motionFixture.reset());
+    await render([...story, answer], false);
+    assert.deepEqual(await outline(), ["user", "final"], "a finished turn opens already folded");
+    assert.equal(await page.locator(".turn-process-grid").count(), 0);
+    // A stage is one line. A stage of one step is that step's row and has no header of its own; a stage
+    // that is over (a later one exists while the turn is live) is one summary line, and only the latest
+    // stage stays open. A click on a line opens it, and it stays as the reader left it.
+    await page.evaluate(() => window.motionFixture.reset());
     const first = [user, message("intro", "先看一下。"), tool("a"), tool("b", { status: "failed" }), message("r", "b 打不开，换个路径。")];
     // While it is the latest stage it is open. When the next one begins it closes, and its rows stay for
     // the length of the closing motion instead of vanishing under the reader's eyes.
@@ -286,7 +319,7 @@ try {
     await page.waitForFunction(() => !document.querySelectorAll(".task-flow-group")[0].querySelector(".task-flow-row-wrap"));
     // The log of a finished turn is not summarised: opening it shows every stage as it happened.
     await render([...first, tool("c"), message("final", "完成。", { phase: "final_answer" })], false);
-    await page.waitForFunction(() => !document.querySelector(".turn-process-grid") && document.querySelector(".turn-message-recap"), null, { timeout: 5000 });
+    await page.waitForFunction(() => !document.querySelector(".turn-process-grid") && document.querySelector(".turn-process-header"), null, { timeout: 5000 });
     await page.locator(".turn-process-header").click();
     await page.waitForFunction(() => document.querySelector(".turn-process.is-open") && document.querySelector(".task-flow-group"));
     await page.waitForTimeout(400);
@@ -303,5 +336,5 @@ try {
     if (process.env.LOOM_EXECUTION_SCREENSHOTS) await page.screenshot({ path: `${process.env.LOOM_EXECUTION_SCREENSHOTS}/execution-${theme}.png` });
     await page.close();
   }
-  console.log("Execution sequence: hidden narration, ordered switch, lazy summary lines, running step, body messages between tool groups, folded recap, one-line stages, alignment and final boundary passed in both themes.");
+  console.log("Execution sequence: hidden narration, ordered switch, lazy summary lines, running step, body messages between tool groups, whole-process fold on completion, one-line stages, alignment and final boundary passed in both themes.");
 } finally { await browser.close(); }

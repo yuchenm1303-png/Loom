@@ -5,7 +5,7 @@ import ts from "typescript";
 
 const source = readFileSync(new URL("../../src/components/executionSequence.ts", import.meta.url), "utf8");
 const compiled = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 } }).outputText;
-const { groupExecutionSequence, initialUpdateIds, isProcessCommentary, settleLiveText, reportIds, bodyMessages, SUBSTANTIAL_TEXT_CHARS } = await import(`data:text/javascript;base64,${Buffer.from(compiled).toString("base64")}`);
+const { groupExecutionSequence, initialUpdateIds, isProcessCommentary, settleLiveText, reportIds, SUBSTANTIAL_TEXT_CHARS } = await import(`data:text/javascript;base64,${Buffer.from(compiled).toString("base64")}`);
 const item = (id, type, extra = {}) => ({ id, type, turnId: "turn", status: "completed", ...extra });
 const message = (id, extra = {}) => item(id, "assistant_message", { phase: "commentary", text: id, ...extra });
 // A sentence while it streams has no phase: the runtime classifies a step when its response completes.
@@ -162,18 +162,4 @@ test("reasoning that is on screen is never held, and finished items are untouche
   for (const extra of [{ reasoning: "先想想" }, { text: "<think>先想想" }]) assert.equal(settleLiveText([...worked, streaming("s", "好", extra)]).held, "");
   const done = [...worked, message("c"), message("f", { phase: "final_answer" }), item("legacy", "assistant_message", { text: "x" }), message("late", { status: "streaming" })];
   assert.strictEqual(settleLiveText(done).items, done);
-});
-
-test("what stays on screen when the work log folds: the model's messages in order, never hidden narration", () => {
-  const input = [user("u"), message("reply"), failedTool("t1"), message("reaction"), tool("t2"), message("routine"), tool("t3"),
-    message("long", { text: "字".repeat(SUBSTANTIAL_TEXT_CHARS) }), message("blank", { text: " " })];
-  assert.deepEqual(bodyMessages(input, reportIds(input), new Set()).map(i => i.id), ["reply", "reaction", "long"]);
-});
-
-test("ordinary assistant messages stay too: decisions, failed prose and histories written before phases", () => {
-  const input = [user("u"), message("reply"), tool("t1"), message("decision", { text: "```loom-decision\n{}\n```" }),
-    message("failed", { status: "failed", text: "中断" }), item("legacy", "assistant_message", { text: "旧记录" }),
-    item("empty", "assistant_message", { text: "  " }), message("routine")];
-  const kept = bodyMessages(input, reportIds(input), new Set(["decision"])).map(i => i.id);
-  assert.deepEqual(kept, ["reply", "decision", "failed", "legacy"], "and an empty one is nothing to keep");
 });

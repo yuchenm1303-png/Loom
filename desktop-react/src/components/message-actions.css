@@ -45,8 +45,7 @@
   The final answer is rendered outside `.turn-process-content`, keeping one
   clean toolbar at the end of the completed response.
 */
-.turn-process-content .message-meta,
-.turn-message-recap .message-meta {
+.turn-process-content .message-meta {
   display: none !important;
 }
 

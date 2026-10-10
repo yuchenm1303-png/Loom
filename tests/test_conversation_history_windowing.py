@@ -88,7 +88,9 @@ def test_gateway_bounds_old_host_thread_reads_before_browser_delivery() -> None:
 def test_folded_historical_turns_do_not_mount_heavy_process_subtrees() -> None:
     transcript = TRANSCRIPT.read_text(encoding="utf-8")
 
-    assert "const [processVisited, setProcessVisited] = useState(active || open);" in transcript
-    assert "const renderProcessContent = live || open || processVisited;" in transcript
+    # The process stays mounted only while it is live, open, or still animating its fold; after that a finished
+    # turn holds no process subtree at all.
+    assert "const processPresence = useMotionPresence(live || open, TURN_FOLD_MS);" in transcript
+    assert "const renderProcessContent = live || open || processPresence.mounted;" in transcript
     assert "{renderProcessContent ? (" in transcript
     assert "<Sequence items={live ? handoff.current : items}" in transcript

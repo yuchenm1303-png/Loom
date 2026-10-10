@@ -41,7 +41,7 @@ import { useReducedMotion } from "../motion/useReducedMotion";
 import { useEarlierProcessHandoff } from "./useEarlierProcessHandoff";
 import { LIVE_STATUS_GRACE_MS, LIVE_TEXT_HOLD_MS, TURN_FOLD_MS, TURN_SETTLE_HOLD_MS } from "../presentationTiming";
 import type { TranscriptItem } from "../types/loom";
-import { bodyMessages, groupExecutionSequence, isActivityItem, isProcessCommentary, reportIds, settleLiveText } from "./executionSequence";
+import { groupExecutionSequence, isActivityItem, isProcessCommentary, reportIds, settleLiveText } from "./executionSequence";
 import { CLUSTER_MIN_ROWS, runsOf } from "./activityClusters";
 import { latestTaskPlan, liveTaskProgress } from "./liveTaskProgress";
 import { isLongNote } from "./processNote";
@@ -1275,11 +1275,10 @@ const ActivityFlow = memo(function ActivityFlow({
   // while a row is genuinely active. The quiet gap belongs to the thinking
   // capsule below the group, not to a second "continuing" label here.
   const betweenSteps = Boolean(running && continuing && !hasActiveRows);
-  // A stage that is over (a later one exists in a live turn) is one line, as a collapsed tool group is in
+  // A stage that is over (a later one exists in the live layout) is one line, as a collapsed tool group is in
   // Claude Code. The latest stage and any still running stay open, and a click overrides until it runs again.
-  const live = useContext(LiveSequenceContext);
   const [chosen, setChosen] = useState<boolean | null>(null);
-  const open = chosen ?? (keepOpen || !(live && superseded));
+  const open = chosen ?? (keepOpen || !superseded);
   const presence = useMotionPresence(open, 190);
   // Opening a group pops its rows out once (.is-unfolding in conversation-motion.css).
   // It is only ever set by the user's click, never on mount, so remounted
@@ -1796,6 +1795,7 @@ function Sequence({
   workspace,
   handoff,
   messageIds = NO_MESSAGE_IDS,
+  collapseEnded = false,
 }: {
   items: TranscriptItem[];
   onApproval(item: TranscriptItem, approved: boolean): void;
@@ -1807,7 +1807,17 @@ function Sequence({
   handoff?: { retained: ReadonlySet<string>; folding: ReadonlySet<string> };
   /** Commentary that answers the user directly; it stays an ordinary message. */
   messageIds?: ReadonlySet<string>;
+  /**
+   * Stages that are over show as one line. This is a property of the live layout, which a finished turn keeps
+   * while it holds and folds, not of the turn being active: completion must not open them before the fold.
+   */
+  collapseEnded?: boolean;
 }) {
+  // The render in which a turn completes is not yet "settling" (the hold starts in a layout effect), so the flag
+  // drops for one unpainted render. Latch it: a sequence that was live stays a live layout until it unmounts,
+  // which is when the process has folded. A finished turn's log opened later is a fresh mount and starts open.
+  const [liveLayout, setLiveLayout] = useState(collapseEnded);
+  if (collapseEnded && !liveLayout) setLiveLayout(true);
   const subAgentItems = useMemo(() => items.filter(isSubAgentToolItem), [items]);
   const visibleItems = useMemo(
     () => subAgentItems.length ? items.filter((item) => !isSubAgentToolItem(item)) : items,
@@ -1917,7 +1927,7 @@ function Sequence({
               items={block.items}
               keepOpen={activeActivityBlocks.has(index) || continuingActivityBlock === index}
               continuing={continuingActivityBlock === index}
-              superseded={index < latestActivityBlockIndex}
+              superseded={liveLayout && index < latestActivityBlockIndex}
               workspace={workspace}
               liveAssistantId={liveAssistantId}
               handoff={handoff}
@@ -2114,11 +2124,6 @@ function TurnProcess({
   // sentences, and one now and then so a long run is never silent. The rest is log detail, hidden unless asked for.
   const messageIds = useMemo(() => reportIds(items, released), [items, released]);
   const decisionIds = useMemo(() => decisionMessageIds(items), [items]);
-  // What the model told the reader stays on screen when the work log folds; only the tool detail goes.
-  // The messages stand where the log started and its summary follows them. While the log is open they
-  // are in it, in order, so the recap yields to it.
-  const recap = useMemo(() => bodyMessages(items, messageIds, decisionIds), [items, messageIds, decisionIds]);
-  const showRecap = recap.length > 0 && !active && (settle !== null || !open);
   const [showNotes, setShowNotes] = useState(false);
   const isQuietNote = useCallback(
     (item: TranscriptItem) => isProcessCommentary(item, decisionIds) && !messageIds.has(item.id) && String(item.text ?? "").trim().length > 0,
@@ -2164,20 +2169,6 @@ function TurnProcess({
       ref={handoff.rootRef}
       className={`turn-process ${live ? "is-live" : "is-settled"} ${settle ? `is-settling is-settle-${settle}` : ""} ${open ? "is-open" : ""} ${guidanceItems.length ? "has-guidance" : ""}`.replace(/\s+/g, " ").trim()}
     >
-      {showRecap ? (
-        <div className="turn-message-recap-slot">
-          <div className="turn-message-recap-inner">
-            <div className="turn-message-recap">
-              {recap.map((item) => (
-                <div className="transcript-entry entry-assistant_message" key={`recap-${item.id}`}>
-                  <ItemView item={item} onApproval={onApproval} onPrompt={onPrompt} promptDisabled={promptDisabled} workspace={workspace} />
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      ) : null}
-
       {!active ? (
         <div className="turn-process-header-shell">
           <div className="turn-process-header-inner">
@@ -2252,7 +2243,7 @@ function TurnProcess({
                 </div>
                 </div>
               ) : null}
-              <Sequence items={live ? handoff.current : items} handoff={live ? handoff : undefined} active={active} messageIds={messageIds} onApproval={onApproval} onPrompt={onPrompt} keepActivityOpen={active} promptDisabled={promptDisabled} workspace={workspace} />
+              <Sequence items={live ? handoff.current : items} handoff={live ? handoff : undefined} active={active} collapseEnded={live} messageIds={messageIds} onApproval={onApproval} onPrompt={onPrompt} keepActivityOpen={active} promptDisabled={promptDisabled} workspace={workspace} />
               {renderCapsule ? (
                 <div className="pending-thinking-presence" data-motion-phase={capsulePresence.phase} inert={!capsuleVisible}>
                   <div className="pending-thinking-presence-inner"><ThinkingCapsule /></div>

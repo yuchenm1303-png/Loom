@@ -95,17 +95,6 @@ export function reportIds(items: TranscriptItem[], released: ReadonlySet<string>
   return ids;
 }
 
-/**
- * The model's messages to the reader, in order: everything it said that is not log narration. When a
- * finished turn folds its work log these stay on screen, as they do in a transcript, so only the tool
- * detail goes. Blank text and hidden narration are not messages.
- */
-export function bodyMessages(items: TranscriptItem[], messageIds: ReadonlySet<string>, protectedIds: ReadonlySet<string>): TranscriptItem[] {
-  return items.filter((item) => item.type === "assistant_message"
-    && (messageIds.has(item.id) || !isProcessCommentary(item, protectedIds))
-    && String(item.text ?? "").trim().length > 0);
-}
-
 const commentaryVariants = new WeakMap<TranscriptItem, TranscriptItem>();
 
 function asCommentary(item: TranscriptItem): TranscriptItem {
