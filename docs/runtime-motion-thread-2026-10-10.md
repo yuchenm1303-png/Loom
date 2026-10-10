@@ -49,7 +49,7 @@
 
 - 逐帧：第二步到达时第一行 0 跳变（旧版 46px / 42px）；追加一步、阶段折叠、审批长出与折叠、说明开关长出，最大单帧位移均 < 13px（旧版 35px / 81px / 120px / 21px 都是一帧）。这些由 `weave-flow-browser.mjs`、`approval-motion-browser.mjs` 在静止时采样断言。
 - `conflicts.mjs`：任务流内没有嵌套同时淡入的元素，也没有同一属性上的两个动画；剩下的（思考胶囊、流式尾字、摘要行珠子）是各自一次性入场的有意叠加。
-- 新增 / 重写的测试：`weave-flow-browser.mjs`、`approval-motion-browser.mjs`、`execution-sequence-browser.mjs`（重写）、`step-format.test.mjs`、`plan-update-notes.test.mjs`、`streaming-text.test.mjs`（连续节奏）、`execution-sequence.test.mjs`（带推理的暂存），以及 5 个 Python 契约测试的改写。每条新规则都做过突变检查：故意弄坏对应实现，测试随之变红。
+- 新增 / 重写的测试：`weave-flow-browser.mjs`、`approval-motion-browser.mjs`、`execution-sequence-browser.mjs`（重写）、`step-format.test.mjs`、`plan-update-notes.test.mjs`、`streaming-text.test.mjs`（连续节奏）、`execution-sequence.test.mjs`（带推理的暂存），以及 6 个 Python 契约测试的改写。每条新规则都做过突变检查：故意弄坏对应实现，测试随之变红。
 - 复核中撤回了一个自己的改动：曾让“还没有字的 commentary”也画思考头，结果在工具调用还在流式输出参数时，“正在思考…”会和进行中的那一行同时出现；已撤回，并加了反向回归测试。
 - 构建：`tsc --noEmit`、`vite build` 通过。仓库自带的性能守卫 `long-session-bench.mjs` 在新版上通过（长回合样式重算 late/early = 1.22×，阈值 3×）。新旧交替对比（`following`，各 6 轮，开发模式）噪声很大：任务时间新版 18.0–19.9s、旧版 12.4–20.5s，样式重算均值新版约 3.6s、旧版约 3.4s（高约 7%）。这个差距是否真实**没有定论**，需要在生产构建、更安静的机器上重测；旧版全量对比没有跑完（被中断）。
 
