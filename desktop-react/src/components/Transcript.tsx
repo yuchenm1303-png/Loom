@@ -1069,6 +1069,21 @@ function groupCategories(rows: ActivityRowModel[], copy: RuntimeCopy, deltas: Re
   return categories;
 }
 
+/** What a stage did, in counts: "运行 2 条命令 · 操作浏览器 3 次". This is the one line of a collapsed stage. */
+function groupSummary(rows: ActivityRowModel[], copy: RuntimeCopy): string {
+  const kinds = new Map<string, { category: ActivityCategory; count: number; toolName: string }>();
+  for (const row of rows) {
+    const { category } = describeRow(row, copy);
+    const toolName = String((row.wrapper ?? row.item).toolName ?? "");
+    const key = category === "tool" && toolName === "tool_search" ? "tool_search" : category;
+    const kind = kinds.get(key);
+    if (kind) kind.count += 1;
+    else kinds.set(key, { category, count: 1, toolName });
+  }
+  const phrases = [...kinds.values()].slice(0, 3).map((kind) => copy.clusterTitle(kind.category, kind.count, kind.toolName));
+  return phrases.join(" · ") + (kinds.size > 3 ? " …" : "");
+}
+
 function ActivityGroupIcon({ items }: { items: TranscriptItem[] }) {
   const identity = activityGroupIdentity(items);
   if (identity.family === "terminal") return <Terminal size={14} />;
@@ -1189,6 +1204,8 @@ interface ActivityFlowProps {
   items: TranscriptItem[];
   keepOpen?: boolean;
   continuing?: boolean;
+  /** A later tool group exists in this live turn: this stage is over, so it is one line unless opened. */
+  superseded?: boolean;
   workspace?: string;
   liveAssistantId?: string;
   handoff?: ProcessHandoff;
@@ -1203,6 +1220,7 @@ interface ActivityFlowProps {
 function sameActivityFlowProps(previous: ActivityFlowProps, next: ActivityFlowProps): boolean {
   return previous.keepOpen === next.keepOpen
     && previous.continuing === next.continuing
+    && previous.superseded === next.superseded
     && previous.workspace === next.workspace
     && previous.handoff === next.handoff
     && previous.messageIds === next.messageIds
@@ -1217,6 +1235,7 @@ const ActivityFlow = memo(function ActivityFlow({
   items,
   keepOpen = false,
   continuing = false,
+  superseded = false,
   workspace,
   liveAssistantId,
   handoff,
@@ -1256,7 +1275,12 @@ const ActivityFlow = memo(function ActivityFlow({
   // while a row is genuinely active. The quiet gap belongs to the thinking
   // capsule below the group, not to a second "continuing" label here.
   const betweenSteps = Boolean(running && continuing && !hasActiveRows);
-  const [open, setOpen] = useState(true);
+  // A stage that is over (a later one exists in a live turn) is one line, as a collapsed tool group is in
+  // Claude Code. The latest stage and any still running stay open, and a click overrides until it runs again.
+  const live = useContext(LiveSequenceContext);
+  const [chosen, setChosen] = useState<boolean | null>(null);
+  const open = chosen ?? (keepOpen || !(live && superseded));
+  const presence = useMotionPresence(open, 190);
   // Opening a group pops its rows out once (.is-unfolding in conversation-motion.css).
   // It is only ever set by the user's click, never on mount, so remounted
   // history stays still.
@@ -1274,7 +1298,7 @@ const ActivityFlow = memo(function ActivityFlow({
   }, []);
 
   useEffect(() => {
-    if (running && !wasRunningRef.current) setOpen(true);
+    if (running && !wasRunningRef.current) setChosen(null);
     wasRunningRef.current = running;
   }, [running]);
 
@@ -1314,8 +1338,12 @@ const ActivityFlow = memo(function ActivityFlow({
   };
   const categories = useMemo(() => groupCategories(toolRows, copy, deltas), [copy, deltas, toolRows]);
   const title = copy.groupTitle(categories, running && !betweenSteps);
+  const summary = useMemo(() => groupSummary(toolRows, copy), [toolRows, copy]);
   const groupItems = useMemo(() => toolRows.map(identitySource), [toolRows]);
   const groupIdentity = activityGroupIdentity(groupItems);
+  const failedSteps = useMemo(() => toolRows.reduce((count, row) => count + (isFailureStatus(rowStatus(row)) ? 1 : 0), 0), [toolRows]);
+  // One step with nothing around it needs no header: it already is one line.
+  const single = segments.length === 1 && segments[0].length === 1 && isActivityItem(segments[0][0].item);
   const renderTools = (segment: ActivityRowModel[]) => (
     <div className="task-flow-list">
       {runsOf(segment, (row) => clusterKeyOf(row, copy), (row) => row.key).map((run) => run.entries.length >= CLUSTER_MIN_ROWS ? (
@@ -1345,38 +1373,46 @@ const ActivityFlow = memo(function ActivityFlow({
 
   return (
     <section
-      className={`task-flow task-flow-group ${open ? "is-open" : ""} ${latestCommentary ? "has-progress-preview" : ""} ${running ? "is-running" : ""} ${betweenSteps ? "is-between-steps" : ""} ${unfolding ? "is-unfolding" : ""}`.replace(/\s+/g, " ").trim()}
+      className={`task-flow task-flow-group ${single ? "is-single" : ""} ${open && !single ? "is-open" : ""} ${latestCommentary && !single ? "has-progress-preview" : ""} ${running ? "is-running" : ""} ${betweenSteps ? "is-between-steps" : ""} ${unfolding ? "is-unfolding" : ""}`.replace(/\s+/g, " ").trim()}
       data-tool-family={groupIdentity.family}
       data-born={born ? "live" : undefined}
       aria-label={copy.activityRegion}
     >
-      <button
-        type="button"
-        className="task-flow-group-header"
-        onClick={() => {
-          setUnfolding(!open);
-          setOpen(!open);
-        }}
-        aria-expanded={open}
-      >
-        <span className="task-flow-group-icon" aria-hidden="true" title={groupIdentity.label}><ActivityGroupIcon items={groupItems} /></span>
-        <span className="task-flow-group-title" key={title}>{title}</span>
-        <ChevronRight size={13} className="task-flow-group-chevron" aria-hidden="true" />
-      </button>
+      {single ? (deferred.has(0) ? null : rowEnvelope(segments[0], renderTools(segments[0]))) : (
+        <>
+          <button
+            type="button"
+            className="task-flow-group-header"
+            onClick={() => {
+              setUnfolding(!open);
+              setChosen(!open);
+            }}
+            aria-expanded={open}
+          >
+            <span className="task-flow-group-icon" aria-hidden="true" title={groupIdentity.label}><ActivityGroupIcon items={groupItems} /></span>
+            {/* An open stage says what it is doing; a collapsed one says what it did, in counts. */}
+            {open ? <span className="task-flow-group-title" key={title}>{title}</span>
+              : <span className="task-flow-group-title is-summary" key="summary">{summary}</span>}
+            {!open && failedSteps ? <span className="task-flow-group-failed">{copy.clusterFailed(failedSteps)}</span> : null}
+            <ChevronRight size={13} className="task-flow-group-chevron" aria-hidden="true" />
+          </button>
 
-      <div className="task-flow-group-grid">
-        <div className="task-flow-group-inner">
-          <div className="task-flow-list">
-            {segments.map((segment, index) => {
-              if (deferred.has(index)) return null;
-              const message = segment[0].item.type === "assistant_message";
-              // A closed group mounts nothing but its newest message, when it has one.
-              if (!open && !(message && segment[0].item.id === latestCommentary?.id)) return null;
-              return rowEnvelope(segment, message ? commentaryView(segment[0].item) : renderTools(segment));
-            })}
+          <div className="task-flow-group-grid">
+            <div className="task-flow-group-inner">
+              <div className="task-flow-list">
+                {segments.map((segment, index) => {
+                  if (deferred.has(index)) return null;
+                  const message = segment[0].item.type === "assistant_message";
+                  // A closed group mounts nothing but its newest message, when it has one. Its rows stay for the
+                  // length of the closing motion.
+                  if (!presence.mounted && !(message && segment[0].item.id === latestCommentary?.id)) return null;
+                  return rowEnvelope(segment, message ? commentaryView(segment[0].item) : renderTools(segment));
+                })}
+              </div>
+            </div>
           </div>
-        </div>
-      </div>
+        </>
+      )}
     </section>
   );
 }, sameActivityFlowProps);
@@ -1881,6 +1917,7 @@ function Sequence({
               items={block.items}
               keepOpen={activeActivityBlocks.has(index) || continuingActivityBlock === index}
               continuing={continuingActivityBlock === index}
+              superseded={index < latestActivityBlockIndex}
               workspace={workspace}
               liveAssistantId={liveAssistantId}
               handoff={handoff}

@@ -243,9 +243,65 @@ try {
     await render([...story, answer], false);
     await page.locator(".turn-message-recap").waitFor({ state: "visible", timeout: 500 });
     assert.deepEqual(await recapIds(), ["a1", "a2", "a3"]);
+    // A stage is one line. A stage of one step is that step's row and has no header of its own; a stage
+    // that is over (a later one exists while the turn is live) is one summary line, and only the latest
+    // stage stays open. A click on a line opens it, and it stays as the reader left it.
+    await page.evaluate(() => window.motionFixture.reset());
+    const stages = () => page.evaluate(() => [...document.querySelectorAll(".task-flow-group")].map(group => ({
+      single: group.classList.contains("is-single"), open: group.classList.contains("is-open"),
+      title: group.querySelector(".task-flow-group-title")?.textContent ?? null, failed: group.querySelector(".task-flow-group-failed")?.textContent ?? null,
+      rows: group.querySelectorAll(".task-flow-row-wrap").length })));
+    const first = [user, message("intro", "先看一下。"), tool("a"), tool("b", { status: "failed" }), message("r", "b 打不开，换个路径。")];
+    // While it is the latest stage it is open. When the next one begins it closes, and its rows stay for
+    // the length of the closing motion instead of vanishing under the reader's eyes.
+    await render(first.slice(0, 4));
+    await page.waitForTimeout(300);
+    assert.deepEqual((await stages()).map(stage => [stage.open, stage.rows]), [[true, 2]]);
+    await render([...first, tool("c", { status: "running" })]);
+    assert.equal(await page.locator(".task-flow-group").first().locator(".task-flow-row-wrap").count(), 2, "its rows are still there as it starts to close");
+    await page.waitForFunction(() => !document.querySelectorAll(".task-flow-group")[0].querySelector(".task-flow-row-wrap"), null, { timeout: 2000 });
+    await page.waitForTimeout(400);
+    assert.deepEqual(await stages(), [
+      { single: false, open: false, title: "读取 2 个文件", failed: "失败 1", rows: 0 },
+      { single: true, open: false, title: null, failed: null, rows: 1 },
+    ], "the stage that is over is one line with its counts and its failure; a stage of one step is just its row");
+    assert.equal(await page.locator(".task-flow-group.is-single .task-flow-group-header").count(), 0, "a one-step stage has no header");
+    // The line and the row are set on the same centre line, like two lines of one list.
+    const centre = await page.evaluate(() => {
+      const middle = element => { const rect = element.getBoundingClientRect(); return (rect.left + rect.right) / 2; };
+      return { header: middle(document.querySelector(".task-flow-group-icon")), row: middle(document.querySelector(".task-flow-group.is-single .task-flow-row-icon")) };
+    });
+    assert.ok(Math.abs(centre.header - centre.row) <= 1.5, `a summary line and a lone row share one icon column (${centre.header} vs ${centre.row})`);
+    // The latest stage stays open while it has several steps, even between two of them.
+    await render([...first, tool("c"), tool("d")]);
+    await page.waitForTimeout(300);
+    assert.deepEqual((await stages()).map(stage => [stage.open, stage.rows]), [[false, 0], [true, 2]]);
+    // Opening an old stage shows its rows, and it stays open as the run goes on.
+    await page.locator(".task-flow-group-header").first().click();
+    await page.waitForFunction(() => document.querySelectorAll(".task-flow-group")[0].querySelectorAll(".task-flow-row-wrap").length === 2);
+    await render([...first, tool("c", { status: "failed" }), tool("d"), message("r2", "c 也失败了。"), tool("e", { status: "running" })]);
+    await page.waitForTimeout(400);
+    assert.deepEqual((await stages()).map(stage => [stage.open, stage.rows]), [[true, 2], [false, 0], [false, 1]], "the stage the reader opened is still open");
+    await page.locator(".task-flow-group-header").first().click();
+    await page.waitForFunction(() => !document.querySelectorAll(".task-flow-group")[0].querySelector(".task-flow-row-wrap"));
+    // The log of a finished turn is not summarised: opening it shows every stage as it happened.
+    await render([...first, tool("c"), message("final", "完成。", { phase: "final_answer" })], false);
+    await page.waitForFunction(() => !document.querySelector(".turn-process-grid") && document.querySelector(".turn-message-recap"), null, { timeout: 5000 });
+    await page.locator(".turn-process-header").click();
+    await page.waitForFunction(() => document.querySelector(".turn-process.is-open") && document.querySelector(".task-flow-group"));
+    await page.waitForTimeout(400);
+    assert.deepEqual((await stages()).map(stage => [stage.single, stage.open, stage.rows]), [[false, true, 2], [true, false, 1]], "history is open: no stage is collapsed for the reader");
+    // A stage that did several kinds of work names the first three, in the order it did them.
+    await page.evaluate(() => window.motionFixture.reset());
+    await render([user, message("intro", "先看一下。"), tool("a"), tool("p", { toolName: "exec", arguments: { argv: ["echo"] } }),
+      tool("q", { toolName: "browser_open", arguments: { url: "http://127.0.0.1/" } }),
+      tool("s", { toolName: "write_workspace_text", arguments: { path: "a.txt", text: "x" }, status: "failed" }),
+      message("r", "写入失败，改用别的办法。"), tool("z", { status: "running" })]);
+    await page.waitForTimeout(400);
+    assert.equal((await stages())[0].title, "读取 1 个文件 · 运行 1 条命令 · 操作浏览器 1 次 …", "three kinds at most, in the order done");
     assert.deepEqual(errors, []);
     if (process.env.LOOM_EXECUTION_SCREENSHOTS) await page.screenshot({ path: `${process.env.LOOM_EXECUTION_SCREENSHOTS}/execution-${theme}.png` });
     await page.close();
   }
-  console.log("Execution sequence: hidden narration, ordered switch, lazy summary lines, running step, body messages between tool groups, folded recap, alignment and final boundary passed in both themes.");
+  console.log("Execution sequence: hidden narration, ordered switch, lazy summary lines, running step, body messages between tool groups, folded recap, one-line stages, alignment and final boundary passed in both themes.");
 } finally { await browser.close(); }

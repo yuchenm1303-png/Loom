@@ -9,6 +9,8 @@ const base = { threadId:'thread-1', turnId:'turn-1', status:'completed' };
 const items = [
   {...base,id:'user',type:'user_message',text:'检查工作区'},
   {...base,id:'tool',type:'tool_call',toolName:'search_workspace_text',arguments:{query:'login'},result:'Condition met after 5004ms.\nFound login handler.'},
+  // A stage of one step has no header of its own, so a second step keeps the group's disclosure under test.
+  {...base,id:'tool-2',type:'tool_call',toolName:'read_workspace_text',arguments:{path:'login.ts'},result:'export const login = true;'},
 ];
 try {
   for (const theme of ['light','dark']) {
@@ -53,7 +55,7 @@ try {
       if(directory) await writeFile(`${directory}/${theme}-${selector.slice(1)}.json`,JSON.stringify(frames,null,2));
     };
     await check('.turn-process-header','.turn-process-grid');
-    await check('.task-flow-row','.task-flow-inline-detail-grid');
+    await check('.task-flow-row-wrap:nth-child(1) > .task-flow-row','.task-flow-row-wrap:nth-child(1) .task-flow-inline-detail-grid');
     // Groups start expanded; first collapse then exercise their first user expansion.
     await page.locator('.task-flow-group-header').click(); await page.waitForTimeout(350);
     await check('.task-flow-group-header','.task-flow-group-grid');
