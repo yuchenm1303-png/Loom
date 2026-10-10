@@ -41,7 +41,7 @@ import { useReducedMotion } from "../motion/useReducedMotion";
 import { useEarlierProcessHandoff } from "./useEarlierProcessHandoff";
 import { LIVE_STATUS_GRACE_MS, LIVE_TEXT_HOLD_MS, TURN_FOLD_MS, TURN_SETTLE_HOLD_MS } from "../presentationTiming";
 import type { TranscriptItem } from "../types/loom";
-import { groupExecutionSequence, isActivityItem, isProcessCommentary, reportIds, settleLiveText } from "./executionSequence";
+import { bodyMessages, groupExecutionSequence, isActivityItem, isProcessCommentary, reportIds, settleLiveText } from "./executionSequence";
 import { CLUSTER_MIN_ROWS, runsOf } from "./activityClusters";
 import { latestTaskPlan, liveTaskProgress } from "./liveTaskProgress";
 import { isLongNote } from "./processNote";
@@ -1778,7 +1778,10 @@ function Sequence({
     [items, subAgentItems.length],
   );
   const decisionIds = useMemo(() => decisionMessageIds(visibleItems), [visibleItems]);
-  const blocks = useMemo(() => groupExecutionSequence(visibleItems, decisionIds), [visibleItems, decisionIds]);
+  // What the model says to the reader is body text. It stands between the tool groups, as its first
+  // reply does, instead of sitting indented inside one of them.
+  const bodyIds = useMemo(() => (messageIds.size ? new Set([...decisionIds, ...messageIds]) : decisionIds), [decisionIds, messageIds]);
+  const blocks = useMemo(() => groupExecutionSequence(visibleItems, bodyIds), [visibleItems, bodyIds]);
   // The live slice starts at its newest commentary, so that note arrives with no tool
   // before it. It is still log narration: give it the note presentation from its first
   // frame instead of drawing a full message that later shrinks into the work log.
@@ -2074,6 +2077,11 @@ function TurnProcess({
   // sentences, and one now and then so a long run is never silent. The rest is log detail, hidden unless asked for.
   const messageIds = useMemo(() => reportIds(items, released), [items, released]);
   const decisionIds = useMemo(() => decisionMessageIds(items), [items]);
+  // What the model told the reader stays on screen when the work log folds; only the tool detail goes.
+  // The messages stand where the log started and its summary follows them. While the log is open they
+  // are in it, in order, so the recap yields to it.
+  const recap = useMemo(() => bodyMessages(items, messageIds, decisionIds), [items, messageIds, decisionIds]);
+  const showRecap = recap.length > 0 && !active && (settle !== null || !open);
   const [showNotes, setShowNotes] = useState(false);
   const isQuietNote = useCallback(
     (item: TranscriptItem) => isProcessCommentary(item, decisionIds) && !messageIds.has(item.id) && String(item.text ?? "").trim().length > 0,
@@ -2119,6 +2127,20 @@ function TurnProcess({
       ref={handoff.rootRef}
       className={`turn-process ${live ? "is-live" : "is-settled"} ${settle ? `is-settling is-settle-${settle}` : ""} ${open ? "is-open" : ""} ${guidanceItems.length ? "has-guidance" : ""}`.replace(/\s+/g, " ").trim()}
     >
+      {showRecap ? (
+        <div className="turn-message-recap-slot">
+          <div className="turn-message-recap-inner">
+            <div className="turn-message-recap">
+              {recap.map((item) => (
+                <div className="transcript-entry entry-assistant_message" key={`recap-${item.id}`}>
+                  <ItemView item={item} onApproval={onApproval} onPrompt={onPrompt} promptDisabled={promptDisabled} workspace={workspace} />
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       {!active ? (
         <div className="turn-process-header-shell">
           <div className="turn-process-header-inner">
