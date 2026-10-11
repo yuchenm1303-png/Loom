@@ -34,7 +34,7 @@ TRANSFORM_PROPERTY = re.compile(r"(?<![\w-])(transform|translate|scale|rotate)\s
 # Surfaces that paint log or thinking copy. Their entrances may clip, grow or
 # fade, but never move or scale: Windows/HiDPI renders softened glyphs otherwise.
 TEXT_BEARING = {
-    "wv-step", "wv-step-inner", "wv-row", "wv-main", "wv-verb", "wv-target", "wv-meta", "wv-tag", "wv-line",
+    "wv-step", "wv-step-inner", "wv-row", "wv-main", "wv-verb", "wv-target", "wv-meta", "wv-tag", "wv-tag-fold", "wv-line",
     "wv-line-text", "wv-line-failed", "wv-sub", "wv-sub-text", "wv-note", "wv-sheet", "wv-earlier", "wv-time",
     "inline-thinking", "thinking-shimmer", "live-reasoning-trigger", "live-reasoning-label", "live-reasoning-presence",
 }
@@ -215,7 +215,7 @@ def test_a_step_never_changes_its_words_and_state_changes_fade() -> None:
     # keyed on their text, so each change is a birth that fades.
     assert '<span className="wv-verb" title={description.verb}>{description.label}</span>' in flow
     assert "key={description.verb}" not in flow and "key={description.label}" not in flow
-    assert '<span className="wv-tag" key={status}>' in flow
+    assert '<span className="wv-tag" key={shownTag.status} data-tone={shownTag.tone}>{shownTag.label}</span>' in flow
     assert '<span className="wv-line-text" key={text}>{text}</span>' in flow
     assert '<span className="wv-sub-text" key={subShown.text}>' in flow
 

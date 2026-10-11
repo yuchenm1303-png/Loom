@@ -74,12 +74,24 @@ try {
     assert.notEqual(colours.verbColour, colours.targetColour, "a failed step reads differently from the path it names");
 
     // Not executed, and waiting for approval, are said in words too.
-    await render([user, intro,
-      { ...base, id: "click", type: "tool_call", toolName: "browser_click", arguments: { name: "提交" }, result: { execution_status: "not_executed" }, createdAt: iso(1), updatedAt: iso(1.1) },
-      { ...base, id: "ask", type: "tool_call", toolName: "exec", arguments: { argv: ["npm", "install"] }, status: "waiting_approval", createdAt: iso(2), updatedAt: iso(2) }]);
+    const skipped = { ...base, id: "click", type: "tool_call", toolName: "browser_click", arguments: { name: "提交" }, result: { execution_status: "not_executed" }, createdAt: iso(1), updatedAt: iso(1.1) };
+    const asking = { ...base, id: "ask", type: "tool_call", toolName: "exec", arguments: { argv: ["npm", "install"] }, status: "waiting_approval", createdAt: iso(2), updatedAt: iso(2) };
+    await render([user, intro, skipped, asking]);
     await page.waitForFunction(() => document.querySelectorAll(".wv-tag").length === 2);
     assert.deepEqual(await page.locator(".wv-tag").allInnerTexts(), ["未执行", "等待确认"]);
     assert.deepEqual(await page.locator(".wv-step").evaluateAll(steps => steps.map(step => step.dataset.tone)), ["stopped", "waiting"]);
+    // A tag that goes (the approval is given and the step runs) closes up with its own words and colour, and the
+    // time beside it is carried across; it does not vanish and jump by its width.
+    const waitingColour = await page.locator(".wv-step").nth(1).locator(".wv-tag").evaluate(tag => getComputedStyle(tag).color);
+    await page.waitForTimeout(300);
+    await page.evaluate(() => { window.tagWidths = []; const sample = () => { const tag = document.querySelectorAll(".wv-step")[1]?.querySelector(".wv-tag-fold"); if (tag) window.tagWidths.push(Math.round(tag.getBoundingClientRect().width)); window.tagTimer = requestAnimationFrame(sample); }; sample(); });
+    await render([user, intro, skipped, { ...asking, status: "running", updatedAt: iso(2.5) }]);
+    const leaving = await page.locator(".wv-step").nth(1).evaluate(step => ({ open: step.querySelector(".wv-tag-fold")?.dataset.open, words: step.querySelector(".wv-tag")?.textContent, colour: getComputedStyle(step.querySelector(".wv-tag")).color }));
+    assert.deepEqual([leaving.open, leaving.words, leaving.colour], ["false", "等待确认", waitingColour], "it keeps its words and its colour while it closes");
+    await page.waitForFunction(() => !document.querySelectorAll(".wv-step")[1].querySelector(".wv-tag-fold"), null, { timeout: 1500 });
+    const widths = await page.evaluate(() => { cancelAnimationFrame(window.tagTimer); return window.tagWidths; });
+    const full = Math.max(...widths);
+    assert.ok(full > 30 && new Set(widths).size >= 4 && widths.every((width, index) => index === 0 || width <= widths[index - 1] + 0.5), `it narrows through several widths and never widens (${[...new Set(widths)].join(", ")})`);
 
     // A row opens into the full command and its output; an edit opens into a diff with its changes marked.
     const diff = "diff --git a/a.ts b/a.ts\n--- a/a.ts\n+++ b/a.ts\n@@ -1,2 +1,2 @@\n context\n-old line\n+new line";

@@ -348,6 +348,29 @@ html[data-loom-theme="light"] {
 .wv-plus { color: var(--wv-ok); }
 .wv-minus { color: var(--wv-danger-text); }
 
+/* The tag closes up as it goes (an approval answered, a step that runs on), so the time beside it is carried across
+   rather than jumping by its width: the fold takes the gap with it. */
+.wv-tag-fold {
+  display: inline-grid;
+  grid-template-columns: 1fr;
+  transition: grid-template-columns 180ms var(--wv-ease-out), margin-left 180ms var(--wv-ease-out), opacity 150ms ease;
+}
+
+.wv-tag-fold[data-open="false"] {
+  grid-template-columns: 0fr;
+  margin-left: -8px;
+  opacity: 0;
+}
+
+.wv-tag-fold > .wv-tag {
+  min-width: 0;
+  overflow: hidden;
+}
+
+.wv-tag[data-tone="waiting"], .wv-tag[data-tone="caution"] { --wv-tone: var(--wv-warn); }
+.wv-tag[data-tone="failed"] { --wv-tone: var(--wv-danger-text); }
+.wv-tag[data-tone="stopped"] { --wv-tone: var(--wv-muted); }
+
 .wv-tag {
   padding: 0 7px;
   border-radius: 999px;
@@ -1004,8 +1027,8 @@ html[data-loom-theme="light"] {
    list is matched against every element of every log on every style recalculation. */
 @media (prefers-reduced-motion: reduce) {
   :is(.wv-fold, .wv-sub-fold, .wv-detail, .wv-step, .wv-earlier, .wv-row, .wv-node, .wv-glyph, .wv-halo, .wv-verb,
-    .wv-target, .wv-meta, .wv-tag, .wv-chevron-cell, .wv-chevron, .wv-sub-text, .wv-line, .wv-line-text, .wv-preview,
-    .wv-hint, .wv-hint-glow, .wv-note, .wv-beads i),
+    .wv-target, .wv-meta, .wv-tag, .wv-tag-fold, .wv-chevron-cell, .wv-chevron, .wv-sub-text, .wv-line, .wv-line-text,
+    .wv-preview, .wv-hint, .wv-hint-glow, .wv-note, .wv-beads i),
   :is(.wv-step, .wv-note, .wv-line, .wv-row)::before,
   :is(.wv-step, .wv-line, .wv-row, .wv-node)::after {
     animation: none !important;
@@ -1018,8 +1041,8 @@ html[data-loom-theme="light"] {
 }
 
 :root[data-loom-reduced-motion="true"] :is(.wv-fold, .wv-sub-fold, .wv-detail, .wv-step, .wv-earlier, .wv-row, .wv-node,
-    .wv-glyph, .wv-halo, .wv-verb, .wv-target, .wv-meta, .wv-tag, .wv-chevron-cell, .wv-chevron, .wv-sub-text, .wv-line,
-    .wv-line-text, .wv-preview, .wv-hint, .wv-hint-glow, .wv-note, .wv-beads i),
+    .wv-glyph, .wv-halo, .wv-verb, .wv-target, .wv-meta, .wv-tag, .wv-tag-fold, .wv-chevron-cell, .wv-chevron, .wv-sub-text,
+    .wv-line, .wv-line-text, .wv-preview, .wv-hint, .wv-hint-glow, .wv-note, .wv-beads i),
 :root[data-loom-reduced-motion="true"] :is(.wv-step, .wv-note, .wv-line, .wv-row)::before,
 :root[data-loom-reduced-motion="true"] :is(.wv-step, .wv-line, .wv-row, .wv-node)::after {
   animation: none !important;

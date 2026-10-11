@@ -358,6 +358,12 @@ const WeaveRow = memo(function WeaveRow({ row, open, workspace, copy, delta, ret
   const subShown = sub ? { text: sub, kind: subKind } : cachedSubRef.current;
 
   const tagged = tone === "failed" || tone === "stopped" || tone === "caution" || tone === "waiting";
+  // A tag that goes (the approval was given, the step runs on) closes up and fades with its own words and colour,
+  // instead of vanishing and pulling the time across by its width.
+  const tagPresence = useMotionPresence(tagged, 180);
+  const lastTag = useRef({ label: "", tone, status });
+  if (tagged) lastTag.current = { label: copy.statusLabel(status), tone, status };
+  const shownTag = lastTag.current;
   const glyphKey = tagged ? status : "kind";
   const reviewable = description.category === "edit" || description.category === "read";
 
@@ -406,7 +412,11 @@ const WeaveRow = memo(function WeaveRow({ row, open, workspace, copy, delta, ret
                 {stats.removed ? <span className="wv-minus">-{stats.removed}</span> : null}
               </span>
             ) : null}
-            {tagged ? <span className="wv-tag" key={status}>{copy.statusLabel(status)}</span> : null}
+            {tagPresence.mounted ? (
+              <span className="wv-tag-fold" data-open={tagged ? "true" : "false"}>
+                <span className="wv-tag" key={shownTag.status} data-tone={shownTag.tone}>{shownTag.label}</span>
+              </span>
+            ) : null}
             {time ? <span className="wv-time">{time}</span> : null}
           </span>
           <span className="wv-chevron-cell" aria-hidden="true"><ChevronRight size={12} className="wv-chevron" /></span>
