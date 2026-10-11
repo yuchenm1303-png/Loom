@@ -24,8 +24,21 @@ class ComputerTransientInputPlatform:
     and substitutes opaque handles before the canonical Runtime sees the response.
     """
 
+    def __new__(cls, delegate: Any, *, max_pending: int = 256):
+        # Runtime construction and model selection may both establish this
+        # boundary. Reuse the same owner/stash instead of wrapping handles again.
+        if isinstance(delegate, cls):
+            return delegate
+        return super().__new__(cls)
+
     def __init__(self, delegate: Any, *, max_pending: int = 256) -> None:
+        if delegate is self:
+            return
         self._delegate = delegate
+        # Other privacy adapters can sit between this boundary and the model.
+        # Keep those adapters, but share the existing computer input owner.
+        owner = getattr(delegate, "_computer_transient_owner", None)
+        self._computer_transient_owner = owner if isinstance(owner, ComputerTransientInputPlatform) else self
         self._max_pending = max(1, int(max_pending))
         self._lock = threading.RLock()
         self._pending: OrderedDict[str, str] = OrderedDict()
@@ -35,6 +48,8 @@ class ComputerTransientInputPlatform:
 
     def execute_chat(self, profile_id, request) -> ModelResponse:
         response = self._delegate.execute_chat(profile_id, request)
+        if self._computer_transient_owner is not self:
+            return response
         if not isinstance(response, ModelResponse) or not response.tool_calls:
             return response
 
@@ -69,6 +84,8 @@ class ComputerTransientInputPlatform:
         return replace(response, tool_calls=tuple(calls))
 
     def consume(self, value: str) -> str:
+        if self._computer_transient_owner is not self:
+            return self._computer_transient_owner.consume(value)
         candidate = str(value or "")
         if not candidate.startswith(_TRANSIENT_PREFIX):
             return candidate
@@ -87,6 +104,8 @@ class ComputerTransientInputPlatform:
         return raw
 
     def clear(self) -> None:
+        if self._computer_transient_owner is not self:
+            self._computer_transient_owner.clear()
         with self._lock:
             self._pending.clear()
 

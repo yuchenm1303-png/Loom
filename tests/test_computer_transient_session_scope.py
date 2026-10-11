@@ -23,6 +23,8 @@ Every other Computer Use tool passed the session id. The single-loop
 from __future__ import annotations
 
 from app.agent_runtime.computer_single_loop_runtime import SingleLoopComputerRuntime
+from app.agent_runtime.computer_transient import ComputerTransientInputPlatform
+import pytest
 from app.agent_runtime.computer_types import (
     ComputerAction,
     ComputerActionType,
@@ -104,10 +106,13 @@ class _TypingOperator:
         self.closed = True
 
 
-def _runtime(tmp_path):
+def _runtime(tmp_path, *, prewrapped=False):
     operator = _TypingOperator()
+    platform = _Platform("default")
+    if prewrapped:
+        platform = ComputerTransientInputPlatform(platform)
     runtime = SingleLoopComputerRuntime(
-        platform=_Platform("default"),
+        platform=platform,
         store=FileAgentSessionStore(tmp_path / "state"),
         tools=loom_default_tools(),
         sandbox_manager=SandboxManager(policy=SandboxPolicy.OFF),
@@ -167,10 +172,11 @@ def test_typing_works_when_the_session_has_its_own_model(tmp_path):
         runtime.close()
 
 
-def test_typing_still_works_without_a_session_scoped_model(tmp_path):
+@pytest.mark.parametrize("prewrapped", [False, True])
+def test_typing_still_works_without_a_session_scoped_model(tmp_path, prewrapped):
     """The default platform path must keep working too."""
 
-    runtime, operator, session, workspace = _runtime(tmp_path)
+    runtime, operator, session, workspace = _runtime(tmp_path, prewrapped=prewrapped)
     try:
         handle = _stash_through(runtime, session.session_id, SECRET)
 
