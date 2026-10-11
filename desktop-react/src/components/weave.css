@@ -353,7 +353,7 @@ html[data-loom-theme="light"] {
 .wv-tag-fold {
   display: inline-grid;
   grid-template-columns: 1fr;
-  transition: grid-template-columns 180ms var(--wv-ease-out), margin-left 180ms var(--wv-ease-out), opacity 150ms ease;
+  transition: grid-template-columns 200ms cubic-bezier(.4, 0, .2, 1), margin-left 200ms cubic-bezier(.4, 0, .2, 1), opacity 160ms ease;
 }
 
 .wv-tag-fold[data-open="false"] {
@@ -362,9 +362,15 @@ html[data-loom-theme="light"] {
   opacity: 0;
 }
 
+/* The tag's own padding is part of what the fold has to take back, or a 14px stub is left to vanish at the end. */
 .wv-tag-fold > .wv-tag {
   min-width: 0;
   overflow: hidden;
+  transition: padding-inline 200ms cubic-bezier(.4, 0, .2, 1);
+}
+
+.wv-tag-fold[data-open="false"] > .wv-tag {
+  padding-inline: 0;
 }
 
 .wv-tag[data-tone="waiting"], .wv-tag[data-tone="caution"] { --wv-tone: var(--wv-warn); }

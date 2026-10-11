@@ -360,7 +360,7 @@ const WeaveRow = memo(function WeaveRow({ row, open, workspace, copy, delta, ret
   const tagged = tone === "failed" || tone === "stopped" || tone === "caution" || tone === "waiting";
   // A tag that goes (the approval was given, the step runs on) closes up and fades with its own words and colour,
   // instead of vanishing and pulling the time across by its width.
-  const tagPresence = useMotionPresence(tagged, 180);
+  const tagPresence = useMotionPresence(tagged, 220);
   const lastTag = useRef({ label: "", tone, status });
   if (tagged) lastTag.current = { label: copy.statusLabel(status), tone, status };
   const shownTag = lastTag.current;

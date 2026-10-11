@@ -360,16 +360,21 @@ try {
     assert.equal(await page.locator(".wv-earlier").count(), 1, "a long live stage keeps its newest steps and a line for the rest");
     assert.equal(await page.locator(".wv-stage .wv-step").count(), 6);
     const stageHeight = await page.evaluate(() => document.querySelector(".wv-stage").getBoundingClientRect().height);
+    // Read after every commit (not every frame: how many frames the machine manages in the fold's 300ms must not matter).
     await page.evaluate(() => {
       window.stageHeights = [];
-      const sample = () => { const stage = document.querySelector(".wv-stage"); if (stage) window.stageHeights.push(stage.getBoundingClientRect().height); window.stageTimer = requestAnimationFrame(sample); };
-      sample();
+      window.stageWatch = new MutationObserver(() => {
+        const stage = document.querySelector(".wv-stage");
+        if (stage) window.stageHeights.push(stage.getBoundingClientRect().height);
+      });
+      window.stageWatch.observe(document.body, { subtree: true, childList: true, attributes: true });
     });
     await render([user, message("intro", "开始。"), ...long, message("report", "这一轮已经读完了，接下来换到另一处继续检查。".repeat(8)), tool("next", { status: "running" })]);
-    await page.waitForTimeout(700);
-    const stageClosing = await page.evaluate(() => { cancelAnimationFrame(window.stageTimer); return window.stageHeights; });
-    assert.ok(stageClosing.length > 5 && Math.min(...stageClosing) < stageHeight * 0.5, "the stage that is over does close");
-    assert.ok(Math.max(...stageClosing) <= stageHeight + 2, `and only gets shorter as it does (${Math.round(Math.max(...stageClosing))}px from ${Math.round(stageHeight)}px)`);
+    await page.waitForFunction(() => !document.querySelector(".wv-stage").querySelector(".wv-step"), null, { timeout: 5000 });
+    const stageClosing = await page.evaluate(() => { window.stageWatch.disconnect(); return window.stageHeights; });
+    const stageClosed = await page.evaluate(() => document.querySelector(".wv-stage").getBoundingClientRect().height);
+    assert.ok(stageClosed < stageHeight * 0.5, `the stage that is over does close (${Math.round(stageClosed)}px from ${Math.round(stageHeight)}px)`);
+    assert.ok(stageClosing.length > 0 && Math.max(...stageClosing) <= stageHeight + 2, `and only gets shorter as it does (${Math.round(Math.max(...stageClosing))}px from ${Math.round(stageHeight)}px)`);
     // A stage that did several kinds of work names the first three, in the order it did them.
     await page.evaluate(() => window.motionFixture.reset());
     await render([user, message("intro", "先看一下。"), tool("a"), tool("p", { toolName: "exec", arguments: { argv: ["echo"] } }),

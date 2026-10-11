@@ -84,14 +84,30 @@ try {
     // time beside it is carried across; it does not vanish and jump by its width.
     const waitingColour = await page.locator(".wv-step").nth(1).locator(".wv-tag").evaluate(tag => getComputedStyle(tag).color);
     await page.waitForTimeout(300);
-    await page.evaluate(() => { window.tagWidths = []; const sample = () => { const tag = document.querySelectorAll(".wv-step")[1]?.querySelector(".wv-tag-fold"); if (tag) window.tagWidths.push(Math.round(tag.getBoundingClientRect().width)); window.tagTimer = requestAnimationFrame(sample); }; sample(); });
-    await render([user, intro, skipped, { ...asking, status: "running", updatedAt: iso(2.5) }]);
-    const leaving = await page.locator(".wv-step").nth(1).evaluate(step => ({ open: step.querySelector(".wv-tag-fold")?.dataset.open, words: step.querySelector(".wv-tag")?.textContent, colour: getComputedStyle(step.querySelector(".wv-tag")).color }));
-    assert.deepEqual([leaving.open, leaving.words, leaving.colour], ["false", "等待确认", waitingColour], "it keeps its words and its colour while it closes");
-    await page.waitForFunction(() => !document.querySelectorAll(".wv-step")[1].querySelector(".wv-tag-fold"), null, { timeout: 1500 });
-    const widths = await page.evaluate(() => { cancelAnimationFrame(window.tagTimer); return window.tagWidths; });
-    const full = Math.max(...widths);
-    assert.ok(full > 30 && new Set(widths).size >= 4 && widths.every((width, index) => index === 0 || width <= widths[index - 1] + 0.5), `it narrows through several widths and never widens (${[...new Set(widths)].join(", ")})`);
+    // Measured in the task that commits the change, by seeking the fold's own transition to fixed fractions of it, so
+    // that how many frames the machine manages in 180ms cannot change what is read.
+    const closing = await page.evaluate(([items]) => {
+      window.motionFixture.turn(items, true);
+      const step = document.querySelectorAll(".wv-step")[1];
+      const fold = step.querySelector(".wv-tag-fold");
+      const tag = step.querySelector(".wv-tag");
+      // The fold's own transition and the tag's (its padding goes too), all sought together.
+      const transitions = fold.getAnimations({ subtree: true }).filter(animation => animation.transitionProperty);
+      const widths = [];
+      transitions.forEach(transition => transition.pause());
+      for (const fraction of [0, 0.25, 0.5, 0.75, 1]) {
+        transitions.forEach(transition => { transition.currentTime = transition.effect.getComputedTiming().duration * fraction; });
+        widths.push(Math.round(fold.getBoundingClientRect().width));
+      }
+      transitions.forEach(transition => transition.finish());
+      return { open: fold.dataset.open, words: tag.textContent, colour: getComputedStyle(tag).color, widths, moving: transitions.some(transition => transition.transitionProperty === "grid-template-columns") };
+    }, [[user, intro, skipped, { ...asking, status: "running", updatedAt: iso(2.5) }]]);
+    assert.deepEqual([closing.open, closing.words, closing.colour], ["false", "等待确认", waitingColour], "it keeps its words and its colour while it closes");
+    assert.ok(closing.moving, "and closes by a transition");
+    const full = closing.widths[0];
+    assert.ok(full > 30 && closing.widths.at(-1) <= 1 && new Set(closing.widths).size >= 4 && closing.widths.every((width, index) => index === 0 || width < closing.widths[index - 1]),
+      `it narrows through several widths and never widens (${closing.widths})`);
+    await page.waitForFunction(() => !document.querySelectorAll(".wv-step")[1].querySelector(".wv-tag-fold"), null, { timeout: 3000 });
 
     // A row opens into the full command and its output; an edit opens into a diff with its changes marked.
     const diff = "diff --git a/a.ts b/a.ts\n--- a/a.ts\n+++ b/a.ts\n@@ -1,2 +1,2 @@\n context\n-old line\n+new line";
