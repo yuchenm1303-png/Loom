@@ -20,6 +20,10 @@ export const LOOM_LANGUAGES: { value: LoomLanguage; label: string; nativeLabel: 
 const TRANSLATIONS: Record<LoomLanguage, Record<string, string>> = {
   en: {
     "app.startingLoom": "Starting Loom…",
+    "app.loadingConversations": "Loading conversations…",
+    "app.startupRuntime": "Starting the local runtime",
+    "app.startupLibrary": "Loading your conversations",
+    "app.startupSlow": "Taking longer than usual — Loom is still starting.",
     "app.newConversation": "New conversation",
     "app.serverDidNotStart": "Loom App Server did not start",
     "app.unknownConnectionError": "Unknown connection error",
@@ -300,6 +304,10 @@ const TRANSLATIONS: Record<LoomLanguage, Record<string, string>> = {
   },
   "zh-CN": {
     "app.startingLoom": "正在启动 Loom…",
+    "app.loadingConversations": "正在加载对话…",
+    "app.startupRuntime": "正在启动本地服务",
+    "app.startupLibrary": "正在加载你的对话",
+    "app.startupSlow": "比平时慢一些，Loom 仍在启动。",
     "app.newConversation": "新对话",
     "app.serverDidNotStart": "Loom 本地服务未启动",
     "app.unknownConnectionError": "未知连接错误",

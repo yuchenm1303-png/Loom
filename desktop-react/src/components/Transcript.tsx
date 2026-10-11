@@ -31,6 +31,7 @@ import {
   type ReactNode,
 } from "react";
 import { useI18n } from "../i18n";
+import type { StartupStage } from "../state/startupSequence";
 import { useMotionPresence } from "../motion/useMotionPresence";
 import { useReducedMotion } from "../motion/useReducedMotion";
 import { useEarlierProcessHandoff } from "./useEarlierProcessHandoff";
@@ -79,6 +80,11 @@ interface TranscriptProps {
   onApproval(item: TranscriptItem, approved: boolean): void;
   /** Opens the usage insights page from the home activity card. */
   onOpenInsights?(): void;
+  /** The window is still launching: the home screen says so instead of looking idle. */
+  connecting?: boolean;
+  startupStage?: StartupStage;
+  /** Launch has finished and no conversation is being opened: the usage card may read history. */
+  usageReady?: boolean;
 }
 
 type TurnBlock =
@@ -1491,10 +1497,33 @@ const TurnView = memo(function TurnView({
   && previous.decisionInteractiveItemId === next.decisionInteractiveItemId
 ));
 
-function EmptyState({ disabled, onPrompt, onOpenInsights }: {
+/** Seconds of launching after which the status line admits it is slower than usual. */
+const SLOW_STARTUP_MS = 8000;
+
+/** What launch is waiting on, so the home screen is never just an idle-looking page. */
+function StartupStatus({ stage }: { stage: StartupStage }) {
+  const { t } = useI18n();
+  const [slow, setSlow] = useState(false);
+  useEffect(() => {
+    const timer = window.setTimeout(() => setSlow(true), SLOW_STARTUP_MS);
+    return () => window.clearTimeout(timer);
+  }, []);
+  return (
+    <div className="empty-startup" role="status" aria-live="polite" data-stage={stage}>
+      <span className="empty-startup-dot" aria-hidden="true" />
+      <span>{t(stage === "library" ? "app.startupLibrary" : "app.startupRuntime")}</span>
+      {slow ? <span className="empty-startup-note">{t("app.startupSlow")}</span> : null}
+    </div>
+  );
+}
+
+function EmptyState({ disabled, onPrompt, onOpenInsights, connecting, startupStage = "runtime", usageReady = true }: {
   disabled?: boolean;
   onPrompt?(prompt: string): Promise<void> | void;
   onOpenInsights?(): void;
+  connecting?: boolean;
+  startupStage?: StartupStage;
+  usageReady?: boolean;
 }) {
   const { language } = useI18n();
   const lang = language === "zh-CN" ? 1 : 0;
@@ -1521,9 +1550,10 @@ function EmptyState({ disabled, onPrompt, onOpenInsights }: {
             ? "浏览代码库、修改代码、排查故障，或把一个多步骤任务交给 Loom。"
             : "Inspect a codebase, make a change, debug a failure, or hand Loom a multi-step task."}
         </p>
+        {connecting ? <StartupStatus stage={startupStage} /> : null}
       </div>
 
-      <HomeTokenActivity onOpenInsights={onOpenInsights} />
+      <HomeTokenActivity onOpenInsights={onOpenInsights} ready={usageReady && !connecting} />
 
       <div className="starter-grid">
         {starterPrompts.map(({ icon: Icon, title, copy, prompt }) => (
@@ -1547,7 +1577,7 @@ function EmptyState({ disabled, onPrompt, onOpenInsights }: {
   );
 }
 
-export const Transcript = memo(function Transcript({ items, running, currentTurnId, workspace, promptDisabled, onPrompt, onApproval, onOpenInsights }: TranscriptProps) {
+export const Transcript = memo(function Transcript({ items, running, currentTurnId, workspace, promptDisabled, onPrompt, onApproval, onOpenInsights, connecting, startupStage, usageReady }: TranscriptProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const hasItems = items.length > 0;
   // The stage draws its edge fades once there is a transcript. Publishing that as an
@@ -1588,7 +1618,14 @@ export const Transcript = memo(function Transcript({ items, running, currentTurn
       </div>
       <main className={`transcript ${!items.length ? "is-empty" : ""}`} aria-live="polite">
         {!items.length ? (
-          <EmptyState disabled={promptDisabled} onPrompt={onPrompt} onOpenInsights={onOpenInsights} />
+          <EmptyState
+            disabled={promptDisabled}
+            onPrompt={onPrompt}
+            onOpenInsights={onOpenInsights}
+            connecting={connecting}
+            startupStage={startupStage}
+            usageReady={usageReady}
+          />
         ) : turnBlocks.map((block, index) => (
           block.kind === "turn" ? (
             <TurnView

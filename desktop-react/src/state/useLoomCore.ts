@@ -21,6 +21,7 @@ import { preservePendingUserIdentity, reconcilePendingUserMessage } from "../pen
 import { buildApprovalResponse } from "./approvalProtocol";
 import { switchCurrentModelForThread, switchModelProfileForThread } from "./modelSwitchRouting";
 import { RetainedBudgetMap } from "./retainedBudgetMap";
+import { runStartup, type StartupStage } from "./startupSequence";
 import { withThreadReadTimeout } from "./threadReadTimeout";
 
 type ThreadView = "active" | "archived";
@@ -223,6 +224,7 @@ function turnStartFromRead(result: ThreadReadResult): number | null {
 
 export function useLoom() {
   const [connection, setConnection] = useState<"connecting" | "ready" | "error">("connecting");
+  const [startupStage, setStartupStage] = useState<StartupStage>("runtime");
   const [error, setError] = useState("");
   const [runtime, setRuntime] = useState<InitializeResult["runtime"]>({});
   const [models, setModels] = useState<ModelSnapshot | null>(null);
@@ -1230,37 +1232,41 @@ export function useLoom() {
 
   useEffect(() => {
     let disposed = false;
-    (async () => {
-      try {
-        const bridge = getBridge();
+    const bridge = getBridge();
+    void runStartup<InitializeResult, ThreadRecord>({
+      connect: async () => {
         if (!bridge) {
           throw new Error("Loom preload bridge is unavailable. Check dist-electron/preload.cjs and BrowserWindow.webPreferences.preload.");
         }
-        const initialized = await bridge.connect() as InitializeResult;
-        if (disposed) return;
+        return await bridge.connect() as InitializeResult;
+      },
+      connected: (initialized) => {
         setRuntime(initialized.runtime ?? {});
-        await refreshModels();
-        if (disposed) return;
-        await refreshProjects();
-        if (disposed) return;
         threadViewRef.current = "active";
         setThreadViewState("active");
-        const list = await refreshThreads("active");
-        if (disposed) return;
-        setConnection("ready");
-        if (list.length) await openThread(list[0].id);
-      } catch (cause) {
-        if (disposed) return;
+        setStartupStage("library");
+      },
+      loadModels: () => refreshModels(),
+      loadProjects: () => refreshProjects(),
+      loadThreads: () => refreshThreads("active"),
+      ready: () => setConnection("ready"),
+      openFirst: (thread) => openThread(thread.id),
+      failed: (cause) => {
         setError(cause instanceof Error ? cause.message : String(cause));
         setConnection("error");
-      }
-    })();
+      },
+      cancelled: () => disposed,
+    });
     return () => {
       disposed = true;
     };
   }, [openThread, refreshModels, refreshProjects, refreshThreads]);
 
   useEffect(() => {
+    // Launch loads the models itself. Polling and focus refreshes before it has
+    // finished only add copies of the same catalogue and policy requests to a
+    // Host that is still starting.
+    if (connection !== "ready") return;
     const refreshIfVisible = () => {
       if (document.visibilityState !== "visible") return;
       void refreshModels(false).catch(() => {
@@ -1277,7 +1283,7 @@ export function useLoom() {
       window.removeEventListener("focus", refreshIfVisible);
       document.removeEventListener("visibilitychange", refreshIfVisible);
     };
-  }, [refreshModels]);
+  }, [connection, refreshModels]);
 
   const activeModels = useMemo(
     () => modelsForThread(models, active?.thread),
@@ -1286,6 +1292,7 @@ export function useLoom() {
 
   return useMemo(() => ({
     connection,
+    startupStage,
     error,
     runtime,
     draftPermissionMode,
@@ -1343,6 +1350,7 @@ export function useLoom() {
     compactionProgress,
     compactContext,
     connection,
+    startupStage,
     context,
     configureModelProvider,
     deleteModel,

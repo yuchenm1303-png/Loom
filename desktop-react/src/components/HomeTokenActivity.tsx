@@ -9,33 +9,14 @@ import {
   parseLocalDate,
   type HeatLevel,
 } from "./profileInsightsModel";
+import {
+  homeUsageStorage,
+  readStoredHomeUsage,
+  storeHomeUsage,
+  trimHomeUsage,
+  type HomeUsageInsights,
+} from "./homeUsageCache";
 import "./home-token-activity.css";
-
-type UsageDay = {
-  date: string;
-  totalTokens: number;
-  modelCalls: number;
-};
-
-type HomeUsageInsights = {
-  range: {
-    startDate: string;
-    endDate: string;
-    totalTokens: number;
-  };
-  totals: {
-    activeDays: number;
-    modelCalls: number;
-  };
-  streaks: {
-    current: number;
-  };
-  peakDay: {
-    date: string;
-    totalTokens: number;
-  } | null;
-  days: UsageDay[];
-};
 
 type HeatTooltip = {
   date: string;
@@ -52,6 +33,9 @@ const PLACEHOLDER_WEEKS = 53;
 const TOOLTIP_INSET = 8;
 // Month labels start past the left-edge fade (about three columns wide).
 const FIRST_LABEL_COLUMN = 3;
+// Once launch has finished, wait this long before reading every conversation. If the
+// first one opens in that time the card is gone and nothing is read at all.
+const READ_AFTER_READY_MS = 400;
 
 let cachedInsights: HomeUsageInsights | null = null;
 let inflightInsights: Promise<HomeUsageInsights> | null = null;
@@ -67,6 +51,8 @@ function loadInsights(): Promise<HomeUsageInsights> {
     .then(() => window.loom.call<HomeUsageInsights>("profile/insights", { days: 371 }))
     .then((result) => {
       cachedInsights = result;
+      const trimmed = trimHomeUsage(result);
+      if (trimmed) storeHomeUsage(homeUsageStorage(), trimmed);
       return result;
     })
     .finally(() => {
@@ -75,14 +61,25 @@ function loadInsights(): Promise<HomeUsageInsights> {
   return inflightInsights;
 }
 
-export function HomeTokenActivity({ onOpenInsights }: { onOpenInsights?(): void }) {
+export function HomeTokenActivity({ onOpenInsights, ready = true }: {
+  onOpenInsights?(): void;
+  /**
+   * Launch has finished and no conversation is being opened. The numbers come from
+   * reading every conversation, which competes with listing and opening them, so the
+   * card does not ask before then.
+   */
+  ready?: boolean;
+}) {
   const { language } = useI18n();
   const zh = language === "zh-CN";
   const locale = zh ? "zh-CN" : "en-US";
   const rootRef = useRef<HTMLElement>(null);
   const heatmapRef = useRef<HTMLDivElement>(null);
   const tooltipRef = useRef<HTMLDivElement>(null);
-  const [data, setData] = useState<HomeUsageInsights | null>(cachedInsights);
+  // The last answer from a previous launch stands in until the current one arrives.
+  const [data, setData] = useState<HomeUsageInsights | null>(
+    () => cachedInsights ?? readStoredHomeUsage(homeUsageStorage()),
+  );
   const [failed, setFailed] = useState(false);
   const [tooltip, setTooltip] = useState<HeatTooltip | null>(null);
   const [capacity, setCapacity] = useState(PLACEHOLDER_WEEKS);
@@ -106,19 +103,25 @@ export function HomeTokenActivity({ onOpenInsights }: { onOpenInsights?(): void 
   }, []);
 
   useEffect(() => {
-    if (cachedInsights) return;
+    if (!ready || cachedInsights) return;
     let cancelled = false;
-    loadInsights()
-      .then((result) => {
-        if (!cancelled) setData(result);
-      })
-      .catch(() => {
-        if (!cancelled) setFailed(true);
-      });
+    const timer = window.setTimeout(() => {
+      loadInsights()
+        .then((result) => {
+          if (!cancelled) {
+            setData(result);
+            setFailed(false);
+          }
+        })
+        .catch(() => {
+          if (!cancelled) setFailed(true);
+        });
+    }, READ_AFTER_READY_MS);
     return () => {
       cancelled = true;
+      window.clearTimeout(timer);
     };
-  }, []);
+  }, [ready]);
 
   const weeks = useMemo(
     () => (data ? buildWeeks(data.days, data.range.startDate, data.range.endDate).slice(-capacity) : []),
@@ -156,7 +159,8 @@ export function HomeTokenActivity({ onOpenInsights }: { onOpenInsights?(): void 
     exact: new Intl.NumberFormat(locale),
   }), [locale]);
 
-  if (failed) return null;
+  // A failed refresh leaves the stored answer on screen; only a card with nothing to show goes away.
+  if (failed && !data) return null;
 
   const loading = !data;
   const total = data?.range.totalTokens ?? 0;

@@ -1354,3 +1354,25 @@ html[data-loom-theme="light"] .thread-context-menu {
   outline: 2px solid color-mix(in srgb, var(--accent) 55%, transparent);
   outline-offset: -2px;
 }
+
+/* Placeholders while the first conversation list loads ------------------------- */
+.compact-sidebar-skeleton {
+  margin: 6px 0;
+  padding: 0 10px;
+  display: grid;
+  gap: 16px;
+}
+
+.compact-sidebar-skeleton-row {
+  display: block;
+  height: 12px;
+  border-radius: 6px;
+  background: var(--sb-ink-3);
+  opacity: .12;
+  animation: compact-sidebar-skeleton-pulse 1.3s ease-in-out infinite alternate;
+}
+
+@keyframes compact-sidebar-skeleton-pulse {
+  from { opacity: .08; }
+  to { opacity: .2; }
+}

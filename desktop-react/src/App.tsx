@@ -455,7 +455,10 @@ export default function App() {
   const runStripVisible = runStripPresence.mounted && runStripThreadRef.current === thread?.id;
   const archived = Boolean(thread?.archived);
   const conversationDisabled = !thread || loom.connection !== "ready" || running || archived;
-  const threadTitle = selectedThread?.title || (loom.connection === "connecting" ? t("app.startingLoom") : t("app.newConversation"));
+  const connecting = loom.connection === "connecting";
+  const threadTitle = selectedThread?.title || (connecting
+    ? t(loom.startupStage === "library" ? "app.loadingConversations" : "app.startingLoom")
+    : t("app.newConversation"));
   const workspace = thread?.workspace || loom.runtime.defaultWorkspace || "";
   const currentModel = loom.models?.current?.name || loom.models?.current?.model || loom.runtime.model;
   const permissionMode = thread?.permissionMode || loom.draftPermissionMode || loom.runtime.defaultPermissionMode;
@@ -1167,6 +1170,7 @@ export default function App() {
       >
       <Sidebar
         threads={loom.threads}
+        loading={connecting}
         activeId={selectedThreadId}
         activeProjectId={selectedProjectId}
         threadView={loom.threadView}
@@ -1265,6 +1269,9 @@ export default function App() {
             onPrompt={handlePrompt}
             onApproval={handleApproval}
             onOpenInsights={handleOpenInsights}
+            connecting={connecting}
+            startupStage={loom.startupStage}
+            usageReady={loom.connection === "ready" && !loom.openingThreadId}
           />
           <TranscriptScrollController
             items={transcriptItems}
@@ -1288,6 +1295,7 @@ export default function App() {
           <Composer
             threadId={thread?.id}
             disabled={loom.connection !== "ready" || archived}
+            starting={connecting}
             running={running}
             model={loom.models?.current?.model || loom.runtime.model}
             modelSnapshot={loom.models}

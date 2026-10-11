@@ -58,6 +58,7 @@ const SIDEBAR_COPY = {
     fork: "Fork",
     forked: "Forked into a new conversation",
     idLabel: "conversation ID",
+    loadingConversations: "Loading conversations",
     markRead: "Mark as read",
     markUnread: "Mark as unread",
     moreActions: "More actions",
@@ -130,6 +131,7 @@ const SIDEBAR_COPY = {
     fork: "分叉",
     forked: "已创建分叉会话",
     idLabel: "会话 ID",
+    loadingConversations: "正在加载对话",
     markRead: "标记为已读",
     markUnread: "标记为未读",
     moreActions: "更多操作",
@@ -181,6 +183,8 @@ const SIDEBAR_COPY = {
 
 interface SidebarProps {
   threads: ThreadRecord[];
+  /** The first list has not arrived yet: show placeholders, not "No conversations yet". */
+  loading?: boolean;
   projects: ProjectRecord[];
   projectsSupported: boolean;
   activeId?: string;
@@ -201,6 +205,9 @@ interface SidebarProps {
   onFork(threadId: string): Promise<void>;
   onViewChange(view: ThreadView): Promise<void> | void;
 }
+
+// Widths of the placeholder rows shown while the conversation list loads.
+const SKELETON_ROW_WIDTHS = ["72%", "58%", "84%", "64%", "78%", "52%"] as const;
 
 const PINNED_STORAGE_KEY = "loom.sidebar.pinnedThreads";
 const UNREAD_STORAGE_KEY = "loom.sidebar.unreadThreads";
@@ -317,6 +324,7 @@ function threadBelongsToProject(thread: ThreadRecord, projectIds: Set<string>): 
 
 export function Sidebar({
   threads,
+  loading,
   activeId,
   activeProjectId,
   threadView,
@@ -452,6 +460,10 @@ export function Sidebar({
       threads: sortThreads(group.threads, pinnedIds),
     }));
   }, [filtered, pinnedIds, projectsSupported, threadView]);
+
+  // Until the first list arrives an empty `threads` means "not known yet", not
+  // "none": saying "No conversations yet" to someone with a hundred of them is wrong.
+  const showLoading = Boolean(loading) && threads.length === 0;
 
   const focusSearch = () => {
     setSearchOpen(true);
@@ -1074,7 +1086,15 @@ export function Sidebar({
           </>
         ) : null}
 
-        {projectsSupported && threadView !== "archived" && !projectSections.length && !normalThreads.length ? (
+        {showLoading ? (
+          <div className="compact-sidebar-skeleton" role="status" aria-busy="true" aria-label={copy.loadingConversations}>
+            {SKELETON_ROW_WIDTHS.map((width, index) => (
+              <span key={index} className="compact-sidebar-skeleton-row" style={{ width }} />
+            ))}
+          </div>
+        ) : null}
+
+        {!showLoading && projectsSupported && threadView !== "archived" && !projectSections.length && !normalThreads.length ? (
           <div className="compact-sidebar-empty">
             <span>{query ? copy.noMatches : copy.noConversations}</span>
             <button type="button" onClick={query ? () => setQuery("") : () => void onNew()}>
@@ -1083,7 +1103,7 @@ export function Sidebar({
           </div>
         ) : null}
 
-        {(!projectsSupported || threadView === "archived") && !legacyWorkspaceGroups.length ? (
+        {!showLoading && (!projectsSupported || threadView === "archived") && !legacyWorkspaceGroups.length ? (
           <div className="compact-sidebar-empty">
             <span>{query ? copy.noMatches : threadView === "archived" ? copy.archiveEmpty : copy.noConversations}</span>
             <button

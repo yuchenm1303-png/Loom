@@ -41,6 +41,8 @@ interface ComposerProps {
   draftValue?: string;
   onDraftValueChange?(value: string): void;
   disabled?: boolean;
+  /** Loom is still launching: say so instead of asking for a conversation that cannot exist yet. */
+  starting?: boolean;
   running?: boolean;
   model?: string;
   modelSnapshot?: ModelSnapshot | null;
@@ -147,6 +149,7 @@ export function Composer({
   draftValue,
   onDraftValueChange,
   disabled,
+  starting,
   running,
   model,
   modelSnapshot,
@@ -416,7 +419,9 @@ export function Composer({
             onPaste={(event) => void onPaste(event)}
             onFocus={() => setFocused(true)}
             onBlur={() => setFocused(false)}
-            placeholder={!accountAuthenticated
+            placeholder={starting
+              ? (zh ? "Loom 正在启动，稍等片刻…" : "Loom is starting up…")
+              : !accountAuthenticated
               ? (zh ? "登录 Loom 后才能使用模型和发送消息" : "Sign in to Loom to use models and send messages")
               : quote
                 ? (zh ? "针对引用内容继续提问…" : "Ask about the quoted content…")
