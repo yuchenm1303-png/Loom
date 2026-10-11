@@ -7,6 +7,27 @@ import subprocess
 from pathlib import Path
 
 import pytest
+from types import SimpleNamespace
+
+
+def test_git_timeout_kills_windows_tree_and_bounds_pipe_cleanup(monkeypatch, tmp_path):
+    import app.project_git_commit as module
+    timeouts, killed, commands = [], [], []
+    class Process:
+        pid = 123
+        args = ["git"]
+        def communicate(self, timeout):
+            timeouts.append(timeout)
+            raise subprocess.TimeoutExpired(self.args, timeout)
+        def kill(self):
+            killed.append(True)
+    monkeypatch.setattr(module, "os", SimpleNamespace(name="nt"))
+    monkeypatch.setattr(module.subprocess, "Popen", lambda *args, **kwargs: Process())
+    monkeypatch.setattr(module.subprocess, "run", lambda command, **kwargs: commands.append(command))
+    assert module._run_git(tmp_path, "rev-parse", timeout=3) is None
+    assert commands == [["taskkill", "/PID", "123", "/T", "/F"]]
+    assert killed == [True]
+    assert timeouts == [3, 1]
 
 from app.agent_runtime import (
     DurableAgentRuntime,

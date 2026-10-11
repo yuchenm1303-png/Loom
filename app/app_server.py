@@ -1940,6 +1940,20 @@ class JsonRpcStdioServer:
                 raw = line.rstrip("\r\n")
                 if not raw.strip():
                     continue
+                # Route navigation at admission, before any mutating handler
+                # can block the control worker (for example a Git subprocess).
+                try:
+                    navigation_payload = json.loads(raw)
+                except json.JSONDecodeError:
+                    navigation_payload = None
+                if (len(raw.encode("utf-8")) <= _MAX_MESSAGE_BYTES
+                        and self.controller.initialized and self._is_observational(navigation_payload)):
+                    try:
+                        self._navigation_ingress.put_nowait(navigation_payload)
+                    except queue.Full:
+                        self._send_response({"jsonrpc": "2.0", "id": navigation_payload.get("id"), "error": {
+                            "code": -32001, "message": "Navigation overloaded; retry later."}})
+                    continue
                 if len(raw.encode("utf-8")) > _MAX_MESSAGE_BYTES:
                     self._send_response(
                         {

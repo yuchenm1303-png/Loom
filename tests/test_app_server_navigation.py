@@ -6,6 +6,32 @@ from types import SimpleNamespace
 from app.app_server import JsonRpcStdioServer
 
 
+def test_navigation_bypasses_a_blocked_control_handler():
+    blocked, release, read = threading.Event(), threading.Event(), threading.Event()
+    server = JsonRpcStdioServer(SimpleNamespace(subscribe_notifications=lambda callback: None))
+    def handle(payload):
+        if payload["method"] == "project/git_repository":
+            blocked.set()
+            assert release.wait(3)
+        else:
+            read.set()
+        return {"jsonrpc": "2.0", "id": payload["id"], "result": {}}
+    server.controller = SimpleNamespace(handle=handle, initialized=True)
+    class Reader:
+        def __iter__(self):
+            yield json.dumps({"id": 1, "method": "project/git_repository"}) + "\n"
+            assert blocked.wait(2)
+            yield json.dumps({"id": 2, "method": "thread/read", "params": {"presentationOnly": True}}) + "\n"
+    serving = threading.Thread(target=lambda: server.serve(Reader(), io.StringIO()), daemon=True)
+    serving.start()
+    try:
+        assert read.wait(2), "navigation was queued behind blocked Git control operation"
+    finally:
+        release.set()
+        serving.join(3)
+    assert not serving.is_alive()
+
+
 def test_navigation_reads_do_not_block_new_selection_or_control_and_drain_on_eof():
     slow_started = threading.Event()
     fast_finished = threading.Event()

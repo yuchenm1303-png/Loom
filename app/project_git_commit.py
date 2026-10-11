@@ -11,6 +11,7 @@ still exposing the project workspace controls expected by the desktop UI.
 import importlib.abc
 import importlib.machinery
 import subprocess
+import os
 import sys
 from pathlib import Path
 from types import ModuleType
@@ -44,15 +45,33 @@ def _safe_git_path(value: Any) -> str:
 
 def _run_git(root: Path, *args: str, timeout: float = 8) -> subprocess.CompletedProcess[str] | None:
     try:
-        return subprocess.run(
+        process = subprocess.Popen(
             ["git", "-C", str(root), *args],
-            capture_output=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
             text=True,
             encoding="utf-8",
             errors="replace",
-            timeout=timeout,
-            check=False,
         )
+        try:
+            stdout, stderr = process.communicate(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            # Killing only the Git launcher leaves Windows children holding
+            # stdout/stderr open, so subprocess.run's cleanup can hang forever.
+            if os.name == "nt":
+                try:
+                    subprocess.run(["taskkill", "/PID", str(process.pid), "/T", "/F"],
+                                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=5, check=False)
+                except (OSError, subprocess.TimeoutExpired):
+                    pass
+            process.kill()
+            # Always bound cleanup too, even if a descendant escaped the tree.
+            try:
+                process.communicate(timeout=1)
+            except subprocess.TimeoutExpired:
+                pass
+            return None
+        return subprocess.CompletedProcess(process.args, process.returncode, stdout, stderr)
     except (FileNotFoundError, OSError, subprocess.TimeoutExpired):
         return None
 
