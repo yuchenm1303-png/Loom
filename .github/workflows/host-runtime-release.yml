@@ -15,6 +15,10 @@ jobs:
   test:
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
+    # Keep these steps identical to the `test` job in ci.yml (see
+    # tests/test_host_release_gate.py). A stuck test must not hold a release for
+    # the 6 h default.
+    timeout-minutes: 20
     permissions:
       contents: read
     steps:
@@ -29,7 +33,10 @@ jobs:
       - name: Validate Loom Web deployment script
         run: bash -n scripts/deploy-loom-web-main.sh && bash -n scripts/loom-web-autosync-entry.sh
       - name: Test
-        run: python -m pytest
+        # --verbosity=1 overrides the -q in pyproject so every test is named in the
+        # log. faulthandler_timeout dumps every thread's stack when a single test
+        # runs for two minutes, so a hang identifies its own blocking call.
+        run: python -m pytest --verbosity=1 -o faulthandler_timeout=120
       - name: CLI smoke
         run: |
           loom --help
