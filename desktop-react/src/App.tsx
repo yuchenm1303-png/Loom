@@ -453,6 +453,15 @@ export default function App() {
   if (running) runStripThreadRef.current = thread?.id;
   const runStripPresence = useMotionPresence(Boolean(running), RUN_STRIP_EXIT_MS);
   const runStripVisible = runStripPresence.mounted && runStripThreadRef.current === thread?.id;
+  // A run produces a main-thread frame per vsync, and every animation still going makes the browser resolve its
+  // element again on each of them. Ornament that loops forever (the sidebar mark, the ambient glow) is frozen
+  // by CSS for the length of a run; see html[data-loom-live] in sidebar.css and styles.css.
+  useEffect(() => {
+    const root = document.documentElement;
+    if (running) root.dataset.loomLive = "true";
+    else delete root.dataset.loomLive;
+    return () => { delete root.dataset.loomLive; };
+  }, [running]);
   const archived = Boolean(thread?.archived);
   const conversationDisabled = !thread || loom.connection !== "ready" || running || archived;
   const connecting = loom.connection === "connecting";

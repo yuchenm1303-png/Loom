@@ -846,6 +846,7 @@ html[data-loom-theme="light"] .compact-search {
 
 /* Only running and unread conversations carry a mark, at the end of the row. */
 .compact-thread-dot {
+  position: relative;
   display: none;
   flex: none;
   width: 6px;
@@ -859,7 +860,14 @@ html[data-loom-theme="light"] .compact-search {
   display: block;
 }
 
-.compact-thread-dot.running {
+/* The ring is a disc of the dot's own colour that grows and fades behind its edge. It was a box-shadow
+   spread, which repaints every frame; scale and opacity stay on the compositor. */
+.compact-thread-dot.running::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: rgba(var(--sb-accent-rgb), .4);
   animation: compact-thread-pulse 1.8s ease-out infinite;
 }
 
@@ -1312,8 +1320,17 @@ html[data-loom-theme="light"] .thread-context-menu {
 }
 
 @keyframes compact-thread-pulse {
-  0% { box-shadow: 0 0 0 0 rgba(var(--sb-accent-rgb),.4); }
-  70%, 100% { box-shadow: 0 0 0 5px rgba(var(--sb-accent-rgb),0); }
+  0% { opacity: 1; scale: 1; }
+  70%, 100% { opacity: 0; scale: 2.67; }
+}
+
+/* The mark is ornament. While a turn runs the renderer produces a frame per vsync, and every animation that is
+   still going makes the browser resolve its element again on each of them (whether or not the animation runs on
+   the compositor): eight of them here cost about a quarter of a frame at 165 Hz. App sets html[data-loom-live]
+   for the length of a run; a closed sidebar is not seen either. */
+html[data-loom-live] :is(.codex-sidebar-brand-aura, .codex-sidebar-brand-core, .codex-sidebar-brand-orbit, .codex-sidebar-brand-spark),
+.workspace-panels.sidebar-closed :is(.codex-sidebar-brand-aura, .codex-sidebar-brand-core, .codex-sidebar-brand-orbit, .codex-sidebar-brand-spark) {
+  animation-play-state: paused !important;
 }
 
 @keyframes sidebar-notice-in {

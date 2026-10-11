@@ -44,14 +44,25 @@
     image-set(url("./assets/yukino-cursor.png") 1x, url("./assets/yukino-cursor@1.5x.png") 1.5x, url("./assets/yukino-cursor@2x.png") 2x, url("./assets/yukino-cursor@3x.png") 3x) 0 0,
     image-set(url("./assets/yukino-pointer.png") 1x, url("./assets/yukino-pointer@1.5x.png") 1.5x, url("./assets/yukino-pointer@2x.png") 2x, url("./assets/yukino-pointer@3x.png") 3x) 0 0;
 }
-/* Include body-mounted portals and pseudo-elements. Component hover/disabled
-   rules (including resize handles) must not replace the chosen cursor. */
-:root,
-:root :is(body, #root),
-:root :is(body, #root) *,
-:root :is(body, #root) *::before,
-:root :is(body, #root) *::after {
+/* Component hover/disabled rules (including resize handles) must not replace
+   the chosen cursor, and that includes body-mounted portals.
+   The character is declared once, on html, and inherited. A rule that resolved
+   var() on every element and on every ::before/::after made each style
+   recalculation of any element about half again as dear, and style recalc was
+   the largest slice of a live run (every running animation re-resolves its
+   element on every frame). Pseudo-elements inherit from their element.
+   Only the element under the pointer needs its own declaration: pointerMotion
+   and pointerContrast hand it local frame and tone variables. */
+:root {
   /* The arrow at the top-left owns the hotspot; the character is decoration. */
+  cursor: var(--loom-native-cursor, var(--loom-cursor-white)), auto !important;
+}
+:root :is(body, #root),
+:root :is(body, #root) * {
+  cursor: inherit !important;
+}
+:root :is(body, #root) [data-loom-cursor-frame],
+:root :is(body, #root) [data-loom-pointer-tone] {
   cursor: var(--loom-native-cursor, var(--loom-cursor-white)), auto !important;
 }
 :root[data-loom-theme="light"] { --loom-native-cursor: var(--loom-cursor-black); }
@@ -212,6 +223,8 @@ button, textarea, input { -webkit-tap-highlight-color: transparent; }
 }
 .ambient-glow { position: absolute; border-radius: 50%; filter: blur(76px); opacity: .13; }
 .glow-one { width: 360px; height: 240px; left: 38%; top: 7%; background: rgba(122,108,232,.24); animation: ambient-drift 14s ease-in-out infinite alternate; }
+/* Frozen for the length of a run (see the sidebar brand mark): the drift costs a style resolve per glow per frame. */
+html[data-loom-live] .ambient-glow { animation-play-state: paused !important; }
 .glow-two { width: 280px; height: 220px; right: 12%; top: 36%; background: rgba(74,93,157,.16); animation: ambient-drift 18s ease-in-out -5s infinite alternate-reverse; }
 .ambient-grid {
   position: absolute;

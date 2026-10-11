@@ -166,6 +166,13 @@
   border-color: rgba(139, 124, 246, .19);
 }
 
+/* Closed, the panel is hidden but mounted; its three loops would still be resolved on every frame. */
+.workspace-panels.inspector-closed .runtime-orbit-dot,
+.workspace-panels.inspector-closed .runtime-orbit-one::before,
+.workspace-panels.inspector-closed .runtime-orbit-two::before {
+  animation-play-state: paused !important;
+}
+
 @keyframes runtime-electron-fade {
   0%, 100% { opacity: .62; }
   50% { opacity: 1; }
