@@ -71,7 +71,29 @@ export function advanceStreamingText(
     if (count >= Math.max(2 * batches, deadlineBudget) && SENTENCE_BREAK.test(part.segment)) break;
     if (count >= softBoundaryFloor && SOFT_BREAK.test(part.segment)) break;
   }
+  // A Latin word is not cut at the edge of a paint (see settleWordEdge).
+  if (!finalizing) end = settleWordEdge(target, current.length, end);
   return target.slice(0, end);
+}
+
+// A word cut in half moves whole to the next line the moment the rest of it arrives, which reads as the end of the
+// line twitching. CJK may break anywhere and is unaffected; nor is a run too long to be a word (a path, a hash).
+const WORD_CHAR = /[A-Za-z0-9_\u00C0-\u024F'\u2019-]/;
+const LONGEST_HELD_WORD = 24;
+
+/** Where a paint that would end at `end` should end so that it does not leave a Latin word half drawn. */
+function settleWordEdge(target: string, floor: number, end: number): number {
+  if (end <= floor || !WORD_CHAR.test(target[end - 1]) || (end < target.length && !WORD_CHAR.test(target[end]))) return end;
+  let stop = end;
+  while (stop < target.length && WORD_CHAR.test(target[stop])) stop += 1;
+  let start = end;
+  while (start > floor && WORD_CHAR.test(target[start - 1])) start -= 1;
+  if (stop - start > LONGEST_HELD_WORD) return end;
+  // The rest of the word has arrived: take it, rather than carry it over to the next paint.
+  if (stop < target.length) return stop;
+  // The word touches the end of what has arrived and may still be growing: wait for its last letter, when there is
+  // something else to show now. (If it began before this paint it is already cut, and holding it would freeze it.)
+  return start > floor ? start : end;
 }
 
 export function streamingGraphemes(value: string): string[] {
@@ -80,8 +102,15 @@ export function streamingGraphemes(value: string): string[] {
 
 const FENCE_LINE = /^ {0,3}(`{3,}|~{3,})(.*)$/;
 const PARTIAL_FENCE_LINE = /^ {0,3}(`{1,2}|~{1,2})$/;
-const BARE_BLOCK_MARKER = /^ {0,3}(#{1,6}|[-*+]|\d{1,9}[.)]|>)\s*$/;
+// A line that is only the start of a block: a heading, list or quote marker, a list number whose dot has not come
+// yet, a table row's opening pipe, a thematic break still being drawn ("--" on its way to "---").
+const BARE_BLOCK_MARKER = /^ {0,3}(#{1,6}|[-*+]|\d{1,9}[.)]?|>|\||([-*_])\2+)\s*$/;
 const TABLE_DELIMITER = /^\s*\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)*\|?\s*$/;
+
+/** Cells in a table row, outer pipes aside. */
+function tableCells(row: string): number {
+  return row.trim().replace(/^\|/, "").replace(/\|$/, "").split("|").length;
+}
 
 type Span = [number, number];
 
@@ -178,7 +207,10 @@ export function healStreamingMarkdown(text: string): string {
       }
       continue;
     }
-    if (!fenceMarker && !line.trim()) blockStart = index + 1;
+    // The empty piece after a newline is the next line, not yet started: it ends nothing. Counted as a blank line
+    // it closed the block the moment its newline arrived, so a table's header row, still waiting for its
+    // delimiter, was drawn as a paragraph of pipes and withdrawn a moment later.
+    if (!fenceMarker && !line.trim() && !(index === lines.length - 1 && index > 0)) blockStart = index + 1;
   }
 
   const last = lines.length - 1;
@@ -193,14 +225,16 @@ export function healStreamingMarkdown(text: string): string {
 
   const head = lines.slice(0, blockStart).join("\n");
   let blockLines = lines.slice(blockStart);
+  while (blockLines.length > 1 && !blockLines[blockLines.length - 1].trim()) blockLines = blockLines.slice(0, -1);
   // An opening fence whose backticks are still arriving ("`", "``").
   if (PARTIAL_FENCE_LINE.test(blockLines[blockLines.length - 1] ?? "")) blockLines = blockLines.slice(0, -1);
   // A heading, list or quote marker with no words after it yet.
   if (BARE_BLOCK_MARKER.test(blockLines[blockLines.length - 1] ?? "")) blockLines = blockLines.slice(0, -1);
-  // Pipes become a table only once the delimiter row arrives.
-  if (blockLines.length && blockLines.every((line) => line.trimStart().startsWith("|"))
-    && !blockLines.slice(1).some((line) => TABLE_DELIMITER.test(line))) {
-    blockLines = [];
+  // Pipes become a table only once the delimiter row has arrived whole: a delimiter with fewer cells than the
+  // header is not one yet (GFM), and the rows would read as a paragraph until it is.
+  if (blockLines.length && blockLines.every((line) => line.trimStart().startsWith("|"))) {
+    const delimiter = blockLines.findIndex((line, row) => row > 0 && TABLE_DELIMITER.test(line));
+    if (delimiter < 0 || (delimiter === 1 && tableCells(blockLines[1]) < tableCells(blockLines[0]))) blockLines = [];
   }
   if (!blockLines.length) return head.replace(/\n+$/, "");
 

@@ -61,7 +61,7 @@ test("presentation budget responds to elapsed time, backlog and finalization", (
 test("the typing tempo follows the backlog continuously, with no gears", () => {
   // The same paint (33 ms, a 60 Hz frame pair) at every backlog from empty to a long burst.
   const sizes = [];
-  for (let backlog = 1; backlog <= 2000; backlog += 1) sizes.push(advanceStreamingText("", "x".repeat(backlog), 33).length);
+  for (let backlog = 1; backlog <= 2000; backlog += 1) sizes.push(advanceStreamingText("", "中".repeat(backlog), 33).length);
   for (let index = 1; index < sizes.length; index += 1) {
     assert.ok(sizes[index] >= sizes[index - 1], `a larger backlog never types slower (${index}: ${sizes[index - 1]} -> ${sizes[index]})`);
     assert.ok(sizes[index] - sizes[index - 1] <= 1, `and speeds up one grapheme at a time, not in steps (${index}: ${sizes[index - 1]} -> ${sizes[index]})`);
@@ -69,7 +69,7 @@ test("the typing tempo follows the backlog continuously, with no gears", () => {
   assert.equal(sizes[0], 1, "a single waiting grapheme still appears");
   assert.equal(sizes.at(-1), 11, "and the catch-up is bounded by its top speed (330 graphemes a second)");
   // With next to nothing waiting, the pace is the one it always was on both 60 Hz and 165 Hz displays.
-  const steady = elapsed => advanceStreamingText("", "x".repeat(6), elapsed).length;
+  const steady = elapsed => advanceStreamingText("", "中".repeat(6), elapsed).length;
   assert.deepEqual([steady(33), steady(30)], [3, 2]);
 });
 
@@ -145,4 +145,55 @@ test("links show their label while the target arrives; indexes and stickers are 
   assert.equal(healStreamingMarkdown("好的[[AI_LEDGER_INLINE_STICKER:joy"), "好的[[AI_LEDGER_INLINE_STICKER:joy");
   assert.equal(healStreamingMarkdown("完成 [文档](docs/a.md) 了"), "完成 [文档](docs/a.md) 了");
   assert.equal(healStreamingMarkdown("`arr[0"), "`arr[0`");
+});
+
+test("a table's header row waits for a complete delimiter row; a newline does not release it as a paragraph", () => {
+  // The newline after the header is the start of the next line, not a blank line.
+  assert.equal(healStreamingMarkdown("方案对比\n\n| 方案 | 范围 | 风险 |"), "方案对比");
+  assert.equal(healStreamingMarkdown("方案对比\n\n| 方案 | 范围 | 风险 |\n"), "方案对比");
+  assert.equal(healStreamingMarkdown("方案对比\n\n| 方案 | 范围 | 风险 |\n|"), "方案对比");
+  // A delimiter with fewer cells than the header is not one yet.
+  assert.equal(healStreamingMarkdown("| 方案 | 范围 | 风险 |\n| --"), "");
+  assert.equal(healStreamingMarkdown("| 方案 | 范围 | 风险 |\n| --- | ---"), "");
+  // Whole, the table forms, and so does a row that has only begun.
+  assert.equal(healStreamingMarkdown("| 方案 | 范围 |\n| --- | --- |"), "| 方案 | 范围 |\n| --- | --- |");
+  assert.equal(healStreamingMarkdown("| 方案 | 范围 |\n| --- | --- |\n| 甲 |"), "| 方案 | 范围 |\n| --- | --- |\n| 甲 |");
+  // A blank line after pipes is the end of that paragraph.
+  assert.equal(healStreamingMarkdown("| 不是表格 |\n\n后面的字"), "| 不是表格 |\n\n后面的字");
+});
+
+test("a block marker still being typed is not drawn as text first", () => {
+  assert.equal(healStreamingMarkdown("总结：\n\n3"), "总结：");
+  assert.equal(healStreamingMarkdown("总结：\n\n3."), "总结：");
+  assert.equal(healStreamingMarkdown("总结：\n\n3. 第三点"), "总结：\n\n3. 第三点");
+  assert.equal(healStreamingMarkdown("上面\n\n--"), "上面");
+  assert.equal(healStreamingMarkdown("上面\n\n---"), "上面");
+  assert.equal(healStreamingMarkdown("有 2025 年"), "有 2025 年");
+});
+
+test("a Latin word is not left half drawn at the edge of a paint", () => {
+  const target = "The validators handle every email address correctly and quickly.";
+  let visible = "";
+  while (visible !== target) {
+    const next = advanceStreamingText(visible, target, 33);
+    assert.ok(next.length > visible.length);
+    visible = next;
+    if (visible === target) break;
+    const before = visible.at(-1);
+    const after = target[visible.length];
+    assert.ok(!(/[A-Za-z]/.test(before) && /[A-Za-z]/.test(after)), `"${visible}" ends inside a word`);
+  }
+});
+
+test("a word that is still arriving waits when there is other text to show, and never stalls the first paint", () => {
+  // "validat" is the edge of what has arrived: it may become "validators". Show what is certain now.
+  assert.equal(advanceStreamingText("check ", "check the validat", 96), "check the ");
+  // Nothing else to show: the word is drawn rather than leaving the paint empty.
+  assert.equal(advanceStreamingText("", "val", 96), "val");
+  // Already cut by an earlier paint: it carries on.
+  assert.equal(advanceStreamingText("check the val", "check the validat", 96), "check the validat");
+  // A run too long to be a word is not held.
+  assert.ok(advanceStreamingText("see ", "see https://example.com/a/very/long/path/that/keeps/going", 96).length > 8);
+  // The end of the stream shows everything.
+  assert.equal(advanceStreamingText("check the ", "check the validat", 96, true), "check the validat");
 });
