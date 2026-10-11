@@ -29,7 +29,7 @@
     "dev:ready:ufo": "node scripts/dev-ready-ufo.mjs",
     "predev": "npm run prepare:stickers",
     "prebuild:renderer": "npm run prepare:stickers",
-    "build:renderer": "tsc --noEmit && vite build",
+    "build:renderer": "tsc --noEmit && vite build && node scripts/ui-build-baseline.mjs",
     "build:electron": "tsc -p tsconfig.electron.json",
     "build:runtime:win": "node scripts/build-windows-runtime.mjs",
     "package:host-runtime": "node scripts/package-host-runtime.mjs",

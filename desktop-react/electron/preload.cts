@@ -177,3 +177,4 @@ const api = {
 };
 
 contextBridge.exposeInMainWorld("loom", api);
+window.addEventListener("loom:renderer-healthy", () => ipcRenderer.send("loom:renderer-healthy"));

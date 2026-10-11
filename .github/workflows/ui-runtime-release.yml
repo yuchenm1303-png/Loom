@@ -1,0 +1,63 @@
+name: Loom UI Resource Update
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'desktop-react/src/**'
+      - 'desktop-react/public/**'
+      - 'desktop-react/index.html'
+      - 'desktop-react/vite.config.*'
+      - 'desktop-react/package.json'
+      - 'desktop-react/package-lock.json'
+      - 'desktop-react/scripts/publish-ui-update.mjs'
+      - 'desktop-react/scripts/ui-build-baseline.mjs'
+      - 'desktop-react/electron/rendererUpdate*.ts'
+      - '.github/workflows/ui-runtime-release.yml'
+permissions:
+  contents: write
+concurrency:
+  group: loom-ui-stable
+  cancel-in-progress: false
+jobs:
+  publish:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    defaults:
+      run:
+        working-directory: desktop-react
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: desktop-react/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck && npm run build:electron
+      - run: node --experimental-test-module-mocks --test electron/tests/rendererUpdateStore.test.mjs electron/tests/rendererUpdater.test.mjs
+      - run: npm run build:renderer
+      - name: Publish immutable resource assets
+        run: node scripts/publish-ui-update.mjs
+      - name: Advance channel only while source is still current
+        shell: bash
+        run: |
+          cp ../ui-runtime/stable.json "$RUNNER_TEMP/ui-stable.json"
+          git fetch origin main
+          if ! git diff --quiet "$GITHUB_SHA" origin/main -- src public index.html vite.config.ts package.json package-lock.json scripts/publish-ui-update.mjs electron/rendererUpdateStore.ts electron/rendererUpdater.ts; then
+            echo 'A newer source commit exists; keep its channel authority.'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git reset --hard origin/main
+          mkdir -p ../ui-runtime
+          cp "$RUNNER_TEMP/ui-stable.json" ../ui-runtime/stable.json
+          git add ../ui-runtime/stable.json
+          git commit -m "chore(ui): advance resource channel for $GITHUB_SHA"
+          git push origin HEAD:main

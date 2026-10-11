@@ -1,8 +1,16 @@
 name: Loom Host Runtime Release
 
 on:
-  # Source commits run CI; publish a tested batch explicitly from Actions.
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'app/**'
+      - 'loom_model_bridge.py'
+      - 'loom_app_server.py'
+      - 'pyproject.toml'
+      - 'packaging/**'
+      - 'desktop-react/scripts/build-windows-runtime.mjs'
 
 permissions:
   contents: write
@@ -185,6 +193,11 @@ jobs:
           } | ConvertTo-Json
 
           git fetch origin main
+          git diff --quiet "${{ github.sha }}" origin/main -- app loom_model_bridge.py loom_app_server.py pyproject.toml packaging desktop-react/scripts/build-windows-runtime.mjs
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host "Newer runtime source exists; do not overwrite its stable channel."
+            exit 0
+          }
           git checkout main
           git reset --hard origin/main
           $channelPath = Join-Path $env:GITHUB_WORKSPACE "host-runtime\stable.json"

@@ -17,6 +17,7 @@ import {
 import { LoomAccountClient, type LoomAccountSnapshot, type LoomAuthCapabilities, type LoomAuthChallenge, type LoomModelPolicyAccess } from "./accountClient.js";
 import { accountErrorPayload, type AccountErrorPayload } from "./accountErrors.js";
 import { latestSync } from "./latestSync.js";
+import { loadUpdatedRenderer } from "./rendererUpdater.js";
 import { runtimeModelParams, runtimeModelArguments } from "./runtimeModelConfig.js";
 import { startupModel } from "./startupModel.js";
 import { closeHudOverlayWindow, createHudOverlayWindow, sendHudUpdate } from "./hudWindow.js";
@@ -1245,7 +1246,7 @@ async function loadRenderer(window: BrowserWindow): Promise<void> {
     }
     const builtIndex = path.join(DESKTOP_ROOT, "dist", "index.html");
     console.log(`[loom-desktop] loading built renderer ${builtIndex}`);
-    await window.loadFile(builtIndex);
+    await loadUpdatedRenderer(window, builtIndex);
   } catch (error) {
     const detail = error instanceof Error ? error.stack || error.message : String(error);
     console.error("Loom renderer navigation failed", detail);

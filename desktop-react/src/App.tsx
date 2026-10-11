@@ -365,6 +365,10 @@ function animateLayoutAnchors(
 
 
 export default function App() {
+  useEffect(() => {
+    const timer = window.setTimeout(() => window.dispatchEvent(new Event("loom:renderer-healthy")), 1000);
+    return () => window.clearTimeout(timer);
+  }, []);
   const petEnabled = usePetEnabled();
   const loom = useLoom();
   const account = useAccount();

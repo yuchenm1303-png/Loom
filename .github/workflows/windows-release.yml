@@ -15,6 +15,7 @@ on:
 
 permissions:
   contents: write
+  actions: write
 
 concurrency:
   group: windows-release
@@ -263,6 +264,10 @@ jobs:
             desktop-react/release/latest.yml
           if-no-files-found: error
           retention-days: 30
+
+      - name: Publish UI resources for the new bootstrap version
+        shell: pwsh
+        run: gh workflow run ui-runtime-release.yml --ref main
 
       - name: Release summary
         shell: pwsh

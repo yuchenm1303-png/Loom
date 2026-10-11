@@ -88,3 +88,5 @@ venv/
 /update_gist.py
 /scripts/remote_probe.sh
 /scripts/setup_ny_gateway.sh
+# Staged immutable UI release objects (generated locally and in CI).
+desktop-react/ui-publish/
