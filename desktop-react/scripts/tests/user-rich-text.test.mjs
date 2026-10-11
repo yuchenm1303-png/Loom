@@ -35,6 +35,13 @@ test("standalone URLs remain cards and surrounding prose remains visible", () =>
   assert.ok(html.includes("帮我看一下这个仓库吧"));
 });
 
+test("removing an earlier card keeps Markdown source offsets aligned", () => {
+  const text = "https://example.com\n\nhttps://github.com/morluto/rea帮我看一下这个仓库吧";
+  const html = render(text);
+  assert.ok(html.includes("rea帮我看一下这个仓库吧"));
+  assert.equal((html.match(/href=/g) || []).length, 1);
+});
+
 test("explicit Unicode Markdown links and delimited autolinks remain clickable", () => {
   for (const text of ["[中文页面](https://example.com/中文)", "<https://example.com/中文>"]) {
     assert.ok(render(text).includes("href="));

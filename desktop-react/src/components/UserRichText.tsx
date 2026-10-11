@@ -110,7 +110,7 @@ function withoutStandaloneLinks(source: string, links: { href: string }[]): stri
 export const UserRichText = memo(function UserRichText({ text }: { text: string }) {
   const links = useMemo(() => standaloneLinks(text), [text]);
   const markdown = useMemo(() => withoutStandaloneLinks(text, links), [links, text]);
-  const renderer = useMemo(() => components(text), [text]);
+  const renderer = useMemo(() => components(markdown), [markdown]);
 
   return (
     <div className="user-rich-message">
