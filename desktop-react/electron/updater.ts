@@ -7,6 +7,7 @@ import electronUpdater, {
   type UpdateInfo,
 } from "electron-updater";
 import { broadcastHostEvent, callHost, handleHostChannel, hostHasDesktopClients, isHostProcess } from "./hostProcess.js";
+import { OptimizedNsisUpdater } from "./optimizedUpdater.js";
 
 export type SoftwareUpdatePhase =
   | "disabled"
@@ -48,6 +49,7 @@ const RELEASE_BASE_URL = "https://github.com/yuchenm1303-png/Loom/releases/tag";
 const HEADLESS_RESTART_MARKER = "loom-headless-update-restart";
 
 function getAutoUpdater(): AppUpdater {
+  if (process.platform === "win32") return new OptimizedNsisUpdater();
   // electron-updater is CommonJS. Destructuring the default import keeps the
   // NodeNext/ESM build compatible with the package's CJS export shape.
   const { autoUpdater } = electronUpdater;
