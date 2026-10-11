@@ -83,13 +83,60 @@ def test_user_scroll_up_can_break_live_follow_while_streaming() -> None:
     wheel_start = source.index("const onWheel = (event: WheelEvent) => {")
     wheel_end = source.index("const onTouchStart", wheel_start)
     wheel_handler = source[wheel_start:wheel_end]
-    assert "event.deltaY < 0" in wheel_handler
+    # onWheel hands the heading to steer(), which detaches on up and marks the return intent on down.
+    assert "steer(event.target, event.deltaY < 0);" in wheel_handler
     assert "detachFromLiveFollow(scroller);" in wheel_handler
-    assert "event.deltaY > 0" in wheel_handler
     assert "markReturnIntent();" in wheel_handler
 
     assert 'scroller.addEventListener("wheel", onWheel, { passive: true });' in source
     assert 'scroller.addEventListener("touchmove", onTouchMove, { passive: true });' in source
+
+
+def test_gestures_and_keys_leave_the_live_edge_only_when_the_transcript_moves() -> None:
+    source = SCROLL.read_text(encoding="utf-8")
+
+    # A gesture over an output pane, or over a transcript with nothing to scroll, is not leaving the live edge.
+    steer_start = source.index("const steer = (target: EventTarget | null, up: boolean) => {")
+    steer_end = source.index("const onTouchStart", steer_start)
+    steer = source[steer_start:steer_end]
+    assert "nestedScrollerUnder(target, scroller)" in steer
+    assert "if (canScrollVertically(scroller)) detachFromLiveFollow(scroller);" in steer
+    wheel_start = source.index("const onWheel = (event: WheelEvent) => {")
+    assert "event.ctrlKey" in source[wheel_start:steer_start]  # ctrl+wheel zooms the page
+    assert "steer(event.target" in source[source.index("const onTouchMove"):source.index("const onTouchEnd")]
+
+    # With nothing focused, a key's target says nothing about which pane it scrolls: it only records intent,
+    # and the scroll that follows decides.
+    key_start = source.index("const onKeyDown = (event: KeyboardEvent) => {")
+    key_end = source.index("const onPanelLayoutCommit", key_start)
+    key_handler = source[key_start:key_end]
+    assert "isTextEntry(event.target)" in key_handler
+    assert "scroller.contains" not in key_handler
+    assert "detachFromLiveFollow" not in key_handler
+    assert "inputIntentRef.current = { up: true, until: performance.now() + USER_INPUT_INTENT_MS };" in key_handler
+
+    scroll_start = source.index("const onScroll = () => {")
+    scroll_end = source.index("const onWheel", scroll_start)
+    scroll_handler = source[scroll_start:scroll_end]
+    assert "movedUp && (scrollbarPointerRef.current !== null || (recent && intent.up))" in scroll_handler
+
+
+def test_opening_a_step_of_the_live_run_keeps_following_the_live_edge() -> None:
+    source = SCROLL.read_text(encoding="utf-8")
+
+    click_start = source.index("const onDisclosureClick = (event: MouseEvent) => {")
+    click_end = source.index('scroller.addEventListener("click", onDisclosureClick, true);', click_start)
+    click = source[click_start:click_end]
+    # Only the run that is going on keeps following; history opened in place still ends the live edge.
+    assert 'runningRef.current && disclosure.closest(".turn-block.is-active")' in click
+    assert "openedStepRef.current = { header: disclosure, until: performance.now() + DISCLOSURE_MOTION_MS };" in click
+    assert "detachFromLiveFollow(scroller);" in click
+
+    # The step they opened keeps its header on screen; if following would push it out they are reading it.
+    step_start = source.index("const openLimit = openedStepLimit(scroller);")
+    step = source[step_start:step_start + 400]
+    assert "bottomTargetRef.current > openLimit + SCROLL_EPSILON_PX" in step
+    assert "detachFromLiveFollow(scroller);" in step
 
 
 def test_programmatic_upward_scroll_never_detaches_live_follow() -> None:
@@ -99,7 +146,7 @@ def test_programmatic_upward_scroll_never_detaches_live_follow() -> None:
     scroll_end = source.index("const onWheel = (event: WheelEvent) => {", scroll_start)
     scroll_handler = source[scroll_start:scroll_end]
 
-    assert "scrollbarPointerRef.current !== null && movedUp" in scroll_handler
+    assert "movedUp && (scrollbarPointerRef.current !== null || (recent && intent.up))" in scroll_handler
     assert "detachFromLiveFollow(scroller);" in scroll_handler
     assert "if (movedUp && !forceBottomRef.current)" not in scroll_handler
     assert "followingRef.current = false;" not in scroll_handler
@@ -111,9 +158,8 @@ def test_explicit_user_input_detaches_and_explicit_return_resumes_follow() -> No
 
     assert "userDetachedRef.current = true;" in source
     assert "returnIntentUntilRef.current = performance.now() + USER_RETURN_INTENT_MS;" in source
-    assert 'if (event.deltaY < 0) {' in source
+    assert "steer(event.target, event.deltaY < 0);" in source
     assert "detachFromLiveFollow(scroller);" in source
-    assert 'else if (event.deltaY > 0) {' in source
     assert "markReturnIntent();" in source
     assert "resumeIfUserReturnedToBottom" in source
     assert "userDetachedRef.current = false;" in source
@@ -124,7 +170,8 @@ def test_running_state_is_read_from_ref_inside_long_lived_resize_observer() -> N
 
     assert "const runningRef = useRef(Boolean(running));" in source
     assert "runningRef.current = nextRunning;" in source
-    assert "const liveMotion = runningRef.current || performance.now() < settleUntilRef.current;" in source
+    # Streaming growth is followed exactly; only completion (not a running turn) may ease.
+    assert "(forced || (!runningRef.current && performance.now() < settleUntilRef.current))" in source
 
 
 def test_completion_handoff_finishes_with_an_exact_bottom_pin() -> None:
@@ -143,7 +190,8 @@ def test_detached_scroll_state_survives_streaming_content_growth() -> None:
     observer_end = source.index("observer?.observe(scroller);", observer_start)
     observer = source[observer_start:observer_end]
     assert "} else {" in observer
-    assert "setJumpVisible(!isNearBottom(scroller));" in observer
+    # The control follows the reader's intent, not the distance: a detached reader always has a way back.
+    assert "setJumpVisible(userDetachedRef.current);" in observer
 
 
 def test_completed_process_fold_keeps_intrinsic_geometry_stable() -> None:
@@ -171,7 +219,7 @@ def test_jump_to_latest_reuses_owned_follow_scheduler() -> None:
     jump_end = source.index("return (", jump_start)
     jump = source[jump_start:jump_end]
     assert "userDetachedRef.current = false;" in jump
-    assert "scheduleBottomSync(scroller, true, reducedMotion);" in jump
+    assert "scheduleBottomSync(scroller, true, prefersReducedMotion());" in jump
     assert "scroller.scrollTo(" not in jump
 
 

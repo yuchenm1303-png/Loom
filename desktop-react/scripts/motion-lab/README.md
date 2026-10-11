@@ -16,6 +16,7 @@ and `LOOM_TEST_ORIGIN` for a Vite dev server serving `desktop-react` (the `motio
 | `cadence.mjs <trace.json>` | The typing rhythm of the receiving message: graphemes per reveal, gaps between reveals, graphemes per second. |
 | `probe.mjs [theme] [case,...]` | One transition at a time (a step is appended, a step ends, a command prints, a step fails, a stage is superseded, older steps fold, the turn completes) sampled every frame as height / opacity / top of the elements that matter. |
 | `conflicts.mjs <url> [ms]` | Stacked motion in a live run: nested elements that fade at the same moment (their opacities multiply) and elements with two animations or transitions on one property. |
+| `follow.mjs <url> [out.json] [width] [height] [dsf]` | Does the transcript stay on the live edge while a run streams? For every painted frame, how far the newest content lies below the viewport and whether follow is on; lists each episode where the view lagged, and every flip of follow. Use a short viewport so the run overflows. |
 | `states.mjs <outDir> [theme] [dsf] [scene,...]` | Static pictures of the work log in its states (mixed, failed, long, stages, open drawers, hover, a real session) at any device scale, for reading type and alignment. |
 | `film.mjs <url> <outDir> [intervalMs] [durationMs]` and `sheet.mjs <dir> <out.png> <frames> <x,y,w,h>` | Screenshots of a run every `intervalMs`, and a contact sheet of the ones you pick. |
 

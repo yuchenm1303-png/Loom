@@ -6,6 +6,15 @@ const base = { threadId: "thread-1", turnId: "turn-1", status: "completed" };
 const message = (id, text = "记录仍然可读。".repeat(20)) => ({ ...base, id, type: "assistant_message", phase: "commentary", text });
 const user = { ...base, id: "user", type: "user_message", text: "检查任务" };
 const slot = id => `.process-handoff-slot[data-process-items~="${id}"]`;
+// A reader can only scroll up when there is something above to scroll to, and these fixtures are short: give the
+// transcript that for a moment, leave the live edge the way a reader would, then take the extra space away.
+const leaveLiveEdge = async page => {
+  await page.evaluate(() => { document.querySelector(".transcript").style.paddingTop = "1600px"; });
+  await page.waitForTimeout(80);
+  await page.locator(".transcript-scroll").dispatchEvent("wheel", { deltaY: -200 });
+  await page.waitForFunction(() => document.querySelector(".transcript-scroll").dataset.following === "false");
+  await page.evaluate(() => { document.querySelector(".transcript").style.paddingTop = ""; });
+};
 try {
   const page = await browser.newPage({ viewport: { width: 1100, height: 800 } });
   const errors = [];
@@ -26,8 +35,7 @@ try {
     assert.equal(await page.locator(".earlier-process-toggle").count(), 0, "no empty history capsule while all records are retained");
     assert.ok(await page.evaluate(() => window.firstNode === document.querySelector('[data-message-id="first"]')));
     // Explicit upward input detaches before a long message can push records out.
-    await page.locator(".transcript-scroll").dispatchEvent("wheel", { deltaY: -200 });
-    await page.waitForFunction(() => document.querySelector(".transcript-scroll").dataset.following === "false");
+    await leaveLiveEdge(page);
     const long = message("long", Array.from({length: 45}, (_, i) => `段落 ${i}：保留完整工作记录。`).join("\n\n"));
     await render([user, message("first"), message("second"), long]);
     await page.waitForTimeout(900);
@@ -65,15 +73,14 @@ try {
     await page.waitForTimeout(300);
     // A long sentence is a message and takes the height this handoff geometry needs. Detach and follow
     // the live edge again, as a reader scrolling up and back would.
-    await page.locator(".transcript-scroll").dispatchEvent("wheel", { deltaY: -200 });
-    await page.waitForFunction(() => document.querySelector(".transcript-scroll").dataset.following === "false");
+    await leaveLiveEdge(page);
     await page.locator(".transcript-jump-latest").evaluate(el => el.click());
     await page.waitForTimeout(850);
     assert.equal(await page.locator(slot("t1")).count(), 1, "a mixed tool envelope keeps completed neighbours of live rows");
     assert.notEqual(await page.locator(slot("t1")).getAttribute("data-handoff-phase"), "folding");
     await render([...batch.map(item => item.id === "t2" ? tool("t2") : item), long]);
     await page.waitForFunction(() => document.querySelector('.process-handoff-slot[data-process-items~="t2"]')?.dataset.handoffPhase === "folding");
-    await page.locator(".transcript-scroll").dispatchEvent("wheel", { deltaY: -100 });
+    await leaveLiveEdge(page);
     await page.waitForTimeout(500);
     assert.equal(await page.locator(slot("t2")).getAttribute("data-handoff-phase"), "holding", "scrolling up reverses a pending retirement");
     await page.locator(".transcript-jump-latest").evaluate(el => el.click());
@@ -87,8 +94,7 @@ try {
     await render([user, { ...message("intro"), ...at(1) }, { ...tool("s1"), ...at(2) }, steer,
       { ...message("reply"), ...at(4) }, { ...tool("s2"), ...at(5) }, { ...long, ...at(6) }]);
     await page.waitForTimeout(700);
-    await page.locator(".transcript-scroll").dispatchEvent("wheel", { deltaY: -200 });
-    await page.waitForFunction(() => document.querySelector(".transcript-scroll").dataset.following === "false");
+    await leaveLiveEdge(page);
     await page.waitForTimeout(400);
     await page.locator(".transcript-jump-latest").evaluate(el => el.click());
     await page.waitForFunction(() => !document.querySelector('.process-handoff-slot[data-process-items~="s2"]'));

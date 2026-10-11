@@ -48,6 +48,15 @@ function Fixture() {
     },
     delta(index: number) { setItems(previous => previous.map(item => item.id === "live-answer"
       ? { ...item, text: `${item.text}\n\n流式更新 ${index}。` } : item)); },
+    // A finished step of the live run, with output to open: it lands before the streaming answer, as in a run.
+    step(index: number, lines = 14) {
+      const item = { id: `live-step-${index}`, turnId: "live", type: "tool_call", status: "completed", toolName: "exec",
+        arguments: { argv: ["echo", `step ${index}`] }, content: Array.from({ length: lines }, (_, line) => `step ${index} output ${line}`).join("\n") };
+      setItems(previous => {
+        const answer = previous.findIndex(entry => entry.id === "live-answer");
+        return answer < 0 ? [...previous, item as TranscriptItem] : [...previous.slice(0, answer), item as TranscriptItem, ...previous.slice(answer)];
+      });
+    },
     finish() { setRunning(false); },
     prepend() { setItems(previous => [
       { id: "older-user", turnId: "older", type: "user_message", text: "更早的记录" },

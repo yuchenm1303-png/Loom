@@ -24,6 +24,13 @@ const LIVE_FOLLOW_PRESSURE_PX = 420;
 const LIVE_SETTLE_WINDOW_MS = 820;
 const SEND_FOLLOW_WINDOW_MS = 360;
 const USER_RETURN_INTENT_MS = 420;
+// An input whose target is unclear (a key, a gesture over an output pane) only counts as heading up or down
+// if the transcript itself moves that way right after it.
+const USER_INPUT_INTENT_MS = 320;
+// A step opened during the run is judged over its own motion (the longest detail fold is 260ms): if following the
+// live edge would carry its header out of view, the reader is reading it; the header keeps this margin below the top.
+const DISCLOSURE_MOTION_MS = 420;
+const DISCLOSURE_TOP_MARGIN_PX = 16;
 const FINAL_SETTLE_PIN_DELAY_MS = LIVE_SETTLE_WINDOW_MS + 90;
 const PANEL_RESIZE_END_EVENT = "loom:panel-resize-end";
 const PANEL_LAYOUT_COMMIT_EVENT = "loom:panel-layout-commit";
@@ -56,6 +63,31 @@ function isNearBottom(scroller: HTMLDivElement): boolean {
   return distance <= BOTTOM_THRESHOLD_PX;
 }
 
+/** Has this element something to scroll? Geometry first: computed style is the dearer read. */
+function canScrollVertically(node: Element): boolean {
+  if (node.scrollHeight <= node.clientHeight + 1) return false;
+  const overflow = getComputedStyle(node).overflowY;
+  return overflow === "auto" || overflow === "scroll";
+}
+
+/**
+ * Is there a pane inside the transcript, a command's output for one, under a gesture that started on `target`?
+ * Then it is unclear who scrolls: Chrome has usually moved the pane already when the wheel event arrives, so its
+ * scroll position cannot say whether it took the tick or the transcript did. The scroll that follows can.
+ */
+function nestedScrollerUnder(target: EventTarget | null, scroller: HTMLDivElement): boolean {
+  for (let node = target instanceof Element ? target : null; node && node !== scroller; node = node.parentElement) {
+    if (canScrollVertically(node)) return true;
+  }
+  return false;
+}
+
+/** Caret movement and value changes in a form control are not scrolling, whatever key they use. */
+function isTextEntry(target: EventTarget | null): boolean {
+  return target instanceof Element
+    && (target.closest("input, textarea, select") !== null || (target instanceof HTMLElement && target.isContentEditable));
+}
+
 function latestUserMessageId(items: TranscriptItem[]): string {
   for (let index = items.length - 1; index >= 0; index -= 1) {
     const item = items[index];
@@ -79,6 +111,14 @@ function latestActivityItemId(items: TranscriptItem[]): string {
  * at the bottom because content grew" and "the user intentionally scrolled up".
  * Treating both as the same scroll event used to disable auto-follow during
  * thread swaps and large streaming/layout updates.
+ *
+ * Leaving the live edge is explicit, and it has to be real: a wheel or touch
+ * gesture that will move the transcript upward, a navigation key followed by an
+ * upward scroll, a scrollbar drag. A gesture that scrolls something else (a
+ * command's output pane) or nothing at all (a transcript that still fits) keeps
+ * following. Opening a step of the live run does not leave the edge either: the
+ * view keeps following the bottom, but never carries the opened step's header
+ * out of sight.
  *
  * Bottom sync work is coalesced to at most one rAF callback per frame so bursts
  * of tool/process/streaming updates do not force repeated synchronous layout.
@@ -127,6 +167,9 @@ export function TranscriptScrollController({
   const scrollbarPointerRef = useRef<number | null>(null);
   const userDetachedRef = useRef(false);
   const returnIntentUntilRef = useRef(0);
+  const inputIntentRef = useRef({ up: false, until: 0 });
+  // The step the reader just opened while the run was live, until its own motion is over.
+  const openedStepRef = useRef<{ header: HTMLElement; until: number } | null>(null);
   const runningRef = useRef(Boolean(running));
   const wasRunningRef = useRef(Boolean(running));
   const settleUntilRef = useRef(0);
@@ -197,8 +240,33 @@ export function TranscriptScrollController({
     forceBottomRef.current = false;
     snapBottomRef.current = false;
     returnIntentUntilRef.current = 0;
+    releaseOpenedStep();
     cancelScheduledScroll();
     setJumpVisible(true);
+  };
+
+  const releaseOpenedStep = () => {
+    openedStepRef.current = null;
+  };
+
+  /**
+   * Where the bottom sync must stop so a step the reader just opened keeps its header on screen: just above
+   * the header. Infinity when no such step is in its motion (closed, gone, or long enough ago that it
+   * is no longer the click that is moving things).
+   */
+  const openedStepLimit = (scroller: HTMLDivElement): number => {
+    const opened = openedStepRef.current;
+    if (!opened) return Number.POSITIVE_INFINITY;
+    if (
+      performance.now() > opened.until
+      || !opened.header.isConnected
+      || opened.header.getAttribute("aria-expanded") !== "true"
+    ) {
+      releaseOpenedStep();
+      return Number.POSITIVE_INFINITY;
+    }
+    const top = opened.header.getBoundingClientRect().top - scroller.getBoundingClientRect().top + scroller.scrollTop;
+    return Math.max(0, top - DISCLOSURE_TOP_MARGIN_PX);
   };
 
   const markReturnIntent = () => {
@@ -228,6 +296,15 @@ export function TranscriptScrollController({
         viewportHeightRef.current = scroller.clientHeight;
         bottomTargetRef.current = Math.max(0, scroller.scrollHeight - viewportHeightRef.current);
         bottomTargetDirtyRef.current = false;
+      }
+      // Following the live edge would carry the step the reader just opened out of view. They opened it to
+      // read it: stop on its header, as if they had scrolled up to it.
+      const openLimit = openedStepLimit(scroller);
+      if (bottomTargetRef.current > openLimit + SCROLL_EPSILON_PX) {
+        if (Math.abs(scroller.scrollTop - openLimit) > 0.01) scroller.scrollTop = openLimit;
+        lastScrollTopRef.current = scroller.scrollTop;
+        detachFromLiveFollow(scroller);
+        return;
       }
       const target = bottomTargetRef.current;
       const currentTop = scroller.scrollTop;
@@ -349,6 +426,7 @@ export function TranscriptScrollController({
       followingRef.current = true;
       publishFollowing(scroller, true);
       returnIntentUntilRef.current = 0;
+      releaseOpenedStep();
       setJumpVisible(false);
       scheduleBottomSync(scroller, true, true);
     } else if (turnChanged || userMessageAdded) {
@@ -364,6 +442,7 @@ export function TranscriptScrollController({
       followingRef.current = true;
       publishFollowing(scroller, true);
       returnIntentUntilRef.current = 0;
+      releaseOpenedStep();
       setJumpVisible(false);
       scheduleBottomSync(scroller, true);
     } else if (activityAdded && followingRef.current) {
@@ -391,6 +470,7 @@ export function TranscriptScrollController({
     publishFollowing(scroller, true);
     forceBottomRef.current = true;
     returnIntentUntilRef.current = 0;
+    releaseOpenedStep();
     lastScrollTopRef.current = scroller.scrollTop;
     setJumpVisible(false);
     // Mount/thread swaps are authoritative navigation and should not visibly
@@ -422,12 +502,17 @@ export function TranscriptScrollController({
 
       // Never infer user intent from direction alone. Streaming Markdown,
       // collapsing task groups and browser scroll anchoring can all move
-      // scrollTop upward without any human input. Only a scrollbar drag is
-      // diagnosed here because its pointer provenance is explicit; wheel/touch
-      // and keyboard intent are captured before their scroll event.
-      if (scrollbarPointerRef.current !== null && movedUp) {
+      // scrollTop upward without any human input. A move is the reader's only
+      // when the input that caused it is known: a scrollbar drag (its pointer
+      // is explicit) or a key / gesture over an output pane a moment ago (their
+      // targets do not say which pane scrolls; the scroll does). A wheel or
+      // touch over plain content is decided when it arrives, before this event.
+      const intent = inputIntentRef.current;
+      const recent = performance.now() <= intent.until;
+      if (movedUp && (scrollbarPointerRef.current !== null || (recent && intent.up))) {
         detachFromLiveFollow(scroller);
       } else {
+        if (recent && !intent.up && nextScrollTop > lastScrollTopRef.current + SCROLL_EPSILON_PX) releaseOpenedStep();
         resumeIfUserReturnedToBottom();
       }
 
@@ -436,12 +521,23 @@ export function TranscriptScrollController({
       if (nextScrollTop <= HISTORY_LOAD_THRESHOLD_PX) requestOlderHistory(scroller);
     };
 
+    // Which way a wheel or touch gesture heads, and whether it is the transcript's business at all.
     const onWheel = (event: WheelEvent) => {
-      if (isPanelResizeActive()) return;
-      if (event.deltaY < 0) {
-        detachFromLiveFollow(scroller);
+      if (isPanelResizeActive() || event.ctrlKey || !event.deltaY) return; // ctrl+wheel zooms the page
+      steer(event.target, event.deltaY < 0);
+    };
+
+    const steer = (target: EventTarget | null, up: boolean) => {
+      if (nestedScrollerUnder(target, scroller)) {
+        // Unclear who scrolls: remember the heading and let onScroll decide.
+        inputIntentRef.current = { up, until: performance.now() + USER_INPUT_INTENT_MS };
+        if (!up) markReturnIntent();
+      } else if (up) {
+        // Pulling at a transcript that has nothing to scroll is not leaving the live edge.
+        if (canScrollVertically(scroller)) detachFromLiveFollow(scroller);
         requestOlderHistory(scroller);
-      } else if (event.deltaY > 0) {
+      } else {
+        releaseOpenedStep();
         markReturnIntent();
         resumeIfUserReturnedToBottom();
       }
@@ -458,13 +554,8 @@ export function TranscriptScrollController({
       if (nextY == null) return;
       if (previousY != null) {
         // Finger down reveals older content; finger up heads toward latest.
-        if (nextY > previousY + SCROLL_EPSILON_PX) {
-          detachFromLiveFollow(scroller);
-          requestOlderHistory(scroller);
-        } else if (nextY < previousY - SCROLL_EPSILON_PX) {
-          markReturnIntent();
-          resumeIfUserReturnedToBottom();
-        }
+        if (nextY > previousY + SCROLL_EPSILON_PX) steer(event.target, true);
+        else if (nextY < previousY - SCROLL_EPSILON_PX) steer(event.target, false);
       }
       touchYRef.current = nextY;
     };
@@ -480,6 +571,7 @@ export function TranscriptScrollController({
       const hitWidth = Math.max(12, nativeGutter + 3);
       if (event.clientX >= rect.right - hitWidth) {
         scrollbarPointerRef.current = event.pointerId;
+        releaseOpenedStep();
       }
     };
 
@@ -492,14 +584,10 @@ export function TranscriptScrollController({
       }
     };
 
+    // With nothing focused the keyboard still scrolls the pane the reader last clicked, and the key's target
+    // (the body) does not say which. So a key only records intent; the scroll it causes, if it is ours, decides.
     const onKeyDown = (event: KeyboardEvent) => {
-      const target = event.target as HTMLElement | null;
-      if (
-        !target || !scroller.contains(target)
-        || target.closest("input, textarea, select, button, a, [role='button'], [role='slider']")
-        || target?.isContentEditable
-        || event.defaultPrevented
-      ) return;
+      if (isTextEntry(event.target) || event.altKey || event.metaKey) return;
 
       if (
         event.key === "PageUp"
@@ -507,7 +595,7 @@ export function TranscriptScrollController({
         || event.key === "ArrowUp"
         || (event.key === " " && event.shiftKey)
       ) {
-        detachFromLiveFollow(scroller);
+        inputIntentRef.current = { up: true, until: performance.now() + USER_INPUT_INTENT_MS };
         requestOlderHistory(scroller);
       } else if (
         event.key === "PageDown"
@@ -515,6 +603,7 @@ export function TranscriptScrollController({
         || event.key === "ArrowDown"
         || (event.key === " " && !event.shiftKey)
       ) {
+        inputIntentRef.current = { up: false, until: performance.now() + USER_INPUT_INTENT_MS };
         markReturnIntent();
         resumeIfUserReturnedToBottom();
       }
@@ -526,6 +615,7 @@ export function TranscriptScrollController({
       // frame. Re-pin the bottom in this layout phase so a long transcript does
       // not visibly jump upward when its line wrapping changes.
       cancelScheduledScroll();
+      releaseOpenedStep();
       scroller.scrollTop = Math.max(0, scroller.scrollHeight - scroller.clientHeight);
       lastScrollTopRef.current = scroller.scrollTop;
       followingRef.current = true;
@@ -540,15 +630,23 @@ export function TranscriptScrollController({
       if (followingRef.current || forceBottomRef.current) scheduleBottomSync(scroller);
     };
 
-    // A disclosure is explicit reading intent, just like scrolling upward.
-    // Capture before React changes its height: otherwise ResizeObserver starts
-    // a second bottom-follow animation on every frame of the CSS fold, pushing
-    // all preceding messages upward and chasing a continuously moving target.
-    // Delegated click also covers keyboard activation and rapid reversals.
+    // Opening something is a decision about where the reader looks, taken before React changes any height
+    // (delegated click also covers keyboard activation and rapid reversals).
+    // - A step of the run that is still going: the reader is watching it work. Following the bottom is exactly
+    //   what they expect, so it continues; only if that would push the step they opened out of view do they
+    //   stay on it (see openedStepLimit).
+    // - Anything else (a finished turn's process, a decision card): the reader opened history in place. Like
+    //   scrolling up, that ends the live edge, and the fold must not be chased by a bottom follow.
+    // Closing never needs a decision: content only shrinks under a view that is already where it should be.
     const onDisclosureClick = (event: MouseEvent) => {
       const target = event.target instanceof Element ? event.target : null;
       const disclosure = target?.closest<HTMLButtonElement>("button[aria-expanded]");
       if (!disclosure || disclosure.disabled || !content.contains(disclosure)) return;
+      if (!followingRef.current || disclosure.getAttribute("aria-expanded") === "true") return;
+      if (runningRef.current && disclosure.closest(".turn-block.is-active")) {
+        openedStepRef.current = { header: disclosure, until: performance.now() + DISCLOSURE_MOTION_MS };
+        return;
+      }
       detachFromLiveFollow(scroller);
     };
 
@@ -610,13 +708,12 @@ export function TranscriptScrollController({
     publishFollowing(scroller, true);
     forceBottomRef.current = false;
     returnIntentUntilRef.current = 0;
+    releaseOpenedStep();
     setJumpVisible(false);
 
-    const reducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches
-      || document.documentElement.dataset.loomReducedMotion === "true";
     // Reuse the same owned follow loop instead of starting a second native
     // smooth-scroll animation that can race ResizeObserver during streaming.
-    scheduleBottomSync(scroller, true, reducedMotion);
+    scheduleBottomSync(scroller, true, prefersReducedMotion());
   };
 
   return (
