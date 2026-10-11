@@ -78,6 +78,20 @@ test("clean install selects account model without resolving a provider key", () 
   assert.equal(manager.ensureInitial().authMode, "loom-account");
 });
 
+test("fresh startup prefers Flash Preview while a saved selection remains unchanged", () => {
+  const oldDefault = profile({ id: "minimax-primary", selection: "builtin:minimax" });
+  const preview = profile({ id: "preview", selection: "managed:MiniMax-M3.1-Flash-Preview", model: "MiniMax-M3.1-Flash-Preview" });
+  for (const hasSavedSelection of [false, true]) {
+    const manager = new DesktopModelManager(os.tmpdir());
+    manager.registry = () => ({ primary: oldDefault, profiles: [oldDefault, preview], activeModelId: oldDefault.id, hasSavedSelection });
+    manager.resolve = (selection) => {
+      assert.equal(selection, hasSavedSelection ? oldDefault.selection : preview.selection);
+      return { ...preview, selection };
+    };
+    manager.ensureInitial();
+  }
+});
+
 test("configured user connection remains the startup selection", () => {
   const manager = new DesktopModelManager(os.tmpdir());
   manager.registry = () => registry();

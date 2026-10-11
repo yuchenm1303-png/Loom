@@ -103,6 +103,7 @@ interface RegistrySnapshot {
   primary: ModelProfile;
   profiles: ModelProfile[];
   activeModelId: string | null;
+  hasSavedSelection?: boolean;
 }
 
 interface ModelMetadataSnapshot {
@@ -110,6 +111,7 @@ interface ModelMetadataSnapshot {
 }
 
 export const PRIMARY_SELECTION = "builtin:minimax";
+export const DEFAULT_MODEL = "MiniMax-M3.1-Flash-Preview";
 const ANT_LING_SELECTION = "builtin:ant-ling";
 const ANT_LING_SELECTION_PREFIX = "builtin:ant-ling:";
 
@@ -167,7 +169,11 @@ export class DesktopModelManager {
     // of resolving the developer's default MiniMax environment credential.
     const accountDefault = registry.profiles.find((profile) => profile.authMode === "loom-account"
       && profile.selection === ANT_LING_SELECTION);
-    const selection = (active && active.configured !== false ? active.selection : accountDefault?.selection)
+    const preferredDefault = registry.profiles.find((profile) => profile.model === DEFAULT_MODEL
+      && profile.configured !== false && profile.available !== false);
+    const startupDefault = preferredDefault ?? accountDefault;
+    const selection = (registry.hasSavedSelection !== false && active && active.configured !== false
+      ? active.selection : startupDefault?.selection)
       || active?.selection || PRIMARY_SELECTION;
     return { selection, fallback: accountDefault?.selection };
   }
@@ -245,6 +251,7 @@ export class DesktopModelManager {
       ...registry,
       profiles,
       activeModelId: activeAntLing?.id ?? registry.activeModelId,
+      hasSavedSelection: Boolean(activeAntLing) || registry.hasSavedSelection,
     };
   }
 

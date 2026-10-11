@@ -1282,6 +1282,7 @@ def _snapshot(
         "primary": primary,
         "profiles": profiles or [primary],
         "activeModelId": str(active_profile.get("id") or "") or None,
+        "hasSavedSelection": bool(selection_store.get() or store.active_model()),
     }
 
 
