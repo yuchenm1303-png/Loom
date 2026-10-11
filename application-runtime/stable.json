@@ -1,16 +1,16 @@
 {
   "schema": 1,
   "kind": "application",
-  "build": 3001,
+  "build": 4001,
   "bootstrap": "0.1.83",
-  "sourceSha": "269dd36afe8a384c95bd04bafa36c397dcb5930b",
-  "sourceTime": 1791726350,
+  "sourceSha": "a42e9ebfafb0ac428794ec9c946da1de3231f396",
+  "sourceTime": 1791731107,
   "files": [
     {
-      "path": "dist/assets/index-C5atBrDi.js",
-      "size": 1832702,
-      "sha256": "a16a6f0390129076363ca47169ba8afdc1c9bafce60ff7924bd587b678ac194e",
-      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/a16a6f0390129076363ca47169ba8afdc1c9bafce60ff7924bd587b678ac194e"
+      "path": "dist/assets/index-DezB0Mvm.js",
+      "size": 1832786,
+      "sha256": "2ae26926d8a2079e676b6ee523e858c46ca3025754cdf817169944da23e20eda",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-4001/2ae26926d8a2079e676b6ee523e858c46ca3025754cdf817169944da23e20eda"
     },
     {
       "path": "dist/assets/index-DtXzM451.css",
@@ -1119,8 +1119,8 @@
     {
       "path": "dist/index.html",
       "size": 3157,
-      "sha256": "8b7a4aa2036d83328410adc18cb249374817a2f8cb5529528ac1832c5cb55b96",
-      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/8b7a4aa2036d83328410adc18cb249374817a2f8cb5529528ac1832c5cb55b96"
+      "sha256": "fd72e275c2001fa616d46dcf1428c633ea3c27e0ff4f2549c01865d25c18e83c",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-4001/fd72e275c2001fa616d46dcf1428c633ea3c27e0ff4f2549c01865d25c18e83c"
     },
     {
       "path": "dist/smirel-logo.png",
@@ -1143,8 +1143,8 @@
     {
       "path": "dist/ui-baseline.json",
       "size": 80,
-      "sha256": "7b321b5aca6671be99f028dfcc6cf892b01e00009501de33248d9b7de78c5de5",
-      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-3001/7b321b5aca6671be99f028dfcc6cf892b01e00009501de33248d9b7de78c5de5"
+      "sha256": "861f8d9d7b5efd4a35674b221bfd5d5d0cb855c6c71652d293bd028aba745dc6",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-4001/861f8d9d7b5efd4a35674b221bfd5d5d0cb855c6c71652d293bd028aba745dc6"
     },
     {
       "path": "dist-electron/accountClient.js",
