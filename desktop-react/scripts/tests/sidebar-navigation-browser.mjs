@@ -78,6 +78,27 @@ try {
     await page.locator('.compact-thread-scroll').evaluate(el => el.scrollTop = 50);
     assert.ok(Math.abs((await pill.boundingBox()).y - (await row(2).boundingBox()).y - 1) < 1);
     await page.setViewportSize({ width: 1440, height: 1000 });
+
+    // A stalled shared read must stop blocking the UI and allow a fresh retry.
+    await page.clock.install();
+    await page.evaluate(() => window.navigationFixture.hold('visual-6'));
+    await click(6);
+    await page.waitForFunction(() => window.navigationFixture.pending.has('visual-6'));
+    const lateReply = await page.evaluateHandle(() => window.navigationFixture.pending.get('visual-6'));
+    await page.clock.fastForward(15_001);
+    await page.getByText('对话加载超时，请再次点击该对话重试。', { exact: true }).waitFor();
+    assert.equal(await page.locator('.workspace').evaluate(el => el.classList.contains('is-thread-switching')), false);
+    assert.ok((await row(2).getAttribute('class')).includes('active'));
+    await click(6);
+    await page.waitForFunction(previous => window.navigationFixture.pending.get('visual-6') !== previous, lateReply);
+    await page.evaluate(() => window.navigationFixture.release('visual-6'));
+    await page.locator('.markdown-body').filter({ hasText: 'Loaded visual-6' }).waitFor();
+    await click(2);
+    await page.evaluate(previous => previous.resolve({ thread: { id: 'visual-6' }, turns: [] }), lateReply);
+    await page.waitForTimeout(100);
+    assert.ok((await row(2).getAttribute('class')).includes('active'), 'timed-out response cannot replace the current conversation');
+    await lateReply.dispose();
+    await page.clock.resume();
   }
   assert.deepEqual(errors, []);
   console.log('Sidebar selection and latest-click navigation passed in both themes: immediate movement, delayed/out-of-order reads, switch-back, failures, reduced motion and scrolling.');

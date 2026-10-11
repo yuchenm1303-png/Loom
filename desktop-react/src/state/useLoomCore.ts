@@ -21,6 +21,7 @@ import { preservePendingUserIdentity, reconcilePendingUserMessage } from "../pen
 import { buildApprovalResponse } from "./approvalProtocol";
 import { switchCurrentModelForThread, switchModelProfileForThread } from "./modelSwitchRouting";
 import { RetainedBudgetMap } from "./retainedBudgetMap";
+import { withThreadReadTimeout } from "./threadReadTimeout";
 
 type ThreadView = "active" | "archived";
 type ThreadCounts = { active: number; archived: number; all: number };
@@ -478,13 +479,13 @@ export function useLoom() {
     const existing = threadReadInflightRef.current.get(requestKey);
     if (existing) return existing;
 
-    const request = requireBridge()
+    const request = withThreadReadTimeout(requireBridge()
       .call<ThreadReadResult>("thread/read", {
         threadId,
         presentationOnly: true,
         turnLimit: THREAD_READ_WINDOW_TURNS,
         ...(beforeTurnId ? { beforeTurnId } : {}),
-      })
+      }))
       .then((result) => normalizeThreadReadWindow(result, beforeTurnId))
       .finally(() => {
         if (threadReadInflightRef.current.get(requestKey) === request) {
