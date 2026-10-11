@@ -50,6 +50,7 @@ candidate="loom-web:autosync-${remote:0:12}"
 echo "$LOG_PREFIX building main=${remote:0:12}"
 docker build -q \
   --build-arg "LOOM_BUILD_SHA=$remote" \
+  --build-arg "LOOM_BUILD_SOURCE_TIME=$(git show -s --format=%ct "$remote")" \
   -f services/loom_web_gateway/Dockerfile \
   -t "$candidate" . >/dev/null
 

@@ -1,4 +1,8 @@
 FROM node:22-bookworm-slim AS web
+ARG LOOM_BUILD_SHA=unknown
+ARG LOOM_BUILD_SOURCE_TIME=0
+ENV LOOM_BUILD_SHA=${LOOM_BUILD_SHA} \
+    LOOM_BUILD_SOURCE_TIME=${LOOM_BUILD_SOURCE_TIME}
 WORKDIR /src/desktop-react
 COPY desktop-react/package.json desktop-react/package-lock.json ./
 RUN npm ci --no-audit --no-fund
