@@ -102,9 +102,21 @@ try {
     ["settings-page-2", async () => { const buttons = page.locator(".settings-nav button"); await buttons.nth(2).click(); }, 800],
     ["settings-page-3", async () => { const buttons = page.locator(".settings-nav button"); await buttons.nth(4).click(); }, 800],
     ["settings-page-4", async () => { const buttons = page.locator(".settings-nav button"); await buttons.nth(6).click(); }, 800],
-    ["settings-close", async () => { await page.keyboard.press("Escape"); }, 1000],
+    // Settings has no Escape: it closes with its own "Back to Loom".
+    ["settings-close", async () => { await page.locator(".settings-back").click(); }, 1000],
     ["profile-open", async () => { await byLabel("个人主页与使用洞察").click(); }, 1100],
     ["profile-close", async () => { await page.keyboard.press("Escape"); }, 1000],
+    ["account-open", async () => { await page.locator(".thread-account-button").click(); }, 900],
+    ["account-close", async () => { await page.keyboard.press("Escape"); }, 700],
+    ["project-details-open", async () => { await page.locator(".project-git-pr").click(); }, 900],
+    ["project-details-close", async () => { await page.locator(".project-details-close").click(); }, 800],
+    // Every page of settings in turn (the first one opened with the settings themselves).
+    ["settings-walk-open", async () => { await byLabel("打开 Loom 设置").click(); }, 1000],
+    ...Array.from({ length: 12 }, (_, index) => [`settings-walk-${index + 1}`, async () => {
+      const buttons = page.locator(".settings-nav button");
+      if (index < await buttons.count()) await buttons.nth(index).click();
+    }, 650]),
+    ["settings-walk-close", async () => { await page.locator(".settings-back").click(); }, 900],
   ];
 
   const repeat = Number(option("--repeat", "1"));

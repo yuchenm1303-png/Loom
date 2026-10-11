@@ -500,8 +500,16 @@ const handlers: Record<string, (args: Record<string, unknown>) => unknown> = {
   "project/workspace_status": (args) => ({ projectId: args.projectId, root: workspace, exists: true, isDirectory: true,
     git: { available: true, isRepo: false, branch: "", summary: "", changedCount: 0, changedFiles: [], truncated: false },
     tree: { entries: [], truncated: false, limit: 100, maxDepth: 2 } }),
-  "profile/insights": () => ({ range: { startDate: "2025-10-01", endDate: "2026-10-07", totalTokens: 0 },
-    totals: { activeDays: 0, modelCalls: 0 }, streaks: { current: 0 }, peakDay: null, days: [] }),
+  // The whole shape the profile page reads (a page that is handed less than this throws while it renders).
+  "profile/insights": () => ({ generatedAt: "2026-10-07T08:00:00Z", range: { startDate: "2025-10-01", endDate: "2026-10-07", totalTokens: 3_820_000 },
+    totals: { inputTokens: 3_100_000, outputTokens: 720_000, totalTokens: 3_820_000, sessions: 31, turns: 96, modelCalls: 412, toolCalls: 733, subAgentRuns: 6, activeDays: 19 },
+    streaks: { current: 3, longest: 7, activeToday: true }, peakDay: { date: "2026-09-28", totalTokens: 520_000 }, longestTurnSeconds: 412, longestTurnDate: "2026-09-28",
+    activeHour: { hour: 21, turns: 14 }, hours: Array.from({ length: 24 }, (_, hour) => (hour > 8 && hour < 23 ? 2 + (hour % 5) : 0)),
+    firstActivityDate: "2026-08-12", lastActivityDate: "2026-10-07",
+    models: [{ name: "MiniMax-M3", calls: 331, tokens: 3_000_000 }, { name: "Qwen3-Coder", calls: 81, tokens: 820_000 }], modelKinds: 2,
+    tools: [{ name: "exec", calls: 210 }, { name: "read_workspace_text", calls: 188 }, { name: "apply_patch", calls: 96 }], toolKinds: 3,
+    days: Array.from({ length: 40 }, (_, index) => { const date = new Date(Date.UTC(2026, 7, 29 + index)).toISOString().slice(0, 10); const total = (index * 37 % 11) * 40_000;
+      return { date, inputTokens: Math.round(total * 0.8), outputTokens: Math.round(total * 0.2), totalTokens: total, modelCalls: total / 10_000, turns: total ? 1 + index % 4 : 0, toolCalls: total / 5_000, sessions: total ? 1 : 0 }; }) }),
   "thread/list": () => ({ threads, counts: { active: threads.length, archived: 12, all: threads.length + 12 } }),
   "project/list": () => ({ projects, unfiledThreadCount: 0 }),
   "thread/read": (args) => snapshot(String(args.threadId)),
