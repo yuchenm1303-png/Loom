@@ -891,9 +891,7 @@ class AgentRuntime:
                 self._append_tool_result(
                     session,
                     call,
-                    ToolResult(ok=False, content=f"Invalid tool request ({call.name}): {exc}. "
-                               "This call was not executed. Choose an advertised tool and correct its arguments.",
-                               data={"failure_kind": "invalid_tool_request", "execution_status": "not_executed"}),
+                    self._invalid_tool_request_result(session, call, exc),
                     failed=True,
                     step=execution_step,
                 )
@@ -984,9 +982,7 @@ class AgentRuntime:
             self._append_tool_result(
                 session,
                 call,
-                ToolResult(ok=False, content=f"Invalid tool request ({call.name}): {exc}. "
-                           "This call was not executed. Choose an advertised tool and correct its arguments.",
-                           data={"failure_kind": "invalid_tool_request", "execution_status": "not_executed"}),
+                self._invalid_tool_request_result(session, call, exc),
                 failed=True,
                 step=step,
             )
@@ -1001,6 +997,29 @@ class AgentRuntime:
             token=token,
             step=step,
             approval_granted=approval_granted,
+        )
+
+    def _invalid_tool_request_result(self, session, call, error) -> ToolResult:
+        from .execution_guidance import tool_call_fingerprint
+        fingerprint = tool_call_fingerprint(call)
+        count = 1
+        for event in self._lifecycle_events(session.session_id):
+            if event.turn_id != session.current_turn_id:
+                continue
+            data = event.data.get("data", {})
+            if isinstance(data, dict) and data.get("invalid_request_fingerprint") == fingerprint:
+                count += 1
+        repeated = count > 1
+        return ToolResult(
+            ok=False,
+            content=f"Invalid tool request ({call.name}): {error}. This call was not executed. "
+                    + ("Do not repeat this unchanged request. Correct it using the advertised schema/tool_search, "
+                       "or report the blocker and continue independent work." if repeated else
+                       "Choose an advertised tool and correct its arguments."),
+            data={"failure_kind": "invalid_tool_request", "execution_status": "not_executed",
+                  **getattr(error, "details", {"error_code": "tool_schema_error"}),
+                  "invalid_request_fingerprint": fingerprint, "repeat_count": count,
+                  "retry_policy": "correct_before_retry" if not repeated else "do_not_repeat_unchanged"},
         )
 
     def _tool_repeat_metadata(

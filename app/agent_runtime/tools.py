@@ -455,14 +455,23 @@ class ToolValidationUnavailable(RuntimeError):
 BLOCKED_SENSITIVE_INPUT_ARGUMENT = "_loom_blocked_sensitive_input"
 
 
+class ToolRequestError(ValueError):
+    """Content-free dispatch diagnosis; never include rejected argument values."""
+
+    def __init__(self, message: str, *, code: str, path: str = "$", rule: str = ""):
+        super().__init__(message)
+        self.details = {"error_code": code, "argument_path": path, "validation_rule": rule}
+
+
 def validate_tool_arguments(schema: dict[str, Any], arguments: dict[str, Any]) -> None:
     if not isinstance(arguments, dict):
-        raise ValueError("tool arguments must be a JSON object")
+        raise ToolRequestError("tool arguments must be a JSON object", code="invalid_arguments", rule="type")
     if BLOCKED_SENSITIVE_INPUT_ARGUMENT in arguments:
-        raise ValueError(
+        raise ToolRequestError(
             "this call was refused before it reached the browser because its URL carried "
             "something credential-shaped (a token, key, password, or session id). The secret "
-            "is not available to you. Reach the page another way, or ask the user to open it."
+            "is not available to you. Reach the page another way, or ask the user to open it.",
+            code="sensitive_input_refused",
         )
     if schema.get("type") != "object":
         raise ValueError("tool root schema must be type=object")
@@ -479,7 +488,15 @@ def validate_tool_arguments(schema: dict[str, Any], arguments: dict[str, Any]) -
         raise ValueError(f"invalid or unresolved tool schema: {exc}") from exc
     if error is not None:
         path = "$" + "".join(f".{p}" for p in error.absolute_path)
-        raise ValueError(f"{path}: {error.message}")
+        # jsonschema's message/instance may contain passwords or entire payloads.
+        # The schema and field path suffice for repair without echoing values.
+        rule = str(error.validator)
+        if rule == "required" and isinstance(error.instance, dict):
+            missing = next((name for name in error.validator_value if name not in error.instance), None)
+            if missing is not None:
+                path += "." + str(missing)
+        raise ToolRequestError(f"{path}: arguments violate schema rule {rule}; consult the advertised schema",
+                               code="invalid_arguments", path=path, rule=rule)
 
 
 __all__ = [

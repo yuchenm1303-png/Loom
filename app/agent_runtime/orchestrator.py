@@ -23,7 +23,7 @@ from .sandbox_denial import classify_exec_sandbox_denial
 from .sandbox_failure import SandboxExecutionError
 from .account_tool_access import account_capability_allowed, account_tool_access_status
 from .step import StepContext
-from .tools import AgentTool, ToolContext, ToolPolicy, ToolResult, tool_capability_name, validate_tool_arguments
+from .tools import AgentTool, ToolContext, ToolPolicy, ToolResult, ToolRequestError, tool_capability_name, validate_tool_arguments
 
 
 @dataclass(frozen=True, slots=True)
@@ -422,9 +422,10 @@ class ToolOrchestrator:
     ) -> PreparedToolCall:
         tool = step.tool_router.get(call.name)
         if tool is None:
-            raise ValueError(f"Unknown or unavailable tool: {call.name}. If tool_search is advertised, "
+            raise ToolRequestError(f"Unknown or unavailable tool: {call.name}. If tool_search is advertised, "
                              f"search for {call.name!r}, wait for the next model step, and use its returned schema. "
-                             "Do not guess argument names or infer a browser disconnection from this rejection")
+                             "Do not guess argument names or infer a browser disconnection from this rejection",
+                             code="tool_not_available")
         validate_tool_arguments(tool.input_schema, call.arguments)
 
         if tool.name == "exec":

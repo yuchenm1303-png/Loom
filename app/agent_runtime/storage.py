@@ -282,6 +282,9 @@ def _context_event_projection(payload):
         selected = dict(data)
     elif kind == "tool_started":
         selected = {key: data[key] for key in ("call_id", "tool", "effect", "call_fingerprint", "repeat_count") if key in data}
+    elif kind == "tool_failed":
+        result = data.get("data") or {}
+        selected = {"data": {key: result[key] for key in ("invalid_request_fingerprint", "repeat_count") if key in result}}
     elif kind in {"model_requested", "model_response", "model_response_rejected"}:
         selected = {key: data[key] for key in ("profile_id", "provider", "model", "usage", "reason",
                     "estimated_input_tokens_before", "estimated_input_tokens_after", "rejected_input_tokens") if key in data}

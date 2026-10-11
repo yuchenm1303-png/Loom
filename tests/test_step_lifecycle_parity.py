@@ -177,6 +177,7 @@ def test_invalid_tool_arguments_return_correlated_result_and_turn_continues(tmp_
                     ),
                 )
             ),
+            ModelResponse(tool_calls=(ToolCall(call_id="bad-2", name="inspect_path", arguments={"path": 7}),)),
             ModelResponse(text="recovered"),
         )
     )
@@ -201,10 +202,16 @@ def test_invalid_tool_arguments_return_correlated_result_and_turn_continues(tmp_
     assert any(call.call_id == "bad-1" for message in stored.messages for call in message.tool_calls)
     rejected = [event for event in runtime.store.events(session.session_id) if event.kind.value == "model_response_rejected"]
     assert rejected == []
-    assert len(platform.requests) == 2
+    assert len(platform.requests) == 3
     recovery = next(m for m in platform.requests[1].messages if m.tool_call_id == "bad-1")
     assert recovery.role is MessageRole.TOOL
     assert recovery.name == "inspect_path"
     assert "$.path" in str(recovery.content)
     assert "not_executed" in str(recovery.content)
+    failures = [event.data["data"] for event in runtime.store.events(session.session_id)
+                if event.kind.value == "tool_failed"]
+    assert failures[-1]["repeat_count"] == 2
+    assert failures[-1]["retry_policy"] == "do_not_repeat_unchanged"
+    assert failures[-1]["argument_path"] == "$.path"
+    assert failures[-1]["validation_rule"] == "type"
     runtime.close()
