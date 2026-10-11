@@ -1,4 +1,6 @@
 import asyncio
+import queue
+import threading
 import time
 
 import pytest
@@ -6,9 +8,68 @@ import pytest
 pytest.importorskip("fastapi")
 
 from fastapi.testclient import TestClient
+from starlette.testclient import WebSocketTestSession
 from starlette.websockets import WebSocketDisconnect
 
 from services.loom_web_gateway import app as gateway
+
+WAIT_SECONDS = 15
+
+
+@pytest.fixture(autouse=True)
+def realistic_websocket_sessions(monkeypatch):
+    """Make Starlette's WebSocket test sessions behave like a real server.
+
+    Two gaps matter here. A session waits for the next frame with no timeout, so a
+    frame that never arrives hangs the whole run. And leaving a session cancels the
+    app right after the disconnect, cutting the handler's cleanup short: the Host's
+    "device offline" broadcast is dropped (the test then waits for it forever) or an
+    interrupted asyncio.gather raises a CancelledError that anyio does not recognise.
+    A real server lets disconnect cleanup run to completion.
+    """
+    init, receive, leave = WebSocketTestSession.__init__, WebSocketTestSession.receive, WebSocketTestSession.__exit__
+
+    def __init__(self, app, scope, portal_factory):
+        self.handler_finished = threading.Event()
+
+        async def tracked(*asgi):
+            try:
+                await app(*asgi)
+            finally:
+                self.handler_finished.set()
+
+        init(self, tracked, scope, portal_factory)
+
+    def bounded_receive(self):
+        outcome = queue.Queue()
+
+        def wait():
+            try:
+                outcome.put((receive(self), None))
+            except BaseException as error:  # delivered to the test thread below
+                outcome.put((None, error))
+
+        threading.Thread(target=wait, daemon=True).start()
+        try:
+            message, error = outcome.get(timeout=WAIT_SECONDS)
+        except queue.Empty:
+            raise AssertionError(f"no WebSocket frame arrived within {WAIT_SECONDS}s") from None
+        if error is not None:
+            raise error
+        return message
+
+    def __exit__(self, *args):
+        self.close(1000)
+        finished = self.handler_finished.wait(WAIT_SECONDS)
+        try:
+            return leave(self, *args)
+        finally:
+            if not finished and args[0] is None:
+                raise AssertionError(f"the handler did not finish within {WAIT_SECONDS}s of the disconnect")
+
+    monkeypatch.setattr(WebSocketTestSession, "__init__", __init__)
+    monkeypatch.setattr(WebSocketTestSession, "receive", bounded_receive)
+    monkeypatch.setattr(WebSocketTestSession, "__exit__", __exit__)
 
 
 def test_public_bundles_are_compressed_but_account_responses_are_not(tmp_path, monkeypatch):
