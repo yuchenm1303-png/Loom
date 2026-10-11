@@ -130,6 +130,49 @@ function newClient() {
   return new LoomAccountClient();
 }
 
+test("status survives token rotation while auth/me is in flight", async () => {
+  await seedSession({ accessToken: "old", refreshToken: "old-refresh", expiresAt: Date.now() + 3600000, user: USER });
+  let finishMe, startedMe;
+  const started = new Promise(resolve => { startedMe = resolve; });
+  let meCalls = 0, searchCalls = 0;
+  installFetch({
+    "/v1/auth/me": () => {
+      if (++meCalls > 1) return reply(200, { user: USER });
+      startedMe();
+      return new Promise(resolve => { finishMe = resolve; });
+    },
+    "/v1/search": () => ++searchCalls === 1 ? reply(401, { error: { code: "TOKEN_EXPIRED" } }) : reply(200, { results: [] }),
+    "/v1/auth/refresh": () => reply(200, sessionBody()),
+  });
+  const client = newClient();
+  const status = client.status();
+  // Attach before releasing the pending response so failures remain observable.
+  const result = status.then(value => ({ value }), error => ({ error }));
+  await started;
+  await client.search("test", 1);
+  finishMe(reply(200, { user: USER }));
+  const completed = await result;
+  assert.ifError(completed.error);
+  assert.equal(completed.value.authenticated, true);
+  assert.equal(meCalls, 2);
+});
+
+test("status does not retry across a real login even to the same user", async () => {
+  await seedSession({ accessToken: "old", refreshToken: "old-refresh", expiresAt: Date.now() + 3600000, user: USER });
+  let finishMe, startedMe;
+  const started = new Promise(resolve => { startedMe = resolve; });
+  installFetch({
+    "/v1/auth/me": () => { startedMe(); return new Promise(resolve => { finishMe = resolve; }); },
+    "/v1/auth/login": () => reply(200, sessionBody()),
+  });
+  const client = newClient();
+  const result = client.status().then(value => ({ value }), error => ({ error }));
+  await started;
+  await client.login("user@example.com", "password");
+  finishMe(reply(200, { user: USER }));
+  assert.equal((await result).error?.code, "ACCOUNT_CHANGED");
+});
+
 beforeEach(async () => {
   state.isPackaged = false;
   state.encryptionAvailable = true;

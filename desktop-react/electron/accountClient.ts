@@ -145,6 +145,7 @@ function configuredAccountBaseUrl(): string {
 
 export class LoomAccountClient {
   private memorySession: TokenSession | null = null;
+  private identityRevision = 0;
   private readonly baseUrl: string;
   private refreshInFlight: Promise<TokenSession> | null = null;
   private refreshTokenInFlight = "";
@@ -211,6 +212,7 @@ export class LoomAccountClient {
   }
 
   private async saveSession(response: AuthResponse, preserveModelCredential = false): Promise<TokenSession> {
+    if (!preserveModelCredential) this.identityRevision += 1;
     const previous = this.memorySession;
     const session: TokenSession = {
       accessToken: String(response.access_token || ""),
@@ -237,6 +239,7 @@ export class LoomAccountClient {
   }
 
   private async clearSession(): Promise<void> {
+    this.identityRevision += 1;
     this.memorySession = null;
     this.authVerifiedAt = 0;
     this.authVerifiedUserId = 0;
@@ -579,6 +582,19 @@ export class LoomAccountClient {
   }
 
   async status(): Promise<LoomAccountSnapshot> {
+    const identityRevision = this.identityRevision;
+    try {
+      return await this.readStatus();
+    } catch (error) {
+      // Background refresh rotates tokens without changing the login identity.
+      // Retry that race using the current tokens, but never cross a login/logout.
+      if (error instanceof AccountHttpError && error.code === "ACCOUNT_CHANGED"
+        && identityRevision === this.identityRevision) return this.readStatus();
+      throw error;
+    }
+  }
+
+  private async readStatus(): Promise<LoomAccountSnapshot> {
     if (!this.configured) return this.snapshot(null, false);
     let session = await this.loadSession();
 
