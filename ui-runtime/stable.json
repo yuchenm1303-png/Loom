@@ -1,9 +1,9 @@
 {
   "schema": 1,
-  "build": 3001,
+  "build": 4001,
   "bootstrap": "0.1.83",
-  "sourceSha": "8076081582ef8a9847cf370520fc06ab517d3679",
-  "sourceTime": 1791726131,
+  "sourceSha": "269dd36afe8a384c95bd04bafa36c397dcb5930b",
+  "sourceTime": 1791726350,
   "files": [
     {
       "path": "assets/KaTeX_AMS-Regular-BQhdFMY1.woff2",
@@ -1142,8 +1142,8 @@
     {
       "path": "ui-baseline.json",
       "size": 80,
-      "sha256": "e8041f0c2c7023f4fb29a010eeb4317b04bb701a5fdfe2693179868fa0a51b03",
-      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/ui-3001/e8041f0c2c7023f4fb29a010eeb4317b04bb701a5fdfe2693179868fa0a51b03"
+      "sha256": "7b321b5aca6671be99f028dfcc6cf892b01e00009501de33248d9b7de78c5de5",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/ui-4001/7b321b5aca6671be99f028dfcc6cf892b01e00009501de33248d9b7de78c5de5"
     }
   ]
 }
