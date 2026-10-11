@@ -256,6 +256,7 @@ class ModelResponse:
     phase: str | None = None
     end_turn: bool | None = None
     stream_timing: dict[str, Any] = field(default_factory=dict)
+    stream_diagnostics: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True, slots=True)

@@ -203,6 +203,7 @@ class TurnRunner:
                             "reasoning": reasoning.as_safe_dict() if reasoning is not None else None,
                             "attempt": attempt,
                             "request_preparation_ms": request_preparation_ms,
+                            "requested_max_output_tokens": request.max_output_tokens,
                             "progress_feedback": progress_feedback_mode(step.request_state.system_prompt),
                             **extra,
                             **model_identity,
@@ -437,6 +438,7 @@ class TurnRunner:
                         "reason": invalid_terminal,
                         "finish_reason": response.finish_reason,
                         "stream_timing": response.stream_timing,
+                        "stream_diagnostics": response.stream_diagnostics,
                         "response_id": response.response_id,
                         "text_preview": str(response.text or "")[-240:],
                         "attempt": attempt,
@@ -513,6 +515,7 @@ class TurnRunner:
                             "response_id": response.response_id,
                             "model_execution_ms": model_execution_ms,
                             "stream_timing": response.stream_timing,
+                            "stream_diagnostics": response.stream_diagnostics,
                             "reasoning_summary": response.visible_reasoning,
                             "tool_calls": [
                                 {"call_id": c.call_id, "name": c.name, "arguments": c.arguments}

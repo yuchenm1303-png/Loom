@@ -318,6 +318,7 @@ class StreamingAIPlatform(AIPlatform):
             chunk_count=int(metadata.get("chunk_count") or 0),
         )
         public_text, late_inline_reasoning = split_inline_reasoning(result.text)
+        result = replace(result, stream_diagnostics=dict(metadata.get("stream_diagnostics") or {}))
         if late_inline_reasoning:
             result = replace(
                 result,

@@ -9,6 +9,7 @@ from .errors import AITransportError
 from .execution_control import current_control, check_cancelled, note_progress, note_chunk, note_transport_retry, ModelCancelled
 from .openai_runtime import OpenAIChatBackend, _retryable_provider_error, _usage_from
 from .provider_catalog import ProviderAdapter
+from .stream_diagnostics import ChatStreamDiagnostics
 
 
 def _normalize_compatible_text_fragment(accumulated: str, fragment: str) -> tuple[str, str]:
@@ -97,10 +98,12 @@ class OpenAIStreamingChatBackend(OpenAIChatBackend):
         public_text = ""
         reasoning_text_so_far = ""
         compatible = self.connection.adapter is ProviderAdapter.OPENAI_COMPATIBLE
+        diagnostics = ChatStreamDiagnostics(request.max_output_tokens)
         try:
             for chunk in stream:
                 check_cancelled()
                 note_chunk()
+                diagnostics.observe_chunk(chunk)
                 # Role/empty/usage envelopes do not mean generation started.
                 # Reasoning and native tool fragments count even when private.
                 chunk_count += 1
@@ -163,6 +166,7 @@ class OpenAIStreamingChatBackend(OpenAIChatBackend):
                         else:
                             public_text += text
                         if text:
+                            diagnostics.normalized_text.observe(text)
                             yield StreamEvent(kind=StreamEventKind.TEXT_DELTA, text_delta=text)
                     for raw_call in getattr(delta, "tool_calls", None) or ():
                         function = getattr(raw_call, "function", None)
@@ -187,6 +191,7 @@ class OpenAIStreamingChatBackend(OpenAIChatBackend):
                 "reasoning_char_count": reasoning_char_count,
                 "reasoning": "".join(reasoning_parts),
                 "chunk_count": chunk_count,
+                "stream_diagnostics": diagnostics.snapshot(),
             }
             yield StreamEvent(
                 kind=StreamEventKind.COMPLETED,
