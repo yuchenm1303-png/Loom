@@ -86,7 +86,15 @@ export function useAccount() {
   useEffect(() => {
     const handleAccountRefresh = () => { void refresh(); };
     window.addEventListener("loom:account-refresh", handleAccountRefresh);
-    return () => window.removeEventListener("loom:account-refresh", handleAccountRefresh);
+    window.addEventListener("focus", handleAccountRefresh);
+    window.addEventListener("online", handleAccountRefresh);
+    window.addEventListener("loom:web-host-reconnected", handleAccountRefresh);
+    return () => {
+      window.removeEventListener("loom:account-refresh", handleAccountRefresh);
+      window.removeEventListener("focus", handleAccountRefresh);
+      window.removeEventListener("online", handleAccountRefresh);
+      window.removeEventListener("loom:web-host-reconnected", handleAccountRefresh);
+    };
   }, [refresh]);
 
   const run = useCallback(

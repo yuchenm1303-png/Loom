@@ -100,6 +100,10 @@ export function AccountDialog({
 
   const showForm = ready && account.configured && !(account.authenticated && account.user);
 
+  useEffect(() => {
+    if (open) void onRetry();
+  }, [open, onRetry]);
+
   // Remember who opened the dialog and hand focus back on close, so keyboard
   // users are not dumped at the top of the document.
   useEffect(() => {
@@ -374,6 +378,15 @@ export function AccountDialog({
             <span className="loom-account-spinner" aria-hidden="true" />
             {zh ? "正在检查登录状态…" : "Checking sign-in status…"}
           </div>
+        ) : !account.configured && error ? (
+          <div className="loom-account-unconfigured" role="alert">
+            <AlertTriangle size={20} />
+            <strong>{zh ? "无法读取登录状态" : "Could not load sign-in status"}</strong>
+            <p>{message}</p>
+            <button type="button" onClick={() => void onRetry()} disabled={busy}>
+              {zh ? "重试" : "Retry"}
+            </button>
+          </div>
         ) : !account.configured ? (
           <div className="loom-account-unconfigured">
             <ShieldCheck size={20} />
@@ -383,6 +396,9 @@ export function AccountDialog({
                 ? "当前版本不会连接任何第三方站点。部署 Loom Account Service 后，只需为桌面端设置 LOOM_ACCOUNT_API_BASE_URL。"
                 : "This build will not connect to any third-party service. Deploy Loom Account Service and set LOOM_ACCOUNT_API_BASE_URL for the desktop app."}
             </p>
+            <button type="button" onClick={() => void onRetry()} disabled={busy}>
+              {zh ? "重新检查" : "Check again"}
+            </button>
           </div>
         ) : account.authenticated && account.user ? (
           <div className="loom-account-signed-in">
