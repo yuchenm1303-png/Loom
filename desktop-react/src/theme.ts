@@ -7,7 +7,7 @@ let transitionTimer: number | null = null;
 let systemListenerInstalled = false;
 
 function normalizeTheme(value: unknown): LoomThemePreference {
-  return value === "light" || value === "dark" || value === "system" ? value : "system";
+  return value === "light" || value === "dark" || value === "system" ? value : "dark";
 }
 
 function readPersistedTheme(): LoomThemePreference {
@@ -15,7 +15,7 @@ function readPersistedTheme(): LoomThemePreference {
     const stored = JSON.parse(window.localStorage.getItem(SETTINGS_STORAGE_KEY) || "{}");
     return normalizeTheme(stored?.appearance?.theme);
   } catch {
-    return "system";
+    return "dark";
   }
 }
 

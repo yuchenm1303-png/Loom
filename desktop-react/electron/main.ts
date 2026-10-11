@@ -1230,9 +1230,9 @@ async function loadRenderer(window: BrowserWindow): Promise<void> {
 }
 
 function createWindow(): void {
-  // Start from the OS preference. The renderer restores the persisted
+  // Start with the default dark theme. The renderer restores the persisted
   // Appearance choice and can switch native chrome to light/dark explicitly.
-  nativeTheme.themeSource = "system";
+  nativeTheme.themeSource = "dark";
   const windowIcon = !app.isPackaged && process.platform === "win32" && fsSync.existsSync(DEV_WINDOW_ICON)
     ? DEV_WINDOW_ICON
     : undefined;

@@ -208,7 +208,7 @@ const DEFAULT_CAPABILITIES: Record<CapabilityKey, boolean> = {
 };
 
 const DEFAULT_APPEARANCE: AppearanceSettings = {
-  theme: "system",
+  theme: "dark",
   scale: "100",
   density: "comfortable",
   reducedMotion: false,
