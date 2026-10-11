@@ -25,6 +25,9 @@ const credentialDirectory = path.join(hostDataPath, "host-ipc");
 const sessionFile = path.join(credentialDirectory, "session.token");
 export const desktopPidFile = path.join(credentialDirectory, "desktop-pids.json");
 const handlers = new Map<string, HostHandler>();
+const HOST_CONNECT_INTERVAL_MS = 100;
+const HOST_CONNECT_ATTEMPTS = 150;
+const clientListeners = new Set<(pids: number[]) => void>();
 let server: HostServer | null = null;
 let connection: Promise<void> | null = null;
 let lastLaunch = 0;
@@ -84,7 +87,10 @@ async function connectHost(): Promise<void> {
   connection = (async () => {
     await app.whenReady();
     let lastError: unknown;
-    for (let attempt = 0; attempt < 60; attempt += 1) {
+    // Fifteen seconds in all. The Host publishes its credential the moment it is
+    // listening, so a short interval costs a failed local read and saves the part
+    // of a long one the Host spent already being ready.
+    for (let attempt = 0; attempt < HOST_CONNECT_ATTEMPTS; attempt += 1) {
       try {
         const token = (await fs.readFile(sessionFile, "utf8")).trim();
         if (!/^[a-f0-9]{64}$/.test(token)) throw new Error("Invalid Host credential");
@@ -93,7 +99,7 @@ async function connectHost(): Promise<void> {
       } catch (error) {
         lastError = error;
         launchHost();
-        await new Promise((resolve) => setTimeout(resolve, 250));
+        await new Promise((resolve) => setTimeout(resolve, HOST_CONNECT_INTERVAL_MS));
       }
     }
     throw new Error(`Could not start Loom Host: ${lastError instanceof Error ? lastError.message : String(lastError)}`);
@@ -135,6 +141,11 @@ export function broadcastHostEvent(channel: string, value: unknown): void {
 
 export function hostHasDesktopClients(): boolean { return Boolean(server?.hasClients); }
 
+/** Called when a desktop window connects to or leaves the Host, with the process ids still connected. */
+export function onDesktopClientsChanged(listener: (pids: number[]) => void): void {
+  clientListeners.add(listener);
+}
+
 export async function startHostTransport(): Promise<void> {
   if (!isHostProcess || server) return;
   await fs.mkdir(hostDataPath, { recursive: true });
@@ -158,6 +169,9 @@ export async function startHostTransport(): Promise<void> {
   writeFileSync(desktopPidFile, "[]", { mode: 0o600 });
   const transport = new HostServer(token, handlers, (pids) => {
     try { writeFileSync(desktopPidFile, JSON.stringify(pids), { mode: 0o600 }); } catch {}
+    for (const listener of clientListeners) {
+      try { listener(pids); } catch {}
+    }
   });
   await transport.listen(endpoint);
   if (process.platform !== "win32") await fs.chmod(endpoint, 0o600);

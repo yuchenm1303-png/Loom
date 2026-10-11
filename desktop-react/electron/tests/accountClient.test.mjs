@@ -675,3 +675,32 @@ for (const destination of ["other-account", "logout"]) {
     }
   });
 }
+
+test("cached credentials are read from the saved session without any request", async () => {
+  await seedSession({
+    accessToken: "access-held", refreshToken: "refresh", expiresAt: Date.now() + 10 * 60_000, user: USER,
+    modelToken: "model-held", modelExpiresAt: Date.now() + 30 * 60_000,
+  });
+  installFetch({}); // any request at all would throw
+  const held = await newClient().cachedCredentials();
+  assert.deepEqual(held, { automation: "access-held", model: "model-held" });
+  assert.equal(calls.length, 0);
+});
+
+test("an expiring credential is withheld, never refreshed, when the runtime starts", async () => {
+  // Starting the runtime used to refresh the session and mint a model credential first,
+  // each with a 15 second timeout, so a slow account service held every launch.
+  await seedSession({
+    accessToken: "access-expiring", refreshToken: "refresh", expiresAt: Date.now() + 10_000, user: USER,
+    modelToken: "model-expiring", modelExpiresAt: Date.now() + 2 * 60_000,
+  });
+  installFetch({});
+  assert.deepEqual(await newClient().cachedCredentials(), { automation: "", model: "" });
+  assert.equal(calls.length, 0);
+});
+
+test("without a saved session there is nothing cached and nothing requested", async () => {
+  installFetch({});
+  assert.deepEqual(await newClient().cachedCredentials(), { automation: "", model: "" });
+  assert.equal(calls.length, 0);
+});

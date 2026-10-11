@@ -438,6 +438,23 @@ export class LoomAccountClient {
     }
   }
 
+  /**
+   * The credentials already held locally and still usable, with no network
+   * request. Starting the local runtime must not wait on the account service:
+   * an unreachable or slow one (DNS alone has taken eleven seconds) would hold
+   * every launch for as long as its timeouts. A missing or expiring credential
+   * comes back empty and is delivered once the runtime is up.
+   */
+  async cachedCredentials(): Promise<{ automation: string; model: string }> {
+    const session = await this.loadSession();
+    if (!session) return { automation: "", model: "" };
+    const now = Date.now();
+    return {
+      automation: session.expiresAt > now + 30_000 ? session.accessToken : "",
+      model: session.modelToken && Number(session.modelExpiresAt || 0) > now + 5 * 60_000 ? session.modelToken : "",
+    };
+  }
+
   /** Mint/cache a scoped built-in-model token tied to the current Loom login session. */
   async automationCredential(): Promise<string> {
     let session = await this.loadSession();

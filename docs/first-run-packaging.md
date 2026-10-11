@@ -11,6 +11,18 @@ server starts with an authorization-pending backend when necessary. Before the
 first message after sign-in, Electron installs the authorized account backend
 through the existing model hot-switch operation, without restarting the UI.
 
+Local startup also does not *wait* on the account service. The Host spawns the
+local runtime from the credentials it already holds on disk (an expiring or missing
+one is left out, never refreshed first), and once the runtime has initialized it
+refreshes the session, pushes the credentials in through
+`account/tool-access-credential`, and completes a deferred model through the same
+hot-switch. A slow or unreachable account service therefore delays only the
+account-gated features, not the conversation list; before this, every launch held
+the window on "Starting Loom" for as long as two 15-second request timeouts. The
+three model-registry bridges run side by side without blocking the Host's main
+process, and the runtime is started as soon as a desktop window connects to the
+Host rather than when its renderer first asks.
+
 The installer includes the frozen Python runtime and its SDK/native dependencies,
 Playwright's driver, Chromium, the browser extension and the Windows sandbox
 helper. Chromium is downloaded during packaging, not on the customer's first use.

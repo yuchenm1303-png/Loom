@@ -272,3 +272,128 @@ test("failed async save leaves the cached catalogue intact", async () => {
   await assert.rejects(manager.add({ name: "New", adapter: "openai", baseUrl: "", model: "demo", apiKey: "test-secret" }), /credential store unavailable/);
   assert.deepEqual(manager.snapshot().profiles, state.registry.profiles);
 });
+
+// ---- start-up without blocking the Host --------------------------------------------
+//
+// ensureInitial() ran four Python bridges one after another with spawnSync: nearly
+// six seconds with the Host answering nothing. ensureInitialAsync() runs the three
+// registry bridges side by side and lets concurrent callers share one run.
+
+function deferred() {
+  let resolve;
+  const promise = new Promise((done) => { resolve = done; });
+  return { promise, resolve };
+}
+
+const tick = () => new Promise((resolve) => setImmediate(resolve));
+
+function installAsyncBridges(manager, { gate, record = [] } = {}) {
+  let active = 0;
+  const stats = { peak: 0, calls: record };
+  manager.runPythonBridgeAsync = async (script, command, payload = {}) => {
+    stats.calls.push(`${script}:${command}`);
+    active += 1;
+    stats.peak = Math.max(stats.peak, active);
+    try {
+      if (gate && command !== "resolve") await gate.promise;
+      if (script === "loom_ant_ling_bridge.py" && command === "list") return { profiles: [], activeSelection: null };
+      if (script === "loom_model_admin.py" && command === "metadata") return { profiles: [profile()] };
+      if (command === "list") return registry();
+      if (command === "resolve") return profile({ selection: payload.selection });
+      throw new Error(`unexpected bridge call ${script}:${command}`);
+    } finally {
+      active -= 1;
+    }
+  };
+  manager.runPythonBridge = () => { throw new Error("a blocking spawnSync bridge ran"); };
+  manager.runAdmin = () => { throw new Error("a blocking admin bridge ran"); };
+  return stats;
+}
+
+test("the registry bridges start together and nothing blocks the main process", async () => {
+  const manager = makeManager();
+  const gate = deferred();
+  const stats = installAsyncBridges(manager, { gate });
+
+  const pending = manager.ensureInitialAsync();
+  for (let turn = 0; turn < 5; turn += 1) await tick();
+  assert.equal(stats.peak, 3, "all three registry bridges should be in flight before any answers");
+  gate.resolve();
+
+  const spec = await pending;
+  assert.equal(spec.selection, "saved:demo");
+  assert.equal(manager.current, spec);
+});
+
+test("callers asking at the same time share one run", async () => {
+  const manager = makeManager();
+  const gate = deferred();
+  const stats = installAsyncBridges(manager, { gate });
+
+  const first = manager.ensureInitialAsync();
+  const second = manager.ensureInitialAsync();
+  for (let turn = 0; turn < 5; turn += 1) await tick();
+  gate.resolve();
+
+  assert.equal(await first, await second);
+  assert.equal(stats.calls.filter((call) => call === "loom_model_bridge.py:list").length, 1);
+  assert.equal(stats.calls.filter((call) => call === "loom_model_bridge.py:resolve").length, 1);
+});
+
+test("an already chosen model is returned without touching a bridge", async () => {
+  const manager = makeManager();
+  const stats = installAsyncBridges(manager);
+  await manager.ensureInitialAsync();
+  const before = stats.calls.length;
+
+  await manager.ensureInitialAsync();
+
+  assert.equal(stats.calls.length, before);
+});
+
+test("async start-up on a clean install selects the account model without resolving a provider key", async () => {
+  const manager = new DesktopModelManager(os.tmpdir());
+  const minimax = profile({ id: "minimax-primary", selection: "builtin:minimax", configured: false });
+  const account = profile({ id: "account", selection: "builtin:ant-ling", authMode: "loom-account" });
+  manager.listSnapshot = async () => {
+    manager.registryCache = { primary: minimax, profiles: [minimax, account], activeModelId: minimax.id };
+    return {};
+  };
+  manager.resolveAsync = async (selection) => {
+    assert.equal(selection, "builtin:ant-ling");
+    return { ...account, apiKey: "", provider: "openai-compatible" };
+  };
+  assert.equal((await manager.ensureInitialAsync()).authMode, "loom-account");
+});
+
+test("async start-up keeps a configured user connection", async () => {
+  const manager = new DesktopModelManager(os.tmpdir());
+  manager.listSnapshot = async () => { manager.registryCache = registry(); return {}; };
+  manager.resolveAsync = async (selection) => { assert.equal(selection, "saved:demo"); return profile(); };
+  assert.equal((await manager.ensureInitialAsync()).selection, "saved:demo");
+});
+
+test("async start-up recovers from a missing key like the blocking version", async () => {
+  const manager = new DesktopModelManager(os.tmpdir());
+  const minimax = profile({ id: "minimax-primary", selection: "builtin:minimax", configured: undefined });
+  const account = profile({ id: "account", selection: "builtin:ant-ling", authMode: "loom-account" });
+  manager.listSnapshot = async () => {
+    manager.registryCache = { primary: minimax, profiles: [minimax, account], activeModelId: minimax.id };
+    return {};
+  };
+  manager.resolveAsync = async (selection) => {
+    if (selection === minimax.selection) throw new Error("MiniMax API key is not configured.");
+    return { ...account, apiKey: "", provider: "openai-compatible" };
+  };
+  assert.equal((await manager.ensureInitialAsync()).selection, account.selection);
+});
+
+test("async start-up does not hide an unrelated failure", async () => {
+  const manager = new DesktopModelManager(os.tmpdir());
+  manager.listSnapshot = async () => { manager.registryCache = registry(); return {}; };
+  manager.resolveAsync = async () => { throw new Error("bridge crashed"); };
+  await assert.rejects(manager.ensureInitialAsync(), /bridge crashed/);
+  // A failed run must not be remembered: the next attempt starts again.
+  manager.resolveAsync = async () => profile();
+  assert.equal((await manager.ensureInitialAsync()).selection, "saved:demo");
+});

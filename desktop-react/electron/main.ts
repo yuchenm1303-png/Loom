@@ -29,7 +29,7 @@ import {
 import { webRelayAuthPayload } from "./webRelayAuth.js";
 import { hostAccount } from "./hostAccount.js";
 import { createSearchRelay } from "./searchRelay.js";
-import { broadcastHostEvent, desktopPidFile, handleHostChannel, isHostProcess, prepareDesktopHost, startHostTransport } from "./hostProcess.js";
+import { broadcastHostEvent, desktopPidFile, handleHostChannel, isHostProcess, onDesktopClientsChanged, prepareDesktopHost, startHostTransport } from "./hostProcess.js";
 import { registerHeadlessUpdateGuard } from "./updater.js";
 import {
   currentHostRuntimeVersion,
@@ -730,6 +730,7 @@ async function openExternalUrl(value: string): Promise<boolean> {
 
 class LoomRpcProcess {
   private modelDeferred = false;
+  private modelReadyPromise: Promise<void> | null = null;
   private child: ChildProcessWithoutNullStreams | null = null;
   private nextId = 1;
   private pending = new Map<number, {
@@ -756,10 +757,30 @@ class LoomRpcProcess {
     return runtimeModelParams(await this.materializeModelSpec(spec));
   }
 
-  async ensureModelReady(): Promise<void> {
-    if (!this.modelDeferred) return;
-    await this.setModel(this.models.current ?? this.models.ensureInitial());
-    this.modelDeferred = false;
+  /** One run at a time: the post-start delivery and a first turn can both ask. */
+  ensureModelReady(): Promise<void> {
+    if (!this.modelDeferred) return Promise.resolve();
+    if (!this.modelReadyPromise) {
+      this.modelReadyPromise = (async () => {
+        await this.setModel(this.models.current ?? this.models.ensureInitial());
+        this.modelDeferred = false;
+      })().finally(() => { this.modelReadyPromise = null; });
+    }
+    return this.modelReadyPromise;
+  }
+
+  /**
+   * The runtime starts from the credentials held locally, so what was missing or
+   * about to expire is fetched here, once the runtime can take it, instead of
+   * before it starts. A failure changes nothing: the 30-second sync retries, and
+   * a first turn finishes configuring the model itself.
+   */
+  private deliverCredentials(): void {
+    void (async () => {
+      try { await syncAccountToolAccessCredential(); } catch { /* retried by the periodic sync */ }
+      if (!this.modelDeferred) return;
+      try { await this.ensureModelReady(); } catch { /* the first turn retries and reports it */ }
+    })();
   }
 
   get ready(): boolean {
@@ -775,6 +796,7 @@ class LoomRpcProcess {
     this.sendNotification("initialized", {});
     this.initializeResult = result;
     this.initialized = true;
+    this.deliverCredentials();
     return result;
   }
 
@@ -883,22 +905,24 @@ class LoomRpcProcess {
 
   private async startProcess(): Promise<void> {
     const searchRelay = await sharedSearchRelay();
-    const selectedSpec = this.models.current ?? this.models.ensureInitial();
-    const launch = await startupModel(selectedSpec, () => this.account.modelCredential());
+    const selectedSpec = this.models.current ?? await this.models.ensureInitialAsync();
+    // Nothing between here and the spawn may wait on the account service. It used
+    // to refresh the session and mint a model credential first, each with a
+    // 15-second timeout, so a slow or unreachable service (one DNS lookup alone
+    // has taken eleven seconds) held every launch on "Starting Loom". The runtime
+    // starts from what is already held locally; whatever was missing or about to
+    // expire is delivered once it is up (see deliverCredentials). With none, a
+    // built-in model starts deferred and a first turn finishes configuring it,
+    // exactly as when the service is offline.
+    const cached = await this.account.cachedCredentials();
+    const launch = await startupModel(selectedSpec, async () => cached.model);
     const spec = launch.spec;
     this.modelDeferred = launch.deferred;
-    let accountModelCredential = spec.authMode === "loom-account" ? spec.apiKey : "";
-    if (!accountModelCredential) {
-      try {
-        accountModelCredential = await this.account.modelCredential();
-      } catch {
-        // BYOK/offline desktops remain usable. Account-gated automation stays
-        // fail-closed until a Loom account credential becomes available.
-      }
-    }
+    // BYOK/offline desktops remain usable. Account-gated automation stays
+    // fail-closed until a Loom account credential becomes available.
+    const accountModelCredential = spec.authMode === "loom-account" ? spec.apiKey : cached.model;
     const python = resolvePythonExecutable();
-    let accountAutomationCredential = "";
-    try { accountAutomationCredential = await this.account.automationCredential(); } catch {}
+    const accountAutomationCredential = cached.automation;
     const sandboxExecutable = resolveHostSandboxExecutable(REPO_ROOT);
     const script = path.join(REPO_ROOT, "loom_app_server.py");
     const args = [script, "--workspace", REPO_ROOT, "--provider", spec.provider, "--model", spec.model, "--selection", spec.selection, "--local-ipc", ...runtimeModelArguments(spec)];
@@ -1833,6 +1857,13 @@ app.whenReady().then(async () => {
   if (fsSync.existsSync(path.join(browserExtensionTarget(), "manifest.json")) || legacyBrowserExtensionTargets().length) {
     await syncBrowserExtensionAssets();
   }
+  // A desktop window connecting means its renderer will ask for the runtime within
+  // a second or two. Starting it now overlaps its start-up with the window being
+  // created and loaded, instead of beginning when the first request arrives. A
+  // Host started at login has no window, so it stays light until one connects.
+  onDesktopClientsChanged((pids) => {
+    if (pids.length > 0) void rpc.connect().catch((error) => console.warn("[loom-app-server] early start failed", error));
+  });
   await startHostTransport();
   const authorizationRefresh = setInterval(() => { void syncAccountToolAccessCredential(); }, 30_000);
   authorizationRefresh.unref();

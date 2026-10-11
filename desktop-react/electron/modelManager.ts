@@ -145,6 +145,7 @@ export class DesktopModelManager {
   private metadataCache: ModelMetadataSnapshot | null = null;
   private launchCache = new Map<string, LaunchCacheEntry>();
   private catalogRefreshPromise: Promise<ModelSnapshot> | null = null;
+  private initialSpecPromise: Promise<ModelLaunchSpec> | null = null;
   private serverProfiles = new Map<string, ModelProfile>();
   private readonly catalogTtlMs: number;
 
@@ -159,9 +160,8 @@ export class DesktopModelManager {
     return this.currentSpec;
   }
 
-  ensureInitial(): ModelLaunchSpec {
-    if (this.currentSpec) return this.currentSpec;
-    const registry = this.registry();
+  /** Which model a fresh runtime starts with, and the one to fall back to. */
+  private initialChoice(registry: RegistrySnapshot): { selection: string; fallback: string | undefined } {
     const active = registry.profiles.find((profile) => profile.id === registry.activeModelId);
     // A clean install has no provider keys. Use the account gateway instead
     // of resolving the developer's default MiniMax environment credential.
@@ -169,16 +169,54 @@ export class DesktopModelManager {
       && profile.selection === ANT_LING_SELECTION);
     const selection = (active && active.configured !== false ? active.selection : accountDefault?.selection)
       || active?.selection || PRIMARY_SELECTION;
+    return { selection, fallback: accountDefault?.selection };
+  }
+
+  /** Legacy catalogue rows do not declare `configured`; their credential failure must also lead to the account default. */
+  private static isMissingCredential(error: unknown): boolean {
+    const message = error instanceof Error ? error.message : String(error);
+    return /API key.*(not configured|missing)|credential.*missing/i.test(message);
+  }
+
+  ensureInitial(): ModelLaunchSpec {
+    if (this.currentSpec) return this.currentSpec;
+    const { selection, fallback } = this.initialChoice(this.registry());
     try {
       this.currentSpec = this.resolve(selection);
     } catch (error) {
-      // Legacy catalogue rows do not declare configured. Their credential
-      // failure must also lead to the account default on a clean installation.
-      const message = error instanceof Error ? error.message : String(error);
-      if (!accountDefault || !/API key.*(not configured|missing)|credential.*missing/i.test(message)) throw error;
-      this.currentSpec = this.resolve(accountDefault.selection);
+      if (!fallback || !DesktopModelManager.isMissingCredential(error)) throw error;
+      this.currentSpec = this.resolve(fallback);
     }
     return this.currentSpec;
+  }
+
+  /**
+   * `ensureInitial` without blocking the Host's main process. The synchronous
+   * version ran four Python bridges one after another with `spawnSync` (nearly
+   * six seconds here, during which the Host answered nothing). The three registry
+   * bridges are independent, so they run side by side, and callers share one run.
+   */
+  ensureInitialAsync(): Promise<ModelLaunchSpec> {
+    if (this.currentSpec) return Promise.resolve(this.currentSpec);
+    if (!this.initialSpecPromise) {
+      this.initialSpecPromise = (async () => {
+        // Fills the registry and metadata caches through the parallel listing,
+        // which is also what a concurrent model-list request waits on.
+        await this.listSnapshot();
+        const registry = this.registryCache;
+        if (!registry) throw new Error("The model registry is unavailable.");
+        if (this.currentSpec) return this.currentSpec;
+        const { selection, fallback } = this.initialChoice(registry);
+        try {
+          this.currentSpec = await this.resolveAsync(selection);
+        } catch (error) {
+          if (!fallback || !DesktopModelManager.isMissingCredential(error)) throw error;
+          this.currentSpec = await this.resolveAsync(fallback);
+        }
+        return this.currentSpec;
+      })().finally(() => { this.initialSpecPromise = null; });
+    }
+    return this.initialSpecPromise;
   }
 
   private metadata(forceRefresh = false): ModelMetadataSnapshot {
@@ -517,6 +555,19 @@ export class DesktopModelManager {
       ? this.runPythonBridge<ModelLaunchSpec>("loom_ant_ling_bridge.py", "resolve", { selection })
       : this.runBridge<ModelLaunchSpec>("resolve", { selection });
     const spec = this.projectLaunchSpec(base, this.registryCache, this.metadata());
+    this.launchCache.set(selection, { base, spec });
+    return spec;
+  }
+
+  private async resolveAsync(selection: string): Promise<ModelLaunchSpec> {
+    const cached = this.launchCache.get(selection);
+    if (cached) return cached.spec;
+    const base = isAntLingSelection(selection)
+      ? await this.runPythonBridgeAsync<ModelLaunchSpec>("loom_ant_ling_bridge.py", "resolve", { selection })
+      : await this.runBridgeAsync<ModelLaunchSpec>("resolve", { selection });
+    const metadata = this.metadataCache
+      ?? (this.metadataCache = await this.runAdminAsync<ModelMetadataSnapshot>("metadata", {}));
+    const spec = this.projectLaunchSpec(base, this.registryCache, metadata);
     this.launchCache.set(selection, { base, spec });
     return spec;
   }
