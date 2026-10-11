@@ -1,0 +1,40 @@
+import assert from "node:assert/strict";
+const { chromium } = await import(process.env.LOOM_PLAYWRIGHT_MODULE || "playwright-core");
+const browser = await chromium.launch({ executablePath: process.env.LOOM_CHROMIUM_PATH, headless: true });
+try {
+  const page = await browser.newPage();
+  const errors = [];
+  page.on("pageerror", error => { errors.push(error.message); console.error(error.message); });
+  await page.goto(`${process.env.LOOM_TEST_ORIGIN || "http://127.0.0.1:5173"}/scripts/fixtures/project-send.html`, { waitUntil: "domcontentloaded", timeout: 60_000 });
+  await page.locator("output").filter({ hasText: "ready" }).waitFor();
+  await page.getByText("Project draft", { exact: true }).click();
+  const input = page.locator("textarea");
+  await input.fill("project message");
+  await page.getByRole("button", { name: "Send message", exact: true }).click();
+  await page.waitForFunction(() => window.projectSendFixture.pending.length === 1);
+  assert.equal(await input.inputValue(), "project message", "keep input until thread creation is acknowledged");
+  assert.equal(await input.isDisabled(), true);
+  assert.equal(await page.getByRole("button", { name: "Send message", exact: true }).isDisabled(), true);
+  await page.getByText("正在发送…", { exact: true }).waitFor();
+  assert.deepEqual(await page.evaluate(() => window.projectSendFixture.calls.find(c => c.method === "thread/start").params), { projectId: "project-1" });
+  await page.evaluate(() => window.projectSendFixture.pending.shift().reject(new Error("Host request timed out: loom:call (thread/start)")));
+  await page.getByRole("alert").filter({ hasText: "thread/start" }).waitFor();
+  assert.equal(await input.inputValue(), "project message");
+  assert.equal(await input.isEnabled(), true);
+  await page.getByRole("button", { name: "Send message", exact: true }).click();
+  await page.waitForFunction(() => window.projectSendFixture.pending.length === 1);
+  // Navigation while creation is pending must not silently acknowledge a send.
+  await page.getByText("Other draft", { exact: true }).click();
+  await page.evaluate(() => window.projectSendFixture.pending.shift().resolve({ thread: { id: "late-thread", status: "idle" } }));
+  await page.getByRole("alert").filter({ hasText: "消息尚未发送" }).waitFor();
+  assert.equal(await input.inputValue(), "project message");
+  assert.equal(await page.evaluate(() => window.projectSendFixture.calls.filter(c => c.method === "turn/start").length), 0);
+  await page.getByText("Project draft", { exact: true }).click();
+  await page.getByRole("button", { name: "Send message", exact: true }).click();
+  await page.waitForFunction(() => window.projectSendFixture.pending.length === 1);
+  await page.evaluate(() => window.projectSendFixture.pending.shift().resolve({ thread: { id: "project-thread", status: "idle" } }));
+  await page.waitForFunction(() => window.projectSendFixture.calls.some(c => c.method === "turn/start"));
+  assert.equal(await page.locator('[data-thread="project-thread"]').textContent(), "project message");
+  assert.deepEqual(errors, []);
+  console.log("Project send: pending feedback, preserved draft, timeout recovery, navigation cancellation and successful retry passed.");
+} finally { await browser.close(); }

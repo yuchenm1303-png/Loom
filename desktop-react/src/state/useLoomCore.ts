@@ -772,7 +772,8 @@ export function useLoom() {
 
   const send = useCallback(async (input: string, attachments: { path: string; name: string }[] = []) => {
     if (!input.trim() && !attachments.length) return;
-    if (active?.thread.archived || homeSendPendingRef.current) return;
+    if (active?.thread.archived) throw new Error("该对话已归档，请先取消归档再发送。");
+    if (homeSendPendingRef.current) throw new Error("正在创建对话，请等待当前消息发送完成。");
     let thread = active?.thread;
     if (!thread) {
       homeSendPendingRef.current = true;
@@ -781,7 +782,7 @@ export function useLoom() {
       } finally {
         homeSendPendingRef.current = false;
       }
-      if (!thread) return;
+      if (!thread) throw new Error("对话选择已改变，消息尚未发送。请在目标对话中重试。");
     }
     threadReadCacheRef.current.delete(thread.id);
     const pendingId = `pending-user-${crypto.randomUUID()}`;

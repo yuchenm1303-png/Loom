@@ -10,6 +10,29 @@ function endpoint() {
   return process.platform === "win32" ? `\\\\.\\pipe\\loom-test-${id}` : path.join(os.tmpdir(), `loom-${id}.sock`);
 }
 
+test("outer RPC deadline allows inner errors and identifies the stalled method", async (t) => {
+  const address = endpoint();
+  const server = new HostServer("secret", new Map([["loom:call", () => new Promise(() => {})]]));
+  const client = new HostClient(() => {});
+  try {
+    await server.listen(address);
+    await client.connect(address, "secret");
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    let settled = false;
+    const request = client.call("loom:call", ["thread/start", {}]);
+    request.then(() => { settled = true; }, () => { settled = true; });
+    const failure = assert.rejects(request, /Host request timed out: loom:call \(thread\/start\)/);
+    t.mock.timers.tick(120000);
+    await Promise.resolve();
+    assert.equal(settled, false);
+    t.mock.timers.tick(5000);
+    await failure;
+  } finally {
+    client.close();
+    server.close();
+  }
+});
+
 test("one Host serves desktop and other clients; closing desktop keeps work alive", async () => {
   const address = endpoint();
   let taskCount = 0;

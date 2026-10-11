@@ -186,7 +186,10 @@ export class HostClient {
     if (!socket || socket.destroyed) return Promise.reject(new Error("Loom Host is unavailable"));
     const id = this.nextId++;
     return new Promise((resolve, reject) => {
-      const timer = setTimeout(() => { this.pending.delete(id); reject(new Error(`Host request timed out: ${channel}`)); }, 120000);
+      // The App Server has a 120s deadline. Let its method-specific error reach
+      // the renderer before the outer transport deadline masks it.
+      const operation = channel === "loom:call" && typeof args[0] === "string" ? `${channel} (${args[0]})` : channel;
+      const timer = setTimeout(() => { this.pending.delete(id); reject(new Error(`Host request timed out: ${operation}`)); }, 125000);
       this.pending.set(id, { resolve, reject, timer });
       try { write(socket, { type: "call", id, channel, args }); }
       catch (error) { clearTimeout(timer); this.pending.delete(id); reject(error); }

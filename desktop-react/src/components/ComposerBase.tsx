@@ -191,6 +191,8 @@ export function Composer({
   const [panelError, setPanelError] = useState("");
   const [stopping, setStopping] = useState(false);
   const [stopError, setStopError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const submittingRef = useRef(false);
   const [quote, setQuote] = useQuoteReply();
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const composerRootRef = useRef<HTMLDivElement | null>(null);
@@ -318,20 +320,25 @@ export function Composer({
     const input = formatQuotedPrompt(quote, typedInput);
     const sendable = attachments.filter((item) => imagesAllowed || !item.isImage);
     // A quote or attachment can carry context on its own; a truly empty composer cannot.
-    if ((!typedInput && !quote && !sendable.length) || disabled || running) return;
+    if ((!typedInput && !quote && !sendable.length) || disabled || running || submittingRef.current) return;
     if (!accountAuthenticated) {
       onOpenAccount?.();
       return;
     }
-    setValue("");
-    setQuote(null);
-    setAttachments([]);
-    setAttachError("");
+    submittingRef.current = true;
+    setSubmitting(true);
     setOpenPanel(null);
     try {
       await onSend(input, sendable.map((item) => ({ path: item.path, name: item.name })));
+      setValue("");
+      setQuote(null);
+      setAttachments([]);
+      setAttachError("");
     } catch {
       // The Composer owner retains the error and draft across running-state changes.
+    } finally {
+      submittingRef.current = false;
+      setSubmitting(false);
     }
   }
 
@@ -428,7 +435,7 @@ export function Composer({
                 : zh
                   ? (disabled ? "打开对话，开始工作" : "描述任务，或提出问题…")
                   : (disabled ? "Open a thread to start" : "Describe a task or ask a question…")}
-            disabled={disabled || running}
+            disabled={disabled || running || submitting}
             rows={1}
           />
         </div>
@@ -639,7 +646,7 @@ export function Composer({
 
           <div className="composer-right">
             <Crossfade identity={`${Boolean(running)}:${stopping}`}>
-              {!running ? <span className="composer-keycap">Enter ↵</span> : (
+              {!running ? <span className={submitting ? "composer-running-label" : "composer-keycap"} role={submitting ? "status" : undefined}>{submitting ? (zh ? "正在发送…" : "Sending…") : "Enter ↵"}</span> : (
                 <span className="composer-running-label" role="status">
                   <i aria-hidden="true" />
                   <span className="composer-running-copy">
@@ -653,7 +660,7 @@ export function Composer({
                 <Square size={12} fill="currentColor" />
               </button>
             ) : (
-              <button type="button" className={`send-button ${canSend ? "is-ready" : "is-idle"}`} onClick={() => void submit()} disabled={!canSend} title="Send" aria-label="Send message">
+              <button type="button" className={`send-button ${canSend ? "is-ready" : "is-idle"}`} onClick={() => void submit()} disabled={!canSend || submitting} title="Send" aria-label="Send message">
                 <ArrowUp size={17} strokeWidth={2.2} />
               </button>
             )}</Crossfade>
