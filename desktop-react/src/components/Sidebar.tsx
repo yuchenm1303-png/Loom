@@ -15,8 +15,8 @@ import {
   Pin,
   PinOff,
   Plus,
+  Quill,
   Search,
-  SquarePen,
   Trash2,
   X,
 } from "./icons";
@@ -1013,7 +1013,7 @@ export function Sidebar({
             onClick={() => void onNew()}
             title={`${copy.newConversation} · Ctrl N`}
           >
-            <SquarePen className="sidebar-action-icon sidebar-compose-icon" size={20} strokeWidth={1.8} aria-hidden="true" />
+            <Quill className="sidebar-action-icon sidebar-compose-icon" size={20} strokeWidth={2.1} aria-hidden="true" />
             <span>{copy.newConversation}</span>
           </button>
         </div>

@@ -83,11 +83,19 @@ export const Pencil = createIcon("pencil", "Pencil", <g className="li li-all">
   <path d="m15 5 4 4" />
 </g>);
 
-/** The new-conversation mark: a page and a pen. Engaged, the pen writes a line. */
-export const SquarePen = createIcon("compose", "SquarePen", <>
-  <path d="M12 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-  <path className="li li-ink" pathLength={1} d="M7.5 18.2h4.6" />
-  <path className="li li-pen" d="M18.375 2.625a1 1 0 0 1 3 3l-9.013 9.014a2 2 0 0 1-.853.505l-2.873.84a.5.5 0 0 1-.62-.62l.84-2.873a2 2 0 0 1 .506-.852z" />
+/**
+ * The new-conversation mark: a quill with its nib at the lower left and one barb
+ * pulled out of the vane. The vane is the only closed shape and carries a faint wash
+ * of the ink colour, so at 20px it reads as a plume and not as an empty outline.
+ * Engaged, the quill glides to the right and leaves the line it wrote (the length of
+ * that line is the glide set in icon-motion.css).
+ */
+export const Quill = createIcon("quill", "Quill", <>
+  <path className="li li-ink" pathLength={1} d="M3.4 21.4h3.4" />
+  <g className="li li-quill">
+    <path d="M3.4 21.4C3.62 20.34 3.88 19.32 4.17 18.34" />
+    <path fill="currentColor" fillOpacity={0.26} d="M4.17 18.34C6.81 9.46 12.21 3.57 21 2.8C19.73 4.72 18.35 6.51 16.86 8.2L18.07 9.26L15.38 9.8C12.12 13.16 8.39 16 4.17 18.34z" />
+  </g>
 </>);
 
 export const Trash2 = createIcon("trash", "Trash2", <>

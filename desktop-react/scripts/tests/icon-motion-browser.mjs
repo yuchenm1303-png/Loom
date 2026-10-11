@@ -97,7 +97,7 @@ try {
   // 4. Reduced motion: no glyph takes a pose.
   {
     const { context, page } = await openLab({ reducedMotion: "reduce" });
-    for (const name of ["trash", "copy", "settings", "compose", "chevron-right", "plus"]) {
+    for (const name of ["trash", "copy", "settings", "quill", "chevron-right", "plus"]) {
       const rest = await snapshot(page, name);
       await hover(page, name);
       await page.waitForTimeout(500);
