@@ -82,7 +82,12 @@ class ModelPolicySnapshot:
 
     def check(self, selection: str, credential: str) -> None:
         self.set_credential(credential)
-        # Only cold/account-switch initialization waits; warm sends are local.
+        # Valid warm sends stay local. An expired lease must wait for the
+        # background refresh instead of failing the first send after resume.
+        with self.lock:
+            if credential == self.credential and self.clock() >= self.expires:
+                self.ready.clear()
+                self.wake.set()
         self.ready.wait(5)
         self._check(selection, credential)
 

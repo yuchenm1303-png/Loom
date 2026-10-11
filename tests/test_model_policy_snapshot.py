@@ -66,6 +66,30 @@ def test_warm_sends_do_not_request_network_and_revocation_is_applied():
         cache.check("builtin:minimax", "account-a")
 
 
+@pytest.mark.parametrize("allowed", [True, False])
+def test_expired_send_waits_for_refresh_and_uses_new_permissions(allowed):
+    now = [0.0]
+    cache = ModelPolicySnapshot("https://example.invalid/access", "account-a", start=False,
+        clock=lambda: now[0], fetch=lambda token: {"access": {"models": ["builtin:minimax"]}})
+    cache.refresh()
+    now[0] = 11
+    cache.fetch = lambda token: {"access": {"models": ["builtin:minimax"] if allowed else []}}
+    errors = []
+    def send():
+        try:
+            cache.check("builtin:minimax", "account-a")
+        except RuntimeError as exc:
+            errors.append(str(exc))
+    pending = threading.Thread(target=send)
+    pending.start()
+    assert cache.wake.wait(1)
+    assert pending.is_alive()
+    cache.refresh()
+    pending.join(1)
+    assert not pending.is_alive()
+    assert errors == ([] if allowed else ["This built-in model is disabled by Loom Admin."])
+
+
 def test_outage_cannot_extend_permission_lease():
     now = [0.0]
     cache = ModelPolicySnapshot("https://example.invalid/access", "account-a", fetch=lambda token: {"access": {"models": ["builtin:minimax"]}}, clock=lambda: now[0], start=False)
