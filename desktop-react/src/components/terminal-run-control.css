@@ -31,14 +31,6 @@
   cursor: default;
 }
 
-.terminal-run-spinner {
-  animation: terminal-run-spin 760ms linear infinite;
-}
-
-@keyframes terminal-run-spin {
-  to { transform: rotate(360deg); }
-}
-
 .terminal-run-panel {
   border-top: 1px solid #232730;
   background: #0a0c10;

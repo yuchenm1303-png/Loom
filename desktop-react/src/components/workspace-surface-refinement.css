@@ -68,7 +68,6 @@
   border-color: transparent;
   color: var(--ws-ink);
   box-shadow: none;
-  transform: none;
 }
 :root .app-shell .thread-header :is(.thread-review-button, .thread-header-icon-button).active {
   background: var(--ws-selected);
@@ -196,8 +195,6 @@
   transition: background 160ms ease, color 160ms ease;
 }
 :root .app-shell .turn-artifacts-preview-action:hover { background: var(--ws-hover); border-color: var(--ws-line); }
-:root .app-shell .turn-artifacts-preview-action > svg:last-child { transition: translate 200ms cubic-bezier(.2,.8,.2,1); }
-:root .app-shell .turn-artifacts-preview-action:hover > svg:last-child { translate: 2px 0; }
 
 /* Keep the input as the primary action surface, with a short grounding shadow. */
 :root .app-shell .composer-wrap.composer-refined {

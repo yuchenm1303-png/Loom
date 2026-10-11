@@ -337,7 +337,6 @@ button.general-default-card:hover,
 
 button.general-default-card:hover .general-default-card-head > svg:last-child {
   color: #9ba0aa;
-  transform: none;
 }
 
 .general-interface-card {

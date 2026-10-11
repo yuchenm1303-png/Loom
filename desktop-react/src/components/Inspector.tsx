@@ -10,7 +10,7 @@ import {
   PanelRightClose,
   Terminal,
   Wrench,
-} from "lucide-react";
+} from "./icons";
 import { memo, useCallback, useMemo, useRef, useState } from "react";
 import type { TranscriptItem } from "../types/loom";
 import { useI18n } from "../i18n";
@@ -372,6 +372,7 @@ export const Inspector = memo(function Inspector({ items, onClose }: InspectorPr
         </header>
 
         <div
+          data-ic-row
           className={`runtime-tabs runtime-tabs-index-${tabIndex}`}
           role="tablist"
           aria-label="Runtime views"

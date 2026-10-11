@@ -1,4 +1,4 @@
-import { Clock3, RefreshCw } from "lucide-react";
+import { Clock3, RefreshCw } from "./icons";
 import { useEffect, useState } from "react";
 import { useI18n, type LoomLanguage } from "../i18n";
 

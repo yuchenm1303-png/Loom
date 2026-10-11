@@ -1,4 +1,4 @@
-import { ArrowUp, Paperclip, Sparkles, Square } from "lucide-react";
+import { ArrowUp, Paperclip, Sparkles, Square } from "./icons";
 import {
   type ComponentProps,
   type FormEvent,

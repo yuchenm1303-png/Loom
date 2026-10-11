@@ -8,7 +8,7 @@ import {
   ShieldCheck,
   Terminal,
   type LucideIcon,
-} from "lucide-react";
+} from "./icons";
 import "./settings-permissions.css";
 
 type PermissionMode = "read-only" | "approval" | "workspace" | "full-access" | string;

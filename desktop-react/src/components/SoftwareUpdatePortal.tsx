@@ -5,7 +5,7 @@ import {
   ExternalLink,
   RefreshCw,
   RotateCw,
-} from "lucide-react";
+} from "./icons";
 import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import "./software-update.css";
@@ -261,7 +261,7 @@ function UpdatePanel() {
             </button>
           ) : (
             <button type="button" className="software-update-primary" disabled={!canCheck} onClick={() => void checkNow()}>
-              <RefreshCw size={14} className={busy ? "spin" : ""} />{state?.phase === "checking" ? "Checking…" : state?.phase === "downloading" ? "Downloading…" : "Check for updates"}
+              <RefreshCw size={14} spinning={busy} />{state?.phase === "checking" ? "Checking…" : state?.phase === "downloading" ? "Downloading…" : "Check for updates"}
             </button>
           )}
           <button type="button" className="software-update-secondary" onClick={() => void bridge().openExternal(RELEASES_URL)}>

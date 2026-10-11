@@ -400,16 +400,12 @@
 .composer-chip-chevron {
   flex: none;
   opacity: .6;
-  transition: transform 160ms cubic-bezier(.2,.8,.2,1), opacity 160ms ease;
+  transition: opacity 160ms ease;
 }
 
 .composer-chip:hover .composer-chip-chevron,
 .composer-chip.is-open .composer-chip-chevron {
   opacity: 1;
-}
-
-.composer-chip.is-open .composer-chip-chevron {
-  transform: rotate(180deg);
 }
 
 .composer-popover {
@@ -765,11 +761,7 @@
   border: 1.5px solid rgba(170,160,255,.25);
   border-top-color: #aaa0ff;
   border-radius: 50%;
-  animation: composer-mini-spin .7s linear infinite;
-}
-
-@keyframes composer-mini-spin {
-  to { transform: rotate(360deg); }
+  animation: li-spin var(--ic-t-spin) linear infinite;
 }
 
 .composer-popover-footnote,
@@ -852,7 +844,6 @@
     transition: none;
   }
 }
-
 
 /* ---- attachments ---------------------------------------------------------
    Attachments read as objects held above the prompt, not as text inside it. */
@@ -939,5 +930,4 @@
   color: #e08e97;
   font-size: 11.5px;
 }
-
 

@@ -9,7 +9,7 @@ import {
   Sparkles,
   Trash2,
   X,
-} from "lucide-react";
+} from "./icons";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 type ProjectMemoryRecord = {
@@ -319,7 +319,7 @@ export function ProjectMemoryCard({ projectId, open, running }: ProjectMemoryCar
           <strong>项目记忆</strong>
         </div>
         <button type="button" onClick={() => void refresh()} disabled={loading} title="刷新项目记忆">
-          <RefreshCw size={14} strokeWidth={1.85} className={loading ? "spin" : ""} />
+          <RefreshCw size={14} strokeWidth={1.85} spinning={loading} />
           {loading ? "刷新中" : "刷新"}
         </button>
       </div>
@@ -419,7 +419,7 @@ export function ProjectMemoryCard({ projectId, open, running }: ProjectMemoryCar
                     {relativeTime(memory.status === "archived" ? memory.archived_at : memory.updated_at)}
                   </small>
                 </span>
-                {busy ? <RefreshCw size={13} className="spin" /> : active ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                {busy ? <RefreshCw size={13} spinning /> : active ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
               </button>
 
               {active && selected ? (

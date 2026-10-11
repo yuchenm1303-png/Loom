@@ -15,7 +15,7 @@ import {
   ThumbsDown,
   ThumbsUp,
   Zap,
-} from "lucide-react";
+} from "./icons";
 import {
   createContext,
   Fragment,

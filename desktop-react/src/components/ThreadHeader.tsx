@@ -7,9 +7,11 @@ import {
   PanelsTopLeft,
   PanelRightClose,
   PanelRightOpen,
+  Pulse,
   Settings,
+  SidebarTriangle,
   UserRound,
-} from "lucide-react";
+} from "./icons";
 import { useEffect, useMemo, useState } from "react";
 import { useI18n } from "../i18n";
 import type { ContextCompactionProgress, ContextReport } from "../types/loom";
@@ -81,25 +83,7 @@ function WorkspaceEntryIcon({ kind }: { kind: "agents" | "review" | "preview" })
   return <Icon className="header-workspace-icon" data-workspace-icon={kind} size={18} strokeWidth={1.75} aria-hidden="true" focusable="false" />;
 }
 function ActivityTraceIcon({ size = 16 }: { size?: number }) {
-  const trace = "M2.25 10h3.2l1.8-5.6 3.25 11.15 2.2-7.2 1.55 3.05h3.5";
-  return (
-    <svg
-      className="header-activity-trace"
-      width={size}
-      height={size}
-      viewBox="0 0 20 20"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.55"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-      focusable="false"
-    >
-      <path className="header-activity-base" d={trace} />
-      <path className="header-activity-runner" d={trace} />
-    </svg>
-  );
+  return <Pulse className="header-activity-trace" size={size} strokeWidth={1.86} style={{ strokeWidth: 2.1 }} focusable="false" />;
 }
 
 export function ThreadHeader({
@@ -197,9 +181,7 @@ export function ThreadHeader({
           aria-label={sidebarLabel}
           aria-pressed={sidebarOpen}
         >
-          <svg className="thread-sidebar-triangle-mark" viewBox="0 0 12 14" aria-hidden="true">
-            <path d="M2.55 1.42c-.82-.48-1.85.11-1.85 1.06v9.04c0 .95 1.03 1.54 1.85 1.06l7.82-4.52c.82-.47.82-1.65 0-2.12L2.55 1.42Z" />
-          </svg>
+          <SidebarTriangle className="thread-sidebar-triangle-mark" viewBox="0 0 12 14" fill="currentColor" stroke="none" focusable="false" />
         </button>
       </div>
 

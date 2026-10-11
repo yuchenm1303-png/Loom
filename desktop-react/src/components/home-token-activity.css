@@ -146,14 +146,6 @@ html[data-loom-theme="light"] .home-token-activity {
   cursor: pointer;
 }
 
-.home-token-link svg {
-  transition: transform 200ms var(--ease-out);
-}
-
-.home-token-link:hover svg {
-  transform: translateX(2px);
-}
-
 .home-token-link:focus-visible {
   border-radius: 4px;
   outline: 2px solid rgba(var(--home-accent-rgb),.45);

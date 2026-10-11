@@ -144,7 +144,6 @@
   border-color: rgba(169, 157, 255, .22);
   background: rgba(139, 124, 246, .11);
   color: #f1efff;
-  transform: translateY(-1px);
 }
 
 .project-card-heading button:disabled,
@@ -656,7 +655,6 @@ html[data-loom-reduced-motion="true"] .project-empty-threads button {
   .project-workspace-grid { grid-template-columns: 1fr; }
 }
 
-
 /* Project memory ----------------------------------------------------------- */
 .project-memory-card {
   border: 1px solid rgba(255, 255, 255, .075);
@@ -1077,15 +1075,6 @@ html[data-loom-reduced-motion="true"] .project-empty-threads button {
   line-height: 15px;
 }
 
-.project-memory-card .spin {
-  animation: project-memory-spin .8s linear infinite;
-}
-
-@keyframes project-memory-spin {
-  to { transform: rotate(360deg); }
-}
-
-
 /* Memory v3 extensions ----------------------------------------------------- */
 .project-memory-index {
   display: grid;
@@ -1228,7 +1217,6 @@ html[data-loom-reduced-motion="true"] .project-empty-threads button {
   border-color: rgba(139, 124, 246, .32);
   background: rgba(139, 124, 246, .12);
 }
-
 
 @media (prefers-reduced-motion: reduce) {
   .project-details-panel { transition: none !important; }

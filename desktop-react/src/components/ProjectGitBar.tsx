@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Folder, GitBranch, Laptop, GitPullRequest } from "lucide-react";
+import { Folder, GitBranch, Laptop, GitPullRequest } from "./icons";
 import type { ProjectRecord } from "../types/loom";
 import "./project-git-bar.css";
 import { startVisiblePolling } from "../visiblePolling";

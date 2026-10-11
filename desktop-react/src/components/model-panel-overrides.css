@@ -179,12 +179,11 @@
   position: relative;
   z-index: 1;
   color: #606875;
-  transition: color 150ms ease, transform 160ms cubic-bezier(.2,.8,.2,1);
+  transition: color 150ms ease;
 }
 
 .model-manager-popover .model-manager-actions > button:hover:not(:disabled) .model-manager-action-chevron {
   color: #9a91ca;
-  transform: translateX(2px);
 }
 
 @keyframes model-panel-enter {

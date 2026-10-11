@@ -224,11 +224,7 @@ html[data-loom-reduced-motion="true"] .artifact-library-card { animation: none; 
   border: 2px solid rgba(139,124,246,.16);
   border-top-color: rgba(139,124,246,.72);
   border-radius: 50%;
-  animation: artifact-preview-spin 760ms linear infinite;
-}
-
-@keyframes artifact-preview-spin {
-  to { transform: rotate(360deg); }
+  animation: li-spin var(--ic-t-spin) linear infinite;
 }
 
 .artifact-preview-resizer {

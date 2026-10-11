@@ -174,14 +174,6 @@ html[data-loom-theme="light"] .settings-host {
   transform: none;
 }
 
-.settings-shell.settings-refined .settings-back > svg {
-  transition: transform 220ms var(--sr-ease-out);
-}
-
-.settings-shell.settings-refined .settings-back:hover > svg {
-  transform: translate3d(-2px, 0, 0);
-}
-
 .settings-shell.settings-refined .settings-brand-orb {
   color: var(--sr-accent-ink);
   border: 1px solid color-mix(in srgb, var(--sr-accent) 30%, transparent);
@@ -588,14 +580,6 @@ html[data-loom-theme="light"] .settings-host {
   transform: none;
 }
 
-.settings-shell.settings-refined .mature-action-button > .lucide-refresh-cw {
-  transition: transform 320ms var(--sr-ease-out);
-}
-
-.settings-shell.settings-refined .mature-action-button:hover > .lucide-refresh-cw {
-  transform: rotate(120deg);
-}
-
 .settings-shell.settings-refined .settings-row-link {
   color: var(--sr-ink-4);
   transition: background-color 140ms ease, color 140ms ease;
@@ -884,13 +868,12 @@ html[data-loom-theme="light"] .settings-host {
 .settings-shell.settings-refined .general-default-card-head > svg:last-child,
 .settings-shell.settings-refined .general-quick-card > svg:last-child {
   color: var(--sr-ink-4);
-  transition: transform 220ms var(--sr-ease-out), color 160ms ease;
+  transition: color 160ms ease;
 }
 
 .settings-shell.settings-refined button.general-default-card:hover .general-default-card-head > svg:last-child,
 .settings-shell.settings-refined .general-quick-card:hover > svg:last-child {
   color: var(--sr-accent);
-  transform: translate3d(2px, 0, 0);
 }
 
 .settings-shell.settings-refined .general-quick-card > svg:first-child {

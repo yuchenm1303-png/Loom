@@ -13,7 +13,7 @@ import {
   Play,
   Video,
   type LucideIcon,
-} from "lucide-react";
+} from "./icons";
 import { useEffect, useMemo, useState } from "react";
 import { ImageLightbox } from "./ImageLightbox";
 import "./user-message-attachments.css";

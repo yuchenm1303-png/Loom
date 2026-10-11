@@ -119,17 +119,9 @@ html[data-loom-theme="light"] .rt {
   transition: background-color 140ms ease, color 140ms ease;
 }
 
-.rt-reset > svg {
-  transition: transform 260ms var(--rt-ease);
-}
-
 .rt-reset:hover:not(:disabled) {
   background: var(--rt-hover);
   color: var(--rt-text);
-}
-
-.rt-reset:hover:not(:disabled) > svg {
-  transform: rotate(-50deg);
 }
 
 .rt-reset:focus-visible {

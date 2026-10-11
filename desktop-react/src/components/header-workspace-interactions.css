@@ -1,4 +1,5 @@
-/* Scoped to the three workspace entries; all motion settles after one pass. */
+/* The three workspace entries. The entry holds still; its glyph moves
+   (icon-motion.css), and an active entry carries a short accent bar. */
 .app-shell .thread-header .header-workspace-entry {
   --entry-accent: #b4abef;
   --entry-wash: rgba(154, 139, 230, .09);
@@ -6,8 +7,7 @@
   isolation: isolate;
   border-radius: 8px;
   transition: color 180ms ease, background-color 180ms ease,
-    border-color 180ms ease, box-shadow 220ms ease,
-    transform 240ms cubic-bezier(.2,.8,.2,1) !important;
+    border-color 180ms ease, box-shadow 220ms ease !important;
 }
 
 html[data-loom-theme="light"] .app-shell .thread-header .header-workspace-entry {
@@ -19,8 +19,7 @@ html[data-loom-theme="light"] .app-shell .thread-header .header-workspace-entry 
   width: 18px;
   height: 18px;
   stroke-width: 1.75;
-  transform-origin: center;
-  transition: color 180ms ease, transform 240ms cubic-bezier(.2,.8,.2,1);
+  transition: color 180ms ease;
 }
 
 .app-shell .thread-header .header-workspace-entry::after {
@@ -42,7 +41,6 @@ html[data-loom-theme="light"] .app-shell .thread-header .header-workspace-entry 
   background: var(--entry-wash);
   border-color: transparent;
   box-shadow: inset 0 1px 0 rgba(255,255,255,.06);
-  transform: translateY(-1px);
 }
 
 .app-shell .thread-header .header-workspace-entry:is(:hover, :focus-visible, .active):not(:disabled) > svg {
@@ -65,66 +63,14 @@ html[data-loom-theme="light"] .app-shell .thread-header .header-workspace-entry 
   outline-offset: 3px;
 }
 
-.app-shell .thread-header .header-workspace-entry:active:not(:disabled) {
-  transform: translateY(0) scale(.96);
-  transition-duration: 80ms !important;
-}
-
-.header-workspace-icon > * {
-  transform-box: fill-box;
-  transform-origin: center;
-}
-
-/* Branch endpoints gently fan out, then return to their original geometry. */
-.header-workspace-entry:is(:hover, :focus-visible):not(:disabled) [data-workspace-icon="agents"] circle:nth-of-type(2) {
-  animation: loom-entry-branch-left 480ms cubic-bezier(.2,.8,.2,1);
-}
-.header-workspace-entry:is(:hover, :focus-visible):not(:disabled) [data-workspace-icon="agents"] circle:nth-of-type(3) {
-  animation: loom-entry-branch-right 480ms 40ms cubic-bezier(.2,.8,.2,1);
-}
-.header-workspace-entry:is(:hover, :focus-visible):not(:disabled) [data-workspace-icon="review"] path:not(:first-of-type) {
-  animation: loom-entry-diff 520ms ease;
-}
-.header-workspace-entry:is(:hover, :focus-visible):not(:disabled) [data-workspace-icon="preview"] path:last-of-type {
-  animation: loom-entry-panel 520ms cubic-bezier(.2,.8,.2,1);
-}
-.header-workspace-entry.active > .header-workspace-icon {
-  animation: loom-entry-select 320ms cubic-bezier(.2,.8,.2,1);
-}
-
-@keyframes loom-entry-branch-left {
-  40% { transform: translate(-1.2px, -.7px); }
-}
-@keyframes loom-entry-branch-right {
-  40% { transform: translate(1.2px, -.7px); }
-}
-@keyframes loom-entry-diff {
-  35% { opacity: .35; transform: translateY(1px); }
-  70% { opacity: 1; transform: translateY(-.4px); }
-}
-@keyframes loom-entry-panel {
-  40% { transform: translateX(2px); }
-}
-@keyframes loom-entry-select {
-  0% { transform: scale(.9); }
-  65% { transform: scale(1.06); }
-  100% { transform: scale(1); }
-}
-
 .app-shell .thread-header .header-workspace-entry:disabled {
-  animation: none;
-  transform: none;
   box-shadow: none;
 }
 
 @media (prefers-reduced-motion: reduce) {
   .app-shell .thread-header .header-workspace-entry,
-  .app-shell .thread-header .header-workspace-entry::after,
-  .app-shell .thread-header .header-workspace-entry svg,
-  .app-shell .thread-header .header-workspace-entry svg > * {
-    animation: none !important;
+  .app-shell .thread-header .header-workspace-entry::after {
     transition: none !important;
-    transform: none !important;
   }
   .app-shell .thread-header .header-workspace-entry::after {
     left: calc(50% - 6px);
@@ -132,12 +78,8 @@ html[data-loom-theme="light"] .app-shell .thread-header .header-workspace-entry 
 }
 
 :root[data-loom-reduced-motion="true"] .app-shell .thread-header .header-workspace-entry,
-:root[data-loom-reduced-motion="true"] .app-shell .thread-header .header-workspace-entry::after,
-:root[data-loom-reduced-motion="true"] .app-shell .thread-header .header-workspace-entry svg,
-:root[data-loom-reduced-motion="true"] .app-shell .thread-header .header-workspace-entry svg > * {
-  animation: none !important;
+:root[data-loom-reduced-motion="true"] .app-shell .thread-header .header-workspace-entry::after {
   transition: none !important;
-  transform: none !important;
 }
 :root[data-loom-reduced-motion="true"] .app-shell .thread-header .header-workspace-entry::after {
   left: calc(50% - 6px);

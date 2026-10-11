@@ -1,4 +1,4 @@
-import { LoaderCircle, Play, Send, Square } from "lucide-react";
+import { LoaderCircle, Play, Send, Square } from "./icons";
 import { useCallback, useEffect, useRef, useState } from "react";
 import "./terminal-run-control.css";
 
@@ -187,7 +187,7 @@ export function TerminalRunControl({
         title={disabled ? "Wait for the response to finish" : running ? "Stop command" : "Run in project terminal"}
         aria-label={running ? "Stop command" : "Run command"}
       >
-        {starting ? <LoaderCircle size={12} className="terminal-run-spinner" /> : running ? <Square size={11} /> : <Play size={11} fill="currentColor" />}
+        {starting ? <LoaderCircle size={12} /> : running ? <Square size={11} /> : <Play size={11} fill="currentColor" />}
         <span>{running ? "Stop" : "Run"}</span>
       </button>
 

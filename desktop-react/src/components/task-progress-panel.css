@@ -74,11 +74,8 @@
 .task-progress-dock.is-rail .task-plan-card { position: absolute; top: 16px; bottom: 16px; left: 12px; opacity: 0; transform: translateX(24px); visibility: hidden; pointer-events: none; }
 .task-progress-dock.is-expanded .task-plan-card { animation: task-plan-enter 280ms cubic-bezier(.22, 1, .36, 1); }
 .task-plan-trigger { animation: task-plan-enter 220ms ease; }
-.task-plan-trigger, .task-plan-close { transition: background 160ms ease, border-color 160ms ease, color 160ms ease, transform 160ms ease; }
+.task-plan-trigger, .task-plan-close { transition: background 160ms ease, border-color 160ms ease, color 160ms ease; }
 .task-plan-trigger:hover { transform: translateY(-2px); }
-.task-plan-trigger:active, .task-plan-close:active { transform: scale(.94); }
-.task-plan-close:hover svg { transform: translateX(-2px); }
-.task-plan-close svg { transition: transform 160ms ease; }
 .task-plan-list li { transition: background 220ms ease; animation: task-plan-enter 240ms ease; }
 .task-plan-list li:hover { background: var(--panel-hover); }
 .task-plan-status, .task-plan-step-mark, .task-plan-outcome { transition: color 220ms ease, border-color 220ms ease, background 220ms ease; }

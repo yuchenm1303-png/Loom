@@ -1,4 +1,4 @@
-import { Check, RotateCcw, Sparkles } from "lucide-react";
+import { Check, RotateCcw, Sparkles } from "./icons";
 import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import type { StickerPreferences } from "../types/loom";
 import "./stickers.css";

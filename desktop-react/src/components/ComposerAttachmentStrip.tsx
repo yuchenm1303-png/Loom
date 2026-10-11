@@ -9,7 +9,7 @@ import {
   Video,
   X,
   type LucideIcon,
-} from "lucide-react";
+} from "./icons";
 import type { Attachment } from "../types/loom";
 import { extensionOf, formatAttachmentSize } from "./composerAttachments";
 

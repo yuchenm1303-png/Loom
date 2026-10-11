@@ -1,4 +1,4 @@
-import { Laptop, Monitor, MonitorSmartphone, RotateCw, ShieldCheck, Wifi, WifiOff, X } from "lucide-react";
+import { Laptop, Monitor, MonitorSmartphone, RotateCw, ShieldCheck, Wifi, WifiOff, X } from "./icons";
 import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { useI18n } from "../i18n";
@@ -166,7 +166,7 @@ export function RemoteControlSurface({ open, onClose }: { open: boolean; onClose
             <div><h2>{copy.title}</h2><p>{copy.subtitle}</p></div>
           </div>
           <div className="remote-devices-header-actions">
-            <button type="button" onClick={() => void refresh()} title={copy.refresh} aria-label={copy.refresh} disabled={loading}><RotateCw size={15.5} className={loading ? "is-spinning" : ""} /></button>
+            <button type="button" onClick={() => void refresh()} title={copy.refresh} aria-label={copy.refresh} disabled={loading}><RotateCw size={15.5} spinning={loading} /></button>
             <button type="button" onClick={onClose} title={copy.close} aria-label={copy.close}><X size={16} /></button>
           </div>
         </header>

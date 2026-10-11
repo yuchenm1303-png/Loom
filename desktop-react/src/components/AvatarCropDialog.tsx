@@ -1,4 +1,4 @@
-import { Crop, RotateCcw, X, ZoomIn } from "lucide-react";
+import { Crop, RotateCcw, X, ZoomIn } from "./icons";
 import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type WheelEvent } from "react";
 import "./avatar-crop.css";
 

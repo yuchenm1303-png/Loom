@@ -9,7 +9,7 @@ import {
   RefreshCw,
   ShieldCheck,
   Terminal,
-} from "lucide-react";
+} from "./icons";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useI18n } from "../i18n";
 

@@ -1,4 +1,4 @@
-import { Reply, X } from "lucide-react";
+import { Reply, X } from "./icons";
 import { useEffect, useState } from "react";
 import { useI18n } from "../i18n";
 

@@ -15,7 +15,7 @@ import {
   SlidersHorizontal,
   Trash2,
   X,
-} from "lucide-react";
+} from "./icons";
 import {
   useEffect,
   useMemo,
@@ -350,6 +350,7 @@ function ProviderRow({
       type="button"
       className={`mp-row mp-provider ${current ? "is-current" : ""}`}
       data-mp-item=""
+      data-ic-row
       onClick={onOpen}
     >
       <ProviderMark id={group.id} name={group.name} />
@@ -410,7 +411,7 @@ function ModelRow({
       {meta ? <span className={`mp-row-meta ${metaAttention ? "is-attention" : ""}`}>{meta}</span> : null}
       <span className="mp-row-end" aria-hidden="true">
         {pending
-          ? <LoaderCircle size={14} strokeWidth={2} className="mp-spin" />
+          ? <LoaderCircle size={14} strokeWidth={2} />
           : end ?? (current ? <Check size={15} strokeWidth={2.2} /> : null)}
       </span>
     </button>
@@ -837,7 +838,7 @@ export function ModelPanel({
         <div className="mp-foot mp-form-foot">
           <button type="button" className="mp-foot-action" onClick={() => navigate("profiles", "back")}>Cancel</button>
           <button type="button" className="mp-primary" disabled={locked || !accountAuthenticated} onClick={() => void submitAdd()}>
-            {busy ? <LoaderCircle size={14} strokeWidth={2} className="mp-spin" /> : null}
+            {busy ? <LoaderCircle size={14} strokeWidth={2} /> : null}
             Save & use
           </button>
         </div>
@@ -901,7 +902,7 @@ export function ModelPanel({
         <div className="mp-foot mp-form-foot">
           <button type="button" className="mp-foot-action" onClick={() => navigate("profiles", "back")}>Cancel</button>
           <button type="button" className="mp-primary" disabled={locked || !accountAuthenticated} onClick={() => void submitCustom()}>
-            {busy ? <LoaderCircle size={14} strokeWidth={2} className="mp-spin" /> : null}
+            {busy ? <LoaderCircle size={14} strokeWidth={2} /> : null}
             Switch model
           </button>
         </div>
@@ -1002,7 +1003,7 @@ export function ModelPanel({
                   disabled={!accountAuthenticated}
                 />
                 <button type="button" disabled={!accountAuthenticated || !providerKey.trim() || providerConfiguring} onClick={() => void configureProvider(credentialTarget.provider)}>
-                  {providerConfiguring ? <LoaderCircle size={14} strokeWidth={2} className="mp-spin" /> : null}
+                  {providerConfiguring ? <LoaderCircle size={14} strokeWidth={2} /> : null}
                   Connect
                 </button>
               </div>
@@ -1083,7 +1084,7 @@ export function ModelPanel({
                         onClick={() => void deleteProfile(profile)}
                       >
                         {deleting
-                          ? <LoaderCircle size={14} strokeWidth={2} className="mp-spin" />
+                          ? <LoaderCircle size={14} strokeWidth={2} />
                           : <Trash2 size={14} strokeWidth={1.9} />}
                       </button>
                     ) : null}

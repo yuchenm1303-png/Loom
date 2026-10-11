@@ -11,7 +11,7 @@ import {
   ShieldCheck,
   UserRound,
   X,
-} from "lucide-react";
+} from "./icons";
 import {
   useCallback,
   useEffect,

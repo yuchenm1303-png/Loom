@@ -7,7 +7,7 @@ import {
   MessageSquare,
   X,
   XCircle,
-} from "lucide-react";
+} from "./icons";
 import { useEffect, useMemo, useState } from "react";
 import type { TranscriptItem } from "../types/loom";
 import "./sub-agent-workspace.css";
@@ -318,7 +318,7 @@ function historyCopy(mode: string): string {
 }
 
 function StatusIcon({ status }: { status: AgentStatus }) {
-  if (status === "running" || status === "starting") return <Loader2 size={13} className="sub-agent-spinner" />;
+  if (status === "running" || status === "starting") return <Loader2 size={13} />;
   if (status === "completed") return <CheckCircle2 size={13} />;
   if (status === "failed") return <XCircle size={13} />;
   if (status === "waiting") return <CircleAlert size={13} />;

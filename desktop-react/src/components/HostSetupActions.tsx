@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ArrowRight, Download } from "lucide-react";
+import { ArrowRight, Download } from "./icons";
 import { discoverLocalLoomHost } from "../localHostDiscovery";
 import "./host-setup-actions.css";
 

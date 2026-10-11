@@ -1,4 +1,4 @@
-import { Check, CircleAlert, ChevronLeft, ListChecks, X } from "lucide-react";
+import { Check, CircleAlert, ChevronLeft, ListChecks, X } from "./icons";
 import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { milestoneEvidenceLabels, milestoneOutcomeLabel, type TaskMilestone } from "./liveTaskProgress";
 import "./task-progress-panel.css";

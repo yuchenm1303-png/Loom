@@ -448,13 +448,12 @@ html[data-loom-theme="light"] .model-manager-popover .mp {
   flex: none;
   margin-right: -3px;
   color: var(--mp-faint);
-  transition: transform 160ms var(--loom-ease-out, ease), color 140ms ease;
+  transition: color 140ms ease;
 }
 
 .mp-row:hover .mp-row-chevron,
 .mp-row:focus-visible .mp-row-chevron {
   color: var(--mp-muted);
-  transform: translateX(2px);
 }
 
 .mp-badge {
@@ -954,10 +953,6 @@ html[data-loom-theme="light"] .mp-mark {
   box-shadow: inset 0 0 0 1.5px var(--mp-ring);
 }
 
-.mp-spin {
-  animation: mp-spin 800ms linear infinite;
-}
-
 /* Motion ------------------------------------------------------------------ */
 @keyframes mp-enter {
   from { opacity: 0; transform: translate3d(8px, 0, 0); }
@@ -974,10 +969,6 @@ html[data-loom-theme="light"] .mp-mark {
   6% { --mp-fade-top: 14px; }
   94% { --mp-fade-bottom: 18px; }
   100% { --mp-fade-top: 14px; --mp-fade-bottom: 0px; }
-}
-
-@keyframes mp-spin {
-  to { transform: rotate(360deg); }
 }
 
 @media (prefers-reduced-motion: reduce) {

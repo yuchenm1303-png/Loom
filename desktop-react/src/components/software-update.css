@@ -242,22 +242,10 @@
   background: var(--sr-hover);
 }
 
-.settings-shell.settings-refined .software-update-actions .spin {
-  animation: software-update-spin 900ms linear infinite;
-}
-
-@keyframes software-update-spin {
-  to { transform: rotate(360deg); }
-}
-
 @media (prefers-reduced-motion: reduce) {
   .settings-shell.settings-refined .software-update-progress-track > i,
   .settings-shell.settings-refined .software-update-actions button {
     transition: none;
-  }
-
-  .settings-shell.settings-refined .software-update-actions .spin {
-    animation: none;
   }
 }
 
