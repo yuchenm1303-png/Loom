@@ -11,6 +11,9 @@ permissions:
 jobs:
   test:
     runs-on: ubuntu-latest
+    # A stuck test must fail the job in minutes, not hold the runner for the 6 h
+    # default. The whole job normally takes about four.
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -23,7 +26,10 @@ jobs:
       - name: Validate Loom Web deployment script
         run: bash -n scripts/deploy-loom-web-main.sh && bash -n scripts/loom-web-autosync-entry.sh
       - name: Test
-        run: python -m pytest
+        # --verbosity=1 overrides the -q in pyproject so every test is named in the
+        # log. faulthandler_timeout dumps every thread's stack when a single test
+        # runs for two minutes, so a hang identifies its own blocking call.
+        run: python -m pytest --verbosity=1 -o faulthandler_timeout=120
       - name: CLI smoke
         run: |
           loom --help
