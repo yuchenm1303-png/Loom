@@ -1,4 +1,4 @@
-import { Globe2 } from "lucide-react";
+import { Globe2 } from "./icons";
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { LOOM_LANGUAGES, useI18n, type LoomLanguage } from "../i18n";

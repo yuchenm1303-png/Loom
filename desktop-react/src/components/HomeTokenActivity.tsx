@@ -1,4 +1,4 @@
-import { Activity, ArrowRight } from "lucide-react";
+import { Activity, ArrowRight } from "./icons";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent } from "react";
 import { useI18n } from "../i18n";
 import {

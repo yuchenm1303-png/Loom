@@ -1,4 +1,4 @@
-import { Lock, RotateCcw } from "lucide-react";
+import { Lock, RotateCcw } from "./icons";
 import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent } from "react";
 import type { ModelReasoningState } from "../types/loom";
 import "./reasoning-thread.css";

@@ -1,4 +1,4 @@
-import { Check, Copy, Maximize2 } from "lucide-react";
+import { Check, Copy, Maximize2 } from "./icons";
 import { isValidElement, memo, useEffect, useMemo, useState, type ReactNode } from "react";
 import { ImageLightbox } from "./ImageLightbox";
 import ReactMarkdown, { defaultUrlTransform, type Components } from "react-markdown";

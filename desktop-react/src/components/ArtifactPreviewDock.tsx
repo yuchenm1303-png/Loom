@@ -1,4 +1,4 @@
-import { ArrowLeft, ExternalLink, FileCode2, RefreshCw, X, Search, Package, ChevronRight, Image, FileText, Music, Film, Globe } from "lucide-react";
+import { ArrowLeft, ExternalLink, FileCode2, RefreshCw, X, Search, Package, ChevronRight, Image, FileText, Music, Film, Globe } from "./icons";
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from "react";
 import { createPortal } from "react-dom";
 import { artifactName, artifactRenderer, canRenderArtifact, normalizeArtifactPath } from "../artifactRenderers";

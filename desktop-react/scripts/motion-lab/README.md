@@ -21,3 +21,22 @@ and `LOOM_TEST_ORIGIN` for a Vite dev server serving `desktop-react` (the `motio
 
 What they found, and what was done about it, is written up in
 `docs/runtime-motion-thread-2026-10-10.md`.
+
+## Icons
+
+The icon lab (`../fixtures/icon-lab.html`, served by the same Vite entry) renders every redrawn glyph in the real
+stylesheet cascade at rest, engaged, pressed and expanded; `?only=trash,copy&size=28&theme=light` narrows it.
+These tools work on the lab and on the live app fixture. What they found, and how the icon layer works, is written
+up in `docs/icon-motion-2026-10-10.md`.
+
+| Script | What it answers |
+| --- | --- |
+| `icon-sheet.mjs [--only a,b] [--size 28] [--dsf 2] [--theme dark]` | A contact sheet of the lab: every glyph, every state, settled. For reading shapes and end poses. |
+| `icon-film.mjs --icon trash,plus [--times 0,50,100,…] [--zoom 1]` | One glyph's gesture frame by frame, in and out. Hovers the lab's live cell, pauses every transition under it and seeks, so frames are exact instead of timed. `--size 16 --dsf 1.5 --zoom 3` shows what the user's display really draws. |
+| `icon-film-live.mjs --target "<selector>[##<selector>]"` | The same for real controls in the app (colours, clipping and the control's own wash included). `--reveal "<row>"` hovers a row first, for actions that only appear on row hover. |
+| `icon-audit.mjs --scene settings\|model\|menu\|…` | Hovers every icon control in a scene and prints how far each part moved, plus what still interferes: a control that lifts, a glyph with its own transform or filter. |
+| `icon-rules.mjs --click … --target … --hover …` | Which stylesheet rules (file and line) still set a motion property on one element, with `:hover` forced through the DevTools protocol. The way to find the old rule that moves something twice. |
+| `icon-spring.mjs [zeta] [settle]` | Prints a CSS `linear()` easing for a damped spring; `--ic-spring` in `icon-motion.css` came from it. |
+
+Tests: `scripts/tests/icon-motion.test.mjs` (static: names, parts, ownership, dead lucide selectors) and
+`scripts/tests/icon-motion-browser.mjs` (real hover, focus, reduced motion, rows and tools, loaders, press).

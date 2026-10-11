@@ -1,4 +1,4 @@
-import { Download, ExternalLink } from "lucide-react";
+import { Download, ExternalLink } from "./icons";
 import { useEffect, useState } from "react";
 import { useSettingsRoute } from "./settingsNavigation";
 import "./SettingsComputerLogExport.css";

@@ -5,7 +5,7 @@ import "./portal-content.css";
 import "./portal-liquid-cursor.css";
 import type { CSSProperties, FormEvent } from "react";
 import { useEffect, useRef, useState } from "react";
-import { Laptop, Download, UserRound, LogOut, Check, ArrowRight, Github, Mail, KeyRound, ShieldCheck, Eye, EyeOff, FolderOpen, MessagesSquare } from "lucide-react";
+import { Laptop, Download, UserRound, LogOut, Check, ArrowRight, Github, Mail, KeyRound, ShieldCheck, Eye, EyeOff, FolderOpen, MessagesSquare } from "./icons";
 import { useI18n } from "../i18n";
 import { useAccount } from "../state/useAccount";
 import { HostSetupActions } from "./HostSetupActions";

@@ -13,7 +13,7 @@ import {
   Save,
   ShieldAlert,
   X,
-} from "lucide-react";
+} from "./icons";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMotionPresence } from "../motion/useMotionPresence";
 import { startVisiblePolling } from "../visiblePolling";

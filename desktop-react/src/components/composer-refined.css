@@ -234,10 +234,6 @@
   transform: none;
 }
 
-:root .composer-wrap.composer-refined .composer .composer-chip.is-open .composer-chip-chevron {
-  transform: rotate(180deg);
-}
-
 /* Send: a flat, high-contrast key. The surface-inverse colour reads as the one
    primary action without any shine. */
 :root .composer-wrap.composer-refined .composer .send-button {

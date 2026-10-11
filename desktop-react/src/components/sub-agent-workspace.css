@@ -291,17 +291,12 @@
   background: rgba(192,161,94,.05);
 }
 
-.sub-agent-spinner {
-  animation: sub-agent-spin 1s linear infinite;
-}
-
 .sub-agent-chevron {
   color: #59616d;
-  transition: transform 160ms cubic-bezier(.2,.8,.2,1), color 140ms ease;
+  transition: color 140ms ease;
 }
 
 .sub-agent-card.is-open .sub-agent-chevron {
-  transform: rotate(90deg);
   color: #9c93e7;
 }
 
@@ -420,10 +415,6 @@
 @keyframes sub-agent-workspace-enter {
   from { opacity: 0; transform: translateY(3px); }
   to { opacity: 1; transform: translateY(0); }
-}
-
-@keyframes sub-agent-spin {
-  to { transform: rotate(360deg); }
 }
 
 @keyframes sub-agent-pulse {
@@ -604,7 +595,6 @@ html[data-loom-theme="light"] .sub-agent-event {
   }
 }
 
-
 /* Docked mode ------------------------------------------------------------ */
 .sub-agent-workspace.is-docked {
   width: 100%;
@@ -751,7 +741,6 @@ html[data-loom-theme="light"] .sub-agent-workspace.is-docked .sub-agent-card {
     grid-row: 1;
   }
 }
-
 
 /* Transcript keeps only a lightweight pointer into the persistent side dock. */
 .sub-agent-inline-notice {

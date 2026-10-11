@@ -14,7 +14,7 @@ import {
   UserRound,
   Wrench,
   Zap,
-} from "lucide-react";
+} from "./icons";
 import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { useI18n } from "../i18n";
 import type { LoomAccountError, LoomAccountSnapshot } from "../types/account";
@@ -771,7 +771,7 @@ export function ProfileInsightsPage({ account, onClose }: ProfileInsightsPagePro
             title={zh ? "刷新统计" : "Refresh insights"}
             aria-label={zh ? "刷新统计" : "Refresh insights"}
           >
-            <RefreshCw size={14} strokeWidth={1.8} />
+            <RefreshCw size={14} strokeWidth={1.8} spinning={loading} />
           </button>
         </div>
       </header>

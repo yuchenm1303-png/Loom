@@ -218,12 +218,11 @@ button.general-default-card:hover {
 
 .general-default-card-head > svg:last-child {
   color: #646c78;
-  transition: transform 140ms ease, color 140ms ease;
+  transition: color 140ms ease;
 }
 
 button.general-default-card:hover .general-default-card-head > svg:last-child {
   color: #aaa1ed;
-  transform: translateX(2px);
 }
 
 .general-default-card label {
@@ -490,12 +489,11 @@ button.general-default-card:hover .general-default-card-head > svg:last-child {
 
 .general-quick-card > svg:last-child {
   color: #606875;
-  transition: transform 130ms ease, color 130ms ease;
+  transition: color 130ms ease;
 }
 
 .general-quick-card:hover > svg:last-child {
   color: #9e96df;
-  transform: translateX(2px);
 }
 
 .general-quick-card > div {

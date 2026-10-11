@@ -139,14 +139,6 @@
   cursor: default;
 }
 
-.memory-refresh-button .spin {
-  animation: memory-spin .8s linear infinite;
-}
-
-@keyframes memory-spin {
-  to { transform: rotate(360deg); }
-}
-
 .memory-browser {
   border: 1px solid rgba(255,255,255,.082);
   border-radius: 16px;

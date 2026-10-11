@@ -19,7 +19,7 @@ import {
   Wifi,
   X,
   Zap,
-} from "lucide-react";
+} from "./icons";
 import { useEffect, useMemo, useState } from "react";
 import { useI18n } from "../i18n";
 import type {
@@ -406,7 +406,7 @@ export function ModelsSettingsPanel({ initialSnapshot, runtimeModel, running, on
         </div>
         <div className="models-heading-actions">
           <button type="button" className="mature-action-button" onClick={() => void refresh()} disabled={Boolean(busy)}>
-            <RefreshCw size={14} className={busy === "refresh" ? "model-spin" : ""} />{c.refresh}
+            <RefreshCw size={14} spinning={busy === "refresh"} />{c.refresh}
           </button>
           <button type="button" className="models-primary-action" onClick={openAdd} disabled={running || Boolean(busy)}>
             <Plus size={14} />{c.add}
@@ -529,7 +529,7 @@ export function ModelsSettingsPanel({ initialSnapshot, runtimeModel, running, on
                     title={profile.available === false ? (profile.statusMessage || "No longer advertised by the provider") : undefined}
                     onClick={() => void activate(profile)}
                   >
-                    {isSwitching ? <RefreshCw size={13} className="model-spin" /> : active ? <Check size={13} /> : <ChevronRight size={13} />}
+                    {isSwitching ? <RefreshCw size={13} spinning /> : active ? <Check size={13} /> : <ChevronRight size={13} />}
                     {profile.available === false ? (language === "zh-CN" ? "已失效" : "Unavailable") : active ? c.current : c.setActive}
                   </button>
                   <button type="button" disabled={isTesting} onClick={() => void test(profile)}><Wifi size={13} />{isTesting ? c.testing : c.test}</button>
@@ -537,7 +537,7 @@ export function ModelsSettingsPanel({ initialSnapshot, runtimeModel, running, on
                     <>
                       <button type="button" disabled={profile.available === false || running || Boolean(busy) || active} title={active ? c.activeEdit : c.edit} onClick={() => openEdit(profile)}><Pencil size={13} />{c.edit}</button>
                       <button type="button" className={confirmDelete === profile.selection ? "danger confirm" : "danger"} disabled={running || Boolean(busy)} onClick={() => void remove(profile)}>
-                        {isDeleting ? <RefreshCw size={13} className="model-spin" /> : <Trash2 size={13} />}
+                        {isDeleting ? <RefreshCw size={13} spinning /> : <Trash2 size={13} />}
                         {confirmDelete === profile.selection ? c.confirmDelete : c.delete}
                       </button>
                     </>
@@ -578,7 +578,7 @@ export function ModelsSettingsPanel({ initialSnapshot, runtimeModel, running, on
             </div>
             <div className="models-key-note"><KeyRound size={13} /><span>{c.keyNote}</span></div>
             {error ? <div className="models-error-banner compact"><CircleAlert size={14} /><span>{error}</span></div> : null}
-            <div className="models-modal-actions"><button type="button" onClick={() => setFormMode(null)}>{c.cancel}</button><button type="button" className="primary" disabled={Boolean(busy) || running} onClick={() => void submitForm()}>{busy.startsWith(formMode === "edit" ? "edit:" : "add") ? <RefreshCw size={13} className="model-spin" /> : formMode === "edit" ? <Check size={13} /> : <Plus size={13} />}{formMode === "edit" ? c.saveChanges : c.saveUse}</button></div>
+            <div className="models-modal-actions"><button type="button" onClick={() => setFormMode(null)}>{c.cancel}</button><button type="button" className="primary" disabled={Boolean(busy) || running} onClick={() => void submitForm()}>{busy.startsWith(formMode === "edit" ? "edit:" : "add") ? <RefreshCw size={13} spinning /> : formMode === "edit" ? <Check size={13} /> : <Plus size={13} />}{formMode === "edit" ? c.saveChanges : c.saveUse}</button></div>
           </section>
         </div>
       ) : null}

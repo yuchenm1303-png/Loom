@@ -36,7 +36,7 @@ import {
   Type,
   Wrench,
   type LucideIcon,
-} from "lucide-react";
+} from "./icons";
 import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import {
   DEFAULT_SHORTCUTS,
@@ -954,16 +954,16 @@ export function SettingsPage({ runtime, models, threadId, running, onRefreshMode
         <Section title="Runtime defaults" caption="Defaults currently reported by the App Server for new conversations.">
           <div className="general-default-grid">
             <div className="general-default-card"><div className="general-default-card-head"><span className="general-default-card-icon"><FolderOpen size={16} /></span></div><label>Default workspace</label><strong title={text(runtime.defaultWorkspace)}>{text(runtime.defaultWorkspace)}</strong><p>Used when a new conversation starts without an explicit project.</p><div className="general-workspace-actions"><button type="button" className="general-copy-button" onClick={() => void copyText(text(runtime.defaultWorkspace, ""), "Workspace path copied.")}><Copy size={13} />Copy path</button></div></div>
-            <button type="button" className="general-default-card" onClick={() => navigateToPage("permissions")}><div className="general-default-card-head"><span className="general-default-card-icon"><ShieldCheck size={16} /></span><ChevronRight size={15} /></div><label>Default permission</label><strong>{permissionLabel}</strong><p>Inspect the execution boundary used for sensitive actions.</p></button>
-            <button type="button" className="general-default-card" onClick={() => navigateToPage("models")}><div className="general-default-card-head"><span className="general-default-card-icon"><Cpu size={16} /></span><ChevronRight size={15} /></div><label>Current model</label><strong>{modelLabel}</strong><p>Switch the active inference profile and inspect providers.</p></button>
+            <button type="button" className="general-default-card" data-ic-row onClick={() => navigateToPage("permissions")}><div className="general-default-card-head"><span className="general-default-card-icon"><ShieldCheck size={16} /></span><ChevronRight size={15} /></div><label>Default permission</label><strong>{permissionLabel}</strong><p>Inspect the execution boundary used for sensitive actions.</p></button>
+            <button type="button" className="general-default-card" data-ic-row onClick={() => navigateToPage("models")}><div className="general-default-card-head"><span className="general-default-card-icon"><Cpu size={16} /></span><ChevronRight size={15} /></div><label>Current model</label><strong>{modelLabel}</strong><p>Switch the active inference profile and inspect providers.</p></button>
           </div>
         </Section>
 
         <Section title="Quick access" caption="The controls most likely to change how Loom behaves.">
           <div className="general-quick-grid">
-            <button type="button" className="general-quick-card" onClick={() => navigateToPage("appearance")}><Palette size={18} /><div><strong>Appearance</strong><span>Scale, layout, reading rhythm, motion, and code typography</span></div><ChevronRight size={15} /></button>
-            <button type="button" className="general-quick-card" onClick={() => navigateToPage("capabilities")}><Blocks size={18} /><div><strong>Capabilities</strong><span>Choose the tool families Loom can expose</span></div><ChevronRight size={15} /></button>
-            <button type="button" className="general-quick-card" onClick={() => navigateToPage("developer")}><Wrench size={18} /><div><strong>Diagnostics</strong><span>Runtime, integrations, and raw health snapshot</span></div><ChevronRight size={15} /></button>
+            <button type="button" className="general-quick-card" data-ic-row onClick={() => navigateToPage("appearance")}><Palette size={18} /><div><strong>Appearance</strong><span>Scale, layout, reading rhythm, motion, and code typography</span></div><ChevronRight size={15} /></button>
+            <button type="button" className="general-quick-card" data-ic-row onClick={() => navigateToPage("capabilities")}><Blocks size={18} /><div><strong>Capabilities</strong><span>Choose the tool families Loom can expose</span></div><ChevronRight size={15} /></button>
+            <button type="button" className="general-quick-card" data-ic-row onClick={() => navigateToPage("developer")}><Wrench size={18} /><div><strong>Diagnostics</strong><span>Runtime, integrations, and raw health snapshot</span></div><ChevronRight size={15} /></button>
           </div>
         </Section>
       </>
@@ -1532,7 +1532,7 @@ export function SettingsPage({ runtime, models, threadId, running, onRefreshMode
           <div className="settings-sidebar-title"><span className="settings-brand-orb"><Settings size={18} strokeWidth={1.6} /></span><div><strong>Settings</strong><span>Local agent controls</span></div></div>
           <label className="settings-search"><Search size={14} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search settings" /></label>
         </div>
-        <nav className="settings-nav" aria-label="Settings navigation" ref={navRef}>
+        <nav className="settings-nav" data-ic-row aria-label="Settings navigation" ref={navRef}>
           {filteredGroups.map((group) => <section key={group.label}><span className="settings-nav-label">{group.label}</span>{group.items.map((item) => { const Icon = item.icon; return <button type="button" key={item.key} data-nav={item.key} className={page === item.key ? "active" : ""} aria-current={page === item.key ? "page" : undefined} onClick={() => navigateToPage(item.key)}><i className="settings-nav-pip" aria-hidden="true" /><Icon size={16} strokeWidth={1.7} /><span>{item.label}</span></button>; })}</section>)}
           {filteredGroups.length === 0 ? <div className="settings-nav-empty"><Search size={15} strokeWidth={1.7} /><span>No matching settings</span></div> : null}
         </nav>

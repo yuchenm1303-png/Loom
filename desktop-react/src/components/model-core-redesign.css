@@ -213,12 +213,11 @@
 .model-core-nav > button > svg {
   justify-self: end;
   color: #565e69;
-  transition: color 150ms ease, transform 160ms cubic-bezier(.2, .8, .2, 1);
+  transition: color 150ms ease;
 }
 
 .model-core-nav > button:hover:not(:disabled) > svg {
   color: #887eb8;
-  transform: translateX(2px);
 }
 
 .model-core-protocol {
@@ -449,7 +448,6 @@
 
 .model-core-selector:not(:disabled):hover .model-core-title-row > svg {
   color: #a89ee0;
-  transform: translateX(2px);
 }
 
 .model-core-selector:focus-visible {
@@ -474,9 +472,7 @@
 .model-core-title-row > svg {
   flex: none;
   color: #646b76;
-  transition:
-    color 140ms ease,
-    transform 160ms cubic-bezier(.2, .8, .2, 1);
+  transition: color 140ms ease;
 }
 
 /* The picker and API-management entry now live behind the model label.

@@ -22,8 +22,7 @@ html[data-loom-theme="light"] .app-shell .thread-header .polished-thread-header-
   box-shadow: none;
   color: var(--header-ink);
   transition: color 180ms ease, background-color 180ms ease,
-    border-color 180ms ease, box-shadow 220ms ease,
-    transform 240ms cubic-bezier(.2,.8,.2,1) !important;
+    border-color 180ms ease, box-shadow 220ms ease;
 }
 .app-shell .thread-header .polished-thread-header-actions > .thread-header-icon-button {
   width: 30px;
@@ -44,7 +43,6 @@ html[data-loom-theme="light"] .app-shell .thread-header .polished-thread-header-
   background: var(--header-wash);
   border-color: transparent;
   box-shadow: inset 0 1px 0 rgba(255,255,255,.05);
-  transform: none;
 }
 .app-shell .thread-header .polished-thread-header-actions > :is(.thread-review-button, .thread-header-icon-button):is(:hover, :focus-visible, .active):not(:disabled) > svg {
   color: var(--header-accent);
@@ -53,10 +51,6 @@ html[data-loom-theme="light"] .app-shell .thread-header .polished-thread-header-
   color: var(--header-accent);
   background: var(--header-wash);
   border-color: transparent;
-}
-.app-shell .thread-header .polished-thread-header-actions > :is(.thread-review-button, .thread-header-icon-button):active:not(:disabled) {
-  transform: translateY(0) scale(.96);
-  transition-duration: 80ms !important;
 }
 .app-shell .thread-header .polished-thread-header-actions > :is(.thread-review-button, .thread-header-icon-button):focus-visible {
   outline: 2px solid var(--header-accent);
@@ -99,10 +93,8 @@ html[data-loom-theme="light"] .app-shell .thread-header .polished-thread-header-
 @media (prefers-reduced-motion: reduce) {
   .app-shell .thread-header .polished-thread-header-actions > :is(.thread-review-button, .thread-header-icon-button) {
     transition: none !important;
-    transform: none !important;
   }
 }
 :root[data-loom-reduced-motion="true"] .app-shell .thread-header .polished-thread-header-actions > :is(.thread-review-button, .thread-header-icon-button) {
   transition: none !important;
-  transform: none !important;
 }

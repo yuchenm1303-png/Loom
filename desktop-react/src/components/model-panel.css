@@ -121,14 +121,6 @@
   width: 100%;
 }
 
-.model-spin {
-  animation: model-spin 900ms linear infinite;
-}
-
-@keyframes model-spin {
-  to { transform: rotate(360deg); }
-}
-
 @media (max-width: 760px) {
   .model-manager-actions {
     grid-template-columns: 1fr;
@@ -139,9 +131,6 @@
   .model-manager-actions > button,
   .model-wide-action {
     transition: none;
-  }
-  .model-spin {
-    animation: none;
   }
 }
 

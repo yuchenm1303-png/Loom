@@ -165,7 +165,7 @@
 .turn-process-chevron {
   flex: none;
   color: #656d79;
-  transition: transform 180ms cubic-bezier(.2,.8,.2,1), color 140ms ease;
+  transition: color 140ms ease;
 }
 
 .turn-process-header:hover .turn-process-chevron {
@@ -173,7 +173,6 @@
 }
 
 .turn-process.is-open .turn-process-chevron {
-  transform: rotate(90deg);
   color: #a59cf0;
 }
 
@@ -615,7 +614,6 @@
   }
 }
 
-
 /* Refined process summary ---------------------------------------------------
    Keep count, duration and disclosure as one compact cluster. The summary no
    longer stretches to fill 760px, so elapsed time stays visually attached to
@@ -681,9 +679,7 @@
 
 .turn-process-chevron {
   margin-left: 1px;
-  transition:
-    transform 360ms cubic-bezier(.18,.72,.22,1),
-    color 260ms ease;
+  transition: color 260ms ease;
 }
 
 @media (max-width: 760px) {

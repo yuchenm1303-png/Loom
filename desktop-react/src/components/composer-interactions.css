@@ -263,10 +263,7 @@
 
 .composer-refined .composer .composer-chip > svg:not(.composer-chip-chevron) {
   transform: none !important;
-  transition:
-    color 300ms ease,
-    opacity 280ms ease,
-    filter 360ms ease !important;
+  transition: color 300ms ease, opacity 280ms ease !important;
 }
 
 .composer-refined .composer .composer-chip:hover:not(:disabled) > svg:not(.composer-chip-chevron),
@@ -276,41 +273,15 @@
 
 .composer-refined .composer .composer-chip-chevron {
   opacity: .52;
-  translate: 0 0 !important;
-  transition:
-    transform 460ms var(--composer-ease),
-    opacity 300ms ease,
-    color 300ms ease !important;
+  transition: opacity 300ms ease, color 300ms ease !important;
 }
 
 .composer-refined .composer .composer-chip:hover .composer-chip-chevron {
   opacity: .84;
-  translate: 0 0 !important;
-  transform: translateY(.55px);
 }
 
 .composer-refined .composer .composer-chip.is-open .composer-chip-chevron {
   opacity: 1;
-  translate: 0 0 !important;
-  transform: rotate(180deg);
-}
-
-/* Permission: the shield receives a soft trust glow; no rubber scaling. */
-.composer-refined .composer .permission-chip:hover:not(:disabled) > svg:not(.composer-chip-chevron),
-.composer-refined .composer .permission-chip.is-open > svg:not(.composer-chip-chevron) {
-  filter: drop-shadow(0 0 3px color-mix(in srgb, #5b9a7c 18%, transparent));
-}
-
-/* Model: the CPU gains a quiet internal-light impression. */
-.composer-refined .composer .model-chip:hover:not(:disabled) > svg:not(.composer-chip-chevron),
-.composer-refined .composer .model-chip.is-open > svg:not(.composer-chip-chevron) {
-  filter: drop-shadow(0 0 3px color-mix(in srgb, var(--composer-accent) 18%, transparent));
-}
-
-/* Sticker: the smile stays stable; only contrast rises. */
-.composer-refined .composer .sticker-chip:hover:not(:disabled) > svg:not(.composer-chip-chevron),
-.composer-refined .composer .sticker-chip.is-open > svg:not(.composer-chip-chevron) {
-  filter: drop-shadow(0 1px 2px rgba(0,0,0,.10));
 }
 
 /* Divider participates in focus, so the control strip feels connected. */
@@ -365,23 +336,6 @@
   box-shadow:
     0 3px 10px color-mix(in srgb, var(--composer-accent) 14%, transparent),
     inset 0 1px rgba(255,255,255,.18);
-}
-
-.composer-refined .composer .send-button .lucide-arrow-up {
-  translate: 0 0;
-  transition:
-    translate 520ms var(--composer-ease),
-    opacity 280ms ease,
-    filter 340ms ease !important;
-}
-
-.composer-refined .composer .send-button.is-ready:hover .lucide-arrow-up {
-  translate: 0 -1.25px;
-  filter: drop-shadow(0 1px 2px rgba(0,0,0,.12));
-}
-
-.composer-refined .composer .send-button.is-ready:active .lucide-arrow-up {
-  translate: 0 -.25px;
 }
 
 /* Idle send remains readable but visually dormant. */
@@ -625,8 +579,7 @@ html:not([data-loom-theme="light"]) .composer-refined .composer .send-button.is-
   .composer-refined .composer .composer-chip,
   .composer-refined .composer .composer-chip-chevron,
   .composer-refined .composer .send-button,
-  .composer-refined .composer .send-button::after,
-  .composer-refined .composer .send-button .lucide-arrow-up {
+  .composer-refined .composer .send-button::after {
     animation: none !important;
     transition: none !important;
     transform: none !important;
@@ -647,15 +600,13 @@ html[data-loom-reduced-motion="true"] .composer-refined .composer .composer-tool
 html[data-loom-reduced-motion="true"] .composer-refined .composer .composer-chip,
 html[data-loom-reduced-motion="true"] .composer-refined .composer .composer-chip-chevron,
 html[data-loom-reduced-motion="true"] .composer-refined .composer .send-button,
-html[data-loom-reduced-motion="true"] .composer-refined .composer .send-button::after,
-html[data-loom-reduced-motion="true"] .composer-refined .composer .send-button .lucide-arrow-up {
+html[data-loom-reduced-motion="true"] .composer-refined .composer .send-button::after {
   animation: none !important;
   transition: none !important;
   transform: none !important;
   translate: none !important;
   filter: none !important;
 }
-
 
 /* Composer interaction pass 2 -----------------------------------------------
    The first pass was intentionally too quiet in light mode. This pass makes

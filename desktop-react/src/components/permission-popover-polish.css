@@ -94,16 +94,7 @@
   width: 32px;
   height: 32px;
   border-radius: 11px;
-  transition:
-    transform 150ms ease,
-    background 160ms ease,
-    border-color 160ms ease,
-    color 160ms ease,
-    box-shadow 160ms ease;
-}
-
-.permission-popover .permission-option:hover:not(:disabled) .composer-option-icon {
-  transform: scale(1.035);
+  transition: background 160ms ease, border-color 160ms ease, color 160ms ease, box-shadow 160ms ease;
 }
 
 .permission-popover .composer-option-title-row {

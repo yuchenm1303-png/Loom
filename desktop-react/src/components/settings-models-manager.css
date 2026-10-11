@@ -812,10 +812,6 @@
   background: rgba(154,140,255,.11);
   color: #d9d4ff;
 }
-
-.model-spin { animation: models-spin 850ms linear infinite; }
-@keyframes models-spin { to { transform: rotate(360deg); } }
-
 @media (min-width: 1500px) {
   .models-profile-grid { grid-template-columns: repeat(3, minmax(0,1fr)); }
 }
@@ -841,6 +837,5 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .model-spin { animation: none !important; }
   .models-form-switch > button i { transition: none; }
 }

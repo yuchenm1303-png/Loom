@@ -1,4 +1,4 @@
-import { ExternalLink, X } from "lucide-react";
+import { ExternalLink, X } from "./icons";
 import { useLayoutEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { useMotionPresence } from "../motion/useMotionPresence";

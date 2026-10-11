@@ -62,9 +62,9 @@
   flex: none;
   margin-left: 1px;
   color: var(--muted);
-  transition: transform 160ms ease, color 160ms ease;
+  transition: color 160ms ease;
 }
-.earlier-task-process.is-open .earlier-process-chevron { transform: rotate(90deg); color: var(--accent-soft); }
+.earlier-task-process.is-open .earlier-process-chevron {color: var(--accent-soft); }
 .earlier-task-process.is-open .earlier-process-toggle {
   border-color: transparent;
 }

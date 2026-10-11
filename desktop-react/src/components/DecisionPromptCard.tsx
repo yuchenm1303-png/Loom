@@ -1,4 +1,4 @@
-import { Check, MessageSquareText, Send } from "lucide-react";
+import { Check, MessageSquareText, Send } from "./icons";
 import { useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useI18n } from "../i18n";
 import { useMotionPresence } from "../motion/useMotionPresence";

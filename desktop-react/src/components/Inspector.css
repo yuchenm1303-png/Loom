@@ -124,9 +124,7 @@
   color: #c9ced8;
   border-color: #292e38;
   background: #181b21;
-  transform: translateX(1px);
 }
-.runtime-close:active { transform: translateX(1px) scale(.94); }
 
 .runtime-tabs {
   position: relative;
@@ -451,10 +449,10 @@
 }
 .runtime-event-chevron {
   color: #59606c;
-  transition: transform 180ms cubic-bezier(.2,.75,.2,1), color 150ms ease;
+  transition: color 150ms ease;
 }
 .runtime-event:hover .runtime-event-chevron { color: #818996; }
-.runtime-event-chevron.open { transform: rotate(180deg); color: #938ae1; }
+.runtime-event-chevron.open {color: #938ae1; }
 
 .runtime-event-detail {
   display: grid;

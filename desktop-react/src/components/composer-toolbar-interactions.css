@@ -1,11 +1,11 @@
-/* Matching toolbar controls with a quiet resting state and finite micro-motion. */
+/* Matching toolbar controls with a quiet resting state. The control holds still,
+   its surface takes a wash, and its glyph does the moving (icon-motion.css). */
 .app-shell .composer .composer-refined-control {
   --control-ink: #aaa1e0;
   --control-wash: rgba(145,130,218,.085);
   border-radius: 8px;
   transition: color 180ms ease, background-color 200ms ease,
-    border-color 200ms ease, box-shadow 200ms ease,
-    transform 240ms cubic-bezier(.2,.8,.2,1) !important;
+    border-color 200ms ease, box-shadow 200ms ease !important;
 }
 html[data-loom-theme="light"] .app-shell .composer .composer-refined-control {
   --control-ink: #7567b8;
@@ -29,13 +29,11 @@ html[data-loom-theme="light"] .app-shell .composer .composer-refined-control {
   height: 18px;
   stroke-width: 1.75;
   overflow: visible;
-  transform-origin: center;
 }
 .app-shell .composer .composer-refined-control:is(:hover, :focus-visible):not(:disabled) {
   background: var(--control-wash);
   border-color: transparent;
   box-shadow: inset 0 1px 0 rgba(255,255,255,.05);
-  transform: translateY(-1px);
 }
 .app-shell .composer .composer-refined-control:is(:hover, :focus-visible, .is-open):not(:disabled) .composer-glyph-well {
   color: var(--control-ink);
@@ -47,86 +45,19 @@ html[data-loom-theme="light"] .app-shell .composer .composer-refined-control {
   background: var(--control-wash);
   border-color: transparent;
 }
-.app-shell .composer .composer-refined-control:active:not(:disabled) {
-  transform: translateY(0) scale(.97);
-  transition-duration: 80ms !important;
-}
 .app-shell .composer .composer-refined-control:focus-visible {
   outline: 2px solid var(--control-ink);
   outline-offset: 3px;
 }
+/* The caret turns in icon-motion.css; here it only takes the control's ink. */
 .app-shell .composer .composer-refined-control .composer-chip-chevron {
   animation: none !important;
-  translate: none;
-  transform: rotate(0deg);
-  transition: transform 240ms cubic-bezier(.2,.8,.2,1), color 180ms ease !important;
+  transition: color 180ms ease !important;
 }
 .app-shell .composer .composer-refined-control.is-open .composer-chip-chevron {
-  transform: rotate(180deg);
   color: var(--control-ink);
 }
-
-/* Animate complete silhouettes so the clip never breaks into loose strokes. */
-.composer-refined-control:is(:hover, :focus-visible):not(:disabled) [data-control-icon="attach"] {
-  animation: loom-toolbar-clip 420ms cubic-bezier(.2,.8,.2,1);
-}
-.composer-refined-control:is(:hover, :focus-visible):not(:disabled) .composer-permission-icon {
-  animation: loom-toolbar-permission 400ms cubic-bezier(.2,.8,.2,1);
-}
-.composer-refined-control:is(:hover, :focus-visible):not(:disabled) .composer-permission-icon.lucide-key-round {
-  animation-name: loom-toolbar-key;
-}
-.composer-refined-control:is(:hover, :focus-visible):not(:disabled) .composer-permission-icon.lucide-eye {
-  animation-name: loom-toolbar-eye;
-}
-.composer-refined-control:is(:hover, :focus-visible):not(:disabled) .composer-permission-icon.lucide-shield-check path:last-child {
-  animation: loom-toolbar-confirm 420ms ease;
-}
-.composer-refined-control:is(:hover, :focus-visible):not(:disabled) .control-model-top {
-  animation: loom-toolbar-layer-top 520ms cubic-bezier(.2,.8,.2,1);
-}
-.composer-refined-control:is(:hover, :focus-visible):not(:disabled) .control-model-bottom {
-  animation: loom-toolbar-layer-bottom 520ms cubic-bezier(.2,.8,.2,1);
-}
-.composer-refined-control.is-open .composer-control-icon {
-  animation: loom-toolbar-open 320ms cubic-bezier(.2,.8,.2,1);
-}
-@keyframes loom-toolbar-clip {
-  0%, 100% { transform: rotate(0deg) translateY(0); }
-  40% { transform: rotate(-6deg) translateY(-.6px); }
-  72% { transform: rotate(1.5deg) translateY(0); }
-}
-@keyframes loom-toolbar-key {
-  0%, 100% { transform: rotate(0deg); }
-  40% { transform: rotate(-7deg); }
-  72% { transform: rotate(1.5deg); }
-}
-@keyframes loom-toolbar-permission {
-  0%, 100% { transform: scale(1); }
-  45% { transform: scale(1.055); }
-}
-@keyframes loom-toolbar-eye {
-  0%, 100% { transform: scaleY(1); }
-  42% { transform: scaleY(.78); }
-  70% { transform: scaleY(1.025); }
-}
-@keyframes loom-toolbar-confirm {
-  0%, 100% { opacity: 1; }
-  35% { opacity: .4; }
-}
-@keyframes loom-toolbar-layer-top {
-  40% { transform: translateY(-1.5px); }
-}
-@keyframes loom-toolbar-layer-bottom {
-  40% { transform: translateY(1.5px); }
-}
-@keyframes loom-toolbar-open {
-  0% { transform: scale(.92); }
-  65% { transform: scale(1.05); }
-  100% { transform: scale(1); }
-}
 .app-shell .composer .composer-refined-control:disabled {
-  transform: none;
   box-shadow: none;
 }
 
@@ -135,18 +66,10 @@ html[data-loom-theme="light"] .app-shell .composer .composer-refined-control {
   .app-shell .composer .composer-refined-control * {
     animation: none !important;
     transition: none !important;
-    transform: none !important;
-  }
-  .app-shell .composer .composer-refined-control.is-open .composer-chip-chevron {
-    transform: rotate(180deg) !important;
   }
 }
 :root[data-loom-reduced-motion="true"] .app-shell .composer .composer-refined-control,
 :root[data-loom-reduced-motion="true"] .app-shell .composer .composer-refined-control * {
   animation: none !important;
   transition: none !important;
-  transform: none !important;
-}
-:root[data-loom-reduced-motion="true"] .app-shell .composer .composer-refined-control.is-open .composer-chip-chevron {
-  transform: rotate(180deg) !important;
 }

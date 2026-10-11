@@ -1,4 +1,4 @@
-import { ChevronRight, Eye, FileCode2, FileDiff } from "lucide-react";
+import { ChevronRight, Eye, FileCode2, FileDiff } from "./icons";
 import { useMemo } from "react";
 import { canRenderArtifact } from "../artifactRenderers";
 import type { TranscriptItem } from "../types/loom";

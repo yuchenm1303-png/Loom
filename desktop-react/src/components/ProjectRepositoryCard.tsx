@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { GitBranch, Github, RefreshCw, Upload, GitPullRequest, FolderGit2 } from "lucide-react";
+import { GitBranch, Github, RefreshCw, Upload, GitPullRequest, FolderGit2 } from "./icons";
 import "./project-repository.css";
 import type { ProjectRecord } from "../types/loom";
 

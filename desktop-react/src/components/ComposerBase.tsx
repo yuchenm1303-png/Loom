@@ -3,15 +3,18 @@ import {
   Check,
   ChevronDown,
   Cpu,
+  Expression,
   Eye,
   FolderCog,
   KeyRound,
   LockKeyhole,
+  ModelLayers,
+  Paperclip,
   ShieldCheck,
   Smile,
   Sparkles,
   Square,
-} from "lucide-react";
+} from "./icons";
 import { KeyboardEvent as ReactKeyboardEvent, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { AddModelInput, Attachment, ModelSnapshot, StickerPreferences } from "../types/loom";
 import { useI18n } from "../i18n";
@@ -130,47 +133,13 @@ function PermissionIcon({ mode, toolbar = false }: { mode: string; toolbar?: boo
 }
 
 
-// A shared 24px grid keeps the toolbar silhouettes equally legible.
+// The toolbar's own marks live in the icon module, so they move like every other glyph.
 function ComposerControlIcon({ kind }: { kind: "attach" | "model" }) {
-  return (
-    <svg className="composer-control-icon" data-control-icon={kind} width={18} height={18}
-      viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75"
-      strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false">
-      {kind === "attach" ? (
-        <>
-          <path className="control-clip-frame" d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
-        </>
-      ) : (
-        <>
-          <path className="control-model-top" d="m12 3 9 5-9 5-9-5 9-5Z" />
-          <path className="control-model-middle" d="m3 12 9 5 9-5" />
-          <path className="control-model-bottom" d="m3 16 9 5 9-5" />
-        </>
-      )}
-    </svg>
-  );
+  const Icon = kind === "attach" ? Paperclip : ModelLayers;
+  return <Icon className="composer-control-icon" data-control-icon={kind} size={18} strokeWidth={1.75} focusable="false" />;
 }
 function ComposerExpressionIcon({ size = 16 }: { size?: number }) {
-  return (
-    <svg
-      className="composer-expression-glyph"
-      width={size}
-      height={size}
-      viewBox="0 0 20 20"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.45"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-      focusable="false"
-    >
-      <circle className="composer-expression-ring" cx="9.55" cy="10.25" r="6.65" />
-      <path className="composer-expression-eyes" d="M6.85 8.65h.01M12.25 8.65h.01" strokeWidth="2.1" />
-      <path className="composer-expression-smile" d="M6.65 11.75c.75 1.2 1.75 1.82 2.9 1.82s2.15-.62 2.9-1.82" />
-      <path className="composer-expression-spark" d="M15.25 3.15v2.1M14.2 4.2h2.1" />
-    </svg>
-  );
+  return <Expression className="composer-expression-glyph" size={size} strokeWidth={1.74} focusable="false" />;
 }
 
 export function Composer({
@@ -510,6 +479,7 @@ export function Composer({
                         <button
                           key={mode}
                           type="button"
+                          data-ic-row
                           className={`composer-option permission-option ${active ? "active" : ""} ${presentation.tone === "danger" ? "danger" : ""}`}
                           role="menuitemradio"
                           aria-checked={active}
@@ -626,7 +596,7 @@ export function Composer({
             <div className="composer-control-anchor sticker-control-anchor">
               <button
                 type="button"
-                className={`composer-chip sticker-chip ${openPanel === "sticker" ? "is-open" : ""}`}
+                className={`composer-chip sticker-chip composer-refined-control ${openPanel === "sticker" ? "is-open" : ""}`}
                 title={zh ? "表情设置" : "Expression settings"} aria-label={zh ? "表情设置" : "Expression settings"}
                 aria-haspopup="dialog"
                 aria-expanded={openPanel === "sticker"}

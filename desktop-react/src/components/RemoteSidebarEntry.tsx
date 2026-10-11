@@ -1,4 +1,4 @@
-import { MonitorSmartphone } from "lucide-react";
+import { MonitorSmartphone } from "./icons";
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { useI18n } from "../i18n";

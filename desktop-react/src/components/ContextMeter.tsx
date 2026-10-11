@@ -1,4 +1,4 @@
-import { Layers, Loader2, Wrench } from "lucide-react";
+import { Layers, Loader2, Wrench } from "./icons";
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { useI18n } from "../i18n";
 import { useMotionPresence } from "../motion/useMotionPresence";
@@ -148,7 +148,7 @@ export function ContextMeter({ report, compacting, progress, busy, onCompact }: 
           </span>
         )}
         <span className="context-meter-value">
-          {compacting ? <Loader2 size={12} strokeWidth={2} className="context-meter-spin" /> : null}
+          {compacting ? <Loader2 size={12} strokeWidth={2} className="context-meter-loader" /> : null}
           {compacting ? compactionStage.label : meter.unknown ? `${formatTokens(report.usedTokens)} tokens` : `${measurementPending ? "~" : ""}${percent}%`}
         </span>
         {report.pressure.blinded ? <span className="context-meter-alarm" aria-hidden="true" /> : null}
@@ -221,7 +221,7 @@ export function ContextMeter({ report, compacting, progress, busy, onCompact }: 
               <div className="context-meter-progress-head">
                 <span>{zh ? "压缩进度" : "Compaction progress"}</span>
                 <strong>
-                  {compacting ? <Loader2 size={12} strokeWidth={2} className="context-meter-spin" /> : null}
+                  {compacting ? <Loader2 size={12} strokeWidth={2} className="context-meter-loader" /> : null}
                   {compactionStage.label}
                 </strong>
               </div>
@@ -284,7 +284,7 @@ export function ContextMeter({ report, compacting, progress, busy, onCompact }: 
             }}
             disabled={compacting || busy}
           >
-            {compacting ? <Loader2 size={13} strokeWidth={2} className="context-meter-spin" /> : null}
+            {compacting ? <Loader2 size={13} strokeWidth={2} className="context-meter-loader" /> : null}
             {compacting
               ? zh ? "正在压缩…" : "Compacting…"
               : zh ? "立即压缩上下文" : "Compact context now"}

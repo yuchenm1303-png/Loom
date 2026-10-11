@@ -236,28 +236,13 @@
   cursor: default;
 }
 
-.context-meter-spin {
-  animation: context-meter-spin 1s linear infinite;
-}
-
-@keyframes context-meter-spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-
 @media (prefers-reduced-motion: reduce) {
   .context-meter-fill,
   .context-meter-chip,
   .context-meter-compact {
     transition: none;
   }
-
-  .context-meter-spin {
-    animation: none;
-  }
 }
-
 
 /* Meter control; the popover keeps fixed geometry throughout its lifecycle. */
 .context-meter {
@@ -346,7 +331,7 @@ html[data-loom-reduced-motion="true"] .context-meter-chip:active { transform: no
   letter-spacing: -.018em;
 }
 
-.context-meter-chip.is-compacting .context-meter-value .context-meter-spin {
+.context-meter-chip.is-compacting .context-meter-value .context-meter-loader {
   width: 10px;
   height: 10px;
   flex: 0 0 10px;
@@ -375,7 +360,6 @@ html[data-loom-theme="light"] .context-meter-chip.is-compacting .context-meter-v
     font-size: 10px;
   }
 }
-
 
 /* Compaction stage progress ------------------------------------------------ */
 .context-meter-compaction-track {
@@ -497,7 +481,6 @@ html[data-loom-reduced-motion="true"] .context-meter-compaction-step.active::aft
   transition: none !important;
   animation: none !important;
 }
-
 
 /* Detailed compaction progress card --------------------------------------- */
 .context-meter-progress-card {
@@ -741,7 +724,6 @@ html[data-loom-theme="light"] .context-meter-progress-card.failed .context-meter
 html[data-loom-reduced-motion="true"] .context-meter-progress-segment.active i {
   animation: none !important;
 }
-
 
 /* Context meter micro-interaction -------------------------------------------
    The meter behaves like a tiny instrument, not a generic progress bar:

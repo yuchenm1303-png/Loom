@@ -1,4 +1,4 @@
-import { Check, Clock3, Square } from "lucide-react";
+import { Check, Clock3, Square } from "./icons";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useLoomLanguage, type LoomLanguage } from "../i18n";
 import type { MotionPresencePhase } from "../motion/useMotionPresence";

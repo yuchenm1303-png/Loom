@@ -127,9 +127,6 @@
 @keyframes remote-backdrop-in { from { opacity: 0; } to { opacity: 1; } }
 @keyframes remote-panel-in { from { opacity: 0; transform: translateY(8px) scale(.986); } to { opacity: 1; transform: translateY(0) scale(1); } }
 @keyframes remote-banner-in { from { opacity: 0; transform: translate(-50%, -6px) scale(.98); } to { opacity: 1; transform: translate(-50%, 0) scale(1); } }
-@keyframes remote-spin { to { transform: rotate(360deg); } }
-.remote-devices-header-actions .is-spinning { animation: remote-spin 900ms linear infinite; }
-
 html[data-loom-theme="light"] .remote-devices-backdrop { background: rgba(35,39,48,.24); }
 html[data-loom-theme="light"] .remote-devices-panel {
   border-color: rgba(28,31,37,.1); background: radial-gradient(520px 180px at 12% -10%, rgba(105,90,216,.08), transparent 68%), #f8f8fa;
@@ -174,7 +171,6 @@ html[data-loom-theme="light"] .remote-session-back { color: #496d98; }
 @media (prefers-reduced-motion: reduce) {
   .remote-devices-backdrop, .remote-devices-panel, .remote-session-banner { animation: none !important; }
 }
-
 
 /* Remote entry lives inside the existing sidebar primary action stack. */
 .remote-sidebar-entry { position: relative; }

@@ -19,7 +19,7 @@ import {
   SquarePen,
   Trash2,
   X,
-} from "lucide-react";
+} from "./icons";
 import { useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import { createPortal } from "react-dom";
 import { useI18n } from "../i18n";
@@ -1154,6 +1154,7 @@ export function Sidebar({
                 type="button"
                 role="menuitem"
                 className={projectExpanded ? "submenu-open" : ""}
+                aria-expanded={projectExpanded}
                 disabled={threadIsBusy(menuThread)}
                 title={threadIsBusy(menuThread) ? copy.busyMove : undefined}
                 onClick={() => {
@@ -1219,6 +1220,7 @@ export function Sidebar({
             type="button"
             role="menuitem"
             className={copyExpanded ? "submenu-open" : ""}
+            aria-expanded={copyExpanded}
             onClick={() => {
               setCopyExpanded((current) => !current);
               setProjectExpanded(false);

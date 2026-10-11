@@ -12,7 +12,7 @@ import {
   Square,
   Type,
   type LucideIcon,
-} from "lucide-react";
+} from "./icons";
 import { useMemo, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import {
   DEFAULT_SHORTCUTS,

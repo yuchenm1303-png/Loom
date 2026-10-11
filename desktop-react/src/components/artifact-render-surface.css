@@ -82,7 +82,7 @@
   border: 2px solid rgba(139,124,246,.14);
   border-top-color: rgba(139,124,246,.72);
   border-radius: 999px;
-  animation: artifact-render-spin 720ms linear infinite;
+  animation: li-spin var(--ic-t-spin) linear infinite;
 }
 
 .artifact-inline-expand {
@@ -126,10 +126,6 @@ html[data-loom-theme="dark"] .artifact-inline-expand {
   background: rgba(20,22,28,.84);
   color: #b6afff;
   box-shadow: 0 6px 18px rgba(0,0,0,.14);
-}
-
-@keyframes artifact-render-spin {
-  to { transform: rotate(360deg); }
 }
 
 @media (prefers-reduced-motion: reduce) {

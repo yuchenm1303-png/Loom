@@ -1,4 +1,4 @@
-import { BookOpen, FileText, RefreshCw } from "lucide-react";
+import { BookOpen, FileText, RefreshCw } from "./icons";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import "./project-agent-files-card.css";
 

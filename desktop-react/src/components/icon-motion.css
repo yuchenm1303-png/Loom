@@ -1,2449 +1,389 @@
-/* Loom semantic icon motion --------------------------------------------------
-   Main-workspace icon interactions are intentionally calm and descriptive.
-   The control surface stays still; only the meaningful part of each glyph
-   responds. Long, low-amplitude transitions replace the old quick pop/scale
-   treatment so Windows text/vector rendering stays crisp. */
+/* Loom icon motion ------------------------------------------------------------
+   The one stylesheet that moves icons. Icons are drawn in components/icons with
+   named parts (`li-lid`, `li-arrow`, ...); this file says what each part does.
+
+   A control never moves. Its glyph answers it, once, and says what the control
+   will do: a lid lifts, an arrow leans the way it points, a gear clicks one
+   tooth, a mark draws itself. Few icons move, and only by about one stroke
+   width, so the ones that do are noticed.
+
+   How it works
+   ------------
+   An interactive host (button, link, menu item, tab ...) publishes three dials
+   and every glyph inside it reads them:
+
+     --ic-on     1 while the pointer is on the host or keyboard focus is
+     --ic-lean   the same, but also for list rows: menu items, options, tabs,
+                 navigation and cards keep their glyphs still, and only an
+                 arrow or chevron that says "this goes somewhere" leans
+     --ic-open   1 while the host is expanded or pressed (aria-expanded/-pressed)
+     --ic-dur / --ic-curve   how the glyph should get there: a soft spring on the
+                 way in, a calm ease on the way out
+
+   A part's pose is a function of the dials, e.g. the trash lid is
+   `translateY(calc(var(--ic-on) * -1.4px))`, so a pose never needs its own
+   `:hover` list and the same rule runs both ways. Hosts only declare the dials
+   while engaged; at rest they inherit zero from :root, so a page full of icons
+   costs nothing.
+
+   Everything inside an <svg> moves in the icon's own units (the 24-unit grid), so
+   a gesture keeps its proportions at 14px and at 20px.
+
+   Reduced motion: the tempo tokens collapse and the "engaged" dials are never
+   set, so no pose is reached; `--ic-open` still is, because an open chevron is
+   state, not motion. (The app-wide reduced-motion rules also freeze spinners.) */
 
 :root {
-  --loom-icon-ink: 240ms;
-  --loom-icon-motion: 420ms;
-  --loom-icon-motion-long: 560ms;
-  --loom-icon-press: 150ms;
-  --loom-icon-ease: cubic-bezier(.18,.72,.22,1);
-  --loom-icon-ease-soft: cubic-bezier(.22,.66,.26,1);
+  /* tempo */
+  --ic-t-press: 90ms;
+  --ic-t-rest: 260ms;
+  --ic-t-lift: 520ms;
+  --ic-t-draw: 380ms;
+  --ic-t-run: 700ms;
+  --ic-t-spin: 900ms;
+
+  /* curves: a quick, soft-landing spring in; a plain ease out */
+  --ic-ease: cubic-bezier(.22, .72, .2, 1);
+  /* zeta .74, settles in .52s, 3% overshoot (scratch/icon-motion/spring.mjs): quick attack, long soft landing */
+  --ic-spring: linear(0, .038 3.8%, .13 7.7%, .251 11.5%, .382 15.4%, .51 19.2%, .627 23.1%, .729 26.9%, .814 30.8%, .882 34.6%, .934 38.5%, .972 42.3%, .999 46.2%, 1.016 50%, 1.026 53.8%, 1.031 57.7%, 1.031 61.5%, 1.03 65.4%, 1.027 69.2%, 1.023 73.1%, 1.018 76.9%, 1.015 80.8%, 1.011 84.6%, 1.008 88.5%, 1.005 92.3%, 1.003 96.2%, 1);
+
+  /* dials, at rest */
+  --ic-on: 0;
+  --ic-lean: 0;
+  --ic-open: 0;
+  --ic-dur: var(--ic-t-rest);
+  --ic-curve: var(--ic-ease);
+  /* animations that replay on every engagement; `none` until then */
+  --ic-k-draw: none;
+  --ic-k-blink: none;
+  --ic-k-pulse: none;
+  --ic-k-run: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --ic-t-press: 1ms;
+    --ic-t-rest: 1ms;
+    --ic-t-lift: 1ms;
+    --ic-t-draw: 1ms;
+    --ic-t-run: 1ms;
+    }
+}
+
+:root[data-loom-reduced-motion="true"] {
+  --ic-t-press: 1ms;
+  --ic-t-rest: 1ms;
+  --ic-t-lift: 1ms;
+  --ic-t-draw: 1ms;
+  --ic-t-run: 1ms;
 }
 
 /* -------------------------------------------------------------------------- */
-/* Main workspace controls: keep the button geometry stable. The hover surface
-   fades in slowly and the icon itself carries the semantic motion. */
+/* Hosts: the dials.                                                           */
 
-.app-shell :is(
-  .thread-header-icon-button,
-  .thread-review-button,
-  .sidebar-new-conversation,
-  .compact-sidebar-actions button,
-  .sidebar-section-title button,
-  .project-disclosure-button,
-  .project-group-actions button,
-  .thread-quick-actions button,
-  .workspace-group-header button,
-  .message-action-button,
-  .composer-tool,
-  .composer-chip,
-  .send-button
-) {
-  transition-duration: 280ms !important;
-  transition-timing-function: var(--loom-icon-ease) !important;
+/* Expanded or pressed: a state the glyph shows, with or without motion. */
+:is(button, a[href], summary, [role="button"], [role="menuitem"], [role="tab"], [data-ic-host]):is([aria-expanded="true"], [aria-pressed="true"]) {
+  --ic-open: 1;
 }
 
-.app-shell :is(
-  .thread-header-icon-button,
-  .thread-review-button,
-  .message-action-button,
-  .composer-tool,
-  .composer-chip,
-  .send-button
-):hover:not(:disabled),
-.app-shell :is(
-  .thread-header-icon-button,
-  .thread-review-button,
-  .message-action-button,
-  .composer-tool,
-  .composer-chip,
-  .send-button
-):active:not(:disabled) {
-  transform: none !important;
+@media (prefers-reduced-motion: no-preference) {
+  /* Every host: timing, and the direction cue. */
+  :root:not([data-loom-reduced-motion="true"])
+    :is(button, a[href], summary, [role="button"], [role="menuitem"], [role="tab"], [role="option"], [data-ic-host]):not(:disabled):not([aria-disabled="true"]):is(:hover, :focus-visible, [data-ic-force~="on"]) {
+    --ic-lean: 1;
+    --ic-dur: var(--ic-t-lift);
+    --ic-curve: var(--ic-spring);
+  }
+
+  /* Tools (icon buttons, labelled actions) also answer with their own gesture. */
+  :root:not([data-loom-reduced-motion="true"])
+    :is(button, a[href], summary, [role="button"], [data-ic-host]):not([role="menuitem"], [role="option"], [role="tab"], [data-ic-row], [data-ic-row] *):not(:disabled):not([aria-disabled="true"]):is(:hover, :focus-visible, [data-ic-force~="on"]) {
+    --ic-on: 1;
+    --ic-k-draw: li-draw;
+    --ic-k-blink: li-blink;
+    --ic-k-pulse: li-pulse;
+    --ic-k-run: li-run;
+  }
 }
 
-/* The send halo should arrive after the pointer, not flash ahead of it. */
-.app-shell .send-button::after {
+/* Every glyph is allowed to move outside its own box; the host decides what to clip. */
+.loom-icon {
+  overflow: visible;
+}
+
+/* Pressed: the glyph, not the control, gives a little. */
+.loom-icon {
+  transition: scale var(--ic-dur) var(--ic-curve);
+}
+
+:root:not([data-loom-reduced-motion="true"])
+  :is(button, a[href], summary, [role="button"], [role="menuitem"], [role="tab"], [role="option"], [data-ic-host]):not(:disabled):not([aria-disabled="true"]):is(:active, [data-ic-force~="down"])
+  .loom-icon:not([data-spinning="true"]) {
+  --ic-dur: var(--ic-t-press);
+  --ic-curve: ease-out;
+  scale: .88;
+}
+
+/* Parts that move share one transition; each rule below only sets the pose. */
+.loom-icon .li {
   transition:
-    opacity 340ms var(--loom-icon-ease),
-    transform 440ms var(--loom-icon-ease) !important;
-}
-
-.app-shell .send-button:hover:not(:disabled)::after {
-  opacity: .82;
-  transform: scale(.96);
-}
-
-/* Header/sidebar hover backgrounds are deliberately quieter. */
-.app-shell .thread-header-icon-button:hover,
-.app-shell .compact-sidebar-actions button:hover,
-.app-shell .sidebar-section-title button:hover,
-.app-shell .project-group-actions button:hover,
-.app-shell .thread-quick-actions button:hover:not(:disabled) {
-  transition-duration: 300ms !important;
+    transform var(--ic-dur) var(--ic-curve),
+    opacity var(--ic-dur) var(--ic-curve),
+    stroke-dashoffset var(--ic-dur) var(--ic-curve);
 }
 
 /* -------------------------------------------------------------------------- */
-/* Shared optical transition. No default movement: semantics below decide what
-   moves and in which direction. */
+/* Disclosure: a chevron leans toward where it points, and turns when open.    */
 
-.app-shell :is(button, [role="button"], a[href], summary) svg,
-.app-shell .activity-row .tool-identity-glyph,
-.app-shell .mp-row .mp-mark {
-  transition:
-    color var(--loom-icon-ink) ease,
-    opacity var(--loom-icon-ink) ease,
-    filter 300ms ease,
-    translate var(--loom-icon-motion) var(--loom-icon-ease),
-    rotate var(--loom-icon-motion) var(--loom-icon-ease);
+[data-icon="chevron-right"] .li-all {
+  transform-origin: 12px 12px;
+  transform:
+    translate(calc(var(--ic-lean) * (1 - var(--ic-open)) * 2px), 0)
+    rotate(calc(var(--ic-open) * 90deg));
 }
 
-/* New chat / edit ---------------------------------------------------------- */
-/* Keep the square stationary; the pen makes one small writing reach. */
-.app-shell .sidebar-compose-icon {
-  overflow: visible;
+[data-icon="chevron-down"] .li-all {
+  transform-origin: 12px 12px;
+  transform:
+    translate(0, calc(var(--ic-lean) * (1 - var(--ic-open)) * 2px))
+    rotate(calc(var(--ic-open) * 180deg));
 }
 
-.app-shell .sidebar-compose-icon path:last-child {
-  transform-box: fill-box;
-  transform-origin: center;
-  transition: transform var(--loom-icon-motion-long) var(--loom-icon-ease);
+[data-icon="chevron-left"] .li-all { transform: translate(calc(var(--ic-lean) * -2px), 0); }
+[data-icon="chevron-up"] .li-all { transform: translate(0, calc(var(--ic-lean) * -2px)); }
+
+/* The sidebar toggle points the way the sidebar will go, and turns with it. */
+[data-icon="sidebar-triangle"] .li-tri {
+  transform-origin: 6px 7px;
+  transform:
+    translate(calc(.26px - var(--ic-open) * .52px + var(--ic-lean) * (1 - var(--ic-open) * 2) * .7px), 0)
+    rotate(calc(var(--ic-open) * 180deg))
+    scale(calc(1 - var(--ic-open) * .02));
 }
 
-.app-shell .sidebar-new-conversation:hover .sidebar-compose-icon path:last-child {
-  animation: loom-compose-pen-write 620ms var(--loom-icon-ease) both;
+/* Direction: the head leaves first and the shaft stretches to follow it. */
+
+[data-icon="arrow-right"] .li-head { transform: translate(calc(var(--ic-lean) * 2px), 0); }
+[data-icon="arrow-right"] .li-shaft { transform-origin: 5px 12px; transform: scaleX(calc(1 + var(--ic-lean) * .143)); }
+
+[data-icon="arrow-left"] .li-head { transform: translate(calc(var(--ic-lean) * -2px), 0); }
+[data-icon="arrow-left"] .li-shaft { transform-origin: 19px 12px; transform: scaleX(calc(1 + var(--ic-lean) * .143)); }
+
+[data-icon="arrow-up"] .li-head { transform: translate(0, calc(var(--ic-lean) * -2px)); }
+[data-icon="arrow-up"] .li-shaft { transform-origin: 12px 19px; transform: scaleY(calc(1 + var(--ic-lean) * .143)); }
+
+[data-icon="arrow-up-right"] .li-head,
+[data-icon="arrow-up-right"] .li-shaft { transform: translate(calc(var(--ic-lean) * 1.5px), calc(var(--ic-lean) * -1.5px)); }
+
+[data-icon="external-link"] .li-arrow { transform: translate(calc(var(--ic-lean) * 1.8px), calc(var(--ic-lean) * -1.8px)); }
+[data-icon="maximize"] .li-out-a { transform: translate(calc(var(--ic-lean) * 1.6px), calc(var(--ic-lean) * -1.6px)); }
+[data-icon="maximize"] .li-out-b { transform: translate(calc(var(--ic-lean) * -1.6px), calc(var(--ic-lean) * 1.6px)); }
+
+[data-icon="send"] .li-all { transform: translate(calc(var(--ic-lean) * 1.6px), calc(var(--ic-lean) * -1.6px)); }
+[data-icon="reply"] .li-all { transform: translate(calc(var(--ic-lean) * -2px), 0); }
+[data-icon="play"] .li-all { transform: translate(calc(var(--ic-lean) * 1.4px), 0); }
+[data-icon="log-out"] .li-arrow { transform: translate(calc(var(--ic-lean) * 2px), 0); }
+[data-icon="download"] .li-arrow { transform: translate(0, calc(var(--ic-lean) * 2px)); }
+[data-icon="upload"] .li-arrow { transform: translate(0, calc(var(--ic-lean) * -2px)); }
+
+/* Panels: the chevron points where the panel will go; a bare divider slides. */
+
+[data-icon="panel-right-open"] .li-chevron { transform: translate(calc(var(--ic-lean) * -1.8px), 0); }
+[data-icon="panel-right-close"] .li-chevron { transform: translate(calc(var(--ic-lean) * 1.8px), 0); }
+[data-icon="panel-left"] .li-divider,
+[data-icon="panels"] .li-divider { transform: translate(calc(var(--ic-lean) * 1.8px), 0); }
+[data-icon="panel-right"] .li-divider { transform: translate(calc(var(--ic-lean) * -1.8px), 0); }
+
+/* -------------------------------------------------------------------------- */
+/* Turns. These glyphs look the same after the turn (a plus, an x, a refresh
+   and a six-toothed gear are symmetric), so they have nothing to settle into
+   and nothing is left half a pixel off.                                       */
+
+[data-icon="plus"] .li-all,
+[data-icon="x"] .li-all {
+  transform-origin: 12px 12px;
+  transform: rotate(calc(var(--ic-on) * 90deg));
 }
 
-@keyframes loom-compose-pen-write {
-  0% { transform: translate(0, 0) rotate(0deg); }
-  38% { transform: translate(.95px, -.9px) rotate(-2.4deg); }
-  68% { transform: translate(-.38px, .32px) rotate(1.1deg); }
-  100% { transform: translate(.42px, -.38px) rotate(-1deg); }
+[data-icon="refresh"] .li-all {
+  transform-origin: 12px 12px;
+  transform: rotate(calc(var(--ic-on) * 180deg));
 }
 
-.app-shell :is(.lucide-pencil, .lucide-file-pen-line, .lucide-pen-line) {
-  transition:
-    translate var(--loom-icon-motion-long) var(--loom-icon-ease),
-    rotate var(--loom-icon-motion-long) var(--loom-icon-ease),
-    color var(--loom-icon-ink) ease !important;
+[data-icon="settings"] .li-gear {
+  transform-origin: 12px 12px;
+  transform: rotate(calc(var(--ic-on) * 60deg));
 }
 
-.app-shell :is(button, [role="button"], a[href]):hover:not(:disabled)
-  :is(.lucide-pencil, .lucide-file-pen-line, .lucide-pen-line) {
-  translate: .55px -.55px;
-  rotate: -1.4deg;
+[data-icon="folder-plus"] .li-plus {
+  transform-origin: 12px 13px;
+  transform: rotate(calc(var(--ic-on) * 90deg));
 }
 
-/* Search ------------------------------------------------------------------ */
-/* A lens scans; it does not zoom. */
-.app-shell :is(button, [role="button"], a[href]):hover:not(:disabled) .lucide-search {
-  translate: .8px 0;
-  filter: drop-shadow(-.8px 0 0 color-mix(in srgb, currentColor 7%, transparent));
+/* These do change, a little, and settle there. */
+
+[data-icon="rotate-cw"] .li-all { transform-origin: 12px 12px; transform: rotate(calc(var(--ic-on) * 30deg)); }
+[data-icon="rotate-ccw"] .li-all { transform-origin: 12px 12px; transform: rotate(calc(var(--ic-on) * -30deg)); }
+[data-icon="search"] .li-all { transform-origin: 21px 21px; transform: rotate(calc(var(--ic-on) * 12deg)); }
+[data-icon="key"] .li-all { transform-origin: 16.5px 7.5px; transform: rotate(calc(var(--ic-on) * -10deg)); }
+[data-icon="wrench"] .li-all { transform-origin: 5px 19px; transform: rotate(calc(var(--ic-on) * -12deg)); }
+[data-icon="paperclip"] .li-all { transform-origin: 12px 12px; transform: rotate(calc(var(--ic-on) * -16deg)); }
+[data-icon="pencil"] .li-all { transform-origin: 3px 21px; transform: translate(calc(var(--ic-on) * .8px), 0) rotate(calc(var(--ic-on) * 9deg)); }
+[data-icon="thumbs-up"] .li-all { transform-origin: 4px 22px; transform: translate(0, calc(var(--ic-on) * -1.2px)) rotate(calc(var(--ic-on) * -8deg)); }
+[data-icon="thumbs-down"] .li-all { transform-origin: 20px 2px; transform: translate(0, calc(var(--ic-on) * 1.2px)) rotate(calc(var(--ic-on) * -8deg)); }
+[data-icon="sparkles"] .li-star { transform-origin: 12px 12px; transform: rotate(calc(var(--ic-on) * 16deg)) scale(calc(1 + var(--ic-on) * .06)); }
+[data-icon="globe"] .li-meridian { transform-origin: 12px 12px; transform: scaleX(calc(1 - var(--ic-on) * .5)); }
+
+/* -------------------------------------------------------------------------- */
+/* Things that open.                                                           */
+
+[data-icon="trash"] .li-lid {
+  transform-origin: 4px 6px;
+  transform: translate(0, calc(var(--ic-on) * -1.4px)) rotate(calc(var(--ic-on) * -11deg));
 }
 
-/* Direction / disclosure --------------------------------------------------- */
-.app-shell :is(button, [role="button"], a[href]):hover:not(:disabled)
-  :is(.lucide-chevron-right, .project-disclosure-chevron, .menu-chevron, .mp-row-chevron) {
-  translate: .85px 0;
+[data-icon="archive"] .li-lid,
+[data-icon="archive-restore"] .li-lid { transform: translate(0, calc(var(--ic-on) * -2px)); }
+[data-icon="archive-restore"] .li-arrow { transform: translate(0, calc(var(--ic-on) * -1.6px)); }
+
+[data-icon="lock"] .li-lid,
+[data-icon="lock-keyhole"] .li-lid { transform: translate(0, calc(var(--ic-on) * -1.8px)); }
+
+[data-icon="folder"] .li-all,
+[data-icon="folder-open"] .li-all { transform: translate(0, calc(var(--ic-on) * -1.4px)); }
+
+[data-icon="pin"] .li-head { transform: translate(0, calc(var(--ic-on) * 1.8px)); }
+[data-icon="pin"] .li-needle { transform-origin: 12px 22px; transform: scaleY(calc(1 - var(--ic-on) * .36)); }
+[data-icon="pin-off"] .li-head { transform: translate(0, calc(var(--ic-on) * -1.8px)); }
+[data-icon="pin-off"] .li-needle { transform-origin: 12px 22px; transform: scaleY(calc(1 + var(--ic-on) * .36)); }
+
+/* -------------------------------------------------------------------------- */
+/* Things that part.                                                           */
+
+[data-icon="copy"] .li-front { transform: translate(calc(var(--ic-on) * 1.6px), calc(var(--ic-on) * 1.6px)); }
+[data-icon="copy"] .li-back { transform: translate(calc(var(--ic-on) * -1.2px), calc(var(--ic-on) * -1.2px)); }
+
+[data-icon="layers"] .li-top,
+[data-icon="model"] .li-top { transform: translate(0, calc(var(--ic-on) * -1.8px)); }
+[data-icon="layers"] .li-bottom,
+[data-icon="model"] .li-bottom { transform: translate(0, calc(var(--ic-on) * 1.8px)); }
+
+[data-icon="file-diff"] .li-plus { transform: translate(0, calc(var(--ic-on) * -1.6px)); }
+[data-icon="file-diff"] .li-minus { transform: translate(0, calc(var(--ic-on) * 1.6px)); }
+
+[data-icon="fork"] .li-node { transform: translate(0, calc(var(--ic-on) * 1.6px)); }
+[data-icon="fork"] .li-stem { transform-origin: 12px 12px; transform: scaleY(calc(1 + var(--ic-on) * .53)); }
+
+[data-icon="link"] .li-half-l { transform: translate(calc(var(--ic-on) * 1.4px), 0); }
+[data-icon="link"] .li-half-r { transform: translate(calc(var(--ic-on) * -1.4px), 0); }
+
+[data-icon="sparkles"] .li-spark-a { transform-origin: 20px 5px; transform: scale(calc(1 + var(--ic-on) * .3)); }
+[data-icon="sparkles"] .li-spark-b { transform-origin: 4px 18px; transform: scale(calc(1 + var(--ic-on) * .3)); transition-delay: calc(var(--ic-on) * 70ms); }
+
+/* Three dots lift in turn: the only stagger on the page. */
+[data-icon="ellipsis"] .li-dot { transform: translate(0, calc(var(--ic-on) * -2.2px)); }
+[data-icon="ellipsis"] .li-dot-2 { transition-delay: calc(var(--ic-on) * 45ms); }
+[data-icon="ellipsis"] .li-dot-3 { transition-delay: calc(var(--ic-on) * 90ms); }
+
+/* -------------------------------------------------------------------------- */
+/* Looking and listening.                                                      */
+
+[data-icon="eye"] .li-pupil { transform: translate(calc(var(--ic-on) * 2.2px), 0); }
+
+[data-icon="bot"] .li-antenna { transform: translate(0, calc(var(--ic-on) * -1.6px)); }
+[data-icon="bot"] .li-eyes { transform-origin: 12px 14px; animation: var(--ic-k-blink) 480ms ease both; }
+
+[data-icon="terminal"] .li-prompt { transform: translate(calc(var(--ic-on) * 1.8px), 0); }
+[data-icon="terminal"] .li-cursor { animation: var(--ic-k-pulse) 640ms ease both; }
+
+[data-icon="expression"] .li-eyes { transform-origin: 11.46px 10.38px; animation: var(--ic-k-blink) 520ms ease both; }
+[data-icon="expression"] .li-smile { transform-origin: 11.46px 14.1px; transform: translate(0, calc(var(--ic-on) * .9px)) scaleX(calc(1 + var(--ic-on) * .08)); }
+[data-icon="expression"] .li-spark { transform-origin: 18.3px 5.04px; transform: scale(calc(1 + var(--ic-on) * .4)) rotate(calc(var(--ic-on) * 20deg)); }
+
+/* -------------------------------------------------------------------------- */
+/* Marks that draw.                                                            */
+
+/* A tick drawn by a menu item or button the moment it is chosen. */
+:is(button, [role="menuitem"], [role="option"], [data-ic-host]) :is([data-icon="check"], [data-icon="circle-check"]) .li-tick,
+:is(button, [role="menuitem"], [role="option"], [data-ic-host]) [data-icon="eye-off"] .li-slash,
+:is(button, [role="menuitem"], [role="option"], [data-ic-host]) [data-icon="pin-off"] .li-slash {
+  animation: li-draw var(--ic-t-draw) var(--ic-ease) backwards;
 }
 
-.app-shell :is(button, [role="button"], a[href]):hover:not(:disabled)
-  :is(.lucide-chevron-left, .lucide-arrow-left, .lucide-panel-left-open, .lucide-panel-left-close) {
-  translate: -.85px 0;
+/* Marks that confirm something draw again when the control is engaged. */
+[data-icon="shield-check"] .li-tick,
+[data-icon="activity"] .li-wave {
+  animation: var(--ic-k-draw) var(--ic-t-draw) var(--ic-ease) both;
 }
 
-.app-shell :is(button, [role="button"], a[href]):hover:not(:disabled)
-  :is(.lucide-arrow-right, .lucide-panel-right-open, .lucide-panel-right-close) {
-  translate: .85px 0;
+@keyframes li-draw {
+  0% { stroke-dasharray: 1 2; stroke-dashoffset: 1; opacity: 0; }
+  18% { opacity: 1; }
+  100% { stroke-dasharray: 1 2; stroke-dashoffset: 0; opacity: 1; }
 }
 
-.app-shell .composer-chip-chevron {
-  transition:
-    transform 460ms var(--loom-icon-ease),
-    translate 420ms var(--loom-icon-ease),
-    opacity 280ms ease,
-    color 280ms ease !important;
+@keyframes li-blink {
+  0%, 100% { transform: scaleY(1); }
+  42% { transform: scaleY(.12); }
 }
 
-.app-shell .composer-chip:hover .composer-chip-chevron {
-  translate: 0 .45px;
+@keyframes li-pulse {
+  0%, 100% { opacity: 1; }
+  40%, 60% { opacity: .15; }
 }
 
-/* The custom sidebar triangle already owns its rotation state. Slow it down
-   and soften the halo so opening/closing feels attached to the panel. */
-.app-shell .thread-header-leading .thread-sidebar-triangle {
-  transition:
-    color 300ms ease,
-    transform 220ms var(--loom-icon-ease) !important;
+/* A pulse runs along the activity trace once, over a trace that dims to make room. */
+[data-icon="pulse"] .li-base { opacity: calc(.78 - var(--ic-on) * .28); }
+[data-icon="pulse"] .li-runner {
+  opacity: 0;
+  stroke-dasharray: .2 1;
+  stroke-dashoffset: .2;
+  animation: var(--ic-k-run) var(--ic-t-run) var(--ic-ease) both;
 }
 
-.app-shell .thread-header-leading .thread-sidebar-triangle::before {
-  transition:
-    opacity 300ms ease,
-    transform 460ms var(--loom-icon-ease) !important;
+@keyframes li-run {
+  0% { opacity: 0; stroke-dashoffset: .2; }
+  14% { opacity: 1; }
+  86% { opacity: 1; }
+  100% { opacity: 0; stroke-dashoffset: -1; }
 }
 
-.app-shell .thread-sidebar-triangle-mark {
-  transition:
-    transform 480ms cubic-bezier(.16,.76,.22,1),
-    opacity 240ms ease !important;
-}
-
-/* Settings ---------------------------------------------------------------- */
-.app-shell :is(button, [role="button"], a[href]):hover:not(:disabled) .lucide-settings {
-  rotate: 10deg;
-}
-
-/* Attachment -------------------------------------------------------------- */
-.app-shell .lucide-paperclip {
-  transform-origin: 52% 52%;
-}
-
-.app-shell :is(button, [role="button"], a[href]):hover:not(:disabled) .lucide-paperclip {
-  translate: 0 -.5px;
-  rotate: -3deg;
-}
-
-/* Permissions ------------------------------------------------------------- */
-.app-shell .lucide-shield-check path:last-child {
-  transform-box: fill-box;
-  transform-origin: center;
-  transition:
-    transform var(--loom-icon-motion-long) var(--loom-icon-ease),
-    opacity 300ms ease;
-}
-
-.app-shell :is(button, [role="button"], a[href]):hover:not(:disabled)
-  .lucide-shield-check path:last-child {
-  transform: translateY(-.45px);
-}
-
-/* Model / compute --------------------------------------------------------- */
-.app-shell .lucide-cpu rect {
-  transform-box: fill-box;
-  transform-origin: center;
-  transition:
-    transform var(--loom-icon-motion-long) var(--loom-icon-ease),
-    opacity 300ms ease;
-}
-
-.app-shell :is(button, [role="button"], a[href]):hover:not(:disabled) .lucide-cpu rect {
-  transform: scale(.95);
-  opacity: .88;
-}
-
-/* Smile ------------------------------------------------------------------- */
-.app-shell .lucide-smile path:last-child {
-  transform-box: fill-box;
-  transform-origin: center;
-  transition: transform var(--loom-icon-motion-long) var(--loom-icon-ease);
-}
-
-.app-shell :is(button, [role="button"], a[href]):hover:not(:disabled) .lucide-smile path:last-child {
-  transform: translateY(.45px);
-}
-
-/* Send / stop ------------------------------------------------------------- */
-.app-shell .send-button .lucide-arrow-up {
-  transition:
-    translate 480ms var(--loom-icon-ease),
-    opacity 260ms ease;
-}
-
-.app-shell .send-button:hover:not(:disabled) .lucide-arrow-up {
-  translate: 0 -1.15px;
-}
-
-.app-shell .send-button.stop .lucide-square {
-  transition:
-    opacity 300ms ease,
-    filter 360ms ease;
-}
-
-.app-shell .send-button.stop:hover:not(:disabled) .lucide-square {
-  opacity: .82;
-  filter: drop-shadow(0 0 3px color-mix(in srgb, currentColor 20%, transparent));
-}
-
-/* Add / project ----------------------------------------------------------- */
-.app-shell .lucide-folder-plus path:last-child {
-  transform-box: fill-box;
-  transform-origin: center;
-  transition: transform var(--loom-icon-motion-long) var(--loom-icon-ease);
-}
-
-.app-shell :is(button, [role="button"], a[href]):hover:not(:disabled) > .lucide-plus {
-  filter: drop-shadow(0 0 2px color-mix(in srgb, currentColor 14%, transparent));
-}
-
-.app-shell :is(button, [role="button"], a[href]):hover:not(:disabled)
-  .lucide-folder-plus path:last-child {
-  transform: scale(1.08);
-}
-
-.app-shell :is(.lucide-folder, .lucide-folder-open, .lucide-folder-plus) path:first-child {
-  transform-box: fill-box;
-  transform-origin: 50% 35%;
-  transition: transform var(--loom-icon-motion-long) var(--loom-icon-ease);
-}
-
-.app-shell :is(button, [role="button"], a[href]):hover:not(:disabled)
-  :is(.lucide-folder, .lucide-folder-open, .lucide-folder-plus) path:first-child {
-  transform: translateY(-.55px);
-}
-
-/* Copy -------------------------------------------------------------------- */
-.app-shell .lucide-copy rect {
-  transform-box: fill-box;
-  transition: transform var(--loom-icon-motion-long) var(--loom-icon-ease);
-}
-
-.app-shell :is(button, [role="button"], a[href]):hover:not(:disabled) .lucide-copy rect {
-  transform: translate(.55px, -.55px);
-}
-
-/* Reply ------------------------------------------------------------------- */
-.app-shell .lucide-reply {
-  transition:
-    translate var(--loom-icon-motion-long) var(--loom-icon-ease),
-    color var(--loom-icon-ink) ease !important;
-}
-
-.app-shell :is(button, [role="button"], a[href]):hover:not(:disabled) .lucide-reply {
-  translate: -.7px 0;
-}
-
-/* Feedback --------------------------------------------------------------- */
-.app-shell :is(.lucide-thumbs-up, .lucide-thumbs-down) {
-  transform-origin: 45% 58%;
-  transition:
-    translate var(--loom-icon-motion-long) var(--loom-icon-ease),
-    rotate var(--loom-icon-motion-long) var(--loom-icon-ease),
-    color var(--loom-icon-ink) ease !important;
-}
-
-.app-shell :is(button, [role="button"], a[href]):hover:not(:disabled) .lucide-thumbs-up {
-  translate: 0 -.55px;
-  rotate: -1.8deg;
-}
-
-.app-shell :is(button, [role="button"], a[href]):hover:not(:disabled) .lucide-thumbs-down {
-  translate: 0 .55px;
-  rotate: 1.8deg;
-}
-
-/* Archive / restore ------------------------------------------------------- */
-.app-shell :is(.lucide-archive, .lucide-archive-restore) > :first-child {
-  transform-box: fill-box;
-  transition: transform var(--loom-icon-motion-long) var(--loom-icon-ease);
-}
-
-.app-shell :is(button, [role="button"], a[href]):hover:not(:disabled)
-  :is(.lucide-archive, .lucide-archive-restore) > :first-child {
-  transform: translateY(-.7px);
-}
-
-/* Delete ------------------------------------------------------------------ */
-.app-shell .lucide-trash-2 > :first-child {
-  transform-box: fill-box;
-  transform-origin: center;
-  transition: transform var(--loom-icon-motion-long) var(--loom-icon-ease);
-}
-
-.app-shell :is(button, [role="button"], a[href]):hover:not(:disabled)
-  .lucide-trash-2 > :first-child {
-  transform: translateY(-.8px);
-}
-
-/* Pin --------------------------------------------------------------------- */
-.app-shell :is(.lucide-pin, .lucide-pin-off) {
-  transition:
-    translate var(--loom-icon-motion-long) var(--loom-icon-ease),
-    color var(--loom-icon-ink) ease !important;
-}
-
-.app-shell :is(button, [role="button"], a[href]):hover:not(:disabled)
-  :is(.lucide-pin, .lucide-pin-off) {
-  translate: 0 .55px;
-}
-
-/* Ellipsis ---------------------------------------------------------------- */
-/* Dots lift in sequence. The small delay is the only stagger on the page. */
-.app-shell .lucide-ellipsis circle {
-  transform-box: fill-box;
-  transform-origin: center;
-  transition: transform 420ms var(--loom-icon-ease);
-}
-
-.app-shell .lucide-ellipsis circle:nth-of-type(2) { transition-delay: 45ms; }
-.app-shell .lucide-ellipsis circle:nth-of-type(3) { transition-delay: 90ms; }
-
-.app-shell :is(button, [role="button"], a[href]):hover:not(:disabled)
-  .lucide-ellipsis circle {
-  transform: translateY(-.65px);
-}
-
-/* Eye --------------------------------------------------------------------- */
-.app-shell .lucide-eye circle {
-  transform-box: fill-box;
-  transform-origin: center;
-  transition: transform var(--loom-icon-motion-long) var(--loom-icon-ease);
-}
-
-.app-shell :is(button, [role="button"], a[href]):hover:not(:disabled)
-  .lucide-eye circle {
-  transform: translateX(.65px);
-}
-
-/* Check appears as a quiet stroke completion after copy/select. */
-.app-shell :is(.message-action-button.is-copied, .composer-option-check)
-  .lucide-check path {
-  stroke-dasharray: 28;
-  animation: loom-check-settle 520ms var(--loom-icon-ease) both;
-}
-
-@keyframes loom-check-settle {
-  from { stroke-dashoffset: 7; opacity: .62; }
-  to { stroke-dashoffset: 0; opacity: 1; }
-}
-
-/* Bot / sub-agent --------------------------------------------------------- */
-.app-shell .lucide-bot {
-  transition:
-    translate var(--loom-icon-motion-long) var(--loom-icon-ease),
-    filter 360ms ease !important;
-}
-
-.app-shell :is(button, [role="button"], a[href]):hover:not(:disabled) .lucide-bot {
-  translate: 0 -.45px;
-  filter: drop-shadow(0 1px 2px color-mix(in srgb, currentColor 11%, transparent));
-}
-
-/* Profile / account ------------------------------------------------------- */
-.app-shell .lucide-user-round circle {
-  transform-box: fill-box;
-  transform-origin: center;
-  transition: transform var(--loom-icon-motion-long) var(--loom-icon-ease);
-}
-
-.app-shell :is(button, [role="button"], a[href]):hover:not(:disabled)
-  .lucide-user-round circle {
-  transform: translateY(-.45px);
-}
-
-/* Activity --------------------------------------------------------------- */
-/* Keep the whole waveform visible at rest. The old dash pattern was shorter
-   than Lucide's Activity path, so its left-hand segment was permanently
-   clipped. Motion now happens on the complete glyph instead of drawing a
-   partial stroke. */
-.app-shell .lucide-activity {
-  overflow: visible;
-}
-
-.app-shell .lucide-activity path {
-  stroke-dasharray: none;
-  stroke-dashoffset: 0;
-  transition: opacity 280ms ease;
-}
-
-.app-shell :is(button, [role="button"], a[href]):hover:not(:disabled)
-  .lucide-activity {
-  translate: .55px 0;
-  filter: drop-shadow(-.55px 0 0 color-mix(in srgb, currentColor 7%, transparent));
-}
-
-/* Review / preview -------------------------------------------------------- */
-.app-shell :is(.lucide-file-diff, .lucide-file-code-2) > :nth-child(2),
-.app-shell :is(.lucide-file-diff, .lucide-file-code-2) > :nth-child(3) {
-  transform-box: fill-box;
-  transition: transform var(--loom-icon-motion-long) var(--loom-icon-ease);
-}
-
-.app-shell :is(button, [role="button"], a[href]):hover:not(:disabled)
-  :is(.lucide-file-diff, .lucide-file-code-2) > :nth-child(2) {
-  transform: translateX(-.5px);
-}
-
-.app-shell :is(button, [role="button"], a[href]):hover:not(:disabled)
-  :is(.lucide-file-diff, .lucide-file-code-2) > :nth-child(3) {
-  transform: translateX(.5px);
+/* The page and the pen: engaged, the pen drops to the line and writes it. */
+[data-icon="compose"] .li-pen { transform: translate(calc(var(--ic-on) * 3.2px), calc(var(--ic-on) * 2.6px)); }
+[data-icon="compose"] .li-ink {
+  stroke-dasharray: 1 2;
+  stroke-dashoffset: calc((1 - var(--ic-on)) * 1);
+  opacity: var(--ic-on);
 }
 
 /* -------------------------------------------------------------------------- */
-/* Tool/activity icons: brands remain geometrically stable; capabilities use a
-   gesture that matches their job. */
+/* Work in progress: one speed, everywhere, on the compositor.                 */
 
-.app-shell .activity-row .tool-identity-glyph {
-  transition:
-    color var(--loom-icon-ink) ease,
-    opacity var(--loom-icon-ink) ease,
-    filter 360ms ease,
-    translate var(--loom-icon-motion-long) var(--loom-icon-ease);
+@keyframes li-spin {
+  to { rotate: 360deg; }
 }
 
-.app-shell .activity-row:hover .tool-identity-glyph.is-brand {
-  filter: brightness(1.08);
+[data-icon="loader"],
+[data-spinning="true"] {
+  animation: li-spin var(--ic-t-spin) linear infinite;
 }
 
-.app-shell .activity-row:hover
-  :is(
-    .tool-identity-glyph[data-tool-family="terminal"],
-    .tool-identity-glyph[data-tool-family="terminal-group"],
-    .tool-identity-glyph[data-tool-family="automation"]
-  ) {
-  translate: .65px 0;
-}
-
-.app-shell .activity-row:hover
-  :is(
-    .tool-identity-glyph[data-tool-family="file"],
-    .tool-identity-glyph[data-tool-family="file-group"],
-    .tool-identity-glyph[data-tool-family="workspace"]
-  ) {
-  translate: 0 -.55px;
-}
-
-.app-shell .activity-row:hover .tool-identity-glyph[data-tool-family="search"] {
-  translate: .7px 0;
-}
-
-.app-shell .activity-row:hover .tool-identity-glyph[data-tool-family="calculator"] {
-  translate: 0 .45px;
-}
-
-.app-shell .activity-row:hover .tool-identity-glyph[data-tool-family="skills"] {
-  filter: brightness(1.12)
-    drop-shadow(0 0 3px color-mix(in srgb, currentColor 15%, transparent));
-}
-
-.app-shell .tool-identity-glyph[data-tool-family="computer"]::before,
-.app-shell .tool-identity-glyph[data-tool-family="computer"]::after {
-  transition: transform var(--loom-icon-motion-long) var(--loom-icon-ease);
-}
-
-.app-shell .activity-row:hover .tool-identity-glyph[data-tool-family="computer"]::before,
-.app-shell .activity-row:hover .tool-identity-glyph[data-tool-family="computer"]::after {
-  transform: translate(.65px, -.65px);
-}
-
-.app-shell .tool-identity-glyph[data-tool-family="subagent"] circle {
-  transform-box: fill-box;
-  transform-origin: center;
-  transition: transform var(--loom-icon-motion-long) var(--loom-icon-ease);
-}
-
-.app-shell .activity-row:hover
-  .tool-identity-glyph[data-tool-family="subagent"] circle:nth-of-type(2) {
-  transform: translateX(-.45px);
-}
-
-.app-shell .activity-row:hover
-  .tool-identity-glyph[data-tool-family="subagent"] circle:nth-of-type(3) {
-  transform: translateX(.45px);
-}
-
-/* Provider/model logos should feel premium, not rubbery. No geometric change;
-   only the mark surface gains a little contrast. */
-.app-shell .mp-row .mp-mark {
-  transition:
-    background-color 280ms ease,
-    color 280ms ease,
-    box-shadow 380ms var(--loom-icon-ease);
-}
-
-.app-shell .mp-row:hover:not(:disabled) .mp-mark {
-  box-shadow:
-    inset 0 0 0 1px color-mix(in srgb, currentColor 13%, transparent),
-    0 0 0 3px color-mix(in srgb, currentColor 4%, transparent);
-}
-
-/* Press feedback: opacity only. The icon no longer collapses or snaps. */
-.app-shell :is(button, [role="button"], a[href], summary):active:not(:disabled) svg {
-  opacity: .86;
-  transition-duration: var(--loom-icon-press) !important;
-}
-
-/* Reduced motion keeps colour affordances but removes geometry changes. */
-@media (prefers-reduced-motion: reduce) {
-  .app-shell :is(button, [role="button"], a[href], summary) svg,
-  .app-shell .activity-row .tool-identity-glyph,
-  .app-shell .activity-row .tool-identity-glyph::before,
-  .app-shell .activity-row .tool-identity-glyph::after,
-  .app-shell .activity-row .tool-identity-glyph svg *,
-  .app-shell .mp-row .mp-mark {
-    animation: none !important;
-    transition-duration: .001ms !important;
-    transform: none !important;
-    translate: none !important;
-    rotate: 0deg !important;
-    filter: none !important;
-  }
-}
-
-:root[data-loom-reduced-motion="true"] .app-shell :is(button, [role="button"], a[href], summary) svg,
-:root[data-loom-reduced-motion="true"] .app-shell .activity-row .tool-identity-glyph,
-:root[data-loom-reduced-motion="true"] .app-shell .activity-row .tool-identity-glyph::before,
-:root[data-loom-reduced-motion="true"] .app-shell .activity-row .tool-identity-glyph::after,
-:root[data-loom-reduced-motion="true"] .app-shell .activity-row .tool-identity-glyph svg *,
-:root[data-loom-reduced-motion="true"] .app-shell .mp-row .mp-mark {
-  animation: none !important;
-  transition-duration: .001ms !important;
-  transform: none !important;
-  translate: none !important;
-  rotate: 0deg !important;
-  filter: none !important;
-}
-
-/* ==========================================================================
-   Home surface icon choreography
-   --------------------------------------------------------------------------
-   The workspace uses "semantic micro-motion": the button itself never jumps.
-   Only the part of the glyph that represents the action moves, and usually by
-   less than one CSS pixel. This keeps the interface calm and preserves crisp
-   Windows/Electron rasterization while still making every control feel alive.
-   ========================================================================== */
-
-/* Optical baseline --------------------------------------------------------- */
-.app-shell :is(
-  .codex-sidebar,
-  .thread-header,
-  .composer,
-  .home-token-activity,
-  .message-actions
-) svg[class*="lucide"] {
-  overflow: visible;
-}
-
-.app-shell :is(
-  .codex-sidebar,
-  .thread-header,
-  .composer,
-  .message-actions
-) :is(button, [role="button"], a[href], summary):not(:disabled)
-  svg[class*="lucide"] {
-  transform-origin: 50% 50%;
-}
-
-/* Search: the lens makes one tiny scan, while the search field keeps the same
-   focused geometry. */
-.app-shell .compact-sidebar-actions button:hover:not(:disabled) .lucide-search,
-.app-shell .compact-search:focus-within .lucide-search {
-  translate: .82px 0;
-  rotate: -1.6deg;
-  filter: drop-shadow(-.8px 0 0 color-mix(in srgb, currentColor 8%, transparent));
-}
-
-/* New conversation: the frame stays anchored; the pen tip performs a short
-   writing stroke. Existing path-specific motion above owns the actual pen. */
-.app-shell .sidebar-new-conversation:hover:not(:disabled) .sidebar-compose-icon {
-  filter:
-    brightness(1.06)
-    drop-shadow(0 1px 2px color-mix(in srgb, currentColor 18%, transparent));
-}
-
-/* Add: expand the two strokes independently instead of spinning the plus into
-   an X. This reads as "make room / add" without changing meaning. */
-.app-shell .lucide-plus path {
-  transform-box: fill-box;
-  transform-origin: center;
-  transition: transform var(--loom-icon-motion-long) var(--loom-icon-ease);
-}
-.app-shell :is(
-  .sidebar-section-title button,
-  .project-group-actions button,
-  .workspace-group-header button,
-  .thread-context-menu button
-):hover:not(:disabled) .lucide-plus path:first-child {
-  transform: scaleX(1.10);
-}
-.app-shell :is(
-  .sidebar-section-title button,
-  .project-group-actions button,
-  .workspace-group-header button,
-  .thread-context-menu button
-):hover:not(:disabled) .lucide-plus path:last-child {
-  transform: scaleY(1.10);
-}
-
-/* Close / clear: a very small twist feels like dismissing a layer, not a
-   destructive spin. */
-.app-shell .lucide-x {
-  transition:
-    rotate 460ms var(--loom-icon-ease),
-    opacity 260ms ease,
-    color 260ms ease !important;
-}
-.app-shell :is(button, [role="button"]):hover:not(:disabled) .lucide-x {
-  rotate: 8deg;
-}
-
-/* Folders: the tab lifts as the project becomes actionable. Open folders also
-   lower their inner flap by a fraction, suggesting depth. */
-.app-shell :is(.lucide-folder, .lucide-folder-open, .lucide-folder-plus, .lucide-folder-cog)
-  > :first-child {
-  transform-box: fill-box;
-  transform-origin: 50% 38%;
-  transition: transform var(--loom-icon-motion-long) var(--loom-icon-ease);
-}
-.app-shell :is(
-  .project-group-main,
-  .thread-context-menu button,
-  .thread-project-submenu button,
-  .composer-chip
-):hover:not(:disabled)
-  :is(.lucide-folder, .lucide-folder-open, .lucide-folder-plus, .lucide-folder-cog)
-  > :first-child {
-  transform: translateY(-.58px);
-}
-.app-shell .project-group:not(.is-collapsed) .project-group-main .lucide-folder-open {
-  filter: drop-shadow(0 1px 2px color-mix(in srgb, currentColor 8%, transparent));
-}
-
-/* Pin: a pin settles downward into the surface. Pin-off moves in the reverse
-   direction so the state change feels physically connected. */
-.app-shell :is(.lucide-pin, .lucide-pin-off) {
-  transition:
-    translate var(--loom-icon-motion-long) var(--loom-icon-ease),
-    rotate var(--loom-icon-motion-long) var(--loom-icon-ease),
-    color 260ms ease,
-    filter 320ms ease !important;
-}
-.app-shell :is(button, [role="button"]):hover:not(:disabled) .lucide-pin {
-  translate: 0 .65px;
-  rotate: -2.4deg;
-}
-.app-shell :is(button, [role="button"]):hover:not(:disabled) .lucide-pin-off {
-  translate: 0 -.55px;
-  rotate: 2.2deg;
-}
-.app-shell .thread-quick-actions button.is-active .lucide-pin {
-  filter: drop-shadow(0 0 2.5px color-mix(in srgb, currentColor 24%, transparent));
-}
-
-/* Archive: lift the lid; restore additionally lets its arrow rise out. */
-.app-shell :is(.lucide-archive, .lucide-archive-restore) > :first-child {
-  transform-box: fill-box;
-  transform-origin: center;
-  transition: transform var(--loom-icon-motion-long) var(--loom-icon-ease);
-}
-.app-shell :is(button, [role="button"]):hover:not(:disabled)
-  :is(.lucide-archive, .lucide-archive-restore) > :first-child {
-  transform: translateY(-.72px);
-}
-.app-shell .lucide-archive-restore > :last-child {
-  transform-box: fill-box;
-  transform-origin: center;
-  transition: transform var(--loom-icon-motion-long) var(--loom-icon-ease);
-}
-.app-shell :is(button, [role="button"]):hover:not(:disabled)
-  .lucide-archive-restore > :last-child {
-  transform: translate(-.45px, -.55px);
-}
-
-/* Delete: the lid opens slightly, while the can stays planted. */
-.app-shell .lucide-trash-2 > :first-child {
-  transform-box: fill-box;
-  transform-origin: center;
-}
-.app-shell :is(button, [role="button"]):hover:not(:disabled)
-  .lucide-trash-2 > :first-child {
-  transform: translateY(-.82px) rotate(-1deg);
-}
-
-/* More: three dots lift in a quiet left-to-right wave. */
-.app-shell .lucide-ellipsis circle {
-  transform-box: fill-box;
-  transform-origin: center;
-  transition: transform 460ms var(--loom-icon-ease);
-}
-.app-shell .lucide-ellipsis circle:nth-of-type(2) { transition-delay: 48ms; }
-.app-shell .lucide-ellipsis circle:nth-of-type(3) { transition-delay: 96ms; }
-.app-shell :is(button, [role="button"]):hover:not(:disabled)
-  .lucide-ellipsis circle {
-  transform: translateY(-.72px);
-}
-
-/* Eye: glance toward the content. Eye-off keeps its slash steady so the icon
-   never becomes visually ambiguous. */
-.app-shell .lucide-eye circle {
-  transform-box: fill-box;
-  transform-origin: center;
-  transition: transform var(--loom-icon-motion-long) var(--loom-icon-ease);
-}
-.app-shell :is(button, [role="button"]):hover:not(:disabled)
-  .lucide-eye circle {
-  transform: translateX(.7px);
-}
-.app-shell .lucide-eye-off {
-  transition:
-    translate var(--loom-icon-motion-long) var(--loom-icon-ease),
-    opacity 260ms ease !important;
-}
-.app-shell :is(button, [role="button"]):hover:not(:disabled)
-  .lucide-eye-off {
-  translate: -.45px 0;
-}
-
-/* Copy: separate the stacked sheets; the existing copied check animation then
-   finishes the interaction. */
-.app-shell .lucide-copy rect {
-  transform-box: fill-box;
-  transform-origin: center;
-  transition: transform var(--loom-icon-motion-long) var(--loom-icon-ease);
-}
-.app-shell :is(button, [role="button"]):hover:not(:disabled)
-  .lucide-copy rect:first-of-type {
-  transform: translate(-.38px, .38px);
-}
-.app-shell :is(button, [role="button"]):hover:not(:disabled)
-  .lucide-copy rect:last-of-type {
-  transform: translate(.55px, -.55px);
-}
-
-/* Fork: branches open by a fraction, useful in the conversation context menu. */
-.app-shell .lucide-git-fork {
-  transition:
-    translate var(--loom-icon-motion-long) var(--loom-icon-ease),
-    filter 320ms ease !important;
-}
-.app-shell :is(button, [role="button"]):hover:not(:disabled) .lucide-git-fork {
-  translate: 0 -.45px;
-  filter: drop-shadow(0 1px 2px color-mix(in srgb, currentColor 11%, transparent));
-}
-
-/* Header: each tool tells you what it opens -------------------------------- */
-
-/* Sub-agent: antenna/head rises; the bot body remains anchored. */
-.app-shell .thread-agent-button .lucide-bot circle {
-  transform-box: fill-box;
-  transform-origin: center;
-  transition: transform var(--loom-icon-motion-long) var(--loom-icon-ease);
-}
-.app-shell .thread-agent-button:hover:not(:disabled) .lucide-bot circle {
-  transform: translateY(-.62px);
-}
-.app-shell .thread-agent-button:hover:not(:disabled) .lucide-bot {
-  filter: drop-shadow(0 1px 2px color-mix(in srgb, currentColor 13%, transparent));
-}
-.app-shell .thread-agent-button.active .lucide-bot {
-  color: color-mix(in srgb, currentColor 88%, #9d94ff 12%);
-}
-
-/* Review / preview: the inner diff/code marks separate just enough to imply
-   opening a review surface. */
-.app-shell :is(.lucide-file-diff, .lucide-file-code-2) > :nth-child(2),
-.app-shell :is(.lucide-file-diff, .lucide-file-code-2) > :nth-child(3) {
-  transform-box: fill-box;
-  transform-origin: center;
-  transition: transform var(--loom-icon-motion-long) var(--loom-icon-ease);
-}
-.app-shell .thread-review-button:hover:not(:disabled)
-  :is(.lucide-file-diff, .lucide-file-code-2) > :nth-child(2) {
-  transform: translateX(-.58px);
-}
-.app-shell .thread-review-button:hover:not(:disabled)
-  :is(.lucide-file-diff, .lucide-file-code-2) > :nth-child(3) {
-  transform: translateX(.58px);
-}
-
-/* Activity/profile: the full waveform glides like a live trace. Never use a
-   short dash-array here; it can visually crop Lucide's path. */
-.app-shell .thread-profile-button:hover:not(:disabled) .lucide-activity,
-.app-shell .home-token-activity:hover .home-token-label .lucide-activity {
-  translate: .62px 0;
-  filter: drop-shadow(-.6px 0 0 color-mix(in srgb, currentColor 9%, transparent));
-}
-
-/* Account avatar: no zoom. A mild contrast lift avoids the cheap "bouncing
-   profile photo" feel while still acknowledging the pointer. */
-.app-shell .thread-account-button .thread-account-avatar-image {
-  transition:
-    filter 360ms var(--loom-icon-ease),
-    opacity 260ms ease;
-}
-.app-shell .thread-account-button:hover:not(:disabled) .thread-account-avatar-image {
-  filter:
-    brightness(1.055)
-    saturate(1.035)
-    drop-shadow(0 1px 2px rgba(22, 25, 34, .16));
-}
-.app-shell .thread-account-button:hover:not(:disabled) .thread-account-initial {
-  filter: brightness(1.08);
-}
-
-/* Settings: one deliberate gear turn, not a continuous spin. */
-.app-shell .thread-header-icon-button:hover:not(:disabled) .lucide-settings {
-  rotate: 12deg;
-  filter: drop-shadow(0 0 2px color-mix(in srgb, currentColor 12%, transparent));
-}
-
-/* Inspector: the panel icon slides toward the edge it will affect. */
-.app-shell .thread-header-icon-button:hover:not(:disabled) .lucide-panel-right-open {
-  translate: .72px 0;
-}
-.app-shell .thread-header-icon-button:hover:not(:disabled) .lucide-panel-right-close {
-  translate: -.72px 0;
-}
-
-/* Composer ---------------------------------------------------------------- */
-
-/* Attachment: a paperclip hooks upward rather than scaling. */
-.app-shell .composer-tool:hover:not(:disabled) .lucide-paperclip {
-  translate: 0 -.62px;
-  rotate: -3.2deg;
-  filter: drop-shadow(0 1px 1.5px color-mix(in srgb, currentColor 10%, transparent));
-}
-
-/* Permission shield: the check settles upward inside the stationary shield. */
-.app-shell .composer-chip.permission-chip .lucide-shield-check path:last-child {
-  transform-box: fill-box;
-  transform-origin: center;
-  transition:
-    transform var(--loom-icon-motion-long) var(--loom-icon-ease),
-    opacity 300ms ease;
-}
-.app-shell .composer-chip.permission-chip:hover:not(:disabled)
-  .lucide-shield-check path:last-child,
-.app-shell .composer-chip.permission-chip.is-open
-  .lucide-shield-check path:last-child {
-  transform: translateY(-.5px);
-}
-
-/* Permission variants in the menu: each gets its own physical cue. */
-.app-shell .permission-option:hover:not(:disabled) .lucide-eye circle {
-  transform: translateX(.62px);
-}
-.app-shell .permission-option:hover:not(:disabled) .lucide-folder-cog {
-  translate: 0 -.45px;
-}
-.app-shell .permission-option:hover:not(:disabled) .lucide-key-round {
-  translate: .4px -.25px;
-  rotate: -3.5deg;
-}
-.app-shell .permission-option:hover:not(:disabled) .lucide-shield-check path:last-child {
-  transform: translateY(-.42px);
-}
-
-/* Model / CPU: the die compresses subtly while the pins stay still, suggesting
-   compute becoming active without a generic bounce. */
-.app-shell .composer-chip.model-chip .lucide-cpu rect {
-  transform-box: fill-box;
-  transform-origin: center;
-  transition:
-    transform var(--loom-icon-motion-long) var(--loom-icon-ease),
-    opacity 300ms ease;
-}
-.app-shell .composer-chip.model-chip:hover:not(:disabled) .lucide-cpu rect,
-.app-shell .composer-chip.model-chip.is-open .lucide-cpu rect {
-  transform: scale(.94);
-  opacity: .9;
-}
-
-/* Sticker smile: only the mouth settles down a fraction. */
-.app-shell .composer-chip.sticker-chip .lucide-smile path:last-child {
-  transform-box: fill-box;
-  transform-origin: center;
-  transition: transform var(--loom-icon-motion-long) var(--loom-icon-ease);
-}
-.app-shell .composer-chip.sticker-chip:hover:not(:disabled) .lucide-smile path:last-child,
-.app-shell .composer-chip.sticker-chip.is-open .lucide-smile path:last-child {
-  transform: translateY(.48px);
-}
-
-/* Dropdown chevrons already rotate for open state; hover adds only a tiny
-   downward invitation so the two states remain visually distinct. */
-.app-shell .composer-chip:not(.is-open):hover:not(:disabled) .composer-chip-chevron {
-  translate: 0 .5px;
-}
-
-/* Send: arrow accelerates toward the top edge while the button stays perfectly
-   still. Stop remains planted and only gains a restrained signal shadow. */
-.app-shell .send-button:hover:not(:disabled) .lucide-arrow-up {
-  translate: 0 -1.18px;
-  filter: drop-shadow(0 1px 2px color-mix(in srgb, currentColor 15%, transparent));
-}
-.app-shell .send-button.stop:hover:not(:disabled) .lucide-square {
-  opacity: .82;
-  filter: drop-shadow(0 0 3px color-mix(in srgb, currentColor 22%, transparent));
-}
-
-/* Runtime/task icons ------------------------------------------------------ */
-/* Reduced motion ---------------------------------------------------------- */
-@media (prefers-reduced-motion: reduce) {
-  .app-shell :is(button, [role="button"], a[href], summary) svg *,
-  .app-shell .home-token-activity svg *,
-  .app-shell .thread-account-avatar-image {
-    animation: none !important;
-    transition-duration: .001ms !important;
-    transform: none !important;
-    translate: none !important;
-    rotate: 0deg !important;
-    filter: none !important;
-  }
-}
-
-:root[data-loom-reduced-motion="true"] .app-shell :is(button, [role="button"], a[href], summary) svg *,
-:root[data-loom-reduced-motion="true"] .app-shell .home-token-activity svg *,
-:root[data-loom-reduced-motion="true"] .app-shell .thread-account-avatar-image {
-  animation: none !important;
-  transition-duration: .001ms !important;
-  transform: none !important;
-  translate: none !important;
-  rotate: 0deg !important;
-  filter: none !important;
-}
-
-/* ==========================================================================
-   Conversation-surface completeness pass
-   Every interactive icon on the main conversation screen gets a semantic cue.
-   Pure status/legend glyphs stay calm unless their surrounding state changes.
-   ========================================================================== */
-
-/* Composer sparkle: only wakes when the input itself is focused. */
-.app-shell .composer-spark .lucide-sparkles {
-  transition:
-    rotate 560ms var(--loom-icon-ease),
-    translate 560ms var(--loom-icon-ease),
-    filter 360ms ease,
-    opacity 300ms ease !important;
-}
-.app-shell .composer.is-focused .composer-spark .lucide-sparkles {
-  rotate: 7deg;
-  translate: 0 -.45px;
-  filter: drop-shadow(0 0 3px color-mix(in srgb, currentColor 18%, transparent));
-}
-
-/* Context budget details: informational icons react to the row, not by
-   constantly animating on their own. */
-.app-shell .context-meter-row .lucide-wrench,
-.app-shell .context-meter-row .lucide-layers {
-  transition:
-    translate 480ms var(--loom-icon-ease),
-    rotate 480ms var(--loom-icon-ease),
-    opacity 280ms ease !important;
-}
-.app-shell .context-meter-row:hover .lucide-wrench {
-  rotate: -5deg;
-  translate: .35px 0;
-}
-.app-shell .context-meter-row:hover .lucide-layers {
-  translate: 0 -.45px;
-}
-
-/* External-link arrows leave the current surface by a fraction. */
-.app-shell :is(button, [role="button"], a[href]):hover:not(:disabled)
-  .lucide-external-link {
-  translate: .62px -.62px;
-  filter: drop-shadow(-.5px .5px 0 color-mix(in srgb, currentColor 8%, transparent));
-}
-
-/* Preview/maximize: the mark opens outward without scaling the whole button. */
-.app-shell :is(
-  .assistant-local-image-preview,
-  .user-message-image-preview,
-  .user-message-image-lightbox-actions button
-):hover:not(:disabled) .lucide-maximize-2 {
-  translate: .4px -.4px;
-  filter: drop-shadow(0 0 2px color-mix(in srgb, currentColor 12%, transparent));
-}
-
-/* Play: a tiny forward nudge reads as launch, not hover bounce. */
-.app-shell .user-message-attachment-card:hover:not(:disabled) .lucide-play {
-  translate: .72px 0;
-  filter: drop-shadow(-.5px 0 0 color-mix(in srgb, currentColor 10%, transparent));
-}
-
-/* Media/document marks remain stable but gain a small optical lift when their
-   card is actionable. */
-.app-shell .user-message-attachment-card:hover:not(:disabled)
-  :is(
-    .lucide-file,
-    .lucide-file-archive,
-    .lucide-file-code-2,
-    .lucide-file-image,
-    .lucide-file-spreadsheet,
-    .lucide-file-text,
-    .lucide-music-2,
-    .lucide-video
-  ) {
-  translate: 0 -.45px;
-  filter: brightness(1.06);
-}
-
-/* Long-message disclosure follows the direction it promises. */
-.app-shell :is(button, [role="button"]):hover:not(:disabled) .lucide-chevron-down {
-  translate: 0 .62px;
-}
-.app-shell :is(button, [role="button"]):hover:not(:disabled) .lucide-chevron-up {
-  translate: 0 -.62px;
-}
-
-/* Markdown/code copy gets the same layered-sheet gesture as message copy. */
-.app-shell .markdown-code-head button:hover:not(:disabled) .lucide-copy rect:first-of-type {
-  transform: translate(-.38px, .38px);
-}
-.app-shell .markdown-code-head button:hover:not(:disabled) .lucide-copy rect:last-of-type {
-  transform: translate(.55px, -.55px);
-}
-
-/* Quote clear uses the shared X twist; the reply mark acknowledges the quote
-   when the whole quote strip is hovered. */
-.app-shell .composer-quote-reply:hover .lucide-reply {
-  translate: -.55px 0;
-}
-
-/* File reveal affordance mirrors ExternalLink but is scoped to the trailing
-   affordance so the file-type glyph remains independently readable. */
-.app-shell .user-message-attachment-card:hover:not(:disabled)
-  .user-message-file-open .lucide-external-link {
-  translate: .58px -.58px;
-}
-
-/* Loader2 already spins through component CSS; explicitly protect it from any
-   inherited hover rotation so progress animation stays mechanically correct. */
-.app-shell .context-meter-spin {
-  translate: none !important;
-  filter: none !important;
-}
-
-/* ==========================================================================
-   Header motion redesign v2
-   Visible, semantic motion for the controls shown in the conversation header.
-   The icon itself performs the action; the button chrome stays composed.
-   ========================================================================== */
-
-/* Shared response ---------------------------------------------------------- */
-.app-shell .polished-thread-header-actions :is(
-  .thread-review-button,
-  .thread-header-icon-button,
-  .context-meter-chip
-) {
-  transition:
-    color 220ms ease,
-    background-color 240ms ease,
-    border-color 240ms ease,
-    box-shadow 280ms ease,
-    transform 300ms cubic-bezier(.18,.76,.22,1) !important;
-}
-
-.app-shell .polished-thread-header-actions :is(
-  .thread-review-button,
-  .thread-header-icon-button,
-  .context-meter-chip
-):hover:not(:disabled) {
-  transform: translateY(-1px);
-}
-
-/* Ready / running state ---------------------------------------------------- */
-.app-shell .thread-status-chip {
-  position: relative;
-  overflow: visible;
-}
-
-.app-shell .thread-status-orb {
-  position: relative;
-  isolation: isolate;
-}
-
-.app-shell .thread-status-orb::after {
-  content: "";
-  position: absolute;
-  inset: -5px;
-  z-index: -1;
-  border: 1px solid currentColor;
-  border-radius: 999px;
-  opacity: 0;
-  scale: .55;
-  pointer-events: none;
-}
-
-.app-shell .thread-status-chip.ready .thread-status-orb::after {
-  animation: loom-header-ready-sonar 4.8s cubic-bezier(.2,.72,.2,1) infinite;
-}
-
-.app-shell .thread-status-chip.working .thread-status-orb::after,
-.app-shell .thread-status-chip.connecting .thread-status-orb::after {
-  animation: loom-header-live-sonar 1.75s cubic-bezier(.2,.72,.2,1) infinite;
-}
-
-@keyframes loom-header-ready-sonar {
-  0%, 72%, 100% { opacity: 0; scale: .55; }
-  78% { opacity: .28; scale: .72; }
-  92% { opacity: 0; scale: 1.55; }
-}
-
-@keyframes loom-header-live-sonar {
-  0% { opacity: .3; scale: .62; }
-  75%, 100% { opacity: 0; scale: 1.65; }
-}
-
-/* Context budget: energy sweeps across the meter, rather than merely nudging
-   the whole chip. */
-.app-shell .context-meter-track::after {
-  content: "";
-  position: absolute;
-  top: -1px;
-  bottom: -1px;
-  left: -38%;
-  width: 34%;
-  border-radius: inherit;
-  pointer-events: none;
-  opacity: 0;
-  background: linear-gradient(
-    90deg,
-    transparent 0%,
-    rgba(255,255,255,.08) 22%,
-    rgba(255,255,255,.76) 52%,
-    rgba(255,255,255,.10) 78%,
-    transparent 100%
-  );
-  transform: skewX(-16deg);
-}
-
-.app-shell .context-meter-chip:hover .context-meter-track::after {
-  animation: loom-context-energy-pass 820ms cubic-bezier(.2,.72,.2,1) both;
-}
-
-.app-shell .context-meter-chip:hover .context-meter-fill {
-  filter: brightness(1.15) saturate(1.08);
-}
-
-.app-shell .context-meter-chip:hover .context-meter-value {
-  color: color-mix(in srgb, currentColor 86%, white 14%);
-}
-
-@keyframes loom-context-energy-pass {
-  0% { translate: 0 0; opacity: 0; }
-  18% { opacity: .72; }
-  100% { translate: 245% 0; opacity: 0; }
-}
-
-/* Sub-agent: custom orbital orchestration mark ----------------------------- */
-.app-shell .header-agent-orbit {
-  overflow: visible;
-}
-
-.app-shell .header-agent-orbit-rings,
-.app-shell .header-agent-orbit-nodes {
-  transform-box: view-box;
-  transform-origin: center;
-  transition:
-    transform 480ms cubic-bezier(.16,.82,.22,1),
-    opacity 260ms ease;
-}
-
-.app-shell .header-agent-orbit-core {
-  fill: currentColor;
-  fill-opacity: .12;
-  transform-box: fill-box;
-  transform-origin: center;
-  transition:
-    transform 380ms cubic-bezier(.18,.82,.2,1),
-    fill-opacity 260ms ease,
-    filter 300ms ease;
-}
-
-.app-shell .thread-agent-button:hover:not(:disabled) .header-agent-orbit-rings {
-  transform: rotate(26deg) scale(1.035);
-}
-
-.app-shell .thread-agent-button:hover:not(:disabled) .header-agent-orbit-nodes {
-  transform: rotate(-58deg);
-}
-
-.app-shell .thread-agent-button:hover:not(:disabled) .header-agent-orbit-core {
-  transform: scale(1.28);
-  fill-opacity: .78;
-  filter: drop-shadow(0 0 2.8px color-mix(in srgb, currentColor 36%, transparent));
-}
-
-.app-shell .thread-agent-button.active .header-agent-orbit-rings {
-  transform: rotate(14deg);
-}
-
-.app-shell .thread-agent-button.active .header-agent-orbit-core {
-  fill-opacity: .58;
-}
-
-/* Review: split additions/deletions away from the document center. */
-.app-shell .header-review-diff :is(.header-review-minus, .header-review-plus) {
-  transform-box: fill-box;
-  transform-origin: center;
-  transition:
-    transform 360ms cubic-bezier(.16,.82,.22,1),
-    opacity 260ms ease;
-}
-
-.app-shell .header-review-fold {
-  transition:
-    opacity 260ms ease,
-    filter 300ms ease;
-}
-
-.app-shell .thread-review-diff-button:hover:not(:disabled) .header-review-minus {
-  transform: translateX(-1.45px);
-}
-
-.app-shell .thread-review-diff-button:hover:not(:disabled) .header-review-plus {
-  transform: translateX(1.45px);
-}
-
-.app-shell .thread-review-diff-button:hover:not(:disabled) .header-review-fold {
-  opacity: .72;
-  filter: drop-shadow(0 0 2px color-mix(in srgb, currentColor 22%, transparent));
-}
-
-.app-shell .thread-review-diff-button.active .header-review-minus {
-  transform: translateX(-.72px);
-}
-
-.app-shell .thread-review-diff-button.active .header-review-plus {
-  transform: translateX(.72px);
-}
-
-/* Preview: brackets open while a scan line passes through the preview frame. */
-.app-shell .header-preview-stage {
-  overflow: visible;
-}
-
-.app-shell .header-preview-left,
-.app-shell .header-preview-right {
-  transform-box: fill-box;
-  transform-origin: center;
-  transition: transform 360ms cubic-bezier(.16,.82,.22,1);
-}
-
-.app-shell .header-preview-scan {
-  opacity: 0;
-  stroke-width: 1.2;
-}
-
-.app-shell .thread-artifact-button:hover:not(:disabled) .header-preview-left {
-  transform: translateX(-1.25px);
-}
-
-.app-shell .thread-artifact-button:hover:not(:disabled) .header-preview-right {
-  transform: translateX(1.25px);
-}
-
-.app-shell .thread-artifact-button:hover:not(:disabled) .header-preview-scan {
-  animation: loom-preview-scan 720ms cubic-bezier(.24,.68,.2,1) both;
-}
-
-.app-shell .thread-artifact-button.active .header-preview-left {
-  transform: translateX(-.65px);
-}
-
-.app-shell .thread-artifact-button.active .header-preview-right {
-  transform: translateX(.65px);
-}
-
-@keyframes loom-preview-scan {
-  0% { opacity: 0; transform: translateY(-.8px) scaleX(.48); }
-  22% { opacity: .76; }
-  72% { opacity: .5; }
-  100% { opacity: 0; transform: translateY(5.4px) scaleX(1); }
-}
-
-/* Activity: a bright pulse actually travels along the waveform. */
-.app-shell .header-activity-trace {
-  overflow: visible;
-}
-
-.app-shell .header-activity-base {
-  opacity: .78;
-  transition: opacity 260ms ease;
-}
-
-.app-shell .header-activity-runner {
-  opacity: 0;
-  stroke-width: 2.05;
-  stroke-dasharray: 4 26;
-  stroke-dashoffset: 22;
-  filter: drop-shadow(0 0 2px color-mix(in srgb, currentColor 38%, transparent));
-}
-
-.app-shell .thread-profile-button:hover:not(:disabled) .header-activity-base {
-  opacity: .48;
-}
-
-.app-shell .thread-profile-button:hover:not(:disabled) .header-activity-runner {
-  animation: loom-activity-trace-pass 840ms cubic-bezier(.22,.64,.2,1) both;
-}
-
-@keyframes loom-activity-trace-pass {
-  0% { opacity: 0; stroke-dashoffset: 22; }
-  16% { opacity: .95; }
-  84% { opacity: .95; }
-  100% { opacity: 0; stroke-dashoffset: -25; }
-}
-
-/* Account: a single orbiting ring acknowledges the avatar; the picture itself
-   never bounces or zooms. */
-.app-shell .thread-account-button::before {
-  content: "";
-  position: absolute;
-  inset: 2px;
-  border: 1.2px solid transparent;
-  border-top-color: color-mix(in srgb, currentColor 62%, transparent);
-  border-right-color: color-mix(in srgb, currentColor 28%, transparent);
-  border-radius: 999px;
-  opacity: 0;
-  scale: .86;
-  rotate: -54deg;
-  pointer-events: none;
-}
-
-.app-shell .thread-account-button:hover:not(:disabled)::before {
-  animation: loom-account-ring 620ms cubic-bezier(.16,.8,.2,1) both;
-}
-
-.app-shell .thread-account-button:hover:not(:disabled) .thread-account-avatar-image {
-  filter:
-    brightness(1.08)
-    saturate(1.05)
-    drop-shadow(0 1px 2px rgba(22,25,34,.18));
-}
-
-.app-shell .thread-account-button:hover:not(:disabled) .thread-account-dot {
-  transform: scale(1.34);
-  box-shadow:
-    0 0 0 3px color-mix(in srgb, currentColor 10%, transparent),
-    0 0 7px color-mix(in srgb, currentColor 28%, transparent);
-}
-
-@keyframes loom-account-ring {
-  0% { opacity: 0; scale: .82; rotate: -54deg; }
-  24% { opacity: .8; }
-  100% { opacity: 0; scale: 1.05; rotate: 176deg; }
-}
-
-/* Settings: a short mechanical engagement, with the hub compressing while the
-   outer gear advances. */
-.app-shell .thread-settings-button .lucide-settings {
-  transition:
-    rotate 420ms cubic-bezier(.18,.76,.2,1),
-    filter 300ms ease !important;
-}
-
-.app-shell .thread-settings-button .lucide-settings circle {
-  transform-box: fill-box;
-  transform-origin: center;
-  transition: transform 360ms cubic-bezier(.18,.76,.2,1);
-}
-
-.app-shell .thread-settings-button:hover:not(:disabled) .lucide-settings {
-  rotate: 23deg;
-  filter: drop-shadow(0 0 2.5px color-mix(in srgb, currentColor 20%, transparent));
-}
-
-.app-shell .thread-settings-button:hover:not(:disabled) .lucide-settings circle {
-  transform: scale(.76);
-}
-
-/* Inspector: the right-hand panel behaves like a drawer. The frame stays put,
-   while the divider/arrow visibly travel in the direction of the action. */
-.app-shell .thread-inspector-button :is(.lucide-panel-right-open, .lucide-panel-right-close) {
-  translate: none !important;
-  transition:
-    filter 300ms ease,
-    opacity 260ms ease !important;
-}
-
-.app-shell .thread-inspector-button :is(.lucide-panel-right-open, .lucide-panel-right-close) path {
-  transform-box: fill-box;
-  transform-origin: center;
-  transition: transform 380ms cubic-bezier(.16,.82,.22,1);
-}
-
-.app-shell .thread-inspector-button:hover:not(:disabled) .lucide-panel-right-open path:last-of-type {
-  transform: translateX(1.55px);
-}
-
-.app-shell .thread-inspector-button:hover:not(:disabled) .lucide-panel-right-open path:first-of-type {
-  transform: translateX(.75px);
-}
-
-.app-shell .thread-inspector-button:hover:not(:disabled) .lucide-panel-right-close path:last-of-type {
-  transform: translateX(-1.55px);
-}
-
-.app-shell .thread-inspector-button:hover:not(:disabled) .lucide-panel-right-close path:first-of-type {
-  transform: translateX(-.75px);
-}
-
-.app-shell .thread-inspector-button:hover:not(:disabled)
-  :is(.lucide-panel-right-open, .lucide-panel-right-close) {
-  filter: drop-shadow(0 0 2px color-mix(in srgb, currentColor 15%, transparent));
-}
-
-/* These custom header animations are deliberately disabled with reduced motion. */
-@media (prefers-reduced-motion: reduce) {
-  .app-shell .thread-status-orb::after,
-  .app-shell .context-meter-track::after,
-  .app-shell .header-agent-orbit-rings,
-  .app-shell .header-agent-orbit-nodes,
-  .app-shell .header-agent-orbit-core,
-  .app-shell .header-review-diff *,
-  .app-shell .header-preview-stage *,
-  .app-shell .header-activity-trace *,
-  .app-shell .thread-account-button::before,
-  .app-shell .thread-settings-button .lucide-settings,
-  .app-shell .thread-settings-button .lucide-settings circle,
-  .app-shell .thread-inspector-button svg *,
-  .app-shell .polished-thread-header-actions :is(.thread-review-button, .thread-header-icon-button, .context-meter-chip) {
-    animation: none !important;
-    transition-duration: .001ms !important;
-    transform: none !important;
-    translate: none !important;
-    rotate: 0deg !important;
-    scale: 1 !important;
-    filter: none !important;
-  }
-}
-
-:root[data-loom-reduced-motion="true"] .app-shell .thread-status-orb::after,
-:root[data-loom-reduced-motion="true"] .app-shell .context-meter-track::after,
-:root[data-loom-reduced-motion="true"] .app-shell .header-agent-orbit-rings,
-:root[data-loom-reduced-motion="true"] .app-shell .header-agent-orbit-nodes,
-:root[data-loom-reduced-motion="true"] .app-shell .header-agent-orbit-core,
-:root[data-loom-reduced-motion="true"] .app-shell .header-review-diff *,
-:root[data-loom-reduced-motion="true"] .app-shell .header-preview-stage *,
-:root[data-loom-reduced-motion="true"] .app-shell .header-activity-trace *,
-:root[data-loom-reduced-motion="true"] .app-shell .thread-account-button::before,
-:root[data-loom-reduced-motion="true"] .app-shell .thread-settings-button .lucide-settings,
-:root[data-loom-reduced-motion="true"] .app-shell .thread-settings-button .lucide-settings circle,
-:root[data-loom-reduced-motion="true"] .app-shell .thread-inspector-button svg * {
-  animation: none !important;
-  transition-duration: .001ms !important;
-  transform: none !important;
-  translate: none !important;
-  rotate: 0deg !important;
-  scale: 1 !important;
-  filter: none !important;
-}
-
-/* ==========================================================================
-   Minimal header glyph motion v3
-   Replaces the busier orbit/diff/scan treatment for Agents, Review and Preview
-   with quieter, more legible interactions.
-   ========================================================================== */
-
-/* Agents: one parent delegates to two children. The branches open slightly;
-   no orbiting, spinning or glowing atom metaphor. */
-.app-shell .header-agent-branch {
-  overflow: visible;
-}
-
-.app-shell .header-agent-parent,
-.app-shell .header-agent-children circle {
-  fill: currentColor;
-  fill-opacity: .08;
-  transition:
-    transform 280ms cubic-bezier(.2,.76,.22,1),
-    fill-opacity 220ms ease;
-  transform-box: fill-box;
-  transform-origin: center;
-}
-
-.app-shell .header-agent-link {
-  opacity: .72;
-  transition:
-    opacity 220ms ease,
-    transform 300ms cubic-bezier(.2,.76,.22,1);
-  transform-box: fill-box;
-  transform-origin: left center;
-}
-
-.app-shell .thread-agent-button:hover:not(:disabled) .header-agent-parent {
-  fill-opacity: .2;
-}
-
-.app-shell .thread-agent-button:hover:not(:disabled) .header-agent-children circle:first-child {
-  transform: translate(1px,-.55px);
-  fill-opacity: .18;
-}
-
-.app-shell .thread-agent-button:hover:not(:disabled) .header-agent-children circle:last-child {
-  transform: translate(1px,.55px);
-  fill-opacity: .18;
-}
-
-.app-shell .thread-agent-button:hover:not(:disabled) .header-agent-link {
-  opacity: 1;
-  transform: scaleX(1.08);
-}
-
-.app-shell .thread-agent-button.active .header-agent-parent,
-.app-shell .thread-agent-button.active .header-agent-children circle {
-  fill-opacity: .18;
-}
-
-/* Review: the document stays still; the check simply writes itself once. */
-.app-shell .header-review-check {
-  overflow: visible;
-}
-
-.app-shell .header-review-document,
-.app-shell .header-review-corner {
-  transition:
-    opacity 220ms ease,
-    filter 260ms ease;
-}
-
-.app-shell .header-review-checkmark {
-  stroke-dasharray: 10;
-  stroke-dashoffset: 0;
-  opacity: .78;
-}
-
-.app-shell .thread-review-check-button:hover:not(:disabled) .header-review-document {
-  opacity: .82;
-}
-
-.app-shell .thread-review-check-button:hover:not(:disabled) .header-review-checkmark {
-  animation: loom-review-check-write 440ms cubic-bezier(.2,.72,.2,1) both;
-}
-
-.app-shell .thread-review-check-button.active .header-review-checkmark {
-  opacity: 1;
-  filter: drop-shadow(0 0 1.8px color-mix(in srgb, currentColor 22%, transparent));
-}
-
-@keyframes loom-review-check-write {
-  0% { stroke-dashoffset: 10; opacity: .28; }
-  100% { stroke-dashoffset: 0; opacity: 1; }
-}
-
-/* Preview: a window with an eye. The eye opens a fraction and the pupil settles
-   forward; there is no scanning beam or code-bracket choreography. */
-.app-shell .header-preview-eye {
-  overflow: visible;
-}
-
-.app-shell .header-preview-window {
-  transition:
-    opacity 220ms ease,
-    filter 260ms ease;
-}
-
-.app-shell .header-preview-eye-shape,
-.app-shell .header-preview-pupil {
-  transform-box: fill-box;
-  transform-origin: center;
-  transition:
-    transform 300ms cubic-bezier(.2,.76,.22,1),
-    opacity 220ms ease,
-    fill-opacity 220ms ease;
-}
-
-.app-shell .header-preview-pupil {
-  fill: currentColor;
-  fill-opacity: .16;
-}
-
-.app-shell .thread-artifact-button:hover:not(:disabled) .header-preview-eye-shape {
-  transform: scaleY(1.08);
-}
-
-.app-shell .thread-artifact-button:hover:not(:disabled) .header-preview-pupil {
-  transform: translateX(.65px) scale(1.12);
-  fill-opacity: .32;
-}
-
-.app-shell .thread-artifact-button:hover:not(:disabled) .header-preview-window {
-  opacity: .86;
-}
-
-.app-shell .thread-artifact-button.active .header-preview-pupil {
-  fill-opacity: .34;
-}
-
-/* Do not lift the whole three text buttons; the glyph motion is enough. */
-.app-shell .polished-thread-header-actions :is(
-  .thread-agent-button,
-  .thread-review-check-button,
-  .thread-artifact-button
-):hover:not(:disabled) {
+[data-spinning="true"] .li-all {
   transform: none;
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .app-shell .header-agent-branch *,
-  .app-shell .header-review-check *,
-  .app-shell .header-preview-eye * {
-    animation: none !important;
-    transition-duration: .001ms !important;
-    transform: none !important;
-    filter: none !important;
-  }
-}
-
-:root[data-loom-reduced-motion="true"] .app-shell .header-agent-branch *,
-:root[data-loom-reduced-motion="true"] .app-shell .header-review-check *,
-:root[data-loom-reduced-motion="true"] .app-shell .header-preview-eye * {
-  animation: none !important;
-  transition-duration: .001ms !important;
-  transform: none !important;
-  filter: none !important;
-}
-
-/* ==========================================================================
-   Header glyph polish v4
-   Keep the approved branching Agents glyph. Review becomes a flatter document
-   mark, and Preview becomes a clean renderer window with a nested viewport.
-   ========================================================================== */
-
-/* Review: flatter document geometry. The supporting line dims slightly while
-   the check writes, so the icon stays legible at 15–16 px. */
-.app-shell .header-review-check {
-  overflow: visible;
-}
-
-.app-shell .header-review-line {
-  opacity: .58;
-  transition:
-    opacity 220ms ease,
-    transform 280ms cubic-bezier(.2,.76,.22,1);
-  transform-box: fill-box;
-  transform-origin: left center;
-}
-
-.app-shell .thread-review-check-button:hover:not(:disabled) .header-review-line {
-  opacity: .34;
-  transform: scaleX(.9);
-}
-
-.app-shell .thread-review-check-button:hover:not(:disabled) .header-review-checkmark {
-  animation: loom-review-check-write 420ms cubic-bezier(.2,.72,.2,1) both;
-}
-
-.app-shell .thread-review-check-button.active .header-review-document {
-  filter: drop-shadow(0 0 1.6px color-mix(in srgb, currentColor 14%, transparent));
-}
-
-/* Preview: renderer window rather than an eye. The inner viewport lifts by a
-   fraction and gains contrast; the chrome dot quietly acknowledges hover. */
-.app-shell .header-preview-canvas {
-  overflow: visible;
-}
-
-.app-shell .header-preview-window,
-.app-shell .header-preview-chrome {
-  transition:
-    opacity 220ms ease,
-    filter 260ms ease;
-}
-
-.app-shell .header-preview-viewport {
-  transform-box: fill-box;
-  transform-origin: center;
-  transition:
-    transform 320ms cubic-bezier(.2,.78,.22,1),
-    opacity 220ms ease,
-    filter 280ms ease;
-  opacity: .72;
-}
-
-.app-shell .header-preview-dot {
-  opacity: .48;
-  transform-box: fill-box;
-  transform-origin: center;
-  transition:
-    transform 280ms cubic-bezier(.2,.78,.22,1),
-    opacity 220ms ease;
-}
-
-.app-shell .thread-artifact-button:hover:not(:disabled) .header-preview-viewport {
-  transform: translateY(-.55px) scale(1.035);
-  opacity: 1;
-  filter: drop-shadow(0 1px 1.5px color-mix(in srgb, currentColor 12%, transparent));
-}
-
-.app-shell .thread-artifact-button:hover:not(:disabled) .header-preview-dot {
-  transform: scale(1.32);
-  opacity: .82;
-}
-
-.app-shell .thread-artifact-button:hover:not(:disabled) .header-preview-window {
-  opacity: .86;
-}
-
-.app-shell .thread-artifact-button:hover:not(:disabled) .header-preview-chrome {
-  opacity: .62;
-}
-
-.app-shell .thread-artifact-button.active .header-preview-viewport {
-  opacity: 1;
-  transform: translateY(-.25px);
-}
-
-/* Keep motion optical rather than moving the whole text button. */
-.app-shell .polished-thread-header-actions :is(
-  .thread-agent-button,
-  .thread-review-check-button,
-  .thread-artifact-button
-):hover:not(:disabled) {
-  transform: none !important;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .app-shell .header-review-check *,
-  .app-shell .header-preview-canvas * {
-    animation: none !important;
-    transition-duration: .001ms !important;
-    transform: none !important;
-    filter: none !important;
-  }
-}
-
-:root[data-loom-reduced-motion="true"] .app-shell .header-review-check *,
-:root[data-loom-reduced-motion="true"] .app-shell .header-preview-canvas * {
-  animation: none !important;
-  transition-duration: .001ms !important;
-  transform: none !important;
-  filter: none !important;
-}
-
-/* ==========================================================================
-   Composer glyph motion v2
-   Four compact, semantic interactions for Attach / Access / Model / Expression.
-   No whole-button bounce and no generic glow sweep.
-   ========================================================================== */
-
-/* Attach: the inner hook threads into the paperclip. */
-.app-shell .composer-attach-glyph {
-  overflow: visible;
-}
-
-.app-shell .composer-attach-outer,
-.app-shell .composer-attach-inner {
-  transform-box: fill-box;
-  transform-origin: center;
-  transition:
-    transform 300ms cubic-bezier(.18,.78,.22,1),
-    opacity 220ms ease;
-}
-
-.app-shell .composer-tool:hover:not(:disabled) .composer-attach-outer {
-  transform: rotate(-3deg) translateY(-.35px);
-}
-
-.app-shell .composer-tool:hover:not(:disabled) .composer-attach-inner {
-  animation: loom-attach-thread 420ms cubic-bezier(.18,.78,.22,1) both;
-}
-
-@keyframes loom-attach-thread {
-  0% { transform: translate(-.8px,.8px); opacity: .42; }
-  58% { transform: translate(.45px,-.45px); opacity: 1; }
-  100% { transform: translate(0,0); opacity: .9; }
-}
-
-/* Access: keep the shield planted; draw the permission check once. */
-.app-shell .composer-access-glyph {
-  overflow: visible;
-}
-
-.app-shell .composer-access-shield {
-  transition:
-    opacity 220ms ease,
-    filter 260ms ease;
-}
-
-.app-shell .composer-access-mark {
-  stroke-dasharray: 9;
-  stroke-dashoffset: 0;
-  opacity: .78;
-}
-
-.app-shell .permission-chip:hover:not(:disabled) .composer-access-mark,
-.app-shell .permission-chip.is-open .composer-access-mark {
-  animation: loom-access-check 430ms cubic-bezier(.2,.72,.2,1) both;
-}
-
-.app-shell .permission-chip:hover:not(:disabled) .composer-access-shield,
-.app-shell .permission-chip.is-open .composer-access-shield {
-  filter: drop-shadow(0 0 1.5px color-mix(in srgb, currentColor 18%, transparent));
-}
-
-@keyframes loom-access-check {
-  0% { stroke-dashoffset: 9; opacity: .25; }
-  100% { stroke-dashoffset: 0; opacity: 1; }
-}
-
-/* Model: the frame stays still while the compute core contracts and settles.
-   Pins gain contrast instead of the entire chip scaling. */
-.app-shell .composer-model-glyph {
-  overflow: visible;
-}
-
-.app-shell .composer-model-frame,
-.app-shell .composer-model-pins {
-  transition:
-    opacity 220ms ease,
-    filter 260ms ease;
-}
-
-.app-shell .composer-model-core {
-  transform-box: fill-box;
-  transform-origin: center;
-  transition:
-    transform 320ms cubic-bezier(.18,.8,.22,1),
-    opacity 220ms ease;
-  opacity: .82;
-}
-
-.app-shell .model-chip:hover:not(:disabled) .composer-model-core,
-.app-shell .model-chip.is-open .composer-model-core {
-  transform: scale(.82);
-  opacity: 1;
-}
-
-.app-shell .model-chip:hover:not(:disabled) .composer-model-pins,
-.app-shell .model-chip.is-open .composer-model-pins {
-  opacity: 1;
-  filter: drop-shadow(0 0 1.2px color-mix(in srgb, currentColor 16%, transparent));
-}
-
-/* Expression: one quiet blink and a slightly warmer smile. */
-.app-shell .composer-expression-glyph {
-  overflow: visible;
-}
-
-.app-shell .composer-expression-ring {
-  transition:
-    opacity 220ms ease,
-    filter 260ms ease;
-}
-
-.app-shell .composer-expression-eyes {
-  transform-box: fill-box;
-  transform-origin: center;
-}
-
-.app-shell .composer-expression-smile {
-  transform-box: fill-box;
-  transform-origin: center;
-  transition:
-    transform 300ms cubic-bezier(.18,.8,.22,1),
-    opacity 220ms ease;
-}
-
-.app-shell .sticker-chip:hover:not(:disabled) .composer-expression-eyes,
-.app-shell .sticker-chip.is-open .composer-expression-eyes {
-  animation: loom-expression-blink 430ms ease both;
-}
-
-.app-shell .sticker-chip:hover:not(:disabled) .composer-expression-smile,
-.app-shell .sticker-chip.is-open .composer-expression-smile {
-  transform: translateY(.45px) scaleX(1.05);
-}
-
-@keyframes loom-expression-blink {
-  0%, 38%, 58%, 100% { transform: scaleY(1); }
-  48% { transform: scaleY(.18); }
-}
-
-/* Chevron is directional UI, not decoration: small hover invitation, exact
-   half-turn when open. The late selector wins over older composer rules. */
-.app-shell .composer .composer-chip:not(.is-open):hover:not(:disabled) .composer-chip-chevron {
-  translate: 0 .6px;
-  transform: rotate(0deg);
-}
-
-.app-shell .composer .composer-chip.is-open .composer-chip-chevron {
-  translate: 0 0;
-  transform: rotate(180deg);
-}
-
-/* Remove the older Lucide-specific whole-glyph transforms from the redesigned
-   toolbar; popover icons still use their existing behavior. */
-.app-shell .composer-tool > .composer-attach-glyph,
-.app-shell .permission-chip > .composer-access-glyph,
-.app-shell .model-chip > .composer-model-glyph,
-.app-shell .sticker-chip > .composer-expression-glyph {
-  translate: none !important;
-  rotate: 0deg !important;
-  filter: none;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .app-shell :is(
-    .composer-attach-glyph,
-    .composer-access-glyph,
-    .composer-model-glyph,
-    .composer-expression-glyph
-  ) * {
-    animation: none !important;
-    transition-duration: .001ms !important;
-    transform: none !important;
-    filter: none !important;
-  }
-}
-
-:root[data-loom-reduced-motion="true"] .app-shell :is(
-  .composer-attach-glyph,
-  .composer-access-glyph,
-  .composer-model-glyph,
-  .composer-expression-glyph
-) * {
-  animation: none !important;
-  transition-duration: .001ms !important;
-  transform: none !important;
-  filter: none !important;
-}
-
-/* ==========================================================================
-   Composer glyph motion v3
-   More alive, but still controlled: each icon has one signature gesture and
-   one optical accent. The glyph well provides depth; the SVG provides motion.
-   ========================================================================== */
-
-/* Attach: magnetic snap ---------------------------------------------------- */
-.app-shell .composer-attach-snap {
-  opacity: 0;
-  transform-box: fill-box;
-  transform-origin: center;
-}
-
-.app-shell .composer-tool:hover:not(:disabled) .composer-attach-outer {
-  transform: translateY(-.45px) rotate(-2deg);
-}
-
-.app-shell .composer-tool:hover:not(:disabled) .composer-attach-inner {
-  animation: loom-attach-thread-v3 520ms cubic-bezier(.16,.86,.22,1) both;
-}
-
-.app-shell .composer-tool:hover:not(:disabled) .composer-attach-snap {
-  animation: loom-attach-snap 520ms cubic-bezier(.16,.86,.22,1) both;
-}
-
-@keyframes loom-attach-thread-v3 {
-  0% { transform: translate(-1.15px,1.1px); opacity: .28; }
-  48% { transform: translate(.65px,-.65px); opacity: 1; }
-  72% { transform: translate(-.18px,.18px); opacity: .92; }
-  100% { transform: translate(0,0); opacity: .88; }
-}
-
-@keyframes loom-attach-snap {
-  0%, 24% { opacity: 0; transform: scale(.3) translate(-1px,1px); }
-  52% { opacity: .9; transform: scale(1.35) translate(.2px,-.2px); }
-  76% { opacity: .5; transform: scale(.8); }
-  100% { opacity: 0; transform: scale(.45); }
-}
-
-/* Access: perimeter glint + confident check ------------------------------- */
-.app-shell .composer-access-sheen {
-  opacity: 0;
-  stroke-width: 1.8;
-  stroke-dasharray: 4.5 30;
-  stroke-dashoffset: 22;
-  filter: drop-shadow(0 0 1.6px color-mix(in srgb, currentColor 30%, transparent));
-}
-
-.app-shell .permission-chip:hover:not(:disabled) .composer-access-sheen,
-.app-shell .permission-chip.is-open .composer-access-sheen {
-  animation: loom-access-perimeter 760ms cubic-bezier(.2,.68,.2,1) both;
-}
-
-.app-shell .permission-chip:hover:not(:disabled) .composer-access-mark,
-.app-shell .permission-chip.is-open .composer-access-mark {
-  animation: loom-access-check-v3 500ms cubic-bezier(.18,.78,.22,1) both;
-}
-
-.app-shell .permission-chip:hover:not(:disabled) .composer-access-shield,
-.app-shell .permission-chip.is-open .composer-access-shield {
-  opacity: .84;
-}
-
-@keyframes loom-access-perimeter {
-  0% { opacity: 0; stroke-dashoffset: 22; }
-  18% { opacity: .82; }
-  82% { opacity: .7; }
-  100% { opacity: 0; stroke-dashoffset: -18; }
-}
-
-@keyframes loom-access-check-v3 {
-  0% { stroke-dashoffset: 9; opacity: .2; }
-  70% { stroke-dashoffset: -.6; opacity: 1; }
-  100% { stroke-dashoffset: 0; opacity: 1; }
-}
-
-/* Model: aperture opens around a living core ------------------------------ */
-.app-shell .composer-model-corners {
-  transform-box: view-box;
-  transform-origin: center;
-  transition:
-    transform 420ms cubic-bezier(.16,.86,.22,1),
-    opacity 220ms ease;
-  opacity: .8;
-}
-
-.app-shell .composer-model-core {
-  transform-box: fill-box;
-  transform-origin: center;
-  transition:
-    transform 420ms cubic-bezier(.16,.86,.22,1),
-    opacity 220ms ease,
-    filter 280ms ease;
-  opacity: .88;
-}
-
-.app-shell .composer-model-dot {
-  transform-box: fill-box;
-  transform-origin: center;
-  transition:
-    transform 360ms cubic-bezier(.16,.86,.22,1),
-    opacity 220ms ease;
-  opacity: .72;
-}
-
-.app-shell .composer-model-pulse {
-  opacity: 0;
-  transform-box: fill-box;
-  transform-origin: center;
-  stroke-width: 1;
-}
-
-.app-shell .model-chip:hover:not(:disabled) .composer-model-corners,
-.app-shell .model-chip.is-open .composer-model-corners {
-  transform: scale(1.08);
-  opacity: 1;
-}
-
-.app-shell .model-chip:hover:not(:disabled) .composer-model-core,
-.app-shell .model-chip.is-open .composer-model-core {
-  transform: rotate(45deg) scale(.92);
-  opacity: 1;
-  filter: drop-shadow(0 0 1.8px color-mix(in srgb, currentColor 24%, transparent));
-}
-
-.app-shell .model-chip:hover:not(:disabled) .composer-model-dot,
-.app-shell .model-chip.is-open .composer-model-dot {
-  transform: scale(1.35);
-  opacity: 1;
-}
-
-.app-shell .model-chip:hover:not(:disabled) .composer-model-pulse {
-  animation: loom-model-pulse 620ms cubic-bezier(.16,.82,.22,1) both;
-}
-
-@keyframes loom-model-pulse {
-  0% { opacity: 0; transform: scale(.62); }
-  22% { opacity: .46; }
-  100% { opacity: 0; transform: scale(1.48); }
-}
-
-/* Expression: blink + smile + tiny sparkle ------------------------------- */
-.app-shell .composer-expression-spark {
-  opacity: .18;
-  stroke-dasharray: 5;
-  stroke-dashoffset: 5;
-  transform-box: fill-box;
-  transform-origin: center;
-  transition:
-    opacity 220ms ease,
-    transform 360ms cubic-bezier(.16,.86,.22,1);
-}
-
-.app-shell .composer-expression-ring {
-  transform-box: fill-box;
-  transform-origin: center;
-  transition:
-    transform 420ms cubic-bezier(.16,.86,.22,1),
-    opacity 220ms ease;
-}
-
-.app-shell .sticker-chip:hover:not(:disabled) .composer-expression-ring,
-.app-shell .sticker-chip.is-open .composer-expression-ring {
-  transform: rotate(-2deg) scale(1.025);
-}
-
-.app-shell .sticker-chip:hover:not(:disabled) .composer-expression-eyes {
-  animation: loom-expression-blink-v3 560ms ease both;
-}
-
-.app-shell .sticker-chip:hover:not(:disabled) .composer-expression-smile,
-.app-shell .sticker-chip.is-open .composer-expression-smile {
-  transform: translateY(.6px) scaleX(1.08);
-}
-
-.app-shell .sticker-chip:hover:not(:disabled) .composer-expression-spark,
-.app-shell .sticker-chip.is-open .composer-expression-spark {
-  animation: loom-expression-spark 620ms cubic-bezier(.18,.78,.22,1) both;
-}
-
-@keyframes loom-expression-blink-v3 {
-  0%, 34%, 54%, 100% { transform: scaleY(1); }
-  44% { transform: scaleY(.12); }
-}
-
-@keyframes loom-expression-spark {
-  0% { opacity: .1; stroke-dashoffset: 5; transform: scale(.55) rotate(-18deg); }
-  58% { opacity: 1; stroke-dashoffset: 0; transform: scale(1.15) rotate(4deg); }
-  100% { opacity: .46; stroke-dashoffset: 0; transform: scale(1) rotate(0deg); }
-}
-
-/* The glyph well itself has a soft spring so the motion reads at normal UI
-   scale without moving labels or destabilizing the toolbar. */
-.app-shell .composer :is(.composer-tool, .composer-chip):hover:not(:disabled) .composer-glyph-well {
-  animation: loom-composer-well-lift 430ms cubic-bezier(.16,.9,.22,1) both;
-}
-
-.app-shell .composer .composer-chip.is-open .composer-glyph-well {
-  transform: translateY(-.55px);
-}
-
-@keyframes loom-composer-well-lift {
-  0% { transform: translateY(0) scale(1); }
-  48% { transform: translateY(-1.2px) scale(1.045); }
-  74% { transform: translateY(-.35px) scale(.995); }
-  100% { transform: translateY(-.55px) scale(1); }
-}
-
-/* Chevron gets a small spring instead of a linear nudge. */
-.app-shell .composer .composer-chip:not(.is-open):hover:not(:disabled) .composer-chip-chevron {
-  animation: loom-chevron-invite 360ms cubic-bezier(.18,.9,.24,1) both;
-}
-
-@keyframes loom-chevron-invite {
-  0% { translate: 0 0; }
-  55% { translate: 0 1.35px; }
-  100% { translate: 0 .75px; }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .app-shell .composer-glyph-well,
-  .app-shell .composer-glyph-well::before,
-  .app-shell :is(
-    .composer-attach-glyph,
-    .composer-access-glyph,
-    .composer-model-glyph,
-    .composer-expression-glyph
-  ) *,
-  .app-shell .composer-chip-chevron {
-    animation: none !important;
-    transition-duration: .001ms !important;
-    transform: none !important;
-    translate: none !important;
-    filter: none !important;
-  }
-}
-
-:root[data-loom-reduced-motion="true"] .app-shell .composer-glyph-well,
-:root[data-loom-reduced-motion="true"] .app-shell .composer-glyph-well::before,
-:root[data-loom-reduced-motion="true"] .app-shell :is(
-  .composer-attach-glyph,
-  .composer-access-glyph,
-  .composer-model-glyph,
-  .composer-expression-glyph
-) *,
-:root[data-loom-reduced-motion="true"] .app-shell .composer-chip-chevron {
-  animation: none !important;
-  transition-duration: .001ms !important;
-  transform: none !important;
-  translate: none !important;
-  filter: none !important;
-}
-
-/* ==========================================================================
-   Composer glyph motion v4
-   Final pass for Attach / Full access / Model. Each glyph gets one readable
-   signature gesture with restrained overshoot, rather than generic scaling.
-   ========================================================================== */
-
-/* Attach: the latch slides into place and gives one tiny contact spark. */
-.app-shell .composer-attach-latch {
-  transform-box: fill-box;
-  transform-origin: center;
-  transition:
-    transform 320ms cubic-bezier(.16,.86,.22,1),
-    opacity 220ms ease;
-}
-
-.app-shell .composer-attach-spark {
-  opacity: 0;
-  transform-box: fill-box;
-  transform-origin: center;
-}
-
-.app-shell .composer-tool:hover:not(:disabled) .composer-attach-outer {
-  transform: translateY(-.38px) rotate(-1.7deg);
-}
-
-.app-shell .composer-tool:hover:not(:disabled) .composer-attach-latch {
-  animation: loom-attach-latch-v4 480ms cubic-bezier(.16,.86,.22,1) both;
-}
-
-.app-shell .composer-tool:hover:not(:disabled) .composer-attach-spark {
-  animation: loom-attach-spark-v4 480ms cubic-bezier(.16,.86,.22,1) both;
-}
-
-@keyframes loom-attach-latch-v4 {
-  0% { transform: translate(-1px,1px); opacity: .28; }
-  56% { transform: translate(.48px,-.48px); opacity: 1; }
-  78% { transform: translate(-.12px,.12px); opacity: .95; }
-  100% { transform: translate(0,0); opacity: .9; }
-}
-
-@keyframes loom-attach-spark-v4 {
-  0%, 28% { opacity: 0; transform: scale(.35); }
-  58% { opacity: .9; transform: scale(1.28); }
-  100% { opacity: 0; transform: scale(.55); }
-}
-
-/* Full access: keyhole reads as permission, while a single perimeter glint
-   gives the shield a premium, "unlocked capability" response. */
-.app-shell .composer-access-keyhole,
-.app-shell .composer-access-stem {
-  transform-box: fill-box;
-  transform-origin: center;
-  transition:
-    transform 340ms cubic-bezier(.16,.86,.22,1),
-    opacity 220ms ease,
-    filter 260ms ease;
-}
-
-.app-shell .composer-access-sheen {
-  opacity: 0;
-  stroke-width: 1.7;
-  stroke-dasharray: 5 32;
-  stroke-dashoffset: 24;
-  filter: drop-shadow(0 0 1.4px color-mix(in srgb, currentColor 24%, transparent));
-}
-
-.app-shell .permission-chip:hover:not(:disabled) .composer-access-sheen,
-.app-shell .permission-chip.is-open .composer-access-sheen {
-  animation: loom-access-sheen-v4 720ms cubic-bezier(.2,.68,.2,1) both;
-}
-
-.app-shell .permission-chip:hover:not(:disabled) .composer-access-keyhole,
-.app-shell .permission-chip.is-open .composer-access-keyhole {
-  transform: translateY(-.18px) scale(1.08);
-  filter: drop-shadow(0 0 1.4px color-mix(in srgb, currentColor 22%, transparent));
-}
-
-.app-shell .permission-chip:hover:not(:disabled) .composer-access-stem,
-.app-shell .permission-chip.is-open .composer-access-stem {
-  transform: translateY(.38px) scaleY(1.08);
-}
-
-.app-shell .permission-chip:hover:not(:disabled) .composer-access-shield,
-.app-shell .permission-chip.is-open .composer-access-shield {
-  opacity: .86;
-  filter: drop-shadow(0 0 1.6px color-mix(in srgb, currentColor 16%, transparent));
-}
-
-@keyframes loom-access-sheen-v4 {
-  0% { opacity: 0; stroke-dashoffset: 24; }
-  18% { opacity: .82; }
-  82% { opacity: .66; }
-  100% { opacity: 0; stroke-dashoffset: -18; }
-}
-
-/* Model: a calm core focus. The outer ring expands, four axes breathe outward,
-   and one faint halo leaves the center. No broken-corner / scan-frame look. */
-.app-shell .composer-model-ring,
-.app-shell .composer-model-axes,
-.app-shell .composer-model-core,
-.app-shell .composer-model-halo {
-  transform-box: fill-box;
-  transform-origin: center;
-}
-
-.app-shell .composer-model-ring {
-  opacity: .78;
-  transition:
-    transform 390ms cubic-bezier(.16,.86,.22,1),
-    opacity 220ms ease,
-    filter 260ms ease;
-}
-
-.app-shell .composer-model-axes {
-  opacity: .62;
-  transition:
-    transform 390ms cubic-bezier(.16,.86,.22,1),
-    opacity 220ms ease;
-}
-
-.app-shell .composer-model-core {
-  opacity: .82;
-  transition:
-    transform 390ms cubic-bezier(.16,.86,.22,1),
-    opacity 220ms ease,
-    filter 280ms ease;
-}
-
-.app-shell .composer-model-halo {
-  opacity: 0;
-  stroke-width: 1;
-}
-
-.app-shell .model-chip:hover:not(:disabled) .composer-model-ring,
-.app-shell .model-chip.is-open .composer-model-ring {
-  transform: scale(1.075);
-  opacity: 1;
-  filter: drop-shadow(0 0 1.4px color-mix(in srgb, currentColor 18%, transparent));
-}
-
-.app-shell .model-chip:hover:not(:disabled) .composer-model-axes,
-.app-shell .model-chip.is-open .composer-model-axes {
-  transform: scale(1.12);
-  opacity: .96;
-}
-
-.app-shell .model-chip:hover:not(:disabled) .composer-model-core,
-.app-shell .model-chip.is-open .composer-model-core {
-  transform: scale(1.24);
-  opacity: 1;
-  filter: drop-shadow(0 0 2px color-mix(in srgb, currentColor 30%, transparent));
-}
-
-.app-shell .model-chip:hover:not(:disabled) .composer-model-halo {
-  animation: loom-model-halo-v4 620ms cubic-bezier(.16,.82,.22,1) both;
-}
-
-@keyframes loom-model-halo-v4 {
-  0% { opacity: 0; transform: scale(.66); }
-  24% { opacity: .38; }
-  100% { opacity: 0; transform: scale(1.34); }
-}
-
-/* The new glyphs own their geometry; cancel legacy transforms that targeted
-   earlier composer icon designs. */
-.app-shell .composer-tool .composer-attach-glyph,
-.app-shell .permission-chip .composer-access-glyph,
-.app-shell .model-chip .composer-model-glyph {
-  translate: none !important;
-  rotate: 0deg !important;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .app-shell :is(
-    .composer-attach-latch,
-    .composer-attach-spark,
-    .composer-access-keyhole,
-    .composer-access-stem,
-    .composer-access-sheen,
-    .composer-model-ring,
-    .composer-model-axes,
-    .composer-model-core,
-    .composer-model-halo
-  ) {
-    animation: none !important;
-    transition-duration: .001ms !important;
-    transform: none !important;
-    filter: none !important;
-  }
-}
-
-:root[data-loom-reduced-motion="true"] .app-shell :is(
-  .composer-attach-latch,
-  .composer-attach-spark,
-  .composer-access-keyhole,
-  .composer-access-stem,
-  .composer-access-sheen,
-  .composer-model-ring,
-  .composer-model-axes,
-  .composer-model-core,
-  .composer-model-halo
-) {
-  animation: none !important;
-  transition-duration: .001ms !important;
-  transform: none !important;
-  filter: none !important;
-}
-
+/* -------------------------------------------------------------------------- */
+/* Replace: one glyph hands a control over to another.                         */
+
+/* Send hands over to Stop, and back. The arrow leaves upward and arrives from
+   below; the square grows from the centre and shrinks away. The wrapper's own
+   fade (crossfade.css) carries the opacity, and these end together with it. */
+.crossfade-out .send-button:not(.stop) .loom-icon { animation: li-leave-up var(--crossfade-ms, 260ms) var(--ic-ease) both; }
+.crossfade-in .send-button:not(.stop) .loom-icon { animation: li-arrive-up var(--crossfade-ms, 260ms) var(--ic-ease) both; }
+.crossfade-out .send-button.stop .loom-icon { animation: li-shrink var(--crossfade-ms, 260ms) var(--ic-ease) both; }
+.crossfade-in .send-button.stop .loom-icon { animation: li-grow var(--crossfade-ms, 260ms) var(--ic-ease) both; }
+
+@keyframes li-leave-up { to { transform: translateY(-8px) scale(.7); } }
+@keyframes li-arrive-up { from { transform: translateY(8px) scale(.7); } }
+@keyframes li-shrink { to { transform: scale(.5); } }
+@keyframes li-grow { from { transform: scale(.5); } }

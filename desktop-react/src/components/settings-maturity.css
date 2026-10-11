@@ -261,7 +261,6 @@ button.general-default-card:hover,
 button.general-default-card:hover .general-default-card-head > svg:last-child,
 .general-quick-card:hover > svg:last-child {
   color: #a9a2dc;
-  transform: none;
 }
 
 .general-copy-button,

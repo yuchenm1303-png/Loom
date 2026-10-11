@@ -19,7 +19,7 @@ import {
   ShieldCheck,
   Sparkles,
   Trash2,
-} from "lucide-react";
+} from "./icons";
 import { useI18n } from "../i18n";
 import "./settings-websearch.css";
 

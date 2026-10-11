@@ -189,10 +189,6 @@ html[data-loom-theme="light"] .profile-refresh-button:hover:not(:disabled) {
   cursor: default;
 }
 
-.profile-refresh-button:disabled svg {
-  animation: profile-spin 1.1s linear infinite;
-}
-
 .profile-insights-scroll {
   min-height: 0;
   overflow-y: auto;
@@ -1071,10 +1067,6 @@ html[data-loom-theme="light"] .profile-heat-tooltip {
   color: var(--profile-accent);
   font-size: 12px;
   cursor: pointer;
-}
-
-@keyframes profile-spin {
-  to { transform: rotate(360deg); }
 }
 
 @keyframes profile-bar-grow {

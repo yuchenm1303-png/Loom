@@ -10,7 +10,7 @@ import {
   ShieldCheck,
   Trash2,
   X,
-} from "lucide-react";
+} from "./icons";
 import { useEffect, useMemo, useState } from "react";
 import "./settings-memory.css";
 
@@ -399,7 +399,7 @@ export function MemoryPanel({ threadId, running }: MemoryPanelProps) {
       <section className="settings-section">
         <div className="memory-section-heading">
           <div className="settings-section-heading"><h2>{listTitle}</h2><p>Only active memories visible to the current conversation are shown. Superseded history stays in the durable audit trail.</p></div>
-          <button type="button" className="memory-refresh-button" disabled={loading} onClick={() => void refresh()}><RefreshCw size={14} className={loading ? "spin" : ""} />Refresh</button>
+          <button type="button" className="memory-refresh-button" disabled={loading} onClick={() => void refresh()}><RefreshCw size={14} spinning={loading} />Refresh</button>
         </div>
 
         {!threadId ? (

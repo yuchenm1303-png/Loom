@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { Minus, Square, Copy, X } from "lucide-react";
+import { Minus, Square, Copy, X } from "./icons";
 import "./window-chrome.css";
 
 export function WindowChrome({ children }: { children: ReactNode }) {
@@ -28,7 +28,7 @@ export function WindowChrome({ children }: { children: ReactNode }) {
   };
   const maximize = () => void control("maximize").then((state) => { if (state) setMaximized(state.maximized); });
   return <div className="loom-window-shell">
-    <header className="loom-titlebar">
+    <header className="loom-titlebar" data-ic-row>
       <div className="loom-titlebar-drag" onDoubleClick={maximize}
         onPointerDown={(event) => {
           if (event.button !== 0) return;

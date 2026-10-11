@@ -221,7 +221,7 @@
   flex: none;
   margin-left: 4px;
   color: #6d7581;
-  transition: transform 220ms cubic-bezier(.2,.8,.2,1), color 160ms ease;
+  transition: color 160ms ease;
 }
 
 /* Reasoning text arriving reveals the disclosure affordance. */
@@ -234,7 +234,6 @@
 }
 
 .live-reasoning.open .live-reasoning-chevron {
-  transform: rotate(90deg);
   color: #a093e9;
 }
 

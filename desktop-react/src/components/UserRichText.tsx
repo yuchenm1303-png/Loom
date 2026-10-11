@@ -1,4 +1,4 @@
-import { Check, Copy, ExternalLink, Globe2 } from "lucide-react";
+import { Check, Copy, ExternalLink, Globe2 } from "./icons";
 import { isValidElement, memo, useMemo, useState, type ReactNode } from "react";
 import ReactMarkdown, { defaultUrlTransform, type Components } from "react-markdown";
 import { rehypeHighlightOnce } from "./markdownHighlight";
