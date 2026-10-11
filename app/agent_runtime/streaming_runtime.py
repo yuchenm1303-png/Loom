@@ -445,15 +445,19 @@ class StreamingAgentRuntime(CodeModeRuntime):
                 },
             )
 
+    def _sticker_response_preferences(self, session, step_id: str, *, is_final: bool) -> StickerPreferences:
+        with self._sticker_guard:
+            return self._sticker_preferences
+
     def _finalize_sticker_model_text(
         self,
         session: AgentSession,
         *,
         step_id: str,
         raw_text: str,
+        is_final: bool = True,
     ) -> StickerResult:
-        with self._sticker_guard:
-            preferences = self._sticker_preferences
+        preferences = self._sticker_response_preferences(session, step_id, is_final=is_final)
         context = self._sticker_context_for_session(
             session,
             streaming=self.provider_streaming_enabled,
@@ -481,6 +485,9 @@ class StreamingAgentRuntime(CodeModeRuntime):
             with self._sticker_guard:
                 streamed_text = self._sticker_stream_text.get(key, "")
 
+        if streamed_text and not is_final:
+            # Apply the same per-step budget to streamed provider markers.
+            streamed_text = finalize_reply(streamed_text, preferences, context).text
         finalized = (
             reconcile_stream_reply(provider_result, streamed_text)
             if self.provider_streaming_enabled and streamed_text
@@ -493,7 +500,8 @@ class StreamingAgentRuntime(CodeModeRuntime):
             if key in self._sticker_diagnostics:
                 diagnostics["stream"] = dict(self._sticker_diagnostics[key])
             self._sticker_diagnostics[key] = diagnostics
-            self._sticker_final_by_turn[(session.session_id, session.current_turn_id)] = finalized.text
+            if is_final:
+                self._sticker_final_by_turn[(session.session_id, session.current_turn_id)] = finalized.text
         return StickerResult(finalized.text, finalized.keys, diagnostics)
 
     def _project_event_payload(self, session, kind, data):
@@ -502,11 +510,12 @@ class StreamingAgentRuntime(CodeModeRuntime):
         if kind is AgentEventKind.MODEL_RESPONSE:
             step_id = str(payload.get("step_id") or "").strip()
             raw_text = str(payload.get("text") or "")
-            if step_id and not payload.get("tool_calls"):
+            if step_id:
                 finalized = self._finalize_sticker_model_text(
                     session,
                     step_id=step_id,
                     raw_text=raw_text,
+                    is_final=not bool(payload.get("tool_calls")),
                 )
                 payload["display_text"] = finalized.text
                 payload["display_runtime_authored"] = finalized.text != raw_text
@@ -576,7 +585,7 @@ class StreamingAgentRuntime(CodeModeRuntime):
             self._sticker_final_by_turn.pop(turn_key, None)
             stale = [
                 key
-                for key in self._sticker_streams
+                for key in self._sticker_streams.keys() | self._sticker_stream_text.keys() | self._sticker_diagnostics.keys()
                 if key[0] == session.session_id and key[1] == session.current_turn_id
             ]
             for key in stale:

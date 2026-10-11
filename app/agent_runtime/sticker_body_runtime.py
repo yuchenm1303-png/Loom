@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import re
 from dataclasses import replace
 from typing import Any, Iterable
@@ -284,20 +285,32 @@ def ensure_visible_body_sticker(
 class BalancedStickerStreamingAgentRuntime(StreamingAgentRuntime):
     """Production runtime with dynamic, evenly distributed rendered stickers."""
 
+    def _sticker_response_preferences(self, session, step_id: str, *, is_final: bool) -> StickerPreferences:
+        preferences = super()._sticker_response_preferences(session, step_id, is_final=is_final)
+        if is_final:
+            return preferences
+        # Stable per-step sampling: long tool loops must not decorate every
+        # progress message, and replay must not change which steps are selected.
+        identity = f"{session.session_id}:{session.current_turn_id}:{step_id}"
+        sample = int.from_bytes(hashlib.sha256(identity.encode()).digest()[:4], "big") % 100
+        return replace(preferences, max_per_reply=1, repeat_count=1,
+                       frequency=preferences.frequency if sample < preferences.frequency else 0)
+
     def _finalize_sticker_model_text(
         self,
         session: AgentSession,
         *,
         step_id: str,
         raw_text: str,
+        is_final: bool = True,
     ) -> StickerResult:
         result = super()._finalize_sticker_model_text(
             session,
             step_id=step_id,
             raw_text=raw_text,
+            is_final=is_final,
         )
-        with self._sticker_guard:
-            preferences = self._sticker_preferences
+        preferences = self._sticker_response_preferences(session, step_id, is_final=is_final)
         context = self._sticker_context_for_session(
             session,
             streaming=self.provider_streaming_enabled,
@@ -308,7 +321,8 @@ class BalancedStickerStreamingAgentRuntime(StreamingAgentRuntime):
             key = (session.session_id, session.current_turn_id, step_id)
             diagnostics = dict(guarded.diagnostics)
             self._sticker_diagnostics[key] = diagnostics
-            self._sticker_final_by_turn[(session.session_id, session.current_turn_id)] = guarded.text
+            if is_final:
+                self._sticker_final_by_turn[(session.session_id, session.current_turn_id)] = guarded.text
         return replace(guarded, diagnostics=diagnostics)
 
 
