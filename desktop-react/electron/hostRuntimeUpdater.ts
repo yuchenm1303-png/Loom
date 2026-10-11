@@ -1,3 +1,4 @@
+import { readUpdatePreferences } from "./updatePreferences.js";
 import { app, net } from "electron";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
@@ -317,7 +318,7 @@ async function maybeActivateReadyRuntime(): Promise<boolean> {
 }
 
 export async function ensureHostRuntimeUpdate(requiredProtocol = 0): Promise<HostRuntimeUpdateState> {
-  if (!enabled) return hostRuntimeUpdateState();
+  if (!enabled || (requiredProtocol === 0 && !readUpdatePreferences().automaticUpdates)) return hostRuntimeUpdateState();
   if (checkPromise) return checkPromise;
   checkPromise = (async () => {
     const current = currentHostRuntime();

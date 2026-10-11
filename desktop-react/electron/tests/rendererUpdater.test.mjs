@@ -65,5 +65,5 @@ test("renderer activation commits only on matching window health and rolls back 
     assert.equal(recovered.loads.at(-1), path.join(first, "index.html"));
     assert.ok((await read()).rejected.includes(2));
     recovered.emit("closed");
-  } finally { app.emit("before-quit"); await fs.rm(directory, { recursive: true, force: true }); }
+  } finally { app.emit("before-quit"); await fs.rm(directory, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 }); }
 });

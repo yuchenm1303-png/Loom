@@ -1,3 +1,4 @@
+import { readUpdatePreferences } from "./updatePreferences.js";
 import { app, net, ipcMain, type BrowserWindow } from "electron";
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -51,6 +52,7 @@ async function fetchBytes(url: string, limit: number) {
 }
 let checking: Promise<void> | null = null;
 async function check() {
+  if (!readUpdatePreferences().automaticUpdates) return;
   if (checking) return checking;
   checking = (async () => {
     try {

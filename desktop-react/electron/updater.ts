@@ -1,3 +1,4 @@
+import { readUpdatePreferences, writeUpdatePreferences } from "./updatePreferences.js";
 import { app, BrowserWindow, dialog, ipcMain, shell } from "electron";
 import fs from "node:fs";
 import path from "node:path";
@@ -22,6 +23,8 @@ export type SoftwareUpdatePhase =
 
 export interface SoftwareUpdateState {
   enabled: boolean;
+  automaticUpdates?: boolean;
+  silentUpdates?: boolean;
   phase: SoftwareUpdatePhase;
   currentVersion: string;
   availableVersion?: string;
@@ -82,9 +85,9 @@ const earlyRecheckTimers: NodeJS.Timeout[] = [];
 export function softwareUpdateState(): SoftwareUpdateState {
   const application = applicationUpdateState();
   if (!updateInFlight() && (application.phase === "downloading" || application.phase === "downloaded")) {
-    return { ...state, ...application, enabled: updateEnabled, error: undefined };
+    return { ...state, ...readUpdatePreferences(), ...application, enabled: updateEnabled, error: undefined };
   }
-  return { ...state };
+  return { ...state, ...readUpdatePreferences() };
 }
 
 function broadcastState(): void {
@@ -145,6 +148,8 @@ function hasVisibleWindow(): boolean {
 }
 
 function headlessInstallWanted(): boolean {
+  const preferences = readUpdatePreferences();
+  if (!preferences.automaticUpdates || !preferences.silentUpdates) return false;
   return bootstrapAutoInstallRequested && state.phase === "downloaded" && !hasVisibleWindow();
 }
 
@@ -235,15 +240,16 @@ function clearErrorRetry(): void {
 }
 
 function scheduleErrorRetry(): void {
-  if (!updateEnabled || errorRetryTimer || updateInFlight()) return;
+  if (!readUpdatePreferences().automaticUpdates || !updateEnabled || errorRetryTimer || updateInFlight()) return;
   errorRetryTimer = setTimeout(() => {
     errorRetryTimer = null;
-    void checkForUpdates();
+    if (readUpdatePreferences().automaticUpdates) void checkForUpdates();
   }, ERROR_RETRY_DELAY_MS);
   errorRetryTimer.unref?.();
 }
 
 async function offerAvailableUpdate(info: UpdateInfo): Promise<void> {
+  if (readUpdatePreferences().silentUpdates) return;
   if (!updateEnabled || announcedVersion === info.version) return;
   announcedVersion = info.version;
 
@@ -269,6 +275,7 @@ async function offerAvailableUpdate(info: UpdateInfo): Promise<void> {
 }
 
 async function offerDownloadedUpdate(info: UpdateInfo): Promise<void> {
+  if (readUpdatePreferences().silentUpdates) return;
   if (!updateEnabled || promptedDownloadedVersion === info.version) return;
   promptedDownloadedVersion = info.version;
 
@@ -304,7 +311,7 @@ export async function checkForUpdates(): Promise<SoftwareUpdateState> {
   if (!updateEnabled) return softwareUpdateState();
   if (checkPromise) return checkPromise;
   if (updateInFlight()) return softwareUpdateState();
-  await checkApplicationUpdates();
+  await checkApplicationUpdates(true);
 
   clearErrorRetry();
   lastCheckStartedAt = Date.now();
@@ -347,7 +354,7 @@ export async function installDownloadedUpdate(): Promise<{ accepted: boolean; st
 }
 
 function maybeCheckAfterFocus(): void {
-  if (!updateEnabled || !lastCheckStartedAt || checkPromise || updateInFlight()) return;
+  if (!readUpdatePreferences().automaticUpdates || !updateEnabled || !lastCheckStartedAt || checkPromise || updateInFlight()) return;
   if (Date.now() - lastCheckStartedAt < FOCUS_RECHECK_MIN_AGE_MS) return;
   void checkForUpdates();
 }
@@ -363,6 +370,7 @@ function configureUpdater(): void {
   if (!updateEnabled) return;
 
   autoUpdater.autoDownload = true;
+  autoUpdater.autoInstallOnAppQuit = readUpdatePreferences().automaticUpdates && readUpdatePreferences().silentUpdates;
   autoUpdater.allowPrerelease = false;
   autoUpdater.autoRunAppAfterInstall = true;
 
@@ -428,6 +436,7 @@ function configureUpdater(): void {
 }
 
 function runAutomaticCheck(): void {
+  if (!readUpdatePreferences().automaticUpdates) return;
   if (!updateEnabled || updateInFlight()) return;
   if (hasVisibleWindow()) {
     void checkForUpdates();
@@ -466,8 +475,26 @@ function startAutomaticChecks(): void {
 }
 
 configureUpdater();
-onApplicationUpdateStatus(broadcastState);
+onApplicationUpdateStatus(() => {
+  broadcastState();
+  const application = applicationUpdateState();
+  if (application.phase !== "downloaded" || readUpdatePreferences().silentUpdates || !hasVisibleWindow()
+    || promptedDownloadedVersion === application.availableVersion) return;
+  promptedDownloadedVersion = application.availableVersion ?? null;
+  void dialog.showMessageBox({
+    type: "info", title: "Loom update ready", message: "Loom 小更新已准备就绪",
+    detail: "重启后生效，也可以稍后在设置中安装。", buttons: ["重启更新", "稍后"], cancelId: 1,
+  }).then(async result => {
+    if (result.response === 0) await installApplicationUpdate();
+  }).catch(console.error);
+});
 
+handleHostChannel("loom:update-preferences", (_event: unknown, patch: unknown) => {
+  writeUpdatePreferences(patch);
+  autoUpdater.autoInstallOnAppQuit = readUpdatePreferences().automaticUpdates && readUpdatePreferences().silentUpdates;
+  broadcastState();
+  return softwareUpdateState();
+});
 handleHostChannel("loom:update-status", () => softwareUpdateState());
 handleHostChannel("loom:update-check", () => checkForUpdates());
 handleHostChannel("loom:update-install", () => installDownloadedUpdate());

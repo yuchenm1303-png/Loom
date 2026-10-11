@@ -22,6 +22,8 @@ type SoftwareUpdatePhase =
 
 interface SoftwareUpdateState {
   enabled: boolean;
+  automaticUpdates?: boolean;
+  silentUpdates?: boolean;
   phase: SoftwareUpdatePhase;
   currentVersion: string;
   availableVersion?: string;
@@ -36,6 +38,7 @@ interface SoftwareUpdateState {
 }
 
 interface UpdateBridge {
+  setUpdatePreferences(patch: { automaticUpdates?: boolean; silentUpdates?: boolean }): Promise<SoftwareUpdateState>;
   getUpdateStatus(): Promise<SoftwareUpdateState>;
   checkForUpdates(): Promise<SoftwareUpdateState>;
   installUpdate(): Promise<{ accepted: boolean; state: SoftwareUpdateState }>;
@@ -223,6 +226,25 @@ function UpdatePanel() {
         <span className="software-update-version">v{state?.currentVersion || "—"}</span>
       </div>
 
+      <div className="software-update-preferences">
+        {([
+          ["automaticUpdates", "自动更新", "自动检查并下载更新；关闭后仍可手动检查。"],
+          ["silentUpdates", "静默更新", "不弹更新窗口；桌面关闭且任务空闲时自动安装，使用中可手动重启更新。"],
+        ] as const).map(([key, title, detail]) => (
+          <label key={key} className="software-update-preference">
+            <span><strong>{title}</strong><small>{detail}</small></span>
+            <input type="checkbox" role="switch" checked={state?.[key] !== false} disabled={!state || actionBusy}
+              onChange={async (event) => {
+                const checked = event.target.checked;
+                setActionBusy(true);
+                try { setState(await bridge().setUpdatePreferences({ [key]: checked })); }
+                catch (error) { setState(current => current ? { ...current, error: String(error), phase: "error" } : current); }
+                finally { setActionBusy(false); }
+              }} />
+          </label>
+        ))}
+      </div>
+
       <div className={`software-update-card tone-${copy.tone}`}>
         <div className="software-update-status-icon" aria-hidden="true">
           {state?.phase === "error" ? <AlertCircle size={19} /> : state?.phase === "downloaded" || state?.phase === "up-to-date" ? <Check size={19} /> : state?.phase === "downloading" || state?.phase === "available" ? <Download size={19} /> : <RefreshCw size={19} />}
@@ -250,7 +272,7 @@ function UpdatePanel() {
 
           <div className="software-update-footnote">
             <span>{formatCheckedAt(state?.checkedAt)}</span>
-            <span>Checks after launch, rechecks shortly after, every 30 min, and when Loom returns to focus</span>
+            <span>{state?.automaticUpdates === false ? "自动更新已关闭，可手动检查" : "自动更新已开启"}</span>
           </div>
         </div>
 

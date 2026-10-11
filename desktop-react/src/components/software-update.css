@@ -275,3 +275,15 @@
     grid-template-columns: 1fr;
   }
 }
+
+.software-update-preferences { display: grid; gap: 12px; margin: 16px 0; }
+.software-update-preference { display: flex; align-items: center; justify-content: space-between; gap: 20px; }
+.software-update-preference span { display: grid; gap: 4px; }
+.software-update-preference small { color: var(--text-secondary, #888); }
+.software-update-preference input { width: 36px; height: 20px; accent-color: #7963df; cursor: pointer; }
+.software-update-preference input { appearance: none; flex: 0 0 auto; border-radius: 12px; background: #8b8b9670; position: relative; transition: background .15s; }
+.software-update-preference input::after { content: ""; position: absolute; width: 16px; height: 16px; top: 2px; left: 2px; border-radius: 50%; background: white; transition: transform .15s; }
+.software-update-preference input:checked { background: #7963df; }
+.software-update-preference input:checked::after { transform: translateX(16px); }
+.software-update-preference input:focus-visible { outline: 2px solid #7963df; outline-offset: 3px; }
+.software-update-preference input:disabled { opacity: .5; cursor: default; }

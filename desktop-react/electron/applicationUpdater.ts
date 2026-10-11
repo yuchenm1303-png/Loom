@@ -1,3 +1,4 @@
+import { readUpdatePreferences } from "./updatePreferences.js";
 import { app, net } from "electron";
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -37,7 +38,8 @@ async function fetchBytes(url: string, limit: number) {
   } finally { await reader.cancel().catch(() => {}); }
   return Buffer.concat(chunks);
 }
-export async function checkApplicationUpdates() {
+export async function checkApplicationUpdates(manual = false) {
+  if (!manual && !readUpdatePreferences().automaticUpdates) return;
   if (!enabled || checking || status.phase === "downloaded") return checking;
   checking = (async () => {
     if (globalThis.loomApplicationBootstrap) globalThis.loomApplicationBootstrap.downloading = true;
@@ -74,7 +76,7 @@ export async function checkApplicationUpdates() {
       });
       await updateApplicationPointer(root, current => ({ ...current, ready: release.build }));
       setStatus({ ...status, phase: "downloaded", percent: 100, transferred: total });
-      if (!hostHasDesktopClients()) await installApplicationUpdate();
+      if (readUpdatePreferences().automaticUpdates && readUpdatePreferences().silentUpdates && !hostHasDesktopClients()) await installApplicationUpdate();
     } catch (error) {
       setStatus({ phase: "error", error: error instanceof Error ? error.message : "Application update failed" });
     }
@@ -100,6 +102,6 @@ export async function installApplicationUpdate(): Promise<boolean> {
 if (enabled) app.whenReady().then(() => {
   const startup = setTimeout(() => { void checkApplicationUpdates(); }, 5000); startup.unref();
   const poll = setInterval(() => { void checkApplicationUpdates(); }, 30000); poll.unref();
-  const idle = setInterval(() => { if (!hostHasDesktopClients()) void installApplicationUpdate(); }, 30000); idle.unref();
+  const idle = setInterval(() => { if (readUpdatePreferences().automaticUpdates && readUpdatePreferences().silentUpdates && !hostHasDesktopClients()) void installApplicationUpdate(); }, 30000); idle.unref();
   app.once("before-quit", () => { clearTimeout(startup); clearInterval(poll); clearInterval(idle); });
 });
