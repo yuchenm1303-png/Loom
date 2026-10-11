@@ -359,7 +359,7 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
         <section className="loom-module-grid">
           <article className="loom-stage-copy loom-intro-module cards fade">
             <header className="loom-card-brand-row">
-              <a className="brand loom-portal-brand" href="/" aria-label="Smirel Loom" data-liquid-snap="true" data-magnetic-hover="true">
+              <a className="brand loom-portal-brand" href="https://smirel.com/" target="_blank" rel="noopener noreferrer" aria-label={zh ? "访问 Smirel 个人主页（在新标签页打开）" : "Visit Smirel homepage (opens in a new tab)"} data-liquid-snap="true" data-magnetic-hover="true">
                 <img className="loom-smirel-wordmark" src={SMIREL_LOGO} alt="Smirel" />
                 <span className="loom-brand-divider" aria-hidden="true" />
                 <span className="brand-copy"><strong>Loom</strong><small>Personal AI Agent</small></span>
