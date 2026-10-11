@@ -58,9 +58,14 @@ function safeUrlTransform(url: string): string {
   return defaultUrlTransform(url);
 }
 
-function components(): Components {
+function components(source: string): Components {
   return {
-    a({ href, children, ...props }) {
+    a({ href, children, node, ...props }) {
+      // A bare URL immediately followed by prose is ambiguous. GFM includes
+      // the prose in the URL; keep the original readable text instead. Explicit
+      // Markdown links and <autolinks> have delimiters and remain clickable.
+      const raw = node?.position ? source.slice(node.position.start.offset, node.position.end.offset) : "";
+      if (/^https?:\/\//i.test(raw) && /[^\x00-\x7f]/.test(raw)) return <>{children}</>;
       const external = Boolean(href && /^(https?:|mailto:)/i.test(href));
       return <a {...props} href={href} target={external ? "_blank" : undefined} rel={external ? "noopener noreferrer" : undefined}>{children}</a>;
     },
@@ -84,7 +89,7 @@ function standaloneLinks(source: string): { href: string; host: string; detail: 
   const result: { href: string; host: string; detail: string }[] = [];
   for (const line of source.split(/\r?\n/)) {
     const value = line.trim();
-    if (!/^https?:\/\/\S+$/i.test(value) || seen.has(value)) continue;
+    if (!/^https?:\/\/[^\s\u0080-\uffff]+$/i.test(value) || seen.has(value)) continue;
     try {
       const url = new URL(value);
       seen.add(value);
@@ -105,7 +110,7 @@ function withoutStandaloneLinks(source: string, links: { href: string }[]): stri
 export const UserRichText = memo(function UserRichText({ text }: { text: string }) {
   const links = useMemo(() => standaloneLinks(text), [text]);
   const markdown = useMemo(() => withoutStandaloneLinks(text, links), [links, text]);
-  const renderer = useMemo(() => components(), []);
+  const renderer = useMemo(() => components(text), [text]);
 
   return (
     <div className="user-rich-message">
