@@ -1,10 +1,10 @@
 {
   "schema": 1,
   "kind": "application",
-  "build": 1001,
+  "build": 3001,
   "bootstrap": "0.1.83",
-  "sourceSha": "8076081582ef8a9847cf370520fc06ab517d3679",
-  "sourceTime": 1791726131,
+  "sourceSha": "269dd36afe8a384c95bd04bafa36c397dcb5930b",
+  "sourceTime": 1791726350,
   "files": [
     {
       "path": "dist/assets/index-C5atBrDi.js",
@@ -1143,8 +1143,8 @@
     {
       "path": "dist/ui-baseline.json",
       "size": 80,
-      "sha256": "e8041f0c2c7023f4fb29a010eeb4317b04bb701a5fdfe2693179868fa0a51b03",
-      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/e8041f0c2c7023f4fb29a010eeb4317b04bb701a5fdfe2693179868fa0a51b03"
+      "sha256": "7b321b5aca6671be99f028dfcc6cf892b01e00009501de33248d9b7de78c5de5",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-3001/7b321b5aca6671be99f028dfcc6cf892b01e00009501de33248d9b7de78c5de5"
     },
     {
       "path": "dist-electron/accountClient.js",
@@ -1250,9 +1250,9 @@
     },
     {
       "path": "dist-electron/main.js",
-      "size": 80822,
-      "sha256": "8519b6da1136f6e1499555ab39a002d02a4221ab1af4c951f418171692f0a361",
-      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/8519b6da1136f6e1499555ab39a002d02a4221ab1af4c951f418171692f0a361"
+      "size": 81503,
+      "sha256": "72c11c03afaa48b59382a82ccc3ebc9abdf1000910fca6b04e363676e9601c72",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-3001/72c11c03afaa48b59382a82ccc3ebc9abdf1000910fca6b04e363676e9601c72"
     },
     {
       "path": "dist-electron/modelManager.js",
