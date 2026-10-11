@@ -126,6 +126,12 @@ test("a page growing in single steps is not 'flowing'; one growing frame after f
   for (let t = 6; t <= 30; t += 6) { target += 8; animated.note(target, t); }
   assert.equal(animated.flowing(30), true);
   assert.equal(animated.flowing(30 + 200), false, "and it is over once the page has been still for a moment");
+  // A page shrinking frame after frame (a fold) is not growth to stay with.
+  const folding = new TargetFlow();
+  let height = 2000;
+  folding.note(height, 0);
+  for (let t = 6; t <= 30; t += 6) { height -= 8; folding.note(height, t); }
+  assert.equal(folding.flowing(30), false, "a shrinking page is no reason to stiffen the spring");
   // Two moves close together are still a step (a line and the margin that came with it).
   const pair = new TargetFlow();
   pair.note(0, 0); pair.note(26, 6); pair.note(40, 12);

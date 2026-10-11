@@ -44,6 +44,8 @@ const FLOW_MIN_MOVES = 3;
  * Tells a page that is growing in single steps (a line wraps, a heading opens: glide to it) from one an animation
  * is growing frame after frame (a row unfolding over 300ms: stay with it). Gliding behind the second leaves the
  * new rows below the fold for the whole of their entrance, and the reader would not see them grow at all.
+ * Only growth counts: a page shrinking (a fold) takes the view with it or lets it glide back, and is no reason to
+ * stiffen the spring.
  */
 export class TargetFlow {
   private last = Number.NaN;
@@ -51,7 +53,7 @@ export class TargetFlow {
 
   /** Record the target as measured at `now` (only when it was measured: an unchanged page moves nothing). */
   note(target: number, now: number): void {
-    if (Number.isFinite(this.last) && Math.abs(target - this.last) > FLOW_MOVE_PX) this.moves.push(now);
+    if (Number.isFinite(this.last) && target - this.last > FLOW_MOVE_PX) this.moves.push(now);
     this.last = target;
     this.drop(now);
   }

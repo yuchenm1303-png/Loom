@@ -79,6 +79,49 @@ try {
     await page.evaluate(user => { window.motionFixture.reset(); window.motionFixture.turn([user], false); }, user);
     assert.equal(await page.locator('.entry-user_message').evaluate(el => el.getAnimations().length), 0);
 
+    // A decision card belongs to the finished answer. The live layout does not draw it (it could not be answered yet,
+    // and one that had begun to open would be cut when the message moves to its own entry); at completion it
+    // unfolds, once, out of the prose above it; a turn that mounts finished never plays it.
+    const ask = { id: 'ask', threadId: 'thread-1', turnId: 'turn-1', type: 'assistant_message', status: 'completed', phase: 'final_answer',
+      text: '先说明一下。\n\n```loom-decision\n' + JSON.stringify({ title: '选择方案', options: [{ id: 'one', title: '第一个方案' }, { id: 'two', title: '第二个方案' }] }) + '\n```' };
+    const cardMotion = () => page.evaluate(() => {
+      const fold = document.querySelector('.decision-response-fold');
+      const inner = document.querySelector('.decision-response-fold-inner');
+      return fold ? { names: [...fold.getAnimations(), ...inner.getAnimations(), ...inner.getAnimations({ subtree: true })].map(a => a.animationName).filter(Boolean),
+        height: document.querySelector('.decision-response').getBoundingClientRect().height,
+        overflow: getComputedStyle(inner).overflow, clip: getComputedStyle(inner).clipPath } : null;
+    });
+    await page.evaluate(([u, a]) => { window.motionFixture.reset(); window.motionFixture.turn([u, a], true); }, [user, ask]);
+    await page.waitForTimeout(260);
+    assert.equal(await page.locator('.decision-response').count(), 0, 'the live layout does not draw a decision card');
+    await page.evaluate(([u, a]) => {
+      window.cardHeights = [];
+      const sample = () => { const card = document.querySelector('.decision-response'); if (card) window.cardHeights.push(Math.round(card.getBoundingClientRect().height)); window.cardTimer = requestAnimationFrame(sample); };
+      sample();
+      window.motionFixture.turn([u, a], false);
+    }, [user, ask]);
+    await page.locator('.turn-final-answer .decision-response').waitFor();
+    const opening = await cardMotion();
+    assert.ok(opening.names.includes('loom-decision-unfold') && opening.names.includes('loom-decision-clip'), `the card opens on the completion: ${opening.names}`);
+    assert.equal(opening.overflow.split(' ')[0], 'clip', 'what is below the growing box is clipped, so it is not scrollable overflow');
+    await page.waitForTimeout(520);
+    const heights = await page.evaluate(() => { cancelAnimationFrame(window.cardTimer); return window.cardHeights; });
+    const full = Math.max(...heights);
+    assert.ok(full > 150 && heights.at(-1) === full, `it ends at its full height (${full}px)`);
+    assert.ok(heights[0] < full * 0.4, `it starts from little, not whole (${heights[0]} of ${full}px)`);
+    assert.ok(new Set(heights).size >= 8, `and grows through many heights, not one step (${new Set(heights).size})`);
+    assert.ok(heights.every((h, i) => i === 0 || h - heights[i - 1] <= full * 0.45), 'no frame adds more than 45% of it');
+    const opened = await cardMotion();
+    assert.deepEqual([opened.names.length, opened.clip], [0, 'none'], 'nothing is left applied once it is open');
+    await page.evaluate(([u, a]) => { window.motionFixture.reset(); window.motionFixture.turn([u, a], false); }, [user, ask]);
+    await page.locator('.turn-final-answer .decision-response').waitFor();
+    const history = await cardMotion();
+    assert.deepEqual([history.names.length, Math.round(history.height) > 150], [0, true], 'a turn that mounts finished shows the card at once');
+    await page.evaluate(([u, a]) => { window.motionFixture.reset(); window.motionFixture.turn([u, a], true); document.documentElement.dataset.loomReducedMotion = 'true'; window.motionFixture.turn([u, a], false); }, [user, ask]);
+    await page.locator('.turn-final-answer .decision-response').waitFor();
+    assert.equal((await cardMotion()).names.length, 0, 'reduced motion shows it without the motion');
+    await page.evaluate(() => { document.documentElement.dataset.loomReducedMotion = 'false'; });
+
     await page.evaluate(() => { window.motionFixture.reset(); window.motionFixture.card(true); });
     await page.locator('.decision-custom-toggle').click();
     await page.locator('.decision-custom textarea').fill('保留补充条件');

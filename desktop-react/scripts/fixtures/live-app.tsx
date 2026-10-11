@@ -267,6 +267,14 @@ const FUZZ_PARAS = english
   ? ["The form only checks required fields, so a malformed address reaches the backend.", "The shared validators had no email rule; each page carried its own regex.", "I moved the rule into one helper and pointed all three pages at it.", "Tests cover the plain address, trimming, a missing @ and a domain without a dot."]
   : ["表单只校验了必填项，格式不对的邮箱会一路提交到后端。", "公共校验工具里没有邮箱规则，每个页面各写了一份正则。", "我把规则收进同一个函数，三个页面都改成使用它。", "测试覆盖了普通地址、首尾空格、缺少 @ 和域名里没有点的情况。"];
 
+const FUZZ_DECISION = {
+  id: "next", title: english ? "What next?" : "接下来做什么？", allowCustomInput: true,
+  options: [
+    { id: "a", title: english ? "Also validate the register page" : "注册页也加上同样的校验", recommended: true, description: english ? "Reuse isEmail()." : "复用 isEmail()。" },
+    { id: "b", title: english ? "Stop here" : "先到这里", description: english ? "Review the diff first." : "我先审查一下改动。" },
+  ],
+};
+
 function fuzzAnswer(random: ReturnType<typeof generator>): string {
   const parts: string[] = [random.pick(FUZZ_PARAS)];
   const blocks = random.int(1, 6);
@@ -279,6 +287,8 @@ function fuzzAnswer(random: ReturnType<typeof generator>): string {
     else if (kind === "heading") parts.push(`## ${random.pick(["改动", "验证", "后续", "风险"])}`);
     else parts.push("> " + random.pick(FUZZ_PARAS));
   }
+  // Now and then the answer ends by asking: a decision card follows its text.
+  if (random.chance(0.2)) parts.push("```loom-decision\n" + JSON.stringify(FUZZ_DECISION) + "\n```");
   return parts.join("\n\n");
 }
 

@@ -26,11 +26,16 @@ export function popinProbe() {
   const boxes = new Map();
   new MutationObserver((records) => {
     if (!state.on) return;
+    // What this batch took away, where it last was: a node added in the very place of one that left (a wrapper put
+    // around a row, a message remounted under another parent) changes nothing on screen.
+    const gone = [];
+    for (const record of records) for (const node of record.removedNodes) if (node.nodeType === 1 && boxes.has(node)) gone.push(boxes.get(node));
     for (const record of records) {
       for (const node of record.addedNodes) {
         if (node.nodeType !== 1 || !node.isConnected) continue;
         const rect = node.getBoundingClientRect();
         if (rect.width * rect.height < 900 || rect.width < 24 || rect.height < 14) continue;
+        if (gone.some((box) => Math.abs(box.top - rect.top) < 3 && Math.abs(box.h - rect.height) < 3 && Math.abs(box.left - rect.left) < 3 && Math.abs(box.w - rect.width) < 3)) continue;
         requestAnimationFrame(() => requestAnimationFrame(() => {
           if (!node.isConnected || !state.on || hidden(node)) return;
           if (!animatedAbove(node)) state.popins.push({ what: describe(node), parent: describe(node.parentElement ?? document.body), w: Math.round(rect.width), h: Math.round(rect.height) });
@@ -46,14 +51,15 @@ export function popinProbe() {
     }
   }).observe(document, { childList: true, subtree: true });
   // Sizes, and whether something was animating, for what is on screen, so a node removed later still has a known box.
+  // Boxes are kept at any size: an element that folded to nothing before it was removed was animated away.
   setInterval(() => {
     if (!state.on) return;
     const now = performance.now();
     for (const el of document.querySelectorAll(".turn-block *, .composer-wrap *, .sidebar *, .settings-host *, .inspector *, [role=dialog], [role=menu], .thread-context-menu, .composer-popover *, .conversation-stage *")) {
       const rect = el.getBoundingClientRect();
-      if (rect.width * rect.height < 900 || rect.top >= innerHeight || rect.bottom <= 0) continue;
+      if (rect.top >= innerHeight || rect.bottom <= 0) continue;
       const known = boxes.get(el);
-      boxes.set(el, { w: rect.width, h: rect.height, animatedAt: animatedAbove(el) ? now : (known?.animatedAt ?? 0) });
+      boxes.set(el, { w: rect.width, h: rect.height, top: rect.top, left: rect.left, animatedAt: animatedAbove(el) ? now : (known?.animatedAt ?? 0) });
     }
   }, 90);
 }

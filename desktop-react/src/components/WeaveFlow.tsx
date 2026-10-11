@@ -82,11 +82,16 @@ export function Fold({ open, ms = FOLD_MS, animateIn = true, className = "", chi
   const presence = useMotionPresence(open, ms);
   const settledOnMount = useRef(!animateIn && open);
   if (!open) settledOnMount.current = false;
+  // What closes is what was open. The content a fold is asked to hold can change in the very render that shuts it (a
+  // stage that has just been superseded stops showing its newest rows and a line, and shows every row), and that
+  // must not be drawn into the fold that is closing: it would grow by hundreds of pixels and then fold away.
+  const whenOpen = useRef(children);
+  if (open) whenOpen.current = children;
   if (!presence.mounted) return null;
   const shown = open && (settledOnMount.current || presence.phase !== "entering");
   return (
     <div className={`wv-fold ${className}`.trim()} data-open={shown ? "true" : "false"} inert={!open}>
-      <div className="wv-fold-inner">{children}</div>
+      <div className="wv-fold-inner">{open ? children : whenOpen.current}</div>
     </div>
   );
 }

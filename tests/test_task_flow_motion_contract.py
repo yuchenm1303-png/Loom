@@ -175,7 +175,8 @@ def test_running_state_is_read_from_ref_inside_long_lived_resize_observer() -> N
     # A running turn glides on the short spring; sending, jumping to latest and the completion hand-off take the
     # longer one. Neither is a capped chase that falls behind a fast stream: the stiffness grows with the gap.
     assert "const travelling = travelRef.current || (!runningRef.current && now < settleUntilRef.current);" in source
-    assert 'travelling ? "travel" : "live"' in source
+    # ...unless the page is growing frame by frame (a card unfolding at completion): that is followed closely.
+    assert 'travelling && !flowing ? "travel" : "live"' in source
     follow = (ROOT / "desktop-react" / "src" / "components" / "followMotion.ts").read_text(encoding="utf-8")
     assert "export function followStiffness" in follow and "MAX_BOOST" in follow
 

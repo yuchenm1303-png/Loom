@@ -355,7 +355,10 @@ export function TranscriptScrollController({
     } else {
       // The first step after a rest starts from standstill: the time since the last step was spent standing still.
       const seconds = glidingRef.current ? (now - lastTickAtRef.current) / 1000 : 0;
-      const next = advanceFollow(motion, target, seconds, travelling ? "travel" : "live", flowRef.current.flowing(now));
+      // Content growing frame by frame is stayed with even while travelling: the gentle glide is for a view that is
+      // going somewhere, not for one whose bottom edge is being drawn out under it.
+      const flowing = flowRef.current.flowing(now);
+      const next = advanceFollow(motion, target, seconds, travelling && !flowing ? "travel" : "live", flowing);
       motion.position = next.position;
       motion.velocity = next.velocity;
       settled = next.settled;

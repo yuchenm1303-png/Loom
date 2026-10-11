@@ -91,6 +91,9 @@ def test_folded_historical_turns_do_not_mount_heavy_process_subtrees() -> None:
     # The process stays mounted only while it is live, open, or still animating its fold; after that a finished
     # turn holds no process subtree at all.
     assert "const processPresence = useMotionPresence(live || open, TURN_FOLD_MS);" in transcript
-    assert "const renderProcessContent = live || open || processPresence.mounted;" in transcript
+    # ...and a fold that has already run (the live layout settling) is released at once, not rebuilt as history for
+    # an exit that shows nothing.
+    assert "const renderProcessContent = live || open || (processPresence.mounted && !foldedAway.current);" in transcript
+    assert "if (live) foldedAway.current = true;" in transcript
     assert "{renderProcessContent ? (" in transcript
     assert "<Sequence items={live ? handoff.current : items}" in transcript

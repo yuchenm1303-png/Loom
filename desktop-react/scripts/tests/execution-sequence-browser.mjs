@@ -245,6 +245,16 @@ try {
     const liveStages = await stages();
     assert.deepEqual(liveStages[1], { collapsed: true, summary: "读取 2 个文件", failed: "失败 1", rows: 0 }, "the stage that is over is one line while the run is live");
     const liveHeight = await gridHeight();
+    // Completion folds the layout the reader was looking at. It builds no step row again, neither for the one render
+    // before the hold begins nor for the folded process afterwards (it used to be rebuilt as history, hidden, only to
+    // be dropped 380ms later: a stall of a few hundred milliseconds with a long run).
+    await page.evaluate(() => {
+      window.rebuilt = 0;
+      window.rebuildWatch = new MutationObserver(records => {
+        for (const record of records) for (const node of record.addedNodes) if (node.nodeType === 1 && (node.matches(".wv-step") || node.querySelector(".wv-step"))) window.rebuilt += 1;
+      });
+      window.rebuildWatch.observe(document.body, { childList: true, subtree: true });
+    });
     await render([...story, answer], false);
     assert.deepEqual(await stages(), liveStages, "completion opens and closes no stage: the layout is as the reader last saw it");
     assert.deepEqual(await outline(), [...liveOutline, "final"], "during the hold the finished layout is exactly as the reader last saw it");
@@ -272,6 +282,7 @@ try {
       `the fold phase is the fold: ${JSON.stringify(closing.map(frame => Math.round(frame.height ?? -1)))}`);
     assert.ok(frames.at(-1).height === null, "and the process is gone when it ends");
     await page.waitForFunction(() => !document.querySelector(".turn-process-grid"), null, { timeout: 5000 });
+    assert.equal(await page.evaluate(() => { window.rebuildWatch.disconnect(); return window.rebuilt; }), 0, "completion builds no step row again");
     assert.deepEqual(await outline(), ["user", "final"], "folded: the final report is all that is left of the run");
     const folded = await page.evaluate(() => ({ summary: document.querySelector(".turn-process-summary")?.textContent ?? "", text: document.body.textContent ?? "",
       beads: [...document.querySelectorAll(".turn-process-header .wv-beads i")].map(bead => bead.dataset.tone) }));
@@ -339,6 +350,26 @@ try {
     await page.waitForFunction(() => document.querySelector(".turn-process.is-open") && document.querySelector(".wv-stage"));
     await page.waitForTimeout(400);
     assert.deepEqual((await stages()).map(stage => [stage.collapsed, stage.rows]), [[false, 2], [false, 1]], "history is open: no stage is collapsed for the reader");
+    // A long live stage shows its six newest steps and one line for the rest. When the next stage begins it closes
+    // with what it was showing: the rows that had been folded into the line are not drawn into the fold that is
+    // shutting (it used to grow by their height for a moment and then fold away, a flash of several hundred pixels).
+    await page.evaluate(() => window.motionFixture.reset());
+    const long = Array.from({ length: 12 }, (_, index) => tool(`w${index}`));
+    await render([user, message("intro", "开始。"), ...long]);
+    await page.waitForTimeout(500);
+    assert.equal(await page.locator(".wv-earlier").count(), 1, "a long live stage keeps its newest steps and a line for the rest");
+    assert.equal(await page.locator(".wv-stage .wv-step").count(), 6);
+    const stageHeight = await page.evaluate(() => document.querySelector(".wv-stage").getBoundingClientRect().height);
+    await page.evaluate(() => {
+      window.stageHeights = [];
+      const sample = () => { const stage = document.querySelector(".wv-stage"); if (stage) window.stageHeights.push(stage.getBoundingClientRect().height); window.stageTimer = requestAnimationFrame(sample); };
+      sample();
+    });
+    await render([user, message("intro", "开始。"), ...long, message("report", "这一轮已经读完了，接下来换到另一处继续检查。".repeat(8)), tool("next", { status: "running" })]);
+    await page.waitForTimeout(700);
+    const stageClosing = await page.evaluate(() => { cancelAnimationFrame(window.stageTimer); return window.stageHeights; });
+    assert.ok(stageClosing.length > 5 && Math.min(...stageClosing) < stageHeight * 0.5, "the stage that is over does close");
+    assert.ok(Math.max(...stageClosing) <= stageHeight + 2, `and only gets shorter as it does (${Math.round(Math.max(...stageClosing))}px from ${Math.round(stageHeight)}px)`);
     // A stage that did several kinds of work names the first three, in the order it did them.
     await page.evaluate(() => window.motionFixture.reset());
     await render([user, message("intro", "先看一下。"), tool("a"), tool("p", { toolName: "exec", arguments: { argv: ["echo"] } }),

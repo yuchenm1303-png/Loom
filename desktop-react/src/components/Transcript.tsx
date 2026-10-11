@@ -662,6 +662,11 @@ function AssistantMessage({ item, streaming, onPrompt, decisionInteractive, prom
   const live = streaming && !interrupted && (item.status === "streaming" || isActiveActivityStatus(item.status || "running"));
   const decisionMessage = parseDecisionMessage(parsed.answer, live);
   const answer = decisionMessage.text.trim();
+  // A decision card belongs to the finished answer, and comes after the prose above it has been painted. In the
+  // live layout it cannot be answered yet, and one that had begun to open there would be cut when the turn ends
+  // and the message moves to its own entry (generation-motion.css opens it there).
+  const answerPainting = usePendingPresentations().has(`${item.id}:answer`);
+  const cardsReady = !streaming && !answerPainting;
   const note = variant === "note";
   const [noteOpen, setNoteOpen] = useState(false);
   const longNote = note && isLongNote(answer);
@@ -712,15 +717,15 @@ function AssistantMessage({ item, streaming, onPrompt, decisionInteractive, prom
           </div>
         ) : null}
         {answer ? <MarkdownMessage content={answer} workspace={workspace} streaming={live} messageKey={`${item.id}:answer`} interrupted={interrupted} /> : null}
-        {decisionMessage.decisions.map((decision, index) => (
+        {cardsReady ? decisionMessage.decisions.map((decision, index) => (
           <DecisionPromptCard
             key={decision.id || `${item.id}:decision:${index}`}
             spec={decision}
             disabled={!decisionInteractive || Boolean(promptDisabled)}
             onSubmit={decisionInteractive ? onPrompt : undefined}
           />
-        ))}
-        {decisionMessage.incomplete && !live ? (
+        )) : null}
+        {decisionMessage.incomplete && !live && cardsReady ? (
           <DecisionPromptRecoveryCard
             disabled={!decisionInteractive || Boolean(promptDisabled)}
             onRetry={decisionInteractive && onPrompt
@@ -1224,7 +1229,13 @@ function TurnProcess({
 
   // Retain pixels through exit/reversal, then release hidden React trees. A
   // visited long conversation must return to its original folded DOM budget.
-  const renderProcessContent = live || open || processPresence.mounted;
+  // What the completion fold has just closed is already out of sight, so it is released at once: keeping it for an
+  // exit with nothing left to show re-rendered the whole process as history (another tree, every row built again,
+  // a stall of a few hundred milliseconds just as the reader starts on the answer) only to drop it 380ms later.
+  const foldedAway = useRef(false);
+  if (live) foldedAway.current = true;
+  else if (open) foldedAway.current = false;
+  const renderProcessContent = live || open || (processPresence.mounted && !foldedAway.current);
 
   return (
     <ProcessNotesContext.Provider value={notesValue}>
@@ -1393,8 +1404,13 @@ const TurnView = memo(function TurnView({
   // History mounts inactive, so opening a past turn does not launch its bubble.
   const reduce = useReducedMotion();
   const [sending, setSending] = useState(active && !reduce);
-  const [settle, setSettle] = useState<SettlePhase>(null);
+  const [heldSettle, setSettle] = useState<SettlePhase>(null);
   const wasActiveRef = useRef(active);
+  // The render in which the turn completes already belongs to the hold. The layout effect below says so before
+  // anything is painted, but a tree built for the one render in between (the process as history, every row again)
+  // is built, laid out and thrown away: the stall that was at the very moment the answer arrives.
+  const completing = !active && wasActiveRef.current && !reduce && !document.hidden;
+  const settle: SettlePhase = heldSettle ?? (completing ? "hold" : null);
 
   useLayoutEffect(() => {
     if (reduce) setSending(false);

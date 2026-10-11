@@ -17,6 +17,9 @@
   --type-glow-0: 0 0 9px rgba(160,140,255,.72), 0 0 2px rgba(204,192,255,.42);
   --type-glow-1: 0 0 7px rgba(160,140,255,.36);
   --type-glow-2: 0 0 5px rgba(160,140,255,.16);
+  /* The thin line of light a forming block carries (a code block's top edge, a decision card's growing edge). */
+  --glint-line: rgba(190,178,255,.9);
+  --glint-glow: rgba(160,140,255,.5);
 }
 html[data-loom-theme="light"] {
   --type-ink-0: color-mix(in srgb, var(--text) 62%, #5b47d6);
@@ -24,6 +27,8 @@ html[data-loom-theme="light"] {
   --type-glow-0: 0 0 7px rgba(105,90,216,.34);
   --type-glow-1: 0 0 6px rgba(105,90,216,.2);
   --type-glow-2: none;
+  --glint-line: rgba(105,90,216,.62);
+  --glint-glow: rgba(105,90,216,.3);
 }
 ::highlight(loom-type-0) { color: var(--type-ink-0); text-shadow: var(--type-glow-0); }
 ::highlight(loom-type-1) { color: var(--type-ink-1); text-shadow: var(--type-glow-1); }
@@ -60,8 +65,8 @@ html[data-loom-theme="light"] {
   height: 2px;
   pointer-events: none;
   opacity: 0;
-  background: linear-gradient(90deg, transparent 6%, rgba(190,178,255,.9) 50%, transparent 94%);
-  box-shadow: 0 0 12px rgba(160,140,255,.5);
+  background: linear-gradient(90deg, transparent 6%, var(--glint-line) 50%, transparent 94%);
+  box-shadow: 0 0 12px var(--glint-glow);
   animation: loom-block-glint 780ms var(--loom-generation-settle) 140ms backwards;
 }
 
@@ -73,10 +78,38 @@ html[data-loom-theme="light"] {
   animation: loom-generation-answer-in 240ms ease-out both;
 }
 
-/* A freshly created decision surface should feel attached to the text above it
-   rather than arriving as an unrelated card. */
-.turn-process.is-live .decision-prompt-card {
-  animation: loom-generation-decision-in 280ms var(--loom-generation-pop) both;
+/* A decision the model asks for unfolds out of the prose above it, its light edge leading. The page grows with it
+   frame by frame and the view follows (followMotion.ts), instead of a 350px card appearing whole below the fold and
+   the view crossing that distance in three frames. The card belongs to the finished answer (Transcript.tsx), so it
+   opens in the answer's entry while the turn settles; one in the live process (a decision followed by more work) opens
+   there. History mounts with neither class, so it never replays. The reveal is a clip, not overflow: nothing is left
+   applied afterwards and the card keeps its shadow. */
+:is(.turn-process.is-live, .turn-block.is-settling .turn-final-answer) .decision-response:not(.is-resolved) > .decision-response-fold {
+  animation: loom-decision-unfold 380ms var(--turn-fold-ease, ease) backwards;
+}
+
+/* Clip, so the part of the card below the growing box does not count as scrollable overflow (the view would run to
+   the end of a card that is not there yet); the margin leaves room for its shadow. */
+:is(.turn-process.is-live, .turn-block.is-settling .turn-final-answer) .decision-response:not(.is-resolved) .decision-response-fold-inner {
+  position: relative;
+  overflow: clip;
+  overflow-clip-margin: 24px;
+  animation: loom-decision-clip 380ms var(--turn-fold-ease, ease) backwards;
+}
+
+:is(.turn-process.is-live, .turn-block.is-settling .turn-final-answer) .decision-response:not(.is-resolved) .decision-response-fold-inner::after {
+  content: "";
+  position: absolute;
+  z-index: 2;
+  left: 14px;
+  right: 14px;
+  bottom: 0;
+  height: 1px;
+  pointer-events: none;
+  opacity: 0;
+  background: linear-gradient(90deg, transparent, var(--glint-line) 50%, transparent);
+  box-shadow: 0 -2px 12px var(--glint-glow);
+  animation: loom-decision-edge 380ms linear backwards;
 }
 
 /* User send -----------------------------------------------------------------
@@ -201,17 +234,24 @@ html[data-loom-theme="light"] .turn-process.is-live .entry-steering-user .user-m
   to { opacity: 1; }
 }
 
-@keyframes loom-generation-decision-in {
-  from {
-    opacity: 0;
-    transform: translateY(5px);
-    clip-path: inset(0 0 9px 0 round 14px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-    clip-path: inset(0 0 0 0 round 0);
-  }
+@keyframes loom-decision-unfold {
+  from { grid-template-rows: 0fr; opacity: 0; }
+  to { grid-template-rows: 1fr; opacity: 1; }
+}
+
+/* The clip follows the growing box exactly (bottom inset 0), with room above and at the sides for the shadow; over
+   the last fifth the room below opens too, so the shadow comes in with the card rather than at the end of it. */
+@keyframes loom-decision-clip {
+  0% { clip-path: inset(-24px -24px 0 -24px); }
+  80% { clip-path: inset(-24px -24px 0 -24px); animation-timing-function: linear; }
+  100% { clip-path: inset(-24px -24px -24px -24px); }
+}
+
+@keyframes loom-decision-edge {
+  0% { opacity: 0; }
+  14% { opacity: 1; }
+  70% { opacity: .45; }
+  100% { opacity: 0; }
 }
 
 @keyframes loom-user-send-entry {
@@ -279,7 +319,9 @@ html[data-loom-theme="light"] .turn-process.is-live .entry-steering-user .user-m
   .markdown-body.is-receiving :is(h1, h2, h3, h4, h5, h6, blockquote, table, .markdown-code-block, .katex-display, .assistant-local-image-preview),
   .markdown-body.is-receiving .markdown-code-block::after,
   .has-lifecycle-motion .assistant-message > .markdown-body,
-  .turn-process.is-live .decision-prompt-card,
+  .decision-response > .decision-response-fold,
+  .decision-response .decision-response-fold-inner,
+  .decision-response .decision-response-fold-inner::after,
   .turn-block > .entry-user_message.is-sending,
   .turn-process.is-live .entry-steering-user,
   .turn-block > .entry-user_message.is-sending .user-message,
@@ -311,6 +353,9 @@ html[data-loom-theme="light"] .turn-process.is-live .entry-steering-user .user-m
 :root[data-loom-reduced-motion="true"] .markdown-body.is-receiving :is(h1, h2, h3, h4, h5, h6, blockquote, table, .markdown-code-block, .katex-display, .assistant-local-image-preview),
 :root[data-loom-reduced-motion="true"] .markdown-body.is-receiving .markdown-code-block::after,
 :root[data-loom-reduced-motion="true"] .has-lifecycle-motion .assistant-message > .markdown-body,
+:root[data-loom-reduced-motion="true"] .decision-response > .decision-response-fold,
+:root[data-loom-reduced-motion="true"] .decision-response .decision-response-fold-inner,
+:root[data-loom-reduced-motion="true"] .decision-response .decision-response-fold-inner::after,
 :root[data-loom-reduced-motion="true"] .turn-block > .entry-user_message.is-sending,
 :root[data-loom-reduced-motion="true"] .turn-process.is-live .entry-steering-user,
 :root[data-loom-reduced-motion="true"] .turn-block > .entry-user_message.is-sending .user-message,
