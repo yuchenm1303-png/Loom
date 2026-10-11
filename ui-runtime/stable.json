@@ -1,9 +1,9 @@
 {
   "schema": 1,
-  "build": 2001,
-  "bootstrap": "0.1.82",
-  "sourceSha": "d5842bbf5485259f4e836c19c3a23f7b2ff6126c",
-  "sourceTime": 1791725997,
+  "build": 3001,
+  "bootstrap": "0.1.83",
+  "sourceSha": "8076081582ef8a9847cf370520fc06ab517d3679",
+  "sourceTime": 1791726131,
   "files": [
     {
       "path": "assets/KaTeX_AMS-Regular-BQhdFMY1.woff2",
@@ -360,10 +360,10 @@
       "url": "https://github.com/yuchenm1303-png/Loom/releases/download/ui-1001/f01f3e87d9c6a61c0c081ceb577abd864eb00a612f7ac1620dd6915fad2ef5aa"
     },
     {
-      "path": "assets/index-D7qE3DI8.js",
-      "size": 1832705,
-      "sha256": "51deac24bdad57aa1959c8cb8880df58ad52672e74411d2c799e329c0b420c5f",
-      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/ui-2001/51deac24bdad57aa1959c8cb8880df58ad52672e74411d2c799e329c0b420c5f"
+      "path": "assets/index-C5atBrDi.js",
+      "size": 1832702,
+      "sha256": "a16a6f0390129076363ca47169ba8afdc1c9bafce60ff7924bd587b678ac194e",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/ui-3001/a16a6f0390129076363ca47169ba8afdc1c9bafce60ff7924bd587b678ac194e"
     },
     {
       "path": "assets/index-DtXzM451.css",
@@ -1118,8 +1118,8 @@
     {
       "path": "index.html",
       "size": 3106,
-      "sha256": "f90fc1b5e8f890cbd930e3775f82c1a8799b458b21cbdd47c37fdc2c41a10562",
-      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/ui-2001/f90fc1b5e8f890cbd930e3775f82c1a8799b458b21cbdd47c37fdc2c41a10562"
+      "sha256": "4d0e104e574976c987543e52be6e0c76a915bfa14221256fde13dee7cbd8a7bf",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/ui-3001/4d0e104e574976c987543e52be6e0c76a915bfa14221256fde13dee7cbd8a7bf"
     },
     {
       "path": "smirel-logo.png",
@@ -1142,8 +1142,8 @@
     {
       "path": "ui-baseline.json",
       "size": 80,
-      "sha256": "553c717fd5a47b8781569cc2b6b1697997d9f1374a43dc758ccb614214db352e",
-      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/ui-2001/553c717fd5a47b8781569cc2b6b1697997d9f1374a43dc758ccb614214db352e"
+      "sha256": "e8041f0c2c7023f4fb29a010eeb4317b04bb701a5fdfe2693179868fa0a51b03",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/ui-3001/e8041f0c2c7023f4fb29a010eeb4317b04bb701a5fdfe2693179868fa0a51b03"
     }
   ]
 }
