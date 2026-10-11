@@ -1129,16 +1129,16 @@ function sharedSearchRelay(): ReturnType<typeof createSearchRelay> {
 }
 
 async function changeModel(
-  apply: () => ModelLaunchSpec,
+  apply: () => ModelLaunchSpec | Promise<ModelLaunchSpec>,
   options: { persistSelection?: string } = {},
 ): Promise<ModelRestartResult> {
-  const previous = modelManager.current ?? modelManager.ensureInitial();
-  const next = apply();
+  const previous = modelManager.current ?? await modelManager.ensureInitialAsync();
+  const next = await apply();
   const hadRunningServer = rpc.ready;
   try {
     const initialization = await rpc.setModel(next);
     if (options.persistSelection) modelManager.markActive(options.persistSelection);
-    return { initialization, models: modelManager.snapshot(), hotSwitch: hadRunningServer };
+    return { initialization, models: await modelManager.switchSnapshot(), hotSwitch: hadRunningServer };
   } catch (error) {
     modelManager.restore(previous);
     if (!missingHotSwitchMethod(error)) throw error;
@@ -1146,7 +1146,7 @@ async function changeModel(
     try {
       const initialization = await rpc.restart();
       if (options.persistSelection) modelManager.setActive(options.persistSelection);
-      return { initialization, models: modelManager.snapshot(), hotSwitch: false };
+      return { initialization, models: await modelManager.switchSnapshot(), hotSwitch: false };
     } catch (fallbackError) {
       modelManager.restore(previous);
       try {
@@ -1184,7 +1184,7 @@ async function changeThreadModel(
   }
   return {
     initialization: { runtime: result.runtime ?? {} },
-    models: modelManager.snapshotFor(spec),
+    models: await modelManager.switchSnapshot(spec),
     hotSwitch: true,
     thread: result.thread,
   };
@@ -1512,11 +1512,11 @@ async function runSwitchModelProfile(threadOrSelection: string, maybeSelection?:
     const selection = String(threadOrSelection || "").trim();
     if (!selection) throw new Error("Model profile is required");
     await assertModelSelectionAllowed(selection);
-    return changeModel(() => modelManager.useProfile(selection), { persistSelection: selection });
+    return changeModel(() => modelManager.useProfileAsync(selection), { persistSelection: selection });
   }
   const selection = String(maybeSelection || "").trim();
   if (!selection) throw new Error("Model profile is required");
-  const spec = modelManager.resolve(selection);
+  const spec = await modelManager.resolveAsync(selection);
   await assertModelSelectionAllowed(spec.selection);
   return changeThreadModel(threadOrSelection, spec);
 }
@@ -1529,16 +1529,16 @@ async function runSwitchCurrentModel(
   if (modelOrUndefined === undefined) {
     const model = String(threadOrModel || "").trim();
     if (!model) throw new Error("Model ID is required");
-    const currentSelection = (modelManager.current ?? modelManager.ensureInitial()).selection;
-    const spec = modelManager.resolveModelNameFor(currentSelection, model);
+    const currentSelection = (modelManager.current ?? await modelManager.ensureInitialAsync()).selection;
+    const spec = await modelManager.resolveModelNameForAsync(currentSelection, model);
     await assertModelSelectionAllowed(spec.selection);
-    return changeModel(() => modelManager.useModelName(model));
+    return changeModel(() => modelManager.useResolvedModel(spec));
   }
   const selection = String(selectionOrUndefined || "").trim();
   const model = String(modelOrUndefined || "").trim();
   if (!selection) throw new Error("Model profile is required");
   if (!model) throw new Error("Model ID is required");
-  const spec = modelManager.resolveModelNameFor(selection, model);
+  const spec = await modelManager.resolveModelNameForAsync(selection, model);
   await assertModelSelectionAllowed(spec.selection);
   return changeThreadModel(threadOrModel, spec);
 }

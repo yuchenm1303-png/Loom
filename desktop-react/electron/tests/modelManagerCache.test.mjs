@@ -411,3 +411,32 @@ test("async start-up does not hide an unrelated failure", async () => {
   manager.resolveAsync = async () => profile();
   assert.equal((await manager.ensureInitialAsync()).selection, "saved:demo");
 });
+
+test("switch snapshot uses expired catalog without blocking on provider discovery", async () => {
+  const manager = new DesktopModelManager(os.tmpdir());
+  manager.registryCache = registry();
+  manager.registryCacheAt = 1;
+  manager.runPythonBridge = () => { throw new Error("synchronous discovery during switch"); };
+  manager.runPythonBridgeAsync = () => { throw new Error("unnecessary discovery during switch"); };
+  const result = await manager.switchSnapshot(profile());
+  assert.equal(result.current.model, "demo-1");
+});
+
+test("async model switching resolves once and preserves overrides", async () => {
+  const manager = new DesktopModelManager(os.tmpdir());
+  manager.metadataCache = { profiles: [profile()] };
+  manager.runPythonBridge = () => { throw new Error("blocking bridge"); };
+  const calls = [];
+  manager.runPythonBridgeAsync = async (_script, command, payload) => {
+    calls.push(command);
+    await new Promise(resolve => setImmediate(resolve));
+    return profile({ model: payload.model || "demo-1" });
+  };
+  const spec = await manager.resolveModelNameForAsync("saved:demo", "demo-2");
+  manager.useResolvedModel(spec);
+  assert.deepEqual(calls, ["resolve", "describe-model"]);
+  assert.equal(manager.current.model, "demo-2");
+  assert.equal((await manager.resolveAsync("saved:demo")).model, "demo-2");
+  assert.equal((await manager.resolveModelNameForAsync("saved:demo", "demo-2")).model, "demo-2");
+  assert.equal(calls.length, 2);
+});

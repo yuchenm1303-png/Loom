@@ -566,7 +566,7 @@ export class DesktopModelManager {
     return spec;
   }
 
-  private async resolveAsync(selection: string): Promise<ModelLaunchSpec> {
+  async resolveAsync(selection: string): Promise<ModelLaunchSpec> {
     const cached = this.launchCache.get(selection);
     if (cached) return cached.spec;
     const base = isAntLingSelection(selection)
@@ -703,6 +703,43 @@ export class DesktopModelManager {
     const next = this.resolve(selection);
     this.rememberCurrentModel(next.model);
     this.currentSpec = next;
+    return next;
+  }
+
+  async useProfileAsync(selection: string): Promise<ModelLaunchSpec> {
+    const next = await this.resolveAsync(selection);
+    this.rememberCurrentModel(next.model);
+    this.currentSpec = next;
+    return next;
+  }
+
+  async switchSnapshot(spec: ModelLaunchSpec | null = this.currentSpec): Promise<ModelSnapshot> {
+    // Catalogue discovery has its own refresh path; never block a switch on its TTL.
+    if (!this.registryCache) await this.listSnapshot();
+    return this.snapshotFromRegistry(spec, this.registryCache!);
+  }
+
+  async resolveModelNameForAsync(selection: string, model: string): Promise<ModelLaunchSpec> {
+    const value = String(model || "").trim();
+    if (!value) throw new Error("Model ID must not be empty");
+    const current = await this.resolveAsync(selection);
+    if (current.model === value) return current;
+    const described = isAntLingSelection(selection)
+      ? await this.runPythonBridgeAsync<ModelProfile>("loom_ant_ling_bridge.py", "describe-model", { selection, model: value })
+      : await this.runPythonBridgeAsync<ModelProfile>("loom_model_bridge.py", "describe-model", { selection, model: value });
+    const connection = described.selection && described.selection !== current.selection
+      ? await this.resolveAsync(described.selection) : current;
+    return { ...connection, model: described.model || value, reasoning: described.reasoning ?? null };
+  }
+
+  useResolvedModel(next: ModelLaunchSpec): ModelLaunchSpec {
+    if (this.currentSpec) this.rememberCurrentModel(this.currentSpec.model);
+    this.currentSpec = next;
+    const entry = this.launchCache.get(next.selection);
+    this.launchCache.set(next.selection, {
+      base: entry?.base ?? next, spec: next,
+      modelOverride: next.model, reasoningOverride: next.reasoning ?? null,
+    });
     return next;
   }
 
