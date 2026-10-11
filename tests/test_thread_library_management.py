@@ -45,6 +45,41 @@ def _build_service(tmp_path: Path):
     return service, runtime, store, workspace
 
 
+def test_project_thread_full_lifecycle_preserves_project_files(tmp_path):
+    import time
+    from app.ai import ModelResponse
+    service, runtime, store, workspace = _build_service(tmp_path)
+    class ReplyPlatform:
+        def execute_chat(self, _profile, _request):
+            return ModelResponse(text="Project message received.")
+    runtime.platform = ReplyPlatform()
+    project_file = workspace / "keep.txt"
+    project_file.write_text("project-owned", encoding="utf-8")
+    try:
+        project = service.project_create({"root": str(workspace)})["project"]
+        thread = service.thread_start({"projectId": project["id"]})["thread"]
+        thread_id = thread["id"]
+        assert thread["projectId"] == project["id"]
+        changed = service.thread_set_permission_mode({"threadId": thread_id, "permissionMode": "full-access"})
+        assert changed["thread"]["permissionMode"] == "full-access"
+        service.turn_start({"threadId": thread_id, "input": "hello project"})
+        deadline = time.monotonic() + 5
+        while service._is_active(thread_id) and time.monotonic() < deadline:
+            time.sleep(.01)
+        assert not service._is_active(thread_id)
+        read = service.thread_read({"threadId": thread_id, "presentationOnly": True})
+        assert read["thread"]["projectId"] == project["id"]
+        assert any(item.get("text") == "Project message received."
+                   for turn in read["turns"] for item in turn["items"])
+        service.thread_archive({"threadId": thread_id})
+        service.thread_archive({"threadId": thread_id, "archived": False})
+        service.thread_delete({"threadId": thread_id})
+        assert not (store.session_dir(thread_id) / "session.json").exists()
+        assert project_file.read_text(encoding="utf-8") == "project-owned"
+    finally:
+        runtime.close()
+
+
 def test_archive_delete_release_resources_but_restore_does_not(tmp_path):
     service, runtime, _store, workspace = _build_service(tmp_path)
     calls = []
