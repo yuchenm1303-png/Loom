@@ -1287,7 +1287,7 @@ export default function App() {
             completed={thread.status === "completed"} />}
           <Composer
             threadId={thread?.id}
-            disabled={loom.connection !== "ready" || archived || !account.account.authenticated}
+            disabled={loom.connection !== "ready" || archived}
             running={running}
             model={loom.models?.current?.model || loom.runtime.model}
             modelSnapshot={loom.models}

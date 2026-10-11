@@ -347,6 +347,10 @@ export function Composer({
     const sendable = attachments.filter((item) => imagesAllowed || !item.isImage);
     // A quote or attachment can carry context on its own; a truly empty composer cannot.
     if ((!typedInput && !quote && !sendable.length) || disabled || running) return;
+    if (!accountAuthenticated) {
+      onOpenAccount?.();
+      return;
+    }
     setValue("");
     setQuote(null);
     setAttachments([]);
