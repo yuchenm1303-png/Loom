@@ -1,5 +1,5 @@
 import { Check, Copy, Maximize2 } from "./icons";
-import { isValidElement, memo, useEffect, useMemo, useState, type ReactNode } from "react";
+import { isValidElement, memo, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { ImageLightbox } from "./ImageLightbox";
 import ReactMarkdown, { defaultUrlTransform, type Components } from "react-markdown";
 import { rehypeHighlightOnce } from "./markdownHighlight";
@@ -12,8 +12,8 @@ import "./markdown-message.css";
 import "./user-message-attachments.css";
 import "./stickers.css";
 import { useStreamingPresentation } from "./StreamingPresentation";
-import { streamingGraphemes } from "./streamingText";
 import { TerminalRunControl } from "./TerminalRunControl";
+import { useTypingLight } from "./useTypingLight";
 
 interface MarkdownMessageProps {
   content: string;
@@ -294,79 +294,6 @@ function markdownComponents(workspace?: string, executionDisabled = false): Comp
   };
 }
 
-interface StreamNode {
-  type: string;
-  tagName?: string;
-  value?: string;
-  properties?: Record<string, unknown>;
-  children?: StreamNode[];
-}
-
-interface StreamTailOptions {
-  enabled: boolean;
-}
-
-interface StreamTailMatch {
-  parent: StreamNode;
-  childIndex: number;
-}
-
-const STREAM_TAIL_GRAPHEMES = 6;
-const STREAM_TAIL_BLOCKED = new Set(["pre", "code", "math", "svg"]);
-
-function findStreamingTail(node: StreamNode): StreamTailMatch | null {
-  if (node.tagName && STREAM_TAIL_BLOCKED.has(node.tagName)) return null;
-  const children = node.children;
-  if (!children) return null;
-
-  // Only the final eligible node is needed; walking from the end avoids
-  // revisiting every completed row of a growing table on each paint.
-  for (let index = children.length - 1; index >= 0; index -= 1) {
-    const child = children[index];
-    if (child.type === "text" && child.value?.trim()) {
-      return { parent: node, childIndex: index };
-    }
-    const nested = findStreamingTail(child);
-    if (nested) return nested;
-  }
-  return null;
-}
-
-/**
- * Give only the newest visible prose a soft reveal without recreating the old
- * per-character DOM. The transform finds the last eligible text node and wraps
- * at most six graphemes in one stable span. Its entrance plays once per stream,
- * rather than dimming already-read characters again on every presentation tick.
- */
-function rehypeStreamingTail(options: StreamTailOptions) {
-  return (tree: StreamNode) => {
-    if (!options.enabled) return;
-
-    const match = findStreamingTail(tree);
-    if (!match) return;
-    const children = match.parent.children;
-    if (!children) return;
-
-    const target = children[match.childIndex];
-    const value = String(target.value ?? "");
-    const graphemes = streamingGraphemes(value);
-    if (!graphemes.length) return;
-
-    const splitAt = Math.max(0, graphemes.length - STREAM_TAIL_GRAPHEMES);
-    const prefix = graphemes.slice(0, splitAt).join("");
-    const tail = graphemes.slice(splitAt).join("");
-    const replacement: StreamNode[] = [];
-    if (prefix) replacement.push({ type: "text", value: prefix });
-    replacement.push({
-      type: "element",
-      tagName: "span",
-      properties: { className: ["stream-text-tail"] },
-      children: [{ type: "text", value: tail }],
-    });
-    children.splice(match.childIndex, 1, ...replacement);
-  };
-}
-
 const MarkdownRenderer = memo(function MarkdownRenderer({
   content,
   compact,
@@ -381,15 +308,14 @@ const MarkdownRenderer = memo(function MarkdownRenderer({
   receiving: boolean;
 }) {
   const components = useMemo(() => markdownComponents(workspace, receiving), [workspace, receiving]);
+  const root = useRef<HTMLDivElement>(null);
+  // The edge of the text being written glows (the quiet reasoning copy does not).
+  useTypingLight(root, !compact && (streaming || receiving), content);
   return (
-    <div className={`markdown-body ${compact ? "markdown-compact" : ""} ${streaming ? "is-streaming" : ""} ${receiving ? "is-receiving" : ""}`} aria-busy={receiving}>
+    <div ref={root} className={`markdown-body ${compact ? "markdown-compact" : ""} ${streaming ? "is-streaming" : ""} ${receiving ? "is-receiving" : ""}`} aria-busy={receiving}>
       <ReactMarkdown
         remarkPlugins={[remarkGfm, remarkMath]}
-        rehypePlugins={[
-          [rehypeStreamingTail, { enabled: streaming || receiving }],
-          rehypeKatex,
-          rehypeHighlightOnce,
-        ]}
+        rehypePlugins={[rehypeKatex, rehypeHighlightOnce]}
         components={components}
         urlTransform={markdownUrlTransform}
         skipHtml

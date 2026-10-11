@@ -164,11 +164,7 @@ html[data-loom-theme="light"] .transcript {
 .turn-process.is-live .entry-steering-user .user-rich-code-block,
 .turn-process.is-live .entry-steering-user .user-message-image-preview,
 .turn-process.is-live .entry-steering-user .user-message-attachment-card,
-.turn-process.is-live .entry-steering-user .user-message-media-preview,
-.markdown-body.is-receiving .markdown-code-block,
-.markdown-body.is-receiving .assistant-local-image-preview,
-.markdown-body.is-receiving > table,
-.markdown-body.is-receiving > blockquote {
+.turn-process.is-live .entry-steering-user .user-message-media-preview {
   animation: loom-content-surface-in 260ms var(--loom-motion-pop) both;
 }
 
@@ -246,11 +242,7 @@ html[data-loom-theme="light"] .transcript {
   .turn-block.is-active .user-rich-code-block,
   .turn-block.is-active .user-message-image-preview,
   .turn-block.is-active .user-message-attachment-card,
-  .turn-block.is-active .user-message-media-preview,
-  .markdown-body.is-receiving .markdown-code-block,
-  .markdown-body.is-receiving .assistant-local-image-preview,
-  .markdown-body.is-receiving > table,
-  .markdown-body.is-receiving > blockquote {
+  .turn-block.is-active .user-message-media-preview {
     animation: none !important;
   }
 }

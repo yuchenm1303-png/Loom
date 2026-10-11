@@ -8,11 +8,26 @@
   --loom-generation-settle: cubic-bezier(.22, .78, .2, 1);
 }
 
-/* A stable tail softens the first paint without dimming already-read text. */
-.markdown-body .stream-text-tail {
-  display: inline;
-  animation: loom-stream-tail-reveal 120ms ease-out backwards;
+/* The typing edge (useTypingLight): the newest letters of a streaming answer glow, in three bands that go out one
+   after another once nothing new arrives. A highlight is only a paint instruction, so the message is the same DOM
+   while it streams and once it is complete. */
+:root {
+  --type-ink-0: color-mix(in srgb, var(--text) 60%, #e2dcff);
+  --type-ink-1: color-mix(in srgb, var(--text) 86%, #d4ccff);
+  --type-glow-0: 0 0 9px rgba(160,140,255,.72), 0 0 2px rgba(204,192,255,.42);
+  --type-glow-1: 0 0 7px rgba(160,140,255,.36);
+  --type-glow-2: 0 0 5px rgba(160,140,255,.16);
 }
+html[data-loom-theme="light"] {
+  --type-ink-0: color-mix(in srgb, var(--text) 62%, #5b47d6);
+  --type-ink-1: color-mix(in srgb, var(--text) 86%, #6a58de);
+  --type-glow-0: 0 0 7px rgba(105,90,216,.34);
+  --type-glow-1: 0 0 6px rgba(105,90,216,.2);
+  --type-glow-2: none;
+}
+::highlight(loom-type-0) { color: var(--type-ink-0); text-shadow: var(--type-glow-0); }
+::highlight(loom-type-1) { color: var(--type-ink-1); text-shadow: var(--type-glow-1); }
+::highlight(loom-type-2) { text-shadow: var(--type-glow-2); }
 
 /* Inline stickers pop on a soft spring as the stream reaches them. They carry
    no glyphs, so they may scale and tilt; individual transform properties keep
@@ -25,13 +40,29 @@
   animation: loom-sticker-pop 220ms var(--loom-spring-soft) backwards;
 }
 
-/* New block-level Markdown should form instead of popping from plain text into
-   a large surface. No scale is used so glyph rasterization remains crisp. */
-.markdown-body.is-receiving > :is(h1,h2,h3,h4,h5,h6,blockquote,table,.markdown-code-block,.katex-display),
-.markdown-body.is-receiving > p > .assistant-local-image-preview,
-.markdown-body.is-receiving > .assistant-local-image-preview {
-  transform-origin: left top;
-  animation: loom-stream-surface-form 235ms var(--loom-generation-pop) both;
+/* A block the answer has just formed (a heading, a table, a quote, a code block, a formula, an image) rises into
+   place. This is the one entrance for all of them, at any depth (a block inside a list used to take a different
+   one from the same block at the top level). Opacity and a few pixels of travel, both on the compositor: no scale,
+   which would resample glyphs, and no clip, which repaints on the main thread every frame. Backwards fill: nothing
+   is left applied to the block afterwards. */
+.markdown-body.is-receiving :is(h1, h2, h3, h4, h5, h6, blockquote, table, .markdown-code-block, .katex-display, .assistant-local-image-preview) {
+  animation: loom-block-form 280ms var(--loom-generation-pop) backwards;
+}
+
+/* A code block catches the light once as it forms: a thin line travels along its top edge. Compositor only. */
+.markdown-body.is-receiving .markdown-code-block::after {
+  content: "";
+  position: absolute;
+  z-index: 2;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 2px;
+  pointer-events: none;
+  opacity: 0;
+  background: linear-gradient(90deg, transparent 6%, rgba(190,178,255,.9) 50%, transparent 94%);
+  box-shadow: 0 0 12px rgba(160,140,255,.5);
+  animation: loom-block-glint 780ms var(--loom-generation-settle) 140ms backwards;
 }
 
 /* Reasoning -> answer ------------------------------------------------------- */
@@ -135,11 +166,6 @@ html[data-loom-theme="light"] .turn-process.is-live .entry-steering-user .user-m
     0 0 12px rgba(105,90,216,.035);
 }
 
-@keyframes loom-stream-tail-reveal {
-  from { opacity: .78; }
-  to { opacity: 1; }
-}
-
 @keyframes loom-sticker-pop {
   0% {
     opacity: 1;
@@ -156,17 +182,15 @@ html[data-loom-theme="light"] .turn-process.is-live .entry-steering-user .user-m
   }
 }
 
-@keyframes loom-stream-surface-form {
-  from {
-    opacity: .32;
-    clip-path: inset(0 0 12px 0 round 8px);
-    transform: translateY(3px);
-  }
-  to {
-    opacity: 1;
-    clip-path: inset(0 0 0 0 round 0);
-    transform: translateY(0);
-  }
+@keyframes loom-block-form {
+  from { opacity: .3; translate: 0 6px; }
+  to { opacity: 1; translate: 0 0; }
+}
+
+@keyframes loom-block-glint {
+  0% { opacity: 0; transform: translateX(-100%); }
+  18% { opacity: 1; }
+  100% { opacity: 0; transform: translateX(100%); }
 }
 
 /* The shell usually replaces the live reasoning capsule in the same frame:
@@ -252,10 +276,8 @@ html[data-loom-theme="light"] .turn-process.is-live .entry-steering-user .user-m
     animation: none !important;
   }
 
-  .markdown-body .stream-text-tail,
-  .markdown-body.is-receiving > :is(h1,h2,h3,h4,h5,h6,blockquote,table,.markdown-code-block,.katex-display),
-  .markdown-body.is-receiving > p > .assistant-local-image-preview,
-  .markdown-body.is-receiving > .assistant-local-image-preview,
+  .markdown-body.is-receiving :is(h1, h2, h3, h4, h5, h6, blockquote, table, .markdown-code-block, .katex-display, .assistant-local-image-preview),
+  .markdown-body.is-receiving .markdown-code-block::after,
   .has-lifecycle-motion .assistant-message > .markdown-body,
   .turn-process.is-live .decision-prompt-card,
   .turn-block > .entry-user_message.is-sending,
@@ -286,8 +308,8 @@ html[data-loom-theme="light"] .turn-process.is-live .entry-steering-user .user-m
   animation: none !important;
 }
 
-:root[data-loom-reduced-motion="true"] .markdown-body .stream-text-tail,
-:root[data-loom-reduced-motion="true"] .markdown-body.is-receiving > :is(h1,h2,h3,h4,h5,h6,blockquote,table,.markdown-code-block,.katex-display),
+:root[data-loom-reduced-motion="true"] .markdown-body.is-receiving :is(h1, h2, h3, h4, h5, h6, blockquote, table, .markdown-code-block, .katex-display, .assistant-local-image-preview),
+:root[data-loom-reduced-motion="true"] .markdown-body.is-receiving .markdown-code-block::after,
 :root[data-loom-reduced-motion="true"] .has-lifecycle-motion .assistant-message > .markdown-body,
 :root[data-loom-reduced-motion="true"] .turn-block > .entry-user_message.is-sending,
 :root[data-loom-reduced-motion="true"] .turn-process.is-live .entry-steering-user,

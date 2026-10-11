@@ -45,12 +45,13 @@ try {
     await page.evaluate(() => {
       window.heading = document.querySelector('h2');
       window.headingAnimation = window.heading.getAnimations()[0];
-      window.tail = document.querySelector('.stream-text-tail');
     });
     await page.evaluate(text => window.motionFixture.plain(text + '新的文字', true), text);
     await page.waitForFunction(() => document.querySelector('.markdown-body')?.textContent.endsWith('新的文字'));
     assert.ok(await page.evaluate(() => window.heading === document.querySelector('h2') && window.heading.getAnimations()[0] === window.headingAnimation), 'completed Markdown block entrance does not restart on a new provider burst');
-    assert.ok(await page.evaluate(() => window.tail === document.querySelector('.stream-text-tail') && Number(getComputedStyle(window.tail).opacity) > .99), 'existing text tail stays crisp during updates');
+    // The newest letters carry a glow (a highlight over the text, useTypingLight), and nothing is put into the text for it.
+    assert.equal(await page.locator('.stream-text-tail').count(), 0, 'the typing edge adds no element to the text');
+    assert.ok(await page.evaluate(() => (CSS.highlights.get('loom-type-0')?.size ?? 0) > 0 && [...CSS.highlights.get('loom-type-0')][0].toString().endsWith('字')), 'the newest letters are the lit ones');
     assert.equal(await page.locator('.markdown-body').evaluate(el => getComputedStyle(el, '::after').content), 'none', 'no extra generation symbol below prose');
 
     await page.evaluate(() => { window.motionFixture.reset(); window.motionFixture.lightbox(); });

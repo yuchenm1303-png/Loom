@@ -38,11 +38,13 @@ try {
       }
       for (const [el, list] of byTarget) {
         const seen = new Map();
+        const names = new Map();
         for (const animation of list) for (const property of props(animation)) {
           if (animation.iterations === Infinity) continue;
           seen.set(property, (seen.get(property) || 0) + 1);
+          names.set(property, [...(names.get(property) || []), animation.animationName || `transition:${animation.transitionProperty}`]);
         }
-        for (const [property, count] of seen) if (count > 1) { const key = `${describe(el)} :: ${property} x${count}`; doubles.set(key, (doubles.get(key) || 0) + 1); }
+        for (const [property, count] of seen) if (count > 1) { const key = `${describe(el)} :: ${property} x${count} (${names.get(property).join(" + ")})`; doubles.set(key, (doubles.get(key) || 0) + 1); }
       }
       requestAnimationFrame(sample);
     };
