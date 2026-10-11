@@ -8,6 +8,7 @@ import electronUpdater, {
 } from "electron-updater";
 import { broadcastHostEvent, callHost, handleHostChannel, hostHasDesktopClients, isHostProcess } from "./hostProcess.js";
 import { OptimizedNsisUpdater } from "./optimizedUpdater.js";
+import { applicationUpdateState, checkApplicationUpdates, installApplicationUpdate, onApplicationUpdateStatus } from "./applicationUpdater.js";
 
 export type SoftwareUpdatePhase =
   | "disabled"
@@ -79,6 +80,10 @@ let bootstrapAutoInstallRequested = false;
 const earlyRecheckTimers: NodeJS.Timeout[] = [];
 
 export function softwareUpdateState(): SoftwareUpdateState {
+  const application = applicationUpdateState();
+  if (!updateInFlight() && (application.phase === "downloading" || application.phase === "downloaded")) {
+    return { ...state, ...application, enabled: updateEnabled, error: undefined };
+  }
   return { ...state };
 }
 
@@ -299,6 +304,7 @@ export async function checkForUpdates(): Promise<SoftwareUpdateState> {
   if (!updateEnabled) return softwareUpdateState();
   if (checkPromise) return checkPromise;
   if (updateInFlight()) return softwareUpdateState();
+  await checkApplicationUpdates();
 
   clearErrorRetry();
   lastCheckStartedAt = Date.now();
@@ -328,7 +334,10 @@ export async function checkForUpdates(): Promise<SoftwareUpdateState> {
   return checkPromise;
 }
 
-export function installDownloadedUpdate(): { accepted: boolean; state: SoftwareUpdateState } {
+export async function installDownloadedUpdate(): Promise<{ accepted: boolean; state: SoftwareUpdateState }> {
+  if (!updateInFlight() && applicationUpdateState().phase === "downloaded") {
+    return { accepted: await installApplicationUpdate(), state: softwareUpdateState() };
+  }
   if (!updateEnabled || state.phase !== "downloaded") {
     return { accepted: false, state: softwareUpdateState() };
   }
@@ -457,6 +466,7 @@ function startAutomaticChecks(): void {
 }
 
 configureUpdater();
+onApplicationUpdateStatus(broadcastState);
 
 handleHostChannel("loom:update-status", () => softwareUpdateState());
 handleHostChannel("loom:update-check", () => checkForUpdates());

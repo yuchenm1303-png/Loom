@@ -30,9 +30,11 @@ import {
 import { webRelayAuthPayload } from "./webRelayAuth.js";
 import { hostAccount } from "./hostAccount.js";
 import { createSearchRelay } from "./searchRelay.js";
-import { broadcastHostEvent, desktopPidFile, handleHostChannel, isHostProcess, onDesktopClientsChanged, prepareDesktopHost, startHostTransport } from "./hostProcess.js";
+import { broadcastHostEvent, desktopPidFile, handleHostChannel, isHostProcess, launchDesktop, onDesktopClientsChanged, prepareDesktopHost, startHostTransport } from "./hostProcess.js";
 import { registerHeadlessUpdateGuard } from "./updater.js";
+import { registerApplicationRestartGuard } from "./applicationUpdater.js";
 import {
+  currentHostRuntime,
   currentHostRuntimeVersion,
   resolveHostBrowserExtensionRoot,
   resolveHostPythonExecutable,
@@ -43,7 +45,7 @@ import { registerHostRuntimeUpdateHooks } from "./hostRuntimeUpdater.js";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const DESKTOP_ROOT = path.resolve(__dirname, "..");
-const REPO_ROOT = path.resolve(DESKTOP_ROOT, "..");
+const REPO_ROOT = app.isPackaged ? process.resourcesPath : path.resolve(DESKTOP_ROOT, "..");
 const DEV_WINDOW_ICON = path.join(DESKTOP_ROOT, "build", "icon.png");
 const HTML_ESCAPE: Record<string, string> = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
 const APP_SERVER_CONNECT_TIMEOUT_MS = 15_000;
@@ -925,14 +927,15 @@ class LoomRpcProcess {
     const python = resolvePythonExecutable();
     const accountAutomationCredential = cached.automation;
     const sandboxExecutable = resolveHostSandboxExecutable(REPO_ROOT);
-    const script = path.join(REPO_ROOT, "loom_app_server.py");
+    const runtimeRoot = currentHostRuntime(REPO_ROOT).root;
+    const script = path.join(runtimeRoot, "loom_app_server.py");
     const args = [script, "--workspace", REPO_ROOT, "--provider", spec.provider, "--model", spec.model, "--selection", spec.selection, "--local-ipc", ...runtimeModelArguments(spec)];
     if (this.modelDeferred) args.push("--allow-unconfigured-model");
     if (spec.baseUrl) args.push("--base-url", spec.baseUrl);
     if (spec.reasoning) args.push("--reasoning-kind", spec.reasoning.kind, "--reasoning-value", spec.reasoning.value);
     console.log(`[loom-app-server] launching ${python}`);
     const child = spawn(python, args, {
-      cwd: REPO_ROOT,
+      cwd: runtimeRoot,
       env: {
         ...process.env,
         ...searchRelay.env,
@@ -1081,6 +1084,9 @@ function handleRuntimeNotification(payload: JsonRpcResponse): void {
   if (payload.method === "hud/update") sendHudUpdate(payload.params ?? {});
 }
 const rpc = new LoomRpcProcess(handleRuntimeNotification, modelManager, accountClient);
+registerApplicationRestartGuard(async () => {
+  try { await rpc.assertRestartSafe(); return true; } catch { return false; }
+});
 registerHeadlessUpdateGuard(async () => {
   try {
     await rpc.assertRestartSafe();
@@ -1866,6 +1872,8 @@ app.whenReady().then(async () => {
     if (pids.length > 0) void rpc.connect().catch((error) => console.warn("[loom-app-server] early start failed", error));
   });
   await startHostTransport();
+  await globalThis.loomApplicationBootstrap?.healthy();
+  if (process.argv.includes("--loom-open-desktop-after-update")) launchDesktop();
   const authorizationRefresh = setInterval(() => { void syncAccountToolAccessCredential(); }, 30_000);
   authorizationRefresh.unref();
   app.once("before-quit", () => clearInterval(authorizationRefresh));
@@ -1873,8 +1881,12 @@ app.whenReady().then(async () => {
   // The relay owns its own reconnect loop; it stays idle until an account
   // session exists, and a failed auth lookup just schedules a retry.
   startWebRelay({ auth: webRelayAuthPayload, operations: desktopOperations });
-}).catch((error) => {
+}).catch(async (error) => {
   console.error("Loom startup failed", error);
+  if (globalThis.loomApplicationBootstrap?.build) {
+    await globalThis.loomApplicationBootstrap.failed();
+    return;
+  }
   dialog.showErrorBox("Loom startup failed", error instanceof Error ? error.message : String(error));
   app.quit();
 });

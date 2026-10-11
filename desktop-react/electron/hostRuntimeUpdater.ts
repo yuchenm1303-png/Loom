@@ -61,7 +61,7 @@ export interface HostRuntimeUpdateHooks {
 
 const CHANNEL_URL = "https://raw.githubusercontent.com/yuchenm1303-png/Loom/main/host-runtime/stable.json";
 const STARTUP_CHECK_DELAY_MS = 7_000;
-const PERIODIC_CHECK_INTERVAL_MS = 30 * 60_000;
+const PERIODIC_CHECK_INTERVAL_MS = 30_000;
 const READY_RETRY_MS = 30_000;
 const MAX_CHANNEL_BYTES = 64 * 1024;
 const MAX_RUNTIME_BYTES = 512 * 1024 * 1024;

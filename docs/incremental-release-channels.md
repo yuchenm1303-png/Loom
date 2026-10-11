@@ -1,14 +1,45 @@
 # Independent small updates
 
-Loom has three release paths. Source changes on main enter the relevant tests
-and publisher automatically; an installation is needed once to gain the new UI
-updater, after which UI-only edits do not require another installer.
+Loom has independent application and Host runtime release paths. Source changes
+on main enter tests and publishers automatically. Install the new bootstrap once
+to gain the application loader; ordinary UI, preload and Electron business-code
+edits then bypass the Windows installer build entirely.
 
 | Change | Publication | Activation |
 | --- | --- | --- |
-| React, CSS, theme, public resources | UI Resource Update; immutable `ui-*` releases and `ui-runtime/stable.json` | Background prepare; next desktop window launch |
+| React, CSS, public resources, Electron business code and preloads | Application Update; immutable `app-*` releases and `application-runtime/stable.json` | Background prepare; coordinated Host/Desktop restart |
 | Agent/runtime code and builtin model definitions | Host Runtime Release; same-source pytest gate | Existing idle-task guard, self-test, rollback |
-| Electron/preload, native/build infrastructure | Successful CI routes to Windows Release | Incremental installer download and restart |
+| Stable entry/loader/store, installed dependencies, native/build infrastructure | Successful CI routes to Windows Release | Incremental installer download and restart |
+
+An application release contains `dist/`, compiled business modules in
+`dist-electron/`, and a minimal ESM package descriptor. It excludes Electron,
+node_modules, Python and the installer. Identical files reuse immutable URLs and
+the client object cache; the first measured complete bundle is about 8 MB.
+The stable loader resolves bare module imports through the installed package,
+including dependencies inside app.asar. The sandboxed preloads remain paired
+with their UI and IPC implementation. The legacy UI publisher remains available
+for older clients; the new bootstrap uses the unified application bundle.
+
+The Host alone downloads and writes activation pointers. Desktop processes
+follow the live Host's build, so opening a window does not independently upgrade
+its IPC implementation. Restart uses the existing active-task safety boundary,
+closes connected desktops and reopens them with the new Host. Headless Hosts
+apply prepared updates when idle. Application checks start after five seconds
+and repeat every thirty seconds. The update panel shows download/restart status.
+
+Every payload is checked for exact bootstrap compatibility, safe paths, trusted
+GitHub origin, size and SHA256 before staging and again before execution. A
+candidate becomes active only after Host transport starts. Import/startup failure
+or an unacknowledged sixty-second boot triggers recovery; a crashed boot is
+quarantined on the next launch. The previous verified build or installed code
+remains the fallback. Bootstrap changes require one new installer to replace the
+stable loader; routine model defaults, account fixes and UI changes do not.
+
+Application publication runs typechecks, Electron contracts, renderer build and
+a real relocated-code/sandboxed-preload Electron probe. All assets upload before
+the channel advances; concurrent channel writes retry and newer source prevents
+stale publication. The manual Windows release dispatches application publication
+for the new exact dependency baseline.
 
 UI bundles must match the exact bootstrap version. They cannot assume new IPC
 methods until that bootstrap is installed. UI source timestamps and bundled

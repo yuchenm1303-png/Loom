@@ -104,7 +104,7 @@ function statusCopy(state: SoftwareUpdateState | null): {
     case "downloading":
       return {
         title: `Downloading Loom ${state.availableVersion || "update"}`,
-        detail: "You can keep working while Loom downloads the installer in the background.",
+        detail: "You can keep working while Loom downloads the update in the background.",
         tone: "active",
       };
     case "downloaded":

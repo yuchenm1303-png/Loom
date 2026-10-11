@@ -26,9 +26,9 @@ jobs:
         shell: bash
         run: |
           git fetch origin main
-          if ! git diff --quiet "$SOURCE_SHA" origin/main -- desktop-react/electron desktop-react/build desktop-react/package.json desktop-react/package-lock.json; then exit 0; fi
+          if ! git diff --quiet "$SOURCE_SHA" origin/main -- desktop-react/electron/entry.ts desktop-react/electron/applicationLoader.ts desktop-react/electron/applicationModuleResolver.ts desktop-react/electron/applicationUpdateStore.ts desktop-react/electron/rendererUpdateStore.ts desktop-react/build desktop-react/package.json desktop-react/package-lock.json; then exit 0; fi
           message="$(git log -1 --format=%s)"
-          if [[ "$message" == chore\(release\)* || "$message" == chore\(host\)* || "$message" == chore\(ui\)* ]]; then exit 0; fi
-          files="$(git diff-tree --no-commit-id --name-only -r "$SOURCE_SHA")"
-          if ! printf '%s\n' "$files" | grep -Eq '^desktop-react/(electron/.*\.(ts|cts)|build/|scripts/(packaged|build-windows|setup-|windows-installer|verify-packaged|host-process)|package(-lock)?\.json)'; then exit 0; fi
+          if [[ "$message" == chore\(release\)* || "$message" == chore\(host\)* || "$message" == chore\(ui\)* || "$message" == chore\(app\)* ]]; then exit 0; fi
+          files="$(git diff-tree -m --no-commit-id --name-only -r "$SOURCE_SHA")"
+          if ! printf '%s\n' "$files" | grep -Eq '^desktop-react/(electron/(entry|applicationLoader|applicationModuleResolver|applicationUpdateStore|rendererUpdateStore)\.ts|build/|scripts/(packaged|build-windows|setup-|windows-installer|verify-packaged)|package(-lock)?\.json)'; then exit 0; fi
           gh workflow run windows-release.yml --ref main -f bump=patch

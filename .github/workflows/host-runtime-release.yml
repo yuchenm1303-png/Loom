@@ -6,11 +6,14 @@ on:
     branches: [main]
     paths:
       - 'app/**'
-      - 'loom_model_bridge.py'
-      - 'loom_app_server.py'
+      - 'loom_*.py'
+      - 'run_loom.py'
+      - 'extensions/browser-current-tab/**'
       - 'pyproject.toml'
       - 'packaging/**'
       - 'desktop-react/scripts/build-windows-runtime.mjs'
+      - 'desktop-react/scripts/host-runtime-identity.mjs'
+      - 'desktop-react/scripts/package-host-runtime.mjs'
 
 permissions:
   contents: write
@@ -193,7 +196,7 @@ jobs:
           } | ConvertTo-Json
 
           git fetch origin main
-          git diff --quiet "${{ github.sha }}" origin/main -- app loom_model_bridge.py loom_app_server.py pyproject.toml packaging desktop-react/scripts/build-windows-runtime.mjs
+          git diff --quiet "${{ github.sha }}" origin/main -- app ':(glob)loom_*.py' run_loom.py extensions/browser-current-tab pyproject.toml packaging desktop-react/scripts/build-windows-runtime.mjs desktop-react/scripts/host-runtime-identity.mjs desktop-react/scripts/package-host-runtime.mjs
           if ($LASTEXITCODE -ne 0) {
             Write-Host "Newer runtime source exists; do not overwrite its stable channel."
             exit 0

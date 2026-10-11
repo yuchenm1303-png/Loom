@@ -77,7 +77,7 @@ async function check() {
 let scheduled = false;
 export async function loadUpdatedRenderer(window: BrowserWindow, bundledIndex: string) {
   const contents = window.webContents;
-  if (!app.isPackaged || process.env.LOOM_DISABLE_AUTO_UPDATES === "1") return window.loadFile(bundledIndex);
+  if (!app.isPackaged || process.env.LOOM_DISABLE_AUTO_UPDATES === "1" || globalThis.loomApplicationBootstrap) return window.loadFile(bundledIndex);
   if (!scheduled) {
     scheduled = true;
     const timer = setTimeout(() => { void check(); }, 10000); timer.unref();

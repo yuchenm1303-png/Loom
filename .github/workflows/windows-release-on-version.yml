@@ -9,6 +9,7 @@ on:
 
 permissions:
   contents: write
+  actions: write
 
 concurrency:
   group: windows-release
@@ -127,3 +128,11 @@ jobs:
             desktop-react/release/latest.yml
           if-no-files-found: error
           retention-days: 30
+
+      - name: Publish resources for the installed bootstrap baseline
+        shell: pwsh
+        run: |
+          gh workflow run application-runtime-release.yml --ref main
+          if ($LASTEXITCODE -ne 0) { throw "Could not dispatch application resource publication." }
+          gh workflow run ui-runtime-release.yml --ref main
+          if ($LASTEXITCODE -ne 0) { throw "Could not dispatch legacy UI resource publication." }

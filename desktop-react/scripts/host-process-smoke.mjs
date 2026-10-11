@@ -29,6 +29,7 @@ for (const name of Object.keys(env)) {
     delete env[name];
   }
 }
+if (process.env.LOOM_SMOKE_PYTHON) env.LOOM_PYTHON = process.env.LOOM_SMOKE_PYTHON;
 const children = [];
 let hostOutput = "";
 let hostError = null;

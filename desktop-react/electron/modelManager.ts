@@ -1,6 +1,6 @@
 import { spawn, spawnSync } from "node:child_process";
 import path from "node:path";
-import { resolveHostPythonExecutable } from "./hostRuntime.js";
+import { currentHostRuntime, resolveHostPythonExecutable } from "./hostRuntime.js";
 
 export interface ModelReasoningOption {
   value: string;
@@ -784,10 +784,11 @@ export class DesktopModelManager {
     payload: Record<string, unknown>,
   ): Promise<T> {
     const python = resolveHostPythonExecutable(this.repoRoot);
-    const script = path.join(this.repoRoot, scriptName);
+    const runtimeRoot = currentHostRuntime(this.repoRoot).root;
+    const script = path.join(runtimeRoot, scriptName);
     return new Promise<T>((resolve, reject) => {
       const child = spawn(python, [script, command], {
-        cwd: this.repoRoot,
+        cwd: runtimeRoot,
         env: { ...process.env, PYTHONUTF8: "1" },
         windowsHide: true,
         stdio: ["pipe", "pipe", "pipe"],
@@ -849,9 +850,10 @@ export class DesktopModelManager {
 
   private runPythonBridge<T>(scriptName: string, command: string, payload: Record<string, unknown>): T {
     const python = resolveHostPythonExecutable(this.repoRoot);
-    const script = path.join(this.repoRoot, scriptName);
+    const runtimeRoot = currentHostRuntime(this.repoRoot).root;
+    const script = path.join(runtimeRoot, scriptName);
     const result = spawnSync(python, [script, command], {
-      cwd: this.repoRoot,
+      cwd: runtimeRoot,
       env: { ...process.env, PYTHONUTF8: "1" },
       input: JSON.stringify(payload),
       encoding: "utf8",
