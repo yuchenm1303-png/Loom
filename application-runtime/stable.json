@@ -1,0 +1,1342 @@
+{
+  "schema": 1,
+  "kind": "application",
+  "build": 1001,
+  "bootstrap": "0.1.83",
+  "sourceSha": "8076081582ef8a9847cf370520fc06ab517d3679",
+  "sourceTime": 1791726131,
+  "files": [
+    {
+      "path": "dist/assets/index-C5atBrDi.js",
+      "size": 1832702,
+      "sha256": "a16a6f0390129076363ca47169ba8afdc1c9bafce60ff7924bd587b678ac194e",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/a16a6f0390129076363ca47169ba8afdc1c9bafce60ff7924bd587b678ac194e"
+    },
+    {
+      "path": "dist/assets/index-DtXzM451.css",
+      "size": 1146454,
+      "sha256": "8601dfb258ff2c0e80aef6913b493426a5dc30566083ac7496f73e2c44368d75",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/8601dfb258ff2c0e80aef6913b493426a5dc30566083ac7496f73e2c44368d75"
+    },
+    {
+      "path": "dist/assets/KaTeX_AMS-Regular-BQhdFMY1.woff2",
+      "size": 28076,
+      "sha256": "0cdd387c9590a1a9f9794560022dbb59654a7d86f187aa0c81495ad42d3a7308",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/0cdd387c9590a1a9f9794560022dbb59654a7d86f187aa0c81495ad42d3a7308"
+    },
+    {
+      "path": "dist/assets/KaTeX_AMS-Regular-DMm9YOAa.woff",
+      "size": 33516,
+      "sha256": "30da91e84c893f875e252689faebdc590b2871145e8adc7f9a9d4dbd8ce0b251",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/30da91e84c893f875e252689faebdc590b2871145e8adc7f9a9d4dbd8ce0b251"
+    },
+    {
+      "path": "dist/assets/KaTeX_AMS-Regular-DRggAlZN.ttf",
+      "size": 63632,
+      "sha256": "68534840bcfdd2bffb6f0e8deb48684dd01e7f04ea2813267577afb906de1d13",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/68534840bcfdd2bffb6f0e8deb48684dd01e7f04ea2813267577afb906de1d13"
+    },
+    {
+      "path": "dist/assets/KaTeX_Caligraphic-Bold-ATXxdsX0.ttf",
+      "size": 12368,
+      "sha256": "07d8e303ce4fc12b4bb54f1004170dd190a1f3db45d400fe68060df3e0897268",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/07d8e303ce4fc12b4bb54f1004170dd190a1f3db45d400fe68060df3e0897268"
+    },
+    {
+      "path": "dist/assets/KaTeX_Caligraphic-Bold-BEiXGLvX.woff",
+      "size": 7716,
+      "sha256": "1ae6bd7475590e97e7f145a89e09ccde322f7a6bc0b91607b1c8b8ee28290fed",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/1ae6bd7475590e97e7f145a89e09ccde322f7a6bc0b91607b1c8b8ee28290fed"
+    },
+    {
+      "path": "dist/assets/KaTeX_Caligraphic-Bold-Dq_IR9rO.woff2",
+      "size": 6912,
+      "sha256": "de7701e42cf1f4cf0b766c03fb27977207eee2f4fd5d76fa82188406da43ea4c",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/de7701e42cf1f4cf0b766c03fb27977207eee2f4fd5d76fa82188406da43ea4c"
+    },
+    {
+      "path": "dist/assets/KaTeX_Caligraphic-Regular-CTRA-rTL.woff",
+      "size": 7656,
+      "sha256": "3398dd02302557a793f2863f88e02d96ce10df2abffa07c8e9fa90775116e65c",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/3398dd02302557a793f2863f88e02d96ce10df2abffa07c8e9fa90775116e65c"
+    },
+    {
+      "path": "dist/assets/KaTeX_Caligraphic-Regular-Di6jR-x-.woff2",
+      "size": 6908,
+      "sha256": "5d53e70ad607c2352162dec9e0923fb54ecdafaccbf604cd8dcf7d00facb989b",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/5d53e70ad607c2352162dec9e0923fb54ecdafaccbf604cd8dcf7d00facb989b"
+    },
+    {
+      "path": "dist/assets/KaTeX_Caligraphic-Regular-wX97UBjC.ttf",
+      "size": 12344,
+      "sha256": "ed0b74372feefcbb9c0666b2e210da37b7e49fa7fbbf3eeb11db5f693dacfbb7",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/ed0b74372feefcbb9c0666b2e210da37b7e49fa7fbbf3eeb11db5f693dacfbb7"
+    },
+    {
+      "path": "dist/assets/KaTeX_Fraktur-Bold-BdnERNNW.ttf",
+      "size": 19584,
+      "sha256": "9163df9c7122432e6495b4229fa9071cf9ae86a758ae5efc4924ec2e1a6dbce1",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/9163df9c7122432e6495b4229fa9071cf9ae86a758ae5efc4924ec2e1a6dbce1"
+    },
+    {
+      "path": "dist/assets/KaTeX_Fraktur-Bold-BsDP51OF.woff",
+      "size": 13296,
+      "sha256": "9be7ceb88004ab8ad124082246fbfcca4091e36385d4ec6ed1df67375dad50fb",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/9be7ceb88004ab8ad124082246fbfcca4091e36385d4ec6ed1df67375dad50fb"
+    },
+    {
+      "path": "dist/assets/KaTeX_Fraktur-Bold-CL6g_b3V.woff2",
+      "size": 11348,
+      "sha256": "74444efd593c005e3f4573b44524704c0af0a937fe911cca9e94068d0d140d3f",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/74444efd593c005e3f4573b44524704c0af0a937fe911cca9e94068d0d140d3f"
+    },
+    {
+      "path": "dist/assets/KaTeX_Fraktur-Regular-CB_wures.ttf",
+      "size": 19572,
+      "sha256": "1e6f9579e90e2cac37f8f60a597c436e075c114385652b7cbeb0dec0421291b3",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/1e6f9579e90e2cac37f8f60a597c436e075c114385652b7cbeb0dec0421291b3"
+    },
+    {
+      "path": "dist/assets/KaTeX_Fraktur-Regular-CTYiF6lA.woff2",
+      "size": 11316,
+      "sha256": "51814d270d06ff0255dba0799994fa4d8c84d11f09951d47595f4abb1f3602dc",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/51814d270d06ff0255dba0799994fa4d8c84d11f09951d47595f4abb1f3602dc"
+    },
+    {
+      "path": "dist/assets/KaTeX_Fraktur-Regular-Dxdc4cR9.woff",
+      "size": 13208,
+      "sha256": "5e28753be717dac97f559f49bc10be9cf3c124ddcabda6659d11cb68febc6463",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/5e28753be717dac97f559f49bc10be9cf3c124ddcabda6659d11cb68febc6463"
+    },
+    {
+      "path": "dist/assets/KaTeX_Main-Bold-Cx986IdX.woff2",
+      "size": 25324,
+      "sha256": "0f60d1b897938ec918c8ce073092411baf9438f6739465693ff18b0f9d20b021",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/0f60d1b897938ec918c8ce073092411baf9438f6739465693ff18b0f9d20b021"
+    },
+    {
+      "path": "dist/assets/KaTeX_Main-Bold-Jm3AIy58.woff",
+      "size": 29912,
+      "sha256": "c76c5d696297d51b9cb1639c7da4334f0e7dec81b42b11213b5e25ef671bb822",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/c76c5d696297d51b9cb1639c7da4334f0e7dec81b42b11213b5e25ef671bb822"
+    },
+    {
+      "path": "dist/assets/KaTeX_Main-Bold-waoOVXN0.ttf",
+      "size": 51336,
+      "sha256": "138ac28d1663b3037e9c5f52371fa5c63d8324f4a38d22cd573e6ea3a3fd0cf8",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/138ac28d1663b3037e9c5f52371fa5c63d8324f4a38d22cd573e6ea3a3fd0cf8"
+    },
+    {
+      "path": "dist/assets/KaTeX_Main-BoldItalic-DxDJ3AOS.woff2",
+      "size": 16780,
+      "sha256": "99cd42a3c072d918f2f44984a807cf7aa16e13545fd0875fc07c6c65f99e715b",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/99cd42a3c072d918f2f44984a807cf7aa16e13545fd0875fc07c6c65f99e715b"
+    },
+    {
+      "path": "dist/assets/KaTeX_Main-BoldItalic-DzxPMmG6.ttf",
+      "size": 32968,
+      "sha256": "70ee1f64a20f2048c21940ef46d0144fd215baa953ca69afd1e31e98544f708f",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/70ee1f64a20f2048c21940ef46d0144fd215baa953ca69afd1e31e98544f708f"
+    },
+    {
+      "path": "dist/assets/KaTeX_Main-BoldItalic-SpSLRI95.woff",
+      "size": 19412,
+      "sha256": "a6f7ec0d846ac7ad975adb8959c37ed49b94acbc4ae436db9ce9e20287e4a64c",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/a6f7ec0d846ac7ad975adb8959c37ed49b94acbc4ae436db9ce9e20287e4a64c"
+    },
+    {
+      "path": "dist/assets/KaTeX_Main-Italic-3WenGoN9.ttf",
+      "size": 33580,
+      "sha256": "0d85ae7cc30f23790a7f1a58c4a112fdca8aae769b6ba11429af1d98b1b6cb3a",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/0d85ae7cc30f23790a7f1a58c4a112fdca8aae769b6ba11429af1d98b1b6cb3a"
+    },
+    {
+      "path": "dist/assets/KaTeX_Main-Italic-BMLOBm91.woff",
+      "size": 19676,
+      "sha256": "f1d6ef86f3b11a528bd5185199bd2443ecb2b0dead96d88674b5a2c12be24bdf",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/f1d6ef86f3b11a528bd5185199bd2443ecb2b0dead96d88674b5a2c12be24bdf"
+    },
+    {
+      "path": "dist/assets/KaTeX_Main-Italic-NWA7e6Wa.woff2",
+      "size": 16988,
+      "sha256": "97479ca6cce906abc961ecac96faa5f9ca2e61b8e7670d475826bcdee9a7c267",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/97479ca6cce906abc961ecac96faa5f9ca2e61b8e7670d475826bcdee9a7c267"
+    },
+    {
+      "path": "dist/assets/KaTeX_Main-Regular-B22Nviop.woff2",
+      "size": 26272,
+      "sha256": "c2342cd8b869e01752a9321dc17213fc40d4d04c79688c1d43f2cf316abd7866",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/c2342cd8b869e01752a9321dc17213fc40d4d04c79688c1d43f2cf316abd7866"
+    },
+    {
+      "path": "dist/assets/KaTeX_Main-Regular-Dr94JaBh.woff",
+      "size": 30772,
+      "sha256": "c6368d87e8a1a3a5d337623d83d8dc4b868f242a9ad476237d6f8d1e0f168cdc",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/c6368d87e8a1a3a5d337623d83d8dc4b868f242a9ad476237d6f8d1e0f168cdc"
+    },
+    {
+      "path": "dist/assets/KaTeX_Main-Regular-ypZvNtVU.ttf",
+      "size": 53580,
+      "sha256": "d0332f52868370fd83ae7fa46470f90c8f2eab2fcf12bc4f88080b340c95a830",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/d0332f52868370fd83ae7fa46470f90c8f2eab2fcf12bc4f88080b340c95a830"
+    },
+    {
+      "path": "dist/assets/KaTeX_Math-BoldItalic-B3XSjfu4.ttf",
+      "size": 31196,
+      "sha256": "f9377ab0271cda59af24bcffbd46a4d0c8a3572ffafdbb38de2ad5ea7b0d5ee5",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/f9377ab0271cda59af24bcffbd46a4d0c8a3572ffafdbb38de2ad5ea7b0d5ee5"
+    },
+    {
+      "path": "dist/assets/KaTeX_Math-BoldItalic-CZnvNsCZ.woff2",
+      "size": 16400,
+      "sha256": "dc47344dbb6cb5b655c8460d561f4df5f501b90c804ad3c6cec65fe322351ab1",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/dc47344dbb6cb5b655c8460d561f4df5f501b90c804ad3c6cec65fe322351ab1"
+    },
+    {
+      "path": "dist/assets/KaTeX_Math-BoldItalic-iY-2wyZ7.woff",
+      "size": 18668,
+      "sha256": "850c0af5c2238497febaf5e461d880bf458c341f42f4f330f1b1ab5698b1998e",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/850c0af5c2238497febaf5e461d880bf458c341f42f4f330f1b1ab5698b1998e"
+    },
+    {
+      "path": "dist/assets/KaTeX_Math-Italic-DA0__PXp.woff",
+      "size": 18748,
+      "sha256": "8a8d244581371912b8f3f5a23e2437cb2a59cd9bcaebb0346e722c05737a2571",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/8a8d244581371912b8f3f5a23e2437cb2a59cd9bcaebb0346e722c05737a2571"
+    },
+    {
+      "path": "dist/assets/KaTeX_Math-Italic-flOr_0UB.ttf",
+      "size": 31308,
+      "sha256": "08ce98e51b04d58945a301e639e02b6998af29fdfd61a7b8afdd07bbfc479d4a",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/08ce98e51b04d58945a301e639e02b6998af29fdfd61a7b8afdd07bbfc479d4a"
+    },
+    {
+      "path": "dist/assets/KaTeX_Math-Italic-t53AETM-.woff2",
+      "size": 16440,
+      "sha256": "7af58c5ec8f132a2ddde9027c6d7814decce4d3b822a11192a42a20e2e973264",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/7af58c5ec8f132a2ddde9027c6d7814decce4d3b822a11192a42a20e2e973264"
+    },
+    {
+      "path": "dist/assets/KaTeX_SansSerif-Bold-CFMepnvq.ttf",
+      "size": 24504,
+      "sha256": "1ece03f79f95277d57dc7f6b435a74e1379b0d46104a8530286b60ff49369ea0",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/1ece03f79f95277d57dc7f6b435a74e1379b0d46104a8530286b60ff49369ea0"
+    },
+    {
+      "path": "dist/assets/KaTeX_SansSerif-Bold-D1sUS0GD.woff2",
+      "size": 12216,
+      "sha256": "e99ae51144bf1232efcc1bfe5add36262c6866b0faab24fa75740e1b98577a62",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/e99ae51144bf1232efcc1bfe5add36262c6866b0faab24fa75740e1b98577a62"
+    },
+    {
+      "path": "dist/assets/KaTeX_SansSerif-Bold-DbIhKOiC.woff",
+      "size": 14408,
+      "sha256": "ece03cfd83e22c212cdef66feb8442d25a083beb988db3f1883f3f9738d750ba",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/ece03cfd83e22c212cdef66feb8442d25a083beb988db3f1883f3f9738d750ba"
+    },
+    {
+      "path": "dist/assets/KaTeX_SansSerif-Italic-C3H0VqGB.woff2",
+      "size": 12028,
+      "sha256": "00b26ac825e2095056396e0553b8ac26d3f8ad158c3826e28b4c45b385c4714a",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/00b26ac825e2095056396e0553b8ac26d3f8ad158c3826e28b4c45b385c4714a"
+    },
+    {
+      "path": "dist/assets/KaTeX_SansSerif-Italic-DN2j7dab.woff",
+      "size": 14112,
+      "sha256": "91ee67500cc0129aa0ace3ac5c61ff1692102f0f31d02b69347fba35dcb75bf2",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/91ee67500cc0129aa0ace3ac5c61ff1692102f0f31d02b69347fba35dcb75bf2"
+    },
+    {
+      "path": "dist/assets/KaTeX_SansSerif-Italic-YYjJ1zSn.ttf",
+      "size": 22364,
+      "sha256": "3931dd81faed86ba021bb2bbdc36f5bed9a38d6b4f4077aca59b265aa1b02083",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/3931dd81faed86ba021bb2bbdc36f5bed9a38d6b4f4077aca59b265aa1b02083"
+    },
+    {
+      "path": "dist/assets/KaTeX_SansSerif-Regular-BNo7hRIc.ttf",
+      "size": 19436,
+      "sha256": "f36ea897e19f4a2e571d1e900e4e3710e438deb05a842486045ba0a3e616a4ad",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/f36ea897e19f4a2e571d1e900e4e3710e438deb05a842486045ba0a3e616a4ad"
+    },
+    {
+      "path": "dist/assets/KaTeX_SansSerif-Regular-CS6fqUqJ.woff",
+      "size": 12316,
+      "sha256": "11e4dc8a6471ff6d6ee561d53d10fde8f7489e798257ff449c5d37c197435605",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/11e4dc8a6471ff6d6ee561d53d10fde8f7489e798257ff449c5d37c197435605"
+    },
+    {
+      "path": "dist/assets/KaTeX_SansSerif-Regular-DDBCnlJ7.woff2",
+      "size": 10344,
+      "sha256": "68e8c73ef42afd3ccec58bf0fba302cce448938e7fc020a5e31f8a952eee1342",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/68e8c73ef42afd3ccec58bf0fba302cce448938e7fc020a5e31f8a952eee1342"
+    },
+    {
+      "path": "dist/assets/KaTeX_Script-Regular-C5JkGWo-.ttf",
+      "size": 16648,
+      "sha256": "1c67f068fea8bb09bf099c088b1cf64bd27516a6e07f4684344873564bb66a67",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/1c67f068fea8bb09bf099c088b1cf64bd27516a6e07f4684344873564bb66a67"
+    },
+    {
+      "path": "dist/assets/KaTeX_Script-Regular-D3wIWfF6.woff2",
+      "size": 9644,
+      "sha256": "036d4e95149b69ff9bcc0cd55771efeb25ffa3947293e69acd78d5ac328c684b",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/036d4e95149b69ff9bcc0cd55771efeb25ffa3947293e69acd78d5ac328c684b"
+    },
+    {
+      "path": "dist/assets/KaTeX_Script-Regular-D5yQViql.woff",
+      "size": 10588,
+      "sha256": "d96cdf2b3bdd4d64a8fd5f74a4c467f123a8a73931cd435889f08ffaf9bf947a",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/d96cdf2b3bdd4d64a8fd5f74a4c467f123a8a73931cd435889f08ffaf9bf947a"
+    },
+    {
+      "path": "dist/assets/KaTeX_Size1-Regular-C195tn64.woff",
+      "size": 6496,
+      "sha256": "c943cc986384f59e86bea5fd7dc50a9c4dfe567a7c05eb40d6790720dead97c9",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/c943cc986384f59e86bea5fd7dc50a9c4dfe567a7c05eb40d6790720dead97c9"
+    },
+    {
+      "path": "dist/assets/KaTeX_Size1-Regular-Dbsnue_I.ttf",
+      "size": 12228,
+      "sha256": "95b6d2f1a50173bfedb8c63e1d1c99b10427d0a4df4201cb44513b226951a22b",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/95b6d2f1a50173bfedb8c63e1d1c99b10427d0a4df4201cb44513b226951a22b"
+    },
+    {
+      "path": "dist/assets/KaTeX_Size1-Regular-mCD8mA8B.woff2",
+      "size": 5468,
+      "sha256": "6b47c40166b6dbe21a5dfca7718413f2147fd2399be1ba605d8ad39cedf25dfe",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/6b47c40166b6dbe21a5dfca7718413f2147fd2399be1ba605d8ad39cedf25dfe"
+    },
+    {
+      "path": "dist/assets/KaTeX_Size2-Regular-B7gKUWhC.ttf",
+      "size": 11508,
+      "sha256": "a6b2099fb555c60e3a0db3a08842ebf1d732c6eb4e4bf44913613bed4fc4e39b",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/a6b2099fb555c60e3a0db3a08842ebf1d732c6eb4e4bf44913613bed4fc4e39b"
+    },
+    {
+      "path": "dist/assets/KaTeX_Size2-Regular-Dy4dx90m.woff2",
+      "size": 5208,
+      "sha256": "d04c54219f9eaec6d4d4fd42dfb28785975a4794d6b2fc71e566b9cd6db842dd",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/d04c54219f9eaec6d4d4fd42dfb28785975a4794d6b2fc71e566b9cd6db842dd"
+    },
+    {
+      "path": "dist/assets/KaTeX_Size2-Regular-oD1tc_U0.woff",
+      "size": 6188,
+      "sha256": "2014c523c3210bcc166648c4d4cc57f05b747df07a24277bf71c51e67dc79e3d",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/2014c523c3210bcc166648c4d4cc57f05b747df07a24277bf71c51e67dc79e3d"
+    },
+    {
+      "path": "dist/assets/KaTeX_Size3-Regular-CTq5MqoE.woff",
+      "size": 4420,
+      "sha256": "6ab6b62e9b62dae2c00dd90f791bd10950be0ecc3490d7d6045f51c2e8fe0949",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/6ab6b62e9b62dae2c00dd90f791bd10950be0ecc3490d7d6045f51c2e8fe0949"
+    },
+    {
+      "path": "dist/assets/KaTeX_Size3-Regular-DgpXs0kz.ttf",
+      "size": 7588,
+      "sha256": "500e04d54f0d51666332c9d2089aa803be22aa878eca539e59fa53c6e522b082",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/500e04d54f0d51666332c9d2089aa803be22aa878eca539e59fa53c6e522b082"
+    },
+    {
+      "path": "dist/assets/KaTeX_Size4-Regular-BF-4gkZK.woff",
+      "size": 5980,
+      "sha256": "99f9c6750b489c9462bf04900bd3f939df9b829339daaaaa99ef5495cdddea58",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/99f9c6750b489c9462bf04900bd3f939df9b829339daaaaa99ef5495cdddea58"
+    },
+    {
+      "path": "dist/assets/KaTeX_Size4-Regular-Dl5lxZxV.woff2",
+      "size": 4928,
+      "sha256": "a4af7d414440a1c1790825cfb700cf9cf43b0f2c4b04f0ebc523011ad9853ec0",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/a4af7d414440a1c1790825cfb700cf9cf43b0f2c4b04f0ebc523011ad9853ec0"
+    },
+    {
+      "path": "dist/assets/KaTeX_Size4-Regular-DWFBv043.ttf",
+      "size": 10364,
+      "sha256": "c647367d1dd4e162468717d020e1fc0f1dc5c26ebfdffbe55261713bf88c5877",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/c647367d1dd4e162468717d020e1fc0f1dc5c26ebfdffbe55261713bf88c5877"
+    },
+    {
+      "path": "dist/assets/KaTeX_Typewriter-Regular-C0xS9mPB.woff",
+      "size": 16028,
+      "sha256": "e14fed02b1aba7ce9f5afd5844b5d0321b22351febc720e0de8b8723527609f7",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/e14fed02b1aba7ce9f5afd5844b5d0321b22351febc720e0de8b8723527609f7"
+    },
+    {
+      "path": "dist/assets/KaTeX_Typewriter-Regular-CO6r4hn1.woff2",
+      "size": 13568,
+      "sha256": "71d517d67827787cfabdf186914cc3358eda539e37931941f2b2fd4a21f68c0b",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/71d517d67827787cfabdf186914cc3358eda539e37931941f2b2fd4a21f68c0b"
+    },
+    {
+      "path": "dist/assets/KaTeX_Typewriter-Regular-D3Ib7_Hf.ttf",
+      "size": 27556,
+      "sha256": "f01f3e87d9c6a61c0c081ceb577abd864eb00a612f7ac1620dd6915fad2ef5aa",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/f01f3e87d9c6a61c0c081ceb577abd864eb00a612f7ac1620dd6915fad2ef5aa"
+    },
+    {
+      "path": "dist/assets/scale-11-yukino-cursor-CiBDGVLM.png",
+      "size": 8168,
+      "sha256": "7687db48e3b5b15885e85393274686ef7ba5d17fb04499460e6eff1c87132cee",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/7687db48e3b5b15885e85393274686ef7ba5d17fb04499460e6eff1c87132cee"
+    },
+    {
+      "path": "dist/assets/scale-11-yukino-cursor-white-CJKfOvlA.png",
+      "size": 8145,
+      "sha256": "76cd3456eec8f3f64ec1418b6e5bb8266e5ced8170efe80a9a41f96a59d0a84c",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/76cd3456eec8f3f64ec1418b6e5bb8266e5ced8170efe80a9a41f96a59d0a84c"
+    },
+    {
+      "path": "dist/assets/scale-11-yukino-cursor-white@1.5x-C6luDVaz.png",
+      "size": 16267,
+      "sha256": "8222d7bad7e972a13519c055629d834ff83fa129aa1a755d0c043cfe302402e9",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/8222d7bad7e972a13519c055629d834ff83fa129aa1a755d0c043cfe302402e9"
+    },
+    {
+      "path": "dist/assets/scale-11-yukino-cursor-white@2x-D6oCJYD2.png",
+      "size": 26671,
+      "sha256": "4080c83dd6924983d846ba8e787b3ab2c3b7be71910e8b2b76b37d55fe1e801e",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/4080c83dd6924983d846ba8e787b3ab2c3b7be71910e8b2b76b37d55fe1e801e"
+    },
+    {
+      "path": "dist/assets/scale-11-yukino-cursor-white@3x-Cb59IJeX.png",
+      "size": 52505,
+      "sha256": "259d59e259e3b59bb57ea7c6eba2bebbeb1fa92a1f4e7292bf294fa9b0ecbf06",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/259d59e259e3b59bb57ea7c6eba2bebbeb1fa92a1f4e7292bf294fa9b0ecbf06"
+    },
+    {
+      "path": "dist/assets/scale-11-yukino-cursor@1.5x-CimG0i3M.png",
+      "size": 16294,
+      "sha256": "9cc817a7bd58827860f869fdc1958e5f77d34e55890170594a0fca8a08a95e87",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/9cc817a7bd58827860f869fdc1958e5f77d34e55890170594a0fca8a08a95e87"
+    },
+    {
+      "path": "dist/assets/scale-11-yukino-cursor@2x-_huje_tg.png",
+      "size": 26696,
+      "sha256": "46e1eb8c0e028612508d96bc41864e43e5a781de139eb27dd9eecc7b89b8c1d7",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/46e1eb8c0e028612508d96bc41864e43e5a781de139eb27dd9eecc7b89b8c1d7"
+    },
+    {
+      "path": "dist/assets/scale-11-yukino-cursor@3x-VUlr_cF1.png",
+      "size": 52537,
+      "sha256": "beccdefddbcfef52c8326069cc475c4d8688c951332cf36ec5522fb5d559b69a",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/beccdefddbcfef52c8326069cc475c4d8688c951332cf36ec5522fb5d559b69a"
+    },
+    {
+      "path": "dist/assets/scale-12-yukino-cursor-DLQAX40e.png",
+      "size": 8190,
+      "sha256": "d3afb3d82ad1dbe69395548b937c91544999e3ef077668fb819bbc008f0c44c1",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/d3afb3d82ad1dbe69395548b937c91544999e3ef077668fb819bbc008f0c44c1"
+    },
+    {
+      "path": "dist/assets/scale-12-yukino-cursor-white-Qs2BfhmZ.png",
+      "size": 8168,
+      "sha256": "9c4bd18c10addb9b5ab7e3d362f56943c8df004221cfe84ff7b1b61b315cdb46",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/9c4bd18c10addb9b5ab7e3d362f56943c8df004221cfe84ff7b1b61b315cdb46"
+    },
+    {
+      "path": "dist/assets/scale-12-yukino-cursor-white@1.5x-iiRmukxI.png",
+      "size": 16289,
+      "sha256": "e7dd065ca30c05389a38ec7c5a2e88e3fd8131b3b82c5d5b5927ce8b14d7a7a1",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/e7dd065ca30c05389a38ec7c5a2e88e3fd8131b3b82c5d5b5927ce8b14d7a7a1"
+    },
+    {
+      "path": "dist/assets/scale-12-yukino-cursor-white@2x-B7XafcYg.png",
+      "size": 26710,
+      "sha256": "5f84f3328c06f52672f9a582455a03666e0d6c7286ee57b154ee28d5e016106c",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/5f84f3328c06f52672f9a582455a03666e0d6c7286ee57b154ee28d5e016106c"
+    },
+    {
+      "path": "dist/assets/scale-12-yukino-cursor-white@3x-CwRGvUYD.png",
+      "size": 52496,
+      "sha256": "ad6aa0715d55fcb7474282310a9c5ff24a08c17689288790272e3254931f76a0",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/ad6aa0715d55fcb7474282310a9c5ff24a08c17689288790272e3254931f76a0"
+    },
+    {
+      "path": "dist/assets/scale-12-yukino-cursor@1.5x-BeMgmJDd.png",
+      "size": 16307,
+      "sha256": "7a52252be966629253e2047a38f5700d242a30d9c58a59766427e1a509c9c123",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/7a52252be966629253e2047a38f5700d242a30d9c58a59766427e1a509c9c123"
+    },
+    {
+      "path": "dist/assets/scale-12-yukino-cursor@2x-CaI4xscY.png",
+      "size": 26735,
+      "sha256": "e3fe3983af35f4707bc8ac023bc85185ff0ab42c4a1ba40d5a07c68c7c391cce",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/e3fe3983af35f4707bc8ac023bc85185ff0ab42c4a1ba40d5a07c68c7c391cce"
+    },
+    {
+      "path": "dist/assets/scale-12-yukino-cursor@3x-BZtUWMW_.png",
+      "size": 52545,
+      "sha256": "f6733b4fd0085cae5a0b1d297205d9a55f879992aa28efd5c24dc358dc6de8f5",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/f6733b4fd0085cae5a0b1d297205d9a55f879992aa28efd5c24dc358dc6de8f5"
+    },
+    {
+      "path": "dist/assets/scale-13-yukino-cursor-CbB6FjKh.png",
+      "size": 8192,
+      "sha256": "cfb961632900567785c0303c15a2139b01fb47c97d6890b6e0a3a7923ab1983d",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/cfb961632900567785c0303c15a2139b01fb47c97d6890b6e0a3a7923ab1983d"
+    },
+    {
+      "path": "dist/assets/scale-13-yukino-cursor-white-T9TmWOe2.png",
+      "size": 8171,
+      "sha256": "ecac6e07abff61abf62c4b906704cc876525db9f53201f12845e1cb42a92a45c",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/ecac6e07abff61abf62c4b906704cc876525db9f53201f12845e1cb42a92a45c"
+    },
+    {
+      "path": "dist/assets/scale-13-yukino-cursor-white@1.5x-BkE-c7AA.png",
+      "size": 16292,
+      "sha256": "b5410a5f68136494badca2c764d935a266c8ddae1c11931486228d4dba3990d7",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/b5410a5f68136494badca2c764d935a266c8ddae1c11931486228d4dba3990d7"
+    },
+    {
+      "path": "dist/assets/scale-13-yukino-cursor-white@2x-Qs1VznT7.png",
+      "size": 26662,
+      "sha256": "8c0bfe7bd7e303f6d3e04ae75215f88398c157c76333c7045fb0931a2951c9ac",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/8c0bfe7bd7e303f6d3e04ae75215f88398c157c76333c7045fb0931a2951c9ac"
+    },
+    {
+      "path": "dist/assets/scale-13-yukino-cursor-white@3x-D0ltJdS_.png",
+      "size": 52553,
+      "sha256": "af9fd5bb88de42ce8202e5ca41089ee8945512853b5d37c116c309455d69b15d",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/af9fd5bb88de42ce8202e5ca41089ee8945512853b5d37c116c309455d69b15d"
+    },
+    {
+      "path": "dist/assets/scale-13-yukino-cursor@1.5x-BzK_rfdW.png",
+      "size": 16309,
+      "sha256": "5cde7207a1c1f7b618d1adc40aa498c59ade835c4a13be9ce772bb156aceed12",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/5cde7207a1c1f7b618d1adc40aa498c59ade835c4a13be9ce772bb156aceed12"
+    },
+    {
+      "path": "dist/assets/scale-13-yukino-cursor@2x-B2lpENXq.png",
+      "size": 26695,
+      "sha256": "83109e0ca2e20323d615d696fe699ad5832394a2231c97848427a92de1a3dba3",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/83109e0ca2e20323d615d696fe699ad5832394a2231c97848427a92de1a3dba3"
+    },
+    {
+      "path": "dist/assets/scale-13-yukino-cursor@3x-Bt3q6Kf0.png",
+      "size": 52599,
+      "sha256": "cab4726a7755b4e1b928b4ed648d023aaf67e989240502fe48ac7d80d26bac81",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/cab4726a7755b4e1b928b4ed648d023aaf67e989240502fe48ac7d80d26bac81"
+    },
+    {
+      "path": "dist/assets/scale-14-yukino-cursor-DP2IA18S.png",
+      "size": 8197,
+      "sha256": "08c9c827afad547c38eb388e6d15ee581f834c53979aa5e1ea2faf889a61c7a5",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/08c9c827afad547c38eb388e6d15ee581f834c53979aa5e1ea2faf889a61c7a5"
+    },
+    {
+      "path": "dist/assets/scale-14-yukino-cursor-white-DKaXfUct.png",
+      "size": 8191,
+      "sha256": "f7a1bb28d6865d16e54d1c396ebb2d0020c9e72106ecb7343cfd9fe0d46cab57",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/f7a1bb28d6865d16e54d1c396ebb2d0020c9e72106ecb7343cfd9fe0d46cab57"
+    },
+    {
+      "path": "dist/assets/scale-14-yukino-cursor-white@1.5x-DnNDFrSC.png",
+      "size": 16293,
+      "sha256": "6979e1bd1398aa0757bfc30540b3a6b30c0cf5ccd4591bc08d9675300197b2b5",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/6979e1bd1398aa0757bfc30540b3a6b30c0cf5ccd4591bc08d9675300197b2b5"
+    },
+    {
+      "path": "dist/assets/scale-14-yukino-cursor-white@2x-DOvovr0D.png",
+      "size": 26704,
+      "sha256": "ec23a61abf43e80b77e9db953250a0f7bd5204ad48270f3e22cf536f0f105447",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/ec23a61abf43e80b77e9db953250a0f7bd5204ad48270f3e22cf536f0f105447"
+    },
+    {
+      "path": "dist/assets/scale-14-yukino-cursor-white@3x-DdNx5nWS.png",
+      "size": 52589,
+      "sha256": "7b1f1da19119054ae02c8c372f8c376f035782ea65787a11e060e27d90439320",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/7b1f1da19119054ae02c8c372f8c376f035782ea65787a11e060e27d90439320"
+    },
+    {
+      "path": "dist/assets/scale-14-yukino-cursor@1.5x-lUP9yxOp.png",
+      "size": 16300,
+      "sha256": "88bbe945cc82f332cabeaa45e3fef4077ef7dc04047e4c2cb12772f9fe6f4d7e",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/88bbe945cc82f332cabeaa45e3fef4077ef7dc04047e4c2cb12772f9fe6f4d7e"
+    },
+    {
+      "path": "dist/assets/scale-14-yukino-cursor@2x-i18OiF1f.png",
+      "size": 26745,
+      "sha256": "0a4061f0429a7fb757c6be20c1edf1fa5a87f19c21b631870d195ec0c2252afb",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/0a4061f0429a7fb757c6be20c1edf1fa5a87f19c21b631870d195ec0c2252afb"
+    },
+    {
+      "path": "dist/assets/scale-14-yukino-cursor@3x-3MtFbp36.png",
+      "size": 52647,
+      "sha256": "b2d292f40728aec6d074f7d9c4c7ffb86a749364bf27af8a5c969c125c53d27b",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/b2d292f40728aec6d074f7d9c4c7ffb86a749364bf27af8a5c969c125c53d27b"
+    },
+    {
+      "path": "dist/assets/scale-2-yukino-cursor-bfxsoQls.png",
+      "size": 8134,
+      "sha256": "10e1f58b1bfc822ee0296bd07c06473413f4044de31f8b2e1d6070927f67754e",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/10e1f58b1bfc822ee0296bd07c06473413f4044de31f8b2e1d6070927f67754e"
+    },
+    {
+      "path": "dist/assets/scale-2-yukino-cursor-white-Bb_uXSl_.png",
+      "size": 8124,
+      "sha256": "6b8c2b2ef7eb9b0d74f16f70c4cf19e0958494db32082a378d9a461ada9538fc",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/6b8c2b2ef7eb9b0d74f16f70c4cf19e0958494db32082a378d9a461ada9538fc"
+    },
+    {
+      "path": "dist/assets/scale-2-yukino-cursor-white@1.5x-DlLPtguZ.png",
+      "size": 16178,
+      "sha256": "f7f83f7b965b04554a4077d217bc8235a1a9a45b1d2a4b1579c7c18327ce0ad2",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/f7f83f7b965b04554a4077d217bc8235a1a9a45b1d2a4b1579c7c18327ce0ad2"
+    },
+    {
+      "path": "dist/assets/scale-2-yukino-cursor-white@2x-DiOXaBAj.png",
+      "size": 26582,
+      "sha256": "87d23cbd989401239dd86c86cf6a2d8b2c306bfba290d3654c675ed5d7c8e074",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/87d23cbd989401239dd86c86cf6a2d8b2c306bfba290d3654c675ed5d7c8e074"
+    },
+    {
+      "path": "dist/assets/scale-2-yukino-cursor-white@3x-CfRE-_SC.png",
+      "size": 52250,
+      "sha256": "dfb38d8b740a00c3996e64d0e9fef81efd5ff6552d397febbe208b934343ea04",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/dfb38d8b740a00c3996e64d0e9fef81efd5ff6552d397febbe208b934343ea04"
+    },
+    {
+      "path": "dist/assets/scale-2-yukino-cursor@1.5x-D4yJhOuD.png",
+      "size": 16213,
+      "sha256": "a5b18eb3767aa83a4245ff9f24addd86cfd7c4ba984ad831b651fac4c841d88e",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/a5b18eb3767aa83a4245ff9f24addd86cfd7c4ba984ad831b651fac4c841d88e"
+    },
+    {
+      "path": "dist/assets/scale-2-yukino-cursor@2x-DSC6tP21.png",
+      "size": 26611,
+      "sha256": "c2158dacb36bbead28f4bbc13ea884a5246191d9f58e70f3e12bf64323025810",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/c2158dacb36bbead28f4bbc13ea884a5246191d9f58e70f3e12bf64323025810"
+    },
+    {
+      "path": "dist/assets/scale-2-yukino-cursor@3x-DbfoQCtm.png",
+      "size": 52316,
+      "sha256": "700ae84b3b761c8fb5382378fc1bfc31c90c10d06f546d2358a9d09fbf7da663",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/700ae84b3b761c8fb5382378fc1bfc31c90c10d06f546d2358a9d09fbf7da663"
+    },
+    {
+      "path": "dist/assets/scale-3-yukino-cursor-CEXU36_n.png",
+      "size": 8124,
+      "sha256": "13724d84f18a92fb6f852ada5cc2fbd9c5766af08cd27e69f8371e82e2b8aefe",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/13724d84f18a92fb6f852ada5cc2fbd9c5766af08cd27e69f8371e82e2b8aefe"
+    },
+    {
+      "path": "dist/assets/scale-3-yukino-cursor-white-DXChTPEk.png",
+      "size": 8119,
+      "sha256": "cd3b150c8f67b2c3bbb161df808df65d6386ad2558b95be14e7930fcfe1912f8",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/cd3b150c8f67b2c3bbb161df808df65d6386ad2558b95be14e7930fcfe1912f8"
+    },
+    {
+      "path": "dist/assets/scale-3-yukino-cursor-white@1.5x-CQohlYMi.png",
+      "size": 16199,
+      "sha256": "19cc27c2e77cc5bc643b2aea58ba83059200c2bab86f5f8932c54ff00c80e67d",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/19cc27c2e77cc5bc643b2aea58ba83059200c2bab86f5f8932c54ff00c80e67d"
+    },
+    {
+      "path": "dist/assets/scale-3-yukino-cursor-white@2x-DvhPI_kb.png",
+      "size": 26589,
+      "sha256": "38a02e5ac5ca0c6038c4475fdc49021e546fd6fab84002908ef2670b342ac483",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/38a02e5ac5ca0c6038c4475fdc49021e546fd6fab84002908ef2670b342ac483"
+    },
+    {
+      "path": "dist/assets/scale-3-yukino-cursor-white@3x-tJ8DT7wQ.png",
+      "size": 52362,
+      "sha256": "6a9b6ebc754d13879793ca979dd670d3c5420e5c119f03fbe3b29607a2b412dd",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/6a9b6ebc754d13879793ca979dd670d3c5420e5c119f03fbe3b29607a2b412dd"
+    },
+    {
+      "path": "dist/assets/scale-3-yukino-cursor@1.5x-BBlup5Pc.png",
+      "size": 16235,
+      "sha256": "287f5f7d4c6755e7a1a3c151c9ddbbaa7bdc6160a275b34f1d8764b649db815c",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/287f5f7d4c6755e7a1a3c151c9ddbbaa7bdc6160a275b34f1d8764b649db815c"
+    },
+    {
+      "path": "dist/assets/scale-3-yukino-cursor@2x-DewHodpI.png",
+      "size": 26630,
+      "sha256": "c7736373f9eff5a4d554a03f413b69b1c4aed022cea1e1235f32473cd6dc9850",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/c7736373f9eff5a4d554a03f413b69b1c4aed022cea1e1235f32473cd6dc9850"
+    },
+    {
+      "path": "dist/assets/scale-3-yukino-cursor@3x-DZcKk3P8.png",
+      "size": 52422,
+      "sha256": "ff9146f7d4f37996ec447a1953fc99b24d7f9f82067d1c273a0b7d1783433564",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/ff9146f7d4f37996ec447a1953fc99b24d7f9f82067d1c273a0b7d1783433564"
+    },
+    {
+      "path": "dist/assets/scale-4-yukino-cursor-aB7DavDH.png",
+      "size": 8135,
+      "sha256": "d7cb20f9a647e6a749b6ad07213c22f5e32d6ced22010ee522ef7a7b92677c79",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/d7cb20f9a647e6a749b6ad07213c22f5e32d6ced22010ee522ef7a7b92677c79"
+    },
+    {
+      "path": "dist/assets/scale-4-yukino-cursor-white-ByCe2oNK.png",
+      "size": 8122,
+      "sha256": "7eb6d81909a0b6af8d99d912cc3f0b2c867b5c6a213aa6c44d0b4de95f820177",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/7eb6d81909a0b6af8d99d912cc3f0b2c867b5c6a213aa6c44d0b4de95f820177"
+    },
+    {
+      "path": "dist/assets/scale-4-yukino-cursor-white@1.5x-8iuqpwFZ.png",
+      "size": 16206,
+      "sha256": "19220be59694c2774bab8265c0577be893e10bf51bb8cbc2f55d111f1cc4ce32",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/19220be59694c2774bab8265c0577be893e10bf51bb8cbc2f55d111f1cc4ce32"
+    },
+    {
+      "path": "dist/assets/scale-4-yukino-cursor-white@2x-Bp0HRdvI.png",
+      "size": 26607,
+      "sha256": "655b485b6c2aa043a68bde998b2a614857fd58f02bfb697f405a802d43cb724b",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/655b485b6c2aa043a68bde998b2a614857fd58f02bfb697f405a802d43cb724b"
+    },
+    {
+      "path": "dist/assets/scale-4-yukino-cursor-white@3x-BYLe_Hcs.png",
+      "size": 52352,
+      "sha256": "fe8d2e3a061487bfe6e3913e2f8c944f5d6ad4dbea35861781b50c237e0cd4c7",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/fe8d2e3a061487bfe6e3913e2f8c944f5d6ad4dbea35861781b50c237e0cd4c7"
+    },
+    {
+      "path": "dist/assets/scale-4-yukino-cursor@1.5x-CrpUm7gO.png",
+      "size": 16229,
+      "sha256": "f22389f59382148dfdae6fdd236598f2d69f8d096257b498293a5b09e564a364",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/f22389f59382148dfdae6fdd236598f2d69f8d096257b498293a5b09e564a364"
+    },
+    {
+      "path": "dist/assets/scale-4-yukino-cursor@2x-DDN-jmcv.png",
+      "size": 26655,
+      "sha256": "d936083743e1d27121d4eca7ff69c1d4c075154f5bf402554a181a8ade9bea8a",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/d936083743e1d27121d4eca7ff69c1d4c075154f5bf402554a181a8ade9bea8a"
+    },
+    {
+      "path": "dist/assets/scale-4-yukino-cursor@3x-DtXOf_C-.png",
+      "size": 52430,
+      "sha256": "3722e0f18e2973f0a485a6d3bb1a59ebdb9ceb6d8a714758b6f7bfe3ac395fc1",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/3722e0f18e2973f0a485a6d3bb1a59ebdb9ceb6d8a714758b6f7bfe3ac395fc1"
+    },
+    {
+      "path": "dist/assets/scale-5-yukino-cursor-BzpDv2yo.png",
+      "size": 8134,
+      "sha256": "961b851e48cb0332ade28ede6316cb6ea18b500360a67b2a7a6b135906cfa556",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/961b851e48cb0332ade28ede6316cb6ea18b500360a67b2a7a6b135906cfa556"
+    },
+    {
+      "path": "dist/assets/scale-5-yukino-cursor-white-omy2zVcX.png",
+      "size": 8118,
+      "sha256": "92f25edbadf009c9399797320879a8e6629c9bd33dadfe10de4f97d6bd968494",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/92f25edbadf009c9399797320879a8e6629c9bd33dadfe10de4f97d6bd968494"
+    },
+    {
+      "path": "dist/assets/scale-5-yukino-cursor-white@1.5x-DHxawNV3.png",
+      "size": 16205,
+      "sha256": "3ad76a68c2965330eb943ed7759493218245f97cd67e44da575cdeee81027e2f",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/3ad76a68c2965330eb943ed7759493218245f97cd67e44da575cdeee81027e2f"
+    },
+    {
+      "path": "dist/assets/scale-5-yukino-cursor-white@2x-BUs1wMd-.png",
+      "size": 26593,
+      "sha256": "d0738dad6179a53b98d1aa6780856ed4290a75a2bae237f5115503b4e790df06",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/d0738dad6179a53b98d1aa6780856ed4290a75a2bae237f5115503b4e790df06"
+    },
+    {
+      "path": "dist/assets/scale-5-yukino-cursor-white@3x-Cel7U9js.png",
+      "size": 52369,
+      "sha256": "84ebaa9b181a62da044f14d980530e2cf65c6abf06b28edc907f93f27efe099d",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/84ebaa9b181a62da044f14d980530e2cf65c6abf06b28edc907f93f27efe099d"
+    },
+    {
+      "path": "dist/assets/scale-5-yukino-cursor@1.5x-Mv9OH6PE.png",
+      "size": 16240,
+      "sha256": "18c5c11f8eac1615c6299888b8e3d915a760863ded067fca2f7c4e293b2490b2",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/18c5c11f8eac1615c6299888b8e3d915a760863ded067fca2f7c4e293b2490b2"
+    },
+    {
+      "path": "dist/assets/scale-5-yukino-cursor@2x-B-xxoN0G.png",
+      "size": 26629,
+      "sha256": "3209fb0a750df14af3632b80609dcaa4466609a6f59dc130d1f29b11127dcbb9",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/3209fb0a750df14af3632b80609dcaa4466609a6f59dc130d1f29b11127dcbb9"
+    },
+    {
+      "path": "dist/assets/scale-5-yukino-cursor@3x-3TwGrOVH.png",
+      "size": 52426,
+      "sha256": "f36b38fa7d0e1af436f5e027f5636be006652281130462931195a8d051813d4c",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/f36b38fa7d0e1af436f5e027f5636be006652281130462931195a8d051813d4c"
+    },
+    {
+      "path": "dist/assets/scale-6-yukino-cursor-BYkqVUOh.png",
+      "size": 8138,
+      "sha256": "34d24c2730c238ede7f12c2e3656de974f74a9ee4844b1117e8b961b16ca114b",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/34d24c2730c238ede7f12c2e3656de974f74a9ee4844b1117e8b961b16ca114b"
+    },
+    {
+      "path": "dist/assets/scale-6-yukino-cursor-white-uw2k7Wdv.png",
+      "size": 8123,
+      "sha256": "2857822f4a7233e3c0a7054676f584cc2ef6b1781c6b2b2ad1b240f09996dffd",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/2857822f4a7233e3c0a7054676f584cc2ef6b1781c6b2b2ad1b240f09996dffd"
+    },
+    {
+      "path": "dist/assets/scale-6-yukino-cursor-white@1.5x-C-LiCXm0.png",
+      "size": 16229,
+      "sha256": "3c26b08ef631e1c5ec306c854401407cd22c06974b288f033e9ac398488b4166",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/3c26b08ef631e1c5ec306c854401407cd22c06974b288f033e9ac398488b4166"
+    },
+    {
+      "path": "dist/assets/scale-6-yukino-cursor-white@2x-CBci1WAG.png",
+      "size": 26631,
+      "sha256": "52324f489d808a29864ae773ba139b153a454ab6ae9bbe380ea628c1313b13b7",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/52324f489d808a29864ae773ba139b153a454ab6ae9bbe380ea628c1313b13b7"
+    },
+    {
+      "path": "dist/assets/scale-6-yukino-cursor-white@3x-DPvug3no.png",
+      "size": 52386,
+      "sha256": "41a28e841e1e312e6faf748a71043d4e8220bad7d68619e9c96a5a983c1ec79a",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/41a28e841e1e312e6faf748a71043d4e8220bad7d68619e9c96a5a983c1ec79a"
+    },
+    {
+      "path": "dist/assets/scale-6-yukino-cursor@1.5x-CqtGhC3u.png",
+      "size": 16244,
+      "sha256": "05e0a1e513186b9860811a80b8c8ca301d0fd3121fc2b99bf4bdd5e7ecb3aaef",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/05e0a1e513186b9860811a80b8c8ca301d0fd3121fc2b99bf4bdd5e7ecb3aaef"
+    },
+    {
+      "path": "dist/assets/scale-6-yukino-cursor@2x-BQZ_B_38.png",
+      "size": 26670,
+      "sha256": "831efd88c62b5cf31a03dd6a6a7f1a15a6960085b01fa445f58105bacb5237e0",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/831efd88c62b5cf31a03dd6a6a7f1a15a6960085b01fa445f58105bacb5237e0"
+    },
+    {
+      "path": "dist/assets/scale-6-yukino-cursor@3x-Cv68QplB.png",
+      "size": 52441,
+      "sha256": "ab8adc44f6a61317e1e29d15e99b2b6771d2048072a2e6d413fa63b22fe75bb3",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/ab8adc44f6a61317e1e29d15e99b2b6771d2048072a2e6d413fa63b22fe75bb3"
+    },
+    {
+      "path": "dist/assets/scale-7-yukino-cursor-DJUG7u6A.png",
+      "size": 8164,
+      "sha256": "33a2addbdc40197c5479c21a513f72053b94f43f853b47aafe8deddd6aef694f",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/33a2addbdc40197c5479c21a513f72053b94f43f853b47aafe8deddd6aef694f"
+    },
+    {
+      "path": "dist/assets/scale-7-yukino-cursor-white-DXICBy1s.png",
+      "size": 8151,
+      "sha256": "4575b1805941302f52cbc95d7e07840596affec01e3718ea5c56a1565f6309fa",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/4575b1805941302f52cbc95d7e07840596affec01e3718ea5c56a1565f6309fa"
+    },
+    {
+      "path": "dist/assets/scale-7-yukino-cursor-white@1.5x-C8b8s0Lj.png",
+      "size": 16236,
+      "sha256": "dc159875d99a791ece3b664a8017cc84ce61be0fdb4001c0cc0a03241b2693b1",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/dc159875d99a791ece3b664a8017cc84ce61be0fdb4001c0cc0a03241b2693b1"
+    },
+    {
+      "path": "dist/assets/scale-7-yukino-cursor-white@2x-9rgkAAu4.png",
+      "size": 26622,
+      "sha256": "39e659cf7bb4400a88d18fa1a0aa5fe79ecf730fd8401a99aefb549aa6e70ba3",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/39e659cf7bb4400a88d18fa1a0aa5fe79ecf730fd8401a99aefb549aa6e70ba3"
+    },
+    {
+      "path": "dist/assets/scale-7-yukino-cursor-white@3x-CXRSq2BB.png",
+      "size": 52365,
+      "sha256": "dcb6396eef8e88deff97629a3b6ee8d36e93fc1b3dfc401ecd90fc176ff6a8fb",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/dcb6396eef8e88deff97629a3b6ee8d36e93fc1b3dfc401ecd90fc176ff6a8fb"
+    },
+    {
+      "path": "dist/assets/scale-7-yukino-cursor@1.5x-BnJs1j82.png",
+      "size": 16268,
+      "sha256": "405dd7e2ec92ae145a80d5b81fd495fd1e9a249092bcc73696bb5e96289de2cf",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/405dd7e2ec92ae145a80d5b81fd495fd1e9a249092bcc73696bb5e96289de2cf"
+    },
+    {
+      "path": "dist/assets/scale-7-yukino-cursor@2x-5YWDL46X.png",
+      "size": 26654,
+      "sha256": "6037e6e8666b539143dc09ac1c2cb872c9a060ec6da0f1afdd9316f0f911b626",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/6037e6e8666b539143dc09ac1c2cb872c9a060ec6da0f1afdd9316f0f911b626"
+    },
+    {
+      "path": "dist/assets/scale-7-yukino-cursor@3x-DjcQQ3Fg.png",
+      "size": 52446,
+      "sha256": "aff439e9b2d3259dd8e31542245c307a904d654de724d33099bbaec1be138c4a",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/aff439e9b2d3259dd8e31542245c307a904d654de724d33099bbaec1be138c4a"
+    },
+    {
+      "path": "dist/assets/scale-8-yukino-cursor-BjZv70_4.png",
+      "size": 8154,
+      "sha256": "09444606a065158722693464672c3d187abe9b091ef4691835431ff843040c75",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/09444606a065158722693464672c3d187abe9b091ef4691835431ff843040c75"
+    },
+    {
+      "path": "dist/assets/scale-8-yukino-cursor-white-CaHKCwI3.png",
+      "size": 8135,
+      "sha256": "fc76d83ab5f194e494f2c3e972dd6e67d2c97274930033a5b17c6535a4140147",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/fc76d83ab5f194e494f2c3e972dd6e67d2c97274930033a5b17c6535a4140147"
+    },
+    {
+      "path": "dist/assets/scale-8-yukino-cursor-white@1.5x-BgTAkoMV.png",
+      "size": 16232,
+      "sha256": "e8e00f9177989d559ac0cb74fc6b9503b6c91f0a01840147a8a1381f8ce2b01c",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/e8e00f9177989d559ac0cb74fc6b9503b6c91f0a01840147a8a1381f8ce2b01c"
+    },
+    {
+      "path": "dist/assets/scale-8-yukino-cursor-white@2x-1mvtP-rF.png",
+      "size": 26656,
+      "sha256": "761a6f07950d82a2b74b4b6b2333869df273dbb2957eb9dd1e1e2ab1a6bef5a4",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/761a6f07950d82a2b74b4b6b2333869df273dbb2957eb9dd1e1e2ab1a6bef5a4"
+    },
+    {
+      "path": "dist/assets/scale-8-yukino-cursor-white@3x-CoZe3ToS.png",
+      "size": 52465,
+      "sha256": "01ad6c6e3a5ed8e8b5800fc002ce387ba66f0645710b4d60f3904093a516ba9a",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/01ad6c6e3a5ed8e8b5800fc002ce387ba66f0645710b4d60f3904093a516ba9a"
+    },
+    {
+      "path": "dist/assets/scale-8-yukino-cursor@1.5x-DjF8-Yru.png",
+      "size": 16268,
+      "sha256": "8014c5d8307c91e02c777b19e6950d1fff36e3d067e5832072cbf49595abb4e1",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/8014c5d8307c91e02c777b19e6950d1fff36e3d067e5832072cbf49595abb4e1"
+    },
+    {
+      "path": "dist/assets/scale-8-yukino-cursor@2x-Dbyv4z-L.png",
+      "size": 26692,
+      "sha256": "fd3b7d83caaef92a0381cc41f2d0b867ef735341e515056be88176dcaefa68b0",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/fd3b7d83caaef92a0381cc41f2d0b867ef735341e515056be88176dcaefa68b0"
+    },
+    {
+      "path": "dist/assets/scale-8-yukino-cursor@3x-DCu__MmT.png",
+      "size": 52534,
+      "sha256": "4d6d0079a210927ec71f41c5bd314cdb7999d48518fcc548e2cb738eb6961296",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/4d6d0079a210927ec71f41c5bd314cdb7999d48518fcc548e2cb738eb6961296"
+    },
+    {
+      "path": "dist/assets/scale-9-yukino-cursor-CLSvUO8m.png",
+      "size": 8165,
+      "sha256": "900b1e75c4443c3d6fcff3692e6d99b600cdb6d5966b0a2384004cdedd126663",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/900b1e75c4443c3d6fcff3692e6d99b600cdb6d5966b0a2384004cdedd126663"
+    },
+    {
+      "path": "dist/assets/scale-9-yukino-cursor-white-D3tOwFI5.png",
+      "size": 8154,
+      "sha256": "b7d38db950892945fd50d4c5fb024931dff87e87a7d1e9c8564d8b54f2558490",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/b7d38db950892945fd50d4c5fb024931dff87e87a7d1e9c8564d8b54f2558490"
+    },
+    {
+      "path": "dist/assets/scale-9-yukino-cursor-white@1.5x-GE7hEAkL.png",
+      "size": 16267,
+      "sha256": "01d28b0d3fdcb9390df277a47c7af5cb9ced1881b0f73259d57fd29cfef9fd41",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/01d28b0d3fdcb9390df277a47c7af5cb9ced1881b0f73259d57fd29cfef9fd41"
+    },
+    {
+      "path": "dist/assets/scale-9-yukino-cursor-white@2x-C7j7rl05.png",
+      "size": 26647,
+      "sha256": "a38d48cb57152c0936a1ba6c06977b5b903832f8380b5e406ae8dca8af0a5eb8",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/a38d48cb57152c0936a1ba6c06977b5b903832f8380b5e406ae8dca8af0a5eb8"
+    },
+    {
+      "path": "dist/assets/scale-9-yukino-cursor-white@3x-vI3acmaN.png",
+      "size": 52403,
+      "sha256": "aa127bb245bd6e086c63773e494be374932fadc1b6ca7ab41063109c6310979d",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/aa127bb245bd6e086c63773e494be374932fadc1b6ca7ab41063109c6310979d"
+    },
+    {
+      "path": "dist/assets/scale-9-yukino-cursor@1.5x-DdbGO4FU.png",
+      "size": 16293,
+      "sha256": "7720bfed9c7acec5544e5d9d6373d617da5717f171c6e9939f422e4ce1f7f9ea",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/7720bfed9c7acec5544e5d9d6373d617da5717f171c6e9939f422e4ce1f7f9ea"
+    },
+    {
+      "path": "dist/assets/scale-9-yukino-cursor@2x-B0lIzA0d.png",
+      "size": 26689,
+      "sha256": "529b461ba9432cf32d9c306483a724676bee397295f4d6606f03dafc64d88231",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/529b461ba9432cf32d9c306483a724676bee397295f4d6606f03dafc64d88231"
+    },
+    {
+      "path": "dist/assets/scale-9-yukino-cursor@3x-D3yajNCK.png",
+      "size": 52432,
+      "sha256": "ece487d18ebc2511d512bd78b55e3177e8734ad682f1cd2e08ebacb688156112",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/ece487d18ebc2511d512bd78b55e3177e8734ad682f1cd2e08ebacb688156112"
+    },
+    {
+      "path": "dist/assets/yukino-cursor-hr3ILo1c.png",
+      "size": 8179,
+      "sha256": "d9329640bf5d44650d1a386b279b6a789a982f9cf3f64159daee8c5c0c8f2a0d",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/d9329640bf5d44650d1a386b279b6a789a982f9cf3f64159daee8c5c0c8f2a0d"
+    },
+    {
+      "path": "dist/assets/yukino-cursor-white-BeIp5jIt.png",
+      "size": 8164,
+      "sha256": "15059e5a6e5e3d9fd695d476afac001be9fb5809b5dcc449deeb9e8df1983caf",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/15059e5a6e5e3d9fd695d476afac001be9fb5809b5dcc449deeb9e8df1983caf"
+    },
+    {
+      "path": "dist/assets/yukino-cursor-white@1.5x-BiSrsHLe.png",
+      "size": 16262,
+      "sha256": "ee9430664bef35679264f2632268bb7a402ac3b3bbf911b19d596c4cb0cbbc9a",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/ee9430664bef35679264f2632268bb7a402ac3b3bbf911b19d596c4cb0cbbc9a"
+    },
+    {
+      "path": "dist/assets/yukino-cursor-white@2x-DPgrM5co.png",
+      "size": 26655,
+      "sha256": "7ceda1c6ec7a2e967acd4f3c4d4cddc23006015f696deff122f635b3c6eeecad",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/7ceda1c6ec7a2e967acd4f3c4d4cddc23006015f696deff122f635b3c6eeecad"
+    },
+    {
+      "path": "dist/assets/yukino-cursor-white@3x-C_X55Fzw.png",
+      "size": 52481,
+      "sha256": "29dbe5698c9f3018e801c3df9e8bd8c65342f7bad0914220ae92ccd9eaaa154c",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/29dbe5698c9f3018e801c3df9e8bd8c65342f7bad0914220ae92ccd9eaaa154c"
+    },
+    {
+      "path": "dist/assets/yukino-cursor@1.5x--Q5iX_NH.png",
+      "size": 16299,
+      "sha256": "c0857781de753f8a2ef775dfba16383375b2b7e43b4193824046998b00413668",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/c0857781de753f8a2ef775dfba16383375b2b7e43b4193824046998b00413668"
+    },
+    {
+      "path": "dist/assets/yukino-cursor@2x-CV4l2eq1.png",
+      "size": 26685,
+      "sha256": "014d123956174d46baa66f4febae485783d4046a71ea9664849468b5299533e7",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/014d123956174d46baa66f4febae485783d4046a71ea9664849468b5299533e7"
+    },
+    {
+      "path": "dist/assets/yukino-cursor@3x-DTzmO0em.png",
+      "size": 52541,
+      "sha256": "a3ceb3ba5c5ba14742f5b3b8e14b3ca39d83922fe2c339aab753e6ccd2480584",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/a3ceb3ba5c5ba14742f5b3b8e14b3ca39d83922fe2c339aab753e6ccd2480584"
+    },
+    {
+      "path": "dist/chat-stickers/.source.json",
+      "size": 2015,
+      "sha256": "de09bf7c05674714423536ed8334b2c9e95a74d2b1567c0ec7f18d413f316925",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/de09bf7c05674714423536ed8334b2c9e95a74d2b1567c0ec7f18d413f316925"
+    },
+    {
+      "path": "dist/chat-stickers/affection_hug.webp",
+      "size": 35228,
+      "sha256": "0c2b9ca98bb45f8f0dddb4464f46d89ce759bdecec4cb645d0f8de75b98bdeed",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/0c2b9ca98bb45f8f0dddb4464f46d89ce759bdecec4cb645d0f8de75b98bdeed"
+    },
+    {
+      "path": "dist/chat-stickers/cheer_power.webp",
+      "size": 32616,
+      "sha256": "e880e3b48722d2f7c976132596cc41f7d08f5ea8e1c09fb58f9e64ae331b56f7",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/e880e3b48722d2f7c976132596cc41f7d08f5ea8e1c09fb58f9e64ae331b56f7"
+    },
+    {
+      "path": "dist/chat-stickers/comfort_friend.webp",
+      "size": 37254,
+      "sha256": "7a5cff319dd0fe9db484b91578896c7bf4f02c0d9f8915906c5ecd85724e8317",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/7a5cff319dd0fe9db484b91578896c7bf4f02c0d9f8915906c5ecd85724e8317"
+    },
+    {
+      "path": "dist/chat-stickers/confident_ready.webp",
+      "size": 40304,
+      "sha256": "528b42fa23cb6f0f1aaba83e550a65ebe2b0c1dfa8de4bc00cd58a078f479efd",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/528b42fa23cb6f0f1aaba83e550a65ebe2b0c1dfa8de4bc00cd58a078f479efd"
+    },
+    {
+      "path": "dist/chat-stickers/confirm_yes.webp",
+      "size": 42832,
+      "sha256": "666ecb7b01851a96fe6c4fbbb8acc9a9271456615a43de385031e08cc5228ff5",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/666ecb7b01851a96fe6c4fbbb8acc9a9271456615a43de385031e08cc5228ff5"
+    },
+    {
+      "path": "dist/chat-stickers/confused_study.webp",
+      "size": 39590,
+      "sha256": "eda66324107d5cbed6e10f81638ce99b53024cc440cac91275d95818447c0a85",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/eda66324107d5cbed6e10f81638ce99b53024cc440cac91275d95818447c0a85"
+    },
+    {
+      "path": "dist/chat-stickers/gift_for_you.webp",
+      "size": 35058,
+      "sha256": "ab20b7a0f2476e8c16c8410089717edb3b238c9931ea6dcae3a1273bc7662d83",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/ab20b7a0f2476e8c16c8410089717edb3b238c9931ea6dcae3a1273bc7662d83"
+    },
+    {
+      "path": "dist/chat-stickers/got_it_point.webp",
+      "size": 40502,
+      "sha256": "c963f87b638697baa8e4a47ad4f5783742acdadb9bd0ba3098cddd7fac6b84f2",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/c963f87b638697baa8e4a47ad4f5783742acdadb9bd0ba3098cddd7fac6b84f2"
+    },
+    {
+      "path": "dist/chat-stickers/health_check.webp",
+      "size": 37264,
+      "sha256": "045fec0fff7ed9d70b5a7f3242eea167dfa511f7805dc2ccf5e7d375e0bb2580",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/045fec0fff7ed9d70b5a7f3242eea167dfa511f7805dc2ccf5e7d375e0bb2580"
+    },
+    {
+      "path": "dist/chat-stickers/heart_thanks.webp",
+      "size": 40700,
+      "sha256": "fced1469cb018629992966174dedee69c5133167925a5e6ff2df8326c2cb49dd",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/fced1469cb018629992966174dedee69c5133167925a5e6ff2df8326c2cb49dd"
+    },
+    {
+      "path": "dist/chat-stickers/idea_drawing.webp",
+      "size": 40062,
+      "sha256": "4bec31e92be5f4191f019e0885c7f64a762e1a9d52b1b63d0c3f5e1d2377c0d7",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/4bec31e92be5f4191f019e0885c7f64a762e1a9d52b1b63d0c3f5e1d2377c0d7"
+    },
+    {
+      "path": "dist/chat-stickers/joy_burst.webp",
+      "size": 39652,
+      "sha256": "3a4daf0c6690c731fe5bddc88e3ef4310aedb3847c1a268666cfc5193eeb1f9d",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/3a4daf0c6690c731fe5bddc88e3ef4310aedb3847c1a268666cfc5193eeb1f9d"
+    },
+    {
+      "path": "dist/chat-stickers/playful_wink.webp",
+      "size": 34202,
+      "sha256": "c156c1f149952ca932c7913346acdd85c83de5f8b850f7537371ff8c9adb2763",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/c156c1f149952ca932c7913346acdd85c83de5f8b850f7537371ff8c9adb2763"
+    },
+    {
+      "path": "dist/chat-stickers/pout_no.webp",
+      "size": 32540,
+      "sha256": "266ff304635e66788549dfd23e285537dce639e9bdc04974324a04801dc37f90",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/266ff304635e66788549dfd23e285537dce639e9bdc04974324a04801dc37f90"
+    },
+    {
+      "path": "dist/chat-stickers/red_packet_congrats.webp",
+      "size": 36078,
+      "sha256": "ef7a2d86cba48e8d928683fa06410ef0c43aa10da72fc9a91a21ca987118c15e",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/ef7a2d86cba48e8d928683fa06410ef0c43aa10da72fc9a91a21ca987118c15e"
+    },
+    {
+      "path": "dist/chat-stickers/reject_no.webp",
+      "size": 43872,
+      "sha256": "64f272a1704e33bdf01ec0a0d2e6ac462eb50fdf5dffec47830830796752546a",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/64f272a1704e33bdf01ec0a0d2e6ac462eb50fdf5dffec47830830796752546a"
+    },
+    {
+      "path": "dist/chat-stickers/soft_smile.webp",
+      "size": 42706,
+      "sha256": "bbe0dd5d59915a9931a6a42ad7ee814b6170c60b613071494ae4a0938cd671d0",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/bbe0dd5d59915a9931a6a42ad7ee814b6170c60b613071494ae4a0938cd671d0"
+    },
+    {
+      "path": "dist/chat-stickers/sparkle_excited.webp",
+      "size": 35918,
+      "sha256": "e6ef5d241148e494636cc17d504ec8011fc37e6ad9699945bebfaef615cfaa75",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/e6ef5d241148e494636cc17d504ec8011fc37e6ad9699945bebfaef615cfaa75"
+    },
+    {
+      "path": "dist/chat-stickers/thinking_soft.webp",
+      "size": 38250,
+      "sha256": "43611678de3425284f6a725dcacc7954ee821e5a471fbdb2bebbd4c9305e8707",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/43611678de3425284f6a725dcacc7954ee821e5a471fbdb2bebbd4c9305e8707"
+    },
+    {
+      "path": "dist/index.html",
+      "size": 3157,
+      "sha256": "8b7a4aa2036d83328410adc18cb249374817a2f8cb5529528ac1832c5cb55b96",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/8b7a4aa2036d83328410adc18cb249374817a2f8cb5529528ac1832c5cb55b96"
+    },
+    {
+      "path": "dist/smirel-logo.png",
+      "size": 7414,
+      "sha256": "a7c5136ca88f47b63e7e041370f37e291f89dc0f71ed3c1b9073dd4fd60e0656",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/a7c5136ca88f47b63e7e041370f37e291f89dc0f71ed3c1b9073dd4fd60e0656"
+    },
+    {
+      "path": "dist/smirel-logo.svg",
+      "size": 18784,
+      "sha256": "0fbb9444fbe196972cd589af80d86903867c72f8f52d55550cc9fc0109723861",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/0fbb9444fbe196972cd589af80d86903867c72f8f52d55550cc9fc0109723861"
+    },
+    {
+      "path": "dist/smirel-mark.svg",
+      "size": 784,
+      "sha256": "50436b9ab1c87832a6d9de6ff751bda357af72355dc11e7aebde46cb04767ae5",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/50436b9ab1c87832a6d9de6ff751bda357af72355dc11e7aebde46cb04767ae5"
+    },
+    {
+      "path": "dist/ui-baseline.json",
+      "size": 80,
+      "sha256": "e8041f0c2c7023f4fb29a010eeb4317b04bb701a5fdfe2693179868fa0a51b03",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/e8041f0c2c7023f4fb29a010eeb4317b04bb701a5fdfe2693179868fa0a51b03"
+    },
+    {
+      "path": "dist-electron/accountClient.js",
+      "size": 26610,
+      "sha256": "1530ac0b622dd26d9957b53364d52d7efc081fcb2e6787ebc67f95b76dc9fa0b",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/1530ac0b622dd26d9957b53364d52d7efc081fcb2e6787ebc67f95b76dc9fa0b"
+    },
+    {
+      "path": "dist-electron/accountErrors.js",
+      "size": 2117,
+      "sha256": "b4ccd74c4c67e26e6a2f7ff7bbb24df0fdad3a50310edcaa6874670999250d09",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/b4ccd74c4c67e26e6a2f7ff7bbb24df0fdad3a50310edcaa6874670999250d09"
+    },
+    {
+      "path": "dist-electron/applicationEntry.js",
+      "size": 1216,
+      "sha256": "e5a58f11b0a4e5cd862d1b9282b15a317aca539ab71f5aa54f8d39d926e77da6",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/e5a58f11b0a4e5cd862d1b9282b15a317aca539ab71f5aa54f8d39d926e77da6"
+    },
+    {
+      "path": "dist-electron/applicationUpdater.js",
+      "size": 6490,
+      "sha256": "13e79aab41d52218aade85afdca77fd196eb6f4db3d810b012a67dbd7b94bad1",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/13e79aab41d52218aade85afdca77fd196eb6f4db3d810b012a67dbd7b94bad1"
+    },
+    {
+      "path": "dist-electron/applicationUpdateStore.js",
+      "size": 5066,
+      "sha256": "ff0f52108ddf5af6e9a4b16ccabffb246b945933cdd2bff086e26bd0723b12d6",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/ff0f52108ddf5af6e9a4b16ccabffb246b945933cdd2bff086e26bd0723b12d6"
+    },
+    {
+      "path": "dist-electron/browserExtensionAssets.js",
+      "size": 1551,
+      "sha256": "4d18eb8371a92314fc095eb37113eda861e0cee5a0ae2acee178994d8ce17168",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/4d18eb8371a92314fc095eb37113eda861e0cee5a0ae2acee178994d8ce17168"
+    },
+    {
+      "path": "dist-electron/hostAccount.js",
+      "size": 376,
+      "sha256": "3995e439bc7558c3e34818b2cacade51fc7c090c0a573e0453727573592ce10b",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/3995e439bc7558c3e34818b2cacade51fc7c090c0a573e0453727573592ce10b"
+    },
+    {
+      "path": "dist-electron/hostHealth.js",
+      "size": 4021,
+      "sha256": "55993be5826082305f657449336cae67c572d7e15014742f78bbdc165da728b9",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/55993be5826082305f657449336cae67c572d7e15014742f78bbdc165da728b9"
+    },
+    {
+      "path": "dist-electron/hostMode.js",
+      "size": 674,
+      "sha256": "3073b4a2724d71e15cc45cbe948124b4dce77a5f508e2142681163a652d804f7",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/3073b4a2724d71e15cc45cbe948124b4dce77a5f508e2142681163a652d804f7"
+    },
+    {
+      "path": "dist-electron/hostPaths.js",
+      "size": 593,
+      "sha256": "cf8857b54c8af3044247011c232046ebbe67e061e84a0d270ec7f45bfaada097",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/cf8857b54c8af3044247011c232046ebbe67e061e84a0d270ec7f45bfaada097"
+    },
+    {
+      "path": "dist-electron/hostProcess.js",
+      "size": 9288,
+      "sha256": "3595621ab5633d138f909bb367dc9865472b1012110fc605244179c663fa69b6",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/3595621ab5633d138f909bb367dc9865472b1012110fc605244179c663fa69b6"
+    },
+    {
+      "path": "dist-electron/hostRuntime.js",
+      "size": 8335,
+      "sha256": "33c0e2ce7a1a87497359b5c3a80a38474644c57abd50b523290e9057054f39fe",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/33c0e2ce7a1a87497359b5c3a80a38474644c57abd50b523290e9057054f39fe"
+    },
+    {
+      "path": "dist-electron/hostRuntimeUpdater.js",
+      "size": 13986,
+      "sha256": "c1e8f9320dcf289075948d09e4c2135908eca7cd3db15e4ea7c676586da86617",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/c1e8f9320dcf289075948d09e4c2135908eca7cd3db15e4ea7c676586da86617"
+    },
+    {
+      "path": "dist-electron/hostTransport.js",
+      "size": 9161,
+      "sha256": "c7510c68551b440511b8400f8c66af463fa5c2dce9cf779af50716eb927aa4b9",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/c7510c68551b440511b8400f8c66af463fa5c2dce9cf779af50716eb927aa4b9"
+    },
+    {
+      "path": "dist-electron/hudPreload.cjs",
+      "size": 486,
+      "sha256": "4b0d8884bdc17248255267132b8ebae96fad4bc3da88e083d2e2faf6dd80146b",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/4b0d8884bdc17248255267132b8ebae96fad4bc3da88e083d2e2faf6dd80146b"
+    },
+    {
+      "path": "dist-electron/hudWindow.js",
+      "size": 19775,
+      "sha256": "5214c6e738f1e9ce6e2f90db58da51e8b45c55f3cce412c541b6ccd6f76b59c7",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/5214c6e738f1e9ce6e2f90db58da51e8b45c55f3cce412c541b6ccd6f76b59c7"
+    },
+    {
+      "path": "dist-electron/latestSync.js",
+      "size": 767,
+      "sha256": "5e0e6ac7c50a9e1b4695b907a9366b1064da590dafdf7030ed83fee29296d8df",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/5e0e6ac7c50a9e1b4695b907a9366b1064da590dafdf7030ed83fee29296d8df"
+    },
+    {
+      "path": "dist-electron/main.js",
+      "size": 80822,
+      "sha256": "8519b6da1136f6e1499555ab39a002d02a4221ab1af4c951f418171692f0a361",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/8519b6da1136f6e1499555ab39a002d02a4221ab1af4c951f418171692f0a361"
+    },
+    {
+      "path": "dist-electron/modelManager.js",
+      "size": 33188,
+      "sha256": "ab3e34e7c40a58bf2ec9432348ecffa86436d2c5a6c52cebb2aa3aba59355883",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/ab3e34e7c40a58bf2ec9432348ecffa86436d2c5a6c52cebb2aa3aba59355883"
+    },
+    {
+      "path": "dist-electron/optimizedUpdater.js",
+      "size": 7562,
+      "sha256": "fcef701e7717c8d82c39fe1f6cc7147669733e104cacae5857e384188de34d34",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/fcef701e7717c8d82c39fe1f6cc7147669733e104cacae5857e384188de34d34"
+    },
+    {
+      "path": "dist-electron/preload.cjs",
+      "size": 8482,
+      "sha256": "a333f82d00fc426918f84d32abc6dd22e70c11a4769300e803373b6cec1997e5",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/a333f82d00fc426918f84d32abc6dd22e70c11a4769300e803373b6cec1997e5"
+    },
+    {
+      "path": "dist-electron/remoteRelay.js",
+      "size": 18101,
+      "sha256": "f74a1bb60d089158b9f52947d3aa99f2b924628b573f1cfeb6593d84f32d4abb",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/f74a1bb60d089158b9f52947d3aa99f2b924628b573f1cfeb6593d84f32d4abb"
+    },
+    {
+      "path": "dist-electron/rendererUpdater.js",
+      "size": 9459,
+      "sha256": "7421638e2adeababda0cc814f6b5363335dd2637458325a90d21f06dc29426d3",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/7421638e2adeababda0cc814f6b5363335dd2637458325a90d21f06dc29426d3"
+    },
+    {
+      "path": "dist-electron/rendererUpdateStore.js",
+      "size": 4119,
+      "sha256": "78deee51c70a59dae131f01da4e0b35fd13b449c8edf64ad122471dc5dc1de91",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/78deee51c70a59dae131f01da4e0b35fd13b449c8edf64ad122471dc5dc1de91"
+    },
+    {
+      "path": "dist-electron/runtimeModelConfig.js",
+      "size": 676,
+      "sha256": "d3fb77893daf8dd5fbebbf8de8ee132d81efc7d114878b5b49feea567b6157d5",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/d3fb77893daf8dd5fbebbf8de8ee132d81efc7d114878b5b49feea567b6157d5"
+    },
+    {
+      "path": "dist-electron/searchRelay.js",
+      "size": 3080,
+      "sha256": "6c98da041ad31be1195fe8cc9652eb2501813f034b630d4b4271eab014cca4be",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/6c98da041ad31be1195fe8cc9652eb2501813f034b630d4b4271eab014cca4be"
+    },
+    {
+      "path": "dist-electron/startupModel.js",
+      "size": 572,
+      "sha256": "58a75c6428d6a685bd4f9de94d71b5e9de250930bfe09c0e8094ff728b2435b7",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/58a75c6428d6a685bd4f9de94d71b5e9de250930bfe09c0e8094ff728b2435b7"
+    },
+    {
+      "path": "dist-electron/updateDownload.js",
+      "size": 7807,
+      "sha256": "27efa674a7ac5874a9b7da9e55f61066b1be1cf7e6bef25c0494756cbf0028cb",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/27efa674a7ac5874a9b7da9e55f61066b1be1cf7e6bef25c0494756cbf0028cb"
+    },
+    {
+      "path": "dist-electron/updater.js",
+      "size": 16765,
+      "sha256": "687d6843e7adc17de83e1f1a68305b9a3b355870576b3b056c7721dccfa3b931",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/687d6843e7adc17de83e1f1a68305b9a3b355870576b3b056c7721dccfa3b931"
+    },
+    {
+      "path": "dist-electron/webRelayAuth.js",
+      "size": 3153,
+      "sha256": "42f09f03b2a0d9826ebf29e4495633a627dd48c154abe1fa23350350e6aa2802",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/42f09f03b2a0d9826ebf29e4495633a627dd48c154abe1fa23350350e6aa2802"
+    },
+    {
+      "path": "dist-electron/windowChrome.js",
+      "size": 1075,
+      "sha256": "64d303f86548b1e718b98782edf472304c2193c1222acdf16f3fdd42c5bf4af5",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/64d303f86548b1e718b98782edf472304c2193c1222acdf16f3fdd42c5bf4af5"
+    },
+    {
+      "path": "package.json",
+      "size": 17,
+      "sha256": "6dc1b06d6b093e9cccb20bee06a93836eee0420ae26803ca2ce4065d82f070d1",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/6dc1b06d6b093e9cccb20bee06a93836eee0420ae26803ca2ce4065d82f070d1"
+    }
+  ]
+}
