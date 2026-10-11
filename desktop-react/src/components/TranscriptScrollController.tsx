@@ -171,7 +171,7 @@ export function TranscriptScrollController({
     };
     prependAnchorRef.current = anchor;
     historyLoadInFlightRef.current = true;
-    Promise.resolve(loader())
+    Promise.resolve().then(() => loader())
       .catch(() => {
         // History paging is best-effort UI work. A later scroll gesture can retry.
       })
@@ -198,7 +198,7 @@ export function TranscriptScrollController({
     snapBottomRef.current = false;
     returnIntentUntilRef.current = 0;
     cancelScheduledScroll();
-    setJumpVisible(!isNearBottom(scroller));
+    setJumpVisible(true);
   };
 
   const markReturnIntent = () => {
@@ -235,9 +235,11 @@ export function TranscriptScrollController({
       let nextTop = target;
       const absoluteDistance = Math.abs(distance);
       const reducedMotion = prefersReducedMotion();
-      const liveMotion = runningRef.current || performance.now() < settleUntilRef.current;
+      // Streaming/layout updates must reach the current bottom in one frame.
+      // Navigation and completion may animate; a capped chase during generation
+      // falls permanently behind fast tool output and large Markdown updates.
       const easeLiveGrowth = Boolean(
-        (liveMotion || forced)
+        (forced || (!runningRef.current && performance.now() < settleUntilRef.current))
         && !snapNow
         && !reducedMotion
         && absoluteDistance <= Math.max(840, viewportHeightRef.current * 2)
@@ -416,7 +418,6 @@ export function TranscriptScrollController({
       if (isPanelResizeActive()) return;
 
       const nextScrollTop = scroller.scrollTop;
-      const nearBottom = isNearBottom(scroller);
       const movedUp = nextScrollTop < lastScrollTopRef.current - SCROLL_EPSILON_PX;
 
       // Never infer user intent from direction alone. Streaming Markdown,
@@ -431,7 +432,7 @@ export function TranscriptScrollController({
       }
 
       lastScrollTopRef.current = nextScrollTop;
-      setJumpVisible(userDetachedRef.current && !nearBottom);
+      setJumpVisible(userDetachedRef.current);
       if (nextScrollTop <= HISTORY_LOAD_THRESHOLD_PX) requestOlderHistory(scroller);
     };
 
@@ -442,6 +443,7 @@ export function TranscriptScrollController({
         requestOlderHistory(scroller);
       } else if (event.deltaY > 0) {
         markReturnIntent();
+        resumeIfUserReturnedToBottom();
       }
     };
 
@@ -461,6 +463,7 @@ export function TranscriptScrollController({
           requestOlderHistory(scroller);
         } else if (nextY < previousY - SCROLL_EPSILON_PX) {
           markReturnIntent();
+          resumeIfUserReturnedToBottom();
         }
       }
       touchYRef.current = nextY;
@@ -492,7 +495,8 @@ export function TranscriptScrollController({
     const onKeyDown = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null;
       if (
-        target?.matches("input, textarea, select")
+        !target || !scroller.contains(target)
+        || target.closest("input, textarea, select, button, a, [role='button'], [role='slider']")
         || target?.isContentEditable
         || event.defaultPrevented
       ) return;
@@ -512,6 +516,7 @@ export function TranscriptScrollController({
         || (event.key === " " && !event.shiftKey)
       ) {
         markReturnIntent();
+        resumeIfUserReturnedToBottom();
       }
     };
 
@@ -527,6 +532,7 @@ export function TranscriptScrollController({
       publishFollowing(scroller, true);
       forceBottomRef.current = false;
       snapBottomRef.current = false;
+      bottomTargetDirtyRef.current = true;
       setJumpVisible(false);
     };
 
@@ -569,7 +575,7 @@ export function TranscriptScrollController({
             // Streaming can move the bottom without a scroll event while the
             // user is reading history. Keep the return-to-latest affordance in
             // sync without re-enabling follow.
-            setJumpVisible(!isNearBottom(scroller));
+            setJumpVisible(userDetachedRef.current);
           }
         });
 
