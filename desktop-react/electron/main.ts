@@ -33,6 +33,7 @@ import { createSearchRelay } from "./searchRelay.js";
 import { broadcastHostEvent, desktopPidFile, handleHostChannel, isHostProcess, launchDesktop, onDesktopClientsChanged, prepareDesktopHost, startHostTransport } from "./hostProcess.js";
 import { registerHeadlessUpdateGuard } from "./updater.js";
 import { registerApplicationRestartGuard } from "./applicationUpdater.js";
+import { readApplicationPointer } from "./applicationUpdateStore.js";
 import {
   currentHostRuntime,
   currentHostRuntimeVersion,
@@ -1856,6 +1857,16 @@ app.whenReady().then(async () => {
   if (!isHostProcess && app.isPackaged) app.setAsDefaultProtocolClient("loom");
   if (!isHostProcess) {
     await prepareDesktopHost();
+    const application = globalThis.loomApplicationBootstrap;
+    if (application) {
+      const pointer = await readApplicationPointer(application.root);
+      if (pointer.session && pointer.session.build !== application.build) {
+        // The first UI may have selected a pending build before its Host booted.
+        // If that Host rolled back, reopen with its verified build before IPC/UI
+        // handlers expose a mismatched application to the user.
+        app.relaunch(); app.quit(); return;
+      }
+    }
     ensureDesktopUi();
     return;
   }
