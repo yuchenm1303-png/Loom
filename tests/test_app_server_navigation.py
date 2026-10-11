@@ -32,6 +32,39 @@ def test_navigation_bypasses_a_blocked_control_handler():
     assert not serving.is_alive()
 
 
+def test_project_git_cannot_block_thread_lifecycle_or_permissions():
+    blocked, release = threading.Event(), threading.Event()
+    finished = []
+    methods = ["thread/start", "turn/start", "thread/set_permission_mode", "thread/delete"]
+    server = JsonRpcStdioServer(SimpleNamespace(subscribe_notifications=lambda callback: None))
+    def handle(payload):
+        if payload["method"] == "project/git_repository":
+            blocked.set()
+            assert release.wait(3)
+        else:
+            finished.append(payload["method"])
+        return {"jsonrpc": "2.0", "id": payload["id"], "result": {}}
+    server.controller = SimpleNamespace(handle=handle, initialized=True)
+    class Reader:
+        def __iter__(self):
+            yield json.dumps({"id": 1, "method": "project/git_repository"}) + "\n"
+            assert blocked.wait(2)
+            for index, method in enumerate(methods, 2):
+                yield json.dumps({"id": index, "method": method}) + "\n"
+    serving = threading.Thread(target=lambda: server.serve(Reader(), io.StringIO()), daemon=True)
+    serving.start()
+    try:
+        import time
+        deadline = time.monotonic() + 2
+        while len(finished) < len(methods) and time.monotonic() < deadline:
+            time.sleep(.01)
+        assert finished == methods
+    finally:
+        release.set()
+        serving.join(3)
+    assert not serving.is_alive()
+
+
 def test_navigation_reads_do_not_block_new_selection_or_control_and_drain_on_eof():
     slow_started = threading.Event()
     fast_finished = threading.Event()

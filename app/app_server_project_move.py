@@ -126,18 +126,10 @@ def _workspace_tree(root: Path, *, limit: int = _WORKSPACE_TREE_LIMIT, max_depth
 
 
 def _run_git(root: Path, *args: str, timeout: float = 3) -> subprocess.CompletedProcess[str] | None:
-    try:
-        return subprocess.run(
-            ["git", "-C", str(root), *args],
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            timeout=timeout,
-            check=False,
-        )
-    except (FileNotFoundError, OSError, subprocess.TimeoutExpired):
-        return None
+    # Resolve lazily: the Git controller augments this service at import time.
+    # Every project surface must share the bounded Windows process cleanup.
+    from app.project_git_commit import _run_git as run_git
+    return run_git(root, *args, timeout=timeout)
 
 
 def _parse_git_status(root: Path) -> dict[str, Any]:

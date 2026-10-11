@@ -1802,6 +1802,7 @@ class JsonRpcStdioServer:
         # A slow history read must not monopolize the control worker or block
         # another conversation's preview. General RPCs retain their ordering.
         self._navigation_ingress: queue.Queue[Any] = queue.Queue(maxsize=self.ingress_limit)
+        self._project_ingress: queue.Queue[Any] = queue.Queue(maxsize=self.ingress_limit)
         self._outbound: queue.Queue[Any] = queue.Queue(maxsize=self.outbound_limit)
         self._write_lock = threading.Lock()
         self._writer: TextIO | None = None
@@ -1906,8 +1907,11 @@ class JsonRpcStdioServer:
         )
 
     def _navigation_loop(self) -> None:
+        self._request_queue_loop(self._navigation_ingress)
+
+    def _request_queue_loop(self, requests) -> None:
         while True:
-            payload = self._navigation_ingress.get()
+            payload = requests.get()
             if payload is self._STOP:
                 return
             response = self.controller.handle(payload)
@@ -1929,9 +1933,12 @@ class JsonRpcStdioServer:
         self._writer = writer or sys.stdout
         worker = threading.Thread(target=self._worker_loop, name="loom-app-rpc", daemon=True)
         output = threading.Thread(target=self._writer_loop, name="loom-app-writer", daemon=True)
+        projects = threading.Thread(target=lambda: self._request_queue_loop(self._project_ingress),
+                                    name="loom-app-projects", daemon=True)
         readers = [threading.Thread(target=self._navigation_loop, name=f"loom-app-navigation-{index}", daemon=True)
                    for index in range(4)]
         worker.start()
+        projects.start()
         for navigation in readers:
             navigation.start()
         output.start()
@@ -1953,6 +1960,18 @@ class JsonRpcStdioServer:
                     except queue.Full:
                         self._send_response({"jsonrpc": "2.0", "id": navigation_payload.get("id"), "error": {
                             "code": -32001, "message": "Navigation overloaded; retry later."}})
+                    continue
+                # Git operations are serialized with each other, but cannot
+                # hold up thread creation, sends, permission changes or deletes.
+                if (len(raw.encode("utf-8")) <= _MAX_MESSAGE_BYTES and self.controller.initialized
+                        and isinstance(navigation_payload, dict)
+                        and (str(navigation_payload.get("method", "")).startswith("project/git_")
+                             or navigation_payload.get("method") == "project/workspace_status")):
+                    try:
+                        self._project_ingress.put_nowait(navigation_payload)
+                    except queue.Full:
+                        self._send_response({"jsonrpc": "2.0", "id": navigation_payload.get("id"), "error": {
+                            "code": -32001, "message": "Project operations overloaded; retry later."}})
                     continue
                 if len(raw.encode("utf-8")) > _MAX_MESSAGE_BYTES:
                     self._send_response(
@@ -1985,6 +2004,8 @@ class JsonRpcStdioServer:
             # writer on a join timeout silently loses delayed initialize/RPC
             # responses. Drain the request queue before its response queue.
             worker.join()
+            self._project_ingress.put(self._STOP)
+            projects.join()
             for _ in readers:
                 self._navigation_ingress.put(self._STOP)
             for navigation in readers:

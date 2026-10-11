@@ -51,5 +51,5 @@ def test_theme_keeps_explicit_light_and_dark_surfaces() -> None:
 
 def test_glass_decorations_are_non_interactive() -> None:
     composer = read(COMPONENTS / "Composer.tsx")
-    assert 'className="composer-glow" aria-hidden="true"' in composer
+    assert 'className="composer-glow"' not in composer
     assert 'className="composer-spark" aria-hidden="true"' in composer

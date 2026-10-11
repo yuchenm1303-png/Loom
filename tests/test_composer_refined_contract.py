@@ -57,9 +57,9 @@ def test_refinement_loads_after_base_composer_sheets_before_workspace_geometry()
     # 870e93c2 introduced a later workspace layer for shared surface geometry.
     assert imports.index("./components/composer-refined.css") < imports.index("./components/workspace-surface-refinement.css")
     workspace = read(COMPONENTS / "workspace-surface-refinement.css")
-    geometry = body_of(workspace, ":root .app-shell .composer-wrap.composer-refined .composer")
-    assert "border-radius: var(--composer-radius);" in geometry
-    assert "--composer-radius: 24px;" in geometry
+    geometry = body_of(read(REFINED), SCOPE + " .composer")
+    assert "border-radius: var(--loom-workspace-radius);" in geometry
+    assert "background: transparent;" in body_of(workspace, ":root .app-shell .composer-wrap.composer-refined")
     for earlier in (
         "./theme.css",
         "./components/permission-popover-polish.css",
@@ -82,8 +82,8 @@ def test_both_composer_surfaces_opt_in() -> None:
     # by the shared refinement on both surfaces, independent of DOM presence.
     assert 'className="composer-glow" aria-hidden="true"' not in base
     assert 'className="composer-spark" aria-hidden="true"' in base
-    for element in ('className="composer-glow" aria-hidden="true"', 'className="composer-spark" aria-hidden="true"'):
-        assert element in steering
+    assert 'className="composer-glow"' not in steering
+    assert 'className="composer-spark" aria-hidden="true"' in steering
     css = read(REFINED)
     assert "display: none" in body_of(css, SCOPE + " .composer-glow")
     assert "display: none" in body_of(css, SCOPE + " .composer-spark")
