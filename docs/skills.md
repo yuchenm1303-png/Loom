@@ -1,17 +1,17 @@
 # Skills Runtime v2
 
-Loom supports reusable Agent Skills bundles built around Codex-compatible `SKILL.md` files. Skills can be discovered from a repository, installed into the Loom user home, searched and loaded on demand, and can include scripts, references, templates, and binary assets.
+Loom supports reusable Agent Skills bundles built around Codex-compatible `SKILL.md` files. Skills can be discovered from a repository, installed into the Loom user home, searched and loaded on demand, and can include scripts, references, templates, and assets.
 
 ## Install and manage skills
 
-The `loom` executable now has a dedicated `skill` command family. These commands do not require an AI model or API key.
+The `loom` executable has a dedicated `skill` command family. These commands do not require an AI model or API key.
 
 ```bash
 loom skill install ./my-skill
 loom skill install ./my-skill.zip
-loom skill install https://example.com/my-skill.zip
 loom skill install https://github.com/owner/repository
 loom skill install https://github.com/owner/repository/tree/main/path/to/skill
+loom skill install https://github.com/owner/repository/blob/main/path/to/skill/SKILL.md
 
 loom skill list
 loom skill search pdf
@@ -28,13 +28,13 @@ loom skill install https://github.com/owner/skills --name pdf-helper
 loom skill install https://github.com/owner/skills --all
 ```
 
-Use `--force` to replace an installed skill during a manual install. Loom records installation provenance in `.loom-skill.json`, which lets `loom skill update` reacquire the original source.
+`--force` can replace an existing Loom-managed skill. It intentionally cannot overwrite a manual/unmanaged skill directory. Likewise, `update`, `update --all`, and `remove` only mutate skills carrying a valid Loom installation manifest.
 
 Installed user skills live under:
 
 - `<LOOM_HOME>/skills`
 
-The legacy-compatible user root remains supported:
+The legacy-compatible user root remains supported for manually managed skills:
 
 - `~/.agents/skills`
 
@@ -62,18 +62,18 @@ Skill bodies are not placed into the initial model context. Loom exposes four sk
 
 - `skill_search`: search skill metadata for the current workspace.
 - `skill_load`: load one exact `SKILL.md` body after discovery.
-- `skill_read_resource`: read a UTF-8 text file bundled with a skill.
-- `skill_stage_bundle`: copy the complete skill bundle into `.loom/skill-runs/<name>` in the current workspace.
+- `skill_read_resource`: read a bounded UTF-8 text file bundled with a skill.
+- `skill_stage_bundle`: copy a validated inert skill bundle into `.loom/skill-runs/<name>` in the current workspace.
 
 A typical model flow is:
 
 1. Search for a relevant skill.
 2. Load the selected skill by exact name.
 3. Read references/templates directly when needed.
-4. If the workflow needs bundled scripts or binary assets, stage the bundle into the workspace.
+4. If the workflow needs bundled scripts or assets, stage the bundle into the workspace.
 5. Run scripts with Loom's normal process tools.
 
-Staging itself never executes code.
+Loading and staging never execute bundled code.
 
 ## Bundle support
 
@@ -92,33 +92,52 @@ my-skill/
     └── example.png
 ```
 
-Text resources can be read without copying the bundle into the project. Scripts and binary assets can be staged into the current workspace so existing Sandbox and Process Runtime rules continue to apply.
+Text resources can be read without copying the bundle into the project. Scripts and other assets can be staged into the current workspace so existing Sandbox and Process Runtime rules continue to apply.
+
+Native executable/library/disk-image payloads such as `.exe`, `.dll`, `.so`, `.dylib`, `.msi`, and `.dmg` are rejected by the managed installer/stager. Script source files such as Python, JavaScript, PowerShell, or shell remain valid skill resources, but copied files have executable permission bits removed where the platform supports Unix modes.
 
 ## Installation safety
 
-Installing a skill is deliberately inert. Loom does not execute package-manager hooks, shell commands, Python files, JavaScript files, or dependency installers while installing or updating a skill.
+Installing or updating a skill is deliberately inert. Loom does not execute package-manager hooks, shell commands, Python files, JavaScript files, dependency installers, or `git` subprocesses during installation.
 
-The installer also applies basic supply-chain boundaries:
+Remote installation is deliberately narrower than local installation. The safe default currently accepts only public HTTPS GitHub URLs:
 
-- Remote sources must use `https://` by default; `ssh://`, `git://`, and `http://` sources are rejected. Clone/download those manually first if you intentionally want to trust them.
-- Git is run with terminal prompts disabled, and shallow clones use no tags.
-- Git is configured to reject `file://` and `ext::` transport expansion during clone.
-- ZIP path traversal is rejected.
-- ZIP symlinks are rejected.
-- Symlinks inside copied skill bundles are rejected or skipped.
-- Skill names and frontmatter are validated before installation.
-- Bundle/archive size and file-count limits are enforced.
-- Existing skills are not replaced unless an update or explicit `--force` is used.
-- Remote Git repositories are shallow-cloned and are not executed during installation.
+- `https://github.com/<owner>/<repo>`
+- `https://github.com/<owner>/<repo>/tree/<ref>/<path>`
+- `https://github.com/<owner>/<repo>/blob/<ref>/<path>/SKILL.md`
 
-Skills remain instructions and resources, not privileged code. They do not bypass Loom's `PermissionEngine`, tool exposure rules, browser policy, sandbox policy, MCP policy, or approval flow.
+Loom downloads the GitHub source archive as data and validates it before publication. `http://`, `git://`, `ssh://`, arbitrary remote ZIP hosts, embedded URL credentials, and non-standard GitHub ports are rejected. Local directories and local ZIP files remain supported.
 
-When a workflow stages and later runs a bundled script, that process execution still crosses the same Loom permission and filesystem-containment boundaries as any other process call.
+The installer applies additional supply-chain boundaries:
+
+- Compressed archive size, expanded bundle size, per-file size, and file-count limits are enforced.
+- ZIP path traversal, non-portable path components, duplicate normalized paths, and archive symlinks are rejected.
+- Symlink files/directories inside local skill bundles are rejected.
+- Common VCS/cache/dependency trees such as `.git`, `.hg`, `.svn`, `__pycache__`, and `node_modules` are not copied as skill payload.
+- Native executable payloads and application bundles are rejected.
+- Existing manual/unmanaged skills are never overwritten or removed by Loom management commands.
+- Install/update publication uses a staged replacement with rollback so an interrupted replacement does not intentionally delete the previous managed copy first.
+- Installed content receives a SHA-256 tree digest and an `execution_policy: inert-on-install` provenance record in `.loom-skill.json`.
+- Copied skill files are stripped of executable permission bits where supported.
+
+This installer remains a user-facing management command, not a model-exposed install tool. A model cannot silently pull and install a new remote skill during an Agent turn.
+
+## Resource and staging safety
+
+`skill_read_resource` rejects parent traversal, absolute/non-portable paths, Loom internal metadata, VCS/dependency paths, and symlink traversal. It reads bounded UTF-8 text only, rejects binary-looking content, and applies Loom's secret redaction before returning text to the model.
+
+`skill_stage_bundle` is a mutating tool, so the existing permission engine remains authoritative. Staging also rejects symlinked workspace `.loom`/staging paths, refuses to replace unrecognized staging directories, rejects symlink/native executable bundle content, enforces size limits, strips executable bits, writes an inert staging marker, and swaps staged content with rollback semantics.
+
+## Execution boundary
+
+Skills are instructions and inert resources, not privileged code. They do not bypass Loom's `PermissionEngine`, tool exposure rules, browser policy, sandbox policy, MCP policy, process policy, or approval flow.
+
+When a workflow later asks Loom to run a bundled script, that execution is a separate action through Loom's normal sensitive process/`exec` tools. It therefore crosses the same permission, environment, filesystem-containment, and sandbox boundaries as any other command.
+
+Do not store real credentials in `SKILL.md` or supporting files. Secret redaction is defense in depth, not a credential vault.
 
 ## Current compatibility
 
 Loom v2 is designed around the common Agent Skills / Codex-style `SKILL.md` bundle model and supports instruction-only skills as well as bundles containing references, templates, scripts, and assets.
 
-The installer currently supports local directories, local ZIP files, HTTPS remote ZIP files, HTTPS Git repositories, GitHub repository URLs, and GitHub `/tree/<branch>/<path>` URLs. Git must be available on `PATH` for repository sources.
-
-Private repository authentication is non-interactive. It only works when HTTPS Git credentials are already configured and usable without prompts. A hosted remote Skill registry/search marketplace is not part of this version.
+The managed installer currently supports local directories, local ZIP files, public GitHub repository URLs, GitHub `/tree/<ref>/<path>` URLs, and GitHub `SKILL.md` blob URLs. Private repository authentication and arbitrary third-party remote registries are intentionally not enabled in the safe-default path yet; they should be added later through an explicit trusted-source/authentication layer rather than by allowing unrestricted network fetches.
