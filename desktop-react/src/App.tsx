@@ -38,6 +38,7 @@ import "./components/shortcut-runtime.css";
 import "./components/workspace-panels.css";
 import "./components/thread-switch-transition.css";
 import { canRenderArtifact } from "./artifactRenderers";
+import { warmFontWeights } from "./fontWarmup";
 import { useI18n } from "./i18n";
 import { useMotionPresence } from "./motion/useMotionPresence";
 import { useReducedMotion } from "./motion/useReducedMotion";
@@ -477,6 +478,8 @@ export default function App() {
     else delete root.dataset.loomLive;
     return () => { delete root.dataset.loomLive; };
   }, [running]);
+  // Once the app is idle, make the font instances the stylesheets use, so no surface pays for them on its first frame.
+  useEffect(() => warmFontWeights(), []);
   const archived = Boolean(thread?.archived);
   const conversationDisabled = !thread || loom.connection !== "ready" || running || archived;
   const connecting = loom.connection === "connecting";
