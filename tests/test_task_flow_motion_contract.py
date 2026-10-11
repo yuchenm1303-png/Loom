@@ -65,10 +65,12 @@ def test_new_activity_rows_use_live_follow_without_hard_snap() -> None:
     assert "latestActivityItemId" in source
     assert "activityAdded && followingRef.current" in source
     branch_start = source.index("else if (activityAdded && followingRef.current)")
-    branch_end = source.index("} else if (followingRef.current)", branch_start)
+    # Any other growth is answered by the ResizeObserver, after layout and in the frame that shows it.
+    branch_end = source.index("// Any other growth reaches the viewport through the ResizeObserver", branch_start)
     activity_branch = source[branch_start:branch_end]
     assert "scheduleBottomSync(scroller);" in activity_branch
     assert "false, true" not in activity_branch
+    assert "} else if (followingRef.current) {" not in source[branch_start:branch_end + 400]
 
 
 def test_user_scroll_up_can_break_live_follow_while_streaming() -> None:
@@ -170,8 +172,12 @@ def test_running_state_is_read_from_ref_inside_long_lived_resize_observer() -> N
 
     assert "const runningRef = useRef(Boolean(running));" in source
     assert "runningRef.current = nextRunning;" in source
-    # Streaming growth is followed exactly; only completion (not a running turn) may ease.
-    assert "(forced || (!runningRef.current && performance.now() < settleUntilRef.current))" in source
+    # A running turn glides on the short spring; sending, jumping to latest and the completion hand-off take the
+    # longer one. Neither is a capped chase that falls behind a fast stream: the stiffness grows with the gap.
+    assert "const travelling = travelRef.current || (!runningRef.current && now < settleUntilRef.current);" in source
+    assert 'travelling ? "travel" : "live"' in source
+    follow = (ROOT / "desktop-react" / "src" / "components" / "followMotion.ts").read_text(encoding="utf-8")
+    assert "export function followStiffness" in follow and "MAX_BOOST" in follow
 
 
 def test_completion_handoff_finishes_with_an_exact_bottom_pin() -> None:

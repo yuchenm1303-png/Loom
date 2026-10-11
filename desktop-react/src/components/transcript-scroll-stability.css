@@ -11,6 +11,14 @@
   scroll-behavior: auto !important;
 }
 
+/* While the controller holds the live edge it is the only thing that moves the page. Scroll anchoring would shift
+   the view in layout by the very amount the glide is about to cover, and the glide would then chase a view that
+   already moved. A reader who has left the live edge keeps anchoring: a fold above their place does not slide the
+   text out from under them. */
+.conversation-stage > .transcript-scroll[data-following="true"] {
+  overflow-anchor: none;
+}
+
 .transcript-jump-latest {
   position: absolute;
   /* Conversation affordance: stay above messages, but below transient UI layers. */

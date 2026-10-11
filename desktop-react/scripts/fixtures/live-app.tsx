@@ -12,7 +12,9 @@
  *
  *   ?theme=dark|light      (default dark)
  *   ?lang=en               English UI and script
- *   ?scenario=code|approval|error|decision|quick   (default code)
+ *   ?scenario=code|approval|error|decision|quick|long|burst   (default code)
+ *       long: a thinking pause, then one long Markdown answer; burst: a dozen quick reads/searches, one note, a
+ *       command, then the long answer. ?cadence=real delivers their text like a provider does (clumps and gaps).
  *   ?speed=0.5             slow the script (animations are not rescaled)
  *   ?empty=1               start on the home screen of an empty thread
  *   ?autosend=1            send the scenario prompt once the app is ready
@@ -155,7 +157,83 @@ const COPY = english ? {
 const VALIDATOR_DIFF = "diff --git a/src/utils/validators.ts b/src/utils/validators.ts\n--- a/src/utils/validators.ts\n+++ b/src/utils/validators.ts\n@@ -1,3 +1,7 @@\n export function required(value: string) {\n   return value.trim().length > 0;\n }\n+\n+export function isEmail(value: string): boolean {\n+  return /^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(value.trim());\n+}";
 const LOGIN_DIFF = `${VALIDATOR_DIFF}\ndiff --git a/src/pages/Login.tsx b/src/pages/Login.tsx\n--- a/src/pages/Login.tsx\n+++ b/src/pages/Login.tsx\n@@ -12,6 +12,9 @@\n-  const valid = required(email) && required(password);\n+  const emailOk = isEmail(email);\n+  const valid = emailOk && required(password);\n+  const emailError = email && !emailOk ? "请输入有效的邮箱" : "";`;
 
+// A provider does not deliver text on a metronome: tokens come in clumps of one to a handful of glyphs, with gaps
+// from a few ms to a few hundred. ?cadence=real replays that shape (seeded, so two runs of one scenario match).
+const realCadence = params.get("cadence") === "real";
+let seed = 20261011;
+const random = () => {
+  seed = (seed * 1664525 + 1013904223) >>> 0;
+  return seed / 0x100000000;
+};
+
+async function streamReal(item: Item, field: "text" | "reasoning", full: string, token: number) {
+  const graphemes = Array.from(full);
+  for (let index = 0; index < graphemes.length;) {
+    const size = 1 + Math.floor(random() * random() * 7);
+    const delta = graphemes.slice(index, index + size).join("");
+    index += size;
+    item[field] = `${String(item[field] ?? "")}${delta}`;
+    emit("item/delta", { threadId: THREAD, itemId: item.id, delta: { [field]: delta } });
+    await wait(random() < 0.06 ? 120 + random() * 240 : 12 + random() * 52, token);
+  }
+}
+
+const LONG_ANSWER = english
+  ? "I went through the whole login flow. The short version: email validation is missing in three places, listed here from most to least harmful.\n\n## What I found\n\n1. **The form only checks required fields.** `valid` in `Login.tsx` looks at whether two fields are empty, so a malformed address goes all the way to the backend, which answers with a vague 400 and the user only sees \"sign-in failed\".\n2. **The shared validators have no email rule.** `validators.ts` exports `required()` and nothing else; the register and reset pages each carry an inline regex of their own, and the two have already drifted apart.\n3. **The error sits in the wrong place.** It is rendered in a global area at the bottom of the form, so fixing the field does not visibly clear it and nobody can tell which field it belongs to.\n\n## Options\n\n| Option | Scope | Risk | Note |\n| --- | --- | --- | --- |\n| Inline regex in Login.tsx | 1 file | low | quickest, keeps the duplication |\n| Extract `isEmail()` and reuse it | 3 files | low | recommended: one rule everywhere |\n| Add a validation library | many | medium | too heavy for a single rule |\n\nI would take the second option. The rule itself stays deliberately small:\n\n```ts\nexport function isEmail(value: string): boolean {\n  const text = value.trim();\n  const at = text.indexOf(\"@\");\n  return at > 0 && at === text.lastIndexOf(\"@\") && text.indexOf(\".\", at) > at + 1 && !/\\s/.test(text);\n}\n```\n\n## Next\n\n- change `validators.ts` and add the unit tests;\n- wire the login page to it and move the message under the field;\n- make the register and reset pages reuse the same function and delete the duplicated regexes.\n\n> Do not reach for the full RFC 5322 expression on the client: rejecting a real address costs far more than letting one bad address through.\n\nIf that direction works for you I will start with the first step."
+  : "我把整个登录流程梳理了一遍，结论先放在前面：邮箱校验的缺口主要在三个地方，下面按影响从大到小说明。\n\n## 发现的问题\n\n1. **前端只校验了必填项。** `Login.tsx` 里的 `valid` 只看两个字段是不是空，格式不对的邮箱可以一路提交到后端，后端返回一个笼统的 400，用户看到的只有“登录失败”。\n2. **公共校验工具缺少邮箱规则。** `validators.ts` 里只有 `required()`，注册页和找回密码页各自写了一份内联正则，两份规则已经不一致。\n3. **错误提示位置不对。** 提示放在表单底部的全局区域，改完字段后看不到它消失，也分不清是哪个字段的问题。\n\n## 方案对比\n\n| 方案 | 改动范围 | 风险 | 备注 |\n| --- | --- | --- | --- |\n| 在 Login.tsx 内联正则 | 1 个文件 | 低 | 最快，但会继续重复 |\n| 抽出 `isEmail()` 并复用 | 3 个文件 | 低 | 推荐，一次统一三处规则 |\n| 引入第三方校验库 | 多处 | 中 | 对一条规则来说过重 |\n\n我倾向于第二种。规则本身刻意保持很小：\n\n```ts\nexport function isEmail(value: string): boolean {\n  const text = value.trim();\n  const at = text.indexOf(\"@\");\n  return at > 0 && at === text.lastIndexOf(\"@\") && text.indexOf(\".\", at) > at + 1 && !/\\s/.test(text);\n}\n```\n\n## 接下来\n\n- 先改 `validators.ts` 并补单元测试；\n- 再把登录页接上，把提示挪到输入框下方；\n- 最后让注册页和找回密码页复用同一个函数，删除重复的正则。\n\n> 注意：不要在前端放完整的 RFC 5322 正则，误杀一个合法地址的代价，比放过一个坏地址高得多。\n\n如果你同意这个方向，我就从第一步开始。";
+
+const BURST_STEPS: Array<[string, Record<string, unknown>, string]> = [
+  ["read_workspace_text", { path: "src/pages/Login.tsx" }, "export function Login() { … }"],
+  ["read_workspace_text", { path: "src/pages/Register.tsx" }, "export function Register() { … }"],
+  ["read_workspace_text", { path: "src/pages/Reset.tsx" }, "export function Reset() { … }"],
+  ["read_workspace_text", { path: "src/utils/validators.ts" }, "export function required(value: string) { … }"],
+  ["search_workspace_text", { query: "isEmail" }, "No matches."],
+  ["search_workspace_text", { query: "emailPattern" }, "src/pages/Register.tsx:14\nsrc/pages/Reset.tsx:9"],
+  ["read_workspace_text", { path: "src/components/Field.tsx" }, "export function Field() { … }"],
+  ["read_workspace_text", { path: "src/components/FormError.tsx" }, "export function FormError() { … }"],
+  ["search_workspace_text", { query: "FormError" }, "src/pages/Login.tsx:31"],
+  ["read_workspace_text", { path: "src/i18n/zh-CN.ts" }, "export default { … }"],
+  ["read_workspace_text", { path: "src/i18n/en.ts" }, "export default { … }"],
+  ["search_workspace_text", { query: "login.error" }, "src/i18n/zh-CN.ts:88"],
+];
+
+async function runLongScript(turnId: string, token: number) {
+  const say = realCadence ? streamReal : (item: Item, field: "text" | "reasoning", full: string, at: number) => stream(item, field, full, at, 3, 38);
+  await wait(500, token);
+  const a1 = start(turnId, { id: `${turnId}-a1`, type: "assistant_message", status: "streaming", text: "", reasoning: "" });
+  await wait(420, token);
+  await say(a1, "reasoning", COPY.r1, token);
+  await wait(200, token);
+  await say(a1, "text", COPY.t1, token);
+  complete(a1, { phase: "commentary" });
+  await wait(240, token);
+  if (scenario === "burst") {
+    for (const [index, [toolName, args, content]] of BURST_STEPS.entries()) {
+      await tool(turnId, `${turnId}-b${index}`, toolName, args, 160 + Math.floor(random() * 520), token, content);
+      await wait(40 + Math.floor(random() * 160), token);
+      if (index === 5) {
+        const note = start(turnId, { id: `${turnId}-n${index}`, type: "assistant_message", status: "streaming", text: "" });
+        await wait(260, token);
+        await say(note, "text", COPY.t2, token);
+        complete(note, { phase: "commentary" });
+        await wait(200, token);
+      }
+    }
+    await command(turnId, `${turnId}-test`, ["npm", "test"], 1400, " PASS  src/utils/validators.test.ts\n\nTests: 6 passed, 6 total", token);
+    await wait(500, token);
+  } else {
+    await tool(turnId, `${turnId}-read1`, "read_workspace_text", { path: "src/pages/Login.tsx" }, 420, token, "export function Login() { … }");
+    await wait(420, token);
+  }
+  const final = start(turnId, { id: `${turnId}-final`, type: "assistant_message", status: "streaming", text: "" });
+  await wait(300, token);
+  await say(final, "text", LONG_ANSWER, token);
+  complete(final, { phase: "final_answer" });
+  return "completed";
+}
+
 async function runScript(turnId: string, token: number) {
+  if (scenario === "long" || scenario === "burst") return runLongScript(turnId, token);
   if (scenario === "quick") {
     await wait(900, token);
     const answer = start(turnId, { id: `${turnId}-a`, type: "assistant_message", status: "streaming", text: "", reasoning: "" });

@@ -1,6 +1,7 @@
 import { ChevronDown } from "./icons";
 import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { TranscriptItem } from "../types/loom";
+import { advanceFollow, snapScrollOffset, TargetFlow, type FollowState } from "./followMotion";
 import "./transcript-scroll-stability.css";
 
 interface TranscriptScrollControllerProps {
@@ -16,11 +17,11 @@ interface TranscriptScrollControllerProps {
 const BOTTOM_THRESHOLD_PX = 96;
 const HISTORY_LOAD_THRESHOLD_PX = 220;
 const SCROLL_EPSILON_PX = 2;
-const LIVE_FOLLOW_MIN_STEP_PX = 1.5;
-const LIVE_FOLLOW_MAX_STEP_PX = 42;
-const LIVE_FOLLOW_NEAR_EASE = 0.22;
-const LIVE_FOLLOW_FAR_EASE = 0.38;
-const LIVE_FOLLOW_PRESSURE_PX = 420;
+// Anything but our own last write that moves the view (the reader, a clamp after a fold) restarts the glide from where
+// the view really is. A write comes back rounded, so this is wider than rounding.
+const EXTERNAL_MOVE_PX = 1.5;
+// Farther than this from the live edge (or two viewports, if more) the view jumps: a thread swap, a big mount.
+const GLIDE_MAX_GAP_PX = 900;
 const LIVE_SETTLE_WINDOW_MS = 820;
 const SEND_FOLLOW_WINDOW_MS = 360;
 const USER_RETURN_INTENT_MS = 420;
@@ -163,6 +164,15 @@ export function TranscriptScrollController({
   const viewportHeightRef = useRef(0);
   const bottomTargetDirtyRef = useRef(true);
   const snapBottomRef = useRef(false);
+  // The glide toward the live edge: where the spring is, what we last wrote (to tell our own scrolling from anyone
+  // else's), when it last stepped, and whether it is still moving.
+  const motionRef = useRef<FollowState>({ position: 0, velocity: 0 });
+  const flowRef = useRef(new TargetFlow());
+  const lastWriteRef = useRef<number | null>(null);
+  const lastTickAtRef = useRef(0);
+  const glidingRef = useRef(false);
+  const travelRef = useRef(false);
+  const jumpShownRef = useRef(false);
   const touchYRef = useRef<number | null>(null);
   const scrollbarPointerRef = useRef<number | null>(null);
   const userDetachedRef = useRef(false);
@@ -180,7 +190,11 @@ export function TranscriptScrollController({
   const itemsLengthRef = useRef(items.length);
   const historyLoadInFlightRef = useRef(false);
   const prependAnchorRef = useRef<{ threadId: string; scrollHeight: number; scrollTop: number; itemCount: number } | null>(null);
-  const [jumpVisible, setJumpVisible] = useState(false);
+  const [jumpVisible, setJumpVisibleState] = useState(false);
+  const setJumpVisible = (visible: boolean) => {
+    jumpShownRef.current = visible;
+    setJumpVisibleState(visible);
+  };
   const latestUserId = useMemo(() => latestUserMessageId(items), [items]);
   const latestActivityId = useMemo(() => latestActivityItemId(items), [items]);
 
@@ -239,6 +253,10 @@ export function TranscriptScrollController({
     publishFollowing(scroller, false);
     forceBottomRef.current = false;
     snapBottomRef.current = false;
+    glidingRef.current = false;
+    travelRef.current = false;
+    lastWriteRef.current = null;
+    flowRef.current.reset();
     returnIntentUntilRef.current = 0;
     releaseOpenedStep();
     cancelScheduledScroll();
@@ -273,86 +291,97 @@ export function TranscriptScrollController({
     returnIntentUntilRef.current = performance.now() + USER_RETURN_INTENT_MS;
   };
 
+  /**
+   * One step of the viewport toward the live edge. It runs from the ResizeObserver, which fires after layout and
+   * before paint, so a step of new content is answered in the frame that first shows it (a frame scheduled from the
+   * observer would show it, unscrolled, for one frame first), and from the animation frame that carries a glide on.
+   * Returns whether the view is still travelling and another frame is needed.
+   */
+  const followTick = (scroller: HTMLDivElement, fromObserver: boolean): boolean => {
+    if (isPanelResizeActive()) return false;
+    const forced = forceBottomRef.current;
+    const snapNow = snapBottomRef.current;
+    forceBottomRef.current = false;
+    snapBottomRef.current = false;
+    if (!followingRef.current && !forced) return false;
+    const now = performance.now();
+    const motion = motionRef.current;
+
+    // Layout is read when it changed (the observer says so) or is asked for; between those the glide uses the last
+    // reading, so a long glide over an unchanged page measures nothing.
+    if (fromObserver || bottomTargetDirtyRef.current) {
+      viewportHeightRef.current = scroller.clientHeight;
+      bottomTargetRef.current = Math.max(0, scroller.scrollHeight - viewportHeightRef.current);
+      bottomTargetDirtyRef.current = false;
+      flowRef.current.note(bottomTargetRef.current, now);
+      const actual = scroller.scrollTop;
+      // Something other than this loop moved the view (a fold clamped it, the reader dragged it): start from there.
+      if (lastWriteRef.current === null || Math.abs(actual - lastWriteRef.current) > EXTERNAL_MOVE_PX) {
+        motion.position = actual;
+        motion.velocity = 0;
+      }
+    }
+    // Following the live edge would carry the step the reader just opened out of view. They opened it to
+    // read it: stop on its header, as if they had scrolled up to it.
+    const openLimit = openedStepLimit(scroller);
+    if (bottomTargetRef.current > openLimit + SCROLL_EPSILON_PX) {
+      if (Math.abs(scroller.scrollTop - openLimit) > 0.01) scroller.scrollTop = openLimit;
+      lastScrollTopRef.current = scroller.scrollTop;
+      detachFromLiveFollow(scroller);
+      return false;
+    }
+    const target = bottomTargetRef.current;
+    const gap = Math.abs(target - motion.position);
+    // Navigation and completion take the longer glide; the live edge of a running turn the short one.
+    const travelling = travelRef.current || (!runningRef.current && now < settleUntilRef.current);
+    let settled: boolean;
+    if (snapNow || prefersReducedMotion() || gap > Math.max(GLIDE_MAX_GAP_PX, viewportHeightRef.current * 2)) {
+      motion.position = target;
+      motion.velocity = 0;
+      settled = true;
+    } else {
+      // The first step after a rest starts from standstill: the time since the last step was spent standing still.
+      const seconds = glidingRef.current ? (now - lastTickAtRef.current) / 1000 : 0;
+      const next = advanceFollow(motion, target, seconds, travelling ? "travel" : "live", flowRef.current.flowing(now));
+      motion.position = next.position;
+      motion.velocity = next.velocity;
+      settled = next.settled;
+    }
+    lastTickAtRef.current = now;
+    glidingRef.current = !settled;
+    if (settled) travelRef.current = false;
+
+    const written = Math.min(target, Math.max(0, snapScrollOffset(motion.position, window.devicePixelRatio)));
+    if (lastWriteRef.current === null || Math.abs(written - lastWriteRef.current) > 0.001 || Math.abs(scroller.scrollTop - written) > 0.001) {
+      scroller.scrollTop = written;
+    }
+    lastWriteRef.current = written;
+    lastScrollTopRef.current = written;
+    followingRef.current = true;
+    publishFollowing(scroller, true);
+    if (jumpShownRef.current) {
+      jumpShownRef.current = false;
+      setJumpVisible(false);
+    }
+    return !settled;
+  };
+
+  const followFrame = () => {
+    frameRef.current = null;
+    const scroller = transcriptScroller();
+    if (!scroller) return;
+    if (followTick(scroller, false)) frameRef.current = requestAnimationFrame(followFrame);
+  };
+
   const scheduleBottomSync = (scroller: HTMLDivElement, force = false, snap = false) => {
     bottomTargetDirtyRef.current = true;
-    if (force) forceBottomRef.current = true;
+    if (force) {
+      forceBottomRef.current = true;
+      travelRef.current = true;
+    }
     if (snap) snapBottomRef.current = true;
     if (isPanelResizeActive() || frameRef.current !== null) return;
-
-    let lastStepAt = 0;
-    const step = (now: number) => {
-      frameRef.current = null;
-      if (isPanelResizeActive()) return;
-
-      const forced = forceBottomRef.current;
-      const snapNow = snapBottomRef.current;
-      forceBottomRef.current = false;
-      snapBottomRef.current = false;
-      if (!followingRef.current && !forced) return;
-
-      // Layout only needs measuring after content/viewport changes. Easing
-      // toward an unchanged bottom should not measure a long table every frame.
-      if (bottomTargetDirtyRef.current) {
-        viewportHeightRef.current = scroller.clientHeight;
-        bottomTargetRef.current = Math.max(0, scroller.scrollHeight - viewportHeightRef.current);
-        bottomTargetDirtyRef.current = false;
-      }
-      // Following the live edge would carry the step the reader just opened out of view. They opened it to
-      // read it: stop on its header, as if they had scrolled up to it.
-      const openLimit = openedStepLimit(scroller);
-      if (bottomTargetRef.current > openLimit + SCROLL_EPSILON_PX) {
-        if (Math.abs(scroller.scrollTop - openLimit) > 0.01) scroller.scrollTop = openLimit;
-        lastScrollTopRef.current = scroller.scrollTop;
-        detachFromLiveFollow(scroller);
-        return;
-      }
-      const target = bottomTargetRef.current;
-      const currentTop = scroller.scrollTop;
-      const distance = target - currentTop;
-      let nextTop = target;
-      const absoluteDistance = Math.abs(distance);
-      const reducedMotion = prefersReducedMotion();
-      // Streaming/layout updates must reach the current bottom in one frame.
-      // Navigation and completion may animate; a capped chase during generation
-      // falls permanently behind fast tool output and large Markdown updates.
-      const easeLiveGrowth = Boolean(
-        (forced || (!runningRef.current && performance.now() < settleUntilRef.current))
-        && !snapNow
-        && !reducedMotion
-        && absoluteDistance <= Math.max(840, viewportHeightRef.current * 2)
-        && absoluteDistance > SCROLL_EPSILON_PX
-      );
-
-      if (easeLiveGrowth) {
-        const pressure = Math.min(1, absoluteDistance / LIVE_FOLLOW_PRESSURE_PX);
-        const ease = LIVE_FOLLOW_NEAR_EASE
-          + (LIVE_FOLLOW_FAR_EASE - LIVE_FOLLOW_NEAR_EASE) * pressure;
-        const maxStep = 24 + (LIVE_FOLLOW_MAX_STEP_PX - 24) * pressure;
-        // Match the same motion on 60/120/144Hz displays and after slow frames.
-        const frames = lastStepAt ? Math.min(3, Math.max(0.25, (now - lastStepAt) / (1000 / 60))) : 1;
-        const timedEase = 1 - Math.pow(1 - ease, frames);
-        const delta = Math.min(
-          maxStep * frames,
-          Math.max(LIVE_FOLLOW_MIN_STEP_PX * frames, absoluteDistance * timedEase),
-        );
-        nextTop = distance >= 0
-          ? Math.min(target, currentTop + delta)
-          : Math.max(target, currentTop - delta);
-      }
-      lastStepAt = now;
-      if (Math.abs(nextTop - currentTop) > 0.01) scroller.scrollTop = nextTop;
-
-      lastScrollTopRef.current = nextTop;
-      followingRef.current = true;
-      publishFollowing(scroller, true);
-      setJumpVisible(false);
-
-      if (easeLiveGrowth && Math.abs(target - nextTop) > SCROLL_EPSILON_PX) {
-        frameRef.current = requestAnimationFrame(step);
-      }
-    };
-
-    frameRef.current = requestAnimationFrame(step);
+    frameRef.current = requestAnimationFrame(followFrame);
   };
 
   useLayoutEffect(() => {
@@ -450,9 +479,8 @@ export function TranscriptScrollController({
       // hard snap made a polished row entrance look like the whole transcript
       // jumped when several tools arrived together.
       scheduleBottomSync(scroller);
-    } else if (followingRef.current) {
-      scheduleBottomSync(scroller);
     }
+    // Any other growth reaches the viewport through the ResizeObserver below, after layout and in the same frame.
 
     lastThreadIdRef.current = nextThreadId;
     lastTurnIdRef.current = nextTurnId;
@@ -618,6 +646,9 @@ export function TranscriptScrollController({
       releaseOpenedStep();
       scroller.scrollTop = Math.max(0, scroller.scrollHeight - scroller.clientHeight);
       lastScrollTopRef.current = scroller.scrollTop;
+      motionRef.current = { position: scroller.scrollTop, velocity: 0 };
+      lastWriteRef.current = scroller.scrollTop;
+      glidingRef.current = false;
       followingRef.current = true;
       publishFollowing(scroller, true);
       forceBottomRef.current = false;
@@ -668,7 +699,10 @@ export function TranscriptScrollController({
       ? null
       : new ResizeObserver(() => {
           if (followingRef.current || forceBottomRef.current) {
-            scheduleBottomSync(scroller);
+            // Layout is current here and the frame has not been painted: step now, finish the glide in frames.
+            if (followTick(scroller, true) && frameRef.current === null && !isPanelResizeActive()) {
+              frameRef.current = requestAnimationFrame(followFrame);
+            }
           } else {
             // Streaming can move the bottom without a scroll event while the
             // user is reading history. Keep the return-to-latest affordance in

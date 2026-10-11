@@ -28,6 +28,15 @@ try {
     };
   });
 
+  // The view glides to the live edge rather than jumping, so "at the edge" is something to wait for, within a bound.
+  const atEdge = async (target, within = 1500) => {
+    await target.waitForFunction(() => {
+      const el = document.querySelector(".transcript-scroll");
+      return el.scrollHeight - el.scrollTop - el.clientHeight < 3;
+    }, null, { timeout: within, polling: "raf" });
+    return stateOf(target);
+  };
+
   const page = await open();
   const scroller = page.locator(".transcript-scroll");
   const bottom = () => scroller.evaluate(el => el.scrollHeight - el.scrollTop - el.clientHeight);
@@ -41,15 +50,28 @@ try {
   assert.equal(await scroller.getAttribute("data-following"), "true");
   await page.evaluate(() => window.longConversation.start());
   await page.waitForTimeout(500);
-  // A large asynchronous layout change must sync within a few frames even
+  // A large asynchronous layout change must reach the live edge promptly even
   // while the live answer is running (images/tool output can grow this way).
-  await page.evaluate(async () => {
+  // The view glides there rather than jumping, so "promptly" is a time: a 700px
+  // arrival is home within a quarter of a second, and never overshoots.
+  const arrival = await page.evaluate(async () => {
+    const scroller = document.querySelector(".transcript-scroll");
     const probe = document.createElement("div");
     probe.id = "follow-probe";
     probe.style.height = "700px";
     document.querySelector(".transcript").append(probe);
-    for (let i = 0; i < 4; i++) await new Promise(requestAnimationFrame);
+    const started = performance.now();
+    let overshoot = 0;
+    while (performance.now() - started < 600) {
+      await new Promise(requestAnimationFrame);
+      const gap = scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight;
+      overshoot = Math.max(overshoot, -gap);
+      if (gap < 3) return { ms: performance.now() - started, overshoot };
+    }
+    return { ms: Infinity, overshoot };
   });
+  assert.ok(arrival.ms < 250, `live output reached the edge in ${arrival.ms}ms`);
+  assert.ok(arrival.overshoot < 1.5, `and did not overshoot it (${arrival.overshoot}px)`);
   assert.ok(await bottom() < 3, `live output lagged ${await bottom()}px`);
   // Upward intent pauses follow even within the near-bottom threshold, and
   // always exposes a way to resume instead of silently hiding the control.
@@ -71,7 +93,7 @@ try {
   await scroller.evaluate(el => el.dispatchEvent(new WheelEvent("wheel", { deltaY: 40, bubbles: true })));
   assert.equal(await scroller.getAttribute("data-following"), "true");
   await page.evaluate(() => window.longConversation.finish());
-  await page.waitForTimeout(1000);
+  await atEdge(page, 2500);
   assert.ok(await bottom() < 3);
   await page.close();
 
@@ -80,18 +102,15 @@ try {
     const live = await open();
     await live.evaluate(() => { window.longConversation.start(); window.longConversation.step(1); window.longConversation.step(2); });
     await live.locator(".turn-block.is-active .wv-row.is-expandable").last().waitFor();
-    await live.waitForTimeout(600);
-    assert.ok((await stateOf(live)).bottom < 3, "the live edge is in view before the click");
+    await atEdge(live);
     await live.locator(".turn-block.is-active .wv-row.is-expandable").last().click();
     await live.locator('.turn-block.is-active .wv-detail[data-open="true"]').waitFor();
-    await live.waitForTimeout(500);
-    let state = await stateOf(live);
+    let state = await atEdge(live);
     assert.equal(state.following, "true", "opening a step of the live run must not end follow");
     assert.equal(state.jump, false);
     assert.ok(state.bottom < 3, `the opened step pushed the live edge out of view by ${state.bottom}px`);
     await live.evaluate(() => window.longConversation.step(3));
-    await live.waitForTimeout(700);
-    state = await stateOf(live);
+    state = await atEdge(live);
     assert.equal(state.following, "true");
     assert.ok(state.bottom < 3, `the run kept growing after the click and the view lagged ${state.bottom}px`);
     await live.close();
@@ -118,7 +137,7 @@ try {
     assert.ok(Math.abs((await stateOf(live)).top - state.top) < 3, "the run growing underneath does not carry the reader away");
     await live.locator(".transcript-jump-latest").click();
     await live.waitForFunction(() => document.querySelector(".transcript-scroll").dataset.following === "true");
-    await live.waitForTimeout(800);
+    await atEdge(live, 2500);
     assert.ok((await stateOf(live)).bottom < 3);
     await live.close();
   }
