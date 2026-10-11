@@ -32,7 +32,12 @@
   flex: 0 0 auto;
 }
 
-.loom-portal-brand { gap: 11px; }
+.loom-portal-brand { gap: 11px; cursor: pointer; }
+.loom-portal-brand:focus-visible {
+  outline: 2px solid rgba(132, 201, 255, .92);
+  outline-offset: 6px;
+  border-radius: 6px;
+}
 .loom-smirel-wordmark {
   width: 104px;
   height: 34px;
