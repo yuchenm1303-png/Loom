@@ -178,3 +178,81 @@ def test_default_name_falls_back_for_a_drive_root():
 
 def test_clean_name_collapses_whitespace():
     assert clean_name("  a   b \n c ") == "a b c"
+
+
+# --- listing cost -----------------------------------------------------------------
+#
+# Building the conversation list asks "which project is this in?" once per
+# conversation. That used to re-read projects.json and re-resolve every root on
+# every question: 16 filesystem resolves per conversation with five projects.
+
+
+def _count_resolves(monkeypatch):
+    import app.projects as projects_module
+
+    calls = []
+    real = projects_module.normalize_root
+
+    def counting(value):
+        calls.append(str(value))
+        return real(value)
+
+    monkeypatch.setattr(projects_module, "normalize_root", counting)
+    return calls
+
+
+def test_the_registry_is_read_once_until_the_file_changes(store, tmp_path, monkeypatch):
+    for name in ("a", "b", "c"):
+        store.create(_folder(tmp_path, name))
+    reads = []
+    real_read = store._read
+    monkeypatch.setattr(store, "_read", lambda: reads.append(1) or real_read())
+
+    first = store.list()
+    again = store.list()
+
+    assert again is first
+    assert len(reads) == 1
+
+
+def test_asking_for_a_project_resolves_only_the_workspace_asked_about(store, tmp_path, monkeypatch):
+    for name in ("a", "b", "c", "d", "e"):
+        store.create(_folder(tmp_path, name))
+    store.list()
+    calls = _count_resolves(monkeypatch)
+
+    for _ in range(10):
+        assert store.for_workspace(tmp_path / "c") is not None
+
+    # One resolve per question (the workspace); the five registered roots are
+    # already resolved. Before: sixteen per question.
+    assert len(calls) == 10
+
+
+def test_a_write_and_an_outside_edit_are_both_seen_by_the_cache(store, tmp_path):
+    first = store.create(_folder(tmp_path, "one"))
+    assert [project.name for project in store.list()] == ["one"]
+
+    store.rename(first.project_id, "renamed")
+    assert [project.name for project in store.list()] == ["renamed"]
+
+    # Another process (a second app-server, an editor) rewrites the registry.
+    import json
+
+    payload = json.loads(store.path.read_text(encoding="utf-8"))
+    payload["projects"][0]["name"] = "edited elsewhere"
+    replacement = store.path.with_suffix(".tmp")
+    replacement.write_text(json.dumps(payload), encoding="utf-8")
+    os.replace(replacement, store.path)
+
+    assert [project.name for project in store.list()] == ["edited elsewhere"]
+
+
+def test_a_registry_that_cannot_be_read_is_not_cached(store, tmp_path):
+    store.create(_folder(tmp_path, "one"))
+    store.path.write_text("{not json", encoding="utf-8")
+    with pytest.raises(ProjectStoreError):
+        store.list()
+
+    store.path.write_text('{"version": 1, "projects": []}', encoding="utf-8")
+    assert store.list() == ()

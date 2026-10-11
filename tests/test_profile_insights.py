@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import dataclasses
 import time
 import uuid
 from datetime import datetime, timedelta, timezone
@@ -282,5 +283,160 @@ def test_profile_streak_counts_today_once_it_is_active(tmp_path: Path) -> None:
 
         streaks = service.profile_insights({"days": 90})["streaks"]
         assert streaks == {"current": 2, "longest": 2, "activeToday": True}
+    finally:
+        runtime.close()
+
+
+# --- reuse across requests --------------------------------------------------------
+#
+# The home screen asks for these numbers at every launch and the profile page asks
+# again. Parsing every log each time took seconds; only the few fields the profile
+# reads are kept now, until a log changes.
+
+
+def _watch_reads(service) -> list[str]:
+    reads: list[str] = []
+    real = service.store.presentation_events
+    service.store.presentation_events = lambda session_id: reads.append(session_id) or real(session_id)
+    return reads
+
+
+def _without_clock(snapshot: dict) -> dict:
+    return {key: value for key, value in snapshot.items() if key != "generatedAt"}
+
+
+def test_a_second_request_does_not_read_unchanged_logs_again(tmp_path: Path) -> None:
+    service, runtime, workspace = _build_service(tmp_path)
+    try:
+        history = _SyntheticHistory(service.store, workspace)
+        session = history.session(model="alpha-model")
+        history.event(session, "turn", AgentEventKind.TURN_STARTED, _local_stamp(1, 9))
+        history.response(session, "turn", _local_stamp(1, 9, 1), 120)
+        reads = _watch_reads(service)
+
+        first = service.profile_insights({"days": 90})
+        second = service.profile_insights({"days": 90})
+
+        assert reads == [session]
+        assert _without_clock(first) == _without_clock(second)
+        assert first["totals"]["totalTokens"] == 120
+    finally:
+        runtime.close()
+
+
+def test_a_log_that_grew_is_read_again_and_counted(tmp_path: Path) -> None:
+    service, runtime, workspace = _build_service(tmp_path)
+    try:
+        history = _SyntheticHistory(service.store, workspace)
+        session = history.session(model="alpha-model")
+        history.event(session, "turn", AgentEventKind.TURN_STARTED, _local_stamp(1, 9))
+        history.response(session, "turn", _local_stamp(1, 9, 1), 120)
+        reads = _watch_reads(service)
+        assert service.profile_insights({"days": 90})["totals"]["totalTokens"] == 120
+
+        history.response(session, "turn", _local_stamp(1, 9, 2), 80)
+
+        assert service.profile_insights({"days": 90})["totals"]["totalTokens"] == 200
+        assert reads == [session, session]
+    finally:
+        runtime.close()
+
+
+def test_a_deleted_conversation_leaves_no_cached_events_behind(tmp_path: Path) -> None:
+    import shutil
+
+    service, runtime, workspace = _build_service(tmp_path)
+    try:
+        history = _SyntheticHistory(service.store, workspace)
+        kept = history.session(model="alpha-model")
+        removed = history.session(model="alpha-model")
+        for session in (kept, removed):
+            history.event(session, "turn", AgentEventKind.TURN_STARTED, _local_stamp(1, 9))
+        service.profile_insights({"days": 90})
+        assert set(service._profile_events_cache) == {kept, removed}
+
+        shutil.rmtree(service.store.session_dir(removed))
+
+        assert service.profile_insights({"days": 90})["totals"]["sessions"] == 1
+        assert set(service._profile_events_cache) == {kept}
+    finally:
+        runtime.close()
+
+
+def test_an_event_copied_into_a_fork_is_still_counted_once(tmp_path: Path) -> None:
+    """A fork carries its parent's history, event ids included; that spend happened once."""
+    service, runtime, workspace = _build_service(tmp_path)
+    try:
+        history = _SyntheticHistory(service.store, workspace)
+        parent = history.session(model="alpha-model")
+        fork = history.session(model="alpha-model")
+        stamp = _local_stamp(1, 9)
+        shared = AgentEvent(
+            event_id="shared-event",
+            session_id=parent,
+            turn_id="turn",
+            kind=AgentEventKind.MODEL_RESPONSE,
+            created_at=stamp.astimezone(timezone.utc).isoformat().replace("+00:00", "Z"),
+            data={"usage": {"input_tokens": 70, "output_tokens": 0, "total_tokens": 70}},
+        )
+        service.store.append_event(shared)
+        service.store.append_event(dataclasses.replace(shared, session_id=fork))
+
+        for _ in range(2):  # the second request is answered from the cache
+            snapshot = service.profile_insights({"days": 90})
+            assert snapshot["totals"]["totalTokens"] == 70
+            assert snapshot["totals"]["modelCalls"] == 1
+    finally:
+        runtime.close()
+
+
+def test_cached_answers_equal_freshly_computed_ones(tmp_path: Path) -> None:
+    service, runtime, workspace = _build_service(tmp_path)
+    try:
+        history = _SyntheticHistory(service.store, workspace)
+        kind = AgentEventKind
+        for model, days in (("alpha-model", (5, 3, 1)), ("beta-model", (4, 1, 0))):
+            session = history.session(model=model)
+            for index, days_ago in enumerate(days):
+                at = _local_stamp(days_ago, 9 + index)
+                history.event(session, f"turn-{index}", kind.TURN_STARTED, at)
+                history.event(session, f"turn-{index}", kind.TOOL_REQUESTED, at + timedelta(seconds=2), tool="shell")
+                history.response(session, f"turn-{index}", at + timedelta(seconds=5), 100 * (index + 1))
+                history.event(session, f"turn-{index}", kind.TURN_COMPLETED, at + timedelta(seconds=9))
+
+        warm = service.profile_insights({"days": 90})
+        warm_again = service.profile_insights({"days": 90})
+        service._profile_events_cache.clear()
+        cold = service.profile_insights({"days": 90})
+
+        assert _without_clock(warm) == _without_clock(warm_again) == _without_clock(cold)
+        assert cold["totals"]["toolCalls"] == 6
+    finally:
+        runtime.close()
+
+
+def test_the_cache_stays_within_its_budget_and_answers_stay_right(tmp_path: Path, monkeypatch) -> None:
+    from app import app_server_thread_management
+
+    service, runtime, workspace = _build_service(tmp_path)
+    try:
+        history = _SyntheticHistory(service.store, workspace)
+        sessions = []
+        for index in range(3):
+            session = history.session(model="alpha-model")
+            history.event(session, "turn", AgentEventKind.TURN_STARTED, _local_stamp(index + 1, 9))
+            history.response(session, "turn", _local_stamp(index + 1, 9, 1), 10)
+            sessions.append(session)
+        # Room for the events of one log only (each has two relevant events).
+        monkeypatch.setattr(app_server_thread_management, "_PROFILE_CACHE_EVENT_BUDGET", 3)
+
+        first = service.profile_insights({"days": 90})
+        held = sum(len(entry[1]) for entry in service._profile_events_cache.values())
+        second = service.profile_insights({"days": 90})
+
+        assert held <= 3, f"{held} events cached against a budget of 3"
+        assert 0 < len(service._profile_events_cache) < len(sessions)
+        assert _without_clock(first) == _without_clock(second)
+        assert first["totals"]["totalTokens"] == 30
     finally:
         runtime.close()

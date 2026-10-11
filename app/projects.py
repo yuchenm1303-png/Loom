@@ -23,7 +23,7 @@ import json
 import os
 import re
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterable
 
@@ -95,6 +95,9 @@ class Project:
     created_at: str = ""
     updated_at: str = ""
     instructions: str = ""
+    # Resolving a path touches the filesystem and the key is compared once per
+    # project for every conversation in a listing, so it is computed once here.
+    _root_key: str = field(default="", init=False, repr=False, compare=False)
 
     def __post_init__(self) -> None:
         project_id = str(self.project_id or "").strip().casefold()
@@ -106,10 +109,12 @@ class Project:
         object.__setattr__(self, "name", name)
         object.__setattr__(self, "root", root)
         object.__setattr__(self, "instructions", clean_instructions(self.instructions))
+        # `root` is already normalized, so only the case folding is left to do.
+        object.__setattr__(self, "_root_key", os.path.normcase(root))
 
     @property
     def root_key(self) -> str:
-        return _root_key(self.root)
+        return self._root_key
 
     def contains(self, workspace: str | Path | None) -> bool:
         if not workspace:
@@ -144,8 +149,19 @@ class ProjectStore:
     def __init__(self, home: str | Path | None = None) -> None:
         self.home = Path(home).expanduser().resolve() if home is not None else _default_home()
         self.path = self.home / "projects.json"
+        # The parsed registry, with the file signature it was parsed from. Building
+        # a conversation list asks which project each conversation belongs to, so
+        # without this the file was read and every root re-resolved per conversation.
+        self._cached: tuple[tuple[int, int, int, int], tuple[Project, ...]] | None = None
 
     # ---- persistence -----------------------------------------------------
+
+    def _signature(self) -> tuple[int, int, int, int] | None:
+        try:
+            stat = self.path.stat()
+        except OSError:
+            return None
+        return (stat.st_mtime_ns, stat.st_ctime_ns, stat.st_size, stat.st_ino)
 
     def _read(self) -> dict[str, object]:
         if not self.path.is_file():
@@ -173,6 +189,7 @@ class ProjectStore:
         try:
             temporary.write_text(text, encoding="utf-8")
             os.replace(temporary, self.path)
+            self._cached = None
         except OSError as exc:
             try:
                 temporary.unlink(missing_ok=True)
@@ -184,6 +201,10 @@ class ProjectStore:
 
     def list(self) -> tuple[Project, ...]:
         """Every registered project, ordered by name."""
+        signature = self._signature()
+        cached = self._cached
+        if signature is not None and cached is not None and cached[0] == signature:
+            return cached[1]
         parsed: list[Project] = []
         for raw in self._read().get("projects") or []:
             if not isinstance(raw, dict):
@@ -192,7 +213,11 @@ class ProjectStore:
                 parsed.append(Project.from_dict(raw))
             except (TypeError, ValueError) as exc:
                 raise ProjectStoreError(f"invalid project entry: {exc}") from exc
-        return tuple(sorted(parsed, key=lambda item: (item.name.casefold(), item.root_key)))
+        projects = tuple(sorted(parsed, key=lambda item: (item.name.casefold(), item.root_key)))
+        # Sign what was read, not what is on disk now: a write between the two
+        # would otherwise be recorded as already seen.
+        self._cached = (signature, projects) if signature is not None else None
+        return projects
 
     def get(self, project_id: str) -> Project:
         key = str(project_id or "").strip().casefold()

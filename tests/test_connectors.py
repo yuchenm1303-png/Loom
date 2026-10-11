@@ -240,3 +240,134 @@ def test_github_write_tools_cross_sensitive_approval_boundary(tmp_path: Path) ->
     )
     assert created.ok is True
     assert created.data["issue"]["number"] == 9
+
+
+# --- launch-time credential check ------------------------------------------------
+#
+# Constructing a manager used to run the check inline: it spawns `gh` and calls
+# api.github.com, so on a poor network the app-server could not answer
+# `initialize` until those timeouts had run out.
+
+
+class _GatedClient:
+    """A GitHub client whose `user()` waits for the test to let it finish."""
+
+    started = None
+    release = None
+
+    def __init__(self, token: str) -> None:
+        self.token = token
+
+    def user(self):
+        type(self).started.set()
+        assert type(self).release.wait(5), "the test never released the GitHub call"
+        return {"login": "alice"}, {"X-OAuth-Scopes": "repo"}
+
+
+def _gated_manager(tmp_path: Path, **kwargs):
+    import threading
+
+    client = type("GatedClient", (_GatedClient,), {"started": threading.Event(), "release": threading.Event()})
+    manager = ConnectorManager(
+        tmp_path / "home",
+        vault=FakeVault("token-one"),
+        environment={},
+        client_factory=client,
+        command_runner=lambda *args, **kwargs: FakeCommandResult(),
+        defer_initial_refresh=True,
+        **kwargs,
+    )
+    return manager, client
+
+
+def test_deferred_manager_does_not_touch_the_network_while_being_constructed(tmp_path: Path) -> None:
+    manager, client = _gated_manager(tmp_path)
+
+    assert not client.started.is_set()
+    status = manager.github_status()
+    assert status["connected"] is False
+    assert status["checking"] is True
+
+
+def test_status_reads_do_not_wait_for_a_slow_credential_check(tmp_path: Path) -> None:
+    import threading
+
+    manager, client = _gated_manager(tmp_path)
+    manager.start_initial_refresh()
+    assert client.started.wait(2)
+
+    answered = threading.Event()
+    threading.Thread(target=lambda: (manager.github_status(), answered.set()), daemon=True).start()
+    try:
+        # The check is still blocked in the network call. The app-server answers
+        # `initialize` from this status, so it must not queue behind that call.
+        assert answered.wait(1), "github_status() waited for the credential check"
+    finally:
+        client.release.set()
+    assert manager.wait_for_initial_refresh(2)
+    assert manager.github_status()["connected"] is True
+    assert manager.github_status()["checking"] is False
+
+
+def test_finished_initial_check_reports_back_and_rebinds_the_tools(tmp_path: Path) -> None:
+    import threading
+
+    manager, client = _gated_manager(tmp_path)
+    rebinds = []
+    manager.refresh_bound_runtime_tools = lambda: rebinds.append("rebind")
+    finished = threading.Event()
+    manager.start_initial_refresh(finished.set)
+    client.release.set()
+
+    assert finished.wait(2)
+    assert rebinds == ["rebind"]
+
+
+def test_a_check_that_started_before_a_disconnect_cannot_reconnect_afterwards(tmp_path: Path) -> None:
+    manager, client = _gated_manager(tmp_path)
+    manager.start_initial_refresh()
+    assert client.started.wait(2)
+
+    # The user disconnects while the launch-time check is still in flight.
+    manager.disconnect_github()
+    client.release.set()
+    assert manager.wait_for_initial_refresh(2)
+
+    status = manager.github_status()
+    assert status["connected"] is False
+    assert status["enabled"] is False
+
+
+def test_a_step_waits_for_the_initial_check_only_when_one_is_running(tmp_path: Path) -> None:
+    manager, client = _gated_manager(tmp_path)
+
+    # Deferred but never started: waiting would only burn the timeout on every step.
+    assert manager.wait_for_initial_refresh(5) is False
+
+    manager.start_initial_refresh()
+    assert client.started.wait(2)
+    assert manager.wait_for_initial_refresh(0.05) is False
+    client.release.set()
+    assert manager.wait_for_initial_refresh(2) is True
+
+
+def test_the_github_cli_is_not_run_when_an_earlier_credential_already_works(tmp_path: Path) -> None:
+    calls = []
+
+    def runner(*args, **kwargs):
+        calls.append(args)
+        return FakeCommandResult(returncode=0, stdout="cli-token")
+
+    manager = ConnectorManager(
+        tmp_path / "home",
+        vault=FakeVault("keyring-token"),
+        environment={},
+        client_factory=FakeGitHubClient,
+        command_runner=runner,
+    )
+    # Pretend `gh` is installed, so that running it would have been possible.
+    manager._gh_binary = lambda: "gh"
+    manager.refresh()
+
+    assert manager.github_status()["credentialSource"] == "keyring"
+    assert calls == [], "gh was spawned even though the keyring token validated"

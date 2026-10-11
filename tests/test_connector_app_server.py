@@ -268,3 +268,52 @@ def test_browser_auth_opens_web_oauth_url_and_refreshes_runtime_after_connection
     )
     assert completed["authorization"]["status"] == "connected"
     assert completed["runtime"]["connectorStatus"]["github"]["connected"] is True
+
+
+def test_service_starts_the_initial_credential_check_after_install_and_reports_its_end(monkeypatch, tmp_path: Path) -> None:
+    """The check calls api.github.com, so it runs beside construction, not inside it."""
+
+    order: list[str] = []
+    callbacks: list = []
+
+    class DeferredManager(FakeManager):
+        def install_runtime(self, runtime) -> None:
+            order.append("install_runtime")
+            super().install_runtime(runtime)
+
+        def start_initial_refresh(self, on_done=None) -> None:
+            order.append("start_initial_refresh")
+            callbacks.append(on_done)
+
+    FakeManager.instances.clear()
+    monkeypatch.setattr(connector_app_server, "_connector_manager", lambda runtime_home: DeferredManager(runtime_home))
+    service_cls = type("ProjectMovableLoomAppServerService", (BaseService,), {})
+    module = SimpleNamespace(
+        ProjectMovableLoomAppServerService=service_cls,
+        ProjectMovableLoomRpcController=type("ProjectMovableLoomRpcController", (BaseController,), {}),
+        JsonRpcError=FakeJsonRpcError,
+    )
+    connector_app_server.patch(module)
+
+    service = service_cls(root=tmp_path / "home")
+
+    assert order == ["install_runtime", "start_initial_refresh"]
+    assert service.notifications == []
+    callbacks[0]()
+    assert [method for method, _ in service.notifications] == ["connector/updated"]
+    assert service.notifications[0][1]["connectors"][0]["id"] == "github"
+
+
+def test_the_real_factory_builds_the_manager_without_checking_credentials(monkeypatch, tmp_path: Path) -> None:
+    import app.connector_web_oauth as web_oauth
+
+    captured: dict = {}
+
+    class Capture:
+        def __init__(self, runtime_home, **kwargs) -> None:
+            captured.update(kwargs)
+
+    monkeypatch.setattr(web_oauth, "WebOAuthConnectorManager", Capture)
+    connector_app_server._connector_manager(tmp_path)
+
+    assert captured == {"defer_initial_refresh": True}

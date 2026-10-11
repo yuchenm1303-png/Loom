@@ -30,7 +30,7 @@ _INSTALLED = False
 def _connector_manager(runtime_home: Any):
     from app.connector_web_oauth import WebOAuthConnectorManager
 
-    return WebOAuthConnectorManager(runtime_home)
+    return WebOAuthConnectorManager(runtime_home, defer_initial_refresh=True)
 
 
 def _mutating_action(action: str) -> bool:
@@ -67,6 +67,16 @@ def patch(module: Any) -> None:
         from app.connector_step_provenance import install_connector_step_provenance
 
         install_connector_step_provenance(self.connectors, self.runtime)
+
+        def initial_check_finished() -> None:
+            # The status a client read while the check ran said "checking".
+            self._notify("connector/updated", {"connectors": copy.deepcopy(self.connectors.list())})
+
+        # The check calls api.github.com; it must not hold up the app-server's
+        # first answer, so it runs after construction instead of inside it.
+        start_initial_refresh = getattr(self.connectors, "start_initial_refresh", None)
+        if callable(start_initial_refresh):
+            start_initial_refresh(initial_check_finished)
 
     def runtime_status(self: Any) -> dict[str, Any]:
         status = dict(original_runtime_status(self))

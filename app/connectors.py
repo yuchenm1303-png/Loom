@@ -15,7 +15,7 @@ import threading
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, Mapping
+from typing import Any, Callable, Iterator, Mapping
 from urllib.error import HTTPError, URLError
 from urllib.parse import quote, urlencode
 from urllib.request import Request, urlopen
@@ -36,6 +36,9 @@ _KEYRING_SERVICE = "loom-agent/connectors"
 _KEYRING_GITHUB_TOKEN = "github/access-token"
 _CONNECTOR_STATE_VERSION = 1
 _DEFAULT_GITHUB_OAUTH_SCOPES = "repo read:org"
+# How long a model step waits for the launch-time credential check before
+# binding the GitHub tools to whatever state it has.
+_INITIAL_REFRESH_STEP_WAIT_SECONDS = 3.0
 
 
 class ConnectorError(RuntimeError):
@@ -394,7 +397,12 @@ class ConnectorManager:
         command_runner: Callable[..., subprocess.CompletedProcess[str]] | None = None,
         popen_factory: Callable[..., subprocess.Popen[Any]] | None = None,
         clock: Callable[[], float] | None = None,
+        defer_initial_refresh: bool = False,
     ) -> None:
+        """``defer_initial_refresh`` skips the credential check a constructor
+        otherwise performs, which spawns ``gh`` and calls api.github.com and can
+        therefore take as long as its timeouts on a poor network. The owner then
+        calls :meth:`start_initial_refresh` so the check runs off its thread."""
         self.runtime_home = Path(runtime_home).expanduser().resolve()
         self.state_store = ConnectorStateStore(self.runtime_home)
         self.vault = vault or CredentialVault()
@@ -410,7 +418,51 @@ class ConnectorManager:
         self._auth_sessions: dict[str, _AuthSession] = {}
         self._runtime: Any | None = None
         self._last_store_mtime_ns = self.state_store.mtime_ns()
+        # Each refresh takes a number; only the newest may publish its result, so a
+        # slow check that started before a disconnect cannot reconnect afterwards.
+        self._refresh_epoch = 0
+        self._initial_refresh_pending = bool(defer_initial_refresh)
+        self._initial_refresh_started = False
+        self._initial_refresh_done = threading.Event()
+        if defer_initial_refresh:
+            return
         self.refresh()
+        self._initial_refresh_done.set()
+
+    def start_initial_refresh(self, on_done: Callable[[], None] | None = None) -> None:
+        """Run the deferred first credential check on a daemon thread."""
+        if not self._initial_refresh_pending or self._initial_refresh_started:
+            return
+        self._initial_refresh_started = True
+
+        def run() -> None:
+            try:
+                self.refresh()
+            except Exception as exc:  # the manager must come up even if discovery fails
+                with self._guard:
+                    self._github = None
+                    self._github_error = f"{type(exc).__name__}: {exc}"
+            finally:
+                self._initial_refresh_pending = False
+                self._initial_refresh_done.set()
+            try:
+                self.refresh_bound_runtime_tools()
+                if on_done is not None:
+                    on_done()
+            except Exception:
+                pass
+
+        threading.Thread(target=run, name="loom-connector-initial-refresh", daemon=True).start()
+
+    def wait_for_initial_refresh(self, timeout: float) -> bool:
+        """Whether the first credential check has finished, waiting at most ``timeout``.
+
+        Returns at once when no check is running, including when a deferred one was
+        never started.
+        """
+        if not self._initial_refresh_pending or not self._initial_refresh_started:
+            return self._initial_refresh_done.is_set()
+        return self._initial_refresh_done.wait(max(0.0, float(timeout)))
 
     def _binding_id(self, token: str) -> str:
         digest = hmac.new(self._binding_secret, token.encode("utf-8"), hashlib.sha256).hexdigest()
@@ -439,24 +491,30 @@ class ConnectorManager:
             return ""
         return str(getattr(result, "stdout", "") or "").strip()
 
-    def _candidate_tokens(self) -> list[tuple[str, str]]:
-        values = [
-            ("keyring", self.vault.get(_KEYRING_GITHUB_TOKEN)),
-            ("GH_TOKEN", str(self.environment.get("GH_TOKEN") or "").strip()),
-            ("GITHUB_TOKEN", str(self.environment.get("GITHUB_TOKEN") or "").strip()),
-            ("github-cli", self._gh_token()),
-        ]
-        unique: list[tuple[str, str]] = []
+    def _candidate_tokens(self) -> Iterator[tuple[str, str]]:
+        """Credential sources in priority order, each read only when reached.
+
+        The GitHub CLI is a subprocess, so it is not run while an earlier source
+        already produced a token that works.
+        """
+        readers: tuple[tuple[str, Callable[[], str]], ...] = (
+            ("keyring", lambda: self.vault.get(_KEYRING_GITHUB_TOKEN)),
+            ("GH_TOKEN", lambda: str(self.environment.get("GH_TOKEN") or "").strip()),
+            ("GITHUB_TOKEN", lambda: str(self.environment.get("GITHUB_TOKEN") or "").strip()),
+            ("github-cli", self._gh_token),
+        )
         seen: set[str] = set()
-        for source, token in values:
+        for source, read in readers:
+            token = read()
             if not token or token in seen:
                 continue
             seen.add(token)
-            unique.append((source, token))
-        return unique
+            yield source, token
 
     def refresh(self) -> dict[str, Any]:
         with self._guard:
+            self._refresh_epoch += 1
+            epoch = self._refresh_epoch
             state = self.state_store.snapshot()
             self._last_store_mtime_ns = self.state_store.mtime_ns()
             if not bool((state.get("github") or {}).get("enabled", True)):
@@ -464,28 +522,33 @@ class ConnectorManager:
                 self._github_error = "Disconnected by user"
                 return self.github_status()
 
-            last_error = ""
-            for source, token in self._candidate_tokens():
-                try:
-                    client = self.client_factory(token)
-                    user, headers = client.user()
-                    login = str(user.get("login") or "").strip()
-                    if not login:
-                        raise ConnectorError("GitHub authentication succeeded without a user login")
-                    scopes = str(headers.get("X-OAuth-Scopes") or headers.get("x-oauth-scopes") or "")
-                    self._github = BoundGitHubAuth(
-                        token=token,
-                        source=source,
-                        login=login,
-                        scopes=scopes,
-                        binding_id=self._binding_id(token),
-                    )
-                    self._github_error = ""
-                    return self.github_status()
-                except Exception as exc:
-                    last_error = f"{type(exc).__name__}: {exc}"
-            self._github = None
-            self._github_error = last_error or "No GitHub credential found"
+        # Discovery spawns `gh` and calls api.github.com, so it runs without the
+        # lock: status reads, and with them the app-server's initialize, must not
+        # wait behind a slow network.
+        bound: BoundGitHubAuth | None = None
+        last_error = ""
+        for source, token in self._candidate_tokens():
+            try:
+                client = self.client_factory(token)
+                user, headers = client.user()
+                login = str(user.get("login") or "").strip()
+                if not login:
+                    raise ConnectorError("GitHub authentication succeeded without a user login")
+                scopes = str(headers.get("X-OAuth-Scopes") or headers.get("x-oauth-scopes") or "")
+                bound = BoundGitHubAuth(
+                    token=token,
+                    source=source,
+                    login=login,
+                    scopes=scopes,
+                    binding_id=self._binding_id(token),
+                )
+                break
+            except Exception as exc:
+                last_error = f"{type(exc).__name__}: {exc}"
+        with self._guard:
+            if epoch == self._refresh_epoch:
+                self._github = bound
+                self._github_error = "" if bound is not None else (last_error or "No GitHub credential found")
             return self.github_status()
 
     def refresh_if_store_changed(self) -> bool:
@@ -510,6 +573,8 @@ class ConnectorManager:
                 "githubCliAvailable": bool(self._gh_binary()),
                 "deviceFlowAvailable": bool(str(self.environment.get("LOOM_GITHUB_CLIENT_ID") or "").strip()),
                 "error": self._github_error,
+                # True only until the first credential check has finished.
+                "checking": self._initial_refresh_pending,
             }
 
     def list(self) -> list[dict[str, Any]]:
@@ -1166,6 +1231,10 @@ class ConnectorManager:
             original = runtime._build_step_context
 
             def build_step_context(session: Any, *, next_model_step: bool, step_id: str | None = None):
+                # A step started moments after launch must not bind GitHub as
+                # disconnected only because the first credential check is still
+                # running; this returns at once in every other case.
+                self.wait_for_initial_refresh(_INITIAL_REFRESH_STEP_WAIT_SECONDS)
                 if self.refresh_if_store_changed():
                     self.refresh_runtime_tools(runtime.tools)
                 return original(session, next_model_step=next_model_step, step_id=step_id)

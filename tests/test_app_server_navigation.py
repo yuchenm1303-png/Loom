@@ -47,3 +47,50 @@ def test_navigation_reads_do_not_block_new_selection_or_control_and_drain_on_eof
     assert sorted(response["id"] for response in responses) == [1, 2, 3]
     assert next(index for index, response in enumerate(responses) if response["id"] == 2) < next(
         index for index, response in enumerate(responses) if response["id"] == 1)
+
+
+def test_usage_insights_run_beside_the_control_worker_not_in_front_of_it():
+    """The home screen asks for profile/insights at launch and it reads every
+    conversation. Queued on the control worker it held `thread/list` back for
+    as long as it ran, which is what the sidebar showed as an empty list."""
+    insights_started = threading.Event()
+    control_finished = threading.Event()
+    release = threading.Event()
+    server = JsonRpcStdioServer(SimpleNamespace(subscribe_notifications=lambda callback: None))
+
+    def handle(payload):
+        if payload["method"] == "profile/insights":
+            insights_started.set()
+            assert release.wait(3)
+        else:
+            assert insights_started.wait(2)
+            control_finished.set()
+        return {"jsonrpc": "2.0", "id": payload["id"], "result": {}}
+
+    server.controller = SimpleNamespace(handle=handle, initialized=True)
+    requests = [
+        {"id": 1, "method": "profile/insights", "params": {"days": 371}},
+        {"id": 2, "method": "thread/list", "params": {"view": "active"}},
+    ]
+    reader = io.StringIO("".join(json.dumps(request) + "\n" for request in requests))
+    writer = io.StringIO()
+    serving = threading.Thread(target=lambda: server.serve(reader, writer), daemon=True)
+    serving.start()
+    try:
+        assert control_finished.wait(2), "thread/list waited for profile/insights"
+    finally:
+        release.set()
+        serving.join(3)
+    assert sorted(json.loads(line)["id"] for line in writer.getvalue().splitlines()) == [1, 2]
+
+
+def test_only_read_only_requests_are_taken_off_the_control_worker():
+    observational = JsonRpcStdioServer._is_observational
+    assert observational({"method": "profile/insights", "params": {}})
+    assert observational({"method": "thread/read", "params": {"presentationOnly": True}})
+    assert observational({"method": "thread/read", "params": {"threadOnly": True}})
+    # A full read, and anything that changes state, keeps its ordering.
+    assert not observational({"method": "thread/read", "params": {}})
+    for method in ("thread/list", "project/list", "turn/start", "thread/start", "settings/set"):
+        assert not observational({"method": method, "params": {}})
+    assert not observational("not a request")

@@ -3,9 +3,11 @@ from __future__ import annotations
 import asyncio
 import concurrent.futures
 import hashlib
+import importlib.util
 import json
 import os
 import re
+import sys
 import threading
 import time
 import tomllib
@@ -42,6 +44,21 @@ def mcp_sdk_available() -> bool:
     except Exception:
         return False
     return True
+
+
+def mcp_sdk_installed() -> bool:
+    """Whether the MCP SDK is present, for status displays.
+
+    Importing it costs well over a second, and the app-server reports capability
+    status before it has answered its first request. Connecting to a server still
+    uses :func:`mcp_sdk_available`, which proves the import works.
+    """
+    if "mcp" in sys.modules:
+        return True
+    try:
+        return importlib.util.find_spec("mcp") is not None
+    except (ImportError, ValueError):
+        return False
 
 
 def _canonical_segment(value: str, *, fallback: str) -> str:
@@ -832,7 +849,7 @@ class MCPClientManager:
             )
         return {
             "enabled": bool(self.configs),
-            "sdk_available": mcp_sdk_available(),
+            "sdk_available": mcp_sdk_installed(),
             "connected_servers": sum(1 for item in self._servers.values() if not item.closed),
             "tool_count": sum(
                 len(item.descriptors) for item in self._servers.values() if not item.closed

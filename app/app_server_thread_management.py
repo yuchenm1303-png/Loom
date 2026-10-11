@@ -4,7 +4,9 @@ import json
 import os
 import re
 import shutil
+import sys
 import threading
+import time
 import uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -420,6 +422,37 @@ _PROFILE_TURN_EXTERNAL_STOP_KINDS = frozenset({
 })
 
 
+_PROFILE_COUNTED_KINDS = frozenset({
+    AgentEventKind.TURN_STARTED,
+    AgentEventKind.MODEL_RESPONSE,
+    AgentEventKind.TOOL_REQUESTED,
+}) | _PROFILE_TURN_WORK_KINDS | _PROFILE_TURN_SELF_ENDING_KINDS | _PROFILE_TURN_EXTERNAL_STOP_KINDS
+# Roughly 350 bytes per event: the busiest history seen here is 55 thousand, so this
+# leaves a large margin while keeping the app-server's footprint bounded. A log that
+# would not fit is simply read again next time instead of being kept.
+_PROFILE_CACHE_EVENT_BUDGET = 400_000
+# Events whose only use is their kind and time share this; nothing writes to it.
+_PROFILE_NO_DATA: dict[str, Any] = {}
+
+
+class _ProfileEvent:
+    """The part of one durable event the usage profile reads, time already parsed.
+
+    A conversation log is mostly tool output and request bodies the profile never
+    looks at, and parsing all of it took seconds on every launch. Only these few
+    fields are kept, per log, until that log changes.
+    """
+
+    __slots__ = ("event_id", "kind", "turn_id", "stamp", "data")
+
+    def __init__(self, event_id: str, kind: AgentEventKind, turn_id: str, stamp: datetime | None, data: dict[str, Any]) -> None:
+        self.event_id = event_id
+        self.kind = kind
+        self.turn_id = turn_id
+        self.stamp = stamp
+        self.data = data
+
+
 class ManagedStreamingLoomAppServerService(StreamingLoomAppServerService):
     """Streaming App Server plus durable conversation-library operations."""
 
@@ -431,6 +464,8 @@ class ManagedStreamingLoomAppServerService(StreamingLoomAppServerService):
         # Compaction counts change only when a checkpoint is recorded, so they
         # are cached rather than rescanned on every model step.
         self._context_counts: dict[str, tuple[int, str]] = {}
+        self._profile_lock = threading.Lock()
+        self._profile_events_cache: dict[str, tuple[tuple[int, int], tuple[_ProfileEvent, ...]]] = {}
 
     @staticmethod
     def _profile_local_datetime(value: Any) -> datetime | None:
@@ -464,7 +499,66 @@ class ManagedStreamingLoomAppServerService(StreamingLoomAppServerService):
         )
         return ranked[:limit]
 
+    def _profile_log_signature(self, session_id: str) -> tuple[int, int] | None:
+        try:
+            stat = (self.store.session_dir(session_id) / "events.jsonl").stat()
+        except (AttributeError, OSError, ValueError):
+            return None
+        return (stat.st_size, stat.st_mtime_ns)
+
+    def _profile_events(self, session_id: str) -> tuple[_ProfileEvent, ...]:
+        """The profile-relevant events of one conversation, reused while its log is unchanged."""
+
+        # The signature is taken before the log is read: an event appended in
+        # between leaves the entry stale-tagged, so the next call reads again.
+        signature = self._profile_log_signature(session_id)
+        cached = self._profile_events_cache.get(session_id)
+        if signature is not None and cached is not None and cached[0] == signature:
+            return cached[1]
+        events: list[_ProfileEvent] = []
+        time.sleep(0)  # between two logs, let a request on another thread through
+        for event in self._transcript_events(session_id):
+            kind = event.kind
+            if kind not in _PROFILE_COUNTED_KINDS:
+                continue
+            source = event.data if isinstance(event.data, dict) else {}
+            data: dict[str, Any] = _PROFILE_NO_DATA
+            if kind is AgentEventKind.MODEL_RESPONSE:
+                data = {}
+                usage = source.get("usage")
+                if isinstance(usage, dict):
+                    data["usage"] = {
+                        key: usage.get(key) for key in ("input_tokens", "output_tokens", "total_tokens")
+                    }
+                for key in ("model", "model_name"):
+                    if source.get(key):
+                        data[key] = source[key]
+            elif kind is AgentEventKind.TOOL_REQUESTED:
+                data = {"tool": source.get("tool")}
+            events.append(_ProfileEvent(
+                str(getattr(event, "event_id", "") or ""),
+                kind,
+                # Every event of a turn repeats the turn's id; keep one copy of it.
+                sys.intern(str(getattr(event, "turn_id", "") or "")),
+                self._profile_local_datetime(getattr(event, "created_at", "")),
+                data,
+            ))
+        result = tuple(events)
+        if signature is not None:
+            held = sum(len(entry[1]) for key, entry in self._profile_events_cache.items() if key != session_id)
+            if held + len(result) <= _PROFILE_CACHE_EVENT_BUDGET:
+                self._profile_events_cache[session_id] = (signature, result)
+            else:
+                self._profile_events_cache.pop(session_id, None)
+        return result
+
     def profile_insights(self, params: dict[str, Any]) -> dict[str, Any]:
+        # One at a time: a second request (the profile page opened while the home
+        # card is still loading) waits for the first and then reads what it cached.
+        with self._profile_lock:
+            return self._profile_insights(params)
+
+    def _profile_insights(self, params: dict[str, Any]) -> dict[str, Any]:
         """Aggregate durable local usage into a compact profile/heatmap snapshot.
 
         The endpoint intentionally derives its numbers from AgentEvents rather
@@ -532,11 +626,16 @@ class ManagedStreamingLoomAppServerService(StreamingLoomAppServerService):
 
         sessions = self._list_session_objects()
         totals["sessions"] = len(sessions)
+        yielded = 0
+        # A conversation deleted since the last call must not stay in the cache.
+        listed = {str(getattr(session, "session_id", "") or "") for session in sessions}
+        for stale in [key for key in self._profile_events_cache if key not in listed]:
+            self._profile_events_cache.pop(stale, None)
 
         for session in sessions:
             session_id = str(getattr(session, "session_id", "") or "")
             try:
-                events = self._transcript_events(session_id)
+                events = self._profile_events(session_id)
             except Exception:
                 continue
 
@@ -548,13 +647,19 @@ class ManagedStreamingLoomAppServerService(StreamingLoomAppServerService):
             reasoning_value = str(getattr(session, "reasoning_value", "") or "Default").strip()
 
             for event in events:
+                # This is pure Python over tens of thousands of events. Without a
+                # regular hand-over a request on another thread (a conversation
+                # being opened) waits out the whole stretch for the interpreter.
+                yielded += 1
+                if not yielded & 127:
+                    time.sleep(0)
                 event_id = str(getattr(event, "event_id", "") or "")
                 if event_id and event_id in seen_event_ids:
                     continue
                 if event_id:
                     seen_event_ids.add(event_id)
 
-                stamp = self._profile_local_datetime(getattr(event, "created_at", ""))
+                stamp = event.stamp
                 if stamp is None:
                     continue
                 event_day = stamp.date()

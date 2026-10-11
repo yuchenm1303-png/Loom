@@ -14,7 +14,10 @@ _FIELDS = (
 
 
 class SessionOverviewCache:
-    def __init__(self, limit=128):
+    # An overview is a few hundred bytes. The limit has to stay above the number of
+    # conversations: the sidebar reads all of them in the same order every time, and
+    # an LRU smaller than that cycle misses on every single read.
+    def __init__(self, limit=2048):
         self.limit = limit
         self._entries = OrderedDict()
         self._lock = threading.RLock()

@@ -237,3 +237,20 @@ def test_the_managed_service_also_reports_the_project(tmp_path: Path) -> None:
         assert managed.project_list({})["projects"][0]["threadCount"] == 1
     finally:
         runtime.close()
+
+
+def test_listing_projects_and_reporting_status_do_not_parse_whole_conversations(service, tmp_path):
+    """These answer the desktop's first requests after launch. They read identity,
+    workspace and status, which an overview carries; loading each conversation in
+    full parsed every message of every conversation for that."""
+    for name in ("one", "two", "three"):
+        service.thread_start({"workspace": str(_folder(tmp_path, name))})
+    full_loads: list[str] = []
+    real_load = service.store.load
+    service.store.load = lambda session_id: full_loads.append(session_id) or real_load(session_id)
+
+    listing = service.project_list({})
+    service.runtime_status()
+
+    assert sum(project["threadCount"] for project in listing["projects"]) == 3
+    assert full_loads == [], f"{len(full_loads)} conversations were loaded in full"

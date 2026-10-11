@@ -196,6 +196,8 @@ The desktop uses two App Server methods:
 
 Returns the current secret-free connector status list. OAuth status can include non-secret lifetime fields such as whether automatic refresh is available, remaining access/refresh lifetime, whether one-click Web OAuth is provisioned, and the preferred browser login mode.
 
+The credential check that decides whether GitHub is connected spawns `gh` and calls `api.github.com`, so the App Server does not run it while constructing the service: `initialize` must not wait for GitHub's network timeouts. Until the first check finishes, a status reports `"checking": true` (and `connected: false`); when it finishes the server sends `connector/updated` and rebinds the GitHub tools for the next model Step. A Step that starts inside that window waits up to three seconds for the check rather than binding GitHub as disconnected. Embedding code that constructs `ConnectorManager` directly still gets the synchronous check unless it passes `defer_initial_refresh=True` and calls `start_initial_refresh()`.
+
 ### `connector/manage`
 
 Parameters:

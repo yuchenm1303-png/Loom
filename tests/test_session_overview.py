@@ -82,3 +82,30 @@ def test_overview_cache_is_bounded_and_deleted_files_are_not_served(tmp_path):
     import pytest
     with pytest.raises(FileNotFoundError):
         cache.read(paths[-1])
+
+
+def test_the_default_cache_survives_a_scan_of_more_conversations_than_the_old_limit(tmp_path):
+    """The sidebar reads every conversation in the same order each time.
+
+    With an LRU smaller than that cycle, every read evicts the entry the next
+    pass is about to ask for, so the cache never hit once past 128 conversations.
+    """
+    cache = SessionOverviewCache()
+    paths = []
+    for index in range(200):
+        path = tmp_path / f"{index:03d}.json"
+        path.write_text(json.dumps({"session_id": f"{index:03d}"}), encoding="utf-8")
+        paths.append(path)
+
+    for path in paths:
+        cache.read(path)
+    reads = []
+    real_loads = json.loads
+    json.loads = lambda *args, **kwargs: reads.append(1) or real_loads(*args, **kwargs)
+    try:
+        for path in paths:
+            cache.read(path)
+    finally:
+        json.loads = real_loads
+
+    assert reads == [], f"{len(reads)} of 200 second-pass reads missed the cache"

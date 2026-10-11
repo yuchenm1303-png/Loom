@@ -110,3 +110,37 @@ env = { API_KEY = "do-not-put-secrets-here" }
 
 def test_missing_config_file_means_no_mcp_servers(tmp_path: Path):
     assert load_mcp_server_configs(tmp_path / "missing.toml") == ()
+
+
+def test_status_reports_the_sdk_without_importing_it(monkeypatch):
+    """The app-server reports capability status before it answers its first request.
+
+    Importing the SDK for that cost over a second, on the path the desktop waits on.
+    Connecting to a server still proves the import, so only the status is cheap.
+    """
+    import sys
+
+    from app.agent_runtime import mcp_runtime
+
+    def forbidden():
+        raise AssertionError("status() imported the MCP SDK")
+
+    monkeypatch.setattr(mcp_runtime, "mcp_sdk_available", forbidden)
+    monkeypatch.delitem(sys.modules, "mcp", raising=False)
+    monkeypatch.setattr(mcp_runtime.importlib.util, "find_spec", lambda name: object() if name == "mcp" else None)
+
+    status = mcp_runtime.MCPClientManager().status()
+
+    assert status["sdk_available"] is True
+    assert "mcp" not in sys.modules
+
+
+def test_status_says_the_sdk_is_missing_when_it_cannot_be_found(monkeypatch):
+    import sys
+
+    from app.agent_runtime import mcp_runtime
+
+    monkeypatch.delitem(sys.modules, "mcp", raising=False)
+    monkeypatch.setattr(mcp_runtime.importlib.util, "find_spec", lambda name: None)
+
+    assert mcp_runtime.MCPClientManager().status()["sdk_available"] is False

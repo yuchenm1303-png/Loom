@@ -658,7 +658,15 @@ class LoomAppServerService:
             # runtime failure.
             return False
 
-    def _list_session_objects(self, *, overview: bool = False) -> list[Any]:
+    def _list_session_objects(self, *, overview: bool = True) -> list[Any]:
+        """Every top-level conversation, newest first.
+
+        Callers count, filter and name conversations, which needs identity,
+        workspace, status and the title, all of which an overview carries. Loading
+        each one in full parsed every message of every conversation for that, and
+        the app-server does it while answering ``initialize`` and ``project/list``.
+        Pass ``overview=False`` only when a session has to be resumed.
+        """
         sessions: list[Any] = []
         loader = getattr(self.store, "load_overview", self.store.load) if overview else self.store.load
         if self.store.root.is_dir():
@@ -1865,13 +1873,7 @@ class JsonRpcStdioServer:
                     }
                 )
                 continue
-            if (
-                self.controller.initialized
-                and isinstance(payload, dict)
-                and payload.get("method") == "thread/read"
-                and isinstance(payload.get("params"), dict)
-                and (payload["params"].get("presentationOnly") is True or payload["params"].get("threadOnly") is True)
-            ):
+            if self.controller.initialized and self._is_observational(payload):
                 try:
                     self._navigation_ingress.put_nowait(payload)
                 except queue.Full:
@@ -1881,6 +1883,27 @@ class JsonRpcStdioServer:
             response = self.controller.handle(payload)
             if response is not None:
                 self._send_response(response)
+
+    @staticmethod
+    def _is_observational(payload: Any) -> bool:
+        """Read-only requests that may finish out of order.
+
+        They run beside the control worker instead of in front of what the
+        desktop asks next. ``profile/insights`` is here because the home screen
+        asks for it at launch and it reads every conversation: queued ahead of
+        ``thread/list`` it kept the sidebar empty for as long as it ran.
+        """
+        if not isinstance(payload, dict):
+            return False
+        method = payload.get("method")
+        if method == "profile/insights":
+            return True
+        params = payload.get("params")
+        return (
+            method == "thread/read"
+            and isinstance(params, dict)
+            and (params.get("presentationOnly") is True or params.get("threadOnly") is True)
+        )
 
     def _navigation_loop(self) -> None:
         while True:
