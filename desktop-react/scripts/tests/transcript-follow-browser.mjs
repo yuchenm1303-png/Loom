@@ -30,9 +30,12 @@ try {
 
   // The view glides to the live edge rather than jumping, so "at the edge" is something to wait for, within a bound.
   const atEdge = async (target, within = 1500) => {
+    // Held for a run of frames: a page still growing (a step unfolding) crosses the edge and leaves it again.
     await target.waitForFunction(() => {
       const el = document.querySelector(".transcript-scroll");
-      return el.scrollHeight - el.scrollTop - el.clientHeight < 3;
+      const near = el.scrollHeight - el.scrollTop - el.clientHeight < 3;
+      window.__edgeRun = near ? (window.__edgeRun ?? 0) + 1 : 0;
+      return window.__edgeRun >= 10;
     }, null, { timeout: within, polling: "raf" });
     return stateOf(target);
   };
@@ -73,6 +76,29 @@ try {
   assert.ok(arrival.ms < 250, `live output reached the edge in ${arrival.ms}ms`);
   assert.ok(arrival.overshoot < 1.5, `and did not overshoot it (${arrival.overshoot}px)`);
   assert.ok(await bottom() < 3, `live output lagged ${await bottom()}px`);
+  // A layout in the middle of a DOM commit sees a briefly shorter page and clamps the view to it (React removes a node,
+  // forcing layout, then inserts its replacement). The page is tall enough again when the frame is built, so the view
+  // must not be left where the clamp put it.
+  await page.waitForTimeout(700); // let the glide and the stream's own growth settle: this is about one commit
+  const clamp = await page.evaluate(async () => {
+    const scroller = document.querySelector(".transcript-scroll");
+    const content = document.querySelector(".transcript");
+    const before = scroller.scrollTop;
+    document.querySelector("#follow-probe").remove();
+    void scroller.scrollHeight; // layout against the shorter page: the browser clamps scrollTop
+    const clamped = scroller.scrollTop;
+    const replacement = document.createElement("div");
+    replacement.id = "follow-probe";
+    replacement.style.height = "760px"; // 60px taller than what it replaces
+    content.append(replacement);
+    await new Promise(requestAnimationFrame);
+    await new Promise(requestAnimationFrame);
+    return { before, clamped, after: scroller.scrollTop };
+  });
+  assert.ok(clamp.clamped < clamp.before - 100, `the clamp happened (${clamp.before} -> ${clamp.clamped}), so this test means something`);
+  assert.ok(clamp.after > clamp.before - 3, `the view was put back by the time it was drawn (${clamp.before} -> clamp ${clamp.clamped} -> ${clamp.after})`);
+  await page.waitForTimeout(600);
+  assert.ok(await bottom() < 3, "and it still ends on the live edge");
   // Upward intent pauses follow even within the near-bottom threshold, and
   // always exposes a way to resume instead of silently hiding the control.
   await scroller.evaluate(el => {

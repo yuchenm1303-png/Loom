@@ -5,15 +5,17 @@
 // growth; message actions; the process disclosure; a context menu; a send. For every step it records, from painted
 // frames, how long the worst frame took, how many frames overran 25 ms, how much of the page moved without being asked
 // to (layout shift, and which elements), and the most animations running at once. --shots also saves a picture
-// just after the step begins and when it has settled, for reading by eye. --trace breaks each step's longest main-thread
+// just after the step begins and when it has settled, for reading by eye. --popin lists what appeared on screen
+// with no animation at all (a surface that is simply there on the next frame) and what vanished the same way. --trace breaks each step's longest main-thread
 // tasks into script, style, layout and paint (and names the stage that forced the layout), to say where a hitch went.
 import fs from "node:fs";
 import { launch } from "./launch.mjs";
+import { popinProbe, tally, report } from "./popin-probe.mjs";
 
 const argv = process.argv.slice(2);
 const flag = (name) => argv.includes(name);
 const option = (name, fallback) => { const i = argv.indexOf(name); return i >= 0 ? argv[i + 1] : fallback; };
-const skip = new Set(["--shots", "--trace"]);
+const skip = new Set(["--shots", "--trace", "--popin"]);
 const valued = new Set(["--only", "--dsf", "--theme", "--repeat"]);
 const positional = argv.filter((arg, index) => !skip.has(arg) && !valued.has(arg) && !valued.has(argv[index - 1]));
 const [url, outDir = ""] = positional;
@@ -27,6 +29,7 @@ try {
   const page = await browser.newPage({ viewport: { width: 1180, height: 780 }, deviceScaleFactor: dsf });
   const errors = [];
   page.on("pageerror", (error) => errors.push(error.message));
+  if (flag("--popin")) await page.addInitScript(popinProbe);
   await page.addInitScript(() => {
     const rec = { frames: [], shifts: [], on: false, peakAnimations: 0 };
     window.__tour = rec;
@@ -106,6 +109,7 @@ try {
 
   const repeat = Number(option("--repeat", "1"));
   const results = [];
+  const maps = { popins: new Map(), popouts: new Map() };
   const client = flag("--trace") ? await page.context().newCDPSession(page) : null;
   const plan = [];
   for (let round = 1; round <= repeat; round += 1) for (const step of steps) plan.push([round, ...step]);
@@ -119,7 +123,7 @@ try {
       await client.send("Tracing.start", { traceConfig: { includedCategories: ["devtools.timeline", "disabled-by-default-devtools.timeline", "disabled-by-default-devtools.timeline.stack"] }, transferMode: "ReportEvents" });
     }
     if (flag("--shots") && outDir) await page.screenshot({ path: `${outDir}/${name}-0before.png` });
-    await page.evaluate(() => { window.__tour.frames = []; window.__tour.shifts = []; window.__tour.peakAnimations = 0; window.__tour.on = true; });
+    await page.evaluate(() => { window.__tour.frames = []; window.__tour.shifts = []; window.__tour.peakAnimations = 0; window.__tour.on = true; if (window.__popin) window.__popin.on = true; });
     let failure = "";
     try {
       const done = action().catch((error) => { failure = String(error.message).split("\n")[0].slice(0, 90); });
@@ -130,7 +134,9 @@ try {
       await done;
       await settle(settleMs);
     } catch (error) { failure = String(error.message).split("\n")[0].slice(0, 90); }
+    await page.waitForTimeout(0);
     const rec = await page.evaluate(() => { window.__tour.on = false; return { frames: window.__tour.frames, shifts: window.__tour.shifts, peak: window.__tour.peakAnimations }; });
+    if (flag("--popin")) tally(maps, await page.evaluate(() => window.__popin.take()), stepName);
     if (flag("--shots") && outDir) await page.screenshot({ path: `${outDir}/${name}-2after.png` });
     const frames = rec.frames;
     const worst = Math.max(0, ...frames);
@@ -163,5 +169,6 @@ try {
     console.log(`${result.name.padEnd(width)}  ${String(result.frames).padStart(6)}  ${result.worst.toFixed(0).padStart(4)}ms  ${String(result.over).padStart(5)}  ${result.shift.toFixed(3)}  ${String(result.peak).padStart(5)}  ${note}`);
     if (result.longest) console.log(result.longest);
   }
+  if (flag("--popin")) report(maps);
   if (errors.length) console.log("page errors:", [...new Set(errors)].slice(0, 5));
 } finally { await browser.close(); }

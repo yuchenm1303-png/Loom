@@ -2,14 +2,15 @@
 //   node screencast.mjs <url> <outDir> [width=935] [height=731] [dsf=1] [--send] [--after <ms>] [--for <ms>] [--every 1]
 // CDP Page.startScreencast hands over each frame the compositor produced, with its timestamp. With --send the live-app
 // prompt is sent first; frames are kept from --after ms (default 0) after the send for --for ms (default until the turn
-// ends). Writes frame-<ms since send>.jpg and prints how many frames came, and the longest gap between two of them (a
+// ends). --mark <class> notes when a class first appears anywhere (is-settle-hold, is-complete...) and prints it on the
+// same clock as the frame names. Writes frame-<ms since first frame>.jpg and prints how many frames came, and the longest gap between two of them (a
 // frozen screen shows up here even when the page's own timers look healthy).
 import fs from "node:fs";
 import { launch } from "./launch.mjs";
 const argv = process.argv.slice(2);
 const flag = (name) => argv.includes(name);
 const option = (name, fallback) => { const i = argv.indexOf(name); return i >= 0 ? argv[i + 1] : fallback; };
-const valued = new Set(["--after", "--for", "--every"]);
+const valued = new Set(["--after", "--for", "--every", "--mark"]);
 const positional = argv.filter((arg, index) => !arg.startsWith("--") && !valued.has(argv[index - 1]));
 const [url, outDir, width = "935", height = "731", dsf = "1"] = positional;
 fs.mkdirSync(outDir, { recursive: true });
@@ -26,6 +27,12 @@ try {
     await client.send("Page.screencastFrameAck", { sessionId: event.sessionId }).catch(() => {});
   });
   await client.send("Page.startScreencast", { format: "jpeg", quality: 80, everyNthFrame: Number(option("--every", "1")) });
+  if (option("--mark", "")) {
+    await page.evaluate((name) => {
+      window.__markAt = null;
+      new MutationObserver(() => { if (window.__markAt === null && document.querySelector("." + name)) window.__markAt = Date.now(); }).observe(document, { subtree: true, attributes: true, attributeFilter: ["class"], childList: true });
+    }, option("--mark", ""));
+  }
   const sentAt = Date.now();
   if (flag("--send")) await page.evaluate(() => window.liveFixture.send());
   const forMs = Number(option("--for", "0"));
@@ -37,6 +44,10 @@ try {
   } else await page.waitForTimeout(2000);
   await client.send("Page.stopScreencast");
   const first = frames[0]?.at ?? 0;
+  if (option("--mark", "")) {
+    const at = await page.evaluate(() => window.__markAt);
+    console.log(`class "${option("--mark", "")}" first seen at ${at === null ? "never" : Math.round(at - first) + "ms"} on the frame clock`);
+  }
   const after = Number(option("--after", "0"));
   const kept = frames.filter((frame) => frame.at - first >= after);
   let worstGap = 0;

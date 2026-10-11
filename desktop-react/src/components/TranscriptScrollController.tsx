@@ -317,8 +317,19 @@ export function TranscriptScrollController({
       bottomTargetDirtyRef.current = false;
       flowRef.current.note(bottomTargetRef.current, now);
       const actual = scroller.scrollTop;
-      // Something other than this loop moved the view (a fold clamped it, the reader dragged it): start from there.
-      if (lastWriteRef.current === null || Math.abs(actual - lastWriteRef.current) > EXTERNAL_MOVE_PX) {
+      const written = lastWriteRef.current;
+      const moved = written === null || Math.abs(actual - written) > EXTERNAL_MOVE_PX;
+      // The page is tall enough for where the view was, yet the browser moved it up: a layout in the middle of a DOM
+      // commit (React removes a node before it inserts its replacement) saw a briefly shorter page and clamped the
+      // view to it. Nobody scrolled, so the glide is left where it was: the write below puts the view back before the
+      // frame is drawn, and the jump never is.
+      const clamped = written !== null && actual < written
+        && bottomTargetRef.current >= written - EXTERNAL_MOVE_PX
+        && scrollbarPointerRef.current === null
+        && now > inputIntentRef.current.until;
+      // Otherwise something other than this loop moved it (the page really shrank under the view, or the reader
+      // dragged it): start from where it is.
+      if (moved && !clamped) {
         motion.position = actual;
         motion.velocity = 0;
       }

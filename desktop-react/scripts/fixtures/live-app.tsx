@@ -16,6 +16,8 @@
  *       long: a thinking pause, then one long Markdown answer; burst: a dozen quick reads/searches, one note, a
  *       command, then the long answer. ?cadence=real delivers their text like a provider does (clumps and gaps);
  *       ?repeat=N makes the answer N times as long.
+ *   ?scenario=fuzz&seed=N   a seeded random run: stages of tool work, notes, approvals, parallel calls, failures, and
+ *       an ending (answer, error, a stop, a bare reply). The same seed plays the same run.
  *   ?speed=0.5             slow the script (animations are not rescaled)
  *   ?empty=1               start on the home screen of an empty thread
  *   ?autosend=1            send the scenario prompt once the app is ready
@@ -237,8 +239,122 @@ async function runLongScript(turnId: string, token: number) {
   return "completed";
 }
 
+// ?scenario=fuzz&seed=N: a seeded random run, for finding what the scripted scenarios do not. Every choice (how many
+// stages, which tools, which fail, whether an approval stops it, how it ends) comes from one generator, so a run that
+// misbehaves can be replayed by its seed.
+function generator(seedValue: number) {
+  let state = (seedValue * 2654435761) >>> 0 || 1;
+  const next = () => {
+    state ^= state << 13; state >>>= 0;
+    state ^= state >>> 17;
+    state ^= state << 5; state >>>= 0;
+    return state / 0x100000000;
+  };
+  return {
+    next,
+    chance: (p: number) => next() < p,
+    between: (low: number, high: number) => low + next() * (high - low),
+    int: (low: number, high: number) => Math.floor(low + next() * (high - low + 1)),
+    pick: <T,>(list: readonly T[]) => list[Math.floor(next() * list.length)],
+  };
+}
+
+const FUZZ_PATHS = ["src/pages/Login.tsx", "src/pages/Register.tsx", "src/utils/validators.ts", "src/components/Field.tsx", "src/i18n/zh-CN.ts", "package.json", "src/api/client.ts", "README.md"];
+const FUZZ_NOTES = english
+  ? ["Reading the form first.", "That file has no validator yet; checking where the rules live.", "Found it. Wiring the rule in.", "One more place uses the old regex.", "Running the tests now."]
+  : ["先看一下表单实现。", "这个文件里还没有校验，看看规则放在哪里。", "找到了，把规则接进去。", "还有一处用的是旧正则。", "现在跑测试。"];
+const FUZZ_PARAS = english
+  ? ["The form only checks required fields, so a malformed address reaches the backend.", "The shared validators had no email rule; each page carried its own regex.", "I moved the rule into one helper and pointed all three pages at it.", "Tests cover the plain address, trimming, a missing @ and a domain without a dot."]
+  : ["表单只校验了必填项，格式不对的邮箱会一路提交到后端。", "公共校验工具里没有邮箱规则，每个页面各写了一份正则。", "我把规则收进同一个函数，三个页面都改成使用它。", "测试覆盖了普通地址、首尾空格、缺少 @ 和域名里没有点的情况。"];
+
+function fuzzAnswer(random: ReturnType<typeof generator>): string {
+  const parts: string[] = [random.pick(FUZZ_PARAS)];
+  const blocks = random.int(1, 6);
+  for (let index = 0; index < blocks; index += 1) {
+    const kind = random.pick(["p", "p", "list", "code", "table", "heading", "quote"] as const);
+    if (kind === "p") parts.push(random.pick(FUZZ_PARAS) + (random.chance(0.4) ? " " + random.pick(FUZZ_PARAS) : ""));
+    else if (kind === "list") parts.push(Array.from({ length: random.int(2, 5) }, (_, item) => `${random.chance(0.5) ? "- " : `${item + 1}. `}${random.pick(FUZZ_PARAS)}`).join("\n"));
+    else if (kind === "code") parts.push("```ts\n" + Array.from({ length: random.int(2, 9) }, (_, line) => `  const value${line} = compute(${line});`).join("\n") + "\n```");
+    else if (kind === "table") parts.push("| 文件 | 改动 | 结果 |\n| --- | --- | --- |\n" + Array.from({ length: random.int(2, 5) }, () => `| ${random.pick(FUZZ_PATHS)} | ${random.int(1, 40)} 行 | ${random.pick(["通过", "已更新", "新增"])} |`).join("\n"));
+    else if (kind === "heading") parts.push(`## ${random.pick(["改动", "验证", "后续", "风险"])}`);
+    else parts.push("> " + random.pick(FUZZ_PARAS));
+  }
+  return parts.join("\n\n");
+}
+
+async function runFuzzScript(turnId: string, token: number): Promise<string> {
+  const random = generator(Number(params.get("seed") || 1) || 1);
+  let counter = 0;
+  const id = (name: string) => `${turnId}-${name}${counter++}`;
+  const say = async (kind: "commentary" | "final_answer", text: string, withReasoning = false) => {
+    const message = start(turnId, { id: id("m"), type: "assistant_message", status: "streaming", text: "", reasoning: "" });
+    await wait(random.between(120, 520), token);
+    if (withReasoning) { await stream(message, "reasoning", COPY.r1, token, random.int(2, 6), random.between(20, 50)); await wait(random.between(60, 240), token); }
+    await stream(message, "text", text, token, random.int(2, 7), random.between(16, 46));
+    complete(message, { phase: kind });
+  };
+
+  await wait(random.between(300, 900), token);
+  if (random.chance(0.6)) await say("commentary", random.pick(FUZZ_NOTES), random.chance(0.5));
+
+  const stages = random.int(1, 4);
+  for (let stage = 0; stage < stages; stage += 1) {
+    const steps = random.int(1, 9);
+    for (let step = 0; step < steps; step += 1) {
+      const kind = random.pick(["read", "read", "search", "command", "command", "edit", "parallel"] as const);
+      if (kind === "read" || kind === "search") {
+        await tool(turnId, id("t"), kind === "read" ? "read_workspace_text" : "search_workspace_text",
+          kind === "read" ? { path: random.pick(FUZZ_PATHS) } : { query: random.pick(["isEmail", "validate", "required"]) }, random.between(120, 900), token, "ok");
+      } else if (kind === "command") {
+        const fails = random.chance(0.15);
+        await command(turnId, id("c"), random.pick([["npm", "test"], ["git", "status"], ["node", "scripts/check.mjs"]]), random.between(300, 2200),
+          fails ? "FAIL src/utils/validators.test.ts\n  ✕ rejects addresses without a domain dot (4 ms)" : "ok\nTests: 6 passed, 6 total", token, !fails);
+      } else if (kind === "edit") {
+        await edit(turnId, id("e"), random.pick(FUZZ_PATHS), VALIDATOR_DIFF, random.between(200, 900), token);
+      } else {
+        const first = start(turnId, { id: id("p"), type: "tool_call", toolName: "read_workspace_text", arguments: { path: random.pick(FUZZ_PATHS) } });
+        const second = start(turnId, { id: id("p"), type: "tool_call", toolName: "search_workspace_text", arguments: { query: "isEmail" } });
+        await wait(random.between(150, 700), token);
+        const [early, late] = random.chance(0.5) ? [first, second] : [second, first];
+        complete(early, { content: "ok" });
+        await wait(random.between(30, 400), token);
+        complete(late, { content: "ok" });
+      }
+      await wait(random.between(20, 260), token);
+    }
+    if (random.chance(0.12)) {
+      const call = start(turnId, { id: id("n"), type: "tool_call", toolName: "exec", status: "waiting_approval", arguments: { argv: ["npm", "install", "left-pad"] } });
+      const approval = start(turnId, { id: id("a"), type: "approval", status: "waiting_approval", toolName: "exec", callId: call.id, reason: english ? "Installs a package" : "需要联网安装依赖" });
+      updateThread({ status: "waiting_approval" });
+      await wait(random.between(500, 2500), token);
+      complete(approval, { status: random.chance(0.8) ? "approved" : "denied" });
+      complete(call);
+      updateThread({ status: "running" });
+      await wait(random.between(100, 500), token);
+    }
+    if (stage < stages - 1 && random.chance(0.6)) await say("commentary", random.pick(FUZZ_NOTES), random.chance(0.25));
+  }
+
+  const ending = random.next();
+  if (ending < 0.12) {
+    const failure = start(turnId, { id: id("x"), type: "error", status: "failed", error: english ? "The model provider closed the connection." : "模型服务断开了连接，这一轮没有完成。" });
+    complete(failure, { status: "failed" });
+    return "failed";
+  }
+  if (ending < 0.22) {
+    // The reader stops it mid-reply.
+    const message = start(turnId, { id: id("m"), type: "assistant_message", status: "streaming", text: "", reasoning: "" });
+    window.setTimeout(interrupt, random.between(400, 1400) / speed);
+    await stream(message, "text", fuzzAnswer(random), token, 3, 40);
+    return "completed";
+  }
+  await say("final_answer", fuzzAnswer(random));
+  return "completed";
+}
+
 async function runScript(turnId: string, token: number) {
   if (scenario === "long" || scenario === "burst") return runLongScript(turnId, token);
+  if (scenario === "fuzz") return runFuzzScript(turnId, token);
   if (scenario === "quick") {
     await wait(900, token);
     const answer = start(turnId, { id: `${turnId}-a`, type: "assistant_message", status: "streaming", text: "", reasoning: "" });
@@ -333,7 +449,7 @@ async function play(text: string) {
     start(turnId, { id: `${turnId}-user`, type: "user_message", status: "completed", text });
     const status = await runScript(turnId, token);
     await wait(180, token);
-    const finalItemId = status === "completed" ? `${turnId}-${scenario === "quick" ? "a" : "final"}` : "";
+    const finalItemId = status === "completed" && scenario !== "fuzz" ? `${turnId}-${scenario === "quick" ? "a" : "final"}` : "";
     emit("turn/completed", { threadId: THREAD, turn: { id: turnId, threadId: THREAD, status, startedAt, completedAt: now(), finalItemId, items: [] } });
     updateThread({ status, currentTurnId: turnId, usage: { inputTokens: 21_400, outputTokens: 1_900, totalTokens: 23_300 } });
   } catch (error) {
