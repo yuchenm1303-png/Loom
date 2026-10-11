@@ -67,7 +67,7 @@ try {
       if (!last) return null;
       const block = last.parentElement?.closest("p, li, td, th, h1, h2, h3, h4, h5, h6, pre, blockquote") ?? body;
       const rect = block.getBoundingClientRect();
-      return [Math.round((rect.bottom - top) * 100) / 100, Math.round(rect.left * 100) / 100, last.nodeValue.length, body.textContent.slice(-26), block.tagName.toLowerCase()];
+      return [Math.round((rect.bottom - top) * 100) / 100, Math.round(rect.left * 100) / 100, last.nodeValue.length, body.textContent.slice(-26), block.tagName.toLowerCase(), body.textContent.length];
     };
     let previous = performance.now();
     let animationCount = 0;
@@ -187,6 +187,8 @@ function report(rec) {
   console.log("\nblocks whose position in the document changed (layout moving them), by frames:");
   for (const [id, e] of ranked) console.log(`  ${rec.labels[id].padEnd(40)} ${String(e.frames).padStart(4)} frames  worst ${e.worst.toFixed(1)}px  up ${e.up} down ${e.down}  height change ${e.grow.toFixed(0)}px`);
 
+  typing(live);
+
   // 3. The typed line.
   const lines = live.filter((frame) => frame.line && frame.fol === "true");
   const travels = [];
@@ -206,6 +208,26 @@ function report(rec) {
   console.log(`\nthe line being typed, while pinned: ${lines.length} frames; moved 3px+ in a frame ${jumps.length} times; went one way and straight back ${backAndForth.length} times`);
   if (jumps.length) console.log("  moves: " + jumps.slice(0, 14).map((j) => `${Math.round(j.t)}ms dy ${j.dy} (scroll ${j.scroll}, grow ${j.grow})`).join(" | "));
   if (backAndForth.length) console.log("  back and forth: " + backAndForth.slice(0, 8).map(([a, b]) => `${Math.round(a.t)}ms ${a.dy}→${b.dy}`).join(" | "));
+}
+
+// The typing rhythm of the receiving message: how long between reveals, how much each reveals.
+function typing(live) {
+  const reveals = [];
+  let previous = null;
+  for (const frame of live) {
+    const chars = frame.line?.[5];
+    if (chars === undefined) continue;
+    if (previous && chars !== previous.chars) reveals.push({ t: frame.t, gap: frame.t - previous.t, grew: chars - previous.chars, chars });
+    if (!previous || chars !== previous.chars) previous = { t: frame.t, chars };
+  }
+  if (!reveals.length) return;
+  const byLength = [[0, 2000], [2000, 5000], [5000, 9000], [9000, 1e9]];
+  console.log("\ntyping rhythm (reveals of the receiving answer; gap = ms since the previous reveal):");
+  for (const [lo, hi] of byLength) {
+    const part = reveals.filter((reveal) => reveal.chars >= lo && reveal.chars < hi && reveal.gap < 400);
+    if (part.length < 5) continue;
+    console.log(`  ${String(lo).padStart(5)}-${hi === 1e9 ? "end" : hi} chars: ${part.length} reveals, gap p50 ${percentile(part.map((r) => r.gap), 50)}ms p90 ${percentile(part.map((r) => r.gap), 90)}ms, ${percentile(part.map((r) => r.grew), 50)} chars each (p90 ${percentile(part.map((r) => r.grew), 90)})`);
+  }
 }
 
 // Where the main thread went, per second of the run (CDP Performance.getMetrics deltas, seconds of work per second).

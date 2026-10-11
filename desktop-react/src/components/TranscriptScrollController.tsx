@@ -22,6 +22,8 @@ const SCROLL_EPSILON_PX = 2;
 const EXTERNAL_MOVE_PX = 1.5;
 // Farther than this from the live edge (or two viewports, if more) the view jumps: a thread swap, a big mount.
 const GLIDE_MAX_GAP_PX = 900;
+// A scroll event this soon after one of this loop's own writes is the write's echo.
+const OWN_SCROLL_ECHO_MS = 120;
 const LIVE_SETTLE_WINDOW_MS = 820;
 const SEND_FOLLOW_WINDOW_MS = 360;
 const USER_RETURN_INTENT_MS = 420;
@@ -524,6 +526,18 @@ export function TranscriptScrollController({
 
     const onScroll = () => {
       if (isPanelResizeActive()) return;
+      // Every step of the glide fires one of these a frame later. While nothing else is steering (no key, no
+      // scrollbar drag, no gesture over an output pane) and this loop wrote a moment ago, it is its own echo: skip
+      // reading scrollTop, which would force layout early in the frame for nothing.
+      const now = performance.now();
+      if (
+        followingRef.current
+        && !userDetachedRef.current
+        && lastWriteRef.current !== null
+        && now - lastTickAtRef.current < OWN_SCROLL_ECHO_MS
+        && scrollbarPointerRef.current === null
+        && now > inputIntentRef.current.until
+      ) return;
 
       const nextScrollTop = scroller.scrollTop;
       const movedUp = nextScrollTop < lastScrollTopRef.current - SCROLL_EPSILON_PX;

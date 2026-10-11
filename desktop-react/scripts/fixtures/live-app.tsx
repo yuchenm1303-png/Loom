@@ -14,7 +14,8 @@
  *   ?lang=en               English UI and script
  *   ?scenario=code|approval|error|decision|quick|long|burst   (default code)
  *       long: a thinking pause, then one long Markdown answer; burst: a dozen quick reads/searches, one note, a
- *       command, then the long answer. ?cadence=real delivers their text like a provider does (clumps and gaps).
+ *       command, then the long answer. ?cadence=real delivers their text like a provider does (clumps and gaps);
+ *       ?repeat=N makes the answer N times as long.
  *   ?speed=0.5             slow the script (animations are not rescaled)
  *   ?empty=1               start on the home screen of an empty thread
  *   ?autosend=1            send the scenario prompt once the app is ready
@@ -182,6 +183,10 @@ const LONG_ANSWER = english
   ? "I went through the whole login flow. The short version: email validation is missing in three places, listed here from most to least harmful.\n\n## What I found\n\n1. **The form only checks required fields.** `valid` in `Login.tsx` looks at whether two fields are empty, so a malformed address goes all the way to the backend, which answers with a vague 400 and the user only sees \"sign-in failed\".\n2. **The shared validators have no email rule.** `validators.ts` exports `required()` and nothing else; the register and reset pages each carry an inline regex of their own, and the two have already drifted apart.\n3. **The error sits in the wrong place.** It is rendered in a global area at the bottom of the form, so fixing the field does not visibly clear it and nobody can tell which field it belongs to.\n\n## Options\n\n| Option | Scope | Risk | Note |\n| --- | --- | --- | --- |\n| Inline regex in Login.tsx | 1 file | low | quickest, keeps the duplication |\n| Extract `isEmail()` and reuse it | 3 files | low | recommended: one rule everywhere |\n| Add a validation library | many | medium | too heavy for a single rule |\n\nI would take the second option. The rule itself stays deliberately small:\n\n```ts\nexport function isEmail(value: string): boolean {\n  const text = value.trim();\n  const at = text.indexOf(\"@\");\n  return at > 0 && at === text.lastIndexOf(\"@\") && text.indexOf(\".\", at) > at + 1 && !/\\s/.test(text);\n}\n```\n\n## Next\n\n- change `validators.ts` and add the unit tests;\n- wire the login page to it and move the message under the field;\n- make the register and reset pages reuse the same function and delete the duplicated regexes.\n\n> Do not reach for the full RFC 5322 expression on the client: rejecting a real address costs far more than letting one bad address through.\n\nIf that direction works for you I will start with the first step."
   : "我把整个登录流程梳理了一遍，结论先放在前面：邮箱校验的缺口主要在三个地方，下面按影响从大到小说明。\n\n## 发现的问题\n\n1. **前端只校验了必填项。** `Login.tsx` 里的 `valid` 只看两个字段是不是空，格式不对的邮箱可以一路提交到后端，后端返回一个笼统的 400，用户看到的只有“登录失败”。\n2. **公共校验工具缺少邮箱规则。** `validators.ts` 里只有 `required()`，注册页和找回密码页各自写了一份内联正则，两份规则已经不一致。\n3. **错误提示位置不对。** 提示放在表单底部的全局区域，改完字段后看不到它消失，也分不清是哪个字段的问题。\n\n## 方案对比\n\n| 方案 | 改动范围 | 风险 | 备注 |\n| --- | --- | --- | --- |\n| 在 Login.tsx 内联正则 | 1 个文件 | 低 | 最快，但会继续重复 |\n| 抽出 `isEmail()` 并复用 | 3 个文件 | 低 | 推荐，一次统一三处规则 |\n| 引入第三方校验库 | 多处 | 中 | 对一条规则来说过重 |\n\n我倾向于第二种。规则本身刻意保持很小：\n\n```ts\nexport function isEmail(value: string): boolean {\n  const text = value.trim();\n  const at = text.indexOf(\"@\");\n  return at > 0 && at === text.lastIndexOf(\"@\") && text.indexOf(\".\", at) > at + 1 && !/\\s/.test(text);\n}\n```\n\n## 接下来\n\n- 先改 `validators.ts` 并补单元测试；\n- 再把登录页接上，把提示挪到输入框下方；\n- 最后让注册页和找回密码页复用同一个函数，删除重复的正则。\n\n> 注意：不要在前端放完整的 RFC 5322 正则，误杀一个合法地址的代价，比放过一个坏地址高得多。\n\n如果你同意这个方向，我就从第一步开始。";
 
+// ?repeat=N makes the long answer N times as long (a report, a long file), to see how rendering scales with length.
+const repeat = Math.max(1, Math.min(12, Number(params.get("repeat") || 1) || 1));
+const LONG_TEXT = repeat === 1 ? LONG_ANSWER : Array.from({ length: repeat }, () => LONG_ANSWER).join(String.fromCharCode(10, 10) + "---" + String.fromCharCode(10, 10));
+
 const BURST_STEPS: Array<[string, Record<string, unknown>, string]> = [
   ["read_workspace_text", { path: "src/pages/Login.tsx" }, "export function Login() { … }"],
   ["read_workspace_text", { path: "src/pages/Register.tsx" }, "export function Register() { … }"],
@@ -227,7 +232,7 @@ async function runLongScript(turnId: string, token: number) {
   }
   const final = start(turnId, { id: `${turnId}-final`, type: "assistant_message", status: "streaming", text: "" });
   await wait(300, token);
-  await say(final, "text", LONG_ANSWER, token);
+  await say(final, "text", LONG_TEXT, token);
   complete(final, { phase: "final_answer" });
   return "completed";
 }

@@ -7,6 +7,9 @@ type Snapshot = { progress: Progress; active: boolean; open: boolean; reduce: bo
   retained: Set<string>; folding: Set<string> };
 const READ_HOLD_MS = 120;
 const FOLD_LIFETIME_MS = 360; // CSS: 40ms pause + 300ms height contraction.
+// Re-reading where the retained records sit is a render of the whole live turn and a layout read per record.
+// A record leaving through the top of the view is slow news (the read hold is 120ms), so at most this often.
+const VIEWPORT_REFRESH_MS = 64;
 
 /** Retire already-painted records in place before transferring them to history. */
 export function useEarlierProcessHandoff(items: TranscriptItem[], progress: Progress, active: boolean,
@@ -16,6 +19,8 @@ export function useEarlierProcessHandoff(items: TranscriptItem[], progress: Prog
     retained: new Set(active ? progress.earlier.map(item => item.id) : []), folding: new Set() }));
   const rootRef = useRef<HTMLElement>(null);
   const [viewportRevision, setViewportRevision] = useState(0);
+  // Whether anything is waiting to leave the screen. Scrolling and growing change nothing until something is.
+  const waiting = useRef(false);
   const timers = useRef(new Map<string, { phase: string; timer: number }>());
   let snapshot = state;
   if (progress !== state.progress || active !== state.active || open !== state.open || reduce !== state.reduce) {
@@ -29,6 +34,7 @@ export function useEarlierProcessHandoff(items: TranscriptItem[], progress: Prog
     // tool disclosure and text paint snapshot, instead of unmounting for a frame.
     setState(snapshot);
   }
+  waiting.current = snapshot.retained.size > 0;
   const currentIds = new Set(progress.current.map(item => item.id));
   const current = items.filter(item => currentIds.has(item.id) || snapshot.retained.has(item.id));
   const earlier = progress.earlier.filter(item => !snapshot.retained.has(item.id));
@@ -49,8 +55,17 @@ export function useEarlierProcessHandoff(items: TranscriptItem[], progress: Prog
     const scroller = rootRef.current?.closest<HTMLElement>(".transcript-scroll");
     if (!scroller) return;
     let frame = 0;
-    const refresh = () => {
-      if (!frame) frame = requestAnimationFrame(() => { frame = 0; setViewportRevision(value => value + 1); });
+    let timer = 0;
+    let last = 0;
+    const revise = () => {
+      timer = 0;
+      frame = requestAnimationFrame(() => { frame = 0; last = performance.now(); setViewportRevision(value => value + 1); });
+    };
+    const refresh = (force?: unknown) => {
+      if ((!waiting.current && force !== true) || frame || timer) return;
+      const wait = VIEWPORT_REFRESH_MS - (performance.now() - last);
+      if (wait > 0) timer = window.setTimeout(revise, wait);
+      else revise();
     };
     scroller.addEventListener("scroll", refresh, { passive: true });
     document.addEventListener("visibilitychange", refresh);
@@ -59,9 +74,10 @@ export function useEarlierProcessHandoff(items: TranscriptItem[], progress: Prog
     resize.observe(scroller);
     const attributes = new MutationObserver(refresh);
     attributes.observe(scroller, { attributes: true, attributeFilter: ["data-following"] });
-    refresh();
+    refresh(true);
     return () => {
       cancelAnimationFrame(frame);
+      window.clearTimeout(timer);
       scroller.removeEventListener("scroll", refresh);
       document.removeEventListener("visibilitychange", refresh);
       resize.disconnect();

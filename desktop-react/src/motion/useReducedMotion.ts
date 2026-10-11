@@ -3,9 +3,19 @@ import { useSyncExternalStore } from "react";
 const listeners = new Set<() => void>();
 let disconnect: (() => void) | null = null;
 
+// One query for every caller: matchMedia() allocates a new MediaQueryList each time, and this snapshot is read on
+// every render of every message while a run streams.
+let reducedQuery: MediaQueryList | null | undefined;
+function reducedMotionQuery(): MediaQueryList | null {
+  if (reducedQuery === undefined) {
+    reducedQuery = typeof window !== "undefined" ? window.matchMedia?.("(prefers-reduced-motion: reduce)") ?? null : null;
+  }
+  return reducedQuery;
+}
+
 function snapshot(): boolean {
   return typeof window !== "undefined" && (
-    Boolean(window.matchMedia?.("(prefers-reduced-motion: reduce)").matches)
+    Boolean(reducedMotionQuery()?.matches)
     || document.documentElement.dataset.loomReducedMotion === "true"
   );
 }
@@ -14,7 +24,7 @@ function subscribe(listener: () => void): () => void {
   listeners.add(listener);
   if (!disconnect) {
     const notify = () => listeners.forEach((callback) => callback());
-    const media = window.matchMedia?.("(prefers-reduced-motion: reduce)");
+    const media = reducedMotionQuery();
     const observer = new MutationObserver(notify);
     observer.observe(document.documentElement, { attributes: true, attributeFilter: ["data-loom-reduced-motion"] });
     media?.addEventListener("change", notify);

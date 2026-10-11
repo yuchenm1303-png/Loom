@@ -373,6 +373,17 @@ export default function App() {
   }, [account.ready, account.account.authenticated, account.account.user?.id, loom.refreshModels]);
   const { t } = useI18n();
   const shellRef = useRef<HTMLDivElement | null>(null);
+  // The shell's width, kept by an observer. The separators' aria-valuemax is computed while rendering, and
+  // clientWidth read there forces a layout in the middle of every streamed update.
+  const shellWidthRef = useRef(0);
+  useLayoutEffect(() => {
+    const shell = shellRef.current;
+    if (!shell || typeof ResizeObserver === "undefined") return;
+    shellWidthRef.current = shell.clientWidth;
+    const observer = new ResizeObserver(() => { shellWidthRef.current = shell.clientWidth; });
+    observer.observe(shell);
+    return () => observer.disconnect();
+  }, []);
   const resizeRef = useRef<ResizeSession | null>(null);
   const resizeReleaseFrameRef = useRef<number | null>(null);
   const layoutViewTransitionRef = useRef<LayoutViewTransition | null>(null);
@@ -957,7 +968,7 @@ export default function App() {
   );
 
   const panelMaximum = (panel: ResizePanel): number => {
-    const viewport = shellRef.current?.clientWidth || window.innerWidth;
+    const viewport = shellWidthRef.current || shellRef.current?.clientWidth || window.innerWidth;
     const oppositeWidth = panel === "sidebar"
       ? (inspectorVisible ? inspectorWidth : 0)
       : (sidebarOpen ? sidebarWidth : 0);
@@ -1142,6 +1153,12 @@ export default function App() {
     if (thread?.id === threadId) await loom.openThread(threadId);
   }
 
+  // The sidebar is memoized; these keep its props still across the renders that stream a turn.
+  const latestProjectHandlers = useRef({ openProjectDetails, handleMoveProject });
+  latestProjectHandlers.current = { openProjectDetails, handleMoveProject };
+  const stableOpenProject = useCallback((projectId: string) => latestProjectHandlers.current.openProjectDetails(projectId), []);
+  const stableMoveProject = useCallback((threadId: string, projectId: string) => latestProjectHandlers.current.handleMoveProject(threadId, projectId), []);
+
   const progressProps = {
     modelActivity: loom.modelActivity,
     items: loom.items,
@@ -1187,13 +1204,13 @@ export default function App() {
         onOpen={loom.openThread}
         onPrefetch={loom.prefetchThread}
         onNew={loom.newThread}
-        onOpenProject={openProjectDetails}
+        onOpenProject={stableOpenProject}
         projects={loom.projects}
         projectsSupported={loom.projectsSupported}
         onAddProject={loom.createProject}
         onRenameProject={loom.renameProject}
         onRemoveProject={loom.removeProject}
-        onMoveProject={handleMoveProject}
+        onMoveProject={stableMoveProject}
         onRename={loom.renameThread}
         onArchive={loom.archiveThread}
         onDelete={loom.deleteThread}
