@@ -778,7 +778,10 @@ export function useLoom() {
     if (active?.thread.archived) throw new Error("该对话已归档，请先取消归档再发送。");
     if (homeSendPendingRef.current) throw new Error("正在创建对话，请等待当前消息发送完成。");
     const selectedThreadId = active?.thread.id || "";
-    await modelSwitchTasks.current.get(selectedThreadId || "draft");
+    // A second selection may arrive while the previous request is settling.
+    while (modelSwitchTasks.current.has(selectedThreadId || "draft")) {
+      await modelSwitchTasks.current.get(selectedThreadId || "draft");
+    }
     if (activeIdRef.current !== selectedThreadId) throw new Error("对话选择已改变，消息尚未发送。请在目标对话中重试。");
     let thread = active?.thread;
     if (!thread) {

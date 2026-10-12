@@ -31,7 +31,7 @@ test("signed-out users cannot run or switch models", async () => {
   await assert.rejects(request("turn/start", {}), /Sign in required/);
   assert.deepEqual(calls, []);
   assert.match(main, /async function assertModelSelectionAllowed[\s\S]*await assertSignedInForModels\(\)/);
-  assert.match(app, /archived \|\| !account\.account\.authenticated/);
+  assert.match(app, /accountAuthenticated=\{account\.account\.authenticated\}/);
   assert.match(composer, /Sign in to Loom to use models and send messages/);
 });
 

@@ -497,7 +497,6 @@ export function ModelPanel({
   const [providerConfiguring, setProviderConfiguring] = useState(false);
   const [query, setQuery] = useState("");
   const [groupQuery, setGroupQuery] = useState("");
-  const [pendingSelection, setPendingSelection] = useState("");
   const refreshRef = useRef(onRefresh);
   refreshRef.current = onRefresh;
 
@@ -652,12 +651,10 @@ export function ModelPanel({
       onClose();
       return;
     }
-    setPendingSelection(profile.selection);
-    try {
-      await run(() => onSwitchProfile(profile.selection));
-    } finally {
-      setPendingSelection("");
-    }
+    // The owner keeps the request and any failure alive after this picker closes.
+    const request = onSwitchProfile(profile.selection);
+    onClose();
+    void Promise.resolve(request).catch(() => {});
   }
 
   function reasoningLabel(profile: ModelProfile): string | undefined {
@@ -675,7 +672,9 @@ export function ModelPanel({
       setError("Enter a model ID first.");
       return;
     }
-    await run(() => onSwitchCurrent(value));
+    const request = onSwitchCurrent(value);
+    onClose();
+    void Promise.resolve(request).catch(() => {});
   }
 
   function openOwnKey(group: ModelGroup, profile?: ModelProfile) {
@@ -1053,7 +1052,7 @@ export function ModelPanel({
                     <ModelRow
                       profile={profile}
                       current={current}
-                      pending={pendingSelection === profile.selection}
+                      pending={false}
                       disabled={!accountAuthenticated || profile.available === false || deleting}
                       dimmed={!accountAuthenticated || profile.available === false || setup.needsKey}
                       meta={!accountAuthenticated ? "Sign in" : profile.available === false ? unavailableLabel(profile) : reasoningLabel(profile)}
@@ -1164,7 +1163,7 @@ export function ModelPanel({
                           key={profile.selection}
                           profile={profile}
                           current={current}
-                          pending={pendingSelection === profile.selection}
+                          pending={false}
                           disabled={!accountAuthenticated || profile.available === false}
                           dimmed={!accountAuthenticated || profile.available === false}
                           meta={!accountAuthenticated ? "Sign in" : profile.available === false ? unavailableLabel(profile) : connectFirst ? "Connect" : reasoningLabel(profile)}
@@ -1216,7 +1215,7 @@ export function ModelPanel({
                         key={profile.selection}
                         profile={profile}
                         current={false}
-                        pending={pendingSelection === profile.selection}
+                        pending={false}
                         disabled={!accountAuthenticated}
                         dimmed={false}
                         leading={<ProviderMark id={groupId} name={providerName || profile.name} small />}

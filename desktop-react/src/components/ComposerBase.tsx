@@ -190,6 +190,27 @@ export function Composer({
   const renderedPanel = openPanel ?? (panelPresence.mounted ? lastOpenPanelRef.current : null);
   const [pendingSelection, setPendingSelection] = useState("");
   const [panelError, setPanelError] = useState("");
+  const [modelError, setModelError] = useState("");
+  const modelRequestVersion = useRef(0);
+
+  useEffect(() => {
+    modelRequestVersion.current += 1;
+    setModelError("");
+  }, [threadId]);
+
+  async function selectModel(action: (() => Promise<void> | void) | undefined) {
+    const version = ++modelRequestVersion.current;
+    setModelError("");
+    try {
+      if (!action) throw new Error("Model switching is unavailable.");
+      await action();
+    } catch (cause) {
+      if (version === modelRequestVersion.current) {
+        setModelError(cause instanceof Error ? cause.message : String(cause));
+      }
+      throw cause;
+    }
+  }
   const [stopping, setStopping] = useState(false);
   const [stopError, setStopError] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -409,6 +430,7 @@ export function Composer({
         {quote ? <QuoteReplyBar quote={quote} onClear={() => setQuote(null)} /> : null}
         <ComposerAttachmentStrip attachments={attachments} imagesAllowed={imagesAllowed} onRemove={removeAttachment} />
 
+        {modelError ? <p role="alert" className="composer-attach-error">{modelError}</p> : null}
         {attachError ? <p className="composer-attach-error">{attachError}</p> : null}
         {stopError ? <p className="composer-attach-error">Could not stop: {stopError}</p> : null}
         {!imagesAllowed && attachments.some((item) => item.isImage) ? (
@@ -573,14 +595,8 @@ export function Composer({
                     running={running}
                     accountAuthenticated={accountAuthenticated}
                     onOpenAccount={onOpenAccount}
-                    onSwitchProfile={async (selection) => {
-                      if (!onModelProfileChange) throw new Error("Model switching is unavailable.");
-                      await onModelProfileChange(selection);
-                    }}
-                    onSwitchCurrent={async (nextModel) => {
-                      if (!onCustomModelChange) throw new Error("Custom model switching is unavailable.");
-                      await onCustomModelChange(nextModel);
-                    }}
+                    onSwitchProfile={(selection) => selectModel(onModelProfileChange ? () => onModelProfileChange(selection) : undefined)}
+                    onSwitchCurrent={(nextModel) => selectModel(onCustomModelChange ? () => onCustomModelChange(nextModel) : undefined)}
                     onConfigureProvider={async (provider, apiKey) => {
                       if (!onConfigureModelProvider) throw new Error("Provider configuration is unavailable.");
                       await onConfigureModelProvider(provider, apiKey);
