@@ -602,12 +602,7 @@ function detectInitialLanguage(): LoomLanguage {
     const stored = normalizeLanguage(window.localStorage.getItem(LANGUAGE_STORAGE_KEY));
     if (stored) return stored;
   } catch {
-    // Ignore storage failures and fall back to the browser locale.
-  }
-  const candidates = [navigator.language, ...(navigator.languages ?? [])];
-  for (const item of candidates) {
-    const normalized = normalizeLanguage(item);
-    if (normalized) return normalized;
+    // Ignore storage failures and use the default display language.
   }
   return "en";
 }
