@@ -315,8 +315,10 @@ export function Composer(props: ComposerProps) {
       try {
         await props.onSend(input, attachments);
       } catch (cause) {
-        setSendErrors((current) => ({ ...current, [draftKey]: cause instanceof Error ? cause.message : String(cause) }));
-        setDrafts((current) => current[draftKey] ? current : { ...current, [draftKey]: input });
+        const failedThreadId = cause instanceof Error ? (cause as Error & { sendThreadId?: string }).sendThreadId : undefined;
+        const failedDraftKey = failedThreadId || draftKey;
+        setSendErrors((current) => ({ ...current, [failedDraftKey]: cause instanceof Error ? cause.message : String(cause) }));
+        setDrafts((current) => current[failedDraftKey] ? current : { ...current, [failedDraftKey]: input });
         throw cause;
       }
     },

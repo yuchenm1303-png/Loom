@@ -709,7 +709,7 @@ export function useLoom() {
     void refreshThreads("active");
   }, [clearActive, refreshThreads]);
 
-  const startThread = useCallback(async () => {
+  const startThread = useCallback(async (pendingMessage?: TranscriptItem) => {
     const requestId = ++openRequestRef.current;
     const result = await requireBridge().call<{ thread: ThreadRecord }>("thread/start", draftThreadParamsRef.current);
     threadViewRef.current = "active";
@@ -736,7 +736,7 @@ export function useLoom() {
       openingThreadIdRef.current = "";
       setOpeningThreadId("");
       setActive({ thread: result.thread, turns: [], hasMoreTurns: false, oldestTurnId: null });
-      installItems([]);
+      installItems(pendingMessage ? [{ ...pendingMessage, threadId: result.thread.id }] : []);
       setTurnActive(false);
       setTurnStartedAt(null);
       setContext(null);
@@ -778,37 +778,37 @@ export function useLoom() {
     if (active?.thread.archived) throw new Error("该对话已归档，请先取消归档再发送。");
     if (homeSendPendingRef.current) throw new Error("正在创建对话，请等待当前消息发送完成。");
     const selectedThreadId = active?.thread.id || "";
-    // A second selection may arrive while the previous request is settling.
-    while (modelSwitchTasks.current.has(selectedThreadId || "draft")) {
-      await modelSwitchTasks.current.get(selectedThreadId || "draft");
-    }
-    if (activeIdRef.current !== selectedThreadId) throw new Error("对话选择已改变，消息尚未发送。请在目标对话中重试。");
-    let thread = active?.thread;
-    if (!thread) {
-      homeSendPendingRef.current = true;
-      try {
-        thread = (await startThread()) ?? undefined;
-      } finally {
-        homeSendPendingRef.current = false;
-      }
-      if (!thread) throw new Error("对话选择已改变，消息尚未发送。请在目标对话中重试。");
-    }
-    threadReadCacheRef.current.delete(thread.id);
     const pendingId = `pending-user-${crypto.randomUUID()}`;
-    if (input.trim() || attachments.length) setItems((current) => [...current, {
-      id: pendingId, clientMessageId: pendingId, threadId: thread.id, type: "user_message",
+    const pendingMessage: TranscriptItem = {
+      id: pendingId, clientMessageId: pendingId, threadId: selectedThreadId, type: "user_message",
       text: input.trim(), hasAttachments: attachments.length > 0, status: "sending", submittedAt: new Date().toISOString(),
-    }]);
-    threadStateRevisionRef.current += 1;
-    setTurnActive(true);
-    setTurnStartedAt(Date.now());
+    };
+    // Acknowledge the click before model selection or thread creation can await
+    // network/disk work. The new thread adopts this same message identity.
+    setItems((current) => [...current, pendingMessage]);
+    if (!selectedThreadId) homeSendPendingRef.current = true;
+    let thread = active?.thread;
     try {
+      // A second selection may arrive while the previous request is settling.
+      while (modelSwitchTasks.current.has(selectedThreadId || "draft")) {
+        await modelSwitchTasks.current.get(selectedThreadId || "draft");
+      }
+      if (activeIdRef.current !== selectedThreadId) throw new Error("对话选择已改变，消息尚未发送。请在目标对话中重试。");
+      if (!thread) {
+        thread = (await startThread(pendingMessage)) ?? undefined;
+        if (!thread) throw new Error("对话选择已改变，消息尚未发送。请在目标对话中重试。");
+      }
+      threadReadCacheRef.current.delete(thread.id);
+      threadStateRevisionRef.current += 1;
+      setTurnActive(true);
+      setTurnStartedAt(Date.now());
+      const threadId = thread.id;
       const params: Record<string, unknown> = { threadId: thread.id, input: input.trim() };
       if (attachments.length) params.attachments = attachments;
       const result = await requireBridge().call<{ turn: TurnRecord }>("turn/start", params);
       const turn = result.turn;
       setItems((current) => current.map((item) => item.id === pendingId ? { ...item, turnId: turn.id } : item));
-      setActive((current) => current && current.thread.id === thread.id
+      setActive((current) => current && current.thread.id === threadId
         ? {
             ...current,
             pendingApproval: null,
@@ -820,9 +820,14 @@ export function useLoom() {
         : current);
     } catch (cause) {
       setItems((current) => current.filter((item) => item.id !== pendingId));
-      setTurnActive(false);
-      setTurnStartedAt(null);
+      if (activeIdRef.current === (thread?.id || selectedThreadId)) {
+        setTurnActive(false);
+        setTurnStartedAt(null);
+      }
+      if (cause instanceof Error && thread?.id) Object.assign(cause, { sendThreadId: thread.id });
       throw cause;
+    } finally {
+      if (!selectedThreadId) homeSendPendingRef.current = false;
     }
   }, [active?.thread, startThread]);
 

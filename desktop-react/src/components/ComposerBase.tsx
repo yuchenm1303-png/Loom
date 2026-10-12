@@ -344,8 +344,9 @@ export function Composer({
     setSubmitting(true);
     setOpenPanel(null);
     try {
-      await onSend(input, sendable.map((item) => ({ path: item.path, name: item.name })));
+      const request = onSend(input, sendable.map((item) => ({ path: item.path, name: item.name })));
       setValue("");
+      await request;
       setQuote(null);
       setAttachments([]);
       setAttachError("");
