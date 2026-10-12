@@ -53,9 +53,11 @@ test("server catalog adds new models in batches, fixes current status and preser
   const Fixture = new Function("isAntLingSelection", `${compiled}; return Fixture;`)(selection => selection.startsWith("builtin:ant-ling"));
   const fixture = new Fixture();
   fixture.serverProfiles = new Map();
+  fixture.launchCache = new Map();
   const calls = [];
   fixture.runPythonBridgeAsync = async (script, command, payload) => {
     calls.push({ script, command, count: payload.models.length });
+    if (command === "record-image-capabilities") return {};
     return payload.models.map(item => ({ ...builtin(item.selection), model: item.model, vision: false }));
   };
   const primary = builtin();
@@ -71,10 +73,12 @@ test("server catalog adds new models in batches, fixes current status and preser
   assert.deepEqual(result.profiles.map(item => item.selection), [...rows.map(item => item.model_id), saved.selection]);
   assert.equal(result.current.available, true);
   assert.equal(result.current.statusMessage, undefined);
-  assert.equal(calls.length, 2);
-  assert.ok(calls.every(call => call.command === "describe-models"));
+  assert.equal(calls.filter(call => call.command === "describe-models").length, 2);
+  assert.equal(calls.filter(call => call.command === "record-image-capabilities").length, 1);
+  assert.equal(result.current.vision, null, "missing metadata stays unknown despite legacy false defaults");
   rows[1].available = false;
   const retired = await fixture.applyServerCatalog(snapshot, rows);
   assert.equal(retired.current.available, false);
-  assert.equal(calls.length, 2, "known metadata is cached across permission refreshes");
+  assert.equal(calls.filter(call => call.command === "describe-models").length, 2, "known model identity is cached across permission refreshes");
+  assert.equal(calls.filter(call => call.command === "record-image-capabilities").length, 2, "capability evidence refreshes independently of identity");
 });
