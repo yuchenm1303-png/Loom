@@ -115,6 +115,14 @@
   box-shadow: none;
 }
 :root .app-shell .user-message { background: var(--ws-hover); border-color: transparent; box-shadow: none; border-radius: 10px; }
+/* Attachment cards and text already have their own surfaces. */
+:root .app-shell .user-message.has-attachments,
+:root .app-shell .user-message.has-attachments:hover {
+  background: transparent;
+  border: 0;
+  padding: 0;
+  box-shadow: none;
+}
 :root .app-shell .user-message::before { display: none; }
 
 /* Changed files: a single surface with rows, rather than nested button panels. */
