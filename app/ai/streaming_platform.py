@@ -140,8 +140,18 @@ class _StreamAccumulator:
         for index in sorted(self.tool_calls):
             buffer = self.tool_calls[index]
             effective_finish = str(finish_reason or self.finish_reason or "")
-            calls.append(parse_tool_call(buffer.call_id, buffer.name,
-                                         "".join(buffer.argument_parts), finish_reason=effective_finish))
+            try:
+                calls.append(parse_tool_call(buffer.call_id, buffer.name,
+                                             "".join(buffer.argument_parts), finish_reason=effective_finish))
+            except AIResponseError as exc:
+                exc.tool_argument_diagnostics.update({
+                    "tool_index": index,
+                    "tool_count": len(self.tool_calls),
+                    "argument_fragments": len(buffer.argument_parts),
+                    "max_fragment_chars": max(map(len, buffer.argument_parts), default=0),
+                    "assembly": "ordered_delta_concatenation",
+                })
+                raise
 
         text = "".join(self.text_parts)
         visible_reasoning = "".join(self.visible_reasoning_parts)
@@ -309,14 +319,19 @@ class StreamingAIPlatform(AIPlatform):
         usage = metadata.get("usage")
         if not isinstance(usage, ModelUsage):
             usage = ModelUsage()
-        result = accumulator.finalize(
-            usage=usage,
-            response_id=str(metadata.get("response_id") or ""),
-            finish_reason=str(metadata.get("finish_reason") or ""),
-            reasoning_char_count=int(metadata.get("reasoning_char_count") or 0),
-            reasoning=str(metadata.get("reasoning") or ""),
-            chunk_count=int(metadata.get("chunk_count") or 0),
-        )
+        try:
+            result = accumulator.finalize(
+                usage=usage,
+                response_id=str(metadata.get("response_id") or ""),
+                finish_reason=str(metadata.get("finish_reason") or ""),
+                reasoning_char_count=int(metadata.get("reasoning_char_count") or 0),
+                reasoning=str(metadata.get("reasoning") or ""),
+                chunk_count=int(metadata.get("chunk_count") or 0),
+            )
+        except AIResponseError as exc:
+            exc.stream_diagnostics = dict(metadata.get("stream_diagnostics") or {})
+            exc.response_id = str(metadata.get("response_id") or "")
+            raise
         public_text, late_inline_reasoning = split_inline_reasoning(result.text)
         result = replace(result, stream_diagnostics=dict(metadata.get("stream_diagnostics") or {}))
         if late_inline_reasoning:

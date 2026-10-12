@@ -301,6 +301,9 @@ class TurnRunner:
                                 "finish_reason": getattr(exc, "finish_reason", ""),
                                 "truncated_tool_name": getattr(exc, "tool_name", ""),
                                 "argument_chars": getattr(exc, "argument_chars", 0),
+                                "tool_argument_diagnostics": getattr(exc, "tool_argument_diagnostics", {}),
+                                "stream_diagnostics": getattr(exc, "stream_diagnostics", {}),
+                                "response_id": getattr(exc, "response_id", ""),
                                 "stream_timing": getattr(exc, "stream_timing", {}),
                                 # The size the provider refused. For a model with
                                 # no declared window this is the only hard fact

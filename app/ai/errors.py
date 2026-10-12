@@ -34,6 +34,8 @@ class AIResponseError(AIPlatformError):
     def __init__(self, message: str, *, finish_reason: str = "") -> None:
         super().__init__(message)
         self.finish_reason = finish_reason
+        self.tool_argument_diagnostics: dict = {}
+        self.stream_diagnostics: dict = {}
 
 
 class AIQuotaExceeded(AITransportError):

@@ -15,8 +15,20 @@ def parse_tool_call(call_id: str, name: str, raw_arguments: str, *, finish_reaso
     try:
         arguments = json.loads(raw_arguments) if raw_arguments.strip() else {}
     except json.JSONDecodeError as exc:
-        raise AIResponseError(f"tool call {name!r} returned invalid JSON arguments",
-                              finish_reason=finish_reason) from exc
+        error = AIResponseError(f"tool call {name!r} returned invalid JSON arguments",
+                                finish_reason=finish_reason)
+        error.argument_chars = len(raw_arguments)
+        error.tool_argument_diagnostics = {
+            "schema_version": 1,
+            "argument_chars": len(raw_arguments),
+            "json_error_position": exc.pos,
+            "json_error_line": exc.lineno,
+            "json_error_column": exc.colno,
+            "json_error_at_end": exc.pos == len(raw_arguments),
+            # JSONDecodeError.msg is parser-authored; never include .doc or str(exc).
+            "json_error_reason": exc.msg,
+        }
+        raise error from exc
     if not isinstance(arguments, dict):
         raise AIResponseError(f"tool call {name!r} arguments must be a JSON object")
     return ToolCall(call_id=call_id, name=name, arguments=arguments)
