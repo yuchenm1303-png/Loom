@@ -84,8 +84,8 @@ const earlyRecheckTimers: NodeJS.Timeout[] = [];
 
 export function softwareUpdateState(): SoftwareUpdateState {
   const application = applicationUpdateState();
-  if (!updateInFlight() && (application.phase === "downloading" || application.phase === "downloaded")) {
-    return { ...state, ...readUpdatePreferences(), ...application, enabled: updateEnabled, error: undefined };
+  if (!updateInFlight() && application.phase !== "idle") {
+    return { ...state, ...readUpdatePreferences(), ...application, enabled: updateEnabled };
   }
   return { ...state, ...readUpdatePreferences() };
 }

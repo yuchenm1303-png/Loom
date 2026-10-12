@@ -10,7 +10,8 @@ mock.module("electron", { namedExports: {
   app: { isPackaged: true, getVersion: () => "0.1.82", getPath: () => home, whenReady: () => ({ then() {} }),
     relaunch() { restarted = true; }, quit() {} },
   net: { fetch: async url => { requests++;
-    return new Response(url.endsWith("stable.json") ? JSON.stringify(release)
+    if (new URL(url).pathname.endsWith("stable.json")) assert.ok(new URL(url).searchParams.has("check"));
+    return new Response(new URL(url).pathname.endsWith("stable.json") ? JSON.stringify(release)
       : corrupt ? "broken" : contents[release.files.find(file => file.url === url).path]); } },
 } });
 mock.module("../../dist-electron/hostProcess.js", { namedExports: { isHostProcess: true, hostHasDesktopClients: () => true, broadcastHostEvent() {} } });

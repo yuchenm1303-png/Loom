@@ -45,7 +45,9 @@ export async function checkApplicationUpdates(manual = false) {
     if (globalThis.loomApplicationBootstrap) globalThis.loomApplicationBootstrap.downloading = true;
     setStatus({ phase: "checking" });
     try {
-      const response = await fetchBytes(channel, 4 * 1024 * 1024);
+      // Chromium's no-store does not invalidate GitHub's edge cache for a
+      // mutable branch URL. Give each poll a distinct cache key as well.
+      const response = await fetchBytes(`${channel}?check=${Date.now()}`, 4 * 1024 * 1024);
       const raw = JSON.parse(response.toString());
       // A newer dependency baseline belongs to the installer updater.
       if (raw.bootstrap !== app.getVersion()) { setStatus({ phase: "idle" }); return; }
