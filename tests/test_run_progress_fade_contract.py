@@ -35,7 +35,7 @@ def test_transcript_content_fades_before_reaching_top_status() -> None:
     assert ".conversation-stage[data-has-entries]::after" in motion
     assert "grid-row: 2;" in motion
     assert "top: 0;" in motion
-    assert "transparent 100%" in motion
+    assert "linear-gradient(to bottom, var(--loom-workspace-canvas, var(--bg)), transparent)" in motion
     assert "max-width: min(48vw, 640px);" not in progress
     assert "-webkit-mask-image" not in progress
 
@@ -49,6 +49,6 @@ def test_transcript_edges_dissolve_into_header_and_composer() -> None:
 
     assert ".conversation-stage[data-has-entries]::after" in motion
     assert "top: 0;" in motion
-    assert "var(--bg) 0%" in motion
+    assert "linear-gradient(to bottom, var(--loom-workspace-canvas, var(--bg)), transparent)" in motion
     assert 'html[data-loom-theme="light"] .conversation-stage,' in motion
     assert "pointer-events: none;" in motion

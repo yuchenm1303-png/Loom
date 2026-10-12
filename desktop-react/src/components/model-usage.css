@@ -6,8 +6,7 @@
 .model-usage-track { stroke: currentColor; opacity: .25; }
 .model-usage-value { stroke: #688df3; stroke-linecap: round; transition: stroke-dasharray .2s ease; }
 .model-usage-value.is-low { stroke: #e7a35d; }
-.model-usage-button.is-loading svg { animation: model-usage-spin 1.5s linear infinite; border-top: 2px solid #688df3; border-radius: 50%; }
-@keyframes model-usage-spin { to { transform: rotate(360deg); } }
+.model-usage-button.is-loading svg { animation: li-spin var(--ic-t-spin) linear infinite; border-top: 2px solid #688df3; border-radius: 50%; }
 .composer-popover.model-usage-popover { left: auto; right: 0; width: min(310px, calc(100vw - 48px)); padding: 16px; z-index: 220; }
 .model-usage-heading, .model-usage-window > div, .model-usage-balance > div { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
 .model-usage-heading button { border: 0; background: transparent; color: inherit; cursor: pointer; font: inherit; font-size: 12px; }

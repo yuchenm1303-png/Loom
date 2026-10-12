@@ -16,8 +16,8 @@ test("signed-out submit opens login without clearing or sending the draft", asyn
   const code = ts.transpileModule(submit, { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText;
   let opened = 0;
   const fail = () => { throw new Error("Signed-out draft must remain untouched"); };
-  const invoke = new Function("value", "quote", "attachments", "imagesAllowed", "disabled", "running", "accountAuthenticated", "onOpenAccount", "formatQuotedPrompt", "setValue", "setQuote", "setAttachments", "onSend", `${code}; return submit;`)(
-    "draft", null, [], true, false, false, false, () => opened++, (_quote, input) => input, fail, fail, fail, fail);
+  const invoke = new Function("value", "quote", "attachments", "imagesAllowed", "disabled", "running", "accountAuthenticated", "onOpenAccount", "formatQuotedPrompt", "setValue", "setQuote", "setAttachments", "onSend", "submittingRef", `${code}; return submit;`)(
+    "draft", null, [], true, false, false, false, () => opened++, (_quote, input) => input, fail, fail, fail, fail, { current: false });
   await invoke();
   assert.equal(opened, 1);
 });
