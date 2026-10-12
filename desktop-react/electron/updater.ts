@@ -203,7 +203,7 @@ async function maybeInstallHeadless(): Promise<boolean> {
     }
     // A hidden Host has no Desktop prompt to click. Once the package is ready
     // and the Agent is idle, restart the Host automatically and let the web
-    // reconnect to the new process without reopening the Desktop UI.
+    // reconnect to the new process. The restart marker also opens the Desktop.
     markHeadlessUpdateRestart();
     restartForUpdate();
     return true;

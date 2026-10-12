@@ -92,11 +92,10 @@ export async function installApplicationUpdate(): Promise<boolean> {
   if (!enabled || restarting || status.phase !== "downloaded" || !safeToRestart) return false;
   try { if (!await safeToRestart()) return false; } catch { return false; }
   restarting = true;
-  const reopen = hostHasDesktopClients();
   broadcastHostEvent("loom:host-updating", null);
   // The new Host selects the staged release; UI children then follow its build.
   setTimeout(() => {
-    app.relaunch({ args: ["--loom-host", ...(reopen ? ["--loom-open-desktop-after-update"] : [])] });
+    app.relaunch({ args: ["--loom-host", "--loom-open-desktop-after-update"] });
     app.quit();
   }, 500);
   return true;

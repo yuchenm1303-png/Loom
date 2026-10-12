@@ -13,6 +13,7 @@ export const HOST_ARG = "--loom-host";
 // moves to a separate folder so Electron can give the two processes distinct locks.
 const restartMarker = path.join(hostDataPath, "loom-headless-update-restart");
 const restartingHost = existsSync(restartMarker);
+export const openDesktopAfterUpdate = restartingHost || process.argv.includes("--loom-open-desktop-after-update");
 export const isHostProcess = process.argv.includes(HOST_ARG) || process.argv.includes("--loom-background-host")
   || process.argv.some((arg) => /^loom:\/\//i.test(arg)) || restartingHost;
 if (restartingHost) { try { unlinkSync(restartMarker); } catch {} }
