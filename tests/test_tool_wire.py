@@ -152,3 +152,17 @@ def test_structured_output_schema_identifier_is_normalized_at_the_same_boundary(
     packet = StructuredRequest(chat=request(), json_schema={"type": "object"}, schema_name="中文.schema")
     assert platform.execute_structured_chat("test", packet) == {"ok": True}
     assert packet.schema_name == "中文.schema"
+
+
+def test_streaming_ids_without_indexes_and_ambiguous_safe_prefixes():
+    original = request()
+    original = replace(original, tools=original.tools + tuple(
+        ToolDefinition(name, "test", {"type": "object"}) for name in ("read", "read_file")))
+    decoder = ToolWireCodec(original).stream_decoder()
+    for call_id in ("one", "two"):
+        name = decoder.decode(StreamEvent(kind=StreamEventKind.TOOL_CALL_DELTA,
+                                         tool_call_id=call_id, tool_name="read"))
+        assert name.tool_name == ""
+        args = decoder.decode(StreamEvent(kind=StreamEventKind.TOOL_CALL_DELTA,
+                                         tool_call_id=call_id, arguments_delta="{}"))
+        assert args.tool_name == "read"

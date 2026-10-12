@@ -10,7 +10,7 @@ import hashlib
 import re
 from dataclasses import replace
 
-from .contracts import ChatRequest, ModelResponse, StreamEvent
+from .contracts import ChatRequest, ModelResponse, StreamEvent, StreamEventKind
 from .errors import AIResponseError
 
 _SAFE = re.compile(r"[a-zA-Z0-9_-]{1,64}\Z")
@@ -69,11 +69,11 @@ class ToolStreamNames:
     def decode(self, event: StreamEvent) -> StreamEvent:
         if all(name == wire for name, wire in self.codec.forward.items()):
             return event
-        if not event.tool_name and not event.tool_call_id and event.tool_call_index is None:
+        if event.kind is not StreamEventKind.TOOL_CALL_DELTA:
             return event
         key = event.tool_call_index
         if key is None:
-            key = self.ids.get(event.tool_call_id, self.last_key)
+            key = self.ids.get(event.tool_call_id, event.tool_call_id or self.last_key)
         self.last_key = key
         if event.tool_call_id:
             self.ids[event.tool_call_id] = key
