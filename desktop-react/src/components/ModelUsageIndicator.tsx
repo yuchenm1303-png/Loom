@@ -57,12 +57,10 @@ export function ModelUsageIndicator({ selection, zh, onOpen }: { selection: stri
         title={`${title}${detail ? ` · ${detail}` : ""}`} aria-label={`${title}${detail ? ` · ${detail}` : ""}`}
         aria-expanded={open} aria-haspopup="dialog" disabled={!selection}
         onClick={() => { if (!open) onOpen(); setOpen(value => !value); }}>
-        <svg width="20" height="20" viewBox="0 0 20 20" aria-hidden="true">
+        <svg width="16" height="16" viewBox="0 0 20 20" aria-hidden="true">
           <circle className="model-usage-track" cx="10" cy="10" r="7" />
           {percent !== undefined ? <circle className={`model-usage-value ${percent <= 20 ? "is-low" : ""}`} cx="10" cy="10" r="7"
             pathLength="100" strokeDasharray={`${percent} 100`} transform="rotate(-90 10 10)" /> : null}
-          {data?.balances.length ? <text x="10" y="13" textAnchor="middle">{data.balances[0].currency === "CNY" ? "¥" : "$"}</text> : null}
-          {data && data.status !== "ok" ? <text x="10" y="13" textAnchor="middle">–</text> : null}
         </svg>
       </button>
       {open ? <div className="composer-popover model-usage-popover" role="dialog" aria-label={title}>

@@ -12,6 +12,10 @@ try {
   const model = await page.locator(".model-chip").boundingBox();
   const circle = await ring.boundingBox();
   assert.ok(circle.x >= model.x + model.width, "ring is right of the model selector");
+  assert.ok(circle.x - model.x - model.width <= 4, "ring stays close to the model selector");
+  assert.equal((await ring.locator("svg").boundingBox()).width, 16, "quota glyph is compact");
+  await page.locator(".sticker-chip .composer-glyph-well").waitFor({ state: "visible" });
+  assert.ok((await page.locator(".sticker-chip svg").first().boundingBox()).width > 0, "expression icon remains visible inside its glyph wrapper");
   await ring.click();
   await page.getByText("61% 剩余", { exact: true }).waitFor();
   await page.getByText("88% 剩余", { exact: true }).waitFor();
@@ -22,6 +26,7 @@ try {
   await page.getByRole("button", { name: "deepseek", exact: true }).click();
   await ring.click();
   await page.getByText("CNY 12.3456", { exact: true }).waitFor();
+  assert.equal(await ring.locator("text").count(), 0, "balance ring has no center symbol");
   assert.equal(await page.locator(".model-usage-window").count(), 0);
   await page.evaluate(() => { window.usageFixture.delay = true; });
   await page.getByRole("button", { name: "minimax", exact: true }).click();
@@ -30,6 +35,7 @@ try {
   await page.evaluate(() => window.usageFixture.pending.shift()());
   await ring.click();
   await page.getByText("此连接暂不支持额度查询", { exact: true }).waitFor();
+  assert.equal(await ring.locator("text").count(), 0, "unsupported ring has no center symbol");
   assert.equal(await page.locator(".model-usage-window").count(), 0, "late old response cannot replace new selection");
   await page.keyboard.press("Escape");
   assert.equal(await page.locator(".model-usage-popover").count(), 0);

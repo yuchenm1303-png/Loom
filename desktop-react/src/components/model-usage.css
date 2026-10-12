@@ -1,11 +1,11 @@
-.model-usage-button { display: grid; place-items: center; width: 28px; height: 28px; padding: 0; border: 0; border-radius: 50%; background: transparent; color: var(--text-secondary, #92949e); cursor: pointer; }
+.composer .model-usage-anchor { margin-left: -4px; }
+.model-usage-button { display: grid; place-items: center; width: 24px; height: 28px; padding: 0; border: 0; border-radius: 50%; background: transparent; color: var(--text-secondary, #92949e); cursor: pointer; }
 .model-usage-button:hover, .model-usage-button[aria-expanded="true"] { background: var(--bg-hover, #ffffff0b); }
 .model-usage-button:focus-visible { outline: 2px solid #8e85ed; outline-offset: 2px; }
 .model-usage-track, .model-usage-value { fill: none; stroke-width: 2.5; }
 .model-usage-track { stroke: currentColor; opacity: .25; }
 .model-usage-value { stroke: #688df3; stroke-linecap: round; transition: stroke-dasharray .2s ease; }
 .model-usage-value.is-low { stroke: #e7a35d; }
-.model-usage-button text { fill: currentColor; font-size: 9px; font-weight: 600; }
 .model-usage-button.is-loading svg { animation: model-usage-spin 1.5s linear infinite; border-top: 2px solid #688df3; border-radius: 50%; }
 @keyframes model-usage-spin { to { transform: rotate(360deg); } }
 .composer-popover.model-usage-popover { left: auto; right: 0; width: min(310px, calc(100vw - 48px)); padding: 16px; z-index: 220; }
