@@ -39,7 +39,7 @@ body {
 
 /* Main transcript -------------------------------------------------------- */
 .user-message,
-.assistant-message { font-size: var(--loom-font-body) !important; }
+.assistant-message { font-size: var(--loom-chat-font-size, 13px) !important; }
 .streaming-placeholder { font-size: 13px !important; }
 .disclosure-trigger { font-size: 13px !important; }
 .reasoning-copy { font-size: 14.5px !important; }
@@ -53,7 +53,7 @@ body {
 .button { font-size: 12.5px !important; }
 .message-meta { font-size: 12px !important; }
 
-/* Work-log notes sit on the row scale, below the 15px message body. */
+/* Work-log notes keep their compact row scale. */
 .wv-note .assistant-message { font-size: var(--loom-font-ui) !important; }
 .turn-process-time { font-size: 13px !important; }
 .turn-process-meta { font-size: 12px !important; }
@@ -151,9 +151,9 @@ small { font-size: var(--loom-font-micro) !important; }
 .boot-error-card p { font-size: 13.5px !important; }
 
 @media (max-width: 1180px) {
-  /* Keep the readability gain on smaller desktop windows instead of shrinking type. */
+  /* Keep the chosen chat size consistent on smaller desktop windows. */
   .user-message,
-  .assistant-message { font-size: 15px !important; }
+  .assistant-message { font-size: var(--loom-chat-font-size, 13px) !important; }
   .composer textarea { font-size: var(--loom-font-body) !important; }
   .thread-title-line strong { font-size: 15px !important; }
 }
