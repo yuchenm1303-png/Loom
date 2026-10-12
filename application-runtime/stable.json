@@ -1,10 +1,10 @@
 {
   "schema": 1,
   "kind": "application",
-  "build": 39001,
+  "build": 40001,
   "bootstrap": "0.1.86",
-  "sourceSha": "b2d195cf836c1efe1b8d195c29d2868db7e5ef30",
-  "sourceTime": 1791818621,
+  "sourceSha": "04350beb61227dd98b67410ba4d3bb6efec5b973",
+  "sourceTime": 1791819413,
   "files": [
     {
       "path": "dist/assets/index-Bun0lG0t.css",
@@ -1143,8 +1143,8 @@
     {
       "path": "dist/ui-baseline.json",
       "size": 80,
-      "sha256": "36036e3f008b3bd576246afc323c2c457007e263b00ce7e2d689d88ff9fbe83e",
-      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-39001/36036e3f008b3bd576246afc323c2c457007e263b00ce7e2d689d88ff9fbe83e"
+      "sha256": "8328bcc296d5da65717bfad0e48231cc0b738297332e188a27d403fa72013d06",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-40001/8328bcc296d5da65717bfad0e48231cc0b738297332e188a27d403fa72013d06"
     },
     {
       "path": "dist-electron/accountClient.js",
@@ -1175,6 +1175,12 @@
       "size": 5066,
       "sha256": "ff0f52108ddf5af6e9a4b16ccabffb246b945933cdd2bff086e26bd0723b12d6",
       "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/ff0f52108ddf5af6e9a4b16ccabffb246b945933cdd2bff086e26bd0723b12d6"
+    },
+    {
+      "path": "dist-electron/bridgeProtocol.js",
+      "size": 899,
+      "sha256": "c19c336be10cc14dbca775af74414aca3c263d00ce04584e892c3c955032b44a",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-40001/c19c336be10cc14dbca775af74414aca3c263d00ce04584e892c3c955032b44a"
     },
     {
       "path": "dist-electron/browserExtensionAssets.js",
@@ -1262,9 +1268,9 @@
     },
     {
       "path": "dist-electron/modelManager.js",
-      "size": 37267,
-      "sha256": "80bfbd7278592559c78795a92aeb4a844860c529c33c7251ca7183b8a5730e10",
-      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-38001/80bfbd7278592559c78795a92aeb4a844860c529c33c7251ca7183b8a5730e10"
+      "size": 37426,
+      "sha256": "f4203e188cdcbe9b7b74f5f6a3592e906bb9ae5196803dda8c27ca561fc7d70d",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-40001/f4203e188cdcbe9b7b74f5f6a3592e906bb9ae5196803dda8c27ca561fc7d70d"
     },
     {
       "path": "dist-electron/modelSwitchQueue.js",
