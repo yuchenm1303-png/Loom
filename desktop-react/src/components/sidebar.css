@@ -122,8 +122,8 @@ html[data-loom-density="spacious"] .sidebar.compact-sidebar { --sb-row-h: 38px; 
 /* Top bar -------------------------------------------------------------------- */
 .codex-sidebar-topbar {
   flex: none;
-  height: 40px;
-  padding: 0 0 0 6px;
+  height: var(--sb-row-h);
+  padding: 0;
   display: flex;
   align-items: center;
   justify-content: flex-end;
@@ -308,8 +308,9 @@ html[data-loom-theme="light"] .codex-sidebar-brand-core {
 
 /* Primary actions ----------------------------------------------------------- */
 .codex-sidebar-primary {
-  flex: none;
-  margin-top: 8px;
+  flex: 1;
+  min-width: 0;
+  margin-top: 0;
   display: grid;
   gap: 2px;
 }

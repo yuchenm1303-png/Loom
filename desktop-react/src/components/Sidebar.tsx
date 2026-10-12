@@ -993,6 +993,19 @@ export const Sidebar = memo(function Sidebar({
   return (
     <aside className="sidebar compact-sidebar codex-sidebar">
       <div className="codex-sidebar-topbar">
+        {threadView !== "archived" ? (
+          <div className="codex-sidebar-primary">
+            <button
+              type="button"
+              className="sidebar-new-conversation"
+              onClick={() => void onNew()}
+              title={`${copy.newConversation} · Ctrl N`}
+            >
+              <Quill className="sidebar-action-icon sidebar-compose-icon" size={20} strokeWidth={2.1} aria-hidden="true" />
+              <span>{copy.newConversation}</span>
+            </button>
+          </div>
+        ) : null}
         <div className="compact-sidebar-actions">
           <button
             type="button"
@@ -1005,20 +1018,6 @@ export const Sidebar = memo(function Sidebar({
           </button>
         </div>
       </div>
-
-      {threadView !== "archived" ? (
-        <div className="codex-sidebar-primary">
-          <button
-            type="button"
-            className="sidebar-new-conversation"
-            onClick={() => void onNew()}
-            title={`${copy.newConversation} · Ctrl N`}
-          >
-            <Quill className="sidebar-action-icon sidebar-compose-icon" size={20} strokeWidth={2.1} aria-hidden="true" />
-            <span>{copy.newConversation}</span>
-          </button>
-        </div>
-      ) : null}
 
       <div className={`compact-search-shell ${searchOpen ? "open" : ""}`} aria-hidden={!searchOpen}>
         <div className="compact-search">
