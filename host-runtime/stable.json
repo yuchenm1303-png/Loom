@@ -1,12 +1,12 @@
 {
   "schema": 1,
   "channel": "stable",
-  "version": "1.0.1791818621",
+  "version": "1.0.1791821083",
   "protocol": 1,
   "minBootstrapVersion": "0.1.11",
-  "url": "https://github.com/yuchenm1303-png/Loom/releases/download/host-v1.0.1791818621/Loom-Host-Runtime-1.0.1791818621-win-x64.zip",
-  "sha256": "25405960d07488d1bca78d1a28286f339c2d6b02104b5e187180d8ede599f875",
-  "size": 313277123,
-  "sourceSha": "b2d195cf836c1efe1b8d195c29d2868db7e5ef30",
-  "publishedAt": "2026-10-12T15:23:41Z"
+  "url": "https://github.com/yuchenm1303-png/Loom/releases/download/host-v1.0.1791821083/Loom-Host-Runtime-1.0.1791821083-win-x64.zip",
+  "sha256": "5299e897e20023e6f1ce520d5502c870f500d1e3a5ae498dc8b1565809c66c44",
+  "size": 313287678,
+  "sourceSha": "cca023b469762457971d4a2a5055129e1e998428",
+  "publishedAt": "2026-10-12T16:04:43Z"
 }
