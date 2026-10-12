@@ -31,7 +31,7 @@ import {
 import { webRelayAuthPayload } from "./webRelayAuth.js";
 import { hostAccount } from "./hostAccount.js";
 import { createSearchRelay } from "./searchRelay.js";
-import { broadcastHostEvent, desktopPidFile, handleHostChannel, isHostProcess, launchDesktop, onDesktopClientsChanged, openDesktopAfterUpdate, prepareDesktopHost, startHostTransport } from "./hostProcess.js";
+import { broadcastHostEvent, desktopPidFile, handleHostChannel, isHostProcess, launchDesktop, launchDesktopAfterUpdate, onDesktopClientsChanged, openDesktopAfterUpdate, prepareDesktopHost, startHostTransport } from "./hostProcess.js";
 import { registerHeadlessUpdateGuard } from "./updater.js";
 import { registerApplicationRestartGuard } from "./applicationUpdater.js";
 import { readApplicationPointer } from "./applicationUpdateStore.js";
@@ -1894,7 +1894,7 @@ app.whenReady().then(async () => {
   });
   await startHostTransport();
   await globalThis.loomApplicationBootstrap?.healthy();
-  if (openDesktopAfterUpdate) launchDesktop();
+  if (openDesktopAfterUpdate) void launchDesktopAfterUpdate().catch(console.error);
   const authorizationRefresh = setInterval(() => { void syncAccountToolAccessCredential(); }, 30_000);
   authorizationRefresh.unref();
   app.once("before-quit", () => clearInterval(authorizationRefresh));

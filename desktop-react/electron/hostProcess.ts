@@ -1,3 +1,4 @@
+import { reopenDesktop } from "./desktopReopen.js";
 import { app, BrowserWindow, ipcMain } from "electron";
 import { spawn, spawnSync } from "node:child_process";
 import crypto from "node:crypto";
@@ -13,9 +14,16 @@ export const HOST_ARG = "--loom-host";
 // moves to a separate folder so Electron can give the two processes distinct locks.
 const restartMarker = path.join(hostDataPath, "loom-headless-update-restart");
 const restartingHost = existsSync(restartMarker);
-export const openDesktopAfterUpdate = restartingHost || process.argv.includes("--loom-open-desktop-after-update");
+const desktopReopenMarker = path.join(hostDataPath, "loom-update-open-desktop");
+export const openDesktopAfterUpdate = restartingHost || process.argv.includes("--loom-open-desktop-after-update")
+  || process.argv.includes("--updated") || existsSync(desktopReopenMarker);
 export const isHostProcess = process.argv.includes(HOST_ARG) || process.argv.includes("--loom-background-host")
   || process.argv.some((arg) => /^loom:\/\//i.test(arg)) || restartingHost;
+// Preserve intent across a failed application boot or rollback. Only a
+// confirmed Desktop connection clears it, not the first Host import.
+if (isHostProcess && openDesktopAfterUpdate) {
+  try { writeFileSync(desktopReopenMarker, "pending\n"); } catch (error) { console.warn("Could not preserve update Desktop launch", error); }
+}
 if (restartingHost) { try { unlinkSync(restartMarker); } catch {} }
 app.setName("Loom");
 if (isHostProcess) app.setPath("userData", hostDataPath);
@@ -75,6 +83,13 @@ export function launchDesktop(): void {
   const devArgs = process.argv.filter((arg) => arg.startsWith("--dev-url="));
   if (index >= 0 && process.argv[index + 1]) devArgs.push("--dev-url", process.argv[index + 1]);
   launch(devArgs);
+}
+
+export async function launchDesktopAfterUpdate(): Promise<void> {
+  const connected = await reopenDesktop(launchDesktop, hostHasDesktopClients);
+  if (connected) {
+    try { unlinkSync(desktopReopenMarker); } catch {}
+  } else console.error("Desktop did not connect after update; launch request retained for next Host start");
 }
 
 function launchHost(): void {
