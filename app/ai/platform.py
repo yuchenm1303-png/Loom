@@ -19,6 +19,7 @@ from .contracts import (
 from .profiles import ModelProfile, ModelRegistry
 from .reasoning_text import merge_visible_reasoning, split_inline_reasoning
 from .response_protocol import normalize_response
+from .tool_wire import ToolWireCodec, wire_identifier
 
 _UNSUPPORTED_IMAGE_PLACEHOLDER = "[image omitted because the current model does not support image input]"
 
@@ -125,7 +126,9 @@ class AIPlatform:
         complete = getattr(backend, "complete", None)
         if not callable(complete):
             raise RuntimeError(f"backend for {profile_id!r} does not support chat completion")
-        result = complete(request)
+        codec = ToolWireCodec(request)
+        wire_request = codec.encode(request)
+        result = complete(wire_request)
         if not isinstance(result, ModelResponse):
             raise TypeError("chat model backend must return ModelResponse")
         public_text, inline_reasoning = split_inline_reasoning(result.text)
@@ -138,7 +141,7 @@ class AIPlatform:
                     inline_reasoning,
                 ),
             )
-        return normalize_response(request, result)
+        return codec.decode(normalize_response(wire_request, result))
 
     def execute_structured_chat(
         self,
@@ -153,7 +156,8 @@ class AIPlatform:
         complete_structured = getattr(backend, "complete_structured", None)
         if not callable(complete_structured):
             raise RuntimeError(f"backend for {profile_id!r} does not support structured output")
-        result = complete_structured(request)
+        codec = ToolWireCodec(request.chat)
+        result = complete_structured(replace(request, chat=codec.encode(request.chat), schema_name=wire_identifier(request.schema_name)))
         if not isinstance(result, dict):
             raise TypeError("structured model backend must return a JSON object")
         return result
@@ -165,10 +169,12 @@ class AIPlatform:
         stream = getattr(backend, "stream", None)
         if not callable(stream):
             raise RuntimeError(f"backend for {profile_id!r} does not support streaming")
-        for event in stream(request):
+        codec = ToolWireCodec(request)
+        names = codec.stream_decoder()
+        for event in stream(codec.encode(request)):
             if not isinstance(event, StreamEvent):
                 raise TypeError("streaming model backend must yield StreamEvent values")
-            yield event
+            yield names.decode(event)
 
     def execute_structured(
         self,

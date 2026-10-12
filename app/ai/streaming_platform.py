@@ -20,6 +20,7 @@ from .tool_protocol import parse_tool_call
 from .reasoning_text import InlineReasoningDemux, merge_visible_reasoning, split_inline_reasoning
 from .response_protocol import normalize_response, ToolTextBoundary
 from .tool_policy import exposes_tools
+from .tool_wire import ToolWireCodec
 
 
 class ProviderStreamEventKind(str, Enum):
@@ -231,7 +232,10 @@ class StreamingAIPlatform(AIPlatform):
         accumulator = _StreamAccumulator()
         inline_reasoning = InlineReasoningDemux()
         tool_text = ToolTextBoundary(exposes_tools(request))
-        stream = stream_method(request)
+        codec = ToolWireCodec(request)
+        wire_request = codec.encode(request)
+        names = codec.stream_decoder()
+        stream = stream_method(wire_request)
         try:
             for raw_event in stream:
                 check_cancelled()
@@ -305,7 +309,7 @@ class StreamingAIPlatform(AIPlatform):
                                 kind=ProviderStreamEventKind.TOOL_CALL_DELTA,
                                 tool_call_index=event.tool_call_index,
                                 tool_call_id=event.tool_call_id,
-                                tool_name=event.tool_name,
+                                tool_name=names.decode(event).tool_name,
                                 arguments_delta=event.arguments_delta,
                             )
                         )
@@ -347,7 +351,7 @@ class StreamingAIPlatform(AIPlatform):
                     late_inline_reasoning,
                 ),
             )
-        result = normalize_response(request, result)
+        result = codec.decode(normalize_response(wire_request, result))
         tail = tool_text.finish()
         if tail:
             self._publish(ProviderStreamEvent(profile_id=profile.profile_id, kind=ProviderStreamEventKind.TEXT_DELTA, text_delta=tail))
