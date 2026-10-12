@@ -16,6 +16,7 @@ mock.module("electron", { namedExports: {
       : corrupt ? "broken" : contents[release.files.find(file => file.url === url).path]); } },
 } });
 mock.module("../../dist-electron/hostProcess.js", { namedExports: { isHostProcess: true, hostHasDesktopClients: () => desktopConnected, broadcastHostEvent() {} } });
+const { writeUpdatePreferences } = await import("../../dist-electron/updatePreferences.js");
 const updater = await import("../../dist-electron/applicationUpdater.js");
 test("application updates stage automatically, reject damaged files and respect the active-task restart guard", async () => {
   try {
@@ -26,11 +27,16 @@ test("application updates stage automatically, reject damaged files and respect 
     assert.equal(updater.applicationUpdateState().phase, "downloaded");
     assert.ok(requests > 1);
     updater.registerApplicationRestartGuard(() => safe);
-    assert.equal(await updater.installApplicationUpdate(), false);
+    assert.equal(await updater.maybeInstallApplicationUpdate(), false);
     assert.equal(restarted, false);
     safe = true;
-    desktopConnected = false;
-    assert.equal(await updater.installApplicationUpdate(), true);
+    writeUpdatePreferences({ autoRestartAfterUpdate: false });
+    assert.equal(await updater.maybeInstallApplicationUpdate(), false);
+    assert.equal(restarted, false);
+    writeUpdatePreferences({ autoRestartAfterUpdate: true });
+    // A connected Desktop must not prevent a safe silent installation.
+    assert.equal(desktopConnected, true);
+    assert.equal(await updater.maybeInstallApplicationUpdate(), true);
     await new Promise(resolve => setTimeout(resolve, 550));
     assert.equal(restarted, true);
     assert.deepEqual(relaunchArgs, ["--loom-host", "--loom-open-desktop-after-update"]);

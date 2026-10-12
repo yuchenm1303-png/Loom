@@ -25,6 +25,7 @@ export interface SoftwareUpdateState {
   enabled: boolean;
   automaticUpdates?: boolean;
   silentUpdates?: boolean;
+  autoRestartAfterUpdate?: boolean;
   phase: SoftwareUpdatePhase;
   currentVersion: string;
   availableVersion?: string;
@@ -149,8 +150,8 @@ function hasVisibleWindow(): boolean {
 
 function headlessInstallWanted(): boolean {
   const preferences = readUpdatePreferences();
-  if (!preferences.automaticUpdates || !preferences.silentUpdates) return false;
-  return bootstrapAutoInstallRequested && state.phase === "downloaded" && !hasVisibleWindow();
+  if (!preferences.automaticUpdates || !preferences.autoRestartAfterUpdate) return false;
+  return state.phase === "downloaded";
 }
 
 function headlessRestartMarkerPath(): string {
@@ -201,9 +202,8 @@ async function maybeInstallHeadless(): Promise<boolean> {
       clearTimeout(headlessInstallRetryTimer);
       headlessInstallRetryTimer = null;
     }
-    // A hidden Host has no Desktop prompt to click. Once the package is ready
-    // and the Agent is idle, restart the Host automatically and let the web
-    // reconnect to the new process. The restart marker also opens the Desktop.
+    // Silent updates install whenever Agent work is idle, including with a
+    // connected Desktop. The restart marker reopens the Desktop afterwards.
     markHeadlessUpdateRestart();
     restartForUpdate();
     return true;
@@ -370,7 +370,7 @@ function configureUpdater(): void {
   if (!updateEnabled) return;
 
   autoUpdater.autoDownload = true;
-  autoUpdater.autoInstallOnAppQuit = readUpdatePreferences().automaticUpdates && readUpdatePreferences().silentUpdates;
+  autoUpdater.autoInstallOnAppQuit = readUpdatePreferences().automaticUpdates && readUpdatePreferences().autoRestartAfterUpdate;
   autoUpdater.allowPrerelease = false;
   autoUpdater.autoRunAppAfterInstall = true;
 
@@ -491,7 +491,7 @@ onApplicationUpdateStatus(() => {
 
 handleHostChannel("loom:update-preferences", (_event: unknown, patch: unknown) => {
   writeUpdatePreferences(patch);
-  autoUpdater.autoInstallOnAppQuit = readUpdatePreferences().automaticUpdates && readUpdatePreferences().silentUpdates;
+  autoUpdater.autoInstallOnAppQuit = readUpdatePreferences().automaticUpdates && readUpdatePreferences().autoRestartAfterUpdate;
   broadcastState();
   return softwareUpdateState();
 });

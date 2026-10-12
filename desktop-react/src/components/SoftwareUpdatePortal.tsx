@@ -24,6 +24,7 @@ interface SoftwareUpdateState {
   enabled: boolean;
   automaticUpdates?: boolean;
   silentUpdates?: boolean;
+  autoRestartAfterUpdate?: boolean;
   phase: SoftwareUpdatePhase;
   currentVersion: string;
   availableVersion?: string;
@@ -38,7 +39,7 @@ interface SoftwareUpdateState {
 }
 
 interface UpdateBridge {
-  setUpdatePreferences(patch: { automaticUpdates?: boolean; silentUpdates?: boolean }): Promise<SoftwareUpdateState>;
+  setUpdatePreferences(patch: { automaticUpdates?: boolean; silentUpdates?: boolean; autoRestartAfterUpdate?: boolean }): Promise<SoftwareUpdateState>;
   getUpdateStatus(): Promise<SoftwareUpdateState>;
   checkForUpdates(): Promise<SoftwareUpdateState>;
   installUpdate(): Promise<{ accepted: boolean; state: SoftwareUpdateState }>;
@@ -229,7 +230,8 @@ function UpdatePanel() {
       <div className="software-update-preferences">
         {([
           ["automaticUpdates", "自动更新", "自动检查并下载更新；关闭后仍可手动检查。"],
-          ["silentUpdates", "静默更新", "不弹更新窗口；桌面关闭且任务空闲时自动安装，使用中可手动重启更新。"],
+          ["silentUpdates", "静默更新", "后台更新时不弹出提示窗口。"],
+          ["autoRestartAfterUpdate", "自动安装并重启", "更新下载完成后，任务空闲时自动安装、重启并打开桌面版。"],
         ] as const).map(([key, title, detail]) => (
           <label key={key} className="software-update-preference">
             <span><strong>{title}</strong><small>{detail}</small></span>

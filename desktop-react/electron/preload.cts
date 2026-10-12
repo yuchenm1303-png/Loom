@@ -93,7 +93,7 @@ const api = {
     ipcRenderer.invoke("loom:read-local-media", targetPath, workspaceRoot),
   pickDirectory: () => ipcRenderer.invoke("loom:pick-directory"),
   pickFiles: () => ipcRenderer.invoke("loom:pick-files"),
-  setUpdatePreferences: (patch: { automaticUpdates?: boolean; silentUpdates?: boolean }) => ipcRenderer.invoke("loom:update-preferences", patch),
+  setUpdatePreferences: (patch: { automaticUpdates?: boolean; silentUpdates?: boolean; autoRestartAfterUpdate?: boolean }) => ipcRenderer.invoke("loom:update-preferences", patch),
   getUpdateStatus: () => ipcRenderer.invoke("loom:update-status") as Promise<SoftwareUpdateState>,
   checkForUpdates: () => ipcRenderer.invoke("loom:update-check") as Promise<SoftwareUpdateState>,
   installUpdate: () => ipcRenderer.invoke("loom:update-install") as Promise<{ accepted: boolean; state: SoftwareUpdateState }>,

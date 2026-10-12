@@ -3,7 +3,7 @@ import { app, net } from "electron";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { broadcastHostEvent, hostHasDesktopClients, isHostProcess } from "./hostProcess.js";
+import { broadcastHostEvent, isHostProcess } from "./hostProcess.js";
 import { hostDataPath } from "./hostPaths.js";
 import { applicationHash, prepareApplicationRelease, readApplicationPointer, readApplicationRelease, updateApplicationPointer, validateApplicationRelease } from "./applicationUpdateStore.js";
 
@@ -78,7 +78,7 @@ export async function checkApplicationUpdates(manual = false) {
       });
       await updateApplicationPointer(root, current => ({ ...current, ready: release.build }));
       setStatus({ ...status, phase: "downloaded", percent: 100, transferred: total });
-      if (readUpdatePreferences().automaticUpdates && readUpdatePreferences().silentUpdates && !hostHasDesktopClients()) await installApplicationUpdate();
+      await maybeInstallApplicationUpdate();
     } catch (error) {
       setStatus({ phase: "error", error: error instanceof Error ? error.message : "Application update failed" });
     }
@@ -88,6 +88,12 @@ export async function checkApplicationUpdates(manual = false) {
   });
   return checking;
 }
+export async function maybeInstallApplicationUpdate(): Promise<boolean> {
+  const preferences = readUpdatePreferences();
+  if (!preferences.automaticUpdates || !preferences.autoRestartAfterUpdate) return false;
+  return installApplicationUpdate();
+}
+
 export async function installApplicationUpdate(): Promise<boolean> {
   if (!enabled || restarting || status.phase !== "downloaded" || !safeToRestart) return false;
   try { if (!await safeToRestart()) return false; } catch { return false; }
@@ -103,6 +109,6 @@ export async function installApplicationUpdate(): Promise<boolean> {
 if (enabled) app.whenReady().then(() => {
   const startup = setTimeout(() => { void checkApplicationUpdates(); }, 5000); startup.unref();
   const poll = setInterval(() => { void checkApplicationUpdates(); }, 30000); poll.unref();
-  const idle = setInterval(() => { if (readUpdatePreferences().automaticUpdates && readUpdatePreferences().silentUpdates && !hostHasDesktopClients()) void installApplicationUpdate(); }, 30000); idle.unref();
+  const idle = setInterval(() => { void maybeInstallApplicationUpdate(); }, 30000); idle.unref();
   app.once("before-quit", () => { clearTimeout(startup); clearInterval(poll); clearInterval(idle); });
 });
