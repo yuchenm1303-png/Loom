@@ -40,6 +40,7 @@ def test_ufo_driver_inherits_openai_compatible_active_model(tmp_path: Path):
     assert config.api_base == "https://example.test/v1"
     assert config.api_key == "runtime-secret"
     assert config.api_model == "vision-model"
+    assert runtime._computer_driver_model_inherited is True
 
 
 def test_ufo_driver_inherits_openai_active_model_default_base(tmp_path: Path):
@@ -82,3 +83,64 @@ def test_ufo_driver_does_not_inherit_non_vision_model(tmp_path: Path):
     config = runtime.computer_driver.config
     assert config.api_key == ""
     assert config.api_model == ""
+    assert runtime._computer_driver_model_inherited is False
+
+
+def test_ufo_driver_drops_inherited_model_when_provider_becomes_incompatible(tmp_path: Path):
+    runtime = object.__new__(ComputerDriverRuntime)
+    runtime.computer_driver = UfoWindowsDriver(_driver_config(tmp_path))
+    runtime.platform = types.SimpleNamespace(
+        _loom_model_connection={
+            "provider": "openai-compatible",
+            "base_url": "https://example.test/v1",
+            "model": "vision-model-a",
+            "api_key": "runtime-secret-a",
+            "vision": True,
+        }
+    )
+
+    ComputerDriverRuntime._sync_driver_model_from_platform(runtime)
+    assert runtime.computer_driver.config.api_model == "vision-model-a"
+    assert runtime._computer_driver_model_inherited is True
+
+    runtime.platform._loom_model_connection = {
+        "provider": "anthropic",
+        "base_url": "https://example.invalid",
+        "model": "vision-model-b",
+        "api_key": "runtime-secret-b",
+        "vision": True,
+    }
+    ComputerDriverRuntime._sync_driver_model_from_platform(runtime)
+
+    config = runtime.computer_driver.config
+    assert config.api_key == ""
+    assert config.api_model == ""
+    assert runtime._computer_driver_model_inherited is False
+
+
+def test_ufo_driver_drops_inherited_model_when_connection_becomes_incomplete(tmp_path: Path):
+    runtime = object.__new__(ComputerDriverRuntime)
+    runtime.computer_driver = UfoWindowsDriver(_driver_config(tmp_path))
+    runtime.platform = types.SimpleNamespace(
+        _loom_model_connection={
+            "provider": "openai-compatible",
+            "base_url": "https://example.test/v1",
+            "model": "vision-model-a",
+            "api_key": "runtime-secret-a",
+            "vision": True,
+        }
+    )
+
+    ComputerDriverRuntime._sync_driver_model_from_platform(runtime)
+    runtime.platform._loom_model_connection = {
+        "provider": "openai-compatible",
+        "base_url": "https://example.test/v1",
+        "model": "vision-model-b",
+        "api_key": "",
+        "vision": True,
+    }
+    ComputerDriverRuntime._sync_driver_model_from_platform(runtime)
+
+    assert runtime.computer_driver.config.api_key == ""
+    assert runtime.computer_driver.config.api_model == ""
+    assert runtime._computer_driver_model_inherited is False
