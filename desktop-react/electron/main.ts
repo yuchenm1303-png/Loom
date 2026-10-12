@@ -1120,12 +1120,17 @@ registerHostRuntimeUpdateHooks({
   },
 });
 let searchRelayPromise: ReturnType<typeof createSearchRelay> | null = null;
-export function showDesktopWindow(): void {
-  if (isHostProcess) return;
-  if (!mainWindow) createWindow();
-  if (mainWindow?.isMinimized()) mainWindow.restore();
-  mainWindow?.show();
-  mainWindow?.focus();
+export function showDesktopWindow(): boolean {
+  if (isHostProcess) return false;
+  if (!mainWindow || mainWindow.isDestroyed()) createWindow();
+  const window = mainWindow;
+  if (!window || window.isDestroyed()) return false;
+  window.setSkipTaskbar(false);
+  if (window.isMinimized()) window.restore();
+  window.show();
+  window.moveTop();
+  window.focus();
+  return window.isVisible() && !window.isMinimized();
 }
 function sharedSearchRelay(): ReturnType<typeof createSearchRelay> {
   if (!searchRelayPromise) searchRelayPromise = createSearchRelay((query, count) => accountClient.search(query, count));
@@ -1286,7 +1291,7 @@ function createWindow(): void {
   });
   const window = mainWindow;
   let rendererDocumentUrl = "";
-  window.once("ready-to-show", () => window.show());
+  window.once("ready-to-show", () => { showDesktopWindow(); });
   window.webContents.on("did-finish-load", () => {
     const loaded = window.webContents.getURL();
     if (loaded) rendererDocumentUrl = loaded.split("#", 1)[0];

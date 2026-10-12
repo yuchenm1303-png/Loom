@@ -20,7 +20,7 @@ export const openDesktopAfterUpdate = restartingHost || process.argv.includes("-
 export const isHostProcess = process.argv.includes(HOST_ARG) || process.argv.includes("--loom-background-host")
   || process.argv.some((arg) => /^loom:\/\//i.test(arg)) || restartingHost;
 // Preserve intent across a failed application boot or rollback. Only a
-// confirmed Desktop connection clears it, not the first Host import.
+// confirmed visible Desktop clears it, not the first Host import.
 if (isHostProcess && openDesktopAfterUpdate) {
   try { writeFileSync(desktopReopenMarker, "pending\n"); } catch (error) { console.warn("Could not preserve update Desktop launch", error); }
 }
@@ -40,8 +40,16 @@ const clientListeners = new Set<(pids: number[]) => void>();
 let server: HostServer | null = null;
 let connection: Promise<void> | null = null;
 let lastLaunch = 0;
+let desktopVisibleConfirmed = false;
+handlers.set("loom:desktop-visible", () => { desktopVisibleConfirmed = true; return true; });
 const client = new HostClient((channel, value) => {
   if (channel === "loom:host-updating") { app.quit(); return; }
+  if (channel === "loom:desktop-show") {
+    void import("./main.js").then(({ showDesktopWindow }) => {
+      if (showDesktopWindow()) return callHost("loom:desktop-visible");
+    }).catch(error => console.warn("Could not confirm Desktop visibility", error));
+    return;
+  }
   for (const window of BrowserWindow.getAllWindows()) {
     if (!window.isDestroyed()) {
       if (channel === "loom:host-disconnected") window.webContents.send("loom:notification", {
@@ -66,9 +74,9 @@ function developmentAppPath(): string {
   }
 }
 
-function launch(args: string[]): void {
+function launch(args: string[], background: boolean): void {
   const child = spawn(process.execPath, [...(app.isPackaged ? [] : [developmentAppPath()]), ...args], {
-    detached: true, stdio: "ignore", windowsHide: true,
+    detached: true, stdio: "ignore", windowsHide: background,
     // A launched window picks its own userData from the app path it is given, so
     // the child can resolve a different Host data directory than this process and
     // then write its credential where nobody looks. Pass ours down explicitly.
@@ -82,20 +90,26 @@ export function launchDesktop(): void {
   const index = process.argv.indexOf("--dev-url");
   const devArgs = process.argv.filter((arg) => arg.startsWith("--dev-url="));
   if (index >= 0 && process.argv[index + 1]) devArgs.push("--dev-url", process.argv[index + 1]);
-  launch(devArgs);
+  launch(devArgs, false);
 }
 
 export async function launchDesktopAfterUpdate(): Promise<void> {
-  const connected = await reopenDesktop(launchDesktop, hostHasDesktopClients);
-  if (connected) {
+  desktopVisibleConfirmed = false;
+  const visible = await reopenDesktop(() => {
+    // An IPC connection can precede window creation or belong to a hidden UI.
+    // Ask connected desktops to show and retry launches until one confirms it.
+    broadcastHostEvent("loom:desktop-show", null);
+    if (!hostHasDesktopClients()) launchDesktop();
+  }, () => desktopVisibleConfirmed);
+  if (visible) {
     try { unlinkSync(desktopReopenMarker); } catch {}
-  } else console.error("Desktop did not connect after update; launch request retained for next Host start");
+  } else console.error("Desktop visibility was not confirmed after update; launch request retained for next Host start");
 }
 
 function launchHost(): void {
   if (Date.now() - lastLaunch < 5000) return;
   lastLaunch = Date.now();
-  launch([HOST_ARG]);
+  launch([HOST_ARG], true);
 }
 
 async function connectHost(): Promise<void> {
