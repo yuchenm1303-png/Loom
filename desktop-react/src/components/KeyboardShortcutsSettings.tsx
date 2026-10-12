@@ -138,7 +138,6 @@ export function KeyboardShortcutsSettings({
     <>
       <div className="settings-page-heading settings-heading-with-action shortcuts-page-heading">
         <div>
-          <span className="settings-eyebrow">Productivity</span>
           <h1>Keyboard shortcuts</h1>
           <p>Navigate Loom, control the active Agent turn, and personalize the commands you use most.</p>
         </div>

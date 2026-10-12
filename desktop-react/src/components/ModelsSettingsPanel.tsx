@@ -400,7 +400,6 @@ export function ModelsSettingsPanel({ initialSnapshot, runtimeModel, running, on
     <div className="models-settings-manager">
       <div className="models-settings-heading">
         <div>
-          <span className="settings-eyebrow">{c.eyebrow}</span>
           <h1>{c.title}</h1>
           <p>{c.subtitle}</p>
         </div>

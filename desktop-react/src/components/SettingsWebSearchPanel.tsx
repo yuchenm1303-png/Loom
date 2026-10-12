@@ -229,7 +229,6 @@ export function SettingsWebSearchPanel({
     <div className="websearch-settings-page">
       <div className="settings-page-heading settings-heading-with-switch websearch-page-heading">
         <div>
-          <span className="settings-eyebrow">{t("settings.websearch.eyebrow")}</span>
           <h1>{t("settings.websearch.title")}</h1>
           <p>{t("settings.websearch.description")}</p>
         </div>

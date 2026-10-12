@@ -260,7 +260,7 @@ export function ConnectorsSettings({ running }: ConnectorsSettingsProps) {
   if (!loaded || (error && connectors.length === 0)) {
     return <>
       <div className="settings-page-heading"><div>
-        <span className="settings-eyebrow">External services</span><h1>Connectors</h1>
+        <h1>Connectors</h1>
         <p>{isChinese ? "读取连接器授权状态" : "Reading connector authorization status"}</p>
       </div></div>
       <div className="settings-connectors-loading" role="status" aria-busy={!loaded}>
@@ -274,7 +274,6 @@ export function ConnectorsSettings({ running }: ConnectorsSettingsProps) {
     <>
       <div className="settings-page-heading settings-heading-with-action">
         <div>
-          <span className="settings-eyebrow">External services</span>
           <h1>Connectors</h1>
           <p>{isChinese
             ? "一次连接外部账号，Loom 会安全地复用授权，同时继续遵守每一步的权限与审批边界。"

@@ -130,7 +130,6 @@ export function PermissionsSettings({
     <>
       <div className="settings-page-heading permissions-page-heading">
         <div>
-          <span className="settings-eyebrow">Execution safety</span>
           <h1>Permissions</h1>
           <p>Understand exactly how much authority Loom receives before it reads, edits, executes, browses, or controls the desktop.</p>
         </div>

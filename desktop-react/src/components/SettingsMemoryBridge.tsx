@@ -318,7 +318,6 @@ export function MemoryPanel({ threadId, running }: MemoryPanelProps) {
     <div className="memory-settings-page">
       <div className="settings-page-heading settings-heading-with-switch memory-page-heading">
         <div>
-          <span className="settings-eyebrow">Long-term context</span>
           <h1>Memory</h1>
           <p>Memory v3 keeps a compact knowledge index, routes each task to relevant details, preserves provenance, and archives low-signal history without silently deleting it. Current instructions and observed runtime state always take precedence.</p>
         </div>
