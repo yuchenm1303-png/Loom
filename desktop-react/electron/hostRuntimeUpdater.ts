@@ -77,6 +77,12 @@ let retryTimer: NodeJS.Timeout | null = null;
 let periodicTimer: NodeJS.Timeout | null = null;
 let startupTimer: NodeJS.Timeout | null = null;
 let state: HostRuntimeUpdateState = initialState();
+const statusListeners = new Set<() => void>();
+
+export function onHostRuntimeUpdateStatus(listener: () => void): () => void {
+  statusListeners.add(listener);
+  return () => { statusListeners.delete(listener); };
+}
 
 function initialState(): HostRuntimeUpdateState {
   const runtime = currentHostRuntime();
@@ -96,6 +102,7 @@ function snapshot(): HostRuntimeUpdateState {
 
 function setState(patch: Partial<HostRuntimeUpdateState>): HostRuntimeUpdateState {
   state = { ...state, ...patch };
+  for (const listener of statusListeners) listener();
   return snapshot();
 }
 
@@ -154,13 +161,32 @@ function validChannel(value: unknown): HostRuntimeChannel {
 }
 
 async function fetchBytes(url: string, maxBytes: number): Promise<Buffer> {
-  const response = await net.fetch(url, { cache: "no-store", redirect: "follow" });
-  if (!response.ok) throw new Error(`Loom Host update request failed (${response.status}).`);
-  const declared = Number(response.headers.get("content-length") || 0);
-  if (declared > maxBytes) throw new Error("Loom Host update response is unexpectedly large.");
-  const bytes = Buffer.from(await response.arrayBuffer());
-  if (bytes.byteLength > maxBytes) throw new Error("Loom Host update response is unexpectedly large.");
-  return bytes;
+  const controller = new AbortController();
+  let timer = setTimeout(() => controller.abort(), 60_000);
+  try {
+    const response = await net.fetch(url, { cache: "no-store", redirect: "follow", signal: controller.signal });
+    if (!response.ok) throw new Error(`Loom Host update request failed (${response.status}).`);
+    const declared = Number(response.headers.get("content-length") || 0);
+    if (declared > maxBytes) throw new Error("Loom Host update response is unexpectedly large.");
+    if (!response.body) throw new Error("Loom Host update response has no body.");
+    const reader = response.body.getReader();
+    const chunks: Buffer[] = [];
+    let received = 0;
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      clearTimeout(timer);
+      timer = setTimeout(() => controller.abort(), 60_000);
+      received += value.byteLength;
+      if (received > maxBytes) { controller.abort(); throw new Error("Loom Host update response is unexpectedly large."); }
+      chunks.push(Buffer.from(value));
+      if (maxBytes === MAX_RUNTIME_BYTES && declared > 0) {
+        const percent = Math.min(64, Math.floor(received / declared * 65));
+        if (percent !== state.percent) setState({ percent });
+      }
+    }
+    return Buffer.concat(chunks, received);
+  } finally { clearTimeout(timer); }
 }
 
 async function fetchChannel(): Promise<HostRuntimeChannel | null> {
@@ -317,8 +343,8 @@ async function maybeActivateReadyRuntime(): Promise<boolean> {
   }
 }
 
-export async function ensureHostRuntimeUpdate(requiredProtocol = 0): Promise<HostRuntimeUpdateState> {
-  if (!enabled || (requiredProtocol === 0 && !readUpdatePreferences().automaticUpdates)) return hostRuntimeUpdateState();
+export async function ensureHostRuntimeUpdate(requiredProtocol = 0, manual = false): Promise<HostRuntimeUpdateState> {
+  if (!enabled || (!manual && requiredProtocol === 0 && !readUpdatePreferences().automaticUpdates)) return hostRuntimeUpdateState();
   if (checkPromise) return checkPromise;
   checkPromise = (async () => {
     const current = currentHostRuntime();

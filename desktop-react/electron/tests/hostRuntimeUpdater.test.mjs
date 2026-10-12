@@ -13,6 +13,10 @@ const bytes = Buffer.from("verified test archive");
 const manifest = { schema: 1, version: "1.0.2", protocol: 1, platform: "win32", arch: "x64" };
 const commands = [];
 let failExtraction = false;
+let automaticUpdates = true;
+mock.module("../../dist-electron/updatePreferences.js", { namedExports: {
+  readUpdatePreferences: () => ({ automaticUpdates }),
+} });
 mock.module("node:child_process", { namedExports: { execFile: (command, args, options, callback) => {
   commands.push(command);
   setTimeout(() => {
@@ -48,6 +52,8 @@ const updater = await import("../../dist-electron/hostRuntimeUpdater.js");
 
 test("extract and self-test yield to Host IPC and preserve extraction errors", { skip: process.platform !== "win32" }, async () => {
   try {
+    const phases = [];
+    const unsubscribe = updater.onHostRuntimeUpdateStatus(() => phases.push(updater.hostRuntimeUpdateState().phase));
     let ticks = 0;
     const timer = setInterval(() => ticks++, 5);
     try {
@@ -56,11 +62,22 @@ test("extract and self-test yield to Host IPC and preserve extraction errors", {
       assert.ok(ticks >= 2, "Host event loop remains responsive during updater subprocesses");
       assert.equal(commands[0], "powershell.exe");
       assert.equal(path.basename(commands[1]), "python.exe");
+      assert.ok(phases.includes("checking"));
+      assert.ok(phases.includes("downloading"));
+      assert.ok(phases.includes("ready"));
     } finally { clearInterval(timer); }
     failExtraction = true;
     const failed = await updater.ensureHostRuntimeUpdate();
     assert.equal(failed.phase, "error");
     assert.match(failed.error, /archive extraction failed/);
+    assert.equal(phases.at(-1), "error");
+    unsubscribe();
+    automaticUpdates = false;
+    const commandCount = commands.length;
+    await updater.ensureHostRuntimeUpdate();
+    assert.equal(commands.length, commandCount, "automatic checks respect the preference");
+    await updater.ensureHostRuntimeUpdate(0, true);
+    assert.ok(commands.length > commandCount, "manual checks still attempt the runtime update");
   } finally { fs.rmSync(temp, { recursive: true, force: true }); }
 });
 

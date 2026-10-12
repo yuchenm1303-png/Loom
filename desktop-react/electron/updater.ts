@@ -10,6 +10,7 @@ import electronUpdater, {
 import { broadcastHostEvent, callHost, handleHostChannel, hostHasDesktopClients, isHostProcess } from "./hostProcess.js";
 import { OptimizedNsisUpdater } from "./optimizedUpdater.js";
 import { applicationUpdateState, checkApplicationUpdates, installApplicationUpdate, onApplicationUpdateStatus } from "./applicationUpdater.js";
+import { ensureHostRuntimeUpdate, hostRuntimeUpdateState, onHostRuntimeUpdateStatus, type HostRuntimeUpdateState } from "./hostRuntimeUpdater.js";
 
 export type SoftwareUpdatePhase =
   | "disabled"
@@ -22,6 +23,7 @@ export type SoftwareUpdatePhase =
   | "error";
 
 export interface SoftwareUpdateState {
+  hostRuntime?: HostRuntimeUpdateState;
   enabled: boolean;
   automaticUpdates?: boolean;
   silentUpdates?: boolean;
@@ -86,9 +88,9 @@ const earlyRecheckTimers: NodeJS.Timeout[] = [];
 export function softwareUpdateState(): SoftwareUpdateState {
   const application = applicationUpdateState();
   if (!updateInFlight() && application.phase !== "idle") {
-    return { ...state, ...readUpdatePreferences(), ...application, enabled: updateEnabled };
+    return { ...state, ...readUpdatePreferences(), ...application, enabled: updateEnabled, hostRuntime: hostRuntimeUpdateState() };
   }
-  return { ...state, ...readUpdatePreferences() };
+  return { ...state, ...readUpdatePreferences(), hostRuntime: hostRuntimeUpdateState() };
 }
 
 function broadcastState(): void {
@@ -309,6 +311,7 @@ async function offerDownloadedUpdate(info: UpdateInfo): Promise<void> {
 
 export async function checkForUpdates(): Promise<SoftwareUpdateState> {
   if (!updateEnabled) return softwareUpdateState();
+  void ensureHostRuntimeUpdate(0, true);
   if (checkPromise) return checkPromise;
   if (updateInFlight()) return softwareUpdateState();
   await checkApplicationUpdates(true);
@@ -475,6 +478,7 @@ function startAutomaticChecks(): void {
 }
 
 configureUpdater();
+onHostRuntimeUpdateStatus(broadcastState);
 onApplicationUpdateStatus(() => {
   broadcastState();
   const application = applicationUpdateState();

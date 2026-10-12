@@ -21,6 +21,7 @@ type SoftwareUpdatePhase =
   | "error";
 
 interface SoftwareUpdateState {
+  hostRuntime?: { enabled: boolean; phase: string; currentVersion: string; availableVersion?: string; percent?: number; error?: string; requiredBootstrapVersion?: string };
   enabled: boolean;
   automaticUpdates?: boolean;
   silentUpdates?: boolean;
@@ -90,6 +91,10 @@ function statusCopy(state: SoftwareUpdateState | null): {
   tone: "neutral" | "active" | "success" | "warning" | "error";
 } {
   if (!state) return { title: "Reading update status", detail: "Connecting to the desktop updater…", tone: "neutral" };
+  const host = state.hostRuntime;
+  if (host?.enabled && ["idle", "up-to-date"].includes(state.phase) && host.phase !== "up-to-date" && host.phase !== "disabled") {
+    return { title: "Loom Host 更新", detail: host.error || (host.phase === "downloading" ? `正在下载后台运行组件：${host.percent ?? 0}%` : host.phase === "ready" ? "运行组件已下载，等待任务空闲后自动启用。" : host.phase === "activating" ? "正在启用新的运行组件…" : host.phase === "incompatible" ? `需要先更新桌面版至 ${host.requiredBootstrapVersion || "新版本"}。` : "正在检查后台运行组件更新…"), tone: host.error ? "error" : "active" };
+  }
   switch (state.phase) {
     case "disabled":
       return {
@@ -271,6 +276,7 @@ function UpdatePanel() {
           <div className="software-update-meta">
             {metadata.map((item) => <span key={item.label}><em>{item.label}</em><b>{item.value}</b></span>)}
           </div>
+          {state?.hostRuntime?.enabled ? <p className="software-update-footnote">Host {state.hostRuntime.currentVersion} · {state.hostRuntime.phase}{state.hostRuntime.availableVersion ? ` → ${state.hostRuntime.availableVersion}` : ""}{state.hostRuntime.error ? ` · ${state.hostRuntime.error}` : ""}</p> : null}
 
           <div className="software-update-footnote">
             <span>{formatCheckedAt(state?.checkedAt)}</span>
