@@ -104,7 +104,7 @@ def test_discovered_metadata_is_reprojected_into_launch_specs() -> None:
     block = manager[project_start:project_end]
     assert "contextLimits: catalog?.contextLimits ?? base.contextLimits" in block
     assert "reasoning: catalog?.reasoning ?? base.reasoning ?? null" in block
-    assert "vision: safe?.vision ?? catalog?.vision ?? base.vision ?? true" in block
+    assert 'vision: typeof safe?.vision === "boolean" ? safe.vision : base.vision ?? null' in block
     assert "authMode: catalog?.authMode ?? base.authMode" in block
     assert "this.refreshLaunchEntry(entry, merged, metadata)" in manager
     assert "if (cached) return cached.spec" in manager

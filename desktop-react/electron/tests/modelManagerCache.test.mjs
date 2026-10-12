@@ -17,6 +17,7 @@ test("one unsupported server model cannot fail startup or discard compatible row
   ];
   let repaired = false;
   manager.runPythonBridgeAsync = async (_script, command, payload) => {
+    if (command === "record-image-capabilities") return { recorded: payload.models.length };
     if (command === "describe-models") {
       if (!repaired) throw new Error("unsupported Ant Ling built-in model id: 'AntAngelMed'");
       return payload.models.map(row => profile({ selection: row.selection, model: row.model, kind: "builtin" }));

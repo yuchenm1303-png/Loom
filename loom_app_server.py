@@ -64,8 +64,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--vision",
         action=argparse.BooleanOptionalAction,
-        default=True,
-        help="declare that the selected model can read attached images",
+        default=None,
+        help="explicit image-input declaration; omitted means unknown",
     )
     return parser
 
@@ -140,7 +140,7 @@ def main(argv: list[str] | None = None) -> int:
         default_model_base_url=str(args.base_url or ""),
         default_workspace=workspace,
         default_permission_mode=permission_mode,
-        vision=bool(args.vision),
+        vision=args.vision,
         local_ipc=bool(args.local_ipc),
     )
 

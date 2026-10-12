@@ -243,7 +243,7 @@ def session_from_dict(payload: dict[str, Any]) -> AgentSession:
         model=str(payload.get("model") or ""),
         model_provider=str(payload.get("model_provider") or ""),
         model_base_url=str(payload.get("model_base_url") or ""),
-        model_vision=bool(payload.get("model_vision", True)),
+        model_vision=payload.get("model_vision") if isinstance(payload.get("model_vision"), bool) else None,
         reasoning_kind=str(payload.get("reasoning_kind") or ""),
         reasoning_value=str(payload.get("reasoning_value") or ""),
         messages=[
@@ -465,7 +465,7 @@ class FileAgentSessionStore:
         return SimpleNamespace(**fields,
             permission_mode=PermissionMode(payload.get("permission_mode") or PermissionMode.APPROVAL.value),
             status=AgentStatus(payload.get("status") or AgentStatus.IDLE.value),
-            model_vision=bool(payload.get("model_vision", True)),
+            model_vision=payload.get("model_vision") if isinstance(payload.get("model_vision"), bool) else None,
             usage=_usage_from_dict(payload.get("usage")),
             messages=[_message_from_dict(message) for message in payload.get("messages", [])])
 

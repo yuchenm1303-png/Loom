@@ -1,4 +1,5 @@
 from __future__ import annotations
+from loom_image_capability import ImageInput
 
 from collections.abc import Iterator
 from dataclasses import replace
@@ -71,7 +72,7 @@ class AIPlatform:
         structured: bool = False,
     ) -> ModelProfile:
         required = {ModelCapability.TEXT}
-        if request.uses_vision:
+        if request.uses_vision and self.registry.get(profile_id).image_input is ImageInput.SUPPORTED:
             required.add(ModelCapability.VISION)
         if request.tools:
             required.add(ModelCapability.TOOL_CALLING)
@@ -95,7 +96,7 @@ class AIPlatform:
         if request.tool_choice is ToolChoice.NONE and request.tools:
             request = replace(request, tools=())
         profile = self.registry.get(profile_id)
-        if ModelCapability.VISION in profile.capabilities or not request.uses_vision:
+        if profile.image_input is not ImageInput.UNSUPPORTED or not request.uses_vision:
             return request
 
         changed = False

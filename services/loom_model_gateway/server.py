@@ -115,7 +115,7 @@ class LoomModelGateway:
                 "object": "model",
                 "owned_by": "loom/" + group_id,
                 "provider": group_id,
-                "vision": model.casefold().endswith("-vl"),
+                "vision": next((row.get("image_input", {}).get("supported") for row in access.get("catalog", {}).get("models", []) if row.get("group_id") == group_id and row.get("model") == model), None),
             })
         return {"object": "list", "data": data}
 

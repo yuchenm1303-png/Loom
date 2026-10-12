@@ -151,52 +151,17 @@ def test_opencode_go_profiles_can_be_browsed_before_key_is_configured(monkeypatc
         raise AssertionError("unconfigured OpenCode Go profile unexpectedly resolved")
 
 
-def test_opencode_go_vision_follows_the_probed_capability(monkeypatch, tmp_path) -> None:
-    """Image support is per model, and the answer came from the gateway itself.
-
-    `scripts/probe_opencode_vision.py` sends each model one image and records
-    which accept it.  Both directions matter here: a model that accepts images
-    must not be blocked in the composer, and one that does not must not be
-    offered, because the attachment reaches the provider and comes back 400.
-    """
-
+def test_opencode_go_missing_metadata_is_unknown_for_every_model(monkeypatch, tmp_path):
     store, reasoning, selection = _stores(tmp_path)
-    probed = ["kimi-k3", "minimax-m3", "gpt-5.6-luna", "grok-4.6", "glm-5.3", "deepseek-v4-flash"]
-    monkeypatch.setattr(bridge, "_fetch_opencode_go_model_ids", lambda: probed)
+    models = ["kimi-k3", "minimax-m3", "gpt-5.6-luna", "grok-4.6", "glm-5.3", "deepseek-v4-flash"]
+    monkeypatch.setattr(bridge, "_fetch_opencode_go_model_ids", lambda: models)
     monkeypatch.setattr(bridge, "_opencode_go_key", lambda *_args, **_kwargs: "test-provider-key")
     monkeypatch.setattr(bridge, "_deepseek_key", lambda *_args, **_kwargs: "")
     monkeypatch.setattr(bridge, "_managed_relay_key", lambda *_args, **_kwargs: "")
-
+    monkeypatch.setattr(bridge, "_DISCOVERED_IMAGE_CAPABILITIES", {})
     snapshot = bridge._snapshot(store, reasoning, selection)
-    vision = {
-        profile["model"]: profile["vision"]
-        for profile in snapshot["profiles"]
-        if profile.get("groupId") == "opencode-go"
-    }
-
-    assert vision == {
-        "kimi-k3": True,
-        "minimax-m3": True,
-        "gpt-5.6-luna": True,
-        "grok-4.6": False,
-        "glm-5.3": False,
-        "deepseek-v4-flash": False,
-    }
-
-
-def test_opencode_go_vision_set_spans_every_protocol(monkeypatch, tmp_path) -> None:
-    """The probe reached all three dialects, so the recorded set must show it.
-
-    The allowlist this replaced held two chat-completions ids, which is what a
-    guess looks like: no model on the `responses` or `messages` endpoint could
-    ever have been vision-capable under it.
-    """
-
-    from app.ai.opencode_go_runtime import opencode_go_protocol
-
-    protocols = {opencode_go_protocol(model) for model in bridge._OPENCODE_GO_VISION_MODELS}
-
-    assert protocols == {"responses", "messages", "chat-completions"}
+    vision = {p["model"]: p["vision"] for p in snapshot["profiles"] if p.get("groupId") == "opencode-go"}
+    assert vision == dict.fromkeys(models)
 
 
 def test_custom_model_name_keeps_opencode_go_provider_identity() -> None:

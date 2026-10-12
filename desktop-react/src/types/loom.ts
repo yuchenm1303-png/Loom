@@ -56,7 +56,7 @@ export interface ThreadRecord {
   model?: string | null;
   modelProvider?: string | null;
   modelBaseUrl?: string | null;
-  modelVision?: boolean;
+  modelVision?: boolean | null;
   reasoning?: { kind: string; value: string } | null;
   status: ThreadStatus | string;
   currentTurnId?: string | null;
@@ -249,7 +249,8 @@ export interface ModelProfile {
   statusMessage?: string;
   available?: boolean;
   catalogSource?: "provider" | "fallback" | "saved" | "runtime" | string;
-  vision?: boolean;
+  vision?: boolean | null;
+  imageInput?: { supported: boolean | null; source: string };
   reasoning?: ModelReasoningState | null;
 }
 
@@ -273,7 +274,8 @@ export interface AddModelInput {
   baseUrl: string;
   model: string;
   apiKey: string;
-  vision?: boolean;
+  vision?: boolean | null;
+  imageInput?: { supported: boolean | null; source: string };
 }
 
 export interface EditModelInput extends AddModelInput {
@@ -292,7 +294,7 @@ export interface ModelTestResult {
   capabilities: {
     chat: boolean;
     streaming: boolean;
-    vision: boolean;
+    vision: boolean | null;
     reasoning: boolean;
   };
 }

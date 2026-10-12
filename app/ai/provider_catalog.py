@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from loom_image_capability import ImageInput
+
 import re
 from dataclasses import dataclass
 from enum import Enum
@@ -139,6 +141,7 @@ class ProviderConnection:
         capabilities: Iterable[ModelCapability],
         context_limits: ModelContextLimits | None = None,
         stream_idle_timeout_seconds: float = DEFAULT_STREAM_IDLE_TIMEOUT_SECONDS,
+        image_input: ImageInput | None = None,
     ) -> ModelProfile:
         if not self.executable:
             raise RuntimeError(
@@ -151,6 +154,7 @@ class ProviderConnection:
             credential_ref=self.credential_ref,
             context_limits=context_limits,
             stream_idle_timeout_seconds=stream_idle_timeout_seconds,
+            image_input=image_input,
         )
 
 
@@ -190,6 +194,7 @@ class ProviderCatalog:
         capabilities: Iterable[ModelCapability],
         context_limits: ModelContextLimits | None = None,
         stream_idle_timeout_seconds: float = DEFAULT_STREAM_IDLE_TIMEOUT_SECONDS,
+        image_input: ImageInput | None = None,
     ) -> ModelProfile:
         connection = self.require_executable(provider_id)
         return connection.bind_role(
@@ -198,6 +203,7 @@ class ProviderCatalog:
             capabilities=capabilities,
             context_limits=context_limits,
             stream_idle_timeout_seconds=stream_idle_timeout_seconds,
+            image_input=image_input,
         )
 
     def all(self) -> tuple[ProviderConnection, ...]:

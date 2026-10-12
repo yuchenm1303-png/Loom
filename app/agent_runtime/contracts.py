@@ -172,7 +172,7 @@ class AgentSession:
     model: str = ""
     model_provider: str = ""
     model_base_url: str = ""
-    model_vision: bool = True
+    model_vision: bool | None = None
     reasoning_kind: str = ""
     reasoning_value: str = ""
     messages: list[AIMessage] = field(default_factory=list)
@@ -200,7 +200,7 @@ class AgentSession:
         self.model = str(self.model or "").strip()
         self.model_provider = str(self.model_provider or "").strip().casefold()
         self.model_base_url = str(self.model_base_url or "").strip().rstrip("/")
-        self.model_vision = bool(self.model_vision)
+        self.model_vision = self.model_vision if isinstance(self.model_vision, bool) else None
         self.reasoning_kind = str(self.reasoning_kind or "").strip()
         self.reasoning_value = str(self.reasoning_value or "").strip()
         language = str(self.communication_language or "auto").strip().casefold()

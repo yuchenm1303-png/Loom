@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from loom_image_capability import ImageCapabilityStore, image_capability, image_support
+
 import hashlib
 import json
 import os
@@ -59,58 +61,11 @@ OPENCODE_GO_FALLBACK_MODEL_IDS = (
     "omen-alpha",
 )
 CQU_DEFAULT_MODEL = "cqu-default"
-# OpenCode Go models that accepted an image when asked, recorded 2026-09-20 by
-# `python scripts/probe_opencode_vision.py`.  The listing carries no modality
-# field, so this is the gateway's own answer to one image request per model
-# rather than a reading of published metadata -- rerun the probe and refresh
-# this set when OpenCode adds or renames models.
-#
-# Every model absent here was also asked for plain text, which is what makes
-# the image failure mean anything: a gateway 400 on its own cannot tell a model
-# that refuses images from one that is simply not running today.
-#
-#   answers text, states the limit   deepseek-v4-flash ("only supports text"),
-#                                    glm-5.1/5.2/5.3 ("does not support image
-#                                    inputs"), hy3, hy4-preview, mimo-v2.5-pro
-#                                    ("no endpoints found that support image
-#                                    input")
-#   answers text, refuses silently   grok-4.6 and qwen3.6-plus/3.7-plus/
-#                                    3.7-max/3.8-flash/3.8-max -- reproducible,
-#                                    but the gateway never says why.  MiniMax
-#                                    accepts the identical payload on the same
-#                                    `messages` endpoint, so the shape is not
-#                                    what these are rejecting
-#   answers nothing                  grok-4.5, glm-5, kimi-k2.5, mimo-v2-pro,
-#                                    hy3-preview, qwen3.5-plus: unusable with
-#                                    or without images, so this flag is moot
-#
-# `mimo-v2-omni` is the one entry carried over unverified: it predates the
-# probe and was down when the probe ran.
-_OPENCODE_GO_VISION_MODELS = frozenset(
-    {
-        "deepseek-flash",
-        "deepseek-v4-flash-vision-exp",
-        "deepseek-v4-pro",
-        "deepseek-v4.1-flash",
-        "glm-5.3-flash",
-        "gpt-5.6-luna",
-        "kimi-k2.6",
-        "kimi-k2.7-code",
-        "kimi-k3",
-        "longcat-2.0",
-        "mimo-v2-omni",
-        "mimo-v2.5",
-        "minimax-m2.5",
-        "minimax-m2.7",
-        "minimax-m3",
-        "muse-spark-1.2-contributor",
-        "muse-spark-1.3-contributor",
-        "omen-alpha",
-    }
-)
+
 # Context limits a provider published about its own models, keyed by endpoint
 # and folded model id and filled in as `/models` listings are fetched. Empty until a
 # provider actually says something, so nothing here is ever a guess.
+_DISCOVERED_IMAGE_CAPABILITIES: dict[tuple[str, str], dict[str, object]] = {}
 _DISCOVERED_CONTEXT_LIMITS: dict[tuple[str, str], ModelContextLimits] = {}
 _MANAGED_RELAY_CATALOG_ERROR = ""
 _KEYRING_SERVICE = "loom-agent"
@@ -488,6 +443,7 @@ def _fetch_opencode_go_model_ids(timeout: float = 3.5) -> list[str]:
         seen.add(folded)
         result.append(model_id)
         limits = model_context_limits_from_provider_listing(item)
+        _DISCOVERED_IMAGE_CAPABILITIES[(_normalize_url(OPENCODE_GO_BASE_URL), folded)] = image_capability(item)
         if limits.context_window_tokens or limits.output_reserve_tokens:
             _DISCOVERED_CONTEXT_LIMITS[(_normalize_url(OPENCODE_GO_BASE_URL), folded)] = limits
     return result
@@ -534,6 +490,7 @@ def _fetch_minimax_model_ids(
         seen.add(folded)
         result.append(model_id)
         limits = model_context_limits_from_provider_listing(item)
+        _DISCOVERED_IMAGE_CAPABILITIES[(_normalize_url(_legacy_minimax_base_url(environ)), folded)] = image_capability(item)
         if limits.context_window_tokens or limits.output_reserve_tokens:
             _DISCOVERED_CONTEXT_LIMITS[(_normalize_url(_legacy_minimax_base_url(environ)), folded)] = limits
     return result
@@ -600,6 +557,7 @@ def _fetch_managed_model_ids(
         # require guessing. Remember whatever it publishes; anything it omits
         # stays undeclared rather than invented.
         limits = model_context_limits_from_provider_listing(item)
+        _DISCOVERED_IMAGE_CAPABILITIES[(_normalize_url(_managed_relay_base_url(environ)), key)] = image_capability(item)
         if limits.context_window_tokens or limits.output_reserve_tokens:
             _DISCOVERED_CONTEXT_LIMITS[(_normalize_url(_managed_relay_base_url(environ)), key)] = limits
     return models
@@ -653,6 +611,7 @@ def _fetch_deepseek_model_ids(
         # require guessing. Remember whatever it publishes; anything it omits
         # stays undeclared rather than invented.
         limits = model_context_limits_from_provider_listing(item)
+        _DISCOVERED_IMAGE_CAPABILITIES[(_normalize_url(_deepseek_base_url(environ)), key)] = image_capability(item)
         if limits.context_window_tokens or limits.output_reserve_tokens:
             _DISCOVERED_CONTEXT_LIMITS[(_normalize_url(_deepseek_base_url(environ)), key)] = limits
     return models
@@ -1008,7 +967,7 @@ def _safe_opencode_go(model: str, *, configured: bool) -> dict[str, Any]:
         "adapter": "opencode-go",
         "baseUrl": OPENCODE_GO_BASE_URL,
         "model": model,
-        "vision": model.casefold() in _OPENCODE_GO_VISION_MODELS,
+        "vision": None,
     }
     discovered = _discovered_context_limits(model, OPENCODE_GO_BASE_URL)
     if discovered is not None:
@@ -1088,6 +1047,18 @@ def _with_reasoning(profile: dict[str, Any], reasoning_store: ReasoningConfigSto
         saved=_saved_reasoning(profile, reasoning_store),
     )
     payload = dict(profile)
+    evidence = _DISCOVERED_IMAGE_CAPABILITIES.get((_normalize_url(profile.get("baseUrl", "")), str(profile.get("model", "")).casefold()))
+    if evidence is not None:
+        ImageCapabilityStore(reasoning_store.home).put(profile.get("baseUrl", ""), profile.get("model", ""), evidence)
+    else:
+        evidence = ImageCapabilityStore(reasoning_store.home).get(profile.get("baseUrl", ""), profile.get("model", ""))
+    if evidence is None:
+        declared = image_support(profile.get("vision"))
+        evidence = {"supported": declared, "source": "configuration" if declared is not None else "unknown"}
+    if profile.get("kind") == "saved" and image_support(profile.get("vision")) is not None:
+        evidence = {"supported": profile["vision"], "source": "configuration"}
+    payload["vision"] = evidence["supported"]
+    payload["imageInput"] = evidence
     if capability is not None and selected is not None:
         payload["reasoning"] = {
             **capability,
@@ -1224,7 +1195,7 @@ def _safe_intern(model: str) -> dict[str, Any]:
         "groupId": "intern", "groupName": "Intern Discovery", "groupOrder": 35,
         "adapter": "openai-compatible", "baseUrl": "https://account.smirel.com/model/v1/intern",
         "configured": True, "available": True, "managed": True,
-        "authMode": "loom-account", "vision": "vision" in model.casefold(),
+        "authMode": "loom-account", "vision": None,
     }
 
 
@@ -1422,7 +1393,7 @@ def resolve_model_spec(
                 "adapter": str(described.get("adapter") or resolved.get("adapter") or ""),
                 "baseUrl": str(described.get("baseUrl") or resolved.get("baseUrl") or ""),
                 "model": str(described.get("model") or requested_model),
-                "vision": bool(described.get("vision", resolved.get("vision", True))),
+                "vision": image_support(described.get("vision", resolved.get("vision"))),
                 "reasoning": described.get("reasoning"),
                 "authMode": "loom-account",
                 "provider": "openai-compatible",
@@ -1475,7 +1446,7 @@ def _save(store: ModelConfigStore, payload: dict[str, Any]) -> dict[str, Any]:
         base_url=str(payload.get("baseUrl") or ""),
         model=str(payload.get("model") or ""),
         api_key=str(payload.get("apiKey") or ""),
-        vision=bool(payload.get("vision", True)),
+        vision=image_support(payload.get("vision")),
     )
     return _safe_saved(entry)
 
@@ -1595,7 +1566,7 @@ def _set_reasoning(
 
 def main(argv: list[str] | None = None) -> int:
     args = list(sys.argv[1:] if argv is None else argv)
-    commands = {"list", "resolve", "describe-model", "describe-models", "save", "delete", "set-active", "persist-active", "set-reasoning", "set-provider-key"}
+    commands = {"record-image-capabilities", "list", "resolve", "describe-model", "describe-models", "save", "delete", "set-active", "persist-active", "set-reasoning", "set-provider-key"}
     if len(args) != 1 or args[0] not in commands:
         sys.stderr.write(
             "usage: loom_model_bridge.py {list|resolve|describe-model|save|delete|set-active|persist-active|set-reasoning|set-provider-key}\n"
@@ -1608,7 +1579,17 @@ def main(argv: list[str] | None = None) -> int:
         reasoning_store = ReasoningConfigStore(store.home)
         selection_store = ModelSelectionStore(store.home)
         payload = _read_stdin_object()
-        if command == "list":
+        if command == "record-image-capabilities":
+            for item in payload.get("models", []):
+                selection = str(item.get("selection") or "")
+                if selection.startswith("builtin:ant-ling"):
+                    from loom_ant_ling_bridge import _describe
+                    profile = _describe(selection, item["model"])
+                else:
+                    profile = _describe_model(store, reasoning_store, selection, item["model"])
+                ImageCapabilityStore(store.home).put(profile.get("baseUrl", ""), profile["model"], image_capability(item.get("metadata")))
+            result = {"recorded": len(payload.get("models", []))}
+        elif command == "list":
             result = _snapshot(store, reasoning_store, selection_store)
         elif command == "resolve":
             result = _resolve(

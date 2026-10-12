@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from loom_image_capability import ImageInput
+
 from dataclasses import dataclass, field
 from typing import Iterable, Mapping
 
@@ -18,6 +20,7 @@ class ModelBinding:
     capabilities: frozenset[ModelCapability]
     context_limits: ModelContextLimits = field(default_factory=ModelContextLimits)
     stream_idle_timeout_seconds: float = DEFAULT_STREAM_IDLE_TIMEOUT_SECONDS
+    image_input: ImageInput | None = None
 
     def __post_init__(self) -> None:
         role_id = str(self.role_id or "").strip().casefold()
@@ -38,6 +41,10 @@ class ModelBinding:
         object.__setattr__(self, "provider_id", provider_id)
         object.__setattr__(self, "model", model)
         object.__setattr__(self, "capabilities", capabilities)
+        image_input = ImageInput(self.image_input) if self.image_input is not None else ImageInput.from_support(ModelCapability.VISION in capabilities)
+        object.__setattr__(self, "image_input", image_input)
+        if (ModelCapability.VISION in capabilities) != (image_input is ImageInput.SUPPORTED):
+            raise ValueError("VISION capability must agree with image_input evidence")
 
     def as_safe_dict(self) -> dict[str, object]:
         return {
@@ -47,6 +54,7 @@ class ModelBinding:
             "capabilities": sorted(value.value for value in self.capabilities),
             "context_limits": self.context_limits.as_safe_dict(),
             "stream_idle_timeout_seconds": self.stream_idle_timeout_seconds,
+            "image_input": self.image_input.value,
         }
 
 
@@ -104,6 +112,7 @@ class AIConfiguration:
                     capabilities=binding.capabilities,
                     context_limits=binding.context_limits,
                     stream_idle_timeout_seconds=binding.stream_idle_timeout_seconds,
+                    image_input=binding.image_input,
                 )
             except (KeyError, RuntimeError, ValueError) as exc:
                 raise AIConfigurationError(

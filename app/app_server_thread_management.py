@@ -1426,7 +1426,7 @@ def serve_managed_streaming_stdio(
     model: str,
     default_workspace: str | Path,
     default_permission_mode: PermissionMode | str,
-    vision: bool = False,
+    vision: bool | None = None,
     reader: TextIO | None = None,
     writer: TextIO | None = None,
 ) -> int:

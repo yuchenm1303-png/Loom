@@ -138,7 +138,7 @@ def _thread_record(
         "model": getattr(session, "model", "") or None,
         "modelProvider": getattr(session, "model_provider", "") or None,
         "modelBaseUrl": getattr(session, "model_base_url", "") or None,
-        "modelVision": bool(getattr(session, "model_vision", True)),
+        "modelVision": getattr(session, "model_vision", None),
         "reasoning": (
             {
                 "kind": str(getattr(session, "reasoning_kind", "") or ""),
@@ -571,7 +571,7 @@ class LoomAppServerService:
         model: str,
         default_workspace: str | Path,
         default_permission_mode: PermissionMode | str = PermissionMode.APPROVAL,
-        vision: bool = False,
+        vision: bool | None = None,
     ) -> None:
         self.runtime = runtime
         self.store = store
@@ -581,7 +581,7 @@ class LoomAppServerService:
         # Whether the bound model was declared able to read images. Clients use
         # it to decide what the composer may accept, so a user learns a model is
         # text-only before sending rather than from a failed turn.
-        self.vision = bool(vision)
+        self.vision = vision
         # Projects and app-wide settings live beside the durable runtime home.
         # store.root is <home>/agent_runtime/sessions; both registries belong in
         # the Loom home itself, beside models.json.
@@ -746,7 +746,7 @@ class LoomAppServerService:
             "skills": skills_status,
             "toolSearch": {"enabled": tools.get("tool_search") is not None, "registered": tools.get("tool_search") is not None},
             "codeMode": {"enabled": tools.get("code_mode") is not None, "registered": tools.get("code_mode") is not None},
-            "attachments": {"enabled": True, "images": self.vision, "files": True, "maxCount": MAX_ATTACHMENTS},
+            "attachments": {"enabled": True, "images": self.vision is not False, "files": True, "maxCount": MAX_ATTACHMENTS},
             "stickers": {"enabled": True},
         }
 
@@ -773,7 +773,7 @@ class LoomAppServerService:
             "defaultPermissionMode": self.default_permission_mode.value,
             "permissionModes": [mode.value for mode in PermissionMode],
             "attachments": {
-                "images": self.vision and settings.get("capabilities", {}).get("attachments", True) is not False,
+                "images": self.vision is not False and settings.get("capabilities", {}).get("attachments", True) is not False,
                 "files": settings.get("capabilities", {}).get("attachments", True) is not False,
                 "maxCount": MAX_ATTACHMENTS,
                 "maxImageBytes": MAX_IMAGE_BYTES,
@@ -1089,9 +1089,9 @@ class LoomAppServerService:
             workspace=session.workspace_dir,
             turn_id=turn_id,
             allow_images=(
-                bool(getattr(session, "model_vision", self.vision))
+                getattr(session, "model_vision", self.vision) is not False
                 if str(getattr(session, "model", "") or "").strip()
-                else bool(self.vision)
+                else self.vision is not False
             ),
         )
         content = build_turn_content(text, staged)
@@ -1158,7 +1158,7 @@ class LoomAppServerService:
             attachments,
             workspace=session.workspace_dir,
             turn_id=turn_id,
-            allow_images=bool(getattr(session, "model_vision", self.vision)),
+            allow_images=getattr(session, "model_vision", self.vision) is not False,
         )
         content = build_turn_content(text, staged)
         display_text = turn_input_text(content)

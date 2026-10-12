@@ -124,12 +124,12 @@ def serve_browser_policy_managed_streaming_stdio(
     default_model_base_url: str = "",
     default_workspace: str | Path,
     default_permission_mode: PermissionMode | str,
-    vision: bool = True,
+    vision: bool | None = None,
     local_ipc: bool = False,
     reader: TextIO | None = None,
     writer: TextIO | None = None,
 ) -> int:
-    setattr(runtime, "supports_vision", bool(vision))
+    setattr(runtime, "supports_vision", vision)
     service = BrowserPolicyLoomAppServerService(
         runtime=runtime,
         store=store,
@@ -139,7 +139,7 @@ def serve_browser_policy_managed_streaming_stdio(
         default_model_base_url=default_model_base_url,
         default_workspace=default_workspace,
         default_permission_mode=default_permission_mode,
-        vision=bool(vision),
+        vision=vision,
     )
     server = BrowserPolicyJsonRpcStdioServer(service)
     local_server: LocalAppServerIpcServer | None = None

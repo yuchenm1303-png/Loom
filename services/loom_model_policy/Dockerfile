@@ -5,6 +5,7 @@ RUN useradd --create-home --uid 10002 loom \
     && chown loom:loom /data
 
 WORKDIR /app
+COPY loom_image_capability.py /app/loom_image_capability.py
 COPY services/__init__.py /app/services/__init__.py
 COPY services/loom_model_policy/__init__.py services/loom_model_policy/catalog.py services/loom_model_policy/catalog_sync.py services/loom_model_policy/policy.py services/loom_model_policy/server.py /app/services/loom_model_policy/
 

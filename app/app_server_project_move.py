@@ -1028,18 +1028,18 @@ def serve_project_managed_streaming_stdio(
     model: str,
     default_workspace: str | Path,
     default_permission_mode: PermissionMode | str,
-    vision: bool = True,
+    vision: bool | None = None,
     reader: TextIO | None = None,
     writer: TextIO | None = None,
 ) -> int:
-    setattr(runtime, "supports_vision", bool(vision))
+    setattr(runtime, "supports_vision", vision)
     service = ProjectMovableLoomAppServerService(
         runtime=runtime,
         store=store,
         model=model,
         default_workspace=default_workspace,
         default_permission_mode=default_permission_mode,
-        vision=bool(vision),
+        vision=vision,
     )
     server = ProjectMovableJsonRpcStdioServer(service)
     try:

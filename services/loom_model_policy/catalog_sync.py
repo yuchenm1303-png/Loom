@@ -8,6 +8,8 @@ import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
+from loom_image_capability import image_capability
+
 from .catalog import GROUPS, selection_for_model
 
 
@@ -23,7 +25,7 @@ PROVIDERS = {
 }
 
 
-def parse_models(group_id: str, payload: dict) -> list[dict[str, str]]:
+def parse_models(group_id: str, payload: dict) -> list[dict]:
     if isinstance(payload, dict) and any(payload.get(key) for key in ("has_more", "next_cursor", "next_page")):
         raise ValueError("partial provider listing cannot replace a complete catalog")
     data = payload.get("data") if isinstance(payload, dict) else None
@@ -37,7 +39,7 @@ def parse_models(group_id: str, payload: dict) -> list[dict[str, str]]:
         selection = selection_for_model(group_id, model)
         if len(selection) > 240:
             raise ValueError("model selection exceeds limit")
-        models[selection] = {"model_id": selection, "model": model, "name": str(item.get("name") or model)[:240]}
+        models[selection] = {"model_id": selection, "model": model, "name": str(item.get("name") or model)[:240], "image_input": image_capability(item)}
     return list(models.values())
 
 

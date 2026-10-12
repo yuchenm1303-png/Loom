@@ -46,7 +46,7 @@ export interface LoomModelPolicyAccess {
   revision?: string;
   catalog?: {
     revision: string;
-    models: Array<{ model_id: string; model: string; name: string; group_id: string; group_name: string; available: boolean; source: string }>;
+    models: Array<{ model_id: string; model: string; name: string; group_id: string; group_name: string; available: boolean; source: string; image_input?: { supported: boolean | null; source: string } }>;
     providers: Array<{ group_id: string; last_success: number | null; last_attempt: number | null; error: string }>;
   };
 }

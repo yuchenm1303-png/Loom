@@ -571,7 +571,7 @@ class ReasoningManagedLoomAppServerService(ManagedStreamingLoomAppServerService)
         session.model = self.model
         session.model_provider = self.default_model_provider
         session.model_base_url = self.default_model_base_url
-        session.model_vision = bool(self.vision)
+        session.model_vision = self.vision
         session.reasoning_kind = reasoning.kind.value if reasoning is not None else ""
         session.reasoning_value = reasoning.value if reasoning is not None else ""
         self.store.save(session)
@@ -650,7 +650,7 @@ class ReasoningManagedLoomAppServerService(ManagedStreamingLoomAppServerService)
         base_url = str(spec.get("baseUrl") or "").strip()
         model = str(spec.get("model") or "").strip()
         api_key = self._model_api_key(spec)
-        vision = bool(spec.get("vision", getattr(session, "model_vision", True)))
+        vision = spec.get("vision")
         context_limits = spec.get("contextLimits")
         validate_runtime_reasoning(
             model=model,
@@ -676,7 +676,7 @@ class ReasoningManagedLoomAppServerService(ManagedStreamingLoomAppServerService)
         # models is now stale. Leaving it on the record is not harmless: the
         # composer reads the thread's own value first and would keep refusing
         # images that the platform above is ready to send.
-        if bool(getattr(session, "model_vision", True)) != vision:
+        if getattr(session, "model_vision", None) != vision:
             session.model_vision = vision
             self.store.save(session)
         return session
@@ -752,7 +752,7 @@ class ReasoningManagedLoomAppServerService(ManagedStreamingLoomAppServerService)
             "threadId": session.session_id,
             "model": str(getattr(session, "model", "") or ""),
             "attachments": {
-                "images": bool(getattr(session, "model_vision", True) and attachments_enabled),
+                "images": bool(getattr(session, "model_vision", None) is not False and attachments_enabled),
                 "files": bool(attachments_enabled),
                 "maxCount": MAX_ATTACHMENTS,
                 "maxImageBytes": MAX_IMAGE_BYTES,
@@ -814,7 +814,7 @@ class ReasoningManagedLoomAppServerService(ManagedStreamingLoomAppServerService)
         # not mean "resolution says no", it meant "resolution said nothing" --
         # and it bound DeepSeek, MiniMax, managed and saved models to a
         # sightless platform that strips images out of the request.
-        vision = bool(spec.get("vision", True))
+        vision = spec.get("vision")
         context_limits = spec.get("contextLimits")
         capability = validate_runtime_reasoning(
             model=model,
@@ -984,7 +984,7 @@ class ReasoningManagedLoomAppServerService(ManagedStreamingLoomAppServerService)
         return {
             "model": self.model,
             "attachments": {
-                "images": bool(self.vision and attachments_enabled),
+                "images": bool(self.vision is not False and attachments_enabled),
                 "files": bool(attachments_enabled),
                 "maxCount": MAX_ATTACHMENTS,
                 "maxImageBytes": MAX_IMAGE_BYTES,
@@ -1013,7 +1013,7 @@ class ReasoningManagedLoomAppServerService(ManagedStreamingLoomAppServerService)
             params.get("reasoningKind") or params.get("reasoning_kind"),
             params.get("reasoningValue") or params.get("reasoning_value"),
         )
-        vision = bool(params.get("vision", True))
+        vision = params.get("vision") if isinstance(params.get("vision"), bool) else None
         context_limits = params.get("contextLimits") or params.get("context_limits")
         timeout = float(params.get("timeout") or 120.0)
         capability = validate_runtime_reasoning(
@@ -1286,18 +1286,18 @@ def serve_reasoning_managed_streaming_stdio(
     model: str,
     default_workspace: str | Path,
     default_permission_mode: PermissionMode | str,
-    vision: bool = True,
+    vision: bool | None = None,
     reader: TextIO | None = None,
     writer: TextIO | None = None,
 ) -> int:
-    setattr(runtime, "supports_vision", bool(vision))
+    setattr(runtime, "supports_vision", vision)
     service = ReasoningManagedLoomAppServerService(
         runtime=runtime,
         store=store,
         model=model,
         default_workspace=default_workspace,
         default_permission_mode=default_permission_mode,
-        vision=bool(vision),
+        vision=vision,
     )
     server = ReasoningManagedJsonRpcStdioServer(service)
     try:

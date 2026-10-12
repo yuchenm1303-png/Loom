@@ -30,7 +30,7 @@ def test_resolve_never_contains_ant_ling_upstream_key(tmp_path, monkeypatch) -> 
 def test_vl_and_reasoning_metadata(tmp_path, monkeypatch) -> None:
     monkeypatch.setenv("LOOM_HOME", str(tmp_path)); store=bridge.ReasoningConfigStore(tmp_path)
     text=bridge._profile("Ling-3.0-flash", reasoning_store=store); vision=bridge._profile("Ling-3.0-flash-VL", reasoning_store=store)
-    assert text["vision"] is False and vision["vision"] is True
+    assert text["vision"] is None and vision["vision"] is None
     assert text["reasoning"]["kind"] == "minimax-thinking"
 
 def test_desktop_materializes_loom_account_token_only_in_main_process() -> None:

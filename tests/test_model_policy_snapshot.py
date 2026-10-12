@@ -131,6 +131,7 @@ def test_gateway_enforcement_is_only_used_for_the_trusted_account_route(monkeypa
     monkeypatch.setattr("app.app_server_reasoning.validate_runtime_reasoning", lambda **kw: None)
     monkeypatch.setattr("app.app_server_reasoning.build_runtime_model_platform", lambda **kw: object())
     service.vision = True
+    service.store = SimpleNamespace(save=lambda session: None)
     checked = []
     service._assert_model_policy = checked.append
     for url in ("https://account.smirel.com/model/v1", "https://other.example/v1"):

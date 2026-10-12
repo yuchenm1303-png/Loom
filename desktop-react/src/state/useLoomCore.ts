@@ -174,7 +174,7 @@ function modelsForThread(snapshot: ModelSnapshot | null, thread?: ThreadRecord |
       available: false,
       catalogSource: "runtime",
       statusMessage: "This model is no longer advertised by the provider. Choose another model to replace this conversation binding.",
-      vision: thread.modelVision ?? true,
+      vision: thread.modelVision ?? null,
       reasoning: null,
     };
     return {
@@ -207,7 +207,7 @@ function modelsForThread(snapshot: ModelSnapshot | null, thread?: ThreadRecord |
       // with no way back: the block applies before a turn can start, and a turn
       // is what would have refreshed the record. A saved model's user-declared
       // `vision: false` reaches us through `profile`, so it still holds.
-      vision: profile.vision ?? thread.modelVision ?? true,
+      vision: profile.vision ?? null,
       reasoning,
     },
   };

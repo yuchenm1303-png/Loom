@@ -35,7 +35,8 @@ export interface ModelProfile {
   statusMessage?: string;
   available?: boolean;
   catalogSource?: "provider" | "fallback" | "saved" | "runtime" | string;
-  vision?: boolean;
+  vision?: boolean | null;
+  imageInput?: { supported: boolean | null; source: string };
   contextLimits?: {
     contextWindowTokens?: number;
     effectiveContextPercent?: number;
@@ -69,7 +70,8 @@ export interface AddModelInput {
   baseUrl: string;
   model: string;
   apiKey: string;
-  vision?: boolean;
+  vision?: boolean | null;
+  imageInput?: { supported: boolean | null; source: string };
 }
 
 export interface EditModelInput extends AddModelInput {
@@ -88,7 +90,7 @@ export interface ModelTestResult {
   capabilities: {
     chat: boolean;
     streaming: boolean;
-    vision: boolean;
+    vision: boolean | null;
     reasoning: boolean;
   };
 }
@@ -262,8 +264,12 @@ export class DesktopModelManager {
   }
 
   async applyServerCatalog(snapshot: ModelSnapshot, models: Array<{
-    model_id: string; model: string; name: string; group_id: string; group_name: string; available: boolean;
+    model_id: string; model: string; name: string; group_id: string; group_name: string; available: boolean; image_input?: { supported: boolean | null; source: string };
   }>): Promise<ModelSnapshot> {
+    await this.runPythonBridgeAsync("loom_model_bridge.py", "record-image-capabilities", {
+      models: models.map((row) => ({ selection: row.model_id, model: row.model, metadata: { image_input: row.image_input ?? { supported: null, source: "unknown" } } })),
+    });
+    this.launchCache.clear();
     const existing = new Map(snapshot.profiles.map((profile) => [profile.selection, profile]));
     const unavailable = new Set<string>();
     const missing = models.filter((row) => !existing.has(row.model_id) && !this.serverProfiles.has(row.model_id));
@@ -293,12 +299,25 @@ export class DesktopModelManager {
         selection: row.model_id, id: row.model_id, kind: "builtin" as const,
         name: row.name, model: row.model, groupId: row.group_id, groupName: row.group_name,
         adapter: "openai-compatible", baseUrl: "", configured: false, available: false,
+        vision: null, imageInput: { supported: null, source: "unknown" },
         catalogSource: "server", statusMessage: "Model metadata unavailable. Update the Host runtime or retry.",
       };
       return { ...profile, name: row.name, groupId: row.group_id, groupName: row.group_name,
         catalogSource: "server", available: row.available,
+        vision: row.image_input?.supported ?? null, imageInput: row.image_input ?? { supported: null, source: "unknown" },
         statusMessage: row.available ? undefined : "Model is no longer available from this provider" };
     });
+    if (this.registryCache) {
+      const evidence = new Map(profiles.map((profile) => [profile.selection, profile]));
+      this.registryCache = { ...this.registryCache, profiles: this.registryCache.profiles.map((profile) => {
+        const updated = evidence.get(profile.selection);
+        return updated && updated.model === profile.model ? { ...profile, vision: updated.vision, imageInput: updated.imageInput } : profile;
+      }) };
+    }
+    if (this.currentSpec) {
+      const updated = profiles.find((profile) => profile.selection === this.currentSpec?.selection && profile.model === this.currentSpec.model);
+      if (updated) this.currentSpec = { ...this.currentSpec, vision: updated.vision, imageInput: updated.imageInput };
+    }
     const merged = [...profiles, ...snapshot.profiles.filter((profile) => profile.kind === "saved")];
     const currentProfile = snapshot.current && merged.find((profile) => profile.selection === snapshot.current?.selection);
     return { ...snapshot, profiles: merged,
@@ -312,12 +331,12 @@ export class DesktopModelManager {
       const safe = declared.get(profile.selection);
       return {
         ...profile,
-        vision: safe?.vision ?? profile.vision ?? true,
+        vision: typeof safe?.vision === "boolean" ? safe.vision : profile.vision ?? null,
         available: profile.available !== false,
       };
     });
     const primary = profiles.find((profile) => profile.selection === registry.primary.selection)
-      ?? { ...registry.primary, vision: registry.primary.vision ?? true, available: true };
+      ?? { ...registry.primary, vision: registry.primary.vision ?? null, available: true };
     return { ...registry, primary, profiles };
   }
 
@@ -396,7 +415,8 @@ export class DesktopModelManager {
       catalogSource: catalog?.catalogSource ?? base.catalogSource,
       contextLimits: catalog?.contextLimits ?? base.contextLimits,
       reasoning: catalog?.reasoning ?? base.reasoning ?? null,
-      vision: safe?.vision ?? catalog?.vision ?? base.vision ?? true,
+      vision: typeof safe?.vision === "boolean" ? safe.vision : base.vision ?? null,
+      imageInput: base.imageInput,
       authMode: catalog?.authMode ?? base.authMode,
     };
   }
@@ -472,7 +492,7 @@ export class DesktopModelManager {
               ? "This model is no longer advertised by the provider. The current conversation keeps its binding until you choose another model."
               : undefined
           ),
-          vision: currentProfile?.vision ?? spec.vision ?? true,
+          vision: currentProfile ? currentProfile.vision ?? null : spec.vision ?? null,
           contextLimits: currentProfile?.contextLimits ?? spec.contextLimits,
           reasoning: currentProfile?.reasoning ?? spec.reasoning ?? null,
           authMode: currentProfile?.authMode ?? spec.authMode,
@@ -498,7 +518,7 @@ export class DesktopModelManager {
         available: false,
         catalogSource: "runtime",
         statusMessage: "No longer advertised by the provider",
-        vision: spec.vision ?? true,
+        vision: spec.vision ?? null,
         contextLimits: spec.contextLimits,
         reasoning: spec.reasoning ?? null,
         authMode: spec.authMode,

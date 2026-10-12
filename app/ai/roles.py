@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from loom_image_capability import ImageInput
+
 import re
 from dataclasses import dataclass
 from typing import Iterable
@@ -39,6 +41,7 @@ class ModelRole:
         credential_ref: CredentialRef | None = None,
         context_limits: ModelContextLimits | None = None,
         stream_idle_timeout_seconds: float = DEFAULT_STREAM_IDLE_TIMEOUT_SECONDS,
+        image_input: ImageInput | None = None,
     ) -> ModelProfile:
         declared = frozenset(ModelCapability(value) for value in capabilities)
         missing = tuple(
@@ -59,6 +62,7 @@ class ModelRole:
             credential_ref=credential_ref,
             context_limits=context_limits or ModelContextLimits(),
             stream_idle_timeout_seconds=stream_idle_timeout_seconds,
+            image_input=image_input,
         )
 
 

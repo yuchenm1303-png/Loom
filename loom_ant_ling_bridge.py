@@ -1,4 +1,5 @@
 from __future__ import annotations
+from loom_image_capability import ImageCapabilityStore
 
 import hashlib
 import json
@@ -68,9 +69,12 @@ def _profile(model: str, *, reasoning_store: ReasoningConfigStore) -> dict[str, 
     payload: dict[str, Any] = {
         "selection": selection, "id": _profile_id(model), "kind": "builtin", "name": _display_name(model),
         "groupId": "ant-ling", "groupName": "Ant Ling", "groupOrder": 25, "adapter": "openai-compatible",
-        "baseUrl": base_url, "model": model, "vision": model.casefold().endswith("-vl"), "configured": True,
+        "baseUrl": base_url, "model": model, "vision": None, "imageInput": {"supported": None, "source": "unknown"}, "configured": True,
         "available": True, "catalogSource": "loom", "managed": True, "authMode": "loom-account",
     }
+    evidence = ImageCapabilityStore(reasoning_store.home).get(base_url, model) or {"supported": None, "source": "unknown"}
+    payload["vision"] = evidence["supported"]
+    payload["imageInput"] = evidence
     payload["reasoning"] = {**capability, "value": selected.value} if capability is not None and selected is not None else None
     return payload
 

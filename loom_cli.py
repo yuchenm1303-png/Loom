@@ -1,4 +1,5 @@
 from __future__ import annotations
+from loom_image_capability import ImageInput
 
 import argparse
 import json
@@ -115,7 +116,7 @@ def _vision_enabled(args: argparse.Namespace) -> bool:
     gets the permissive default: attaching an image is an explicit user action,
     and no image is sent unless one is attached.
     """
-    return bool(getattr(args, "vision", True))
+    return getattr(args, "vision", None) is not False
 
 
 class _UnconfiguredModelBackend:
@@ -133,13 +134,14 @@ class _UnconfiguredModelBackend:
 def _build_runtime(args: argparse.Namespace) -> tuple[AgentRuntime, FileAgentSessionStore, str]:
     connection, model, secret = _resolve_connection(args)
     capabilities = set(AGENT_FAST_ROLE.required_capabilities)
-    if _vision_enabled(args):
+    if getattr(args, "vision", None) is True:
         capabilities.add(ModelCapability.VISION)
     binding = ModelBinding(
         role_id=AGENT_FAST_ROLE.role_id,
         provider_id=connection.provider_id,
         model=model,
         capabilities=frozenset(capabilities),
+        image_input=ImageInput.from_support(getattr(args, "vision", None)),
         context_limits=resolve_runtime_context_limits(
             adapter=connection.adapter, base_url=connection.base_url, model=model,
             context_limits=getattr(args, "context_limits", None)),

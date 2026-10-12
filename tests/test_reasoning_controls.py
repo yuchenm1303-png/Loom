@@ -422,8 +422,8 @@ def test_thread_model_switch_keeps_sight_when_resolution_omits_vision(monkeypatc
         }
     )
 
-    assert captured["vision"] is True
-    assert session.model_vision is True
+    assert captured["vision"] is None
+    assert session.model_vision is None
 
 
 def test_thread_runtime_rebuild_heals_a_stale_vision_record(monkeypatch, tmp_path) -> None:

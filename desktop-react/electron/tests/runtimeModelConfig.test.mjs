@@ -14,5 +14,13 @@ test("cold launch and hot switch serialize identical limits and vision", () => {
 });
 test("unknown model carries no previous profile limits", () => {
   runtimeModelArguments({ contextLimits: { contextWindowTokens: 512000 } });
-  assert.deepEqual(runtimeModelArguments({}), ["--context-limits", "{}", "--vision"]);
+  assert.deepEqual(runtimeModelArguments({}), ["--context-limits", "{}"]);
+});
+
+
+test("unknown image capability is preserved across cold and hot launches", () => {
+  assert.equal(runtimeModelParams({ vision: null }).vision, null);
+  assert.deepEqual(runtimeModelArguments({ vision: null }), ["--context-limits", "{}"]);
+  assert.equal(runtimeModelParams({ vision: true }).vision, true);
+  assert.equal(runtimeModelArguments({ vision: true }).at(-1), "--vision");
 });

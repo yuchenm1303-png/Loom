@@ -82,7 +82,7 @@ def build_ai_platform(
                 "base_url": connection.base_url,
                 "model": profile.model,
                 "api_key": secret,
-                "vision": ModelCapability.VISION in profile.capabilities,
+                "vision": profile.image_input.supported,
             }
         )
 

@@ -80,9 +80,9 @@ class StoredModel:
     # Declared, not detected. An OpenAI-compatible base URL says nothing about
     # whether the model behind it accepts image parts, and guessing from the
     # model name is wrong for exactly the self-hosted endpoints this field
-    # exists to serve. Default on, because the common case is a modern model
-    # and the cost of being wrong is one clear provider error.
-    vision: bool = True
+    # exists to serve. Missing metadata remains unknown; only an explicit false
+    # blocks image transmission.
+    vision: bool | None = None
     # Context limits are endpoint/model metadata, not provider-name guesses.
     # Old model records omit this field and therefore retain conservative runtime
     # defaults until the user or managed catalog supplies authoritative values.
@@ -123,7 +123,7 @@ class StoredModel:
         object.__setattr__(self, "base_url", connection.base_url)
         object.__setattr__(self, "model", model)
         object.__setattr__(self, "credential_alias", credential_alias)
-        object.__setattr__(self, "vision", bool(self.vision))
+        object.__setattr__(self, "vision", self.vision if isinstance(self.vision, bool) else None)
 
     @property
     def selection(self) -> str:
@@ -162,7 +162,7 @@ class StoredModel:
             base_url=str(payload.get("base_url") or ""),
             model=str(payload.get("model") or ""),
             credential_alias=str(payload.get("credential_alias") or ""),
-            vision=True if vision is None else bool(vision),
+            vision=vision if isinstance(vision, bool) else None,
             context_limits=_context_limits_from_dict(payload.get("context_limits")),
         )
 
@@ -265,7 +265,7 @@ class ModelConfigStore:
         base_url: str,
         model: str,
         api_key: str,
-        vision: bool = True,
+        vision: bool | None = None,
         context_limits: ModelContextLimits | None = None,
     ) -> StoredModel:
         display_name = " ".join(str(display_name or "").split())
@@ -285,7 +285,7 @@ class ModelConfigStore:
             base_url=base_url,
             model=model,
             credential_alias=f"model/{model_id}",
-            vision=bool(vision),
+            vision=vision if isinstance(vision, bool) else None,
             context_limits=context_limits or ModelContextLimits(),
         )
         self._set_secret(entry.credential_alias, api_key)
@@ -306,7 +306,7 @@ class ModelConfigStore:
         base_url: str,
         model: str,
         api_key: str | None = None,
-        vision: bool = True,
+        vision: bool | None = None,
         context_limits: ModelContextLimits | None = None,
     ) -> StoredModel:
         """Update one saved connection without changing its stable selection id.
@@ -331,7 +331,7 @@ class ModelConfigStore:
             base_url=base_url,
             model=model,
             credential_alias=current.credential_alias,
-            vision=bool(vision),
+            vision=vision if isinstance(vision, bool) else None,
             context_limits=context_limits if context_limits is not None else current.context_limits,
         )
         next_key = str(api_key or "").strip()

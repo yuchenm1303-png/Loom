@@ -43,7 +43,7 @@ type ModelFormState = {
   baseUrl: string;
   model: string;
   apiKey: string;
-  vision: boolean;
+  vision: boolean | null;
 };
 
 interface ModelsSettingsPanelProps {
@@ -60,7 +60,7 @@ const EMPTY_FORM: ModelFormState = {
   baseUrl: "",
   model: "",
   apiKey: "",
-  vision: true,
+  vision: null,
 };
 
 const COPY = {
@@ -298,7 +298,7 @@ export function ModelsSettingsPanel({ initialSnapshot, runtimeModel, running, on
       baseUrl: profile.baseUrl,
       model: profile.model,
       apiKey: "",
-      vision: profile.vision !== false,
+      vision: profile.vision ?? null,
     });
     setFormMode("edit");
     setError("");
@@ -450,7 +450,7 @@ export function ModelsSettingsPanel({ initialSnapshot, runtimeModel, running, on
           <div className="models-capability-row">
             <span><Activity size={12} />{c.chat}</span>
             <span><Zap size={12} />{c.stream}</span>
-            {(currentTest?.capabilities.vision ?? current?.vision !== false) ? <span><Eye size={12} />{c.capabilityVision}</span> : null}
+            <span title={current?.imageInput?.source}><Eye size={12} />{current?.vision === true ? c.capabilityVision : current?.vision === false ? (language === "zh-CN" ? "不支持图片" : "Images unsupported") : (language === "zh-CN" ? "图片能力未确认" : "Image support unknown")}</span>
             {(currentTest?.capabilities.reasoning ?? Boolean(currentReasoning)) ? <span><Sparkles size={12} />{c.capabilityReasoning}</span> : null}
           </div>
 
@@ -511,7 +511,7 @@ export function ModelsSettingsPanel({ initialSnapshot, runtimeModel, running, on
                 </div>
                 <div className="models-capability-row compact">
                   <span>{c.chat}</span><span>{c.stream}</span>
-                  {(testResult?.capabilities.vision ?? profile.vision !== false) ? <span>{c.capabilityVision}</span> : null}
+                  <span title={profile.imageInput?.source}>{profile.vision === true ? c.capabilityVision : profile.vision === false ? (language === "zh-CN" ? "不支持图片" : "Images unsupported") : (language === "zh-CN" ? "图片能力未确认" : "Image support unknown")}</span>
                   {(testResult?.capabilities.reasoning ?? Boolean(profile.reasoning)) ? <span>{c.capabilityReasoning}</span> : null}
                 </div>
                 {(testResult || testError) ? (
@@ -573,7 +573,7 @@ export function ModelsSettingsPanel({ initialSnapshot, runtimeModel, running, on
               <label><span>{c.modelId}</span><input value={form.model} onChange={(event) => setForm({ ...form, model: event.target.value })} /></label>
               <label className="wide"><span>{c.baseUrl}</span><input value={form.baseUrl} disabled={form.adapter === "openai"} placeholder={form.adapter === "openai" ? "OpenAI default" : "https://api.example.com/v1"} onChange={(event) => setForm({ ...form, baseUrl: event.target.value })} /></label>
               <label className="wide"><span>{formMode === "edit" ? c.apiKeyEdit : c.apiKey}</span><div className="models-secret-field"><KeyRound size={14} /><input type="password" value={form.apiKey} onChange={(event) => setForm({ ...form, apiKey: event.target.value })} /></div></label>
-              <div className="models-form-switch wide"><div><Eye size={15} /><span><strong>{c.vision}</strong><small>{c.visionDesc}</small></span></div><button type="button" role="switch" aria-checked={form.vision} className={form.vision ? "on" : ""} onClick={() => setForm({ ...form, vision: !form.vision })}><i /></button></div>
+              <div className="models-form-switch wide"><div><Eye size={15} /><span><strong>{c.vision}</strong><small>{c.visionDesc}</small></span></div><select aria-label={c.vision} value={form.vision === null ? "unknown" : String(form.vision)} onChange={(event) => setForm({ ...form, vision: event.target.value === "unknown" ? null : event.target.value === "true" })}><option value="unknown">{language === "zh-CN" ? "未确认" : "Unknown"}</option><option value="true">{language === "zh-CN" ? "支持" : "Supported"}</option><option value="false">{language === "zh-CN" ? "不支持" : "Unsupported"}</option></select></div>
             </div>
             <div className="models-key-note"><KeyRound size={13} /><span>{c.keyNote}</span></div>
             {error ? <div className="models-error-banner compact"><CircleAlert size={14} /><span>{error}</span></div> : null}

@@ -82,6 +82,7 @@ class PolicyStore:
                     updated_by INTEGER
                 );
 
+                CREATE TABLE IF NOT EXISTS provider_image_capabilities (model_id TEXT PRIMARY KEY, evidence TEXT NOT NULL);
                 CREATE TABLE IF NOT EXISTS provider_catalog (
                     model_id TEXT PRIMARY KEY,
                     group_id TEXT NOT NULL,
@@ -282,8 +283,12 @@ class PolicyStore:
     def catalog(self) -> dict[str, Any]:
         with self._guard, self._connect() as db:
             models = [dict(row) for row in db.execute("SELECT * FROM provider_catalog ORDER BY group_id, model_id")]
+            image_evidence = {row[0]: json.loads(row[1]) for row in db.execute("SELECT model_id, evidence FROM provider_image_capabilities")}
             providers = [dict(row) for row in db.execute("SELECT * FROM provider_catalog_status ORDER BY group_id")]
         for row in models:
+            row["image_input"] = image_evidence.get(row["model_id"], {"supported": None, "source": "unknown"})
+            if _now() - row["last_seen"] > 86400:
+                row["image_input"] = {"supported": None, "source": "expired-metadata"}
             row["available"] = bool(row["available"])
             row["group_name"] = GROUP_BY_ID[row["group_id"]].name
         content = {"models": models, "providers": providers}
@@ -291,7 +296,7 @@ class PolicyStore:
         content["revision"] = hashlib.sha256(json.dumps(versioned, sort_keys=True).encode()).hexdigest()
         return content
 
-    def replace_provider_catalog(self, group_id: str, models: list[dict[str, str]], source: str = "provider") -> None:
+    def replace_provider_catalog(self, group_id: str, models: list[dict[str, Any]], source: str = "provider") -> None:
         if group_id not in GROUP_BY_ID or not models or len(models) > 2000:
             raise ValueError("invalid or empty provider catalog")
         if any(group_for_selection(item["model_id"]) != group_id
@@ -302,6 +307,7 @@ class PolicyStore:
             db.execute("BEGIN IMMEDIATE")
             db.execute("UPDATE provider_catalog SET available=0 WHERE group_id=?", (group_id,))
             for item in models:
+                db.execute("INSERT OR REPLACE INTO provider_image_capabilities VALUES (?, ?)", (item["model_id"], json.dumps(item.get("image_input", {"supported": None, "source": "unknown"}))))
                 db.execute(
                     """INSERT INTO provider_catalog VALUES (?, ?, ?, ?, 1, ?, ?)
                     ON CONFLICT(model_id) DO UPDATE SET model=excluded.model, name=excluded.name,

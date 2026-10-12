@@ -1,4 +1,5 @@
 from __future__ import annotations
+from loom_image_capability import ImageInput
 
 from typing import Any, Mapping
 
@@ -153,7 +154,7 @@ def build_runtime_model_platform(
     base_url: str,
     model: str,
     api_key: str,
-    vision: bool = True,
+    vision: bool | None = None,
     request_timeout_seconds: float = 120.0,
     context_limits: ModelContextLimits | Mapping[str, object] | None = None,
 ):
@@ -190,7 +191,7 @@ def build_runtime_model_platform(
         display_name="Loom Primary",
     )
     capabilities = set(AGENT_FAST_ROLE.required_capabilities)
-    if bool(vision):
+    if vision is True:
         capabilities.add(ModelCapability.VISION)
 
     resolved_context_limits = resolve_runtime_context_limits(
@@ -203,6 +204,7 @@ def build_runtime_model_platform(
         provider_id=connection.provider_id,
         model=selected_model,
         capabilities=frozenset(capabilities),
+        image_input=ImageInput.from_support(vision),
         context_limits=resolved_context_limits,
     )
     configuration = AIConfiguration.build(
@@ -231,7 +233,7 @@ def build_runtime_model_platform(
             "base_url": resolved_base_url,
             "model": selected_model,
             "api_key": secret,
-            "vision": bool(vision),
+            "vision": vision,
             "context_limits": resolved_context_limits.as_safe_dict(),
         },
     )

@@ -1,4 +1,5 @@
 from __future__ import annotations
+from loom_image_capability import ImageCapabilityStore, image_capability, image_support
 
 import json
 import sys
@@ -37,7 +38,7 @@ def _profile_payload(entry: Any) -> dict[str, Any]:
         "adapter": entry.adapter.value,
         "baseUrl": entry.base_url,
         "model": entry.model,
-        "vision": bool(entry.vision),
+        "vision": entry.vision,
     }
 
 
@@ -59,7 +60,7 @@ def _update(store: ModelConfigStore, payload: dict[str, Any]) -> dict[str, Any]:
         base_url=str(payload.get("baseUrl") if "baseUrl" in payload else saved.base_url),
         model=str(payload.get("model") or saved.model),
         api_key=str(payload.get("apiKey") or "") or None,
-        vision=bool(payload.get("vision", saved.vision)),
+        vision=image_support(payload.get("vision", saved.vision)),
     )
     return _profile_payload(entry)
 
@@ -119,11 +120,15 @@ def _test(
             discovered = len([item for item in ids if item])
             target = str(resolved.get("model") or "").casefold()
             listed = any(item.casefold() == target for item in ids if item)
+            match = next((item for item in data if isinstance(item, dict) and str(item.get("id") or "").casefold() == target), None)
+            evidence = image_capability(match)
+            ImageCapabilityStore(store.home).put(resolved.get("baseUrl", ""), resolved["model"], evidence)
+            resolved["vision"] = evidence["supported"]
     except (UnicodeDecodeError, json.JSONDecodeError):
         pass
 
     saved = store.model_for_selection(selection)
-    vision = bool(saved.vision) if saved is not None else True
+    vision = saved.vision if saved is not None else resolved.get("vision")
     reasoning = resolved.get("reasoning")
     return {
         "ok": True,
