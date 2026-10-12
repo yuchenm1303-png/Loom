@@ -3,7 +3,6 @@ import {
   Check,
   ChevronDown,
   Cpu,
-  Expression,
   Eye,
   FolderCog,
   KeyRound,
@@ -11,7 +10,6 @@ import {
   ModelLayers,
   Paperclip,
   ShieldCheck,
-  Smile,
   Sparkles,
   Square,
 } from "./icons";
@@ -30,7 +28,6 @@ import {
   releaseAttachmentPreview,
   resolveComposerFiles,
 } from "./composerAttachments";
-import { StickerPanel } from "./StickerPanel";
 import { QuoteReplyBar, formatQuotedPrompt, useQuoteReply } from "./quoteReply";
 import "./composer.css";
 import "./composer-attachment-polish.css";
@@ -69,7 +66,7 @@ interface ComposerProps {
   onInterrupt(): Promise<void> | void;
 }
 
-type OpenPanel = "permission" | "model" | "sticker" | null;
+type OpenPanel = "permission" | "model" | null;
 
 type PermissionPresentation = {
   label: string;
@@ -141,9 +138,7 @@ function ComposerControlIcon({ kind }: { kind: "attach" | "model" }) {
   const Icon = kind === "attach" ? Paperclip : ModelLayers;
   return <Icon className="composer-control-icon" data-control-icon={kind} size={18} strokeWidth={1.75} focusable="false" />;
 }
-function ComposerExpressionIcon({ size = 16 }: { size?: number }) {
-  return <Expression className="composer-expression-glyph" size={size} strokeWidth={1.74} focusable="false" />;
-}
+
 
 export function Composer({
   threadId,
@@ -159,7 +154,6 @@ export function Composer({
   onOpenAccount,
   permissionMode,
   permissionModes,
-  stickerPreferences,
   onPermissionModeChange,
   onModelProfileChange,
   onCustomModelChange,
@@ -169,7 +163,6 @@ export function Composer({
   onAddModel,
   onDeleteModel,
   onReasoningChange,
-  onStickerPreferencesChange,
   imagesAllowed = true,
   onSend,
   onInterrupt,
@@ -404,7 +397,6 @@ export function Composer({
 
   const currentPermission = permissionPresentation(permissionMode || "approval", zh);
   const currentModel = modelSnapshot?.current?.model || model || "Model";
-  const stickersOff = stickerPreferences?.frequency === 0;
   const hasDraftContent = Boolean(value.trim() || quote || attachments.length);
   const canSend = Boolean(
     !disabled
@@ -624,43 +616,7 @@ export function Composer({
 
             <ModelUsageIndicator selection={modelSnapshot?.current?.selection || modelSnapshot?.primary?.selection || ""} zh={zh} onOpen={() => setOpenPanel(null)} />
 
-            <div className="composer-control-anchor sticker-control-anchor">
-              <button
-                type="button"
-                className={`composer-chip sticker-chip composer-refined-control ${openPanel === "sticker" ? "is-open" : ""}`}
-                title={zh ? "表情设置" : "Expression settings"} aria-label={zh ? "表情设置" : "Expression settings"}
-                aria-haspopup="dialog"
-                aria-expanded={openPanel === "sticker"}
-                onClick={() => togglePanel("sticker")}
-              >
-                <span className="composer-glyph-well expression" aria-hidden="true"><ComposerExpressionIcon size={15.5} /></span>
-                <span>{stickersOff ? "Stickers off" : "Stickers"}</span>
-                <ChevronDown size={13} className="composer-chip-chevron" />
-              </button>
 
-              {renderedPanel === "sticker" ? (
-                <div className="composer-popover sticker-popover" data-motion-phase={panelPresence.phase} inert={!openPanel} role="dialog" aria-label="Chat expression settings">
-                  <div className="composer-popover-head">
-                    <div className="composer-popover-heading">
-                      <span className="composer-popover-icon model"><Smile size={16} /></span>
-                      <div>
-                        <strong>{zh ? "表情" : "Stickers"}</strong>
-                        <span>{zh ? "调整回复中的表情风格与频率。" : "Adjust expression style and frequency."}</span>
-                      </div>
-                    </div>
-                    <span className="composer-popover-context">Runtime</span>
-                  </div>
-                  <StickerPanel
-                    preferences={stickerPreferences}
-                    disabled={running || !onStickerPreferencesChange}
-                    onSave={async (preferences) => {
-                      if (!onStickerPreferencesChange) throw new Error("Sticker settings are unavailable.");
-                      await onStickerPreferencesChange(preferences);
-                    }}
-                  />
-                </div>
-              ) : null}
-            </div>
           </div>
 
           <div className="composer-right">

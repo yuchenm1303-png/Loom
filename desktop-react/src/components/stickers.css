@@ -224,3 +224,7 @@
   background: color-mix(in srgb, currentColor 4%, transparent);
   color: var(--text-muted, #8b8d98);
 }
+
+.settings-expression-card {
+  padding: 20px;
+}

@@ -1,3 +1,4 @@
+import { StickerPanel } from "./StickerPanel";
 import { ProgressFeedbackControl } from "./ProgressFeedbackControl";
 import type { ProgressFeedbackMode } from "../types/loom";
 import {
@@ -949,6 +950,18 @@ export function SettingsPage({ runtime, models, threadId, running, onRefreshMode
 
         <Section title={language === "zh-CN" ? "进度反馈" : "Progress feedback"} caption={language === "zh-CN" ? "选择工作过程中的反馈节奏。实际频率会因模型和任务而异。" : "Choose how much progress the agent shares. Actual frequency varies by model and task."}>
           <ProgressFeedbackControl mode={settings.agent?.progressFeedback} saving={feedbackSaving} onChange={mode => void saveProgressFeedback(mode)} />
+        </Section>
+
+        <Section title={language === "zh-CN" ? "表情控制台" : "Chat expression"} caption={language === "zh-CN" ? "调整回复中的表情频率、风格与数量。" : "Adjust expression frequency, style, and quantity in replies."}>
+          <div className="settings-card settings-expression-card">
+            <StickerPanel
+              preferences={runtime.stickerPreferences}
+              disabled={running}
+              onSave={async (preferences) => {
+                await window.loom.call("sticker/preferences/set", { preferences });
+              }}
+            />
+          </div>
         </Section>
 
         <Section title="Runtime defaults" caption="Defaults currently reported by the App Server for new conversations.">

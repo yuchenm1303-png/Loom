@@ -491,7 +491,6 @@ export default function App() {
   const permissionMode = thread?.permissionMode || loom.draftPermissionMode || loom.runtime.defaultPermissionMode;
   const capabilitySettings = loom.runtime.settings?.capabilities ?? {};
   const attachmentsEnabled = capabilitySettings.attachments !== false;
-  const stickersEnabled = capabilitySettings.stickers !== false;
   const changedFileCount = useMemo(() => reviewFileCount(loom.items), [loom.items]);
   const renderableArtifacts = useMemo(() => renderableArtifactPaths(loom.items), [loom.items]);
   const artifactCount = renderableArtifacts.length;
@@ -1337,7 +1336,6 @@ export default function App() {
             onOpenAccount={() => setAccountOpen(true)}
             permissionMode={permissionMode}
             permissionModes={loom.runtime.permissionModes}
-            stickerPreferences={stickersEnabled ? loom.runtime.stickerPreferences : null}
             onPermissionModeChange={loom.setPermissionMode}
             onModelProfileChange={loom.switchModelProfile}
             onCustomModelChange={loom.switchCurrentModel}
@@ -1347,9 +1345,6 @@ export default function App() {
             onAddModel={loom.addModel}
             onDeleteModel={loom.deleteModel}
             onReasoningChange={loom.setReasoning}
-            onStickerPreferencesChange={async (preferences) => {
-              await window.loom.call("sticker/preferences/set", { preferences });
-            }}
             imagesAllowed={attachmentsEnabled && loom.models?.current?.vision !== false}
             onSend={loom.send}
             onInterrupt={loom.interrupt}
