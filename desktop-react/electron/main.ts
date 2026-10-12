@@ -1185,6 +1185,10 @@ async function changeThreadModel(
       + `received ${confirmedSelection || "unknown"}/${confirmedModel || "unknown"}).`,
     );
   }
+  // Remember the successful choice for future drafts without changing any
+  // other conversation or the running shared runtime.
+  modelManager.useResolvedModel(spec);
+  modelManager.markActive(spec.selection);
   return {
     initialization: { runtime: result.runtime ?? {} },
     models: await modelManager.switchSnapshot(spec),
@@ -1497,6 +1501,16 @@ async function runRpcCall(method: string, params: Record<string, unknown> = {}):
   if (method === "turn/start") {
     await assertSignedInForModels();
     await rpc.ensureModelReady();
+  }
+  if (method === "thread/start") {
+    const preferred = modelManager.current ?? await modelManager.ensureInitialAsync();
+    await assertModelSelectionAllowed(preferred.selection);
+    const result = await rpc.call(method, params) as { thread: { id: string; modelSelection?: string; model?: string } };
+    if (result.thread.modelSelection === preferred.selection && result.thread.model === preferred.model) return result;
+    // Apply only to the newly created thread: another thread may still be
+    // executing with the shared runtime's earlier default model.
+    const switched = await changeThreadModel(result.thread.id, preferred);
+    return { ...result, thread: switched.thread ?? result.thread };
   }
   return rpc.call(method, params);
 }
