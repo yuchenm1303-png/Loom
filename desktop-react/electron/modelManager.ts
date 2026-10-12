@@ -1,5 +1,6 @@
 import { spawn, spawnSync } from "node:child_process";
 import path from "node:path";
+import { invokeOptionalBridgeOperation } from "./bridgeProtocol.js";
 import { currentHostRuntime, resolveHostPythonExecutable } from "./hostRuntime.js";
 
 export interface ModelReasoningOption {
@@ -266,9 +267,9 @@ export class DesktopModelManager {
   async applyServerCatalog(snapshot: ModelSnapshot, models: Array<{
     model_id: string; model: string; name: string; group_id: string; group_name: string; available: boolean; image_input?: { supported: boolean | null; source: string };
   }>): Promise<ModelSnapshot> {
-    await this.runPythonBridgeAsync("loom_model_bridge.py", "record-image-capabilities", {
+    await invokeOptionalBridgeOperation("loom_model_bridge.py", "record-image-capabilities", () => this.runPythonBridgeAsync("loom_model_bridge.py", "record-image-capabilities", {
       models: models.map((row) => ({ selection: row.model_id, model: row.model, metadata: { image_input: row.image_input ?? { supported: null, source: "unknown" } } })),
-    });
+    }));
     this.launchCache.clear();
     const existing = new Map(snapshot.profiles.map((profile) => [profile.selection, profile]));
     const unavailable = new Set<string>();

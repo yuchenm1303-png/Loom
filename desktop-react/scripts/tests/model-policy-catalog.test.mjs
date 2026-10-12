@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import ts from "typescript";
+import { invokeOptionalBridgeOperation } from "../../dist-electron/bridgeProtocol.js";
 
 const main = readFileSync(new URL("../../electron/main.ts", import.meta.url), "utf8");
 const manager = readFileSync(new URL("../../electron/modelManager.ts", import.meta.url), "utf8");
@@ -50,7 +51,7 @@ test("server catalog adds new models in batches, fixes current status and preser
   const compiled = ts.transpileModule(`class Fixture { ${method.getText(file)} }`, {
     compilerOptions: { target: ts.ScriptTarget.ES2022 },
   }).outputText;
-  const Fixture = new Function("isAntLingSelection", `${compiled}; return Fixture;`)(selection => selection.startsWith("builtin:ant-ling"));
+  const Fixture = new Function("isAntLingSelection", "invokeOptionalBridgeOperation", `${compiled}; return Fixture;`)(selection => selection.startsWith("builtin:ant-ling"), invokeOptionalBridgeOperation);
   const fixture = new Fixture();
   fixture.serverProfiles = new Map();
   fixture.launchCache = new Map();

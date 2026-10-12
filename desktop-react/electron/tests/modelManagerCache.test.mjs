@@ -6,6 +6,28 @@ mock.module("electron", { namedExports: { app: {
 } } });
 const { DesktopModelManager } = await import("../../dist-electron/modelManager.js");
 
+test("new Desktop starts with legacy Host and refreshes evidence after Host upgrades", async () => {
+  const manager = new DesktopModelManager(os.tmpdir());
+  const known = profile({ selection: "builtin:minimax", kind: "builtin", vision: false });
+  const snapshot = { ...registry([known]), current: known, recentModels: [] };
+  const models = [{ model_id: known.selection, model: known.model, name: "Model", group_id: "minimax", group_name: "MiniMax", available: true }];
+  let upgraded = false;
+  manager.runPythonBridgeAsync = async (_script, command) => {
+    assert.equal(command, "record-image-capabilities");
+    if (!upgraded) throw new Error("usage: loom_model_bridge.py {list|resolve|describe-model|save|delete|set-active|persist-active|set-reasoning|set-provider-key}");
+    return { recorded: 1 };
+  };
+  const old = await manager.applyServerCatalog(snapshot, models);
+  assert.equal(old.current.available, true);
+  assert.equal(old.current.vision, null);
+  upgraded = true;
+  models[0].image_input = { supported: true, source: "provider/models" };
+  const current = await manager.applyServerCatalog(old, models);
+  assert.equal(current.current.vision, true);
+  manager.runPythonBridgeAsync = async () => { throw new Error("permission denied"); };
+  await assert.rejects(manager.applyServerCatalog(current, models), /permission denied/);
+});
+
 test("one unsupported server model cannot fail startup or discard compatible rows", async () => {
   const manager = new DesktopModelManager(os.tmpdir());
   const known = profile({ selection: "builtin:ant-ling", model: "Ling-3.0-flash", kind: "builtin" });
