@@ -18,6 +18,8 @@ from .execution_control import check_cancelled, note_progress, current_control
 from .platform import AIPlatform
 from .tool_protocol import parse_tool_call
 from .reasoning_text import InlineReasoningDemux, merge_visible_reasoning, split_inline_reasoning
+from .response_protocol import normalize_response, ToolTextBoundary
+from .tool_policy import exposes_tools
 
 
 class ProviderStreamEventKind(str, Enum):
@@ -228,6 +230,7 @@ class StreamingAIPlatform(AIPlatform):
 
         accumulator = _StreamAccumulator()
         inline_reasoning = InlineReasoningDemux()
+        tool_text = ToolTextBoundary(exposes_tools(request))
         stream = stream_method(request)
         try:
             for raw_event in stream:
@@ -279,11 +282,12 @@ class StreamingAIPlatform(AIPlatform):
                 for event in normalized_events:
                     accumulator.consume(event)
                     if event.kind is StreamEventKind.TEXT_DELTA and event.text_delta:
+                        public_delta = tool_text.feed(event.text_delta)
                         self._publish(
                             ProviderStreamEvent(
                                 profile_id=profile.profile_id,
                                 kind=ProviderStreamEventKind.TEXT_DELTA,
-                                text_delta=event.text_delta,
+                                text_delta=public_delta,
                             )
                         )
                     elif event.kind is StreamEventKind.REASONING_DELTA and event.reasoning_delta:
@@ -343,6 +347,10 @@ class StreamingAIPlatform(AIPlatform):
                     late_inline_reasoning,
                 ),
             )
+        result = normalize_response(request, result)
+        tail = tool_text.finish()
+        if tail:
+            self._publish(ProviderStreamEvent(profile_id=profile.profile_id, kind=ProviderStreamEventKind.TEXT_DELTA, text_delta=tail))
         self._publish(
             ProviderStreamEvent(
                 profile_id=profile.profile_id,

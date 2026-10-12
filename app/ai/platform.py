@@ -18,6 +18,7 @@ from .contracts import (
 )
 from .profiles import ModelProfile, ModelRegistry
 from .reasoning_text import merge_visible_reasoning, split_inline_reasoning
+from .response_protocol import normalize_response
 
 _UNSUPPORTED_IMAGE_PLACEHOLDER = "[image omitted because the current model does not support image input]"
 
@@ -137,7 +138,7 @@ class AIPlatform:
                     inline_reasoning,
                 ),
             )
-        return result
+        return normalize_response(request, result)
 
     def execute_structured_chat(
         self,

@@ -4,15 +4,12 @@ from __future__ import annotations
 import re
 
 from app.ai import MessageRole, ModelResponse
+from app.ai.response_protocol import contains_tool_wire
 from .decision_protocol import invalid_decision_block
 
 
 COMPLETE_FINISH_REASONS = {"", "stop", "tool_calls", "function_call", "tool_use", "completed", "end_turn"}
 _COMPLETE_THINK_BLOCK_RE = re.compile(r"<think>.*?</think>", re.IGNORECASE | re.DOTALL)
-_SERIALIZED_TOOL_PROTOCOL_RE = re.compile(
-    r"(?:<tool_call\b|</tool_call>|<invoke\s+name\s*=|\]\s*<\]\s*minimax\s*\[>\s*\[<)",
-    re.IGNORECASE,
-)
 TERMINAL_RECOVERY_INSTRUCTION = (
     "Your previous response was rejected because it was empty, malformed, or contained reasoning without a user-visible "
     "answer. Continue the same task now. "
@@ -54,7 +51,7 @@ def visible_model_text(text: str) -> str:
 def contains_serialized_tool_protocol(text: str) -> bool:
     """Detect tool-call markup a provider printed as text instead of calling."""
 
-    return bool(_SERIALIZED_TOOL_PROTOCOL_RE.search(str(text or "")))
+    return contains_tool_wire(str(text or ""))
 
 
 def merge_recovery_text(partial: str, continuation: str) -> str:
