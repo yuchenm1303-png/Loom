@@ -1,7 +1,55 @@
-.loom-window-shell { display: flex; flex-direction: column; height: 100%; width: 100%; }
-.loom-titlebar { position: relative; z-index: 10001; display: flex; flex: 0 0 32px; background: var(--bg); color: var(--text-2); border-bottom: 1px solid var(--border-soft); user-select: none; }
-.loom-titlebar-drag { flex: 1; min-width: 0; display: flex; align-items: center; padding-left: 14px; font-size: 12px; touch-action: none; }
-.loom-titlebar button { width: 46px; border: 0; background: transparent; color: inherit; display: grid; place-items: center; }
-.loom-titlebar button:hover { background: var(--panel-hover); }
+.loom-window-shell {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+  background: var(--loom-workspace-canvas, var(--bg));
+}
+
+.loom-titlebar {
+  position: relative;
+  z-index: 10001;
+  display: flex;
+  flex: 0 0 34px;
+  color: var(--loom-workspace-muted, var(--muted));
+  background: var(--loom-workspace-canvas, var(--bg));
+  border-bottom: 1px solid var(--loom-divider, var(--border-soft));
+  user-select: none;
+}
+
+.loom-titlebar-drag {
+  -webkit-app-region: drag;
+  app-region: drag;
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  padding-left: 16px;
+}
+
+.loom-titlebar-wordmark {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: .045em;
+  opacity: .8;
+}
+
+.loom-window-controls { display: flex; -webkit-app-region: no-drag; app-region: no-drag; }
+.loom-titlebar button {
+  width: 44px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: inherit;
+  display: grid;
+  place-items: center;
+  transition: background-color 120ms ease, color 120ms ease;
+}
+.loom-titlebar button:hover { background: var(--loom-workspace-hover, var(--panel-hover)); color: var(--loom-workspace-ink, var(--text)); }
+.loom-titlebar button:focus-visible { outline: 2px solid var(--loom-workspace-accent, var(--accent)); outline-offset: -3px; }
 .loom-titlebar .loom-window-close:hover { background: #c42b1c; color: white; }
-.loom-window-content { flex: 1; min-height: 0; position: relative; }
+.loom-window-shell[data-window-focused="false"] .loom-titlebar { color: var(--faint); }
+.loom-window-content { flex: 1; min-height: 0; position: relative; overflow: hidden; }
+@media (prefers-reduced-motion: reduce) { .loom-titlebar button { transition: none; } }

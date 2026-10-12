@@ -40,6 +40,7 @@ function mergeDeltaParams(
 }
 
 const api = {
+  windowControl: (action: "state" | "minimize" | "maximize" | "close" | "move", point?: { x: number; y: number }) => ipcRenderer.invoke("loom:window-control", action, point),
   connect: () => ipcRenderer.invoke("loom:connect"),
   call: (method: string, params: Record<string, unknown> = {}) => ipcRenderer.invoke("loom:call", method, params),
   disconnect: () => ipcRenderer.invoke("loom:disconnect"),

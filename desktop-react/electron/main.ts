@@ -1,3 +1,4 @@
+import { installWindowChrome } from "./windowChrome.js";
 import { ModelSwitchQueue } from "./modelSwitchQueue.js";
 import { app, BrowserWindow, clipboard, dialog, ipcMain, nativeImage, nativeTheme, net, protocol, shell } from "electron";
 import { ModelUsageService } from "./modelUsage.js";
@@ -1276,6 +1277,7 @@ function createWindow(): void {
     minHeight: 680,
     backgroundColor: nativeTheme.shouldUseDarkColors ? "#0d0e11" : "#f7f7f8",
     title: "Loom",
+    frame: false,
     icon: windowIcon,
     autoHideMenuBar: true,
     show: false,
@@ -1290,6 +1292,7 @@ function createWindow(): void {
     },
   });
   const window = mainWindow;
+  installWindowChrome(window);
   let rendererDocumentUrl = "";
   window.once("ready-to-show", () => { showDesktopWindow(); });
   window.webContents.on("did-finish-load", () => {

@@ -1,3 +1,4 @@
+import { WindowChrome } from "./components/WindowChrome";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import App from "./App";
@@ -139,11 +140,13 @@ createRoot(rootElement).render(
   <StrictMode>
     <BootErrorBoundary>
       <I18nProvider>
-        <WebAppGate>
-          <App />
-          {!isLoomWebRuntime() ? <SoftwareUpdatePortal /> : null}
-          <GlobalContextMenu />
-        </WebAppGate>
+        <WindowChrome>
+          <WebAppGate>
+            <App />
+            {!isLoomWebRuntime() ? <SoftwareUpdatePortal /> : null}
+            <GlobalContextMenu />
+          </WebAppGate>
+        </WindowChrome>
       </I18nProvider>
     </BootErrorBoundary>
   </StrictMode>,
