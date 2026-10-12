@@ -178,7 +178,7 @@
 .appearance-reading-preview-message {
   max-width: 760px;
   color: #d9dde5;
-  font-size: var(--loom-chat-font-size, 13px);
+  font-size: var(--loom-chat-font-size, 14px);
   line-height: var(--loom-message-line-height, 1.72);
 }
 
@@ -199,7 +199,7 @@
 /* Runtime-facing appearance variables ----------------------------------- */
 .user-message,
 .assistant-message {
-  font-size: var(--loom-chat-font-size, 13px);
+  font-size: var(--loom-chat-font-size, 14px);
   line-height: var(--loom-message-line-height, 1.72);
 }
 

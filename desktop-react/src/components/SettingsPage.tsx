@@ -216,7 +216,7 @@ const DEFAULT_APPEARANCE: AppearanceSettings = {
   conversationWidth: "balanced",
   sidebarWidth: "standard",
   inspectorWidth: "standard",
-  chatFontSize: 13,
+  chatFontSize: 14,
   messageLineHeight: "comfortable",
   ambientEffects: true,
   petEnabled: DEFAULT_PET_ENABLED,

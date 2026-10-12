@@ -39,7 +39,7 @@ body {
 
 /* Main transcript -------------------------------------------------------- */
 .user-message,
-.assistant-message { font-size: var(--loom-chat-font-size, 13px) !important; }
+.assistant-message { font-size: var(--loom-chat-font-size, 14px) !important; }
 .streaming-placeholder { font-size: 13px !important; }
 .disclosure-trigger { font-size: 13px !important; }
 .reasoning-copy { font-size: 14.5px !important; }
@@ -153,7 +153,7 @@ small { font-size: var(--loom-font-micro) !important; }
 @media (max-width: 1180px) {
   /* Keep the chosen chat size consistent on smaller desktop windows. */
   .user-message,
-  .assistant-message { font-size: var(--loom-chat-font-size, 13px) !important; }
+  .assistant-message { font-size: var(--loom-chat-font-size, 14px) !important; }
   .composer textarea { font-size: var(--loom-font-body) !important; }
   .thread-title-line strong { font-size: 15px !important; }
 }

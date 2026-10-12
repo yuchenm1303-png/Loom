@@ -73,7 +73,7 @@ try {
     && appearance.chatFontSize >= 11
     && appearance.chatFontSize <= 18
     ? appearance.chatFontSize
-    : 13;
+    : 14;
   const messageLineHeight = MESSAGE_LINE_HEIGHTS[appearance.messageLineHeight]
     ? appearance.messageLineHeight
     : "comfortable";
@@ -119,7 +119,7 @@ try {
   document.documentElement.style.setProperty("--content-width", "860px");
   document.documentElement.style.setProperty("--sidebar-width", "252px");
   document.documentElement.style.setProperty("--inspector-width", "316px");
-  document.documentElement.style.setProperty("--loom-chat-font-size", "13px");
+  document.documentElement.style.setProperty("--loom-chat-font-size", "14px");
   document.documentElement.style.setProperty("--loom-message-line-height", "1.72");
   document.documentElement.style.setProperty(
     "--loom-code-font",
