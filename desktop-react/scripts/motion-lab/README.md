@@ -48,6 +48,7 @@ up in `docs/icon-motion-2026-10-10.md`.
 | `icon-audit.mjs --scene settings\|model\|menu\|…` | Hovers every icon control in a scene and prints how far each part moved, plus what still interferes: a control that lifts, a glyph with its own transform or filter. |
 | `icon-rules.mjs --click … --target … --hover …` | Which stylesheet rules (file and line) still set a motion property on one element, with `:hover` forced through the DevTools protocol. The way to find the old rule that moves something twice. |
 | `icon-spring.mjs [zeta] [settle]` | Prints a CSS `linear()` easing for a damped spring; `--ic-spring` in `icon-motion.css` came from it. |
+| `send-film.mjs [--scene swap,gesture,guidance] [--theme dark] [--zoom 4]` | The send button on the real composer (live-app fixture), frame by frame at device pixels: `swap` is the handoff when a message is sent and when a run is stopped (the outgoing composer is a copy React drops after 280 ms, so the tool holds that timer while it takes frames); `gesture` is wake / pointer in / out / press / text deleted; `guidance` is the button that stays while a run is going. Written up in `docs/send-button-2026-10-12.md`. |
 
 Tests: `scripts/tests/icon-motion.test.mjs` (static: names, parts, ownership, dead lucide selectors) and
 `scripts/tests/icon-motion-browser.mjs` (real hover, focus, reduced motion, rows and tools, loaders, press).

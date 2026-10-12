@@ -142,3 +142,26 @@ test("a glyph that spins or draws on its own says so in its name", () => {
   assert.match(glyphSource, /createIcon\("loader"/);
   assert.match(motion, /\[data-icon="loader"\],\s*\[data-spinning="true"\]\s*\{\s*animation: li-spin/);
 });
+
+test("the send button's plane is wired from the stylesheet to both composers", () => {
+  // Keyframes the send rules name must exist, and every one of them must be used.
+  const defined = new Set([...motion.matchAll(/@keyframes\s+([\w-]+)/g)].map((m) => m[1]));
+  for (const name of ["li-takeoff", "li-land", "li-relaunch", "li-grow", "li-shrink"]) {
+    assert.ok(defined.has(name), `icon-motion.css has no @keyframes ${name}`);
+    assert.ok(motion.includes(`animation: ${name} `), `nothing in icon-motion.css plays ${name}`);
+  }
+  // A guidance send relaunches the plane every time, but never under reduced motion.
+  const relaunch = /([^{}]*)\{[^{}]*animation:\s*li-relaunch/.exec(motion);
+  assert.ok(relaunch, "no rule plays li-relaunch");
+  assert.match(relaunch[1], /data-loom-reduced-motion="true"\]\)/, "li-relaunch ignores the app's reduced-motion setting");
+  assert.match(motion, /@media \(prefers-reduced-motion: no-preference\)\s*\{[^@]*li-relaunch/, "li-relaunch ignores the system's reduced-motion setting");
+  // Both composers draw the plane, and the one that stays mounted keys it by the messages sent.
+  for (const file of ["components/ComposerBase.tsx", "components/Composer.tsx"]) {
+    const source = read(file);
+    assert.match(source, /\bSend\b[^;]*from "\.\/icons"/, `${file} does not import the Send glyph`);
+    assert.doesNotMatch(source, /<ArrowUp\b/, `${file} still draws an arrow in the send button`);
+  }
+  const steering = read("components/Composer.tsx");
+  assert.match(steering, /<Send key=\{launched\}/, "the guidance plane is not new for every message");
+  assert.match(steering, /data-sent=\{launched \? "" : undefined\}/, "the guidance send button does not say that a message has left");
+});

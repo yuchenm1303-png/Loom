@@ -375,17 +375,64 @@
 }
 
 /* -------------------------------------------------------------------------- */
+/* Send: a paper plane in a disc.                                              */
+
+/* Where the plane rests. Its drawing is centred in its box, its ink is not: the
+   weight sits 1.8 units up and to the right of the middle, so a plane centred by
+   its box looks pushed toward its tip. Idle, it is centred by its weight. Once
+   there is something to send it has moved one stroke width along its heading, as
+   if the disc had armed it, and it gets there on the spring a hover uses. */
+.send-button:not(.stop) > .loom-icon {
+  translate: -1.3px 1.3px;
+  transition:
+    scale var(--ic-dur) var(--ic-curve),
+    translate var(--ic-t-lift) var(--ic-spring);
+}
+
+.send-button:not(.stop):not(:disabled) > .loom-icon { translate: -.5px .5px; }
+
+/* -------------------------------------------------------------------------- */
 /* Replace: one glyph hands a control over to another.                         */
 
-/* Send hands over to Stop, and back. The arrow leaves upward and arrives from
-   below; the square grows from the centre and shrinks away. The wrapper's own
-   fade (crossfade.css) carries the opacity, and these end together with it. */
-.crossfade-out .send-button:not(.stop) .loom-icon { animation: li-leave-up var(--crossfade-ms, 260ms) var(--ic-ease) both; }
-.crossfade-in .send-button:not(.stop) .loom-icon { animation: li-arrive-up var(--crossfade-ms, 260ms) var(--ic-ease) both; }
-.crossfade-out .send-button.stop .loom-icon { animation: li-shrink var(--crossfade-ms, 260ms) var(--ic-ease) both; }
-.crossfade-in .send-button.stop .loom-icon { animation: li-grow var(--crossfade-ms, 260ms) var(--ic-ease) both; }
+/* Send hands over to Stop, and back. A message leaves: the plane crouches for a
+   breath, then takes off along its heading through the rim of the disc, and the
+   next one comes in from behind once it is gone. The square grows from the centre
+   (also once the disc it grows in is clear) and shrinks away. The wrapper's own
+   fade (crossfade.css) carries the opacity, and these end together with it. Only
+   a button that had something to send (`is-ready`, even while that send is in
+   flight) takes off: nothing left when a run just ended. */
+:root .crossfade-out .send-button.is-ready,
+:root .crossfade-in .send-button:not(.stop) { overflow: hidden; }
 
-@keyframes li-leave-up { to { transform: translateY(-8px) scale(.7); } }
-@keyframes li-arrive-up { from { transform: translateY(8px) scale(.7); } }
+.crossfade-out .send-button.is-ready .loom-icon { animation: li-takeoff var(--crossfade-ms, 260ms) linear both; }
+.crossfade-in .send-button:not(.stop) .loom-icon { animation: li-land calc(var(--crossfade-ms, 260ms) - 90ms) var(--ic-ease) 90ms both; }
+.crossfade-out .send-button.stop .loom-icon { animation: li-shrink var(--crossfade-ms, 260ms) var(--ic-ease) both; }
+.crossfade-in .send-button.stop .loom-icon { animation: li-grow calc(var(--crossfade-ms, 260ms) - 80ms) var(--ic-ease) 80ms both; }
+
+/* 280 ms in all: 17 ms of crouch, 78 ms of flight, and by then the composer it
+   leaves is mostly faded, so a takeoff any slower would not be seen. */
+@keyframes li-takeoff {
+  0% { transform: none; animation-timing-function: ease-out; }
+  6% { transform: translate(-1.4px, 1.4px); animation-timing-function: cubic-bezier(.5, 0, .9, .6); }
+  34%, 100% { transform: translate(26px, -26px); }
+}
+@keyframes li-land { from { transform: translate(-22px, 22px); } }
 @keyframes li-shrink { to { transform: scale(.5); } }
-@keyframes li-grow { from { transform: scale(.5); } }
+@keyframes li-grow { from { transform: scale(.5); opacity: 0; } }
+
+/* A button that stays (guidance for a task that is running) sends the same way:
+   the plane takes off, and a new one comes in from behind, a beat later. The
+   plane is a new element for every message (keyed in Composer.tsx), so the
+   animation starts afresh each time. */
+@media (prefers-reduced-motion: no-preference) {
+  :root:not([data-loom-reduced-motion="true"]) .send-button[data-sent] { overflow: hidden; }
+  :root:not([data-loom-reduced-motion="true"]) .send-button[data-sent] > .loom-icon { animation: li-relaunch 760ms linear both; }
+}
+
+@keyframes li-relaunch {
+  0% { transform: none; animation-timing-function: ease-out; }
+  2.4% { transform: translate(-1.4px, 1.4px); animation-timing-function: cubic-bezier(.5, 0, .9, .6); }
+  13.2% { transform: translate(26px, -26px); }
+  13.21%, 20% { transform: translate(-20px, 20px); animation-timing-function: var(--ic-spring); }
+  100% { transform: none; }
+}

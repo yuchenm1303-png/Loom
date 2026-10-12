@@ -1,5 +1,4 @@
 import {
-  ArrowUp,
   Check,
   ChevronDown,
   Cpu,
@@ -9,6 +8,7 @@ import {
   LockKeyhole,
   ModelLayers,
   Paperclip,
+  Send,
   ShieldCheck,
   Sparkles,
   Square,
@@ -636,7 +636,7 @@ export function Composer({
               </button>
             ) : (
               <button type="button" className={`send-button ${canSend ? "is-ready" : "is-idle"}`} onClick={() => void submit()} disabled={!canSend || submitting} title="Send" aria-label="Send message">
-                <ArrowUp size={17} strokeWidth={2.2} />
+                <Send size={17} strokeWidth={2} />
               </button>
             )}</Crossfade>
           </div>

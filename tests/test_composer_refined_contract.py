@@ -246,3 +246,13 @@ def test_the_model_card_keeps_its_own_look() -> None:
     # sheets keep winning inside it.
     for selector in raw:
         assert selector.startswith((SCOPE, LIGHT_SCOPE)), selector
+
+
+def test_send_is_a_disc() -> None:
+    """The send button, and the stop it hands over to, are discs; the plane inside is drawn and moved by icon-motion.css."""
+    css = read(REFINED)
+
+    assert "border-radius: 50%;" in body_of(css, f"{SCOPE} .composer .send-button")
+    # The disc dims when it cannot send, in both composers, whether nothing is typed or a send is in flight.
+    interactions = read(COMPONENTS / "composer-interactions.css")
+    assert ".send-button:disabled:not(.stop) {" in interactions

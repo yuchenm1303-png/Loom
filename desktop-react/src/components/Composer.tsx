@@ -1,4 +1,4 @@
-import { ArrowUp, Paperclip, Sparkles, Square } from "./icons";
+import { Paperclip, Send, Sparkles, Square } from "./icons";
 import {
   type ComponentProps,
   type FormEvent,
@@ -43,6 +43,8 @@ function SteeringComposer({
   const [attachError, setAttachError] = useState("");
   const [dragging, setDragging] = useState(false);
   const [pendingSends, setPendingSends] = useState(0);
+  // How many messages have left. The plane in the send button is keyed by it, so each one takes off again.
+  const [launched, setLaunched] = useState(0);
   const [stopping, setStopping] = useState(false);
   const [acknowledged, setAcknowledged] = useState(false);
   const [error, setError] = useState("");
@@ -138,6 +140,7 @@ function SteeringComposer({
     setAttachments([]);
     setAttachError("");
     setPendingSends((current) => current + 1);
+    setLaunched((count) => count + 1);
     requestAnimationFrame(() => textareaRef.current?.focus());
 
     void request
@@ -180,6 +183,8 @@ function SteeringComposer({
       void submit();
     }
   }
+
+  const canGuide = !stopping && Boolean(value.trim() || quote || attachments.some((item) => imagesAllowed || !item.isImage));
 
   return (
     <div className="composer-wrap composer-refined live-steering-composer">
@@ -247,12 +252,13 @@ function SteeringComposer({
           <div className="composer-right">
             <button
               type="submit"
-              className="send-button"
-              disabled={stopping || (!value.trim() && !quote && !attachments.some((item) => imagesAllowed || !item.isImage))}
+              className={`send-button ${canGuide ? "is-ready" : "is-idle"}`}
+              data-sent={launched ? "" : undefined}
+              disabled={!canGuide}
               title="Guide current task"
               aria-label="Guide current task"
             >
-              <ArrowUp size={17} strokeWidth={2.2} />
+              <Send key={launched} size={17} strokeWidth={2} />
             </button>
             <button
               type="button"

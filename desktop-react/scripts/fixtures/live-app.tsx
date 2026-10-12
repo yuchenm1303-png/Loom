@@ -532,6 +532,8 @@ const bridge: Record<string, unknown> = {
       permissionModes: ["read-only", "approval", "workspace", "full-access"] } }),
   call: async (method: string, args: Record<string, unknown> = {}) => structuredClone(handlers[method]?.(args) || {}),
   listModels: async () => models,
+  // The quota ring reads `windows[0]` and `balances.map`, so the catch-all `{}` below would crash the composer.
+  queryModelUsage: async () => ({ status: "unsupported", provider: "", windows: [], balances: [], checkedAt: Date.now(), message: "" }),
   accountStatus: async () => ({ ok: true, snapshot: { configured: true, reachable: true, authenticated: true,
     user: { id: "live-user", name: "Loom Designer", email: "live@example.invalid" }, serviceUrl: "" } }),
   onNotification: (listener: Listener) => {

@@ -338,8 +338,9 @@
     inset 0 1px rgba(255,255,255,.18);
 }
 
-/* Idle send remains readable but visually dormant. */
-.composer-refined .composer .send-button.is-idle:disabled {
+/* A disabled send (nothing to send, or a send in flight) remains readable but
+   visually dormant. */
+.composer-refined .composer .send-button:disabled:not(.stop) {
   opacity: 1;
 }
 
@@ -501,12 +502,16 @@ html[data-loom-theme="light"] .composer-refined .composer:is(.is-focused, :focus
   background: rgba(105,90,216,.13);
 }
 
-/* Disabled send is intentionally a quiet neutral square. */
-html[data-loom-theme="light"] .composer-refined .composer .send-button.is-idle:disabled {
+/* Disabled send is intentionally a quiet neutral disc. */
+html[data-loom-theme="light"] .composer-refined .composer .send-button:disabled:not(.stop) {
   border-color: rgba(28,31,37,.035);
   background: #f2f3f5;
   color: #969da7;
-  box-shadow: inset 0 1px rgba(255,255,255,.90);
+  /* Same shadow list as the ready disc, with the drop shadow clear: lists of a
+     different shape do not interpolate, so the ready shadow would arrive at once. */
+  box-shadow:
+    0 5px 14px rgba(105,90,216,0),
+    inset 0 1px rgba(255,255,255,.90);
 }
 
 /* Ready send is an accent endpoint, but never blooms until the user points at it. */
@@ -530,11 +535,14 @@ html[data-loom-theme="light"] .composer-refined .composer .send-button.is-ready:
 }
 
 /* Dark theme ready/idle distinction --------------------------------------- */
-html:not([data-loom-theme="light"]) .composer-refined .composer .send-button.is-idle:disabled {
+html:not([data-loom-theme="light"]) .composer-refined .composer .send-button:disabled:not(.stop) {
   border-color: rgba(255,255,255,.035);
   background: #24272e;
   color: #6f7784;
-  box-shadow: inset 0 1px rgba(255,255,255,.02);
+  box-shadow:
+    0 6px 16px rgba(0,0,0,0),
+    0 0 0 1px rgba(139,124,246,0),
+    inset 0 1px rgba(255,255,255,.02);
 }
 
 html:not([data-loom-theme="light"]) .composer-refined .composer .send-button.is-ready {

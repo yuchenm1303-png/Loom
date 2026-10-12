@@ -234,11 +234,11 @@
   transform: none;
 }
 
-/* Send: a flat, high-contrast key. The surface-inverse colour reads as the one
+/* Send: a flat, high-contrast disc. The surface-inverse colour reads as the one
    primary action without any shine. */
 :root .composer-wrap.composer-refined .composer .send-button {
   border: 0;
-  border-radius: 10px;
+  border-radius: 50%;
   box-shadow: none;
   transform: none;
   transition: background-color 140ms ease, color 140ms ease;
@@ -280,6 +280,14 @@
 
 :root .composer-wrap.composer-refined .composer .send-button.stop:hover:not(:disabled) {
   background: var(--cq-press);
+}
+
+/* A keyboard-focused disc is ringed in the accent, a gap off its edge. The ring
+   the interactions sheet draws as a box-shadow never showed on this button: the
+   ready and idle shadows outrank it. */
+:root .composer-wrap.composer-refined .composer .send-button:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent) 60%, transparent);
+  outline-offset: 2px;
 }
 
 :root .composer-wrap.composer-refined .composer-hint {

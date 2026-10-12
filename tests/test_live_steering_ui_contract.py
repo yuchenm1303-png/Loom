@@ -133,5 +133,7 @@ def test_steering_composer_does_not_wait_for_rpc_before_clearing_and_unlocking()
     assert "pickAttachments" in source
     assert "onPaste={(event) => void onPaste(event)}" in source
     assert 'disabled={stopping}' in source
-    assert 'disabled={stopping || (!value.trim() && !quote && !attachments.some((item) => imagesAllowed || !item.isImage))}' in source
+    # Guidance is sendable as soon as there is something to send, and is never gated on a pending send.
+    assert "const canGuide = !stopping && Boolean(value.trim() || quote || attachments.some((item) => imagesAllowed || !item.isImage));" in source
+    assert "disabled={!canGuide}" in source
     assert "消息已立即显示，正在后台确认…" in source
