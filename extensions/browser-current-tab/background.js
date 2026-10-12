@@ -1021,7 +1021,10 @@ async function sendNativeKeyChord(target, rawKey) {
   }
   const main = nativeKeyDescriptor(mainRaw);
   const printable = Array.from(main.key).length === 1 && main.key !== "\n" && main.key !== "\r" && main.key !== "\t";
-  await dispatchNativeKey(target, "keyDown", main.key, main.code, printable && mask === 0 ? main.key : "", mask, main.virtualKey);
+  // Enter needs its character payload for Chromium's default editing action;
+  // keydown/keyup alone notify listeners but do not insert a line break.
+  const text = main.key === "Enter" && !(mask & 7) ? "\r" : printable && mask === 0 ? main.key : "";
+  await dispatchNativeKey(target, "keyDown", main.key, main.code, text, mask, main.virtualKey);
   await dispatchNativeKey(target, "keyUp", main.key, main.code, "", mask, main.virtualKey);
   for (const spec of modifiers.reverse()) {
     mask &= ~spec.bit;
@@ -1034,7 +1037,7 @@ async function sendNativeText(target, text) {
   for (const char of Array.from(String(text || ""))) {
     if (char === "\r") continue;
     if (char === "\n") {
-      await dispatchNativeKey(target, "keyDown", "Enter", "Enter", "", 0, NAMED_VIRTUAL_KEYS.Enter);
+      await dispatchNativeKey(target, "keyDown", "Enter", "Enter", "\r", 0, NAMED_VIRTUAL_KEYS.Enter);
       await dispatchNativeKey(target, "keyUp", "Enter", "Enter", "", 0, NAMED_VIRTUAL_KEYS.Enter);
     } else if (char === "\t") {
       await dispatchNativeKey(target, "keyDown", "Tab", "Tab", "", 0, NAMED_VIRTUAL_KEYS.Tab);
@@ -1066,7 +1069,34 @@ async function sendNativeText(target, text) {
 }
 
 async function click(args) {
-  return withElement(args, "click", {}, 250);
+  const tab = await actionTab(args);
+  const loomId = await elementRefFor(tab.id, args.index);
+  return withNavigationWatch(tab.id, async () => {
+    let expected = false;
+    const native = await withNativeInput(tab.id, async (target) => {
+      const point = await inject(tab.id, runPageAction, ["prepare_click", {
+        loom_id: loomId, index: Number(args.index),
+      }]);
+      expected = point.navigation_expected;
+      await dispatchNativeClick(target, point.x, point.y, "left");
+    });
+    if (!native.ok) throw new Error(`Native browser click failed: ${native.error}`);
+    return { ok: true, native_input: true, navigation_expected: expected };
+  }, 250);
+}
+
+async function dispatchNativeClick(target, x, y, button) {
+  const buttons = button === "left" ? 1 : button === "right" ? 2 : 4;
+  await chrome.debugger.sendCommand(target, "Input.dispatchMouseEvent", { type: "mouseMoved", x, y });
+  try {
+    await chrome.debugger.sendCommand(target, "Input.dispatchMouseEvent", {
+      type: "mousePressed", x, y, button, buttons, clickCount: 1,
+    });
+  } finally {
+    await chrome.debugger.sendCommand(target, "Input.dispatchMouseEvent", {
+      type: "mouseReleased", x, y, button, buttons: 0, clickCount: 1,
+    });
+  }
 }
 
 async function hover(args) {
@@ -1101,19 +1131,12 @@ async function clickAt(args) {
     throw new Error("click_at requires finite non-negative viewport coordinates");
   }
   if (!["left", "right", "middle"].includes(button)) throw new Error("click_at button must be left, right, or middle");
-  const buttons = button === "left" ? 1 : button === "right" ? 2 : 4;
   await announceAction(tab, `Click at ${Math.round(x)},${Math.round(y)}`, "Browser Use", { x, y });
   return withNavigationWatch(
     tab.id,
     async () => {
       const native = await withNativeInput(tab.id, async (target) => {
-        await chrome.debugger.sendCommand(target, "Input.dispatchMouseEvent", { type: "mouseMoved", x, y });
-        await chrome.debugger.sendCommand(target, "Input.dispatchMouseEvent", {
-          type: "mousePressed", x, y, button, buttons, clickCount: 1,
-        });
-        await chrome.debugger.sendCommand(target, "Input.dispatchMouseEvent", {
-          type: "mouseReleased", x, y, button, buttons: 0, clickCount: 1,
-        });
+        await dispatchNativeClick(target, x, y, button);
       });
       if (native.ok) return { ok: true, native_input: true };
       throw new Error(`Native browser click failed: ${native.error}`);
@@ -1950,13 +1973,19 @@ function runPageAction(action, args = {}) {
     return false;
   }
 
-  function clickElement() {
+  function prepareClick() {
     const el = targetById(args.loom_id);
+    if (el.disabled || el.getAttribute("aria-disabled") === "true") throw new Error("Target element is disabled");
+    el.scrollIntoView({ block: "center", inline: "center", behavior: "instant" });
+    const rect = el.getBoundingClientRect();
+    const left = Math.max(0, rect.left), right = Math.min(window.innerWidth, rect.right);
+    const top = Math.max(0, rect.top), bottom = Math.min(window.innerHeight, rect.bottom);
+    if (right <= left || bottom <= top) throw new Error("Target element has no visible click area");
+    const x = (left + right) / 2, y = (top + bottom) / 2;
+    const hit = document.elementFromPoint(x, y);
+    if (hit !== el && !el.contains(hit)) throw new Error("Target element is covered by another element");
     showTargetHud(el, `Click #${Number(args.index)}`, clean(el.innerText || el.value || el.getAttribute("aria-label") || el.getAttribute("placeholder") || el.tagName, 180), "action");
-    el.focus({ preventScroll: true });
-    const expected = navigationExpectedFor(el);
-    el.click();
-    return { ok: true, navigation_expected: expected };
+    return { x, y, navigation_expected: navigationExpectedFor(el) };
   }
 
   function hudPointInPage() {
@@ -2293,7 +2322,7 @@ function runPageAction(action, args = {}) {
       showStatusHud(clean(args.title || "Browser action", 80), clean(args.subtitle || "Browser Use", 140));
       return true;
     case "hud_point": return hudPointInPage();
-    case "click": return clickElement();
+    case "prepare_click": return prepareClick();
     case "click_at": return clickAtInPage();
     case "focus_visual_surface": return focusVisualSurface();
     case "hover": return hoverElement();

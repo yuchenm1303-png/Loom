@@ -17,8 +17,8 @@ async function main() {
       <button id="button">Click</button>`);
     await page.evaluate(() => {
       window.events = [];
-      for (const type of ['input', 'beforeinput', 'keydown', 'keyup', 'click', 'focus'])
-        window.addEventListener(type, e => events.push({ type, key: e.key, trusted: e.isTrusted, id: e.target.id }), true);
+      for (const type of ['input', 'beforeinput', 'keydown', 'keyup', 'mousedown', 'mouseup', 'click', 'focus'])
+        window.addEventListener(type, e => events.push({ type, key: e.key, trusted: e.isTrusted, id: e.target.id, x: e.clientX, y: e.clientY }), true);
     });
     // Real extension actions often run in a background tab after screenshot
     // restores the user's tab. Test that state, not only a focused page.
@@ -68,6 +68,37 @@ async function main() {
     });
     await type('ce', '中', false);
     assert.equal(await page.$eval('#ce', el => el.textContent), 'A中BC');
+    await type('ta', 'ABCDE');
+    await page.focus('#ta');
+    const selection = () => page.$eval('#ta', el => [el.selectionStart, el.selectionEnd]);
+    await run('pressKey({key: "Home"})');
+    assert.deepEqual(await selection(), [0, 0]);
+    await run('pressKey({key: "ArrowRight"})');
+    assert.deepEqual(await selection(), [1, 1]);
+    await run('pressKey({key: "Enter"})');
+    assert.equal(await value('ta'), 'A\nBCDE');
+    await run('pressKey({key: "Control+a"})');
+    assert.deepEqual(await selection(), [0, 6]);
+    await run('pressKey({key: "ArrowLeft"})');
+    assert.deepEqual(await selection(), [0, 0]);
+    await run('pressKey({key: "Control+a"})');
+    await run('pressKey({key: "ArrowRight"})');
+    assert.deepEqual(await selection(), [6, 6]);
+    await run('pressKey({key: "Shift+Home"})');
+    assert.deepEqual(await selection(), [2, 6]);
+    await run('pressKey({key: "End"})');
+    assert.deepEqual(await selection(), [6, 6]);
+    await run('sendNativeText({tabId: 1}, "\\nX")');
+    assert.equal(await value('ta'), 'A\nBCDE\nX');
+    await run('pressKey({key: "Shift+Enter"})');
+    assert.equal(await value('ta'), 'A\nBCDE\nX\n');
+    await run('pressKey({key: "z"})');
+    assert.equal(await value('ta'), 'A\nBCDE\nX\nz');
+    await page.focus('#ce');
+    await run('pressKey({key: "End"})');
+    await run('pressKey({key: "Enter"})');
+    await run('pressKey({key: "x"})');
+    assert.match(await page.$eval('#ce', el => el.innerText), /\nx$/);
     await page.focus('#a');
     await run('pressKey({key: "Escape"})');
     assert.ok(await page.evaluate(() => events.some(e => e.type === 'keydown' && e.key === 'Escape' && e.trusted)));
@@ -76,6 +107,22 @@ async function main() {
     const rect = await page.locator('#button').boundingBox();
     await run(`clickAt({x: ${rect.x + rect.width / 2}, y: ${rect.y + rect.height / 2}})`);
     assert.ok(await page.evaluate(() => events.some(e => e.type === 'click' && e.id === 'button' && e.trusted)));
+    await page.$eval('#button', el => el.setAttribute('data-loom-bridge-id', 'button'));
+    await page.evaluate(() => { events.length = 0; });
+    await run('click({index: "button"})');
+    const clicks = await page.evaluate(() => events.filter(e => ['mousedown', 'mouseup', 'click'].includes(e.type)));
+    assert.deepEqual(clicks.map(e => e.type), ['mousedown', 'mouseup', 'click']);
+    assert.ok(clicks.every(e => e.trusted && e.id === 'button' && e.x > 0 && e.y > 0));
+    await page.$eval('#button', el => { el.disabled = true; });
+    await assert.rejects(run('click({index: "button"})'), /disabled/);
+    await page.$eval('#button', el => { el.disabled = false; });
+    await page.evaluate(() => {
+      const cover = document.createElement('div'); cover.id = 'cover';
+      cover.style.cssText = 'position:fixed;inset:0;z-index:2147483647;background:white';
+      document.body.appendChild(cover);
+    });
+    await assert.rejects(run('click({index: "button"})'), /covered/);
+    await page.$eval('#cover', el => el.remove());
     // The isolated backend uses this exact preparation function in the node's CDP frame.
     const py = fs.readFileSync(path.join(__dirname, '../app/agent_runtime/browser_native_edit.py'), 'utf8');
     const prepare = py.split('PREPARE_EDIT = r"""')[1].split('"""')[0];

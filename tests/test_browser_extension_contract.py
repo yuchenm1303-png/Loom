@@ -317,7 +317,7 @@ def test_a_privileged_current_page_tells_the_agent_to_recover_automatically(back
 
 def test_click_reports_whether_a_navigation_is_coming(background):
     assert "navigationExpectedFor" in background
-    click_body = _function_body(background, "clickElement")
+    click_body = _function_body(background, "prepareClick")
     assert "navigation_expected" in click_body
     # _blank opens a new tab, so the watched tab never navigates and waiting for
     # it would stall every such click until the timeout.
@@ -599,7 +599,8 @@ def test_visual_surfaces_are_exposed_and_have_native_coordinate_input(background
     assert "getBoundingClientRect" in surfaces
 
     click = _function_body(background, "clickAt")
-    assert "Input.dispatchMouseEvent" in click
+    assert "dispatchNativeClick" in click
+    assert "Input.dispatchMouseEvent" in _function_body(background, "dispatchNativeClick")
     assert "Native browser click failed" in click
     assert '["click_at",' not in click
     fallback = _function_body(background, "clickAtInPage")
