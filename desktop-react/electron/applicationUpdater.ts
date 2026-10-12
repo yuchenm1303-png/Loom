@@ -40,7 +40,8 @@ async function fetchBytes(url: string, limit: number) {
 }
 export async function checkApplicationUpdates(manual = false) {
   if (!manual && !readUpdatePreferences().automaticUpdates) return;
-  if (!enabled || checking || status.phase === "downloaded") return checking;
+  if (!enabled || checking || restarting) return checking;
+  const previousReady = status.phase === "downloaded" ? { ...status } : null;
   checking = (async () => {
     if (globalThis.loomApplicationBootstrap) globalThis.loomApplicationBootstrap.downloading = true;
     setStatus({ phase: "checking" });
@@ -50,11 +51,11 @@ export async function checkApplicationUpdates(manual = false) {
       const response = await fetchBytes(`${channel}?check=${Date.now()}`, 4 * 1024 * 1024);
       const raw = JSON.parse(response.toString());
       // A newer dependency baseline belongs to the installer updater.
-      if (raw.bootstrap !== app.getVersion()) { setStatus({ phase: "idle" }); return; }
+      if (raw.bootstrap !== app.getVersion()) { setStatus(previousReady ?? { phase: "idle" }); return; }
       const release = validateApplicationRelease(raw, app.getVersion());
       const baseline = await fs.readFile(path.join(bundled, "dist/ui-baseline.json"), "utf8").then(JSON.parse).catch(() => null);
       if (baseline && (release.sourceTime < baseline.sourceTime || release.sourceSha === baseline.sourceSha)) {
-        setStatus({ phase: "idle" }); return;
+        setStatus(previousReady ?? { phase: "idle" }); return;
       }
       const pointer = await readApplicationPointer(root);
       if (release.build <= Math.max(pointer.active || 0, pointer.ready || 0) || pointer.rejected?.includes(release.build)) {
@@ -80,7 +81,7 @@ export async function checkApplicationUpdates(manual = false) {
       setStatus({ ...status, phase: "downloaded", percent: 100, transferred: total });
       await maybeInstallApplicationUpdate();
     } catch (error) {
-      setStatus({ phase: "error", error: error instanceof Error ? error.message : "Application update failed" });
+      setStatus({ ...(previousReady ?? { phase: "error" as const }), error: error instanceof Error ? error.message : "Application update failed" });
     }
   })().finally(() => {
     if (globalThis.loomApplicationBootstrap) globalThis.loomApplicationBootstrap.downloading = false;
@@ -97,6 +98,8 @@ export async function maybeInstallApplicationUpdate(): Promise<boolean> {
 export async function installApplicationUpdate(): Promise<boolean> {
   if (!enabled || restarting || status.phase !== "downloaded" || !safeToRestart) return false;
   try { if (!await safeToRestart()) return false; } catch { return false; }
+  // The guard awaits runtime state; a newer download may have started meanwhile.
+  if (restarting || status.phase !== "downloaded") return false;
   restarting = true;
   broadcastHostEvent("loom:host-updating", null);
   // The new Host selects the staged release; UI children then follow its build.

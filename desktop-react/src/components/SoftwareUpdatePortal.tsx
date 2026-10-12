@@ -138,7 +138,7 @@ function UpdatePanel() {
   const progress = Math.max(0, Math.min(100, Number(state?.percent ?? 0)));
   const busy = actionBusy || state?.phase === "checking" || state?.phase === "downloading";
   const canInstall = state?.enabled === true && state.phase === "downloaded";
-  const canCheck = state?.enabled === true && !busy && state.phase !== "downloaded";
+  const canCheck = state?.enabled === true && !busy;
 
   useEffect(() => {
     let disposed = false;
@@ -288,6 +288,11 @@ function UpdatePanel() {
               <RefreshCw size={14} spinning={busy} />{state?.phase === "checking" ? "Checking…" : state?.phase === "downloading" ? "Downloading…" : "Check for updates"}
             </button>
           )}
+          {canInstall ? (
+            <button type="button" className="software-update-secondary" disabled={!canCheck} onClick={() => void checkNow()}>
+              <RefreshCw size={14} />检查更新
+            </button>
+          ) : null}
           <button type="button" className="software-update-secondary" onClick={() => void bridge().openExternal(RELEASES_URL)}>
             <ExternalLink size={13} />Release history
           </button>
