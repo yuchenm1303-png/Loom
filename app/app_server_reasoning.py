@@ -683,6 +683,8 @@ class ReasoningManagedLoomAppServerService(ManagedStreamingLoomAppServerService)
 
     @staticmethod
     def _gateway_enforces_policy(selection: str, base_url: str) -> bool:
+        if selection.startswith("builtin:intern:"):
+            return base_url.rstrip("/") == "https://account.smirel.com/model/v1/intern"
         return selection.startswith(("builtin:ant-ling", "managed:ant-ling")) and base_url.rstrip("/") == "https://account.smirel.com/model/v1"
 
     def _model_api_key(

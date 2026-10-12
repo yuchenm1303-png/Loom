@@ -14,6 +14,7 @@ from .catalog import GROUPS, selection_for_model
 # Provider additions live here and in catalog.GROUPS; model additions do not
 # require a desktop release. All secrets stay in the server environment.
 PROVIDERS = {
+    "intern": ("https://discovery-api.intern-ai.org.cn/v1", ("LOOM_INTERN_API_KEY",), ("LOOM_INTERN_BASE_URL",)),
     "minimax": ("https://api.minimaxi.com/v1", ("MINIMAX_API_KEY", "LOOM_PRIMARY_API_KEY"), ("LOOM_MINIMAX_BASE_URL", "MINIMAX_BASE_URL")),
     "deepseek": ("https://api.deepseek.com", ("DEEPSEEK_API_KEY", "LOOM_DEEPSEEK_API_KEY"), ("LOOM_DEEPSEEK_BASE_URL", "DEEPSEEK_BASE_URL")),
     "ant-ling": ("https://api.ant-ling.com/v1", ("LOOM_ANT_LING_API_KEY", "ANT_LING_API_KEY"), ("LOOM_ANT_LING_BASE_URL",)),

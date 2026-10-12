@@ -73,6 +73,7 @@ def _title_model(value: str) -> str:
 
 
 GROUPS = (
+    CatalogGroup("intern", "Intern Discovery", ("builtin:intern:",)),
     CatalogGroup("minimax", "MiniMax", ("builtin:minimax",)),
     CatalogGroup("deepseek", "DeepSeek", ("builtin:deepseek",)),
     CatalogGroup("ant-ling", "Ant Ling", ("builtin:ant-ling",)),

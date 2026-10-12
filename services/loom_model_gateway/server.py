@@ -23,8 +23,10 @@ ANT_LING_MODELS = (
 
 ANT_LING_DEFAULT_MODEL = "Ling-3.0-flash"
 
-def _policy_model_id(model: str) -> str:
+def _policy_model_id(model: str, group_id: str = "ant-ling") -> str:
     value = str(model or "").strip()
+    if group_id == "intern":
+        return "builtin:intern:" + urllib.parse.quote(value, safe="")
     if value.casefold() == ANT_LING_DEFAULT_MODEL.casefold():
         return "builtin:ant-ling"
     return "builtin:ant-ling:" + urllib.parse.quote(value, safe="")
@@ -45,6 +47,8 @@ class GatewayConfig:
     ant_ling_api_key: str
     model_policy_base_url: str = ""
     upstream_timeout_seconds: float = 180.0
+    intern_base_url: str = "https://discovery-api.intern-ai.org.cn/v1"
+    intern_api_key: str = ""
 
 
 class LoomModelGateway:
@@ -98,63 +102,65 @@ class LoomModelGateway:
             return set()
         return {str(model).strip().casefold() for model in models if str(model).strip()}
 
-    def catalog(self, authorization: str) -> dict[str, Any]:
+    def catalog(self, authorization: str, group_id: str = "ant-ling") -> dict[str, Any]:
         access = self._account_access(authorization)
         allowed = self._allowed_models(access)
         data = []
-        for model in self._catalog_models(access):
-            access_id = _policy_model_id(model) if self.config.model_policy_base_url else model
+        for model in self._catalog_models(access, group_id):
+            access_id = _policy_model_id(model, group_id) if self.config.model_policy_base_url else model
             if access_id.casefold() not in allowed:
                 continue
             data.append({
                 "id": model,
                 "object": "model",
-                "owned_by": "loom/ant-ling",
-                "provider": "ant-ling",
+                "owned_by": "loom/" + group_id,
+                "provider": group_id,
                 "vision": model.casefold().endswith("-vl"),
             })
         return {"object": "list", "data": data}
 
-    def _catalog_models(self, access: dict[str, Any]) -> list[str]:
+    def _catalog_models(self, access: dict[str, Any], group_id: str = "ant-ling") -> list[str]:
         catalog = access.get("catalog")
         if self.config.model_policy_base_url and isinstance(catalog, dict):
             return [str(item["model"]) for item in catalog.get("models", [])
-                if item.get("group_id") == "ant-ling" and item.get("available")]
-        return list(ANT_LING_MODELS)
+                if item.get("group_id") == group_id and item.get("available")]
+        return list(ANT_LING_MODELS) if group_id == "ant-ling" else []
 
-    def authorize_model(self, authorization: str, model: str) -> None:
+    def authorize_model(self, authorization: str, model: str, group_id: str = "ant-ling") -> None:
         normalized = str(model or "").strip()
         if not normalized:
             raise GatewayError(HTTPStatus.BAD_REQUEST, "MODEL_REQUIRED", "model is required.")
         access = self._account_access(authorization)
-        supported = {item.casefold() for item in self._catalog_models(access)}
+        supported = {item.casefold() for item in self._catalog_models(access, group_id)}
         if normalized.casefold() not in supported:
             raise GatewayError(HTTPStatus.NOT_FOUND, "MODEL_NOT_FOUND", f"Model {normalized!r} is not a Loom built-in model.")
         allowed = self._allowed_models(access)
-        access_id = _policy_model_id(normalized) if self.config.model_policy_base_url else normalized
+        access_id = _policy_model_id(normalized, group_id) if self.config.model_policy_base_url else normalized
         if access_id.casefold() not in allowed:
             raise GatewayError(
                 HTTPStatus.FORBIDDEN,
                 "MODEL_NOT_ENTITLED",
                 "This Loom account is not allowed to use this built-in model by the current model policy.",
             )
-        if not self.config.ant_ling_api_key:
-            raise GatewayError(HTTPStatus.SERVICE_UNAVAILABLE, "UPSTREAM_NOT_CONFIGURED", "Ant Ling upstream is not configured on the Loom gateway.")
+        if not (self.config.intern_api_key if group_id == "intern" else self.config.ant_ling_api_key):
+            raise GatewayError(HTTPStatus.SERVICE_UNAVAILABLE, "UPSTREAM_NOT_CONFIGURED", "Selected upstream is not configured on the Loom gateway.")
 
-    def upstream_request(self, body: bytes, authorization: str):
+    def upstream_request(self, body: bytes, authorization: str, group_id: str = "ant-ling"):
         try:
             payload = json.loads(body.decode("utf-8"))
         except (UnicodeDecodeError, json.JSONDecodeError) as exc:
             raise GatewayError(HTTPStatus.BAD_REQUEST, "INVALID_JSON", "Request body must be valid JSON.") from exc
         if not isinstance(payload, dict):
             raise GatewayError(HTTPStatus.BAD_REQUEST, "INVALID_JSON", "Request body must be a JSON object.")
-        self.authorize_model(authorization, str(payload.get("model") or ""))
+        self.authorize_model(authorization, str(payload.get("model") or ""), group_id)
+        base_url = self.config.intern_base_url if group_id == "intern" else self.config.ant_ling_base_url
+        api_key = self.config.intern_api_key if group_id == "intern" else self.config.ant_ling_api_key
         request = urllib.request.Request(
-            f"{self.config.ant_ling_base_url.rstrip('/')}/chat/completions",
+            f"{base_url.rstrip('/')}/chat/completions",
             data=body,
             method="POST",
             headers={
-                "Authorization": f"Bearer {self.config.ant_ling_api_key}",
+                "Authorization": f"Bearer {api_key}",
                 "Content-Type": "application/json",
                 "Accept": "text/event-stream, application/json",
                 "User-Agent": "LoomModelGateway/1",
@@ -196,8 +202,8 @@ class GatewayRequestHandler(BaseHTTPRequestHandler):
             if path == "/healthz":
                 self._write_json(HTTPStatus.OK, {"ok": True, "service": "loom-model-gateway"})
                 return
-            if path == "/v1/models":
-                self._write_json(HTTPStatus.OK, self.application.catalog(self._authorization()))
+            if path in {"/v1/models", "/v1/intern/models"}:
+                self._write_json(HTTPStatus.OK, self.application.catalog(self._authorization(), "intern" if path.startswith("/v1/intern/") else "ant-ling"))
                 return
             raise GatewayError(HTTPStatus.NOT_FOUND, "NOT_FOUND", "Endpoint not found.")
         except GatewayError as exc:
@@ -206,13 +212,13 @@ class GatewayRequestHandler(BaseHTTPRequestHandler):
     def do_POST(self) -> None:
         path = self.path.split("?", 1)[0].rstrip("/") or "/"
         try:
-            if path != "/v1/chat/completions":
+            if path not in {"/v1/chat/completions", "/v1/intern/chat/completions"}:
                 raise GatewayError(HTTPStatus.NOT_FOUND, "NOT_FOUND", "Endpoint not found.")
             length = int(self.headers.get("Content-Length") or 0)
             if length <= 0 or length > self._MAX_BODY_BYTES:
                 raise GatewayError(HTTPStatus.REQUEST_ENTITY_TOO_LARGE, "REQUEST_TOO_LARGE", "Request is too large.")
             body = self.rfile.read(length)
-            upstream = self.application.upstream_request(body, self._authorization())
+            upstream = self.application.upstream_request(body, self._authorization(), "intern" if path.startswith("/v1/intern/") else "ant-ling")
             status = int(getattr(upstream, "status", getattr(upstream, "code", 502)) or 502)
             content_type = str(upstream.headers.get("Content-Type") or "application/json")
             self.send_response(status)
@@ -263,6 +269,8 @@ def main(argv: list[str] | None = None) -> int:
         account_base_url=str(os.environ.get("LOOM_ACCOUNT_INTERNAL_URL") or "http://127.0.0.1:8787/v1"),
         ant_ling_base_url=str(os.environ.get("LOOM_ANT_LING_BASE_URL") or "https://api.ant-ling.com/v1"),
         ant_ling_api_key=str(os.environ.get("LOOM_ANT_LING_API_KEY") or "").strip(),
+        intern_base_url=str(os.environ.get("LOOM_INTERN_BASE_URL") or "https://discovery-api.intern-ai.org.cn/v1").strip(),
+        intern_api_key=str(os.environ.get("LOOM_INTERN_API_KEY") or "").strip(),
         model_policy_base_url=str(os.environ.get("LOOM_MODEL_POLICY_INTERNAL_URL") or "").strip(),
         upstream_timeout_seconds=max(10.0, float(os.environ.get("LOOM_MODEL_UPSTREAM_TIMEOUT", "180"))),
     )

@@ -763,6 +763,8 @@ def _canonical_builtin_selection(selection: str, model: str) -> str:
     requested = str(model or "").strip()
     if not requested:
         return current
+    if current.startswith("builtin:intern:"):
+        return "builtin:intern:" + urllib.parse.quote(requested, safe="")
 
     is_provider_builtin = (
         current == PRIMARY_SELECTION
@@ -1200,11 +1202,36 @@ def _managed_profiles(store: ModelConfigStore, environ: Mapping[str, str] | None
                     "provider",
                 )
             )
+    profiles.extend(_safe_intern(model) for model in (
+        "Agents-A1", "Atria-Dawn-Preview", "deepseek-v4-flash-0731",
+        "deepseek-v4-flash-vision", "deepseek-v4-pro-0813", "glm-5.3",
+        "intern-s2", "kimi-k2.6", "minimax-m3", "qwen3.8-27b",
+    ))
     return profiles
+
+
+INTERN_SELECTION_PREFIX = "builtin:intern:"
+
+
+def _safe_intern(model: str) -> dict[str, Any]:
+    model = str(model or "").strip()
+    if not model or len(model) > 160 or any(ord(c) < 32 for c in model):
+        raise ValueError("invalid Intern model ID")
+    return {
+        "selection": INTERN_SELECTION_PREFIX + urllib.parse.quote(model, safe=""),
+        "id": "intern-" + hashlib.sha256(model.encode()).hexdigest()[:12],
+        "kind": "builtin", "name": model, "model": model,
+        "groupId": "intern", "groupName": "Intern Discovery", "groupOrder": 35,
+        "adapter": "openai-compatible", "baseUrl": "https://account.smirel.com/model/v1/intern",
+        "configured": True, "available": True, "managed": True,
+        "authMode": "loom-account", "vision": "vision" in model.casefold(),
+    }
 
 
 def _base_profile_for_selection(store: ModelConfigStore, selection: str) -> dict[str, Any]:
     requested = str(selection or "").strip()
+    if requested.startswith(INTERN_SELECTION_PREFIX):
+        return _safe_intern(urllib.parse.unquote(requested[len(INTERN_SELECTION_PREFIX):]))
     minimax_model = _minimax_model_from_selection(requested)
     if minimax_model:
         return _safe_minimax(minimax_model)
@@ -1252,7 +1279,9 @@ def _describe_model(
         raise ValueError("model must not be empty")
     effective_selection = _canonical_builtin_selection(selection, requested_model)
     profile = _base_profile_for_selection(store, effective_selection)
-    if _opencode_go_model_from_selection(effective_selection):
+    if effective_selection.startswith(INTERN_SELECTION_PREFIX):
+        profile = _safe_intern(requested_model)
+    elif _opencode_go_model_from_selection(effective_selection):
         profile = _safe_opencode_go(requested_model, configured=bool(_opencode_go_key(store)))
     elif _is_minimax_model(requested_model):
         profile = _safe_minimax(requested_model)
@@ -1295,6 +1324,8 @@ def _resolve(
     explicit_selection = str(selection or "").strip()
     requested = explicit_selection or _active_selection(store, selection_store)
     profile = _with_reasoning(_base_profile_for_selection(store, requested), reasoning_store)
+    if requested.startswith(INTERN_SELECTION_PREFIX):
+        return {**profile, "provider": "openai-compatible", "apiKey": ""}
 
     minimax_model = _minimax_model_from_selection(requested)
     if minimax_model:
@@ -1507,7 +1538,8 @@ def _persist_active(
 ) -> dict[str, Any]:
     selection = str(payload.get("selection") or "").strip() or PRIMARY_SELECTION
     if (
-        _minimax_model_from_selection(selection)
+        selection.startswith(INTERN_SELECTION_PREFIX)
+        or _minimax_model_from_selection(selection)
         or _deepseek_model_from_selection(selection)
         or _opencode_go_model_from_selection(selection)
         or _managed_model_from_selection(selection)
