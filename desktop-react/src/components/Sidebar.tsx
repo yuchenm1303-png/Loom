@@ -993,19 +993,6 @@ export const Sidebar = memo(function Sidebar({
   return (
     <aside className="sidebar compact-sidebar codex-sidebar">
       <div className="codex-sidebar-topbar">
-        <div className="codex-sidebar-brand">
-          <span className="codex-sidebar-brand-mark" aria-hidden="true">
-            <span className="codex-sidebar-brand-aura" />
-            <span className="codex-sidebar-brand-orbit codex-sidebar-brand-orbit-a codex-sidebar-brand-orbit-back" />
-            <span className="codex-sidebar-brand-orbit codex-sidebar-brand-orbit-b codex-sidebar-brand-orbit-back" />
-            <span className="codex-sidebar-brand-core" />
-            <span className="codex-sidebar-brand-orbit codex-sidebar-brand-orbit-a codex-sidebar-brand-orbit-front" />
-            <span className="codex-sidebar-brand-orbit codex-sidebar-brand-orbit-b codex-sidebar-brand-orbit-front" />
-            <span className="codex-sidebar-brand-spark codex-sidebar-brand-spark-a" />
-            <span className="codex-sidebar-brand-spark codex-sidebar-brand-spark-b" />
-          </span>
-          <span className="codex-sidebar-brand-label">{threadView === "archived" ? copy.archive : "Loom"}</span>
-        </div>
         <div className="compact-sidebar-actions">
           <button
             type="button"

@@ -126,7 +126,7 @@ html[data-loom-density="spacious"] .sidebar.compact-sidebar { --sb-row-h: 38px; 
   padding: 0 0 0 6px;
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   gap: 8px;
   user-select: none;
 }
