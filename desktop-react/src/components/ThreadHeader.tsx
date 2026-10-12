@@ -16,6 +16,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useI18n } from "../i18n";
 import type { ContextCompactionProgress, ContextReport } from "../types/loom";
 import { ContextMeter } from "./ContextMeter";
+import { AnimatedThreadTitle } from "./AnimatedThreadTitle";
 import "./thread-header.css";
 import "./thread-review-entry.css";
 
@@ -188,7 +189,7 @@ export function ThreadHeader({
       <div className="thread-header-main">
         <div className="thread-header-copy">
           <div className="thread-title-line">
-            <strong title={title}>{title}</strong>
+            <strong title={title}><AnimatedThreadTitle title={title} /></strong>
           </div>
 
           <button

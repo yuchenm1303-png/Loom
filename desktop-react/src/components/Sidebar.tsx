@@ -1,3 +1,4 @@
+import { AnimatedThreadTitle } from "./AnimatedThreadTitle";
 import {
   Archive,
   ArchiveRestore,
@@ -835,7 +836,7 @@ export const Sidebar = memo(function Sidebar({
             title={`${thread.title || copy.untitled}${time ? ` · ${time}` : ""}`}
             aria-current={active ? "page" : undefined}
           >
-            <span className="compact-thread-title">{thread.title || copy.untitled}</span>
+            <span className="compact-thread-title"><AnimatedThreadTitle title={thread.title || copy.untitled} /></span>
             <span className={`compact-thread-dot ${running ? "running" : unread ? "unread" : ""}`} aria-hidden="true" />
             {running ? <span className="sr-only">{copy.running}</span> : null}
             {unread ? <span className="sr-only">{copy.unread}</span> : null}
