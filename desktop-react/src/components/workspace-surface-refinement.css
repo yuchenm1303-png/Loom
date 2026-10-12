@@ -31,10 +31,11 @@
 }
 :root .app-shell .thread-header.polished-thread-header {
   background: var(--ws-canvas) !important;
-  border-bottom: 1px solid var(--ws-line);
+  border-bottom: 0;
   box-shadow: none;
 }
-:root .app-shell .thread-header.polished-thread-header::before { display: none; }
+:root .app-shell .thread-header.polished-thread-header::before,
+:root .app-shell .thread-header.polished-thread-header::after { display: none; }
 /* Anchor the dissolve outside the scrolling layer. A mask on the scroll
    container can move with its contents in Chromium, exposing the clip edge. */
 :root .app-shell .transcript-scroll:not(.is-empty) {
@@ -43,18 +44,6 @@
 }
 :root .app-shell .conversation-stage {
   background: var(--ws-canvas);
-}
-:root .app-shell .conversation-stage[data-has-entries]::before,
-:root .app-shell .conversation-stage[data-has-entries]::after {
-  display: block;
-  height: 12px;
-  background: linear-gradient(to bottom,
-    var(--ws-canvas) 0%,
-    var(--ws-canvas) 8%,
-    color-mix(in srgb, var(--ws-canvas) 92%, transparent) 25%,
-    color-mix(in srgb, var(--ws-canvas) 55%, transparent) 55%,
-    color-mix(in srgb, var(--ws-canvas) 16%, transparent) 80%,
-    transparent 100%);
 }
 :root .app-shell .thread-header :is(.thread-review-button, .thread-header-icon-button, .context-meter-chip) {
   background: transparent;
