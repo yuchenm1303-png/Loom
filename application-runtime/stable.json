@@ -1,22 +1,22 @@
 {
   "schema": 1,
   "kind": "application",
-  "build": 27001,
+  "build": 28001,
   "bootstrap": "0.1.86",
-  "sourceSha": "3cef369c0cb570d0996ae3fbb2c61c31ede39dd8",
-  "sourceTime": 1791796945,
+  "sourceSha": "97659d29350c3f806ed60a009b69485247c4a6b0",
+  "sourceTime": 1791797606,
   "files": [
+    {
+      "path": "dist/assets/index-CjCArc4U.js",
+      "size": 1840798,
+      "sha256": "c45db712958c857e2ed54509a5790ddbebfaa49c42af5ba07163aa0deff4fa39",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-28001/c45db712958c857e2ed54509a5790ddbebfaa49c42af5ba07163aa0deff4fa39"
+    },
     {
       "path": "dist/assets/index-D20FYzmo.css",
       "size": 1151567,
       "sha256": "5888af7288f7454ad4794e2f13a5a8b45b5aac4c7dda2000ba86c7ee494c707a",
       "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-22001/5888af7288f7454ad4794e2f13a5a8b45b5aac4c7dda2000ba86c7ee494c707a"
-    },
-    {
-      "path": "dist/assets/index-LFoAXLbg.js",
-      "size": 1840216,
-      "sha256": "461ac28517305a802535508cafc18c68b703f422ef263e73bebd9186a3f73f25",
-      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-24001/461ac28517305a802535508cafc18c68b703f422ef263e73bebd9186a3f73f25"
     },
     {
       "path": "dist/assets/KaTeX_AMS-Regular-BQhdFMY1.woff2",
@@ -1119,8 +1119,8 @@
     {
       "path": "dist/index.html",
       "size": 3157,
-      "sha256": "6b6ecd033e80cabc7d2bf8910afe16fe2f041e3830eb985abbcaba676e48a18a",
-      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-24001/6b6ecd033e80cabc7d2bf8910afe16fe2f041e3830eb985abbcaba676e48a18a"
+      "sha256": "8aae83662cb031ba4ad1f7392750249d4948db51e3e77d6b0ca4e1164e061dd2",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-28001/8aae83662cb031ba4ad1f7392750249d4948db51e3e77d6b0ca4e1164e061dd2"
     },
     {
       "path": "dist/smirel-logo.png",
@@ -1143,8 +1143,8 @@
     {
       "path": "dist/ui-baseline.json",
       "size": 80,
-      "sha256": "1633481e2df098e050e6b8e78695e2264b4d37085f81ee6f64a350bc9ee82f51",
-      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-27001/1633481e2df098e050e6b8e78695e2264b4d37085f81ee6f64a350bc9ee82f51"
+      "sha256": "9ab28202f5b683d2c13b40dce73b04471c2f8563ab7e77104bac19d610b5d912",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-28001/9ab28202f5b683d2c13b40dce73b04471c2f8563ab7e77104bac19d610b5d912"
     },
     {
       "path": "dist-electron/accountClient.js",
@@ -1256,15 +1256,21 @@
     },
     {
       "path": "dist-electron/main.js",
-      "size": 83419,
-      "sha256": "0ebcb8314af6cdf30b86b93b98bb444b5c6d8eb0f99ce0b89b3a570c133b7182",
-      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-27001/0ebcb8314af6cdf30b86b93b98bb444b5c6d8eb0f99ce0b89b3a570c133b7182"
+      "size": 83370,
+      "sha256": "7077092eb7c969e980ddea7d4124ebcf27969fc933e679cd5cba3dee7b526465",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-28001/7077092eb7c969e980ddea7d4124ebcf27969fc933e679cd5cba3dee7b526465"
     },
     {
       "path": "dist-electron/modelManager.js",
-      "size": 34991,
-      "sha256": "27d0e714c558be244d781ebd2e47dcf31b2ef255ce85d426e1e5c1cf67842ec9",
-      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-11001/27d0e714c558be244d781ebd2e47dcf31b2ef255ce85d426e1e5c1cf67842ec9"
+      "size": 35787,
+      "sha256": "3bec5fe8550631b2b0befc0b94852ba59273cdc6189d75da2e33b12b8b4cdbb1",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-28001/3bec5fe8550631b2b0befc0b94852ba59273cdc6189d75da2e33b12b8b4cdbb1"
+    },
+    {
+      "path": "dist-electron/modelSwitchQueue.js",
+      "size": 548,
+      "sha256": "16544c18f402407464696d32d27a5da539f8af3c09cc395f8bdc083dd402330d",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-28001/16544c18f402407464696d32d27a5da539f8af3c09cc395f8bdc083dd402330d"
     },
     {
       "path": "dist-electron/modelUsage.js",
