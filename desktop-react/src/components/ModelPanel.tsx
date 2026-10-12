@@ -581,7 +581,7 @@ export function ModelPanel({
     const providers = groups.filter((group) => tokens.every((token) => group.name.toLowerCase().includes(token)));
     return { models, providers };
   }, [groups, query]);
-  const locked = Boolean(busy || running);
+  const locked = Boolean(busy);
 
   useEffect(() => {
     if (!confirmDelete) return;
@@ -650,12 +650,6 @@ export function ModelPanel({
     // Picking the model already in use simply dismisses the picker.
     if (isCurrentProfile(profile)) {
       onClose();
-      return;
-    }
-    if (locked) {
-      setError(running
-        ? "This conversation is still running. Stop its active turn before switching models."
-        : "Another model change is in progress. Try again when it finishes.");
       return;
     }
     setPendingSelection(profile.selection);
@@ -1034,7 +1028,7 @@ export function ModelPanel({
           {running ? (
             <div className="mp-notice">
               <Lock size={13} strokeWidth={2} aria-hidden="true" />
-              <span>Stop the active turn to switch models.</span>
+              <span>You can select another model now; it takes effect on the next turn.</span>
             </div>
           ) : null}
 
@@ -1061,7 +1055,7 @@ export function ModelPanel({
                       current={current}
                       pending={pendingSelection === profile.selection}
                       disabled={!accountAuthenticated || profile.available === false || deleting}
-                      dimmed={!accountAuthenticated || profile.available === false || Boolean(running) || setup.needsKey}
+                      dimmed={!accountAuthenticated || profile.available === false || setup.needsKey}
                       meta={!accountAuthenticated ? "Sign in" : profile.available === false ? unavailableLabel(profile) : reasoningLabel(profile)}
                       metaAttention={!accountAuthenticated || profile.available === false}
                       end={!accountAuthenticated || profile.available === false ? <Lock size={13} strokeWidth={2} /> : undefined}
@@ -1148,7 +1142,7 @@ export function ModelPanel({
           {running ? (
             <div className="mp-notice">
               <Lock size={13} strokeWidth={2} aria-hidden="true" />
-              <span>Stop the active turn to switch models.</span>
+              <span>You can select another model now; it takes effect on the next turn.</span>
             </div>
           ) : null}
 
@@ -1172,7 +1166,7 @@ export function ModelPanel({
                           current={current}
                           pending={pendingSelection === profile.selection}
                           disabled={!accountAuthenticated || profile.available === false}
-                          dimmed={!accountAuthenticated || profile.available === false || Boolean(running)}
+                          dimmed={!accountAuthenticated || profile.available === false}
                           meta={!accountAuthenticated ? "Sign in" : profile.available === false ? unavailableLabel(profile) : connectFirst ? "Connect" : reasoningLabel(profile)}
                           metaAttention={!accountAuthenticated || profile.available === false || connectFirst}
                           end={!accountAuthenticated || profile.available === false ? <Lock size={13} strokeWidth={2} /> : connectFirst ? <ChevronRight size={14} strokeWidth={1.9} /> : undefined}
@@ -1224,7 +1218,7 @@ export function ModelPanel({
                         current={false}
                         pending={pendingSelection === profile.selection}
                         disabled={!accountAuthenticated}
-                        dimmed={Boolean(running)}
+                        dimmed={false}
                         leading={<ProviderMark id={groupId} name={providerName || profile.name} small />}
                         meta={providerName}
                         end={connectFirst ? <KeyRound size={13} strokeWidth={1.9} /> : undefined}

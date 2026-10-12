@@ -254,7 +254,8 @@ def test_reasoning_preferences_are_scoped_to_connection_and_model(tmp_path) -> N
 
 
 
-def test_thread_model_switch_uses_canonical_server_connection(monkeypatch, tmp_path) -> None:
+@pytest.mark.parametrize("active_turn", [False, True])
+def test_thread_model_switch_uses_canonical_server_connection(monkeypatch, tmp_path, active_turn) -> None:
     service = object.__new__(ReasoningManagedLoomAppServerService)
     session = SimpleNamespace(
         session_id="thread-1",
@@ -271,7 +272,7 @@ def test_thread_model_switch_uses_canonical_server_connection(monkeypatch, tmp_p
     notifications: list[tuple[str, dict[str, object]]] = []
 
     service._load = lambda _session_id: session
-    service._thread_model_blocked = lambda _session: False
+    service._thread_model_blocked = lambda _session: active_turn
     service._runtime_home = lambda: tmp_path
     service.runtime = SimpleNamespace(
         set_session_model=lambda session_id, platform, reasoning=None: installed.update(
@@ -348,6 +349,12 @@ def test_thread_model_switch_uses_canonical_server_connection(monkeypatch, tmp_p
     assert session.model_selection == "builtin:deepseek"
     assert session.model_base_url == "https://api.deepseek.com"
     assert session.reasoning_kind == "openai-effort"
+    if active_turn:
+        assert "platform" not in installed, "running turn must retain its existing platform"
+        assert service._pending_thread_model_runtime["thread-1"][0] is platform
+        service._ensure_thread_model_runtime = lambda _session: _session
+        service._prepare_turn(session)
+        assert not service._pending_thread_model_runtime
     assert installed["platform"] is platform
     assert result["thread"]["modelSelection"] == "builtin:deepseek"
     assert saved == [session]

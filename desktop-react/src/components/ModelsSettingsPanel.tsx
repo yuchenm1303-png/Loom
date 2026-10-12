@@ -254,7 +254,7 @@ export function ModelsSettingsPanel({ initialSnapshot, runtimeModel, running, on
   }
 
   async function activate(profile: ModelProfile) {
-    if (profile.available === false || running || busy || profile.selection === current?.selection) return;
+    if (profile.available === false || busy || profile.selection === current?.selection) return;
     setBusy(`activate:${profile.selection}`);
     setError("");
     try {
@@ -377,7 +377,7 @@ export function ModelsSettingsPanel({ initialSnapshot, runtimeModel, running, on
 
   async function switchOtherModel(model = otherModel) {
     const value = model.trim();
-    if (!value || running || busy) return;
+    if (!value || busy) return;
     setBusy("other-model");
     setError("");
     try {
@@ -525,7 +525,7 @@ export function ModelsSettingsPanel({ initialSnapshot, runtimeModel, running, on
                   <button
                     type="button"
                     className={active ? "active" : ""}
-                    disabled={profile.available === false || running || Boolean(busy) || active}
+                    disabled={profile.available === false || Boolean(busy) || active}
                     title={profile.available === false ? (profile.statusMessage || "No longer advertised by the provider") : undefined}
                     onClick={() => void activate(profile)}
                   >
@@ -554,10 +554,10 @@ export function ModelsSettingsPanel({ initialSnapshot, runtimeModel, running, on
         <div className="models-section-heading"><div><h2>{c.recent}</h2><p>{c.recentCaption}</p></div></div>
         <div className="models-recent-panel">
           <div className="models-other-model-row">
-            <input value={otherModel} onChange={(event) => setOtherModel(event.target.value)} placeholder="gpt-5 / claude / qwen / ..." disabled={running || Boolean(busy)} />
-            <button type="button" disabled={!otherModel.trim() || running || Boolean(busy)} onClick={() => void switchOtherModel()}><RefreshCw size={13} />{c.switch}</button>
+            <input value={otherModel} onChange={(event) => setOtherModel(event.target.value)} placeholder="gpt-5 / claude / qwen / ..." disabled={Boolean(busy)} />
+            <button type="button" disabled={!otherModel.trim() || Boolean(busy)} onClick={() => void switchOtherModel()}><RefreshCw size={13} />{c.switch}</button>
           </div>
-          {recent.length ? <div className="models-recent-chips">{recent.map((model) => <button type="button" key={model} disabled={running || Boolean(busy)} onClick={() => void switchOtherModel(model)}>{model}</button>)}</div> : <span className="models-recent-empty">{c.noRecent}</span>}
+          {recent.length ? <div className="models-recent-chips">{recent.map((model) => <button type="button" key={model} disabled={Boolean(busy)} onClick={() => void switchOtherModel(model)}>{model}</button>)}</div> : <span className="models-recent-empty">{c.noRecent}</span>}
         </div>
       </section>
 

@@ -763,8 +763,7 @@ class ReasoningManagedLoomAppServerService(ManagedStreamingLoomAppServerService)
     def thread_set_model(self, params: dict[str, Any]) -> dict[str, Any]:
         session_id = self._required_text(params, "threadId")
         session = self._recover_orphaned_thread_model_turn(self._load(session_id))
-        if self._thread_model_blocked(session):
-            raise RuntimeError("finish or stop this thread's active turn before changing its model")
+        active_turn = self._thread_model_blocked(session)
 
         requested_selection = str(params.get("selection") or "").strip()
         requested_model = str(params.get("model") or "").strip()
@@ -831,7 +830,13 @@ class ReasoningManagedLoomAppServerService(ManagedStreamingLoomAppServerService)
             context_limits=context_limits if isinstance(context_limits, dict) else None,
         )
 
-        self.runtime.set_session_model(session_id, platform, reasoning=reasoning)
+        if active_turn:
+            pending = getattr(self, "_pending_thread_model_runtime", None)
+            if pending is None:
+                pending = self._pending_thread_model_runtime = {}
+            pending[session_id] = (platform, reasoning)
+        else:
+            self.runtime.set_session_model(session_id, platform, reasoning=reasoning)
         session.model_selection = selection
         session.model = model
         session.model_provider = provider
@@ -841,7 +846,7 @@ class ReasoningManagedLoomAppServerService(ManagedStreamingLoomAppServerService)
         session.reasoning_value = reasoning.value if reasoning is not None else ""
         self.store.save(session)
 
-        record = self._record(session, active=False)
+        record = self._record(session, active=active_turn)
         runtime = self._thread_runtime_patch(session, capability)
         self._notify("thread/updated", {"thread": record, "reason": "model_changed"})
         return {"thread": record, "runtime": runtime}
@@ -924,6 +929,10 @@ class ReasoningManagedLoomAppServerService(ManagedStreamingLoomAppServerService)
         return result
 
     def _prepare_turn(self, session: Any) -> None:
+        pending = getattr(self, "_pending_thread_model_runtime", {}).pop(session.session_id, None)
+        if pending is not None:
+            platform, reasoning = pending
+            self.runtime.set_session_model(session.session_id, platform, reasoning=reasoning)
         self._ensure_thread_model_runtime(session)
 
     def _model_change_blockers(self) -> list[str]:

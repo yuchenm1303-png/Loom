@@ -228,6 +228,9 @@ export function useLoom() {
   const [error, setError] = useState("");
   const [runtime, setRuntime] = useState<InitializeResult["runtime"]>({});
   const [models, setModels] = useState<ModelSnapshot | null>(null);
+  const modelSwitchTasks = useRef(new Map<string, Promise<void>>());
+  const modelSwitchVersions = useRef(new Map<string, number>());
+  const [pendingModels, setPendingModels] = useState<Record<string, ModelSnapshot["profiles"][number]>>({});
   const [modelBusy, setModelBusy] = useState(false);
   const [threads, setThreads] = useState<ThreadRecord[]>([]);
   const [projects, setProjects] = useState<ProjectRecord[]>([]);
@@ -774,6 +777,9 @@ export function useLoom() {
     if (!input.trim() && !attachments.length) return;
     if (active?.thread.archived) throw new Error("该对话已归档，请先取消归档再发送。");
     if (homeSendPendingRef.current) throw new Error("正在创建对话，请等待当前消息发送完成。");
+    const selectedThreadId = active?.thread.id || "";
+    await modelSwitchTasks.current.get(selectedThreadId || "draft");
+    if (activeIdRef.current !== selectedThreadId) throw new Error("对话选择已改变，消息尚未发送。请在目标对话中重试。");
     let thread = active?.thread;
     if (!thread) {
       homeSendPendingRef.current = true;
@@ -863,32 +869,40 @@ export function useLoom() {
     // and project parameters intact even if the model change restarts the host.
   }, [clearActive, openThread, refreshThreads]);
 
-  const switchModelProfile = useCallback(async (selection: string) => {
-    const threadId = active?.thread.id;
+  const performModelSwitch = useCallback((threadId: string | undefined, selection: string, model?: string) => {
+    const key = threadId || "draft";
+    const version = (modelSwitchVersions.current.get(key) || 0) + 1;
+    modelSwitchVersions.current.set(key, version);
+    const profile = models?.profiles.find(row => row.selection === selection);
+    if (profile) setPendingModels(current => ({ ...current, [key]: { ...profile, ...(model ? { model, name: model } : {}) } }));
     setModelBusy(true);
-    try {
-      const bridge = requireBridge();
-      // Before the first message a conversation is only a draft. Use the
-      // existing default-model endpoint rather than silently ignoring clicks.
-      const result = await switchModelProfileForThread<ModelRestartResult>(bridge, threadId, selection);
-      await applyModelRestart(result);
-    } finally {
-      setModelBusy(false);
-    }
-  }, [active?.thread.id, applyModelRestart]);
+    const task = (async () => {
+      try {
+        const bridge = requireBridge();
+        const result = model
+          ? await switchCurrentModelForThread<ModelRestartResult>(bridge, threadId, selection, model)
+          : await switchModelProfileForThread<ModelRestartResult>(bridge, threadId, selection);
+        if (modelSwitchVersions.current.get(key) === version) await applyModelRestart(result);
+      } catch (error) {
+        if (modelSwitchVersions.current.get(key) === version) throw error;
+      } finally {
+        if (modelSwitchVersions.current.get(key) === version) {
+          modelSwitchTasks.current.delete(key);
+          setPendingModels(current => { const next = { ...current }; delete next[key]; return next; });
+          setModelBusy(false);
+        }
+      }
+    })();
+    modelSwitchTasks.current.set(key, task);
+    return task;
+  }, [applyModelRestart, models]);
 
-  const switchCurrentModel = useCallback(async (model: string) => {
-    const threadId = active?.thread.id;
-    const selection = active?.thread.modelSelection || models?.current?.selection || "";
-    setModelBusy(true);
-    try {
-      const bridge = requireBridge();
-      const result = await switchCurrentModelForThread<ModelRestartResult>(bridge, threadId, selection, model);
-      await applyModelRestart(result);
-    } finally {
-      setModelBusy(false);
-    }
-  }, [active?.thread.id, active?.thread.modelSelection, applyModelRestart, models?.current?.selection]);
+  const switchModelProfile = useCallback((selection: string) =>
+    performModelSwitch(active?.thread.id, selection), [active?.thread.id, performModelSwitch]);
+
+  const switchCurrentModel = useCallback((model: string) =>
+    performModelSwitch(active?.thread.id, active?.thread.modelSelection || models?.current?.selection || "", model),
+    [active?.thread.id, active?.thread.modelSelection, models?.current?.selection, performModelSwitch]);
 
   const configureModelProvider = useCallback(async (provider: string, apiKey: string) => {
     setModelBusy(true);
@@ -1287,8 +1301,12 @@ export function useLoom() {
   }, [connection, refreshModels]);
 
   const activeModels = useMemo(
-    () => modelsForThread(models, active?.thread),
-    [active?.thread, models],
+    () => {
+      const snapshot = modelsForThread(models, active?.thread);
+      const pending = pendingModels[active?.thread.id || "draft"];
+      return snapshot && pending ? { ...snapshot, current: { ...pending, provider: pending.adapter } } : snapshot;
+    },
+    [active?.thread, models, pendingModels],
   );
 
   return useMemo(() => ({

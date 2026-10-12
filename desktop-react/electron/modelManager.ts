@@ -569,6 +569,14 @@ export class DesktopModelManager {
   async resolveAsync(selection: string): Promise<ModelLaunchSpec> {
     const cached = this.launchCache.get(selection);
     if (cached) return cached.spec;
+    const known = this.registryCache?.profiles.find(profile => profile.selection === selection);
+    // Account models use a scoped credential, materialized by the Host later.
+    // Their validated catalogue already contains all connection metadata.
+    if (known?.authMode === "loom-account" && known.baseUrl && known.available !== false) {
+      const spec: ModelLaunchSpec = { ...known, provider: "openai-compatible", apiKey: "" };
+      this.launchCache.set(selection, { base: spec, spec });
+      return spec;
+    }
     const base = isAntLingSelection(selection)
       ? await this.runPythonBridgeAsync<ModelLaunchSpec>("loom_ant_ling_bridge.py", "resolve", { selection })
       : await this.runBridgeAsync<ModelLaunchSpec>("resolve", { selection });
@@ -630,6 +638,11 @@ export class DesktopModelManager {
     if (!this.registryCache) return;
     const active = this.registryCache.profiles.find((profile) => profile.selection === selection);
     this.registryCache = { ...this.registryCache, activeModelId: active?.id ?? null };
+  }
+
+  async persistActiveAsync(selection: string): Promise<void> {
+    await this.runPythonBridgeAsync(isAntLingSelection(selection) ? "loom_ant_ling_bridge.py" : "loom_model_bridge.py",
+      isAntLingSelection(selection) ? "set-active" : "persist-active", { selection });
   }
 
   persistActive(selection: string): void {

@@ -1,3 +1,4 @@
+import { ModelSwitchQueue } from "./modelSwitchQueue.js";
 import { app, BrowserWindow, clipboard, dialog, ipcMain, nativeImage, nativeTheme, net, protocol, shell } from "electron";
 import { ModelUsageService } from "./modelUsage.js";
 import { ChildProcessWithoutNullStreams, spawn, spawnSync } from "node:child_process";
@@ -1136,29 +1137,17 @@ async function changeModel(
   options: { persistSelection?: string } = {},
 ): Promise<ModelRestartResult> {
   const previous = modelManager.current ?? await modelManager.ensureInitialAsync();
-  const next = await apply();
-  const hadRunningServer = rpc.ready;
   try {
-    const initialization = await rpc.setModel(next);
-    if (options.persistSelection) modelManager.markActive(options.persistSelection);
-    return { initialization, models: await modelManager.switchSnapshot(), hotSwitch: hadRunningServer };
+    const next = await apply();
+    const selection = options.persistSelection || next.selection;
+    await modelManager.persistActiveAsync(selection);
+    modelManager.markActive(selection);
+    // A draft changes the preference, never the running shared platform.
+    return { initialization: { runtime: {} }, models: await modelManager.switchSnapshot(next), hotSwitch: true };
   } catch (error) {
     modelManager.restore(previous);
-    if (!missingHotSwitchMethod(error)) throw error;
-    modelManager.restore(next);
-    try {
-      const initialization = await rpc.restart();
-      if (options.persistSelection) modelManager.setActive(options.persistSelection);
-      return { initialization, models: await modelManager.switchSnapshot(), hotSwitch: false };
-    } catch (fallbackError) {
-      modelManager.restore(previous);
-      try {
-        await rpc.restart();
-      } catch (rollbackError) {
-        console.error("Could not restore previous Loom model after failed switch", rollbackError);
-      }
-      throw fallbackError;
-    }
+    modelManager.markActive(previous.selection);
+    throw error;
   }
 }
 
@@ -1524,7 +1513,17 @@ async function runStageTempFile(name: string, bytes: Uint8Array): Promise<string
   return target;
 }
 
-async function runSwitchModelProfile(threadOrSelection: string, maybeSelection?: string): Promise<ModelRestartResult> {
+const modelSwitchQueue = new ModelSwitchQueue();
+function runSwitchModelProfile(threadOrSelection: string, maybeSelection?: string): Promise<ModelRestartResult> {
+  return modelSwitchQueue.run(maybeSelection === undefined ? "draft" : threadOrSelection,
+    () => applySwitchModelProfile(threadOrSelection, maybeSelection));
+}
+function runSwitchCurrentModel(threadOrModel: string, selection?: string, model?: string): Promise<ModelRestartResult> {
+  return modelSwitchQueue.run(model === undefined ? "draft" : threadOrModel,
+    () => applySwitchCurrentModel(threadOrModel, selection, model));
+}
+
+async function applySwitchModelProfile(threadOrSelection: string, maybeSelection?: string): Promise<ModelRestartResult> {
   if (maybeSelection === undefined) {
     const selection = String(threadOrSelection || "").trim();
     if (!selection) throw new Error("Model profile is required");
@@ -1538,7 +1537,7 @@ async function runSwitchModelProfile(threadOrSelection: string, maybeSelection?:
   return changeThreadModel(threadOrSelection, spec);
 }
 
-async function runSwitchCurrentModel(
+async function applySwitchCurrentModel(
   threadOrModel: string,
   selectionOrUndefined?: string,
   modelOrUndefined?: string,

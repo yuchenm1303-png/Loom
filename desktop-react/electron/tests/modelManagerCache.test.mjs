@@ -440,3 +440,14 @@ test("async model switching resolves once and preserves overrides", async () => 
   assert.equal((await manager.resolveModelNameForAsync("saved:demo", "demo-2")).model, "demo-2");
   assert.equal(calls.length, 2);
 });
+
+test("known account models resolve directly without a Python process or provider scan", async () => {
+  const manager = new DesktopModelManager(os.tmpdir());
+  const known = profile({ selection: "builtin:ant-ling", authMode: "loom-account", kind: "builtin" });
+  manager.registryCache = registry([known]);
+  manager.runPythonBridge = manager.runPythonBridgeAsync = () => { throw new Error("unnecessary bridge"); };
+  const spec = await manager.resolveAsync(known.selection);
+  assert.equal(spec.model, known.model);
+  assert.equal(spec.authMode, "loom-account");
+  assert.equal(spec.apiKey, "");
+});
