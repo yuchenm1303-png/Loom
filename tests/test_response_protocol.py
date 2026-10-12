@@ -93,14 +93,15 @@ def test_legacy_chat_fields_share_native_validation():
 
 
 @pytest.mark.parametrize("streaming", [False, True])
-def test_platform_boundary_decodes_before_history_or_dispatch(streaming):
+@pytest.mark.parametrize("name", ["exec", "mcp__namespace/tool.with.dots"])
+def test_platform_boundary_decodes_before_history_or_dispatch(streaming, name):
     from app.ai import ModelProfile, ModelCapability, StreamEvent, StreamEventKind
     from app.ai.streaming_platform import StreamingAIPlatform, ProviderStreamEventKind
     class Backend:
         def complete(self, request):
-            return ModelResponse(text="Checking. " + WIRE, finish_reason="stop")
+            return ModelResponse(text="Checking. " + WIRE.replace('name="exec"', 'name="' + request.tools[0].name + '"'), finish_reason="stop")
         def stream(self, request):
-            for char in "Checking. " + WIRE:
+            for char in "Checking. " + WIRE.replace('name="exec"', 'name="' + request.tools[0].name + '"'):
                 yield StreamEvent(kind=StreamEventKind.TEXT_DELTA, text_delta=char)
             yield StreamEvent(kind=StreamEventKind.COMPLETED, finish_reason="stop")
     platform = StreamingAIPlatform(prefer_streaming=streaming)
@@ -108,8 +109,9 @@ def test_platform_boundary_decodes_before_history_or_dispatch(streaming):
     platform.register(profile, Backend())
     events = []
     platform.subscribe_stream(events.append)
-    response = platform.execute_chat("test", REQUEST)
+    request = replace(REQUEST, tools=(replace(REQUEST.tools[0], name=name),))
+    response = platform.execute_chat("test", request)
     assert response.text == "Checking."
-    assert response.tool_calls[0].name == "exec"
+    assert response.tool_calls[0].name == name
     assert not any("DSML" in event.text_delta for event in events)
     assert not streaming or events[-1].kind is ProviderStreamEventKind.COMPLETED
