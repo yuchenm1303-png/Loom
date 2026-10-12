@@ -186,6 +186,28 @@ def test_windows_mxc_probe_requires_a_real_isolation_tier(monkeypatch):
     assert "usable isolation tier" in manager._backend_reason
 
 
+def test_windows_probe_uses_files_so_inherited_pipes_cannot_block_startup(monkeypatch):
+    def run(args, **kwargs):
+        assert kwargs["timeout"] == 8
+        assert kwargs["stdout"] != subprocess.PIPE
+        assert kwargs["stderr"] != subprocess.PIPE
+        kwargs["stdout"].write('{"tier":"base-container"}')
+        return subprocess.CompletedProcess(args, 0)
+
+    monkeypatch.setattr(subprocess, "run", run)
+    ok, reason = SandboxManager._probe_windows_mxc("wxc-exec")
+    assert ok and "base-container" in reason
+
+
+def test_windows_probe_timeout_fails_closed(monkeypatch):
+    def run(args, **kwargs):
+        raise subprocess.TimeoutExpired(args, kwargs["timeout"])
+
+    monkeypatch.setattr(subprocess, "run", run)
+    ok, reason = SandboxManager._probe_windows_mxc("wxc-exec")
+    assert not ok and "TimeoutExpired" in reason
+
+
 def test_full_access_intentionally_bypasses_os_sandbox(tmp_path):
     workspace = tmp_path / "project"
     workspace.mkdir()

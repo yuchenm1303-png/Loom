@@ -6,6 +6,7 @@ import os
 import platform
 import shutil
 import subprocess
+import tempfile
 import uuid
 from dataclasses import dataclass
 from enum import Enum
@@ -193,16 +194,29 @@ class SandboxManager:
         """Require MXC's read-only platform probe, not mere executable presence."""
 
         try:
-            completed = subprocess.run(
-                [executable, "--probe"],
-                stdin=subprocess.DEVNULL,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-                errors="replace",
-                timeout=8,
-                check=False,
-            )
+            # On Windows a descendant can inherit a pipe after the probe exits.
+            # subprocess.run then waits forever for EOF, even after its timeout.
+            # Regular files keep both process waiting and output reads bounded.
+            with tempfile.TemporaryFile(mode="w+", encoding="utf-8", errors="replace") as stdout, tempfile.TemporaryFile(
+                mode="w+", encoding="utf-8", errors="replace"
+            ) as stderr:
+                completed = subprocess.run(
+                    [executable, "--probe"],
+                    stdin=subprocess.DEVNULL,
+                    stdout=stdout,
+                    stderr=stderr,
+                    text=True,
+                    errors="replace",
+                    timeout=8,
+                    check=False,
+                )
+                stdout.seek(0)
+                stderr.seek(0)
+                completed = subprocess.CompletedProcess(
+                    completed.args, completed.returncode,
+                    completed.stdout if completed.stdout is not None else stdout.read(65536),
+                    completed.stderr if completed.stderr is not None else stderr.read(65536),
+                )
         except (OSError, subprocess.TimeoutExpired) as exc:
             return False, f"Microsoft MXC probe failed: {type(exc).__name__}: {exc}"
         if completed.returncode != 0:

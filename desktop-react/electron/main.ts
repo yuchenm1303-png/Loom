@@ -49,7 +49,9 @@ const DESKTOP_ROOT = path.resolve(__dirname, "..");
 const REPO_ROOT = app.isPackaged ? process.resourcesPath : path.resolve(DESKTOP_ROOT, "..");
 const DEV_WINDOW_ICON = path.join(DESKTOP_ROOT, "build", "icon.png");
 const HTML_ESCAPE: Record<string, string> = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
-const APP_SERVER_CONNECT_TIMEOUT_MS = 15_000;
+// Frozen Python imports plus the bounded OS sandbox probe can exceed 15s on
+// a cold Windows start. Two attempts still fit inside the 125s Host deadline.
+const APP_SERVER_CONNECT_TIMEOUT_MS = 60_000;
 const APP_SERVER_CALL_TIMEOUT_MS = 120_000;
 
 type DiagnosticLogKind = "computer" | "browser";
