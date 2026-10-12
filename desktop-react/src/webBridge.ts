@@ -607,6 +607,7 @@ export function installWebBridge(): void {
     addModel: (first: string | Record<string, unknown>, second?: Record<string, unknown>) => invoke("addModel", typeof first === "string" ? [first, second || {}] : [first]),
     updateModel: (input) => invoke("updateModel", [input]),
     testModel: (selection) => invoke("testModel", [selection]),
+    queryModelUsage: (selection, force = false) => invoke("queryModelUsage", [selection, force]),
     deleteModel: (selection) => invoke("deleteModel", [selection]),
     setReasoning: (...args: string[]) => invoke("setReasoning", args),
     exportComputerLogs: () => invoke("exportComputerLogs", []),

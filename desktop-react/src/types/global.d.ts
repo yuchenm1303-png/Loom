@@ -53,6 +53,7 @@ export interface LoomBridge {
   addModel<T = unknown>(threadId: string, input: Record<string, unknown>): Promise<T>;
   updateModel<T = unknown>(input: Record<string, unknown>): Promise<T>;
   testModel<T = unknown>(selection: string): Promise<T>;
+  queryModelUsage?(selection: string, force?: boolean): Promise<import("./modelUsage").ModelUsage>;
   deleteModel<T = unknown>(selection: string): Promise<T>;
   setReasoning<T = unknown>(kind: string, value: string): Promise<T>;
   setReasoning<T = unknown>(threadId: string, selection: string, model: string, kind: string, value: string): Promise<T>;

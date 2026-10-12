@@ -21,6 +21,7 @@ import { useI18n } from "../i18n";
 import { useMotionPresence } from "../motion/useMotionPresence";
 import { Crossfade } from "./Crossfade";
 import { ModelPanel } from "./ModelPanel";
+import { ModelUsageIndicator } from "./ModelUsageIndicator";
 import { ComposerAttachmentStrip } from "./ComposerAttachmentStrip";
 import {
   MAX_COMPOSER_ATTACHMENTS,
@@ -604,6 +605,8 @@ export function Composer({
                 </div>
               ) : null}
             </div>
+
+            <ModelUsageIndicator selection={modelSnapshot?.current?.selection || modelSnapshot?.primary?.selection || ""} zh={zh} onOpen={() => setOpenPanel(null)} />
 
             <div className="composer-control-anchor sticker-control-anchor">
               <button

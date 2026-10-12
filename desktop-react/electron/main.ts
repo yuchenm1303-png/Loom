@@ -1,4 +1,5 @@
-import { app, BrowserWindow, clipboard, dialog, ipcMain, nativeImage, nativeTheme, protocol, shell } from "electron";
+import { app, BrowserWindow, clipboard, dialog, ipcMain, nativeImage, nativeTheme, net, protocol, shell } from "electron";
+import { ModelUsageService } from "./modelUsage.js";
 import { ChildProcessWithoutNullStreams, spawn, spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
@@ -1642,6 +1643,7 @@ const desktopOperations: WebRelayOperations = {
     : runAddModel((args[0] || {}) as AddModelInput),
   updateModel: async (args) => runUpdateModel((args[0] || {}) as EditModelInput),
   testModel: async (args) => runTestModel(String(args[0] || "")),
+  queryModelUsage: async (args) => queryModelUsage(String(args[0] || ""), Boolean(args[1])),
   deleteModel: async (args) => deleteModel(String(args[0] || "")),
   setReasoning: async (args) => runSetReasoning(...args.map((value) => String(value || ""))),
   exportComputerLogs: async () => exportComputerLogs(),
@@ -1843,6 +1845,12 @@ handleHostChannel("loom:model-add", (_event, threadOrInput: string | AddModelInp
 ));
 handleHostChannel("loom:model-update", (_event, input: EditModelInput) => runUpdateModel(input));
 handleHostChannel("loom:model-test", async (_event, selection: string) => runTestModel(selection));
+const modelUsageService = new ModelUsageService((input, init) => net.fetch(input as string, init));
+async function queryModelUsage(selection: string, force = false) {
+  try { return await modelUsageService.query(await modelManager.resolveAsync(selection), force); }
+  catch { return { status: "error" as const, provider: "", checkedAt: Date.now(), windows: [], balances: [], message: "暂时无法读取此模型连接，请稍后刷新" }; }
+}
+handleHostChannel("loom:model-usage", (_event, selection: string, force?: boolean) => queryModelUsage(selection, Boolean(force)));
 handleHostChannel("loom:model-delete", async (_event, selection: string) => deleteModel(selection));
 handleHostChannel("loom:reasoning-set", (_event, ...args: string[]) => runSetReasoning(...args));
 
