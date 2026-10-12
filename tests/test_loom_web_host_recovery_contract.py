@@ -1,4 +1,5 @@
 from pathlib import Path
+import re
 
 ROOT = Path(__file__).resolve().parents[1]
 MAIN = ROOT / "desktop-react" / "electron" / "main.ts"
@@ -7,7 +8,11 @@ WEB_BRIDGE = ROOT / "desktop-react" / "src" / "webBridge.ts"
 
 def test_host_initialize_has_a_bounded_retry() -> None:
     source = MAIN.read_text(encoding="utf-8")
-    assert "APP_SERVER_CONNECT_TIMEOUT_MS = 15_000" in source
+    match = re.search(r"APP_SERVER_CONNECT_TIMEOUT_MS = ([\d_]+)", source)
+    assert match is not None
+    timeout_ms = int(match.group(1).replace("_", ""))
+    assert 30_000 <= timeout_ms <= 60_000  # Allow cold frozen imports and the OS probe.
+    assert 2 * timeout_ms < 125_000  # Both attempts fit the outer Host deadline.
     assert "initialize failed; restarting once" in source
     assert "return await this.initializeOnce()" in source
     assert "this.stopProcess(new Error(\"Loom App Server initialization timed out\"))" in source
