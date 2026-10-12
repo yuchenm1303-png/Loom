@@ -29,7 +29,11 @@ def test_transient_surfaces_have_symmetric_presence() -> None:
     assert "useMotionPresence(open, 235)" in account
     assert "data-motion-phase={presence.phase}" in account
     assert "panelPresence = useMotionPresence(Boolean(openPanel), 215, openPanel)" in composer
-    assert composer.count("data-motion-phase={panelPresence.phase}") >= 3
+    # Check every actual popover instead of a stale count: the old third
+    # popover was removed when its controls moved into the model manager.
+    popovers = [line for line in composer.splitlines() if "<div className=" in line and "composer-popover " in line]
+    assert popovers
+    assert all("data-motion-phase={panelPresence.phase}" in line for line in popovers)
     assert "useMotionPresence(open, 420)" in review
     assert "useMotionPresence(open, 420)" in agents
     assert "useMotionPresence(open && Boolean(projectProp), 420)" in project

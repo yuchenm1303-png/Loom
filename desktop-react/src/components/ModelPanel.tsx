@@ -221,6 +221,7 @@ function unavailableLabel(profile: ModelProfile): string {
   const message = String(profile.statusMessage || "");
   if (message.includes("Sign in to Loom")) return "Sign in";
   if (message.includes("Loom Admin")) return "Admin blocked";
+  if (message.includes("Model metadata unavailable")) return "Host update required";
   return "Unavailable";
 }
 
@@ -920,6 +921,10 @@ export function ModelPanel({
     const showSearch = choices.length > 8 && !credentialTarget;
     const hasBuiltinModels = choices.some((profile) => profile.kind === "builtin");
     const blockedChoices = choices.filter((profile) => profile.available === false);
+    const adminBlockedChoices = blockedChoices.filter(profile => String(profile.statusMessage || "").includes("Loom Admin"));
+    const unavailableReasons = [...new Set(blockedChoices
+      .filter(profile => !adminBlockedChoices.includes(profile))
+      .map(profile => profile.statusMessage || "This model is currently unavailable."))];
 
     return (
       <div className="mp mp-provider" data-direction={direction} onKeyDown={handlePickerKeyDown}>
@@ -954,12 +959,17 @@ export function ModelPanel({
               <span>Sign in to Loom to use any model. <button type="button" className="mp-link" onClick={onOpenAccount}>Sign in</button></span>
             </div>
           ) : null}
-          {blockedChoices.length && accountAuthenticated ? (
+          {adminBlockedChoices.length > 0 && accountAuthenticated ? (
             <div className="mp-notice is-error">
               <Lock size={13} strokeWidth={2} aria-hidden="true" />
-              <span>{blockedChoices.length} built-in model{blockedChoices.length === 1 ? " is" : "s are"} disabled by Loom Admin. You can still add a separate personal API connection below.</span>
+              <span>{adminBlockedChoices.length} built-in model{adminBlockedChoices.length === 1 ? " is" : "s are"} disabled by Loom Admin. You can still add a separate personal API connection below.</span>
             </div>
           ) : null}
+          {accountAuthenticated ? unavailableReasons.map(reason => (
+            <div className="mp-notice is-error" role="alert" key={reason}>
+              <span>{reason}</span>
+            </div>
+          )) : null}
           {credentialTarget ? (
             <div
               className="mp-connect"
