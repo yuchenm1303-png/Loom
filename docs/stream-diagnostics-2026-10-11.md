@@ -21,3 +21,13 @@ OpenAI Chat Completions 流记录固定大小的 `stream_diagnostics`：原始 S
 [百灵流式文档](https://developer.ant-ling.com/zh-CN/docs/tutorials/streaming/) 列出了 stop、length、content_filter 等结束原因；[OpenAI 兼容接口文档](https://developer.ant-ling.com/zh-CN/docs/api-reference/openai/) 提供 Chat 接口说明。现有证据不能将三次相同的 5136 token 解释为已经确认的默认输出上限，更不能把其他接口的默认值套用到本次请求。
 
 当前结论：已排除所检查的 Loom 输出上限、文本规范化放大和生产网关结束原因改写；异常在 SDK 收到的数据中已经存在。尚无法区分模型重复生成、官方推理服务的限制或其他上游终止机制。进一步定因需要供应商针对具体响应的追踪记录，或另行授权的真实请求复验。不得用关键词强制续跑掩盖此问题。
+
+## 历史回灌追加核查
+
+VNC 会话的持久化 messages 中，assistant 索引 217、219、227 分别保留 4972、4635、5058 个换行，去除首尾空白后正文仅 82、90、35 字符。日志顺序进一步发现此前未单列的样本：step `ceefdb1f-d290-44e8-a2d6-0b7cde8cfff8` 使用非 VL 的 `Ling-3.0-flash`，输出 5134 token、4635 个换行、无工具调用、stop。因此不能把异常限定为 VL，也不能把所有异常概括为恰好 5136 token。
+
+代码路径：`turn_runner.py` 提交响应时直接将 response.text 写入 AIMessage；`context_budget.py` 从 session.messages 构造 canonical_history；`context_composer.render_request` 对 assistant 只投影移除旧贴纸协议；`openai_runtime._message_payload` 原样序列化字符串 content。AIMessage 和 repair_tool_history 也不去除正文尾部空白。故历史保留及未压缩路径继续携带异常空白的风险已经确认；这里没有捕获后续实际 HTTP 请求体，不宣称逐请求抓包证实。
+
+首个异常之后有一条正常文本响应和两条正常工具响应，随后再次异常，后面换模型又有正常工具调用。说明异常历史并非必然导致下一次失败。首个异常也不可能由它自己尚未写入的响应引起：历史回灌可能放大后续问题，不能解释首次异常。压缩并非针对这种输出质量问题的校验器，不能把调整压缩阈值当作已验证的修复。
+
+下一步应使用不含真实敏感数据的离线样本验证请求投影边界：证据历史保真与模型请求表示分开，若设计尾部空白处理，须覆盖正常 Markdown、代码块、工具及推理状态，避免全局 strip 或自动修改模型动作语义。是否能降低真实复发率仍需授权的模型对照试验，不能由单元测试替代。
