@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import threading
+import uuid
 from collections.abc import Iterator
 from typing import Any
 
 from .contracts import ChatRequest, ModelUsage, StreamEvent, StreamEventKind
-from .errors import AITransportError
+from .errors import AITransportError, AIResponseError
+from .tool_protocol import chat_tool_fragments
 from .execution_control import current_control, check_cancelled, note_progress, note_chunk, note_transport_retry, ModelCancelled
 from .openai_runtime import OpenAIChatBackend, _retryable_provider_error, _usage_from
 from .provider_catalog import ProviderAdapter
@@ -83,6 +85,7 @@ class OpenAIStreamingChatBackend(OpenAIChatBackend):
         self._stream_local.metadata = {}
         check_cancelled()
         stream = self._create_stream(self._request_kwargs(request))
+        legacy_id = "legacy_" + uuid.uuid4().hex
         control = current_control.get()
         close = getattr(stream, "close", None)
         if control is not None and callable(close):
@@ -168,7 +171,7 @@ class OpenAIStreamingChatBackend(OpenAIChatBackend):
                         if text:
                             diagnostics.normalized_text.observe(text)
                             yield StreamEvent(kind=StreamEventKind.TEXT_DELTA, text_delta=text)
-                    for raw_call in getattr(delta, "tool_calls", None) or ():
+                    for raw_call in chat_tool_fragments(delta, legacy_id=legacy_id):
                         function = getattr(raw_call, "function", None)
                         raw_index = getattr(raw_call, "index", None)
                         yield StreamEvent(
@@ -199,7 +202,7 @@ class OpenAIStreamingChatBackend(OpenAIChatBackend):
                 phase=native_phase,
                 end_turn=native_end_turn,
             )
-        except (AITransportError, ModelCancelled):
+        except (AITransportError, AIResponseError, ModelCancelled):
             raise
         except Exception as exc:
             raise AITransportError(

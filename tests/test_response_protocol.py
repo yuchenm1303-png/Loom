@@ -79,6 +79,19 @@ def test_native_calls_follow_same_declaration_and_completion_contract():
         normalize_response(replace(REQUEST, tool_choice=ToolChoice.REQUIRED), ModelResponse(text="Done"))
 
 
+def test_legacy_chat_fields_share_native_validation():
+    from types import SimpleNamespace as NS
+    from app.ai.openai_runtime import _parse_tool_calls
+    from app.ai.tool_protocol import chat_tool_fragments
+    function = NS(name="exec", arguments='{"argv": ["echo", "ok"]}')
+    message = NS(function_call=function)
+    calls = _parse_tool_calls(message, finish_reason="function_call")
+    assert normalize_response(REQUEST, ModelResponse(tool_calls=calls, finish_reason="function_call")).tool_calls[0].arguments == {"argv": ["echo", "ok"]}
+    assert chat_tool_fragments(NS(function_call=NS(arguments="{}")), legacy_id="stable")[0].id == "stable"
+    with pytest.raises(AIResponseError, match="mixes"):
+        chat_tool_fragments(NS(tool_calls=[NS(function=function)], function_call=function), legacy_id="stable")
+
+
 @pytest.mark.parametrize("streaming", [False, True])
 def test_platform_boundary_decodes_before_history_or_dispatch(streaming):
     from app.ai import ModelProfile, ModelCapability, StreamEvent, StreamEventKind

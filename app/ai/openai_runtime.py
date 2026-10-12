@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import uuid
 from collections.abc import Iterator
 from typing import Any
 
@@ -24,7 +25,7 @@ from .errors import AIEmptyResponseError, AIResponseError, AITransportError, AIQ
 from .profiles import ModelProfile
 from .provider_catalog import ProviderAdapter, ProviderConnection
 from .reasoning import ReasoningKind
-from .tool_protocol import parse_tool_call, validate_unique_calls
+from .tool_protocol import parse_tool_call, validate_unique_calls, chat_tool_fragments
 from .tool_policy import exposes_tools, tool_choice_payload
 
 
@@ -157,7 +158,7 @@ def _usage_from(response: Any) -> ModelUsage:
 
 def _parse_tool_calls(message: Any, *, finish_reason: str = "") -> tuple[ToolCall, ...]:
     parsed: list[ToolCall] = []
-    for raw_call in getattr(message, "tool_calls", None) or ():
+    for raw_call in chat_tool_fragments(message, legacy_id="legacy_" + uuid.uuid4().hex):
         function = getattr(raw_call, "function", None)
         call_id = str(getattr(raw_call, "id", "") or "").strip()
         name = str(getattr(function, "name", "") or "").strip()
@@ -439,6 +440,7 @@ class OpenAIChatBackend:
         kwargs = self._request_kwargs(request)
         kwargs["stream"] = True
         stream = self._create(kwargs)
+        legacy_id = "legacy_" + uuid.uuid4().hex
         try:
             for chunk in stream:
                 choices = getattr(chunk, "choices", None) or ()
@@ -450,7 +452,7 @@ class OpenAIChatBackend:
                     text = str(getattr(delta, "content", "") or "")
                     if text:
                         yield StreamEvent(kind=StreamEventKind.TEXT_DELTA, text_delta=text)
-                    for raw_call in getattr(delta, "tool_calls", None) or ():
+                    for raw_call in chat_tool_fragments(delta, legacy_id=legacy_id):
                         function = getattr(raw_call, "function", None)
                         yield StreamEvent(
                             kind=StreamEventKind.TOOL_CALL_DELTA,
@@ -469,7 +471,7 @@ class OpenAIChatBackend:
                         kind=StreamEventKind.COMPLETED,
                         finish_reason=finish_reason,
                     )
-        except AITransportError:
+        except (AITransportError, AIResponseError):
             raise
         except Exception as exc:
             raise AITransportError(

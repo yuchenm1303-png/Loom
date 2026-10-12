@@ -2,8 +2,20 @@
 from __future__ import annotations
 
 import json
+from types import SimpleNamespace
 from .contracts import ToolCall
 from .errors import AIResponseError, AITruncatedToolCallError
+
+
+def chat_tool_fragments(message, *, legacy_id: str):
+    """Normalize modern and legacy Chat Completions fields by wire shape."""
+    calls = tuple(getattr(message, "tool_calls", None) or ())
+    legacy = getattr(message, "function_call", None)
+    if calls and legacy is not None:
+        raise AIResponseError("response mixes modern and legacy tool fields")
+    if legacy is not None:
+        return (SimpleNamespace(index=0, id=legacy_id, function=legacy),)
+    return calls
 
 
 def parse_tool_call(call_id: str, name: str, raw_arguments: str, *, finish_reason: str = "") -> ToolCall:
