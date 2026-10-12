@@ -1,4 +1,5 @@
 import { readUpdatePreferences } from "./updatePreferences.js";
+import { readUpdateChannel } from "./updateChannel.js";
 import { app, net } from "electron";
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -48,8 +49,7 @@ export async function checkApplicationUpdates(manual = false) {
     try {
       // Chromium's no-store does not invalidate GitHub's edge cache for a
       // mutable branch URL. Give each poll a distinct cache key as well.
-      const response = await fetchBytes(`${channel}?check=${Date.now()}`, 4 * 1024 * 1024);
-      const raw = JSON.parse(response.toString());
+      const raw = await readUpdateChannel(channel, fetchBytes, 4 * 1024 * 1024) as Record<string, unknown>;
       // A newer dependency baseline belongs to the installer updater.
       if (raw.bootstrap !== app.getVersion()) { setStatus(previousReady ?? { phase: "idle" }); return; }
       const release = validateApplicationRelease(raw, app.getVersion());

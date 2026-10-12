@@ -1,4 +1,5 @@
 import { readUpdatePreferences } from "./updatePreferences.js";
+import { readUpdateChannel } from "./updateChannel.js";
 import { app, net } from "electron";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
@@ -192,8 +193,7 @@ async function fetchBytes(url: string, maxBytes: number): Promise<Buffer> {
 async function fetchChannel(): Promise<HostRuntimeChannel | null> {
   const custom = String(process.env.LOOM_HOST_UPDATE_CHANNEL_URL || "").trim();
   const url = custom || CHANNEL_URL;
-  const bytes = await fetchBytes(url, MAX_CHANNEL_BYTES);
-  const raw = JSON.parse(bytes.toString("utf8")) as unknown;
+  const raw = await readUpdateChannel(url, fetchBytes, MAX_CHANNEL_BYTES);
   if (raw && typeof raw === "object" && !Array.isArray(raw) && !String((raw as Record<string, unknown>).url || "").trim()) {
     return null;
   }
