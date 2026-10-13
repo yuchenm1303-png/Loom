@@ -1,4 +1,7 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+const bundledFixture = process.env.LOOM_TEST_BUNDLED_FIXTURE
+  ? JSON.parse(readFileSync(process.env.LOOM_TEST_BUNDLED_FIXTURE, "utf8")) : null;
 const { chromium } = await import(process.env.LOOM_PLAYWRIGHT_MODULE || "playwright-core");
 const server = process.env.LOOM_TEST_START_SERVER
   ? await (await import("vite")).createServer({ server: { port: 0 } }) : null;
@@ -11,7 +14,13 @@ try {
   const open = async (viewport = { width: 1280, height: 800 }) => {
     const opened = await browser.newPage({ viewport });
     opened.on("pageerror", error => errors.push(error.message));
+    if (bundledFixture) {
+      await opened.route("**/*", route => route.request().isNavigationRequest()
+        ? route.fulfill({ contentType: "text/html", body: `<html><head><style>${bundledFixture.css}</style></head><body><div id="root"></div></body></html>` })
+        : route.abort());
+    }
     await opened.goto(fixture, { waitUntil: "domcontentloaded" });
+    if (bundledFixture) await opened.addScriptTag({ content: bundledFixture.js });
     await opened.waitForFunction(() => {
       const el = document.querySelector(".transcript-scroll");
       return el && el.scrollHeight - el.scrollTop - el.clientHeight < 3;
@@ -99,6 +108,48 @@ try {
   assert.ok(clamp.after > clamp.before - 3, `the view was put back by the time it was drawn (${clamp.before} -> clamp ${clamp.clamped} -> ${clamp.after})`);
   await page.waitForTimeout(600);
   assert.ok(await bottom() < 3, "and it still ends on the live edge");
+  // Zoom changes the browser's attainable fractional scroll offsets. After
+  // follow settles, stationary content must not keep bouncing between writes.
+  for (const zoom of [0.8, 1.25, 1.5]) {
+    await page.evaluate(zoom => { document.querySelector('.conversation-stage').style.zoom = String(zoom); }, zoom);
+    await atEdge(page, 2500);
+    const positions = await page.evaluate(async () => {
+      const scroller = document.querySelector('.transcript-scroll');
+      const samples = [];
+      for (let frame = 0; frame < 40; frame++) {
+        await new Promise(requestAnimationFrame);
+        samples.push(scroller.scrollTop);
+      }
+      return samples;
+    });
+    assert.ok(Math.max(...positions) - Math.min(...positions) < 1.5, `stationary zoom ${zoom} oscillated ${Math.max(...positions) - Math.min(...positions)}px`);
+  }
+  await page.evaluate(() => { document.querySelector('.conversation-stage').style.zoom = ''; });
+  await atEdge(page, 2500);
+  // The actual overlay scrollbar uses these ownership events because its
+  // pointer target is outside the transcript subtree.
+  await scroller.evaluate(el => {
+    el.dispatchEvent(new CustomEvent('loom:scrollbar-drag-start', { bubbles: true }));
+    el.scrollTop -= 40;
+    el.dispatchEvent(new CustomEvent('loom:scrollbar-drag-end', { bubbles: true }));
+  });
+  assert.equal(await scroller.getAttribute('data-following'), 'false', 'a short upward scrollbar drag remains detached even near the edge');
+  await scroller.evaluate(el => {
+    el.dispatchEvent(new CustomEvent('loom:scrollbar-drag-start', { bubbles: true }));
+    el.scrollTop -= 250;
+  });
+  const dragTop = await scroller.evaluate(el => el.scrollTop);
+  await page.evaluate(() => { document.querySelector('#follow-probe').style.height = '1000px'; });
+  await page.waitForTimeout(250);
+  assert.equal(await scroller.getAttribute('data-following'), 'false');
+  assert.ok(Math.abs(await scroller.evaluate(el => el.scrollTop) - dragTop) < 3, 'automatic follow must not fight scrollbar ownership');
+  await scroller.evaluate(el => {
+    el.scrollTop = el.scrollHeight;
+    el.dispatchEvent(new CustomEvent('loom:scrollbar-drag-end', { bubbles: true }));
+  });
+  await atEdge(page, 2500);
+  await page.evaluate(() => { document.querySelector('#follow-probe').style.height = '760px'; });
+  await atEdge(page, 2500);
   // Upward intent pauses follow even within the near-bottom threshold, and
   // always exposes a way to resume instead of silently hiding the control.
   await scroller.evaluate(el => {
@@ -257,6 +308,8 @@ try {
     });
     await nested.waitForTimeout(300);
     await nested.evaluate(() => { document.querySelector("#output-pane").scrollTop = 200; });
+    await nested.evaluate(() => { document.querySelector("#output-pane").dispatchEvent(new CustomEvent('loom:scrollbar-drag-start', { bubbles: true })); });
+    assert.equal((await stateOf(nested)).following, 'true', 'a nested output scrollbar does not take transcript ownership');
     const pane = await nested.locator("#output-pane").boundingBox();
     await nested.mouse.move(pane.x + 40, pane.y + 40);
     await nested.mouse.wheel(0, -60);

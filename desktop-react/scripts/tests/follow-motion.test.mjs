@@ -103,6 +103,27 @@ test("it settles exactly on the target, with no residual velocity to creep", () 
   assert.deepEqual([again.position, again.velocity, again.settled], [0, 0, true]);
 });
 
+test("a retargeted spring never carries old velocity away from the new edge", () => {
+  const atEdge = advanceFollow({ position: 100, velocity: 800 }, 100, 0.016, "live");
+  assert.deepEqual(atEdge, { position: 100, velocity: 0, settled: true });
+  const shrinking = advanceFollow({ position: 100, velocity: 800 }, 80, 0.016, "live");
+  assert.ok(shrinking.position <= 100 && shrinking.position >= 80, `reversed edge moved to ${shrinking.position}`);
+  const growing = advanceFollow({ position: 100, velocity: -800 }, 120, 0.016, "live");
+  assert.ok(growing.position >= 100 && growing.position <= 120);
+});
+
+test("alternating layout targets stop moving once layout becomes quiet", () => {
+  let state = { position: 200, velocity: 1200 };
+  for (let frame = 0; frame < 45; frame++) {
+    const target = frame % 2 ? 180 : 220;
+    const previous = state.position;
+    state = advanceFollow(state, target, 1 / 60, "live");
+    assert.ok((state.position - previous) * (target - previous) >= -1e-9, "each frame approaches the current target");
+  }
+  for (let frame = 0; frame < 120; frame++) state = advanceFollow(state, 200, 1 / 60, "live");
+  assert.deepEqual(state, { position: 200, velocity: 0, settled: true });
+});
+
 test("what is written to the page sits on a whole device pixel", () => {
   assert.equal(snapScrollOffset(335.31, 1.5), 335.3333333333333);
   for (const value of [0, 1.2, 99.9, 1234.567]) {

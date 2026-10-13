@@ -66,7 +66,7 @@ function Fixture() {
     small() { setThread("small"); setRunning(false); setItems([{ id: "small", type: "assistant_message", text: "Small conversation" }]); },
     restore() { setThread("long"); setItems(history); },
   } });
-  return <div className="workspace" style={{ position: "fixed", inset: 0, display: "block" }}>
+  return <div className="workspace workspace-panels" style={{ position: "fixed", inset: 0, display: "block" }}>
     <div className="conversation-stage" style={{ height: "calc(100% - 70px)" }}>
       <Transcript items={items} running={running} promptDisabled={running} currentTurnId={running ? "live" : null} onApproval={noop} />
       <TranscriptScrollController items={items} threadId={thread} running={running} currentTurnId={running ? "live" : null} />

@@ -99,6 +99,11 @@ export function advanceFollow(
 ): FollowState & { settled: boolean } {
   let remaining = Math.min(FOLLOW_MAX_FRAME_S, Math.max(0, Number.isFinite(seconds) ? seconds : 0));
   let { position, velocity } = state;
+  // Retargeting after a fold or reflow can put the edge behind the carried
+  // velocity. Critical damping alone still permits an initial excursion in
+  // that old direction (and at zero error it creates an entirely new gap).
+  // Preserve momentum only while it approaches the current edge.
+  if (position === target || (position - target) * velocity > 0) velocity = 0;
   while (remaining > 1e-9) {
     const dt = Math.min(SUBSTEP_S, remaining);
     remaining -= dt;

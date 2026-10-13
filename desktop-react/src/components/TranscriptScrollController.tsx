@@ -371,8 +371,11 @@ export function TranscriptScrollController({
     if (lastWriteRef.current === null || Math.abs(written - lastWriteRef.current) > 0.001 || Math.abs(scroller.scrollTop - written) > 0.001) {
       scroller.scrollTop = written;
     }
-    lastWriteRef.current = written;
-    lastScrollTopRef.current = written;
+    // CSS zoom, fractional device pixels and a layout clamp can change the
+    // applied offset. Ownership tracks the browser's result, not our request.
+    const applied = scroller.scrollTop;
+    lastWriteRef.current = applied;
+    lastScrollTopRef.current = applied;
     followingRef.current = true;
     publishFollowing(scroller, true);
     if (jumpShownRef.current) {
@@ -627,14 +630,28 @@ export function TranscriptScrollController({
       const hitWidth = Math.max(12, nativeGutter + 3);
       if (event.clientX >= rect.right - hitWidth) {
         scrollbarPointerRef.current = event.pointerId;
-        releaseOpenedStep();
+        detachFromLiveFollow(scroller);
       }
+    };
+
+    // Overlay scrollbars live outside this DOM subtree. Their explicit events
+    // transfer ownership before the first write, including track clicks and
+    // keyboard scrolling. A nested output pane must not detach the transcript.
+    const onCustomScrollbarStart = (event: Event) => {
+      if (event.target !== scroller) return;
+      detachFromLiveFollow(scroller);
+    };
+    const onCustomScrollbarEnd = (event: Event) => {
+      if (event.target !== scroller
+        || scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight > SCROLL_EPSILON_PX) return;
+      markReturnIntent();
+      resumeIfUserReturnedToBottom();
     };
 
     const finishScrollbarPointer = (event: PointerEvent) => {
       if (scrollbarPointerRef.current !== event.pointerId) return;
       scrollbarPointerRef.current = null;
-      if (isNearBottom(scroller)) {
+      if (scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight <= SCROLL_EPSILON_PX) {
         markReturnIntent();
         resumeIfUserReturnedToBottom();
       }
@@ -717,6 +734,8 @@ export function TranscriptScrollController({
     scroller.addEventListener("touchend", onTouchEnd, { passive: true });
     scroller.addEventListener("touchcancel", onTouchEnd, { passive: true });
     scroller.addEventListener("pointerdown", onPointerDown, { passive: true });
+    scroller.addEventListener("loom:scrollbar-drag-start", onCustomScrollbarStart);
+    scroller.addEventListener("loom:scrollbar-drag-end", onCustomScrollbarEnd);
     window.addEventListener("pointerup", finishScrollbarPointer, { passive: true });
     window.addEventListener("pointercancel", finishScrollbarPointer, { passive: true });
     window.addEventListener("keydown", onKeyDown, true);
@@ -751,6 +770,8 @@ export function TranscriptScrollController({
       scroller.removeEventListener("touchend", onTouchEnd);
       scroller.removeEventListener("touchcancel", onTouchEnd);
       scroller.removeEventListener("pointerdown", onPointerDown);
+      scroller.removeEventListener("loom:scrollbar-drag-start", onCustomScrollbarStart);
+      scroller.removeEventListener("loom:scrollbar-drag-end", onCustomScrollbarEnd);
       window.removeEventListener("pointerup", finishScrollbarPointer);
       window.removeEventListener("pointercancel", finishScrollbarPointer);
       window.removeEventListener("keydown", onKeyDown, true);
