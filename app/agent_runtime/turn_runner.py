@@ -341,6 +341,7 @@ class TurnRunner:
                             retry_sampling = True
                             break
                         except (AITransportError, ModelRequestTimeout) as exc:
+                            retry_limit = rt.limits.model_retries if isinstance(exc, ModelRequestTimeout) else rt.limits.transport_retries
                             if isinstance(exc, (ModelRequestTimeout, AITransportError)):
                                 rt._emit_event(session, Event.MODEL_RESPONSE_REJECTED, data={
                                     **model_identity,
@@ -352,11 +353,11 @@ class TurnRunner:
                                     "error": str(exc),
                                     "attempt": attempt,
                                     "retryable": exc.retryable,
-                                    "will_retry": exc.retryable and attempt < rt.limits.model_retries,
-                                    "retry_limit": rt.limits.model_retries,
+                                    "will_retry": exc.retryable and attempt < retry_limit,
+                                    "retry_limit": retry_limit,
                                     "stream_timing": getattr(exc, "stream_timing", {}),
                                 })
-                            if not exc.retryable or attempt >= rt.limits.model_retries:
+                            if not exc.retryable or attempt >= retry_limit:
                                 raise
                             next_attempt = attempt + 1
                             signal = wait_for_signal(

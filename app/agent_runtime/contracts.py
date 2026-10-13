@@ -93,11 +93,14 @@ class AgentLimits:
     # as the other is what made Loom budget every unknown model as 32k.
     context_window_tokens: int | None = None
     output_reserve_tokens: int | None = None
-    model_retries: int = 5
+    model_retries: int = 2
+    transport_retries: int = 5
 
     def __post_init__(self) -> None:
         if self.model_retries < 0 or self.model_retries > 5:
             raise ValueError("model_retries must be within 0..5")
+        if self.transport_retries < 0 or self.transport_retries > 5:
+            raise ValueError("transport_retries must be within 0..5")
         if (
             self.output_reserve_tokens is not None
             and self.context_window_tokens is not None
