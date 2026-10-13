@@ -58,6 +58,7 @@
   --ic-k-blink: none;
   --ic-k-pulse: none;
   --ic-k-run: none;
+  --ic-k-sway: none;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -103,6 +104,7 @@
     --ic-k-blink: li-blink;
     --ic-k-pulse: li-pulse;
     --ic-k-run: li-run;
+    --ic-k-sway: li-sway;
   }
 }
 
@@ -348,18 +350,21 @@
   100% { opacity: 0; stroke-dashoffset: -1; }
 }
 
-/* The quill: engaged, it glides to the right and lays itself down a little, turning
-   about its nib, while the line it writes is drawn behind it. The line is as long as
-   the glide (3.4, the `h3.4` of li-ink), and the turn is about the nib, so the nib is
-   always where the line ends. */
+/* The quill: answering a pointer or focus, it sways once from its nib, the way a feather
+   does when a breath of air catches it, and settles back to rest. The sway is one run of
+   keyframes that begins and ends at rest, so nothing is left held. */
 [data-icon="quill"] .li-quill {
-  transform-origin: 2px 22px;
-  transform: translate(calc(var(--ic-on) * 3.4px), 0) rotate(calc(var(--ic-on) * 4deg));
+  transform-origin: 3px 22.35px;
+  animation: var(--ic-k-sway) 760ms ease-in-out both;
 }
-[data-icon="quill"] .li-ink {
-  stroke-dasharray: 1 2;
-  stroke-dashoffset: calc((1 - var(--ic-on)) * 1);
-  opacity: var(--ic-on);
+
+@keyframes li-sway {
+  0% { transform: rotate(0deg); }
+  22% { transform: rotate(-6deg); }
+  46% { transform: rotate(3.5deg); }
+  68% { transform: rotate(-1.5deg); }
+  86% { transform: rotate(0.5deg); }
+  100% { transform: rotate(0deg); }
 }
 
 /* -------------------------------------------------------------------------- */

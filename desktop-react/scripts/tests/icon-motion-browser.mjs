@@ -11,7 +11,7 @@ const origin = process.env.LOOM_TEST_ORIGIN || "http://127.0.0.1:5199";
 // the slash of a hidden eye), the stop square (it answers a press), and the loader (always turning).
 const QUIET = new Set(["check", "circle-check", "eye-off", "square", "loader"]);
 // Glyphs that answer by replaying an animation rather than by taking a pose.
-const REPLAYS = new Set(["shield-check", "activity", "pulse", "terminal", "bot", "expression"]);
+const REPLAYS = new Set(["shield-check", "activity", "pulse", "terminal", "bot", "expression", "quill"]);
 
 async function openLab(options = {}) {
   const context = await browser.newContext({ viewport: { width: 900, height: 1200 }, deviceScaleFactor: 1.5, ...options });

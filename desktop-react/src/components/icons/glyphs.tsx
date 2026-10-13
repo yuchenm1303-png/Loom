@@ -12,7 +12,6 @@
  *   li-lid     something that opens (trash lid, archive lid, shackle)
  *   li-arrow   something that leaves in a direction (the arrow of a download)
  *   li-tick    a mark that is drawn (stroke-dash), at rest it is simply there
- *   li-ink     a mark that only exists while the glyph is engaged
  *
  * The glyphs that are not redrawn here are re-exported from lucide in index.ts
  * and stay still on purpose: motion is for icons that have something to say.
@@ -84,20 +83,16 @@ export const Pencil = createIcon("pencil", "Pencil", <g className="li li-all">
 </g>);
 
 /**
- * The new-conversation mark: a feather pen, nib at the lower left. Its silhouette is
- * lucide's feather (ISC, see the header): a full round vane, the shaft running from the
- * nib up into it, and one barb across its lower part. Engaged, the quill lays itself
- * down as it glides to the right and leaves the line it wrote (the length of that line
- * is the glide set in icon-motion.css).
+ * The new-conversation mark: a feather pen, nib at the lower left. The shaft is the
+ * leading edge of the vane, which lies wholly on one side of it, and one barb reaches
+ * from the shaft toward the head. Answering a pointer, it sways once from the nib, the
+ * way a feather does when a breath of air catches it, and settles back to rest.
  */
-export const Quill = createIcon("quill", "Quill", <>
-  <path className="li li-ink" pathLength={1} d="M2 22h3.4" />
-  <g className="li li-quill">
-    <path d="M12.67 19a2 2 0 0 0 1.416-.588l6.154-6.172a6 6 0 0 0-8.49-8.49L5.586 9.914A2 2 0 0 0 5 11.328V18a1 1 0 0 0 1 1z" />
-    <path d="M16 8 2 22" />
-    <path d="M17.5 15H9" />
-  </g>
-</>);
+export const Quill = createIcon("quill", "Quill", <g className="li li-quill">
+  <path d="M11.55 4.52A4.84 4.84 0 0 1 18.68 11.07L14.99 18.12L5.03 18.12Z" />
+  <path d="M3 22.35L11.55 4.52" />
+  <path d="M7.86 12.21L16.23 7.77" />
+</g>);
 
 export const Trash2 = createIcon("trash", "Trash2", <>
   <g className="li li-lid"><path d="M3 6h18" /><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" /></g>
