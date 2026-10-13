@@ -274,7 +274,8 @@ export function useLoom() {
 
     const pending = pendingItemDeltasRef.current;
     pendingItemDeltasRef.current = new Map();
-    setItems((current) => {
+    // Streaming paint may yield to urgent input; retain every received delta.
+    startTransition(() => setItems((current) => {
       let next: TranscriptItem[] | null = null;
       for (const [itemId, delta] of pending) {
         const index = indexedItemPosition(itemIndexRef.current, next ?? current, itemId);
@@ -283,7 +284,7 @@ export function useLoom() {
         next[index] = mergeDelta(next[index], delta);
       }
       return next ?? current;
-    });
+    }));
   }, []);
 
   const scheduleItemDeltaFlush = useCallback(() => {

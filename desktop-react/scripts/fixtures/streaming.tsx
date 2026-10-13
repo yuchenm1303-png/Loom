@@ -1,8 +1,10 @@
-import React, { StrictMode } from "react";
+import React, { StrictMode, startTransition, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { flushSync } from "react-dom";
 import { Transcript } from "../../src/components/Transcript";
 import { MarkdownMessage } from "../../src/components/MarkdownMessage";
+import { Composer } from "../../src/components/Composer";
+import { I18nProvider } from "../../src/i18n";
 import { TranscriptScrollController } from "../../src/components/TranscriptScrollController";
 import type { TranscriptItem } from "../../src/types/loom";
 import "../../src/styles.css";
@@ -15,7 +17,23 @@ const fixtures = window as unknown as {
   resetStream(): void;
   renderScrolled(text: string, running: boolean): void;
   renderItems(items: TranscriptItem[], running: boolean): void;
+  renderTypingStress(): void;
 };
+const noop = async () => {};
+function TypingStress() {
+  const [receiving, setReceiving] = useState(false);
+  const [text, setText] = useState("## Streaming output\n\n" + "Testing **output** and `code`.\n\n".repeat(400));
+  useEffect(() => {
+    const timer = setInterval(() => startTransition(() => {
+      setReceiving(true);
+      setText(value => value + "More output. ");
+    }), 28);
+    return () => clearInterval(timer);
+  }, []);
+  return <><MarkdownMessage content={text} streaming={receiving} />
+    <Composer threadId="typing-test" running accountAuthenticated onSend={noop} onInterrupt={noop} /></>;
+}
+fixtures.renderTypingStress = () => flushSync(() => root.render(<I18nProvider><TypingStress /></I18nProvider>));
 fixtures.resetStream = () => flushSync(() => root.render(null));
 fixtures.renderStream = (text, running, status = running ? "streaming" : "completed", thread = "thread-1") => {
   flushSync(() => root.render(<StrictMode><Transcript key={thread} currentTurnId="turn-1" running={running}

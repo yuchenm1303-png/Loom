@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { createContext, startTransition, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { advanceStreamingText, healStreamingMarkdown, streamingFrameInterval } from "./streamingText";
 import { useReducedMotion } from "../motion/useReducedMotion";
 import { STREAM_FINISH_MS } from "../presentationTiming";
@@ -90,7 +90,7 @@ export function useStreamingPresentation(content: string, streaming: boolean, me
 
     const commit = (next: string) => {
       visibleRef.current = next;
-      setVisible(next);
+      startTransition(() => setVisible(next));
     };
     const cancel = () => {
       if (frameRef.current !== null) cancelAnimationFrame(frameRef.current);

@@ -6,6 +6,7 @@ import {
   useEffect,
   useRef,
   useState,
+  memo,
 } from "react";
 import { useI18n } from "../i18n";
 import type { Attachment } from "../types/loom";
@@ -286,7 +287,7 @@ function SteeringComposer({
 
 const UNBOUND_DRAFT_KEY = "__loom_unbound_composer__";
 
-export function Composer(props: ComposerProps) {
+export const Composer = memo(function Composer(props: ComposerProps) {
   // Own drafts above the idle/steering variants. Those two surfaces intentionally
   // remount when a turn starts or finishes, so keeping text inside either child
   // makes unsent input vanish during a normal running-state transition.
@@ -332,4 +333,4 @@ export function Composer(props: ComposerProps) {
       {props.running ? <SteeringComposer {...sharedProps} /> : <ComposerBase {...sharedProps} />}
     </Crossfade>
   </>;
-}
+});

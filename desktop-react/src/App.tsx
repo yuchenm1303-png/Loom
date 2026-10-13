@@ -450,6 +450,7 @@ export default function App() {
   const [shortcuts, setShortcuts] = useState<ShortcutSettings>(() => readShortcutSettings());
   const [dismissedApprovalIds, setDismissedApprovalIds] = useState<Set<string>>(() => new Set());
   const [threadEntering, setThreadEntering] = useState(false);
+  const openComposerAccount = useCallback(() => setAccountOpen(true), []);
   const [threadSwitchIndicatorVisible, setThreadSwitchIndicatorVisible] = useState(false);
   const previousThreadIdRef = useRef("");
   const thread = loom.active?.thread;
@@ -1338,7 +1339,7 @@ export default function App() {
             modelSnapshot={loom.models}
             modelBusy={loom.modelBusy}
             accountAuthenticated={account.account.authenticated}
-            onOpenAccount={() => setAccountOpen(true)}
+            onOpenAccount={openComposerAccount}
             permissionMode={permissionMode}
             permissionModes={loom.runtime.permissionModes}
             onPermissionModeChange={loom.setPermissionMode}
