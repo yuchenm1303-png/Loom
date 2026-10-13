@@ -159,7 +159,7 @@ html[data-loom-theme="light"] .settings-host {
 }
 
 .settings-shell.settings-refined .settings-back {
-  color: var(--sr-ink-3);
+  color: var(--sr-ink-2);
   border-radius: 9px;
   transition: color 140ms ease, background-color 140ms ease;
 }
@@ -177,12 +177,8 @@ html[data-loom-theme="light"] .settings-host {
 .settings-shell.settings-refined .settings-brand-orb {
   color: var(--sr-accent-ink);
   border: 1px solid color-mix(in srgb, var(--sr-accent) 30%, transparent);
-  background:
-    radial-gradient(circle at 30% 22%, color-mix(in srgb, white 26%, transparent), transparent 58%),
-    linear-gradient(150deg, color-mix(in srgb, var(--sr-accent) 32%, transparent), color-mix(in srgb, var(--sr-accent) 12%, transparent));
-  box-shadow:
-    0 6px 16px -8px color-mix(in srgb, var(--sr-accent) 60%, transparent),
-    inset 0 1px 0 color-mix(in srgb, white 24%, transparent);
+  background: var(--sr-accent-soft);
+  box-shadow: none;
 }
 
 /* The gear: a touch larger than a nav icon, on a lighter stroke so its teeth stay

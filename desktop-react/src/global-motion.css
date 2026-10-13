@@ -24,7 +24,7 @@
 /* Settings now overlays the live application instead of replacing/unmounting
    it. The conversation tree remains warm and keeps its scroll/layout state. */
 .settings-host {
-  position: fixed;
+  position: absolute;
   z-index: 9000;
   inset: 0;
   min-width: 0;
