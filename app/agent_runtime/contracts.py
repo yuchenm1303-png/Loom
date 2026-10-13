@@ -93,7 +93,7 @@ class AgentLimits:
     # as the other is what made Loom budget every unknown model as 32k.
     context_window_tokens: int | None = None
     output_reserve_tokens: int | None = None
-    model_retries: int = 2
+    model_retries: int = 5
 
     def __post_init__(self) -> None:
         if self.model_retries < 0 or self.model_retries > 5:

@@ -232,6 +232,8 @@ def _base_item(event: AgentEvent, *, item_id: str, item_type: str, status: str) 
 
 def _event_item_identity(event: AgentEvent) -> tuple[str, str] | None:
     data = event.data
+    if event.kind in {AgentEventKind.MODEL_RESPONSE_REJECTED, AgentEventKind.MODEL_TRANSPORT_RETRY} and data.get("will_retry"):
+        return f"model-retry:{event.event_id}", "model_retry"
     if event.kind is AgentEventKind.USER_MESSAGE:
         return _user_item_id(event.event_id), "user_message"
     if event.kind is AgentEventKind.MODEL_RESPONSE and (
@@ -279,6 +281,15 @@ def _apply_event_to_item(item: dict[str, Any], event: AgentEvent) -> None:
     data = event.data
     item["updatedAt"] = event.created_at
     kind = event.kind
+    if item.get("type") == "model_retry":
+        attempt = int(data.get("attempt") or 0)
+        if kind is AgentEventKind.MODEL_RESPONSE_REJECTED:
+            attempt += 1
+        limit = int(data.get("retry_limit") or 5)
+        item["text"] = f"自动重试 {attempt}/{limit}"
+        item["content"] = str(data.get("error") or data.get("reason") or "连接暂时中断")
+        item["status"] = "completed"
+        return
     if kind is AgentEventKind.USER_MESSAGE:
         item["status"] = "completed"
         item["text"] = str(data.get("text") or "")
@@ -1320,6 +1331,12 @@ class LoomAppServerService:
     def _on_runtime_event(self, event: AgentEvent) -> None:
         kind = event.kind
         data = event.data
+        identity = _event_item_identity(event)
+        if identity and identity[1] == "model_retry":
+            item = _base_item(event, item_id=identity[0], item_type=identity[1], status="started")
+            _apply_event_to_item(item, event)
+            self._notify("item/completed", {"item": item})
+            return
 
         if kind is AgentEventKind.SESSION_CREATED:
             try:

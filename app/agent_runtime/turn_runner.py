@@ -353,6 +353,7 @@ class TurnRunner:
                                     "attempt": attempt,
                                     "retryable": exc.retryable,
                                     "will_retry": exc.retryable and attempt < rt.limits.model_retries,
+                                    "retry_limit": rt.limits.model_retries,
                                     "stream_timing": getattr(exc, "stream_timing", {}),
                                 })
                             if not exc.retryable or attempt >= rt.limits.model_retries:
@@ -361,7 +362,7 @@ class TurnRunner:
                             signal = wait_for_signal(
                                 token,
                                 sample_steering_revision,
-                                max(getattr(exc, "retry_after_seconds", 0.0), min(2.0, 0.25 * 2 ** (next_attempt - 1))),
+                                max(getattr(exc, "retry_after_seconds", 0.0), min(20.0, 1.0 * 2 ** (next_attempt - 1))),
                             )
                             if signal == "cancel":
                                 raise ModelCancelled()

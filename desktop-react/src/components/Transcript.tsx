@@ -54,6 +54,7 @@ import { TaskProgressPanel } from "./TaskProgressPanel";
 
 import { HomeTokenActivity } from "./HomeTokenActivity";
 import { MarkdownMessage } from "./MarkdownMessage";
+import "./model-retry.css";
 import { DecisionPromptCard, DecisionPromptRecoveryCard, parseDecisionMessage } from "./DecisionPromptCard";
 import { StreamingPresentation, usePendingPresentations } from "./StreamingPresentation";
 import { deferredActivityIndices } from "./presentationOrdering";
@@ -826,6 +827,12 @@ const ItemView = memo(function ItemView({
   if (item.type === "approval") return <ApprovalCard item={item} onApproval={onApproval} />;
 
   if (item.type === "error") return <ErrorRow item={item} />;
+  if (item.type === "model_retry") return (
+    <details className="model-retry-notice">
+      <summary>↻ {item.text}</summary>
+      <p>{item.content}</p>
+    </details>
+  );
 
   return null;
 });
