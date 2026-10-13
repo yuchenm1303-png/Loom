@@ -84,18 +84,18 @@ export const Pencil = createIcon("pencil", "Pencil", <g className="li li-all">
 </g>);
 
 /**
- * The new-conversation mark: a quill drawn in line, nib at the lower left. The vane is
- * one outline with a barb pulled out of its edge, and the shaft runs up through it, so
- * at 20px it reads as a feather pen and not as a leaf. Engaged, the quill lays itself
+ * The new-conversation mark: a feather pen, nib at the lower left. Its silhouette is
+ * lucide's feather (ISC, see the header): a full round vane, the shaft running from the
+ * nib up into it, and one barb across its lower part. Engaged, the quill lays itself
  * down as it glides to the right and leaves the line it wrote (the length of that line
  * is the glide set in icon-motion.css).
  */
 export const Quill = createIcon("quill", "Quill", <>
-  <path className="li li-ink" pathLength={1} d="M3.4 21.4h3.4" />
+  <path className="li li-ink" pathLength={1} d="M2 22h3.4" />
   <g className="li li-quill">
-    <path d="M3.4 21.4C3.62 20.34 3.88 19.32 4.17 18.34" />
-    <path d="M4.17 18.34C6.81 9.46 12.21 3.57 21 2.8C19.73 4.72 18.35 6.51 16.86 8.2L18.07 9.26L15.38 9.8C12.12 13.16 8.39 16 4.17 18.34z" />
-    <path d="M4.17 18.34L16.9 7.4" />
+    <path d="M12.67 19a2 2 0 0 0 1.416-.588l6.154-6.172a6 6 0 0 0-8.49-8.49L5.586 9.914A2 2 0 0 0 5 11.328V18a1 1 0 0 0 1 1z" />
+    <path d="M16 8 2 22" />
+    <path d="M17.5 15H9" />
   </g>
 </>);
 

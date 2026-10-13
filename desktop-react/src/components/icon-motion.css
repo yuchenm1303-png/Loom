@@ -353,7 +353,7 @@
    the glide (3.4, the `h3.4` of li-ink), and the turn is about the nib, so the nib is
    always where the line ends. */
 [data-icon="quill"] .li-quill {
-  transform-origin: 3.4px 21.4px;
+  transform-origin: 2px 22px;
   transform: translate(calc(var(--ic-on) * 3.4px), 0) rotate(calc(var(--ic-on) * 4deg));
 }
 [data-icon="quill"] .li-ink {
