@@ -515,8 +515,13 @@ export default function App() {
 
   useLayoutEffect(() => {
     const previousThreadId = previousThreadIdRef.current;
-    if (!activeThreadId) return;
     previousThreadIdRef.current = activeThreadId;
+    // Home -> first send continues the already visible optimistic transcript.
+    // Do not retain the last conversation ID and replay a full-surface fade.
+    if (!activeThreadId) {
+      setThreadEntering(false);
+      return;
+    }
     if (!previousThreadId || previousThreadId === activeThreadId || reducedPanelMotion()) {
       setThreadEntering(false);
       return;
