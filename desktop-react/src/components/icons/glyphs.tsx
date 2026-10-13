@@ -84,17 +84,18 @@ export const Pencil = createIcon("pencil", "Pencil", <g className="li li-all">
 </g>);
 
 /**
- * The new-conversation mark: a quill with its nib at the lower left and one barb
- * pulled out of the vane. The vane is the only closed shape and carries a faint wash
- * of the ink colour, so at 20px it reads as a plume and not as an empty outline.
- * Engaged, the quill glides to the right and leaves the line it wrote (the length of
- * that line is the glide set in icon-motion.css).
+ * The new-conversation mark: a quill drawn in line, nib at the lower left. The vane is
+ * one outline with a barb pulled out of its edge, and the shaft runs up through it, so
+ * at 20px it reads as a feather pen and not as a leaf. Engaged, the quill lays itself
+ * down as it glides to the right and leaves the line it wrote (the length of that line
+ * is the glide set in icon-motion.css).
  */
 export const Quill = createIcon("quill", "Quill", <>
   <path className="li li-ink" pathLength={1} d="M3.4 21.4h3.4" />
   <g className="li li-quill">
     <path d="M3.4 21.4C3.62 20.34 3.88 19.32 4.17 18.34" />
-    <path fill="currentColor" fillOpacity={0.26} d="M4.17 18.34C6.81 9.46 12.21 3.57 21 2.8C19.73 4.72 18.35 6.51 16.86 8.2L18.07 9.26L15.38 9.8C12.12 13.16 8.39 16 4.17 18.34z" />
+    <path d="M4.17 18.34C6.81 9.46 12.21 3.57 21 2.8C19.73 4.72 18.35 6.51 16.86 8.2L18.07 9.26L15.38 9.8C12.12 13.16 8.39 16 4.17 18.34z" />
+    <path d="M4.17 18.34L16.9 7.4" />
   </g>
 </>);
 

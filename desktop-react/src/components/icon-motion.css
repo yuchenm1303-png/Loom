@@ -348,10 +348,14 @@
   100% { opacity: 0; stroke-dashoffset: -1; }
 }
 
-/* The quill: engaged, it glides to the right along the line it writes. The line
-   is as long as the glide (3.4, the `h3.4` of li-ink), so its end is always
-   where the nib is. */
-[data-icon="quill"] .li-quill { transform: translate(calc(var(--ic-on) * 3.4px), 0); }
+/* The quill: engaged, it glides to the right and lays itself down a little, turning
+   about its nib, while the line it writes is drawn behind it. The line is as long as
+   the glide (3.4, the `h3.4` of li-ink), and the turn is about the nib, so the nib is
+   always where the line ends. */
+[data-icon="quill"] .li-quill {
+  transform-origin: 3.4px 21.4px;
+  transform: translate(calc(var(--ic-on) * 3.4px), 0) rotate(calc(var(--ic-on) * 4deg));
+}
 [data-icon="quill"] .li-ink {
   stroke-dasharray: 1 2;
   stroke-dashoffset: calc((1 - var(--ic-on)) * 1);
