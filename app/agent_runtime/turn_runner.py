@@ -119,6 +119,7 @@ class TurnRunner:
                 recovery_instruction = ""
                 recovery_partial = ""
                 recovery_reasoning = ""
+                recovery_diagnostics = ""
                 attempt = 0
                 reconnect_delay = 1.0
                 stall_replays = 0
@@ -140,6 +141,16 @@ class TurnRunner:
                             else _TRUNCATED_RECOVERY_INSTRUCTION if recovery_partial or recovery_instruction == "truncated_tool_call"
                             else _TERMINAL_RECOVERY_INSTRUCTION
                         )
+                        if recovery_instruction == "invalid_provider_response" and recovery_diagnostics:
+                            instruction = (
+                                "The previous model response was rejected before ANY of its tool calls executed. "
+                                "Continue the same task. Correct the named tool call using the current advertised schema. "
+                                "Arguments must be one valid JSON object, with properly escaped strings, no duplicate keys "
+                                "and no NaN/Infinity. Do not rename fields, change argument types, or invent tools. "
+                                "Use tool_search first when a required tool has not been exposed. "
+                                "Do not repeat tools already completed in earlier steps. Validation diagnosis:\n"
+                                + recovery_diagnostics
+                            )
                         if recovery_partial:
                             instruction += "\n\nRejected partial model output (not committed):\n" + recovery_partial
                         if recovery_reasoning:
@@ -335,6 +346,10 @@ class TurnRunner:
                                     f"model repeatedly returned malformed responses: {exc}"
                                 ) from exc
                             attempt += 1
+                            recovery_diagnostics = json.dumps({
+                                "tool": getattr(exc, "tool_name", ""),
+                                "validation": getattr(exc, "tool_argument_diagnostics", {}),
+                            }, ensure_ascii=False)
                             if over_length:
                                 request_forced_compaction(rt, session)
                                 recovery_instruction = ""

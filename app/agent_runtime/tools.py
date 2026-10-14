@@ -3,7 +3,6 @@ from __future__ import annotations
 import sys
 import json
 from copy import deepcopy
-from functools import lru_cache
 from dataclasses import replace
 import re
 from dataclasses import dataclass, field
@@ -12,6 +11,7 @@ from pathlib import Path
 from typing import Any, Callable, Mapping, Sequence
 
 from app.ai import ToolDefinition
+from app.ai.tool_schema import schema_validator as _schema_validator, argument_issues
 
 from .contracts import AgentEventKind, ToolEffect
 
@@ -423,19 +423,6 @@ class ToolRegistry:
         return ToolRouter(tuple(visible))
 
 
-@lru_cache(maxsize=256)
-def _schema_validator(serialized: str):
-    from jsonschema import Draft202012Validator, validators
-    from referencing import Registry
-    from referencing.exceptions import NoSuchResource
-    def no_network(uri):
-        raise NoSuchResource(ref=uri)
-    schema = json.loads(serialized)
-    cls = validators.validator_for(schema, default=Draft202012Validator)
-    cls.check_schema(schema)
-    return cls(schema, registry=Registry(retrieve=no_network))
-
-
 class ToolValidationUnavailable(RuntimeError):
     """Loom cannot validate any tool call, so nothing can run.
 
@@ -477,7 +464,7 @@ def validate_tool_arguments(schema: dict[str, Any], arguments: dict[str, Any]) -
         raise ValueError("tool root schema must be type=object")
     try:
         validator = _schema_validator(json.dumps(schema, sort_keys=True))
-        error = next(validator.iter_errors(arguments), None)
+        issues = argument_issues(schema, arguments, validator=validator)
     except ImportError as exc:
         raise ToolValidationUnavailable(
             f"Loom is installed without its schema validator ({exc}). No tool can run. "
@@ -486,17 +473,13 @@ def validate_tool_arguments(schema: dict[str, Any], arguments: dict[str, Any]) -
         ) from exc
     except Exception as exc:
         raise ValueError(f"invalid or unresolved tool schema: {exc}") from exc
-    if error is not None:
-        path = "$" + "".join(f".{p}" for p in error.absolute_path)
-        # jsonschema's message/instance may contain passwords or entire payloads.
-        # The schema and field path suffice for repair without echoing values.
-        rule = str(error.validator)
-        if rule == "required" and isinstance(error.instance, dict):
-            missing = next((name for name in error.validator_value if name not in error.instance), None)
-            if missing is not None:
-                path += "." + str(missing)
-        raise ToolRequestError(f"{path}: arguments violate schema rule {rule}; consult the advertised schema",
-                               code="invalid_arguments", path=path, rule=rule)
+    if issues:
+        detail = issues[0]
+        path, rule = detail["argument_path"], detail["validation_rule"]
+        error = ToolRequestError(f"{path}: arguments violate schema rule {rule}; consult the advertised schema",
+                                 code="invalid_arguments", path=path, rule=rule)
+        error.details.update(detail)
+        raise error
 
 
 __all__ = [

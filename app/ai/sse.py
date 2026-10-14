@@ -1,11 +1,11 @@
 """Decode SSE data envelopes; JSON semantics belong to the protocol adapter."""
 from __future__ import annotations
 
-import json
 from collections.abc import Iterable, Iterator
 from typing import Any
 
 from .errors import AIResponseError
+from .tool_protocol import decode_argument_json
 
 
 def json_sse_events(lines: Iterable[bytes]) -> Iterator[dict[str, Any]]:
@@ -32,7 +32,7 @@ def _parse(parts: list[str]) -> Iterator[dict[str, Any]]:
     if not data or data == "[DONE]":
         return
     try:
-        event = json.loads(data)
+        event = decode_argument_json(data)
     except ValueError as exc:
         raise AIResponseError("Messages stream contains invalid SSE JSON") from exc
     if not isinstance(event, dict):

@@ -6,15 +6,14 @@ atomic until completion and use the normal runtime dispatch/approval path.
 from __future__ import annotations
 
 from dataclasses import replace
-import json
 import re
 import uuid
-from jsonschema import validators
+from .tool_schema import argument_issues
 
 from .contracts import ChatRequest, ModelResponse, ToolCall, ToolChoice
-from .errors import AIResponseError, AITruncatedToolCallError
+from .errors import AIConfigurationError, AIResponseError, AITruncatedToolCallError
 from .tool_policy import exposes_tools
-from .tool_protocol import validate_unique_calls
+from .tool_protocol import validate_unique_calls, decode_argument_json
 
 _TAG = re.compile(r'<\s*(/?)\s*[|｜]\s*DSML\s*[|｜]\s*(tool_calls|function_calls|invoke|parameter)\b([^>]*)>')
 _PREFIX = re.compile(r'<\s*/?\s*[|｜]\s*DSML\b')
@@ -77,8 +76,8 @@ def _dsml(text: str, finish_reason: str) -> tuple[str, tuple[ToolCall, ...]]:
                 raise AIResponseError("invalid or duplicate tool wire parameter")
             raw = text[param.end():closing.start()]
             try:
-                arguments[attrs["name"]] = raw if attrs["string"] == "true" else json.loads(raw)
-            except json.JSONDecodeError:
+                arguments[attrs["name"]] = raw if attrs["string"] == "true" else decode_argument_json(raw)
+            except ValueError:
                 raise AIResponseError("tool wire parameter contains invalid JSON") from None
             position = closing.end()
             index += 2
@@ -106,10 +105,27 @@ def normalize_response(request: ChatRequest, response: ModelResponse) -> ModelRe
         definitions = {tool.name: tool for tool in request.tools}
         for call in calls:
             if call.name not in definitions:
-                raise AIResponseError("response called an undeclared tool")
-            validator = validators.validator_for(definitions[call.name].input_schema)(definitions[call.name].input_schema)
-            if not validator.is_valid(call.arguments):
-                raise AIResponseError("tool arguments do not match the declared schema")
+                error = AIResponseError("response called an undeclared tool", finish_reason=response.finish_reason)
+                error.tool_argument_diagnostics = {"schema_version": 1, "issues": [
+                    {"argument_path": "$", "validation_rule": "declared_tool", "available_tools": list(definitions)[:12]}
+                ]}
+                raise error
+            try:
+                issues = argument_issues(definitions[call.name].input_schema, call.arguments)
+            except Exception as exc:
+                # A broken declaration cannot be repaired by model resampling.
+                raise AIConfigurationError("tool declaration has an invalid or unresolved schema") from exc
+            if issues:
+                detail = issues[0]
+                error = AIResponseError(
+                    f"tool {call.name!r} arguments do not match the declared schema: "
+                    f"{detail['argument_path']} violates {detail['validation_rule']}",
+                    finish_reason=response.finish_reason)
+                error.tool_name = call.name
+                error.response_id = response.response_id
+                error.stream_diagnostics = dict(response.stream_diagnostics)
+                error.tool_argument_diagnostics = {"schema_version": 1, "tool_name": call.name, "issues": issues}
+                raise error
     elif response.finish_reason in {"tool_calls", "function_call", "tool_use"}:
         raise AIResponseError("provider finished with tool intent but no tool calls")
     elif exposes_tools(request) and request.tool_choice is ToolChoice.REQUIRED:

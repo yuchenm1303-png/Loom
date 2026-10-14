@@ -27,7 +27,7 @@ from .errors import AIResponseError, AITransportError, AIQuotaExceeded
 from .openai_runtime import _provider_status_code, _retryable_provider_error, _quota_exhausted
 from .responses_protocol import ResponsesToolDecoder, ResponsesTextDecoder, responses_finish_reason
 from .sse import json_sse_events
-from .tool_protocol import parse_tool_call, validate_unique_calls
+from .tool_protocol import parse_tool_call, validate_unique_calls, decode_argument_json
 from .execution_control import ModelCancelled, check_cancelled, current_control, note_progress, note_chunk
 from .openai_streaming import OpenAIStreamingChatBackend
 from .profiles import ModelProfile
@@ -589,7 +589,7 @@ class _OpenCodeGoMessagesBackend:
         check_cancelled()
         with self._open(request, stream=False) as response:
             try:
-                payload = json.loads(response.read().decode("utf-8"))
+                payload = decode_argument_json(response.read().decode("utf-8"))
             except (ValueError, UnicodeDecodeError) as exc:
                 raise AIResponseError("Messages response contains invalid JSON") from exc
         if not isinstance(payload, dict):
