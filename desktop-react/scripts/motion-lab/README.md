@@ -51,5 +51,14 @@ up in `docs/icon-motion-2026-10-10.md`.
 | `send-film.mjs [--scene swap,gesture,guidance] [--theme dark] [--zoom 4]` | The send button on the real composer (live-app fixture), frame by frame at device pixels: `swap` is the handoff when a message is sent and when a run is stopped (the outgoing composer is a copy React drops after 280 ms, so the tool holds that timer while it takes frames); `gesture` is wake / pointer in / out / press / text deleted; `guidance` is the button that stays while a run is going. Written up in `docs/send-button-2026-10-12.md`. |
 | `quill-film.mjs [--scene in\|out\|press\|click\|shortcut] [--probe 700] [--fixed 1] [--reduced 1]` | The quill of the sidebar's new-conversation row on the real sidebar (live-app fixture), frame by frame at device pixels: the pose the pointer gives it, the press toward its nib, and the line written again when a conversation is started (`click`, or `shortcut` for Ctrl+N, sent to the window as the event the app listens for: headless Chrome never delivers the real key, it is reserved). `--probe` prints the turn of the quill and barb and the length of the line every 20 ms. Written up in `docs/quill-2026-10-14.md`. |
 
+## Sending
+
+A message that is sent flies from the field into the conversation (`src/sendFlight.ts`); both tools run the live-app fixture, whose Host answers a send after `?latency=` ms as a real one does (account check, request preparation).
+
+| Script | What it answers |
+| --- | --- |
+| `flight-trace.mjs [--empty 1] [--latency 1200] [--theme dark] [--text "..."] [--height 860] [--png out.png]` | The flight frame by frame: the launch and land events (and a `correct` if the landing had to be adjusted, or a `skip` with its reason), the path of the message's first glyph and its peak speed, the real entry's place and the capsule's arrival, the hand-off (last ghost frame against the first frame of the real bubble, in px), the worst frame gaps. `--empty 1` sends from the home screen, `--height 520` makes the page scroll to make room, `--png` draws the path. |
+| `flight-film.mjs [--scene closeup,handoff,strip] [--times 0,30,...] [--theme dark] [--empty 1] [--zoom 1.4]` | Frame-exact pictures (the flight's animations are paused and seeked): `closeup` crops each frame around the message to judge the card coming up and the text's crispness, `handoff` puts the ghost at its last moment beside the real bubble with a difference image and numbers, `strip` is the lower part of the page at each time. Written up in `docs/send-flight-2026-10-14.md`. |
+
 Tests: `scripts/tests/icon-motion.test.mjs` (static: names, parts, ownership, dead lucide selectors) and
 `scripts/tests/icon-motion-browser.mjs` (real hover, focus, reduced motion, rows and tools, loaders, press).

@@ -34,7 +34,8 @@ function watchSwap(page) {
     window.__swap = null;
     new MutationObserver((_, observer) => {
       if (window.__swap || !document.querySelector(".composer-mode-crossfade > .crossfade-out .send-button")) return;
-      window.__swap = document.getAnimations().filter((animation) => animation.animationName?.startsWith("li-")).map((animation) => {
+      // Only the buttons' own glyphs: the quota ring in the outgoing composer spins while it loads (li-spin).
+      window.__swap = document.getAnimations().filter((animation) => animation.animationName?.startsWith("li-") && animation.effect?.target?.closest?.(".send-button")).map((animation) => {
         const svg = animation.effect.target;
         const layer = svg.closest(".composer-mode-crossfade > *")?.classList.contains("crossfade-out") ? "out" : "in";
         return `${animation.animationName}:${svg.closest(".send-button").classList.contains("stop") ? "stop" : "send"}:${layer}`;

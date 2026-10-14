@@ -1,0 +1,158 @@
+/* The message that leaves the field and lands in the conversation ------------------------------------------------
+   Owner: sendFlight.ts, which makes the layer, the two copies of the message and their animations; this file says
+   what they look like and what the real entry does meanwhile. Written up in docs/send-flight-2026-10-14.md.
+
+   While a message is in the air its real entry is held back (data-flight="flying" on the entry: visibility, so it
+   keeps its place in the page and the page is already the size it will end as). The capsule that follows it holds
+   too (the turn is "flying": its row is there at once, its fade waits) and is let in as the message all but arrives
+   (the turn is "settling"; the ease has a long tail, so the message is where it will be well before the last pixel).
+   On landing the real entry shows (data-flight="landed" on both), its toolbar comes in and its edge catches the
+   light once.
+
+   The entry's own entrance (generation-motion.css: the rise and the unfold of `.is-sending`, and the same for guidance
+   inside the live process) is switched off while the flight owns the message, whatever the entry sits in: the
+   selectors below are heavier than those on purpose, they are what the entry would otherwise be drawn by. */
+
+.send-flight-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  pointer-events: none;
+  contain: layout style;
+}
+
+.send-flight-ghost {
+  position: absolute;
+  display: grid;
+  margin: 0;
+  pointer-events: none;
+  user-select: none;
+}
+
+/* The two copies sit on top of each other in one cell: what moves is the pair. */
+:root .send-flight-ghost > .turn-block {
+  grid-area: 1 / 1;
+  width: 100%;
+  min-width: 0;
+  margin: 0;
+}
+
+/* The text is the message without its card; the card is the card without the message. Their boxes are the same. */
+.send-flight-text .user-message {
+  background: none !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+}
+.send-flight-card .user-message {
+  color: transparent !important;
+  text-shadow: none !important;
+}
+.send-flight-card .user-message * {
+  visibility: hidden !important;
+}
+
+/* The real entry while its message is in the air. */
+:root .app-shell .transcript-entry.entry-user_message[data-flight="flying"] {
+  visibility: hidden;
+}
+:root .app-shell .transcript-entry.entry-user_message[data-flight] {
+  animation: none !important;
+}
+:root .app-shell .transcript-entry.entry-user_message[data-flight] :is(.user-message, .user-message-copy-shell,
+  .user-link-card, .user-rich-code-block, .user-message-image-preview, .user-message-attachment-card, .user-message-media-preview) {
+  animation: none !important;
+}
+
+/* The composer that is going away (it fades while its replacement fades in) must not show the text a second time, and
+   the one that arrives keeps its placeholder back until the text has left the spot it would be drawn on. The keyframes
+   end where the placeholder's own style is (no 100% keyframe), whatever that is while it has focus. */
+:root .composer-mode-crossfade[data-sent] > .crossfade-out .composer textarea {
+  color: transparent !important;
+  -webkit-text-fill-color: transparent !important;
+  caret-color: transparent !important;
+}
+/* A tall composer (several lines) shrinks to one line in the same frame the message leaves. The copy that is going away
+   keeps its own height, anchored to the bottom, instead of being cut off at the new one. */
+:root .composer-mode-crossfade[data-sent] > .crossfade-out {
+  top: auto;
+  height: auto;
+  overflow: visible;
+}
+:root .composer-mode-crossfade[data-sent] > .crossfade-in .composer textarea::placeholder {
+  animation: loom-flight-placeholder 520ms ease backwards;
+}
+@keyframes loom-flight-placeholder {
+  0%, 38% { opacity: 0; }
+}
+
+/* The home screen the message left: a copy of its pane, going out under the flight. It lays itself out like the
+   original (it is the same pane), so nothing in it may play again: not the entrance the starters make on arrival, not
+   the glow that loops behind them. It only fades (sendFlight.ts). */
+.send-flight-home,
+.send-flight-home * {
+  pointer-events: none;
+  animation: none !important;
+}
+
+/* The capsule that follows the message: its row is there from the first frame (so the page does not grow once the
+   message has landed), it fades in as the message arrives, and the bead springs just before. */
+.app-shell .turn-block[data-flight="flying"] .pending-thinking-presence[data-motion-phase] {
+  grid-template-rows: 1fr;
+  opacity: 0;
+  transition: none;
+}
+.app-shell .turn-block[data-flight] .turn-process.is-live .turn-process-content > .pending-thinking-presence:first-child .inline-thinking {
+  --thinking-lead: var(--flight-lead, 300ms);
+}
+
+/* Landing: the toolbar arrives, and the edge catches the light once. */
+:root .app-shell .transcript-entry.entry-user_message[data-flight="landed"] .user-message-meta {
+  animation: loom-flight-meta 300ms cubic-bezier(.2, .8, .2, 1) backwards;
+}
+:root .app-shell .transcript-entry.entry-user_message[data-flight="landed"] .user-message {
+  position: relative;
+  isolation: isolate;
+}
+:root .app-shell .transcript-entry.entry-user_message[data-flight="landed"] .user-message::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  opacity: 0;
+  box-shadow:
+    inset -1px -1px 0 rgba(162, 149, 244, .16),
+    0 0 14px rgba(108, 92, 220, .06);
+  animation: loom-flight-edge 560ms ease-out both;
+}
+:root[data-loom-theme="light"] .app-shell .transcript-entry.entry-user_message[data-flight="landed"] .user-message::before {
+  box-shadow:
+    inset -1px -1px 0 rgba(105, 90, 216, .12),
+    0 0 12px rgba(105, 90, 216, .04);
+}
+:root .app-shell .transcript-entry.entry-user_message[data-flight="landed"] .user-message > * {
+  position: relative;
+  z-index: 1;
+}
+
+@keyframes loom-flight-meta {
+  from { opacity: 0; translate: 0 3px; }
+  to { opacity: .78; translate: 0 0; }
+}
+@keyframes loom-flight-edge {
+  0%, 100% { opacity: 0; }
+  26% { opacity: .75; }
+  68% { opacity: .24; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .send-flight-layer { display: none; }
+  :root .app-shell .transcript-entry.entry-user_message[data-flight="landed"] .user-message-meta,
+  :root .app-shell .transcript-entry.entry-user_message[data-flight="landed"] .user-message::before { animation: none !important; }
+}
+:root[data-loom-reduced-motion="true"] .send-flight-layer { display: none; }
+:root[data-loom-reduced-motion="true"] .app-shell .transcript-entry.entry-user_message[data-flight="landed"] .user-message-meta,
+:root[data-loom-reduced-motion="true"] .app-shell .transcript-entry.entry-user_message[data-flight="landed"] .user-message::before {
+  animation: none !important;
+}

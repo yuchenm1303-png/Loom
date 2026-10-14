@@ -17,6 +17,7 @@ import { KeyboardEvent as ReactKeyboardEvent, useEffect, useLayoutEffect, useMem
 import type { AddModelInput, Attachment, ModelSnapshot, StickerPreferences } from "../types/loom";
 import { useI18n } from "../i18n";
 import { useMotionPresence } from "../motion/useMotionPresence";
+import { recordSendOrigin } from "../sendFlight";
 import { Crossfade } from "./Crossfade";
 import { ModelPanel } from "./ModelPanel";
 import { ModelUsageIndicator } from "./ModelUsageIndicator";
@@ -346,6 +347,8 @@ export function Composer({
     setSubmitting(true);
     setOpenPanel(null);
     try {
+      // Where the text is drawn now: the message flies from here once the transcript has its entry (sendFlight.ts).
+      recordSendOrigin(textareaRef.current);
       const request = onSend(input, sendable.map((item) => ({ path: item.path, name: item.name })));
       setValue("");
       await request;

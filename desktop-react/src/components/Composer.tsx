@@ -9,6 +9,7 @@ import {
   memo,
 } from "react";
 import { useI18n } from "../i18n";
+import { recordSendOrigin } from "../sendFlight";
 import type { Attachment } from "../types/loom";
 import { Composer as ComposerBase } from "./ComposerBase";
 import { ComposerAttachmentStrip } from "./ComposerAttachmentStrip";
@@ -133,6 +134,8 @@ function SteeringComposer({
 
     let request: Promise<void>;
     try {
+      // The guidance flies into the live process from where its text is drawn now (sendFlight.ts).
+      recordSendOrigin(textareaRef.current, "steer");
       request = Promise.resolve(onSend(input, sendable.map((item) => ({ path: item.path, name: item.name }))));
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));

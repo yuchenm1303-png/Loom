@@ -34,6 +34,7 @@ import { useI18n } from "../i18n";
 import type { StartupStage } from "../state/startupSequence";
 import { useMotionPresence } from "../motion/useMotionPresence";
 import { useReducedMotion } from "../motion/useReducedMotion";
+import { endSendFlight, launchSendFlight, recordCardOrigin } from "../sendFlight";
 import { useEarlierProcessHandoff } from "./useEarlierProcessHandoff";
 import { LIVE_STATUS_GRACE_MS, LIVE_TEXT_HOLD_MS, TURN_FOLD_MS, TURN_SETTLE_HOLD_MS } from "../presentationTiming";
 import type { TranscriptItem } from "../types/loom";
@@ -373,6 +374,17 @@ function groupTurns(items: TranscriptItem[]): TurnBlock[] {
 function isSteeringUserMessage(item: TranscriptItem): boolean {
   return item.type === "user_message"
     && String(item.source ?? "").trim().toLowerCase() === "steering";
+}
+
+/**
+ * Guidance the reader has just sent is shown at once (optimistic) and flies in from the composer's text when the
+ * composer said where it was (sendFlight.ts). A ref callback: it runs when the entry is born, before anything is
+ * painted, and answers false at once for any entry that was not just sent.
+ */
+function steeringEntryRef(entry: HTMLDivElement | null): (() => void) | undefined {
+  if (!entry) return undefined;
+  launchSendFlight(entry, "steer");
+  return () => endSendFlight(entry);
 }
 
 function itemCreatedAtMs(item: TranscriptItem): number | null {
@@ -1010,6 +1022,7 @@ function Sequence({
             className={`transcript-entry entry-${block.item.type} ${active ? "has-lifecycle-motion" : ""} ${isSteeringUserMessage(block.item) ? "entry-steering-user" : ""} ${block.item.leaving ? "is-leaving" : ""} ${isLeadNote(block.item) ? `wv-note is-lead ${block.item.id === latestAssistantId ? "is-latest" : ""}` : ""}`.replace(/\s+/g, " ").trim()}
             key={block.item.id}
             inert={Boolean(block.item.leaving)}
+            ref={isSteeringUserMessage(block.item) && block.item.optimistic === true ? steeringEntryRef : undefined}
           >
             {/* What arrives between tool groups folds in and out on a plain wrapper: a padded card cannot shrink past its own padding. */}
             {block.item.type === "approval" || block.item.type === "error" ? <div className="entry-body">{renderEntry(block.item)}</div> : renderEntry(block.item)}
@@ -1349,6 +1362,41 @@ function TurnArtifacts({ items, workspace }: { items: TranscriptItem[]; workspac
   );
 }
 
+/**
+ * The entry of the message that opens a turn. A message the reader has just sent makes its entrance by flying in
+ * from the composer when the composer says where the text was (sendFlight.ts); otherwise, or when the flight cannot
+ * be made, it makes the ordinary one (`is-sending`, generation-motion.css). Either way the marker ends with the
+ * entrance, so a turn that mounts later (history, a thread switch) never plays it.
+ */
+function UserEntry({ item, sending, onLaunched, onEntranceEnd, onApproval, onPrompt, promptDisabled, workspace }: {
+  item: TranscriptItem;
+  sending: boolean;
+  onLaunched(): void;
+  onEntranceEnd(): void;
+  onApproval(item: TranscriptItem, approved: boolean): void;
+  onPrompt?(prompt: string): Promise<void> | void;
+  promptDisabled?: boolean;
+  workspace?: string;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const entry = ref.current;
+    if (!sending || !entry) return;
+    if (launchSendFlight(entry)) onLaunched();
+    return () => endSendFlight(entry);
+    // Once per mount: a flight is asked for when the entry is born, never when it re-renders.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  return (
+    <div ref={ref} className={`transcript-entry entry-user_message ${sending ? "is-sending" : ""}`}
+      onAnimationEnd={(event) => {
+        if (event.target === event.currentTarget && event.animationName === "loom-user-send-entry") onEntranceEnd();
+      }}>
+      <ItemView item={item} onApproval={onApproval} onPrompt={onPrompt} promptDisabled={promptDisabled} workspace={workspace} />
+    </div>
+  );
+}
+
 interface TurnViewProps {
   turnId: string;
   items: TranscriptItem[];
@@ -1462,12 +1510,9 @@ const TurnView = memo(function TurnView({
     <FileEditDeltaContext.Provider value={fileDeltas}>
     <section className={`turn-block ${active ? "is-active" : "is-complete"} ${settling ? `is-settling is-settle-${settle}` : ""}`.replace(/\s+/g, " ").trim()} data-turn-id={turnId}>
       {derived.initialUser ? (
-        <div className={`transcript-entry entry-user_message ${sending ? "is-sending" : ""}`} key={derived.initialUser.clientMessageId || derived.initialUser.id}
-          onAnimationEnd={(event) => {
-            if (event.target === event.currentTarget && event.animationName === "loom-user-send-entry") setSending(false);
-          }}>
-          <ItemView item={derived.initialUser} onApproval={onApproval} onPrompt={onPrompt} promptDisabled={promptDisabled} workspace={workspace} />
-        </div>
+        <UserEntry key={derived.initialUser.clientMessageId || derived.initialUser.id} item={derived.initialUser} sending={sending}
+          onLaunched={() => setSending(false)} onEntranceEnd={() => setSending(false)}
+          onApproval={onApproval} onPrompt={onPrompt} promptDisabled={promptDisabled} workspace={workspace} />
       ) : null}
 
       {derived.hasProcess || active ? (
@@ -1585,7 +1630,11 @@ function EmptyState({ disabled, onPrompt, onOpenInsights, connecting, startupSta
             type="button"
             key={title[0]}
             disabled={disabled}
-            onClick={() => onPrompt?.(prompt[lang])}
+            onClick={(event) => {
+              // The message sets off from the card that was pressed (sendFlight.ts).
+              recordCardOrigin(event.currentTarget);
+              void onPrompt?.(prompt[lang]);
+            }}
           >
             <span className="starter-icon"><Icon size={17} strokeWidth={1.85} /></span>
             <span className="starter-content">

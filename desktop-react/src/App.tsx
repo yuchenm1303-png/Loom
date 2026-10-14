@@ -973,11 +973,19 @@ export default function App() {
     reduceMotion ? 0 : APPROVAL_EXIT_MS,
     [dismissedApprovalIds],
   );
-  const transcriptRunning = Boolean(
+  // Only server-confirmed state may mark an existing turn live: before turn/started, currentTurnId still names the
+  // previous (completed) turn, and calling that one live made it reflow and jump. The turn just sent is live from the
+  // click all the same: it is the one that carries a message still "sending", and it names no current turn, so
+  // nothing else can be taken for it. That holds before the conversation exists (a home send waits for thread/start),
+  // which is why this does not read the app's own busy flag. Without it the new turn was drawn as finished until the
+  // Host answered: a second or more with only the bubble on screen, no entrance, no "thinking".
+  const confirmedTurnRunning = Boolean(
     runtimeTurnRunning
     && thread?.currentTurnId
     && transcriptItems.some((item) => item.turnId === thread.currentTurnId),
   );
+  const transcriptRunning = confirmedTurnRunning
+    || transcriptItems.some((item) => item.type === "user_message" && item.status === "sending");
 
   const panelMaximum = (panel: ResizePanel): number => {
     const viewport = shellWidthRef.current || shellRef.current?.clientWidth || window.innerWidth;
@@ -1301,7 +1309,7 @@ export default function App() {
           <Transcript
             items={transcriptItems}
             running={transcriptRunning}
-            currentTurnId={thread?.currentTurnId}
+            currentTurnId={confirmedTurnRunning ? thread?.currentTurnId : undefined}
             workspace={workspace}
             promptDisabled={conversationDisabled}
             onPrompt={handlePrompt}

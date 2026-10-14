@@ -21,6 +21,9 @@
  *   ?speed=0.5             slow the script (animations are not rescaled)
  *   ?empty=1               start on the home screen of an empty thread
  *   ?autosend=1            send the scenario prompt once the app is ready
+ *   ?latency=1500          the Host takes this long (ms) to answer `turn/start` (and `thread/start`, for a message sent from
+ *                          the home screen of a conversation that does not exist yet) and to start the run, as a real one does:
+ *                          account check + request preparation measured 0.5-3 s on a slow route (docs/send-flight-2026-10-14.md)
  *
  * window.liveFixture.send(text?) types into the real composer and presses Enter.
  */
@@ -29,6 +32,7 @@ const theme = params.get("theme") || "dark";
 const english = params.get("lang") === "en";
 const scenario = params.get("scenario") || "code";
 const speed = Number(params.get("speed") || 1) || 1;
+const latency = Math.max(0, Number(params.get("latency") || 0) || 0);
 localStorage.removeItem("loom.inspector.open");
 localStorage.setItem("loom.settings.language", english ? "en" : "zh-CN");
 localStorage.setItem("loom.settings.desktop.v2", JSON.stringify({ appearance: {
@@ -514,6 +518,8 @@ const handlers: Record<string, (args: Record<string, unknown>) => unknown> = {
   "project/list": () => ({ projects, unfiledThreadCount: 0 }),
   "thread/read": (args) => snapshot(String(args.threadId)),
   "thread/context": () => ({ context: null }),
+  // A conversation created from the home screen (the sidebar's "New conversation", then a send): the fixture has one thread.
+  "thread/start": () => ({ thread: { ...thread, status: "idle", currentTurnId: undefined } }),
   "turn/start": (args) => {
     const text = String(args.input ?? "");
     window.setTimeout(() => void play(text), 0);
@@ -530,7 +536,11 @@ const bridge: Record<string, unknown> = {
   connect: async () => ({ protocolVersion: 1, serverInfo: { name: "live-fixture", version: "0" }, capabilities: {},
     runtime: { model: profile.name, defaultWorkspace: workspace, defaultPermissionMode: "full-access",
       permissionModes: ["read-only", "approval", "workspace", "full-access"] } }),
-  call: async (method: string, args: Record<string, unknown> = {}) => structuredClone(handlers[method]?.(args) || {}),
+  call: async (method: string, args: Record<string, unknown> = {}) => {
+    // The Host answers a send only after its account check and the runtime's request preparation.
+    if (latency && (method === "turn/start" || method === "thread/start")) await new Promise((resolve) => window.setTimeout(resolve, latency));
+    return structuredClone(handlers[method]?.(args) || {});
+  },
   listModels: async () => models,
   // The quota ring reads `windows[0]` and `balances.map`, so the catch-all `{}` below would crash the composer.
   queryModelUsage: async () => ({ status: "unsupported", provider: "", windows: [], balances: [], checkedAt: Date.now(), message: "" }),

@@ -20,6 +20,11 @@ function snapshot(): boolean {
   );
 }
 
+/** The preference right now, for code that runs outside a component (an event handler, a one-shot animation). */
+export function prefersReducedMotionNow(): boolean {
+  return snapshot();
+}
+
 function subscribe(listener: () => void): () => void {
   listeners.add(listener);
   if (!disconnect) {

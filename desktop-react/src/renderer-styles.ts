@@ -35,3 +35,4 @@ import "./components/composer-focus-light.css";
 import "./components/header-action-family.css";
 import "./components/task-lifecycle-motion.css";
 import "./components/window-rail.css";
+import "./components/send-flight.css";
