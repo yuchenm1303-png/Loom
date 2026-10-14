@@ -8,6 +8,7 @@ import {
 } from "./icons";
 import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
+import { useI18n } from "../i18n";
 import "./software-update.css";
 
 type SoftwareUpdatePhase =
@@ -55,7 +56,7 @@ function bridge(): UpdateBridge {
 }
 
 function findGeneralSettingsSurface(): HTMLElement | null {
-  return document.querySelector<HTMLElement>('.settings-page-surface[data-page="general"]');
+  return document.querySelector<HTMLElement>('.settings-page-surface[data-page="general"] .general-update-mount');
 }
 
 function formatBytes(bytes: number | undefined): string {
@@ -136,6 +137,8 @@ function statusCopy(state: SoftwareUpdateState | null): {
 }
 
 function UpdatePanel() {
+  const { language } = useI18n();
+  const zh = language === "zh-CN";
   const [state, setState] = useState<SoftwareUpdateState | null>(null);
   const [actionBusy, setActionBusy] = useState(false);
   const copy = statusCopy(state);
@@ -234,9 +237,9 @@ function UpdatePanel() {
 
       <div className="software-update-preferences">
         {([
-          ["automaticUpdates", "自动更新", "自动检查并下载更新；关闭后仍可手动检查。"],
-          ["silentUpdates", "静默更新", "后台更新时不弹出提示窗口。"],
-          ["autoRestartAfterUpdate", "自动安装并重启", "更新下载完成后，任务空闲时自动安装、重启并打开桌面版。"],
+          ["automaticUpdates", zh ? "自动更新" : "Automatic updates", zh ? "自动检查并下载更新；关闭后仍可手动检查。" : "Check and download automatically. Manual checks are always available."],
+          ["silentUpdates", zh ? "静默更新" : "Silent updates", zh ? "后台更新时不弹出提示窗口。" : "Update in the background without popup windows."],
+          ["autoRestartAfterUpdate", zh ? "自动安装并重启" : "Restart after update", zh ? "更新下载完成后，任务空闲时自动安装、重启并打开桌面版。" : "Install and restart when the download is ready and Loom is idle."],
         ] as const).map(([key, title, detail]) => (
           <label key={key} className="software-update-preference">
             <span><strong>{title}</strong><small>{detail}</small></span>

@@ -47,6 +47,7 @@ import {
   type ShortcutSettings,
 } from "../keyboardShortcuts";
 import { useI18n } from "../i18n";
+import { isLoomWebRuntime } from "../webBridge";
 import { applyThemePreference, type LoomThemePreference } from "../theme";
 import { applyPetVisibility, DEFAULT_PET_ENABLED, DESKTOP_SETTINGS_STORAGE_KEY } from "../petPreferences";
 import { useMotionPresence } from "../motion/useMotionPresence";
@@ -72,6 +73,7 @@ import "./settings-appearance.css";
 import "./settings-terminal.css";
 import "./settings-page-motion.css";
 import "./settings-refined.css";
+import "./settings-general-home.css";
 
 type PageKey =
   | "general"
@@ -931,55 +933,55 @@ export function SettingsPage({ runtime, models, threadId, running, onRefreshMode
     const modelLabel = currentModel?.name || currentModel?.model || text(runtime.model);
     const permissionLabel = titleCase(text(runtime.defaultPermissionMode, "approval"));
     const enabledCapabilities = CAPABILITIES.filter((item) => capabilityEnabled(item.key)).length;
+    const zh = language === "zh-CN";
     return (
-      <>
-        <div className="settings-page-heading general-page-heading">
-          <div><h1>General</h1><p>Core defaults, runtime health, and the fastest routes to the settings that shape every agent run.</p></div>
-          <div className={`general-heading-status ${running ? "running" : ""}`}><i /><span>{running ? "Agent turn active" : "Runtime ready"}</span></div>
+      <div className="general-home">
+        <div className="settings-page-heading general-home-heading">
+          <div><h1>{zh ? "通用" : "General"}</h1><p>{zh ? "让 Loom 更贴合你的工作习惯。" : "Make Loom feel like your workspace."}</p></div>
+          <div className={`general-heading-status ${running ? "running" : ""}`} role="status"><i /><span>{running ? (zh ? "正在工作" : "Working") : (zh ? "运行就绪" : "Ready")}</span></div>
         </div>
-
-        <div className="general-overview-card">
-          <div className="general-overview-copy"><div className="general-overview-icon"><Activity size={19} /></div><strong>{running ? "Loom is working" : "Local runtime ready"}</strong><p>Model, permission boundary, exposed tools, and capability state at a glance.</p></div>
-          <div className="general-stat-grid">
-            <div className="general-stat"><Cpu size={17} /><div><span>Model</span><strong>{modelLabel}</strong></div></div>
-            <div className="general-stat"><ShieldCheck size={17} /><div><span>Permission</span><strong>{permissionLabel}</strong></div></div>
-            <div className="general-stat"><Wrench size={17} /><div><span>Tools</span><strong>{runtime.exposedToolCount ?? "—"} / {runtime.registeredToolCount ?? "—"}</strong></div></div>
-            <div className="general-stat"><Blocks size={17} /><div><span>Capabilities</span><strong>{enabledCapabilities} / {CAPABILITIES.length} enabled</strong></div></div>
-          </div>
+        <div className="general-runtime-strip" aria-label={zh ? "运行概览" : "Runtime overview"}>
+          <button type="button" onClick={() => navigateToPage("models")}><span>{zh ? "当前模型" : "Model"}</span><strong title={modelLabel}>{modelLabel}</strong><ChevronRight size={14} /></button>
+          <button type="button" onClick={() => navigateToPage("permissions")}><span>{zh ? "权限模式" : "Permission"}</span><strong>{permissionLabel}</strong><ChevronRight size={14} /></button>
+          <div><span>{zh ? "可用工具" : "Tools"}</span><strong>{runtime.exposedToolCount ?? "—"}<small> / {runtime.registeredToolCount ?? "—"}</small></strong></div>
+          <button type="button" onClick={() => navigateToPage("capabilities")}><span>{zh ? "已启用能力" : "Capabilities"}</span><strong>{enabledCapabilities}<small> / {CAPABILITIES.length}</small></strong><ChevronRight size={14} /></button>
         </div>
-
-        <Section title={language === "zh-CN" ? "进度反馈" : "Progress feedback"} caption={language === "zh-CN" ? "选择工作过程中的反馈节奏。实际频率会因模型和任务而异。" : "Choose how much progress the agent shares. Actual frequency varies by model and task."}>
-          <ProgressFeedbackControl mode={settings.agent?.progressFeedback} saving={feedbackSaving} onChange={mode => void saveProgressFeedback(mode)} />
-        </Section>
-
-        <Section title={language === "zh-CN" ? "表情控制台" : "Chat expression"} caption={language === "zh-CN" ? "调整回复中的表情频率、风格与数量。" : "Adjust expression frequency, style, and quantity in replies."}>
-          <div className="settings-card settings-expression-card">
-            <StickerPanel
-              preferences={runtime.stickerPreferences}
-              disabled={running}
-              onSave={async (preferences) => {
-                await window.loom.call("sticker/preferences/set", { preferences });
-              }}
-            />
+        <Section title={zh ? "使用偏好" : "Preferences"} className="general-home-section">
+          <div className="general-preferences">
+            <div className="general-overview-card general-language-mount" />
+            <div className="general-home-row general-feedback-row">
+              <div className="general-row-copy"><strong>{zh ? "进度反馈" : "Progress feedback"}</strong><p>{zh ? "选择 Loom 工作时的反馈节奏。" : "How much Loom shares while working."}</p></div>
+              <ProgressFeedbackControl compact mode={settings.agent?.progressFeedback} saving={feedbackSaving} onChange={mode => void saveProgressFeedback(mode)} />
+            </div>
+            <details className="general-expression-details">
+              <summary className="general-home-row"><div className="general-row-copy"><strong>{zh ? "聊天表情" : "Chat expression"}</strong><p>{zh ? "调整表情的频率、风格与数量。" : "Tune sticker frequency, variety, and quantity."}</p></div><ChevronRight size={16} /></summary>
+              <div className="general-expression-body">
+                <StickerPanel preferences={runtime.stickerPreferences} disabled={running} onSave={async (preferences) => {
+                  await window.loom.call("sticker/preferences/set", { preferences });
+                }} />
+              </div>
+            </details>
           </div>
         </Section>
-
-        <Section title="Runtime defaults" caption="Defaults currently reported by the App Server for new conversations.">
-          <div className="general-default-grid">
-            <div className="general-default-card"><div className="general-default-card-head"><span className="general-default-card-icon"><FolderOpen size={16} /></span></div><label>Default workspace</label><strong title={text(runtime.defaultWorkspace)}>{text(runtime.defaultWorkspace)}</strong><p>Used when a new conversation starts without an explicit project.</p><div className="general-workspace-actions"><button type="button" className="general-copy-button" onClick={() => void copyText(text(runtime.defaultWorkspace, ""), "Workspace path copied.")}><Copy size={13} />Copy path</button></div></div>
-            <button type="button" className="general-default-card" data-ic-row onClick={() => navigateToPage("permissions")}><div className="general-default-card-head"><span className="general-default-card-icon"><ShieldCheck size={16} /></span><ChevronRight size={15} /></div><label>Default permission</label><strong>{permissionLabel}</strong><p>Inspect the execution boundary used for sensitive actions.</p></button>
-            <button type="button" className="general-default-card" data-ic-row onClick={() => navigateToPage("models")}><div className="general-default-card-head"><span className="general-default-card-icon"><Cpu size={16} /></span><ChevronRight size={15} /></div><label>Current model</label><strong>{modelLabel}</strong><p>Switch the active inference profile and inspect providers.</p></button>
+        <Section title={zh ? "工作区" : "Workspace"} className="general-home-section">
+          <div className="general-home-row general-workspace-row">
+            <FolderOpen size={18} />
+            <div className="general-row-copy"><strong>{zh ? "默认工作区" : "Default workspace"}</strong><p title={text(runtime.defaultWorkspace)}>{text(runtime.defaultWorkspace)}</p></div>
+            <button type="button" className="general-copy-button" onClick={() => void copyText(text(runtime.defaultWorkspace, ""), zh ? "已复制工作区路径。" : "Workspace path copied.")}><Copy size={13} />{zh ? "复制路径" : "Copy path"}</button>
           </div>
         </Section>
-
-        <Section title="Quick access" caption="The controls most likely to change how Loom behaves.">
-          <div className="general-quick-grid">
-            <button type="button" className="general-quick-card" data-ic-row onClick={() => navigateToPage("appearance")}><Palette size={18} /><div><strong>Appearance</strong><span>Scale, layout, reading rhythm, motion, and code typography</span></div><ChevronRight size={15} /></button>
-            <button type="button" className="general-quick-card" data-ic-row onClick={() => navigateToPage("capabilities")}><Blocks size={18} /><div><strong>Capabilities</strong><span>Choose the tool families Loom can expose</span></div><ChevronRight size={15} /></button>
-            <button type="button" className="general-quick-card" data-ic-row onClick={() => navigateToPage("developer")}><Wrench size={18} /><div><strong>Diagnostics</strong><span>Runtime, integrations, and raw health snapshot</span></div><ChevronRight size={15} /></button>
+        <Section title={zh ? "更多设置" : "Explore settings"} className="general-home-section">
+          <div className="general-home-links">
+            <button type="button" onClick={() => navigateToPage("appearance")}><Palette size={18} /><div><strong>{zh ? "外观" : "Appearance"}</strong><span>{zh ? "主题、排版与布局" : "Theme, typography, and layout"}</span></div><ChevronRight size={15} /></button>
+            <button type="button" onClick={() => navigateToPage("capabilities")}><Blocks size={18} /><div><strong>{zh ? "能力" : "Capabilities"}</strong><span>{zh ? "工具与集成" : "Tools and integrations"}</span></div><ChevronRight size={15} /></button>
+            <button type="button" onClick={() => navigateToPage("developer")}><Wrench size={18} /><div><strong>{zh ? "诊断" : "Diagnostics"}</strong><span>{zh ? "运行状态与详情" : "Runtime health and details"}</span></div><ChevronRight size={15} /></button>
           </div>
         </Section>
-      </>
+        {!isLoomWebRuntime() ? <details className="general-system-details">
+          <summary className="general-home-row"><div className="general-row-copy"><strong>{zh ? "软件更新" : "Software update"}</strong><p>{zh ? "版本信息与自动更新偏好。" : "Version information and update preferences."}</p></div><ChevronRight size={16} /></summary>
+          <div className="general-update-mount" />
+        </details> : null}
+      </div>
     );
   };
 

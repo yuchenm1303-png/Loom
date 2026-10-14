@@ -2,9 +2,10 @@ import type { ProgressFeedbackMode } from "../types/loom";
 import { useI18n } from "../i18n";
 import "./progress-feedback-control.css";
 
-export function ProgressFeedbackControl({ mode, saving, onChange }: {
+export function ProgressFeedbackControl({ mode, saving, onChange, compact = false }: {
   mode?: ProgressFeedbackMode;
   saving: boolean;
+  compact?: boolean;
   onChange(mode: ProgressFeedbackMode): void;
 }) {
   const { language } = useI18n();
@@ -16,7 +17,7 @@ export function ProgressFeedbackControl({ mode, saving, onChange }: {
   ];
   return <div className="progress-feedback-control">
     <fieldset className="progress-feedback-options" disabled={saving || !mode} aria-label={zh ? "进度反馈" : "Progress feedback"}>
-      {choices.map(choice => <label key={choice.value} className={`progress-feedback-option ${mode === choice.value ? "is-selected" : ""}`}>
+      {choices.map(choice => <label key={choice.value} title={compact ? choice.description : undefined} className={`progress-feedback-option ${mode === choice.value ? "is-selected" : ""}`}>
         <span className="progress-feedback-option-heading">
           <input type="radio" name="progressFeedback" value={choice.value} checked={mode === choice.value}
             onChange={() => onChange(choice.value)} />
@@ -29,6 +30,7 @@ export function ProgressFeedbackControl({ mode, saving, onChange }: {
     <p className="progress-feedback-status" role="status" aria-live="polite">
       {saving ? (zh ? "正在保存到 Host…" : "Saving to Host…") : !mode
         ? (zh ? "连接 Host 并读取设置后可调整。" : "Connect to Host and load settings to adjust this preference.")
+        : compact ? `${choices.find(choice => choice.value === mode)?.description ?? ""} ${zh ? "下次请求生效。" : "Applies from the next request."}`
         : (zh ? "对所有对话生效，从下一次模型请求开始采用。各档均会及时报告阻塞和需要你决定的事项；不改变最终答复的详略。"
           : "Applies to all conversations from the next model request. Every level reports blockers and required decisions promptly; final-answer detail is unchanged.")}
     </p>
