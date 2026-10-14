@@ -182,6 +182,15 @@ try {
   await page.evaluate(() => window.longConversation.finish());
   await atEdge(page, 2500);
   assert.ok(await bottom() < 3);
+  await page.evaluate(() => {
+    const details=document.createElement('details');
+    details.id='retry-notice-probe';
+    details.innerHTML='<summary>Automatic retry 4/5</summary><p>Provider retry diagnostics</p>';
+    document.querySelector('.transcript').append(details);
+  });
+  await atEdge(page,2500);
+  await page.locator('#retry-notice-probe summary').click();
+  assert.equal(await scroller.getAttribute('data-following'),'false','opening native retry details transfers viewport ownership to the reader');
   await page.close();
 
   // Opening a step of the live run is not leaving the live edge: the run keeps pushing the view down.

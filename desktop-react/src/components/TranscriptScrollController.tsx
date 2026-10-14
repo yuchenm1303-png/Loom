@@ -717,6 +717,13 @@ export function TranscriptScrollController({
     // Closing never needs a decision: content only shrinks under a view that is already where it should be.
     const onDisclosureClick = (event: MouseEvent) => {
       const target = event.target instanceof Element ? event.target : null;
+      const nativeSummary = target?.closest("summary");
+      if (nativeSummary && content.contains(nativeSummary)) {
+        // Retry notices use native details rather than aria-expanded buttons.
+        // Reading one is the same explicit ownership change as opening history.
+        detachFromLiveFollow(scroller);
+        return;
+      }
       const disclosure = target?.closest<HTMLButtonElement>("button[aria-expanded]");
       if (!disclosure || disclosure.disabled || !content.contains(disclosure)) return;
       if (!followingRef.current || disclosure.getAttribute("aria-expanded") === "true") return;

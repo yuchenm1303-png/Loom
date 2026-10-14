@@ -39,9 +39,13 @@ export function useEarlierProcessHandoff(items: TranscriptItem[], progress: Prog
   const current = items.filter(item => currentIds.has(item.id) || snapshot.retained.has(item.id));
   const earlier = progress.earlier.filter(item => !snapshot.retained.has(item.id));
 
+  const ownsLiveEdge = () => {
+    const scroller = rootRef.current?.closest<HTMLElement>(".transcript-scroll");
+    return Boolean(scroller && scroller.dataset.following === "true" && !document.hidden);
+  };
   const offscreen = (ids: string[]) => {
     const scroller = rootRef.current?.closest<HTMLElement>(".transcript-scroll");
-    if (!scroller || scroller.dataset.following !== "true" || document.hidden) return false;
+    if (!scroller || !ownsLiveEdge()) return false;
     const top = scroller.getBoundingClientRect().top;
     const slots = [...rootRef.current!.querySelectorAll<HTMLElement>("[data-process-items]")];
     return ids.every(id => {
@@ -93,7 +97,8 @@ export function useEarlierProcessHandoff(items: TranscriptItem[], progress: Prog
       // A tool group is one envelope. Never hide a live row together with its
       // completed neighbours, or fold text that is still draining its last burst.
       if (ids.every(id => snapshot.retained.has(id)
-        && ![...pending].some(key => key.startsWith(`${id}:`))) && offscreen(ids)) {
+        && ![...pending].some(key => key.startsWith(`${id}:`)))
+        && (offscreen(ids) || (ownsLiveEdge() && ids.every(id => snapshot.folding.has(id))))) {
         ids.forEach(id => eligible.add(id));
         batches.set(JSON.stringify(ids), ids);
       }
@@ -120,7 +125,13 @@ export function useEarlierProcessHandoff(items: TranscriptItem[], progress: Prog
       const timer = window.setTimeout(() => {
         timers.current.delete(key);
         setState(previous => {
-          if (!previous.active || previous.open || !offscreen(ids) || !ids.every(id => previous.retained.has(id))) return previous;
+          // Once retirement starts, its own height contraction can clamp the
+          // viewport and bring the slot back on screen. That is not new reader
+          // intent. Reversing on that geometry creates a fold/follow feedback
+          // loop. Only loss of follow ownership (or opening history) cancels it.
+          if (!previous.active || previous.open || !ownsLiveEdge()
+            || (phase === "holding" && !offscreen(ids))
+            || !ids.every(id => previous.retained.has(id))) return previous;
           const retained = new Set(previous.retained);
           const folding = new Set(previous.folding);
           for (const id of ids) {
