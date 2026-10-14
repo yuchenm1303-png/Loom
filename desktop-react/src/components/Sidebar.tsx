@@ -21,7 +21,7 @@ import {
   Trash2,
   X,
 } from "./icons";
-import { memo, useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type Dispatch, type SetStateAction } from "react";
 import { createPortal } from "react-dom";
 import { useI18n } from "../i18n";
 import type { ProjectRecord, ThreadRecord } from "../types/loom";
@@ -798,7 +798,7 @@ export const Sidebar = memo(function Sidebar({
         data-loom-own-menu=""
         data-thread-id={thread.id}
         data-parent-thread-id={thread.parentThreadId || undefined}
-        style={{ "--branch-depth": depth } as React.CSSProperties}
+        style={{ "--branch-depth": depth } as CSSProperties}
         onContextMenu={(event) => {
           event.preventDefault();
           openContextMenu(thread, event.clientX, event.clientY);
