@@ -884,10 +884,16 @@ class ManagedStreamingLoomAppServerService(StreamingLoomAppServerService):
         if parent_metadata.get("archivedAt"):
             raise JsonRpcError(-32021, "cannot branch an archived conversation")
 
-        child = self.thread_start({
-            "workspace": parent.workspace_dir,
+        parent_record = self._managed_record(parent)
+        parent_project_id = str(parent_record.get("projectId") or "").strip()
+        start_params = {
             "permissionMode": parent.permission_mode.value,
-        })["thread"]
+        }
+        if parent_project_id:
+            start_params["projectId"] = parent_project_id
+        else:
+            start_params["workspace"] = parent.workspace_dir
+        child = self.thread_start(start_params)["thread"]
         child_id = str(child["id"])
         # The runtime snapshot is authoritative; the sidecar only describes the library relationship.
         self.thread_library.write(child_id, {
