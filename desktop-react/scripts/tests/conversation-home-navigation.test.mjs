@@ -5,6 +5,7 @@ import ts from "typescript";
 
 const source = readFileSync(new URL("../../src/state/useLoomCore.ts", import.meta.url), "utf8");
 function callback(name, context) {
+  context = { draftThreadParamsRef: { current: {} }, openRequestRef: { current: 0 }, ...context };
   const start = source.indexOf(`  const ${name} = useCallback(`);
   const end = source.indexOf("\n  const ", start + 1);
   const code = ts.transpileModule(source.slice(start, end), {
@@ -119,13 +120,15 @@ test("leaving while model preparation waits does not send into another thread", 
   const tasks = new Map([["a", gate]]);
   const activeIdRef = { current: "a" };
   let items = [];
+  const sent = [];
   const send = callback("send", {
     active: { thread: { id: "a" } }, homeSendPendingRef: { current: false },
     modelSwitchTasks: { current: tasks }, activeIdRef,
     startThread: () => assert.fail("existing thread"),
     crypto: { randomUUID: () => "id" }, setItems: update => { items = update(items); },
     setTurnActive: () => assert.fail("other thread state must survive"), setTurnStartedAt: () => {},
-    requireBridge: () => ({ call: () => assert.fail("selection changed") }),
+    threadReadCacheRef: { current: new Map() }, setActive: () => {},
+    requireBridge: () => ({ call: async (method, params) => { sent.push(params); return { turn: { id: "turn-a" } }; } }),
   });
   const request = send("hello");
   assert.equal(items[0].status, "sending");
@@ -133,6 +136,23 @@ test("leaving while model preparation waits does not send into another thread", 
   items = [{ id: "other", threadId: "b" }];
   tasks.delete("a");
   settle();
-  await assert.rejects(request, /对话选择已改变/);
+  await request;
+  assert.equal(sent.length, 1);
+  assert.equal(sent[0].threadId, "a");
   assert.deepEqual(items, [{ id: "other", threadId: "b" }]);
+});
+
+test("new-thread creation after navigation uses captured project without stealing selection", async () => {
+  const calls = [];
+  const openRequestRef = { current: 9 };
+  const create = callback("startThread", {
+    openRequestRef, draftThreadParamsRef: { current: { projectId: "other-project" } },
+    requireBridge: () => ({ call: async (method, params) => { calls.push(params); return { thread: { id: "created" } }; } }),
+    setThreads: () => {}, setThreadCounts: () => {}, refreshThreads: async () => {},
+    installItems: () => assert.fail("must not replace current transcript"),
+  });
+  const result = await create({ id: "pending" }, { projectId: "original-project" }, 8);
+  assert.equal(result.id, "created");
+  assert.deepEqual(calls, [{ projectId: "original-project" }]);
+  assert.equal(openRequestRef.current, 9);
 });

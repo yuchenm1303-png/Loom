@@ -706,11 +706,9 @@ export function useLoom() {
     void refreshThreads("active");
   }, [clearActive, refreshThreads]);
 
-  const startThread = useCallback(async (pendingMessage?: TranscriptItem) => {
-    const requestId = ++openRequestRef.current;
-    const result = await requireBridge().call<{ thread: ThreadRecord }>("thread/start", draftThreadParamsRef.current);
-    threadViewRef.current = "active";
-    setThreadViewState("active");
+  const startThread = useCallback(async (pendingMessage?: TranscriptItem, draftParams = draftThreadParamsRef.current, navigationVersion = openRequestRef.current) => {
+    const requestId = openRequestRef.current === navigationVersion ? ++openRequestRef.current : -1;
+    const result = await requireBridge().call<{ thread: ThreadRecord }>("thread/start", draftParams);
     setThreads((current) => {
       const exists = current.some((thread) => thread.id === result.thread.id);
       return exists
@@ -727,6 +725,8 @@ export function useLoom() {
     // conversation. Render it immediately instead of serially rescanning the
     // catalogue and reading the same empty thread back from disk.
     if (openRequestRef.current === requestId) {
+      threadViewRef.current = "active";
+      setThreadViewState("active");
       activeIdRef.current = result.thread.id;
       activeTurnIdRef.current = "";
       terminalErrorTurnRef.current = "";
@@ -740,7 +740,7 @@ export function useLoom() {
       setCompactionProgress(null);
     }
     void refreshThreads("active");
-    return openRequestRef.current === requestId ? result.thread : null;
+    return result.thread;
   }, [installItems, refreshThreads]);
 
   const renameThread = useCallback(async (threadId: string, title: string) => {
@@ -773,8 +773,10 @@ export function useLoom() {
   const send = useCallback(async (input: string, attachments: { path: string; name: string }[] = []) => {
     if (!input.trim() && !attachments.length) return;
     if (active?.thread.archived) throw new Error("该对话已归档，请先取消归档再发送。");
-    if (homeSendPendingRef.current) throw new Error("正在创建对话，请等待当前消息发送完成。");
+    if (!active?.thread.id && homeSendPendingRef.current) throw new Error("正在创建对话，请等待当前消息发送完成。");
     const selectedThreadId = active?.thread.id || "";
+    const draftParams = { ...draftThreadParamsRef.current };
+    const navigationVersion = openRequestRef.current;
     const pendingId = `pending-user-${crypto.randomUUID()}`;
     const pendingMessage: TranscriptItem = {
       id: pendingId, clientMessageId: pendingId, threadId: selectedThreadId, type: "user_message",
@@ -790,19 +792,20 @@ export function useLoom() {
       while (modelSwitchTasks.current.has(selectedThreadId || "draft")) {
         await modelSwitchTasks.current.get(selectedThreadId || "draft");
       }
-      if (activeIdRef.current !== selectedThreadId) throw new Error("对话选择已改变，消息尚未发送。请在目标对话中重试。");
       if (!thread) {
-        thread = (await startThread(pendingMessage)) ?? undefined;
-        if (!thread) throw new Error("对话选择已改变，消息尚未发送。请在目标对话中重试。");
+        thread = await startThread(pendingMessage, draftParams, navigationVersion);
       }
       threadReadCacheRef.current.delete(thread.id);
-      threadStateRevisionRef.current += 1;
-      setTurnActive(true);
-      setTurnStartedAt(Date.now());
+      if (activeIdRef.current === thread.id) {
+        threadStateRevisionRef.current += 1;
+        setTurnActive(true);
+        setTurnStartedAt(Date.now());
+      }
       const threadId = thread.id;
       const params: Record<string, unknown> = { threadId: thread.id, input: input.trim() };
       if (attachments.length) params.attachments = attachments;
       const result = await requireBridge().call<{ turn: TurnRecord }>("turn/start", params);
+      threadReadCacheRef.current.delete(threadId);
       const turn = result.turn;
       setItems((current) => current.map((item) => item.id === pendingId ? { ...item, turnId: turn.id } : item));
       setActive((current) => current && current.thread.id === threadId
