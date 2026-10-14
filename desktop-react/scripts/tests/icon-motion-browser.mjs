@@ -11,7 +11,7 @@ const origin = process.env.LOOM_TEST_ORIGIN || "http://127.0.0.1:5199";
 // the slash of a hidden eye), the stop square (it answers a press), and the loader (always turning).
 const QUIET = new Set(["check", "circle-check", "eye-off", "square", "loader"]);
 // Glyphs that answer by replaying an animation rather than by taking a pose.
-const REPLAYS = new Set(["shield-check", "activity", "pulse", "terminal", "bot", "expression", "quill"]);
+const REPLAYS = new Set(["shield-check", "activity", "pulse", "terminal", "bot", "expression"]);
 
 async function openLab(options = {}) {
   const context = await browser.newContext({ viewport: { width: 900, height: 1200 }, deviceScaleFactor: 1.5, ...options });
@@ -161,6 +161,90 @@ try {
     assert.equal(pressed.glyph, "0.88");
     assert.equal(pressed.control, "none", "the control itself does not move");
     await context.close();
+  }
+
+  // 8. The quill stands on its nib: engaged it takes a pose about that point and the barb follows; a start
+  //    (`data-written` on the row) makes it pull its line back into the nib and write it again, ending at
+  //    rest, again for the next start; under reduced motion none of it happens.
+  {
+    const { context, page } = await openLab();
+    const cell = "window.iconLab.cell('quill', 'live')";
+    const turn = (part) => page.evaluate((part) => {
+      const m = new DOMMatrix(getComputedStyle(window.iconLab.cell("quill", "live").querySelector(part)).transform);
+      return Math.round((Math.atan2(m.b, m.a) * 1800) / Math.PI) / 10;
+    }, part);
+    const playing = () => page.evaluate(`${cell}.getAnimations({ subtree: true }).map((a) => a.animationName).filter(Boolean).sort().join(",")`);
+    const look = (part, at) => page.evaluate(({ part, at }) => {
+      const node = window.iconLab.cell("quill", "live");
+      for (const a of node.getAnimations({ subtree: true })) if (a.animationName) { a.pause(); a.currentTime = at; }
+      const style = getComputedStyle(node.querySelector(part));
+      return { length: parseFloat(style.strokeDasharray), opacity: Number(style.opacity) };
+    }, { part, at });
+    const stroke = async (part, at) => (await look(part, at)).length;
+
+    // Pose: straighter about the nib, the barb a little further, both back at rest after the pointer leaves.
+    assert.equal(await turn(".li-quill"), 0);
+    await hover(page, "quill");
+    await page.waitForTimeout(800);
+    assert.equal(await turn(".li-quill"), -5);
+    assert.equal(await turn(".li-barb"), -8);
+    const origin = await page.evaluate(() => {
+      const svg = window.iconLab.cell("quill", "live").querySelector("svg");
+      const box = svg.getBoundingClientRect();
+      const [x, y] = getComputedStyle(svg).transformOrigin.split(" ").map(parseFloat);
+      return { x: x / box.width, y: y / box.height };
+    });
+    assert.ok(origin.x < 0.2 && origin.y > 0.85, `a press gives toward the nib, not the middle (${JSON.stringify(origin)})`);
+    await page.mouse.move(2, 1190);
+    await page.waitForTimeout(700);
+    assert.equal(await turn(".li-quill"), 0);
+    assert.equal(await turn(".li-barb"), 0);
+
+    // A start: the line goes back into the nib (a dot), is written again, then the barb is struck; nothing is left held.
+    assert.equal(await playing(), "");
+    await page.evaluate(`${cell}.setAttribute("data-written", "odd")`);
+    assert.equal(await playing(), "li-flick-odd,li-write-odd");
+    assert.equal(await stroke(".li-outline", 0), 1, "starts with the whole line");
+    assert.ok(Math.abs((await stroke(".li-outline", 96)) - 0.001) < 0.01, "the line is taken back into the nib");
+    const writing = await stroke(".li-outline", 300);
+    assert.ok(writing > 0.4 && writing < 0.99, `the line is part way when it is written again (${writing})`);
+    const waiting = await look(".li-barb", 300);
+    assert.ok(waiting.length < 0.01 && waiting.opacity === 0, `the barb waits, unseen, until the line is written (${JSON.stringify(waiting)})`);
+    const struck = await look(".li-barb", 560);
+    assert.ok(struck.length > 0.3 && struck.opacity === 1, `and is struck last (${JSON.stringify(struck)})`);
+    await page.evaluate(`${cell}.getAnimations({ subtree: true }).forEach((a) => a.play())`);
+    await page.waitForTimeout(900);
+    assert.equal(await playing(), "", "the animation ends and holds nothing");
+    assert.equal(await page.evaluate(`getComputedStyle(${cell}.querySelector(".li-outline")).strokeDasharray`), "none", "rest is the drawing itself");
+    // the next start plays again, even though the first is still on the row
+    await page.evaluate(`${cell}.setAttribute("data-written", "even")`);
+    assert.equal(await playing(), "li-flick-even,li-write-even");
+    await context.close();
+  }
+  {
+    // What the cascade plays for a start: the animation names of the line and of the barb. (A collapsed tempo would hide
+    // a running animation from getAnimations within a millisecond; a name does not go away.)
+    const played = (page) => page.evaluate(() => {
+      const cell = window.iconLab.cell("quill", "live");
+      cell.setAttribute("data-written", "odd");
+      return ["li-outline", "li-barb"].map((part) => getComputedStyle(cell.querySelector("." + part)).animationName).join(",");
+    });
+    const system = await openLab({ reducedMotion: "reduce" });
+    assert.equal(await played(system.page), "none,none", "a start must not animate under reduced motion");
+    await system.context.close();
+    // The app's own setting does the same without the system's.
+    const app = await openLab();
+    await app.page.evaluate("document.documentElement.setAttribute('data-loom-reduced-motion', 'true')");
+    assert.equal(await played(app.page), "none,none", "a start must not animate when the app's reduced-motion setting is on");
+    await hover(app.page, "quill");
+    await app.page.waitForTimeout(500);
+    const turned = await app.page.evaluate("getComputedStyle(window.iconLab.cell('quill', 'live').querySelector('.li-quill')).transform");
+    assert.equal(turned, "matrix(1, 0, 0, 1, 0, 0)", "the quill must not take a pose when the app's reduced-motion setting is on");
+    await app.context.close();
+    // And the same start does animate when nothing asks for less.
+    const normal = await openLab();
+    assert.equal(await played(normal.page), "li-write-odd,li-flick-odd");
+    await normal.context.close();
   }
   console.log("icon motion: ok");
 } finally {

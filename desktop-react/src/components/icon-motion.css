@@ -19,6 +19,8 @@
      --ic-open   1 while the host is expanded or pressed (aria-expanded/-pressed)
      --ic-dur / --ic-curve   how the glyph should get there: a soft spring on the
                  way in, a calm ease on the way out
+     --ic-curve-lively   the same for a glyph that is meant to feel alive (the
+                 quill): a springier spring in, the same ease out
 
    A part's pose is a function of the dials, e.g. the trash lid is
    `translateY(calc(var(--ic-on) * -1.4px))`, so a pose never needs its own
@@ -40,12 +42,15 @@
   --ic-t-lift: 520ms;
   --ic-t-draw: 380ms;
   --ic-t-run: 700ms;
+  --ic-t-write: 640ms;
   --ic-t-spin: 900ms;
 
   /* curves: a quick, soft-landing spring in; a plain ease out */
   --ic-ease: cubic-bezier(.22, .72, .2, 1);
   /* zeta .74, settles in .52s, 3% overshoot (scratch/icon-motion/spring.mjs): quick attack, long soft landing */
   --ic-spring: linear(0, .038 3.8%, .13 7.7%, .251 11.5%, .382 15.4%, .51 19.2%, .627 23.1%, .729 26.9%, .814 30.8%, .882 34.6%, .934 38.5%, .972 42.3%, .999 46.2%, 1.016 50%, 1.026 53.8%, 1.031 57.7%, 1.031 61.5%, 1.03 65.4%, 1.027 69.2%, 1.023 73.1%, 1.018 76.9%, 1.015 80.8%, 1.011 84.6%, 1.008 88.5%, 1.005 92.3%, 1.003 96.2%, 1);
+  /* zeta .55, settles in .62s, 12% overshoot: for a glyph that is meant to feel alive (the quill) */
+  --ic-spring-lively: linear(0, .068 3.8%, .231 7.7%, .433 11.5%, .636 15.4%, .813 19.2%, .951 23.1%, 1.046 26.9%, 1.101 30.8%, 1.124 34.6%, 1.123 38.5%, 1.107 42.3%, 1.083 46.2%, 1.057 50%, 1.033 53.8%, 1.013 57.7%, .999 61.5%, .99 65.4%, .985 69.2%, .984 73.1%, .985 76.9%, .988 80.8%, .991 84.6%, .995 88.5%, .997 92.3%, .999 96.2%, 1);
 
   /* dials, at rest */
   --ic-on: 0;
@@ -53,12 +58,12 @@
   --ic-open: 0;
   --ic-dur: var(--ic-t-rest);
   --ic-curve: var(--ic-ease);
+  --ic-curve-lively: var(--ic-ease);
   /* animations that replay on every engagement; `none` until then */
   --ic-k-draw: none;
   --ic-k-blink: none;
   --ic-k-pulse: none;
   --ic-k-run: none;
-  --ic-k-sway: none;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -68,6 +73,7 @@
     --ic-t-lift: 1ms;
     --ic-t-draw: 1ms;
     --ic-t-run: 1ms;
+    --ic-t-write: 1ms;
     }
 }
 
@@ -77,6 +83,7 @@
   --ic-t-lift: 1ms;
   --ic-t-draw: 1ms;
   --ic-t-run: 1ms;
+  --ic-t-write: 1ms;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -94,6 +101,7 @@
     --ic-lean: 1;
     --ic-dur: var(--ic-t-lift);
     --ic-curve: var(--ic-spring);
+    --ic-curve-lively: var(--ic-spring-lively);
   }
 
   /* Tools (icon buttons, labelled actions) also answer with their own gesture. */
@@ -104,7 +112,6 @@
     --ic-k-blink: li-blink;
     --ic-k-pulse: li-pulse;
     --ic-k-run: li-run;
-    --ic-k-sway: li-sway;
   }
 }
 
@@ -350,21 +357,66 @@
   100% { opacity: 0; stroke-dashoffset: -1; }
 }
 
-/* The quill: answering a pointer or focus, it sways once from its nib, the way a feather
-   does when a breath of air catches it, and settles back to rest. The sway is one run of
-   keyframes that begins and ends at rest, so nothing is left held. */
-[data-icon="quill"] .li-quill {
-  transform-origin: 3px 22.35px;
-  animation: var(--ic-k-sway) 760ms ease-in-out both;
+/* The quill stands on its nib. Engaged, it rises a little straighter about that point, the way
+   a hand lifts the pen when it is about to write, and the barb follows a moment behind; it gets
+   there on the livelier spring and goes back on a plain ease. */
+[data-icon="quill"] .li-quill,
+[data-icon="quill"] .li-barb {
+  transition-timing-function: var(--ic-curve-lively);
 }
 
-@keyframes li-sway {
-  0% { transform: rotate(0deg); }
-  22% { transform: rotate(-6deg); }
-  46% { transform: rotate(3.5deg); }
-  68% { transform: rotate(-1.5deg); }
-  86% { transform: rotate(0.5deg); }
-  100% { transform: rotate(0deg); }
+/* Pressed, every glyph gives a little toward its middle; a pen gives toward its nib. */
+[data-icon="quill"] {
+  transform-origin: 12% 91.5%;
+}
+
+[data-icon="quill"] .li-quill {
+  transform-origin: 2.9px 21.95px;
+  transform: rotate(calc(var(--ic-on) * -5deg));
+}
+
+[data-icon="quill"] .li-barb {
+  transform-origin: 9.77px 12.96px;
+  transform: rotate(calc(var(--ic-on) * -8deg));
+  transition-delay: calc(var(--ic-on) * 45ms);
+}
+
+/* Starting a conversation: the line is pulled back into the nib and the quill writes itself
+   again, shaft first, then the head, then the barb struck last. Like a ball that is let fall,
+   it picks up speed into the nib and leaves it fast and slows as it comes to rest. The row says
+   that one has been started (data-written, odd or even by turns, so that a second start replays
+   while the first is still running). Nothing is left held: at the end the rest pose is the
+   drawing itself. */
+@media (prefers-reduced-motion: no-preference) {
+  :root:not([data-loom-reduced-motion="true"]) [data-written="odd"] [data-icon="quill"] .li-outline { animation: li-write-odd var(--ic-t-write) linear backwards; }
+  :root:not([data-loom-reduced-motion="true"]) [data-written="even"] [data-icon="quill"] .li-outline { animation: li-write-even var(--ic-t-write) linear backwards; }
+  :root:not([data-loom-reduced-motion="true"]) [data-written="odd"] [data-icon="quill"] .li-barb { animation: li-flick-odd var(--ic-t-write) linear backwards; }
+  :root:not([data-loom-reduced-motion="true"]) [data-written="even"] [data-icon="quill"] .li-barb { animation: li-flick-even var(--ic-t-write) linear backwards; }
+}
+
+@keyframes li-write-odd {
+  0% { stroke-dasharray: 1 3; animation-timing-function: cubic-bezier(.5, 0, .9, .55); }
+  14%, 16% { stroke-dasharray: .001 3; animation-timing-function: cubic-bezier(.25, .45, .45, 1); }
+  86%, 100% { stroke-dasharray: 1 3; }
+}
+@keyframes li-write-even {
+  0% { stroke-dasharray: 1 3; animation-timing-function: cubic-bezier(.5, 0, .9, .55); }
+  14%, 16% { stroke-dasharray: .001 3; animation-timing-function: cubic-bezier(.25, .45, .45, 1); }
+  86%, 100% { stroke-dasharray: 1 3; }
+}
+@keyframes li-flick-odd {
+  0% { stroke-dasharray: 1 3; opacity: 1; animation-timing-function: ease-in; }
+  6% { stroke-dasharray: .001 3; opacity: 1; }
+  7%, 76% { stroke-dasharray: .001 3; opacity: 0; }
+  77% { stroke-dasharray: .001 3; opacity: 1; animation-timing-function: cubic-bezier(.2, .5, .4, 1); }
+  100% { stroke-dasharray: 1 3; opacity: 1; }
+}
+@keyframes li-flick-even {
+  0% { stroke-dasharray: 1 3; opacity: 1; animation-timing-function: ease-in; }
+  6% { stroke-dasharray: .001 3; opacity: 1; }
+  7%, 76% { stroke-dasharray: .001 3; opacity: 0; }
+  77% { stroke-dasharray: .001 3; opacity: 1; animation-timing-function: cubic-bezier(.2, .5, .4, 1); }
+  100% { stroke-dasharray: 1 3; opacity: 1; }
 }
 
 /* -------------------------------------------------------------------------- */

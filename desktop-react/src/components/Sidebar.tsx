@@ -1,4 +1,5 @@
 import { AnimatedThreadTitle } from "./AnimatedThreadTitle";
+import { NewConversationRow, type NewConversationRowHandle } from "./NewConversationRow";
 import {
   Archive,
   ArchiveRestore,
@@ -16,7 +17,6 @@ import {
   Pin,
   PinOff,
   Plus,
-  Quill,
   Search,
   Trash2,
   X,
@@ -367,6 +367,7 @@ export const Sidebar = memo(function Sidebar({
   const [renameValue, setRenameValue] = useState("");
   const [notice, setNotice] = useState<Notice | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
+  const newRowRef = useRef<NewConversationRowHandle>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   useSidebarSelectionMotion(scrollRef, activeId);
   const renameRef = useRef<HTMLInputElement>(null);
@@ -745,6 +746,7 @@ export const Sidebar = memo(function Sidebar({
 
       if (commandKey && !event.altKey && !event.shiftKey && key === "n") {
         event.preventDefault();
+        newRowRef.current?.write();
         void onNew();
         return;
       }
@@ -995,15 +997,12 @@ export const Sidebar = memo(function Sidebar({
       <div className="codex-sidebar-topbar">
         {threadView !== "archived" ? (
           <div className="codex-sidebar-primary">
-            <button
-              type="button"
-              className="sidebar-new-conversation"
-              onClick={() => void onNew()}
+            <NewConversationRow
+              ref={newRowRef}
+              label={copy.newConversation}
               title={`${copy.newConversation} · Ctrl N`}
-            >
-              <Quill className="sidebar-action-icon sidebar-compose-icon" size={20} strokeWidth={2.1} aria-hidden="true" />
-              <span>{copy.newConversation}</span>
-            </button>
+              onNew={onNew}
+            />
           </div>
         ) : null}
         <div className="compact-sidebar-actions">

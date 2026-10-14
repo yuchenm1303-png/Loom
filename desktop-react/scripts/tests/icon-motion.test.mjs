@@ -165,3 +165,36 @@ test("the send button's plane is wired from the stylesheet to both composers", (
   assert.match(steering, /<Send key=\{launched\}/, "the guidance plane is not new for every message");
   assert.match(steering, /data-sent=\{launched \? "" : undefined\}/, "the guidance send button does not say that a message has left");
 });
+
+test("the quill writes itself again when a conversation is started, and never under reduced motion", () => {
+  // The odd and the even copy are one animation under two names: a second start while the first
+  // is running changes the name, which is what restarts it.
+  const defined = new Set([...motion.matchAll(/@keyframes\s+([\w-]+)/g)].map((m) => m[1]));
+  const body = (name) => {
+    const match = new RegExp(`@keyframes ${name}\\s*\\{([\\s\\S]*?)\\n\\}`).exec(motion);
+    assert.ok(match, `icon-motion.css has no @keyframes ${name}`);
+    return match[1].replace(/\s+/g, " ").trim();
+  };
+  for (const name of ["li-write-odd", "li-write-even", "li-flick-odd", "li-flick-even"]) {
+    assert.ok(defined.has(name), `icon-motion.css has no @keyframes ${name}`);
+    assert.ok(motion.includes(`animation: ${name} `), `nothing in icon-motion.css plays ${name}`);
+  }
+  assert.equal(body("li-write-odd"), body("li-write-even"), "the two copies of the line's keyframes drifted apart");
+  assert.equal(body("li-flick-odd"), body("li-flick-even"), "the two copies of the barb's keyframes drifted apart");
+  // Every rule that plays them waits for the app's setting and the system's.
+  const rules = [...motion.matchAll(/([^{}]*)\{[^{}]*animation:\s*li-(?:write|flick)-/g)].map((m) => m[1].trim());
+  assert.equal(rules.length, 4, "four rules play the quill's animations");
+  for (const selector of rules) assert.match(selector, /data-loom-reduced-motion="true"\]\)/, `${selector} ignores the app's reduced-motion setting`);
+  assert.match(motion, /@media \(prefers-reduced-motion: no-preference\)\s*\{[^@]*li-write-odd/, "the quill's animations ignore the system's reduced-motion setting");
+
+  // The primary row of the sidebar says that a conversation was started, odd and even by turns, from a
+  // click and from the shortcut, and the count lives in the row: a row that mounts later starts at rest.
+  const row = read("components/NewConversationRow.tsx");
+  assert.match(row, /data-written=\{starts \? \(starts % 2 \? "odd" : "even"\) : undefined\}/, "the row does not say odd and even by turns");
+  assert.match(row, /onClick=\{\(\) => \{\s*setStarts\(/, "a click on the row does not count as a start");
+  assert.match(row, /useImperativeHandle\(ref, \(\) => \(\{ write: \(\) => setStarts\(/, "the row cannot be told that a conversation was started elsewhere");
+  const sidebar = read("components/Sidebar.tsx");
+  assert.match(sidebar, /<NewConversationRow\s[^>]*ref=\{newRowRef\}/, "the sidebar does not draw the primary row through NewConversationRow");
+  assert.match(sidebar, /key === "n"\) \{\s*event\.preventDefault\(\);\s*newRowRef\.current\?\.write\(\);\s*void onNew\(\);/, "the new-conversation shortcut does not make the quill write");
+  assert.doesNotMatch(sidebar, /<Quill\b/, "the sidebar draws the quill itself instead of through the row");
+});
