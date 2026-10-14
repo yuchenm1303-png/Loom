@@ -1,0 +1,115 @@
+/* The window rail ---------------------------------------------------------
+   window-chrome.css floats the window controls over the top right corner and
+   marks the top --loom-rail-height of the window as the part you drag. This
+   file is how the surfaces under it cooperate, and it is loaded last in the
+   cascade so that it can say so without !important:
+
+     1. the headers of the panels that dock on the right are the rail's height,
+        so their buttons line up with the window controls;
+     2. a header whose right edge is the window's right edge leaves room for
+        the controls (--loom-caption-reserve);
+     3. what is clickable on the rail is cut out of the drag region.
+
+   Desktop shell only. Adding a surface whose header reaches the top right
+   corner of the window means adding it here; the window-rail browser test
+   fails when something clickable ends up under the controls or inside the
+   drag region. The sidebar's own first row is the exception: sidebar.css owns
+   every sidebar selector, so its share of (1) and (3) is written there. */
+
+/* 1 -- one centre line */
+:root.loom-desktop-chrome :is(
+  .sub-agent-workspace.is-docked .sub-agent-workspace-header,
+  .artifact-preview-header,
+  .review-topbar,
+  .profile-insights-topbar
+) {
+  box-sizing: border-box;
+  height: var(--loom-rail-height);
+  min-height: var(--loom-rail-height);
+  padding-top: 0;
+  padding-bottom: 0;
+}
+:root.loom-desktop-chrome .review-workspace {
+  grid-template-rows: var(--loom-rail-height) 46px minmax(0, 1fr);
+}
+:root.loom-desktop-chrome .profile-insights-page {
+  grid-template-rows: var(--loom-rail-height) minmax(0, 1fr);
+}
+/* The project header keeps its three-line title; only its close button joins the rail. */
+:root.loom-desktop-chrome .project-details-close {
+  align-self: start;
+  margin-top: calc((var(--loom-rail-height) - 30px) / 2 - 13px);
+}
+
+/* 2 -- headers that reach the right edge of the window.
+   The thread header only does when no panel is open next to it. */
+:root.loom-desktop-chrome .app-shell:not(.inspector-layout-open, .with-review, .with-agents, .with-artifact-preview, .with-project-details)
+  .thread-header.polished-thread-header {
+  padding-right: var(--loom-caption-reserve);
+}
+
+:root.loom-desktop-chrome :is(
+  .runtime-header,
+  .project-details-header,
+  .sub-agent-workspace-header,
+  .review-topbar,
+  .artifact-preview-header
+) {
+  padding-right: var(--loom-caption-reserve);
+}
+/* The profile title is centred on the window, so only its right-hand actions make room. */
+:root.loom-desktop-chrome .profile-topbar-actions {
+  margin-right: calc(var(--loom-caption-reserve) - 18px);
+}
+/* The inspector is a narrow column and the thread header's toggle right next to it closes it, so
+   it gives up its own close button rather than set two close buttons side by side. */
+:root.loom-desktop-chrome .runtime-close {
+  display: none;
+}
+
+/* The settings pages end each heading with a chip, a switch or an action at the right edge of
+   their column, which is centred and, in a window of ordinary width, runs under the controls.
+   The page keeps its heading where it always was: below the rail. */
+:root.loom-desktop-chrome .settings-content {
+  padding-top: calc(var(--loom-rail-height) + 4px);
+}
+
+/* The image viewer centres a panel almost as wide as the window, and in a window narrower than
+   about 1200px its toolbar would run under the controls. It starts below the rail instead. */
+:root.loom-desktop-chrome .user-message-image-lightbox {
+  padding-top: var(--loom-rail-height);
+}
+:root.loom-desktop-chrome .user-message-image-lightbox-panel {
+  height: min(860px, calc(100vh - var(--loom-rail-height) - 28px));
+}
+
+/* 3 -- the drag region is the whole rail; anything clickable on it is cut out.
+   Only the headers are listed, not their surfaces: every cut-out is a rectangle Chromium keeps
+   in the window's draggable region, and a list of a few hundred conversations has no business
+   adding hundreds of them for rows that are far below the rail. */
+:root.loom-desktop-chrome :is(
+  .thread-header,
+  .runtime-header,
+  .project-details-header,
+  .sub-agent-workspace-header,
+  .review-topbar,
+  .artifact-preview-header,
+  .profile-insights-topbar,
+  .settings-sidebar-top
+) :is(button, a[href], input, select, textarea, summary, label, [role="button"], [role="tab"], [role="menuitem"], [role="switch"], [role="slider"], [tabindex]:not([tabindex="-1"])),
+:root.loom-desktop-chrome :is(
+  .thread-header-actions,
+  .thread-header-leading,
+  .workspace-panel-resizer,
+  .sub-agent-dock-resizer,
+  .artifact-preview-resizer
+),
+/* A popover that hangs off the header's actions (the context meter's panel) overflows their box,
+   so every descendant is cut out, not just the group. */
+:root.loom-desktop-chrome .thread-header-actions *,
+/* A long title is cut with an ellipsis and its tooltip is the only place to read the rest; a
+   drag region gets no hover, so the title itself stays out of it. */
+:root.loom-desktop-chrome .thread-title-line {
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}

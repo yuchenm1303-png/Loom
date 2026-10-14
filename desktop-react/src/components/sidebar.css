@@ -35,7 +35,10 @@
   min-width: 0;
   display: flex;
   flex-direction: column;
-  padding: 12px 10px 10px;
+  /* In the desktop shell the sidebar reaches the top of the window and its first row sits on the
+     window rail's centre line (--loom-rail-height, window-chrome.css; unset on the web, where
+     this is the plain 12px). */
+  padding: max(12px, calc((var(--loom-rail-height, 0px) - var(--sb-row-h)) / 2)) 10px 10px;
   overflow: hidden;
   isolation: isolate;
   border-right: 1px solid var(--sb-edge);
@@ -129,6 +132,17 @@ html[data-loom-density="spacious"] .sidebar.compact-sidebar { --sb-row-h: 38px; 
   justify-content: flex-end;
   gap: 8px;
   user-select: none;
+}
+
+/* On the desktop this row, and the search field that opens under it, reach into the window's
+   draggable rail (window-chrome.css), so they are cut out of the drag region. Only while the
+   search is open: a closed one is clipped to nothing but Chromium would still keep its rectangle. */
+:root.loom-desktop-chrome .codex-sidebar-topbar,
+:root.loom-desktop-chrome .codex-sidebar-topbar *,
+:root.loom-desktop-chrome .compact-search-shell.open,
+:root.loom-desktop-chrome .compact-search-shell.open * {
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
 }
 
 .codex-sidebar-brand {

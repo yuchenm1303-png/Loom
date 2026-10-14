@@ -1,38 +1,94 @@
-:root.loom-desktop-chrome { --loom-window-top-inset: 28px; }
+/* Desktop window chrome ---------------------------------------------------
+   The window has no native frame. Its controls float over the top right
+   corner of the app and the app fills the whole window: there is no strip of
+   chrome above it. The top --loom-rail-height of the window is "the rail":
+   the row the sidebar header, the thread header and the panel headers share,
+   and the part of the window you can grab to move it. window-rail.css is the
+   other half: how the surfaces under the rail leave room for the controls and
+   keep it draggable.
+
+   Everything here only applies in the desktop shell (WindowChrome adds
+   .loom-desktop-chrome to <html>); the web build never renders it. */
+
+:root.loom-desktop-chrome {
+  --loom-rail-height: 60px;
+  --loom-caption-button: 40px;
+  --loom-caption-edge: 8px;
+  /* The width of the controls, and what a header that reaches the right edge of the window must
+     leave free: the controls plus the gap that holds the divider in front of them. */
+  --loom-caption-inset: calc(var(--loom-caption-button) * 3 + var(--loom-caption-edge));
+  --loom-caption-reserve: calc(var(--loom-caption-inset) + 8px);
+}
 
 .loom-window-shell {
-  display: flex;
-  flex-direction: column;
+  position: relative;
   height: 100%;
   width: 100%;
   overflow: hidden;
   background: var(--loom-workspace-canvas, var(--bg));
 }
 
+.loom-window-content {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+}
+
 .loom-titlebar {
-  position: relative;
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
   z-index: 10001;
+  height: var(--loom-rail-height, 60px);
   display: flex;
-  flex: 0 0 var(--loom-window-top-inset, 28px);
+  justify-content: flex-end;
   color: var(--loom-workspace-muted, var(--muted));
-  background: var(--loom-workspace-canvas, var(--bg));
-  border: 0;
   user-select: none;
+  /* Only the controls take the pointer. The rail underneath receives its own clicks; the drag
+     layer is handled by the operating system, which does not look at pointer-events. */
+  pointer-events: none;
 }
 
 .loom-titlebar-drag {
+  position: absolute;
+  inset: 0;
   -webkit-app-region: drag;
   app-region: drag;
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  align-items: center;
-  padding-left: 16px;
 }
 
-.loom-window-controls { display: flex; -webkit-app-region: no-drag; app-region: no-drag; }
-.loom-titlebar button {
-  width: 44px;
+.loom-window-controls {
+  position: relative;
+  display: flex;
+  align-items: stretch;
+  padding-right: var(--loom-caption-edge);
+  pointer-events: auto;
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}
+
+/* A hairline in front of the group, as the header has between its own groups: panels put their
+   own close button right next to the window controls and the two must not read as one row. */
+.loom-window-controls::before {
+  content: "";
+  position: absolute;
+  left: -2px;
+  top: calc((var(--loom-rail-height, 60px) - 16px) / 2);
+  width: 1px;
+  height: 16px;
+  background: linear-gradient(180deg, transparent, rgba(255, 255, 255, .085), transparent);
+  opacity: .9;
+}
+html[data-loom-theme="light"] .loom-window-controls::before {
+  background: linear-gradient(180deg, transparent, rgba(28, 31, 37, .12), transparent);
+}
+
+/* The hit area is the full height of the rail and the last button runs to the corner of the
+   window; what you see on hover is a 32px plate, the same size and radius as the header's own
+   icon buttons next to it. */
+.loom-window-controls button {
+  position: relative;
+  width: var(--loom-caption-button);
   padding: 0;
   border: 0;
   border-radius: 0;
@@ -40,23 +96,44 @@
   color: inherit;
   display: grid;
   place-items: center;
-  transition: background-color 120ms ease, color 120ms ease;
+  outline: none;
+  transition: color 180ms ease;
 }
-.loom-titlebar button:hover { background: var(--loom-workspace-hover, var(--panel-hover)); color: var(--loom-workspace-ink, var(--text)); }
-.loom-titlebar button:focus-visible { outline: 2px solid var(--loom-workspace-accent, var(--accent)); outline-offset: -3px; }
-.loom-titlebar .loom-window-close:hover { background: #c42b1c; color: white; }
-.loom-window-shell[data-window-focused="false"] .loom-titlebar { color: var(--faint); }
-.loom-window-content { flex: 1; min-height: 0; position: relative; overflow: hidden; }
+.loom-window-controls .loom-window-close {
+  width: calc(var(--loom-caption-button) + var(--loom-caption-edge));
+  margin-right: calc(var(--loom-caption-edge) * -1);
+  padding-right: var(--loom-caption-edge);
+}
+.loom-window-controls button::before {
+  content: "";
+  position: absolute;
+  top: calc((var(--loom-rail-height, 60px) - 32px) / 2);
+  bottom: calc((var(--loom-rail-height, 60px) - 32px) / 2);
+  left: 5px;
+  right: 5px;
+  border-radius: 8px;
+  background: transparent;
+  transition: background-color 180ms ease;
+}
+.loom-window-controls .loom-window-close::before { right: calc(5px + var(--loom-caption-edge)); }
+.loom-window-controls button > svg { position: relative; }
 
-/* Root-portaled work surfaces share the same usable window viewport as the
-   React content. Do not shift coordinate-positioned menus or cursor layers. */
-:root.loom-desktop-chrome :is(.artifact-preview-dock, .review-workspace, .sub-agent-dock, .profile-insights-host) {
-  top: var(--loom-window-top-inset) !important;
-  bottom: 0 !important;
-  height: auto !important;
-  max-height: calc(100% - var(--loom-window-top-inset));
+.loom-window-controls button:hover,
+.loom-window-controls button:focus-visible { color: var(--loom-workspace-accent, var(--accent)); }
+.loom-window-controls button:hover::before,
+.loom-window-controls button:focus-visible::before { background: var(--loom-workspace-selection, var(--panel-hover)); }
+.loom-window-controls button:focus-visible::before { outline: 2px solid var(--loom-workspace-accent, var(--accent)); outline-offset: 1px; }
+.loom-window-controls button:active::before { filter: brightness(.94); }
+.loom-window-controls .loom-window-close:hover,
+.loom-window-controls .loom-window-close:focus-visible { color: #fff; }
+.loom-window-controls .loom-window-close:hover::before,
+.loom-window-controls .loom-window-close:focus-visible::before { background: #c42b1c; }
+
+.loom-window-shell[data-window-focused="false"] .loom-titlebar { color: var(--faint); }
+
+@media (prefers-reduced-motion: reduce) {
+  .loom-window-controls button,
+  .loom-window-controls button::before { transition: none; }
 }
-:root.loom-desktop-chrome :is(.loom-account-backdrop, .remote-devices-backdrop, .avatar-crop-backdrop) {
-  top: var(--loom-window-top-inset);
-}
-@media (prefers-reduced-motion: reduce) { .loom-titlebar button { transition: none; } }
+:root[data-loom-reduced-motion="true"] .loom-window-controls button,
+:root[data-loom-reduced-motion="true"] .loom-window-controls button::before { transition: none; }

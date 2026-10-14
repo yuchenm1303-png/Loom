@@ -11,17 +11,12 @@ try {
   for (const selector of [".loom-titlebar-drag", ".loom-titlebar button", ".loom-scroll-thumb"]) {
     assert.match(await page.locator(selector).first().evaluate((el) => getComputedStyle(el).cursor), /yukino-cursor.*0 0/);
   }
-  await page.getByRole("button", { name: "Minimize window" }).click();
-  await page.getByRole("button", { name: "Maximize window" }).click();
-  await page.getByRole("button", { name: "Restore window" }).click();
-  await page.locator(".loom-titlebar-drag").dblclick();
-  await page.getByRole("button", { name: "Restore window" }).click();
-  const title = await page.locator(".loom-titlebar-drag").boundingBox();
-  await page.mouse.move(title.x + 80, title.y + 15); await page.mouse.down();
-  await page.waitForTimeout(30);
-  await page.mouse.move(title.x + 140, title.y + 35, { steps: 4 }); await page.mouse.up();
-  await page.waitForFunction(() => window.windowActions.some((entry) => entry.action === "move"));
-  await page.getByRole("button", { name: "Close window" }).click();
+  // The labels follow the UI language (the fixture defaults to zh-CN). Moving the window is the operating
+  // system's job now (the drag layer is a drag region); window-rail-browser.mjs checks the regions.
+  await page.getByRole("button", { name: /最小化|Minimize/ }).click();
+  await page.getByRole("button", { name: /最大化|Maximize/ }).click();
+  await page.getByRole("button", { name: /还原|Restore/ }).click();
+  await page.getByRole("button", { name: /关闭|Close/ }).click();
   const actions = await page.evaluate(() => window.windowActions.map((entry) => entry.action));
   assert.ok(actions.includes("minimize") && actions.includes("maximize") && actions.includes("close"));
   const thumb = page.locator(".loom-scroll-y .loom-scroll-thumb");

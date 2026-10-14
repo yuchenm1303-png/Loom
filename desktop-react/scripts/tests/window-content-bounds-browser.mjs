@@ -14,6 +14,17 @@ try {
         document.documentElement.classList.add("loom-desktop-chrome");
         document.documentElement.style.zoom = String(zoom);
       }, zoom);
+      // The window controls float over the app, so the app and the root-portaled work surfaces
+      // share the whole window: nothing is reserved above them and nothing runs past the bottom.
+      const shell = await page.evaluate(() => {
+        const bar = document.querySelector(".loom-titlebar").getBoundingClientRect();
+        const content = document.querySelector(".loom-window-content").getBoundingClientRect();
+        return { barTop: bar.top, barHeight: bar.height, contentTop: content.top, contentHeight: content.height };
+      });
+      assert.equal(shell.contentTop, 0, "the app starts at the top of the window");
+      assert.ok(Math.abs(shell.contentHeight - height) <= 1, `the app fills the window: ${JSON.stringify(shell)}`);
+      assert.equal(shell.barTop, 0);
+      assert.ok(Math.abs(shell.barHeight - 60 * zoom) <= 1, "the rail is 60 CSS px, drawn over the app");
       for (const surface of ["artifact-preview-dock", "review-workspace", "sub-agent-dock", "profile-insights-host"]) {
         await page.evaluate(surface => {
           const el = document.createElement("aside");
@@ -22,13 +33,10 @@ try {
           document.body.append(el);
         }, surface);
         const bounds = await page.evaluate(surface => {
-          const bar = document.querySelector('.loom-titlebar').getBoundingClientRect();
-          const content = document.querySelector('.loom-window-content').getBoundingClientRect();
           const panel = document.querySelector('.' + surface).getBoundingClientRect();
-          return { barBottom: bar.bottom, contentTop: content.top, panelTop: panel.top, panelBottom: panel.bottom };
+          return { panelTop: panel.top, panelBottom: panel.bottom };
         }, surface);
-        assert.ok(Math.abs(bounds.panelTop - bounds.barBottom) <= 1, `${surface} overlaps titlebar: ${JSON.stringify(bounds)}`);
-        assert.ok(Math.abs(bounds.contentTop - bounds.panelTop) <= 1);
+        assert.ok(Math.abs(bounds.panelTop) <= 1, `${surface} starts at the top of the window: ${JSON.stringify(bounds)}`);
         assert.ok(bounds.panelBottom <= height + 1, `${surface} extends below viewport`);
         await page.locator('[data-surface-action]').click();
         await page.locator('.' + surface).evaluate(el => el.remove());
@@ -41,5 +49,5 @@ try {
   await page.setContent(`<style>${css}</style><aside class="artifact-preview-dock"></aside>`);
   assert.equal((await page.locator('.artifact-preview-dock').boundingBox()).y, 0);
   await page.close();
-  console.log("PASS: root-portaled surfaces respect window chrome at normal/zoomed and short/tall viewports; web remains full-height");
+  console.log("PASS: root-portaled surfaces share the whole window with the floating controls at normal/zoomed and short/tall viewports; web remains full-height");
 } finally { await browser.close(); }
