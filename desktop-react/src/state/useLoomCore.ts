@@ -593,24 +593,20 @@ export function useLoom() {
 
     const cached = cachedThreadRead(normalized);
     if (cached) {
-      startTransition(() => {
-        applyThreadRead(cached);
-        openingThreadIdRef.current = "";
-        setOpeningThreadId("");
-      });
+      applyThreadRead(cached);
+      openingThreadIdRef.current = "";
+      setOpeningThreadId("");
       return;
     }
 
     try {
       const result = await readThread(normalized);
       if (openRequestRef.current !== requestId) return;
-      // Selection is urgent. Parsing/rendering a loaded transcript is allowed
-      // to yield to another click instead of trapping navigation in that render.
-      startTransition(() => {
-        applyThreadRead(result);
-        openingThreadIdRef.current = "";
-        setOpeningThreadId("");
-      });
+      // Navigation and releasing its blocking overlay are urgent. Putting them
+      // in a transition lets ongoing stream updates indefinitely delay commit.
+      applyThreadRead(result);
+      openingThreadIdRef.current = "";
+      setOpeningThreadId("");
     } catch (cause) {
       if (openRequestRef.current !== requestId) return;
       throw cause;

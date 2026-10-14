@@ -15,6 +15,27 @@ function callback(name, context) {
   );
 }
 
+test("navigation commits and releases overlay without waiting for a transition", async () => {
+  for (const cached of [false, true]) {
+    const selected = { current: "old" };
+    const opening = { current: "" };
+    let overlay = "";
+    const next = { thread: { id: "new" } };
+    const open = callback("openThread", {
+      activeIdRef: selected, openingThreadIdRef: opening, openRequestRef: { current: 0 },
+      setOpeningThreadId: value => { overlay = value; },
+      cachedThreadRead: () => cached ? next : null,
+      readThread: async () => next,
+      applyThreadRead: result => { selected.current = result.thread.id; },
+      startTransition: () => assert.fail("navigation must not be deferred behind streaming"),
+    });
+    await open("new");
+    assert.equal(selected.current, "new");
+    assert.equal(opening.current, "");
+    assert.equal(overlay, "");
+  }
+});
+
 test("deletion stays home even when the server notification already cleared selection", async () => {
   for (const selected of ["deleted", "", "other"]) {
     let clears = 0;
