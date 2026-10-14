@@ -67,7 +67,7 @@ def test_list_search_and_paging(files_service):
 def test_edit_conflict_and_atomic_creation(files_service):
     _, _, root = files_service
     path = root / "notes.txt"
-    path.write_text("before\n", encoding="utf-8")
+    path.write_text("before\n", encoding="utf-8", newline="\n")
     read = _call(files_service, "read", "notes.txt")
     assert read["text"] == "before\n"
     saved = _call(files_service, "write", "notes.txt", text="after\n", expectedSha=read["sha"])
