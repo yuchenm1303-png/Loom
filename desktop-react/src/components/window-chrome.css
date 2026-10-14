@@ -1,3 +1,5 @@
+:root.loom-desktop-chrome { --loom-window-top-inset: 28px; }
+
 .loom-window-shell {
   display: flex;
   flex-direction: column;
@@ -11,10 +13,10 @@
   position: relative;
   z-index: 10001;
   display: flex;
-  flex: 0 0 34px;
+  flex: 0 0 var(--loom-window-top-inset, 28px);
   color: var(--loom-workspace-muted, var(--muted));
   background: var(--loom-workspace-canvas, var(--bg));
-  border-bottom: 1px solid var(--loom-divider, var(--border-soft));
+  border: 0;
   user-select: none;
 }
 
@@ -26,13 +28,6 @@
   display: flex;
   align-items: center;
   padding-left: 16px;
-}
-
-.loom-titlebar-wordmark {
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: .045em;
-  opacity: .8;
 }
 
 .loom-window-controls { display: flex; -webkit-app-region: no-drag; app-region: no-drag; }
@@ -52,4 +47,16 @@
 .loom-titlebar .loom-window-close:hover { background: #c42b1c; color: white; }
 .loom-window-shell[data-window-focused="false"] .loom-titlebar { color: var(--faint); }
 .loom-window-content { flex: 1; min-height: 0; position: relative; overflow: hidden; }
+
+/* Root-portaled work surfaces share the same usable window viewport as the
+   React content. Do not shift coordinate-positioned menus or cursor layers. */
+:root.loom-desktop-chrome :is(.artifact-preview-dock, .review-workspace, .sub-agent-dock, .profile-insights-host) {
+  top: var(--loom-window-top-inset) !important;
+  bottom: 0 !important;
+  height: auto !important;
+  max-height: calc(100% - var(--loom-window-top-inset));
+}
+:root.loom-desktop-chrome :is(.loom-account-backdrop, .remote-devices-backdrop, .avatar-crop-backdrop) {
+  top: var(--loom-window-top-inset);
+}
 @media (prefers-reduced-motion: reduce) { .loom-titlebar button { transition: none; } }

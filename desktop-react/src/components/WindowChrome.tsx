@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useState, type ReactNode } from "react";
 import { Minus, Square, Copy, X } from "./icons";
 import { useI18n } from "../i18n";
 import "./window-chrome.css";
@@ -9,6 +9,11 @@ export function WindowChrome({ children }: { children: ReactNode }) {
   const zh = language === "zh-CN";
   const [maximized, setMaximized] = useState(false);
   const [focused, setFocused] = useState(() => document.hasFocus());
+  useLayoutEffect(() => {
+    if (!control) return;
+    document.documentElement.classList.add("loom-desktop-chrome");
+    return () => document.documentElement.classList.remove("loom-desktop-chrome");
+  }, [control]);
   useEffect(() => {
     if (!control) return;
     let disposed = false;
@@ -37,7 +42,7 @@ export function WindowChrome({ children }: { children: ReactNode }) {
   const closeLabel = zh ? "关闭" : "Close";
   return <div className="loom-window-shell" data-window-focused={focused}>
     <header className="loom-titlebar">
-      <div className="loom-titlebar-drag"><span className="loom-titlebar-wordmark">Loom</span></div>
+      <div className="loom-titlebar-drag" aria-hidden="true" />
       <div className="loom-window-controls">
         <button type="button" aria-label={minimizeLabel} title={minimizeLabel} onClick={() => void control("minimize")}><Minus size={14} /></button>
         <button type="button" aria-label={maximizeLabel} title={maximizeLabel} onClick={maximize}>{maximized ? <Copy size={12} /> : <Square size={12} />}</button>
