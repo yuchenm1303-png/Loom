@@ -58,3 +58,15 @@
 @keyframes background-tasks-arrive { from { opacity:0; transform:translateY(-6px) scale(.992); } to { opacity:1; transform:none; } }
 @media (max-width:650px) { .background-task-panel { top:57px; right:9px; width:calc(100vw - 18px); height:min(680px,calc(100dvh - 70px)); } }
 @media (prefers-reduced-motion:reduce) { .background-task-panel { animation:none; } }
+
+/* Match Loom's existing light theme; keep dark mode the understated default. */
+html[data-loom-theme="light"] .background-task-panel { background:#fbfbfd; color:#252832; border-color:rgba(26,30,37,.12); box-shadow:0 26px 70px rgba(20,24,38,.15); }
+html[data-loom-theme="light"] .background-task-item { background:rgba(35,40,55,.042); border-color:rgba(30,35,48,.045); }
+html[data-loom-theme="light"] .background-task-name { color:#262833; }
+html[data-loom-theme="light"] .background-task-summary:hover, html[data-loom-theme="light"] .background-task-summary.is-selected { background:rgba(35,40,55,.04); }
+html[data-loom-theme="light"] .background-task-command, html[data-loom-theme="light"] .background-task-log { color:#434650; background:#f1f1f5; border-color:rgba(22,27,43,.08); }
+html[data-loom-theme="light"] .background-task-actions button:hover, html[data-loom-theme="light"] .background-task-stop:hover { background:rgba(25,30,45,.08); color:#262833; }
+html[data-loom-theme="light"] .background-task-stop { background:rgba(25,30,45,.065); color:#626671; }
+html[data-loom-theme="light"] .background-task-state.is-running { color:#6259ab; }
+html[data-loom-theme="light"] .background-task-state.is-success { color:#29805a; }
+@media (max-width:1120px) { .thread-background-button { min-width:32px; width:32px; padding:0; } .thread-background-button > span { display:none; } }

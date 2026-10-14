@@ -1304,7 +1304,7 @@ export default function App() {
         <BackgroundTaskPanel
           workspace={selectedThread?.workspace || workspace}
           connected={loom.connection === "ready"}
-          open={backgroundTasksOpen}
+          open={backgroundTasksOpen && !settingsOpen && !profileOpen && !accountOpen}
           onClose={() => setBackgroundTasksOpen(false)}
           onRunningCount={setBackgroundRunningCount}
         />

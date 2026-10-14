@@ -4,6 +4,7 @@ import importlib
 import os
 import shutil
 import sys
+import time
 import threading
 from pathlib import Path
 from typing import Any
@@ -95,7 +96,10 @@ def _list_processes(service, params: dict[str, Any]) -> dict[str, Any]:
     for session_id in session_ids:
         for snapshot in store.list_for_session(session_id):
             # This is metadata only: never drain the Agent's stdout cursor here.
-            managed = store.get(snapshot.process_id, session_id=session_id)
+            try:
+                managed = store.get(snapshot.process_id, session_id=session_id)
+            except KeyError:
+                continue  # A finished process may be pruned while polling.
             processes.append({
                 "processId": snapshot.process_id,
                 "state": snapshot.state.value,
@@ -105,7 +109,7 @@ def _list_processes(service, params: dict[str, Any]) -> dict[str, Any]:
                 "cwd": snapshot.cwd,
                 "backend": snapshot.backend,
                 "pty": snapshot.pty,
-                "elapsedSeconds": round(__import__("time").monotonic() - managed.started_monotonic),
+                "elapsedSeconds": round(time.monotonic() - managed.started_monotonic),
                 "outputTruncated": snapshot.output_truncated,
                 "failure": snapshot.failure,
             })
