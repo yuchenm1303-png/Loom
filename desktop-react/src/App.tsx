@@ -18,6 +18,7 @@ import { Inspector } from "./components/Inspector";
 import { LanguageSettingsDock } from "./components/LanguageSettingsDock";
 import { ProfileInsightsPage } from "./components/ProfileInsightsPage";
 import { ProjectDetailsPanel } from "./components/ProjectDetailsPanel";
+import { FilesWorkbench } from "./components/FilesWorkbench";
 import { ProjectGitBar } from "./components/ProjectGitBar";
 import { ReviewInteractionBridge } from "./components/ReviewInteractionBridge";
 import { ReviewWorkspace } from "./components/ReviewWorkspace";
@@ -434,6 +435,7 @@ export default function App() {
   const [artifactPreview, setArtifactPreview] = useState<{ path: string; workspace: string } | null>(null);
   const autoOpenedAgentsForThreadRef = useRef("");
   const [selectedProjectId, setSelectedProjectId] = useState("");
+  const [filesProjectId, setFilesProjectId] = useState("");
   const [sidebarWidth, setSidebarWidth] = useState(() => readPanelWidth(
     SIDEBAR_WIDTH_KEY,
     rootPixelWidth("--sidebar-width", 252),
@@ -498,6 +500,7 @@ export default function App() {
   const selectedProject = selectedProjectId
     ? loom.projects.find((project) => project.id === selectedProjectId) ?? null
     : null;
+  const filesProject = filesProjectId ? loom.projects.find((project) => project.id === filesProjectId) : undefined;
   const projectDetailsOpen = Boolean(selectedProject);
   const artifactPreviewOpen = Boolean(artifactPreview);
   const inspectorVisible = inspectorOpen && !reviewOpen && !projectDetailsOpen && !agentsOpen && !artifactPreviewOpen;
@@ -1321,7 +1324,7 @@ export default function App() {
         <div className="composer-stage" inert={threadSwitching}>
           {(() => {
             const currentProject = loom.projects.find(project => project.id === thread?.projectId);
-            return currentProject ? <ProjectGitBar project={currentProject} onOpen={() => openProjectDetails(currentProject.id)}/> : null;
+            return currentProject ? <ProjectGitBar project={currentProject} onOpen={() => openProjectDetails(currentProject.id)} onFiles={() => setFilesProjectId(currentProject.id)}/> : null;
           })()}
           {petEnabled && thread && <LoomPet key={thread.id} running={running}
             approval={thread.status === "waiting_approval" || transcriptItems.some((item) => item.type === "approval" && !item.leaving && !isResolvedApproval(item))}
@@ -1388,6 +1391,7 @@ export default function App() {
         onOpenThread={loom.openThread}
         onSetInstructions={loom.setProjectInstructions}
         onGitChanged={() => { void loom.refreshProjects(); }}
+        onOpenFiles={() => { if (selectedProject) setFilesProjectId(selectedProject.id); }}
       />
       <ReviewWorkspace items={loom.items} open={reviewOpen} onClose={() => runLayoutTransition(() => setReviewOpen(false), "right-close")} />
       <SubAgentDock
@@ -1425,6 +1429,15 @@ export default function App() {
         onLogout={account.logout}
       />
       </div>
+      {filesProject ? <FilesWorkbench
+        key={filesProject.id}
+        projectId={filesProject.id}
+        projectName={filesProject.name}
+        root={filesProject.root}
+        open={true}
+        onClose={() => setFilesProjectId("")}
+        onChanged={() => { void loom.refreshProjects(); }}
+      /> : null}
 
       {profilePresence.mounted ? (
         <div className="profile-insights-host" data-motion-phase={profilePresence.phase} inert={!profileOpen}>
