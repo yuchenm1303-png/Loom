@@ -45,7 +45,7 @@ def test_cqu_is_exposed_as_builtin_profile_without_changing_default(tmp_path, mo
     cqu = next(profile for profile in snapshot["profiles"] if profile["selection"] == CQU_SELECTION)
     assert cqu["kind"] == "builtin"
     assert cqu["name"] == "CQU-弘深深"
-    assert cqu["baseUrl"] == MANAGED_RELAY_BASE_URL
+    assert cqu["baseUrl"] == "https://account.smirel.com/model/v1/managed-relay"
     assert cqu["model"] == CQU_DEFAULT_MODEL
 
 
@@ -63,7 +63,7 @@ def test_cqu_builtin_selection_persists_across_snapshots(tmp_path, monkeypatch):
     assert selection_store.get() == PRIMARY_SELECTION
 
 
-def test_cqu_resolve_uses_fixed_relay_and_env_key(tmp_path, monkeypatch):
+def test_cqu_resolve_uses_account_gateway_without_env_key(tmp_path, monkeypatch):
     model_store, reasoning_store, selection_store = _stores(tmp_path)
     # CQU_API_KEY is the *last* fallback in the relay credential chain, so a
     # developer machine with any earlier one set would resolve that instead and
@@ -87,6 +87,7 @@ def test_cqu_resolve_uses_fixed_relay_and_env_key(tmp_path, monkeypatch):
     assert resolved["selection"] == CQU_SELECTION
     assert resolved["name"] == "CQU-弘深深"
     assert resolved["provider"] == "openai-compatible"
-    assert resolved["baseUrl"] == MANAGED_RELAY_BASE_URL
+    assert resolved["baseUrl"] == "https://account.smirel.com/model/v1/managed-relay"
     assert resolved["model"] == CQU_DEFAULT_MODEL
-    assert resolved["apiKey"] == "test-cqu-key"
+    assert resolved["apiKey"] == ""
+    assert resolved["authMode"] == "loom-account"

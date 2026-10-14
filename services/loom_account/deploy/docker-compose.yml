@@ -94,6 +94,8 @@ services:
     env_file:
       - path: .env.models
         required: false
+      - path: .env.catalog
+        required: false
     environment:
       LOOM_ACCOUNT_INTERNAL_URL: http://loom-account:8787/v1
       LOOM_MODEL_POLICY_INTERNAL_URL: http://loom-model-policy:8792/v1

@@ -56,7 +56,7 @@ def test_opencode_go_desktop_runtime_can_start_with_its_selected_adapter(tmp_pat
         allow_unconfigured_model=True, vision=False, timeout=120, home=str(tmp_path))
     connection, model, secret = _resolve_connection(args)
     assert connection.adapter is ProviderAdapter.OPENCODE_GO
-    assert connection.base_url == ""
+    assert connection.base_url == args.base_url
     assert model == args.model and secret == ""
     runtime, store, _ = _build_runtime(args)
     try:

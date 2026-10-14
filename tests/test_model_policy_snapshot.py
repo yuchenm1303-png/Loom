@@ -116,7 +116,7 @@ def test_slow_refresh_does_not_extend_lease_from_response_time():
         cache.check("builtin:minimax", "account-a")
 
 
-def test_gateway_enforcement_is_only_used_for_the_trusted_account_route(monkeypatch):
+def test_builtin_threads_migrate_to_trusted_gateway_before_reuse(monkeypatch):
     service = object.__new__(ReasoningManagedLoomAppServerService)
     service._ensure_thread_model_metadata = lambda session: session
     rebuilt = []
@@ -137,8 +137,10 @@ def test_gateway_enforcement_is_only_used_for_the_trusted_account_route(monkeypa
     for url in ("https://account.smirel.com/model/v1", "https://other.example/v1"):
         session = SimpleNamespace(session_id="thread", model_selection="builtin:ant-ling", model_base_url=url, model_vision=True)
         service._ensure_thread_model_runtime(session)
-    assert checked == ["builtin:ant-ling"]
-    assert rebuilt == ["thread"]
+    assert checked == []
+    assert rebuilt == ["thread", "thread"]
+    assert service._gateway_enforces_policy("builtin:ant-ling", "https://account.smirel.com/model/v1")
+    assert not service._gateway_enforces_policy("builtin:ant-ling", "https://other.example/v1")
 
 
 def test_explicit_signout_never_falls_back_to_startup_identity(monkeypatch):

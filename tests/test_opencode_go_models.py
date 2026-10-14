@@ -29,10 +29,11 @@ def test_opencode_go_profiles_are_grouped_without_exposing_secret(monkeypatch, t
         if profile.get("groupId") == "opencode-go"
     ]
 
-    assert [profile["model"] for profile in opencode] == ["gpt-5.6-luna", "kimi-k3"]
+    assert {profile["model"] for profile in opencode} == set(bridge.OPENCODE_GO_FALLBACK_MODEL_IDS)
+    assert all(profile["authMode"] == "loom-account" for profile in opencode)
     assert all(profile["groupName"] == "OpenCode Go" for profile in opencode)
     assert all(profile["configured"] is True for profile in opencode)
-    assert {profile["protocol"] for profile in opencode} == {"responses", "chat-completions"}
+    assert {profile["protocol"] for profile in opencode} == {"responses", "chat-completions", "messages"}
     assert "secret-present" not in repr(snapshot)
 
 
@@ -124,8 +125,10 @@ def test_opencode_go_resolve_uses_one_provider_key_for_all_models(monkeypatch, t
 
     assert first["provider"] == "opencode-go"
     assert second["provider"] == "opencode-go"
-    assert first["apiKey"] == "test-provider-key"
-    assert second["apiKey"] == "test-provider-key"
+    assert first["apiKey"] == ""
+    assert first["authMode"] == "loom-account"
+    assert second["apiKey"] == ""
+    assert second["baseUrl"].endswith("/opencode-go")
     assert first["protocol"] == "responses"
     assert second["protocol"] == "messages"
 
@@ -140,15 +143,10 @@ def test_opencode_go_profiles_can_be_browsed_before_key_is_configured(monkeypatc
     snapshot = bridge._snapshot(store, reasoning, selection)
     profile = next(profile for profile in snapshot["profiles"] if profile.get("groupId") == "opencode-go")
 
-    assert profile["configured"] is False
-    assert profile["model"] == "glm-5.3"
-
-    try:
-        bridge._resolve(store, reasoning, selection, profile["selection"])
-    except RuntimeError as exc:
-        assert "OpenCode Go API key is not configured" in str(exc)
-    else:
-        raise AssertionError("unconfigured OpenCode Go profile unexpectedly resolved")
+    assert profile["configured"] is True
+    resolved = bridge._resolve(store, reasoning, selection, profile["selection"])
+    assert resolved["apiKey"] == ""
+    assert resolved["authMode"] == "loom-account"
 
 
 def test_opencode_go_missing_metadata_is_unknown_for_every_model(monkeypatch, tmp_path):
@@ -161,7 +159,7 @@ def test_opencode_go_missing_metadata_is_unknown_for_every_model(monkeypatch, tm
     monkeypatch.setattr(bridge, "_DISCOVERED_IMAGE_CAPABILITIES", {})
     snapshot = bridge._snapshot(store, reasoning, selection)
     vision = {p["model"]: p["vision"] for p in snapshot["profiles"] if p.get("groupId") == "opencode-go"}
-    assert vision == dict.fromkeys(models)
+    assert all(vision[model] is None for model in models)
 
 
 def test_custom_model_name_keeps_opencode_go_provider_identity() -> None:

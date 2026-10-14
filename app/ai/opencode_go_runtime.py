@@ -199,13 +199,14 @@ class _OpenCodeGoResponsesBackend:
         profile: ModelProfile,
         api_key: str,
         request_timeout_seconds: float,
+        base_url: str = OPENCODE_GO_BASE_URL,
     ) -> None:
         from openai import OpenAI
 
         self.profile = profile
         self.client = OpenAI(
             api_key=api_key,
-            base_url=OPENCODE_GO_BASE_URL,
+            base_url=base_url,
             timeout=float(request_timeout_seconds),
             max_retries=0,
         )
@@ -461,10 +462,12 @@ class _OpenCodeGoMessagesBackend:
         profile: ModelProfile,
         api_key: str,
         request_timeout_seconds: float,
+        base_url: str = OPENCODE_GO_BASE_URL,
     ) -> None:
         self.profile = profile
         self.api_key = api_key
         self.timeout = float(request_timeout_seconds)
+        self.base_url = base_url.rstrip("/")
         self._stream_local = threading.local()
 
     @property
@@ -562,7 +565,7 @@ class _OpenCodeGoMessagesBackend:
     def _open(self, request: ChatRequest, *, stream: bool):
         raw = json.dumps(self._payload(request, stream=stream), ensure_ascii=False).encode("utf-8")
         http_request = urllib.request.Request(
-            OPENCODE_GO_BASE_URL + "/messages",
+            self.base_url + "/messages",
             data=raw,
             headers=self._headers(request),
             method="POST",
@@ -778,24 +781,27 @@ class OpenCodeGoBackend:
         protocol = opencode_go_protocol(profile.model)
         request_timeout_seconds = max(request_timeout_seconds, profile.stream_idle_timeout_seconds)
         self.protocol = protocol
+        base_url = connection.base_url or OPENCODE_GO_BASE_URL
         if protocol == "responses":
             self.backend: Any = _OpenCodeGoResponsesBackend(
                 profile=profile,
                 api_key=api_key,
                 request_timeout_seconds=request_timeout_seconds,
+                base_url=base_url,
             )
         elif protocol == "messages":
             self.backend = _OpenCodeGoMessagesBackend(
                 profile=profile,
                 api_key=api_key,
                 request_timeout_seconds=request_timeout_seconds,
+                base_url=base_url,
             )
         else:
             compatible = ProviderConnection(
                 provider_id=connection.provider_id,
                 adapter=ProviderAdapter.OPENAI_COMPATIBLE,
                 credential_ref=connection.credential_ref,
-                base_url=OPENCODE_GO_BASE_URL,
+                base_url=base_url,
                 display_name=connection.display_name,
             )
             self.backend = _OpenCodeGoChatBackend(

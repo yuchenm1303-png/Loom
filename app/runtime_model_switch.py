@@ -30,7 +30,7 @@ def _text(value: Any) -> str:
 
 
 def _normalized_base_url(adapter: ProviderAdapter, value: str) -> str:
-    if adapter in {ProviderAdapter.OPENAI, ProviderAdapter.OPENCODE_GO}:
+    if adapter is ProviderAdapter.OPENAI:
         return ""
     return _text(value).rstrip("/")
 

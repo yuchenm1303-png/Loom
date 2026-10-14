@@ -43,29 +43,17 @@ def test_recent_settled_threads_use_a_small_revalidated_snapshot_cache() -> None
     assert "threadReadCacheRef.current.delete(thread.id);" in core
 
 
-def test_workspace_uses_loom_native_delayed_transition_instead_of_blocking_sidebar() -> None:
+def test_workspace_switch_keeps_surface_readable_without_blocking_overlay() -> None:
     app = read(APP)
     css = read(MOTION)
-
     assert 'activeId={selectedThreadId}' in app
     assert 'const selectedThreadId = loom.openingThreadId || activeThreadId;' in app
-    assert 'setThreadSwitchIndicatorVisible(true), THREAD_SWITCH_INDICATOR_DELAY_MS' in app
-    timing = read(ROOT / "desktop-react" / "src" / "presentationTiming.ts")
-    assert "export const THREAD_SWITCH_INDICATOR_DELAY_MS = 360;" in timing
+    assert 'inert={threadSwitching}' in app
     assert '"is-thread-switching"' in app
     assert '"is-thread-entering"' in app
-    assert 'className="thread-switch-orbit thread-switch-orbit-a"' in app
-    assert 'className="thread-switch-orbit thread-switch-orbit-b"' in app
-
+    assert "thread-switch-overlay" not in app and "thread-switch-overlay" not in css
     assert ".workspace.is-thread-switching > .conversation-stage" in css
-    # Fast reads never flash: the dim and the wash both wait a beat, and only
-    # the transcript arrives (the title changed on click; the composer stays).
-    assert "transition-delay: 140ms;" in css and "transition-delay: 160ms;" in css
-    assert ".workspace.is-thread-entering > .thread-header" not in css
-    assert ".workspace.is-thread-entering > .composer-stage" not in css
-    assert ".thread-switch-overlay.is-indicator-visible .thread-switch-mark" in css
-    assert "pointer-events: auto;" in css
-    assert "backdrop-filter" not in css
+    assert "animation: none;" in css
     assert "@media (prefers-reduced-motion: reduce)" in css
     assert ':root[data-loom-reduced-motion="true"]' in css
 

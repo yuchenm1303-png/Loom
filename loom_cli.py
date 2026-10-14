@@ -68,9 +68,8 @@ def _resolve_connection(args: argparse.Namespace) -> tuple[ProviderConnection, s
         base_url = ""
         secret = _first_env("LOOM_API_KEY", "OPENAI_API_KEY")
     elif adapter is ProviderAdapter.OPENCODE_GO:
-        # This adapter owns its endpoint and selects messages/responses/chat
-        # by model. Do not feed its display URL into ProviderConnection.
-        base_url = ""
+        # The protocol router also supports Loom's account gateway endpoint.
+        base_url = requested_base
         secret = _first_env("LOOM_API_KEY", "OPENCODE_GO_API_KEY")
     else:
         base_url = requested_base

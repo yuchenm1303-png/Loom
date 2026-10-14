@@ -474,3 +474,26 @@ test("known account models resolve directly without a Python process or provider
   assert.equal(spec.authMode, "loom-account");
   assert.equal(spec.apiKey, "");
 });
+
+
+test("catalog refresh migrates old built-in routes and drops machine keys while preserving personal connections", () => {
+  const manager = new DesktopModelManager(os.tmpdir());
+  const old = profile({ selection: "builtin:minimax", kind: "builtin", adapter: "openai-compatible", baseUrl: "https://api.minimaxi.com/v1", apiKey: "machine-key" });
+  const account = { ...old, baseUrl: "https://account.smirel.com/model/v1/minimax", authMode: "loom-account", apiKey: undefined };
+  const projected = manager.projectLaunchSpec(old, registry([account]), { profiles: [] });
+  assert.equal(projected.baseUrl, account.baseUrl);
+  assert.equal(projected.authMode, "loom-account");
+  assert.equal(projected.apiKey, "");
+  const saved = profile();
+  assert.equal(manager.projectLaunchSpec(saved, registry([saved]), { profiles: [] }).apiKey, saved.apiKey);
+});
+
+test("account fast path preserves OpenCode protocol router", async () => {
+  const manager = new DesktopModelManager(os.tmpdir());
+  const account = profile({ selection: "builtin:opencode-go:minimax-m3", kind: "builtin", adapter: "opencode-go", authMode: "loom-account", baseUrl: "https://account.smirel.com/model/v1/opencode-go" });
+  manager.registryCache = registry([account]);
+  manager.runBridgeAsync = async () => { throw new Error("must not fetch machine credentials"); };
+  const spec = await manager.resolveAsync(account.selection);
+  assert.equal(spec.provider, "opencode-go");
+  assert.equal(spec.apiKey, "");
+});

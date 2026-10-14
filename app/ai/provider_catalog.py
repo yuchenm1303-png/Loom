@@ -34,6 +34,7 @@ class ProviderAdapter(str, Enum):
 class BaseUrlPolicy(str, Enum):
     FORBIDDEN = "forbidden"
     REQUIRED = "required"
+    OPTIONAL = "optional"
 
 
 @dataclass(frozen=True, slots=True)
@@ -57,7 +58,7 @@ _PROVIDER_DESCRIPTORS: dict[ProviderAdapter, ProviderDescriptor] = {
     ProviderAdapter.OPENCODE_GO: ProviderDescriptor(
         adapter=ProviderAdapter.OPENCODE_GO,
         executable=True,
-        base_url_policy=BaseUrlPolicy.FORBIDDEN,
+        base_url_policy=BaseUrlPolicy.OPTIONAL,
     ),
     ProviderAdapter.ANTHROPIC: ProviderDescriptor(
         adapter=ProviderAdapter.ANTHROPIC,

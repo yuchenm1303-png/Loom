@@ -404,8 +404,10 @@ export class DesktopModelManager {
   ): ModelLaunchSpec {
     const safe = metadata.profiles.find((profile) => profile.selection === base.selection);
     const catalog = registry?.profiles.find((profile) => profile.selection === base.selection);
+    const account = catalog?.authMode === "loom-account" ? catalog : base.authMode === "loom-account" ? base : null;
     return {
       ...base,
+      ...(account ? { baseUrl: account.baseUrl, adapter: account.adapter, provider: account.adapter, apiKey: "" } : {}),
       groupId: catalog?.groupId ?? base.groupId,
       groupName: catalog?.groupName ?? base.groupName,
       groupOrder: catalog?.groupOrder ?? base.groupOrder,
@@ -594,7 +596,7 @@ export class DesktopModelManager {
     // Account models use a scoped credential, materialized by the Host later.
     // Their validated catalogue already contains all connection metadata.
     if (known?.authMode === "loom-account" && known.baseUrl && known.available !== false) {
-      const spec: ModelLaunchSpec = { ...known, provider: "openai-compatible", apiKey: "" };
+      const spec: ModelLaunchSpec = { ...known, provider: known.adapter, apiKey: "" };
       this.launchCache.set(selection, { base: spec, spec });
       return spec;
     }

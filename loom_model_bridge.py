@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from loom_image_capability import ImageCapabilityStore, image_capability, image_support
+from loom_builtin_models import account_builtin_profile
 
 import hashlib
 import json
@@ -40,6 +41,7 @@ MINIMAX_BASE_URL = "https://api.minimaxi.com/v1"
 DEEPSEEK_BASE_URL = "https://api.deepseek.com"
 MINIMAX_DEFAULT_MODEL = "MiniMax-M3"
 MINIMAX_MODEL_IDS = (
+    "MiniMax-M3.1-Flash-Preview",
     "MiniMax-M3", "MiniMax-M2", "MiniMax-M2.1", "MiniMax-M2.1-highspeed",
     "MiniMax-M2.5", "MiniMax-M2.5-highspeed", "MiniMax-M2.7", "MiniMax-M2.7-highspeed",
 )
@@ -941,7 +943,7 @@ def _safe_managed(
         "groupName": group_name,
         "groupOrder": group_order,
         "adapter": "openai-compatible",
-        "baseUrl": _managed_relay_base_url(environ),
+        "baseUrl": MANAGED_RELAY_BASE_URL,
         "model": model,
     }
     if configured is not None:
@@ -1040,6 +1042,7 @@ def _saved_reasoning(profile: dict[str, Any], reasoning_store: ReasoningConfigSt
 
 
 def _with_reasoning(profile: dict[str, Any], reasoning_store: ReasoningConfigStore) -> dict[str, Any]:
+    profile = account_builtin_profile(profile)
     capability, selected = resolved_reasoning(
         model=str(profile.get("model") or ""),
         adapter=str(profile.get("adapter") or ""),
@@ -1082,97 +1085,15 @@ def _catalog_future_result(future: Future[list[str]] | None) -> list[str]:
 
 
 def _managed_profiles(store: ModelConfigStore, environ: Mapping[str, str] | None = None) -> list[dict[str, Any]]:
-    # Provider /models is authoritative for what is available right now. The
-    # bundled catalogs only keep Loom usable when discovery is unavailable and
-    # provide local metadata such as display names/protocol hints.
-    profiles: list[dict[str, Any]] = []
-
-    opencode_key = _opencode_go_key(store, environ)
-    minimax_key = _primary_minimax_key(environ)
-    deepseek_key = _deepseek_key(store, environ)
-    relay_key = _managed_relay_key(store, environ, Path(__file__).resolve().parent)
-
-    # Catalog endpoints are independent network observations. Fetch them
-    # concurrently so opening the picker is bounded by one provider timeout
-    # instead of the sum of every provider timeout.
-    with ThreadPoolExecutor(max_workers=4, thread_name_prefix="loom-model-catalog") as pool:
-        opencode_future = pool.submit(_fetch_opencode_go_model_ids)
-        minimax_future = pool.submit(_fetch_minimax_model_ids, minimax_key, environ) if minimax_key else None
-        deepseek_future = pool.submit(_fetch_deepseek_model_ids, deepseek_key, environ) if deepseek_key else None
-        relay_future = pool.submit(_fetch_managed_model_ids, relay_key, environ) if relay_key else None
-
-        discovered_opencode = _catalog_future_result(opencode_future)
-        discovered_minimax = _catalog_future_result(minimax_future)
-        discovered_deepseek = _catalog_future_result(deepseek_future)
-        relay_model_ids = _catalog_future_result(relay_future)
-
-    opencode_model_ids = discovered_opencode or list(OPENCODE_GO_FALLBACK_MODEL_IDS)
-    opencode_source = "provider" if discovered_opencode else "fallback"
-    seen_opencode: set[str] = set()
-    for model_id in opencode_model_ids:
-        folded = str(model_id or "").strip().casefold()
-        if not folded or folded in seen_opencode:
-            continue
-        seen_opencode.add(folded)
-        profiles.append(
-            _with_catalog_source(
-                _safe_opencode_go(model_id, configured=bool(opencode_key)),
-                opencode_source,
-            )
-        )
-
-    minimax_model_ids = discovered_minimax or list(MINIMAX_MODEL_IDS)
-    minimax_source = "provider" if discovered_minimax else "fallback"
-    seen_minimax: set[str] = set()
-    for model_id in minimax_model_ids:
-        folded = str(model_id or "").strip().casefold()
-        if not folded or folded in seen_minimax:
-            continue
-        seen_minimax.add(folded)
-        profiles.append(
-            _with_catalog_source(
-                _with_discovered_limits(_safe_minimax(model_id, environ)),
-                minimax_source,
-            )
-        )
-
-    deepseek_model_ids = discovered_deepseek or list(DEEPSEEK_FALLBACK_MODEL_IDS)
-    deepseek_source = "provider" if discovered_deepseek else "fallback"
-    seen_deepseek: set[str] = set()
-    for model_id in deepseek_model_ids:
-        folded = str(model_id or "").strip().casefold()
-        if not folded or folded in seen_deepseek:
-            continue
-        seen_deepseek.add(folded)
-        profiles.append(
-            _with_catalog_source(
-                _with_discovered_limits(_safe_deepseek(model_id, environ)),
-                deepseek_source,
-            )
-        )
-
-    if relay_key:
-        model_ids = relay_model_ids
-        if not model_ids:
-            profiles.append(_safe_managed_catalog_status(environ))
-        # Relay model identity stays tied to Relay even when its bare model ID
-        # happens to match an official provider. This lets a newly advertised
-        # MiniMax/OpenAI model appear immediately without being silently
-        # discarded or rerouted to credentials for a different provider.
-        seen: set[str] = set()
-        for model_id in model_ids:
-            folded = str(model_id or "").strip().casefold()
-            if not folded or folded in seen:
-                continue
-            seen.add(folded)
-            profiles.append(
-                _with_catalog_source(
-                    _with_discovered_limits(
-                        _safe_managed(model_id, environ, configured=True)
-                    ),
-                    "provider",
-                )
-            )
+    # The authenticated server catalog supplies live availability and new IDs.
+    # Fresh desktops must never discover upstreams using machine credentials.
+    profiles = [
+        *[_safe_opencode_go(model, configured=True) for model in OPENCODE_GO_FALLBACK_MODEL_IDS],
+        *[_safe_minimax(model, environ) for model in MINIMAX_MODEL_IDS],
+        *[_safe_deepseek(model, environ) for model in DEEPSEEK_FALLBACK_MODEL_IDS],
+        _safe_managed(CQU_DEFAULT_MODEL, environ, configured=True),
+    ]
+    profiles = [_with_catalog_source(account_builtin_profile(profile, environ), "fallback") for profile in profiles]
     profiles.extend(_safe_intern(model) for model in (
         "Agents-A1", "Atria-Dawn-Preview", "deepseek-v4-flash-0731",
         "deepseek-v4-flash-vision", "deepseek-v4-pro-0813", "glm-5.3",
@@ -1211,16 +1132,11 @@ def _base_profile_for_selection(store: ModelConfigStore, selection: str) -> dict
         return _safe_deepseek(deepseek_model)
     opencode_model = _opencode_go_model_from_selection(requested)
     if opencode_model:
-        return _safe_opencode_go(opencode_model, configured=bool(_opencode_go_key(store)))
+        return _safe_opencode_go(opencode_model, configured=True)
 
     managed_model = _managed_model_from_selection(requested)
     if managed_model:
-        return _safe_managed(
-            managed_model,
-            configured=bool(
-                _managed_relay_key(store, repo_root=Path(__file__).resolve().parent)
-            ),
-        )
+        return _safe_managed(managed_model, configured=True)
     saved = store.model_for_selection(requested)
     if saved is None:
         raise ValueError(f"unknown model selection: {requested!r}")
@@ -1253,8 +1169,8 @@ def _describe_model(
     if effective_selection.startswith(INTERN_SELECTION_PREFIX):
         profile = _safe_intern(requested_model)
     elif _opencode_go_model_from_selection(effective_selection):
-        profile = _safe_opencode_go(requested_model, configured=bool(_opencode_go_key(store)))
-    elif _is_minimax_model(requested_model):
+        profile = _safe_opencode_go(requested_model, configured=True)
+    elif _minimax_model_from_selection(effective_selection):
         profile = _safe_minimax(requested_model)
     elif _deepseek_model_from_selection(effective_selection):
         profile = _safe_deepseek(requested_model)
@@ -1295,58 +1211,8 @@ def _resolve(
     explicit_selection = str(selection or "").strip()
     requested = explicit_selection or _active_selection(store, selection_store)
     profile = _with_reasoning(_base_profile_for_selection(store, requested), reasoning_store)
-    if requested.startswith(INTERN_SELECTION_PREFIX):
-        return {**profile, "provider": "openai-compatible", "apiKey": ""}
-
-    minimax_model = _minimax_model_from_selection(requested)
-    if minimax_model:
-        api_key = _primary_minimax_key()
-        if api_key:
-            official_profile = _with_reasoning(
-                _with_discovered_limits(_safe_minimax(minimax_model)), reasoning_store
-            )
-            return {**official_profile, "provider": "openai-compatible", "apiKey": api_key}
-        raise RuntimeError(
-            "MiniMax API key is not configured. Set MINIMAX_API_KEY for the official "
-            "MiniMax endpoint, or add a saved MiniMax connection."
-        )
-
-    deepseek_model = _deepseek_model_from_selection(requested)
-    if deepseek_model:
-        api_key = _deepseek_key(store)
-        if api_key:
-            official_profile = _with_reasoning(
-                _with_discovered_limits(_safe_deepseek(deepseek_model)), reasoning_store
-            )
-            return {**official_profile, "provider": "openai-compatible", "apiKey": api_key}
-        raise RuntimeError(
-            "DeepSeek API key is not configured. Set DEEPSEEK_API_KEY once or add a saved "
-            "DeepSeek connection using the official https://api.deepseek.com endpoint."
-        )
-
-    opencode_model = _opencode_go_model_from_selection(requested)
-    if opencode_model:
-        api_key = _opencode_go_key(store)
-        if api_key:
-            opencode_profile = _with_reasoning(
-                _safe_opencode_go(opencode_model, configured=True),
-                reasoning_store,
-            )
-            return {**opencode_profile, "provider": "opencode-go", "apiKey": api_key}
-        raise RuntimeError(
-            "OpenCode Go API key is not configured. Open the OpenCode Go model group "
-            "in Loom and connect your subscription key."
-        )
-
-    managed_model = _managed_model_from_selection(requested)
-    if managed_model:
-        api_key = _managed_relay_key(store, repo_root=Path(__file__).resolve().parent)
-        if api_key:
-            return {**profile, "provider": "openai-compatible", "apiKey": api_key}
-        raise RuntimeError(
-            "Smirel Relay credential is not provisioned for CQUAI. Build or install Loom with "
-            "loom-relay-credential.json, or set LOOM_RELAY_API_KEY for development."
-        )
+    if profile.get("authMode") == "loom-account":
+        return {**profile, "provider": profile["adapter"], "apiKey": ""}
 
     saved = store.model_for_selection(requested)
     if saved is None:

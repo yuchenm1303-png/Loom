@@ -17,6 +17,7 @@ from app.runtime_model_switch import build_runtime_model_platform, validate_runt
 from app.settings import SETTINGS_UPDATE_PREFIX, LoomSettingsStore
 from app.web_search_settings import WebSearchConfigurator
 from loom_model_bridge import resolve_model_spec
+from loom_builtin_models import is_account_builtin, is_builtin_gateway
 from app.model_policy_snapshot import ModelPolicySnapshot
 
 from .app_server_thread_management import (
@@ -618,19 +619,21 @@ class ReasoningManagedLoomAppServerService(ManagedStreamingLoomAppServerService)
     def _ensure_thread_model_runtime(self, session: Any) -> Any:
         session = self._ensure_thread_model_metadata(session)
         selection = str(getattr(session, "model_selection", "") or "")
-        if not self._gateway_enforces_policy(selection, str(getattr(session, "model_base_url", "") or "")):
+        if not is_account_builtin(selection):
             self._assert_model_policy(selection)
         has_model = getattr(self.runtime, "has_session_model", None)
-        if self._gateway_enforces_policy(selection, str(getattr(session, "model_base_url", "") or "")):
+        if is_account_builtin(selection):
             # Gateway backends carry account credentials. Rebuild them at turn
             # boundaries instead of reusing the previous account's connection.
-            self.runtime.clear_session_model(session.session_id)
+            clear_model = getattr(self.runtime, "clear_session_model", None)
+            if callable(clear_model):
+                clear_model(session.session_id)
             has_model = None
         if callable(has_model) and has_model(session.session_id):
             return session
 
         reasoning = self._session_reasoning(session)
-        if self._thread_uses_default_model(session) and not self._gateway_enforces_policy(selection, str(getattr(session, "model_base_url", "") or "")):
+        if self._thread_uses_default_model(session) and not is_account_builtin(selection):
             self.runtime.set_session_model(
                 session.session_id,
                 self.runtime.platform,
@@ -676,16 +679,16 @@ class ReasoningManagedLoomAppServerService(ManagedStreamingLoomAppServerService)
         # models is now stale. Leaving it on the record is not harmless: the
         # composer reads the thread's own value first and would keep refusing
         # images that the platform above is ready to send.
-        if getattr(session, "model_vision", None) != vision:
+        if (getattr(session, "model_vision", None), getattr(session, "model_provider", ""), getattr(session, "model_base_url", "")) != (vision, provider, base_url):
             session.model_vision = vision
+            session.model_provider = provider
+            session.model_base_url = base_url
             self.store.save(session)
         return session
 
     @staticmethod
     def _gateway_enforces_policy(selection: str, base_url: str) -> bool:
-        if selection.startswith("builtin:intern:"):
-            return base_url.rstrip("/") == "https://account.smirel.com/model/v1/intern"
-        return selection.startswith(("builtin:ant-ling", "managed:ant-ling")) and base_url.rstrip("/") == "https://account.smirel.com/model/v1"
+        return is_builtin_gateway(selection, base_url)
 
     def _model_api_key(
         self,

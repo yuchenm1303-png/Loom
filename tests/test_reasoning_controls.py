@@ -452,6 +452,7 @@ def test_thread_runtime_rebuild_heals_a_stale_vision_record(monkeypatch, tmp_pat
     service._thread_uses_default_model = lambda _session: False
     service.runtime = SimpleNamespace(
         has_session_model=lambda _session_id: False,
+        clear_session_model=lambda _session_id: None,
         set_session_model=lambda *_args, **_kwargs: None,
     )
     service.store = SimpleNamespace(save=lambda value: saved.append(value))

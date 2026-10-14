@@ -6,10 +6,13 @@ import os
 import urllib.error
 import urllib.parse
 import urllib.request
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
+
+from services.loom_model_policy.catalog import selection_for_model
+from .routes import PROVIDERS, request_route, server_upstreams
 
 
 ANT_LING_MODELS = (
@@ -24,12 +27,7 @@ ANT_LING_MODELS = (
 ANT_LING_DEFAULT_MODEL = "Ling-3.0-flash"
 
 def _policy_model_id(model: str, group_id: str = "ant-ling") -> str:
-    value = str(model or "").strip()
-    if group_id == "intern":
-        return "builtin:intern:" + urllib.parse.quote(value, safe="")
-    if value.casefold() == ANT_LING_DEFAULT_MODEL.casefold():
-        return "builtin:ant-ling"
-    return "builtin:ant-ling:" + urllib.parse.quote(value, safe="")
+    return selection_for_model(group_id, str(model or "").strip())
 
 
 class GatewayError(RuntimeError):
@@ -49,11 +47,23 @@ class GatewayConfig:
     upstream_timeout_seconds: float = 180.0
     intern_base_url: str = "https://discovery-api.intern-ai.org.cn/v1"
     intern_api_key: str = ""
+    upstreams: dict[str, tuple[str, str]] = field(default_factory=dict)
 
 
 class LoomModelGateway:
     def __init__(self, config: GatewayConfig) -> None:
         self.config = config
+
+    def _upstream(self, group_id: str) -> tuple[str, str]:
+        if group_id not in PROVIDERS:
+            raise GatewayError(HTTPStatus.NOT_FOUND, "PROVIDER_NOT_FOUND", "Unknown built-in provider.")
+        if group_id in self.config.upstreams:
+            return self.config.upstreams[group_id]
+        if group_id == "ant-ling":
+            return self.config.ant_ling_base_url, self.config.ant_ling_api_key
+        if group_id == "intern":
+            return self.config.intern_base_url, self.config.intern_api_key
+        return PROVIDERS[group_id][0], ""
 
     def _account_access(self, authorization: str) -> dict[str, Any]:
         token = str(authorization or "").strip()
@@ -142,10 +152,10 @@ class LoomModelGateway:
                 "MODEL_NOT_ENTITLED",
                 "This Loom account is not allowed to use this built-in model by the current model policy.",
             )
-        if not (self.config.intern_api_key if group_id == "intern" else self.config.ant_ling_api_key):
+        if not self._upstream(group_id)[1]:
             raise GatewayError(HTTPStatus.SERVICE_UNAVAILABLE, "UPSTREAM_NOT_CONFIGURED", "Selected upstream is not configured on the Loom gateway.")
 
-    def upstream_request(self, body: bytes, authorization: str, group_id: str = "ant-ling"):
+    def upstream_request(self, body: bytes, authorization: str, group_id: str = "ant-ling", endpoint: str = "chat/completions", *, session_id: str = ""):
         try:
             payload = json.loads(body.decode("utf-8"))
         except (UnicodeDecodeError, json.JSONDecodeError) as exc:
@@ -153,18 +163,24 @@ class LoomModelGateway:
         if not isinstance(payload, dict):
             raise GatewayError(HTTPStatus.BAD_REQUEST, "INVALID_JSON", "Request body must be a JSON object.")
         self.authorize_model(authorization, str(payload.get("model") or ""), group_id)
-        base_url = self.config.intern_base_url if group_id == "intern" else self.config.ant_ling_base_url
-        api_key = self.config.intern_api_key if group_id == "intern" else self.config.ant_ling_api_key
+        if endpoint not in {"chat/completions", "responses", "messages"} or (endpoint != "chat/completions" and group_id != "opencode-go"):
+            raise GatewayError(HTTPStatus.NOT_FOUND, "NOT_FOUND", "Endpoint not found.")
+        base_url, api_key = self._upstream(group_id)
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+            "Accept": "text/event-stream, application/json",
+            "User-Agent": "LoomModelGateway/2",
+        }
+        if endpoint == "messages":
+            headers.update({"x-api-key": api_key, "anthropic-version": "2023-06-01"})
+        if group_id == "opencode-go" and session_id and len(session_id) <= 256 and not any(ord(c) < 32 for c in session_id):
+            headers["x-opencode-session"] = session_id
         request = urllib.request.Request(
-            f"{base_url.rstrip('/')}/chat/completions",
+            f"{base_url.rstrip('/')}/{endpoint}",
             data=body,
             method="POST",
-            headers={
-                "Authorization": f"Bearer {api_key}",
-                "Content-Type": "application/json",
-                "Accept": "text/event-stream, application/json",
-                "User-Agent": "LoomModelGateway/1",
-            },
+            headers=headers,
         )
         try:
             return urllib.request.urlopen(request, timeout=self.config.upstream_timeout_seconds)
@@ -200,10 +216,14 @@ class GatewayRequestHandler(BaseHTTPRequestHandler):
         path = self.path.split("?", 1)[0].rstrip("/") or "/"
         try:
             if path == "/healthz":
-                self._write_json(HTTPStatus.OK, {"ok": True, "service": "loom-model-gateway"})
+                self._write_json(HTTPStatus.OK, {"ok": True, "service": "loom-model-gateway", "providers": {group: bool(self.application._upstream(group)[1]) for group in PROVIDERS}})
                 return
-            if path in {"/v1/models", "/v1/intern/models"}:
-                self._write_json(HTTPStatus.OK, self.application.catalog(self._authorization(), "intern" if path.startswith("/v1/intern/") else "ant-ling"))
+            try:
+                group_id, endpoint = request_route(path)
+            except ValueError:
+                raise GatewayError(HTTPStatus.NOT_FOUND, "NOT_FOUND", "Endpoint not found.") from None
+            if endpoint == "models":
+                self._write_json(HTTPStatus.OK, self.application.catalog(self._authorization(), group_id))
                 return
             raise GatewayError(HTTPStatus.NOT_FOUND, "NOT_FOUND", "Endpoint not found.")
         except GatewayError as exc:
@@ -212,31 +232,37 @@ class GatewayRequestHandler(BaseHTTPRequestHandler):
     def do_POST(self) -> None:
         path = self.path.split("?", 1)[0].rstrip("/") or "/"
         try:
-            if path not in {"/v1/chat/completions", "/v1/intern/chat/completions"}:
+            try:
+                group_id, endpoint = request_route(path)
+            except ValueError:
+                raise GatewayError(HTTPStatus.NOT_FOUND, "NOT_FOUND", "Endpoint not found.") from None
+            if endpoint == "models":
                 raise GatewayError(HTTPStatus.NOT_FOUND, "NOT_FOUND", "Endpoint not found.")
             length = int(self.headers.get("Content-Length") or 0)
             if length <= 0 or length > self._MAX_BODY_BYTES:
                 raise GatewayError(HTTPStatus.REQUEST_ENTITY_TOO_LARGE, "REQUEST_TOO_LARGE", "Request is too large.")
             body = self.rfile.read(length)
-            upstream = self.application.upstream_request(body, self._authorization(), "intern" if path.startswith("/v1/intern/") else "ant-ling")
-            status = int(getattr(upstream, "status", getattr(upstream, "code", 502)) or 502)
-            content_type = str(upstream.headers.get("Content-Type") or "application/json")
-            self.send_response(status)
-            self.send_header("Content-Type", content_type)
-            self.send_header("Cache-Control", "no-store")
-            self.send_header("X-Content-Type-Options", "nosniff")
-            self.send_header("X-Loom-Gateway", "model")
-            self.send_header("Connection", "close")
-            self.end_headers()
-            reader = getattr(upstream, "read1", upstream.read)
-            while True:
-                chunk = reader(64 * 1024)
-                if not chunk:
-                    break
-                self.wfile.write(chunk)
-                self.wfile.flush()
-            upstream.close()
-            self.close_connection = True
+            upstream = self.application.upstream_request(body, self._authorization(), group_id, endpoint, session_id=str(self.headers.get("x-opencode-session") or ""))
+            try:
+                status = int(getattr(upstream, "status", getattr(upstream, "code", 502)) or 502)
+                content_type = str(upstream.headers.get("Content-Type") or "application/json")
+                self.send_response(status)
+                self.send_header("Content-Type", content_type)
+                self.send_header("Cache-Control", "no-store")
+                self.send_header("X-Content-Type-Options", "nosniff")
+                self.send_header("X-Loom-Gateway", "model")
+                self.send_header("Connection", "close")
+                self.end_headers()
+                reader = getattr(upstream, "read1", upstream.read)
+                while True:
+                    chunk = reader(64 * 1024)
+                    if not chunk:
+                        break
+                    self.wfile.write(chunk)
+                    self.wfile.flush()
+            finally:
+                upstream.close()
+                self.close_connection = True
         except GatewayError as exc:
             self._write_json(exc.status, {"error": {"code": exc.code, "message": exc.message}})
         except (BrokenPipeError, ConnectionResetError):
@@ -272,6 +298,7 @@ def main(argv: list[str] | None = None) -> int:
         intern_base_url=str(os.environ.get("LOOM_INTERN_BASE_URL") or "https://discovery-api.intern-ai.org.cn/v1").strip(),
         intern_api_key=str(os.environ.get("LOOM_INTERN_API_KEY") or "").strip(),
         model_policy_base_url=str(os.environ.get("LOOM_MODEL_POLICY_INTERNAL_URL") or "").strip(),
+        upstreams=server_upstreams(os.environ),
         upstream_timeout_seconds=max(10.0, float(os.environ.get("LOOM_MODEL_UPSTREAM_TIMEOUT", "180"))),
     )
     server = GatewayServer((str(args.host), int(args.port)), LoomModelGateway(config))
