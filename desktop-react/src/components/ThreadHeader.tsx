@@ -4,6 +4,7 @@ import {
   Copy,
   FileDiff,
   GitFork,
+  Globe2,
   PanelsTopLeft,
   PanelRightClose,
   PanelRightOpen,
@@ -38,6 +39,7 @@ interface ThreadHeaderProps {
   artifactCount?: number;
   agentsOpen?: boolean;
   agentCount?: number;
+  browserOpen?: boolean;
   accountAuthenticated?: boolean;
   accountLabel?: string;
   accountAvatar?: string;
@@ -53,6 +55,7 @@ interface ThreadHeaderProps {
   onToggleReview(): void;
   onToggleArtifacts(): void;
   onToggleAgents(): void;
+  onToggleBrowser?(): void;
 }
 
 function workspaceName(workspace: string, fallback: string): string {
@@ -103,6 +106,7 @@ export function ThreadHeader({
   artifactCount = 0,
   agentsOpen = false,
   agentCount = 0,
+  browserOpen = false,
   accountAuthenticated = false,
   accountLabel = "",
   accountAvatar = "",
@@ -118,6 +122,7 @@ export function ThreadHeader({
   onToggleReview,
   onToggleArtifacts,
   onToggleAgents,
+  onToggleBrowser,
 }: ThreadHeaderProps) {
   const { language, t } = useI18n();
   const [copied, setCopied] = useState(false);
@@ -265,6 +270,20 @@ export function ThreadHeader({
           <span className="thread-artifact-label">{artifactLabel}</span>
           {artifactCount > 0 ? <span className="thread-artifact-count">{artifactCount}</span> : null}
         </button>
+
+        {onToggleBrowser ? (
+          <button
+            type="button"
+            className={"thread-review-button header-workspace-entry thread-browser-button " + (browserOpen ? "active" : "")}
+            onClick={onToggleBrowser}
+            title={language === "zh-CN" ? "内置浏览器" : "Browser"}
+            aria-label={language === "zh-CN" ? "切换内置浏览器" : "Toggle browser"}
+            aria-pressed={browserOpen}
+          >
+            <Globe2 size={17} strokeWidth={1.75} />
+            <span>{language === "zh-CN" ? "浏览器" : "Browser"}</span>
+          </button>
+        ) : null}
 
         <span className="thread-header-divider" aria-hidden="true" />
 
