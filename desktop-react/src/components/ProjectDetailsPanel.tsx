@@ -19,6 +19,7 @@ import { useMotionPresence } from "../motion/useMotionPresence";
 import { startVisiblePolling } from "../visiblePolling";
 import type { ProjectRecord, ThreadRecord, TranscriptItem } from "../types/loom";
 import { ProjectAgentFilesCard } from "./ProjectAgentFilesCard";
+import { FilesWorkbench } from "./FilesWorkbench";
 import { ProjectMemoryCard } from "./ProjectMemoryCard";
 import { ProjectRepositoryCard } from "./ProjectRepositoryCard";
 import "./project-details-panel.css";
@@ -227,6 +228,7 @@ export function ProjectDetailsPanel({
   const [workspaceStatus, setWorkspaceStatus] = useState<ProjectWorkspaceStatus | null>(null);
   const [workspaceLoading, setWorkspaceLoading] = useState(false);
   const [workspaceError, setWorkspaceError] = useState("");
+  const [filesOpen, setFilesOpen] = useState(false);
   const [reviewLoadingPath, setReviewLoadingPath] = useState("");
   const [gitBusy, setGitBusy] = useState("");
   const [commitMessage, setCommitMessage] = useState("");
@@ -252,6 +254,7 @@ export function ProjectDetailsPanel({
   }, [open, projectId]);
 
   useEffect(() => {
+    setFilesOpen(false);
     setDraft(project?.instructions ?? "");
     setNotice("");
     setSaving(false);
@@ -575,7 +578,9 @@ export function ProjectDetailsPanel({
           <div className="project-file-tree-block">
             <div className="project-subheading">
               <span>文件树</span>
-              <small>{workspaceStatus?.tree.truncated ? `仅显示前 ${workspaceStatus.tree.limit} 项` : `${treeEntries.length} 项`}</small>
+              <button className="project-files-launch" type="button" onClick={() => setFilesOpen(true)} title="打开完整文件管理器">
+                <FolderOpen size={14} strokeWidth={1.8} /> Files · 打开
+              </button>
             </div>
             {treeEntries.length ? (
               <div className="project-file-tree">
@@ -690,6 +695,7 @@ export function ProjectDetailsPanel({
           </div>
         </section>
       </div>
+    <FilesWorkbench key={projectId} projectId={projectId} projectName={project?.name || ""} root={project?.root || ""} open={filesOpen && open} onClose={() => setFilesOpen(false)} onChanged={() => void loadWorkspaceStatus(true)} />
     </aside>
   );
 }
