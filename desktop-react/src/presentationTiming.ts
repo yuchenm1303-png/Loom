@@ -30,5 +30,3 @@ export const LIVE_STATUS_GRACE_MS = 420;
 export const LIVE_TEXT_HOLD_MS = 2000;
 /** Run strip after the run ends: outcome readable for ~560ms, then a 320ms fade. */
 export const RUN_STRIP_EXIT_MS = 900;
-/** A thread read slower than this shows the switching indicator. */
-export const THREAD_SWITCH_INDICATOR_DELAY_MS = 360;

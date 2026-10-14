@@ -31,6 +31,20 @@ try {
     assert.ok(selection.pillAnimations > 0, 'pill moves on the first frame, without waiting for thread/read');
     assert.equal(await page.locator('.thread-agent-button').isDisabled(), true, 'old transcript actions cannot target the previous thread under the new title');
     assert.equal(await page.locator('.thread-sidebar-triangle').isEnabled(), true, 'sidebar navigation remains available while loading');
+    await page.waitForTimeout(420);
+    assert.equal(await page.locator('.thread-switch-overlay').count(), 0, 'slow reads never show a loading overlay');
+    const pendingSurface = await page.evaluate(() => ({
+      opacity: Number(getComputedStyle(document.querySelector('.conversation-stage')).opacity),
+      translate: getComputedStyle(document.querySelector('.conversation-stage')).translate,
+      transcriptInert: document.querySelector('.conversation-stage').inert,
+      composerInert: document.querySelector('.composer-stage').inert,
+      composerOpacity: Number(getComputedStyle(document.querySelector('.composer-stage')).opacity),
+    }));
+    assert.ok(pendingSurface.opacity >= .6 && pendingSurface.opacity < 1, 'pending transcript stays readable with subtle feedback');
+    assert.notEqual(pendingSurface.translate, 'none', 'pending transcript moves before the read completes');
+    assert.equal(pendingSurface.transcriptInert, true);
+    assert.equal(pendingSurface.composerInert, true, 'keyboard interaction cannot send to the old conversation');
+    assert.equal(pendingSurface.composerOpacity, 1, 'composer is never covered or dimmed');
     await page.waitForFunction(() => window.navigationFixture.pending.has('visual-1'));
     selection = await click(2);
     assert.equal(selection.selected, 'visual-2', 'second click wins while first request is still pending');
@@ -46,6 +60,9 @@ try {
     assert.equal(await row(2).getAttribute('class').then(value => value.includes('active')), true, 'late previous response cannot take selection back');
     assert.equal(await page.locator('.markdown-body').filter({ hasText: 'Loaded visual-1' }).count(), 0);
     await page.waitForTimeout(440);
+    assert.equal(await page.locator('.conversation-stage').evaluate(el => el.inert), false);
+    assert.equal(await page.locator('.composer-stage').evaluate(el => el.inert), false);
+    assert.equal(await page.locator('.conversation-stage').evaluate(el => getComputedStyle(el).opacity), '1', 'new transcript settles fully visible');
     const pill = row(2).locator('.thread-selection-pill');
     const geometry = await pill.boundingBox();
     const bounds = await row(2).boundingBox();

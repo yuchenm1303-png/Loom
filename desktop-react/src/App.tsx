@@ -42,7 +42,7 @@ import { warmFontWeights } from "./fontWarmup";
 import { useI18n } from "./i18n";
 import { useMotionPresence } from "./motion/useMotionPresence";
 import { useReducedMotion } from "./motion/useReducedMotion";
-import { RUN_STRIP_EXIT_MS, THREAD_SWITCH_INDICATOR_DELAY_MS } from "./presentationTiming";
+import { RUN_STRIP_EXIT_MS } from "./presentationTiming";
 import {
   SHORTCUTS_CHANGED_EVENT,
   eventMatchesShortcut,
@@ -451,7 +451,6 @@ export default function App() {
   const [dismissedApprovalIds, setDismissedApprovalIds] = useState<Set<string>>(() => new Set());
   const [threadEntering, setThreadEntering] = useState(false);
   const openComposerAccount = useCallback(() => setAccountOpen(true), []);
-  const [threadSwitchIndicatorVisible, setThreadSwitchIndicatorVisible] = useState(false);
   const previousThreadIdRef = useRef("");
   const thread = loom.active?.thread;
   const activeThreadId = thread?.id ?? "";
@@ -503,17 +502,6 @@ export default function App() {
   const artifactPreviewOpen = Boolean(artifactPreview);
   const inspectorVisible = inspectorOpen && !reviewOpen && !projectDetailsOpen && !agentsOpen && !artifactPreviewOpen;
 
-  useEffect(() => {
-    if (!threadSwitching) {
-      setThreadSwitchIndicatorVisible(false);
-      return;
-    }
-    // Only a read that is genuinely slow earns the indicator; cached and fast
-    // reads finish before anything but the sidebar selection has moved.
-    const timer = window.setTimeout(() => setThreadSwitchIndicatorVisible(true), THREAD_SWITCH_INDICATOR_DELAY_MS);
-    return () => window.clearTimeout(timer);
-  }, [threadSwitching]);
-
   useLayoutEffect(() => {
     const previousThreadId = previousThreadIdRef.current;
     previousThreadIdRef.current = activeThreadId;
@@ -529,7 +517,7 @@ export default function App() {
     }
 
     setThreadEntering(true);
-    const timer = window.setTimeout(() => setThreadEntering(false), 260);
+    const timer = window.setTimeout(() => setThreadEntering(false), 180);
     return () => window.clearTimeout(timer);
   }, [activeThreadId]);
   const sidebarLayoutOpen = sidebarOpen;
@@ -1304,7 +1292,7 @@ export default function App() {
           onToggleAgents={toggleAgents}
         />
 
-        <div className={`conversation-stage ${running ? "is-running" : ""}`}>
+        <div className={`conversation-stage ${running ? "is-running" : ""}`} inert={threadSwitching}>
           {runStripVisible ? <RunProgress {...progressProps} placement="top" motionPhase={runStripPresence.phase} /> : null}
           <Transcript
             items={transcriptItems}
@@ -1330,7 +1318,7 @@ export default function App() {
           />
         </div>
 
-        <div className="composer-stage">
+        <div className="composer-stage" inert={threadSwitching}>
           {(() => {
             const currentProject = loom.projects.find(project => project.id === thread?.projectId);
             return currentProject ? <ProjectGitBar project={currentProject} onOpen={() => openProjectDetails(currentProject.id)}/> : null;
@@ -1365,19 +1353,6 @@ export default function App() {
             paused={Boolean(thread?.paused)}
             onPausedChange={typeof thread?.paused === "boolean" ? loom.setPaused : undefined}
           />
-        </div>
-
-        <div
-          className={`thread-switch-overlay ${threadSwitchIndicatorVisible ? "is-indicator-visible" : ""}`}
-          aria-hidden={threadSwitching ? undefined : true}
-        >
-          <div className="thread-switch-mark" role={threadSwitching ? "status" : undefined} aria-live="polite">
-            <span className="thread-switch-aura" aria-hidden="true" />
-            <span className="thread-switch-orbit thread-switch-orbit-a" aria-hidden="true" />
-            <span className="thread-switch-orbit thread-switch-orbit-b" aria-hidden="true" />
-            <span className="thread-switch-core" aria-hidden="true" />
-            <span className="sr-only">Loading conversation</span>
-          </div>
         </div>
       </section>
 
