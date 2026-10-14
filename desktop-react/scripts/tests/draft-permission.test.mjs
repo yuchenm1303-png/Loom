@@ -29,7 +29,10 @@ test("draft permission updates immediately without RPC and preserves project/wor
     assert.deepEqual(states, ["read-only", "full-access"]);
   }
   assert.match(app, /thread\?\.permissionMode \|\| loom\.draftPermissionMode \|\| loom\.runtime\.defaultPermissionMode/);
-  assert.match(core, /"thread\/start", draftThreadParamsRef\.current/);
+  // The draft's parameters (project/workspace, permission mode) are what a new conversation is started with: taken at
+  // the click (b91ec02b binds a send to the conversation it was made in), defaulting to the live draft.
+  assert.match(core, /draftParams = draftThreadParamsRef\.current/);
+  assert.match(core, /"thread\/start", draftParams/);
   assert.match(core, /draftThreadParamsRef\.current = \{\};\s*setDraftPermissionMode\(undefined\)/);
 });
 
