@@ -789,7 +789,7 @@ export const Sidebar = memo(function Sidebar({
     const busy = busyThreadId === thread.id;
     const time = relativeTime(thread.updatedAt);
     const renaming = renamingId === thread.id;
-    const depth = branchDepth(thread, threads);
+    const depth = branchDepth(thread, filtered);
 
     return (
       <div
