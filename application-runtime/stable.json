@@ -1,10 +1,10 @@
 {
   "schema": 1,
   "kind": "application",
-  "build": 59001,
-  "bootstrap": "0.1.87",
-  "sourceSha": "d6a474846a183fe416fbcaedad37b90b735d7e8e",
-  "sourceTime": 1791975155,
+  "build": 60001,
+  "bootstrap": "0.1.88",
+  "sourceSha": "327560661cc2793fe072922513ef93a6d75fc728",
+  "sourceTime": 1791976229,
   "files": [
     {
       "path": "dist/assets/index-DvFEUUBG.css",
@@ -1143,8 +1143,8 @@
     {
       "path": "dist/ui-baseline.json",
       "size": 80,
-      "sha256": "3a9ec1381050fd42b586d816e3abe0f12cfc967c7b269b07cf602a182c0abf34",
-      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-59001/3a9ec1381050fd42b586d816e3abe0f12cfc967c7b269b07cf602a182c0abf34"
+      "sha256": "673c9a0da49571023482fe6bd12fae2bdd3797ca8c81eba12a20b3532afa6fb5",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-60001/673c9a0da49571023482fe6bd12fae2bdd3797ca8c81eba12a20b3532afa6fb5"
     },
     {
       "path": "dist-electron/accountClient.js",
