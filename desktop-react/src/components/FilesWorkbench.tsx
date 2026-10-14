@@ -1,0 +1,402 @@
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+import {
+  ChevronDown, ChevronRight, File, FileText, Folder, FolderOpen,
+  Maximize2, Pencil, Plus, RefreshCw, Save, Search, Trash2, X,
+} from "./icons";
+import "./files-workbench.css";
+
+type Entry = { path: string; name: string; type: string; size?: number };
+type ListResult = { entries: Entry[]; nextOffset: number | null };
+type ReadResult = { path: string; text: string | null; sha?: string; size?: number; reason?: string };
+type SearchResult = { entries: Entry[]; truncated: boolean };
+type OpenFile = { baseline: string; text: string; sha: string; reason?: string };
+type Action = "list" | "search" | "read" | "write" | "mkdir" | "rename" | "delete";
+
+interface FilesWorkbenchProps {
+  projectId: string;
+  projectName: string;
+  root: string;
+  open: boolean;
+  onClose(): void;
+  onChanged?(): void;
+}
+
+function pathParent(path: string): string {
+  return path.includes("/") ? path.slice(0, path.lastIndexOf("/")) : "";
+}
+function pathName(path: string): string {
+  return path.split("/").pop() || path;
+}
+function displaySize(value?: number): string {
+  if (value == null) return "";
+  if (value < 1024) return String(value) + " B";
+  return value < 1024 * 1024 ? (value / 1024).toFixed(1) + " KB" : (value / (1024 * 1024)).toFixed(1) + " MB";
+}
+function errorText(value: unknown): string {
+  return value instanceof Error ? value.message : String(value);
+}
+function validName(value: string): boolean {
+  return Boolean(value && value !== "." && value !== ".." && !/[\\/:*?"<>|\x00-\x1f]/.test(value));
+}
+function fileTreePath(entry: Entry): string {
+  return entry.path;
+}
+
+export function FilesWorkbench({ projectId, projectName, root, open, onClose, onChanged }: FilesWorkbenchProps) {
+  const [directories, setDirectories] = useState<Record<string, Entry[]>>({});
+  const [nextOffsets, setNextOffsets] = useState<Record<string, number | null>>({});
+  const [expanded, setExpanded] = useState<string[]>([]);
+  const [tabs, setTabs] = useState<string[]>([]);
+  const [selected, setSelected] = useState("");
+  const [files, setFiles] = useState<Record<string, OpenFile>>({});
+  const [query, setQuery] = useState("");
+  const [results, setResults] = useState<Entry[]>([]);
+  const [searchTruncated, setSearchTruncated] = useState(false);
+  const [searching, setSearching] = useState(false);
+  const [showIgnored, setShowIgnored] = useState(false);
+  const [pending, setPending] = useState("");
+  const [loadingDirs, setLoadingDirs] = useState<string[]>([]);
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+  const [newKind, setNewKind] = useState<"file" | "folder" | "">("");
+  const [newName, setNewName] = useState("");
+  const [renamePath, setRenamePath] = useState("");
+  const [renameValue, setRenameValue] = useState("");
+  const [fullScreen, setFullScreen] = useState(false);
+  const searchSerial = useRef(0);
+
+  const call = useCallback(async <T,>(action: Action, params: Record<string, unknown>): Promise<T> => {
+    if (!window.loom?.call) throw new Error("Loom Host is disconnected. Reconnect to manage local files.");
+    return window.loom.call<T>("project/files", { projectId, action, ...params });
+  }, [projectId]);
+
+  const listDirectory = useCallback(async (path: string, offset = 0) => {
+    setLoadingDirs((prev) => prev.includes(path) ? prev : [...prev, path]);
+    try {
+      const result = await call<ListResult>("list", { path, offset, showIgnored });
+      setDirectories((prev) => ({
+        ...prev,
+        [path]: offset ? [...(prev[path] || []), ...result.entries] : result.entries,
+      }));
+      setNextOffsets((prev) => ({ ...prev, [path]: result.nextOffset }));
+    } catch (cause) {
+      setError(errorText(cause));
+    } finally {
+      setLoadingDirs((prev) => prev.filter((item) => item !== path));
+    }
+  }, [call, showIgnored]);
+
+  useEffect(() => {
+    if (!open) return;
+    setDirectories({});
+    setNextOffsets({});
+    setExpanded([]);
+    setTabs([]);
+    setFiles({});
+    setSelected("");
+    setQuery("");
+    setResults([]);
+    setNewKind("");
+    setError("");
+    void listDirectory("");
+  }, [open, projectId, showIgnored, listDirectory]);
+
+  useEffect(() => {
+    if (!open) return;
+    const term = query.trim();
+    const serial = ++searchSerial.current;
+    if (!term) {
+      setResults([]);
+      setSearching(false);
+      setSearchTruncated(false);
+      return;
+    }
+    setSearching(true);
+    const timer = window.setTimeout(() => {
+      void call<SearchResult>("search", { path: "", query: term, showIgnored })
+        .then((response) => {
+          if (serial !== searchSerial.current) return;
+          setResults(response.entries);
+          setSearchTruncated(response.truncated);
+        })
+        .catch((cause) => {
+          if (serial === searchSerial.current) setError(errorText(cause));
+        })
+        .finally(() => { if (serial === searchSerial.current) setSearching(false); });
+    }, 220);
+    return () => window.clearTimeout(timer);
+  }, [call, open, query, showIgnored]);
+
+  const openFile = useCallback(async (path: string, reload = false) => {
+    setTabs((prev) => prev.includes(path) ? prev : [...prev, path]);
+    setSelected(path);
+    if (!reload && files[path]) return;
+    setPending("read");
+    try {
+      const result = await call<ReadResult>("read", { path });
+      setFiles((prev) => ({
+        ...prev,
+        [path]: {
+          baseline: result.text ?? "",
+          text: result.text ?? "",
+          sha: result.sha || "",
+          reason: result.reason,
+        },
+      }));
+      setError("");
+    } catch (cause) {
+      setError(errorText(cause));
+    } finally {
+      setPending("");
+    }
+  }, [call, files]);
+
+  const toggleFolder = useCallback((path: string) => {
+    if (expanded.includes(path)) {
+      setExpanded((prev) => prev.filter((item) => item !== path));
+    } else {
+      setExpanded((prev) => [...prev, path]);
+      if (!Object.prototype.hasOwnProperty.call(directories, path)) void listDirectory(path);
+    }
+  }, [directories, expanded, listDirectory]);
+
+  const treeRows = useMemo(() => {
+    const rows: Array<{ entry: Entry; depth: number }> = [];
+    const visit = (path: string, depth: number) => {
+      for (const entry of directories[path] || []) {
+        rows.push({ entry, depth });
+        if (entry.type === "directory" && expanded.includes(entry.path)) visit(entry.path, depth + 1);
+      }
+    };
+    visit("", 0);
+    return rows;
+  }, [directories, expanded]);
+
+  const dirtyPaths = tabs.filter((path) => files[path] && files[path].text !== files[path].baseline);
+  const current = selected ? files[selected] : undefined;
+  const dirty = Boolean(current && current.text !== current.baseline);
+
+  const requestClose = () => {
+    if (dirtyPaths.length && !window.confirm("还有未保存的文件。确定关闭 Files 并放弃更改吗？")) return;
+    onClose();
+  };
+
+  const refresh = async () => {
+    setError("");
+    await Promise.all(["", ...expanded].map((path) => listDirectory(path)));
+    if (selected && !dirty && current && !current.reason) void openFile(selected, true);
+  };
+
+  const runMutation = async (action: Action, params: Record<string, unknown>, message: string) => {
+    setPending(action);
+    setError("");
+    try {
+      const value = await call<{ path: string }>(action, params);
+      setNotice(message);
+      setNewKind("");
+      setRenamePath("");
+      onChanged?.();
+      await Promise.all(["", ...expanded].map((path) => listDirectory(path)));
+      return value;
+    } catch (cause) {
+      setError(errorText(cause));
+      return null;
+    } finally {
+      setPending("");
+    }
+  };
+
+  const saveFile = async () => {
+    if (!selected || !current || current.reason || !dirty) return;
+    setPending("write");
+    setError("");
+    try {
+      const result = await call<{ sha: string }>("write", { path: selected, text: current.text, expectedSha: current.sha });
+      setFiles((prev) => {
+        const existing = prev[selected];
+        if (!existing) return prev;
+        return { ...prev, [selected]: { ...existing, baseline: current.text, sha: result.sha } };
+      });
+      setNotice("文件已保存");
+      onChanged?.();
+    } catch (cause) {
+      setError(errorText(cause));
+    } finally {
+      setPending("");
+    }
+  };
+
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        if (renamePath) setRenamePath("");
+        else if (newKind) setNewKind("");
+        else requestClose();
+      }
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s") {
+        event.preventDefault();
+        void saveFile();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  });
+
+  const closeTab = (path: string) => {
+    if (files[path] && files[path].text !== files[path].baseline && !window.confirm("关闭并放弃 " + pathName(path) + " 的未保存更改？")) return;
+    const next = tabs.filter((item) => item !== path);
+    setTabs(next);
+    setFiles((prev) => { const copy = { ...prev }; delete copy[path]; return copy; });
+    if (selected === path) setSelected(next[next.length - 1] || "");
+  };
+
+  const createNew = async () => {
+    const name = newName.trim();
+    if (!validName(name)) { setError("名称不能包含路径分隔符或特殊字符。"); return; }
+    const dir = selected ? pathParent(selected) : "";
+    const path = dir ? dir + "/" + name : name;
+    if (newKind === "folder") {
+      await runMutation("mkdir", { path }, "文件夹已创建");
+    } else {
+      const result = await runMutation("write", { path, text: "", expectedSha: "" }, "文件已创建");
+      if (result) void openFile(path, true);
+    }
+    setNewName("");
+  };
+
+  const renameSelected = async () => {
+    const name = renameValue.trim();
+    if (!validName(name) || !renamePath) { setError("请输入有效的新名称。"); return; }
+    const parent = pathParent(renamePath);
+    const newPath = parent ? parent + "/" + name : name;
+    const result = await runMutation("rename", { path: renamePath, newPath }, "已重命名");
+    if (!result) return;
+    // If a folder was moved, its already-open children are no longer valid.
+    setExpanded([]);
+    setDirectories({});
+    setTabs((prev) => prev.map((item) => item === renamePath ? newPath : item).filter((item) => !item.startsWith(renamePath + "/")));
+    setFiles((prev) => {
+      const copy = { ...prev };
+      if (copy[renamePath]) { copy[newPath] = copy[renamePath]; delete copy[renamePath]; }
+      for (const key of Object.keys(copy)) if (key.startsWith(renamePath + "/")) delete copy[key];
+      return copy;
+    });
+    if (selected === renamePath) setSelected(newPath);
+    else if (selected.startsWith(renamePath + "/")) setSelected("");
+    void listDirectory("");
+  };
+
+  const deleteSelected = async () => {
+    if (!selected) return;
+    if (!window.confirm("永久删除 " + selected + "？文件夹必须为空，此操作不可撤销。")) return;
+    const result = await runMutation("delete", { path: selected }, "已删除");
+    if (!result) return;
+    setTabs((prev) => prev.filter((item) => item !== selected));
+    setFiles((prev) => { const copy = { ...prev }; delete copy[selected]; return copy; });
+    setSelected("");
+  };
+
+  const selectEntry = (entry: Entry) => {
+    if (entry.type === "directory") {
+      toggleFolder(fileTreePath(entry));
+      return;
+    }
+    if (entry.type === "symlink") { setError("为安全起见，不打开符号链接。"); return; }
+    void openFile(fileTreePath(entry));
+  };
+
+  const renderedRows = query.trim()
+    ? results.map((entry) => ({ entry, depth: 0 }))
+    : treeRows;
+
+  if (!open) return null;
+
+  return createPortal(
+    <div className="files-workbench-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) requestClose(); }}>
+      <section className={"files-workbench" + (fullScreen ? " full-screen" : "")} role="dialog" aria-modal="true" aria-label="Files">
+        <header className="files-workbench-header">
+          <div className="files-workbench-brand"><span className="files-workbench-mark"><FolderOpen size={18} /></span>
+            <div><strong>Files</strong><small title={root}>{projectName} · {root}</small></div>
+          </div>
+          <div className="files-workbench-header-actions">
+            <button type="button" onClick={() => void refresh()} title="刷新目录" aria-label="刷新目录"><RefreshCw size={17} /></button>
+            <button type="button" onClick={() => setFullScreen((value) => !value)} title="切换最大化" aria-label="切换最大化"><Maximize2 size={17} /></button>
+            <button type="button" onClick={requestClose} title="关闭 Files" aria-label="关闭 Files"><X size={19} /></button>
+          </div>
+        </header>
+        <div className="files-workbench-main">
+          <aside className="files-workbench-tree" aria-label="项目文件">
+            <div className="files-workbench-search"><Search size={16} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="筛选文件名…" aria-label="搜索文件名" /></div>
+            <div className="files-workbench-tools">
+              <button type="button" onClick={() => { setNewKind("file"); setNewName(""); }} title="新建文件"><FileText size={15} /> 文件</button>
+              <button type="button" onClick={() => { setNewKind("folder"); setNewName(""); }} title="新建文件夹"><Plus size={15} /> 文件夹</button>
+              <label><input type="checkbox" checked={showIgnored} onChange={(event) => setShowIgnored(event.target.checked)} /> 显示缓存</label>
+            </div>
+            {newKind ? <form className="files-workbench-inline-form" onSubmit={(event) => { event.preventDefault(); void createNew(); }}>
+              <input autoFocus aria-label="新名称" placeholder={newKind === "file" ? "文件名" : "文件夹名"} value={newName} onChange={(event) => setNewName(event.target.value)} />
+              <button type="submit" disabled={!!pending}>创建</button>
+              <button type="button" onClick={() => setNewKind("")} aria-label="取消">×</button>
+            </form> : null}
+            <div className="files-workbench-scroll" role="tree" aria-label="文件目录树">
+              {searching ? <p className="files-workbench-placeholder">正在搜索…</p> : null}
+              {renderedRows.map(({ entry, depth }) => {
+                const isFolder = entry.type === "directory";
+                const isOpen = expanded.includes(entry.path);
+                const Icon = isFolder ? (isOpen ? FolderOpen : Folder) : File;
+                return <div role="treeitem" aria-expanded={isFolder ? isOpen : undefined} aria-selected={selected === entry.path} key={entry.path}>
+                  <button type="button" className={"files-workbench-row" + (selected === entry.path ? " selected" : "")} onClick={() => selectEntry(entry)}
+                    style={{ paddingLeft: (12 + depth * 18) + "px" }} title={entry.path}>
+                    {isFolder ? isOpen ? <ChevronDown size={13} /> : <ChevronRight size={13} /> : <span className="files-workbench-spacer" />}
+                    <Icon size={16} strokeWidth={1.7} />
+                    <span className="files-workbench-filename">{query.trim() ? entry.path : entry.name}</span>
+                    <small>{isFolder ? "" : displaySize(entry.size)}</small>
+                  </button>
+                </div>;
+              })}
+              {!query.trim() && Object.entries(nextOffsets).filter(([, next]) => next !== null).map(([path, next]) => (
+                <button className="files-workbench-more" type="button" key={path} disabled={loadingDirs.includes(path)} onClick={() => void listDirectory(path, next || 0)}>加载更多 · {path || projectName}</button>
+              ))}
+              {!renderedRows.length && !searching && !loadingDirs.length ? <p className="files-workbench-placeholder">{query ? "没有匹配的文件" : "当前目录为空"}</p> : null}
+              {searchTruncated && query ? <p className="files-workbench-placeholder">结果较多，请输入更具体的文件名</p> : null}
+            </div>
+          </aside>
+          <main className="files-workbench-preview">
+            <div className="files-workbench-tabs" role="tablist" aria-label="已打开的文件">
+              {tabs.map((path) => <div key={path} className={"files-workbench-tab" + (path === selected ? " active" : "")}>
+                <button type="button" role="tab" aria-selected={path === selected} onClick={() => setSelected(path)} title={path}>{pathName(path)}{files[path]?.text !== files[path]?.baseline ? " ●" : ""}</button>
+                <button type="button" aria-label={"关闭 " + pathName(path)} title="关闭标签" onClick={() => closeTab(path)}><X size={12} /></button>
+              </div>)}
+              {!tabs.length ? <span className="files-workbench-tab-hint">选择文件以查看内容</span> : null}
+            </div>
+            {selected ? <>
+              <div className="files-workbench-filebar">
+                <span className="files-workbench-filepath" title={selected}>{selected}</span>
+                <div className="files-workbench-file-actions">
+                  <button type="button" onClick={() => { setRenamePath(selected); setRenameValue(pathName(selected)); }} title="重命名"><Pencil size={15} /></button>
+                  <button type="button" onClick={() => void deleteSelected()} title="删除文件"><Trash2 size={15} /></button>
+                  <button type="button" onClick={() => void openFile(selected, true)} disabled={dirty} title={dirty ? "先保存或放弃更改" : "重新读取"}><RefreshCw size={15} /></button>
+                  <button type="button" className="files-workbench-save" onClick={() => void saveFile()} disabled={!dirty || !!pending}><Save size={15} /> 保存</button>
+                </div>
+              </div>
+              {renamePath ? <form className="files-workbench-rename" onSubmit={(event) => { event.preventDefault(); void renameSelected(); }}>
+                <input aria-label="重命名" autoFocus value={renameValue} onChange={(event) => setRenameValue(event.target.value)} />
+                <button type="submit" disabled={!!pending}>确定</button>
+                <button type="button" onClick={() => setRenamePath("")}>取消</button>
+              </form> : null}
+              {current?.reason ? <div className="files-workbench-unsupported"><File size={30} /><strong>无法作为文本编辑</strong><span>{current.reason}</span><button type="button" onClick={() => void window.loom.openLocalArtifact(selected, root)}>使用文件预览打开</button></div>
+                : current ? <textarea className="files-workbench-editor" spellCheck={false} aria-label={"编辑 " + selected}
+                  value={current.text} onChange={(event) => {
+                    const value = event.target.value;
+                    setFiles((prev) => ({ ...prev, [selected]: { ...prev[selected], text: value } }));
+                  }} /> : <p className="files-workbench-placeholder">正在读取文件…</p>}
+              <div className="files-workbench-status"><span>{dirty ? "● 有未保存的更改" : "文件已同步"}</span><span>UTF-8 · {displaySize(current ? new TextEncoder().encode(current.text).length : undefined)}</span></div>
+            </> : <div className="files-workbench-empty"><FolderOpen size={37} strokeWidth={1.2} /><strong>打开文件以开始</strong><span>从左侧目录树选择文件，或搜索整个项目的文件名。</span><span>编辑内容后按 Ctrl+S 保存。</span></div>}
+          </main>
+        </div>
+        {(error || notice) ? <footer className={"files-workbench-notice" + (error ? " is-error" : "")}><span>{error || notice}</span><button type="button" onClick={() => { setError(""); setNotice(""); }} aria-label="关闭消息"><X size={14} /></button></footer> : null}
+      </section>
+    </div>, document.body,
+  );
+}
