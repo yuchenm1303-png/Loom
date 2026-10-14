@@ -51,14 +51,16 @@ jobs:
         run: node --check scripts/setup-ufo.mjs && node --check scripts/ufo-preflight.mjs
       - name: Install React desktop dependencies
         run: npm ci --no-audit --no-fund
+      - name: Typecheck React desktop
+        run: npm run typecheck
+      - name: Prepare Electron fixtures
+        run: npm run build:electron
       - name: Desktop scripts and relay contracts
         run: npm run test:ufo-scripts
       - name: Electron contracts
         run: npm run test:electron
       - name: Streaming presentation contracts
         run: npm run test:streaming
-      - name: Typecheck React desktop
-        run: npm run typecheck
       - name: Build React desktop
         run: npm run build
       - name: Verify deployable web portal

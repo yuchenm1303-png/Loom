@@ -34,6 +34,7 @@ interface ProjectDetailsPanelProps {
   onOpenThread(threadId: string): Promise<void> | void;
   onSetInstructions(projectId: string, instructions: string): Promise<ProjectRecord> | void;
   onGitChanged?(): void;
+  onOpenFiles?(): void;
 }
 
 interface ProjectGitFile {
@@ -216,6 +217,7 @@ export function ProjectDetailsPanel({
   onOpenThread,
   onSetInstructions,
   onGitChanged,
+  onOpenFiles,
 }: ProjectDetailsPanelProps) {
   const presence = useMotionPresence(open && Boolean(projectProp), 420);
   const lastProjectRef = useRef<ProjectRecord | null>(projectProp);
@@ -575,7 +577,9 @@ export function ProjectDetailsPanel({
           <div className="project-file-tree-block">
             <div className="project-subheading">
               <span>文件树</span>
-              <small>{workspaceStatus?.tree.truncated ? `仅显示前 ${workspaceStatus.tree.limit} 项` : `${treeEntries.length} 项`}</small>
+              <button className="project-files-launch" type="button" onClick={onOpenFiles} title="打开完整文件管理器">
+                <FolderOpen size={14} strokeWidth={1.8} /> Files · 打开
+              </button>
             </div>
             {treeEntries.length ? (
               <div className="project-file-tree">
