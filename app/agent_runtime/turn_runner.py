@@ -192,6 +192,8 @@ class TurnRunner:
                     # prepared request stable until the provider yields a response.
                     retry_sampling = False
                     while True:
+                        if rt._cancel_if_requested(session, token):
+                            return rt._result(session)
                         model_request_started = time.perf_counter()
                         rt._emit_event(session, Event.MODEL_REQUESTED, data={
                             "profile_id": profile_id,

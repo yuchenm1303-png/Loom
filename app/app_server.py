@@ -615,11 +615,13 @@ class LoomAppServerService:
             project = self.projects.for_workspace(session.workspace_dir)
         except ProjectStoreError:
             project = None
-        return _thread_record(
+        record = _thread_record(
             session,
             active=active,
             project_id=project.project_id if project is not None else UNFILED,
         )
+        record["paused"] = self.runtime.is_paused(session.session_id)
+        return record
 
     def subscribe_notifications(self, listener: NotificationListener) -> None:
         if not callable(listener):
@@ -1219,6 +1221,20 @@ class LoomAppServerService:
             "attachments": [item.as_record() for item in staged],
         }
 
+    def turn_pause(self, params: dict[str, Any]) -> dict[str, Any]:
+        return self._set_turn_paused(params, paused=True)
+
+    def turn_resume(self, params: dict[str, Any]) -> dict[str, Any]:
+        return self._set_turn_paused(params, paused=False)
+
+    def _set_turn_paused(self, params: dict[str, Any], *, paused: bool) -> dict[str, Any]:
+        session_id = self._required_text(params, "threadId")
+        turn_id = self._required_text(params, "turnId")
+        accepted = self.runtime.set_turn_paused(session_id, turn_id, paused=paused)
+        payload = {"threadId": session_id, "turnId": turn_id, "paused": paused if accepted else self.runtime.is_paused(session_id), "accepted": accepted}
+        self._notify("turn/pauseState", payload)
+        return payload
+
     def turn_interrupt(self, params: dict[str, Any]) -> dict[str, Any]:
         session_id = self._required_text(params, "threadId")
         requested_turn_id = self._required_text(params, "turnId")
@@ -1735,6 +1751,7 @@ class LoomRpcController:
                 "settings": {"get": True, "set": True},
                 "turns": {
                     "start": True, "interrupt": True, "steer": True,
+                    "pause": True, "resume": True, "pauseBoundary": "finish_current_operation",
                     "steering": {
                         "sameTurn": True, "delivery": "safeBoundary",
                         "idempotencyKey": "clientInputId", "approvalSupersedesPending": True,
@@ -1754,6 +1771,7 @@ class LoomRpcController:
                     "thread/started",
                     "runtime/updated",
                     "turn/started",
+                    "turn/pauseState",
                     "item/started",
                     "item/delta",
                     "item/completed",
@@ -1785,6 +1803,8 @@ class LoomRpcController:
             "agent/list": self.service.agent_list,
             "turn/start": self.service.turn_start,
             "turn/interrupt": self.service.turn_interrupt,
+            "turn/pause": self.service.turn_pause,
+            "turn/resume": self.service.turn_resume,
             "turn/steer": self.service.turn_steer,
             "approval/respond": self.service.approval_respond,
         }

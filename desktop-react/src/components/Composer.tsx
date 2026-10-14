@@ -32,6 +32,8 @@ function SteeringComposer({
   onDraftValueChange,
   onSend,
   onInterrupt,
+  paused = false,
+  onPausedChange,
   imagesAllowed = true,
 }: ComposerProps) {
   const { language } = useI18n();
@@ -47,6 +49,7 @@ function SteeringComposer({
   // How many messages have left. The plane in the send button is keyed by it, so each one takes off again.
   const [launched, setLaunched] = useState(0);
   const [stopping, setStopping] = useState(false);
+  const [pauseBusy, setPauseBusy] = useState(false);
   const [acknowledged, setAcknowledged] = useState(false);
   const [error, setError] = useState("");
   const [quote, setQuote] = useQuoteReply();
@@ -261,6 +264,22 @@ function SteeringComposer({
             >
               <Send key={launched} size={17} strokeWidth={2} />
             </button>
+            {onPausedChange && <button
+              type="button"
+              className={`send-button ${paused ? "is-ready" : "stop"}`}
+              disabled={stopping || pauseBusy}
+              title={paused ? (zh ? "继续任务" : "Resume task") : (zh ? "当前操作结束后暂停" : "Pause after current operation")}
+              aria-label={paused ? "Resume task" : "Pause task"}
+              aria-pressed={paused}
+              onClick={async () => {
+                setPauseBusy(true);
+                try { await onPausedChange(!paused); }
+                catch (cause) { setError(String(cause)); }
+                finally { setPauseBusy(false); }
+              }}
+            >
+              <span aria-hidden="true">{paused ? "▶" : "Ⅱ"}</span>
+            </button>}
             <button
               type="button"
               className="send-button stop"
@@ -274,8 +293,8 @@ function SteeringComposer({
           </div>
         </div>
       </form>
-      <div className="composer-hint"><Crossfade identity={`${pendingSends > 0}:${acknowledged}:${zh}`}>
-        {pendingSends > 0
+      <div className="composer-hint"><Crossfade identity={`${paused}:${pendingSends > 0}:${acknowledged}:${zh}`}>
+        {paused ? (zh ? "已请求暂停，当前操作结束后等待；点击继续可恢复任务。" : "Pause requested · waiting after the current operation. Resume to continue.") : pendingSends > 0
           ? (zh ? "消息已立即显示，正在后台确认…" : "Shown immediately · confirming in the background…")
           : acknowledged
             ? (zh ? "已确认，Loom 将根据补充要求继续。" : "Confirmed. Loom will continue with your guidance.")

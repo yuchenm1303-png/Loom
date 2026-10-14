@@ -64,9 +64,28 @@ class AgentModelPlatform(Protocol):
 class CancellationToken:
     def __init__(self) -> None:
         self._event = threading.Event()
+        self._pause_condition = threading.Condition()
+        self._paused = False
 
     def cancel(self) -> None:
         self._event.set()
+        with self._pause_condition:
+            self._pause_condition.notify_all()
+
+    @property
+    def paused(self) -> bool:
+        with self._pause_condition:
+            return self._paused
+
+    def set_paused(self, paused: bool) -> None:
+        with self._pause_condition:
+            self._paused = bool(paused)
+            self._pause_condition.notify_all()
+
+    def wait_if_paused(self) -> None:
+        with self._pause_condition:
+            while self._paused and not self.cancelled:
+                self._pause_condition.wait(0.1)
 
     @property
     def cancelled(self) -> bool:
@@ -469,6 +488,22 @@ class AgentRuntime:
                 return self._drive(session, token)
             finally:
                 self._deactivate(session.session_id, token)
+
+    def is_paused(self, session_id: str) -> bool:
+        with self._active_tokens_guard:
+            token = self._active_tokens.get(session_id)
+            return bool(token and token.paused)
+
+    def set_turn_paused(self, session_id: str, turn_id: str, *, paused: bool) -> bool:
+        with self._active_tokens_guard:
+            session = self.store.load(session_id)
+            if session.current_turn_id != turn_id:
+                raise ValueError("turnId does not match the thread's current turn")
+            token = self._active_tokens.get(session_id)
+            if token is None or token.cancelled:
+                return False
+            token.set_paused(paused)
+            return True
 
     def cancel(self, session_id: str) -> AgentRunResult:
         with self._active_tokens_guard:
@@ -1477,6 +1512,7 @@ class AgentRuntime:
         return self._result(session)
 
     def _cancel_if_requested(self, session: AgentSession, token: CancellationToken) -> bool:
+        token.wait_if_paused()
         if not token.cancelled:
             return False
         if session.status is AgentStatus.CANCELLED:

@@ -40,6 +40,7 @@ export interface Attachment {
 }
 
 export interface ThreadRecord {
+  paused?: boolean;
   id: string;
   /** Empty when no project claims this thread's workspace. */
   projectId?: string;

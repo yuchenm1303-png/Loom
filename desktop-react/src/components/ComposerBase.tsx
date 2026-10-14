@@ -42,6 +42,8 @@ interface ComposerProps {
   /** Loom is still launching: say so instead of asking for a conversation that cannot exist yet. */
   starting?: boolean;
   running?: boolean;
+  paused?: boolean;
+  onPausedChange?(paused: boolean): Promise<void> | void;
   model?: string;
   modelSnapshot?: ModelSnapshot | null;
   modelBusy?: boolean;

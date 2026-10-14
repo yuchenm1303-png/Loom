@@ -1354,6 +1354,8 @@ export default function App() {
             imagesAllowed={attachmentsEnabled && loom.models?.current?.vision !== false}
             onSend={loom.send}
             onInterrupt={loom.interrupt}
+            paused={Boolean(thread?.paused)}
+            onPausedChange={typeof thread?.paused === "boolean" ? loom.setPaused : undefined}
           />
         </div>
 

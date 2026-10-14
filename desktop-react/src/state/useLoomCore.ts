@@ -831,6 +831,15 @@ export function useLoom() {
     }
   }, [active?.thread, startThread]);
 
+  const setPaused = useCallback(async (paused: boolean) => {
+    const thread = active?.thread;
+    if (!thread?.currentTurnId) return;
+    const result = await requireBridge().call<{ paused: boolean; accepted: boolean }>(paused ? "turn/pause" : "turn/resume", { threadId: thread.id, turnId: thread.currentTurnId });
+    if (!result.accepted) throw new Error("任务尚未开始或已经结束，请刷新任务状态后重试。");
+    setActive(current => current?.thread.id === thread.id && current.thread.currentTurnId === thread.currentTurnId
+      ? { ...current, thread: { ...current.thread, paused: result.paused } } : current);
+  }, [active?.thread]);
+
   const interrupt = useCallback(async () => {
     if (!active?.thread.id || !active.thread.currentTurnId) return;
     await requireBridge().call("turn/interrupt", {
@@ -1004,6 +1013,15 @@ export function useLoom() {
       const nestedItem = params.item as Record<string, unknown> | undefined;
       const threadId = String(params.threadId ?? nestedItem?.threadId ?? "");
       const activeId = activeIdRef.current;
+      if (message.method === "turn/pauseState") {
+        threadReadCacheRef.current.delete(threadId);
+        if (threadId === activeId) threadStateRevisionRef.current += 1;
+        setThreads(current => current.map(thread => thread.id === threadId && thread.currentTurnId === params.turnId
+          ? { ...thread, paused: Boolean(params.paused) } : thread));
+        setActive(current => current?.thread.id === threadId && current.thread.currentTurnId === params.turnId
+          ? { ...current, thread: { ...current.thread, paused: Boolean(params.paused) } } : current);
+        return;
+      }
 
       if (message.method === "thread/updated") {
         const incomingThread = params.thread as ThreadRecord | undefined;
@@ -1361,6 +1379,7 @@ export function useLoom() {
     removeProject,
     send,
     interrupt,
+    setPaused,
     setPermissionMode,
     switchModelProfile,
     switchCurrentModel,
@@ -1385,6 +1404,7 @@ export function useLoom() {
     error,
     forkThread,
     interrupt,
+    setPaused,
     items,
     modelBusy,
     activeModels,
