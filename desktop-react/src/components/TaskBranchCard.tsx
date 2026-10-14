@@ -30,13 +30,14 @@ export function suggestBranchFromText(text: string): TaskBranchProposal {
 }
 
 export function TaskBranchCard({
-  proposal, threadId, messageId, onDoHere, disabled, onDismiss,
+  proposal, threadId, messageId, onDoHere, disabled, doHereDisabled, onDismiss,
 }: {
   proposal: TaskBranchProposal;
   threadId: string;
   messageId: string;
   onDoHere?: (prompt: string) => Promise<void> | void;
   disabled?: boolean;
+  doHereDisabled?: boolean;
   onDismiss(): void;
 }) {
   const [title, setTitle] = useState(proposal.title);
@@ -64,7 +65,7 @@ export function TaskBranchCard({
       </div>
       <footer>
         <span>独立会话 · 同一项目</span>
-        <button type="button" disabled={disabled || pending || !prompt.trim()} onClick={() => { onDismiss(); void onDoHere?.(prompt); }}>Do it here</button>
+        <button type="button" disabled={disabled || doHereDisabled || pending || !prompt.trim() || !onDoHere} onClick={() => { onDismiss(); void onDoHere?.(prompt); }}>Do it here</button>
         <button type="button" className="loom-task-branch-start" disabled={disabled || pending || !title.trim() || !prompt.trim()} onClick={start}>
           {pending ? "Starting…" : "Start"} <ArrowUpRight size={13} />
         </button>
