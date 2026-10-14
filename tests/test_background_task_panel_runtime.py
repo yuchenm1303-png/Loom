@@ -47,12 +47,15 @@ def test_background_tasks_collect_all_threads_in_same_workspace_without_draining
         assert all("stdout" not in item and "stderr" not in item for item in listed)
         assert all(isinstance(item["elapsedSeconds"], int) for item in listed)
 
+        # wait() already drained alpha, so simulate a newly buffered stdout
+        # chunk and prove that panel detail does not consume its cursor.
+        p1._stdout.append("pending-for-agent\\n")
         first = _dispatch(service, "terminal/detail", {
             "workspace": str(workspace), "processId": p1.process_id,
         })
         assert "alpha" in first["stdout"]
-        # Reading the panel must not consume the streaming cursor used by exec_wait.
-        assert "alpha" in p1.snapshot(drain_delta=True).stdout_delta
+        assert "pending-for-agent" in first["stdout"]
+        assert "pending-for-agent" in p1.snapshot(drain_delta=True).stdout_delta
         assert _dispatch(service, "terminal/detail", {
             "workspace": str(workspace), "processId": p2.process_id,
         })["returnCode"] == 0
