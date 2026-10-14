@@ -14,6 +14,7 @@ import { flushSync } from "react-dom";
 import { AccountDialog } from "./components/AccountDialog";
 import { ArtifactPreviewDock } from "./components/ArtifactPreviewDock";
 import { Composer } from "./components/Composer";
+import { BrowserWorkspace } from "./components/BrowserWorkspace";
 import { Inspector } from "./components/Inspector";
 import { LanguageSettingsDock } from "./components/LanguageSettingsDock";
 import { ProfileInsightsPage } from "./components/ProfileInsightsPage";
@@ -416,6 +417,8 @@ export default function App() {
   }, [inspectorOpen]);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [browserOpen, setBrowserOpen] = useState(false);
+  const browserAvailable = typeof window.loom?.embeddedBrowser === "function";
   const settingsPresence = useMotionPresence(settingsOpen, 230);
   const [profileOpen, setProfileOpen] = useState(false);
   const profilePresence = useMotionPresence(profileOpen, 260);
@@ -1245,7 +1248,7 @@ export default function App() {
       />
 
       <section
-        className={`workspace ${threadSwitching ? "is-thread-switching" : ""} ${threadEntering ? "is-thread-entering" : ""}`.trim()}
+        className={`workspace ${browserOpen ? "has-browser" : ""} ${threadSwitching ? "is-thread-switching" : ""} ${threadEntering ? "is-thread-entering" : ""}`.trim()}
         aria-busy={threadSwitching ? true : undefined}
       >
         <ThreadHeader
@@ -1266,6 +1269,7 @@ export default function App() {
           artifactCount={threadSwitching ? 0 : artifactCount}
           agentsOpen={agentsOpen}
           agentCount={threadSwitching ? 0 : agentCount}
+          browserOpen={browserOpen}
           accountAuthenticated={account.account.authenticated}
           accountLabel={account.account.user?.display_name?.trim() || account.account.user?.email || ""}
           accountAvatar={account.account.user?.avatar_data_url || ""}
@@ -1290,8 +1294,16 @@ export default function App() {
           onToggleReview={toggleReview}
           onToggleArtifacts={toggleArtifacts}
           onToggleAgents={toggleAgents}
+          onToggleBrowser={browserAvailable ? () => setBrowserOpen(open => !open) : undefined}
         />
 
+        {browserOpen && browserAvailable ? (
+          <BrowserWorkspace
+            hidden={settingsPresence.mounted || profilePresence.mounted || accountOpen || reviewOpen || agentsOpen || projectDetailsOpen || artifactPreviewOpen}
+            onClose={() => setBrowserOpen(false)}
+          />
+        ) : (
+          <>
         <div className={`conversation-stage ${running ? "is-running" : ""}`} inert={threadSwitching}>
           {runStripVisible ? <RunProgress {...progressProps} placement="top" motionPhase={runStripPresence.phase} /> : null}
           <Transcript
@@ -1354,6 +1366,8 @@ export default function App() {
             onPausedChange={typeof thread?.paused === "boolean" ? loom.setPaused : undefined}
           />
         </div>
+          </>
+        )}
       </section>
 
       <div
