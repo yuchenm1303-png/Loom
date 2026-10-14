@@ -706,7 +706,7 @@ function AssistantMessage({ item, streaming, onPrompt, decisionInteractive, prom
   }, [inheritsCapsule]);
   const reasoningExiting = !showReasoning && (retiring.mounted || inheritsCapsule);
 
-  if (!showReasoning && !reasoningExiting && !answer && !decisionMessage.decisions.length && !decisionMessage.incomplete) return null;
+  if (!showReasoning && !reasoningExiting && !answer && !taskBranch && !decisionMessage.decisions.length && !decisionMessage.incomplete) return null;
 
   return (
     <div
@@ -741,7 +741,8 @@ function AssistantMessage({ item, streaming, onPrompt, decisionInteractive, prom
             threadId={item.threadId}
             messageId={item.id}
             proposal={taskBranch}
-            disabled={Boolean(promptDisabled)}
+            disabled={false}
+            doHereDisabled={Boolean(promptDisabled)}
             onDoHere={onPrompt}
             onDismiss={() => { setBranchDismissed(true); setManualBranchOpen(false); }}
           />
@@ -772,7 +773,7 @@ function AssistantMessage({ item, streaming, onPrompt, decisionInteractive, prom
       ) : (
         <>
           <MessageToolbar kind="assistant" item={item} text={answer || reasoning} disabled={promptDisabled} />
-          {!taskBranch && !branchDismissed && !promptDisabled && (
+          {!taskBranch && !branchDismissed && (
             <button className="loom-task-branch-new" type="button" onClick={() => setManualBranchOpen(true)}>
               ↗ 新建任务支路
             </button>
