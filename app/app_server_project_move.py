@@ -410,6 +410,16 @@ def _files_sha(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
+def _match_line_endings(text: str, existing: bytes | None) -> str:
+    """Keep the file's own line endings; browser textareas hand back LF-only text."""
+    if existing is None:
+        return text
+    crlf = existing.count(b"\r\n")
+    bare_lf = existing.count(b"\n") - crlf
+    normalized = text.replace("\r\n", "\n")
+    return normalized.replace("\n", "\r\n") if crlf > bare_lf else normalized
+
+
 class ProjectMovableLoomAppServerService(ReasoningManagedLoomAppServerService):
     """Project placement plus product-facing Memory v2 management."""
 
@@ -949,19 +959,21 @@ class ProjectMovableLoomAppServerService(ReasoningManagedLoomAppServerService):
                 text = params.get("text")
                 if not isinstance(text, str):
                     raise JsonRpcError(-32602, "text must be a string")
-                data = text.encode("utf-8")
-                if len(data) > _FILES_TEXT_LIMIT:
-                    raise JsonRpcError(-32602, "file exceeds the editor size limit")
                 if not target.parent.is_dir() or target.is_dir():
                     raise JsonRpcError(-32038, "parent directory is unavailable")
                 expected = params.get("expectedSha")
                 if not isinstance(expected, str):
                     raise JsonRpcError(-32602, "expectedSha is required to prevent overwrites")
+                existing = target.read_bytes() if target.is_file() else None
                 if target.exists():
-                    if not target.is_file() or _files_sha(target.read_bytes()) != expected:
+                    if existing is None or _files_sha(existing) != expected:
                         raise JsonRpcError(-32040, "file changed on disk; reload before saving")
                 elif expected:
                     raise JsonRpcError(-32040, "file was deleted on disk; reload before saving")
+                # Check the size of the bytes written, not the text: restoring CRLF can grow them.
+                data = _match_line_endings(text, existing).encode("utf-8")
+                if len(data) > _FILES_TEXT_LIMIT:
+                    raise JsonRpcError(-32602, "file exceeds the editor size limit")
                 fd, temporary = tempfile.mkstemp(prefix=".loom-save-", dir=target.parent)
                 try:
                     with os.fdopen(fd, "wb") as stream:

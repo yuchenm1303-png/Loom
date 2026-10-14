@@ -84,6 +84,31 @@ def test_edit_conflict_and_atomic_creation(files_service):
         _call(files_service, "write", "new.txt", text="overwrite", expectedSha="")
 
 
+def test_save_keeps_crlf_line_endings(files_service):
+    _, _, root = files_service
+    path = root / "windows.txt"
+    path.write_bytes(b"alpha\r\nbeta\r\n")
+    read = _call(files_service, "read", "windows.txt")
+    assert read["text"] == "alpha\r\nbeta\r\n"
+    # A browser <textarea> reports line breaks as LF, so the editor saves LF-only text.
+    edited = read["text"].replace("\r\n", "\n").replace("beta", "gamma")
+    saved = _call(files_service, "write", "windows.txt", text=edited, expectedSha=read["sha"])
+    assert path.read_bytes() == b"alpha\r\ngamma\r\n"
+    assert saved["sha"] == _call(files_service, "read", "windows.txt")["sha"]
+
+    _call(files_service, "write", "windows.txt", text="alpha\ndelta\n", expectedSha=saved["sha"])
+    assert path.read_bytes() == b"alpha\r\ndelta\r\n"
+
+
+def test_save_keeps_lf_line_endings(files_service):
+    _, _, root = files_service
+    path = root / "unix.txt"
+    path.write_bytes(b"one\ntwo\n")
+    read = _call(files_service, "read", "unix.txt")
+    _call(files_service, "write", "unix.txt", text="one\nthree\n", expectedSha=read["sha"])
+    assert path.read_bytes() == b"one\nthree\n"
+
+
 def test_rejects_outside_paths_symlinks_and_binary(files_service, tmp_path):
     _, _, root = files_service
     secret = tmp_path / "secret.txt"
