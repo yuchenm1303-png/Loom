@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from app.agent_runtime import DurableAgentRuntime, FileAgentSessionStore, PermissionMode, ToolRegistry
-from app.app_server import JsonRpcError
+from app.app_server import JsonRpcError, PROTOCOL_VERSION
 from app.app_server_thread_management import ManagedStreamingLoomAppServerService, ManagedStreamingLoomRpcController
 
 
@@ -102,7 +102,7 @@ def test_rpc_branch_endpoint_and_capability(branch_service):
     service, _, _, root = branch_service
     parent = service.thread_start({"workspace": str(root)})["thread"]
     controller = ManagedStreamingLoomRpcController(service)
-    init = controller.handle({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}})
+    init = controller.handle({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"protocolVersion": PROTOCOL_VERSION, "clientInfo": {"name": "pytest", "version": "1"}}})
     assert init["result"]["capabilities"]["threadManagement"]["branches"] is True
     response = controller.handle({
         "jsonrpc": "2.0", "id": 2, "method": "thread/branch_create",
