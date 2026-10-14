@@ -1753,8 +1753,8 @@ class LoomRpcController:
                 "settings": {"get": True, "set": True},
                 "turns": {
                     "start": True, "interrupt": True, "steer": True,
-                    "pause": callable(getattr(self.service.runtime, "set_turn_paused", None)),
-                    "resume": callable(getattr(self.service.runtime, "set_turn_paused", None)),
+                    "pause": callable(getattr(getattr(self.service, "runtime", None), "set_turn_paused", None)),
+                    "resume": callable(getattr(getattr(self.service, "runtime", None), "set_turn_paused", None)),
                     "pauseBoundary": "finish_current_operation",
                     "steering": {
                         "sameTurn": True, "delivery": "safeBoundary",
