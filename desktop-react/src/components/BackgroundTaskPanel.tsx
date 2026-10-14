@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
-import { ChevronDown, ChevronUp, CircleAlert, Maximize2, RefreshCw, Square, Terminal, X } from "./icons";
+import { ChevronDown, ChevronUp, CircleAlert, Maximize2, RefreshCw, Square, Terminal, Trash2, X } from "./icons";
 import { useI18n } from "../i18n";
 import "./background-tasks.css";
 
@@ -64,6 +64,7 @@ export function BackgroundTaskPanel({
   const [showFinished, setShowFinished] = useState(true);
   const [expanded, setExpanded] = useState(false);
   const [stoppingId, setStoppingId] = useState("");
+  const [clearing, setClearing] = useState(false);
   const [error, setError] = useState("");
   const running = processes.filter(process => process.running);
   const finished = processes.filter(process => !process.running);
@@ -157,6 +158,23 @@ export function BackgroundTaskPanel({
     }
   }, [workspace, stoppingId, onRunningCount]);
 
+
+  const clearFinished = useCallback(async () => {
+    if (!workspace || clearing) return;
+    setClearing(true);
+    try {
+      await window.loom.call("terminal/clear", { workspace });
+      const response = await window.loom.call<{ processes: BackgroundProcess[] }>("terminal/list", { workspace });
+      setProcesses(response.processes);
+      onRunningCount(response.processes.filter(process => process.running).length);
+      setSelectedId(current => response.processes.some(process => process.processId === current) ? current : "");
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause));
+    } finally {
+      setClearing(false);
+    }
+  }, [workspace, clearing, onRunningCount]);
+
   if (!open) return null;
   const list = (items: BackgroundProcess[]) => items.map(process => (
     <li key={process.processId} className="background-task-item">
@@ -213,6 +231,7 @@ export function BackgroundTaskPanel({
       <div className="background-task-topbar">
         <div className="background-task-heading"><Terminal size={18} /><strong>{zh ? "后台任务" : "Background tasks"}</strong></div>
         <div className="background-task-actions">
+          <button type="button" onClick={() => void clearFinished()} disabled={!finished.length || clearing} title={zh ? "清除已结束的记录" : "Clear finished records"} aria-label={zh ? "清除已结束的记录" : "Clear finished records"}><Trash2 size={16} /></button>
           <button type="button" onClick={() => setExpanded(value => !value)} title={zh ? "切换大小" : "Toggle size"} aria-label={zh ? "切换大小" : "Toggle size"}><Maximize2 size={16} /></button>
           <button type="button" onClick={onClose} title={zh ? "关闭面板" : "Close panel"} aria-label={zh ? "关闭面板" : "Close panel"}><X size={18} /></button>
         </div>

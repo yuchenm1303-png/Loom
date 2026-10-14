@@ -65,6 +65,9 @@ def test_background_tasks_collect_all_threads_in_same_workspace_without_draining
             _dispatch(service, "terminal/interrupt", {
                 "workspace": str(workspace), "processId": hidden.process_id,
             })
+        assert _dispatch(service, "terminal/clear", {"workspace": str(workspace)})["removed"] == 2
+        assert _dispatch(service, "terminal/list", {"workspace": str(workspace)})["processes"] == []
+        assert store.get(hidden.process_id, session_id="elsewhere") is hidden
     finally:
         for proc in (p1, p2, hidden):
             proc.terminate_tree()
@@ -82,6 +85,7 @@ def test_background_tasks_can_terminate_agent_owned_process(tmp_path):
     )
     try:
         assert running.snapshot().running
+        assert _dispatch(service, "terminal/clear", {"workspace": str(workspace)})["removed"] == 0
         result = _dispatch(service, "terminal/terminate", {
             "workspace": str(workspace), "processId": running.process_id,
         })

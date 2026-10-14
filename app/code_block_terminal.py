@@ -222,6 +222,12 @@ def _dispatch(service, method: str, params: dict[str, Any]) -> dict[str, Any]:
         return _run(service, params)
     if method == "terminal/list":
         return _list_processes(service, params)
+    if method == "terminal/clear":
+        workspace = _workspace(params.get("workspace"))
+        store = service.runtime.process_store
+        removed = sum(store.clear_finished_for_session(session_id)
+                      for session_id in _workspace_session_ids(service, workspace))
+        return {"removed": removed}
 
     managed = _process(service, params)
     if method == "terminal/read":
