@@ -33,6 +33,13 @@
 }
 .app-shell .turn-process.is-live .turn-process-content { gap: 0; }
 .app-shell .process-handoff-slot:last-child { margin-bottom: 0; }
+.app-shell .turn-process-content > .entry-activity {
+  margin-bottom: 8px;
+}
+.app-shell .turn-process-content > .entry-activity:last-child { margin-bottom: 0; }
+.app-shell .turn-process-content > .entry-activity + .process-handoff-slot {
+  margin-top: 0;
+}
 .app-shell .process-handoff-slot-inner {
   min-height: 0;
   overflow: hidden;

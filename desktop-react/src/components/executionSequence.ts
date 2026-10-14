@@ -190,6 +190,11 @@ export function groupExecutionSequence(items: TranscriptItem[], protectedIds: Re
     turn = "";
   };
   for (const item of items) {
+    // Completed empty responses have no surface and must not split a batch or
+    // create spacing slots. Live placeholders still own their thinking row.
+    if (item.type === "assistant_message" && item.status !== "streaming"
+      && !["running", "in_progress", "pending"].includes(item.status ?? "")
+      && !String(item.text ?? "").trim() && !String(item.reasoning ?? "").trim()) continue;
     const nextTurn = String(item.turnId ?? "");
     if (activity.length && nextTurn !== turn) flush();
     const commentary = isProcessCommentary(item, protectedIds);

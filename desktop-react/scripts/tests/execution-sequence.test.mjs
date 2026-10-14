@@ -12,6 +12,14 @@ const message = (id, extra = {}) => item(id, "assistant_message", { phase: "comm
 const streaming = (id, text, extra = {}) => item(id, "assistant_message", { status: "streaming", text, ...extra });
 const ids = blocks => blocks.flatMap(b => b.kind === "activity" ? b.items : [b.item]).map(i => i.id);
 
+test("empty completed messages neither reserve gaps nor split tool groups", () => {
+  const input = [item("a", "tool_call"), ...Array.from({length: 8}, (_, i) => message(`empty-${i}`, {text: "  "})), item("b", "tool_call")];
+  const result = groupExecutionSequence(input);
+  assert.equal(result.length, 1);
+  assert.deepEqual(ids(result), ["a", "b"]);
+  assert.deepEqual(ids(groupExecutionSequence([streaming("live", ""), message("reasoning", {text: "", reasoning: "Inspecting"})])), ["live", "reasoning"]);
+});
+
 test("initial update stays outside; commentary and tools form one ordered disclosure", () => {
   const input = [message("intro"), item("read", "tool_call"), message("finding"), item("edit", "file_edit"), message("latest", { status: "streaming" })];
   const result = groupExecutionSequence(input);
