@@ -1,6 +1,10 @@
 from __future__ import annotations
 
+import hashlib
+import os
 import subprocess
+import tempfile
+from pathlib import PureWindowsPath
 from pathlib import Path
 from typing import Any, Callable, TextIO
 
@@ -357,6 +361,53 @@ def _project_git_diff(root: Path, *, path: str = "") -> dict[str, Any]:
         "truncated": truncated,
         "error": "",
     }
+
+
+
+_FILES_LIMIT = 300
+_FILES_TEXT_LIMIT = 1_500_000
+_FILES_SEARCH_LIMIT = 120
+_FILES_SEARCH_SCAN_LIMIT = 12_000
+
+
+def _project_file_target(root: Path, raw: Any, *, allow_root: bool = False) -> Path:
+    """Resolve a project-relative path without following symlinks or escaping its root."""
+    if not isinstance(raw, str) or len(raw) > 4000 or "\\x00" in raw:
+        raise JsonRpcError(-32602, "invalid file path")
+    value = raw.replace("\\\\", "/")
+    windows = PureWindowsPath(value)
+    if value.startswith("/") or windows.is_absolute() or windows.drive or any(
+        segment in ("", ".", "..") for segment in value.split("/") if value
+    ):
+        raise JsonRpcError(-32602, "file path must be relative to the project")
+    if value in ("", "."):
+        if allow_root:
+            return root
+        raise JsonRpcError(-32602, "a file path is required")
+    target = root.joinpath(*value.split("/"))
+    if not target.is_relative_to(root):
+        raise JsonRpcError(-32602, "file path is outside the project")
+    parent = root
+    for name in value.split("/"):
+        parent = parent / name
+        if parent.is_symlink():
+            raise JsonRpcError(-32036, "symbolic links cannot be opened in Files")
+    return target
+
+
+def _files_entry(root: Path, path: Path) -> dict[str, Any]:
+    try:
+        kind = "symlink" if path.is_symlink() else ("directory" if path.is_dir() else "file")
+        info = {"path": path.relative_to(root).as_posix(), "name": path.name, "type": kind}
+        if kind == "file":
+            info["size"] = path.stat().st_size
+        return info
+    except OSError as exc:
+        raise JsonRpcError(-32037, f"could not inspect file: {exc}") from exc
+
+
+def _files_sha(data: bytes) -> str:
+    return hashlib.sha256(data).hexdigest()
 
 
 class ProjectMovableLoomAppServerService(ReasoningManagedLoomAppServerService):
@@ -821,6 +872,140 @@ class ProjectMovableLoomAppServerService(ReasoningManagedLoomAppServerService):
             resolved = root.absolute()
         return project, resolved
 
+
+    def project_files(self, params: dict[str, Any]) -> dict[str, Any]:
+        """Bounded project-local Files API, shared by the desktop and Web relay."""
+        project_id = self._required_text(params, "projectId")
+        _, root = self._project_root_or_error(project_id)
+        if not root.is_dir():
+            raise JsonRpcError(-32032, "project folder is unavailable")
+        action = str(params.get("action") or "")
+        path = params.get("path", "")
+        target = _project_file_target(root, path, allow_root=action in ("list", "search"))
+
+        try:
+            if action == "list":
+                if not target.is_dir():
+                    raise JsonRpcError(-32038, "directory not found")
+                show_ignored = params.get("showIgnored") is True
+                offset = max(0, min(int(params.get("offset") or 0), 100_000))
+                limit = max(1, min(int(params.get("limit") or _FILES_LIMIT), _FILES_LIMIT))
+                children = sorted(
+                    (child for child in target.iterdir()
+                     if show_ignored or child.name not in _WORKSPACE_TREE_SKIP_DIRS),
+                    key=lambda item: (not item.is_dir(), item.name.casefold()),
+                )
+                page = children[offset:offset + limit]
+                return {"entries": [_files_entry(root, item) for item in page],
+                        "path": path, "nextOffset": offset + limit if offset + limit < len(children) else None}
+
+            if action == "search":
+                term = str(params.get("query") or "").strip().casefold()[:160]
+                if not term:
+                    return {"entries": [], "truncated": False}
+                if not target.is_dir():
+                    raise JsonRpcError(-32038, "directory not found")
+                found: list[dict[str, Any]] = []
+                scanned = 0
+                pending = [target]
+                show_ignored = params.get("showIgnored") is True
+                while pending and len(found) < _FILES_SEARCH_LIMIT and scanned < _FILES_SEARCH_SCAN_LIMIT:
+                    directory = pending.pop()
+                    try:
+                        children = sorted(directory.iterdir(), key=lambda item: item.name.casefold())
+                    except OSError:
+                        continue
+                    for child in children:
+                        scanned += 1
+                        if not show_ignored and child.name in _WORKSPACE_TREE_SKIP_DIRS:
+                            continue
+                        if child.is_symlink():
+                            continue
+                        if term in child.name.casefold():
+                            found.append(_files_entry(root, child))
+                            if len(found) >= _FILES_SEARCH_LIMIT:
+                                break
+                        if child.is_dir():
+                            pending.append(child)
+                        if scanned >= _FILES_SEARCH_SCAN_LIMIT:
+                            break
+                return {"entries": found, "truncated": bool(pending) or scanned >= _FILES_SEARCH_SCAN_LIMIT}
+
+            if action == "read":
+                if not target.is_file():
+                    raise JsonRpcError(-32039, "file not found")
+                if target.stat().st_size > _FILES_TEXT_LIMIT:
+                    return {"path": path, "text": None, "reason": "File is too large to edit"}
+                data = target.read_bytes()
+                if b"\\x00" in data:
+                    return {"path": path, "text": None, "reason": "Binary preview is not editable"}
+                try:
+                    content = data.decode("utf-8")
+                except UnicodeDecodeError:
+                    return {"path": path, "text": None, "reason": "Not a UTF-8 text file"}
+                return {"path": path, "text": content, "sha": _files_sha(data), "size": len(data)}
+
+            if action == "write":
+                text = params.get("text")
+                if not isinstance(text, str):
+                    raise JsonRpcError(-32602, "text must be a string")
+                data = text.encode("utf-8")
+                if len(data) > _FILES_TEXT_LIMIT:
+                    raise JsonRpcError(-32602, "file exceeds the editor size limit")
+                if not target.parent.is_dir() or target.is_dir():
+                    raise JsonRpcError(-32038, "parent directory is unavailable")
+                expected = params.get("expectedSha")
+                if not isinstance(expected, str):
+                    raise JsonRpcError(-32602, "expectedSha is required to prevent overwrites")
+                if target.exists():
+                    if not target.is_file() or _files_sha(target.read_bytes()) != expected:
+                        raise JsonRpcError(-32040, "file changed on disk; reload before saving")
+                elif expected:
+                    raise JsonRpcError(-32040, "file was deleted on disk; reload before saving")
+                fd, temporary = tempfile.mkstemp(prefix=".loom-save-", dir=target.parent)
+                try:
+                    with os.fdopen(fd, "wb") as stream:
+                        stream.write(data)
+                        stream.flush()
+                        os.fsync(stream.fileno())
+                    if target.exists():
+                        os.chmod(temporary, target.stat().st_mode)
+                    os.replace(temporary, target)
+                finally:
+                    if os.path.exists(temporary):
+                        os.unlink(temporary)
+                return {"path": path, "sha": _files_sha(data), "size": len(data)}
+
+            if action == "mkdir":
+                if target.exists() or not target.parent.is_dir():
+                    raise JsonRpcError(-32041, "folder already exists or parent unavailable")
+                target.mkdir()
+                return {"path": path}
+
+            if action == "rename":
+                destination = _project_file_target(root, params.get("newPath"))
+                if not target.exists() or destination.exists() or not destination.parent.is_dir():
+                    raise JsonRpcError(-32041, "source missing, destination exists, or parent unavailable")
+                if target.is_dir() and destination.is_relative_to(target):
+                    raise JsonRpcError(-32602, "cannot move a folder inside itself")
+                target.rename(destination)
+                return {"path": destination.relative_to(root).as_posix()}
+
+            if action == "delete":
+                if target.is_dir():
+                    target.rmdir()  # Never recursively delete folders.
+                elif target.is_file():
+                    target.unlink()
+                else:
+                    raise JsonRpcError(-32039, "file not found")
+                return {"path": path}
+
+            raise JsonRpcError(-32602, "unsupported file action")
+        except JsonRpcError:
+            raise
+        except (OSError, ValueError, UnicodeError) as exc:
+            raise JsonRpcError(-32037, f"Files operation failed: {exc}") from exc
+
     def project_workspace_status(self, params: dict[str, Any]) -> dict[str, Any]:
         project_id = self._required_text(params, "projectId")
         project, resolved = self._project_root_or_error(project_id)
@@ -957,6 +1142,7 @@ class ProjectMovableLoomRpcController(ReasoningManagedLoomRpcController):
             "moveThread": True,
             "instructions": True,
             "workspaceStatus": True,
+            "files": True,
             "gitDiff": True,
             "memory": True,
             "memoryArchive": True,
@@ -980,6 +1166,8 @@ class ProjectMovableLoomRpcController(ReasoningManagedLoomRpcController):
             return self.service.thread_move_project(params)
         if method == "project/set_instructions":
             return self.service.project_set_instructions(params)
+        if method == "project/files":
+            return self.service.project_files(params)
         if method == "project/workspace_status":
             return self.service.project_workspace_status(params)
         if method == "project/git_diff":
