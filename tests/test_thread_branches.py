@@ -45,7 +45,8 @@ def wait_for_idle(service, thread_id):
 
 def test_child_creates_durable_parent_link_without_copying_history(branch_service):
     service, _, store, root = branch_service
-    parent = service.thread_start({"workspace": str(root)})["thread"]
+    project = service.project_create({"root": str(root)})["project"]
+    parent = service.thread_start({"projectId": project["id"]})["thread"]
     project_file = root / "README.md"
     project_file.write_text("unchanged", encoding="utf-8")
     created = service.thread_branch_create({
@@ -59,6 +60,7 @@ def test_child_creates_durable_parent_link_without_copying_history(branch_servic
     assert child["id"] != parent["id"]
     assert child["parentThreadId"] == parent["id"]
     assert child["workspace"] == parent["workspace"]
+    assert child["projectId"] == parent["projectId"] == project["id"]
     assert child["permissionMode"] == parent["permissionMode"]
     assert child["branchSourceMessageId"] == "assistant-message-1"
     assert child["title"] == "Fix Windows CRLF test"
@@ -82,6 +84,8 @@ def test_launch_branch_and_report_to_idle_parent(branch_service):
     assert result["parentThreadId"] == parent["id"]
     assert service.thread_library.read(child_id)["branchReportedAt"]
     wait_for_idle(service, parent["id"])
+    with pytest.raises(JsonRpcError):
+        service.thread_branch_report({"threadId": child_id})
     with pytest.raises(JsonRpcError):
         service.thread_branch_report({"threadId": parent["id"]})
 
