@@ -25,6 +25,7 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState, type Dispatch,
 import { createPortal } from "react-dom";
 import { useI18n } from "../i18n";
 import type { ProjectRecord, ThreadRecord } from "../types/loom";
+import { branchDepth, orderThreadBranches } from "../state/threadBranches";
 import "./sidebar.css";
 import { useSidebarSelectionMotion } from "./useSidebarSelectionMotion";
 
@@ -430,7 +431,7 @@ export const Sidebar = memo(function Sidebar({
     return projects
       .map((project) => {
         const rows = filtered.filter((thread) => thread.projectId === project.id);
-        return { project, threads: sortThreads(rows, pinnedIds) };
+        return { project, threads: orderThreadBranches(sortThreads(rows, pinnedIds)) };
       })
       .filter(({ project, threads: rows }) => {
         if (!needle) return true;
@@ -439,7 +440,7 @@ export const Sidebar = memo(function Sidebar({
   }, [filtered, pinnedIds, projects, query]);
 
   const normalThreads = useMemo(() => (
-    sortThreads(filtered.filter((thread) => !threadBelongsToProject(thread, projectIds)), pinnedIds)
+    orderThreadBranches(sortThreads(filtered.filter((thread) => !threadBelongsToProject(thread, projectIds)), pinnedIds))
   ), [filtered, pinnedIds, projectIds]);
 
   const legacyWorkspaceGroups = useMemo(() => {
@@ -460,7 +461,7 @@ export const Sidebar = memo(function Sidebar({
       displayLabel: (labelCounts.get(group.label) ?? 0) > 1
         ? `${group.label} · ${workspaceParentLabel(group.workspace) || "workspace"}`
         : group.label,
-      threads: sortThreads(group.threads, pinnedIds),
+      threads: orderThreadBranches(sortThreads(group.threads, pinnedIds)),
     }));
   }, [filtered, pinnedIds, projectsSupported, threadView]);
 
@@ -788,13 +789,16 @@ export const Sidebar = memo(function Sidebar({
     const busy = busyThreadId === thread.id;
     const time = relativeTime(thread.updatedAt);
     const renaming = renamingId === thread.id;
+    const depth = branchDepth(thread, threads);
 
     return (
       <div
         key={thread.id}
-        className={`compact-thread-row ${active ? "active" : ""} ${pinned ? "pinned" : ""} ${unread ? "unread" : ""} ${renaming ? "renaming" : ""}`}
+        className={`compact-thread-row ${depth ? "is-branch" : ""} ${active ? "active" : ""} ${pinned ? "pinned" : ""} ${unread ? "unread" : ""} ${renaming ? "renaming" : ""}`}
         data-loom-own-menu=""
         data-thread-id={thread.id}
+        data-parent-thread-id={thread.parentThreadId || undefined}
+        style={{ "--branch-depth": depth } as React.CSSProperties}
         onContextMenu={(event) => {
           event.preventDefault();
           openContextMenu(thread, event.clientX, event.clientY);
