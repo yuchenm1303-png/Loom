@@ -944,6 +944,8 @@ class ManagedStreamingLoomAppServerService(StreamingLoomAppServerService):
         parent_id = str(child_meta.get("parentThreadId") or "")
         if not parent_id:
             raise JsonRpcError(-32602, "thread is not a child branch")
+        if child_meta.get("branchReportedAt"):
+            raise JsonRpcError(-32043, "child task has already been reported")
         parent = self._session_or_rpc_error(parent_id)
         if child.status in {AgentStatus.RUNNING, AgentStatus.WAITING_APPROVAL} or self._is_active(child.session_id):
             raise JsonRpcError(-32021, "wait for the child task to finish before reporting")
