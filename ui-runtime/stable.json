@@ -1,9 +1,9 @@
 {
   "schema": 1,
-  "build": 59001,
+  "build": 60001,
   "bootstrap": "0.1.88",
-  "sourceSha": "68252419034bc95fc53e9049e3d69eded6aad5d5",
-  "sourceTime": 1791992095,
+  "sourceSha": "e40bf7abf720280151bb49a0319e95cbcd470e4c",
+  "sourceTime": 1791992766,
   "files": [
     {
       "path": "assets/KaTeX_AMS-Regular-BQhdFMY1.woff2",
@@ -360,16 +360,16 @@
       "url": "https://github.com/yuchenm1303-png/Loom/releases/download/ui-1001/f01f3e87d9c6a61c0c081ceb577abd864eb00a612f7ac1620dd6915fad2ef5aa"
     },
     {
-      "path": "assets/index-BbuBdd7t.css",
-      "size": 1185359,
-      "sha256": "e2f66cb8adffbdabb55fead14e4b0abc94d6175ba55750499e4be2d7e3882538",
-      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/ui-59001/e2f66cb8adffbdabb55fead14e4b0abc94d6175ba55750499e4be2d7e3882538"
+      "path": "assets/index-5v3dOlA2.js",
+      "size": 1881570,
+      "sha256": "73d8bdac4d8cc16f81480e8c10b637fbf19973c49caa4570455305604f4504bf",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/ui-60001/73d8bdac4d8cc16f81480e8c10b637fbf19973c49caa4570455305604f4504bf"
     },
     {
-      "path": "assets/index-CPM_P677.js",
-      "size": 1868878,
-      "sha256": "27740602800893645f65a4cc267ca7759d5c0cb6cff2dfa0d8f8651c7d172425",
-      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/ui-59001/27740602800893645f65a4cc267ca7759d5c0cb6cff2dfa0d8f8651c7d172425"
+      "path": "assets/index-BZ9gGW2Y.css",
+      "size": 1194134,
+      "sha256": "1db18db183afd5b53198b5e3d4b9ed840faf9c1293cc1c9f8b678c6f9d988600",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/ui-60001/1db18db183afd5b53198b5e3d4b9ed840faf9c1293cc1c9f8b678c6f9d988600"
     },
     {
       "path": "assets/scale-11-yukino-cursor-CiBDGVLM.png",
@@ -1118,8 +1118,8 @@
     {
       "path": "index.html",
       "size": 3106,
-      "sha256": "7532a9385d96b8bc75b78b40a7819f306954ad766b60f45ba1d11e537ea08a66",
-      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/ui-59001/7532a9385d96b8bc75b78b40a7819f306954ad766b60f45ba1d11e537ea08a66"
+      "sha256": "d04afd4d884abb9a5ce614cae8d316213051e1b88c31ba151836a47eea81e06b",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/ui-60001/d04afd4d884abb9a5ce614cae8d316213051e1b88c31ba151836a47eea81e06b"
     },
     {
       "path": "smirel-logo.png",
@@ -1142,8 +1142,8 @@
     {
       "path": "ui-baseline.json",
       "size": 80,
-      "sha256": "f3855057cfa44115d9f7a36cdfab7718c5a602a35346661109bef1159588df98",
-      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/ui-59001/f3855057cfa44115d9f7a36cdfab7718c5a602a35346661109bef1159588df98"
+      "sha256": "e6049d9a4b08700755400bc02cfd6660d9f2fea07882229475eadcff2b6e6a1f",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/ui-60001/e6049d9a4b08700755400bc02cfd6660d9f2fea07882229475eadcff2b6e6a1f"
     }
   ]
 }
