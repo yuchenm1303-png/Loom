@@ -1,0 +1,28 @@
+.loom-task-branch-card { width: min(100%, 630px); margin: 14px 0; border: 1px solid color-mix(in srgb, currentColor 12%, transparent); border-radius: 13px; background: color-mix(in srgb, var(--background, #191a1c) 87%, #7a7e87 13%); overflow: hidden; text-align: left; }
+.loom-task-branch-card > header { min-height: 40px; display: flex; align-items: center; gap: 10px; padding: 10px 13px; background: rgba(125,127,135,.07); border-bottom: 1px solid rgba(140,140,140,.12); }
+.loom-task-branch-card > header strong { font-size: 13px; font-weight: 570; flex: 1; }
+.loom-task-branch-header-mark { display: flex; color: #90b8e2; }
+.loom-task-branch-card button { cursor: pointer; }
+.loom-task-branch-card > header button { display: grid; place-items: center; width: 27px; height: 27px; border: 0; background: transparent; color: inherit; opacity: .58; border-radius: 7px; }
+.loom-task-branch-card > header button:hover { opacity: 1; background: rgba(125,125,125,.1); }
+.loom-task-branch-fields { display: flex; flex-direction: column; gap: 5px; padding: 12px 15px; }
+.loom-task-branch-fields input, .loom-task-branch-fields textarea { width: 100%; border: 0; background: transparent; color: inherit; outline: none; font: inherit; }
+.loom-task-branch-fields input { font-size: 13px; font-weight: 550; }
+.loom-task-branch-fields textarea { font-size: 12px; line-height: 1.6; resize: vertical; min-height: 45px; max-height: 180px; opacity: .74; }
+.loom-task-branch-fields input:focus-visible, .loom-task-branch-fields textarea:focus-visible { outline: 1px solid rgba(103,160,221,.55); outline-offset: 3px; border-radius: 4px; }
+.loom-task-branch-card > footer { display: flex; align-items: center; gap: 8px; padding: 8px 12px 12px; }
+.loom-task-branch-card > footer span { color: inherit; opacity: .45; font-size: 11px; flex: 1; }
+.loom-task-branch-card > footer button { font: inherit; font-size: 12px; background: transparent; border: 0; padding: 7px 9px; border-radius: 6px; color: inherit; }
+.loom-task-branch-card > footer button:hover { background: rgba(142,142,142,.13); }
+.loom-task-branch-card > footer button.loom-task-branch-start { background: #e6ebf2; color: #1b2026; display: inline-flex; align-items: center; gap: 5px; font-weight: 570; }
+.loom-task-branch-card > footer button:disabled { opacity: .4; cursor: not-allowed; }
+.loom-task-branch-new { margin: 7px 0 1px; font-size: 11px; background: transparent; color: inherit; border: 0; opacity: .45; padding: 5px 8px; border-radius: 6px; cursor: pointer; }
+.loom-task-branch-new:hover { background: rgba(128,128,128,.1); opacity: .9; }
+.compact-thread-row.is-branch { position: relative; }
+.compact-thread-row.is-branch .compact-thread-main { padding-left: calc(18px + var(--branch-depth, 1) * 13px); }
+.compact-thread-row.is-branch .compact-thread-main:before { content: "└"; position: absolute; left: calc(var(--branch-depth, 1) * 12px); font-size: 14px; opacity: .46; }
+.loom-branch-parent-strip { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; border-bottom: 1px solid rgba(140,140,140,.14); padding: 8px 15px; font-size: 12px; }
+.loom-branch-parent-strip span { opacity: .52; margin-right: auto; }
+.loom-branch-parent-strip button { font: inherit; color: inherit; border: 1px solid rgba(140,140,140,.14); border-radius: 7px; background: rgba(125,125,125,.065); padding: 5px 9px; cursor: pointer; }
+.loom-branch-parent-strip button:disabled { opacity: .4; cursor: not-allowed; }
+.loom-branch-error { color: #fa8f8f; font-size: 12px; padding: 7px 15px; }
