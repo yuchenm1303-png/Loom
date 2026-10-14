@@ -1,4 +1,4 @@
-import { Paperclip, Send, Sparkles, Square } from "./icons";
+import { Paperclip, Pause, Send, Sparkles, Square } from "./icons";
 import {
   type ComponentProps,
   type FormEvent,
@@ -281,7 +281,7 @@ function SteeringComposer({
                 finally { setPauseBusy(false); }
               }}
             >
-              <span aria-hidden="true">{paused ? "▶" : "Ⅱ"}</span>
+              {paused ? <span aria-hidden="true">▶</span> : <Pause size={16} fill="currentColor" strokeWidth={0} aria-hidden="true" />}
             </button>}
             <button
               type="button"

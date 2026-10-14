@@ -136,6 +136,7 @@ export {
   Network,
   Package,
   Palette,
+  Pause,
   Plug,
   Redo2,
   Save,
