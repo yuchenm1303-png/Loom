@@ -52,6 +52,28 @@ try {
   const page = await open();
   const scroller = page.locator(".transcript-scroll");
   const bottom = () => scroller.evaluate(el => el.scrollHeight - el.scrollTop - el.clientHeight);
+  // Navigation must arrive before paint, including late layout measurements
+  // from content-visibility, images and fonts in the newly mounted history.
+  const navigationFrames = await page.evaluate(async () => {
+    const frame = () => new Promise(resolve => requestAnimationFrame(resolve));
+    window.longConversation.small();
+    await frame(); await frame();
+    window.longConversation.restore();
+    await frame(); await frame();
+    const content = document.querySelector(".transcript");
+    const probe = document.createElement("div");
+    probe.style.height = "240px";
+    content.append(probe);
+    const samples = [];
+    for (let index = 0; index < 10; index++) {
+      await frame();
+      const el = document.querySelector(".transcript-scroll");
+      samples.push(el.scrollHeight - el.scrollTop - el.clientHeight);
+    }
+    probe.remove();
+    return samples;
+  });
+  assert.ok(navigationFrames.every(gap => Math.abs(gap) < 3), `navigation played a glide: ${navigationFrames}`);
   // Navigation in a sibling pane must not change transcript follow intent.
   await page.evaluate(() => {
     const sibling = document.createElement("button");

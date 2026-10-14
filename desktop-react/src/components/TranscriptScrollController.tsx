@@ -165,6 +165,10 @@ export function TranscriptScrollController({
   const viewportHeightRef = useRef(0);
   const bottomTargetDirtyRef = useRef(true);
   const snapBottomRef = useRef(false);
+  // Entering a conversation is positioning, not live content growth. Keep
+  // late measurements pinned until new transcript data or reader input arrives.
+  const navigationPinRef = useRef(true);
+  const lastItemsRef = useRef(items);
   // The glide toward the live edge: where the spring is, what we last wrote (to tell our own scrolling from anyone
   // else's), when it last stepped, and whether it is still moving.
   const motionRef = useRef<FollowState>({ position: 0, velocity: 0 });
@@ -250,6 +254,7 @@ export function TranscriptScrollController({
     // upward scroll events when streaming layout shrinks, task groups fold, or
     // scroll anchoring clamps the viewport.
     userDetachedRef.current = true;
+    navigationPinRef.current = false;
     followingRef.current = false;
     publishFollowing(scroller, false);
     forceBottomRef.current = false;
@@ -344,10 +349,11 @@ export function TranscriptScrollController({
     }
     const target = bottomTargetRef.current;
     const gap = Math.abs(target - motion.position);
-    // Navigation and completion take the longer glide; the live edge of a running turn the short one.
+    // Explicit returns and completion take the longer glide; live updates use
+    // the short one. Conversation entry bypasses both below.
     const travelling = travelRef.current || (!runningRef.current && now < settleUntilRef.current);
     let settled: boolean;
-    if (snapNow || prefersReducedMotion() || gap > Math.max(GLIDE_MAX_GAP_PX, viewportHeightRef.current * 2)) {
+    if (navigationPinRef.current || snapNow || prefersReducedMotion() || gap > Math.max(GLIDE_MAX_GAP_PX, viewportHeightRef.current * 2)) {
       motion.position = target;
       motion.velocity = 0;
       settled = true;
@@ -400,6 +406,20 @@ export function TranscriptScrollController({
     if (snap) snapBottomRef.current = true;
     if (isPanelResizeActive() || frameRef.current !== null) return;
     frameRef.current = requestAnimationFrame(followFrame);
+  };
+
+  const positionConversation = (scroller: HTMLDivElement) => {
+    cancelScheduledScroll();
+    navigationPinRef.current = true;
+    flowRef.current.reset();
+    glidingRef.current = false;
+    travelRef.current = false;
+    motionRef.current.velocity = 0;
+    lastWriteRef.current = null;
+    bottomTargetDirtyRef.current = true;
+    // Layout effects run before paint. Scheduling this first write in rAF can
+    // expose the previous thread's offset for a frame.
+    followTick(scroller, true);
   };
 
   useLayoutEffect(() => {
@@ -465,6 +485,8 @@ export function TranscriptScrollController({
     const turnChanged = Boolean(nextTurnId) && nextTurnId !== lastTurnIdRef.current;
     const userMessageAdded = Boolean(latestUserId) && latestUserId !== lastUserMessageIdRef.current;
     const activityAdded = Boolean(latestActivityId) && latestActivityId !== lastActivityItemIdRef.current;
+    if (!threadChanged && items !== lastItemsRef.current) navigationPinRef.current = false;
+    lastItemsRef.current = items;
 
     if (threadChanged) {
       // A real thread replacement should still pin before paint. Animating from
@@ -475,7 +497,7 @@ export function TranscriptScrollController({
       returnIntentUntilRef.current = 0;
       releaseOpenedStep();
       setJumpVisible(false);
-      scheduleBottomSync(scroller, true, true);
+      positionConversation(scroller);
     } else if (turnChanged || userMessageAdded) {
       // Sending is different from swapping conversations: the user is already
       // looking at this viewport. Keep it force-following, but let the bottom
@@ -521,7 +543,7 @@ export function TranscriptScrollController({
     setJumpVisible(false);
     // Mount/thread swaps are authoritative navigation and should not visibly
     // travel from whatever scroll position belonged to the previous subtree.
-    scheduleBottomSync(scroller, true, true);
+    positionConversation(scroller);
 
     const resumeIfUserReturnedToBottom = () => {
       if (
@@ -726,6 +748,7 @@ export function TranscriptScrollController({
       }
       const disclosure = target?.closest<HTMLButtonElement>("button[aria-expanded]");
       if (!disclosure || disclosure.disabled || !content.contains(disclosure)) return;
+      navigationPinRef.current = false;
       if (!followingRef.current || disclosure.getAttribute("aria-expanded") === "true") return;
       if (runningRef.current && disclosure.closest(".turn-block.is-active")) {
         openedStepRef.current = { header: disclosure, until: performance.now() + DISCLOSURE_MOTION_MS };
