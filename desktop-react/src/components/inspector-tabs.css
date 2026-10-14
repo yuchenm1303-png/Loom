@@ -28,7 +28,7 @@
   width: calc(
     (100% - (var(--runtime-tabs-pad-x) * 2) - (var(--runtime-tabs-gap) * 3)) / 4
   );
-  height: 45px;
+  height: 56px;
   border: 1px solid rgba(255,255,255,.07);
   border-radius: 11px;
   background:
@@ -69,12 +69,12 @@
      11px tall at top 3px (bottom edge 14px), while the 15px content row is
      vertically centred from 15px down. The two bands can never intersect -- at
      any panel width and any count width. */
-  height: 45px;
+  height: 56px;
   overflow: hidden;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 0 7px;
+  padding: 12px 4px 2px;
   border: 1px solid transparent;
   border-radius: 11px;
   background: transparent;
@@ -111,9 +111,10 @@
   min-width: 0;
   max-width: 100%;
   display: inline-flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 6px;
+  gap: 5px;
   white-space: nowrap;
   line-height: 1.2;
   pointer-events: none;
@@ -250,7 +251,7 @@ html[data-loom-theme="light"] .runtime-tab.active .runtime-tab-count {
      band, not the pill size, is what keeps the count clear of the label, so a
      narrower panel must not collapse it. */
   .runtime-tab {
-    padding: 0 5px;
+    padding: 12px 4px 2px;
     font-size: 10px;
   }
 

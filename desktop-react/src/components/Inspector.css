@@ -4,7 +4,7 @@
   overflow: hidden;
   /* The tab row reserves the badge band: 45px of tab inside 6px both sides.
      See .runtime-tab / .runtime-tab-count for the corner-badge geometry. */
-  grid-template-rows: 61px 57px minmax(0, 1fr);
+  grid-template-rows: auto 68px minmax(0, 1fr);
   background:
     radial-gradient(circle at 84% -4%, rgba(139, 124, 246, .075), transparent 29%),
     linear-gradient(180deg, #101116 0%, #0e1014 100%);
@@ -27,7 +27,7 @@
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 0 12px 0 15px;
+  padding: 12px 12px 12px 15px;
   border-bottom: 1px solid rgba(255,255,255,.055);
 }
 
@@ -44,9 +44,19 @@
 
 .runtime-heading {
   min-width: 0;
+  flex: 1;
   display: grid;
   gap: 3px;
 }
+
+.runtime-subtitle-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.runtime-subtitle-row .runtime-caption { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.runtime-subtitle-row .runtime-health { flex: 0 0 auto; }
 
 .runtime-title-row {
   display: flex;
@@ -527,7 +537,6 @@
 }
 
 @media (max-width: 1180px) {
-  .runtime-caption { display: none; }
   .runtime-tab { gap: 4px; padding-inline: 4px; }
   .runtime-event-detail pre { margin-left: 40px; }
 }

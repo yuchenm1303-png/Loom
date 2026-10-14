@@ -49,13 +49,21 @@
 }
 
 :root.loom-desktop-chrome :is(
-  .runtime-header,
   .project-details-header,
   .sub-agent-workspace-header,
   .review-topbar,
   .artifact-preview-header
 ) {
   padding-right: var(--loom-caption-reserve);
+}
+/* Only the title shares the caption rail. The description/status row uses
+   the full panel width below the native controls. */
+:root.loom-desktop-chrome .runtime-header {
+  padding: 0 12px 12px 15px;
+}
+:root.loom-desktop-chrome .runtime-title-row {
+  min-height: var(--loom-rail-height);
+  padding-right: calc(var(--loom-caption-reserve) - 12px);
 }
 /* The profile title is centred on the window, so only its right-hand actions make room. */
 :root.loom-desktop-chrome .profile-topbar-actions {

@@ -359,12 +359,14 @@ export const Inspector = memo(function Inspector({ items, onClose }: InspectorPr
           <div className="runtime-heading">
             <div className="runtime-title-row">
               <strong>{zh ? "执行详情" : "Activity"}</strong>
+            </div>
+            <div className="runtime-subtitle-row">
+              <span className="runtime-caption">{zh ? "工具调用与文件变更" : "Tools and workspace changes"}</span>
               <span className={`runtime-health ${busy ? "live" : failed ? "warning" : "idle"}`}>
                 <span className="runtime-health-dot" />
                 {zh ? (busy ? "运行中" : failed ? "含失败记录" : "就绪") : (busy ? "Live" : failed ? "Past errors" : "Idle")}
               </span>
             </div>
-            <span className="runtime-caption">{zh ? "工具调用与文件变更" : "Tools and workspace changes"}</span>
           </div>
           <button className="runtime-close" onClick={onClose} title="Close runtime inspector" aria-label="Close runtime inspector">
             <PanelRightClose size={16} strokeWidth={1.8} />
