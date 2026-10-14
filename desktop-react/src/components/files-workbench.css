@@ -145,3 +145,6 @@
   .files-workbench { animation: files-workbench-enter 180ms ease-out both; }
   @keyframes files-workbench-enter { from { opacity: .8; transform: translateY(8px) scale(.995); } to { opacity: 1; transform: none; } }
 }
+
+.project-files-launch { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; padding: 6px 9px; border-radius: 8px; background: rgba(90, 145, 198, .10); border: 1px solid rgba(120, 170, 210, .18); color: #88bfff; font-size: 11px; cursor: pointer; }
+.project-files-launch:hover { background: rgba(90, 145, 198, .19); color: #c5e4ff; }
