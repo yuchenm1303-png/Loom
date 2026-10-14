@@ -1,4 +1,5 @@
 import { installWindowChrome } from "./windowChrome.js";
+import { EmbeddedBrowserManager, type EmbeddedBrowserCommand } from "./embeddedBrowser.js";
 import { ModelSwitchQueue } from "./modelSwitchQueue.js";
 import { isManagedBuiltinSelection } from "./modelPolicySelection.js";
 import { app, BrowserWindow, clipboard, dialog, ipcMain, nativeImage, nativeTheme, net, protocol, shell } from "electron";
@@ -1019,6 +1020,7 @@ class LoomRpcProcess {
 }
 
 let mainWindow: BrowserWindow | null = null;
+let embeddedBrowserManager: EmbeddedBrowserManager | null = null;
 const artifactWindows = new Set<BrowserWindow>();
 const artifactPreviewRoots = new Map<string, string>();
 const modelManager = new DesktopModelManager(REPO_ROOT);
@@ -1294,6 +1296,7 @@ function createWindow(): void {
   });
   const window = mainWindow;
   installWindowChrome(window);
+  embeddedBrowserManager = new EmbeddedBrowserManager(window);
   let rendererDocumentUrl = "";
   window.once("ready-to-show", () => { showDesktopWindow(); });
   window.webContents.on("did-finish-load", () => {
@@ -1347,6 +1350,8 @@ function createWindow(): void {
   });
   void loadRenderer(window);
   window.on("closed", () => {
+    embeddedBrowserManager?.dispose();
+    embeddedBrowserManager = null;
     if (mainWindow === window) mainWindow = null;
   });
 }
@@ -1694,6 +1699,16 @@ handleHostChannel("loom:connect", () => rpc.connect());
 handleHostChannel("loom:call", (_event, method: string, params?: Record<string, unknown>) => runRpcCall(method, params ?? {}));
 // Disconnecting a UI must never stop shared web tasks or the Agent Runtime.
 ipcMain.handle("loom:disconnect", () => true);
+ipcMain.handle("loom:embedded-browser", async (event, command: EmbeddedBrowserCommand) => {
+  if (!mainWindow || mainWindow.isDestroyed() || event.sender !== mainWindow.webContents
+      || event.senderFrame !== mainWindow.webContents.mainFrame || !embeddedBrowserManager) {
+    throw new Error("Embedded browser is only available in Loom Desktop.");
+  }
+  if (!command || typeof command !== "object" || typeof command.action !== "string") {
+    throw new Error("Invalid browser command.");
+  }
+  return embeddedBrowserManager.command(command);
+});
 ipcMain.handle("loom:set-native-theme", (_event, source: "system" | "light" | "dark") => {
   const next = source === "light" || source === "dark" ? source : "system";
   nativeTheme.themeSource = next;
