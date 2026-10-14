@@ -74,6 +74,7 @@ import "./settings-terminal.css";
 import "./settings-page-motion.css";
 import "./settings-refined.css";
 import "./settings-general-home.css";
+import "./settings-system.css";
 
 type PageKey =
   | "general"
@@ -278,7 +279,7 @@ const BROWSER_MODE_OPTIONS: { value: BrowserConnectionMode; label: string; detai
   {
     value: "auto",
     label: "Current browser · recommended",
-    detail: "Use your current Edge/Chrome tab. If the bridge is offline, stop and report it; never switch browser identity.",
+    detail: "Use the current tab. Stop if the bridge is offline; do not switch browsers.",
   },
   {
     value: "extension",
@@ -353,13 +354,13 @@ const CAPABILITIES: {
   icon: LucideIcon;
   detailPage?: PageKey;
 }[] = [
-  { key: "computerUse", title: "Computer Use", description: "Expose screenshot, UIA, mouse, and keyboard tools.", icon: Monitor, detailPage: "computer" },
-  { key: "browserUse", title: "Browser Use", description: "Drive the current browser, an isolated browser, or a local CDP target.", icon: Globe2, detailPage: "browser" },
-  { key: "webSearch", title: "Web Search", description: "Expose the configured public-web search provider.", icon: Search },
-  { key: "mcp", title: "MCP tools", description: "Expose tools discovered from configured MCP servers.", icon: Plug, detailPage: "mcp" },
-  { key: "skills", title: "Skills", description: "Discover and load reusable SKILL.md workflows.", icon: Sparkles, detailPage: "skills" },
-  { key: "toolSearch", title: "Tool Search", description: "Discover deferred integration tools on demand.", icon: Wrench },
-  { key: "codeMode", title: "Code Mode", description: "Allow bounded multi-tool composition in Loom's execution language.", icon: Code2 },
+  { key: "computerUse", title: "Computer Use", description: "Use screenshots, accessibility tools, mouse, and keyboard.", icon: Monitor, detailPage: "computer" },
+  { key: "browserUse", title: "Browser Use", description: "Use the current browser, an isolated session, or a local connection.", icon: Globe2, detailPage: "browser" },
+  { key: "webSearch", title: "Web Search", description: "Search public sources with your configured provider.", icon: Search },
+  { key: "mcp", title: "MCP tools", description: "Use tools from connected MCP servers.", icon: Plug, detailPage: "mcp" },
+  { key: "skills", title: "Skills", description: "Load reusable workflows when needed.", icon: Sparkles, detailPage: "skills" },
+  { key: "toolSearch", title: "Tool Search", description: "Find integration tools when needed.", icon: Wrench },
+  { key: "codeMode", title: "Code Mode", description: "Compose multiple tool calls within execution limits.", icon: Code2 },
 ];
 
 function titleCase(value: string): string {
@@ -516,10 +517,10 @@ function StatusPill({ tone, children }: { tone: string; children: ReactNode }) {
   return <span className={`settings-status-pill ${tone}`}><span className="settings-status-dot" />{children}</span>;
 }
 
-function Section({ title, caption, className, children }: { title: string; caption?: string; className?: string; children: ReactNode }) {
+function Section({ title, caption, className, children, action }: { title: string; caption?: string; className?: string; children: ReactNode; action?: ReactNode }) {
   return (
     <section className={className ? `settings-section ${className}` : "settings-section"}>
-      <div className="settings-section-heading"><h2>{title}</h2>{caption ? <p>{caption}</p> : null}</div>
+      <div className="settings-section-heading"><h2>{title}</h2>{caption ? <p>{caption}</p> : null}{action}</div>
       {children}
     </section>
   );
@@ -953,7 +954,7 @@ export function SettingsPage({ runtime, models, threadId, running, onRefreshMode
               <div className="general-row-copy"><strong>{zh ? "进度反馈" : "Progress feedback"}</strong><p>{zh ? "选择 Loom 工作时的反馈节奏。" : "How much Loom shares while working."}</p></div>
               <ProgressFeedbackControl compact mode={settings.agent?.progressFeedback} saving={feedbackSaving} onChange={mode => void saveProgressFeedback(mode)} />
             </div>
-            <details className="general-expression-details">
+            <details className="general-expression-details" open>
               <summary className="general-home-row"><div className="general-row-copy"><strong>{zh ? "聊天表情" : "Chat expression"}</strong><p>{zh ? "调整表情的频率、风格与数量。" : "Tune sticker frequency, variety, and quantity."}</p></div><ChevronRight size={16} /></summary>
               <div className="general-expression-body">
                 <StickerPanel preferences={runtime.stickerPreferences} disabled={running} onSave={async (preferences) => {
@@ -977,7 +978,7 @@ export function SettingsPage({ runtime, models, threadId, running, onRefreshMode
             <button type="button" onClick={() => navigateToPage("developer")}><Wrench size={18} /><div><strong>{zh ? "诊断" : "Diagnostics"}</strong><span>{zh ? "运行状态与详情" : "Runtime health and details"}</span></div><ChevronRight size={15} /></button>
           </div>
         </Section>
-        {!isLoomWebRuntime() ? <details className="general-system-details">
+        {!isLoomWebRuntime() ? <details className="general-system-details" open>
           <summary className="general-home-row"><div className="general-row-copy"><strong>{zh ? "软件更新" : "Software update"}</strong><p>{zh ? "版本信息与自动更新偏好。" : "Version information and update preferences."}</p></div><ChevronRight size={16} /></summary>
           <div className="general-update-mount" />
         </details> : null}
@@ -1003,7 +1004,7 @@ export function SettingsPage({ runtime, models, threadId, running, onRefreshMode
     return (
       <>
         <div className="settings-page-heading settings-heading-with-action">
-          <div><h1>Appearance</h1><p>Tune Loom for long reading sessions, dense agent work, or a wider desktop layout without changing Agent behavior.</p></div>
+          <div><h1>Appearance</h1><p>Adjust the theme, layout, and reading experience.</p></div>
           <button className="mature-action-button" type="button" onClick={() => void resetAppearance()}><RefreshCw size={14} />Reset appearance</button>
         </div>
 
@@ -1035,7 +1036,7 @@ export function SettingsPage({ runtime, models, threadId, running, onRefreshMode
           </div>
         </div>
 
-        <Section title="Theme" caption="Choose Loom's overall surface palette. System follows your operating system and updates automatically.">
+        <Section title="Theme" caption="Choose a theme, or follow your device.">
           <div className="appearance-theme-picker" role="radiogroup" aria-label="Loom theme">
             {([
               { value: "system", label: "System", detail: "Follow your device", icon: Monitor },
@@ -1071,28 +1072,28 @@ export function SettingsPage({ runtime, models, threadId, running, onRefreshMode
           </div>
         </Section>
 
-        <Section title="Interface" caption="Global sizing and motion preferences. Changes apply immediately and persist across restarts.">
+        <Section title="Interface" caption="Size, spacing, and motion. Changes apply immediately.">
           <div className="settings-card mature-preference-list">
-            <PreferenceRow icon={Type} title="Interface scale" detail="Scale the complete desktop UI for comfortable reading on small or high-DPI displays."><SegmentedControl label="Interface scale" value={appearance.scale} options={SCALE_OPTIONS} onChange={(scale) => void saveSetting("appearance.scale", scale, `Interface scale set to ${scale}%.`)} /></PreferenceRow>
-            <PreferenceRow icon={Gauge} title="Content density" detail="Control spacing across conversation, activity, tool, and settings rows."><SelectControl label="Content density" value={appearance.density} options={[{ value: "compact", label: "Compact" }, { value: "comfortable", label: "Comfortable" }, { value: "spacious", label: "Spacious" }]} onChange={(value) => void saveSetting("appearance.density", value)} /></PreferenceRow>
+            <PreferenceRow icon={Type} title="Interface scale" detail="Resize the entire interface."><SegmentedControl label="Interface scale" value={appearance.scale} options={SCALE_OPTIONS} onChange={(scale) => void saveSetting("appearance.scale", scale, `Interface scale set to ${scale}%.`)} /></PreferenceRow>
+            <PreferenceRow icon={Gauge} title="Content density" detail="Set the spacing between interface elements."><SelectControl label="Content density" value={appearance.density} options={[{ value: "compact", label: "Compact" }, { value: "comfortable", label: "Comfortable" }, { value: "spacious", label: "Spacious" }]} onChange={(value) => void saveSetting("appearance.density", value)} /></PreferenceRow>
             <PreferenceRow icon={Moon} title="Reduce motion" detail="Minimize decorative transitions, pulses, and status animation."><SettingSwitch checked={appearance.reducedMotion} label="Reduce motion" onChange={(value) => void saveSetting("appearance.reducedMotion", value)} /></PreferenceRow>
             <PreferenceRow icon={Sparkles} title="Ambient effects" detail="Show the subtle conversation glow and background atmosphere behind messages."><SettingSwitch checked={appearance.ambientEffects} label="Ambient conversation effects" onChange={(value) => void saveSetting("appearance.ambientEffects", value)} /></PreferenceRow>
             <PreferenceRow icon={Bot} title="Loom pet" detail="Show the interactive companion above the message box. Hidden by default."><SettingSwitch checked={appearance.petEnabled === true} label="Loom pet" onChange={(value) => void saveSetting("appearance.petEnabled", value)} /></PreferenceRow>
           </div>
         </Section>
 
-        <Section title="Workspace layout" caption="Shape the three-column desktop workspace without changing any project or conversation data.">
+        <Section title="Workspace layout" caption="Set the width of the conversation and side panels.">
           <div className="settings-card mature-preference-list">
-            <PreferenceRow icon={Monitor} title="Conversation width" detail="Set the maximum width of the central reading column."><SelectControl label="Conversation width" value={appearance.conversationWidth} options={[{ value: "focused", label: "Focused · 740px" }, { value: "balanced", label: "Balanced · 860px" }, { value: "wide", label: "Wide · 1040px" }]} onChange={(value) => void saveSetting("appearance.conversationWidth", value)} /></PreferenceRow>
-            <PreferenceRow icon={Monitor} title="Sidebar width" detail="Choose how much room projects and conversation titles receive."><SelectControl label="Sidebar width" value={appearance.sidebarWidth} options={[{ value: "compact", label: "Compact · 220px" }, { value: "standard", label: "Standard · 252px" }, { value: "wide", label: "Wide · 292px" }]} onChange={(value) => void saveSetting("appearance.sidebarWidth", value)} /></PreferenceRow>
-            <PreferenceRow icon={Monitor} title="Inspector width" detail="Control the space reserved for runtime details and tool activity."><SelectControl label="Inspector width" value={appearance.inspectorWidth} options={[{ value: "compact", label: "Compact · 280px" }, { value: "standard", label: "Standard · 316px" }, { value: "wide", label: "Wide · 360px" }]} onChange={(value) => void saveSetting("appearance.inspectorWidth", value)} /></PreferenceRow>
+            <PreferenceRow icon={Monitor} title="Conversation width" detail="Set the maximum width of messages."><SelectControl label="Conversation width" value={appearance.conversationWidth} options={[{ value: "focused", label: "Focused · 740px" }, { value: "balanced", label: "Balanced · 860px" }, { value: "wide", label: "Wide · 1040px" }]} onChange={(value) => void saveSetting("appearance.conversationWidth", value)} /></PreferenceRow>
+            <PreferenceRow icon={Monitor} title="Sidebar width" detail="Set the width of the project sidebar."><SelectControl label="Sidebar width" value={appearance.sidebarWidth} options={[{ value: "compact", label: "Compact · 220px" }, { value: "standard", label: "Standard · 252px" }, { value: "wide", label: "Wide · 292px" }]} onChange={(value) => void saveSetting("appearance.sidebarWidth", value)} /></PreferenceRow>
+            <PreferenceRow icon={Monitor} title="Inspector width" detail="Set the width of the activity panel."><SelectControl label="Inspector width" value={appearance.inspectorWidth} options={[{ value: "compact", label: "Compact · 280px" }, { value: "standard", label: "Standard · 316px" }, { value: "wide", label: "Wide · 360px" }]} onChange={(value) => void saveSetting("appearance.inspectorWidth", value)} /></PreferenceRow>
           </div>
         </Section>
 
-        <Section title="Conversation reading" caption="Tune message typography independently from the rest of the desktop UI.">
+        <Section title="Conversation reading" caption="Adjust message size and line spacing.">
           <div className="settings-card mature-preference-list">
-            <PreferenceRow icon={Type} title="Chat text size" detail="Adjust user and assistant message text without scaling the surrounding controls."><SelectControl label="Chat text size" value={String(appearance.chatFontSize)} options={[12, 13, 14, 15, 16, 17].map((value) => ({ value: String(value), label: `${value}px` }))} onChange={(value) => void saveSetting("appearance.chatFontSize", Number(value))} /></PreferenceRow>
-            <PreferenceRow icon={Gauge} title="Message line spacing" detail="Control vertical rhythm for long assistant responses and Markdown paragraphs."><SelectControl label="Message line spacing" value={appearance.messageLineHeight} options={[{ value: "compact", label: "Compact" }, { value: "comfortable", label: "Comfortable" }, { value: "relaxed", label: "Relaxed" }]} onChange={(value) => void saveSetting("appearance.messageLineHeight", value)} /></PreferenceRow>
+            <PreferenceRow icon={Type} title="Chat text size" detail="Resize messages independently of the interface."><SelectControl label="Chat text size" value={String(appearance.chatFontSize)} options={[12, 13, 14, 15, 16, 17].map((value) => ({ value: String(value), label: `${value}px` }))} onChange={(value) => void saveSetting("appearance.chatFontSize", Number(value))} /></PreferenceRow>
+            <PreferenceRow icon={Gauge} title="Message line spacing" detail="Set the spacing between lines in messages."><SelectControl label="Message line spacing" value={appearance.messageLineHeight} options={[{ value: "compact", label: "Compact" }, { value: "comfortable", label: "Comfortable" }, { value: "relaxed", label: "Relaxed" }]} onChange={(value) => void saveSetting("appearance.messageLineHeight", value)} /></PreferenceRow>
           </div>
           <div className="appearance-reading-preview">
             <span className="appearance-reading-preview-label">Message preview</span>
@@ -1100,11 +1101,11 @@ export function SettingsPage({ runtime, models, threadId, running, onRefreshMode
           </div>
         </Section>
 
-        <Section title="Code appearance" caption="Monospace settings affect code blocks, terminal-style previews, and technical values.">
+        <Section title="Code appearance" caption="Set the font and spacing for code and terminal output.">
           <div className="settings-card mature-preference-list">
             <PreferenceRow icon={Code2} title="Code font" detail="Use the system monospace stack or a font installed on this machine."><input className="mature-input" value={appearance.codeFont} onChange={(event) => setSettings(setNestedSetting(settings, "appearance.codeFont", event.target.value))} onBlur={(event) => void saveSetting("appearance.codeFont", event.target.value.trim() || "system")} placeholder="system or JetBrains Mono" /></PreferenceRow>
-            <PreferenceRow icon={Type} title="Code font size" detail="Adjust code and terminal-style output independently from conversation text."><SelectControl label="Code font size" value={String(appearance.codeFontSize)} options={[10, 11, 12, 13, 14, 15, 16, 17, 18].map((value) => ({ value: String(value), label: `${value}px` }))} onChange={(value) => void saveSetting("appearance.codeFontSize", Number(value))} /></PreferenceRow>
-            <PreferenceRow icon={Gauge} title="Code line spacing" detail="Choose a tighter terminal feel or more room between long source lines."><SelectControl label="Code line spacing" value={appearance.codeLineHeight} options={[{ value: "compact", label: "Compact" }, { value: "comfortable", label: "Comfortable" }, { value: "relaxed", label: "Relaxed" }]} onChange={(value) => void saveSetting("appearance.codeLineHeight", value)} /></PreferenceRow>
+            <PreferenceRow icon={Type} title="Code font size" detail="Resize code independently of messages."><SelectControl label="Code font size" value={String(appearance.codeFontSize)} options={[10, 11, 12, 13, 14, 15, 16, 17, 18].map((value) => ({ value: String(value), label: `${value}px` }))} onChange={(value) => void saveSetting("appearance.codeFontSize", Number(value))} /></PreferenceRow>
+            <PreferenceRow icon={Gauge} title="Code line spacing" detail="Set the spacing between lines of code."><SelectControl label="Code line spacing" value={appearance.codeLineHeight} options={[{ value: "compact", label: "Compact" }, { value: "comfortable", label: "Comfortable" }, { value: "relaxed", label: "Relaxed" }]} onChange={(value) => void saveSetting("appearance.codeLineHeight", value)} /></PreferenceRow>
             <PreferenceRow icon={Code2} title="Wrap long code" detail="Wrap long code lines instead of requiring horizontal scrolling in message code blocks."><SettingSwitch checked={appearance.codeWrap} label="Wrap long code lines" onChange={(value) => void saveSetting("appearance.codeWrap", value)} /></PreferenceRow>
           </div>
           <div className="appearance-code-preview-head"><span>Live code preview</span><span>{appearance.codeFont === "system" ? "System monospace" : appearance.codeFont} · {appearance.codeFontSize}px</span></div>
@@ -1125,9 +1126,9 @@ export function SettingsPage({ runtime, models, threadId, running, onRefreshMode
 
   const renderCapabilities = () => (
     <>
-      <div className="settings-page-heading"><div><h1>Capabilities</h1><p>Choose which major tool families Loom can expose to the model.</p></div><span className="settings-tool-count">{runtime.exposedToolCount ?? "—"} / {runtime.registeredToolCount ?? "—"} tools exposed</span></div>
+      <div className="settings-page-heading"><div><h1>Capabilities</h1><p>Choose the tools Loom can use.</p></div><span className="settings-tool-count">{runtime.exposedToolCount ?? "—"} / {runtime.registeredToolCount ?? "—"} tools available</span></div>
       {running ? <div className="settings-callout warning"><CircleAlert size={16} /><div><strong>Finish or stop the active turn first.</strong><span>Tool exposure cannot change mid-execution.</span></div></div> : null}
-      <Section title="Agent capabilities" caption="Preference and runtime readiness are intentionally shown separately." className="has-capability-list">
+      <Section title="Agent capabilities" caption="Enable tools and check their availability." className="has-capability-list">
         <div className="settings-card capability-list">
           {CAPABILITIES.map((item) => {
             const Icon = item.icon;
@@ -1148,9 +1149,9 @@ export function SettingsPage({ runtime, models, threadId, running, onRefreshMode
     const enabled = capabilityEnabled("computerUse");
     const badge = capabilityLabel(computerStatus, enabled);
     const prefs = { ...DEFAULT_COMPUTER, ...(settings.computer ?? {}) } as ComputerSettings;
-    return <><div className="settings-page-heading settings-heading-with-switch"><div><h1>Computer Use</h1><p>Screenshot-driven Windows control with UI Automation assistance and post-action verification.</p></div><div className="settings-master-switch"><StatusPill tone={badge.tone}>{badge.text}</StatusPill><SettingSwitch checked={enabled} disabled={running || busyCapability !== null} label="Toggle Computer Use" onChange={(value) => void setCapability("computerUse", value)} /></div></div>
-      <Section title="Runtime status"><div className="settings-card settings-detail-list"><DetailRow label="Backend" value={capabilityStatusText(computerStatus)} /><DetailRow label="Operator" value={text(computerStatus?.operator, "Not reported")} /><DetailRow label="Grounder" value={text(computerStatus?.grounder, "Not reported")} /><DetailRow label="Observation" value={text(computerStatus?.observation_mode, "Not reported")} /><DetailRow label="Verification" value={text(computerStatus?.verification, "Not reported")} /></div></Section>
-      <Section title="Desktop preferences" caption="Durable preferences for the Computer Use runtime."><div className="settings-card mature-preference-list"><PreferenceRow icon={ShieldCheck} title="Verify actions" detail="Prefer post-action verification before the agent moves on."><SettingSwitch checked={prefs.verifyActions} label="Verify Computer Use actions" onChange={(value) => void saveSetting("computer.verifyActions", value)} /></PreferenceRow><PreferenceRow icon={Monitor} title="Screenshot quality" detail="Balance grounding detail against capture and transfer cost."><SelectControl label="Screenshot quality" value={prefs.screenshotQuality} options={[{ value: "fast", label: "Fast" }, { value: "balanced", label: "Balanced" }, { value: "high", label: "High detail" }]} onChange={(value) => void saveSetting("computer.screenshotQuality", value)} /></PreferenceRow></div></Section>
+    return <><div className="settings-page-heading settings-heading-with-switch"><div><h1>Computer Use</h1><p>Control desktop apps with screenshots and accessibility tools.</p></div><div className="settings-master-switch"><StatusPill tone={badge.tone}>{badge.text}</StatusPill><SettingSwitch checked={enabled} disabled={running || busyCapability !== null} label="Toggle Computer Use" onChange={(value) => void setCapability("computerUse", value)} /></div></div>
+      <Section title="Runtime status" action={<div className="settings-log-export-mount" />}><div className="settings-card settings-detail-list"><DetailRow label="Backend" value={capabilityStatusText(computerStatus)} /><DetailRow label="Operator" value={text(computerStatus?.operator, "Not reported")} /><DetailRow label="Grounder" value={text(computerStatus?.grounder, "Not reported")} /><DetailRow label="Observation" value={text(computerStatus?.observation_mode, "Not reported")} /><DetailRow label="Verification" value={text(computerStatus?.verification, "Not reported")} /></div></Section>
+      <Section title="Desktop preferences" caption="Set verification and capture preferences."><div className="settings-card mature-preference-list"><PreferenceRow icon={ShieldCheck} title="Verify actions" detail="Check the result after each action."><SettingSwitch checked={prefs.verifyActions} label="Verify Computer Use actions" onChange={(value) => void saveSetting("computer.verifyActions", value)} /></PreferenceRow><PreferenceRow icon={Monitor} title="Screenshot quality" detail="Balance image detail and capture speed."><SelectControl label="Screenshot quality" value={prefs.screenshotQuality} options={[{ value: "fast", label: "Fast" }, { value: "balanced", label: "Balanced" }, { value: "high", label: "High detail" }]} onChange={(value) => void saveSetting("computer.screenshotQuality", value)} /></PreferenceRow></div></Section>
     </>;
   };
 
@@ -1163,12 +1164,12 @@ export function SettingsPage({ runtime, models, threadId, running, onRefreshMode
     const bridge = (browserStatus?.extension_bridge as Record<string, unknown> | undefined) ?? {};
     const extensionConnected = bool(bridge.connected);
     const currentTab = (bridge.current_tab as Record<string, unknown> | undefined) ?? {};
-    return <><div className="settings-page-heading settings-heading-with-switch"><div><h1>Browser</h1><p>Drive your current signed-in Edge/Chrome tab by default, or explicitly choose a clean isolated browser.</p></div><div className="settings-master-switch"><StatusPill tone={badge.tone}>{badge.text}</StatusPill><SettingSwitch checked={enabled} disabled={running || busyCapability !== null} label="Toggle Browser Use" onChange={(value) => void setCapability("browserUse", value)} /></div></div>
-      <Section title="Browser runtime"><div className="settings-card settings-detail-list"><DetailRow label="Requested backend" value={requestedConnection} /><DetailRow label="Actual backend" value={selectedConnection} /><DetailRow label="Backend" value={text(browserStatus?.backend, capabilityStatusText(browserStatus))} /><DetailRow label="Current browser bridge" value={extensionConnected ? "Connected" : "Not connected"} /><DetailRow label="Browser" value={text(bridge.browser, extensionConnected ? "Chromium browser" : "Not connected")} /><DetailRow label="Current tab" value={text(currentTab.title, currentTab.url ? String(currentTab.url) : "Not reported")} /><DetailRow label="Active sessions" value={String(browserStatus?.active_sessions ?? "Not reported")} /></div></Section>
-      <div className={`settings-callout ${extensionConnected ? "ok" : "warning"}`}>{extensionConnected ? <Check size={16} /> : <CircleAlert size={16} />}<div><strong>{extensionConnected ? "Current browser is connected." : "Current Browser Bridge is offline."}</strong><span>{extensionConnected ? "The next current-browser session uses this browser's active tab, cookies, and login state." : "Loom will stop current-browser tasks instead of opening an isolated browser or using Computer Use."}</span></div></div>
-      <Section title="Current Browser extension" caption="Loom prepares a paired local extension. Browser store publishing is not required for development or local installs.">
+    return <><div className="settings-page-heading settings-heading-with-switch"><div><h1>Browser</h1><p>Use your current browser or a separate session.</p></div><div className="settings-master-switch"><StatusPill tone={badge.tone}>{badge.text}</StatusPill><SettingSwitch checked={enabled} disabled={running || busyCapability !== null} label="Toggle Browser Use" onChange={(value) => void setCapability("browserUse", value)} /></div></div>
+      <Section title="Browser runtime" action={<div className="settings-log-export-mount" />}><div className="settings-card settings-detail-list"><DetailRow label="Requested backend" value={requestedConnection} /><DetailRow label="Actual backend" value={selectedConnection} /><DetailRow label="Backend" value={text(browserStatus?.backend, capabilityStatusText(browserStatus))} /><DetailRow label="Current browser bridge" value={extensionConnected ? "Connected" : "Not connected"} /><DetailRow label="Browser" value={text(bridge.browser, extensionConnected ? "Chromium browser" : "Not connected")} /><DetailRow label="Current tab" value={text(currentTab.title, currentTab.url ? String(currentTab.url) : "Not reported")} /><DetailRow label="Active sessions" value={String(browserStatus?.active_sessions ?? "Not reported")} /></div></Section>
+      <div className={`settings-callout ${extensionConnected ? "ok" : "warning"}`}>{extensionConnected ? <Check size={16} /> : <CircleAlert size={16} />}<div><strong>{extensionConnected ? "Current browser is connected." : "Current Browser Bridge is offline."}</strong><span>{extensionConnected ? "New sessions use this browser’s active tab and login state." : "Loom will stop current-browser tasks instead of opening an isolated browser or using Computer Use."}</span></div></div>
+      <Section title="Browser extension" caption="Install the local extension to connect your current browser.">
         <div className="settings-card mature-preference-list">
-          <PreferenceRow icon={Plug} title="Install or update" detail="One click updates an existing bridge automatically. The browser requires one confirmation only for the first local installation.">
+          <PreferenceRow icon={Plug} title="Install or update" detail="Updates apply automatically. The first installation needs browser confirmation.">
             <div className="settings-inline-actions"><button className="mature-action-button" type="button" disabled={browserSetupBusy} onClick={() => void setupBrowserExtension("edge")}>{extensionConnected ? "Update Edge bridge" : "Install Edge bridge"}</button><button className="mature-action-button secondary" type="button" disabled={browserSetupBusy} onClick={() => void setupBrowserExtension("chrome")}>{extensionConnected ? "Update Chrome bridge" : "Install Chrome bridge"}</button></div>
           </PreferenceRow>
           {browserSetup ? (
@@ -1185,7 +1186,7 @@ export function SettingsPage({ runtime, models, threadId, running, onRefreshMode
           ) : null}
         </div>
       </Section>
-      <Section title="Which browser Loom drives" caption="Current browser is the safe default. Every backend switch is explicit and status always reports the actual identity.">
+      <Section title="Browser connection" caption="Choose a connection. The runtime shows the browser actually in use.">
         <div className="settings-card mature-preference-list">
           <PreferenceRow icon={Globe2} title="Connection" detail={BROWSER_MODE_OPTIONS.find((item) => item.value === prefs.mode)?.detail ?? ""}>
             <SelectControl label="Browser connection" value={prefs.mode} options={BROWSER_MODE_OPTIONS.map((item) => ({ value: item.value, label: item.label }))} onChange={(value) => void saveBrowserMode(value as BrowserConnectionMode)} />
@@ -1198,10 +1199,10 @@ export function SettingsPage({ runtime, models, threadId, running, onRefreshMode
           {prefs.mode === "extension" ? (
             <div className="settings-callout-inline"><CircleAlert size={15} /><span>Strict current-browser mode requires the Loom Current Tab Bridge extension. If it is not connected, Browser Use reports the error and does not open another browser.</span></div>
           ) : null}
-          <PreferenceRow icon={ShieldAlert} title="Let the model pick the browser" detail="The model may choose an external current-tab/CDP backend only when permitted. A clean isolated browser still requires explicit task intent.">
+          <PreferenceRow icon={ShieldAlert} title="Let the model pick the browser" detail="Allow model-selected external connections. Isolated sessions still need an explicit request.">
             <SettingSwitch checked={prefs.modelSelectsConnection} label="Model-selected browser connections" onChange={(value) => void saveBrowserSetting("browser.modelSelectsConnection", value, value ? "The model can now choose the browser." : "The model is restricted to the connection above.")} />
           </PreferenceRow>
-          <PreferenceRow icon={ShieldAlert} title="Reach local addresses" detail="Let the browser open localhost and private network addresses, such as your own dev server. Off by default because it also reaches services that were never exposed.">
+          <PreferenceRow icon={ShieldAlert} title="Reach local addresses" detail="Allow localhost and private network access. Off by default.">
             <SettingSwitch checked={prefs.allowPrivateNetworks} label="Allow private network addresses" onChange={(value) => void saveBrowserSetting("browser.allowPrivateNetworks", value, value ? "The browser can now reach local addresses." : "Local addresses are blocked again.")} />
           </PreferenceRow>
           {prefs.modelSelectsConnection ? (
@@ -1209,7 +1210,7 @@ export function SettingsPage({ runtime, models, threadId, running, onRefreshMode
           ) : null}
         </div>
       </Section>
-      <Section title="Browser preferences"><div className="settings-card mature-preference-list"><PreferenceRow icon={Globe2} title="Preferred isolated browser" detail={prefs.mode === "local-launch" ? "Which installed browser Loom launches for the isolated session." : "Applies only when an isolated browser is explicitly requested."}><SelectControl label="Preferred browser" value={prefs.preferredEngine} options={[{ value: "edge", label: "Microsoft Edge" }, { value: "chrome", label: "Google Chrome" }, { value: "system", label: "System default" }]} onChange={(value) => void saveBrowserSetting("browser.preferredEngine", value, "Preferred isolated browser updated.")} /></PreferenceRow><PreferenceRow icon={Database} title="Persist isolated sessions" detail="Keep cookies and site storage only in Loom's isolated browser profile. Your current browser keeps its own profile automatically."><SettingSwitch checked={prefs.persistSessions} label="Persist isolated browser sessions" onChange={(value) => void saveBrowserSetting("browser.persistSessions", value, value ? "Isolated browser sessions will persist." : "Isolated browser sessions will be ephemeral.")} /></PreferenceRow></div></Section>
+      <Section title="Browser preferences"><div className="settings-card mature-preference-list"><PreferenceRow icon={Globe2} title="Preferred isolated browser" detail={prefs.mode === "local-launch" ? "Browser used for isolated sessions." : "Used only for explicitly requested isolated sessions."}><SelectControl label="Preferred browser" value={prefs.preferredEngine} options={[{ value: "edge", label: "Microsoft Edge" }, { value: "chrome", label: "Google Chrome" }, { value: "system", label: "System default" }]} onChange={(value) => void saveBrowserSetting("browser.preferredEngine", value, "Preferred isolated browser updated.")} /></PreferenceRow><PreferenceRow icon={Database} title="Persist isolated sessions" detail="Keep cookies and site data between isolated sessions. Current browser data is managed separately."><SettingSwitch checked={prefs.persistSessions} label="Persist isolated browser sessions" onChange={(value) => void saveBrowserSetting("browser.persistSessions", value, value ? "Isolated browser sessions will persist." : "Isolated browser sessions will be ephemeral.")} /></PreferenceRow></div></Section>
     </>;
   };
 
@@ -1230,18 +1231,18 @@ export function SettingsPage({ runtime, models, threadId, running, onRefreshMode
     }[prefs.shell] ?? "PowerShell";
     const permissionLabel = titleCase(text(runtime.defaultPermissionMode, "approval"));
     const commandTemplates = [
-      { name: "项目状态", command: "git status --short", detail: "快速确认工作区是否干净" },
-      { name: "类型检查", command: "npm run typecheck", detail: "前端改动后的第一道检查" },
-      { name: "生产构建", command: "npm run build", detail: "确认桌面端前端可打包" },
-      { name: "技能列表", command: "loom skill list", detail: "查看当前可发现的 Skill" },
+      { name: "Project status", command: "git status --short", detail: "Check workspace changes" },
+      { name: "Type check", command: "npm run typecheck", detail: "Check frontend types" },
+      { name: "Production build", command: "npm run build", detail: "Build the desktop interface" },
+      { name: "Skill list", command: "loom skill list", detail: "List discovered skills" },
     ];
 
     return (
       <>
         <div className="settings-page-heading terminal-page-heading">
           <div>
-            <h1>终端</h1>
-            <p>管理面向 Shell 集成与命令执行界面的持久化偏好、会话行为、安全边界和常用命令模板。</p>
+            <h1>Terminal</h1>
+            <p>Set command defaults and reuse common commands.</p>
           </div>
           <div className="terminal-heading-actions">
             <StatusPill tone={running ? "warning" : "ready"}>{running ? "执行中" : "Ready"}</StatusPill>
@@ -1259,7 +1260,7 @@ export function SettingsPage({ runtime, models, threadId, running, onRefreshMode
             </div>
           </div>
           <div className="terminal-quick-actions">
-            <button type="button" onClick={() => void copyText("npm run typecheck", "Typecheck command copied.")}><Code2 size={14} />类型检查</button>
+            <button type="button" onClick={() => void copyText("npm run typecheck", "Typecheck command copied.")}><Code2 size={14} />Type check</button>
             <button type="button" onClick={() => void copyText("npm run build", "Build command copied.")}><Wrench size={14} />构建</button>
             <button type="button" onClick={() => void copyText(text(runtime.defaultWorkspace, ""), "Workspace path copied.")}><FolderOpen size={14} />工作区</button>
           </div>
@@ -1267,20 +1268,20 @@ export function SettingsPage({ runtime, models, threadId, running, onRefreshMode
 
         <Section title="运行概览" caption="把默认 Shell、编码、超时、后台进程和权限边界放在同一屏，方便检查。">
           <div className="terminal-stat-grid">
-            <div className="terminal-stat-card"><span>首选 Shell</span><strong>{shellLabel}</strong><small>desktop preference</small></div>
-            <div className="terminal-stat-card"><span>文本编码</span><strong>{prefs.encoding === "utf-8" ? "UTF-8" : "System"}</strong><small>stdout / stderr</small></div>
-            <div className="terminal-stat-card"><span>命令超时</span><strong>{prefs.commandTimeoutSeconds}s</strong><small>foreground commands</small></div>
-            <div className="terminal-stat-card"><span>后台进程</span><strong>{prefs.preserveBackgroundProcesses ? "保留" : "关闭"}</strong><small>managed processes</small></div>
+            <div className="terminal-stat-card"><span>Preferred shell</span><strong>{shellLabel}</strong><small>desktop preference</small></div>
+            <div className="terminal-stat-card"><span>Terminal encoding</span><strong>{prefs.encoding === "utf-8" ? "UTF-8" : "System"}</strong><small>stdout / stderr</small></div>
+            <div className="terminal-stat-card"><span>Command timeout</span><strong>{prefs.commandTimeoutSeconds}s</strong><small>foreground commands</small></div>
+            <div className="terminal-stat-card"><span>Background processes</span><strong>{prefs.preserveBackgroundProcesses ? "保留" : "关闭"}</strong><small>managed processes</small></div>
             <div className="terminal-stat-card"><span>权限模式</span><strong>{permissionLabel}</strong><small>permission-aware</small></div>
           </div>
         </Section>
 
-        <Section title="命令默认值" caption="集中保存，供多个运行时集成共享同一套桌面偏好。">
+        <Section title="Command defaults" caption="Default values for integrations that support terminal preferences.">
           <div className="settings-card mature-preference-list terminal-preference-card">
-            <PreferenceRow icon={Terminal} title="首选 Shell" detail="支持桌面默认值的集成优先采用此 Shell。"><SelectControl label="Preferred shell" value={prefs.shell} options={[{ value: "powershell", label: "PowerShell" }, { value: "cmd", label: "Command Prompt" }, { value: "git-bash", label: "Git Bash" }, { value: "wsl", label: "WSL" }]} onChange={(value) => void saveSetting("terminal.shell", value)} /></PreferenceRow>
-            <PreferenceRow icon={Code2} title="文本编码" detail="终端界面和命令输出的默认文本编码偏好。"><SelectControl label="Terminal encoding" value={prefs.encoding} options={[{ value: "utf-8", label: "UTF-8" }, { value: "system", label: "System default" }]} onChange={(value) => void saveSetting("terminal.encoding", value)} /></PreferenceRow>
-            <PreferenceRow icon={Gauge} title="命令超时" detail="前台命令集成的首选最长等待时间。"><SelectControl label="Command timeout" value={String(prefs.commandTimeoutSeconds)} options={[30, 60, 120, 300, 600, 1800].map((value) => ({ value: String(value), label: `${value}s` }))} onChange={(value) => void saveSetting("terminal.commandTimeoutSeconds", Number(value))} /></PreferenceRow>
-            <PreferenceRow icon={Activity} title="后台进程" detail="运行时支持时保留受管后台进程。"><SettingSwitch checked={prefs.preserveBackgroundProcesses} label="Preserve background processes" onChange={(value) => void saveSetting("terminal.preserveBackgroundProcesses", value)} /></PreferenceRow>
+            <PreferenceRow icon={Terminal} title="Preferred shell" detail="Preferred shell for compatible integrations."><SelectControl label="Preferred shell" value={prefs.shell} options={[{ value: "powershell", label: "PowerShell" }, { value: "cmd", label: "Command Prompt" }, { value: "git-bash", label: "Git Bash" }, { value: "wsl", label: "WSL" }]} onChange={(value) => void saveSetting("terminal.shell", value)} /></PreferenceRow>
+            <PreferenceRow icon={Code2} title="Terminal encoding" detail="Default encoding for terminal output."><SelectControl label="Terminal encoding" value={prefs.encoding} options={[{ value: "utf-8", label: "UTF-8" }, { value: "system", label: "System default" }]} onChange={(value) => void saveSetting("terminal.encoding", value)} /></PreferenceRow>
+            <PreferenceRow icon={Gauge} title="Command timeout" detail="Maximum wait for foreground commands."><SelectControl label="Command timeout" value={String(prefs.commandTimeoutSeconds)} options={[30, 60, 120, 300, 600, 1800].map((value) => ({ value: String(value), label: `${value}s` }))} onChange={(value) => void saveSetting("terminal.commandTimeoutSeconds", Number(value))} /></PreferenceRow>
+            <PreferenceRow icon={Activity} title="Background processes" detail="Keep managed background processes when supported."><SettingSwitch checked={prefs.preserveBackgroundProcesses} label="Preserve background processes" onChange={(value) => void saveSetting("terminal.preserveBackgroundProcesses", value)} /></PreferenceRow>
           </div>
         </Section>
 
@@ -1313,19 +1314,19 @@ export function SettingsPage({ runtime, models, threadId, running, onRefreshMode
           </div>
         </Section>
 
-        <Section title="命令模板" caption="先做安全的一键复制入口，后续可以接入真实模板保存、运行记录和任务队列。">
+        <Section title="Command templates" caption="Copy a command to run in your terminal.">
           <div className="settings-card terminal-template-table">
-            <div className="terminal-template-head"><span>名称</span><span>命令</span><span>用途</span><span>操作</span></div>
-            {commandTemplates.map((template) => <div className="terminal-template-row" key={template.command}><div className="terminal-name-cell"><Terminal size={14} /><strong>{template.name}</strong></div><code>{template.command}</code><span>{template.detail}</span><div className="terminal-row-actions"><button type="button" onClick={() => void copyText(template.command, `${template.name} command copied.`)}>复制</button></div></div>)}
+            <div className="terminal-template-head"><span>Name</span><span>Command</span><span>Purpose</span><span>Actions</span></div>
+            {commandTemplates.map((template) => <div className="terminal-template-row" key={template.command}><div className="terminal-name-cell"><Terminal size={14} /><strong>{template.name}</strong></div><code>{template.command}</code><span>{template.detail}</span><div className="terminal-row-actions"><button type="button" onClick={() => void copyText(template.command, `${template.name} command copied.`)}>Copy</button></div></div>)}
           </div>
         </Section>
 
-        <Section title="诊断信息" caption="快速确认终端偏好是否已持久化，以及运行时是否正处在可变更状态。">
+        <Section title="Diagnostics" caption="Inspect saved preferences and runtime status.">
           <div className="settings-card settings-detail-list">
-            <DetailRow label="Settings path" value="terminal.*" detail="通过 settings/set 统一写入桌面设置。" />
-            <DetailRow label="Preferred shell" value={prefs.shell} detail="保存为稳定枚举值，展示层再映射成人类可读名称。" />
-            <DetailRow label="Runtime state" value={running ? "Turn active" : "Ready for changes"} detail="执行中的 agent turn 不应中途改变关键能力边界。" />
-            <DetailRow label="Process policy" value="Permission-aware" detail="真正执行命令时仍由运行时和权限系统决定。" />
+            <DetailRow label="Settings path" value="terminal.*" detail="Saved with desktop settings." />
+            <DetailRow label="Preferred shell" value={prefs.shell} detail="Identifier of the preferred shell." />
+            <DetailRow label="Runtime state" value={running ? "Turn active" : "Ready for changes"} detail="Capability changes wait until the active turn ends." />
+            <DetailRow label="Process policy" value="Permission-aware" detail="Command execution follows the active permission policy." />
           </div>
         </Section>
 
@@ -1339,13 +1340,13 @@ export function SettingsPage({ runtime, models, threadId, running, onRefreshMode
   };
 
   const renderPlugins = () => (
-    <><div className="settings-page-heading settings-heading-with-action"><div><h1>Plugins</h1><p>Installed Loom extensions and their current activation state.</p></div><button className="mature-action-button" type="button" onClick={() => { setPlugins(null); setPluginsError(""); }}><RefreshCw size={14} />Refresh</button></div><Section title="Installed plugins" caption="Plugin activation may require a runtime restart."><div className="settings-card plugin-list">{plugins === null && !pluginsError ? <div className="settings-empty-state">Loading plugins…</div> : null}{pluginsError ? <div className="settings-callout-inline"><CircleAlert size={15} /><span>{pluginsError}</span></div> : null}{plugins?.map((plugin, index) => <div className="plugin-row" key={`${plugin.name || "plugin"}-${index}`}><div className="capability-icon"><Box size={17} /></div><div><strong>{plugin.name || "Plugin"}</strong><span>{plugin.description || plugin.source || plugin.version || "Installed extension"}</span></div><StatusPill tone={plugin.enabled === false ? "off" : "ready"}>{plugin.enabled === false ? "Disabled" : plugin.status || "Enabled"}</StatusPill></div>)}{plugins?.length === 0 ? <div className="settings-empty-state">No plugins are installed.</div> : null}</div></Section></>
+    <><div className="settings-page-heading settings-heading-with-action"><div><h1>Plugins</h1><p>Manage installed plugins and view their status.</p></div><button className="mature-action-button" type="button" onClick={() => { setPlugins(null); setPluginsError(""); }}><RefreshCw size={14} />Refresh</button></div><Section title="Installed plugins" caption="Plugin activation may require a runtime restart."><div className="settings-card plugin-list">{plugins === null && !pluginsError ? <div className="settings-empty-state">Loading plugins…</div> : null}{pluginsError ? <div className="settings-callout-inline"><CircleAlert size={15} /><span>{pluginsError}</span></div> : null}{plugins?.map((plugin, index) => <div className="plugin-row" key={`${plugin.name || "plugin"}-${index}`}><div className="capability-icon"><Box size={17} /></div><div><strong>{plugin.name || "Plugin"}</strong><span>{plugin.description || plugin.source || plugin.version || "Installed extension"}</span></div><StatusPill tone={plugin.enabled === false ? "off" : "ready"}>{plugin.enabled === false ? "Disabled" : plugin.status || "Enabled"}</StatusPill></div>)}{plugins?.length === 0 ? <div className="settings-empty-state">No plugins are installed.</div> : null}</div></Section></>
   );
 
   const renderMcp = () => {
     const enabled = capabilityEnabled("mcp");
     const badge = capabilityLabel(mcpStatus, enabled);
-    return <><div className="settings-page-heading settings-heading-with-switch"><div><h1>MCP</h1><p>Inspect MCP discovery and control whether discovered server tools can be exposed.</p></div><div className="settings-master-switch"><StatusPill tone={badge.tone}>{badge.text}</StatusPill><SettingSwitch checked={enabled} disabled={running || busyCapability !== null} label="Toggle MCP" onChange={(value) => void setCapability("mcp", value)} /></div></div><Section title="Discovery"><div className="settings-card settings-detail-list"><DetailRow label="Runtime" value={capabilityStatusText(mcpStatus)} /><DetailRow label="Connected servers" value={String(mcpStatus?.connected_servers ?? "Not reported")} /><DetailRow label="Discovered tools" value={String(mcpStatus?.tool_count ?? "Not reported")} /><DetailRow label="Transport" value={text(mcpStatus?.transport, "Configured server transports")} /></div></Section><div className="settings-callout"><Info size={16} /><div><strong>MCP server editing is the next integration surface.</strong><span>The current runtime already reports discovery health; add/remove/reconnect controls can layer on without changing the capability boundary.</span></div></div></>;
+    return <><div className="settings-page-heading settings-heading-with-switch"><div><h1>MCP</h1><p>Connect tools from MCP servers.</p></div><div className="settings-master-switch"><StatusPill tone={badge.tone}>{badge.text}</StatusPill><SettingSwitch checked={enabled} disabled={running || busyCapability !== null} label="Toggle MCP" onChange={(value) => void setCapability("mcp", value)} /></div></div><Section title="Discovery"><div className="settings-card settings-detail-list"><DetailRow label="Runtime" value={capabilityStatusText(mcpStatus)} /><DetailRow label="Connected servers" value={String(mcpStatus?.connected_servers ?? "Not reported")} /><DetailRow label="Discovered tools" value={String(mcpStatus?.tool_count ?? "Not reported")} /><DetailRow label="Transport" value={text(mcpStatus?.transport, "Configured server transports")} /></div></Section><div className="settings-callout"><Info size={16} /><div><strong>Server configuration is read-only here.</strong><span>Use your runtime configuration to add or change MCP servers.</span></div></div></>;
   };
 
   const renderSkills = () => {
@@ -1363,29 +1364,23 @@ export function SettingsPage({ runtime, models, threadId, running, onRefreshMode
     const activeSkillCount = Array.isArray(skillsStatus?.active_skills)
       ? skillsStatus.active_skills.length
       : "—";
-    const healthText = errors.length ? `${errors.length} issue(s)` : "Ready / 正常";
+    const healthText = errors.length ? `${errors.length} issue(s)` : "Ready";
     const installedRows: { name: string; description: string; source: string; status: string; tone: string }[] = discoveredSkills.length
-      ? discoveredSkills.slice(0, 5).map((skill) => ({
+      ? discoveredSkills.map((skill) => ({
         name: text(skill.name, "unnamed-skill"),
         description: text(skill.short_description || skill.description, "Reusable workflow"),
         source: text(skill.source || skill.scope, "workspace"),
-        status: String(skill.scope || "") === "user" ? "已安装" : "已发现",
+        status: String(skill.scope || "") === "user" ? "Installed" : "Discovered",
         tone: String(skill.scope || "") === "user" ? "ready" : "muted",
       }))
-      : [
-        { name: "release-check", description: "发布前检查与阻塞项整理", source: "user:release-check", status: "示例", tone: "muted" },
-        { name: "pdf-helper", description: "PDF 转换、整理与摘要工作流", source: "loom:pdf-helper", status: "示例", tone: "muted" },
-        { name: "deploy-check", description: "部署前环境、日志与配置检查", source: "repo:deploy-check", status: "示例", tone: "muted" },
-        { name: "docs-polish", description: "文档润色、结构化和发布检查", source: "user:docs-polish", status: "示例", tone: "muted" },
-        { name: "browser-debug", description: "浏览器自动化问题定位流程", source: "repo:browser-debug", status: "示例", tone: "muted" },
-      ];
+      : [];
 
     return (
       <>
         <div className="settings-page-heading settings-heading-with-switch skills-page-heading">
           <div>
             <h1>技能</h1>
-            <p>集中管理 Codex-compatible SKILL.md 工作流：发现来源、安装入口、运行策略、安全边界和已安装技能。</p>
+            <p>Manage reusable workflows and their sources.</p>
           </div>
           <div className="settings-master-switch">
             <StatusPill tone={badge.tone}>{badge.text}</StatusPill>
@@ -1409,30 +1404,30 @@ export function SettingsPage({ runtime, models, threadId, running, onRefreshMode
           </div>
         </div>
 
-        <Section title="发现状态" caption="分开展示用户偏好、运行时上报和当前工作区可见的技能数量。">
+        <Section title="Discovery status" caption="View discovered, installed, and active skills.">
           <div className="skills-stat-grid">
-            <div className="skills-stat-card"><span>偏好</span><strong>{enabled ? "开启" : "关闭"}</strong><StatusPill tone={enabled ? "ready" : "off"}>{enabled ? "Active" : "Off"}</StatusPill></div>
-            <div className="skills-stat-card"><span>已发现技能</span><strong>{String(discoveredCount)}</strong><small>workspace + user roots</small></div>
-            <div className="skills-stat-card"><span>已安装技能</span><strong>{String(installedCount)}</strong><small>&lt;LOOM_HOME&gt;/skills</small></div>
-            <div className="skills-stat-card"><span>启用中</span><strong>{String(activeSkillCount)}</strong><small>loaded into context</small></div>
-            <div className="skills-stat-card"><span>发现健康度</span><strong>{healthText}</strong><StatusPill tone={errors.length ? "warning" : "ready"}>{errors.length ? "Check" : "Ready"}</StatusPill></div>
+            <div className="skills-stat-card"><span>Preference</span><strong>{enabled ? "开启" : "关闭"}</strong><StatusPill tone={enabled ? "ready" : "off"}>{enabled ? "Active" : "Off"}</StatusPill></div>
+            <div className="skills-stat-card"><span>Discovered skills</span><strong>{String(discoveredCount)}</strong><small>Project and user directories</small></div>
+            <div className="skills-stat-card"><span>Installed skills</span><strong>{String(installedCount)}</strong><small>&lt;LOOM_HOME&gt;/skills</small></div>
+            <div className="skills-stat-card"><span>In use</span><strong>{String(activeSkillCount)}</strong><small>Loaded into context</small></div>
+            <div className="skills-stat-card"><span>Discovery health</span><strong>{healthText}</strong><StatusPill tone={errors.length ? "warning" : "ready"}>{errors.length ? "Check" : "Ready"}</StatusPill></div>
           </div>
         </Section>
 
-        <Section title="技能来源" caption="Loom 会从项目目录向上发现 repo skills，再叠加用户级技能根目录。">
+        <Section title="Skill sources" caption="Skills are discovered from project and user directories.">
           <div className="settings-card skills-source-grid">
             {[
-              { icon: FolderOpen, title: "项目来源", path: ".agents/skills", detail: "当前仓库或工作区内的团队技能" },
-              { icon: Database, title: "用户来源", path: "~/.agents/skills", detail: "兼容 Codex 风格的本机用户技能" },
+              { icon: FolderOpen, title: "Project source", path: ".agents/skills", detail: "当前仓库或工作区内的团队技能" },
+              { icon: Database, title: "User source", path: "~/.agents/skills", detail: "兼容 Codex 风格的本机用户技能" },
               { icon: Sparkles, title: "Loom Home", path: "<LOOM_HOME>/skills", detail: "loom skill install 的默认安装目录" },
             ].map((source) => {
               const Icon = source.icon;
-              return <div className="skills-source-card" key={source.path}><span><Icon size={16} /></span><div><strong>{source.title}</strong><code>{source.path}</code><p>{source.detail}</p></div><StatusPill tone="ready">可扫描</StatusPill></div>;
+              return <div className="skills-source-card" key={source.path}><span><Icon size={16} /></span><div><strong>{source.title}</strong><code>{source.path}</code><p>{source.detail}</p></div><StatusPill tone="ready">Scan available</StatusPill></div>;
             })}
           </div>
         </Section>
 
-        <Section title="安装与管理" caption="桌面端先给出安全入口和 CLI 快捷命令；真正安装仍走 loom skill 的安全安装器。">
+        <Section title="Install and manage" caption="Copy an installation command, then run it in your terminal.">
           <div className="settings-card skills-management-card">
             <div className="skills-command-strip">
               <label><Search size={14} /><input placeholder="搜索已安装技能，例如 pdf / browser / deploy" /></label>
@@ -1441,10 +1436,10 @@ export function SettingsPage({ runtime, models, threadId, running, onRefreshMode
               <button type="button" onClick={() => void copyText("loom skill remove <name>", "Remove command copied.")}>移除命令</button>
             </div>
             <div className="skills-install-grid">
-              <button type="button" onClick={() => void copyText("loom skill install ./my-skill", "Local install command copied.")}><FolderOpen size={16} /><strong>安装本地 Skill</strong><span>目录内包含 SKILL.md</span></button>
-              <button type="button" onClick={() => void copyText("loom skill install https://github.com/owner/repository/tree/main/path", "GitHub tree command copied.")}><Globe2 size={16} /><strong>从 GitHub 导入</strong><span>仅允许 HTTPS 远程来源</span></button>
-              <button type="button" onClick={() => void copyText("loom skill install ./skill.zip", "ZIP command copied.")}><Database size={16} /><strong>从 ZIP 导入</strong><span>自动检查路径穿越</span></button>
-              <button type="button" onClick={() => void copyText("loom skill search <query>", "Search command copied.")}><Search size={16} /><strong>搜索技能</strong><span>按名称和描述匹配</span></button>
+              <button type="button" onClick={() => void copyText("loom skill install ./my-skill", "Local install command copied.")}><FolderOpen size={16} /><strong>Local directory</strong><span>Requires SKILL.md</span></button>
+              <button type="button" onClick={() => void copyText("loom skill install https://github.com/owner/repository/tree/main/path", "GitHub tree command copied.")}><Globe2 size={16} /><strong>GitHub repository</strong><span>仅允许 HTTPS 远程来源</span></button>
+              <button type="button" onClick={() => void copyText("loom skill install ./skill.zip", "ZIP command copied.")}><Database size={16} /><strong>ZIP archive</strong><span>Paths are checked before installation</span></button>
+              <button type="button" onClick={() => void copyText("loom skill search <query>", "Search command copied.")}><Search size={16} /><strong>Search skills</strong><span>Find workflows by name or description</span></button>
             </div>
           </div>
         </Section>
@@ -1478,9 +1473,10 @@ export function SettingsPage({ runtime, models, threadId, running, onRefreshMode
           </div>
         </Section>
 
-        <Section title="已安装技能预览" caption="优先展示运行时真实发现结果；无结果时显示示例结构，方便空状态也能看懂页面。">
+        <Section title="Available skills" caption="Workflows discovered by the current runtime.">
           <div className="settings-card skills-table">
-            <div className="skills-table-head"><span>名称</span><span>简介</span><span>来源</span><span>状态</span><span>操作</span></div>
+            {installedRows.length === 0 ? <div className="settings-empty-state"><strong>No skills found.</strong><p>Install a skill or add one to a discovery directory.</p></div> : null}
+            <div className="skills-table-head"><span>Name</span><span>简介</span><span>来源</span><span>状态</span><span>Actions</span></div>
             {installedRows.map((skill) => <div className="skills-table-row" key={`${skill.name}-${skill.source}`}><div className="skills-name-cell"><Sparkles size={14} /><strong>{skill.name}</strong></div><span>{skill.description}</span><code>{skill.source}</code><StatusPill tone={skill.tone}>{skill.status}</StatusPill><div className="skills-row-actions"><button type="button" onClick={() => void copyText(`loom skill info ${skill.name}`, "Info command copied.")}>查看</button><button type="button" onClick={() => void copyText(`loom skill update ${skill.name}`, "Update command copied.")}>更新</button></div></div>)}
           </div>
         </Section>
@@ -1495,7 +1491,7 @@ export function SettingsPage({ runtime, models, threadId, running, onRefreshMode
   };
 
   const renderPermissions = () => (
-    <><div className="settings-page-heading"><div><h1>Permissions</h1><p>Permission profiles define how aggressively Loom can act on the local machine.</p></div></div><Section title="Permission profiles" caption="The active thread can still override its permission mode from the chat surface."><div className="settings-card permission-grid">{(runtime.permissionModes ?? ["approval", "workspace", "full-access"]).map((mode) => <div className={`permission-card ${mode === runtime.defaultPermissionMode ? "selected" : ""}`} key={mode}><ShieldCheck size={18} /><div><strong>{titleCase(mode)}</strong><span>{mode === "full-access" ? "Broad authority for a trusted local environment." : mode === "workspace" ? "Prefer file operations constrained to the active workspace." : "Ask before sensitive or potentially destructive actions."}</span></div>{mode === runtime.defaultPermissionMode ? <StatusPill tone="ready">Default</StatusPill> : null}</div>)}</div></Section><Section title="Safety boundaries"><div className="settings-card settings-detail-list"><DetailRow label="Computer Use" value={capabilityEnabled("computerUse") ? "Available under permission policy" : "Capability off"} /><DetailRow label="Browser" value={capabilityEnabled("browserUse") ? "Available under permission policy" : "Capability off"} /><DetailRow label="Shell / process" value="Permission-aware" /><DetailRow label="Workspace writes" value="Permission-aware" /></div></Section></>
+    <><div className="settings-page-heading"><div><h1>Permissions</h1><p>Review access levels and approval rules.</p></div></div><Section title="Permission profiles" caption="Each conversation can use its own permission mode."><div className="settings-card permission-grid">{(runtime.permissionModes ?? ["approval", "workspace", "full-access"]).map((mode) => <div className={`permission-card ${mode === runtime.defaultPermissionMode ? "selected" : ""}`} key={mode}><ShieldCheck size={18} /><div><strong>{titleCase(mode)}</strong><span>{mode === "full-access" ? "Broad access for a trusted local environment." : mode === "workspace" ? "Keep file operations within the active workspace." : "Ask before sensitive or destructive actions."}</span></div>{mode === runtime.defaultPermissionMode ? <StatusPill tone="ready">Default</StatusPill> : null}</div>)}</div></Section><Section title="Safety boundaries"><div className="settings-card settings-detail-list"><DetailRow label="Computer Use" value={capabilityEnabled("computerUse") ? "Available under permission policy" : "Capability off"} /><DetailRow label="Browser" value={capabilityEnabled("browserUse") ? "Available under permission policy" : "Capability off"} /><DetailRow label="Shell / process" value="Permission-aware" /><DetailRow label="Workspace writes" value="Permission-aware" /></div></Section></>
   );
 
   const renderShortcuts = () => (
@@ -1509,12 +1505,12 @@ export function SettingsPage({ runtime, models, threadId, running, onRefreshMode
 
   const renderPrivacy = () => {
     const prefs = { ...DEFAULT_PRIVACY, ...(settings.privacy ?? {}) } as PrivacySettings;
-    return <><div className="settings-page-heading"><div><h1>Privacy & data</h1><p>Keep diagnostic preferences explicit and make local storage boundaries easy to understand.</p></div></div><Section title="Diagnostics preferences"><div className="settings-card mature-preference-list"><PreferenceRow icon={Activity} title="Usage telemetry" detail="Allow future anonymous product metrics. Off by default."><SettingSwitch checked={prefs.telemetry} label="Usage telemetry" onChange={(value) => void saveSetting("privacy.telemetry", value)} /></PreferenceRow><PreferenceRow icon={CircleAlert} title="Crash reports" detail="Allow future diagnostic crash uploads. Off by default."><SettingSwitch checked={prefs.crashReports} label="Crash reports" onChange={(value) => void saveSetting("privacy.crashReports", value)} /></PreferenceRow></div></Section><Section title="Local storage"><div className="settings-card settings-detail-list"><DetailRow label="Runtime home" value="Loom local runtime directory" detail="Threads, projects, models, and settings remain local unless an integration explicitly sends data elsewhere." /><DetailRow label="Settings store" value="settings.json" detail="Durable capability and desktop preferences." /><DetailRow label="Renderer fallback" value="localStorage" detail="Keeps UI preferences usable if the App Server is temporarily unavailable." /></div></Section><div className="settings-callout"><Info size={16} /><div><strong>No telemetry transport is enabled by these switches today.</strong><span>They are explicit persisted consent preferences for future diagnostics; the current Loom runtime stays local-first.</span></div></div></>;
+    return <><div className="settings-page-heading"><div><h1>Privacy & data</h1><p>Manage diagnostics preferences and local data.</p></div></div><Section title="Diagnostics preferences"><div className="settings-card mature-preference-list"><PreferenceRow icon={Activity} title="Usage telemetry" detail="Consent for future anonymous usage metrics. Off by default."><SettingSwitch checked={prefs.telemetry} label="Usage telemetry" onChange={(value) => void saveSetting("privacy.telemetry", value)} /></PreferenceRow><PreferenceRow icon={CircleAlert} title="Crash reports" detail="Consent for future crash reports. Off by default."><SettingSwitch checked={prefs.crashReports} label="Crash reports" onChange={(value) => void saveSetting("privacy.crashReports", value)} /></PreferenceRow></div></Section><Section title="Local storage"><div className="settings-card settings-detail-list"><DetailRow label="Runtime home" value="Loom local runtime directory" detail="Stored locally unless a connected service sends data elsewhere." /><DetailRow label="Settings store" value="settings.json" detail="Saved capability and interface preferences." /><DetailRow label="Renderer fallback" value="localStorage" detail="Keeps interface preferences available while the runtime is offline." /></div></Section><div className="settings-callout"><Info size={16} /><div><strong>No telemetry transport is enabled by these switches today.</strong><span>They are explicit persisted consent preferences for future diagnostics; the current Loom runtime stays local-first.</span></div></div></>;
   };
 
   const renderDeveloper = () => {
     const diagnostics = JSON.stringify({ runtime, settings, models: modelState }, null, 2);
-    return <><div className="settings-page-heading settings-heading-with-action"><div><h1>Developer</h1><p>Runtime details for debugging Loom integrations, settings, and tool exposure.</p></div><button className="mature-action-button" type="button" onClick={() => void copyText(diagnostics, "Diagnostics copied.")}><Copy size={14} />Copy diagnostics</button></div><Section title="Runtime diagnostics"><div className="settings-card settings-detail-list"><DetailRow label="Registered tools" value={String(runtime.registeredToolCount ?? "—")} /><DetailRow label="Exposed tools" value={String(runtime.exposedToolCount ?? "—")} /><DetailRow label="Settings schema" value={String(settings.schemaVersion ?? 1)} /><DetailRow label="Image attachments" value={runtime.attachments?.images === false ? "Disabled" : "Enabled"} /><DetailRow label="File attachments" value={runtime.attachments?.files === false ? "Disabled" : "Enabled"} /></div></Section><Section title="Integration summary"><div className="settings-card settings-detail-list"><DetailRow label="Web Search" value={text(webStatus?.provider, capabilityStatusText(webStatus))} /><DetailRow label="MCP servers" value={String(mcpStatus?.connected_servers ?? "Not reported")} /><DetailRow label="MCP tools" value={String(mcpStatus?.tool_count ?? "Not reported")} /><DetailRow label="Computer Use" value={capabilityStatusText(computerStatus)} /><DetailRow label="Browser Use" value={capabilityStatusText(browserStatus)} /></div></Section><Section title="Raw snapshot" caption="Useful when comparing renderer state with App Server state."><pre className="mature-diagnostics-preview">{diagnostics.slice(0, 6500)}</pre></Section></>;
+    return <><div className="settings-page-heading settings-heading-with-action"><div><h1>Developer</h1><p>Inspect runtime status and copy diagnostics.</p></div><button className="mature-action-button" type="button" onClick={() => void copyText(diagnostics, "Diagnostics copied.")}><Copy size={14} />Copy diagnostics</button></div><Section title="Runtime diagnostics"><div className="settings-card settings-detail-list"><DetailRow label="Registered tools" value={String(runtime.registeredToolCount ?? "—")} /><DetailRow label="Exposed tools" value={String(runtime.exposedToolCount ?? "—")} /><DetailRow label="Settings schema" value={String(settings.schemaVersion ?? 1)} /><DetailRow label="Image attachments" value={runtime.attachments?.images === false ? "Disabled" : "Enabled"} /><DetailRow label="File attachments" value={runtime.attachments?.files === false ? "Disabled" : "Enabled"} /></div></Section><Section title="Integration summary"><div className="settings-card settings-detail-list"><DetailRow label="Web Search" value={text(webStatus?.provider, capabilityStatusText(webStatus))} /><DetailRow label="MCP servers" value={String(mcpStatus?.connected_servers ?? "Not reported")} /><DetailRow label="MCP tools" value={String(mcpStatus?.tool_count ?? "Not reported")} /><DetailRow label="Computer Use" value={capabilityStatusText(computerStatus)} /><DetailRow label="Browser Use" value={capabilityStatusText(browserStatus)} /></div></Section><Section title="Raw snapshot" caption="Useful when comparing renderer state with App Server state."><pre className="mature-diagnostics-preview">{diagnostics.slice(0, 6500)}</pre></Section></>;
   };
 
   const content = (() => {

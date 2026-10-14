@@ -319,7 +319,7 @@ export function MemoryPanel({ threadId, running }: MemoryPanelProps) {
       <div className="settings-page-heading settings-heading-with-switch memory-page-heading">
         <div>
           <h1>Memory</h1>
-          <p>Memory v3 keeps a compact knowledge index, routes each task to relevant details, preserves provenance, and archives low-signal history without silently deleting it. Current instructions and observed runtime state always take precedence.</p>
+          <p>Keep useful knowledge across conversations. Your current instructions take priority.</p>
         </div>
         <div className="settings-master-switch">
           <MemoryPill tone={preferences.enabled ? "ready" : "off"}>{preferences.enabled ? "Active" : "Off"}</MemoryPill>
@@ -354,7 +354,7 @@ export function MemoryPanel({ threadId, running }: MemoryPanelProps) {
       ) : null}
 
       <section className="settings-section">
-        <div className="settings-section-heading"><h2>Runtime overview</h2><p>Live state for the current conversation's visible memory scope.</p></div>
+        <div className="settings-section-heading"><h2>Runtime overview</h2><p>Memory available to the current conversation and background activity.</p></div>
         <div className="memory-stat-grid">
           {stats.map((item) => (
             <div className="memory-stat-card" key={item.label}>
@@ -367,21 +367,21 @@ export function MemoryPanel({ threadId, running }: MemoryPanelProps) {
       </section>
 
       <section className="settings-section">
-        <div className="settings-section-heading"><h2>Memory behavior</h2><p>These preferences are persisted by the App Server and take effect without restarting Loom.</p></div>
+        <div className="settings-section-heading"><h2>Memory behavior</h2><p>Changes are saved automatically and take effect immediately.</p></div>
         <div className="settings-card memory-preference-list">
           <div className="memory-preference-row">
             <span className="memory-preference-icon"><Database size={17} /></span>
-            <div><strong>Automatic extraction</strong><span>After a completed turn, extract only durable information from observable conversation events.</span></div>
+            <div><strong>Automatic extraction</strong><span>Save lasting information after a completed turn.</span></div>
             <MemorySwitch checked={preferences.autoExtract} disabled={!preferences.enabled || disabledByTurn || Boolean(saving)} label="Automatic memory extraction" onChange={(value) => void savePreference("autoExtract", value)} />
           </div>
           <div className="memory-preference-row">
             <span className="memory-preference-icon"><BrainCircuit size={17} /></span>
-            <div><strong>Semantic consolidation</strong><span>Reconcile new memories with related older memories using conservative keep, update, merge, or supersede operations.</span></div>
+            <div><strong>Semantic consolidation</strong><span>Update and combine related memories while preserving their sources.</span></div>
             <MemorySwitch checked={preferences.semanticAuto} disabled={!preferences.enabled || disabledByTurn || Boolean(saving)} label="Semantic memory consolidation" onChange={(value) => void savePreference("semanticAuto", value)} />
           </div>
           <div className="memory-preference-row">
             <span className="memory-preference-icon"><Clock3 size={17} /></span>
-            <div><strong>Idle window</strong><span>Wait briefly after the last completed turn so rapid corrections can be extracted together.</span></div>
+            <div><strong>Idle window</strong><span>Wait after a turn to include follow-up corrections.</span></div>
             <select
               className="mature-select"
               value={String(preferences.idleSeconds)}
@@ -397,7 +397,7 @@ export function MemoryPanel({ threadId, running }: MemoryPanelProps) {
 
       <section className="settings-section">
         <div className="memory-section-heading">
-          <div className="settings-section-heading"><h2>{listTitle}</h2><p>Only active memories visible to the current conversation are shown. Superseded history stays in the durable audit trail.</p></div>
+          <div className="settings-section-heading"><h2>{listTitle}</h2><p>Browse current memories. Earlier versions remain in the history.</p></div>
           <button type="button" className="memory-refresh-button" disabled={loading} onClick={() => void refresh()}><RefreshCw size={14} spinning={loading} />Refresh</button>
         </div>
 
@@ -405,7 +405,7 @@ export function MemoryPanel({ threadId, running }: MemoryPanelProps) {
           <div className="memory-empty-state">
             <BrainCircuit size={22} />
             <strong>Open a conversation to inspect memory.</strong>
-            <span>The settings above remain available without a conversation, but workspace-visible memory is resolved from the active thread.</span>
+            <span>Open a conversation to view its shared and workspace memories.</span>
           </div>
         ) : (
           <div className="memory-browser">
@@ -425,7 +425,7 @@ export function MemoryPanel({ threadId, running }: MemoryPanelProps) {
                         <span>{categoryLabel(memory.category)}</span>
                         <span>Importance {memory.importance}</span>
                       </div>
-                      <strong>{memory.text}</strong>
+                      <strong data-settings-raw>{memory.text}</strong>
                       <small>Updated {compactDate(memory.updated_at)} · {memory.source_count || 1} source{memory.source_count === 1 ? "" : "s"} · used {memory.usage_count || 0}×</small>
                     </button>
                     <button type="button" className="memory-row-open" aria-label="Read memory" onClick={() => void readMemory(memory.memory_id)} disabled={reading === memory.memory_id}><ChevronRight size={15} /></button>
@@ -443,7 +443,7 @@ export function MemoryPanel({ threadId, running }: MemoryPanelProps) {
                       <div><span>{scopeLabel(selected.memory.scope)} · {categoryLabel(selected.memory.category)}</span><strong>Memory detail</strong></div>
                       <button type="button" aria-label="Close memory detail" onClick={() => { setSelected(null); setForgetTarget(""); }}><X size={15} /></button>
                     </div>
-                    <div className="memory-detail-copy">{selected.memory.text}</div>
+                    <div className="memory-detail-copy" data-settings-raw>{selected.memory.text}</div>
                     <div className="memory-detail-meta">
                       <div><span>Importance</span><strong>{selected.memory.importance}/5</strong></div>
                       <div><span>Sources</span><strong>{selected.memory.source_count}</strong></div>
@@ -454,7 +454,7 @@ export function MemoryPanel({ threadId, running }: MemoryPanelProps) {
                     <div className="memory-evidence-list">
                       {selected.evidence.map((item) => (
                         <div className="memory-evidence-item" key={item.evidence_id}>
-                          <p>{item.excerpt || "No excerpt stored."}</p>
+                          <p data-settings-raw={item.excerpt ? true : undefined}>{item.excerpt || "No excerpt stored."}</p>
                           <small>{compactDate(item.created_at)} · turn {item.source_turn_id || "unknown"}</small>
                         </div>
                       ))}
@@ -474,7 +474,7 @@ export function MemoryPanel({ threadId, running }: MemoryPanelProps) {
                     </div>
                   </>
                 ) : (
-                  <div className="memory-detail-placeholder"><Eye size={21} /><strong>Select a memory</strong><span>Read the full canonical text and provenance before deciding whether to keep or forget it.</span></div>
+                  <div className="memory-detail-placeholder"><Eye size={21} /><strong>Select a memory</strong><span>Review the content and sources before removing a memory.</span></div>
                 )}
               </aside>
             </div>

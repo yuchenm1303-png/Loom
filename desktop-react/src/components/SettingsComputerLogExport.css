@@ -1,20 +1,14 @@
-/* Diagnostics export (Computer Use and Browser pages).
-   The component renders next to the settings shell rather than inside it, so it
-   reads the --sr-* tokens from .settings-host (settings-refined.css); the
-   fallbacks keep it usable if those are ever absent. It sits under the page's
-   master switch, aligned to the right edge of the content column
-   (min(1080px, main width - 64px) centred in the area right of the 286px sidebar). */
+/* Portaled into the runtime section heading so export actions stay in normal
+   document flow, including when the settings window is resized or scrolled. */
 
 .settings-computer-log-export {
-  position: fixed;
-  z-index: 40;
-  top: 88px;
-  right: calc((100vw - 286px - min(1080px, 100vw - 350px)) / 2 + 10px);
-  max-width: min(520px, calc(100vw - 360px));
+  position: static;
+  max-width: 100%;
   display: flex;
   align-items: center;
   justify-content: flex-end;
   gap: 8px;
+  flex-wrap: wrap;
   pointer-events: auto;
 }
 
@@ -92,17 +86,12 @@
 
 @media (max-width: 980px) {
   .settings-computer-log-export {
-    top: auto;
-    right: 18px;
-    bottom: 18px;
-    max-width: calc(100vw - 36px);
     flex-wrap: wrap;
     justify-content: flex-end;
   }
 
-  /* Floating over the page in this layout, so it needs a lift. */
   .settings-computer-log-export button {
-    box-shadow: var(--sr-shadow-pop, 0 10px 28px rgba(0, 0, 0, .24));
+    box-shadow: none;
   }
 }
 

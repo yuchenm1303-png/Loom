@@ -220,7 +220,7 @@ export function SettingsWebSearchPanel({
         : status?.keySource === "environment"
           ? t("settings.websearch.keySourceEnvironment")
           : t("settings.websearch.keySourceNone");
-  const activeProvider = loading ? "…" : String(status?.provider || "disabled");
+  const activeProvider = loading ? "…" : !status?.provider || status.provider === "disabled" ? t("settings.websearch.stateDisabled") : String(status.provider);
   const activeProviderDescription = status?.reason
     ? String(status.reason)
     : t(`settings.websearch.providerOption.${choice}Desc`);
@@ -297,7 +297,7 @@ export function SettingsWebSearchPanel({
         <div className="settings-section-heading websearch-section-heading">
           <div>
             <h2>{t("settings.websearch.provider")}</h2>
-            <p>{t("settings.websearch.description")}</p>
+            <p>{t("settings.websearch.providerHelp")}</p>
           </div>
           <span className="websearch-section-state">{t("settings.models.current")}: {choice}</span>
         </div>

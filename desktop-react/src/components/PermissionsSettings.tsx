@@ -131,7 +131,7 @@ export function PermissionsSettings({
       <div className="settings-page-heading permissions-page-heading">
         <div>
           <h1>Permissions</h1>
-          <p>Understand exactly how much authority Loom receives before it reads, edits, executes, browses, or controls the desktop.</p>
+          <p>Review what Loom can access and which actions need approval.</p>
         </div>
         <span className={`permission-heading-state ${running ? "running" : ""}`}><i />{running ? "Agent turn active" : "Policy ready"}</span>
       </div>
@@ -157,7 +157,7 @@ export function PermissionsSettings({
       ) : null}
 
       <section className="settings-section permission-profiles-section">
-        <div className="settings-section-heading"><h2>Permission profiles</h2><p>Profiles define the execution boundary; individual conversations can still override the default from the chat surface.</p></div>
+        <div className="settings-section-heading"><h2>Permission profiles</h2><p>Review each profile. A conversation can use its own permission mode.</p></div>
         <div className="permission-profile-grid">
           {modes.map((mode) => {
             const profile = profileFor(mode);
@@ -180,7 +180,7 @@ export function PermissionsSettings({
       </section>
 
       <section className="settings-section">
-        <div className="settings-section-heading"><h2>Safety boundaries</h2><p>Permission policy and capability exposure work together. A disabled capability stays unavailable even under Full Access.</p></div>
+        <div className="settings-section-heading"><h2>Safety boundaries</h2><p>Disabled capabilities stay unavailable in every permission mode.</p></div>
         <div className="settings-card permission-boundary-list">
           <BoundaryRow icon={Monitor} title="Computer control" detail="Screenshots, UI Automation, mouse, and keyboard actions." value={computerEnabled ? "Available · profile controlled" : "Capability off"} enabled={computerEnabled} onOpen={onOpenComputer} />
           <BoundaryRow icon={Globe2} title="Browser automation" detail="Browser sessions, page interaction, and compatible local browser attachment." value={browserEnabled ? "Available · profile controlled" : "Capability off"} enabled={browserEnabled} onOpen={onOpenBrowser} />

@@ -1,0 +1,225 @@
+/* Settings-wide rhythm. Keep information visible, controls compact, and the
+   same neutral surfaces in both themes. Page-specific layouts stay intact. */
+.settings-shell.settings-refined .settings-content {
+  width: min(1040px, calc(100% - 64px));
+  max-width: 1040px;
+  padding-top: 36px;
+}
+
+.settings-shell.settings-refined .settings-page-surface,
+.settings-shell.settings-refined :is(.models-settings-manager, .memory-settings-page, .websearch-settings-page) {
+  display: grid;
+  gap: 24px;
+  min-width: 0;
+}
+
+.settings-shell.settings-refined :is(.settings-page-heading, .models-settings-heading) {
+  min-height: 0;
+  align-items: flex-start;
+  gap: 20px;
+  margin: 0;
+}
+
+.settings-shell.settings-refined :is(.settings-page-heading, .models-settings-heading) > div:first-child { min-width: 0; }
+.settings-shell.settings-refined :is(.settings-page-heading, .models-settings-heading) h1 {
+  margin: 0 0 8px;
+  color: var(--sr-ink);
+  font-size: 25px;
+  font-weight: 650;
+  line-height: 1.3;
+  letter-spacing: -.025em;
+}
+
+.settings-shell.settings-refined :is(.settings-page-heading, .models-settings-heading) p {
+  max-width: 700px;
+  margin: 0;
+  color: var(--sr-ink-3);
+  font-size: 13px;
+  line-height: 1.6;
+  text-wrap: pretty;
+}
+
+.settings-shell.settings-refined .settings-section { margin: 0; gap: 10px; min-width: 0; }
+.settings-shell.settings-refined :is(.settings-section-heading, .models-section-heading) { margin: 0; min-width: 0; }
+.settings-shell.settings-refined :is(.settings-section-heading, .models-section-heading) h2 { margin: 0; color: var(--sr-ink-2); font-size: 13px; font-weight: 600; line-height: 1.5; letter-spacing: 0; }
+.settings-shell.settings-refined :is(.settings-section-heading, .models-section-heading) p { margin: 4px 0 0; color: var(--sr-ink-3); line-height: 1.55; text-wrap: pretty; }
+.settings-shell.settings-refined .settings-section-heading:has(.settings-log-export-mount) { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+.settings-shell.settings-refined .settings-log-export-mount { min-width: 0; max-width: 100%; }
+.settings-shell.settings-refined .settings-master-switch { flex: none; gap: 10px; padding-top: 4px; }
+.settings-shell.settings-refined .settings-eyebrow { color: var(--sr-ink-3); letter-spacing: .025em; }
+.settings-shell.settings-refined .settings-eyebrow::before { content: none; }
+
+/* Shared surfaces. Selection uses one fine border instead of layered glow. */
+.settings-shell.settings-refined :is(
+  .settings-card, .models-active-card, .models-profile-card, .models-recent-card,
+  .memory-stat-card, .memory-empty-state, .memory-list-shell,
+  .websearch-summary-card, .websearch-choice, .websearch-key-card, .websearch-test-card,
+  .permission-overview-card, .permission-profile-card, .shortcuts-overview-card,
+  .appearance-overview-card, .appearance-theme-option, .appearance-reading-preview,
+  .skills-install-grid button, .skills-source-grid, .skills-table
+) {
+  border-color: var(--sr-line);
+  border-radius: 10px;
+  background: var(--sr-card);
+  box-shadow: none;
+}
+
+.settings-shell.settings-refined :is(.websearch-summary-card, .permission-overview-card, .shortcuts-overview-card, .models-active-card)::before,
+.settings-shell.settings-refined :is(.websearch-summary-card, .permission-overview-card, .shortcuts-overview-card, .models-active-card)::after { content: none; }
+.settings-shell.settings-refined :is(.models-profile-card.selected, .websearch-choice.selected, .permission-profile-card.selected, .appearance-theme-option.selected) {
+  border-color: var(--sr-accent-line);
+  background: color-mix(in srgb, var(--sr-accent) 4%, var(--sr-card));
+  box-shadow: none;
+}
+
+.settings-shell.settings-refined :is(.websearch-choice, .permission-profile-card, .appearance-theme-option):hover:not(:disabled) { transform: none; border-color: var(--sr-line-strong); }
+.settings-shell.settings-refined :is(.mature-preference-row, .memory-preference-row, .settings-detail-row, .capability-row, .plugin-row, .permission-boundary-row) {
+  min-height: 66px;
+  padding: 13px 18px;
+  gap: 14px;
+  border-color: var(--sr-line-soft);
+}
+
+.settings-shell.settings-refined :is(.mature-preference-copy strong, .memory-preference-row strong, .capability-title-line strong, .permission-boundary-copy strong) { color: var(--sr-ink); font-weight: 550; }
+.settings-shell.settings-refined :is(.mature-preference-copy span, .memory-preference-row > div > span, .capability-copy > span, .permission-boundary-copy span) { color: var(--sr-ink-3); line-height: 1.55; }
+.settings-shell.settings-refined :is(.mature-preference-icon, .memory-preference-icon, .capability-icon, .permission-boundary-icon, .shortcuts-overview-icon, .websearch-summary-icon, .models-active-icon, .permission-overview-icon) {
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  color: var(--sr-ink-3);
+  background: transparent;
+  box-shadow: none;
+}
+
+.settings-shell.settings-refined :is(.mature-select, .mature-input) { height: 34px; border-radius: 7px; font-size: 12px; }
+.settings-shell.settings-refined :is(.mature-action-button, .models-primary-action, .models-test-button, .memory-refresh-button, .websearch-save-button, .websearch-test-button, .models-profile-actions button) { min-height: 32px; border-radius: 7px; box-shadow: none; }
+.settings-shell.settings-refined :is(.settings-status-pill, .memory-status-pill, .permission-heading-state) { border: 1px solid var(--sr-line); background: transparent; box-shadow: none; border-radius: 5px; font-weight: 500; }
+.settings-shell.settings-refined :is(.settings-status-dot, .permission-heading-state > i, .general-heading-status > i) { box-shadow: none; animation: none; }
+.settings-shell.settings-refined :is(.settings-callout, .settings-callout-inline, .memory-callout) { padding: 13px 16px; border-radius: 9px; box-shadow: none; }
+.settings-shell.settings-refined :is(.settings-empty-state, .memory-empty-state) { padding: 24px; min-height: 110px; color: var(--sr-ink-3); }
+.settings-shell.settings-refined :is(.settings-empty-state, .memory-empty-state) strong { color: var(--sr-ink-2); font-size: 13px; font-weight: 550; }
+
+/* Model connections. Keep the current profile, metadata, and actions together. */
+.settings-shell.settings-refined .models-active-main { padding: 16px 18px; }
+.settings-shell.settings-refined .models-active-copy > strong { font-size: 18px; font-weight: 600; }
+.settings-shell.settings-refined .models-active-meta { border-color: var(--sr-line-soft); background: transparent; }
+.settings-shell.settings-refined .models-active-meta > div { padding: 13px 16px; border-color: var(--sr-line-soft); }
+.settings-shell.settings-refined :is(.models-active-meta span, .models-profile-data span) { color: var(--sr-ink-3); text-transform: none; letter-spacing: 0; }
+.settings-shell.settings-refined :is(.models-active-meta code, .models-profile-data code, .models-active-meta strong) { color: var(--sr-ink-2); font-weight: 500; }
+.settings-shell.settings-refined .models-profile-data > div { background: var(--sr-well); border-radius: 6px; }
+.settings-shell.settings-refined .models-capability-row > span { background: transparent; border-color: var(--sr-line); color: var(--sr-ink-3); border-radius: 5px; }
+
+/* Seven live memory values share one compact band on a wide desktop. */
+.settings-shell.settings-refined .memory-stat-grid { grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 0; border: 1px solid var(--sr-line); border-radius: 10px; overflow: hidden; background: var(--sr-card); }
+.settings-shell.settings-refined .memory-stat-grid .memory-stat-card { min-height: 88px; padding: 14px; border: 0; border-right: 1px solid var(--sr-line-soft); border-radius: 0; }
+.settings-shell.settings-refined .memory-stat-card:last-child { border-right: 0; }
+.settings-shell.settings-refined .memory-stat-card span { color: var(--sr-ink-3); font-size: 11px; font-weight: 500; text-transform: none; letter-spacing: 0; }
+.settings-shell.settings-refined .memory-stat-card strong { color: var(--sr-ink); font-size: 21px; font-weight: 550; }
+.settings-shell.settings-refined .memory-stat-card small { color: var(--sr-ink-3); line-height: 1.5; }
+
+/* Search status is a plain summary; provider rows carry the choice. */
+.settings-shell.settings-refined .websearch-summary-card { padding: 16px 18px; gap: 18px; grid-template-columns: minmax(200px, .8fr) minmax(0, 1.3fr); }
+.settings-shell.settings-refined .websearch-summary-grid { gap: 0; }
+.settings-shell.settings-refined .websearch-summary-stat { min-height: 54px; padding: 10px 14px; border: 0; border-left: 1px solid var(--sr-line-soft); border-radius: 0; background: transparent; box-shadow: none; }
+.settings-shell.settings-refined .websearch-summary-lead strong { color: var(--sr-ink); font-size: 16px; font-weight: 550; }
+.settings-shell.settings-refined .websearch-summary-stat strong { color: var(--sr-ink-2); }
+.settings-shell.settings-refined :is(.websearch-summary-lead p, .websearch-summary-kicker, .websearch-summary-stat span) { color: var(--sr-ink-3); }
+.settings-shell.settings-refined .websearch-section-heading { display: flex; justify-content: space-between; align-items: center; gap: 16px; }
+.settings-shell.settings-refined .websearch-section-state { flex: none; width: auto; background: transparent; border: 0; padding: 0; color: var(--sr-ink-3); }
+.settings-shell.settings-refined .websearch-provider-card { padding: 0; border: 0; background: transparent; }
+.settings-shell.settings-refined .websearch-choice-list { gap: 10px; }
+.settings-shell.settings-refined .websearch-choice { min-height: 76px; padding: 14px; }
+.settings-shell.settings-refined .websearch-choice-title { color: var(--sr-ink); font-weight: 550; }
+.settings-shell.settings-refined .websearch-choice-description { color: var(--sr-ink-3); }
+.settings-shell.settings-refined .websearch-provider-glyph { width: 28px; height: 28px; border-radius: 7px; background: transparent; color: var(--sr-ink-3); border-color: var(--sr-line-strong); }
+.settings-shell.settings-refined .websearch-provider-footer { padding: 12px 0 0; }
+
+/* Permission and shortcut summaries use the same row density as preferences. */
+.settings-shell.settings-refined :is(.permission-overview-card, .shortcuts-overview-card) { min-height: 0; padding: 18px; gap: 20px; }
+.settings-shell.settings-refined .permission-overview-main strong { color: var(--sr-ink); font-size: 18px; font-weight: 600; }
+.settings-shell.settings-refined :is(.permission-overview-main p, .shortcuts-overview-copy > p) { color: var(--sr-ink-3); line-height: 1.55; }
+.settings-shell.settings-refined .permission-overview-facts { border-color: var(--sr-line-soft); background: transparent; }
+.settings-shell.settings-refined .permission-overview-facts > div { padding: 12px 16px; border-color: var(--sr-line-soft); }
+.settings-shell.settings-refined .permission-profile-card { padding: 16px; }
+.settings-shell.settings-refined .permission-profile-head strong { color: var(--sr-ink); font-weight: 550; }
+.settings-shell.settings-refined :is(.permission-profile-card > p, .permission-profile-bullets, .permission-overview-facts span) { color: var(--sr-ink-3); }
+.settings-shell.settings-refined .permission-overview-facts strong { color: var(--sr-ink-2); }
+.settings-shell.settings-refined .shortcuts-overview-copy > strong { font-size: 16px; font-weight: 550; }
+.settings-shell.settings-refined .shortcuts-overview-stats strong { font-size: 20px; font-weight: 550; }
+
+/* Functional terminal details and templates remain visible. */
+.settings-shell.settings-refined .terminal-page-heading ~ .settings-section:has(.terminal-template-table),
+.settings-shell.settings-refined .terminal-page-heading ~ .settings-section:has(.settings-detail-list),
+.settings-shell.settings-refined .skills-page-heading ~ .settings-section:has(.skills-stat-grid) { display: grid; }
+.settings-shell.settings-refined .terminal-page-heading ~ .settings-section:has(.terminal-preference-card) { margin: 0; }
+.settings-shell.settings-refined .terminal-preference-card .mature-preference-row { grid-template-columns: minmax(0, 1fr) auto; }
+.settings-shell.settings-refined :is(.terminal-template-row, .terminal-template-head, .skills-table-row, .skills-table-head) { border-color: var(--sr-line-soft); background: transparent; }
+.settings-shell.settings-refined :is(.terminal-template-head, .skills-table-head) { min-height: 36px; background: var(--sr-well); color: var(--sr-ink-3); }
+.settings-shell.settings-refined :is(.terminal-template-row, .skills-table-row) { min-height: 56px; color: var(--sr-ink-2); }
+.settings-shell.settings-refined .terminal-template-table { overflow: hidden; }
+.settings-shell.settings-refined :is(.terminal-template-head, .terminal-template-row) { display: grid; grid-template-columns: minmax(120px, .8fr) minmax(180px, 1.4fr) minmax(140px, 1fr) 64px; align-items: center; gap: 16px; padding: 12px 18px; font-size: 12px; }
+.settings-shell.settings-refined .terminal-template-head { padding-block: 9px; font-size: 11px; }
+.settings-shell.settings-refined .terminal-template-row { border-top: 1px solid var(--sr-line-soft); }
+.settings-shell.settings-refined .terminal-name-cell { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.settings-shell.settings-refined .terminal-name-cell svg { flex: none; color: var(--sr-ink-3); }
+.settings-shell.settings-refined .terminal-name-cell strong { font-weight: 550; }
+.settings-shell.settings-refined .terminal-template-row code { font-size: 11px; color: var(--sr-ink-2); overflow-wrap: anywhere; }
+.settings-shell.settings-refined .terminal-template-row > span { color: var(--sr-ink-3); line-height: 1.5; }
+.settings-shell.settings-refined .terminal-row-actions button { min-height: 28px; padding: 0 9px; font: inherit; font-size: 11px; color: var(--sr-ink-2); border: 1px solid var(--sr-line-strong); border-radius: 6px; background: transparent; cursor: pointer; }
+.settings-shell.settings-refined .terminal-row-actions button:hover { color: var(--sr-ink); background: var(--sr-hover); }
+.settings-shell.settings-refined .skills-page-heading ~ .settings-section { order: initial; }
+.settings-shell.settings-refined .skills-stat-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 0; border: 1px solid var(--sr-line); border-radius: 10px; background: var(--sr-card); overflow: hidden; }
+.settings-shell.settings-refined .skills-stat-card { min-width: 0; min-height: 80px; display: grid; align-content: center; gap: 6px; padding: 14px 16px; border: 0; border-right: 1px solid var(--sr-line-soft); border-radius: 0; background: transparent; box-shadow: none; }
+.settings-shell.settings-refined .skills-stat-card:last-child { border-right: 0; }
+.settings-shell.settings-refined .skills-stat-card > span { color: var(--sr-ink-3); font-size: 11px; }
+.settings-shell.settings-refined .skills-stat-card > strong { color: var(--sr-ink); font-size: 17px; font-weight: 550; }
+.settings-shell.settings-refined .skills-stat-card small { color: var(--sr-ink-3); font-size: 10px; overflow-wrap: anywhere; }
+.settings-shell.settings-refined .skills-source-card { grid-template-columns: 24px minmax(0, 1fr); border-color: var(--sr-line-soft); }
+.settings-shell.settings-refined .skills-source-card > span:first-child { border: 0; background: transparent; color: var(--sr-ink-3); }
+.settings-shell.settings-refined .skills-source-card strong { color: var(--sr-ink-2); font-weight: 550; }
+.settings-shell.settings-refined .skills-source-card code { color: var(--sr-ink-3); }
+.settings-shell.settings-refined .skills-install-grid { gap: 10px; }
+.settings-shell.settings-refined .skills-install-grid button { min-height: 68px; }
+.settings-shell.settings-refined .skills-install-grid button strong { color: var(--sr-ink-2); font-weight: 550; }
+.settings-shell.settings-refined .skills-install-grid button span { color: var(--sr-ink-3); }
+.settings-shell.settings-refined .skills-management-card { padding: 0; background: transparent; border: 0; }
+.settings-shell.settings-refined .skills-table:has(.settings-empty-state) .skills-table-head { display: none; }
+
+/* General keeps the same measure; its detail controls start expanded. */
+.settings-shell.settings-refined .general-home { width: 100%; }
+.settings-shell.settings-refined .general-home-heading { align-items: center; margin-bottom: 22px; }
+.settings-shell.settings-refined .general-home .general-home-section { margin-top: 24px; }
+.settings-shell.settings-refined .general-home-section .settings-section-heading h2 { color: var(--sr-ink-2); font-size: 13px; font-weight: 600; }
+.settings-shell.settings-refined .general-home .general-home-row { padding-block: 16px; }
+.settings-shell.settings-refined .general-home .general-language-mount > .language-settings-dock { padding-block: 16px; }
+.settings-shell.settings-refined .general-expression-body { padding-top: 8px; }
+.settings-shell.settings-refined .general-expression-body .sticker-reset-button { border-color: var(--sr-line-strong); color: var(--sr-ink-2); background: transparent; }
+.settings-shell.settings-refined .general-expression-body .sticker-save-button { border-color: var(--sr-accent-line); color: var(--sr-accent-ink); background: var(--sr-accent-faint); }
+.settings-shell.settings-refined .general-expression-body .sticker-setting input[type="range"]::-webkit-slider-thumb { border-color: var(--sr-card); background: var(--sr-accent); box-shadow: 0 0 0 1px var(--sr-accent-line); }
+.settings-shell.settings-refined .general-update-mount .software-update-heading { margin: 0; }
+.settings-shell.settings-refined .general-system-details { margin-top: 20px; }
+
+@media (max-width: 1180px) {
+  .settings-shell.settings-refined .memory-stat-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .settings-shell.settings-refined .memory-stat-card { border-bottom: 1px solid var(--sr-line-soft); }
+  .settings-shell.settings-refined .websearch-summary-card { grid-template-columns: minmax(0, 1fr); }
+  .settings-shell.settings-refined .websearch-summary-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .settings-shell.settings-refined .websearch-summary-stat:first-child { border-left: 0; }
+}
+
+@media (max-width: 900px) {
+  .settings-shell.settings-refined .settings-content { width: calc(100% - 36px); padding-top: 28px; }
+  .settings-shell.settings-refined :is(.settings-page-heading, .models-settings-heading) { flex-wrap: wrap; gap: 12px; }
+  .settings-shell.settings-refined .memory-stat-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .settings-shell.settings-refined .skills-stat-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .settings-shell.settings-refined .websearch-summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .settings-shell.settings-refined .terminal-preference-card .mature-preference-row { grid-template-columns: minmax(0, 1fr); }
+  .settings-shell.settings-refined :is(.terminal-template-head, .terminal-template-row) { grid-template-columns: minmax(0, 1fr) 70px; gap: 8px 12px; }
+  .settings-shell.settings-refined .terminal-template-head { display: none; }
+  .settings-shell.settings-refined .terminal-template-row .terminal-name-cell { grid-column: 1; }
+  .settings-shell.settings-refined .terminal-template-row code { grid-column: 1; grid-row: 2; }
+  .settings-shell.settings-refined .terminal-template-row > span { grid-column: 1; grid-row: 3; }
+  .settings-shell.settings-refined .terminal-row-actions { grid-column: 2; grid-row: 1 / span 3; justify-self: end; }
+}

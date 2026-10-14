@@ -276,8 +276,8 @@ export function ConnectorsSettings({ running }: ConnectorsSettingsProps) {
         <div>
           <h1>Connectors</h1>
           <p>{isChinese
-            ? "一次连接外部账号，Loom 会安全地复用授权，同时继续遵守每一步的权限与审批边界。"
-            : "Connect an external account once. Loom reuses the authorization safely while preserving per-Step permissions and approvals."}</p>
+            ? "连接外部账号，管理授权与连接状态。"
+            : "Connect accounts and manage authorization."}</p>
         </div>
         <button className="mature-action-button" type="button" disabled={running || Boolean(busy)} onClick={() => void load()}>
           <RefreshCw size={14} />Refresh
@@ -285,7 +285,7 @@ export function ConnectorsSettings({ running }: ConnectorsSettingsProps) {
       </div>
 
       {running ? (
-        <div className="settings-callout warning"><CircleAlert size={16} /><div><strong>Finish the active turn before changing authorization.</strong><span>Connector identity is frozen into each sampled Step, so Loom never swaps accounts underneath an action already being reviewed or executed.</span></div></div>
+        <div className="settings-callout warning"><CircleAlert size={16} /><div><strong>Finish the active turn before changing authorization.</strong><span>Account changes apply to future actions. Actions already running keep their current account.</span></div></div>
       ) : null}
       {error ? <div className="settings-callout warning"><CircleAlert size={16} /><div><strong>Connector action failed</strong><span>{error}</span></div></div> : null}
       {notice ? <div className="settings-callout"><Check size={16} /><div><strong>{notice}</strong><span>{isChinese ? "新的模型 Step 会使用更新后的连接。" : "New model Steps will use the updated connector binding."}</span></div></div> : null}
@@ -428,7 +428,7 @@ export function ConnectorsSettings({ running }: ConnectorsSettingsProps) {
       </section>
 
       <section className="settings-section">
-        <div className="settings-section-heading"><h2>Connection details</h2><p>Only non-secret metadata is shown here or included in diagnostics.</p></div>
+        <div className="settings-section-heading"><h2>Connection details</h2><p>Connection status and metadata. Credentials stay private.</p></div>
         <div className="settings-card settings-detail-list">
           <DetailRow label="Account" value={github.account || "Not connected"} />
           <DetailRow label="Credential source" value={github.credentialSource || "None"} />
@@ -443,7 +443,7 @@ export function ConnectorsSettings({ running }: ConnectorsSettingsProps) {
       </section>
 
       <section className="settings-section">
-        <div className="settings-section-heading"><h2>Safety boundary</h2><p>Connector authentication does not bypass Loom's execution or approval model.</p></div>
+        <div className="settings-section-heading"><h2>Safety boundary</h2><p>Connected services follow the same permission and approval rules.</p></div>
         <div className="settings-card mature-preference-list">
           <div className="mature-preference-row"><span className="mature-preference-icon"><ShieldCheck size={17} /></span><div className="mature-preference-copy"><strong>Read operations stay read-only</strong><span>Repository/file/search/issue/PR/Actions reads are classified as read-only tools.</span></div></div>
           <div className="mature-preference-row"><span className="mature-preference-icon"><ShieldCheck size={17} /></span><div className="mature-preference-copy"><strong>Writes remain approval-aware</strong><span>Creating issues/comments/branches/PRs or committing files is SENSITIVE and crosses the normal Loom approval boundary.</span></div></div>

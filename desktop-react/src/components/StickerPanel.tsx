@@ -123,14 +123,14 @@ export function StickerPanel({ preferences, disabled, onSave }: StickerPanelProp
         <span className="sticker-panel-symbol" aria-hidden="true"><Sparkles size={16} /></span>
         <div>
           <strong>Chat expression</strong>
-          <span>Controls the original AI Ledger inline sticker protocol.</span>
+          <span>Add stickers to replies.</span>
         </div>
       </div>
 
       <div className="sticker-settings-grid">
         <RangeControl
           label="Frequency"
-          description="How often natural reply points can carry a sticker. 0 turns stickers off."
+          description="How often stickers appear. Set to 0 to turn them off."
           value={draft.frequency}
           min={0}
           max={100}
@@ -140,7 +140,7 @@ export function StickerPanel({ preferences, disabled, onSave }: StickerPanelProp
         />
         <RangeControl
           label="Diversity"
-          description="How strongly the backend rotates through the sticker catalog."
+          description="How much the sticker selection varies."
           value={draft.intensity}
           min={0}
           max={100}
@@ -150,7 +150,7 @@ export function StickerPanel({ preferences, disabled, onSave }: StickerPanelProp
         />
         <RangeControl
           label="Max / reply"
-          description="Upper limit for one answer. 0 keeps the protocol's automatic limit."
+          description="Maximum stickers per reply. Set to 0 for automatic."
           value={draft.maxPerReply}
           min={0}
           max={64}
@@ -160,7 +160,7 @@ export function StickerPanel({ preferences, disabled, onSave }: StickerPanelProp
         />
         <RangeControl
           label="Repeat"
-          description="How many copies are emitted at each chosen expression point."
+          description="Number of stickers at each expression point."
           value={draft.repeatCount}
           min={1}
           max={4}

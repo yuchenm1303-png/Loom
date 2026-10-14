@@ -14,6 +14,8 @@ import {
   type LucideIcon,
 } from "./icons";
 import { useMemo, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
+import { useI18n } from "../i18n";
+import { translateSettingsText } from "./LanguageSettingsDock";
 import {
   DEFAULT_SHORTCUTS,
   findShortcutConflict,
@@ -34,14 +36,14 @@ type ShortcutCommand = {
 };
 
 const COMMANDS: ShortcutCommand[] = [
-  { id: "newConversation", label: "New conversation", detail: "Start a fresh conversation in the current workspace.", group: "Navigation", icon: Plus },
-  { id: "searchConversations", label: "Search conversations", detail: "Open and focus conversation search in the sidebar.", group: "Navigation", icon: Search },
-  { id: "openSettings", label: "Open settings", detail: "Open Settings from anywhere, or close it when already open.", group: "Navigation", icon: Settings2 },
-  { id: "focusComposer", label: "Focus composer", detail: "Jump directly to the active conversation input.", group: "Conversation", icon: MessageSquareText },
-  { id: "attachFiles", label: "Attach files", detail: "Open the attachment picker for the active conversation.", group: "Conversation", icon: Paperclip },
-  { id: "stopTask", label: "Stop active task", detail: "Interrupt the current Agent turn when Loom is working.", group: "Conversation", icon: Square },
-  { id: "toggleSidebar", label: "Toggle sidebar", detail: "Show or hide projects and conversation history.", group: "Workspace", icon: PanelLeft },
-  { id: "toggleInspector", label: "Toggle inspector", detail: "Show or hide runtime details and tool activity.", group: "Workspace", icon: PanelRight },
+  { id: "newConversation", label: "New conversation", detail: "Start a conversation in the current workspace.", group: "Navigation", icon: Plus },
+  { id: "searchConversations", label: "Search conversations", detail: "Search conversations in the sidebar.", group: "Navigation", icon: Search },
+  { id: "openSettings", label: "Open settings", detail: "Open or close settings.", group: "Navigation", icon: Settings2 },
+  { id: "focusComposer", label: "Focus composer", detail: "Focus the message input.", group: "Conversation", icon: MessageSquareText },
+  { id: "attachFiles", label: "Attach files", detail: "Choose files to attach.", group: "Conversation", icon: Paperclip },
+  { id: "stopTask", label: "Stop active task", detail: "Stop the current task.", group: "Conversation", icon: Square },
+  { id: "toggleSidebar", label: "Toggle sidebar", detail: "Show or hide the sidebar.", group: "Workspace", icon: PanelLeft },
+  { id: "toggleInspector", label: "Toggle inspector", detail: "Show or hide the activity panel.", group: "Workspace", icon: PanelRight },
 ];
 
 const GROUPS: ShortcutCommand["group"][] = ["Navigation", "Conversation", "Workspace"];
@@ -75,6 +77,7 @@ export function KeyboardShortcutsSettings({
   onReset(id: ShortcutCommandId): Promise<void> | void;
   onResetAll(): Promise<void> | void;
 }) {
+  const { language } = useI18n();
   const [query, setQuery] = useState("");
   const [recording, setRecording] = useState<ShortcutCommandId | null>(null);
   const [preview, setPreview] = useState("");
@@ -88,8 +91,9 @@ export function KeyboardShortcutsSettings({
   const filtered = useMemo(() => {
     const needle = query.trim().toLowerCase();
     if (!needle) return COMMANDS;
-    return COMMANDS.filter((command) => `${command.label} ${command.detail} ${command.group}`.toLowerCase().includes(needle));
-  }, [query]);
+    return COMMANDS.filter((command) => [command.label, command.detail, command.group]
+      .flatMap(value => [value, translateSettingsText(value, language)]).join(" ").toLowerCase().includes(needle));
+  }, [query, language]);
 
   const beginRecording = (id: ShortcutCommandId) => {
     setRecording(id);
@@ -139,7 +143,7 @@ export function KeyboardShortcutsSettings({
       <div className="settings-page-heading settings-heading-with-action shortcuts-page-heading">
         <div>
           <h1>Keyboard shortcuts</h1>
-          <p>Navigate Loom, control the active Agent turn, and personalize the commands you use most.</p>
+          <p>Customize shortcuts for navigation and everyday actions.</p>
         </div>
         <button className="mature-action-button" type="button" onClick={() => void onResetAll()} disabled={customizedCount === 0}>
           <RefreshCw size={14} />Reset all
@@ -151,7 +155,7 @@ export function KeyboardShortcutsSettings({
         <div className="shortcuts-overview-copy">
           <span className="settings-eyebrow">Live keymap</span>
           <strong>{COMMANDS.length} global commands</strong>
-          <p>Custom bindings apply immediately across the desktop app and persist with your Loom settings.</p>
+          <p>Changes apply immediately and are saved automatically.</p>
         </div>
         <div className="shortcuts-overview-stats">
           <div><strong>{GROUPS.length}</strong><span>Groups</span></div>
@@ -162,7 +166,7 @@ export function KeyboardShortcutsSettings({
 
       <section className="settings-section shortcuts-command-section">
         <div className="shortcuts-toolbar">
-          <div className="settings-section-heading"><h2>Global commands</h2><p>Click a shortcut, then press the replacement key combination. Backspace cancels recording.</p></div>
+          <div className="settings-section-heading"><h2>Global commands</h2><p>Click a shortcut and press a new combination. Backspace cancels.</p></div>
           <label className="shortcut-search"><Search size={14} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search shortcuts" /></label>
         </div>
 
@@ -208,14 +212,14 @@ export function KeyboardShortcutsSettings({
       </section>
 
       <section className="settings-section">
-        <div className="settings-section-heading"><h2>Composer editing</h2><p>Text editing bindings stay fixed so sending and multiline writing remain predictable.</p></div>
+        <div className="settings-section-heading"><h2>Composer editing</h2><p>Fixed shortcuts for sending and adding a new line.</p></div>
         <div className="settings-card shortcut-fixed-list">
-          <div className="shortcut-fixed-row"><span className="shortcut-command-icon"><MessageSquareText size={16} /></span><div><strong>Send message</strong><span>Submit the current prompt and attachments.</span></div><span className="shortcut-fixed-badge"><Check size={12} />Fixed</span><ShortcutKeys value="Enter" /></div>
-          <div className="shortcut-fixed-row"><span className="shortcut-command-icon"><Type size={16} /></span><div><strong>New line</strong><span>Insert a line break without sending.</span></div><span className="shortcut-fixed-badge"><Check size={12} />Fixed</span><ShortcutKeys value="Shift+Enter" /></div>
+          <div className="shortcut-fixed-row"><span className="shortcut-command-icon"><MessageSquareText size={16} /></span><div><strong>Send message</strong><span>Send the message and attachments.</span></div><span className="shortcut-fixed-badge"><Check size={12} />Fixed</span><ShortcutKeys value="Enter" /></div>
+          <div className="shortcut-fixed-row"><span className="shortcut-command-icon"><Type size={16} /></span><div><strong>New line</strong><span>Add a new line.</span></div><span className="shortcut-fixed-badge"><Check size={12} />Fixed</span><ShortcutKeys value="Shift+Enter" /></div>
         </div>
       </section>
 
-      <div className="settings-callout shortcuts-callout"><Keyboard size={16} /><div><strong>Global shortcut customization is live.</strong><span>Bindings are checked for conflicts before they are saved. Loom ignores custom global bindings while you type normally unless the shortcut includes a control modifier or function key.</span></div></div>
+      <div className="settings-callout shortcuts-callout"><Keyboard size={16} /><div><strong>Shortcuts apply immediately.</strong><span>Conflicts are checked before saving. Global shortcuts use a modifier or function key to avoid interrupting typing.</span></div></div>
     </>
   );
 }

@@ -1,3 +1,4 @@
+import { SETTINGS_COPY } from "./settingsCopy";
 import { Globe2 } from "./icons";
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
@@ -384,6 +385,7 @@ const STATIC_SETTING_TRANSLATIONS: Record<string, string> = {
   "Active provider:": "当前提供方：",
   "tools exposed": "个工具已暴露",
   "Scale, layout, reading rhythm, motion, and code typography": "缩放、布局、阅读节奏、动画和代码字体",
+  ...SETTINGS_COPY,
 };
 
 /** The label as displayed in `language`, so callers can match what the user actually sees. */
@@ -395,23 +397,39 @@ const STATIC_SETTING_REVERSE = Object.fromEntries(
   Object.entries(STATIC_SETTING_TRANSLATIONS).map(([source, target]) => [target, source]),
 ) as Record<string, string>;
 
+// Keep each node's source so shared translations (Enabled / Active, for
+// example) return to their own wording when the language changes again.
+type SourceCopy = { source: string; rendered: string };
+const textSources = new WeakMap<Text, SourceCopy>();
+const attributeSources = new WeakMap<Element, Map<string, SourceCopy>>();
+
+function translatedCopy(value: string, language: LoomLanguage, previous?: SourceCopy): SourceCopy {
+  const source = previous?.rendered === value ? previous.source : value;
+  const trimmed = source.trim();
+  const english = STATIC_SETTING_TRANSLATIONS[trimmed] ? trimmed : STATIC_SETTING_REVERSE[trimmed] ?? trimmed;
+  const translated = language === "zh-CN" ? STATIC_SETTING_TRANSLATIONS[english] ?? trimmed : english;
+  return { source, rendered: source.replace(trimmed, translated) };
+}
+
 function translateTextNode(node: Text, language: LoomLanguage): void {
+  if (node.parentElement?.closest("pre, textarea, [data-settings-raw]")) return;
   const value = node.nodeValue ?? "";
-  const trimmed = value.trim();
-  if (!trimmed) return;
-  const table = language === "zh-CN" ? STATIC_SETTING_TRANSLATIONS : STATIC_SETTING_REVERSE;
-  const translated = table[trimmed];
-  if (!translated || translated === trimmed) return;
-  node.nodeValue = value.replace(trimmed, translated);
+  if (!value.trim()) return;
+  const next = translatedCopy(value, language, textSources.get(node));
+  textSources.set(node, next);
+  if (next.rendered !== value) node.nodeValue = next.rendered;
 }
 
 function translateAttributes(element: Element, language: LoomLanguage): void {
-  const table = language === "zh-CN" ? STATIC_SETTING_TRANSLATIONS : STATIC_SETTING_REVERSE;
+  if (element.closest("[data-settings-raw]")) return;
+  const sources = attributeSources.get(element) ?? new Map<string, SourceCopy>();
+  attributeSources.set(element, sources);
   for (const attr of ["title", "aria-label", "placeholder"] as const) {
     const value = element.getAttribute(attr);
     if (!value) continue;
-    const translated = table[value.trim()];
-    if (translated && translated !== value) element.setAttribute(attr, translated);
+    const next = translatedCopy(value, language, sources.get(attr));
+    sources.set(attr, next);
+    if (next.rendered !== value) element.setAttribute(attr, next.rendered);
   }
 }
 
