@@ -201,8 +201,15 @@ class ModelPolicyApplication:
 
     def check(self, body: dict[str, Any], authorization: str) -> dict[str, Any]:
         model_id = str(body.get("model_id") or "").strip()
-        if not model_id or len(model_id) > 240 or not is_managed_builtin_selection(model_id):
+        if not model_id:
             raise ValueError("model_id is required")
+        if len(model_id) > 240:
+            raise ValueError("model_id must be at most 240 characters")
+        if not is_managed_builtin_selection(model_id):
+            raise ValueError(
+                "model_id must identify a Loom-managed model (builtin: or managed:); "
+                "personal connections are not subject to model policy"
+            )
         user_id = self.accounts.user_id_for_authorization(authorization)
         legacy = self.accounts.model_access(authorization)
         access = self.store.effective_access(user_id, legacy, [model_id])

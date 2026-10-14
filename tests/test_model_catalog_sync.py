@@ -18,6 +18,19 @@ def decision(access, selection):
     return next(item for item in access["decisions"] if item["model_id"] == selection)
 
 
+@pytest.mark.parametrize(("selection", "message"), [
+    ("", "model_id is required"),
+    ("profile:m123456789abc", "personal connections are not subject to model policy"),
+    ("saved:legacy", "personal connections are not subject to model policy"),
+    ("deepseek-v4-pro", "must identify a Loom-managed model"),
+    ("builtin:" + "x" * 241, "at most 240 characters"),
+])
+def test_policy_check_reports_invalid_id_accurately(selection, message):
+    application = object.__new__(ModelPolicyApplication)
+    with pytest.raises(ValueError, match=message):
+        application.check({"model_id": selection}, "unused")
+
+
 def test_discovery_retirement_reappearance_and_policy_survive_restart(tmp_path):
     path = tmp_path / "policy.db"
     store = PolicyStore(path)

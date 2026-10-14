@@ -1,5 +1,6 @@
 import { installWindowChrome } from "./windowChrome.js";
 import { ModelSwitchQueue } from "./modelSwitchQueue.js";
+import { isManagedBuiltinSelection } from "./modelPolicySelection.js";
 import { app, BrowserWindow, clipboard, dialog, ipcMain, nativeImage, nativeTheme, net, protocol, shell } from "electron";
 import { ModelUsageService } from "./modelUsage.js";
 import { ChildProcessWithoutNullStreams, spawn, spawnSync } from "node:child_process";
@@ -1385,8 +1386,7 @@ function modelPolicyGroup(selection: string): string | null {
 
 function policyAllowsSelection(access: LoomModelPolicyAccess, selection: string): boolean {
   const value = String(selection || "").trim();
-  if (!value || value.startsWith("saved:")) return true;
-  if (!(value.startsWith("builtin:") || value.startsWith("managed:"))) return true;
+  if (!isManagedBuiltinSelection(value)) return true;
   if (!access.enabled && Array.isArray(access.decisions) && access.decisions.length) return false;
   const decision = access.decisions?.find((item) => item.model_id === value);
   if (decision) return Boolean(decision.enabled);
@@ -1474,7 +1474,7 @@ async function assertSignedInForModels(): Promise<void> {
 async function assertModelSelectionAllowed(selection: string): Promise<void> {
   await assertSignedInForModels();
   const value = String(selection || "").trim();
-  if (!value || value.startsWith("saved:")) return;
+  if (!isManagedBuiltinSelection(value)) return;
   const access = await accountClient.modelPolicyCheck(value);
   if (!access) throw new Error("Model permissions unavailable. Retry shortly.");
   if (!policyAllowsSelection(access, value)) {

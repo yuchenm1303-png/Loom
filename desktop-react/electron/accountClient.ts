@@ -2,6 +2,7 @@ import { app, safeStorage } from "electron";
 import fs from "node:fs/promises";
 import fsSync from "node:fs";
 import path from "node:path";
+import { isManagedBuiltinSelection } from "./modelPolicySelection.js";
 
 export interface LoomAccountUser {
   id: number;
@@ -405,6 +406,9 @@ export class LoomAccountClient {
   }
 
   async modelPolicyCheck(selection: string): Promise<LoomModelPolicyAccess | null> {
+    // A personal connection must never be sent to the built-in policy API.
+    selection = String(selection || "").trim();
+    if (!isManagedBuiltinSelection(selection)) return null;
     const snapshot = this.policySnapshot;
     if (
       snapshot

@@ -151,6 +151,14 @@ def test_explicit_signout_never_falls_back_to_startup_identity(monkeypatch):
         service._model_api_key({"authMode": "loom-account"})
 
 
+@pytest.mark.parametrize("selection", ["profile:m123456789abc", "saved:legacy"])
+def test_personal_connections_never_use_central_policy(selection):
+    service = object.__new__(ReasoningManagedLoomAppServerService)
+    service._loom_account_model_credential = "account-a"
+    service._policy_snapshot = SimpleNamespace(check=lambda *args: pytest.fail("personal connection reached central policy"))
+    service._assert_model_policy(selection)
+
+
 def test_switch_immediately_invalidates_permission_snapshot():
     cache = ModelPolicySnapshot("https://example.invalid/access", "old", start=False,
         fetch=lambda token: {"access": {"models": ["builtin:minimax"]}})

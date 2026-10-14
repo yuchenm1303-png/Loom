@@ -670,6 +670,31 @@ test("a fresh permission snapshot answers the pre-check for a model it decided a
   assert.equal(asked(), 1, "a model the snapshot has no decision about is asked for exactly");
 });
 
+test("personal model IDs never reach the policy API, including during a policy outage", async () => {
+  installFetch({
+    "/policy/v1/check": () => { throw new Error("policy unavailable"); },
+  });
+  await seedSession({ accessToken: "loom_access_live", refreshToken: "loom_refresh_live", expiresAt: Date.now() + 10 * 60 * 1000, user: USER });
+  const client = newClient();
+  for (const selection of ["profile:m123456789abc", "saved:legacy", "deepseek-v4-pro", ""]) {
+    assert.equal(await client.modelPolicyCheck(selection), null);
+  }
+  assert.deepEqual(calls, [], "no policy, refresh, or authentication network calls for personal connections");
+});
+
+test("managed model checks normalize the ID and still request central policy", async () => {
+  installFetch({
+    "/policy/v1/check": ({ body }) => {
+      assert.equal(JSON.parse(body).model_id, "managed:relay");
+      return reply(200, policyBody([{ model_id: "managed:relay", enabled: false, source: "global" }]));
+    },
+  });
+  await seedSession({ accessToken: "loom_access_live", refreshToken: "loom_refresh_live", expiresAt: Date.now() + 10 * 60 * 1000, user: USER });
+  const access = await newClient().modelPolicyCheck(" managed:relay ");
+  assert.equal(access.decisions[0].enabled, false);
+  assert.equal(calls.filter(call => call.pathname === "/policy/v1/check").length, 1);
+});
+
 test("a permission snapshot is not reused once it is old, or after the account changed", async () => {
   installFetch({
     "/policy/v1/access": () => reply(200, policyBody([{ model_id: "builtin:a", enabled: true, source: "" }])),
