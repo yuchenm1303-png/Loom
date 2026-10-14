@@ -372,9 +372,9 @@ _FILES_SEARCH_SCAN_LIMIT = 12_000
 
 def _project_file_target(root: Path, raw: Any, *, allow_root: bool = False) -> Path:
     """Resolve a project-relative path without following symlinks or escaping its root."""
-    if not isinstance(raw, str) or len(raw) > 4000 or "\\x00" in raw:
+    if not isinstance(raw, str) or len(raw) > 4000 or "\x00" in raw:
         raise JsonRpcError(-32602, "invalid file path")
-    value = raw.replace("\\\\", "/")
+    value = raw.replace("\\", "/")
     windows = PureWindowsPath(value)
     if value.startswith("/") or windows.is_absolute() or windows.drive or any(
         segment in ("", ".", "..") for segment in value.split("/") if value
@@ -937,7 +937,7 @@ class ProjectMovableLoomAppServerService(ReasoningManagedLoomAppServerService):
                 if target.stat().st_size > _FILES_TEXT_LIMIT:
                     return {"path": path, "text": None, "reason": "File is too large to edit"}
                 data = target.read_bytes()
-                if b"\\x00" in data:
+                if b"\x00" in data:
                     return {"path": path, "text": None, "reason": "Binary preview is not editable"}
                 try:
                     content = data.decode("utf-8")
