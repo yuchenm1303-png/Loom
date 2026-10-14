@@ -358,7 +358,7 @@ export function AccountDialog({
         </button>
 
         <header className="loom-account-header">
-          <span className="loom-account-mark" aria-hidden="true"><UserRound size={21} /></span>
+          {!account.authenticated ? <span className="loom-account-mark" aria-hidden="true"><UserRound size={21} /></span> : null}
           <div>
             <h2 id="loom-account-title">
               {account.authenticated
@@ -367,7 +367,7 @@ export function AccountDialog({
             </h2>
             <p>
               {account.authenticated
-                ? (zh ? "你的身份会用于后续的模型权限、额度和云端服务。" : "Your identity will be used for model access, quotas, and cloud services.")
+                ? (zh ? "管理个人资料与云端服务。" : "Manage your profile and cloud services.")
                 : (zh ? "登录后即可使用与你账号绑定的云端能力。" : "Sign in to use cloud features attached to your account.")}
             </p>
           </div>
@@ -411,7 +411,7 @@ export function AccountDialog({
                 <strong>{displayName}</strong>
                 <span>{account.user.email}</span>
               </div>
-              <CheckCircle2 size={18} aria-hidden="true" />
+              <span className="loom-account-session-status"><CheckCircle2 size={13} aria-hidden="true" />{zh ? "已登录" : "Signed in"}</span>
             </div>
             {editingProfile ? (
               <div className="loom-account-profile-editor">
@@ -459,6 +459,7 @@ export function AccountDialog({
                     <strong>{zh ? "编辑资料" : "Edit profile"}</strong>
                     <small>{zh ? "修改昵称与头像" : "Change nickname and photo"}</small>
                   </span>
+                  <ArrowUpRight className="loom-account-action-arrow" size={16} />
                 </button>
                 {onOpenProfile ? (
                   <button type="button" className="loom-account-action-card" onClick={() => { onClose(); onOpenProfile(); }} disabled={busy}>
@@ -474,14 +475,8 @@ export function AccountDialog({
             )}
             <div className="loom-account-security-note">
               <ShieldCheck size={16} aria-hidden="true" />
-              <span>{zh ? "登录凭据已由系统安全存储加密保存。" : "Sign-in credentials are encrypted with the operating system secure storage."}</span>
+              <span>{zh ? "凭据已安全保存在此设备上。" : "Credentials securely stored on this device."}</span>
             </div>
-            {serviceLabel ? (
-              <div className="loom-account-service">
-                <span>{zh ? "服务地址" : "Service"}</span>
-                <code>{serviceLabel}</code>
-              </div>
-            ) : null}
             <button
               type="button"
               className="loom-account-secondary-button loom-account-signout-button"
