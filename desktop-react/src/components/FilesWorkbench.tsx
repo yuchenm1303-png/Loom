@@ -343,6 +343,11 @@ export function FilesWorkbench({ projectId, projectName, root, open, onClose, on
               <button type="submit" disabled={!!pending}>创建</button>
               <button type="button" onClick={() => setNewKind("")} aria-label="取消">×</button>
             </form> : null}
+              {renamePath ? <form className="files-workbench-rename" onSubmit={(event) => { event.preventDefault(); void renameSelected(); }}>
+                <input aria-label="重命名" autoFocus value={renameValue} onChange={(event) => setRenameValue(event.target.value)} />
+                <button type="submit" disabled={!!pending}>确定</button>
+                <button type="button" onClick={() => setRenamePath("")}>取消</button>
+              </form> : null}
             <div className="files-workbench-scroll" role="tree" aria-label="文件目录树">
               {searching ? <p className="files-workbench-placeholder">正在搜索…</p> : null}
               {renderedRows.map(({ entry, depth }) => {
@@ -384,11 +389,7 @@ export function FilesWorkbench({ projectId, projectName, root, open, onClose, on
                   <button type="button" className="files-workbench-save" onClick={() => void saveFile()} disabled={!dirty || !!pending}><Save size={15} /> 保存</button>
                 </div>
               </div>
-              {renamePath ? <form className="files-workbench-rename" onSubmit={(event) => { event.preventDefault(); void renameSelected(); }}>
-                <input aria-label="重命名" autoFocus value={renameValue} onChange={(event) => setRenameValue(event.target.value)} />
-                <button type="submit" disabled={!!pending}>确定</button>
-                <button type="button" onClick={() => setRenamePath("")}>取消</button>
-              </form> : null}
+              
               {current?.reason ? <div className="files-workbench-unsupported"><File size={30} /><strong>无法作为文本编辑</strong><span>{current.reason}</span><button type="button" onClick={() => void window.loom.openLocalArtifact(selected, root)}>使用文件预览打开</button></div>
                 : current ? <textarea className="files-workbench-editor" spellCheck={false} aria-label={"编辑 " + selected}
                   value={current.text} onChange={(event) => {
