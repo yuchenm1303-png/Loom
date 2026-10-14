@@ -584,8 +584,8 @@ def test_model_timeout_after_tool_retries_sampling_without_repeating_tool(tmp_pa
     rt.close()
 
 
-@pytest.mark.parametrize("retryable, expected_calls", [(True, 3), (False, 1)])
-def test_model_timeout_retries_are_bounded(tmp_path, retryable, expected_calls):
+@pytest.mark.parametrize("retryable, expected_calls", [(True, 8), (False, 1)])
+def test_model_timeout_retries_until_user_cancels(tmp_path, retryable, expected_calls, monkeypatch):
     from app.agent_runtime.model_execution import ModelRequestTimeout
     class P:
         count = 0
@@ -593,10 +593,11 @@ def test_model_timeout_retries_are_bounded(tmp_path, retryable, expected_calls):
             self.count += 1
             raise ModelRequestTimeout("timed out", reason="test_timeout", retryable=retryable)
     platform = P()
+    monkeypatch.setattr("app.agent_runtime.turn_runner.wait_for_signal", lambda *args: "cancel" if platform.count >= 8 else None)
     rt = make_runtime(tmp_path, platform)
     session = rt.create_session("agent.fast")
     result = rt.start_turn(session.session_id, "work")
-    assert result.status is AgentStatus.FAILED
+    assert result.status is (AgentStatus.CANCELLED if retryable else AgentStatus.FAILED)
     assert platform.count == expected_calls
     assert not any(e.kind.value == "turn_completed" for e in rt.store.events(session.session_id))
     rt.close()

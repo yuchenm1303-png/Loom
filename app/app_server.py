@@ -282,11 +282,7 @@ def _apply_event_to_item(item: dict[str, Any], event: AgentEvent) -> None:
     item["updatedAt"] = event.created_at
     kind = event.kind
     if item.get("type") == "model_retry":
-        attempt = int(data.get("attempt") or 0)
-        if kind is AgentEventKind.MODEL_RESPONSE_REJECTED:
-            attempt += 1
-        limit = int(data.get("retry_limit") or 5)
-        item["text"] = f"自动重试 {attempt}/{limit}"
+        item["text"] = "正在重新连接…"
         item["content"] = str(data.get("error") or data.get("reason") or "连接暂时中断")
         item["status"] = "completed"
         return

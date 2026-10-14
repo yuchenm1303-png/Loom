@@ -120,6 +120,7 @@ class TurnRunner:
                 recovery_partial = ""
                 recovery_reasoning = ""
                 attempt = 0
+                reconnect_delay = 1.0
                 while True:
                     if rt._cancel_if_requested(session, token):
                         return rt._result(session)
@@ -341,7 +342,6 @@ class TurnRunner:
                             retry_sampling = True
                             break
                         except (AITransportError, ModelRequestTimeout) as exc:
-                            retry_limit = rt.limits.model_retries if isinstance(exc, ModelRequestTimeout) else rt.limits.transport_retries
                             if isinstance(exc, (ModelRequestTimeout, AITransportError)):
                                 rt._emit_event(session, Event.MODEL_RESPONSE_REJECTED, data={
                                     **model_identity,
@@ -353,18 +353,17 @@ class TurnRunner:
                                     "error": str(exc),
                                     "attempt": attempt,
                                     "retryable": exc.retryable,
-                                    "will_retry": exc.retryable and attempt < retry_limit,
-                                    "retry_limit": retry_limit,
+                                    "will_retry": exc.retryable,
                                     "stream_timing": getattr(exc, "stream_timing", {}),
                                 })
-                            if not exc.retryable or attempt >= retry_limit:
+                            if not exc.retryable:
                                 raise
-                            next_attempt = attempt + 1
                             signal = wait_for_signal(
                                 token,
                                 sample_steering_revision,
-                                max(getattr(exc, "retry_after_seconds", 0.0), min(20.0, 1.0 * 2 ** (next_attempt - 1))),
+                                max(getattr(exc, "retry_after_seconds", 0.0), reconnect_delay),
                             )
+                            reconnect_delay = min(20.0, reconnect_delay * 2)
                             if signal == "cancel":
                                 raise ModelCancelled()
                             if signal == "steer":
@@ -380,10 +379,8 @@ class TurnRunner:
                                 recovery_reasoning = ""
                                 retry_sampling = True
                                 break
-                            attempt = next_attempt
                             if isinstance(exc, ModelRequestTimeout):
-                                if next_attempt >= 2:
-                                    recovery_instruction = "stream_stall_timeout"
+                                recovery_instruction = "stream_stall_timeout"
                                 # A timed-out sample may already have streamed a
                                 # partial reply. Give the retry a fresh step so
                                 # its deltas cannot append to that abandoned text.
