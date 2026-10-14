@@ -620,7 +620,9 @@ class LoomAppServerService:
             active=active,
             project_id=project.project_id if project is not None else UNFILED,
         )
-        record["paused"] = self.runtime.is_paused(session.session_id)
+        is_paused = getattr(self.runtime, "is_paused", None)
+        if callable(is_paused):
+            record["paused"] = is_paused(session.session_id)
         return record
 
     def subscribe_notifications(self, listener: NotificationListener) -> None:
@@ -1751,7 +1753,9 @@ class LoomRpcController:
                 "settings": {"get": True, "set": True},
                 "turns": {
                     "start": True, "interrupt": True, "steer": True,
-                    "pause": True, "resume": True, "pauseBoundary": "finish_current_operation",
+                    "pause": callable(getattr(self.service.runtime, "set_turn_paused", None)),
+                    "resume": callable(getattr(self.service.runtime, "set_turn_paused", None)),
+                    "pauseBoundary": "finish_current_operation",
                     "steering": {
                         "sameTurn": True, "delivery": "safeBoundary",
                         "idempotencyKey": "clientInputId", "approvalSupersedesPending": True,

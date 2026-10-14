@@ -121,6 +121,7 @@ class TurnRunner:
                 recovery_reasoning = ""
                 attempt = 0
                 reconnect_delay = 1.0
+                stall_replays = 0
                 while True:
                     if rt._cancel_if_requested(session, token):
                         return rt._result(session)
@@ -382,7 +383,11 @@ class TurnRunner:
                                 retry_sampling = True
                                 break
                             if isinstance(exc, ModelRequestTimeout):
-                                recovery_instruction = "stream_stall_timeout"
+                                # Replay a transient stall once without changing
+                                # instructions. Repeated stalls ask for smaller
+                                # writes; neither case consumes format repairs.
+                                stall_replays += 1
+                                recovery_instruction = "stream_stall_timeout" if stall_replays > 1 else ""
                                 # A timed-out sample may already have streamed a
                                 # partial reply. Give the retry a fresh step so
                                 # its deltas cannot append to that abandoned text.
