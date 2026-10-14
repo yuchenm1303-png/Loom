@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "build": 57001,
+  "build": 58001,
   "bootstrap": "0.1.88",
   "sourceSha": "c3e93981b29c7d732df87e84802c4652cb76835a",
   "sourceTime": 1791990112,
@@ -363,13 +363,13 @@
       "path": "assets/index-BE7zjmqK.js",
       "size": 1853454,
       "sha256": "6b93a2813de43b69bd3d959260cd07fd7e2d6368333fe2ecca012666cb5f204e",
-      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/ui-57001/6b93a2813de43b69bd3d959260cd07fd7e2d6368333fe2ecca012666cb5f204e"
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/ui-58001/6b93a2813de43b69bd3d959260cd07fd7e2d6368333fe2ecca012666cb5f204e"
     },
     {
       "path": "assets/index-BmXy1K5M.css",
       "size": 1168241,
       "sha256": "eec77e60255e3e3189896aaf98f324ceb95c0d4f2b7d161ddd578aa115099919",
-      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/ui-57001/eec77e60255e3e3189896aaf98f324ceb95c0d4f2b7d161ddd578aa115099919"
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/ui-58001/eec77e60255e3e3189896aaf98f324ceb95c0d4f2b7d161ddd578aa115099919"
     },
     {
       "path": "assets/scale-11-yukino-cursor-CiBDGVLM.png",
@@ -1119,7 +1119,7 @@
       "path": "index.html",
       "size": 3106,
       "sha256": "e793dee7ac8f5c87cf621638b60df3179dcbfb5d7aa3ec432f23c45a7dfc626f",
-      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/ui-57001/e793dee7ac8f5c87cf621638b60df3179dcbfb5d7aa3ec432f23c45a7dfc626f"
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/ui-58001/e793dee7ac8f5c87cf621638b60df3179dcbfb5d7aa3ec432f23c45a7dfc626f"
     },
     {
       "path": "smirel-logo.png",
@@ -1143,7 +1143,7 @@
       "path": "ui-baseline.json",
       "size": 80,
       "sha256": "5ea404e298f1cde06a48aae37fd40036e28f9fbbc88e682ea199b1590573f557",
-      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/ui-57001/5ea404e298f1cde06a48aae37fd40036e28f9fbbc88e682ea199b1590573f557"
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/ui-58001/5ea404e298f1cde06a48aae37fd40036e28f9fbbc88e682ea199b1590573f557"
     }
   ]
 }
