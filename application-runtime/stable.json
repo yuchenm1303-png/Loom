@@ -1,10 +1,10 @@
 {
   "schema": 1,
   "kind": "application",
-  "build": 46001,
-  "bootstrap": "0.1.86",
-  "sourceSha": "7be77ba5455d467722929323c3e5ff402f166104",
-  "sourceTime": 1791869786,
+  "build": 47001,
+  "bootstrap": "0.1.87",
+  "sourceSha": "bc0c5ae02e00e1492d9117461b5e8b4d7b41acf2",
+  "sourceTime": 1791877899,
   "files": [
     {
       "path": "dist/assets/index-CMP31RJG.js",
@@ -1143,8 +1143,8 @@
     {
       "path": "dist/ui-baseline.json",
       "size": 80,
-      "sha256": "60098d79a7f8e30d1ae60515d74f389cb0a967ae5754bac6259a6cb3566b2b2c",
-      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-46001/60098d79a7f8e30d1ae60515d74f389cb0a967ae5754bac6259a6cb3566b2b2c"
+      "sha256": "d6aa66e340986d7e1eaf41e5846fde6674e6d365ba6b052e0c1e79f868f29772",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-47001/d6aa66e340986d7e1eaf41e5846fde6674e6d365ba6b052e0c1e79f868f29772"
     },
     {
       "path": "dist-electron/accountClient.js",
