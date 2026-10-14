@@ -18,9 +18,6 @@
 .loom-task-branch-card > footer button:disabled { opacity: .4; cursor: not-allowed; }
 .loom-task-branch-new { margin: 7px 0 1px; font-size: 11px; background: transparent; color: inherit; border: 0; opacity: .45; padding: 5px 8px; border-radius: 6px; cursor: pointer; }
 .loom-task-branch-new:hover { background: rgba(128,128,128,.1); opacity: .9; }
-.compact-thread-row.is-branch { position: relative; }
-.compact-thread-row.is-branch .compact-thread-main { padding-left: calc(18px + var(--branch-depth, 1) * 13px); }
-.compact-thread-row.is-branch .compact-thread-main:before { content: "└"; position: absolute; left: calc(var(--branch-depth, 1) * 12px); font-size: 14px; opacity: .46; }
 .loom-branch-parent-strip { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; border-bottom: 1px solid rgba(140,140,140,.14); padding: 8px 15px; font-size: 12px; }
 .loom-branch-parent-strip span { opacity: .52; margin-right: auto; }
 .loom-branch-parent-strip button { font: inherit; color: inherit; border: 1px solid rgba(140,140,140,.14); border-radius: 7px; background: rgba(125,125,125,.065); padding: 5px 9px; cursor: pointer; }
