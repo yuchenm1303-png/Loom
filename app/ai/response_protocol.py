@@ -106,8 +106,11 @@ def normalize_response(request: ChatRequest, response: ModelResponse) -> ModelRe
         for call in calls:
             if call.name not in definitions:
                 error = AIResponseError("response called an undeclared tool", finish_reason=response.finish_reason)
-                error.tool_argument_diagnostics = {"schema_version": 1, "issues": [
-                    {"argument_path": "$", "validation_rule": "declared_tool", "available_tools": list(definitions)[:12]}
+                error.tool_name = call.name
+                error.response_id = response.response_id
+                error.stream_diagnostics = dict(response.stream_diagnostics)
+                error.tool_argument_diagnostics = {"schema_version": 1, "tool_name": call.name, "issues": [
+                    {"argument_path": "$", "validation_rule": "declared_tool", "available_tools": list(definitions)}
                 ]}
                 raise error
             try:

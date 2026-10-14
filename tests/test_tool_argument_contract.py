@@ -11,6 +11,23 @@ from app.agent_runtime.tools import ToolRequestError, validate_tool_arguments
 from test_response_protocol import REQUEST
 
 
+def test_undeclared_tool_diagnosis_retains_name_complete_catalog_and_response_identity():
+    tools = tuple(replace(REQUEST.tools[0], name=f"tool_{i}") for i in range(20))
+    request = replace(REQUEST, tools=tools)
+    response = ModelResponse(tool_calls=(ToolCall("one", "browser_eval", {"secret": "private-value"}),),
+        finish_reason="tool_calls", response_id="reply", stream_diagnostics={"chunk_count": 3})
+    with pytest.raises(AIResponseError, match="undeclared") as caught:
+        normalize_response(request, response)
+    error = caught.value
+    assert error.tool_name == "browser_eval"
+    assert error.response_id == "reply"
+    assert error.stream_diagnostics == {"chunk_count": 3}
+    detail = error.tool_argument_diagnostics
+    assert detail["tool_name"] == "browser_eval"
+    assert detail["issues"][0]["available_tools"] == [tool.name for tool in tools]
+    assert "private-value" not in json.dumps(detail)
+
+
 @pytest.mark.parametrize("arguments,rule,path", [
     ({}, "required", "$.argv"),
     ({"argv": "private-value"}, "type", "$.argv"),
@@ -60,7 +77,8 @@ def test_invalid_declaration_is_a_configuration_error_not_a_model_repair():
         normalize_response(broken, ModelResponse(tool_calls=(ToolCall("one", "exec", {}),)))
 
 
-def test_schema_repair_feedback_is_actionable_and_batch_execution_is_atomic(tmp_path):
+@pytest.mark.parametrize("undeclared", [False, True])
+def test_schema_repair_feedback_is_actionable_and_batch_execution_is_atomic(tmp_path, undeclared):
     from app.agent_runtime import AgentRuntime, AgentStatus, AgentTool, FileAgentSessionStore, ToolRegistry, ToolResult, SandboxManager, SandboxPolicy
     calls, requests = [], []
     schema = {"type": "object", "properties": {"value": {"type": "string"}}, "required": ["value"], "additionalProperties": False}
@@ -71,7 +89,7 @@ def test_schema_repair_feedback_is_actionable_and_batch_execution_is_atomic(tmp_
             requests.append(request)
             if len(requests) == 1:
                 response = ModelResponse(tool_calls=(ToolCall("valid-in-rejected-batch", "record_once", {"value": "must-not-execute"}),
-                    ToolCall("invalid", "record_once", {"value": ["private-value"]})), finish_reason="tool_calls")
+                    ToolCall("invalid", "unknown_record" if undeclared else "record_once", {"value": ["private-value"]})), finish_reason="tool_calls")
             elif len(requests) == 2:
                 response = ModelResponse(tool_calls=(ToolCall("corrected", "record_once", {"value": "once"}),), finish_reason="tool_calls")
             else:
@@ -84,10 +102,17 @@ def test_schema_repair_feedback_is_actionable_and_batch_execution_is_atomic(tmp_
         assert runtime.start_turn(session.session_id, "Record").status is AgentStatus.COMPLETED
         assert calls == ["once"]
         feedback = next(m.content for m in requests[1].messages if m.name == "loom_terminal_recovery")
-        assert "record_once" in feedback and "$.value" in feedback and "string" in feedback
+        assert "record_once" in feedback
+        if undeclared:
+            assert "unknown_record" in feedback and "declared_tool" in feedback
+        else:
+            assert "$.value" in feedback and "string" in feedback
         assert "private-value" not in feedback
         rejected = [e for e in runtime.store.events(session.session_id) if e.kind.value == "model_response_rejected"]
-        assert rejected[0].data["tool_argument_diagnostics"]["issues"][0]["expected_type"] == "string"
+        if undeclared:
+            assert rejected[0].data["truncated_tool_name"] == "unknown_record"
+        else:
+            assert rejected[0].data["tool_argument_diagnostics"]["issues"][0]["expected_type"] == "string"
     finally:
         runtime.close()
 
