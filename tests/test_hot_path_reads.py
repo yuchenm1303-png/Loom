@@ -117,10 +117,62 @@ def test_the_restart_backlog_scan_reads_the_end_of_each_log(tmp_path, monkeypatc
         second._memory_backlog_scheduled = False
         monkeypatch.setattr(FileAgentSessionStore, "_view", spy)
         second._ensure_memory_backlog_scheduled()
+        # The scan runs beside the request that asks for it, not inside it.
+        second._memory_backlog_thread.join(timeout=10)
+        assert not second._memory_backlog_thread.is_alive()
     finally:
         second.close()
     assert scheduled == [session.session_id]
     assert full_reads == []
+
+
+def test_the_backlog_scan_is_not_paid_on_the_requests_thread(tmp_path):
+    """The first message after the Host starts used to sit through a scan of every conversation (0.6-2.7 s)."""
+    import threading
+
+    from test_memory_pipeline import ScriptedPlatform as MemoryPlatform, _runtime as memory_runtime
+    from app.ai import AGENT_FAST_ROLE
+
+    workspace = tmp_path / "project"
+    workspace.mkdir()
+    first, _ = memory_runtime(tmp_path, MemoryPlatform([ModelResponse(text="done")]), auto_extract=False)
+    old = first.create_session(AGENT_FAST_ROLE.role_id, workspace_dir=workspace)
+    assert first.start_turn(old.session_id, "An earlier conversation.").status is AgentStatus.COMPLETED
+    first.close()
+
+    platform = MemoryPlatform([ModelResponse(text="answer")])
+    runtime, store = memory_runtime(tmp_path, platform, auto_extract=True)
+    scanning, release = threading.Event(), threading.Event()
+    scan_threads: list[str] = []
+    real_last_event = store.last_event
+
+    def slow_last_event(session_id, kinds):
+        scan_threads.append(threading.current_thread().name)
+        scanning.set()
+        release.wait(timeout=10)
+        return real_last_event(session_id, kinds)
+
+    try:
+        store.last_event = slow_last_event
+        runtime._memory_backlog_scheduled = False
+        session = runtime.create_session(AGENT_FAST_ROLE.role_id, workspace_dir=workspace)
+        outcome: dict[str, object] = {}
+
+        def run_turn():
+            outcome["result"] = runtime.start_turn(session.session_id, "The first message after a restart.")
+
+        worker = threading.Thread(target=run_turn, daemon=True)
+        worker.start()
+        assert scanning.wait(timeout=10), "the scan did not start"
+        # The scan is held; the request carries on to its model without it.
+        worker.join(timeout=10)
+        assert not worker.is_alive(), "the request waited for the scan"
+        assert outcome["result"].status is AgentStatus.COMPLETED
+        assert len(platform.requests) >= 1
+        assert set(scan_threads) == {"loom-memory-backlog"}, scan_threads
+    finally:
+        release.set()
+        runtime.close()
 
 
 def test_browser_lease_lookup_uses_the_lifecycle_projection(tmp_path):

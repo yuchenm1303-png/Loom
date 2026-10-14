@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import threading
 import time
 import uuid
 from dataclasses import dataclass
@@ -101,6 +102,7 @@ class MemoryRuntime(MultiAgentRuntime):
         )
         self._memory_pipeline: MemoryPipeline | None = None
         self._memory_backlog_scheduled = False
+        self._memory_backlog_thread: threading.Thread | None = None
         self._memory_lifecycle_checked: set[str] = set()
 
         for tool in memory_tools(self.memory_store):
@@ -514,22 +516,44 @@ class MemoryRuntime(MultiAgentRuntime):
                 pipeline.schedule(session_id, delay=delay)
 
     def _ensure_memory_backlog_scheduled(self) -> None:
+        """Once per run, look through every conversation for turns that were never extracted and schedule them.
+
+        The look reads the end of each conversation's log and one memory row for each: 0.6 s for 150 conversations
+        with warm files, two seconds or more when the files are cold and the interface is reading the same ones.
+        Nothing the request that asks for it needs comes of it, so it is not paid on that request's thread: the first
+        message after the Host started used to sit through the whole scan before its model was even asked.
+        """
         if self._memory_backlog_scheduled:
             return
         self._memory_backlog_scheduled = True
         pipeline = self._memory_pipeline
         if pipeline is None or not self.store.root.is_dir():
             return
+        thread = threading.Thread(
+            target=self._schedule_memory_backlog,
+            args=(pipeline,),
+            name="loom-memory-backlog",
+            daemon=True,
+        )
+        self._memory_backlog_thread = thread
+        thread.start()
 
+    def _schedule_memory_backlog(self, pipeline: MemoryPipeline) -> None:
         now = time.time()
-        for directory in self.store.root.iterdir():
-            if not directory.is_dir() or not (directory / "session.json").is_file():
-                continue
-            session_id = directory.name
+        try:
+            directories = list(self.store.root.iterdir())
+        except OSError:
+            return
+        for directory in directories:
+            # Yield between conversations: a foreground request is using this process too.
+            time.sleep(0)
             try:
+                if not directory.is_dir() or not (directory / "session.json").is_file():
+                    continue
+                session_id = directory.name
                 # Only the newest completed turn matters here. This runs for every
-                # session on the first request after the Host starts, so parsing
-                # each whole log delayed that request by the size of the store.
+                # session once per run, so parsing each whole log would cost the
+                # size of the store.
                 last_event = getattr(self.store, "last_event", None)
                 if callable(last_event):
                     terminal = last_event(session_id, (AgentEventKind.TURN_COMPLETED,))

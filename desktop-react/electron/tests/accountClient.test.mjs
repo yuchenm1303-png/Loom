@@ -617,6 +617,97 @@ test("turn-boundary verification is briefly cached and preserves offline BYOK be
   assert.equal(await client.verifyAuthenticatedSession(0), true, "an outage must not disable local BYOK use");
 });
 
+const later = (ms, value) => new Promise((resolve) => setTimeout(() => resolve(value), ms));
+
+test("a slow re-check does not hold the send, and what it finds afterwards is still acted on", async () => {
+  // A route where the account service needs most of a second to answer (a fresh TLS handshake alone can take that
+  // long): the send used to sit out the whole timeout of the re-check before it was handed to the runtime.
+  installFetch({ "/v1/auth/me": () => later(700, reply(401, { error: { code: "TOKEN_REVOKED" } })) });
+  await seedSession({ accessToken: "loom_access_live", refreshToken: "loom_refresh_live", expiresAt: Date.now() + 10 * 60 * 1000, user: USER });
+  const client = newClient();
+  const started = Date.now();
+  assert.equal(await client.verifyAuthenticatedSession(), true, "the send is let through while the answer is awaited");
+  const waited = Date.now() - started;
+  assert.ok(waited < 450, `the send waited ${waited} ms for an answer that takes 700`);
+  await later(900);
+  await assert.rejects(() => fs.readFile(sessionPath()), "the revoked session is still removed when the answer comes");
+  assert.equal(await client.verifyAuthenticatedSession(), false, "and the next send is stopped");
+});
+
+test("a slow re-check that succeeds is remembered, and concurrent sends share one request", async () => {
+  installFetch({ "/v1/auth/me": () => later(500, reply(200, { user: USER })) });
+  await seedSession({ accessToken: "loom_access_live", refreshToken: "loom_refresh_live", expiresAt: Date.now() + 10 * 60 * 1000, user: USER });
+  const client = newClient();
+  const answers = await Promise.all([client.verifyAuthenticatedSession(), client.verifyAuthenticatedSession(), client.verifyAuthenticatedSession()]);
+  assert.deepEqual(answers, [true, true, true]);
+  assert.equal(calls.length, 1, "three sends, one question to the account service");
+  await later(700);
+  assert.equal(await client.verifyAuthenticatedSession(), true);
+  assert.equal(calls.length, 1, "the answer that arrived late counts for the next sends");
+});
+
+const policyBody = (decisions) => ({ access: { enabled: true, models: decisions.filter((item) => item.enabled).map((item) => item.model_id), schema_version: 1, decisions } });
+
+test("a fresh permission snapshot answers the pre-check for a model it decided about, and nothing else", async () => {
+  // The interface fetches the snapshot every ten seconds; a new conversation's send checks the model it is about to use.
+  // On a slow route that check used to be a round trip of its own, one to five seconds before the runtime heard of it.
+  installFetch({
+    "/policy/v1/access": () => reply(200, policyBody([{ model_id: "builtin:a", enabled: true, source: "" }, { model_id: "builtin:b", enabled: false, source: "global" }])),
+    "/policy/v1/check": () => reply(200, policyBody([{ model_id: "builtin:c", enabled: true, source: "" }])),
+  });
+  await seedSession({ accessToken: "loom_access_live", refreshToken: "loom_refresh_live", expiresAt: Date.now() + 10 * 60 * 1000, user: USER });
+  const client = newClient();
+  assert.equal(await client.modelPolicyAccess() !== null, true);
+  const asked = () => calls.filter((call) => call.pathname === "/policy/v1/check").length;
+
+  const allowed = await client.modelPolicyCheck("builtin:a");
+  assert.equal(allowed.decisions.find((item) => item.model_id === "builtin:a").enabled, true);
+  const denied = await client.modelPolicyCheck("builtin:b");
+  assert.equal(denied.decisions.find((item) => item.model_id === "builtin:b").enabled, false, "a refusal is read from the snapshot too");
+  assert.equal(asked(), 0, "two pre-checks, no round trip");
+
+  assert.equal((await client.modelPolicyCheck("builtin:c")).decisions[0].model_id, "builtin:c");
+  assert.equal(asked(), 1, "a model the snapshot has no decision about is asked for exactly");
+});
+
+test("a permission snapshot is not reused once it is old, or after the account changed", async () => {
+  installFetch({
+    "/policy/v1/access": () => reply(200, policyBody([{ model_id: "builtin:a", enabled: true, source: "" }])),
+    "/policy/v1/check": () => reply(200, policyBody([{ model_id: "builtin:a", enabled: false, source: "account" }])),
+    "/v1/auth/logout": () => reply(200, { ok: true }),
+  });
+  await seedSession({ accessToken: "loom_access_live", refreshToken: "loom_refresh_live", expiresAt: Date.now() + 10 * 60 * 1000, user: USER });
+  const client = newClient();
+  await client.modelPolicyAccess();
+  const asked = () => calls.filter((call) => call.pathname === "/policy/v1/check").length;
+  assert.equal((await client.modelPolicyCheck("builtin:a")).decisions[0].enabled, true);
+  assert.equal(asked(), 0);
+
+  const realNow = Date.now;
+  try {
+    Date.now = () => realNow() + 21_000;
+    assert.equal((await client.modelPolicyCheck("builtin:a")).decisions[0].enabled, false, "an old snapshot is asked about again");
+    assert.equal(asked(), 1);
+  } finally {
+    Date.now = realNow;
+  }
+
+  await client.modelPolicyAccess();
+  await client.logout();
+  assert.equal(await client.modelPolicyCheck("builtin:a"), null, "a signed-out account has no snapshot to answer from");
+  assert.equal(asked(), 1);
+});
+
+test("an answer inside the grace still decides the send, and a request cut short is not taken for a verification", async () => {
+  installFetch({ "/v1/auth/me": () => later(40, reply(403, { error: { code: "ACCOUNT_DISABLED" } })) });
+  await seedSession({ accessToken: "loom_access_live", refreshToken: "loom_refresh_live", expiresAt: Date.now() + 10 * 60 * 1000, user: USER });
+  assert.equal(await newClient().verifyAuthenticatedSession(), false, "a prompt rejection stops the send as before");
+
+  const source = await fs.readFile(new URL("../accountClient.ts", import.meta.url), "utf8");
+  assert.doesNotMatch(source, /"\/auth\/me",\s*\{ method: "GET" \},\s*session\.accessToken,\s*1_200/, "the re-check is no longer cut at a second and a fifth");
+  assert.match(source, /export const VERIFY_GRACE_MS = \d+;/);
+});
+
 
 test("desktop runtime receives the validated account service URL for automation entitlements", async () => {
   const mainSource = await fs.readFile(new URL("../main.ts", import.meta.url), "utf8");

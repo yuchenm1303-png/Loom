@@ -143,8 +143,40 @@ function configuredAccountBaseUrl(): string {
   return app.isPackaged ? "https://account.smirel.com/v1" : "http://127.0.0.1:8787/v1";
 }
 
+/**
+ * How long a send waits for the account service to answer the turn-boundary re-check. An answer that comes in time
+ * decides the send as it always did (a rejection stops it); a slower one lets the send go ahead while the re-check
+ * finishes in the background and still acts on what it finds. On a slow route (a fresh TLS handshake alone can take a
+ * second) every send used to sit out the whole timeout of the re-check before it was even handed to the runtime.
+ */
+export const VERIFY_GRACE_MS = 250;
+/** The re-check itself gets as long as a slow route needs: a request cut short has verified nothing. */
+const VERIFY_TIMEOUT_MS = 8_000;
+const STILL_ASKING = Symbol("still asking");
+/**
+ * A model-permission snapshot this young answers a pre-check for a model it has a decision about. The interface lists
+ * the models every ten seconds, which fetches the snapshot, so a new conversation's send (which checks the model it is
+ * about to use) rarely needs a round trip of its own: on a slow route that was another one to five seconds before the
+ * runtime heard of the conversation. This is only the early check; the runtime enforces permissions again, fail
+ * closed, before each turn.
+ */
+export const MODEL_POLICY_SNAPSHOT_FRESH_MS = 20_000;
+
+/** The promise's value if it settles within `ms`, STILL_ASKING if not. A rejection inside the time is passed on. */
+function answerWithin<T>(promise: Promise<T>, ms: number): Promise<T | typeof STILL_ASKING> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => resolve(STILL_ASKING), Math.max(0, ms));
+    promise.then(
+      (value) => { clearTimeout(timer); resolve(value); },
+      (error) => { clearTimeout(timer); reject(error); },
+    );
+  });
+}
+
 export class LoomAccountClient {
   private memorySession: TokenSession | null = null;
+  private rechecking: { userId: number; check: Promise<boolean> } | null = null;
+  private policySnapshot: { at: number; revision: number; access: LoomModelPolicyAccess } | null = null;
   private identityRevision = 0;
   private readonly baseUrl: string;
   private refreshInFlight: Promise<TokenSession> | null = null;
@@ -365,10 +397,24 @@ export class LoomAccountClient {
   }
 
   async modelPolicyAccess(): Promise<LoomModelPolicyAccess | null> {
-    return this.requestModelPolicy("access");
+    const revision = this.identityRevision;
+    const access = await this.requestModelPolicy("access");
+    // Kept for the next pre-check, unless the account changed while it was on its way.
+    if (access && revision === this.identityRevision) this.policySnapshot = { at: Date.now(), revision, access };
+    return access;
   }
 
   async modelPolicyCheck(selection: string): Promise<LoomModelPolicyAccess | null> {
+    const snapshot = this.policySnapshot;
+    if (
+      snapshot
+      && snapshot.revision === this.identityRevision
+      && Date.now() - snapshot.at < MODEL_POLICY_SNAPSHOT_FRESH_MS
+      && Array.isArray(snapshot.access.decisions)
+      && snapshot.access.decisions.some((decision) => decision.model_id === selection)
+    ) {
+      return snapshot.access;
+    }
     return this.requestModelPolicy("check", { model_id: selection });
   }
 
@@ -549,7 +595,7 @@ export class LoomAccountClient {
    * session immediately; transient account-service outages preserve Loom's
    * existing offline/BYOK behavior.
    */
-  async verifyAuthenticatedSession(maxAgeMs = 30_000): Promise<boolean> {
+  async verifyAuthenticatedSession(maxAgeMs = 30_000, graceMs = VERIFY_GRACE_MS): Promise<boolean> {
     let session = await this.loadSession();
     if (!session?.user) return false;
     if (session.expiresAt <= Date.now() + 30_000) {
@@ -570,12 +616,25 @@ export class LoomAccountClient {
       return true;
     }
 
+    // One re-check at a time, whoever asks. The send waits for it only for the grace period; whatever it finds
+    // afterwards is still acted on (a rejected session is cleared, a verified one is remembered for the next send).
+    if (!this.rechecking || this.rechecking.userId !== userId) {
+      const check: Promise<boolean> = this.recheck(session, userId).finally(() => {
+        if (this.rechecking?.check === check) this.rechecking = null;
+      });
+      this.rechecking = { userId, check };
+    }
+    const answer = await answerWithin(this.rechecking.check, graceMs);
+    return answer === STILL_ASKING ? true : answer;
+  }
+
+  private async recheck(session: TokenSession, userId: number): Promise<boolean> {
     try {
       const result = await this.request<{ user: LoomAccountUser }>(
         "/auth/me",
         { method: "GET" },
         session.accessToken,
-        1_200,
+        VERIFY_TIMEOUT_MS,
       );
       session = { ...session, user: result.user };
       this.assertCurrentSession(session);
