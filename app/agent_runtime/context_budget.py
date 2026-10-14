@@ -13,6 +13,7 @@ from app.ai.errors import AIResponseError, AITransportError
 from app.ai.execution_control import ModelCancelled
 
 from .context_compaction import build_compacted_history, summarization_prompt
+from .model_replan import revision, wait_for_signal
 from .context_limits import ResolvedContextLimits, resolve_context_limits
 from .context_reducer import ContextReductionStats, reduce_tool_outputs
 from .history import repair_tool_history
@@ -840,7 +841,7 @@ def _prepare_context_with_model(rt, session, step, token):
         )
 
     trimmed_messages = 0
-    transport_retries = 0
+    reconnect_delay = 1.0
     response_retries = 0
     response_attempts = 0
     summary_usage = ModelUsage()
@@ -883,7 +884,7 @@ def _prepare_context_with_model(rt, session, step, token):
             previous = len(compact_input)
             compact_input = _trim_oldest_compaction_unit(compact_input)
             trimmed_messages += previous - len(compact_input)
-            transport_retries = 0
+            reconnect_delay = 1.0
             continue
 
         try:
@@ -904,14 +905,16 @@ def _prepare_context_with_model(rt, session, step, token):
                 previous = len(compact_input)
                 compact_input = _trim_oldest_compaction_unit(compact_input)
                 trimmed_messages += previous - len(compact_input)
-                transport_retries = 0
+                reconnect_delay = 1.0
                 continue
             if (
                 isinstance(exc, AITransportError)
                 and exc.retryable
-                and transport_retries < rt.limits.model_retries
             ):
-                transport_retries += 1
+                signal = wait_for_signal(token, revision(token), max(getattr(exc, "retry_after_seconds", 0.0), reconnect_delay))
+                if signal == "cancel":
+                    raise ModelCancelled()
+                reconnect_delay = min(20.0, reconnect_delay * 2)
                 continue
             raise
 
@@ -951,7 +954,7 @@ def _prepare_context_with_model(rt, session, step, token):
             # Invalid output is not evidence that the input exceeded capacity.
             # Retry the same evidence window; only a real capacity constraint
             # or provider context-length rejection may trim input history.
-            transport_retries = 0
+            reconnect_delay = 1.0
             continue
         summary = candidate_summary
         break
