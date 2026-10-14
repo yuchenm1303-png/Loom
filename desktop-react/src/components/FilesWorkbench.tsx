@@ -49,6 +49,7 @@ export function FilesWorkbench({ projectId, projectName, root, open, onClose, on
   const [expanded, setExpanded] = useState<string[]>([]);
   const [tabs, setTabs] = useState<string[]>([]);
   const [selected, setSelected] = useState("");
+  const [focusedDirectory, setFocusedDirectory] = useState("");
   const [files, setFiles] = useState<Record<string, OpenFile>>({});
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<Entry[]>([]);
@@ -92,12 +93,6 @@ export function FilesWorkbench({ projectId, projectName, root, open, onClose, on
     setDirectories({});
     setNextOffsets({});
     setExpanded([]);
-    setTabs([]);
-    setFiles({});
-    setSelected("");
-    setQuery("");
-    setResults([]);
-    setNewKind("");
     setError("");
     void listDirectory("");
   }, [open, projectId, showIgnored, listDirectory]);
@@ -255,7 +250,7 @@ export function FilesWorkbench({ projectId, projectName, root, open, onClose, on
   const createNew = async () => {
     const name = newName.trim();
     if (!validName(name)) { setError("名称不能包含路径分隔符或特殊字符。"); return; }
-    const dir = selected ? pathParent(selected) : "";
+    const dir = focusedDirectory || (selected ? pathParent(selected) : "");
     const path = dir ? dir + "/" + name : name;
     if (newKind === "folder") {
       await runMutation("mkdir", { path }, "文件夹已创建");
@@ -285,25 +280,30 @@ export function FilesWorkbench({ projectId, projectName, root, open, onClose, on
     });
     if (selected === renamePath) setSelected(newPath);
     else if (selected.startsWith(renamePath + "/")) setSelected("");
+    if (focusedDirectory === renamePath) setFocusedDirectory(newPath);
+    else if (focusedDirectory.startsWith(renamePath + "/")) setFocusedDirectory("");
     void listDirectory("");
   };
 
-  const deleteSelected = async () => {
-    if (!selected) return;
-    if (!window.confirm("永久删除 " + selected + "？文件夹必须为空，此操作不可撤销。")) return;
-    const result = await runMutation("delete", { path: selected }, "已删除");
+  const deletePath = async (path: string) => {
+    if (!path) return;
+    if (!window.confirm("永久删除 " + path + "？文件夹必须为空，此操作不可撤销。")) return;
+    const result = await runMutation("delete", { path }, "已删除");
     if (!result) return;
-    setTabs((prev) => prev.filter((item) => item !== selected));
-    setFiles((prev) => { const copy = { ...prev }; delete copy[selected]; return copy; });
-    setSelected("");
+    setTabs((prev) => prev.filter((item) => item !== path));
+    setFiles((prev) => { const copy = { ...prev }; delete copy[path]; return copy; });
+    if (selected === path) setSelected("");
+    if (focusedDirectory === path) setFocusedDirectory("");
   };
 
   const selectEntry = (entry: Entry) => {
     if (entry.type === "directory") {
+      setFocusedDirectory(entry.path);
       toggleFolder(fileTreePath(entry));
       return;
     }
     if (entry.type === "symlink") { setError("为安全起见，不打开符号链接。"); return; }
+    setFocusedDirectory(pathParent(entry.path));
     void openFile(fileTreePath(entry));
   };
 
@@ -332,6 +332,10 @@ export function FilesWorkbench({ projectId, projectName, root, open, onClose, on
             <div className="files-workbench-tools">
               <button type="button" onClick={() => { setNewKind("file"); setNewName(""); }} title="新建文件"><FileText size={15} /> 文件</button>
               <button type="button" onClick={() => { setNewKind("folder"); setNewName(""); }} title="新建文件夹"><Plus size={15} /> 文件夹</button>
+              {focusedDirectory ? <>
+                <button type="button" onClick={() => { setRenamePath(focusedDirectory); setRenameValue(pathName(focusedDirectory)); }} title="重命名选中文件夹"><Pencil size={15} /> 重命名</button>
+                <button type="button" onClick={() => void deletePath(focusedDirectory)} title="删除空文件夹"><Trash2 size={15} /> 删除</button>
+              </> : null}
               <label><input type="checkbox" checked={showIgnored} onChange={(event) => setShowIgnored(event.target.checked)} /> 显示缓存</label>
             </div>
             {newKind ? <form className="files-workbench-inline-form" onSubmit={(event) => { event.preventDefault(); void createNew(); }}>
@@ -346,7 +350,7 @@ export function FilesWorkbench({ projectId, projectName, root, open, onClose, on
                 const isOpen = expanded.includes(entry.path);
                 const Icon = isFolder ? (isOpen ? FolderOpen : Folder) : File;
                 return <div role="treeitem" aria-expanded={isFolder ? isOpen : undefined} aria-selected={selected === entry.path} key={entry.path}>
-                  <button type="button" className={"files-workbench-row" + (selected === entry.path ? " selected" : "")} onClick={() => selectEntry(entry)}
+                  <button type="button" className={"files-workbench-row" + (selected === entry.path || (entry.type === "directory" && focusedDirectory === entry.path) ? " selected" : "")} onClick={() => selectEntry(entry)}
                     style={{ paddingLeft: (12 + depth * 18) + "px" }} title={entry.path}>
                     {isFolder ? isOpen ? <ChevronDown size={13} /> : <ChevronRight size={13} /> : <span className="files-workbench-spacer" />}
                     <Icon size={16} strokeWidth={1.7} />
@@ -375,7 +379,7 @@ export function FilesWorkbench({ projectId, projectName, root, open, onClose, on
                 <span className="files-workbench-filepath" title={selected}>{selected}</span>
                 <div className="files-workbench-file-actions">
                   <button type="button" onClick={() => { setRenamePath(selected); setRenameValue(pathName(selected)); }} title="重命名"><Pencil size={15} /></button>
-                  <button type="button" onClick={() => void deleteSelected()} title="删除文件"><Trash2 size={15} /></button>
+                  <button type="button" onClick={() => void deletePath(selected)} title="删除文件"><Trash2 size={15} /></button>
                   <button type="button" onClick={() => void openFile(selected, true)} disabled={dirty} title={dirty ? "先保存或放弃更改" : "重新读取"}><RefreshCw size={15} /></button>
                   <button type="button" className="files-workbench-save" onClick={() => void saveFile()} disabled={!dirty || !!pending}><Save size={15} /> 保存</button>
                 </div>
