@@ -1523,7 +1523,20 @@ class AgentRuntime:
             else system_prompt_with_feedback(session.system_prompt, self.progress_feedback)
         )
         prompt = f"{base_prompt}\n\n{capability_contract}"
-        return prompt if _STEERING_PROMPT_MARKER in prompt else f"{prompt}\n\n{_STEERING_PROMPT}"
+        if _STEERING_PROMPT_MARKER not in prompt:
+            prompt = f"{prompt}\n\n{_STEERING_PROMPT}"
+        return prompt + (
+            "\n\nLoom supports optional user-approved child sessions. When you spot a small, "
+            "well-scoped task that the user could usefully run as a separate conversation, "
+            "you may include at most one fenced Markdown block with language loom-task "
+            "at the end of your final answer. The contents must be a JSON object with "
+            "exactly two strings: title (max 120 characters) and prompt (max 12000 characters). "
+            "Write a self-contained task with relevant file paths and acceptance criteria. "
+            "Only suggest when separation provides genuine value; never invent an extra task "
+            "merely to show a card. Do not start the task yourself without the user's choice. "
+            "The interface displays a Start/Do it here/dismiss card and may open an independent "
+            "child conversation on user approval."
+        )
 
     def _append_tool_history(
         self,

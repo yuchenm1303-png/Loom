@@ -435,6 +435,8 @@ export default function App() {
   const [artifactPreview, setArtifactPreview] = useState<{ path: string; workspace: string } | null>(null);
   const autoOpenedAgentsForThreadRef = useRef("");
   const [selectedProjectId, setSelectedProjectId] = useState("");
+  const [branchError, setBranchError] = useState("");
+  const [reportingBranch, setReportingBranch] = useState(false);
   const [filesProjectId, setFilesProjectId] = useState("");
   const [sidebarWidth, setSidebarWidth] = useState(() => readPanelWidth(
     SIDEBAR_WIDTH_KEY,
@@ -454,6 +456,41 @@ export default function App() {
   const [threadEntering, setThreadEntering] = useState(false);
   const openComposerAccount = useCallback(() => setAccountOpen(true), []);
   const previousThreadIdRef = useRef("");
+  useEffect(() => {
+    const onStartBranch = (event: Event) => {
+      const detail = (event as CustomEvent<{
+        parentThreadId: string;
+        title: string;
+        prompt: string;
+        sourceMessageId?: string;
+        onSettled?: () => void;
+      }>).detail;
+      if (!detail?.parentThreadId || !detail.title?.trim() || !detail.prompt?.trim()) return;
+      setBranchError("");
+      void (async () => {
+        try {
+          const result = await window.loom.call<{ thread: ThreadRecord; started: boolean; error?: string }>(
+            "thread/branch_create",
+            {
+              parentThreadId: detail.parentThreadId,
+              title: detail.title,
+              prompt: detail.prompt,
+              sourceMessageId: detail.sourceMessageId || "",
+              startNow: true,
+            },
+          );
+          await loom.openThread(result.thread.id);
+          if (result.error) setBranchError("已创建子会话，但任务启动失败：" + result.error);
+        } catch (cause) {
+          setBranchError(cause instanceof Error ? cause.message : String(cause));
+        } finally {
+          detail.onSettled?.();
+        }
+      })();
+    };
+    window.addEventListener("loom:branch-task-start", onStartBranch);
+    return () => window.removeEventListener("loom:branch-task-start", onStartBranch);
+  }, [loom.openThread]);
   const thread = loom.active?.thread;
   const activeThreadId = thread?.id ?? "";
   const selectedThreadId = loom.openingThreadId || activeThreadId;
@@ -1297,6 +1334,35 @@ export default function App() {
 
         <div className={`conversation-stage ${running ? "is-running" : ""}`} inert={threadSwitching}>
           {runStripVisible ? <RunProgress {...progressProps} placement="top" motionPhase={runStripPresence.phase} /> : null}
+          {thread?.parentThreadId ? (
+            <div className="loom-branch-parent-strip" role="group" aria-label="Child conversation">
+              <span>↳ 子任务 · 独立会话</span>
+              <button type="button" onClick={() => { setBranchError(""); void loom.openThread(thread.parentThreadId!); }}>
+                返回主会话
+              </button>
+              <button
+                type="button"
+                disabled={running || reportingBranch || Boolean(thread.branchReportedAt)}
+                title={thread.branchReportedAt ? "结果已汇报" : running ? "请等待任务完成" : "将子任务结果送回父会话"}
+                onClick={() => {
+                  if (!thread.parentThreadId) return;
+                  setReportingBranch(true);
+                  setBranchError("");
+                  void (async () => {
+                    try {
+                      const report = await window.loom.call<{ parentThreadId: string }>("thread/branch_report", { threadId: thread.id });
+                      await loom.openThread(report.parentThreadId);
+                    } catch (cause) {
+                      setBranchError(cause instanceof Error ? cause.message : String(cause));
+                    } finally {
+                      setReportingBranch(false);
+                    }
+                  })();
+                }}
+              >{thread.branchReportedAt ? "已汇报" : reportingBranch ? "汇报中…" : "汇报到父会话"}</button>
+            </div>
+          ) : null}
+          {branchError ? <div className="loom-branch-error" role="alert">{branchError}<button type="button" onClick={() => setBranchError("")}> ×</button></div> : null}
           <Transcript
             items={transcriptItems}
             running={transcriptRunning}

@@ -1408,3 +1408,7 @@ html[data-loom-live] :is(.codex-sidebar-brand-aura, .codex-sidebar-brand-core, .
   from { opacity: .08; }
   to { opacity: .2; }
 }
+
+.compact-thread-row.is-branch { position: relative; }
+.compact-thread-row.is-branch .compact-thread-main { padding-left: calc(18px + var(--branch-depth, 1) * 13px); }
+.compact-thread-row.is-branch .compact-thread-main:before { content: "└"; position: absolute; left: calc(var(--branch-depth, 1) * 12px); font-size: 14px; opacity: .46; }

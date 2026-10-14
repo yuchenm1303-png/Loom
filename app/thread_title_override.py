@@ -605,6 +605,9 @@ def _patch_service(module: ModuleType) -> None:
         result["titleSource"] = title_source
         result["autoTitlePending"] = bool(metadata.get("autoTitlePending")) or title_source == "pending"
         result["autoTitleFallback"] = bool(metadata.get("autoTitleFallback")) or title_source == "fallback"
+        result["parentThreadId"] = str(metadata.get("parentThreadId") or "") or None
+        result["branchSourceMessageId"] = str(metadata.get("branchSourceMessageId") or "") or None
+        result["branchReportedAt"] = str(metadata.get("branchReportedAt") or "") or None
         return result
 
     def managed_record(self: Any, session: Any) -> dict[str, Any]:
@@ -620,6 +623,9 @@ def _patch_service(module: ModuleType) -> None:
         record["autoTitleFallback"] = bool(metadata.get("autoTitleFallback"))
         record["archived"] = bool(archived_at)
         record["archivedAt"] = archived_at or None
+        record["parentThreadId"] = str(metadata.get("parentThreadId") or "") or None
+        record["branchSourceMessageId"] = str(metadata.get("branchSourceMessageId") or "") or None
+        record["branchReportedAt"] = str(metadata.get("branchReportedAt") or "") or None
         return record
 
     def thread_read(self: Any, params: dict[str, Any]) -> dict[str, Any]:
