@@ -165,10 +165,20 @@ try {
   assert.ok(Math.abs(await scroller.evaluate(el => el.scrollTop) - detachedTop) < 3);
   // At the physical bottom a downward gesture must resume even if it cannot
   // produce another scroll event.
+  await scroller.evaluate(el => {
+    el.scrollTop = el.scrollHeight - el.clientHeight - 60;
+    el.dispatchEvent(new WheelEvent('wheel', {deltaY: 10, bubbles: true}));
+  });
+  const manualTop = await scroller.evaluate(el => el.scrollTop);
+  await page.waitForTimeout(300);
+  assert.equal(await scroller.getAttribute('data-following'), 'false', 'approaching the edge must not start a second slow scroll');
+  assert.ok(Math.abs(await scroller.evaluate(el => el.scrollTop) - manualTop) < 1.5);
   await scroller.evaluate(el => el.scrollTop = el.scrollHeight);
   await page.waitForTimeout(50);
   await scroller.evaluate(el => el.dispatchEvent(new WheelEvent("wheel", { deltaY: 40, bubbles: true })));
   assert.equal(await scroller.getAttribute("data-following"), "true");
+  await page.waitForTimeout(50);
+  assert.ok(await bottom() < 2, 'manual arrival adopts the edge immediately');
   await page.evaluate(() => window.longConversation.finish());
   await atEdge(page, 2500);
   assert.ok(await bottom() < 3);

@@ -14,7 +14,6 @@ interface TranscriptScrollControllerProps {
   onLoadOlder?(): Promise<void> | void;
 }
 
-const BOTTOM_THRESHOLD_PX = 96;
 const HISTORY_LOAD_THRESHOLD_PX = 220;
 const SCROLL_EPSILON_PX = 2;
 // Anything but our own last write that moves the view (the reader, a clamp after a fold) restarts the glide from where
@@ -61,9 +60,9 @@ function isPanelResizeActive(): boolean {
     || document.body.classList.contains("loom-panel-motion");
 }
 
-function isNearBottom(scroller: HTMLDivElement): boolean {
+function isAtBottom(scroller: HTMLDivElement): boolean {
   const distance = scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight;
-  return distance <= BOTTOM_THRESHOLD_PX;
+  return distance <= SCROLL_EPSILON_PX;
 }
 
 /** Has this element something to scroll? Geometry first: computed style is the dearer read. */
@@ -527,7 +526,7 @@ export function TranscriptScrollController({
     const resumeIfUserReturnedToBottom = () => {
       if (
         userDetachedRef.current
-        && isNearBottom(scroller)
+        && isAtBottom(scroller)
         && performance.now() <= returnIntentUntilRef.current
       ) {
         userDetachedRef.current = false;
@@ -535,7 +534,9 @@ export function TranscriptScrollController({
         publishFollowing(scroller, true);
         returnIntentUntilRef.current = 0;
         setJumpVisible(false);
-        scheduleBottomSync(scroller);
+        // The reader has already arrived. Adopt the physical edge without
+        // restarting a travel spring from the position we detached at.
+        scheduleBottomSync(scroller, false, true);
         return true;
       }
       return false;
