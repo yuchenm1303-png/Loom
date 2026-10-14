@@ -9,6 +9,7 @@ import {
   PanelRightOpen,
   Pulse,
   Settings,
+  Terminal,
   SidebarTriangle,
   UserRound,
 } from "./icons";
@@ -38,6 +39,8 @@ interface ThreadHeaderProps {
   artifactCount?: number;
   agentsOpen?: boolean;
   agentCount?: number;
+  backgroundOpen?: boolean;
+  backgroundRunningCount?: number;
   accountAuthenticated?: boolean;
   accountLabel?: string;
   accountAvatar?: string;
@@ -53,6 +56,7 @@ interface ThreadHeaderProps {
   onToggleReview(): void;
   onToggleArtifacts(): void;
   onToggleAgents(): void;
+  onToggleBackground(): void;
 }
 
 function workspaceName(workspace: string, fallback: string): string {
@@ -103,6 +107,8 @@ export function ThreadHeader({
   artifactCount = 0,
   agentsOpen = false,
   agentCount = 0,
+  backgroundOpen = false,
+  backgroundRunningCount = 0,
   accountAuthenticated = false,
   accountLabel = "",
   accountAvatar = "",
@@ -118,6 +124,7 @@ export function ThreadHeader({
   onToggleReview,
   onToggleArtifacts,
   onToggleAgents,
+  onToggleBackground,
 }: ThreadHeaderProps) {
   const { language, t } = useI18n();
   const [copied, setCopied] = useState(false);
@@ -223,6 +230,20 @@ export function ThreadHeader({
             onCompact={onCompactContext}
           />
         ) : null}
+
+        <button
+          type="button"
+          className={"thread-review-button header-workspace-entry thread-background-button" + (backgroundOpen ? " active" : "")}
+          onClick={onToggleBackground}
+          disabled={loading || !workspace}
+          title={language === "zh-CN" ? "查看后台任务" : "View background tasks"}
+          aria-label={language === "zh-CN" ? "后台任务" : "Background tasks"}
+          aria-pressed={backgroundOpen}
+        >
+          <Terminal size={18} strokeWidth={1.8} aria-hidden="true" />
+          <span>{language === "zh-CN" ? "后台" : "Tasks"}</span>
+          {backgroundRunningCount > 0 ? <span className="thread-agent-count">{backgroundRunningCount}</span> : null}
+        </button>
 
         <button
           type="button"
