@@ -2,8 +2,11 @@ from __future__ import annotations
 
 from dataclasses import replace
 from typing import Any
+import os
+import time
+import hashlib
 
-from .browser_extension_bridge import BrowserExtensionSessionBackend
+from .browser_extension_bridge import BrowserExtensionBridge, BrowserExtensionSessionBackend, _load_or_create_install_token
 from .browser_use_backend import browser_use_available
 from .contracts import ToolEffect
 from .tools import AgentTool, ToolContext, ToolRegistry, ToolResult
@@ -12,6 +15,7 @@ from .tools import AgentTool, ToolContext, ToolRegistry, ToolResult
 CURRENT_BROWSER = "current-browser"
 ISOLATED_BROWSER = "isolated"
 DEVELOPER_CDP = "cdp"
+EMBEDDED_BROWSER = "embedded"
 
 _BROWSER_BACKEND_ALIASES = {
     "auto": CURRENT_BROWSER,
@@ -28,6 +32,8 @@ _BROWSER_BACKEND_ALIASES = {
     "cdp-attach": DEVELOPER_CDP,
     "cdp_attach": DEVELOPER_CDP,
     "attach": DEVELOPER_CDP,
+    "embedded": EMBEDDED_BROWSER,
+    "embedded-browser": EMBEDDED_BROWSER,
 }
 
 
@@ -37,7 +43,7 @@ def normalize_browser_backend(value: str) -> str:
         return _BROWSER_BACKEND_ALIASES[key]
     except KeyError as exc:
         raise ValueError(
-            "browser backend must be one of: current-browser, isolated, cdp"
+            "browser backend must be one of: current-browser, isolated, embedded, cdp"
         ) from exc
 
 
@@ -116,6 +122,20 @@ class BrowserBackendRegistryMixin:
             bridge = self._extension_bridge_for_session()
         return bridge
 
+    def _embedded_browser_bridge(self) -> BrowserExtensionBridge:
+        bridge = getattr(self, "_loom_embedded_bridge", None)
+        if bridge is not None and not bridge.closed:
+            return bridge
+        # Separate port and cryptographic domain from the Chrome/Edge extension.
+        # This token never reaches the model or the renderer.
+        secret = os.environ.get("LOOM_BROWSER_EMBEDDED_TOKEN") or hashlib.sha256(
+            (_load_or_create_install_token() + ":loom-embedded-v1").encode("utf-8")
+        ).hexdigest()
+        bridge = BrowserExtensionBridge(host="127.0.0.1", port=39223, token=secret, shared_service=True)
+        bridge.start()
+        self._loom_embedded_bridge = bridge
+        return bridge
+
     def _backend_model_selectable(self, backend: str) -> bool:
         selected = str(getattr(self, "_browser_requested_backend", ISOLATED_BROWSER))
         if backend == ISOLATED_BROWSER:
@@ -136,7 +156,18 @@ class BrowserBackendRegistryMixin:
         browser_use_ready = bool(browser_use_available())
         selected = str(getattr(self, "_browser_requested_backend", ISOLATED_BROWSER))
         cdp_configured = bool(str(getattr(self, "_browser_cdp_url", "") or "").strip())
+        embedded = getattr(self, "_loom_embedded_bridge", None)
+        embedded_connected = bool(embedded is not None and embedded.connected)
         return (
+            {
+                "id": EMBEDDED_BROWSER,
+                "selected": selected == EMBEDDED_BROWSER,
+                "available": embedded_connected,
+                "model_selectable": self._backend_model_selectable(EMBEDDED_BROWSER),
+                "external_browser": True,
+                "requires_extension": False,
+                "reason": "" if embedded_connected else "Open Loom Desktop Browser and enable AI for the current tab.",
+            },
             {
                 "id": CURRENT_BROWSER,
                 "selected": selected == CURRENT_BROWSER,
@@ -194,6 +225,12 @@ class BrowserBackendRegistryMixin:
                 "isolated browser or Computer Use merely because current-browser is unavailable. Use connect=launch "
                 "only when the user explicitly asks for a clean, isolated, test, or signed-out browser."
             )
+        elif selected == EMBEDDED_BROWSER:
+            description = (
+                "Control the user's explicitly authorized tab inside Loom Desktop's embedded browser. "
+                "Open the Browser workspace and enable AI for the tab first. Reuse the same visible page, "
+                "login cookies and tabs; never substitute another browser if permission is off."
+            )
         elif selected == DEVELOPER_CDP:
             description = (
                 "Open the explicitly configured developer Chrome/Edge connection through loopback-only CDP by default. "
@@ -229,6 +266,13 @@ class BrowserBackendRegistryMixin:
             self.browser_headless = False
             super().browser_set_connection(
                 "extension", cdp_url="", persist_profile=persist_profile, engine=engine
+            )
+        elif backend == EMBEDDED_BROWSER:
+            # Retain the existing runtime/session/tool plumbing; per-session
+            # factory below attaches to the dedicated embedded browser bridge.
+            self.browser_headless = False
+            super().browser_set_connection(
+                "local-launch", cdp_url="", persist_profile=False, engine=engine
             )
         elif backend == ISOLATED_BROWSER:
             self.browser_headless = False
@@ -279,6 +323,27 @@ class BrowserBackendRegistryMixin:
 
             return build_extension, True, CURRENT_BROWSER
 
+        wants_embedded = normalized in {"embedded", "embedded_browser"}
+        if normalized in {"", "default"} and selected == EMBEDDED_BROWSER:
+            wants_embedded = True
+        if wants_embedded:
+            if selected != EMBEDDED_BROWSER and not self._backend_model_selectable(EMBEDDED_BROWSER):
+                raise PermissionError("Enable model-selected connections or choose Embedded browser in Settings.")
+            bridge = self._embedded_browser_bridge()
+            # The desktop client long-polls while the Browser workspace is open.
+            # The first command starts the local bridge, so allow it a brief
+            # reconnect window without falling back to Chrome/another profile.
+            deadline = time.monotonic() + 6.0
+            while not bridge.connected and time.monotonic() < deadline:
+                time.sleep(0.1)
+            if not bridge.connected:
+                raise RuntimeError("Loom embedded browser is offline. Open the Browser workspace and enable AI for its tab.")
+
+            def build_embedded(options):
+                return BrowserExtensionSessionBackend(options=options, bridge=bridge)
+
+            return build_embedded, True, EMBEDDED_BROWSER
+
         if normalized in {"isolated", "launch"}:
             factory, _external, _label = super().browser_session_connection("launch", cdp_url="")
             return factory, False, ISOLATED_BROWSER
@@ -312,7 +377,14 @@ class BrowserBackendRegistryMixin:
             getattr(self, "browser_allow_external_backend_selection", False)
         )
 
-        if selected == CURRENT_BROWSER:
+        if selected == EMBEDDED_BROWSER:
+            status["browser_connection"] = "embedded-bridge" if available else "embedded-offline"
+            status["backend"] = "browser-extension"
+            status["external_browser"] = available
+            status["session_persistence"] = "embedded-electron-profile"
+            status["storage_state_persistence"] = True
+            status["profile_name"] = "loom-embedded"
+        elif selected == CURRENT_BROWSER:
             status["browser_connection"] = "extension-bridge" if available else "current-browser-unavailable"
             status["backend"] = "browser-extension"
             status["external_browser"] = available
@@ -331,5 +403,6 @@ __all__ = [
     "CURRENT_BROWSER",
     "DEVELOPER_CDP",
     "ISOLATED_BROWSER",
+    "EMBEDDED_BROWSER",
     "normalize_browser_backend",
 ]
