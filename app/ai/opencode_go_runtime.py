@@ -33,6 +33,7 @@ from .openai_streaming import OpenAIStreamingChatBackend
 from .profiles import ModelProfile
 from .provider_catalog import ProviderAdapter, ProviderConnection
 from .reasoning import ReasoningKind
+from .tool_declarations import messages_tool, responses_tool
 from .tool_policy import exposes_tools, tool_choice_payload
 
 
@@ -275,15 +276,7 @@ class _OpenCodeGoResponsesBackend:
             "extra_headers": _session_headers(request),
         }
         if exposes_tools(request):
-            kwargs["tools"] = [
-                {
-                    "type": "function",
-                    "name": tool.name,
-                    "description": tool.description,
-                    "parameters": tool.input_schema,
-                }
-                for tool in request.tools
-            ]
+            kwargs["tools"] = [responses_tool(tool) for tool in request.tools]
             kwargs["tool_choice"] = tool_choice_payload(request)
         if request.temperature is not None:
             kwargs["temperature"] = request.temperature
@@ -491,24 +484,26 @@ class _OpenCodeGoMessagesBackend:
     def _messages(self, request: ChatRequest) -> tuple[str, list[dict[str, Any]]]:
         system_parts: list[str] = []
         messages: list[dict[str, Any]] = []
+        # Every result for one assistant tool_use turn travels in a single user turn
+        # directly after it; a result split across turns is rejected by strict
+        # Messages validators.
+        open_result_turn: dict[str, Any] | None = None
         for message in request.messages:
             if message.role is MessageRole.SYSTEM:
                 system_parts.append(_text_content(message))
                 continue
             if message.role is MessageRole.TOOL:
-                messages.append(
-                    {
-                        "role": "user",
-                        "content": [
-                            {
-                                "type": "tool_result",
-                                "tool_use_id": message.tool_call_id,
-                                "content": _text_content(message),
-                            }
-                        ],
-                    }
-                )
+                block = {
+                    "type": "tool_result",
+                    "tool_use_id": message.tool_call_id,
+                    "content": _text_content(message),
+                }
+                if open_result_turn is None:
+                    open_result_turn = {"role": "user", "content": []}
+                    messages.append(open_result_turn)
+                open_result_turn["content"].append(block)
                 continue
+            open_result_turn = None
 
             blocks: list[dict[str, Any]] = []
             if isinstance(message.content, str):
@@ -548,14 +543,7 @@ class _OpenCodeGoMessagesBackend:
         if system:
             payload["system"] = system
         if exposes_tools(request):
-            payload["tools"] = [
-                {
-                    "name": tool.name,
-                    "description": tool.description,
-                    "input_schema": tool.input_schema,
-                }
-                for tool in request.tools
-            ]
+            payload["tools"] = [messages_tool(tool) for tool in request.tools]
             payload["tool_choice"] = tool_choice_payload(request, messages=True)
         if request.temperature is not None:
             payload["temperature"] = request.temperature

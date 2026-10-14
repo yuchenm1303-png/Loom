@@ -27,3 +27,9 @@ and ensuring the otherwise valid calls in a rejected batch do not execute.
 This change fixes the diagnostic and repair-feedback defect. It does not claim
 to recover the missing historical name or prove that the live model will never
 return an undeclared tool again.
+
+Addendum: the rejection of the whole batch described above is superseded by
+`tool-call-recovery-2026-10-14.md`. A response with an undeclared call is
+committed, every call receives a correlated result, a registered deferred tool
+is activated for the next step, and the turn no longer ends after three such
+responses.

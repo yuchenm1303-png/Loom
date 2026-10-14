@@ -10,6 +10,9 @@ the same `ToolCall` objects. Parameter strings remain literal; non-string
 parameters must contain valid JSON. Both forms validate tool names, unique IDs,
 request exposure and input schemas. Mixed structured/text calls, incomplete
 envelopes, duplicate parameters and truncated calls are rejected before dispatch.
+Undeclared names and schema-invalid arguments are a fault of individual calls
+rather than malformed output: the response is committed and each call of the
+batch gets a correlated result, as described in `tool-call-recovery-2026-10-14.md`.
 Normal runtime permissions, approvals and tool-result history still apply.
 
 The stream boundary holds candidate protocol tags across chunk boundaries so

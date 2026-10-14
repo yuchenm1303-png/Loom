@@ -38,6 +38,23 @@ class AIResponseError(AIPlatformError):
         self.stream_diagnostics: dict = {}
 
 
+class AIToolContractError(AIResponseError):
+    """A complete response called tools that cannot run as declared.
+
+    An undeclared name or a schema-invalid argument is a fact about individual
+    calls, not malformed output. ``response`` carries the complete, decoded
+    response so the runtime can commit its native calls and answer each one with
+    a correlated result. Callers without that contract still receive an ordinary
+    response error, which is why this subclasses AIResponseError.
+    """
+
+    def __init__(self, message: str, *, finish_reason: str = "", response=None,
+                 invalid_call_ids: tuple[str, ...] = ()) -> None:
+        super().__init__(message, finish_reason=finish_reason)
+        self.response = response
+        self.invalid_call_ids = tuple(invalid_call_ids)
+
+
 class AIQuotaExceeded(AITransportError):
     """A provider's exhausted allowance cannot recover through backoff."""
 

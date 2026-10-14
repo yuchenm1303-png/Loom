@@ -25,6 +25,7 @@ from .errors import AIEmptyResponseError, AIResponseError, AITransportError, AIQ
 from .profiles import ModelProfile
 from .provider_catalog import ProviderAdapter, ProviderConnection
 from .reasoning import ReasoningKind
+from .tool_declarations import chat_completions_tool
 from .tool_protocol import parse_tool_call, validate_unique_calls, chat_tool_fragments
 from .tool_policy import exposes_tools, tool_choice_payload
 
@@ -120,14 +121,7 @@ def _message_payload(
 
 
 def _tool_payload(tool: Any) -> dict[str, Any]:
-    return {
-        "type": "function",
-        "function": {
-            "name": tool.name,
-            "description": tool.description,
-            "parameters": tool.input_schema,
-        },
-    }
+    return chat_completions_tool(tool)
 
 
 def _usage_from(response: Any) -> ModelUsage:

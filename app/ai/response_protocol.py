@@ -11,7 +11,7 @@ import uuid
 from .tool_schema import argument_issues
 
 from .contracts import ChatRequest, ModelResponse, ToolCall, ToolChoice
-from .errors import AIConfigurationError, AIResponseError, AITruncatedToolCallError
+from .errors import AIConfigurationError, AIResponseError, AIToolContractError, AITruncatedToolCallError
 from .tool_policy import exposes_tools
 from .tool_protocol import validate_unique_calls, decode_argument_json
 
@@ -103,16 +103,16 @@ def normalize_response(request: ChatRequest, response: ModelResponse) -> ModelRe
         if response.finish_reason in {"length", "max_tokens"}:
             raise AITruncatedToolCallError(finish_reason=response.finish_reason, tool_name=calls[0].name, argument_chars=0)
         definitions = {tool.name: tool for tool in request.tools}
+        # Every per-call fault is collected before raising, so the runtime can
+        # answer the whole batch in one step. Faults are contract facts about
+        # calls, not malformed output: see AIToolContractError.
+        faults: list[tuple[ToolCall, str, dict]] = []
         for call in calls:
             if call.name not in definitions:
-                error = AIResponseError("response called an undeclared tool", finish_reason=response.finish_reason)
-                error.tool_name = call.name
-                error.response_id = response.response_id
-                error.stream_diagnostics = dict(response.stream_diagnostics)
-                error.tool_argument_diagnostics = {"schema_version": 1, "tool_name": call.name, "issues": [
+                faults.append((call, "response called an undeclared tool", {"schema_version": 1, "tool_name": call.name, "issues": [
                     {"argument_path": "$", "validation_rule": "declared_tool", "available_tools": list(definitions)}
-                ]}
-                raise error
+                ]}))
+                continue
             try:
                 issues = argument_issues(definitions[call.name].input_schema, call.arguments)
             except Exception as exc:
@@ -120,15 +120,19 @@ def normalize_response(request: ChatRequest, response: ModelResponse) -> ModelRe
                 raise AIConfigurationError("tool declaration has an invalid or unresolved schema") from exc
             if issues:
                 detail = issues[0]
-                error = AIResponseError(
+                faults.append((call, (
                     f"tool {call.name!r} arguments do not match the declared schema: "
-                    f"{detail['argument_path']} violates {detail['validation_rule']}",
-                    finish_reason=response.finish_reason)
-                error.tool_name = call.name
-                error.response_id = response.response_id
-                error.stream_diagnostics = dict(response.stream_diagnostics)
-                error.tool_argument_diagnostics = {"schema_version": 1, "tool_name": call.name, "issues": issues}
-                raise error
+                    f"{detail['argument_path']} violates {detail['validation_rule']}"),
+                    {"schema_version": 1, "tool_name": call.name, "issues": issues}))
+        if faults:
+            call, message, diagnostics = faults[0]
+            error = AIToolContractError(message, finish_reason=response.finish_reason, response=response,
+                                        invalid_call_ids=tuple(item[0].call_id for item in faults))
+            error.tool_name = call.name
+            error.response_id = response.response_id
+            error.stream_diagnostics = dict(response.stream_diagnostics)
+            error.tool_argument_diagnostics = diagnostics
+            raise error
     elif response.finish_reason in {"tool_calls", "function_call", "tool_use"}:
         raise AIResponseError("provider finished with tool intent but no tool calls")
     elif exposes_tools(request) and request.tool_choice is ToolChoice.REQUIRED:
