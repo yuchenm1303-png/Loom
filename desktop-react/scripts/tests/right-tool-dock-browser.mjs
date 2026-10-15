@@ -10,9 +10,10 @@ try {
     const page = await browser.newPage({ viewport: { width: 1420, height: 900 } });
     const errors = [];
     page.on("pageerror", error => errors.push(error.message));
-    await page.goto(origin + "/scripts/fixtures/workspace-visual.html?theme=" + theme);
+    await page.goto(origin + "/scripts/fixtures/workspace-visual.html?context=1&theme=" + theme);
     const dock = page.locator(".loom-tool-dock");
     await dock.waitFor({ timeout: 20_000 });
+    await page.locator(".turn-final-answer").waitFor({ timeout: 20_000 });
     const buttons = dock.locator("button[data-tool-id]");
     assert.equal(await buttons.count(), ids.length, "all shortcuts must remain visible");
     assert.deepEqual(await buttons.evaluateAll(nodes => nodes.map(n => n.dataset.toolId)), ids);
