@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import sqlite3
+import json
 from http import HTTPStatus
 
 import pytest
@@ -37,7 +38,7 @@ def test_update_permission_defaults_on_and_changes_only_selected_user(tmp_path):
         last = db.execute("SELECT action, target_id, metadata_json FROM audit_logs ORDER BY id DESC LIMIT 1").fetchone()
     assert last["action"] == "user.update_access"
     assert last["target_id"] == str(user["user"]["id"])
-    assert '"enabled": false' in last["metadata_json"]
+    assert json.loads(last["metadata_json"]) == {"enabled": False}
 
     app.admin_set_user_updates({"user_id": user["user"]["id"], "enabled": True}, owner_token)
     assert app.me(user_token)["user"]["updates_enabled"] is True
