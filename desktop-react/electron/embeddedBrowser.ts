@@ -537,7 +537,9 @@ export class EmbeddedBrowserManager {
       }
       default: throw new Error("Unsupported embedded browser action: " + action);
     }
-    entry = this.tabs.get(this.activeId || "") || entry;
+    // A command carrying an explicit tab_id must return that tab’s observation,
+    // even when the human selected another tab while the command was running.
+    // switch_tab and new-tab update entry explicitly above.
     if (!this.aiAllowed.has(entry.state.id)) throw new Error("AI authorization was revoked.");
     const dom = await this.agentDom(entry);
     this.aiSignatures.set(entry.state.id, dom.signature);
