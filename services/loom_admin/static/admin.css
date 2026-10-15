@@ -1805,3 +1805,12 @@ body:has(#adminContent[hidden]) #overview p:not(.eyebrow) { max-width: 540px; ma
   .loom-admin-device-card > footer { display: grid; grid-template-columns: 1fr 1fr; }
   .loom-admin-shell .loom-admin-auth-card { padding: 22px 18px 18px; }
 }
+
+/* Account-scoped release delivery: compact switch shared by list/detail. */
+.loom-admin-update-toggle{display:inline-flex;align-items:center;gap:9px;white-space:nowrap;font-size:12px;font-weight:600;cursor:pointer;color:inherit}
+.loom-admin-update-toggle input{appearance:none;-webkit-appearance:none;position:relative;width:35px;height:20px;min-width:35px;border:1px solid rgba(180,190,205,.44);border-radius:999px;background:rgba(100,111,130,.32);cursor:pointer;transition:background .2s,border-color .2s,box-shadow .2s}
+.loom-admin-update-toggle input::after{content:"";position:absolute;left:2px;top:2px;width:14px;height:14px;border-radius:50%;background:#edf1f6;transition:transform .2s;box-shadow:0 1px 3px rgba(0,0,0,.22)}
+.loom-admin-update-toggle input:checked{background:#1b9f73;border-color:#1b9f73}
+.loom-admin-update-toggle input:checked::after{transform:translateX(15px);background:white}
+.loom-admin-update-toggle input:focus-visible{outline:2px solid #96dbd3;outline-offset:3px}
+.loom-admin-update-toggle input:disabled{opacity:.5;cursor:wait}
