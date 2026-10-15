@@ -31,6 +31,7 @@ import { SettingsPage } from "./components/SettingsPage";
 import { Sidebar } from "./components/Sidebar";
 import { SubAgentDock } from "./components/SubAgentDock";
 import { ThreadHeader } from "./components/ThreadHeader";
+import { RightToolDock } from "./components/RightToolDock";
 import { BackgroundTaskPanel } from "./components/BackgroundTaskPanel";
 import { Transcript } from "./components/Transcript";
 import { useLeavingItems } from "./components/leavingItems";
@@ -544,6 +545,12 @@ export default function App() {
     ? loom.projects.find((project) => project.id === selectedProjectId) ?? null
     : null;
   const filesProject = filesProjectId ? loom.projects.find((project) => project.id === filesProjectId) : undefined;
+  const dockProject = selectedProject
+    ?? loom.projects.find(project => project.id === selectedThread?.projectId)
+    ?? loom.projects.find(project => Boolean(project.root) &&
+      project.root.replaceAll("\\", "/").replace(/\/+$/, "").toLowerCase() ===
+      workspace.replaceAll("\\", "/").replace(/\/+$/, "").toLowerCase())
+    ?? null;
   const projectDetailsOpen = Boolean(selectedProject);
   const artifactPreviewOpen = Boolean(artifactPreview);
   useEffect(() => {
@@ -1259,6 +1266,59 @@ export default function App() {
         style={layoutStyle}
         aria-hidden={settingsPresence.mounted || profilePresence.mounted ? true : undefined}
       >
+      <RightToolDock
+        hidden={settingsPresence.mounted || profilePresence.mounted || accountOpen || Boolean(filesProjectId)}
+        loading={threadSwitching}
+        hasWorkspace={Boolean(selectedThread?.workspace || workspace)}
+        sidebarOpen={sidebarOpen}
+        filesAvailable={Boolean(dockProject)}
+        browserAvailable={browserAvailable}
+        browserOpen={browserOpen}
+        backgroundOpen={backgroundTasksOpen}
+        backgroundRunningCount={backgroundRunningCount}
+        agentsOpen={agentsOpen}
+        agentCount={threadSwitching ? 0 : agentCount}
+        reviewOpen={reviewOpen}
+        reviewCount={threadSwitching ? 0 : changedFileCount}
+        artifactsOpen={artifactPreviewOpen}
+        artifactCount={threadSwitching ? 0 : artifactCount}
+        inspectorOpen={inspectorVisible}
+        accountAuthenticated={account.account.authenticated}
+        onToggleSidebar={() => runLayoutTransition(
+          () => setSidebarOpen(open => !open),
+          sidebarOpen ? "left-close" : "left-open",
+        )}
+        onOpenFiles={() => {
+          if (dockProject) setFilesProjectId(dockProject.id);
+        }}
+        onToggleBrowser={() => {
+          if (!browserAvailable) return;
+          if (!browserOpen) {
+            setReviewOpen(false);
+            setAgentsOpen(false);
+            setArtifactPreview(null);
+            setSelectedProjectId("");
+            setFilesProjectId("");
+            setBackgroundTasksOpen(false);
+          }
+          setBrowserOpen(open => !open);
+        }}
+        onToggleBackground={() => setBackgroundTasksOpen(open => !open)}
+        onToggleAgents={toggleAgents}
+        onToggleReview={toggleReview}
+        onToggleArtifacts={toggleArtifacts}
+        onToggleInspector={toggleInspector}
+        onOpenProfile={() => {
+          setSettingsOpen(false);
+          setAccountOpen(false);
+          setProfileOpen(true);
+        }}
+        onOpenAccount={() => setAccountOpen(true)}
+        onOpenSettings={() => {
+          setProfileOpen(false);
+          setSettingsOpen(true);
+        }}
+      />
       <Sidebar
         threads={loom.threads}
         loading={connecting}
@@ -1315,53 +1375,10 @@ export default function App() {
           archived={archived}
           model={currentModel}
           permissionMode={permissionMode}
-          sidebarOpen={sidebarOpen}
-          inspectorOpen={inspectorVisible}
-          reviewOpen={reviewOpen}
-          reviewCount={threadSwitching ? 0 : changedFileCount}
-          artifactOpen={artifactPreviewOpen}
-          artifactCount={threadSwitching ? 0 : artifactCount}
-          agentsOpen={agentsOpen}
-          agentCount={threadSwitching ? 0 : agentCount}
-          browserOpen={browserOpen}
-          backgroundOpen={backgroundTasksOpen}
-          backgroundRunningCount={backgroundRunningCount}
-          accountAuthenticated={account.account.authenticated}
-          accountLabel={account.account.user?.display_name?.trim() || account.account.user?.email || ""}
-          accountAvatar={account.account.user?.avatar_data_url || ""}
           context={threadSwitching ? null : loom.context}
           compacting={!threadSwitching && loom.compacting}
           compactionProgress={threadSwitching ? null : loom.compactionProgress}
           onCompactContext={() => void loom.compactContext()}
-          onOpenProfile={() => {
-            setSettingsOpen(false);
-            setProfileOpen(true);
-          }}
-          onOpenAccount={() => setAccountOpen(true)}
-          onOpenSettings={() => {
-            setProfileOpen(false);
-            setSettingsOpen(true);
-          }}
-          onToggleSidebar={() => runLayoutTransition(
-            () => setSidebarOpen((open) => !open),
-            sidebarOpen ? "left-close" : "left-open",
-          )}
-          onToggleInspector={toggleInspector}
-          onToggleReview={toggleReview}
-          onToggleArtifacts={toggleArtifacts}
-          onToggleAgents={toggleAgents}
-          onToggleBackground={() => setBackgroundTasksOpen(open => !open)}
-          onToggleBrowser={browserAvailable ? () => {
-            if (!browserOpen) {
-              setReviewOpen(false);
-              setAgentsOpen(false);
-              setArtifactPreview(null);
-              setSelectedProjectId("");
-              setFilesProjectId("");
-              setBackgroundTasksOpen(false);
-            }
-            setBrowserOpen(open => !open);
-          } : undefined}
         />
 
         <BackgroundTaskPanel
