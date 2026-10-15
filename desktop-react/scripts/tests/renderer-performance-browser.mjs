@@ -8,7 +8,19 @@ try {
   const errors = [];
   page.on("pageerror", error => errors.push(error.message));
   await page.goto(`${origin}/scripts/fixtures/workspace-visual.html?performance=1&navigation=1&motion=1`);
-  await page.locator(".turn-final-answer").nth(19).waitFor();
+  try {
+    await page.locator(".turn-final-answer").nth(19).waitFor({ timeout: 30000 });
+  } catch (failure) {
+    const initial = await page.evaluate(() => ({
+      href: location.href,
+      text: document.body.textContent?.slice(0, 700),
+      allAnswers: document.querySelectorAll(".turn-final-answer").length,
+      status: document.body.dataset,
+      firstRows: [...document.querySelectorAll(".compact-thread-row")].slice(0, 3).map(el => el.outerHTML.slice(0, 220)),
+    }));
+    console.error("RENDERER_BOOT_DIAGNOSTIC", JSON.stringify({ initial, errors }));
+    throw failure;
+  }
   await page.waitForTimeout(500);
   assert.equal(await page.locator(".runtime-event").count(), 0, "a closed inspector must not construct 2,000 invisible events");
   const beforeNodes = await page.evaluate(() => document.querySelectorAll("*").length);
