@@ -46,6 +46,29 @@ async function freeze(page) {
 }
 const seek = (page, time) => page.evaluate((time) => window.__held.forEach((animation) => { animation.currentTime = time; }), time);
 
+/** The capsule's parts now: where the text is, the skin's box and the opacity of every layer of the shell. */
+const capsuleParts = (page) => page.evaluate(() => {
+  const ghost = document.querySelector(".send-flight-ghost");
+  const range = document.createRange();
+  range.selectNodeContents(ghost.querySelector(".send-flight-text .user-message"));
+  const text = range.getBoundingClientRect();
+  const part = (selector) => {
+    const node = ghost.querySelector(selector);
+    const rect = node.getBoundingClientRect();
+    return { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom, opacity: Number(getComputedStyle(node).opacity) };
+  };
+  return {
+    text: { left: text.left, right: text.right, top: text.top, bottom: text.bottom },
+    skin: part(".send-flight-skin:not(.send-flight-settle)"),
+    settle: part(".send-flight-settle"),
+    card: part(".send-flight-card"),
+    halo: part(".send-flight-halo"),
+    ring: part(".send-flight-ring"),
+    membrane: getComputedStyle(ghost.querySelector(".send-flight-membrane")).transform,
+    rotate: Number.parseFloat(getComputedStyle(ghost).rotate) || 0,
+  };
+});
+
 /** Where a glyph of the message is drawn in the layer: first or last character of the ghost's text. */
 const ghostGlyph = (page, which = "first") => page.evaluate((which) => {
   const root = document.querySelector(".send-flight-text .user-message");
@@ -90,7 +113,9 @@ try {
         entryAnimations: entry.getAnimations({ subtree: true }).map((animation) => animation.animationName).filter(Boolean),
         capsuleRow: capsule ? capsule.getBoundingClientRect().height : -1, capsuleOpacity: capsule ? Number(getComputedStyle(capsule).opacity) : -1,
         ghosts: document.querySelectorAll(".send-flight-ghost").length,
-        layers: [...document.querySelectorAll(".send-flight-ghost > .turn-block")].map((layer) => layer.className),
+        // The capsule: a shell (halo, skin, the skin's settled form, the bubble's own fill, the ring) and the text.
+        layers: [...document.querySelectorAll(".send-flight-ghost > *")].map((layer) => layer.className.replace(/ ?turn-block is-active ?/, "")),
+        shell: [...document.querySelectorAll(".send-flight-ghost > .send-flight-shell > .send-flight-membrane > *")].map((part) => part.className.replace(/ ?turn-block is-active ?/, "")),
         oldText: getComputedStyle(document.querySelector(".composer-mode-crossfade > .crossfade-out .composer textarea")).webkitTextFillColor,
       };
     });
@@ -102,7 +127,8 @@ try {
     assert.deepEqual(first.entryAnimations, [], "nothing animates on the held entry");
     assert.ok(first.capsuleRow > 12, `the capsule's row is already there (${first.capsuleRow})`);
     assert.equal(first.capsuleOpacity, 0, "the capsule waits for the message");
-    assert.deepEqual(first.layers.map((name) => name.includes("send-flight-text") ? "text" : "card"), ["text", "card"]);
+    assert.deepEqual(first.layers, ["send-flight-shell", "send-flight-text"], "the capsule is a shell and the text, in that order (the text on top)");
+    assert.deepEqual(first.shell, ["send-flight-halo", "send-flight-skin", "send-flight-skin send-flight-settle", "send-flight-card", "send-flight-ring"], "the shell's layers, back to front");
     assert.match(first.oldText, /0, 0, 0, 0|transparent/, "the composer that is going away does not show the text again");
 
     // At its first moment the text is on the field's text: same left edge, same line.
@@ -118,6 +144,34 @@ try {
     await seek(page, 200);
     const middle = await ghostGlyph(page);
     assert.ok(middle.left > start.left + 20 && middle.centre < start.centre - 20, "the text is on its way");
+
+    // The capsule: its shell is around the text the whole way (the text never leaves it), comes up at once, relaxes into
+    // the bubble's own fill on touchdown, and is gone (every part at rest) at the end.
+    const launched = (await events(page)).find((event) => event.phase === "launch");
+    assert.ok(launched.arrive > 300 && launched.arrive < 520, `it touches down in a fraction of a second (${launched.arrive} ms)`);
+    for (const time of [0, 30, 60, 100, 150, 200, 260, 320, launched.arrive - 30]) {
+      await seek(page, time);
+      await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+      const parts = await capsuleParts(page);
+      if (time > 0) {
+        const { text, skin } = parts;
+        // Inside with room to spare (a capsule has padding: the text does not touch its ends), not merely inside.
+        assert.ok(skin.left <= text.left - 8 && skin.right >= text.right + 8 && skin.top <= text.top - 3 && skin.bottom >= text.bottom + 3,
+          `at ${time} ms the text is inside the capsule's skin: text ${JSON.stringify(text)} skin ${JSON.stringify(skin)}`);
+      }
+      if (time === 0) assert.equal(parts.skin.opacity, 0, "the skin comes up from nothing, around the text");
+      if (time >= 60) assert.ok(parts.skin.opacity > 0.97, `the skin is there at ${time} ms (${parts.skin.opacity})`);
+      if (time <= 100) assert.equal(parts.card.opacity, 0, "the bubble's own fill waits for the touchdown");
+    }
+    await seek(page, launched.duration - 2);
+    await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    const rest = await capsuleParts(page);
+    // (Two milliseconds short of the end, a curve may still be a hair off its last value: invisible, and gone at the end.)
+    assert.deepEqual([rest.skin, rest.settle, rest.halo, rest.ring].map((layer) => layer.opacity < 0.02), [true, true, true, true], "at the end only the bubble's own fill is left");
+    assert.ok(rest.card.opacity > 0.999);
+    const matrix = rest.membrane === "none" ? [1, 0, 0, 1, 0, 0] : rest.membrane.match(/-?[\d.]+(?:e-?\d+)?/g).map(Number);
+    assert.ok([1, 0, 0, 1, 0, 0].every((value, index) => Math.abs(matrix[index] - value) < 1e-3), `the shell is not deformed at the end (${rest.membrane})`);
+    assert.ok(Math.abs(rest.rotate) < 0.01, "and not leaning");
     // The text never scales once it is on its way: the only scale is the type size meeting the field's.
     await page.evaluate(() => { window.setTimeout = window.__setTimeout; window.__held.forEach((animation) => animation.play()); });
     await landed(page);
@@ -236,6 +290,27 @@ try {
     const field = await page.evaluate(() => { const layer = document.querySelector(".send-flight-field"); return layer ? { text: layer.textContent, lineHeight: parseFloat(getComputedStyle(layer).lineHeight) } : null; });
     assert.ok(field, "the field's text is drawn again for a message that is laid out another way");
     assert.equal(field.text, lines.join("\n"));
+    // The capsule is around the text in both of its layouts: the field's own at first, the message's once it has gone
+    // over (the skin reshapes meanwhile), and the skin never lags behind the text it holds.
+    assert.ok(await freeze(page) >= 6);
+    const around = (time) => page.evaluate((time) => {
+      window.__held.forEach((animation) => { animation.currentTime = time; });
+      return new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => {
+        const ghost = document.querySelector(".send-flight-ghost");
+        const rect = (node) => { const range = document.createRange(); range.selectNodeContents(node); const box = range.getBoundingClientRect(); return { left: box.left, right: box.right, top: box.top, bottom: box.bottom }; };
+        const skin = ghost.querySelector(".send-flight-skin:not(.send-flight-settle)").getBoundingClientRect();
+        resolve({ skin: { left: skin.left, right: skin.right, top: skin.top, bottom: skin.bottom }, field: rect(ghost.querySelector(".send-flight-field")), text: rect(ghost.querySelector(".send-flight-text .user-message")),
+          fieldOpacity: Number(getComputedStyle(ghost.querySelector(".send-flight-field")).opacity) });
+      })));
+    }, time);
+    const holds = (skin, text, label) => assert.ok(skin.left <= text.left + 2 && skin.right >= text.right - 2 && skin.top <= text.top + 2 && skin.bottom >= text.bottom - 2, `${label}: ${JSON.stringify(skin)} holds ${JSON.stringify(text)}`);
+    const early = await around(8);
+    assert.ok(early.fieldOpacity > 0.9, "the field's own text is what is shown at first");
+    holds(early.skin, early.field, "at 8 ms the capsule is around the field's text");
+    const gone = await around(200);
+    assert.equal(gone.fieldOpacity, 0, "and the field's layout has given way by 200 ms");
+    holds(gone.skin, gone.text, "at 200 ms it is around the message's");
+    await page.evaluate(() => { window.__held.forEach((animation) => animation.play()); });
     await landed(page);
     assert.equal(await page.locator(".send-flight-ghost").count(), 0);
     assert.deepEqual(errors, []);

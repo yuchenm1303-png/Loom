@@ -47,6 +47,8 @@ try {
     requestAnimationFrame(loop);
   });
   await page.goto(`${origin}/scripts/fixtures/live-app.html?theme=${args.theme || "dark"}&lang=en${args.empty === "1" ? "&empty=1" : ""}&latency=${args.latency || 1200}`);
+  // --css "<rules>" injects style rules first (what does the flight cost without the halo? ".send-flight-halo{display:none}").
+  if (args.css) await page.addStyleTag({ content: args.css });
   await page.waitForSelector(".app-shell .composer textarea:not([disabled])", { timeout: 90000 });
   await page.waitForTimeout(1500);
   await page.locator(".composer textarea").click();
@@ -59,7 +61,7 @@ try {
 
   const t0 = rec.keydownAt;
   const rel = (t) => Math.round(t - t0);
-  console.log("events:", rec.events.map((e) => `${rel(e.t)}ms ${e.phase}${e.duration ? ` D=${e.duration} dx=${Math.round(e.dx)} dy=${Math.round(e.dy)} ratio=${e.ratio?.toFixed(3)}` : ""}${e.missX !== undefined ? ` miss=${e.missX.toFixed(1)},${e.missY.toFixed(1)}` : ""}${e.reason ? ` ${e.reason}` : ""}`).join(" | "));
+  console.log("events:", rec.events.map((e) => `${rel(e.t)}ms ${e.phase}${e.duration ? ` D=${e.duration} arrive=${e.arrive} dx=${Math.round(e.dx)} dy=${Math.round(e.dy)} ratio=${e.ratio?.toFixed(3)}` : ""}${e.missX !== undefined ? ` miss=${e.missX.toFixed(1)},${e.missY.toFixed(1)}` : ""}${e.reason ? ` ${e.reason}` : ""}`).join(" | "));
   const flying = rec.frames.filter((f) => f.ghost);
   console.log("ghost frames:", flying.length, flying.length ? `from ${rel(flying[0].t)} to ${rel(flying.at(-1).t)} ms` : "");
   let peak = 0, peakAt = 0;

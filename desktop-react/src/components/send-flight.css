@@ -1,13 +1,13 @@
-/* The message that leaves the field and lands in the conversation ------------------------------------------------
-   Owner: sendFlight.ts, which makes the layer, the two copies of the message and their animations; this file says
-   what they look like and what the real entry does meanwhile. Written up in docs/send-flight-2026-10-14.md.
+/* The message that leaves the field as a capsule and lands in the conversation ---------------------------------------
+   Owner: sendFlight.ts, which makes the layer, the capsule (the two copies of the message, the skin, the halo and the
+   ring) and its animations, and sendFlightMotion.ts, which has the physics; this file says what they look like and what
+   the real entry does meanwhile. Written up in docs/send-flight-2026-10-14.md and docs/send-capsule-2026-10-15.md.
 
    While a message is in the air its real entry is held back (data-flight="flying" on the entry: visibility, so it
-   keeps its place in the page and the page is already the size it will end as). The capsule that follows it holds
-   too (the turn is "flying": its row is there at once, its fade waits) and is let in as the message all but arrives
-   (the turn is "settling"; the ease has a long tail, so the message is where it will be well before the last pixel).
-   On landing the real entry shows (data-flight="landed" on both), its toolbar comes in and its edge catches the
-   light once.
+   keeps its place in the page and the page is already the size it will end as). The thinking capsule that follows it
+   holds too (the turn is "flying": its row is there at once, its fade waits) and is let in as the message touches
+   down (the turn is "settling"). When the capsule has settled the real entry shows (data-flight="landed" on both) and
+   its toolbar comes in: the touchdown itself (the squash, the ripple) is the flight's, before that.
 
    The entry's own entrance (generation-motion.css: the rise and the unfold of `.is-sending`, and the same for guidance
    inside the live process) is switched off while the flight owns the message, whatever the entry sits in: the
@@ -29,9 +29,27 @@
   user-select: none;
 }
 
-/* The two copies sit on top of each other in one cell: what moves is the pair. */
+/* The capsule is two things on top of each other, and what moves is the pair:
+     shell   the part around the text. Its first wrapper is where the capsule starts (around the field's text, then
+             growing into the bubble), the second (the membrane) is the elastic one that lengthens and squashes.
+     text    the message without its card.
+   Both cover the same box as the entry they were copied from. */
+.send-flight-shell,
+.send-flight-membrane {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
 :root .send-flight-ghost > .turn-block {
   grid-area: 1 / 1;
+  width: 100%;
+  min-width: 0;
+  margin: 0;
+}
+:root .send-flight-membrane > .turn-block {
+  position: absolute;
+  left: 0;
+  top: 0;
   width: 100%;
   min-width: 0;
   margin: 0;
@@ -49,6 +67,50 @@
 }
 .send-flight-card .user-message * {
   visibility: hidden !important;
+}
+
+/* The skin is the composer's material cut into a pill: its own fill, its hairline, a trace of the accent in the rim and
+   in the fill, and a light along the top edge. It is what makes the message an object in the air; on arrival it gives
+   way to the card, the bubble's own quiet fill. Shape and size are set in sendFlight.ts (the radius is a full pill for
+   one line); the opacity and the rest are the flight's. */
+.send-flight-skin,
+.send-flight-halo,
+.send-flight-ring {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+.send-flight-skin {
+  background: color-mix(in srgb, var(--accent) 7%, var(--loom-workspace-panel));
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--accent) 30%, var(--loom-workspace-line)),
+    inset 0 1px 0 rgba(255, 255, 255, .07);
+}
+/* Its shadow (lifted: it is in the air) and the faintest bloom of the accent, and the ring (light that spreads off the
+   bubble once as the capsule touches down): gradients in a round box that is larger than the capsule, so that what shows
+   around it is the soft end of a falloff. An ellipse under a wide object that floats is what a contact shadow looks
+   like, which a blurred pill-shaped box-shadow was not (it read as a second plate under the capsule in the light theme). */
+.send-flight-halo {
+  background:
+    radial-gradient(closest-side, color-mix(in srgb, var(--accent) 16%, transparent), transparent),
+    radial-gradient(closest-side, rgba(0, 0, 0, .42), rgba(0, 0, 0, .18) 52%, transparent);
+}
+.send-flight-ring {
+  background: radial-gradient(closest-side, color-mix(in srgb, var(--accent) 30%, transparent), color-mix(in srgb, var(--accent) 10%, transparent) 62%, transparent);
+}
+:root[data-loom-theme="light"] .send-flight-skin {
+  background: color-mix(in srgb, var(--accent) 5%, var(--loom-workspace-panel));
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--accent) 24%, var(--loom-workspace-line)),
+    inset 0 1px 0 rgba(255, 255, 255, .9);
+}
+:root[data-loom-theme="light"] .send-flight-halo {
+  background:
+    radial-gradient(closest-side, color-mix(in srgb, var(--accent) 9%, transparent), transparent),
+    radial-gradient(closest-side, rgba(32, 42, 58, .25), rgba(32, 42, 58, .1) 52%, transparent);
+}
+:root[data-loom-theme="light"] .send-flight-ring {
+  background: radial-gradient(closest-side, color-mix(in srgb, var(--accent) 22%, transparent), color-mix(in srgb, var(--accent) 8%, transparent) 62%, transparent);
 }
 
 /* The real entry while its message is in the air. */
@@ -105,54 +167,21 @@
   --thinking-lead: var(--flight-lead, 300ms);
 }
 
-/* Landing: the toolbar arrives, and the edge catches the light once. */
+/* Landing: the toolbar arrives. (The touchdown itself, the squash and the ripple, is the flight's: it is over by now.) */
 :root .app-shell .transcript-entry.entry-user_message[data-flight="landed"] .user-message-meta {
   animation: loom-flight-meta 300ms cubic-bezier(.2, .8, .2, 1) backwards;
-}
-:root .app-shell .transcript-entry.entry-user_message[data-flight="landed"] .user-message {
-  position: relative;
-  isolation: isolate;
-}
-:root .app-shell .transcript-entry.entry-user_message[data-flight="landed"] .user-message::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  z-index: 0;
-  border-radius: inherit;
-  pointer-events: none;
-  opacity: 0;
-  box-shadow:
-    inset -1px -1px 0 rgba(162, 149, 244, .16),
-    0 0 14px rgba(108, 92, 220, .06);
-  animation: loom-flight-edge 560ms ease-out both;
-}
-:root[data-loom-theme="light"] .app-shell .transcript-entry.entry-user_message[data-flight="landed"] .user-message::before {
-  box-shadow:
-    inset -1px -1px 0 rgba(105, 90, 216, .12),
-    0 0 12px rgba(105, 90, 216, .04);
-}
-:root .app-shell .transcript-entry.entry-user_message[data-flight="landed"] .user-message > * {
-  position: relative;
-  z-index: 1;
 }
 
 @keyframes loom-flight-meta {
   from { opacity: 0; translate: 0 3px; }
   to { opacity: .78; translate: 0 0; }
 }
-@keyframes loom-flight-edge {
-  0%, 100% { opacity: 0; }
-  26% { opacity: .75; }
-  68% { opacity: .24; }
-}
 
 @media (prefers-reduced-motion: reduce) {
   .send-flight-layer { display: none; }
-  :root .app-shell .transcript-entry.entry-user_message[data-flight="landed"] .user-message-meta,
-  :root .app-shell .transcript-entry.entry-user_message[data-flight="landed"] .user-message::before { animation: none !important; }
+  :root .app-shell .transcript-entry.entry-user_message[data-flight="landed"] .user-message-meta { animation: none !important; }
 }
 :root[data-loom-reduced-motion="true"] .send-flight-layer { display: none; }
-:root[data-loom-reduced-motion="true"] .app-shell .transcript-entry.entry-user_message[data-flight="landed"] .user-message-meta,
-:root[data-loom-reduced-motion="true"] .app-shell .transcript-entry.entry-user_message[data-flight="landed"] .user-message::before {
+:root[data-loom-reduced-motion="true"] .app-shell .transcript-entry.entry-user_message[data-flight="landed"] .user-message-meta {
   animation: none !important;
 }

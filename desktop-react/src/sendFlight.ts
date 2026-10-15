@@ -1,24 +1,31 @@
 /**
- * The message that leaves the field and lands in the conversation.
+ * The message that leaves the field as a capsule and lands in the conversation.
  *
  * Sending used to swap two unrelated pictures: the text vanished from the field and a bubble appeared in the
- * transcript. Here the text itself makes the trip. The composer records where the text was drawn when Enter is
- * pressed (`recordSendOrigin`, before the field is cleared); the entry that the transcript then mounts for the
- * message asks for the flight (`launchSendFlight`, in its layout effect, before anything is painted). The real entry
- * is held back (`data-flight="flying"`) while two copies of it travel in a layer above the page:
+ * transcript. Here the message itself makes the trip, and it travels as a capsule: the text, and around it a soft
+ * shell made of the composer's own material that comes out of the field with it. The composer records where the text
+ * was drawn when Enter is pressed (`recordSendOrigin`, before the field is cleared); the entry that the transcript then
+ * mounts for the message asks for the flight (`launchSendFlight`, in its layout effect, before anything is painted).
+ * The real entry is held back (`data-flight="flying"`) while the capsule travels in a layer above the page:
  *
  *   text  the message's own content, no card. It starts exactly where the field's text was (same left edge, same line
  *         centre, a touch larger because the field is set larger than a bubble) and travels to where the bubble will
  *         be: the place it will have once the page has made room, which is known at mount (the transcript follows to
- *         its end). It only translates; the one scale it has (from the field's type size to the bubble's) is over
- *         before the text has gone far.
- *   card  the bubble's box (border, fill, shadow) with the content hidden: it comes up around the text and settles
- *         with a small spring. It carries no glyphs, so it may scale.
+ *         its end). It only translates (and leans a little into the climb); the one scale it has (from the field's
+ *         type size to the bubble's) is over before the text has gone far. Glyphs are never squashed.
+ *   shell the capsule around the text, in layers that all start at the text and go with it. The skin is the
+ *         composer's material (its fill, its hairline, a trace of the accent) in a full pill; it is what makes the
+ *         message an object in the air. The halo is its shadow: it trails the capsule by its speed and is lifted
+ *         from the page while it flies. On arrival the skin relaxes in two steps: first its shape (the same material
+ *         in the bubble's own corners: the settle), then its material (the card, the real bubble's own quiet fill),
+ *         and the ring is the light that spreads off the bubble as it touches down. The shell is the elastic part: it
+ *         lengthens as the capsule leaves and squashes as it arrives (sendFlightMotion.ts has the physics), and it
+ *         carries no glyphs, so it may be distorted.
  *
- * Both are made with `cloneNode` of the real entry, so whatever a message holds (rich text, links, attachments) is
- * drawn as the entry will draw it, in both themes, and the hand-off at the end is the same pixels. Everything that
- * moves is a transform or opacity on the compositor: a busy main thread (the React commit that mounts the turn, the
- * thread list updating) does not make the flight stutter.
+ * Text and card are made with `cloneNode` of the real entry, so whatever a message holds (rich text, links,
+ * attachments) is drawn as the entry will draw it, in both themes, and the hand-off at the end is the same pixels.
+ * Everything that moves is a transform or opacity on the compositor: a busy main thread (the React commit that mounts
+ * the turn, the thread list updating) does not make the flight stutter.
  *
  * A message from the home screen has a second part: the page it leaves (the starter cards, the activity card) is
  * copied at the moment of sending and dissolves in the layer while the message travels, instead of vanishing in one
@@ -33,6 +40,7 @@
  * `launchSendFlight` answers false and the entry makes its ordinary entrance.
  */
 import { prefersReducedMotionNow } from "./motion/useReducedMotion";
+import { capsuleMotion } from "./sendFlightMotion";
 
 /** Who is sending: the composer that starts a turn, or the one that steers a running turn. */
 export type SendKind = "send" | "steer";
@@ -79,33 +87,29 @@ const ORIGIN_TTL_MS = 900;
 /** A message taller than this share of the transcript's viewport (or this many px) does not fly: it would cover the page for the trip. */
 const MAX_FLIGHT_HEIGHT_SHARE = 0.82;
 const MAX_FLIGHT_HEIGHT_PX = 520;
-const FLIGHT_BASE_MS = 330;
-const FLIGHT_MIN_MS = 380;
-const FLIGHT_MAX_MS = 540;
-const FLIGHT_MS_PER_PX = 0.18;
-/** The capsule that follows the message is let in at this share of the flight: by then the message has all but arrived. */
-const CAPSULE_RELEASE = 0.8;
-/** The card is up when the text is this far on its way, and settles by the time it lands. */
-const CARD_DELAY = 0.16;
-const CARD_RISE = 0.5;
+/** The thinking capsule that follows the message is let in at this share of the time the message takes to arrive. */
+const CAPSULE_RELEASE = 0.86;
 /** Within this the real entry is where the flight meant to land, and nothing needs correcting. */
 const LANDING_TOLERANCE_PX = 1.5;
 const LANDING_CORRECTION_MS = 110;
 /** The field's own text is exchanged for the message's layout over this share of the flight. */
-const FIELD_FADE = 0.22;
+const FIELD_FADE = 0.13;
 /** The home screen takes this long to go. */
 const HOME_DISSOLVE_MS = 260;
 /** `data-flight="landed"` outlives the landing by this long, so the entrance it starts can finish. */
 const LANDED_MARK_MS = 900;
+/** The capsule is a full pill up to this radius; a taller message gets a soft card instead of a stadium. */
+const CAPSULE_MAX_RADIUS_PX = 22;
+/** How far the shadow and the light of the touchdown reach beyond the capsule (px, sideways and up/down). */
+const HALO_GROW_PX: [number, number] = [34, 26];
+const RING_GROW_PX: [number, number] = [30, 24];
 
-// Heading for the transcript. It leaves the field softly (a lift, not a shot), is fastest about a third of the way,
-// and has a long, soft arrival. The two axes do not share a curve, so the path bends: the text rises first and swings
-// into its place on the right (about a tenth of the way off the straight line).
-const EASE_RISE = "cubic-bezier(.28, 0, .2, 1)";
-const EASE_SLIDE = "cubic-bezier(.48, 0, .25, 1)";
+/** The type size meets the bubble's over this share of the time to arrive; it is over before the capsule has gone far. */
+const SCALE_SETTLE_SHARE = 0.5;
 const EASE_SETTLE = "cubic-bezier(.2, .8, .2, 1)";
-/** Damped spring sampled into linear(): about 6% over, back to rest at the end. For the card only. */
-const SPRING_CARD = "linear(0, .09, .3, .53, .73, .88, .98, 1.04, 1.06, 1.055, 1.04, 1.025, 1.012, 1.004, 1, 0.999, 1)";
+const EASE_RESHAPE = "cubic-bezier(.42, 0, .22, 1)";
+/** The two layouts of a message trade places on one curve, so that where one has gone the other has come (their opacities add up to one). */
+const EASE_CROSS = "cubic-bezier(.4, 0, .6, 1)";
 
 let origin: SendOrigin | null = null;
 const flights = new WeakMap<HTMLElement, Flight>();
@@ -366,51 +370,120 @@ export function launchSendFlight(entry: HTMLElement, kind: SendKind = "send"): b
   const dy = start.y - glyphCentre;
   const distance = Math.hypot(dx, dy);
   if (distance < 24) return abort("already in place");
-  const duration = Math.round(Math.min(FLIGHT_MAX_MS, Math.max(FLIGHT_MIN_MS, FLIGHT_BASE_MS + distance * FLIGHT_MS_PER_PX)));
+  const motion = capsuleMotion({ dx, dy, width: bubbleBox.width, height: bubbleBox.height });
+  const duration = motion.duration;
   // Meet the field's text: by width when both are one line (so the line ends where the field's did), else by type size.
   const bubbleFont = parseFloat(getComputedStyle(bubble).fontSize) || 14;
   const lastGlyph = start.textWidth && glyphBox(bubble, "last");
   const oneLine = lastGlyph && bubbleBox.height < bubbleFont * 3.2 && lastGlyph.right > glyph.left;
   const ratio = start.fontSize ? Math.min(1.12, Math.max(0.92, oneLine ? start.textWidth / (lastGlyph.right - glyph.left) : start.fontSize / bubbleFont)) : 1;
 
+  // The capsule. Everything below is positioned in the ghost's own box (the entry's), which rests where the entry will.
+  const bubbleLeft = bubbleBox.left - entryBox.left;
+  const bubbleTop = bubbleBox.top - entryBox.top;
+  const bubbleCentre = { x: bubbleLeft + bubbleBox.width / 2, y: bubbleTop + bubbleBox.height / 2 };
+  const firstGlyph = { x: glyph.left - entryBox.left, y: glyph.centre - entryBox.top };
   const ghost = document.createElement("div");
   ghost.className = "send-flight-ghost";
   ghost.style.left = `${entryBox.left}px`;
   ghost.style.top = `${finalTop}px`;
   ghost.style.width = `${entryBox.width}px`;
+  ghost.style.transformOrigin = `${bubbleCentre.x}px ${bubbleCentre.y}px`;
   const text = copyEntry(entry, "text");
   const card = copyEntry(entry, "card");
   // The scale that meets the field's type size turns about the first glyph, so that glyph stays where it was.
-  text.style.transformOrigin = `${glyph.left - entryBox.left}px ${glyph.centre - entryBox.top}px`;
-  card.style.transformOrigin = `${bubbleBox.left + bubbleBox.width / 2 - entryBox.left}px ${bubbleBox.top + bubbleBox.height / 2 - entryBox.top}px`;
-  ghost.append(text, card);
+  text.style.transformOrigin = `${firstGlyph.x}px ${firstGlyph.y}px`;
+  const place = (className: string, radius: string, grow: [number, number] = [0, 0]): HTMLElement => {
+    const node = document.createElement("div");
+    node.className = className;
+    Object.assign(node.style, {
+      left: `${bubbleLeft - grow[0]}px`, top: `${bubbleTop - grow[1]}px`,
+      width: `${bubbleBox.width + 2 * grow[0]}px`, height: `${bubbleBox.height + 2 * grow[1]}px`,
+      borderRadius: radius,
+    });
+    return node;
+  };
+  const pill = `${Math.min(bubbleBox.height / 2, CAPSULE_MAX_RADIUS_PX)}px`;
+  const corners = getComputedStyle(bubble).borderRadius || "10px";
+  // The shadow and the light are round, and larger than the capsule they surround (their gradients fall off to nothing
+  // at the edge of the box): see send-flight.css.
+  const halo = place("send-flight-halo", "50%", HALO_GROW_PX);
+  const skin = place("send-flight-skin", pill);
+  // The same material in the bubble's own corners: the pill gives way to it as the capsule touches down.
+  const settle = place("send-flight-skin send-flight-settle", corners);
+  const ring = place("send-flight-ring", "50%", RING_GROW_PX);
+  // The shell holds them and the card. The outer wrapper is where the capsule starts (around the field's text: its
+  // scale and its place); the inner one (the membrane) is the elastic part (about the capsule's own centre).
+  const shell = document.createElement("div");
+  shell.className = "send-flight-shell";
+  const membrane = document.createElement("div");
+  membrane.className = "send-flight-membrane";
+  membrane.style.transformOrigin = `${bubbleCentre.x}px ${bubbleCentre.y}px`;
+  membrane.append(halo, skin, settle, card, ring);
+  shell.append(membrane);
+  ghost.append(shell, text);
   // A message that will not be laid out the way the field had it (it wraps at another width, a list is drawn as a
   // list) starts as the field's own text, drawn again exactly as the field drew it, and changes into the message's
   // layout while it is on its way: the first frame is the field, with no jump in the middle of a paragraph.
-  const fieldLayer = start.field && !oneLine && !start.fromBottom && start.field.text ? drawFieldText(start.field, glyph.left - entryBox.left, glyph.centre - entryBox.top) : null;
+  const fieldLayer = start.field && !oneLine && !start.fromBottom && start.field.text ? drawFieldText(start.field, firstGlyph.x, firstGlyph.y) : null;
   if (fieldLayer) ghost.append(fieldLayer);
   if (start.home) dissolveHome(layer, start.home);
   layer.append(ghost);
 
-  const options = (easing: string, extra: KeyframeAnimationOptions = {}): KeyframeAnimationOptions => ({ duration, easing, fill: "backwards", ...extra });
+  // Where the capsule is at the first frame, as a map from the bubble's box: scaled about `origin`, then moved. It
+  // hugs the text the field had (a message of one line: the bubble at the field's type size; a message that is laid
+  // out another way: the field's own text block with the bubble's padding), and reshapes into the bubble while the
+  // text goes into the message's layout.
+  let hug = { scale: [ratio, ratio], translate: [0, 0], origin: firstGlyph };
+  if (fieldLayer) {
+    const range = document.createRange();
+    range.selectNodeContents(fieldLayer);
+    const block = range.getBoundingClientRect();
+    if (block.width > 4 && block.height > 4) {
+      const style = getComputedStyle(bubble);
+      const padX = ((parseFloat(style.paddingLeft) || 0) + (parseFloat(style.borderLeftWidth) || 0)) * ratio;
+      const padY = ((parseFloat(style.paddingTop) || 0) + (parseFloat(style.borderTopWidth) || 0)) * ratio;
+      const grown = (value: number): number => Math.min(1.6, Math.max(0.55, value));
+      hug = {
+        scale: [grown((block.width + 2 * padX) / bubbleBox.width), grown((block.height + 2 * padY) / bubbleBox.height)],
+        translate: [block.left - entryBox.left - padX - bubbleLeft, block.top - finalTop - padY - bubbleTop],
+        origin: { x: bubbleLeft, y: bubbleTop },
+      };
+    }
+  }
+  shell.style.transformOrigin = `${hug.origin.x}px ${hug.origin.y}px`;
+
+  const timing = (extra: KeyframeAnimationOptions = {}): KeyframeAnimationOptions => ({ duration, easing: "linear", fill: "both", ...extra });
+  const settleMs = Math.round(motion.arrive * SCALE_SETTLE_SHARE);
+  const meetType = Math.abs(ratio - 1) > 0.004;
+  const reshapes = hug.scale.some((value) => Math.abs(value - 1) > 0.004) || hug.translate.some((value) => Math.abs(value) > 0.5);
   const animations = [
-    ghost.animate([{ translate: `${dx}px 0px` }, { translate: "0px 0px" }], options(EASE_SLIDE)),
-    ghost.animate([{ transform: `translateY(${dy}px)` }, { transform: "translateY(0px)" }], options(EASE_RISE)),
-    ...(Math.abs(ratio - 1) > 0.004
-      ? [text.animate([{ scale: String(ratio) }, { scale: "1" }], options(EASE_SETTLE, { duration: Math.round(duration * 0.42) }))]
-      : []),
-    ...(start.fade ? [text.animate([{ opacity: 0 }, { opacity: 1 }], options("ease-out", { duration: duration * FIELD_FADE * 1.4, fill: "both" }))] : []),
+    ghost.animate(motion.path, timing()),
+    ghost.animate(motion.lean, timing()),
+    membrane.animate(motion.shell, timing()),
+    skin.animate(motion.skin, timing()),
+    skin.animate(motion.pop, timing()),
+    settle.animate(motion.settle, timing()),
+    card.animate(motion.card, timing()),
+    halo.animate(motion.halo, timing()),
+    ring.animate(motion.ring, timing()),
+    ...(meetType ? [text.animate([{ scale: String(ratio) }, { scale: "1" }], timing({ easing: EASE_SETTLE, duration: settleMs }))] : []),
+    // Reshaping goes with the text changing layout (the same moment, and an ease that is slow at both ends), so that
+    // the capsule is around the text in both of its layouts and not around only one of them.
+    ...(reshapes ? [shell.animate(
+      [{ scale: `${hug.scale[0]} ${hug.scale[1]}`, translate: `${hug.translate[0]}px ${hug.translate[1]}px` }, { scale: "1 1", translate: "0px 0px" }],
+      fieldLayer ? timing({ easing: EASE_RESHAPE, duration: Math.round(duration * FIELD_FADE * 1.6) }) : timing({ easing: EASE_SETTLE, duration: settleMs }),
+    )] : []),
+    ...(start.fade ? [text.animate([{ opacity: 0 }, { opacity: 1 }], timing({ easing: "ease-out", duration: duration * FIELD_FADE * 1.4 }))] : []),
     ...(fieldLayer ? [
-      fieldLayer.animate([{ opacity: 1 }, { opacity: 0 }], options("ease-in", { duration: duration * FIELD_FADE, fill: "both" })),
-      text.animate([{ opacity: 0 }, { opacity: 1 }], options("ease-out", { duration: duration * FIELD_FADE, fill: "both" })),
+      fieldLayer.animate([{ opacity: 1 }, { opacity: 0 }], timing({ easing: EASE_CROSS, duration: duration * FIELD_FADE })),
+      text.animate([{ opacity: 0 }, { opacity: 1 }], timing({ easing: EASE_CROSS, duration: duration * FIELD_FADE })),
     ] : []),
-    card.animate([{ opacity: 0 }, { opacity: 1 }], options("cubic-bezier(.3, .6, .3, 1)", { delay: duration * CARD_DELAY, duration: duration * CARD_RISE, fill: "both" })),
-    card.animate([{ scale: "0.9" }, { scale: "1" }], options(SPRING_CARD, { delay: duration * CARD_DELAY, duration: duration * (1 - CARD_DELAY), fill: "both" })),
   ];
-  const release = Math.round(duration * CAPSULE_RELEASE);
+  const release = Math.round(motion.arrive * CAPSULE_RELEASE);
   turn.style.setProperty("--flight-lead", `${Math.max(0, release - 70)}ms`);
   const releaseTimer = window.setTimeout(() => { if (turn.dataset.flight === "flying") turn.dataset.flight = "settling"; }, release);
-  emit("launch", { duration, dx, dy, ratio, pageHeight: scroller.scrollHeight });
+  emit("launch", { duration, arrive: motion.arrive, dx, dy, ratio, pageHeight: scroller.scrollHeight });
 
   let finished = false;
   let correction: Animation | null = null;
