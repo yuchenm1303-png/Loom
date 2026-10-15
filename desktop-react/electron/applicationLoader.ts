@@ -32,7 +32,7 @@ export async function selectApplication(installed: string, hostRoot: string, isH
   // Desktop children follow the *running* Host or last active build, never a
   // not-yet-authorized ready build.
   const canActivateReady = isHost && pointer.ready && pointer.ready !== pointer.active
-    ? await mayReceiveUpdates()
+    ? await mayReceiveUpdates(1200)
     : true;
   const candidate = session ? session.build
     : isHost && canActivateReady ? pointer.ready || pointer.active || 0 : pointer.active || 0;
