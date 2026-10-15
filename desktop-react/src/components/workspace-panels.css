@@ -592,3 +592,47 @@ html[data-loom-reduced-motion="true"]::view-transition-new(loom-project-surface)
   animation-duration: .001ms !important;
   animation-delay: 0ms !important;
 }
+
+
+/* Compact workspace tool rail is an actual final grid track, not a pointer-
+   stealing overlay. It remains clear of native WebContentsView bounds. */
+:root { --loom-tool-rail-track: 62px; }
+.app-shell.workspace-panels {
+  --loom-tool-rail-track: 62px;
+  grid-template-columns:
+    var(--loom-sidebar-track) minmax(0, 1fr) var(--loom-inspector-track)
+    var(--loom-tool-rail-track);
+}
+.workspace-panels > .workspace { grid-column: 2; }
+.workspace-panels > .inspector { grid-column: 3; }
+.workspace-panels > .loom-tool-rail { grid-column: 4; grid-row: 1; }
+.workspace-panels .workspace-panel-resizer-right {
+  right: calc(var(--loom-inspector-track) + var(--loom-tool-rail-track));
+}
+/* Review/artifact/subagent/project docks render as absolute/fixed right-side
+   surfaces. Leave the real rail track free so controls never cover their UI. */
+.review-workspace,
+.sub-agent-dock,
+.artifact-preview-dock,
+.project-details-panel {
+  right: var(--loom-tool-rail-track, 62px) !important;
+}
+@media (max-width: 800px) {
+  :root, .app-shell.workspace-panels { --loom-tool-rail-track: 55px; }
+}
+
+/* The background task palette is fixed (z-index 2100) rather than a regular
+   right-side surface, so it must also clear the permanently visible tool rail. */
+.background-task-panel {
+  right: calc(var(--loom-tool-rail-track, 62px) + 12px);
+  max-width: calc(100vw - var(--loom-tool-rail-track, 62px) - 24px);
+}
+.background-task-panel.is-expanded {
+  max-width: calc(100vw - var(--loom-tool-rail-track, 62px) - 24px);
+}
+@media (max-width: 650px) {
+  .background-task-panel {
+    right: calc(var(--loom-tool-rail-track, 55px) + 8px);
+    width: calc(100vw - var(--loom-tool-rail-track, 55px) - 16px);
+  }
+}

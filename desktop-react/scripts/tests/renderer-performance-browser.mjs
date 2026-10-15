@@ -57,7 +57,7 @@ try {
   await page.waitForFunction(() => !document.querySelector(".wv-row"));
   const visitedNodes = await page.evaluate(() => document.querySelectorAll("*").length);
   assert.ok(visitedNodes <= beforeNodes + 50, `folded visited history retained DOM: ${beforeNodes} -> ${visitedNodes}`);
-  const inspector = page.locator(".thread-inspector-button");
+  const inspector = page.locator(".loom-tool-dock [data-tool-id=\"inspector\"]");
   await inspector.click();
   await page.locator(".runtime-event").first().waitFor();
   assert.ok(await page.locator(".runtime-event").count() < 64, "2,000 events must use a bounded viewport");
