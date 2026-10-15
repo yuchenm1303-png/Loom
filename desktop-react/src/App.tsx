@@ -30,6 +30,7 @@ import { SettingsPage } from "./components/SettingsPage";
 import { Sidebar } from "./components/Sidebar";
 import { SubAgentDock } from "./components/SubAgentDock";
 import { ThreadHeader } from "./components/ThreadHeader";
+import { BackgroundTaskPanel } from "./components/BackgroundTaskPanel";
 import { Transcript } from "./components/Transcript";
 import { useLeavingItems } from "./components/leavingItems";
 import { TranscriptScrollController } from "./components/TranscriptScrollController";
@@ -431,6 +432,8 @@ export default function App() {
     return () => window.removeEventListener("loom:open-profile", openProfile);
   }, []);
   const [reviewOpen, setReviewOpen] = useState(false);
+  const [backgroundTasksOpen, setBackgroundTasksOpen] = useState(false);
+  const [backgroundRunningCount, setBackgroundRunningCount] = useState(0);
   const [agentsOpen, setAgentsOpen] = useState(false);
   const [artifactPreview, setArtifactPreview] = useState<{ path: string; workspace: string } | null>(null);
   const autoOpenedAgentsForThreadRef = useRef("");
@@ -1312,6 +1315,8 @@ export default function App() {
           artifactCount={threadSwitching ? 0 : artifactCount}
           agentsOpen={agentsOpen}
           agentCount={threadSwitching ? 0 : agentCount}
+          backgroundOpen={backgroundTasksOpen}
+          backgroundRunningCount={backgroundRunningCount}
           accountAuthenticated={account.account.authenticated}
           accountLabel={account.account.user?.display_name?.trim() || account.account.user?.email || ""}
           accountAvatar={account.account.user?.avatar_data_url || ""}
@@ -1336,6 +1341,15 @@ export default function App() {
           onToggleReview={toggleReview}
           onToggleArtifacts={toggleArtifacts}
           onToggleAgents={toggleAgents}
+          onToggleBackground={() => setBackgroundTasksOpen(open => !open)}
+        />
+
+        <BackgroundTaskPanel
+          workspace={selectedThread?.workspace || workspace}
+          connected={loom.connection === "ready"}
+          open={backgroundTasksOpen && !settingsOpen && !profileOpen && !accountOpen}
+          onClose={() => setBackgroundTasksOpen(false)}
+          onRunningCount={setBackgroundRunningCount}
         />
 
         <div className={`conversation-stage ${running ? "is-running" : ""}`} inert={threadSwitching}>
