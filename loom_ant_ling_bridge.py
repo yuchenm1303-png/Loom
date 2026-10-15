@@ -76,7 +76,8 @@ def _profile(model: str, *, reasoning_store: ReasoningConfigStore) -> dict[str, 
     payload["vision"] = evidence["supported"]
     payload["imageInput"] = evidence
     payload["reasoning"] = {**capability, "value": selected.value} if capability is not None and selected is not None else None
-    return payload
+    from loom_builtin_models import account_builtin_profile
+    return account_builtin_profile(payload)
 
 def _registry() -> dict[str, Any]:
     home = _home(); reasoning_store = ReasoningConfigStore(home); selection_store = ModelSelectionStore(home)

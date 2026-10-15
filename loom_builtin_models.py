@@ -1,7 +1,7 @@
 """Account-owned built-ins share one credential-free desktop launch contract."""
 import os
 from services.loom_model_policy.catalog import group_for_selection
-from services.loom_model_gateway.routes import gateway_base_url
+from services.loom_model_gateway.routes import PROVIDERS, gateway_base_url
 
 
 def account_builtin_profile(profile: dict, environ=None) -> dict:
@@ -10,7 +10,8 @@ def account_builtin_profile(profile: dict, environ=None) -> dict:
         return profile
     return {**profile, "baseUrl": gateway_base_url(group, os.environ if environ is None else environ),
         "adapter": "opencode-go" if group == "opencode-go" else "openai-compatible",
-        "authMode": "loom-account", "configured": True, "managed": True}
+        "authMode": "loom-account", "configured": True, "managed": True,
+        "personalConnection": {"adapter": "openai-compatible", "baseUrl": PROVIDERS[group][0]}}
 
 
 def is_account_builtin(selection: str) -> bool:

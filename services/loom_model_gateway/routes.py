@@ -1,5 +1,5 @@
 """Shared built-in routes. Upstream credentials are resolved only by the server."""
-from urllib.parse import urlparse
+from urllib.parse import urlparse, unquote
 
 PROVIDERS = {
     "intern": ("https://discovery-api.intern-ai.org.cn/v1", ("LOOM_INTERN_API_KEY",), ("LOOM_INTERN_BASE_URL",)),
@@ -23,6 +23,25 @@ def gateway_base_url(group_id: str, environ) -> str:
     if (parsed.scheme != "https" and not (parsed.scheme == "http" and parsed.hostname in {"127.0.0.1", "localhost", "::1"})) or not parsed.netloc or parsed.username or parsed.password or parsed.query or parsed.fragment:
         raise ValueError("Loom model gateway must use HTTPS or loopback HTTP without URL credentials")
     return base + gateway_path(group_id)
+
+
+def reject_personal_gateway_url(base_url: str, environ) -> None:
+    """A provider key must never be sent to the account-authenticated gateway."""
+    candidate = urlparse(base_url.strip())
+    def authority(parsed):
+        port = parsed.port
+        if port == {"http": 80, "https": 443}.get(parsed.scheme):
+            port = None
+        return parsed.hostname, port
+    for base in {gateway_base_url("ant-ling", {}), gateway_base_url("ant-ling", environ)}:
+        gateway = urlparse(base)
+        path = unquote(candidate.path).rstrip("/")
+        root = gateway.path.rstrip("/")
+        if authority(candidate) == authority(gateway) and (path == root or path.startswith(root + "/")):
+            raise ValueError(
+                "This is a Loom account gateway, not a personal API endpoint. "
+                "Select the built-in model to use your Loom account, or enter your provider's API Base URL for a personal key."
+            )
 
 
 def request_route(path: str) -> tuple[str, str]:

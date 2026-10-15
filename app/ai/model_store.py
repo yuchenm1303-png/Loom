@@ -274,6 +274,8 @@ class ModelConfigStore:
             raise ValueError("connection name must not be empty")
         if not api_key:
             raise ValueError("API key must not be empty")
+        from services.loom_model_gateway.routes import reject_personal_gateway_url
+        reject_personal_gateway_url(base_url, os.environ)
         if any(entry.display_name.casefold() == display_name.casefold() for entry in self.list_models()):
             raise ValueError(f"a model connection named {display_name!r} already exists")
 
@@ -315,6 +317,8 @@ class ModelConfigStore:
         a non-empty key replaces it only after all metadata validation succeeds.
         """
         current = self.get(model_id)
+        from services.loom_model_gateway.routes import reject_personal_gateway_url
+        reject_personal_gateway_url(base_url, os.environ)
         display_name = " ".join(str(display_name or "").split())
         if not display_name:
             raise ValueError("connection name must not be empty")
@@ -386,6 +390,8 @@ class ModelConfigStore:
     def secret_for(self, entry: StoredModel) -> str:
         if not isinstance(entry, StoredModel):
             raise TypeError("entry must be StoredModel")
+        from services.loom_model_gateway.routes import reject_personal_gateway_url
+        reject_personal_gateway_url(entry.base_url, os.environ)
         value = self._get_secret(entry.credential_alias)
         secret = str(value or "").strip()
         if not secret:

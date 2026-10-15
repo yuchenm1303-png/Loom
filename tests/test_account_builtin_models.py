@@ -31,6 +31,7 @@ def test_clean_desktop_resolves_builtins_without_any_provider_key(tmp_path, monk
     assert spec["baseUrl"] == gateway_base_url(group, {})
     assert spec["provider"] == ("opencode-go" if group == "opencode-go" else "openai-compatible")
     assert spec["model"] == model
+    assert spec["personalConnection"] == {"adapter": "openai-compatible", "baseUrl": PROVIDERS[group][0]}
 
 
 def test_fresh_catalog_does_not_discover_or_fetch_keys_on_client(tmp_path, monkeypatch):

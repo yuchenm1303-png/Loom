@@ -19,6 +19,7 @@ export interface ModelReasoningState {
 }
 
 export interface ModelProfile {
+  personalConnection?: { adapter: "openai" | "openai-compatible"; baseUrl: string };
   selection: string;
   id: string;
   kind: "builtin" | "saved";

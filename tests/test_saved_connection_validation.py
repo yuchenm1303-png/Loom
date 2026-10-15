@@ -1,4 +1,5 @@
 import urllib.error
+from dataclasses import replace
 from unittest.mock import Mock
 
 import pytest
@@ -70,3 +71,52 @@ def test_invalid_key_format_never_reaches_network(monkeypatch, key):
     with pytest.raises(ValueError, match="Paste only"):
         bridge._check_connection_credentials(payload(apiKey=key))
     opened.assert_not_called()
+
+
+@pytest.mark.parametrize("base", [
+    "https://account.smirel.com/model/v1",
+    "https://ACCOUNT.SMIREL.COM:443/model/v1/deepseek/",
+    "https://account.smirel.com/model/v1/minimax",
+    "https://account.smirel.com/model/v1/intern",
+    "https://account.smirel.com/model/v1/opencode-go",
+    "https://account.smirel.com/model/v1/managed-relay",
+    "https://account.smirel.com/model/v1%2Fdeepseek",
+    "https://gateway.example.com/custom/v1/deepseek",
+])
+def test_account_gateway_rejected_before_network_or_persistence(tmp_path, monkeypatch, base):
+    monkeypatch.setenv("LOOM_MODEL_GATEWAY_BASE_URL", "https://gateway.example.com/custom/v1")
+    config, secrets = store(tmp_path)
+    opened = Mock()
+    monkeypatch.setattr(bridge.urllib.request, "urlopen", opened)
+    with pytest.raises(ValueError, match="Loom account gateway"):
+        bridge._save(config, payload(baseUrl=base))
+    opened.assert_not_called()
+    assert not secrets and not config.path.exists()
+    # Direct store callers (including the edit bridge) have the same boundary.
+    args = dict(display_name="Personal", adapter="openai-compatible", model="demo", api_key="test-secret")
+    with pytest.raises(ValueError, match="Loom account gateway"):
+        config.save_model(base_url=base, **args)
+    entry = config.save_model(base_url="https://api.example.com/v1", **args)
+    before = config.path.read_bytes(), dict(secrets)
+    with pytest.raises(ValueError, match="Loom account gateway"):
+        config.update_model(entry.model_id, base_url=base, **{**args, "api_key": "replacement-secret"})
+    assert (config.path.read_bytes(), secrets) == before
+
+
+def test_gateway_detection_does_not_block_other_personal_endpoints():
+    from services.loom_model_gateway.routes import reject_personal_gateway_url
+    for base in ["https://api.deepseek.com", "https://account.smirel.com/other/v1",
+                 "https://account.smirel.com/model/v10", "https://account.smirel.com.example.org/model/v1"]:
+        reject_personal_gateway_url(base, {})
+
+
+def test_legacy_saved_gateway_entry_never_materializes_personal_key(tmp_path):
+    config, _ = store(tmp_path)
+    entry = config.save_model(display_name="Personal", adapter="openai-compatible", model="demo",
+        api_key="test-secret", base_url="https://api.deepseek.com")
+    legacy = replace(entry, base_url="https://account.smirel.com/model/v1/deepseek")
+    secret_getter = Mock(side_effect=AssertionError("must reject before retrieving personal key"))
+    config._secret_getter = secret_getter
+    with pytest.raises(ValueError, match="Loom account gateway"):
+        config.secret_for(legacy)
+    secret_getter.assert_not_called()

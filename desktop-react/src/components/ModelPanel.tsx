@@ -43,6 +43,7 @@ import hunyuanLogo from "../assets/provider-logos/tencenthy.svg";
 import xLogo from "../assets/provider-logos/x.svg";
 import "./model-panel.css";
 import { ReasoningThread } from "./ReasoningThread";
+import { personalConnectionTemplate } from "../state/personalModelConnection";
 
 type ModelView = "list" | "profiles" | "group" | "add" | "custom";
 type NavDirection = "forward" | "back";
@@ -690,8 +691,9 @@ export function ModelPanel({
       return;
     }
     setName(`${group.name} personal`);
-    setAdapter(candidate.adapter === "openai" ? "openai" : "openai-compatible");
-    setBaseUrl(candidate.adapter === "openai" ? "" : candidate.baseUrl);
+    const template = personalConnectionTemplate(candidate);
+    setAdapter(template.adapter);
+    setBaseUrl(template.baseUrl);
     setModel(candidate.model);
     setApiKey("");
     navigate("add");
@@ -783,7 +785,7 @@ export function ModelPanel({
               <span>Sign in to Loom before saving or using an API connection. <button type="button" className="mp-link" onClick={onOpenAccount}>Sign in</button></span>
             </div>
           ) : null}
-          <div className="mp-form-lead">Connect OpenAI or any OpenAI-compatible endpoint.</div>
+          <div className="mp-form-lead">Use your provider's API URL and key. Built-in models use your Loom account and need no personal connection.</div>
           <label className="mp-field">
             <span className="mp-field-label">Connection name</span>
             <input value={name} onChange={(event) => setName(event.target.value)} placeholder="e.g. MiniMax work API" autoFocus />

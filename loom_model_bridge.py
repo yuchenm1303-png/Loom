@@ -1332,6 +1332,8 @@ def _check_connection_credentials(payload: dict[str, Any]) -> None:
     parsed = urllib.parse.urlparse(base_url)
     if parsed.scheme not in {"http", "https"} or not parsed.netloc or parsed.username or parsed.password:
         raise ValueError("Base URL must be an HTTP(S) URL without embedded credentials.")
+    from services.loom_model_gateway.routes import reject_personal_gateway_url
+    reject_personal_gateway_url(base_url, os.environ)
     request = urllib.request.Request(
         f"{base_url}/models",
         headers={"Authorization": f"Bearer {key}", "Accept": "application/json"},

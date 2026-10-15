@@ -135,7 +135,8 @@ test("BYOK is discoverable without pretending to bypass admin policy", () => {
   assert.match(modelPanel, /Use your own API key/);
   assert.match(modelPanel, /It does not change or bypass the built-in Loom Admin policy/);
   assert.match(modelPanel, /Use own API key/);
-  assert.match(modelPanel, /setBaseUrl\(candidate\.adapter === "openai" \? "" : candidate\.baseUrl\)/);
+  assert.match(modelPanel, /personalConnectionTemplate\(candidate\)/);
+  assert.match(modelPanel, /setBaseUrl\(template\.baseUrl\)/);
 });
 
 
