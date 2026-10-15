@@ -30,6 +30,8 @@ function readOrder(): DockId[] {
 
 export interface RightToolDockProps {
   hidden?: boolean;
+  loading?: boolean;
+  hasWorkspace?: boolean;
   sidebarOpen: boolean;
   filesAvailable: boolean;
   browserAvailable: boolean;
@@ -99,27 +101,28 @@ export function RightToolDock(props: RightToolDockProps) {
     },
     background: {
       label: zh ? "后台任务" : "Background tasks", icon: <Terminal size={18} strokeWidth={1.75} />,
-      active: props.backgroundOpen, count: props.backgroundRunningCount,
+      active: props.backgroundOpen, disabled: props.loading || !props.hasWorkspace,
+      reason: zh ? "请等待对话载入" : "Wait for the conversation", count: props.backgroundRunningCount,
       status: props.backgroundRunningCount > 0,
       onClick: props.onToggleBackground,
     },
     agents: {
       label: zh ? "子代理" : "Sub-agents", icon: <GitFork size={18} strokeWidth={1.65} />,
-      active: props.agentsOpen, count: props.agentCount, onClick: props.onToggleAgents,
+      active: props.agentsOpen, disabled: props.loading, count: props.agentCount, onClick: props.onToggleAgents,
     },
     review: {
       label: zh ? "代码审查" : "Review", icon: <FileDiff size={18} strokeWidth={1.7} />,
-      active: props.reviewOpen, count: props.reviewCount, onClick: props.onToggleReview,
+      active: props.reviewOpen, disabled: props.loading, count: props.reviewCount, onClick: props.onToggleReview,
     },
     artifacts: {
       label: zh ? "产物与预览" : "Artifacts & preview", icon: <PanelsTopLeft size={18} strokeWidth={1.7} />,
-      active: props.artifactsOpen, count: props.artifactCount, onClick: props.onToggleArtifacts,
+      active: props.artifactsOpen, disabled: props.loading, count: props.artifactCount, onClick: props.onToggleArtifacts,
     },
     inspector: {
       label: zh ? "运行详情" : "Runtime inspector",
       icon: props.inspectorOpen ? <PanelRightClose size={18} strokeWidth={1.7} />
         : <PanelRightOpen size={18} strokeWidth={1.7} />,
-      active: props.inspectorOpen, onClick: props.onToggleInspector,
+      active: props.inspectorOpen, disabled: props.loading, onClick: props.onToggleInspector,
     },
     profile: {
       label: zh ? "个人主页与使用洞察" : "Profile & insights",
