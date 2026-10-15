@@ -422,10 +422,12 @@ export class EmbeddedBrowserManager {
       }
       case "switch_tab": this.activeId = tabId; this.syncView(); break;
       case "close_tab": {
-        const alternatives = this.order.filter(id => id !== tabId && this.aiAllowed.has(id));
+        const alternatives = this.order.filter(id => id !== tabId && this.aiAllowed.has(id) && (!this.aiLeases.get(id) || this.aiLeases.get(id) === owner));
         this.closeTab(tabId);
         if (alternatives.length) {
           this.activeId = alternatives[0];
+          entry = this.tabs.get(this.activeId)!;
+          this.aiLeases.set(this.activeId, owner);
         } else {
           // Closing the last consented tab never transfers its permission to
           // the replacement blank tab or to the user's unrelated tabs.
@@ -545,6 +547,7 @@ export class EmbeddedBrowserManager {
     this.aiSignatures.set(entry.state.id, dom.signature);
     this.publish();
     return {
+      ...(action === "find_text" ? { found: true } : {}),
       url: entry.state.url || "about:blank",
       title: entry.state.title,
       dom: dom.dom,
