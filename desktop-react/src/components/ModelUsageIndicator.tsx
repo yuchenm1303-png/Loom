@@ -46,7 +46,8 @@ export function ModelUsageIndicator({ selection, zh, onOpen }: { selection: stri
 
   const data = state.selection === selection ? state.data : undefined;
   const loading = state.selection === selection && state.loading;
-  const percent = data?.windows?.[0]?.remainingPercent;
+  // The tightest window limits the account, even if its 5-hour meter is full.
+  const percent = data?.windows?.length ? Math.min(...data.windows.map(row => row.remainingPercent)) : undefined;
   const title = zh ? "余额与额度" : "Balance & quota";
   const detail = percent !== undefined ? `${percent}% ${zh ? "剩余" : "remaining"}` : data?.balances?.map(row => `${row.currency} ${row.total}`).join(" · ");
   return (
