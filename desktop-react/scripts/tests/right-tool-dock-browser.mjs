@@ -51,6 +51,16 @@ try {
     assert.ok(afterPanel.panel <= afterPanel.rail + 2, "agent surface obscures rail: " + JSON.stringify(afterPanel));
     await dock.locator('[data-tool-id="agents"]').click();
 
+    await dock.locator('[data-tool-id="background"]').click();
+    await page.locator(".background-task-panel").waitFor({ timeout: 5000 });
+    const backgroundBounds = await page.evaluate(() => ({
+      panel: document.querySelector(".background-task-panel").getBoundingClientRect().right,
+      rail: document.querySelector(".loom-tool-rail").getBoundingClientRect().left,
+    }));
+    assert.ok(backgroundBounds.panel <= backgroundBounds.rail + 2,
+      "background tasks obscure rail: " + JSON.stringify(backgroundBounds));
+    await dock.locator('[data-tool-id="background"]').click();
+
     await dock.locator('[data-tool-id="files"]').focus();
     await page.keyboard.press("Alt+ArrowUp");
     assert.equal(await dock.locator("button").first().getAttribute("data-tool-id"), "files");
