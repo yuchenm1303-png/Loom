@@ -5,6 +5,7 @@ import json
 import os
 import subprocess
 import sys
+from pathlib import Path
 
 import pytest
 
@@ -22,7 +23,7 @@ def test_model_bridge_payload_is_codepage_independent(module):
     env["PYTHONIOENCODING"] = "cp1252:strict"
     result = subprocess.run(
         [sys.executable, "-c", script],
-        env=env, capture_output=True, timeout=15, check=False,
+        env=env, cwd=Path(__file__).resolve().parents[1], capture_output=True, timeout=15, check=False,
     )
     assert result.returncode == 0, result.stderr.decode("utf-8", errors="replace")
     assert all(value < 128 for value in result.stdout)
