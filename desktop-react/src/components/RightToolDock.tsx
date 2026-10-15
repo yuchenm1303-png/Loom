@@ -33,6 +33,7 @@ export interface RightToolDockProps {
   sidebarOpen: boolean;
   filesAvailable: boolean;
   browserAvailable: boolean;
+  browserOpen: boolean;
   backgroundOpen: boolean;
   backgroundRunningCount: number;
   agentsOpen: boolean;
@@ -91,7 +92,7 @@ export function RightToolDock(props: RightToolDockProps) {
     },
     browser: {
       label: zh ? "内置浏览器" : "Browser", icon: <Globe2 size={18} strokeWidth={1.75} />,
-      active: props.browserAvailable && undefined, // overridden by browserOpen below
+      active: props.browserOpen,
       disabled: !props.browserAvailable,
       reason: zh ? "仅桌面端支持内置浏览器" : "Available in Loom Desktop",
       onClick: props.onToggleBrowser,
@@ -134,8 +135,6 @@ export function RightToolDock(props: RightToolDockProps) {
       onClick: props.onOpenSettings,
     },
   };
-  items.browser.active = props.browserOpen;
-
   const handleDrop = (event: DragEvent<HTMLButtonElement>, id: DockId) => {
     event.preventDefault();
     const source = dragged.current;
