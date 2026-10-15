@@ -97,7 +97,7 @@ export async function loadUpdatedRenderer(window: BrowserWindow, bundledIndex: s
   }
   // Keep the already-running installed UI, but never activate a new staged
   // build for an account whose updates have been turned off.
-  const eligible = await mayReceiveUpdates();
+  const eligible = pointer.ready && pointer.ready !== pointer.active ? await mayReceiveUpdates() : true;
   const candidate = (eligible ? pointer.ready : undefined) || pointer.active;
   if (!candidate) return window.loadFile(bundledIndex);
   const directory = path.join(root, String(candidate));
