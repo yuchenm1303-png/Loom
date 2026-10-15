@@ -1,4 +1,5 @@
 import { readUpdatePreferences } from "./updatePreferences.js";
+import { mayReceiveUpdates } from "./updateEligibility.js";
 import { app, net, ipcMain, type BrowserWindow } from "electron";
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -56,6 +57,7 @@ async function check() {
   if (checking) return checking;
   checking = (async () => {
     try {
+      if (!await mayReceiveUpdates()) return;
       const release = validateRendererRelease(JSON.parse((await fetchBytes(channel, 4 * 1024 * 1024)).toString()), app.getVersion());
       const baseline = await fs.readFile(path.join(bundledRoot, "ui-baseline.json"), "utf8").then(JSON.parse).catch(() => null);
       if (baseline && (!release.sourceTime || release.sourceTime < baseline.sourceTime
@@ -71,6 +73,7 @@ async function check() {
       });
       // Activation deliberately waits until the next window launch. Drafts and
       // executing turns in the current renderer are never interrupted.
+      if (!await mayReceiveUpdates()) return;
       await updatePointer(latest => latest.rejected?.includes(release.build) ? latest : { ...latest, ready: release.build });
     } catch (error) { console.warn("UI update check failed", error instanceof Error ? error.message : "request failed"); }
   })().finally(() => { checking = null; });
@@ -92,7 +95,10 @@ export async function loadUpdatedRenderer(window: BrowserWindow, bundledIndex: s
     pointer = { ...pointer, rejected: [...(pointer.rejected || []), pointer.booting].slice(-20), ready: undefined, booting: undefined };
     await updatePointer(() => pointer);
   }
-  const candidate = pointer.ready || pointer.active;
+  // Keep the already-running installed UI, but never activate a new staged
+  // build for an account whose updates have been turned off.
+  const eligible = await mayReceiveUpdates();
+  const candidate = (eligible ? pointer.ready : undefined) || pointer.active;
   if (!candidate) return window.loadFile(bundledIndex);
   const directory = path.join(root, String(candidate));
   const release = await readRendererRelease(directory, app.getVersion());
