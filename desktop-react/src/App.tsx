@@ -1451,6 +1451,7 @@ export default function App() {
             modelSnapshot={loom.models}
             modelBusy={loom.modelBusy}
             accountAuthenticated={account.account.authenticated}
+            accountUsageIdentity={account.account.authenticated ? String(account.account.user?.id || "") : "signed-out"}
             onOpenAccount={openComposerAccount}
             permissionMode={permissionMode}
             permissionModes={loom.runtime.permissionModes}

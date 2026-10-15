@@ -53,7 +53,7 @@ def request_route(path: str) -> tuple[str, str]:
     prefix, _, suffix = rest.partition("/")
     if prefix in PROVIDERS:
         group, rest = prefix, suffix
-    allowed = {"models", "chat/completions"}
+    allowed = {"models", "chat/completions", "usage"}
     if group == "opencode-go":
         allowed.update({"responses", "messages"})
     if rest not in allowed:

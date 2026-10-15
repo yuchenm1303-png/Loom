@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { ModelUsageService, parseModelUsage, usageEndpoint } from "../../dist-electron/modelUsage.js";
+import { ModelUsageService, parseModelUsage, usageEndpoint, accountUsageEndpoint } from "../../dist-electron/modelUsage.js";
 
 const spec = { model: "MiniMax-M3", baseUrl: "https://api.minimaxi.com/v1", apiKey: "test-secret" };
 const quota = { model_remains: [{ model_name: "video", current_interval_remaining_percent: 100 }, {
@@ -76,5 +76,69 @@ test("network failures and rejected credentials never expose upstream secrets", 
     const result = await new ModelUsageService(fetcher).query(spec);
     assert.equal(result.status, "error");
     assert.ok(!JSON.stringify(result).includes(spec.apiKey));
+  }
+});
+
+test("Go returns remaining percentages and distinct rolling, weekly and monthly resets", () => {
+  const result = parseModelUsage("OpenCode Go", { usage: {
+    rolling: { percent: 5, resetsAt: "2026-10-15T19:51:43.000Z" },
+    weekly: { percent: 0 }, monthly: { percent: 95 },
+  } }, "step-5-preview-free");
+  assert.deepEqual(result.windows.map(r => r.remainingPercent), [95, 100, 5]);
+  assert.equal(result.windows[0].resetsAt, Date.parse("2026-10-15T19:51:43Z"));
+  assert.throws(() => parseModelUsage("OpenCode Go", { usage: { weekly: { percent: null } } }, "demo"));
+});
+
+test("Relay distinguishes token grants from wallet balances and unlimited token caps", () => {
+  const result = parseModelUsage("Muxway Relay", { code: 0, data: { total_available: "0.00001" } }, "demo");
+  assert.equal(result.scope, "api-key");
+  assert.equal(result.balances[0].total, "0.00001");
+  assert.deepEqual(parseModelUsage("Muxway Relay", { data: { unlimited_quota: true } }, "demo").balances, []);
+  assert.throws(() => parseModelUsage("Muxway Relay", { success: false, data: { total_available: 99 } }, "demo"));
+});
+
+test("every builtin group queries its trusted gateway with account authentication only", async () => {
+  const service = new ModelUsageService(async (url, init) => {
+    assert.match(String(url), /^https:\/\/account\.smirel\.com\/model\/v1(?:\/[^/]+)?\/usage\?model=demo/);
+    assert.equal(init.headers.Authorization, "Bearer loom_model_test");
+    return new Response(JSON.stringify({ status: "ok", provider: "Test", checkedAt: 100,
+      windows: [{ label: "Monthly", remainingPercent: 12 }], balances: [], scope: "loom-shared-provider-account",
+      privateUpstreamKey: "must-not-leak" }));
+  });
+  for (const suffix of ["", "/minimax", "/deepseek", "/intern", "/opencode-go", "/managed-relay"]) {
+    const result = await service.query({ ...spec, kind: "builtin", model: "demo", authMode: "loom-account",
+      baseUrl: "https://account.smirel.com/model/v1" + suffix }, false, "loom_model_test");
+    assert.equal(result.status, "ok");
+    assert.equal(result.scope, "loom-shared-provider-account");
+    assert.ok(!JSON.stringify(result).includes("must-not-leak"));
+  }
+  for (const baseUrl of ["https://evil.test/model/v1", "https://account.smirel.com/model/v1.evil", "http://account.smirel.com/model/v1"]) {
+    assert.equal(accountUsageEndpoint({ ...spec, authMode: "loom-account", baseUrl }), null);
+  }
+  assert.equal(accountUsageEndpoint({ ...spec, kind: "saved", authMode: "loom-account", baseUrl: "https://account.smirel.com/model/v1" }), null);
+});
+
+test("account quota cache is partitioned by account token and refresh reaches the server", async () => {
+  const calls = [];
+  const service = new ModelUsageService(async (url, init) => {
+    calls.push([String(url), init.headers.Authorization]);
+    return new Response(JSON.stringify({ status: "unsupported", provider: "Intern", checkedAt: 100, windows: [], balances: [] }));
+  });
+  const account = { ...spec, kind: "builtin", authMode: "loom-account", baseUrl: "https://account.smirel.com/model/v1/intern" };
+  await service.query(account, false, "account-A");
+  await service.query(account, false, "account-B");
+  await service.query(account, true, "account-B");
+  assert.equal(calls.length, 3);
+  assert.match(calls[2][0], /&force=1$/);
+  assert.equal(calls[2][1], "Bearer account-B");
+});
+
+test("HTTP rejections remain distinct from unsupported or zero quota", async () => {
+  for (const status of [401, 403, 429, 503]) {
+    const result = await new ModelUsageService(async () => new Response("private-provider-body", { status })).query(spec);
+    assert.equal(result.status, "error");
+    assert.equal(result.code, `HTTP_${status}`);
+    assert.deepEqual(result.windows, []);
+    assert.ok(!JSON.stringify(result).includes("private-provider-body"));
   }
 });

@@ -16,4 +16,7 @@ export interface ModelUsage {
   windows: UsageWindow[];
   balances: UsageBalance[];
   message?: string;
+  code?: string;
+  scope?: string;
+  dashboardUrl?: string;
 }

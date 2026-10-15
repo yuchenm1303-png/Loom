@@ -13,6 +13,7 @@ from typing import Any
 
 from services.loom_model_policy.catalog import selection_for_model
 from .routes import PROVIDERS, request_route, server_upstreams
+from .usage import UsageService
 
 
 ANT_LING_MODELS = (
@@ -53,6 +54,17 @@ class GatewayConfig:
 class LoomModelGateway:
     def __init__(self, config: GatewayConfig) -> None:
         self.config = config
+        self.usage_service = UsageService()
+
+    def usage(self, authorization: str, group_id: str, model: str, force=False):
+        self.authorize_model(authorization, model, group_id)
+        base, key = self._upstream(group_id)
+        result = self.usage_service.query(group_id, base, key, model, force)
+        # These are the upstream account/key's shared limits, not an allocation
+        # independently granted to the signed-in Loom user or selected model.
+        result["scope"] = "loom-shared-" + result.get("scope", "provider-account")
+        result.pop("dashboardUrl", None)
+        return result
 
     def _upstream(self, group_id: str) -> tuple[str, str]:
         if group_id not in PROVIDERS:
@@ -225,6 +237,11 @@ class GatewayRequestHandler(BaseHTTPRequestHandler):
             if endpoint == "models":
                 self._write_json(HTTPStatus.OK, self.application.catalog(self._authorization(), group_id))
                 return
+            if endpoint == "usage":
+                params = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)
+                self._write_json(HTTPStatus.OK, self.application.usage(self._authorization(), group_id,
+                    params.get("model", [""])[0], params.get("force", [""])[0] == "1"))
+                return
             raise GatewayError(HTTPStatus.NOT_FOUND, "NOT_FOUND", "Endpoint not found.")
         except GatewayError as exc:
             self._write_json(exc.status, {"error": {"code": exc.code, "message": exc.message}})
@@ -236,7 +253,7 @@ class GatewayRequestHandler(BaseHTTPRequestHandler):
                 group_id, endpoint = request_route(path)
             except ValueError:
                 raise GatewayError(HTTPStatus.NOT_FOUND, "NOT_FOUND", "Endpoint not found.") from None
-            if endpoint == "models":
+            if endpoint in {"models", "usage"}:
                 raise GatewayError(HTTPStatus.NOT_FOUND, "NOT_FOUND", "Endpoint not found.")
             length = int(self.headers.get("Content-Length") or 0)
             if length <= 0 or length > self._MAX_BODY_BYTES:

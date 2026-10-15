@@ -49,6 +49,7 @@ interface ComposerProps {
   modelSnapshot?: ModelSnapshot | null;
   modelBusy?: boolean;
   accountAuthenticated?: boolean;
+  accountUsageIdentity?: string;
   onOpenAccount?(): void;
   permissionMode?: string;
   permissionModes?: string[];
@@ -154,6 +155,7 @@ export function Composer({
   modelSnapshot,
   modelBusy,
   accountAuthenticated = false,
+  accountUsageIdentity = "",
   onOpenAccount,
   permissionMode,
   permissionModes,
@@ -620,7 +622,7 @@ export function Composer({
               ) : null}
             </div>
 
-            <ModelUsageIndicator selection={modelSnapshot?.current?.selection || modelSnapshot?.primary?.selection || ""} zh={zh} onOpen={() => setOpenPanel(null)} />
+            <ModelUsageIndicator key={accountUsageIdentity} selection={accountAuthenticated ? modelSnapshot?.current?.selection || modelSnapshot?.primary?.selection || "" : ""} zh={zh} onOpen={() => setOpenPanel(null)} />
 
 
           </div>

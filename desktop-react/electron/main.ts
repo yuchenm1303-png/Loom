@@ -1897,7 +1897,12 @@ handleHostChannel("loom:model-update", (_event, input: EditModelInput) => runUpd
 handleHostChannel("loom:model-test", async (_event, selection: string) => runTestModel(selection));
 const modelUsageService = new ModelUsageService((input, init) => net.fetch(input as string, init));
 async function queryModelUsage(selection: string, force = false) {
-  try { return await modelUsageService.query(await modelManager.resolveAsync(selection), force); }
+  try {
+    await assertSignedInForModels();
+    const spec = await modelManager.resolveAsync(selection);
+    const token = spec.authMode === "loom-account" ? await accountClient.modelCredential() : undefined;
+    return await modelUsageService.query(spec, force, token);
+  }
   catch { return { status: "error" as const, provider: "", checkedAt: Date.now(), windows: [], balances: [], message: "暂时无法读取此模型连接，请稍后刷新" }; }
 }
 handleHostChannel("loom:model-usage", (_event, selection: string, force?: boolean) => queryModelUsage(selection, Boolean(force)));
