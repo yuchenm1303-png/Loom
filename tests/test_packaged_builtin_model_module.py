@@ -10,4 +10,8 @@ def test_builtin_model_bridge_dependency_is_packaged():
     modules = set(config["tool"]["setuptools"]["py-modules"])
     assert "loom_model_bridge" in modules
     assert "loom_builtin_models" in modules
+    packages = set(config["tool"]["setuptools"]["packages"]["find"]["include"])
+    assert "services*" in packages
+    assert (ROOT / "services/loom_model_policy/catalog.py").is_file()
+    assert (ROOT / "services/loom_model_gateway/routes.py").is_file()
     assert (ROOT / "loom_builtin_models.py").is_file()

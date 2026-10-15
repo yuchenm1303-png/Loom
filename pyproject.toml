@@ -62,7 +62,7 @@ py-modules = ["loom_image_capability", "loom_cli", "loom_web", "loom_app_server"
 app = ["web_static/*"]
 
 [tool.setuptools.packages.find]
-include = ["app*"]
+include = ["app*", "services*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

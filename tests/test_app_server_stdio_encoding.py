@@ -46,3 +46,25 @@ def test_app_server_protocol_forces_utf8_over_non_utf8_python_stdio():
     response = json.loads(stdout.decode("utf-8"))
     assert response == {"echo": request_text}
     assert b"\xef\xbf\xbd" not in stdout  # UTF-8 replacement character
+
+
+def test_jsonrpc_frame_is_lossless_with_legacy_windows_writer():
+    """A Host may receive an inherited cp1252 stream despite Python UTF-8 flags.
+
+    JSON escaping is semantically transparent for clients and protects the wire
+    even when the supplied TextIO was constructed before UTF-8 reconfiguration.
+    """
+    import io
+    import threading
+    from app.app_server import JsonRpcStdioServer
+
+    output = io.BytesIO()
+    writer = io.TextIOWrapper(output, encoding="cp1252", errors="strict", write_through=True)
+    server = object.__new__(JsonRpcStdioServer)
+    server._writer = writer
+    server._write_lock = threading.Lock()
+    message = "状态：执行中 🧪" * 6000
+    server._write_direct({"jsonrpc": "2.0", "id": 1, "result": {"text": message}})
+    wire = output.getvalue()
+    assert all(character < 128 for character in wire)
+    assert json.loads(wire)["result"]["text"] == message

@@ -1007,13 +1007,19 @@ export default function App() {
   // nothing else can be taken for it. That holds before the conversation exists (a home send waits for thread/start),
   // which is why this does not read the app's own busy flag. Without it the new turn was drawn as finished until the
   // Host answered: a second or more with only the bubble on screen, no entrance, no "thinking".
-  const confirmedTurnRunning = Boolean(
+  // Background session notifications redraw the shell/sidebar but must not
+  // rescan thousands of frozen transcript items on every status update.
+  const confirmedTurnRunning = useMemo(() => Boolean(
     runtimeTurnRunning
     && thread?.currentTurnId
     && transcriptItems.some((item) => item.turnId === thread.currentTurnId),
-  );
-  const transcriptRunning = confirmedTurnRunning
-    || transcriptItems.some((item) => item.type === "user_message" && item.status === "sending");
+  ), [runtimeTurnRunning, thread?.currentTurnId, transcriptItems]);
+  const transcriptRunning = useMemo(() => confirmedTurnRunning
+    || transcriptItems.some((item) => item.type === "user_message" && item.status === "sending"),
+  [confirmedTurnRunning, transcriptItems]);
+  const visibleApproval = useMemo(() => transcriptItems.some((item) =>
+    item.type === "approval" && !item.leaving && !isResolvedApproval(item)),
+  [transcriptItems]);
 
   const panelMaximum = (panel: ResizePanel): number => {
     const viewport = shellWidthRef.current || shellRef.current?.clientWidth || window.innerWidth;
@@ -1393,7 +1399,7 @@ export default function App() {
             return currentProject ? <ProjectGitBar project={currentProject} onOpen={() => openProjectDetails(currentProject.id)} onFiles={() => setFilesProjectId(currentProject.id)}/> : null;
           })()}
           {petEnabled && thread && <LoomPet key={thread.id} running={running}
-            approval={thread.status === "waiting_approval" || transcriptItems.some((item) => item.type === "approval" && !item.leaving && !isResolvedApproval(item))}
+            approval={thread.status === "waiting_approval" || visibleApproval}
             completed={thread.status === "completed"} />}
           <Composer
             threadId={thread?.id}

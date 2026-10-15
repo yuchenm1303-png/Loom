@@ -8,7 +8,19 @@ try {
   const errors = [];
   page.on("pageerror", error => errors.push(error.message));
   await page.goto(`${origin}/scripts/fixtures/workspace-visual.html?performance=1&navigation=1&motion=1`);
-  await page.locator(".turn-final-answer").nth(19).waitFor();
+  try {
+    await page.locator(".turn-final-answer").nth(19).waitFor({ timeout: 30000 });
+  } catch (failure) {
+    const initial = await page.evaluate(() => ({
+      href: location.href,
+      text: document.body.textContent?.slice(0, 700),
+      allAnswers: document.querySelectorAll(".turn-final-answer").length,
+      status: document.body.dataset,
+      firstRows: [...document.querySelectorAll(".compact-thread-row")].slice(0, 3).map(el => el.outerHTML.slice(0, 220)),
+    }));
+    console.error("RENDERER_BOOT_DIAGNOSTIC", JSON.stringify({ initial, errors }));
+    throw failure;
+  }
   await page.waitForTimeout(500);
   assert.equal(await page.locator(".runtime-event").count(), 0, "a closed inspector must not construct 2,000 invisible events");
   const beforeNodes = await page.evaluate(() => document.querySelectorAll("*").length);
@@ -22,8 +34,19 @@ try {
   });
   assert.equal(await page.evaluate(() => window.performanceFixture.historyReads()), beforeReads,
     "background thread updates must not scan or rebuild the active transcript");
-  assert.equal(await page.locator('.compact-thread-row[data-thread-id="visual-1"] .compact-thread-dot.running').count(), 1,
-    "background status still reaches the sidebar");
+  const backgroundStatusCount = await page.locator('.compact-thread-row[data-thread-id="visual-1"] .compact-thread-dot.running').count();
+  if (!backgroundStatusCount) {
+    const diagnostic = await page.evaluate(() => ({
+      row: document.querySelector('.compact-thread-row[data-thread-id="visual-1"]')?.outerHTML?.slice(0, 1100) || null,
+      sidebarRows: document.querySelectorAll('.compact-thread-row').length,
+      projectGroups: document.querySelectorAll('.project-group').length,
+      search: document.querySelector('input[placeholder*="搜索"]')?.value || '',
+      sidebar: document.querySelector('.compact-thread-scroll')?.textContent?.slice(0, 300) || '',
+      events: window.performanceFixture.listenerCount(),
+    }));
+    console.error('BACKGROUND_THREAD_DIAGNOSTIC', JSON.stringify(diagnostic));
+  }
+  assert.equal(backgroundStatusCount, 1, "background status still reaches the sidebar");
   // Visiting history used to retain 30,000 hidden elements after every fold.
   for (let index = 0; index < 20; index++) {
     const header = page.locator(".turn-process-header").nth(index);
