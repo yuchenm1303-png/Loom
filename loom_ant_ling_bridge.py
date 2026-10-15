@@ -114,7 +114,7 @@ def _read_payload() -> dict[str, Any]:
     return payload
 
 def _write(payload: dict[str, Any]) -> None:
-    sys.stdout.write(json.dumps(payload, ensure_ascii=False, separators=(",", ":")) + "\n")
+    sys.stdout.write(json.dumps(payload, ensure_ascii=True, separators=(",", ":")) + "\n")
 
 def main(argv: list[str] | None = None) -> int:
     args = list(sys.argv[1:] if argv is None else argv); commands = {"list", "resolve", "describe-model", "describe-models", "set-key", "set-active", "set-reasoning"}
