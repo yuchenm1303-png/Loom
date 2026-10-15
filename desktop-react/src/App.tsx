@@ -14,6 +14,7 @@ import { flushSync } from "react-dom";
 import { AccountDialog } from "./components/AccountDialog";
 import { ArtifactPreviewDock } from "./components/ArtifactPreviewDock";
 import { Composer } from "./components/Composer";
+import { BrowserWorkspace } from "./components/BrowserWorkspace";
 import { Inspector } from "./components/Inspector";
 import { LanguageSettingsDock } from "./components/LanguageSettingsDock";
 import { ProfileInsightsPage } from "./components/ProfileInsightsPage";
@@ -418,6 +419,8 @@ export default function App() {
   }, [inspectorOpen]);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [browserOpen, setBrowserOpen] = useState(false);
+  const browserAvailable = typeof window.loom?.embeddedBrowser === "function";
   const settingsPresence = useMotionPresence(settingsOpen, 230);
   const [profileOpen, setProfileOpen] = useState(false);
   const profilePresence = useMotionPresence(profileOpen, 260);
@@ -543,6 +546,11 @@ export default function App() {
   const filesProject = filesProjectId ? loom.projects.find((project) => project.id === filesProjectId) : undefined;
   const projectDetailsOpen = Boolean(selectedProject);
   const artifactPreviewOpen = Boolean(artifactPreview);
+  useEffect(() => {
+    if (browserOpen && (reviewOpen || agentsOpen || projectDetailsOpen || artifactPreviewOpen || filesProjectId || backgroundTasksOpen)) {
+      setBrowserOpen(false);
+    }
+  }, [browserOpen, reviewOpen, agentsOpen, projectDetailsOpen, artifactPreviewOpen, filesProjectId, backgroundTasksOpen]);
   const inspectorVisible = inspectorOpen && !reviewOpen && !projectDetailsOpen && !agentsOpen && !artifactPreviewOpen;
 
   useLayoutEffect(() => {
@@ -1294,7 +1302,7 @@ export default function App() {
       />
 
       <section
-        className={`workspace ${threadSwitching ? "is-thread-switching" : ""} ${threadEntering ? "is-thread-entering" : ""}`.trim()}
+        className={`workspace ${browserOpen ? "has-browser" : ""} ${threadSwitching ? "is-thread-switching" : ""} ${threadEntering ? "is-thread-entering" : ""}`.trim()}
         aria-busy={threadSwitching ? true : undefined}
       >
         <ThreadHeader
@@ -1315,6 +1323,7 @@ export default function App() {
           artifactCount={threadSwitching ? 0 : artifactCount}
           agentsOpen={agentsOpen}
           agentCount={threadSwitching ? 0 : agentCount}
+          browserOpen={browserOpen}
           backgroundOpen={backgroundTasksOpen}
           backgroundRunningCount={backgroundRunningCount}
           accountAuthenticated={account.account.authenticated}
@@ -1342,16 +1351,34 @@ export default function App() {
           onToggleArtifacts={toggleArtifacts}
           onToggleAgents={toggleAgents}
           onToggleBackground={() => setBackgroundTasksOpen(open => !open)}
+          onToggleBrowser={browserAvailable ? () => {
+            if (!browserOpen) {
+              setReviewOpen(false);
+              setAgentsOpen(false);
+              setArtifactPreview(null);
+              setSelectedProjectId("");
+              setFilesProjectId("");
+              setBackgroundTasksOpen(false);
+            }
+            setBrowserOpen(open => !open);
+          } : undefined}
         />
 
         <BackgroundTaskPanel
           workspace={selectedThread?.workspace || workspace}
           connected={loom.connection === "ready"}
-          open={backgroundTasksOpen && !settingsOpen && !profileOpen && !accountOpen}
+          open={backgroundTasksOpen && !browserOpen && !settingsOpen && !profileOpen && !accountOpen}
           onClose={() => setBackgroundTasksOpen(false)}
           onRunningCount={setBackgroundRunningCount}
         />
 
+        {browserOpen && browserAvailable ? (
+          <BrowserWorkspace
+            hidden={settingsPresence.mounted || profilePresence.mounted || accountOpen || reviewOpen || agentsOpen || projectDetailsOpen || artifactPreviewOpen || Boolean(filesProjectId) || backgroundTasksOpen}
+            onClose={() => setBrowserOpen(false)}
+          />
+        ) : (
+          <>
         <div className={`conversation-stage ${running ? "is-running" : ""}`} inert={threadSwitching}>
           {runStripVisible ? <RunProgress {...progressProps} placement="top" motionPhase={runStripPresence.phase} /> : null}
           {thread?.parentThreadId ? (
@@ -1443,6 +1470,8 @@ export default function App() {
             onPausedChange={typeof thread?.paused === "boolean" ? loom.setPaused : undefined}
           />
         </div>
+          </>
+        )}
       </section>
 
       <div
