@@ -193,7 +193,7 @@ def test_browser_backend_registry_is_model_visible_without_starting_a_session(mo
     tool = runtime.tools.get("browser_backends")
     assert tool is not None
     rows = runtime.browser_backend_registry()
-    assert [row["id"] for row in rows] == [CURRENT_BROWSER, ISOLATED_BROWSER, DEVELOPER_CDP]
+    assert [row["id"] for row in rows] == [CURRENT_BROWSER, ISOLATED_BROWSER, DEVELOPER_CDP, "embedded"]
     assert rows[0]["selected"] is True
     assert rows[0]["available"] is False
     assert rows[1]["model_selectable"] is True
