@@ -63,8 +63,8 @@ test("the composers say where the text is before they clear it, and the transcri
 
 test("the turn that has just been sent is live from the click, and no other turn can be taken for it", () => {
   const app = read("App.tsx");
-  const confirmed = app.indexOf("const confirmedTurnRunning = Boolean(");
-  const running = app.indexOf("const transcriptRunning = confirmedTurnRunning");
+  const confirmed = app.search(/const confirmedTurnRunning = (?:useMemo\(\(\) => )?Boolean\(/);
+  const running = app.search(/const transcriptRunning = (?:useMemo\(\(\) => )?confirmedTurnRunning/);
   assert.ok(confirmed > 0 && running > confirmed);
   const block = app.slice(running, running + 260);
   // A message sent from the home screen waits for thread/start before the app's own busy state is set: the sending
