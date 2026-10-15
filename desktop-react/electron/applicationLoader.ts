@@ -1,4 +1,5 @@
 import { app } from "electron";
+import { mayReceiveUpdates } from "./updateEligibility.js";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
@@ -25,7 +26,16 @@ export async function selectApplication(installed: string, hostRoot: string, isH
   // Existing desktops and their Host must load the same code. A newly opened
   // window follows the running Host until the Host is deliberately restarted.
   const session = !isHost && alive(pointer.session?.pid) ? pointer.session : undefined;
-  const candidate = session ? session.build : pointer.ready || pointer.active || 0;
+  // A release can already be staged when the administrator revokes the
+  // account. The loader is the final activation boundary on restart; it must
+  // not blindly execute the ready pointer before the updater's checks run.
+  // Desktop children follow the *running* Host or last active build, never a
+  // not-yet-authorized ready build.
+  const canActivateReady = isHost && pointer.ready && pointer.ready !== pointer.active
+    ? await mayReceiveUpdates(1200)
+    : true;
+  const candidate = session ? session.build
+    : isHost && canActivateReady ? pointer.ready || pointer.active || 0 : pointer.active || 0;
   let directory = installed, build = 0;
   const baseline = await fs.readFile(path.join(installed, "dist/ui-baseline.json"), "utf8").then(JSON.parse).catch(() => null);
   const acceptable = (release: { sourceTime: number; sourceSha: string }) => !baseline || release.sourceTime > baseline.sourceTime

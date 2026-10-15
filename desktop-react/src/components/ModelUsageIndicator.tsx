@@ -14,8 +14,15 @@ export function ModelUsageIndicator({ selection, zh, onOpen }: { selection: stri
     setState(previous => ({ selection, data: previous.selection === selection ? previous.data : cached.get(selection), loading: true }));
     let data: ModelUsage;
     try {
-      data = window.loom?.queryModelUsage
+      const response: unknown = window.loom?.queryModelUsage
         ? await window.loom.queryModelUsage(selection, force)
+        : null;
+      // Older Hosts and test bridges may return an empty object instead of a
+      // complete quota snapshot. Never let a partial response crash Composer.
+      data = response && typeof response === "object"
+        && Array.isArray((response as ModelUsage).windows)
+        && Array.isArray((response as ModelUsage).balances)
+        ? response as ModelUsage
         : { status: "unsupported", provider: "", windows: [], balances: [], checkedAt: Date.now(), message: "请更新本地 Host 以启用额度查询" };
     } catch {
       data = { status: "error", provider: "", windows: [], balances: [], checkedAt: Date.now(), message: "无法连接额度查询服务，请稍后刷新" };
@@ -48,9 +55,9 @@ export function ModelUsageIndicator({ selection, zh, onOpen }: { selection: stri
 
   const data = state.selection === selection ? state.data : cached.get(selection);
   const loading = state.selection === selection && state.loading;
-  const percent = data?.windows[0]?.remainingPercent;
+  const percent = data?.windows?.[0]?.remainingPercent;
   const title = zh ? "余额与额度" : "Balance & quota";
-  const detail = percent !== undefined ? `${percent}% ${zh ? "剩余" : "remaining"}` : data?.balances.map(row => `${row.currency} ${row.total}`).join(" · ");
+  const detail = percent !== undefined ? `${percent}% ${zh ? "剩余" : "remaining"}` : data?.balances?.map(row => `${row.currency} ${row.total}`).join(" · ");
   return (
     <div ref={root} className="composer-control-anchor model-usage-anchor">
       <button type="button" className={`model-usage-button ${loading && !data ? "is-loading" : ""}`}
@@ -67,12 +74,12 @@ export function ModelUsageIndicator({ selection, zh, onOpen }: { selection: stri
         <div className="model-usage-heading"><strong>{title}</strong><button type="button" disabled={loading} onClick={() => void refresh(true)}>{loading ? (zh ? "查询中…" : "Loading…") : (zh ? "刷新" : "Refresh")}</button></div>
         {data?.provider ? <small>{data.provider}</small> : null}
         {!data ? <p role="status">{zh ? "正在查询…" : "Loading…"}</p> : null}
-        {data?.windows.map(row => <div className="model-usage-window" key={row.label}>
+        {data?.windows?.map(row => <div className="model-usage-window" key={row.label}>
           <div><span>{row.label === "Weekly" && zh ? "每周" : row.label}</span><strong>{row.remainingPercent}% {zh ? "剩余" : "left"}</strong></div>
           <progress max={100} value={row.remainingPercent} aria-label={row.label} />
           {row.resetsAt ? <small>{zh ? "重置时间：" : "Resets: "}{new Date(row.resetsAt).toLocaleString(zh ? "zh-CN" : undefined)}</small> : null}
         </div>)}
-        {data?.balances.map(row => <div className="model-usage-balance" key={row.currency}>
+        {data?.balances?.map(row => <div className="model-usage-balance" key={row.currency}>
           <div><span>{zh ? "可用余额" : "Available"}</span><strong>{row.currency} {row.total}</strong></div>
           {row.toppedUp !== undefined ? <small>{zh ? "充值余额" : "Paid"} {row.toppedUp}</small> : null}
           {row.granted !== undefined ? <small>{zh ? "赠送余额" : "Granted"} {row.granted}</small> : null}

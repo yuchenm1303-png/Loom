@@ -1,4 +1,5 @@
 import { readUpdatePreferences } from "./updatePreferences.js";
+import { mayReceiveUpdates } from "./updateEligibility.js";
 import { readUpdateChannel } from "./updateChannel.js";
 import { app, net } from "electron";
 import fs from "node:fs/promises";
@@ -44,6 +45,13 @@ export async function checkApplicationUpdates(manual = false) {
   if (!enabled || checking || restarting) return checking;
   const previousReady = status.phase === "downloaded" ? { ...status } : null;
   checking = (async () => {
+    if (!await mayReceiveUpdates()) {
+      // Do not leave a previously staged release ready to activate on a
+      // later, unrelated restart after an administrator disables updates.
+      await updateApplicationPointer(root, current => ({ ...current, ready: undefined }));
+      setStatus({ phase: "idle" });
+      return;
+    }
     if (globalThis.loomApplicationBootstrap) globalThis.loomApplicationBootstrap.downloading = true;
     setStatus({ phase: "checking" });
     try {
@@ -77,6 +85,10 @@ export async function checkApplicationUpdates(manual = false) {
         setStatus({ ...status, transferred, percent: Math.min(99, transferred / total * 100) });
         return bytes;
       });
+      if (!await mayReceiveUpdates()) {
+        setStatus({ phase: "idle" });
+        return;
+      }
       await updateApplicationPointer(root, current => ({ ...current, ready: release.build }));
       setStatus({ ...status, phase: "downloaded", percent: 100, transferred: total });
       await maybeInstallApplicationUpdate();
@@ -97,7 +109,9 @@ export async function maybeInstallApplicationUpdate(): Promise<boolean> {
 
 export async function installApplicationUpdate(): Promise<boolean> {
   if (!enabled || restarting || status.phase !== "downloaded" || !safeToRestart) return false;
+  if (!await mayReceiveUpdates()) return false;
   try { if (!await safeToRestart()) return false; } catch { return false; }
+  if (!await mayReceiveUpdates()) return false;
   // The guard awaits runtime state; a newer download may have started meanwhile.
   if (restarting || status.phase !== "downloaded") return false;
   restarting = true;

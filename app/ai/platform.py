@@ -18,6 +18,7 @@ from .contracts import (
 )
 from .profiles import ModelProfile, ModelRegistry
 from .reasoning_text import merge_visible_reasoning, split_inline_reasoning
+from .errors import AIToolContractError
 from .response_protocol import normalize_response
 from .tool_wire import ToolWireCodec, wire_identifier
 
@@ -141,7 +142,12 @@ class AIPlatform:
                     inline_reasoning,
                 ),
             )
-        return codec.decode(normalize_response(wire_request, result))
+        try:
+            normalized = normalize_response(wire_request, result)
+        except AIToolContractError as exc:
+            codec.decode_contract_error(exc)
+            raise
+        return codec.decode(normalized)
 
     def execute_structured_chat(
         self,

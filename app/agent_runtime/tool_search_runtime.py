@@ -12,7 +12,7 @@ from .contracts import AgentSession, AgentStatus, ToolEffect
 from .mcp_configured_runtime import ConfiguredMCPRuntime
 from .step import StepContext
 from .tool_schema_budget import plan_tool_schema_pressure, schema_token_budget
-from .tools import AgentTool, ToolContext, ToolExposure, ToolRegistry, ToolResult
+from .tools import AgentTool, ToolContext, ToolExposure, ToolRegistry, ToolResult, _capability_allows
 
 
 _QUERY_TOKEN_RE = re.compile(r"[^\W_]+", flags=re.UNICODE)
@@ -205,6 +205,19 @@ class ToolSearchRuntime(ConfiguredMCPRuntime):
         key = (str(session_id), str(turn_id))
         with self._tool_search_guard:
             self._turn_activations.setdefault(key, set()).add(tool.name)
+
+    def _recover_unavailable_tool(self, session: AgentSession, call) -> bool:
+        """Activate a deferred tool the model called without searching for it.
+
+        The call is not executed; the next step declares the tool, so the model's
+        intent succeeds on its own re-issue instead of ending the turn. Disabled
+        capabilities stay unavailable.
+        """
+        tool = self.tools.get(call.name)
+        if tool is None or tool.exposure is not ToolExposure.DEFERRED or not _capability_allows(tool, None):
+            return False
+        self._activate_deferred_name(session.session_id, session.current_turn_id, call.name)
+        return True
 
     def _clear_session_activations(self, session_id: str) -> None:
         wanted = str(session_id)

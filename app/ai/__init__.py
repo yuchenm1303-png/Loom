@@ -33,6 +33,7 @@ from .errors import (
     AIPlatformError,
     AIResponseError,
     AITransportError,
+    AIToolContractError,
 )
 from .openai_runtime import OpenAIChatBackend
 from .openai_streaming import OpenAIStreamingChatBackend
@@ -72,6 +73,7 @@ __all__ = [
     "AIPlatform",
     "AIPlatformError",
     "AIResponseError",
+    "AIToolContractError",
     "AITransportError",
     "BaseUrlPolicy",
     "ChatModelBackend",

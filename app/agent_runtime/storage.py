@@ -486,19 +486,8 @@ class FileAgentSessionStore:
     def _write_session(self, session: AgentSession, data: str) -> None:
         directory = self.session_dir(session.session_id)
         directory.mkdir(parents=True, exist_ok=True)
-        target = directory / "session.json"
-        temp = directory / f".session.{os.getpid()}.{uuid.uuid4().hex}.tmp"
-        try:
-            with temp.open("w", encoding="utf-8", newline="\n") as handle:
-                handle.write(data)
-                handle.flush()
-                os.fsync(handle.fileno())
-            os.replace(temp, target)
-        finally:
-            try:
-                temp.unlink(missing_ok=True)
-            except OSError:
-                pass
+        # Share the same fsynced, atomic Windows-safe path as redo recovery.
+        atomic_text(directory / "session.json", data)
 
     def load(self, session_id: str) -> AgentSession:
         target = self.session_dir(session_id) / "session.json"

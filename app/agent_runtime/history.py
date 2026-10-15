@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from app.ai import AIMessage, MessageRole
 
@@ -23,62 +23,65 @@ class HistoryRepair:
         )
 
 
+@dataclass(slots=True)
+class _CallGroup:
+    message: AIMessage
+    answers: dict[str, AIMessage] = field(default_factory=dict)
+
+
 def repair_tool_history(
     messages: list[AIMessage] | tuple[AIMessage, ...],
     *,
     max_tool_result_chars: int = 20_000,
 ) -> HistoryRepair:
-    """Return a provider-safe history with every tool call/output pair balanced.
+    """Return a provider-safe history in which every tool call is answered once.
 
-    Interrupted runtimes can persist an assistant tool call before its tool result.
-    Resuming that transcript unchanged is rejected by some providers and can confuse
-    others. Missing outputs are inserted immediately after the assistant message;
-    orphan or duplicate tool outputs are removed deterministically.
+    Outputs pair with calls by position, not by call ID alone: vendors restart IDs
+    per response ("call_0" in every turn), so a repeated ID belongs to the nearest
+    preceding call that is still unanswered. Each output is emitted directly after
+    its assistant message, in call order, because providers reject a tool call
+    whose answer does not follow it. A call with no durable answer gets an
+    unknown-outcome output; orphan outputs and second answers are dropped.
     """
 
     source = tuple(messages)
-    known_calls: dict[str, str] = {}
-    for message in source:
-        if message.role is not MessageRole.ASSISTANT:
-            continue
-        for call in message.tool_calls:
-            if call.call_id and call.call_id not in known_calls:
-                known_calls[call.call_id] = call.name
-
-    first_outputs: set[str] = set()
-    valid_output_ids: set[str] = set()
+    groups_by_call: dict[str, list[_CallGroup]] = {}
+    group_at: dict[int, _CallGroup] = {}
     removed_orphans = 0
     removed_duplicates = 0
-    for message in source:
+
+    for position, message in enumerate(source):
+        if message.role is MessageRole.ASSISTANT and message.tool_calls:
+            group = _CallGroup(message)
+            group_at[position] = group
+            for call in message.tool_calls:
+                groups_by_call.setdefault(call.call_id, []).append(group)
+            continue
         if message.role is not MessageRole.TOOL:
             continue
         call_id = str(message.tool_call_id or "").strip()
-        if not call_id or call_id not in known_calls:
-            removed_orphans += 1
-            continue
-        if call_id in first_outputs:
+        candidates = groups_by_call.get(call_id, [])
+        owner = next((group for group in reversed(candidates) if call_id not in group.answers), None)
+        if owner is not None:
+            owner.answers[call_id] = message
+        elif candidates:
             removed_duplicates += 1
-            continue
-        first_outputs.add(call_id)
-        valid_output_ids.add(call_id)
+        else:
+            removed_orphans += 1
 
     output: list[AIMessage] = []
-    emitted_outputs: set[str] = set()
     inserted = 0
-    for message in source:
-        if message.role is MessageRole.TOOL:
-            call_id = str(message.tool_call_id or "").strip()
-            if call_id not in known_calls or call_id in emitted_outputs:
-                continue
-            emitted_outputs.add(call_id)
-            output.append(message)
+    for position, message in enumerate(source):
+        group = group_at.get(position)
+        if group is None:
+            if message.role is not MessageRole.TOOL:
+                output.append(message)
             continue
-
         output.append(message)
-        if message.role is not MessageRole.ASSISTANT or not message.tool_calls:
-            continue
         for call in message.tool_calls:
-            if call.call_id in valid_output_ids:
+            answer = group.answers.get(call.call_id)
+            if answer is not None:
+                output.append(answer)
                 continue
             result = ToolResult(
                 ok=False,
@@ -96,7 +99,6 @@ def repair_tool_history(
                     tool_call_id=call.call_id,
                 )
             )
-            emitted_outputs.add(call.call_id)
             inserted += 1
 
     return HistoryRepair(

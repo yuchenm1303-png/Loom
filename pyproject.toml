@@ -56,13 +56,13 @@ loom-app-server = "loom_app_server:main"
 loom-chatgpt-mcp = "loom_chatgpt_mcp:main"
 
 [tool.setuptools]
-py-modules = ["loom_image_capability", "loom_cli", "loom_web", "loom_app_server", "loom_chatgpt_mcp", "loom_model_bridge"]
+py-modules = ["loom_image_capability", "loom_cli", "loom_web", "loom_app_server", "loom_chatgpt_mcp", "loom_model_bridge", "loom_builtin_models"]
 
 [tool.setuptools.package-data]
 app = ["web_static/*"]
 
 [tool.setuptools.packages.find]
-include = ["app*"]
+include = ["app*", "services*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

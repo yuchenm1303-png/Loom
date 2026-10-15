@@ -7,7 +7,7 @@ import threading
 import uuid
 from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
 from contextlib import nullcontext
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, Callable, Protocol
 
@@ -105,6 +105,21 @@ def _optional_env_int(name: str) -> int | None:
     except ValueError:
         return None
     return value if value > 0 else None
+
+
+@dataclass(frozen=True, slots=True)
+class ToolBatchPlan:
+    """What one model response's tool calls may do before anything runs.
+
+    ``immediate`` calls are answered now with a not-executed result; ``runnable``
+    calls enter the pending queue in their original order.
+    """
+    runnable: tuple[ToolCall, ...]
+    immediate: tuple[tuple[ToolCall, ToolResult], ...]
+    blocked: bool = False
+
+
+_BATCH_FAULT_RETRY = "reissue_batch"
 
 
 class AgentRuntime:
@@ -879,6 +894,85 @@ class AgentRuntime:
             batch.append(prepared)
         return batch
 
+    def _recover_unavailable_tool(self, session: AgentSession, call: ToolCall) -> bool:
+        """Make a registered tool the model named available on its next step.
+
+        The base runtime has no deferred tools. Returns True only when the tool
+        will be declared on the next model step.
+        """
+        _ = (session, call)
+        return False
+
+    def _plan_tool_batch(
+        self,
+        session: AgentSession,
+        step: StepContext,
+        calls: list[ToolCall],
+    ) -> ToolBatchPlan:
+        """Decide before anything runs which calls of one model response may execute.
+
+        Availability and argument checks belong to the orchestrator, the same
+        authority dispatch uses, so each call is judged against the step it was
+        issued in. A batch with any faulty call executes none of its calls: every
+        call gets a correlated, not-executed result and the model re-issues the
+        batch. A byte-identical repeat inside the batch runs once and is answered
+        as a repeat.
+        """
+        faults: dict[str, ToolResult] = {}
+        for call in calls:
+            try:
+                self.orchestrator.prepare(step, call, legacy_policy=self.policy)
+            except ValueError as exc:
+                if step.tool_router.get(call.name) is None and self._recover_unavailable_tool(session, call):
+                    faults[call.call_id] = ToolResult(
+                        ok=False,
+                        content=(
+                            f"Tool {call.name!r} is not in this step's tool list, so this call was not executed. "
+                            "It is now activated for your next model step: issue the calls again with its advertised schema."
+                        ),
+                        data={"failure_kind": "tool_not_in_step", "execution_status": "not_executed",
+                              "tool": call.name, "activated_for_next_step": True,
+                              "retry_policy": _BATCH_FAULT_RETRY},
+                    )
+                else:
+                    faults[call.call_id] = self._invalid_tool_request_result(session, call, exc)
+        if faults:
+            invalid_ids = [call.call_id for call in calls if call.call_id in faults]
+            held = ToolResult(
+                ok=False,
+                content=(
+                    f"Not executed: {len(invalid_ids)} call(s) in this response were invalid, so none of this "
+                    "response's calls ran. Correct the invalid call(s) and issue the calls again."
+                ),
+                data={"failure_kind": "batch_not_executed", "execution_status": "not_executed",
+                      "invalid_call_ids": invalid_ids, "retry_policy": _BATCH_FAULT_RETRY},
+            )
+            return ToolBatchPlan(
+                runnable=(),
+                immediate=tuple((call, faults.get(call.call_id, held)) for call in calls),
+                blocked=True,
+            )
+
+        from .execution_guidance import tool_call_fingerprint
+
+        first_by_fingerprint: dict[str, str] = {}
+        runnable: list[ToolCall] = []
+        immediate: list[tuple[ToolCall, ToolResult]] = []
+        for call in calls:
+            fingerprint = tool_call_fingerprint(call)
+            first = first_by_fingerprint.get(fingerprint)
+            if first is None:
+                first_by_fingerprint[fingerprint] = call.call_id
+                runnable.append(call)
+                continue
+            immediate.append((call, ToolResult(
+                ok=False,
+                content=f"Duplicate of call {first} in this response; it was not executed again.",
+                data={"failure_kind": "duplicate_call", "execution_status": "not_executed",
+                      "duplicate_of_call_id": first},
+            )))
+        return ToolBatchPlan(runnable=tuple(runnable), immediate=tuple(immediate))
+
     def _process_pending_tools(
         self,
         session: AgentSession,
@@ -1429,7 +1523,20 @@ class AgentRuntime:
             else system_prompt_with_feedback(session.system_prompt, self.progress_feedback)
         )
         prompt = f"{base_prompt}\n\n{capability_contract}"
-        return prompt if _STEERING_PROMPT_MARKER in prompt else f"{prompt}\n\n{_STEERING_PROMPT}"
+        if _STEERING_PROMPT_MARKER not in prompt:
+            prompt = f"{prompt}\n\n{_STEERING_PROMPT}"
+        return prompt + (
+            "\n\nLoom supports optional user-approved child sessions. When you spot a small, "
+            "well-scoped task that the user could usefully run as a separate conversation, "
+            "you may include at most one fenced Markdown block with language loom-task "
+            "at the end of your final answer. The contents must be a JSON object with "
+            "exactly two strings: title (max 120 characters) and prompt (max 12000 characters). "
+            "Write a self-contained task with relevant file paths and acceptance criteria. "
+            "Only suggest when separation provides genuine value; never invent an extra task "
+            "merely to show a card. Do not start the task yourself without the user's choice. "
+            "The interface displays a Start/Do it here/dismiss card and may open an independent "
+            "child conversation on user approval."
+        )
 
     def _append_tool_history(
         self,

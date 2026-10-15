@@ -80,6 +80,7 @@ def test_invalid_declaration_is_a_configuration_error_not_a_model_repair():
 @pytest.mark.parametrize("undeclared", [False, True])
 def test_schema_repair_feedback_is_actionable_and_batch_execution_is_atomic(tmp_path, undeclared):
     from app.agent_runtime import AgentRuntime, AgentStatus, AgentTool, FileAgentSessionStore, ToolRegistry, ToolResult, SandboxManager, SandboxPolicy
+    from app.ai import MessageRole
     calls, requests = [], []
     schema = {"type": "object", "properties": {"value": {"type": "string"}}, "required": ["value"], "additionalProperties": False}
     tool = AgentTool(name="record_once", description="Record once", input_schema=schema,
@@ -101,18 +102,23 @@ def test_schema_repair_feedback_is_actionable_and_batch_execution_is_atomic(tmp_
         session = runtime.create_session("agent.fast", workspace_dir=tmp_path)
         assert runtime.start_turn(session.session_id, "Record").status is AgentStatus.COMPLETED
         assert calls == ["once"]
-        feedback = next(m.content for m in requests[1].messages if m.name == "loom_terminal_recovery")
-        assert "record_once" in feedback
+        # Each call of the faulty batch is answered by its own correlated result; none ran.
+        results = {m.tool_call_id: m for m in requests[1].messages if m.role is MessageRole.TOOL}
+        assert set(results) == {"valid-in-rejected-batch", "invalid"}
+        held = json.loads(results["valid-in-rejected-batch"].content)
+        assert held["data"]["execution_status"] == "not_executed"
+        assert "must-not-execute" not in results["valid-in-rejected-batch"].content
+        feedback = json.loads(results["invalid"].content)
+        assert feedback["data"]["execution_status"] == "not_executed"
         if undeclared:
-            assert "unknown_record" in feedback and "declared_tool" in feedback
+            assert feedback["data"]["error_code"] == "tool_not_available"
+            assert "unknown_record" in feedback["content"]
         else:
-            assert "$.value" in feedback and "string" in feedback
-        assert "private-value" not in feedback
-        rejected = [e for e in runtime.store.events(session.session_id) if e.kind.value == "model_response_rejected"]
-        if undeclared:
-            assert rejected[0].data["truncated_tool_name"] == "unknown_record"
-        else:
-            assert rejected[0].data["tool_argument_diagnostics"]["issues"][0]["expected_type"] == "string"
+            assert feedback["data"]["argument_path"] == "$.value" and feedback["data"]["expected_type"] == "string"
+        assert "private-value" not in results["invalid"].content
+        events = runtime.store.events(session.session_id)
+        assert not [e for e in events if e.kind.value == "model_response_rejected"]
+        assert {e.data["call_id"] for e in events if e.kind.value == "tool_failed"} == {"valid-in-rejected-batch", "invalid"}
     finally:
         runtime.close()
 

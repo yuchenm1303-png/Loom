@@ -487,7 +487,9 @@ def test_stream_retry_does_not_duplicate_tool_side_effect(tmp_path):
     rt.close()
 
 
-def test_mixed_batch_returns_each_result_without_replaying_valid_side_effect(tmp_path):
+def test_mixed_batch_holds_every_call_and_answers_each_one_without_running_any(tmp_path):
+    # A batch with a faulty call executes none of its calls (docs/tool-call-contract-2026-10-14.md),
+    # so re-issuing the batch after the correlated results cannot duplicate a side effect.
     calls = []
     tool = AgentTool("effect", "test", {"type": "object", "properties": {"argv": {"type": "array", "items": {"type": "string"}}}, "required": ["argv"]},
         lambda c, a: calls.append(a["argv"]) or ToolResult(True, "done"))
@@ -500,16 +502,19 @@ def test_mixed_batch_returns_each_result_without_replaying_valid_side_effect(tmp
     session = rt.create_session("agent.fast")
     result = rt.start_turn(session.session_id, "work")
     assert result.status is AgentStatus.COMPLETED
-    assert calls == [["once"], ["corrected"]]
+    assert calls == [["corrected"]]
     observations = [m for m in platform.requests[1].messages if m.role is MessageRole.TOOL]
     assert [m.tool_call_id for m in observations] == ["valid-prefix", "bad"]
+    held = json.loads(observations[0].content)
+    assert not held["ok"] and held["data"]["failure_kind"] == "batch_not_executed"
+    assert held["data"]["execution_status"] == "not_executed"
     failure = json.loads(observations[-1].content)
     assert not failure["ok"]
     assert "argv" in failure["content"]
     assert failure["data"]["execution_status"] == "not_executed"
     events = rt.store.events(session.session_id)
     assert not any(e.kind.value == "model_response_rejected" for e in events)
-    assert sum(e.kind.value == "tool_started" for e in events) == 2
+    assert sum(e.kind.value == "tool_started" for e in events) == 1
     assert any(c.call_id == "bad" for m in rt.store.load(session.session_id).messages for c in m.tool_calls)
     rt.close()
 

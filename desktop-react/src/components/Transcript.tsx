@@ -38,6 +38,7 @@ import { endSendFlight, launchSendFlight, recordCardOrigin } from "../sendFlight
 import { useEarlierProcessHandoff } from "./useEarlierProcessHandoff";
 import { LIVE_STATUS_GRACE_MS, LIVE_TEXT_HOLD_MS, TURN_FOLD_MS, TURN_SETTLE_HOLD_MS } from "../presentationTiming";
 import type { TranscriptItem } from "../types/loom";
+import { TaskBranchCard, parseTaskBranchProposal, suggestBranchFromText } from "./TaskBranchCard";
 import { groupExecutionSequence, isActivityItem, isProcessCommentary, reportIds, settleLiveText } from "./executionSequence";
 import {
   activitySegments,
@@ -674,7 +675,8 @@ function AssistantMessage({ item, streaming, onPrompt, decisionInteractive, prom
   const interrupted = ["interrupted", "cancelled", "failed"].includes(item.status || "");
   const live = streaming && !interrupted && (item.status === "streaming" || isActiveActivityStatus(item.status || "running"));
   const decisionMessage = parseDecisionMessage(parsed.answer, live);
-  const answer = decisionMessage.text.trim();
+  const parsedBranch = parseTaskBranchProposal(decisionMessage.text);
+  const answer = parsedBranch.text.trim();
   // A decision card belongs to the finished answer, and comes after the prose above it has been painted. In the
   // live layout it cannot be answered yet, and one that had begun to open there would be cut when the turn ends
   // and the message moves to its own entry (generation-motion.css opens it there).
@@ -682,6 +684,9 @@ function AssistantMessage({ item, streaming, onPrompt, decisionInteractive, prom
   const cardsReady = !streaming && !answerPainting;
   const note = variant === "note";
   const [noteOpen, setNoteOpen] = useState(false);
+  const [manualBranchOpen, setManualBranchOpen] = useState(false);
+  const [branchDismissed, setBranchDismissed] = useState(false);
+  const taskBranch = manualBranchOpen ? suggestBranchFromText(answer) : parsedBranch.proposal;
   const longNote = note && isLongNote(answer);
   // The model is still thinking about this message: nothing to read yet.
   const thinking = live && !answer && !decisionMessage.decisions.length;
@@ -701,7 +706,7 @@ function AssistantMessage({ item, streaming, onPrompt, decisionInteractive, prom
   }, [inheritsCapsule]);
   const reasoningExiting = !showReasoning && (retiring.mounted || inheritsCapsule);
 
-  if (!showReasoning && !reasoningExiting && !answer && !decisionMessage.decisions.length && !decisionMessage.incomplete) return null;
+  if (!showReasoning && !reasoningExiting && !answer && !taskBranch && !decisionMessage.decisions.length && !decisionMessage.incomplete) return null;
 
   return (
     <div
@@ -730,6 +735,18 @@ function AssistantMessage({ item, streaming, onPrompt, decisionInteractive, prom
           </div>
         ) : null}
         {answer ? <MarkdownMessage content={answer} workspace={workspace} streaming={live} messageKey={`${item.id}:answer`} interrupted={interrupted} /> : null}
+        {!note && cardsReady && taskBranch && !branchDismissed ? (
+          <TaskBranchCard
+            key={item.id + (manualBranchOpen ? ":manual" : ":proposal")}
+            threadId={item.threadId}
+            messageId={item.id}
+            proposal={taskBranch}
+            disabled={false}
+            doHereDisabled={Boolean(promptDisabled)}
+            onDoHere={onPrompt}
+            onDismiss={() => { setBranchDismissed(true); setManualBranchOpen(false); }}
+          />
+        ) : null}
         {cardsReady ? decisionMessage.decisions.map((decision, index) => (
           <DecisionPromptCard
             key={decision.id || `${item.id}:decision:${index}`}
@@ -754,7 +771,14 @@ function AssistantMessage({ item, streaming, onPrompt, decisionInteractive, prom
           </button>
         ) : null
       ) : (
-        <MessageToolbar kind="assistant" item={item} text={answer || reasoning} disabled={promptDisabled} />
+        <>
+          <MessageToolbar kind="assistant" item={item} text={answer || reasoning} disabled={promptDisabled} />
+          {!taskBranch && !branchDismissed && (
+            <button className="loom-task-branch-new" type="button" onClick={() => setManualBranchOpen(true)}>
+              ↗ 新建任务支路
+            </button>
+          )}
+        </>
       )}
     </div>
   );

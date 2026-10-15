@@ -6,7 +6,7 @@ import time
 from dataclasses import replace
 
 from app.ai import AIMessage, ChatRequest, MessageRole, ModelResponse, ModelUsage, ToolChoice
-from app.ai.errors import AIEmptyResponseError, AIResponseError, AITransportError, AITruncatedToolCallError, AIQuotaExceeded
+from app.ai.errors import AIEmptyResponseError, AIResponseError, AIToolContractError, AITransportError, AITruncatedToolCallError, AIQuotaExceeded
 from app.ai.execution_control import ModelCancelled, ModelSteered
 
 from .context_budget import is_context_window_error, request_forced_compaction
@@ -38,6 +38,9 @@ _TERMINAL_RECOVERY_INSTRUCTION = TERMINAL_RECOVERY_INSTRUCTION
 _TRUNCATED_RECOVERY_INSTRUCTION = TRUNCATED_RECOVERY_INSTRUCTION
 _invalid_terminal_response = invalid_terminal_response
 _history_message_count = history_message_count
+# Faulty tool batches are answered, not retried, so a model that keeps issuing them
+# is bounded here. A correction normally lands in one or two batches.
+_MAX_CONSECUTIVE_TOOL_FAULT_BATCHES = 5
 
 
 def _exposed_tool_names(step) -> tuple[str, ...]:
@@ -106,6 +109,7 @@ class TurnRunner:
 
     def run(self, session, token):
         rt = self.runtime
+        tool_fault_batches = 0
         try:
             while True:
                 if rt._cancel_if_requested(session, token):
@@ -293,6 +297,17 @@ class TurnRunner:
                             recovery_partial = ""
                             recovery_reasoning = ""
                             retry_sampling = True
+                            break
+                        except AIToolContractError as exc:
+                            # An undeclared tool or a schema-invalid argument is a fact about
+                            # individual calls, not malformed output. The response is well
+                            # formed, so commit its native calls; the EXECUTE branch answers
+                            # each one with a correlated result, and no format repair is spent.
+                            if exc.response is None:
+                                raise
+                            model_execution_ms = round((time.perf_counter() - model_request_started) * 1000)
+                            stream_timing = getattr(exc, "stream_timing", None)
+                            response = replace(exc.response, stream_timing=stream_timing) if stream_timing else exc.response
                             break
                         except AIResponseError as exc:
                             # An over-length rejection is not a malformed response:
@@ -582,7 +597,29 @@ class TurnRunner:
                             max_tool_result_chars=rt.limits.max_tool_result_chars,
                         ).messages)
                         return rt._limit(session, "tool call limit reached")
-                    session.pending_tool_calls.extend(calls)
+                    for call in calls:
+                        rt._emit_event(session, Event.TOOL_REQUESTED, data={
+                            "call_id": call.call_id,
+                            "tool": call.name,
+                            "arguments": call.arguments,
+                            "step_id": step.step_id,
+                        })
+                    # Every call of this response is answered before the next sample. A
+                    # faulty call holds the whole batch so none of it runs; a repeated call
+                    # runs once and is answered as a repeat.
+                    plan = rt._plan_tool_batch(session, step, list(calls))
+                    for call, result in plan.immediate:
+                        rt._append_tool_result(session, call, result, failed=True, step=step)
+                    tool_fault_batches = tool_fault_batches + 1 if plan.blocked else 0
+                    if tool_fault_batches >= _MAX_CONSECUTIVE_TOOL_FAULT_BATCHES:
+                        raise RuntimeError(
+                            f"model issued {tool_fault_batches} tool batches in a row that could not run; "
+                            "the faults are recorded in the tool results"
+                        )
+                    if not plan.runnable:
+                        rt._release_step_context(step)
+                        continue
+                    session.pending_tool_calls.extend(plan.runnable)
                     session.pending_step_id = step.step_id
                     session.pending_bindings = {
                         c.call_id: action_binding_digest(
@@ -591,16 +628,9 @@ class TurnRunner:
                             c,
                             rt.platform_for_session(session.session_id),
                         )
-                        for c in calls
+                        for c in plan.runnable
                         if (tool := step.tool_router.get(c.name)) is not None
                     }
-                    for call in calls:
-                        rt._emit_event(session, Event.TOOL_REQUESTED, data={
-                            "call_id": call.call_id,
-                            "tool": call.name,
-                            "arguments": call.arguments,
-                            "step_id": step.step_id,
-                        })
                     if not rt._process_pending_tools(session, token, step=step):
                         return rt._result(session)
                     continue

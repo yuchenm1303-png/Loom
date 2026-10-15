@@ -1,4 +1,5 @@
 import { readUpdatePreferences } from "./updatePreferences.js";
+import { mayReceiveUpdates } from "./updateEligibility.js";
 import { readUpdateChannel } from "./updateChannel.js";
 import { app, net } from "electron";
 import { execFile } from "node:child_process";
@@ -300,6 +301,7 @@ async function pruneOldRuntimes(keep: Set<string>): Promise<void> {
 
 async function maybeActivateReadyRuntime(): Promise<boolean> {
   if (!readyVersion || state.phase !== "ready") return false;
+  if (!await mayReceiveUpdates()) return false;
   if (!hooks) {
     scheduleReadyRetry();
     return false;
@@ -310,6 +312,7 @@ async function maybeActivateReadyRuntime(): Promise<boolean> {
     scheduleReadyRetry();
     return false;
   }
+  if (!await mayReceiveUpdates()) return false;
 
   if (retryTimer) {
     clearTimeout(retryTimer);
@@ -347,6 +350,10 @@ export async function ensureHostRuntimeUpdate(requiredProtocol = 0, manual = fal
   if (!enabled || (!manual && requiredProtocol === 0 && !readUpdatePreferences().automaticUpdates)) return hostRuntimeUpdateState();
   if (checkPromise) return checkPromise;
   checkPromise = (async () => {
+    if (!await mayReceiveUpdates()) {
+      readyVersion = "";
+      return setState({ phase: "disabled", availableVersion: undefined, availableProtocol: undefined, percent: undefined });
+    }
     const current = currentHostRuntime();
     setState({
       phase: "checking",
@@ -388,7 +395,12 @@ export async function ensureHostRuntimeUpdate(requiredProtocol = 0, manual = fal
         });
       }
       setState({ phase: "available", availableVersion: channel.version, availableProtocol: channel.protocol, error: undefined });
+      if (!await mayReceiveUpdates()) return setState({ phase: "disabled", availableVersion: undefined, availableProtocol: undefined });
       await prepareRuntime(channel);
+      if (!await mayReceiveUpdates()) {
+        readyVersion = "";
+        return setState({ phase: "disabled", availableVersion: undefined, availableProtocol: undefined, percent: undefined });
+      }
       await maybeActivateReadyRuntime();
       return hostRuntimeUpdateState();
     } catch (error) {

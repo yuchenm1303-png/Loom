@@ -12,6 +12,7 @@ export interface LoomAccountUser {
   status: string;
   role?: string;
   email_verified?: boolean;
+  updates_enabled?: boolean;
   created_at?: number;
 }
 

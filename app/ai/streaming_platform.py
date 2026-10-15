@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import threading
 from dataclasses import dataclass, field, replace
 from enum import Enum
@@ -13,7 +14,7 @@ from .contracts import (
     StreamEventKind,
     ToolCall,
 )
-from .errors import AIEmptyResponseError, AIResponseError, AITransportError
+from .errors import AIEmptyResponseError, AIResponseError, AITransportError, AIToolContractError
 from .execution_control import check_cancelled, note_progress, current_control
 from .platform import AIPlatform
 from .tool_protocol import parse_tool_call
@@ -50,15 +51,55 @@ class ProviderStreamEvent:
 ProviderStreamListener = Callable[[ProviderStreamEvent], None]
 
 
+def resolve_stream_name(parts: list[str], declared=frozenset()) -> str:
+    """Resolve a tool name that arrived as one value, fragments, or growing snapshots.
+
+    Concatenating a snapshot stream ("browser", then "browser_eval") doubles the
+    name, so prefer any reading that names a declared tool, then the longest
+    snapshot when every fragment is a prefix of it.
+    """
+    if not parts:
+        return ""
+    joined = "".join(parts)
+    if joined in declared:
+        return joined
+    longest = max(parts, key=len)
+    if longest in declared:
+        return longest
+    if all(longest.startswith(part) for part in parts):
+        return longest
+    return joined
+
+
+def collapse_replayed_object(raw: str) -> str:
+    """Keep one copy when a relay repeats a complete JSON object in the argument stream.
+
+    Only an exact repetition of the first complete object is collapsed. Anything
+    else is returned unchanged for the strict parser to judge.
+    """
+    text = raw.strip()
+    if not text.startswith("{"):
+        return raw
+    try:
+        _value, end = json.JSONDecoder().raw_decode(text)
+    except ValueError:
+        return raw
+    head = text[:end]
+    return head if text[end:].strip() == head else raw
+
+
 @dataclass(slots=True)
 class _ToolCallBuffer:
     call_id: str = ""
-    name: str = ""
+    name_parts: list[str] = field(default_factory=list)
     argument_parts: list[str] = field(default_factory=list)
 
 
 class _StreamAccumulator:
-    def __init__(self) -> None:
+    def __init__(self, declared_names=frozenset()) -> None:
+        # Names are resolved against what was declared for this request. Without
+        # declarations the snapshot/fragment heuristic alone decides.
+        self.declared_names = frozenset(declared_names)
         self.text_parts: list[str] = []
         self.visible_reasoning_parts: list[str] = []
         self.tool_calls: dict[int, _ToolCallBuffer] = {}
@@ -120,10 +161,7 @@ class _StreamAccumulator:
             buffer.call_id = event.tool_call_id
             self.call_indexes[event.tool_call_id] = index
         if event.tool_name:
-            if not buffer.name:
-                buffer.name = event.tool_name
-            elif event.tool_name != buffer.name:
-                buffer.name += event.tool_name
+            buffer.name_parts.append(event.tool_name)
         if event.arguments_delta:
             buffer.argument_parts.append(event.arguments_delta)
 
@@ -143,9 +181,10 @@ class _StreamAccumulator:
         for index in sorted(self.tool_calls):
             buffer = self.tool_calls[index]
             effective_finish = str(finish_reason or self.finish_reason or "")
+            name = resolve_stream_name(buffer.name_parts, self.declared_names)
+            arguments_text = collapse_replayed_object("".join(buffer.argument_parts))
             try:
-                calls.append(parse_tool_call(buffer.call_id, buffer.name,
-                                             "".join(buffer.argument_parts), finish_reason=effective_finish))
+                calls.append(parse_tool_call(buffer.call_id, name, arguments_text, finish_reason=effective_finish))
             except AIResponseError as exc:
                 exc.tool_argument_diagnostics.update({
                     "tool_index": index,
@@ -229,11 +268,11 @@ class StreamingAIPlatform(AIPlatform):
         if not callable(stream_method):
             return super().execute_chat(profile_id, request)
 
-        accumulator = _StreamAccumulator()
         inline_reasoning = InlineReasoningDemux()
         tool_text = ToolTextBoundary(exposes_tools(request))
         codec = ToolWireCodec(request)
         wire_request = codec.encode(request)
+        accumulator = _StreamAccumulator(declared_names=frozenset(tool.name for tool in wire_request.tools))
         names = codec.stream_decoder()
         stream = stream_method(wire_request)
         try:
@@ -351,7 +390,11 @@ class StreamingAIPlatform(AIPlatform):
                     late_inline_reasoning,
                 ),
             )
-        result = codec.decode(normalize_response(wire_request, result))
+        try:
+            result = codec.decode(normalize_response(wire_request, result))
+        except AIToolContractError as exc:
+            codec.decode_contract_error(exc)
+            raise
         tail = tool_text.finish()
         if tail:
             self._publish(ProviderStreamEvent(profile_id=profile.profile_id, kind=ProviderStreamEventKind.TEXT_DELTA, text_delta=tail))
