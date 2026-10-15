@@ -596,6 +596,7 @@ html[data-loom-reduced-motion="true"]::view-transition-new(loom-project-surface)
 
 /* Compact workspace tool rail is an actual final grid track, not a pointer-
    stealing overlay. It remains clear of native WebContentsView bounds. */
+:root { --loom-tool-rail-track: 62px; }
 .app-shell.workspace-panels {
   --loom-tool-rail-track: 62px;
   grid-template-columns:
@@ -610,12 +611,12 @@ html[data-loom-reduced-motion="true"]::view-transition-new(loom-project-surface)
 }
 /* Review/artifact/subagent/project docks render as absolute/fixed right-side
    surfaces. Leave the real rail track free so controls never cover their UI. */
-body:has(.loom-tool-rail) .review-workspace,
-body:has(.loom-tool-rail) .sub-agent-dock,
-body:has(.loom-tool-rail) .artifact-preview-dock,
-body:has(.loom-tool-rail) .project-details-panel {
+.review-workspace,
+.sub-agent-dock,
+.artifact-preview-dock,
+.project-details-panel {
   right: var(--loom-tool-rail-track, 62px) !important;
 }
 @media (max-width: 800px) {
-  .app-shell.workspace-panels { --loom-tool-rail-track: 55px; }
+  :root, .app-shell.workspace-panels { --loom-tool-rail-track: 55px; }
 }
