@@ -62,6 +62,10 @@ export interface LoomBridge {
   /** Create a zip archive containing local Browser Use diagnostics and bridge traces. */
   exportBrowserLogs(): Promise<BrowserLogExportResult>;
   setupBrowserExtension(browser?: "edge" | "chrome", extensionConnected?: boolean): Promise<{ ok: boolean; desiredVersion: string; manualInstallRequired: boolean; automaticUpdateRequested: boolean; extensionPath: string; pathCopied: boolean; folderOpened: boolean; folderError?: string; managementUrl: string; openError?: string }>;
+  /** Sandboxed native webContents; available only in the Electron desktop UI. */
+  embeddedBrowser?(command: import("../components/BrowserWorkspace").EmbeddedBrowserCommand): Promise<import("../components/BrowserWorkspace").EmbeddedBrowserState>;
+  onEmbeddedBrowserChange?(listener: (state: import("../components/BrowserWorkspace").EmbeddedBrowserState) => void): () => void;
+  onEmbeddedBrowserFocusAddress?(listener: () => void): () => void;
   /** Open a folder or reveal a file in the native file manager. */
   revealPath(targetPath: string): Promise<boolean>;
   /** Copy an image source to the native OS clipboard. */

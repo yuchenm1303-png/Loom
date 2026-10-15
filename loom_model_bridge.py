@@ -1299,7 +1299,7 @@ def _read_stdin_object() -> dict[str, Any]:
 
 
 def _write(payload: dict[str, Any]) -> None:
-    sys.stdout.write(json.dumps(payload, ensure_ascii=False, separators=(",", ":")))
+    sys.stdout.write(json.dumps(payload, ensure_ascii=True, separators=(",", ":")))
     sys.stdout.write("\n")
     sys.stdout.flush()
 

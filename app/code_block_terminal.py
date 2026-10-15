@@ -4,6 +4,7 @@ import importlib
 import os
 import shutil
 import sys
+import time
 import threading
 from pathlib import Path
 from typing import Any
@@ -67,6 +68,53 @@ def _execution_context(service, workspace: Path) -> tuple[str, PermissionMode]:
         matches[0],
     )
     return str(selected.session_id), PermissionMode(selected.permission_mode)
+
+
+
+def _workspace_session_ids(service, workspace: Path) -> list[str]:
+    """Resolve only Loom sessions explicitly attached to this workspace."""
+    list_sessions = getattr(service, "_list_session_objects", None)
+    if not callable(list_sessions):
+        raise RuntimeError("Loom thread registry is unavailable")
+    ids: list[str] = []
+    for session in list_sessions():
+        try:
+            if Path(session.workspace_dir).expanduser().resolve() == workspace:
+                ids.append(str(session.session_id))
+        except (AttributeError, OSError, RuntimeError, ValueError):
+            continue
+    if not ids:
+        raise ValueError("workspace is not associated with a Loom thread")
+    return list(dict.fromkeys(ids))
+
+
+def _list_processes(service, params: dict[str, Any]) -> dict[str, Any]:
+    workspace = _workspace(params.get("workspace"))
+    session_ids = _workspace_session_ids(service, workspace)
+    store = service.runtime.process_store
+    processes: list[dict[str, Any]] = []
+    for session_id in session_ids:
+        for snapshot in store.list_for_session(session_id):
+            # This is metadata only: never drain the Agent's stdout cursor here.
+            try:
+                managed = store.get(snapshot.process_id, session_id=session_id)
+            except KeyError:
+                continue  # A finished process may be pruned while polling.
+            processes.append({
+                "processId": snapshot.process_id,
+                "state": snapshot.state.value,
+                "running": snapshot.running,
+                "returnCode": snapshot.returncode,
+                "argv": list(snapshot.argv),
+                "cwd": snapshot.cwd,
+                "backend": snapshot.backend,
+                "pty": snapshot.pty,
+                "elapsedSeconds": round(time.monotonic() - managed.started_monotonic),
+                "outputTruncated": snapshot.output_truncated,
+                "failure": snapshot.failure,
+            })
+    processes.sort(key=lambda p: p["elapsedSeconds"])
+    return {"processes": processes}
 
 
 def _shell_argv(language: str, command: str) -> tuple[str, ...]:
@@ -158,23 +206,34 @@ def _process(service, params: dict[str, Any]):
     process_id = str(params.get("processId") or "").strip()
     if not process_id:
         raise ValueError("processId is required")
-    with _PROCESS_CONTEXT_LOCK:
-        context = _PROCESS_CONTEXT.get(process_id)
-    if context is None:
-        raise ValueError("terminal process is not associated with this app-server session")
-    session_id, expected_workspace = context
-    if str(workspace) != expected_workspace:
-        raise ValueError("terminal process belongs to a different workspace")
-    return service.runtime.process_store.get(process_id, session_id=session_id)
+    store = service.runtime.process_store
+    # Resolve Agent and manually started processes through the same session-owned
+    # store. Unlike the old _PROCESS_CONTEXT map, this also sees exec(wait=false).
+    for session_id in _workspace_session_ids(service, workspace):
+        try:
+            return store.get(process_id, session_id=session_id)
+        except (KeyError, PermissionError):
+            continue
+    raise ValueError("terminal process does not belong to this workspace")
 
 
 def _dispatch(service, method: str, params: dict[str, Any]) -> dict[str, Any]:
     if method == "terminal/run":
         return _run(service, params)
+    if method == "terminal/list":
+        return _list_processes(service, params)
+    if method == "terminal/clear":
+        workspace = _workspace(params.get("workspace"))
+        store = service.runtime.process_store
+        removed = sum(store.clear_finished_for_session(session_id)
+                      for session_id in _workspace_session_ids(service, workspace))
+        return {"removed": removed}
 
     managed = _process(service, params)
     if method == "terminal/read":
         return _snapshot(managed)
+    if method == "terminal/detail":
+        return _snapshot(managed, drain_delta=False)
     if method == "terminal/write":
         text = str(params.get("text") or "")
         if not text:
@@ -213,6 +272,7 @@ def _install_on_app_server(module) -> None:
                 "interrupt": True,
                 "permissionMode": "thread",
                 "authorization": "explicit-user-run",
+                "backgroundTasks": True,
             }
         return result
 

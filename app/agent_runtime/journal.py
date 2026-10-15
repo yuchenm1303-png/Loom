@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import os
 import threading
+import time
 import uuid
 from contextlib import contextmanager
 
@@ -87,6 +88,36 @@ def session_lock(directory):
                 fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
 
 
+# Windows readers (including antivirus/indexers) can briefly open session.json
+# without FILE_SHARE_DELETE. The commit lock only coordinates Loom writers.
+_REPLACE_RETRY_DELAYS = (0.025, 0.05, 0.1, 0.2, 0.4, 0.4, 0.4, 0.4)
+
+
+def replace_with_retry(source, target):
+    """Keep atomic replacement; retry only transient Windows sharing errors.
+
+    On persistent denial the error must propagate: an existing session snapshot
+    stays intact and commit_event's redo journal remains available for recovery.
+    """
+    for attempt in range(len(_REPLACE_RETRY_DELAYS) + 1):
+        try:
+            os.replace(source, target)
+            return
+        except OSError as exc:
+            if (getattr(exc, "winerror", None) not in (5, 32, 33)
+                    or attempt == len(_REPLACE_RETRY_DELAYS)):
+                raise
+            time.sleep(_REPLACE_RETRY_DELAYS[attempt])
+
+
+def _discard_temp(path):
+    # Do not mask a failed replace with a second error while cleaning up.
+    try:
+        path.unlink(missing_ok=True)
+    except OSError:
+        pass
+
+
 def atomic_json(path, value):
     temp = path.with_name(f".{path.name}.{uuid.uuid4().hex}.tmp")
     try:
@@ -94,9 +125,9 @@ def atomic_json(path, value):
             json.dump(value, handle, ensure_ascii=False, separators=(",", ":"))
             handle.flush()
             os.fsync(handle.fileno())
-        os.replace(temp, path)
+        replace_with_retry(temp, path)
     finally:
-        temp.unlink(missing_ok=True)
+        _discard_temp(temp)
 
 
 def atomic_text(path, text):
@@ -107,9 +138,9 @@ def atomic_text(path, text):
             handle.write(text)
             handle.flush()
             os.fsync(handle.fileno())
-        os.replace(temp, path)
+        replace_with_retry(temp, path)
     finally:
-        temp.unlink(missing_ok=True)
+        _discard_temp(temp)
 
 
 def repair_tail(path):

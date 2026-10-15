@@ -131,7 +131,7 @@ type TerminalSettings = {
   preserveBackgroundProcesses: boolean;
 };
 
-type BrowserConnectionMode = "auto" | "local-launch" | "cdp-attach" | "extension";
+type BrowserConnectionMode = "auto" | "local-launch" | "cdp-attach" | "extension" | "embedded";
 
 type BrowserSettings = {
   mode: BrowserConnectionMode;
@@ -285,6 +285,11 @@ const BROWSER_MODE_OPTIONS: { value: BrowserConnectionMode; label: string; detai
     value: "extension",
     label: "Current browser only",
     detail: "Require the Loom extension and drive the tab you are looking at. Never fall back to another browser.",
+  },
+  {
+    value: "embedded",
+    label: "Loom built-in browser",
+    detail: "Control the same embedded tabs after enabling AI for a tab in Loom Desktop.",
   },
   {
     value: "local-launch",

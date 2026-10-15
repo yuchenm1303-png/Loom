@@ -1,4 +1,5 @@
 import { readUpdatePreferences, writeUpdatePreferences } from "./updatePreferences.js";
+import { mayReceiveUpdates } from "./updateEligibility.js";
 import { app, BrowserWindow, dialog, ipcMain, shell } from "electron";
 import fs from "node:fs";
 import path from "node:path";
@@ -25,6 +26,7 @@ export type SoftwareUpdatePhase =
 export interface SoftwareUpdateState {
   hostRuntime?: HostRuntimeUpdateState;
   enabled: boolean;
+  accountUpdatesAllowed?: boolean;
   automaticUpdates?: boolean;
   silentUpdates?: boolean;
   autoRestartAfterUpdate?: boolean;
@@ -88,9 +90,9 @@ const earlyRecheckTimers: NodeJS.Timeout[] = [];
 export function softwareUpdateState(): SoftwareUpdateState {
   const application = applicationUpdateState();
   if (!updateInFlight() && application.phase !== "idle") {
-    return { ...state, ...readUpdatePreferences(), ...application, enabled: updateEnabled, hostRuntime: hostRuntimeUpdateState() };
+    return { ...state, ...readUpdatePreferences(), ...application, enabled: updateEnabled && state.accountUpdatesAllowed !== false, phase: state.accountUpdatesAllowed === false ? "disabled" : application.phase, hostRuntime: hostRuntimeUpdateState() };
   }
-  return { ...state, ...readUpdatePreferences(), hostRuntime: hostRuntimeUpdateState() };
+  return { ...state, ...readUpdatePreferences(), enabled: updateEnabled && state.accountUpdatesAllowed !== false, hostRuntime: hostRuntimeUpdateState() };
 }
 
 function broadcastState(): void {
@@ -192,6 +194,7 @@ async function maybeInstallHeadless(): Promise<boolean> {
   if (headlessInstallAttempt) return headlessInstallAttempt;
   if (!headlessInstallWanted()) return false;
   headlessInstallAttempt = (async () => {
+    if (!await mayReceiveUpdates()) return false;
     if (headlessInstallGuard) {
       let safe = false;
       try { safe = await headlessInstallGuard(); } catch { safe = false; }
@@ -204,6 +207,7 @@ async function maybeInstallHeadless(): Promise<boolean> {
       clearTimeout(headlessInstallRetryTimer);
       headlessInstallRetryTimer = null;
     }
+    if (!await mayReceiveUpdates()) return false;
     // Silent updates install whenever Agent work is idle, including with a
     // connected Desktop. The restart marker reopens the Desktop afterwards.
     markHeadlessUpdateRestart();
@@ -251,7 +255,7 @@ function scheduleErrorRetry(): void {
 }
 
 async function offerAvailableUpdate(info: UpdateInfo): Promise<void> {
-  if (readUpdatePreferences().silentUpdates) return;
+  if (!await mayReceiveUpdates() || readUpdatePreferences().silentUpdates) return;
   if (!updateEnabled || announcedVersion === info.version) return;
   announcedVersion = info.version;
 
@@ -277,7 +281,7 @@ async function offerAvailableUpdate(info: UpdateInfo): Promise<void> {
 }
 
 async function offerDownloadedUpdate(info: UpdateInfo): Promise<void> {
-  if (readUpdatePreferences().silentUpdates) return;
+  if (!await mayReceiveUpdates() || readUpdatePreferences().silentUpdates) return;
   if (!updateEnabled || promptedDownloadedVersion === info.version) return;
   promptedDownloadedVersion = info.version;
 
@@ -304,13 +308,21 @@ async function offerDownloadedUpdate(info: UpdateInfo): Promise<void> {
     ? await dialog.showMessageBox(parent, options)
     : await dialog.showMessageBox(options);
 
-  if (result.response === 0 && state.phase === "downloaded") {
+  if (result.response === 0 && state.phase === "downloaded" && await mayReceiveUpdates()) {
     restartForUpdate();
   }
 }
 
 export async function checkForUpdates(): Promise<SoftwareUpdateState> {
   if (!updateEnabled) return softwareUpdateState();
+  if (!await mayReceiveUpdates()) {
+    setState({ phase: "disabled", accountUpdatesAllowed: false, availableVersion: undefined,
+      releaseName: undefined, percent: undefined, error: undefined });
+    return softwareUpdateState();
+  }
+  if (state.accountUpdatesAllowed !== true) {
+    setState({ accountUpdatesAllowed: true, phase: state.phase === "disabled" ? "idle" : state.phase });
+  }
   void ensureHostRuntimeUpdate(0, true);
   if (checkPromise) return checkPromise;
   if (updateInFlight()) return softwareUpdateState();
@@ -345,6 +357,10 @@ export async function checkForUpdates(): Promise<SoftwareUpdateState> {
 }
 
 export async function installDownloadedUpdate(): Promise<{ accepted: boolean; state: SoftwareUpdateState }> {
+  if (!await mayReceiveUpdates()) {
+    setState({ phase: "disabled", accountUpdatesAllowed: false, availableVersion: undefined });
+    return { accepted: false, state: softwareUpdateState() };
+  }
   if (!updateInFlight() && applicationUpdateState().phase === "downloaded") {
     return { accepted: await installApplicationUpdate(), state: softwareUpdateState() };
   }
@@ -352,6 +368,7 @@ export async function installDownloadedUpdate(): Promise<{ accepted: boolean; st
     return { accepted: false, state: softwareUpdateState() };
   }
 
+  if (!await mayReceiveUpdates()) return { accepted: false, state: softwareUpdateState() };
   restartForUpdate();
   return { accepted: true, state: softwareUpdateState() };
 }
@@ -373,7 +390,8 @@ function configureUpdater(): void {
   if (!updateEnabled) return;
 
   autoUpdater.autoDownload = true;
-  autoUpdater.autoInstallOnAppQuit = readUpdatePreferences().automaticUpdates && readUpdatePreferences().autoRestartAfterUpdate;
+  // Install only after a fresh per-account eligibility check, never merely on process quit.
+  autoUpdater.autoInstallOnAppQuit = false;
   autoUpdater.allowPrerelease = false;
   autoUpdater.autoRunAppAfterInstall = true;
 
@@ -482,20 +500,21 @@ onHostRuntimeUpdateStatus(broadcastState);
 onApplicationUpdateStatus(() => {
   broadcastState();
   const application = applicationUpdateState();
-  if (application.phase !== "downloaded" || readUpdatePreferences().silentUpdates || !hasVisibleWindow()
+  if (state.accountUpdatesAllowed === false || application.phase !== "downloaded" || readUpdatePreferences().silentUpdates || !hasVisibleWindow()
     || promptedDownloadedVersion === application.availableVersion) return;
   promptedDownloadedVersion = application.availableVersion ?? null;
   void dialog.showMessageBox({
     type: "info", title: "Loom update ready", message: "Loom 小更新已准备就绪",
     detail: "重启后生效，也可以稍后在设置中安装。", buttons: ["重启更新", "稍后"], cancelId: 1,
   }).then(async result => {
-    if (result.response === 0) await installApplicationUpdate();
+    if (result.response === 0 && await mayReceiveUpdates()) await installApplicationUpdate();
   }).catch(console.error);
 });
 
 handleHostChannel("loom:update-preferences", (_event: unknown, patch: unknown) => {
   writeUpdatePreferences(patch);
-  autoUpdater.autoInstallOnAppQuit = readUpdatePreferences().automaticUpdates && readUpdatePreferences().autoRestartAfterUpdate;
+  // Install only after a fresh per-account eligibility check, never merely on process quit.
+  autoUpdater.autoInstallOnAppQuit = false;
   broadcastState();
   return softwareUpdateState();
 });

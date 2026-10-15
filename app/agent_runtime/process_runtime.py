@@ -1040,6 +1040,22 @@ class ProcessStore:
             ]
         return tuple(process.snapshot() for process in processes)
 
+
+    def clear_finished_for_session(self, session_id: str) -> int:
+        """Discard only completed processes; leave live commands untouched."""
+        with self._lock:
+            removed = [
+                process for process in self._processes.values()
+                if process.session_id == str(session_id) and not process.running
+            ]
+            removed_ids = {process.process_id for process in removed}
+            for process_id in removed_ids:
+                self._processes.pop(process_id, None)
+            self._order = [process_id for process_id in self._order if process_id not in removed_ids]
+        for process in removed:
+            process.backend.close()
+        return len(removed)
+
     def terminate_session(self, session_id: str) -> int:
         with self._lock:
             processes = [

@@ -1,4 +1,6 @@
 import { installWindowChrome } from "./windowChrome.js";
+import { EmbeddedBrowserManager, type EmbeddedBrowserCommand } from "./embeddedBrowser.js";
+import { EmbeddedBrowserAgentClient } from "./embeddedBrowserAgentBridge.js";
 import { ModelSwitchQueue } from "./modelSwitchQueue.js";
 import { isManagedBuiltinSelection } from "./modelPolicySelection.js";
 import { app, BrowserWindow, clipboard, dialog, ipcMain, nativeImage, nativeTheme, net, protocol, shell } from "electron";
@@ -216,6 +218,10 @@ function browserBridgeTokenPath(): string {
   // extension can only be paired with one of them, so the other two look like a
   // broken extension. This is the path the Python bridge already defaults to.
   return path.join(loomRuntimeHome(), "browser", "current-tab-bridge.token");
+}
+
+function embeddedBrowserToken(): string {
+  return crypto.createHash("sha256").update(ensureBrowserBridgeToken() + ":loom-embedded-v1").digest("hex");
 }
 
 function ensureBrowserBridgeToken(): string {
@@ -962,6 +968,7 @@ class LoomRpcProcess {
         LOOM_ACCOUNT_AUTOMATION_CREDENTIAL: accountAutomationCredential,
         LOOM_ACCOUNT_TOOL_ACCESS_ENFORCED: "1",
         LOOM_BROWSER_EXTENSION_TOKEN: ensureBrowserBridgeToken(),
+        LOOM_BROWSER_EMBEDDED_TOKEN: embeddedBrowserToken(),
         // The page HUD is the extension's asset, and a browser Loom launches
         // has no extension in it: the runtime injects the same file over CDP.
         // A packaged build keeps it next to the extension rather than inside
@@ -1019,6 +1026,8 @@ class LoomRpcProcess {
 }
 
 let mainWindow: BrowserWindow | null = null;
+let embeddedBrowserManager: EmbeddedBrowserManager | null = null;
+let embeddedBrowserAgentClient: EmbeddedBrowserAgentClient | null = null;
 const artifactWindows = new Set<BrowserWindow>();
 const artifactPreviewRoots = new Map<string, string>();
 const modelManager = new DesktopModelManager(REPO_ROOT);
@@ -1347,6 +1356,10 @@ function createWindow(): void {
   });
   void loadRenderer(window);
   window.on("closed", () => {
+    embeddedBrowserAgentClient?.stop();
+    embeddedBrowserAgentClient = null;
+    embeddedBrowserManager?.dispose();
+    embeddedBrowserManager = null;
     if (mainWindow === window) mainWindow = null;
   });
 }
@@ -1694,6 +1707,22 @@ handleHostChannel("loom:connect", () => rpc.connect());
 handleHostChannel("loom:call", (_event, method: string, params?: Record<string, unknown>) => runRpcCall(method, params ?? {}));
 // Disconnecting a UI must never stop shared web tasks or the Agent Runtime.
 ipcMain.handle("loom:disconnect", () => true);
+ipcMain.handle("loom:embedded-browser", async (event, command: EmbeddedBrowserCommand) => {
+  if (!mainWindow || mainWindow.isDestroyed() || event.sender !== mainWindow.webContents
+      || event.senderFrame !== mainWindow.webContents.mainFrame) {
+    throw new Error("Embedded browser is only available in Loom Desktop.");
+  }
+  if (!command || typeof command !== "object" || typeof command.action !== "string") {
+    throw new Error("Invalid browser command.");
+  }
+  // No Chromium tab/process is created until the user first opens Browser.
+  if (!embeddedBrowserManager) {
+    embeddedBrowserManager = new EmbeddedBrowserManager(mainWindow);
+    embeddedBrowserAgentClient = new EmbeddedBrowserAgentClient(embeddedBrowserManager, embeddedBrowserToken());
+    embeddedBrowserAgentClient.start();
+  }
+  return embeddedBrowserManager.command(command);
+});
 ipcMain.handle("loom:set-native-theme", (_event, source: "system" | "light" | "dark") => {
   const next = source === "light" || source === "dark" ? source : "system";
   nativeTheme.themeSource = next;

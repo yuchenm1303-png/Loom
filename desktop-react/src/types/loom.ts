@@ -44,6 +44,10 @@ export interface ThreadRecord {
   id: string;
   /** Empty when no project claims this thread's workspace. */
   projectId?: string;
+  /** Persisted owner of this child session; null for a top-level conversation. */
+  parentThreadId?: string | null;
+  branchSourceMessageId?: string | null;
+  branchReportedAt?: string | null;
   title: string;
   /** True only for a committed manual/model title, never the neutral provisional label. */
   customTitle?: boolean;
@@ -345,7 +349,7 @@ export interface LoomTerminalSettings {
 }
 
 export interface LoomBrowserSettings {
-  mode?: "auto" | "local-launch" | "cdp-attach" | "extension";
+  mode?: "auto" | "local-launch" | "cdp-attach" | "extension" | "embedded";
   cdpUrl?: string;
   preferredEngine?: "edge" | "chrome" | "system";
   persistSessions?: boolean;

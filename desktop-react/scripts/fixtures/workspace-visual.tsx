@@ -137,6 +137,7 @@ const bridge: Record<string, unknown> = {
   getUpdateStatus: async () => ({ enabled: false, phase: "disabled", currentVersion: "0.1.0-fixture" }),
   setZoomFactor: (factor: number) => factor,
   setNativeTheme: async (source: string) => source === "dark" ? "dark" : "light",
+  embeddedBrowser: undefined,
   filePathFor: () => "",
 };
 (window as unknown as { loom: unknown }).loom = new Proxy(bridge, {

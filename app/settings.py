@@ -143,7 +143,7 @@ _ALLOWED_SETTING_PATHS: dict[str, tuple[type, Any]] = {
     "environment.set": (dict, None),
     "environment.includeOnly": (list, None),
     "environment.passThroughEnvVars": (list, None),
-    "browser.mode": (str, {"auto", "local-launch", "cdp-attach", "extension"}),
+    "browser.mode": (str, {"auto", "local-launch", "cdp-attach", "extension", "embedded"}),
     # Validated properly by the runtime, which is the only place that knows the
     # loopback rule. Storing it is not the same as accepting it.
     "browser.cdpUrl": (str, None),

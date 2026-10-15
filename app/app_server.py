@@ -1877,7 +1877,9 @@ class JsonRpcStdioServer:
         writer = self._writer
         if writer is None:
             return
-        encoded = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
+        # ASCII-escaped JSON stays lossless for clients and cannot fail on Windows
+        # legacy code pages when an injected or redirected writer ignores UTF-8.
+        encoded = json.dumps(payload, ensure_ascii=True, separators=(",", ":"))
         with self._write_lock:
             writer.write(encoded + "\n")
             writer.flush()

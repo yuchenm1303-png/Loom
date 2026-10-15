@@ -79,6 +79,17 @@ const api = {
   exportComputerLogs: () => ipcRenderer.invoke("loom:export-computer-logs"),
   exportBrowserLogs: () => ipcRenderer.invoke("loom:export-browser-logs"),
   setupBrowserExtension: (browser: "edge" | "chrome" = "edge", extensionConnected = false) => ipcRenderer.invoke("loom:setup-browser-extension", browser, extensionConnected),
+  embeddedBrowser: (command: { action: string; [key: string]: unknown }) => ipcRenderer.invoke("loom:embedded-browser", command),
+  onEmbeddedBrowserChange: (listener: (state: { tabs: Array<{ id: string; url: string; title: string; loading: boolean; canGoBack: boolean; canGoForward: boolean; error?: string }>; activeId: string | null }) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, state: { tabs: Array<{ id: string; url: string; title: string; loading: boolean; canGoBack: boolean; canGoForward: boolean; error?: string }>; activeId: string | null }) => listener(state);
+    ipcRenderer.on("loom:embedded-browser-state", handler);
+    return () => ipcRenderer.removeListener("loom:embedded-browser-state", handler);
+  },
+  onEmbeddedBrowserFocusAddress: (listener: () => void) => {
+    const handler = () => listener();
+    ipcRenderer.on("loom:embedded-browser-focus-address", handler);
+    return () => ipcRenderer.removeListener("loom:embedded-browser-focus-address", handler);
+  },
   revealPath: (targetPath: string) => ipcRenderer.invoke("loom:reveal-path", targetPath),
   copyImageSource: (source: string) => ipcRenderer.invoke("loom:copy-image-source", source),
   readClipboardText: () => ipcRenderer.invoke("loom:clipboard-read-text"),

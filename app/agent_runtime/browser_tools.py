@@ -1419,12 +1419,13 @@ def browser_tools(runtime: "BrowserRuntime") -> tuple[AgentTool, ...]:
                         },
                         "connect": {
                             "type": "string",
-                            "enum": ["launch", "attach", "current_tab"],
+                            "enum": ["launch", "attach", "current_tab", "embedded"],
                             "description": (
                                 "Which browser to drive, when Settings > Browser allows the model "
                                 "to choose. launch starts Loom's own browser; attach drives an "
                                 "already-running local browser named by cdp_url; current_tab drives "
-                                "the tab the user is looking at through the Loom bridge extension. "
+                                "the tab the user is looking at through the Loom bridge extension; embedded "
+                                "uses only tabs explicitly authorized inside Loom Desktop Browser. "
                                 "Omit to use the configured default."
                             ),
                         },
