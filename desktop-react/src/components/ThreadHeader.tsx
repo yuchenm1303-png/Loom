@@ -10,6 +10,7 @@ import {
   PanelRightOpen,
   Pulse,
   Settings,
+  Terminal,
   SidebarTriangle,
   UserRound,
 } from "./icons";
@@ -40,6 +41,8 @@ interface ThreadHeaderProps {
   agentsOpen?: boolean;
   agentCount?: number;
   browserOpen?: boolean;
+  backgroundOpen?: boolean;
+  backgroundRunningCount?: number;
   accountAuthenticated?: boolean;
   accountLabel?: string;
   accountAvatar?: string;
@@ -56,6 +59,7 @@ interface ThreadHeaderProps {
   onToggleArtifacts(): void;
   onToggleAgents(): void;
   onToggleBrowser?(): void;
+  onToggleBackground(): void;
 }
 
 function workspaceName(workspace: string, fallback: string): string {
@@ -107,6 +111,8 @@ export function ThreadHeader({
   agentsOpen = false,
   agentCount = 0,
   browserOpen = false,
+  backgroundOpen = false,
+  backgroundRunningCount = 0,
   accountAuthenticated = false,
   accountLabel = "",
   accountAvatar = "",
@@ -123,6 +129,7 @@ export function ThreadHeader({
   onToggleArtifacts,
   onToggleAgents,
   onToggleBrowser,
+  onToggleBackground,
 }: ThreadHeaderProps) {
   const { language, t } = useI18n();
   const [copied, setCopied] = useState(false);
@@ -231,6 +238,20 @@ export function ThreadHeader({
 
         <button
           type="button"
+          className={"thread-review-button header-workspace-entry thread-background-button" + (backgroundOpen ? " active" : "")}
+          onClick={onToggleBackground}
+          disabled={loading || !workspace}
+          title={language === "zh-CN" ? "查看后台任务" : "View background tasks"}
+          aria-label={language === "zh-CN" ? "后台任务" : "Background tasks"}
+          aria-pressed={backgroundOpen}
+        >
+          <Terminal size={18} strokeWidth={1.8} aria-hidden="true" />
+          <span>{language === "zh-CN" ? "后台" : "Tasks"}</span>
+          {backgroundRunningCount > 0 ? <span className="thread-agent-count">{backgroundRunningCount}</span> : null}
+        </button>
+
+        <button
+          type="button"
           className={`thread-review-button header-workspace-entry thread-agent-button ${agentsOpen ? "active" : ""} ${agentCount > 0 ? "has-agents" : "is-empty"}`}
           onClick={onToggleAgents}
           disabled={loading}
@@ -272,12 +293,11 @@ export function ThreadHeader({
         </button>
 
         {onToggleBrowser ? (
-          <button
-            type="button"
+          <button type="button"
             className={"thread-review-button header-workspace-entry thread-browser-button " + (browserOpen ? "active" : "")}
             onClick={onToggleBrowser}
-            title={language === "zh-CN" ? "内置浏览器" : "Browser"}
-            aria-label={language === "zh-CN" ? "切换内置浏览器" : "Toggle browser"}
+            title={language === "zh-CN" ? "内置浏览器" : "Embedded browser"}
+            aria-label={language === "zh-CN" ? "切换内置浏览器" : "Toggle embedded browser"}
             aria-pressed={browserOpen}
           >
             <Globe2 size={17} strokeWidth={1.75} />
