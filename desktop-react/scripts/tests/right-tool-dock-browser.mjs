@@ -39,11 +39,16 @@ try {
 
     await dock.locator('[data-tool-id="agents"]').click();
     await page.locator('.sub-agent-dock[data-open="true"]').waitFor({ timeout: 5000 });
+    // The existing panel intentionally translates during its ~390ms arrival.
+    // The dock must remain actionable throughout, and the settled panel must
+    // stop at the reserved rail column rather than covering controls.
+    assert.equal(await dock.locator('[data-tool-id="agents"]').isEnabled(), true);
+    await page.locator('.sub-agent-dock[data-motion-phase="entered"]').waitFor({ timeout: 5000 });
     const afterPanel = await page.evaluate(() => ({
       panel: document.querySelector('.sub-agent-dock[data-open="true"]').getBoundingClientRect().right,
       rail: document.querySelector(".loom-tool-rail").getBoundingClientRect().left,
     }));
-    assert.ok(afterPanel.panel <= afterPanel.rail + 2, "agent surface obscures rail");
+    assert.ok(afterPanel.panel <= afterPanel.rail + 2, "agent surface obscures rail: " + JSON.stringify(afterPanel));
     await dock.locator('[data-tool-id="agents"]').click();
 
     await dock.locator('[data-tool-id="files"]').focus();
