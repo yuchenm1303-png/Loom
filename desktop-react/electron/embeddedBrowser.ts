@@ -406,18 +406,11 @@ export class EmbeddedBrowserManager {
       case "navigate": {
         const url = normalizeBrowserAddress(String(args.url || ""));
         if (args.new_tab === true) {
-          this.addTab("", true);
-          const newId = this.activeId || "";
-          this.aiAllowed.add(newId);
-          this.aiLeases.set(newId, owner);
-          entry = this.tabs.get(newId)!;
-          entry.state.url = url;
-          this.syncView();
-          // Wait for the new tab's actual navigation before reporting its DOM.
-          await entry.view.webContents.loadURL(url);
-        } else {
-          await wc.loadURL(url);
+          // Consent is per tab, not per origin or per AI task. Only the human
+          // may authorize a newly created tab from the browser toolbar.
+          throw new Error("Open the new tab in Loom Browser and explicitly allow AI for it.");
         }
+        await wc.loadURL(url);
         break;
       }
       case "switch_tab": this.activeId = tabId; this.syncView(); break;
