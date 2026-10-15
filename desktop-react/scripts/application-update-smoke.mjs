@@ -88,10 +88,17 @@ try {
     app.getAppPath = () => ${JSON.stringify(installed)};
     app.setPath("userData", ${JSON.stringify(path.join(home, "profile"))});
     try {
+      // This probe verifies relocation and ASAR loading, not sign-in. Exercise
+      // the real eligibility check with an authorized, isolated test account.
+      // No persisted session, real account credential or production bypass.
+      const { hostAccount } = await import(${JSON.stringify(pathToFileURL(path.join(codeRoot, "dist-electron/hostAccount.js")).href)});
+      hostAccount.status = async () => ({ reachable: true, authenticated: true,
+        user: { id: 1, status: "active", updates_enabled: true } });
       const { selectApplication } = await import(${JSON.stringify(pathToFileURL(path.join(codeRoot, "dist-electron/applicationLoader.js")).href)});
       trace("LOADER_IMPORTED");
       const entry = await selectApplication(${JSON.stringify(installed)}, ${JSON.stringify(home)}, true);
       trace("APPLICATION_SELECTED " + entry);
+      if (!entry.includes("application-updates")) throw new Error("Authorized staged application was not selected");
       await import(pathToFileURL(entry).href);
     } catch (error) { trace(String(error.stack)); console.error(error); app.exit(1); }
   `);
