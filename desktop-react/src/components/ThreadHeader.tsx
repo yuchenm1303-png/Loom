@@ -1,19 +1,4 @@
-import {
-  Archive,
-  Check,
-  Copy,
-  FileDiff,
-  GitFork,
-  Globe2,
-  PanelsTopLeft,
-  PanelRightClose,
-  PanelRightOpen,
-  Pulse,
-  Settings,
-  Terminal,
-  SidebarTriangle,
-  UserRound,
-} from "./icons";
+import { Archive, Check, Copy } from "./icons";
 import { useEffect, useMemo, useState } from "react";
 import { useI18n } from "../i18n";
 import type { ContextCompactionProgress, ContextReport } from "../types/loom";
@@ -32,34 +17,10 @@ interface ThreadHeaderProps {
   archived: boolean;
   model?: string;
   permissionMode?: string;
-  sidebarOpen: boolean;
-  inspectorOpen: boolean;
-  reviewOpen: boolean;
-  reviewCount?: number;
-  artifactOpen?: boolean;
-  artifactCount?: number;
-  agentsOpen?: boolean;
-  agentCount?: number;
-  browserOpen?: boolean;
-  backgroundOpen?: boolean;
-  backgroundRunningCount?: number;
-  accountAuthenticated?: boolean;
-  accountLabel?: string;
-  accountAvatar?: string;
   context?: ContextReport | null;
   compacting?: boolean;
   compactionProgress?: ContextCompactionProgress | null;
   onCompactContext?(): void;
-  onOpenProfile(): void;
-  onOpenAccount(): void;
-  onOpenSettings(): void;
-  onToggleSidebar(): void;
-  onToggleInspector(): void;
-  onToggleReview(): void;
-  onToggleArtifacts(): void;
-  onToggleAgents(): void;
-  onToggleBrowser?(): void;
-  onToggleBackground(): void;
 }
 
 function workspaceName(workspace: string, fallback: string): string {
@@ -85,15 +46,6 @@ async function copyText(value: string): Promise<void> {
 }
 
 
-// Keep workspace icons on the same grid with a consistent stroke weight.
-function WorkspaceEntryIcon({ kind }: { kind: "agents" | "review" | "preview" }) {
-  const Icon = { agents: GitFork, review: FileDiff, preview: PanelsTopLeft }[kind];
-  return <Icon className="header-workspace-icon" data-workspace-icon={kind} size={18} strokeWidth={1.75} aria-hidden="true" focusable="false" />;
-}
-function ActivityTraceIcon({ size = 16 }: { size?: number }) {
-  return <Pulse className="header-activity-trace" size={size} strokeWidth={1.86} style={{ strokeWidth: 2.1 }} focusable="false" />;
-}
-
 export function ThreadHeader({
   title,
   workspace,
@@ -102,34 +54,10 @@ export function ThreadHeader({
   running,
   loading = false,
   archived,
-  sidebarOpen,
-  inspectorOpen,
-  reviewOpen,
-  reviewCount = 0,
-  artifactOpen = false,
-  artifactCount = 0,
-  agentsOpen = false,
-  agentCount = 0,
-  browserOpen = false,
-  backgroundOpen = false,
-  backgroundRunningCount = 0,
-  accountAuthenticated = false,
-  accountLabel = "",
-  accountAvatar = "",
   context = null,
   compacting = false,
   compactionProgress = null,
   onCompactContext,
-  onOpenProfile,
-  onOpenAccount,
-  onOpenSettings,
-  onToggleSidebar,
-  onToggleInspector,
-  onToggleReview,
-  onToggleArtifacts,
-  onToggleAgents,
-  onToggleBrowser,
-  onToggleBackground,
 }: ThreadHeaderProps) {
   const { language, t } = useI18n();
   const [copied, setCopied] = useState(false);
@@ -162,42 +90,8 @@ export function ThreadHeader({
 
   const workspaceFallback = t("common.workspace");
   const localWorkspace = t("common.localWorkspace");
-  const settingsLabel = t("common.openSettings");
-  const inspectorLabel = inspectorOpen ? t("common.hideInspector") : t("common.openInspector");
-  const sidebarLabel = sidebarOpen
-    ? (language === "zh-CN" ? "收起会话侧栏" : "Hide conversation sidebar")
-    : (language === "zh-CN" ? "展开会话侧栏" : "Open conversation sidebar");
-  const reviewLabel = language === "zh-CN" ? "审查" : "Review";
-  const reviewTitle = language === "zh-CN" ? "审查当前对话中的文件更改" : "Review file changes from this conversation";
-  const artifactLabel = language === "zh-CN" ? "产物" : "Artifacts";
-  const artifactTitle = artifactCount > 0
-    ? (language === "zh-CN" ? `查看产物 · ${artifactCount} 个文件` : `View artifacts · ${artifactCount} files`)
-    : (language === "zh-CN" ? "打开产物侧栏" : "Open artifacts");
-  const agentsLabel = language === "zh-CN" ? "子代理" : "Agents";
-  const agentsTitle = language === "zh-CN" ? "打开子代理工作区" : "Open sub-agent workspace";
-  const profileTitle = language === "zh-CN" ? "个人主页与使用洞察" : "Profile & usage insights";
-  const accountTitle = accountAuthenticated
-    ? [
-        language === "zh-CN" ? "Loom 账号" : "Loom account",
-        accountLabel,
-      ].filter(Boolean).join(" · ")
-    : (language === "zh-CN" ? "登录 Loom" : "Sign in to Loom");
-
   return (
     <header className="thread-header polished-thread-header">
-      <div className="thread-header-leading">
-        <button
-          type="button"
-          className={`thread-header-icon-button panel-toggle-button thread-sidebar-triangle ${sidebarOpen ? "active is-open" : ""}`}
-          onClick={onToggleSidebar}
-          title={sidebarLabel}
-          aria-label={sidebarLabel}
-          aria-pressed={sidebarOpen}
-        >
-          <SidebarTriangle className="thread-sidebar-triangle-mark" viewBox="0 0 12 14" fill="currentColor" stroke="none" focusable="false" />
-        </button>
-      </div>
-
       <div className="thread-header-main">
         <div className="thread-header-copy">
           <div className="thread-title-line">
@@ -236,129 +130,6 @@ export function ThreadHeader({
           />
         ) : null}
 
-        <button
-          type="button"
-          className={"thread-review-button header-workspace-entry thread-background-button" + (backgroundOpen ? " active" : "")}
-          onClick={onToggleBackground}
-          disabled={loading || !workspace}
-          title={language === "zh-CN" ? "查看后台任务" : "View background tasks"}
-          aria-label={language === "zh-CN" ? "后台任务" : "Background tasks"}
-          aria-pressed={backgroundOpen}
-        >
-          <Terminal size={18} strokeWidth={1.8} aria-hidden="true" />
-          <span>{language === "zh-CN" ? "后台" : "Tasks"}</span>
-          {backgroundRunningCount > 0 ? <span className="thread-agent-count">{backgroundRunningCount}</span> : null}
-        </button>
-
-        <button
-          type="button"
-          className={`thread-review-button header-workspace-entry thread-agent-button ${agentsOpen ? "active" : ""} ${agentCount > 0 ? "has-agents" : "is-empty"}`}
-          onClick={onToggleAgents}
-          disabled={loading}
-          title={agentsTitle}
-          aria-label={agentsTitle}
-          aria-pressed={agentsOpen}
-        >
-          <WorkspaceEntryIcon kind="agents" />
-          <span className="thread-agent-label">{agentsLabel}</span>
-          {agentCount > 0 ? <span className="thread-agent-count">{agentCount}</span> : null}
-        </button>
-
-        <button
-          type="button"
-          className={`thread-review-button header-workspace-entry thread-review-check-button ${reviewOpen ? "active" : ""}`}
-          onClick={onToggleReview}
-          disabled={loading}
-          title={reviewTitle}
-          aria-label={reviewTitle}
-          aria-pressed={reviewOpen}
-        >
-          <WorkspaceEntryIcon kind="review" />
-          <span className="thread-review-label">{reviewLabel}</span>
-          {reviewCount > 0 ? <span className="thread-review-count">{reviewCount}</span> : null}
-        </button>
-
-        <button
-          type="button"
-          className={`thread-review-button header-workspace-entry thread-artifact-button ${artifactOpen ? "active" : ""} ${artifactCount > 0 ? "has-artifacts" : "is-empty"}`}
-          onClick={onToggleArtifacts}
-          disabled={loading}
-          title={artifactTitle}
-          aria-label={artifactTitle}
-          aria-pressed={artifactOpen}
-        >
-          <WorkspaceEntryIcon kind="preview" />
-          <span className="thread-artifact-label">{artifactLabel}</span>
-          {artifactCount > 0 ? <span className="thread-artifact-count">{artifactCount}</span> : null}
-        </button>
-
-        {onToggleBrowser ? (
-          <button type="button"
-            className={"thread-review-button header-workspace-entry thread-browser-button " + (browserOpen ? "active" : "")}
-            onClick={onToggleBrowser}
-            title={language === "zh-CN" ? "内置浏览器" : "Embedded browser"}
-            aria-label={language === "zh-CN" ? "切换内置浏览器" : "Toggle embedded browser"}
-            aria-pressed={browserOpen}
-          >
-            <Globe2 size={17} strokeWidth={1.75} />
-            <span>{language === "zh-CN" ? "浏览器" : "Browser"}</span>
-          </button>
-        ) : null}
-
-        <span className="thread-header-divider" aria-hidden="true" />
-
-        <button
-          type="button"
-          className="thread-header-icon-button thread-profile-button"
-          onClick={onOpenProfile}
-          title={profileTitle}
-          aria-label={profileTitle}
-        >
-          <ActivityTraceIcon size={17} />
-        </button>
-
-        <button
-          type="button"
-          className={`thread-header-icon-button thread-account-button ${accountAuthenticated ? "signed-in" : ""}`}
-          onClick={onOpenAccount}
-          title={accountTitle}
-          aria-label={accountTitle}
-        >
-          {accountAuthenticated && accountAvatar ? (
-            <img className="thread-account-avatar-image" src={accountAvatar} alt="" aria-hidden="true" />
-          ) : accountAuthenticated && accountLabel ? (
-            <span className="thread-account-initial" aria-hidden="true">
-              {accountLabel.slice(0, 1).toUpperCase()}
-            </span>
-          ) : (
-            <UserRound size={16} strokeWidth={1.75} />
-          )}
-          {accountAuthenticated ? <span className="thread-account-dot" aria-hidden="true" /> : null}
-        </button>
-
-        <button
-          type="button"
-          className="thread-header-icon-button thread-settings-button"
-          onClick={onOpenSettings}
-          title={settingsLabel}
-          aria-label={settingsLabel}
-        >
-          <Settings size={16} strokeWidth={1.75} />
-        </button>
-
-        <button
-          type="button"
-          className={`thread-header-icon-button panel-toggle-button thread-inspector-button ${inspectorOpen ? "active" : ""}`}
-          onClick={onToggleInspector}
-          disabled={loading}
-          title={inspectorLabel}
-          aria-label={inspectorLabel}
-          aria-pressed={inspectorOpen}
-        >
-          {inspectorOpen
-            ? <PanelRightClose size={16} strokeWidth={1.75} />
-            : <PanelRightOpen size={16} strokeWidth={1.75} />}
-        </button>
       </div>
     </header>
   );
