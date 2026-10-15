@@ -8,6 +8,11 @@ mock.module("../../dist-electron/hostAccount.js", { namedExports: {
     return snapshot;
   } },
 } });
+mock.module("../../dist-electron/hostProcess.js", { namedExports: {
+  isHostProcess: true,
+  handleHostChannel() {},
+  callHost: async () => { throw new Error("Host IPC should not be called in Host tests"); },
+} });
 const { mayReceiveUpdates } = await import("../../dist-electron/updateEligibility.js");
 
 test("per-user update policy honors server grant, revocation and account changes", async () => {
