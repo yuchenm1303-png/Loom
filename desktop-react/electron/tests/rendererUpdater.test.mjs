@@ -12,6 +12,7 @@ const root = path.join(directory, "ui-updates");
 const ipcMain = new EventEmitter(), app = new EventEmitter();
 Object.assign(app, { isPackaged: true, getVersion: () => "0.1.82", getPath: () => directory });
 mock.module("electron", { namedExports: { app, ipcMain, net: { fetch: async () => new Response("missing", { status: 404 }) } } });
+mock.module("../../dist-electron/updateEligibility.js", { namedExports: { mayReceiveUpdates: async () => true } });
 const { loadUpdatedRenderer } = await import("../../dist-electron/rendererUpdater.js");
 function window() {
   const win = new EventEmitter();
