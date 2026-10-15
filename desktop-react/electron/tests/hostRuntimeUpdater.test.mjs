@@ -48,6 +48,8 @@ mock.module("../../dist-electron/hostRuntime.js", { namedExports: {
   activateHostRuntime() { throw new Error("activation should wait for readiness guard"); },
   restoreHostRuntimePointer() {},
 } });
+// Keep the entitlement boundary isolated; dedicated tests verify its account-service logic.
+mock.module("../../dist-electron/updateEligibility.js", { namedExports: { mayReceiveUpdates: async () => true } });
 const updater = await import("../../dist-electron/hostRuntimeUpdater.js");
 
 test("extract and self-test yield to Host IPC and preserve extraction errors", { skip: process.platform !== "win32" }, async () => {

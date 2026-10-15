@@ -257,6 +257,7 @@ class AccountStore:
                     avatar_data_url TEXT NOT NULL DEFAULT '',
                     status TEXT NOT NULL DEFAULT 'active',
                     role TEXT NOT NULL DEFAULT 'user',
+                    updates_enabled INTEGER NOT NULL DEFAULT 1,
                     email_verified_at INTEGER,
                     created_at INTEGER NOT NULL,
                     updated_at INTEGER NOT NULL
@@ -382,6 +383,8 @@ class AccountStore:
             columns = {str(row[1]) for row in db.execute("PRAGMA table_info(users)")}
             if "role" not in columns:
                 db.execute("ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'user'")
+            if "updates_enabled" not in columns:
+                db.execute("ALTER TABLE users ADD COLUMN updates_enabled INTEGER NOT NULL DEFAULT 1")
             if "avatar_data_url" not in columns:
                 db.execute("ALTER TABLE users ADD COLUMN avatar_data_url TEXT NOT NULL DEFAULT ''")
             if "ban_reason" not in columns:
@@ -434,6 +437,7 @@ class AccountStore:
             "avatar_data_url": str(row["avatar_data_url"] or ""),
             "status": str(row["status"]),
             "role": str(row["role"] or "user"),
+            "updates_enabled": bool(row["updates_enabled"]) if "updates_enabled" in keys else True,
             "email_verified": bool(row["email_verified_at"]),
             "created_at": int(row["created_at"]),
             "ban_reason": str(row["ban_reason"] or "") if "ban_reason" in keys else "",
@@ -1138,6 +1142,25 @@ class AccountStore:
             )
             self._audit(db, int(actor["id"]), "user.model_access", target_type="user", target_id=str(user_id), metadata={"enabled": enabled, "models": normalized})
         return self.model_access(user_id)
+
+    def admin_set_user_updates(self, actor: dict[str, Any], user_id: int, enabled: bool) -> dict[str, Any]:
+        """Control delivery of *all* Loom software update channels for one account."""
+        if not isinstance(enabled, bool):
+            raise AccountError(HTTPStatus.BAD_REQUEST, "INVALID_UPDATE_ACCESS", "enabled must be a boolean.")
+        now = _now()
+        with self._guard, self._connect() as db:
+            user = db.execute("SELECT id FROM users WHERE id = ?", (int(user_id),)).fetchone()
+            if user is None:
+                raise AccountError(HTTPStatus.NOT_FOUND, "USER_NOT_FOUND", "User not found.")
+            db.execute(
+                "UPDATE users SET updates_enabled = ?, updated_at = ? WHERE id = ?",
+                (int(enabled), now, int(user_id)),
+            )
+            self._audit(
+                db, int(actor["id"]), "user.update_access",
+                target_type="user", target_id=str(user_id), metadata={"enabled": enabled},
+            )
+        return self.admin_user(user_id)
 
     def tool_access(self, user_id: int) -> dict[str, Any]:
         with self._connect() as db:
@@ -1852,6 +1875,13 @@ class AccountApplication:
         access = self.store.admin_set_model_access(actor, user_id, body.get("enabled"), body.get("models"))
         return {"access": access}
 
+    def admin_set_user_updates(self, body: dict[str, Any], authorization: str) -> dict[str, Any]:
+        actor = self._admin(authorization)
+        user_id = self._user_id(body)
+        if user_id <= 0:
+            raise AccountError(HTTPStatus.BAD_REQUEST, "INVALID_USER_ID", "user_id must be positive.")
+        return {"user": self.store.admin_set_user_updates(actor, user_id, body.get("enabled"))}
+
     def tool_access(self, authorization: str) -> dict[str, Any]:
         token = self._bearer_token(authorization)
         user = self.store.user_for_model_token(token) if token.startswith("loom_model_") else self.store.user_for_access_token(token)
@@ -2046,6 +2076,7 @@ class AccountRequestHandler(BaseHTTPRequestHandler):
         if path == "/v1/admin/feature-flags": return self.application.admin_set_feature_flag(body, authorization)
         if path == "/v1/admin/users/model-access": return self.application.admin_set_user_model_access(body, authorization)
         if path == "/v1/admin/users/tool-access": return self.application.admin_set_user_tool_access(body, authorization)
+        if path == "/v1/admin/users/updates": return self.application.admin_set_user_updates(body, authorization)
         raise AccountError(HTTPStatus.NOT_FOUND, "NOT_FOUND", "Endpoint not found.")
 
     def _redirect(self, location: str) -> None:

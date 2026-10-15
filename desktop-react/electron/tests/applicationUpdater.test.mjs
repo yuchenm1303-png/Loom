@@ -18,6 +18,8 @@ mock.module("electron", { namedExports: {
 } });
 mock.module("../../dist-electron/hostProcess.js", { namedExports: { isHostProcess: true, hostHasDesktopClients: () => desktopConnected, broadcastHostEvent() {} } });
 const { writeUpdatePreferences } = await import("../../dist-electron/updatePreferences.js");
+// Keep the entitlement boundary isolated; dedicated tests verify its account-service logic.
+mock.module("../../dist-electron/updateEligibility.js", { namedExports: { mayReceiveUpdates: async () => true } });
 const updater = await import("../../dist-electron/applicationUpdater.js");
 test("application updates stage automatically, reject damaged files and respect the active-task restart guard", async () => {
   try {
