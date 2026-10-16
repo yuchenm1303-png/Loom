@@ -35,7 +35,7 @@ const sessionFile = path.join(credentialDirectory, "session.token");
 export const desktopPidFile = path.join(credentialDirectory, "desktop-pids.json");
 const handlers = new Map<string, HostHandler>();
 const HOST_CONNECT_INTERVAL_MS = 100;
-const HOST_CONNECT_ATTEMPTS = 150;
+const HOST_CONNECT_ATTEMPTS = 600;
 const clientListeners = new Set<(pids: number[]) => void>();
 let server: HostServer | null = null;
 let connection: Promise<void> | null = null;
@@ -117,7 +117,9 @@ async function connectHost(): Promise<void> {
   connection = (async () => {
     await app.whenReady();
     let lastError: unknown;
-    // Fifteen seconds in all. The Host publishes its credential the moment it is
+    // Allow a cold Host to finish the bounded account check and verify its
+    // staged application before the Desktop gives up connecting (60s total).
+    // The Host publishes its credential the moment it is
     // listening, so a short interval costs a failed local read and saves the part
     // of a long one the Host spent already being ready.
     for (let attempt = 0; attempt < HOST_CONNECT_ATTEMPTS; attempt += 1) {
