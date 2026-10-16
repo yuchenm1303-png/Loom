@@ -222,6 +222,8 @@ export const SETTINGS_COPY: Record<string, string> = {
   "Reading update status": "正在读取更新状态",
   "Connecting to the desktop updater…": "正在连接更新服务…",
   "Updates are unavailable in this build": "此版本不支持自动更新",
+  "Update access could not be verified": "暂时无法确认更新资格",
+  "Check your sign-in, connection, and account update permission, then try checking again.": "请确认登录状态、网络连接和账号接收更新权限，然后重新检查更新。",
   "Automatic updates are enabled in installed Windows builds, not development or unpackaged sessions.": "请使用已安装的 Windows 桌面版进行自动更新。",
   "Checking for updates": "正在检查更新",
   "Looking for the newest Loom Windows release…": "正在查找最新桌面版本…",

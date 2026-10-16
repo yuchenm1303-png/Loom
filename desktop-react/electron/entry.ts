@@ -1,8 +1,14 @@
-import { app } from "electron";
+import { app, protocol } from "electron";
 import path from "node:path";
 import { existsSync } from "node:fs";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { selectApplication, rejectApplicationAndRestart } from "./applicationLoader.js";
+
+// Scheme privileges must be registered before ready, including when update
+// selection waits for the OS credential store to become available.
+protocol.registerSchemesAsPrivileged([
+  { scheme: "loom-artifact", privileges: { standard: true, secure: true, supportFetchAPI: true } },
+]);
 
 // Stable installed bootstrap. Business code, preloads and UI form one release.
 const installed = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");

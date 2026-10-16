@@ -90,9 +90,11 @@ const earlyRecheckTimers: NodeJS.Timeout[] = [];
 export function softwareUpdateState(): SoftwareUpdateState {
   const application = applicationUpdateState();
   if (!updateInFlight() && application.phase !== "idle") {
-    return { ...state, ...readUpdatePreferences(), ...application, enabled: updateEnabled && state.accountUpdatesAllowed !== false, phase: state.accountUpdatesAllowed === false ? "disabled" : application.phase, hostRuntime: hostRuntimeUpdateState() };
+    return { ...state, ...readUpdatePreferences(), ...application, enabled: updateEnabled, phase: state.accountUpdatesAllowed === false ? "disabled" : application.phase, hostRuntime: hostRuntimeUpdateState() };
   }
-  return { ...state, ...readUpdatePreferences(), enabled: updateEnabled && state.accountUpdatesAllowed !== false, hostRuntime: hostRuntimeUpdateState() };
+  // Keep manual checks available after a transient eligibility failure.
+  // Download/install still perform fresh server-side eligibility checks.
+  return { ...state, ...readUpdatePreferences(), enabled: updateEnabled, hostRuntime: hostRuntimeUpdateState() };
 }
 
 function broadcastState(): void {

@@ -31,9 +31,13 @@ export async function selectApplication(installed: string, hostRoot: string, isH
   // not blindly execute the ready pointer before the updater's checks run.
   // Desktop children follow the *running* Host or last active build, never a
   // not-yet-authorized ready build.
-  const canActivateReady = isHost && pointer.ready && pointer.ready !== pointer.active
-    ? await mayReceiveUpdates(1200)
-    : true;
+  let canActivateReady = true;
+  if (isHost && pointer.ready && pointer.ready !== pointer.active) {
+    // Windows safeStorage cannot decrypt the login session before ready.
+    // Checking earlier falsely treats a signed-in account as signed out.
+    await app.whenReady();
+    canActivateReady = await mayReceiveUpdates(8000);
+  }
   const candidate = session ? session.build
     : isHost && canActivateReady ? pointer.ready || pointer.active || 0 : pointer.active || 0;
   let directory = installed, build = 0;

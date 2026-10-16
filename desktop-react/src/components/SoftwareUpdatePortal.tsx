@@ -24,6 +24,7 @@ type SoftwareUpdatePhase =
 interface SoftwareUpdateState {
   hostRuntime?: { enabled: boolean; phase: string; currentVersion: string; availableVersion?: string; percent?: number; error?: string; requiredBootstrapVersion?: string };
   enabled: boolean;
+  accountUpdatesAllowed?: boolean;
   automaticUpdates?: boolean;
   silentUpdates?: boolean;
   autoRestartAfterUpdate?: boolean;
@@ -98,6 +99,11 @@ function statusCopy(state: SoftwareUpdateState | null): {
   }
   switch (state.phase) {
     case "disabled":
+      if (state.accountUpdatesAllowed === false) return {
+        title: "Update access could not be verified",
+        detail: "Check your sign-in, connection, and account update permission, then try checking again.",
+        tone: "warning",
+      };
       return {
         title: "Updates are unavailable in this build",
         detail: "Automatic updates are enabled in installed Windows builds, not development or unpackaged sessions.",
@@ -145,7 +151,7 @@ function UpdatePanel() {
   const releaseDate = formatReleaseDate(state?.releaseDate);
   const progress = Math.max(0, Math.min(100, Number(state?.percent ?? 0)));
   const busy = actionBusy || state?.phase === "checking" || state?.phase === "downloading";
-  const canInstall = state?.enabled === true && state.phase === "downloaded";
+  const canInstall = state?.enabled === true && state.accountUpdatesAllowed !== false && state.phase === "downloaded";
   const canCheck = state?.enabled === true && !busy;
 
   useEffect(() => {

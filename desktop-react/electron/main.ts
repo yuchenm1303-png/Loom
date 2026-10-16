@@ -136,17 +136,6 @@ const LOCAL_BROWSER_ARTIFACT_SUFFIXES = new Set([
   ...LOCAL_MEDIA_MIME_TYPES.keys(),
 ]);
 
-protocol.registerSchemesAsPrivileged([
-  {
-    scheme: "loom-artifact",
-    privileges: {
-      standard: true,
-      secure: true,
-      supportFetchAPI: true,
-    },
-  },
-]);
-
 interface JsonRpcResponse {
   jsonrpc: "2.0";
   id?: number | string | null;
