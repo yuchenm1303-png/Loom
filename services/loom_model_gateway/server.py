@@ -11,7 +11,7 @@ from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 
-from services.loom_model_policy.catalog import selection_for_model
+from services.loom_model_policy.catalog import selection_for_model, is_opencode_console_free
 from .routes import PROVIDERS, request_route, server_upstreams
 from .usage import UsageService
 
@@ -164,7 +164,11 @@ class LoomModelGateway:
                 "MODEL_NOT_ENTITLED",
                 "This Loom account is not allowed to use this built-in model by the current model policy.",
             )
-        if not self._upstream(group_id)[1]:
+        # OpenCode Console explicitly supports unauthenticated free chat.
+        # Never send a Go key to Console, or permit keyless paid models.
+        if not self._upstream(group_id)[1] and not (
+            group_id == "opencode-console" and is_opencode_console_free(normalized)
+        ):
             raise GatewayError(HTTPStatus.SERVICE_UNAVAILABLE, "UPSTREAM_NOT_CONFIGURED", "Selected upstream is not configured on the Loom gateway.")
 
     def upstream_request(self, body: bytes, authorization: str, group_id: str = "ant-ling", endpoint: str = "chat/completions", *, session_id: str = ""):
@@ -179,11 +183,12 @@ class LoomModelGateway:
             raise GatewayError(HTTPStatus.NOT_FOUND, "NOT_FOUND", "Endpoint not found.")
         base_url, api_key = self._upstream(group_id)
         headers = {
-            "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json",
             "Accept": "text/event-stream, application/json",
             "User-Agent": "LoomModelGateway/2",
         }
+        if api_key:
+            headers["Authorization"] = f"Bearer {api_key}"
         if endpoint == "messages":
             headers.update({"x-api-key": api_key, "anthropic-version": "2023-06-01"})
         if group_id == "opencode-go" and session_id and len(session_id) <= 256 and not any(ord(c) < 32 for c in session_id):
