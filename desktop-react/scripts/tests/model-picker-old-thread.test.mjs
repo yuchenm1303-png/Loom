@@ -46,7 +46,7 @@ test("picker requests an authoritative short status refresh without replacing tr
 test("pending switches keep models selectable and failures visible after closing", () => {
   assert.match(composer, /modelError.*role="alert"/);
   assert.match(modelPanel, /role="alert"/);
-  assert.match(modelPanel, /disabled=\{!accountAuthenticated \|\| profile\.available === false \|\| deleting\}/);
+  assert.match(modelPanel, /disabled=\{!accountAuthenticated \|\| profile\.available === false \|\| deleting \|\| isConsoleFree\(profile\)\}/);
 });
 
 
