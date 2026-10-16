@@ -79,7 +79,10 @@ def test_gateway_http_routes_use_server_credentials_and_preserve_protocol(monkey
         request = requests[0]
         assert request.full_url == "https://provider.invalid/"+group+"/"+endpoint
         assert request.data == body
-        assert request.get_header("Authorization") == "Bearer server-secret-"+group
+        if group == "opencode-console":
+            assert request.get_header("Authorization") is None
+        else:
+            assert request.get_header("Authorization") == "Bearer server-secret-"+group
         assert "loom_model_account" not in repr(request.header_items())
         if endpoint == "messages":
             assert request.get_header("X-api-key") == "server-secret-"+group
