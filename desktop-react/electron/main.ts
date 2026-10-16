@@ -1395,7 +1395,7 @@ function applySignedOutModelGate(
 
 async function currentModelPolicy(force = false): Promise<LoomModelPolicyAccess | null> {
   try {
-    return await accountClient.modelPolicyAccess(force);
+    return await accountClient.modelPolicyForPresentation(force);
   } catch (error) {
     // The App Server performs fail-closed enforcement before every signed-in
     // built-in turn. Keeping the last local catalogue visible during an outage
@@ -1426,8 +1426,9 @@ async function assertModelSelectionAllowed(selection: string): Promise<void> {
 }
 
 async function presentModels(snapshot: ReturnType<DesktopModelManager["snapshot"]>) {
+  const authenticated = await accountClient.hasAuthenticatedSession();
   const view = accountClient.cachedModelPolicy();
-  const gated = applySignedOutModelGate(applyModelPolicy(snapshot, view.access), await accountClient.hasAuthenticatedSession());
+  const gated = applySignedOutModelGate(applyModelPolicy(snapshot, view.access), authenticated);
   return { ...gated, policySync: { state: view.state, checkedAt: view.checkedAt } };
 }
 

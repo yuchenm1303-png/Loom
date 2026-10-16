@@ -13,7 +13,11 @@ outside built-in policy.
 2. A complete, valid provider response atomically updates that provider's
    persistent catalog. New IDs receive the existing default policy. Existing
    global, account and access-group rules are never overwritten by discovery.
-3. Models absent from a successful listing become unavailable. Their catalog
+3. A model missing from one complete provider listing enters `pending-removal`
+   and stays available. Retirement requires at least two successful observations
+   separated by 300 seconds. Failed discovery cannot confirm retirement; a
+   reappearing model clears the pending confirmation. A trusted operator manifest
+   can retire a model immediately. Their catalog
    rows and all permission rules remain in SQLite. Reappearing IDs recover their
    previous rules. A rename is a new identity; permissions are not silently
    transferred between unrelated model IDs.
@@ -27,8 +31,9 @@ outside built-in policy.
    and authorization, including new models.
 6. `/v1/check` resolves an exact selection with the same policy engine. Unknown
    and retired built-in selections are denied with source `catalog`; actual
-   administrator denials retain their policy source. Policy outages disable
-   built-in selections in the picker without disabling personal connections.
+   administrator denials retain their policy source. Policy outages preserve the
+   last same-account view and display synchronization status; they do not create
+   new administrator denials. Actual inference still requires server authorization.
 
 ## Deployment
 
@@ -82,8 +87,9 @@ seconds). No credential is included in access responses or stored refresh errors
 
 - Old clients can still use `GET /access`, `POST /access` with requested model
   IDs, and `/check`. Old POST requests receive exact decisions but are read-only.
-  New clients use GET for listing and `/check` for switches, so these calls also
-  work against earlier policy services exposing those endpoints. A complete
+  New clients use GET for listing. Choosing a model checks fresh cached denials;
+  it does not wait on a policy network round trip. Actual execution continues
+  through server authorization. A complete
   unified directory requires the upgraded policy service.
 - Existing SQLite policy databases migrate in place. Migration does not
   overwrite stored deny rules or resurrect already retired catalog rows.
@@ -106,3 +112,34 @@ all-provider discovery, retirement/reappearance across service restarts,
 preserved hard denials, legacy Ant Ling overrides, sanitized discovery failures,
 manifest loading, permission lease expiry, account changes and dynamic gateway
 authorization. Desktop tests exercise policy projection and new model metadata.
+
+## Connection and concurrency invariants
+
+- A selection ID, rather than a model name, identifies a connection. Built-in
+  selections require the canonical account gateway and account authentication;
+  `profile:` and legacy `saved:` selections require personal authentication.
+  Desktop and Python validate this before materializing credentials. Sharing a
+  model name never turns a personal connection into an account connection.
+- Catalog availability, access decisions and policy synchronization are distinct
+  fields. Every list, switch and reasoning response uses the same pure access
+  projection. Applying it repeatedly cannot overwrite catalog state. Server
+  catalog state survives a local bootstrap registry refresh.
+- Policy reads coalesce per authenticated identity. Stale responses cannot cross
+  logout/login, including login to the same user. Failed reads have a short
+  cooldown; presentation waits at most 150 ms for that policy read and otherwise
+  uses its current cache. This is not an inference authorization lease.
+- Thread switches serialize per thread. Default preference writes serialize
+  separately, and only the latest requested preference may become current.
+  Opening an old thread does not overwrite the default for new conversations.
+  Renderer refresh generations discard responses superseded by a newer refresh
+  or acknowledged switch. Existing threads use current connection metadata for
+  their exact selection, never another connection with the same model name.
+- An old built-in binding missing before a confirmed catalog arrives is shown
+  as syncing. Confirmed retirement and a deleted personal connection remain
+  unavailable. These states do not silently redirect a conversation.
+
+Regression checks exercise policy outages and recovery, account identity races,
+concurrent preference persistence, old-thread projection, retirement confirmation
+and reappearance, personal route preservation, and isolated container imports.
+External provider outages and genuine policy denials remain possible; they must
+be reported without changing connection identity or inventing new permissions.

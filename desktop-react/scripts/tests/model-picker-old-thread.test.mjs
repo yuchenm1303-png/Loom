@@ -8,6 +8,31 @@ const core = readFileSync(new URL("../../src/state/useLoomCore.ts", import.meta.
 const modelPanel = readFileSync(new URL("../../src/components/ModelPanel.tsx", import.meta.url), "utf8");
 const composer = readFileSync(new URL("../../src/components/ComposerBase.tsx", import.meta.url), "utf8");
 
+function projectThread() {
+  const source = ts.createSourceFile("core.ts", core, ts.ScriptTarget.ES2022, true);
+  const declaration = source.statements.find(node => ts.isFunctionDeclaration(node) && node.name?.text === "modelsForThread");
+  const compiled = ts.transpileModule(declaration.getText(source), { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText;
+  return new Function(`${compiled}; return modelsForThread;`)();
+}
+
+test("old thread binding stays explicit during catalog sync and never inherits a different connection", () => {
+  const project = projectThread();
+  const thread = { modelSelection: "builtin:opencode-go:demo", model: "demo", modelProvider: "old-provider", modelBaseUrl: "https://old-provider.test" };
+  const snapshot = { profiles: [], current: { selection: "builtin:minimax" }, policySync: { state: "unavailable" } };
+  const unknown = project(snapshot, thread);
+  assert.equal(unknown.current.selection, thread.modelSelection);
+  assert.equal(unknown.current.catalogState, "unknown");
+  assert.equal(unknown.current.available, true);
+  assert.equal(project({ ...snapshot, policySync: { state: "fresh" } }, thread).current.available, false);
+  const saved = project(snapshot, { ...thread, modelSelection: "saved:legacy" });
+  assert.equal(saved.current.kind, "saved");
+  assert.equal(saved.current.available, false, "a removed personal connection cannot be substituted with a builtin");
+  const profile = { selection: thread.modelSelection, adapter: "opencode-go", baseUrl: "https://account.smirel.com/model/v1/opencode-go", kind: "builtin" };
+  const resolved = project({ ...snapshot, profiles: [profile] }, thread);
+  assert.equal(resolved.current.baseUrl, profile.baseUrl);
+  assert.equal(resolved.current.provider, profile.adapter);
+});
+
 test("a terminal failed old turn cannot permanently hide its model picker", () => {
   assert.match(app, /!currentTurnHasTerminalError\(loom\.items, thread\?\.currentTurnId\)/);
 });

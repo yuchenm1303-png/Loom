@@ -497,3 +497,23 @@ test("account fast path preserves OpenCode protocol router", async () => {
   assert.equal(spec.provider, "opencode-go");
   assert.equal(spec.apiKey, "");
 });
+
+test("authoritative catalog survives bootstrap refresh and model retirement can recover without changing personal routes", async () => {
+  const manager = new DesktopModelManager(os.tmpdir());
+  const account = profile({ selection: "builtin:deepseek", kind: "builtin", authMode: "loom-account",
+    baseUrl: "https://account.smirel.com/model/v1/deepseek", apiKey: "", model: "deepseek-flash" });
+  const saved = profile({ model: account.model });
+  manager.registryCache = registry([account, saved]);
+  manager.metadataCache = { profiles: [] };
+  manager.runPythonBridgeAsync = async () => ({});
+  const spec = await manager.resolveAsync(account.selection);
+  const snapshot = { ...registry([account, saved]), current: spec, recentModels: [] };
+  const row = { model_id: account.selection, model: account.model, name: account.model,
+    group_id: "deepseek", group_name: "DeepSeek", available: false, catalog_state: "retired" };
+  await manager.applyServerCatalog(snapshot, [row]);
+  manager.adoptRegistry(registry([account, saved]), { profiles: [] });
+  assert.equal((await manager.resolveAsync(account.selection)).available, false, "local bootstrap must not undo server catalog state");
+  const recovered = await manager.applyServerCatalog(snapshot, [{ ...row, available: true, catalog_state: "available" }]);
+  assert.equal((await manager.resolveAsync(account.selection)).available, true);
+  assert.equal(recovered.profiles.find(p => p.selection === saved.selection).baseUrl, saved.baseUrl);
+});

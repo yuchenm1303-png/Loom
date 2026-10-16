@@ -314,6 +314,8 @@ export class DesktopModelManager {
       return { ...profile, name: row.name, groupId: row.group_id, groupName: row.group_name,
         catalogSource: "server", available: row.available,
         catalogState: row.catalog_state ?? (row.available ? "available" : "retired"),
+        catalogAvailable: row.available,
+        catalogMessage: row.available ? undefined : "Model is no longer available from this provider",
         vision: row.image_input?.supported ?? null, imageInput: row.image_input ?? { supported: null, source: "unknown" },
         statusMessage: row.available ? undefined : "Model is no longer available from this provider" };
     });
@@ -491,6 +493,7 @@ export class DesktopModelManager {
     const currentProfile = spec
       ? registry.profiles.find((profile) => profile.selection === spec.selection)
       : undefined;
+    const missingAvailable = spec?.kind === "builtin" && this.authoritativeCatalog === null;
     const current = spec
       ? {
           selection: spec.selection,
@@ -507,11 +510,13 @@ export class DesktopModelManager {
           family: currentProfile?.family ?? spec.family,
           protocol: currentProfile?.protocol ?? spec.protocol,
           configured: currentProfile?.configured ?? spec.configured,
-          available: currentProfile ? currentProfile.available !== false : false,
+          available: currentProfile ? currentProfile.available !== false : missingAvailable,
+          catalogState: currentProfile?.catalogState ?? (missingAvailable ? "unknown" as const : "retired" as const),
           catalogSource: currentProfile?.catalogSource ?? (spec ? "runtime" : undefined),
           statusMessage: currentProfile?.statusMessage ?? (
             spec && !currentProfile
-              ? "This model is no longer advertised by the provider. The current conversation keeps its binding until you choose another model."
+              ? missingAvailable ? "Model catalog is syncing; this conversation keeps its connection."
+                : "This model is no longer advertised by the provider. The current conversation keeps its binding until you choose another model."
               : undefined
           ),
           vision: currentProfile ? currentProfile.vision ?? null : spec.vision ?? null,
@@ -537,9 +542,10 @@ export class DesktopModelManager {
         family: spec.family,
         protocol: spec.protocol,
         configured: spec.configured,
-        available: false,
+        available: missingAvailable,
+        catalogState: missingAvailable ? "unknown" : "retired",
         catalogSource: "runtime",
-        statusMessage: "No longer advertised by the provider",
+        statusMessage: missingAvailable ? "Model catalog is syncing" : "No longer advertised by the provider",
         vision: spec.vision ?? null,
         contextLimits: spec.contextLimits,
         reasoning: spec.reasoning ?? null,

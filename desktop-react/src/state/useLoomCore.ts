@@ -157,23 +157,27 @@ function modelsForThread(snapshot: ModelSnapshot | null, thread?: ThreadRecord |
   const profile = snapshot.profiles.find((candidate) => candidate.selection === thread.modelSelection);
 
   if (!profile) {
+    const personal = thread.modelSelection.startsWith("profile:") || thread.modelSelection.startsWith("saved:");
+    const unknown = !personal && snapshot.policySync?.state !== "fresh";
     // Catalog refreshes are allowed to remove models, but a conversation is an
     // immutable record of the model it was bound to. Preserve that binding in
-    // the UI as an unavailable row instead of falling back visually (or
+    // the UI with its catalog status instead of falling back visually (or
     // operationally) to whatever model happens to be globally current.
     const model = String(thread.model || "").trim() || "Unavailable model";
     const adapter = String(thread.modelProvider || "").trim() || "openai-compatible";
     const unavailable = {
       selection: thread.modelSelection,
       id: `unavailable:${thread.modelSelection}`,
-      kind: thread.modelSelection.startsWith("profile:") ? "saved" as const : "builtin" as const,
+      kind: personal ? "saved" as const : "builtin" as const,
       name: model,
       adapter,
       baseUrl: String(thread.modelBaseUrl || ""),
       model,
-      available: false,
+      available: unknown,
+      catalogState: unknown ? "unknown" as const : "retired" as const,
       catalogSource: "runtime",
-      statusMessage: "This model is no longer advertised by the provider. Choose another model to replace this conversation binding.",
+      statusMessage: unknown ? "Model catalog is syncing; this conversation keeps its connection."
+        : "This model is no longer advertised by the provider. Choose another model to replace this conversation binding.",
       vision: thread.modelVision ?? null,
       reasoning: null,
     };

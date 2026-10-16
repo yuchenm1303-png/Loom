@@ -648,6 +648,57 @@ test("a slow re-check that succeeds is remembered, and concurrent sends share on
 
 const policyBody = (decisions) => ({ access: { enabled: true, models: decisions.filter((item) => item.enabled).map((item) => item.model_id), schema_version: 1, decisions } });
 
+test("policy refresh coalesces, retains same-account states on outage, and recovers without a lock-all transition", async () => {
+  let offline = false;
+  installFetch({ "/policy/v1/access": () => offline ? Promise.reject(new Error("offline"))
+    : later(20, reply(200, policyBody([{ model_id: "builtin:deepseek", enabled: true, source: "global" }]))),
+  });
+  await seedSession({ accessToken: "access", refreshToken: "refresh", expiresAt: Date.now() + 3600000, user: USER });
+  const client = newClient();
+  const [a, b] = await Promise.all([client.modelPolicyAccess(true), client.modelPolicyAccess(true)]);
+  assert.equal(calls.length, 1);
+  assert.deepEqual(a, b);
+  assert.equal(client.cachedModelPolicy().state, "fresh");
+  offline = true;
+  assert.deepEqual(await client.modelPolicyAccess(true), a);
+  assert.equal(client.cachedModelPolicy().state, "stale");
+  await client.modelPolicyAccess();
+  assert.equal(calls.length, 2, "outage cooldown does not hammer the policy service");
+  offline = false;
+  await client.modelPolicyAccess(true);
+  assert.equal(client.cachedModelPolicy().state, "fresh");
+});
+
+for (const sameUser of [false, true]) test(`late policy response cannot enter a new login (${sameUser ? "same user" : "different user"})`, async () => {
+  let release, entered;
+  const started = new Promise(resolve => { entered = resolve; });
+  installFetch({
+    "/policy/v1/access": () => { entered(); return new Promise(resolve => { release = resolve; }); },
+    "/v1/auth/login": () => reply(200, sessionBody({ access_token: "new", refresh_token: "new-refresh", user: { ...USER, id: sameUser ? USER.id : 99 } })),
+  });
+  await seedSession({ accessToken: "old", refreshToken: "old-refresh", expiresAt: Date.now() + 3600000, user: USER });
+  const client = newClient();
+  const pending = client.modelPolicyAccess();
+  await started;
+  await client.login("test@example.com", "test-password");
+  release(reply(200, policyBody([{ model_id: "builtin:deepseek", enabled: false, source: "user" }])));
+  assert.equal(await pending, null);
+  assert.equal(client.cachedModelPolicy().access, null);
+});
+
+test("first catalog presentation returns unknown while a slow policy read continues in background", async () => {
+  let release;
+  installFetch({ "/policy/v1/access": () => new Promise(resolve => { release = resolve; }) });
+  await seedSession({ accessToken: "access", refreshToken: "refresh", expiresAt: Date.now() + 3600000, user: USER });
+  const client = newClient();
+  assert.equal(await client.modelPolicyForPresentation(), null);
+  assert.equal(client.cachedModelPolicy().state, "unavailable");
+  const completion = client.modelPolicyAccess();
+  release(reply(200, policyBody([{ model_id: "builtin:deepseek", enabled: true, source: "global" }])));
+  await completion;
+  assert.equal(client.cachedModelPolicy().state, "fresh");
+});
+
 test("a fresh permission snapshot answers the pre-check for a model it decided about, and nothing else", async () => {
   // The interface fetches the snapshot every ten seconds; a new conversation's send checks the model it is about to use.
   // On a slow route that check used to be a round trip of its own, one to five seconds before the runtime heard of it.

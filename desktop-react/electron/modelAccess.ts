@@ -28,8 +28,9 @@ export function applyModelPolicy(snapshot: ModelSnapshot, access: LoomModelPolic
     if (profile.kind === "saved") return { ...base, accessState: "personal" };
     if (!access) return { ...base, accessState: "unknown" };
     const allowed = policyAllowsSelection(access, profile.selection);
-    const source = access.decisions?.find(item => item.model_id === profile.selection)?.source;
-    return { ...base, accessState: allowed ? "allowed" : source === "catalog" ? "not-listed" : "denied",
+    const decision = access.decisions?.find(item => item.model_id === profile.selection);
+    const notListed = decision?.source === "catalog" || (!decision && access.schema_version === 2);
+    return { ...base, accessState: allowed ? "allowed" : notListed ? "not-listed" : "denied",
       available: allowed ? catalogAvailable : false,
       ...(!allowed ? { statusMessage: policyBlockedMessage(access, profile.selection) } : {}) };
   };

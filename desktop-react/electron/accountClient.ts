@@ -40,6 +40,7 @@ export interface LoomModelPolicyDecision {
 }
 
 export interface LoomModelPolicyAccess {
+  user_id?: number;
   enabled: boolean;
   models: string[];
   model_groups?: Array<{ id: string; name: string; enabled: boolean }>;
@@ -433,6 +434,12 @@ export class LoomAccountClient {
     return job;
   }
 
+  /** Catalog presentation never waits for the policy service's network timeout. */
+  async modelPolicyForPresentation(force = false): Promise<LoomModelPolicyAccess | null> {
+    const answer = await answerWithin(this.modelPolicyAccess(force), 150);
+    return answer === STILL_ASKING ? this.cachedModelPolicy().access : answer;
+  }
+
   async modelPolicyCheck(selection: string): Promise<LoomModelPolicyAccess | null> {
     // A personal connection must never be sent to the built-in policy API.
     selection = String(selection || "").trim();
@@ -489,12 +496,14 @@ export class LoomAccountClient {
             String(body.error?.message || ("Model policy request failed (" + response.status + ").")),
           );
         }
-        if (!body.access || !Array.isArray(body.access.models) || typeof body.access.enabled !== "boolean") {
+        if (!body.access || !Array.isArray(body.access.models) || body.access.models.some(item => typeof item !== "string")
+          || typeof body.access.enabled !== "boolean" || (body.access.user_id !== undefined && body.access.user_id !== active.user.id)) {
           throw new AccountHttpError(0, "MODEL_POLICY_INVALID", "Model policy returned invalid access data.");
         }
         if (body.access.schema_version === 2 && (!Array.isArray(body.access.decisions)
           || !body.access.decisions.length
           || body.access.decisions.some(item => typeof item.model_id !== "string" || typeof item.enabled !== "boolean")
+          || new Set(body.access.decisions.map(item => item.model_id)).size !== body.access.decisions.length
           || !Array.isArray(body.access.catalog?.models)
           || !body.access.catalog.models.length
           || new Set(body.access.catalog.models.map(item => item.model_id)).size !== body.access.catalog.models.length

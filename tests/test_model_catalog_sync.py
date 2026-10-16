@@ -75,6 +75,34 @@ def test_discovery_failure_retains_catalog_and_does_not_expose_secrets(tmp_path)
     assert next(row for row in after["providers"] if row["group_id"] == "minimax")["error"]
 
 
+def test_one_omission_and_failed_reads_cannot_retire_a_model_and_return_clears_confirmation(tmp_path, monkeypatch):
+    clock = [1800000000]
+    monkeypatch.setattr("services.loom_model_policy.policy._now", lambda: clock[0])
+    store = PolicyStore(tmp_path / "policy.db")
+    rows = parse_models("deepseek", {"data": [{"id": "deepseek-flash"}, {"id": "deepseek-other"}]})
+    store.replace_provider_catalog("deepseek", rows)
+    store.replace_provider_catalog("deepseek", rows[1:])
+    clock[0] += 600
+    store.catalog_failure("deepseek", "temporary outage")
+    first = lambda: next(r for r in store.catalog()["models"] if r["model_id"] == rows[0]["model_id"])
+    assert first()["available"] and first()["catalog_state"] == "pending-removal"
+    store.replace_provider_catalog("deepseek", rows)
+    assert first()["catalog_state"] == "available"
+    store.replace_provider_catalog("deepseek", rows[1:])
+    assert first()["available"], "an earlier failed/disappeared generation cannot confirm this new omission"
+
+
+def test_operator_manifest_retirement_is_immediate_and_does_not_change_admin_rules(tmp_path):
+    store = PolicyStore(tmp_path / "policy.db")
+    rows = parse_models("deepseek", {"data": [{"id": "deepseek-flash"}, {"id": "deepseek-other"}]})
+    store.replace_provider_catalog("deepseek", rows, "manifest")
+    store.set_global_rule(1, rows[0]["model_id"], False)
+    store.replace_provider_catalog("deepseek", rows[1:], "manifest")
+    assert not next(r for r in store.catalog()["models"] if r["model_id"] == rows[0]["model_id"])["available"]
+    store.replace_provider_catalog("deepseek", rows, "manifest")
+    assert decision(store.effective_access(7, {"enabled": True}), rows[0]["model_id"])["source"] == "global"
+
+
 def test_all_provider_discovery_is_independent_of_clients_and_keeps_global_denies(tmp_path):
     store = PolicyStore(tmp_path / "policy.db")
     from services.loom_model_policy.catalog_sync import PROVIDERS

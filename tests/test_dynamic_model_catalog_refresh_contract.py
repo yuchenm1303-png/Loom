@@ -84,14 +84,15 @@ def test_settings_models_page_also_refreshes_on_open() -> None:
     assert "listModels<ModelSnapshot>(true)" in settings_models
 
 
-def test_thread_specific_removed_model_does_not_fall_back_to_global_current() -> None:
+def test_thread_specific_missing_model_preserves_binding_and_distinguishes_catalog_sync() -> None:
     core = CORE.read_text(encoding="utf-8")
 
     start = core.index("function modelsForThread(")
     end = core.index("function buildApprovalResponse", start) if "function buildApprovalResponse" in core[start:] else core.index("export function", start)
     block = core[start:end]
     assert "if (!profile) {" in block
-    assert "available: false" in block
+    # Absence before policy/catalog synchronization is unknown, not retirement.
+    assert 'snapshot.policySync?.state !== "fresh"' in block
     assert "This model is no longer advertised by the provider" in block
     assert "profiles: [...snapshot.profiles, unavailable]" in block
 
