@@ -20,8 +20,9 @@ def test_host_has_independent_runtime_identity_and_background_mode() -> None:
     assert "currentHostRuntimeVersion()" in auth
     assert "currentHostRuntimeProtocol()" in auth
     assert "LOOM_BOOTSTRAP_PROTOCOL_VERSION" in auth
-    assert "host-runtime" in runtime
-    assert "activateHostRuntime" in runtime
+    assert "embeddedHostRuntimeRoot" in runtime
+    assert "runtimeRootLooksUsable" in runtime
+    assert "resolveHostPythonExecutable" in runtime
     assert "ensureHostRuntimeUpdate" in updater
     assert "hostMode: loomHostLaunchMode()" in auth
 
@@ -44,15 +45,17 @@ def test_host_starts_at_login_and_can_lazily_open_desktop() -> None:
     assert 'label: "Quit Loom"' in source
 
 
-def test_host_runtime_updates_independently_and_bootstrap_update_is_rare() -> None:
+def test_host_runtime_and_bootstrap_share_one_complete_installer() -> None:
     source = UPDATER.read_text(encoding="utf-8")
     runtime_updater = (ELECTRON / "hostRuntimeUpdater.ts").read_text(encoding="utf-8")
     main = MAIN.read_text(encoding="utf-8")
     assert "bootstrapAutoInstallRequested" in source
     assert "ensureBootstrapUpdate" in source
-    assert "registerHostRuntimeUpdateHooks" in runtime_updater
-    assert "checksum verification failed" in runtime_updater
-    assert "Runtime activation rolled back" in runtime_updater
+    assert "ensureBootstrapUpdate" in runtime_updater
+    assert 'phase: "disabled"' in runtime_updater
+    assert 'phase: "incompatible"' in runtime_updater
+    assert "latest complete Loom release" in runtime_updater
+    assert "activateHostRuntime" not in runtime_updater
     assert "await rpc.assertRestartSafe();" in main
     assert "resolveHostPythonExecutable" in main
     assert "resolveHostBrowserExtensionRoot" in main
