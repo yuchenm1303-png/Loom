@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterable
 
-from .catalog import GROUPS, GROUP_BY_ID, MODEL_BY_ID, MODELS, group_for_selection, model_for_selection, selection_for_model
+from .catalog import GROUPS, GROUP_BY_ID, MODEL_BY_ID, MODELS, group_for_selection, model_for_selection, selection_for_model, is_opencode_console_free
 
 DEFAULT_MODEL_IDS = tuple(item.id for item in MODELS)
 CATALOG_RETIRE_GRACE_SECONDS = 300
@@ -337,7 +337,10 @@ class PolicyStore:
                     available=1, source=excluded.source, last_seen=excluded.last_seen""",
                     (item["model_id"], group_id, item["model"], item["name"], source, now),
                 )
-                db.execute("INSERT OR IGNORE INTO global_model_rules VALUES (?, 1, ?, NULL)", (item["model_id"], now))
+                # Metered Console models must be explicitly enabled by an admin.
+                # Do not accidentally introduce billed usage during discovery.
+                enabled = int(group_id != "opencode-console" or is_opencode_console_free(item["model"]))
+                db.execute("INSERT OR IGNORE INTO global_model_rules VALUES (?, ?, ?, NULL)", (item["model_id"], enabled, now))
             db.execute(
                 """INSERT INTO provider_catalog_status VALUES (?, ?, ?, '')
                 ON CONFLICT(group_id) DO UPDATE SET last_success=excluded.last_success,
