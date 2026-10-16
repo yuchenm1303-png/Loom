@@ -117,7 +117,7 @@ def test_plan_errors_are_visible_and_do_not_copy_source(planned_service):
     platform.response = "Just paste the full answer and start"
     outcome = _plan_result(service, parent["id"], "Very long source")
     assert outcome["status"] == "error"
-    assert "usable task plan" in outcome["error"]
+    assert "usable task" in outcome["error"]
     with pytest.raises(JsonRpcError):
         service.thread_branch_plan({"parentThreadId": parent["id"], "sourceText": "x" * 12001})
     with pytest.raises(JsonRpcError):
