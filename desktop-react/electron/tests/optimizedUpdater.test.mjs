@@ -15,13 +15,13 @@ class FakeNsisUpdater {
 mock.module("electron-updater", { defaultExport: { NsisUpdater: FakeNsisUpdater } });
 const { OptimizedNsisUpdater } = await import("../../dist-electron/optimizedUpdater.js");
 
-for (const scenario of ["success", "redirect reuse", "range unsupported", "bad checksum", "cancelled"]) {
+for (const scenario of ["success", "redirect reuse", "expired redirect", "range unsupported", "bad checksum", "cancelled"]) {
   test(`updater integration: ${scenario}`, async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "loom-optimized-updater-test-"));
     try {
       const pending = path.join(root, "pending");
       await mkdir(pending);
-      const redirect = scenario === "redirect reuse";
+      const redirect = scenario === "redirect reuse" || scenario === "expired redirect";
       const old = redirect ? Buffer.alloc(2 * 1024 * 1024, 3) : Buffer.from("abcdefgh");
       const next = redirect ? Buffer.from(old) : Buffer.from("1234efgh");
       if (redirect) { next.fill(7, 0, 65536); next.fill(8, 1024 * 1024, 1024 * 1024 + 65536); }
@@ -39,6 +39,7 @@ for (const scenario of ["success", "redirect reuse", "range unsupported", "bad c
         if (scenario === "cancelled") { cancellationToken.cancel(); throw new CancellationError(); }
         if (scenario === "range unsupported") return new Response(next);
         requests.push({ url, auth: init.headers.get("authorization") });
+        if (scenario === "expired redirect" && url.startsWith("https://assets.example.test/")) return new Response("expired", { status: 403 });
         const [, start, end] = /bytes=(\d+)-(\d+)/.exec(init.headers.get("range"));
         const response = new Response(next.subarray(Number(start), Number(end) + 1), {
           status: 206, headers: { "Content-Range": `bytes ${start}-${end}/${next.length}` },
@@ -58,11 +59,15 @@ for (const scenario of ["success", "redirect reuse", "range unsupported", "bad c
           assert.deepEqual(await readFile(path.join(root, "output.exe")), next);
           assert.ok((await readFile(path.join(pending, "current.blockmap"))).length);
           if (redirect) {
-            assert.equal(requests.length, 2);
+            assert.equal(requests.length, scenario === "expired redirect" ? 3 : 2);
             assert.equal(requests[0].url, "https://example.test/installer.exe");
             assert.equal(requests[1].url, "https://assets.example.test/signed-installer.exe");
             assert.equal(requests[0].auth, "test-secret");
             assert.equal(requests[1].auth, null);
+            if (scenario === "expired redirect") {
+              assert.equal(requests[2].url, "https://example.test/installer.exe");
+              assert.equal(requests[2].auth, "test-secret");
+            }
           }
         } else await assert.rejects(readFile(path.join(pending, "current.blockmap")), { code: "ENOENT" });
       }

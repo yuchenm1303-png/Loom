@@ -1,6 +1,7 @@
 import { open } from "node:fs/promises";
 import { createReadStream } from "node:fs";
 import { createHash } from "node:crypto";
+import { updateTransferDeadline } from "./updateTransfer.js";
 
 export interface UpdateOperation { kind: number; start: number; end: number }
 export interface UpdateRange { start: number; end: number }
@@ -82,9 +83,11 @@ export async function downloadUpdate(options: {
         controller.signal.throwIfAborted();
         const index = next++, range = ranges[index], expected = range.end - range.start;
         for (let attempt = 0;; attempt++) {
+          const transfer = updateTransferDeadline(controller.signal);
           try {
-            const signal = AbortSignal.any([controller.signal, AbortSignal.timeout(20_000)]);
+            const signal = transfer.signal;
             const response = await options.fetchRange(range, signal);
+            transfer.progress();
             if (response.status !== 206 || response.headers.get("content-range") !== `bytes ${range.start}-${range.end - 1}/${options.size}`) {
               await response.body?.cancel();
               throw new Error("Update server returned an invalid byte range");
@@ -101,6 +104,7 @@ export async function downloadUpdate(options: {
                 if (received + value.length > expected) throw new Error("Update range exceeded requested size");
                 data.set(value, received);
                 received += value.length;
+                transfer.progress();
                 activeBytes.set(index, received);
                 progress();
               }
@@ -114,7 +118,7 @@ export async function downloadUpdate(options: {
           } catch (error) {
             activeBytes.delete(index);
             if (controller.signal.aborted || attempt >= 1) throw error;
-          }
+          } finally { transfer.dispose(); }
         }
       }
     };

@@ -33,3 +33,27 @@ verification and installation stay in place. Failed transfers finish/abort all
 workers before the upstream full-download fallback starts. Cancellation is
 propagated instead of triggering fallback. Cache download-metrics.jsonl records
 counts, sizes and durations without account data, credentials or signed URLs.
+
+## Slow-network follow-up, 2026-10-16
+
+The local metrics contain repeated full-download fallbacks for 0.1.87; they
+do not record sufficient detail to prove the cause of each historical fallback.
+The current updater still downloads directly from GitHub, without a first-party
+China CDN. A small live probe of the 0.1.90 installer returned HTTP 206 and
+262,144 bytes in 3.97 seconds (about 66 KB/s including connection/redirect time).
+This is a single-machine observation, not a nationwide throughput benchmark.
+
+Range and blockmap transfers now use a 30-second inactivity timeout instead of
+a fixed 20-second total deadline. Each received chunk renews the deadline, so
+a steadily progressing slow request is retained. Stalled requests and caller
+cancellation still abort. Expired signed asset URLs are discarded on 401/403/404
+so the existing bounded range retry obtains a fresh redirect from the original
+release URL; credentials remain stripped across origins. SHA512 verification
+and the four-worker limit are unchanged.
+
+All 19 download regression tests passed, including continuous slow transfers,
+stalls, cancellation, expired signed URLs, range validation and checksum failure.
+This source change has not been released or installed by this follow-up. It
+reduces avoidable retries; it does not supply domestic CDN capacity. A managed
+download origin and testing from actual target networks remain necessary before
+claiming reliable China-region download speed.

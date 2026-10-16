@@ -9,6 +9,7 @@ import { readFile, writeFile, rm, appendFile } from "node:fs/promises";
 import { gunzipSync, gzipSync } from "node:zlib";
 import path from "node:path";
 import { downloadUpdate } from "./updateDownload.js";
+import { updateTransferDeadline } from "./updateTransfer.js";
 
 // Override only the differential transfer. electron-updater continues to own
 // release discovery, cache promotion, signature verification, and installation.
@@ -30,24 +31,28 @@ export class OptimizedNsisUpdater extends electronUpdater.NsisUpdater {
       const urls = await provider.getBlockMapFiles(fileInfo.url, this.currentVersion.version,
         options.updateInfoAndProvider.info.version, this.previousBlockmapBaseUrlOverride);
       const loadMap = async (url: URL): Promise<BlockMap> => {
-        const response = await this.netSession.fetch(url.href, {
-          headers, signal: AbortSignal.any([controller.signal, AbortSignal.timeout(20_000)]),
-        });
-        if (!response.ok) { await response.body?.cancel(); throw new Error(`Blockmap HTTP ${response.status}`); }
-        const reader = response.body?.getReader();
-        if (!reader) throw new Error("Missing update blockmap");
-        const chunks: Uint8Array[] = [];
-        let size = 0;
+        const transfer = updateTransferDeadline(controller.signal);
         try {
-          for (;;) {
-            const { done, value } = await reader.read();
-            if (done) break;
-            size += value.length;
-            if (size > 8 * 1024 * 1024) throw new Error("Update blockmap too large");
-            chunks.push(value);
-          }
-        } finally { await reader.cancel().catch(() => {}); }
-        return JSON.parse(gunzipSync(Buffer.concat(chunks), { maxOutputLength: 32 * 1024 * 1024 }).toString());
+          const response = await this.netSession.fetch(url.href, {
+            headers, signal: transfer.signal,
+          });
+          if (!response.ok) { await response.body?.cancel(); throw new Error(`Blockmap HTTP ${response.status}`); }
+          const reader = response.body?.getReader();
+          if (!reader) throw new Error("Missing update blockmap");
+          const chunks: Uint8Array[] = [];
+          let size = 0;
+          try {
+            for (;;) {
+              const { done, value } = await reader.read();
+              if (done) break;
+              size += value.length;
+              transfer.progress();
+              if (size > 8 * 1024 * 1024) throw new Error("Update blockmap too large");
+              chunks.push(value);
+            }
+          } finally { await reader.cancel().catch(() => {}); }
+          return JSON.parse(gunzipSync(Buffer.concat(chunks), { maxOutputLength: 32 * 1024 * 1024 }).toString());
+        } finally { transfer.dispose(); }
       };
       const oldMap = (async () => {
         try {
@@ -79,12 +84,20 @@ export class OptimizedNsisUpdater extends electronUpdater.NsisUpdater {
             });
             return first;
           }
-          return resolvedDownloadUrl.then(url => {
+          const resolving = resolvedDownloadUrl;
+          return resolving.then(async url => {
             if (new URL(url).origin !== fileInfo.url.origin) {
               // Match Fetch's cross-origin redirect handling for credentials.
               for (const name of ["authorization", "cookie", "proxy-authorization"]) rangeHeaders.delete(name);
             }
-            return this.netSession.fetch(url, { headers: rangeHeaders, signal });
+            const response = await this.netSession.fetch(url, { headers: rangeHeaders, signal });
+            // Signed asset URLs expire. Let the range worker retry from the
+            // original trusted release URL instead of reusing a rejected URL.
+            if ([401, 403, 404].includes(response.status) && resolvedDownloadUrl === resolving) resolvedDownloadUrl = null;
+            return response;
+          }).catch(error => {
+            if (resolvedDownloadUrl === resolving) resolvedDownloadUrl = null;
+            throw error;
           });
         },
         onProgress: (transferred, total, elapsedMs) => {
