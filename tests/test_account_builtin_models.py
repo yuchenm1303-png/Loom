@@ -73,16 +73,20 @@ def test_gateway_http_routes_use_server_credentials_and_preserve_protocol(monkey
         path = "/v1/" + ("" if group == "ant-ling" else group + "/") + endpoint
         connection.request("POST", path, body, {"Authorization": "Bearer loom_model_account", "Content-Type": "application/json", "x-api-key": "must-not-forward", "x-opencode-session": "thread-1"})
         response = connection.getresponse()
-        assert response.status == 200
-        assert json.loads(response.read()) == {"ok": True}
+        payload = json.loads(response.read())
         assert authorizations == ["Bearer loom_model_account"]
+        if group == "opencode-console":
+            assert response.status == 403
+            assert payload["error"]["code"] == "OPENCODE_FREE_CLIENT_RESTRICTED"
+            assert not requests
+            connection.close()
+            return
+        assert response.status == 200
+        assert payload == {"ok": True}
         request = requests[0]
         assert request.full_url == "https://provider.invalid/"+group+"/"+endpoint
         assert request.data == body
-        if group == "opencode-console":
-            assert request.get_header("Authorization") is None
-        else:
-            assert request.get_header("Authorization") == "Bearer server-secret-"+group
+        assert request.get_header("Authorization") == "Bearer server-secret-"+group
         assert "loom_model_account" not in repr(request.header_items())
         if endpoint == "messages":
             assert request.get_header("X-api-key") == "server-secret-"+group

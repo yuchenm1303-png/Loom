@@ -47,15 +47,24 @@ endpoints, model selection IDs or API keys.
 - **Console**: `builtin:opencode-console:<model>` goes to
   `https://opencode.ai/inference/openai/v1`. The documented free
   OpenAI-compatible chat models, including `deepseek-v4.1-flash-free`, are
-  available without a Console service key and **do not consume Go quota**.
-  Console free prices are temporary and subject to OpenCode rate limits.
+  listed as $0 in OpenCode's pricing table. **However, the live API returns
+  HTTP 403 / `FreeTierError` for third-party clients**, including Loom:
+  "OpenCode's free tier can only be used from within OpenCode." Pricing is not
+  an API entitlement. Loom shows these models as restricted (nonselectable),
+  and its gateway rejects free requests locally rather than trying to
+  impersonate the official client or consuming Go quota. Use the official
+  OpenCode app for these free models.
 - Both built-in groups still require a Loom sign-in and must pass Loom's model
   policy (provider group, global model, and per-user permissions).
+  Passing Loom's account policy does not override OpenCode's separate
+  free-tier client restriction.
 - A Console service-account API key is needed for **paid** Console models.
   Configure `LOOM_OPENCODE_CONSOLE_API_KEY` or `OPENCODE_CONSOLE_API_KEY`
   **on the model-gateway and catalog-policy services**, never in the frontend.
   This key must be issued by Console, *not* Go. Free models are still sent
   upstream without this paid credential even if the key is configured.
+- Supplying a Console service key does not bypass this restriction for free
+  models; do not attempt to forge client identity headers.
 - With a Console service key, the policy service discovers compatible models
   from the official `https://opencode.ai/console/api/v2/config` workspace
   configuration; it does **not** query the Go `/models` endpoint. It excludes

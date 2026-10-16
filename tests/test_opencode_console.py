@@ -53,16 +53,16 @@ def _gateway(monkeypatch, key: str = ""):
     return gateway, requests
 
 
-def test_free_console_model_uses_separate_gateway_and_no_provider_credentials(monkeypatch):
+def test_free_console_restriction_is_enforced_before_upstream(monkeypatch):
     gateway, requests = _gateway(monkeypatch)
-    response = gateway.upstream_request(
-        json.dumps({"model": FREE, "stream": False}).encode(),
-        "Bearer loom-account-key", "opencode-console",
-    )
-    assert response.status == 200
-    assert requests[0].full_url == BASE + "/chat/completions"
-    assert requests[0].get_header("Authorization") is None
-    assert "loom-account-key" not in repr(requests[0].header_items())
+    with pytest.raises(GatewayError) as denied:
+        gateway.upstream_request(
+            json.dumps({"model": FREE, "stream": False}).encode(),
+            "Bearer loom-account-key", "opencode-console",
+        )
+    assert denied.value.status == 403
+    assert denied.value.code == "OPENCODE_FREE_CLIENT_RESTRICTED"
+    assert not requests, "An OpenCode free model must never contact the restricted third-party endpoint"
     assert gateway_base_url("opencode-console", {}).endswith("/opencode-console")
     assert request_route("/v1/opencode-console/chat/completions") == (
         "opencode-console", "chat/completions")
@@ -79,15 +79,25 @@ def test_console_paid_requires_distinct_key_even_if_user_is_entitled(monkeypatch
     assert not requests
 
 
-def test_console_free_stays_anonymous_even_when_paid_key_is_configured(monkeypatch):
+def test_console_free_restricted_even_with_key_but_paid_route_kept(monkeypatch):
     gateway, requests = _gateway(monkeypatch, "console-only-key")
-    for model in (FREE, PAID):
+    with pytest.raises(GatewayError) as denied:
         gateway.upstream_request(
-            json.dumps({"model": model}).encode(), "Bearer loom-account",
+            json.dumps({"model": FREE}).encode(), "Bearer loom-account",
             "opencode-console",
         )
-    assert requests[0].get_header("Authorization") is None
-    assert requests[1].get_header("Authorization") == "Bearer console-only-key"
+    assert denied.value.code == "OPENCODE_FREE_CLIENT_RESTRICTED"
+    assert requests == []
+    response = gateway.upstream_request(
+        json.dumps({"model": PAID}).encode(), "Bearer loom-account",
+        "opencode-console",
+    )
+    assert response.status == 200
+    assert requests[0].get_header("Authorization") == "Bearer console-only-key"
+    assert requests[0].full_url == BASE + "/chat/completions"
+    models = {row["id"] for row in gateway.catalog("Bearer loom-account", "opencode-console")["data"]}
+    assert FREE not in models
+    assert PAID in models
 
 
 def test_go_and_console_models_never_share_selection_or_runtime_binding():
