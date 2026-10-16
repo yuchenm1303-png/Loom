@@ -1,22 +1,22 @@
 {
   "schema": 1,
   "kind": "application",
-  "build": 88001,
-  "bootstrap": "0.1.92",
-  "sourceSha": "c63b1cc721184312104ad0a0ea020df1433c3a79",
-  "sourceTime": 1792136386,
+  "build": 94001,
+  "bootstrap": "0.1.93",
+  "sourceSha": "22d080c213fbdd5b16bbb7f87238b0f61bdfa0de",
+  "sourceTime": 1792138385,
   "files": [
     {
-      "path": "dist/assets/index-BYRM7AdV.css",
-      "size": 1194708,
-      "sha256": "8d1b99a87a58c63ee0868423579869f036c6f1ed9e26120dc54e61b9d0ed326e",
-      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-88001/8d1b99a87a58c63ee0868423579869f036c6f1ed9e26120dc54e61b9d0ed326e"
+      "path": "dist/assets/index-BWbYTxTt.css",
+      "size": 1195654,
+      "sha256": "c5e4c73a1af77f1be4e658b974cb995f3b0991c3033d7bf6eb17818d04791155",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-94001/c5e4c73a1af77f1be4e658b974cb995f3b0991c3033d7bf6eb17818d04791155"
     },
     {
-      "path": "dist/assets/index-D0rv_mfS.js",
-      "size": 1909481,
-      "sha256": "ed503ceb797f39771cf42cb7bf7336a167134eb2d64a032fd7c8772774f13f4d",
-      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-88001/ed503ceb797f39771cf42cb7bf7336a167134eb2d64a032fd7c8772774f13f4d"
+      "path": "dist/assets/index-oTuKfZRC.js",
+      "size": 1913154,
+      "sha256": "8efbc96642705f3ab329ea1d3211eaba029e61bcd083ad988fe72b4e564ac99f",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-94001/8efbc96642705f3ab329ea1d3211eaba029e61bcd083ad988fe72b4e564ac99f"
     },
     {
       "path": "dist/assets/KaTeX_AMS-Regular-BQhdFMY1.woff2",
@@ -1119,8 +1119,8 @@
     {
       "path": "dist/index.html",
       "size": 3157,
-      "sha256": "93721a6589dc25b428677920141f3b44ae4ecf63f8751c9d9a48fe9f7b55eebb",
-      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-88001/93721a6589dc25b428677920141f3b44ae4ecf63f8751c9d9a48fe9f7b55eebb"
+      "sha256": "3ac4d16c16303a5beb8195a144d848a0f1cc4534420b56f0ba0273c912b92ecb",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-94001/3ac4d16c16303a5beb8195a144d848a0f1cc4534420b56f0ba0273c912b92ecb"
     },
     {
       "path": "dist/smirel-logo.png",
@@ -1143,8 +1143,8 @@
     {
       "path": "dist/ui-baseline.json",
       "size": 80,
-      "sha256": "f5a2096cfcae37a9ee7f0e2690105f19b3fec8d5c255d72ea1acd1a069b1485f",
-      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-88001/f5a2096cfcae37a9ee7f0e2690105f19b3fec8d5c255d72ea1acd1a069b1485f"
+      "sha256": "ed2fc6db03961d6837a55fc595f740eb663e377cebeeed578ec08b56af4b8832",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-94001/ed2fc6db03961d6837a55fc595f740eb663e377cebeeed578ec08b56af4b8832"
     },
     {
       "path": "dist-electron/accountClient.js",
@@ -1166,9 +1166,9 @@
     },
     {
       "path": "dist-electron/applicationUpdater.js",
-      "size": 8195,
-      "sha256": "4cc7f86f9b2f0c6a100a8019e40723d22f10843adec5e989adf226fbe4b82b39",
-      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-88001/4cc7f86f9b2f0c6a100a8019e40723d22f10843adec5e989adf226fbe4b82b39"
+      "size": 8301,
+      "sha256": "a75fd747ec1c8123d2c1762eed10dd6a8a2c525fa16772cbc0f10e51aa905b55",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-94001/a75fd747ec1c8123d2c1762eed10dd6a8a2c525fa16772cbc0f10e51aa905b55"
     },
     {
       "path": "dist-electron/applicationUpdateStore.js",
@@ -1250,9 +1250,9 @@
     },
     {
       "path": "dist-electron/hostRuntimeUpdater.js",
-      "size": 16226,
-      "sha256": "3c665c3ff53cea01e1df1b2fef5d31fb66841a8bdd87ee1c0ae6fcfe9c683a7b",
-      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-80001/3c665c3ff53cea01e1df1b2fef5d31fb66841a8bdd87ee1c0ae6fcfe9c683a7b"
+      "size": 16332,
+      "sha256": "29a8533b71628dc04e6092703b0d45aa31a8ce7ed4e01cd449c3921d828b5d70",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-94001/29a8533b71628dc04e6092703b0d45aa31a8ce7ed4e01cd449c3921d828b5d70"
     },
     {
       "path": "dist-electron/hostTransport.js",
@@ -1322,9 +1322,9 @@
     },
     {
       "path": "dist-electron/optimizedUpdater.js",
-      "size": 7562,
-      "sha256": "fcef701e7717c8d82c39fe1f6cc7147669733e104cacae5857e384188de34d34",
-      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/fcef701e7717c8d82c39fe1f6cc7147669733e104cacae5857e384188de34d34"
+      "size": 8742,
+      "sha256": "91ff831615081f8ae83acf40098e06d02fcdbdc6d1f029f828c2366f9727b29e",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-94001/91ff831615081f8ae83acf40098e06d02fcdbdc6d1f029f828c2366f9727b29e"
     },
     {
       "path": "dist-electron/preload.cjs",
@@ -1340,9 +1340,9 @@
     },
     {
       "path": "dist-electron/rendererUpdater.js",
-      "size": 10060,
-      "sha256": "6d3a3d851951563cb015da9b478c3b475faff82ccc837cdd9481069ff1386d7e",
-      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-80001/6d3a3d851951563cb015da9b478c3b475faff82ccc837cdd9481069ff1386d7e"
+      "size": 10166,
+      "sha256": "7aa11bacd0b7893b709d362902090efda681a98edda1499413052a20d0bc212b",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-94001/7aa11bacd0b7893b709d362902090efda681a98edda1499413052a20d0bc212b"
     },
     {
       "path": "dist-electron/rendererUpdateStore.js",
@@ -1369,16 +1369,22 @@
       "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/58a75c6428d6a685bd4f9de94d71b5e9de250930bfe09c0e8094ff728b2435b7"
     },
     {
+      "path": "dist-electron/update-source.json",
+      "size": 10,
+      "sha256": "0d891cd61411a07f3c3be0426f9cfdd76d1c8c84955cdd9d3a8e3b95d986b5d6",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-94001/0d891cd61411a07f3c3be0426f9cfdd76d1c8c84955cdd9d3a8e3b95d986b5d6"
+    },
+    {
       "path": "dist-electron/updateChannel.js",
-      "size": 1392,
-      "sha256": "b820cd5b2157d686c33d4a42a079084060aca832f0e2d2c77fdd51d66cfc3869",
-      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-35001/b820cd5b2157d686c33d4a42a079084060aca832f0e2d2c77fdd51d66cfc3869"
+      "size": 1866,
+      "sha256": "ad46b85c0ed0261b79f491f3b610913d45dcce386a13a5708510e08a5f33c237",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-94001/ad46b85c0ed0261b79f491f3b610913d45dcce386a13a5708510e08a5f33c237"
     },
     {
       "path": "dist-electron/updateDownload.js",
-      "size": 7807,
-      "sha256": "27efa674a7ac5874a9b7da9e55f61066b1be1cf7e6bef25c0494756cbf0028cb",
-      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-1001/27efa674a7ac5874a9b7da9e55f61066b1be1cf7e6bef25c0494756cbf0028cb"
+      "size": 8093,
+      "sha256": "c0ca3643b7b132bbf5e4651ce751ed268c38759e4b44809d2860576713dae74f",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-94001/c0ca3643b7b132bbf5e4651ce751ed268c38759e4b44809d2860576713dae74f"
     },
     {
       "path": "dist-electron/updateEligibility.js",
@@ -1394,9 +1400,21 @@
     },
     {
       "path": "dist-electron/updater.js",
-      "size": 22438,
-      "sha256": "e980b402a61e97b1e68a58dcef3473e826d8a79bcacb3eebdc4393286083a0d7",
-      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-88001/e980b402a61e97b1e68a58dcef3473e826d8a79bcacb3eebdc4393286083a0d7"
+      "size": 23628,
+      "sha256": "5bb0e022529f32e3413127ff305dea84374fbe54c919850f705e2d523b28738b",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-94001/5bb0e022529f32e3413127ff305dea84374fbe54c919850f705e2d523b28738b"
+    },
+    {
+      "path": "dist-electron/updateSource.js",
+      "size": 3769,
+      "sha256": "217bdae1cd76e246264a9c4a67a5c4e870b34358eb41c0f8aaf4ab7d2ec567a7",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-94001/217bdae1cd76e246264a9c4a67a5c4e870b34358eb41c0f8aaf4ab7d2ec567a7"
+    },
+    {
+      "path": "dist-electron/updateTransfer.js",
+      "size": 1014,
+      "sha256": "12e37176ec59e434718b6d3ac3f011709ae370b2a746ebd9e42b4390206768a3",
+      "url": "https://github.com/yuchenm1303-png/Loom/releases/download/app-94001/12e37176ec59e434718b6d3ac3f011709ae370b2a746ebd9e42b4390206768a3"
     },
     {
       "path": "dist-electron/webRelayAuth.js",
