@@ -9,6 +9,16 @@ try {
     page.on("pageerror", error => errors.push(error.message));
     await page.goto(`${origin}/scripts/fixtures/workspace-visual.html?browser=1&theme=${theme}&motion=${theme === "dark" ? "1" : "0"}`);
     await page.locator(".turn-final-answer").waitFor();
+    await page.evaluate(() => {
+      const start = document.startViewTransition.bind(document);
+      window.panelMotionFixture = { intents: [], failures: [] };
+      document.startViewTransition = update => {
+        window.panelMotionFixture.intents.push(document.documentElement.dataset.loomLayoutIntent);
+        const transition = start(update);
+        transition.ready.catch(error => window.panelMotionFixture.failures.push(error.message));
+        return transition;
+      };
+    });
     const composer = page.locator(".composer textarea");
     await composer.fill("Keep this draft while browsing");
     const open = () => page.locator('[data-tool-id="browser"]').click();
@@ -36,6 +46,7 @@ try {
       }
     };
     await checkBounds();
+    if (theme === "dark") assert.equal(await page.evaluate(() => window.panelMotionFixture.intents.at(-1)), "right-open");
     await page.screenshot({ path: `design/browser-sidebar-${theme}.local.png` });
     const separator = dock.locator('[role="separator"]');
     const before = Number(await separator.getAttribute("aria-valuenow"));
@@ -70,11 +81,22 @@ try {
     await open();
     await page.waitForFunction(() => window.browserFixture.commands.filter(c => c.action === "bounds").at(-1)?.bounds !== null);
     assert.equal(await page.locator(".app-shell.inspector-closed").count(), 1);
+    await page.locator('[data-tool-id="artifacts"]').click();
+    await page.locator(".artifact-library").waitFor();
+    await page.waitForFunction(() => !document.body.classList.contains("loom-panel-motion"));
+    assert.equal(await page.locator(".artifact-preview-dock").count(), 1, "browser and artifacts share one sidebar instance");
+    if (theme === "dark") assert.equal(await page.evaluate(() => window.panelMotionFixture.intents.at(-1)), "right-swap");
+    await open();
+    await page.waitForFunction(() => window.browserFixture.commands.filter(c => c.action === "bounds").at(-1)?.bounds != null);
+    assert.equal(await page.locator(".artifact-preview-dock").count(), 1);
     await page.setViewportSize({ width: 980, height: 760 });
     await page.waitForTimeout(150);
     await checkBounds();
     await dock.locator(".pl-close").click();
     await dock.waitFor({ state: "detached" });
+    await page.waitForFunction(() => !document.body.classList.contains("loom-panel-motion"));
+    if (theme === "dark") assert.equal(await page.evaluate(() => window.panelMotionFixture.intents.at(-1)), "right-close");
+    assert.deepEqual(await page.evaluate(() => window.panelMotionFixture.failures), [], "shared sidebar transitions must not be skipped");
     assert.equal(await composer.inputValue(), "Keep this draft while browsing");
     assert.equal(await page.locator(".app-shell.with-artifact-preview").count(), 0);
     assert.equal(await page.evaluate(() => window.browserFixture.commands.filter(c => c.action === "bounds").at(-1).bounds), null);

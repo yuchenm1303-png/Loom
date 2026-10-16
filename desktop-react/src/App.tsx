@@ -558,6 +558,9 @@ export default function App() {
     ?? null;
   const projectDetailsOpen = Boolean(selectedProject);
   const artifactPreviewOpen = Boolean(artifactPreview);
+  const browserDockRef = useRef(false);
+  if (browserOpen || artifactPreviewOpen) browserDockRef.current = browserOpen;
+  const browserDock = browserDockRef.current;
   useEffect(() => {
     if (browserOpen && (reviewOpen || agentsOpen || projectDetailsOpen || artifactPreviewOpen || filesProjectId || backgroundTasksOpen)) {
       setBrowserOpen(false);
@@ -732,6 +735,7 @@ export default function App() {
     if (!nextWorkspace) return;
 
     runLayoutTransition(() => {
+      setBrowserOpen(false);
       setReviewOpen(false);
       setAgentsOpen(false);
       setSelectedProjectId("");
@@ -744,9 +748,14 @@ export default function App() {
     runLayoutTransition(() => setArtifactPreview(null), "right-close");
   }, [runLayoutTransition]);
 
+  const closeBrowser = useCallback(() => {
+    runLayoutTransition(() => setBrowserOpen(false), "right-close");
+  }, [runLayoutTransition]);
+
   function focusReviewFile(path?: string): void {
     const normalized = normalizeReviewPath(path);
     runLayoutTransition(() => {
+      setBrowserOpen(false);
       setAgentsOpen(false);
       setArtifactPreview(null);
       setSelectedProjectId("");
@@ -768,6 +777,7 @@ export default function App() {
 
   function openProjectDetails(projectId: string): void {
     runLayoutTransition(() => {
+      setBrowserOpen(false);
       setReviewOpen(false);
       setAgentsOpen(false);
       setArtifactPreview(null);
@@ -782,6 +792,7 @@ export default function App() {
 
   const openAgents = useCallback(() => {
     runLayoutTransition(() => {
+      setBrowserOpen(false);
       setReviewOpen(false);
       setArtifactPreview(null);
       setInspectorOpen(false);
@@ -1294,15 +1305,20 @@ export default function App() {
         }}
         onToggleBrowser={() => {
           if (!browserAvailable) return;
-          if (!browserOpen) {
+          if (browserOpen) {
+            closeBrowser();
+            return;
+          }
+          runLayoutTransition(() => {
             setReviewOpen(false);
             setAgentsOpen(false);
             setArtifactPreview(null);
             setSelectedProjectId("");
             setFilesProjectId("");
             setBackgroundTasksOpen(false);
-          }
-          setBrowserOpen(open => !open);
+            setInspectorOpen(false);
+            setBrowserOpen(true);
+          }, rightOpenIntent);
         }}
         onToggleBackground={() => setBackgroundTasksOpen(open => !open)}
         onToggleAgents={toggleAgents}
@@ -1491,19 +1507,6 @@ export default function App() {
         </div>
       </section>
 
-      {browserAvailable ? <ArtifactPreviewDock
-        items={EMPTY_TRANSCRIPT_ITEMS}
-        open={browserOpen}
-        path=""
-        workspace={workspace}
-        ariaLabel={t("settings.browser.title")}
-        onClose={() => setBrowserOpen(false)}
-        content={visible => <BrowserWorkspace
-          hidden={!visible || settingsPresence.mounted || profilePresence.mounted || accountOpen || reviewOpen || agentsOpen || projectDetailsOpen || artifactPreviewOpen || Boolean(filesProjectId) || backgroundTasksOpen}
-          onClose={() => setBrowserOpen(false)}
-        />}
-      /> : null}
-
       <div
         className="workspace-panel-resizer workspace-panel-resizer-right"
         role="separator"
@@ -1547,10 +1550,15 @@ export default function App() {
       />
       <ArtifactPreviewDock
         items={loom.items}
-        open={artifactPreviewOpen}
+        open={artifactPreviewOpen || browserOpen}
         path={artifactPreview?.path || ""}
         workspace={artifactPreview?.workspace || workspace}
-        onClose={closeArtifactPreview}
+        onClose={browserDock ? closeBrowser : closeArtifactPreview}
+        ariaLabel={browserDock ? t("settings.browser.title") : undefined}
+        content={browserDock && browserAvailable ? visible => <BrowserWorkspace
+          hidden={!visible || settingsPresence.mounted || profilePresence.mounted || accountOpen || reviewOpen || agentsOpen || projectDetailsOpen || artifactPreviewOpen || Boolean(filesProjectId) || backgroundTasksOpen}
+          onClose={closeBrowser}
+        /> : undefined}
       />
       <ReviewInteractionBridge onOpen={focusReviewFile} />
       <AccountDialog

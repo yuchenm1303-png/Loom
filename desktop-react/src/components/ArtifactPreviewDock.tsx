@@ -15,8 +15,7 @@ interface ArtifactPreviewDockProps {
   path: string;
   workspace: string;
   onClose(): void;
-  /** Reuse the preview sidebar shell for another workspace surface. Native
-   * surfaces may attach only once the dock has finished moving. */
+  /** Reuse the preview sidebar shell for another workspace surface. */
   content?: (visible: boolean) => ReactNode;
   ariaLabel?: string;
 }
@@ -73,15 +72,6 @@ export function ArtifactPreviewDock({
 }: ArtifactPreviewDockProps) {
   const language = useLoomLanguage();
   const presence = useMotionPresence(open, 420);
-  const [settled, setSettled] = useState(false);
-  useEffect(() => {
-    setSettled(false);
-    if (!open || !content) return;
-    // "entered" starts the CSS transition. Native child views must wait for
-    // its final rectangle because Chromium cannot follow CSS transforms.
-    const timer = window.setTimeout(() => setSettled(true), 460);
-    return () => window.clearTimeout(timer);
-  }, [open, Boolean(content)]);
   const [width, setWidth] = useState(readPreviewWidth);
   const [revision, setRevision] = useState(0);
   const [selected, setSelected] = useState(path);
@@ -227,7 +217,7 @@ export function ArtifactPreviewDock({
         onDoubleClick={resetWidth}
       />
 
-      {content ? content(open && settled) : <>
+      {content ? content(open) : <>
       <PanelHeader
         className="artifact-preview-header"
         mark={selected

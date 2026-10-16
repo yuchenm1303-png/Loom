@@ -81,9 +81,22 @@ export function BrowserWorkspace({ hidden = false, onClose }: BrowserWorkspacePr
     const element = viewportRef.current;
     if (!element) return;
     let frame = 0;
+    let suspended = false;
+    const dock = element.closest(".pl-dock");
     const sync = () => {
       cancelAnimationFrame(frame);
       frame = requestAnimationFrame(() => {
+        // Follow the shared sidebar's actual motion, including its CSS fallback.
+        // Native views cannot participate in renderer snapshots or transforms.
+        const moving = document.body.classList.contains("loom-panel-motion")
+          || dock?.getAnimations().some(animation => animation.playState === "running");
+        if (moving) {
+          if (!suspended) void bridge({ action: "bounds", bounds: null }).catch(() => {});
+          suspended = true;
+          sync();
+          return;
+        }
+        suspended = false;
         const rect = element.getBoundingClientRect();
         if (!rect.width || !rect.height) return;
         void bridge({
@@ -93,6 +106,8 @@ export function BrowserWorkspace({ hidden = false, onClose }: BrowserWorkspacePr
       });
     };
     const resize = new ResizeObserver(sync);
+    const motion = new MutationObserver(sync);
+    motion.observe(document.body, { attributes: true, attributeFilter: ["class"] });
     resize.observe(element);
     window.addEventListener("resize", sync);
     window.addEventListener("scroll", sync, true);
@@ -100,6 +115,7 @@ export function BrowserWorkspace({ hidden = false, onClose }: BrowserWorkspacePr
     return () => {
       cancelAnimationFrame(frame);
       resize.disconnect();
+      motion.disconnect();
       window.removeEventListener("resize", sync);
       window.removeEventListener("scroll", sync, true);
       void bridge({ action: "bounds", bounds: null }).catch(() => {});
