@@ -678,7 +678,6 @@ interface AssistantMessageProps {
 }
 
 function AssistantMessage({ item, streaming, onPrompt, decisionInteractive, promptDisabled, workspace, variant }: AssistantMessageProps) {
-  const { t } = useI18n();
   const copy = useRuntimeCopy();
   const parsed = splitReasoning(item.text ?? "");
   const providerReasoning = String(item.reasoning ?? "").trim();
