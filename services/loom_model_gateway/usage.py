@@ -11,10 +11,10 @@ import urllib.parse
 import urllib.request
 from datetime import datetime
 
-NAMES = {"minimax": "MiniMax", "deepseek": "DeepSeek", "opencode-go": "OpenCode Go",
+NAMES = {"minimax": "MiniMax", "deepseek": "DeepSeek", "opencode-go": "OpenCode Go", "opencode-console": "OpenCode Console",
          "intern": "Intern Discovery", "ant-ling": "Ant Ling", "managed-relay": "Muxway Relay"}
 CONSOLES = {"intern": "https://discovery.intern-ai.org.cn/token-plan/home",
-            "ant-ling": "https://chat.ant-ling.com", "opencode-go": "https://opencode.ai/console"}
+            "ant-ling": "https://chat.ant-ling.com", "opencode-go": "https://opencode.ai/console", "opencode-console": "https://opencode.ai/console"}
 
 
 def number(value):
