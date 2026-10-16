@@ -226,7 +226,7 @@ function isConsoleFree(profile: ModelProfile): boolean {
 function modelPriceLabel(profile: ModelProfile): ReactNode {
   if (isConsoleFree(profile)) return <span className="mp-price-free">Free · limited time</span>;
   if (profile.groupId === "opencode-console") return <span className="mp-price-metered">Pay as you go</span>;
-  return reasoningLabel(profile);
+  return null;
 }
 
 function profileTooltip(profile: ModelProfile): string {
@@ -1099,7 +1099,7 @@ export function ModelPanel({
                       pending={false}
                       disabled={!accountAuthenticated || profile.available === false || deleting}
                       dimmed={!accountAuthenticated || profile.available === false || setup.needsKey}
-                      meta={!accountAuthenticated ? "Sign in" : profile.available === false ? unavailableLabel(profile) : modelPriceLabel(profile)}
+                      meta={!accountAuthenticated ? "Sign in" : profile.available === false ? unavailableLabel(profile) : profile.groupId === "opencode-console" ? modelPriceLabel(profile) : reasoningLabel(profile)}
                       metaAttention={!accountAuthenticated || profile.available === false}
                       end={!accountAuthenticated || profile.available === false ? <Lock size={13} strokeWidth={2} /> : undefined}
                       title={!accountAuthenticated ? "Sign in to Loom to use models" : profile.available === false ? (profile.statusMessage || "Disabled by Loom Admin") : undefined}
@@ -1210,7 +1210,7 @@ export function ModelPanel({
                           pending={false}
                           disabled={!accountAuthenticated || profile.available === false}
                           dimmed={!accountAuthenticated || profile.available === false}
-                          meta={!accountAuthenticated ? "Sign in" : profile.available === false ? unavailableLabel(profile) : connectFirst ? "Connect" : modelPriceLabel(profile)}
+                          meta={!accountAuthenticated ? "Sign in" : profile.available === false ? unavailableLabel(profile) : connectFirst ? "Connect" : profile.groupId === "opencode-console" ? modelPriceLabel(profile) : reasoningLabel(profile)}
                           metaAttention={!accountAuthenticated || profile.available === false || connectFirst}
                           end={!accountAuthenticated || profile.available === false ? <Lock size={13} strokeWidth={2} /> : connectFirst ? <ChevronRight size={14} strokeWidth={1.9} /> : undefined}
                           title={!accountAuthenticated ? "Sign in to Loom to use models" : profile.available === false ? (profile.statusMessage || "Disabled by Loom Admin") : connectFirst ? `Connect ${group.name} to use ${profile.name}` : undefined}
