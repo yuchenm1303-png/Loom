@@ -21,6 +21,14 @@ const port = probe.address().port;
 await new Promise((resolve) => probe.close(resolve));
 const env = { ...process.env, LOOM_HOST_DATA_DIR: path.join(temp, "host"), LOOM_HOME: path.join(temp, "runtime"),
   LOOM_DISABLE_AUTO_UPDATES: "1", LOOM_HOST_DISCOVERY_PORT: String(port), LOOM_ACCOUNT_API_BASE_URL: "http://127.0.0.1:1/v1" };
+if (process.argv.includes("--pending-update")) {
+  // Exercise real Electron readiness and the installed ESM bootstrap. The
+  // normal smoke disables updates and cannot catch a ready/entry deadlock.
+  delete env.LOOM_DISABLE_AUTO_UPDATES;
+  const updates = path.join(env.LOOM_HOST_DATA_DIR, "application-updates");
+  await (await import("node:fs/promises")).mkdir(updates, { recursive: true });
+  await writeFile(path.join(updates, "state.json"), JSON.stringify({ ready: 1 }));
+}
 delete env.ELECTRON_RUN_AS_NODE;
 delete env.LOOM_HOST_RUNTIME_ROOT;
 delete env.LOOM_HOST_UPDATE_CHANNEL_URL;

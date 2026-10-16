@@ -21,6 +21,13 @@ app.setPath("userData", isHost ? hostRoot : path.join(hostRoot, "desktop-ui"));
 if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
+  // Electron waits for an ESM entry's top-level await before emitting ready.
+  // Selection may need ready for credential decryption, so let the entry
+  // finish evaluating while the guarded application load continues.
+  void loadApplication();
+}
+
+async function loadApplication() {
   try {
     const entry = await selectApplication(installed, hostRoot, isHost);
     await import(pathToFileURL(entry).href);
