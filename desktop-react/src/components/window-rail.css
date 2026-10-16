@@ -60,11 +60,29 @@
   display: none;
 }
 
-/* The settings pages end each heading with a chip, a switch or an action at the right edge of
-   their column, which is centred and, in a window of ordinary width, runs under the controls.
-   The page keeps its heading where it always was: below the rail. */
+/* Reserve space outside the scrolling viewport: padding on the content alone
+   disappears as it scrolls and lets text pass behind the window controls. */
+:root.loom-desktop-chrome .settings-main {
+  box-sizing: border-box;
+  padding-top: var(--loom-rail-height);
+}
 :root.loom-desktop-chrome .settings-content {
-  padding-top: calc(var(--loom-rail-height) + 4px);
+  padding-top: 16px;
+}
+
+/* Dialogs can grow to nearly the viewport height (especially at larger UI
+   scales). Give their entire layout a safe top edge, including fullscreen
+   Files, account and avatar dialogs and the model editor. */
+:root.loom-desktop-chrome :is(.pl-scrim, .models-modal-backdrop) {
+  top: var(--loom-rail-height);
+  box-sizing: border-box;
+  padding: 16px 24px 24px;
+}
+:root.loom-desktop-chrome :is(.pl-scrim > [role="dialog"], .models-modal) {
+  max-height: calc(100dvh - var(--loom-rail-height) - 40px);
+}
+:root.loom-desktop-chrome .files-workbench {
+  min-height: 0;
 }
 
 /* The image viewer centres a panel almost as wide as the window, and in a window narrower than
@@ -74,6 +92,12 @@
 }
 :root.loom-desktop-chrome .user-message-image-lightbox-panel {
   height: min(860px, calc(100vh - var(--loom-rail-height) - 28px));
+}
+
+/* The Files workbench is nearly as high as a short window, so its header (refresh, maximise, close)
+   would sit under the controls. Like the viewer above, it starts below the rail. */
+:root.loom-desktop-chrome .files-workbench-backdrop {
+  padding-top: var(--loom-rail-height);
 }
 
 /* 3 -- the drag region is the whole rail; anything clickable on it is cut out.
