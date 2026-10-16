@@ -59,10 +59,10 @@ function scrimPaint(selector) {
 
 const docks = [
   { name: "inspector", open: dock("inspector"), root: ".inspector.runtime-inspector", title: ".runtime-title-row strong", mark: ".runtime-mark" },
-  { name: "review", open: dock("review"), root: ".review-workspace", header: ".review-topbar" },
-  { name: "agents", open: dock("agents"), root: ".sub-agent-dock", header: ".sub-agent-workspace-header" },
-  { name: "artifacts", open: dock("artifacts"), root: ".artifact-preview-dock", header: ".artifact-preview-header" },
-  { name: "project", open: selectProject, root: ".project-details-panel", header: ".project-details-header" },
+  { name: "review", open: dock("review"), root: ".review-workspace", header: ".review-topbar", empty: ".pl-empty-title" },
+  { name: "agents", open: dock("agents"), root: ".sub-agent-dock", header: ".sub-agent-workspace-header", empty: ".pl-empty-title" },
+  { name: "artifacts", open: dock("artifacts"), root: ".artifact-preview-dock", header: ".artifact-preview-header", empty: ".artifact-library-empty strong" },
+  { name: "project", open: selectProject, root: ".project-details-panel", header: ".project-details-header", card: ".project-overview-card" },
 ];
 
 async function newPage(theme, extra = "") {
@@ -120,6 +120,17 @@ try {
         const mark = await page.evaluate(material, `${panel.root} ${panel.mark}`);
         check(`${label}: 32px mark`, mark && Math.round(mark.width) === 32 && Math.round(mark.height) === 32);
       }
+      if (panel.empty) {
+        // Every empty dock says it the same way: a 14px / 650 title (and the same 42px core around the glyph).
+        const title = await page.evaluate(material, `${panel.root} ${panel.empty}`);
+        check(`${label}: empty state title is 14px / 650`, title && title.size === "14px" && title.weight === "650", JSON.stringify(title && [title.size, title.weight]));
+        const core = await page.evaluate(material, `${panel.root} :is(.pl-empty-core, .artifact-library-empty > svg)`);
+        check(`${label}: empty state glyph sits in a 42px core`, core && Math.round(core.width) === 42 && Math.round(core.height) === 42, JSON.stringify(core && [core.width, core.height]));
+      }
+      if (panel.card) {
+        const card = await page.evaluate(material, panel.card);
+        check(`${label}: cards share the dock's one corner`, card && card.radius === "12px", card && card.radius);
+      }
       if (errors.length) failures.push(`${label}: page errors ${errors.slice(0, 2).join(" | ")}`);
       await page.close();
     }
@@ -162,6 +173,8 @@ try {
         check(`${label}: 30px quiet close button`, close && Math.round(close.width) === 30 && close.background === "rgba(0, 0, 0, 0)");
       }
       if (shell.name === "files") {
+        const empty = await page.evaluate(material, ".files-workbench .pl-empty-title");
+        check(`${label}: empty state title is 14px / 650`, empty && empty.size === "14px" && empty.weight === "650", JSON.stringify(empty && [empty.size, empty.weight]));
         // The workbench's accent is the product's violet; it used to be a blue of its own.
         const accent = await page.evaluate(({ resolveSource }) => {
           const resolveToken = new Function(`return (${resolveSource})`)();

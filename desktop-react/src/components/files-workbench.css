@@ -90,8 +90,8 @@
 .files-workbench-editor:focus-visible { outline: none !important; }
 .files-workbench-status { display: flex; justify-content: space-between; padding: 7px 15px; border-top: 1px solid var(--pl-edge); color: var(--pl-muted); font-size: 11.5px; }
 .files-workbench-empty, .files-workbench-unsupported { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 40px; text-align: center; color: var(--pl-muted); }
-.files-workbench-empty strong, .files-workbench-unsupported strong { font-size: 14px; font-weight: 650; color: var(--pl-ink); }
-.files-workbench-empty span, .files-workbench-unsupported span { font-size: 12.5px; }
+.files-workbench-unsupported strong { font-size: 14px; font-weight: 650; color: var(--pl-ink); }
+.files-workbench-unsupported span { font-size: 12.5px; }
 .files-workbench-unsupported button { border: 1px solid var(--pl-line); border-radius: 7px; background: var(--pl-card); padding: 10px 12px; color: var(--pl-secondary); font-size: 12px; }
 .files-workbench-unsupported button:hover { border-color: var(--pl-accent-line); background: var(--pl-card-hover); color: var(--pl-ink); }
 .files-workbench-placeholder { margin: 20px; text-align: center; font-size: 12px; color: var(--pl-muted); }

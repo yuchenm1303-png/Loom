@@ -79,13 +79,17 @@
 
 ## 五、加一个新面板
 
-1. 停靠面板：根元素 `className="… pl-dock"`，头部用 `<PanelHeader className="旧的钩子类名" closeClassName="…" …/>`，内容里的卡片、搜索框、小标题用 `pl-card` / `pl-field` / 注册表。右边缘的拖拽条用 `pl-resizer`。动画用 `useMotionPresence` + `data-motion-phase` + `data-open`，其余（a61 回退）不用写。
+1. 停靠面板：根元素 `className="… pl-dock"`，头部用 `<PanelHeader className="旧的钩子类名" closeClassName="…" …/>`，内容里的卡片、搜索框、小标题用 `pl-card` / `pl-field` / 注册表，空状态用 `PanelEmpty`。右边缘的拖拽条用 `pl-resizer`。动画用 `useMotionPresence` + `data-motion-phase` + `data-open`，其余（a61 回退）不用写。
 2. 原地出现的面板（对话框、浮层）：外层 `pl-scrim pl-reveal`（或 `pl-float pl-reveal`），卡片 `pl-modal`，`data-motion-phase={presence.phase}`，`inert={!open}`；**必须**有 `useMotionPresence(open, 235)`，一帧卸载会被 `panel-language-browser.mjs` 抓到。
 3. 头部一旦要靠右贴着窗口边，`window-rail.css` 里已经按 `.pl-dock .pl-header` / `.pl-header` 处理了窗口控件的避让和拖动区切口，不用再写。
 
-## 六、没做 / 可以继续的
+## 六、第二轮补上的（同一天）
 
-- **空状态**还是各家各样：子代理和运行详情是带轨道的图形，产物是一个图标，审查和后台任务只有一行字。头部、外壳、动画已经一致，空状态的“一个图形 + 一个标题 + 一段话”还可以收成一个组件（注意 `runtime-orbit*` 这些类名被 `test_panel_layout_motion_contract.py` 点名）。
+- **空状态**：子代理、审查、文件三个面板用同一个 `PanelEmpty`（静止的轨道 + 42px 核心 + 标题 + 一句话 + 可选的标签）；产物库保留自己的标记，字形套上同样的 42px 核心；运行详情的空状态因为要随标签页换字形（还有一个会转的点）保留自己的，字号已经由全局字号表对齐。子代理面板自己画过一份轨道，已删除。静止的好处是空面板在对话流式输出时不占一帧。
+- **卡片圆角**：停靠面板里的卡片（项目的概览、工作区、说明、会话、路线、记忆、仓库、文件，子代理卡片）原来是 10、11、12、14、15、16、18px，现在一律 `--pl-radius-card`（12px），名单在套件里的“圆角注册表”。
+
+## 七、没做 / 可以继续的
+
 - **运行详情的标签条**（`runtime-tabs` 滑块）和子代理的筛选条是两个分段控件，外观相近但各写各的。
-- **面板内部的卡片**（项目面板的概览卡、仓库卡，子代理卡片）仍然用各自的硬编码颜色，只统一了分区小标题的字号。
+- **面板内部卡片的颜色**（项目面板的概览卡、仓库卡，子代理卡片）仍然用各自的硬编码颜色，只统一了圆角和分区小标题的字号。
 - 项目面板、子代理面板里的中英混排文案（“项目 / WORKSPACE / INSTRUCTIONS”、“子代理工作区”在英文界面下仍是中文）是文案问题，没有动。
