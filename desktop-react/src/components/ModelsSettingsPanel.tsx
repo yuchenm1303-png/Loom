@@ -189,6 +189,7 @@ const COPY = {
 function adapterLabel(value: string): string {
   if (value === "openai") return "OpenAI";
   if (value === "opencode-go") return "OpenCode Go";
+  if (value === "opencode-console") return "OpenCode Console";
   return "OpenAI Compatible";
 }
 
