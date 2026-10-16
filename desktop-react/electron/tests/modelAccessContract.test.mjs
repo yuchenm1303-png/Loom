@@ -1,11 +1,12 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { readFileSync } from "node:fs";
 import { applyModelPolicy, policyAllowsSelection } from "../../dist-electron/modelAccess.js";
 import { assertModelConnection, builtinBaseUrl } from "../../dist-electron/modelConnection.js";
 import { modelPolicyGroup } from "../../dist-electron/modelPolicySelection.js";
 
 const selections = ["builtin:intern:intern-s2", "builtin:minimax", "builtin:deepseek", "builtin:ant-ling",
-  "builtin:opencode-go:deepseek-flash", "managed:relay:model"];
+  "builtin:opencode-go:deepseek-flash", "builtin:opencode-console:big-pickle", "managed:relay:model"];
 const builtin = selection => ({ selection, kind: "builtin", authMode: "loom-account", available: true,
   model: "deepseek-flash", adapter: "openai-compatible", baseUrl: builtinBaseUrl(selection), apiKey: "" });
 const personal = { selection: "profile:m123456789abc", kind: "saved", model: "deepseek-flash",
@@ -13,6 +14,19 @@ const personal = { selection: "profile:m123456789abc", kind: "saved", model: "de
 const snapshot = profile => ({ profiles: [profile, personal], primary: profile, current: profile });
 const policy = (selection, enabled, source = "global") => ({ enabled: true, schema_version: 2, models: enabled ? [selection] : [],
   decisions: [{ model_id: selection, enabled, source }] });
+
+test("desktop identities cover every server-declared provider prefix", () => {
+  const source = readFileSync(new URL("../../../services/loom_model_policy/catalog.py", import.meta.url), "utf8");
+  const declarations = [...source.matchAll(/CatalogGroup\("([^"]+)",\s*"[^"]+",\s*\(([^\n]+)\)\)/g)];
+  assert.ok(declarations.length >= 7);
+  for (const [, group, prefixes] of declarations) {
+    for (const [, prefix] of prefixes.matchAll(/"([^"]+)"/g)) {
+      const selection = prefix.endsWith(":") ? prefix + "contract-model" : prefix;
+      assert.equal(modelPolicyGroup(selection), group, selection);
+      assert.ok(builtinBaseUrl(selection), selection);
+    }
+  }
+});
 
 test("same model name does not change connection identity, credentials or policy scope", () => {
   assertModelConnection(personal);

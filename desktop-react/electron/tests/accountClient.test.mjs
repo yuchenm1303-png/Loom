@@ -675,6 +675,22 @@ test("a slow re-check that succeeds is remembered, and concurrent sends share on
 
 const policyBody = (decisions) => ({ access: { enabled: true, models: decisions.filter((item) => item.enabled).map((item) => item.model_id), schema_version: 1, decisions } });
 
+test("a mixed Go and Console catalog keeps newly discovered Beam visible", async () => {
+  const rows = [
+    { model_id: "builtin:opencode-go:beam-free", model: "beam-free", group_id: "opencode-go" },
+    { model_id: "builtin:opencode-console:big-pickle", model: "big-pickle", group_id: "opencode-console" },
+  ].map(row => ({ ...row, name: row.model, group_name: row.group_id, available: true, source: "provider" }));
+  const access = { enabled: true, schema_version: 2, models: rows.map(row => row.model_id),
+    decisions: rows.map(row => ({ model_id: row.model_id, enabled: true, source: "default" })), catalog: { models: rows } };
+  installFetch({ "/policy/v1/access": () => reply(200, { access }) });
+  await seedSession({ accessToken: "access", refreshToken: "refresh", expiresAt: Date.now() + 3600000, user: USER });
+  const client = newClient();
+  const result = await client.modelPolicyAccess(true);
+  assert.ok(result, "one supported provider must not invalidate the entire catalog");
+  assert.ok(result.catalog.models.some(row => row.model === "beam-free"));
+  assert.equal(client.cachedModelPolicy().state, "fresh");
+});
+
 test("policy refresh coalesces, retains same-account states on outage, and recovers without a lock-all transition", async () => {
   let offline = false;
   installFetch({ "/policy/v1/access": () => offline ? Promise.reject(new Error("offline"))
