@@ -3,6 +3,7 @@ import path from "node:path";
 import { existsSync } from "node:fs";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { selectApplication, rejectApplicationAndRestart } from "./applicationLoader.js";
+import { hostDataPath } from "./hostPaths.js";
 
 // Scheme privileges must be registered before ready, including when update
 // selection waits for the OS credential store to become available.
@@ -12,7 +13,9 @@ protocol.registerSchemesAsPrivileged([
 
 // Stable installed bootstrap. Business code, preloads and UI form one release.
 const installed = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const hostRoot = path.resolve(process.env.LOOM_HOST_DATA_DIR || app.getPath("userData"));
+// The loader imports hostProcess, which already moves Desktop's userData into
+// desktop-ui. Use the original profile captured before that import's effects.
+const hostRoot = hostDataPath;
 process.env.LOOM_HOST_DATA_DIR = hostRoot;
 const isHost = process.argv.includes("--loom-host") || process.argv.includes("--loom-background-host")
   || process.argv.some(arg => /^loom:\/\//i.test(arg)) || existsSync(path.join(hostRoot, "loom-headless-update-restart"));

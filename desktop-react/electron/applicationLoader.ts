@@ -1,5 +1,4 @@
 import { app } from "electron";
-import { mayReceiveUpdates } from "./updateEligibility.js";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
@@ -36,6 +35,9 @@ export async function selectApplication(installed: string, hostRoot: string, isH
     // Windows safeStorage cannot decrypt the login session before ready.
     // Checking earlier falsely treats a signed-in account as signed out.
     await app.whenReady();
+    // Desktop must not initialize the installed Host/IPC modules before
+    // loading its selected release: that release owns those IPC handlers.
+    const { mayReceiveUpdates } = await import("./updateEligibility.js");
     canActivateReady = await mayReceiveUpdates();
   }
   const candidate = session ? session.build
