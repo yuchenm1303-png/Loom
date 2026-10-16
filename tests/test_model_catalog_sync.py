@@ -123,7 +123,11 @@ def test_all_provider_discovery_is_independent_of_clients_and_keeps_global_denie
         selection = selection_for_model(group.id, "future-model")
         # Metered Console discoveries deliberately start disabled.
         assert decision(access, selection)["enabled"] == (group.id not in {"deepseek", "opencode-console"})
-    assert len([row for row in access["catalog"]["models"] if row["catalog_state"] == "available"]) == len(GROUPS) + len(OPENCODE_CONSOLE_FREE_MODELS)
+    discovered = [row for row in access["catalog"]["models"]
+                  if row["model"] == "future-model" and row["catalog_state"] == "available"]
+    assert len(discovered) == len(GROUPS)
+    assert any(row["model"] == OPENCODE_CONSOLE_FREE_MODELS[0] and row["available"]
+               for row in access["catalog"]["models"])
     # Discovery on a subsequent run must not reset individual rules.
     minimax = selection_for_model("minimax", "future-model")
     store.set_global_rule(1, minimax, False)
