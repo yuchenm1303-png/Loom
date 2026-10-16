@@ -144,4 +144,33 @@ const bridge: Record<string, unknown> = {
   // A subscription (onSomething) hands back its unsubscribe function; anything else is an async call.
   get: (target, key: string) => key in target ? target[key] : /^on[A-Z]/.test(key) ? () => () => {} : async () => ({}),
 });
+if (params.get("browser") === "1") {
+  // Model the native-view bridge without opening sites or Electron windows.
+  let sequence = 1;
+  let state = { tabs: [{ id: "tab-1", title: "New tab", url: "", loading: false,
+    canGoBack: false, canGoForward: false, aiAllowed: false }], activeId: "tab-1" };
+  const commands: import("../../src/components/BrowserWorkspace").EmbeddedBrowserCommand[] = [];
+  Object.assign(bridge, {
+    embeddedBrowser: async (command: import("../../src/components/BrowserWorkspace").EmbeddedBrowserCommand) => {
+      commands.push(command);
+      if (command.action === "new-tab") {
+        const id = `tab-${++sequence}`;
+        state.tabs.push({ ...state.tabs[0], id, title: "New tab", url: command.url || "", aiAllowed: false });
+        state.activeId = id;
+      } else if (command.action === "select-tab") state.activeId = command.tabId;
+      else if (command.action === "close-tab") {
+        state.tabs = state.tabs.filter(tab => tab.id !== command.tabId);
+        state.activeId = state.tabs.at(-1)?.id || "";
+      } else if (command.action === "navigate") {
+        const active = state.tabs.find(tab => tab.id === state.activeId);
+        if (active) Object.assign(active, { url: command.url, title: command.url, canGoBack: true });
+      } else if (command.action === "allow-ai") {
+        const tab = state.tabs.find(tab => tab.id === command.tabId);
+        if (tab) tab.aiAllowed = command.enabled;
+      }
+      return structuredClone(state);
+    },
+  });
+  Object.assign(window, { browserFixture: { commands } });
+}
 void import("../../src/main");

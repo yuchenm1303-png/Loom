@@ -1,11 +1,12 @@
 import { ArrowLeft, ExternalLink, FileCode2, RefreshCw, Search, Package, ChevronRight, Image, FileText, Music, Film, Globe } from "./icons";
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from "react";
 import { createPortal } from "react-dom";
 import { artifactName, artifactRenderer, canRenderArtifact, normalizeArtifactPath } from "../artifactRenderers";
 import type { TranscriptItem } from "../types/loom";
 import { useMotionPresence } from "../motion/useMotionPresence";
 import { ArtifactRenderSurface } from "./ArtifactRenderSurface";
 import { PanelHeader } from "./PanelHeader";
+import { useLoomLanguage } from "../i18n";
 import "./artifact-preview-dock.css";
 
 interface ArtifactPreviewDockProps {
@@ -14,6 +15,10 @@ interface ArtifactPreviewDockProps {
   path: string;
   workspace: string;
   onClose(): void;
+  /** Reuse the preview sidebar shell for another workspace surface. Native
+   * surfaces may attach only once the dock has finished moving. */
+  content?: (visible: boolean) => ReactNode;
+  ariaLabel?: string;
 }
 
 const ARTIFACT_DOCK_WIDTH_KEY = "loom.layout.artifactPreviewWidth";
@@ -63,8 +68,20 @@ export function ArtifactPreviewDock({
   path,
   workspace,
   onClose,
+  content,
+  ariaLabel = "产物侧栏",
 }: ArtifactPreviewDockProps) {
+  const language = useLoomLanguage();
   const presence = useMotionPresence(open, 420);
+  const [settled, setSettled] = useState(false);
+  useEffect(() => {
+    setSettled(false);
+    if (!open || !content) return;
+    // "entered" starts the CSS transition. Native child views must wait for
+    // its final rectangle because Chromium cannot follow CSS transforms.
+    const timer = window.setTimeout(() => setSettled(true), 460);
+    return () => window.clearTimeout(timer);
+  }, [open, Boolean(content)]);
   const [width, setWidth] = useState(readPreviewWidth);
   const [revision, setRevision] = useState(0);
   const [selected, setSelected] = useState(path);
@@ -97,11 +114,12 @@ export function ArtifactPreviewDock({
   const renderer = useMemo(() => artifactRenderer(selected), [selected]);
 
   useEffect(() => {
+    if (!open) return;
     document.documentElement.style.setProperty("--artifact-preview-pane-width", `${width}px`);
     return () => {
       document.documentElement.style.removeProperty("--artifact-preview-pane-width");
     };
-  }, [width]);
+  }, [width, open]);
 
   useEffect(() => {
     const handleResize = () => setWidth((current) => clampPreviewWidth(current));
@@ -189,12 +207,12 @@ export function ArtifactPreviewDock({
       data-motion-phase={presence.phase}
       inert={!open}
       data-open={open ? "true" : "false"}
-      aria-label="产物侧栏"
+      aria-label={ariaLabel}
     >
       <div
         className="artifact-preview-resizer pl-resizer"
         role="separator"
-        aria-label="调整渲染预览宽度"
+        aria-label={content ? (language === "zh-CN" ? `调整${ariaLabel}宽度` : `Resize ${ariaLabel}`) : "调整渲染预览宽度"}
         aria-orientation="vertical"
         aria-valuemin={Math.round(previewBounds().min)}
         aria-valuemax={Math.round(previewBounds().max)}
@@ -209,6 +227,7 @@ export function ArtifactPreviewDock({
         onDoubleClick={resetWidth}
       />
 
+      {content ? content(open && settled) : <>
       <PanelHeader
         className="artifact-preview-header"
         mark={selected
@@ -269,6 +288,7 @@ export function ArtifactPreviewDock({
           </div>
         )}
       </div>}
+      </>}
     </aside>,
     document.body,
   );

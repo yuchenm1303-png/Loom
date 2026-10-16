@@ -1,9 +1,6 @@
 /* Embedded browser. The page itself is a native view laid over .browser-viewport; the chrome
    around it (tab strip, navigation bar) is a dock-toned toolbar, so the browser follows the
    panel language's tokens (panel-language.css) in both themes. */
-.workspace.has-browser {
-  grid-template-rows: 60px minmax(0, 1fr);
-}
 .browser-workspace {
   position: relative;
   display: flex;
@@ -13,6 +10,11 @@
   overflow: hidden;
   background: var(--loom-workspace-canvas, var(--pl-surface));
   color: var(--pl-ink);
+}
+/* Occupy the existing resizable preview dock; its header, edge, motion and
+   reserved conversation width are shared with the other workspace panels. */
+.artifact-preview-dock > .browser-workspace {
+  grid-row: 1 / -1;
 }
 .browser-tabs {
   flex: 0 0 44px;

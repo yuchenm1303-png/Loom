@@ -563,7 +563,7 @@ export default function App() {
       setBrowserOpen(false);
     }
   }, [browserOpen, reviewOpen, agentsOpen, projectDetailsOpen, artifactPreviewOpen, filesProjectId, backgroundTasksOpen]);
-  const inspectorVisible = inspectorOpen && !reviewOpen && !projectDetailsOpen && !agentsOpen && !artifactPreviewOpen;
+  const inspectorVisible = inspectorOpen && !browserOpen && !reviewOpen && !projectDetailsOpen && !agentsOpen && !artifactPreviewOpen;
 
   useLayoutEffect(() => {
     const previousThreadId = previousThreadIdRef.current;
@@ -587,10 +587,10 @@ export default function App() {
   const inspectorLayoutOpen = inspectorVisible;
   const reviewLayoutOpen = reviewOpen;
   const agentsLayoutOpen = agentsOpen;
-  const artifactLayoutOpen = artifactPreviewOpen;
+  const artifactLayoutOpen = artifactPreviewOpen || browserOpen;
   const projectDetailsLayoutOpen = projectDetailsOpen;
   const inspectorPresence = useMotionPresence(inspectorVisible, 420);
-  const rightSurfaceOpen = inspectorVisible || reviewOpen || agentsOpen || artifactPreviewOpen || projectDetailsOpen;
+  const rightSurfaceOpen = inspectorVisible || reviewOpen || agentsOpen || artifactPreviewOpen || browserOpen || projectDetailsOpen;
   const rightOpenIntent: LayoutMotionIntent = rightSurfaceOpen ? "right-swap" : "right-open";
 
   const committedPanelLayoutRef = useRef({
@@ -816,11 +816,12 @@ export default function App() {
 
   function toggleInspector(): void {
     runLayoutTransition(() => {
+      setBrowserOpen(false);
       setReviewOpen(false);
       setAgentsOpen(false);
       setArtifactPreview(null);
       setSelectedProjectId("");
-      setInspectorOpen((open) => !open);
+      setInspectorOpen(!inspectorVisible);
     }, inspectorVisible ? "right-close" : rightOpenIntent);
   }
 
@@ -1362,7 +1363,7 @@ export default function App() {
       />
 
       <section
-        className={`workspace ${browserOpen ? "has-browser" : ""} ${threadSwitching ? "is-thread-switching" : ""} ${threadEntering ? "is-thread-entering" : ""}`.trim()}
+        className={`workspace ${threadSwitching ? "is-thread-switching" : ""} ${threadEntering ? "is-thread-entering" : ""}`.trim()}
         aria-busy={threadSwitching ? true : undefined}
       >
         <ThreadHeader
@@ -1394,13 +1395,6 @@ export default function App() {
           onRunningCount={setBackgroundRunningCount}
         />
 
-        {browserOpen && browserAvailable ? (
-          <BrowserWorkspace
-            hidden={settingsPresence.mounted || profilePresence.mounted || accountOpen || reviewOpen || agentsOpen || projectDetailsOpen || artifactPreviewOpen || Boolean(filesProjectId) || backgroundTasksOpen}
-            onClose={() => setBrowserOpen(false)}
-          />
-        ) : (
-          <>
         <div className={`conversation-stage ${running ? "is-running" : ""}`} inert={threadSwitching}>
           {runStripVisible ? <RunProgress {...progressProps} placement="top" motionPhase={runStripPresence.phase} /> : null}
           {thread?.parentThreadId ? (
@@ -1495,9 +1489,20 @@ export default function App() {
             onPausedChange={typeof thread?.paused === "boolean" ? loom.setPaused : undefined}
           />
         </div>
-          </>
-        )}
       </section>
+
+      {browserAvailable ? <ArtifactPreviewDock
+        items={EMPTY_TRANSCRIPT_ITEMS}
+        open={browserOpen}
+        path=""
+        workspace={workspace}
+        ariaLabel={t("settings.browser.title")}
+        onClose={() => setBrowserOpen(false)}
+        content={visible => <BrowserWorkspace
+          hidden={!visible || settingsPresence.mounted || profilePresence.mounted || accountOpen || reviewOpen || agentsOpen || projectDetailsOpen || artifactPreviewOpen || Boolean(filesProjectId) || backgroundTasksOpen}
+          onClose={() => setBrowserOpen(false)}
+        />}
+      /> : null}
 
       <div
         className="workspace-panel-resizer workspace-panel-resizer-right"

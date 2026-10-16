@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { ArrowLeft, ArrowRight, Globe2, Plus, RotateCw, X } from "./icons";
 import { useI18n } from "../i18n";
+import { PanelHeader } from "./PanelHeader";
 import "./browser-workspace.css";
 
 export interface EmbeddedBrowserTab {
@@ -135,6 +136,12 @@ export function BrowserWorkspace({ hidden = false, onClose }: BrowserWorkspacePr
 
   return (
     <section className="browser-workspace" aria-label={zh ? "内置浏览器" : "Embedded browser"}>
+      <PanelHeader
+        mark={<Globe2 size={17} />}
+        title={zh ? "浏览器" : "Browser"}
+        closeLabel={zh ? "关闭浏览器" : "Close browser"}
+        onClose={onClose}
+      />
       <div className="browser-tabs" role="tablist" aria-label={zh ? "浏览器标签页" : "Browser tabs"}>
         {state.tabs.map(tab => (
           <div key={tab.id} className={"browser-tab " + (tab.id === state.activeId ? "active" : "")}>
@@ -180,10 +187,6 @@ export function BrowserWorkspace({ hidden = false, onClose }: BrowserWorkspacePr
         <span className="browser-isolated-label" title={zh ? "独立浏览器资料，网站无权访问 Loom 数据" : "Isolated browser profile"}>
           <Globe2 size={13} /> {zh ? "独立浏览" : "Isolated"}
         </span>
-        <button type="button" className="browser-icon-button" onClick={onClose}
-          title={zh ? "关闭浏览器并返回对话" : "Return to chat"} aria-label={zh ? "返回对话" : "Return to chat"}>
-          <X size={17} />
-        </button>
       </div>
       <div className="browser-navigation">
         <button type="button" className="browser-icon-button" disabled={!active?.canGoBack}
