@@ -16,7 +16,7 @@ const compiled = ts.transpileModule(
   method.getText(ast) + "\nglobalThis.parseProposal = parseTaskBranchProposal;\n",
   { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.None } },
 ).outputText;
-const context = {};
+const context = { exports: {} };
 vm.runInNewContext(compiled, context);
 const parse = context.parseProposal;
 
