@@ -32,7 +32,11 @@ def parse_models(group_id: str, payload: dict) -> list[dict]:
         selection = selection_for_model(group_id, model)
         if len(selection) > 240:
             raise ValueError("model selection exceeds limit")
-        models[selection] = {"model_id": selection, "model": model, "name": str(item.get("name") or model)[:240], "image_input": image_capability(item)}
+        display = item.get("name") or (
+            model.replace("-", " ").title().replace("Deepseek", "DeepSeek").replace("Mimo", "MiMo")
+            if group_id == "opencode-console" else model
+        )
+        models[selection] = {"model_id": selection, "model": model, "name": str(display)[:240], "image_input": image_capability(item)}
     return list(models.values())
 
 
