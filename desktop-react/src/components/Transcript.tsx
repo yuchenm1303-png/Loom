@@ -39,7 +39,7 @@ import { endSendFlight, launchSendFlight, recordCardOrigin } from "../sendFlight
 import { useEarlierProcessHandoff } from "./useEarlierProcessHandoff";
 import { LIVE_STATUS_GRACE_MS, LIVE_TEXT_HOLD_MS, TURN_FOLD_MS, TURN_SETTLE_HOLD_MS } from "../presentationTiming";
 import type { TranscriptItem } from "../types/loom";
-import { TaskBranchCard, parseTaskBranchProposal, suggestBranchFromText } from "./TaskBranchCard";
+import { TaskBranchCard, parseTaskBranchProposal } from "./TaskBranchCard";
 import { groupExecutionSequence, isActivityItem, isProcessCommentary, reportIds, settleLiveText } from "./executionSequence";
 import {
   activitySegments,
@@ -688,7 +688,8 @@ function AssistantMessage({ item, streaming, onPrompt, decisionInteractive, prom
   const [noteOpen, setNoteOpen] = useState(false);
   const [manualBranchOpen, setManualBranchOpen] = useState(false);
   const [branchDismissed, setBranchDismissed] = useState(false);
-  const taskBranch = manualBranchOpen ? suggestBranchFromText(answer) : parsedBranch.proposal;
+  const taskBranch = parsedBranch.proposal;
+  const branchVisible = manualBranchOpen || Boolean(taskBranch);
   const longNote = note && isLongNote(answer);
   // The model is still thinking about this message: nothing to read yet.
   const thinking = live && !answer && !decisionMessage.decisions.length;
@@ -708,7 +709,7 @@ function AssistantMessage({ item, streaming, onPrompt, decisionInteractive, prom
   }, [inheritsCapsule]);
   const reasoningExiting = !showReasoning && (retiring.mounted || inheritsCapsule);
 
-  if (!showReasoning && !reasoningExiting && !answer && !taskBranch && !decisionMessage.decisions.length && !decisionMessage.incomplete) return null;
+  if (!showReasoning && !reasoningExiting && !answer && !branchVisible && !decisionMessage.decisions.length && !decisionMessage.incomplete) return null;
 
   return (
     <div
@@ -737,12 +738,13 @@ function AssistantMessage({ item, streaming, onPrompt, decisionInteractive, prom
           </div>
         ) : null}
         {answer ? <MarkdownMessage content={answer} workspace={workspace} streaming={live} messageKey={`${item.id}:answer`} interrupted={interrupted} /> : null}
-        {!note && cardsReady && taskBranch && !branchDismissed ? (
+        {!note && cardsReady && branchVisible && !branchDismissed ? (
           <TaskBranchCard
             key={item.id + (manualBranchOpen ? ":manual" : ":proposal")}
             threadId={item.threadId}
             messageId={item.id}
-            proposal={taskBranch}
+            proposal={manualBranchOpen ? undefined : taskBranch}
+            sourceText={manualBranchOpen ? answer : undefined}
             disabled={false}
             doHereDisabled={Boolean(promptDisabled)}
             onDoHere={onPrompt}
@@ -775,7 +777,7 @@ function AssistantMessage({ item, streaming, onPrompt, decisionInteractive, prom
       ) : (
         <>
           <MessageToolbar kind="assistant" item={item} text={answer || reasoning} disabled={promptDisabled} />
-          {(!taskBranch || branchDismissed) && cardsReady && (
+          {(!branchVisible || branchDismissed) && cardsReady && (
             <button className="loom-task-branch-new" type="button" title={t("branch.entryHint")} aria-expanded={false} onClick={() => { setBranchDismissed(false); setManualBranchOpen(true); }}>
               <GitFork size={14} /><span>{t("branch.create")}</span><ArrowUpRight size={12} className="loom-task-branch-entry-arrow" />
             </button>
