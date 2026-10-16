@@ -1,4 +1,4 @@
-import { RotateCcw } from "./components/icons";
+import { ArrowLeft, Check, GitFork, LoaderCircle, Reply, RotateCcw, X } from "./components/icons";
 import {
   useCallback,
   useEffect,
@@ -487,7 +487,7 @@ export default function App() {
             },
           );
           await loom.openThread(result.thread.id);
-          if (result.error) setBranchError("已创建子会话，但任务启动失败：" + result.error);
+          if (result.error) setBranchError(t("branch.startFailed", { error: result.error }));
         } catch (cause) {
           setBranchError(cause instanceof Error ? cause.message : String(cause));
         } finally {
@@ -497,7 +497,7 @@ export default function App() {
     };
     window.addEventListener("loom:branch-task-start", onStartBranch);
     return () => window.removeEventListener("loom:branch-task-start", onStartBranch);
-  }, [loom.openThread]);
+  }, [loom.openThread, t]);
   const thread = loom.active?.thread;
   const activeThreadId = thread?.id ?? "";
   const selectedThreadId = loom.openingThreadId || activeThreadId;
@@ -1404,15 +1404,17 @@ export default function App() {
         <div className={`conversation-stage ${running ? "is-running" : ""}`} inert={threadSwitching}>
           {runStripVisible ? <RunProgress {...progressProps} placement="top" motionPhase={runStripPresence.phase} /> : null}
           {thread?.parentThreadId ? (
-            <div className="loom-branch-parent-strip" role="group" aria-label="Child conversation">
-              <span>↳ 子任务 · 独立会话</span>
+            <div className="loom-branch-parent-strip" role="group" aria-label={t("branch.child")}>
+              <span className="loom-branch-parent-mark"><GitFork size={17} /></span>
+              <div className="loom-branch-parent-copy"><strong>{t("branch.child")}</strong><span>{t("branch.childHint")}</span></div>
               <button type="button" onClick={() => { setBranchError(""); void loom.openThread(thread.parentThreadId!); }}>
-                返回主会话
+                <ArrowLeft size={14} />{t("branch.back")}
               </button>
               <button
                 type="button"
+                className="loom-branch-report"
                 disabled={running || reportingBranch || Boolean(thread.branchReportedAt)}
-                title={thread.branchReportedAt ? "结果已汇报" : running ? "请等待任务完成" : "将子任务结果送回父会话"}
+                title={t(thread.branchReportedAt ? "branch.reported" : running ? "branch.wait" : "branch.reportHint")}
                 onClick={() => {
                   if (!thread.parentThreadId) return;
                   setReportingBranch(true);
@@ -1428,10 +1430,10 @@ export default function App() {
                     }
                   })();
                 }}
-              >{thread.branchReportedAt ? "已汇报" : reportingBranch ? "汇报中…" : "汇报到父会话"}</button>
+              >{thread.branchReportedAt ? <Check size={14} /> : reportingBranch ? <LoaderCircle size={14} className="loom-branch-spinner" /> : <Reply size={14} />}{t(thread.branchReportedAt ? "branch.reported" : reportingBranch ? "branch.reporting" : "branch.report")}</button>
             </div>
           ) : null}
-          {branchError ? <div className="loom-branch-error" role="alert">{branchError}<button type="button" onClick={() => setBranchError("")}> ×</button></div> : null}
+          {branchError ? <div className="loom-branch-error" role="alert"><span>{branchError}</span><button type="button" aria-label={t("branch.dismissError")} onClick={() => setBranchError("")}><X size={14} /></button></div> : null}
           <Transcript
             items={transcriptItems}
             running={transcriptRunning}

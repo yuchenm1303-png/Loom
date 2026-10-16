@@ -1,5 +1,6 @@
-import { useState } from "react";
-import { ArrowUpRight, GitBranch, X } from "./icons";
+import { useId, useState } from "react";
+import { ArrowUpRight, FolderOpen, GitFork, LoaderCircle, X } from "./icons";
+import { useI18n } from "../i18n";
 import "./task-branch-card.css";
 
 export interface TaskBranchProposal { title: string; prompt: string; }
@@ -40,6 +41,8 @@ export function TaskBranchCard({
   doHereDisabled?: boolean;
   onDismiss(): void;
 }) {
+  const { t } = useI18n();
+  const fieldId = useId();
   const [title, setTitle] = useState(proposal.title);
   const [prompt, setPrompt] = useState(proposal.prompt);
   const [pending, setPending] = useState(false);
@@ -55,19 +58,28 @@ export function TaskBranchCard({
     }));
   };
   return (
-    <section className="loom-task-branch-card" aria-label="New session">
-      <header><span className="loom-task-branch-header-mark"><GitBranch size={15} /></span><strong>New session</strong>
-        <button type="button" onClick={onDismiss} aria-label="Dismiss task" title="忽略建议"><X size={15} /></button>
+    <section className="loom-task-branch-card" aria-labelledby={`${fieldId}-heading`} aria-busy={pending}>
+      <header>
+        <span className="loom-task-branch-header-mark"><GitFork size={19} /></span>
+        <div className="loom-task-branch-heading">
+          <strong id={`${fieldId}-heading`}>{t("branch.create")}</strong>
+          <p>{t("branch.description")}</p>
+        </div>
+        <button type="button" disabled={pending} onClick={onDismiss} aria-label={t("branch.close")} title={t("branch.close")}><X size={16} /></button>
       </header>
       <div className="loom-task-branch-fields">
-        <input aria-label="子任务名称" value={title} maxLength={120} onChange={(event) => setTitle(event.target.value)} placeholder="子任务标题" />
-        <textarea aria-label="子任务内容" rows={3} maxLength={12000} value={prompt} onChange={(event) => setPrompt(event.target.value)} placeholder="描述独立任务…" />
+        <label htmlFor={`${fieldId}-title`}>{t("branch.title")}</label>
+        <input id={`${fieldId}-title`} disabled={disabled || pending} value={title} maxLength={120} onChange={(event) => setTitle(event.target.value)} placeholder={t("branch.titlePlaceholder")} />
+        <label htmlFor={`${fieldId}-prompt`}>{t("branch.prompt")}</label>
+        <textarea id={`${fieldId}-prompt`} disabled={disabled || pending} aria-describedby={`${fieldId}-context`} rows={4} maxLength={12000} value={prompt} onChange={(event) => setPrompt(event.target.value)} placeholder={t("branch.promptPlaceholder")} />
+        <p id={`${fieldId}-context`} className="loom-task-branch-context"><FolderOpen size={14} />{t("branch.context")}</p>
       </div>
       <footer>
-        <span>独立会话 · 同一项目</span>
-        <button type="button" disabled={disabled || doHereDisabled || pending || !prompt.trim() || !onDoHere} onClick={() => { onDismiss(); void onDoHere?.(prompt); }}>Do it here</button>
+        <span>{t("branch.footer")}</span>
+        <button type="button" disabled={disabled || doHereDisabled || pending || !prompt.trim() || !onDoHere} onClick={() => { onDismiss(); void onDoHere?.(prompt); }}>{t("branch.doHere")}</button>
         <button type="button" className="loom-task-branch-start" disabled={disabled || pending || !title.trim() || !prompt.trim()} onClick={start}>
-          {pending ? "Starting…" : "Start"} <ArrowUpRight size={13} />
+          {pending ? <LoaderCircle size={14} className="loom-branch-spinner" /> : <ArrowUpRight size={14} />}
+          {pending ? t("branch.starting") : t("branch.start")}
         </button>
       </footer>
     </section>

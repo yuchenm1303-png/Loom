@@ -9,6 +9,7 @@ import {
   Code2,
   Copy,
   History,
+  GitFork,
   Pencil,
   Reply,
   Search,
@@ -666,6 +667,7 @@ interface AssistantMessageProps {
 }
 
 function AssistantMessage({ item, streaming, onPrompt, decisionInteractive, promptDisabled, workspace, variant }: AssistantMessageProps) {
+  const { t } = useI18n();
   const copy = useRuntimeCopy();
   const parsed = splitReasoning(item.text ?? "");
   const providerReasoning = String(item.reasoning ?? "").trim();
@@ -773,9 +775,9 @@ function AssistantMessage({ item, streaming, onPrompt, decisionInteractive, prom
       ) : (
         <>
           <MessageToolbar kind="assistant" item={item} text={answer || reasoning} disabled={promptDisabled} />
-          {!taskBranch && !branchDismissed && (
-            <button className="loom-task-branch-new" type="button" onClick={() => setManualBranchOpen(true)}>
-              ↗ 新建任务支路
+          {(!taskBranch || branchDismissed) && cardsReady && (
+            <button className="loom-task-branch-new" type="button" title={t("branch.entryHint")} aria-expanded={false} onClick={() => { setBranchDismissed(false); setManualBranchOpen(true); }}>
+              <GitFork size={14} /><span>{t("branch.create")}</span><ArrowUpRight size={12} className="loom-task-branch-entry-arrow" />
             </button>
           )}
         </>
