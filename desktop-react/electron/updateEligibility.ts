@@ -8,7 +8,16 @@ import { callHost, handleHostChannel, isHostProcess } from "./hostProcess.js";
  */
 const CHANNEL = "loom:update-eligibility";
 
-async function hostUpdateEligibility(): Promise<boolean> {
+let pendingHostEligibility: Promise<boolean> | null = null;
+function hostUpdateEligibility(): Promise<boolean> {
+  // Startup, installer, application and Host runtime checks may overlap.
+  // Share only the in-flight request, never cache an authorization decision.
+  if (pendingHostEligibility) return pendingHostEligibility;
+  pendingHostEligibility = readHostUpdateEligibility().finally(() => { pendingHostEligibility = null; });
+  return pendingHostEligibility;
+}
+
+async function readHostUpdateEligibility(): Promise<boolean> {
   try {
     const session = await hostAccount.status();
     return session.reachable === true
@@ -24,7 +33,7 @@ async function hostUpdateEligibility(): Promise<boolean> {
 handleHostChannel(CHANNEL, () => hostUpdateEligibility());
 
 /** Fail closed on outages, sign-out, or explicit admin revocation. */
-export async function mayReceiveUpdates(timeoutMs = 3000): Promise<boolean> {
+export async function mayReceiveUpdates(timeoutMs = 30000): Promise<boolean> {
   // A slow account API is not allowed to block normal Agent startup.
   let timeout: ReturnType<typeof setTimeout> | undefined;
   try {

@@ -36,7 +36,7 @@ export async function selectApplication(installed: string, hostRoot: string, isH
     // Windows safeStorage cannot decrypt the login session before ready.
     // Checking earlier falsely treats a signed-in account as signed out.
     await app.whenReady();
-    canActivateReady = await mayReceiveUpdates(8000);
+    canActivateReady = await mayReceiveUpdates();
   }
   const candidate = session ? session.build
     : isHost && canActivateReady ? pointer.ready || pointer.active || 0 : pointer.active || 0;
