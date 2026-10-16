@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import time
+import threading
 from pathlib import Path
 
 import pytest
@@ -140,3 +141,51 @@ def test_reviewed_plan_is_persisted_with_child(planned_service):
             "parentThreadId": parent["id"], "title": "Bad", "prompt": "Do it",
             "acceptanceCriteria": ["x" * 300], "startNow": False,
         })
+
+
+
+def test_slow_planning_does_not_hold_up_normal_rpc(planned_service, monkeypatch):
+    service, platform, parent = planned_service
+    entered, release = threading.Event(), threading.Event()
+    original = platform.execute_chat
+
+    def slow_plan(profile_id, request):
+        entered.set()
+        assert release.wait(3), "test did not release the model"
+        return original(profile_id, request)
+
+    monkeypatch.setattr(platform, "execute_chat", slow_plan)
+    ticket = service.thread_branch_plan({
+        "parentThreadId": parent["id"], "sourceText": "Make this test portable.",
+    })
+    try:
+        assert entered.wait(2), "planning worker never started"
+        assert service.thread_branch_plan_status({
+            "parentThreadId": parent["id"], "planId": ticket["planId"],
+        })["status"] == "pending"
+        # Planning must not hold the worker that serves other thread actions.
+        another = service.thread_start({"workspace": parent["workspace"]})["thread"]
+        assert another["id"] != parent["id"]
+        with pytest.raises(JsonRpcError):
+            service.thread_branch_plan_status({
+                "parentThreadId": another["id"], "planId": ticket["planId"],
+            })
+        with pytest.raises(JsonRpcError):
+            service.thread_branch_plan({
+                "parentThreadId": parent["id"], "sourceText": "Duplicate planning",
+            })
+    finally:
+        release.set()
+    assert _eventually_ready(service, parent["id"], ticket["planId"])
+
+
+def _eventually_ready(service, parent_id, plan_id):
+    deadline = time.monotonic() + 5
+    while time.monotonic() < deadline:
+        result = service.thread_branch_plan_status({
+            "parentThreadId": parent_id, "planId": plan_id,
+        })
+        if result["status"] == "ready":
+            return True
+        time.sleep(.01)
+    return False
