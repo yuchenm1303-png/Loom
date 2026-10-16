@@ -15,7 +15,8 @@ from services.loom_model_gateway.routes import PROVIDERS, gateway_base_url, requ
 from services.loom_model_gateway.server import GatewayConfig, GatewayServer, LoomModelGateway, GatewayError
 
 MODELS = {"minimax": "MiniMax-M3.1-Flash-Preview", "deepseek": "deepseek-flash", "intern": "intern-s2",
-          "ant-ling": "Ling-3.0-flash", "opencode-go": "minimax-m3", "managed-relay": "MiniMax-M3.1-Flash-Preview"}
+          "ant-ling": "Ling-3.0-flash", "opencode-go": "minimax-m3",
+          "opencode-console": "deepseek-v4.1-flash-free", "managed-relay": "MiniMax-M3.1-Flash-Preview"}
 
 
 @pytest.mark.parametrize("group,model", MODELS.items())
@@ -78,7 +79,10 @@ def test_gateway_http_routes_use_server_credentials_and_preserve_protocol(monkey
         request = requests[0]
         assert request.full_url == "https://provider.invalid/"+group+"/"+endpoint
         assert request.data == body
-        assert request.get_header("Authorization") == "Bearer server-secret-"+group
+        if group == "opencode-console":
+            assert request.get_header("Authorization") is None
+        else:
+            assert request.get_header("Authorization") == "Bearer server-secret-"+group
         assert "loom_model_account" not in repr(request.header_items())
         if endpoint == "messages":
             assert request.get_header("X-api-key") == "server-secret-"+group

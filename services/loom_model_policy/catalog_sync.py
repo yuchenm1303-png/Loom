@@ -10,7 +10,7 @@ from pathlib import Path
 
 from loom_image_capability import image_capability
 
-from .catalog import GROUPS, selection_for_model
+from .catalog import GROUPS, OPENCODE_CONSOLE_FREE_MODELS, is_opencode_console_free, selection_for_model
 
 
 # Provider routes are shared with the gateway; model additions do not
@@ -32,8 +32,45 @@ def parse_models(group_id: str, payload: dict) -> list[dict]:
         selection = selection_for_model(group_id, model)
         if len(selection) > 240:
             raise ValueError("model selection exceeds limit")
-        models[selection] = {"model_id": selection, "model": model, "name": str(item.get("name") or model)[:240], "image_input": image_capability(item)}
+        display = item.get("name") or (
+            model.replace("-", " ").title().replace("Deepseek", "DeepSeek").replace("Mimo", "MiMo")
+            if group_id == "opencode-console" else model
+        )
+        models[selection] = {"model_id": selection, "model": model, "name": str(display)[:240], "image_input": image_capability(item)}
     return list(models.values())
+
+
+def parse_opencode_console_config(payload: dict) -> list[dict]:
+    """Only import the Console-owned OpenAI Chat Completions provider.
+
+    The workspace config can also contain Go, Responses, Anthropic, custom
+    upstreams or user-connected providers. None may be routed through the
+    Console Chat Completions gateway by assuming model IDs are interchangeable.
+    """
+    providers = payload.get("providers") if isinstance(payload, dict) else None
+    provider = providers.get("opencode") if isinstance(providers, dict) else None
+    if not isinstance(provider, dict):
+        raise ValueError("Console configuration does not include opencode")
+    package = str(provider.get("package") or "")
+    settings = provider.get("settings")
+    base_url = settings.get("baseURL") if isinstance(settings, dict) else None
+    if "@ai-sdk/openai-compatible" not in package or base_url != "https://opencode.ai/inference/openai/v1":
+        raise ValueError("Console config is not OpenAI Chat Completions")
+    available = provider.get("models")
+    if not isinstance(available, dict):
+        raise ValueError("Console models are missing")
+    # Free entrypoints also work without a key and stay visible even when the
+    # service-account workspace config contains only a subset of the models.
+    rows = {model: {"id": model} for model in OPENCODE_CONSOLE_FREE_MODELS}
+    for model, info in available.items():
+        if not isinstance(model, str) or not isinstance(info, dict):
+            continue
+        # Explicitly exclude per-model endpoint overrides that require
+        # another transport (e.g. /responses).
+        if info.get("api") not in (None, "chat/completions", "chat-completions"):
+            continue
+        rows[model] = {"id": model, "name": str(info.get("name") or model)}
+    return parse_models("opencode-console", {"data": list(rows.values())})
 
 
 class CatalogSynchronizer:
@@ -91,11 +128,27 @@ class CatalogSynchronizer:
                 return
             base, key_names, url_names = PROVIDERS[group_id]
             credential = next((self.environ[name].strip() for name in key_names if self.environ.get(name, "").strip()), "")
+            if group_id == "opencode-console" and not credential:
+                # Free models are seeded at DB initialization. Refresh must not
+                # rewrite a stable catalog when another provider is unavailable.
+                # If a former paid key was removed, retire its billed rows now.
+                rows = [row for row in self.store.catalog()["models"] if row["group_id"] == group_id]
+                if any(row["available"] and not is_opencode_console_free(row["model"]) for row in rows):
+                    free_models = parse_models(group_id, {
+                        "data": [{"id": model} for model in OPENCODE_CONSOLE_FREE_MODELS]
+                    })
+                    self.store.replace_provider_catalog(group_id, free_models, "manifest")
+                return
             if not credential:
                 self.store.catalog_failure(group_id, "Discovery credential is not configured; bundled or last successful catalog retained.")
                 return
             base = next((self.environ[name].strip() for name in url_names if self.environ.get(name, "").strip()), base)
-            models = parse_models(group_id, self.fetch(base.rstrip("/") + "/models", credential))
+            if group_id == "opencode-console":
+                models = parse_opencode_console_config(
+                    self.fetch("https://opencode.ai/console/api/v2/config", credential)
+                )
+            else:
+                models = parse_models(group_id, self.fetch(base.rstrip("/") + "/models", credential))
             self.store.replace_provider_catalog(group_id, models)
         except Exception:
             # Never persist raw upstream errors: URLs or response bodies may
