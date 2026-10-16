@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import time
 from pathlib import Path
 
 import pytest
@@ -32,6 +33,21 @@ class PlanningPlatform:
     def execute_chat(self, profile_id, request):
         self.requests.append((profile_id, request))
         return ModelResponse(text=self.response)
+
+
+def _plan_result(service, parent_id, source):
+    initial = service.thread_branch_plan({"parentThreadId": parent_id, "sourceText": source})
+    assert initial["status"] == "pending"
+    assert initial["planId"]
+    deadline = time.monotonic() + 8
+    while time.monotonic() < deadline:
+        result = service.thread_branch_plan_status({
+            "parentThreadId": parent_id, "planId": initial["planId"],
+        })
+        if result["status"] != "pending":
+            return result
+        time.sleep(.015)
+    raise AssertionError("planner did not finish")
 
 
 @pytest.fixture()
@@ -81,14 +97,12 @@ def test_non_actionable_and_invalid_plans_cannot_fabricate_tasks():
 
 def test_plan_rpc_uses_model_without_creating_child_or_tools(planned_service):
     service, platform, parent = planned_service
-    response = service.thread_branch_plan({
-        "parentThreadId": parent["id"],
-        "sourceMessageId": "source-one",
-        "sourceText": "The Windows Files edit test is failing because of CRLF.",
-    })
-    assert response["title"] == "Repair CRLF tests"
-    assert response["summary"].startswith("Make the Files")
-    assert len(response["acceptanceCriteria"]) == 2
+    response = _plan_result(service, parent["id"], "The Windows Files edit test is failing because of CRLF.")
+    assert response["status"] == "ready"
+    plan = response["proposal"]
+    assert plan["title"] == "Repair CRLF tests"
+    assert plan["summary"].startswith("Make the Files")
+    assert len(plan["acceptanceCriteria"]) == 2
     assert len(service.thread_list({"view": "active"})["threads"]) == 1
     assert platform.requests
     profile_id, request = platform.requests[-1]
@@ -100,9 +114,9 @@ def test_plan_rpc_uses_model_without_creating_child_or_tools(planned_service):
 def test_plan_errors_are_visible_and_do_not_copy_source(planned_service):
     service, platform, parent = planned_service
     platform.response = "Just paste the full answer and start"
-    with pytest.raises(JsonRpcError) as exc:
-        service.thread_branch_plan({"parentThreadId": parent["id"], "sourceText": "Very long source"})
-    assert exc.value.code == -32046
+    outcome = _plan_result(service, parent["id"], "Very long source")
+    assert outcome["status"] == "error"
+    assert "usable task plan" in outcome["error"]
     with pytest.raises(JsonRpcError):
         service.thread_branch_plan({"parentThreadId": parent["id"], "sourceText": "x" * 12001})
     with pytest.raises(JsonRpcError):
