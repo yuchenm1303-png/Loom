@@ -1275,7 +1275,6 @@ export default function App() {
         hidden={settingsPresence.mounted || profilePresence.mounted || accountOpen || Boolean(filesProjectId)}
         loading={threadSwitching}
         hasWorkspace={Boolean(selectedThread?.workspace || workspace)}
-        sidebarOpen={sidebarOpen}
         filesAvailable={Boolean(dockProject)}
         browserAvailable={browserAvailable}
         browserOpen={browserOpen}
@@ -1289,10 +1288,6 @@ export default function App() {
         artifactCount={threadSwitching ? 0 : artifactCount}
         inspectorOpen={inspectorVisible}
         accountAuthenticated={account.account.authenticated}
-        onToggleSidebar={() => runLayoutTransition(
-          () => setSidebarOpen(open => !open),
-          sidebarOpen ? "left-close" : "left-open",
-        )}
         onOpenFiles={() => {
           if (dockProject) setFilesProjectId(dockProject.id);
         }}
@@ -1371,6 +1366,11 @@ export default function App() {
         aria-busy={threadSwitching ? true : undefined}
       >
         <ThreadHeader
+          sidebarOpen={sidebarOpen}
+          onToggleSidebar={() => runLayoutTransition(
+            () => setSidebarOpen(open => !open),
+            sidebarOpen ? "left-close" : "left-open",
+          )}
           title={threadTitle}
           workspace={selectedThread?.workspace || workspace}
           connection={loom.connection}

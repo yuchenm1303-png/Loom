@@ -1,4 +1,4 @@
-import { Archive, Check, Copy } from "./icons";
+import { Archive, Check, Copy, SidebarTriangle } from "./icons";
 import { useEffect, useMemo, useState } from "react";
 import { useI18n } from "../i18n";
 import type { ContextCompactionProgress, ContextReport } from "../types/loom";
@@ -15,6 +15,8 @@ interface ThreadHeaderProps {
   running: boolean;
   loading?: boolean;
   archived: boolean;
+  sidebarOpen: boolean;
+  onToggleSidebar(): void;
   model?: string;
   permissionMode?: string;
   context?: ContextReport | null;
@@ -54,6 +56,8 @@ export function ThreadHeader({
   running,
   loading = false,
   archived,
+  sidebarOpen,
+  onToggleSidebar,
   context = null,
   compacting = false,
   compactionProgress = null,
@@ -90,8 +94,23 @@ export function ThreadHeader({
 
   const workspaceFallback = t("common.workspace");
   const localWorkspace = t("common.localWorkspace");
+  const sidebarLabel = sidebarOpen
+    ? (language === "zh-CN" ? "收起会话侧栏" : "Hide conversation sidebar")
+    : (language === "zh-CN" ? "展开会话侧栏" : "Open conversation sidebar");
   return (
     <header className="thread-header polished-thread-header">
+      <div className="thread-header-leading">
+        <button
+          type="button"
+          className={`thread-header-icon-button panel-toggle-button thread-sidebar-triangle ${sidebarOpen ? "active is-open" : ""}`}
+          onClick={onToggleSidebar}
+          title={sidebarLabel}
+          aria-label={sidebarLabel}
+          aria-pressed={sidebarOpen}
+        >
+          <SidebarTriangle className="thread-sidebar-triangle-mark" viewBox="0 0 12 14" fill="currentColor" stroke="none" focusable="false" />
+        </button>
+      </div>
       <div className="thread-header-main">
         <div className="thread-header-copy">
           <div className="thread-title-line">

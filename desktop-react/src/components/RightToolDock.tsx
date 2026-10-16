@@ -1,18 +1,18 @@
 import { useRef, useState, type ReactNode, type KeyboardEvent, type DragEvent } from "react";
 import {
   FileDiff, FolderOpen, GitFork, Globe2, PanelsTopLeft, PanelRightClose, PanelRightOpen,
-  Pulse, Settings, SidebarTriangle, Terminal, UserRound,
+  Pulse, Settings, Terminal, UserRound,
 } from "./icons";
 import { useI18n } from "../i18n";
 import "./right-tool-dock.css";
 
 type DockId =
-  | "sidebar" | "files" | "browser" | "background" | "agents" | "review"
+  | "files" | "browser" | "background" | "agents" | "review"
   | "artifacts" | "inspector" | "profile" | "account" | "settings";
 
 const ORDER_KEY = "loom.ui.rightToolDock.order.v1";
 export const DEFAULT_TOOL_ORDER: readonly DockId[] = [
-  "sidebar", "files", "browser", "background", "agents", "review",
+  "files", "browser", "background", "agents", "review",
   "artifacts", "inspector", "profile", "account", "settings",
 ];
 
@@ -32,7 +32,6 @@ export interface RightToolDockProps {
   hidden?: boolean;
   loading?: boolean;
   hasWorkspace?: boolean;
-  sidebarOpen: boolean;
   filesAvailable: boolean;
   browserAvailable: boolean;
   browserOpen: boolean;
@@ -46,7 +45,6 @@ export interface RightToolDockProps {
   artifactCount: number;
   inspectorOpen: boolean;
   accountAuthenticated: boolean;
-  onToggleSidebar(): void;
   onOpenFiles(): void;
   onToggleBrowser(): void;
   onToggleBackground(): void;
@@ -81,11 +79,6 @@ export function RightToolDock(props: RightToolDockProps) {
   type Item = { label: string; icon: ReactNode; active?: boolean; disabled?: boolean; reason?: string;
     count?: number; status?: boolean; onClick(): void };
   const items: Record<DockId, Item> = {
-    sidebar: {
-      label: props.sidebarOpen ? (zh ? "收起侧栏" : "Hide sidebar") : (zh ? "展开侧栏" : "Show sidebar"),
-      icon: <SidebarTriangle size={17} fill="currentColor" stroke="none" />, active: props.sidebarOpen,
-      onClick: props.onToggleSidebar,
-    },
     files: {
       label: zh ? "项目文件" : "Project files", icon: <FolderOpen size={18} strokeWidth={1.65} />,
       disabled: !props.filesAvailable,
@@ -168,7 +161,7 @@ export function RightToolDock(props: RightToolDockProps) {
           const item = items[id];
           return (
             <div className="loom-tool-position" key={id}>
-              {(index === 1 || index === 8) && <span className="loom-tool-divider" aria-hidden="true" />}
+              {(index === 7) && <span className="loom-tool-divider" aria-hidden="true" />}
               <button
                 type="button"
                 className={"loom-tool-button" + (item.active ? " is-active" : "")

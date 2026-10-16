@@ -3,13 +3,17 @@ import assert from "node:assert/strict";
 const { chromium } = await import(process.env.LOOM_PLAYWRIGHT_MODULE || "playwright-core");
 const browser = await chromium.launch({ executablePath: process.env.LOOM_CHROMIUM_PATH, headless: true });
 const origin = process.env.LOOM_TEST_ORIGIN || "http://127.0.0.1:5173";
-const ids = ["sidebar","files","browser","background","agents","review",
+const ids = ["files","browser","background","agents","review",
   "artifacts","inspector","profile","account","settings"];
 try {
   for (const theme of ["dark", "light"]) {
     const page = await browser.newPage({ viewport: { width: 1420, height: 900 } });
     const errors = [];
     page.on("pageerror", error => errors.push(error.message));
+    await page.addInitScript(order => {
+      const key = "loom.ui.rightToolDock.order.v1";
+      if (!localStorage.getItem(key)) localStorage.setItem(key, JSON.stringify(["sidebar", ...order]));
+    }, ids);
     await page.goto(origin + "/scripts/fixtures/workspace-visual.html?context=1&theme=" + theme);
     const dock = page.locator(".loom-tool-dock");
     await dock.waitFor({ timeout: 20_000 });
@@ -32,9 +36,9 @@ try {
     });
     assert.ok(bounds.workspace <= bounds.rail + 1, "dock overlaps conversation content");
 
-    await dock.locator('[data-tool-id="sidebar"]').click();
+    await page.locator('.thread-header .thread-sidebar-triangle').click();
     await page.locator(".app-shell.sidebar-closed").waitFor({ timeout: 4000 });
-    await dock.locator('[data-tool-id="sidebar"]').click();
+    await page.locator('.thread-header .thread-sidebar-triangle').click();
     await page.locator(".app-shell.sidebar-open").waitFor({ timeout: 4000 });
 
     await dock.locator('[data-tool-id="agents"]').click();
@@ -61,13 +65,13 @@ try {
       "background tasks obscure rail: " + JSON.stringify(backgroundBounds));
     await dock.locator('[data-tool-id="background"]').click();
 
-    await dock.locator('[data-tool-id="files"]').focus();
+    await dock.locator('[data-tool-id="agents"]').focus();
     await page.keyboard.press("Alt+ArrowUp");
-    assert.equal(await dock.locator("button").first().getAttribute("data-tool-id"), "files");
-    assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem("loom.ui.rightToolDock.order.v1"))[0]), "files");
+    assert.equal(await dock.locator("button").nth(2).getAttribute("data-tool-id"), "agents");
+    assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem("loom.ui.rightToolDock.order.v1"))[2]), "agents");
     await page.reload();
     await page.locator(".loom-tool-dock").waitFor();
-    assert.equal(await page.locator(".loom-tool-dock button").first().getAttribute("data-tool-id"), "files",
+    assert.equal(await page.locator(".loom-tool-dock button").nth(2).getAttribute("data-tool-id"), "agents",
       "customized dock order must survive reload");
 
     await page.setViewportSize({ width: 825, height: 700 });
