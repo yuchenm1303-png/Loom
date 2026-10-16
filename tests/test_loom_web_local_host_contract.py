@@ -51,7 +51,7 @@ def test_web_system_actions_reach_local_host() -> None:
     assert "dialog.showOpenDialog" in REMOTE_RELAY
 
 
-def test_web_host_negotiates_protocol_and_can_self_update() -> None:
+def test_web_host_negotiates_protocol_and_updates_via_complete_installer() -> None:
     assert "LOOM_BOOTSTRAP_PROTOCOL_VERSION = 1" in WEB_RELAY_AUTH
     assert "hostProtocol: auth.hostProtocol" in REMOTE_RELAY
     assert "bootstrapProtocol: auth.bootstrapProtocol" in REMOTE_RELAY
@@ -62,8 +62,10 @@ def test_web_host_negotiates_protocol_and_can_self_update() -> None:
     assert 'frame.operation === "bootstrapUpdateEnsure"' in REMOTE_RELAY
     assert "ensureBootstrapUpdate()" in REMOTE_RELAY
     assert "bootstrapAutoInstallRequested" in UPDATER
-    assert "activateHostRuntime" in HOST_UPDATER
-    assert "sha256(bytes) !== channel.sha256" in HOST_UPDATER
+    assert "ensureBootstrapUpdate()" in HOST_UPDATER
+    assert "enabled: false" in HOST_UPDATER
+    assert "latest complete Loom release" in HOST_UPDATER
+    assert "activateHostRuntime" not in HOST_UPDATER
     assert "autoUpdater.quitAndInstall(false, true)" in UPDATER
     assert "LOOM_WEB_REQUIRED_HOST_PROTOCOL = 1" in LOCAL_DISCOVERY
     assert "ensureLocalLoomHostCompatibility" in LOCAL_DISCOVERY
