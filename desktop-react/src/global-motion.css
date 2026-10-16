@@ -60,7 +60,7 @@
   transform: none;
   will-change: auto;
   transition:
-    opacity 220ms ease;
+    opacity var(--loom-motion-reveal) var(--loom-ease-depth);
 }
 
 .settings-host[data-motion-phase="entering"] .settings-sidebar,
@@ -94,17 +94,17 @@
 .settings-host[data-motion-phase="exiting"] .settings-sidebar {
   opacity: 0;
   transform: none;
-  transition-duration: 205ms, 175ms;
+  transition-duration: var(--loom-motion-conceal);
   transition-delay: 0ms;
-  transition-timing-function: var(--loom-ease-in), ease;
+  transition-timing-function: var(--loom-ease-in);
 }
 
 .settings-host[data-motion-phase="exiting"] .settings-main {
   opacity: 0;
   transform: none;
-  transition-duration: 205ms, 175ms;
+  transition-duration: var(--loom-motion-conceal);
   transition-delay: 0ms;
-  transition-timing-function: var(--loom-ease-in), ease;
+  transition-timing-function: var(--loom-ease-in);
 }
 
 /* Controls should feel responsive, not twitchy. */
@@ -149,7 +149,7 @@
   animation: none !important;
   will-change: opacity;
   transition:
-    opacity 220ms ease;
+    opacity var(--loom-motion-reveal) var(--loom-ease-depth);
 }
 
 .settings-toast[data-motion-phase="entering"] {
@@ -166,7 +166,7 @@
   pointer-events: none;
   opacity: 0;
   transform: none;
-  transition-duration: 195ms;
+  transition-duration: var(--loom-motion-conceal);
   transition-timing-function: var(--loom-ease-in);
 }
 

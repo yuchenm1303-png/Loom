@@ -1,7 +1,7 @@
 import { installWindowChrome } from "./windowChrome.js";
 import { EmbeddedBrowserManager, type EmbeddedBrowserCommand } from "./embeddedBrowser.js";
 import { EmbeddedBrowserAgentClient } from "./embeddedBrowserAgentBridge.js";
-import { ModelSwitchQueue } from "./modelSwitchQueue.js";
+import { ModelSwitchQueue, type ModelPreferenceTicket } from "./modelSwitchQueue.js";
 import { isManagedBuiltinSelection } from "./modelPolicySelection.js";
 import { applyModelPolicy, policyAllowsSelection, policyBlockedMessage } from "./modelAccess.js";
 import { assertModelConnection } from "./modelConnection.js";
@@ -1140,28 +1140,30 @@ function sharedSearchRelay(): ReturnType<typeof createSearchRelay> {
   return searchRelayPromise;
 }
 
+async function commitModelPreference(spec: ModelLaunchSpec, ticket: ModelPreferenceTicket) {
+  await modelSwitchQueue.commitPreference(ticket, async () => {
+    await modelManager.persistActiveAsync(spec.selection);
+    if (ticket.isCurrent()) {
+      modelManager.useResolvedModel(spec);
+      modelManager.markActive(spec.selection);
+    }
+  });
+}
+
 async function changeModel(
   apply: () => ModelLaunchSpec | Promise<ModelLaunchSpec>,
-  options: { persistSelection?: string } = {},
+  options: { persistSelection?: string; preference?: ModelPreferenceTicket } = {},
 ): Promise<ModelRestartResult> {
-  const previous = modelManager.current ?? await modelManager.ensureInitialAsync();
-  try {
-    const next = await apply();
-    const selection = options.persistSelection || next.selection;
-    await modelManager.persistActiveAsync(selection);
-    modelManager.markActive(selection);
-    // A draft changes the preference, never the running shared platform.
-    return { initialization: { runtime: {} }, models: await presentModels(await modelManager.switchSnapshot(next)), hotSwitch: true };
-  } catch (error) {
-    modelManager.restore(previous);
-    modelManager.markActive(previous.selection);
-    throw error;
-  }
+  const ticket = options.preference ?? modelSwitchQueue.preference();
+  const next = await apply();
+  await commitModelPreference(next, ticket);
+  return { initialization: { runtime: {} }, models: await presentModels(await modelManager.switchSnapshot()), hotSwitch: true };
 }
 
 async function changeThreadModel(
   threadId: string,
   spec: ModelLaunchSpec,
+  preference: ModelPreferenceTicket | null = modelSwitchQueue.preference(),
 ): Promise<ModelRestartResult> {
   const id = String(threadId || "").trim();
   if (!id) throw new Error("Thread is required");
@@ -1184,11 +1186,10 @@ async function changeThreadModel(
   }
   // Remember the successful choice for future drafts without changing any
   // other conversation or the running shared runtime.
-  modelManager.useResolvedModel(spec);
-  modelManager.markActive(spec.selection);
+  if (preference) await commitModelPreference(spec, preference);
   return {
     initialization: { runtime: result.runtime ?? {} },
-    models: await presentModels(await modelManager.switchSnapshot(spec)),
+    models: await presentModels(await modelManager.switchSnapshot()),
     hotSwitch: true,
     thread: result.thread,
   };
@@ -1458,7 +1459,7 @@ async function runRpcCall(method: string, params: Record<string, unknown> = {}):
     if (result.thread.modelSelection === preferred.selection && result.thread.model === preferred.model) return result;
     // Apply only to the newly created thread: another thread may still be
     // executing with the shared runtime's earlier default model.
-    const switched = await changeThreadModel(result.thread.id, preferred);
+    const switched = await changeThreadModel(result.thread.id, preferred, null);
     return { ...result, thread: switched.thread ?? result.thread };
   }
   return rpc.call(method, params);
@@ -1475,32 +1476,35 @@ async function runStageTempFile(name: string, bytes: Uint8Array): Promise<string
 
 const modelSwitchQueue = new ModelSwitchQueue();
 function runSwitchModelProfile(threadOrSelection: string, maybeSelection?: string): Promise<ModelRestartResult> {
+  const preference = modelSwitchQueue.preference();
   return modelSwitchQueue.run(maybeSelection === undefined ? "draft" : threadOrSelection,
-    () => applySwitchModelProfile(threadOrSelection, maybeSelection));
+    () => applySwitchModelProfile(threadOrSelection, maybeSelection, preference));
 }
 function runSwitchCurrentModel(threadOrModel: string, selection?: string, model?: string): Promise<ModelRestartResult> {
+  const preference = modelSwitchQueue.preference();
   return modelSwitchQueue.run(model === undefined ? "draft" : threadOrModel,
-    () => applySwitchCurrentModel(threadOrModel, selection, model));
+    () => applySwitchCurrentModel(threadOrModel, selection, model, preference));
 }
 
-async function applySwitchModelProfile(threadOrSelection: string, maybeSelection?: string): Promise<ModelRestartResult> {
+async function applySwitchModelProfile(threadOrSelection: string, maybeSelection?: string, preference?: ModelPreferenceTicket): Promise<ModelRestartResult> {
   if (maybeSelection === undefined) {
     const selection = String(threadOrSelection || "").trim();
     if (!selection) throw new Error("Model profile is required");
     await assertModelSelectionAllowed(selection);
-    return changeModel(() => modelManager.useProfileAsync(selection), { persistSelection: selection });
+    return changeModel(() => modelManager.resolveAsync(selection), { preference });
   }
   const selection = String(maybeSelection || "").trim();
   if (!selection) throw new Error("Model profile is required");
   const spec = await modelManager.resolveAsync(selection);
   await assertModelSelectionAllowed(spec.selection);
-  return changeThreadModel(threadOrSelection, spec);
+  return changeThreadModel(threadOrSelection, spec, preference);
 }
 
 async function applySwitchCurrentModel(
   threadOrModel: string,
   selectionOrUndefined?: string,
   modelOrUndefined?: string,
+  preference?: ModelPreferenceTicket,
 ): Promise<ModelRestartResult> {
   if (modelOrUndefined === undefined) {
     const model = String(threadOrModel || "").trim();
@@ -1508,7 +1512,7 @@ async function applySwitchCurrentModel(
     const currentSelection = (modelManager.current ?? await modelManager.ensureInitialAsync()).selection;
     const spec = await modelManager.resolveModelNameForAsync(currentSelection, model);
     await assertModelSelectionAllowed(spec.selection);
-    return changeModel(() => modelManager.useResolvedModel(spec));
+    return changeModel(() => spec, { preference });
   }
   const selection = String(selectionOrUndefined || "").trim();
   const model = String(modelOrUndefined || "").trim();
@@ -1516,7 +1520,7 @@ async function applySwitchCurrentModel(
   if (!model) throw new Error("Model ID is required");
   const spec = await modelManager.resolveModelNameForAsync(selection, model);
   await assertModelSelectionAllowed(spec.selection);
-  return changeThreadModel(threadOrModel, spec);
+  return changeThreadModel(threadOrModel, spec, preference);
 }
 
 async function runTestModel(selection: string): Promise<ReturnType<DesktopModelManager["test"]>> {
@@ -1528,16 +1532,17 @@ async function runAddModel(
   threadOrInput: string | AddModelInput,
   maybeInput?: AddModelInput,
 ): Promise<ModelRestartResult> {
+  const preference = modelSwitchQueue.preference();
   const threadScoped = typeof threadOrInput === "string";
   const input = (threadScoped ? maybeInput : threadOrInput) as AddModelInput | undefined;
   if (!input) throw new Error("Model connection input is required");
   await assertSignedInForModels();
   const profile = await modelManager.add(input);
   if (threadScoped) {
-    return changeThreadModel(String(threadOrInput), modelManager.resolve(profile.selection));
+    return changeThreadModel(String(threadOrInput), modelManager.resolve(profile.selection), preference);
   }
   await rpc.assertRestartSafe();
-  return changeModel(() => modelManager.useProfile(profile.selection), { persistSelection: profile.selection });
+  return changeModel(() => modelManager.resolveAsync(profile.selection), { preference });
 }
 
 async function runUpdateModel(input: EditModelInput): Promise<ReturnType<DesktopModelManager["snapshot"]>> {

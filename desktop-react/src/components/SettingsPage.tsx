@@ -608,7 +608,7 @@ export function SettingsPage({ runtime, models, threadId, running, onRefreshMode
   const setNotice = (next: Omit<SettingsNotice, "id"> | null) => {
     setNoticeState(next ? { ...next, id: ++noticeSeqRef.current } : null);
   };
-  const noticePresence = useMotionPresence(Boolean(notice), 200);
+  const noticePresence = useMotionPresence(Boolean(notice), 235);
   const lastNoticeRef = useRef<SettingsNotice | null>(notice);
   if (notice) lastNoticeRef.current = notice;
   const visibleNotice = notice ?? lastNoticeRef.current;
