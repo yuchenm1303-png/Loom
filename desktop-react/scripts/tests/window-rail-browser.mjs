@@ -41,31 +41,39 @@ function scan(selector) {
   return { problems, seen };
 }
 
+// Every panel opens from the right tool dock (RightToolDock), which is not on the rail itself.
+const dock = (id) => async (page) => { await page.locator(`.loom-tool-button[data-tool-id="${id}"]`).evaluate((el) => el.click()); };
 const surfaces = {
   base: async () => {},
   "sidebar closed": async (page) => { await page.locator(".thread-sidebar-triangle").click(); },
   // The field opens under the first row and its top edge is still on the rail.
   "sidebar search": async (page) => { await page.locator(".compact-sidebar-actions button").click(); },
-  inspector: async (page) => { await page.locator(".thread-inspector-button").click(); },
-  // These three entries are hidden until the conversation has something for them, so click them directly.
-  agents: async (page) => { await page.locator(".thread-agent-button").evaluate((el) => el.click()); },
-  review: async (page) => { await page.locator(".thread-review-check-button").evaluate((el) => el.click()); },
-  artifacts: async (page) => { await page.locator(".thread-artifact-button").evaluate((el) => el.click()); },
+  inspector: dock("inspector"),
+  agents: dock("agents"),
+  review: dock("review"),
+  artifacts: dock("artifacts"),
   project: async (page) => { await page.locator(".project-group-main").first().click(); },
-  profile: async (page) => { await page.locator(".thread-profile-button").click(); },
-  settings: async (page) => { await page.locator(".thread-settings-button").click(); },
+  background: dock("background"),
+  files: async (page) => { await page.locator(".project-group-main").first().click(); await page.waitForTimeout(500); await page.locator(".project-details-close").click(); await page.waitForTimeout(500); await dock("files")(page); },
+  browser: dock("browser"),
+  profile: dock("profile"),
+  settings: dock("settings"),
 };
 
 // What must be on the rail in each state (the scan reports only what it finds).
+// Every dock, the palette and the workbench use PanelHeader, whose close button is .pl-close.
 const expected = {
-  base: ["sidebar-new-conversation", "thread-settings-button", "thread-inspector-button"],
-  "sidebar closed": ["thread-sidebar-triangle", "thread-settings-button"],
+  base: ["sidebar-new-conversation"],
+  "sidebar closed": ["thread-sidebar-triangle"],
   "sidebar search": ["compact-search"],
-  inspector: ["thread-inspector-button"],
+  inspector: [],
   agents: ["sub-agent-workspace-close"],
   review: ["review-close"],
-  artifacts: ["artifact-preview-actions"],
+  artifacts: ["pl-close"],
   project: ["project-details-close"],
+  background: [],
+  files: [],
+  browser: [],
   profile: ["profile-back-button"],
   settings: [],
 };
@@ -73,7 +81,8 @@ const expected = {
 try {
   const failures = [];
   for (const theme of ["dark", "light"]) {
-    for (const width of [1040, 1280, 1600]) {
+    // LOOM_RAIL_WIDTHS=1280 narrows the sweep (a quick check); the default is all three.
+    for (const width of (process.env.LOOM_RAIL_WIDTHS ? process.env.LOOM_RAIL_WIDTHS.split(",").map(Number) : [1040, 1280, 1600])) {
       for (const [name, open] of Object.entries(surfaces)) {
         if (theme === "light" && width !== 1280) continue;
         const page = await browser.newPage({ viewport: { width, height: 820 } });

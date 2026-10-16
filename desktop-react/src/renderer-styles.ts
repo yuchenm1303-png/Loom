@@ -14,7 +14,6 @@ import "./components/semantic-colors.css";
 import "./components/thread-header-mark-refinement.css";
 import "./components/settings-models-polish.css";
 import "./components/settings-capabilities-polish.css";
-import "./components/review-motion.css";
 import "./components/renderer-crispness.css";
 import "./components/model-core-redesign.css";
 import "./theme.css";

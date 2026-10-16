@@ -142,3 +142,10 @@ merged step counts, responsive separators, tool status placement and composer
 send/stop draft retention. `component-surfaces-browser.mjs` covers the composer
 popovers, account dialog, sidebar menu and settings in both themes; set
 `LOOM_SURFACE_SCREENSHOTS` to retain its screenshots.
+
+Panels share one look and one motion (`src/components/panel-language.css` and `PanelHeader.tsx`; write-up in
+`docs/panel-language-2026-10-16.md`). Docks keep the a61 depth; whatever appears in place (Files, the background
+palette, the account and crop dialogs) is revealed by opacity alone over `--loom-motion-reveal` and held mounted for its
+`--loom-motion-conceal` exit, so nothing is unmounted in one frame. Run `node scripts/tests/panel-language-browser.mjs`
+with the browser environment above: it opens every panel in both themes, reads its material back and samples how it
+enters and leaves. `tests/test_panel_language_contract.py` pins who owns what.

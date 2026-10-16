@@ -54,13 +54,14 @@
   --pl-ok: var(--semantic-success-strong, #55ef9b);
   --pl-danger: var(--semantic-danger-text, #ff7b8e);
   --pl-scrim: rgba(3, 5, 9, .6);
-  --pl-shadow-float: 0 12px 34px rgba(0, 0, 0, .34), 0 2px 8px rgba(0, 0, 0, .2);
+  /* The composer popovers' own values (--cq-shadow-pop, composer-refined.css): a hairline and one long, soft shadow. */
+  --pl-shadow-float: 0 1px 2px rgba(0, 0, 0, .35), 0 26px 64px -20px rgba(0, 0, 0, .78);
   --pl-shadow-modal: 0 28px 80px rgba(0, 0, 0, .46), 0 6px 18px rgba(0, 0, 0, .24);
 
   --pl-radius-control: 8px;
   --pl-radius-mark: 9px;
   --pl-radius-card: 12px;
-  --pl-radius-float: 14px;
+  --pl-radius-float: 13px;
   --pl-radius-modal: 18px;
 
   /* --loom-rail-height only exists in the desktop shell; the web build has no
@@ -83,7 +84,7 @@ html[data-loom-theme="light"] {
   --pl-accent-line: rgba(105, 82, 199, .18);
   --pl-focus: rgba(105, 82, 199, .5);
   --pl-scrim: rgba(24, 28, 36, .3);
-  --pl-shadow-float: 0 12px 32px rgba(25, 30, 40, .14), 0 2px 8px rgba(25, 30, 40, .08);
+  --pl-shadow-float: 0 1px 2px rgba(20, 24, 34, .06), 0 24px 56px -18px rgba(20, 24, 34, .24);
   --pl-shadow-modal: 0 28px 70px rgba(20, 24, 38, .2), 0 6px 18px rgba(20, 24, 38, .1);
 }
 
@@ -96,6 +97,36 @@ html[data-loom-theme="light"] {
   background: var(--pl-surface);
   border-left: 1px solid var(--pl-edge);
   box-shadow: none;
+}
+
+/* What a dock does when the View Transitions API is not there (the a61 depth in
+   workspace-panels.css is the real entrance; while it runs these are forced to rest). It used to be
+   written four times, once per dock. */
+.pl-dock[data-motion-phase] {
+  backface-visibility: hidden;
+  transition:
+    transform var(--loom-motion-panel, 390ms) var(--loom-ease-out, cubic-bezier(.2, .74, .18, 1)),
+    opacity var(--loom-motion-opacity, 260ms) ease;
+}
+
+.pl-dock[data-motion-phase="entering"] {
+  opacity: .9;
+  transform: translate3d(22px, 0, 0);
+  will-change: transform, opacity;
+}
+
+.pl-dock[data-motion-phase="entered"] {
+  opacity: 1;
+  transform: translate3d(0, 0, 0);
+}
+
+.pl-dock[data-motion-phase="exiting"] {
+  pointer-events: none;
+  opacity: 0;
+  transform: translate3d(14px, 0, 0);
+  will-change: transform, opacity;
+  transition-duration: 250ms;
+  transition-timing-function: var(--loom-ease-in, cubic-bezier(.42, 0, .72, .2));
 }
 
 /* Header --------------------------------------------------------------------
@@ -355,6 +386,27 @@ code.pl-subtitle {
   text-transform: uppercase;
 }
 
+/* The one small uppercase label of a panel. These are the instances that used to be 8, 9 and
+   10px in five weights; the registry lists them so a new one is a line here, not a new look. */
+:root:root :is(
+  .project-overview-card span,
+  .project-card-heading span,
+  .project-roadmap-card > span,
+  .project-subheading span,
+  .project-workspace-stat span,
+  .project-memory-total > span,
+  .project-memory-index > div span,
+  .project-commit-heading span,
+  .runtime-section-bar
+) {
+  color: var(--pl-muted);
+  font-size: 11.5px;
+  line-height: 16px;
+  font-weight: 600;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+
 .pl-card {
   border: 1px solid var(--pl-line);
   border-radius: var(--pl-radius-card);
@@ -369,6 +421,45 @@ code.pl-subtitle {
 .pl-card.is-interactive:hover {
   border-color: var(--pl-accent-line);
   background: var(--pl-card-hover);
+}
+
+/* The drag handle on a dock's left edge: invisible until reached, then the product's violet
+   line (the same one the sidebar and the inspector use, workspace-panels.css). */
+.pl-resizer {
+  position: absolute;
+  z-index: 8;
+  inset: 0 auto 0 -4px;
+  width: 9px;
+  cursor: col-resize;
+  touch-action: none;
+  outline: none;
+}
+
+.pl-resizer::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 1px;
+  transform: translateX(-50%);
+  background: transparent;
+  transition: background-color 130ms ease, box-shadow 130ms ease;
+}
+
+.pl-resizer:is(:hover, :focus-visible)::before,
+body:is(.loom-agent-dock-resizing, .loom-artifact-dock-resizing) .pl-resizer::before {
+  background: rgba(157, 145, 247, .62);
+  box-shadow: 0 0 12px rgba(139, 124, 246, .18);
+}
+
+body:is(.loom-agent-dock-resizing, .loom-artifact-dock-resizing) .pl-resizer::before {
+  width: 2px;
+  background: rgba(166, 154, 255, .86);
+}
+
+@media (max-width: 760px) {
+  .pl-resizer { display: none; }
 }
 
 /* Surfaces that are not docks ---------------------------------------------- */
@@ -406,6 +497,18 @@ code.pl-subtitle {
   padding-inline: var(--pl-pad);
 }
 
+/* Panels that hang off a control ---------------------------------------------
+   The permission popover was already refined to one quiet surface (composer-refined.css:
+   hairline, one soft shadow, no gradient). The model panel and the context menus keep their
+   own motion and content, but take the same shell. :root:root outranks the light-theme
+   copies of their old gradients. */
+:root:root :is(.composer-popover.model-manager-popover, .loom-context-menu) {
+  border: 1px solid var(--pl-line);
+  border-radius: var(--pl-radius-float);
+  background: var(--pl-surface-raised);
+  box-shadow: var(--pl-shadow-float);
+}
+
 /* Reveal --------------------------------------------------------------------
    A surface that appears in place (the scrim and its card as one element, a
    palette) fades in and out. Presence (useMotionPresence) holds it mounted for
@@ -428,6 +531,7 @@ code.pl-subtitle {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .pl-dock[data-motion-phase],
   .pl-reveal,
   .pl-icon-button,
   .pl-field,
@@ -436,6 +540,6 @@ code.pl-subtitle {
   }
 }
 
-html[data-loom-reduced-motion="true"] :is(.pl-reveal, .pl-icon-button, .pl-field, .pl-card) {
+html[data-loom-reduced-motion="true"] :is(.pl-dock[data-motion-phase], .pl-reveal, .pl-icon-button, .pl-field, .pl-card) {
   transition: none !important;
 }

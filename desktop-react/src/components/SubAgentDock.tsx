@@ -155,7 +155,7 @@ export function SubAgentDock({ items, open, active, onClose }: SubAgentDockProps
   return createPortal(
     <aside className="sub-agent-dock pl-dock" data-motion-phase={presence.phase} inert={!open} data-open={open ? "true" : "false"} aria-label="子代理工作区">
       <div
-        className="sub-agent-dock-resizer"
+        className="sub-agent-dock-resizer pl-resizer"
         role="separator"
         aria-label="调整子代理工作区宽度"
         aria-orientation="vertical"

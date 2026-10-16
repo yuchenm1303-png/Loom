@@ -760,7 +760,6 @@
 .loom-account-dialog.is-signed-in {
   width: min(460px, 100%);
   padding: 28px;
-  border-radius: 20px;
 }
 .loom-account-dialog.is-signed-in .loom-account-close { top: 22px; right: 22px; }
 .loom-account-dialog.is-signed-in .loom-account-header { display: block; padding-right: 32px; }
@@ -1076,7 +1075,6 @@
 @media (max-width: 520px) {
   .loom-account-dialog.is-signed-in {
     padding: 24px 20px 20px;
-    border-radius: 20px;
   }
 
   .loom-account-profile-actions {

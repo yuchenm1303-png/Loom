@@ -41,28 +41,6 @@ html[data-loom-reduced-motion="true"] .artifact-library-card { animation: none; 
   grid-template-rows: auto minmax(0, 1fr);
   overflow: hidden;
   contain: layout paint style;
-  backface-visibility: hidden;
-  transition:
-    transform var(--loom-motion-panel,390ms) var(--loom-ease-out,cubic-bezier(.2,.74,.18,1)),
-    opacity var(--loom-motion-opacity,260ms) ease;
-}
-
-.artifact-preview-dock[data-motion-phase="entering"] {
-  opacity: .9;
-  transform: translate3d(22px,0,0);
-}
-
-.artifact-preview-dock[data-motion-phase="entered"] {
-  opacity: 1;
-  transform: translate3d(0,0,0);
-}
-
-.artifact-preview-dock[data-motion-phase="exiting"] {
-  pointer-events: none;
-  opacity: 0;
-  transform: translate3d(14px,0,0);
-  transition-duration: 250ms;
-  transition-timing-function: var(--loom-ease-in,cubic-bezier(.42,0,.72,.2));
 }
 
 .artifact-preview-canvas {
@@ -137,36 +115,6 @@ html[data-loom-reduced-motion="true"] .artifact-library-card { animation: none; 
   animation: li-spin var(--ic-t-spin) linear infinite;
 }
 
-.artifact-preview-resizer {
-  position: absolute;
-  z-index: 8;
-  inset: 0 auto 0 -4px;
-  width: 9px;
-  cursor: col-resize;
-  touch-action: none;
-  outline: none;
-}
-
-.artifact-preview-resizer::before {
-  content: "";
-  position: absolute;
-  top: 50%;
-  left: 4px;
-  width: 2px;
-  height: 54px;
-  border-radius: 999px;
-  background: rgba(139,124,246,0);
-  transform: translateY(-50%);
-  transition: background 140ms ease, height 160ms cubic-bezier(.2,.8,.2,1);
-}
-
-.artifact-preview-resizer:hover::before,
-.artifact-preview-resizer:focus-visible::before,
-body.loom-artifact-dock-resizing .artifact-preview-resizer::before {
-  height: 78px;
-  background: rgba(139,124,246,.36);
-}
-
 body.loom-artifact-dock-resizing {
   cursor: col-resize !important;
   user-select: none !important;
@@ -191,21 +139,14 @@ body.loom-artifact-dock-resizing * {
     padding-right: 0;
   }
 
-  .artifact-preview-resizer {
-    display: none;
-  }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .artifact-preview-dock,
   .artifact-preview-spinner {
-    transition: none !important;
     animation: none !important;
   }
 }
 
-html[data-loom-reduced-motion="true"] .artifact-preview-dock,
 html[data-loom-reduced-motion="true"] .artifact-preview-spinner {
-  transition: none !important;
   animation: none !important;
 }

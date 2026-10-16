@@ -15,31 +15,6 @@
   min-height: 0;
   overflow: hidden;
   contain: layout paint style;
-  backface-visibility: hidden;
-  will-change: transform, opacity;
-  transition:
-    transform var(--loom-motion-panel,390ms) var(--loom-ease-out,cubic-bezier(.2,.74,.18,1)),
-    opacity var(--loom-motion-opacity,260ms) ease;
-}
-
-.sub-agent-dock[data-motion-phase="entering"] {
-  opacity: .9;
-  transform: translate3d(22px,0,0);
-  will-change: transform, opacity;
-}
-
-.sub-agent-dock[data-motion-phase="entered"] {
-  opacity: 1;
-  transform: translate3d(0,0,0);
-}
-
-.sub-agent-dock[data-motion-phase="exiting"] {
-  pointer-events: none;
-  opacity: 0;
-  transform: translate3d(14px,0,0);
-  will-change: transform, opacity;
-  transition-duration: 250ms;
-  transition-timing-function: var(--loom-ease-in,cubic-bezier(.42,0,.72,.2));
 }
 
 @media (max-width: 1180px) {
@@ -65,47 +40,7 @@
 
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .sub-agent-dock {
-    transition: none !important;
-  }
-}
-
-html[data-loom-reduced-motion="true"] .sub-agent-dock {
-  transition: none !important;
-}
-
-/* Resizable persistent dock ------------------------------------------------ */
-.sub-agent-dock-resizer {
-  position: absolute;
-  z-index: 7;
-  inset: 0 auto 0 -4px;
-  width: 9px;
-  cursor: col-resize;
-  touch-action: none;
-  outline: none;
-}
-
-.sub-agent-dock-resizer::before {
-  content: "";
-  position: absolute;
-  top: 50%;
-  left: 4px;
-  width: 2px;
-  height: 52px;
-  border-radius: 999px;
-  background: rgba(139,124,246,0);
-  transform: translateY(-50%);
-  transition: background 140ms ease, height 160ms cubic-bezier(.2,.8,.2,1);
-}
-
-.sub-agent-dock-resizer:hover::before,
-.sub-agent-dock-resizer:focus-visible::before,
-body.loom-agent-dock-resizing .sub-agent-dock-resizer::before {
-  height: 72px;
-  background: rgba(139,124,246,.34);
-}
-
+/* Resizable persistent dock (the handle itself is .pl-resizer, panel-language.css). */
 body.loom-agent-dock-resizing {
   cursor: col-resize !important;
   user-select: none !important;
@@ -115,17 +50,6 @@ body.loom-agent-dock-resizing * {
   cursor: col-resize !important;
 }
 
-html[data-loom-theme="light"] .sub-agent-dock-resizer:hover::before,
-html[data-loom-theme="light"] .sub-agent-dock-resizer:focus-visible::before,
-html[data-loom-theme="light"] body.loom-agent-dock-resizing .sub-agent-dock-resizer::before {
-  background: rgba(105,90,216,.28);
-}
-
-@media (max-width: 720px) {
-  .sub-agent-dock-resizer {
-    display: none;
-  }
-}
 
 
 /* Keep dock entrance singular -------------------------------------------- */

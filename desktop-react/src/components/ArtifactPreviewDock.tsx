@@ -192,7 +192,7 @@ export function ArtifactPreviewDock({
       aria-label="产物侧栏"
     >
       <div
-        className="artifact-preview-resizer"
+        className="artifact-preview-resizer pl-resizer"
         role="separator"
         aria-label="调整渲染预览宽度"
         aria-orientation="vertical"

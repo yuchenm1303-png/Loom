@@ -10,8 +10,10 @@
         the controls (--loom-caption-reserve);
      3. what is clickable on the rail is cut out of the drag region.
 
-   Desktop shell only. Adding a surface whose header reaches the top right
-   corner of the window means adding it here; the window-rail browser test
+   Desktop shell only. A panel that uses PanelHeader (.pl-header, inside a
+   .pl-dock when it docks on the right) is already covered by all three. Any
+   other surface whose header reaches the top right corner of the window has to
+   be added here; the window-rail browser test
    fails when something clickable ends up under the controls or inside the
    drag region. The sidebar's own first row is the exception: sidebar.css owns
    every sidebar selector, so its share of (1) and (3) is written there. */
