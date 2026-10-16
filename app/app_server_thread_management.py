@@ -12,7 +12,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, TextIO
 
-from app.ai import AIMessage, ChatRequest, MessageRole, ToolChoice
+from app.ai import AIEmptyResponseError, AIMessage, ChatRequest, MessageRole, ToolChoice
 from app.agent_runtime import AgentEvent, AgentEventKind, AgentStatus, PermissionMode
 from app.agent_runtime.context_limits import resolve_context_limits
 from app.agent_runtime.context_report import (
@@ -915,10 +915,16 @@ class ManagedStreamingLoomAppServerService(StreamingLoomAppServerService):
             response = execute(parent.profile_id, build_branch_plan_request(parent, source))
             plan = parse_branch_plan(getattr(response, "text", ""))
             outcome = {"status": "ready", "proposal": plan}
-        except (ValueError, TypeError, KeyError, json.JSONDecodeError):
-            outcome = {"status": "error", "error": "Model did not return a usable task plan. Retry."}
-        except Exception as exc:
-            outcome = {"status": "error", "error": "Task planning unavailable: " + type(exc).__name__}
+        except (ValueError, TypeError, KeyError, json.JSONDecodeError, AIEmptyResponseError):
+            outcome = {
+                "status": "error",
+                "error": "The selected model did not provide a usable task. Retry or create it manually.",
+            }
+        except Exception:
+            outcome = {
+                "status": "error",
+                "error": "Task planning could not finish. Retry or create it manually.",
+            }
         finally:
             with self._branch_plan_lock:
                 if plan_id in self._branch_plan_jobs:
