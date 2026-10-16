@@ -15,7 +15,8 @@ from services.loom_model_gateway.routes import PROVIDERS, gateway_base_url, requ
 from services.loom_model_gateway.server import GatewayConfig, GatewayServer, LoomModelGateway, GatewayError
 
 MODELS = {"minimax": "MiniMax-M3.1-Flash-Preview", "deepseek": "deepseek-flash", "intern": "intern-s2",
-          "ant-ling": "Ling-3.0-flash", "opencode-go": "minimax-m3", "managed-relay": "MiniMax-M3.1-Flash-Preview"}
+          "ant-ling": "Ling-3.0-flash", "opencode-go": "minimax-m3",
+          "opencode-console": "deepseek-v4.1-flash-free", "managed-relay": "MiniMax-M3.1-Flash-Preview"}
 
 
 @pytest.mark.parametrize("group,model", MODELS.items())
