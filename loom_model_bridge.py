@@ -20,6 +20,7 @@ from app.ai.model_context import (
 )
 from app.ai.model_selection_store import ModelSelectionStore
 from app.ai.model_store import ModelConfigStore, StoredModel
+from services.loom_model_policy.catalog import OPENCODE_CONSOLE_FREE_MODELS, is_opencode_console_free
 from app.ai.opencode_go_catalog import opencode_go_model_limits
 from app.ai.opencode_go_runtime import OPENCODE_GO_BASE_URL, opencode_go_protocol
 from app.ai.profiles import ModelContextLimits
@@ -32,6 +33,8 @@ PRIMARY_SELECTION = "builtin:minimax"
 CQU_SELECTION = "builtin:cqu"
 DEEPSEEK_SELECTION = "builtin:deepseek"
 OPENCODE_GO_SELECTION_PREFIX = "builtin:opencode-go:"
+OPENCODE_CONSOLE_SELECTION_PREFIX = "builtin:opencode-console:"
+OPENCODE_CONSOLE_BASE_URL = "https://opencode.ai/inference/openai/v1"
 MINIMAX_SELECTION_PREFIX = "builtin:minimax:"
 DEEPSEEK_SELECTION_PREFIX = "builtin:deepseek:"
 MANAGED_SELECTION_PREFIX = "managed:"
@@ -653,6 +656,23 @@ def _deepseek_model_from_selection(selection: str) -> str | None:
     return None
 
 
+def _opencode_console_selection_for_model(model: str) -> str:
+    value = str(model or "").strip()
+    if not value or len(value) > 160 or any(ord(c) < 32 for c in value):
+        raise ValueError("invalid OpenCode Console model ID")
+    return OPENCODE_CONSOLE_SELECTION_PREFIX + urllib.parse.quote(value, safe="")
+
+
+def _opencode_console_model_from_selection(selection: str) -> str | None:
+    value = str(selection or "")
+    if not value.startswith(OPENCODE_CONSOLE_SELECTION_PREFIX):
+        return None
+    model = urllib.parse.unquote(value[len(OPENCODE_CONSOLE_SELECTION_PREFIX):]).strip()
+    if not model or len(model) > 160 or any(ord(c) < 32 for c in model):
+        return None
+    return model
+
+
 def _opencode_go_selection_for_model(model: str) -> str:
     normalized = str(model or "").strip()
     if not normalized:
@@ -733,11 +753,14 @@ def _canonical_builtin_selection(selection: str, model: str) -> str:
         or current == DEEPSEEK_SELECTION
         or current.startswith(DEEPSEEK_SELECTION_PREFIX)
         or current.startswith(OPENCODE_GO_SELECTION_PREFIX)
+        or current.startswith(OPENCODE_CONSOLE_SELECTION_PREFIX)
         or current == CQU_SELECTION
     )
     if not is_provider_builtin:
         return current
 
+    if current.startswith(OPENCODE_CONSOLE_SELECTION_PREFIX):
+        return _opencode_console_selection_for_model(requested)
     if current.startswith(OPENCODE_GO_SELECTION_PREFIX):
         return _opencode_go_selection_for_model(requested)
     if _is_minimax_model(requested):
@@ -951,6 +974,27 @@ def _safe_managed(
     return profile
 
 
+def _safe_opencode_console(model: str) -> dict[str, Any]:
+    model = str(model or "").strip()
+    selection = _opencode_console_selection_for_model(model)
+    return {
+        "selection": selection,
+        "id": "opencode-console-" + hashlib.sha256(model.casefold().encode("utf-8")).hexdigest()[:12],
+        "kind": "builtin",
+        "name": _opencode_go_display_name(model),
+        "groupId": "opencode-console",
+        "groupName": "OpenCode Console",
+        "groupOrder": 31,
+        "family": _opencode_go_family(model),
+        "protocol": "chat-completions",
+        "configured": True,
+        "adapter": "openai-compatible",
+        "baseUrl": OPENCODE_CONSOLE_BASE_URL,
+        "model": model,
+        "vision": None,
+    }
+
+
 def _safe_opencode_go(model: str, *, configured: bool) -> dict[str, Any]:
     model = str(model or "").strip()
     if not model:
@@ -1089,6 +1133,7 @@ def _managed_profiles(store: ModelConfigStore, environ: Mapping[str, str] | None
     # Fresh desktops must never discover upstreams using machine credentials.
     profiles = [
         *[_safe_opencode_go(model, configured=True) for model in OPENCODE_GO_FALLBACK_MODEL_IDS],
+        *[_safe_opencode_console(model) for model in OPENCODE_CONSOLE_FREE_MODELS],
         *[_safe_minimax(model, environ) for model in MINIMAX_MODEL_IDS],
         *[_safe_deepseek(model, environ) for model in DEEPSEEK_FALLBACK_MODEL_IDS],
         _safe_managed(CQU_DEFAULT_MODEL, environ, configured=True),
@@ -1130,6 +1175,9 @@ def _base_profile_for_selection(store: ModelConfigStore, selection: str) -> dict
     deepseek_model = _deepseek_model_from_selection(requested)
     if deepseek_model:
         return _safe_deepseek(deepseek_model)
+    console_model = _opencode_console_model_from_selection(requested)
+    if console_model:
+        return _safe_opencode_console(console_model)
     opencode_model = _opencode_go_model_from_selection(requested)
     if opencode_model:
         return _safe_opencode_go(opencode_model, configured=True)
@@ -1168,6 +1216,8 @@ def _describe_model(
     profile = _base_profile_for_selection(store, effective_selection)
     if effective_selection.startswith(INTERN_SELECTION_PREFIX):
         profile = _safe_intern(requested_model)
+    elif _opencode_console_model_from_selection(effective_selection):
+        profile = _safe_opencode_console(requested_model)
     elif _opencode_go_model_from_selection(effective_selection):
         profile = _safe_opencode_go(requested_model, configured=True)
     elif _minimax_model_from_selection(effective_selection):
@@ -1381,6 +1431,7 @@ def _persist_active(
         or _minimax_model_from_selection(selection)
         or _deepseek_model_from_selection(selection)
         or _opencode_go_model_from_selection(selection)
+        or _opencode_console_model_from_selection(selection)
         or _managed_model_from_selection(selection)
     ):
         store.set_active(None)
