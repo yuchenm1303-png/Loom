@@ -7,6 +7,7 @@ PROVIDERS = {
     "deepseek": ("https://api.deepseek.com", ("DEEPSEEK_API_KEY", "LOOM_DEEPSEEK_API_KEY"), ("LOOM_DEEPSEEK_BASE_URL", "DEEPSEEK_BASE_URL")),
     "ant-ling": ("https://api.ant-ling.com/v1", ("LOOM_ANT_LING_API_KEY", "ANT_LING_API_KEY"), ("LOOM_ANT_LING_BASE_URL",)),
     "opencode-go": ("https://opencode.ai/zen/go/v1", ("OPENCODE_GO_API_KEY", "LOOM_OPENCODE_GO_API_KEY"), ("LOOM_OPENCODE_GO_BASE_URL",)),
+    "opencode-console": ("https://opencode.ai/inference/openai/v1", ("OPENCODE_CONSOLE_API_KEY", "LOOM_OPENCODE_CONSOLE_API_KEY"), ("LOOM_OPENCODE_CONSOLE_BASE_URL",)),
     "managed-relay": ("https://muxway.dev/v1", ("LOOM_RELAY_API_KEY", "SMIREL_RELAY_API_KEY", "LOOM_CQU_API_KEY"), ("LOOM_RELAY_BASE_URL", "SMIREL_RELAY_BASE_URL")),
 }
 
