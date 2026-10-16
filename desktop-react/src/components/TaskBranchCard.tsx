@@ -73,24 +73,44 @@ export function TaskBranchCard({
     let alive = true;
     setLoading(true);
     setError("");
-    void window.loom.call<PlannerResult>("thread/branch_plan", {
-      parentThreadId: threadId,
-      sourceMessageId: messageId,
-      sourceText: sourceText.slice(0, 12000),
-    }).then((response) => {
-      if (!alive) return;
-      if (!response.actionable) {
-        setError(response.reason || t("branch.notActionable"));
-        return;
+    void (async () => {
+      try {
+        const request = await window.loom.call<{ planId: string; status: string }>("thread/branch_plan", {
+          parentThreadId: threadId,
+          sourceMessageId: messageId,
+          sourceText: sourceText.slice(0, 12000),
+        });
+        let result: PlannerResult | null = null;
+        for (let attempt = 0; attempt < 100 && alive; attempt++) {
+          const snapshot = await window.loom.call<{
+            status: "pending" | "ready" | "error";
+            proposal?: PlannerResult;
+            error?: string;
+          }>("thread/branch_plan_status", { parentThreadId: threadId, planId: request.planId });
+          if (snapshot.status === "ready") {
+            result = snapshot.proposal || null;
+            break;
+          }
+          if (snapshot.status === "error") throw new Error(snapshot.error || t("branch.notActionable"));
+          await new Promise<void>(resolve => window.setTimeout(resolve, 900));
+        }
+        if (!alive) return;
+        if (!result) throw new Error(t("branch.planTimeout"));
+        if (!result.actionable) {
+          setError(result.reason || t("branch.notActionable"));
+          return;
+        }
+        setProposal(result);
+        setTitle(result.title);
+        setPrompt(result.prompt);
+        setSummary(result.summary);
+        setCriteria(result.acceptanceCriteria || []);
+      } catch (cause: unknown) {
+        if (alive) setError(cause instanceof Error ? cause.message : String(cause));
+      } finally {
+        if (alive) setLoading(false);
       }
-      setProposal(response);
-      setTitle(response.title);
-      setPrompt(response.prompt);
-      setSummary(response.summary);
-      setCriteria(response.acceptanceCriteria || []);
-    }).catch((cause: unknown) => {
-      if (alive) setError(cause instanceof Error ? cause.message : String(cause));
-    }).finally(() => { if (alive) setLoading(false); });
+    })();
     return () => { alive = false; };
   }, [initial, threadId, messageId, sourceText, retry, t]);
 
@@ -108,14 +128,15 @@ export function TaskBranchCard({
       },
     }));
   };
-  const ready = Boolean(proposal && title.trim() && prompt.trim() && !pending && !loading);
+  const hasPlan = Boolean(proposal);
+  const ready = Boolean(hasPlan && title.trim() && prompt.trim() && !pending && !loading);
   return (
     <section className="loom-task-branch-card" aria-labelledby={id + "-heading"} aria-busy={loading || pending}>
       <header>
         <span className="loom-task-branch-header-mark"><GitFork size={17} /></span>
         <div className="loom-task-branch-heading">
           <small>{t("branch.suggestion")}</small>
-          <strong id={id + "-heading"}>{loading ? t("branch.planning") : ready ? title : t("branch.create")}</strong>
+          <strong id={id + "-heading"}>{loading ? t("branch.planning") : hasPlan ? title : t("branch.create")}</strong>
         </div>
         <button type="button" disabled={pending} onClick={onDismiss} aria-label={t("branch.close")}><X size={15} /></button>
       </header>
@@ -127,7 +148,7 @@ export function TaskBranchCard({
           <span>{error}</span>
           {!initial && <button type="button" onClick={() => setRetry(value => value + 1)}>{t("branch.retry")}</button>}
         </div>
-      ) : ready ? (
+      ) : hasPlan ? (
         <>
           <p className="loom-branch-summary">{summary || t("branch.description")}</p>
           {criteria.length ? <div className="loom-branch-criteria">
@@ -152,11 +173,11 @@ export function TaskBranchCard({
 
       <footer>
         <span><FolderOpen size={13} /> {t("branch.context")}</span>
-        {ready ? <>
+        {hasPlan ? <>
           <button type="button" className="loom-branch-expand" aria-expanded={expanded} onClick={() => setExpanded(value => !value)}>
             {expanded ? t("branch.less") : t("branch.details")} <ChevronDown size={13} />
           </button>
-          <button type="button" disabled={Boolean(doHereDisabled) || !onDoHere || pending} onClick={() => { onDismiss(); void onDoHere?.(prompt); }}>{t("branch.doHere")}</button>
+          <button type="button" disabled={Boolean(doHereDisabled) || !onDoHere || pending || !ready} onClick={() => { onDismiss(); void onDoHere?.(prompt); }}>{t("branch.doHere")}</button>
           <button type="button" className="loom-task-branch-start" disabled={Boolean(disabled) || pending || !prompt.trim() || !title.trim()} onClick={start}>
             {pending ? <LoaderCircle size={14} className="loom-branch-spinner" /> : <ArrowUpRight size={14} />}
             {pending ? t("branch.starting") : t("branch.start")}
