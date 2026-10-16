@@ -1,5 +1,6 @@
 import { readUpdatePreferences } from "./updatePreferences.js";
 import { mayReceiveUpdates } from "./updateEligibility.js";
+import { fetchUpdateSource } from "./updateSource.js";
 import { app, net, ipcMain, type BrowserWindow } from "electron";
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -36,7 +37,7 @@ function updatePointer(change: (current: Pointer) => Pointer): Promise<Pointer> 
   return work;
 }
 async function fetchBytes(url: string, limit: number) {
-  const response = await net.fetch(url, { cache: "no-store", signal: AbortSignal.timeout(30000) });
+  const response = await fetchUpdateSource(url, { cache: "no-store", signal: AbortSignal.timeout(30000) }, (target, init) => net.fetch(target, init));
   if (!response.ok) throw new Error(`UI update HTTP ${response.status}`);
   const reader = response.body!.getReader(), chunks: Uint8Array[] = [];
   let size = 0;

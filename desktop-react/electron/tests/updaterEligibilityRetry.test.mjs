@@ -12,11 +12,18 @@ let allowed = false, installerChecks = 0, applicationChecks = 0, installs = 0;
 let checkGate = Promise.resolve(), installerAvailable = false, canRestartApplication;
 let automaticUpdates = false, restartNotifications = 0;
 const order = [];
+const feeds = [];
+let feed;
 const updater = new EventEmitter();
+updater.setFeedURL = value => { feed = value; feeds.push(value.provider); };
 updater.checkForUpdates = async () => {
   installerChecks++;
   order.push("installer");
   await checkGate;
+  if (feed?.provider === "generic") {
+    updater.emit("error", new Error("CDN unavailable"));
+    throw new Error("CDN unavailable");
+  }
   updater.emit(installerAvailable ? "update-available" : "update-not-available", { version: "0.1.91" });
 };
 updater.quitAndInstall = () => { installs++; };
@@ -27,6 +34,9 @@ mock.module("electron", { namedExports: {
 mock.module("electron-updater", { defaultExport: { autoUpdater: updater } });
 mock.module("../../dist-electron/optimizedUpdater.js", { namedExports: {
   OptimizedNsisUpdater: class { constructor() { return updater; } },
+} });
+mock.module("../../dist-electron/updateSource.js", { namedExports: {
+  configuredUpdateSource: () => "https://updates.example.test/loom",
 } });
 mock.module("../../dist-electron/updatePreferences.js", { namedExports: {
   readUpdatePreferences: () => ({ automaticUpdates, silentUpdates: true, autoRestartAfterUpdate: true }),
@@ -60,8 +70,9 @@ test("failed eligibility keeps manual retry available while blocking downloads a
   const recovered = await checkForUpdates();
   assert.equal(recovered.accountUpdatesAllowed, true);
   assert.equal(recovered.phase, "up-to-date");
-  assert.equal(installerChecks, 1);
+  assert.equal(installerChecks, 2);
   assert.equal(applicationChecks, 1);
+  assert.deepEqual(feeds, ["generic", "github"], "a failed mirror immediately retries GitHub discovery");
 });
 
 test("overlapping checks share a single installer-first operation and block component restarts", async () => {

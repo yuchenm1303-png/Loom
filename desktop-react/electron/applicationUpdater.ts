@@ -1,6 +1,7 @@
 import { readUpdatePreferences } from "./updatePreferences.js";
 import { mayReceiveUpdates } from "./updateEligibility.js";
 import { readUpdateChannel } from "./updateChannel.js";
+import { fetchUpdateSource } from "./updateSource.js";
 import { app, net } from "electron";
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -29,7 +30,7 @@ export function registerApplicationRestartGuard(guard: () => boolean | Promise<b
 export function registerApplicationUpdatePriorityGuard(guard: () => boolean) { bootstrapAllowsRestart = guard; }
 function setStatus(next: ApplicationUpdateStatus) { status = next; changed(); }
 async function fetchBytes(url: string, limit: number) {
-  const response = await net.fetch(url, { cache: "no-store", signal: AbortSignal.timeout(60000) });
+  const response = await fetchUpdateSource(url, { cache: "no-store", signal: AbortSignal.timeout(60000) }, (target, init) => net.fetch(target, init));
   if (!response.ok || !response.body) throw new Error(`Application update HTTP ${response.status}`);
   const reader = response.body.getReader(), chunks: Uint8Array[] = [];
   let size = 0;

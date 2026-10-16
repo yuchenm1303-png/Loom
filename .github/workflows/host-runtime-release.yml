@@ -15,6 +15,9 @@ on:
       - 'desktop-react/scripts/host-runtime-identity.mjs'
       - 'desktop-react/scripts/package-host-runtime.mjs'
 
+env:
+  LOOM_UPDATE_BUILD_SOURCE_URL: ${{ vars.LOOM_UPDATE_SOURCE_URL }}
+
 permissions:
   contents: write
 

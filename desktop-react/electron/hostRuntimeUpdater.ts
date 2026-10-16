@@ -1,6 +1,7 @@
 import { readUpdatePreferences } from "./updatePreferences.js";
 import { mayReceiveUpdates } from "./updateEligibility.js";
 import { readUpdateChannel } from "./updateChannel.js";
+import { fetchUpdateSource } from "./updateSource.js";
 import { app, net } from "electron";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
@@ -166,7 +167,7 @@ async function fetchBytes(url: string, maxBytes: number): Promise<Buffer> {
   const controller = new AbortController();
   let timer = setTimeout(() => controller.abort(), 60_000);
   try {
-    const response = await net.fetch(url, { cache: "no-store", redirect: "follow", signal: controller.signal });
+    const response = await fetchUpdateSource(url, { cache: "no-store", redirect: "follow", signal: controller.signal }, (target, init) => net.fetch(target, init));
     if (!response.ok) throw new Error(`Loom Host update request failed (${response.status}).`);
     const declared = Number(response.headers.get("content-length") || 0);
     if (declared > maxBytes) throw new Error("Loom Host update response is unexpectedly large.");

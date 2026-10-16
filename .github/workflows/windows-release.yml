@@ -13,6 +13,9 @@ on:
           - minor
           - major
 
+env:
+  LOOM_UPDATE_BUILD_SOURCE_URL: ${{ vars.LOOM_UPDATE_SOURCE_URL }}
+
 permissions:
   contents: write
   actions: write

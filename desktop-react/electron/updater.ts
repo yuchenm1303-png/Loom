@@ -10,6 +10,7 @@ import electronUpdater, {
 } from "electron-updater";
 import { broadcastHostEvent, callHost, handleHostChannel, hostHasDesktopClients, isHostProcess } from "./hostProcess.js";
 import { OptimizedNsisUpdater } from "./optimizedUpdater.js";
+import { configuredUpdateSource } from "./updateSource.js";
 import { applicationUpdateState, checkApplicationUpdates, installApplicationUpdate, onApplicationUpdateStatus, registerApplicationUpdatePriorityGuard } from "./applicationUpdater.js";
 import { ensureHostRuntimeUpdate, hostRuntimeUpdateState, onHostRuntimeUpdateStatus, type HostRuntimeUpdateState } from "./hostRuntimeUpdater.js";
 
@@ -66,6 +67,9 @@ function getAutoUpdater(): AppUpdater {
 }
 
 const autoUpdater = getAutoUpdater();
+const updateSource = configuredUpdateSource();
+let sourceFailed = false;
+const githubFeed = { provider: "github" as const, owner: "yuchenm1303-png", repo: "Loom" };
 const updateEnabled = isHostProcess && app.isPackaged && process.platform === "win32"
   && process.env.LOOM_DISABLE_AUTO_UPDATES !== "1";
 let state: SoftwareUpdateState = {
@@ -353,11 +357,22 @@ export async function checkForUpdates(): Promise<SoftwareUpdateState> {
       bytesPerSecond: undefined,
     });
 
+    const tryingMirror = Boolean(updateSource && !sourceFailed);
     try {
+      if (updateSource) autoUpdater.setFeedURL(sourceFailed ? githubFeed : {
+        provider: "generic", url: `${updateSource}/installer/`, useMultipleRangeRequest: false,
+      });
       await autoUpdater.checkForUpdates();
     } catch (error) {
-      setState({ phase: "error", error: errorText(error) });
-      scheduleErrorRetry();
+      if (tryingMirror) {
+        sourceFailed = true;
+        autoUpdater.setFeedURL(githubFeed);
+        try { await autoUpdater.checkForUpdates(); }
+        catch (fallbackError) { setState({ phase: "error", error: errorText(fallbackError) }); scheduleErrorRetry(); }
+      } else {
+        setState({ phase: "error", error: errorText(error) });
+        scheduleErrorRetry();
+      }
     }
 
     // Bootstrap updates take priority. A component check can download and
@@ -490,6 +505,9 @@ function configureUpdater(): void {
   });
 
   autoUpdater.on("error", (error) => {
+    // Includes download failures after discovery. The next scheduled check
+    // re-resolves the release through GitHub rather than retrying a dead CDN.
+    if (updateSource) sourceFailed = true;
     setState({ phase: "error", error: errorText(error) });
     scheduleErrorRetry();
   });

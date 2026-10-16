@@ -1,3 +1,4 @@
+import { configuredUpdateSource, mirroredUpdateUrl } from "./updateSource.js";
 // Mutable raw GitHub URLs can lag behind the repository even with no-store.
 // Prefer the repository API; keep raw as a fallback for API rate limits.
 export async function readUpdateChannel(
@@ -6,6 +7,14 @@ export async function readUpdateChannel(
   limit: number,
 ): Promise<unknown> {
   const parsed = new URL(url);
+  const mirror = mirroredUpdateUrl(url, configuredUpdateSource());
+  if (mirror) {
+    try {
+      const target = new URL(mirror);
+      target.searchParams.set("check", String(Date.now()));
+      return JSON.parse((await fetchBytes(target.href, limit)).toString("utf8"));
+    } catch { /* GitHub API/raw remain the fallback for a failed mirror. */ }
+  }
   if (parsed.hostname === "raw.githubusercontent.com" && parsed.pathname.startsWith("/yuchenm1303-png/Loom/main/")) {
     const file = parsed.pathname.slice("/yuchenm1303-png/Loom/main/".length);
     try {

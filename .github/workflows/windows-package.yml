@@ -30,6 +30,9 @@ on:
       - ".github/workflows/windows-package.yml"
       - ".github/actions/windows-build-setup/**"
 
+env:
+  LOOM_UPDATE_BUILD_SOURCE_URL: ${{ vars.LOOM_UPDATE_SOURCE_URL }}
+
 permissions:
   contents: read
 

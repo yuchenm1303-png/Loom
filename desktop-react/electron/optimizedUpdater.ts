@@ -10,6 +10,7 @@ import { gunzipSync, gzipSync } from "node:zlib";
 import path from "node:path";
 import { downloadUpdate } from "./updateDownload.js";
 import { updateTransferDeadline } from "./updateTransfer.js";
+import { fetchUpdateSource } from "./updateSource.js";
 
 // Override only the differential transfer. electron-updater continues to own
 // release discovery, cache promotion, signature verification, and installation.
@@ -33,9 +34,9 @@ export class OptimizedNsisUpdater extends electronUpdater.NsisUpdater {
       const loadMap = async (url: URL): Promise<BlockMap> => {
         const transfer = updateTransferDeadline(controller.signal);
         try {
-          const response = await this.netSession.fetch(url.href, {
+          const response = await fetchUpdateSource(url.href, {
             headers, signal: transfer.signal,
-          });
+          }, (target, init) => this.netSession.fetch(target, init));
           if (!response.ok) { await response.body?.cancel(); throw new Error(`Blockmap HTTP ${response.status}`); }
           const reader = response.body?.getReader();
           if (!reader) throw new Error("Missing update blockmap");
@@ -73,7 +74,7 @@ export class OptimizedNsisUpdater extends electronUpdater.NsisUpdater {
           const rangeHeaders = new Headers(headers);
           rangeHeaders.set("Range", `bytes=${range.start}-${range.end - 1}`);
           if (!resolvedDownloadUrl) {
-            const first = this.netSession.fetch(fileInfo.url.href, { headers: rangeHeaders, signal });
+            const first = fetchUpdateSource(fileInfo.url.href, { headers: rangeHeaders, signal }, (target, init) => this.netSession.fetch(target, init));
             // GitHub redirects to a signed asset URL. Reuse that resolved URL
             // for the remaining ranges instead of repeating the redirect chain.
             resolvedDownloadUrl = first.then(response => response.url || fileInfo.url.href);

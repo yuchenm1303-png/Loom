@@ -16,6 +16,9 @@ on:
       - 'desktop-react/scripts/application-update-smoke.mjs'
       - 'desktop-react/scripts/ui-build-baseline.mjs'
       - '.github/workflows/application-runtime-release.yml'
+env:
+  LOOM_UPDATE_BUILD_SOURCE_URL: ${{ vars.LOOM_UPDATE_SOURCE_URL }}
+
 permissions:
   contents: write
 concurrency:

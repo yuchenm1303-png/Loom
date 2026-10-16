@@ -14,6 +14,9 @@ on:
       - 'desktop-react/scripts/ui-build-baseline.mjs'
       - 'desktop-react/electron/rendererUpdate*.ts'
       - '.github/workflows/ui-runtime-release.yml'
+env:
+  LOOM_UPDATE_BUILD_SOURCE_URL: ${{ vars.LOOM_UPDATE_SOURCE_URL }}
+
 permissions:
   contents: write
 concurrency:
