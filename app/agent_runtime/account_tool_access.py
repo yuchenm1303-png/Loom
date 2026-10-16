@@ -8,14 +8,17 @@ keep their existing behavior.
 """
 
 import json
+import errno
 import os
 import re
+import socket
+import ssl
 import threading
 import time
 from typing import Mapping
 from urllib.parse import urlsplit, urlunsplit
 from urllib.request import Request, urlopen
-from urllib.error import HTTPError
+from urllib.error import HTTPError, URLError
 
 _TARGET_CAPABILITIES = frozenset({"computerUse", "browserUse"})
 _CACHE_TTL_SECONDS = 30.0
@@ -28,6 +31,51 @@ _CREDENTIAL_OVERRIDE: str | None = None
 _DIAGNOSTIC: dict[str, object] = {"status": "not_checked"}
 _FETCH_LOCK = threading.Lock()
 _GENERATION = 0
+_REQUEST_TIMEOUT_SECONDS = 5.0
+
+
+def _network_diagnostic(exc: Exception) -> dict[str, object]:
+    """Classify transport failures without copying messages, URLs or credentials."""
+    reason = exc.reason if isinstance(exc, URLError) else exc
+    category = "unknown"
+    if isinstance(reason, ssl.SSLCertVerificationError):
+        category = "tls_certificate"
+    elif isinstance(reason, ssl.SSLError):
+        category = "tls"
+    elif isinstance(reason, socket.gaierror):
+        category = "dns"
+    elif isinstance(reason, TimeoutError):
+        category = "timeout"
+    elif isinstance(reason, ConnectionRefusedError):
+        category = "connection_refused"
+    elif isinstance(reason, ConnectionResetError):
+        category = "connection_reset"
+    elif isinstance(reason, ConnectionAbortedError):
+        category = "connection_aborted"
+    elif isinstance(reason, OSError):
+        category = {
+            errno.ENETUNREACH: "network_unreachable", errno.EHOSTUNREACH: "host_unreachable",
+            errno.ETIMEDOUT: "timeout", 10060: "timeout", 10061: "connection_refused",
+            10054: "connection_reset", 10051: "network_unreachable", 10065: "host_unreachable",
+        }.get(getattr(reason, "winerror", None) or reason.errno, "transport")
+    # urllib sometimes supplies only a textual reason. Recognize categories,
+    # never persist that string (it may contain proxy userinfo or a bearer token).
+    elif isinstance(reason, str):
+        lowered = reason.casefold()
+        if "timed out" in lowered or "timeout" in lowered:
+            category = "timeout"
+        elif "certificate verify failed" in lowered:
+            category = "tls_certificate"
+        elif "name resolution" in lowered or "getaddrinfo failed" in lowered:
+            category = "dns"
+    result: dict[str, object] = {"error_type": type(exc).__name__,
+                                "network_error": category, "reason_type": type(reason).__name__}
+    for attr, field in (("errno", "os_error_code"), ("winerror", "win32_error"),
+                        ("verify_code", "tls_verify_code")):
+        value = getattr(reason, attr, None)
+        if isinstance(value, int) and not isinstance(value, bool):
+            result[field] = value
+    return result
 
 
 def _truthy(value: object) -> bool:
@@ -109,6 +157,7 @@ def _fetch_access_locked(*, force_refresh: bool = False) -> dict[str, bool]:
     access = _denied()
     diagnostic: dict[str, object] = {"status": "credential_missing" if not token else "configuration_invalid"}
     if endpoint and token:
+        started = time.monotonic()
         request = Request(
             endpoint,
             headers={
@@ -118,7 +167,7 @@ def _fetch_access_locked(*, force_refresh: bool = False) -> dict[str, bool]:
             method="GET",
         )
         try:
-            with urlopen(request, timeout=5.0) as response:
+            with urlopen(request, timeout=_REQUEST_TIMEOUT_SECONDS) as response:
                 if int(getattr(response, "status", 200)) != 200:
                     raise RuntimeError("account tool access rejected")
                 raw = response.read(64 * 1024 + 1)
@@ -161,7 +210,11 @@ def _fetch_access_locked(*, force_refresh: bool = False) -> dict[str, bool]:
             # Sensitive automation is deliberately fail-closed. An account
             # service outage must never silently convert into an entitlement.
             access = _denied()
-            diagnostic = {"status": "service_unavailable", "error_type": type(exc).__name__}
+            diagnostic = {"status": "service_unavailable", **_network_diagnostic(exc)}
+        finally:
+            diagnostic["request_elapsed_ms"] = round((time.monotonic() - started) * 1000)
+            # Socket timeout is not an end-to-end DNS/request deadline.
+            diagnostic["request_timeout_seconds"] = _REQUEST_TIMEOUT_SECONDS
 
     with _GUARD:
         if generation != _GENERATION:

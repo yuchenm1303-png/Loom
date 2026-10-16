@@ -3,6 +3,54 @@ from __future__ import annotations
 import pytest
 
 
+@pytest.mark.parametrize("kind, expected", [
+    ("dns", "dns"), ("timeout", "timeout"), ("refused", "connection_refused"),
+    ("reset", "connection_reset"), ("unreachable", "network_unreachable"),
+    ("tls", "tls"), ("certificate", "tls_certificate"),
+    ("text", "unknown"), ("direct_timeout", "timeout"),
+])
+def test_transport_diagnostics_are_structured_and_secret_free(monkeypatch, kind, expected):
+    import errno
+    import json
+    import socket
+    import ssl
+    from urllib.error import URLError
+    from app.agent_runtime import account_tool_access as gate
+
+    secret = "Bearer PRIVATE_TOKEN https://user:PROXY_PASSWORD@proxy.invalid/path?secret=HIDDEN"
+    reasons = {
+        "dns": socket.gaierror(-2, secret), "timeout": TimeoutError(secret),
+        "refused": ConnectionRefusedError(errno.ECONNREFUSED, secret),
+        "reset": ConnectionResetError(errno.ECONNRESET, secret),
+        "unreachable": OSError(errno.ENETUNREACH, secret),
+        "tls": ssl.SSLError(1, secret), "certificate": ssl.SSLCertVerificationError(1, secret),
+        "text": secret, "direct_timeout": TimeoutError(secret),
+    }
+    error = reasons[kind] if kind == "direct_timeout" else URLError(reasons[kind])
+    monkeypatch.setenv("LOOM_ACCOUNT_TOOL_ACCESS_ENFORCED", "1")
+    monkeypatch.setenv("LOOM_ACCOUNT_API_BASE_URL", "https://example.test/v1")
+    gate.set_account_tool_access_credential("PRIVATE_TOKEN")
+    def fetch(*args, **kwargs):
+        assert kwargs["timeout"] == 5.0
+        raise error
+    monkeypatch.setattr(gate, "urlopen", fetch)
+    try:
+        status = gate.account_tool_access_status()
+        assert status["status"] == "service_unavailable"
+        assert status["network_error"] == expected
+        assert status["reason_type"] == type(reasons[kind]).__name__
+        assert status["request_elapsed_ms"] >= 0
+        assert status["request_timeout_seconds"] == 5.0
+        assert status["access"] == {"browserUse": False, "computerUse": False}
+        encoded = json.dumps(status)
+        for sensitive in ("PRIVATE_TOKEN", "PROXY_PASSWORD", "HIDDEN", "proxy.invalid"):
+            assert sensitive not in encoded
+        if kind == "unreachable":
+            assert status["os_error_code"] == errno.ENETUNREACH
+    finally:
+        gate.set_account_tool_access_credential(None)
+
+
 def test_http_diagnostic_keeps_code_not_sensitive_body(monkeypatch):
     import io
     from urllib.error import HTTPError
