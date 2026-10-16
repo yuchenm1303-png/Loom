@@ -597,6 +597,11 @@ html[data-loom-reduced-motion="true"]::view-transition-new(loom-project-surface)
 /* Compact workspace tool rail is an actual final grid track, not a pointer-
    stealing overlay. It remains clear of native WebContentsView bounds. */
 :root { --loom-tool-rail-track: 56px; }
+/* Continue the conversation canvas through the reserved dock track, so the
+   floating capsule does not sit above a full-height contrasting strip. */
+:root .app-shell.workspace-panels {
+  background: var(--loom-workspace-canvas, var(--bg));
+}
 .app-shell.workspace-panels {
   --loom-tool-rail-track: 56px;
   grid-template-columns:
