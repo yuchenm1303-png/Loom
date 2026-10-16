@@ -1,0 +1,128 @@
+"""Task planning has a real model boundary and never copies the assistant reply."""
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+import pytest
+
+from app.agent_runtime import DurableAgentRuntime, FileAgentSessionStore, PermissionMode, ToolRegistry
+from app.ai import ModelResponse
+from app.app_server import JsonRpcError
+from app.app_server_thread_management import ManagedStreamingLoomAppServerService
+from app.thread_branch_planning import parse_branch_plan
+
+
+class PlanningPlatform:
+    def __init__(self):
+        self.requests = []
+        self.response = json.dumps({
+            "actionable": True,
+            "title": "Repair CRLF tests",
+            "summary": "Make the Files editor test portable across Windows and Linux.",
+            "objective": "Replace hardcoded LF expectations in the Files editor test.",
+            "acceptanceCriteria": [
+                "Windows CRLF tests pass.",
+                "LF tests still pass.",
+            ],
+            "constraints": ["Do not alter file contents."],
+            "relevantFiles": ["tests/test_files.py"],
+        })
+
+    def execute_chat(self, profile_id, request):
+        self.requests.append((profile_id, request))
+        return ModelResponse(text=self.response)
+
+
+@pytest.fixture()
+def planned_service(tmp_path: Path):
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    store = FileAgentSessionStore(tmp_path / "home")
+    platform = PlanningPlatform()
+    runtime = DurableAgentRuntime(
+        platform=platform, store=store, tools=ToolRegistry(()),
+        default_permission_mode=PermissionMode.WORKSPACE, auto_drain_queue=False,
+    )
+    service = ManagedStreamingLoomAppServerService(
+        runtime=runtime, store=store, model="test",
+        default_workspace=workspace, default_permission_mode=PermissionMode.WORKSPACE,
+    )
+    parent = service.thread_start({"workspace": str(workspace)})["thread"]
+    yield service, platform, parent
+    runtime.close()
+
+
+def test_parser_accepts_structured_plan_and_compiles_executable_instructions():
+    response = parse_branch_plan(json.dumps({
+        "actionable": True, "title": "Fix CRLF",
+        "summary": "Portable file test",
+        "objective": "Fix the test without changing the editor.",
+        "acceptanceCriteria": ["Windows passes", "Linux passes"],
+        "constraints": ["No API changes"],
+        "relevantFiles": ["tests/test_files.py"],
+    }))
+    assert response["title"] == "Fix CRLF"
+    assert "Acceptance criteria" in response["prompt"]
+    assert "Windows passes" in response["prompt"]
+    assert "avoid overwriting concurrent edits" in response["prompt"]
+    assert response["relevantFiles"] == ["tests/test_files.py"]
+
+
+def test_non_actionable_and_invalid_plans_cannot_fabricate_tasks():
+    assert parse_branch_plan('{"actionable":false,"reason":"Already finished"}') == {
+        "actionable": False, "reason": "Already finished"
+    }
+    for bad in ("this answer is great", '{"actionable":true,"title":"Copy everything"}',
+                '{"actionable":true,"title":"Fix", "objective":"Go","summary":"done","acceptanceCriteria":["One"]}'):
+        with pytest.raises((ValueError, json.JSONDecodeError)):
+            parse_branch_plan(bad)
+
+
+def test_plan_rpc_uses_model_without_creating_child_or_tools(planned_service):
+    service, platform, parent = planned_service
+    response = service.thread_branch_plan({
+        "parentThreadId": parent["id"],
+        "sourceMessageId": "source-one",
+        "sourceText": "The Windows Files edit test is failing because of CRLF.",
+    })
+    assert response["title"] == "Repair CRLF tests"
+    assert response["summary"].startswith("Make the Files")
+    assert len(response["acceptanceCriteria"]) == 2
+    assert len(service.thread_list({"view": "active"})["threads"]) == 1
+    assert platform.requests
+    profile_id, request = platform.requests[-1]
+    assert request.tools == ()
+    assert "The Windows Files edit test" in request.messages[-1].content
+    assert request.max_output_tokens <= 800
+
+
+def test_plan_errors_are_visible_and_do_not_copy_source(planned_service):
+    service, platform, parent = planned_service
+    platform.response = "Just paste the full answer and start"
+    with pytest.raises(JsonRpcError) as exc:
+        service.thread_branch_plan({"parentThreadId": parent["id"], "sourceText": "Very long source"})
+    assert exc.value.code == -32046
+    with pytest.raises(JsonRpcError):
+        service.thread_branch_plan({"parentThreadId": parent["id"], "sourceText": "x" * 12001})
+    with pytest.raises(JsonRpcError):
+        service.thread_branch_plan({"parentThreadId": "missing", "sourceText": "text"})
+
+
+def test_reviewed_plan_is_persisted_with_child(planned_service):
+    service, _, parent = planned_service
+    response = service.thread_branch_create({
+        "parentThreadId": parent["id"], "title": "Fix portability",
+        "summary": "Make Windows tests pass",
+        "prompt": "Inspect the test and fix CRLF detection",
+        "acceptanceCriteria": ["Windows pass", "Linux pass"],
+        "startNow": False,
+    })
+    metadata = service.thread_library.read(response["thread"]["id"])
+    assert metadata["branchSummary"] == "Make Windows tests pass"
+    assert metadata["branchAcceptanceCriteria"] == ["Windows pass", "Linux pass"]
+    with pytest.raises(JsonRpcError):
+        service.thread_branch_create({
+            "parentThreadId": parent["id"], "title": "Bad", "prompt": "Do it",
+            "acceptanceCriteria": ["x" * 300], "startNow": False,
+        })
