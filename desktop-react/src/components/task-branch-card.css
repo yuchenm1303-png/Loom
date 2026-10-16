@@ -51,6 +51,13 @@
   font-size: 12px; color: var(--loom-workspace-muted); line-height: 1.6;
 }
 .loom-branch-plan-error { align-items: flex-start; justify-content: space-between; overflow-wrap: anywhere; }
+.loom-branch-error-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+}
 .loom-branch-plan-error button {
   flex: 0 0 auto; border: 1px solid var(--loom-workspace-line);
   border-radius: 6px; background: transparent; color: var(--loom-workspace-ink);
