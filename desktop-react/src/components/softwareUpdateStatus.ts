@@ -83,4 +83,3 @@ export function statusCopy(state: SoftwareUpdateState | null): {
       return { title: "Automatic updates are on", detail: "Loom checks in the background and downloads newer releases automatically.", tone: "neutral" };
   }
 }
-

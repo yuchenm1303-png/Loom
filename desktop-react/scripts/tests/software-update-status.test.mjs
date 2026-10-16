@@ -25,3 +25,9 @@ test("account verification failure and unsupported builds have distinct explanat
   assert.equal(statusCopy({ ...base, phase: "disabled", accountUpdatesAllowed: false }).title, "Update access could not be verified");
   assert.equal(statusCopy({ ...base, enabled: false, phase: "disabled" }).title, "Updates are unavailable in this build");
 });
+
+test("a blocked restart keeps the downloaded update and explains why installation must wait", () => {
+  const copy = statusCopy({ ...base, phase: "downloaded", availableVersion: "0.1.92", error: "Wait for running tasks" });
+  assert.equal(copy.detail, "Wait for running tasks");
+  assert.equal(copy.tone, "warning");
+});

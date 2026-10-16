@@ -33,8 +33,10 @@
     radial-gradient(620px 320px at 18% -90px, rgba(83, 111, 219, .07), transparent 70%),
     var(--loom-canvas);
   color: var(--profile-copy);
+  /* The canvas stays opaque for the whole presence lifecycle (as the settings host does):
+     fading it would show the live app through the page. Only the page content is revealed. */
   opacity: 1;
-  transition: opacity 210ms ease, background-color 220ms ease;
+  transition: background-color 220ms ease;
 }
 
 html[data-loom-theme="light"] .profile-insights-host {
@@ -63,29 +65,23 @@ html[data-loom-theme="light"] .profile-insights-host {
     var(--loom-canvas);
 }
 
-.profile-insights-host[data-motion-phase="entering"],
-.profile-insights-host[data-motion-phase="exiting"] {
-  opacity: 0;
-}
-
+/* A page that appears in place is revealed by opacity alone (panel-language.css). */
 .profile-insights-page {
   height: 100%;
   min-height: 0;
   display: grid;
   grid-template-rows: 56px minmax(0, 1fr);
-  transform: translateY(0) scale(1);
-  transform-origin: 50% 24%;
-  transition: transform 260ms cubic-bezier(.2, .76, .22, 1), opacity 200ms ease;
+  opacity: 1;
+  transition: opacity var(--loom-motion-reveal, 240ms) var(--loom-ease-depth, cubic-bezier(.16, .78, .18, 1));
 }
 
-.profile-insights-host[data-motion-phase="entering"] .profile-insights-page {
-  transform: translateY(7px) scale(.997);
-  opacity: .72;
+.profile-insights-host:is([data-motion-phase="entering"], [data-motion-phase="exiting"]) .profile-insights-page {
+  opacity: 0;
 }
 
 .profile-insights-host[data-motion-phase="exiting"] .profile-insights-page {
-  transform: translateY(4px) scale(.998);
-  opacity: .55;
+  transition-duration: var(--loom-motion-conceal, 200ms);
+  transition-timing-function: var(--loom-ease-in, cubic-bezier(.42, 0, .72, .2));
 }
 
 /* Top bar ------------------------------------------------------------------ */

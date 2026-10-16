@@ -222,9 +222,7 @@ async function maybeInstallHeadless(): Promise<boolean> {
     } catch { scheduleHeadlessInstallRetry(); return false; }
     // Silent updates install whenever Agent work is idle, including with a
     // connected Desktop. The restart marker reopens the Desktop afterwards.
-    markHeadlessUpdateRestart();
-    restartForUpdate();
-    return true;
+    return restartForUpdate();
   })().finally(() => {
     headlessInstallAttempt = null;
   });
