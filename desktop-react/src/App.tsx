@@ -469,6 +469,8 @@ export default function App() {
         parentThreadId: string;
         title: string;
         prompt: string;
+        summary?: string;
+        acceptanceCriteria?: string[];
         sourceMessageId?: string;
         onSettled?: () => void;
       }>).detail;
@@ -482,6 +484,8 @@ export default function App() {
               parentThreadId: detail.parentThreadId,
               title: detail.title,
               prompt: detail.prompt,
+              summary: detail.summary || "",
+              acceptanceCriteria: detail.acceptanceCriteria || [],
               sourceMessageId: detail.sourceMessageId || "",
               startNow: true,
             },
