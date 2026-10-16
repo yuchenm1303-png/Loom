@@ -15,7 +15,7 @@ try {
   await page.goto(`${origin}/scripts/fixtures/workspace-visual.html?theme=light`);
   await page.locator(".compact-thread-main").first().click({ position: { x: 20, y: 16 } });
   await page.locator(".decision-card").waitFor();
-  await page.locator(".review-summary-card").waitFor();
+  await page.locator(".tc").waitFor();
   await page.locator(".transcript-scroll").evaluate(el => el.scrollTop = 0);
   await page.mouse.move(1400, 990);
   await page.waitForTimeout(500);
@@ -26,7 +26,7 @@ try {
       const box = document.querySelector(selector).getBoundingClientRect();
       return { x: box.x, width: box.width };
     };
-    return { decision: rect(".decision-card"), review: rect(".review-summary-card"), composer: rect(".composer"),
+    return { decision: rect(".decision-card"), review: rect(".tc"), composer: rect(".composer"),
       descriptionSize: parseFloat(getComputedStyle(document.querySelector(".decision-option-copy > span:last-child")).fontSize),
       fade: parseFloat(getComputedStyle(document.querySelector(".conversation-stage"), "::after").height) };
   });
@@ -59,7 +59,7 @@ try {
     for (const width of [1000, 760, 480]) {
       await page.setViewportSize({ width, height: 900 });
       await page.waitForTimeout(350);
-      for (const selector of [".decision-card", ".review-summary-card", ".composer"]) {
+      for (const selector of [".decision-card", ".tc", ".composer"]) {
         const box = await page.locator(selector).boundingBox();
         assert.ok(box && box.x >= 0 && box.x + box.width <= width + 1, `${selector} fits ${width}px ${theme}`);
       }

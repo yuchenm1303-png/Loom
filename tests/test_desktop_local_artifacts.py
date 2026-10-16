@@ -88,7 +88,7 @@ def test_changed_artifacts_render_in_the_conversation_and_expand_to_the_side_ren
     assert "<ArtifactRenderSurface" not in transcript
     assert 'new CustomEvent("loom:artifact-preview-open"' in flow
     assert "TurnArtifactsPreview items={items} workspace={workspace}" in transcript
-    assert 'className="turn-artifacts-preview-action"' in artifacts
+    assert 'className="tc-action tc-preview"' in artifacts
     assert "b.lastChange - a.lastChange" in artifacts
 
     # The review/audit summary keeps file stats and actions, but the large

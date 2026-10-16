@@ -85,7 +85,7 @@
 }
 :root .app-shell .transcript-scroll { background: var(--ws-canvas); scrollbar-gutter: stable both-edges; }
 :root .app-shell .turn-block { --turn-gap: 14px; gap: var(--turn-gap); }
-:root .app-shell :is(.turn-process, .turn-process-header, .turn-artifacts) { width: 100%; }
+:root .app-shell :is(.turn-process, .turn-process-header) { width: 100%; }
 :root .app-shell .turn-process.has-guidance .turn-process-content > .transcript-entry:not(.entry-steering-user) { width: 100%; }
 :root .app-shell .assistant-message { color: var(--ws-ink); }
 :root .app-shell .turn-process .turn-process-header {
@@ -125,73 +125,7 @@
 }
 :root .app-shell .user-message::before { display: none; }
 
-/* Changed files: a single surface with rows, rather than nested button panels. */
-:root .app-shell .rich-turn-artifacts.review-summary-card {
-  background: var(--ws-surface);
-  border: 1px solid var(--ws-line);
-  border-radius: var(--ws-radius);
-  box-shadow: var(--ws-shadow);
-}
-:root .app-shell .rich-turn-artifacts.review-summary-card::after { display: none; }
-:root .app-shell .review-summary-header { grid-template-columns: 22px minmax(0,1fr) auto; gap: 10px; padding: 16px 20px 12px; min-height: 48px; }
-:root .app-shell .turn-artifacts-copy strong { color: var(--ws-ink); font-weight: 600; }
-:root .app-shell .review-summary-header:hover { background: var(--ws-hover); }
-:root .app-shell .rich-turn-artifacts .turn-artifacts-icon {
-  width: 22px;
-  height: 22px;
-  background: transparent !important;
-  border: 0;
-  box-shadow: none;
-  color: var(--ws-muted);
-}
-:root .app-shell .review-summary-action,
-:root .app-shell .review-summary-header:hover .review-summary-action {
-  background: transparent;
-  border-color: transparent;
-  box-shadow: none;
-  color: var(--ws-accent);
-  padding-inline: 4px;
-}
-:root .app-shell .turn-artifacts-file-strip { display: grid; gap: 2px; padding: 0 20px 12px 52px; }
-:root .app-shell .turn-artifacts-file-strip button {
-  max-width: 100%;
-  width: 100%;
-  min-height: 30px;
-  padding: 4px 0;
-  border-color: transparent;
-  border-radius: 4px;
-  background: transparent;
-  color: var(--ws-secondary);
-  box-shadow: none;
-}
-:root .app-shell .turn-artifacts-file-strip button:hover { background: var(--ws-hover); color: var(--ws-ink); border-color: transparent; }
-:root .app-shell .turn-artifacts-file-strip button:active { transform: none; }
-:root .app-shell .turn-artifacts-file-strip button code,
-:root .app-shell .turn-artifacts-file-strip button:hover code {
-  padding: 0;
-  background: transparent !important;
-  border: 0;
-  border-radius: 0;
-  box-shadow: none;
-  color: inherit !important;
-}
-/* The one follow-up action closes the card: a full-width row under a hairline. */
-:root .app-shell .turn-artifacts-preview-action {
-  margin: 0 12px 6px;
-  width: calc(100% - 24px);
-  padding: 8px 8px;
-  min-height: 36px;
-  border: 0;
-  border-top: 1px solid var(--ws-line);
-  border-radius: 0 0 8px 8px;
-  background: transparent;
-  box-shadow: none;
-  color: var(--ws-accent);
-  font-weight: 500;
-  font-size: 12px;
-  transition: background 160ms ease, color 160ms ease;
-}
-:root .app-shell .turn-artifacts-preview-action:hover { background: var(--ws-hover); border-color: var(--ws-line); }
+/* The changed-files card is drawn by turn-artifacts-preview.css, from these same tokens. */
 
 /* Keep the input as the primary action surface, with a short grounding shadow. */
 :root .app-shell .composer-wrap.composer-refined {
@@ -217,9 +151,4 @@
   :root .app-shell .transcript { width: calc(100% - 32px); }
   :root .app-shell .composer-wrap.composer-refined { padding-inline: calc(16px + var(--ws-scroll-inset, 0px)); }
   :root .app-shell .project-git-bar { width: calc(100% - 32px - 2 * var(--ws-scroll-inset, 0px)); }
-}
-@media (max-width: 880px) {
-  :root .app-shell .review-summary-header { padding-inline: 12px; }
-  :root .app-shell .turn-artifacts-file-strip { padding-inline: 12px; }
-  :root .app-shell .turn-artifacts-preview-action { margin-inline: 8px; width: calc(100% - 16px); }
 }

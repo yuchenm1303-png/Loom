@@ -43,13 +43,6 @@ export function ReviewInteractionBridge({ onOpen }: ReviewInteractionBridgeProps
       const target = event.target instanceof Element ? event.target : null;
       if (!target || target.closest(".review-workspace")) return;
 
-      const artifactPath = target.closest<HTMLElement>(".turn-artifacts-files code[title]");
-      if (artifactPath) {
-        clearExternalReview();
-        onOpen(cleanPath(artifactPath.getAttribute("title") || artifactPath.textContent));
-        return;
-      }
-
       const taskRow = target.closest<HTMLElement>(".wv-row");
       const taskPath = taskRow?.querySelector<HTMLElement>(".wv-path");
       if (taskPath) {

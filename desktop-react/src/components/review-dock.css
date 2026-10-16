@@ -71,13 +71,8 @@
 }
 
 /* Make transcript affordances feel connected to the review pane. */
-.turn-artifacts-header,
 .markdown-code-block pre {
   cursor: pointer;
-}
-
-.turn-artifacts-header:hover .turn-artifacts-action {
-  color: #b9b1ff;
 }
 
 @media (max-width: 1280px) {
