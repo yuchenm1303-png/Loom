@@ -30,6 +30,9 @@ export type ActivityCategory =
 
 export type ActivityTense = "active" | "done" | "failed" | "waiting" | "denied" | "stopped" | "skipped" | "uncertain" | "refresh";
 
+/** What a turn did to a file, as its diff says: the file had no old side (created), no new side (deleted), or both. */
+export type ChangeKind = "edited" | "created" | "deleted";
+
 interface EnglishVerb {
   ing: string;
   past: string;
@@ -351,11 +354,13 @@ export interface RuntimeCopy {
   decisionRetryPrompt: string;
   guidanceRecap: string;
   activityRegion: string;
-  /** Changed-files card under a finished turn. */
-  changedFilesTitle(count: number, name: string): string;
+  /** Changed-files card under a finished turn: the verb and its object are set apart ("Edited" + the file's name). */
+  changedFilesLead(count: number, kind: ChangeKind): string;
+  changedFilesSubject(count: number, name: string): string;
   changedFilesRegion: string;
+  moreChangedFiles(count: number): string;
+  fewerChangedFiles: string;
   review: string;
-  reviewTitle: string;
   openInReview(path: string): string;
   preview: string;
   previewArtifact(name: string): string;
@@ -590,10 +595,12 @@ const ZH: RuntimeCopy = {
   decisionRetryPrompt: "刚才的选项没有生成完整。请只重新给出完整的选项卡，不要重复前面的分析。",
   guidanceRecap: "本轮补充的要求",
   activityRegion: "任务活动",
-  changedFilesTitle: (count, name) => (count === 1 ? `已编辑 ${name}` : `已修改 ${count} 个文件`),
+  changedFilesLead: (count, kind) => (kind === "created" ? "已创建" : kind === "deleted" ? "已删除" : count === 1 ? "已编辑" : "已修改"),
+  changedFilesSubject: (count, name) => (count === 1 ? name : `${count} 个文件`),
   changedFilesRegion: "本轮改动的文件",
+  moreChangedFiles: (count) => `展开其余 ${count} 个文件`,
+  fewerChangedFiles: "收起",
   review: "审查",
-  reviewTitle: "在右侧审查面板查看代码改动",
   openInReview: (path) => `在审查中打开 ${path}`,
   preview: "预览",
   previewArtifact: (name) => `预览 ${name}`,
@@ -722,10 +729,12 @@ const EN: RuntimeCopy = {
   decisionRetryPrompt: "The previous options were incomplete. Please send the complete option card again without repeating the earlier analysis.",
   guidanceRecap: "Guidance added during this turn",
   activityRegion: "Task activity",
-  changedFilesTitle: (count, name) => (count === 1 ? `Edited ${name}` : `Changed ${plural(count, "file", "files")}`),
+  changedFilesLead: (count, kind) => (kind === "created" ? "Created" : kind === "deleted" ? "Deleted" : count === 1 ? "Edited" : "Changed"),
+  changedFilesSubject: (count, name) => (count === 1 ? name : plural(count, "file", "files")),
   changedFilesRegion: "Changed files",
+  moreChangedFiles: (count) => `Show ${plural(count, "more file", "more files")}`,
+  fewerChangedFiles: "Show fewer",
   review: "Review",
-  reviewTitle: "Open the changes in the review panel",
   openInReview: (path) => `Open ${path} in review`,
   preview: "Preview",
   previewArtifact: (name) => `Preview ${name}`,

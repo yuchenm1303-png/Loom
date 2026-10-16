@@ -21,6 +21,8 @@
  *   ?speed=0.5             slow the script (animations are not rescaled)
  *   ?empty=1               start on the home screen of an empty thread
  *   ?agents=1              three delegated agents in the history (running, finished, failed): the sub-agent panel shows its filter bar and cards
+ *   ?changes=1             six completed turns that changed files (one created, a few with a page to preview, eleven, a deletion, long
+ *                          paths, only created files): each ends in the changed-files card, read in the real transcript
  *   ?autosend=1            send the scenario prompt once the app is ready
  *   ?latency=1500          the Host takes this long (ms) to answer `turn/start` (and `thread/start`, for a message sent from
  *                          the home screen of a conversation that does not exist yet) and to start the run, as a real one does:
@@ -81,7 +83,73 @@ const history: Item[] = params.get("empty") === "1" ? [] : [
   ] : []),
 ].map((item, index) => ({ ...item, threadId: THREAD, turnId: "turn-history", createdAt: new Date(Date.parse(historyAt) + index * 2000).toISOString() }));
 
-const items: Item[] = [...history];
+// ?changes=1: completed turns that changed files, so the app draws its changed-files card for each of them: a created
+// file that can be previewed, a few edits with a page to preview, a long list, a deletion with nothing to preview, two
+// files of one name in long folders, and a turn that only created files. The card is the last thing a turn shows.
+//
+// The diffs are the runtime's own shape (app/agent_runtime/diff_tracker.py): plain `---`/`+++` pairs, no `diff --git` line,
+// a created file has no old side (`--- /dev/null`) and a deleted one no new side. The live scenario below keeps the
+// `diff --git` shape, so the card meets both.
+type Change = [path: string, added: number, removed: number, kind?: "new" | "gone"];
+
+function patchOf([path, added, removed, kind]: Change): string {
+  const lines = [
+    ...Array.from({ length: removed }, (_, index) => `-  legacy line ${index + 1}`),
+    ...Array.from({ length: added }, (_, index) => `+  line ${index + 1}`),
+  ];
+  const from = kind === "new" ? "/dev/null" : `a/${path}`;
+  const to = kind === "gone" ? "/dev/null" : `b/${path}`;
+  return `--- ${from}\n+++ ${to}\n@@ -${removed ? 1 : 0},${removed} +${added ? 1 : 0},${added} @@\n${lines.join("\n")}`;
+}
+
+function changeTurn(serial: number, prompt: string, answer: string, files: Change[]): Item[] {
+  const turnId = `turn-change-${serial}`;
+  const chunks: string[] = [];
+  // Each edit carries the whole turn's diff so far and every path touched so far, as the runtime's TURN_DIFF_UPDATED does.
+  const edits = files.map((change, index) => {
+    chunks.push(patchOf(change));
+    return { id: `${turnId}-edit${index}`, type: "file_edit", status: "completed", paths: files.slice(0, index + 1).map(([path]) => path).sort(), diff: chunks.join("\n") };
+  });
+  return [
+    { id: `${turnId}-user`, type: "user_message", status: "completed", text: prompt },
+    { id: `${turnId}-note`, type: "assistant_message", phase: "commentary", status: "completed", text: english ? "Reading what is there, then writing the change." : "先看一下现有内容，再动手改。" },
+    { id: `${turnId}-read`, type: "tool_call", toolName: "read_workspace_text", status: "completed", arguments: { path: files[0][0] }, content: "ok" },
+    ...edits,
+    { id: `${turnId}-final`, type: "assistant_message", phase: "final_answer", status: "completed", text: answer },
+  ].map((item, index) => ({ ...item, threadId: THREAD, turnId, createdAt: new Date(Date.parse(historyAt) + (serial * 100 + index) * 2000).toISOString() }));
+}
+
+const changeTurns: Item[] = params.get("changes") !== "1" ? [] : [
+  ...changeTurn(1, english ? "Turn the picture into a DXF" : "把图片转成 DXF", english ? "Done. The converter is in `.loom/tmp/anew.js`." : "转换脚本已经写好，放在 `.loom/tmp/anew.js`。", [
+    [".loom/tmp/anew.js", 79, 0, "new"],
+  ]),
+  ...changeTurn(2, english ? "Validate the email on login, register and reset" : "登录、注册、找回密码都加上邮箱校验", english ? "Email validation is in place on all three pages." : "三个页面都已经接上邮箱校验。", [
+    ["src/utils/validators.ts", 6, 0],
+    ["src/pages/Login.tsx", 3, 1],
+    ["src/pages/Register.tsx", 4, 9],
+    ["package.json", 1, 1],
+    ["docs/preview.html", 42, 0, "new"],
+  ]),
+  ...changeTurn(3, english ? "Rename the colour tokens everywhere" : "把颜色变量统一改个名字", english ? "The tokens are renamed in every stylesheet." : "所有样式表里的颜色变量都已经改名。", [
+    ["src/theme.css", 28, 28], ["src/components/panel-language.css", 14, 14], ["src/components/window-rail.css", 9, 9], ["src/components/turn-flow.css", 7, 7],
+    ["src/components/review-dock.css", 6, 6], ["src/components/composer.css", 5, 5], ["src/components/sidebar.css", 4, 4], ["src/components/settings.css", 3, 3],
+    ["src/components/profile-insights.css", 3, 3], ["src/components/model-panel.css", 2, 2], ["src/components/icons/icon-motion.css", 1, 1],
+  ]),
+  ...changeTurn(4, english ? "Drop the old parser" : "删掉旧的解析器", english ? "The old parser is gone; nothing referenced it." : "旧的解析器已经删掉，没有别处引用它。", [
+    ["legacy/parser.cfg", 0, 140, "gone"],
+  ]),
+  ...changeTurn(5, english ? "Tidy the nested settings" : "整理一下嵌套的设置文件", english ? "Settings are flattened and the loader reads the new shape." : "设置文件已经拍平，加载器按新结构读取。", [
+    ["C:/Workspace/Loom/services/account-gateway/config/environments/production/settings.local.yaml", 12, 3],
+    ["services/account-gateway/config/environments/staging/settings.local.yaml", 12, 3],
+  ]),
+  ...changeTurn(6, english ? "Add a DXF export" : "加一个 DXF 导出", english ? "The export is written and covered by a test." : "导出已经写好，并补了测试。", [
+    ["src/features/export/dxf.ts", 61, 0, "new"],
+    ["src/features/export/dxf.test.ts", 34, 0, "new"],
+    ["src/features/export/index.ts", 3, 0, "new"],
+  ]),
+];
+
+const items: Item[] = [...history, ...changeTurns];
 let thread = { ...threads[0] };
 let turnSerial = 1;
 let director: { token: number } = { token: 0 };

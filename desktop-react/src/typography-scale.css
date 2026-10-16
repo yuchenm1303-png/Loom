@@ -58,12 +58,6 @@ body {
 .turn-process-time { font-size: 13px !important; }
 .turn-process-meta { font-size: 12px !important; }
 .turn-process-failed { font-size: var(--loom-font-micro) !important; }
-.turn-artifacts-copy strong { font-size: 13px !important; }
-.turn-artifacts-stats,
-.turn-artifacts-action { font-size: var(--loom-font-micro) !important; }
-.turn-artifacts-files code,
-.turn-artifacts-more { font-size: var(--loom-font-micro) !important; }
-.turn-artifacts pre { font-size: 12.5px !important; }
 
 /* Composer --------------------------------------------------------------- */
 .composer textarea { font-size: var(--loom-font-body) !important; }
