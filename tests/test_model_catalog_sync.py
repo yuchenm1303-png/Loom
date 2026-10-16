@@ -8,7 +8,7 @@ from urllib.request import Request, urlopen
 
 import pytest
 
-from services.loom_model_policy.catalog import GROUPS, selection_for_model
+from services.loom_model_policy.catalog import GROUPS, OPENCODE_CONSOLE_FREE_MODELS, selection_for_model
 from services.loom_model_policy.catalog_sync import CatalogSynchronizer, parse_models
 from services.loom_model_policy.policy import PolicyStore
 from services.loom_model_policy.server import ModelPolicyApplication, PolicyRequestHandler
@@ -107,14 +107,23 @@ def test_all_provider_discovery_is_independent_of_clients_and_keeps_global_denie
     store = PolicyStore(tmp_path / "policy.db")
     from services.loom_model_policy.catalog_sync import PROVIDERS
     env = {keys[0]: "server-key" for _, keys, _ in PROVIDERS.values()}
-    sync = CatalogSynchronizer(store, environ=env, fetch=lambda url, key: {"data": [{"id": "future-model"}]})
+    def fetched(url, key):
+        if url.endswith("/console/api/v2/config"):
+            return {"providers": {"opencode": {
+                "package": "aisdk:@ai-sdk/openai-compatible",
+                "settings": {"baseURL": "https://opencode.ai/inference/openai/v1"},
+                "models": {"future-model": {"name": "Future Model"}},
+            }}}
+        return {"data": [{"id": "future-model"}]}
+    sync = CatalogSynchronizer(store, environ=env, fetch=fetched)
     store.set_global_model_group(1, "deepseek", False)
     sync.refresh()
     access = store.effective_access(7, {"enabled": True})
     for group in GROUPS:
         selection = selection_for_model(group.id, "future-model")
-        assert decision(access, selection)["enabled"] == (group.id != "deepseek")
-    assert len([row for row in access["catalog"]["models"] if row["catalog_state"] == "available"]) == len(GROUPS)
+        # Metered Console discoveries deliberately start disabled.
+        assert decision(access, selection)["enabled"] == (group.id not in {"deepseek", "opencode-console"})
+    assert len([row for row in access["catalog"]["models"] if row["catalog_state"] == "available"]) == len(GROUPS) + len(OPENCODE_CONSOLE_FREE_MODELS)
     # Discovery on a subsequent run must not reset individual rules.
     minimax = selection_for_model("minimax", "future-model")
     store.set_global_rule(1, minimax, False)
