@@ -1,15 +1,16 @@
-/* A permanently reserved rail: not an overlay over conversation, Chromium or review. */
+/* A small floating dock inside the reserved workspace edge. */
 .loom-tool-rail {
   grid-column: 4;
   grid-row: 1;
   position: fixed;
-  top: 0;
+  top: max(56px, calc(var(--loom-rail-height, 40px) + 12px));
   right: 0;
   z-index: 1601;
-  width: var(--loom-tool-rail-track, 62px);
+  width: var(--loom-tool-rail-track, 56px);
   min-width: 0;
-  height: 100%;
-  padding: 78px 7px 18px;
+  height: calc(100% - max(56px, calc(var(--loom-rail-height, 40px) + 12px)));
+  padding: 0 8px 12px;
+  box-sizing: border-box;
   display: flex;
   align-items: flex-start;
   justify-content: center;
@@ -20,32 +21,34 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 2px;
-  width: 45px;
-  padding: 8px 5px;
-  border-radius: 17px;
-  border: 1px solid rgba(216, 220, 236, .105);
-  background: linear-gradient(165deg, rgba(33, 36, 43, .94), rgba(21, 23, 29, .94));
-  box-shadow: 0 9px 30px rgba(0,0,0,.23), 0 1px 3px rgba(0,0,0,.13),
+  gap: 1px;
+  width: 40px;
+  flex: 0 0 40px;
+  box-sizing: border-box;
+  padding: 6px 4px;
+  border-radius: 15px;
+  border: 1px solid rgba(216, 220, 236, .09);
+  background: linear-gradient(165deg, rgba(30, 32, 39, .94), rgba(23, 25, 31, .94));
+  box-shadow: 0 6px 18px rgba(0,0,0,.16), 0 2px 4px rgba(0,0,0,.09),
     inset 0 1px rgba(255,255,255,.045);
   backdrop-filter: blur(18px);
   pointer-events: auto;
   max-height: calc(100% - 2px);
   overflow: visible;
 }
-.loom-tool-position { position: relative; flex: none; width: 34px; }
+.loom-tool-position { position: relative; flex: none; width: 30px; }
 .loom-tool-divider {
   display: block;
-  width: 19px;
+  width: 16px;
   height: 1px;
-  margin: 7px auto 8px;
+  margin: 5px auto 6px;
   background: rgba(210,213,235,.15);
 }
 .loom-tool-button {
   -webkit-app-region: no-drag;
   position: relative;
-  width: 34px;
-  height: 34px;
+  width: 30px;
+  height: 30px;
   padding: 0;
   display: flex;
   align-items: center;
@@ -53,11 +56,11 @@
   color: rgba(219,221,234,.62);
   background: transparent;
   border: 1px solid transparent;
-  border-radius: 10px;
+  border-radius: 8px;
   cursor: pointer;
   transition: color 170ms ease, background 170ms ease, border-color 170ms ease;
 }
-.loom-tool-button > svg { flex: none; pointer-events: none; }
+.loom-tool-button > svg { width: 16px; height: 16px; flex: none; pointer-events: none; }
 .loom-tool-button:hover:not(:disabled),
 .loom-tool-button:focus-visible {
   color: #f6f5fd;
@@ -69,18 +72,8 @@
 }
 .loom-tool-button.is-active {
   color: #d9cfff;
-  background: rgba(157,136,244,.16);
+  background: rgba(157,136,244,.11);
   border-color: rgba(179,164,255,.11);
-}
-.loom-tool-button.is-active::before {
-  content: "";
-  position: absolute;
-  left: -5px;
-  height: 13px;
-  width: 2px;
-  top: 9px;
-  border-radius: 10px;
-  background: #a793ff;
 }
 .loom-tool-button:disabled {
   opacity: .35;
@@ -92,7 +85,7 @@
 .loom-tool-count {
   position: absolute;
   top: -2px;
-  right: -4px;
+  right: -3px;
   display: grid;
   place-items: center;
   min-width: 13px;
@@ -148,7 +141,7 @@
 html[data-loom-theme="light"] .loom-tool-dock {
   background: linear-gradient(160deg, rgba(255,255,255,.97), rgba(248,249,253,.96));
   border-color: rgba(90,106,146,.13);
-  box-shadow: 0 9px 25px rgba(24,35,64,.10), 0 1px 3px rgba(24,35,64,.045),
+  box-shadow: 0 6px 16px rgba(24,35,64,.09), 0 2px 4px rgba(24,35,64,.04),
     inset 0 1px #fff;
 }
 html[data-loom-theme="light"] .loom-tool-button { color: #768096; }
@@ -169,13 +162,15 @@ html[data-loom-theme="light"] .loom-tool-tooltip {
   border-color: rgba(50,65,95,.13);
   box-shadow: 0 8px 23px rgba(25,36,64,.13);
 }
+html[data-loom-theme="light"] .loom-tool-status {
+  box-shadow: 0 0 0 2px #fafbff;
+}
 html[data-loom-theme="light"] .loom-tool-count {
   background: #8069d8;
   color: white;
   box-shadow: 0 0 0 2px #fafbff;
 }
-@media (max-height: 570px) {
-  .loom-tool-rail { padding-top: 54px; }
+@media (max-height: 460px) {
   .loom-tool-dock { overflow-y: auto; scrollbar-width: none; }
   .loom-tool-dock::-webkit-scrollbar { display: none; }
   .loom-tool-tooltip { display: none; }
