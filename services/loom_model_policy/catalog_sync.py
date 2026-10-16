@@ -10,7 +10,7 @@ from pathlib import Path
 
 from loom_image_capability import image_capability
 
-from .catalog import GROUPS, OPENCODE_CONSOLE_FREE_MODELS, selection_for_model
+from .catalog import GROUPS, OPENCODE_CONSOLE_FREE_MODELS, is_opencode_console_free, selection_for_model
 
 
 # Provider routes are shared with the gateway; model additions do not
@@ -129,12 +129,15 @@ class CatalogSynchronizer:
             base, key_names, url_names = PROVIDERS[group_id]
             credential = next((self.environ[name].strip() for name in key_names if self.environ.get(name, "").strip()), "")
             if group_id == "opencode-console" and not credential:
-                # The official free chat endpoints do not require a service key.
-                # When a paid key is removed, withdraw paid models immediately.
-                free_models = parse_models(group_id, {
-                    "data": [{"id": model} for model in OPENCODE_CONSOLE_FREE_MODELS]
-                })
-                self.store.replace_provider_catalog(group_id, free_models, "manifest")
+                # Free models are seeded at DB initialization. Refresh must not
+                # rewrite a stable catalog when another provider is unavailable.
+                # If a former paid key was removed, retire its billed rows now.
+                rows = [row for row in self.store.catalog()["models"] if row["group_id"] == group_id]
+                if any(row["available"] and not is_opencode_console_free(row["model"]) for row in rows):
+                    free_models = parse_models(group_id, {
+                        "data": [{"id": model} for model in OPENCODE_CONSOLE_FREE_MODELS]
+                    })
+                    self.store.replace_provider_catalog(group_id, free_models, "manifest")
                 return
             if not credential:
                 self.store.catalog_failure(group_id, "Discovery credential is not configured; bundled or last successful catalog retained.")
