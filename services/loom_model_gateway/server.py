@@ -187,7 +187,10 @@ class LoomModelGateway:
             "Accept": "text/event-stream, application/json",
             "User-Agent": "LoomModelGateway/2",
         }
-        if api_key:
+        # Keep zero-priced calls anonymous even when an unrelated paid Console
+        # key is configured; billing changes must fail closed, not bill silently.
+        free_console = group_id == "opencode-console" and is_opencode_console_free(str(payload.get("model") or ""))
+        if api_key and not free_console:
             headers["Authorization"] = f"Bearer {api_key}"
         if endpoint == "messages":
             headers.update({"x-api-key": api_key, "anthropic-version": "2023-06-01"})
