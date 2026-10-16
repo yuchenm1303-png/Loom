@@ -72,15 +72,19 @@ _OPENCODE_GO = (
 # An explicit allowlist is essential: the paid sibling lacks "-free" and must
 # never be mistaken for the free model. Update after verifying official pricing.
 OPENCODE_CONSOLE_FREE_MODELS = (
+    "big-pickle",
+    "glm-5.3-flash-free",
     "deepseek-v4.1-flash-free",
     "space-bunny-free",
     "cat-jam-free",
+    "ll-alpha-free",
     "longcat-2.5-preview-free",
-    "step-5-preview-free",
     "exo-free",
     "mimo-v2.6-flash-free",
     "mimo-v2.5-free",
-    "big-pickle",
+    "nemotron-3-ultra-free",
+    "nemotron-3.5-lightning-free",
+    "nemotron-3.5-super-vl-free",
 )
 
 
