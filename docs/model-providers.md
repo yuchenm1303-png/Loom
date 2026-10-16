@@ -34,3 +34,46 @@ The existing one-provider launch path remains supported:
 - `--provider openai-compatible --base-url <url> --model <model>`
 
 Environment-based credentials continue to work as before. Saved desktop connections are an additional configuration layer, not a replacement for the CLI path.
+
+
+## OpenCode Console Free vs OpenCode Go
+
+Loom exposes **OpenCode Go** and **OpenCode Console** as separate built-in
+provider groups and separate account-gateway routes. They must never share
+endpoints, model selection IDs or API keys.
+
+- **Go**: `builtin:opencode-go:<model>` goes to
+  `https://opencode.ai/zen/go/v1`, and consumes the Go plan allowance.
+- **Console**: `builtin:opencode-console:<model>` goes to
+  `https://opencode.ai/inference/openai/v1`. The documented free
+  OpenAI-compatible chat models, including `deepseek-v4.1-flash-free`, are
+  available without a Console service key and **do not consume Go quota**.
+  Console free prices are temporary and subject to OpenCode rate limits.
+- Both built-in groups still require a Loom sign-in and must pass Loom's model
+  policy (provider group, global model, and per-user permissions).
+- A Console service-account API key is needed for **paid** Console models.
+  Configure `LOOM_OPENCODE_CONSOLE_API_KEY` or `OPENCODE_CONSOLE_API_KEY`
+  **on the model-gateway and catalog-policy services**, never in the frontend.
+  This key must be issued by Console, *not* Go. Free models are still sent
+  upstream without this paid credential even if the key is configured.
+- With a Console service key, the policy service discovers compatible models
+  from the official `https://opencode.ai/console/api/v2/config` workspace
+  configuration; it does **not** query the Go `/models` endpoint. It excludes
+  non-Chat-Completions providers and endpoint-specific incompatible models.
+  Newly discovered metered models default to **OFF** in Loom Admin. An
+  administrator must explicitly enable them before Loom users can invoke
+  billed calls. If the Console key is removed, only the verified free
+  catalogue remains available.
+- A user can still use **Add personal connection** and their own Console key
+  through the generic OpenAI-compatible adapter if desired. Personal
+  connections use local OS credential storage and are separate from the
+  shared built-in gateway/account policy. For Console custom connections,
+  use `https://opencode.ai/inference/openai/v1` and the model's actual
+  provider ID, not the Loom `builtin:` selection.
+- The Console `/inference/openai/v1` path serves Chat Completions; other
+  provider protocol families (Responses, Anthropic, Gemini, SystemOne) are not
+  automatically supported by this built-in group.
+
+References: https://opencode.ai/v2/docs/console/api/inference/ and
+https://opencode.ai/v2/docs/console/api/ and
+https://opencode.ai/v2/docs/console/models/
