@@ -44,7 +44,7 @@ test("sync verifies historical objects and installer before publishing mutable c
   process.env.LOOM_UPDATE_SOURCE_URL = "https://cdn.example.test/loom";
   process.env.LOOM_UPDATE_BUCKET = "update-test-bucket";
   try {
-    await import("../sync-update-source.mjs?test=success");
+    await import("../../scripts/sync-update-source.mjs?test=success");
     assert.ok(uploads.some(item => item.key.endsWith(`/releases/app-1001/${sha}`)));
     const firstChannel = uploads.findIndex(item => item.key.includes("/channels/"));
     assert.ok(firstChannel > 0);
@@ -52,10 +52,10 @@ test("sync verifies historical objects and installer before publishing mutable c
     assert.ok(uploads.at(-1).key.endsWith("/installer/latest.yml"));
     assert.match(uploads.at(-1).bytes, /\.\.\/releases\/v0\.1\.92\/Loom-Setup-x64.exe/);
     uploads.length = 0; breakUpload = true;
-    await assert.rejects(import("../sync-update-source.mjs?test=failure"), /upload unavailable/);
+    await assert.rejects(import("../../scripts/sync-update-source.mjs?test=failure"), /upload unavailable/);
     assert.equal(uploads.length, 0, "failed asset upload must not publish any channel");
     breakUpload = false; rangeSupported = false;
-    await assert.rejects(import("../sync-update-source.mjs?test=no-range"), /byte-range/);
+    await assert.rejects(import("../../scripts/sync-update-source.mjs?test=no-range"), /byte-range/);
     assert.ok(uploads.every(item => item.key.includes("/releases/")), "unsupported public CDN must not publish channels");
   } finally {
     globalThis.fetch = originalFetch;

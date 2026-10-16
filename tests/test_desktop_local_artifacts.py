@@ -10,6 +10,7 @@ ARTIFACT_REGISTRY = ROOT / "desktop-react" / "src" / "artifactRenderers.ts"
 APP = ROOT / "desktop-react" / "src" / "App.tsx"
 TRANSCRIPT = ROOT / "desktop-react" / "src" / "components" / "Transcript.tsx"
 MAIN = ROOT / "desktop-react" / "electron" / "main.ts"
+ENTRY = ROOT / "desktop-react" / "electron" / "entry.ts"
 PRELOAD = ROOT / "desktop-react" / "electron" / "preload.cts"
 TYPES = ROOT / "desktop-react" / "src" / "types" / "global.d.ts"
 
@@ -35,7 +36,10 @@ def test_desktop_local_artifact_bridge_is_workspace_scoped_and_sandboxed() -> No
     assert "async function openLocalArtifact" in main
     assert "async function localArtifactPreviewUrl" in main
     assert "async function serveLocalArtifact" in main
-    assert "protocol.registerSchemesAsPrivileged" in main
+    entry = ENTRY.read_text(encoding="utf-8")
+    assert "protocol.registerSchemesAsPrivileged" in entry
+    assert 'scheme: "loom-artifact"' in entry
+    assert entry.index("protocol.registerSchemesAsPrivileged") < entry.index("void loadApplication()")
     assert 'protocol.handle("loom-artifact", serveLocalArtifact)' in main
     assert "LOCAL_BROWSER_ARTIFACT_SUFFIXES" in main
     assert "contextIsolation: true" in main

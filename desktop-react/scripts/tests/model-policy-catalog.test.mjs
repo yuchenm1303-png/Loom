@@ -3,19 +3,9 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import ts from "typescript";
 import { invokeOptionalBridgeOperation } from "../../dist-electron/bridgeProtocol.js";
-import { isManagedBuiltinSelection } from "../../dist-electron/modelPolicySelection.js";
+import { policyAllowsSelection, policyBlockedMessage, applyModelPolicy } from "../../dist-electron/modelAccess.js";
 
-const main = readFileSync(new URL("../../electron/main.ts", import.meta.url), "utf8");
 const manager = readFileSync(new URL("../../electron/modelManager.ts", import.meta.url), "utf8");
-function functions(source, names) {
-  const file = ts.createSourceFile("fixture.ts", source, ts.ScriptTarget.ES2022, true);
-  const text = file.statements.filter(node => ts.isFunctionDeclaration(node) && names.includes(node.name?.text))
-    .map(node => node.getText(file)).join("\n");
-  const compiled = ts.transpileModule(text, { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText;
-  return new Function("isManagedBuiltinSelection", `${compiled}; return {${names.join(",")}};`)(isManagedBuiltinSelection);
-}
-const { policyAllowsSelection, policyBlockedMessage, applyModelPolicy } = functions(main,
-  ["modelPolicyGroup", "policyAllowsSelection", "policyBlockedMessage", "applyModelPolicy"]);
 const builtin = (selection = "builtin:minimax") => ({ selection, id: selection, kind: "builtin", model: "MiniMax-M3", available: true });
 
 test("picker denies unknown models, distinguishes retirement and admin denial, and preserves BYOK", () => {
@@ -26,7 +16,7 @@ test("picker denies unknown models, distinguishes retirement and admin denial, a
   ] };
   assert.equal(policyAllowsSelection(access, "builtin:minimax"), true);
   assert.equal(policyAllowsSelection(access, "builtin:minimax:invented"), false);
-  assert.match(policyBlockedMessage(access, "builtin:minimax:old"), /no longer available/);
+  assert.match(policyBlockedMessage(access, "builtin:minimax:old"), /confirmed provider catalog/);
   assert.match(policyBlockedMessage(access, "builtin:deepseek"), /Loom Admin/);
   const saved = { ...builtin("profile:m123456789abc"), kind: "saved" };
   assert.equal(policyAllowsSelection({ ...access, enabled: false }, saved.selection), true);
@@ -36,7 +26,8 @@ test("picker denies unknown models, distinguishes retirement and admin denial, a
   assert.equal(projected.current.available, false);
   assert.equal(projected.profiles[1].available, true);
   const outage = applyModelPolicy({ profiles: [primary, saved], primary, current: primary }, null);
-  assert.match(outage.primary.statusMessage, /permissions unavailable/);
+  assert.equal(outage.primary.accessState, "unknown");
+  assert.equal(outage.primary.available, true, "a policy outage must not retire the provider model");
   assert.equal(outage.profiles[1].available, true);
 });
 
