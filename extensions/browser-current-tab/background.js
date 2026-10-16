@@ -50,6 +50,9 @@ const TAB_SESSION_IDS_KEY = "loomTabSessionIds";
 const BROKER_ID_KEY = "loomBrowserBrokerId";
 let ownershipQueue = Promise.resolve();
 const commandQueues = new Map();
+// A timed-out browser API cannot be cancelled by abandoning its Promise.
+// Fence that controller until it settles rather than overlap new actions.
+const stalledCommands = new Map();
 const inFlightCommands = new Set();
 const windowQueues = new Map();
 
@@ -197,12 +200,21 @@ async function pollOnce() {
   const payload = await response.json();
   if (!payload.command) return;
   const command = payload.command;
+  command.deadlineAt = Date.now() + Math.max(1, Number(command.timeout_ms || 40000));
   if (command.args?.broker_id) {
     const stored = await chrome.storage.session.get(BROKER_ID_KEY);
     if (stored[BROKER_ID_KEY] !== command.args.broker_id) {
       // A service restart invalidates old leases. Finish already-dispatched
       // actions before resetting ownership so old work cannot reclaim new tabs.
       await Promise.all([...inFlightCommands].map((job) => job.catch(() => {})));
+      if (stalledCommands.size) {
+        await bridgeFetch("/browser-extension/v1/result", {
+          method: "POST",
+          body: JSON.stringify({ id: command.id, ok: false,
+            error: "Cannot reset browser ownership while an earlier operation is still pending. No new command was executed." }),
+        });
+        return;
+      }
       await resetBroker(command.args.broker_id);
     }
   }
@@ -224,11 +236,31 @@ async function executeCommand(command) {
   let result = null;
   let ok = false;
   let error = "";
+  let timer;
   try {
-    result = await dispatchCommand(command.action, command.args || {});
+    const session = commandSession(command.args);
+    if (stalledCommands.has(session)) throw new Error("Previous browser command is still pending; this command was not executed. Wait for recovery; do not repeat input.");
+    const remaining = (command.deadlineAt || Date.now() + 40000) - Date.now();
+    if (remaining <= 0) throw new Error("Browser command expired in the controller queue; it was not executed.");
+    const execution = Promise.resolve().then(() => dispatchCommand(command.action, command.args || {}));
+    const clearStall = () => {
+      if (stalledCommands.get(session) === command.id) stalledCommands.delete(session);
+    };
+    execution.then(clearStall, clearStall);
+    result = await Promise.race([
+      execution,
+      new Promise((_, reject) => {
+        timer = setTimeout(() => {
+          stalledCommands.set(session, command.id);
+          reject(new Error(`Browser command ${command.action} exceeded its execution deadline; completion is unknown. Controller fenced until the outstanding operation settles; do not repeat input.`));
+        }, remaining);
+      }),
+    ]);
     ok = true;
   } catch (cause) {
     error = cause instanceof Error ? cause.message : String(cause);
+  } finally {
+    clearTimeout(timer);
   }
   await bridgeFetch("/browser-extension/v1/result", {
     method: "POST",
@@ -1169,6 +1201,23 @@ async function restoreVisualSurfaceFocus(tab) {
   await inject(tab.id, runPageAction, ["focus_visual_surface", {}]).catch(() => {});
 }
 
+async function prepareKeyboardTarget(tab) {
+  // insertText can edit a background document; key events need an active
+  // renderer. Do not focus the OS window or infer it from document.hasFocus().
+  await chrome.tabs.update(tab.id, { active: true });
+  if (!(await chrome.tabs.get(tab.id)).active) {
+    throw new Error("Keyboard target tab could not be activated; no key was sent");
+  }
+  if (isInjectableUrl(tab.url || "")) {
+    const deadline = Date.now() + 1000;
+    while (!(await inject(tab.id, runPageAction, ["keyboard_target_ready", {}])).visible) {
+      if (Date.now() >= deadline) throw new Error("Keyboard target document is still hidden; no key was sent");
+      await sleep(25);
+    }
+  }
+  await restoreVisualSurfaceFocus(tab);
+}
+
 async function sendText(args) {
   const tab = await actionTab(args);
   const text = String(args.text || "");
@@ -1176,17 +1225,19 @@ async function sendText(args) {
   if (text.length > 8000) throw new Error("send_text supports at most 8000 characters per call");
   // Never the text itself: the HUD is drawn in the page the user is watching,
   // which is exactly where a password being typed must not be reprinted.
-  await announceAction(tab, `Send ${text.length} characters`, "Focused surface");
-  await restoreVisualSurfaceFocus(tab);
-  return withNavigationWatch(
-    tab.id,
-    async () => {
-      const native = await withNativeInput(tab.id, (target) => sendNativeText(target, text));
-      if (native.ok) return { ok: true, native_input: true };
-      throw new Error(`Native browser text input failed: ${native.error}`);
-    },
-    120,
-  );
+  return withWindowLock(tab.windowId, async () => {
+    await prepareKeyboardTarget(tab);
+    await announceAction(tab, `Send ${text.length} characters`, "Focused surface");
+    return withNavigationWatch(
+      tab.id,
+      async () => {
+        const native = await withNativeInput(tab.id, (target) => sendNativeText(target, text));
+        if (native.ok) return { ok: true, native_input: true };
+        throw new Error(`Native browser text input failed: ${native.error}`);
+      },
+      120,
+    );
+  });
 }
 
 async function selectOption(args) {
@@ -1207,19 +1258,21 @@ async function drag(args) {
 async function pressKey(args) {
   const tab = await actionTab(args);
   const key = String(args.key || "");
-  await announceAction(tab, `Press ${key || "key"}`, "Browser keyboard action");
-  await restoreVisualSurfaceFocus(tab);
-  // Synthetic keyboard events cannot perform Tab/default browser actions.
-  // Report unavailable native input rather than silently pretending it worked.
-  return withNavigationWatch(
-    tab.id,
-    async () => {
-      const native = await withNativeInput(tab.id, (target) => sendNativeKeyChord(target, key));
-      if (native.ok) return { ok: true, native_input: true };
-      throw new Error(`Native browser key input failed: ${native.error}`);
-    },
-    150,
-  );
+  return withWindowLock(tab.windowId, async () => {
+    await prepareKeyboardTarget(tab);
+    await announceAction(tab, `Press ${key || "key"}`, "Browser keyboard action");
+    // Synthetic keyboard events cannot perform Tab/default browser actions.
+    // Report unavailable native input rather than silently pretending it worked.
+    return withNavigationWatch(
+      tab.id,
+      async () => {
+        const native = await withNativeInput(tab.id, (target) => sendNativeKeyChord(target, key));
+        if (native.ok) return { ok: true, native_input: true };
+        throw new Error(`Native browser key input failed: ${native.error}`);
+      },
+      150,
+    );
+  });
 }
 
 async function scroll(args) {
@@ -2325,6 +2378,7 @@ function runPageAction(action, args = {}) {
     case "prepare_click": return prepareClick();
     case "click_at": return clickAtInPage();
     case "focus_visual_surface": return focusVisualSurface();
+    case "keyboard_target_ready": return { visible: document.visibilityState === "visible" };
     case "hover": return hoverElement();
     case "prepare_type": return prepareType();
     case "send_text": return sendTextInPage();

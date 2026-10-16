@@ -915,8 +915,8 @@ class AgentRuntime:
         authority dispatch uses, so each call is judged against the step it was
         issued in. A batch with any faulty call executes none of its calls: every
         call gets a correlated, not-executed result and the model re-issues the
-        batch. A byte-identical repeat inside the batch runs once and is answered
-        as a repeat.
+        batch. Byte-identical read-only requests run once; repeated state-changing
+        actions retain their original multiplicity.
         """
         faults: dict[str, ToolResult] = {}
         for call in calls:
@@ -959,6 +959,12 @@ class AgentRuntime:
         runnable: list[ToolCall] = []
         immediate: list[tuple[ToolCall, ToolResult]] = []
         for call in calls:
+            # Repeated UI actions are not idempotent: two identical scrolls,
+            # clicks or keys can be deliberate. Only collapse duplicate reads.
+            tool = step.tool_router.get(call.name)
+            if tool is None or tool.effect is not ToolEffect.READ_ONLY:
+                runnable.append(call)
+                continue
             fingerprint = tool_call_fingerprint(call)
             first = first_by_fingerprint.get(fingerprint)
             if first is None:

@@ -189,6 +189,42 @@ async function main() {
   assert.equal(r.storage.loomBrowserBrokerId, 'new-broker');
   assert.equal(r.storage.loomTabSessionIds[1], 'new-runtime:tab');
   assert.equal(r.tabs.size, pageCount);
+
+  // A hung browser API must not keep the controller's queue pending forever,
+  // nor may a timeout allow subsequent mutations to overlap it.
+  const stalled = harness();
+  await stalled.run(`(async () => {
+    globalThis.results = [];
+    globalThis.started = [];
+    globalThis.finishHung = null;
+    globalThis.commands = [
+      {id: 'hung', action: 'wait', timeout_ms: 25, args: {session_id: 'a'}},
+      {id: 'after', action: 'click', timeout_ms: 1000, args: {session_id: 'a'}},
+      {id: 'other', action: 'state', timeout_ms: 1000, args: {session_id: 'b'}},
+    ];
+    getClientId = async () => 'client'; browserName = () => 'Edge';
+    bridgeFetch = async (url, options) => options
+      ? (results.push(JSON.parse(options.body)), {})
+      : {ok: true, json: async () => ({command: commands.shift()})};
+    dispatchCommand = async (action, args) => {
+      started.push(args.session_id + ':' + action);
+      if (action === 'wait') await new Promise(resolve => { finishHung = resolve; });
+      return {};
+    };
+    await pollOnce(); await pollOnce(); await pollOnce();
+    await Promise.all([...inFlightCommands]);
+  })()`);
+  assert(stalled.run(`results.find(r => r.id === 'hung').error.includes('completion is unknown')`));
+  assert(stalled.run(`results.find(r => r.id === 'after').error.includes('not executed')`));
+  assert(!stalled.run(`started.includes('a:click')`));
+  assert(stalled.run(`results.find(r => r.id === 'other').ok`));
+  await stalled.run(`(async () => { finishHung(); await new Promise(r => setTimeout(r, 0)); })()`);
+  assert.equal(stalled.run('stalledCommands.size'), 0);
+  await stalled.run(`executeCommand({id: 'recovered', action: 'state', args: {session_id: 'a'}})`);
+  assert(stalled.run(`results.find(r => r.id === 'recovered').ok`));
+  await stalled.run(`executeCommand({id: 'expired', action: 'click', deadlineAt: Date.now()-1, args: {session_id: 'a'}})`);
+  assert(!stalled.run(`started.includes('a:click')`));
+  assert(stalled.run(`results.find(r => r.id === 'expired').error.includes('expired')`));
   console.log('Browser extension concurrency: independent tabs, scoped release, cross-session progress and ordering passed.');
 }
 

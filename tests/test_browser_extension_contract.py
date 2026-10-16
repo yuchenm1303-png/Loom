@@ -661,7 +661,12 @@ def test_keyboard_actions_hand_focus_back_to_a_visual_surface(background):
     """Keys reach a canvas client only while its element holds focus."""
 
     for name in ("sendText", "pressKey"):
-        assert "restoreVisualSurfaceFocus" in _function_body(background, name)
+        assert "prepareKeyboardTarget" in _function_body(background, name)
+        assert "withWindowLock" in _function_body(background, name)
+    prepare = _function_body(background, "prepareKeyboardTarget")
+    assert "restoreVisualSurfaceFocus" in prepare
+    assert "active: true" in prepare
+    assert "chrome.tabs.get" in prepare
 
     restore = _function_body(background, "restoreVisualSurfaceFocus")
     assert "focus_visual_surface" in restore

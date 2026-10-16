@@ -184,6 +184,7 @@ def test_extension_bridge_serves_long_poll_commands_and_results():
         assert command is not None
         assert command["action"] == "state"
         assert command["args"] == {"x": 1}
+        assert 0 < command["timeout_ms"] <= 4000
 
         body = json.dumps(
             {

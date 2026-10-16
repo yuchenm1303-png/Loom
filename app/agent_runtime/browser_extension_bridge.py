@@ -105,6 +105,7 @@ class _BridgeCommand:
     dispatched_at: float = 0.0
     cancelled: bool = False
     runtime_id: str = ""
+    deadline_at: float = 0.0
 
 
 class BrowserExtensionBridge:
@@ -490,6 +491,7 @@ class BrowserExtensionBridge:
             action=action_name,
             args=command_args,
             runtime_id=_runtime_id,
+            deadline_at=time.monotonic() + wait_seconds,
         )
         self._log(
             "bridge.command.queued",
@@ -533,9 +535,9 @@ class BrowserExtensionBridge:
             if phase == "dispatched":
                 raise BrowserError(
                     f"the browser extension collected this {action_name} command but did not finish it "
-                    f"within {elapsed_ms // 1000}s. The extension is connected; the page is most likely "
-                    "still loading, showing a modal dialog, or blocked on a permission prompt. Retry, or "
-                    "use browser_state to see where the tab actually is."
+                    f"within {elapsed_ms // 1000}s. Completion is unknown; bridge connectivity does not "
+                    "prove command execution is healthy. Do not repeat state-changing input until "
+                    "the outstanding command has been reconciled."
                 )
             raise BrowserError(
                 "the Loom browser extension is not collecting commands "
@@ -701,6 +703,7 @@ class BrowserExtensionBridge:
                                 "id": command.command_id,
                                 "action": command.action,
                                 "args": command.args,
+                                "timeout_ms": max(1, int((command.deadline_at - time.monotonic()) * 1000) - 1000),
                             },
                         }
                     )

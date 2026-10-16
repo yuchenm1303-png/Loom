@@ -16,6 +16,7 @@ from app.ai import AIMessage, ImagePart, ModelResponse, ToolCall, MessageRole, T
 from app.agent_runtime.instructions import InstructionLoader
 from app.agent_runtime.context_budget import safe_split
 from app.agent_runtime.tools import validate_tool_arguments
+from app.agent_runtime.contracts import PermissionMode
 
 
 class Scripted:
@@ -31,6 +32,25 @@ class Scripted:
 def make_runtime(path, platform, tools=(), **kwargs):
     return AgentRuntime(platform=platform, store=FileAgentSessionStore(path),
         tools=ToolRegistry(tuple(tools)), sandbox_manager=SandboxManager(policy=SandboxPolicy.OFF), **kwargs)
+
+
+@pytest.mark.parametrize("effect, expected", [(ToolEffect.READ_ONLY, 1), (ToolEffect.SENSITIVE, 2), (ToolEffect.MUTATING, 2)])
+def test_batch_preserves_repeated_state_changing_actions(tmp_path, effect, expected):
+    executed = []
+    platform = Scripted([
+        ModelResponse(tool_calls=(ToolCall("one", "repeat", {}), ToolCall("two", "repeat", {}))),
+        ModelResponse(text="done"),
+    ])
+    tool = AgentTool("repeat", "test repeat", {"type": "object"},
+                     lambda ctx, args: (executed.append(1) or ToolResult(ok=True, content="ok")),
+                     effect=effect)
+    runtime = make_runtime(tmp_path, platform, [tool])
+    try:
+        session = runtime.create_session("agent.fast", permission_mode=PermissionMode.FULL_ACCESS)
+        runtime.start_turn(session.session_id, "repeat deliberately")
+        assert len(executed) == expected
+    finally:
+        runtime.close()
 
 
 @pytest.mark.parametrize("kind", [AgentRuntime, CoreAgentRuntime])

@@ -28,7 +28,10 @@ async function main() {
     const chrome = {
       runtime: { getManifest: () => ({ version: '0.1.20' }), onMessage: event, onInstalled: event, onStartup: event },
       debugger: { onDetach: event, attach: async () => {}, sendCommand: async (_, method, params) => cdp.send(method, params) },
-      tabs: { onRemoved: event, onUpdated: event }, alarms: { onAlarm: event }, action: { onClicked: event },
+      tabs: { onRemoved: event, onUpdated: event,
+        update: async () => { await page.bringToFront(); return {id: 1, active: true}; },
+        get: async () => ({id: 1, active: true}),
+      }, alarms: { onAlarm: event }, action: { onClicked: event },
       storage: { session: { setAccessLevel() {} } },
       scripting: { executeScript: async ({ func, args }) => [{ result: await page.evaluate(
         ({ source, args }) => (0, eval)(`(${source})`)(...args), { source: func.toString(), args }) }] },
@@ -70,11 +73,13 @@ async function main() {
     assert.equal(await page.$eval('#ce', el => el.textContent), 'A中BC');
     await type('ta', 'ABCDE');
     await page.focus('#ta');
+    await decoy.bringToFront();
     const selection = () => page.$eval('#ta', el => [el.selectionStart, el.selectionEnd]);
     await run('pressKey({key: "Home"})');
     assert.deepEqual(await selection(), [0, 0]);
     await run('pressKey({key: "ArrowRight"})');
     assert.deepEqual(await selection(), [1, 1]);
+    await decoy.bringToFront();
     await run('pressKey({key: "Enter"})');
     assert.equal(await value('ta'), 'A\nBCDE');
     await run('pressKey({key: "Control+a"})');
@@ -99,6 +104,9 @@ async function main() {
     await run('pressKey({key: "Enter"})');
     await run('pressKey({key: "x"})');
     assert.match(await page.$eval('#ce', el => el.innerText), /\nx$/);
+    await decoy.bringToFront();
+    await run('sendText({text: "Z"})');
+    assert.match(await page.$eval('#ce', el => el.innerText), /\nxZ$/);
     await page.focus('#a');
     await run('pressKey({key: "Escape"})');
     assert.ok(await page.evaluate(() => events.some(e => e.type === 'keydown' && e.key === 'Escape' && e.trusted)));
@@ -123,6 +131,17 @@ async function main() {
     });
     await assert.rejects(run('click({index: "button"})'), /covered/);
     await page.$eval('#cover', el => el.remove());
+    await run('chrome.tabs.get = async () => ({id: 1, active: false})');
+    await assert.rejects(run('pressKey({key: "x"})'), /could not be activated/);
+    await assert.rejects(run('sendText({text: "x"})'), /could not be activated/);
+    await run('chrome.tabs.get = async () => ({id: 1, active: true})');
+    await run(`originalInject = inject;
+      inject = async (tab, fn, args, world) => args[0] === 'keyboard_target_ready'
+        ? {visible: false} : originalInject(tab, fn, args, world);`);
+    const keyCount = await page.evaluate(() => events.filter(e => e.type === 'keydown').length);
+    await assert.rejects(run('pressKey({key: "x"})'), /still hidden/);
+    assert.equal(await page.evaluate(() => events.filter(e => e.type === 'keydown').length), keyCount);
+    await run('inject = originalInject');
     // The isolated backend uses this exact preparation function in the node's CDP frame.
     const py = fs.readFileSync(path.join(__dirname, '../app/agent_runtime/browser_native_edit.py'), 'utf8');
     const prepare = py.split('PREPARE_EDIT = r"""')[1].split('"""')[0];
