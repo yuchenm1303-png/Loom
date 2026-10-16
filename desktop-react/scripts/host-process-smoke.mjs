@@ -28,6 +28,7 @@ if (process.argv.includes("--pending-update")) {
   const updates = path.join(env.LOOM_HOST_DATA_DIR, "application-updates");
   await (await import("node:fs/promises")).mkdir(updates, { recursive: true });
   await writeFile(path.join(updates, "state.json"), JSON.stringify({ ready: 1 }));
+  await writeFile(path.join(env.LOOM_HOST_DATA_DIR, "update-preferences.json"), JSON.stringify({ automaticUpdates: false }));
 }
 delete env.ELECTRON_RUN_AS_NODE;
 delete env.LOOM_HOST_RUNTIME_ROOT;
@@ -81,7 +82,7 @@ async function runClient() {
       progress("connecting to Host IPC / update-status");
       const state = await callHost("loom:update-status");
       if (!state.currentVersion) throw new Error("Missing Host version");
-      if (state.enabled) throw new Error("Candidate smoke must not run the online updater");
+      if (state.enabled && state.automaticUpdates !== false) throw new Error("Candidate smoke must not run the online updater");
       progress("Host IPC ready / initializing credential-free runtime");
       const initialization = await callHost("loom:connect");
       if (!initialization?.runtime) throw new Error("Credential-free local service did not initialize");
