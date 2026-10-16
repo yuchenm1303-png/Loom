@@ -313,6 +313,7 @@ html[data-loom-review-open="true"] {
 }
 
 .review-empty-diff.large {
+  grid-row: 1 / -1;
   min-height: 100%;
 }
 

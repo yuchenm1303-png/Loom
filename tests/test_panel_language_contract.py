@@ -231,6 +231,37 @@ def test_files_and_browser_follow_the_product_accent_and_the_theme() -> None:
         assert "var(--pl-" in css
 
 
+def test_empty_panels_share_one_still_state() -> None:
+    kit = read("components/panel-language.css")
+    start = kit.index("/* Empty state (PanelEmpty.tsx)")
+    empty = kit[start:kit.index(".pl-card {", start)]
+
+    # A static orbit around the panel's glyph: an empty panel asks for no frame while the run streams.
+    assert "animation" not in empty and "@keyframes" not in empty
+    for part in (".pl-empty-core", ".pl-empty-orbit", ".pl-empty-title", ".pl-empty-copy", ".pl-empty-chips"):
+        assert part in empty, part
+    for path in ("components/SubAgentWorkspace.tsx", "components/ReviewWorkspace.tsx", "components/FilesWorkbench.tsx"):
+        assert "<PanelEmpty" in read(path), path
+    # The orbit the agent panel used to draw for itself is gone from both the markup and the sheet.
+    assert "sub-agent-empty" not in read("components/SubAgentWorkspace.tsx")
+    assert "sub-agent-empty" not in read("components/sub-agent-workspace.css")
+    # The artifact library keeps its own markup; its glyph takes the same 42px core.
+    assert ".artifact-library-empty > svg" in kit
+
+
+def test_cards_inside_the_docks_share_one_corner() -> None:
+    kit = read("components/panel-language.css")
+    registry = kit[kit.index(":root:root :is(\n  .project-overview-card,\n"):]
+    registry = registry[:registry.index("}")]
+
+    assert "--pl-radius-card" in registry
+    for card in (
+        ".project-overview-card", ".project-workspace-card", ".project-instructions-card", ".project-thread-card",
+        ".project-memory-card", ".project-agent-files-card", ".project-repository-card", ".sub-agent-card",
+    ):
+        assert card in registry, card
+
+
 def test_the_fixture_has_an_embedded_browser_so_the_panel_can_be_opened() -> None:
     fixture = (ROOT / "desktop-react" / "scripts" / "fixtures" / "live-app.tsx").read_text(encoding="utf-8")
 

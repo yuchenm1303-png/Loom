@@ -407,6 +407,145 @@ code.pl-subtitle {
   text-transform: uppercase;
 }
 
+/* Empty state (PanelEmpty.tsx): a static orbit around the panel's own glyph, a title, a sentence,
+   optional chips. The orbit used to be drawn twice, with different sizes, in the sub-agent panel and
+   the inspector; the inspector keeps its own (it swaps glyphs with its tabs). */
+.pl-empty {
+  width: min(300px, 100%);
+  margin: 0 auto;
+  padding: 56px 8px 40px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  color: var(--pl-muted);
+}
+
+/* Inside a container that already centres its one child (.is-empty), the state does not add its own air. */
+.is-empty > .pl-empty,
+.review-empty-diff > .pl-empty,
+.files-workbench-empty > .pl-empty {
+  padding: 0;
+}
+
+.pl-empty-art {
+  position: relative;
+  width: 92px;
+  height: 92px;
+  margin-bottom: 14px;
+  display: grid;
+  place-items: center;
+}
+
+.pl-empty-core {
+  position: relative;
+  z-index: 3;
+  box-sizing: border-box;
+  width: 42px;
+  height: 42px;
+  display: grid;
+  place-items: center;
+  border-radius: 13px;
+  color: var(--pl-accent);
+  background: var(--pl-accent-wash);
+  box-shadow: inset 0 0 0 1px var(--pl-accent-line);
+}
+
+.pl-empty-orbit {
+  position: absolute;
+  border: 1px solid color-mix(in srgb, var(--pl-accent) 16%, transparent);
+  border-radius: 50%;
+}
+
+.pl-empty-orbit.is-near { inset: 12px; }
+
+.pl-empty-orbit.is-far {
+  inset: 22px;
+  border-style: dashed;
+  border-color: var(--pl-edge);
+}
+
+.pl-empty-dot {
+  position: absolute;
+  z-index: 4;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--pl-accent);
+  box-shadow: 0 0 8px var(--pl-accent-line);
+}
+
+.pl-empty-dot.is-one { top: 16px; right: 22px; }
+.pl-empty-dot.is-two { left: 19px; bottom: 22px; opacity: .58; }
+
+.pl-empty-title {
+  margin: 0 0 6px;
+  color: var(--pl-ink);
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 650;
+}
+
+.pl-empty-copy {
+  max-width: 270px;
+  margin: 0;
+  color: var(--pl-muted);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.pl-empty-chips {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px;
+  margin-top: 14px;
+}
+
+.pl-empty-chips > span {
+  box-sizing: border-box;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 8px;
+  border: 1px solid var(--pl-line);
+  border-radius: 999px;
+  color: var(--pl-muted);
+  font-size: 11.5px;
+  line-height: 1;
+}
+
+/* The artifact library's empty state keeps its own markup (a bare glyph); the glyph takes the
+   same 42px core so the two read as one state. */
+.artifact-library-empty > svg {
+  box-sizing: content-box;
+  width: 22px;
+  height: 22px;
+  padding: 10px;
+  border-radius: 13px;
+  color: var(--pl-accent);
+  background: var(--pl-accent-wash);
+  box-shadow: inset 0 0 0 1px var(--pl-accent-line);
+}
+
+/* One corner for every card inside a dock. They were 10, 11, 12, 14, 15, 16 and 18px. */
+:root:root :is(
+  .project-overview-card,
+  .project-workspace-card,
+  .project-instructions-card,
+  .project-thread-card,
+  .project-roadmap-card,
+  .project-memory-card,
+  .project-agent-files-card,
+  .project-stage-section,
+  .project-commit-box,
+  .project-repository-card,
+  .sub-agent-card,
+  .sub-agent-workspace.is-docked .sub-agent-card
+) {
+  border-radius: var(--pl-radius-card);
+}
+
 .pl-card {
   border: 1px solid var(--pl-line);
   border-radius: var(--pl-radius-card);

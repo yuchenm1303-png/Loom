@@ -14,6 +14,7 @@ import { createPortal } from "react-dom";
 import { useI18n } from "../i18n";
 import { useMotionPresence } from "../motion/useMotionPresence";
 import type { TranscriptItem } from "../types/loom";
+import { PanelEmpty } from "./PanelEmpty";
 import { PanelHeader } from "./PanelHeader";
 import "./review-workspace.css";
 
@@ -484,7 +485,7 @@ export function ReviewWorkspace({ items, open, onClose }: ReviewWorkspaceProps) 
                 ) : <div className="review-empty-diff">{c.noPatch}</div>}
               </div>
             </>
-          ) : <div className="review-empty-diff large">{files.length ? c.noMatch : c.empty}</div>}
+          ) : <div className="review-empty-diff large"><PanelEmpty icon={<Files size={20} strokeWidth={1.7} />} title={files.length ? c.noMatch : c.empty} /></div>}
         </main>
 
         <aside className="review-files-panel">

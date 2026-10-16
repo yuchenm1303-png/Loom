@@ -9,6 +9,7 @@ import {
 } from "./icons";
 import { useEffect, useMemo, useState } from "react";
 import type { TranscriptItem } from "../types/loom";
+import { PanelEmpty } from "./PanelEmpty";
 import { PanelHeader } from "./PanelHeader";
 import "./sub-agent-workspace.css";
 
@@ -572,22 +573,12 @@ export function SubAgentWorkspace({
             <div className="sub-agent-filter-empty">当前筛选下没有子代理</div>
           )
         ) : (
-          <div className="sub-agent-empty-state">
-            <div className="sub-agent-empty-visual" aria-hidden="true">
-              <span className="sub-agent-empty-orbit orbit-one" />
-              <span className="sub-agent-empty-orbit orbit-two" />
-              <span className="sub-agent-empty-core"><Bot size={22} strokeWidth={1.65} /></span>
-              <span className="sub-agent-empty-dot dot-one" />
-              <span className="sub-agent-empty-dot dot-two" />
-            </div>
-            <strong>暂无子代理</strong>
-            <p>当 Loom 把复杂任务分派给子代理时，它们会在这里出现，并持续显示运行状态与结果。</p>
-            <div className="sub-agent-empty-chips" aria-hidden="true">
-              <span>独立上下文</span>
-              <span>并行执行</span>
-              <span>结果汇总</span>
-            </div>
-          </div>
+          <PanelEmpty
+            icon={<Bot size={22} strokeWidth={1.65} />}
+            title="暂无子代理"
+            copy="当 Loom 把复杂任务分派给子代理时，它们会在这里出现，并持续显示运行状态与结果。"
+            chips={["独立上下文", "并行执行", "结果汇总"]}
+          />
         )}
       </div>
     </section>

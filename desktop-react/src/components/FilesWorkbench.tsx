@@ -5,6 +5,7 @@ import {
   Maximize2, Pencil, Plus, RefreshCw, Save, Search, Trash2, X,
 } from "./icons";
 import type { MotionPresencePhase } from "../motion/useMotionPresence";
+import { PanelEmpty } from "./PanelEmpty";
 import { PanelHeader } from "./PanelHeader";
 import "./files-workbench.css";
 
@@ -408,7 +409,7 @@ export function FilesWorkbench({ projectId, projectName, root, open, phase = "en
                     setFiles((prev) => ({ ...prev, [selected]: { ...prev[selected], text: value } }));
                   }} /> : <p className="files-workbench-placeholder">正在读取文件…</p>}
               <div className="files-workbench-status"><span>{dirty ? "● 有未保存的更改" : "文件已同步"}</span><span>UTF-8 · {displaySize(current ? new TextEncoder().encode(current.text).length : undefined)}</span></div>
-            </> : <div className="files-workbench-empty"><FolderOpen size={37} strokeWidth={1.2} /><strong>打开文件以开始</strong><span>从左侧目录树选择文件，或搜索整个项目的文件名。</span><span>编辑内容后按 Ctrl+S 保存。</span></div>}
+            </> : <div className="files-workbench-empty"><PanelEmpty icon={<FolderOpen size={22} strokeWidth={1.7} />} title="打开文件以开始" copy={<>从左侧目录树选择文件，或搜索整个项目的文件名。<br />编辑内容后按 Ctrl+S 保存。</>} /></div>}
           </main>
         </div>
         {(error || notice) ? <footer className={"files-workbench-notice" + (error ? " is-error" : "")}><span>{error || notice}</span><button type="button" onClick={() => { setError(""); setNotice(""); }} aria-label="关闭消息"><X size={14} /></button></footer> : null}
