@@ -16,11 +16,9 @@
    drag region. The sidebar's own first row is the exception: sidebar.css owns
    every sidebar selector, so its share of (1) and (3) is written there. */
 
-/* 1 -- one centre line */
+/* 1 -- one centre line. PanelHeader (panel-language.css) is the rail's height on its own, in
+   the web build too; the profile page's bar is the only header that still needs saying. */
 :root.loom-desktop-chrome :is(
-  .sub-agent-workspace.is-docked .sub-agent-workspace-header,
-  .artifact-preview-header,
-  .review-topbar,
   .profile-insights-topbar
 ) {
   box-sizing: border-box;
@@ -29,16 +27,8 @@
   padding-top: 0;
   padding-bottom: 0;
 }
-:root.loom-desktop-chrome .review-workspace {
-  grid-template-rows: var(--loom-rail-height) 46px minmax(0, 1fr);
-}
 :root.loom-desktop-chrome .profile-insights-page {
   grid-template-rows: var(--loom-rail-height) minmax(0, 1fr);
-}
-/* The project header keeps its three-line title; only its close button joins the rail. */
-:root.loom-desktop-chrome .project-details-close {
-  align-self: start;
-  margin-top: calc((var(--loom-rail-height) - 30px) / 2 - 13px);
 }
 
 /* 2 -- headers that reach the right edge of the window.
@@ -48,12 +38,7 @@
   padding-right: var(--loom-caption-reserve);
 }
 
-:root.loom-desktop-chrome :is(
-  .project-details-header,
-  .sub-agent-workspace-header,
-  .review-topbar,
-  .artifact-preview-header
-) {
+:root.loom-desktop-chrome .pl-dock .pl-header {
   padding-right: var(--loom-caption-reserve);
 }
 /* Only the title shares the caption rail. The description/status row uses
@@ -98,10 +83,7 @@
 :root.loom-desktop-chrome :is(
   .thread-header,
   .runtime-header,
-  .project-details-header,
-  .sub-agent-workspace-header,
-  .review-topbar,
-  .artifact-preview-header,
+  .pl-header,
   .profile-insights-topbar,
   .settings-sidebar-top
 ) :is(button, a[href], input, select, textarea, summary, label, [role="button"], [role="tab"], [role="menuitem"], [role="switch"], [role="slider"], [tabindex]:not([tabindex="-1"])),

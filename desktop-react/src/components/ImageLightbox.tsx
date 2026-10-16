@@ -13,7 +13,7 @@ export function ImageLightbox({ open, source, label, path, onClose, onReveal }: 
   onClose(): void;
   onReveal(): void;
 }) {
-  const presence = useMotionPresence(open, 200);
+  const presence = useMotionPresence(open, 235);
   const panelRef = useRef<HTMLDivElement>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
   useLayoutEffect(() => {

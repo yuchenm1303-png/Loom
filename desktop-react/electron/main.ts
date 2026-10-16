@@ -3,6 +3,8 @@ import { EmbeddedBrowserManager, type EmbeddedBrowserCommand } from "./embeddedB
 import { EmbeddedBrowserAgentClient } from "./embeddedBrowserAgentBridge.js";
 import { ModelSwitchQueue } from "./modelSwitchQueue.js";
 import { isManagedBuiltinSelection } from "./modelPolicySelection.js";
+import { applyModelPolicy, policyAllowsSelection, policyBlockedMessage } from "./modelAccess.js";
+import { assertModelConnection } from "./modelConnection.js";
 import { app, BrowserWindow, clipboard, dialog, ipcMain, nativeImage, nativeTheme, net, protocol, shell } from "electron";
 import { ModelUsageService } from "./modelUsage.js";
 import { ChildProcessWithoutNullStreams, spawn, spawnSync } from "node:child_process";
@@ -754,6 +756,7 @@ class LoomRpcProcess {
   ) {}
 
   private async materializeModelSpec(spec: ModelLaunchSpec): Promise<ModelLaunchSpec> {
+    assertModelConnection(spec);
     if (spec.authMode !== "loom-account") return spec;
     return { ...spec, apiKey: await this.account.modelCredential() };
   }
@@ -1148,7 +1151,7 @@ async function changeModel(
     await modelManager.persistActiveAsync(selection);
     modelManager.markActive(selection);
     // A draft changes the preference, never the running shared platform.
-    return { initialization: { runtime: {} }, models: await modelManager.switchSnapshot(next), hotSwitch: true };
+    return { initialization: { runtime: {} }, models: await presentModels(await modelManager.switchSnapshot(next)), hotSwitch: true };
   } catch (error) {
     modelManager.restore(previous);
     modelManager.markActive(previous.selection);
@@ -1185,7 +1188,7 @@ async function changeThreadModel(
   modelManager.markActive(spec.selection);
   return {
     initialization: { runtime: result.runtime ?? {} },
-    models: await modelManager.switchSnapshot(spec),
+    models: await presentModels(await modelManager.switchSnapshot(spec)),
     hotSwitch: true,
     thread: result.thread,
   };
@@ -1198,12 +1201,12 @@ async function deleteModel(selection: string): Promise<ModelRestartResult> {
   const previous = modelManager.current ?? modelManager.ensureInitial();
   const deletesCurrent = previous.selection === value;
   modelManager.delete(value);
-  if (!deletesCurrent) return { initialization: await rpc.currentInitialization(), models: modelManager.snapshot(), hotSwitch: true };
+  if (!deletesCurrent) return { initialization: await rpc.currentInitialization(), models: await presentModels(modelManager.snapshot()), hotSwitch: true };
   const next = modelManager.ensureInitial();
   try {
     const initialization = await rpc.setModel(next);
     modelManager.setActive(next.selection);
-    return { initialization, models: modelManager.snapshot(), hotSwitch: true };
+    return { initialization, models: await presentModels(modelManager.snapshot()), hotSwitch: true };
   } catch (error) {
     modelManager.restore(previous);
     if (!missingHotSwitchMethod(error)) throw error;
@@ -1211,7 +1214,7 @@ async function deleteModel(selection: string): Promise<ModelRestartResult> {
     try {
       const initialization = await rpc.restart();
       modelManager.setActive(next.selection);
-      return { initialization, models: modelManager.snapshot(), hotSwitch: false };
+      return { initialization, models: await presentModels(modelManager.snapshot()), hotSwitch: false };
     } catch (fallbackError) {
       modelManager.restore(previous);
       try {
@@ -1376,87 +1379,22 @@ function runWriteClipboardText(value: string): boolean {
   return true;
 }
 
-function modelPolicyGroup(selection: string): string | null {
-  const value = String(selection || "").trim();
-  if (value === "builtin:minimax" || value.startsWith("builtin:minimax:")) return "minimax";
-  if (value === "builtin:deepseek" || value.startsWith("builtin:deepseek:")) return "deepseek";
-  if (value === "builtin:ant-ling" || value.startsWith("builtin:ant-ling:")) return "ant-ling";
-  if (value.startsWith("builtin:opencode-go:")) return "opencode-go";
-  if (value === "builtin:cqu" || value.startsWith("managed:")) return "managed-relay";
-  return null;
-}
-
-function policyAllowsSelection(access: LoomModelPolicyAccess, selection: string): boolean {
-  const value = String(selection || "").trim();
-  if (!isManagedBuiltinSelection(value)) return true;
-  if (!access.enabled && Array.isArray(access.decisions) && access.decisions.length) return false;
-  const decision = access.decisions?.find((item) => item.model_id === value);
-  if (decision) return Boolean(decision.enabled);
-  if (access.schema_version === 2) return false;
-  if (!Array.isArray(access.decisions)) return access.enabled && access.models.includes(value);
-  const groupId = modelPolicyGroup(value);
-  const group = groupId ? access.model_groups?.find((item) => item.id === groupId) : undefined;
-  if (group && group.enabled === false) return false;
-  // Dynamic provider catalogs can contain models not known to the central
-  // catalogue yet. Group policy is still applied here; exact per-model policy
-  // is checked again by the App Server before the next turn starts.
-  return true;
-}
-
-function policyBlockedMessage(access: LoomModelPolicyAccess, selection: string): string {
-  const decision = access.decisions?.find((item) => item.model_id === selection);
-  const source = String(decision?.source || "policy");
-  if (source === "catalog" || (!decision && access.schema_version === 2)) return "Model is no longer available from this provider";
-  if (source === "global_group") return "Disabled by Loom Admin · model group";
-  if (source === "global") return "Disabled by Loom Admin · global policy";
-  if (source === "account") return "Disabled by Loom Admin · account access";
-  if (source === "user") return "Disabled by Loom Admin · account rule";
-  if (source === "group") return "Disabled by Loom Admin · access group";
-  return "Disabled by Loom Admin model policy";
-}
-
-function applyModelPolicy(
-  snapshot: ReturnType<DesktopModelManager["snapshot"]>,
-  access: LoomModelPolicyAccess | null,
-): ReturnType<DesktopModelManager["snapshot"]> {
-  if (!access) {
-    const gate = <T extends ModelProfile>(profile: T): T => profile.kind === "builtin"
-      ? { ...profile, available: false, statusMessage: "Model permissions unavailable. Retry shortly." }
-      : profile;
-    return { ...snapshot, profiles: snapshot.profiles.map(gate), primary: gate(snapshot.primary),
-      current: snapshot.current ? gate(snapshot.current) : null };
-  }
-  const profiles = snapshot.profiles.map((profile) => {
-    if (profile.kind !== "builtin" || policyAllowsSelection(access, profile.selection)) return profile;
-    return {
-      ...profile,
-      available: false,
-      statusMessage: policyBlockedMessage(access, profile.selection),
-    };
-  });
-  const primary = profiles.find((profile) => profile.selection === snapshot.primary.selection) ?? snapshot.primary;
-  const current = snapshot.current && !policyAllowsSelection(access, snapshot.current.selection)
-    ? { ...snapshot.current, available: false, statusMessage: policyBlockedMessage(access, snapshot.current.selection) }
-    : snapshot.current;
-  return { ...snapshot, profiles, primary, current };
-}
-
 function applySignedOutModelGate(
   snapshot: ReturnType<DesktopModelManager["snapshot"]>,
   authenticated: boolean,
 ): ReturnType<DesktopModelManager["snapshot"]> {
   if (authenticated) return snapshot;
   const message = "Sign in to Loom to use models";
-  const profiles = snapshot.profiles.map((profile) => ({ ...profile, available: false, statusMessage: message }));
+  const profiles = snapshot.profiles.map((profile) => ({ ...profile, available: false, accessState: "signed-out" as const, statusMessage: message }));
   const primary = profiles.find((profile) => profile.selection === snapshot.primary.selection)
     ?? { ...snapshot.primary, available: false, statusMessage: message };
   const current = snapshot.current ? { ...snapshot.current, available: false, statusMessage: message } : null;
   return { ...snapshot, profiles, primary, current };
 }
 
-async function currentModelPolicy(): Promise<LoomModelPolicyAccess | null> {
+async function currentModelPolicy(force = false): Promise<LoomModelPolicyAccess | null> {
   try {
-    return await accountClient.modelPolicyAccess();
+    return await accountClient.modelPolicyAccess(force);
   } catch (error) {
     // The App Server performs fail-closed enforcement before every signed-in
     // built-in turn. Keeping the last local catalogue visible during an outage
@@ -1477,23 +1415,35 @@ async function assertModelSelectionAllowed(selection: string): Promise<void> {
   await assertSignedInForModels();
   const value = String(selection || "").trim();
   if (!isManagedBuiltinSelection(value)) return;
-  const access = await accountClient.modelPolicyCheck(value);
-  if (!access) throw new Error("Model permissions unavailable. Retry shortly.");
-  if (!policyAllowsSelection(access, value)) {
+  const view = accountClient.cachedModelPolicy();
+  // Choosing a connection is not an inference request. Only a fresh explicit
+  // denial blocks selection; the gateway authorizes every actual request.
+  const access = view.access;
+  if (view.state === "fresh" && access && !policyAllowsSelection(access, value)) {
     throw new Error(policyBlockedMessage(access, value));
   }
 }
 
+async function presentModels(snapshot: ReturnType<DesktopModelManager["snapshot"]>) {
+  const view = accountClient.cachedModelPolicy();
+  const gated = applySignedOutModelGate(applyModelPolicy(snapshot, view.access), await accountClient.hasAuthenticatedSession());
+  return { ...gated, policySync: { state: view.state, checkedAt: view.checkedAt } };
+}
+
 async function runListModels(forceRefresh = false): Promise<ReturnType<DesktopModelManager["snapshot"]>> {
-  const [snapshot, authenticated] = await Promise.all([
-    modelManager.listSnapshot(Boolean(forceRefresh)),
-    accountClient.hasAuthenticatedSession(),
-  ]);
-  const access = await currentModelPolicy();
-  const authoritative = access?.catalog
-    ? await modelManager.applyServerCatalog(snapshot, access.catalog.models)
-    : snapshot;
-  return applySignedOutModelGate(applyModelPolicy(authoritative, access), authenticated && await accountClient.hasAuthenticatedSession());
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const identity = accountClient.modelIdentityRevision;
+    const [snapshot] = await Promise.all([
+      modelManager.listSnapshot(Boolean(forceRefresh)), accountClient.hasAuthenticatedSession(),
+    ]);
+    const access = await currentModelPolicy(forceRefresh);
+    if (identity !== accountClient.modelIdentityRevision) continue;
+    const authoritative = access?.catalog
+      ? await modelManager.applyServerCatalog(snapshot, access.catalog.models) : snapshot;
+    if (identity !== accountClient.modelIdentityRevision) continue;
+    return presentModels(authoritative);
+  }
+  throw new Error("Account changed while refreshing models. Retry with the current account.");
 }
 
 async function runRpcCall(method: string, params: Record<string, unknown> = {}): Promise<unknown> {
@@ -1598,7 +1548,7 @@ async function runUpdateModel(input: EditModelInput): Promise<ReturnType<Desktop
     throw new Error("Switch to another model before editing the active connection.");
   }
   modelManager.update(input);
-  return modelManager.snapshot();
+  return presentModels(modelManager.snapshot());
 }
 
 async function runSetReasoning(
@@ -1611,7 +1561,7 @@ async function runSetReasoning(
     const next = modelManager.setReasoning(String(kind || "").trim(), String(value || "").trim());
     try {
       const runtime = await rpc.call("runtime/set_reasoning", { kind: next.kind, value: next.value });
-      return { runtime, models: modelManager.snapshot() };
+      return { runtime, models: await presentModels(modelManager.snapshot()) };
     } catch (error) {
       if (previous) {
         try {
@@ -1643,7 +1593,7 @@ async function runSetReasoning(
   const current = runtimeReasoning && spec.reasoning
     ? { ...spec, reasoning: { ...spec.reasoning, kind: runtimeReasoning.kind || spec.reasoning.kind, value: runtimeReasoning.value || spec.reasoning.value } }
     : spec;
-  return { runtime: result.runtime ?? {}, models: modelManager.snapshotFor(current), thread: result.thread };
+  return { runtime: result.runtime ?? {}, models: await presentModels(modelManager.snapshotFor(current)), thread: result.thread };
 }
 
 /**

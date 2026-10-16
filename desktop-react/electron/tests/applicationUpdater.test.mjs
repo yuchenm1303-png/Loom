@@ -8,6 +8,7 @@ const home = await fs.mkdtemp(path.join(os.tmpdir(), "loom-app-update-"));
 const { release, contents } = fixture();
 let channelRelease = release; let requests = 0, corrupt = true, safe = false, restarted = false;
 let desktopConnected = true, relaunchArgs;
+let allowed = true;
 mock.module("electron", { namedExports: {
   app: { isPackaged: true, getVersion: () => "0.1.82", getPath: () => home, whenReady: () => ({ then() {} }),
     relaunch(options) { restarted = true; relaunchArgs = options.args; }, quit() {} },
@@ -19,7 +20,7 @@ mock.module("electron", { namedExports: {
 mock.module("../../dist-electron/hostProcess.js", { namedExports: { isHostProcess: true, hostHasDesktopClients: () => desktopConnected, broadcastHostEvent() {} } });
 const { writeUpdatePreferences } = await import("../../dist-electron/updatePreferences.js");
 // Keep the entitlement boundary isolated; dedicated tests verify its account-service logic.
-mock.module("../../dist-electron/updateEligibility.js", { namedExports: { mayReceiveUpdates: async () => true } });
+mock.module("../../dist-electron/updateEligibility.js", { namedExports: { mayReceiveUpdates: async () => allowed } });
 const updater = await import("../../dist-electron/applicationUpdater.js");
 test("application updates stage automatically, reject damaged files and respect the active-task restart guard", async () => {
   try {
@@ -33,6 +34,14 @@ test("application updates stage automatically, reject damaged files and respect 
     await updater.checkApplicationUpdates();
     assert.equal(updater.applicationUpdateState().availableVersion, "0.1.82+2");
     assert.equal(JSON.parse(await fs.readFile(path.join(home, "application-updates/state.json"), "utf8")).ready, 2);
+    allowed = false;
+    await updater.checkApplicationUpdates();
+    assert.equal(updater.applicationUpdateState().phase, "error");
+    assert.equal(JSON.parse(await fs.readFile(path.join(home, "application-updates/state.json"), "utf8")).ready, 2,
+      "temporary verification failure must not discard a verified download");
+    allowed = true;
+    await updater.checkApplicationUpdates();
+    assert.equal(updater.applicationUpdateState().phase, "downloaded");
     // An invalid newer release must preserve the verified ready version.
     channelRelease = { ...release, build: 3, files: [] };
     await updater.checkApplicationUpdates();
@@ -46,6 +55,9 @@ test("application updates stage automatically, reject damaged files and respect 
     assert.equal(await updater.maybeInstallApplicationUpdate(), false);
     assert.equal(restarted, false);
     safe = true;
+    updater.registerApplicationUpdatePriorityGuard(() => false);
+    assert.equal(await updater.maybeInstallApplicationUpdate(), false, "installer check takes priority over component restart");
+    updater.registerApplicationUpdatePriorityGuard(() => true);
     writeUpdatePreferences({ autoRestartAfterUpdate: false });
     assert.equal(await updater.maybeInstallApplicationUpdate(), false);
     assert.equal(restarted, false);

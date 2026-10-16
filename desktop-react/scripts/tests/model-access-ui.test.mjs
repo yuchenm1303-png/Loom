@@ -47,7 +47,7 @@ test("signed-in turn requests authorize before model initialization and dispatch
   assert.deepEqual(calls, ["auth", "ready", "call"]);
 });
 
-function selectionEntry(authenticate, check) {
+function selectionEntry(authenticate, view = { state: "unavailable", access: null }) {
   const file = ts.createSourceFile("main.ts", main, ts.ScriptTarget.ES2022, true);
   const declaration = file.statements.find(node => ts.isFunctionDeclaration(node) && node.name?.text === "assertModelSelectionAllowed");
   const compiled = ts.transpileModule(declaration.getText(file), {
@@ -55,7 +55,7 @@ function selectionEntry(authenticate, check) {
   }).outputText;
   return new Function("assertSignedInForModels", "isManagedBuiltinSelection", "accountClient", "policyAllowsSelection", "policyBlockedMessage",
     `${compiled}; return assertModelSelectionAllowed;`)(authenticate, isManagedBuiltinSelection,
-    { modelPolicyCheck: check }, access => access.enabled, () => "Disabled by Loom Admin");
+    { cachedModelPolicy: () => view }, access => access.enabled, () => "Disabled by Loom Admin");
 }
 
 test("personal connections authenticate without depending on the built-in policy service", async () => {
@@ -64,21 +64,19 @@ test("personal connections authenticate without depending on the built-in policy
   await check("profile:m123456789abc");
   await check("saved:legacy");
   assert.equal(authenticated, 2);
-  await assert.rejects(check("builtin:deepseek"), /policy offline/);
-  await assert.rejects(check("managed:relay"), /policy offline/);
+  await check("builtin:deepseek");
+  await check("managed:relay");
   const signedOut = selectionEntry(async () => { throw new Error("Sign in required"); }, async () => assert.fail("must authenticate first"));
   await assert.rejects(signedOut("profile:m123456789abc"), /Sign in required/);
 });
 
-test("built-in model checks retain denial and unavailable-policy enforcement", async () => {
+test("model selection blocks fresh explicit denial but does not turn an outage into a denial", async () => {
   for (const selection of ["builtin:deepseek", "managed:relay"]) {
-    const denied = selectionEntry(async () => {}, async value => {
-      assert.equal(value, selection);
-      return { enabled: false };
-    });
+    const denied = selectionEntry(async () => {}, { state: "fresh", access: { enabled: false } });
     await assert.rejects(denied(` ${selection} `), /Disabled by Loom Admin/);
-    await assert.rejects(selectionEntry(async () => {}, async () => null)(selection), /permissions unavailable/);
-    await selectionEntry(async () => {}, async () => ({ enabled: true }))(selection);
+    await selectionEntry(async () => {})(selection);
+    await selectionEntry(async () => {}, { state: "stale", access: { enabled: false } })(selection);
+    await selectionEntry(async () => {}, { state: "fresh", access: { enabled: true } })(selection);
   }
 });
 
@@ -106,7 +104,7 @@ test("new chats and both draft and existing-chat switches accept real personal I
   const changeModel = async action => { const spec = await action(); switches.push({ id: "draft", ...spec }); return spec; };
   const entries = new Function("assertSignedInForModels", "isManagedBuiltinSelection", "accountClient", "modelManager", "rpc", "changeThreadModel", "changeModel",
     `${compiled}; return {${names.join(",")}};`)(async () => {}, isManagedBuiltinSelection,
-    { modelPolicyCheck: async () => { throw new Error("policy offline"); } }, manager, rpc, changeThreadModel, changeModel);
+    { cachedModelPolicy: () => ({ state: "unavailable", access: null }) }, manager, rpc, changeThreadModel, changeModel);
   const started = await entries.runRpcCall("thread/start", { title: "test" });
   assert.equal(started.thread.modelSelection, personal.selection);
   await entries.runRpcCall("turn/start", { threadId: "new-thread" });
@@ -117,9 +115,9 @@ test("new chats and both draft and existing-chat switches accept real personal I
   assert.deepEqual(requests.map(item => item.method), ["thread/start", "turn/start"]);
   assert.deepEqual(switches.map(item => item.id), ["new-thread", "draft", "existing-thread", "draft", "existing-thread"]);
   assert.ok(switches.every(item => item.selection === personal.selection));
-  await assert.rejects(entries.applySwitchModelProfile("builtin:deepseek"), /policy offline/);
-  await assert.rejects(entries.applySwitchModelProfile("existing-thread", "managed:relay"), /policy offline/);
-  assert.equal(switches.length, 5, "managed requests must stop before changing the runtime");
+  await entries.applySwitchModelProfile("builtin:deepseek");
+  await entries.applySwitchModelProfile("existing-thread", "managed:relay");
+  assert.equal(switches.length, 7, "selection is local intent; actual inference is still authorized by the gateway");
 });
 
 test("model picker keeps blocked models visible and explains the restriction", () => {

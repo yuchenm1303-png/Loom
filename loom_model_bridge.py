@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from loom_image_capability import ImageCapabilityStore, image_capability, image_support
-from loom_builtin_models import account_builtin_profile
+from loom_builtin_models import account_builtin_profile, validate_model_connection
 
 import hashlib
 import json
@@ -1212,16 +1212,16 @@ def _resolve(
     requested = explicit_selection or _active_selection(store, selection_store)
     profile = _with_reasoning(_base_profile_for_selection(store, requested), reasoning_store)
     if profile.get("authMode") == "loom-account":
-        return {**profile, "provider": profile["adapter"], "apiKey": ""}
+        return validate_model_connection({**profile, "provider": profile["adapter"], "apiKey": ""})
 
     saved = store.model_for_selection(requested)
     if saved is None:
         raise ValueError(f"unknown model selection: {requested!r}")
-    return {
+    return validate_model_connection({
         **profile,
         "provider": saved.adapter.value,
         "apiKey": store.secret_for(saved),
-    }
+    })
 
 
 def resolve_model_spec(
@@ -1265,7 +1265,7 @@ def resolve_model_spec(
                 "provider": "openai-compatible",
                 "apiKey": "",
             }
-        return resolved
+        return validate_model_connection(resolved)
 
     effective_selection = (
         _canonical_builtin_selection(requested_selection, requested_model)
@@ -1285,7 +1285,7 @@ def resolve_model_spec(
             "model": requested_model,
             "reasoning": described.get("reasoning"),
         }
-    return resolved
+    return validate_model_connection(resolved)
 
 
 def _read_stdin_object() -> dict[str, Any]:

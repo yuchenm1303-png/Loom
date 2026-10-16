@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
-import { ChevronDown, ChevronUp, CircleAlert, Maximize2, RefreshCw, Square, Terminal, Trash2, X } from "./icons";
+import { ChevronDown, ChevronUp, CircleAlert, Maximize2, RefreshCw, Square, Terminal, Trash2 } from "./icons";
 import { useI18n } from "../i18n";
+import { useMotionPresence } from "../motion/useMotionPresence";
+import { PanelHeader } from "./PanelHeader";
 import "./background-tasks.css";
 
 interface BackgroundProcess {
@@ -58,6 +60,8 @@ export function BackgroundTaskPanel({
 }) {
   const { language } = useI18n();
   const zh = language === "zh-CN";
+  // The palette leaves the way it arrived: held mounted for its exit, like every panel.
+  const presence = useMotionPresence(open, 235);
   const [processes, setProcesses] = useState<BackgroundProcess[]>([]);
   const [detail, setDetail] = useState<TaskDetail | null>(null);
   const [selectedId, setSelectedId] = useState("");
@@ -175,7 +179,7 @@ export function BackgroundTaskPanel({
     }
   }, [workspace, clearing, onRunningCount]);
 
-  if (!open) return null;
+  if (!presence.mounted) return null;
   const list = (items: BackgroundProcess[]) => items.map(process => (
     <li key={process.processId} className="background-task-item">
       <div className="background-task-item-main">
@@ -227,15 +231,26 @@ export function BackgroundTaskPanel({
   ));
 
   return createPortal(
-    <section className={"background-task-panel" + (expanded ? " is-expanded" : "")} role="dialog" aria-modal="false" aria-label={zh ? "后台任务" : "Background tasks"}>
-      <div className="background-task-topbar">
-        <div className="background-task-heading"><Terminal size={18} /><strong>{zh ? "后台任务" : "Background tasks"}</strong></div>
-        <div className="background-task-actions">
-          <button type="button" onClick={() => void clearFinished()} disabled={!finished.length || clearing} title={zh ? "清除已结束的记录" : "Clear finished records"} aria-label={zh ? "清除已结束的记录" : "Clear finished records"}><Trash2 size={16} /></button>
-          <button type="button" onClick={() => setExpanded(value => !value)} title={zh ? "切换大小" : "Toggle size"} aria-label={zh ? "切换大小" : "Toggle size"}><Maximize2 size={16} /></button>
-          <button type="button" onClick={onClose} title={zh ? "关闭面板" : "Close panel"} aria-label={zh ? "关闭面板" : "Close panel"}><X size={18} /></button>
-        </div>
-      </div>
+    <section
+      className={"background-task-panel pl-float pl-reveal" + (expanded ? " is-expanded" : "")}
+      data-motion-phase={presence.phase}
+      inert={!open}
+      role="dialog"
+      aria-modal="false"
+      aria-label={zh ? "后台任务" : "Background tasks"}
+    >
+      <PanelHeader
+        className="background-task-topbar"
+        mark={<Terminal size={17} strokeWidth={1.8} />}
+        title={zh ? "后台任务" : "Background tasks"}
+        subtitle={zh ? `运行中 ${running.length} · 已结束 ${finished.length}` : `${running.length} running · ${finished.length} finished`}
+        actions={<>
+          <button type="button" className="pl-icon-button" onClick={() => void clearFinished()} disabled={!finished.length || clearing} title={zh ? "清除已结束的记录" : "Clear finished records"} aria-label={zh ? "清除已结束的记录" : "Clear finished records"}><Trash2 size={16} /></button>
+          <button type="button" className="pl-icon-button" onClick={() => setExpanded(value => !value)} title={zh ? "切换大小" : "Toggle size"} aria-label={zh ? "切换大小" : "Toggle size"}><Maximize2 size={16} /></button>
+        </>}
+        closeLabel={zh ? "关闭面板" : "Close panel"}
+        onClose={onClose}
+      />
       {error ? <div className="background-task-notice"><CircleAlert size={14} />{error} <RefreshCw size={13} /></div> : null}
       <div className="background-task-scroll">
         <div className="background-task-group-label">

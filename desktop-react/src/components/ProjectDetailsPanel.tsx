@@ -12,7 +12,6 @@ import {
   RotateCcw,
   Save,
   ShieldAlert,
-  X,
 } from "./icons";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMotionPresence } from "../motion/useMotionPresence";
@@ -20,6 +19,7 @@ import { startVisiblePolling } from "../visiblePolling";
 import type { ProjectRecord, ThreadRecord, TranscriptItem } from "../types/loom";
 import { ProjectAgentFilesCard } from "./ProjectAgentFilesCard";
 import { ProjectMemoryCard } from "./ProjectMemoryCard";
+import { PanelHeader } from "./PanelHeader";
 import { ProjectRepositoryCard } from "./ProjectRepositoryCard";
 import "./project-details-panel.css";
 import "./project-details-git.css";
@@ -426,20 +426,20 @@ export function ProjectDetailsPanel({
   };
 
   return (
-    <aside className="project-details-panel" data-motion-phase={presence.phase} inert={!open} data-open={open ? "true" : "false"} aria-label="Project details">
-      <header className="project-details-header">
-        <div className="project-details-mark" aria-hidden="true">
-          <Folder size={18} strokeWidth={1.85} />
-        </div>
-        <div className="project-details-title">
-          <span>项目</span>
-          <strong title={project.name}>{project.name}</strong>
-          <code title={project.root}>{displayPath(project.root)}</code>
-        </div>
-        <button type="button" className="project-details-close" onClick={onClose} aria-label="Close project details">
-          <X size={16} strokeWidth={1.9} />
-        </button>
-      </header>
+    <aside className="project-details-panel pl-dock" data-motion-phase={presence.phase} inert={!open} data-open={open ? "true" : "false"} aria-label="Project details">
+      <PanelHeader
+        className="project-details-header"
+        mark={<Folder size={18} strokeWidth={1.85} />}
+        markClassName="project-details-mark"
+        title={project.name}
+        titleHint={project.name}
+        subtitle={displayPath(project.root)}
+        subtitleCode
+        subtitleHint={project.root}
+        closeLabel="Close project details"
+        closeClassName="project-details-close"
+        onClose={onClose}
+      />
 
       <div className="project-details-body">
         <div className="project-overview-grid" aria-label="Project overview">

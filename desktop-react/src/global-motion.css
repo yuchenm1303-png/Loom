@@ -14,6 +14,13 @@
   --loom-ease-out: cubic-bezier(.2, .74, .18, 1);
   --loom-ease-standard: cubic-bezier(.22, .7, .18, 1);
   --loom-ease-in: cubic-bezier(.42, 0, .72, .2);
+  /* Panel language (components/panel-language.css). What arrives from an edge
+     (the docks) keeps the a61 depth curve below; what appears in place (dialogs,
+     palettes, their scrims) is revealed by opacity alone, in one pair of
+     durations, and always leaves again: no panel is unmounted in one frame. */
+  --loom-ease-depth: cubic-bezier(.16, .78, .18, 1);
+  --loom-motion-reveal: 240ms;
+  --loom-motion-conceal: 200ms;
 }
 
 .app-shell.is-settings-obscured {

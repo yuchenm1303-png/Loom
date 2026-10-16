@@ -1,33 +1,30 @@
+/* Artifact preview dock. Material, edge and header come from the panel language
+   (panel-language.css: .pl-dock, PanelHeader); this file keeps the layout and
+   the parts that are only the artifacts': the library and the preview canvas. */
 :root {
   --artifact-preview-pane-width: clamp(460px, 44vw, 680px);
 }
-.artifact-library { min-height: 0; overflow: auto; padding: 20px; color: #e3e5ee; }
-.artifact-search { display: flex; align-items: center; gap: 9px; padding: 11px 13px; border: 1px solid rgba(145,140,170,.2); border-radius: 12px; color: #9398aa; background: rgba(145,140,170,.05); }
-.artifact-search:focus-within { border-color: #9182e4; box-shadow: 0 0 0 3px rgba(145,130,228,.1); }
-.artifact-search input { min-width: 0; width: 100%; border: 0; outline: 0; background: transparent; color: inherit; font: inherit; }
-.artifact-library-note { font-size: 12px; line-height: 1.7; color: #969bab; margin: 13px 2px 20px; }
+.artifact-library { min-height: 0; overflow: auto; padding: 20px; color: var(--pl-ink); }
+.artifact-library-note { font-size: 12px; line-height: 1.7; color: var(--pl-muted); margin: 13px 2px 20px; }
 .artifact-library-list { display: grid; gap: 12px; }
-.artifact-library-card { position: relative; border: 1px solid rgba(145,140,170,.18); border-radius: 16px; background: rgba(145,140,170,.045); transition: background 180ms ease, border-color 180ms ease, transform 180ms ease; animation: artifact-card-arrive 220ms ease-out both; }
-.artifact-library-card:hover { border-color: rgba(145,130,228,.48); background: rgba(145,130,228,.08); transform: translateY(-2px); }
+.artifact-library-card { position: relative; animation: artifact-card-arrive var(--loom-motion-reveal, 240ms) var(--loom-ease-depth, ease-out) both; }
 .artifact-card-main { width: 100%; display: flex; align-items: center; gap: 13px; padding: 17px 45px 17px 15px; border: 0; background: transparent; color: inherit; text-align: left; cursor: pointer; border-radius: inherit; }
-.artifact-card-icon { display: grid; place-items: center; flex-shrink: 0; width: 42px; height: 46px; border-radius: 12px; color: #aa9ef7; background: rgba(145,130,228,.1); }
+.artifact-card-icon { display: grid; place-items: center; flex-shrink: 0; width: 42px; height: 46px; border-radius: 12px; color: var(--pl-accent); background: var(--pl-accent-wash); }
 .artifact-card-copy { min-width: 0; flex: 1; display: grid; gap: 6px; }
 .artifact-card-copy strong { font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.artifact-card-copy span { font-size: 11px; color: #999eb0; }
-.artifact-card-copy small { color: #828899; font-size: 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.artifact-card-external { position: absolute; right: 10px; top: 50%; transform: translateY(-50%); display: grid; place-items: center; width: 30px; height: 30px; border: 0; border-radius: 8px; color: #9990d7; background: transparent; cursor: pointer; }
-.artifact-card-external:hover { background: rgba(145,130,228,.15); }
-.artifact-library-empty { display: grid; justify-items: center; gap: 13px; padding: 64px 18px; text-align: center; color: #9791b4; }
-.artifact-library-empty strong { font-size: 14px; }
-.artifact-library-empty span { font-size: 12px; line-height: 1.7; color: #9298a7; }
+.artifact-card-copy span { font-size: 11.5px; color: var(--pl-muted); }
+.artifact-card-copy small { color: var(--pl-faint); font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.artifact-card-external { position: absolute; right: 10px; top: 50%; transform: translateY(-50%); display: grid; place-items: center; width: 30px; height: 30px; border: 0; border-radius: var(--pl-radius-control); color: var(--pl-muted); background: transparent; cursor: pointer; transition: color var(--loom-motion-control, 170ms) ease, background-color var(--loom-motion-control, 170ms) ease; }
+.artifact-card-external:hover { color: var(--pl-ink); background: var(--pl-hover); }
+.artifact-library-empty { display: grid; justify-items: center; gap: 13px; padding: 64px 18px; text-align: center; color: var(--pl-muted); }
+.artifact-library-empty strong { font-size: 14px; font-weight: 650; color: var(--pl-ink); }
+.artifact-library-empty span { font-size: 12.5px; line-height: 1.7; color: var(--pl-muted); }
 .artifact-back { display: grid; place-items: center; width: 100%; height: 100%; border: 0; background: transparent; color: inherit; cursor: pointer; border-radius: inherit; }
-.artifact-card-main:focus-visible, .artifact-card-external:focus-visible, .artifact-back:focus-visible { outline: 2px solid #9182e4; outline-offset: 3px; }
-html[data-loom-theme="light"] .artifact-library { color: #30323e; background: #f8f9fc; }
-html[data-loom-theme="light"] .artifact-library-card { background: #fff; box-shadow: 0 3px 12px rgba(40,35,75,.025); }
-html[data-loom-theme="light"] .artifact-library-card:hover { background: #fbfaff; }
-@keyframes artifact-card-arrive { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: none; } }
-@media (prefers-reduced-motion: reduce) { .artifact-library-card { animation: none; transition: none; } }
-html[data-loom-reduced-motion="true"] .artifact-library-card { animation: none; transition: none; }
+.artifact-card-main:focus-visible, .artifact-card-external:focus-visible, .artifact-back:focus-visible { outline: 2px solid var(--pl-focus); outline-offset: -2px; }
+/* A card that arrives is revealed, not moved: it carries text. */
+@keyframes artifact-card-arrive { from { opacity: 0; } to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .artifact-library-card { animation: none; } }
+html[data-loom-reduced-motion="true"] .artifact-library-card { animation: none; }
 
 .app-shell.with-artifact-preview {
   padding-right: var(--artifact-preview-pane-width);
@@ -42,9 +39,6 @@ html[data-loom-reduced-motion="true"] .artifact-library-card { animation: none; 
   min-height: 0;
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
-  border-left: 1px solid rgba(255,255,255,.075);
-  background: #0d0f13;
-  box-shadow: -18px 0 44px rgba(0,0,0,.18);
   overflow: hidden;
   contain: layout paint style;
   backface-visibility: hidden;
@@ -71,106 +65,11 @@ html[data-loom-reduced-motion="true"] .artifact-library-card { animation: none; 
   transition-timing-function: var(--loom-ease-in,cubic-bezier(.42,0,.72,.2));
 }
 
-.artifact-preview-header {
-  min-width: 0;
-  min-height: 70px;
-  display: grid;
-  grid-template-columns: 36px minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 11px;
-  padding: 11px 12px 10px 14px;
-  border-bottom: 1px solid rgba(255,255,255,.065);
-  background:
-    radial-gradient(circle at 16% 0%, rgba(139,124,246,.1), transparent 38%),
-    #111318;
-}
-
-.artifact-preview-mark {
-  width: 36px;
-  height: 36px;
-  display: grid;
-  place-items: center;
-  border: 1px solid rgba(139,124,246,.17);
-  border-radius: 11px;
-  background: rgba(139,124,246,.08);
-  color: #b7afff;
-}
-
-.artifact-preview-heading {
-  min-width: 0;
-  display: grid;
-  gap: 2px;
-}
-
-.artifact-preview-heading > span {
-  color: #978dea;
-  font-size: 9.5px;
-  line-height: 12px;
-  font-weight: 760;
-  letter-spacing: .11em;
-  text-transform: uppercase;
-}
-
-.artifact-preview-heading strong,
-.artifact-preview-heading code {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.artifact-preview-heading strong {
-  color: #eceef4;
-  font-size: 13px;
-  line-height: 17px;
-  font-weight: 690;
-}
-
-.artifact-preview-heading code {
-  color: #747d8a;
-  font: 9.5px/13px var(--loom-code-font, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
-}
-
-.artifact-preview-actions {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-}
-
-.artifact-preview-actions button,
-.artifact-preview-state button {
-  appearance: none;
-  border: 1px solid rgba(255,255,255,.07);
-  border-radius: 8px;
-  background: rgba(255,255,255,.025);
-  color: #89919e;
-  cursor: pointer;
-}
-
-.artifact-preview-actions button {
-  width: 30px;
-  height: 30px;
-  display: grid;
-  place-items: center;
-}
-
-.artifact-preview-actions button:hover,
-.artifact-preview-state button:hover {
-  color: #eeeaff;
-  border-color: rgba(139,124,246,.24);
-  background: rgba(139,124,246,.09);
-}
-
 .artifact-preview-canvas {
   min-width: 0;
   min-height: 0;
   position: relative;
-  background:
-    linear-gradient(45deg, rgba(255,255,255,.012) 25%, transparent 25%, transparent 75%, rgba(255,255,255,.012) 75%),
-    linear-gradient(45deg, rgba(255,255,255,.012) 25%, transparent 25%, transparent 75%, rgba(255,255,255,.012) 75%),
-    #0a0c0f;
-  background-size: 20px 20px;
-  background-position: 0 0, 10px 10px;
+  background: var(--pl-well);
 }
 
 .artifact-preview-frame {
@@ -190,32 +89,43 @@ html[data-loom-reduced-motion="true"] .artifact-library-card { animation: none; 
   gap: 9px;
   padding: 24px;
   text-align: center;
-  color: #858e9b;
+  color: var(--pl-muted);
 }
 
 .artifact-preview-state strong {
-  color: #c8cdd6;
-  font-size: 12px;
+  color: var(--pl-secondary);
+  font-size: 13px;
   font-weight: 650;
 }
 
 .artifact-preview-state span {
   max-width: 420px;
-  color: #737c89;
-  font-size: 10.5px;
-  line-height: 16px;
+  color: var(--pl-muted);
+  font-size: 12px;
+  line-height: 18px;
   overflow-wrap: anywhere;
 }
 
 .artifact-preview-state button {
   min-height: 30px;
   padding: 0 11px;
+  border: 1px solid var(--pl-line);
+  border-radius: var(--pl-radius-control);
+  background: var(--pl-card);
+  color: var(--pl-secondary);
+  cursor: pointer;
   font: inherit;
-  font-size: 10.5px;
+  font-size: 12px;
+}
+
+.artifact-preview-state button:hover {
+  border-color: var(--pl-accent-line);
+  background: var(--pl-card-hover);
+  color: var(--pl-ink);
 }
 
 .artifact-preview-state.is-error strong {
-  color: #f1c2ca;
+  color: var(--pl-danger);
 }
 
 .artifact-preview-spinner {
@@ -264,47 +174,6 @@ body.loom-artifact-dock-resizing {
 
 body.loom-artifact-dock-resizing * {
   cursor: col-resize !important;
-}
-
-html[data-loom-theme="light"] .artifact-preview-dock {
-  border-left-color: rgba(31,35,42,.09);
-  background: #f7f8fa;
-  box-shadow: -15px 0 36px rgba(35,39,48,.09);
-}
-
-html[data-loom-theme="light"] .artifact-preview-header {
-  border-bottom-color: rgba(31,35,42,.08);
-  background:
-    radial-gradient(circle at 16% 0%, rgba(105,90,216,.08), transparent 38%),
-    #fbfbfc;
-}
-
-html[data-loom-theme="light"] .artifact-preview-mark {
-  border-color: rgba(105,90,216,.15);
-  background: rgba(105,90,216,.055);
-  color: #6759c7;
-}
-
-html[data-loom-theme="light"] .artifact-preview-heading > span {
-  color: #6759c7;
-}
-
-html[data-loom-theme="light"] .artifact-preview-heading strong {
-  color: #252832;
-}
-
-html[data-loom-theme="light"] .artifact-preview-heading code {
-  color: #818895;
-}
-
-html[data-loom-theme="light"] .artifact-preview-actions button {
-  border-color: rgba(31,35,42,.08);
-  background: rgba(31,35,42,.025);
-  color: #747c89;
-}
-
-html[data-loom-theme="light"] .artifact-preview-canvas {
-  background: #eef0f4;
 }
 
 @media (max-width: 980px) {

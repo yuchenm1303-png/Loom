@@ -14,6 +14,7 @@ import { createPortal } from "react-dom";
 import { useI18n } from "../i18n";
 import { useMotionPresence } from "../motion/useMotionPresence";
 import type { TranscriptItem } from "../types/loom";
+import { PanelHeader } from "./PanelHeader";
 import "./review-workspace.css";
 
 type ReviewRow =
@@ -408,33 +409,32 @@ export function ReviewWorkspace({ items, open, onClose }: ReviewWorkspaceProps) 
   };
 
   return createPortal(
-    <div className="review-workspace" data-motion-phase={presence.phase} inert={!open} data-open={open ? "true" : "false"} role="dialog" aria-modal="true" aria-label={reviewTitle}>
-      <header className="review-topbar">
-        <div className="review-heading">
-          <span className="review-heading-icon"><Files size={17} strokeWidth={1.8} /></span>
-          <div>
-            <strong>{reviewTitle}</strong>
-            <span>{reviewSubtitle}</span>
-          </div>
-        </div>
-        <div className="review-summary">
+    <div className="review-workspace pl-dock" data-motion-phase={presence.phase} inert={!open} data-open={open ? "true" : "false"} role="dialog" aria-modal="true" aria-label={reviewTitle}>
+      <PanelHeader
+        className="review-topbar"
+        mark={<Files size={17} strokeWidth={1.8} />}
+        markClassName="review-heading-icon"
+        title={reviewTitle}
+        subtitle={reviewSubtitle}
+        metaClassName="review-summary"
+        meta={<>
           <span>{files.length} {c.files}</span>
           <span className="review-additions">+{totals.additions}</span>
           <span className="review-deletions">−{totals.deletions}</span>
-        </div>
-        <button type="button" className="review-close" onClick={onClose} title={c.close} aria-label={c.close}>
-          <X size={17} strokeWidth={1.8} />
-        </button>
-      </header>
+        </>}
+        closeLabel={c.close}
+        closeClassName="review-close"
+        onClose={onClose}
+      />
 
       <div className="review-toolbar">
         <div className="review-round-label"><span>{c.current}</span><i /></div>
         <div className="review-file-navigation">
-          <button type="button" onClick={() => moveSelection(-1)} disabled={selectedIndex <= 0} title={c.previous} aria-label={c.previous}>
+          <button type="button" className="pl-icon-button" onClick={() => moveSelection(-1)} disabled={selectedIndex <= 0} title={c.previous} aria-label={c.previous}>
             <ChevronLeft size={15} />
           </button>
           <span>{visibleFiles.length && selectedIndex >= 0 ? `${selectedIndex + 1} / ${visibleFiles.length}` : "0 / 0"}</span>
-          <button type="button" onClick={() => moveSelection(1)} disabled={selectedIndex < 0 || selectedIndex >= visibleFiles.length - 1} title={c.next} aria-label={c.next}>
+          <button type="button" className="pl-icon-button" onClick={() => moveSelection(1)} disabled={selectedIndex < 0 || selectedIndex >= visibleFiles.length - 1} title={c.next} aria-label={c.next}>
             <ChevronRight size={15} />
           </button>
         </div>

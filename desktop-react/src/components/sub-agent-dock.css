@@ -13,9 +13,6 @@
   width: var(--agent-pane-width);
   min-width: 0;
   min-height: 0;
-  border-left: 1px solid rgba(255,255,255,.075);
-  background: #0d0f13;
-  box-shadow: -16px 0 38px rgba(0,0,0,.16);
   overflow: hidden;
   contain: layout paint style;
   backface-visibility: hidden;
@@ -45,12 +42,6 @@
   transition-timing-function: var(--loom-ease-in,cubic-bezier(.42,0,.72,.2));
 }
 
-html[data-loom-theme="light"] .sub-agent-dock {
-  border-left-color: rgba(31,35,42,.085);
-  background: #f7f8fa;
-  box-shadow: -14px 0 34px rgba(35,39,48,.08);
-}
-
 @media (max-width: 1180px) {
   :root {
     --agent-pane-width: clamp(340px, 34vw, 420px);
@@ -72,9 +63,6 @@ html[data-loom-theme="light"] .sub-agent-dock {
     padding-right: 0;
   }
 
-  .sub-agent-dock {
-    box-shadow: -22px 0 48px rgba(0,0,0,.24);
-  }
 }
 
 @media (prefers-reduced-motion: reduce) {

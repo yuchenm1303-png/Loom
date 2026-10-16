@@ -532,7 +532,43 @@ const handlers: Record<string, (args: Record<string, unknown>) => unknown> = {
   "approval/respond": () => ({}),
 };
 
+// The desktop's embedded browser is a native view; the fixture keeps the tab strip in memory so the browser panel renders and answers.
+type BrowserTab = { id: string; url: string; title: string; loading: boolean; canGoBack: boolean; canGoForward: boolean; aiAllowed?: boolean };
+type BrowserState = { tabs: BrowserTab[]; activeId: string | null };
+const browserListeners = new Set<(state: BrowserState) => void>();
+let browserTabSerial = 2;
+let browserState: BrowserState = {
+  tabs: [
+    { id: "tab-1", url: "https://example.com/", title: "Example Domain", loading: false, canGoBack: false, canGoForward: false, aiAllowed: true },
+    { id: "tab-2", url: "https://loom.example/docs", title: "Loom documentation", loading: true, canGoBack: true, canGoForward: false },
+  ],
+  activeId: "tab-1",
+};
+function embeddedBrowser(command: Record<string, unknown>): BrowserState {
+  const tabs = browserState.tabs.map((tab) => ({ ...tab }));
+  let activeId = browserState.activeId;
+  const active = tabs.find((tab) => tab.id === activeId);
+  switch (command.action) {
+    case "select-tab": activeId = String(command.tabId); break;
+    case "close-tab": {
+      const index = tabs.findIndex((tab) => tab.id === command.tabId);
+      if (index >= 0) tabs.splice(index, 1);
+      if (activeId === command.tabId) activeId = tabs[Math.max(0, index - 1)]?.id ?? null;
+      break;
+    }
+    case "new-tab": { browserTabSerial += 1; const id = `tab-${browserTabSerial}`; tabs.push({ id, url: "", title: "", loading: false, canGoBack: false, canGoForward: false }); activeId = id; break; }
+    case "navigate": if (active) { active.url = String(command.url); active.title = String(command.url); } break;
+    case "allow-ai": { const tab = tabs.find((entry) => entry.id === command.tabId); if (tab) tab.aiAllowed = Boolean(command.enabled); break; }
+    default: break;
+  }
+  browserState = { tabs, activeId };
+  if (command.action !== "snapshot" && command.action !== "bounds") browserListeners.forEach((listener) => listener(browserState));
+  return browserState;
+}
+
 const bridge: Record<string, unknown> = {
+  embeddedBrowser: async (command: Record<string, unknown>) => embeddedBrowser(command),
+  onEmbeddedBrowserChange: (listener: (state: BrowserState) => void) => { browserListeners.add(listener); return () => browserListeners.delete(listener); },
   connect: async () => ({ protocolVersion: 1, serverInfo: { name: "live-fixture", version: "0" }, capabilities: {},
     runtime: { model: profile.name, defaultWorkspace: workspace, defaultPermissionMode: "full-access",
       permissionModes: ["read-only", "approval", "workspace", "full-access"] } }),

@@ -2,6 +2,7 @@ import { spawn, spawnSync } from "node:child_process";
 import path from "node:path";
 import { invokeOptionalBridgeOperation } from "./bridgeProtocol.js";
 import { currentHostRuntime, resolveHostPythonExecutable } from "./hostRuntime.js";
+import { assertModelConnection } from "./modelConnection.js";
 
 export interface ModelReasoningOption {
   value: string;
@@ -19,6 +20,10 @@ export interface ModelReasoningState {
 }
 
 export interface ModelProfile {
+  accessState?: "personal" | "allowed" | "denied" | "unknown" | "not-listed" | "signed-out";
+  catalogState?: "available" | "pending-removal" | "retired" | "unknown";
+  catalogAvailable?: boolean;
+  catalogMessage?: string;
   personalConnection?: { adapter: "openai" | "openai-compatible"; baseUrl: string };
   selection: string;
   id: string;
@@ -57,6 +62,7 @@ export interface ModelLaunchSpec extends ModelProfile {
 }
 
 export interface ModelSnapshot {
+  policySync?: { state: "fresh" | "stale" | "unavailable"; checkedAt?: number };
   primary: ModelProfile;
   profiles: ModelProfile[];
   activeModelId: string | null;
@@ -153,6 +159,7 @@ export class DesktopModelManager {
   private catalogRefreshPromise: Promise<ModelSnapshot> | null = null;
   private initialSpecPromise: Promise<ModelLaunchSpec> | null = null;
   private serverProfiles = new Map<string, ModelProfile>();
+  private authoritativeCatalog: ModelProfile[] | null = null;
   private readonly catalogTtlMs: number;
 
   constructor(private readonly repoRoot: string) {
@@ -266,12 +273,11 @@ export class DesktopModelManager {
   }
 
   async applyServerCatalog(snapshot: ModelSnapshot, models: Array<{
-    model_id: string; model: string; name: string; group_id: string; group_name: string; available: boolean; image_input?: { supported: boolean | null; source: string };
+    model_id: string; model: string; name: string; group_id: string; group_name: string; available: boolean; catalog_state?: ModelProfile["catalogState"]; image_input?: { supported: boolean | null; source: string };
   }>): Promise<ModelSnapshot> {
     await invokeOptionalBridgeOperation("loom_model_bridge.py", "record-image-capabilities", () => this.runPythonBridgeAsync("loom_model_bridge.py", "record-image-capabilities", {
       models: models.map((row) => ({ selection: row.model_id, model: row.model, metadata: { image_input: row.image_input ?? { supported: null, source: "unknown" } } })),
     }));
-    this.launchCache.clear();
     const existing = new Map(snapshot.profiles.map((profile) => [profile.selection, profile]));
     const unavailable = new Set<string>();
     const missing = models.filter((row) => !existing.has(row.model_id) && !this.serverProfiles.has(row.model_id));
@@ -297,6 +303,7 @@ export class DesktopModelManager {
     for (const profile of batches.flat()) this.serverProfiles.set(profile.selection, profile);
     const profiles = models.map((row) => {
       const profile = existing.get(row.model_id) ?? this.serverProfiles.get(row.model_id);
+      if (profile?.kind === "saved") throw Error("Server catalog cannot replace a personal connection");
       if (!profile || unavailable.has(row.model_id)) return {
         selection: row.model_id, id: row.model_id, kind: "builtin" as const,
         name: row.name, model: row.model, groupId: row.group_id, groupName: row.group_name,
@@ -306,6 +313,7 @@ export class DesktopModelManager {
       };
       return { ...profile, name: row.name, groupId: row.group_id, groupName: row.group_name,
         catalogSource: "server", available: row.available,
+        catalogState: row.catalog_state ?? (row.available ? "available" : "retired"),
         vision: row.image_input?.supported ?? null, imageInput: row.image_input ?? { supported: null, source: "unknown" },
         statusMessage: row.available ? undefined : "Model is no longer available from this provider" };
     });
@@ -321,6 +329,9 @@ export class DesktopModelManager {
       if (updated) this.currentSpec = { ...this.currentSpec, vision: updated.vision, imageInput: updated.imageInput };
     }
     const merged = [...profiles, ...snapshot.profiles.filter((profile) => profile.kind === "saved")];
+    this.authoritativeCatalog = profiles;
+    this.metadataCache = { profiles: [...profiles, ...(this.metadataCache?.profiles ?? []).filter(profile => profile.kind === "saved")] };
+    if (this.registryCache) this.adoptRegistry({ ...this.registryCache, profiles: merged }, this.metadataCache);
     const currentProfile = snapshot.current && merged.find((profile) => profile.selection === snapshot.current?.selection);
     return { ...snapshot, profiles: merged,
       current: snapshot.current && currentProfile ? { ...snapshot.current, ...currentProfile } : snapshot.current,
@@ -379,7 +390,11 @@ export class DesktopModelManager {
   }
 
   private adoptRegistry(registry: RegistrySnapshot, metadata: ModelMetadataSnapshot): RegistrySnapshot {
-    const merged = this.preserveLastKnownProviderCatalog(this.mergeRegistry(registry, metadata));
+    let merged = this.preserveLastKnownProviderCatalog(this.mergeRegistry(registry, metadata));
+    if (this.authoritativeCatalog) {
+      const profiles = [...this.authoritativeCatalog, ...merged.profiles.filter(profile => profile.kind === "saved")];
+      merged = { ...merged, profiles, primary: profiles.find(profile => profile.selection === merged.primary.selection) ?? merged.primary };
+    }
     this.registryCache = merged;
     this.registryCacheAt = Date.now();
     this.registryCacheMonotonicAt = monotonicNow();
@@ -405,8 +420,9 @@ export class DesktopModelManager {
   ): ModelLaunchSpec {
     const safe = metadata.profiles.find((profile) => profile.selection === base.selection);
     const catalog = registry?.profiles.find((profile) => profile.selection === base.selection);
-    const account = catalog?.authMode === "loom-account" ? catalog : base.authMode === "loom-account" ? base : null;
-    return {
+    if (catalog && catalog.kind !== base.kind) throw Error("Model catalog changed connection identity");
+    const account = base.kind === "builtin" ? (catalog?.authMode === "loom-account" ? catalog : base.authMode === "loom-account" ? base : null) : null;
+    const projected: ModelLaunchSpec = {
       ...base,
       ...(account ? { baseUrl: account.baseUrl, adapter: account.adapter, provider: account.adapter, apiKey: "" } : {}),
       groupId: catalog?.groupId ?? base.groupId,
@@ -423,6 +439,8 @@ export class DesktopModelManager {
       imageInput: base.imageInput,
       authMode: catalog?.authMode ?? base.authMode,
     };
+    assertModelConnection(projected);
+    return projected;
   }
 
   private refreshLaunchEntry(
@@ -598,6 +616,7 @@ export class DesktopModelManager {
     // Their validated catalogue already contains all connection metadata.
     if (known?.authMode === "loom-account" && known.baseUrl && known.available !== false) {
       const spec: ModelLaunchSpec = { ...known, provider: known.adapter, apiKey: "" };
+      assertModelConnection(spec);
       this.launchCache.set(selection, { base: spec, spec });
       return spec;
     }

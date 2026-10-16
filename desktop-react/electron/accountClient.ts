@@ -2,7 +2,7 @@ import { app, safeStorage } from "electron";
 import fs from "node:fs/promises";
 import fsSync from "node:fs";
 import path from "node:path";
-import { isManagedBuiltinSelection } from "./modelPolicySelection.js";
+import { isManagedBuiltinSelection, modelPolicyGroup } from "./modelPolicySelection.js";
 
 export interface LoomAccountUser {
   id: number;
@@ -48,7 +48,7 @@ export interface LoomModelPolicyAccess {
   revision?: string;
   catalog?: {
     revision: string;
-    models: Array<{ model_id: string; model: string; name: string; group_id: string; group_name: string; available: boolean; source: string; image_input?: { supported: boolean | null; source: string } }>;
+    models: Array<{ model_id: string; model: string; name: string; group_id: string; group_name: string; available: boolean; catalog_state?: "available" | "pending-removal" | "retired" | "unknown"; source: string; image_input?: { supported: boolean | null; source: string } }>;
     providers: Array<{ group_id: string; last_success: number | null; last_attempt: number | null; error: string }>;
   };
 }
@@ -179,6 +179,8 @@ export class LoomAccountClient {
   private memorySession: TokenSession | null = null;
   private rechecking: { userId: number; check: Promise<boolean> } | null = null;
   private policySnapshot: { at: number; revision: number; access: LoomModelPolicyAccess } | null = null;
+  private policyRead: { revision: number; promise: Promise<LoomModelPolicyAccess | null> } | null = null;
+  private policyFailure: { revision: number; at: number } | null = null;
   private identityRevision = 0;
   private readonly baseUrl: string;
   private refreshInFlight: Promise<TokenSession> | null = null;
@@ -398,12 +400,37 @@ export class LoomAccountClient {
     return parsed.toString();
   }
 
-  async modelPolicyAccess(): Promise<LoomModelPolicyAccess | null> {
+  get modelIdentityRevision(): number { return this.identityRevision; }
+
+  cachedModelPolicy(): { access: LoomModelPolicyAccess | null; state: "fresh" | "stale" | "unavailable"; checkedAt?: number } {
+    const cached = this.policySnapshot?.revision === this.identityRevision ? this.policySnapshot : null;
+    const failed = this.policyFailure?.revision === this.identityRevision && this.policyFailure.at >= (cached?.at || 0);
+    return { access: cached?.access ?? null, checkedAt: cached?.at,
+      state: !cached ? "unavailable" : failed || Date.now() - cached.at >= MODEL_POLICY_SNAPSHOT_FRESH_MS ? "stale" : "fresh" };
+  }
+
+  async modelPolicyAccess(force = false): Promise<LoomModelPolicyAccess | null> {
+    if (!await this.loadSession()) return null;
     const revision = this.identityRevision;
-    const access = await this.requestModelPolicy("access");
-    // Kept for the next pre-check, unless the account changed while it was on its way.
-    if (access && revision === this.identityRevision) this.policySnapshot = { at: Date.now(), revision, access };
-    return access;
+    const cached = this.cachedModelPolicy();
+    if (!force && cached.state === "fresh") return cached.access;
+    if (!force && this.policyFailure?.revision === revision && Date.now() - this.policyFailure.at < 15_000) return cached.access;
+    if (this.policyRead?.revision === revision) return this.policyRead.promise;
+    const job = this.requestModelPolicy("access").then(access => {
+      if (revision !== this.identityRevision) return null;
+      if (access) this.policySnapshot = { at: Date.now(), revision, access };
+      this.policyFailure = null;
+      return access;
+    }).catch(error => {
+      if (revision !== this.identityRevision) return null;
+      this.policyFailure = { revision, at: Date.now() };
+      if (error instanceof AccountHttpError && [401, 403].includes(error.status)) this.policySnapshot = null;
+      return this.cachedModelPolicy().access;
+    }).finally(() => {
+      if (this.policyRead?.promise === job) this.policyRead = null;
+    });
+    this.policyRead = { revision, promise: job };
+    return job;
   }
 
   async modelPolicyCheck(selection: string): Promise<LoomModelPolicyAccess | null> {
@@ -427,6 +454,7 @@ export class LoomAccountClient {
     let session = await this.loadSession();
     if (!session) return null;
     if (session.expiresAt <= Date.now() + 30_000) session = await this.refresh(session);
+    const identity = this.identityRevision;
 
     const issue = async (active: TokenSession): Promise<LoomModelPolicyAccess> => {
       const controller = new AbortController();
@@ -461,17 +489,22 @@ export class LoomAccountClient {
             String(body.error?.message || ("Model policy request failed (" + response.status + ").")),
           );
         }
-        if (!body.access || !Array.isArray(body.access.models)) {
+        if (!body.access || !Array.isArray(body.access.models) || typeof body.access.enabled !== "boolean") {
           throw new AccountHttpError(0, "MODEL_POLICY_INVALID", "Model policy returned invalid access data.");
         }
         if (body.access.schema_version === 2 && (!Array.isArray(body.access.decisions)
+          || !body.access.decisions.length
+          || body.access.decisions.some(item => typeof item.model_id !== "string" || typeof item.enabled !== "boolean")
           || !Array.isArray(body.access.catalog?.models)
+          || !body.access.catalog.models.length
+          || new Set(body.access.catalog.models.map(item => item.model_id)).size !== body.access.catalog.models.length
           || body.access.catalog.models.some((item) => typeof item.model_id !== "string"
+            || modelPolicyGroup(item.model_id) !== item.group_id
             || typeof item.model !== "string" || typeof item.available !== "boolean"))) {
           throw new AccountHttpError(0, "MODEL_POLICY_INVALID", "Model policy returned an invalid catalog.");
         }
         const currentSession = await this.loadSession();
-        if (!currentSession || currentSession.user.id !== active.user.id) {
+        if (!currentSession || currentSession.user.id !== active.user.id || identity !== this.identityRevision) {
           throw new AccountHttpError(0, "MODEL_ACCOUNT_CHANGED", "Model account changed. Retry shortly.");
         }
         return body.access;

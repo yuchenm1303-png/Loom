@@ -466,7 +466,7 @@ test("async model switching resolves once and preserves overrides", async () => 
 
 test("known account models resolve directly without a Python process or provider scan", async () => {
   const manager = new DesktopModelManager(os.tmpdir());
-  const known = profile({ selection: "builtin:ant-ling", authMode: "loom-account", kind: "builtin" });
+  const known = profile({ selection: "builtin:ant-ling", authMode: "loom-account", kind: "builtin", baseUrl: "https://account.smirel.com/model/v1" });
   manager.registryCache = registry([known]);
   manager.runPythonBridge = manager.runPythonBridgeAsync = () => { throw new Error("unnecessary bridge"); };
   const spec = await manager.resolveAsync(known.selection);

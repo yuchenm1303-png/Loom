@@ -1,0 +1,441 @@
+/* Panel language ------------------------------------------------------------
+   One look and one motion for every panel Loom opens. Panels used to carry their
+   own greys, their own header (a 34px chip here, a violet eyebrow there, a
+   bordered close button in two of five), their own corner radius and their own
+   enter/exit; Files and Browser were neutral grey with a blue accent and had no
+   light theme at all. This file is the single owner of what they share:
+
+     tokens        --pl-*       material, edges, shape, elevation (dark baseline;
+                                the light theme remaps the same names)
+     docks         .pl-dock     the right-hand work surfaces: inspector, review,
+                                sub-agents, artifacts, project. One flat surface
+                                (the sidebar's tone, mirrored), one hairline edge.
+     header        .pl-header   PanelHeader.tsx: rail-high row of mark, title,
+                                subtitle, meta, actions and one close button.
+     controls      .pl-icon-button .pl-field .pl-section-label .pl-card
+     surfaces      .pl-float .pl-modal .pl-scrim   anchored/centred panels
+     reveal        .pl-reveal   how a surface that appears in place enters and
+                                leaves (see global-motion.css for the numbers)
+
+   Motion has three dialects and a panel belongs to exactly one:
+     arrives from an edge     docks            a61 depth, owned by workspace-panels.css
+                                               (pinned by tests/test_panel_enter_motion_contract.py)
+     appears in place         dialogs, palettes, pages
+                                               opacity only (text must not shimmer on a
+                                               moving layer), --loom-motion-reveal in,
+                                               --loom-motion-conceal out, always with an exit
+     hangs off a control      popovers, menus  composer.css: readable at once (.72), 100/160ms
+
+   Loaded after every component sheet and before window-rail.css, which keeps
+   the last word on how headers leave room for the window controls. Weights are
+   limited to UI_FONT_WEIGHTS (src/fontWarmup.ts); no :has() (css-has-invalidation). */
+
+:root {
+  --pl-surface: var(--loom-workspace-navigation, #0e1014);
+  --pl-surface-raised: var(--loom-workspace-panel, #191c22);
+  --pl-card: rgba(224, 230, 242, .04);
+  --pl-card-hover: rgba(224, 230, 242, .065);
+  --pl-field: rgba(224, 230, 242, .045);
+  --pl-well: #0b0d10;
+  --pl-edge: rgba(255, 255, 255, .065);
+  --pl-line: var(--loom-workspace-line, rgba(224, 230, 242, .12));
+  --pl-hover: var(--loom-workspace-hover, rgba(224, 230, 242, .055));
+  --pl-press: rgba(224, 230, 242, .09);
+  --pl-selected: var(--loom-workspace-selection, rgba(167, 151, 245, .12));
+  --pl-ink: var(--loom-workspace-ink, #eceef3);
+  --pl-secondary: var(--loom-workspace-secondary, #bbc1cc);
+  --pl-muted: var(--loom-workspace-muted, #949dab);
+  --pl-faint: #6c7381;
+  --pl-accent: var(--loom-workspace-accent, #b5a7f5);
+  --pl-accent-wash: rgba(139, 124, 246, .14);
+  --pl-accent-line: rgba(169, 157, 255, .2);
+  --pl-focus: rgba(167, 151, 245, .55);
+  /* Status colours are the product's semantic palette (semantic-colors.css), which has its own light remap. */
+  --pl-ok: var(--semantic-success-strong, #55ef9b);
+  --pl-danger: var(--semantic-danger-text, #ff7b8e);
+  --pl-scrim: rgba(3, 5, 9, .6);
+  --pl-shadow-float: 0 12px 34px rgba(0, 0, 0, .34), 0 2px 8px rgba(0, 0, 0, .2);
+  --pl-shadow-modal: 0 28px 80px rgba(0, 0, 0, .46), 0 6px 18px rgba(0, 0, 0, .24);
+
+  --pl-radius-control: 8px;
+  --pl-radius-mark: 9px;
+  --pl-radius-card: 12px;
+  --pl-radius-float: 14px;
+  --pl-radius-modal: 18px;
+
+  /* --loom-rail-height only exists in the desktop shell; the web build has no
+     window controls but keeps the same row so panels line up with the header. */
+  --pl-header-height: var(--loom-rail-height, 60px);
+  --pl-pad: 16px;
+  --pl-mark: 32px;
+  --pl-control: 30px;
+}
+
+html[data-loom-theme="light"] {
+  --pl-card: #ffffff;
+  --pl-card-hover: #fbfbfd;
+  --pl-field: #ffffff;
+  --pl-well: #ffffff;
+  --pl-edge: rgba(28, 31, 37, .09);
+  --pl-press: rgba(32, 42, 58, .08);
+  --pl-faint: #8a919d;
+  --pl-accent-wash: rgba(105, 82, 199, .1);
+  --pl-accent-line: rgba(105, 82, 199, .18);
+  --pl-focus: rgba(105, 82, 199, .5);
+  --pl-scrim: rgba(24, 28, 36, .3);
+  --pl-shadow-float: 0 12px 32px rgba(25, 30, 40, .14), 0 2px 8px rgba(25, 30, 40, .08);
+  --pl-shadow-modal: 0 28px 70px rgba(20, 24, 38, .2), 0 6px 18px rgba(20, 24, 38, .1);
+}
+
+/* Docks ---------------------------------------------------------------------
+   The sidebar's tone and edge, mirrored: a flat surface with one hairline.
+   The depth is in how a dock arrives (workspace-panels.css), not in a glow,
+   a gradient or a shadow that is there while it sits still. */
+:root .pl-dock {
+  color: var(--pl-ink);
+  background: var(--pl-surface);
+  border-left: 1px solid var(--pl-edge);
+  box-shadow: none;
+}
+
+/* Header --------------------------------------------------------------------
+   PanelHeader.tsx: [mark] title / subtitle ........ meta actions close.
+   One row as high as the window rail so every dock's buttons share the window
+   controls' centre line. */
+.pl-header {
+  flex: none;
+  min-width: 0;
+  box-sizing: border-box;
+  height: var(--pl-header-height);
+  min-height: var(--pl-header-height);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 var(--pl-pad);
+  border-bottom: 1px solid var(--pl-edge);
+  background: transparent;
+  color: var(--pl-ink);
+}
+
+.pl-mark {
+  flex: none;
+  position: relative;
+  box-sizing: border-box;
+  width: var(--pl-mark);
+  height: var(--pl-mark);
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: var(--pl-radius-mark);
+  color: var(--pl-accent);
+  background: var(--pl-accent-wash);
+  box-shadow: inset 0 0 0 1px var(--pl-accent-line);
+}
+
+/* A mark that is a button (the artifact preview's "back"). */
+.pl-mark > button {
+  width: 100%;
+  height: 100%;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: inherit;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+/* A mark's corner status dot: quiet when nothing runs, a ring that breathes
+   out (transform and opacity only) while something does. */
+.pl-pulse {
+  position: absolute;
+  right: -2px;
+  bottom: -2px;
+  box-sizing: border-box;
+  width: 9px;
+  height: 9px;
+  border: 2px solid var(--pl-surface);
+  border-radius: 50%;
+  background: var(--pl-ok);
+}
+
+.pl-pulse.is-live {
+  background: var(--pl-accent);
+}
+
+.pl-pulse.is-live::after {
+  content: "";
+  position: absolute;
+  inset: -2px;
+  border: 1.5px solid var(--pl-accent);
+  border-radius: 50%;
+  opacity: 0;
+  animation: pl-pulse 1.8s ease-out infinite;
+}
+
+@keyframes pl-pulse {
+  from { opacity: .55; transform: scale(.7); }
+  to { opacity: 0; transform: scale(1.9); }
+}
+
+.pl-chip {
+  box-sizing: border-box;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 8px;
+  border: 1px solid var(--pl-line);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--pl-muted);
+  font-size: 11.5px;
+  line-height: 1;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.pl-chip.is-live {
+  border-color: var(--pl-accent-line);
+  background: var(--pl-accent-wash);
+  color: var(--pl-accent);
+}
+
+.pl-chip.is-danger {
+  border-color: color-mix(in srgb, var(--pl-danger) 28%, transparent);
+  background: color-mix(in srgb, var(--pl-danger) 9%, transparent);
+  color: var(--pl-danger);
+}
+
+.pl-heading {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.pl-title,
+.pl-subtitle {
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pl-title {
+  color: var(--pl-ink);
+  font-size: 14px;
+  line-height: 18px;
+  font-weight: 650;
+  letter-spacing: -.005em;
+}
+
+.pl-subtitle {
+  color: var(--pl-muted);
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 400;
+}
+
+code.pl-subtitle {
+  font-family: var(--loom-code-font, var(--code-font, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace));
+  font-size: 11.5px;
+}
+
+.pl-meta {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--pl-muted);
+  font-size: 11.5px;
+  line-height: 16px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.pl-actions {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+/* Controls ------------------------------------------------------------------ */
+.pl-icon-button {
+  flex: none;
+  box-sizing: border-box;
+  width: var(--pl-control);
+  height: var(--pl-control);
+  padding: 0;
+  display: inline-grid;
+  place-items: center;
+  border: 0;
+  border-radius: var(--pl-radius-control);
+  background: transparent;
+  color: var(--pl-muted);
+  cursor: pointer;
+  transition:
+    color var(--loom-motion-control, 170ms) ease,
+    background-color var(--loom-motion-control, 170ms) ease;
+}
+
+.pl-icon-button:hover:not(:disabled) {
+  background: var(--pl-hover);
+  color: var(--pl-ink);
+}
+
+.pl-icon-button:active:not(:disabled) {
+  background: var(--pl-press);
+}
+
+.pl-icon-button:is([aria-pressed="true"], .is-active) {
+  background: var(--pl-selected);
+  color: var(--pl-accent);
+}
+
+.pl-icon-button:focus-visible {
+  outline: 2px solid var(--pl-focus);
+  outline-offset: -2px;
+}
+
+.pl-icon-button:disabled {
+  opacity: .4;
+  cursor: default;
+}
+
+.pl-field {
+  box-sizing: border-box;
+  min-width: 0;
+  height: 34px;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 0 11px;
+  border: 1px solid var(--pl-line);
+  border-radius: calc(var(--pl-radius-control) + 1px);
+  background: var(--pl-field);
+  color: var(--pl-muted);
+  transition:
+    border-color var(--loom-motion-control, 170ms) ease,
+    box-shadow var(--loom-motion-control, 170ms) ease;
+}
+
+.pl-field:focus-within {
+  border-color: var(--pl-accent-line);
+  box-shadow: 0 0 0 3px var(--pl-accent-wash);
+}
+
+.pl-field > input {
+  min-width: 0;
+  flex: 1;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--pl-ink);
+  font: inherit;
+  font-size: 13px;
+}
+
+.pl-field > input::placeholder {
+  color: var(--pl-faint);
+}
+
+.pl-section-label {
+  margin: 0;
+  color: var(--pl-muted);
+  font-size: 11.5px;
+  line-height: 16px;
+  font-weight: 600;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+
+.pl-card {
+  border: 1px solid var(--pl-line);
+  border-radius: var(--pl-radius-card);
+  background: var(--pl-card);
+  color: var(--pl-ink);
+  transition:
+    background-color var(--loom-motion-control, 170ms) ease,
+    border-color var(--loom-motion-control, 170ms) ease;
+}
+
+/* Text-bearing cards do not lift: colour answers a pointer, position does not. */
+.pl-card.is-interactive:hover {
+  border-color: var(--pl-accent-line);
+  background: var(--pl-card-hover);
+}
+
+/* Surfaces that are not docks ---------------------------------------------- */
+.pl-float,
+.pl-modal {
+  box-sizing: border-box;
+  overflow: hidden;
+  border: 1px solid var(--pl-line);
+  background: var(--pl-surface-raised);
+  color: var(--pl-ink);
+}
+
+.pl-float {
+  border-radius: var(--pl-radius-float);
+  box-shadow: var(--pl-shadow-float);
+}
+
+.pl-modal {
+  border-radius: var(--pl-radius-modal);
+  box-shadow: var(--pl-shadow-modal);
+}
+
+.pl-scrim {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: var(--pl-scrim);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+
+:is(.pl-float, .pl-modal) .pl-header {
+  padding-inline: var(--pl-pad);
+}
+
+/* Reveal --------------------------------------------------------------------
+   A surface that appears in place (the scrim and its card as one element, a
+   palette) fades in and out. Presence (useMotionPresence) holds it mounted for
+   the exit; the phase attribute is the only thing CSS needs. Reversing in the
+   middle of either direction continues from the painted opacity. */
+.pl-reveal {
+  opacity: 1;
+  transition: opacity var(--loom-motion-reveal, 240ms) var(--loom-ease-depth, cubic-bezier(.16, .78, .18, 1));
+}
+
+.pl-reveal:is([data-motion-phase="entering"], [data-motion-phase="exiting"]) {
+  opacity: 0;
+  will-change: opacity;
+}
+
+.pl-reveal[data-motion-phase="exiting"] {
+  pointer-events: none;
+  transition-duration: var(--loom-motion-conceal, 200ms);
+  transition-timing-function: var(--loom-ease-in, cubic-bezier(.42, 0, .72, .2));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pl-reveal,
+  .pl-icon-button,
+  .pl-field,
+  .pl-card {
+    transition: none !important;
+  }
+}
+
+html[data-loom-reduced-motion="true"] :is(.pl-reveal, .pl-icon-button, .pl-field, .pl-card) {
+  transition: none !important;
+}

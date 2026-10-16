@@ -5,11 +5,11 @@ import {
   CircleAlert,
   Loader2,
   MessageSquare,
-  X,
   XCircle,
 } from "./icons";
 import { useEffect, useMemo, useState } from "react";
 import type { TranscriptItem } from "../types/loom";
+import { PanelHeader } from "./PanelHeader";
 import "./sub-agent-workspace.css";
 
 const SUB_AGENT_TOOLS = new Set([
@@ -523,27 +523,26 @@ export function SubAgentWorkspace({
 
   return (
     <section className={`sub-agent-workspace ${counts.running ? "is-live" : ""} ${docked ? "is-docked" : ""}`.trim()} aria-label="子代理工作区">
-      <div className="sub-agent-workspace-header">
-        <span className="sub-agent-workspace-mark" aria-hidden="true">
-          <Bot size={15} />
-          <span className="sub-agent-workspace-pulse" />
-        </span>
-        <span className="sub-agent-workspace-copy">
-          <strong>子代理工作区</strong>
-          <span>{agents.length ? `${agents.length} 个代理 · 并行任务集中在这里管理` : "并行任务集中在这里管理"}</span>
-        </span>
-        <span className="sub-agent-workspace-summary">
-          {counts.running ? <b>{counts.running} 运行中</b> : null}
-          {counts.completed ? <span>{counts.completed} 已完成</span> : null}
-          {counts.failed ? <span className="is-failed">{counts.failed} 失败</span> : null}
-          {!agents.length ? <span className="is-empty">0 个代理</span> : null}
-        </span>
-        {docked && onClose ? (
-          <button type="button" className="sub-agent-workspace-close" onClick={onClose} title="关闭子代理工作区" aria-label="关闭子代理工作区">
-            <X size={16} strokeWidth={1.8} />
-          </button>
-        ) : null}
-      </div>
+      <PanelHeader
+        className="sub-agent-workspace-header"
+        mark={<>
+          <Bot size={16} strokeWidth={1.8} />
+          <span className={`pl-pulse${counts.running ? " is-live" : ""}`} />
+        </>}
+        markClassName="sub-agent-workspace-mark"
+        title="子代理工作区"
+        subtitle={agents.length ? `${agents.length} 个代理 · 并行任务集中在这里管理` : "并行任务集中在这里管理"}
+        metaClassName="sub-agent-workspace-summary"
+        meta={<>
+          {counts.running ? <b className="pl-chip is-live">{counts.running} 运行中</b> : null}
+          {counts.completed ? <span className="pl-chip">{counts.completed} 已完成</span> : null}
+          {counts.failed ? <span className="pl-chip is-danger">{counts.failed} 失败</span> : null}
+          {!agents.length ? <span className="pl-chip is-empty">0 个代理</span> : null}
+        </>}
+        closeLabel="关闭子代理工作区"
+        closeClassName="sub-agent-workspace-close"
+        onClose={docked && onClose ? onClose : undefined}
+      />
 
       {agents.length ? (
         <div className="sub-agent-toolbar">

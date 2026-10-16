@@ -12,104 +12,6 @@
   animation: sub-agent-workspace-enter 190ms cubic-bezier(.2,.78,.2,1) both;
 }
 
-.sub-agent-workspace-header {
-  min-height: 54px;
-  display: grid;
-  grid-template-columns: 34px minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 10px;
-  padding: 9px 12px;
-  border-bottom: 1px solid rgba(255,255,255,.045);
-  background:
-    linear-gradient(180deg, rgba(255,255,255,.018), rgba(255,255,255,.006));
-}
-
-.sub-agent-workspace-mark {
-  position: relative;
-  width: 32px;
-  height: 32px;
-  display: grid;
-  place-items: center;
-  border: 1px solid rgba(139,124,246,.2);
-  border-radius: 10px;
-  background:
-    linear-gradient(145deg, rgba(139,124,246,.13), rgba(139,124,246,.035)),
-    rgba(16,18,24,.92);
-  color: #aaa1ef;
-  box-shadow: inset 0 1px 0 rgba(255,255,255,.035);
-}
-
-.sub-agent-workspace-pulse {
-  position: absolute;
-  right: -2px;
-  bottom: -2px;
-  width: 8px;
-  height: 8px;
-  border: 2px solid #15171d;
-  border-radius: 50%;
-  background: #6fa68a;
-}
-
-.sub-agent-workspace.is-live .sub-agent-workspace-pulse {
-  background: #a49af0;
-  box-shadow: 0 0 0 0 rgba(164,154,240,.24);
-  animation: sub-agent-pulse 1.8s ease-out infinite;
-}
-
-.sub-agent-workspace-copy {
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.sub-agent-workspace-copy strong {
-  color: #d4d8e0;
-  font-size: 12.2px;
-  font-weight: 690;
-  letter-spacing: .003em;
-}
-
-.sub-agent-workspace-copy > span {
-  color: #757d89;
-  font-size: 10.4px;
-  line-height: 1.35;
-}
-
-.sub-agent-workspace-summary {
-  display: inline-flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 6px;
-  color: #747c88;
-  font-size: 9.8px;
-  white-space: nowrap;
-}
-
-.sub-agent-workspace-summary b,
-.sub-agent-workspace-summary > span {
-  min-height: 22px;
-  display: inline-flex;
-  align-items: center;
-  padding: 0 8px;
-  border: 1px solid rgba(255,255,255,.055);
-  border-radius: 999px;
-  background: rgba(255,255,255,.018);
-  font-weight: 590;
-}
-
-.sub-agent-workspace-summary b {
-  border-color: rgba(139,124,246,.16);
-  background: rgba(139,124,246,.06);
-  color: #a9a1eb;
-}
-
-.sub-agent-workspace-summary .is-failed {
-  border-color: rgba(199,114,124,.15);
-  background: rgba(199,114,124,.055);
-  color: #cc838d;
-}
-
 .sub-agent-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -432,45 +334,6 @@ html[data-loom-theme="light"] .sub-agent-workspace {
     0 10px 28px rgba(47,51,61,.055);
 }
 
-html[data-loom-theme="light"] .sub-agent-workspace-header {
-  border-bottom-color: rgba(33,37,44,.065);
-  background: linear-gradient(180deg, rgba(255,255,255,.70), rgba(249,249,253,.54));
-}
-
-html[data-loom-theme="light"] .sub-agent-workspace-mark {
-  border-color: rgba(105,90,216,.18);
-  background: linear-gradient(145deg, rgba(105,90,216,.09), rgba(105,90,216,.025));
-  color: #6557c9;
-}
-
-html[data-loom-theme="light"] .sub-agent-workspace-pulse {
-  border-color: #fbfbfd;
-}
-
-html[data-loom-theme="light"] .sub-agent-workspace-copy strong {
-  color: #363c45;
-}
-
-html[data-loom-theme="light"] .sub-agent-workspace-copy > span {
-  color: #7a838e;
-}
-
-html[data-loom-theme="light"] .sub-agent-workspace-summary {
-  color: #737c87;
-}
-
-html[data-loom-theme="light"] .sub-agent-workspace-summary b,
-html[data-loom-theme="light"] .sub-agent-workspace-summary > span {
-  border-color: rgba(31,35,42,.07);
-  background: rgba(31,35,42,.025);
-}
-
-html[data-loom-theme="light"] .sub-agent-workspace-summary b {
-  border-color: rgba(105,90,216,.12);
-  background: rgba(105,90,216,.05);
-  color: #6153c1;
-}
-
 html[data-loom-theme="light"] .sub-agent-card {
   border-color: #e4e6eb;
   background:
@@ -572,24 +435,13 @@ html[data-loom-theme="light"] .sub-agent-event {
   .sub-agent-grid {
     grid-template-columns: minmax(0, 1fr);
   }
-
-  .sub-agent-workspace-header {
-    grid-template-columns: 32px minmax(0,1fr);
-  }
-
-  .sub-agent-workspace-summary {
-    grid-column: 2;
-    justify-content: flex-start;
-    margin-top: -3px;
-  }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .sub-agent-workspace,
-  .sub-agent-workspace-pulse,
-  .sub-agent-spinner,
-  .sub-agent-chevron,
-  .sub-agent-detail-grid {
+.sub-agent-spinner,
+.sub-agent-chevron,
+.sub-agent-detail-grid {
     animation: none !important;
     transition: none !important;
   }
@@ -604,62 +456,10 @@ html[data-loom-theme="light"] .sub-agent-event {
   border-radius: 0;
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
-  background:
-    radial-gradient(circle at 18% -4%, rgba(139,124,246,.065), transparent 30%),
-    #0d0f13;
+  /* The dock is the surface (panel-language.css); the card of the inline workspace is not drawn. */
+  background: transparent;
   box-shadow: none;
   animation: none;
-}
-
-.sub-agent-workspace.is-docked .sub-agent-workspace-header {
-  min-height: 68px;
-  grid-template-columns: 34px minmax(0,1fr) auto 32px;
-  padding: 10px 11px 10px 13px;
-  background:
-    linear-gradient(180deg, rgba(18,20,25,.98), rgba(14,16,20,.96));
-}
-
-.sub-agent-workspace.is-docked .sub-agent-workspace-copy strong {
-  font-size: 13px;
-}
-
-.sub-agent-workspace.is-docked .sub-agent-workspace-copy > span {
-  font-size: 10px;
-}
-
-.sub-agent-workspace.is-docked .sub-agent-workspace-summary {
-  gap: 5px;
-}
-
-.sub-agent-workspace.is-docked .sub-agent-workspace-summary b,
-.sub-agent-workspace.is-docked .sub-agent-workspace-summary > span {
-  min-height: 21px;
-  padding-inline: 7px;
-  font-size: 9.3px;
-}
-
-.sub-agent-workspace-close {
-  width: 30px;
-  height: 30px;
-  padding: 0;
-  border: 1px solid transparent;
-  border-radius: 8px;
-  display: grid;
-  place-items: center;
-  background: transparent;
-  color: #777f8b;
-  cursor: pointer;
-  transition: color 130ms ease, background 130ms ease, border-color 130ms ease, transform 130ms ease;
-}
-
-.sub-agent-workspace-close:hover {
-  color: #eceef2;
-  background: rgba(255,255,255,.045);
-  border-color: rgba(255,255,255,.05);
-}
-
-.sub-agent-workspace-close:active {
-  transform: scale(.94);
 }
 
 .sub-agent-workspace.is-docked .sub-agent-grid {
@@ -697,49 +497,9 @@ html[data-loom-theme="light"] .sub-agent-event {
   padding-bottom: 9px;
 }
 
-html[data-loom-theme="light"] .sub-agent-workspace.is-docked {
-  background:
-    radial-gradient(circle at 18% -4%, rgba(105,90,216,.055), transparent 31%),
-    #f7f8fa;
-}
-
-html[data-loom-theme="light"] .sub-agent-workspace.is-docked .sub-agent-workspace-header {
-  border-bottom-color: rgba(31,35,42,.07);
-  background:
-    linear-gradient(180deg, rgba(255,255,255,.98), rgba(248,249,251,.96));
-}
-
-html[data-loom-theme="light"] .sub-agent-workspace-close {
-  color: #7d858f;
-}
-
-html[data-loom-theme="light"] .sub-agent-workspace-close:hover {
-  color: #4f44ae;
-  background: rgba(105,90,216,.055);
-  border-color: rgba(105,90,216,.09);
-}
-
 html[data-loom-theme="light"] .sub-agent-workspace.is-docked .sub-agent-card {
   background:
     linear-gradient(180deg, rgba(255,255,255,.98), rgba(250,250,252,.95));
-}
-
-@media (max-width: 430px) {
-  .sub-agent-workspace.is-docked .sub-agent-workspace-header {
-    grid-template-columns: 32px minmax(0,1fr) 30px;
-  }
-
-  .sub-agent-workspace.is-docked .sub-agent-workspace-summary {
-    grid-column: 2 / 4;
-    grid-row: 2;
-    margin: 2px 0 0;
-    justify-content: flex-start;
-  }
-
-  .sub-agent-workspace.is-docked .sub-agent-workspace-close {
-    grid-column: 3;
-    grid-row: 1;
-  }
 }
 
 /* Transcript keeps only a lightweight pointer into the persistent side dock. */
@@ -840,9 +600,6 @@ html[data-loom-theme="light"] .sub-agent-inline-action {
 }
 
 /* Empty dock state -------------------------------------------------------- */
-.sub-agent-workspace-summary .is-empty {
-  color: #707884;
-}
 
 .sub-agent-workspace.is-docked .sub-agent-grid.is-empty {
   display: grid;
@@ -957,10 +714,6 @@ html[data-loom-theme="light"] .sub-agent-inline-action {
   background: rgba(255,255,255,.016);
   color: #656e7a;
   font-size: 9.2px;
-}
-
-html[data-loom-theme="light"] .sub-agent-workspace-summary .is-empty {
-  color: #8a929c;
 }
 
 html[data-loom-theme="light"] .sub-agent-empty-core {
@@ -1233,46 +986,6 @@ html[data-loom-theme="light"] .sub-agent-workspace.is-docked .sub-agent-card.sta
   grid-template-rows: auto auto minmax(0, 1fr);
 }
 
-.sub-agent-workspace.is-docked .sub-agent-workspace-header {
-  min-height: 72px;
-  padding: 11px 12px 10px 14px;
-  gap: 11px;
-}
-
-.sub-agent-workspace.is-docked .sub-agent-workspace-mark {
-  width: 34px;
-  height: 34px;
-  border-radius: 11px;
-}
-
-.sub-agent-workspace.is-docked .sub-agent-workspace-copy {
-  gap: 3px;
-}
-
-.sub-agent-workspace.is-docked .sub-agent-workspace-copy strong {
-  font-size: 13.4px;
-  font-weight: 700;
-  letter-spacing: -.008em;
-}
-
-.sub-agent-workspace.is-docked .sub-agent-workspace-copy > span {
-  color: #6f7884;
-  font-size: 9.9px;
-}
-
-.sub-agent-workspace.is-docked .sub-agent-workspace-summary {
-  gap: 5px;
-}
-
-.sub-agent-workspace.is-docked .sub-agent-workspace-summary b,
-.sub-agent-workspace.is-docked .sub-agent-workspace-summary > span {
-  min-height: 23px;
-  padding-inline: 8px;
-  border-radius: 7px;
-  font-size: 9.2px;
-  font-weight: 620;
-}
-
 .sub-agent-workspace.is-docked .sub-agent-toolbar {
   min-height: 42px;
   padding: 6px 11px;
@@ -1467,24 +1180,6 @@ html[data-loom-theme="light"] .sub-agent-workspace.is-docked .sub-agent-card.sta
 }
 
 /* Light theme is intentionally lower-contrast: status should guide, not shout. */
-html[data-loom-theme="light"] .sub-agent-workspace.is-docked {
-  background:
-    linear-gradient(180deg, rgba(252,252,253,.98), rgba(247,248,250,.98));
-}
-
-html[data-loom-theme="light"] .sub-agent-workspace.is-docked .sub-agent-workspace-header {
-  border-bottom-color: rgba(32,36,43,.065);
-  background:
-    linear-gradient(180deg, rgba(255,255,255,.99), rgba(250,250,252,.98));
-}
-
-html[data-loom-theme="light"] .sub-agent-workspace.is-docked .sub-agent-workspace-copy strong {
-  color: #333a44;
-}
-
-html[data-loom-theme="light"] .sub-agent-workspace.is-docked .sub-agent-workspace-copy > span {
-  color: #8a929c;
-}
 
 html[data-loom-theme="light"] .sub-agent-workspace.is-docked .sub-agent-toolbar {
   border-bottom-color: rgba(32,36,43,.055);
@@ -1620,120 +1315,9 @@ html[data-loom-theme="light"] .sub-agent-workspace.is-docked .sub-agent-card.sta
   --sa-text-2: #929aa6;
   --sa-muted: #68717e;
   grid-template-rows: auto auto minmax(0,1fr);
-  background:
-    radial-gradient(520px 180px at 20% -90px, rgba(139,124,246,.11), transparent 74%),
-    linear-gradient(180deg, #0e1014 0%, #0c0e12 100%);
 }
 
 /* Header ----------------------------------------------------------------- */
-.sub-agent-workspace.is-docked .sub-agent-workspace-header {
-  position: relative;
-  min-height: 78px;
-  grid-template-columns: 38px minmax(0,1fr) auto 32px;
-  gap: 11px;
-  padding: 12px 12px 11px 14px;
-  border-bottom: 1px solid var(--sa-line);
-  background:
-    linear-gradient(180deg, rgba(20,22,28,.985), rgba(14,16,20,.96));
-}
-
-.sub-agent-workspace.is-docked .sub-agent-workspace-header::after {
-  content: "";
-  position: absolute;
-  inset: auto 14px -1px;
-  height: 1px;
-  pointer-events: none;
-  background: linear-gradient(90deg, rgba(139,124,246,.38), rgba(139,124,246,.07) 32%, transparent 72%);
-  opacity: .55;
-}
-
-.sub-agent-workspace.is-docked .sub-agent-workspace-mark {
-  width: 38px;
-  height: 38px;
-  border-radius: 12px;
-  border-color: rgba(139,124,246,.19);
-  background:
-    radial-gradient(circle at 30% 22%, rgba(255,255,255,.07), transparent 34%),
-    linear-gradient(145deg, rgba(139,124,246,.15), rgba(139,124,246,.035)),
-    #121419;
-  color: #aea6f1;
-  box-shadow:
-    inset 0 1px 0 rgba(255,255,255,.045),
-    0 7px 18px rgba(62,50,145,.11);
-}
-
-.sub-agent-workspace.is-docked .sub-agent-workspace-pulse {
-  right: -1px;
-  bottom: -1px;
-  width: 8px;
-  height: 8px;
-  border-width: 2px;
-  border-color: #111318;
-}
-
-.sub-agent-workspace.is-docked .sub-agent-workspace-copy {
-  gap: 3px;
-}
-
-.sub-agent-workspace.is-docked .sub-agent-workspace-copy strong {
-  color: var(--sa-text);
-  font-size: 13.7px;
-  font-weight: 720;
-  letter-spacing: -.015em;
-}
-
-.sub-agent-workspace.is-docked .sub-agent-workspace-copy > span {
-  max-width: 330px;
-  color: var(--sa-muted);
-  font-size: 9.9px;
-  line-height: 1.42;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.sub-agent-workspace.is-docked .sub-agent-workspace-summary {
-  gap: 5px;
-}
-
-.sub-agent-workspace.is-docked .sub-agent-workspace-summary b,
-.sub-agent-workspace.is-docked .sub-agent-workspace-summary > span {
-  min-height: 25px;
-  padding-inline: 9px;
-  border: 1px solid var(--sa-line);
-  border-radius: 8px;
-  background: rgba(255,255,255,.018);
-  color: #7d8692;
-  font-size: 9.3px;
-  font-weight: 650;
-  font-variant-numeric: tabular-nums;
-  box-shadow: inset 0 1px 0 rgba(255,255,255,.012);
-}
-
-.sub-agent-workspace.is-docked .sub-agent-workspace-summary b {
-  border-color: rgba(139,124,246,.16);
-  background: rgba(139,124,246,.06);
-  color: #aaa2ec;
-}
-
-.sub-agent-workspace.is-docked .sub-agent-workspace-summary .is-failed {
-  border-color: rgba(199,114,124,.14);
-  background: rgba(199,114,124,.045);
-  color: #c67b85;
-}
-
-.sub-agent-workspace.is-docked .sub-agent-workspace-close {
-  width: 30px;
-  height: 30px;
-  border-radius: 8px;
-  color: #6e7783;
-}
-
-.sub-agent-workspace.is-docked .sub-agent-workspace-close:hover {
-  color: #d6dae2;
-  border-color: rgba(255,255,255,.07);
-  background: rgba(255,255,255,.045);
-}
 
 /* Segmented filter -------------------------------------------------------- */
 .sub-agent-workspace.is-docked .sub-agent-toolbar {
@@ -2116,73 +1700,6 @@ html[data-loom-theme="light"] .sub-agent-workspace.is-docked {
   --sa-text: #343b45;
   --sa-text-2: #6f7884;
   --sa-muted: #8b939d;
-  background:
-    radial-gradient(500px 170px at 20% -85px, rgba(105,90,216,.075), transparent 74%),
-    linear-gradient(180deg, #fafafc 0%, #f6f7f9 100%);
-}
-
-html[data-loom-theme="light"] .sub-agent-workspace.is-docked .sub-agent-workspace-header {
-  border-bottom-color: rgba(35,40,48,.075);
-  background:
-    radial-gradient(260px 90px at 18% 0%, rgba(105,90,216,.045), transparent 80%),
-    linear-gradient(180deg, rgba(255,255,255,.995), rgba(250,250,252,.98));
-}
-
-html[data-loom-theme="light"] .sub-agent-workspace.is-docked .sub-agent-workspace-header::after {
-  background: linear-gradient(90deg, rgba(105,90,216,.28), rgba(105,90,216,.045) 36%, transparent 75%);
-}
-
-html[data-loom-theme="light"] .sub-agent-workspace.is-docked .sub-agent-workspace-mark {
-  border-color: rgba(105,90,216,.16);
-  background:
-    radial-gradient(circle at 30% 22%, rgba(255,255,255,.78), transparent 36%),
-    linear-gradient(145deg, rgba(105,90,216,.10), rgba(105,90,216,.025));
-  color: #6658c8;
-  box-shadow:
-    inset 0 1px 0 rgba(255,255,255,.98),
-    0 5px 14px rgba(73,62,156,.07);
-}
-
-html[data-loom-theme="light"] .sub-agent-workspace.is-docked .sub-agent-workspace-pulse {
-  border-color: #fbfbfd;
-}
-
-html[data-loom-theme="light"] .sub-agent-workspace.is-docked .sub-agent-workspace-copy strong {
-  color: var(--sa-text);
-}
-
-html[data-loom-theme="light"] .sub-agent-workspace.is-docked .sub-agent-workspace-copy > span {
-  color: #8b939d;
-}
-
-html[data-loom-theme="light"] .sub-agent-workspace.is-docked .sub-agent-workspace-summary b,
-html[data-loom-theme="light"] .sub-agent-workspace.is-docked .sub-agent-workspace-summary > span {
-  border-color: rgba(34,39,47,.075);
-  background: rgba(34,39,47,.018);
-  color: #7d858f;
-  box-shadow: inset 0 1px 0 rgba(255,255,255,.75);
-}
-
-html[data-loom-theme="light"] .sub-agent-workspace.is-docked .sub-agent-workspace-summary b {
-  border-color: rgba(105,90,216,.12);
-  background: rgba(105,90,216,.052);
-  color: #5f53ba;
-}
-
-html[data-loom-theme="light"] .sub-agent-workspace.is-docked .sub-agent-workspace-summary .is-failed {
-  border-color: rgba(185,93,106,.12);
-  background: rgba(185,93,106,.035);
-  color: #ad616c;
-}
-
-html[data-loom-theme="light"] .sub-agent-workspace.is-docked .sub-agent-workspace-close {
-  color: #89919a;
-}
-
-html[data-loom-theme="light"] .sub-agent-workspace.is-docked .sub-agent-workspace-close:hover {
-  color: #574bb2;
-  border-color: rgba(105,90,216,.08);
-  background: rgba(105,90,216,.045);
 }
 
 html[data-loom-theme="light"] .sub-agent-workspace.is-docked .sub-agent-toolbar {
@@ -2366,20 +1883,6 @@ html[data-loom-theme="light"] .sub-agent-workspace.is-docked .sub-agent-event-st
 
 /* Responsive dock --------------------------------------------------------- */
 @media (max-width: 520px) {
-  .sub-agent-workspace.is-docked .sub-agent-workspace-header {
-    grid-template-columns: 38px minmax(0,1fr) 30px;
-    row-gap: 7px;
-  }
-
-  .sub-agent-workspace.is-docked .sub-agent-workspace-summary {
-    grid-column: 2 / 4;
-    justify-content: flex-start;
-  }
-
-  .sub-agent-workspace.is-docked .sub-agent-workspace-close {
-    grid-column: 3;
-    grid-row: 1;
-  }
 
   .sub-agent-workspace.is-docked .sub-agent-toolbar-note {
     display: none;

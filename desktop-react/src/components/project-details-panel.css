@@ -15,12 +15,6 @@
   min-width: 0;
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
-  color: var(--text, #e7eaf1);
-  background:
-    radial-gradient(circle at 12% 0%, rgba(139, 124, 246, .12), transparent 30%),
-    linear-gradient(180deg, rgba(20, 22, 30, .98), rgba(13, 15, 20, .985));
-  border-left: 1px solid rgba(255, 255, 255, .078);
-  box-shadow: -18px 0 46px rgba(0, 0, 0, .24);
   overflow: hidden;
   contain: layout paint style;
   backface-visibility: hidden;
@@ -50,67 +44,6 @@
   transition-timing-function: var(--loom-ease-in,cubic-bezier(.42,0,.72,.2));
 }
 
-.project-details-header {
-  min-height: 74px;
-  display: grid;
-  grid-template-columns: 36px minmax(0, 1fr) 32px;
-  align-items: center;
-  gap: 11px;
-  padding: 13px 13px 12px 15px;
-  border-bottom: 1px solid rgba(255, 255, 255, .065);
-}
-
-.project-details-mark {
-  width: 36px;
-  height: 36px;
-  display: inline-grid;
-  place-items: center;
-  border-radius: 12px;
-  color: #b9b1ff;
-  background:
-    linear-gradient(180deg, rgba(139, 124, 246, .18), rgba(139, 124, 246, .08)),
-    rgba(255, 255, 255, .035);
-  border: 1px solid rgba(169, 157, 255, .18);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .08);
-}
-
-.project-details-title {
-  min-width: 0;
-  display: grid;
-  gap: 4px;
-}
-
-.project-details-title > span {
-  font-size: 10px;
-  line-height: 12px;
-  letter-spacing: .11em;
-  text-transform: uppercase;
-  color: #a69cff;
-  font-weight: 750;
-}
-
-.project-details-title strong {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 16px;
-  line-height: 20px;
-  font-weight: 780;
-  color: #f2f3f7;
-}
-
-.project-details-title code {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-family: var(--code-font, "JetBrains Mono", ui-monospace, SFMono-Regular, Consolas, monospace);
-  font-size: 10.5px;
-  color: #8e96a5;
-}
-
-.project-details-close,
 .project-card-heading button,
 .project-instructions-actions button,
 .project-empty-threads button {
@@ -132,12 +65,6 @@
   transition: border-color 140ms ease, background 140ms ease, color 140ms ease, transform 140ms ease;
 }
 
-.project-details-close {
-  width: 32px;
-  padding: 0;
-}
-
-.project-details-close:hover,
 .project-card-heading button:hover,
 .project-instructions-actions button:hover,
 .project-empty-threads button:hover {
@@ -637,7 +564,6 @@
   background: rgba(255, 255, 255, .035);
 }
 
-html[data-loom-reduced-motion="true"] .project-details-close,
 html[data-loom-reduced-motion="true"] .project-card-heading button,
 html[data-loom-reduced-motion="true"] .project-changed-file,
 html[data-loom-reduced-motion="true"] .project-instructions-actions button,

@@ -14,9 +14,8 @@
   align-items: center;
   gap: var(--runtime-tabs-gap);
   padding: var(--runtime-tabs-pad-y) var(--runtime-tabs-pad-x);
-  border-bottom: 1px solid rgba(255,255,255,.055);
-  background:
-    linear-gradient(180deg, rgba(16,18,23,.78), rgba(12,14,18,.56));
+  border-bottom: 1px solid var(--pl-edge);
+  background: transparent;
 }
 
 .runtime-tab-glider {

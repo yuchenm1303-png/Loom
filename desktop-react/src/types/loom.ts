@@ -237,6 +237,10 @@ export interface ModelReasoningState {
 }
 
 export interface ModelProfile {
+  accessState?: "personal" | "allowed" | "denied" | "unknown" | "not-listed" | "signed-out";
+  catalogState?: "available" | "pending-removal" | "retired" | "unknown";
+  catalogAvailable?: boolean;
+  catalogMessage?: string;
   authMode?: string;
   personalConnection?: { adapter: "openai" | "openai-compatible"; baseUrl: string };
   selection: string;
@@ -266,6 +270,7 @@ export interface CurrentModel extends ModelProfile {
 }
 
 export interface ModelSnapshot {
+  policySync?: { state: "fresh" | "stale" | "unavailable"; checkedAt?: number };
   primary: ModelProfile;
   profiles: ModelProfile[];
   activeModelId: string | null;

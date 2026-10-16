@@ -67,8 +67,8 @@ export function statusCopy(state: SoftwareUpdateState | null): {
     case "downloaded":
       return {
         title: `Loom ${state.availableVersion || "update"} is ready`,
-        detail: "Restart when convenient to finish installing the downloaded update.",
-        tone: "success",
+        detail: state.error || "Restart when convenient to finish installing the downloaded update.",
+        tone: state.error ? "warning" : "success",
       };
     case "up-to-date":
       return { title: "Loom is up to date", detail: `You are running the newest available version, ${state.currentVersion}.`, tone: "success" };

@@ -12,6 +12,7 @@ from typing import Any, Iterable
 from .catalog import GROUPS, GROUP_BY_ID, MODEL_BY_ID, MODELS, group_for_selection, model_for_selection, selection_for_model
 
 DEFAULT_MODEL_IDS = tuple(item.id for item in MODELS)
+CATALOG_RETIRE_GRACE_SECONDS = 300
 
 
 def _now() -> int:
@@ -97,6 +98,11 @@ class PolicyStore:
                     last_success INTEGER,
                     last_attempt INTEGER,
                     error TEXT NOT NULL DEFAULT ''
+                );
+                CREATE TABLE IF NOT EXISTS provider_catalog_omissions (
+                    model_id TEXT PRIMARY KEY,
+                    first_missing INTEGER NOT NULL,
+                    observations INTEGER NOT NULL
                 );
 
                 CREATE TABLE IF NOT EXISTS global_model_group_rules (
@@ -285,11 +291,13 @@ class PolicyStore:
             models = [dict(row) for row in db.execute("SELECT * FROM provider_catalog ORDER BY group_id, model_id")]
             image_evidence = {row[0]: json.loads(row[1]) for row in db.execute("SELECT model_id, evidence FROM provider_image_capabilities")}
             providers = [dict(row) for row in db.execute("SELECT * FROM provider_catalog_status ORDER BY group_id")]
+            omissions = {row[0] for row in db.execute("SELECT model_id FROM provider_catalog_omissions")}
         for row in models:
             row["image_input"] = image_evidence.get(row["model_id"], {"supported": None, "source": "unknown"})
             if _now() - row["last_seen"] > 86400:
                 row["image_input"] = {"supported": None, "source": "expired-metadata"}
             row["available"] = bool(row["available"])
+            row["catalog_state"] = "retired" if not row["available"] else "pending-removal" if row["model_id"] in omissions else "available"
             row["group_name"] = GROUP_BY_ID[row["group_id"]].name
         content = {"models": models, "providers": providers}
         versioned = [{key: value for key, value in row.items() if key != "last_seen"} for row in models]
@@ -305,7 +313,22 @@ class PolicyStore:
         now = _now()
         with self._guard, self._connect() as db:
             db.execute("BEGIN IMMEDIATE")
-            db.execute("UPDATE provider_catalog SET available=0 WHERE group_id=?", (group_id,))
+            incoming = {item["model_id"] for item in models}
+            previous = db.execute("SELECT model_id FROM provider_catalog WHERE group_id=?", (group_id,)).fetchall()
+            for row in previous:
+                model_id = row["model_id"]
+                if model_id in incoming:
+                    db.execute("DELETE FROM provider_catalog_omissions WHERE model_id=?", (model_id,))
+                    continue
+                if source == "manifest":
+                    # Operator-owned manifests explicitly define the desired set.
+                    db.execute("UPDATE provider_catalog SET available=0 WHERE model_id=?", (model_id,))
+                    continue
+                db.execute("""INSERT INTO provider_catalog_omissions VALUES (?, ?, 1)
+                    ON CONFLICT(model_id) DO UPDATE SET observations=observations+1""", (model_id, now))
+                missing = db.execute("SELECT * FROM provider_catalog_omissions WHERE model_id=?", (model_id,)).fetchone()
+                if missing["observations"] >= 2 and now - missing["first_missing"] >= CATALOG_RETIRE_GRACE_SECONDS:
+                    db.execute("UPDATE provider_catalog SET available=0 WHERE model_id=?", (model_id,))
             for item in models:
                 db.execute("INSERT OR REPLACE INTO provider_image_capabilities VALUES (?, ?)", (item["model_id"], json.dumps(item.get("image_input", {"supported": None, "source": "unknown"}))))
                 db.execute(

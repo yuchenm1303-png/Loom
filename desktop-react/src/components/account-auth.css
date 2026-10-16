@@ -102,18 +102,10 @@
 
 /* ------------------------------------------------------------------ dialog */
 
+/* Scrim, fade in and out: the panel language (.pl-scrim .pl-reveal in panel-language.css). */
 .loom-account-backdrop {
-  position: fixed;
-  inset: 0;
   z-index: 1200;
-  display: grid;
-  place-items: center;
-  padding: 24px;
   overflow-y: auto;
-  background: color-mix(in srgb, #05080c 52%, transparent);
-  backdrop-filter: blur(10px) saturate(115%);
-  -webkit-backdrop-filter: blur(10px) saturate(115%);
-  transition: background-color 270ms ease;
 }
 
 .loom-account-dialog {
@@ -125,46 +117,12 @@
   overflow-y: auto;
   overscroll-behavior: contain;
   padding: 26px 28px 24px;
-  border: 1px solid color-mix(in srgb, var(--border, #292d38) 88%, transparent);
-  border-radius: 18px;
-  background:
-    var(--loom-workspace-panel, var(--panel, #101217));
-  box-shadow:
-    var(--loom-shadow, 0 18px 48px rgba(0, 0, 0, .24)),
-    0 2px 8px rgba(0, 0, 0, .14);
+  border: 1px solid var(--pl-line);
+  border-radius: var(--pl-radius-modal);
+  background: var(--pl-surface-raised);
+  box-shadow: var(--pl-shadow-modal);
   contain: layout paint style;
   backface-visibility: hidden;
-  will-change: opacity;
-  transition:
-    opacity var(--loom-motion-opacity,260ms) ease;
-}
-
-.loom-account-backdrop[data-motion-phase="entering"] {
-  background: rgba(5, 8, 12, 0);
-}
-
-.loom-account-backdrop[data-motion-phase="entering"] .loom-account-dialog {
-  opacity: 0;
-  transform: none;
-  will-change: opacity;
-}
-
-.loom-account-backdrop[data-motion-phase="entered"] .loom-account-dialog {
-  opacity: 1;
-  transform: none;
-}
-
-.loom-account-backdrop[data-motion-phase="exiting"] {
-  pointer-events: none;
-  background: rgba(5, 8, 12, 0);
-}
-
-.loom-account-backdrop[data-motion-phase="exiting"] .loom-account-dialog {
-  opacity: 0;
-  transform: none;
-  will-change: opacity;
-  transition-duration: 225ms;
-  transition-timing-function: var(--loom-ease-in,cubic-bezier(.42,0,.72,.2));
 }
 
 .loom-account-close {
@@ -173,24 +131,9 @@
   right: 14px;
   width: 30px;
   height: 30px;
-  border: 1px solid transparent;
-  border-radius: 9px;
-  display: grid;
-  place-items: center;
-  background: transparent;
-  color: var(--muted, #858c99);
-  cursor: pointer;
-  transition: color 130ms ease, background 130ms ease, border-color 130ms ease;
-}
-
-.loom-account-close:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--text, #f0f1f4) 7%, transparent);
-  border-color: color-mix(in srgb, var(--text, #f0f1f4) 8%, transparent);
-  color: var(--text, #f0f1f4);
 }
 
 .loom-account-close:disabled {
-  opacity: .4;
   cursor: not-allowed;
 }
 
@@ -1234,17 +1177,6 @@ html[data-loom-reduced-motion="true"] .loom-account-primary-button:hover:not(:di
    meant CSS specificity silently picked the winner, and the primary button came
    out a different colour in each theme by accident rather than by design. Keep
    account styling in this file. */
-
-html[data-loom-theme="light"] .loom-account-backdrop {
-  background: rgba(35, 39, 46, .30);
-}
-
-html[data-loom-theme="light"] .loom-account-dialog {
-  box-shadow:
-    0 30px 80px rgba(27, 31, 40, .20),
-    0 8px 26px rgba(27, 31, 40, .08),
-    inset 0 1px rgba(255, 255, 255, .98);
-}
 
 /* In the light theme --accent is dark enough to carry white text (5.1:1). In
    the dark theme it is a light lavender (3.2:1 against white), so the dark CTA

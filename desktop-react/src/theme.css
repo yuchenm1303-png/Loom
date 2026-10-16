@@ -348,39 +348,19 @@ html[data-loom-theme="light"] .markdown-body hr {
 }
 
 /* Inspector */
-html[data-loom-theme="light"] .inspector,
-html[data-loom-theme="light"] .inspector.runtime-inspector {
-  border-left-color: rgba(28,31,37,.08);
-  background:
-    radial-gradient(circle at 84% -4%, rgba(105,90,216,.05), transparent 29%),
-    linear-gradient(180deg, #f6f7f8 0%, #f1f2f4 100%);
-}
 
-html[data-loom-theme="light"] .inspector.runtime-inspector::before {
-  background: linear-gradient(110deg, transparent 18%, rgba(255,255,255,.55) 50%, transparent 82%);
-}
-
-html[data-loom-theme="light"] .runtime-header,
 html[data-loom-theme="light"] .inspector-tabs {
   border-bottom-color: rgba(28,31,37,.075);
 }
 
-html[data-loom-theme="light"] .runtime-title-row strong,
 html[data-loom-theme="light"] .inspector-header strong,
 html[data-loom-theme="light"] .inspector-row-title {
   color: #363b44;
 }
 
-html[data-loom-theme="light"] .runtime-caption,
 html[data-loom-theme="light"] .inspector-row-meta,
 html[data-loom-theme="light"] .inspector-empty {
   color: #7b828d;
-}
-
-html[data-loom-theme="light"] .runtime-health {
-  color: #69717d;
-  border-color: #d8dbe1;
-  background: rgba(255,255,255,.62);
 }
 
 html[data-loom-theme="light"] .inspector-tabs button:hover,
@@ -3069,59 +3049,8 @@ html[data-loom-theme="light"] .turn-artifacts-file-strip button:hover > svg {
    what made the primary button silently render differently per theme. */
 
 /* Runtime inspector -------------------------------------------------------- */
-html[data-loom-theme="light"] .inspector.runtime-inspector {
-  background:
-    radial-gradient(circle at 84% -4%, rgba(105,90,216,.035), transparent 28%),
-    linear-gradient(180deg, #fafbfc 0%, #f5f6f8 100%);
-}
 
-html[data-loom-theme="light"] .runtime-header {
-  border-bottom-color: #dde1e6;
-  background: rgba(255,255,255,.48);
-}
-
-html[data-loom-theme="light"] .runtime-title-row strong {
-  color: #30363e;
-}
-
-html[data-loom-theme="light"] .runtime-caption {
-  color: #737c87;
-}
-
-html[data-loom-theme="light"] .runtime-health {
-  border-color: #d9dde3;
-  background: #f6f7f9;
-  color: #68717c;
-}
-
-html[data-loom-theme="light"] .runtime-health.live {
-  border-color: rgba(105,90,216,.16);
-  background: rgba(105,90,216,.06);
-  color: #5d50b5;
-}
-
-html[data-loom-theme="light"] .runtime-health.warning {
-  border-color: rgba(217,54,80,.22);
-  background: rgba(217,54,80,.075);
-  color: #c62f47;
-}
-
-html[data-loom-theme="light"] .runtime-close {
-  color: #6f7883;
-}
-
-html[data-loom-theme="light"] .runtime-close:hover {
-  color: #343a42;
-  border-color: #d9dde3;
-  background: #ffffff;
-}
-
-/* Tabs: remove the black selected slab. */
-html[data-loom-theme="light"] .runtime-tabs {
-  border-bottom-color: #dde1e6;
-  background: #f1f3f5;
-}
-
+/* Tabs: the strip is the dock surface; only the selected slab is drawn. */
 html[data-loom-theme="light"] .runtime-tab-glider {
   border-color: rgba(105,90,216,.14);
   background:
@@ -3273,106 +3202,7 @@ html[data-loom-theme="light"] .runtime-stream-mark.live i {
 /* The review workspace is authored dark-first. Keep dark mode intact and
    provide a complete light rendering for the full-screen diff experience. */
 
-html[data-loom-theme="light"] .review-workspace {
-  background: #f7f8fa;
-  color: #30363e;
-}
-
 /* Top chrome -------------------------------------------------------------- */
-html[data-loom-theme="light"] .review-topbar {
-  border-bottom-color: #dde1e6;
-  background:
-    radial-gradient(480px 160px at 0% 0%, rgba(105,90,216,.045), transparent 62%),
-    #ffffff;
-  box-shadow: inset 0 1px rgba(255,255,255,.98);
-}
-
-html[data-loom-theme="light"] .review-heading-icon {
-  border-color: rgba(105,90,216,.15);
-  background: rgba(105,90,216,.07);
-  color: #6253ca;
-  box-shadow: inset 0 1px rgba(255,255,255,.90);
-}
-
-html[data-loom-theme="light"] .review-heading strong {
-  color: #242a31;
-}
-
-html[data-loom-theme="light"] .review-heading span {
-  color: #6d7681;
-}
-
-html[data-loom-theme="light"] .review-summary {
-  color: #68717c;
-}
-
-html[data-loom-theme="light"] .review-summary span:first-child {
-  border-right-color: #dde1e6;
-}
-
-html[data-loom-theme="light"] .review-additions,
-html[data-loom-theme="light"] .review-file-stats b,
-html[data-loom-theme="light"] .review-tree-stats b {
-  color: #168b52 !important;
-}
-
-html[data-loom-theme="light"] .review-deletions,
-html[data-loom-theme="light"] .review-file-stats em,
-html[data-loom-theme="light"] .review-tree-stats em {
-  color: #d93650 !important;
-}
-
-html[data-loom-theme="light"] .review-close {
-  color: #6f7883;
-}
-
-html[data-loom-theme="light"] .review-close:hover {
-  color: #343a42;
-  background: #f4f5f7;
-  border-color: #dce0e5;
-}
-
-/* Secondary toolbar ------------------------------------------------------- */
-html[data-loom-theme="light"] .review-toolbar {
-  border-bottom-color: #e0e3e7;
-  background: #fafbfc;
-}
-
-html[data-loom-theme="light"] .review-round-label {
-  color: #3d444d;
-}
-
-html[data-loom-theme="light"] .review-round-label i {
-  background: #695ad8;
-  box-shadow: 0 0 0 3px rgba(105,90,216,.07);
-}
-
-html[data-loom-theme="light"] .review-file-navigation button,
-html[data-loom-theme="light"] .review-file-actions button {
-  border-color: #d9dde3;
-  background: #ffffff;
-  color: #626b76;
-  box-shadow: inset 0 1px rgba(255,255,255,.96);
-}
-
-html[data-loom-theme="light"] .review-file-navigation button:hover:not(:disabled),
-html[data-loom-theme="light"] .review-file-actions button:hover:not(:disabled) {
-  border-color: rgba(105,90,216,.19);
-  background: rgba(105,90,216,.055);
-  color: #5144ad;
-}
-
-html[data-loom-theme="light"] .review-file-navigation button:disabled,
-html[data-loom-theme="light"] .review-file-actions button:disabled {
-  border-color: #e2e5e9;
-  background: #f6f7f9;
-  color: #a0a7b0;
-  opacity: 1;
-}
-
-html[data-loom-theme="light"] .review-file-navigation span {
-  color: #68717c;
-}
 
 /* Main diff area ---------------------------------------------------------- */
 html[data-loom-theme="light"] .review-diff-panel {

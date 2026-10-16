@@ -1,10 +1,11 @@
-import { ArrowLeft, ExternalLink, FileCode2, RefreshCw, X, Search, Package, ChevronRight, Image, FileText, Music, Film, Globe } from "./icons";
+import { ArrowLeft, ExternalLink, FileCode2, RefreshCw, Search, Package, ChevronRight, Image, FileText, Music, Film, Globe } from "./icons";
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from "react";
 import { createPortal } from "react-dom";
 import { artifactName, artifactRenderer, canRenderArtifact, normalizeArtifactPath } from "../artifactRenderers";
 import type { TranscriptItem } from "../types/loom";
 import { useMotionPresence } from "../motion/useMotionPresence";
 import { ArtifactRenderSurface } from "./ArtifactRenderSurface";
+import { PanelHeader } from "./PanelHeader";
 import "./artifact-preview-dock.css";
 
 interface ArtifactPreviewDockProps {
@@ -184,7 +185,7 @@ export function ArtifactPreviewDock({
 
   return createPortal(
     <aside
-      className="artifact-preview-dock"
+      className="artifact-preview-dock pl-dock"
       data-motion-phase={presence.phase}
       inert={!open}
       data-open={open ? "true" : "false"}
@@ -208,40 +209,43 @@ export function ArtifactPreviewDock({
         onDoubleClick={resetWidth}
       />
 
-      <header className="artifact-preview-header">
-        <span className="artifact-preview-mark" aria-hidden={selected ? undefined : true}>
-          {selected ? <button type="button" className="artifact-back" aria-label="返回产物列表" onClick={() => setSelected("")}><ArrowLeft size={17} /></button> : <Package size={17} strokeWidth={1.8} />}
-        </span>
-        <div className="artifact-preview-heading">
-          <span>{selected ? "产物 / 预览" : "当前对话"}</span>
-          <strong title={selected ? name : undefined}>{selected ? name : `产物 · ${artifacts.length}`}</strong>
-          {selected ? <code title={selected}>{selected.replaceAll("\\", "/")}</code> : null}
-        </div>
-        <div className="artifact-preview-actions">
-          {selected ? <><button type="button" onClick={() => setRevision((value) => value + 1)} title="重新加载预览" aria-label="重新加载预览">
+      <PanelHeader
+        className="artifact-preview-header"
+        mark={selected
+          ? <button type="button" className="artifact-back" aria-label="返回产物列表" onClick={() => setSelected("")}><ArrowLeft size={17} /></button>
+          : <Package size={17} strokeWidth={1.8} />}
+        markClassName="artifact-preview-mark"
+        title={selected ? name : `产物 · ${artifacts.length}`}
+        titleHint={selected ? name : undefined}
+        subtitle={selected ? selected.replaceAll("\\", "/") : "当前对话"}
+        subtitleCode={Boolean(selected)}
+        subtitleHint={selected || undefined}
+        actionsClassName="artifact-preview-actions"
+        actions={selected ? <>
+          <button type="button" className="pl-icon-button" onClick={() => setRevision((value) => value + 1)} title="重新加载预览" aria-label="重新加载预览">
             <RefreshCw size={15} strokeWidth={1.8} />
           </button>
           <button
             type="button"
+            className="pl-icon-button"
             onClick={() => void window.loom.openLocalArtifact(selected, workspace)}
             title="在独立窗口打开"
             aria-label="在独立窗口打开"
           >
             <ExternalLink size={15} strokeWidth={1.8} />
-          </button></> : null}
-          <button type="button" onClick={onClose} title="关闭预览" aria-label="关闭预览">
-            <X size={16} strokeWidth={1.9} />
           </button>
-        </div>
-      </header>
+        </> : null}
+        closeLabel="关闭预览"
+        onClose={onClose}
+      />
 
       {!selected ? <div className="artifact-library">
-        <label className="artifact-search"><Search size={15} /><input value={query} onChange={event => setQuery(event.target.value)} placeholder="查找产物…" aria-label="查找产物" /></label>
+        <label className="artifact-search pl-field"><Search size={15} /><input value={query} onChange={event => setQuery(event.target.value)} placeholder="查找产物…" aria-label="查找产物" /></label>
         <p className="artifact-library-note">网页、文件与交互内容集中在这里，同一文件的更新会合并。</p>
         <div className="artifact-library-list">
           {artifacts.filter(item => item.path.toLowerCase().includes(query.toLowerCase())).map(item => {
             const Icon = artifactIcons[artifactRenderer(item.path).kind];
-            return <article className="artifact-library-card" key={item.path}>
+            return <article className="artifact-library-card pl-card is-interactive" key={item.path}>
             <button className="artifact-card-main" type="button" onClick={() => setSelected(item.path)}>
               <span className="artifact-card-icon"><Icon size={21} /></span>
               <span className="artifact-card-copy"><strong>{artifactName(item.path)}</strong><span>{artifactRenderer(item.path).label} · {item.running ? "更新中" : "可预览"}{item.revision > 1 ? ` · ${item.revision} 次更新` : ""}</span><small title={item.path}>{item.path}</small></span>

@@ -1,3 +1,6 @@
+/* Background tasks: a palette that hangs beside the tool rail. Material, header and
+   reveal come from the panel language (panel-language.css: .pl-float, PanelHeader,
+   .pl-reveal); both themes come from its tokens. */
 .background-task-panel {
   position: fixed;
   right: 18px;
@@ -7,66 +10,42 @@
   height: min(660px, calc(100dvh - 90px));
   display: flex;
   flex-direction: column;
-  overflow: hidden;
-  border: 1px solid rgba(255,255,255,.095);
-  border-radius: 17px;
-  background: #18191c;
-  color: #e9e9ed;
-  box-shadow: 0 28px 85px rgba(0,0,0,.45), inset 0 1px rgba(255,255,255,.045);
   font-size: 13px;
-  animation: background-tasks-arrive 170ms ease-out both;
 }
 .background-task-panel.is-expanded { width: min(720px, calc(100vw - 28px)); height: calc(100dvh - 90px); }
-.background-task-topbar { flex: none; display:flex; align-items:center; justify-content:space-between; gap:14px; padding:16px 16px 12px; }
-.background-task-heading { display:flex; align-items:center; gap:10px; font-size:15px; letter-spacing:-.015em; }
-.background-task-heading strong { font-weight:640; }
-.background-task-actions { display:flex; gap:5px; }
-.background-task-actions button, .background-task-stop {
-  width:29px; height:29px; flex:none; display:grid; place-items:center; border:0; border-radius:8px;
-  color:#afb0b8; background:transparent; cursor:pointer;
+.background-task-stop {
+  width: 29px; height: 29px; flex: none; display: grid; place-items: center; border: 0; border-radius: var(--pl-radius-control);
+  margin-top: 7px; background: var(--pl-hover); color: var(--pl-secondary); cursor: pointer;
+  transition: color var(--loom-motion-control, 170ms) ease, background-color var(--loom-motion-control, 170ms) ease;
 }
-.background-task-actions button:hover, .background-task-stop:hover { color:#fff; background:rgba(255,255,255,.09); }
-.background-task-actions button:focus-visible, .background-task-stop:focus-visible, .background-task-summary:focus-visible, .background-task-group-toggle:focus-visible { outline:2px solid #ada8e8; outline-offset:-2px; }
-.background-task-stop { background:rgba(255,255,255,.08); margin-top:7px; }
-.background-task-stop:disabled { cursor:wait; opacity:.4; }
+.background-task-stop:hover { color: var(--pl-ink); background: var(--pl-press); }
+.background-task-stop:focus-visible, .background-task-summary:focus-visible, .background-task-group-toggle:focus-visible { outline: 2px solid var(--pl-focus); outline-offset: -2px; }
+.background-task-stop:disabled { cursor: wait; opacity: .4; }
 .background-task-scroll { min-height:0; flex:1; overflow:auto; padding:0 15px 18px; scrollbar-width:thin; }
-.background-task-group-label { padding:11px 5px 10px; color:#a3a3ac; display:flex; align-items:center; gap:7px; }
-.background-task-group-label span, .background-task-group-toggle span { color:#767780; font-variant-numeric:tabular-nums; }
+.background-task-group-label { padding:11px 5px 10px; color: var(--pl-muted); display:flex; align-items:center; gap:7px; }
+.background-task-group-label span, .background-task-group-toggle span { color: var(--pl-faint); font-variant-numeric:tabular-nums; }
 .background-task-group-toggle {
   display:flex; align-items:center; gap:8px; width:100%; margin-top:12px; padding:8px 5px;
-  border:0; background:transparent; color:#aba9b2; cursor:pointer; text-align:left;
+  border:0; background:transparent; color: var(--pl-muted); cursor:pointer; text-align:left;
 }
 .background-task-list { list-style:none; margin:0; padding:0; display:grid; gap:7px; }
-.background-task-item { border-radius:12px; overflow:hidden; background:rgba(255,255,255,.055); border:1px solid rgba(255,255,255,.015); }
+.background-task-item { border-radius: var(--pl-radius-card); overflow:hidden; background: var(--pl-card); border:1px solid var(--pl-line); }
 .background-task-item-main { display:flex; align-items:flex-start; padding:0 9px 0 0; gap:3px; }
-.background-task-summary { min-width:0; flex:1; display:grid; gap:9px; padding:13px 12px; border:0; background:transparent; color:inherit; text-align:left; cursor:pointer; }
-.background-task-summary:hover, .background-task-summary.is-selected { background:rgba(255,255,255,.035); }
-.background-task-name { display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:2; overflow:hidden; overflow-wrap:anywhere; font-size:13px; line-height:1.55; font-weight:530; }
-.background-task-meta { display:flex; align-items:center; gap:8px; flex-wrap:wrap; color:#999aa3; font-size:11.5px; font-variant-numeric:tabular-nums; }
+.background-task-summary { min-width:0; flex:1; display:grid; gap:9px; padding:13px 12px; border:0; background:transparent; color:inherit; text-align:left; cursor:pointer; transition: background-color var(--loom-motion-control, 170ms) ease; }
+.background-task-summary:hover, .background-task-summary.is-selected { background: var(--pl-hover); }
+.background-task-name { display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:2; overflow:hidden; overflow-wrap:anywhere; font-size:13px; line-height:1.55; font-weight:540; color: var(--pl-ink); }
+.background-task-meta { display:flex; align-items:center; gap:8px; flex-wrap:wrap; color: var(--pl-muted); font-size:11.5px; font-variant-numeric:tabular-nums; }
 .background-task-meta svg { flex:none; }
-.background-task-state.is-running { color:#b7b3ec; }
-.background-task-state.is-success { color:#9bbdaa; }
-.background-task-state.is-failed { color:#e3aa9f; }
+.background-task-state.is-running { color: var(--pl-accent); }
+.background-task-state.is-success { color: var(--pl-ok); }
+.background-task-state.is-failed { color: var(--pl-danger); }
 .background-task-detail { padding:0 12px 12px; display:grid; gap:7px; }
-.background-task-command { font:11px/1.5 ui-monospace,Consolas,monospace; color:#aeb0b7; overflow-wrap:anywhere; padding:9px; border-radius:7px; background:rgba(0,0,0,.21); max-height:100px; overflow:auto; }
-.background-task-location { color:#82838d; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; font-size:11px; }
-.background-task-log { margin:0; padding:12px; min-height:70px; max-height:280px; overflow:auto; white-space:pre-wrap; overflow-wrap:anywhere; color:#d1d2d8; background:#101114; border:1px solid rgba(255,255,255,.05); border-radius:9px; font:11px/1.65 ui-monospace,Consolas,monospace; user-select:text; }
-.background-task-detail small { color:#9999a2; }
-.background-task-error, .background-task-notice { color:#e3aa9f!important; }
-.background-task-notice { display:flex; align-items:center; gap:7px; padding:8px 14px; overflow-wrap:anywhere; font-size:11px; }
-.background-task-empty, .background-task-loading { margin:0; padding:13px; color:#777880; font-size:12px; }
-@keyframes background-tasks-arrive { from { opacity:0; transform:translateY(-6px) scale(.992); } to { opacity:1; transform:none; } }
+.background-task-command { font:11.5px/1.5 var(--loom-code-font, ui-monospace, Consolas, monospace); color: var(--pl-secondary); overflow-wrap:anywhere; padding:9px; border-radius:7px; background: var(--pl-well); max-height:100px; overflow:auto; }
+.background-task-location { color: var(--pl-faint); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; font-size:11.5px; }
+.background-task-log { margin:0; padding:12px; min-height:70px; max-height:280px; overflow:auto; white-space:pre-wrap; overflow-wrap:anywhere; color: var(--pl-secondary); background: var(--pl-well); border:1px solid var(--pl-line); border-radius:9px; font:11.5px/1.65 var(--loom-code-font, ui-monospace, Consolas, monospace); user-select:text; }
+.background-task-detail small { color: var(--pl-muted); }
+.background-task-error, .background-task-notice { color: var(--pl-danger)!important; }
+.background-task-notice { display:flex; align-items:center; gap:7px; padding:8px 14px; overflow-wrap:anywhere; font-size:11.5px; }
+.background-task-empty, .background-task-loading { margin:0; padding:13px; color: var(--pl-muted); font-size:12px; }
 @media (max-width:650px) { .background-task-panel { top:57px; right:9px; width:calc(100vw - 18px); height:min(680px,calc(100dvh - 70px)); } }
-@media (prefers-reduced-motion:reduce) { .background-task-panel { animation:none; } }
-
-/* Match Loom's existing light theme; keep dark mode the understated default. */
-html[data-loom-theme="light"] .background-task-panel { background:#fbfbfd; color:#252832; border-color:rgba(26,30,37,.12); box-shadow:0 26px 70px rgba(20,24,38,.15); }
-html[data-loom-theme="light"] .background-task-item { background:rgba(35,40,55,.042); border-color:rgba(30,35,48,.045); }
-html[data-loom-theme="light"] .background-task-name { color:#262833; }
-html[data-loom-theme="light"] .background-task-summary:hover, html[data-loom-theme="light"] .background-task-summary.is-selected { background:rgba(35,40,55,.04); }
-html[data-loom-theme="light"] .background-task-command, html[data-loom-theme="light"] .background-task-log { color:#434650; background:#f1f1f5; border-color:rgba(22,27,43,.08); }
-html[data-loom-theme="light"] .background-task-actions button:hover, html[data-loom-theme="light"] .background-task-stop:hover { background:rgba(25,30,45,.08); color:#262833; }
-html[data-loom-theme="light"] .background-task-stop { background:rgba(25,30,45,.065); color:#626671; }
-html[data-loom-theme="light"] .background-task-state.is-running { color:#6259ab; }
-html[data-loom-theme="light"] .background-task-state.is-success { color:#29805a; }
 @media (max-width:1120px) { .thread-background-button { min-width:32px; width:32px; padding:0; } .thread-background-button > span { display:none; } }

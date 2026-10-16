@@ -7,42 +7,8 @@
    component rules regardless of load order. */
 
 /* Panel shell -------------------------------------------------------------- */
-html[data-loom-theme="light"] .project-details-panel {
-  color: var(--text, #1b1e24);
-  background:
-    radial-gradient(circle at 12% 0%, rgba(105, 90, 216, .05), transparent 32%),
-    linear-gradient(180deg, #f8f9fb, #f3f4f7);
-  border-left-color: #dfe2e7;
-  box-shadow: -18px 0 46px rgba(25, 30, 40, .1);
-}
-
-html[data-loom-theme="light"] .project-details-header {
-  border-bottom-color: #e6e9ee;
-}
-
-html[data-loom-theme="light"] .project-details-mark {
-  color: #5c4fc4;
-  background:
-    linear-gradient(180deg, rgba(105, 90, 216, .1), rgba(105, 90, 216, .04)),
-    #ffffff;
-  border-color: rgba(105, 90, 216, .18);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .9);
-}
-
-html[data-loom-theme="light"] .project-details-title > span {
-  color: #695ad8;
-}
-
-html[data-loom-theme="light"] .project-details-title strong {
-  color: #22262e;
-}
-
-html[data-loom-theme="light"] .project-details-title code {
-  color: #7c8493;
-}
 
 /* Shared control buttons --------------------------------------------------- */
-html[data-loom-theme="light"] .project-details-close,
 html[data-loom-theme="light"] .project-card-heading button,
 html[data-loom-theme="light"] .project-instructions-actions button,
 html[data-loom-theme="light"] .project-empty-threads button {
@@ -51,7 +17,6 @@ html[data-loom-theme="light"] .project-empty-threads button {
   color: #4a515c;
 }
 
-html[data-loom-theme="light"] .project-details-close:hover,
 html[data-loom-theme="light"] .project-card-heading button:hover,
 html[data-loom-theme="light"] .project-instructions-actions button:hover,
 html[data-loom-theme="light"] .project-empty-threads button:hover {

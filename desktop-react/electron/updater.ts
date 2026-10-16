@@ -10,7 +10,7 @@ import electronUpdater, {
 } from "electron-updater";
 import { broadcastHostEvent, callHost, handleHostChannel, hostHasDesktopClients, isHostProcess } from "./hostProcess.js";
 import { OptimizedNsisUpdater } from "./optimizedUpdater.js";
-import { applicationUpdateState, checkApplicationUpdates, installApplicationUpdate, onApplicationUpdateStatus } from "./applicationUpdater.js";
+import { applicationUpdateState, checkApplicationUpdates, installApplicationUpdate, onApplicationUpdateStatus, registerApplicationUpdatePriorityGuard } from "./applicationUpdater.js";
 import { ensureHostRuntimeUpdate, hostRuntimeUpdateState, onHostRuntimeUpdateStatus, type HostRuntimeUpdateState } from "./hostRuntimeUpdater.js";
 
 export type SoftwareUpdatePhase =
@@ -85,6 +85,7 @@ let headlessInstallGuard: (() => boolean | Promise<boolean>) | null = null;
 let headlessInstallRetryTimer: NodeJS.Timeout | null = null;
 let headlessInstallAttempt: Promise<boolean> | null = null;
 let bootstrapAutoInstallRequested = false;
+let bootstrapRestarting = false;
 const earlyRecheckTimers: NodeJS.Timeout[] = [];
 
 export function softwareUpdateState(): SoftwareUpdateState {
@@ -94,7 +95,7 @@ export function softwareUpdateState(): SoftwareUpdateState {
   }
   // Keep manual checks available after a transient eligibility failure.
   // Download/install still perform fresh server-side eligibility checks.
-  return { ...state, ...readUpdatePreferences(), enabled: updateEnabled, hostRuntime: hostRuntimeUpdateState() };
+  return { ...state, ...readUpdatePreferences(), enabled: updateEnabled, phase: state.accountUpdatesAllowed === false ? "disabled" : state.phase, hostRuntime: hostRuntimeUpdateState() };
 }
 
 function broadcastState(): void {
@@ -197,7 +198,11 @@ async function maybeInstallHeadless(): Promise<boolean> {
   if (!headlessInstallWanted()) return false;
   headlessInstallAttempt = (async () => {
     if (!await mayReceiveUpdates()) return false;
-    if (headlessInstallGuard) {
+    if (!headlessInstallGuard) {
+      scheduleHeadlessInstallRetry();
+      return false;
+    }
+    {
       let safe = false;
       try { safe = await headlessInstallGuard(); } catch { safe = false; }
       if (!safe) {
@@ -210,6 +215,11 @@ async function maybeInstallHeadless(): Promise<boolean> {
       headlessInstallRetryTimer = null;
     }
     if (!await mayReceiveUpdates()) return false;
+    // Account verification can be slow; task state may have changed while it
+    // was in flight. Recheck immediately before closing desktop clients.
+    try {
+      if (!await headlessInstallGuard()) { scheduleHeadlessInstallRetry(); return false; }
+    } catch { scheduleHeadlessInstallRetry(); return false; }
     // Silent updates install whenever Agent work is idle, including with a
     // connected Desktop. The restart marker reopens the Desktop afterwards.
     markHeadlessUpdateRestart();
@@ -311,28 +321,30 @@ async function offerDownloadedUpdate(info: UpdateInfo): Promise<void> {
     : await dialog.showMessageBox(options);
 
   if (result.response === 0 && state.phase === "downloaded" && await mayReceiveUpdates()) {
-    restartForUpdate();
+    await installDownloadedUpdate();
   }
 }
 
 export async function checkForUpdates(): Promise<SoftwareUpdateState> {
   if (!updateEnabled) return softwareUpdateState();
-  if (!await mayReceiveUpdates()) {
-    setState({ phase: "disabled", accountUpdatesAllowed: false, availableVersion: undefined,
-      releaseName: undefined, percent: undefined, error: undefined });
-    return softwareUpdateState();
-  }
-  if (state.accountUpdatesAllowed !== true) {
-    setState({ accountUpdatesAllowed: true, phase: state.phase === "disabled" ? "idle" : state.phase });
-  }
-  void ensureHostRuntimeUpdate(0, true);
   if (checkPromise) return checkPromise;
-  if (updateInFlight()) return softwareUpdateState();
-  await checkApplicationUpdates(true);
-
-  clearErrorRetry();
-  lastCheckStartedAt = Date.now();
+  if (bootstrapRestarting || (updateInFlight() && state.accountUpdatesAllowed !== false)) return softwareUpdateState();
+  // Cover eligibility and both channels with one operation. Repeated clicks,
+  // startup and focus checks must not race or schedule competing upgrades.
   checkPromise = (async () => {
+    if (!updateInFlight()) setState({ phase: "checking", error: undefined });
+    if (!await mayReceiveUpdates()) {
+      setState({ accountUpdatesAllowed: false, error: undefined });
+      return softwareUpdateState();
+    }
+    if (state.accountUpdatesAllowed !== true) {
+      setState({ accountUpdatesAllowed: true, phase: state.phase === "disabled" ? "idle" : state.phase });
+    }
+    if (updateInFlight()) return softwareUpdateState();
+    void ensureHostRuntimeUpdate(0, true);
+
+    clearErrorRetry();
+    lastCheckStartedAt = Date.now();
     setState({
       phase: "checking",
       error: undefined,
@@ -350,6 +362,10 @@ export async function checkForUpdates(): Promise<SoftwareUpdateState> {
       scheduleErrorRetry();
     }
 
+    // Bootstrap updates take priority. A component check can download and
+    // restart the Host, so it must not run ahead of a required installer.
+    if (!updateInFlight()) await checkApplicationUpdates(true);
+
     return softwareUpdateState();
   })().finally(() => {
     checkPromise = null;
@@ -360,9 +376,10 @@ export async function checkForUpdates(): Promise<SoftwareUpdateState> {
 
 export async function installDownloadedUpdate(): Promise<{ accepted: boolean; state: SoftwareUpdateState }> {
   if (!await mayReceiveUpdates()) {
-    setState({ phase: "disabled", accountUpdatesAllowed: false, availableVersion: undefined });
+    setState({ accountUpdatesAllowed: false });
     return { accepted: false, state: softwareUpdateState() };
   }
+  if (state.accountUpdatesAllowed !== true) setState({ accountUpdatesAllowed: true });
   if (!updateInFlight() && applicationUpdateState().phase === "downloaded") {
     return { accepted: await installApplicationUpdate(), state: softwareUpdateState() };
   }
@@ -370,9 +387,28 @@ export async function installDownloadedUpdate(): Promise<{ accepted: boolean; st
     return { accepted: false, state: softwareUpdateState() };
   }
 
+  // Manual installation must protect active Agent work just like automatic
+  // installation. Keep the verified download available for a later retry.
+  try {
+    if (!headlessInstallGuard || !await headlessInstallGuard()) {
+      setState({ error: "Finish or stop running tasks before restarting to install this update." });
+      return { accepted: false, state: softwareUpdateState() };
+    }
+  } catch {
+    setState({ error: "Could not confirm that running tasks are idle. Try installing again shortly." });
+    return { accepted: false, state: softwareUpdateState() };
+  }
   if (!await mayReceiveUpdates()) return { accepted: false, state: softwareUpdateState() };
-  restartForUpdate();
-  return { accepted: true, state: softwareUpdateState() };
+  try {
+    if (!await headlessInstallGuard()) {
+      setState({ error: "Finish or stop running tasks before restarting to install this update." });
+      return { accepted: false, state: softwareUpdateState() };
+    }
+  } catch {
+    setState({ error: "Could not confirm that running tasks are idle. Try installing again shortly." });
+    return { accepted: false, state: softwareUpdateState() };
+  }
+  return { accepted: restartForUpdate(), state: softwareUpdateState() };
 }
 
 function maybeCheckAfterFocus(): void {
@@ -381,11 +417,14 @@ function maybeCheckAfterFocus(): void {
   void checkForUpdates();
 }
 
-function restartForUpdate(): void {
+function restartForUpdate(): boolean {
+  if (bootstrapRestarting) return false;
+  bootstrapRestarting = true;
   markHeadlessUpdateRestart();
   // Close desktop clients before the installer replaces the shared executable.
   broadcastHostEvent("loom:host-updating", null);
   setTimeout(() => autoUpdater.quitAndInstall(false, true), 500);
+  return true;
 }
 
 function configureUpdater(): void {
@@ -498,6 +537,7 @@ function startAutomaticChecks(): void {
 }
 
 configureUpdater();
+registerApplicationUpdatePriorityGuard(() => !checkPromise && !bootstrapRestarting && !updateInFlight());
 onHostRuntimeUpdateStatus(broadcastState);
 onApplicationUpdateStatus(() => {
   broadcastState();

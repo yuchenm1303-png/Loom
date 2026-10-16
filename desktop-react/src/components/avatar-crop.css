@@ -1,25 +1,10 @@
+/* Scrim, card and reveal are the panel language's (.pl-scrim .pl-modal .pl-reveal). */
 .loom-avatar-crop-backdrop {
-  position: fixed;
-  inset: 0;
   z-index: 1320;
-  display: grid;
-  place-items: center;
-  padding: 24px;
-  background: rgba(3, 5, 9, .68);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
-  animation: loom-avatar-crop-backdrop-in 160ms ease-out both;
 }
 
 .loom-avatar-crop-dialog {
   width: min(424px, calc(100vw - 32px));
-  overflow: hidden;
-  border: 1px solid rgba(255, 255, 255, .09);
-  border-radius: 22px;
-  background: color-mix(in srgb, var(--loom-sidebar, #15171c) 96%, transparent);
-  color: var(--loom-text, #f3f4f6);
-  box-shadow: 0 30px 90px rgba(0, 0, 0, .48), inset 0 1px rgba(255, 255, 255, .04);
-  animation: loom-avatar-crop-dialog-in 210ms cubic-bezier(.2, .8, .2, 1) both;
 }
 
 .loom-avatar-crop-header {
@@ -283,16 +268,6 @@
   cursor: default;
 }
 
-html[data-loom-theme="light"] .loom-avatar-crop-backdrop {
-  background: rgba(50, 54, 64, .26);
-}
-
-html[data-loom-theme="light"] .loom-avatar-crop-dialog {
-  border-color: rgba(27, 31, 40, .1);
-  background: rgba(255, 255, 255, .97);
-  box-shadow: 0 30px 80px rgba(44, 48, 60, .2), inset 0 1px rgba(255, 255, 255, .9);
-}
-
 html[data-loom-theme="light"] .loom-avatar-crop-header,
 html[data-loom-theme="light"] .loom-avatar-crop-actions {
   border-color: rgba(27, 31, 40, .07);
@@ -309,14 +284,6 @@ html[data-loom-theme="light"] .loom-avatar-crop-actions button:not(.is-primary) 
   background: rgba(27, 31, 40, .035);
 }
 
-@keyframes loom-avatar-crop-backdrop-in {
-  from { opacity: 0; }
-}
-
-@keyframes loom-avatar-crop-dialog-in {
-  from { opacity: 0; transform: translateY(8px) scale(.985); }
-}
-
 @media (max-width: 520px) {
   .loom-avatar-crop-backdrop { padding: 12px; }
   .loom-avatar-crop-dialog { width: min(392px, calc(100vw - 24px)); }
@@ -325,12 +292,3 @@ html[data-loom-theme="light"] .loom-avatar-crop-actions button:not(.is-primary) 
   .loom-avatar-crop-reset { justify-content: center; }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .loom-avatar-crop-backdrop,
-  .loom-avatar-crop-dialog { animation: none !important; }
-}
-
-:root[data-loom-reduced-motion="true"] .loom-avatar-crop-backdrop,
-:root[data-loom-reduced-motion="true"] .loom-avatar-crop-dialog {
-  animation: none !important;
-}

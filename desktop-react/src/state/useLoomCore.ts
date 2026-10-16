@@ -198,8 +198,10 @@ function modelsForThread(snapshot: ModelSnapshot | null, thread?: ThreadRecord |
     current: {
       ...profile,
       model: thread.model || profile.model,
-      provider: thread.modelProvider || profile.adapter,
-      baseUrl: thread.modelBaseUrl || profile.baseUrl,
+      // Historic transport strings are not connection authority. The stable
+      // selection resolves the current personal endpoint or account gateway.
+      provider: profile.adapter,
+      baseUrl: profile.baseUrl,
       // `profile` is the catalogue entry resolved just now; `modelVision` is a
       // snapshot taken whenever this thread last switched models. For a
       // capability the live answer wins -- reading the snapshot first left
@@ -231,6 +233,7 @@ export function useLoom() {
   const modelSwitchTasks = useRef(new Map<string, Promise<void>>());
   const modelSwitchVersions = useRef(new Map<string, number>());
   const [pendingModels, setPendingModels] = useState<Record<string, ModelSnapshot["profiles"][number]>>({});
+  const modelRefreshRevision = useRef(0);
   const [modelBusy, setModelBusy] = useState(false);
   const [threads, setThreads] = useState<ThreadRecord[]>([]);
   const [projects, setProjects] = useState<ProjectRecord[]>([]);
@@ -441,8 +444,9 @@ export function useLoom() {
   }, [refreshProjects, refreshThreads]);
 
   const refreshModels = useCallback(async (forceRefresh = false) => {
+    const revision = ++modelRefreshRevision.current;
     const snapshot = await requireBridge().listModels<ModelSnapshot>(forceRefresh);
-    setModels(snapshot);
+    if (modelRefreshRevision.current === revision) setModels(snapshot);
     return snapshot;
   }, []);
 
@@ -865,6 +869,7 @@ export function useLoom() {
   }, [active?.thread.archived, active?.thread.id]);
 
   const applyModelRestart = useCallback(async (result: ModelRestartResult) => {
+    ++modelRefreshRevision.current;
     setRuntime((current) => ({ ...current, ...(result.initialization.runtime ?? {}) }));
     setModels(result.models);
     if (result.thread) {
@@ -906,7 +911,7 @@ export function useLoom() {
         if (modelSwitchVersions.current.get(key) === version) {
           modelSwitchTasks.current.delete(key);
           setPendingModels(current => { const next = { ...current }; delete next[key]; return next; });
-          setModelBusy(false);
+          setModelBusy(modelSwitchTasks.current.size > 0);
         }
       }
     })();

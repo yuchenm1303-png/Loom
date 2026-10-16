@@ -354,10 +354,11 @@ export const Inspector = memo(function Inspector({ items, onClose }: InspectorPr
 
   return (
     <>
-      <aside className="inspector runtime-inspector">
+      <aside className="inspector runtime-inspector pl-dock">
         <header className="runtime-header">
           <div className="runtime-heading">
             <div className="runtime-title-row">
+              <span className="pl-mark runtime-mark"><Activity size={16} strokeWidth={1.8} /></span>
               <strong>{zh ? "执行详情" : "Activity"}</strong>
             </div>
             <div className="runtime-subtitle-row">
@@ -368,7 +369,7 @@ export const Inspector = memo(function Inspector({ items, onClose }: InspectorPr
               </span>
             </div>
           </div>
-          <button className="runtime-close" onClick={onClose} title="Close runtime inspector" aria-label="Close runtime inspector">
+          <button className="runtime-close pl-icon-button" onClick={onClose} title="Close runtime inspector" aria-label="Close runtime inspector">
             <PanelRightClose size={16} strokeWidth={1.8} />
           </button>
         </header>

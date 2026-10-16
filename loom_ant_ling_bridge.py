@@ -89,7 +89,8 @@ def _resolve(selection: str) -> dict[str, Any]:
     model = _model_from_selection(selection)
     if not model: raise ValueError(f"unknown Ant Ling selection: {selection!r}")
     profile = _profile(model, reasoning_store=ReasoningConfigStore(_home()))
-    return {**profile, "provider": "openai-compatible", "apiKey": "", "authMode": "loom-account"}
+    from loom_builtin_models import validate_model_connection
+    return validate_model_connection({**profile, "provider": "openai-compatible", "apiKey": "", "authMode": "loom-account"})
 
 def _describe(selection: str, model: str) -> dict[str, Any]:
     if not _model_from_selection(selection): raise ValueError(f"unknown Ant Ling selection: {selection!r}")

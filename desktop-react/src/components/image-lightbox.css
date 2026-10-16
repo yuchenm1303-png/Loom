@@ -1,20 +1,17 @@
+/* The image viewer appears in place: it is revealed and concealed by opacity, in the panel
+   language's one pair of durations (global-motion.css), like every other dialog. */
 .user-message-image-lightbox[data-motion-phase] {
   animation: none;
-  transition: opacity 180ms ease;
-}
-.user-message-image-lightbox[data-motion-phase] .user-message-image-lightbox-panel {
-  transition: transform 220ms cubic-bezier(.2,.8,.2,1);
+  transition: opacity var(--loom-motion-reveal, 240ms) var(--loom-ease-depth, cubic-bezier(.16, .78, .18, 1));
 }
 .user-message-image-lightbox:is([data-motion-phase="entering"],[data-motion-phase="exiting"]) { opacity: 0; }
-.user-message-image-lightbox:is([data-motion-phase="entering"],[data-motion-phase="exiting"]) .user-message-image-lightbox-panel {
-  transform: translateY(6px);
+.user-message-image-lightbox[data-motion-phase="exiting"] {
+  transition-duration: var(--loom-motion-conceal, 200ms);
+  transition-timing-function: var(--loom-ease-in, cubic-bezier(.42, 0, .72, .2));
 }
-.user-message-image-lightbox[data-motion-phase="exiting"] .user-message-image-lightbox-panel { transition-duration: 180ms; }
 @media (prefers-reduced-motion: reduce) {
-  .user-message-image-lightbox[data-motion-phase],
-  .user-message-image-lightbox[data-motion-phase] .user-message-image-lightbox-panel { transition: none; transform: none; }
+  .user-message-image-lightbox[data-motion-phase] { transition: none; }
 }
-:root[data-loom-reduced-motion="true"] .user-message-image-lightbox[data-motion-phase],
-:root[data-loom-reduced-motion="true"] .user-message-image-lightbox[data-motion-phase] .user-message-image-lightbox-panel {
-  transition: none; transform: none;
+:root[data-loom-reduced-motion="true"] .user-message-image-lightbox[data-motion-phase] {
+  transition: none;
 }

@@ -4,6 +4,8 @@ import {
   ChevronDown, ChevronRight, File, FileText, Folder, FolderOpen,
   Maximize2, Pencil, Plus, RefreshCw, Save, Search, Trash2, X,
 } from "./icons";
+import type { MotionPresencePhase } from "../motion/useMotionPresence";
+import { PanelHeader } from "./PanelHeader";
 import "./files-workbench.css";
 
 type Entry = { path: string; name: string; type: string; size?: number };
@@ -18,6 +20,8 @@ interface FilesWorkbenchProps {
   projectName: string;
   root: string;
   open: boolean;
+  /** Presence phase from the owner, which keeps the workbench mounted while it leaves (App.tsx). */
+  phase?: MotionPresencePhase;
   onClose(): void;
   onChanged?(): void;
 }
@@ -43,7 +47,7 @@ function fileTreePath(entry: Entry): string {
   return entry.path;
 }
 
-export function FilesWorkbench({ projectId, projectName, root, open, onClose, onChanged }: FilesWorkbenchProps) {
+export function FilesWorkbench({ projectId, projectName, root, open, phase = "entered", onClose, onChanged }: FilesWorkbenchProps) {
   const [directories, setDirectories] = useState<Record<string, Entry[]>>({});
   const [nextOffsets, setNextOffsets] = useState<Record<string, number | null>>({});
   const [expanded, setExpanded] = useState<string[]>([]);
@@ -311,24 +315,31 @@ export function FilesWorkbench({ projectId, projectName, root, open, onClose, on
     ? results.map((entry) => ({ entry, depth: 0 }))
     : treeRows;
 
-  if (!open) return null;
-
   return createPortal(
-    <div className="files-workbench-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) requestClose(); }}>
-      <section className={"files-workbench" + (fullScreen ? " full-screen" : "")} role="dialog" aria-modal="true" aria-label="Files">
-        <header className="files-workbench-header">
-          <div className="files-workbench-brand"><span className="files-workbench-mark"><FolderOpen size={18} /></span>
-            <div><strong>Files</strong><small title={root}>{projectName} · {root}</small></div>
-          </div>
-          <div className="files-workbench-header-actions">
-            <button type="button" onClick={() => void refresh()} title="刷新目录" aria-label="刷新目录"><RefreshCw size={17} /></button>
-            <button type="button" onClick={() => setFullScreen((value) => !value)} title="切换最大化" aria-label="切换最大化"><Maximize2 size={17} /></button>
-            <button type="button" onClick={requestClose} title="关闭 Files" aria-label="关闭 Files"><X size={19} /></button>
-          </div>
-        </header>
+    <div
+      className="files-workbench-backdrop pl-scrim pl-reveal"
+      data-motion-phase={phase}
+      inert={!open}
+      onMouseDown={(event) => { if (event.target === event.currentTarget) requestClose(); }}
+    >
+      <section className={"files-workbench pl-modal" + (fullScreen ? " full-screen" : "")} role="dialog" aria-modal="true" aria-label="Files">
+        <PanelHeader
+          className="files-workbench-header"
+          mark={<FolderOpen size={18} strokeWidth={1.8} />}
+          markClassName="files-workbench-mark"
+          title="Files"
+          subtitle={projectName + " · " + root}
+          subtitleHint={root}
+          actions={<>
+            <button type="button" className="pl-icon-button" onClick={() => void refresh()} title="刷新目录" aria-label="刷新目录"><RefreshCw size={16} /></button>
+            <button type="button" className="pl-icon-button" onClick={() => setFullScreen((value) => !value)} title="切换最大化" aria-label="切换最大化"><Maximize2 size={16} /></button>
+          </>}
+          closeLabel="关闭 Files"
+          onClose={requestClose}
+        />
         <div className="files-workbench-main">
           <aside className="files-workbench-tree" aria-label="项目文件">
-            <div className="files-workbench-search"><Search size={16} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="筛选文件名…" aria-label="搜索文件名" /></div>
+            <div className="files-workbench-search pl-field"><Search size={16} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="筛选文件名…" aria-label="搜索文件名" /></div>
             <div className="files-workbench-tools">
               <button type="button" onClick={() => { setNewKind("file"); setNewName(""); }} title="新建文件"><FileText size={15} /> 文件</button>
               <button type="button" onClick={() => { setNewKind("folder"); setNewName(""); }} title="新建文件夹"><Plus size={15} /> 文件夹</button>

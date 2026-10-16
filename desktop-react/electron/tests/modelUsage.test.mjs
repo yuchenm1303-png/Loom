@@ -105,8 +105,8 @@ test("every builtin group queries its trusted gateway with account authenticatio
       windows: [{ label: "Monthly", remainingPercent: 12 }], balances: [], scope: "loom-shared-provider-account",
       privateUpstreamKey: "must-not-leak" }));
   });
-  for (const suffix of ["", "/minimax", "/deepseek", "/intern", "/opencode-go", "/managed-relay"]) {
-    const result = await service.query({ ...spec, kind: "builtin", model: "demo", authMode: "loom-account",
+  for (const [selection, suffix] of [["builtin:ant-ling", ""], ["builtin:minimax", "/minimax"], ["builtin:deepseek", "/deepseek"], ["builtin:intern:demo", "/intern"], ["builtin:opencode-go:demo", "/opencode-go"], ["managed:demo", "/managed-relay"]]) {
+    const result = await service.query({ ...spec, selection, kind: "builtin", model: "demo", authMode: "loom-account",
       baseUrl: "https://account.smirel.com/model/v1" + suffix }, false, "loom_model_test");
     assert.equal(result.status, "ok");
     assert.equal(result.scope, "loom-shared-provider-account");
@@ -124,7 +124,7 @@ test("account quota cache is partitioned by account token and refresh reaches th
     calls.push([String(url), init.headers.Authorization]);
     return new Response(JSON.stringify({ status: "unsupported", provider: "Intern", checkedAt: 100, windows: [], balances: [] }));
   });
-  const account = { ...spec, kind: "builtin", authMode: "loom-account", baseUrl: "https://account.smirel.com/model/v1/intern" };
+  const account = { ...spec, selection: "builtin:intern:demo", kind: "builtin", authMode: "loom-account", baseUrl: "https://account.smirel.com/model/v1/intern" };
   await service.query(account, false, "account-A");
   await service.query(account, false, "account-B");
   await service.query(account, true, "account-B");

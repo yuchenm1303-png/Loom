@@ -88,6 +88,10 @@ export function AccountDialog({
   const [profileAvatar, setProfileAvatar] = useState("");
   const [profileError, setProfileError] = useState("");
   const [avatarCropFile, setAvatarCropFile] = useState<File | null>(null);
+  // The crop dialog leaves like every panel does, still showing the picture it was cropping.
+  const cropPresence = useMotionPresence(Boolean(avatarCropFile), 235);
+  const lastCropFileRef = useRef<File | null>(avatarCropFile);
+  if (avatarCropFile) lastCropFileRef.current = avatarCropFile;
 
   const dialogRef = useRef<HTMLElement | null>(null);
   const closeRef = useRef<HTMLButtonElement | null>(null);
@@ -323,7 +327,7 @@ export function AccountDialog({
 
   return (
     <div
-      className="loom-account-backdrop"
+      className="loom-account-backdrop pl-scrim pl-reveal"
       data-motion-phase={presence.phase}
       inert={!open}
       role="presentation"
@@ -349,7 +353,7 @@ export function AccountDialog({
         <button
           ref={closeRef}
           type="button"
-          className="loom-account-close"
+          className="loom-account-close pl-icon-button"
           onClick={onClose}
           disabled={busy}
           aria-label={zh ? "关闭" : "Close"}
@@ -654,7 +658,9 @@ export function AccountDialog({
         )}
       </section>
       <AvatarCropDialog
-        file={avatarCropFile}
+        file={avatarCropFile ?? (cropPresence.mounted ? lastCropFileRef.current : null)}
+        open={Boolean(avatarCropFile)}
+        phase={cropPresence.phase}
         zh={zh}
         onCancel={() => setAvatarCropFile(null)}
         onApply={(dataUrl) => {

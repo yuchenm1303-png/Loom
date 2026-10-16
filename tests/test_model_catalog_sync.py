@@ -31,7 +31,9 @@ def test_policy_check_reports_invalid_id_accurately(selection, message):
         application.check({"model_id": selection}, "unused")
 
 
-def test_discovery_retirement_reappearance_and_policy_survive_restart(tmp_path):
+def test_discovery_retirement_reappearance_and_policy_survive_restart(tmp_path, monkeypatch):
+    clock = [1800000000]
+    monkeypatch.setattr("services.loom_model_policy.policy._now", lambda: clock[0])
     path = tmp_path / "policy.db"
     store = PolicyStore(path)
     models = parse_models("minimax", {"data": [{"id": "MiniMax-new"}, {"id": "MiniMax-other"}]})
@@ -41,6 +43,12 @@ def test_discovery_retirement_reappearance_and_policy_survive_restart(tmp_path):
     before = store.effective_access(7, {"enabled": True})
     assert decision(before, first)["source"] == "user"
     assert other in before["models"]
+    store.replace_provider_catalog("minimax", models[1:])
+    suspect = next(row for row in store.catalog()["models"] if row["model_id"] == first)
+    assert suspect["available"] and suspect["catalog_state"] == "pending-removal"
+    assert decision(store.effective_access(7, {"enabled": True}), first)["source"] == "user"
+    store = PolicyStore(path)
+    clock[0] += 300
     store.replace_provider_catalog("minimax", models[1:])
     retired = store.effective_access(7, {"enabled": True})
     assert decision(retired, first) == {"model_id": first, "enabled": False, "source": "catalog", "groups": []}
@@ -78,7 +86,7 @@ def test_all_provider_discovery_is_independent_of_clients_and_keeps_global_denie
     for group in GROUPS:
         selection = selection_for_model(group.id, "future-model")
         assert decision(access, selection)["enabled"] == (group.id != "deepseek")
-    assert len([row for row in access["catalog"]["models"] if row["available"]]) == len(GROUPS)
+    assert len([row for row in access["catalog"]["models"] if row["catalog_state"] == "available"]) == len(GROUPS)
     # Discovery on a subsequent run must not reset individual rules.
     minimax = selection_for_model("minimax", "future-model")
     store.set_global_rule(1, minimax, False)

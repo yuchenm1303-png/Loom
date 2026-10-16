@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import { builtinBaseUrl } from "./modelConnection.js";
 import type { ModelLaunchSpec } from "./modelManager.js";
 import type { ModelUsage, UsageWindow } from "../src/types/modelUsage.js";
 
@@ -23,15 +24,11 @@ export function usageEndpoint(baseUrl: string): { provider: string; url: string 
 }
 
 export function accountUsageEndpoint(spec: ModelLaunchSpec): string | null {
-  if (spec.authMode !== "loom-account" || spec.kind === "saved") return null;
+  if (spec.authMode !== "loom-account" || spec.kind !== "builtin") return null;
   try {
-    const root = new URL(process.env.LOOM_MODEL_GATEWAY_BASE_URL || "https://account.smirel.com/model/v1");
-    if (root.username || root.password || root.search || root.hash
-      || (root.protocol !== "https:" && !(root.protocol === "http:" && ["127.0.0.1", "localhost", "[::1]"].includes(root.hostname)))) return null;
-    const base = spec.baseUrl.replace(/\/$/, "");
-    const prefix = root.href.replace(/\/$/, "");
-    if (!["", "/minimax", "/deepseek", "/intern", "/opencode-go", "/managed-relay"].some(suffix => base === prefix + suffix)) return null;
-    return `${base}/usage?model=${encodeURIComponent(spec.model)}`;
+    const expected = builtinBaseUrl(spec.selection);
+    if (!expected || spec.baseUrl.replace(/\/$/, "") !== expected) return null;
+    return `${expected}/usage?model=${encodeURIComponent(spec.model)}`;
   } catch { return null; }
 }
 

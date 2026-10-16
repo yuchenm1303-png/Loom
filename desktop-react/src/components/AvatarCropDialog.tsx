@@ -1,5 +1,6 @@
 import { Crop, RotateCcw, X, ZoomIn } from "./icons";
 import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type WheelEvent } from "react";
+import type { MotionPresencePhase } from "../motion/useMotionPresence";
 import "./avatar-crop.css";
 
 const CROP_SIZE = 256;
@@ -23,6 +24,9 @@ type DragState = {
 
 interface AvatarCropDialogProps {
   file: File | null;
+  /** False while the dialog leaves: the owner keeps `file` until the exit is over. */
+  open?: boolean;
+  phase?: MotionPresencePhase;
   zh: boolean;
   onCancel(): void;
   onApply(dataUrl: string): void;
@@ -62,7 +66,7 @@ async function encodeCrop(
   throw new Error("This crop could not be compressed enough. Try a simpler image.");
 }
 
-export function AvatarCropDialog({ file, zh, onCancel, onApply }: AvatarCropDialogProps) {
+export function AvatarCropDialog({ file, open = true, phase = "entered", zh, onCancel, onApply }: AvatarCropDialogProps) {
   const imageRef = useRef<HTMLImageElement | null>(null);
   const dragRef = useRef<DragState | null>(null);
   const [image, setImage] = useState<ImageInfo | null>(null);
@@ -107,7 +111,7 @@ export function AvatarCropDialog({ file, zh, onCancel, onApply }: AvatarCropDial
   }, [file, zh]);
 
   useEffect(() => {
-    if (!file) return;
+    if (!file || !open) return;
     const onKey = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         event.preventDefault();
@@ -117,7 +121,7 @@ export function AvatarCropDialog({ file, zh, onCancel, onApply }: AvatarCropDial
     };
     window.addEventListener("keydown", onKey, true);
     return () => window.removeEventListener("keydown", onKey, true);
-  }, [file, onCancel]);
+  }, [file, open, onCancel]);
 
   const baseScale = useMemo(() => {
     if (!image) return 1;
@@ -191,10 +195,10 @@ export function AvatarCropDialog({ file, zh, onCancel, onApply }: AvatarCropDial
   if (!file) return null;
 
   return (
-    <div className="loom-avatar-crop-backdrop" role="presentation" onMouseDown={(event) => {
+    <div className="loom-avatar-crop-backdrop pl-scrim pl-reveal" data-motion-phase={phase} inert={!open} role="presentation" onMouseDown={(event) => {
       if (event.target === event.currentTarget && !applying) onCancel();
     }}>
-      <section className="loom-avatar-crop-dialog" role="dialog" aria-modal="true" aria-labelledby="loom-avatar-crop-title">
+      <section className="loom-avatar-crop-dialog pl-modal" role="dialog" aria-modal="true" aria-labelledby="loom-avatar-crop-title">
         <header className="loom-avatar-crop-header">
           <div>
             <span className="loom-avatar-crop-mark" aria-hidden="true"><Crop size={17} /></span>
@@ -203,7 +207,7 @@ export function AvatarCropDialog({ file, zh, onCancel, onApply }: AvatarCropDial
               <p>{zh ? "拖动图片选择区域，滚轮或滑块调整缩放。" : "Drag to position the image, then zoom to frame it."}</p>
             </div>
           </div>
-          <button type="button" autoFocus className="loom-avatar-crop-close" onClick={onCancel} disabled={applying} aria-label={zh ? "取消裁剪" : "Cancel crop"}>
+          <button type="button" autoFocus className="loom-avatar-crop-close pl-icon-button" onClick={onCancel} disabled={applying} aria-label={zh ? "取消裁剪" : "Cancel crop"}>
             <X size={16} />
           </button>
         </header>

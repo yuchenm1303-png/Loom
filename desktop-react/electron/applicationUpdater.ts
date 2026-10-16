@@ -20,11 +20,13 @@ export interface ApplicationUpdateStatus {
 let status: ApplicationUpdateStatus = { phase: "idle" };
 let changed = () => {};
 let safeToRestart: (() => boolean | Promise<boolean>) | undefined;
+let bootstrapAllowsRestart = () => true;
 let checking: Promise<void> | null = null;
 let restarting = false;
 export function applicationUpdateState() { return { ...status }; }
 export function onApplicationUpdateStatus(callback: () => void) { changed = callback; }
 export function registerApplicationRestartGuard(guard: () => boolean | Promise<boolean>) { safeToRestart = guard; }
+export function registerApplicationUpdatePriorityGuard(guard: () => boolean) { bootstrapAllowsRestart = guard; }
 function setStatus(next: ApplicationUpdateStatus) { status = next; changed(); }
 async function fetchBytes(url: string, limit: number) {
   const response = await net.fetch(url, { cache: "no-store", signal: AbortSignal.timeout(60000) });
@@ -46,10 +48,9 @@ export async function checkApplicationUpdates(manual = false) {
   const previousReady = status.phase === "downloaded" ? { ...status } : null;
   checking = (async () => {
     if (!await mayReceiveUpdates()) {
-      // Do not leave a previously staged release ready to activate on a
-      // later, unrelated restart after an administrator disables updates.
-      await updateApplicationPointer(root, current => ({ ...current, ready: undefined }));
-      setStatus({ phase: "idle" });
+      // A timeout is not a revocation. Preserve verified downloads; both the
+      // installer and loader still require fresh permission before activation.
+      setStatus({ phase: "error", error: "Update access could not be verified. Check your connection and account permission, then try again." });
       return;
     }
     if (globalThis.loomApplicationBootstrap) globalThis.loomApplicationBootstrap.downloading = true;
@@ -108,12 +109,13 @@ export async function maybeInstallApplicationUpdate(): Promise<boolean> {
 }
 
 export async function installApplicationUpdate(): Promise<boolean> {
-  if (!enabled || restarting || status.phase !== "downloaded" || !safeToRestart) return false;
+  if (!enabled || restarting || status.phase !== "downloaded" || !safeToRestart || !bootstrapAllowsRestart()) return false;
   if (!await mayReceiveUpdates()) return false;
   try { if (!await safeToRestart()) return false; } catch { return false; }
   if (!await mayReceiveUpdates()) return false;
+  try { if (!await safeToRestart()) return false; } catch { return false; }
   // The guard awaits runtime state; a newer download may have started meanwhile.
-  if (restarting || status.phase !== "downloaded") return false;
+  if (restarting || status.phase !== "downloaded" || !bootstrapAllowsRestart()) return false;
   restarting = true;
   broadcastHostEvent("loom:host-updating", null);
   // The new Host selects the staged release; UI children then follow its build.

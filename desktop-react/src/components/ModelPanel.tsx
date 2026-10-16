@@ -967,6 +967,9 @@ export function ModelPanel({
               <span>{adminBlockedChoices.length} built-in model{adminBlockedChoices.length === 1 ? " is" : "s are"} disabled by Loom Admin. You can still add a separate personal API connection below.</span>
             </div>
           ) : null}
+          {hasBuiltinModels && accountAuthenticated && snapshot?.policySync?.state !== "fresh" ? (
+            <div className="mp-notice" role="status"><span>Model permissions are syncing. Last known states remain visible; the server checks access when a model runs.</span></div>
+          ) : null}
           {accountAuthenticated ? unavailableReasons.map(reason => (
             <div className="mp-notice is-error" role="alert" key={reason}>
               <span>{reason}</span>

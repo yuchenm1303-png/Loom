@@ -1,3 +1,6 @@
+/* The inspector is a narrow column in the grid, not a portaled dock, but it is a dock all the
+   same: material, edge and type come from the panel language (.pl-dock). Its header keeps
+   two lines because the window controls take the first one (window-rail.css). */
 .inspector.runtime-inspector {
   position: relative;
   isolation: isolate;
@@ -5,20 +8,6 @@
   /* The tab row reserves the badge band: 45px of tab inside 6px both sides.
      See .runtime-tab / .runtime-tab-count for the corner-badge geometry. */
   grid-template-rows: auto 68px minmax(0, 1fr);
-  background:
-    radial-gradient(circle at 84% -4%, rgba(139, 124, 246, .075), transparent 29%),
-    linear-gradient(180deg, #101116 0%, #0e1014 100%);
-}
-
-.inspector.runtime-inspector::before {
-  content: "";
-  position: absolute;
-  z-index: -1;
-  inset: 0 0 auto;
-  height: 150px;
-  pointer-events: none;
-  background: linear-gradient(110deg, transparent 18%, rgba(255,255,255,.014) 50%, transparent 82%);
-  mask-image: linear-gradient(to bottom, black, transparent);
 }
 
 .runtime-header {
@@ -27,19 +16,8 @@
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 12px 12px 12px 15px;
-  border-bottom: 1px solid rgba(255,255,255,.055);
-}
-
-.runtime-header::after {
-  content: "";
-  position: absolute;
-  left: 15px;
-  right: 15px;
-  bottom: -1px;
-  height: 1px;
-  opacity: .52;
-  background: linear-gradient(90deg, rgba(139,124,246,.3), rgba(139,124,246,.04) 44%, transparent 82%);
+  padding: 12px 12px 12px var(--pl-pad);
+  border-bottom: 1px solid var(--pl-edge);
 }
 
 .runtime-heading {
@@ -61,20 +39,17 @@
 .runtime-title-row {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
 }
 
 .runtime-title-row strong {
-  color: #d9dde6;
-  font-size: 12px;
-  font-weight: 680;
-  letter-spacing: .005em;
+  color: var(--pl-ink);
+  font-weight: 650;
+  letter-spacing: -.005em;
 }
 
 .runtime-caption {
-  color: #5d6470;
-  font-size: 9px;
-  letter-spacing: .025em;
+  color: var(--pl-muted);
 }
 
 .runtime-health {
@@ -83,12 +58,11 @@
   align-items: center;
   gap: 5px;
   padding: 0 6px;
-  border: 1px solid #242833;
+  border: 1px solid var(--pl-line);
   border-radius: 999px;
-  background: rgba(20,22,28,.72);
-  color: #777f8d;
-  font-size: 8px;
-  font-weight: 650;
+  background: transparent;
+  color: var(--pl-muted);
+  font-weight: 600;
   letter-spacing: .025em;
   transition: color 180ms ease, border-color 180ms ease, background 180ms ease;
 }
@@ -97,44 +71,25 @@
   width: 5px;
   height: 5px;
   border-radius: 50%;
-  background: #646b78;
-  box-shadow: 0 0 0 0 rgba(139,124,246,0);
+  background: var(--pl-faint);
+  box-shadow: 0 0 0 0 transparent;
 }
 
 .runtime-health.live {
-  color: #afa8f6;
-  border-color: rgba(139,124,246,.25);
-  background: rgba(139,124,246,.07);
+  color: var(--pl-accent);
+  border-color: var(--pl-accent-line);
+  background: var(--pl-accent-wash);
 }
 .runtime-health.live .runtime-health-dot {
-  background: #a89eff;
+  background: var(--pl-accent);
   animation: runtime-pulse 1.9s ease-out infinite;
 }
 .runtime-health.warning {
-  color: #d39a9f;
-  border-color: rgba(220,124,134,.22);
-  background: rgba(220,124,134,.055);
+  color: var(--pl-danger);
+  border-color: color-mix(in srgb, var(--pl-danger) 28%, transparent);
+  background: color-mix(in srgb, var(--pl-danger) 9%, transparent);
 }
-.runtime-health.warning .runtime-health-dot { background: #cf7883; }
-
-.runtime-close {
-  width: 30px;
-  height: 30px;
-  flex: none;
-  display: grid;
-  place-items: center;
-  border: 1px solid transparent;
-  border-radius: 8px;
-  background: transparent;
-  color: #737b89;
-  cursor: pointer;
-  transition: color 150ms ease, background 150ms ease, border-color 150ms ease, transform 150ms ease;
-}
-.runtime-close:hover {
-  color: #c9ced8;
-  border-color: #292e38;
-  background: #181b21;
-}
+.runtime-health.warning .runtime-health-dot { background: var(--pl-danger); }
 
 .runtime-tabs {
   position: relative;
@@ -142,8 +97,8 @@
   grid-template-columns: repeat(4, minmax(0, 1fr));
   align-items: center;
   padding: 6px 7px;
-  border-bottom: 1px solid rgba(255,255,255,.055);
-  background: rgba(12,14,18,.38);
+  border-bottom: 1px solid var(--pl-edge);
+  background: transparent;
 }
 
 .runtime-tab-glider {

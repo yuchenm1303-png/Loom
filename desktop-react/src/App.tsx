@@ -545,6 +545,11 @@ export default function App() {
     ? loom.projects.find((project) => project.id === selectedProjectId) ?? null
     : null;
   const filesProject = filesProjectId ? loom.projects.find((project) => project.id === filesProjectId) : undefined;
+  // Files is a modal and leaves like every panel does: held mounted for its exit, still showing its project.
+  const filesPresence = useMotionPresence(Boolean(filesProject), 235);
+  const lastFilesProjectRef = useRef(filesProject);
+  if (filesProject) lastFilesProjectRef.current = filesProject;
+  const filesShown = filesProject ?? (filesPresence.mounted ? lastFilesProjectRef.current : undefined);
   const dockProject = selectedProject
     ?? loom.projects.find(project => project.id === selectedThread?.projectId)
     ?? loom.projects.find(project => Boolean(project.root) &&
@@ -1562,12 +1567,13 @@ export default function App() {
         onLogout={account.logout}
       />
       </div>
-      {filesProject ? <FilesWorkbench
-        key={filesProject.id}
-        projectId={filesProject.id}
-        projectName={filesProject.name}
-        root={filesProject.root}
-        open={true}
+      {filesShown ? <FilesWorkbench
+        key={filesShown.id}
+        projectId={filesShown.id}
+        projectName={filesShown.name}
+        root={filesShown.root}
+        open={Boolean(filesProject)}
+        phase={filesPresence.phase}
         onClose={() => setFilesProjectId("")}
         onChanged={() => { void loom.refreshProjects(); }}
       /> : null}
