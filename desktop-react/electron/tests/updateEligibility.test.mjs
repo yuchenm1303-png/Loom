@@ -2,10 +2,11 @@ import { test, mock } from "node:test";
 import assert from "node:assert/strict";
 
 let snapshot = { reachable: true, authenticated: true, user: { id: 13, status: "active", updates_enabled: true } };
-let delay = 0, calls = 0;
+let delay = 0, calls = 0, transientOutages = 0;
 mock.module("../../dist-electron/hostAccount.js", { namedExports: {
   hostAccount: { async status() {
     calls++;
+    if (transientOutages-- > 0) return { ...snapshot, reachable: false };
     if (delay) await new Promise(resolve => setTimeout(resolve, delay));
     if (snapshot instanceof Error) throw snapshot;
     return snapshot;
@@ -34,6 +35,18 @@ test("update policy fails closed when signed out, offline, or authentication err
   assert.equal(await mayReceiveUpdates(), false);
   snapshot = new Error("network unavailable");
   assert.equal(await mayReceiveUpdates(), false);
+});
+
+test("one transient outage retries but explicit revocation does not", async () => {
+  snapshot = { reachable: true, authenticated: true, user: { id: 13, status: "active", updates_enabled: true } };
+  transientOutages = 1;
+  const before = calls;
+  assert.deepEqual(await Promise.all([mayReceiveUpdates(), mayReceiveUpdates()]), [true, true]);
+  assert.equal(calls, before + 2, "concurrent channels share both attempts");
+  snapshot.user.updates_enabled = false;
+  const deniedBefore = calls;
+  assert.equal(await mayReceiveUpdates(), false);
+  assert.equal(calls, deniedBefore + 1, "never retry an explicit denial");
 });
 
 test("slow account verification can finish and concurrent update channels share the request", async () => {

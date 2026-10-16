@@ -472,7 +472,7 @@ test("an outage keeps the stored session instead of signing the user out", async
     user: USER,
   });
   globalThis.fetch = async () => {
-    throw new TypeError("fetch failed");
+    throw new TypeError("fetch failed", { cause: { code: "ECONNRESET" } });
   };
 
   const snapshot = await newClient().status();
@@ -481,6 +481,13 @@ test("an outage keeps the stored session instead of signing the user out", async
   assert.equal(snapshot.reachable, false, "an unreachable service must be reported");
   assert.equal(snapshot.authenticated, true, "the cached identity stays visible");
   assert.equal(snapshot.user.email, USER.email);
+  assert.deepEqual(snapshot.verificationFailure, { code: "ACCOUNT_SERVICE_UNREACHABLE", status: 0 });
+  const log = await fs.readFile(path.join(state.userData, "update-access-diagnostics.jsonl"), "utf8");
+  const record = JSON.parse(log.trim().split("\n").at(-1));
+  assert.equal(record.endpoint, "/auth/me");
+  assert.equal(record.code, "ACCOUNT_SERVICE_UNREACHABLE");
+  assert.equal(record.transportCode, "ECONNRESET");
+  for (const secret of ["loom_access_live", "loom_refresh_live", USER.email, "Bearer"]) assert.equal(log.includes(secret), false);
   await fs.readFile(sessionPath(), "utf8");
 });
 
@@ -529,6 +536,7 @@ test("a 5xx from /auth/me is an outage, not a dead session", async () => {
 
   assert.equal(snapshot.reachable, false);
   assert.equal(snapshot.authenticated, true);
+  assert.deepEqual(snapshot.verificationFailure, { code: "UNAVAILABLE", status: 503 });
   assert.deepEqual(calls.map((call) => call.pathname), ["/v1/auth/me"], "must not attempt a refresh");
   await fs.readFile(sessionPath(), "utf8");
 });

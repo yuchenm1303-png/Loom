@@ -19,7 +19,11 @@ function hostUpdateEligibility(): Promise<boolean> {
 
 async function readHostUpdateEligibility(): Promise<boolean> {
   try {
-    const session = await hostAccount.status();
+    let session = await hostAccount.status();
+    // A single failed connection must not put all three update channels into
+    // an error state. Retry only an outage, never a server denial or sign-out.
+    // Keep sharing the whole operation, and still require a fresh server grant.
+    if (!session.reachable) session = await hostAccount.status();
     return session.reachable === true
       && session.authenticated === true
       && session.user?.status === "active"

@@ -61,6 +61,7 @@ export interface LoomAccountSnapshot {
   authenticated: boolean;
   user: LoomAccountUser | null;
   serviceUrl: string;
+  verificationFailure?: { code: string; status: number };
 }
 
 interface TokenSession {
@@ -94,6 +95,7 @@ export class AccountHttpError extends Error {
     readonly status: number,
     readonly code: string,
     message: string,
+    readonly transportCode?: string,
   ) {
     super(message);
     this.name = "AccountHttpError";
@@ -291,13 +293,14 @@ export class LoomAccountClient {
     await removal;
   }
 
-  private snapshot(session: TokenSession | null, reachable = this.configured): LoomAccountSnapshot {
+  private snapshot(session: TokenSession | null, reachable = this.configured, failure?: unknown): LoomAccountSnapshot {
     return {
       configured: this.configured,
       reachable,
       authenticated: Boolean(session?.user),
       user: session?.user ?? null,
       serviceUrl: this.baseUrl,
+      ...(failure instanceof AccountHttpError ? { verificationFailure: { code: failure.code, status: failure.status } } : {}),
     };
   }
 
@@ -315,6 +318,7 @@ export class LoomAccountClient {
       );
     }
     const controller = new AbortController();
+    const started = Date.now();
     const timer = setTimeout(() => controller.abort(), Math.max(250, timeoutMs));
     try {
       const headers = new Headers(init.headers);
@@ -341,6 +345,7 @@ export class LoomAccountClient {
           0,
           "ACCOUNT_SERVICE_UNREACHABLE",
           "Could not reach the account service.",
+          String((cause as { cause?: { code?: unknown } })?.cause?.code || ""),
         );
       }
       const body = await response.json().catch(() => ({})) as {
@@ -354,6 +359,26 @@ export class LoomAccountClient {
         );
       }
       return body as T;
+    } catch (error) {
+      // Keep the evidence before status() turns an outage into reachable=false.
+      // Only fixed auth endpoints and machine codes belong here, never tokens,
+      // request bodies, email addresses or server-provided error messages.
+      if (endpoint === "/auth/me" || endpoint === "/auth/refresh") {
+        try {
+          const code = (value: unknown) => typeof value === "string" && /^[A-Z0-9_]{1,80}$/.test(value) ? value : "UNKNOWN";
+          const file = path.join(app.getPath("userData"), "update-access-diagnostics.jsonl");
+          if (fsSync.existsSync(file) && fsSync.statSync(file).size > 65536) {
+            const tail = fsSync.readFileSync(file, "utf8").slice(-32768);
+            fsSync.writeFileSync(file, tail.slice(tail.indexOf("\n") + 1));
+          }
+          fsSync.appendFileSync(file, JSON.stringify({ at: new Date().toISOString(), endpoint,
+            elapsedMs: Date.now() - started, code: code(error instanceof AccountHttpError ? error.code : undefined),
+            status: error instanceof AccountHttpError ? error.status : 0,
+            transportCode: code(error instanceof AccountHttpError ? error.transportCode : undefined),
+          }) + "\n", { mode: 0o600 });
+        } catch { /* Diagnostics must never change authentication behavior. */ }
+      }
+      throw error;
     } finally {
       clearTimeout(timer);
     }
@@ -729,7 +754,7 @@ export class LoomAccountClient {
       try {
         session = await this.refresh(session);
       } catch (error) {
-        if (!isAuthRejection(error)) return this.snapshot(session, false);
+        if (!isAuthRejection(error)) return this.snapshot(session, false, error);
         await this.clearSession();
         return this.snapshot(null);
       }
@@ -747,12 +772,12 @@ export class LoomAccountClient {
       return this.snapshot(session);
     } catch (error) {
       this.assertCurrentSession(session);
-      if (!isAuthRejection(error)) return this.snapshot(session, false);
+      if (!isAuthRejection(error)) return this.snapshot(session, false, error);
       try {
         session = await this.refresh(session);
         return this.snapshot(session);
       } catch (refreshError) {
-        if (!isAuthRejection(refreshError)) return this.snapshot(session, false);
+        if (!isAuthRejection(refreshError)) return this.snapshot(session, false, refreshError);
         await this.clearSession();
         return this.snapshot(null);
       }

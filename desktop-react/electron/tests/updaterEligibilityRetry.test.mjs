@@ -63,13 +63,18 @@ mock.module("../../dist-electron/hostRuntimeUpdater.js", { namedExports: {
 } });
 const { checkForUpdates, installDownloadedUpdate, registerHeadlessUpdateGuard } = await import("../../dist-electron/updater.js");
 
-test("failed eligibility keeps manual retry available while blocking downloads and installs", async () => {
+test("failed eligibility schedules recovery while blocking downloads and installs", async (t) => {
+  const originalTimeout = globalThis.setTimeout;
+  const timers = t.mock.method(globalThis, "setTimeout", (...args) => originalTimeout(...args));
+  automaticUpdates = true;
   const denied = await checkForUpdates();
   assert.equal(denied.phase, "disabled");
   assert.equal(denied.accountUpdatesAllowed, false);
   assert.equal(denied.enabled, true, "installed updater must allow the user to retry");
   assert.equal(installerChecks, 0);
   assert.equal(applicationChecks, 0);
+  assert.ok(timers.mock.calls.some(call => call.arguments[1] === 60_000), "verification failure must schedule the short retry");
+  automaticUpdates = false;
   assert.equal((await installDownloadedUpdate()).accepted, false);
   assert.equal(installs, 0);
   allowed = true;

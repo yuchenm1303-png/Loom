@@ -337,6 +337,7 @@ export async function checkForUpdates(): Promise<SoftwareUpdateState> {
     if (!updateInFlight()) setState({ phase: "checking", error: undefined });
     if (!await mayReceiveUpdates()) {
       setState({ accountUpdatesAllowed: false, error: undefined });
+      scheduleErrorRetry();
       return softwareUpdateState();
     }
     if (state.accountUpdatesAllowed !== true) {
