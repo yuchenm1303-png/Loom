@@ -1534,7 +1534,7 @@ class AgentRuntime:
         # Suggestions are exceptional. Ordinary conversation must never get an
         # invented child task simply because the feature exists.
         return prompt + (
-            "\\n\\nLoom can optionally show child-task suggestions, but DO NOT propose "
+            "\n\nLoom can optionally show child-task suggestions, but DO NOT propose "
             "one by default. Never suggest a child task for greetings, questions, explanations, "
             "completed work, trivial follow-ups, or without a concrete unresolved deliverable. "
             "Only when you identify a clearly independent, genuinely useful unfinished task "
