@@ -87,7 +87,9 @@ try {
     app.getVersion = () => ${JSON.stringify(version)};
     app.getAppPath = () => ${JSON.stringify(installed)};
     app.setPath("userData", ${JSON.stringify(path.join(home, "profile"))});
-    try {
+    // Let Electron emit ready while the real loader verifies account access.
+    // A top-level await here would reproduce the ESM bootstrap deadlock.
+    void (async () => { try {
       // This probe verifies relocation and ASAR loading, not sign-in. Exercise
       // the real eligibility check with an authorized, isolated test account.
       // No persisted session, real account credential or production bypass.
@@ -100,7 +102,7 @@ try {
       trace("APPLICATION_SELECTED " + entry);
       if (!entry.includes("application-updates")) throw new Error("Authorized staged application was not selected");
       await import(pathToFileURL(entry).href);
-    } catch (error) { trace(String(error.stack)); console.error(error); app.exit(1); }
+    } catch (error) { trace(String(error.stack)); console.error(error); app.exit(1); } })();
   `);
   const env = { ...process.env, LOOM_HOST_DATA_DIR: home, LOOM_ACCOUNT_API_BASE_URL: "http://127.0.0.1:1/v1" };
   const portProbe = net.createServer();
