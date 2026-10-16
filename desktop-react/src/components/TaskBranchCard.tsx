@@ -145,7 +145,7 @@ export function TaskBranchCard({
       <header>
         <span className="loom-task-branch-header-mark"><GitFork size={17} /></span>
         <div className="loom-task-branch-heading">
-          <small>{t("branch.suggestion")}</small>
+          <small>{initial ? t("branch.suggestion") : t("branch.manualPlanning")}</small>
           <strong id={id + "-heading"}>{loading ? t("branch.planning") : hasPlan ? title : t("branch.create")}</strong>
         </div>
         <button type="button" disabled={pending} onClick={onDismiss} aria-label={t("branch.close")}><X size={15} /></button>
