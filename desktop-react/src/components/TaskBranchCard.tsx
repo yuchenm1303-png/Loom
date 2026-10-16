@@ -20,6 +20,8 @@ export function parseTaskBranchProposal(answer: string): { text: string; proposa
   const pattern = new RegExp("(^|\\n)" + fence + "loom-task\\s*\\n([\\s\\S]{1,14000}?)\\n" + fence + "(?=\\s|$)", "i");
   const match = pattern.exec(answer);
   if (!match) return { text: answer, proposal: null };
+  // Never expose broken agent-only proposal JSON as visible chat content.
+  const plainAnswer = answer.replace(match[0], match[1] || "").trim();
   try {
     const data = JSON.parse(match[2]) as Record<string, unknown>;
     const title = typeof data.title === "string" ? data.title.trim() : "";
@@ -28,19 +30,19 @@ export function parseTaskBranchProposal(answer: string): { text: string; proposa
     const criteria = data.acceptanceCriteria;
     // A suggestion is not a generic call to action. It must be an intentional,
     // concrete proposal with an outcome and at least two checks. An old-format
-    // or unrequested model blob is shown as ordinary text, not an action card.
+    // or unrequested model blob must not become an action card.
     if (data.actionable !== true || !title || title.length > 55 ||
         !prompt || prompt.length > 12000 || !summary || summary.length > 220 ||
         !Array.isArray(criteria) || criteria.length < 2 || criteria.length > 5 ||
         !criteria.every((item) => typeof item === "string" && item.trim().length > 0 && item.trim().length <= 220)) {
-      return { text: answer, proposal: null };
+      return { text: plainAnswer, proposal: null };
     }
     return {
-      text: answer.replace(match[0], match[1] || "").trim(),
+      text: plainAnswer,
       proposal: { title, prompt, summary: summary.slice(0, 220), acceptanceCriteria: criteria },
     };
   } catch {
-    return { text: answer, proposal: null };
+    return { text: plainAnswer, proposal: null };
   }
 }
 
