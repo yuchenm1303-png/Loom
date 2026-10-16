@@ -23,30 +23,21 @@ def test_extension_install_behavior() -> None:
     subprocess.run([node, str(ROOT / "tests/browser_extension_install.cjs")], cwd=ROOT, check=True)
 
 
-def test_host_runtime_has_its_own_release_channel() -> None:
-    workflow = (ROOT / ".github/workflows/host-runtime-release.yml").read_text(encoding="utf-8")
-    package = (ROOT / "desktop-react/scripts/package-host-runtime.mjs").read_text(encoding="utf-8")
-    config = (ROOT / "host-runtime/runtime.json").read_text(encoding="utf-8")
-    assert "--prerelease" in workflow
-    assert "host-v$version" in workflow
-    assert "host-runtime/stable.json" in workflow
-    assert "Loom-Host-Runtime-$version-win-x64.zip" in workflow
-    assert "Compress-Archive" in package
-    assert '"minBootstrapVersion"' in config
-
-
-def test_host_runtime_is_selected_independently_from_desktop() -> None:
+def test_runtime_and_ui_ship_in_the_complete_installer() -> None:
+    assert not (ROOT / ".github/workflows/host-runtime-release.yml").exists()
+    assert not (ROOT / ".github/workflows/application-runtime-release.yml").exists()
+    assert not (ROOT / ".github/workflows/ui-runtime-release.yml").exists()
     runtime = (ROOT / "desktop-react/electron/hostRuntime.ts").read_text(encoding="utf-8")
-    updater = (ROOT / "desktop-react/electron/hostRuntimeUpdater.ts").read_text(encoding="utf-8")
+    assert "managedHostRuntime" not in runtime
+    assert "current.json" not in runtime
     main = (ROOT / "desktop-react/electron/main.ts").read_text(encoding="utf-8")
-    models = (ROOT / "desktop-react/electron/modelManager.ts").read_text(encoding="utf-8")
-    assert 'path.join(hostDataPath, "host-runtime")' in runtime
-    assert "current.json" in runtime
     assert "resolveHostPythonExecutable" in main
     assert "resolveHostBrowserExtensionRoot" in main
-    assert "resolveHostPythonExecutable(this.repoRoot)" in models
-    assert "Runtime activation rolled back" in updater
-    assert "minBootstrapVersion" in updater
+    assert "window.loadFile(builtIndex)" in main
+    assert "loadUpdatedRenderer" not in main
+    entry = (ROOT / "desktop-react/electron/entry.ts").read_text(encoding="utf-8")
+    assert "selectApplication" not in entry
+    assert "dist-electron/applicationEntry.js" in entry
 
 
 def test_background_host_keeps_bootstrap_updates_armed() -> None:

@@ -2,7 +2,7 @@ name: Sync Update Download Source
 on:
   workflow_dispatch:
   workflow_run:
-    workflows: [Windows Release, Windows Release On Version Commit, Loom Application Update, Loom UI Resource Update, Loom Host Runtime Release]
+    workflows: [Windows Release, Windows Release On Version Commit]
     types: [completed]
 permissions:
   contents: read

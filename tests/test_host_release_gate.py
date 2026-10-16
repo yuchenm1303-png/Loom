@@ -1,31 +1,32 @@
-"""A failed source test job must prevent publishing that exact source SHA."""
+"""All desktop, UI and runtime changes publish through the validated installer."""
 from pathlib import Path
-
 import yaml
 
-
-def test_host_release_is_automatic_for_runtime_sources_and_main_only():
-    root = Path(__file__).resolve().parents[1]
-    release = yaml.safe_load((root / ".github/workflows/host-runtime-release.yml").read_text(encoding="utf-8"))
-    ci = yaml.safe_load((root / ".github/workflows/ci.yml").read_text(encoding="utf-8"))
-    # PyYAML's YAML 1.1 loader treats the GitHub Actions key 'on' as True.
-    triggers = release.get("on", release.get(True))
-    assert set(triggers) == {"workflow_dispatch", "push"}
-    assert triggers["push"]["branches"] == ["main"]
-    assert "app/**" in triggers["push"]["paths"]
-    assert "host-runtime/stable.json" not in triggers["push"]["paths"]
-    assert release["jobs"]["test"]["if"] == "github.ref == 'refs/heads/main'"
-    assert "main" in ci.get("on", ci.get(True))["push"]["branches"]
+ROOT = Path(__file__).resolve().parents[1]
 
 
-def test_host_release_depends_on_same_commit_pytest():
-    root = Path(__file__).resolve().parents[1]
-    release = yaml.safe_load((root / ".github/workflows/host-runtime-release.yml").read_text(encoding="utf-8"))
-    ci = yaml.safe_load((root / ".github/workflows/ci.yml").read_text(encoding="utf-8"))
-    jobs = release["jobs"]
-    assert "test" in jobs
-    assert jobs["test"]["steps"] == ci["jobs"]["test"]["steps"]
-    assert jobs["publish-host-runtime"]["needs"] == "test"
-    assert jobs["publish-host-runtime"].get("if") in (None, "success()")
-    checkout = jobs["test"]["steps"][0]
-    assert not checkout.get("with", {}).get("ref")  # checkout defaults to this run's github.sha
+def test_installer_router_waits_for_successful_main_ci():
+    workflow = yaml.safe_load((ROOT / ".github/workflows/bootstrap-update-router.yml").read_text(encoding="utf-8"))
+    triggers = workflow.get("on", workflow.get(True))
+    assert triggers["workflow_run"]["workflows"] == ["CI"]
+    job = workflow["jobs"]["route"]
+    assert "conclusion == 'success'" in job["if"]
+    assert "head_branch == 'main'" in job["if"]
+    steps = job["steps"]
+    assert "github.event.workflow_run.head_sha" in steps[0]["with"]["ref"]
+    script = steps[-1]["run"]
+    for source in ("src/", "electron/", "app/", "extensions/browser-current-tab/"):
+        assert source in script
+    assert "gh workflow run windows-release.yml" in script
+    assert "git diff --quiet" in script
+
+
+def test_installer_release_builds_and_checks_the_complete_package_before_publication():
+    workflow = yaml.safe_load((ROOT / ".github/workflows/windows-release.yml").read_text(encoding="utf-8"))
+    steps = workflow["jobs"]["publish-windows-x64"]["steps"]
+    build = next(i for i, step in enumerate(steps) if "npm run package:win" in step.get("run", ""))
+    publish = next(i for i, step in enumerate(steps) if "gh release create" in step.get("run", ""))
+    assert build < publish
+    package = (ROOT / "desktop-react/package.json").read_text(encoding="utf-8")
+    assert "verify-packaged-renderer.mjs" in package
+    assert "windows-installer-smoke.mjs" in package

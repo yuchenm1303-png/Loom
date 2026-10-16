@@ -22,12 +22,14 @@ await new Promise((resolve) => probe.close(resolve));
 const env = { ...process.env, LOOM_HOST_DATA_DIR: path.join(temp, "host"), LOOM_HOME: path.join(temp, "runtime"),
   LOOM_DISABLE_AUTO_UPDATES: "1", LOOM_HOST_DISCOVERY_PORT: String(port), LOOM_ACCOUNT_API_BASE_URL: "http://127.0.0.1:1/v1" };
 if (process.argv.includes("--pending-update")) {
-  // Exercise real Electron readiness and the installed ESM bootstrap. The
-  // normal smoke disables updates and cannot catch a ready/entry deadlock.
+  // Simulate an upgrade from the old multi-channel client. None of these
+  // cache pointers may influence the installed Host or Desktop.
   delete env.LOOM_DISABLE_AUTO_UPDATES;
-  const updates = path.join(env.LOOM_HOST_DATA_DIR, "application-updates");
-  await (await import("node:fs/promises")).mkdir(updates, { recursive: true });
-  await writeFile(path.join(updates, "state.json"), JSON.stringify({ ready: 1 }));
+  for (const channel of ["application-updates", "ui-updates"]) {
+    const updates = path.join(env.LOOM_HOST_DATA_DIR, channel);
+    await (await import("node:fs/promises")).mkdir(updates, { recursive: true });
+    await writeFile(path.join(updates, "state.json"), JSON.stringify({ active: 999999, ready: 999999 }));
+  }
   await writeFile(path.join(env.LOOM_HOST_DATA_DIR, "update-preferences.json"), JSON.stringify({ automaticUpdates: false }));
 }
 delete env.ELECTRON_RUN_AS_NODE;
@@ -67,6 +69,29 @@ async function waitHost() {
 
 let clientNumber = 0;
 let clientProgress = "";
+async function verifyPackagedDesktop() {
+  if (!packagedHost || !process.argv.includes("--pending-update")) return;
+  const desktop = spawn(packagedHost, ["--remote-debugging-port=0"], { cwd: root, env, windowsHide: true, stdio: ["ignore", "pipe", "pipe"] });
+  children.push(desktop);
+  let output = "";
+  desktop.stdout.on("data", chunk => { output += chunk; });
+  desktop.stderr.on("data", chunk => { output += chunk; });
+  const expected = pathToFileURL(path.join(path.dirname(packagedHost), "resources/app.asar/dist/index.html")).href;
+  const deadline = Date.now() + 30_000;
+  while (Date.now() < deadline) {
+    if (desktop.exitCode !== null) throw new Error(`Packaged Desktop exited: ${output}`);
+    try {
+      const port = Number((await readFile(path.join(env.LOOM_HOST_DATA_DIR, "desktop-ui/DevToolsActivePort"), "utf8")).split(/\r?\n/)[0]);
+      const targets = await (await fetch(`http://127.0.0.1:${port}/json/list`, { signal: AbortSignal.timeout(1000) })).json();
+      if (targets.some(target => target.type === "page" && target.url === expected)) {
+        console.log("Packaged Desktop loads the installed UI despite legacy active/ready cache pointers.");
+        return;
+      }
+    } catch {}
+    await new Promise(resolve => setTimeout(resolve, 200));
+  }
+  throw new Error(`Packaged Desktop did not load ${expected}: ${output}`);
+}
 async function runClient() {
   const label = `Host smoke client ${++clientNumber}`;
   clientProgress = path.join(temp, `client-${clientNumber}.log`);
@@ -108,6 +133,7 @@ try {
   assert.equal(after.hostPid, before.hostPid, "Client exit must not stop or replace Host");
   await runClient();
   assert.equal((await (await fetch(statusUrl)).json()).hostPid, before.hostPid);
+  await verifyPackagedDesktop();
   console.log("Host starts independently, survives client exit, and accepts a new client.");
 } catch (error) {
   const progress = clientProgress ? await readFile(clientProgress, "utf8").catch(() => "(client did not write progress)") : "(client not started)";

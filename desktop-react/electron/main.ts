@@ -25,7 +25,6 @@ import {
 import { LoomAccountClient, type LoomAccountSnapshot, type LoomAuthCapabilities, type LoomAuthChallenge, type LoomModelPolicyAccess } from "./accountClient.js";
 import { accountErrorPayload, type AccountErrorPayload } from "./accountErrors.js";
 import { latestSync } from "./latestSync.js";
-import { loadUpdatedRenderer } from "./rendererUpdater.js";
 import { runtimeModelParams, runtimeModelArguments } from "./runtimeModelConfig.js";
 import { startupModel } from "./startupModel.js";
 import { closeHudOverlayWindow, createHudOverlayWindow, sendHudUpdate } from "./hudWindow.js";
@@ -40,8 +39,6 @@ import { hostAccount } from "./hostAccount.js";
 import { createSearchRelay } from "./searchRelay.js";
 import { broadcastHostEvent, desktopPidFile, handleHostChannel, isHostProcess, launchDesktop, launchDesktopAfterUpdate, onDesktopClientsChanged, openDesktopAfterUpdate, prepareDesktopHost, startHostTransport } from "./hostProcess.js";
 import { registerHeadlessUpdateGuard } from "./updater.js";
-import { registerApplicationRestartGuard } from "./applicationUpdater.js";
-import { readApplicationPointer } from "./applicationUpdateStore.js";
 import {
   currentHostRuntime,
   currentHostRuntimeVersion,
@@ -49,7 +46,6 @@ import {
   resolveHostPythonExecutable,
   resolveHostSandboxExecutable,
 } from "./hostRuntime.js";
-import { registerHostRuntimeUpdateHooks } from "./hostRuntimeUpdater.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -1092,9 +1088,6 @@ function handleRuntimeNotification(payload: JsonRpcResponse): void {
   if (payload.method === "hud/update") sendHudUpdate(payload.params ?? {});
 }
 const rpc = new LoomRpcProcess(handleRuntimeNotification, modelManager, accountClient);
-registerApplicationRestartGuard(async () => {
-  try { await rpc.assertRestartSafe(); return true; } catch { return false; }
-});
 registerHeadlessUpdateGuard(async () => {
   try {
     await rpc.assertRestartSafe();
@@ -1102,25 +1095,6 @@ registerHeadlessUpdateGuard(async () => {
   } catch {
     return false;
   }
-});
-registerHostRuntimeUpdateHooks({
-  canActivate: async () => {
-    try {
-      await rpc.assertRestartSafe();
-      return true;
-    } catch {
-      return false;
-    }
-  },
-  reload: async () => {
-    // Browser Use assets are part of the independently versioned Host runtime.
-    // Synchronize installed unpacked-extension folders before the App Server
-    // resumes so Browser Use and Agent code cross the version boundary together.
-    await syncBrowserExtensionAssets();
-    const wasReady = rpc.ready;
-    rpc.stop();
-    if (wasReady) await rpc.connect();
-  },
 });
 let searchRelayPromise: ReturnType<typeof createSearchRelay> | null = null;
 export function showDesktopWindow(): boolean {
@@ -1258,7 +1232,7 @@ async function loadRenderer(window: BrowserWindow): Promise<void> {
     }
     const builtIndex = path.join(DESKTOP_ROOT, "dist", "index.html");
     console.log(`[loom-desktop] loading built renderer ${builtIndex}`);
-    await loadUpdatedRenderer(window, builtIndex);
+    await window.loadFile(builtIndex);
   } catch (error) {
     const detail = error instanceof Error ? error.stack || error.message : String(error);
     console.error("Loom renderer navigation failed", detail);
@@ -1867,16 +1841,6 @@ app.whenReady().then(async () => {
   if (!isHostProcess && app.isPackaged) app.setAsDefaultProtocolClient("loom");
   if (!isHostProcess) {
     await prepareDesktopHost();
-    const application = globalThis.loomApplicationBootstrap;
-    if (application) {
-      const pointer = await readApplicationPointer(application.root);
-      if (pointer.session && pointer.session.build !== application.build) {
-        // The first UI may have selected a pending build before its Host booted.
-        // If that Host rolled back, reopen with its verified build before IPC/UI
-        // handlers expose a mismatched application to the user.
-        app.relaunch(); app.quit(); return;
-      }
-    }
     ensureDesktopUi();
     return;
   }
@@ -1893,7 +1857,6 @@ app.whenReady().then(async () => {
     if (pids.length > 0) void rpc.connect().catch((error) => console.warn("[loom-app-server] early start failed", error));
   });
   await startHostTransport();
-  await globalThis.loomApplicationBootstrap?.healthy();
   if (openDesktopAfterUpdate) void launchDesktopAfterUpdate().catch(console.error);
   const authorizationRefresh = setInterval(() => { void syncAccountToolAccessCredential(); }, 30_000);
   authorizationRefresh.unref();
@@ -1904,10 +1867,6 @@ app.whenReady().then(async () => {
   startWebRelay({ auth: webRelayAuthPayload, operations: desktopOperations });
 }).catch(async (error) => {
   console.error("Loom startup failed", error);
-  if (globalThis.loomApplicationBootstrap?.build) {
-    await globalThis.loomApplicationBootstrap.failed();
-    return;
-  }
   dialog.showErrorBox("Loom startup failed", error instanceof Error ? error.message : String(error));
   app.quit();
 });

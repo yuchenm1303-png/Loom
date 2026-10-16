@@ -15,7 +15,7 @@ const home = await fs.mkdtemp(path.join(os.tmpdir(), "loom-installer-flow-"));
 after(() => fs.rm(home, { recursive: true, force: true }));
 
 let allowed = false, installerChecks = 0, applicationChecks = 0, installs = 0;
-let checkGate = Promise.resolve(), installerAvailable = false, canRestartApplication;
+let checkGate = Promise.resolve(), installerAvailable = false;
 let automaticUpdates = false, restartNotifications = 0;
 const order = [];
 const feeds = [];
@@ -52,15 +52,6 @@ mock.module("../../dist-electron/updateEligibility.js", { namedExports: { mayRec
 mock.module("../../dist-electron/hostProcess.js", { namedExports: {
   isHostProcess: true, broadcastHostEvent(channel) { if (channel === "loom:host-updating") restartNotifications++; }, callHost: async () => {}, handleHostChannel() {}, hostHasDesktopClients: () => false,
 } });
-mock.module("../../dist-electron/applicationUpdater.js", { namedExports: {
-  applicationUpdateState: () => ({ phase: "idle" }),
-  checkApplicationUpdates: async () => { order.push("application"); applicationChecks++; },
-  installApplicationUpdate: async () => { installs++; return true; }, onApplicationUpdateStatus() {},
-  registerApplicationUpdatePriorityGuard(guard) { canRestartApplication = guard; },
-} });
-mock.module("../../dist-electron/hostRuntimeUpdater.js", { namedExports: {
-  ensureHostRuntimeUpdate: async () => {}, hostRuntimeUpdateState: () => ({}), onHostRuntimeUpdateStatus() {},
-} });
 const { checkForUpdates, installDownloadedUpdate, registerHeadlessUpdateGuard } = await import("../../dist-electron/updater.js");
 
 test("failed eligibility schedules recovery while blocking downloads and installs", async (t) => {
@@ -82,11 +73,11 @@ test("failed eligibility schedules recovery while blocking downloads and install
   assert.equal(recovered.accountUpdatesAllowed, true);
   assert.equal(recovered.phase, "up-to-date");
   assert.equal(installerChecks, 2);
-  assert.equal(applicationChecks, 1);
+  assert.equal(applicationChecks, 0);
   assert.deepEqual(feeds, ["generic", "github"], "a failed mirror immediately retries GitHub discovery");
 });
 
-test("overlapping checks share a single installer-first operation and block component restarts", async () => {
+test("overlapping checks share one installer operation", async () => {
   let finish;
   checkGate = new Promise(resolve => { finish = resolve; });
   const before = installerChecks;
@@ -94,19 +85,16 @@ test("overlapping checks share a single installer-first operation and block comp
   const checks = [checkForUpdates(), checkForUpdates(), checkForUpdates()];
   await new Promise(resolve => setImmediate(resolve));
   assert.equal(installerChecks, before + 1);
-  assert.equal(canRestartApplication(), false);
   finish();
   await Promise.all(checks);
-  assert.deepEqual(order, ["installer", "application"]);
-  assert.equal(canRestartApplication(), true);
+  assert.deepEqual(order, ["installer"]);
 });
 
-test("a required installer suppresses component upgrades; manual install protects tasks and schedules one restart", async () => {
+test("manual installation protects tasks and schedules one restart", async () => {
   installerAvailable = true;
   const before = applicationChecks;
   await checkForUpdates();
   assert.equal(applicationChecks, before);
-  assert.equal(canRestartApplication(), false);
   automaticUpdates = true;
   updater.emit("update-downloaded", { version: "0.1.91" });
   await new Promise(resolve => setImmediate(resolve));

@@ -1,8 +1,7 @@
 import { app } from "electron";
 import { isHostProcess } from "./hostProcess.js";
 
-// The stable entry acquired the process lock and selected this verified bundle.
-// All dynamic imports below stay within this application release.
+// The installed entry acquired the process lock. All modules stay in this release.
 {
   if (!isHostProcess) {
     const callbackFromArgs = (args: string[]) =>
@@ -23,7 +22,6 @@ import { isHostProcess } from "./hostProcess.js";
     });
   }
   await import("./updater.js");
-  await import("./applicationUpdater.js");
   await import("./webRelayAuth.js");
   await import("./main.js");
 }

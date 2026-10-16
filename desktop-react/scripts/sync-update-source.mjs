@@ -26,14 +26,6 @@ function asset(url, hash, size, algorithm = "sha256") {
   groups.get(tag).add(name);
   if (hash) expectations.set(`${tag}/${name}`, { hash, size, algorithm });
 }
-const channels = new Map();
-for (const channel of ["application-runtime", "ui-runtime", "host-runtime"]) {
-  const bytes = await fs.readFile(new URL(`../../${channel}/stable.json`, import.meta.url));
-  const manifest = JSON.parse(bytes);
-  if (manifest.files) for (const file of manifest.files) asset(file.url, file.sha256, file.size);
-  else if (manifest.url) asset(manifest.url, manifest.sha256, manifest.size);
-  channels.set(`channels/${channel}/stable.json`, bytes);
-}
 const latest = JSON.parse(run("gh", ["release", "view", "--repo", repository, "--json", "tagName,assets"]));
 if (!/^v\d+\.\d+\.\d+$/.test(latest.tagName)) throw new Error("Latest release is not an installer release");
 const metadataDir = path.join(root, "metadata");
@@ -91,11 +83,6 @@ try {
   for (const file of metadata.files) file.url = `../releases/${latest.tagName}/${file.url}`;
   if (metadata.path) metadata.path = `../releases/${latest.tagName}/${path.basename(metadata.path)}`;
   await fs.writeFile(path.join(metadataDir, "latest.yml"), yaml.dump(metadata));
-  for (const [key, bytes] of channels) {
-    const file = path.join(root, key.replaceAll("/", "_"));
-    await fs.writeFile(file, bytes);
-    upload(file, key, true);
-  }
   upload(path.join(metadataDir, "latest.yml"), "installer/latest.yml", true);
-  console.log(`Update source synchronized: ${groups.size} release groups; channels published last.`);
+  console.log(`Update source synchronized: ${groups.size} release groups; installer metadata published last.`);
 } finally { await fs.rm(root, { recursive: true, force: true }); }

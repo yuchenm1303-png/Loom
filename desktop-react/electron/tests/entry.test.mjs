@@ -1,38 +1,38 @@
 import { test, mock } from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
 
-test("shortcut startup selects updates from the original Host profile after Desktop path initialization", async () => {
+test("shortcut starts installed application and ignores pending or active cached releases", async () => {
   const previousRoot = process.env.LOOM_HOST_DATA_DIR;
-  delete process.env.LOOM_HOST_DATA_DIR;
-  const original = path.join(os.tmpdir(), "loom-entry-profile");
-  let userData = original;
-  let selection;
+  const home = await fs.mkdtemp(path.join(os.tmpdir(), "loom-installed-entry-"));
+  process.env.LOOM_HOST_DATA_DIR = home;
+  let userData = home, quits = 0;
+  const paths = [];
   const app = {
     getPath: () => userData,
-    setPath: (_name, value) => { userData = value; },
-    setName() {},
-    requestSingleInstanceLock: () => true,
+    setPath: (_name, value) => { userData = value; paths.push(value); },
+    setName() {}, requestSingleInstanceLock: () => true, quit() { quits++; },
   };
   mock.module("electron", { namedExports: { app, protocol: { registerSchemesAsPrivileged() {} } } });
-  // hostPaths captures the profile before hostProcess changes it during the
-  // loader's static imports. Reproduce that ordering without starting a Host.
-  const { hostDataPath } = await import("../../dist-electron/hostPaths.js");
-  app.setPath("userData", path.join(original, "desktop-ui"));
-  mock.module("../../dist-electron/applicationLoader.js", { namedExports: {
-    selectApplication: (...args) => { selection = args; return new Promise(() => {}); },
-    rejectApplicationAndRestart() { throw new Error("Unexpected rollback"); },
-  } });
+  mock.module("../../dist-electron/applicationEntry.js", { namedExports: {} });
   try {
+    for (const channel of ["application-updates", "ui-updates"]) {
+      const root = path.join(home, channel);
+      await fs.mkdir(path.join(root, "999/dist-electron"), { recursive: true });
+      await fs.writeFile(path.join(root, "state.json"), JSON.stringify({ active: 999, ready: 999, session: {build:999,pid:process.pid} }));
+      await fs.writeFile(path.join(root, "999/dist-electron/applicationEntry.js"), "throw new Error('Cached release must never load')");
+    }
     await import("../../dist-electron/entry.js");
-    assert.equal(selection[1], hostDataPath);
-    assert.equal(selection[1], original);
-    assert.equal(process.env.LOOM_HOST_DATA_DIR, original);
-    assert.equal(userData, path.join(original, "desktop-ui"));
-    assert.equal(selection[2], false);
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(process.env.LOOM_HOST_DATA_DIR, home);
+    assert.deepEqual(paths, [path.join(home, "desktop-ui")]);
+    assert.equal(quits, 0);
+    assert.equal((await fs.readdir(home)).length, 2, "startup must not write component pointers");
   } finally {
     if (previousRoot === undefined) delete process.env.LOOM_HOST_DATA_DIR;
     else process.env.LOOM_HOST_DATA_DIR = previousRoot;
+    await fs.rm(home, { recursive: true, force: true });
   }
 });

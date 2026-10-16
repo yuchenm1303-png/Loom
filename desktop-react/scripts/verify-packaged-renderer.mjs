@@ -16,6 +16,15 @@ await verifyPackagedUpdateConfig(path.dirname(archive), localPackage);
 const packedPackage = JSON.parse(asar.extractFile(archive, "package.json").toString());
 assert.equal(packedPackage.version, localPackage.version, "Packaged version differs from the workspace");
 
+// Legacy cached releases must not be reachable from a complete installation.
+const entry = asar.extractFile(archive, "dist-electron/entry.js").toString();
+const main = asar.extractFile(archive, "dist-electron/main.js").toString();
+assert.ok(!entry.includes("selectApplication"), "Packaged entry still selects cached application releases");
+assert.ok(!main.includes("loadUpdatedRenderer"), "Packaged main still selects cached UI releases");
+for (const file of ["applicationLoader.js", "applicationUpdater.js", "rendererUpdater.js"]) {
+  assert.ok(!asar.listPackage(archive).some(name => name.endsWith(file)), "Obsolete component updater shipped: " + file);
+}
+
 let checked = 0;
 function verifyDirectory(directory) {
   for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {

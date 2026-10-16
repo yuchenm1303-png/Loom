@@ -11,8 +11,6 @@ import electronUpdater, {
 import { broadcastHostEvent, callHost, handleHostChannel, hostHasDesktopClients, isHostProcess } from "./hostProcess.js";
 import { OptimizedNsisUpdater } from "./optimizedUpdater.js";
 import { configuredUpdateSource } from "./updateSource.js";
-import { applicationUpdateState, checkApplicationUpdates, installApplicationUpdate, onApplicationUpdateStatus, registerApplicationUpdatePriorityGuard } from "./applicationUpdater.js";
-import { ensureHostRuntimeUpdate, hostRuntimeUpdateState, onHostRuntimeUpdateStatus, type HostRuntimeUpdateState } from "./hostRuntimeUpdater.js";
 
 export type SoftwareUpdatePhase =
   | "disabled"
@@ -25,7 +23,6 @@ export type SoftwareUpdatePhase =
   | "error";
 
 export interface SoftwareUpdateState {
-  hostRuntime?: HostRuntimeUpdateState;
   enabled: boolean;
   accountUpdatesAllowed?: boolean;
   automaticUpdates?: boolean;
@@ -93,13 +90,9 @@ let bootstrapRestarting = false;
 const earlyRecheckTimers: NodeJS.Timeout[] = [];
 
 export function softwareUpdateState(): SoftwareUpdateState {
-  const application = applicationUpdateState();
-  if (!updateInFlight() && application.phase !== "idle") {
-    return { ...state, ...readUpdatePreferences(), ...application, enabled: updateEnabled, phase: state.accountUpdatesAllowed === false ? "disabled" : application.phase, hostRuntime: hostRuntimeUpdateState() };
-  }
   // Keep manual checks available after a transient eligibility failure.
   // Download/install still perform fresh server-side eligibility checks.
-  return { ...state, ...readUpdatePreferences(), enabled: updateEnabled, phase: state.accountUpdatesAllowed === false ? "disabled" : state.phase, hostRuntime: hostRuntimeUpdateState() };
+  return { ...state, ...readUpdatePreferences(), enabled: updateEnabled, phase: state.accountUpdatesAllowed === false ? "disabled" : state.phase };
 }
 
 function broadcastState(): void {
@@ -249,8 +242,7 @@ export async function ensureBootstrapUpdate(): Promise<SoftwareUpdateState> {
   return next;
 }
 
-// Backwards-compatible export for older internal callers. New Web Host update
-// paths use hostRuntimeUpdater instead of downloading the Desktop package.
+// Backwards-compatible export. Runtime and UI changes use this same installer.
 export const ensureWebHostUpdate = ensureBootstrapUpdate;
 
 function clearErrorRetry(): void {
@@ -344,7 +336,6 @@ export async function checkForUpdates(): Promise<SoftwareUpdateState> {
       setState({ accountUpdatesAllowed: true, phase: state.phase === "disabled" ? "idle" : state.phase });
     }
     if (updateInFlight()) return softwareUpdateState();
-    void ensureHostRuntimeUpdate(0, true);
 
     clearErrorRetry();
     lastCheckStartedAt = Date.now();
@@ -376,9 +367,6 @@ export async function checkForUpdates(): Promise<SoftwareUpdateState> {
       }
     }
 
-    // Bootstrap updates take priority. A component check can download and
-    // restart the Host, so it must not run ahead of a required installer.
-    if (!updateInFlight()) await checkApplicationUpdates(true);
 
     return softwareUpdateState();
   })().finally(() => {
@@ -394,9 +382,6 @@ export async function installDownloadedUpdate(): Promise<{ accepted: boolean; st
     return { accepted: false, state: softwareUpdateState() };
   }
   if (state.accountUpdatesAllowed !== true) setState({ accountUpdatesAllowed: true });
-  if (!updateInFlight() && applicationUpdateState().phase === "downloaded") {
-    return { accepted: await installApplicationUpdate(), state: softwareUpdateState() };
-  }
   if (!updateEnabled || state.phase !== "downloaded") {
     return { accepted: false, state: softwareUpdateState() };
   }
@@ -521,12 +506,7 @@ function runAutomaticCheck(): void {
     void checkForUpdates();
     return;
   }
-  // Web-only Hosts have no Desktop window to wake the updater. Bootstrap-level
-  // changes (relay, auth, updater, telemetry) still live in Electron, so they
-  // must check the Desktop release channel as well as the independent runtime
-  // channel. ensureBootstrapUpdate() marks the download for guarded headless
-  // install; registerHeadlessUpdateGuard() prevents restart while Agent work is
-  // active.
+  // Background Hosts use the same installer and idle-task guard as Desktop.
   if (isHostProcess) void ensureBootstrapUpdate();
 }
 
@@ -554,21 +534,6 @@ function startAutomaticChecks(): void {
 }
 
 configureUpdater();
-registerApplicationUpdatePriorityGuard(() => !checkPromise && !bootstrapRestarting && !updateInFlight());
-onHostRuntimeUpdateStatus(broadcastState);
-onApplicationUpdateStatus(() => {
-  broadcastState();
-  const application = applicationUpdateState();
-  if (state.accountUpdatesAllowed === false || application.phase !== "downloaded" || readUpdatePreferences().silentUpdates || !hasVisibleWindow()
-    || promptedDownloadedVersion === application.availableVersion) return;
-  promptedDownloadedVersion = application.availableVersion ?? null;
-  void dialog.showMessageBox({
-    type: "info", title: "Loom update ready", message: "Loom 小更新已准备就绪",
-    detail: "重启后生效，也可以稍后在设置中安装。", buttons: ["重启更新", "稍后"], cancelId: 1,
-  }).then(async result => {
-    if (result.response === 0 && await mayReceiveUpdates()) await installApplicationUpdate();
-  }).catch(console.error);
-});
 
 handleHostChannel("loom:update-preferences", (_event: unknown, patch: unknown) => {
   writeUpdatePreferences(patch);

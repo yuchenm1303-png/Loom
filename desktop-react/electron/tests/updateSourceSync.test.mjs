@@ -34,7 +34,7 @@ mock.module("node:child_process", { namedExports: { execFileSync(tool, args) {
   }
   return "";
 } } });
-test("sync verifies historical objects and installer before publishing mutable channels", async () => {
+test("sync verifies the installer before metadata and does not publish component channels", async () => {
   const env = { ...process.env };
   const originalFetch = globalThis.fetch;
   globalThis.fetch = async url => {
@@ -45,10 +45,8 @@ test("sync verifies historical objects and installer before publishing mutable c
   process.env.LOOM_UPDATE_BUCKET = "update-test-bucket";
   try {
     await import("../../scripts/sync-update-source.mjs?test=success");
-    assert.ok(uploads.some(item => item.key.endsWith(`/releases/app-1001/${sha}`)));
-    const firstChannel = uploads.findIndex(item => item.key.includes("/channels/"));
-    assert.ok(firstChannel > 0);
-    assert.ok(uploads.slice(0, firstChannel).every(item => item.key.includes("/releases/")));
+    assert.ok(uploads.every(item => !item.key.includes("/channels/") && !item.key.includes("/releases/app-")));
+    assert.ok(uploads.slice(0, -1).every(item => item.key.includes("/releases/")));
     assert.ok(uploads.at(-1).key.endsWith("/installer/latest.yml"));
     assert.match(uploads.at(-1).bytes, /\.\.\/releases\/v0\.1\.92\/Loom-Setup-x64.exe/);
     uploads.length = 0; breakUpload = true;

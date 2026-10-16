@@ -1,13 +1,12 @@
 import { app } from "electron";
 import fs from "node:fs";
 import path from "node:path";
-import { hostDataPath } from "./hostPaths.js";
 
 export const EMBEDDED_HOST_RUNTIME_VERSION = "1.0.0";
 export const EMBEDDED_HOST_RUNTIME_PROTOCOL = 1;
 export const HOST_RUNTIME_SCHEMA = 1;
 
-export type HostRuntimeSource = "managed" | "embedded" | "development" | "override";
+export type HostRuntimeSource = "embedded" | "development" | "override";
 
 export interface HostRuntimeManifest {
   schema: number;
@@ -25,12 +24,6 @@ export interface HostRuntimeDescriptor extends HostRuntimeManifest {
   source: HostRuntimeSource;
 }
 
-export interface HostRuntimePointer {
-  schema: number;
-  version: string;
-  activatedAt: string;
-}
-
 function safeJson<T>(filePath: string): T | null {
   try {
     return JSON.parse(fs.readFileSync(filePath, "utf8")) as T;
@@ -45,34 +38,6 @@ function validVersion(value: unknown): value is string {
 
 function validProtocol(value: unknown): value is number {
   return Number.isInteger(value) && Number(value) >= 0 && Number(value) <= 1_000_000;
-}
-
-export function compareHostRuntimeBuilds(left: Pick<HostRuntimeManifest, "publishedAt" | "version">, right: Pick<HostRuntimeManifest, "publishedAt" | "version">): number | null {
-  // Only legacy desktop bundles used a placeholder version. New builds from
-  // both channels use the same source-derived version, regardless of build time.
-  if (left.version !== "1.0.0" && right.version !== "1.0.0") {
-    const a = left.version.split(/[+-]/, 1)[0].split(".").map(Number);
-    const b = right.version.split(/[+-]/, 1)[0].split(".").map(Number);
-    for (let index = 0; index < 3; index += 1) {
-      if (a[index] !== b[index]) return Math.sign(a[index] - b[index]);
-    }
-    return 0;
-  }
-  const leftDate = Date.parse(left.publishedAt || "");
-  const rightDate = Date.parse(right.publishedAt || "");
-  return Number.isFinite(leftDate) && Number.isFinite(rightDate) ? Math.sign(leftDate - rightDate) : null;
-}
-
-export function hostRuntimeManagerRoot(): string {
-  return path.join(hostDataPath, "host-runtime");
-}
-
-export function hostRuntimeVersionsRoot(): string {
-  return path.join(hostRuntimeManagerRoot(), "versions");
-}
-
-export function hostRuntimePointerPath(): string {
-  return path.join(hostRuntimeManagerRoot(), "current.json");
 }
 
 export function embeddedHostRuntimeRoot(repoRoot?: string): string {
@@ -111,35 +76,18 @@ function descriptorFromRoot(root: string, source: HostRuntimeSource): HostRuntim
   return { ...manifest, root, source };
 }
 
-function managedHostRuntime(): HostRuntimeDescriptor | null {
-  if (!app.isReady() || !app.isPackaged || process.platform !== "win32") return null;
-  const pointer = safeJson<Partial<HostRuntimePointer>>(hostRuntimePointerPath());
-  if (!pointer || pointer.schema !== HOST_RUNTIME_SCHEMA || !validVersion(pointer.version)) return null;
-  const descriptor = descriptorFromRoot(path.join(hostRuntimeVersionsRoot(), pointer.version), "managed");
-  return descriptor?.version === pointer.version ? descriptor : null;
-}
-
 export function currentHostRuntime(repoRoot?: string): HostRuntimeDescriptor {
   const override = String(process.env.LOOM_HOST_RUNTIME_ROOT || "").trim();
-  if (override) {
+  if (override && !app.isPackaged) {
     const descriptor = descriptorFromRoot(path.resolve(override), "override");
     if (descriptor) return descriptor;
   }
 
-  const managed = managedHostRuntime();
   const embeddedRoot = embeddedHostRuntimeRoot(repoRoot);
   const embedded = readHostRuntimeManifest(embeddedRoot);
   if (embedded && runtimeRootLooksUsable(embeddedRoot)) {
-    // Desktop bundles and standalone Host releases use independent version
-    // numbering (legacy desktop bundles say 1.0.0). Compare source identities
-    // across those channels rather than letting a cached Host shadow every
-    // subsequent desktop installation. Keep the entire runtime together.
-    if (managed) {
-      if ((compareHostRuntimeBuilds(embedded, managed) ?? 0) <= 0) return managed;
-    }
     return { ...embedded, root: embeddedRoot, source: app.isPackaged ? "embedded" : "development" };
   }
-  if (managed) return managed;
 
   return {
     schema: HOST_RUNTIME_SCHEMA,
@@ -162,10 +110,10 @@ export function currentHostRuntimeProtocol(repoRoot?: string): number {
 
 export function resolveHostPythonExecutable(repoRoot: string): string {
   const configured = String(process.env.LOOM_PYTHON || "").trim();
-  if (configured) return configured;
+  if (configured && !app.isPackaged) return configured;
 
-  const managedPython = path.join(currentHostRuntime(repoRoot).root, process.platform === "win32" ? "python.exe" : "python");
-  if (fs.existsSync(managedPython)) return managedPython;
+  const runtimePython = path.join(currentHostRuntime(repoRoot).root, process.platform === "win32" ? "python.exe" : "python");
+  if (fs.existsSync(runtimePython)) return runtimePython;
   if (app.isPackaged) {
     throw new Error("Loom installation is incomplete: its bundled local runtime is missing. Reinstall Loom.");
   }
@@ -186,30 +134,4 @@ export function resolveHostBrowserExtensionRoot(repoRoot: string): string {
 export function resolveHostSandboxExecutable(repoRoot: string): string | undefined {
   const executable = path.join(currentHostRuntime(repoRoot).root, "wxc-exec.exe");
   return fs.existsSync(executable) ? executable : undefined;
-}
-
-export function activateHostRuntime(version: string): HostRuntimePointer | null {
-  if (!validVersion(version)) throw new Error(`Invalid Loom Host runtime version: ${version}`);
-  const descriptor = descriptorFromRoot(path.join(hostRuntimeVersionsRoot(), version), "managed");
-  if (!descriptor || descriptor.version !== version) throw new Error(`Loom Host runtime ${version} is incomplete or invalid.`);
-
-  fs.mkdirSync(hostRuntimeManagerRoot(), { recursive: true });
-  const previous = safeJson<HostRuntimePointer>(hostRuntimePointerPath());
-  const pointer: HostRuntimePointer = { schema: HOST_RUNTIME_SCHEMA, version, activatedAt: new Date().toISOString() };
-  const temp = `${hostRuntimePointerPath()}.${process.pid}.${Date.now()}.tmp`;
-  fs.writeFileSync(temp, `${JSON.stringify(pointer, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
-  fs.renameSync(temp, hostRuntimePointerPath());
-  return previous && previous.schema === HOST_RUNTIME_SCHEMA && validVersion(previous.version) ? previous : null;
-}
-
-export function restoreHostRuntimePointer(previous: HostRuntimePointer | null): void {
-  const target = hostRuntimePointerPath();
-  if (!previous) {
-    try { fs.unlinkSync(target); } catch {}
-    return;
-  }
-  fs.mkdirSync(hostRuntimeManagerRoot(), { recursive: true });
-  const temp = `${target}.${process.pid}.${Date.now()}.tmp`;
-  fs.writeFileSync(temp, `${JSON.stringify(previous, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
-  fs.renameSync(temp, target);
 }

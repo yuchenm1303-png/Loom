@@ -103,7 +103,7 @@ def test_every_update_channel_checks_account_eligibility():
     from pathlib import Path
 
     root = Path(__file__).resolve().parents[1] / "desktop-react/electron"
-    for module in ("updater.ts", "applicationUpdater.ts", "hostRuntimeUpdater.ts", "rendererUpdater.ts"):
+    for module in ("updater.ts",):
         source = (root / module).read_text(encoding="utf-8")
         assert 'mayReceiveUpdates' in source, module
     installer = (root / "updater.ts").read_text(encoding="utf-8")
