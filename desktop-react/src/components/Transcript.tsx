@@ -546,14 +546,17 @@ function MessageToolbar({
   text,
   editable = false,
   disabled = false,
+  onCreateSubtask,
 }: {
   kind: "user" | "assistant";
   item: TranscriptItem;
   text: string;
   editable?: boolean;
   disabled?: boolean;
+  onCreateSubtask?: () => void;
 }) {
   const copy = useRuntimeCopy();
+  const { t } = useI18n();
   const [copied, setCopied] = useState(false);
   const [feedback, setFeedback] = useState<MessageFeedback>(null);
   const time = messageTimestamp(item);
@@ -628,6 +631,14 @@ function MessageToolbar({
           </button>
         ) : (
           <>
+            {onCreateSubtask ? <button
+              type="button"
+              className="message-action-button"
+              onClick={onCreateSubtask}
+              disabled={!canCopy}
+              title={t("branch.entryHint")}
+              aria-label={t("branch.create")}
+            ><GitFork size={14} strokeWidth={1.75}/></button> : null}
             <button
               type="button"
               className={`message-action-button ${feedback === "up" ? "active" : ""}`}
@@ -776,12 +787,14 @@ function AssistantMessage({ item, streaming, onPrompt, decisionInteractive, prom
         ) : null
       ) : (
         <>
-          <MessageToolbar kind="assistant" item={item} text={answer || reasoning} disabled={promptDisabled} />
-          {(!branchVisible || branchDismissed) && cardsReady && (
-            <button className="loom-task-branch-new" type="button" title={t("branch.entryHint")} aria-expanded={false} onClick={() => { setBranchDismissed(false); setManualBranchOpen(true); }}>
-              <GitFork size={14} /><span>{t("branch.create")}</span><ArrowUpRight size={12} className="loom-task-branch-entry-arrow" />
-            </button>
-          )}
+          <MessageToolbar
+            kind="assistant" item={item} text={answer || reasoning} disabled={promptDisabled}
+            onCreateSubtask={cardsReady && Boolean(answer) ? () => {
+              setBranchDismissed(false);
+              setManualBranchOpen(true);
+            } : undefined}
+          />
+
         </>
       )}
     </div>
