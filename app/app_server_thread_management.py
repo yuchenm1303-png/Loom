@@ -462,6 +462,7 @@ class ManagedStreamingLoomAppServerService(StreamingLoomAppServerService):
         self.thread_library = ThreadLibraryStore(self.store)
         self._branch_plan_lock = threading.Lock()
         self._branch_plans_inflight: set[str] = set()
+        self._branch_plan_jobs: dict[str, dict[str, Any]] = {}
         self._auto_title_guard = threading.RLock()
         self._auto_title_inflight: set[str] = set()
         # Compaction counts change only when a checkpoint is recorded, so they
@@ -876,7 +877,7 @@ class ManagedStreamingLoomAppServerService(StreamingLoomAppServerService):
 
 
     def thread_branch_plan(self, params: dict[str, Any]) -> dict[str, Any]:
-        """Generate a *reviewable* plan, never execute or mutate the thread."""
+        """Queue a detached model plan: never block normal conversation RPCs."""
         parent = self._session_or_rpc_error(params.get("parentThreadId"))
         if self.thread_library.read(parent.session_id).get("archivedAt"):
             raise JsonRpcError(-32021, "cannot plan a task for an archived conversation")
@@ -887,24 +888,53 @@ class ManagedStreamingLoomAppServerService(StreamingLoomAppServerService):
             if parent.session_id in self._branch_plans_inflight:
                 raise JsonRpcError(-32044, "a task proposal is already being prepared")
             self._branch_plans_inflight.add(parent.session_id)
+            # Bounded ephemeral result cache; never persist source messages.
+            now = time.monotonic()
+            self._branch_plan_jobs = {
+                key: value for key, value in self._branch_plan_jobs.items()
+                if now - value["at"] < 600
+            }
+            plan_id = uuid.uuid4().hex
+            self._branch_plan_jobs[plan_id] = {
+                "threadId": parent.session_id, "status": "pending", "at": now,
+            }
+        threading.Thread(
+            target=self._finish_branch_plan, args=(parent, source, plan_id),
+            name=f"loom-branch-plan-{plan_id[:8]}", daemon=True,
+        ).start()
+        return {"planId": plan_id, "status": "pending"}
+
+    def _finish_branch_plan(self, parent: Any, source: str, plan_id: str) -> None:
         try:
             platform_for_session = getattr(self.runtime, "platform_for_session", None)
             platform = (platform_for_session(parent.session_id)
                         if callable(platform_for_session) else getattr(self.runtime, "platform", None))
             execute = getattr(platform, "execute_chat", None)
             if not callable(execute):
-                raise JsonRpcError(-32045, "task planning requires a connected model")
-            try:
-                response = execute(parent.profile_id, build_branch_plan_request(parent, source))
-            except Exception as exc:
-                raise JsonRpcError(-32045, f"task planning model is unavailable: {type(exc).__name__}") from exc
-            try:
-                return parse_branch_plan(getattr(response, "text", ""))
-            except (ValueError, TypeError, KeyError, json.JSONDecodeError) as exc:
-                raise JsonRpcError(-32046, "model did not return a usable task plan; retry") from exc
+                raise RuntimeError("model_not_connected")
+            response = execute(parent.profile_id, build_branch_plan_request(parent, source))
+            plan = parse_branch_plan(getattr(response, "text", ""))
+            outcome = {"status": "ready", "proposal": plan}
+        except (ValueError, TypeError, KeyError, json.JSONDecodeError):
+            outcome = {"status": "error", "error": "Model did not return a usable task plan. Retry."}
+        except Exception as exc:
+            outcome = {"status": "error", "error": "Task planning unavailable: " + type(exc).__name__}
         finally:
             with self._branch_plan_lock:
+                if plan_id in self._branch_plan_jobs:
+                    self._branch_plan_jobs[plan_id].update(outcome)
                 self._branch_plans_inflight.discard(parent.session_id)
+
+    def thread_branch_plan_status(self, params: dict[str, Any]) -> dict[str, Any]:
+        """Only the same parent thread may read a planning ticket."""
+        parent_id = str(params.get("parentThreadId") or "")
+        self._session_or_rpc_error(parent_id)
+        plan_id = str(params.get("planId") or "")
+        with self._branch_plan_lock:
+            job = self._branch_plan_jobs.get(plan_id)
+            if not job or job["threadId"] != parent_id:
+                raise JsonRpcError(-32004, "task plan not found or expired")
+            return {key: value for key, value in job.items() if key not in ("threadId", "at")}
 
     def thread_branch_create(self, params: dict[str, Any]) -> dict[str, Any]:
         """Create a separately runnable child conversation, retaining its durable parent link."""
@@ -1558,6 +1588,7 @@ class ManagedStreamingLoomRpcController(StreamingLoomRpcController):
     def _dispatch(self, method: str, params: dict[str, Any]) -> Any:
         handlers = {
             "thread/branch_plan": self.service.thread_branch_plan,
+            "thread/branch_plan_status": self.service.thread_branch_plan_status,
             "thread/branch_create": self.service.thread_branch_create,
             "thread/branch_report": self.service.thread_branch_report,
             "thread/rename": self.service.thread_rename,
