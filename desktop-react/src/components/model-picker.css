@@ -953,6 +953,31 @@ html[data-loom-theme="light"] .mp-mark {
   box-shadow: inset 0 0 0 1.5px var(--mp-ring);
 }
 
+.mp-price-free {
+  display: inline-flex;
+  align-items: center;
+  font-size: 10.5px;
+  font-weight: 650;
+  color: #61cf9c;
+  border: 1px solid rgba(97, 207, 156, .28);
+  border-radius: 5px;
+  padding: 2px 6px;
+  background: rgba(97, 207, 156, .08);
+  white-space: nowrap;
+}
+.mp-price-restricted {
+  color: var(--mp-muted);
+  background: rgba(140, 146, 154, .08);
+  border: 1px solid rgba(140, 146, 154, .20);
+  border-radius: 5px;
+  padding: 2px 6px;
+  font-size: 10.5px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.mp-price-metered { color: var(--mp-muted); font-size: 11px; white-space: nowrap; }
+.mp-console-info { line-height: 1.5; }
+
 /* Motion ------------------------------------------------------------------ */
 @keyframes mp-enter {
   from { opacity: 0; transform: translate3d(8px, 0, 0); }

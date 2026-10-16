@@ -121,6 +121,7 @@ const PROVIDER_LOGOS: Record<string, string> = {
   "managed-relay:minimax": minimaxLogo,
   deepseek: deepseekLogo,
   "opencode-go": opencodeLogo,
+  "opencode-console": opencodeLogo,
   "managed-relay:openai": openaiLogo,
   gpt: openaiLogo,
   kimi: moonshotLogo,
@@ -134,6 +135,7 @@ const PROVIDER_TINTS: Record<string, readonly [hue: number, chroma: number]> = {
   "managed-relay:minimax": [16, 0.14],
   deepseek: [262, 0.13],
   "opencode-go": [168, 0.1],
+  "opencode-console": [168, 0.1],
   "managed-relay": [295, 0.13],
   "managed-relay:openai": [0, 0],
   [SAVED_GROUP_ID]: [72, 0.11],
@@ -210,6 +212,25 @@ function compactId(value: string): string {
 // deepseek-v4-pro). Only print the ID when it tells the user something new.
 function modelIdAddsInfo(profile: ModelProfile): boolean {
   return Boolean(profile.model) && compactId(profile.name) !== compactId(profile.model);
+}
+
+// Only the official Console zero-priced OpenAI-chat IDs receive a Free label.
+const CONSOLE_FREE_MODELS = new Set([
+  "big-pickle", "glm-5.3-flash-free", "deepseek-v4.1-flash-free",
+  "space-bunny-free", "cat-jam-free", "ll-alpha-free",
+  "longcat-2.5-preview-free", "exo-free", "mimo-v2.6-flash-free",
+  "mimo-v2.5-free", "nemotron-3-ultra-free",
+  "nemotron-3.5-lightning-free", "nemotron-3.5-super-vl-free",
+]);
+function isConsoleFree(profile: ModelProfile): boolean {
+  return profile.groupId === "opencode-console" && CONSOLE_FREE_MODELS.has(profile.model.toLowerCase());
+}
+const CONSOLE_FREE_RESTRICTION = "OpenCode currently restricts free-tier models to its own app; third-party clients such as Loom receive HTTP 403. This model cannot be used from Loom.";
+
+function modelPriceLabel(profile: ModelProfile): ReactNode {
+  if (isConsoleFree(profile)) return <span className="mp-price-restricted">Free · OpenCode only</span>;
+  if (profile.groupId === "opencode-console") return <span className="mp-price-metered">Pay as you go</span>;
+  return null;
 }
 
 function profileTooltip(profile: ModelProfile): string {
@@ -336,8 +357,10 @@ function ProviderRow({
   const available = selectableProfiles(group).length;
   const unavailable = total > 0 && available === 0;
   const adminBlocked = group.profiles.some((profile) => profile.available === false && String(profile.statusMessage || "").includes("Loom Admin"));
-  const meta = !accountAuthenticated
-    ? "Sign in required"
+  const meta = group.id === "opencode-console" && accountAuthenticated && available > 0
+    ? `${group.profiles.filter(isConsoleFree).length} OpenCode-only · ${total} models`
+    : !accountAuthenticated
+      ? "Sign in required"
     : adminBlocked
       ? "Admin blocked"
       : setup.needsKey
@@ -454,6 +477,11 @@ function adapterLabel(adapter: string): string {
 
 function profileSubtitle(profile: ModelProfile): string {
   if (profile.kind === "builtin") {
+    if (profile.groupId === "opencode-console") {
+      return isConsoleFree(profile)
+        ? "OpenCode Console · Free (limited time), separate from Go"
+        : "OpenCode Console · Metered, separate from Go";
+    }
     if (profile.adapter === "opencode-go") {
       return `OpenCode Go · ${profile.family || "Model"} · ${profile.protocol || "auto"}`;
     }
@@ -967,6 +995,11 @@ export function ModelPanel({
               <span>{adminBlockedChoices.length} built-in model{adminBlockedChoices.length === 1 ? " is" : "s are"} disabled by Loom Admin. You can still add a separate personal API connection below.</span>
             </div>
           ) : null}
+          {activeGroup.id === "opencode-console" ? (
+            <div className="mp-notice mp-console-info" role="note">
+              <span>OpenCode currently restricts free models to its own app (HTTP 403 from third-party clients). They cannot run in Loom. Console paid models need a separate Console key and admin approval; Go usage stays separate.</span>
+            </div>
+          ) : null}
           {hasBuiltinModels && accountAuthenticated && snapshot?.policySync?.state !== "fresh" ? (
             <div className="mp-notice" role="status"><span>Model permissions are syncing. Last known states remain visible; the server checks access when a model runs.</span></div>
           ) : null}
@@ -1068,12 +1101,12 @@ export function ModelPanel({
                       profile={profile}
                       current={current}
                       pending={false}
-                      disabled={!accountAuthenticated || profile.available === false || deleting}
-                      dimmed={!accountAuthenticated || profile.available === false || setup.needsKey}
-                      meta={!accountAuthenticated ? "Sign in" : profile.available === false ? unavailableLabel(profile) : reasoningLabel(profile)}
-                      metaAttention={!accountAuthenticated || profile.available === false}
-                      end={!accountAuthenticated || profile.available === false ? <Lock size={13} strokeWidth={2} /> : undefined}
-                      title={!accountAuthenticated ? "Sign in to Loom to use models" : profile.available === false ? (profile.statusMessage || "Disabled by Loom Admin") : undefined}
+                      disabled={!accountAuthenticated || profile.available === false || deleting || isConsoleFree(profile)}
+                      dimmed={!accountAuthenticated || profile.available === false || setup.needsKey || isConsoleFree(profile)}
+                      meta={!accountAuthenticated ? "Sign in" : profile.available === false ? unavailableLabel(profile) : profile.groupId === "opencode-console" ? modelPriceLabel(profile) : reasoningLabel(profile)}
+                      metaAttention={!accountAuthenticated || profile.available === false || isConsoleFree(profile)}
+                      end={!accountAuthenticated || profile.available === false || isConsoleFree(profile) ? <Lock size={13} strokeWidth={2} /> : undefined}
+                      title={!accountAuthenticated ? "Sign in to Loom to use models" : isConsoleFree(profile) ? CONSOLE_FREE_RESTRICTION : profile.available === false ? (profile.statusMessage || "Disabled by Loom Admin") : undefined}
                       onSelect={() => {
                         if (!current && setup.needsKey) {
                           setError(`Connect ${activeGroup.name} before selecting one of its models.`);
@@ -1179,12 +1212,12 @@ export function ModelPanel({
                           profile={profile}
                           current={current}
                           pending={false}
-                          disabled={!accountAuthenticated || profile.available === false}
-                          dimmed={!accountAuthenticated || profile.available === false}
-                          meta={!accountAuthenticated ? "Sign in" : profile.available === false ? unavailableLabel(profile) : connectFirst ? "Connect" : reasoningLabel(profile)}
-                          metaAttention={!accountAuthenticated || profile.available === false || connectFirst}
-                          end={!accountAuthenticated || profile.available === false ? <Lock size={13} strokeWidth={2} /> : connectFirst ? <ChevronRight size={14} strokeWidth={1.9} /> : undefined}
-                          title={!accountAuthenticated ? "Sign in to Loom to use models" : profile.available === false ? (profile.statusMessage || "Disabled by Loom Admin") : connectFirst ? `Connect ${group.name} to use ${profile.name}` : undefined}
+                          disabled={!accountAuthenticated || profile.available === false || isConsoleFree(profile)}
+                          dimmed={!accountAuthenticated || profile.available === false || isConsoleFree(profile)}
+                          meta={!accountAuthenticated ? "Sign in" : profile.available === false ? unavailableLabel(profile) : connectFirst ? "Connect" : profile.groupId === "opencode-console" ? modelPriceLabel(profile) : reasoningLabel(profile)}
+                          metaAttention={!accountAuthenticated || profile.available === false || connectFirst || isConsoleFree(profile)}
+                          end={!accountAuthenticated || profile.available === false || isConsoleFree(profile) ? <Lock size={13} strokeWidth={2} /> : connectFirst ? <ChevronRight size={14} strokeWidth={1.9} /> : undefined}
+                          title={!accountAuthenticated ? "Sign in to Loom to use models" : isConsoleFree(profile) ? CONSOLE_FREE_RESTRICTION : profile.available === false ? (profile.statusMessage || "Disabled by Loom Admin") : connectFirst ? `Connect ${group.name} to use ${profile.name}` : undefined}
                           onSelect={() => (connectFirst ? openGroup(group.id) : void chooseProfile(profile))}
                         />
                       );
@@ -1231,12 +1264,12 @@ export function ModelPanel({
                         profile={profile}
                         current={false}
                         pending={false}
-                        disabled={!accountAuthenticated}
-                        dimmed={false}
+                        disabled={!accountAuthenticated || isConsoleFree(profile)}
+                        dimmed={isConsoleFree(profile)}
                         leading={<ProviderMark id={groupId} name={providerName || profile.name} small />}
-                        meta={providerName}
+                        meta={isConsoleFree(profile) ? modelPriceLabel(profile) : providerName}
                         end={connectFirst ? <KeyRound size={13} strokeWidth={1.9} /> : undefined}
-                        title={connectFirst ? `Connect ${providerName} to use ${profile.name}` : undefined}
+                        title={isConsoleFree(profile) ? CONSOLE_FREE_RESTRICTION : connectFirst ? `Connect ${providerName} to use ${profile.name}` : undefined}
                         onSelect={() => (connectFirst ? openGroup(groupId) : void chooseProfile(profile))}
                       />
                     );

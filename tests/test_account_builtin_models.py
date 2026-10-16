@@ -15,7 +15,8 @@ from services.loom_model_gateway.routes import PROVIDERS, gateway_base_url, requ
 from services.loom_model_gateway.server import GatewayConfig, GatewayServer, LoomModelGateway, GatewayError
 
 MODELS = {"minimax": "MiniMax-M3.1-Flash-Preview", "deepseek": "deepseek-flash", "intern": "intern-s2",
-          "ant-ling": "Ling-3.0-flash", "opencode-go": "minimax-m3", "managed-relay": "MiniMax-M3.1-Flash-Preview"}
+          "ant-ling": "Ling-3.0-flash", "opencode-go": "minimax-m3",
+          "opencode-console": "deepseek-v4.1-flash-free", "managed-relay": "MiniMax-M3.1-Flash-Preview"}
 
 
 @pytest.mark.parametrize("group,model", MODELS.items())
@@ -72,9 +73,16 @@ def test_gateway_http_routes_use_server_credentials_and_preserve_protocol(monkey
         path = "/v1/" + ("" if group == "ant-ling" else group + "/") + endpoint
         connection.request("POST", path, body, {"Authorization": "Bearer loom_model_account", "Content-Type": "application/json", "x-api-key": "must-not-forward", "x-opencode-session": "thread-1"})
         response = connection.getresponse()
-        assert response.status == 200
-        assert json.loads(response.read()) == {"ok": True}
+        payload = json.loads(response.read())
         assert authorizations == ["Bearer loom_model_account"]
+        if group == "opencode-console":
+            assert response.status == 403
+            assert payload["error"]["code"] == "OPENCODE_FREE_CLIENT_RESTRICTED"
+            assert not requests
+            connection.close()
+            return
+        assert response.status == 200
+        assert payload == {"ok": True}
         request = requests[0]
         assert request.full_url == "https://provider.invalid/"+group+"/"+endpoint
         assert request.data == body

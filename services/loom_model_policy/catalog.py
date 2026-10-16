@@ -68,6 +68,30 @@ _OPENCODE_GO = (
 )
 
 
+# Console's documented zero-priced OpenAI-compatible chat models (limited-time).
+# An explicit allowlist is essential: the paid sibling lacks "-free" and must
+# never be mistaken for the free model. Update after verifying official pricing.
+OPENCODE_CONSOLE_FREE_MODELS = (
+    "big-pickle",
+    "glm-5.3-flash-free",
+    "deepseek-v4.1-flash-free",
+    "space-bunny-free",
+    "cat-jam-free",
+    "ll-alpha-free",
+    "longcat-2.5-preview-free",
+    "exo-free",
+    "mimo-v2.6-flash-free",
+    "mimo-v2.5-free",
+    "nemotron-3-ultra-free",
+    "nemotron-3.5-lightning-free",
+    "nemotron-3.5-super-vl-free",
+)
+
+
+def is_opencode_console_free(model: str) -> bool:
+    return str(model or "").strip().casefold() in OPENCODE_CONSOLE_FREE_MODELS
+
+
 def _title_model(value: str) -> str:
     return str(value).replace("-", " ").replace("_", " ").title()
 
@@ -78,6 +102,7 @@ GROUPS = (
     CatalogGroup("deepseek", "DeepSeek", ("builtin:deepseek",)),
     CatalogGroup("ant-ling", "Ant Ling", ("builtin:ant-ling",)),
     CatalogGroup("opencode-go", "OpenCode Go", ("builtin:opencode-go:",)),
+    CatalogGroup("opencode-console", "OpenCode Console", ("builtin:opencode-console:",)),
     CatalogGroup("managed-relay", "Muxway Relay", ("managed:", "builtin:cqu")),
 )
 
@@ -118,6 +143,15 @@ MODELS = tuple(
             "OpenCode Go",
         )
         for model in _OPENCODE_GO
+    ]
+    + [
+        CatalogModel(
+            "builtin:opencode-console:" + quote(model, safe=""),
+            _title_model(model),
+            "opencode-console",
+            "OpenCode Console",
+        )
+        for model in OPENCODE_CONSOLE_FREE_MODELS
     ]
     + [CatalogModel("builtin:cqu", "CQU 弘深", "managed-relay", "Muxway Relay")]
 )
