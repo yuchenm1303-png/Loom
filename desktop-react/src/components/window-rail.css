@@ -63,20 +63,50 @@
 /* Reserve space outside the scrolling viewport: padding on the content alone
    disappears as it scrolls and lets text pass behind the window controls. */
 :root.loom-desktop-chrome .settings-main {
+  position: relative;
   box-sizing: border-box;
   padding-top: var(--loom-rail-height);
 }
+:root.loom-desktop-chrome .settings-main::after {
+  content: "";
+  position: absolute;
+  z-index: 2;
+  top: var(--loom-rail-height);
+  left: 0;
+  right: 10px;
+  height: 24px;
+  background: inherit;
+  mask-image: linear-gradient(to bottom, #000, transparent);
+  pointer-events: none;
+}
 :root.loom-desktop-chrome .settings-content {
-  padding-top: 16px;
+  padding-top: 28px;
 }
 
 /* Dialogs can grow to nearly the viewport height (especially at larger UI
    scales). Give their entire layout a safe top edge, including fullscreen
    Files, account and avatar dialogs and the model editor. */
 :root.loom-desktop-chrome :is(.pl-scrim, .models-modal-backdrop) {
-  top: var(--loom-rail-height);
+  top: 0;
   box-sizing: border-box;
-  padding: 16px 24px 24px;
+  padding: calc(var(--loom-rail-height) + 16px) 24px 24px;
+  isolation: isolate;
+  background: transparent;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+/* Fade the scrim and its blur together. The backdrop still covers the window
+   for dismissal, while its children retain the caption's safe layout inset. */
+:root.loom-desktop-chrome :is(.pl-scrim, .models-modal-backdrop)::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: var(--pl-scrim);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  mask-image: linear-gradient(to bottom, transparent, #000 calc(var(--loom-rail-height) + 48px));
+  pointer-events: none;
 }
 :root.loom-desktop-chrome :is(.pl-scrim > [role="dialog"], .models-modal) {
   max-height: calc(100dvh - var(--loom-rail-height) - 40px);
@@ -92,12 +122,6 @@
 }
 :root.loom-desktop-chrome .user-message-image-lightbox-panel {
   height: min(860px, calc(100vh - var(--loom-rail-height) - 28px));
-}
-
-/* The Files workbench is nearly as high as a short window, so its header (refresh, maximise, close)
-   would sit under the controls. Like the viewer above, it starts below the rail. */
-:root.loom-desktop-chrome .files-workbench-backdrop {
-  padding-top: var(--loom-rail-height);
 }
 
 /* 3 -- the drag region is the whole rail; anything clickable on it is cut out.
