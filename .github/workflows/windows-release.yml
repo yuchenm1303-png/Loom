@@ -98,6 +98,10 @@ jobs:
         working-directory: desktop-react
         run: npm run package:win
 
+      - name: Verify installer metadata integrity
+        working-directory: desktop-react
+        run: node scripts/verify-installer-release.mjs
+
       - name: Verify release candidate
         shell: pwsh
         run: |

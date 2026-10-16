@@ -3,6 +3,7 @@ import fs from "node:fs/promises";
 import fsSync from "node:fs";
 import path from "node:path";
 import { isManagedBuiltinSelection, modelPolicyGroup } from "./modelPolicySelection.js";
+import { recordUpdateAccessDiagnostic } from "./updateAccessDiagnostics.js";
 
 export interface LoomAccountUser {
   id: number;
@@ -348,15 +349,26 @@ export class LoomAccountClient {
           String((cause as { cause?: { code?: unknown } })?.cause?.code || ""),
         );
       }
-      const body = await response.json().catch(() => ({})) as {
+      const body = await response.json().catch((cause: unknown) => {
+        if (!response.ok) return {};
+        throw new AccountHttpError(0,
+          cause instanceof Error && cause.name === "AbortError" ? "ACCOUNT_REQUEST_TIMEOUT" : "ACCOUNT_RESPONSE_INVALID",
+          "The account service returned an incomplete response.");
+      }) as {
         error?: { code?: string; message?: string };
       } & T;
       if (!response.ok) {
         throw new AccountHttpError(
           response.status,
-          String(body.error?.code || "ACCOUNT_REQUEST_FAILED"),
-          String(body.error?.message || ("Account request failed (" + response.status + ").")),
+          String(body?.error?.code || "ACCOUNT_REQUEST_FAILED"),
+          String(body?.error?.message || ("Account request failed (" + response.status + ").")),
         );
+      }
+      if (endpoint === "/auth/me" || endpoint === "/auth/refresh") {
+        const user = (body as { user?: LoomAccountUser } | null)?.user;
+        if (!user || !Number.isSafeInteger(user.id) || typeof user.status !== "string") {
+          throw new AccountHttpError(0, "ACCOUNT_RESPONSE_INVALID", "The account service returned an invalid account response.");
+        }
       }
       return body as T;
     } catch (error) {
@@ -364,19 +376,11 @@ export class LoomAccountClient {
       // Only fixed auth endpoints and machine codes belong here, never tokens,
       // request bodies, email addresses or server-provided error messages.
       if (endpoint === "/auth/me" || endpoint === "/auth/refresh") {
-        try {
-          const code = (value: unknown) => typeof value === "string" && /^[A-Z0-9_]{1,80}$/.test(value) ? value : "UNKNOWN";
-          const file = path.join(app.getPath("userData"), "update-access-diagnostics.jsonl");
-          if (fsSync.existsSync(file) && fsSync.statSync(file).size > 65536) {
-            const tail = fsSync.readFileSync(file, "utf8").slice(-32768);
-            fsSync.writeFileSync(file, tail.slice(tail.indexOf("\n") + 1));
-          }
-          fsSync.appendFileSync(file, JSON.stringify({ at: new Date().toISOString(), endpoint,
-            elapsedMs: Date.now() - started, code: code(error instanceof AccountHttpError ? error.code : undefined),
-            status: error instanceof AccountHttpError ? error.status : 0,
-            transportCode: code(error instanceof AccountHttpError ? error.transportCode : undefined),
-          }) + "\n", { mode: 0o600 });
-        } catch { /* Diagnostics must never change authentication behavior. */ }
+        recordUpdateAccessDiagnostic({ endpoint, elapsedMs: Date.now() - started,
+          code: error instanceof AccountHttpError ? error.code : undefined,
+          status: error instanceof AccountHttpError ? error.status : 0,
+          transportCode: error instanceof AccountHttpError ? error.transportCode : undefined,
+        });
       }
       throw error;
     } finally {

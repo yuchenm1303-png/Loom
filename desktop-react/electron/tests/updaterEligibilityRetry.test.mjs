@@ -48,11 +48,15 @@ mock.module("../../dist-electron/updatePreferences.js", { namedExports: {
   readUpdatePreferences: () => ({ automaticUpdates, silentUpdates: true, autoRestartAfterUpdate: true }),
   writeUpdatePreferences() {},
 } });
-mock.module("../../dist-electron/updateEligibility.js", { namedExports: { mayReceiveUpdates: async () => allowed } });
+mock.module("../../dist-electron/updateEligibility.js", { namedExports: {
+  mayReceiveUpdates: async () => allowed,
+  verifyUpdateAccess: async () => ({ allowed, reason: allowed ? "allowed" : "unreachable" }),
+  updateAccessError: () => "The account service could not verify update access. Loom will retry automatically.",
+} });
 mock.module("../../dist-electron/hostProcess.js", { namedExports: {
   isHostProcess: true, broadcastHostEvent(channel) { if (channel === "loom:host-updating") restartNotifications++; }, callHost: async () => {}, handleHostChannel() {}, hostHasDesktopClients: () => false,
 } });
-const { checkForUpdates, installDownloadedUpdate, registerHeadlessUpdateGuard } = await import("../../dist-electron/updater.js");
+const { checkForUpdates, installDownloadedUpdate, registerHeadlessUpdateGuard, softwareUpdateState, ensureBootstrapUpdate } = await import("../../dist-electron/updater.js");
 
 test("failed eligibility schedules recovery while blocking downloads and installs", async (t) => {
   const originalTimeout = globalThis.setTimeout;
@@ -88,6 +92,56 @@ test("overlapping checks share one installer operation", async () => {
   finish();
   await Promise.all(checks);
   assert.deepEqual(order, ["installer"]);
+});
+
+test("a downloaded installer recovers from verification failure through the scheduled retry", async (t) => {
+  automaticUpdates = false;
+  updater.emit("update-downloaded", { version: "0.1.91" });
+  await new Promise(resolve => setImmediate(resolve));
+  allowed = false;
+  await installDownloadedUpdate();
+  automaticUpdates = true;
+  const originalTimeout = globalThis.setTimeout;
+  let retry;
+  t.mock.method(globalThis, "setTimeout", (callback, delay, ...args) => {
+    if (delay === 60_000) retry = callback;
+    return originalTimeout(callback, delay, ...args);
+  });
+  assert.equal((await checkForUpdates()).phase, "disabled");
+  assert.equal(typeof retry, "function");
+  allowed = true;
+  retry();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(softwareUpdateState().phase, "downloaded");
+  assert.equal(softwareUpdateState().error, undefined, "recovery clears stale verification errors");
+  automaticUpdates = false;
+});
+
+test("automatic install retries outages and honors preferences changed during verification", async (t) => {
+  const originalTimeout = globalThis.setTimeout;
+  let retry;
+  t.mock.method(globalThis, "setTimeout", (callback, delay, ...args) => {
+    if (delay === 30_000) retry = callback;
+    return originalTimeout(callback, delay, ...args);
+  });
+  automaticUpdates = true;
+  allowed = false;
+  await ensureBootstrapUpdate();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(typeof retry, "function", "automatic installation must retry a verification outage");
+  let release, enter;
+  const gate = new Promise(resolve => { release = resolve; });
+  const entered = new Promise(resolve => { enter = resolve; });
+  registerHeadlessUpdateGuard(async () => { enter(); await gate; return true; });
+  allowed = true;
+  retry();
+  await entered;
+  automaticUpdates = false;
+  release();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(restartNotifications, 0, "turning automatic updates off while awaiting the guard cancels automatic restart");
+  assert.equal(installs, 0);
+  registerHeadlessUpdateGuard(undefined);
 });
 
 test("manual installation protects tasks and schedules one restart", async () => {

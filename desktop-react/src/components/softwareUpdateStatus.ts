@@ -42,7 +42,7 @@ export function statusCopy(state: SoftwareUpdateState | null): {
     case "disabled":
       if (state.accountUpdatesAllowed === false) return {
         title: "Update access could not be verified",
-        detail: "Check your sign-in, connection, and account update permission, then try checking again.",
+        detail: state.error || "Check your sign-in, connection, and account update permission, then try checking again.",
         tone: "warning",
       };
       return {

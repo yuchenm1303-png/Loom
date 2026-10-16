@@ -38,7 +38,7 @@
     "typecheck": "tsc --noEmit && tsc -p tsconfig.electron.json --noEmit",
     "start": "npm run build && electron dist-electron/entry.js",
     "package:win:dir": "npm run build && npm run build:runtime:win && electron-builder --win --x64 --dir",
-    "package:win": "npm run build && npm run build:runtime:win && electron-builder --win --x64 --dir --publish never && node scripts/host-process-smoke.mjs --packaged && node scripts/host-process-smoke.mjs --packaged --pending-update && node scripts/verify-packaged-renderer.mjs && electron-builder --win nsis --x64 --prepackaged release/win-unpacked --publish never && npm run test:installer",
+    "package:win": "npm run test:electron && node --test scripts/tests/update-release.test.mjs scripts/tests/software-update-status.test.mjs && npm run build && npm run build:runtime:win && electron-builder --win --x64 --dir --publish never && node scripts/host-process-smoke.mjs --packaged && node scripts/host-process-smoke.mjs --packaged --pending-update && node scripts/verify-packaged-renderer.mjs && electron-builder --win nsis --x64 --prepackaged release/win-unpacked --publish never && node scripts/verify-installer-release.mjs && npm run test:installer",
     "package:win:publish": "npm run package:win && electron-builder --win nsis --x64 --prepackaged release/win-unpacked --publish always",
     "build:web": "npm run build:renderer"
   },

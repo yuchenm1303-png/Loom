@@ -22,6 +22,7 @@ test("Host progress is displayed only for real work, and does not mask applicati
 });
 
 test("account verification failure and unsupported builds have distinct explanations", () => {
+  assert.equal(statusCopy({ ...base, phase: "disabled", accountUpdatesAllowed: false, error: "Sign in to check for updates." }).detail, "Sign in to check for updates.");
   assert.equal(statusCopy({ ...base, phase: "disabled", accountUpdatesAllowed: false }).title, "Update access could not be verified");
   assert.equal(statusCopy({ ...base, enabled: false, phase: "disabled" }).title, "Updates are unavailable in this build");
 });

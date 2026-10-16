@@ -1,5 +1,5 @@
 import { readUpdatePreferences, writeUpdatePreferences } from "./updatePreferences.js";
-import { mayReceiveUpdates } from "./updateEligibility.js";
+import { mayReceiveUpdates, verifyUpdateAccess, updateAccessError } from "./updateEligibility.js";
 import { app, BrowserWindow, dialog, ipcMain, shell } from "electron";
 import fs from "node:fs";
 import path from "node:path";
@@ -194,7 +194,7 @@ async function maybeInstallHeadless(): Promise<boolean> {
   if (headlessInstallAttempt) return headlessInstallAttempt;
   if (!headlessInstallWanted()) return false;
   headlessInstallAttempt = (async () => {
-    if (!await mayReceiveUpdates()) return false;
+    if (!await mayReceiveUpdates()) { scheduleHeadlessInstallRetry(); return false; }
     if (!headlessInstallGuard) {
       scheduleHeadlessInstallRetry();
       return false;
@@ -211,7 +211,7 @@ async function maybeInstallHeadless(): Promise<boolean> {
       clearTimeout(headlessInstallRetryTimer);
       headlessInstallRetryTimer = null;
     }
-    if (!await mayReceiveUpdates()) return false;
+    if (!await mayReceiveUpdates()) { scheduleHeadlessInstallRetry(); return false; }
     // Account verification can be slow; task state may have changed while it
     // was in flight. Recheck immediately before closing desktop clients.
     try {
@@ -219,6 +219,7 @@ async function maybeInstallHeadless(): Promise<boolean> {
     } catch { scheduleHeadlessInstallRetry(); return false; }
     // Silent updates install whenever Agent work is idle, including with a
     // connected Desktop. The restart marker reopens the Desktop afterwards.
+    if (!headlessInstallWanted()) return false;
     return restartForUpdate();
   })().finally(() => {
     headlessInstallAttempt = null;
@@ -252,7 +253,8 @@ function clearErrorRetry(): void {
 }
 
 function scheduleErrorRetry(): void {
-  if (!readUpdatePreferences().automaticUpdates || !updateEnabled || errorRetryTimer || updateInFlight()) return;
+  if (!readUpdatePreferences().automaticUpdates || !updateEnabled || errorRetryTimer
+    || (updateInFlight() && state.accountUpdatesAllowed !== false)) return;
   errorRetryTimer = setTimeout(() => {
     errorRetryTimer = null;
     if (readUpdatePreferences().automaticUpdates) void checkForUpdates();
@@ -323,18 +325,17 @@ export async function checkForUpdates(): Promise<SoftwareUpdateState> {
   if (!updateEnabled) return softwareUpdateState();
   if (checkPromise) return checkPromise;
   if (bootstrapRestarting || (updateInFlight() && state.accountUpdatesAllowed !== false)) return softwareUpdateState();
-  // Cover eligibility and both channels with one operation. Repeated clicks,
+  // Cover eligibility and discovery with one operation. Repeated clicks,
   // startup and focus checks must not race or schedule competing upgrades.
   checkPromise = (async () => {
     if (!updateInFlight()) setState({ phase: "checking", error: undefined });
-    if (!await mayReceiveUpdates()) {
-      setState({ accountUpdatesAllowed: false, error: undefined });
+    const access = await verifyUpdateAccess();
+    if (!access.allowed) {
+      setState({ accountUpdatesAllowed: false, error: updateAccessError(access), checkedAt: new Date().toISOString() });
       scheduleErrorRetry();
       return softwareUpdateState();
     }
-    if (state.accountUpdatesAllowed !== true) {
-      setState({ accountUpdatesAllowed: true, phase: state.phase === "disabled" ? "idle" : state.phase });
-    }
+    setState({ accountUpdatesAllowed: true, error: undefined, phase: state.phase === "disabled" ? "idle" : state.phase });
     if (updateInFlight()) return softwareUpdateState();
 
     clearErrorRetry();
@@ -367,7 +368,6 @@ export async function checkForUpdates(): Promise<SoftwareUpdateState> {
       }
     }
 
-
     return softwareUpdateState();
   })().finally(() => {
     checkPromise = null;
@@ -377,11 +377,13 @@ export async function checkForUpdates(): Promise<SoftwareUpdateState> {
 }
 
 export async function installDownloadedUpdate(): Promise<{ accepted: boolean; state: SoftwareUpdateState }> {
-  if (!await mayReceiveUpdates()) {
-    setState({ accountUpdatesAllowed: false });
+  const access = await verifyUpdateAccess();
+  if (!access.allowed) {
+    setState({ accountUpdatesAllowed: false, error: updateAccessError(access) });
+    scheduleErrorRetry();
     return { accepted: false, state: softwareUpdateState() };
   }
-  if (state.accountUpdatesAllowed !== true) setState({ accountUpdatesAllowed: true });
+  setState({ accountUpdatesAllowed: true, error: undefined });
   if (!updateEnabled || state.phase !== "downloaded") {
     return { accepted: false, state: softwareUpdateState() };
   }

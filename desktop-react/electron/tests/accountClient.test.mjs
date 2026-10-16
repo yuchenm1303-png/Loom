@@ -491,6 +491,25 @@ test("an outage keeps the stored session instead of signing the user out", async
   await fs.readFile(sessionPath(), "utf8");
 });
 
+test("broken response bodies preserve the session and distinguish invalid responses from timeouts", async () => {
+  await seedSession({ accessToken: "loom_access_live", refreshToken: "loom_refresh_live",
+    expiresAt: Date.now() + 600000, user: USER });
+  const client = newClient();
+  for (const [response, code] of [
+    [reply(200, {}), "ACCOUNT_RESPONSE_INVALID"],
+    [{ ok: true, status: 200, json: async () => { throw new SyntaxError("broken JSON"); } }, "ACCOUNT_RESPONSE_INVALID"],
+    [{ ok: true, status: 200, json: async () => { const error = new Error("aborted body"); error.name = "AbortError"; throw error; } }, "ACCOUNT_REQUEST_TIMEOUT"],
+  ]) {
+    globalThis.fetch = async () => response;
+    const failed = await client.status();
+    assert.equal(failed.authenticated, true, "a malformed service response must not erase the signed-in identity");
+    assert.equal(failed.reachable, false);
+    assert.equal(failed.verificationFailure.code, code);
+    installFetch({ "/v1/auth/me": () => reply(200, { user: USER }) });
+    assert.equal((await client.status()).reachable, true);
+  }
+});
+
 test("an outage during the pre-refresh also keeps the stored session", async () => {
   await seedSession({
     accessToken: "loom_access_stale",
