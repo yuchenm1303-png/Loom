@@ -5,6 +5,12 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
+// The NSIS updater is Windows-only; exercise that branch on Linux CI too.
+// This test process is isolated from the rest of the test files.
+const originalPlatform = process.platform;
+Object.defineProperty(process, "platform", { value: "win32" });
+after(() => Object.defineProperty(process, "platform", { value: originalPlatform }));
+
 const home = await fs.mkdtemp(path.join(os.tmpdir(), "loom-installer-flow-"));
 after(() => fs.rm(home, { recursive: true, force: true }));
 
