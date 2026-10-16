@@ -218,6 +218,8 @@ export const SETTINGS_COPY: Record<string, string> = {
   "Use your runtime configuration to add or change MCP servers.": "在运行时配置中添加或修改 MCP 服务。",
   "Not checked in this session": "本次尚未检查",
   "Automatic updates are on": "自动更新已开启",
+  "Automatic updates are off": "自动更新已关闭",
+  "You can check for updates manually.": "你仍可手动检查更新。",
   "Loom checks in the background and downloads newer releases automatically.": "Loom 会在后台检查并下载新版本。",
   "Reading update status": "正在读取更新状态",
   "Connecting to the desktop updater…": "正在连接更新服务…",
