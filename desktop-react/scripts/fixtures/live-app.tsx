@@ -20,6 +20,7 @@
  *       an ending (answer, error, a stop, a bare reply). The same seed plays the same run.
  *   ?speed=0.5             slow the script (animations are not rescaled)
  *   ?empty=1               start on the home screen of an empty thread
+ *   ?agents=1              three delegated agents in the history (running, finished, failed): the sub-agent panel shows its filter bar and cards
  *   ?autosend=1            send the scenario prompt once the app is ready
  *   ?latency=1500          the Host takes this long (ms) to answer `turn/start` (and `thread/start`, for a message sent from
  *                          the home screen of a conversation that does not exist yet) and to start the run, as a real one does:
@@ -69,6 +70,15 @@ const history: Item[] = params.get("empty") === "1" ? [] : [
   { id: "h-read", type: "tool_call", toolName: "read_workspace_text", status: "completed", arguments: { path: "src/pages/Login.tsx" }, content: "export function Login() { … }" },
   { id: "h-a1", type: "assistant_message", phase: "final_answer", status: "completed",
     text: english ? "Only **required fields** are checked; the email format is not validated yet." : "目前只校验了**必填项**，邮箱格式还没有校验。" },
+  // ?agents=1: three delegated agents (running, finished, failed), so the sub-agent panel shows its filter bar and cards.
+  ...(params.get("agents") === "1" ? [
+    { id: "h-ag1", type: "tool_call", toolName: "spawn_agent", status: "completed", arguments: { task: english ? "Audit the register and reset pages for the same missing email rule" : "检查注册页和找回密码页是否缺同样的邮箱规则", role: "explorer", history_mode: "fork" },
+      result: { session_id: "agent-register", role: "explorer", history_mode: "fork", relation_status: "open", session_status: "running", execution_running: true, queue_depth: 1 } },
+    { id: "h-ag2", type: "tool_call", toolName: "spawn_agent", status: "completed", arguments: { task: english ? "Write the isEmail() unit tests" : "编写 isEmail() 的单元测试", role: "worker", history_mode: "fresh" },
+      result: { session_id: "agent-tests", role: "worker", history_mode: "fresh", relation_status: "open", session_status: "completed", execution_running: false, final_text: english ? "6 cases added, all passing." : "新增 6 个用例，全部通过。" } },
+    { id: "h-ag3", type: "tool_call", toolName: "spawn_agent", status: "completed", arguments: { task: english ? "Migrate the duplicated regexes" : "迁移重复的正则表达式", role: "worker", history_mode: "fresh" },
+      result: { session_id: "agent-migrate", role: "worker", history_mode: "fresh", relation_status: "open", session_status: "failed", execution_running: false, error: english ? "The model provider closed the connection." : "模型服务断开了连接。" } },
+  ] : []),
 ].map((item, index) => ({ ...item, threadId: THREAD, turnId: "turn-history", createdAt: new Date(Date.parse(historyAt) + index * 2000).toISOString() }));
 
 const items: Item[] = [...history];

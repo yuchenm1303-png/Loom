@@ -262,6 +262,40 @@ def test_cards_inside_the_docks_share_one_corner() -> None:
         assert card in registry, card
 
 
+def test_dock_content_is_one_card_one_chip_one_segmented_control() -> None:
+    kit = read("components/panel-language.css")
+
+    # The card registry carries the material, not just the corner; the agent's avatar, status and the two
+    # segmented controls (agent filter, inspector tabs) take the same tokens, with one slab token.
+    assert "--pl-slab:" in kit
+    for selector in (
+        ":root:root:root .sub-agent-status", ":root:root:root .sub-agent-avatar", ":root:root:root .sub-agent-filter button.active",
+        ":root:root:root .runtime-tab-glider", ":root:root:root .project-workspace-stat",
+    ):
+        assert selector in kit, selector
+    card = kit[kit.index(":root:root:root :is(\n  .project-overview-card,\n"):]
+    card = card[:card.index("\n}\n")]
+    assert "background: var(--pl-card)" in card and "border: 1px solid var(--pl-line)" in card and "box-shadow: none" in card
+
+    # The agent panel is as wide as its dock (a toolbar that cannot shrink once widened the column), its
+    # one-line status note drops out of a narrow dock, and its header says one thing.
+    agents = read("components/sub-agent-workspace.css")
+    assert "grid-template-columns: minmax(0, 1fr);" in agents[agents.rindex(".sub-agent-workspace.is-docked {"):]
+    assert "@container agent-dock (max-width: 520px)" in agents
+    assert "container: agent-dock / inline-size;" in read("components/sub-agent-dock.css")
+    assert "meta={counts.failed ?" in read("components/SubAgentWorkspace.tsx")
+
+
+def test_the_readability_floor_covers_the_sub_agent_and_project_panels() -> None:
+    scale = read("typography-scale.css")
+
+    # These were 8.4-10.5px: the one dock the scale had never heard of. Badges keep --loom-font-badge.
+    for selector in (".sub-agent-id", ".sub-agent-status", ".sub-agent-card-meta", ".sub-agent-toolbar-note", ".project-memory-tabs button"):
+        assert selector in scale, selector
+    assert ".sub-agent-filter button > span { font-size: var(--loom-font-badge) !important; }" in scale
+    assert ".runtime-health { font-size: var(--loom-font-micro) !important; }" in scale
+
+
 def test_the_fixture_has_an_embedded_browser_so_the_panel_can_be_opened() -> None:
     fixture = (ROOT / "desktop-react" / "scripts" / "fixtures" / "live-app.tsx").read_text(encoding="utf-8")
 

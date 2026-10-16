@@ -48,6 +48,25 @@ function material(selector) {
   };
 }
 
+// Runs in the page: every visible text in a panel that is smaller than the product's readability floor
+// (typography-scale.css). Count badges are pills of fixed geometry and keep their own, smaller step.
+function belowTheFloor([rootSelector, floor, badgeSelectors]) {
+  const root = document.querySelector(rootSelector);
+  if (!root) return ["(no root)"];
+  const offenders = new Map();
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+    if (!node.textContent.trim()) continue;
+    const element = node.parentElement;
+    if (!element || element.closest("svg, script, style") || element.matches(badgeSelectors)) continue;
+    const style = getComputedStyle(element);
+    const box = element.getBoundingClientRect();
+    if (style.visibility === "hidden" || style.display === "none" || box.width < 1 || box.height < 1) continue;
+    if (parseFloat(style.fontSize) < floor) offenders.set(element.tagName.toLowerCase() + "." + String(element.className).trim().split(/\s+/).slice(0, 2).join(".") + " " + style.fontSize, node.textContent.trim().slice(0, 20));
+  }
+  return [...offenders.keys()];
+}
+
 // Runs in the page: the colour a scrim paints. The desktop shell moves it onto ::before so that it can fade
 // under the window controls (window-rail.css); everywhere else the host paints it.
 function scrimPaint(selector) {
@@ -61,9 +80,13 @@ const docks = [
   { name: "inspector", open: dock("inspector"), root: ".inspector.runtime-inspector", title: ".runtime-title-row strong", mark: ".runtime-mark" },
   { name: "review", open: dock("review"), root: ".review-workspace", header: ".review-topbar", empty: ".pl-empty-title" },
   { name: "agents", open: dock("agents"), root: ".sub-agent-dock", header: ".sub-agent-workspace-header", empty: ".pl-empty-title" },
+  // Three delegated agents (running, finished, failed): the filter bar, the cards, the header's one pill.
+  { name: "agents with cards", query: "&agents=1", open: dock("agents"), root: ".sub-agent-dock", header: ".sub-agent-workspace-header", cards: ".sub-agent-card" },
   { name: "artifacts", open: dock("artifacts"), root: ".artifact-preview-dock", header: ".artifact-preview-header", empty: ".artifact-library-empty strong" },
   { name: "project", open: selectProject, root: ".project-details-panel", header: ".project-details-header", card: ".project-overview-card" },
 ];
+
+const BADGES = ".runtime-tab-count, .sub-agent-filter button > span, .project-memory-tabs b";
 
 async function newPage(theme, extra = "") {
   const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
@@ -82,12 +105,13 @@ try {
   for (const theme of ["dark", "light"]) {
     // ---- docks -------------------------------------------------------------------------------
     for (const panel of docks) {
-      const { page, errors } = await newPage(theme);
+      const { page, errors } = await newPage(theme, panel.query || "");
       await panel.open(page);
       await page.waitForTimeout(1000);
       const tokens = await page.evaluate(({ resolveSource }) => {
         const resolveToken = new Function(`return (${resolveSource})`)();
         return {
+          card: resolveToken(["--pl-card", "background-color"]), line: resolveToken(["--pl-line", "border-top-color"]),
           surface: resolveToken(["--pl-surface", "background-color"]), edge: resolveToken(["--pl-edge", "border-left-color"]),
           ink: resolveToken(["--pl-ink", "color"]), rail: parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--pl-header-height")) || 60,
         };
@@ -130,6 +154,26 @@ try {
       if (panel.card) {
         const card = await page.evaluate(material, panel.card);
         check(`${label}: cards share the dock's one corner`, card && card.radius === "12px", card && card.radius);
+      }
+      if (panel.cards) {
+        // Cards are one material (the tint and hairline every card has) and stay inside the dock: a toolbar that
+        // could not shrink once widened the column so that the cards ran under the tool rail.
+        const geometry = await page.evaluate(([cardSelector, rootSelector]) => {
+          const dockBox = document.querySelector(rootSelector).getBoundingClientRect();
+          const cards = [...document.querySelectorAll(cardSelector)].map((card) => { const box = card.getBoundingClientRect(); const style = getComputedStyle(card); return { right: box.right, left: box.left, bg: style.backgroundColor, line: style.borderTopColor, image: style.backgroundImage, shadow: style.boxShadow }; });
+          const title = document.querySelector(rootSelector + " .pl-header .pl-title");
+          return { dockRight: dockBox.right, dockLeft: dockBox.left, cards, titleWidth: title ? title.getBoundingClientRect().width : 0, pills: document.querySelectorAll(rootSelector + " .pl-header .pl-meta .pl-chip").length };
+        }, [panel.cards, panel.root]);
+        check(`${label}: three cards`, geometry.cards.length === 3, String(geometry.cards.length));
+        check(`${label}: cards stay inside the dock`, geometry.cards.every((card) => card.right <= geometry.dockRight - 4 && card.left >= geometry.dockLeft), JSON.stringify(geometry.cards.map((card) => Math.round(card.right)).concat(Math.round(geometry.dockRight))));
+        check(`${label}: one card material`, geometry.cards.every((card) => card.bg === tokens.card && card.line === tokens.line && card.image === "none" && card.shadow === "none"), JSON.stringify(geometry.cards[0]));
+        check(`${label}: the title is not squeezed out of the header`, geometry.titleWidth >= 70, String(geometry.titleWidth));
+        check(`${label}: the header says one thing`, geometry.pills === 1, String(geometry.pills));
+      }
+      if (panel.root) {
+        // Nothing in a panel is set below the readability floor (count badges excepted).
+        const small = await page.evaluate(belowTheFloor, [panel.root, Number(process.env.LOOM_PANEL_FLOOR || 11.5), BADGES]);
+        check(`${label}: no text below the readability floor`, small.length === 0, small.join(" | "));
       }
       if (errors.length) failures.push(`${label}: page errors ${errors.slice(0, 2).join(" | ")}`);
       await page.close();

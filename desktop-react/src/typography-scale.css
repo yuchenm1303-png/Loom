@@ -95,7 +95,7 @@ body {
 /* Runtime inspector ------------------------------------------------------ */
 .runtime-title-row strong { font-size: 14px !important; }
 .runtime-caption { font-size: 12px !important; }
-.runtime-health { font-size: 10.5px !important; }
+.runtime-health { font-size: var(--loom-font-micro) !important; }
 .runtime-tab { font-size: 12px !important; }
 .runtime-tab-count { font-size: var(--loom-font-badge) !important; }
 .runtime-section-bar { font-size: var(--loom-font-micro) !important; }
@@ -113,6 +113,24 @@ body {
 .inspector-empty { font-size: 13px !important; }
 .inspector-row-title { font-size: 13px !important; }
 .inspector-row-meta { font-size: 12px !important; }
+
+/* Sub-agent panel: the one dock whose cards, filter bar and status pills were still 8.4-10.25px.
+   Count badges keep their own compact step (--loom-font-badge), like the inspector's tab counts. */
+.sub-agent-title-row strong { font-size: var(--loom-font-ui) !important; }
+.sub-agent-task { font-size: 12.5px !important; }
+.sub-agent-result > span { font-size: var(--loom-font-meta) !important; }
+.sub-agent-id,
+.sub-agent-status,
+.sub-agent-context-label,
+.sub-agent-card-meta,
+.sub-agent-toolbar-note { font-size: var(--loom-font-micro) !important; }
+.sub-agent-filter button { font-size: var(--loom-font-meta) !important; }
+.sub-agent-filter button > span { font-size: var(--loom-font-badge) !important; }
+
+/* Project panel: the memory card's tabs and its empty states. */
+.project-memory-category.empty,
+.project-memory-tabs button,
+.project-memory-empty span { font-size: var(--loom-font-micro) !important; }
 
 /* Settings --------------------------------------------------------------- */
 .settings-back,

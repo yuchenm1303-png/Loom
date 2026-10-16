@@ -534,12 +534,10 @@ export function SubAgentWorkspace({
         title="子代理工作区"
         subtitle={agents.length ? `${agents.length} 个代理 · 并行任务集中在这里管理` : "并行任务集中在这里管理"}
         metaClassName="sub-agent-workspace-summary"
-        meta={<>
-          {counts.running ? <b className="pl-chip is-live">{counts.running} 运行中</b> : null}
-          {counts.completed ? <span className="pl-chip">{counts.completed} 已完成</span> : null}
-          {counts.failed ? <span className="pl-chip is-danger">{counts.failed} 失败</span> : null}
-          {!agents.length ? <span className="pl-chip is-empty">0 个代理</span> : null}
-        </>}
+        meta={counts.failed ? <span className="pl-chip is-danger">{counts.failed} 失败</span>
+          : counts.running ? <span className="pl-chip is-live">{counts.running} 运行中</span>
+          : counts.completed ? <span className="pl-chip">{counts.completed} 已完成</span>
+          : <span className="pl-chip is-empty">0 个代理</span>}
         closeLabel="关闭子代理工作区"
         closeClassName="sub-agent-workspace-close"
         onClose={docked && onClose ? onClose : undefined}

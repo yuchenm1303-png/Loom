@@ -37,6 +37,7 @@
   --pl-card-hover: rgba(224, 230, 242, .065);
   --pl-field: rgba(224, 230, 242, .045);
   --pl-well: #0b0d10;
+  --pl-slab: rgba(224, 230, 242, .085);
   --pl-edge: rgba(255, 255, 255, .065);
   --pl-line: var(--loom-workspace-line, rgba(224, 230, 242, .12));
   --pl-hover: var(--loom-workspace-hover, rgba(224, 230, 242, .055));
@@ -77,6 +78,7 @@ html[data-loom-theme="light"] {
   --pl-card-hover: #fbfbfd;
   --pl-field: #ffffff;
   --pl-well: #ffffff;
+  --pl-slab: #ffffff;
   --pl-edge: rgba(28, 31, 37, .09);
   --pl-press: rgba(32, 42, 58, .08);
   --pl-faint: #8a919d;
@@ -528,8 +530,11 @@ code.pl-subtitle {
   box-shadow: inset 0 0 0 1px var(--pl-accent-line);
 }
 
-/* One corner for every card inside a dock. They were 10, 11, 12, 14, 15, 16 and 18px. */
-:root:root :is(
+/* One card for every dock: the same tint, hairline and corner (they were 10, 11, 12, 14, 15, 16 and
+   18px, three different fills, and the repository card an opaque box with a stronger border). A
+   status shows on the rail and the pill of an agent, not in the colour of its whole card. Three
+   :root outrank the light-theme copies of the old fills. */
+:root:root:root :is(
   .project-overview-card,
   .project-workspace-card,
   .project-instructions-card,
@@ -543,7 +548,101 @@ code.pl-subtitle {
   .sub-agent-card,
   .sub-agent-workspace.is-docked .sub-agent-card
 ) {
+  border: 1px solid var(--pl-line);
   border-radius: var(--pl-radius-card);
+  background: var(--pl-card);
+  box-shadow: none;
+}
+
+:root:root:root :is(.sub-agent-card:hover, .sub-agent-workspace.is-docked .sub-agent-card:hover) {
+  border-color: var(--pl-accent-line);
+  background: var(--pl-card-hover);
+  transform: none;
+}
+
+/* An agent's avatar is a mark; its status is a chip. */
+:root:root:root .sub-agent-avatar {
+  border: 0;
+  border-radius: var(--pl-radius-mark);
+  background: var(--pl-accent-wash);
+  color: var(--pl-accent);
+  box-shadow: inset 0 0 0 1px var(--pl-accent-line);
+}
+
+:root:root:root .sub-agent-status {
+  box-sizing: border-box;
+  height: 22px;
+  padding: 0 8px;
+  border: 1px solid var(--pl-line);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--pl-muted);
+}
+
+:root:root:root :is(.sub-agent-status.running, .sub-agent-status.starting, .sub-agent-status.waiting) {
+  border-color: var(--pl-accent-line);
+  background: var(--pl-accent-wash);
+  color: var(--pl-accent);
+}
+
+:root:root:root .sub-agent-status.completed {
+  border-color: color-mix(in srgb, var(--pl-ok) 28%, transparent);
+  background: color-mix(in srgb, var(--pl-ok) 9%, transparent);
+  color: var(--pl-ok);
+}
+
+:root:root:root .sub-agent-status.failed {
+  border-color: color-mix(in srgb, var(--pl-danger) 28%, transparent);
+  background: color-mix(in srgb, var(--pl-danger) 9%, transparent);
+  color: var(--pl-danger);
+}
+
+/* Segmented controls: the agent filter and the inspector's tabs draw their selected segment the
+   same way, a slab with a hairline on a quiet field. */
+:root:root:root .sub-agent-toolbar {
+  background: transparent;
+  border-bottom: 1px solid var(--pl-edge);
+}
+
+:root:root:root .sub-agent-filter {
+  border: 1px solid var(--pl-line);
+  background: var(--pl-field);
+  box-shadow: none;
+}
+
+:root:root:root .sub-agent-filter button {
+  background: transparent;
+  box-shadow: none;
+  color: var(--pl-muted);
+}
+
+:root:root:root .sub-agent-filter button:hover {
+  background: var(--pl-hover);
+  color: var(--pl-ink);
+}
+
+:root:root:root .sub-agent-filter button.active {
+  background: var(--pl-slab);
+  box-shadow: inset 0 0 0 1px var(--pl-line);
+  color: var(--pl-ink);
+}
+
+:root:root:root .sub-agent-filter button > span {
+  background: var(--pl-accent-wash);
+  color: var(--pl-accent);
+}
+
+:root:root:root .runtime-tab-glider {
+  border-color: var(--pl-line);
+  background: var(--pl-slab);
+  box-shadow: none;
+}
+
+/* The tiles inside a project card sit one step in: a smaller corner than the card that holds them. */
+:root:root:root .project-workspace-stat {
+  border: 1px solid var(--pl-edge);
+  border-radius: calc(var(--pl-radius-card) - 2px);
+  background: var(--pl-hover);
 }
 
 .pl-card {

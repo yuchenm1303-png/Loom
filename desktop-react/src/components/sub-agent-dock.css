@@ -15,6 +15,7 @@
   min-height: 0;
   overflow: hidden;
   contain: layout paint style;
+  container: agent-dock / inline-size;
 }
 
 @media (max-width: 1180px) {

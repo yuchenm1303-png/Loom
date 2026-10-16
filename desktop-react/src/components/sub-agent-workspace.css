@@ -1792,3 +1792,27 @@ html[data-loom-reduced-motion="true"] .sub-agent-workspace.is-docked .sub-agent-
   transition: none !important;
 }
 
+
+/* The panel is exactly as wide as its dock. A toolbar that cannot shrink used to widen the whole
+   column (the cards ran under the tool rail), and the header showed up to three status pills: the
+   breakdown is the filter bar's job, the header says only the one thing worth a glance. */
+.sub-agent-workspace.is-docked {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.sub-agent-toolbar {
+  min-width: 0;
+}
+
+.sub-agent-toolbar-note {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@container agent-dock (max-width: 520px) {
+  .sub-agent-toolbar-note {
+    display: none;
+  }
+}
