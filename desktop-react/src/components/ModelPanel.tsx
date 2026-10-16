@@ -216,9 +216,11 @@ function modelIdAddsInfo(profile: ModelProfile): boolean {
 
 // Only the official Console zero-priced OpenAI-chat IDs receive a Free label.
 const CONSOLE_FREE_MODELS = new Set([
-  "deepseek-v4.1-flash-free", "space-bunny-free", "cat-jam-free",
-  "longcat-2.5-preview-free", "step-5-preview-free", "exo-free",
-  "mimo-v2.6-flash-free", "mimo-v2.5-free", "big-pickle",
+  "big-pickle", "glm-5.3-flash-free", "deepseek-v4.1-flash-free",
+  "space-bunny-free", "cat-jam-free", "ll-alpha-free",
+  "longcat-2.5-preview-free", "exo-free", "mimo-v2.6-flash-free",
+  "mimo-v2.5-free", "nemotron-3-ultra-free",
+  "nemotron-3.5-lightning-free", "nemotron-3.5-super-vl-free",
 ]);
 function isConsoleFree(profile: ModelProfile): boolean {
   return profile.groupId === "opencode-console" && CONSOLE_FREE_MODELS.has(profile.model.toLowerCase());
