@@ -236,7 +236,7 @@ class GatewayRequestHandler(BaseHTTPRequestHandler):
         path = self.path.split("?", 1)[0].rstrip("/") or "/"
         try:
             if path == "/healthz":
-                self._write_json(HTTPStatus.OK, {"ok": True, "service": "loom-model-gateway", "providers": {group: bool(self.application._upstream(group)[1]) for group in PROVIDERS}})
+                self._write_json(HTTPStatus.OK, {"ok": True, "service": "loom-model-gateway", "providers": {group: (group == "opencode-console" or bool(self.application._upstream(group)[1])) for group in PROVIDERS}})
                 return
             try:
                 group_id, endpoint = request_route(path)
