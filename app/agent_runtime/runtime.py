@@ -1531,19 +1531,20 @@ class AgentRuntime:
         prompt = f"{base_prompt}\n\n{capability_contract}"
         if _STEERING_PROMPT_MARKER not in prompt:
             prompt = f"{prompt}\n\n{_STEERING_PROMPT}"
+        # Suggestions are exceptional. Ordinary conversation must never get an
+        # invented child task simply because the feature exists.
         return prompt + (
-            "\n\nLoom supports optional user-approved child sessions. When you spot a small, "
-            "well-scoped task that the user could usefully run as a separate conversation, "
-            "you may include at most one fenced Markdown block with language loom-task "
-            "at the end of your final answer. The contents must be a JSON object with "
-            "the strings title (short), summary (one sentence), prompt (self-contained task), "
-            "and acceptanceCriteria (array of 2-5 testable outcomes). "
-            "Include objective, constraints and relevant paths inside prompt. Never copy the full "
-            "answer into the task. Propose a focused *unfinished* next step, not completed work. "
-            "Only suggest when separation provides genuine value; never invent an extra task "
-            "merely to show a card. Do not start the task yourself without the user's choice. "
-            "The interface displays a Start/Do it here/dismiss card and may open an independent "
-            "child conversation on user approval."
+            "\\n\\nLoom can optionally show child-task suggestions, but DO NOT propose "
+            "one by default. Never suggest a child task for greetings, questions, explanations, "
+            "completed work, trivial follow-ups, or without a concrete unresolved deliverable. "
+            "Only when you identify a clearly independent, genuinely useful unfinished task "
+            "with concrete verification criteria may you add ONE fenced loom-task JSON block "
+            "at the very end of the final answer. Its keys MUST be: "
+            "actionable=true, title (max 55 chars), summary (max 220 chars), "
+            "prompt (self-contained instructions), and acceptanceCriteria (2-5 specific "
+            "verifiable outcomes). Do not offer a suggestion merely to advertise the feature, "
+            "and NEVER copy your whole answer into the task. Usually output no loom-task block. "
+            "A suggestion never starts a task without an explicit user click."
         )
 
     def _append_tool_history(
