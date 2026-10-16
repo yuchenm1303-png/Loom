@@ -35,6 +35,25 @@ quarantined on the next launch. The previous verified build or installed code
 remains the fallback. Bootstrap changes require one new installer to replace the
 stable loader; routine model defaults, account fixes and UI changes do not.
 
+Installer checks take priority over application component activation. Concurrent
+manual/startup/focus checks share one operation, and a pending installer blocks
+component restarts. Both manual and automatic installation require the task
+restart guard; they recheck task state after potentially slow account verification.
+Only one installer restart may be scheduled. Verification outages preserve
+verified downloads but never authorize their activation.
+
+On Windows, the loader waits for Electron readiness before decrypting the login
+session. The installed ESM entry starts this work without a top-level await, and
+registers artifact scheme privileges synchronously before readiness. Account
+verification has a bounded 30-second deadline and shares in-flight requests
+without caching permission grants. Desktop connection attempts allow 60 seconds
+for a cold Host to select and verify an application bundle.
+
+The Windows package gate runs both ordinary packaged Host startup and startup
+with a pending application update before building the installer. The application
+publisher's ASAR probe exercises actual staged activation, dependency resolution,
+sandboxed preload and health acknowledgement. Neither gate uses a real account.
+
 Application publication runs typechecks, Electron contracts, renderer build and
 a real relocated-code/sandboxed-preload Electron probe. All assets upload before
 the channel advances; concurrent channel writes retry and newer source prevents
