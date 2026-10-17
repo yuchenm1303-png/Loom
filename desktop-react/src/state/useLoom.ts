@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ThreadRecord, TranscriptItem } from "../types/loom";
 import { useLoom as useLoomCore } from "./useLoomCore";
 
@@ -34,6 +34,33 @@ type SteeringReceipt = {
   displayText?: string | null;
   attachments?: Array<{ name?: string; path?: string; kind?: string }>;
 };
+
+function optimisticStartItem(
+  threadId: string,
+  inputId: string,
+  text: string,
+  attachments: { path: string; name: string }[],
+  submittedAt: string,
+): TranscriptItem {
+  const displayText = text || (attachments.length === 1
+    ? attachments[0].name
+    : attachments.length
+      ? `${attachments.length} attachments`
+      : "");
+  return {
+    id: `optimistic-start-${inputId}`,
+    threadId,
+    turnId: null,
+    type: "user_message",
+    status: "pending",
+    text: displayText,
+    source: "user",
+    inputId,
+    submittedAt,
+    createdAt: submittedAt,
+    optimistic: true,
+  };
+}
 
 function optimisticSteeringItem(
   threadId: string,
@@ -74,12 +101,45 @@ async function resolveActiveTurn(threadId: string, current?: ThreadRecord | null
 
 export function useLoom() {
   const loom = useLoomCore();
+  const [optimisticStarts, setOptimisticStarts] = useState<TranscriptItem[]>([]);
   const [optimisticSteers, setOptimisticSteers] = useState<TranscriptItem[]>([]);
+  const startBaselinesRef = useRef<Map<string, Set<string>>>(new Map());
   const activeThreadId = loom.active?.thread.id ?? "";
   const activeTurnHasTerminalError = useMemo(
     () => currentTurnHasTerminalError(loom.items, loom.active?.thread.currentTurnId),
     [loom.active?.thread.currentTurnId, loom.items],
   );
+
+  // A normal turn has no client input id in the durable runtime event yet. Keep
+  // the user-message ids that existed at click time and replace the local bubble
+  // as soon as the first new authoritative non-steering user item arrives.
+  useEffect(() => {
+    setOptimisticStarts((current) => {
+      let changed = false;
+      const next = current.filter((item) => {
+        const inputId = String(item.inputId ?? "");
+        if (item.threadId !== activeThreadId) {
+          startBaselinesRef.current.delete(inputId);
+          changed = true;
+          return false;
+        }
+        const baseline = startBaselinesRef.current.get(inputId) ?? new Set<string>();
+        const acknowledged = loom.items.some((candidate) => (
+          candidate.threadId === item.threadId
+          && candidate.type === "user_message"
+          && candidate.source !== "steering"
+          && !baseline.has(candidate.id)
+        ));
+        if (acknowledged) {
+          startBaselinesRef.current.delete(inputId);
+          changed = true;
+          return false;
+        }
+        return true;
+      });
+      return changed ? next : current;
+    });
+  }, [activeThreadId, loom.items]);
 
   // Reconcile a local steering bubble as soon as its durable USER_MESSAGE arrives.
   // The runtime uses a different durable item id, so clientInputId/inputId is the
@@ -107,12 +167,15 @@ export function useLoom() {
         .map((item) => String(item.inputId ?? "").trim())
         .filter(Boolean),
     );
-    const pending = optimisticSteers.filter((item) => (
+    const pendingStarts = optimisticStarts.filter((item) => item.threadId === activeThreadId);
+    const pendingSteers = optimisticSteers.filter((item) => (
       item.threadId === activeThreadId
       && !durableInputIds.has(String(item.inputId ?? ""))
     ));
-    return pending.length ? [...loom.items, ...pending] : loom.items;
-  }, [activeThreadId, loom.items, optimisticSteers]);
+    return pendingStarts.length || pendingSteers.length
+      ? [...loom.items, ...pendingStarts, ...pendingSteers]
+      : loom.items;
+  }, [activeThreadId, loom.items, optimisticStarts, optimisticSteers]);
 
   const send = useCallback(async (
     input: string,
@@ -128,7 +191,31 @@ export function useLoom() {
       && !activeTurnHasTerminalError;
 
     if (!running) {
-      await loom.send(input, attachments);
+      if (!thread?.id || thread.archived) return;
+      if (!text && !attachments.length) return;
+
+      const inputId = `start-${steeringInputId()}`;
+      const localSubmittedAt = new Date().toISOString();
+      startBaselinesRef.current.set(
+        inputId,
+        new Set(
+          loom.items
+            .filter((item) => item.threadId === thread.id && item.type === "user_message" && item.source !== "steering")
+            .map((item) => item.id),
+        ),
+      );
+      setOptimisticStarts((current) => [
+        ...current.filter((item) => item.inputId !== inputId),
+        optimisticStartItem(thread.id, inputId, text, attachments, localSubmittedAt),
+      ]);
+
+      try {
+        await loom.send(input, attachments);
+      } catch (cause) {
+        startBaselinesRef.current.delete(inputId);
+        setOptimisticStarts((current) => current.filter((item) => item.inputId !== inputId));
+        throw cause;
+      }
       return;
     }
     if (!thread?.id || thread.archived) return;
@@ -183,7 +270,7 @@ export function useLoom() {
       setOptimisticSteers((current) => current.filter((item) => item.inputId !== inputId));
       throw cause;
     }
-  }, [activeTurnHasTerminalError, loom.active?.thread, loom.send, loom.turnActive]);
+  }, [activeTurnHasTerminalError, loom.active?.thread, loom.items, loom.send, loom.turnActive]);
 
   return useMemo(
     () => ({ ...loom, items: visibleItems, send }),
