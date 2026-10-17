@@ -4,6 +4,7 @@ import fsSync from "node:fs";
 import path from "node:path";
 import { isManagedBuiltinSelection, modelPolicyGroup } from "./modelPolicySelection.js";
 import { recordUpdateAccessDiagnostic } from "./updateAccessDiagnostics.js";
+import { reconcileModelCatalog } from "./modelCatalogSync.js";
 
 export interface LoomAccountUser {
   id: number;
@@ -51,7 +52,7 @@ export interface LoomModelPolicyAccess {
   catalog?: {
     revision: string;
     models: Array<{ model_id: string; model: string; name: string; group_id: string; group_name: string; available: boolean; catalog_state?: "available" | "pending-removal" | "retired" | "unknown"; source: string; image_input?: { supported: boolean | null; source: string } }>;
-    providers: Array<{ group_id: string; last_success: number | null; last_attempt: number | null; error: string }>;
+    providers: Array<{ group_id: string; last_success: number | null; last_attempt: number | null; error: string; client_error?: "invalid-provider-catalog" | "unsupported-provider" }>;
   };
 }
 
@@ -497,6 +498,7 @@ export class LoomAccountClient {
       && snapshot.revision === this.identityRevision
       && Date.now() - snapshot.at < MODEL_POLICY_SNAPSHOT_FRESH_MS
       && Array.isArray(snapshot.access.decisions)
+      && !snapshot.access.catalog?.providers?.some(provider => provider.group_id === modelPolicyGroup(selection) && provider.client_error)
       && snapshot.access.decisions.some((decision) => decision.model_id === selection)
     ) {
       return snapshot.access;
@@ -543,27 +545,31 @@ export class LoomAccountClient {
             String(body.error?.message || ("Model policy request failed (" + response.status + ").")),
           );
         }
-        if (!body.access || !Array.isArray(body.access.models) || body.access.models.some(item => typeof item !== "string")
+        if (!body.access || (body.access.schema_version !== 2 && (!Array.isArray(body.access.models) || body.access.models.some(item => typeof item !== "string")))
           || typeof body.access.enabled !== "boolean" || (body.access.user_id !== undefined && body.access.user_id !== active.user.id)) {
           throw new AccountHttpError(0, "MODEL_POLICY_INVALID", "Model policy returned invalid access data.");
         }
-        if (body.access.schema_version === 2 && (!Array.isArray(body.access.decisions)
-          || !body.access.decisions.length
-          || body.access.decisions.some(item => typeof item.model_id !== "string" || typeof item.enabled !== "boolean")
-          || new Set(body.access.decisions.map(item => item.model_id)).size !== body.access.decisions.length
-          || !Array.isArray(body.access.catalog?.models)
-          || !body.access.catalog.models.length
-          || new Set(body.access.catalog.models.map(item => item.model_id)).size !== body.access.catalog.models.length
-          || body.access.catalog.models.some((item) => typeof item.model_id !== "string"
-            || modelPolicyGroup(item.model_id) !== item.group_id
-            || typeof item.model !== "string" || typeof item.available !== "boolean"))) {
-          throw new AccountHttpError(0, "MODEL_POLICY_INVALID", "Model policy returned an invalid catalog.");
+        let access = body.access;
+        if (access.schema_version === 2) {
+          if (!Array.isArray(access.decisions) || !access.decisions.length || access.decisions.length > 20_000) {
+            throw new AccountHttpError(0, "MODEL_POLICY_INVALID", "Model policy returned invalid decisions.");
+          }
+          if (endpoint === "access") {
+            try { access = reconcileModelCatalog(access, this.cachedModelPolicy().access); }
+            catch { throw new AccountHttpError(0, "MODEL_POLICY_INVALID", "Model policy returned an invalid catalog envelope."); }
+          } else {
+            // /check is a single-model authorization response, not a complete directory update.
+            const matches = access.decisions.filter(item => item?.model_id === payload?.model_id);
+            if (matches.length !== 1 || typeof matches[0].enabled !== "boolean") {
+              throw new AccountHttpError(0, "MODEL_POLICY_INVALID", "Model policy returned an invalid model decision.");
+            }
+          }
         }
         const currentSession = await this.loadSession();
         if (!currentSession || currentSession.user.id !== active.user.id || identity !== this.identityRevision) {
           throw new AccountHttpError(0, "MODEL_ACCOUNT_CHANGED", "Model account changed. Retry shortly.");
         }
-        return body.access;
+        return access;
       } finally {
         clearTimeout(timer);
       }

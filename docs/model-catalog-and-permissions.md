@@ -105,6 +105,46 @@ seconds). No credential is included in access responses or stored refresh errors
   provider. Future providers must be added to `catalog.GROUPS` and
   `catalog_sync.PROVIDERS` together.
 
+## Provider isolation and refresh visibility
+
+The authenticated envelope (`enabled`, account identity, transport status) is
+validated as a whole. Schema-2 directory rows and decisions then reconcile per
+provider in `modelCatalogSync.ts`. Malformed rows, duplicate IDs, missing model
+decisions or a missing previously seen group preserve only that group's previous
+rows and decisions. Healthy groups advance immediately. Groups unsupported by
+this Host are reported and omitted from its launchable directory; they never
+receive an invented transport. Complete malformed/empty envelopes retain the
+previous account snapshot and show the global synchronization warning.
+
+Retained provider decisions are presentation data. Single-model authorization
+checks bypass the display cache for an invalid group. Account-wide denial still
+applies to every group, including retained rows. `/check` validates its exact
+target decision rather than interpreting its accompanying directory as a full
+catalog refresh. Every actual built-in inference remains gateway-authorized.
+
+The picker shows provider discovery errors and its last successful discovery
+timestamp, plus the last successful permission check when that check is stale.
+Its Refresh action uses the existing forced Desktop refresh; it does not trigger
+an unauthenticated administrator discovery operation. Discovery runs every 300
+seconds by default; visible clients poll every 10 seconds and policy snapshots
+are fresh for 20 seconds. Those are expected propagation bounds, not an instant
+push guarantee. Upstream failures keep the last directory with a stale status.
+
+Concurrent Host list requests share their work. Model metadata reconciliation
+uses generations so a late response cannot overwrite a newer directory.
+Capability-cache write failures show a warning and do not suppress directory
+updates. New model descriptions are batched per provider, with independent
+fallback for Hosts lacking a batch operation. Invalid manifest groups and
+unrecognized future manifest groups do not stop other providers discovering.
+
+`modelCatalogPipeline.test.mjs` starts a loopback upstream and the real Python
+policy HTTP service over SQLite. It adds Beam after initial discovery, corrupts
+Console's response, then exercises the real account client, catalog reconciliation,
+model manager and access projection. Beam becomes selectable while Console's
+previous rows survive. The runtime metadata bridge is isolated in this test;
+provider inference availability is a separate contract. CI explicitly installs
+Python for this Electron test; local runs may set `LOOM_TEST_PYTHON`.
+
 ## Verification
 
 Tests cover real HTTP access/check agreement, read-only legacy registration,

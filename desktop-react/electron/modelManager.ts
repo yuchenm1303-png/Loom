@@ -62,6 +62,8 @@ export interface ModelLaunchSpec extends ModelProfile {
 }
 
 export interface ModelSnapshot {
+  catalogMetadataError?: string;
+  catalogSync?: { providers: Array<{ groupId: string; state: "synced" | "stale" | "unavailable" | "unsupported"; lastSuccess: number | null; lastAttempt: number | null; message?: string }> };
   policySync?: { state: "fresh" | "stale" | "unavailable"; checkedAt?: number };
   primary: ModelProfile;
   profiles: ModelProfile[];
@@ -160,6 +162,8 @@ export class DesktopModelManager {
   private initialSpecPromise: Promise<ModelLaunchSpec> | null = null;
   private serverProfiles = new Map<string, ModelProfile>();
   private authoritativeCatalog: ModelProfile[] | null = null;
+  private catalogGeneration = 0;
+  private catalogMetadataError: string | undefined;
   private readonly catalogTtlMs: number;
 
   constructor(private readonly repoRoot: string) {
@@ -274,18 +278,24 @@ export class DesktopModelManager {
 
   async applyServerCatalog(snapshot: ModelSnapshot, models: Array<{
     model_id: string; model: string; name: string; group_id: string; group_name: string; available: boolean; catalog_state?: ModelProfile["catalogState"]; image_input?: { supported: boolean | null; source: string };
-  }>): Promise<ModelSnapshot> {
-    await invokeOptionalBridgeOperation("loom_model_bridge.py", "record-image-capabilities", () => this.runPythonBridgeAsync("loom_model_bridge.py", "record-image-capabilities", {
-      models: models.map((row) => ({ selection: row.model_id, model: row.model, metadata: { image_input: row.image_input ?? { supported: null, source: "unknown" } } })),
-    }));
+  }>, preserveGroups: readonly string[] = []): Promise<ModelSnapshot> {
+    const generation = ++this.catalogGeneration;
+    let metadataError: string | undefined;
+    try {
+      await invokeOptionalBridgeOperation("loom_model_bridge.py", "record-image-capabilities", () => this.runPythonBridgeAsync("loom_model_bridge.py", "record-image-capabilities", {
+        models: models.map((row) => ({ selection: row.model_id, model: row.model, metadata: { image_input: row.image_input ?? { supported: null, source: "unknown" } } })),
+      }));
+    } catch {
+      metadataError = "Model capabilities could not be refreshed. Directory updates continue; retry or update the Host.";
+    }
     const existing = new Map(snapshot.profiles.map((profile) => [profile.selection, profile]));
     const unavailable = new Set<string>();
     const missing = models.filter((row) => !existing.has(row.model_id) && !this.serverProfiles.has(row.model_id));
-    const batches = await Promise.all([false, true].map(async (antLing) => {
-      const requests = missing.filter((row) => isAntLingSelection(row.model_id) === antLing)
+    const batches = await Promise.all([...new Set(missing.map(row => row.group_id))].map(async (group) => {
+      const requests = missing.filter((row) => row.group_id === group)
         .map((row) => ({ selection: row.model_id, model: row.model }));
       if (!requests.length) return [] as ModelProfile[];
-      const script = antLing ? "loom_ant_ling_bridge.py" : "loom_model_bridge.py";
+      const script = group === "ant-ling" ? "loom_ant_ling_bridge.py" : "loom_model_bridge.py";
       try {
         return await this.runPythonBridgeAsync<ModelProfile[]>(script, "describe-models", { models: requests });
       } catch {
@@ -300,8 +310,10 @@ export class DesktopModelManager {
         return recovered;
       }
     }));
+    if (generation !== this.catalogGeneration) return this.snapshot();
+    this.catalogMetadataError = metadataError;
     for (const profile of batches.flat()) this.serverProfiles.set(profile.selection, profile);
-    const profiles = models.map((row) => {
+    const receivedProfiles = models.map((row) => {
       const profile = existing.get(row.model_id) ?? this.serverProfiles.get(row.model_id);
       if (profile?.kind === "saved") throw Error("Server catalog cannot replace a personal connection");
       if (!profile || unavailable.has(row.model_id)) return {
@@ -319,6 +331,9 @@ export class DesktopModelManager {
         vision: row.image_input?.supported ?? null, imageInput: row.image_input ?? { supported: null, source: "unknown" },
         statusMessage: row.available ? undefined : "Model is no longer available from this provider" };
     });
+    const receivedIds = new Set(receivedProfiles.map(profile => profile.selection));
+    const profiles = [...receivedProfiles, ...snapshot.profiles.filter(profile => profile.kind === "builtin"
+      && preserveGroups.includes(profile.groupId || "") && !receivedIds.has(profile.selection))];
     if (this.registryCache) {
       const evidence = new Map(profiles.map((profile) => [profile.selection, profile]));
       this.registryCache = { ...this.registryCache, profiles: this.registryCache.profiles.map((profile) => {
@@ -335,7 +350,7 @@ export class DesktopModelManager {
     this.metadataCache = { profiles: [...profiles, ...(this.metadataCache?.profiles ?? []).filter(profile => profile.kind === "saved")] };
     if (this.registryCache) this.adoptRegistry({ ...this.registryCache, profiles: merged }, this.metadataCache);
     const currentProfile = snapshot.current && merged.find((profile) => profile.selection === snapshot.current?.selection);
-    return { ...snapshot, profiles: merged,
+    return { ...snapshot, catalogMetadataError: metadataError, profiles: merged,
       current: snapshot.current && currentProfile ? { ...snapshot.current, ...currentProfile } : snapshot.current,
       primary: merged.find((profile) => profile.selection === snapshot.primary.selection) ?? snapshot.primary };
   }
@@ -559,6 +574,7 @@ export class DesktopModelManager {
       profiles,
       current,
       recentModels: [...this.recentModels],
+      catalogMetadataError: this.catalogMetadataError,
       catalogRefreshedAt: this.registryCacheAt || undefined,
       catalogTtlMs: this.catalogTtlMs,
     };

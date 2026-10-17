@@ -17,6 +17,11 @@ export function modelPolicyGroup(selection: string): string | null {
   return null;
 }
 
+/** New providers may appear in server catalogs before this Host supports them. */
+export function catalogSelectionGroup(selection: string): string | null {
+  return modelPolicyGroup(selection) ?? /^builtin:([a-z][a-z0-9-]*):.+$/.exec(String(selection || ""))?.[1] ?? null;
+}
+
 export function isPersonalSelection(selection: string): boolean {
   return /^(profile:|saved:).+/.test(String(selection || "").trim());
 }

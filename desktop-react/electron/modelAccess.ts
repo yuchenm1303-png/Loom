@@ -27,13 +27,27 @@ export function applyModelPolicy(snapshot: ModelSnapshot, access: LoomModelPolic
     const base = { ...profile, catalogAvailable, catalogMessage, available: catalogAvailable, statusMessage: catalogMessage };
     if (profile.kind === "saved") return { ...base, accessState: "personal" };
     if (!access) return { ...base, accessState: "unknown" };
-    const allowed = policyAllowsSelection(access, profile.selection);
     const decision = access.decisions?.find(item => item.model_id === profile.selection);
+    if (access.enabled && !decision && access.catalog?.providers?.some(provider =>
+      provider.group_id === modelPolicyGroup(profile.selection) && provider.client_error === "invalid-provider-catalog")) {
+      return { ...base, accessState: "unknown" };
+    }
+    const allowed = policyAllowsSelection(access, profile.selection);
     const notListed = decision?.source === "catalog" || (!decision && access.schema_version === 2);
     return { ...base, accessState: allowed ? "allowed" : notListed ? "not-listed" : "denied",
       available: allowed ? catalogAvailable : false,
       ...(!allowed ? { statusMessage: policyBlockedMessage(access, profile.selection) } : {}) };
   };
-  return { ...snapshot, profiles: snapshot.profiles.map(project), primary: project(snapshot.primary),
+  const providers = (access?.catalog?.providers ?? []).map(provider => {
+    const invalid = provider.client_error === "invalid-provider-catalog";
+    const unavailable = !!provider.error || invalid;
+    const state = provider.client_error === "unsupported-provider" ? "unsupported" as const
+      : unavailable ? provider.last_success ? "stale" as const : "unavailable" as const : "synced" as const;
+    return { groupId: provider.group_id, state, lastSuccess: provider.last_success, lastAttempt: provider.last_attempt,
+      message: invalid ? "This provider's catalog could not be validated; its previous directory is retained."
+        : provider.client_error === "unsupported-provider" ? "This provider requires a newer Host. Other providers continue syncing."
+          : provider.error || undefined };
+  });
+  return { ...snapshot, catalogSync: { providers }, profiles: snapshot.profiles.map(project), primary: project(snapshot.primary),
     current: snapshot.current ? project(snapshot.current) : null };
 }

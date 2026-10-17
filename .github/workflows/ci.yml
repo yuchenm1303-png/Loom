@@ -47,6 +47,9 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
       - name: Check UFO desktop scripts
         run: node --check scripts/setup-ufo.mjs && node --check scripts/ufo-preflight.mjs
       - name: Install React desktop dependencies
@@ -78,6 +81,7 @@ jobs:
           vite_pid=$!
           trap 'kill "$vite_pid"' EXIT
           node node_modules/wait-on/bin/wait-on --timeout 60000 "$LOOM_TEST_ORIGIN/scripts/fixtures/workspace-visual.html"
+          node scripts/tests/model-catalog-browser.mjs
           node scripts/tests/renderer-performance-browser.mjs
           node scripts/tests/control-popover-response-browser.mjs
           node scripts/tests/right-tool-dock-browser.mjs

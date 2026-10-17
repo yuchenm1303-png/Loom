@@ -935,6 +935,8 @@ export function ModelPanel({
   }
 
   if (view === "group" && activeGroup) {
+    const sync = snapshot?.catalogSync?.providers.find(provider => provider.groupId === activeGroup.id);
+    const syncTime = sync?.lastSuccess ? new Date(sync.lastSuccess * 1000).toLocaleString() : null;
     const setup = providerSetup(activeGroup);
     const availableChoices = selectableProfiles(activeGroup);
     const choices = visibleProfiles(activeGroup);
@@ -983,6 +985,12 @@ export function ModelPanel({
         ) : null}
 
         <div className="mp-body" ref={providerListRef}>
+          {snapshot?.catalogMetadataError ? <div className="mp-notice" role="status">{snapshot.catalogMetadataError}</div> : null}
+          {sync && accountAuthenticated ? (
+            <div className="mp-notice" role="status">
+              <span>{sync.message || "Model directory received."} {syncTime ? `Last successful sync: ${syncTime}.` : "No successful provider sync recorded."} <button type="button" className="mp-link" onClick={() => { void Promise.resolve(refreshRef.current?.()).catch(() => {}); }}>Refresh</button></span>
+            </div>
+          ) : null}
           {!accountAuthenticated ? (
             <div className="mp-notice">
               <Lock size={13} strokeWidth={2} aria-hidden="true" />
@@ -1001,7 +1009,7 @@ export function ModelPanel({
             </div>
           ) : null}
           {hasBuiltinModels && accountAuthenticated && snapshot?.policySync?.state !== "fresh" ? (
-            <div className="mp-notice" role="status"><span>Model permissions are syncing. Last known states remain visible; the server checks access when a model runs.</span></div>
+            <div className="mp-notice" role="status"><span>Model permissions are syncing. Last known states remain visible; the server checks access when a model runs. {snapshot?.policySync?.checkedAt ? `Last successful check: ${new Date(snapshot.policySync.checkedAt).toLocaleString()}.` : "No successful check yet."}</span></div>
           ) : null}
           {accountAuthenticated ? unavailableReasons.map(reason => (
             <div className="mp-notice is-error" role="alert" key={reason}>
@@ -1180,6 +1188,9 @@ export function ModelPanel({
 
         <div className="mp-body">
           {error ? <div className="mp-notice is-error" role="alert">{error}</div> : null}
+          {snapshot?.catalogSync?.providers.some(provider => provider.state === "unsupported") ? (
+            <div className="mp-notice" role="status">Some providers require a newer Host. Supported providers continue syncing normally.</div>
+          ) : null}
           {!accountAuthenticated ? (
             <div className="mp-notice">
               <Lock size={13} strokeWidth={2} aria-hidden="true" />

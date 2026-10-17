@@ -270,6 +270,8 @@ export interface CurrentModel extends ModelProfile {
 }
 
 export interface ModelSnapshot {
+  catalogMetadataError?: string;
+  catalogSync?: { providers: Array<{ groupId: string; state: "synced" | "stale" | "unavailable" | "unsupported"; lastSuccess: number | null; lastAttempt: number | null; message?: string }> };
   policySync?: { state: "fresh" | "stale" | "unavailable"; checkedAt?: number };
   primary: ModelProfile;
   profiles: ModelProfile[];

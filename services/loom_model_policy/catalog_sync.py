@@ -99,9 +99,11 @@ class CatalogSynchronizer:
         if not path:
             return {}
         data = json.loads(Path(path).read_text(encoding="utf-8"))
-        if not isinstance(data, dict) or any(group not in PROVIDERS for group in data):
+        if not isinstance(data, dict):
             raise ValueError("invalid catalog manifest")
-        return data
+        # A manifest from a newer deployment may contain another provider.
+        # Validate known groups independently in _refresh_provider.
+        return {group: rows for group, rows in data.items() if group in PROVIDERS}
 
     def refresh(self) -> bool:
         # Admin refreshes and the background worker coalesce rather than race.

@@ -162,6 +162,20 @@ def test_refreshes_coalesce(tmp_path):
         assert sync.refresh() is False
 
 
+def test_manifest_groups_and_future_providers_are_isolated(tmp_path):
+    manifest = tmp_path / "catalog.json"
+    manifest.write_text(json.dumps({"opencode-go": [{"id": "beam-free"}],
+        "opencode-console": "invalid rows", "future-provider": [{"id": "future"}]}))
+    store = PolicyStore(tmp_path / "policy.db")
+    before = [row for row in store.catalog()["models"] if row["group_id"] == "opencode-console"]
+    sync = CatalogSynchronizer(store, environ={"LOOM_MODEL_CATALOG_MANIFEST": str(manifest)})
+    assert sync.refresh()
+    catalog = store.catalog()
+    assert any(row["model"] == "beam-free" and row["available"] for row in catalog["models"])
+    assert before == [row for row in catalog["models"] if row["group_id"] == "opencode-console"]
+    assert next(row for row in catalog["providers"] if row["group_id"] == "opencode-console")["error"]
+
+
 def test_http_access_and_check_share_catalog_and_old_clients_are_read_only(tmp_path):
     app = object.__new__(ModelPolicyApplication)
     app.store = PolicyStore(tmp_path / "policy.db")

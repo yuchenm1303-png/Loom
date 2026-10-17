@@ -46,6 +46,7 @@ test("server catalog adds new models in batches, fixes current status and preser
   }).outputText;
   const Fixture = new Function("isAntLingSelection", "invokeOptionalBridgeOperation", `${compiled}; return Fixture;`)(selection => selection.startsWith("builtin:ant-ling"), invokeOptionalBridgeOperation);
   const fixture = new Fixture();
+  fixture.catalogGeneration = 0;
   fixture.serverProfiles = new Map();
   fixture.launchCache = new Map();
   const calls = [];

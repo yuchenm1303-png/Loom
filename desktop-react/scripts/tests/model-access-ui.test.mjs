@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import ts from "typescript";
-import { isManagedBuiltinSelection } from "../../dist-electron/modelPolicySelection.js";
+import { isManagedBuiltinSelection, modelPolicyGroup } from "../../dist-electron/modelPolicySelection.js";
 
 const modelPanel = readFileSync(new URL("../../src/components/ModelPanel.tsx", import.meta.url), "utf8");
 const composer = readFileSync(new URL("../../src/components/ComposerBase.tsx", import.meta.url), "utf8");
@@ -53,9 +53,9 @@ function selectionEntry(authenticate, view = { state: "unavailable", access: nul
   const compiled = ts.transpileModule(declaration.getText(file), {
     compilerOptions: { target: ts.ScriptTarget.ES2022 },
   }).outputText;
-  return new Function("assertSignedInForModels", "isManagedBuiltinSelection", "accountClient", "policyAllowsSelection", "policyBlockedMessage",
+  return new Function("assertSignedInForModels", "isManagedBuiltinSelection", "accountClient", "policyAllowsSelection", "policyBlockedMessage", "modelPolicyGroup",
     `${compiled}; return assertModelSelectionAllowed;`)(authenticate, isManagedBuiltinSelection,
-    { cachedModelPolicy: () => view }, access => access.enabled, () => "Disabled by Loom Admin");
+    { cachedModelPolicy: () => view }, access => access.enabled, () => "Disabled by Loom Admin", modelPolicyGroup);
 }
 
 test("personal connections authenticate without depending on the built-in policy service", async () => {
@@ -68,6 +68,12 @@ test("personal connections authenticate without depending on the built-in policy
   await check("managed:relay");
   const signedOut = selectionEntry(async () => { throw new Error("Sign in required"); }, async () => assert.fail("must authenticate first"));
   await assert.rejects(signedOut("profile:m123456789abc"), /Sign in required/);
+});
+
+test("an invalid provider cache never bypasses a fresh account-wide denial", async () => {
+  const access = { enabled: false, catalog: { providers: [{ group_id: "opencode-go", client_error: "invalid-provider-catalog" }] } };
+  const check = selectionEntry(async () => {}, { state: "fresh", access });
+  await assert.rejects(check("builtin:opencode-go:beam-free"), /Disabled by Loom Admin/);
 });
 
 test("model selection blocks fresh explicit denial but does not turn an outage into a denial", async () => {

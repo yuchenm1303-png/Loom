@@ -2,7 +2,7 @@ import { installWindowChrome } from "./windowChrome.js";
 import { EmbeddedBrowserManager, type EmbeddedBrowserCommand } from "./embeddedBrowser.js";
 import { EmbeddedBrowserAgentClient } from "./embeddedBrowserAgentBridge.js";
 import { ModelSwitchQueue, type ModelPreferenceTicket } from "./modelSwitchQueue.js";
-import { isManagedBuiltinSelection } from "./modelPolicySelection.js";
+import { isManagedBuiltinSelection, modelPolicyGroup } from "./modelPolicySelection.js";
 import { applyModelPolicy, policyAllowsSelection, policyBlockedMessage } from "./modelAccess.js";
 import { assertModelConnection } from "./modelConnection.js";
 import { app, BrowserWindow, clipboard, dialog, ipcMain, nativeImage, nativeTheme, net, protocol, shell } from "electron";
@@ -1397,7 +1397,8 @@ async function assertModelSelectionAllowed(selection: string): Promise<void> {
   // Choosing a connection is not an inference request. Only a fresh explicit
   // denial blocks selection; the gateway authorizes every actual request.
   const access = view.access;
-  if (view.state === "fresh" && access && !policyAllowsSelection(access, value)) {
+  const providerStale = access?.catalog?.providers?.some(provider => provider.group_id === modelPolicyGroup(value) && provider.client_error);
+  if (view.state === "fresh" && access && (!providerStale || !access.enabled) && !policyAllowsSelection(access, value)) {
     throw new Error(policyBlockedMessage(access, value));
   }
 }
@@ -1409,7 +1410,18 @@ async function presentModels(snapshot: ReturnType<DesktopModelManager["snapshot"
   return { ...gated, policySync: { state: view.state, checkedAt: view.checkedAt } };
 }
 
-async function runListModels(forceRefresh = false): Promise<ReturnType<DesktopModelManager["snapshot"]>> {
+let modelListRead: { identity: number; force: boolean; promise: Promise<ReturnType<DesktopModelManager["snapshot"]>> } | null = null;
+function runListModels(forceRefresh = false): Promise<ReturnType<DesktopModelManager["snapshot"]>> {
+  const identity = accountClient.modelIdentityRevision;
+  if (modelListRead?.identity === identity && (!forceRefresh || modelListRead.force)) return modelListRead.promise;
+  const promise = loadModelCatalog(forceRefresh).finally(() => {
+    if (modelListRead?.promise === promise) modelListRead = null;
+  });
+  modelListRead = { identity, force: forceRefresh, promise };
+  return promise;
+}
+
+async function loadModelCatalog(forceRefresh = false): Promise<ReturnType<DesktopModelManager["snapshot"]>> {
   for (let attempt = 0; attempt < 2; attempt++) {
     const identity = accountClient.modelIdentityRevision;
     const [snapshot] = await Promise.all([
@@ -1418,7 +1430,8 @@ async function runListModels(forceRefresh = false): Promise<ReturnType<DesktopMo
     const access = await currentModelPolicy(forceRefresh);
     if (identity !== accountClient.modelIdentityRevision) continue;
     const authoritative = access?.catalog
-      ? await modelManager.applyServerCatalog(snapshot, access.catalog.models) : snapshot;
+      ? await modelManager.applyServerCatalog(snapshot, access.catalog.models,
+        access.catalog.providers.filter(provider => provider.client_error === "invalid-provider-catalog").map(provider => provider.group_id)) : snapshot;
     if (identity !== accountClient.modelIdentityRevision) continue;
     return presentModels(authoritative);
   }

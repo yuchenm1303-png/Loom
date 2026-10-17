@@ -25,7 +25,9 @@ test("new Desktop starts with legacy Host and refreshes evidence after Host upgr
   const current = await manager.applyServerCatalog(old, models);
   assert.equal(current.current.vision, true);
   manager.runPythonBridgeAsync = async () => { throw new Error("permission denied"); };
-  await assert.rejects(manager.applyServerCatalog(current, models), /permission denied/);
+  const degraded = await manager.applyServerCatalog(current, models);
+  assert.equal(degraded.current.available, true);
+  assert.match(degraded.catalogMetadataError, /capabilities could not be refreshed/);
 });
 
 test("one unsupported server model cannot fail startup or discard compatible rows", async () => {
@@ -516,4 +518,39 @@ test("authoritative catalog survives bootstrap refresh and model retirement can 
   const recovered = await manager.applyServerCatalog(snapshot, [{ ...row, available: true, catalog_state: "available" }]);
   assert.equal((await manager.resolveAsync(account.selection)).available, true);
   assert.equal(recovered.profiles.find(p => p.selection === saved.selection).baseUrl, saved.baseUrl);
+});
+
+test("a late metadata response cannot overwrite a newer server catalog", async () => {
+  const manager = new DesktopModelManager(os.tmpdir());
+  const account = profile({ selection: "builtin:opencode-go:omen-alpha", kind: "builtin", authMode: "loom-account",
+    baseUrl: "https://account.smirel.com/model/v1/opencode-go", apiKey: "", model: "omen-alpha" });
+  manager.registryCache = registry([account]);
+  manager.metadataCache = { profiles: [] };
+  const snapshot = { ...registry([account]), current: account, recentModels: [] };
+  const row = model => ({ model_id: `builtin:opencode-go:${model}`, model, name: model, group_id: "opencode-go", group_name: "OpenCode Go", available: true });
+  const blocked = deferred(), entered = deferred();
+  manager.runPythonBridgeAsync = async (_script, command, payload) => {
+    if (command === "record-image-capabilities") return {};
+    if (payload.models[0].model === "older-model") { entered.resolve(); await blocked.promise; }
+    return payload.models.map(item => ({ ...account, selection: item.selection, model: item.model }));
+  };
+  const old = manager.applyServerCatalog(snapshot, [row("older-model")]);
+  await entered.promise;
+  await manager.applyServerCatalog(snapshot, [row("beam-free")]);
+  blocked.resolve();
+  const late = await old;
+  assert.ok(late.profiles.some(item => item.model === "beam-free"));
+  assert.ok(!late.profiles.some(item => item.model === "older-model"));
+  assert.ok((await manager.resolveAsync("builtin:opencode-go:beam-free")).authMode === "loom-account");
+});
+
+test("first invalid provider sync retains its bundled rows without suppressing healthy groups", async () => {
+  const manager = new DesktopModelManager(os.tmpdir());
+  const go = profile({ selection: "builtin:opencode-go:omen-alpha", model: "omen-alpha", kind: "builtin", groupId: "opencode-go" });
+  const consoleRow = profile({ selection: "builtin:opencode-console:big-pickle", kind: "builtin", groupId: "opencode-console" });
+  manager.runPythonBridgeAsync = async () => ({});
+  const snapshot = { ...registry([go, consoleRow]), current: null, recentModels: [] };
+  const result = await manager.applyServerCatalog(snapshot, [{ model_id: go.selection, model: go.model, name: go.name,
+    group_id: "opencode-go", group_name: "OpenCode Go", available: true }], ["opencode-console"]);
+  assert.deepEqual(new Set(result.profiles.map(row => row.selection)), new Set([go.selection, consoleRow.selection]));
 });
