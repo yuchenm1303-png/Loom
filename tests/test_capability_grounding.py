@@ -179,6 +179,7 @@ def test_runtime_injects_tool_harness_without_persisting_policy_matrix(tmp_path)
         "record_check",
         "read_check_ledger",
         "update_plan",
+        "manage_plan",
         "record_check",
         "read_check_ledger",
     }

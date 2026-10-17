@@ -104,7 +104,9 @@ def test_repeating_a_search_reports_the_earlier_activation_as_already_available(
 
 
 def test_a_query_nothing_matches_explains_how_tools_are_called(tmp_path):
-    platform = run_search(tmp_path, "zzzz unrelated capability")
+    # Common words such as "unrelated" can legitimately occur in a tool's
+    # trust-boundary guidance. Use an absent token to exercise no-match behavior.
+    platform = run_search(tmp_path, "zzzznotoolmatchesqxy")
     result = search_result(platform, 1)
     assert result["data"]["count"] == 0
     assert result["content"].startswith("No tools matched")

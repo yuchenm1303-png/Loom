@@ -37,9 +37,15 @@ def test_plan_is_durable_and_reinjected_after_history_loss(tmp_path):
         step = rt._build_step_context(loaded, next_model_step=True)
         messages, _ = rt._prepare_model_request(loaded, step, None)
         assert any(m.name == "loom_task_plan" and "12 passed" in m.content for m in messages)
-        assert current_plan(rt.store.events(session.session_id), loaded.current_turn_id)["plan"] == plan
+        saved = current_plan(rt.store.events(session.session_id), loaded.current_turn_id)
+        assert [{k: v for k, v in step.items() if k != "evidence_facts"} for step in saved["plan"]] == plan
+        facts = saved["plan"][0]["evidence_facts"]
+        assert facts[0]["path"] == "test-output.txt"
+        assert len(facts[0]["sha256"]) == 64
         loaded.current_turn_id = "another-turn"
-        assert current_plan(rt.store.events(session.session_id), loaded.current_turn_id) is None
+        continued = current_plan(rt.store.events(session.session_id), loaded.current_turn_id)
+        assert continued["plan_id"] == saved["plan_id"]
+        assert continued["plan"][0]["evidence_facts"] == facts
     finally:
         rt.close()
 
