@@ -20,20 +20,29 @@ export function parseTaskBranchProposal(answer: string): { text: string; proposa
   const pattern = new RegExp("(^|\\n)" + fence + "loom-task\\s*\\n([\\s\\S]{1,14000}?)\\n" + fence + "(?=\\s|$)", "i");
   const match = pattern.exec(answer);
   if (!match) return { text: answer, proposal: null };
+  // Never expose broken agent-only proposal JSON as visible chat content.
+  const plainAnswer = answer.replace(match[0], match[1] || "").trim();
   try {
     const data = JSON.parse(match[2]) as Record<string, unknown>;
     const title = typeof data.title === "string" ? data.title.trim() : "";
     const prompt = typeof data.prompt === "string" ? data.prompt.trim() : "";
     const summary = typeof data.summary === "string" ? data.summary.trim() : "";
-    if (!title || title.length > 120 || !prompt || prompt.length > 12000) return { text: answer, proposal: null };
-    const criteria = Array.isArray(data.acceptanceCriteria)
-      ? data.acceptanceCriteria.filter((s): s is string => typeof s === "string").slice(0, 5) : [];
+    const criteria = data.acceptanceCriteria;
+    // A suggestion is not a generic call to action. It must be an intentional,
+    // concrete proposal with an outcome and at least two checks. An old-format
+    // or unrequested model blob must not become an action card.
+    if (data.actionable !== true || !title || title.length > 55 ||
+        !prompt || prompt.length > 12000 || !summary || summary.length > 220 ||
+        !Array.isArray(criteria) || criteria.length < 2 || criteria.length > 5 ||
+        !criteria.every((item) => typeof item === "string" && item.trim().length > 0 && item.trim().length <= 220)) {
+      return { text: plainAnswer, proposal: null };
+    }
     return {
-      text: answer.replace(match[0], match[1] || "").trim(),
+      text: plainAnswer,
       proposal: { title, prompt, summary: summary.slice(0, 220), acceptanceCriteria: criteria },
     };
   } catch {
-    return { text: answer, proposal: null };
+    return { text: plainAnswer, proposal: null };
   }
 }
 
@@ -58,6 +67,7 @@ export function TaskBranchCard({
   const [expanded, setExpanded] = useState(false);
   const [retry, setRetry] = useState(0);
   const [error, setError] = useState("");
+  const [manualEntry, setManualEntry] = useState(false);
   const [title, setTitle] = useState(initial?.title || "");
   const [prompt, setPrompt] = useState(initial?.prompt || "");
   const [summary, setSummary] = useState(initial?.summary || "");
@@ -70,6 +80,7 @@ export function TaskBranchCard({
       setError(t("branch.noSource"));
       return;
     }
+    if (manualEntry) return;
     let alive = true;
     setLoading(true);
     setError("");
@@ -101,6 +112,7 @@ export function TaskBranchCard({
           return;
         }
         setProposal(result);
+        setManualEntry(false);
         setTitle(result.title);
         setPrompt(result.prompt);
         setSummary(result.summary);
@@ -112,7 +124,7 @@ export function TaskBranchCard({
       }
     })();
     return () => { alive = false; };
-  }, [initial, threadId, messageId, sourceText, retry, t]);
+  }, [initial, threadId, messageId, sourceText, retry, t, manualEntry]);
 
   const start = () => {
     if (!title.trim() || !prompt.trim() || pending || loading || disabled) return;
@@ -128,29 +140,32 @@ export function TaskBranchCard({
       },
     }));
   };
-  const hasPlan = Boolean(proposal);
+  const hasPlan = Boolean(proposal) || manualEntry;
   const ready = Boolean(hasPlan && title.trim() && prompt.trim() && !pending && !loading);
   return (
     <section className="loom-task-branch-card" aria-labelledby={id + "-heading"} aria-busy={loading || pending}>
       <header>
         <span className="loom-task-branch-header-mark"><GitFork size={17} /></span>
         <div className="loom-task-branch-heading">
-          <small>{t("branch.suggestion")}</small>
+          <small>{initial ? t("branch.suggestion") : t("branch.manualPlanning")}</small>
           <strong id={id + "-heading"}>{loading ? t("branch.planning") : hasPlan ? title : t("branch.create")}</strong>
         </div>
         <button type="button" disabled={pending} onClick={onDismiss} aria-label={t("branch.close")}><X size={15} /></button>
       </header>
 
-      {loading ? (
+      {loading && !manualEntry ? (
         <div className="loom-branch-preparing"><LoaderCircle size={17} className="loom-branch-spinner" />{t("branch.planningHint")}</div>
       ) : error ? (
         <div className="loom-branch-plan-error" role="status">
           <span>{error}</span>
-          {!initial && <button type="button" onClick={() => setRetry(value => value + 1)}>{t("branch.retry")}</button>}
+          {!initial && <div className="loom-branch-error-actions">
+            <button type="button" onClick={() => setRetry(value => value + 1)}>{t("branch.retry")}</button>
+            <button type="button" onClick={() => { setError(""); setManualEntry(true); setExpanded(true); }}>{t("branch.manual")}</button>
+          </div>}
         </div>
       ) : hasPlan ? (
         <>
-          <p className="loom-branch-summary">{summary || t("branch.description")}</p>
+          <p className="loom-branch-summary">{summary || (manualEntry ? t("branch.manualHint") : t("branch.description"))}</p>
           {criteria.length ? <div className="loom-branch-criteria">
             {criteria.slice(0, expanded ? 5 : 2).map((criterion, i) =>
               <div key={i}><Check size={13} /><span>{criterion}</span></div>)}
