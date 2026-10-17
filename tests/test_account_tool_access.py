@@ -210,6 +210,54 @@ def test_old_account_response_cannot_restore_access(monkeypatch):
         set_account_tool_access_credential(None)
 
 
+def test_new_identity_does_not_wait_for_old_identity_network_request(monkeypatch):
+    import threading
+    from app.agent_runtime import account_tool_access as gate
+    monkeypatch.setenv("LOOM_ACCOUNT_TOOL_ACCESS_ENFORCED", "1")
+    monkeypatch.setenv("LOOM_ACCOUNT_API_BASE_URL", "https://example.test/v1")
+    entered, release = threading.Event(), threading.Event()
+    results = []
+    class Response:
+        status = 200
+        def __init__(self, old): self.old = old
+        def __enter__(self): return self
+        def __exit__(self, *args): pass
+        def read(self, size):
+            if self.old:
+                entered.set()
+                assert release.wait(3)
+            return b'{"access":{"browserUse":true,"computerUse":true}}'
+    monkeypatch.setattr(gate, "urlopen", lambda request, **kwargs: Response(request.get_header("Authorization") == "Bearer old"))
+    gate.set_account_tool_access_credential("old")
+    thread = threading.Thread(target=lambda: results.append(gate.account_capability_allowed("browserUse")))
+    try:
+        thread.start(); assert entered.wait(1)
+        gate.set_account_tool_access_credential("new")
+        assert gate.account_capability_allowed("browserUse")
+        release.set(); thread.join(2)
+        assert results == [False]
+        assert gate.account_tool_access_status()["access"]["browserUse"] is True
+    finally:
+        release.set(); thread.join(3)
+        gate.set_account_tool_access_credential(None)
+
+
+def test_status_never_pairs_old_grants_with_new_identity_diagnostics(monkeypatch):
+    from app.agent_runtime import account_tool_access as gate
+    monkeypatch.setenv("LOOM_ACCOUNT_TOOL_ACCESS_ENFORCED", "1")
+    gate.set_account_tool_access_credential("old")
+    def switched():
+        gate.set_account_tool_access_credential("new")
+        return {"browserUse": True, "computerUse": True}
+    monkeypatch.setattr(gate, "_fetch_access", switched)
+    try:
+        result = gate.account_tool_access_status()
+        assert result["status"] == "identity_changed"
+        assert not any(result["access"].values())
+    finally:
+        gate.set_account_tool_access_credential(None)
+
+
 def test_tool_exposure_is_nonblocking_and_credentials_are_separate(monkeypatch):
     from app.agent_runtime import account_tool_access as gate
     monkeypatch.setenv("LOOM_ACCOUNT_TOOL_ACCESS_ENFORCED", "1")

@@ -90,12 +90,15 @@ def account_tool_access_enforced(environ: Mapping[str, str] | None = None) -> bo
 def set_account_tool_access_credential(value: str | None) -> None:
     """Replace the runtime credential after sign-in/sign-out without a restart."""
 
-    global _CREDENTIAL_OVERRIDE, _CACHE_KEY, _CACHE_EXPIRES_AT, _CACHE_ACCESS, _GENERATION, _DIAGNOSTIC
+    global _CREDENTIAL_OVERRIDE, _CACHE_KEY, _CACHE_EXPIRES_AT, _CACHE_ACCESS, _GENERATION, _DIAGNOSTIC, _FETCH_LOCK
     credential = None if value is None else str(value).strip()
     with _GUARD:
         if credential == _CREDENTIAL_OVERRIDE:
             return
         _GENERATION += 1
+        # An old account's slow DNS/network request must not block the new
+        # identity. Its result remains fenced by generation below.
+        _FETCH_LOCK = threading.Lock()
         _CREDENTIAL_OVERRIDE = credential
         _CACHE_KEY = ""
         _CACHE_EXPIRES_AT = 0.0
@@ -137,19 +140,23 @@ def _denied() -> dict[str, bool]:
 
 def _fetch_access(*, force_refresh: bool = False) -> dict[str, bool]:
     # Single flight; callers recheck the cache after waiting for another query.
-    with _FETCH_LOCK:
-        return _fetch_access_locked(force_refresh=force_refresh)
+    with _GUARD:
+        flight, generation = _FETCH_LOCK, _GENERATION
+    with flight:
+        return _fetch_access_locked(force_refresh=force_refresh, expected_generation=generation)
 
 
-def _fetch_access_locked(*, force_refresh: bool = False) -> dict[str, bool]:
+def _fetch_access_locked(*, force_refresh: bool = False, expected_generation: int | None = None) -> dict[str, bool]:
     global _CACHE_KEY, _CACHE_EXPIRES_AT, _CACHE_ACCESS, _DIAGNOSTIC
 
-    token = _credential()
-    endpoint = _access_endpoint()
-    key = endpoint + "\n" + token
-    now = time.monotonic()
-
     with _GUARD:
+        if expected_generation is not None and expected_generation != _GENERATION:
+            return _denied()
+        # Capture identity and credential atomically, including A -> B -> A.
+        token = _credential()
+        endpoint = _access_endpoint()
+        key = endpoint + "\n" + token
+        now = time.monotonic()
         generation = _GENERATION
         if not force_refresh and key == _CACHE_KEY and now < _CACHE_EXPIRES_AT:
             return dict(_CACHE_ACCESS)
@@ -230,8 +237,13 @@ def _fetch_access_locked(*, force_refresh: bool = False) -> dict[str, bool]:
 def account_tool_access_status() -> dict[str, object]:
     if not account_tool_access_enforced():
         return {"status": "not_enforced", "access": {name: True for name in _TARGET_CAPABILITIES}}
+    with _GUARD:
+        generation = _GENERATION
     access = _fetch_access()
     with _GUARD:
+        if generation != _GENERATION:
+            return {"status": "identity_changed", "access": _denied(),
+                    "credential_generation": _GENERATION, "refresh_in_seconds": 0.0}
         return {**_DIAGNOSTIC, "access": access, "refresh_in_seconds": max(0.0, _CACHE_EXPIRES_AT - time.monotonic())}
 
 

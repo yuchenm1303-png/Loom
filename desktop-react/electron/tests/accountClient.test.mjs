@@ -914,3 +914,49 @@ test("without a saved session there is nothing cached and nothing requested", as
   assert.deepEqual(await newClient().cachedCredentials(), { automation: "", model: "" });
   assert.equal(calls.length, 0);
 });
+
+test("forced authorization recovery rotates credentials and notifies observers", async () => {
+  await seedSession({accessToken: "old-access", refreshToken: "old-refresh",
+    expiresAt: Date.now() + 600_000, user: USER,
+    modelToken: "old-model", modelExpiresAt: Date.now() + 600_000});
+  installFetch({
+    "/v1/auth/refresh": () => reply(200, sessionBody()),
+    "/v1/models/credential": () => reply(200, {model_token: "new-model", expires_in: 900}),
+    "/v1/auth/logout": () => reply(200, {ok: true}),
+  });
+  const client = newClient();
+  let changes = 0;
+  const unsubscribe = client.onCredentialChange(() => { changes++; });
+  assert.equal(await client.automationCredential(), "old-access");
+  assert.equal(changes, 0);
+  assert.equal(await client.automationCredential(true), "loom_access_fresh");
+  assert.equal(changes, 1);
+  assert.equal(await client.modelCredential(true), "new-model");
+  assert.equal(changes, 2);
+  await client.logout();
+  assert.equal(changes, 3);
+  unsubscribe();
+});
+
+for (const destination of ['new-login', 'logout']) {
+  test(`a late login cannot overwrite ${destination}`, async () => {
+    let finish, entered;
+    const started = new Promise(resolve => { entered = resolve; });
+    let logins = 0;
+    installFetch({
+      '/v1/auth/login': () => {
+        if (++logins === 1) { entered(); return new Promise(resolve => { finish = resolve; }); }
+        return reply(200, sessionBody({access_token: 'new-access', refresh_token: 'new-refresh'}));
+      },
+      '/v1/auth/logout': () => reply(200, {ok: true}),
+    });
+    const client = newClient();
+    const old = client.login('old@example.test', 'test').then(() => null, error => error);
+    await started;
+    if (destination === 'logout') await client.logout();
+    else await client.login('new@example.test', 'test');
+    finish(reply(200, sessionBody({access_token: 'late-access', refresh_token: 'late-refresh'})));
+    assert.equal((await old).code, 'ACCOUNT_CHANGED');
+    assert.equal(await client.automationCredential(), destination === 'logout' ? '' : 'new-access');
+  });
+}

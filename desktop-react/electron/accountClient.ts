@@ -190,6 +190,19 @@ export class LoomAccountClient {
   private refreshInFlight: Promise<TokenSession> | null = null;
   private refreshTokenInFlight = "";
   private persistence: Promise<unknown> = Promise.resolve();
+  private identityMutationRevision = 0;
+  private credentialListeners = new Set<() => void>();
+
+  onCredentialChange(listener: () => void): () => void {
+    this.credentialListeners.add(listener);
+    return () => { this.credentialListeners.delete(listener); };
+  }
+
+  private credentialsChanged(): void {
+    for (const listener of this.credentialListeners) {
+      try { listener(); } catch { /* Observers cannot invalidate a saved login. */ }
+    }
+  }
 
   private assertCurrentSession(session: TokenSession): void {
     if (this.memorySession?.refreshToken !== session.refreshToken) {
@@ -238,7 +251,10 @@ export class LoomAccountClient {
   }
 
   private async persistSession(session: TokenSession): Promise<TokenSession> {
+    const changed = this.memorySession?.accessToken !== session.accessToken
+      || this.memorySession?.modelToken !== session.modelToken;
     this.memorySession = session;
+    if (changed) this.credentialsChanged();
     const write = this.persistence.catch(() => {}).then(async () => {
       if (safeStorage.isEncryptionAvailable()) {
         const target = this.sessionPath();
@@ -279,8 +295,10 @@ export class LoomAccountClient {
   }
 
   private async clearSession(): Promise<void> {
+    this.identityMutationRevision += 1;
     this.identityRevision += 1;
     this.memorySession = null;
+    this.credentialsChanged();
     this.authVerifiedAt = 0;
     this.authVerifiedUserId = 0;
     const removal = this.persistence.catch(() => {}).then(async () => {
@@ -578,27 +596,17 @@ export class LoomAccountClient {
   }
 
   /** Mint/cache a scoped built-in-model token tied to the current Loom login session. */
-  async automationCredential(): Promise<string> {
+  async automationCredential(forceRefresh = false): Promise<string> {
     let session = await this.loadSession();
     if (!session) return "";
-    if (session.expiresAt <= Date.now() + 30_000) session = await this.refresh(session);
+    if (forceRefresh || session.expiresAt <= Date.now() + 30_000) session = await this.refresh(session);
     return session.accessToken;
   }
 
-  async authorizationCredentials(): Promise<{ credential: string; modelCredential: string }> {
-    const credential = await this.automationCredential();
-    if (!credential) return { credential: "", modelCredential: "" };
-    const modelCredential = await this.modelCredential();
-    if (this.memorySession?.accessToken !== credential) {
-      throw new AccountHttpError(0, "ACCOUNT_CHANGED", "Account changed while synchronizing permissions. Retry.");
-    }
-    return { credential, modelCredential };
-  }
-
-  async modelCredential(): Promise<string> {
+  async modelCredential(forceRefresh = false): Promise<string> {
     let session = await this.loadSession();
     if (!session) throw new AccountHttpError(401, "MISSING_TOKEN", "Sign in to Loom to use built-in models.");
-    if (session.modelToken && Number(session.modelExpiresAt || 0) > Date.now() + 5 * 60_000) {
+    if (!forceRefresh && session.modelToken && Number(session.modelExpiresAt || 0) > Date.now() + 5 * 60_000) {
       return session.modelToken;
     }
     if (session.expiresAt <= Date.now() + 30_000) session = await this.refresh(session);
@@ -801,11 +809,7 @@ export class LoomAccountClient {
   }
 
   async verifyEmail(challengeId: string, code: string): Promise<LoomAccountSnapshot> {
-    const response = await this.request<AuthResponse>("/auth/verify-email", {
-      method: "POST",
-      body: JSON.stringify({ challenge_id: challengeId, code }),
-    });
-    return this.snapshot(await this.saveSession(response));
+    return this.exchangeSession("/auth/verify-email", { challenge_id: challengeId, code });
   }
 
   async resendEmail(challengeId: string): Promise<LoomAuthChallenge> {
@@ -825,34 +829,27 @@ export class LoomAccountClient {
   }
 
   async resetPassword(challengeId: string, code: string, password: string): Promise<LoomAccountSnapshot> {
-    const response = await this.request<AuthResponse>("/auth/reset-password", {
-      method: "POST",
-      body: JSON.stringify({ challenge_id: challengeId, code, password }),
-    });
-    return this.snapshot(await this.saveSession(response));
+    return this.exchangeSession("/auth/reset-password", { challenge_id: challengeId, code, password });
   }
 
   async oauthExchange(code: string): Promise<LoomAccountSnapshot> {
-    const response = await this.request<AuthResponse>("/auth/oauth/exchange", {
-      method: "POST",
-      body: JSON.stringify({ code }),
-    });
-    return this.snapshot(await this.saveSession(response));
+    return this.exchangeSession("/auth/oauth/exchange", { code });
   }
 
   async login(email: string, password: string): Promise<LoomAccountSnapshot> {
-    const response = await this.request<AuthResponse>("/auth/login", {
-      method: "POST",
-      body: JSON.stringify({ email, password }),
-    });
-    return this.snapshot(await this.saveSession(response));
+    return this.exchangeSession("/auth/login", { email, password });
   }
 
   async register(email: string, password: string): Promise<LoomAccountSnapshot> {
-    const response = await this.request<AuthResponse>("/auth/register", {
-      method: "POST",
-      body: JSON.stringify({ email, password }),
-    });
+    return this.exchangeSession("/auth/register", { email, password });
+  }
+
+  private async exchangeSession(endpoint: string, body: Record<string, string>): Promise<LoomAccountSnapshot> {
+    const revision = ++this.identityMutationRevision;
+    const response = await this.request<AuthResponse>(endpoint, { method: "POST", body: JSON.stringify(body) });
+    if (revision !== this.identityMutationRevision) {
+      throw new AccountHttpError(0, "ACCOUNT_CHANGED", "A newer sign-in or sign-out superseded this request.");
+    }
     return this.snapshot(await this.saveSession(response));
   }
 
@@ -864,11 +861,7 @@ export class LoomAccountClient {
   async pairDevice(pairingTicket: string): Promise<LoomAccountSnapshot> {
     const ticket = String(pairingTicket || "").trim();
     if (!ticket) throw new AccountHttpError(400, "PAIRING_TICKET_REQUIRED", "A pairing ticket is required.");
-    const response = await this.request<AuthResponse>("/auth/device-pair/exchange", {
-      method: "POST",
-      body: JSON.stringify({ pairing_ticket: ticket }),
-    });
-    return this.snapshot(await this.saveSession(response));
+    return this.exchangeSession("/auth/device-pair/exchange", { pairing_ticket: ticket });
   }
 
   async updateProfile(displayName: string, avatarDataUrl: string): Promise<LoomAccountSnapshot> {
@@ -899,7 +892,11 @@ export class LoomAccountClient {
   }
 
   async logout(): Promise<LoomAccountSnapshot> {
+    const revision = ++this.identityMutationRevision;
     const session = await this.loadSession();
+    if (revision !== this.identityMutationRevision) {
+      throw new AccountHttpError(0, "ACCOUNT_CHANGED", "A newer sign-in superseded this sign-out.");
+    }
     await this.clearSession();
     if (session && this.configured) {
       try {

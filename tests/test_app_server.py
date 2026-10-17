@@ -68,6 +68,29 @@ def _build_service(
     return service, runtime, store, platform, workspace
 
 
+def test_authorization_failure_requests_one_recovery_per_generation(tmp_path):
+    from app.agent_runtime.contracts import AgentEvent, AgentEventKind
+    service, runtime, store, platform, workspace = _build_service(tmp_path, [])
+    notices = []
+    service.subscribe_notifications(lambda method, params: notices.append({"method": method, "params": params}))
+    try:
+        for generation, capability in [(1, "browserUse"), (1, "computerUse"), (2, "browserUse")]:
+            service._on_runtime_event(AgentEvent(
+                event_id=f"auth-{generation}-{capability}", session_id="test", turn_id="turn",
+                kind=AgentEventKind.TOOL_FAILED, created_at="2026-10-16T00:00:00Z",
+                data={"data": {"failure_kind": "account_entitlement", "capability": capability,
+                      "authorization": {"http_status": 401, "credential_generation": generation}}},
+            ))
+        recovery = [notice for notice in notices if notice["method"] == "account/authorization-refresh-needed"]
+        assert len(recovery) == 2
+        assert all(notice["params"] == {"reason": "authentication_failed"} for notice in recovery)
+        late = []
+        service.subscribe_notifications(lambda method, params: late.append(method))
+        assert late == ["account/authorization-refresh-needed"]
+    finally:
+        runtime.close()
+
+
 def _wait_until(predicate, *, timeout: float = 3.0):
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:

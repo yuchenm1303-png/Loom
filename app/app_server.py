@@ -630,6 +630,14 @@ class LoomAppServerService:
             raise TypeError("app-server notification listener must be callable")
         with self._guard:
             self._notification_listeners.append(listener)
+            recovery = getattr(self, "_authorization_recovery_pending", "")
+        if recovery:
+            listener("account/authorization-refresh-needed", {"reason": recovery})
+
+    def _request_authorization_recovery(self, reason: str) -> None:
+        with self._guard:
+            self._authorization_recovery_pending = reason
+        self._notify("account/authorization-refresh-needed", {"reason": reason})
 
     def _notify(self, method: str, params: dict[str, Any]) -> None:
         json.dumps(params, ensure_ascii=False)
@@ -711,12 +719,18 @@ class LoomAppServerService:
         model_credential = params.get("modelCredential")
         if model_credential is not None and not isinstance(model_credential, str):
             raise ValueError("modelCredential must be a string")
-        set_account_tool_access_credential(str(credential or ""))
+        # Credential lanes update independently. Missing is not explicit logout.
+        if "credential" in params:
+            set_account_tool_access_credential(str(credential or ""))
+        if "credential" in params and not credential:
+            model_credential = ""  # Explicit sign-out revokes both lanes immediately.
         if model_credential is not None:
             self._loom_account_model_credential = model_credential
             snapshot = getattr(self, "_policy_snapshot", None)
             if snapshot is not None:
                 snapshot.set_credential(model_credential)
+        with self._guard:
+            self._authorization_recovery_pending = ""
         return {"ok": True}
 
     def _status_owner_session_id(self) -> str:
@@ -1345,6 +1359,16 @@ class LoomAppServerService:
     def _on_runtime_event(self, event: AgentEvent) -> None:
         kind = event.kind
         data = event.data
+        if kind is AgentEventKind.TOOL_FAILED:
+            result = data.get("data") if isinstance(data.get("data"), dict) else {}
+            authorization = result.get("authorization") if isinstance(result.get("authorization"), dict) else {}
+            if result.get("failure_kind") == "account_entitlement" and authorization.get("http_status") == 401:
+                generation = authorization.get("credential_generation")
+                with self._guard:
+                    notify = getattr(self, "_authorization_recovery_generation", None) != generation
+                    self._authorization_recovery_generation = generation
+                if notify:
+                    self._request_authorization_recovery("authentication_failed")
         identity = _event_item_identity(event)
         if identity and identity[1] == "model_retry":
             item = _base_item(event, item_id=identity[0], item_type=identity[1], status="started")

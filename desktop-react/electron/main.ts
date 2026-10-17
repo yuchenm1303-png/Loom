@@ -24,7 +24,7 @@ import {
 } from "./modelManager.js";
 import { LoomAccountClient, type LoomAccountSnapshot, type LoomAuthCapabilities, type LoomAuthChallenge, type LoomModelPolicyAccess } from "./accountClient.js";
 import { accountErrorPayload, type AccountErrorPayload } from "./accountErrors.js";
-import { latestSync } from "./latestSync.js";
+import { authorizationSync } from "./authorizationSync.js";
 import { runtimeModelParams, runtimeModelArguments } from "./runtimeModelConfig.js";
 import { startupModel } from "./startupModel.js";
 import { closeHudOverlayWindow, createHudOverlayWindow, sendHudUpdate } from "./hudWindow.js";
@@ -1082,6 +1082,9 @@ export async function handleDesktopOAuthUrl(value: string): Promise<void> {
 }
 
 function handleRuntimeNotification(payload: JsonRpcResponse): void {
+  if (payload.method === "account/authorization-refresh-needed") {
+    void syncAccountToolAccessCredential(true);
+  }
   mainWindow?.webContents.send("loom:notification", payload);
   broadcastHostEvent("loom:notification", payload);
   sendRelayNotification(payload);
@@ -1707,35 +1710,32 @@ async function runAccountAction(
 }
 
 let accountAuthorizationRevision = 0;
-const syncAccountToolAccessCredential = latestSync(async () => {
-  const revision = accountAuthorizationRevision;
-  let credential = "";
-  let modelCredential = "";
-  try {
-    ({ credential, modelCredential } = await accountClient.authorizationCredentials());
-  } catch {
-    // A transient refresh failure is not sign-out. Keep the existing credential;
-    // the runtime still validates its authorization/expiry at the next query.
-    return;
-  }
-  if (!rpc.ready || revision !== accountAuthorizationRevision) return;
-  try {
-    await rpc.call("account/tool-access-credential", { credential, modelCredential }, 5_000);
-  } catch {
-    // Runtime restarts also receive the latest credential through the env.
-  }
+let accountAuthorizationTransition = false;
+const syncAccountToolAccessCredential = authorizationSync({
+  epoch: () => `${accountAuthorizationRevision}:${accountClient.modelIdentityRevision}`,
+  ready: () => rpc.ready && !accountAuthorizationTransition,
+  automation: force => accountClient.automationCredential(force),
+  model: async force => (await accountClient.automationCredential()) ? accountClient.modelCredential(force) : "",
+  deliver: value => rpc.call("account/tool-access-credential", value, 5_000),
 });
+accountClient.onCredentialChange(() => { void syncAccountToolAccessCredential(); });
 
 async function runAccountMutation(
   action: () => Promise<LoomAccountSnapshot>,
 ): Promise<AccountIpcResult> {
   // Revoke the Host's old identity before a login/logout request can wait on
   // the network. A failed mutation restores the still-current identity below.
-  accountAuthorizationRevision += 1;
-  if (rpc.ready) await rpc.call("account/tool-access-credential", { credential: "", modelCredential: "" }, 5_000);
-  const result = await runAccountAction(action);
-  await syncAccountToolAccessCredential();
-  return result;
+  const revision = ++accountAuthorizationRevision;
+  accountAuthorizationTransition = true;
+  try {
+    if (rpc.ready) await rpc.call("account/tool-access-credential", { credential: "", modelCredential: "" }, 5_000);
+    return await runAccountAction(action);
+  } finally {
+    if (revision === accountAuthorizationRevision) {
+      accountAuthorizationTransition = false;
+      await syncAccountToolAccessCredential();
+    }
+  }
 }
 
 async function runAccountCapabilities(

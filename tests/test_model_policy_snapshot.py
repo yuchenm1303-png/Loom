@@ -184,6 +184,7 @@ def test_account_switch_cannot_reuse_previous_accounts_grants():
     old = threading.Thread(target=cache.refresh)
     old.start()
     assert started.wait(1)
+    cache.set_credential("account-b")
     errors = []
     def switched_check():
         try:
@@ -202,3 +203,86 @@ def test_account_switch_cannot_reuse_previous_accounts_grants():
     switched.join(2)
     assert errors == ["This built-in model is disabled by Loom Admin."]
     assert cache.allowed == frozenset()
+
+
+def test_execution_cannot_restore_retired_credential():
+    cache = ModelPolicySnapshot("https://example.invalid/access", "old", start=False)
+    cache.set_credential("new")
+    with pytest.raises(RuntimeError, match="account changed"):
+        cache.check("builtin:test", "old")
+    assert cache.credential == "new"
+
+
+def test_model_401_requests_recovery_once_per_credential_revision():
+    from urllib.error import HTTPError
+    notifications = []
+    def fetch(token):
+        raise HTTPError("https://example.invalid/access", 401, "invalid", {}, None)
+    cache = ModelPolicySnapshot("https://example.invalid/access", "a", start=False, fetch=fetch,
+        on_authentication_failure=lambda: notifications.append(1))
+    cache.refresh(); cache.refresh()
+    assert notifications == [1]
+    assert not cache.allowed
+    cache.set_credential("b"); cache.refresh()
+    assert notifications == [1, 1]
+
+
+@pytest.mark.parametrize("status", [401, 403])
+def test_explicit_auth_rejection_invalidates_a_warm_model_lease(status):
+    from urllib.error import HTTPError
+    cache = ModelPolicySnapshot("https://example.invalid/access", "a", start=False,
+        fetch=lambda token: {"access": {"models": ["builtin:test"]}})
+    cache.refresh()
+    assert cache.allowed == frozenset({"builtin:test"})
+    def rejected(token):
+        raise HTTPError("https://example.invalid/access", status, "denied", {}, None)
+    cache.fetch = rejected
+    cache.refresh()
+    assert not cache.allowed
+    assert cache.expires == 0
+
+
+def test_malformed_snapshot_cannot_partially_publish_a_fresh_grant():
+    cache = ModelPolicySnapshot("https://example.invalid/access", "a", start=False,
+        fetch=lambda token: {"access": {"models": ["builtin:test"], "decisions": "invalid"}})
+    cache.refresh()
+    assert not cache.allowed
+    assert cache.expires == 0
+
+
+def test_partial_credential_delivery_does_not_clear_other_lane(monkeypatch):
+    from app.app_server import LoomAppServerService
+    from app.agent_runtime import account_tool_access as gate
+    monkeypatch.setenv("LOOM_ACCOUNT_AUTOMATION_CREDENTIAL", "")
+    service = object.__new__(LoomAppServerService)
+    service._guard = threading.RLock()
+    service._loom_account_model_credential = "old-model"
+    observed = []
+    service._policy_snapshot = SimpleNamespace(set_credential=observed.append)
+    try:
+        service.account_tool_access_credential_set({"credential": "new-account"})
+        assert service._loom_account_model_credential == "old-model"
+        service.account_tool_access_credential_set({"modelCredential": "new-model"})
+        assert gate._credential() == "new-account"
+        assert service._loom_account_model_credential == "new-model"
+        service.account_tool_access_credential_set({"credential": ""})
+        assert gate._credential() == ""
+        assert service._loom_account_model_credential == ""
+        assert observed == ["new-model", ""]
+    finally:
+        gate.set_account_tool_access_credential(None)
+
+
+def test_refresh_from_previous_identity_cannot_publish_after_aba_switch():
+    entered, release = threading.Event(), threading.Event()
+    def fetch(token):
+        entered.set()
+        assert release.wait(2)
+        return {"access": {"models": ["builtin:test"], "enabled": True}}
+    cache = ModelPolicySnapshot("https://example.invalid/access", "a", start=False, fetch=fetch)
+    thread = threading.Thread(target=cache.refresh)
+    thread.start(); assert entered.wait(1)
+    cache.set_credential("b"); cache.set_credential("a")
+    release.set(); thread.join(2)
+    assert not cache.allowed
+    assert not cache.ready.is_set()

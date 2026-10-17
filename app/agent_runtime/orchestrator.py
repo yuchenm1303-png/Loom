@@ -21,7 +21,7 @@ from .permissions import (
 from .sandbox import SandboxMode, SandboxPolicy
 from .sandbox_denial import classify_exec_sandbox_denial
 from .sandbox_failure import SandboxExecutionError
-from .account_tool_access import account_capability_allowed, account_tool_access_status
+from .account_tool_access import account_tool_access_status
 from .step import StepContext
 from .tools import AgentTool, ToolContext, ToolPolicy, ToolResult, ToolRequestError, tool_capability_name, validate_tool_arguments
 
@@ -517,11 +517,9 @@ class ToolOrchestrator:
             raise RuntimeError("tool execution requires approval")
 
         capability = tool_capability_name(prepared.tool.name)
-        if capability in {"computerUse", "browserUse"} and not account_capability_allowed(
-            capability,
-        ):
+        authorization = account_tool_access_status() if capability in {"computerUse", "browserUse"} else None
+        if authorization is not None and authorization.get("access", {}).get(capability) is not True:
             label = "Computer Use" if capability == "computerUse" else "Browser automation"
-            authorization = account_tool_access_status()
             status = str(authorization.get("status"))
             confirmed_denial = status == "confirmed"
             message = (f"{label} is not enabled for this Loom account. Ask an administrator to enable it."

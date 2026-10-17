@@ -80,9 +80,10 @@ class ReasoningManagedLoomAppServerService(ManagedStreamingLoomAppServerService)
         self.default_model_base_url = str(kwargs.pop("default_model_base_url", "") or "").strip().rstrip("/")
         self._policy_snapshot = None
         initial_credential = str(os.environ.get("LOOM_ACCOUNT_MODEL_CREDENTIAL") or "").strip()
-        if initial_credential:
-            self._policy_snapshot = ModelPolicySnapshot(self._model_policy_check_url().rsplit("/", 1)[0] + "/access", initial_credential)
         super().__init__(*args, **kwargs)
+        if initial_credential:
+            self._policy_snapshot = ModelPolicySnapshot(self._model_policy_check_url().rsplit("/", 1)[0] + "/access", initial_credential,
+                on_authentication_failure=lambda: self._request_authorization_recovery("model_authentication_failed"))
         root = Path(getattr(self.store, "root", "")).expanduser().resolve()
         try:
             runtime_home = root.parents[1]
@@ -612,7 +613,8 @@ class ReasoningManagedLoomAppServerService(ManagedStreamingLoomAppServerService)
             return
         snapshot = getattr(self, "_policy_snapshot", None)
         if snapshot is None:
-            snapshot = ModelPolicySnapshot(self._model_policy_check_url().rsplit("/", 1)[0] + "/access", credential)
+            snapshot = ModelPolicySnapshot(self._model_policy_check_url().rsplit("/", 1)[0] + "/access", credential,
+                on_authentication_failure=lambda: self._request_authorization_recovery("model_authentication_failed"))
             self._policy_snapshot = snapshot
         snapshot.check(selection, credential)
 
