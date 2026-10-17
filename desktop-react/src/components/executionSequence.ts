@@ -43,7 +43,7 @@ export function initialUpdateIds(items: TranscriptItem[]): ReadonlySet<string> {
 export function planUpdateNoteIds(items: TranscriptItem[]): ReadonlySet<string> {
   const planSteps = new Set<string>();
   for (const item of items) {
-    if (item.toolName === "update_plan" && item.stepId) planSteps.add(String(item.stepId));
+    if ((item.toolName === "update_plan" || (item.toolName === "manage_plan" && (item.arguments as { action?: string } | undefined)?.action !== "inspect")) && item.stepId) planSteps.add(String(item.stepId));
   }
   const ids = new Set<string>();
   if (!planSteps.size) return ids;

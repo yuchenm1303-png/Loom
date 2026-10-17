@@ -13,6 +13,8 @@ export function TaskProgressPanel({ steps }: { steps: TaskMilestone[] }) {
   const [dialogOpen, setDialogOpen] = useState(false);
   const titleId = useId();
   const completed = steps.filter(step => step.status === "completed").length;
+  const passed = steps.filter(step => step.status === "completed" && step.outcome === "passed").length;
+  const graph = steps.some(step => Boolean(step.id));
   const current = steps.find(step => step.status === "in_progress")
     ?? steps.find(step => step.status === "blocked") ?? steps.find(step => step.status === "pending");
   const rail = compact || collapsed;
@@ -57,6 +59,7 @@ export function TaskProgressPanel({ steps }: { steps: TaskMilestone[] }) {
         <span>{completed}/{steps.length} 已完成</span>
       </div>
       <progress className="task-plan-meter" max={steps.length} value={completed} aria-label="已完成的计划步骤" />
+      <p className="task-plan-acceptance">{passed}/{steps.length} 验收通过</p>
       <p className="task-plan-current">{current?.step ?? "计划步骤已完成"}</p>
       <ol className="task-plan-list">
         {steps.map((step, index) => (
@@ -64,6 +67,10 @@ export function TaskProgressPanel({ steps }: { steps: TaskMilestone[] }) {
             <span className="task-plan-step-mark" aria-hidden="true">{step.outcome === "failed" || step.outcome === "interrupted" || step.outcome === "not_covered" ? <CircleAlert size={13} /> : step.status === "completed" ? <Check size={13} /> : index + 1}</span>
             <div><span className="task-plan-status">{({ pending: "待处理", in_progress: "进行中", completed: "已完成", blocked: "受阻" })[step.status]}</span>
               <p>{step.step}</p>
+              {graph && step.type === "review" ? <small>评审 · {step.cycles ?? 0}/{step.max_review_cycles ?? 3} 次</small> : null}
+              {step.deps?.length ? <small>依赖：{step.deps.map(id => steps.find(candidate => candidate.id === id)?.step ?? id).join("、")}</small> : null}
+              {step.acceptance?.length ? <details><summary>验收条件 · {step.acceptance.length}</summary>{step.acceptance.map(criterion => <small key={criterion}>{criterion}</small>)}</details> : null}
+              {step.feedback?.status === "open" ? <small className="task-plan-outcome is-failed">待返工：{step.feedback.report}</small> : null}
               {milestoneOutcomeLabel(step) ? <small className={`task-plan-outcome is-${step.outcome ?? "not_assessed"}`}>{milestoneOutcomeLabel(step)}</small> : null}
               {step.evidence_refs?.length ? <details className="task-plan-evidence"><summary>证据记录 · {step.evidence_refs.length}</summary>
                 {milestoneEvidenceLabels(step).map(label => <small key={label}>{label}</small>)}

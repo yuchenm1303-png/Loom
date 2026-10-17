@@ -67,6 +67,7 @@
 
 .task-plan-evidence { margin-top: 6px; color: var(--muted); font-size: 11px; }
 .task-plan-evidence summary { cursor: pointer; }
+.task-plan-acceptance { margin: 0 0 8px; color: var(--muted); font-size: 11px; }
 .task-plan-evidence small { overflow-wrap: anywhere; }
 
 /* Keep the desktop card mounted so collapse can finish its exit motion. */

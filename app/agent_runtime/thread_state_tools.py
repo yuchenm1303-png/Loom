@@ -7,7 +7,7 @@ from .durable_state import DurableThreadStateStore, GoalStatus
 from .tools import AgentTool, ToolContext, ToolResult
 
 
-def durable_thread_tools(store: DurableThreadStateStore) -> tuple[AgentTool, ...]:
+def durable_thread_tools(store: DurableThreadStateStore, *, plan_store=None) -> tuple[AgentTool, ...]:
     def get_state(context: ToolContext, _arguments: dict[str, Any]) -> ToolResult:
         goal = store.get_goal(context.session_id)
         queue = store.list_queue(context.session_id)
@@ -44,6 +44,11 @@ def durable_thread_tools(store: DurableThreadStateStore) -> tuple[AgentTool, ...
         status = GoalStatus(str(arguments["status"]))
         if status not in {GoalStatus.COMPLETE, GoalStatus.BLOCKED}:
             raise ValueError("model may only mark a durable goal complete or blocked")
+        if status is GoalStatus.COMPLETE and plan_store is not None:
+            from .plan_state import active_plan, summary
+            plan = active_plan(plan_store.events(context.session_id))
+            if plan and summary(plan)["status"] != "passed":
+                raise ValueError("active plan has incomplete or unpassed acceptance; reconcile it before completing the goal")
         goal = store.set_goal_status(context.session_id, status)
         context.emit(
             AgentEventKind.GOAL_UPDATED,

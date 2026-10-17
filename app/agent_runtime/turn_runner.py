@@ -651,13 +651,16 @@ class TurnRunner:
                 session.error = ""
                 diff = rt.diff_trackers.snapshot(session.session_id, session.current_turn_id)
                 rt.store.save(session)
+                from .plan_state import active_plan, summary as plan_summary
+                task_state = plan_summary(active_plan(rt._lifecycle_events(session.session_id)))
                 rt._emit_event(
                     session,
                     Event.TURN_COMPLETED,
                     data={
                         "text": response.text,
                         "execution_end_source": decision.source,
-                        "task_completion": "not_assessed",
+                        "task_completion": task_state["status"],
+                        "plan_summary": task_state,
                         "final_step_id": step.step_id,
                         "diff_revision": diff.revision,
                         "changed_paths": list(diff.paths),

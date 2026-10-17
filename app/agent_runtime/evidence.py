@@ -1,5 +1,6 @@
 """Validate durable evidence references without interpreting model conclusions."""
 from datetime import datetime
+import hashlib
 import json
 
 from .contracts import AgentEventKind as Event, ToolEffect
@@ -15,8 +16,8 @@ EVIDENCE_REFS_SCHEMA = {"type": "array", "minItems": 1, "maxItems": 64, "items":
          "required": ["path"], "additionalProperties": False}]}}
 
 
-def resolve_evidence(store, context, refs):
-    events = store.events(context.session_id)
+def resolve_evidence(store, context, refs, *, events=None):
+    events = store.events(context.session_id) if events is None else events
     invalid, facts = [], []
     for ref in refs:
         if not isinstance(ref, dict) or len(ref) != 1:
@@ -42,9 +43,18 @@ def resolve_evidence(store, context, refs):
                 path = context.resolve_workspace_path(ref["path"])
                 if not path.is_file():
                     raise ValueError("workspace file does not exist")
-                stat = path.stat()
-                facts.append({"path": str(path.relative_to(context.workspace.resolve())),
-                              "size_bytes": stat.st_size, "modified_at_ns": stat.st_mtime_ns})
+                # Hash the bytes actually observed, not just a mutable path/stat.
+                digest = hashlib.sha256()
+                with path.open("rb") as handle:
+                    before = path.stat()
+                    for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+                        digest.update(chunk)
+                    stat = path.stat()
+                if (before.st_size, before.st_mtime_ns) != (stat.st_size, stat.st_mtime_ns):
+                    raise ValueError("evidence file changed while being read; retry after the writer finishes")
+                facts.append({"path": str(path.relative_to(context.workspace.resolve())), "reference_path": ref["path"],
+                              "size_bytes": stat.st_size, "modified_at_ns": stat.st_mtime_ns,
+                              "sha256": digest.hexdigest()})
             except (ValueError, OSError, TypeError) as exc:
                 invalid.append({"reference": ref, "reason": str(exc)})
         else:

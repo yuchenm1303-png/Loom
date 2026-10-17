@@ -1463,6 +1463,7 @@ const TurnView = memo(function TurnView({
       item.id !== initialUser?.id
       && item.id !== finalAssistant?.id
       && !errorIds.has(item.id)
+      && item.type !== "task_plan"
     ));
     const hasProcess = processItems.some((item) => (
       isActivityItem(item)
@@ -1691,10 +1692,7 @@ export const Transcript = memo(function Transcript({ items, running, currentTurn
   }, [hasItems]);
   const turnBlocks = useStableTurnBlocks(items);
   const activeTurnId = running && currentTurnId ? String(currentTurnId) : "";
-  const milestones = useMemo(() => {
-    const block = turnBlocks.find((block) => block.kind === "turn" && block.id === activeTurnId);
-    return block?.kind === "turn" ? latestTaskPlan(block.items) : [];
-  }, [turnBlocks, activeTurnId]);
+  const milestones = useMemo(() => latestTaskPlan(items), [items]);
   const decisionInteractiveItemId = useMemo(() => {
     if (running || promptDisabled || !onPrompt) return "";
     for (let index = items.length - 1; index >= 0; index -= 1) {
@@ -1754,7 +1752,7 @@ export const Transcript = memo(function Transcript({ items, running, currentTurn
         ))}
       </main>
     </div>
-      {milestones.length ? <TaskProgressPanel key={activeTurnId} steps={milestones} /> : null}
+      {milestones.length ? <TaskProgressPanel steps={milestones} /> : null}
     </>
   );
 });

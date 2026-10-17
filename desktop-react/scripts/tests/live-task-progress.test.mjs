@@ -42,3 +42,18 @@ test("milestone evidence is displayed separately from acceptance and never infer
   assert.equal(model.milestoneOutcomeLabel({step:"Legacy",status:"completed"}), "未记录验收结论");
   assert.deepEqual(model.latestTaskPlan([item("plan", "tool_call", {toolName:"update_plan",result:{plan:[step]}})])[0].evidence_refs, step.evidence_refs);
 });
+
+test("committed plan event survives missing tool receipt and overrides stale receipts", () => {
+  const plan = [{ id: "review", step: "Review", status: "blocked", outcome: "failed", cycles: 3 }];
+  const items = [item("state", "task_plan", { turnId: "old", result: { plan, lifecycle: "active" } }),
+    item("stale", "tool_call", { toolName: "update_plan", turnId: "new", result: { plan: [] } })];
+  assert.deepEqual(model.latestTaskPlan(items), plan);
+  assert.deepEqual(model.latestTaskPlan([...items, item("archive", "task_plan", { result: { plan, lifecycle: "archived" } })]), []);
+});
+
+test("graph action receipts work for older hosts and evidence versions are visible", () => {
+  const step = { step: "Build", status: "completed", outcome: "passed", evidence_refs: [{path:"reports/result.txt"}],
+    evidence_facts: [{path:"reports/result.txt",sha256:"a".repeat(64)}] };
+  assert.deepEqual(model.latestTaskPlan([item("graph", "tool_call", {toolName:"manage_plan",ok:true,result:{plan:[step]}})]), [step]);
+  assert.ok(model.milestoneEvidenceLabels(step)[0].includes("SHA-256 " + "a".repeat(64)));
+});

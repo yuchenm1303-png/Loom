@@ -161,9 +161,10 @@ class AgentRuntime:
         self._request_context_providers = {}
         from .evidence_tools import durable_tool_result_tool, run_scratch_dir_tool, task_history_tool
         from .task_plan import update_plan_tool
+        from .plan_tools import manage_plan_tool
         from .evidence import record_check_tool, read_check_ledger_tool
         for runtime_tool in (durable_tool_result_tool(store), run_scratch_dir_tool(store), update_plan_tool(store),
-                             record_check_tool(store), read_check_ledger_tool(store), task_history_tool(store)):
+                             manage_plan_tool(store), record_check_tool(store), read_check_ledger_tool(store), task_history_tool(store)):
             if self.tools.get(runtime_tool.name) is None:
                 self.tools.register(runtime_tool)
         self.policy = policy or ToolPolicy()

@@ -44,7 +44,7 @@ fixtures.renderPlain = (content, streaming) => flushSync(() => root.render(
   <StrictMode><MarkdownMessage content={content} streaming={streaming} /></StrictMode>,
 ));
 fixtures.renderItems = (items, running) => flushSync(() => root.render(
-  <StrictMode><div className="conversation-stage" style={{ height: 800 }}><Transcript items={items} running={running} currentTurnId="turn-1" onApproval={() => {}} /></div></StrictMode>,
+  <StrictMode><I18nProvider><div className="conversation-stage" style={{ height: 800 }}><Transcript items={items} running={running} currentTurnId="turn-1" onApproval={() => {}} /></div></I18nProvider></StrictMode>,
 ));
 fixtures.renderScrolled = (text, running) => {
   const items: TranscriptItem[] = [{ id: "scroll-answer", threadId: "scroll-thread", turnId: "turn-1",
