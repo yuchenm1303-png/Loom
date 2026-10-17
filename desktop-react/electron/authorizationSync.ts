@@ -16,7 +16,16 @@ export function authorizationSync(options: {
     try {
       const credential = await read();
       if (epoch !== options.epoch() || !options.ready()) return;
-      await options.deliver({ [field]: credential });
+      if (field === "modelCredential") {
+        // Older Hosts interpret an omitted account credential as sign-out.
+        // Keep the model lane's wire envelope compatible without making the
+        // automation lane wait for model issuance. Recheck identity after read.
+        const account = await options.automation(false);
+        if (epoch !== options.epoch() || !options.ready()) return;
+        await options.deliver({ credential: account, modelCredential: account ? credential : "" });
+      } else {
+        await options.deliver(credential ? { credential } : { credential: "", modelCredential: "" });
+      }
     } catch {
       // Transient errors are not logout. Never publish an empty credential
       // just because a network refresh failed; explicit logout delivers "".

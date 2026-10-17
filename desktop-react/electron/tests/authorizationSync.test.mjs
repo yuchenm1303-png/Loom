@@ -19,7 +19,7 @@ test("automation delivery does not wait for model minting; rotation is republish
   release(); await pending; await tick();
   assert(delivered.some(value => value.credential === "access-2"));
   assert(delivered.some(value => value.modelCredential === "model-1"));
-  assert(delivered.every(value => Object.keys(value).length === 1));
+  assert(delivered.some(value => value.modelCredential === "model-1" && value.credential === "access-2"));
 });
 
 test("identity change discards both old credential lanes, even A -> B -> A", async () => {
@@ -84,4 +84,23 @@ test("account transition does not read or republish the previous account", async
   assert.deepEqual(calls, []);
   ready = true; await sync(); await tick();
   assert(calls.includes('deliver'));
+});
+
+test("wire messages keep automation enabled on an older Host and explicitly clear both on logout", async () => {
+  let signedIn = true;
+  let account = '', model = '';
+  const sync = authorizationSync({epoch: () => String(signedIn), ready: () => true,
+    automation: async () => signedIn ? 'account-token' : '',
+    model: async () => signedIn ? 'model-token' : '',
+    deliver: async value => {
+      // Old Host semantics: an absent account credential means empty.
+      account = value.credential || '';
+      if ('modelCredential' in value) model = value.modelCredential;
+    },
+  });
+  await sync(); await tick();
+  assert.equal(account, 'account-token');
+  assert.equal(model, 'model-token');
+  signedIn = false; await sync(); await tick();
+  assert.equal(account, ''); assert.equal(model, '');
 });

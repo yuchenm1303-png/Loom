@@ -25,6 +25,9 @@ This is a source/test audit, not a production availability or penetration-test c
   older sign-in responses cannot overwrite a newer login or sign-out.
 - RPC credential updates are partial: an omitted lane is preserved, not cleared.
   Explicit account logout clears both lanes and the model permission snapshot.
+  Desktop model deliveries also carry the current account token for compatibility
+  with older Hosts that interpret an omitted account token as sign-out; the
+  automation lane never waits for the model lane. Logout clears both on old Hosts too.
 - Automation 401 failures request one recovery per credential generation. Model
   snapshot 401 failures request one recovery per credential revision. Recovery
   refreshes credentials; it never grants access or replays failed UI actions.
