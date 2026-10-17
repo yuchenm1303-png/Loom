@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 
 from app.agent_runtime import DurableAgentRuntime, FileAgentSessionStore, PermissionMode, ToolRegistry
-from app.ai import ModelResponse
+from app.ai import AIEmptyResponseError, ModelResponse
 from app.app_server import JsonRpcError
 from app.app_server_thread_management import ManagedStreamingLoomAppServerService
 from app.thread_branch_planning import parse_branch_plan
@@ -117,7 +117,7 @@ def test_plan_errors_are_visible_and_do_not_copy_source(planned_service):
     platform.response = "Just paste the full answer and start"
     outcome = _plan_result(service, parent["id"], "Very long source")
     assert outcome["status"] == "error"
-    assert "usable task plan" in outcome["error"]
+    assert "usable task" in outcome["error"]
     with pytest.raises(JsonRpcError):
         service.thread_branch_plan({"parentThreadId": parent["id"], "sourceText": "x" * 12001})
     with pytest.raises(JsonRpcError):
@@ -189,3 +189,16 @@ def _eventually_ready(service, parent_id, plan_id):
             return True
         time.sleep(.01)
     return False
+
+
+def test_empty_model_output_has_plain_language_recovery_message(planned_service, monkeypatch):
+    service, platform, parent = planned_service
+
+    def no_text(_profile_id, _request):
+        raise AIEmptyResponseError("reasoning-only completion")
+
+    monkeypatch.setattr(platform, "execute_chat", no_text)
+    result = _plan_result(service, parent["id"], "Review this focused failure.")
+    assert result["status"] == "error"
+    assert "Retry or create it manually" in result["error"]
+    assert "AIEmptyResponseError" not in result["error"]
