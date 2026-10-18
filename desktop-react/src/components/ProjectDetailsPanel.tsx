@@ -16,6 +16,7 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMotionPresence } from "../motion/useMotionPresence";
 import { startVisiblePolling } from "../visiblePolling";
+import { withProjectReadTimeout } from "../state/projectRead";
 import type { ProjectRecord, ThreadRecord, TranscriptItem } from "../types/loom";
 import { ProjectAgentFilesCard } from "./ProjectAgentFilesCard";
 import { ProjectMemoryCard } from "./ProjectMemoryCard";
@@ -234,24 +235,41 @@ export function ProjectDetailsPanel({
   const [commitMessage, setCommitMessage] = useState("");
   const [commitNotice, setCommitNotice] = useState("");
   const projectId = project?.id ?? "";
+  const workspaceRequest = useRef(0);
+  const projectEpoch = useRef(0);
 
   const loadWorkspaceStatus = useCallback(async (quiet = false): Promise<ProjectWorkspaceStatus | null> => {
     if (!open || !projectId) return null;
+    const request = ++workspaceRequest.current;
     if (!quiet) setWorkspaceLoading(true);
     setWorkspaceError("");
     try {
       const client = bridge();
       if (!client) throw new Error("Loom bridge is unavailable");
-      const status = await client.call<ProjectWorkspaceStatus>("project/workspace_status", { projectId });
+      const status = await withProjectReadTimeout(client.call<ProjectWorkspaceStatus>("project/workspace_status", { projectId }));
+      if (request !== workspaceRequest.current) return null;
       setWorkspaceStatus(status);
       return status;
     } catch (cause) {
+      if (request !== workspaceRequest.current) return null;
       setWorkspaceError(cause instanceof Error ? cause.message : String(cause));
       return null;
     } finally {
-      if (!quiet) setWorkspaceLoading(false);
+      if (request === workspaceRequest.current) setWorkspaceLoading(false);
     }
   }, [open, projectId]);
+
+  useEffect(() => {
+    ++projectEpoch.current;
+    ++workspaceRequest.current;
+    setWorkspaceStatus(null);
+    setWorkspaceError("");
+    setWorkspaceLoading(false);
+    setReviewLoadingPath("");
+    setGitBusy("");
+    setSaving(false);
+    return () => { ++workspaceRequest.current; ++projectEpoch.current; };
+  }, [projectId, open]);
 
   useEffect(() => {
     setDraft(project?.instructions ?? "");
@@ -311,19 +329,23 @@ export function ProjectDetailsPanel({
   if (!presence.mounted || !project) return null;
 
   const saveInstructions = async () => {
+    const epoch = projectEpoch.current;
     if (!dirty || saving) return;
     setSaving(true);
     try {
       await onSetInstructions(project.id, draft);
+      if (epoch !== projectEpoch.current) return;
       setNotice("项目 Instructions 已保存，下一轮自动生效");
     } catch (cause) {
+      if (epoch !== projectEpoch.current) return;
       setNotice(cause instanceof Error ? cause.message : "保存失败");
     } finally {
-      setSaving(false);
+      if (epoch === projectEpoch.current) setSaving(false);
     }
   };
 
   const openProjectDiff = async (file?: ProjectGitFile) => {
+    const epoch = projectEpoch.current;
     const path = String(file?.path || "").replaceAll("\\", "/");
     const loadingKey = path || "__all__";
     setReviewLoadingPath(loadingKey);
@@ -333,7 +355,8 @@ export function ProjectDetailsPanel({
       if (!client) throw new Error("Loom bridge is unavailable");
       const params: Record<string, unknown> = { projectId: project.id };
       if (path) params.path = path;
-      const result = await client.call<ProjectGitDiffResult>("project/git_diff", params);
+      const result = await withProjectReadTimeout(client.call<ProjectGitDiffResult>("project/git_diff", params));
+      if (epoch !== projectEpoch.current) return;
       const detail = {
         path: path || result.paths?.[0] || "",
         title: `${project.name} · Git diff`,
@@ -343,13 +366,15 @@ export function ProjectDetailsPanel({
       window.dispatchEvent(new CustomEvent("loom:review-open-diff", { detail }));
       if (result.error) setWorkspaceError(result.error);
     } catch (cause) {
+      if (epoch !== projectEpoch.current) return;
       setWorkspaceError(cause instanceof Error ? cause.message : String(cause));
     } finally {
-      setReviewLoadingPath("");
+      if (epoch === projectEpoch.current) setReviewLoadingPath("");
     }
   };
 
   const runGitAction = async (method: "project/git_stage" | "project/git_unstage", path = "") => {
+    const epoch = projectEpoch.current;
     const key = `${method}:${path || "all"}`;
     setGitBusy(key);
     setWorkspaceError("");
@@ -360,16 +385,19 @@ export function ProjectDetailsPanel({
       const params: Record<string, unknown> = { projectId: project.id };
       if (path) params.path = path;
       const result = await client.call<ProjectGitActionResult>(method, params);
+      if (epoch !== projectEpoch.current) return;
       setWorkspaceStatus((current) => current ? { ...current, git: result.git } : current);
       await loadWorkspaceStatus(true);
     } catch (cause) {
+      if (epoch !== projectEpoch.current) return;
       setWorkspaceError(cause instanceof Error ? cause.message : String(cause));
     } finally {
-      setGitBusy("");
+      if (epoch === projectEpoch.current) setGitBusy("");
     }
   };
 
   const commitStaged = async () => {
+    const epoch = projectEpoch.current;
     const message = commitMessage.trim();
     if (!message || !stagedFiles.length || gitBlocked) return;
     setGitBusy("project/git_commit");
@@ -382,14 +410,16 @@ export function ProjectDetailsPanel({
         projectId: project.id,
         message,
       });
+      if (epoch !== projectEpoch.current) return;
       setWorkspaceStatus((current) => current ? { ...current, git: result.git } : current);
       setCommitNotice(result.commitSha ? `已提交 ${result.commitSha}` : "已提交");
       setCommitMessage("");
       await loadWorkspaceStatus(true);
     } catch (cause) {
+      if (epoch !== projectEpoch.current) return;
       setWorkspaceError(cause instanceof Error ? cause.message : String(cause));
     } finally {
-      setGitBusy("");
+      if (epoch === projectEpoch.current) setGitBusy("");
     }
   };
 
@@ -462,7 +492,7 @@ export function ProjectDetailsPanel({
           </div>
         ) : null}
 
-        {projectId && <ProjectRepositoryCard projectId={projectId} blocked={Boolean(busyThreads.length || gitBusy)} onBusyChange={busy => setGitBusy(busy ? "repository" : "")} onNewThread={project => { void onNewThread(project); }} onChanged={() => { void loadWorkspaceStatus(); onGitChanged?.(); }}/ >}
+        {projectId && open && <ProjectRepositoryCard key={projectId} projectId={projectId} blocked={Boolean(busyThreads.length || gitBusy)} onBusyChange={busy => setGitBusy(busy ? "repository" : "")} onNewThread={project => { void onNewThread(project); }} onChanged={() => { void loadWorkspaceStatus(); onGitChanged?.(); }}/ >}
         <section className="project-workspace-card">
           <div className="project-card-heading">
             <div>
@@ -479,14 +509,14 @@ export function ProjectDetailsPanel({
             <div className="project-workspace-stat">
               <GitBranch size={15} strokeWidth={1.8} />
               <span>Git</span>
-              <strong>{git?.isRepo ? git.branch || "detached" : "未接入"}</strong>
-              <small>{git?.summary || "当前项目不是 Git 仓库或 Git 不可用"}</small>
+              <strong>{!git ? workspaceError ? "读取失败" : "读取中" : git.isRepo ? git.branch || "detached" : "未接入"}</strong>
+              <small>{git?.summary || (!git ? "等待工作区状态" : "当前项目不是 Git 仓库或 Git 不可用")}</small>
             </div>
             <div className="project-workspace-stat">
               <FileText size={15} strokeWidth={1.8} />
               <span>变更</span>
-              <strong>{git?.changedCount ?? 0}</strong>
-              <small>{git?.changedCount ? `${stagedFiles.length} staged · ${unstagedFiles.length} unstaged` : "工作区暂无 Git 变更"}</small>
+              <strong>{git?.changedCount ?? "—"}</strong>
+              <small>{!git ? "尚未获取变更状态" : git.changedCount ? `${stagedFiles.length} staged · ${unstagedFiles.length} unstaged` : "工作区暂无 Git 变更"}</small>
             </div>
           </div>
 
@@ -500,7 +530,7 @@ export function ProjectDetailsPanel({
             <div className="project-subheading project-git-subheading">
               <div>
                 <span>当前变更</span>
-                <small>{changedFiles.length ? `${changedFiles.length}${git?.truncated ? "+" : ""} 个文件` : "clean"}</small>
+                <small>{!git ? "状态未知" : changedFiles.length ? `${changedFiles.length}${git?.truncated ? "+" : ""} 个文件` : "clean"}</small>
               </div>
               {changedFiles.length ? (
                 <div className="project-git-toolbar">
@@ -536,7 +566,7 @@ export function ProjectDetailsPanel({
                 </section>
               </div>
             ) : (
-              <p className="project-muted-line">没有检测到 Git 工作区变更。</p>
+              <p className="project-muted-line">{!git ? "尚未获取工作区变更，请等待加载或刷新重试。" : "没有检测到 Git 工作区变更。"}</p>
             )}
 
             {git?.isRepo ? (
@@ -600,7 +630,7 @@ export function ProjectDetailsPanel({
                 })}
               </div>
             ) : (
-              <p className="project-muted-line">还没有可显示的文件。</p>
+              <p className="project-muted-line">{!workspaceStatus ? workspaceError ? "文件列表读取失败，请刷新重试。" : "正在读取文件列表…" : "还没有可显示的文件。"}</p>
             )}
           </div>
         </section>
@@ -637,12 +667,13 @@ export function ProjectDetailsPanel({
         </section>
 
         <ProjectMemoryCard
+          key={`${project.id}:${open}`}
           projectId={project.id}
           open={open}
           running={Boolean(busyThreads.length)}
         />
 
-        <ProjectAgentFilesCard projectId={project.id} open={open} />
+        <ProjectAgentFilesCard key={`${project.id}:${open}`} projectId={project.id} open={open} />
 
         <section className="project-thread-card">
           <div className="project-card-heading">

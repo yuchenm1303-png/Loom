@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import os
 import uuid
+from types import SimpleNamespace
 from pathlib import Path
 
 import pytest
@@ -47,7 +48,7 @@ def test_snapshot_retries_transient_windows_conflicts(tmp_path, monkeypatch, win
         return original(source, destination)
 
     monkeypatch.setattr(journal.os, "replace", flaky)
-    monkeypatch.setattr(journal.time, "sleep", sleeps.append)
+    monkeypatch.setattr(journal, "time", SimpleNamespace(sleep=sleeps.append))
     session.final_text = "persisted after contention"
     store.save(session)
 
@@ -70,7 +71,7 @@ def test_atomic_journal_helpers_retry_too(tmp_path, monkeypatch):
         return original(source, destination)
 
     monkeypatch.setattr(journal.os, "replace", flaky)
-    monkeypatch.setattr(journal.time, "sleep", lambda delay: None)
+    monkeypatch.setattr(journal, "time", SimpleNamespace(sleep=lambda delay: None))
     journal.atomic_json(target, {"version": 1})
     journal.atomic_text(target, '{"version":2}')
     assert json.loads(target.read_text(encoding="utf-8")) == {"version": 2}
@@ -95,7 +96,7 @@ def test_persistent_denial_preserves_event_redo_journal(tmp_path, monkeypatch):
         return original(source, destination)
 
     monkeypatch.setattr(journal.os, "replace", blocked)
-    monkeypatch.setattr(journal.time, "sleep", sleeps.append)
+    monkeypatch.setattr(journal, "time", SimpleNamespace(sleep=sleeps.append))
     session.final_text = "recover after contention"
     event = AgentEvent(
         "event-1", session.session_id, "turn-1",
@@ -126,7 +127,7 @@ def test_unrelated_write_failure_is_not_retried(tmp_path, monkeypatch):
         raise OSError(28, "No space left on device")
 
     monkeypatch.setattr(journal.os, "replace", disk_full)
-    monkeypatch.setattr(journal.time, "sleep", lambda _: pytest.fail("unexpected retry"))
+    monkeypatch.setattr(journal, "time", SimpleNamespace(sleep=lambda _: pytest.fail("unexpected retry")))
     with pytest.raises(OSError) as exc:
         journal.atomic_text(tmp_path / "session.json", "{}")
     assert exc.value.errno == 28 and attempts == 1

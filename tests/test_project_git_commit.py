@@ -10,6 +10,29 @@ import pytest
 from types import SimpleNamespace
 
 
+def test_git_child_cannot_consume_rpc_stdin_or_open_a_console(monkeypatch, tmp_path):
+    import app.project_git_commit as module
+    captured = {}
+
+    class Process:
+        args = ["git"]
+        returncode = 0
+
+        def communicate(self, timeout):
+            return "main\n", ""
+
+    def launch(*args, **kwargs):
+        captured.update(kwargs)
+        return Process()
+
+    monkeypatch.setattr(module, "os", SimpleNamespace(name="nt"))
+    monkeypatch.setattr(module.subprocess, "Popen", launch)
+    result = module._run_git(tmp_path, "branch", "--show-current")
+    assert result.stdout == "main\n"
+    assert captured["stdin"] == subprocess.DEVNULL
+    assert captured["creationflags"] == getattr(subprocess, "CREATE_NO_WINDOW", 0)
+
+
 def test_git_timeout_kills_windows_tree_and_bounds_pipe_cleanup(monkeypatch, tmp_path):
     import app.project_git_commit as module
     timeouts, killed, commands = [], [], []

@@ -3,7 +3,7 @@
 import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
 import { createRequire } from "node:module";
-import { mkdtemp, readFile, writeFile, rm } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, writeFile, rm } from "node:fs/promises";
 import net from "node:net";
 import os from "node:os";
 import path from "node:path";
@@ -15,6 +15,9 @@ const require = createRequire(new URL("../package.json", import.meta.url));
 const executable = require("electron");
 const packagedHost = String(process.env.LOOM_SMOKE_HOST_EXECUTABLE || (process.argv.includes("--packaged") ? path.join(root, "release/win-unpacked/Loom.exe") : "")).trim();
 const temp = await mkdtemp(path.join(os.tmpdir(), "loom-host-smoke-"));
+const projectRoot = path.join(temp, "项目验收");
+await mkdir(projectRoot);
+await writeFile(path.join(projectRoot, "验收.txt"), "project smoke fixture\n");
 const probe = net.createServer();
 await new Promise((resolve) => probe.listen(0, "127.0.0.1", resolve));
 const port = probe.address().port;
@@ -98,6 +101,7 @@ async function runClient() {
   const script = path.join(temp, "client.mjs");
   await writeFile(script, `
     import { appendFileSync } from "node:fs";
+    import { spawnSync } from "node:child_process";
     import { createRequire } from "node:module";
     const progress = (stage) => appendFileSync(${JSON.stringify(clientProgress)}, new Date().toISOString() + " " + stage + "\\n");
     progress("loading Electron client");
@@ -111,6 +115,28 @@ async function runClient() {
       progress("Host IPC ready / initializing credential-free runtime");
       const initialization = await callHost("loom:connect");
       if (!initialization?.runtime) throw new Error("Credential-free local service did not initialize");
+      progress("verifying project workspace / repository / files over Host IPC");
+      const created = await callHost("loom:call", ["project/create", { root: ${JSON.stringify(projectRoot)} }]);
+      const projectId = created.project.id;
+      const workspace = await callHost("loom:call", ["project/workspace_status", { projectId }]);
+      if (!workspace.exists || !workspace.tree.entries.some(file => file.name === "验收.txt")) throw new Error("Project workspace did not list fixture");
+      const repository = await callHost("loom:call", ["project/git_repository", { projectId }]);
+      if (repository.isRepo !== ${clientNumber > 1}) throw new Error("Repository status was not authoritative");
+      if (!repository.isRepo) {
+        progress("initializing isolated Git repository");
+        await callHost("loom:call", ["project/git_init", { projectId }]);
+        for (const [key, value] of [["user.name", "Loom smoke"], ["user.email", "smoke@example.invalid"]]) {
+          const configured = spawnSync("git", ["-C", ${JSON.stringify(projectRoot)}, "config", key, value], { windowsHide: true, timeout: 5000 });
+          if (configured.status !== 0) throw new Error("Cannot configure isolated test repository");
+        }
+        progress("staging isolated project files");
+        await callHost("loom:call", ["project/git_stage", { projectId }]);
+        progress("committing isolated project files");
+        const committed = await callHost("loom:call", ["project/git_commit", { projectId, message: "test: verify isolated project workflow" }]);
+        if (!committed.commitSha) throw new Error("Project commit did not return a SHA");
+      }
+      const files = await callHost("loom:call", ["project/files", { projectId, action: "list" }]);
+      if (!files.entries.some(file => file.name === "验收.txt")) throw new Error("Project file workbench did not list fixture");
       progress("HOST_CLIENT_OK / quitting client");
       console.log("HOST_CLIENT_OK");
       app.quit();

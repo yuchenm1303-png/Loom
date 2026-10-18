@@ -10,7 +10,13 @@ import {
   Trash2,
   X,
 } from "./icons";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { withProjectReadTimeout } from "../state/projectRead";
+
+function readProject<T>(method: string, params: Record<string, unknown>): Promise<T> {
+  if (!window.loom?.call) return Promise.reject(new Error("本地主机连接不可用，请重新连接后重试。"));
+  return withProjectReadTimeout(window.loom.call<T>(method, params));
+}
 
 type ProjectMemoryRecord = {
   memory_id: string;
@@ -149,9 +155,10 @@ export function ProjectMemoryCard({ projectId, open, running }: ProjectMemoryCar
   const [mutating, setMutating] = useState("");
   const [forgetTarget, setForgetTarget] = useState("");
   const [error, setError] = useState("");
+  const listRequest = useRef(0);
 
   const loadStatus = useCallback(async () => {
-    const result = await window.loom.call<{ memory?: ProjectMemoryStatus }>(
+    const result = await readProject<{ memory?: ProjectMemoryStatus }>(
       "project/memory_status",
       { projectId },
     );
@@ -159,34 +166,36 @@ export function ProjectMemoryCard({ projectId, open, running }: ProjectMemoryCar
   }, [projectId]);
 
   const loadIndex = useCallback(async () => {
-    const result = await window.loom.call<{ index?: ProjectMemoryIndex }>(
+    const result = await readProject<{ index?: ProjectMemoryIndex }>(
       "project/memory_index",
       { projectId, maxChars: 3600 },
     );
     setIndex(result.index ?? null);
   }, [projectId]);
 
-  const loadList = useCallback(async (search: string, targetView = view) => {
+  const loadList = useCallback(async (search: string, targetView: "active" | "archived") => {
+    const request = ++listRequest.current;
     const needle = search.trim();
     if (targetView === "active" && needle) {
-      const result = await window.loom.call<{ memories?: ProjectMemoryRecord[] }>(
+      const result = await readProject<{ memories?: ProjectMemoryRecord[] }>(
         "project/memory_search",
         { projectId, query: needle, limit: 32 },
       );
-      setMemories(Array.isArray(result.memories) ? result.memories : []);
+      if (request === listRequest.current) setMemories(Array.isArray(result.memories) ? result.memories : []);
       return;
     }
-    const result = await window.loom.call<{ memories?: ProjectMemoryRecord[] }>(
+    const result = await readProject<{ memories?: ProjectMemoryRecord[] }>(
       "project/memory_list",
       { projectId, limit: 200, status: targetView },
     );
+    if (request !== listRequest.current) return;
     const rows = Array.isArray(result.memories) ? result.memories : [];
     setMemories(
       targetView === "archived" && needle
         ? rows.filter((memory) => memory.text.toLocaleLowerCase().includes(needle.toLocaleLowerCase()))
         : rows,
     );
-  }, [projectId, view]);
+  }, [projectId]);
 
   const refresh = useCallback(async () => {
     if (!open || !projectId) return;
@@ -243,7 +252,7 @@ export function ProjectMemoryCard({ projectId, open, running }: ProjectMemoryCar
     setReading(memoryId);
     setError("");
     try {
-      const result = await window.loom.call<ProjectMemoryReadResult>(
+      const result = await readProject<ProjectMemoryReadResult>(
         "project/memory_read",
         { projectId, memoryId, evidenceLimit: 24, usageLimit: 20 },
       );

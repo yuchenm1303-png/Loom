@@ -1,6 +1,7 @@
 import { BookOpen, FileText, RefreshCw } from "./icons";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import "./project-agent-files-card.css";
+import { withProjectReadTimeout } from "../state/projectRead";
 
 interface ProjectAgentFile {
   name: string;
@@ -62,7 +63,7 @@ export function ProjectAgentFilesCard({ projectId, open }: ProjectAgentFilesCard
     try {
       const client = bridge();
       if (!client) throw new Error("Loom bridge is unavailable");
-      const payload = await client.call<ProjectAgentFilesResult>("project/agent_files", { projectId });
+      const payload = await withProjectReadTimeout(client.call<ProjectAgentFilesResult>("project/agent_files", { projectId }));
       setResult(payload);
       const readable = payload.files.find((file) => file.readable) || payload.files.find((file) => file.exists) || payload.files[0];
       setSelectedName((current) => current || readable?.name || "");
@@ -127,7 +128,7 @@ export function ProjectAgentFilesCard({ projectId, open }: ProjectAgentFilesCard
         {!files.length ? (
           <div className="project-agent-file-empty-tabs">
             <BookOpen size={14} strokeWidth={1.85} />
-            <span>暂无说明文件</span>
+            <span>{loading ? "正在读取说明文件…" : error ? "说明文件读取失败" : "暂无说明文件"}</span>
           </div>
         ) : null}
       </div>

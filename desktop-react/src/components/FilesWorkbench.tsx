@@ -7,6 +7,7 @@ import {
 import type { MotionPresencePhase } from "../motion/useMotionPresence";
 import { PanelEmpty } from "./PanelEmpty";
 import { PanelHeader } from "./PanelHeader";
+import { withProjectReadTimeout } from "../state/projectRead";
 import "./files-workbench.css";
 
 type Entry = { path: string; name: string; type: string; size?: number };
@@ -74,7 +75,10 @@ export function FilesWorkbench({ projectId, projectName, root, open, phase = "en
 
   const call = useCallback(async <T,>(action: Action, params: Record<string, unknown>): Promise<T> => {
     if (!window.loom?.call) throw new Error("Loom Host is disconnected. Reconnect to manage local files.");
-    return window.loom.call<T>("project/files", { projectId, action, ...params });
+    const request = window.loom.call<T>("project/files", { projectId, action, ...params });
+    return action === "list" || action === "search" || action === "read"
+      ? withProjectReadTimeout(request)
+      : request;
   }, [projectId]);
 
   const listDirectory = useCallback(async (path: string, offset = 0) => {
@@ -379,7 +383,7 @@ export function FilesWorkbench({ projectId, projectName, root, open, phase = "en
               {!query.trim() && Object.entries(nextOffsets).filter(([, next]) => next !== null).map(([path, next]) => (
                 <button className="files-workbench-more" type="button" key={path} disabled={loadingDirs.includes(path)} onClick={() => void listDirectory(path, next || 0)}>加载更多 · {path || projectName}</button>
               ))}
-              {!renderedRows.length && !searching && !loadingDirs.length ? <p className="files-workbench-placeholder">{query ? "没有匹配的文件" : "当前目录为空"}</p> : null}
+              {!renderedRows.length && !searching && !loadingDirs.length ? <p className="files-workbench-placeholder">{error ? "文件列表读取失败，请刷新重试。" : query ? "没有匹配的文件" : !Object.prototype.hasOwnProperty.call(directories, "") ? "正在读取目录…" : "当前目录为空"}</p> : null}
               {searchTruncated && query ? <p className="files-workbench-placeholder">结果较多，请输入更具体的文件名</p> : null}
             </div>
           </aside>
@@ -407,8 +411,8 @@ export function FilesWorkbench({ projectId, projectName, root, open, phase = "en
                   value={current.text} onChange={(event) => {
                     const value = event.target.value;
                     setFiles((prev) => ({ ...prev, [selected]: { ...prev[selected], text: value } }));
-                  }} /> : <p className="files-workbench-placeholder">正在读取文件…</p>}
-              <div className="files-workbench-status"><span>{dirty ? "● 有未保存的更改" : "文件已同步"}</span><span>UTF-8 · {displaySize(current ? new TextEncoder().encode(current.text).length : undefined)}</span></div>
+                  }} /> : <p className="files-workbench-placeholder">{pending === "read" ? "正在读取文件…" : "文件尚未读取成功，请重新读取。"}</p>}
+              <div className="files-workbench-status"><span>{!current ? "尚未加载" : dirty ? "● 有未保存的更改" : "文件已同步"}</span><span>UTF-8 · {displaySize(current ? new TextEncoder().encode(current.text).length : undefined)}</span></div>
             </> : <div className="files-workbench-empty"><PanelEmpty icon={<FolderOpen size={22} strokeWidth={1.7} />} title="打开文件以开始" copy={<>从左侧目录树选择文件，或搜索整个项目的文件名。<br />编辑内容后按 Ctrl+S 保存。</>} /></div>}
           </main>
         </div>

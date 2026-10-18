@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { withProjectReadTimeout } from "../state/projectRead";
 import { GitBranch, Github, RefreshCw, Upload, GitPullRequest, FolderGit2 } from "./icons";
 import "./project-repository.css";
 import type { ProjectRecord } from "../types/loom";
@@ -23,21 +24,39 @@ export function ProjectRepositoryCard({ projectId, blocked, onChanged, onNewThre
   const [prUrl, setPrUrl] = useState("");
   const [notice, setNotice] = useState("");
   const [worktreeProject, setWorktreeProject] = useState<ProjectRecord | null>(null);
+  const generation = useRef(0);
   const run = useCallback(async (operation: string, args: Record<string, unknown> = {}) => {
+    const request = generation.current;
     const client = Reflect.get(window, "loom") as { call<T>(method: string, args: Record<string, unknown>): Promise<T> } | undefined;
-    if (!client) return;
+    if (!client) { setError("本地主机连接不可用，请重新连接后重试。"); return; }
     setBusy(operation); setError(""); setNotice("");
     onBusyChange(true);
     try {
-      const result = await client.call<Repository>(`project/git_${operation}`, { projectId, ...args });
+      const pending = client.call<Repository>(`project/git_${operation}`, { projectId, ...args });
+      const result = await (operation === "repository" ? withProjectReadTimeout(pending) : pending);
+      if (request !== generation.current) return;
       setState(result);
       if (result.pullRequestUrl) setPrUrl(result.pullRequestUrl);
       if (result.project) setWorktreeProject(result.project);
       if (operation !== "repository") { setNotice("操作完成"); onChanged(); }
-    } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); }
-    finally { setBusy(""); onBusyChange(false); }
+    } catch (cause) { if (request === generation.current) setError(cause instanceof Error ? cause.message : String(cause)); }
+    finally { if (request === generation.current) { setBusy(""); onBusyChange(false); } }
   }, [projectId, onChanged]);
-  useEffect(() => { setState(null); setPrUrl(""); setRepo(""); setBranch(""); setWorktreeProject(null); void run("repository"); }, [projectId]);
+  useEffect(() => {
+    ++generation.current;
+    setState(null);
+    setBusy("");
+    setPrUrl("");
+    setRepo("");
+    setBranch("");
+    setTitle("");
+    setBase("main");
+    setBody("");
+    setDraft(true);
+    setWorktreeProject(null);
+    void run("repository");
+    return () => { ++generation.current; };
+  }, [projectId]);
   const disabled = blocked || Boolean(busy);
   return <section className="project-repository-card" aria-label="Git repository workflow">
     <header><div><Github size={17}/><strong>仓库与协作</strong></div><button disabled={Boolean(busy)} onClick={() => void run("repository")} aria-label="刷新仓库"><RefreshCw size={14}/></button></header>

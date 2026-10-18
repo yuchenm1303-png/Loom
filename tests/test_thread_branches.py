@@ -67,7 +67,7 @@ def test_child_creates_durable_parent_link_without_copying_history(branch_servic
     assert service.thread_read({"threadId": child["id"]})["thread"]["parentThreadId"] == parent["id"]
     assert any(item["id"] == child["id"] and item["parentThreadId"] == parent["id"]
                for item in service.thread_list({"view": "active"})["threads"])
-    assert "parentThreadId" not in (store.session_dir(child["id"]) / "session.json").read_text()
+    assert "parentThreadId" not in (store.session_dir(child["id"]) / "session.json").read_text(encoding="utf-8")
     assert project_file.read_text(encoding="utf-8") == "unchanged"
 
 

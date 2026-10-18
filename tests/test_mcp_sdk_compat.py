@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sys
+import os
 from pathlib import Path
 
 import pytest
@@ -104,6 +105,7 @@ def test_mcp_v2_real_stdio_subprocess_round_trip(tmp_path: Path):
                 transport="stdio",
                 command=sys.executable,
                 args=(str(fixture),),
+                env_from=(("PYTHONPATH", "PYTHONPATH"),) if os.environ.get("PYTHONPATH") else (),
                 default_effect=ToolEffect.READ_ONLY,
                 timeout_seconds=20.0,
             ),

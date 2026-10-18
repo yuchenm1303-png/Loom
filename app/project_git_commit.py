@@ -47,11 +47,13 @@ def _run_git(root: Path, *args: str, timeout: float = 8) -> subprocess.Completed
     try:
         process = subprocess.Popen(
             ["git", "-C", str(root), *args],
+            stdin=subprocess.DEVNULL,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
             encoding="utf-8",
             errors="replace",
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0) if os.name == "nt" else 0,
         )
         try:
             stdout, stderr = process.communicate(timeout=timeout)
