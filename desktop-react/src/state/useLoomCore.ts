@@ -23,6 +23,7 @@ import { switchCurrentModelForThread, switchModelProfileForThread } from "./mode
 import { RetainedBudgetMap } from "./retainedBudgetMap";
 import { runStartup, type StartupStage } from "./startupSequence";
 import { withThreadReadTimeout } from "./threadReadTimeout";
+import { reconcileThreadCompletion, settleCompletedTurnItems, terminalStatus, type TerminalTurn } from "./turnCompletion";
 
 type ThreadView = "active" | "archived";
 type ThreadCounts = { active: number; archived: number; all: number };
@@ -33,6 +34,7 @@ const THREAD_READ_CACHE_LIMIT = 8;
 const THREAD_READ_CACHE_TTL_MS = 5 * 60_000;
 const THREAD_READ_WINDOW_TURNS = 20;
 const MODEL_CATALOG_POLL_MS = 10_000;
+const ACTIVE_TURN_RECONCILE_MS = 15_000;
 
 function flattenItems(turns: TurnRecord[]): TranscriptItem[] {
   return turns.flatMap((turn) => turn.items ?? []);
@@ -267,6 +269,7 @@ export function useLoom() {
   const threadsRef = useRef<ThreadRecord[]>([]);
   const threadViewRef = useRef<ThreadView>("active");
   const terminalErrorTurnRef = useRef("");
+  const terminalTurnRef = useRef<TerminalTurn | null>(null);
   const threadStateRevisionRef = useRef(0);
   const itemIndexRef = useRef<Map<string, number>>(new Map());
   const pendingItemDeltasRef = useRef<Map<string, Record<string, unknown>>>(new Map());
@@ -333,6 +336,7 @@ export function useLoom() {
     activeIdRef.current = "";
     activeTurnIdRef.current = "";
     terminalErrorTurnRef.current = "";
+    terminalTurnRef.current = null;
     openingThreadIdRef.current = "";
     loadingOlderTurnsRef.current = false;
     setOpeningThreadId("");
@@ -534,6 +538,8 @@ export function useLoom() {
     const nextItems = flattenItems(result.turns ?? []);
     const terminalTurnId = terminalErrorTurnId(nextItems, result.thread.currentTurnId);
     terminalErrorTurnRef.current = terminalTurnId;
+    const completion = reconcileThreadCompletion(result.thread, result.turns, terminalTurnRef.current);
+    terminalTurnRef.current = completion.terminal;
     const normalizedResult = terminalTurnId && threadIsRunning(result.thread)
       ? {
           ...result,
@@ -542,10 +548,10 @@ export function useLoom() {
             status: "failed",
           },
         }
-      : result;
+      : { ...result, thread: completion.thread };
 
     setActive(normalizedResult);
-    installItems(nextItems);
+    installItems((result.turns ?? []).reduce(settleCompletedTurnItems, nextItems));
     const running = threadIsRunning(normalizedResult.thread);
     setTurnActive(running);
     setTurnStartedAt(running ? turnStartFromRead(normalizedResult) : null);
@@ -563,23 +569,59 @@ export function useLoom() {
     if (!threadId) return;
     const turnId = activeTurnIdRef.current;
     const revision = threadStateRevisionRef.current;
-    const result = await requireBridge().call<ThreadReadResult>("thread/read", {
+    const result = await withThreadReadTimeout(requireBridge().call<ThreadReadResult>("thread/read", {
       threadId,
       presentationOnly: true,
       turnLimit: 1,
-    });
+    }));
     if (activeIdRef.current !== threadId
       || activeTurnIdRef.current !== turnId
       || threadStateRevisionRef.current !== revision) return;
-    const next = result.thread;
-    if (!next || next.id !== threadId) return;
+    if (!result.thread || result.thread.id !== threadId) return;
+    // A cached/late Host snapshot of a different turn cannot end the turn the
+    // user just started. New generations enter through start/update/read flows.
+    if (turnId && String(result.thread.currentTurnId ?? "") !== turnId) return;
+    const completion = reconcileThreadCompletion(result.thread, result.turns, terminalTurnRef.current);
+    const next = completion.thread;
+    terminalTurnRef.current = completion.terminal;
+    activeTurnIdRef.current = String(next.currentTurnId ?? "");
     threadStateRevisionRef.current += 1;
-    setActive((current) => current?.thread.id === threadId ? { ...current, thread: next } : current);
+    setActive((current) => current?.thread.id === threadId ? { ...current, thread: next,
+      pendingApproval: completion.terminal ? null : current.pendingApproval,
+      turns: (current.turns ?? []).map(turn => turn.id === completion.terminal?.turnId
+        ? { ...turn, status: completion.terminal.status } : turn) } : current);
+    if (completion.terminal) {
+      flushPendingItemDeltas();
+      const terminal = result.turns?.find(turn => turn.id === completion.terminal?.turnId);
+      if (terminal) setItems(current => settleCompletedTurnItems(current, terminal));
+    }
     setThreads((current) => current.map((thread) => thread.id === threadId ? next : thread));
     const running = threadIsRunning(next);
     setTurnActive(running);
     if (!running) setTurnStartedAt(null);
-  }, []);
+  }, [flushPendingItemDeltas]);
+
+  useEffect(() => {
+    if (connection !== "ready" || !turnActive) return;
+    let disposed = false;
+    let inflight = false;
+    const reconcile = () => {
+      if (disposed || inflight || document.visibilityState !== "visible") return;
+      inflight = true;
+      void refreshActiveThreadState().catch(() => {
+        // Transport failure is not task completion. A later poll/focus retries.
+      }).finally(() => { inflight = false; });
+    };
+    const timer = window.setInterval(reconcile, ACTIVE_TURN_RECONCILE_MS);
+    window.addEventListener("focus", reconcile);
+    document.addEventListener("visibilitychange", reconcile);
+    return () => {
+      disposed = true;
+      window.clearInterval(timer);
+      window.removeEventListener("focus", reconcile);
+      document.removeEventListener("visibilitychange", reconcile);
+    };
+  }, [connection, turnActive, refreshActiveThreadState]);
 
   const openThread = useCallback(async (threadId: string) => {
     const normalized = threadId.trim();
@@ -1040,9 +1082,10 @@ export function useLoom() {
             && String(incomingThread.currentTurnId ?? "") === terminalErrorTurnRef.current
             && threadIsRunning(incomingThread)
           );
+          const completion = reconcileThreadCompletion(incomingThread, [], terminalTurnRef.current);
           const thread = staleRunningAfterTerminalError
             ? { ...incomingThread, status: "failed" }
-            : incomingThread;
+            : completion.thread;
 
           threadReadCacheRef.current.delete(thread.id);
           const belongsInView = threadViewRef.current === "archived" ? Boolean(thread.archived) : !thread.archived;
@@ -1053,12 +1096,18 @@ export function useLoom() {
             return [thread, ...current];
           });
           if (thread.id === activeId) {
+            const newlyTerminal = completion.terminal && (terminalTurnRef.current?.turnId !== completion.terminal.turnId
+              || terminalTurnRef.current.threadId !== completion.terminal.threadId);
+            terminalTurnRef.current = completion.terminal;
             threadStateRevisionRef.current += 1;
             setActive((current) => current && current.thread.id === thread.id ? { ...current, thread } : current);
             const running = threadIsRunning(thread);
             setTurnActive(running);
             if (running) setTurnStartedAt((current) => current ?? Date.now());
             else setTurnStartedAt(null);
+            // A terminal snapshot may arrive even when turn/completed was lost.
+            // Recover its final-item metadata as well as stopping the spinner.
+            if (newlyTerminal) void refreshActiveThreadState().catch(() => {});
           }
         }
         return;
@@ -1073,9 +1122,11 @@ export function useLoom() {
       if (message.method === "turn/started") {
         const turn = params.turn as TurnRecord | undefined;
         if (turn && threadId === activeId) {
+          if (terminalTurnRef.current?.threadId === threadId && terminalTurnRef.current.turnId === turn.id) return;
           threadStateRevisionRef.current += 1;
           activeTurnIdRef.current = turn.id;
           terminalErrorTurnRef.current = "";
+          terminalTurnRef.current = null;
           threadReadCacheRef.current.delete(threadId);
           setActive((current) => current && current.thread.id === activeId
             ? {
@@ -1225,19 +1276,8 @@ export function useLoom() {
         setTurnActive(false);
         setTurnStartedAt(null);
         if (turn) {
-          const finalItemId = String(turn.finalItemId ?? "");
-          const finalStepId = String(turn.finalStepId ?? "");
-          if (turn.status === "completed" && (finalItemId || finalStepId)) {
-            setItems((current) => current.map((item) => {
-              if (item.turnId !== turn.id || item.type !== "assistant_message") return item;
-              const isFinal = Boolean(
-                (finalItemId && item.id === finalItemId)
-                || (finalStepId && String(item.stepId ?? "") === finalStepId),
-              );
-              const phase = isFinal ? "final_answer" : (item.phase || "commentary");
-              return item.phase === phase ? item : { ...item, phase };
-            }));
-          }
+          if (terminalStatus(turn.status)) terminalTurnRef.current = { threadId: activeId, turnId: turn.id, status: turn.status };
+          setItems(current => settleCompletedTurnItems(current, turn));
           setActive((current) => current && current.thread.id === activeId
             ? {
                 ...current,
@@ -1255,7 +1295,7 @@ export function useLoom() {
       }
     });
     return unsubscribe;
-  }, [clearActive, flushPendingItemDeltas, openThread, refreshThreads, scheduleItemDeltaFlush]);
+  }, [clearActive, flushPendingItemDeltas, openThread, refreshThreads, scheduleItemDeltaFlush, refreshActiveThreadState]);
 
   useEffect(() => {
     if (!isLoomWebRuntime()) return;
