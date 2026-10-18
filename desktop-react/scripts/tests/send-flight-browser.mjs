@@ -59,11 +59,9 @@ const capsuleParts = (page) => page.evaluate(() => {
   };
   return {
     text: { left: text.left, right: text.right, top: text.top, bottom: text.bottom },
-    skin: part(".send-flight-skin:not(.send-flight-settle)"),
-    settle: part(".send-flight-settle"),
+    skin: part(".send-flight-skin"),
     card: part(".send-flight-card"),
     halo: part(".send-flight-halo"),
-    ring: part(".send-flight-ring"),
     membrane: getComputedStyle(ghost.querySelector(".send-flight-membrane")).transform,
     rotate: Number.parseFloat(getComputedStyle(ghost).rotate) || 0,
   };
@@ -113,7 +111,7 @@ try {
         entryAnimations: entry.getAnimations({ subtree: true }).map((animation) => animation.animationName).filter(Boolean),
         capsuleRow: capsule ? capsule.getBoundingClientRect().height : -1, capsuleOpacity: capsule ? Number(getComputedStyle(capsule).opacity) : -1,
         ghosts: document.querySelectorAll(".send-flight-ghost").length,
-        // The capsule: a shell (halo, skin, the skin's settled form, the bubble's own fill, the ring) and the text.
+        // The capsule: a shell (the shadow, the skin, the bubble's own fill) and the text.
         layers: [...document.querySelectorAll(".send-flight-ghost > *")].map((layer) => layer.className.replace(/ ?turn-block is-active ?/, "")),
         shell: [...document.querySelectorAll(".send-flight-ghost > .send-flight-shell > .send-flight-membrane > *")].map((part) => part.className.replace(/ ?turn-block is-active ?/, "")),
         oldText: getComputedStyle(document.querySelector(".composer-mode-crossfade > .crossfade-out .composer textarea")).webkitTextFillColor,
@@ -128,7 +126,7 @@ try {
     assert.ok(first.capsuleRow > 12, `the capsule's row is already there (${first.capsuleRow})`);
     assert.equal(first.capsuleOpacity, 0, "the capsule waits for the message");
     assert.deepEqual(first.layers, ["send-flight-shell", "send-flight-text"], "the capsule is a shell and the text, in that order (the text on top)");
-    assert.deepEqual(first.shell, ["send-flight-halo", "send-flight-skin", "send-flight-skin send-flight-settle", "send-flight-card", "send-flight-ring"], "the shell's layers, back to front");
+    assert.deepEqual(first.shell, ["send-flight-halo", "send-flight-skin", "send-flight-card"], "the shell's layers, back to front: the shadow, the skin, the bubble's own fill");
     assert.match(first.oldText, /0, 0, 0, 0|transparent/, "the composer that is going away does not show the text again");
 
     // At its first moment the text is on the field's text: same left edge, same line.
@@ -145,10 +143,11 @@ try {
     const middle = await ghostGlyph(page);
     assert.ok(middle.left > start.left + 20 && middle.centre < start.centre - 20, "the text is on its way");
 
-    // The capsule: its shell is around the text the whole way (the text never leaves it), comes up at once, relaxes into
-    // the bubble's own fill on touchdown, and is gone (every part at rest) at the end.
+    // The capsule: its shell is around the text the whole way (the text never leaves it), comes up at once, is lifted
+    // (a shadow, a little larger) while it is in the air, relaxes into the bubble's own fill as it is set down, and is
+    // gone (every part at rest) at the end.
     const launched = (await events(page)).find((event) => event.phase === "launch");
-    assert.ok(launched.arrive > 300 && launched.arrive < 520, `it touches down in a fraction of a second (${launched.arrive} ms)`);
+    assert.ok(launched.arrive > 300 && launched.arrive < 520, `it arrives in a fraction of a second (${launched.arrive} ms)`);
     for (const time of [0, 30, 60, 100, 150, 200, 260, 320, launched.arrive - 30]) {
       await seek(page, time);
       await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
@@ -160,14 +159,20 @@ try {
           `at ${time} ms the text is inside the capsule's skin: text ${JSON.stringify(text)} skin ${JSON.stringify(skin)}`);
       }
       if (time === 0) assert.equal(parts.skin.opacity, 0, "the skin comes up from nothing, around the text");
-      if (time >= 60) assert.ok(parts.skin.opacity > 0.97, `the skin is there at ${time} ms (${parts.skin.opacity})`);
-      if (time <= 100) assert.equal(parts.card.opacity, 0, "the bubble's own fill waits for the touchdown");
+      if (time >= 30 && time <= 150) assert.ok(parts.skin.opacity > 0.97, `the skin is there at ${time} ms (${parts.skin.opacity})`);
+      if (time <= 100) assert.equal(parts.card.opacity, 0, "the bubble's own fill waits until it is being put down");
+      if (time >= 60 && time <= 150) {
+        const grown = parts.membrane === "none" ? 1 : Number(parts.membrane.match(/-?[\d.]+(?:e-?\d+)?/g)[0]);
+        assert.ok(parts.halo.opacity > 0.9, `it is lifted at ${time} ms: its shadow is there (${parts.halo.opacity})`);
+        assert.ok(grown > 1.004, `and a little larger (${parts.membrane})`);
+      }
+      if (time === launched.arrive - 30) assert.ok(parts.card.opacity > 0.98 && parts.skin.opacity < 0.05 && parts.halo.opacity < 0.05, `by arrival it has been put down: ${JSON.stringify([parts.card.opacity, parts.skin.opacity, parts.halo.opacity])}`);
     }
     await seek(page, launched.duration - 2);
     await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
     const rest = await capsuleParts(page);
     // (Two milliseconds short of the end, a curve may still be a hair off its last value: invisible, and gone at the end.)
-    assert.deepEqual([rest.skin, rest.settle, rest.halo, rest.ring].map((layer) => layer.opacity < 0.02), [true, true, true, true], "at the end only the bubble's own fill is left");
+    assert.deepEqual([rest.skin, rest.halo].map((layer) => layer.opacity < 0.02), [true, true], "at the end only the bubble's own fill is left");
     assert.ok(rest.card.opacity > 0.999);
     const matrix = rest.membrane === "none" ? [1, 0, 0, 1, 0, 0] : rest.membrane.match(/-?[\d.]+(?:e-?\d+)?/g).map(Number);
     assert.ok([1, 0, 0, 1, 0, 0].every((value, index) => Math.abs(matrix[index] - value) < 1e-3), `the shell is not deformed at the end (${rest.membrane})`);
@@ -293,20 +298,39 @@ try {
     // The capsule is around the text in both of its layouts: the field's own at first, the message's once it has gone
     // over (the skin reshapes meanwhile), and the skin never lags behind the text it holds.
     assert.ok(await freeze(page) >= 6);
+    // The field's text is the bottom layer: the skin that comes up round it is a veil it goes out behind.
+    const order = await page.evaluate(() => [...document.querySelector(".send-flight-ghost").children].map((node) => node.className.replace(/ ?turn-block is-active ?/, "")));
+    assert.deepEqual(order, ["send-flight-field", "send-flight-shell", "send-flight-text"], "the field's text under the shell, the message's text on top");
     const around = (time) => page.evaluate((time) => {
       window.__held.forEach((animation) => { animation.currentTime = time; });
       return new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => {
         const ghost = document.querySelector(".send-flight-ghost");
         const rect = (node) => { const range = document.createRange(); range.selectNodeContents(node); const box = range.getBoundingClientRect(); return { left: box.left, right: box.right, top: box.top, bottom: box.bottom }; };
-        const skin = ghost.querySelector(".send-flight-skin:not(.send-flight-settle)").getBoundingClientRect();
+        const skin = ghost.querySelector(".send-flight-skin").getBoundingClientRect();
         resolve({ skin: { left: skin.left, right: skin.right, top: skin.top, bottom: skin.bottom }, field: rect(ghost.querySelector(".send-flight-field")), text: rect(ghost.querySelector(".send-flight-text .user-message")),
-          fieldOpacity: Number(getComputedStyle(ghost.querySelector(".send-flight-field")).opacity) });
+          fieldOpacity: Number(getComputedStyle(ghost.querySelector(".send-flight-field")).opacity),
+          skinOpacity: Number(getComputedStyle(ghost.querySelector(".send-flight-skin")).opacity),
+          textOpacity: Number(getComputedStyle(ghost.querySelector(".send-flight-text")).opacity) });
       })));
     }, time);
     const holds = (skin, text, label) => assert.ok(skin.left <= text.left + 2 && skin.right >= text.right - 2 && skin.top <= text.top + 2 && skin.bottom >= text.bottom - 2, `${label}: ${JSON.stringify(skin)} holds ${JSON.stringify(text)}`);
-    const early = await around(8);
-    assert.ok(early.fieldOpacity > 0.9, "the field's own text is what is shown at first");
-    holds(early.skin, early.field, "at 8 ms the capsule is around the field's text");
+    const early = await around(0);
+    assert.ok(early.fieldOpacity > 0.99 && early.textOpacity < 0.01, "the field's own text is what is shown at first, and only that");
+    holds(early.skin, early.field, "at the first moment the capsule is around the field's text");
+    // The exchange: behind the skin that comes up, in a few frames, and the two layouts are never both clearly there
+    // (what is seen of the old one is what the skin has not covered), nor the text ever nearly gone.
+    let both = 0;
+    let faintest = 9;
+    for (let time = 0; time <= 40; time += 2) {
+      const sample = await around(time);
+      const old = sample.fieldOpacity * (1 - sample.skinOpacity);
+      both = Math.max(both, Math.min(old, sample.textOpacity));
+      faintest = Math.min(faintest, old + sample.textOpacity);
+    }
+    assert.ok(both < 0.36, `the old and the new layout are never both there (${(both * 100).toFixed(0)}% at once)`);
+    assert.ok(faintest > 0.5, `and the text is not fainter than ${(faintest * 100).toFixed(0)}% on the way`);
+    const swapped = await around(44);
+    assert.ok(swapped.fieldOpacity < 0.01 && swapped.textOpacity > 0.99, "the exchange is over in 44 ms");
     const gone = await around(200);
     assert.equal(gone.fieldOpacity, 0, "and the field's layout has given way by 200 ms");
     holds(gone.skin, gone.text, "at 200 ms it is around the message's");
@@ -330,10 +354,29 @@ try {
     await page.locator(".composer.is-steering textarea").click();
     await page.keyboard.type("Also keep the diff small");
     await page.waitForTimeout(400);
+    // The field that is emptied shows its placeholder again: not under the text that is leaving it.
+    await page.evaluate(() => {
+      window.__placeholder = [];
+      window.__enterAt = 0;
+      document.addEventListener("keydown", (event) => { if (event.key === "Enter") window.__enterAt = performance.now(); }, { capture: true, once: true });
+      const started = performance.now();
+      const tick = () => {
+        const area = document.querySelector(".composer.is-steering textarea");
+        if (area) window.__placeholder.push({ at: performance.now(), opacity: Number(getComputedStyle(area, "::placeholder").opacity) });
+        if (performance.now() - started < 4000 && !(window.__enterAt && performance.now() - window.__enterAt > 1000)) requestAnimationFrame(tick);
+      };
+      requestAnimationFrame(tick);
+    });
     await page.keyboard.press("Enter");
     await flight(page);
     await landed(page);
     assert.deepEqual(await phases(page), ["launch", "land"], "guidance lands where its entry is, in a page that keeps growing");
+    await page.waitForFunction(() => window.__enterAt && performance.now() - window.__enterAt > 1000, null, { timeout: 4000 });
+    const { placeholder, enterAt } = await page.evaluate(() => ({ placeholder: window.__placeholder, enterAt: window.__enterAt }));
+    const early = placeholder.filter((sample) => sample.at > enterAt + 8 && sample.at < enterAt + 150);
+    assert.ok(early.length >= 3, `sampled ${early.length} frames while the guidance leaves`);
+    assert.ok(early.every((sample) => sample.opacity < 0.05), `the placeholder stays back while the text leaves: ${JSON.stringify(early.map((sample) => sample.opacity))}`);
+    assert.ok(placeholder.filter((sample) => sample.at > enterAt + 800).every((sample) => sample.opacity > 0.9), "and it is back by the end");
     assert.equal(await page.locator(".entry-steering-user").count(), 1);
     assert.equal(await page.locator(".entry-steering-user").evaluate((entry) => getComputedStyle(entry).visibility), "visible");
     assert.deepEqual(errors, []);

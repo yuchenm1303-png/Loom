@@ -1,13 +1,14 @@
 /* The message that leaves the field as a capsule and lands in the conversation ---------------------------------------
-   Owner: sendFlight.ts, which makes the layer, the capsule (the two copies of the message, the skin, the halo and the
-   ring) and its animations, and sendFlightMotion.ts, which has the physics; this file says what they look like and what
-   the real entry does meanwhile. Written up in docs/send-flight-2026-10-14.md and docs/send-capsule-2026-10-15.md.
+   Owner: sendFlight.ts, which makes the layer, the capsule (the two copies of the message, the skin and the halo) and
+   its animations, and sendFlightMotion.ts, which has the physics; this file says what they look like and what the real
+   entry does meanwhile. Written up in docs/send-flight-2026-10-14.md, docs/send-capsule-2026-10-15.md and
+   docs/send-lift-2026-10-17.md.
 
    While a message is in the air its real entry is held back (data-flight="flying" on the entry: visibility, so it
    keeps its place in the page and the page is already the size it will end as). The thinking capsule that follows it
-   holds too (the turn is "flying": its row is there at once, its fade waits) and is let in as the message touches
-   down (the turn is "settling"). When the capsule has settled the real entry shows (data-flight="landed" on both) and
-   its toolbar comes in: the touchdown itself (the squash, the ripple) is the flight's, before that.
+   holds too (the turn is "flying": its row is there at once, its fade waits) and is let in as the message is set
+   down (the turn is "settling"). When the capsule has come to rest the real entry shows (data-flight="landed" on both)
+   and its toolbar comes in: setting down itself is the flight's, before that.
 
    The entry's own entrance (generation-motion.css: the rise and the unfold of `.is-sending`, and the same for guidance
    inside the live process) is switched off while the flight owns the message, whatever the entry sits in: the
@@ -31,7 +32,8 @@
 
 /* The capsule is two things on top of each other, and what moves is the pair:
      shell   the part around the text. Its first wrapper is where the capsule starts (around the field's text, then
-             growing into the bubble), the second (the membrane) is the elastic one that lengthens and squashes.
+             growing into the bubble), the second (the membrane) is the elastic one that is larger while it is lifted
+             and lengthens as it leaves.
      text    the message without its card.
    Both cover the same box as the entry they were copied from. */
 .send-flight-shell,
@@ -69,48 +71,38 @@
   visibility: hidden !important;
 }
 
-/* The skin is the composer's material cut into a pill: its own fill, its hairline, a trace of the accent in the rim and
-   in the fill, and a light along the top edge. It is what makes the message an object in the air; on arrival it gives
-   way to the card, the bubble's own quiet fill. Shape and size are set in sendFlight.ts (the radius is a full pill for
-   one line); the opacity and the rest are the flight's. */
+/* The skin is the bubble's own material, lifted: the same quiet wash the bubble is drawn with, but solid and a step
+   brighter (a surface that is nearer is lighter in the dark theme, and whiter in the light one), with a hairline whose
+   only trace of the accent is a glint, and a light along the top edge. It is what makes the message an object in the air;
+   as the capsule is set down it gives way to the card, the bubble's own fill, and the hairline goes with it. Shape and
+   size are set in sendFlight.ts (the radius is a full pill for one line); the opacity and the rest are the flight's. */
 .send-flight-skin,
-.send-flight-halo,
-.send-flight-ring {
+.send-flight-halo {
   position: absolute;
   opacity: 0;
   pointer-events: none;
 }
 .send-flight-skin {
-  background: color-mix(in srgb, var(--accent) 7%, var(--loom-workspace-panel));
+  background: color-mix(in srgb, var(--loom-workspace-ink) 9%, var(--loom-workspace-canvas));
   box-shadow:
-    inset 0 0 0 1px color-mix(in srgb, var(--accent) 30%, var(--loom-workspace-line)),
-    inset 0 1px 0 rgba(255, 255, 255, .07);
+    inset 0 0 0 1px color-mix(in srgb, var(--accent) 10%, rgba(224, 230, 242, .1)),
+    inset 0 1px 0 rgba(255, 255, 255, .06);
 }
-/* Its shadow (lifted: it is in the air) and the faintest bloom of the accent, and the ring (light that spreads off the
-   bubble once as the capsule touches down): gradients in a round box that is larger than the capsule, so that what shows
-   around it is the soft end of a falloff. An ellipse under a wide object that floats is what a contact shadow looks
-   like, which a blurred pill-shaped box-shadow was not (it read as a second plate under the capsule in the light theme). */
+/* Its shadow, which is its height above the page: a gradient in a round box that is larger than the capsule, so that
+   what shows around it is the soft end of a falloff. An ellipse under a wide object that floats is what a contact
+   shadow looks like, which a blurred pill-shaped box-shadow was not (it read as a second plate under the capsule in the
+   light theme). Neutral: there is no light of its own in the air. */
 .send-flight-halo {
-  background:
-    radial-gradient(closest-side, color-mix(in srgb, var(--accent) 16%, transparent), transparent),
-    radial-gradient(closest-side, rgba(0, 0, 0, .42), rgba(0, 0, 0, .18) 52%, transparent);
-}
-.send-flight-ring {
-  background: radial-gradient(closest-side, color-mix(in srgb, var(--accent) 30%, transparent), color-mix(in srgb, var(--accent) 10%, transparent) 62%, transparent);
+  background: radial-gradient(closest-side, rgba(0, 0, 0, .36), rgba(0, 0, 0, .14) 54%, transparent);
 }
 :root[data-loom-theme="light"] .send-flight-skin {
-  background: color-mix(in srgb, var(--accent) 5%, var(--loom-workspace-panel));
+  background: var(--loom-workspace-panel);
   box-shadow:
-    inset 0 0 0 1px color-mix(in srgb, var(--accent) 24%, var(--loom-workspace-line)),
+    inset 0 0 0 1px color-mix(in srgb, var(--accent) 9%, rgba(32, 42, 58, .09)),
     inset 0 1px 0 rgba(255, 255, 255, .9);
 }
 :root[data-loom-theme="light"] .send-flight-halo {
-  background:
-    radial-gradient(closest-side, color-mix(in srgb, var(--accent) 9%, transparent), transparent),
-    radial-gradient(closest-side, rgba(32, 42, 58, .25), rgba(32, 42, 58, .1) 52%, transparent);
-}
-:root[data-loom-theme="light"] .send-flight-ring {
-  background: radial-gradient(closest-side, color-mix(in srgb, var(--accent) 22%, transparent), color-mix(in srgb, var(--accent) 8%, transparent) 62%, transparent);
+  background: radial-gradient(closest-side, rgba(32, 42, 58, .2), rgba(32, 42, 58, .07) 54%, transparent);
 }
 
 /* The real entry while its message is in the air. */
@@ -126,7 +118,8 @@
 }
 
 /* The composer that is going away (it fades while its replacement fades in) must not show the text a second time, and
-   the one that arrives keeps its placeholder back until the text has left the spot it would be drawn on. The keyframes
+   the one that arrives (or, for guidance sent into a running task, the one that stays: there is no crossfade then, the
+   field simply empties) keeps its placeholder back until the text has left the spot it would be drawn on. The keyframes
    end where the placeholder's own style is (no 100% keyframe), whatever that is while it has focus. */
 :root .composer-mode-crossfade[data-sent] > .crossfade-out .composer textarea {
   color: transparent !important;
@@ -140,7 +133,7 @@
   height: auto;
   overflow: visible;
 }
-:root .composer-mode-crossfade[data-sent] > .crossfade-in .composer textarea::placeholder {
+:root .composer-mode-crossfade[data-sent] > :is(.crossfade-in, .crossfade-current) .composer textarea::placeholder {
   animation: loom-flight-placeholder 520ms ease backwards;
 }
 @keyframes loom-flight-placeholder {
@@ -167,7 +160,7 @@
   --thinking-lead: var(--flight-lead, 300ms);
 }
 
-/* Landing: the toolbar arrives. (The touchdown itself, the squash and the ripple, is the flight's: it is over by now.) */
+/* Landing: the toolbar arrives. (Setting the capsule down is the flight's own: it is over by now.) */
 :root .app-shell .transcript-entry.entry-user_message[data-flight="landed"] .user-message-meta {
   animation: loom-flight-meta 300ms cubic-bezier(.2, .8, .2, 1) backwards;
 }

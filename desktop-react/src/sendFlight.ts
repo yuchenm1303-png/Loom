@@ -3,24 +3,24 @@
  *
  * Sending used to swap two unrelated pictures: the text vanished from the field and a bubble appeared in the
  * transcript. Here the message itself makes the trip, and it travels as a capsule: the text, and around it a soft
- * shell made of the composer's own material that comes out of the field with it. The composer records where the text
- * was drawn when Enter is pressed (`recordSendOrigin`, before the field is cleared); the entry that the transcript then
- * mounts for the message asks for the flight (`launchSendFlight`, in its layout effect, before anything is painted).
- * The real entry is held back (`data-flight="flying"`) while the capsule travels in a layer above the page:
+ * shell that is the bubble's own material, lifted. The capsule is picked up as it leaves the field and set down as it
+ * reaches its place, and that is all it does: how high it is above the page drives the shadow, the size and the
+ * material (sendFlightMotion.ts has the physics). The composer records where the text was drawn when Enter is pressed
+ * (`recordSendOrigin`, before the field is cleared); the entry that the transcript then mounts for the message asks for
+ * the flight (`launchSendFlight`, in its layout effect, before anything is painted). The real entry is held back
+ * (`data-flight="flying"`) while the capsule travels in a layer above the page:
  *
  *   text  the message's own content, no card. It starts exactly where the field's text was (same left edge, same line
  *         centre, a touch larger because the field is set larger than a bubble) and travels to where the bubble will
  *         be: the place it will have once the page has made room, which is known at mount (the transcript follows to
  *         its end). It only translates (and leans a little into the climb); the one scale it has (from the field's
  *         type size to the bubble's) is over before the text has gone far. Glyphs are never squashed.
- *   shell the capsule around the text, in layers that all start at the text and go with it. The skin is the
- *         composer's material (its fill, its hairline, a trace of the accent) in a full pill; it is what makes the
- *         message an object in the air. The halo is its shadow: it trails the capsule by its speed and is lifted
- *         from the page while it flies. On arrival the skin relaxes in two steps: first its shape (the same material
- *         in the bubble's own corners: the settle), then its material (the card, the real bubble's own quiet fill),
- *         and the ring is the light that spreads off the bubble as it touches down. The shell is the elastic part: it
- *         lengthens as the capsule leaves and squashes as it arrives (sendFlightMotion.ts has the physics), and it
- *         carries no glyphs, so it may be distorted.
+ *   shell the capsule around the text, in layers that all start at the text and go with it. The skin is the bubble's
+ *         material lifted (a solid pill a step brighter than the bubble, with a hairline): it is what makes the message
+ *         an object in the air. The halo is its shadow, which is its height: it comes up as the capsule leaves, trails
+ *         it by its speed and is gone when it is down. As the capsule is set down the skin gives way to the card, the
+ *         real bubble's own quiet fill, and the hairline goes with it. The shell is a little elastic: larger while it
+ *         is lifted and longer as it leaves, and it carries no glyphs, so it may be distorted.
  *
  * Text and card are made with `cloneNode` of the real entry, so whatever a message holds (rich text, links,
  * attachments) is drawn as the entry will draw it, in both themes, and the hand-off at the end is the same pixels.
@@ -32,8 +32,10 @@
  * frame. A message sent while a task is running (guidance) flies the same way into the live process.
  *
  * A message that will not be laid out the way the field had it (it wraps at another width, a list is drawn as a list)
- * starts as the field's own text, drawn again exactly as the field drew it, and changes into the message's layout over
- * the first moments of the flight. A starter card sets a message off from the card, its text coming in on the way.
+ * starts as the field's own text, drawn again exactly as the field drew it, and changes into the message's layout in
+ * the first few frames of the flight: the field's text is under the shell, so the skin that comes up round it is a veil
+ * the old layout goes out behind while the new one comes in on top, and the two are never both whole. A starter card
+ * sets a message off from the card, its text coming in on the way.
  *
  * Nothing here is needed for correctness. Without an origin (a message sent from elsewhere), under reduced motion,
  * with the window hidden, for a message too tall to fly, or if anything is not where it should be,
@@ -92,22 +94,31 @@ const CAPSULE_RELEASE = 0.86;
 /** Within this the real entry is where the flight meant to land, and nothing needs correcting. */
 const LANDING_TOLERANCE_PX = 1.5;
 const LANDING_CORRECTION_MS = 110;
-/** The field's own text is exchanged for the message's layout over this share of the flight. */
-const FIELD_FADE = 0.13;
+/**
+ * The field's own text is exchanged for the message's layout while the capsule is already leaving, behind the skin that
+ * comes up around it (the skin is a veil: the field's text goes out behind it, the message's layout comes in on top of
+ * it, and the two are never both whole at the same time), and in a few frames, at the speed where an exchange reads as
+ * motion and not as a double exposure. Times in ms from the first frame.
+ */
+const SWAP_OUT_MS: [number, number] = [8, 18];
+const SWAP_IN_MS: [number, number] = [8, 20];
+/** The capsule round the field's text block reshapes into the bubble's box over this long. */
+const RESHAPE_MS = 120;
+/** A message sent from a starter card has no text on screen to continue from: its text comes in over this long. */
+const CARD_TEXT_IN_MS = 90;
 /** The home screen takes this long to go. */
 const HOME_DISSOLVE_MS = 260;
 /** `data-flight="landed"` outlives the landing by this long, so the entrance it starts can finish. */
 const LANDED_MARK_MS = 900;
 /** The capsule is a full pill up to this radius; a taller message gets a soft card instead of a stadium. */
 const CAPSULE_MAX_RADIUS_PX = 22;
-/** How far the shadow and the light of the touchdown reach beyond the capsule (px, sideways and up/down). */
-const HALO_GROW_PX: [number, number] = [34, 26];
-const RING_GROW_PX: [number, number] = [30, 24];
+/** How far the shadow reaches beyond the capsule (px, sideways and up/down). */
+const HALO_GROW_PX: [number, number] = [26, 20];
 
 /** The type size meets the bubble's over this share of the time to arrive; it is over before the capsule has gone far. */
 const SCALE_SETTLE_SHARE = 0.5;
 const EASE_SETTLE = "cubic-bezier(.2, .8, .2, 1)";
-const EASE_RESHAPE = "cubic-bezier(.42, 0, .22, 1)";
+const EASE_RESHAPE = "cubic-bezier(.3, 0, .1, 1)";
 /** The two layouts of a message trade places on one curve, so that where one has gone the other has come (their opacities add up to one). */
 const EASE_CROSS = "cubic-bezier(.4, 0, .6, 1)";
 
@@ -404,14 +415,10 @@ export function launchSendFlight(entry: HTMLElement, kind: SendKind = "send"): b
     return node;
   };
   const pill = `${Math.min(bubbleBox.height / 2, CAPSULE_MAX_RADIUS_PX)}px`;
-  const corners = getComputedStyle(bubble).borderRadius || "10px";
-  // The shadow and the light are round, and larger than the capsule they surround (their gradients fall off to nothing
-  // at the edge of the box): see send-flight.css.
+  // The shadow is round, and larger than the capsule it sits under (its gradient falls off to nothing at the edge of
+  // the box): see send-flight.css.
   const halo = place("send-flight-halo", "50%", HALO_GROW_PX);
   const skin = place("send-flight-skin", pill);
-  // The same material in the bubble's own corners: the pill gives way to it as the capsule touches down.
-  const settle = place("send-flight-skin send-flight-settle", corners);
-  const ring = place("send-flight-ring", "50%", RING_GROW_PX);
   // The shell holds them and the card. The outer wrapper is where the capsule starts (around the field's text: its
   // scale and its place); the inner one (the membrane) is the elastic part (about the capsule's own centre).
   const shell = document.createElement("div");
@@ -419,14 +426,15 @@ export function launchSendFlight(entry: HTMLElement, kind: SendKind = "send"): b
   const membrane = document.createElement("div");
   membrane.className = "send-flight-membrane";
   membrane.style.transformOrigin = `${bubbleCentre.x}px ${bubbleCentre.y}px`;
-  membrane.append(halo, skin, settle, card, ring);
+  membrane.append(halo, skin, card);
   shell.append(membrane);
   ghost.append(shell, text);
   // A message that will not be laid out the way the field had it (it wraps at another width, a list is drawn as a
   // list) starts as the field's own text, drawn again exactly as the field drew it, and changes into the message's
-  // layout while it is on its way: the first frame is the field, with no jump in the middle of a paragraph.
+  // layout while it is on its way: the first frame is the field, with no jump in the middle of a paragraph. It is
+  // under the shell, so that the skin that comes up around it is the veil it goes out behind.
   const fieldLayer = start.field && !oneLine && !start.fromBottom && start.field.text ? drawFieldText(start.field, firstGlyph.x, firstGlyph.y) : null;
-  if (fieldLayer) ghost.append(fieldLayer);
+  if (fieldLayer) ghost.prepend(fieldLayer);
   if (start.home) dissolveHome(layer, start.home);
   layer.append(ghost);
 
@@ -463,21 +471,19 @@ export function launchSendFlight(entry: HTMLElement, kind: SendKind = "send"): b
     membrane.animate(motion.shell, timing()),
     skin.animate(motion.skin, timing()),
     skin.animate(motion.pop, timing()),
-    settle.animate(motion.settle, timing()),
     card.animate(motion.card, timing()),
     halo.animate(motion.halo, timing()),
-    ring.animate(motion.ring, timing()),
     ...(meetType ? [text.animate([{ scale: String(ratio) }, { scale: "1" }], timing({ easing: EASE_SETTLE, duration: settleMs }))] : []),
     // Reshaping goes with the text changing layout (the same moment, and an ease that is slow at both ends), so that
     // the capsule is around the text in both of its layouts and not around only one of them.
     ...(reshapes ? [shell.animate(
       [{ scale: `${hug.scale[0]} ${hug.scale[1]}`, translate: `${hug.translate[0]}px ${hug.translate[1]}px` }, { scale: "1 1", translate: "0px 0px" }],
-      fieldLayer ? timing({ easing: EASE_RESHAPE, duration: Math.round(duration * FIELD_FADE * 1.6) }) : timing({ easing: EASE_SETTLE, duration: settleMs }),
+      fieldLayer ? timing({ easing: EASE_RESHAPE, duration: RESHAPE_MS }) : timing({ easing: EASE_SETTLE, duration: settleMs }),
     )] : []),
-    ...(start.fade ? [text.animate([{ opacity: 0 }, { opacity: 1 }], timing({ easing: "ease-out", duration: duration * FIELD_FADE * 1.4 }))] : []),
+    ...(start.fade ? [text.animate([{ opacity: 0 }, { opacity: 1 }], timing({ easing: "ease-out", duration: CARD_TEXT_IN_MS }))] : []),
     ...(fieldLayer ? [
-      fieldLayer.animate([{ opacity: 1 }, { opacity: 0 }], timing({ easing: EASE_CROSS, duration: duration * FIELD_FADE })),
-      text.animate([{ opacity: 0 }, { opacity: 1 }], timing({ easing: EASE_CROSS, duration: duration * FIELD_FADE })),
+      fieldLayer.animate([{ opacity: 1 }, { opacity: 0 }], timing({ easing: EASE_CROSS, delay: SWAP_OUT_MS[0], duration: SWAP_OUT_MS[1] - SWAP_OUT_MS[0] })),
+      text.animate([{ opacity: 0 }, { opacity: 1 }], timing({ easing: EASE_CROSS, delay: SWAP_IN_MS[0], duration: SWAP_IN_MS[1] - SWAP_IN_MS[0] })),
     ] : []),
   ];
   const release = Math.round(motion.arrive * CAPSULE_RELEASE);
