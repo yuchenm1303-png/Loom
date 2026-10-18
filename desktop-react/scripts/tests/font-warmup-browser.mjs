@@ -13,7 +13,7 @@ try {
   await page.goto(`${origin}/scripts/fixtures/live-app.html`);
   await page.waitForFunction(() => window.liveFixture && document.querySelector(".composer textarea:not([disabled])"), null, { timeout: 90000 });
   // The warm-up is one weight per idle slice; give it its time and wait for its probe to go.
-  await page.waitForFunction(() => ![...document.body.children].some(node => node.getAttribute("aria-hidden") === "true" && node.textContent === "Aa"), null, { timeout: 30000, polling: 250 });
+  await page.waitForFunction(() => ![...document.body.children].some(node => node.getAttribute("aria-hidden") === "true" && node.textContent.startsWith("Aa")), null, { timeout: 30000, polling: 250 });
   const costs = await page.evaluate(() => {
     const first = weight => {
       const probe = document.createElement("span");

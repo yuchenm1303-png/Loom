@@ -1,6 +1,11 @@
 :root {
   color-scheme: dark;
-  --loom-font-family: "Segoe UI Variable Text", "Segoe UI", Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, sans-serif;
+  /* The face of the interface. Segoe UI Variable carries the Latin. The Chinese comes from MiSans when it is installed:
+     it has a real weight for every step of the scale (400 / 500 / 600 / 650), where the system's Microsoft YaHei has
+     two, so a heading or a bold run in Chinese was its Bold at 600, 650 and 700 alike (a semibold in Latin, a heavy
+     bold beside it in Chinese). It sits before ui-sans-serif because that generic is itself the system's Chinese face.
+     Without MiSans the next family is the system's, as it was. */
+  --loom-font-family: "Segoe UI Variable Text", "Segoe UI", Inter, "MiSans", ui-sans-serif, -apple-system, BlinkMacSystemFont, sans-serif;
   font-family: var(--loom-font-family);
   --bg: #0b0c0f;
   --bg-deep: #090a0d;

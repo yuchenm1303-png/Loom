@@ -21,7 +21,7 @@
   background: radial-gradient(520px 180px at 12% -10%, rgba(139,124,246,.12), transparent 68%), #121317;
   box-shadow: 0 28px 90px rgba(0,0,0,.42), 0 2px 12px rgba(0,0,0,.2);
   color: #edf0f4;
-  font-family: "Segoe UI Variable Text", "Segoe UI", Inter, ui-sans-serif, sans-serif;
+  font-family: var(--loom-font-family);
   animation: remote-panel-in 220ms cubic-bezier(.2,.8,.2,1) both;
 }
 

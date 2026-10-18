@@ -3,7 +3,8 @@
  * time text is laid out in that weight: 7-10ms each. They used to be paid in the first frame of whichever surface met
  * a weight first (the settings page asks for six it had not seen: about 55ms of its first open). Laying out two letters
  * in each of them while the app is idle moves that to a time nobody is waiting on. Sizes are cheap (the instance is
- * shared), so one size is enough.
+ * shared), so one size is enough. The probe has one Chinese character too: the Chinese face (MiSans, when it is
+ * installed, see --loom-font-family) is a variable font with an instance of its own for each weight.
  *
  * The list is every numeric `font-weight` the source uses; scripts/tests/font-warmup.test.mjs fails when a
  * stylesheet asks for one that is not here. There are four (text, label, heading, strong): the source used to ask
@@ -27,7 +28,7 @@ export function warmFontWeights(): () => void {
     : (handle) => window.clearTimeout(handle);
   const probe = document.createElement("span");
   probe.setAttribute("aria-hidden", "true");
-  probe.textContent = "Aa";
+  probe.textContent = "Aa字";
   probe.style.cssText = "position:fixed;left:-9999px;top:0;visibility:hidden;pointer-events:none;white-space:pre;contain:layout style";
   document.body.appendChild(probe);
   const queue = [...UI_FONT_WEIGHTS];
