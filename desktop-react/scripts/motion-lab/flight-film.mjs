@@ -3,13 +3,13 @@
 //   node scripts/motion-lab/flight-film.mjs [--scene closeup,handoff,strip,onion] [--theme dark|light] [--empty 1] [--height 860] [--from field|card|steer]
 //        [--text "..."] [--times 0,30,60,...] [--zoom 1.4] [--out file.png]
 //
-//   closeup  each frame cropped around the message and enlarged: the card coming up around the text, the text's own
+//   closeup  each frame cropped around the message and enlarged: the pill coming up around the text, the shadow, the text's own
 //            crispness, where the capsule is. (default)
 //   handoff  the ghost at its last moment against the real bubble it hands over to, enlarged, with a difference image
 //            (x6) and the numbers: what the reader would see change at the moment of landing.
 //   strip    the lower part of the page at each time, small: the whole choreography in one picture.
-//   onion    every --step ms (default 33) of the flight in one picture, the brightest (darkest in light) pixel of each: the path,
-//            the spacing along it (an ease-out bunches up at the end) and the capsule leaning and stretching.
+//   onion    every --step ms (default 33) of the flight in one picture, the brightest (darkest in light) pixel of each: the path
+//            and the spacing along it (an ease-out bunches up at the end). --step 16.667 is what a 60 Hz screen shows.
 //   Everything on the page is paused and seeked with the flight (the composers crossing over, the thinking row), except the
 //   ::placeholder animation, which the browser does not list: the field may show a placeholder in the first frames.
 //   (the first frame is the field's own text under the ghost: compare it with the field before Enter with lift-off.)
@@ -118,7 +118,9 @@ if (scenes.includes("handoff")) {
   const second = await typed();
   await second.send();
   await freeze(second.page);
-  await second.page.evaluate(() => window.__held.forEach((animation) => { animation.currentTime = (Number(animation.effect.getComputedTiming().endTime) || 0) - 2; }));
+  // A tenth of a millisecond short of the end: two milliseconds short, any 0.01 px of offset flips the glyphs' sub-pixel
+  // bins and the difference image shows two hundred pixels that are not there at the end.
+  await second.page.evaluate(() => window.__held.forEach((animation) => { animation.currentTime = (Number(animation.effect.getComputedTiming().endTime) || 0) - 0.1; }));
   await second.page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
   const clip = { x: last.x - 6, y: last.y - 6, width: last.w + 12, height: last.h + 12 };
   const ghost = await second.page.screenshot({ clip, type: "png" });

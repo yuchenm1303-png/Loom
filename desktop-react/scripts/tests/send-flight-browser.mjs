@@ -62,8 +62,9 @@ const capsuleParts = (page) => page.evaluate(() => {
     skin: part(".send-flight-skin"),
     card: part(".send-flight-card"),
     halo: part(".send-flight-halo"),
-    membrane: getComputedStyle(ghost.querySelector(".send-flight-membrane")).transform,
-    rotate: Number.parseFloat(getComputedStyle(ghost).rotate) || 0,
+    // The capsule is never tilted or scaled as a whole: it only goes along its way.
+    rotate: getComputedStyle(ghost).rotate,
+    scale: getComputedStyle(ghost).scale,
   };
 });
 
@@ -113,7 +114,7 @@ try {
         ghosts: document.querySelectorAll(".send-flight-ghost").length,
         // The capsule: a shell (the shadow, the skin, the bubble's own fill) and the text.
         layers: [...document.querySelectorAll(".send-flight-ghost > *")].map((layer) => layer.className.replace(/ ?turn-block is-active ?/, "")),
-        shell: [...document.querySelectorAll(".send-flight-ghost > .send-flight-shell > .send-flight-membrane > *")].map((part) => part.className.replace(/ ?turn-block is-active ?/, "")),
+        shell: [...document.querySelectorAll(".send-flight-ghost > .send-flight-shell > *")].map((part) => part.className.replace(/ ?turn-block is-active ?/, "")),
         oldText: getComputedStyle(document.querySelector(".composer-mode-crossfade > .crossfade-out .composer textarea")).webkitTextFillColor,
       };
     });
@@ -143,12 +144,12 @@ try {
     const middle = await ghostGlyph(page);
     assert.ok(middle.left > start.left + 20 && middle.centre < start.centre - 20, "the text is on its way");
 
-    // The capsule: its shell is around the text the whole way (the text never leaves it), comes up at once, is lifted
-    // (a shadow, a little larger) while it is in the air, relaxes into the bubble's own fill as it is set down, and is
-    // gone (every part at rest) at the end.
+    // The capsule: its shell is around the text the whole way (the text never leaves it), comes up at once, is lifted (it
+    // has a shadow) while it is in the air, relaxes into the bubble's own fill as it is set down, and is gone (every part
+    // at rest) at the end. It is never tilted or scaled as a whole.
     const launched = (await events(page)).find((event) => event.phase === "launch");
-    assert.ok(launched.arrive > 300 && launched.arrive < 520, `it arrives in a fraction of a second (${launched.arrive} ms)`);
-    for (const time of [0, 30, 60, 100, 150, 200, 260, 320, launched.arrive - 30]) {
+    assert.ok(launched.arrive > 200 && launched.arrive < 420 && launched.duration >= 330 && launched.duration <= 420, `it arrives in a fraction of a second (${launched.arrive} of ${launched.duration} ms)`);
+    for (const time of [0, 30, 60, 100, 150, 200, 260, 320, launched.arrive + 20]) {
       await seek(page, time);
       await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
       const parts = await capsuleParts(page);
@@ -161,12 +162,10 @@ try {
       if (time === 0) assert.equal(parts.skin.opacity, 0, "the skin comes up from nothing, around the text");
       if (time >= 30 && time <= 150) assert.ok(parts.skin.opacity > 0.97, `the skin is there at ${time} ms (${parts.skin.opacity})`);
       if (time <= 100) assert.equal(parts.card.opacity, 0, "the bubble's own fill waits until it is being put down");
-      if (time >= 60 && time <= 150) {
-        const grown = parts.membrane === "none" ? 1 : Number(parts.membrane.match(/-?[\d.]+(?:e-?\d+)?/g)[0]);
-        assert.ok(parts.halo.opacity > 0.9, `it is lifted at ${time} ms: its shadow is there (${parts.halo.opacity})`);
-        assert.ok(grown > 1.004, `and a little larger (${parts.membrane})`);
-      }
-      if (time === launched.arrive - 30) assert.ok(parts.card.opacity > 0.98 && parts.skin.opacity < 0.05 && parts.halo.opacity < 0.05, `by arrival it has been put down: ${JSON.stringify([parts.card.opacity, parts.skin.opacity, parts.halo.opacity])}`);
+      if (time >= 60 && time <= 100) assert.ok(parts.halo.opacity > 0.9, `it is lifted at ${time} ms: its shadow is there (${parts.halo.opacity})`);
+      assert.equal(parts.rotate, "none", `it is not tilted at ${time} ms`);
+      assert.equal(parts.scale, "none", `and not scaled at ${time} ms`);
+      if (time === launched.arrive + 20) assert.ok(parts.card.opacity > 0.98 && parts.skin.opacity < 0.05 && parts.halo.opacity < 0.05, `by arrival it has been put down: ${JSON.stringify([parts.card.opacity, parts.skin.opacity, parts.halo.opacity])}`);
     }
     await seek(page, launched.duration - 2);
     await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
@@ -174,9 +173,27 @@ try {
     // (Two milliseconds short of the end, a curve may still be a hair off its last value: invisible, and gone at the end.)
     assert.deepEqual([rest.skin, rest.halo].map((layer) => layer.opacity < 0.02), [true, true], "at the end only the bubble's own fill is left");
     assert.ok(rest.card.opacity > 0.999);
-    const matrix = rest.membrane === "none" ? [1, 0, 0, 1, 0, 0] : rest.membrane.match(/-?[\d.]+(?:e-?\d+)?/g).map(Number);
-    assert.ok([1, 0, 0, 1, 0, 0].every((value, index) => Math.abs(matrix[index] - value) < 1e-3), `the shell is not deformed at the end (${rest.membrane})`);
-    assert.ok(Math.abs(rest.rotate) < 0.01, "and not leaning");
+    assert.equal(rest.rotate, "none");
+    // Its way, measured on the real page (the first glyph, with the flight's own clock sampled at nine moments): Material's
+    // arc. Along the field's level first and then up into its place, so the horizontal is always further on than the
+    // vertical, every sample is on the quarter circle that the two shares make, and the path bows away from the straight line.
+    await seek(page, launched.duration - 0.1);
+    await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    const end = await ghostGlyph(page);
+    const way = Math.hypot(end.left - start.left, end.centre - start.centre);
+    assert.ok(way > 300, `a flight with an arc to look at (${way.toFixed(0)} px)`);
+    let bow = 0;
+    for (const time of [30, 60, 90, 120, 150, 180, 220, 260, 300]) {
+      await seek(page, time);
+      await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+      const point = await ghostGlyph(page);
+      const sideways = (point.left - start.left) / (end.left - start.left);
+      const upwards = (point.centre - start.centre) / (end.centre - start.centre);
+      assert.ok(sideways >= upwards - 0.02, `at ${time} ms the horizontal (${sideways.toFixed(2)}) leads the vertical (${upwards.toFixed(2)})`);
+      assert.ok(Math.abs(sideways ** 2 + (1 - upwards) ** 2 - 1) < 0.03, `at ${time} ms it is on the quarter circle (${(sideways ** 2 + (1 - upwards) ** 2).toFixed(3)})`);
+      bow = Math.max(bow, Math.abs((point.left - start.left) * (end.centre - start.centre) - (point.centre - start.centre) * (end.left - start.left)) / way);
+    }
+    assert.ok(bow > 0.15 * way && bow < 0.25 * way, `the path bows by ${(bow / way * 100).toFixed(0)}% of its length: a quarter circle bows by a fifth`);
     // The text never scales once it is on its way: the only scale is the type size meeting the field's.
     await page.evaluate(() => { window.setTimeout = window.__setTimeout; window.__held.forEach((animation) => animation.play()); });
     await landed(page);
@@ -198,23 +215,29 @@ try {
     await context.close();
   }
 
-  // 2. A conversation that scrolls: the message is aimed at where the page will rest, and lands there.
+  // 2. A conversation that scrolls: the message is aimed at where the page will rest, and lands there. The page's own
+  //    scroll is still easing for about a hundred milliseconds after the flight is over (the entry is 4 px away from where
+  //    it will be at the hand-off, and moving), so the capsule has to follow the entry closely at the end, not the place
+  //    where the page will rest: that took a filter that tightens as the capsule comes in, and a single run cannot show
+  //    it (one in four needed a correction without it): three do.
   if (run(2)) {
-    const { context, page, errors } = await open({ height: 560 });
-    await page.locator(".composer textarea").click();
-    await page.keyboard.type("A message in a window that has to scroll to make room");
-    await page.waitForTimeout(400);
-    await page.keyboard.press("Enter");
-    await landed(page);
-    assert.deepEqual(await phases(page), ["launch", "land"], "a page that scrolls under the flight does not leave anything to correct");
-    // The page is the size it will end as from the first frame (the capsule's row is reserved, the entry is held in its
-    // place): it does not grow a second time under a message that has already landed.
-    await page.waitForTimeout(500);
-    const launched = (await events(page))[0];
-    const height = await page.evaluate(() => document.querySelector(".conversation-stage > .transcript-scroll").scrollHeight);
-    assert.ok(Math.abs(height - launched.pageHeight) <= 1, `the page was ${launched.pageHeight} px when the message set off and is ${height} now`);
-    assert.deepEqual(errors, []);
-    await context.close();
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      const { context, page, errors } = await open({ height: 560 });
+      await page.locator(".composer textarea").click();
+      await page.keyboard.type("A message in a window that has to scroll to make room");
+      await page.waitForTimeout(400);
+      await page.keyboard.press("Enter");
+      await landed(page);
+      assert.deepEqual(await phases(page), ["launch", "land"], `a page that scrolls under the flight does not leave anything to correct (run ${attempt + 1} of 3)`);
+      // The page is the size it will end as from the first frame (the capsule's row is reserved, the entry is held in its
+      // place): it does not grow a second time under a message that has already landed.
+      await page.waitForTimeout(500);
+      const launched = (await events(page))[0];
+      const height = await page.evaluate(() => document.querySelector(".conversation-stage > .transcript-scroll").scrollHeight);
+      assert.ok(Math.abs(height - launched.pageHeight) <= 1, `the page was ${launched.pageHeight} px when the message set off and is ${height} now`);
+      assert.deepEqual(errors, []);
+      await context.close();
+    }
   }
 
   // 3. The home screen: it goes out under the message instead of vanishing in a frame; the message leaves from the field.

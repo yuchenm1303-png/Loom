@@ -1,8 +1,8 @@
 /* The message that leaves the field as a capsule and lands in the conversation ---------------------------------------
    Owner: sendFlight.ts, which makes the layer, the capsule (the two copies of the message, the skin and the halo) and
-   its animations, and sendFlightMotion.ts, which has the physics; this file says what they look like and what the real
-   entry does meanwhile. Written up in docs/send-flight-2026-10-14.md, docs/send-capsule-2026-10-15.md and
-   docs/send-lift-2026-10-17.md.
+   its animations, and sendFlightMotion.ts, which has the motion; this file says what they look like and what the real
+   entry does meanwhile. Written up in docs/send-flight-2026-10-14.md, docs/send-capsule-2026-10-15.md,
+   docs/send-lift-2026-10-17.md and docs/send-arc-2026-10-18.md.
 
    While a message is in the air its real entry is held back (data-flight="flying" on the entry: visibility, so it
    keeps its place in the page and the page is already the size it will end as). The thinking capsule that follows it
@@ -31,13 +31,11 @@
 }
 
 /* The capsule is two things on top of each other, and what moves is the pair:
-     shell   the part around the text. Its first wrapper is where the capsule starts (around the field's text, then
-             growing into the bubble), the second (the membrane) is the elastic one that is larger while it is lifted
-             and lengthens as it leaves.
+     shell   the part around the text (the shadow, the skin and the card). It is where the capsule starts (around the
+             field's text), and grows into the bubble.
      text    the message without its card.
    Both cover the same box as the entry they were copied from. */
-.send-flight-shell,
-.send-flight-membrane {
+.send-flight-shell {
   position: absolute;
   inset: 0;
   pointer-events: none;
@@ -48,7 +46,7 @@
   min-width: 0;
   margin: 0;
 }
-:root .send-flight-membrane > .turn-block {
+:root .send-flight-shell > .turn-block {
   position: absolute;
   left: 0;
   top: 0;

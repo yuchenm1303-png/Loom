@@ -3,24 +3,24 @@
  *
  * Sending used to swap two unrelated pictures: the text vanished from the field and a bubble appeared in the
  * transcript. Here the message itself makes the trip, and it travels as a capsule: the text, and around it a soft
- * shell that is the bubble's own material, lifted. The capsule is picked up as it leaves the field and set down as it
- * reaches its place, and that is all it does: how high it is above the page drives the shadow, the size and the
- * material (sendFlightMotion.ts has the physics). The composer records where the text was drawn when Enter is pressed
- * (`recordSendOrigin`, before the field is cleared); the entry that the transcript then mounts for the message asks for
- * the flight (`launchSendFlight`, in its layout effect, before anything is painted). The real entry is held back
- * (`data-flight="flying"`) while the capsule travels in a layer above the page:
+ * shell that is the bubble's own material, lifted. The capsule goes along Material's arc (a quarter of an ellipse:
+ * along the field's level first, then up into its place) on one clock, is picked up as it leaves and set down as it
+ * arrives, and does nothing else: no scaling, no squash, no bounce (sendFlightMotion.ts has the motion and the reasons).
+ * The composer records where the text was drawn when Enter is pressed (`recordSendOrigin`, before the field is
+ * cleared); the entry that the transcript then mounts for the message asks for the flight (`launchSendFlight`, in its
+ * layout effect, before anything is painted). The real entry is held back (`data-flight="flying"`) while the capsule
+ * travels in a layer above the page:
  *
  *   text  the message's own content, no card. It starts exactly where the field's text was (same left edge, same line
  *         centre, a touch larger because the field is set larger than a bubble) and travels to where the bubble will
  *         be: the place it will have once the page has made room, which is known at mount (the transcript follows to
- *         its end). It only translates (and leans a little into the climb); the one scale it has (from the field's
- *         type size to the bubble's) is over before the text has gone far. Glyphs are never squashed.
+ *         its end). It only translates; the one scale it has (from the field's type size to the bubble's) is over
+ *         before the text has gone far. Glyphs are never squashed.
  *   shell the capsule around the text, in layers that all start at the text and go with it. The skin is the bubble's
  *         material lifted (a solid pill a step brighter than the bubble, with a hairline): it is what makes the message
  *         an object in the air. The halo is its shadow, which is its height: it comes up as the capsule leaves, trails
  *         it by its speed and is gone when it is down. As the capsule is set down the skin gives way to the card, the
- *         real bubble's own quiet fill, and the hairline goes with it. The shell is a little elastic: larger while it
- *         is lifted and longer as it leaves, and it carries no glyphs, so it may be distorted.
+ *         real bubble's own quiet fill, and the hairline goes with it.
  *
  * Text and card are made with `cloneNode` of the real entry, so whatever a message holds (rich text, links,
  * attachments) is drawn as the entry will draw it, in both themes, and the hand-off at the end is the same pixels.
@@ -89,8 +89,6 @@ const ORIGIN_TTL_MS = 900;
 /** A message taller than this share of the transcript's viewport (or this many px) does not fly: it would cover the page for the trip. */
 const MAX_FLIGHT_HEIGHT_SHARE = 0.82;
 const MAX_FLIGHT_HEIGHT_PX = 520;
-/** The thinking capsule that follows the message is let in at this share of the time the message takes to arrive. */
-const CAPSULE_RELEASE = 0.86;
 /** Within this the real entry is where the flight meant to land, and nothing needs correcting. */
 const LANDING_TOLERANCE_PX = 1.5;
 const LANDING_CORRECTION_MS = 110;
@@ -392,14 +390,12 @@ export function launchSendFlight(entry: HTMLElement, kind: SendKind = "send"): b
   // The capsule. Everything below is positioned in the ghost's own box (the entry's), which rests where the entry will.
   const bubbleLeft = bubbleBox.left - entryBox.left;
   const bubbleTop = bubbleBox.top - entryBox.top;
-  const bubbleCentre = { x: bubbleLeft + bubbleBox.width / 2, y: bubbleTop + bubbleBox.height / 2 };
   const firstGlyph = { x: glyph.left - entryBox.left, y: glyph.centre - entryBox.top };
   const ghost = document.createElement("div");
   ghost.className = "send-flight-ghost";
   ghost.style.left = `${entryBox.left}px`;
   ghost.style.top = `${finalTop}px`;
   ghost.style.width = `${entryBox.width}px`;
-  ghost.style.transformOrigin = `${bubbleCentre.x}px ${bubbleCentre.y}px`;
   const text = copyEntry(entry, "text");
   const card = copyEntry(entry, "card");
   // The scale that meets the field's type size turns about the first glyph, so that glyph stays where it was.
@@ -419,15 +415,10 @@ export function launchSendFlight(entry: HTMLElement, kind: SendKind = "send"): b
   // the box): see send-flight.css.
   const halo = place("send-flight-halo", "50%", HALO_GROW_PX);
   const skin = place("send-flight-skin", pill);
-  // The shell holds them and the card. The outer wrapper is where the capsule starts (around the field's text: its
-  // scale and its place); the inner one (the membrane) is the elastic part (about the capsule's own centre).
+  // The shell holds them and the card: it is where the capsule starts (around the field's text: its scale and its place).
   const shell = document.createElement("div");
   shell.className = "send-flight-shell";
-  const membrane = document.createElement("div");
-  membrane.className = "send-flight-membrane";
-  membrane.style.transformOrigin = `${bubbleCentre.x}px ${bubbleCentre.y}px`;
-  membrane.append(halo, skin, card);
-  shell.append(membrane);
+  shell.append(halo, skin, card);
   ghost.append(shell, text);
   // A message that will not be laid out the way the field had it (it wraps at another width, a list is drawn as a
   // list) starts as the field's own text, drawn again exactly as the field drew it, and changes into the message's
@@ -467,10 +458,7 @@ export function launchSendFlight(entry: HTMLElement, kind: SendKind = "send"): b
   const reshapes = hug.scale.some((value) => Math.abs(value - 1) > 0.004) || hug.translate.some((value) => Math.abs(value) > 0.5);
   const animations = [
     ghost.animate(motion.path, timing()),
-    ghost.animate(motion.lean, timing()),
-    membrane.animate(motion.shell, timing()),
     skin.animate(motion.skin, timing()),
-    skin.animate(motion.pop, timing()),
     card.animate(motion.card, timing()),
     halo.animate(motion.halo, timing()),
     ...(meetType ? [text.animate([{ scale: String(ratio) }, { scale: "1" }], timing({ easing: EASE_SETTLE, duration: settleMs }))] : []),
@@ -486,7 +474,9 @@ export function launchSendFlight(entry: HTMLElement, kind: SendKind = "send"): b
       text.animate([{ opacity: 0 }, { opacity: 1 }], timing({ easing: EASE_CROSS, delay: SWAP_IN_MS[0], duration: SWAP_IN_MS[1] - SWAP_IN_MS[0] })),
     ] : []),
   ];
-  const release = Math.round(motion.arrive * CAPSULE_RELEASE);
+  // The thinking capsule that follows the message is let in as the message arrives (the clock at 97%: it is set down and
+  // the bubble is nearly its own), not before: it is what comes after the message, and it has a little animation of its own.
+  const release = motion.arrive;
   turn.style.setProperty("--flight-lead", `${Math.max(0, release - 70)}ms`);
   const releaseTimer = window.setTimeout(() => { if (turn.dataset.flight === "flying") turn.dataset.flight = "settling"; }, release);
   emit("launch", { duration, arrive: motion.arrive, dx, dy, ratio, pageHeight: scroller.scrollHeight });
@@ -512,8 +502,10 @@ export function launchSendFlight(entry: HTMLElement, kind: SendKind = "send"): b
       const blend = late * late * (3 - 2 * late);
       const wantX = (real.left - entryBox.left) * progress;
       const wantY = (restTop + (real.top - restTop) * blend - finalTop) * progress;
-      // Low-pass, so that a sudden change of layout is walked into instead of jumped.
-      const k = 1 - Math.exp(-(now - lastTrack) / 55);
+      // Low-pass, so that a sudden change of layout is walked into instead of jumped. It tightens as the capsule comes
+      // in (a page that is still scrolling is moving the entry some tens of px a second, and the hand-off is made to the
+      // place the entry is in then: a filter that lags by 55 ms is 4 px behind it).
+      const k = 1 - Math.exp(-(now - lastTrack) / (55 - 45 * blend));
       aim.x += (wantX - aim.x) * k;
       aim.y += (wantY - aim.y) * k;
       if (Math.abs(aim.x) > 0.02 || Math.abs(aim.y) > 0.02) {
