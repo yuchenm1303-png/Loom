@@ -55,9 +55,6 @@ body {
 
 /* Work-log notes keep their compact row scale. */
 .wv-note .assistant-message { font-size: var(--loom-font-ui) !important; }
-.turn-process-time { font-size: 13px !important; }
-.turn-process-meta { font-size: 12px !important; }
-.turn-process-failed { font-size: var(--loom-font-micro) !important; }
 
 /* Composer --------------------------------------------------------------- */
 .composer textarea { font-size: var(--loom-font-body) !important; }

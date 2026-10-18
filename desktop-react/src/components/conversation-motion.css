@@ -149,10 +149,6 @@ html[data-loom-theme="light"] .transcript {
   animation: none !important;
 }
 
-.turn-process.is-settled.is-open .turn-process-header {
-  animation: none;
-}
-
 /* Rich surfaces arrive as one unit instead of every child running its own
    shimmer. This covers code, links, media, attachments, tables and images. */
 .turn-block.is-active .user-link-card,

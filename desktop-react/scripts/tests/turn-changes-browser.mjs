@@ -30,16 +30,6 @@ async function open(url, size = { width: 1440, height: 900 }) {
     for (const name of ["loom:review-open", "loom:artifact-preview-open"]) {
       window.addEventListener(name, (event) => { window.__asked.push({ name, detail: event.detail }); event.stopImmediatePropagation(); }, true);
     }
-    // What the bars are doing at the moment a live turn starts to fold.
-    window.__folds = [];
-    new MutationObserver((records) => {
-      for (const record of records) {
-        const block = record.target;
-        if (!(block instanceof Element) || !block.matches("section.turn-block.is-settle-fold")) continue;
-        const fill = block.querySelector(".tc-bar-fill");
-        if (fill) window.__folds.push(getComputedStyle(fill).animationName);
-      }
-    }).observe(document, { subtree: true, attributes: true, attributeFilter: ["class"] });
   });
   await page.goto(`${origin}/scripts/fixtures/live-app.html?${url}`);
   return { page, context, errors };
@@ -76,13 +66,13 @@ try {
     assert.equal(plain(await one.locator(".tc-line").innerText()), "已创建 anew.js", "a file the turn made is created, not edited");
     assert.equal(plain(await one.locator(".tc-dir").innerText()), ".loom/tmp", "the folder says where, the file is not named twice");
     assert.equal(plain(await one.locator(".tc-figures").innerText()), "+79");
-    assert.equal(await one.locator(".tc-del, .tc-bar-del").count(), 0, "a side with nothing in it is not drawn");
+    assert.equal(await one.locator(".tc-del").count(), 0, "a side with nothing in it is not drawn");
     assert.equal(await one.locator(".tc-preview").count(), 1);
     assert.equal(plain(await one.locator(".tc-preview").innerText()), "预览", "a lone file is not named again on its button");
     assert.equal(plain(await one.locator(".tc-review").innerText()), "审查");
     assert.equal(await one.locator("[title]").count(), 1, "only the folder carries a tooltip, the header and the buttons do not");
 
-    // Several files: the biggest change first, bars that compare, totals, the page to preview.
+    // Several files: the biggest change first, totals, the page to preview.
     const several = await reveal(page, 2);
     assert.equal(await several.getAttribute("data-single"), null);
     assert.equal(plain(await several.locator(".tc-line").innerText()), "已修改 5 个文件");
@@ -92,18 +82,19 @@ try {
     // Every file has its own numbers: the runtime's diff has no `diff --git` line, and splitting on one put them all on the first file.
     assert.deepEqual((await several.locator(".tc-file .tc-stats").allInnerTexts()).map(plain), ["+42", "+4 -9", "+6", "+3 -1", "+1 -1"]);
     assert.equal(plain(await several.locator(".tc-preview").innerText()), "预览 preview.html", "which file a preview opens is said when there is a choice");
-    const fills = await several.locator(".tc-file .tc-bar").evaluateAll((bars) => bars.map((bar) => bar.firstElementChild.getBoundingClientRect().width / bar.getBoundingClientRect().width));
-    assert.ok(Math.abs(fills[0] - 1) < .02, "the largest change fills its track");
-    assert.ok(fills.every((value, index) => index === 0 || value <= fills[index - 1] + .001), `bars never grow down the list (${fills})`);
-    assert.ok(fills.at(-1) > 0, "even the smallest change leaves a mark");
+    // Every fact is drawn once: the figures are the size of the change, so there is no bar repeating them, no tile
+    // repeating the verb and no glyph repeating a name, and the two actions are words without an outline.
+    assert.equal(await several.locator(".tc-bar, .tc-bar-fill, .tc-mark, .tc-file-glyph").count(), 0, `no bars, tile or row glyphs (${theme})`);
+    const actionBorders = await several.locator(".tc-action").evaluateAll((buttons) => buttons.map((button) => getComputedStyle(button).borderTopWidth));
+    assert.deepEqual([...new Set(actionBorders)], ["0px"], `the actions have no outline (${theme})`);
     const rows = await several.locator(".tc-file").evaluateAll((buttons) => buttons.map((button) => button.getBoundingClientRect().height));
     assert.ok(rows.every((height) => height >= 32), "rows are a comfortable target");
-    const mark = await several.locator(".tc-mark").boundingBox();
-    const glyph = await several.locator(".tc-file-glyph").first().boundingBox();
     const title = await several.locator(".tc-title").boundingBox();
     const name = await several.locator(".tc-file-name").first().boundingBox();
-    assert.ok(Math.abs((mark.x + mark.width / 2) - (glyph.x + glyph.width / 2)) <= 1, "file glyphs sit under the header's mark");
     assert.ok(Math.abs(title.x - name.x) <= 1, "file names start where the title does");
+    const review = await several.locator(".tc-review").boundingBox();
+    const figure = await several.locator(".tc-file .tc-stats").first().boundingBox();
+    assert.ok(Math.abs((review.x + review.width - 10) - (figure.x + figure.width)) <= 2, `the review's words end where the rows' figures end (${review.x + review.width - 10} vs ${figure.x + figure.width})`);
 
     // Eleven files: six of the biggest, the rest behind one row that unfolds in place.
     const long = await reveal(page, 3);
@@ -132,7 +123,7 @@ try {
     assert.equal(await gone.locator(".tc-preview").count(), 0, "a file that cannot be rendered offers no preview");
     assert.equal(plain(await gone.locator(".tc-figures").innerText()), "-140");
     assert.equal(plain(await gone.locator(".tc-line").innerText()), "已删除 parser.cfg");
-    assert.equal(await gone.locator(".tc-add, .tc-bar-add").count(), 0);
+    assert.equal(await gone.locator(".tc-add").count(), 0);
 
     // Files the turn only made: "Created 3 files", the last of them to preview.
     const made = await reveal(page, 6);
@@ -178,9 +169,6 @@ try {
       if (part === "surface") continue;
       assert.ok(contrast(value, colors.surface) >= 4.5, `${part} reads on the card (${theme}): ${value} on ${colors.surface}`);
     }
-
-    // History does not replay the bars drawing themselves: only a turn that completes live carries the animation at all.
-    assert.deepEqual(await page.locator(".tc-bar-fill").evaluateAll((fills) => [...new Set(fills.map((fill) => getComputedStyle(fill).animationName))]), ["none"]);
 
     if (screenshots) for (const turn of [1, 2, 3, 4, 5]) await (await reveal(page, turn)).screenshot({ path: `${screenshots}/turn-changes-${theme}-${turn}.png` });
     assert.deepEqual(errors, []);
@@ -244,11 +232,9 @@ try {
         for (const part of Object.values(parts)) assert.ok(part.x >= box.x - .5 && part.x + part.width <= box.x + box.width + .5, `${label}: the header stays inside the card`);
         if (inner >= 640) assert.ok(parts.actions.y < parts.open.y + parts.open.height, `${label}: one row`);
         else assert.ok(parts.actions.y >= parts.open.y + parts.open.height - 1, `${label}: the actions drop under the title`);
-        const bar = await target.locator(".tc-figures .tc-bar").count() ? await target.locator(".tc-figures .tc-bar").evaluate((element) => getComputedStyle(element).display) : "none";
-        assert.equal(bar === "none", inner < 460, `${label}: the header's bar goes first`);
         if (turn !== 1) {
           const rowDir = await target.locator(".tc-file-dir").first().evaluate((element) => getComputedStyle(element).display);
-          assert.equal(rowDir === "none", inner < 460, `${label}: and the rows' folder with it`);
+          assert.equal(rowDir === "none", inner < 460, `${label}: the rows give up their folder first`);
         }
         for (const row of await target.locator(".tc-file").evaluateAll((buttons) => buttons.map((button) => [button.scrollWidth, button.clientWidth]))) {
           assert.ok(row[0] <= row[1] + 1, `${label}: a row does not run past itself`);
@@ -278,21 +264,19 @@ try {
     await context.close();
   }
 
-  // -- A live turn completes: the card unfolds and the bars draw, once -----------------------------------------------
+  // -- A live turn completes: the card unfolds into the room the fold gives it ---------------------------------------
   {
     const { page, context, errors } = await open("theme=dark&scenario=code&speed=4");
     await page.locator(".composer textarea:not([disabled])").waitFor({ timeout: 20000 });
     await page.evaluate(() => window.liveFixture.send());
     await page.locator('section.turn-block[data-turn-id^="turn-live"] .tc').waitFor({ timeout: 90000 });
     await page.waitForFunction(() => !document.querySelector('section.turn-block[data-turn-id^="turn-live"].is-settling'), null, { timeout: 5000 });
-    const folds = await page.evaluate(() => window.__folds);
-    assert.ok(folds.includes("tc-bar-in"), `the bars draw while the card unfolds (${folds})`);
     const live = page.locator('section.turn-block[data-turn-id^="turn-live"] .tc');
     assert.deepEqual(await live.locator(".tc-file-name").allInnerTexts(), ["Login.tsx", "validators.ts"]);
-    assert.deepEqual(await live.locator(".tc-bar-fill").evaluateAll((fills) => [...new Set(fills.map((fill) => getComputedStyle(fill).animationName))]), ["none"], "and the card is like any other once the turn has settled");
+    assert.equal(await live.locator(".tc-bar").count(), 0, "a card that has just unfolded is the same card as one read from history");
     assert.deepEqual(errors, []);
     await context.close();
   }
 
-  console.log("The changed-files card: one row for one file, the biggest change first, bars that compare, a long list folded in place, both themes and languages, narrow widths beside the review pane, clicks and keyboard, and the unfold at completion passed.");
+  console.log("The changed-files card: one row for one file, the biggest change first, every fact drawn once, a long list folded in place, both themes and languages, narrow widths beside the review pane, clicks and keyboard, and the unfold at completion passed.");
 } finally { await browser.close(); }

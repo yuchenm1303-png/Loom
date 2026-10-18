@@ -85,35 +85,8 @@
 }
 :root .app-shell .transcript-scroll { background: var(--ws-canvas); scrollbar-gutter: stable both-edges; }
 :root .app-shell .turn-block { --turn-gap: 14px; gap: var(--turn-gap); }
-:root .app-shell :is(.turn-process, .turn-process-header) { width: 100%; }
 :root .app-shell .turn-process.has-guidance .turn-process-content > .transcript-entry:not(.entry-steering-user) { width: 100%; }
 :root .app-shell .assistant-message { color: var(--ws-ink); }
-:root .app-shell .turn-process .turn-process-header {
-  background: transparent !important;
-  border: 0;
-  border-radius: 6px;
-  min-height: 34px;
-  padding: 6px 8px;
-  gap: 12px;
-  box-shadow: none !important;
-  color: var(--ws-muted);
-  opacity: 1;
-}
-:root .app-shell .turn-process-header .turn-process-summary { color: var(--ws-muted); }
-:root .app-shell .turn-process .turn-process-header:hover {
-  background: var(--ws-hover) !important;
-  box-shadow: none;
-  transform: none;
-}
-:root .app-shell .turn-process-header .turn-process-time {
-  color: var(--ws-muted);
-  font-variant-numeric: tabular-nums;
-  font-weight: 400;
-}
-:root .app-shell .turn-process.is-settled .turn-process-content {
-  border-left-color: transparent;
-  box-shadow: none;
-}
 :root .app-shell .user-message { background: var(--ws-hover); border-color: transparent; box-shadow: none; border-radius: 10px; }
 /* Attachment cards and text already have their own surfaces. */
 :root .app-shell .user-message.has-attachments,

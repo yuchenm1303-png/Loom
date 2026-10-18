@@ -67,7 +67,7 @@ import { TurnArtifactsPreview } from "./TurnArtifactsPreview";
 import { UserMessageContent, parseUserMessageContent } from "./UserMessageContent";
 import { dispatchQuoteReply } from "./quoteReply";
 import { FileEditDeltaContext, LiveSequenceContext, ProcessNotesContext, useBornLive } from "./transcriptContexts";
-import { Beads, WeaveStage, type ProcessHandoff } from "./WeaveFlow";
+import { WeaveStage, type ProcessHandoff } from "./WeaveFlow";
 import { useRuntimeCopy } from "./runtimeCopy";
 import "./message-actions.css";
 import "./turn-flow.css";
@@ -1230,8 +1230,12 @@ function TurnProcess({
     [items],
   );
   const operationCount = summary.steps + intermediateMessages;
-  // One bead per step, in order, coloured by how it went: the shape of the run at a glance.
-  const stepTones = useMemo(() => buildActivityRows(items.filter(isActivityItem)).map(rowTone), [items]);
+  // A finished run says nothing about the steps that went well; it says how many did not. (The beads that show
+  // every step live in the work log itself, which the line opens.)
+  const failedSteps = useMemo(
+    () => buildActivityRows(items.filter(isActivityItem)).reduce((count, row) => count + (rowTone(row) === "failed" ? 1 : 0), 0),
+    [items],
+  );
   const summaryLabel = useMemo(
     () => copy.processSummary(breakdown, operationCount),
     [breakdown, copy, operationCount],
@@ -1315,14 +1319,8 @@ function TurnProcess({
               tabIndex={settle === "hold" ? -1 : undefined}
             >
               <span className="turn-process-primary">
-                {stepTones.length ? <Beads tones={stepTones} max={14} animated={settle !== null} /> : null}
                 <span className="turn-process-summary">{summaryLabel}</span>
-                {(breakdown.added > 0 || breakdown.removed > 0) ? (
-                  <span className="turn-process-diffstat" aria-label={copy.diffLabel(breakdown.added, breakdown.removed)}>
-                    {breakdown.added ? <span className="turn-process-plus">+{breakdown.added}</span> : null}
-                    {breakdown.removed ? <span className="turn-process-minus">-{breakdown.removed}</span> : null}
-                  </span>
-                ) : null}
+                {failedSteps > 0 ? <span className="turn-process-issues">{copy.processIssues(failedSteps)}</span> : null}
                 <span className="turn-process-time">{copy.elapsed(elapsedSeconds(allItems))}</span>
               </span>
               <ChevronRight size={14} className="turn-process-chevron" aria-hidden="true" />

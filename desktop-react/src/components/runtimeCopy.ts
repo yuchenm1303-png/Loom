@@ -314,7 +314,8 @@ export interface RuntimeCopy {
   notesHide: string;
   processToggleTitle(open: boolean): string;
   processSummary(parts: ProcessSummaryParts, fallbackCount: number): string;
-  diffLabel(added: number, removed: number): string;
+  /** How many steps of a finished run failed; a run where none did says nothing. */
+  processIssues(failed: number): string;
   elapsed(seconds: number | null): string;
   groupTitle(categories: ActivityCategory[], running: boolean): string;
   statusLabel(status: string): string;
@@ -525,7 +526,7 @@ const ZH: RuntimeCopy = {
     if (parts.tools) items.push(`使用 ${parts.tools} 个工具`);
     return items.length ? items.join(" · ") : `${fallback} 个步骤`;
   },
-  diffLabel: (added, removed) => `新增 ${added} 行，删除 ${removed} 行`,
+  processIssues: (failed) => `${failed} 项失败`,
   elapsed: (seconds) => (seconds === null ? "任务过程" : `用时 ${formatDuration(seconds)}`),
   groupTitle: (categories, running) => {
     const phrases = categories.slice(0, 3).map((category, index) => {
@@ -663,7 +664,7 @@ const EN: RuntimeCopy = {
     const sentence = items.join(" · ");
     return sentence.charAt(0).toUpperCase() + sentence.slice(1);
   },
-  diffLabel: (added, removed) => `${added} lines added, ${removed} removed`,
+  processIssues: (failed) => `${failed} failed`,
   elapsed: (seconds) => (seconds === null ? "Work log" : `Worked ${formatDuration(seconds)}`),
   groupTitle: (categories, running) => {
     const phrases = categories.slice(0, 3).map((category) => EN_GROUP[category][running ? 0 : 1]);

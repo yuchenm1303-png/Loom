@@ -4,9 +4,11 @@
    completion (`.turn-artifacts-slot`, turn-flow.css) is the one thing left of them.
 
    One surface, one header, rows only when there is more than one file. The header
-   says what was done and to what, how large the change is (figures + a bar) and
-   offers the two ways on: preview what was made, review how. Everything is drawn
-   from the workspace tokens, so the light theme needs no copy of any rule. */
+   says what was done and to what, how large the change is (the figures) and
+   offers the two ways on: review how, preview what was made. Every fact is drawn
+   once: no bar repeats a number, no tile repeats the verb, no glyph repeats a name,
+   and the two actions are words, not outlined buttons. Everything is drawn from
+   the workspace tokens, so the light theme needs no copy of any rule. */
 
 .tc {
   --tc-line: var(--loom-workspace-line, rgba(224, 230, 242, .12));
@@ -17,7 +19,6 @@
   --tc-muted: var(--loom-workspace-muted, #949dab);
   --tc-accent: var(--loom-workspace-accent, #b5a7f5);
   --tc-wash: var(--loom-workspace-selection, rgba(167, 151, 245, .12));
-  --tc-accent-line: var(--pl-accent-line, rgba(169, 157, 255, .2));
   --tc-focus: var(--pl-focus, rgba(167, 151, 245, .55));
   --tc-add: var(--semantic-success-strong, #55ef9b);
   --tc-del: var(--semantic-danger-strong, #ff6b80);
@@ -31,7 +32,6 @@
   border: 1px solid var(--tc-line);
   border-radius: var(--tc-radius);
   background: var(--loom-workspace-panel, #191c22);
-  box-shadow: var(--loom-workspace-shadow, none);
   color: var(--tc-secondary);
   font-size: 13px;
   line-height: 1.35;
@@ -40,14 +40,15 @@
 
 /* Header ------------------------------------------------------------------- */
 
+/* The right padding is the actions' own: their words end where the rows' figures end. */
 .tc-head {
   position: relative;
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto auto;
   align-items: center;
-  column-gap: 18px;
-  min-height: 60px;
-  padding: 12px 16px;
+  column-gap: 16px;
+  min-height: 52px;
+  padding: 8px 6px 8px 16px;
   border-radius: calc(var(--tc-radius) - 1px) calc(var(--tc-radius) - 1px) 0 0;
 }
 
@@ -59,7 +60,6 @@
   min-width: 0;
   display: flex;
   align-items: center;
-  gap: 12px;
   padding: 0;
   border: 0;
   border-radius: inherit;
@@ -92,18 +92,6 @@
 .tc-open:focus-visible::after {
   outline: 2px solid var(--tc-focus);
   outline-offset: -2px;
-}
-
-.tc-mark {
-  flex: none;
-  width: 36px;
-  height: 36px;
-  display: grid;
-  place-items: center;
-  border: 1px solid var(--tc-accent-line);
-  border-radius: 10px;
-  background: var(--tc-wash);
-  color: var(--tc-accent);
 }
 
 .tc-title {
@@ -154,7 +142,6 @@
 .tc-figures {
   display: flex;
   align-items: center;
-  gap: 12px;
 }
 
 .tc-stats {
@@ -162,8 +149,8 @@
   align-items: baseline;
   justify-content: flex-end;
   gap: 7px;
-  font-size: 12.5px;
-  font-weight: 600;
+  font-size: 12px;
+  font-weight: 500;
   font-variant-numeric: tabular-nums;
   line-height: 1;
   white-space: nowrap;
@@ -177,80 +164,31 @@
   color: var(--tc-del);
 }
 
-/* The size of a change and what it is made of. The track is the same on every row so the fills compare. */
-.tc-bar,
-.tc-bar-slot {
-  flex: none;
-  width: 64px;
-  height: 4px;
-}
-
-.tc-bar {
-  overflow: hidden;
-  border-radius: 999px;
-  background: var(--tc-line);
-}
-
-.tc-bar-fill {
-  display: flex;
-  gap: 1px;
-  height: 100%;
-  min-width: 4px;
-  transform-origin: 0 50%;
-}
-
-.tc-bar-fill > i {
-  display: block;
-  min-width: 2px;
-  height: 100%;
-}
-
-.tc-bar-add {
-  background: var(--tc-add);
-}
-
-.tc-bar-del {
-  background: var(--tc-del);
-}
-
-/* When a turn completes, the bars draw themselves as the card comes up (turn-flow.css owns the unfold: the slot's
-   opacity starts at 100ms, so the bars wait for the card to be seen). The class is on the turn only for that
-   beat, so a turn read from history never replays it; the fold ends at 380ms, and a bar still drawing when it
-   does would jump to its length, so the last one lands at 120 + 32 + 220 = 372ms. */
-@keyframes tc-bar-in {
-  from { transform: scaleX(0); }
-}
-
-.turn-block.is-settle-fold .tc-bar-fill {
-  animation: tc-bar-in 220ms var(--turn-fold-ease, cubic-bezier(.3, .72, .2, 1)) calc(120ms + var(--tc-i, 0) * 8ms) backwards;
-}
-
 /* Actions ------------------------------------------------------------------ */
 
 .tc-actions {
   position: relative;
   display: flex;
   align-items: center;
-  gap: 8px;
 }
 
 .tc-action {
-  height: 30px;
-  padding: 0 11px;
+  height: 28px;
+  padding: 0 10px;
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  border: 1px solid var(--tc-line);
+  gap: 4px;
+  border: 0;
   border-radius: 8px;
   background: transparent;
-  color: var(--tc-secondary);
+  color: var(--tc-muted);
   font-family: inherit;
-  font-size: 12.5px;
+  font-size: 12px;
   font-weight: 500;
   line-height: 1;
   white-space: nowrap;
   cursor: pointer;
-  transition: background-color 140ms ease, border-color 140ms ease, color 140ms ease;
+  transition: background-color 140ms ease, color 140ms ease;
 }
 
 /* What a preview opens, when the card lists several files. */
@@ -258,34 +196,26 @@
   max-width: 190px;
   overflow: hidden;
   text-overflow: ellipsis;
-  color: var(--tc-muted);
   font-weight: 400;
-  transition: color 140ms ease;
-}
-
-.tc-action:hover .tc-action-name {
-  color: inherit;
-}
-
-/* Reviewing is the way on; previewing is the side door, so it has no outline until it is pointed at. */
-.tc-review {
-  padding-right: 8px;
-  border-color: var(--tc-accent-line);
-  color: var(--tc-accent);
-}
-
-.tc-preview {
-  border-color: transparent;
 }
 
 .tc-action:hover {
-  border-color: var(--tc-accent-line);
-  background: var(--tc-wash);
-  color: var(--tc-accent);
+  background: var(--tc-hover);
+  color: var(--tc-ink);
 }
 
 .tc-action:active {
   background: var(--tc-press);
+}
+
+/* Reviewing is the way on, so it is the one word with a colour. */
+.tc-review {
+  color: var(--tc-accent);
+}
+
+.tc-review:hover {
+  background: var(--tc-wash);
+  color: var(--tc-accent);
 }
 
 .tc-action:focus-visible,
@@ -298,7 +228,7 @@
 /* Rows --------------------------------------------------------------------- */
 
 .tc-body {
-  padding: 6px 8px 8px;
+  padding: 4px 8px 6px;
   border-top: 1px solid var(--tc-line);
 }
 
@@ -310,13 +240,13 @@
   gap: 1px;
 }
 
-/* The columns are the header's: the glyph is centred under the mark, the name starts where the title does. */
+/* A name starts where the title does: the body's padding and the row's make the header's. */
 .tc-file {
   width: 100%;
   min-height: 34px;
   padding: 0 8px;
   display: grid;
-  grid-template-columns: 36px minmax(0, 1fr) max-content 64px;
+  grid-template-columns: minmax(0, 1fr) max-content;
   align-items: center;
   column-gap: 12px;
   border: 0;
@@ -335,16 +265,6 @@
 
 .tc-file:active {
   background: var(--tc-press);
-}
-
-.tc-file-glyph {
-  justify-self: center;
-  color: var(--tc-muted);
-  transition: color 120ms ease;
-}
-
-.tc-file:hover .tc-file-glyph {
-  color: var(--tc-accent);
 }
 
 .tc-file-text {
@@ -390,24 +310,19 @@
   min-height: 32px;
   margin-top: 2px;
   padding: 0 8px;
-  display: grid;
-  grid-template-columns: 36px minmax(0, 1fr);
+  display: flex;
   align-items: center;
-  column-gap: 12px;
+  gap: 4px;
   border: 0;
   border-radius: 8px;
   background: none;
   color: var(--tc-muted);
   font-family: inherit;
-  font-size: 12.5px;
+  font-size: 12px;
   font-weight: 500;
   text-align: left;
   cursor: pointer;
   transition: background-color 120ms ease, color 120ms ease;
-}
-
-.tc-toggle > svg {
-  justify-self: center;
 }
 
 .tc-toggle:hover {
@@ -416,33 +331,23 @@
 }
 
 /* The conversation gets narrow when the review pane opens beside it (the card's own "Review"). First the actions
-   drop under the title, then the header gives up its bar and the rows their folder and bar. */
+   drop under the title, then the rows give up their folder. */
 @container tc (max-width: 639px) {
   .tc-head {
     grid-template-columns: minmax(0, 1fr) auto;
-    row-gap: 10px;
+    row-gap: 6px;
   }
 
   .tc-actions {
     grid-column: 1 / -1;
     flex-wrap: wrap;
-    padding-left: 48px;
+    margin-left: -10px;
   }
 }
 
 @container tc (max-width: 459px) {
-  .tc-figures .tc-bar,
-  .tc-action-name {
-    display: none;
-  }
-
-  .tc-file {
-    grid-template-columns: 36px minmax(0, 1fr) max-content;
-  }
-
-  .tc-file-dir,
-  .tc-file .tc-bar,
-  .tc-file .tc-bar-slot {
+  .tc-action-name,
+  .tc-file-dir {
     display: none;
   }
 }
@@ -451,22 +356,13 @@
   .tc-open::after,
   .tc-action,
   .tc-file,
-  .tc-file-glyph,
   .tc-toggle,
   .tc-more {
     transition: none !important;
   }
-
-  .turn-block.is-settle-fold .tc-bar-fill {
-    animation: none !important;
-  }
 }
 
 :root[data-loom-reduced-motion="true"] .tc-open::after,
-:root[data-loom-reduced-motion="true"] :is(.tc-action, .tc-file, .tc-file-glyph, .tc-toggle, .tc-more) {
+:root[data-loom-reduced-motion="true"] :is(.tc-action, .tc-file, .tc-toggle, .tc-more) {
   transition: none !important;
-}
-
-:root[data-loom-reduced-motion="true"] .turn-block.is-settle-fold .tc-bar-fill {
-  animation: none !important;
 }

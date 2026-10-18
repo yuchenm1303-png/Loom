@@ -285,9 +285,11 @@ try {
     assert.equal(await page.evaluate(() => { window.rebuildWatch.disconnect(); return window.rebuilt; }), 0, "completion builds no step row again");
     assert.deepEqual(await outline(), ["user", "final"], "folded: the final report is all that is left of the run");
     const folded = await page.evaluate(() => ({ summary: document.querySelector(".turn-process-summary")?.textContent ?? "", text: document.body.textContent ?? "",
-      beads: [...document.querySelectorAll(".turn-process-header .wv-beads i")].map(bead => bead.dataset.tone) }));
+      beads: document.querySelectorAll(".turn-process-header .wv-beads").length,
+      issues: document.querySelector(".turn-process-header .turn-process-issues")?.textContent ?? "" }));
     assert.match(folded.summary, /读取 4 个文件/, "the summary line says what was done");
-    assert.deepEqual(folded.beads, ["failed", "done", "failed", "done"], "and its beads tell how it went, step by step");
+    assert.equal(folded.beads, 0, "a finished run draws no beads of its own: the log it opens has them");
+    assert.equal(folded.issues, "2 项失败", "it says how many steps failed, and nothing about the ones that went well");
     for (const gone of ["先看一下环境", "引号被吞了", "编码问题"]) {
       assert.equal(folded.text.includes(gone), false, `"${gone}": the model's messages fold away with the rest of the process`);
     }

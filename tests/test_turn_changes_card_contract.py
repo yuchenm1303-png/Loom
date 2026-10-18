@@ -101,10 +101,23 @@ def test_it_answers_to_its_own_width_and_to_reduced_motion() -> None:
     assert "container: tc / inline-size;" in css
     assert "@container tc (max-width: 639px)" in css
     assert "@container tc (max-width: 459px)" in css
-    # The bars draw only while a live turn completes; a turn read from history never replays it.
-    assert re.search(r"\.turn-block\.is-settle-fold \.tc-bar-fill \{\s*animation: tc-bar-in", css)
     assert "@media (prefers-reduced-motion: reduce)" in css
     assert ':root[data-loom-reduced-motion="true"]' in css
+
+
+def test_every_fact_is_drawn_once() -> None:
+    css = CARD_CSS.read_text(encoding="utf-8")
+    tsx = CARD_TSX.read_text(encoding="utf-8")
+
+    # The figures are the size of the change. A bar that repeats them (full for every created file), a tile that
+    # repeats the verb and a glyph that repeats each name were three more ways of saying what the text says.
+    for retired in ("tc-bar", "tc-mark", "tc-file-glyph", "DiffBar", "FILE_GLYPHS", "tc-bar-in"):
+        assert retired not in css and retired not in tsx, retired
+    # The two actions are words: neither wears an outline, and only the way on has a colour.
+    action = re.search(r"\.tc-action \{(.*?)\}", css, flags=re.S).group(1)
+    assert re.search(r"\bborder: 0;", action)
+    assert "box-shadow" not in css
+    assert re.search(r"\.tc-review \{\s*color: var\(--tc-accent\);", css)
 
 
 def test_the_markup_keeps_one_native_button_per_action_and_nothing_nested() -> None:
