@@ -8,6 +8,10 @@ try {
   await page.goto(`${process.env.LOOM_TEST_ORIGIN || "http://127.0.0.1:5173"}/scripts/fixtures/model-catalog.html`, { waitUntil: "domcontentloaded", timeout: 60000 });
   await page.getByRole("button", { name: /Choose model/ }).click();
   await page.getByRole("button", { name: /OpenCode Go/ }).first().click();
+  assert.equal(await page.getByRole("alert").count(), 0, "retired rows do not create a provider-level error");
+  const retired = page.getByRole("button", { name: /deepseek-flash Retired/ });
+  assert.equal(await retired.isDisabled(), true);
+  assert.match(await retired.getAttribute("title"), /no longer offered by the provider/);
   await page.getByText(/catalog could not be validated/).waitFor();
   assert.match(await page.getByRole("status").first().innerText(), /Last successful sync:/);
   await page.getByRole("button", { name: "Refresh", exact: true }).click();

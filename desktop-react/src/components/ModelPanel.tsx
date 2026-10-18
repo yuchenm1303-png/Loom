@@ -244,7 +244,15 @@ function unavailableLabel(profile: ModelProfile): string {
   if (message.includes("Sign in to Loom")) return "Sign in";
   if (message.includes("Loom Admin")) return "Admin blocked";
   if (message.includes("Model metadata unavailable")) return "Host update required";
+  if (profile.catalogState === "retired") return "Retired";
+  if (profile.accessState === "not-listed") return "Not listed";
   return "Unavailable";
+}
+
+function unavailableReason(profile: ModelProfile): string {
+  if (profile.catalogState === "retired") return "This model is no longer offered by the provider. It remains listed for older conversations; choose an available model to continue.";
+  if (profile.accessState === "not-listed") return "This model has not been confirmed in the provider's current directory.";
+  return profile.statusMessage || "This model is currently unavailable.";
 }
 
 
@@ -954,9 +962,6 @@ export function ModelPanel({
     const hasBuiltinModels = choices.some((profile) => profile.kind === "builtin");
     const blockedChoices = choices.filter((profile) => profile.available === false);
     const adminBlockedChoices = blockedChoices.filter(profile => String(profile.statusMessage || "").includes("Loom Admin"));
-    const unavailableReasons = [...new Set(blockedChoices
-      .filter(profile => !adminBlockedChoices.includes(profile))
-      .map(profile => profile.statusMessage || "This model is currently unavailable."))];
 
     return (
       <div className="mp mp-provider" data-direction={direction} onKeyDown={handlePickerKeyDown}>
@@ -1011,11 +1016,6 @@ export function ModelPanel({
           {hasBuiltinModels && accountAuthenticated && snapshot?.policySync?.state !== "fresh" ? (
             <div className="mp-notice" role="status"><span>Model permissions are syncing. Last known states remain visible; the server checks access when a model runs. {snapshot?.policySync?.checkedAt ? `Last successful check: ${new Date(snapshot.policySync.checkedAt).toLocaleString()}.` : "No successful check yet."}</span></div>
           ) : null}
-          {accountAuthenticated ? unavailableReasons.map(reason => (
-            <div className="mp-notice is-error" role="alert" key={reason}>
-              <span>{reason}</span>
-            </div>
-          )) : null}
           {credentialTarget ? (
             <div
               className="mp-connect"
@@ -1114,7 +1114,7 @@ export function ModelPanel({
                       meta={!accountAuthenticated ? "Sign in" : profile.available === false ? unavailableLabel(profile) : profile.groupId === "opencode-console" ? modelPriceLabel(profile) : reasoningLabel(profile)}
                       metaAttention={!accountAuthenticated || profile.available === false || isConsoleFree(profile)}
                       end={!accountAuthenticated || profile.available === false || isConsoleFree(profile) ? <Lock size={13} strokeWidth={2} /> : undefined}
-                      title={!accountAuthenticated ? "Sign in to Loom to use models" : isConsoleFree(profile) ? CONSOLE_FREE_RESTRICTION : profile.available === false ? (profile.statusMessage || "Disabled by Loom Admin") : undefined}
+                      title={!accountAuthenticated ? "Sign in to Loom to use models" : isConsoleFree(profile) ? CONSOLE_FREE_RESTRICTION : profile.available === false ? unavailableReason(profile) : undefined}
                       onSelect={() => {
                         if (!current && setup.needsKey) {
                           setError(`Connect ${activeGroup.name} before selecting one of its models.`);
@@ -1228,7 +1228,7 @@ export function ModelPanel({
                           meta={!accountAuthenticated ? "Sign in" : profile.available === false ? unavailableLabel(profile) : connectFirst ? "Connect" : profile.groupId === "opencode-console" ? modelPriceLabel(profile) : reasoningLabel(profile)}
                           metaAttention={!accountAuthenticated || profile.available === false || connectFirst || isConsoleFree(profile)}
                           end={!accountAuthenticated || profile.available === false || isConsoleFree(profile) ? <Lock size={13} strokeWidth={2} /> : connectFirst ? <ChevronRight size={14} strokeWidth={1.9} /> : undefined}
-                          title={!accountAuthenticated ? "Sign in to Loom to use models" : isConsoleFree(profile) ? CONSOLE_FREE_RESTRICTION : profile.available === false ? (profile.statusMessage || "Disabled by Loom Admin") : connectFirst ? `Connect ${group.name} to use ${profile.name}` : undefined}
+                          title={!accountAuthenticated ? "Sign in to Loom to use models" : isConsoleFree(profile) ? CONSOLE_FREE_RESTRICTION : profile.available === false ? unavailableReason(profile) : connectFirst ? `Connect ${group.name} to use ${profile.name}` : undefined}
                           onSelect={() => (connectFirst ? openGroup(group.id) : void chooseProfile(profile))}
                         />
                       );

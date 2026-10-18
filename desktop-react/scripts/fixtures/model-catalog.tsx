@@ -12,7 +12,9 @@ function App() {
     name: model === "beam-free" ? "Beam Free" : model, model, groupId: "opencode-go", groupName: "OpenCode Go",
     family: "Other", adapter: "opencode-go", baseUrl: "https://account.smirel.com/model/v1/opencode-go",
     authMode: "loom-account" as const, configured: true, available: true });
-  const profiles = [profile("omen-alpha"), ...Array.from({ length: 8 }, (_, i) => profile(`fixture-${i}`)), ...(updated ? [profile("beam-free")] : [])];
+  const profiles = [profile("omen-alpha"), ...Array.from({ length: 8 }, (_, i) => profile(`fixture-${i}`)),
+    { ...profile("deepseek-flash"), available: false, catalogState: "retired" as const, accessState: "not-listed" as const,
+      statusMessage: "Model is not in the confirmed provider catalog" }, ...(updated ? [profile("beam-free")] : [])];
   const snapshot: ModelSnapshot = { primary: profiles[0], current: { ...profiles[0], provider: "opencode-go" }, profiles,
     activeModelId: profiles[0].id, recentModels: [], policySync: { state: "fresh", checkedAt: Date.now() },
     catalogSync: { providers: [{ groupId: "opencode-go", state: updated ? "synced" : "stale", lastSuccess: 1792163104,

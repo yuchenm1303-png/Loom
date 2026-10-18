@@ -131,7 +131,7 @@ test("model picker keeps blocked models visible and explains the restriction", (
   assert.match(modelPanel, /function unavailableLabel/);
   assert.match(modelPanel, /profile\.available === false \? unavailableLabel\(profile\)/);
   assert.match(modelPanel, /Admin blocked/);
-  assert.match(modelPanel, /Disabled by Loom Admin/);
+  assert.match(modelPanel, /disabled by Loom Admin/i);
   assert.match(modelPanel, /<Lock size=\{13\}/);
 });
 
