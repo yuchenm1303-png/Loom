@@ -1,0 +1,16 @@
+.error-row.is-input-notice,
+html[data-loom-theme="light"] .error-row.is-input-notice {
+  color: var(--loom-workspace-muted, #8b929e) !important;
+  background: transparent !important;
+  border-color: var(--loom-workspace-line, rgba(128,128,128,.2)) !important;
+}
+.error-row.is-input-notice .error-icon {
+  color: inherit !important;
+  background: transparent !important;
+  border-color: transparent !important;
+}
+.composer-image-notice {
+  margin: 6px 12px;
+  color: var(--loom-workspace-muted, #8b929e);
+  font-size: 13px;
+}

@@ -18,8 +18,22 @@ as the VISION capability. The request validator still allows an image request to
 an unknown endpoint and preserves its image parts. Only an explicit unsupported
 state filters historical image parts and blocks new image attachments. The endpoint
 may reject an unknown request; the error is not silently treated as an image-free
-success. Authentication failures, outages, or unlisted models never prove a lack
+success. If an image-bearing request is explicitly rejected as text-only (HTTP
+400/422), the platform records endpoint/model-scoped negative evidence. A new
+image in the latest user message produces a non-retryable input notice. A text
+turn with only historical images gets one corrected request with image placeholders;
+the durable history remains unchanged. Stream recovery is permitted only before
+any event is emitted, so partial output and tool calls are never replayed.
+Authentication failures, outages, malformed image URLs or oversized files never prove a lack
 of vision support.
+
+Provider-rejection evidence is retained for 24 hours and cannot be overwritten
+by a metadata refresh reporting unknown. A saved connection's explicit setting
+can override it. Other endpoints/models do not inherit it. Desktop displays
+unknown support before sending a new image, blocks known-unsupported attachments
+without discarding them, and renders capability rejection as a neutral localized
+notice instead of a transport stack trace. Plain text remains sendable when no
+new images are attached, even if the conversation has historical images.
 
 Cold launch arguments, hot switching, thread persistence/restoration, metadata
 refresh, and the model settings UI preserve unknown. A connection test can read

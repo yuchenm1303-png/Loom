@@ -10,6 +10,7 @@
 import { useMemo } from "react";
 import { useLoomLanguage, type LoomLanguage } from "../i18n";
 import type { TranscriptItem } from "../types/loom";
+import { imageInputError } from "./modelInput";
 
 export type RuntimeLanguage = "zh" | "en";
 
@@ -367,7 +368,7 @@ export interface RuntimeCopy {
   previewArtifact(name: string): string;
   previewArtifactTitle(path: string): string;
   /** How a turn's terminal error item reads; a user's own stop is not a failure. */
-  turnEnding(error: string): { tone: "stopped" | "error"; text: string };
+  turnEnding(error: string): { tone: "stopped" | "notice" | "error"; text: string };
   verb(spec: VerbKey, tense: ActivityTense): string;
 }
 
@@ -608,6 +609,8 @@ const ZH: RuntimeCopy = {
   previewArtifactTitle: (path) => `在侧栏预览 ${path}`,
   turnEnding: (error) => {
     const text = error.trim();
+    const imageNotice = imageInputError(text, true);
+    if (imageNotice) return { tone: "notice", text: imageNotice };
     if (USER_STOP.test(text)) return { tone: "stopped", text: "你停止了这一轮" };
     if (PROCESS_STOP.test(text)) return { tone: "stopped", text: "Loom 在这一轮完成前停止了运行" };
     return { tone: "error", text: text || "这一轮没有完成" };
@@ -742,6 +745,8 @@ const EN: RuntimeCopy = {
   previewArtifactTitle: (path) => `Preview ${path} in the side panel`,
   turnEnding: (error) => {
     const text = error.trim();
+    const imageNotice = imageInputError(text, false);
+    if (imageNotice) return { tone: "notice", text: imageNotice };
     if (USER_STOP.test(text)) return { tone: "stopped", text: "You stopped this turn" };
     if (PROCESS_STOP.test(text)) return { tone: "stopped", text: "Loom stopped before this turn finished" };
     return { tone: "error", text: text || "This turn didn't finish" };

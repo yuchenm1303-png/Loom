@@ -19,6 +19,7 @@ from .contracts import (
 from .profiles import ModelProfile, ModelRegistry
 from .reasoning_text import merge_visible_reasoning, split_inline_reasoning
 from .errors import AIToolContractError
+from .image_input import AIImageInputUnsupported, is_image_input_rejection
 from .response_protocol import normalize_response
 from .tool_wire import ToolWireCodec, wire_identifier
 
@@ -53,6 +54,7 @@ class AIPlatform:
     def __init__(self, registry: ModelRegistry | None = None) -> None:
         self.registry = registry or ModelRegistry()
         self._backends: dict[str, object] = {}
+        self._image_rejections: set[str] = set()
 
     def register(self, profile: ModelProfile, backend: object) -> None:
         self.registry.register(profile)
@@ -99,8 +101,11 @@ class AIPlatform:
         if request.tool_choice is ToolChoice.NONE and request.tools:
             request = replace(request, tools=())
         profile = self.registry.get(profile_id)
-        if profile.image_input is not ImageInput.UNSUPPORTED or not request.uses_vision:
+        unsupported = profile.image_input is ImageInput.UNSUPPORTED or profile.profile_id in self._image_rejections
+        if not unsupported or not request.uses_vision:
             return request
+        if self._current_user_has_images(request):
+            raise AIImageInputUnsupported()
 
         changed = False
         messages: list[AIMessage] = []
@@ -120,6 +125,55 @@ class AIPlatform:
 
         return replace(request, messages=tuple(messages)) if changed else request
 
+    @staticmethod
+    def _current_user_has_images(request: ChatRequest) -> bool:
+        return next((message.uses_vision for message in reversed(request.messages) if message.role.value == "user"), False)
+
+    def _recover_image_request(self, profile_id: str, request: ChatRequest, error: BaseException) -> ChatRequest:
+        if not request.uses_vision or not is_image_input_rejection(error):
+            raise error
+        profile = self.registry.get(profile_id)
+        self._image_rejections.add(profile.profile_id)
+        # Cache only non-secret endpoint/model evidence. A cache failure cannot
+        # change this request's recovery or erase durable conversation images.
+        for connection in getattr(self, "_loom_model_connections", ()):
+            if connection.get("profile_id") == profile.profile_id:
+                try:
+                    from loom_image_capability import ImageCapabilityStore
+                    from .model_store import _default_home
+                    ImageCapabilityStore(_default_home()).put(connection.get("base_url", ""), profile.model,
+                        {"supported": False, "source": "provider-rejection"})
+                except Exception:
+                    pass
+        return self._normalize_chat_request(profile_id, request)
+
+    def _call_with_image_support(self, profile_id: str, request: ChatRequest, action):
+        try:
+            return action(request)
+        except Exception as error:
+            repaired = self._recover_image_request(profile_id, request, error)
+            return action(repaired)  # One corrected request; never an unbounded retry.
+
+    def _stream_with_image_support(self, profile_id: str, request: ChatRequest, action):
+        stream = None
+        emitted = False
+        repaired = None
+        try:
+            stream = iter(action(request))
+            for event in stream:
+                emitted = True
+                yield event
+        except Exception as error:
+            repaired = self._recover_image_request(profile_id, request, error)
+            if emitted:
+                raise AIImageInputUnsupported() from error
+        finally:
+            close = getattr(stream, "close", None)
+            if callable(close):
+                close()
+        if repaired is not None:
+            yield from action(repaired)
+
     def execute_chat(self, profile_id: str, request: ChatRequest) -> ModelResponse:
         request = self._normalize_chat_request(profile_id, request)
         self._require_chat_capabilities(profile_id, request)
@@ -129,7 +183,7 @@ class AIPlatform:
             raise RuntimeError(f"backend for {profile_id!r} does not support chat completion")
         codec = ToolWireCodec(request)
         wire_request = codec.encode(request)
-        result = complete(wire_request)
+        result = self._call_with_image_support(profile_id, wire_request, complete)
         if not isinstance(result, ModelResponse):
             raise TypeError("chat model backend must return ModelResponse")
         public_text, inline_reasoning = split_inline_reasoning(result.text)
@@ -163,7 +217,8 @@ class AIPlatform:
         if not callable(complete_structured):
             raise RuntimeError(f"backend for {profile_id!r} does not support structured output")
         codec = ToolWireCodec(request.chat)
-        result = complete_structured(replace(request, chat=codec.encode(request.chat), schema_name=wire_identifier(request.schema_name)))
+        result = self._call_with_image_support(profile_id, codec.encode(request.chat),
+            lambda chat: complete_structured(replace(request, chat=chat, schema_name=wire_identifier(request.schema_name))))
         if not isinstance(result, dict):
             raise TypeError("structured model backend must return a JSON object")
         return result
@@ -177,7 +232,7 @@ class AIPlatform:
             raise RuntimeError(f"backend for {profile_id!r} does not support streaming")
         codec = ToolWireCodec(request)
         names = codec.stream_decoder()
-        for event in stream(codec.encode(request)):
+        for event in self._stream_with_image_support(profile_id, codec.encode(request), stream):
             if not isinstance(event, StreamEvent):
                 raise TypeError("streaming model backend must yield StreamEvent values")
             yield names.decode(event)

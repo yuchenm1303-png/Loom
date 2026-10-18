@@ -274,7 +274,7 @@ class StreamingAIPlatform(AIPlatform):
         wire_request = codec.encode(request)
         accumulator = _StreamAccumulator(declared_names=frozenset(tool.name for tool in wire_request.tools))
         names = codec.stream_decoder()
-        stream = stream_method(wire_request)
+        stream = self._stream_with_image_support(profile_id, wire_request, stream_method)
         try:
             for raw_event in stream:
                 check_cancelled()

@@ -89,7 +89,13 @@ class ImageCapabilityStore:
         supported = image_support(evidence.get("supported"))
         source = str(evidence.get("source") or "unknown")[:120]
         with closing(self._connect()) as db, db:
+            old = db.execute("SELECT supported, source, observed FROM evidence WHERE endpoint=? AND model=?", self._key(endpoint, model)).fetchone()
+            if old and time.time() - old[2] <= 86400 and (
+                (supported is None and old[0] is not None) or old[1] == "provider-rejection"
+            ) and source != "configuration":
+                return {"supported": None if old[0] is None else bool(old[0]), "source": old[1]}
             db.execute("INSERT OR REPLACE INTO evidence VALUES (?, ?, ?, ?, ?)", (*self._key(endpoint, model), supported, source, time.time()))
+        return {"supported": supported, "source": source}
 
     def get(self, endpoint, model):
         import time

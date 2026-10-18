@@ -1,3 +1,4 @@
+import "./model-input-notice.css";
 import {
   ArrowUpRight,
   Bot,
@@ -823,7 +824,7 @@ function ErrorRow({ item }: { item: TranscriptItem }) {
   const ending = copy.turnEnding(String(item.error || item.text || ""));
   const stopped = ending.tone === "stopped";
   return (
-    <div className={`error-row ${stopped ? "is-stopped" : ""}`.trim()} role={stopped ? "status" : "alert"}>
+    <div className={`error-row ${stopped ? "is-stopped" : ending.tone === "notice" ? "is-input-notice" : ""}`.trim()} role={ending.tone === "error" ? "alert" : "status"}>
       <span className="error-icon">{stopped ? <CircleStop size={14} /> : <CircleAlert size={14} />}</span>
       <span>{ending.text}</span>
     </div>

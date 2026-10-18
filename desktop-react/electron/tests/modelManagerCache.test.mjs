@@ -554,3 +554,15 @@ test("first invalid provider sync retains its bundled rows without suppressing h
     group_id: "opencode-go", group_name: "OpenCode Go", available: true }], ["opencode-console"]);
   assert.deepEqual(new Set(result.profiles.map(row => row.selection)), new Set([go.selection, consoleRow.selection]));
 });
+
+test("provider-rejected image input is not erased by a catalog with unknown modalities", async () => {
+  const manager = new DesktopModelManager(os.tmpdir());
+  const known = profile({ selection: "builtin:opencode-go:beam-free", model: "beam-free", kind: "builtin", vision: false,
+    imageInput: { supported: false, source: "provider-rejection" } });
+  manager.runPythonBridgeAsync = async () => ({});
+  const snapshot = { ...registry([known]), current: known, recentModels: [] };
+  const refreshed = await manager.applyServerCatalog(snapshot, [{ model_id: known.selection, model: known.model, name: known.name,
+    group_id: "opencode-go", group_name: "OpenCode Go", available: true, image_input: { supported: null, source: "unknown" } }]);
+  assert.equal(refreshed.current.vision, false);
+  assert.equal(refreshed.current.imageInput.source, "provider-rejection");
+});

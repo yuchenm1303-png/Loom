@@ -9,6 +9,7 @@ import {
   memo,
 } from "react";
 import { useI18n } from "../i18n";
+import { imageAttachmentState } from "./modelInput";
 import { recordSendOrigin } from "../sendFlight";
 import type { Attachment } from "../types/loom";
 import { Composer as ComposerBase } from "./ComposerBase";
@@ -36,6 +37,7 @@ function SteeringComposer({
   paused = false,
   onPausedChange,
   imagesAllowed = true,
+  imageSupport,
 }: ComposerProps) {
   const { language } = useI18n();
   const zh = language === "zh-CN";
@@ -44,6 +46,7 @@ function SteeringComposer({
   const setValue = onDraftValueChange ?? setLocalValue;
   const [focused, setFocused] = useState(false);
   const [attachments, setAttachments] = useState<Attachment[]>([]);
+  const imageNotice = imageAttachmentState(attachments.some(item => item.isImage), imagesAllowed, imageSupport, zh);
   const [attachError, setAttachError] = useState("");
   const [dragging, setDragging] = useState(false);
   const [pendingSends, setPendingSends] = useState(0);
@@ -127,7 +130,8 @@ function SteeringComposer({
     // Steering has two clocks: the conversation should react immediately, while
     // the durable RPC may finish later at a safe boundary. Do not freeze the
     // composer on that network clock.
-    const sendable = attachments.filter((item) => imagesAllowed || !item.isImage);
+    if (imageNotice.blocked) return;
+    const sendable = attachments;
     if ((!typedInput && !quote && !sendable.length) || stopping) return;
     setAcknowledged(false);
     setError("");
@@ -191,7 +195,7 @@ function SteeringComposer({
     }
   }
 
-  const canGuide = !stopping && Boolean(value.trim() || quote || attachments.some((item) => imagesAllowed || !item.isImage));
+  const canGuide = !stopping && !imageNotice.blocked && Boolean(value.trim() || quote || attachments.length);
 
   return (
     <div className="composer-wrap composer-refined live-steering-composer">
@@ -216,11 +220,7 @@ function SteeringComposer({
         {quote ? <QuoteReplyBar quote={quote} onClear={() => setQuote(null)} /> : null}
         <ComposerAttachmentStrip attachments={attachments} imagesAllowed={imagesAllowed} onRemove={removeAttachment} />
         {attachError ? <p className="composer-attach-error">{attachError}</p> : null}
-        {!imagesAllowed && attachments.some((item) => item.isImage) ? (
-          <p className="composer-attach-error">
-            This model cannot read images in the active turn. Other files can still be attached.
-          </p>
-        ) : null}
+        {imageNotice.message ? <p className="composer-image-notice" role="status">{imageNotice.message}</p> : null}
         {error ? <p className="composer-attach-error">{error}</p> : null}
 
         <div className="composer-input-row">

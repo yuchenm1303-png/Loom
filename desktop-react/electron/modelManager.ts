@@ -328,7 +328,9 @@ export class DesktopModelManager {
         catalogState: row.catalog_state ?? (row.available ? "available" : "retired"),
         catalogAvailable: row.available,
         catalogMessage: row.available ? undefined : "Model is no longer available from this provider",
-        vision: row.image_input?.supported ?? null, imageInput: row.image_input ?? { supported: null, source: "unknown" },
+        vision: profile.imageInput?.source === "provider-rejection" ? false : row.image_input?.supported ?? profile.imageInput?.supported ?? null,
+        imageInput: profile.imageInput?.source === "provider-rejection" ? profile.imageInput
+          : row.image_input?.supported != null ? row.image_input : profile.imageInput ?? { supported: null, source: "unknown" },
         statusMessage: row.available ? undefined : "Model is no longer available from this provider" };
     });
     const receivedIds = new Set(receivedProfiles.map(profile => profile.selection));

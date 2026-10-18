@@ -34,6 +34,8 @@ import "./composer.css";
 import "./composer-attachment-polish.css";
 import "./composer-stability.css";
 import "./composer-control-pills.css";
+import "./model-input-notice.css";
+import { imageAttachmentState } from "./modelInput";
 
 interface ComposerProps {
   threadId?: string;
@@ -66,6 +68,7 @@ interface ComposerProps {
   onStickerPreferencesChange?(preferences: StickerPreferences): Promise<void> | void;
   /** True when the bound model was declared able to read images. */
   imagesAllowed?: boolean;
+  imageSupport?: boolean | null;
   onSend(input: string, attachments: { path: string; name: string }[]): Promise<void> | void;
   onInterrupt(): Promise<void> | void;
 }
@@ -169,6 +172,7 @@ export function Composer({
   onDeleteModel,
   onReasoningChange,
   imagesAllowed = true,
+  imageSupport,
   onSend,
   onInterrupt,
 }: ComposerProps) {
@@ -178,6 +182,7 @@ export function Composer({
   const value = draftValue ?? localValue;
   const setValue = onDraftValueChange ?? setLocalValue;
   const [attachments, setAttachments] = useState<Attachment[]>([]);
+  const imageNotice = imageAttachmentState(attachments.some(item => item.isImage), imagesAllowed, imageSupport, zh);
   const [attachError, setAttachError] = useState("");
   const [dragging, setDragging] = useState(false);
   const [focused, setFocused] = useState(false);
@@ -336,9 +341,10 @@ export function Composer({
   };
 
   async function submit() {
+    if (imageNotice.blocked) return;
     const typedInput = value.trim();
     const input = formatQuotedPrompt(quote, typedInput);
-    const sendable = attachments.filter((item) => imagesAllowed || !item.isImage);
+    const sendable = attachments;
     // A quote or attachment can carry context on its own; a truly empty composer cannot.
     if ((!typedInput && !quote && !sendable.length) || disabled || running || submittingRef.current) return;
     if (!accountAuthenticated) {
@@ -408,6 +414,7 @@ export function Composer({
   const hasDraftContent = Boolean(value.trim() || quote || attachments.length);
   const canSend = Boolean(
     !disabled
+    && !imageNotice.blocked
     && !running
     && (value.trim() || quote || attachments.some((item) => imagesAllowed || !item.isImage))
   );
@@ -433,11 +440,7 @@ export function Composer({
         {modelError ? <p role="alert" className="composer-attach-error">{modelError}</p> : null}
         {attachError ? <p className="composer-attach-error">{attachError}</p> : null}
         {stopError ? <p className="composer-attach-error">Could not stop: {stopError}</p> : null}
-        {!imagesAllowed && attachments.some((item) => item.isImage) ? (
-          <p className="composer-attach-error">
-            This model is not set up to read images. Other files still work — they are saved into the workspace for the agent to read.
-          </p>
-        ) : null}
+        {imageNotice.message ? <p className="composer-image-notice" role="status">{imageNotice.message}</p> : null}
 
         <div className="composer-input-row">
           <span className="composer-spark" aria-hidden="true"><Sparkles size={15} /></span>

@@ -1503,6 +1503,7 @@ export default function App() {
             onDeleteModel={loom.deleteModel}
             onReasoningChange={loom.setReasoning}
             imagesAllowed={attachmentsEnabled && loom.models?.current?.vision !== false}
+            imageSupport={loom.models?.current?.vision ?? null}
             onSend={loom.send}
             onInterrupt={loom.interrupt}
             paused={Boolean(thread?.paused)}

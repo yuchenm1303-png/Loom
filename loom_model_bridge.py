@@ -1096,7 +1096,7 @@ def _with_reasoning(profile: dict[str, Any], reasoning_store: ReasoningConfigSto
     payload = dict(profile)
     evidence = _DISCOVERED_IMAGE_CAPABILITIES.get((_normalize_url(profile.get("baseUrl", "")), str(profile.get("model", "")).casefold()))
     if evidence is not None:
-        ImageCapabilityStore(reasoning_store.home).put(profile.get("baseUrl", ""), profile.get("model", ""), evidence)
+        evidence = ImageCapabilityStore(reasoning_store.home).put(profile.get("baseUrl", ""), profile.get("model", ""), evidence)
     else:
         evidence = ImageCapabilityStore(reasoning_store.home).get(profile.get("baseUrl", ""), profile.get("model", ""))
     if evidence is None:

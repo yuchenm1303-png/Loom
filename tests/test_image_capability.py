@@ -7,6 +7,19 @@ from services.loom_model_policy.catalog_sync import parse_models
 from services.loom_model_policy.policy import PolicyStore
 
 
+def test_provider_rejection_survives_unknown_metadata_and_remains_endpoint_scoped(tmp_path):
+    store = ImageCapabilityStore(tmp_path)
+    endpoint = "https://example.test/go/v1"
+    observed = {"supported": False, "source": "provider-rejection"}
+    store.put(endpoint, "beam-free", observed)
+    assert store.put(endpoint, "beam-free", {"supported": None, "source": "unknown"}) == observed
+    assert store.put(endpoint, "beam-free", {"supported": True, "source": "provider/models"}) == observed
+    assert store.get(endpoint, "beam-free") == observed
+    assert store.get(endpoint + "/other", "beam-free") is None
+    assert store.get(endpoint, "other-model") is None
+    assert store.put(endpoint, "beam-free", {"supported": True, "source": "configuration"})["supported"] is True
+
+
 @pytest.mark.parametrize("metadata,expected", [
     ({}, None), ({"id": "vision-multimodal-vl"}, None),
     ({"vision": "false"}, None), ({"vision": False}, False),
@@ -62,6 +75,11 @@ def test_runtime_transport_and_normalization_use_the_same_state(supported):
     platform = build_runtime_model_platform(provider="openai-compatible", base_url="https://example.test/v1", model="arbitrary-model", api_key="test-secret", vision=supported)
     assert platform._loom_model_connection["vision"] is supported
     request = ChatRequest(messages=(AIMessage(role=MessageRole.USER, content=(TextPart("image"), ImagePart("data:image/png;base64,AA"))),))
-    normalized = platform._delegate._normalize_chat_request(AGENT_FAST_ROLE.role_id, request)
-    assert normalized.uses_vision is (supported is not False)
+    if supported is False:
+        from app.ai.image_input import AIImageInputUnsupported
+        with pytest.raises(AIImageInputUnsupported):
+            platform._delegate._normalize_chat_request(AGENT_FAST_ROLE.role_id, request)
+    else:
+        normalized = platform._delegate._normalize_chat_request(AGENT_FAST_ROLE.role_id, request)
+        assert normalized.uses_vision
     assert request.uses_vision is True
