@@ -4,6 +4,7 @@ const browser = await chromium.launch({ executablePath: process.env.LOOM_CHROMIU
 const origin = process.env.LOOM_TEST_ORIGIN || "http://127.0.0.1:5173";
 try {
   const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
+  await page.addInitScript(() => localStorage.setItem("loom.sidebar.expandedProjects", JSON.stringify(["loom", "agent", "relay"])));
   const errors = [];
   page.on('pageerror', error => errors.push(error.message));
   for (const theme of ['light', 'dark']) {

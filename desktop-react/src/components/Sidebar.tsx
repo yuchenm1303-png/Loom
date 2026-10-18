@@ -213,7 +213,7 @@ const SKELETON_ROW_WIDTHS = ["72%", "58%", "84%", "64%", "78%", "52%"] as const;
 
 const PINNED_STORAGE_KEY = "loom.sidebar.pinnedThreads";
 const UNREAD_STORAGE_KEY = "loom.sidebar.unreadThreads";
-const COLLAPSED_PROJECTS_STORAGE_KEY = "loom.sidebar.collapsedProjects";
+const EXPANDED_PROJECTS_STORAGE_KEY = "loom.sidebar.expandedProjects";
 
 function relativeTime(value: string): string {
   const stamp = Date.parse(value);
@@ -354,7 +354,7 @@ export const Sidebar = memo(function Sidebar({
   const [searchOpen, setSearchOpen] = useState(false);
   const [pinnedIds, setPinnedIds] = useState<Set<string>>(() => readStoredIds(PINNED_STORAGE_KEY));
   const [unreadIds, setUnreadIds] = useState<Set<string>>(() => readStoredIds(UNREAD_STORAGE_KEY));
-  const [collapsedProjectIds, setCollapsedProjectIds] = useState<Set<string>>(() => readStoredIds(COLLAPSED_PROJECTS_STORAGE_KEY));
+  const [expandedProjectIds, setExpandedProjectIds] = useState<Set<string>>(() => readStoredIds(EXPANDED_PROJECTS_STORAGE_KEY));
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const [contextMenuClosing, setContextMenuClosing] = useState(false);
   const contextMenuCloseTimerRef = useRef<number | null>(null);
@@ -491,35 +491,26 @@ export const Sidebar = memo(function Sidebar({
   };
 
   const toggleProjectCollapsed = (projectId: string) => {
-    setCollapsedProjectIds((current) => {
+    setExpandedProjectIds((current) => {
       const next = new Set(current);
       if (next.has(projectId)) next.delete(projectId);
       else next.add(projectId);
-      persistIds(COLLAPSED_PROJECTS_STORAGE_KEY, next);
+      persistIds(EXPANDED_PROJECTS_STORAGE_KEY, next);
       return next;
     });
   };
 
   useEffect(() => {
-    setCollapsedProjectIds((current) => {
+    // Project metadata arrives after mount; preserve explicit expansion choices
+    // while the initial project list is still empty.
+    if (!projectIds.size) return;
+    setExpandedProjectIds((current) => {
       const next = new Set([...current].filter((projectId) => projectIds.has(projectId)));
       if (next.size === current.size) return current;
-      persistIds(COLLAPSED_PROJECTS_STORAGE_KEY, next);
+      persistIds(EXPANDED_PROJECTS_STORAGE_KEY, next);
       return next;
     });
   }, [projectIds]);
-
-  useEffect(() => {
-    const activeProjectIdFromThread = (activeThread?.projectId || "").trim();
-    if (!activeProjectIdFromThread) return;
-    setCollapsedProjectIds((current) => {
-      if (!current.has(activeProjectIdFromThread)) return current;
-      const next = new Set(current);
-      next.delete(activeProjectIdFromThread);
-      persistIds(COLLAPSED_PROJECTS_STORAGE_KEY, next);
-      return next;
-    });
-  }, [activeThread?.id, activeThread?.projectId]);
 
   const markRead = (threadId: string) => {
     if (unreadIds.has(threadId)) updateStoredSet(UNREAD_STORAGE_KEY, setUnreadIds, threadId, false);
@@ -680,10 +671,10 @@ export const Sidebar = memo(function Sidebar({
     try {
       await onRemoveProject(projectId);
       setNotice({ kind: "success", text: copy.projectRemoved(project.name) });
-      setCollapsedProjectIds((current) => {
+      setExpandedProjectIds((current) => {
         const next = new Set(current);
         next.delete(projectId);
-        persistIds(COLLAPSED_PROJECTS_STORAGE_KEY, next);
+        persistIds(EXPANDED_PROJECTS_STORAGE_KEY, next);
         return next;
       });
     } catch (cause) {
@@ -902,7 +893,7 @@ export const Sidebar = memo(function Sidebar({
 
         <div className="project-list">
           {projectSections.map(({ project, threads: projectThreads }) => {
-            const collapsed = collapsedProjectIds.has(project.id);
+            const collapsed = !expandedProjectIds.has(project.id);
             const selected = activeProjectId === project.id;
             const visibleCount = projectThreads.length || project.threadCount || 0;
             return (

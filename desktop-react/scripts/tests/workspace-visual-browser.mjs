@@ -10,6 +10,7 @@ const luminance = rgb => rgb.match(/[\d.]+/g).slice(0, 3).map(Number)
 if (screenshots) await mkdir(screenshots, { recursive: true });
 try {
   const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
+  await page.addInitScript(() => localStorage.setItem("loom.sidebar.expandedProjects", JSON.stringify(["loom", "agent", "relay"])));
   const errors = [];
   page.on("pageerror", error => errors.push(error.message));
   await page.goto(`${origin}/scripts/fixtures/workspace-visual.html?theme=light`);
