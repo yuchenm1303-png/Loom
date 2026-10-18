@@ -21,7 +21,7 @@
   color: var(--accent-soft);
   font-size: 11px;
   line-height: 1.2;
-  font-weight: 680;
+  font-weight: 650;
 }
 .decision-card-heading p { margin: 0; color: var(--loom-workspace-muted); font-size: 13px; line-height: 1.6; }
 .decision-options { display: grid; gap: 4px; padding: 10px; }
@@ -166,7 +166,7 @@
 }
 .decision-submit:hover:not(:disabled) { background: color-mix(in srgb, var(--accent) 26%, var(--panel-soft)); }
 .decision-submit:disabled { opacity: 1; background: var(--loom-workspace-hover); color: var(--loom-workspace-muted); border-color: transparent; cursor: default; }
-.decision-submitted { min-height: 42px; display: flex; align-items: center; gap: 7px; padding: 0 15px; border-top: 1px solid var(--border-soft); color: var(--success); font-size: 10.5px; font-weight: 620; }
+.decision-submitted { min-height: 42px; display: flex; align-items: center; gap: 7px; padding: 0 15px; border-top: 1px solid var(--border-soft); color: var(--success); font-size: 10.5px; font-weight: 600; }
 .decision-card.is-submitted .decision-options { opacity: .7; }
 @media (max-width: 720px) {
   .decision-card-head, .decision-card-foot { padding-inline: 16px; }

@@ -938,7 +938,7 @@ html[data-loom-theme="light"] .settings-host {
 
 .settings-shell.settings-refined .appearance-overview-copy strong {
   color: var(--sr-ink);
-  font-size: 17px;
+  font-size: 18px;
   letter-spacing: -.02em;
 }
 
@@ -970,7 +970,7 @@ html[data-loom-theme="light"] .settings-host {
 
 .settings-shell.settings-refined .appearance-overview-meta b {
   color: var(--sr-ink);
-  font-weight: 640;
+  font-weight: 650;
   font-variant-numeric: tabular-nums;
 }
 

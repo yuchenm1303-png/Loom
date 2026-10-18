@@ -18,7 +18,7 @@
 .artifact-card-external:hover { color: var(--pl-ink); background: var(--pl-hover); }
 .artifact-library-empty { display: grid; justify-items: center; gap: 13px; padding: 64px 18px; text-align: center; color: var(--pl-muted); }
 .artifact-library-empty strong { font-size: 14px; font-weight: 650; color: var(--pl-ink); }
-.artifact-library-empty span { font-size: 12.5px; line-height: 1.7; color: var(--pl-muted); }
+.artifact-library-empty span { font-size: 13px; line-height: 1.7; color: var(--pl-muted); }
 .artifact-back { display: grid; place-items: center; width: 100%; height: 100%; border: 0; background: transparent; color: inherit; cursor: pointer; border-radius: inherit; }
 .artifact-card-main:focus-visible, .artifact-card-external:focus-visible, .artifact-back:focus-visible { outline: 2px solid var(--pl-focus); outline-offset: -2px; }
 /* A card that arrives is revealed, not moved: it carries text. */

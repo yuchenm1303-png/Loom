@@ -98,7 +98,7 @@
   margin: 15px 0 0;
   font-size: clamp(2.85rem, 4.35vw, 3.8rem);
   line-height: .99;
-  font-weight: 545;
+  font-weight: 500;
   letter-spacing: -.052em;
   text-wrap: balance;
 }
@@ -138,7 +138,7 @@
 .loom-form-submit {
   padding: 0 17px;
   background: rgba(8,26,38,.78);
-  font-weight: 630;
+  font-weight: 600;
 }
 .loom-primary-action:hover,
 .loom-form-submit:hover {
@@ -162,7 +162,7 @@
 }
 .loom-secondary-action strong {
   font-size: .7rem;
-  font-weight: 620;
+  font-weight: 600;
 }
 .loom-secondary-action small {
   color: rgba(255,255,255,.35);
@@ -200,7 +200,7 @@
   margin-top: 7px;
   font-size: 1.42rem;
   line-height: 1.16;
-  font-weight: 610;
+  font-weight: 600;
   letter-spacing: -.028em;
 }
 .loom-control-copy {
@@ -221,7 +221,7 @@
   background: rgba(255,255,255,.07);
   color: rgba(255,255,255,.46);
   font-size: .52rem;
-  font-weight: 590;
+  font-weight: 600;
   letter-spacing: .065em;
 }
 .loom-connection-badge i {
@@ -293,7 +293,7 @@
   margin: 0;
   color: rgba(255,255,255,.74);
   font-size: .63rem;
-  font-weight: 590;
+  font-weight: 600;
   text-align: right;
   white-space: nowrap;
   overflow: hidden;

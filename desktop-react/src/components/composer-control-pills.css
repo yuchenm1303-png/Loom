@@ -323,14 +323,14 @@ html[data-loom-theme="light"] .composer .model-chip > span {
   padding: 0 8px;
   gap: 6.5px;
   font-size: 10.7px;
-  font-weight: 560;
+  font-weight: 600;
 }
 
 .composer .composer-chip {
   padding: 0 8px;
   gap: 6.5px;
   font-size: 10.7px;
-  font-weight: 590;
+  font-weight: 600;
 }
 
 .composer .composer-chip::before {

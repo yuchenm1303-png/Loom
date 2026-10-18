@@ -99,7 +99,7 @@
 .model-core-copy strong {
   min-width: 0;
   color: #e7e9ee;
-  font-size: 14.2px;
+  font-size: 14px;
   font-weight: 650;
   line-height: 1.22;
   letter-spacing: -.018em;
@@ -200,7 +200,7 @@
 .model-core-nav strong {
   color: #c7cbd3;
   font-size: 10.2px;
-  font-weight: 610;
+  font-weight: 600;
   line-height: 1.15;
 }
 
@@ -371,7 +371,7 @@
 .model-core-models strong {
   color: #cbd0d8;
   font-size: 10.4px;
-  font-weight: 610;
+  font-weight: 600;
 }
 
 .model-core-models small {
@@ -393,7 +393,7 @@
 .model-core-add-api strong {
   color: inherit;
   font-size: 8.8px;
-  font-weight: 580;
+  font-weight: 600;
 }
 
 .model-core-add-api:hover:not(:disabled) {

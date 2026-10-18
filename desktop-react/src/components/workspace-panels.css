@@ -440,7 +440,7 @@ body.loom-panel-resizing * {
   .thread-status-chip,
   .thread-header-divider { display: none; }
   .thread-header-leading { margin-right: -2px; }
-  .thread-title-line strong { max-width: 58cqw; font-size: 13.4px; }
+  .thread-title-line strong { max-width: 58cqw; font-size: 13px; }
   .workspace-path-button { max-width: 50cqw; }
   .polished-thread-header-actions { gap: 2px; }
   .thread-header .workspace-path-button { display: none; }

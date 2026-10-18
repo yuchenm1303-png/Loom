@@ -134,7 +134,7 @@ html[data-loom-review-open="true"] {
   white-space: nowrap;
   color: #dfe2e8;
   font-size: 12px;
-  font-weight: 620;
+  font-weight: 600;
   font-family: var(--loom-code-font, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace);
 }
 
@@ -405,7 +405,7 @@ html[data-loom-review-open="true"] {
   text-overflow: ellipsis;
   white-space: nowrap;
   font-size: 11px;
-  font-weight: 620;
+  font-weight: 600;
 }
 
 .review-directory-row small {
@@ -460,7 +460,7 @@ html[data-loom-review-open="true"] {
   text-overflow: ellipsis;
   white-space: nowrap;
   font-size: 11px;
-  font-weight: 570;
+  font-weight: 600;
 }
 
 .review-tree-stats {
@@ -490,7 +490,7 @@ html[data-loom-review-open="true"] {
   color: #aaa1ff;
   font: inherit;
   font-size: 9.5px;
-  font-weight: 620;
+  font-weight: 600;
   cursor: pointer;
 }
 

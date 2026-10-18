@@ -6,12 +6,10 @@
  * shared), so one size is enough.
  *
  * The list is every numeric `font-weight` the source uses; scripts/tests/font-warmup.test.mjs fails when a
- * stylesheet asks for one that is not here.
+ * stylesheet asks for one that is not here. There are four (text, label, heading, strong): the source used to ask
+ * for 32 (every ten from 520 to 800), thirty of them a difference nobody can see and each an instance to make.
  */
-export const UI_FONT_WEIGHTS: readonly number[] = [
-  400, 450, 500, 520, 530, 540, 545, 550, 560, 570, 580, 590, 600, 610, 620, 630,
-  640, 650, 660, 670, 680, 690, 700, 710, 720, 730, 740, 750, 760, 780, 790, 800,
-];
+export const UI_FONT_WEIGHTS: readonly number[] = [400, 500, 600, 650];
 
 const IDLE_TIMEOUT_MS = 2500;
 

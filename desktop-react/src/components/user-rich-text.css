@@ -19,7 +19,7 @@
   color: inherit;
   line-height: 1.35;
   letter-spacing: -.012em;
-  font-weight: 700;
+  font-weight: 650;
 }
 .user-rich-message h1 { font-size: 1.16em; }
 .user-rich-message h2 { font-size: 1.09em; }
@@ -122,7 +122,7 @@
 }
 .user-rich-message th,
 .user-rich-message td { padding: 5px 8px; border: 1px solid rgba(255,255,255,.08); }
-.user-rich-message th { font-weight: 700; background: rgba(255,255,255,.035); }
+.user-rich-message th { font-weight: 650; background: rgba(255,255,255,.035); }
 
 .user-link-cards {
   display: grid;

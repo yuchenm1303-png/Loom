@@ -45,7 +45,7 @@
   border-top: 1px solid rgba(255,255,255,.045);
   color: #646c79;
   font-size: 10.5px;
-  font-weight: 520;
+  font-weight: 500;
   letter-spacing: .012em;
 }
 
@@ -89,7 +89,7 @@
   background: rgba(154,140,255,.055);
   color: #a69deb;
   font-size: 9px;
-  font-weight: 720;
+  font-weight: 650;
   letter-spacing: .06em;
 }
 
@@ -101,7 +101,7 @@
   color: #f0f1f5 !important;
   font-size: 20px !important;
   line-height: 1.25;
-  font-weight: 720 !important;
+  font-weight: 650 !important;
   letter-spacing: -.02em;
 }
 
@@ -111,7 +111,7 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   color: #8d95a2 !important;
-  font-size: 12.5px !important;
+  font-size: 13px !important;
 }
 
 .model-summary-card > .settings-status-pill {
@@ -180,8 +180,8 @@
 
 .mature-model-card-head strong {
   color: #eceef3 !important;
-  font-size: 14.5px;
-  font-weight: 680;
+  font-size: 15px;
+  font-weight: 650;
   letter-spacing: -.012em;
 }
 
@@ -193,7 +193,7 @@
   background: rgba(255,255,255,.018);
   color: #777f8d !important;
   font-size: 9.5px !important;
-  font-weight: 570;
+  font-weight: 600;
 }
 
 .mature-model-card .settings-status-pill {
@@ -284,7 +284,7 @@
   border-radius: 13px;
   background: rgba(255,255,255,.012);
   color: #737b88;
-  font-size: 12.5px;
+  font-size: 13px;
 }
 
 /* Responsive density ------------------------------------------------------ */
@@ -330,7 +330,7 @@
   }
 
   .model-summary-copy > strong {
-    font-size: 17px !important;
+    font-size: 18px !important;
   }
 
   .model-summary-card::after {

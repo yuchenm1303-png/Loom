@@ -109,7 +109,7 @@
 .context-meter-panel-head strong {
   color: var(--text, #e8eaee);
   font-variant-numeric: tabular-nums;
-  font-size: 12.5px;
+  font-size: 13px;
 }
 
 .context-meter-rows {
@@ -326,7 +326,7 @@ html[data-loom-reduced-motion="true"] .context-meter-chip:active { transform: no
   gap: 3px;
   flex: 0 0 auto;
   font-size: 10.25px;
-  font-weight: 580;
+  font-weight: 600;
   line-height: 1;
   letter-spacing: -.018em;
 }
@@ -506,7 +506,7 @@ html[data-loom-reduced-motion="true"] .context-meter-compaction-step.active::aft
 .context-meter-progress-head > span {
   color: var(--muted, #9aa1ab);
   font-size: 10.5px;
-  font-weight: 560;
+  font-weight: 600;
 }
 
 .context-meter-progress-head strong {
@@ -593,7 +593,7 @@ html[data-loom-reduced-motion="true"] .context-meter-compaction-step.active::aft
 
 .context-meter-progress-labels span.active {
   color: var(--accent, #695ad8);
-  font-weight: 620;
+  font-weight: 600;
 }
 
 .context-meter-progress-card p {

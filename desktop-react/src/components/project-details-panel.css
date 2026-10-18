@@ -107,14 +107,14 @@
   line-height: 12px;
   text-transform: uppercase;
   letter-spacing: .1em;
-  font-weight: 740;
+  font-weight: 650;
 }
 
 .project-overview-card strong {
   color: #eef0f6;
   font-size: 20px;
   line-height: 24px;
-  font-weight: 790;
+  font-weight: 650;
 }
 
 .project-overview-card small,
@@ -175,7 +175,7 @@
   color: #eef0f6;
   font-size: 14px;
   line-height: 18px;
-  font-weight: 740;
+  font-weight: 650;
 }
 
 .project-card-heading > svg {
@@ -218,7 +218,7 @@
   line-height: 12px;
   text-transform: uppercase;
   letter-spacing: .08em;
-  font-weight: 720;
+  font-weight: 650;
 }
 
 .project-workspace-stat strong {
@@ -230,7 +230,7 @@
   color: #eef0f6;
   font-size: 13px;
   line-height: 17px;
-  font-weight: 730;
+  font-weight: 650;
 }
 
 .project-workspace-stat small {
@@ -319,7 +319,7 @@
   background: rgba(53, 237, 145, .09);
   border: 1px solid rgba(53, 237, 145, .15);
   font-size: 10px;
-  font-weight: 750;
+  font-weight: 650;
 }
 
 .project-changed-file code {
@@ -401,7 +401,7 @@
 .project-instructions-card p {
   margin: 0 0 10px;
   color: #9aa2b2;
-  font-size: 12.5px;
+  font-size: 13px;
   line-height: 19px;
 }
 
@@ -502,8 +502,8 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 12.5px;
-  font-weight: 630;
+  font-size: 13px;
+  font-weight: 600;
 }
 
 .project-thread-entry small {
@@ -607,7 +607,7 @@ html[data-loom-reduced-motion="true"] .project-empty-threads button {
   grid-area: label;
   color: #a49cad;
   font-size: 10px;
-  font-weight: 740;
+  font-weight: 650;
   letter-spacing: .08em;
   text-transform: uppercase;
 }
@@ -615,9 +615,9 @@ html[data-loom-reduced-motion="true"] .project-empty-threads button {
 .project-memory-total strong {
   grid-area: value;
   color: #f0eefc;
-  font-size: 21px;
+  font-size: 20px;
   line-height: 1;
-  font-weight: 790;
+  font-weight: 650;
   font-variant-numeric: tabular-nums;
 }
 
@@ -823,7 +823,7 @@ html[data-loom-reduced-motion="true"] .project-empty-threads button {
   background: rgba(255, 255, 255, .03);
   font-size: 9.5px;
   line-height: 1;
-  font-weight: 720;
+  font-weight: 650;
 }
 
 .project-memory-row-copy {
@@ -841,7 +841,7 @@ html[data-loom-reduced-motion="true"] .project-empty-threads button {
   color: #dfe3ec;
   font-size: 11.5px;
   line-height: 16px;
-  font-weight: 610;
+  font-weight: 600;
 }
 
 .project-memory-row-copy small {
@@ -995,7 +995,7 @@ html[data-loom-reduced-motion="true"] .project-empty-threads button {
 .project-memory-index > div span {
   color: #7d748e;
   font-size: 9px;
-  font-weight: 760;
+  font-weight: 650;
   letter-spacing: .09em;
   text-transform: uppercase;
 }
@@ -1088,7 +1088,7 @@ html[data-loom-reduced-motion="true"] .project-empty-threads button {
 .project-memory-usage > strong {
   color: #858e9d;
   font-size: 9.5px;
-  font-weight: 720;
+  font-weight: 650;
 }
 
 .project-memory-usage > div {

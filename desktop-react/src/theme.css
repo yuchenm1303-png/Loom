@@ -2236,7 +2236,7 @@ html[data-loom-theme="light"] :is(
 ) {
   color: #59626d !important;
   font-size: 12px;
-  font-weight: 620;
+  font-weight: 600;
   letter-spacing: .005em;
 }
 
@@ -2247,7 +2247,7 @@ html[data-loom-theme="light"] :is(
   [class*="context"] [class*="total"]
 ) {
   color: #252b32 !important;
-  font-weight: 740;
+  font-weight: 650;
   letter-spacing: -.018em;
 }
 
@@ -2657,7 +2657,7 @@ html[data-loom-theme="light"] .composer .composer-chip {
   background: transparent;
   color: #59636f;
   font-size: 10.8px;
-  font-weight: 560;
+  font-weight: 600;
   line-height: 1;
   box-shadow: none;
 }
@@ -2728,7 +2728,7 @@ html[data-loom-theme="light"] .composer .composer-keycap {
   background: #f7f8fa;
   color: #747d88;
   font-size: 10px;
-  font-weight: 540;
+  font-weight: 500;
   line-height: 1;
   box-shadow: inset 0 1px rgba(255,255,255,.95);
 }
@@ -2758,7 +2758,7 @@ html[data-loom-theme="light"] .composer-running-label {
   background: rgba(105,90,216,.055);
   color: #5d51b6;
   font-size: 10.8px;
-  font-weight: 610;
+  font-weight: 600;
   line-height: 1;
   letter-spacing: .002em;
   transform: none;

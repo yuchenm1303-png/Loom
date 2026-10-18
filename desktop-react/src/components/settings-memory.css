@@ -46,7 +46,7 @@
   color: #f2f3f7;
   font-size: 24px;
   line-height: 1;
-  font-weight: 730;
+  font-weight: 650;
   font-variant-numeric: tabular-nums;
 }
 
@@ -93,13 +93,13 @@
 
 .memory-preference-row strong {
   color: #eceef3;
-  font-size: 13.5px;
-  font-weight: 640;
+  font-size: 14px;
+  font-weight: 650;
 }
 
 .memory-preference-row span:not(.memory-preference-icon) {
   color: #8d95a3;
-  font-size: 12.5px;
+  font-size: 13px;
   line-height: 1.45;
 }
 
@@ -172,7 +172,7 @@
   outline: 0;
   background: transparent;
   color: #e9ebef;
-  font-size: 12.5px;
+  font-size: 13px;
 }
 
 .memory-search-box input::placeholder {
@@ -253,7 +253,7 @@
   color: #9098a4;
   background: rgba(255,255,255,.025);
   font-size: 9.5px;
-  font-weight: 620;
+  font-weight: 600;
 }
 
 .memory-row-main strong {
@@ -262,9 +262,9 @@
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 3;
   color: #e8eaf0;
-  font-size: 12.8px;
+  font-size: 13px;
   line-height: 1.48;
-  font-weight: 560;
+  font-weight: 600;
 }
 
 .memory-row-main small {
@@ -306,7 +306,7 @@
 .memory-detail-placeholder strong {
   color: #cfd3da;
   font-size: 13px;
-  font-weight: 630;
+  font-weight: 600;
 }
 
 .memory-list-empty span,
@@ -358,7 +358,7 @@
 .memory-detail-head span {
   color: #9489ef;
   font-size: 10px;
-  font-weight: 680;
+  font-weight: 650;
   letter-spacing: .05em;
   text-transform: uppercase;
 }
@@ -366,7 +366,7 @@
 .memory-detail-head strong {
   color: #eff0f4;
   font-size: 16px;
-  font-weight: 680;
+  font-weight: 650;
 }
 
 .memory-detail-head button {
@@ -392,7 +392,7 @@
   border-radius: 12px;
   background: rgba(139,124,246,.045);
   color: #dfe1e7;
-  font-size: 12.5px;
+  font-size: 13px;
   line-height: 1.58;
   white-space: pre-wrap;
 }

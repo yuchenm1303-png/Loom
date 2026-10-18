@@ -51,7 +51,7 @@
 .settings-shell.settings-refined .general-runtime-strip button { cursor: pointer; }
 .settings-shell.settings-refined .general-runtime-strip button:hover { color: var(--sr-accent-ink); }
 .settings-shell.settings-refined .general-runtime-strip span { color: var(--sr-ink-3); font-size: 12px; }
-.settings-shell.settings-refined .general-runtime-strip strong { padding-right: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; font-weight: 550; }
+.settings-shell.settings-refined .general-runtime-strip strong { padding-right: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; font-weight: 600; }
 .settings-shell.settings-refined .general-runtime-strip small { color: var(--sr-ink-3); font-size: 12px; font-weight: 400; }
 .settings-shell.settings-refined .general-runtime-strip svg { position: absolute; right: 12px; bottom: 5px; color: var(--sr-ink-4); }
 
@@ -75,7 +75,7 @@
 }
 
 .settings-shell.settings-refined .general-row-copy { min-width: 0; flex: 1; }
-.settings-shell.settings-refined .general-row-copy strong { font-size: 14px; font-weight: 550; }
+.settings-shell.settings-refined .general-row-copy strong { font-size: 14px; font-weight: 600; }
 .settings-shell.settings-refined .general-row-copy p { margin: 5px 0 0; color: var(--sr-ink-3); font-size: 12px; line-height: 1.5; }
 
 /* Preserve the language dock's portal, but give it a dedicated settings row. */
@@ -102,7 +102,7 @@
 }
 
 .settings-shell.settings-refined .general-language-mount .language-settings-icon { display: none; }
-.settings-shell.settings-refined .general-language-mount .language-settings-copy strong { color: var(--sr-ink); font-size: 14px; font-weight: 550; }
+.settings-shell.settings-refined .general-language-mount .language-settings-copy strong { color: var(--sr-ink); font-size: 14px; font-weight: 600; }
 .settings-shell.settings-refined .general-language-mount .language-settings-copy span { color: var(--sr-ink-3); font-size: 12px; }
 .settings-shell.settings-refined .general-feedback-row { border-top: 1px solid var(--sr-line-soft); flex-wrap: wrap; }
 .settings-shell.settings-refined .general-feedback-row > .general-row-copy { flex-basis: 200px; }
@@ -111,7 +111,7 @@
 .settings-shell.settings-refined .general-home .progress-feedback-option { padding: 9px 10px; border: 1px solid transparent; border-radius: 6px; text-align: center; }
 .settings-shell.settings-refined .general-home .progress-feedback-option.is-selected { border-color: var(--sr-line-strong); background: var(--sr-raised); color: var(--sr-ink); box-shadow: 0 1px 3px #00000012; }
 .settings-shell.settings-refined .general-home .progress-feedback-option-heading { justify-content: center; gap: 6px; }
-.settings-shell.settings-refined .general-home .progress-feedback-option-heading strong { font-size: 12px; font-weight: 550; }
+.settings-shell.settings-refined .general-home .progress-feedback-option-heading strong { font-size: 12px; font-weight: 600; }
 .settings-shell.settings-refined .general-home .progress-feedback-option small { display: none; }
 .settings-shell.settings-refined .general-home .progress-feedback-option input { width: 12px; height: 12px; accent-color: var(--sr-accent); }
 .settings-shell.settings-refined .general-home .progress-feedback-description { display: none; }
@@ -137,7 +137,7 @@
 .settings-shell.settings-refined .general-home-links button { min-width: 0; display: flex; align-items: center; gap: 12px; padding: 16px 0; border: 0; border-top: 1px solid var(--sr-line); background: transparent; color: var(--sr-ink-3); text-align: left; cursor: pointer; }
 .settings-shell.settings-refined .general-home-links button:hover { color: var(--sr-accent-ink); border-color: var(--sr-accent-line); }
 .settings-shell.settings-refined .general-home-links button > div { min-width: 0; flex: 1; display: grid; gap: 5px; }
-.settings-shell.settings-refined .general-home-links strong { color: var(--sr-ink-2); font-size: 13px; font-weight: 550; }
+.settings-shell.settings-refined .general-home-links strong { color: var(--sr-ink-2); font-size: 13px; font-weight: 600; }
 .settings-shell.settings-refined .general-home-links span { font-size: 11px; line-height: 1.5; }
 .settings-shell.settings-refined .general-home-links svg { flex: none; }
 
@@ -151,7 +151,7 @@
 .settings-shell.settings-refined .general-update-mount .software-update-heading { display: flex; justify-content: flex-end; }
 .settings-shell.settings-refined .general-update-mount .software-update-heading > div { display: none; }
 .settings-shell.settings-refined .general-update-mount .software-update-preferences { margin: 12px 0 20px; padding: 0 2px; gap: 18px; }
-.settings-shell.settings-refined .general-update-mount .software-update-preference strong { font-size: 13px; font-weight: 550; }
+.settings-shell.settings-refined .general-update-mount .software-update-preference strong { font-size: 13px; font-weight: 600; }
 .settings-shell.settings-refined .general-update-mount .software-update-preference small { font-size: 12px; line-height: 1.5; color: var(--sr-ink-3); }
 .settings-shell.settings-refined .general-update-mount .software-update-card { min-height: 0; border-radius: 12px; background: var(--sr-card); box-shadow: none; }
 .settings-shell.settings-refined .general-update-mount .software-update-card::before { content: none; }

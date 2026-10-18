@@ -27,7 +27,7 @@ try {
       return cost;
     };
     // Weights the stylesheets use (never laid out in the page by this script before), and ones they do not.
-    return { listed: [545, 780, 710, 730].map(first), unlisted: [401, 403, 407, 411].map(first) };
+    return { listed: [500, 600, 650].map(first), unlisted: [401, 403, 407, 411].map(first) };
   });
   const listed = Math.max(...costs.listed);
   const unlisted = Math.min(...costs.unlisted);

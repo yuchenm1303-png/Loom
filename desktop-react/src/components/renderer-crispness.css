@@ -13,3 +13,14 @@ body,
 
 /* The sidebar applies the same rules to its own rows: whole-pixel sizes and
    line boxes, no persistent transforms (components/sidebar.css). */
+
+/* One stroke for the icon family. The call sites asked for 1.6, 1.65, 1.7, 1.75, 1.8, 1.85, 1.9 and (lucide's own
+   default) 2 for glyphs of one size, which draws a row of icons in five different weights. Every glyph in that range
+   is drawn at the one stroke; the thin (1.5 and under) and the heavy (a check's 2.1 and over) are deliberate and
+   left alone. The attribute is what the component asked for; this is what is drawn. */
+:is(.loom-icon, svg.lucide):is(
+  [stroke-width="1.6"], [stroke-width="1.65"], [stroke-width="1.7"], [stroke-width="1.75"],
+  [stroke-width="1.8"], [stroke-width="1.85"], [stroke-width="1.9"], [stroke-width="2"]
+) {
+  stroke-width: 1.75;
+}

@@ -31,7 +31,7 @@
   background: color-mix(in srgb, var(--accent, #8b7cf6) 28%, transparent);
   color: var(--accent-soft, #aaa0ff);
   font-size: .62rem;
-  font-weight: 760;
+  font-weight: 650;
   line-height: 1;
   letter-spacing: 0;
   user-select: none;
@@ -163,7 +163,7 @@
   margin: 0;
   color: var(--text, #f0f1f4);
   font-size: 1.12rem;
-  font-weight: 680;
+  font-weight: 650;
   letter-spacing: -.022em;
 }
 
@@ -194,7 +194,7 @@
   color: var(--muted, #858c99);
   font: inherit;
   font-size: .745rem;
-  font-weight: 620;
+  font-weight: 600;
   cursor: pointer;
   transition: color 130ms ease, background 130ms ease, border-color 130ms ease, box-shadow 130ms ease;
 }
@@ -230,7 +230,7 @@
 .loom-account-field > label {
   color: var(--text-2, #bcc1cb);
   font-size: .72rem;
-  font-weight: 610;
+  font-weight: 600;
 }
 
 .loom-account-input-wrap {
@@ -354,7 +354,7 @@
   gap: 8px;
   font: inherit;
   font-size: .78rem;
-  font-weight: 680;
+  font-weight: 650;
   cursor: pointer;
   transition: transform 140ms cubic-bezier(.2, .78, .2, 1), box-shadow 140ms ease, background 140ms ease, border-color 140ms ease, color 140ms ease;
 }
@@ -481,7 +481,7 @@
   background: transparent;
   color: inherit;
   font: inherit;
-  font-weight: 660;
+  font-weight: 650;
   text-decoration: underline;
   text-underline-offset: 2px;
   cursor: pointer;
@@ -568,7 +568,7 @@
   background: color-mix(in srgb, var(--accent, #8b7cf6) 18%, transparent);
   color: var(--accent-soft, #aaa0ff);
   font-size: 1rem;
-  font-weight: 720;
+  font-weight: 650;
   user-select: none;
 }
 
@@ -632,7 +632,7 @@
   color: var(--text-2, #bcc1cb);
   font: inherit;
   font-size: .72rem;
-  font-weight: 640;
+  font-weight: 650;
   cursor: pointer;
   transition: background 130ms ease, border-color 130ms ease, color 130ms ease;
 }
@@ -707,7 +707,7 @@
 .loom-account-profile-name > span {
   color: var(--text-2, #bcc1cb);
   font-size: .69rem;
-  font-weight: 620;
+  font-weight: 600;
 }
 
 .loom-account-profile-name input {
@@ -764,7 +764,7 @@
 .loom-account-dialog.is-signed-in .loom-account-close { top: 22px; right: 22px; }
 .loom-account-dialog.is-signed-in .loom-account-header { display: block; padding-right: 32px; }
 .loom-account-dialog.is-signed-in .loom-account-header h2 {
-  font-size: 21px;
+  font-size: 20px;
   font-weight: 650;
   letter-spacing: -.035em;
 }
@@ -784,7 +784,7 @@
   height: 56px;
   border-color: var(--border, #292d38);
 }
-.loom-account-dialog.is-signed-in .loom-account-profile strong { font-size: 17px; font-weight: 650; line-height: 1.4; }
+.loom-account-dialog.is-signed-in .loom-account-profile strong { font-size: 18px; font-weight: 650; line-height: 1.4; }
 .loom-account-dialog.is-signed-in .loom-account-profile div span {
   font-size: 13px;
   white-space: normal;
@@ -873,7 +873,7 @@
 .loom-account-editor-heading strong {
   color: var(--text, #f0f1f4);
   font-size: .76rem;
-  font-weight: 690;
+  font-weight: 650;
 }
 
 .loom-account-editor-heading span {
@@ -1064,7 +1064,7 @@
   background: transparent;
   color: var(--muted, #858c99);
   font-size: 12px;
-  font-weight: 550;
+  font-weight: 600;
 }
 .loom-account-dialog.is-signed-in .loom-account-signout-button:hover:not(:disabled) {
   border-color: transparent;
@@ -1255,7 +1255,7 @@ html[data-loom-theme="light"] .loom-account-primary-button:disabled {
   color: var(--text, #f0f1f4);
   font: inherit;
   font-size: .77rem;
-  font-weight: 660;
+  font-weight: 650;
   cursor: pointer;
   transition: border-color 160ms ease, background 160ms ease, box-shadow 160ms ease, transform 160ms ease;
 }
@@ -1272,7 +1272,7 @@ html[data-loom-theme="light"] .loom-account-primary-button:disabled {
 .loom-account-oauth-button:disabled { opacity: .52; cursor: not-allowed; }
 .loom-account-google-mark {
   font-size: 1.1rem;
-  font-weight: 760;
+  font-weight: 650;
   line-height: 1;
   color: #4285f4;
   text-shadow: -1px 0 #34a853, 1px 0 #ea4335, 0 1px #fbbc05;

@@ -15,7 +15,7 @@
   background: #15171c;
   color: #b6bbc5;
   font-size: 11.5px;
-  font-weight: 620;
+  font-weight: 600;
 }
 
 .permission-heading-state i {
@@ -81,7 +81,7 @@
   max-width: 650px;
   margin: 1px 0 0;
   color: #8e95a1;
-  font-size: 12.6px;
+  font-size: 13px;
   line-height: 1.5;
 }
 
@@ -118,7 +118,7 @@
   min-width: 0;
   color: #d9dce3;
   font-size: 12px;
-  font-weight: 620;
+  font-weight: 600;
   line-height: 1.35;
 }
 
@@ -149,14 +149,14 @@
 .permission-runtime-note strong,
 .permission-explainer strong {
   color: #e9eaf0;
-  font-size: 12.5px;
-  font-weight: 640;
+  font-size: 13px;
+  font-weight: 650;
 }
 
 .permission-runtime-note span,
 .permission-explainer span {
   color: #8d94a0;
-  font-size: 11.8px;
+  font-size: 12px;
   line-height: 1.45;
 }
 
@@ -249,7 +249,7 @@
 .permission-profile-head strong {
   color: #f0f1f5;
   font-size: 14px;
-  font-weight: 660;
+  font-weight: 650;
 }
 
 .permission-default-badge {
@@ -269,7 +269,7 @@
 .permission-profile-card > p {
   margin: 0;
   color: #8d94a0;
-  font-size: 12.1px;
+  font-size: 12px;
   line-height: 1.48;
 }
 
@@ -350,13 +350,13 @@ button.permission-boundary-row.actionable:hover {
 
 .permission-boundary-copy strong {
   color: #e9ebf0;
-  font-size: 12.8px;
-  font-weight: 630;
+  font-size: 13px;
+  font-weight: 600;
 }
 
 .permission-boundary-copy span {
   color: #7f8793;
-  font-size: 11.6px;
+  font-size: 11.5px;
   line-height: 1.42;
 }
 

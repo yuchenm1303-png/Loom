@@ -43,7 +43,7 @@
 .model-compact-current strong {
   color: #e5e7ec;
   font-size: 11.5px;
-  font-weight: 620;
+  font-weight: 600;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -99,7 +99,7 @@
 .model-wide-action strong {
   color: #cbd0d8;
   font-size: 10.5px;
-  font-weight: 590;
+  font-weight: 600;
 }
 
 .model-manager-actions small,
@@ -177,7 +177,7 @@
   margin-bottom: 12px;
   color: #686f7d;
   font-size: 8.3px;
-  font-weight: 680;
+  font-weight: 650;
   letter-spacing: .095em;
   text-transform: uppercase;
 }
@@ -229,9 +229,9 @@
 
 .model-home-copy > strong {
   color: #eceef4;
-  font-size: 14.5px;
+  font-size: 15px;
   line-height: 1.15;
-  font-weight: 670;
+  font-weight: 650;
   letter-spacing: -.025em;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -278,7 +278,7 @@
   background: rgba(255,255,255,.018);
   color: #6e7582;
   font-size: 8px;
-  font-weight: 570;
+  font-weight: 600;
   letter-spacing: .015em;
 }
 
@@ -315,7 +315,7 @@
 .model-home-control-line strong {
   color: #cfd3db;
   font-size: 10.5px;
-  font-weight: 610;
+  font-weight: 600;
 }
 
 .model-home-control-line small {
@@ -330,7 +330,7 @@
   background: rgba(255,255,255,.025);
   color: #737b88;
   font-size: 8px;
-  font-weight: 620;
+  font-weight: 600;
 }
 
 .model-home-actions {
@@ -414,7 +414,7 @@
 .model-home-action-copy strong {
   color: #d3d7de;
   font-size: 10.6px;
-  font-weight: 620;
+  font-weight: 600;
   letter-spacing: -.005em;
 }
 

@@ -12,7 +12,7 @@
 .project-agent-files-help {
   margin: 0 0 10px;
   color: #9aa2b2;
-  font-size: 12.5px;
+  font-size: 13px;
   line-height: 19px;
 }
 
@@ -75,7 +75,7 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   font-size: 11.5px;
-  font-weight: 710;
+  font-weight: 650;
 }
 
 .project-agent-file-tabs small {
@@ -139,7 +139,7 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   font-size: 12px;
-  font-weight: 720;
+  font-weight: 650;
 }
 
 .project-agent-file-meta small {
@@ -177,7 +177,7 @@
 
 .project-agent-file-empty strong {
   color: #cdd3df;
-  font-size: 12.5px;
+  font-size: 13px;
 }
 
 .project-agent-file-empty span {

@@ -125,7 +125,7 @@
 .hud-top-pill strong{
   color:#f8fbff;
   font-size:13px;
-  font-weight:760;
+  font-weight:650;
   white-space:nowrap;
 }
 .hud-top-pill span:last-child{
@@ -243,7 +243,7 @@
   margin-bottom:7px;
   color:#f8fbff;
   font-size:13px;
-  font-weight:780;
+  font-weight:650;
 }
 .hud-bubble-line{
   display:flex;

@@ -110,7 +110,7 @@ button, textarea, input { -webkit-tap-highlight-color: transparent; }
   overflow: hidden;
   background: linear-gradient(145deg, #6f63d2, #9d90f7);
   color: white;
-  font-weight: 800;
+  font-weight: 650;
   font-size: 13px;
   box-shadow: inset 0 0 0 1px rgba(255,255,255,.12), 0 6px 18px rgba(77,63,166,.2);
 }
@@ -122,7 +122,7 @@ button, textarea, input { -webkit-tap-highlight-color: transparent; }
   background: linear-gradient(120deg, rgba(255,255,255,.15), transparent 38%);
   pointer-events: none;
 }
-.brand-mark.large { width: 42px; height: 42px; border-radius: 12px; font-size: 17px; margin-inline: auto; }
+.brand-mark.large { width: 42px; height: 42px; border-radius: 12px; font-size: 18px; margin-inline: auto; }
 
 .sr-only {
   position: absolute;
@@ -168,7 +168,7 @@ button, textarea, input { -webkit-tap-highlight-color: transparent; }
   pointer-events: none;
 }
 .thread-heading { display: grid; gap: 2px; min-width: 0; }
-.thread-heading strong { font-size: 12px; font-weight: 660; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.thread-heading strong { font-size: 12px; font-weight: 650; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .thread-heading span { font-size: 10px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 520px; }
 .thread-header-actions { display: flex; align-items: center; gap: 8px; }
 .running-pill {
@@ -680,7 +680,7 @@ html[data-loom-live] .ambient-glow { animation-play-state: paused !important; }
   cursor: pointer;
   color: #858c99;
   font-size: 11px;
-  font-weight: 590;
+  font-weight: 600;
   transition: color 140ms ease;
 }
 .disclosure-trigger:hover { color: #b8bdc7; }
@@ -795,7 +795,7 @@ html[data-loom-live] .ambient-glow { animation-play-state: paused !important; }
 }
 .approval-icon { width: 31px; height: 31px; border-radius: 9px; border: 1px solid rgba(215,173,109,.18); display: grid; place-items: center; color: #d9b982; background: rgba(215,173,109,.055); }
 .approval-main { min-width: 0; display: grid; gap: 3px; }
-.approval-title { font-size: 11px; font-weight: 670; color: #ddd8e8; }
+.approval-title { font-size: 11px; font-weight: 650; color: #ddd8e8; }
 .approval-copy { font-size: 10px; color: #858b97; overflow-wrap: anywhere; }
 .approval-actions { display: flex; justify-content: flex-end; gap: 7px; }
 .button {
@@ -1000,7 +1000,7 @@ html[data-loom-live] .ambient-glow { animation-play-state: paused !important; }
 /* Boot error */
 .boot-error { width: 100%; height: 100%; display: grid; place-items: center; background: var(--bg); }
 .boot-error-card { width: min(430px, calc(100% - 40px)); text-align: center; display: grid; gap: 12px; justify-items: center; }
-.boot-error-card h1 { margin: 3px 0 0; font-size: 17px; }
+.boot-error-card h1 { margin: 3px 0 0; font-size: 18px; }
 .boot-error-card p { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.55; }
 
 /* Motion */

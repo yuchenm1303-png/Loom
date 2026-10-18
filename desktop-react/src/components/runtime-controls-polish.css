@@ -55,7 +55,7 @@
     );
   color: color-mix(in srgb, var(--empty-tone) 58%, #aeb5c0 42%);
   font-size: 9px;
-  font-weight: 620;
+  font-weight: 600;
   line-height: 1;
   letter-spacing: .018em;
   box-shadow:
@@ -84,7 +84,7 @@
     linear-gradient(180deg, rgba(139,124,246,.075), rgba(139,124,246,.030));
   color: #aaa2eb;
   font-size: 8.5px;
-  font-weight: 680;
+  font-weight: 650;
   line-height: 1;
   letter-spacing: .025em;
   text-transform: none;

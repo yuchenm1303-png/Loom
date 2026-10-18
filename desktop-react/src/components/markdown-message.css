@@ -31,9 +31,11 @@
   font-weight: 600;
 }
 
-.markdown-body h1 { font-size: 1.3em; }
-.markdown-body h2 { font-size: 1.16em; }
-.markdown-body h3 { font-size: 1.06em; }
+/* The sizes of a message follow the size it is set in (--loom-chat-font-size, 14px by default) and land on the
+   ladder at that size: 18 / 16 / 15 for the headings, 12 for code and tables (never under the 11.5 floor). */
+.markdown-body h1 { font-size: calc(18em / 14); }
+.markdown-body h2 { font-size: calc(16em / 14); }
+.markdown-body h3 { font-size: calc(15em / 14); }
 .markdown-body h4,
 .markdown-body h5,
 .markdown-body h6 { font-size: 1em; }
@@ -117,7 +119,9 @@
   border-radius: 5px;
   background: color-mix(in srgb, var(--loom-workspace-ink, #eceef3) 7%, transparent);
   color: inherit;
-  font: .88em/1.5 "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: max(11.5px, calc(12em / 14));
+  line-height: 1.5;
   white-space: break-spaces;
 }
 
@@ -140,7 +144,7 @@
   justify-content: space-between;
   color: #646c78;
   background: rgba(18,20,25,.9);
-  font: 9.5px/1 "SFMono-Regular", Consolas, monospace;
+  font: 11.5px/1 "SFMono-Regular", Consolas, monospace;
   text-transform: lowercase;
 }
 
@@ -155,7 +159,7 @@
   background: transparent;
   color: #747c88;
   cursor: pointer;
-  font: 9px/1 ui-sans-serif, system-ui, sans-serif;
+  font: 11.5px/1 ui-sans-serif, system-ui, sans-serif;
   transition: color 130ms ease, background 130ms ease;
 }
 
@@ -171,7 +175,9 @@
   overflow: auto;
   background: transparent;
   color: #bec4ce;
-  font: .84em/1.62 "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: max(11.5px, calc(12em / 14));
+  line-height: 1.62;
   tab-size: 2;
 }
 
@@ -222,7 +228,7 @@
   border-bottom: 1px solid #282c34;
   text-align: left;
   vertical-align: top;
-  font-size: .88em;
+  font-size: max(11.5px, calc(12em / 14));
   line-height: 1.5;
 }
 
@@ -322,9 +328,9 @@
   border-radius: 7px;
   background: rgba(12,13,18,.8);
   color: #e0dcf5;
-  font-size: 9.5px;
+  font-size: 11.5px;
   line-height: 1;
-  font-weight: 620;
+  font-weight: 600;
   opacity: 0;
   transform: translateY(2px);
   pointer-events: none;
@@ -349,7 +355,7 @@
   border-radius: 8px;
   background: rgba(15,17,22,.48);
   color: #7f8794;
-  font-size: .82em;
+  font-size: max(11.5px, calc(12em / 14));
 }
 
 .markdown-code-block + .assistant-local-image-preview,
@@ -360,7 +366,7 @@
 
 .markdown-compact {
   color: #949ba8;
-  font-size: .9em;
+  font-size: calc(13em / 14);
   line-height: 1.65;
 }
 
@@ -377,7 +383,7 @@
 }
 
 .markdown-compact .markdown-code-block { margin: 8px 0; }
-.markdown-compact .markdown-code-block pre { max-height: 280px; font-size: .84em; }
+.markdown-compact .markdown-code-block pre { max-height: 280px; }
 .markdown-compact .markdown-code-head { height: 27px; }
 
 @media (prefers-reduced-motion: reduce) {

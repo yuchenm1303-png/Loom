@@ -17,7 +17,7 @@
   background: rgba(139, 124, 246, .09);
   color: #b9b2ff;
   font-size: 8px;
-  font-weight: 700;
+  font-weight: 650;
   letter-spacing: .04em;
   text-transform: uppercase;
   cursor: pointer;
@@ -54,7 +54,7 @@
 .computer-log-export-note strong {
   color: #d7d2ff;
   font-size: 10px;
-  font-weight: 720;
+  font-weight: 650;
 }
 
 .computer-log-export-note span {

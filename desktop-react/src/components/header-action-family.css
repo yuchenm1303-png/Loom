@@ -30,7 +30,7 @@ html[data-loom-theme="light"] .app-shell .thread-header .polished-thread-header-
 }
 .app-shell .thread-header .polished-thread-header-actions > .thread-review-button {
   gap: 7px;
-  font-weight: 560;
+  font-weight: 600;
 }
 .app-shell .thread-header .polished-thread-header-actions > :is(.thread-review-button, .thread-header-icon-button) > svg {
   width: 18px;
@@ -59,7 +59,7 @@ html[data-loom-theme="light"] .app-shell .thread-header .polished-thread-header-
 .app-shell .thread-header .polished-thread-header-actions .thread-review-button :is(.thread-review-count, .thread-agent-count, .thread-artifact-count) {
   color: inherit;
   opacity: .8;
-  font-weight: 560;
+  font-weight: 600;
 }
 
 /* Status remains semantic, but shares the row's neutral surface and baseline. */
@@ -69,7 +69,7 @@ html[data-loom-theme="light"] .app-shell .thread-header .polished-thread-header-
   border-color: transparent;
   background: transparent;
   box-shadow: none;
-  font-weight: 560;
+  font-weight: 600;
 }
 .app-shell .thread-header .polished-thread-header-actions > .thread-status-chip.ready {
   color: var(--header-ink);

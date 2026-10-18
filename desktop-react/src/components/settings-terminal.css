@@ -24,7 +24,7 @@
 .skills-page-heading p {
   max-width: 700px;
   color: #858c98;
-  font-size: 12.5px;
+  font-size: 13px;
   line-height: 1.5;
 }
 
@@ -83,7 +83,7 @@
 }
 
 .terminal-preference-card .mature-preference-copy strong {
-  font-size: 13.5px;
+  font-size: 14px;
 }
 
 .terminal-preference-card .mature-preference-copy span {
@@ -183,8 +183,8 @@
 .skills-install-grid strong {
   grid-column: 2;
   color: #eef0f4;
-  font-size: 12.8px;
-  font-weight: 630;
+  font-size: 13px;
+  font-weight: 600;
 }
 
 .skills-install-grid span {
@@ -244,8 +244,8 @@
 
 .skills-source-card strong {
   color: #eef0f4;
-  font-size: 12.8px;
-  font-weight: 630;
+  font-size: 13px;
+  font-weight: 600;
 }
 
 .skills-source-card code {

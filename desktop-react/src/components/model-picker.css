@@ -589,7 +589,7 @@ html[data-loom-theme="light"] .mp-mark {
   gap: 6px;
   padding: 26px 16px 22px;
   color: var(--mp-muted);
-  font-size: 12.5px;
+  font-size: 13px;
   text-align: center;
   overflow-wrap: anywhere;
 }
@@ -601,7 +601,7 @@ html[data-loom-theme="light"] .mp-mark {
   outline: none;
   background: transparent;
   color: var(--mp-accent);
-  font-size: 12.5px;
+  font-size: 13px;
   font-weight: 500;
   cursor: pointer;
   transition: background-color 120ms ease;
@@ -672,7 +672,7 @@ html[data-loom-theme="light"] .mp-mark {
   outline: none;
   background: var(--mp-field);
   color: var(--mp-text);
-  font-size: 12.5px;
+  font-size: 13px;
   transition: border-color 150ms ease, box-shadow 150ms ease, background-color 150ms ease;
 }
 
@@ -693,7 +693,7 @@ html[data-loom-theme="light"] .mp-mark {
   border-radius: 8px;
   background: var(--mp-accent-strong);
   color: #ffffff;
-  font-size: 12.5px;
+  font-size: 13px;
   font-weight: 600;
   cursor: pointer;
   transition: filter 140ms ease, opacity 140ms ease;
@@ -731,7 +731,7 @@ html[data-loom-theme="light"] .mp-mark {
   outline: none;
   background: transparent;
   color: var(--mp-muted);
-  font-size: 12.5px;
+  font-size: 13px;
   font-weight: 500;
   white-space: nowrap;
   cursor: pointer;
@@ -759,7 +759,7 @@ html[data-loom-theme="light"] .mp-mark {
   outline: none;
   background: var(--mp-accent-strong);
   color: #ffffff;
-  font-size: 12.5px;
+  font-size: 13px;
   font-weight: 600;
   white-space: nowrap;
   cursor: pointer;
@@ -790,7 +790,7 @@ html[data-loom-theme="light"] .mp-mark {
 .mp-form-lead {
   margin-top: -2px;
   color: var(--mp-muted);
-  font-size: 12.5px;
+  font-size: 13px;
   line-height: 1.45;
 }
 

@@ -38,14 +38,14 @@
 .shortcuts-overview-copy > strong {
   color: #f2f3f7;
   font-size: 15px;
-  font-weight: 670;
+  font-weight: 650;
 }
 
 .shortcuts-overview-copy > p {
   max-width: 590px;
   margin: 0;
   color: #858c98;
-  font-size: 12.4px;
+  font-size: 12px;
   line-height: 1.48;
 }
 
@@ -114,7 +114,7 @@
   outline: 0;
   background: transparent;
   color: #e6e8ed;
-  font-size: 12.2px;
+  font-size: 12px;
 }
 
 .shortcut-search input::placeholder {
@@ -128,7 +128,7 @@
   border-radius: 8px;
   background: rgba(255,113,130,.07);
   color: #f08a98;
-  font-size: 11.8px;
+  font-size: 12px;
 }
 
 .shortcut-groups {
@@ -208,14 +208,14 @@
 .shortcut-command-copy strong,
 .shortcut-fixed-row > div strong {
   color: rgba(245,246,249,.95);
-  font-size: 13.2px;
-  font-weight: 630;
+  font-size: 13px;
+  font-weight: 600;
 }
 
 .shortcut-command-copy span,
 .shortcut-fixed-row > div span {
   color: rgba(168,173,185,.70);
-  font-size: 11.9px;
+  font-size: 12px;
   line-height: 1.42;
 }
 
@@ -308,7 +308,7 @@
   box-shadow: none;
   font-family: var(--loom-code-font, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
   font-size: 10.8px;
-  font-weight: 560;
+  font-weight: 600;
   line-height: 1;
 }
 

@@ -316,7 +316,7 @@ html[data-loom-theme="light"] {
 .wv-base {
   flex: none;
   color: var(--wv-ink);
-  font-weight: 520;
+  font-weight: 500;
 }
 
 /* What the row says on its right: how many lines it changed, how it ended, how long it took. */
@@ -382,7 +382,7 @@ html[data-loom-theme="light"] {
   border-radius: 999px;
   font-size: 12px;
   line-height: 18px;
-  font-weight: 560;
+  font-weight: 600;
   color: var(--wv-tone);
   background: color-mix(in srgb, var(--wv-tone) 13%, transparent);
   animation: wv-fade-in 200ms ease-out backwards;
@@ -728,7 +728,7 @@ html[data-loom-theme="light"] {
   color: var(--wv-accent);
   font: inherit;
   font-size: 12px;
-  font-weight: 560;
+  font-weight: 600;
   line-height: 1;
   cursor: pointer;
   transition: background-color 160ms ease, border-color 160ms ease;
@@ -791,7 +791,7 @@ html[data-loom-theme="light"] {
   border-radius: 999px;
   font-size: 12px;
   line-height: 18px;
-  font-weight: 560;
+  font-weight: 600;
   color: var(--wv-danger-text);
   background: color-mix(in srgb, var(--wv-danger) 11%, transparent);
 }
@@ -825,7 +825,7 @@ html[data-loom-theme="light"] {
 .wv-beads-more {
   margin-right: 2px;
   font-size: 11px;
-  font-weight: 560;
+  font-weight: 600;
   color: var(--wv-faint);
   font-variant-numeric: tabular-nums;
 }

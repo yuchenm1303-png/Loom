@@ -343,7 +343,7 @@
 
 :root .composer-wrap.composer-refined .composer-popover-heading strong {
   color: var(--cq-ink);
-  font-size: 13.5px;
+  font-size: 14px;
   font-weight: 600;
   letter-spacing: 0;
 }
@@ -452,7 +452,7 @@
 :root .composer-wrap.composer-refined .permission-popover .composer-option-title-row strong {
   color: var(--cq-ink);
   font-size: 13px;
-  font-weight: 550;
+  font-weight: 600;
 }
 
 :root .composer-wrap.composer-refined .composer-option-description,
@@ -542,7 +542,7 @@
 
 :root .composer-wrap.composer-refined .sticker-panel-summary strong {
   color: var(--cq-ink-2);
-  font-size: 12.5px;
+  font-size: 13px;
   font-weight: 500;
 }
 
@@ -615,7 +615,7 @@
   min-height: 32px;
   border: 0;
   border-radius: 9px;
-  font-size: 12.5px;
+  font-size: 13px;
   font-weight: 500;
 }
 

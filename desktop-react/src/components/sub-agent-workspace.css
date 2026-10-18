@@ -130,7 +130,7 @@
   min-width: 0;
   color: #cbd0d8;
   font-size: 11.5px;
-  font-weight: 660;
+  font-weight: 650;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -164,7 +164,7 @@
   color: #858d98;
   background: rgba(255,255,255,.018);
   font-size: 9.4px;
-  font-weight: 590;
+  font-weight: 600;
   white-space: nowrap;
 }
 
@@ -541,7 +541,7 @@ html[data-loom-theme="light"] .sub-agent-workspace.is-docked .sub-agent-card {
 .sub-agent-inline-copy {
   color: #989faa;
   font-size: 10.8px;
-  font-weight: 610;
+  font-weight: 600;
 }
 
 .sub-agent-inline-count {
@@ -555,7 +555,7 @@ html[data-loom-theme="light"] .sub-agent-workspace.is-docked .sub-agent-card {
   color: #aaa1ef;
   background: rgba(139,124,246,.075);
   font-size: 9px;
-  font-weight: 700;
+  font-weight: 650;
   font-variant-numeric: tabular-nums;
 }
 
@@ -643,7 +643,7 @@ html[data-loom-theme="light"] .sub-agent-inline-action {
   color: #737b87;
   font: inherit;
   font-size: 9.7px;
-  font-weight: 590;
+  font-weight: 600;
   cursor: pointer;
   white-space: nowrap;
   transition: color 130ms ease, background 130ms ease, box-shadow 130ms ease;
@@ -942,8 +942,8 @@ html[data-loom-theme="light"] .sub-agent-workspace.is-docked .sub-agent-card.sta
 
 .sub-agent-workspace.is-docked .sub-agent-title-row strong {
   color: #d6dae1;
-  font-size: 12.2px;
-  font-weight: 690;
+  font-size: 12px;
+  font-weight: 650;
   letter-spacing: -.005em;
 }
 
@@ -964,7 +964,7 @@ html[data-loom-theme="light"] .sub-agent-workspace.is-docked .sub-agent-card.sta
   padding-inline: 7px;
   border-radius: 7px;
   font-size: 9.1px;
-  font-weight: 620;
+  font-weight: 600;
 }
 
 .sub-agent-workspace.is-docked .sub-agent-status.failed {
@@ -1203,7 +1203,7 @@ html[data-loom-theme="light"] .sub-agent-workspace.is-docked .sub-agent-card.sta
   border-radius: 7px;
   color: #747d89;
   font-size: 9.6px;
-  font-weight: 640;
+  font-weight: 650;
   transition:
     color 130ms ease,
     background 130ms ease,
@@ -1423,8 +1423,8 @@ html[data-loom-theme="light"] .sub-agent-workspace.is-docked .sub-agent-card.sta
 
 .sub-agent-workspace.is-docked .sub-agent-title-row strong {
   color: #d4d8e0;
-  font-size: 12.15px;
-  font-weight: 690;
+  font-size: 12px;
+  font-weight: 650;
   line-height: 1.25;
   letter-spacing: -.008em;
 }
@@ -1451,7 +1451,7 @@ html[data-loom-theme="light"] .sub-agent-workspace.is-docked .sub-agent-card.sta
   background: rgba(255,255,255,.018);
   color: #7d8691;
   font-size: 9px;
-  font-weight: 660;
+  font-weight: 650;
 }
 
 .sub-agent-workspace.is-docked .sub-agent-status svg {
@@ -1502,7 +1502,7 @@ html[data-loom-theme="light"] .sub-agent-workspace.is-docked .sub-agent-card.sta
 
 .sub-agent-workspace.is-docked .sub-agent-context-label {
   color: #707985;
-  font-weight: 560;
+  font-weight: 600;
 }
 
 .sub-agent-workspace.is-docked .sub-agent-card-meta span + span::before {

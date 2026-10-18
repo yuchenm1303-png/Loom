@@ -5,6 +5,10 @@
  * 8–11px labels that are difficult to read at normal Windows scaling. Keep the
  * hierarchy and density, while raising secondary/meta text to a practical floor.
  * This file is imported last so it remains the single readability authority.
+ *
+ * The sizes are one ladder, from the floor up: 11.5 / 12 / 13 / 14 / 15 / 16, then the display sizes 18 / 20 / 24 /
+ * 28 / 32; weights are 400 / 500 / 600 / 650. A size or weight between two steps (12.5, 13.5, 590) is not a third
+ * look, it is a thing to snap (tests/test_design_scale_contract.py keeps the stylesheets on it).
  */
 
 :root {
@@ -25,11 +29,11 @@ body {
 /* The sidebar sets its own whole-pixel sizes (components/sidebar.css). */
 
 /* Conversation header ---------------------------------------------------- */
-.thread-heading strong { font-size: 14.5px !important; }
-.thread-heading span { font-size: 12.5px !important; }
+.thread-heading strong { font-size: 15px !important; }
+.thread-heading span { font-size: 13px !important; }
 .running-pill { font-size: 12px !important; }
-.thread-title-line strong { font-size: 15.5px !important; }
-.workspace-leaf { font-size: 12.5px !important; }
+.thread-title-line strong { font-size: 15px !important; }
+.workspace-leaf { font-size: 13px !important; }
 .workspace-full-path { font-size: 12px !important; }
 .thread-status-chip,
 .thread-meta-chip { font-size: 12px !important; }
@@ -42,15 +46,15 @@ body {
 .assistant-message { font-size: var(--loom-chat-font-size, 14px) !important; }
 .streaming-placeholder { font-size: 13px !important; }
 .disclosure-trigger { font-size: 13px !important; }
-.reasoning-copy { font-size: 14.5px !important; }
-.activity-title { font-size: 13.5px !important; }
+.reasoning-copy { font-size: 15px !important; }
+.activity-title { font-size: 14px !important; }
 .activity-status { font-size: 12px !important; }
 .activity-output,
-.diff-output { font-size: 12.5px !important; }
-.error-row { font-size: 13.5px !important; }
-.approval-title { font-size: 13.5px !important; }
-.approval-copy { font-size: 12.5px !important; }
-.button { font-size: 12.5px !important; }
+.diff-output { font-size: 13px !important; }
+.error-row { font-size: 14px !important; }
+.approval-title { font-size: 14px !important; }
+.approval-copy { font-size: 13px !important; }
+.button { font-size: 13px !important; }
 .message-meta { font-size: 12px !important; }
 
 /* Work-log notes keep their compact row scale. */
@@ -61,16 +65,16 @@ body {
 .composer-tool,
 .composer-chip { font-size: 13px !important; }
 .composer-keycap { font-size: var(--loom-font-micro) !important; }
-.composer-running-label { font-size: 12.5px !important; }
+.composer-running-label { font-size: 13px !important; }
 .composer-hint { font-size: 12px !important; }
 
 /* Model manager ---------------------------------------------------------- */
-.model-manager-popover .composer-popover-heading strong { font-size: 13.5px !important; }
+.model-manager-popover .composer-popover-heading strong { font-size: 14px !important; }
 .model-compact-current strong { font-size: 13px !important; }
 .model-compact-current span:not(.model-compact-icon) { font-size: 12px !important; }
 .model-manager-actions strong,
 .model-wide-action strong,
-.model-manager-popover .model-manager-actions strong { font-size: 12.5px !important; }
+.model-manager-popover .model-manager-actions strong { font-size: 13px !important; }
 .model-manager-actions small,
 .model-wide-action small,
 .model-manager-popover .model-manager-actions small { font-size: var(--loom-font-micro) !important; }
@@ -91,15 +95,15 @@ body {
 .runtime-tab-count { font-size: var(--loom-font-badge) !important; }
 .runtime-section-bar { font-size: var(--loom-font-micro) !important; }
 .runtime-empty strong { font-size: 14px !important; }
-.runtime-empty p { font-size: 13.5px !important; line-height: 1.6 !important; }
+.runtime-empty p { font-size: 14px !important; line-height: 1.6 !important; }
 .runtime-empty-chips span { font-size: var(--loom-font-micro) !important; }
-.runtime-event-title { font-size: 12.5px !important; }
+.runtime-event-title { font-size: 13px !important; }
 .runtime-event-subtitle { font-size: var(--loom-font-micro) !important; }
 .runtime-event-detail pre { font-size: 12px !important; }
 .runtime-footer { font-size: 12px !important; }
 
 /* Legacy/fallback inspector selectors still present in the shell CSS. */
-.inspector-header strong { font-size: 13.5px !important; }
+.inspector-header strong { font-size: 14px !important; }
 .inspector-tabs button { font-size: 12px !important; }
 .inspector-empty { font-size: 13px !important; }
 .inspector-row-title { font-size: 13px !important; }
@@ -108,7 +112,7 @@ body {
 /* Sub-agent panel: the one dock whose cards, filter bar and status pills were still 8.4-10.25px.
    Count badges keep their own compact step (--loom-font-badge), like the inspector's tab counts. */
 .sub-agent-title-row strong { font-size: var(--loom-font-ui) !important; }
-.sub-agent-task { font-size: 12.5px !important; }
+.sub-agent-task { font-size: 13px !important; }
 .sub-agent-result > span { font-size: var(--loom-font-meta) !important; }
 .sub-agent-id,
 .sub-agent-status,
@@ -126,13 +130,13 @@ body {
 /* Settings --------------------------------------------------------------- */
 .settings-back,
 .settings-search input { font-size: 13px !important; }
-.settings-sidebar-title span:not(.settings-brand-orb) { font-size: 12.5px !important; }
+.settings-sidebar-title span:not(.settings-brand-orb) { font-size: 13px !important; }
 .settings-nav-label { font-size: 12px !important; }
-.settings-nav button span { font-size: 13.5px !important; }
+.settings-nav button span { font-size: 14px !important; }
 .settings-sidebar-footer strong { font-size: 13px !important; }
 .settings-sidebar-footer span:last-child { font-size: 12px !important; }
 .settings-eyebrow { font-size: 12px !important; }
-.settings-tool-count { font-size: 12.5px !important; }
+.settings-tool-count { font-size: 13px !important; }
 .settings-section-heading p { font-size: 13px !important; }
 .settings-detail-row strong,
 .capability-title-line strong,
@@ -147,17 +151,17 @@ body {
 .safety-summary span,
 .plugin-row span:not(.settings-status-pill),
 .permission-card span:not(.settings-status-pill) { font-size: 13px !important; }
-.settings-detail-row code { font-size: 12.5px !important; }
-.settings-option-card strong { font-size: 13.5px !important; }
-.settings-option-card span { font-size: 12.5px !important; }
+.settings-detail-row code { font-size: 13px !important; }
+.settings-option-card strong { font-size: 14px !important; }
+.settings-option-card span { font-size: 13px !important; }
 .settings-status-pill { font-size: 12px !important; }
 
 /* Generic semantic small text ------------------------------------------- */
 small { font-size: var(--loom-font-micro) !important; }
 
 /* Error surface ---------------------------------------------------------- */
-.boot-error-card h1 { font-size: 19px !important; }
-.boot-error-card p { font-size: 13.5px !important; }
+.boot-error-card h1 { font-size: 20px !important; }
+.boot-error-card p { font-size: 14px !important; }
 
 @media (max-width: 1180px) {
   /* Keep the chosen chat size consistent on smaller desktop windows. */
@@ -171,6 +175,6 @@ small { font-size: var(--loom-font-micro) !important; }
   /* Compact windows may hide low-priority labels, but visible text should remain readable. */
   .workspace-leaf { font-size: 12px !important; }
   .run-progress-brand { font-size: 11.5px !important; }
-  .run-progress-phase { font-size: 12.5px !important; }
+  .run-progress-phase { font-size: 13px !important; }
   .run-progress-meta { font-size: 11.5px !important; }
 }

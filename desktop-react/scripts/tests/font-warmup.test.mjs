@@ -27,7 +27,7 @@ test("every weight the source asks for is made while the app is idle", () => {
       used.set(weight, path);
     }
   }
-  assert.ok(used.size > 20, `the scan found the stylesheets' weights (${used.size})`);
+  assert.deepEqual([...used.keys()].sort((a, b) => a - b), [400, 500, 600, 650], "the product is made of four weights: text, label, heading, strong");
   const missing = [...used.entries()].filter(([weight]) => !UI_FONT_WEIGHTS.includes(weight)).map(([weight, path]) => `${weight} (${path.split(/[\/]/).pop()})`);
   assert.deepEqual(missing, [], "add these to UI_FONT_WEIGHTS in src/fontWarmup.ts: each is a font instance made on the first frame that uses it");
   assert.deepEqual([...UI_FONT_WEIGHTS], [...new Set(UI_FONT_WEIGHTS)].sort((a, b) => a - b), "in order, without repeats");

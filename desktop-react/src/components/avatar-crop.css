@@ -40,7 +40,7 @@
   margin: 1px 0 0;
   font-size: 15px;
   line-height: 1.25;
-  font-weight: 690;
+  font-weight: 650;
   letter-spacing: -.01em;
 }
 
@@ -190,7 +190,7 @@
 .loom-avatar-crop-zoom-row strong {
   color: var(--loom-text, #f3f4f6);
   font-size: 11px;
-  font-weight: 620;
+  font-weight: 600;
   text-align: right;
   font-variant-numeric: tabular-nums;
 }
@@ -246,7 +246,7 @@
   background: rgba(255, 255, 255, .035);
   color: var(--loom-text, #f3f4f6);
   font-size: 12px;
-  font-weight: 620;
+  font-weight: 600;
   cursor: pointer;
 }
 

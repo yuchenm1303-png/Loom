@@ -6,7 +6,7 @@
 .loom-module-grid { display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(330px, 1fr); gap: clamp(24px, 2vw, 44px); align-items: stretch; }
 .loom-module-grid .loom-intro-module { min-width: 0; min-height: 0; padding: clamp(34px, 3vw, 60px) clamp(34px, 3vw, 60px) 32px; justify-content: space-between; gap: clamp(32px, 3vh, 44px); }
 .loom-module-grid .loom-intro-copy > .kicker { font-size: clamp(10px, .65vw, 12px); letter-spacing: .14em; }
-.loom-module-grid .loom-stage-copy h1 { margin: 22px 0 0; max-width: none; font-weight: 550; line-height: 1.15; font-size: clamp(38px, 3vw, 64px); letter-spacing: -.04em; }
+.loom-module-grid .loom-stage-copy h1 { margin: 22px 0 0; max-width: none; font-weight: 600; line-height: 1.15; font-size: clamp(38px, 3vw, 64px); letter-spacing: -.04em; }
 .loom-heading-main, .loom-heading-accent { display: block; }
 .loom-module-grid .loom-heading-accent { margin-top: 8px; font-family: Georgia, 'Times New Roman', 'Songti SC', SimSun, serif; font-size: 1em; font-style: italic; font-weight: 400; letter-spacing: -.035em; line-height: 1.2; }
 .loom-module-grid .loom-stage-description { margin: 24px 0 0; max-width: 64ch; font-size: clamp(14px, .9vw, 16px); line-height: 1.85; }
@@ -61,7 +61,7 @@
   .loom-download-product p { margin-top: 3px; }
   .loom-module-grid .loom-secondary-action { min-height: 44px; }
 }
-@media (max-width: 1000px) { .loom-module-grid { grid-template-columns: minmax(0, 1.35fr) minmax(310px, 1fr); gap: 18px; } .loom-module-grid .loom-intro-module { padding: 34px 32px 26px; gap: 32px; } .loom-module-grid .loom-stage-copy h1 { font-size: 34px; } .loom-module-grid .loom-download-module { grid-template-columns: 1fr; } .loom-module-grid .loom-secondary-action { grid-column: 1; grid-row: 2; width: 100%; } .loom-download-version { grid-row: 3; } }
+@media (max-width: 1000px) { .loom-module-grid { grid-template-columns: minmax(0, 1.35fr) minmax(310px, 1fr); gap: 18px; } .loom-module-grid .loom-intro-module { padding: 34px 32px 26px; gap: 32px; } .loom-module-grid .loom-stage-copy h1 { font-size: 32px; } .loom-module-grid .loom-download-module { grid-template-columns: 1fr; } .loom-module-grid .loom-secondary-action { grid-column: 1; grid-row: 2; width: 100%; } .loom-download-version { grid-row: 3; } }
 @media (max-width: 760px) {
   .loom-portal-page.is-modular .loom-portal-shell { width: calc(100% - 32px); padding: 22px 0 28px; }
   .loom-portal-page.is-modular .loom-site-header { margin-bottom: 24px; }
@@ -146,7 +146,7 @@
   background: rgba(255,255,255,.96);
   color: #4285f4;
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 650;
   font-family: Arial, sans-serif;
   box-shadow: 0 1px 5px rgba(0,0,0,.14);
 }
@@ -373,7 +373,7 @@
   padding: 0 0 0 .52em !important;
   font-size: 20px;
   font-variant-numeric: tabular-nums;
-  font-weight: 680;
+  font-weight: 650;
   box-shadow: none !important;
   transition: border-color .18s ease, background .18s ease, box-shadow .18s ease;
 }

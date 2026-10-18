@@ -12,7 +12,7 @@
   color: #9299a5;
   cursor: pointer;
   font-size: 10.8px;
-  font-weight: 620;
+  font-weight: 600;
   line-height: 1;
   white-space: nowrap;
   transition: color 130ms ease, background 130ms ease, border-color 130ms ease, transform 130ms ease;
@@ -58,7 +58,7 @@
   background: rgba(89, 211, 143, .10);
   color: #74d9a1;
   font-size: 9.5px;
-  font-weight: 700;
+  font-weight: 650;
   font-variant-numeric: tabular-nums;
 }
 
@@ -104,7 +104,7 @@
   background: rgba(110, 95, 230, .10);
   color: #9d94ed;
   font-size: 9.5px;
-  font-weight: 700;
+  font-weight: 650;
   font-variant-numeric: tabular-nums;
 }
 
@@ -184,7 +184,7 @@ html[data-loom-theme="light"] .thread-artifact-count {
   background: rgba(139,124,246,.10);
   color: #aaa1ef;
   font-size: 9.5px;
-  font-weight: 700;
+  font-weight: 650;
   font-variant-numeric: tabular-nums;
 }
 
@@ -279,7 +279,7 @@ html[data-loom-theme="light"] .thread-agent-button.is-empty:hover {
   box-shadow: none;
   color: #8d949e;
   font-size: 10.8px;
-  font-weight: 620;
+  font-weight: 600;
 }
 
 .thread-review-button > svg {
@@ -423,7 +423,7 @@ html[data-loom-theme="light"] :is(
   border-radius: 7px;
   color: #868e99;
   font-size: 10.9px;
-  font-weight: 610;
+  font-weight: 600;
   letter-spacing: .004em;
 }
 

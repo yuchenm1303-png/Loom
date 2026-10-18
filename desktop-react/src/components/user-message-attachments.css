@@ -225,7 +225,7 @@
   color: #e5e7ed;
   font-size: 11.5px;
   line-height: 1.2;
-  font-weight: 610;
+  font-weight: 600;
 }
 
 .user-message-file-copy > span {
@@ -301,7 +301,7 @@
   white-space: nowrap;
   color: #e9eaf0;
   font-size: 12px;
-  font-weight: 620;
+  font-weight: 600;
 }
 
 .user-message-image-lightbox-actions {
@@ -564,7 +564,7 @@ html[data-loom-theme="light"] .user-message-image-preview:hover {
   white-space: nowrap;
   color: #dfe2e8;
   font-size: 10.5px;
-  font-weight: 620;
+  font-weight: 600;
 }
 
 .user-message-media-head button {

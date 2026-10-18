@@ -26,7 +26,7 @@
   color: #dfe2e8;
   font-size: 13px;
   line-height: 1.1;
-  font-weight: 630;
+  font-weight: 600;
 }
 
 .language-settings-copy span {
@@ -144,7 +144,7 @@
   font: inherit;
   font-size: 11px;
   line-height: 1;
-  font-weight: 690;
+  font-weight: 650;
   letter-spacing: .015em;
   cursor: pointer;
   transform: translateZ(0);
@@ -199,7 +199,7 @@
 }
 
 .settings-sidebar-top > .language-settings-dock .language-settings-copy strong {
-  font-size: 12.5px;
+  font-size: 13px;
 }
 
 .settings-sidebar-top > .language-settings-dock .language-settings-copy span {

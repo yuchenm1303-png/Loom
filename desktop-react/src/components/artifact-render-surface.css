@@ -65,7 +65,7 @@
 .artifact-render-state strong {
   color: #bfc5cf;
   font-size: 11px;
-  font-weight: 640;
+  font-weight: 650;
 }
 
 .artifact-render-state span:not(.artifact-render-spinner) {
@@ -100,7 +100,7 @@
   cursor: pointer;
   font: inherit;
   font-size: 9.5px;
-  font-weight: 680;
+  font-weight: 650;
   opacity: .88;
   transition: opacity 140ms ease, transform 140ms ease, background 140ms ease;
 }
