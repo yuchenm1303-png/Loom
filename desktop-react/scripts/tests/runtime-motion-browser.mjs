@@ -168,6 +168,8 @@ try {
     assert.equal(await page.locator('body').getAttribute('data-decision-calls'), '2');
   }
   // Verify IME and keyboard focus in the actual application, not an input clone.
+  // Projects start collapsed (9b11ed0e), so the conversation to click is inside one that has been opened.
+  await page.addInitScript(() => localStorage.setItem("loom.sidebar.expandedProjects", JSON.stringify(["loom", "agent", "relay"])));
   await page.goto(`${origin}/scripts/fixtures/workspace-visual.html?theme=light&motion=1`);
   await page.locator('.compact-thread-main').first().click({ position: { x: 20, y: 16 } });
   const input = page.locator('.composer textarea');
