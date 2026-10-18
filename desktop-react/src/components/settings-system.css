@@ -115,7 +115,7 @@
 .settings-shell.settings-refined .memory-stat-grid { grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 0; border: 1px solid var(--sr-line); border-radius: 10px; overflow: hidden; background: var(--sr-card); }
 .settings-shell.settings-refined .memory-stat-grid .memory-stat-card { min-height: 88px; padding: 14px; border: 0; border-right: 1px solid var(--sr-line-soft); border-radius: 0; }
 .settings-shell.settings-refined .memory-stat-card:last-child { border-right: 0; }
-.settings-shell.settings-refined .memory-stat-card span { color: var(--sr-ink-3); font-size: 11px; font-weight: 500; text-transform: none; letter-spacing: 0; }
+.settings-shell.settings-refined .memory-stat-card span { color: var(--sr-ink-3); font-size: 11.5px; font-weight: 500; text-transform: none; letter-spacing: 0; }
 .settings-shell.settings-refined .memory-stat-card strong { color: var(--sr-ink); font-size: 20px; font-weight: 600; }
 .settings-shell.settings-refined .memory-stat-card small { color: var(--sr-ink-3); line-height: 1.5; }
 
@@ -160,20 +160,20 @@
 .settings-shell.settings-refined :is(.terminal-template-row, .skills-table-row) { min-height: 56px; color: var(--sr-ink-2); }
 .settings-shell.settings-refined .terminal-template-table { overflow: hidden; }
 .settings-shell.settings-refined :is(.terminal-template-head, .terminal-template-row) { display: grid; grid-template-columns: minmax(120px, .8fr) minmax(180px, 1.4fr) minmax(140px, 1fr) 64px; align-items: center; gap: 16px; padding: 12px 18px; font-size: 12px; }
-.settings-shell.settings-refined .terminal-template-head { padding-block: 9px; font-size: 11px; }
+.settings-shell.settings-refined .terminal-template-head { padding-block: 9px; font-size: 11.5px; }
 .settings-shell.settings-refined .terminal-template-row { border-top: 1px solid var(--sr-line-soft); }
 .settings-shell.settings-refined .terminal-name-cell { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .settings-shell.settings-refined .terminal-name-cell svg { flex: none; color: var(--sr-ink-3); }
 .settings-shell.settings-refined .terminal-name-cell strong { font-weight: 600; }
-.settings-shell.settings-refined .terminal-template-row code { font-size: 11px; color: var(--sr-ink-2); overflow-wrap: anywhere; }
+.settings-shell.settings-refined .terminal-template-row code { font-size: 11.5px; color: var(--sr-ink-2); overflow-wrap: anywhere; }
 .settings-shell.settings-refined .terminal-template-row > span { color: var(--sr-ink-3); line-height: 1.5; }
-.settings-shell.settings-refined .terminal-row-actions button { min-height: 28px; padding: 0 9px; font: inherit; font-size: 11px; color: var(--sr-ink-2); border: 1px solid var(--sr-line-strong); border-radius: 6px; background: transparent; cursor: pointer; }
+.settings-shell.settings-refined .terminal-row-actions button { min-height: 28px; padding: 0 9px; font: inherit; font-size: 11.5px; color: var(--sr-ink-2); border: 1px solid var(--sr-line-strong); border-radius: 6px; background: transparent; cursor: pointer; }
 .settings-shell.settings-refined .terminal-row-actions button:hover { color: var(--sr-ink); background: var(--sr-hover); }
 .settings-shell.settings-refined .skills-page-heading ~ .settings-section { order: initial; }
 .settings-shell.settings-refined .skills-stat-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 0; border: 1px solid var(--sr-line); border-radius: 10px; background: var(--sr-card); overflow: hidden; }
 .settings-shell.settings-refined .skills-stat-card { min-width: 0; min-height: 80px; display: grid; align-content: center; gap: 6px; padding: 14px 16px; border: 0; border-right: 1px solid var(--sr-line-soft); border-radius: 0; background: transparent; box-shadow: none; }
 .settings-shell.settings-refined .skills-stat-card:last-child { border-right: 0; }
-.settings-shell.settings-refined .skills-stat-card > span { color: var(--sr-ink-3); font-size: 11px; }
+.settings-shell.settings-refined .skills-stat-card > span { color: var(--sr-ink-3); font-size: 11.5px; }
 .settings-shell.settings-refined .skills-stat-card > strong { color: var(--sr-ink); font-size: 18px; font-weight: 600; }
 .settings-shell.settings-refined .skills-stat-card small { color: var(--sr-ink-3); font-size: 10px; overflow-wrap: anywhere; }
 .settings-shell.settings-refined .skills-source-card { grid-template-columns: 24px minmax(0, 1fr); border-color: var(--sr-line-soft); }

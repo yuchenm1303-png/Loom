@@ -169,7 +169,7 @@
 
 .appearance-reading-preview-label {
   color: #777f8b;
-  font-size: 10.5px;
+  font-size: 11.5px;
   font-weight: 650;
   letter-spacing: .06em;
   text-transform: uppercase;
@@ -193,7 +193,7 @@
   justify-content: space-between;
   gap: 12px;
   color: #737b87;
-  font-size: 10.5px;
+  font-size: 11.5px;
 }
 
 /* Runtime-facing appearance variables ----------------------------------- */
@@ -383,7 +383,7 @@ html[data-loom-density="spacious"] .tool-row {
 
 .appearance-theme-option-copy > span:last-child {
   color: var(--muted);
-  font-size: 10.5px;
+  font-size: 11.5px;
 }
 
 .appearance-theme-check {

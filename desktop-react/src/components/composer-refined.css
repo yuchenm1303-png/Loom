@@ -358,7 +358,7 @@
   border: 0;
   background: none;
   color: var(--cq-ink-4);
-  font-size: 11px;
+  font-size: 11.5px;
   font-weight: 500;
   letter-spacing: 0;
 }
@@ -472,7 +472,7 @@
   border-radius: 5px;
   background: var(--cq-hover);
   color: var(--cq-ink-3);
-  font-size: 10.5px;
+  font-size: 11.5px;
   font-weight: 500;
   letter-spacing: 0;
 }
@@ -514,7 +514,7 @@
   padding: 10px 10px 6px;
   border-top: 1px solid var(--cq-line);
   color: var(--cq-ink-4);
-  font-size: 11px;
+  font-size: 11.5px;
 }
 
 :root .composer-wrap.composer-refined .permission-popover .permission-footnote > svg {
