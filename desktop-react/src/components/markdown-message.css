@@ -38,8 +38,10 @@
 .markdown-body h5,
 .markdown-body h6 { font-size: 1em; }
 
+/* Emphasis is one signal: weight. A brighter ink as well was the same cue twice, and a paragraph with a dozen bold
+   phrases glared. */
 .markdown-body strong {
-  color: #f0f1f4;
+  color: inherit;
   font-weight: 600;
 }
 
@@ -108,12 +110,13 @@
   background: linear-gradient(90deg, #2a2e37, #363a46 45%, transparent 100%);
 }
 
+/* Inline code is a different face on a soft wash: no outline and no colour of its own (it was a mono face, a fill, an
+   outline and a lavender ink at once, several times a line). The wash is a few percent of the ink, so both themes share it. */
 .markdown-body :not(pre) > code {
-  padding: 2px 5px;
-  border: 1px solid rgba(255,255,255,.055);
+  padding: 1px 5px;
   border-radius: 5px;
-  background: #15171d;
-  color: #d4cffa;
+  background: color-mix(in srgb, var(--loom-workspace-ink, #eceef3) 7%, transparent);
+  color: inherit;
   font: .88em/1.5 "SFMono-Regular", Consolas, "Liberation Mono", monospace;
   white-space: break-spaces;
 }

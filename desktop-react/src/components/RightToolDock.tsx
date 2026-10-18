@@ -159,6 +159,8 @@ export function RightToolDock(props: RightToolDockProps) {
       <nav className="loom-tool-dock" aria-label={zh ? "快捷工具（拖动排序）" : "Quick tools (drag to reorder)"}>
         {order.map((id, index) => {
           const item = items[id];
+          // The count lives in the words (the dot only says there is one), where it is read in full.
+          const label = item.count ? `${item.label} · ${item.count > 99 ? "99+" : item.count}` : item.label;
           return (
             <div className="loom-tool-position" key={id}>
               {(index === 7) && <span className="loom-tool-divider" aria-hidden="true" />}
@@ -167,9 +169,9 @@ export function RightToolDock(props: RightToolDockProps) {
                 className={"loom-tool-button" + (item.active ? " is-active" : "")
                   + (dragOver === id ? " is-drop-target" : "")}
                 data-tool-id={id}
-                aria-label={item.label}
+                aria-label={label}
                 aria-pressed={typeof item.active === "boolean" ? item.active : undefined}
-                title={item.disabled ? item.reason : item.label}
+                title={item.disabled ? item.reason : label}
                 disabled={item.disabled}
                 draggable={!item.disabled}
                 onClick={item.onClick}
@@ -184,11 +186,9 @@ export function RightToolDock(props: RightToolDockProps) {
                 onDragEnd={() => { dragged.current = null; setDragOver(null); }}
               >
                 {item.icon}
-                {item.count ? <span className="loom-tool-count" aria-hidden="true">
-                  {item.count > 99 ? "99+" : item.count}
-                </span> : null}
+                {item.count ? <span className="loom-tool-count" aria-hidden="true" /> : null}
                 {item.status && !item.count ? <span className="loom-tool-status" aria-hidden="true" /> : null}
-                <span className="loom-tool-tooltip" aria-hidden="true">{item.disabled ? item.reason : item.label}</span>
+                <span className="loom-tool-tooltip" aria-hidden="true">{item.disabled ? item.reason : label}</span>
               </button>
             </div>
           );

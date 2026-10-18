@@ -302,8 +302,7 @@ html[data-loom-theme="light"] .markdown-body h2,
 html[data-loom-theme="light"] .markdown-body h3,
 html[data-loom-theme="light"] .markdown-body h4,
 html[data-loom-theme="light"] .markdown-body h5,
-html[data-loom-theme="light"] .markdown-body h6,
-html[data-loom-theme="light"] .markdown-body strong {
+html[data-loom-theme="light"] .markdown-body h6 {
   color: #20232a;
 }
 
@@ -319,12 +318,6 @@ html[data-loom-theme="light"] .markdown-body blockquote {
 html[data-loom-theme="light"] .markdown-body a {
   color: #6253ca;
   border-bottom-color: rgba(98,83,202,.28);
-}
-
-html[data-loom-theme="light"] .markdown-body :not(pre) > code {
-  border-color: rgba(28,31,37,.09);
-  background: #f0f1f3;
-  color: #574aad;
 }
 
 html[data-loom-theme="light"] .markdown-code-block {
@@ -860,13 +853,7 @@ html[data-loom-theme="light"] .markdown-body tbody tr:nth-child(even) td {
   background: #fafbfc;
 }
 
-/* Inline code and fenced code --------------------------------------------- */
-html[data-loom-theme="light"] .markdown-body :not(pre) > code {
-  border-color: rgba(105,90,216,.14);
-  background: rgba(105,90,216,.065);
-  color: #5849bd;
-}
-
+/* Fenced code (inline code is markdown-message.css's, from the workspace tokens) ----- */
 html[data-loom-theme="light"] .markdown-code-block {
   border-color: #d7dbe1;
   background: #f7f8fa;

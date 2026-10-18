@@ -170,12 +170,8 @@ html[data-loom-theme="light"] {
   z-index: 1;
 }
 
-/* Metadata is already present in layout from frame one; only its paint is
-   delayed. That prevents the bubble from gaining height after it has landed. */
-.turn-block > .entry-user_message.is-sending .user-message-meta,
-.turn-process.is-live .entry-steering-user .user-message-meta {
-  animation: loom-user-send-meta 160ms ease-out 180ms both;
-}
+/* The message's toolbar has no arrival: it is there when the pointer is (message-actions.css), and its room is in
+   layout from frame one, so the bubble never gains height after it has landed. */
 
 /* Media should follow the capsule instead of scaling with it. */
 .turn-block > .entry-user_message.is-sending :is(.user-link-card,.user-rich-code-block,.user-message-image-preview,.user-message-attachment-card,.user-message-media-preview),
@@ -286,11 +282,6 @@ html[data-loom-theme="light"] .turn-process.is-live .entry-steering-user .user-m
   70% { opacity: .22; }
 }
 
-@keyframes loom-user-send-meta {
-  from { opacity: 0; translate: 0 3px; }
-  to { opacity: .78; translate: 0 0; }
-}
-
 @keyframes loom-user-send-media {
   from {
     opacity: 0;
@@ -328,8 +319,6 @@ html[data-loom-theme="light"] .turn-process.is-live .entry-steering-user .user-m
   .turn-process.is-live .entry-steering-user .user-message,
   .turn-block > .entry-user_message.is-sending .user-message-copy-shell,
   .turn-process.is-live .entry-steering-user .user-message-copy-shell,
-  .turn-block > .entry-user_message.is-sending .user-message-meta,
-  .turn-process.is-live .entry-steering-user .user-message-meta,
   .turn-block > .entry-user_message.is-sending :is(.user-link-card,.user-rich-code-block,.user-message-image-preview,.user-message-attachment-card,.user-message-media-preview),
   .turn-process.is-live .entry-steering-user :is(.user-link-card,.user-rich-code-block,.user-message-image-preview,.user-message-attachment-card,.user-message-media-preview) {
     animation: none !important;
@@ -361,9 +350,7 @@ html[data-loom-theme="light"] .turn-process.is-live .entry-steering-user .user-m
 :root[data-loom-reduced-motion="true"] .turn-block > .entry-user_message.is-sending .user-message,
 :root[data-loom-reduced-motion="true"] .turn-process.is-live .entry-steering-user .user-message,
 :root[data-loom-reduced-motion="true"] .turn-block > .entry-user_message.is-sending .user-message-copy-shell,
-:root[data-loom-reduced-motion="true"] .turn-process.is-live .entry-steering-user .user-message-copy-shell,
-:root[data-loom-reduced-motion="true"] .turn-block > .entry-user_message.is-sending .user-message-meta,
-:root[data-loom-reduced-motion="true"] .turn-process.is-live .entry-steering-user .user-message-meta {
+:root[data-loom-reduced-motion="true"] .turn-process.is-live .entry-steering-user .user-message-copy-shell {
   animation: none !important;
   transform: none !important;
   clip-path: none !important;

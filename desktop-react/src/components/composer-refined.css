@@ -294,6 +294,22 @@
   color: var(--cq-ink-4);
 }
 
+/* The keyboard hint is for the moment of writing: it shows while the composer has focus, not under every idle one.
+   Its room is kept, so the composer does not move when it appears. (A status line, "Shown immediately...", is not
+   a shortcut hint and is always there.) */
+:root .composer-wrap.composer-refined .composer-hint.is-shortcut {
+  opacity: 0;
+  transition: opacity 180ms ease;
+}
+
+:root .composer-wrap.composer-refined:focus-within .composer-hint.is-shortcut {
+  opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root .composer-wrap.composer-refined .composer-hint.is-shortcut { transition: opacity 0s; }
+}
+
 /* -------------------------------------------------------------------------- */
 /* Popovers                                                                    */
 /* -------------------------------------------------------------------------- */

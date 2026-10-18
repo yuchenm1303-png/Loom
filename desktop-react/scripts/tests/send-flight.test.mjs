@@ -63,7 +63,8 @@ test("everything the flight moves is a transform, a scale, a rotation or an opac
   assert.match(flight, /ghost\.style\.left = `\$\{entryBox\.left \+ aim\.x\}px`;/);
   assert.match(flight, /ghost\.style\.top = `\$\{finalTop \+ aim\.y\}px`;/);
   const keyframeBlocks = [...css.matchAll(/@keyframes\s+([\w-]+)\s*\{([\s\S]*?)\n\}/g)];
-  assert.ok(keyframeBlocks.length >= 2);
+  // The placeholder's. (The message's toolbar had an arrival here, too; it has none now: it is there when the pointer is.)
+  assert.ok(keyframeBlocks.length >= 1);
   for (const [, name, body] of keyframeBlocks) assert.doesNotMatch(body, /\b(width|height|top|left|margin|padding|grid-template-rows|clip-path|filter|box-shadow)\s*:/, name);
 });
 

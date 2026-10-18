@@ -948,7 +948,7 @@ export const Sidebar = memo(function Sidebar({
                           ? <Folder size={16} strokeWidth={1.75} aria-hidden="true" />
                           : <FolderOpen size={16} strokeWidth={1.75} aria-hidden="true" />}
                         <span>{project.name}</span>
-                        {visibleCount ? <small>{visibleCount}</small> : null}
+                        {collapsed && visibleCount ? <small>{visibleCount}</small> : null}
                       </button>
                     </>
                   )}

@@ -160,21 +160,7 @@
   --thinking-lead: var(--flight-lead, 300ms);
 }
 
-/* Landing: the toolbar arrives. (Setting the capsule down is the flight's own: it is over by now.) */
-:root .app-shell .transcript-entry.entry-user_message[data-flight="landed"] .user-message-meta {
-  animation: loom-flight-meta 300ms cubic-bezier(.2, .8, .2, 1) backwards;
-}
-
-@keyframes loom-flight-meta {
-  from { opacity: 0; translate: 0 3px; }
-  to { opacity: .78; translate: 0 0; }
-}
-
 @media (prefers-reduced-motion: reduce) {
   .send-flight-layer { display: none; }
-  :root .app-shell .transcript-entry.entry-user_message[data-flight="landed"] .user-message-meta { animation: none !important; }
 }
 :root[data-loom-reduced-motion="true"] .send-flight-layer { display: none; }
-:root[data-loom-reduced-motion="true"] .app-shell .transcript-entry.entry-user_message[data-flight="landed"] .user-message-meta {
-  animation: none !important;
-}

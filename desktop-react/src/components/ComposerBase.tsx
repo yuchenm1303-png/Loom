@@ -650,7 +650,7 @@ export function Composer({
           </div>
         </div>
       </div>
-      <div className="composer-hint">{zh ? "Enter 发送 · Shift + Enter 换行" : "Enter to send · Shift + Enter for a new line"}</div>
+      <div className="composer-hint is-shortcut">{zh ? "Enter 发送 · Shift + Enter 换行" : "Enter to send · Shift + Enter for a new line"}</div>
     </div>
   );
 }
