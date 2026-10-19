@@ -1,7 +1,8 @@
 // Real React workspace + in-memory Host. Never opens a live browser or account.
 import assert from "node:assert/strict";
 const { chromium } = await import(process.env.LOOM_PLAYWRIGHT_MODULE || "playwright-core");
-const browser = await chromium.launch({ executablePath: process.env.LOOM_CHROMIUM_PATH, headless: true });
+const browser = await chromium.launch({ executablePath: process.env.LOOM_CHROMIUM_PATH, headless: true,
+  ignoreDefaultArgs: ["--hide-scrollbars"] });
 const origin = process.env.LOOM_TEST_ORIGIN || "http://127.0.0.1:5173";
 const ids = ["files","browser","background","tasks","agents","review",
   "artifacts","inspector","profile","account","settings"];
