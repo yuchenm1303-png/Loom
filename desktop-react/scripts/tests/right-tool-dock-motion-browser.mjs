@@ -122,6 +122,9 @@ try {
     assert.equal(await page.evaluate(() => document.activeElement?.dataset?.toolId), enabled[0]);
     await page.waitForFunction(() => document.querySelector(".loom-tool-glider")?.dataset.on === "true");
     await page.waitForFunction(() => document.querySelector(".loom-tool-tip")?.dataset.on === "true", null, { timeout: 1500 });
+    await page.keyboard.press("Escape");
+    await page.waitForFunction(() => document.querySelector(".loom-tool-tip")?.dataset.on === "false", null, { timeout: 1500 });
+    assert.equal((await glider(page)).on, "true", "Escape sends the name away; the light stays with the focus");
     await page.keyboard.press("End");
     assert.equal(await page.evaluate(() => document.activeElement?.dataset?.toolId), enabled[enabled.length - 1], "End goes to the last tool that can be used");
     await page.keyboard.press("Home");

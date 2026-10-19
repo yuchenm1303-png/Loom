@@ -381,6 +381,8 @@ export function RightToolDock(props: RightToolDockProps) {
       return;
     }
     if (drag.current?.started || settling.current) return;
+    // A name that appeared on its own can be sent away without moving the pointer or the focus.
+    if (event.key === "Escape") { setHushed(id); return; }
     const vertical = event.key === "ArrowUp" || event.key === "ArrowDown";
     if (!vertical && event.key !== "Home" && event.key !== "End") return;
     const index = order.indexOf(id);
