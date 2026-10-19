@@ -414,8 +414,10 @@ html[data-loom-theme="light"] .loom-tool-rail {
   white-space: nowrap;
 }
 
-/* A window too short for the whole dock scrolls it (the bar stays out of sight, the wheel and the keys work). */
-@media (max-height: 470px) {
+/* A window too short for the whole dock scrolls it (the bar stays out of sight, the wheel and the keys work). The dock
+   is 395px tall under a 72px rail with 12px below it, so it fits from 479px up; 484 leaves a few px for rounding, and
+   between the two limits the capsule would shrink while its tools spilled out of it. */
+@media (max-height: 484px) {
   .loom-tool-dock { overflow-y: auto; scrollbar-width: none; }
   .loom-tool-dock::-webkit-scrollbar { display: none; }
 }
