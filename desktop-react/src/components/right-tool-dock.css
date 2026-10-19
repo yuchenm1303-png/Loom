@@ -18,6 +18,8 @@
   --dock-surface: var(--loom-workspace-panel, #191c22);
   --dock-ok: var(--success, #43e68f);
   --dock-tip: color-mix(in srgb, var(--dock-surface) 90%, #fff);
+  /* The capsule is the one thing that floats over the canvas, so it lifts a little more than a panel does. */
+  --dock-shadow: 0 6px 18px rgba(0, 0, 0, .2), 0 1px 2px rgba(0, 0, 0, .16);
   --dock-tip-shadow: 0 10px 28px rgba(0, 0, 0, .34), 0 1px 3px rgba(0, 0, 0, .22);
   --dock-lift-shadow: 0 8px 20px rgba(0, 0, 0, .38), 0 1px 3px rgba(0, 0, 0, .3);
   --dock-settle: 300ms;
@@ -45,6 +47,7 @@
 }
 
 html[data-loom-theme="light"] .loom-tool-rail {
+  --dock-shadow: 0 6px 18px rgba(32, 42, 58, .07), 0 1px 2px rgba(32, 42, 58, .05);
   --dock-tip-shadow: 0 8px 23px rgba(25, 36, 64, .13), 0 1px 3px rgba(25, 36, 64, .08);
   --dock-lift-shadow: 0 8px 20px rgba(25, 36, 64, .18), 0 1px 3px rgba(25, 36, 64, .12);
 }
@@ -73,7 +76,7 @@ html[data-loom-theme="light"] .loom-tool-rail {
   border: 1px solid var(--loom-workspace-line, rgba(224, 230, 242, .12));
   border-radius: calc(var(--dock-inner) + var(--dock-pad) + 1px);
   background: var(--dock-surface);
-  box-shadow: var(--loom-workspace-shadow, 0 2px 6px rgba(0, 0, 0, .12));
+  box-shadow: var(--dock-shadow);
   pointer-events: auto;
   transition: opacity 260ms var(--loom-ease-out, ease), translate 420ms var(--dock-ease);
 }
@@ -168,6 +171,9 @@ html[data-loom-theme="light"] .loom-tool-rail {
   flex: none;
   pointer-events: none;
 }
+/* Optical size: the terminal's prompt and cursor take 16 x 14 of the glyph's 24 units (the globe and the panels take
+   18 x 18), so drawn at the same size the column reads as one lighter weight. */
+.loom-tool-button[data-tool-id="background"] > svg { width: 17.5px; height: 17.5px; }
 .loom-tool-button:hover:not(:disabled),
 .loom-tool-button:focus-visible { color: var(--dock-ink-lit); }
 .loom-tool-button:focus-visible {
