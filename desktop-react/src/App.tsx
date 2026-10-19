@@ -42,6 +42,7 @@ import "./components/inline-thinking.css";
 import "./components/review-dock.css";
 import "./components/shortcut-runtime.css";
 import "./components/workspace-panels.css";
+import "./components/panel-switching.css";
 import "./components/thread-switch-transition.css";
 import { canRenderArtifact } from "./artifactRenderers";
 import { warmFontWeights } from "./fontWarmup";
@@ -623,6 +624,7 @@ export default function App() {
       clearLayoutAnchorStyles(shellRef.current);
       delete document.documentElement.dataset.loomLayoutTransition;
       delete document.documentElement.dataset.loomLayoutIntent;
+      delete document.documentElement.dataset.loomPanelHandoff;
       document.body.classList.remove("loom-panel-motion");
       flushSync(update);
       window.dispatchEvent(new Event("loom:panel-resize-end"));
@@ -648,19 +650,32 @@ export default function App() {
       clearLayoutAnchorStyles(shellRef.current);
       delete document.documentElement.dataset.loomLayoutTransition;
       delete document.documentElement.dataset.loomLayoutIntent;
+      delete document.documentElement.dataset.loomPanelHandoff;
       document.body.classList.remove("loom-panel-motion");
       window.dispatchEvent(new Event("loom:panel-resize-end"));
     };
 
     const transitionDocument = document as LayoutTransitionDocument;
-    if (typeof transitionDocument.startViewTransition !== "function") {
+    const liveRightMotion = intent === "right-open" || intent === "right-close" || intent === "right-swap";
+    if (liveRightMotion || typeof transitionDocument.startViewTransition !== "function") {
       // Snapshot-only rules hide the old surface immediately. Without that
       // API, let the real panel own its enter/exit transition instead.
       delete document.documentElement.dataset.loomLayoutTransition;
       delete document.documentElement.dataset.loomLayoutIntent;
+      // Taking a View Transition snapshot of a newly mounted review/preview
+      // can block input for hundreds of milliseconds. These panels already
+      // animate themselves; keep their text live and move only layout anchors.
+      if (liveRightMotion) document.documentElement.dataset.loomPanelHandoff = intent;
       flushSync(update);
       const animations = animateLayoutAnchors(captures, intent);
-      if (!animations.length) {
+      if (liveRightMotion) {
+        // Keep outgoing surfaces hidden for their whole retained lifetime,
+        // including swaps that do not move any layout anchors.
+        void Promise.allSettled([
+          ...animations.map((animation) => animation.finished),
+          new Promise<void>((resolve) => window.setTimeout(resolve, RETAIN.panel)),
+        ]).then(finish);
+      } else if (!animations.length) {
         afterPaint(finish);
       } else {
         void Promise.allSettled(animations.map((animation) => animation.finished)).then(finish);
@@ -673,6 +688,9 @@ export default function App() {
     let liveAnimations: Animation[] = [];
     try {
       transition = transitionDocument.startViewTransition(() => {
+        // skipTransition ends snapshots, not a queued update callback. A
+        // superseded click must never reopen its panel after the newer click.
+        if (layoutTransitionSerialRef.current !== serial) return;
         flushSync(update);
         committedInsideTransition = true;
 
@@ -682,6 +700,7 @@ export default function App() {
         liveAnimations = animateLayoutAnchors(captures, intent);
       });
     } catch {
+      if (layoutTransitionSerialRef.current !== serial) return;
       delete document.documentElement.dataset.loomLayoutTransition;
       if (!committedInsideTransition) flushSync(update);
       const animations = committedInsideTransition

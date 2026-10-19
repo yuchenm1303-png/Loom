@@ -607,14 +607,14 @@ html[data-loom-reduced-motion="true"]::view-transition-new(loom-project-surface)
 
 /* Compact workspace tool rail is an actual final grid track, not a pointer-
    stealing overlay. It remains clear of native WebContentsView bounds. */
-:root { --loom-tool-rail-track: 56px; }
+:root { --loom-tool-rail-track: 66px; --loom-transcript-scrollbar-gutter: 10px; }
 /* Continue the conversation canvas through the reserved dock track, so the
    floating capsule does not sit above a full-height contrasting strip. */
 :root .app-shell.workspace-panels {
   background: var(--loom-workspace-canvas, var(--bg));
 }
 .app-shell.workspace-panels {
-  --loom-tool-rail-track: 56px;
+  --loom-tool-rail-track: 66px;
   grid-template-columns:
     var(--loom-sidebar-track) minmax(0, 1fr) var(--loom-inspector-track)
     var(--loom-tool-rail-track);
@@ -634,7 +634,7 @@ html[data-loom-reduced-motion="true"]::view-transition-new(loom-project-surface)
   right: var(--loom-tool-rail-track, 56px) !important;
 }
 @media (max-width: 800px) {
-  :root, .app-shell.workspace-panels { --loom-tool-rail-track: 52px; }
+  :root, .app-shell.workspace-panels { --loom-tool-rail-track: 62px; }
 }
 
 /* The background task palette is fixed (z-index 2100) rather than a regular

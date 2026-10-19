@@ -79,6 +79,30 @@ try {
     await page.setViewportSize({ width: 825, height: 700 });
     assert.equal(await page.locator(".loom-tool-dock button[data-tool-id]").count(), ids.length,
       "narrow workspace cannot silently drop shortcuts");
+    // The conversation scrolls from the window edge, outside the dock's hit area.
+    await page.locator(".transcript").evaluate(el => { el.style.minHeight = "2200px"; });
+    const track = page.locator(".transcript-edge-scrollbar:visible");
+    await track.waitFor();
+    for (const viewport of [{ width: 1420, height: 900 }, { width: 780, height: 700 }]) {
+      await page.setViewportSize(viewport);
+      await page.waitForFunction(() => {
+        const track = document.querySelector(".transcript-edge-scrollbar:not([hidden])");
+        const scroller = document.querySelector(".transcript-scroll");
+        return track && Math.abs(track.getBoundingClientRect().right - innerWidth) < 1
+          && track.clientHeight === scroller.clientHeight && track.scrollHeight === scroller.scrollHeight;
+      });
+      const lane = await track.boundingBox();
+      const capsule = await dock.boundingBox();
+      assert.ok(lane.x >= capsule.x + capsule.width + 2, "window-edge scroll track overlaps tools");
+      await track.focus();
+      await page.keyboard.press("Home");
+      await page.waitForFunction(() => document.querySelector(".transcript-scroll").scrollTop < 1);
+      await page.keyboard.press("End");
+      await page.waitForFunction(() => {
+        const scroller = document.querySelector(".transcript-scroll");
+        return scroller.scrollHeight - scroller.clientHeight - scroller.scrollTop < 2;
+      });
+    }
     assert.deepEqual(errors, [], theme + " quick dock caused runtime errors");
     await page.close();
   }

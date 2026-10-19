@@ -33,9 +33,9 @@
   grid-row: 1;
   position: fixed;
   top: max(56px, calc(var(--loom-rail-height, 40px) + 12px));
-  right: 0;
+  right: var(--loom-transcript-scrollbar-gutter, 0px);
   z-index: 1601;
-  width: var(--loom-tool-rail-track, 56px);
+  width: calc(var(--loom-tool-rail-track, 56px) - var(--loom-transcript-scrollbar-gutter, 0px));
   min-width: 0;
   height: calc(100% - max(56px, calc(var(--loom-rail-height, 40px) + 12px)));
   padding: 0 0 12px;

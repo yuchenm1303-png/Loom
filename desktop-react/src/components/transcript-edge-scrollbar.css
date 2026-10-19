@@ -1,0 +1,30 @@
+.transcript-edge-scrollbar {
+  position: fixed;
+  z-index: 1602;
+  right: 0;
+  width: var(--loom-transcript-scrollbar-gutter, 10px);
+  overflow-x: hidden;
+  overflow-y: scroll;
+  overscroll-behavior: contain;
+  overflow-anchor: none;
+  scroll-behavior: auto;
+}
+
+.transcript-edge-scrollbar > div {
+  width: 1px;
+  pointer-events: none;
+}
+
+.transcript-scroll[data-edge-scrollbar] {
+  scrollbar-width: none;
+  scrollbar-gutter: auto;
+}
+
+.transcript-scroll[data-edge-scrollbar]::-webkit-scrollbar {
+  width: 0;
+}
+
+body.loom-panel-motion .transcript-edge-scrollbar {
+  visibility: hidden;
+  pointer-events: none;
+}
