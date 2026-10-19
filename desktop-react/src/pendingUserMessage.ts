@@ -1,5 +1,21 @@
 import type { TranscriptItem } from "./types/loom";
 
+const IMAGE_EXTENSIONS = new Set(["png", "jpg", "jpeg", "gif", "webp", "bmp", "svg", "avif"]);
+
+export function pendingUserAttachments(attachments: { path: string; name: string }[] | undefined) {
+  return (attachments ?? []).map((attachment) => {
+    const cleanName = String(attachment.name || "").trim();
+    const dot = cleanName.lastIndexOf(".");
+    const extension = dot >= 0 ? cleanName.slice(dot + 1).toLowerCase() : "";
+    return {
+      name: attachment.name,
+      path: attachment.path,
+      kind: IMAGE_EXTENSIONS.has(extension) ? "image" as const : "file" as const,
+      extension,
+    };
+  });
+}
+
 function findPending(items: TranscriptItem[], incoming: TranscriptItem): TranscriptItem | undefined {
   if (incoming.type !== "user_message" || incoming.source === "steering") return undefined;
   const text = String(incoming.text ?? "").replace(/\r\n/g, "\n").trim();

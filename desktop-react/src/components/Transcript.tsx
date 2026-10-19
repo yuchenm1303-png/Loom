@@ -65,7 +65,7 @@ import { deferredActivityIndices } from "./presentationOrdering";
 import { isSubAgentToolItem } from "./SubAgentWorkspace";
 import { ThinkingGlyph } from "./ThinkingGlyph";
 import { TurnArtifactsPreview } from "./TurnArtifactsPreview";
-import { UserMessageContent, parseUserMessageContent } from "./UserMessageContent";
+import { UserMessageContent, optimisticUserMessageContent } from "./UserMessageContent";
 import { dispatchQuoteReply } from "./quoteReply";
 import { FileEditDeltaContext, LiveSequenceContext, ProcessNotesContext, useBornLive } from "./transcriptContexts";
 import { WeaveStage, type ProcessHandoff } from "./WeaveFlow";
@@ -854,7 +854,7 @@ const ItemView = memo(function ItemView({
 }) {
   if (item.type === "user_message") {
     const rawText = String(item.text ?? "");
-    const parsed = parseUserMessageContent(rawText);
+    const parsed = optimisticUserMessageContent(rawText, item.optimisticAttachments);
     return (
       <div className="message-shell user-message-shell" data-message-id={item.id} data-loom-message-kind="user" data-loom-message-text={parsed.text}>
         <div className={`user-message ${parsed.attachments.length ? "has-attachments" : ""}`}><UserMessageContent parsed={parsed} workspace={workspace} /></div>

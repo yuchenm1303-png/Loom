@@ -89,6 +89,8 @@ export interface TranscriptItem {
   submittedAt?: string;
   /** Renderer identity retained when a pending send receives its server id. */
   clientMessageId?: string;
+  /** Local attachment metadata shown while the server stages durable copies. */
+  optimisticAttachments?: { path: string; name: string }[];
   /** Runtime-authored assistant phase. Never infer finality from transcript order. */
   phase?: "commentary" | "final_answer" | string;
   /** True when Loom supplied a safe progress preamble for a tool-only model response. */

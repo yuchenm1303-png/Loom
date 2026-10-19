@@ -830,7 +830,9 @@ export function useLoom() {
     const pendingId = `pending-user-${crypto.randomUUID()}`;
     const pendingMessage: TranscriptItem = {
       id: pendingId, clientMessageId: pendingId, threadId: selectedThreadId, type: "user_message",
-      text: input.trim(), hasAttachments: attachments.length > 0, status: "sending", submittedAt: new Date().toISOString(),
+      text: input.trim(), hasAttachments: attachments.length > 0,
+      optimisticAttachments: attachments.length ? attachments.map((attachment) => ({ ...attachment })) : undefined,
+      status: "sending", submittedAt: new Date().toISOString(),
     };
     // Acknowledge the click before model selection or thread creation can await
     // network/disk work. The new thread adopts this same message identity.

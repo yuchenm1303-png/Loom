@@ -4,8 +4,18 @@ import { buildSync } from "esbuild";
 import { fileURLToPath } from "node:url";
 
 const result = buildSync({ entryPoints: [fileURLToPath(new URL("../../src/pendingUserMessage.ts", import.meta.url))], bundle: true, write: false, format: "esm", platform: "node" });
-const { reconcilePendingUserMessage, preservePendingUserIdentity } = await import(`data:text/javascript;base64,${Buffer.from(result.outputFiles[0].text).toString("base64")}`);
+const { pendingUserAttachments, reconcilePendingUserMessage, preservePendingUserIdentity } = await import(`data:text/javascript;base64,${Buffer.from(result.outputFiles[0].text).toString("base64")}`);
 const pending = { id: "pending-user-1", threadId: "a", type: "user_message", status: "sending", text: "你好" };
+
+test("pending attachments have enough metadata to render in the optimistic bubble", () => {
+  assert.deepEqual(pendingUserAttachments([
+    { path: "C:\\tmp\\Screenshot.PNG", name: "Screenshot.PNG" },
+    { path: "C:\\tmp\\notes", name: "notes" },
+  ]), [
+    { path: "C:\\tmp\\Screenshot.PNG", name: "Screenshot.PNG", kind: "image", extension: "png" },
+    { path: "C:\\tmp\\notes", name: "notes", kind: "file", extension: "" },
+  ]);
+});
 
 test("attachment confirmations replace pending text and image-only messages", () => {
   for (const text of ["你好", ""]) {

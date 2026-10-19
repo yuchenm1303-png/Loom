@@ -18,6 +18,7 @@ import { useEffect, useMemo, useState } from "react";
 import { ImageLightbox } from "./ImageLightbox";
 import "./user-message-attachments.css";
 import { UserRichText } from "./UserRichText";
+import { pendingUserAttachments } from "../pendingUserMessage";
 
 export interface DisplayAttachment {
   name: string;
@@ -86,6 +87,18 @@ export function parseUserMessageContent(raw: string): ParsedUserMessage {
   }
 
   return { text: before.trim(), attachments };
+}
+
+export function optimisticUserMessageContent(
+  text: string,
+  attachments: { path: string; name: string }[] | undefined,
+): ParsedUserMessage {
+  const parsed = parseUserMessageContent(text);
+  if (parsed.attachments.length || !attachments?.length) return parsed;
+  return {
+    ...parsed,
+    attachments: pendingUserAttachments(attachments),
+  };
 }
 
 function iconFor(attachment: DisplayAttachment): LucideIcon {
