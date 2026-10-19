@@ -2,7 +2,8 @@
 // No account, filesystem or model request can escape this fixture.
 const params = new URLSearchParams(location.search);
 const theme = params.get("theme") || "light";
-localStorage.removeItem("loom.inspector.open");
+if (params.get("inspector") === "1") localStorage.setItem("loom.inspector.open", "true");
+else localStorage.removeItem("loom.inspector.open");
 localStorage.setItem("loom.settings.language", params.get("lang") || "zh-CN");
 localStorage.setItem("loom.settings.desktop.v2", JSON.stringify({ appearance: {
   theme, scale: "100", density: params.get("density") || "comfortable",

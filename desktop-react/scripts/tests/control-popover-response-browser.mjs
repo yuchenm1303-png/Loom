@@ -49,5 +49,41 @@ try {
     console.log(JSON.stringify({ theme, motion, samples }));
     await page.close();
   }
+
+  // A composer card belongs above the surrounding chrome. In a narrow layout
+  // it may legitimately extend into the inspector/tool-rail tracks; those
+  // surfaces must neither clip it nor paint over it.
+  const narrow = await browser.newPage({ viewport: { width: 820, height: 760 } });
+  await narrow.goto(`${origin}/scripts/fixtures/workspace-visual.html?theme=dark&motion=1&inspector=1`);
+  await narrow.locator(".model-chip").click();
+  await narrow.locator('.model-popover[data-motion-phase="entered"]').waitFor();
+  const overlap = await narrow.evaluate(() => {
+    const workspace = document.querySelector(".workspace").getBoundingClientRect();
+    const panel = document.querySelector(".model-popover").getBoundingClientRect();
+    const sampleX = Math.min(panel.right - 8, Math.max(panel.left + 8, workspace.right + 8));
+    const sampleY = Math.min(panel.bottom - 8, panel.top + panel.height / 2);
+    const topmost = document.elementFromPoint(sampleX, sampleY);
+    return {
+      workspaceRight: workspace.right,
+      panel: { left: panel.left, right: panel.right, top: panel.top, bottom: panel.bottom },
+      sampleX,
+      owned: Boolean(topmost?.closest(".model-popover")),
+    };
+  });
+  assert.ok(overlap.panel.right > overlap.workspaceRight + 4, `fixture did not exercise cross-panel overlap: ${JSON.stringify(overlap)}`);
+  assert.ok(overlap.panel.left >= 0 && overlap.panel.right <= 820, `model card escaped the viewport: ${JSON.stringify(overlap)}`);
+  assert.equal(overlap.owned, true, `side chrome covered the model card: ${JSON.stringify(overlap)}`);
+  await narrow.keyboard.press("Escape");
+  await narrow.locator(".model-popover").waitFor({ state: "detached" });
+  await narrow.locator(".permission-chip").click();
+  await narrow.locator('.permission-popover[data-motion-phase="entered"]').waitFor();
+  const permissionVisible = await narrow.locator(".permission-popover").evaluate(panel => {
+    const rect = panel.getBoundingClientRect();
+    const topmost = document.elementFromPoint(rect.right - 8, rect.top + rect.height / 2);
+    return { left: rect.left, right: rect.right, owned: Boolean(topmost?.closest(".permission-popover")) };
+  });
+  assert.ok(permissionVisible.left >= 0 && permissionVisible.right <= 820, `permission card escaped the viewport: ${JSON.stringify(permissionVisible)}`);
+  assert.equal(permissionVisible.owned, true, `side chrome covered the permission card: ${JSON.stringify(permissionVisible)}`);
+  await narrow.close();
   console.log("PASS: permission, model and context controls show readable content on their first frame in both themes/motion preferences");
 } finally { await browser.close(); }

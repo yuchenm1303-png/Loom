@@ -32,6 +32,17 @@
   container-name: loom-workspace;
 }
 
+/* Composer menus are window-level controls even though they are anchored in
+   the conversation column. Let them cross a narrow workspace track and raise
+   that track above side panels and the fixed tool rail while a menu is open.
+   The root still clips at the actual window edge, so this does not create page
+   overflow. Without both rules, the workspace clipped the card first and its
+   lower stacking context then let the inspector/sidebar paint over the rest. */
+.workspace-panels > .workspace[data-composer-popover] {
+  z-index: 1702;
+  overflow: visible;
+}
+
 .workspace-panels > .inspector {
   grid-column: 3;
   grid-row: 1;
