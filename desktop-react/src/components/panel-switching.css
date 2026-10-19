@@ -12,7 +12,7 @@ html[data-loom-layout-transition="true"]::view-transition-new(*) {
    swap, release its old pixels immediately rather than fading it over the
    newly entering panel. Ordinary close still keeps its gentle exit. */
 html[data-loom-panel-handoff] :is(.background-task-panel, .task-plan-panel)[inert],
-html[data-loom-panel-handoff="right-swap"] :is(.review-workspace, .sub-agent-dock, .artifact-preview-dock, .project-details-panel)[inert] {
+html[data-loom-panel-handoff]:has(.loom-tool-button[aria-pressed="true"]) :is(.review-workspace, .sub-agent-dock, .artifact-preview-dock, .project-details-panel)[inert] {
   visibility: hidden;
   transition: none;
 }

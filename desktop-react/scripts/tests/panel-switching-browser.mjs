@@ -32,7 +32,7 @@ try {
           const hit = document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2);
           dockBlocked ||= !button.contains(hit);
           if (!button.contains(hit)) blockers.add(hit?.className || hit?.tagName || "none");
-          if (now - start < 650) requestAnimationFrame(sample);
+          if (now - start < 1100) requestAnimationFrame(sample);
           else resolve();
         };
         requestAnimationFrame(sample);
