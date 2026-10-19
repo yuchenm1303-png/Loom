@@ -742,6 +742,8 @@ export default function App() {
 
     runLayoutTransition(() => {
       setBrowserOpen(false);
+      setBackgroundTasksOpen(false);
+      setTaskPlanOpen(false);
       setReviewOpen(false);
       setAgentsOpen(false);
       setSelectedProjectId("");
@@ -762,6 +764,8 @@ export default function App() {
     const normalized = normalizeReviewPath(path);
     runLayoutTransition(() => {
       setBrowserOpen(false);
+      setBackgroundTasksOpen(false);
+      setTaskPlanOpen(false);
       setAgentsOpen(false);
       setArtifactPreview(null);
       setSelectedProjectId("");
@@ -784,6 +788,8 @@ export default function App() {
   function openProjectDetails(projectId: string): void {
     runLayoutTransition(() => {
       setBrowserOpen(false);
+      setBackgroundTasksOpen(false);
+      setTaskPlanOpen(false);
       setReviewOpen(false);
       setAgentsOpen(false);
       setArtifactPreview(null);
@@ -799,6 +805,8 @@ export default function App() {
   const openAgents = useCallback(() => {
     runLayoutTransition(() => {
       setBrowserOpen(false);
+      setBackgroundTasksOpen(false);
+      setTaskPlanOpen(false);
       setReviewOpen(false);
       setArtifactPreview(null);
       setInspectorOpen(false);
@@ -834,6 +842,8 @@ export default function App() {
   function toggleInspector(): void {
     runLayoutTransition(() => {
       setBrowserOpen(false);
+      setBackgroundTasksOpen(false);
+      setTaskPlanOpen(false);
       setReviewOpen(false);
       setAgentsOpen(false);
       setArtifactPreview(null);
@@ -842,13 +852,37 @@ export default function App() {
     }, inspectorVisible ? "right-close" : rightOpenIntent);
   }
 
+  function closeSidePanelsForPalette(): void {
+    setBrowserOpen(false);
+    setReviewOpen(false);
+    setAgentsOpen(false);
+    setArtifactPreview(null);
+    setSelectedProjectId("");
+    setInspectorOpen(false);
+  }
+
+  function toggleBackgroundTasks(): void {
+    if (backgroundTasksOpen) {
+      setBackgroundTasksOpen(false);
+      return;
+    }
+    runLayoutTransition(() => {
+      closeSidePanelsForPalette();
+      setTaskPlanOpen(false);
+      setBackgroundTasksOpen(true);
+    }, rightSurfaceOpen ? "right-close" : "neutral");
+  }
+
   function toggleTaskPlan(): void {
     if (taskPlanOpen) {
       setTaskPlanOpen(false);
       return;
     }
-    setBackgroundTasksOpen(false);
-    setTaskPlanOpen(true);
+    runLayoutTransition(() => {
+      closeSidePanelsForPalette();
+      setBackgroundTasksOpen(false);
+      setTaskPlanOpen(true);
+    }, rightSurfaceOpen ? "right-close" : "neutral");
   }
 
   useEffect(() => {
@@ -856,6 +890,7 @@ export default function App() {
     setReviewOpen(false);
     setAgentsOpen(false);
     setTaskPlanOpen(false);
+    setBackgroundTasksOpen(false);
     setArtifactPreview(null);
     autoOpenedAgentsForThreadRef.current = "";
     autoOpenedTaskPlanForThreadRef.current = "";
@@ -869,17 +904,22 @@ export default function App() {
     if (autoOpenedTaskPlanForThreadRef.current === threadId) return;
     autoOpenedTaskPlanForThreadRef.current = threadId;
     const frame = window.requestAnimationFrame(() => {
-      setBackgroundTasksOpen(false);
+      // Automatic progress must not displace a tool the user is inspecting.
+      if (backgroundTasksOpen || browserOpen || reviewOpen || agentsOpen || artifactPreviewOpen || projectDetailsOpen || inspectorVisible) return;
       setTaskPlanOpen(true);
     });
     return () => window.cancelAnimationFrame(frame);
-  }, [running, taskMilestones.length, thread?.id]);
+  }, [running, taskMilestones.length, thread?.id, backgroundTasksOpen, browserOpen, reviewOpen, agentsOpen, artifactPreviewOpen, projectDetailsOpen, inspectorVisible]);
 
   // Two palettes share the same edge, and a modal takes the whole window: the plan yields to both.
   useEffect(() => {
     if (!taskPlanOpen) return;
     if (backgroundTasksOpen || settingsOpen || profileOpen || accountOpen || filesProjectId) setTaskPlanOpen(false);
   }, [accountOpen, backgroundTasksOpen, filesProjectId, profileOpen, settingsOpen, taskPlanOpen]);
+
+  useEffect(() => {
+    if (settingsOpen || profileOpen || accountOpen || filesProjectId) setBackgroundTasksOpen(false);
+  }, [accountOpen, filesProjectId, profileOpen, settingsOpen]);
 
   useEffect(() => {
     if (!taskMilestones.length) setTaskPlanOpen(false);
@@ -1363,11 +1403,12 @@ export default function App() {
             setSelectedProjectId("");
             setFilesProjectId("");
             setBackgroundTasksOpen(false);
+            setTaskPlanOpen(false);
             setInspectorOpen(false);
             setBrowserOpen(true);
           }, rightOpenIntent);
         }}
-        onToggleBackground={() => setBackgroundTasksOpen(open => !open)}
+        onToggleBackground={toggleBackgroundTasks}
         onToggleTasks={toggleTaskPlan}
         onToggleAgents={toggleAgents}
         onToggleReview={toggleReview}
