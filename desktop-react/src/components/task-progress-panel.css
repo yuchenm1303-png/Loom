@@ -79,7 +79,7 @@ html[data-loom-theme="light"] .task-plan-panel {
 .task-plan-ring small {
   margin-left: 1px;
   color: var(--pl-muted);
-  font-size: 9px;
+  font-size: 11.5px;
   font-weight: 600;
 }
 
@@ -95,7 +95,7 @@ html[data-loom-theme="light"] .task-plan-panel {
 
 .task-plan-eyebrow {
   color: var(--pl-muted);
-  font-size: 10.5px;
+  font-size: 11.5px;
   line-height: 15px;
   font-weight: 600;
   letter-spacing: .07em;
@@ -104,7 +104,7 @@ html[data-loom-theme="light"] .task-plan-panel {
 
 .task-plan-summary-copy > strong {
   color: var(--pl-ink);
-  font-size: 13.5px;
+  font-size: 14px;
   line-height: 19px;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
@@ -127,7 +127,7 @@ html[data-loom-theme="light"] .task-plan-panel {
   border: 1px solid var(--pl-line);
   border-radius: 999px;
   color: var(--pl-muted);
-  font-size: 10.5px;
+  font-size: 11.5px;
   line-height: 1;
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
@@ -185,7 +185,7 @@ html[data-loom-theme="light"] .task-plan-panel {
   align-items: center;
   gap: 5px;
   color: var(--pl-muted);
-  font-size: 10.5px;
+  font-size: 11.5px;
   line-height: 14px;
   font-weight: 600;
   letter-spacing: .06em;
@@ -199,7 +199,7 @@ html[data-loom-theme="light"] .task-plan-panel {
 .task-plan-focus p {
   margin: 0;
   color: var(--pl-ink);
-  font-size: 12.5px;
+  font-size: 13px;
   line-height: 1.55;
   overflow-wrap: anywhere;
 }
@@ -221,7 +221,7 @@ html[data-loom-theme="light"] .task-plan-panel {
   gap: 10px;
   padding: 9px 16px 6px;
   color: var(--pl-muted);
-  font-size: 10.5px;
+  font-size: 11.5px;
   line-height: 15px;
   font-weight: 600;
   letter-spacing: .06em;
@@ -267,7 +267,7 @@ html[data-loom-theme="light"] .task-plan-panel {
   border-radius: 50%;
   background: var(--pl-field);
   color: var(--pl-muted);
-  font-size: 10px;
+  font-size: 11.5px;
   line-height: 1;
   font-weight: 650;
   font-variant-numeric: tabular-nums;
@@ -331,7 +331,7 @@ html[data-loom-theme="light"] .task-plan-panel {
   min-width: 0;
   margin: 0;
   color: var(--pl-ink);
-  font-size: 12.5px;
+  font-size: 13px;
   line-height: 1.55;
   font-weight: 500;
   overflow-wrap: anywhere;
@@ -348,7 +348,7 @@ html[data-loom-theme="light"] .task-plan-panel {
   border-radius: 6px;
   background: transparent;
   color: var(--pl-muted);
-  font-size: 10px;
+  font-size: 11.5px;
   line-height: 1;
   font-weight: 600;
   white-space: nowrap;
@@ -388,7 +388,7 @@ html[data-loom-theme="light"] .task-plan-panel {
 
 .task-plan-meta {
   color: var(--pl-muted);
-  font-size: 10.5px;
+  font-size: 11.5px;
   line-height: 1.45;
   overflow-wrap: anywhere;
 }
@@ -401,7 +401,7 @@ html[data-loom-theme="light"] .task-plan-panel {
   padding: 7px 9px;
   border: 1px solid transparent;
   border-radius: 8px;
-  font-size: 11px;
+  font-size: 11.5px;
   line-height: 1.5;
   overflow-wrap: anywhere;
 }
@@ -431,7 +431,7 @@ html[data-loom-theme="light"] .task-plan-panel {
   padding: 2px 0;
   border-radius: 4px;
   color: var(--pl-muted);
-  font-size: 10.5px;
+  font-size: 11.5px;
   line-height: 15px;
   cursor: pointer;
   list-style: none;
@@ -452,7 +452,7 @@ html[data-loom-theme="light"] .task-plan-panel {
   border-radius: 5px;
   background: var(--pl-hover);
   color: var(--pl-muted);
-  font-size: 9.5px;
+  font-size: 11.5px;
   font-style: normal;
   font-variant-numeric: tabular-nums;
 }
@@ -467,7 +467,7 @@ html[data-loom-theme="light"] .task-plan-panel {
 
 .task-plan-detail-body > span {
   color: var(--pl-secondary);
-  font-size: 11px;
+  font-size: 11.5px;
   line-height: 1.5;
   overflow-wrap: anywhere;
 }
@@ -482,7 +482,7 @@ html[data-loom-theme="light"] .task-plan-panel {
   padding: 8px 16px;
   border-top: 1px solid var(--pl-edge);
   color: var(--pl-faint);
-  font-size: 10.5px;
+  font-size: 11.5px;
   line-height: 15px;
 }
 
