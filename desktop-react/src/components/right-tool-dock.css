@@ -78,6 +78,8 @@ html[data-loom-theme="light"] .loom-tool-rail {
   background: var(--dock-surface);
   box-shadow: var(--dock-shadow);
   pointer-events: auto;
+  /* A carry drags across the page: nothing under it should be selected on the way. */
+  user-select: none;
   transition: opacity 260ms var(--loom-ease-out, ease), translate 420ms var(--dock-ease);
 }
 
@@ -129,8 +131,6 @@ html[data-loom-theme="light"] .loom-tool-rail {
   left: var(--dock-pad);
   width: var(--dock-button);
   height: var(--dock-button);
-  /* The tool slot has 1px above it: the wash sits on the tool, not on the slot. */
-  margin-top: 0;
   border-radius: var(--dock-inner);
   background: var(--dock-wash);
   opacity: 0;
