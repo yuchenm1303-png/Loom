@@ -122,7 +122,7 @@ html[data-loom-theme="light"] .loom-tool-rail {
   background: var(--loom-workspace-line, rgba(224, 230, 242, .12));
 }
 
-/* The glider: the one wash behind whichever tool is lit. It slides on a spring, dips a little under a press, and
+/* The glider: the one wash behind whichever tool is lit. It slides on a spring and
    appears in place (the script parks it, so it never slides in from where it last was). */
 .loom-tool-glider {
   position: absolute;
@@ -137,13 +137,11 @@ html[data-loom-theme="light"] .loom-tool-rail {
   transform: translateY(var(--glide-y, 0px));
   transition:
     transform 360ms var(--dock-spring),
-    opacity 160ms ease,
-    scale 140ms ease-out;
+    opacity 160ms ease;
   pointer-events: none;
 }
 .loom-tool-glider[data-on="true"] { opacity: 1; }
-.loom-tool-glider[data-park="true"] { transition-property: opacity, scale; transition-duration: 160ms, 140ms; }
-.loom-tool-dock[data-press="true"] .loom-tool-glider { scale: .93; }
+.loom-tool-glider[data-park="true"] { transition-property: opacity; transition-duration: 160ms; }
 .loom-tool-dock[data-dragging] .loom-tool-glider { opacity: 0; }
 
 .loom-tool-button {
@@ -218,7 +216,6 @@ html[data-loom-theme="light"] .loom-tool-rail {
 .loom-tool-button.is-active:focus-visible { color: color-mix(in srgb, var(--dock-accent) 76%, var(--dock-ink-lit)); }
 .loom-tool-button.is-active::before,
 .loom-tool-button.is-active::after { opacity: 1; scale: 1; }
-.loom-tool-button.is-active:active::before { scale: .92; }
 
 /* The signed-in user's picture, in place of the glyph. */
 .loom-tool-button > .loom-tool-avatar {

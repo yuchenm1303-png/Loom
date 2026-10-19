@@ -201,7 +201,13 @@ try {
     if (toggle) {
       const press = await centre(page, toggle);
       await page.mouse.move(press.x, press.y);
+      await page.waitForTimeout(450);
+      const beforePress = await glider(page);
       await page.mouse.down();
+      await page.waitForTimeout(180);
+      const duringPress = await glider(page);
+      near(duringPress.top, beforePress.top, .5, "pressing does not move the wash upwards");
+      near(duringPress.height, beforePress.height, .5, "pressing does not shrink the wash");
       await page.mouse.move(press.x, press.y + 2);
       await page.mouse.up();
       await page.waitForFunction((id) => document.querySelector(`.loom-tool-button[data-tool-id="${id}"]`)?.getAttribute("aria-pressed") === "true", toggle, { timeout: 5000 });
