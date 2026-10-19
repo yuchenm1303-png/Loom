@@ -558,7 +558,7 @@ export function RightToolDock(props: RightToolDockProps) {
           aria-orientation="vertical"
           aria-label={zh ? "快捷工具（拖动或按 Alt+↑/↓ 调整顺序）" : "Quick tools (drag, or press Alt+Up/Down, to reorder)"}
           data-press={pressed ? "true" : undefined}
-          onPointerLeave={() => { setHoverId(null); setHushed(null); }}
+          onPointerLeave={() => { setHoverId(null); setHushed(null); if (!drag.current) setPressed(false); }}
           onScroll={() => setHushed(tip.id)}
         >
           <span className="loom-tool-glider" ref={gliderRef} data-on="false" aria-hidden="true" />

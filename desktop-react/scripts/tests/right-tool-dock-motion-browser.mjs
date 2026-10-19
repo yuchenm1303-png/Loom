@@ -9,10 +9,11 @@ const origin = process.env.LOOM_TEST_ORIGIN || "http://127.0.0.1:5173";
 const ORDER_KEY = "loom.ui.rightToolDock.order.v1";
 const near = (a, b, tolerance, message) => assert.ok(Math.abs(a - b) <= tolerance, `${message}: ${a} vs ${b}`);
 
-async function open(theme, extra = "") {
+async function open(theme, extra = "", savedOrder = null) {
   const page = await browser.newPage({ viewport: { width: 1333, height: 853 } });
   const errors = [];
   page.on("pageerror", (error) => errors.push(error.message));
+  if (savedOrder) await page.addInitScript(([key, saved]) => localStorage.setItem(key, JSON.stringify(saved)), [ORDER_KEY, savedOrder]);
   await page.goto(`${origin}/scripts/fixtures/live-app.html?scenario=code&theme=${theme}&lang=en&avatar=1&agents=1&changes=1${extra}`);
   await page.locator(".loom-tool-dock").waitFor({ timeout: 60_000 });
   await page.waitForFunction(() => document.querySelector(".loom-tool-rail")?.dataset.motionPhase === "entered");
@@ -222,15 +223,42 @@ try {
     await page.mouse.move(40, 400, { steps: 3 });
 
     // --- Arriving and leaving: settings covers the app, the dock fades with it and comes back with it ----------------
+    // (the phases last a few frames: a recorder on the attribute sees what polling would miss)
+    await page.evaluate(() => {
+      window.__phases = [];
+      new MutationObserver((records) => {
+        for (const record of records) {
+          if (record.type === "attributes" && record.target.classList?.contains("loom-tool-rail")) window.__phases.push(record.target.dataset.motionPhase);
+          for (const node of record.addedNodes) {
+            const rail = node.matches?.(".loom-tool-rail") ? node : node.querySelector?.(".loom-tool-rail");
+            if (rail) window.__phases.push(rail.dataset.motionPhase);
+          }
+        }
+      }).observe(document.body, { attributes: true, attributeFilter: ["data-motion-phase"], childList: true, subtree: true });
+    });
     await page.locator('.loom-tool-button[data-tool-id="settings"]').evaluate((el) => el.click());
-    await page.waitForFunction(() => document.querySelector(".loom-tool-rail")?.dataset.motionPhase === "exiting" || !document.querySelector(".loom-tool-rail"), null, { timeout: 2000 });
     await page.waitForFunction(() => !document.querySelector(".loom-tool-rail"), null, { timeout: 2000 });
+    assert.ok((await page.evaluate(() => window.__phases)).includes("exiting"), "the dock fades out as settings covers the app, it does not vanish in a frame");
+    await page.evaluate(() => { window.__phases = []; });
     await page.locator(".settings-back").click();
-    await page.waitForFunction(() => document.querySelector(".loom-tool-rail")?.dataset.motionPhase === "entering"
-      || document.querySelector(".loom-tool-rail")?.dataset.motionPhase === "entered", null, { timeout: 3000 });
     await page.waitForFunction(() => document.querySelector(".loom-tool-rail")?.dataset.motionPhase === "entered", null, { timeout: 3000 });
+    const arrival = await page.evaluate(() => window.__phases);
+    assert.deepEqual(arrival.slice(0, 2), ["entering", "entered"], `the dock arrives (appears hidden, then settles), not in a frame: ${arrival}`);
+    await page.waitForFunction(() => getComputedStyle(document.querySelector(".loom-tool-dock")).opacity === "1", null, { timeout: 2000 });
     assert.deepEqual(errors, [], `${theme} dock caused runtime errors`);
     await page.close();
+  }
+
+  // --- An order saved before a tool existed puts that tool back in its own place, not after Settings ----------------------
+  {
+    const fresh = await open("dark");
+    const standard = await order(fresh.page);
+    await fresh.page.close();
+    for (const missing of [standard[0], standard[Math.floor(standard.length / 2)], standard.at(-1)]) {
+      const { page } = await open("dark", "", standard.filter((id) => id !== missing));
+      assert.deepEqual(await order(page), standard, `${missing} is missing from the saved order and must come back to its place`);
+      await page.close();
+    }
   }
 
   // --- Reduced motion: it all still works, and nothing glides ----------------------------------------------------------
