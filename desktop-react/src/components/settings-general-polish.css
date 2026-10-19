@@ -176,7 +176,7 @@
     linear-gradient(180deg, rgba(255,255,255,.026), rgba(255,255,255,.010)),
     rgba(20,22,28,.68);
   box-shadow: inset 0 1px rgba(255,255,255,.025);
-  transition: border-color 150ms ease, background 150ms ease, transform 150ms cubic-bezier(.2,.78,.2,1), box-shadow 150ms ease;
+  transition: border-color var(--loom-dur-fast) ease, background var(--loom-dur-fast) ease, transform var(--loom-dur-fast) var(--loom-ease-out), box-shadow var(--loom-dur-fast) ease;
 }
 
 button.general-default-card {
@@ -218,7 +218,7 @@ button.general-default-card:hover {
 
 .general-default-card-head > svg:last-child {
   color: #646c78;
-  transition: color 140ms ease;
+  transition: color var(--loom-dur-fast) ease;
 }
 
 button.general-default-card:hover .general-default-card-head > svg:last-child {
@@ -271,7 +271,7 @@ button.general-default-card:hover .general-default-card-head > svg:last-child {
   color: #8e96a3;
   font-size: 11.5px;
   cursor: pointer;
-  transition: color 130ms ease, background 130ms ease, border-color 130ms ease;
+  transition: color var(--loom-dur-fast) ease, background var(--loom-dur-fast) ease, border-color var(--loom-dur-fast) ease;
 }
 
 .general-copy-button:hover {
@@ -421,7 +421,7 @@ button.general-default-card:hover .general-default-card-head > svg:last-child {
   font-size: 11.5px;
   font-weight: 600;
   cursor: pointer;
-  transition: color 130ms ease, background 130ms ease, box-shadow 130ms ease;
+  transition: color var(--loom-dur-fast) ease, background var(--loom-dur-fast) ease, box-shadow var(--loom-dur-fast) ease;
 }
 
 .general-scale-control button:hover {
@@ -474,7 +474,7 @@ button.general-default-card:hover .general-default-card-head > svg:last-child {
   color: inherit;
   text-align: left;
   cursor: pointer;
-  transition: transform 140ms cubic-bezier(.2,.78,.2,1), border-color 140ms ease, background 140ms ease;
+  transition: transform var(--loom-dur-fast) var(--loom-ease-out), border-color var(--loom-dur-fast) ease, background var(--loom-dur-fast) ease;
 }
 
 .general-quick-card:hover {
@@ -489,7 +489,7 @@ button.general-default-card:hover .general-default-card-head > svg:last-child {
 
 .general-quick-card > svg:last-child {
   color: #606875;
-  transition: color 130ms ease;
+  transition: color var(--loom-dur-fast) ease;
 }
 
 .general-quick-card:hover > svg:last-child {

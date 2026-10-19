@@ -125,7 +125,7 @@
   font-size: 12px;
   font-weight: 650;
   cursor: pointer;
-  transition: border-color .18s ease, background .18s ease, transform .18s ease, opacity .18s ease;
+  transition: border-color var(--loom-dur-fast) ease, background var(--loom-dur-fast) ease, transform var(--loom-dur-fast) ease, opacity var(--loom-dur-fast) ease;
 }
 
 .loom-oauth-button:hover:not(:disabled) {
@@ -198,7 +198,7 @@
   padding: 0 12px 0 14px;
   color: rgba(213,225,241,.60);
   overflow: hidden;
-  transition: border-color .18s ease, background .18s ease, box-shadow .18s ease;
+  transition: border-color var(--loom-dur-fast) ease, background var(--loom-dur-fast) ease, box-shadow var(--loom-dur-fast) ease;
 }
 
 .loom-auth-v2 .loom-input-shell:hover {
@@ -266,7 +266,7 @@
   caret-color: rgba(248,251,255,.96) !important;
   -webkit-box-shadow: 0 0 0 1000px transparent inset !important;
   box-shadow: 0 0 0 1000px transparent inset !important;
-  transition: background-color 9999s ease-out 0s;
+  transition: background-color 9999s var(--loom-ease-out) 0s;
 }
 
 .loom-password-toggle {
@@ -282,7 +282,7 @@
   display: inline-grid;
   place-items: center;
   cursor: pointer;
-  transition: color .16s ease, background .16s ease;
+  transition: color var(--loom-dur-fast) ease, background var(--loom-dur-fast) ease;
 }
 
 .loom-password-toggle:hover {
@@ -316,7 +316,7 @@
   font: inherit;
   font-size: 10px;
   cursor: pointer;
-  transition: color .16s ease;
+  transition: color var(--loom-dur-fast) ease;
 }
 
 .loom-inline-link:hover { color: rgba(240,248,255,.96); }
@@ -342,7 +342,7 @@
   height: 4px;
   border-radius: 999px;
   background: rgba(255,255,255,.105);
-  transition: background .18s ease, box-shadow .18s ease, opacity .18s ease;
+  transition: background var(--loom-dur-fast) ease, box-shadow var(--loom-dur-fast) ease, opacity var(--loom-dur-fast) ease;
 }
 
 .loom-strength-bars i.is-active {
@@ -375,7 +375,7 @@
   font-variant-numeric: tabular-nums;
   font-weight: 650;
   box-shadow: none !important;
-  transition: border-color .18s ease, background .18s ease, box-shadow .18s ease;
+  transition: border-color var(--loom-dur-fast) ease, background var(--loom-dur-fast) ease, box-shadow var(--loom-dur-fast) ease;
 }
 
 .loom-auth-v2 .loom-code-input:focus {

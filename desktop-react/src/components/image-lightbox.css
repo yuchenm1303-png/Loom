@@ -2,12 +2,12 @@
    language's one pair of durations (global-motion.css), like every other dialog. */
 .user-message-image-lightbox[data-motion-phase] {
   animation: none;
-  transition: opacity var(--loom-motion-reveal, 240ms) var(--loom-ease-depth, cubic-bezier(.16, .78, .18, 1));
+  transition: opacity var(--loom-dur-base) var(--loom-ease-out);
 }
 .user-message-image-lightbox:is([data-motion-phase="entering"],[data-motion-phase="exiting"]) { opacity: 0; }
 .user-message-image-lightbox[data-motion-phase="exiting"] {
-  transition-duration: var(--loom-motion-conceal, 200ms);
-  transition-timing-function: var(--loom-ease-in, cubic-bezier(.42, 0, .72, .2));
+  transition-duration: var(--loom-dur-base-out);
+  transition-timing-function: var(--loom-ease-in);
 }
 @media (prefers-reduced-motion: reduce) {
   .user-message-image-lightbox[data-motion-phase] { transition: none; }

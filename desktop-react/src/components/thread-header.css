@@ -154,10 +154,10 @@
   text-align: left;
   box-shadow: none;
   transition:
-    color 130ms ease,
-    background 130ms ease,
-    border-color 130ms ease,
-    transform 130ms ease;
+    color var(--loom-dur-fast) ease,
+    background var(--loom-dur-fast) ease,
+    border-color var(--loom-dur-fast) ease,
+    transform var(--loom-dur-fast) ease;
 }
 
 .workspace-path-button:not(:disabled):hover {
@@ -225,7 +225,7 @@
   color: #666e7b;
   opacity: 0;
   transform: translateX(-2px);
-  transition: opacity 120ms ease, transform 120ms ease, color 120ms ease, background 120ms ease;
+  transition: opacity var(--loom-dur-fast) ease, transform var(--loom-dur-fast) ease, color var(--loom-dur-fast) ease, background var(--loom-dur-fast) ease;
 }
 
 .workspace-path-button:not(:disabled):hover .workspace-copy-icon,
@@ -315,7 +315,7 @@
 .thread-meta-chip {
   max-width: 154px;
   padding: 0 8px;
-  transition: color 130ms ease, border-color 130ms ease, background 130ms ease;
+  transition: color var(--loom-dur-fast) ease, border-color var(--loom-dur-fast) ease, background var(--loom-dur-fast) ease;
 }
 
 .thread-meta-chip > svg {
@@ -354,7 +354,7 @@
   background: transparent;
   color: #747b88;
   cursor: pointer;
-  transition: color 130ms ease, background 130ms ease, border-color 130ms ease;
+  transition: color var(--loom-dur-fast) ease, background var(--loom-dur-fast) ease, border-color var(--loom-dur-fast) ease;
 }
 
 .thread-header-icon-button:hover {
@@ -449,11 +449,11 @@
   z-index: 4;
   transform-origin: center;
   transition:
-    color 150ms ease,
-    border-color 150ms ease,
-    background 150ms ease,
-    box-shadow 170ms ease,
-    transform 150ms cubic-bezier(.2,.8,.2,1);
+    color var(--loom-dur-fast) ease,
+    border-color var(--loom-dur-fast) ease,
+    background var(--loom-dur-fast) ease,
+    box-shadow var(--loom-dur-fast) ease,
+    transform var(--loom-dur-fast) var(--loom-ease-out);
 }
 
 .thread-header [class*="context"][aria-expanded="true"] {
@@ -465,7 +465,7 @@
   position: absolute;
   z-index: 90;
   transform-origin: top right;
-  animation: header-context-popover-in 190ms cubic-bezier(.2,.82,.2,1) both;
+  animation: header-context-popover-in var(--loom-dur-fast) var(--loom-ease-out) both;
   will-change: opacity, transform;
 }
 
@@ -473,28 +473,24 @@
 .thread-header [class*="context"].is-closing,
 .thread-header [class*="context"][data-state="closed"] {
   pointer-events: none;
-  animation: header-context-popover-out 155ms cubic-bezier(.4,0,1,1) both;
+  animation: header-context-popover-out var(--loom-dur-fast-out) var(--loom-ease-inout) both;
 }
 
 @keyframes header-context-popover-in {
   from {
     opacity: 0;
-    transform: none;
   }
   to {
     opacity: 1;
-    transform: none;
   }
 }
 
 @keyframes header-context-popover-out {
   from {
     opacity: 1;
-    transform: none;
   }
   to {
     opacity: 0;
-    transform: none;
   }
 }
 
@@ -750,7 +746,7 @@ html[data-loom-theme="light"] .thread-header .workspace-path-button:not(:disable
   box-shadow: none !important;
   color: #7f8793;
   isolation: isolate;
-  transition: color 150ms ease;
+  transition: color var(--loom-dur-fast) ease;
 }
 
 .thread-header-leading .thread-sidebar-triangle::before {
@@ -767,8 +763,8 @@ html[data-loom-theme="light"] .thread-header .workspace-path-button:not(:disable
   opacity: 0;
   transform: scale(.72);
   transition:
-    opacity 150ms ease,
-    transform 190ms cubic-bezier(.2,.9,.2,1);
+    opacity var(--loom-dur-fast) ease,
+    transform var(--loom-dur-fast) var(--loom-ease-out);
   pointer-events: none;
 }
 

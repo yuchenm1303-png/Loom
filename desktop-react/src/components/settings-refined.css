@@ -65,9 +65,6 @@
   --sr-shadow-control: none;
   --sr-shadow-pop: 0 18px 40px -14px rgba(0, 0, 0, .65), 0 2px 8px rgba(0, 0, 0, .3);
   --sr-thumb-shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 2px 6px rgba(0, 0, 0, .18);
-
-  --sr-ease-out: cubic-bezier(.2, .8, .2, 1);
-  --sr-ease-spring: cubic-bezier(.34, 1.36, .5, 1);
 }
 
 html[data-loom-theme="light"] .settings-host {
@@ -161,7 +158,7 @@ html[data-loom-theme="light"] .settings-host {
 .settings-shell.settings-refined .settings-back {
   color: var(--sr-ink-2);
   border-radius: 9px;
-  transition: color 140ms ease, background-color 140ms ease;
+  transition: color var(--loom-dur-fast) ease, background-color var(--loom-dur-fast) ease;
 }
 
 .settings-shell.settings-refined .settings-back:hover {
@@ -203,7 +200,7 @@ html[data-loom-theme="light"] .settings-host {
   background: var(--sr-card);
   box-shadow: var(--sr-shadow-control);
   color: var(--sr-ink-4);
-  transition: border-color 150ms ease, box-shadow 170ms ease;
+  transition: border-color var(--loom-dur-fast) ease, box-shadow var(--loom-dur-fast) ease;
 }
 
 .settings-shell.settings-refined .settings-search:hover {
@@ -327,7 +324,7 @@ html[data-loom-theme="light"] .settings-host {
 .settings-shell.settings-refined .settings-runtime-dot {
   background: var(--sr-ok);
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--sr-ok) 16%, transparent);
-  transition: background-color 240ms ease, box-shadow 240ms ease;
+  transition: background-color var(--loom-dur-fast) ease, box-shadow var(--loom-dur-fast) ease;
 }
 
 .settings-shell.settings-refined .settings-sidebar-footer[data-running="true"] .settings-runtime-dot {
@@ -415,7 +412,7 @@ html[data-loom-theme="light"] .settings-host {
 .settings-shell.settings-refined .capability-row,
 .settings-shell.settings-refined .plugin-row {
   border-color: var(--sr-line-soft);
-  transition: background-color 150ms ease;
+  transition: background-color var(--loom-dur-fast) ease;
 }
 
 .settings-shell.settings-refined .mature-preference-row:hover,
@@ -462,7 +459,7 @@ html[data-loom-theme="light"] .settings-host {
   color: var(--sr-accent-ink);
   border: 1px solid color-mix(in srgb, var(--sr-accent) 17%, transparent);
   background: var(--sr-accent-faint);
-  transition: background-color 160ms ease, border-color 160ms ease;
+  transition: background-color var(--loom-dur-fast) ease, border-color var(--loom-dur-fast) ease;
 }
 
 .settings-shell.settings-refined .mature-preference-icon {
@@ -555,9 +552,9 @@ html[data-loom-theme="light"] .settings-host {
   color: var(--sr-ink);
   box-shadow: var(--sr-shadow-control);
   transition:
-    background-color 140ms ease,
-    border-color 140ms ease,
-    transform 140ms var(--sr-ease-out);
+    background-color var(--loom-dur-fast) ease,
+    border-color var(--loom-dur-fast) ease,
+    transform var(--loom-dur-fast) var(--loom-ease-out);
 }
 
 .settings-shell.settings-refined .mature-action-button:hover:not(:disabled),
@@ -578,7 +575,7 @@ html[data-loom-theme="light"] .settings-host {
 
 .settings-shell.settings-refined .settings-row-link {
   color: var(--sr-ink-4);
-  transition: background-color 140ms ease, color 140ms ease;
+  transition: background-color var(--loom-dur-fast) ease, color var(--loom-dur-fast) ease;
 }
 
 .settings-shell.settings-refined .settings-row-link:hover {
@@ -596,7 +593,7 @@ html[data-loom-theme="light"] .settings-host {
   color: var(--sr-ink);
   color-scheme: inherit;
   box-shadow: var(--sr-shadow-control);
-  transition: border-color 140ms ease, box-shadow 170ms ease, background-color 140ms ease;
+  transition: border-color var(--loom-dur-fast) ease, box-shadow var(--loom-dur-fast) ease, background-color var(--loom-dur-fast) ease;
 }
 
 .settings-shell.settings-refined .mature-select {
@@ -642,7 +639,7 @@ html[data-loom-theme="light"] .settings-host {
   border-radius: 999px;
   background: var(--sr-track);
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--sr-ink) 9%, transparent);
-  transition: background-color 200ms ease, opacity 150ms ease;
+  transition: background-color var(--loom-dur-fast) ease, opacity var(--loom-dur-fast) ease;
 }
 
 .settings-shell.settings-refined .settings-switch::before {
@@ -653,7 +650,7 @@ html[data-loom-theme="light"] .settings-host {
   background: linear-gradient(180deg, color-mix(in srgb, var(--sr-accent) 90%, white), var(--sr-accent-strong));
   box-shadow: inset 0 1px 0 color-mix(in srgb, white 22%, transparent), inset 0 0 0 1px color-mix(in srgb, black 10%, transparent);
   opacity: 0;
-  transition: opacity 200ms ease;
+  transition: opacity var(--loom-dur-base) ease;
 }
 
 .settings-shell.settings-refined .settings-switch.on {
@@ -721,7 +718,7 @@ html[data-loom-theme="light"] .settings-host {
   background: var(--sr-seg-thumb);
   box-shadow: var(--sr-seg-thumb-shadow);
   transform: translate3d(calc(var(--seg-index, 0) * 100%), 0, 0);
-  transition: transform 340ms cubic-bezier(.22, 1, .36, 1);
+  transition: transform var(--loom-dur-flow) var(--loom-ease-out);
   will-change: transform;
   pointer-events: none;
 }
@@ -737,7 +734,7 @@ html[data-loom-theme="light"] .settings-host {
   color: var(--sr-ink-3);
   font-weight: 600;
   font-variant-numeric: tabular-nums;
-  transition: color 200ms ease, transform 140ms var(--sr-ease-out);
+  transition: color var(--loom-dur-fast) ease, transform var(--loom-dur-fast) var(--loom-ease-out);
 }
 
 .settings-shell.settings-refined .appearance-segmented button:hover:not(.active) {
@@ -848,9 +845,9 @@ html[data-loom-theme="light"] .settings-host {
   background: var(--sr-card);
   box-shadow: var(--sr-shadow-card);
   transition:
-    border-color 160ms ease,
-    background-color 160ms ease,
-    transform 200ms var(--sr-ease-out);
+    border-color var(--loom-dur-fast) ease,
+    background-color var(--loom-dur-fast) ease,
+    transform var(--loom-dur-base) var(--loom-ease-out);
 }
 
 .settings-shell.settings-refined button.general-default-card:hover,
@@ -864,7 +861,7 @@ html[data-loom-theme="light"] .settings-host {
 .settings-shell.settings-refined .general-default-card-head > svg:last-child,
 .settings-shell.settings-refined .general-quick-card > svg:last-child {
   color: var(--sr-ink-4);
-  transition: color 160ms ease;
+  transition: color var(--loom-dur-fast) ease;
 }
 
 .settings-shell.settings-refined button.general-default-card:hover .general-default-card-head > svg:last-child,
@@ -980,7 +977,7 @@ html[data-loom-theme="light"] .settings-host {
 }
 
 .settings-shell.settings-refined .live-value[data-changed="true"] {
-  animation: settings-value-settle 420ms var(--sr-ease-out) both;
+  animation: settings-value-settle var(--loom-dur-panel) var(--loom-ease-out) both;
 }
 
 @keyframes settings-value-settle {
@@ -1007,7 +1004,7 @@ html[data-loom-theme="light"] .settings-host {
     calc(var(--pv-sidebar, 252) / var(--pv-window) * 100%)
     minmax(0, 1fr)
     calc(var(--pv-inspector, 316) / var(--pv-window) * 100%);
-  transition: grid-template-columns 380ms var(--sr-ease-out), background-color 300ms ease, border-color 300ms ease;
+  transition: grid-template-columns var(--loom-dur-panel) var(--loom-ease-out), background-color var(--loom-dur-flow) ease, border-color var(--loom-dur-flow) ease;
 }
 
 .settings-shell.settings-refined .appearance-workspace-preview[data-density="compact"] {
@@ -1028,7 +1025,7 @@ html[data-loom-theme="light"] .settings-host {
   gap: 8px;
   background: var(--sr-sidebar);
   border: 0;
-  transition: background-color 300ms ease;
+  transition: background-color var(--loom-dur-flow) ease;
 }
 
 .settings-shell.settings-refined .appearance-preview-sidebar {
@@ -1052,7 +1049,7 @@ html[data-loom-theme="light"] .settings-host {
   display: block;
   border-radius: 999px;
   background: color-mix(in srgb, var(--sr-ink) 13%, transparent);
-  transition: background-color 300ms ease;
+  transition: background-color var(--loom-dur-flow) ease;
 }
 
 .settings-shell.settings-refined .appearance-preview-sidebar .pv-mark {
@@ -1095,7 +1092,7 @@ html[data-loom-theme="light"] .settings-host {
   justify-content: center;
   align-items: stretch;
   background: var(--sr-page);
-  transition: background-color 300ms ease;
+  transition: background-color var(--loom-dur-flow) ease;
 }
 
 .settings-shell.settings-refined .appearance-preview-main::before {
@@ -1104,7 +1101,7 @@ html[data-loom-theme="light"] .settings-host {
   inset: 0;
   background: radial-gradient(ellipse 70% 60% at 50% 0%, color-mix(in srgb, var(--sr-accent) 22%, transparent), transparent 70%);
   opacity: 0;
-  transition: opacity 400ms ease;
+  transition: opacity var(--loom-dur-panel) ease;
   pointer-events: none;
 }
 
@@ -1120,7 +1117,7 @@ html[data-loom-theme="light"] .settings-host {
   display: flex;
   flex-direction: column;
   gap: var(--pv-gap);
-  transition: width 380ms var(--sr-ease-out), gap 300ms var(--sr-ease-out);
+  transition: width var(--loom-dur-panel) var(--loom-ease-out), gap var(--loom-dur-flow) var(--loom-ease-out);
 }
 
 .settings-shell.settings-refined .appearance-preview-conversation .pv-user {
@@ -1130,20 +1127,20 @@ html[data-loom-theme="light"] .settings-host {
   border-radius: 7px;
   background: var(--sr-accent-soft);
   box-shadow: inset 0 0 0 1px var(--sr-accent-line);
-  transition: height 300ms var(--sr-ease-out), background-color 300ms ease;
+  transition: height var(--loom-dur-flow) var(--loom-ease-out), background-color var(--loom-dur-flow) ease;
 }
 
 .settings-shell.settings-refined .appearance-preview-conversation .pv-reply {
   display: grid;
   gap: calc(var(--pv-text, 13) * (var(--pv-leading, 1.72) - 1) * .46px);
-  transition: gap 300ms var(--sr-ease-out);
+  transition: gap var(--loom-dur-flow) var(--loom-ease-out);
 }
 
 .settings-shell.settings-refined .appearance-preview-conversation .pv-reply i {
   width: 94%;
   height: calc(var(--pv-text, 13) * .46px);
   border-radius: 3px;
-  transition: height 300ms var(--sr-ease-out), background-color 300ms ease;
+  transition: height var(--loom-dur-flow) var(--loom-ease-out), background-color var(--loom-dur-flow) ease;
 }
 
 .settings-shell.settings-refined .appearance-preview-conversation .pv-reply i:nth-child(2) {
@@ -1167,7 +1164,7 @@ html[data-loom-theme="light"] .settings-host {
   border-radius: 7px;
   background: color-mix(in srgb, var(--sr-ink) 5%, transparent);
   box-shadow: inset 0 0 0 1px var(--sr-line-soft);
-  transition: background-color 300ms ease;
+  transition: background-color var(--loom-dur-flow) ease;
 }
 
 .settings-shell.settings-refined .appearance-preview-conversation .pv-activity .dot {
@@ -1205,9 +1202,9 @@ html[data-loom-theme="light"] .settings-host {
   color: var(--sr-ink-2);
   box-shadow: var(--sr-shadow-card);
   transition:
-    border-color 160ms ease,
-    background-color 180ms ease,
-    transform 200ms var(--sr-ease-out);
+    border-color var(--loom-dur-fast) ease,
+    background-color var(--loom-dur-fast) ease,
+    transform var(--loom-dur-base) var(--loom-ease-out);
 }
 
 .settings-shell.settings-refined .appearance-theme-option:hover {
@@ -1231,7 +1228,7 @@ html[data-loom-theme="light"] .settings-host {
   border-radius: inherit;
   opacity: 0;
   transform: scale(.985);
-  transition: opacity 180ms ease, transform 260ms var(--sr-ease-out);
+  transition: opacity var(--loom-dur-fast) ease, transform var(--loom-dur-base) var(--loom-ease-out);
   pointer-events: none;
 }
 
@@ -1274,7 +1271,7 @@ html[data-loom-theme="light"] .settings-host {
   box-shadow: 0 2px 6px color-mix(in srgb, var(--sr-accent) 45%, transparent);
   opacity: 0;
   transform: scale(.4);
-  transition: transform 300ms var(--sr-ease-spring), opacity 160ms ease;
+  transition: transform var(--loom-dur-slow) var(--loom-spring-soft), opacity var(--loom-dur-fast) ease;
 }
 
 .settings-shell.settings-refined .appearance-theme-option.active .appearance-theme-badge {

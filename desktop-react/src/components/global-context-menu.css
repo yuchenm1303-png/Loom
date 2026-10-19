@@ -16,30 +16,25 @@
   user-select: none;
   contain: layout paint style;
   transform-origin: top left;
-  will-change: transform, opacity;
-  transition:
-    transform var(--loom-motion-popover,310ms) var(--loom-ease-out,cubic-bezier(.2,.74,.18,1)),
-    opacity 225ms ease;
+  will-change: opacity;
+  transition: opacity var(--loom-dur-fast) var(--loom-ease-out);
 }
 
 .loom-context-menu.is-positioning {
   visibility: hidden;
-  opacity: 0;
-  transform: translate3d(0,-4px,0) scale(.99);
+  opacity: .72;
 }
 
 .loom-context-menu.is-positioned {
   visibility: visible;
   opacity: 1;
-  transform: translate3d(0, 0, 0) scale(1);
 }
 
 .loom-context-menu.is-closing {
   pointer-events: none;
   opacity: 0;
-  transform: translate3d(0,-2px,0) scale(.995);
-  transition-duration: 205ms;
-  transition-timing-function: var(--loom-ease-in,cubic-bezier(.42,0,.72,.2));
+  transition-duration: var(--loom-dur-fast-out);
+  transition-timing-function: var(--loom-ease-in);
 }
 
 .loom-context-preview {
@@ -110,9 +105,9 @@
   text-align: left;
   cursor: default;
   transition:
-    background 110ms ease,
-    color 110ms ease,
-    transform 110ms cubic-bezier(.2,.8,.2,1);
+    background var(--loom-dur-fast) ease,
+    color var(--loom-dur-fast) ease,
+    transform var(--loom-dur-fast) var(--loom-ease-out);
 }
 
 .loom-context-action:hover:not(:disabled),
@@ -249,7 +244,7 @@ html[data-loom-theme="light"] .loom-context-action kbd {
   background:
     linear-gradient(90deg, rgba(139,124,246,.068), rgba(139,124,246,.026) 66%, rgba(255,255,255,.012));
   box-shadow: inset 2px 0 0 rgba(151,136,246,.46);
-  animation: loom-quote-enter 160ms cubic-bezier(.2,.82,.2,1) both;
+  animation: loom-quote-enter var(--loom-dur-fast) var(--loom-ease-out) both;
 }
 
 .composer-quote-mark {
@@ -294,7 +289,7 @@ html[data-loom-theme="light"] .loom-context-action kbd {
   border-radius: 7px;
   background: transparent;
   color: #747d89;
-  transition: background 120ms ease, color 120ms ease, transform 120ms ease;
+  transition: background var(--loom-dur-fast) ease, color var(--loom-dur-fast) ease, transform var(--loom-dur-fast) ease;
 }
 
 .composer-quote-clear:hover {
@@ -336,8 +331,8 @@ html[data-loom-theme="light"] .composer-quote-clear:hover {
 }
 
 @keyframes loom-quote-enter {
-  from { opacity: 0; transform: translateY(3px) scale(.995); }
-  to { opacity: 1; transform: translateY(0) scale(1); }
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
 @media (prefers-reduced-motion: reduce) {

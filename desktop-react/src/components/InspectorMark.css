@@ -40,7 +40,7 @@
   transform: translate(-46%, -42%) rotate(49deg);
   transform-origin: center;
   pointer-events: none;
-  transition: border-color 160ms ease, opacity 160ms ease;
+  transition: border-color var(--loom-dur-fast) ease, opacity var(--loom-dur-fast) ease;
 }
 
 .runtime-orbit {
@@ -50,7 +50,7 @@
   border-radius: 50%;
   box-shadow: none;
   transform-origin: center;
-  transition: border-color 160ms ease, opacity 160ms ease;
+  transition: border-color var(--loom-dur-fast) ease, opacity var(--loom-dur-fast) ease;
 }
 
 .runtime-orbit-one {
@@ -127,7 +127,7 @@
   outline: none;
   box-shadow: none;
   transform: translate(-46%, -47%);
-  transition: color 160ms ease;
+  transition: color var(--loom-dur-fast) ease;
 }
 
 .runtime-empty-icon::before,
@@ -140,7 +140,7 @@
   opacity: 0;
   transform: scale(.965);
   filter: none;
-  transition: opacity 120ms ease, transform 140ms cubic-bezier(.2, .75, .2, 1);
+  transition: opacity var(--loom-dur-fast) ease, transform var(--loom-dur-fast) var(--loom-ease-out);
   pointer-events: none;
 }
 

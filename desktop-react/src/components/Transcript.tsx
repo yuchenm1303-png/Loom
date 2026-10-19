@@ -35,6 +35,7 @@ import {
 import { useI18n } from "../i18n";
 import type { StartupStage } from "../state/startupSequence";
 import { useMotionPresence } from "../motion/useMotionPresence";
+import { DUR_OUT, RETAIN } from "../motion/tokens";
 import { useReducedMotion } from "../motion/useReducedMotion";
 import { endSendFlight, launchSendFlight, recordCardOrigin } from "../sendFlight";
 import { useEarlierProcessHandoff } from "./useEarlierProcessHandoff";
@@ -705,7 +706,7 @@ function AssistantMessage({ item, streaming, onPrompt, decisionInteractive, prom
   const showReasoning = thinking || Boolean(reasoning);
   // Only a live message can retire its thinking header (answer arrived without
   // any reasoning to disclose); history never pays for presence bookkeeping.
-  const retiring = useMotionPresence(live && showReasoning, 240);
+  const retiring = useMotionPresence(live && showReasoning, RETAIN.flow);
   // A message whose first frame already has text, while the thinking capsule
   // is on screen, continues that capsule as its header and folds it away above
   // the first line, instead of letting the capsule vanish under the text.
@@ -713,7 +714,7 @@ function AssistantMessage({ item, streaming, onPrompt, decisionInteractive, prom
   const [inheritsCapsule, setInheritsCapsule] = useState(() => live && !showReasoning && thinkingOnScreen(handle));
   useEffect(() => {
     if (!inheritsCapsule) return;
-    const timer = window.setTimeout(() => setInheritsCapsule(false), 260);
+    const timer = window.setTimeout(() => setInheritsCapsule(false), DUR_OUT.flow);
     return () => window.clearTimeout(timer);
   }, [inheritsCapsule]);
   const reasoningExiting = !showReasoning && (retiring.mounted || inheritsCapsule);
@@ -1242,7 +1243,7 @@ function TurnProcess({
   const processPresence = useMotionPresence(live || open, TURN_FOLD_MS);
   const [earlierOpen, setEarlierOpen] = useState(false);
   // Completed text has its own presentation snapshots while the fold is visible.
-  const earlierPresence = useMotionPresence(earlierOpen, 280);
+  const earlierPresence = useMotionPresence(earlierOpen, RETAIN.foldBase);
   const earlierHistoryId = useId();
   const progress = useMemo(() => liveTaskProgress(items, new Set(items
     .filter((item) => {
@@ -1272,14 +1273,14 @@ function TurnProcess({
     () => (showNotes ? handoff.earlier.length : handoff.earlier.filter((item) => !isQuietNote(item)).length),
     [handoff.earlier, showNotes, isQuietNote],
   );
-  const earlierEntry = useMotionPresence(live && earlierShown > 0, 200);
+  const earlierEntry = useMotionPresence(live && earlierShown > 0, RETAIN.foldBase);
 
   // The standalone thinking capsule: shown at once while the turn has produced
   // nothing yet, and after a short grace during later quiet gaps.
   const edge = useMemo(() => liveEdgeState(shownItems), [shownItems]);
   const wantsCapsule = active && edge.quiet && pendingPresentations.size === 0;
   const capsuleVisible = useSettledFlag(wantsCapsule, edge.started ? LIVE_STATUS_GRACE_MS : 0);
-  const capsulePresence = useMotionPresence(capsuleVisible, 240);
+  const capsulePresence = useMotionPresence(capsuleVisible, RETAIN.base);
   // A message that starts thinking takes the capsule's place in the same
   // frame: the capsule leaves without an exit so nothing is drawn twice.
   const handedOff = active && !edge.quiet && shownItems.some((item) => item.type === "assistant_message"

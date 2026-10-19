@@ -7,14 +7,14 @@
 .artifact-library { min-height: 0; overflow: auto; padding: 20px; color: var(--pl-ink); }
 .artifact-library-note { font-size: 12px; line-height: 1.7; color: var(--pl-muted); margin: 13px 2px 20px; }
 .artifact-library-list { display: grid; gap: 12px; }
-.artifact-library-card { position: relative; animation: artifact-card-arrive var(--loom-motion-reveal, 240ms) var(--loom-ease-depth, ease-out) both; }
+.artifact-library-card { position: relative; animation: artifact-card-arrive var(--loom-dur-base) var(--loom-ease-out) both; }
 .artifact-card-main { width: 100%; display: flex; align-items: center; gap: 13px; padding: 17px 45px 17px 15px; border: 0; background: transparent; color: inherit; text-align: left; cursor: pointer; border-radius: inherit; }
 .artifact-card-icon { display: grid; place-items: center; flex-shrink: 0; width: 42px; height: 46px; border-radius: 12px; color: var(--pl-accent); background: var(--pl-accent-wash); }
 .artifact-card-copy { min-width: 0; flex: 1; display: grid; gap: 6px; }
 .artifact-card-copy strong { font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .artifact-card-copy span { font-size: 11.5px; color: var(--pl-muted); }
 .artifact-card-copy small { color: var(--pl-faint); font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.artifact-card-external { position: absolute; right: 10px; top: 50%; transform: translateY(-50%); display: grid; place-items: center; width: 30px; height: 30px; border: 0; border-radius: var(--pl-radius-control); color: var(--pl-muted); background: transparent; cursor: pointer; transition: color var(--loom-motion-control, 170ms) ease, background-color var(--loom-motion-control, 170ms) ease; }
+.artifact-card-external { position: absolute; right: 10px; top: 50%; transform: translateY(-50%); display: grid; place-items: center; width: 30px; height: 30px; border: 0; border-radius: var(--pl-radius-control); color: var(--pl-muted); background: transparent; cursor: pointer; transition: color var(--loom-dur-fast) ease, background-color var(--loom-dur-fast) ease; }
 .artifact-card-external:hover { color: var(--pl-ink); background: var(--pl-hover); }
 .artifact-library-empty { display: grid; justify-items: center; gap: 13px; padding: 64px 18px; text-align: center; color: var(--pl-muted); }
 .artifact-library-empty strong { font-size: 14px; font-weight: 650; color: var(--pl-ink); }

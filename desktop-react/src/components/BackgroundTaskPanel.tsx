@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { ChevronDown, ChevronUp, CircleAlert, Maximize2, RefreshCw, Square, Terminal, Trash2 } from "./icons";
 import { useI18n } from "../i18n";
 import { useMotionPresence } from "../motion/useMotionPresence";
+import { RETAIN } from "../motion/tokens";
 import { PanelHeader } from "./PanelHeader";
 import "./background-tasks.css";
 
@@ -61,7 +62,7 @@ export function BackgroundTaskPanel({
   const { language } = useI18n();
   const zh = language === "zh-CN";
   // The palette leaves the way it arrived: held mounted for its exit, like every panel.
-  const presence = useMotionPresence(open, 235);
+  const presence = useMotionPresence(open, RETAIN.base);
   const [processes, setProcesses] = useState<BackgroundProcess[]>([]);
   const [detail, setDetail] = useState<TaskDetail | null>(null);
   const [selectedId, setSelectedId] = useState("");

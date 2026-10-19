@@ -32,7 +32,7 @@
   font-size: 11px;
   line-height: 1;
   opacity: 0;
-  transition: opacity 150ms ease, color 150ms ease;
+  transition: opacity var(--loom-dur-fast) ease, color var(--loom-dur-fast) ease;
 }
 
 .message-shell:hover .message-meta,
@@ -94,9 +94,9 @@
   background: transparent;
   cursor: pointer;
   transition:
-    color 140ms ease,
-    background 140ms ease,
-    box-shadow 140ms ease;
+    color var(--loom-dur-fast) ease,
+    background var(--loom-dur-fast) ease,
+    box-shadow var(--loom-dur-fast) ease;
 }
 
 .message-action-button:hover:not(:disabled) {

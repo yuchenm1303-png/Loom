@@ -121,7 +121,7 @@
 .settings-shell.settings-refined .general-expression-details summary { list-style: none; cursor: pointer; border-radius: 0 0 12px 12px; }
 .settings-shell.settings-refined .general-expression-details summary::-webkit-details-marker { display: none; }
 .settings-shell.settings-refined .general-expression-details summary:hover { background: var(--sr-hover); }
-.settings-shell.settings-refined .general-expression-details summary > svg { color: var(--sr-ink-4); flex: none; transition: transform 150ms ease; }
+.settings-shell.settings-refined .general-expression-details summary > svg { color: var(--sr-ink-4); flex: none; transition: transform var(--loom-dur-fast) ease; }
 .settings-shell.settings-refined .general-expression-details[open] summary > svg { transform: rotate(90deg); }
 .settings-shell.settings-refined .general-expression-details summary:focus-visible { outline: var(--sr-focus); outline-offset: -3px; }
 .settings-shell.settings-refined .general-expression-body { padding: 4px 22px 20px; }
@@ -144,7 +144,7 @@
 .settings-shell.settings-refined .general-system-details { margin-top: 24px; border-top: 1px solid var(--sr-line); }
 .settings-shell.settings-refined .general-system-details > summary { padding-inline: 0; list-style: none; cursor: pointer; }
 .settings-shell.settings-refined .general-system-details > summary::-webkit-details-marker { display: none; }
-.settings-shell.settings-refined .general-system-details > summary > svg { color: var(--sr-ink-4); transition: transform 150ms ease; }
+.settings-shell.settings-refined .general-system-details > summary > svg { color: var(--sr-ink-4); transition: transform var(--loom-dur-fast) ease; }
 .settings-shell.settings-refined .general-system-details[open] > summary > svg { transform: rotate(90deg); }
 .settings-shell.settings-refined .general-system-details > summary:focus-visible { outline: var(--sr-focus); outline-offset: 3px; }
 .settings-shell.settings-refined .general-update-mount .software-update-section { margin-top: 0; }

@@ -1,7 +1,9 @@
 import { useLayoutEffect, useRef } from "react";
+import { DUR, EASE } from "../motion/tokens";
+import { prefersReducedMotionNow } from "../motion/useReducedMotion";
 import "./animated-thread-title.css";
 
-/** Animate title changes without replaying when an existing row is mounted. */
+/** Words fade, they do not travel: a changed title comes in on opacity alone. Nothing replays when a row is mounted. */
 export function AnimatedThreadTitle({ title }: { title: string }) {
   const element = useRef<HTMLSpanElement>(null);
   const previous = useRef(title);
@@ -9,11 +11,11 @@ export function AnimatedThreadTitle({ title }: { title: string }) {
   useLayoutEffect(() => {
     const changed = previous.current !== title;
     previous.current = title;
-    if (!changed || !element.current || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-    const animation = element.current.animate([
-      { opacity: 0, transform: "translateY(4px)", filter: "blur(2px)" },
-      { opacity: 1, transform: "translateY(0)", filter: "blur(0)" },
-    ], { duration: 320, easing: "cubic-bezier(.22, 1, .36, 1)" });
+    if (!changed || !element.current || prefersReducedMotionNow()) return;
+    const animation = element.current.animate(
+      [{ opacity: 0 }, { opacity: 1 }],
+      { duration: DUR.fast, easing: EASE.out },
+    );
     return () => animation.cancel();
   }, [title]);
 

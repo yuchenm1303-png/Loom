@@ -9,8 +9,8 @@
   grid-template-rows: 0fr;
   opacity: 0;
   margin-bottom: 0;
-  transition: grid-template-rows 200ms cubic-bezier(.2,.8,.2,1), opacity 160ms ease,
-    margin-bottom 200ms cubic-bezier(.2,.8,.2,1);
+  transition: grid-template-rows var(--loom-dur-base) var(--loom-ease-move), opacity var(--loom-dur-fast) ease,
+    margin-bottom var(--loom-dur-base) var(--loom-ease-move);
 }
 .app-shell .earlier-process-entry > .earlier-task-process {
   min-height: 0;
@@ -28,8 +28,8 @@
   display: grid;
   grid-template-rows: 1fr;
   margin-bottom: 11px;
-  transition: grid-template-rows 300ms cubic-bezier(.2,.8,.2,1) 40ms,
-    margin-bottom 300ms cubic-bezier(.2,.8,.2,1) 40ms;
+  transition: grid-template-rows var(--loom-dur-flow) var(--loom-ease-move) 40ms,
+    margin-bottom var(--loom-dur-flow) var(--loom-ease-move) 40ms;
 }
 .app-shell .turn-process.is-live .turn-process-content { gap: 0; }
 .app-shell .process-handoff-slot:last-child { margin-bottom: 0; }
@@ -45,7 +45,7 @@
   overflow: hidden;
   opacity: 1;
   translate: none;
-  transition: opacity 150ms ease, translate 180ms cubic-bezier(.2,.8,.2,1);
+  transition: opacity var(--loom-dur-fast) ease, translate var(--loom-dur-fast) var(--loom-ease-out);
 }
 .app-shell .process-handoff-slot[data-handoff-phase="folding"] { grid-template-rows: 0fr; margin-bottom: 0; }
 .app-shell .process-handoff-slot[data-handoff-phase="folding"] > .process-handoff-slot-inner {
@@ -53,7 +53,7 @@
   translate: 0 -4px;
 }
 .app-shell .earlier-process-icon,
-.app-shell .earlier-process-count { transition: background-color 180ms ease, color 180ms ease; }
+.app-shell .earlier-process-count { transition: background-color var(--loom-dur-fast) ease, color var(--loom-dur-fast) ease; }
 .app-shell .earlier-task-process.is-receiving :is(.earlier-process-icon, .earlier-process-count) {
   background-color: var(--accent-faint);
   color: var(--accent-soft);
@@ -71,8 +71,8 @@
   display: grid;
   grid-template-rows: 0fr;
   opacity: 0;
-  transition: grid-template-rows 240ms cubic-bezier(.2,.8,.2,1),
-    opacity 180ms ease, margin 240ms cubic-bezier(.2,.8,.2,1);
+  transition: grid-template-rows var(--loom-dur-base) var(--loom-ease-move),
+    opacity var(--loom-dur-fast) ease, margin var(--loom-dur-base) var(--loom-ease-move);
 }
 .app-shell :is(.earlier-process-history-inner, .pending-thinking-presence-inner, .tool-hint-presence-inner) {
   min-height: 0;
@@ -97,7 +97,7 @@
 }
 .app-shell .earlier-process-history-inner { display: flex; flex-direction: column; gap: 11px; }
 .app-shell .tool-hint-presence {
-  transition-duration: 180ms;
+  transition-duration: var(--loom-dur-fast);
 }
 .app-shell .pending-thinking-presence[data-motion-phase="exiting"] .thinking-shimmer {
   animation-play-state: paused;
@@ -107,10 +107,10 @@
    The turn-process fold (turn-flow.css) and the reasoning disclosure
    (inline-thinking.css) own their own, longer curves. */
 .app-shell :is(.disclosure-grid) {
-  transition: grid-template-rows 240ms cubic-bezier(.2,.8,.2,1), opacity 180ms ease !important;
+  transition: grid-template-rows var(--loom-dur-base) var(--loom-ease-move), opacity var(--loom-dur-fast) ease !important;
 }
 .app-shell :is(.disclosure-chevron, .turn-process-chevron, .earlier-process-chevron) {
-  transition: color 180ms ease;
+  transition: color var(--loom-dur-fast) ease;
 }
 /* Read-only history must not replay live label transitions. */
 @media (prefers-reduced-motion: reduce) {

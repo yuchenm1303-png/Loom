@@ -92,7 +92,7 @@ def test_navigation_effect_costs_the_click_nothing() -> None:
 
     effect_start = page.index("useLayoutEffect(() => {\n    const surface = surfaceRef.current;")
     effect = page[effect_start:page.index("}, [page]);", effect_start)]
-    assert "reducedMotionPreferred()" in effect
+    assert "prefersReducedMotionNow()" in effect
     assert "return playPageTransition(surface, navRef.current, pending.flow, pending.travel);" in effect
 
     # Everything that reads styles or starts animations waits for the next frame,
@@ -167,8 +167,8 @@ def test_page_motion_only_animates_top_level_blocks_with_compositor_properties()
     # Compositor-only, once, short.
     for forbidden in ("filter:", "backdrop-filter:", "will-change", "infinite", "box-shadow 180ms"):
         assert forbidden not in css, forbidden
-    assert int(re.search(r"--flow-fade: (\d+)ms", css).group(1)) <= 260
-    assert int(re.search(r"--flow-move: (\d+)ms", css).group(1)) <= 520
+    # Blocks fade on the base step (motion-tokens.css), one after the other.
+    assert "settings-block-fade var(--loom-dur-base) var(--loom-ease-out) var(--flow-delay) backwards" in css
     # Page content is clipped without stretching the scrollport.
     assert "contain: paint style;" in rule(css, ".settings-shell.settings-refined .settings-page-surface")
 
@@ -256,10 +256,12 @@ def test_reduced_motion_removes_every_animated_selector() -> None:
     assert "animation: none !important;" in media and "animation: none !important;" in attribute
 
     # Script side: no marks, no pill animation, no arrival delay.
-    assert "!pending || reducedMotionPreferred()" in page
-    assert "!reducedMotionPreferred()" in motion[motion.index("export function prepareNavTravel"):]
-    assert 'document.documentElement.dataset.loomReducedMotion === "true"' in motion
-    assert '(prefers-reduced-motion: reduce)' in motion
+    assert "!pending || prefersReducedMotionNow()" in page
+    assert "!prefersReducedMotionNow()" in motion[motion.index("export function prepareNavTravel"):]
+    # One check for the whole renderer (motion/useReducedMotion.ts): the in-app setting and the system's.
+    reduced = read(ROOT / "desktop-react" / "src" / "motion" / "useReducedMotion.ts")
+    assert 'document.documentElement.dataset.loomReducedMotion === "true"' in reduced
+    assert '(prefers-reduced-motion: reduce)' in reduced
 
 
 def test_global_motion_no_longer_competes_with_settings_section_motion() -> None:

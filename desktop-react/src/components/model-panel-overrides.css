@@ -87,10 +87,10 @@
   transform: translateY(0);
   animation: none;
   transition:
-    transform 160ms cubic-bezier(.2,.8,.2,1),
-    border-color 160ms ease,
-    background 160ms ease,
-    box-shadow 160ms ease;
+    transform var(--loom-dur-fast) var(--loom-ease-out),
+    border-color var(--loom-dur-fast) ease,
+    background var(--loom-dur-fast) ease,
+    box-shadow var(--loom-dur-fast) ease;
 }
 
 .model-manager-popover .model-manager-actions > button::before {
@@ -101,7 +101,7 @@
   opacity: 0;
   background: linear-gradient(110deg, transparent 25%, rgba(139,124,246,.04) 62%, transparent 86%);
   transform: translateX(-16%);
-  transition: opacity 170ms ease, transform 260ms cubic-bezier(.2,.8,.2,1);
+  transition: opacity var(--loom-dur-fast) ease, transform var(--loom-dur-base) var(--loom-ease-out);
 }
 
 .model-manager-popover .model-manager-actions > button:hover:not(:disabled) {
@@ -135,10 +135,10 @@
   color: #858e9d;
   background: rgba(255,255,255,.018);
   transition:
-    color 150ms ease,
-    border-color 150ms ease,
-    background 150ms ease,
-    transform 170ms cubic-bezier(.2,.8,.2,1);
+    color var(--loom-dur-fast) ease,
+    border-color var(--loom-dur-fast) ease,
+    background var(--loom-dur-fast) ease,
+    transform var(--loom-dur-fast) var(--loom-ease-out);
 }
 
 .model-manager-popover .model-manager-actions > button:first-child .model-manager-action-icon {
@@ -179,33 +179,11 @@
   position: relative;
   z-index: 1;
   color: #606875;
-  transition: color 150ms ease;
+  transition: color var(--loom-dur-fast) ease;
 }
 
 .model-manager-popover .model-manager-actions > button:hover:not(:disabled) .model-manager-action-chevron {
   color: #9a91ca;
-}
-
-@keyframes model-panel-enter {
-  from {
-    opacity: 0;
-    transform: translateY(4px) scale(.994);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0) scale(1);
-  }
-}
-
-@keyframes model-panel-action-enter {
-  from {
-    opacity: 0;
-    transform: translateY(5px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
 }
 
 @media (max-height: 720px) {

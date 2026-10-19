@@ -47,7 +47,8 @@ import { canRenderArtifact } from "./artifactRenderers";
 import { warmFontWeights } from "./fontWarmup";
 import { useI18n } from "./i18n";
 import { useMotionPresence } from "./motion/useMotionPresence";
-import { useReducedMotion } from "./motion/useReducedMotion";
+import { DUR, EASE, RETAIN } from "./motion/tokens";
+import { prefersReducedMotionNow, useReducedMotion } from "./motion/useReducedMotion";
 import { RUN_STRIP_EXIT_MS } from "./presentationTiming";
 import {
   SHORTCUTS_CHANGED_EVENT,
@@ -69,7 +70,7 @@ const RESOLVED_APPROVAL_STATUSES = new Set([
 ]);
 
 /** How long an answered approval stays to fold away (the log's fold: weave.css --wv-fold). */
-const APPROVAL_EXIT_MS = 300;
+const APPROVAL_EXIT_MS = RETAIN.fold;
 const SIDEBAR_WIDTH_KEY = "loom.layout.sidebarWidth";
 const INSPECTOR_WIDTH_KEY = "loom.layout.inspectorWidth";
 const SIDEBAR_MIN = 210;
@@ -237,11 +238,6 @@ function clearPanelWidth(key: string): void {
   }
 }
 
-function reducedPanelMotion(): boolean {
-  return document.documentElement.dataset.loomReducedMotion === "true"
-    || Boolean(window.matchMedia?.("(prefers-reduced-motion: reduce)").matches);
-}
-
 /*
  * Measure the elements the eye actually follows. The stage wrappers change
  * width when a side panel toggles; FLIP-ing those wrappers can put their
@@ -347,7 +343,7 @@ function animateLayoutAnchors(
     // panel choreography. The side-surface View Transition group runs 390ms;
     // finishing the header/transcript/composer at 230–300ms made the main UI
     // visibly arrive before the inspector was done settling.
-    const duration = 390;
+    const duration = DUR.panel;
 
     // Animate the independent CSS translate property instead of transform.
     // Composer and other controls have their own transform effects; overriding
@@ -360,7 +356,7 @@ function animateLayoutAnchors(
       ],
       {
         duration,
-        easing: "cubic-bezier(.22,.7,.18,1)",
+        easing: EASE.move,
         fill: "both",
       },
     );
@@ -424,9 +420,9 @@ export default function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [browserOpen, setBrowserOpen] = useState(false);
   const browserAvailable = typeof window.loom?.embeddedBrowser === "function";
-  const settingsPresence = useMotionPresence(settingsOpen, 230);
+  const settingsPresence = useMotionPresence(settingsOpen, RETAIN.base);
   const [profileOpen, setProfileOpen] = useState(false);
-  const profilePresence = useMotionPresence(profileOpen, 260);
+  const profilePresence = useMotionPresence(profileOpen, RETAIN.base);
   const [accountOpen, setAccountOpen] = useState(false);
   useEffect(() => {
     const openProfile = () => {
@@ -556,7 +552,7 @@ export default function App() {
     : null;
   const filesProject = filesProjectId ? loom.projects.find((project) => project.id === filesProjectId) : undefined;
   // Files is a modal and leaves like every panel does: held mounted for its exit, still showing its project.
-  const filesPresence = useMotionPresence(Boolean(filesProject), 235);
+  const filesPresence = useMotionPresence(Boolean(filesProject), RETAIN.base);
   const lastFilesProjectRef = useRef(filesProject);
   if (filesProject) lastFilesProjectRef.current = filesProject;
   const filesShown = filesProject ?? (filesPresence.mounted ? lastFilesProjectRef.current : undefined);
@@ -587,13 +583,13 @@ export default function App() {
       setThreadEntering(false);
       return;
     }
-    if (!previousThreadId || previousThreadId === activeThreadId || reducedPanelMotion()) {
+    if (!previousThreadId || previousThreadId === activeThreadId || prefersReducedMotionNow()) {
       setThreadEntering(false);
       return;
     }
 
     setThreadEntering(true);
-    const timer = window.setTimeout(() => setThreadEntering(false), 180);
+    const timer = window.setTimeout(() => setThreadEntering(false), DUR.base);
     return () => window.clearTimeout(timer);
   }, [activeThreadId]);
   const sidebarLayoutOpen = sidebarOpen;
@@ -602,7 +598,7 @@ export default function App() {
   const agentsLayoutOpen = agentsOpen;
   const artifactLayoutOpen = artifactPreviewOpen || browserOpen;
   const projectDetailsLayoutOpen = projectDetailsOpen;
-  const inspectorPresence = useMotionPresence(inspectorVisible, 420);
+  const inspectorPresence = useMotionPresence(inspectorVisible, RETAIN.panel);
   const rightSurfaceOpen = inspectorVisible || reviewOpen || agentsOpen || artifactPreviewOpen || browserOpen || projectDetailsOpen;
   const rightOpenIntent: LayoutMotionIntent = rightSurfaceOpen ? "right-swap" : "right-open";
 
@@ -619,7 +615,7 @@ export default function App() {
     update: () => void,
     intent: LayoutMotionIntent = "neutral",
   ) => {
-    if (reducedPanelMotion()) {
+    if (prefersReducedMotionNow()) {
       layoutTransitionSerialRef.current += 1;
       layoutViewTransitionRef.current?.skipTransition();
       layoutViewTransitionRef.current = null;

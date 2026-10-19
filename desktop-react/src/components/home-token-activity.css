@@ -289,7 +289,7 @@ html[data-loom-theme="light"] .home-token-activity {
   color: var(--home-ink);
   pointer-events: none;
   transform: translate(-50%, -100%);
-  animation: home-token-tooltip-in 120ms var(--ease-out) both;
+  animation: home-token-tooltip-in var(--loom-dur-fast) var(--loom-ease-out) both;
 }
 
 html[data-loom-theme="light"] .home-token-tooltip {
@@ -345,7 +345,7 @@ html[data-loom-theme="light"] .home-token-tooltip {
 }
 
 @keyframes home-token-tooltip-in {
-  from { opacity: 0; transform: translate(-50%, calc(-100% + 4px)); }
+  from { opacity: 0; }
 }
 
 /* Narrow panes stack the summary above the heatmap. */

@@ -162,7 +162,7 @@
   color: #d9dce4;
   text-align: left;
   cursor: pointer;
-  transition: background 110ms ease, border-color 110ms ease;
+  transition: background var(--loom-dur-fast) ease, border-color var(--loom-dur-fast) ease;
 }
 
 .skills-install-grid button:hover {

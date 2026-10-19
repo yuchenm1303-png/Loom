@@ -18,7 +18,7 @@ html.loom-liquid-cursor-active body #root .loom-portal-page *::after {
   opacity: 0;
   background: transparent;
   will-change: transform, opacity;
-  transition: opacity 90ms linear;
+  transition: opacity var(--loom-dur-press) linear;
 }
 
 .loom-liquid-cursor-dot {
@@ -34,7 +34,7 @@ html.loom-liquid-cursor-active body #root .loom-portal-page *::after {
   background: rgba(255, 255, 255, .94);
   box-shadow: 0 0 0 1px rgba(8, 18, 28, .2), 0 0 7px rgba(255, 255, 255, .36);
   will-change: transform, opacity;
-  transition: opacity 90ms linear;
+  transition: opacity var(--loom-dur-press) linear;
 }
 
 @media (pointer: coarse), (prefers-reduced-motion: reduce) {

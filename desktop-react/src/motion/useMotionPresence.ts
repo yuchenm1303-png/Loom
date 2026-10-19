@@ -1,4 +1,5 @@
 import { useLayoutEffect, useRef, useState } from "react";
+import { RETAIN } from "./tokens";
 import { useReducedMotion } from "./useReducedMotion";
 
 export type MotionPresencePhase = "entering" | "entered" | "exiting";
@@ -10,8 +11,13 @@ export type MotionPresencePhase = "entering" | "entered" | "exiting";
  * immediately on close. Presence separates logical visibility from DOM
  * lifetime so dialogs, menus and full-page surfaces share one predictable
  * enter/exit contract.
+ *
+ * `exitMs` is how long the surface stays mounted once it is closed. It has to outlast the exit written in the
+ * stylesheet, so pass one of the named values in motion/tokens.ts (`RETAIN.fast` for a popover or a menu,
+ * `RETAIN.base` for what appears in place, `RETAIN.fold` for a fold, `RETAIN.panel` for a dock): each is the exit
+ * of its step plus a margin. A literal number here is refused by tests/test_motion_scale_contract.py.
  */
-export function useMotionPresence(open: boolean, exitMs = 240, identity?: string | number | null): {
+export function useMotionPresence(open: boolean, exitMs: number = RETAIN.base, identity?: string | number | null): {
   mounted: boolean;
   phase: MotionPresencePhase;
 } {

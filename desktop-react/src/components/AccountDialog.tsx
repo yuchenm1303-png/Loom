@@ -22,6 +22,7 @@ import {
 } from "react";
 import { useI18n } from "../i18n";
 import { useMotionPresence } from "../motion/useMotionPresence";
+import { RETAIN } from "../motion/tokens";
 import { AvatarCropDialog } from "./AvatarCropDialog";
 import type { LoomAccountError, LoomAccountSnapshot, LoomAuthCapabilities } from "../types/account";
 import {
@@ -75,7 +76,7 @@ export function AccountDialog({
 }: AccountDialogProps) {
   const { language } = useI18n();
   const zh = language === "zh-CN";
-  const presence = useMotionPresence(open, 235);
+  const presence = useMotionPresence(open, RETAIN.base);
   const [mode, setMode] = useState<AuthMode>("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -89,7 +90,7 @@ export function AccountDialog({
   const [profileError, setProfileError] = useState("");
   const [avatarCropFile, setAvatarCropFile] = useState<File | null>(null);
   // The crop dialog leaves like every panel does, still showing the picture it was cropping.
-  const cropPresence = useMotionPresence(Boolean(avatarCropFile), 235);
+  const cropPresence = useMotionPresence(Boolean(avatarCropFile), RETAIN.base);
   const lastCropFileRef = useRef<File | null>(avatarCropFile);
   if (avatarCropFile) lastCropFileRef.current = avatarCropFile;
 

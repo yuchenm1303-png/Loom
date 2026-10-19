@@ -14,7 +14,7 @@
   font-size: 10px;
   line-height: 1;
   cursor: pointer;
-  transition: color 130ms ease, border-color 130ms ease, background 130ms ease;
+  transition: color var(--loom-dur-fast) ease, border-color var(--loom-dur-fast) ease, background var(--loom-dur-fast) ease;
 }
 
 .thread-project-button > svg {

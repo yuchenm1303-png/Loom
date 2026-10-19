@@ -15,7 +15,7 @@
   font-weight: 600;
   line-height: 1;
   white-space: nowrap;
-  transition: color 130ms ease, background 130ms ease, border-color 130ms ease, transform 130ms ease;
+  transition: color var(--loom-dur-fast) ease, background var(--loom-dur-fast) ease, border-color var(--loom-dur-fast) ease, transform var(--loom-dur-fast) ease;
 }
 
 .thread-review-button > svg {

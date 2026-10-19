@@ -48,7 +48,7 @@
   color: #b7bbc4;
   font-size: 13px;
   cursor: pointer;
-  transition: background 120ms ease, color 120ms ease, transform 120ms ease;
+  transition: background var(--loom-dur-fast) ease, color var(--loom-dur-fast) ease, transform var(--loom-dur-fast) ease;
 }
 
 .settings-back:hover {
@@ -113,7 +113,7 @@
   padding: 0 11px;
   color: #747b87;
   background: rgba(255,255,255,.045);
-  transition: border-color 130ms ease, background 130ms ease, box-shadow 130ms ease;
+  transition: border-color var(--loom-dur-fast) ease, background var(--loom-dur-fast) ease, box-shadow var(--loom-dur-fast) ease;
 }
 
 .settings-search:focus-within {
@@ -176,7 +176,7 @@
   color: #b8bdc7;
   text-align: left;
   cursor: pointer;
-  transition: background 120ms ease, color 120ms ease, border-color 120ms ease, box-shadow 120ms ease, transform 120ms ease;
+  transition: background var(--loom-dur-fast) ease, color var(--loom-dur-fast) ease, border-color var(--loom-dur-fast) ease, box-shadow var(--loom-dur-fast) ease, transform var(--loom-dur-fast) ease;
 }
 
 .settings-nav button:hover {
@@ -200,7 +200,7 @@
 .settings-nav button svg {
   justify-self: center;
   color: currentColor;
-  transition: transform 180ms var(--loom-ease-out), color 160ms ease;
+  transition: transform var(--loom-dur-fast) var(--loom-ease-out), color var(--loom-dur-fast) ease;
 }
 
 .settings-nav button.active svg {
@@ -601,7 +601,7 @@
   padding: 2px;
   background: rgba(255,255,255,.095);
   cursor: pointer;
-  transition: background 150ms ease, border-color 150ms ease, opacity 150ms ease;
+  transition: background var(--loom-dur-fast) ease, border-color var(--loom-dur-fast) ease, opacity var(--loom-dur-fast) ease;
 }
 
 .settings-switch span {
@@ -612,7 +612,7 @@
   background: #f2f3f7;
   box-shadow: 0 3px 8px rgba(0,0,0,.32);
   transform: translateX(0);
-  transition: transform 170ms cubic-bezier(.2,.8,.2,1);
+  transition: transform var(--loom-dur-fast) var(--loom-ease-out);
 }
 
 .settings-switch.on {
@@ -643,7 +643,7 @@
   background: transparent;
   color: #7c8490;
   cursor: pointer;
-  transition: background 120ms ease, color 120ms ease;
+  transition: background var(--loom-dur-fast) ease, color var(--loom-dur-fast) ease;
 }
 
 .settings-row-link:hover {
@@ -857,7 +857,7 @@
   color: #d9dde6;
   box-shadow: 0 18px 48px rgba(0,0,0,.36), inset 0 1px rgba(255,255,255,.05);
   backdrop-filter: blur(18px) saturate(118%);
-  animation: settings-toast-in 160ms cubic-bezier(.2,.78,.2,1) both;
+  animation: settings-toast-in var(--loom-dur-fast) var(--loom-ease-out) both;
 }
 
 .settings-toast.success {
@@ -870,8 +870,8 @@
 }
 
 @keyframes settings-toast-in {
-  from { opacity: 0; transform: translateY(6px) scale(.98); }
-  to { opacity: 1; transform: translateY(0) scale(1); }
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
 @media (max-width: 980px) {
@@ -987,7 +987,7 @@
   background: rgba(255,255,255,.045);
   color: #d7dbe5;
   cursor: pointer;
-  transition: background 120ms ease, border-color 120ms ease, color 120ms ease, transform 120ms ease;
+  transition: background var(--loom-dur-fast) ease, border-color var(--loom-dur-fast) ease, color var(--loom-dur-fast) ease, transform var(--loom-dur-fast) ease;
 }
 
 .skills-quick-actions button:hover,

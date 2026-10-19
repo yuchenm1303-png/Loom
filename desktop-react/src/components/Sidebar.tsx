@@ -27,6 +27,8 @@ import { useI18n } from "../i18n";
 import type { ProjectRecord, ThreadRecord } from "../types/loom";
 import { branchDepth, orderThreadBranches } from "../state/threadBranches";
 import "./sidebar.css";
+import { RETAIN } from "../motion/tokens";
+import { prefersReducedMotionNow } from "../motion/useReducedMotion";
 import { useSidebarSelectionMotion } from "./useSidebarSelectionMotion";
 
 type ThreadView = "active" | "archived";
@@ -398,9 +400,7 @@ export const Sidebar = memo(function Sidebar({
       window.clearTimeout(contextMenuCloseTimerRef.current);
       contextMenuCloseTimerRef.current = null;
     }
-    const reduced = document.documentElement.dataset.loomReducedMotion === "true"
-      || Boolean(window.matchMedia?.("(prefers-reduced-motion: reduce)").matches);
-    if (immediate || reduced) {
+    if (immediate || prefersReducedMotionNow()) {
       setContextMenu(null);
       setContextMenuClosing(false);
       return;
@@ -410,7 +410,7 @@ export const Sidebar = memo(function Sidebar({
       contextMenuCloseTimerRef.current = null;
       setContextMenu(null);
       setContextMenuClosing(false);
-    }, 215);
+    }, RETAIN.fast);
   }, []);
 
   const activeThread = useMemo(

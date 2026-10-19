@@ -139,7 +139,7 @@
   overflow: hidden;
   border-radius: 13px !important;
   background: #121419 !important;
-  transition: background 120ms ease, border-color 120ms ease, box-shadow 120ms ease !important;
+  transition: background var(--loom-dur-fast) ease, border-color var(--loom-dur-fast) ease, box-shadow var(--loom-dur-fast) ease !important;
 }
 
 .mature-model-card:hover {

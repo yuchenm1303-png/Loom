@@ -22,9 +22,9 @@
                                                (pinned by tests/test_panel_enter_motion_contract.py)
      appears in place         dialogs, palettes, pages
                                                opacity only (text must not shimmer on a
-                                               moving layer), --loom-motion-reveal in,
-                                               --loom-motion-conceal out, always with an exit
-     hangs off a control      popovers, menus  composer.css: readable at once (.72), 100/160ms
+                                               moving layer), --loom-dur-base in,
+                                               --loom-dur-base-out out, always with an exit
+     hangs off a control      popovers, menus  readable at once (.72), --loom-dur-fast in, --loom-dur-fast-out out
 
    Loaded after every component sheet and before window-rail.css, which keeps
    the last word on how headers leave room for the window controls. Weights are
@@ -107,8 +107,8 @@ html[data-loom-theme="light"] {
 .pl-dock[data-motion-phase] {
   backface-visibility: hidden;
   transition:
-    transform var(--loom-motion-panel, 390ms) var(--loom-ease-out, cubic-bezier(.2, .74, .18, 1)),
-    opacity var(--loom-motion-opacity, 260ms) ease;
+    transform var(--loom-dur-panel) var(--loom-ease-out),
+    opacity var(--loom-dur-base) ease;
 }
 
 .pl-dock[data-motion-phase="entering"] {
@@ -127,8 +127,8 @@ html[data-loom-theme="light"] {
   opacity: 0;
   transform: translate3d(14px, 0, 0);
   will-change: transform, opacity;
-  transition-duration: 250ms;
-  transition-timing-function: var(--loom-ease-in, cubic-bezier(.42, 0, .72, .2));
+  transition-duration: var(--loom-dur-flow-out);
+  transition-timing-function: var(--loom-ease-in);
 }
 
 /* Header --------------------------------------------------------------------
@@ -311,8 +311,8 @@ code.pl-subtitle {
   color: var(--pl-muted);
   cursor: pointer;
   transition:
-    color var(--loom-motion-control, 170ms) ease,
-    background-color var(--loom-motion-control, 170ms) ease;
+    color var(--loom-dur-fast) ease,
+    background-color var(--loom-dur-fast) ease;
 }
 
 .pl-icon-button:hover:not(:disabled) {
@@ -352,8 +352,8 @@ code.pl-subtitle {
   background: var(--pl-field);
   color: var(--pl-muted);
   transition:
-    border-color var(--loom-motion-control, 170ms) ease,
-    box-shadow var(--loom-motion-control, 170ms) ease;
+    border-color var(--loom-dur-fast) ease,
+    box-shadow var(--loom-dur-fast) ease;
 }
 
 .pl-field:focus-within {
@@ -651,8 +651,8 @@ code.pl-subtitle {
   background: var(--pl-card);
   color: var(--pl-ink);
   transition:
-    background-color var(--loom-motion-control, 170ms) ease,
-    border-color var(--loom-motion-control, 170ms) ease;
+    background-color var(--loom-dur-fast) ease,
+    border-color var(--loom-dur-fast) ease;
 }
 
 /* Text-bearing cards do not lift: colour answers a pointer, position does not. */
@@ -682,7 +682,7 @@ code.pl-subtitle {
   width: 1px;
   transform: translateX(-50%);
   background: transparent;
-  transition: background-color 130ms ease, box-shadow 130ms ease;
+  transition: background-color var(--loom-dur-fast) ease, box-shadow var(--loom-dur-fast) ease;
 }
 
 .pl-resizer:is(:hover, :focus-visible)::before,
@@ -754,7 +754,7 @@ body:is(.loom-agent-dock-resizing, .loom-artifact-dock-resizing) .pl-resizer::be
    middle of either direction continues from the painted opacity. */
 .pl-reveal {
   opacity: 1;
-  transition: opacity var(--loom-motion-reveal, 240ms) var(--loom-ease-depth, cubic-bezier(.16, .78, .18, 1));
+  transition: opacity var(--loom-dur-base) var(--loom-ease-out);
 }
 
 .pl-reveal:is([data-motion-phase="entering"], [data-motion-phase="exiting"]) {
@@ -764,8 +764,8 @@ body:is(.loom-agent-dock-resizing, .loom-artifact-dock-resizing) .pl-resizer::be
 
 .pl-reveal[data-motion-phase="exiting"] {
   pointer-events: none;
-  transition-duration: var(--loom-motion-conceal, 200ms);
-  transition-timing-function: var(--loom-ease-in, cubic-bezier(.42, 0, .72, .2));
+  transition-duration: var(--loom-dur-base-out);
+  transition-timing-function: var(--loom-ease-in);
 }
 
 @media (prefers-reduced-motion: reduce) {

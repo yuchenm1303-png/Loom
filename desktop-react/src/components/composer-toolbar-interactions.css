@@ -4,8 +4,8 @@
   --control-ink: #aaa1e0;
   --control-wash: rgba(145,130,218,.085);
   border-radius: 8px;
-  transition: color 180ms ease, background-color 200ms ease,
-    border-color 200ms ease, box-shadow 200ms ease !important;
+  transition: color var(--loom-dur-fast) ease, background-color var(--loom-dur-fast) ease,
+    border-color var(--loom-dur-fast) ease, box-shadow var(--loom-dur-fast) ease !important;
 }
 html[data-loom-theme="light"] .app-shell .composer .composer-refined-control {
   --control-ink: #7567b8;
@@ -19,7 +19,7 @@ html[data-loom-theme="light"] .app-shell .composer .composer-refined-control {
   box-shadow: none;
   transform: none;
   animation: none !important;
-  transition: color 180ms ease !important;
+  transition: color var(--loom-dur-fast) ease !important;
 }
 .app-shell .composer .composer-refined-control .composer-glyph-well::before {
   display: none;
@@ -52,7 +52,7 @@ html[data-loom-theme="light"] .app-shell .composer .composer-refined-control {
 /* The caret turns in icon-motion.css; here it only takes the control's ink. */
 .app-shell .composer .composer-refined-control .composer-chip-chevron {
   animation: none !important;
-  transition: color 180ms ease !important;
+  transition: color var(--loom-dur-fast) ease !important;
 }
 .app-shell .composer .composer-refined-control.is-open .composer-chip-chevron {
   color: var(--control-ink);

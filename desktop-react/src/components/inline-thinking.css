@@ -41,18 +41,18 @@
    capsule of a turn waits for the user's bubble to land. */
 .inline-thinking .tg,
 .turn-process.is-live .live-reasoning.is-thinking:not(.is-handoff) .live-reasoning-bead .tg {
-  animation: loom-task-icon-spring 560ms var(--loom-spring-pop) var(--thinking-lead, 0ms) backwards;
+  animation: loom-task-icon-spring var(--loom-dur-slow) var(--loom-spring-pop) var(--thinking-lead, 0ms) backwards;
 }
 
 .inline-thinking .thinking-shimmer {
   animation:
-    loom-thinking-label-in 280ms cubic-bezier(.2,.82,.2,1) calc(var(--thinking-lead, 0ms) + 120ms) backwards,
+    loom-thinking-label-in var(--loom-dur-base) var(--loom-ease-out) calc(var(--thinking-lead, 0ms) + 120ms) backwards,
     var(--thinking-sweep);
 }
 
 .turn-process.is-live .live-reasoning.is-thinking:not(.is-handoff) .live-reasoning-label.is-live {
   animation:
-    loom-thinking-label-in 280ms cubic-bezier(.2,.82,.2,1) 110ms backwards,
+    loom-thinking-label-in var(--loom-dur-base) var(--loom-ease-out) 110ms backwards,
     var(--thinking-sweep);
 }
 
@@ -156,9 +156,9 @@
   overflow: visible;
   opacity: 1;
   transition:
-    width 300ms cubic-bezier(.2,.8,.2,1),
-    margin-right 300ms cubic-bezier(.2,.8,.2,1),
-    opacity 180ms ease;
+    width var(--loom-dur-flow) var(--loom-ease-move),
+    margin-right var(--loom-dur-flow) var(--loom-ease-move),
+    opacity var(--loom-dur-fast) ease;
 }
 
 .live-reasoning.is-done .live-reasoning-bead {
@@ -182,7 +182,7 @@
 .live-reasoning-label {
   grid-area: 1 / 1;
   white-space: nowrap;
-  transition: opacity 220ms ease;
+  transition: opacity var(--loom-dur-base) ease;
 }
 
 .live-reasoning-label.is-rest {
@@ -221,12 +221,12 @@
   flex: none;
   margin-left: 4px;
   color: #6d7581;
-  transition: color 160ms ease;
+  transition: color var(--loom-dur-fast) ease;
 }
 
 /* Reasoning text arriving reveals the disclosure affordance. */
 .turn-process.is-live .live-reasoning.is-thinking .live-reasoning-chevron {
-  animation: loom-reasoning-chevron-in 300ms cubic-bezier(.2,.8,.2,1) backwards;
+  animation: loom-reasoning-chevron-in var(--loom-dur-flow) var(--loom-ease-out) backwards;
 }
 
 .live-reasoning-trigger:not(:disabled):hover .live-reasoning-chevron {
@@ -242,8 +242,8 @@
   grid-template-rows: 0fr;
   opacity: 0;
   transition:
-    grid-template-rows 260ms cubic-bezier(.2,.8,.2,1),
-    opacity 180ms ease;
+    grid-template-rows var(--loom-dur-base) var(--loom-ease-move),
+    opacity var(--loom-dur-fast) ease;
 }
 
 .live-reasoning.open .live-reasoning-grid {
@@ -297,8 +297,8 @@
   grid-template-rows: 1fr;
   opacity: 1;
   transition:
-    grid-template-rows 240ms cubic-bezier(.4,0,.2,1),
-    opacity 150ms ease;
+    grid-template-rows var(--loom-dur-base) var(--loom-ease-inout),
+    opacity var(--loom-dur-fast) ease;
 }
 
 .live-reasoning-presence-inner {
@@ -318,7 +318,7 @@
 /* Inherited on mount (the capsule was on screen when the text arrived): there
    is no earlier frame to transition from, so the fold is a keyframe. */
 .live-reasoning-presence.is-inherited[data-motion-phase="exiting"] {
-  animation: loom-thinking-header-retire 240ms cubic-bezier(.4,0,.2,1) both;
+  animation: loom-thinking-header-retire var(--loom-dur-flow-out) var(--loom-ease-inout) both;
 }
 
 /* Space between the disclosure and the answer it introduces. */

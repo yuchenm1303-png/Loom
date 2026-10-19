@@ -47,7 +47,7 @@
   line-height: 1;
   font-weight: 600;
   cursor: pointer;
-  transition: color 120ms ease, background 120ms ease, border-color 120ms ease;
+  transition: color var(--loom-dur-fast) ease, background var(--loom-dur-fast) ease, border-color var(--loom-dur-fast) ease;
 }
 
 .user-message-collapse-toggle:hover {
@@ -63,7 +63,7 @@
 
 .user-message-collapse-toggle svg {
   flex: none;
-  transition: transform 140ms cubic-bezier(.2,.78,.2,1);
+  transition: transform var(--loom-dur-fast) var(--loom-ease-out);
 }
 
 .user-message-copy-shell.is-collapsed::after {
@@ -102,7 +102,7 @@
   text-align: left;
   cursor: zoom-in;
   box-shadow: 0 4px 14px rgba(0,0,0,.08);
-  transition: border-color 130ms ease, transform 130ms cubic-bezier(.2,.78,.2,1), box-shadow 130ms ease;
+  transition: border-color var(--loom-dur-fast) ease, transform var(--loom-dur-fast) var(--loom-ease-out), box-shadow var(--loom-dur-fast) ease;
 }
 
 .user-message-image-preview:hover {
@@ -144,7 +144,7 @@
   transform: translateY(2px);
   pointer-events: none;
   backdrop-filter: blur(8px);
-  transition: opacity 120ms ease, transform 120ms ease;
+  transition: opacity var(--loom-dur-fast) ease, transform var(--loom-dur-fast) ease;
 }
 
 .user-message-image-open-hint > span {
@@ -179,7 +179,7 @@
 
 .user-message-attachment-card.is-clickable {
   cursor: pointer;
-  transition: border-color 120ms ease, background 120ms ease, transform 120ms cubic-bezier(.2,.78,.2,1);
+  transition: border-color var(--loom-dur-fast) ease, background var(--loom-dur-fast) ease, transform var(--loom-dur-fast) var(--loom-ease-out);
 }
 
 .user-message-attachment-card.is-clickable:hover {
@@ -197,7 +197,7 @@
   border-radius: 7px;
   color: #aaa0f1;
   background: rgba(139,124,246,.055);
-  transition: border-color 120ms ease, color 120ms ease, background 120ms ease;
+  transition: border-color var(--loom-dur-fast) ease, color var(--loom-dur-fast) ease, background var(--loom-dur-fast) ease;
 }
 
 .user-message-file-icon svg {
@@ -243,7 +243,7 @@
   place-items: center;
   color: #5f6671;
   opacity: .45;
-  transition: color 120ms ease, opacity 120ms ease, transform 120ms ease;
+  transition: color var(--loom-dur-fast) ease, opacity var(--loom-dur-fast) ease, transform var(--loom-dur-fast) ease;
 }
 
 .user-message-file-open svg {
@@ -267,7 +267,7 @@
   padding: 28px;
   background: rgba(4,5,8,.78);
   backdrop-filter: blur(14px);
-  animation: loom-attachment-lightbox-in 140ms ease-out both;
+  animation: loom-attachment-lightbox-in var(--loom-dur-fast) var(--loom-ease-out) both;
 }
 
 .user-message-image-lightbox-panel {
@@ -325,7 +325,7 @@
   font: inherit;
   font-size: 11px;
   cursor: pointer;
-  transition: color 120ms ease, border-color 120ms ease, background 120ms ease;
+  transition: color var(--loom-dur-fast) ease, border-color var(--loom-dur-fast) ease, background var(--loom-dur-fast) ease;
 }
 
 .user-message-image-lightbox-actions button:hover {

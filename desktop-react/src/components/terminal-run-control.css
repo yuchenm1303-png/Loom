@@ -14,7 +14,7 @@
   color: #7f8995;
   cursor: pointer;
   font: 9px/1 ui-sans-serif, system-ui, sans-serif;
-  transition: color 130ms ease, background 130ms ease, opacity 130ms ease;
+  transition: color var(--loom-dur-fast) ease, background var(--loom-dur-fast) ease, opacity var(--loom-dur-fast) ease;
 }
 
 .terminal-run-launch:hover:not(:disabled) {
@@ -94,7 +94,7 @@
   background: rgba(255,255,255,.025);
   color: #c8cdd5;
   font: 10px/1 "SFMono-Regular", Consolas, monospace;
-  transition: border-color 130ms ease, background 130ms ease;
+  transition: border-color var(--loom-dur-fast) ease, background var(--loom-dur-fast) ease;
 }
 
 .terminal-run-input-row input:focus {
@@ -117,7 +117,7 @@
   background: transparent;
   color: #77808d;
   cursor: pointer;
-  transition: color 130ms ease, background 130ms ease, opacity 130ms ease;
+  transition: color var(--loom-dur-fast) ease, background var(--loom-dur-fast) ease, opacity var(--loom-dur-fast) ease;
 }
 
 .terminal-run-input-row button:hover:not(:disabled) {

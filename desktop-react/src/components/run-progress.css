@@ -49,7 +49,7 @@
     transparent 100%
   );
   opacity: 1;
-  transition: opacity 260ms ease;
+  transition: opacity var(--loom-dur-base) ease;
 }
 
 .conversation-stage > .run-progress-frame.top[data-motion-phase="entering"] {
@@ -59,7 +59,7 @@
 /* Finishing: hold the outcome readable, then dissolve. */
 .conversation-stage > .run-progress-frame.top[data-motion-phase="exiting"] {
   opacity: 0;
-  transition: opacity 320ms cubic-bezier(.42,0,.72,.2) 560ms;
+  transition: opacity var(--loom-dur-flow-out) var(--loom-ease-in) 560ms;
 }
 
 .run-progress-inline {
@@ -101,16 +101,16 @@
   box-shadow: 0 0 0 3px rgba(139,124,246,.07), 0 0 9px rgba(139,124,246,.18);
   animation: run-progress-pulse 2.4s ease-in-out infinite;
   transition:
-    width 260ms cubic-bezier(.2,.8,.2,1),
-    height 260ms cubic-bezier(.2,.8,.2,1),
-    margin 260ms cubic-bezier(.2,.8,.2,1),
-    background-color 220ms ease,
-    box-shadow 220ms ease,
-    color 220ms ease;
+    width var(--loom-dur-base) var(--loom-ease-move),
+    height var(--loom-dur-base) var(--loom-ease-move),
+    margin var(--loom-dur-base) var(--loom-ease-move),
+    background-color var(--loom-dur-fast) ease,
+    box-shadow var(--loom-dur-fast) ease,
+    color var(--loom-dur-fast) ease;
 }
 
 .run-progress-live-dot > svg {
-  animation: run-progress-mark-in 360ms var(--loom-spring-pop, cubic-bezier(.2,.8,.2,1)) 60ms backwards;
+  animation: run-progress-mark-in var(--loom-dur-panel) var(--loom-spring-pop) 60ms backwards;
 }
 
 .run-progress-frame.is-finished .run-progress-live-dot,

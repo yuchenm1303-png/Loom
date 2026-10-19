@@ -67,7 +67,7 @@
   min-height: 38px;
   margin: 1px 0;
   border-radius: 8px;
-  transition: background 110ms ease, color 110ms ease;
+  transition: background var(--loom-dur-fast) ease, color var(--loom-dur-fast) ease;
 }
 
 .settings-nav button:hover {
@@ -335,7 +335,7 @@ button.general-default-card:hover .general-default-card-head > svg:last-child,
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
-  transition: background 110ms ease, border-color 110ms ease;
+  transition: background var(--loom-dur-fast) ease, border-color var(--loom-dur-fast) ease;
 }
 
 .mature-action-button {
@@ -448,7 +448,7 @@ button.general-default-card:hover .general-default-card-head > svg:last-child,
   font-weight: 600;
   line-height: 1;
   cursor: pointer;
-  transition: background-color 120ms ease, border-color 120ms ease, box-shadow 120ms ease, color 120ms ease;
+  transition: background-color var(--loom-dur-fast) ease, border-color var(--loom-dur-fast) ease, box-shadow var(--loom-dur-fast) ease, color var(--loom-dur-fast) ease;
 }
 
 .mature-select:hover {
@@ -536,7 +536,7 @@ button.general-default-card:hover .general-default-card-head > svg:last-child,
   border-radius: 10px;
   background: #121419;
   box-shadow: none;
-  transition: background 110ms ease, border-color 110ms ease;
+  transition: background var(--loom-dur-fast) ease, border-color var(--loom-dur-fast) ease;
 }
 
 .mature-model-card:hover {

@@ -51,6 +51,7 @@ import { isLoomWebRuntime } from "../webBridge";
 import { applyThemePreference, type LoomThemePreference } from "../theme";
 import { applyPetVisibility, DEFAULT_PET_ENABLED, DESKTOP_SETTINGS_STORAGE_KEY } from "../petPreferences";
 import { useMotionPresence } from "../motion/useMotionPresence";
+import { RETAIN } from "../motion/tokens";
 import type {
   InitializeResult,
   LoomSettings,
@@ -65,7 +66,8 @@ import { ConnectorLifecycleStatus } from "./ConnectorLifecycleStatus";
 import { translateSettingsText } from "./LanguageSettingsDock";
 import "./settings-connectors.css";
 import { setSettingsRoute, useSettingsRoute } from "./settingsNavigation";
-import { playPageTransition, prepareNavTravel, reducedMotionPreferred, type PageFlow } from "./settingsMotion";
+import { playPageTransition, prepareNavTravel, type PageFlow } from "./settingsMotion";
+import { prefersReducedMotionNow } from "../motion/useReducedMotion";
 import "./settings-page.css";
 import "./settings-general-polish.css";
 import "./settings-maturity.css";
@@ -608,7 +610,7 @@ export function SettingsPage({ runtime, models, threadId, running, onRefreshMode
   const setNotice = (next: Omit<SettingsNotice, "id"> | null) => {
     setNoticeState(next ? { ...next, id: ++noticeSeqRef.current } : null);
   };
-  const noticePresence = useMotionPresence(Boolean(notice), 235);
+  const noticePresence = useMotionPresence(Boolean(notice), RETAIN.fast);
   const lastNoticeRef = useRef<SettingsNotice | null>(notice);
   if (notice) lastNoticeRef.current = notice;
   const visibleNotice = notice ?? lastNoticeRef.current;
@@ -648,7 +650,7 @@ export function SettingsPage({ runtime, models, threadId, running, onRefreshMode
     const surface = surfaceRef.current;
     const pending = pageFlowRef.current;
     pageFlowRef.current = null;
-    if (!surface || !pending || reducedMotionPreferred()) return;
+    if (!surface || !pending || prefersReducedMotionNow()) return;
     return playPageTransition(surface, navRef.current, pending.flow, pending.travel);
   }, [page]);
 

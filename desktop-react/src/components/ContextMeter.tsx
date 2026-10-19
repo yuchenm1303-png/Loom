@@ -2,6 +2,7 @@ import { Layers, Loader2, Wrench } from "./icons";
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { useI18n } from "../i18n";
 import { useMotionPresence } from "../motion/useMotionPresence";
+import { RETAIN } from "../motion/tokens";
 import type { ContextCompactionProgress, ContextReport } from "../types/loom";
 import "./context-meter.css";
 import { contextMeterModel } from "./contextMeterModel";
@@ -33,7 +34,7 @@ export function ContextMeter({ report, compacting, progress, busy, onCompact }: 
   const { language } = useI18n();
   const zh = language === "zh-CN";
   const [open, setOpen] = useState(false);
-  const panelPresence = useMotionPresence(open, 240);
+  const panelPresence = useMotionPresence(open, RETAIN.fast);
   const rootRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {

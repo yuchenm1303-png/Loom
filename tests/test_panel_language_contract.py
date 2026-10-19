@@ -139,14 +139,14 @@ def test_nothing_that_arrives_in_place_is_unmounted_in_one_frame() -> None:
     crop = read("components/AvatarCropDialog.tsx")
 
     # Background tasks and Files used to disappear in one frame; both are held for their exit now.
-    assert "useMotionPresence(open, 235)" in background
+    assert "useMotionPresence(open, RETAIN.base)" in background
     assert "if (!presence.mounted) return null;" in background
     assert "data-motion-phase={presence.phase}" in background
-    assert "const filesPresence = useMotionPresence(Boolean(filesProject), 235)" in app
+    assert "const filesPresence = useMotionPresence(Boolean(filesProject), RETAIN.base)" in app
     assert "lastFilesProjectRef" in app and "phase={filesPresence.phase}" in app
     assert 'data-motion-phase={phase}' in files and "if (!open) return null;" not in files
     # The crop dialog leaves like the account dialog it sits in, still showing its picture.
-    assert "const cropPresence = useMotionPresence(Boolean(avatarCropFile), 235)" in account
+    assert "const cropPresence = useMotionPresence(Boolean(avatarCropFile), RETAIN.base)" in account
     assert "lastCropFileRef" in account and "phase={cropPresence.phase}" in account
     assert "data-motion-phase={phase}" in crop
 
@@ -158,21 +158,27 @@ def test_nothing_that_arrives_in_place_is_unmounted_in_one_frame() -> None:
 
 
 def test_presence_is_held_longer_than_the_conceal_it_waits_for() -> None:
-    motion = read("global-motion.css")
-    conceal = int(re.search(r"--loom-motion-conceal: (\d+)ms", motion).group(1))
-    reveal = int(re.search(r"--loom-motion-reveal: (\d+)ms", motion).group(1))
+    tokens = read("motion-tokens.css")
+    conceal = int(re.search(r"--loom-dur-base-out: (\d+)ms", tokens).group(1))
+    reveal = int(re.search(r"--loom-dur-base: (\d+)ms", tokens).group(1))
     assert conceal < reveal
 
-    retained = [
-        int(re.search(r"useMotionPresence\(open, (\d+)\)", read(path)).group(1))
-        for path in ("components/BackgroundTaskPanel.tsx", "components/AccountDialog.tsx", "components/ImageLightbox.tsx")
-    ]
-    retained.append(int(re.search(r"filesPresence = useMotionPresence\(Boolean\(filesProject\), (\d+)\)", read("App.tsx")).group(1)))
-    retained.append(int(re.search(r"cropPresence = useMotionPresence\(Boolean\(avatarCropFile\), (\d+)\)", read("components/AccountDialog.tsx")).group(1)))
+    # Every in-place surface is held by one named constant: the exit it waits for plus a margin (motion/tokens.ts).
+    script = read("motion/tokens.ts")
+    margin = int(re.search(r"RETAIN_MARGIN_MS = (\d+)", script).group(1))
+    assert "base: DUR_OUT.base + RETAIN_MARGIN_MS" in script
     # The surface is still painted for the whole of its exit (a frame of slack at 60 Hz and more).
-    assert all(value >= conceal + 20 for value in retained), retained
-    assert int(re.search(r"profilePresence = useMotionPresence\(profileOpen, (\d+)\)", read("App.tsx")).group(1)) >= conceal + 20
-    assert int(re.search(r"settingsPresence = useMotionPresence\(settingsOpen, (\d+)\)", read("App.tsx")).group(1)) >= conceal + 20
+    assert margin >= 20
+    for path, call in (
+        ("components/BackgroundTaskPanel.tsx", "useMotionPresence(open, RETAIN.base)"),
+        ("components/AccountDialog.tsx", "useMotionPresence(open, RETAIN.base)"),
+        ("components/ImageLightbox.tsx", "useMotionPresence(open, RETAIN.base)"),
+        ("App.tsx", "filesPresence = useMotionPresence(Boolean(filesProject), RETAIN.base)"),
+        ("components/AccountDialog.tsx", "cropPresence = useMotionPresence(Boolean(avatarCropFile), RETAIN.base)"),
+        ("App.tsx", "profilePresence = useMotionPresence(profileOpen, RETAIN.base)"),
+        ("App.tsx", "settingsPresence = useMotionPresence(settingsOpen, RETAIN.base)"),
+    ):
+        assert call in read(path), (path, call)
 
 
 def test_text_that_stays_in_place_is_revealed_by_opacity_alone() -> None:
@@ -182,9 +188,9 @@ def test_text_that_stays_in_place_is_revealed_by_opacity_alone() -> None:
     kit = read("components/panel-language.css")
     reveal = css_block(kit, ".pl-reveal")
     assert "transform" not in reveal
-    assert "var(--loom-motion-reveal" in reveal and "var(--loom-ease-depth" in reveal
+    assert "var(--loom-dur-base)" in reveal and "var(--loom-ease-out)" in reveal
     exiting = css_block(kit, '.pl-reveal[data-motion-phase="exiting"]')
-    assert "var(--loom-motion-conceal" in exiting and "var(--loom-ease-in" in exiting
+    assert "var(--loom-dur-base-out)" in exiting and "var(--loom-ease-in)" in exiting
 
     for path in (
         "components/files-workbench.css", "components/background-tasks.css", "components/avatar-crop.css",
@@ -198,11 +204,11 @@ def test_text_that_stays_in_place_is_revealed_by_opacity_alone() -> None:
     page = css_block(profile, ".profile-insights-page")
     assert "transform" not in page and "opacity" in page
     # The profile canvas stays opaque like the settings host's: fading it shows the app through the page.
-    assert "transition: background-color 220ms ease;" in css_block(profile, ".profile-insights-host")
+    assert "transition: background-color var(--loom-dur-fast) ease;" in css_block(profile, ".profile-insights-host")
 
     gm = read("global-motion.css")
-    assert "opacity var(--loom-motion-reveal) var(--loom-ease-depth)" in gm
-    assert "transition-duration: var(--loom-motion-conceal)" in gm
+    assert "opacity var(--loom-dur-base) var(--loom-ease-out)" in gm
+    assert "transition-duration: var(--loom-dur-base-out)" in gm
 
 
 def test_a61_dock_depth_is_still_the_only_dock_entrance() -> None:
@@ -212,7 +218,7 @@ def test_a61_dock_depth_is_still_the_only_dock_entrance() -> None:
     # Pinned by test_panel_enter_motion_contract; restated here because the new reveal tokens must
     # never be mistaken for it. The dock fallback exists once, in the kit.
     assert "animation: loom-right-surface-in 286ms cubic-bezier(.16,.78,.18,1) 88ms both" in panels
-    assert "--loom-ease-depth: cubic-bezier(.16, .78, .18, 1)" in read("global-motion.css")
+    assert "--loom-ease-out: cubic-bezier(.16, .78, .18, 1)" in read("motion-tokens.css")
     assert kit.count('.pl-dock[data-motion-phase="entering"]') == 1
     for path in (
         "components/sub-agent-dock.css", "components/artifact-preview-dock.css",

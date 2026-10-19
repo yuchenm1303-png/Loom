@@ -24,6 +24,8 @@ import { createPortal } from "react-dom";
 import { useI18n } from "../i18n";
 import { dispatchQuoteReply, type QuoteReplySource } from "./quoteReply";
 import "./global-context-menu.css";
+import { RETAIN } from "../motion/tokens";
+import { prefersReducedMotionNow } from "../motion/useReducedMotion";
 
 type EditableElement = HTMLInputElement | HTMLTextAreaElement | HTMLElement;
 
@@ -199,9 +201,7 @@ export function GlobalContextMenu() {
     if (closeTimerRef.current !== null) window.clearTimeout(closeTimerRef.current);
     if (readyFrameRef.current !== null) cancelAnimationFrame(readyFrameRef.current);
     readyFrameRef.current = null;
-    const reduced = document.documentElement.dataset.loomReducedMotion === "true"
-      || Boolean(window.matchMedia?.("(prefers-reduced-motion: reduce)").matches);
-    if (immediate || reduced) {
+    if (immediate || prefersReducedMotionNow()) {
       setState(null);
       setClosing(false);
       setPositioned(false);
@@ -213,7 +213,7 @@ export function GlobalContextMenu() {
       setState(null);
       setClosing(false);
       setPositioned(false);
-    }, 215);
+    }, RETAIN.fast);
   }, [state]);
 
   useEffect(() => {

@@ -69,17 +69,17 @@ html[data-loom-theme="light"] .empty-state {
   padding-block: 24px 28px;
 }
 
-/* Staggered entrance: intro, then activity, then actions. `backwards` keeps
-   no transform around once the entrance has finished. */
+/* The home arrives the way words do: by opacity, one block after the next (intro,
+   then activity, then actions). `backwards` keeps nothing around once it is done. */
 .empty-state > * {
-  animation: loom-home-rise 560ms var(--ease-out) backwards;
+  animation: loom-home-in var(--loom-dur-base) var(--loom-ease-out) backwards;
 }
 
-.empty-state > :nth-child(2) { animation-delay: 70ms; }
-.empty-state > :nth-child(3) { animation-delay: 140ms; }
+.empty-state > :nth-child(2) { animation-delay: var(--loom-stagger); }
+.empty-state > :nth-child(3) { animation-delay: calc(var(--loom-stagger) * 2); }
 
-@keyframes loom-home-rise {
-  from { opacity: 0; transform: translateY(10px); }
+@keyframes loom-home-in {
+  from { opacity: 0; }
 }
 
 /* Intro --------------------------------------------------------------------- */
@@ -131,7 +131,7 @@ html[data-loom-theme="light"] .empty-intro h1 {
   color: var(--home-ink-3);
   font-size: var(--loom-font-ui, 13.5px);
   line-height: 1.5;
-  animation: empty-startup-in 260ms ease-out both;
+  animation: empty-startup-in var(--loom-dur-base) var(--loom-ease-out) both;
 }
 
 .empty-startup-dot {
@@ -148,7 +148,7 @@ html[data-loom-theme="light"] .empty-intro h1 {
 }
 
 @keyframes empty-startup-in {
-  from { opacity: 0; transform: translateY(2px); }
+  from { opacity: 0; }
 }
 
 @keyframes empty-startup-pulse {
@@ -200,9 +200,9 @@ html[data-loom-reduced-motion="true"] .empty-startup-dot {
   text-align: left;
   cursor: pointer;
   transition:
-    transform 240ms var(--ease-out),
-    box-shadow 240ms var(--ease-out),
-    background-color 200ms ease;
+    transform var(--loom-dur-fast) var(--loom-ease-out),
+    box-shadow var(--loom-dur-fast) var(--loom-ease-out),
+    background-color var(--loom-dur-fast) ease;
 }
 
 .starter-card:nth-child(2) { --starter-rgb: 104,138,248; }
@@ -228,7 +228,7 @@ html[data-loom-theme="light"] .starter-card:nth-child(4) { --starter-rgb: 26,121
     transparent 72%
   );
   opacity: 0;
-  transition: opacity 220ms ease;
+  transition: opacity var(--loom-dur-base) ease;
   pointer-events: none;
 }
 
@@ -241,8 +241,8 @@ html[data-loom-theme="light"] .starter-card::before {
   );
 }
 
+/* A card with words in it answers a hand by colour and light, not by moving. */
 .starter-card:hover:not(:disabled) {
-  transform: translateY(-1px);
   background: var(--home-surface-hover);
   box-shadow: var(--home-shadow-hover);
 }
@@ -254,7 +254,7 @@ html[data-loom-theme="light"] .starter-card::before {
 
 .starter-card:active:not(:disabled) {
   transform: scale(.992);
-  transition-duration: 90ms;
+  transition-duration: var(--loom-dur-press);
 }
 
 .starter-card:focus-visible {
@@ -277,8 +277,8 @@ html[data-loom-theme="light"] .starter-card::before {
   background: rgba(var(--starter-rgb),.13);
   box-shadow: inset 0 0 0 1px rgba(var(--starter-rgb),.16);
   transition:
-    transform 280ms var(--ease-spring),
-    background-color 200ms ease;
+    transform var(--loom-dur-slow) var(--loom-spring-soft),
+    background-color var(--loom-dur-fast) ease;
 }
 
 html[data-loom-theme="light"] .starter-icon {
@@ -321,8 +321,8 @@ html[data-loom-theme="light"] .starter-card:hover:not(:disabled) .starter-icon {
   right: 13px;
   color: var(--home-ink-4);
   transition:
-    color 180ms ease,
-    transform 280ms var(--ease-spring);
+    color var(--loom-dur-fast) ease,
+    transform var(--loom-dur-slow) var(--loom-spring-soft);
 }
 
 .starter-card:hover:not(:disabled) .starter-arrow {

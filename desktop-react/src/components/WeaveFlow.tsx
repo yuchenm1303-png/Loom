@@ -25,6 +25,7 @@ import {
 } from "react";
 import { artifactName } from "../artifactRenderers";
 import { useMotionPresence } from "../motion/useMotionPresence";
+import { RETAIN } from "../motion/tokens";
 import type { TranscriptItem } from "../types/loom";
 import {
   activitySegments,
@@ -62,7 +63,7 @@ import { useRuntimeCopy, type ActivityCategory, type RuntimeCopy } from "./runti
 import "./weave.css";
 
 /** Long enough for the folded state to finish its motion before anything is released. */
-const FOLD_MS = 300;
+const FOLD_MS = RETAIN.fold;
 
 // --- primitives -------------------------------------------------------------------------------
 
@@ -321,7 +322,7 @@ const WeaveRow = memo(function WeaveRow({ row, open, workspace, copy, delta, ret
   }, [settled]);
 
   const expandable = active || rowHasDetail(row);
-  const detailPresence = useMotionPresence(open, 260);
+  const detailPresence = useMotionPresence(open, RETAIN.fold);
   const cachedDetailRef = useRef("");
   const liveDetail = open ? rowDetail(row, delta) : "";
   if (open) cachedDetailRef.current = liveDetail;
@@ -331,7 +332,7 @@ const WeaveRow = memo(function WeaveRow({ row, open, workspace, copy, delta, ret
     ? (delta ? { added: delta.added, removed: delta.removed } : diffStats(row.item.diff))
     : null;
   const screenshotPaths = browserScreenshotPaths(row.item);
-  const hintPresence = useMotionPresence(open && active && !visibleDetail && !screenshotPaths.length, 200);
+  const hintPresence = useMotionPresence(open && active && !visibleDetail && !screenshotPaths.length, RETAIN.fast);
   const identity = activityIdentity(identitySource(row));
   const kind = description.category === "command" ? "process" : description.category === "edit" ? "file_edit" : row.item.type;
   // A page, image or document being written can be watched while it grows.
@@ -352,7 +353,7 @@ const WeaveRow = memo(function WeaveRow({ row, open, workspace, copy, delta, ret
   const sub = executing ? (tail || tailNow) : failure;
   const subKind = executing ? "tail" : "failure";
   const animate = live && !still;
-  const subPresence = useMotionPresence(Boolean(sub), 220);
+  const subPresence = useMotionPresence(Boolean(sub), RETAIN.fold);
   const cachedSubRef = useRef({ text: "", kind: subKind });
   if (sub) cachedSubRef.current = { text: sub, kind: subKind };
   const subShown = sub ? { text: sub, kind: subKind } : cachedSubRef.current;
@@ -360,7 +361,7 @@ const WeaveRow = memo(function WeaveRow({ row, open, workspace, copy, delta, ret
   const tagged = tone === "failed" || tone === "stopped" || tone === "caution" || tone === "waiting";
   // A tag that goes (the approval was given, the step runs on) closes up and fades with its own words and colour,
   // instead of vanishing and pulling the time across by its width.
-  const tagPresence = useMotionPresence(tagged, 220);
+  const tagPresence = useMotionPresence(tagged, RETAIN.foldBase);
   const lastTag = useRef({ label: "", tone, status });
   if (tagged) lastTag.current = { label: copy.statusLabel(status), tone, status };
   const shownTag = lastTag.current;

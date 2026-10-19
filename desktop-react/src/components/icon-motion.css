@@ -36,21 +36,19 @@
    state, not motion. (The app-wide reduced-motion rules also freeze spinners.) */
 
 :root {
-  /* tempo */
-  --ic-t-press: 90ms;
-  --ic-t-rest: 260ms;
-  --ic-t-lift: 520ms;
-  --ic-t-draw: 380ms;
+  /* tempo: the shared scale (motion-tokens.css); the longer gestures are the icons' own */
+  --ic-t-press: var(--loom-dur-press);
+  --ic-t-rest: var(--loom-dur-flow-out);
+  --ic-t-lift: var(--loom-dur-slow);
+  --ic-t-draw: var(--loom-dur-panel);
   --ic-t-run: 700ms;
   --ic-t-write: 640ms;
   --ic-t-spin: 900ms;
 
   /* curves: a quick, soft-landing spring in; a plain ease out */
-  --ic-ease: cubic-bezier(.22, .72, .2, 1);
-  /* zeta .74, settles in .52s, 3% overshoot (scratch/icon-motion/spring.mjs): quick attack, long soft landing */
-  --ic-spring: linear(0, .038 3.8%, .13 7.7%, .251 11.5%, .382 15.4%, .51 19.2%, .627 23.1%, .729 26.9%, .814 30.8%, .882 34.6%, .934 38.5%, .972 42.3%, .999 46.2%, 1.016 50%, 1.026 53.8%, 1.031 57.7%, 1.031 61.5%, 1.03 65.4%, 1.027 69.2%, 1.023 73.1%, 1.018 76.9%, 1.015 80.8%, 1.011 84.6%, 1.008 88.5%, 1.005 92.3%, 1.003 96.2%, 1);
-  /* zeta .55, settles in .62s, 12% overshoot: for a glyph that is meant to feel alive (the quill) */
-  --ic-spring-lively: linear(0, .068 3.8%, .231 7.7%, .433 11.5%, .636 15.4%, .813 19.2%, .951 23.1%, 1.046 26.9%, 1.101 30.8%, 1.124 34.6%, 1.123 38.5%, 1.107 42.3%, 1.083 46.2%, 1.057 50%, 1.033 53.8%, 1.013 57.7%, .999 61.5%, .99 65.4%, .985 69.2%, .984 73.1%, .985 76.9%, .988 80.8%, .991 84.6%, .995 88.5%, .997 92.3%, .999 96.2%, 1);
+  --ic-ease: var(--loom-ease-out);
+  --ic-spring: var(--loom-spring-soft);
+  --ic-spring-lively: var(--loom-spring-lively);
 
   /* dials, at rest */
   --ic-on: 0;

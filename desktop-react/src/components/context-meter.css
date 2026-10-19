@@ -16,7 +16,7 @@
   font-size: 11.5px;
   line-height: 1;
   cursor: pointer;
-  transition: border-color .16s ease, background .16s ease, color .16s ease;
+  transition: border-color var(--loom-dur-fast) ease, background var(--loom-dur-fast) ease, color var(--loom-dur-fast) ease;
 }
 
 .context-meter-chip:hover {
@@ -37,7 +37,7 @@
 .context-meter-fill {
   height: 100%;
   min-width: 0;
-  transition: width .28s ease;
+  transition: width var(--loom-dur-base) ease;
 }
 
 .context-meter-fill.conversation {
@@ -93,7 +93,7 @@
   font-size: 12px;
   transform-origin: top right;
   animation: none;
-  transition: opacity 100ms ease, transform 160ms cubic-bezier(.16,1,.3,1);
+  transition: opacity var(--loom-dur-fast) var(--loom-ease-out);
 }
 
 .context-meter-panel-head {
@@ -223,7 +223,7 @@
   color: var(--text, #e8eaee);
   font-size: 12px;
   cursor: pointer;
-  transition: background .16s ease, border-color .16s ease;
+  transition: background var(--loom-dur-fast) ease, border-color var(--loom-dur-fast) ease;
 }
 
 .context-meter-compact:hover:not(:disabled) {
@@ -249,10 +249,9 @@
   z-index: 5;
   display: inline-flex;
   align-items: center;
-  --context-unfold: cubic-bezier(.16,1,.3,1);
 }
 .context-meter-chip {
-  transition: transform 180ms ease, border-color 180ms ease, background 180ms ease, color 180ms ease, box-shadow 240ms ease;
+  transition: transform var(--loom-dur-fast) ease, border-color var(--loom-dur-fast) ease, background var(--loom-dur-fast) ease, color var(--loom-dur-fast) ease, box-shadow var(--loom-dur-fast) ease;
 }
 .context-meter-chip:active { transform: scale(.96); }
 .context-meter-chip[aria-expanded="true"] {
@@ -269,22 +268,19 @@
 .context-meter-panel[data-motion-phase="entering"],
 .context-meter-panel[data-motion-phase="entered"] {
   opacity: 1;
-  transform: translate3d(0,0,0) scale(1);
 }
 @starting-style {
   .context-meter-panel[data-motion-phase="entering"] {
     opacity: .72;
-    transform: translate3d(0,-4px,0) scale(.995);
   }
 }
 .context-meter-panel[data-motion-phase="exiting"] {
   pointer-events: none;
   opacity: 0;
-  transform: translate3d(0,-3px,0) scale(.99);
-  will-change: opacity, transform;
-  transition: opacity 155ms ease, transform 220ms cubic-bezier(.4,0,.2,1);
+  will-change: opacity;
+  transition: opacity var(--loom-dur-fast-out) var(--loom-ease-in);
 }
-.context-meter-fill { transition: width 480ms var(--context-unfold); }
+.context-meter-fill { transition: width var(--loom-dur-slow) var(--loom-ease-out); }
 html[data-loom-theme="light"] .context-meter-panel {
   background: linear-gradient(180deg, #fff, #f9fafc);
   box-shadow: 0 14px 38px rgba(27,31,40,.12), 0 3px 10px rgba(27,31,40,.055), inset 0 1px rgba(255,255,255,.98);
@@ -380,9 +376,9 @@ html[data-loom-theme="light"] .context-meter-chip.is-compacting .context-meter-v
   border-radius: 999px;
   background: var(--panel-hover, rgba(255,255,255,.09));
   transition:
-    background 180ms ease,
-    opacity 180ms ease,
-    transform 180ms ease;
+    background var(--loom-dur-fast) ease,
+    opacity var(--loom-dur-fast) ease,
+    transform var(--loom-dur-fast) ease;
 }
 
 .context-meter-compaction-step.done {
@@ -735,10 +731,10 @@ html[data-loom-reduced-motion="true"] .context-meter-progress-segment.active i {
   isolation: isolate;
   overflow: visible;
   transition:
-    color 280ms ease,
-    border-color 320ms ease,
-    background 340ms cubic-bezier(.18,.72,.22,1),
-    box-shadow 380ms ease !important;
+    color var(--loom-dur-base) ease,
+    border-color var(--loom-dur-flow) ease,
+    background var(--loom-dur-flow) var(--loom-ease-out),
+    box-shadow var(--loom-dur-panel) ease !important;
 }
 
 .context-meter-chip.warm {
@@ -764,8 +760,8 @@ html[data-loom-reduced-motion="true"] .context-meter-progress-segment.active i {
     transparent 74%
   );
   transition:
-    opacity 320ms ease,
-    transform 460ms cubic-bezier(.18,.72,.22,1);
+    opacity var(--loom-dur-flow) ease,
+    transform var(--loom-dur-slow) var(--loom-ease-out);
 }
 
 .context-meter-chip:hover::before,
@@ -801,8 +797,8 @@ html[data-loom-reduced-motion="true"] .context-meter-progress-segment.active i {
     inset 0 1px 1px rgba(0,0,0,.14),
     inset 0 0 0 1px rgba(255,255,255,.018);
   transition:
-    background 320ms ease,
-    box-shadow 320ms ease;
+    background var(--loom-dur-flow) ease,
+    box-shadow var(--loom-dur-flow) ease;
 }
 
 .context-meter-track::before {
@@ -843,12 +839,12 @@ html[data-loom-reduced-motion="true"] .context-meter-progress-segment.active i {
     0 0 0 1px color-mix(in srgb, white 36%, transparent),
     0 0 5px color-mix(in srgb, var(--context-meter-color) 34%, transparent);
   transition:
-    opacity 260ms ease,
-    transform 420ms cubic-bezier(.18,.72,.22,1);
+    opacity var(--loom-dur-base) ease,
+    transform var(--loom-dur-panel) var(--loom-ease-out);
 }
 
 .context-meter-chip:hover .context-meter-track::before {
-  animation: context-meter-hover-sweep 1050ms cubic-bezier(.2,.7,.24,1) both;
+  animation: context-meter-hover-sweep 1050ms var(--loom-ease-out) both;
 }
 
 .context-meter-chip:hover .context-meter-track::after,
@@ -868,8 +864,8 @@ html[data-loom-reduced-motion="true"] .context-meter-progress-segment.active i {
   position: relative;
   z-index: 1;
   transition:
-    width 620ms cubic-bezier(.18,.72,.22,1),
-    filter 340ms ease !important;
+    width var(--loom-dur-slow) var(--loom-ease-move),
+    filter var(--loom-dur-flow) ease !important;
 }
 
 .context-meter-fill.conversation {
@@ -899,9 +895,9 @@ html[data-loom-reduced-motion="true"] .context-meter-progress-segment.active i {
   min-width: 28px;
   color: inherit;
   transition:
-    color 280ms ease,
-    translate 420ms cubic-bezier(.18,.72,.22,1),
-    opacity 280ms ease;
+    color var(--loom-dur-base) ease,
+    translate var(--loom-dur-panel) var(--loom-ease-out),
+    opacity var(--loom-dur-base) ease;
 }
 
 .context-meter-chip:hover .context-meter-value {

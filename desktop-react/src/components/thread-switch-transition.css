@@ -1,41 +1,36 @@
 /* Give immediate feedback while keeping the mounted transcript readable.
-   New content enters once the read resolves; no overlay or looping indicator. */
+   The words keep still: the stage dims a little while the read resolves, and
+   fades back in once the new thread is there. No overlay, no travel, no loop. */
 .workspace {
   position: relative;
   isolation: isolate;
 }
 
 .workspace > .conversation-stage {
-  transition:
-    opacity 120ms ease,
-    translate 180ms cubic-bezier(.2,.74,.18,1);
+  transition: opacity var(--loom-dur-fast-out) var(--loom-ease-in);
 }
 
 .workspace.is-thread-switching > .conversation-stage {
-  opacity: .65;
-  translate: 0 -3px;
+  opacity: .72;
   animation: none;
 }
 
 .workspace.is-thread-entering:not(.is-thread-switching) > .conversation-stage {
-  animation: loom-thread-surface-in 180ms cubic-bezier(.2,.74,.18,1) both;
+  animation: loom-thread-surface-in var(--loom-dur-base) var(--loom-ease-out) both;
 }
 
 @keyframes loom-thread-surface-in {
   from {
-    opacity: .65;
-    translate: 0 3px;
+    opacity: .72;
   }
   to {
     opacity: 1;
-    translate: 0 0;
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .workspace > .conversation-stage {
     transition: opacity 70ms linear !important;
-    translate: none !important;
   }
 
   .workspace.is-thread-entering > .conversation-stage {
@@ -45,7 +40,6 @@
 
 :root[data-loom-reduced-motion="true"] .workspace > .conversation-stage {
   transition: opacity 70ms linear !important;
-  translate: none !important;
 }
 
 :root[data-loom-reduced-motion="true"] .workspace.is-thread-entering > .conversation-stage {

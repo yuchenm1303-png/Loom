@@ -1,0 +1,81 @@
+/* Loom motion scale ---------------------------------------------------------------------------------
+   The one place where time and curves are chosen. Every stylesheet writes its transitions and
+   animations in these terms; tests/test_motion_scale_contract.py reads the sources and fails on a
+   duration or a curve that is not here. Scripts take the same numbers from src/motion/tokens.ts (the
+   same test keeps the two files equal). docs/motion-language-2026-10-18.md says how the scale is
+   used and why.
+
+   TIME. Six steps. What arrives takes the step; what leaves takes the shorter "-out" sibling, because
+   leaving must never be the slow half of an interaction.
+
+     press    90         the answer of a press
+     fast    150 / 120   whatever answers a hand: hover and focus, tooltips, popovers, menus, toasts
+     base    240 / 200   what appears in place: dialogs, pages, scrims, a block of content, a short fold
+     flow    320 / 260   what changes size or place: a long fold, a switch, the travel of a mark
+     panel   390         the docks and the layout move that goes with them (a61, pinned by tests)
+     slow    520         what is drawn rather than shown: a bar filling, a spring settling, a glow
+
+   CURVES. `out` is for what arrives (the a61 depth curve), `in` for what leaves, `move` for what
+   changes size or place, `inout` for a collapse that has to start and stop softly, `glide` for the
+   travel of a text-free mark. Text keeps still: whatever carries words fades, and space is made by
+   layout. Marks move, and only springs (below) are allowed to overshoot.
+
+   SPRINGS. Damped springs sampled into linear(); only text-free marks ride them. `soft` settles with
+   about 3% overshoot, `lively` with 12% (a glyph that is meant to feel alive), `pop` with 10% (a
+   bead or a status dot being born). */
+
+:root {
+  --loom-dur-press: 90ms;
+  --loom-dur-fast: 150ms;
+  --loom-dur-fast-out: 120ms;
+  --loom-dur-base: 240ms;
+  --loom-dur-base-out: 200ms;
+  --loom-dur-flow: 320ms;
+  --loom-dur-flow-out: 260ms;
+  --loom-dur-panel: 390ms;
+  --loom-dur-slow: 520ms;
+  /* The gap between neighbours that arrive one after the other (a page's blocks, a card's rows). */
+  --loom-stagger: 40ms;
+
+  --loom-ease-out: cubic-bezier(.16, .78, .18, 1);
+  --loom-ease-move: cubic-bezier(.22, .7, .18, 1);
+  --loom-ease-in: cubic-bezier(.42, 0, .72, .2);
+  --loom-ease-inout: cubic-bezier(.4, 0, .2, 1);
+  --loom-ease-glide: cubic-bezier(.2, 0, 0, 1);
+
+  /* zeta .74, settles in .52s, 3% overshoot: a quick attack and a long soft landing */
+  --loom-spring-soft: linear(0, .038 3.8%, .13 7.7%, .251 11.5%, .382 15.4%, .51 19.2%, .627 23.1%, .729 26.9%, .814 30.8%, .882 34.6%, .934 38.5%, .972 42.3%, .999 46.2%, 1.016 50%, 1.026 53.8%, 1.031 57.7%, 1.031 61.5%, 1.03 65.4%, 1.027 69.2%, 1.023 73.1%, 1.018 76.9%, 1.015 80.8%, 1.011 84.6%, 1.008 88.5%, 1.005 92.3%, 1.003 96.2%, 1);
+  /* zeta .55, settles in .62s, 12% overshoot: for a glyph that is meant to feel alive */
+  --loom-spring-lively: linear(0, .068 3.8%, .231 7.7%, .433 11.5%, .636 15.4%, .813 19.2%, .951 23.1%, 1.046 26.9%, 1.101 30.8%, 1.124 34.6%, 1.123 38.5%, 1.107 42.3%, 1.083 46.2%, 1.057 50%, 1.033 53.8%, 1.013 57.7%, .999 61.5%, .99 65.4%, .985 69.2%, .984 73.1%, .985 76.9%, .988 80.8%, .991 84.6%, .995 88.5%, .997 92.3%, .999 96.2%, 1);
+  /* 10% overshoot: a bead or a status dot being born */
+  --loom-spring-pop: linear(0, 0.035, 0.125, 0.248, 0.387, 0.528, 0.662, 0.781, 0.881, 0.962, 1.023, 1.065, 1.091, 1.104, 1.107, 1.101, 1.091, 1.077, 1.062, 1.047, 1.033, 1.021, 1.01, 1.002, 0.996, 0.992, 0.99, 0.989, 0.989, 0.989, 0.991, 0.992, 0.994, 0.995, 0.997, 0.998, 0.999, 1, 1.001, 1.001, 1);
+}
+
+/* Reduced motion collapses the clock itself, so everything written in these terms stops taking time. */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --loom-dur-press: 1ms;
+    --loom-dur-fast: 1ms;
+    --loom-dur-fast-out: 1ms;
+    --loom-dur-base: 1ms;
+    --loom-dur-base-out: 1ms;
+    --loom-dur-flow: 1ms;
+    --loom-dur-flow-out: 1ms;
+    --loom-dur-panel: 1ms;
+    --loom-dur-slow: 1ms;
+    --loom-stagger: 0ms;
+  }
+}
+
+:root[data-loom-reduced-motion="true"] {
+  --loom-dur-press: 1ms;
+  --loom-dur-fast: 1ms;
+  --loom-dur-fast-out: 1ms;
+  --loom-dur-base: 1ms;
+  --loom-dur-base-out: 1ms;
+  --loom-dur-flow: 1ms;
+  --loom-dur-flow-out: 1ms;
+  --loom-dur-panel: 1ms;
+  --loom-dur-slow: 1ms;
+  --loom-stagger: 0ms;
+}

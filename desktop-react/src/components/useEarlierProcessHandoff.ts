@@ -1,12 +1,13 @@
 import { useLayoutEffect, useRef, useState } from "react";
 import { useReducedMotion } from "../motion/useReducedMotion";
+import { DUR, STAGGER_MS } from "../motion/tokens";
 import type { TranscriptItem } from "../types/loom";
 
 type Progress = { earlier: TranscriptItem[]; current: TranscriptItem[] };
 type Snapshot = { progress: Progress; active: boolean; open: boolean; reduce: boolean;
   retained: Set<string>; folding: Set<string> };
 const READ_HOLD_MS = 120;
-const FOLD_LIFETIME_MS = 360; // CSS: 40ms pause + 300ms height contraction.
+const FOLD_LIFETIME_MS = STAGGER_MS + DUR.flow; // CSS: one stagger of pause + the height contraction.
 // Re-reading where the retained records sit is a render of the whole live turn and a layout read per record.
 // A record leaving through the top of the view is slow news (the read hold is 120ms), so at most this often.
 const VIEWPORT_REFRESH_MS = 64;

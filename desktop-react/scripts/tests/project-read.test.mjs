@@ -57,6 +57,7 @@ function repositoryHarness(client, details = false) {
     if (name === "react-dom") return { createPortal: tree => tree };
     if (name.endsWith("projectRead")) return { withProjectReadTimeout };
     if (name.endsWith("useMotionPresence")) return { useMotionPresence: () => ({ mounted: true, phase: "entered" }) };
+    if (name.endsWith("motion/tokens")) return { RETAIN: { panel: 420 } };
     if (name.endsWith("visiblePolling")) return { startVisiblePolling: read => { void read(); return () => {}; } };
     return {};
   }, exports, { loom: client, addEventListener() {}, removeEventListener() {}, setTimeout, clearTimeout }, { body: {} });

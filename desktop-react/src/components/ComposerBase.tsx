@@ -17,6 +17,7 @@ import { KeyboardEvent as ReactKeyboardEvent, useEffect, useLayoutEffect, useMem
 import type { AddModelInput, Attachment, ModelSnapshot, StickerPreferences } from "../types/loom";
 import { useI18n } from "../i18n";
 import { useMotionPresence } from "../motion/useMotionPresence";
+import { RETAIN } from "../motion/tokens";
 import { recordSendOrigin } from "../sendFlight";
 import { Crossfade } from "./Crossfade";
 import { ModelPanel } from "./ModelPanel";
@@ -187,7 +188,7 @@ export function Composer({
   const [dragging, setDragging] = useState(false);
   const [focused, setFocused] = useState(false);
   const [openPanel, setOpenPanel] = useState<OpenPanel>(null);
-  const panelPresence = useMotionPresence(Boolean(openPanel), 215, openPanel);
+  const panelPresence = useMotionPresence(Boolean(openPanel), RETAIN.fast, openPanel);
   const lastOpenPanelRef = useRef<Exclude<OpenPanel, null> | null>(openPanel);
   if (openPanel) lastOpenPanelRef.current = openPanel;
   const renderedPanel = openPanel ?? (panelPresence.mounted ? lastOpenPanelRef.current : null);

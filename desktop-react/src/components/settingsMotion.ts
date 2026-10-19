@@ -18,6 +18,9 @@
 //   - the per-block custom properties are registered as non-inherited, so
 //     setting them never restyles a block's descendants.
 
+import { DUR, EASE, SPRING, travelMs } from "../motion/tokens";
+import { prefersReducedMotionNow } from "../motion/useReducedMotion";
+
 /** How long the marks stay. Longer than the slowest block, so the cascade always
  *  finishes, but short enough that later inserts never replay it. */
 export const PAGE_FLOW_MS = 900;
@@ -31,19 +34,9 @@ export const PAGE_FLOW_LADDER_MS = [0, 44, 80, 112, 140, 164, 184] as const;
 
 export type PageFlow = "forward" | "backward";
 
-export function reducedMotionPreferred(): boolean {
-  return document.documentElement.dataset.loomReducedMotion === "true"
-    || Boolean(window.matchMedia?.("(prefers-reduced-motion: reduce)").matches);
-}
-
 /** Longer jumps carry the page a little further, so distance is felt. */
 export function pageFlowDistance(travel: number): number {
   return Math.round(Math.min(22, 12 + Math.abs(travel) / 40));
-}
-
-/** How long the highlight takes to get where it is going. */
-function pillDuration(distance: number): number {
-  return Math.round(300 + Math.min(160, distance * 0.5));
 }
 
 /**
@@ -65,8 +58,8 @@ export function prepareNavTravel(nav: HTMLElement | null, nextPage: string): num
   const from = (fromRow.querySelector<HTMLElement>(".settings-nav-pip") ?? fromRow).getBoundingClientRect();
   const to = toRow.getBoundingClientRect();
   const travel = (to.top + to.height / 2) - (from.top + from.height / 2);
-  if (Math.abs(travel) >= 1 && !reducedMotionPreferred()) {
-    toRow.style.setProperty("--nav-arrive", `${Math.round(pillDuration(Math.abs(travel)) * 0.55)}ms`);
+  if (Math.abs(travel) >= 1 && !prefersReducedMotionNow()) {
+    toRow.style.setProperty("--nav-arrive", `${Math.round(travelMs(travel) * 0.55)}ms`);
   }
   return travel;
 }
@@ -142,9 +135,6 @@ function startPageFlow(surface: HTMLElement, flow: PageFlow, travel: number): ()
   };
 }
 
-// Quick to get going, long unhurried landing (Material's "emphasized decelerate").
-const GLIDE = "cubic-bezier(.2, 0, 0, 1)";
-
 /**
  * Glide the active row's highlight from where the previous one was.
  *
@@ -152,7 +142,8 @@ const GLIDE = "cubic-bezier(.2, 0, 0, 1)";
  * text-free, so it may stretch: `translate` carries it along the glide curve while
  * `scale` elongates it through the fast middle of the trip. Two independent
  * animations on two independent properties, both compositor-only. When the pill
- * lands its rail flares and its icon takes a small bow.
+ * lands its rail firms up (a pulse of scale, nothing that paints) and its icon
+ * settles on the soft spring.
  */
 function playNavPillTravel(nav: HTMLElement | null, travel: number): void {
   const row = nav?.querySelector<HTMLElement>("button.active");
@@ -160,33 +151,25 @@ function playNavPillTravel(nav: HTMLElement | null, travel: number): void {
   const distance = Math.abs(travel);
   if (!row || !pip || distance < 1 || typeof pip.animate !== "function") return;
 
-  const duration = pillDuration(distance);
+  const duration = travelMs(distance);
   const stretch = Math.min(0.5, 0.12 + distance / 520);
   const arrival = Math.round(duration * 0.55);
 
   pip.animate(
     { translate: [`0 ${-travel}px`, "0 0"] },
-    { duration, easing: GLIDE },
+    { duration, easing: EASE.glide },
   );
   pip.animate(
     { scale: ["1 1", `1 ${1 + stretch}`, "1 1"], offset: [0, 0.35, 1] },
-    { duration, easing: "ease-in-out" },
+    { duration, easing: EASE.inout },
   );
   pip.animate(
-    {
-      boxShadow: [
-        "0 0 0 0 color-mix(in srgb, var(--sr-accent) 0%, transparent)",
-        "0 0 11px 2px color-mix(in srgb, var(--sr-accent) 62%, transparent)",
-        "0 0 0 0 color-mix(in srgb, var(--sr-accent) 0%, transparent)",
-      ],
-      scale: ["1 .8", "2.1 1.25", "1 1"],
-      offset: [0, 0.34, 1],
-    },
-    { duration: 560, delay: arrival, easing: "ease-out", fill: "backwards", pseudoElement: "::before" },
+    { scale: ["1 .8", "1.8 1.15", "1 1"], offset: [0, 0.34, 1] },
+    { duration: DUR.base, delay: arrival, easing: EASE.out, fill: "backwards", pseudoElement: "::before" },
   );
   row.querySelector<SVGElement>(":scope > svg")?.animate(
-    { scale: [".8", "1.2", "1"], offset: [0, 0.5, 1] },
-    { duration: 460, delay: arrival, easing: "cubic-bezier(.3, 1.3, .5, 1)", fill: "backwards" },
+    { scale: [".8", "1"] },
+    { duration: DUR.slow, delay: arrival, easing: SPRING.soft, fill: "backwards" },
   );
 }
 

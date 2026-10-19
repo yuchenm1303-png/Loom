@@ -33,9 +33,9 @@ def test_task_motion_keeps_text_on_native_rasterization_layer() -> None:
     assert "will-change:" not in source
     assert "filter:" not in source.replace("filter: brightness(1.08);", "")
     # A finished animation must not pin a value over a transition that runs later.
-    assert "wv-grow var(--wv-fold) var(--wv-ease) backwards" in source
-    assert "wv-glyph-in 460ms var(--wv-spring) 60ms backwards" in source
-    assert "wv-fade-in 220ms ease-out 90ms backwards" in source
+    assert "wv-grow var(--loom-dur-flow) var(--loom-ease-move) backwards" in source
+    assert "wv-glyph-in var(--loom-dur-slow) var(--loom-spring-pop) 60ms backwards" in source
+    assert "wv-fade-in var(--loom-dur-base) var(--loom-ease-out) 90ms backwards" in source
     # Hovering a row lights its background; it never moves the copy.
     hover = source[source.index(".wv-row.is-expandable:hover {"):]
     assert "transform" not in hover[:hover.index("}")]
@@ -216,7 +216,7 @@ def test_completed_process_fold_keeps_intrinsic_geometry_stable() -> None:
     closed_transition = source.index(".turn-process.is-settled .turn-process-grid {")
     open_transition = source.index(".turn-process.is-settled.is-open .turn-process-grid {")
     assert closed_transition < open_transition
-    assert "opacity 170ms ease 64ms" in source[closed_transition:open_transition]
+    assert "opacity var(--loom-dur-fast) ease 64ms" in source[closed_transition:open_transition]
 
 
 def test_jump_to_latest_reuses_owned_follow_scheduler() -> None:
@@ -266,7 +266,7 @@ def test_inline_task_detail_preserves_content_through_collapse() -> None:
     flow = WEAVE_TSX.read_text(encoding="utf-8")
     weave = WEAVE.read_text(encoding="utf-8")
 
-    assert "const detailPresence = useMotionPresence(open, 260);" in flow
+    assert "const detailPresence = useMotionPresence(open, RETAIN.fold);" in flow
     assert 'const cachedDetailRef = useRef("");' in flow
     assert "const visibleDetail = open ? liveDetail : cachedDetailRef.current;" in flow
     assert "detailPresence.mounted ? (" in flow
@@ -276,8 +276,8 @@ def test_inline_task_detail_preserves_content_through_collapse() -> None:
     # space follows on the same curve as every other fold.
     closed = weave[weave.index(".wv-fold,\n.wv-sub-fold,\n.wv-detail {"):]
     closed = closed[:closed.index("}")]
-    assert "grid-template-rows var(--wv-fold) var(--wv-ease)" in closed
-    assert "opacity 140ms ease" in closed
+    assert "grid-template-rows var(--loom-dur-flow) var(--loom-ease-move)" in closed
+    assert "opacity var(--loom-dur-fast) ease" in closed
 
 
 def test_jump_to_latest_yields_to_transient_composer_surfaces() -> None:

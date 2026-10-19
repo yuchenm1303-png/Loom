@@ -48,7 +48,6 @@
   --rt-hover: rgba(255, 255, 255, .05);
   --rt-danger: #ec8f9a;
   --rt-danger-soft: rgba(220, 124, 134, .12);
-  --rt-ease: cubic-bezier(.22, .9, .24, 1);
   --rt-cycle: 4.2s;
   --rt-surge: 640ms;
 
@@ -116,7 +115,7 @@ html[data-loom-theme="light"] .rt {
   font-size: 12px;
   font-weight: 500;
   cursor: pointer;
-  transition: background-color 140ms ease, color 140ms ease;
+  transition: background-color var(--loom-dur-fast) ease, color var(--loom-dur-fast) ease;
 }
 
 .rt-reset:hover:not(:disabled) {
@@ -148,7 +147,7 @@ html[data-loom-theme="light"] .rt {
   position: relative;
   margin-top: 8px;
   container-type: inline-size;
-  transition: --rt-t 500ms var(--rt-ease);
+  transition: --rt-t var(--loom-dur-slow) var(--loom-ease-out);
 }
 
 .rt-track,
@@ -184,7 +183,7 @@ html[data-loom-theme="light"] .rt {
   overflow: hidden;
   -webkit-mask-image: linear-gradient(90deg, transparent, #000 18px, #000 calc(var(--rt-reveal) - 16px), transparent var(--rt-reveal));
   mask-image: linear-gradient(90deg, transparent, #000 18px, #000 calc(var(--rt-reveal) - 16px), transparent var(--rt-reveal));
-  transition: --rt-reveal var(--rt-surge) cubic-bezier(.3, .6, .25, 1);
+  transition: --rt-reveal var(--rt-surge) var(--loom-ease-out);
 }
 
 @starting-style {
@@ -259,7 +258,7 @@ html[data-loom-theme="light"] .rt {
   inset: 0;
   mix-blend-mode: var(--rt-comet-blend);
   animation:
-    rt-surge var(--rt-surge) cubic-bezier(.3, .6, .25, 1) both,
+    rt-surge var(--rt-surge) var(--loom-ease-out) both,
     rt-comet var(--rt-cycle) cubic-bezier(.45, 0, .2, 1) var(--rt-surge) infinite;
 }
 
@@ -314,7 +313,7 @@ html[data-loom-theme="light"] .rt {
   background: transparent;
   color: var(--rt-muted);
   cursor: pointer;
-  transition: color 180ms ease, opacity 220ms ease;
+  transition: color var(--loom-dur-fast) ease, opacity var(--loom-dur-base) ease;
 }
 
 .rt-option[aria-disabled="true"] {
@@ -325,7 +324,7 @@ html[data-loom-theme="light"] .rt {
   position: relative;
   width: 8px;
   height: 8px;
-  transition: scale 220ms var(--rt-ease);
+  transition: scale var(--loom-dur-base) var(--loom-ease-out);
 }
 
 .rt-stop::before,
@@ -339,7 +338,7 @@ html[data-loom-theme="light"] .rt {
 .rt-stop::before {
   background: var(--rt-surface);
   box-shadow: inset 0 0 0 1.5px var(--rt-stop);
-  transition: box-shadow 200ms ease;
+  transition: box-shadow var(--loom-dur-fast) ease;
 }
 
 /* A lit stop is a small gem knotted onto the thread. */
@@ -408,7 +407,7 @@ html[data-loom-theme="light"] .rt {
     inset 0 0 0 1.5px color-mix(in srgb, var(--rt-ghost-level) 72%, transparent),
     0 0 12px color-mix(in srgb, var(--rt-ghost-level) 34%, transparent);
   opacity: 0;
-  transition: opacity 200ms ease, --rt-ghost-t 340ms var(--rt-ease);
+  transition: opacity var(--loom-dur-base) ease, --rt-ghost-t var(--loom-dur-flow) var(--loom-ease-out);
 }
 
 .rt-ghost.is-on {
@@ -440,7 +439,7 @@ html[data-loom-theme="light"] .rt {
   opacity: .5;
   scale: .8;
   animation:
-    rt-aura-surge var(--rt-surge) ease-out both,
+    rt-aura-surge var(--rt-surge) var(--loom-ease-out) both,
     rt-aura var(--rt-cycle) ease-in-out var(--rt-surge) infinite;
 }
 
@@ -456,7 +455,7 @@ html[data-loom-theme="light"] .rt {
   border: 1.5px solid var(--rt-level);
   border-radius: 50%;
   opacity: 0;
-  animation: rt-ripple 760ms cubic-bezier(.2, .65, .3, 1) 360ms both;
+  animation: rt-ripple 760ms var(--loom-ease-out) 360ms both;
 }
 
 .rt-burst > i {
@@ -470,7 +469,7 @@ html[data-loom-theme="light"] .rt {
   background: color-mix(in oklch, var(--rt-level), #ffffff var(--rt-spark-light));
   box-shadow: 0 0 5px var(--rt-level);
   opacity: 0;
-  animation: rt-spark 660ms cubic-bezier(.15, .7, .3, 1) 390ms both;
+  animation: rt-spark 660ms var(--loom-ease-out) 390ms both;
 }
 
 .rt-burst > i:nth-child(1) {
@@ -504,7 +503,7 @@ html[data-loom-theme="light"] .rt {
   -webkit-mask: radial-gradient(closest-side, transparent calc(100% - 1.75px), #000 calc(100% - 1.5px));
   mask: radial-gradient(closest-side, transparent calc(100% - 1.75px), #000 calc(100% - 1.5px));
   opacity: 0;
-  transition: opacity 180ms ease;
+  transition: opacity var(--loom-dur-fast) ease;
   animation: rt-orbit 900ms linear infinite paused;
 }
 
@@ -525,7 +524,7 @@ html[data-loom-theme="light"] .rt {
     0 0 0 2.5px var(--rt-surface),
     0 0 0 3.5px color-mix(in srgb, var(--rt-level) 34%, transparent),
     0 2px 8px color-mix(in srgb, var(--rt-level) 50%, transparent);
-  transition: scale 460ms cubic-bezier(.34, 1.56, .64, 1), opacity 220ms ease;
+  transition: scale var(--loom-dur-slow) var(--loom-spring-pop), opacity var(--loom-dur-base) ease;
 }
 
 @starting-style {
@@ -551,7 +550,7 @@ html[data-loom-theme="light"] .rt {
   text-align: center;
   text-overflow: ellipsis;
   white-space: nowrap;
-  animation: rt-caption-in 260ms var(--rt-ease) both;
+  animation: rt-caption-in var(--loom-dur-base) var(--loom-ease-out) both;
 }
 
 .rt-note {
@@ -706,7 +705,7 @@ html[data-loom-theme="light"] .rt {
 }
 
 @keyframes rt-caption-in {
-  from { opacity: 0; translate: 0 3px; }
+  from { opacity: 0; }
 }
 
 @media (prefers-reduced-motion: reduce) {

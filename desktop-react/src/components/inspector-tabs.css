@@ -38,10 +38,10 @@
   pointer-events: none;
   will-change: transform;
   transition:
-    transform 260ms cubic-bezier(.22,1,.36,1),
-    background 180ms ease,
-    border-color 180ms ease,
-    box-shadow 180ms ease;
+    transform var(--loom-dur-base) var(--loom-ease-out),
+    background var(--loom-dur-fast) ease,
+    border-color var(--loom-dur-fast) ease,
+    box-shadow var(--loom-dur-fast) ease;
 }
 
 .runtime-tabs-index-0 .runtime-tab-glider {
@@ -86,9 +86,9 @@
   user-select: none;
   -webkit-tap-highlight-color: transparent;
   transition:
-    color 150ms ease,
-    transform 120ms ease,
-    opacity 150ms ease;
+    color var(--loom-dur-fast) ease,
+    transform var(--loom-dur-fast) ease,
+    opacity var(--loom-dur-fast) ease;
 }
 
 .runtime-tab:hover {
@@ -126,8 +126,8 @@
   flex: 0 0 15px;
   color: inherit;
   transition:
-    color 150ms ease,
-    transform 180ms cubic-bezier(.22,1,.36,1);
+    color var(--loom-dur-fast) ease,
+    transform var(--loom-dur-fast) var(--loom-ease-out);
 }
 
 .runtime-tab.active .runtime-tab-content > svg {
@@ -171,10 +171,10 @@
   font-variant-numeric: tabular-nums;
   pointer-events: none;
   transition:
-    color 150ms ease,
-    background 150ms ease,
-    border-color 150ms ease,
-    transform 180ms cubic-bezier(.22,1,.36,1);
+    color var(--loom-dur-fast) ease,
+    background var(--loom-dur-fast) ease,
+    border-color var(--loom-dur-fast) ease,
+    transform var(--loom-dur-fast) var(--loom-ease-out);
 }
 
 .runtime-tab.active .runtime-tab-count {

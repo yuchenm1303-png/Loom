@@ -5,11 +5,6 @@
 
 .composer-refined {
   --composer-accent: #695ad8;
-  --composer-ease: cubic-bezier(.18,.72,.22,1);
-  --composer-ease-soft: cubic-bezier(.22,.66,.26,1);
-  --composer-fast: 240ms;
-  --composer-motion: 380ms;
-  --composer-long: 520ms;
 }
 
 /* Ambient field ----------------------------------------------------------- */
@@ -25,8 +20,8 @@
   filter: blur(28px);
   opacity: 0;
   transition:
-    opacity 460ms ease,
-    transform 560ms var(--composer-ease);
+    opacity var(--loom-dur-slow) ease,
+    transform var(--loom-dur-slow) var(--loom-ease-out);
   transform: translateX(-50%) scale(.94);
 }
 
@@ -41,9 +36,9 @@
   border-radius: 20px;
   transform: none !important;
   transition:
-    border-color 340ms ease,
-    background 420ms var(--composer-ease-soft),
-    box-shadow 460ms var(--composer-ease);
+    border-color var(--loom-dur-flow) ease,
+    background var(--loom-dur-panel) var(--loom-ease-out),
+    box-shadow var(--loom-dur-slow) var(--loom-ease-out);
 }
 
 .composer-refined .composer:hover {
@@ -54,8 +49,8 @@
   opacity: .34;
   transform: scale(.985);
   transition:
-    opacity 420ms ease,
-    transform 560ms var(--composer-ease);
+    opacity var(--loom-dur-panel) ease,
+    transform var(--loom-dur-slow) var(--loom-ease-out);
 }
 
 .composer-refined .composer:hover::before {
@@ -100,9 +95,9 @@
   );
   box-shadow: 0 1px 8px color-mix(in srgb, var(--composer-accent) 8%, transparent);
   transition:
-    opacity 360ms ease,
-    transform 560ms var(--composer-ease),
-    box-shadow 440ms ease;
+    opacity var(--loom-dur-panel) ease,
+    transform var(--loom-dur-slow) var(--loom-ease-out),
+    box-shadow var(--loom-dur-slow) ease;
 }
 
 .composer-refined .composer:hover .composer-glow {
@@ -142,14 +137,14 @@
 .composer-refined .composer textarea {
   caret-color: color-mix(in srgb, var(--composer-accent) 76%, white 24%);
   transition:
-    color 280ms ease,
-    opacity 280ms ease;
+    color var(--loom-dur-base) ease,
+    opacity var(--loom-dur-base) ease;
 }
 
 .composer-refined .composer textarea::placeholder {
   transition:
-    color 320ms ease,
-    opacity 320ms ease;
+    color var(--loom-dur-flow) ease,
+    opacity var(--loom-dur-flow) ease;
 }
 
 .composer-refined .composer.is-focused textarea::placeholder,
@@ -165,9 +160,9 @@
 .composer-refined .composer-spark {
   transform: translateY(2px) !important;
   transition:
-    color 320ms ease,
-    opacity 320ms ease,
-    filter 380ms ease !important;
+    color var(--loom-dur-flow) ease,
+    opacity var(--loom-dur-flow) ease,
+    filter var(--loom-dur-panel) ease !important;
 }
 
 .composer-refined .composer:is(.is-focused, :focus-within) .composer-spark {
@@ -200,8 +195,8 @@
     transparent
   );
   transition:
-    opacity 380ms ease,
-    transform 520ms var(--composer-ease);
+    opacity var(--loom-dur-panel) ease,
+    transform var(--loom-dur-slow) var(--loom-ease-out);
   transform: scaleX(.82);
 }
 
@@ -216,10 +211,10 @@
   border-radius: 9px;
   transform: none !important;
   transition:
-    color 300ms ease,
-    border-color 320ms ease,
-    background 340ms var(--composer-ease-soft),
-    box-shadow 360ms ease !important;
+    color var(--loom-dur-flow) ease,
+    border-color var(--loom-dur-flow) ease,
+    background var(--loom-dur-flow) var(--loom-ease-out),
+    box-shadow var(--loom-dur-panel) ease !important;
 }
 
 .composer-refined .composer .composer-tool:hover:not(:disabled) {
@@ -242,10 +237,10 @@
 .composer-refined .composer .composer-chip {
   transform: none !important;
   transition:
-    color 300ms ease,
-    border-color 320ms ease,
-    background 340ms var(--composer-ease-soft),
-    box-shadow 380ms ease !important;
+    color var(--loom-dur-flow) ease,
+    border-color var(--loom-dur-flow) ease,
+    background var(--loom-dur-flow) var(--loom-ease-out),
+    box-shadow var(--loom-dur-panel) ease !important;
 }
 
 .composer-refined .composer .composer-chip::before {
@@ -263,7 +258,7 @@
 
 .composer-refined .composer .composer-chip > svg:not(.composer-chip-chevron) {
   transform: none !important;
-  transition: color 300ms ease, opacity 280ms ease !important;
+  transition: color var(--loom-dur-flow) ease, opacity var(--loom-dur-base) ease !important;
 }
 
 .composer-refined .composer .composer-chip:hover:not(:disabled) > svg:not(.composer-chip-chevron),
@@ -273,7 +268,7 @@
 
 .composer-refined .composer .composer-chip-chevron {
   opacity: .52;
-  transition: opacity 300ms ease, color 300ms ease !important;
+  transition: opacity var(--loom-dur-flow) ease, color var(--loom-dur-flow) ease !important;
 }
 
 .composer-refined .composer .composer-chip:hover .composer-chip-chevron {
@@ -287,8 +282,8 @@
 /* Divider participates in focus, so the control strip feels connected. */
 .composer-refined .composer-divider {
   transition:
-    background 360ms ease,
-    opacity 360ms ease;
+    background var(--loom-dur-panel) ease,
+    opacity var(--loom-dur-panel) ease;
 }
 
 .composer-refined .composer:is(.is-focused, :focus-within, .has-panel) .composer-divider {
@@ -300,11 +295,11 @@
   overflow: visible;
   transform: none !important;
   transition:
-    color 300ms ease,
-    border-color 340ms ease,
-    background 360ms var(--composer-ease-soft),
-    box-shadow 420ms var(--composer-ease),
-    opacity 300ms ease !important;
+    color var(--loom-dur-flow) ease,
+    border-color var(--loom-dur-flow) ease,
+    background var(--loom-dur-panel) var(--loom-ease-out),
+    box-shadow var(--loom-dur-panel) var(--loom-ease-out),
+    opacity var(--loom-dur-flow) ease !important;
 }
 
 .composer-refined .composer .send-button::after {
@@ -318,8 +313,8 @@
     transparent 70%
   );
   transition:
-    opacity 360ms ease,
-    transform 520ms var(--composer-ease) !important;
+    opacity var(--loom-dur-panel) ease,
+    transform var(--loom-dur-slow) var(--loom-ease-out) !important;
 }
 
 .composer-refined .composer .send-button.is-ready:hover::after {
@@ -643,8 +638,8 @@ html[data-loom-reduced-motion="true"] .composer-refined .composer .send-button::
       transparent 76%
     );
   transition:
-    opacity 320ms ease,
-    filter 420ms ease;
+    opacity var(--loom-dur-flow) ease,
+    filter var(--loom-dur-panel) ease;
 }
 
 .composer-refined .composer > :not(.composer-pointer-glow):not(.composer-glow) {
@@ -691,12 +686,12 @@ html[data-loom-reduced-motion="true"] .composer-refined .composer .send-button::
 
 .composer-refined .composer:hover .composer-glow {
   opacity: .72;
-  animation: composer-edge-glide-once 1.55s var(--composer-ease) both;
+  animation: composer-edge-glide-once 1.55s var(--loom-ease-out) both;
 }
 
 .composer-refined .composer:is(.is-focused, :focus-within, .has-panel) .composer-glow {
   opacity: .62;
-  animation: composer-edge-glide 4.8s var(--composer-ease-soft) infinite;
+  animation: composer-edge-glide 4.8s var(--loom-ease-out) infinite;
 }
 
 @keyframes composer-edge-glide-once {
@@ -759,8 +754,8 @@ html[data-loom-reduced-motion="true"] .composer-refined .composer .send-button::
     transparent 72%
   );
   transition:
-    opacity 300ms ease,
-    transform 420ms var(--composer-ease);
+    opacity var(--loom-dur-flow) ease,
+    transform var(--loom-dur-panel) var(--loom-ease-out);
   pointer-events: none;
 }
 
@@ -790,7 +785,7 @@ html[data-loom-reduced-motion="true"] .composer-refined .composer .send-button::
     transparent 72%
   );
   opacity: .52;
-  transition: opacity 320ms ease;
+  transition: opacity var(--loom-dur-flow) ease;
 }
 
 .composer-refined .composer.has-content .send-button.is-ready:hover::before {

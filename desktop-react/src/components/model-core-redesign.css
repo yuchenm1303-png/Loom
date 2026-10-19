@@ -33,7 +33,7 @@
   box-sizing: border-box;
   padding: 16px;
   gap: 12px;
-  animation: model-core-layer-in 210ms cubic-bezier(.2, .82, .2, 1) both;
+  animation: model-core-layer-in var(--loom-dur-base) var(--loom-ease-out) both;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -161,7 +161,7 @@
   color: #6b7380;
   text-align: left;
   cursor: pointer;
-  transition: background 150ms ease, color 150ms ease, transform 150ms cubic-bezier(.2, .8, .2, 1);
+  transition: background var(--loom-dur-fast) ease, color var(--loom-dur-fast) ease, transform var(--loom-dur-fast) var(--loom-ease-out);
 }
 
 .model-core-nav > button + button {
@@ -213,7 +213,7 @@
 .model-core-nav > button > svg {
   justify-self: end;
   color: #565e69;
-  transition: color 150ms ease;
+  transition: color var(--loom-dur-fast) ease;
 }
 
 .model-core-nav > button:hover:not(:disabled) > svg {
@@ -236,14 +236,8 @@
 /* -------------------------------------------------------------------------- */
 
 @keyframes model-core-layer-in {
-  from {
-    opacity: 0;
-    transform: translateX(8px) scale(.995);
-  }
-  to {
-    opacity: 1;
-    transform: translateX(0) scale(1);
-  }
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
 @media (max-width: 500px) {
@@ -435,7 +429,7 @@
   font: inherit;
   cursor: pointer;
   appearance: none;
-  transition: opacity 140ms ease;
+  transition: opacity var(--loom-dur-fast) ease;
 }
 
 .model-core-selector:disabled {
@@ -466,13 +460,13 @@
 
 .model-core-title-row strong {
   min-width: 0;
-  transition: color 140ms ease;
+  transition: color var(--loom-dur-fast) ease;
 }
 
 .model-core-title-row > svg {
   flex: none;
   color: #646b76;
-  transition: color 140ms ease;
+  transition: color var(--loom-dur-fast) ease;
 }
 
 /* The picker and API-management entry now live behind the model label.

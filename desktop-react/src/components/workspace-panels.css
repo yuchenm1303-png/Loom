@@ -58,8 +58,8 @@
   backface-visibility: hidden;
   will-change: transform, opacity;
   transition:
-    opacity var(--loom-motion-opacity,260ms) ease,
-    transform var(--loom-motion-panel,390ms) var(--loom-ease-out,cubic-bezier(.2,.74,.18,1)),
+    opacity var(--loom-dur-base) ease,
+    transform var(--loom-dur-panel) var(--loom-ease-out),
     visibility 0s linear 0s;
 }
 
@@ -114,8 +114,8 @@ html[data-loom-layout-transition="true"]:is(
 ::view-transition-group(loom-agent-surface),
 ::view-transition-group(loom-artifact-surface),
 ::view-transition-group(loom-project-surface) {
-  animation-duration: var(--loom-motion-panel,390ms);
-  animation-timing-function: var(--loom-ease-standard,cubic-bezier(.22,.7,.18,1));
+  animation-duration: var(--loom-dur-panel);
+  animation-timing-function: var(--loom-ease-move);
   animation-fill-mode: both;
 }
 
@@ -308,7 +308,7 @@ html[data-loom-layout-transition="true"] .workspace-panels > .inspector {
   cursor: col-resize;
   touch-action: none;
   opacity: .32;
-  transition: opacity var(--loom-motion-control,180ms) ease;
+  transition: opacity var(--loom-dur-fast) ease;
 }
 
 .workspace-panel-resizer::before {
@@ -321,7 +321,7 @@ html[data-loom-layout-transition="true"] .workspace-panels > .inspector {
   transform: translateX(-50%);
   background: rgba(255,255,255,.055);
   box-shadow: 0 0 0 rgba(139,124,246,0);
-  transition: background 130ms ease, box-shadow 130ms ease;
+  transition: background var(--loom-dur-fast) ease, box-shadow var(--loom-dur-fast) ease;
 }
 
 .workspace-panel-resizer:hover,
@@ -544,7 +544,7 @@ body.loom-panel-motion .review-workspace,
 body.loom-panel-motion .sub-agent-dock,
 body.loom-panel-motion .artifact-preview-dock,
 body.loom-panel-motion .project-details-panel {
-  transition-duration: var(--loom-motion-panel,390ms) !important;
+  transition-duration: var(--loom-dur-panel) !important;
 }
 
 @media (prefers-reduced-motion: reduce) {

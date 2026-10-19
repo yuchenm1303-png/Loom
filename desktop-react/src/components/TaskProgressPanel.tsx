@@ -3,6 +3,7 @@ import { useEffect, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
 import { useLoomLanguage } from "../i18n";
 import { useMotionPresence } from "../motion/useMotionPresence";
+import { RETAIN } from "../motion/tokens";
 import { PanelHeader } from "./PanelHeader";
 import { milestoneEvidenceLabels, type TaskMilestone } from "./liveTaskProgress";
 import "./task-progress-panel.css";
@@ -76,7 +77,7 @@ const COPY = {
 export function TaskProgressPanel({ steps, open, onClose }: TaskProgressPanelProps) {
   const language = useLoomLanguage();
   const copy = COPY[language];
-  const presence = useMotionPresence(open, 235);
+  const presence = useMotionPresence(open, RETAIN.base);
 
   useEffect(() => {
     if (!open) return;

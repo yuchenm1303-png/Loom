@@ -2,6 +2,7 @@ import { Check, MessageSquareText, Send } from "./icons";
 import { useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useI18n } from "../i18n";
 import { useMotionPresence } from "../motion/useMotionPresence";
+import { RETAIN } from "../motion/tokens";
 import "./decision-prompt-card.css";
 
 export interface DecisionPromptOption {
@@ -265,7 +266,7 @@ export function DecisionPromptCard({
   const rootRef = useRef<HTMLElement | null>(null);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [customOpen, setCustomOpen] = useState(false);
-  const customPresence = useMotionPresence(customOpen, 220);
+  const customPresence = useMotionPresence(customOpen, RETAIN.foldBase);
   const customInputId = useId();
   const submissionPending = useRef(false);
   const [justSubmitted, setJustSubmitted] = useState(false);
@@ -273,7 +274,7 @@ export function DecisionPromptCard({
   const [sending, setSending] = useState(false);
   const [submitted, setSubmitted] = useState<DecisionPromptOption[] | null | undefined>(undefined);
   const [error, setError] = useState("");
-  const cardPresence = useMotionPresence(submitted === undefined, justSubmitted ? 300 : 0);
+  const cardPresence = useMotionPresence(submitted === undefined, justSubmitted ? RETAIN.fold : 0);
   useLayoutEffect(() => {
     if (justSubmitted && !cardPresence.mounted) setJustSubmitted(false);
   }, [justSubmitted, cardPresence.mounted]);

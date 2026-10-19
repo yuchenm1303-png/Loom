@@ -77,7 +77,7 @@
   color: #8e96a4;
   text-align: left;
   cursor: pointer;
-  transition: background 150ms ease, border-color 150ms ease, color 150ms ease, transform 140ms ease;
+  transition: background var(--loom-dur-fast) ease, border-color var(--loom-dur-fast) ease, color var(--loom-dur-fast) ease, transform var(--loom-dur-fast) ease;
 }
 
 .model-manager-actions > button:hover:not(:disabled),
@@ -353,9 +353,9 @@
   text-align: left;
   cursor: pointer;
   transition:
-    background 150ms ease,
-    color 150ms ease,
-    transform 140ms cubic-bezier(.2,.8,.2,1);
+    background var(--loom-dur-fast) ease,
+    color var(--loom-dur-fast) ease,
+    transform var(--loom-dur-fast) var(--loom-ease-out);
 }
 
 .model-home-action + .model-home-action {
@@ -387,7 +387,7 @@
   border-radius: 9px;
   color: #8d94a2;
   background: rgba(255,255,255,.025);
-  transition: background 150ms ease, color 150ms ease;
+  transition: background var(--loom-dur-fast) ease, color var(--loom-dur-fast) ease;
 }
 
 .model-home-action-primary .model-home-action-icon {

@@ -132,7 +132,7 @@
   font-size: .72rem;
   text-decoration: none;
   cursor: pointer;
-  transition: transform .18s ease, background-color .18s ease, opacity .18s ease;
+  transition: transform var(--loom-dur-fast) ease, background-color var(--loom-dur-fast) ease, opacity var(--loom-dur-fast) ease;
 }
 .loom-primary-action,
 .loom-form-submit {
@@ -314,7 +314,7 @@
   font: inherit;
   font-size: .62rem;
   cursor: pointer;
-  transition: color .16s ease;
+  transition: color var(--loom-dur-fast) ease;
 }
 .loom-account-switch:hover { color: rgba(255,255,255,.78); }
 .loom-portal-page .form-note.is-error {

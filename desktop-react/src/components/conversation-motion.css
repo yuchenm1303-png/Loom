@@ -24,7 +24,7 @@
   line-height: 20px;
   text-align: left;
   cursor: pointer;
-  transition: background 160ms ease, border-color 160ms ease, color 160ms ease;
+  transition: background var(--loom-dur-fast) ease, border-color var(--loom-dur-fast) ease, color var(--loom-dur-fast) ease;
 }
 .earlier-process-toggle:hover {
   background: color-mix(in srgb, var(--muted) 5%, transparent);
@@ -56,13 +56,13 @@
 }
 /* The count is keyed on its value: each record that arrives ticks it once. */
 .turn-process.is-live .earlier-process-count {
-  animation: loom-count-tick 300ms ease-out backwards;
+  animation: loom-count-tick var(--loom-dur-flow) var(--loom-ease-out) backwards;
 }
 .earlier-process-chevron {
   flex: none;
   margin-left: 1px;
   color: var(--muted);
-  transition: color 160ms ease;
+  transition: color var(--loom-dur-fast) ease;
 }
 .earlier-task-process.is-open .earlier-process-chevron {color: var(--accent-soft); }
 .earlier-task-process.is-open .earlier-process-toggle {
@@ -83,12 +83,6 @@
 
 .conversation-stage,
 .transcript {
-  --loom-motion-pop: cubic-bezier(.16, 1, .3, 1);
-  --loom-motion-settle: cubic-bezier(.22, .78, .2, 1);
-  /* Damped springs sampled into linear(): "pop" overshoots ~10% (beads, status
-     dots), "soft" ~4% (stickers). Only text-free elements ride these curves. */
-  --loom-spring-pop: linear(0, 0.035, 0.125, 0.248, 0.387, 0.528, 0.662, 0.781, 0.881, 0.962, 1.023, 1.065, 1.091, 1.104, 1.107, 1.101, 1.091, 1.077, 1.062, 1.047, 1.033, 1.021, 1.01, 1.002, 0.996, 0.992, 0.99, 0.989, 0.989, 0.989, 0.991, 0.992, 0.994, 0.995, 0.997, 0.998, 0.999, 1, 1.001, 1.001, 1);
-  --loom-spring-soft: linear(0, 0.035, 0.121, 0.235, 0.361, 0.486, 0.603, 0.707, 0.795, 0.867, 0.924, 0.966, 0.997, 1.018, 1.03, 1.037, 1.038, 1.037, 1.034, 1.03, 1.025, 1.02, 1.015, 1.011, 1.008, 1.005, 1.003, 1.001, 1, 0.999, 0.999, 0.999, 1);
   /* Live-task palette is cool and slightly desaturated. */
   --loom-live-accent: 153, 145, 226;
   --loom-live-accent-strong: 181, 174, 244;
@@ -119,20 +113,20 @@ html[data-loom-theme="light"] .transcript {
 .turn-process.is-live :is(.entry-approval, .entry-error, .entry-sub-agent-workspace) {
   display: grid;
   grid-template-rows: 1fr;
-  animation: wv-grow var(--wv-fold) var(--wv-ease) backwards;
+  animation: wv-grow var(--loom-dur-flow) var(--loom-ease-move) backwards;
 }
 
 .turn-process.is-live :is(.entry-approval, .entry-error, .entry-sub-agent-workspace) > .entry-body {
   min-height: 0;
   overflow: clip;
   overflow-clip-margin: 4px;
-  animation: wv-fade-in 220ms ease-out 80ms backwards;
+  animation: wv-fade-in var(--loom-dur-base) var(--loom-ease-out) 80ms backwards;
 }
 
 /* An approval the reader has answered folds away on the same motion (App keeps it for that long, marked leaving):
    its words go first, then the space. */
 .turn-process.is-live .entry-approval {
-  transition: grid-template-rows var(--wv-fold) var(--wv-ease), opacity 140ms ease;
+  transition: grid-template-rows var(--loom-dur-flow) var(--loom-ease-move), opacity var(--loom-dur-fast) ease;
 }
 
 .turn-process.is-live .entry-approval.is-leaving {
@@ -161,7 +155,7 @@ html[data-loom-theme="light"] .transcript {
 .turn-process.is-live .entry-steering-user .user-message-image-preview,
 .turn-process.is-live .entry-steering-user .user-message-attachment-card,
 .turn-process.is-live .entry-steering-user .user-message-media-preview {
-  animation: loom-content-surface-in 260ms var(--loom-motion-pop) both;
+  animation: loom-content-surface-in var(--loom-dur-base) var(--loom-ease-out) both;
 }
 
 /* One stationary dissolve at each transcript edge; no stacked masks or lines. */
@@ -187,8 +181,8 @@ html[data-loom-theme="light"] .transcript {
 
 /* Keyframes ------------------------------------------------------------------ */
 @keyframes loom-content-surface-in {
-  from { opacity: .38; transform: translate3d(0, 4px, 0) scale(.985); }
-  to { opacity: 1; transform: translate3d(0, 0, 0) scale(1); }
+  from { opacity: .38; }
+  to { opacity: 1; }
 }
 
 /* Individual transform properties, so no base transform is ever clobbered.

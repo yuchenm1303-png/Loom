@@ -145,7 +145,7 @@
   font-size: 11.5px;
   font-weight: 600;
   cursor: pointer;
-  transition: background 110ms ease, color 110ms ease;
+  transition: background var(--loom-dur-fast) ease, color var(--loom-dur-fast) ease;
 }
 
 .appearance-segmented button:hover {
@@ -288,7 +288,7 @@ html[data-loom-density="spacious"] .tool-row {
   color: var(--text-2);
   background: var(--panel, #101217);
   cursor: pointer;
-  transition: border-color 150ms ease, background 150ms ease, box-shadow 150ms ease, transform 150ms ease;
+  transition: border-color var(--loom-dur-fast) ease, background var(--loom-dur-fast) ease, box-shadow var(--loom-dur-fast) ease, transform var(--loom-dur-fast) ease;
 }
 
 .appearance-theme-option:hover {

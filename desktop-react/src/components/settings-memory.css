@@ -217,7 +217,7 @@
   grid-template-columns: minmax(0, 1fr) 38px;
   border-bottom: 1px solid rgba(255,255,255,.055);
   background: transparent;
-  transition: background 120ms ease, box-shadow 120ms ease;
+  transition: background var(--loom-dur-fast) ease, box-shadow var(--loom-dur-fast) ease;
 }
 
 .memory-row:hover {

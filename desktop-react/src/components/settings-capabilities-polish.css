@@ -131,7 +131,7 @@
   background: transparent;
   box-shadow: none;
   transform: none;
-  transition: background 110ms ease;
+  transition: background var(--loom-dur-fast) ease;
 }
 
 .capability-list .capability-row:last-child,

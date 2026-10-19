@@ -64,7 +64,7 @@
   font: inherit;
   text-align: left;
   cursor: pointer;
-  transition: color 150ms ease, background-color 150ms ease;
+  transition: color var(--loom-dur-fast) ease, background-color var(--loom-dur-fast) ease;
 }
 
 .turn-process-header:hover,
@@ -144,8 +144,8 @@
   opacity: 0;
   overflow-anchor: none;
   transition:
-    grid-template-rows 280ms cubic-bezier(.22,.74,.18,1),
-    opacity 210ms ease;
+    grid-template-rows var(--loom-dur-flow) var(--loom-ease-move),
+    opacity var(--loom-dur-base) ease;
 }
 
 .turn-process-inner {
@@ -174,14 +174,14 @@
    then fade while the track finishes. Opening remains a touch softer/slower. */
 .turn-process.is-settled .turn-process-grid {
   transition:
-    grid-template-rows 300ms cubic-bezier(.4,0,.2,1),
-    opacity 170ms ease 64ms;
+    grid-template-rows var(--loom-dur-flow) var(--loom-ease-inout),
+    opacity var(--loom-dur-fast) ease 64ms;
 }
 
 .turn-process.is-settled.is-open .turn-process-grid {
   transition:
-    grid-template-rows 320ms cubic-bezier(.22,.74,.18,1),
-    opacity 210ms ease;
+    grid-template-rows var(--loom-dur-flow) var(--loom-ease-move),
+    opacity var(--loom-dur-base) ease;
 }
 
 /* Completion ----------------------------------------------------------------
@@ -195,7 +195,6 @@
    mounts settled and never plays any of this. */
 .turn-block {
   --turn-gap: 16px;
-  --turn-fold-ease: cubic-bezier(.3,.72,.2,1);
   gap: var(--turn-gap);
 }
 
@@ -221,16 +220,16 @@
 
 .turn-process.is-settle-fold .turn-process-header-shell {
   transition:
-    grid-template-rows 380ms var(--turn-fold-ease, ease),
-    opacity 260ms ease 110ms;
+    grid-template-rows var(--loom-dur-panel) var(--loom-ease-move),
+    opacity var(--loom-dur-base) ease 110ms;
 }
 
 .turn-process.is-live.is-settle-fold .turn-process-grid {
   grid-template-rows: 0fr;
   opacity: 0;
   transition:
-    grid-template-rows 380ms var(--turn-fold-ease, ease),
-    opacity 200ms ease;
+    grid-template-rows var(--loom-dur-panel) var(--loom-ease-move),
+    opacity var(--loom-dur-base) ease;
 }
 
 /* The changed-files card: its slot is empty space during the hold (the turn's
@@ -257,9 +256,9 @@
 
 .turn-block.is-settle-fold > .turn-artifacts-slot {
   transition:
-    grid-template-rows 380ms var(--turn-fold-ease, ease),
-    margin-top 380ms var(--turn-fold-ease, ease),
-    opacity 280ms ease 100ms;
+    grid-template-rows var(--loom-dur-panel) var(--loom-ease-move),
+    margin-top var(--loom-dur-panel) var(--loom-ease-move),
+    opacity var(--loom-dur-base) ease 100ms;
 }
 
 /* The final answer's toolbar appears with the summary, not before it. */
@@ -275,10 +274,10 @@
   height: 25px;
   overflow: hidden;
   transition:
-    height 340ms var(--turn-fold-ease, ease),
-    min-height 340ms var(--turn-fold-ease, ease),
-    margin-top 340ms var(--turn-fold-ease, ease),
-    opacity 240ms ease 140ms;
+    height var(--loom-dur-flow) var(--loom-ease-move),
+    min-height var(--loom-dur-flow) var(--loom-ease-move),
+    margin-top var(--loom-dur-flow) var(--loom-ease-move),
+    opacity var(--loom-dur-base) ease 140ms;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -333,12 +332,12 @@
 }
 
 .turn-final-answer {
-  animation: turn-final-answer-in 220ms cubic-bezier(.2,.78,.2,1) both;
+  animation: turn-final-answer-in var(--loom-dur-base) var(--loom-ease-out) both;
 }
 
 @keyframes turn-final-answer-in {
-  from { opacity: .82; transform: translateY(2px); }
-  to { opacity: 1; transform: translateY(0); }
+  from { opacity: .82; }
+  to { opacity: 1; }
 }
 
 @media (prefers-reduced-motion: reduce) {

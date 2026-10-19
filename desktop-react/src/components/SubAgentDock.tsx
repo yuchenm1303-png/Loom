@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from "react";
 import { createPortal } from "react-dom";
 import { useMotionPresence } from "../motion/useMotionPresence";
+import { RETAIN } from "../motion/tokens";
 import type { TranscriptItem } from "../types/loom";
 import { isSubAgentToolItem, SubAgentWorkspace } from "./SubAgentWorkspace";
 import "./sub-agent-dock.css";
@@ -53,7 +54,7 @@ function persistDockWidth(value: number): void {
 }
 
 export function SubAgentDock({ items, open, active, onClose }: SubAgentDockProps) {
-  const presence = useMotionPresence(open, 420);
+  const presence = useMotionPresence(open, RETAIN.panel);
   const agentItems = useMemo(() => items.filter(isSubAgentToolItem), [items]);
   const [width, setWidth] = useState(readDockWidth);
   const resizeRef = useRef<{

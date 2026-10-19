@@ -1,27 +1,9 @@
-/* Loom global motion system -------------------------------------------------
-   One vocabulary for panels, pages, popovers and dialogs. Slow enough to read,
-   cheap enough to stay on the compositor. Avoid animating layout, filters and
-   large shadows unless the geometry itself must change. */
-
-:root {
-  --loom-motion-control: 170ms;
-  --loom-motion-popover: 220ms;
-  --loom-motion-dialog: 300ms;
-  --loom-motion-panel: 390ms;
-  --loom-motion-page: 420ms;
-  --loom-motion-exit: 240ms;
-  --loom-motion-opacity: 260ms;
-  --loom-ease-out: cubic-bezier(.2, .74, .18, 1);
-  --loom-ease-standard: cubic-bezier(.22, .7, .18, 1);
-  --loom-ease-in: cubic-bezier(.42, 0, .72, .2);
-  /* Panel language (components/panel-language.css). What arrives from an edge
-     (the docks) keeps the a61 depth curve below; what appears in place (dialogs,
-     palettes, their scrims) is revealed by opacity alone, in one pair of
-     durations, and always leaves again: no panel is unmounted in one frame. */
-  --loom-ease-depth: cubic-bezier(.16, .78, .18, 1);
-  --loom-motion-reveal: 240ms;
-  --loom-motion-conceal: 200ms;
-}
+/* Loom global motion ----------------------------------------------------------
+   The settings overlay, the toast and the switch, written in the motion scale
+   (motion-tokens.css owns the numbers). What appears in place (dialogs, palettes,
+   pages, their scrims) is revealed by opacity alone and always leaves again: no
+   panel is unmounted in one frame. Avoid animating layout, filters and large
+   shadows unless the geometry itself must change. */
 
 .app-shell.is-settings-obscured {
   pointer-events: none;
@@ -60,7 +42,7 @@
   transform: none;
   will-change: auto;
   transition:
-    opacity var(--loom-motion-reveal) var(--loom-ease-depth);
+    opacity var(--loom-dur-base) var(--loom-ease-out);
 }
 
 .settings-host[data-motion-phase="entering"] .settings-sidebar,
@@ -88,13 +70,13 @@
 }
 
 .settings-host[data-motion-phase="entered"] .settings-main {
-  transition-delay: 42ms;
+  transition-delay: var(--loom-stagger);
 }
 
 .settings-host[data-motion-phase="exiting"] .settings-sidebar {
   opacity: 0;
   transform: none;
-  transition-duration: var(--loom-motion-conceal);
+  transition-duration: var(--loom-dur-base-out);
   transition-delay: 0ms;
   transition-timing-function: var(--loom-ease-in);
 }
@@ -102,7 +84,7 @@
 .settings-host[data-motion-phase="exiting"] .settings-main {
   opacity: 0;
   transform: none;
-  transition-duration: var(--loom-motion-conceal);
+  transition-duration: var(--loom-dur-base-out);
   transition-delay: 0ms;
   transition-timing-function: var(--loom-ease-in);
 }
@@ -110,7 +92,7 @@
 /* Controls should feel responsive, not twitchy. */
 .settings-nav button,
 .settings-back {
-  transition-duration: var(--loom-motion-control);
+  transition-duration: var(--loom-dur-fast);
 }
 
 /* Motion-lifecycle surfaces use data-motion-phase instead of one-shot mount
@@ -149,7 +131,7 @@
   animation: none !important;
   will-change: opacity;
   transition:
-    opacity var(--loom-motion-reveal) var(--loom-ease-depth);
+    opacity var(--loom-dur-fast) var(--loom-ease-out);
 }
 
 .settings-toast[data-motion-phase="entering"] {
@@ -166,16 +148,16 @@
   pointer-events: none;
   opacity: 0;
   transform: none;
-  transition-duration: var(--loom-motion-conceal);
+  transition-duration: var(--loom-dur-fast-out);
   transition-timing-function: var(--loom-ease-in);
 }
 
 .settings-switch {
-  transition-duration: var(--loom-motion-control) !important;
+  transition-duration: var(--loom-dur-fast) !important;
 }
 
 .settings-switch span {
-  transition-duration: 220ms !important;
+  transition-duration: var(--loom-dur-fast) !important;
   transition-timing-function: var(--loom-ease-out) !important;
 }
 

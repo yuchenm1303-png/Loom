@@ -75,7 +75,7 @@
   border-radius: 999px;
   opacity: 0;
   scale: .88;
-  transition: opacity 220ms ease, scale 320ms cubic-bezier(.22, .72, .2, 1);
+  transition: opacity var(--loom-dur-base) ease, scale var(--loom-dur-flow) var(--loom-ease-out);
   pointer-events: none;
 }
 
@@ -85,7 +85,7 @@
 }
 
 .thread-account-dot {
-  transition: transform 260ms cubic-bezier(.22, .72, .2, 1);
+  transition: transform var(--loom-dur-base) var(--loom-ease-out);
 }
 
 .thread-account-button:is(:hover, :focus-visible):not(:disabled) .thread-account-dot {
@@ -196,7 +196,7 @@
   font-size: .745rem;
   font-weight: 600;
   cursor: pointer;
-  transition: color 130ms ease, background 130ms ease, border-color 130ms ease, box-shadow 130ms ease;
+  transition: color var(--loom-dur-fast) ease, background var(--loom-dur-fast) ease, border-color var(--loom-dur-fast) ease, box-shadow var(--loom-dur-fast) ease;
 }
 
 .loom-account-tabs button:hover:not(.active) {
@@ -249,7 +249,7 @@
   color: var(--text, #f0f1f4);
   font: inherit;
   font-size: .84rem;
-  transition: border-color 140ms ease, box-shadow 140ms ease, background 140ms ease;
+  transition: border-color var(--loom-dur-fast) ease, box-shadow var(--loom-dur-fast) ease, background var(--loom-dur-fast) ease;
 }
 
 .loom-account-input-wrap.has-reveal input {
@@ -311,7 +311,7 @@
   background: transparent;
   color: var(--faint, #59606c);
   cursor: pointer;
-  transition: color 130ms ease, background 130ms ease;
+  transition: color var(--loom-dur-fast) ease, background var(--loom-dur-fast) ease;
 }
 
 .loom-account-reveal:hover:not(:disabled) {
@@ -356,7 +356,7 @@
   font-size: .78rem;
   font-weight: 650;
   cursor: pointer;
-  transition: transform 140ms cubic-bezier(.2, .78, .2, 1), box-shadow 140ms ease, background 140ms ease, border-color 140ms ease, color 140ms ease;
+  transition: transform var(--loom-dur-fast) var(--loom-ease-out), box-shadow var(--loom-dur-fast) ease, background var(--loom-dur-fast) ease, border-color var(--loom-dur-fast) ease, color var(--loom-dur-fast) ease;
 }
 
 .loom-account-primary-button {
@@ -544,7 +544,7 @@
   flex-direction: column;
   gap: 14px;
   margin-top: 22px;
-  animation: loom-account-rise 260ms cubic-bezier(.2, .78, .2, 1) both;
+  animation: loom-account-rise var(--loom-dur-base) var(--loom-ease-out) both;
 }
 
 .loom-account-profile {
@@ -634,7 +634,7 @@
   font-size: .72rem;
   font-weight: 650;
   cursor: pointer;
-  transition: background 130ms ease, border-color 130ms ease, color 130ms ease;
+  transition: background var(--loom-dur-fast) ease, border-color var(--loom-dur-fast) ease, color var(--loom-dur-fast) ease;
 }
 
 .loom-account-profile-actions button:hover:not(:disabled),
@@ -818,7 +818,7 @@
   text-align: left;
   background: transparent;
   box-shadow: none;
-  transition: background 150ms ease, color 150ms ease;
+  transition: background var(--loom-dur-fast) ease, color var(--loom-dur-fast) ease;
 }
 .loom-account-profile-actions .loom-account-action-card:hover:not(:disabled) {
   background: color-mix(in srgb, var(--text, #f0f1f4) 4%, transparent);
@@ -972,7 +972,7 @@
   padding: 0 13px;
   border-radius: 11px;
   font-size: .76rem;
-  transition: border-color 140ms ease, box-shadow 140ms ease, background 140ms ease;
+  transition: border-color var(--loom-dur-fast) ease, box-shadow var(--loom-dur-fast) ease, background var(--loom-dur-fast) ease;
 }
 
 .loom-account-profile-name input:hover:not(:disabled) {
@@ -1123,19 +1123,9 @@
   outline-offset: 2px;
 }
 
-@keyframes loom-account-backdrop-in {
-  from { opacity: 0; }
-  to { opacity: 1; }
-}
-
-@keyframes loom-account-dialog-in {
-  from { opacity: 0; }
-  to { opacity: 1; transform: none; }
-}
-
 @keyframes loom-account-rise {
   from { opacity: 0; }
-  to { opacity: 1; transform: none; }
+  to { opacity: 1; }
 }
 
 html[data-loom-reduced-motion="true"] .loom-account-backdrop,
@@ -1257,7 +1247,7 @@ html[data-loom-theme="light"] .loom-account-primary-button:disabled {
   font-size: .77rem;
   font-weight: 650;
   cursor: pointer;
-  transition: border-color 160ms ease, background 160ms ease, box-shadow 160ms ease, transform 160ms ease;
+  transition: border-color var(--loom-dur-fast) ease, background var(--loom-dur-fast) ease, box-shadow var(--loom-dur-fast) ease, transform var(--loom-dur-fast) ease;
 }
 .loom-account-oauth-button:hover:not(:disabled) {
   border-color: color-mix(in srgb, var(--accent, #8b7cf6) 45%, var(--border, #292d38));

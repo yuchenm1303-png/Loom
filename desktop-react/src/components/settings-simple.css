@@ -53,7 +53,7 @@
   min-height: 36px;
   border-radius: 8px;
   margin: 0;
-  transition: background 120ms ease, color 120ms ease;
+  transition: background var(--loom-dur-fast) ease, color var(--loom-dur-fast) ease;
 }
 
 .settings-nav button:hover {
@@ -314,7 +314,7 @@
   min-height: 112px;
   padding: 13px;
   border-radius: 10px;
-  transition: border-color 120ms ease, background 120ms ease;
+  transition: border-color var(--loom-dur-fast) ease, background var(--loom-dur-fast) ease;
 }
 
 button.general-default-card:hover,
@@ -391,7 +391,7 @@ button.general-default-card:hover .general-default-card-head > svg:last-child {
   min-height: 68px;
   padding: 10px 12px;
   border-radius: 10px;
-  transition: border-color 120ms ease, background 120ms ease;
+  transition: border-color var(--loom-dur-fast) ease, background var(--loom-dur-fast) ease;
 }
 
 /* Mature feature pages keep functionality but lose the decorative treatment. */
@@ -427,7 +427,7 @@ button.general-default-card:hover .general-default-card-head > svg:last-child {
   gap: 10px;
   padding: 14px;
   border-radius: 10px;
-  transition: border-color 120ms ease, background 120ms ease;
+  transition: border-color var(--loom-dur-fast) ease, background var(--loom-dur-fast) ease;
 }
 
 .mature-model-card:hover {

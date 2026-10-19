@@ -1,5 +1,6 @@
 import { useLayoutEffect, useRef, type RefObject } from "react";
 import { useReducedMotion } from "../motion/useReducedMotion";
+import { EASE, travelMs } from "../motion/tokens";
 
 /** Move only the selection surface; titles and controls keep their geometry. */
 export function useSidebarSelectionMotion(scrollRef: RefObject<HTMLDivElement | null>, activeId?: string) {
@@ -28,13 +29,13 @@ export function useSidebarSelectionMotion(scrollRef: RefObject<HTMLDivElement | 
     const dy = from.top - to.top;
     const distance = Math.hypot(dx, dy);
     if (distance < 1) return;
-    const duration = Math.min(420, 240 + distance * .3);
+    const duration = travelMs(distance);
     animations.current = [pip.animate(
       { translate: [`${dx}px ${dy}px`, "0px 0px"] },
-      { duration, easing: "cubic-bezier(.2,0,0,1)" },
+      { duration, easing: EASE.glide },
     ), pip.animate(
       { scale: [`${from.width / to.width} ${from.height / to.height}`, `1 ${1 + Math.min(.15, distance / 1200)}`, "1 1"], offset: [0, .35, 1] },
-      { duration, easing: "ease-in-out" },
+      { duration, easing: EASE.inout },
     )];
   });
   useLayoutEffect(() => () => {

@@ -1,6 +1,7 @@
 import { ChevronDown } from "./icons";
 import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { TranscriptItem } from "../types/loom";
+import { RETAIN } from "../motion/tokens";
 import { advanceFollow, snapScrollOffset, TargetFlow, type FollowState } from "./followMotion";
 import "./transcript-scroll-stability.css";
 
@@ -31,7 +32,7 @@ const USER_RETURN_INTENT_MS = 420;
 const USER_INPUT_INTENT_MS = 320;
 // A step opened during the run is judged over its own motion (the longest detail fold is 260ms): if following the
 // live edge would carry its header out of view, the reader is reading it; the header keeps this margin below the top.
-const DISCLOSURE_MOTION_MS = 420;
+const DISCLOSURE_MOTION_MS = RETAIN.panel;
 const DISCLOSURE_TOP_MARGIN_PX = 16;
 const FINAL_SETTLE_PIN_DELAY_MS = LIVE_SETTLE_WINDOW_MS + 90;
 const PANEL_RESIZE_END_EVENT = "loom:panel-resize-end";

@@ -27,7 +27,7 @@
     inset 0 1px 0 rgba(255, 255, 255, .028),
     0 5px 14px rgba(0, 0, 0, .10);
   line-height: 1;
-  transition: border-color 140ms ease, background 140ms ease, box-shadow 140ms ease;
+  transition: border-color var(--loom-dur-fast) ease, background var(--loom-dur-fast) ease, box-shadow var(--loom-dur-fast) ease;
 }
 
 .composer-attachment:hover {
@@ -141,7 +141,7 @@
   background: transparent;
   color: #747b87;
   cursor: pointer;
-  transition: color 120ms ease, background 120ms ease, transform 120ms ease;
+  transition: color var(--loom-dur-fast) ease, background var(--loom-dur-fast) ease, transform var(--loom-dur-fast) ease;
 }
 
 .composer-attachment button svg {

@@ -1,4 +1,6 @@
 // Shared production cascade: fixtures use the same motion owners and order.
+// The motion scale comes first: everything below is written in its terms.
+import "./motion-tokens.css";
 import "./styles.css";
 import "./shell-fix.css";
 import "./components/model-panel-overrides.css";

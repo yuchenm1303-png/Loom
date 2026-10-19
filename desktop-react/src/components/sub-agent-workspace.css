@@ -9,7 +9,7 @@
     inset 0 1px 0 rgba(255,255,255,.026),
     0 12px 34px rgba(0,0,0,.11);
   overflow: hidden;
-  animation: sub-agent-workspace-enter 190ms cubic-bezier(.2,.78,.2,1) both;
+  animation: sub-agent-workspace-enter var(--loom-dur-fast) var(--loom-ease-out) both;
 }
 
 .sub-agent-grid {
@@ -29,10 +29,10 @@
   box-shadow: inset 0 1px 0 rgba(255,255,255,.018);
   overflow: hidden;
   transition:
-    border-color 150ms ease,
-    background 150ms ease,
-    box-shadow 160ms ease,
-    transform 150ms cubic-bezier(.2,.78,.2,1);
+    border-color var(--loom-dur-fast) ease,
+    background var(--loom-dur-fast) ease,
+    box-shadow var(--loom-dur-fast) ease,
+    transform var(--loom-dur-fast) var(--loom-ease-out);
 }
 
 .sub-agent-card:hover {
@@ -195,7 +195,7 @@
 
 .sub-agent-chevron {
   color: #59616d;
-  transition: color 140ms ease;
+  transition: color var(--loom-dur-fast) ease;
 }
 
 .sub-agent-card.is-open .sub-agent-chevron {
@@ -230,7 +230,7 @@
   display: grid;
   grid-template-rows: 0fr;
   opacity: 0;
-  transition: grid-template-rows 180ms cubic-bezier(.22,.74,.18,1), opacity 145ms ease;
+  transition: grid-template-rows var(--loom-dur-base) var(--loom-ease-move), opacity var(--loom-dur-fast) ease;
 }
 
 .sub-agent-card.is-open .sub-agent-detail-grid {
@@ -315,8 +315,8 @@
 }
 
 @keyframes sub-agent-workspace-enter {
-  from { opacity: 0; transform: translateY(3px); }
-  to { opacity: 1; transform: translateY(0); }
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
 @keyframes sub-agent-pulse {
@@ -517,7 +517,7 @@ html[data-loom-theme="light"] .sub-agent-workspace.is-docked .sub-agent-card {
   color: #7c8490;
   cursor: pointer;
   text-align: left;
-  transition: color 130ms ease, border-color 130ms ease, background 130ms ease, transform 130ms ease;
+  transition: color var(--loom-dur-fast) ease, border-color var(--loom-dur-fast) ease, background var(--loom-dur-fast) ease, transform var(--loom-dur-fast) ease;
 }
 
 .sub-agent-inline-notice:hover {
@@ -646,7 +646,7 @@ html[data-loom-theme="light"] .sub-agent-inline-action {
   font-weight: 600;
   cursor: pointer;
   white-space: nowrap;
-  transition: color 130ms ease, background 130ms ease, box-shadow 130ms ease;
+  transition: color var(--loom-dur-fast) ease, background var(--loom-dur-fast) ease, box-shadow var(--loom-dur-fast) ease;
 }
 
 .sub-agent-filter button > span {
@@ -1205,10 +1205,10 @@ html[data-loom-theme="light"] .sub-agent-workspace.is-docked .sub-agent-card.sta
   font-size: 9.6px;
   font-weight: 650;
   transition:
-    color 130ms ease,
-    background 130ms ease,
-    box-shadow 130ms ease,
-    transform 130ms ease;
+    color var(--loom-dur-fast) ease,
+    background var(--loom-dur-fast) ease,
+    box-shadow var(--loom-dur-fast) ease,
+    transform var(--loom-dur-fast) ease;
 }
 
 .sub-agent-workspace.is-docked .sub-agent-filter button:hover {
@@ -1290,11 +1290,11 @@ html[data-loom-theme="light"] .sub-agent-workspace.is-docked .sub-agent-card.sta
   opacity: 1;
   transform: translateZ(0);
   transition:
-    border-color 150ms ease,
-    background 150ms ease,
-    box-shadow 170ms ease,
-    transform 170ms cubic-bezier(.2,.78,.2,1),
-    opacity 150ms ease;
+    border-color var(--loom-dur-fast) ease,
+    background var(--loom-dur-fast) ease,
+    box-shadow var(--loom-dur-fast) ease,
+    transform var(--loom-dur-fast) var(--loom-ease-out),
+    opacity var(--loom-dur-fast) ease;
 }
 
 .sub-agent-workspace.is-docked .sub-agent-card::before {
@@ -1383,10 +1383,10 @@ html[data-loom-theme="light"] .sub-agent-workspace.is-docked .sub-agent-card.sta
   color: #828b97;
   box-shadow: inset 0 1px 0 rgba(255,255,255,.016);
   transition:
-    color 150ms ease,
-    border-color 150ms ease,
-    background 150ms ease,
-    transform 170ms cubic-bezier(.2,.78,.2,1);
+    color var(--loom-dur-fast) ease,
+    border-color var(--loom-dur-fast) ease,
+    background var(--loom-dur-fast) ease,
+    transform var(--loom-dur-fast) var(--loom-ease-out);
 }
 
 .sub-agent-workspace.is-docked .sub-agent-card:hover .sub-agent-avatar {

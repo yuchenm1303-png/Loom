@@ -36,7 +36,7 @@
   /* The canvas stays opaque for the whole presence lifecycle (as the settings host does):
      fading it would show the live app through the page. Only the page content is revealed. */
   opacity: 1;
-  transition: background-color 220ms ease;
+  transition: background-color var(--loom-dur-fast) ease;
 }
 
 html[data-loom-theme="light"] .profile-insights-host {
@@ -72,7 +72,7 @@ html[data-loom-theme="light"] .profile-insights-host {
   display: grid;
   grid-template-rows: 56px minmax(0, 1fr);
   opacity: 1;
-  transition: opacity var(--loom-motion-reveal, 240ms) var(--loom-ease-depth, cubic-bezier(.16, .78, .18, 1));
+  transition: opacity var(--loom-dur-base) var(--loom-ease-out);
 }
 
 .profile-insights-host:is([data-motion-phase="entering"], [data-motion-phase="exiting"]) .profile-insights-page {
@@ -80,8 +80,8 @@ html[data-loom-theme="light"] .profile-insights-host {
 }
 
 .profile-insights-host[data-motion-phase="exiting"] .profile-insights-page {
-  transition-duration: var(--loom-motion-conceal, 200ms);
-  transition-timing-function: var(--loom-ease-in, cubic-bezier(.42, 0, .72, .2));
+  transition-duration: var(--loom-dur-base-out);
+  transition-timing-function: var(--loom-ease-in);
 }
 
 /* Top bar ------------------------------------------------------------------ */
@@ -103,7 +103,7 @@ html[data-loom-theme="light"] .profile-insights-host {
   background: transparent;
   color: var(--profile-muted);
   cursor: pointer;
-  transition: color 140ms ease, background 140ms ease, border-color 140ms ease, transform 140ms ease;
+  transition: color var(--loom-dur-fast) ease, background var(--loom-dur-fast) ease, border-color var(--loom-dur-fast) ease, transform var(--loom-dur-fast) ease;
 }
 
 .profile-back-button {
@@ -211,7 +211,7 @@ html[data-loom-theme="light"] .profile-refresh-button:hover:not(:disabled) {
 }
 
 .profile-insights-body {
-  transition: opacity 180ms ease;
+  transition: opacity var(--loom-dur-fast) ease;
 }
 
 .profile-insights-body.is-refreshing {
@@ -389,7 +389,7 @@ html[data-loom-theme="light"] .profile-error-state {
   font-size: 11.5px;
   font-weight: 600;
   cursor: pointer;
-  transition: color 140ms ease, background 140ms ease, border-color 140ms ease, transform 140ms ease;
+  transition: color var(--loom-dur-fast) ease, background var(--loom-dur-fast) ease, border-color var(--loom-dur-fast) ease, transform var(--loom-dur-fast) ease;
 }
 
 .profile-edit-button:hover {
@@ -451,7 +451,7 @@ html[data-loom-theme="light"] .profile-error-state {
   min-width: 0;
   padding: 14px 16px 13px;
   border-radius: 16px;
-  transition: border-color 160ms ease, transform 160ms ease;
+  transition: border-color var(--loom-dur-fast) ease, transform var(--loom-dur-fast) ease;
 }
 
 .profile-metric-card:hover {
@@ -602,7 +602,7 @@ html[data-loom-theme="light"] .profile-error-state {
   aspect-ratio: 1;
   border-radius: 3px;
   background: var(--profile-heat-0);
-  transition: filter 120ms ease;
+  transition: filter var(--loom-dur-fast) ease;
 }
 
 .profile-heat-cell.is-padding {
@@ -690,7 +690,7 @@ html[data-loom-theme="light"] .profile-error-state {
   box-shadow: 0 14px 34px rgba(0, 0, 0, .22);
   pointer-events: none;
   transform: translate(-50%, -100%);
-  animation: profile-tooltip-in 120ms ease-out both;
+  animation: profile-tooltip-in var(--loom-dur-fast) var(--loom-ease-out) both;
 }
 
 .profile-heat-tooltip.is-below {
@@ -864,7 +864,7 @@ html[data-loom-theme="light"] .profile-heat-tooltip {
   background: linear-gradient(90deg, var(--profile-accent-strong), var(--profile-accent));
   transform: scaleX(var(--profile-bar, 0));
   transform-origin: left center;
-  animation: profile-bar-grow 520ms cubic-bezier(.2, .75, .2, 1) both;
+  animation: profile-bar-grow var(--loom-dur-slow) var(--loom-ease-out) both;
 }
 
 .profile-ranked-row.is-muted .profile-ranked-label {
@@ -918,7 +918,7 @@ html[data-loom-theme="light"] .profile-heat-tooltip {
   border-radius: 2px 2px 1px 1px;
   background: color-mix(in srgb, var(--profile-accent) 42%, transparent);
   transform-origin: bottom;
-  animation: profile-hour-grow 520ms cubic-bezier(.2, .75, .2, 1) both;
+  animation: profile-hour-grow var(--loom-dur-slow) var(--loom-ease-out) both;
 }
 
 .profile-hours-bars span.is-empty {

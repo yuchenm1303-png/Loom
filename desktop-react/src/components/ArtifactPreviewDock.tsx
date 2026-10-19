@@ -4,6 +4,7 @@ import { createPortal } from "react-dom";
 import { artifactName, artifactRenderer, canRenderArtifact, normalizeArtifactPath } from "../artifactRenderers";
 import type { TranscriptItem } from "../types/loom";
 import { useMotionPresence } from "../motion/useMotionPresence";
+import { RETAIN } from "../motion/tokens";
 import { ArtifactRenderSurface } from "./ArtifactRenderSurface";
 import { PanelHeader } from "./PanelHeader";
 import { useLoomLanguage } from "../i18n";
@@ -71,7 +72,7 @@ export function ArtifactPreviewDock({
   ariaLabel = "产物侧栏",
 }: ArtifactPreviewDockProps) {
   const language = useLoomLanguage();
-  const presence = useMotionPresence(open, 420);
+  const presence = useMotionPresence(open, RETAIN.panel);
   const [width, setWidth] = useState(readPreviewWidth);
   const [revision, setRevision] = useState(0);
   const [selected, setSelected] = useState(path);

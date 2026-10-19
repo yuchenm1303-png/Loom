@@ -70,11 +70,11 @@
   border-color: transparent;
   transform: translateY(0);
   transition:
-    transform 145ms cubic-bezier(.2,.78,.2,1),
-    background 160ms ease,
-    border-color 160ms ease,
-    box-shadow 170ms ease,
-    opacity 150ms ease;
+    transform var(--loom-dur-fast) var(--loom-ease-out),
+    background var(--loom-dur-fast) ease,
+    border-color var(--loom-dur-fast) ease,
+    box-shadow var(--loom-dur-fast) ease,
+    opacity var(--loom-dur-fast) ease;
 }
 
 .permission-popover .permission-option:hover:not(:disabled) {
@@ -94,7 +94,7 @@
   width: 32px;
   height: 32px;
   border-radius: 11px;
-  transition: background 160ms ease, border-color 160ms ease, color 160ms ease, box-shadow 160ms ease;
+  transition: background var(--loom-dur-fast) ease, border-color var(--loom-dur-fast) ease, color var(--loom-dur-fast) ease, box-shadow var(--loom-dur-fast) ease;
 }
 
 .permission-popover .composer-option-title-row {

@@ -28,10 +28,10 @@
   box-shadow: var(--sr-shadow-control, none);
   cursor: pointer;
   transition:
-    background-color 140ms ease,
-    border-color 140ms ease,
-    transform 140ms cubic-bezier(.2, .8, .2, 1),
-    opacity 150ms ease;
+    background-color var(--loom-dur-fast) ease,
+    border-color var(--loom-dur-fast) ease,
+    transform var(--loom-dur-fast) var(--loom-ease-out),
+    opacity var(--loom-dur-fast) ease;
 }
 
 .settings-computer-log-export button > svg {

@@ -2,6 +2,7 @@ import { ExternalLink, X } from "./icons";
 import { useLayoutEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { useMotionPresence } from "../motion/useMotionPresence";
+import { RETAIN } from "../motion/tokens";
 import "./image-lightbox.css";
 
 /** Shared lifetime and keyboard behavior for user and assistant image previews. */
@@ -13,7 +14,7 @@ export function ImageLightbox({ open, source, label, path, onClose, onReveal }: 
   onClose(): void;
   onReveal(): void;
 }) {
-  const presence = useMotionPresence(open, 235);
+  const presence = useMotionPresence(open, RETAIN.base);
   const panelRef = useRef<HTMLDivElement>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
   useLayoutEffect(() => {

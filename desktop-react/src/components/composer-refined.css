@@ -152,7 +152,7 @@
   color: var(--cq-ink-2);
   font-weight: 500;
   transform: none;
-  transition: background-color 140ms ease, color 140ms ease;
+  transition: background-color var(--loom-dur-fast) ease, color var(--loom-dur-fast) ease;
 }
 
 :root .composer-wrap.composer-refined .composer .composer-tool {
@@ -208,7 +208,7 @@
 :root .composer-wrap.composer-refined .composer .model-chip > svg:not(.composer-chip-chevron) {
   color: var(--cq-ink-3);
   transform: none;
-  transition: color 140ms ease;
+  transition: color var(--loom-dur-fast) ease;
 }
 
 :root .composer-wrap.composer-refined .composer .composer-chip:hover:not(:disabled) > svg:not(.composer-chip-chevron),
@@ -241,7 +241,7 @@
   border-radius: 50%;
   box-shadow: none;
   transform: none;
-  transition: background-color 140ms ease, color 140ms ease;
+  transition: background-color var(--loom-dur-fast) ease, color var(--loom-dur-fast) ease;
 }
 
 :root .composer-wrap.composer-refined .composer .send-button::after {
@@ -299,7 +299,7 @@
    a shortcut hint and is always there.) */
 :root .composer-wrap.composer-refined .composer-hint.is-shortcut {
   opacity: 0;
-  transition: opacity 180ms ease;
+  transition: opacity var(--loom-dur-fast) ease;
 }
 
 :root .composer-wrap.composer-refined:focus-within .composer-hint.is-shortcut {
@@ -382,7 +382,7 @@
   background: transparent;
   box-shadow: none;
   transform: none;
-  transition: background-color 130ms ease, color 130ms ease;
+  transition: background-color var(--loom-dur-fast) ease, color var(--loom-dur-fast) ease;
 }
 
 :root .composer-wrap.composer-refined .composer-option:hover:not(:disabled),

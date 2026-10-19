@@ -17,7 +17,7 @@
   filter: blur(24px);
   opacity: 0;
   pointer-events: none;
-  transition: opacity 220ms ease;
+  transition: opacity var(--loom-dur-base) ease;
 }
 
 .composer-wrap:focus-within::before {
@@ -35,7 +35,7 @@
   border-radius: 18px;
   background: linear-gradient(180deg, rgba(24,26,32,.99), rgba(18,20,25,.99));
   box-shadow: 0 16px 42px rgba(0,0,0,.28), inset 0 1px 0 rgba(255,255,255,.035);
-  transition: border-color 180ms ease, box-shadow 220ms ease, transform 180ms cubic-bezier(.2,.8,.2,1), background 180ms ease;
+  transition: border-color var(--loom-dur-fast) ease, box-shadow var(--loom-dur-fast) ease, transform var(--loom-dur-fast) var(--loom-ease-out), background var(--loom-dur-fast) ease;
 }
 
 .composer::before {
@@ -49,7 +49,7 @@
     radial-gradient(360px 130px at 100% 118%, rgba(95,135,255,.055), transparent 64%);
   pointer-events: none;
   opacity: .64;
-  transition: opacity 220ms ease;
+  transition: opacity var(--loom-dur-base) ease;
 }
 
 .composer::after {
@@ -93,7 +93,7 @@
   background: linear-gradient(90deg, transparent, rgba(165,153,255,.32), transparent);
   opacity: .2;
   pointer-events: none;
-  transition: opacity 180ms ease, transform 220ms ease;
+  transition: opacity var(--loom-dur-fast) ease, transform var(--loom-dur-base) ease;
 }
 
 .composer.is-focused .composer-glow {
@@ -116,7 +116,7 @@
   color: #6f7480;
   opacity: .72;
   transform: translateY(2px) scale(.94);
-  transition: color 160ms ease, opacity 160ms ease, transform 180ms cubic-bezier(.2,.8,.2,1);
+  transition: color var(--loom-dur-fast) ease, opacity var(--loom-dur-fast) ease, transform var(--loom-dur-fast) var(--loom-ease-out);
 }
 
 .composer.is-focused .composer-spark {
@@ -145,7 +145,7 @@
 
 .composer textarea::placeholder {
   color: #707785;
-  transition: color 160ms ease, opacity 160ms ease;
+  transition: color var(--loom-dur-fast) ease, opacity var(--loom-dur-fast) ease;
 }
 
 .composer.is-focused textarea::placeholder {
@@ -189,7 +189,7 @@
   align-items: center;
   justify-content: center;
   gap: 6px;
-  transition: color 150ms ease, background 150ms ease, border-color 150ms ease, transform 120ms ease;
+  transition: color var(--loom-dur-fast) ease, background var(--loom-dur-fast) ease, border-color var(--loom-dur-fast) ease, transform var(--loom-dur-fast) ease;
 }
 
 .composer-tool {
@@ -260,7 +260,7 @@
   line-height: 1;
   user-select: none;
   box-shadow: inset 0 -1px 0 rgba(255,255,255,.025);
-  transition: color 150ms ease, border-color 150ms ease;
+  transition: color var(--loom-dur-fast) ease, border-color var(--loom-dur-fast) ease;
 }
 
 .composer.is-focused .composer-keycap {
@@ -281,7 +281,7 @@
   color: #111318;
   cursor: pointer;
   box-shadow: 0 5px 14px rgba(0,0,0,.22), inset 0 1px 0 rgba(255,255,255,.72);
-  transition: transform 150ms cubic-bezier(.2,.8,.2,1), box-shadow 170ms ease, background 170ms ease, opacity 150ms ease;
+  transition: transform var(--loom-dur-fast) var(--loom-ease-out), box-shadow var(--loom-dur-fast) ease, background var(--loom-dur-fast) ease, opacity var(--loom-dur-fast) ease;
 }
 
 .send-button::after {
@@ -293,7 +293,7 @@
   background: radial-gradient(circle, rgba(159,146,255,.18), transparent 68%);
   opacity: 0;
   transform: scale(.8);
-  transition: opacity 170ms ease, transform 170ms ease;
+  transition: opacity var(--loom-dur-fast) ease, transform var(--loom-dur-fast) ease;
 }
 
 .send-button:hover:not(:disabled) {
@@ -400,7 +400,7 @@
 .composer-chip-chevron {
   flex: none;
   opacity: .6;
-  transition: opacity 160ms ease;
+  transition: opacity var(--loom-dur-fast) ease;
 }
 
 .composer-chip:hover .composer-chip-chevron,
@@ -427,7 +427,7 @@
   backface-visibility: hidden;
   will-change: opacity;
   z-index: 90;
-  transition: opacity 100ms ease;
+  transition: opacity var(--loom-dur-fast) var(--loom-ease-out);
 }
 
 .composer-popover[data-motion-phase="entering"] {
@@ -454,8 +454,8 @@
   opacity: 0;
   transform: none;
   will-change: opacity;
-  transition-duration: 205ms;
-  transition-timing-function: var(--loom-ease-in,cubic-bezier(.42,0,.72,.2));
+  transition-duration: var(--loom-dur-fast-out);
+  transition-timing-function: var(--loom-ease-in);
 }
 
 .composer-popover::before {
@@ -590,10 +590,10 @@
   text-align: left;
   cursor: pointer;
   transition:
-    background 140ms ease,
-    border-color 140ms ease,
-    transform 120ms ease,
-    box-shadow 150ms ease;
+    background var(--loom-dur-fast) ease,
+    border-color var(--loom-dur-fast) ease,
+    transform var(--loom-dur-fast) ease,
+    box-shadow var(--loom-dur-fast) ease;
 }
 
 .composer-option:hover:not(:disabled) {

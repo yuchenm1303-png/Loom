@@ -15,6 +15,7 @@ import {
 } from "./icons";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMotionPresence } from "../motion/useMotionPresence";
+import { RETAIN } from "../motion/tokens";
 import { startVisiblePolling } from "../visiblePolling";
 import { withProjectReadTimeout } from "../state/projectRead";
 import type { ProjectRecord, ThreadRecord, TranscriptItem } from "../types/loom";
@@ -220,7 +221,7 @@ export function ProjectDetailsPanel({
   onGitChanged,
   onOpenFiles,
 }: ProjectDetailsPanelProps) {
-  const presence = useMotionPresence(open && Boolean(projectProp), 420);
+  const presence = useMotionPresence(open && Boolean(projectProp), RETAIN.panel);
   const lastProjectRef = useRef<ProjectRecord | null>(projectProp);
   if (projectProp) lastProjectRef.current = projectProp;
   const project = projectProp ?? lastProjectRef.current;

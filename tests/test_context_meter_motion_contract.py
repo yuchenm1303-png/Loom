@@ -11,12 +11,13 @@ def test_context_meter_exit_has_headroom_before_presence_unmount() -> None:
     source = METER.read_text(encoding="utf-8")
     css = METER_CSS.read_text(encoding="utf-8")
 
-    assert "useMotionPresence(open, 240)" in source
+    assert "useMotionPresence(open, RETAIN.fast)" in source
     exit_start = css.index('.context-meter-panel[data-motion-phase="exiting"] {')
     exit_end = css.index('}', exit_start)
     exit_rule = css[exit_start:exit_end]
-    assert "opacity 155ms" in exit_rule
-    assert "transform 220ms" in exit_rule
+    # The panel fades like every popover: opacity alone, on the fast exit.
+    assert "opacity var(--loom-dur-fast-out)" in exit_rule
+    assert "transform" not in exit_rule
 
 
 def test_context_meter_exit_is_compositor_owned_not_inset_animated() -> None:
@@ -26,8 +27,8 @@ def test_context_meter_exit_is_compositor_owned_not_inset_animated() -> None:
     exit_end = css.index('}', exit_start)
     exit_rule = css[exit_start:exit_end]
 
-    assert "translate3d" in exit_rule
-    assert "will-change: opacity, transform;" in exit_rule
+    assert "translate3d" not in exit_rule
+    assert "will-change: opacity;" in exit_rule
     # The fixed component surface replaces the previously overridden pseudo-shell.
     assert ".context-meter-panel::before" not in css
     assert "transition-delay:" not in css

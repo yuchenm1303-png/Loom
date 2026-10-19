@@ -3,9 +3,9 @@
    styling has loaded. Motion stays local: no full-transcript scaling, no text
    blur, and no replay when historical turns mount. */
 
+/* The curve of the send hand-off (sendFlight.ts lands the capsule on it); it is physics, not a scale step. */
 :root {
   --loom-generation-pop: cubic-bezier(.16, 1, .3, 1);
-  --loom-generation-settle: cubic-bezier(.22, .78, .2, 1);
 }
 
 /* The typing edge (useTypingLight): the newest letters of a streaming answer glow, in three bands that go out one
@@ -42,7 +42,7 @@ html[data-loom-theme="light"] {
    keeps its identity while text streams past it, so this plays once. */
 .turn-process.is-live .markdown-body img.assistant-inline-sticker {
   transform-origin: 50% 70%;
-  animation: loom-sticker-pop 220ms var(--loom-spring-soft) backwards;
+  animation: loom-sticker-pop var(--loom-dur-base) var(--loom-spring-soft) backwards;
 }
 
 /* A block the answer has just formed (a heading, a table, a quote, a code block, a formula, an image) rises into
@@ -51,7 +51,7 @@ html[data-loom-theme="light"] {
    which would resample glyphs, and no clip, which repaints on the main thread every frame. Backwards fill: nothing
    is left applied to the block afterwards. */
 .markdown-body.is-receiving :is(h1, h2, h3, h4, h5, h6, blockquote, table, .markdown-code-block, .katex-display, .assistant-local-image-preview) {
-  animation: loom-block-form 280ms var(--loom-generation-pop) backwards;
+  animation: loom-block-form var(--loom-dur-base) var(--loom-ease-out) backwards;
 }
 
 /* A code block catches the light once as it forms: a thin line travels along its top edge. Compositor only. */
@@ -67,7 +67,7 @@ html[data-loom-theme="light"] {
   opacity: 0;
   background: linear-gradient(90deg, transparent 6%, var(--glint-line) 50%, transparent 94%);
   box-shadow: 0 0 12px var(--glint-glow);
-  animation: loom-block-glint 780ms var(--loom-generation-settle) 140ms backwards;
+  animation: loom-block-glint 780ms var(--loom-ease-out) 140ms backwards;
 }
 
 /* Reasoning -> answer ------------------------------------------------------- */
@@ -75,7 +75,7 @@ html[data-loom-theme="light"] {
    the live capsule, inline-thinking.css). The answer text is what arrives
    later, so the first paint of the prose owns the entrance. Opacity only. */
 .has-lifecycle-motion .assistant-message > .markdown-body {
-  animation: loom-generation-answer-in 240ms ease-out both;
+  animation: loom-generation-answer-in var(--loom-dur-base) var(--loom-ease-out) both;
 }
 
 /* A decision the model asks for unfolds out of the prose above it, its light edge leading. The page grows with it
@@ -85,7 +85,7 @@ html[data-loom-theme="light"] {
    there. History mounts with neither class, so it never replays. The reveal is a clip, not overflow: nothing is left
    applied afterwards and the card keeps its shadow. */
 :is(.turn-process.is-live, .turn-block.is-settling .turn-final-answer) .decision-response:not(.is-resolved) > .decision-response-fold {
-  animation: loom-decision-unfold 380ms var(--turn-fold-ease, ease) backwards;
+  animation: loom-decision-unfold var(--loom-dur-panel) var(--loom-ease-move) backwards;
 }
 
 /* Clip, so the part of the card below the growing box does not count as scrollable overflow (the view would run to
@@ -94,7 +94,7 @@ html[data-loom-theme="light"] {
   position: relative;
   overflow: clip;
   overflow-clip-margin: 24px;
-  animation: loom-decision-clip 380ms var(--turn-fold-ease, ease) backwards;
+  animation: loom-decision-clip var(--loom-dur-panel) var(--loom-ease-move) backwards;
 }
 
 :is(.turn-process.is-live, .turn-block.is-settling .turn-final-answer) .decision-response:not(.is-resolved) .decision-response-fold-inner::after {
@@ -109,7 +109,7 @@ html[data-loom-theme="light"] {
   opacity: 0;
   background: linear-gradient(90deg, transparent, var(--glint-line) 50%, transparent);
   box-shadow: 0 -2px 12px var(--glint-glow);
-  animation: loom-decision-edge 380ms linear backwards;
+  animation: loom-decision-edge var(--loom-dur-panel) linear backwards;
 }
 
 /* User send -----------------------------------------------------------------
@@ -212,8 +212,8 @@ html[data-loom-theme="light"] .turn-process.is-live .entry-steering-user .user-m
 }
 
 @keyframes loom-block-form {
-  from { opacity: .3; translate: 0 6px; }
-  to { opacity: 1; translate: 0 0; }
+  from { opacity: .3; }
+  to { opacity: 1; }
 }
 
 @keyframes loom-block-glint {
@@ -259,12 +259,12 @@ html[data-loom-theme="light"] .turn-process.is-live .entry-steering-user .user-m
   0% {
     opacity: .6;
     clip-path: inset(0 0 0 0 round 32px);
-    animation-timing-function: ease-in-out;
+    animation-timing-function: var(--loom-ease-inout);
   }
   32% {
     opacity: 1;
     clip-path: inset(0 0 0 0 round 26px);
-    animation-timing-function: cubic-bezier(.2,.7,.3,1);
+    animation-timing-function: var(--loom-ease-out);
   }
   78% {
     opacity: 1;

@@ -93,12 +93,12 @@
     0 1px 2px rgba(0,0,0,.045);
   transform: translateY(0) scale(1);
   transition:
-    transform 145ms cubic-bezier(.2,.8,.2,1),
-    color 150ms ease,
-    border-color 160ms ease,
-    background 160ms ease,
-    box-shadow 170ms ease,
-    opacity 140ms ease;
+    transform var(--loom-dur-fast) var(--loom-ease-out),
+    color var(--loom-dur-fast) ease,
+    border-color var(--loom-dur-fast) ease,
+    background var(--loom-dur-fast) ease,
+    box-shadow var(--loom-dur-fast) ease,
+    opacity var(--loom-dur-fast) ease;
   cursor: pointer;
 }
 
@@ -119,8 +119,8 @@
     );
   transform: translateX(-38%);
   transition:
-    opacity 150ms ease,
-    transform 360ms cubic-bezier(.2,.75,.2,1);
+    opacity var(--loom-dur-fast) ease,
+    transform var(--loom-dur-panel) var(--loom-ease-out);
 }
 
 .runtime-section-actions button:hover:not(:disabled),
@@ -147,7 +147,7 @@
 .runtime-review-button:active:not(:disabled),
 .computer-log-export-button:active:not(:disabled) {
   transform: translateY(0) scale(.97);
-  transition-duration: 80ms;
+  transition-duration: var(--loom-dur-press);
 }
 
 .runtime-section-actions button:focus-visible,
@@ -177,8 +177,8 @@
   background: transparent;
   box-shadow: none;
   transition:
-    transform 140ms cubic-bezier(.2,.8,.2,1),
-    color 150ms ease;
+    transform var(--loom-dur-fast) var(--loom-ease-out),
+    color var(--loom-dur-fast) ease;
 }
 
 .runtime-tab:hover:not(.active) {

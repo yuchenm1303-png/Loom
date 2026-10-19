@@ -184,13 +184,14 @@ def test_one_shot_motion_hangs_off_moments_not_state_classes() -> None:
 def test_beads_pop_on_sampled_springs() -> None:
     weave = read(WEAVE)
     motion = read(MOTION)
+    tokens = (ROOT / "desktop-react" / "src" / "motion-tokens.css").read_text(encoding="utf-8")
 
-    pop = re.search(r"--loom-spring-pop: linear\(([^)]*)\);", motion)
-    soft = re.search(r"--loom-spring-soft: linear\(([^)]*)\);", motion)
-    log = re.search(r"--wv-spring: linear\(([^)]*)\);", weave)
-    assert pop and soft and log
-    for curve, overshoot in ((pop, 1.05), (soft, 1.02), (log, 1.05)):
-        points = [float(value) for value in curve.group(1).split(",")]
+    pop = re.search(r"--loom-spring-pop: linear\(([^)]*)\);", tokens)
+    soft = re.search(r"--loom-spring-soft: linear\(([^)]*)\);", tokens)
+    assert pop and soft
+    assert "--wv-spring" not in weave, "the log's spring is the shared pop spring"
+    for curve, overshoot in ((pop, 1.05), (soft, 1.02)):
+        points = [float(value.split()[0]) for value in curve.group(1).split(",")]
         assert points[0] == 0 and points[-1] == 1
         assert max(points) > overshoot
 
@@ -199,11 +200,11 @@ def test_beads_pop_on_sampled_springs() -> None:
         # Individual transform properties never clobber an element's own transform.
         assert "transform:" not in spring and "scale:" in spring
     assert "rotate:" in keyframes(weave, "wv-glyph-in")
-    assert "wv-glyph-in 460ms var(--wv-spring) 60ms backwards" in weave
-    assert "wv-bead-in 360ms var(--wv-spring)" in weave
+    assert "wv-glyph-in var(--loom-dur-slow) var(--loom-spring-pop) 60ms backwards" in weave
+    assert "wv-bead-in var(--loom-dur-panel) var(--loom-spring-pop)" in weave
     spring = keyframes(motion, "loom-task-icon-spring")
     assert "transform:" not in spring and "scale:" in spring and "rotate:" in spring
-    assert "loom-task-icon-spring 560ms var(--loom-spring-pop) var(--thinking-lead, 0ms) backwards" in read(THINKING)
+    assert "loom-task-icon-spring var(--loom-dur-slow) var(--loom-spring-pop) var(--thinking-lead, 0ms) backwards" in read(THINKING)
 
 
 def test_a_step_never_changes_its_words_and_state_changes_fade() -> None:
@@ -231,8 +232,10 @@ def test_a_step_never_changes_its_words_and_state_changes_fade() -> None:
 def test_every_height_motion_shares_one_curve_and_one_length() -> None:
     weave = read(WEAVE)
 
-    assert "--wv-ease: cubic-bezier(.22, .74, .18, 1);" in weave
-    assert "--wv-fold: 300ms;" in weave
+    tokens = (ROOT / "desktop-react" / "src" / "motion-tokens.css").read_text(encoding="utf-8")
+    assert "--loom-ease-move: cubic-bezier(.22, .7, .18, 1);" in tokens
+    assert "--loom-dur-flow: 320ms;" in tokens
+    assert "--wv-ease" not in weave and "--wv-fold" not in weave
     # Anything that grows while something else shrinks must sum to a monotonic change, which only holds when
     # both ride the same curve for the same time.
     heights = [(selector_list, body) for selector_list, body in rules(weave) if "grid-template-rows" in body
@@ -242,8 +245,8 @@ def test_every_height_motion_shares_one_curve_and_one_length() -> None:
         for declaration in re.findall(r"transition\s*:([^;]+)", body):
             for part in declaration.split(","):
                 if "grid-template-rows" in part:
-                    assert "var(--wv-fold) var(--wv-ease)" in part, (selector_list, part)
-    assert "animation: wv-grow var(--wv-fold) var(--wv-ease) backwards;" in weave
+                    assert "var(--loom-dur-flow) var(--loom-ease-move)" in part, (selector_list, part)
+    assert "animation: wv-grow var(--loom-dur-flow) var(--loom-ease-move) backwards;" in weave
     # A finished animation must never pin a value over the transition that has to run later.
     assert " both" not in re.sub(r"/\*.*?\*/", "", weave, flags=re.S).replace("animation-fill-mode: both", "")
     assert "to {" not in keyframes(weave, "wv-grow")
@@ -352,7 +355,7 @@ def test_thinking_header_morphs_into_the_disclosure_in_place() -> None:
     assert 'className="live-reasoning-label is-rest"' in transcript
     assert ".live-reasoning.is-done .live-reasoning-bead {\n  width: 0;" in thinking
     assert ".live-reasoning-label {\n  grid-area: 1 / 1;" in thinking
-    assert "transition: opacity 220ms ease;" in thinking
+    assert "transition: opacity var(--loom-dur-base) ease;" in thinking
 
 
 def test_stickers_pop_once_in_the_live_process() -> None:
@@ -363,7 +366,7 @@ def test_stickers_pop_once_in_the_live_process() -> None:
     assert (
         ".turn-process.is-live .markdown-body img.assistant-inline-sticker {\n"
         "  transform-origin: 50% 70%;\n"
-        "  animation: loom-sticker-pop 220ms var(--loom-spring-soft) backwards;"
+        "  animation: loom-sticker-pop var(--loom-dur-base) var(--loom-spring-soft) backwards;"
     ) in generation
     assert ".is-streaming img.assistant-inline-sticker" not in generation
     pop = keyframes(generation, "loom-sticker-pop")

@@ -1,3 +1,5 @@
+import { DUR, DUR_OUT } from "./motion/tokens";
+
 /**
  * Shared presentation cadence for live conversation UI.
  *
@@ -11,8 +13,8 @@ export const RUN_PHASE_MIN_DWELL_MS = 900;
 /** Transitional phases ("analysing results") only show once the gap is real. */
 export const RUN_PHASE_PRESENTATION_HOLD_MS = 280;
 export const TURN_SETTLE_HOLD_MS = 460;
-/** Completed process stack folding into its summary line (CSS: turn-flow.css). */
-export const TURN_FOLD_MS = 380;
+/** Completed process stack folding into its summary line (CSS: turn-flow.css, the panel step). */
+export const TURN_FOLD_MS = DUR.panel;
 // Leave one presentation frame between the last glyph and process folding.
 export const STREAM_FINISH_MS = TURN_SETTLE_HOLD_MS - 40;
 /**
@@ -28,5 +30,6 @@ export const LIVE_STATUS_GRACE_MS = 420;
  * slow stream still shows up.
  */
 export const LIVE_TEXT_HOLD_MS = 2000;
-/** Run strip after the run ends: outcome readable for ~560ms, then a 320ms fade. */
-export const RUN_STRIP_EXIT_MS = 900;
+/** Run strip after the run ends: the outcome stays readable this long (CSS: the delay in run-progress.css), then fades out. */
+export const RUN_STRIP_HOLD_MS = 560;
+export const RUN_STRIP_EXIT_MS = RUN_STRIP_HOLD_MS + DUR_OUT.flow + 80;

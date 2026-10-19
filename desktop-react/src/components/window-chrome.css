@@ -97,7 +97,7 @@ html[data-loom-theme="light"] .loom-window-controls::before {
   display: grid;
   place-items: center;
   outline: none;
-  transition: color 180ms ease;
+  transition: color var(--loom-dur-fast) ease;
 }
 .loom-window-controls .loom-window-close {
   width: calc(var(--loom-caption-button) + var(--loom-caption-edge));
@@ -113,7 +113,7 @@ html[data-loom-theme="light"] .loom-window-controls::before {
   right: 5px;
   border-radius: 8px;
   background: transparent;
-  transition: background-color 180ms ease;
+  transition: background-color var(--loom-dur-fast) ease;
 }
 .loom-window-controls .loom-window-close::before { right: calc(5px + var(--loom-caption-edge)); }
 .loom-window-controls button > svg { position: relative; }

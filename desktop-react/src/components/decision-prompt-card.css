@@ -39,7 +39,7 @@
   color: var(--text-2);
   text-align: left;
   cursor: pointer;
-  transition: border-color 150ms ease, background 150ms ease, transform 150ms ease, box-shadow 150ms ease;
+  transition: border-color var(--loom-dur-fast) ease, background var(--loom-dur-fast) ease, transform var(--loom-dur-fast) ease, box-shadow var(--loom-dur-fast) ease;
 }
 .decision-option:hover:not(:disabled) { border-color: var(--loom-workspace-line); background: var(--loom-workspace-hover); }
 .decision-option:focus-visible { outline: 2px solid var(--loom-workspace-accent); outline-offset: -2px; }
@@ -67,11 +67,11 @@
   color: var(--accent-soft);
   box-shadow: inset 0 1px 0 rgba(255,255,255,.025);
   transition:
-    border-color 150ms ease,
-    background 150ms ease,
-    color 150ms ease,
-    transform 150ms ease,
-    box-shadow 150ms ease;
+    border-color var(--loom-dur-fast) ease,
+    background var(--loom-dur-fast) ease,
+    color var(--loom-dur-fast) ease,
+    transform var(--loom-dur-fast) ease,
+    box-shadow var(--loom-dur-fast) ease;
 }
 
 .decision-card.is-single .decision-option-marker-core {
@@ -140,7 +140,7 @@
   font: inherit;
   font-size: 13px;
   line-height: 1.5;
-  transition: border-color 140ms ease, box-shadow 140ms ease;
+  transition: border-color var(--loom-dur-fast) ease, box-shadow var(--loom-dur-fast) ease;
 }
 .decision-custom textarea:focus { border-color: color-mix(in srgb, var(--accent) 48%, var(--border)); box-shadow: 0 0 0 3px var(--accent-faint); }
 .decision-custom textarea::placeholder { color: var(--faint); }
@@ -162,7 +162,7 @@
   font-size: 12px;
   font-weight: 650;
   cursor: pointer;
-  transition: transform 140ms ease, background 140ms ease, opacity 140ms ease;
+  transition: transform var(--loom-dur-fast) ease, background var(--loom-dur-fast) ease, opacity var(--loom-dur-fast) ease;
 }
 .decision-submit:hover:not(:disabled) { background: color-mix(in srgb, var(--accent) 26%, var(--panel-soft)); }
 .decision-submit:disabled { opacity: 1; background: var(--loom-workspace-hover); color: var(--loom-workspace-muted); border-color: transparent; cursor: default; }
@@ -339,7 +339,7 @@
 }
 
 .decision-inline-receipt.is-new {
-  animation: decision-receipt-in 180ms cubic-bezier(.2,.82,.2,1) 100ms both;
+  animation: decision-receipt-in var(--loom-dur-fast) var(--loom-ease-out) 100ms both;
 }
 
 .decision-custom-presence {
@@ -347,7 +347,7 @@
   grid-template-rows: 0fr;
   opacity: 0;
   margin-top: 0;
-  transition: grid-template-rows 200ms cubic-bezier(.2,.8,.2,1), opacity 140ms ease, margin-top 200ms ease;
+  transition: grid-template-rows var(--loom-dur-base) var(--loom-ease-move), opacity var(--loom-dur-fast) ease, margin-top var(--loom-dur-base) ease;
 }
 .decision-custom-presence[data-motion-phase="entered"] { grid-template-rows: 1fr; opacity: 1; margin-top: 7px; }
 .decision-custom-presence-inner { min-height: 0; overflow: hidden; }
@@ -384,14 +384,8 @@
 }
 
 @keyframes decision-receipt-in {
-  from {
-    opacity: 0;
-    transform: translateY(2px) scale(.985);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0) scale(1);
-  }
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
 html[data-loom-theme="light"] .decision-inline-receipt {
@@ -455,7 +449,7 @@ html[data-loom-theme="light"] .decision-inline-receipt {
 .decision-response-fold, .decision-response > .decision-inline-receipt { grid-area: 1 / 1; align-self: start; }
 .decision-response-fold { display: grid; grid-template-rows: 1fr; opacity: 1; }
 .decision-response.is-new .decision-response-fold {
-  transition: grid-template-rows 240ms cubic-bezier(.2,.8,.2,1), opacity 140ms ease;
+  transition: grid-template-rows var(--loom-dur-base) var(--loom-ease-move), opacity var(--loom-dur-fast) ease;
 }
 .decision-response.is-resolved .decision-response-fold { grid-template-rows: 0fr; opacity: 0; }
 .decision-response-fold-inner { min-height: 0; }

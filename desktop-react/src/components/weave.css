@@ -32,13 +32,9 @@
   --wv-gap: 10px;
   --wv-pad: 8px;
 
-  /* One curve and one length for every height motion, going in and going out, so that what grows and what
-     shrinks in the same moment always sum to a monotonic change: nothing bumps. */
-  --wv-ease: cubic-bezier(.22, .74, .18, 1);
-  --wv-ease-out: var(--wv-ease);
-  /* A damped spring sampled into linear(): overshoots ~10%. Only text-free marks ride it. */
-  --wv-spring: linear(0, 0.035, 0.125, 0.248, 0.387, 0.528, 0.662, 0.781, 0.881, 0.962, 1.023, 1.065, 1.091, 1.104, 1.107, 1.101, 1.091, 1.077, 1.062, 1.047, 1.033, 1.021, 1.01, 1.002, 0.996, 0.992, 0.99, 0.989, 0.989, 0.989, 0.991, 0.992, 0.994, 0.995, 0.997, 0.998, 0.999, 1, 1.001, 1.001, 1);
-  --wv-fold: 300ms;
+  /* Every height motion of the log goes in `flow` on the `move` curve, going in and going out, so that what
+     grows and what shrinks in the same moment always sum to a monotonic change: nothing bumps. Text-free
+     marks are born on the `pop` spring (motion-tokens.css). */
 }
 
 html[data-loom-theme="light"] {
@@ -64,8 +60,8 @@ html[data-loom-theme="light"] {
   grid-template-rows: 0fr;
   opacity: 0;
   transition:
-    grid-template-rows var(--wv-fold) var(--wv-ease),
-    opacity 140ms ease;
+    grid-template-rows var(--loom-dur-flow) var(--loom-ease-move),
+    opacity var(--loom-dur-fast) ease;
 }
 
 .wv-fold[data-open="true"],
@@ -74,8 +70,8 @@ html[data-loom-theme="light"] {
   grid-template-rows: 1fr;
   opacity: 1;
   transition:
-    grid-template-rows var(--wv-fold) var(--wv-ease),
-    opacity 220ms ease 40ms;
+    grid-template-rows var(--loom-dur-flow) var(--loom-ease-move),
+    opacity var(--loom-dur-base) ease 40ms;
 }
 
 .wv-fold-inner,
@@ -104,8 +100,8 @@ html[data-loom-theme="light"] {
   grid-template-rows: 1fr;
   --wv-tone: var(--wv-faint);
   transition:
-    grid-template-rows var(--wv-fold) var(--wv-ease),
-    opacity 160ms ease;
+    grid-template-rows var(--loom-dur-flow) var(--loom-ease-move),
+    opacity var(--loom-dur-fast) ease;
 }
 
 .wv-step-inner {
@@ -116,7 +112,7 @@ html[data-loom-theme="light"] {
 
 .wv-step[data-born="live"],
 .wv-earlier {
-  animation: wv-grow var(--wv-fold) var(--wv-ease) backwards;
+  animation: wv-grow var(--loom-dur-flow) var(--loom-ease-move) backwards;
 }
 
 /* The line the older steps fold into is itself born growing, like any step. */
@@ -147,7 +143,7 @@ html[data-loom-theme="light"] {
   width: 1px;
   background: var(--wv-rail);
   pointer-events: none;
-  transition: opacity 200ms ease, background-color 240ms ease;
+  transition: opacity var(--loom-dur-base) ease, background-color var(--loom-dur-fast) ease;
 }
 
 .wv-step::before {
@@ -182,7 +178,7 @@ html[data-loom-theme="light"] {
 
 .wv-step[data-born="live"]::before {
   transform-origin: top;
-  animation: wv-rail-draw 240ms var(--wv-ease-out) backwards;
+  animation: wv-rail-draw var(--loom-dur-base) var(--loom-ease-move) backwards;
 }
 
 /* The row ------------------------------------------------------------------------------------------- */
@@ -203,7 +199,7 @@ html[data-loom-theme="light"] {
   font: inherit;
   text-align: left;
   cursor: pointer;
-  transition: background-color 160ms ease;
+  transition: background-color var(--loom-dur-fast) ease;
 }
 
 .wv-row:disabled {
@@ -244,7 +240,7 @@ html[data-loom-theme="light"] {
   display: grid;
   place-items: center;
   color: inherit;
-  transition: color 240ms ease;
+  transition: color var(--loom-dur-fast) ease;
 }
 
 .wv-glyph svg {
@@ -253,7 +249,7 @@ html[data-loom-theme="light"] {
 }
 
 .wv-halo {
-  transition: opacity 240ms ease, transform 240ms ease;
+  transition: opacity var(--loom-dur-base) ease, transform var(--loom-dur-base) ease;
   position: absolute;
   left: 50%;
   top: 50%;
@@ -282,7 +278,7 @@ html[data-loom-theme="light"] {
   line-height: 20px;
   font-weight: 500;
   color: var(--wv-muted);
-  transition: color 240ms ease;
+  transition: color var(--loom-dur-fast) ease;
 }
 
 .wv-target {
@@ -353,7 +349,7 @@ html[data-loom-theme="light"] {
 .wv-tag-fold {
   display: inline-grid;
   grid-template-columns: 1fr;
-  transition: grid-template-columns 200ms cubic-bezier(.4, 0, .2, 1), margin-left 200ms cubic-bezier(.4, 0, .2, 1), opacity 160ms ease;
+  transition: grid-template-columns var(--loom-dur-base) var(--loom-ease-inout), margin-left var(--loom-dur-base) var(--loom-ease-inout), opacity var(--loom-dur-fast) ease;
 }
 
 .wv-tag-fold[data-open="false"] {
@@ -366,7 +362,7 @@ html[data-loom-theme="light"] {
 .wv-tag-fold > .wv-tag {
   min-width: 0;
   overflow: hidden;
-  transition: padding-inline 200ms cubic-bezier(.4, 0, .2, 1);
+  transition: padding-inline var(--loom-dur-base) var(--loom-ease-inout);
 }
 
 .wv-tag-fold[data-open="false"] > .wv-tag {
@@ -385,7 +381,7 @@ html[data-loom-theme="light"] {
   font-weight: 600;
   color: var(--wv-tone);
   background: color-mix(in srgb, var(--wv-tone) 13%, transparent);
-  animation: wv-fade-in 200ms ease-out backwards;
+  animation: wv-fade-in var(--loom-dur-base) var(--loom-ease-out) backwards;
 }
 
 .wv-chevron-cell {
@@ -394,7 +390,7 @@ html[data-loom-theme="light"] {
   place-items: center;
   color: var(--wv-faint);
   opacity: 0;
-  transition: opacity 140ms ease;
+  transition: opacity var(--loom-dur-fast) ease;
 }
 
 .wv-row.is-expandable:hover .wv-chevron-cell,
@@ -404,7 +400,7 @@ html[data-loom-theme="light"] {
 }
 
 .wv-chevron {
-  transition: transform 220ms var(--wv-ease-out), color 160ms ease;
+  transition: transform var(--loom-dur-base) var(--loom-ease-move), color var(--loom-dur-fast) ease;
 }
 
 .wv-step.is-open .wv-chevron,
@@ -486,22 +482,22 @@ html[data-loom-theme="light"] {
 /* Births: the step grows into its place (above), its thread is drawn to it, its glyph springs in, and its
    words fade up a beat later. */
 .wv-step[data-born="live"] .wv-glyph {
-  animation: wv-glyph-in 460ms var(--wv-spring) 60ms backwards;
+  animation: wv-glyph-in var(--loom-dur-slow) var(--loom-spring-pop) 60ms backwards;
 }
 
 .wv-step[data-born="live"] :is(.wv-verb, .wv-target) {
-  animation: wv-fade-in 220ms ease-out 90ms backwards;
+  animation: wv-fade-in var(--loom-dur-base) var(--loom-ease-out) 90ms backwards;
 }
 
 .wv-step[data-born="live"] .wv-row.is-executing .wv-verb {
   animation:
-    wv-fade-in 220ms ease-out 90ms backwards,
+    wv-fade-in var(--loom-dur-base) var(--loom-ease-out) 90ms backwards,
     thinking-text-shimmer 2.2s cubic-bezier(.33, .1, .67, .9) 310ms infinite;
 }
 
 .wv-step[data-born="live"] .wv-meta,
 .wv-step[data-born="live"] .wv-preview {
-  animation: wv-fade-in 220ms ease-out 140ms backwards;
+  animation: wv-fade-in var(--loom-dur-base) var(--loom-ease-out) 140ms backwards;
 }
 
 /* A step that finishes while the reader watches confirms once: its colour settles and one ring leaves it,
@@ -521,7 +517,7 @@ html[data-loom-theme="light"] {
   border: 1.25px solid var(--wv-settle);
   opacity: 0;
   pointer-events: none;
-  animation: wv-ring 640ms cubic-bezier(.2, .7, .25, 1) backwards;
+  animation: wv-ring var(--loom-dur-slow) var(--loom-ease-out) backwards;
 }
 
 /* Hover: a glyph makes the one small move its job suggests, and a provider mark brightens. */
@@ -551,7 +547,7 @@ html[data-loom-theme="light"] {
 .wv-stage[data-opening="true"] .wv-step:nth-child(n + 6) { --k: 5; }
 
 .wv-stage[data-opening="true"] .wv-step .wv-row {
-  animation: wv-fade-in 240ms ease-out calc(var(--k, 0) * 28ms + 40ms) backwards;
+  animation: wv-fade-in var(--loom-dur-base) var(--loom-ease-out) calc(var(--k, 0) * 28ms + 40ms) backwards;
 }
 
 /* Under the row: the last line a running command printed, or why a step failed. --------------------- */
@@ -571,7 +567,7 @@ html[data-loom-theme="light"] {
 }
 
 .wv-sub-text {
-  animation: wv-fade-in 160ms ease-out backwards;
+  animation: wv-fade-in var(--loom-dur-fast) var(--loom-ease-out) backwards;
 }
 
 /* The drawer a row opens. ---------------------------------------------------------------------------- */
@@ -647,7 +643,7 @@ html[data-loom-theme="light"] {
   font-size: 12px;
   color: var(--wv-muted);
   opacity: 1;
-  transition: opacity 160ms ease;
+  transition: opacity var(--loom-dur-fast) ease;
 }
 
 .wv-hint[data-open="false"] {
@@ -661,7 +657,7 @@ html[data-loom-theme="light"] {
   border-radius: 999px;
   transform-origin: left center;
   background: linear-gradient(90deg, rgba(var(--loom-live-accent, 153, 145, 226), .2), var(--wv-accent));
-  animation: wv-breathe 1.8s var(--wv-ease-inout) infinite;
+  animation: wv-breathe 1.8s var(--loom-ease-inout) infinite;
 }
 
 .wv-shots {
@@ -731,7 +727,7 @@ html[data-loom-theme="light"] {
   font-weight: 600;
   line-height: 1;
   cursor: pointer;
-  transition: background-color 160ms ease, border-color 160ms ease;
+  transition: background-color var(--loom-dur-fast) ease, border-color var(--loom-dur-fast) ease;
 }
 
 .wv-preview:hover {
@@ -756,7 +752,7 @@ html[data-loom-theme="light"] {
   font: inherit;
   text-align: left;
   cursor: pointer;
-  transition: background-color 160ms ease, color 160ms ease;
+  transition: background-color var(--loom-dur-fast) ease, color var(--loom-dur-fast) ease;
 }
 
 .wv-line:hover {
@@ -782,7 +778,7 @@ html[data-loom-theme="light"] {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  animation: wv-fade-in 180ms ease-out backwards;
+  animation: wv-fade-in var(--loom-dur-fast) var(--loom-ease-out) backwards;
 }
 
 .wv-line-failed {
@@ -831,7 +827,7 @@ html[data-loom-theme="light"] {
 }
 
 .wv-beads[data-animate="true"] i {
-  animation: wv-bead-in 360ms var(--wv-spring) calc(var(--i, 0) * 24ms) backwards;
+  animation: wv-bead-in var(--loom-dur-panel) var(--loom-spring-pop) calc(var(--i, 0) * 24ms) backwards;
 }
 
 /* The pointer's light, inside lines and rows that open. taskCapsuleLens.ts writes the position. */
@@ -848,7 +844,7 @@ html[data-loom-theme="light"] {
     transparent 100%
   );
   opacity: 0;
-  transition: opacity 200ms ease;
+  transition: opacity var(--loom-dur-base) ease;
 }
 
 .wv-row.is-expandable:hover::after,
@@ -862,7 +858,7 @@ html[data-loom-theme="light"] {
   min-width: 0;
   padding: 3px 8px 6px calc(var(--wv-node) + var(--wv-pad));
   color: var(--wv-muted);
-  transition: color 180ms ease;
+  transition: color var(--loom-dur-fast) ease;
 }
 
 .wv-note.is-latest {
@@ -936,7 +932,7 @@ html[data-loom-theme="light"] {
   font: inherit;
   font-size: var(--loom-font-micro);
   cursor: pointer;
-  transition: color 130ms ease;
+  transition: color var(--loom-dur-fast) ease;
 }
 
 .wv-note .note-toggle:hover {
@@ -959,7 +955,7 @@ html[data-loom-theme="light"] {
 }
 
 .process-notes-row[data-born="live"] {
-  animation: wv-grow var(--wv-fold) var(--wv-ease) backwards;
+  animation: wv-grow var(--loom-dur-flow) var(--loom-ease-move) backwards;
 }
 
 .process-notes-row-inner {
@@ -979,7 +975,7 @@ html[data-loom-theme="light"] {
   font: inherit;
   font-size: var(--loom-font-micro);
   cursor: pointer;
-  transition: color 130ms ease;
+  transition: color var(--loom-dur-fast) ease;
 }
 
 .process-notes-toggle:hover {

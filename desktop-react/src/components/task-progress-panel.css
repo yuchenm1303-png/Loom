@@ -271,7 +271,7 @@ html[data-loom-theme="light"] .task-plan-panel {
   line-height: 1;
   font-weight: 650;
   font-variant-numeric: tabular-nums;
-  transition: color 180ms ease, border-color 180ms ease, background-color 180ms ease;
+  transition: color var(--loom-dur-fast) ease, border-color var(--loom-dur-fast) ease, background-color var(--loom-dur-fast) ease;
 }
 
 .task-plan-step.is-completed .task-plan-step-mark,
@@ -440,7 +440,7 @@ html[data-loom-theme="light"] .task-plan-panel {
 .task-plan-detail summary::-webkit-details-marker { display: none; }
 .task-plan-detail summary:hover { color: var(--pl-ink); }
 .task-plan-detail summary:focus-visible { outline: 2px solid var(--pl-focus); outline-offset: 2px; }
-.task-plan-detail summary svg { flex: none; transition: transform 160ms ease; }
+.task-plan-detail summary svg { flex: none; transition: transform var(--loom-dur-fast) ease; }
 .task-plan-detail[open] summary svg { transform: rotate(90deg); }
 
 .task-plan-detail summary em {

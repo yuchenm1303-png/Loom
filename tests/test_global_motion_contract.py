@@ -26,17 +26,17 @@ def test_transient_surfaces_have_symmetric_presence() -> None:
     agents = read("desktop-react/src/components/SubAgentDock.tsx")
     project = read("desktop-react/src/components/ProjectDetailsPanel.tsx")
 
-    assert "useMotionPresence(open, 235)" in account
+    assert "useMotionPresence(open, RETAIN.base)" in account
     assert "data-motion-phase={presence.phase}" in account
-    assert "panelPresence = useMotionPresence(Boolean(openPanel), 215, openPanel)" in composer
+    assert "panelPresence = useMotionPresence(Boolean(openPanel), RETAIN.fast, openPanel)" in composer
     # Check every actual popover instead of a stale count: the old third
     # popover was removed when its controls moved into the model manager.
     popovers = [line for line in composer.splitlines() if "<div className=" in line and "composer-popover " in line]
     assert popovers
     assert all("data-motion-phase={panelPresence.phase}" in line for line in popovers)
-    assert "useMotionPresence(open, 420)" in review
-    assert "useMotionPresence(open, 420)" in agents
-    assert "useMotionPresence(open && Boolean(projectProp), 420)" in project
+    assert "useMotionPresence(open, RETAIN.panel)" in review
+    assert "useMotionPresence(open, RETAIN.panel)" in agents
+    assert "useMotionPresence(open && Boolean(projectProp), RETAIN.panel)" in project
 
 
 def test_sidebar_disclosures_do_not_use_display_none_for_projects() -> None:
@@ -61,10 +61,12 @@ def test_panel_motion_suspends_stream_scroll_work() -> None:
 
 
 def test_global_motion_uses_shared_tokens_and_double_frame_presence() -> None:
-    motion = read("desktop-react/src/global-motion.css")
+    tokens = read("desktop-react/src/motion-tokens.css")
     presence = read("desktop-react/src/motion/useMotionPresence.ts")
 
-    assert "--loom-motion-popover: 220ms" in motion
-    assert "--loom-motion-dialog: 300ms" in motion
-    assert "--loom-motion-panel: 390ms" in motion
+    # The scale itself is pinned by test_motion_scale_contract.py; this only says that panels ride it.
+    assert "--loom-dur-fast: 150ms" in tokens
+    assert "--loom-dur-base: 240ms" in tokens
+    assert "--loom-dur-flow: 320ms" in tokens
+    assert "--loom-dur-panel: 390ms" in tokens
     assert presence.count("requestAnimationFrame") >= 2

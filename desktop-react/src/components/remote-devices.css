@@ -7,7 +7,7 @@
   padding: 24px;
   background: rgba(5, 6, 9, .46);
   backdrop-filter: blur(9px) saturate(.92);
-  animation: remote-backdrop-in 180ms cubic-bezier(.2,.75,.2,1) both;
+  animation: remote-backdrop-in var(--loom-dur-fast) var(--loom-ease-out) both;
 }
 
 .remote-devices-panel {
@@ -22,7 +22,7 @@
   box-shadow: 0 28px 90px rgba(0,0,0,.42), 0 2px 12px rgba(0,0,0,.2);
   color: #edf0f4;
   font-family: var(--loom-font-family);
-  animation: remote-panel-in 220ms cubic-bezier(.2,.8,.2,1) both;
+  animation: remote-panel-in var(--loom-dur-base) var(--loom-ease-out) both;
 }
 
 .remote-devices-header {
@@ -46,7 +46,7 @@
 .remote-devices-header-actions { display: flex; align-items: center; gap: 4px; }
 .remote-devices-header-actions button {
   width: 32px; height: 32px; padding: 0; display: grid; place-items: center; border: 0; border-radius: 8px;
-  background: transparent; color: #8d939e; cursor: pointer; transition: background-color 150ms ease, color 150ms ease;
+  background: transparent; color: #8d939e; cursor: pointer; transition: background-color var(--loom-dur-fast) ease, color var(--loom-dur-fast) ease;
 }
 .remote-devices-header-actions button:hover:not(:disabled) { background: rgba(255,255,255,.06); color: #eef0f4; }
 .remote-devices-header-actions button:disabled { opacity: .45; cursor: default; }
@@ -64,7 +64,7 @@
 .remote-device-card {
   min-height: 72px; display: grid; grid-template-columns: 38px minmax(0, 1fr) auto; align-items: center; gap: 12px;
   padding: 11px 12px; border: 1px solid rgba(255,255,255,.065); border-radius: 12px; background: rgba(255,255,255,.025);
-  transition: border-color 150ms ease, background-color 150ms ease, box-shadow 150ms ease;
+  transition: border-color var(--loom-dur-fast) ease, background-color var(--loom-dur-fast) ease, box-shadow var(--loom-dur-fast) ease;
 }
 .remote-device-card:hover { background: rgba(255,255,255,.038); border-color: rgba(255,255,255,.09); }
 .remote-device-card.is-selected { border-color: rgba(169,159,248,.24); background: rgba(139,124,246,.075); box-shadow: inset 0 0 0 1px rgba(139,124,246,.035); }
@@ -88,7 +88,7 @@
 .remote-device-action {
   min-width: 90px; height: 31px; padding: 0 11px; border: 1px solid rgba(255,255,255,.08); border-radius: 8px;
   background: rgba(255,255,255,.045); color: #d2d6dc; font: inherit; font-size: 11px; font-weight: 600; cursor: pointer;
-  transition: background-color 150ms ease, border-color 150ms ease, color 150ms ease, opacity 150ms ease;
+  transition: background-color var(--loom-dur-fast) ease, border-color var(--loom-dur-fast) ease, color var(--loom-dur-fast) ease, opacity var(--loom-dur-fast) ease;
 }
 .remote-device-action:hover:not(:disabled) { background: rgba(255,255,255,.075); border-color: rgba(255,255,255,.12); color: #fff; }
 .remote-device-card.is-remote .remote-device-action:not(:disabled) { border-color: rgba(116,173,255,.24); background: rgba(83,136,222,.13); color: #cce0ff; }
@@ -111,7 +111,7 @@
   position: fixed; z-index: 960; top: 10px; left: 50%; max-width: min(520px, calc(100vw - 120px)); height: 32px;
   display: flex; align-items: center; border: 1px solid rgba(116,173,255,.2); border-radius: 999px; background: rgba(17,22,31,.88);
   box-shadow: 0 7px 24px rgba(0,0,0,.24); backdrop-filter: blur(14px) saturate(1.1); color: #cbd9ee;
-  transform: translateX(-50%); overflow: hidden; animation: remote-banner-in 210ms cubic-bezier(.2,.8,.2,1) both;
+  transform: translateX(-50%); overflow: hidden; animation: remote-banner-in var(--loom-dur-base) var(--loom-ease-out) both;
 }
 .remote-session-banner.offline { border-color: rgba(210,143,89,.2); }
 .remote-session-main, .remote-session-back { height: 100%; border: 0; background: transparent; color: inherit; font: inherit; cursor: pointer; }
@@ -125,8 +125,13 @@
 .remote-session-back { padding: 0 11px; color: #9fb7d8; font-size: 10.5px; font-weight: 600; white-space: nowrap; }
 
 @keyframes remote-backdrop-in { from { opacity: 0; } to { opacity: 1; } }
-@keyframes remote-panel-in { from { opacity: 0; transform: translateY(8px) scale(.986); } to { opacity: 1; transform: translateY(0) scale(1); } }
-@keyframes remote-banner-in { from { opacity: 0; transform: translate(-50%, -6px) scale(.98); } to { opacity: 1; transform: translate(-50%, 0) scale(1); } }
+@keyframes remote-panel-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes remote-banner-in {
+  from { opacity: 0; }
+}
 html[data-loom-theme="light"] .remote-devices-backdrop { background: rgba(35,39,48,.24); }
 html[data-loom-theme="light"] .remote-devices-panel {
   border-color: rgba(28,31,37,.1); background: radial-gradient(520px 180px at 12% -10%, rgba(105,90,216,.08), transparent 68%), #f8f8fa;

@@ -13,6 +13,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useI18n } from "../i18n";
 import { useMotionPresence } from "../motion/useMotionPresence";
+import { RETAIN } from "../motion/tokens";
 import type { TranscriptItem } from "../types/loom";
 import { PanelEmpty } from "./PanelEmpty";
 import { PanelHeader } from "./PanelHeader";
@@ -280,7 +281,7 @@ function useFileEditItems(items: TranscriptItem[]): TranscriptItem[] {
 }
 
 export function ReviewWorkspace({ items, open, onClose }: ReviewWorkspaceProps) {
-  const presence = useMotionPresence(open, 420);
+  const presence = useMotionPresence(open, RETAIN.panel);
   const { language } = useI18n();
   const c = language === "zh-CN" ? COPY_TEXT.zh : COPY_TEXT.en;
   const [externalReview, setExternalReview] = useState<ExternalReview | null>(null);

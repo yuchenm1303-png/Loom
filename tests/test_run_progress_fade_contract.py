@@ -23,7 +23,9 @@ def test_top_run_strip_floats_without_moving_the_conversation() -> None:
     # It enters and leaves through presence, holding the outcome readable first.
     assert "useMotionPresence(Boolean(running), RUN_STRIP_EXIT_MS)" in app
     assert '.run-progress-frame.top[data-motion-phase="exiting"] {' in progress
-    assert "transition: opacity 320ms cubic-bezier(.42,0,.72,.2) 560ms;" in progress
+    # The outcome stays readable for RUN_STRIP_HOLD_MS (presentationTiming.ts), then the strip leaves on the flow exit.
+    assert "transition: opacity var(--loom-dur-flow-out) var(--loom-ease-in) 560ms;" in progress
+    assert "RUN_STRIP_HOLD_MS = 560" in (RUN_PROGRESS.parents[1] / "presentationTiming.ts").read_text(encoding="utf-8")
 
 
 def test_transcript_content_fades_before_reaching_top_status() -> None:

@@ -92,9 +92,9 @@
   box-shadow: var(--language-thumb-shadow);
   transform: translate3d(0,0,0);
   transition:
-    transform 360ms cubic-bezier(.22,1,.36,1),
-    box-shadow 220ms ease,
-    background-color 220ms ease;
+    transform var(--loom-dur-panel) var(--loom-ease-out),
+    box-shadow var(--loom-dur-fast) ease,
+    background-color var(--loom-dur-fast) ease;
   will-change: transform;
   pointer-events: none;
 }
@@ -113,7 +113,7 @@
   background: linear-gradient(90deg, transparent, rgba(255,255,255,.58), transparent);
   opacity: .5;
   transform: translate3d(0,0,0);
-  transition: transform 360ms cubic-bezier(.22,1,.36,1), opacity 180ms ease;
+  transition: transform var(--loom-dur-panel) var(--loom-ease-out), opacity var(--loom-dur-fast) ease;
   pointer-events: none;
 }
 
@@ -123,11 +123,11 @@
 
 .language-settings-options:has(button:nth-child(2).active)::after {
   transform: translate3d(calc(100% + 5px),0,0);
-  animation: language-slider-shimmer-right 430ms cubic-bezier(.22,1,.36,1);
+  animation: language-slider-shimmer-right var(--loom-dur-panel) var(--loom-ease-out);
 }
 
 .language-settings-options:has(button:nth-child(1).active)::after {
-  animation: language-slider-shimmer-left 430ms cubic-bezier(.22,1,.36,1);
+  animation: language-slider-shimmer-left var(--loom-dur-panel) var(--loom-ease-out);
 }
 
 .language-settings-options button {
@@ -149,9 +149,9 @@
   cursor: pointer;
   transform: translateZ(0);
   transition:
-    color 180ms ease,
-    transform 160ms cubic-bezier(.2,.78,.2,1),
-    text-shadow 180ms ease;
+    color var(--loom-dur-fast) ease,
+    transform var(--loom-dur-fast) var(--loom-ease-out),
+    text-shadow var(--loom-dur-fast) ease;
 }
 
 .language-settings-options button:hover:not(.active) {

@@ -25,7 +25,7 @@ def test_panel_tracks_have_one_direct_layout_source_of_truth() -> None:
 def test_inspector_retains_exit_content_then_releases_hidden_event_rows() -> None:
     app = read("desktop-react/src/App.tsx")
 
-    assert "const inspectorPresence = useMotionPresence(inspectorVisible, 420)" in app
+    assert "const inspectorPresence = useMotionPresence(inspectorVisible, RETAIN.panel)" in app
     # Keep the shell and selected tab warm, not every historical runtime row.
     # The browser performance regression covers teardown and rapid reversal.
     assert "items={inspectorPresence.mounted ? loom.items : EMPTY_TRANSCRIPT_ITEMS}" in app
@@ -89,10 +89,10 @@ def test_live_workspace_uses_same_clock_as_a61_panel_group() -> None:
     app = read("desktop-react/src/App.tsx")
     css = read("desktop-react/src/components/workspace-panels.css")
 
-    assert "const duration = 390;" in app
-    assert 'easing: "cubic-bezier(.22,.7,.18,1)"' in app
+    assert "const duration = DUR.panel;" in app
+    assert "easing: EASE.move," in app
     assert "case \"header-leading\": return 230" not in app
     assert "case \"composer\": return 285" not in app
 
-    assert "animation-duration: var(--loom-motion-panel,390ms)" in css
-    assert "animation-timing-function: var(--loom-ease-standard,cubic-bezier(.22,.7,.18,1))" in css
+    assert "animation-duration: var(--loom-dur-panel)" in css
+    assert "animation-timing-function: var(--loom-ease-move)" in css
