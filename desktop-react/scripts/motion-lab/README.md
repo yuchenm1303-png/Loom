@@ -51,6 +51,15 @@ up in `docs/icon-motion-2026-10-10.md`.
 | `send-film.mjs [--scene swap,gesture,guidance] [--theme dark] [--zoom 4]` | The send button on the real composer (live-app fixture), frame by frame at device pixels: `swap` is the handoff when a message is sent and when a run is stopped (the outgoing composer is a copy React drops after 280 ms, so the tool holds that timer while it takes frames); `gesture` is wake / pointer in / out / press / text deleted; `guidance` is the button that stays while a run is going. Written up in `docs/send-button-2026-10-12.md`. |
 | `quill-film.mjs [--scene in\|out\|press\|click\|shortcut] [--probe 700] [--fixed 1] [--reduced 1]` | The quill of the sidebar's new-conversation row on the real sidebar (live-app fixture), frame by frame at device pixels: the pose the pointer gives it, the press toward its nib, and the line written again when a conversation is started (`click`, or `shortcut` for Ctrl+N, sent to the window as the event the app listens for: headless Chrome never delivers the real key, it is reserved). `--probe` prints the turn of the quill and barb and the length of the line every 20 ms. Written up in `docs/quill-2026-10-14.md`. |
 
+## The quick-tool dock
+
+The capsule at the window's right edge (`src/components/RightToolDock.tsx`, `right-tool-dock.css`); written up in `docs/right-tool-dock-2026-10-19.md`. Both tools run the live-app fixture; the behaviour is guarded by `scripts/tests/right-tool-dock-motion-browser.mjs` (mutation-checked 14 ways in a mirror).
+
+| Script | What it answers |
+| --- | --- |
+| `dock-trace.mjs [from] [to] [--theme dark] [--dwell 700] [--ms 700]` | The glider and the name, one row per animation frame, while the pointer rests on one tool, travels to another and leaves: where the glider is and how it settles (a spring with half a percent of overshoot), when the name appears (after its 360 ms wait) and how it follows (its middle against the glider's), how both fade. The first appearance must not slide (the glider is parked at its place before it fades in). |
+| `dock-film.mjs [--scene arrive\|carry] [--rate .1] [--every 350] [--frames 14] [--slots 3] [--tool review]` | A contact sheet. `arrive` reloads with animations at a tenth of their speed (CDP `Animation.setPlaybackRate`) and photographs the capsule sliding in and the tools following one after another; `carry` picks a tool up, carries it down `--slots` places (the others make room by the real distance, the rule included) and puts it down. |
+
 ## Sending
 
 A message that is sent leaves the field as a capsule and lands in the conversation (`src/sendFlight.ts` makes it, `src/sendFlightMotion.ts` is its motion: Material's arc on one clock); the tools run the live-app fixture, whose Host answers a send after `?latency=` ms as a real one does (account check, request preparation).
