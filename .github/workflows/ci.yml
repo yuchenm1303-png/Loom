@@ -86,6 +86,7 @@ jobs:
           node scripts/tests/renderer-performance-browser.mjs
           node scripts/tests/control-popover-response-browser.mjs
           node scripts/tests/right-tool-dock-browser.mjs
+          node scripts/tests/right-tool-dock-motion-browser.mjs
 
   windows-context-smoke:
     runs-on: windows-latest

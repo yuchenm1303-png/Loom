@@ -60,7 +60,7 @@ try {
     const far = enabled[enabled.length - 2];
     let at = await centre(page, first);
     await page.mouse.move(at.x, at.y, { steps: 4 });
-    await page.waitForTimeout(100);
+    await page.waitForTimeout(40);
     assert.equal((await tip(page)).on, "false", "the name waits for a pointer that rests");
     assert.equal(await page.evaluate(() => document.querySelector(".loom-tool-glider").getAnimations().filter((a) => a.transitionProperty === "transform").length), 0,
       "the glider appears where the pointer is; it does not slide in from wherever it last was");
