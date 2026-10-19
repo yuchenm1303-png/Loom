@@ -94,9 +94,10 @@ def test_navigation_reuses_a_tokenized_page_across_all_windows(background):
     assert "new URL(candidate.url).href === targetUrl" in body
     assert "existing.origin === target.origin" in body
     assert "existing.pathname === target.pathname" in body
-    assert "search.length" in body
-    assert "target.search ? (exact || samePage) : (samePage || exact)" in body
-    assert "preserveUrl: !changeFragment" in body
+    assert "exact || currentPage" in body
+    assert "samePages.length === 1" in body
+    assert "preserveUrl: navigationUrl.href === existing.href" in body
+    assert "if (!hasQuery) navigationUrl.search = existing.search" in body
     assert "args.new_tab" in body
 
 

@@ -87,6 +87,37 @@ async function main() {
   assert.equal(anchors.tabs.get(1).url, 'https://anchor.example/page?explicit=yes#third');
   await anchors.run(`dispatchCommand('navigate', {session_id: 'anchor', tab_id: '1', url: 'https://anchor.example/page'})`);
   assert.equal(anchors.tabs.get(1).url, 'https://anchor.example/page?explicit=yes#third', 'tokenless adoption must still preserve the live session URL');
+  await anchors.run(`dispatchCommand('navigate', {session_id: 'anchor', tab_id: '1', url: 'https://anchor.example/page?rid=25'})`);
+  assert.equal(anchors.tabs.get(1).url, 'https://anchor.example/page?rid=25', 'explicit query-only navigation must not be discarded');
+  await anchors.run(`dispatchCommand('navigate', {session_id: 'anchor', tab_id: '1', url: 'https://anchor.example/page?instance=B&region=east'})`);
+  assert.equal(anchors.tabs.get(1).url, 'https://anchor.example/page?instance=B&region=east');
+  await anchors.run(`dispatchCommand('navigate', {session_id: 'anchor', tab_id: '1', url: 'https://anchor.example/page#next'})`);
+  assert.equal(anchors.tabs.get(1).url, 'https://anchor.example/page?instance=B&region=east#next');
+  await anchors.run(`dispatchCommand('navigate', {session_id: 'anchor', tab_id: '1', url: 'https://anchor.example/page?'})`);
+  assert.equal(new URL(anchors.tabs.get(1).url).search, '', 'literal ? clears resource/session query');
+  await anchors.run(`dispatchCommand('navigate', {session_id: 'anchor', tab_id: '1', url: 'https://anchor.example/page?rid=25#section'})`);
+  await anchors.run(`dispatchCommand('navigate', {session_id: 'anchor', tab_id: '1', url: 'https://anchor.example/page#'})`);
+  assert.equal(anchors.tabs.get(1).url, 'https://anchor.example/page?rid=25#', 'explicit empty fragment clears the old anchor while preserving query');
+  const priorCount = anchors.tabs.size;
+  await anchors.run(`dispatchCommand('navigate', {session_id: 'anchor', tab_id: '1', url: 'https://anchor.example/page?rid=25#', new_tab: true})`);
+  assert.equal(anchors.tabs.size, priorCount + 1, 'new_tab bypasses exact-match reuse');
+
+  const exactTarget = harness();
+  exactTarget.tabs.get(1).url = 'https://console.example/page?rid=1';
+  exactTarget.tabs.set(5, {id: 5, windowId: 20, active: false, status: 'complete', url: 'https://console.example/page?rid=25'});
+  await exactTarget.run(`dispatchCommand('navigate', {session_id: 'exact', url: 'https://console.example/page?rid=25'})`);
+  assert.equal(exactTarget.storage.loomTabSessionIds[5], 'exact', 'exact existing destination wins across windows');
+  assert.equal(exactTarget.tabs.get(1).url, 'https://console.example/page?rid=1');
+  assert.equal(exactTarget.tabs.size, 2);
+
+  const ambiguous = harness();
+  ambiguous.tabs.set(4, {id: 4, windowId: 10, active: false, status: 'complete', url: 'https://console.example/page?instance=A'});
+  ambiguous.tabs.set(5, {id: 5, windowId: 20, active: false, status: 'complete', url: 'https://console.example/page?instance=LONGER_B'});
+  await ambiguous.run(`dispatchCommand('navigate', {session_id: 'ambiguous', url: 'https://console.example/page?instance=C'})`);
+  assert.equal(ambiguous.tabs.size, 4, 'ambiguous unrelated resources must not be guessed or overwritten');
+  assert.equal(ambiguous.tabs.get(4).url, 'https://console.example/page?instance=A');
+  assert.equal(ambiguous.tabs.get(5).url, 'https://console.example/page?instance=LONGER_B');
+  assert([...ambiguous.tabs.values()].some(tab => tab.url === 'https://console.example/page?instance=C'));
   const h = harness();
   const [a, b] = await h.run(`Promise.all([
     dispatchCommand('state', { session_id: 'a' }),

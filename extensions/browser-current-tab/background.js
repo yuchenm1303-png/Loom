@@ -791,10 +791,8 @@ async function resolveNavigationDestination(args, url) {
   if (args.new_tab) return { create: true, tab: current };
   let targetUrl = "";
   try { targetUrl = new URL(url).href; } catch (_) { return { create: !(await isLoomWorkTab(current)), tab: current }; }
-  // Navigation is convenience-first: an existing page in any normal browser
-  // window is preferable to a duplicate Loom tab. Query strings and fragments
-  // often contain rotating console/OAuth/session tokens, so origin + pathname is
-  // the stable identity used after an exact match.
+  // Choosing a tab and choosing its destination are separate decisions. Query
+  // parameters can identify different resources, not just session tokens.
   const allCandidates = await chrome.tabs.query({});
   const candidates = [];
   for (const candidate of allCandidates) {
@@ -805,7 +803,7 @@ async function resolveNavigationDestination(args, url) {
     try { return new URL(candidate.url).href === targetUrl; } catch (_) { return false; }
   });
   const target = new URL(targetUrl);
-  const samePage = candidates
+  const samePages = candidates
     .filter((candidate) => {
       if (!isInjectableUrl(candidate.url || "")) return false;
       try {
@@ -814,21 +812,17 @@ async function resolveNavigationDestination(args, url) {
       } catch (_) {
         return false;
       }
-    })
-    // Prefer the live token-bearing console over a tokenless duplicate. Tokens
-    // stay inside the extension and are never copied into a tool argument.
-    .sort((left, right) => {
-      const leftQuery = (() => { try { return new URL(left.url).search.length; } catch (_) { return 0; } })();
-      const rightQuery = (() => { try { return new URL(right.url).search.length; } catch (_) { return 0; } })();
-      return rightQuery - leftQuery || Number(Boolean(right.active)) - Number(Boolean(left.active));
-    })[0];
+    });
   // Reusing a page the user already has open beats opening a duplicate, but it
   // also hands that tab to Loom: the next navigate to a different URL replaces
   // whatever is on it. Adopting it into the visible Loom group is the only thing
   // that tells the user their tab is now a work tab, so adopt and group together.
-  // When the request omitted a query, a richer same-page URL is usually the
-  // authenticated live session and must beat an exact tokenless duplicate.
-  const reusable = target.search ? (exact || samePage) : (samePage || exact);
+  // Exact destinations win. Otherwise prefer this controller's current page,
+  // then an unambiguous same-path page. Never guess from query-string length
+  // between two different instances/regions in unrelated tabs.
+  const currentPage = samePages.find((candidate) => candidate.id === current.id);
+  const reusable = exact || currentPage || (samePages.length === 1 ? samePages[0] : null);
+  if (!reusable && samePages.length > 1) return { create: true, tab: current };
   if (reusable) {
     try {
       await claimTab(reusable, args);
@@ -840,12 +834,18 @@ async function resolveNavigationDestination(args, url) {
     // an anchor/SPA destination and must be applied even on the same pathname.
     // Retain a live session query only when the request omitted a query.
     const navigationUrl = new URL(targetUrl);
-    if (target.hash && !target.search) navigationUrl.search = new URL(reusable.url).search;
-    const changeFragment = Boolean(target.hash) && navigationUrl.href !== new URL(reusable.url).href;
+    const existing = new URL(reusable.url);
+    // A bare URL adopts a live page without stripping its session/resource
+    // context. Explicit query/hash intent is applied, never silently ignored.
+    // A literal '?' explicitly clears the query, unlike an omitted query.
+    const hasQuery = url.split("#", 1)[0].includes("?");
+    const hasFragment = url.includes("#");
+    if (!hasQuery) navigationUrl.search = existing.search;
+    if (!hasQuery && !hasFragment) navigationUrl.hash = existing.hash;
     return {
       create: false,
       tab: (await isLoomWorkTab(reusable)) ? reusable : await placeInLoomGroup(reusable, { adopted: true }),
-      preserveUrl: !changeFragment,
+      preserveUrl: navigationUrl.href === existing.href,
       url: navigationUrl.href,
     };
   }
