@@ -261,6 +261,10 @@ function ReasoningBlock({
   const [handoff] = useState(() => thinking && thinkingOnScreen(handle));
   const ref = useThinkingRegistration(thinking);
   const hasReasoning = Boolean(reasoning.trim());
+  const contentPresence = useMotionPresence(open && hasReasoning, RETAIN.foldBase);
+  const displayedReasoning = useRef("");
+  if (open) displayedReasoning.current = reasoning;
+  else if (!contentPresence.mounted) displayedReasoning.current = "";
 
   return (
     <div
@@ -287,16 +291,17 @@ function ReasoningBlock({
 
       {hasReasoning ? (
         <div className="live-reasoning-grid">
-          <div className="live-reasoning-inner">
+          <div className="live-reasoning-inner" inert={!open} aria-hidden={!open}>
             <div className="live-reasoning-copy">
-              <MarkdownMessage
-                content={reasoning}
+              {contentPresence.mounted ? <MarkdownMessage
+                content={displayedReasoning.current}
                 compact
                 workspace={workspace}
                 streaming={live && thinking && open}
                 messageKey={messageKey}
                 interrupted={interrupted || !open}
-              />
+                revealOnMount
+              /> : null}
             </div>
           </div>
         </div>

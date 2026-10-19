@@ -36,12 +36,12 @@ function TypingStress() {
 fixtures.renderTypingStress = () => flushSync(() => root.render(<I18nProvider><TypingStress /></I18nProvider>));
 fixtures.resetStream = () => flushSync(() => root.render(null));
 fixtures.renderStream = (text, running, status = running ? "streaming" : "completed", thread = "thread-1") => {
-  flushSync(() => root.render(<StrictMode><Transcript key={thread} currentTurnId="turn-1" running={running}
+  flushSync(() => root.render(<StrictMode><I18nProvider><Transcript key={thread} currentTurnId="turn-1" running={running}
     items={[{ id: "answer-1", threadId: thread, turnId: "turn-1", type: "assistant_message", text, status,
-      phase: running ? "commentary" : "final_answer" }]} onApproval={() => {}} /></StrictMode>));
+      phase: running ? "commentary" : "final_answer" }]} onApproval={() => {}} /></I18nProvider></StrictMode>));
 };
 fixtures.renderPlain = (content, streaming) => flushSync(() => root.render(
-  <StrictMode><MarkdownMessage content={content} streaming={streaming} /></StrictMode>,
+  <StrictMode><I18nProvider><MarkdownMessage content={content} streaming={streaming} /></I18nProvider></StrictMode>,
 ));
 fixtures.renderItems = (items, running) => flushSync(() => root.render(
   <StrictMode><I18nProvider><div className="conversation-stage" style={{ height: 800 }}><Transcript items={items} running={running} currentTurnId="turn-1" onApproval={() => {}} /></div></I18nProvider></StrictMode>,
@@ -49,11 +49,11 @@ fixtures.renderItems = (items, running) => flushSync(() => root.render(
 fixtures.renderScrolled = (text, running) => {
   const items: TranscriptItem[] = [{ id: "scroll-answer", threadId: "scroll-thread", turnId: "turn-1",
     type: "assistant_message", text, status: running ? "streaming" : "completed", phase: "final_answer" }];
-  flushSync(() => root.render(<StrictMode>
+  flushSync(() => root.render(<StrictMode><I18nProvider>
     <div className="conversation-stage" style={{ height: 400 }}>
       <style>{".conversation-stage > .transcript-scroll { height: 400px; overflow-y: auto; }"}</style>
       <Transcript items={items} running={running} currentTurnId="turn-1" onApproval={() => {}} />
       <TranscriptScrollController items={items} running={running} threadId="scroll-thread" currentTurnId="turn-1" />
     </div>
-  </StrictMode>));
+  </I18nProvider></StrictMode>));
 };

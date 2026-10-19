@@ -21,6 +21,8 @@ interface MarkdownMessageProps {
   streaming?: boolean;
   messageKey?: string;
   interrupted?: boolean;
+  /** A newly opened disclosure starts at current text, without replaying its backlog. */
+  revealOnMount?: boolean;
   workspace?: string;
 }
 
@@ -326,8 +328,8 @@ const MarkdownRenderer = memo(function MarkdownRenderer({
   );
 });
 
-export function MarkdownMessage({ content, compact = false, workspace, streaming = false, messageKey, interrupted = false }: MarkdownMessageProps) {
-  const presentation = useStreamingPresentation(content, streaming, messageKey, interrupted);
+export function MarkdownMessage({ content, compact = false, workspace, streaming = false, messageKey, interrupted = false, revealOnMount = false }: MarkdownMessageProps) {
+  const presentation = useStreamingPresentation(content, streaming, messageKey, interrupted, revealOnMount);
   return <MarkdownRenderer content={presentation.visible} compact={compact} workspace={workspace}
     streaming={presentation.painting} receiving={streaming && !interrupted} />;
 }

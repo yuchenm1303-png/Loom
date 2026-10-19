@@ -19,6 +19,7 @@ try {
   const length = () => page.locator(".markdown-body").last().evaluate((el) => el.textContent.length);
 
   await page.evaluate(() => window.renderStream("中".repeat(800), true));
+  await page.waitForFunction(() => document.querySelector(".markdown-body")?.textContent.length > 0);
   await frames(2);
   const before = await length();
   assert.ok(before > 0 && before < 800, "large first chunk must be buffered, even under StrictMode");
@@ -53,13 +54,14 @@ try {
   assert.equal(await page.locator("table").count(), 1);
 
   await page.evaluate(() => { window.resetStream(); window.renderStream("<think>" + "思".repeat(800), true); });
-  // Collapsed reasoning is synchronized immediately and must not hold tools.
-  assert.equal(await length(), 800);
+  // Collapsed reasoning must not parse or mount an invisible Markdown tree.
+  assert.equal(await page.locator(".live-reasoning .markdown-body").count(), 0);
   await page.locator(".live-reasoning-trigger").click();
+  assert.equal(await length(), 800, "opening reveals current reasoning without replaying its backlog");
   await page.evaluate(() => window.renderStream("<think>" + "思".repeat(1600), true));
   await frames(2);
   assert.ok(await length() < 1600, "expanded reasoning must use the same presentation buffer");
-  await page.evaluate(() => window.renderStream("<think>" + "思".repeat(1600), false, "interrupted"));
+  await page.evaluate(() => window.renderStream("<think>" + "思".repeat(1600), true, "interrupted"));
   assert.equal(await length(), 1600, "interrupt flushes immediately without lingering animation");
   assert.equal(await page.locator(".is-streaming").count(), 0);
 

@@ -36,10 +36,11 @@ export function StreamingPresentation({ children }: { children: ReactNode }) {
   );
 }
 
-export function useStreamingPresentation(content: string, streaming: boolean, messageKey?: string, interrupted = false) {
+export function useStreamingPresentation(content: string, streaming: boolean, messageKey?: string, interrupted = false, revealOnMount = false) {
   const snapshots = useContext(PresentationContext);
   const reportPresentation = useContext(ReportPresentationContext);
   const [initial] = useState(() => {
+    if (revealOnMount) return content;
     const saved = messageKey ? snapshots?.get(messageKey) : undefined;
     return saved && content.startsWith(saved.visible) ? saved.visible : streaming ? "" : content;
   });
@@ -53,6 +54,7 @@ export function useStreamingPresentation(content: string, streaming: boolean, me
   const drainStartedAtRef = useRef<number | null>(null);
   const animate = useRef(streaming || initial !== content);
   const painting = !reduce && !interrupted && visible !== content;
+  const observingVisibility = streaming || painting;
 
   // Publish before paint so activity arriving in this same commit cannot flash
   // below unfinished prose. Notify only on backlog boundaries, not every tick.
@@ -64,10 +66,11 @@ export function useStreamingPresentation(content: string, streaming: boolean, me
   }, [messageKey, reportPresentation]);
 
   useLayoutEffect(() => {
-    if (messageKey) snapshots?.set(messageKey, { visible });
-  }, [visible, messageKey, snapshots]);
+    if (messageKey && !revealOnMount) snapshots?.set(messageKey, { visible });
+  }, [visible, messageKey, snapshots, revealOnMount]);
 
   useEffect(() => {
+    if (!observingVisibility) return;
     // Background rAF is suspended by Chromium. Resume at runtime truth rather
     // than replaying an invisible backlog when the user returns.
     const syncVisibility = () => {
@@ -79,7 +82,7 @@ export function useStreamingPresentation(content: string, streaming: boolean, me
     };
     document.addEventListener("visibilitychange", syncVisibility);
     return () => document.removeEventListener("visibilitychange", syncVisibility);
-  }, []);
+  }, [observingVisibility]);
 
   useLayoutEffect(() => {
     targetRef.current = content;
