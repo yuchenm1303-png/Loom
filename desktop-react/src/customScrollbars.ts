@@ -7,6 +7,9 @@ const dirty = new Set<HTMLElement>();
 const added = new Set<Element>();
 const restyled = new Set<HTMLElement>();
 const visibleTargets = new Set<HTMLElement>();
+const historyRoots = new Set<Element>();
+const nearbyHistory = new Set<Element>();
+const historyBoundary = ".turn-block.is-complete:not(.is-settling):not(:last-child)";
 let frame = 0;
 let host: HTMLDivElement;
 const candidates = "div,main,section,aside,pre,textarea,ul";
@@ -79,6 +82,27 @@ const visibility = new IntersectionObserver((events) => {
     schedule(target);
   }
 });
+// Discover history shortly before it enters view. Reading computed styles in
+// content-visibility's skipped subtrees forces the work containment avoided.
+const historyVisibility = new IntersectionObserver((events) => {
+  for (const event of events) {
+    if (!event.target.isConnected) continue;
+    if (event.isIntersecting) {
+      nearbyHistory.add(event.target);
+      added.add(event.target);
+      schedule();
+    } else nearbyHistory.delete(event.target);
+  }
+}, { rootMargin: "600px 0px" });
+
+function deferHistory(node: Element): boolean {
+  if (!node.classList.contains("turn-block") || !node.matches(historyBoundary)) return false;
+  if (!historyRoots.has(node)) {
+    historyRoots.add(node);
+    historyVisibility.observe(node);
+  }
+  return !nearbyHistory.has(node);
+}
 
 function markAncestors(node: Element) {
   for (let el: Element | null = node; el; el = el.parentElement) {
@@ -156,8 +180,19 @@ function register(el: HTMLElement) {
 
 function discover(node: Element) {
   if (host.contains(node)) return;
+  const history = node.closest(historyBoundary);
+  if (history && deferHistory(history)) return;
   if (node instanceof HTMLElement && node.matches(candidates)) register(node);
-  node.querySelectorAll<HTMLElement>(candidates).forEach(register);
+  // Reject a distant turn before visiting any of its Markdown descendants.
+  const walker = document.createTreeWalker(node, NodeFilter.SHOW_ELEMENT, {
+    acceptNode(element) {
+      return element === host || deferHistory(element as Element) ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT;
+    },
+  });
+  while (walker.nextNode()) {
+    const element = walker.currentNode;
+    if (element instanceof HTMLElement && element.matches(candidates)) register(element);
+  }
 }
 
 function flush() {
@@ -175,6 +210,11 @@ function flush() {
   added.clear();
   for (const target of restyled) if (target.isConnected) register(target);
   restyled.clear();
+  for (const root of historyRoots) if (!root.isConnected) {
+    historyVisibility.unobserve(root);
+    historyRoots.delete(root);
+    nearbyHistory.delete(root);
+  }
   for (const [target, bars] of entries) if (!target.isConnected) {
     bars.forEach((bar) => bar.track.remove()); resize.unobserve(target);
     visibility.unobserve(target); visibleTargets.delete(target);
@@ -281,7 +321,7 @@ document.addEventListener("input", onInput, true);
 window.addEventListener("resize", updateAll);
 document.addEventListener("transitionend", onTransitionEnd);
 if (import.meta.hot) import.meta.hot.dispose(() => {
-  mutation.disconnect(); resize.disconnect(); visibility.disconnect(); cancelAnimationFrame(frame);
+  mutation.disconnect(); resize.disconnect(); visibility.disconnect(); historyVisibility.disconnect(); cancelAnimationFrame(frame);
   entries.forEach((_bars, target) => target.classList.remove("loom-custom-scrollable"));
   host.remove(); document.removeEventListener("scroll", onScroll, true);
   document.removeEventListener("input", onInput, true);
