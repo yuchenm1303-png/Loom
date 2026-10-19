@@ -264,6 +264,22 @@ try {
     }
   }
 
+  // --- A picture that cannot be drawn leaves the glyph, not a blank tool ---------------------------------------------------
+  {
+    // `open` asks for a good picture (avatar=1); the damaged one gets its own page.
+    const broken = await browser.newPage({ viewport: { width: 1333, height: 853 } });
+    const errors = [];
+    broken.on("pageerror", (error) => errors.push(error.message));
+    await broken.goto(`${origin}/scripts/fixtures/live-app.html?scenario=code&theme=dark&lang=en&avatar=bad`);
+    await broken.locator(".loom-tool-dock").waitFor({ timeout: 60_000 });
+    await broken.waitForFunction(() => document.querySelector('.loom-tool-button[data-tool-id="account"] svg'), null, { timeout: 5000 })
+      .catch(() => assert.fail("a picture that cannot be drawn leaves the account tool blank: the glyph never took its place"));
+    assert.equal(await broken.locator('.loom-tool-button[data-tool-id="account"] img').count(), 0, "a picture that failed to load is not left in the tool");
+    near((await broken.locator('.loom-tool-button[data-tool-id="account"] svg').boundingBox()).width, 16, 0.5, "the glyph stands in at the tools' size");
+    assert.deepEqual(errors, [], "a damaged picture caused runtime errors");
+    await broken.close();
+  }
+
   // --- Reduced motion: it all still works, and nothing glides ----------------------------------------------------------
   {
     const { page, errors } = await open("dark", "&reduced=1");

@@ -23,7 +23,7 @@
 - 每个工具占 34px（按钮 32，上下各 1px 属于槽位，所以指针在两个工具之间永远不在“空气”里）；分隔线 14×1，上下各 4px。
 - 所有颜色来自 `--loom-workspace-*`，深浅主题是同一套规则（旧版浅色是另一份 rgba）。图标 16px、线宽 1.75（家族规则）；终端图标 17.5px（光学尺寸：它的提示符和光标只占 24 格里的 16×14，同样大小画出来整列看上去偏轻；用 8 倍截图量过，11 个图标的墨迹包围盒都在各自瓷砖中心 0.1px 以内，只有它偏小）。
 - 胶囊是唯一浮在画布上的东西，阴影比面板略深一点（`--dock-shadow`：深色 `0 6px 18px` .2，浅色 .07）；仍然没有渐变、高光、模糊。
-- 窗口矮到放不下整条坞（< 470px）时坞自己滚动，滚动条不画；提示挂在坞外面，所以这时也看得到。
+- 窗口矮到放不下整条坞时坞自己滚动，滚动条不画；提示挂在坞外面，所以这时也看得到。坞 395px 高，在 72px 的顶栏下、底部留 12px，窗口高 ≥ 479px 就放得下；滚动规则从 484px 起生效（旧的 470px 在 471–479px 之间会让胶囊先缩、工具溢出胶囊，按 12 个窗口高度量过）。
 
 ### 回应
 
@@ -48,8 +48,10 @@
 ## 验证
 
 - `scripts/tests/right-tool-dock-motion-browser.mjs`（live-app 夹具，深 / 浅两套 + 减少动态）：一个 Tab 停靠点且没有原生 `title`；悬停时高亮落在工具上（位置、宽高对齐 1px 内）、名字 100ms 时还没出现 / 之后出现且挂在工具中线；第一次出现不滑；移到下一个工具名字不再等；移出两者放手；禁用工具不亮、有原因；点（agents 数量、账号状态、头像 22px）；键盘（Home / End / 跳过禁用 / `Alt+↓` / `Alt+↑` / 焦点保留 / 读屏播报 / 存盘）；手拖（举起、让位两个、不触发点击、落地顺序、没有残留样式）；`Esc` 放回且松手不算点击；矮窗口里滚动后高亮和名字仍对准；设置页盖住时记录阶段（必须见到 `exiting`；回来必须是 `entering` → `entered`）；存档顺序缺一个工具时它回到默认位置；减少动态下过渡为 0、没有重排动画。
-- **变异检查**（`scratch/mutant-root` 镜像，不动共享的树）：14 个破坏全部被抓到——`Alt+↓` 不动、拖完被点击、每个工具都是 Tab 停靠点、`title` 回来、高亮从旧位置滑入、名字不等、`Esc` 落在原处、禁用工具亮、点消失、坞一帧消失、减少动态仍滑、名字不管滚动、高亮低 3px、缺失工具追加到 Settings 之后。
-- 相关的现有浏览器测试在改动后全绿：`window-rail`、`caption-safe-area`、`browser-sidebar`、`panel-language`、`readability-floor`（3071 个文字节点，没有一个低于 11.5px，包括提示和键帽）、`renderer-performance`。`tsc --noEmit` 过；`node --test scripts/tests/*.test.mjs` 263 个过（含 `icon-motion.test.mjs`：不许别的样式表碰 `.li-*` 和 `--ic-*`，所以终端光标的规则写在 `icon-motion.css` 里）。
+- **变异检查**（`scratch/mutant-root` 和 `scratch/snap` 镜像，不动共享的树）：16 个破坏全部被抓到——`Alt+↓` 不动、拖完被点击、每个工具都是 Tab 停靠点、`title` 回来、高亮从旧位置滑入、名字不等、拖着时 `Esc` 落在原处、`Esc` 不把名字收起来、禁用工具亮、点消失、坞一帧消失、减少动态仍滑、名字不管滚动、高亮低 3px、缺失工具追加到 Settings 之后、头像坏了留下空白。
+- 相关的现有浏览器测试在改动后全绿（最后一次在 `git archive` 快照上，合入另一个会话的动效语言提交之后）：`right-tool-dock`、`window-rail`、`caption-safe-area`、`browser-sidebar`、`panel-language`、`readability-floor`（2979 个文字节点，没有一个低于 11.5px，包括提示和键帽）、`icon-motion`、`motion-language`、`task-panel-layout`、`task-progress`、`control-popover-response`、`renderer-performance`、`animation-budget`（坞里没有常驻动画：空闲时 0 次样式重算，一次运行中的动画预算 3.8 个元素 / 帧、65 ms/s）。`tsc --noEmit` 过；`node --test scripts/tests/*.test.mjs` 263 个过（含 `icon-motion.test.mjs`：不许别的样式表碰 `.li-*` 和 `--ic-*`，所以终端光标的规则写在 `icon-motion.css` 里）。
+- 头像坏了（账号服务给了一个画不出来的值）时坞里不留空白，退回图标（`onError`；夹具 `?avatar=bad`，测试里有一条，去掉 `onError` 会红）。
+- 悬停 66 次（6 轮 × 11 个工具）的开销：样式重算 354 ms/s，和指针在页面别处乱动（400 ms/s，页面本身的指针光效）同一个量级，没有额外的布局；空闲 0。
 - 工具：`scripts/motion-lab/dock-trace.mjs`（高亮和名字逐帧）、`dock-film.mjs`（进场慢放 / 拖着走的联系表）。
 
 ## 踩到的
@@ -59,11 +61,15 @@
 - 禁用的按钮不派发鼠标事件，所以**槽位**（包着按钮的 div）听指针，禁用按钮设 `pointer-events: none`。`aria-disabled` 不能替 `disabled`：右侧工具坞测试用 `isDisabled()` 判断“网页版不能假装有浏览器”。
 - React 为了重排会移动 DOM 节点，聚焦的节点被移动就失焦：重排后还焦点。
 - `:focus-visible` 只在聚焦那一刻读（`onFocus` 里 `matches(":focus-visible")`），鼠标点击聚焦不亮高亮、不弹名字。
-- 共享检出：另一个会话在同一批文件里加“任务进度”工具（`17af7b92`），它的提交把我当时没提交的坞重写一起带进去了——不用撤；我之后只提交自己的路径。它的 `task-progress-panel.css` 用了 12.5 / 13.5px 和 13 处低于 11.5px 的字号，`test_design_scale_contract.py` 的两条在 HEAD 上是红的，已经告诉那个会话。
+- 共享检出：另一个代理在同一批文件里加“任务进度”工具（`e5c1574b`，改基之前是 `17af7b92`；提交里没有 Claude 的 Co-Authored-By，不是做动效语言的那个会话），它的提交把我当时没提交的坞重写一起带进去了——不用撤；我之后只提交自己的路径。它的 `task-progress-panel.css` 一度用了 12.5 / 13.5px 和 13 处低于 11.5px 的字号，`test_design_scale_contract.py` 的两条在 HEAD 上是红的（CI 的 `test` 作业红，安装包发布器因此跳过发布）；动效语言会话（`1cc97c84`）虽然不是这些字号的作者，还是在 `bf5ce384` 里把它们放回了阶梯，现在是绿的。
+- 动效语言提交（`1cc97c84`）对坞的文件改动为 0 行，测试按文件名把坞排除在它的时间刻度之外；但它把共享的 `--loom-ease-out` 从 `cubic-bezier(.2,.74,.18,1)` 改成了 `(.16,.78,.18,1)`，坞里有 4 处（出现 / 离开的淡入淡出、名字的内容切换、点的扩散）读这个变量，我有意继续跟着共享曲线走（坞自己的弹簧、`SETTLE_MS`、`SPRING`、`TIP_*` 仍是坞自己的）。
+- **共享树上的 Vite 会被别人的保存刷新**：几个会话同时改同一个检出，开发服务器（5199）的 HMR 会在别人保存文件时整页刷新，正在跑的浏览器测试就报“Execution context was destroyed”或者窗口栏扫描“saw 0 things”（view transition 或刷新中的页面里 `elementFromPoint` 什么都点不到）。这一轮的 `window-rail` 和 `icon-motion` 就这样红过一次，换成 `git archive HEAD` 导出的快照（`scratch/snap`，自己的端口，`node_modules` 用 junction）再跑，全绿。要判断是不是自己的回归，先在快照上复现。
 
 ## 没做 / 以后
 
-- **滚动条**：应用里的是 Chromium 原生细滚动条（`styles.css` 的 `* { scrollbar-width: thin; scrollbar-color: ... }`），能改的只有颜色，形状归系统；`customScrollbars.ts` 那套自绘的目前只被两个夹具引用，应用没加载。没动。
+- **滚动条**（用户截图里坞左边那根）：应用里的是 Chromium 原生细滚动条（`styles.css` 的 `* { scrollbar-width: thin; scrollbar-color: ... }`），能改的只有颜色，形状归系统；`customScrollbars.ts` 那套自绘的目前只被两个夹具引用，应用没加载。没动：它是全应用一致的，只把对话区这一根调淡会让它比别处更难找（深色下它和画布的对比本来就只有约 1.5:1），要统一收拢是另一件事。
+- **开着的工具加一层光晕**试过（`0 0 16px` 强调色 20%）：在深色胶囊上和不加几乎分不出来，而坞是有意做成平面的（[quiet-ui-2026-10-18.md](quiet-ui-2026-10-18.md)），所以没加。
+- 名字的文字在 150% 缩放下落在 0.25 个设备像素的位置，和对齐到整像素的版本放大 6 倍并排看不出差别，没做吸附。
 - 头像没有时用的是图标，没做首字母。
 - “后台任务”面板（`z-index: 2100`）开着时盖住左边的提示。
 - 只在无头 Chrome 里跑过，没在 Electron 窗口里实测（150% 缩放的 DPR 1.5 / 2 / 3 截图看过）。

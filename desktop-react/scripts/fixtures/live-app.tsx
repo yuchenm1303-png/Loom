@@ -20,7 +20,7 @@
  *       an ending (answer, error, a stop, a bare reply). The same seed plays the same run.
  *   ?speed=0.5             slow the script (animations are not rescaled)
  *   ?empty=1               start on the home screen of an empty thread
- *   ?avatar=1              the signed-in user has a picture (the dock's account tool wears it)
+ *   ?avatar=1              the signed-in user has a picture (the dock's account tool wears it); ?avatar=bad: one that cannot be drawn
  *   ?agents=1              three delegated agents in the history (running, finished, failed): the sub-agent panel shows its filter bar and cards
  *   ?changes=1             six completed turns that changed files (one created, a few with a page to preview, eleven, a deletion, long
  *                          paths, only created files): each ends in the changed-files card, read in the real transcript
@@ -667,7 +667,7 @@ const bridge: Record<string, unknown> = {
   // The quota ring reads `windows[0]` and `balances.map`, so the catch-all `{}` below would crash the composer.
   queryModelUsage: async () => ({ status: "unsupported", provider: "", windows: [], balances: [], checkedAt: Date.now(), message: "" }),
   accountStatus: async () => ({ ok: true, snapshot: { configured: true, reachable: true, authenticated: true,
-    user: { id: "live-user", name: "Loom Designer", email: "live@example.invalid", ...(params.get("avatar") === "1" ? { avatar_data_url: fixtureAvatar } : {}) },
+    user: { id: "live-user", name: "Loom Designer", email: "live@example.invalid", ...(params.get("avatar") === "1" ? { avatar_data_url: fixtureAvatar } : params.get("avatar") === "bad" ? { avatar_data_url: "data:image/png;base64,AAAA" } : {}) },
     serviceUrl: "" } }),
   onNotification: (listener: Listener) => {
     listeners.add(listener);

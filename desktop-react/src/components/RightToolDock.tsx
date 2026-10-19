@@ -141,6 +141,7 @@ export function RightToolDock(props: RightToolDockProps) {
   const [hushed, setHushed] = useState<DockId | null>(null);
   const [tip, setTip] = useState<{ id: DockId | null; on: boolean }>({ id: null, on: false });
   const [announcement, setAnnouncement] = useState("");
+  const [brokenAvatar, setBrokenAvatar] = useState("");
   const dockRef = useRef<HTMLDivElement>(null);
   const gliderRef = useRef<HTMLSpanElement>(null);
   const tipRef = useRef<HTMLDivElement>(null);
@@ -213,8 +214,11 @@ export function RightToolDock(props: RightToolDockProps) {
     },
     account: {
       label: zh ? "Loom 账号" : "Account",
-      icon: props.accountAvatar
-        ? <img className="loom-tool-avatar" src={props.accountAvatar} alt="" draggable={false} />
+      // A picture that cannot be drawn (a stale or damaged value from the account service) leaves the tool blank:
+      // the glyph takes its place until a different picture arrives.
+      icon: props.accountAvatar && props.accountAvatar !== brokenAvatar
+        ? <img className="loom-tool-avatar" src={props.accountAvatar} alt="" draggable={false}
+            onError={() => setBrokenAvatar(props.accountAvatar ?? "")} />
         : <UserRound size={16} strokeWidth={1.75} />,
       status: props.accountAuthenticated, onClick: props.onOpenAccount,
     },

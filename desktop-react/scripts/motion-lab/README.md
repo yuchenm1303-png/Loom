@@ -54,7 +54,7 @@ up in `docs/icon-motion-2026-10-10.md`.
 
 ## The quick-tool dock
 
-The capsule at the window's right edge (`src/components/RightToolDock.tsx`, `right-tool-dock.css`); written up in `docs/right-tool-dock-2026-10-19.md`. Both tools run the live-app fixture; the behaviour is guarded by `scripts/tests/right-tool-dock-motion-browser.mjs` (mutation-checked 14 ways in a mirror).
+The capsule at the window's right edge (`src/components/RightToolDock.tsx`, `right-tool-dock.css`); written up in `docs/right-tool-dock-2026-10-19.md`. Both tools run the live-app fixture; the behaviour is guarded by `scripts/tests/right-tool-dock-motion-browser.mjs` (mutation-checked 16 ways in a mirror).
 
 | Script | What it answers |
 | --- | --- |
