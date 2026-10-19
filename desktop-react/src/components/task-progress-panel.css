@@ -1,113 +1,533 @@
-/* One measured workspace owns both transcript and progress allocation. */
-.workspace { --task-plan-width: 0px; --task-plan-motion: 280ms; --task-plan-ease: cubic-bezier(.22, 1, .36, 1); }
-.workspace[data-task-plan="expanded"] { --task-plan-width: 288px; }
-.workspace[data-task-plan="rail"] { --task-plan-width: 56px; }
-.workspace > .composer-stage {
-  margin-right: var(--task-plan-width);
-  transition: margin-right var(--task-plan-motion) var(--task-plan-ease);
-}
-.conversation-stage {
-  --task-plan-width: 0px;
-  grid-template-columns: minmax(0, 1fr) var(--task-plan-width);
-  transition: grid-template-columns var(--task-plan-motion, 280ms) var(--task-plan-ease, cubic-bezier(.22, 1, .36, 1));
-}
-.conversation-stage[data-task-plan] {
-  grid-template-columns: minmax(0, 1fr) var(--task-plan-width);
-}
-.conversation-stage[data-task-plan="expanded"] { --task-plan-width: 288px; }
-.conversation-stage[data-task-plan="rail"] { --task-plan-width: 56px; }
-.conversation-stage > .run-progress-frame.top { grid-column: 1 / -1; }
-.conversation-stage > .transcript-scroll { grid-column: 1; }
-.conversation-stage > .transcript-jump-latest { left: calc((100% - var(--task-plan-width)) / 2); }
-.conversation-stage > .transcript-jump-latest { transition: left var(--task-plan-motion, 280ms) var(--task-plan-ease, cubic-bezier(.22, 1, .36, 1)); }
-:root .app-shell .conversation-stage[data-has-entries]::before,
-:root .app-shell .conversation-stage[data-has-entries]::after { transition: right var(--task-plan-motion, 280ms) var(--task-plan-ease, cubic-bezier(.22, 1, .36, 1)); }
-.task-progress-dock {
-  position: relative;
-  grid-column: 2; grid-row: 2; min-height: 0; min-width: 0;
+/* Task progress palette -----------------------------------------------------
+   The plan is a tool in the right dock, so it hangs beside that rail: one
+   floating surface from the panel language, a summary that answers "how far"
+   before the list, and a single scrolling column of durable milestones. */
+.task-plan-panel {
+  --task-plan-warning: var(--warning, #f7c85d);
+  position: fixed;
+  top: max(58px, calc(var(--loom-rail-height, 40px) + 12px));
+  right: calc(var(--loom-tool-rail-track, 56px) + 12px);
+  z-index: 2100;
+  width: min(430px, calc(100vw - var(--loom-tool-rail-track, 56px) - 28px));
+  max-height: calc(100dvh - max(58px, calc(var(--loom-rail-height, 40px) + 12px)) - 14px);
+  display: flex;
+  flex-direction: column;
   overflow: hidden;
-  padding: 16px 12px; border-left: 1px solid var(--border); background: var(--bg);
-  transition: padding 280ms cubic-bezier(.22, 1, .36, 1);
+  font-size: 13px;
+  line-height: 1.5;
 }
-.task-progress-dock.is-rail { padding: 14px 6px; }
-.task-plan-card { position: relative; display: flex; flex-direction: column; max-height: 100%; min-height: 0; box-sizing: border-box; border: 1px solid var(--border); border-radius: 14px; padding: 16px; background: var(--panel); }
-.task-plan-heading { flex-shrink: 0; display: flex; align-items: center; gap: 8px; padding-right: 18px; color: var(--text); }
-.task-plan-heading > svg { flex-shrink: 0; color: var(--accent); }
-.task-plan-heading h2 { font-size: 13px; font-weight: 600; margin: 0; }
-.task-plan-heading > span { margin-left: auto; font-size: 11px; color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
-.task-plan-meter { flex-shrink: 0; display: block; width: 100%; height: 4px; margin: 16px 0 12px; border: 0; border-radius: 8px; overflow: hidden; accent-color: var(--accent); }
-.task-plan-meter::-webkit-progress-bar { background: var(--border); }
-.task-plan-meter::-webkit-progress-value { background: var(--accent); border-radius: 8px; }
-.task-plan-current { flex-shrink: 0; margin: 0 0 16px; font-size: 13px; line-height: 1.6; color: var(--text); overflow-wrap: anywhere; }
-.task-plan-list { list-style: none; margin: 0; padding: 0 6px 2px 0; min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-gutter: stable; border-top: 1px solid var(--border); }
-.task-plan-list li { display: flex; gap: 10px; padding: 12px 0; font-size: 12px; line-height: 1.6; }
-.task-plan-list li + li { border-top: 1px solid var(--border); }
-.task-plan-list li > div { min-width: 0; }
-.task-plan-step-mark { display: grid; place-items: center; flex: 0 0 22px; height: 22px; border: 1px solid var(--border); border-radius: 50%; color: var(--muted); font-variant-numeric: tabular-nums; }
-.task-plan-status { color: var(--muted); font-size: 11px; }
-.task-plan-list p { margin: 2px 0 0; color: var(--text); overflow-wrap: anywhere; }
-.task-plan-list small { display: block; margin-top: 5px; color: var(--muted); overflow-wrap: anywhere; }
-.task-plan-list .is-in_progress .task-plan-status,
-.task-plan-list .is-in_progress .task-plan-step-mark { color: var(--accent); }
-.task-plan-list .is-completed .task-plan-step-mark { color: var(--success, #68b99a); }
-.task-plan-list .is-blocked .task-plan-status { color: var(--warning, #d5a65a); }
-.task-plan-close { position: absolute; top: 10px; right: 8px; display: grid; place-items: center; width: 26px; height: 26px; padding: 0; border: 0; border-radius: 7px; background: transparent; color: var(--muted); cursor: pointer; }
-.task-plan-close:hover { background: var(--panel-hover); color: var(--text); }
-.task-plan-trigger { display: flex; flex-direction: column; align-items: center; gap: 8px; width: 42px; padding: 12px 2px; border: 1px solid var(--border); border-radius: 12px; background: var(--panel); color: var(--accent); cursor: pointer; }
-.task-plan-trigger span { font-size: 11px; font-variant-numeric: tabular-nums; }
-.task-plan-trigger:hover { background: var(--panel-hover); border-color: var(--accent); }
-.task-plan-trigger:focus-visible, .task-plan-close:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
-.task-plan-dialog { position: fixed; box-sizing: border-box; inset: 0; width: min(380px, calc(100vw - 32px)); max-height: calc(100dvh - 48px); margin: auto; padding: 22px; border: 1px solid var(--border); border-radius: 18px; background: var(--panel); color: var(--text); box-shadow: 0 20px 70px #0006; overflow: hidden; }
-.task-plan-dialog[open] { display: flex; flex-direction: column; }
-.task-plan-dialog::backdrop { background: #0005; }
-.task-plan-dialog .task-plan-heading { padding-right: 24px; }
 
-.task-plan-outcome.is-failed, .task-plan-outcome.is-interrupted { color: var(--danger, #d87b88); }
-.task-plan-outcome.is-not_covered { color: var(--warning, #d5a65a); }
-
-.task-plan-evidence { margin-top: 6px; color: var(--muted); font-size: 11px; }
-.task-plan-evidence summary { cursor: pointer; }
-.task-plan-acceptance { margin: 0 0 8px; color: var(--muted); font-size: 11px; }
-.task-plan-evidence small { overflow-wrap: anywhere; }
-
-/* Keep the desktop card mounted so collapse can finish its exit motion. */
-.task-plan-card { width: 262px; transition: opacity 180ms ease, transform 280ms cubic-bezier(.22, 1, .36, 1), visibility 280ms; }
-.task-progress-dock.is-rail .task-plan-card { position: absolute; top: 16px; bottom: 16px; left: 12px; opacity: 0; transform: translateX(24px); visibility: hidden; pointer-events: none; }
-.task-progress-dock.is-expanded .task-plan-card { animation: task-plan-enter 280ms cubic-bezier(.22, 1, .36, 1); }
-.task-plan-trigger { animation: task-plan-enter 220ms ease; }
-.task-plan-trigger, .task-plan-close { transition: background 160ms ease, border-color 160ms ease, color 160ms ease; }
-.task-plan-trigger:hover { transform: translateY(-2px); }
-.task-plan-list li { transition: background 220ms ease; animation: task-plan-enter 240ms ease; }
-.task-plan-list li:hover { background: var(--panel-hover); }
-.task-plan-status, .task-plan-step-mark, .task-plan-outcome { transition: color 220ms ease, border-color 220ms ease, background 220ms ease; }
-.task-plan-list .is-in_progress .task-plan-step-mark { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); }
-.task-plan-step-mark svg { animation: task-plan-mark 240ms ease; }
-.task-plan-meter::-webkit-progress-value { transition: width 280ms ease; }
-.task-plan-evidence summary { transition: color 160ms ease; }
-.task-plan-evidence summary:hover { color: var(--text); }
-.task-plan-evidence summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-.task-plan-evidence[open] small { animation: task-plan-enter 180ms ease; }
-.task-plan-dialog {
-  opacity: 0; transform: translateY(12px) scale(.97);
-  transition: opacity 200ms ease, transform 240ms cubic-bezier(.22, 1, .36, 1), display 240ms allow-discrete, overlay 240ms allow-discrete;
+html[data-loom-theme="light"] .task-plan-panel {
+  --task-plan-warning: #996300;
 }
-.task-plan-dialog[open] { opacity: 1; transform: translateY(0) scale(1); }
-.task-plan-dialog::backdrop { opacity: 0; transition: opacity 240ms ease, display 240ms allow-discrete, overlay 240ms allow-discrete; }
-.task-plan-dialog[open]::backdrop { opacity: 1; }
-@starting-style {
-  .task-plan-dialog[open] { opacity: 0; transform: translateY(12px) scale(.97); }
-  .task-plan-dialog[open]::backdrop { opacity: 0; }
+
+.task-plan-panel-header .pl-subtitle {
+  max-width: 100%;
 }
-@keyframes task-plan-enter { from { opacity: 0; transform: translateX(10px); } to { opacity: 1; transform: translateX(0); } }
-@keyframes task-plan-mark { from { opacity: 0; transform: scale(.65); } to { opacity: 1; transform: scale(1); } }
+
+.task-plan-chip {
+  min-width: 38px;
+  justify-content: center;
+}
+
+.task-plan-chip.is-complete {
+  color: var(--semantic-success-text);
+  border-color: color-mix(in srgb, var(--semantic-success-strong) 30%, transparent);
+  background: var(--semantic-success-soft);
+}
+
+/* Summary ------------------------------------------------------------------ */
+.task-plan-summary {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 13px 16px 11px;
+}
+
+.task-plan-ring {
+  position: relative;
+  flex: 0 0 58px;
+  width: 58px;
+  height: 58px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: conic-gradient(var(--pl-accent) var(--task-plan-ratio, 0deg), var(--pl-line) 0);
+}
+
+.task-plan-ring::before {
+  content: "";
+  position: absolute;
+  inset: 5px;
+  border-radius: 50%;
+  background: var(--pl-surface-raised);
+}
+
+.task-plan-ring > span {
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  align-items: baseline;
+  color: var(--pl-ink);
+  font-size: 16px;
+  line-height: 1;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+
+.task-plan-ring small {
+  margin-left: 1px;
+  color: var(--pl-muted);
+  font-size: 9px;
+  font-weight: 600;
+}
+
+.task-plan-ring.is-complete {
+  background: conic-gradient(var(--semantic-success-strong) var(--task-plan-ratio, 0deg), var(--pl-line) 0);
+}
+
+.task-plan-summary-copy {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.task-plan-eyebrow {
+  color: var(--pl-muted);
+  font-size: 10.5px;
+  line-height: 15px;
+  font-weight: 600;
+  letter-spacing: .07em;
+  text-transform: uppercase;
+}
+
+.task-plan-summary-copy > strong {
+  color: var(--pl-ink);
+  font-size: 13.5px;
+  line-height: 19px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.task-plan-facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 3px;
+}
+
+.task-plan-fact {
+  box-sizing: border-box;
+  height: 20px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 7px;
+  border: 1px solid var(--pl-line);
+  border-radius: 999px;
+  color: var(--pl-muted);
+  font-size: 10.5px;
+  line-height: 1;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.task-plan-fact svg { flex: none; }
+
+.task-plan-fact.is-complete {
+  color: var(--semantic-success-text);
+  border-color: color-mix(in srgb, var(--semantic-success-strong) 26%, transparent);
+  background: var(--semantic-success-soft);
+}
+
+.task-plan-fact.is-blocked {
+  color: var(--task-plan-warning);
+  border-color: color-mix(in srgb, var(--task-plan-warning) 28%, transparent);
+  background: color-mix(in srgb, var(--task-plan-warning) 9%, transparent);
+}
+
+.task-plan-fact.is-failed {
+  color: var(--pl-danger);
+  border-color: color-mix(in srgb, var(--pl-danger) 28%, transparent);
+  background: color-mix(in srgb, var(--pl-danger) 9%, transparent);
+}
+
+/* Current step ------------------------------------------------------------- */
+.task-plan-focus {
+  flex: none;
+  margin: 0 16px 11px;
+  padding: 8px 11px 9px;
+  display: grid;
+  gap: 3px;
+  border: 1px solid var(--pl-line);
+  border-radius: 10px;
+  background: var(--pl-card);
+}
+
+.task-plan-focus.is-in_progress {
+  border-color: var(--pl-accent-line);
+  background: var(--pl-accent-wash);
+}
+
+.task-plan-focus.is-passed {
+  border-color: color-mix(in srgb, var(--semantic-success-strong) 24%, transparent);
+  background: color-mix(in srgb, var(--semantic-success-strong) 5%, transparent);
+}
+
+.task-plan-focus.is-blocked {
+  border-color: color-mix(in srgb, var(--task-plan-warning) 30%, transparent);
+  background: color-mix(in srgb, var(--task-plan-warning) 8%, transparent);
+}
+
+.task-plan-focus-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--pl-muted);
+  font-size: 10.5px;
+  line-height: 14px;
+  font-weight: 600;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+
+.task-plan-focus.is-in_progress .task-plan-focus-label { color: var(--pl-accent); }
+.task-plan-focus.is-passed .task-plan-focus-label { color: var(--semantic-success-text); }
+.task-plan-focus.is-blocked .task-plan-focus-label { color: var(--task-plan-warning); }
+
+.task-plan-focus p {
+  margin: 0;
+  color: var(--pl-ink);
+  font-size: 12.5px;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+
+/* Steps -------------------------------------------------------------------- */
+.task-plan-list-zone {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  border-top: 1px solid var(--pl-edge);
+}
+
+.task-plan-list-head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 9px 16px 6px;
+  color: var(--pl-muted);
+  font-size: 10.5px;
+  line-height: 15px;
+  font-weight: 600;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+
+.task-plan-list-head span:last-child {
+  color: var(--pl-faint);
+  letter-spacing: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.task-plan-list {
+  list-style: none;
+  margin: 0;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-gutter: stable;
+  padding: 0 10px 8px 16px;
+}
+
+.task-plan-step {
+  position: relative;
+  display: flex;
+  gap: 10px;
+  padding: 9px 4px 10px 0;
+}
+
+.task-plan-step + .task-plan-step { border-top: 1px solid var(--pl-edge); }
+
+.task-plan-step-mark {
+  position: relative;
+  z-index: 1;
+  flex: 0 0 23px;
+  width: 23px;
+  height: 23px;
+  margin-top: 1px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--pl-line);
+  border-radius: 50%;
+  background: var(--pl-field);
+  color: var(--pl-muted);
+  font-size: 10px;
+  line-height: 1;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+  transition: color 180ms ease, border-color 180ms ease, background-color 180ms ease;
+}
+
+.task-plan-step.is-completed .task-plan-step-mark,
+.task-plan-step.is-passed .task-plan-step-mark {
+  color: var(--semantic-success-text);
+  border-color: color-mix(in srgb, var(--semantic-success-strong) 30%, transparent);
+  background: var(--semantic-success-soft);
+}
+
+.task-plan-step.is-in_progress .task-plan-step-mark {
+  color: var(--pl-accent);
+  border-color: var(--pl-accent-line);
+  background: var(--pl-accent-wash);
+}
+
+.task-plan-step.is-in_progress .task-plan-step-mark::after {
+  content: "";
+  position: absolute;
+  inset: -4px;
+  border: 1px solid var(--pl-accent);
+  border-radius: 50%;
+  opacity: 0;
+  animation: task-plan-pulse 1.9s ease-out infinite;
+}
+
+.task-plan-step.is-blocked .task-plan-step-mark {
+  color: var(--task-plan-warning);
+  border-color: color-mix(in srgb, var(--task-plan-warning) 30%, transparent);
+  background: color-mix(in srgb, var(--task-plan-warning) 9%, transparent);
+}
+
+.task-plan-step.is-failed .task-plan-step-mark,
+.task-plan-step.is-interrupted .task-plan-step-mark,
+.task-plan-step.is-not_covered .task-plan-step-mark {
+  color: var(--pl-danger);
+  border-color: color-mix(in srgb, var(--pl-danger) 30%, transparent);
+  background: color-mix(in srgb, var(--pl-danger) 9%, transparent);
+}
+
+.task-plan-step.is-not_covered .task-plan-step-mark { color: var(--task-plan-warning); }
+
+.task-plan-step-body {
+  min-width: 0;
+  flex: 1;
+  display: grid;
+  gap: 4px;
+}
+
+.task-plan-step-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.task-plan-step-title {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  color: var(--pl-ink);
+  font-size: 12.5px;
+  line-height: 1.55;
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+
+.task-plan-badge {
+  box-sizing: border-box;
+  flex: none;
+  height: 19px;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 6px;
+  border: 1px solid var(--pl-line);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--pl-muted);
+  font-size: 10px;
+  line-height: 1;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.task-plan-step.is-completed .task-plan-badge,
+.task-plan-step.is-passed .task-plan-badge {
+  color: var(--semantic-success-text);
+  border-color: color-mix(in srgb, var(--semantic-success-strong) 26%, transparent);
+  background: var(--semantic-success-soft);
+}
+
+.task-plan-step.is-in_progress .task-plan-badge {
+  color: var(--pl-accent);
+  border-color: var(--pl-accent-line);
+  background: var(--pl-accent-wash);
+}
+
+.task-plan-step.is-blocked .task-plan-badge {
+  color: var(--task-plan-warning);
+  border-color: color-mix(in srgb, var(--task-plan-warning) 28%, transparent);
+  background: color-mix(in srgb, var(--task-plan-warning) 8%, transparent);
+}
+
+.task-plan-step.is-failed .task-plan-badge,
+.task-plan-step.is-interrupted .task-plan-badge {
+  color: var(--pl-danger);
+  border-color: color-mix(in srgb, var(--pl-danger) 28%, transparent);
+  background: color-mix(in srgb, var(--pl-danger) 8%, transparent);
+}
+
+.task-plan-step.is-not_covered .task-plan-badge {
+  color: var(--task-plan-warning);
+  border-color: color-mix(in srgb, var(--task-plan-warning) 28%, transparent);
+  background: color-mix(in srgb, var(--task-plan-warning) 8%, transparent);
+}
+
+.task-plan-meta {
+  color: var(--pl-muted);
+  font-size: 10.5px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.task-plan-callout {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin: 2px 0 0;
+  padding: 7px 9px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  font-size: 11px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.task-plan-callout > svg { flex: none; margin-top: 1px; }
+
+.task-plan-callout.is-failed {
+  color: var(--pl-danger);
+  border-color: color-mix(in srgb, var(--pl-danger) 24%, transparent);
+  background: var(--semantic-danger-soft);
+}
+
+.task-plan-callout.is-blocked {
+  color: var(--task-plan-warning);
+  border-color: color-mix(in srgb, var(--task-plan-warning) 24%, transparent);
+  background: color-mix(in srgb, var(--task-plan-warning) 8%, transparent);
+}
+
+/* Details ------------------------------------------------------------------ */
+.task-plan-detail { margin-top: 1px; }
+
+.task-plan-detail summary {
+  width: fit-content;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 0;
+  border-radius: 4px;
+  color: var(--pl-muted);
+  font-size: 10.5px;
+  line-height: 15px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.task-plan-detail summary::-webkit-details-marker { display: none; }
+.task-plan-detail summary:hover { color: var(--pl-ink); }
+.task-plan-detail summary:focus-visible { outline: 2px solid var(--pl-focus); outline-offset: 2px; }
+.task-plan-detail summary svg { flex: none; transition: transform 160ms ease; }
+.task-plan-detail[open] summary svg { transform: rotate(90deg); }
+
+.task-plan-detail summary em {
+  min-width: 15px;
+  height: 15px;
+  padding: 0 4px;
+  display: inline-grid;
+  place-items: center;
+  border-radius: 5px;
+  background: var(--pl-hover);
+  color: var(--pl-muted);
+  font-size: 9.5px;
+  font-style: normal;
+  font-variant-numeric: tabular-nums;
+}
+
+.task-plan-detail-body {
+  display: grid;
+  gap: 3px;
+  margin: 3px 0 1px 16px;
+  padding: 5px 0 3px 8px;
+  border-left: 1px solid var(--pl-edge);
+}
+
+.task-plan-detail-body > span {
+  color: var(--pl-secondary);
+  font-size: 11px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+/* Footer ------------------------------------------------------------------- */
+.task-plan-foot {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 16px;
+  border-top: 1px solid var(--pl-edge);
+  color: var(--pl-faint);
+  font-size: 10.5px;
+  line-height: 15px;
+}
+
+.task-plan-foot span {
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.task-plan-foot span:first-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.task-plan-foot span:last-child {
+  flex: none;
+  font-variant-numeric: tabular-nums;
+}
+
+.task-plan-foot svg { flex: none; }
+
+@keyframes task-plan-pulse {
+  from { opacity: .42; transform: scale(.78); }
+  to { opacity: 0; transform: scale(1.38); }
+}
+
+@media (max-width: 560px) {
+  .task-plan-panel {
+    width: calc(100vw - var(--loom-tool-rail-track, 52px) - 16px);
+    max-height: calc(100dvh - 70px);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .workspace > .composer-stage, .conversation-stage, .conversation-stage::before, .conversation-stage::after, .conversation-stage > .transcript-jump-latest, .task-progress-dock, .task-progress-dock *, .task-plan-dialog::backdrop { animation: none !important; transition: none !important; }
+  .task-plan-step-mark,
+  .task-plan-detail summary svg { transition: none; }
+  .task-plan-step.is-in_progress .task-plan-step-mark::after { animation: none; display: none; }
 }
-:root[data-loom-reduced-motion="true"] .workspace > .composer-stage,
-:root[data-loom-reduced-motion="true"] .conversation-stage,
-:root[data-loom-reduced-motion="true"] .conversation-stage::before,
-:root[data-loom-reduced-motion="true"] .conversation-stage::after,
-:root[data-loom-reduced-motion="true"] .conversation-stage > .transcript-jump-latest,
-:root[data-loom-reduced-motion="true"] .task-progress-dock,
-:root[data-loom-reduced-motion="true"] .task-progress-dock *,
-:root[data-loom-reduced-motion="true"] .task-plan-dialog::backdrop { animation: none !important; transition: none !important; }
+
+html[data-loom-reduced-motion="true"] .task-plan-step-mark,
+html[data-loom-reduced-motion="true"] .task-plan-detail summary svg { transition: none; }
+
+html[data-loom-reduced-motion="true"] .task-plan-step.is-in_progress .task-plan-step-mark::after {
+  animation: none;
+  display: none;
+}

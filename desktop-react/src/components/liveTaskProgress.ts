@@ -55,18 +55,24 @@ export function liveTaskProgress(items: TranscriptItem[], protectedIds = new Set
 
 
 /** Durable references are visible receipts, never proof inferred from prose. */
-export function milestoneEvidenceLabels(step: TaskMilestone): string[] {
+export function milestoneEvidenceLabels(step: TaskMilestone, language: "en" | "zh-CN" = "zh-CN"): string[] {
+  const english = language === "en";
   return (step.evidence_refs ?? []).flatMap(ref => {
-    if ("call_id" in ref && typeof ref.call_id === "string") return [`工具记录：${ref.call_id}`];
+    if ("call_id" in ref && typeof ref.call_id === "string") {
+      return [`${english ? "Tool record" : "工具记录"}：${ref.call_id}`];
+    }
     if ("path" in ref && typeof ref.path === "string") {
       const fact = step.evidence_facts?.find(fact => fact.reference_path === ref.path || fact.path === ref.path || fact.path?.replaceAll("\\", "/") === ref.path.replaceAll("\\", "/"));
-      return [`文件：${ref.path}${fact?.sha256 ? ` · SHA-256 ${fact.sha256}` : ""}`];
+      return [`${english ? "File" : "文件"}：${ref.path}${fact?.sha256 ? ` · SHA-256 ${fact.sha256}` : ""}`];
     }
     return [];
   });
 }
 
-export function milestoneOutcomeLabel(step: TaskMilestone): string | undefined {
-  if (!step.outcome) return step.status === "completed" ? "未记录验收结论" : undefined;
-  return { passed: "验收通过", failed: "验收失败", interrupted: "测试中断", not_covered: "未覆盖", not_assessed: "未验收" }[step.outcome];
+export function milestoneOutcomeLabel(step: TaskMilestone, language: "en" | "zh-CN" = "zh-CN"): string | undefined {
+  const english = language === "en";
+  if (!step.outcome) return step.status === "completed" ? (english ? "No acceptance recorded" : "未记录验收结论") : undefined;
+  return english
+    ? { passed: "Accepted", failed: "Acceptance failed", interrupted: "Test interrupted", not_covered: "Not covered", not_assessed: "Not assessed" }[step.outcome]
+    : { passed: "验收通过", failed: "验收失败", interrupted: "测试中断", not_covered: "未覆盖", not_assessed: "未验收" }[step.outcome];
 }

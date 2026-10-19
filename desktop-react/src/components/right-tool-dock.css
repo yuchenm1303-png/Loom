@@ -1,5 +1,32 @@
-/* A small floating dock inside the reserved workspace edge. */
+/* The quick-tool dock: one capsule floating at the window's right edge, inside the track the layout keeps free for it.
+
+   It is a flat surface (one hairline, the workspace's own soft shadow), so the character is in how it answers:
+   a single wash glides to whichever tool the pointer or the keyboard is on, the name follows it and waits for a pointer
+   that rests, an open tool is a tinted tile with a pin on the side the panel opens from, the dots say that something is
+   waiting, and a tool can be picked up and set down in another place while the others make room. Colours come from the
+   workspace tokens, so both themes are one rule set. */
+
 .loom-tool-rail {
+  --dock-button: 32px;
+  --dock-pad: 5px;
+  --dock-inner: 10px;
+  --dock-ink: var(--loom-workspace-muted, #949dab);
+  --dock-ink-lit: var(--loom-workspace-ink, #eceef3);
+  --dock-accent: var(--loom-workspace-accent, #b5a7f5);
+  --dock-wash: color-mix(in srgb, var(--dock-ink-lit) 8%, transparent);
+  --dock-selection: var(--loom-workspace-selection, rgba(167, 151, 245, .12));
+  --dock-surface: var(--loom-workspace-panel, #191c22);
+  --dock-ok: var(--success, #43e68f);
+  --dock-tip: color-mix(in srgb, var(--dock-surface) 90%, #fff);
+  --dock-tip-shadow: 0 10px 28px rgba(0, 0, 0, .34), 0 1px 3px rgba(0, 0, 0, .22);
+  --dock-lift-shadow: 0 8px 20px rgba(0, 0, 0, .38), 0 1px 3px rgba(0, 0, 0, .3);
+  --dock-settle: 300ms;
+  /* Springs (scripts/motion-lab/icon-spring.mjs): glide = zeta .86 in .36 s (RightToolDock.tsx keeps a copy for the
+     keyboard's reorder), pop = zeta .52 in .46 s, ease = zeta .9 in .3 s. */
+  --dock-spring: linear(0, 0.028 3.8%, 0.097 7.7%, 0.189 11.5%, 0.291 15.4%, 0.393 19.2%, 0.491 23.1%, 0.581 26.9%, 0.661 30.8%, 0.73 34.6%, 0.789 38.5%, 0.838 42.3%, 0.878 46.2%, 0.91 50%, 0.936 53.8%, 0.956 57.7%, 0.971 61.5%, 0.982 65.4%, 0.99 69.2%, 0.996 73.1%, 1 76.9%, 1.002 80.8%, 1.004 84.6%, 1.005 88.5%, 1.005 92.3%, 1.005 96.2%, 1);
+  --dock-pop: linear(0, 0.058 3.3%, 0.202 6.7%, 0.388 10%, 0.582 13.3%, 0.761 16.7%, 0.91 20%, 1.021 23.3%, 1.095 26.7%, 1.135 30%, 1.148 33.3%, 1.14 36.7%, 1.119 40%, 1.092 43.3%, 1.063 46.7%, 1.037 50%, 1.014 53.3%, 0.998 56.7%, 0.986 60%, 0.98 63.3%, 0.978 66.7%, 0.979 70%, 0.982 73.3%, 0.986 76.7%, 0.99 80%, 0.994 83.3%, 0.998 86.7%, 1 90%, 1.002 93.3%, 1.003 96.7%, 1);
+  --dock-ease: linear(0, 0.035 4.5%, 0.118 9.1%, 0.224 13.6%, 0.337 18.2%, 0.447 22.7%, 0.548 27.3%, 0.637 31.8%, 0.714 36.4%, 0.778 40.9%, 0.83 45.5%, 0.872 50%, 0.905 54.5%, 0.931 59.1%, 0.951 63.6%, 0.966 68.2%, 0.977 72.7%, 0.985 77.3%, 0.991 81.8%, 0.995 86.4%, 0.998 90.9%, 0.999 95.5%, 1);
+
   grid-column: 4;
   grid-row: 1;
   position: fixed;
@@ -9,7 +36,7 @@
   width: var(--loom-tool-rail-track, 56px);
   min-width: 0;
   height: calc(100% - max(56px, calc(var(--loom-rail-height, 40px) + 12px)));
-  padding: 0 8px 12px;
+  padding: 0 0 12px;
   box-sizing: border-box;
   display: flex;
   align-items: flex-start;
@@ -17,151 +44,399 @@
   pointer-events: none;
 }
 
-/* One surface, one hairline and the workspace's own soft shadow: the dock floats at the edge, it is not a glass pill
-   (it was a gradient, an inset highlight, two shadows and a blur, on the one element that is always on screen).
-   Both themes come from the same tokens, and the notch a dot is cut with is the dock's own colour. */
+html[data-loom-theme="light"] .loom-tool-rail {
+  --dock-tip-shadow: 0 8px 23px rgba(25, 36, 64, .13), 0 1px 3px rgba(25, 36, 64, .08);
+  --dock-lift-shadow: 0 8px 20px rgba(25, 36, 64, .18), 0 1px 3px rgba(25, 36, 64, .12);
+}
+
+/* The stage hugs the capsule, so the name can hang off its left edge whatever the track's width. */
+.loom-tool-stage {
+  position: relative;
+  flex: 0 1 auto;
+  min-height: 0;
+  max-height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
 .loom-tool-dock {
-  --loom-tool-surface: var(--loom-workspace-panel, #191c22);
+  position: relative;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 1px;
-  width: 40px;
-  flex: 0 0 40px;
+  flex: 0 1 auto;
+  min-height: 0;
   box-sizing: border-box;
-  padding: 6px 4px;
-  border-radius: 15px;
+  /* Radii nest: tile 10 + padding 5 + hairline 1. */
+  width: calc(var(--dock-button) + var(--dock-pad) * 2 + 2px);
+  padding: var(--dock-pad);
   border: 1px solid var(--loom-workspace-line, rgba(224, 230, 242, .12));
-  background: var(--loom-tool-surface);
+  border-radius: calc(var(--dock-inner) + var(--dock-pad) + 1px);
+  background: var(--dock-surface);
   box-shadow: var(--loom-workspace-shadow, 0 2px 6px rgba(0, 0, 0, .12));
   pointer-events: auto;
-  max-height: calc(100% - 2px);
-  overflow: visible;
+  transition: opacity 260ms var(--loom-ease-out, ease), translate 420ms var(--dock-ease);
 }
-.loom-tool-position { position: relative; flex: none; width: 30px; }
+
+/* Arriving and leaving (settings and the profile page cover the app): the capsule slides in from its edge and the tools
+   follow it one after another; leaving is one quick fade. */
+.loom-tool-rail[data-motion-phase="entering"] .loom-tool-dock,
+.loom-tool-rail[data-motion-phase="exiting"] .loom-tool-dock {
+  opacity: 0;
+  translate: 12px 0;
+}
+.loom-tool-rail[data-motion-phase="exiting"] .loom-tool-dock {
+  pointer-events: none;
+  transition-duration: 180ms, 220ms;
+}
+.loom-tool-rail[data-motion-phase="entering"] .loom-tool-position {
+  opacity: 0;
+  translate: 0 8px;
+}
+
+.loom-tool-position {
+  position: relative;
+  z-index: 1;
+  flex: none;
+  width: var(--dock-button);
+  /* The 2px between two tools belongs to them, so the pointer never crosses dead air between one and the next. */
+  padding: 1px 0;
+  transform: translateY(calc(var(--shift, 0px) + var(--drag-y, 0px)));
+  transition:
+    transform var(--dock-settle) var(--dock-spring),
+    opacity 300ms var(--loom-ease-out, ease) calc(var(--i, 0) * 22ms),
+    translate 460ms var(--dock-ease) calc(var(--i, 0) * 22ms);
+}
+.loom-tool-position[data-disabled="true"] { cursor: not-allowed; }
+
 .loom-tool-divider {
-  display: block;
-  width: 16px;
+  flex: none;
+  width: 14px;
   height: 1px;
-  margin: 5px auto 6px;
-  background: rgba(210,213,235,.15);
+  margin: 4px 0;
+  background: var(--loom-workspace-line, rgba(224, 230, 242, .12));
 }
+
+/* The glider: the one wash behind whichever tool is lit. It slides on a spring, dips a little under a press, and
+   appears in place (the script parks it, so it never slides in from where it last was). */
+.loom-tool-glider {
+  position: absolute;
+  z-index: 0;
+  top: 0;
+  left: var(--dock-pad);
+  width: var(--dock-button);
+  height: var(--dock-button);
+  /* The tool slot has 1px above it: the wash sits on the tool, not on the slot. */
+  margin-top: 0;
+  border-radius: var(--dock-inner);
+  background: var(--dock-wash);
+  opacity: 0;
+  transform: translateY(var(--glide-y, 0px));
+  transition:
+    transform 360ms var(--dock-spring),
+    opacity 160ms ease,
+    scale 140ms ease-out;
+  pointer-events: none;
+}
+.loom-tool-glider[data-on="true"] { opacity: 1; }
+.loom-tool-glider[data-park="true"] { transition-property: opacity, scale; transition-duration: 160ms, 140ms; }
+.loom-tool-dock[data-press="true"] .loom-tool-glider { scale: .93; }
+.loom-tool-dock[data-dragging] .loom-tool-glider { opacity: 0; }
+
 .loom-tool-button {
   -webkit-app-region: no-drag;
   position: relative;
-  width: 30px;
-  height: 30px;
+  display: grid;
+  place-items: center;
+  width: var(--dock-button);
+  height: var(--dock-button);
+  margin: 0;
   padding: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: rgba(219,221,234,.62);
+  color: var(--dock-ink);
   background: transparent;
-  border: 1px solid transparent;
-  border-radius: 8px;
+  border: 0;
+  border-radius: var(--dock-inner);
   cursor: pointer;
-  transition: color 170ms ease, background 170ms ease, border-color 170ms ease;
+  transition: color 160ms ease, opacity 220ms ease, scale 280ms var(--dock-pop), box-shadow 220ms ease, background-color 220ms ease;
 }
-.loom-tool-button > svg { width: 16px; height: 16px; flex: none; pointer-events: none; }
+.loom-tool-button > svg,
+.loom-tool-button > img {
+  position: relative;
+  z-index: 1;
+  width: 16px;
+  height: 16px;
+  flex: none;
+  pointer-events: none;
+}
 .loom-tool-button:hover:not(:disabled),
+.loom-tool-button:focus-visible { color: var(--dock-ink-lit); }
 .loom-tool-button:focus-visible {
-  color: #f6f5fd;
-  background: rgba(217,211,255,.092);
-}
-.loom-tool-button:focus-visible {
-  outline: 2px solid rgba(183,166,255,.86);
-  outline-offset: 2px;
-}
-.loom-tool-button.is-active {
-  color: #d9cfff;
-  background: rgba(157,136,244,.11);
-  border-color: rgba(179,164,255,.11);
+  outline: 1.5px solid var(--dock-accent);
+  outline-offset: 0;
 }
 .loom-tool-button:disabled {
-  opacity: .35;
+  opacity: .38;
   cursor: not-allowed;
+  /* The slot hears the pointer instead (the name explains why), and a disabled control is not carried. */
+  pointer-events: none;
 }
-.loom-tool-button.is-drop-target {
-  box-shadow: inset 0 0 0 1px rgba(178,159,255,.7);
-}
-/* A count is a dot: that something is waiting there, not how many (the tooltip and the label say). It was a lavender
-   disc with 8px digits, the brightest solid on the page, on the quietest row of it. */
-.loom-tool-count {
+
+/* Open: a tinted tile that grows into place, and a pin on the side the panel opens from. */
+.loom-tool-button::before {
+  content: "";
   position: absolute;
-  top: 3px;
-  right: 3px;
+  inset: 0;
+  border-radius: inherit;
+  background: var(--dock-selection);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--dock-accent) 22%, transparent);
+  opacity: 0;
+  scale: .78;
+  transition: opacity 160ms ease, scale 380ms var(--dock-pop);
+}
+.loom-tool-button::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: calc(var(--dock-pad) * -1 + 1px);
+  width: 2px;
+  height: 14px;
+  margin-top: -7px;
+  border-radius: 2px;
+  background: var(--dock-accent);
+  opacity: 0;
+  scale: 1 .3;
+  transition: opacity 160ms ease, scale 380ms var(--dock-pop);
+}
+.loom-tool-button.is-active { color: var(--dock-accent); }
+.loom-tool-button.is-active:hover:not(:disabled),
+.loom-tool-button.is-active:focus-visible { color: color-mix(in srgb, var(--dock-accent) 76%, var(--dock-ink-lit)); }
+.loom-tool-button.is-active::before,
+.loom-tool-button.is-active::after { opacity: 1; scale: 1; }
+.loom-tool-button.is-active:active::before { scale: .92; }
+
+/* The signed-in user's picture, in place of the glyph. */
+.loom-tool-button > .loom-tool-avatar {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  object-fit: cover;
+  opacity: .92;
+  box-shadow: 0 0 0 1px var(--loom-workspace-line, rgba(224, 230, 242, .12));
+  transition: opacity 160ms ease;
+}
+.loom-tool-button:hover > .loom-tool-avatar { opacity: 1; }
+
+/* Carried: lifted off the dock, the others make room (their shift is a transition of its own). */
+.loom-tool-position.is-lifted { z-index: 4; }
+.loom-tool-dock[data-dragging="true"] .loom-tool-position.is-lifted { transition-duration: 0s, 300ms, 460ms; }
+.loom-tool-dock[data-dragging="true"] .loom-tool-position.is-lifted .loom-tool-button {
+  scale: 1.07;
+  background: color-mix(in srgb, var(--dock-surface) 86%, var(--dock-ink-lit));
+  box-shadow: var(--dock-lift-shadow), 0 0 0 1px var(--loom-workspace-line, rgba(224, 230, 242, .12));
+  color: var(--dock-ink-lit);
+  cursor: grabbing;
+}
+.loom-tool-dock[data-dragging="commit"] .loom-tool-position,
+.loom-tool-dock[data-dragging="commit"] .loom-tool-button { transition: none; }
+
+/* A plan's progress is a hairline under its glyph: how much of the task is done, without turning the quiet tile into
+   another dashboard. The fill is the same accent as an open tool; a finished plan turns the success colour. */
+.loom-tool-progress {
+  position: absolute;
+  z-index: 2;
+  left: 7px;
+  right: 7px;
+  bottom: 4px;
+  height: 2px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--dock-ink) 20%, transparent);
+  overflow: hidden;
+  pointer-events: none;
+}
+.loom-tool-progress > span {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--dock-accent);
+  transform-origin: left center;
+  transition: transform 280ms var(--dock-spring);
+}
+.loom-tool-progress[data-complete="true"] > span { background: var(--dock-ok); }
+
+/* A dot is a fact, not a number (the name has the number): something is waiting here / you are signed in. It pops in
+   and out; the notch around it is the capsule's own colour. */
+.loom-tool-count,
+.loom-tool-status {
+  position: absolute;
+  z-index: 2;
   width: 7px;
   height: 7px;
   border-radius: 50%;
-  background: #a89aff;
-  box-shadow: 0 0 0 2px var(--loom-tool-surface, #191c22);
+  box-shadow: 0 0 0 2px var(--dock-notch, var(--dock-surface));
+  opacity: 0;
+  scale: .3;
+  transition: opacity 160ms ease, scale 420ms var(--dock-pop), box-shadow 160ms ease;
 }
-.loom-tool-status {
+/* The notch is the colour the tool sits on, so a dot on a lit or an open tile is cut out of that tile. */
+.loom-tool-button:hover:not(:disabled),
+.loom-tool-button:focus-visible { --dock-notch: color-mix(in srgb, var(--dock-surface) 92%, var(--dock-ink-lit)); }
+.loom-tool-button.is-active { --dock-notch: color-mix(in srgb, var(--dock-surface) 89%, var(--dock-accent)); }
+.loom-tool-button.is-active:hover:not(:disabled) {
+  --dock-notch: color-mix(in srgb, color-mix(in srgb, var(--dock-surface) 89%, var(--dock-accent)) 92%, var(--dock-ink-lit));
+}
+.loom-tool-count[data-on="true"],
+.loom-tool-status[data-on="true"] { opacity: 1; scale: 1; }
+.loom-tool-count { top: 5px; right: 5px; background: var(--dock-accent); }
+.loom-tool-status { right: 4px; bottom: 4px; background: var(--dock-ok); }
+.loom-tool-button > .loom-tool-avatar ~ .loom-tool-status { right: 3px; bottom: 3px; }
+
+/* Work is running behind the tool: its dot pings twice as it arrives. (The glyph keeps time while it lasts.) */
+.loom-tool-count[data-live="true"][data-on="true"]::after {
+  content: "";
   position: absolute;
-  right: 2px;
-  bottom: 2px;
-  width: 6px;
-  height: 6px;
+  inset: 0;
   border-radius: 50%;
-  background: #4bdd9a;
-  box-shadow: 0 0 0 2px var(--loom-tool-surface, #191c22);
+  background: inherit;
+  animation: loom-tool-ping 2200ms var(--loom-ease-out, ease-out) 2 both;
 }
-.loom-tool-tooltip {
+@keyframes loom-tool-ping {
+  from { opacity: .55; transform: scale(1); }
+  to { opacity: 0; transform: scale(3); }
+}
+
+/* The name. One note for the whole dock: it waits for a pointer that rests, follows it from tool to tool without
+   starting over, and says why a tool is unavailable. */
+.loom-tool-tip {
   position: absolute;
-  z-index: 1603;
-  right: calc(100% + 13px);
-  top: 50%;
+  z-index: 3;
+  top: 0;
+  right: calc(100% + 10px);
+  box-sizing: border-box;
+  max-width: 300px;
   padding: 7px 10px;
-  border-radius: 9px;
-  border: 1px solid rgba(230,232,242,.10);
-  background: #25262e;
-  color: #f2f1f7;
-  box-shadow: 0 8px 24px rgba(0,0,0,.21);
-  font-size: 11.5px;
-  line-height: 1.2;
+  border: 1px solid var(--loom-workspace-line, rgba(224, 230, 242, .12));
+  border-radius: 10px;
+  background: var(--dock-tip);
+  color: var(--loom-workspace-ink, #eceef3);
+  box-shadow: var(--dock-tip-shadow);
+  font-size: 12px;
+  line-height: 1.25;
   font-weight: 500;
   white-space: nowrap;
   opacity: 0;
   visibility: hidden;
   pointer-events: none;
-  transform: translate(5px, -50%);
-  transition: opacity 145ms ease, transform 145ms ease, visibility 0s linear 145ms;
+  translate: 6px 0;
+  transform: translateY(calc(var(--tip-y, 0px) - 50%));
+  transition:
+    opacity 110ms ease,
+    translate 220ms var(--dock-ease),
+    transform 260ms var(--dock-ease),
+    visibility 0s linear 110ms;
 }
-.loom-tool-button:hover .loom-tool-tooltip,
-.loom-tool-button:focus-visible .loom-tool-tooltip {
+.loom-tool-tip[data-on="true"] {
   opacity: 1;
   visibility: visible;
-  transform: translate(0, -50%);
+  translate: 0 0;
   transition-delay: 0s;
 }
-html[data-loom-theme="light"] .loom-tool-button { color: #768096; }
-html[data-loom-theme="light"] .loom-tool-button:hover:not(:disabled),
-html[data-loom-theme="light"] .loom-tool-button:focus-visible {
-  color: #28354b;
-  background: rgba(84,100,141,.085);
+.loom-tool-tip[data-park="true"] {
+  transition: opacity 110ms ease, translate 220ms var(--dock-ease), visibility 0s linear 110ms;
 }
-html[data-loom-theme="light"] .loom-tool-button.is-active {
-  color: #5d48b3;
-  background: rgba(125,102,212,.105);
-  border-color: rgba(125,102,212,.11);
+.loom-tool-tip[data-park="true"][data-on="true"] { transition: opacity 110ms ease, translate 220ms var(--dock-ease); }
+.loom-tool-tip::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  right: -5px;
+  width: 8px;
+  height: 8px;
+  margin-top: -4px;
+  border-top: 1px solid var(--loom-workspace-line, rgba(224, 230, 242, .12));
+  border-right: 1px solid var(--loom-workspace-line, rgba(224, 230, 242, .12));
+  border-top-right-radius: 2px;
+  background: var(--dock-tip);
+  transform: rotate(45deg);
 }
-html[data-loom-theme="light"] .loom-tool-divider { background: rgba(64,80,114,.16); }
-html[data-loom-theme="light"] .loom-tool-tooltip {
-  background: #fff;
-  color: #30394d;
-  border-color: rgba(50,65,95,.13);
-  box-shadow: 0 8px 23px rgba(25,36,64,.13);
+.loom-tool-tip-body {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  animation: loom-tool-tip-swap 160ms var(--loom-ease-out, ease-out) both;
 }
-html[data-loom-theme="light"] .loom-tool-count {
-  background: #8069d8;
+@keyframes loom-tool-tip-swap { from { opacity: 0; } }
+.loom-tool-tip-text { display: grid; gap: 2px; }
+.loom-tool-tip-note {
+  color: var(--loom-workspace-muted, #949dab);
+  font-size: 11.5px;
+  font-weight: 400;
 }
-@media (max-height: 460px) {
+.loom-tool-tip-count {
+  min-width: 18px;
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: var(--dock-selection);
+  color: var(--dock-accent);
+  font-size: 11.5px;
+  font-weight: 600;
+  line-height: 1.2;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+.loom-tool-keys { display: inline-flex; gap: 3px; }
+.loom-tool-keys kbd {
+  min-width: 18px;
+  padding: 2px 5px;
+  border-radius: 5px;
+  background: var(--dock-wash);
+  color: var(--loom-workspace-secondary, #bbc1cc);
+  font: inherit;
+  font-size: 11.5px;
+  font-weight: 600;
+  line-height: 1.2;
+  text-align: center;
+}
+
+.loom-tool-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+/* A window too short for the whole dock scrolls it (the bar stays out of sight, the wheel and the keys work). */
+@media (max-height: 470px) {
   .loom-tool-dock { overflow-y: auto; scrollbar-width: none; }
   .loom-tool-dock::-webkit-scrollbar { display: none; }
-  .loom-tool-tooltip { display: none; }
 }
+
 @media (prefers-reduced-motion: reduce) {
-  .loom-tool-button,.loom-tool-tooltip { transition: none; }
+  .loom-tool-dock,
+  .loom-tool-position,
+  .loom-tool-glider,
+  .loom-tool-button,
+  .loom-tool-button::before,
+  .loom-tool-button::after,
+  .loom-tool-count,
+  .loom-tool-status,
+  .loom-tool-progress > span,
+  .loom-tool-tip { transition: none !important; }
+  .loom-tool-count::after,
+  .loom-tool-tip-body { animation: none !important; }
 }
+html[data-loom-reduced-motion="true"] .loom-tool-dock,
+html[data-loom-reduced-motion="true"] .loom-tool-position,
+html[data-loom-reduced-motion="true"] .loom-tool-glider,
 html[data-loom-reduced-motion="true"] .loom-tool-button,
-html[data-loom-reduced-motion="true"] .loom-tool-tooltip { transition: none; }
+html[data-loom-reduced-motion="true"] .loom-tool-button::before,
+html[data-loom-reduced-motion="true"] .loom-tool-button::after,
+html[data-loom-reduced-motion="true"] .loom-tool-count,
+html[data-loom-reduced-motion="true"] .loom-tool-status,
+html[data-loom-reduced-motion="true"] .loom-tool-progress > span,
+html[data-loom-reduced-motion="true"] .loom-tool-tip { transition: none !important; }
+html[data-loom-reduced-motion="true"] .loom-tool-count::after,
+html[data-loom-reduced-motion="true"] .loom-tool-tip-body { animation: none !important; }

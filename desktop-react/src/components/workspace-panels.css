@@ -641,3 +641,16 @@ html[data-loom-reduced-motion="true"]::view-transition-new(loom-project-surface)
     width: calc(100vw - var(--loom-tool-rail-track, 52px) - 16px);
   }
 }
+
+/* Task progress is the second palette that hangs beside the rail. It uses the
+   same final-owner rule so an open task plan can never cover the quick tools. */
+.task-plan-panel {
+  right: calc(var(--loom-tool-rail-track, 56px) + 12px);
+  max-width: calc(100vw - var(--loom-tool-rail-track, 56px) - 24px);
+}
+@media (max-width: 650px) {
+  .task-plan-panel {
+    right: calc(var(--loom-tool-rail-track, 52px) + 8px);
+    width: calc(100vw - var(--loom-tool-rail-track, 52px) - 16px);
+  }
+}

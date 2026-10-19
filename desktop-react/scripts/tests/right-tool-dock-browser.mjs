@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 const { chromium } = await import(process.env.LOOM_PLAYWRIGHT_MODULE || "playwright-core");
 const browser = await chromium.launch({ executablePath: process.env.LOOM_CHROMIUM_PATH, headless: true });
 const origin = process.env.LOOM_TEST_ORIGIN || "http://127.0.0.1:5173";
-const ids = ["files","browser","background","agents","review",
+const ids = ["files","browser","background","tasks","agents","review",
   "artifacts","inspector","profile","account","settings"];
 try {
   for (const theme of ["dark", "light"]) {
@@ -67,11 +67,12 @@ try {
 
     await dock.locator('[data-tool-id="agents"]').focus();
     await page.keyboard.press("Alt+ArrowUp");
-    assert.equal(await dock.locator("button").nth(2).getAttribute("data-tool-id"), "agents");
-    assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem("loom.ui.rightToolDock.order.v1"))[2]), "agents");
+    const movedTo = ids.indexOf("agents") - 1;
+    assert.equal(await dock.locator("button").nth(movedTo).getAttribute("data-tool-id"), "agents");
+    assert.equal(await page.evaluate(index => JSON.parse(localStorage.getItem("loom.ui.rightToolDock.order.v1"))[index], movedTo), "agents");
     await page.reload();
     await page.locator(".loom-tool-dock").waitFor();
-    assert.equal(await page.locator(".loom-tool-dock button").nth(2).getAttribute("data-tool-id"), "agents",
+    assert.equal(await page.locator(".loom-tool-dock button").nth(movedTo).getAttribute("data-tool-id"), "agents",
       "customized dock order must survive reload");
 
     await page.setViewportSize({ width: 825, height: 700 });

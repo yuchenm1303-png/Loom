@@ -33,6 +33,8 @@ import { SubAgentDock } from "./components/SubAgentDock";
 import { ThreadHeader } from "./components/ThreadHeader";
 import { RightToolDock } from "./components/RightToolDock";
 import { BackgroundTaskPanel } from "./components/BackgroundTaskPanel";
+import { TaskProgressPanel } from "./components/TaskProgressPanel";
+import { latestTaskPlan } from "./components/liveTaskProgress";
 import { Transcript } from "./components/Transcript";
 import { useLeavingItems } from "./components/leavingItems";
 import { TranscriptScrollController } from "./components/TranscriptScrollController";
@@ -438,9 +440,11 @@ export default function App() {
   const [reviewOpen, setReviewOpen] = useState(false);
   const [backgroundTasksOpen, setBackgroundTasksOpen] = useState(false);
   const [backgroundRunningCount, setBackgroundRunningCount] = useState(0);
+  const [taskPlanOpen, setTaskPlanOpen] = useState(false);
   const [agentsOpen, setAgentsOpen] = useState(false);
   const [artifactPreview, setArtifactPreview] = useState<{ path: string; workspace: string } | null>(null);
   const autoOpenedAgentsForThreadRef = useRef("");
+  const autoOpenedTaskPlanForThreadRef = useRef("");
   const [selectedProjectId, setSelectedProjectId] = useState("");
   const [branchError, setBranchError] = useState("");
   const [reportingBranch, setReportingBranch] = useState(false);
@@ -545,6 +549,8 @@ export default function App() {
   const renderableArtifacts = useMemo(() => renderableArtifactPaths(loom.items), [loom.items]);
   const artifactCount = renderableArtifacts.length;
   const agentCount = useMemo(() => subAgentCount(loom.items), [loom.items]);
+  const taskMilestones = useMemo(() => latestTaskPlan(loom.items), [loom.items]);
+  const taskCompleted = taskMilestones.filter(step => step.status === "completed").length;
   const selectedProject = selectedProjectId
     ? loom.projects.find((project) => project.id === selectedProjectId) ?? null
     : null;
@@ -840,13 +846,48 @@ export default function App() {
     }, inspectorVisible ? "right-close" : rightOpenIntent);
   }
 
+  function toggleTaskPlan(): void {
+    if (taskPlanOpen) {
+      setTaskPlanOpen(false);
+      return;
+    }
+    setBackgroundTasksOpen(false);
+    setTaskPlanOpen(true);
+  }
+
   useEffect(() => {
     setDismissedApprovalIds(new Set());
     setReviewOpen(false);
     setAgentsOpen(false);
+    setTaskPlanOpen(false);
     setArtifactPreview(null);
     autoOpenedAgentsForThreadRef.current = "";
+    autoOpenedTaskPlanForThreadRef.current = "";
   }, [thread?.id]);
+
+  // The plan is a dock tool now, but a running turn still opens it once per
+  // thread so the progress that used to be permanent does not become hidden.
+  useEffect(() => {
+    const threadId = String(thread?.id || "");
+    if (!threadId || !running || taskMilestones.length === 0) return;
+    if (autoOpenedTaskPlanForThreadRef.current === threadId) return;
+    autoOpenedTaskPlanForThreadRef.current = threadId;
+    const frame = window.requestAnimationFrame(() => {
+      setBackgroundTasksOpen(false);
+      setTaskPlanOpen(true);
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [running, taskMilestones.length, thread?.id]);
+
+  // Two palettes share the same edge, and a modal takes the whole window: the plan yields to both.
+  useEffect(() => {
+    if (!taskPlanOpen) return;
+    if (backgroundTasksOpen || settingsOpen || profileOpen || accountOpen || filesProjectId) setTaskPlanOpen(false);
+  }, [accountOpen, backgroundTasksOpen, filesProjectId, profileOpen, settingsOpen, taskPlanOpen]);
+
+  useEffect(() => {
+    if (!taskMilestones.length) setTaskPlanOpen(false);
+  }, [taskMilestones.length]);
 
   useEffect(() => {
     const handleArtifactPreview = (event: Event) => {
@@ -1296,6 +1337,10 @@ export default function App() {
         browserOpen={browserOpen}
         backgroundOpen={backgroundTasksOpen}
         backgroundRunningCount={backgroundRunningCount}
+        taskOpen={taskPlanOpen}
+        taskCompleted={taskCompleted}
+        taskTotal={taskMilestones.length}
+        taskRunning={running && taskMilestones.some(step => step.status === "in_progress")}
         agentsOpen={agentsOpen}
         agentCount={threadSwitching ? 0 : agentCount}
         reviewOpen={reviewOpen}
@@ -1304,6 +1349,8 @@ export default function App() {
         artifactCount={threadSwitching ? 0 : artifactCount}
         inspectorOpen={inspectorVisible}
         accountAuthenticated={account.account.authenticated}
+        accountAvatar={account.account.user?.avatar_data_url?.trim() || undefined}
+        shortcuts={{ settings: shortcuts.openSettings, inspector: shortcuts.toggleInspector }}
         onOpenFiles={() => {
           if (dockProject) setFilesProjectId(dockProject.id);
         }}
@@ -1325,6 +1372,7 @@ export default function App() {
           }, rightOpenIntent);
         }}
         onToggleBackground={() => setBackgroundTasksOpen(open => !open)}
+        onToggleTasks={toggleTaskPlan}
         onToggleAgents={toggleAgents}
         onToggleReview={toggleReview}
         onToggleArtifacts={toggleArtifacts}
@@ -1413,6 +1461,12 @@ export default function App() {
           open={backgroundTasksOpen && !browserOpen && !settingsOpen && !profileOpen && !accountOpen}
           onClose={() => setBackgroundTasksOpen(false)}
           onRunningCount={setBackgroundRunningCount}
+        />
+
+        <TaskProgressPanel
+          steps={taskMilestones}
+          open={taskPlanOpen}
+          onClose={() => setTaskPlanOpen(false)}
         />
 
         <div className={`conversation-stage ${running ? "is-running" : ""}`} inert={threadSwitching}>

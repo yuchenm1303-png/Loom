@@ -52,10 +52,8 @@ import {
   rowTone,
   turnProcessBreakdown,
 } from "./activityModel";
-import { latestTaskPlan, liveTaskProgress } from "./liveTaskProgress";
+import { liveTaskProgress } from "./liveTaskProgress";
 import { isLongNote } from "./processNote";
-import { TaskProgressPanel } from "./TaskProgressPanel";
-
 import { HomeTokenActivity } from "./HomeTokenActivity";
 import { MarkdownMessage } from "./MarkdownMessage";
 import "./model-retry.css";
@@ -1703,7 +1701,6 @@ export const Transcript = memo(function Transcript({ items, running, currentTurn
   }, [hasItems]);
   const turnBlocks = useStableTurnBlocks(items);
   const activeTurnId = running && currentTurnId ? String(currentTurnId) : "";
-  const milestones = useMemo(() => latestTaskPlan(items), [items]);
   const decisionInteractiveItemId = useMemo(() => {
     if (running || promptDisabled || !onPrompt) return "";
     for (let index = items.length - 1; index >= 0; index -= 1) {
@@ -1718,7 +1715,6 @@ export const Transcript = memo(function Transcript({ items, running, currentTurn
   }, [items, onPrompt, promptDisabled, running]);
 
   return (
-    <>
     <div ref={scrollRef} className={`transcript-scroll ${!items.length ? "is-empty" : ""}`}>
       <div className="chat-ambient" aria-hidden="true">
         <span className="ambient-glow glow-one" />
@@ -1763,7 +1759,5 @@ export const Transcript = memo(function Transcript({ items, running, currentTurn
         ))}
       </main>
     </div>
-      {milestones.length ? <TaskProgressPanel steps={milestones} /> : null}
-    </>
   );
 });

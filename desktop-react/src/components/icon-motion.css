@@ -305,6 +305,19 @@
 [data-icon="terminal"] .li-prompt { transform: translate(calc(var(--ic-on) * 1.8px), 0); }
 [data-icon="terminal"] .li-cursor { animation: var(--ic-k-pulse) 640ms ease both; }
 
+/* A host with work running behind it (data-ic-live) lets its glyph keep time: the terminal's cursor blinks, slowly.
+   Like every ornament it stands still while a model run is live (html[data-loom-live], see animation-budget-browser). */
+@media (prefers-reduced-motion: no-preference) {
+  :root:not([data-loom-reduced-motion="true"]):not([data-loom-live]) [data-ic-live="true"] [data-icon="terminal"] .li-cursor {
+    animation: li-cursor 1300ms steps(1, end) infinite;
+  }
+}
+
+@keyframes li-cursor {
+  0%, 56% { opacity: 1; }
+  57%, 100% { opacity: .14; }
+}
+
 [data-icon="expression"] .li-eyes { transform-origin: 11.46px 10.38px; animation: var(--ic-k-blink) 520ms ease both; }
 [data-icon="expression"] .li-smile { transform-origin: 11.46px 14.1px; transform: translate(0, calc(var(--ic-on) * .9px)) scaleX(calc(1 + var(--ic-on) * .08)); }
 [data-icon="expression"] .li-spark { transform-origin: 18.3px 5.04px; transform: scale(calc(1 + var(--ic-on) * .4)) rotate(calc(var(--ic-on) * 20deg)); }

@@ -20,6 +20,7 @@
  *       an ending (answer, error, a stop, a bare reply). The same seed plays the same run.
  *   ?speed=0.5             slow the script (animations are not rescaled)
  *   ?empty=1               start on the home screen of an empty thread
+ *   ?avatar=1              the signed-in user has a picture (the dock's account tool wears it)
  *   ?agents=1              three delegated agents in the history (running, finished, failed): the sub-agent panel shows its filter bar and cards
  *   ?changes=1             six completed turns that changed files (one created, a few with a page to preview, eleven, a deletion, long
  *                          paths, only created files): each ends in the changed-files card, read in the real transcript
@@ -45,6 +46,13 @@ localStorage.setItem("loom.settings.desktop.v2", JSON.stringify({ appearance: {
 type Item = Record<string, unknown> & { id: string; type: string };
 type Listener = (event: { method: string; params: Record<string, unknown> }) => void;
 
+// ?avatar=1: a picture of the kind the profile editor saves (a square data URL).
+const fixtureAvatar = "data:image/svg+xml;utf8," + encodeURIComponent(
+  "<svg xmlns='http://www.w3.org/2000/svg' width='96' height='96'><defs><linearGradient id='g' x1='0' y1='0' x2='1' y2='1'>"
+  + "<stop offset='0' stop-color='#f0b49a'/><stop offset='1' stop-color='#7d6df0'/></linearGradient></defs>"
+  + "<rect width='96' height='96' fill='url(#g)'/><circle cx='48' cy='38' r='17' fill='#fff' fill-opacity='.88'/>"
+  + "<path d='M14 96c4-26 20-36 34-36s30 10 34 36z' fill='#fff' fill-opacity='.88'/></svg>",
+);
 const workspace = "C:/Workspace/Loom";
 const historyAt = "2026-10-07T12:00:00Z";
 const listeners = new Set<Listener>();
@@ -659,7 +667,8 @@ const bridge: Record<string, unknown> = {
   // The quota ring reads `windows[0]` and `balances.map`, so the catch-all `{}` below would crash the composer.
   queryModelUsage: async () => ({ status: "unsupported", provider: "", windows: [], balances: [], checkedAt: Date.now(), message: "" }),
   accountStatus: async () => ({ ok: true, snapshot: { configured: true, reachable: true, authenticated: true,
-    user: { id: "live-user", name: "Loom Designer", email: "live@example.invalid" }, serviceUrl: "" } }),
+    user: { id: "live-user", name: "Loom Designer", email: "live@example.invalid", ...(params.get("avatar") === "1" ? { avatar_data_url: fixtureAvatar } : {}) },
+    serviceUrl: "" } }),
   onNotification: (listener: Listener) => {
     listeners.add(listener);
     return () => listeners.delete(listener);
