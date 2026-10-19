@@ -125,7 +125,7 @@ function latestActivityItemId(items: TranscriptItem[]): string {
  * Bottom sync work is coalesced to at most one rAF callback per frame so bursts
  * of tool/process/streaming updates do not force repeated synchronous layout.
  */
-export function TranscriptScrollController({
+function TranscriptScrollControllerState({
   items,
   threadId,
   currentTurnId,
@@ -843,4 +843,16 @@ export function TranscriptScrollController({
       <ChevronDown size={20} strokeWidth={1.8} aria-hidden="true" />
     </button>
   );
+}
+
+/**
+ * Scroll ownership is conversation-local. Remount the stateful controller for
+ * every thread so a pending frame, a detached reader position, or a late
+ * observer callback from the conversation being left can never influence the
+ * conversation being entered. The transcript DOM itself stays mounted, which
+ * preserves the home-to-first-message transition; the new controller pins
+ * that shared viewport before paint in its layout effect.
+ */
+export function TranscriptScrollController(props: TranscriptScrollControllerProps) {
+  return <TranscriptScrollControllerState key={String(props.threadId ?? "home")} {...props} />;
 }

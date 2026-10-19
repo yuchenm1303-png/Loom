@@ -54,6 +54,11 @@ try {
   const bottom = () => scroller.evaluate(el => el.scrollHeight - el.scrollTop - el.clientHeight);
   // Navigation must arrive before paint, including late layout measurements
   // from content-visibility, images and fonts in the newly mounted history.
+  // Start detached in the old conversation: none of that conversation's
+  // viewport ownership is allowed to survive the thread boundary.
+  await scroller.evaluate(el => { el.scrollTop = Math.max(0, el.scrollHeight / 2); });
+  await scroller.dispatchEvent("wheel", { deltaY: -40 });
+  await page.waitForFunction(() => document.querySelector(".transcript-scroll").dataset.following === "false");
   const navigationFrames = await page.evaluate(async () => {
     const frame = () => new Promise(resolve => requestAnimationFrame(resolve));
     window.longConversation.small();
