@@ -38,7 +38,7 @@ CURVES = {
 # icon gestures (icon-motion.test.mjs), the pet, the soft pointer and the computer-use HUD, which are ornament.
 PHYSICS = {
     # The tool dock's own vocabulary (spring pops, a staggered arrival, a glider, tips that wait for a resting pointer),
-    # written at the same time as the scale (17af7b92) with its own timers in RightToolDock.tsx and its own browser test
+    # written at the same time as the scale (e5c1574b) with its own timers in RightToolDock.tsx and its own browser test
     # (right-tool-dock-motion-browser.mjs). Bringing it onto the scale is a job for when that work has settled.
     "components/right-tool-dock.css",
     "components/icon-motion.css",

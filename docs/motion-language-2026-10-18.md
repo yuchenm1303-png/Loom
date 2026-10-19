@@ -95,7 +95,7 @@
 - **发送动画**（`sendFlight*.ts`、`send-flight.css`、`loom-user-*` 关键帧）：物理，不是档位；它自己的曲线 `--loom-generation-pop` 是样式表里唯一允许声明的曲线。
 - **图标手势的长度**：`--ic-t-run` 700 / `--ic-t-write` 640 / `--ic-t-spin` 900 是图标自己的；其余图标节奏（按下 90、回落 260、抬起 520、画线 390）现在就是这把尺子上的刻度（`--ic-t-*` 指向 `--loom-dur-*`），弹簧是同一条。
 - **氛围循环和一次性的光**（宠物、侧栏标记、护航光点、扫光、涟漪）：周期不是档位，`test_motion_scale_contract.py` 里有一张按名字列出的小名单。
-- **右侧工具栏**（`right-tool-dock.css`、`RightToolDock.tsx`，`17af7b92`）：另一个会话在同一时间写的、自己的一套动效（弹簧弹出、错峰到场、滑块、等指针停下才出现的名字），连同它自己的定时器和浏览器测试。先不动它，等它定下来再放上这把尺子；`test_motion_scale_contract.py` 里按文件名列着，名单不会悄悄变长。任务进度面板（`task-progress-panel.css`）已经在面板语言上，只有两处 160 / 180ms 的颜色过渡和一个保留时长被收进尺子。
+- **右侧工具栏**（`right-tool-dock.css`、`RightToolDock.tsx`，`e5c1574b`）：另一个会话在同一时间写的、自己的一套动效（弹簧弹出、错峰到场、滑块、等指针停下才出现的名字），连同它自己的定时器和浏览器测试。先不动它，等它定下来再放上这把尺子；`test_motion_scale_contract.py` 里按文件名列着，名单不会悄悄变长。任务进度面板（`task-progress-panel.css`）已经在面板语言上，只有两处 160 / 180ms 的颜色过渡和一个保留时长被收进尺子。
 - **“减少动态”**：令牌在 `@media (prefers-reduced-motion)` 和 `[data-loom-reduced-motion]` 下折成 1ms（`motion-tokens.css`），所有按尺子写的东西自动不占时间；各文件里原有的 `animation: none` 规则留着（循环和图标还需要它们）。
 
 ## 五、顺手修的
