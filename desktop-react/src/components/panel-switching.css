@@ -10,9 +10,14 @@ html[data-loom-layout-transition="true"]::view-transition-new(*) {
 
 /* A floating palette is not captured as a side-surface snapshot. On a tool
    swap, release its old pixels immediately rather than fading it over the
-   newly entering panel. Ordinary close still keeps its gentle exit. */
+   newly entering panel. Ordinary close still keeps its gentle exit.
+   Whether a dock panel is being replaced is the handoff's own intent (App.tsx
+   writes right-open / right-swap / right-close): it used to be asked of the
+   page with :has(.loom-tool-button[aria-pressed]), a :has() anchored on the
+   root that Blink re-evaluates on every DOM change of a live run
+   (css-has-invalidation.test.mjs). */
 html[data-loom-panel-handoff] :is(.background-task-panel, .task-plan-panel)[inert],
-html[data-loom-panel-handoff]:has(.loom-tool-button[aria-pressed="true"]) :is(.review-workspace, .sub-agent-dock, .artifact-preview-dock, .project-details-panel)[inert] {
+html:is([data-loom-panel-handoff="right-open"], [data-loom-panel-handoff="right-swap"]) :is(.review-workspace, .sub-agent-dock, .artifact-preview-dock, .project-details-panel)[inert] {
   visibility: hidden;
   transition: none;
 }

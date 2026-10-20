@@ -50,12 +50,11 @@ def test_workspace_switch_keeps_surface_readable_without_blocking_overlay() -> N
     assert 'const selectedThreadId = loom.openingThreadId || activeThreadId;' in app
     assert 'inert={threadSwitching}' in app
     assert '"is-thread-switching"' in app
-    assert '"is-thread-entering"' in app
+    # The thread that replaces it arrives at full opacity, settled at its live edge (1ea15edb): no entrance fade.
+    assert "is-thread-entering" not in app and "is-thread-entering" not in css
     assert "thread-switch-overlay" not in app and "thread-switch-overlay" not in css
     assert ".workspace.is-thread-switching > .conversation-stage" in css
     assert "animation: none;" in css
-    assert "@media (prefers-reduced-motion: reduce)" in css
-    assert ':root[data-loom-reduced-motion="true"]' in css
 
 
 def test_desktop_thread_reads_skip_duplicate_diagnostics_on_hot_paths() -> None:

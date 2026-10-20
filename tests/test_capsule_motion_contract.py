@@ -168,9 +168,10 @@ def test_one_shot_motion_hangs_off_moments_not_state_classes() -> None:
                 assert any(marker in selector for marker in MOMENTS), selector
 
     # The markers themselves: a row is born once per renderer session, only
-    # inside the live sequence of an active turn.
+    # inside the live sequence of an active turn, and never for a record that
+    # was already there when the conversation was opened (1ea15edb).
     assert "const seenActivity = new Set<string>();" in contexts
-    assert "const [born] = useState(() => live && !seenActivity.has(key));" in contexts
+    assert "const [born] = useState(() => live && !history.has(key.replace(/^notes:/, \"\")) && !seenActivity.has(key));" in contexts
     assert "seenActivity.add(key);" in contexts
     assert 'data-born={born ? "live" : undefined}' in flow
     assert flow.count('data-born={born ? "live" : undefined}') == 1
@@ -438,7 +439,7 @@ def test_pointer_lens_writes_two_variables_and_respects_reduced_motion() -> None
     assert "requestAnimationFrame" in lens
     assert 'document.documentElement.dataset.loomReducedMotion === "true"' in lens
     assert 'const CAPSULE_SELECTOR = ".wv-row.is-expandable, .wv-line";' in lens
-    # A module, so its top-level state cannot collide with starterCardPointerGlow.ts.
+    # A module, so its top-level state cannot collide with another side-effect script.
     assert "export {};" in lens
     assert 'import "../taskCapsuleLens";' in read(TRANSCRIPT)
 
