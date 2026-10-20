@@ -69,9 +69,11 @@ export function ArtifactPreviewDock({
   workspace,
   onClose,
   content,
-  ariaLabel = "产物侧栏",
+  ariaLabel: ariaLabelProp,
 }: ArtifactPreviewDockProps) {
   const language = useLoomLanguage();
+  const zh = language === "zh-CN";
+  const ariaLabel = ariaLabelProp ?? (zh ? "产物侧栏" : "Artifacts");
   const presence = useMotionPresence(open, RETAIN.panel);
   const [width, setWidth] = useState(readPreviewWidth);
   const [revision, setRevision] = useState(0);
@@ -203,13 +205,13 @@ export function ArtifactPreviewDock({
       <div
         className="artifact-preview-resizer pl-resizer"
         role="separator"
-        aria-label={content ? (language === "zh-CN" ? `调整${ariaLabel}宽度` : `Resize ${ariaLabel}`) : "调整渲染预览宽度"}
+        aria-label={content ? (zh ? `调整${ariaLabel}宽度` : `Resize ${ariaLabel}`) : (zh ? "调整预览宽度" : "Resize the preview")}
         aria-orientation="vertical"
         aria-valuemin={Math.round(previewBounds().min)}
         aria-valuemax={Math.round(previewBounds().max)}
         aria-valuenow={width}
         tabIndex={0}
-        title="拖动调整预览宽度 · 双击恢复默认"
+        title={zh ? "拖动调整宽度 · 双击恢复默认" : "Drag to resize · double-click to reset"}
         onPointerDown={beginResize}
         onPointerMove={moveResize}
         onPointerUp={finishResize}
@@ -222,48 +224,48 @@ export function ArtifactPreviewDock({
       <PanelHeader
         className="artifact-preview-header"
         mark={selected
-          ? <button type="button" className="artifact-back" aria-label="返回产物列表" onClick={() => setSelected("")}><ArrowLeft size={17} /></button>
+          ? <button type="button" className="artifact-back" aria-label={zh ? "返回产物列表" : "Back to artifacts"} onClick={() => setSelected("")}><ArrowLeft size={17} /></button>
           : <Package size={17} strokeWidth={1.8} />}
         markClassName="artifact-preview-mark"
-        title={selected ? name : `产物 · ${artifacts.length}`}
+        title={selected ? name : (zh ? `产物 · ${artifacts.length}` : `Artifacts · ${artifacts.length}`)}
         titleHint={selected ? name : undefined}
-        subtitle={selected ? selected.replaceAll("\\", "/") : "当前对话"}
+        subtitle={selected ? selected.replaceAll("\\", "/") : (zh ? "当前对话" : "This conversation")}
         subtitleCode={Boolean(selected)}
         subtitleHint={selected || undefined}
         actionsClassName="artifact-preview-actions"
         actions={selected ? <>
-          <button type="button" className="pl-icon-button" onClick={() => setRevision((value) => value + 1)} title="重新加载预览" aria-label="重新加载预览">
+          <button type="button" className="pl-icon-button" onClick={() => setRevision((value) => value + 1)} title={zh ? "重新加载预览" : "Reload the preview"} aria-label={zh ? "重新加载预览" : "Reload the preview"}>
             <RefreshCw size={15} strokeWidth={1.8} />
           </button>
           <button
             type="button"
             className="pl-icon-button"
             onClick={() => void window.loom.openLocalArtifact(selected, workspace)}
-            title="在独立窗口打开"
-            aria-label="在独立窗口打开"
+            title={zh ? "在独立窗口打开" : "Open in its own window"}
+            aria-label={zh ? "在独立窗口打开" : "Open in its own window"}
           >
             <ExternalLink size={15} strokeWidth={1.8} />
           </button>
         </> : null}
-        closeLabel="关闭预览"
+        closeLabel={zh ? "关闭预览" : "Close the preview"}
         onClose={onClose}
       />
 
       {!selected ? <div className="artifact-library">
-        <label className="artifact-search pl-field"><Search size={15} /><input value={query} onChange={event => setQuery(event.target.value)} placeholder="查找产物…" aria-label="查找产物" /></label>
-        <p className="artifact-library-note">网页、文件与交互内容集中在这里，同一文件的更新会合并。</p>
+        <label className="artifact-search pl-field"><Search size={15} /><input value={query} onChange={event => setQuery(event.target.value)} placeholder={zh ? "查找产物…" : "Find an artifact…"} aria-label={zh ? "查找产物" : "Find an artifact"} /></label>
+        <p className="artifact-library-note">{zh ? "网页、文件与交互内容集中在这里，同一文件的更新会合并。" : "Pages, files and interactive content collect here; updates to one file are merged."}</p>
         <div className="artifact-library-list">
           {artifacts.filter(item => item.path.toLowerCase().includes(query.toLowerCase())).map(item => {
             const Icon = artifactIcons[artifactRenderer(item.path).kind];
             return <article className="artifact-library-card pl-card is-interactive" key={item.path}>
             <button className="artifact-card-main" type="button" onClick={() => setSelected(item.path)}>
               <span className="artifact-card-icon"><Icon size={21} /></span>
-              <span className="artifact-card-copy"><strong>{artifactName(item.path)}</strong><span>{artifactRenderer(item.path).label} · {item.running ? "更新中" : "可预览"}{item.revision > 1 ? ` · ${item.revision} 次更新` : ""}</span><small title={item.path}>{item.path}</small></span>
+              <span className="artifact-card-copy"><strong>{artifactName(item.path)}</strong><span>{artifactRenderer(item.path).label} · {item.running ? (zh ? "更新中" : "updating") : (zh ? "可预览" : "ready")}{item.revision > 1 ? (zh ? ` · ${item.revision} 次更新` : ` · ${item.revision} updates`) : ""}</span><small title={item.path}>{item.path}</small></span>
               <ChevronRight size={16} />
             </button>
-            <button className="artifact-card-external" type="button" aria-label={`打开 ${artifactName(item.path)}`} title="在独立窗口打开" onClick={() => void window.loom.openLocalArtifact(item.path, workspace)}><ExternalLink size={14} /></button>
+            <button className="artifact-card-external" type="button" aria-label={zh ? `打开 ${artifactName(item.path)}` : `Open ${artifactName(item.path)}`} title={zh ? "在独立窗口打开" : "Open in its own window"} onClick={() => void window.loom.openLocalArtifact(item.path, workspace)}><ExternalLink size={14} /></button>
           </article>; })}
-          {!artifacts.length || !artifacts.some(item => item.path.toLowerCase().includes(query.toLowerCase())) ? <div className="artifact-library-empty"><Package size={30} /><strong>{query ? "没有匹配的产物" : "产物会出现在这里"}</strong><span>{query ? "试试其他文件名" : "生成的网页、图片、文档和文件会自动收集。"}</span></div> : null}
+          {!artifacts.length || !artifacts.some(item => item.path.toLowerCase().includes(query.toLowerCase())) ? <div className="artifact-library-empty"><Package size={30} /><strong>{query ? (zh ? "没有匹配的产物" : "No matching artifacts") : (zh ? "产物会出现在这里" : "Artifacts appear here")}</strong><span>{query ? (zh ? "试试其他文件名" : "Try another file name") : (zh ? "生成的网页、图片、文档和文件会自动收集。" : "Pages, images, documents and files the work produces are collected automatically.")}</span></div> : null}
         </div>
       </div> : <div className="artifact-preview-canvas" data-renderer-kind={renderer.kind}>
         {renderer.side ? (
@@ -274,8 +276,8 @@ export function ArtifactPreviewDock({
           />
         ) : (
           <div className="artifact-preview-state">
-            <strong>这个文件暂时没有内置渲染器</strong>
-            <span>可以在独立窗口或系统默认程序中打开。</span>
+            <strong>{zh ? "这个文件暂时没有内置渲染器" : "No built-in preview for this file yet"}</strong>
+            <span>{zh ? "可以在独立窗口或系统默认程序中打开。" : "Open it in its own window or the system's default app."}</span>
           </div>
         )}
       </div>}

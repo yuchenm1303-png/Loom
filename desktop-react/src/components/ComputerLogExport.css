@@ -17,9 +17,9 @@
   background: rgba(139, 124, 246, .09);
   color: #b9b2ff;
   font-size: 8px;
-  font-weight: 650;
-  letter-spacing: .04em;
-  text-transform: uppercase;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
   cursor: pointer;
   transition: transform var(--loom-dur-fast) ease, border-color var(--loom-dur-fast) ease, background var(--loom-dur-fast) ease, color var(--loom-dur-fast) ease;
 }

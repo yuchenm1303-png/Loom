@@ -62,13 +62,18 @@ export type MonthMarker = { column: number; date: Date; isYearStart: boolean };
  * One marker per month, on the first column whose first in-range day falls in
  * that month (the GitHub convention). The partial month at the left edge only
  * keeps its marker when the next one is at least `minGap` columns away, so the
- * two labels cannot collide.
+ * two labels cannot collide. `inRange` says which cells are days of the range
+ * (by default the ones with a record).
  */
-export function monthMarkers<T>(weeks: readonly HeatCell<T>[][], minGap = 3): MonthMarker[] {
+export function monthMarkers<T>(
+  weeks: readonly HeatCell<T>[][],
+  minGap = 3,
+  inRange: (cell: HeatCell<T>) => boolean = (cell) => Boolean(cell.day),
+): MonthMarker[] {
   const markers: MonthMarker[] = [];
   let previous = "";
   weeks.forEach((week, column) => {
-    const first = week.find((cell) => cell.day);
+    const first = week.find(inRange);
     if (!first) return;
     const date = parseLocalDate(first.date);
     const key = `${date.getFullYear()}-${date.getMonth()}`;

@@ -87,10 +87,10 @@
 .model-core-provider {
   color: #737b88;
   font-size: 8.4px;
-  font-weight: 650;
+  font-weight: 500;
   line-height: 1.15;
-  letter-spacing: .075em;
-  text-transform: uppercase;
+  letter-spacing: 0;
+  text-transform: none;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

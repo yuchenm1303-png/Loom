@@ -200,9 +200,9 @@
   color: #a59cff;
   font-size: 10px;
   line-height: 12px;
-  letter-spacing: .09em;
-  text-transform: uppercase;
-  font-weight: 650;
+  letter-spacing: 0;
+  text-transform: none;
+  font-weight: 500;
 }
 
 .project-commit-heading strong {

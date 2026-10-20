@@ -110,8 +110,8 @@
 .permission-overview-facts span {
   color: #717987;
   font-size: 10.5px;
-  text-transform: uppercase;
-  letter-spacing: .05em;
+  text-transform: none;
+  letter-spacing: 0;
 }
 
 .permission-overview-facts strong {
@@ -241,9 +241,9 @@
   color: #737b88;
   font-size: 10px;
   line-height: 1.2;
-  font-weight: 650;
-  letter-spacing: .045em;
-  text-transform: uppercase;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
 }
 
 .permission-profile-head strong {

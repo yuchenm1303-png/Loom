@@ -12,6 +12,7 @@ import {
 } from "./icons";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { withProjectReadTimeout } from "../state/projectRead";
+import { useI18n } from "../i18n";
 
 function readProject<T>(method: string, params: Record<string, unknown>): Promise<T> {
   if (!window.loom?.call) return Promise.reject(new Error("本地主机连接不可用，请重新连接后重试。"));
@@ -96,44 +97,49 @@ function errorText(cause: unknown): string {
   return cause instanceof Error ? cause.message : String(cause);
 }
 
-function categoryLabel(value: string): string {
-  const labels: Record<string, string> = {
-    decision: "决策",
-    project: "项目",
-    fact: "事实",
-    constraint: "约束",
-    preference: "偏好",
-  };
-  return labels[value] || value || "记忆";
+const CATEGORY_LABELS: Record<string, [zh: string, en: string]> = {
+  decision: ["决策", "Decision"],
+  project: ["项目", "Project"],
+  fact: ["事实", "Fact"],
+  constraint: ["约束", "Constraint"],
+  preference: ["偏好", "Preference"],
+};
+
+function categoryLabel(value: string, zh: boolean): string {
+  const label = CATEGORY_LABELS[value];
+  return label ? label[zh ? 0 : 1] : value || (zh ? "记忆" : "Memory");
 }
 
-function routeLabel(value: string): string {
-  const labels: Record<string, string> = {
-    auto_route: "自动召回",
-    index_fallback: "索引回退",
-    search: "主动搜索",
-    read: "读取来源",
-    legacy: "历史使用",
-  };
-  return labels[value] || value || "Memory";
+const ROUTE_LABELS: Record<string, [zh: string, en: string]> = {
+  auto_route: ["自动召回", "Recalled"],
+  index_fallback: ["索引回退", "Index fallback"],
+  search: ["主动搜索", "Searched"],
+  read: ["读取来源", "Read"],
+  legacy: ["历史使用", "Earlier use"],
+};
+
+function routeLabel(value: string, zh: boolean): string {
+  const label = ROUTE_LABELS[value];
+  return label ? label[zh ? 0 : 1] : value || (zh ? "记忆" : "Memory");
 }
 
-function relativeTime(value?: string): string {
+function relativeTime(value: string | undefined, zh: boolean): string {
   const stamp = Date.parse(String(value || ""));
   if (!Number.isFinite(stamp)) return "";
   const seconds = Math.max(0, Math.floor((Date.now() - stamp) / 1000));
-  if (seconds < 60) return "刚刚";
+  if (seconds < 60) return zh ? "刚刚" : "just now";
   const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes} 分钟前`;
+  if (minutes < 60) return zh ? `${minutes} 分钟前` : `${minutes} min ago`;
   const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours} 小时前`;
+  if (hours < 24) return zh ? `${hours} 小时前` : `${hours} h ago`;
   const days = Math.floor(hours / 24);
-  return `${days} 天前`;
+  return zh ? `${days} 天前` : `${days} d ago`;
 }
 
-function sourceLabel(count: number): string {
+function sourceLabel(count: number, zh: boolean): string {
   const value = Math.max(1, Number(count || 1));
-  return value > 1 ? `${value} 个来源` : "1 个来源";
+  if (zh) return `${value} 个来源`;
+  return value > 1 ? `${value} sources` : "1 source";
 }
 
 function compactIndexSummary(value: string): string[] {
@@ -144,6 +150,7 @@ function compactIndexSummary(value: string): string[] {
 }
 
 export function ProjectMemoryCard({ projectId, open, running }: ProjectMemoryCardProps) {
+  const zh = useI18n().language === "zh-CN";
   const [status, setStatus] = useState<ProjectMemoryStatus | null>(null);
   const [index, setIndex] = useState<ProjectMemoryIndex | null>(null);
   const [memories, setMemories] = useState<ProjectMemoryRecord[]>([]);
@@ -276,7 +283,9 @@ export function ProjectMemoryCard({ projectId, open, running }: ProjectMemoryCar
         { projectId, memoryId },
       );
       const ok = action === "archive" ? result.archived : result.restored;
-      if (!ok) throw new Error(action === "archive" ? "这条记忆无法归档。" : "这条记忆无法恢复。");
+      if (!ok) throw new Error(action === "archive"
+        ? (zh ? "这条记忆无法归档。" : "This memory could not be archived.")
+        : (zh ? "这条记忆无法恢复。" : "This memory could not be restored."));
       setSelected(null);
       setForgetTarget("");
       await Promise.all([loadStatus(), loadIndex(), loadList(query, view)]);
@@ -300,7 +309,7 @@ export function ProjectMemoryCard({ projectId, open, running }: ProjectMemoryCar
         "project/memory_forget",
         { projectId, memoryId },
       );
-      if (!result.forgotten) throw new Error("这条项目记忆已经不存在或不属于当前项目。");
+      if (!result.forgotten) throw new Error(zh ? "这条项目记忆已经不存在或不属于当前项目。" : "This memory no longer exists or belongs to another project.");
       setSelected(null);
       setForgetTarget("");
       await Promise.all([loadStatus(), loadIndex(), loadList(query, view)]);
@@ -324,41 +333,42 @@ export function ProjectMemoryCard({ projectId, open, running }: ProjectMemoryCar
     <section className="project-memory-card">
       <div className="project-card-heading">
         <div>
-          <span>Project Memory v3</span>
-          <strong>项目记忆</strong>
+          <strong>{zh ? "项目记忆" : "Project memory"}</strong>
         </div>
-        <button type="button" onClick={() => void refresh()} disabled={loading} title="刷新项目记忆">
+        <button type="button" onClick={() => void refresh()} disabled={loading} title={zh ? "刷新项目记忆" : "Refresh project memory"}>
           <RefreshCw size={14} strokeWidth={1.85} spinning={loading} />
-          {loading ? "刷新中" : "刷新"}
+          {loading ? (zh ? "刷新中" : "Refreshing") : (zh ? "刷新" : "Refresh")}
         </button>
       </div>
 
       <p className="project-memory-help">
-        分层索引会先路由到相关记忆，再按需读取证据；过期的低价值事实会进入可恢复归档，而不会直接删除。
+        {zh
+          ? "分层索引先找到相关的记忆，再按需读取证据；过期的低价值事实会进入可恢复的归档，而不会直接删除。"
+          : "A layered index finds the relevant memories first and reads their evidence when needed; stale, low-value facts move to a restorable archive instead of being deleted."}
       </p>
 
       <div className="project-memory-overview">
         <div className="project-memory-total">
           <BrainCircuit size={16} strokeWidth={1.8} />
-          <span>当前记忆</span>
+          <span>{zh ? "当前记忆" : "Memories"}</span>
           <strong>{status?.total ?? 0}</strong>
           <small>
             {status?.enabled === false
-              ? "Memory 已关闭，现有记忆仍可查看"
-              : `v3 routing · ${status?.usage_events ?? 0} 次使用记录`}
+              ? (zh ? "记忆已关闭，现有记忆仍可查看" : "Memory is off; existing memories can still be read")
+              : (zh ? `已使用 ${status?.usage_events ?? 0} 次` : `used ${status?.usage_events ?? 0} times`)}
           </small>
         </div>
-        <div className="project-memory-category-list" aria-label="Project memory categories">
+        <div className="project-memory-category-list" aria-label={zh ? "项目记忆分类" : "Project memory categories"}>
           {chips.length ? chips.map((item) => (
             <span className={`project-memory-category ${item.category}`} key={item.category}>
-              {categoryLabel(item.category)}
+              {categoryLabel(item.category, zh)}
               <b>{item.count}</b>
             </span>
-          )) : <span className="project-memory-category empty">暂无分类</span>}
+          )) : <span className="project-memory-category empty">{zh ? "暂无分类" : "No categories"}</span>}
           {Number(status?.skill_candidates || 0) > 0 ? (
             <span className="project-memory-category skill">
               <Sparkles size={10} />
-              Skill 候选
+              {zh ? "Skill 候选" : "Skill candidates"}
               <b>{status?.skill_candidates}</b>
             </span>
           ) : null}
@@ -368,8 +378,7 @@ export function ProjectMemoryCard({ projectId, open, running }: ProjectMemoryCar
       {indexLines.length ? (
         <div className="project-memory-index">
           <div>
-            <span>Knowledge Index</span>
-            <strong>项目知识索引</strong>
+            <strong>{zh ? "知识索引" : "Knowledge index"}</strong>
           </div>
           <ul>
             {indexLines.slice(0, 5).map((line) => <li key={line}>{line.replace(/^[-]\s*/, "")}</li>)}
@@ -379,7 +388,9 @@ export function ProjectMemoryCard({ projectId, open, running }: ProjectMemoryCar
 
       {running ? (
         <div className="project-memory-note">
-          项目里有任务正在运行。记忆仍可查看，但需要等任务结束后才能归档、恢复或删除。
+          {zh
+            ? "项目里有任务正在运行。记忆仍可查看，等任务结束后才能归档、恢复或删除。"
+            : "A task is running in this project. Memories can be read, and archived, restored or deleted once it ends."}
         </div>
       ) : null}
 
@@ -388,10 +399,10 @@ export function ProjectMemoryCard({ projectId, open, running }: ProjectMemoryCar
       <div className="project-memory-toolbar">
         <div className="project-memory-tabs">
           <button type="button" className={view === "active" ? "active" : ""} onClick={() => switchView("active")}>
-            当前 <b>{status?.total ?? 0}</b>
+            {zh ? "当前" : "Active"} <b>{status?.total ?? 0}</b>
           </button>
           <button type="button" className={view === "archived" ? "active" : ""} onClick={() => switchView("archived")}>
-            已归档 <b>{status?.archived ?? 0}</b>
+            {zh ? "已归档" : "Archived"} <b>{status?.archived ?? 0}</b>
           </button>
         </div>
         <label className="project-memory-search">
@@ -399,11 +410,11 @@ export function ProjectMemoryCard({ projectId, open, running }: ProjectMemoryCar
           <input
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder={view === "active" ? "搜索决策、事实、约束…" : "筛选已归档记忆…"}
-            aria-label="Search project memory"
+            placeholder={view === "active" ? (zh ? "搜索决策、事实、约束…" : "Search decisions, facts, constraints…") : (zh ? "筛选已归档记忆…" : "Filter archived memories…")}
+            aria-label={zh ? "搜索项目记忆" : "Search project memory"}
           />
           {query ? (
-            <button type="button" onClick={() => setQuery("")} aria-label="Clear project memory search">
+            <button type="button" onClick={() => setQuery("")} aria-label={zh ? "清除搜索" : "Clear project memory search"}>
               <X size={13} strokeWidth={1.9} />
             </button>
           ) : null}
@@ -417,15 +428,15 @@ export function ProjectMemoryCard({ projectId, open, running }: ProjectMemoryCar
           return (
             <article className={`project-memory-row ${active ? "selected" : ""}`} key={memory.memory_id}>
               <button type="button" className="project-memory-row-main" onClick={() => void readMemory(memory.memory_id)}>
-                <span className={`project-memory-type ${memory.category}`}>{categoryLabel(memory.category)}</span>
+                <span className={`project-memory-type ${memory.category}`}>{categoryLabel(memory.category, zh)}</span>
                 <span className="project-memory-row-copy">
                   <strong>{memory.text}</strong>
                   <small>
-                    {sourceLabel(memory.source_count)}
+                    {sourceLabel(memory.source_count, zh)}
                     <span>·</span>
-                    {memory.usage_count ? `使用 ${memory.usage_count} 次` : "尚未使用"}
+                    {memory.usage_count ? (zh ? `使用 ${memory.usage_count} 次` : `used ${memory.usage_count} times`) : (zh ? "尚未使用" : "not used yet")}
                     <span>·</span>
-                    {relativeTime(memory.status === "archived" ? memory.archived_at : memory.updated_at)}
+                    {relativeTime(memory.status === "archived" ? memory.archived_at : memory.updated_at, zh)}
                   </small>
                 </span>
                 {busy ? <RefreshCw size={13} spinning /> : active ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
@@ -434,11 +445,11 @@ export function ProjectMemoryCard({ projectId, open, running }: ProjectMemoryCar
               {active && selected ? (
                 <div className="project-memory-detail">
                   <div className="project-memory-detail-meta">
-                    <span>重要度 {selected.memory.importance}/5</span>
-                    <span>{sourceLabel(selected.memory.source_count)}</span>
-                    <span>{selected.evidence.length} 条证据</span>
-                    <span>{selected.memory.usage_count} 次使用</span>
-                    {selected.memory.score ? <span>检索分 {selected.memory.score.toFixed(2)}</span> : null}
+                    <span>{zh ? `重要度 ${selected.memory.importance}/5` : `importance ${selected.memory.importance}/5`}</span>
+                    <span>{sourceLabel(selected.memory.source_count, zh)}</span>
+                    <span>{zh ? `${selected.evidence.length} 条证据` : `${selected.evidence.length} evidence`}</span>
+                    <span>{zh ? `${selected.memory.usage_count} 次使用` : `used ${selected.memory.usage_count} times`}</span>
+                    {selected.memory.score ? <span>{zh ? `检索分 ${selected.memory.score.toFixed(2)}` : `score ${selected.memory.score.toFixed(2)}`}</span> : null}
                   </div>
 
                   {selected.memory.lifecycle_note ? (
@@ -451,25 +462,25 @@ export function ProjectMemoryCard({ projectId, open, running }: ProjectMemoryCar
                         <div key={evidence.evidence_id}>
                           <span>{evidence.excerpt}</span>
                           <small>
-                            来源对话 {evidence.source_session_id.slice(0, 8)}
-                            {evidence.created_at ? ` · ${relativeTime(evidence.created_at)}` : ""}
+                            {zh ? "来源对话" : "from conversation"} {evidence.source_session_id.slice(0, 8)}
+                            {evidence.created_at ? ` · ${relativeTime(evidence.created_at, zh)}` : ""}
                           </small>
                         </div>
                       ))}
                     </div>
                   ) : (
-                    <p className="project-memory-no-evidence">这条记忆没有可显示的来源摘录。</p>
+                    <p className="project-memory-no-evidence">{zh ? "这条记忆没有可显示的来源摘录。" : "No source excerpt to show for this memory."}</p>
                   )}
 
                   {selected.usage?.length ? (
                     <div className="project-memory-usage">
-                      <strong>最近使用</strong>
+                      <strong>{zh ? "最近使用" : "Recent use"}</strong>
                       {selected.usage.slice(0, 4).map((event) => (
                         <div key={event.event_id}>
-                          <span>{routeLabel(event.route)}</span>
+                          <span>{routeLabel(event.route, zh)}</span>
                           <small>
                             {event.score > 0 ? `score ${event.score.toFixed(2)} · ` : ""}
-                            {relativeTime(event.created_at)}
+                            {relativeTime(event.created_at, zh)}
                           </small>
                         </div>
                       ))}
@@ -479,10 +490,10 @@ export function ProjectMemoryCard({ projectId, open, running }: ProjectMemoryCar
                   <div className="project-memory-detail-actions">
                     <span>
                       {forgetTarget === memory.memory_id
-                        ? "再次点击确认永久删除。原对话不会被删除。"
+                        ? (zh ? "再次点击确认永久删除。原对话不会被删除。" : "Click again to delete it for good. The conversations stay.")
                         : memory.status === "archived"
-                          ? "归档记忆不会自动进入模型上下文，可随时恢复。"
-                          : "归档会停止自动召回，但保留来源和历史。"}
+                          ? (zh ? "归档的记忆不会自动进入模型上下文，可随时恢复。" : "An archived memory is not recalled into the model's context; restore it any time.")
+                          : (zh ? "归档会停止自动召回，但保留来源和历史。" : "Archiving stops recall and keeps its sources and history.")}
                     </span>
                     {memory.status === "archived" ? (
                       <button
@@ -492,7 +503,7 @@ export function ProjectMemoryCard({ projectId, open, running }: ProjectMemoryCar
                         onClick={() => void changeLifecycle(memory.memory_id, "restore")}
                       >
                         <RotateCcw size={13} strokeWidth={1.85} />
-                        {mutating === memory.memory_id ? "处理中" : "恢复"}
+                        {mutating === memory.memory_id ? (zh ? "处理中" : "Working") : (zh ? "恢复" : "Restore")}
                       </button>
                     ) : (
                       <button
@@ -502,7 +513,7 @@ export function ProjectMemoryCard({ projectId, open, running }: ProjectMemoryCar
                         onClick={() => void changeLifecycle(memory.memory_id, "archive")}
                       >
                         <Archive size={13} strokeWidth={1.85} />
-                        {mutating === memory.memory_id ? "处理中" : "归档"}
+                        {mutating === memory.memory_id ? (zh ? "处理中" : "Working") : (zh ? "归档" : "Archive")}
                       </button>
                     )}
                     <button
@@ -512,7 +523,7 @@ export function ProjectMemoryCard({ projectId, open, running }: ProjectMemoryCar
                       onClick={() => void forgetMemory(memory.memory_id)}
                     >
                       <Trash2 size={13} strokeWidth={1.85} />
-                      {mutating === memory.memory_id ? "处理中" : forgetTarget === memory.memory_id ? "确认删除" : "删除"}
+                      {mutating === memory.memory_id ? (zh ? "处理中" : "Working") : forgetTarget === memory.memory_id ? (zh ? "确认删除" : "Confirm delete") : (zh ? "删除" : "Delete")}
                     </button>
                   </div>
                 </div>
@@ -524,17 +535,17 @@ export function ProjectMemoryCard({ projectId, open, running }: ProjectMemoryCar
             {view === "archived" ? <Archive size={19} strokeWidth={1.7} /> : <BrainCircuit size={19} strokeWidth={1.7} />}
             <strong>
               {query.trim()
-                ? "没有匹配的项目记忆"
+                ? (zh ? "没有匹配的项目记忆" : "No matching memories")
                 : view === "archived"
-                  ? "还没有归档记忆"
-                  : "这个项目还没有长期记忆"}
+                  ? (zh ? "还没有归档的记忆" : "Nothing archived yet")
+                  : (zh ? "这个项目还没有长期记忆" : "No long-term memory in this project yet")}
             </strong>
             <span>
               {query.trim()
-                ? "换个关键词试试。"
+                ? (zh ? "换个关键词试试。" : "Try other words.")
                 : view === "archived"
-                  ? "低价值且长期未使用的事实会安全进入这里，也可以手动归档。"
-                  : "完成一些项目对话后，Loom 会在后台提取、整理并路由值得长期保留的上下文。"}
+                  ? (zh ? "低价值且长期未使用的事实会安全地进入这里，也可以手动归档。" : "Low-value facts that go unused for long move here safely; you can archive by hand too.")
+                  : (zh ? "完成一些项目对话后，Loom 会在后台提取并整理值得长期保留的上下文。" : "After a few conversations in this project, Loom extracts and organises the context worth keeping, in the background.")}
             </span>
           </div>
         )}

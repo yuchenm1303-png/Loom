@@ -1,6 +1,7 @@
 import { Lock, RotateCcw } from "./icons";
 import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent } from "react";
 import type { ModelReasoningState } from "../types/loom";
+import { useI18n } from "../i18n";
 import "./reasoning-thread.css";
 
 interface ReasoningThreadProps {
@@ -23,6 +24,7 @@ export function ReasoningThread({ reasoning, busy, running, onChange }: Reasonin
 }
 
 function ReasoningRail({ reasoning, busy, running, onChange }: ReasoningThreadProps & { reasoning: ModelReasoningState }) {
+  const zh = useI18n().language === "zh-CN";
   const options = reasoning.options;
   const count = options.length;
   const selectedIndex = Math.max(0, options.findIndex((option) => option.value === reasoning.value));
@@ -104,20 +106,20 @@ function ReasoningRail({ reasoning, busy, running, onChange }: ReasoningThreadPr
   return (
     <section
       className={`rt${running ? " is-running" : ""}${busy ? " is-busy" : ""}${count >= 5 ? " is-dense" : ""}`}
-      aria-label="Reasoning"
+      aria-label={zh ? "推理" : "Reasoning"}
     >
       <div className="rt-head">
-        <span className="rt-eyebrow">Reasoning</span>
+        <span className="rt-eyebrow">{zh ? "推理" : "Reasoning"}</span>
         {canReset && defaultOption ? (
           <button
             type="button"
             className="rt-reset"
             disabled={locked}
-            title={`Reset to ${defaultOption.label}`}
+            title={zh ? `恢复为 ${defaultOption.label}` : `Reset to ${defaultOption.label}`}
             onClick={() => void commit(options.indexOf(defaultOption))}
           >
             <RotateCcw size={12} strokeWidth={2} aria-hidden="true" />
-            <span>Reset</span>
+            <span>{zh ? "恢复默认" : "Reset"}</span>
           </button>
         ) : null}
       </div>
@@ -138,7 +140,7 @@ function ReasoningRail({ reasoning, busy, running, onChange }: ReasoningThreadPr
         <div
           className="rt-options"
           role="radiogroup"
-          aria-label="Reasoning effort"
+          aria-label={zh ? "推理强度" : "Reasoning effort"}
           onKeyDown={handleKeyDown}
           onPointerLeave={() => setPreviewIndex(null)}
         >
@@ -186,7 +188,7 @@ function ReasoningRail({ reasoning, busy, running, onChange }: ReasoningThreadPr
       {running ? (
         <div className="rt-caption rt-note">
           <Lock size={12} strokeWidth={2} aria-hidden="true" />
-          <span>Stop the active turn to change reasoning.</span>
+          <span>{zh ? "先停止当前任务，再调整推理强度。" : "Stop the active turn to change reasoning."}</span>
         </div>
       ) : (
         <div key={described.value} className="rt-caption" title={described.description}>
@@ -199,17 +201,18 @@ function ReasoningRail({ reasoning, busy, running, onChange }: ReasoningThreadPr
 }
 
 function ManagedReasoning() {
+  const zh = useI18n().language === "zh-CN";
   return (
-    <section className="rt is-managed" aria-label="Reasoning">
+    <section className="rt is-managed" aria-label={zh ? "推理" : "Reasoning"}>
       <div className="rt-head">
-        <span className="rt-eyebrow">Reasoning</span>
+        <span className="rt-eyebrow">{zh ? "推理" : "Reasoning"}</span>
       </div>
       <div className="rt-auto">
         <span className="rt-auto-line" aria-hidden="true" />
-        <span className="rt-auto-badge">Auto</span>
+        <span className="rt-auto-badge">{zh ? "自动" : "Auto"}</span>
         <span className="rt-auto-line" aria-hidden="true" />
       </div>
-      <div className="rt-caption">This model decides how deeply to reason.</div>
+      <div className="rt-caption">{zh ? "由模型自己决定思考的深度。" : "This model decides how deeply to reason."}</div>
     </section>
   );
 }

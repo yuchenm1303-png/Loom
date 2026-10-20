@@ -103,7 +103,8 @@
   line-height: 1.5;
   font-weight: 600;
 }
-.decision-option-title-row em { flex: 0 0 auto; padding: 2px 6px; border-radius: 4px; background: var(--loom-workspace-selection); color: var(--loom-workspace-accent); font-size: 11.5px; font-style: normal; font-weight: 600; }
+/* The suggested option says so in the accent's ink, as the permission tags do: a word, not a pill. */
+.decision-option-title-row em { flex: 0 0 auto; padding: 0; border-radius: 0; background: none; color: var(--loom-workspace-accent); font-size: 12px; font-style: normal; font-weight: 500; }
 .decision-option-copy > span:last-child {
   min-width: 0;
   overflow-wrap: anywhere;

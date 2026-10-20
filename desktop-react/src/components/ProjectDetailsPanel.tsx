@@ -14,6 +14,7 @@ import {
   ShieldAlert,
 } from "./icons";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useI18n } from "../i18n";
 import { useMotionPresence } from "../motion/useMotionPresence";
 import { RETAIN } from "../motion/tokens";
 import { startVisiblePolling } from "../visiblePolling";
@@ -111,16 +112,17 @@ function threadIsBusy(thread: ThreadRecord): boolean {
   return thread.status === "running" || thread.status === "waiting_approval";
 }
 
-function relativeTime(value?: string): string {
+function relativeTime(value: string | undefined, zh: boolean): string {
   const stamp = Date.parse(String(value || ""));
   if (!Number.isFinite(stamp)) return "";
   const seconds = Math.max(0, Math.floor((Date.now() - stamp) / 1000));
-  if (seconds < 60) return "刚刚";
+  if (seconds < 60) return zh ? "刚刚" : "just now";
   const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes} 分钟前`;
+  if (minutes < 60) return zh ? `${minutes} 分钟前` : `${minutes} min ago`;
   const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours} 小时前`;
-  return `${Math.floor(hours / 24)} 天前`;
+  if (hours < 24) return zh ? `${hours} 小时前` : `${hours} h ago`;
+  const days = Math.floor(hours / 24);
+  return zh ? `${days} 天前` : `${days} d ago`;
 }
 
 function displayPath(root: string): string {
@@ -131,14 +133,29 @@ function bridge(): LoomBridge | null {
   return Reflect.get(window, "loom") as LoomBridge | null;
 }
 
-function fileStatusLabel(file: ProjectGitFile): string {
+type FileStatusKind = "added" | "deleted" | "renamed" | "modified" | "changed";
+
+function fileStatusKind(file: ProjectGitFile): FileStatusKind {
   const status = String(file.status || "").trim();
-  if (status === "??") return "新增";
-  if (status.includes("D")) return "删除";
-  if (status.includes("R")) return "重命名";
-  if (status.includes("A")) return "新增";
-  if (status.includes("M")) return "修改";
-  return status || "变更";
+  if (status === "??") return "added";
+  if (status.includes("D")) return "deleted";
+  if (status.includes("R")) return "renamed";
+  if (status.includes("A")) return "added";
+  if (status.includes("M")) return "modified";
+  return "changed";
+}
+
+const FILE_STATUS_TEXT: Record<FileStatusKind, [zh: string, en: string]> = {
+  added: ["新增", "Added"],
+  deleted: ["删除", "Deleted"],
+  renamed: ["重命名", "Renamed"],
+  modified: ["修改", "Modified"],
+  changed: ["变更", "Changed"],
+};
+
+function fileStatusLabel(file: ProjectGitFile, zh: boolean): string {
+  const [chinese, english] = FILE_STATUS_TEXT[fileStatusKind(file)];
+  return zh ? chinese : english;
 }
 
 function gitFileKey(file: ProjectGitFile): string {
@@ -172,8 +189,8 @@ function fileIsUnstaged(file: ProjectGitFile): boolean {
 function suggestedCommitMessage(files: ProjectGitFile[]): string {
   if (!files.length) return "chore: update project workspace";
   if (files.length === 1) return `chore: update ${fileBaseName(files[0].path)}`;
-  const added = files.filter((file) => fileStatusLabel(file) === "新增").length;
-  const deleted = files.filter((file) => fileStatusLabel(file) === "删除").length;
+  const added = files.filter((file) => fileStatusKind(file) === "added").length;
+  const deleted = files.filter((file) => fileStatusKind(file) === "deleted").length;
   if (added > deleted && added >= Math.ceil(files.length / 2)) return `feat: add ${added} project files`;
   if (deleted > added && deleted >= Math.ceil(files.length / 2)) return `chore: remove ${deleted} project files`;
   return `chore: update ${files.length} project files`;
@@ -221,6 +238,7 @@ export function ProjectDetailsPanel({
   onGitChanged,
   onOpenFiles,
 }: ProjectDetailsPanelProps) {
+  const zh = useI18n().language === "zh-CN";
   const presence = useMotionPresence(open && Boolean(projectProp), RETAIN.panel);
   const lastProjectRef = useRef<ProjectRecord | null>(projectProp);
   if (projectProp) lastProjectRef.current = projectProp;
@@ -336,10 +354,10 @@ export function ProjectDetailsPanel({
     try {
       await onSetInstructions(project.id, draft);
       if (epoch !== projectEpoch.current) return;
-      setNotice("项目 Instructions 已保存，下一轮自动生效");
+      setNotice(zh ? "项目说明已保存，下一轮起生效" : "Project instructions saved; they apply from the next turn");
     } catch (cause) {
       if (epoch !== projectEpoch.current) return;
-      setNotice(cause instanceof Error ? cause.message : "保存失败");
+      setNotice(cause instanceof Error ? cause.message : (zh ? "保存失败" : "Could not save"));
     } finally {
       if (epoch === projectEpoch.current) setSaving(false);
     }
@@ -361,7 +379,9 @@ export function ProjectDetailsPanel({
       const detail = {
         path: path || result.paths?.[0] || "",
         title: `${project.name} · Git diff`,
-        subtitle: result.truncated ? "项目工作区当前 Git diff（已截断）" : "项目工作区当前 Git diff",
+        subtitle: result.truncated
+          ? (zh ? "项目工作区当前的 Git diff（已截断）" : "The project workspace's current Git diff (truncated)")
+          : (zh ? "项目工作区当前的 Git diff" : "The project workspace's current Git diff"),
         items: [reviewDiffItem(project.id, result, path)],
       };
       window.dispatchEvent(new CustomEvent("loom:review-open-diff", { detail }));
@@ -413,7 +433,7 @@ export function ProjectDetailsPanel({
       });
       if (epoch !== projectEpoch.current) return;
       setWorkspaceStatus((current) => current ? { ...current, git: result.git } : current);
-      setCommitNotice(result.commitSha ? `已提交 ${result.commitSha}` : "已提交");
+      setCommitNotice(result.commitSha ? (zh ? `已提交 ${result.commitSha}` : `Committed ${result.commitSha}`) : (zh ? "已提交" : "Committed"));
       setCommitMessage("");
       await loadWorkspaceStatus(true);
     } catch (cause) {
@@ -428,7 +448,7 @@ export function ProjectDetailsPanel({
     const path = String(file.path || "").replaceAll("\\", "/");
     const loading = reviewLoadingPath === path;
     const actionMethod = kind === "staged" ? "project/git_unstage" : "project/git_stage";
-    const actionLabel = kind === "staged" ? "取消暂存" : "暂存";
+    const actionLabel = kind === "staged" ? (zh ? "取消暂存" : "Unstage") : (zh ? "暂存" : "Stage");
     const actionKey = `${actionMethod}:${path || "all"}`;
     return (
       <div className="project-stage-file" key={`${kind}:${gitFileKey(file)}`}>
@@ -437,9 +457,9 @@ export function ProjectDetailsPanel({
           className="project-stage-file-main"
           onClick={() => void openProjectDiff(file)}
           disabled={Boolean(reviewLoadingPath)}
-          title="在右侧审查栏查看 diff"
+          title={zh ? "在审查栏查看 diff" : "Open the diff in Review"}
         >
-          <span className={`project-git-badge ${kind}`}>{loading ? "读取" : fileStatusLabel(file)}</span>
+          <span className={`project-git-badge ${kind}`}>{loading ? (zh ? "读取" : "Loading") : fileStatusLabel(file, zh)}</span>
           <code>{path}</code>
           <ExternalLink size={12} strokeWidth={1.9} />
         </button>
@@ -450,14 +470,14 @@ export function ProjectDetailsPanel({
           disabled={gitBlocked || Boolean(reviewLoadingPath)}
           title={actionLabel}
         >
-          {gitBusy === actionKey ? "处理中" : actionLabel}
+          {gitBusy === actionKey ? (zh ? "处理中" : "Working") : actionLabel}
         </button>
       </div>
     );
   };
 
   return (
-    <aside className="project-details-panel pl-dock" data-motion-phase={presence.phase} inert={!open} data-open={open ? "true" : "false"} aria-label="Project details">
+    <aside className="project-details-panel pl-dock" data-motion-phase={presence.phase} inert={!open} data-open={open ? "true" : "false"} aria-label={zh ? "项目详情" : "Project details"}>
       <PanelHeader
         className="project-details-header"
         mark={<Folder size={18} strokeWidth={1.85} />}
@@ -467,21 +487,21 @@ export function ProjectDetailsPanel({
         subtitle={displayPath(project.root)}
         subtitleCode
         subtitleHint={project.root}
-        closeLabel="Close project details"
+        closeLabel={zh ? "关闭项目详情" : "Close project details"}
         closeClassName="project-details-close"
         onClose={onClose}
       />
 
       <div className="project-details-body">
-        <div className="project-overview-grid" aria-label="Project overview">
+        <div className="project-overview-grid" aria-label={zh ? "项目概览" : "Project overview"}>
           <div className="project-overview-card">
-            <span>会话</span>
+            <span>{zh ? "会话" : "Conversations"}</span>
             <strong>{projectThreads.length}</strong>
-            <small>{busyThreads.length ? `${busyThreads.length} 个运行中` : "当前空闲"}</small>
+            <small>{busyThreads.length ? (zh ? `${busyThreads.length} 个运行中` : `${busyThreads.length} running`) : (zh ? "当前空闲" : "Idle")}</small>
           </div>
           <div className="project-overview-card">
-            <span>Instructions</span>
-            <strong>{project.instructions?.trim() ? "已配置" : "未配置"}</strong>
+            <span>{zh ? "项目说明" : "Instructions"}</span>
+            <strong>{project.instructions?.trim() ? (zh ? "已配置" : "Set") : (zh ? "未配置" : "Not set")}</strong>
             <small>{instructionsLength} / 12000</small>
           </div>
         </div>
@@ -489,7 +509,7 @@ export function ProjectDetailsPanel({
         {busyThreads.length ? (
           <div className="project-running-guard" role="status">
             <ShieldAlert size={15} strokeWidth={1.85} />
-            <span>项目内有任务正在运行，移动、删除、提交等危险操作会被保护。先让任务结束再调整归属或提交代码。</span>
+            <span>{zh ? "项目内有任务正在运行，移动、删除、提交等操作暂时受保护。等任务结束后再调整归属或提交代码。" : "A task is running in this project, so moving, deleting and committing are held until it ends."}</span>
           </div>
         ) : null}
 
@@ -497,12 +517,11 @@ export function ProjectDetailsPanel({
         <section className="project-workspace-card">
           <div className="project-card-heading">
             <div>
-              <span>Workspace</span>
-              <strong>工作区状态</strong>
+              <strong>{zh ? "工作区" : "Workspace"}</strong>
             </div>
             <button type="button" onClick={() => void loadWorkspaceStatus()} disabled={workspaceLoading || Boolean(gitBusy)}>
               <RefreshCw size={14} strokeWidth={1.85} />
-              {workspaceLoading ? "刷新中" : "刷新"}
+              {workspaceLoading ? (zh ? "刷新中" : "Refreshing") : (zh ? "刷新" : "Refresh")}
             </button>
           </div>
 
@@ -510,14 +529,14 @@ export function ProjectDetailsPanel({
             <div className="project-workspace-stat">
               <GitBranch size={15} strokeWidth={1.8} />
               <span>Git</span>
-              <strong>{!git ? workspaceError ? "读取失败" : "读取中" : git.isRepo ? git.branch || "detached" : "未接入"}</strong>
-              <small>{git?.summary || (!git ? "等待工作区状态" : "当前项目不是 Git 仓库或 Git 不可用")}</small>
+              <strong>{!git ? workspaceError ? (zh ? "读取失败" : "Unavailable") : (zh ? "读取中" : "Loading") : git.isRepo ? git.branch || "detached" : (zh ? "未接入" : "Not a repository")}</strong>
+              <small>{git?.summary || (!git ? (zh ? "等待工作区状态" : "Waiting for the workspace") : (zh ? "当前项目不是 Git 仓库或 Git 不可用" : "This project is not a Git repository, or Git is unavailable"))}</small>
             </div>
             <div className="project-workspace-stat">
               <FileText size={15} strokeWidth={1.8} />
-              <span>变更</span>
+              <span>{zh ? "变更" : "Changes"}</span>
               <strong>{git?.changedCount ?? "—"}</strong>
-              <small>{!git ? "尚未获取变更状态" : git.changedCount ? `${stagedFiles.length} staged · ${unstagedFiles.length} unstaged` : "工作区暂无 Git 变更"}</small>
+              <small>{!git ? (zh ? "尚未获取变更状态" : "Not read yet") : git.changedCount ? (zh ? `${stagedFiles.length} 已暂存 · ${unstagedFiles.length} 未暂存` : `${stagedFiles.length} staged · ${unstagedFiles.length} unstaged`) : (zh ? "工作区没有 Git 变更" : "No Git changes")}</small>
             </div>
           </div>
 
@@ -530,16 +549,16 @@ export function ProjectDetailsPanel({
           <div className="project-changed-block">
             <div className="project-subheading project-git-subheading">
               <div>
-                <span>当前变更</span>
-                <small>{!git ? "状态未知" : changedFiles.length ? `${changedFiles.length}${git?.truncated ? "+" : ""} 个文件` : "clean"}</small>
+                <span>{zh ? "当前变更" : "Current changes"}</span>
+                <small>{!git ? (zh ? "状态未知" : "Unknown") : changedFiles.length ? (zh ? `${changedFiles.length}${git?.truncated ? "+" : ""} 个文件` : `${changedFiles.length}${git?.truncated ? "+" : ""} files`) : (zh ? "无变更" : "clean")}</small>
               </div>
               {changedFiles.length ? (
                 <div className="project-git-toolbar">
                   <button type="button" onClick={() => void runGitAction("project/git_stage")} disabled={gitBlocked || !unstagedFiles.length}>
-                    {gitBusy === "project/git_stage:all" ? "处理中" : "暂存全部"}
+                    {gitBusy === "project/git_stage:all" ? (zh ? "处理中" : "Working") : (zh ? "暂存全部" : "Stage all")}
                   </button>
                   <button type="button" onClick={() => void runGitAction("project/git_unstage")} disabled={gitBlocked || !stagedFiles.length}>
-                    {gitBusy === "project/git_unstage:all" ? "处理中" : "取消暂存"}
+                    {gitBusy === "project/git_unstage:all" ? (zh ? "处理中" : "Working") : (zh ? "取消暂存" : "Unstage all")}
                   </button>
                 </div>
               ) : null}
@@ -549,47 +568,46 @@ export function ProjectDetailsPanel({
               <div className="project-stage-columns">
                 <section className="project-stage-section staged">
                   <header>
-                    <span>Staged</span>
+                    <span>{zh ? "已暂存" : "Staged"}</span>
                     <small>{stagedFiles.length}</small>
                   </header>
                   {stagedFiles.length ? stagedFiles.slice(0, 12).map((file) => renderGitFile(file, "staged")) : (
-                    <p className="project-muted-line">还没有已暂存文件。</p>
+                    <p className="project-muted-line">{zh ? "还没有已暂存的文件。" : "Nothing staged yet."}</p>
                   )}
                 </section>
                 <section className="project-stage-section unstaged">
                   <header>
-                    <span>Unstaged</span>
+                    <span>{zh ? "未暂存" : "Unstaged"}</span>
                     <small>{unstagedFiles.length}</small>
                   </header>
                   {unstagedFiles.length ? unstagedFiles.slice(0, 12).map((file) => renderGitFile(file, "unstaged")) : (
-                    <p className="project-muted-line">没有未暂存变更。</p>
+                    <p className="project-muted-line">{zh ? "没有未暂存的变更。" : "No unstaged changes."}</p>
                   )}
                 </section>
               </div>
             ) : (
-              <p className="project-muted-line">{!git ? "尚未获取工作区变更，请等待加载或刷新重试。" : "没有检测到 Git 工作区变更。"}</p>
+              <p className="project-muted-line">{!git ? (zh ? "尚未读取工作区变更，稍候或刷新重试。" : "The workspace has not been read yet; wait or refresh.") : (zh ? "没有检测到 Git 工作区变更。" : "No changes in the Git workspace.")}</p>
             )}
 
             {git?.isRepo ? (
               <div className="project-commit-box">
                 <div className="project-commit-heading">
                   <div>
-                    <span>Commit</span>
-                    <strong>提交已暂存变更</strong>
+                    <strong>{zh ? "提交已暂存的变更" : "Commit staged changes"}</strong>
                   </div>
-                  <small>{commitNotice || "只提交 staged，不会 push 到远端"}</small>
+                  <small>{commitNotice || (zh ? "只提交已暂存的文件，不会推送到远端" : "Commits only what is staged; nothing is pushed")}</small>
                 </div>
                 <textarea
                   value={commitMessage}
                   onChange={(event) => setCommitMessage(event.target.value)}
-                  placeholder="例如：feat: improve project workspace panel"
+                  placeholder={zh ? "例如：feat: improve project workspace panel" : "e.g. feat: improve project workspace panel"}
                   maxLength={500}
                   disabled={Boolean(gitBusy)}
                   aria-label="Git commit message"
                 />
                 <div className="project-commit-actions">
                   <button type="button" onClick={() => setCommitMessage(suggestedCommitMessage(stagedFiles))} disabled={!stagedFiles.length || Boolean(gitBusy)}>
-                    生成信息
+                    {zh ? "生成信息" : "Suggest message"}
                   </button>
                   <button
                     type="button"
@@ -598,7 +616,7 @@ export function ProjectDetailsPanel({
                     disabled={!stagedFiles.length || !commitMessage.trim() || gitBlocked}
                   >
                     <Check size={13} strokeWidth={1.9} />
-                    {gitBusy === "project/git_commit" ? "提交中" : "提交"}
+                    {gitBusy === "project/git_commit" ? (zh ? "提交中" : "Committing") : (zh ? "提交" : "Commit")}
                   </button>
                 </div>
               </div>
@@ -607,9 +625,9 @@ export function ProjectDetailsPanel({
 
           <div className="project-file-tree-block">
             <div className="project-subheading">
-              <span>文件树</span>
-              <button className="project-files-launch" type="button" onClick={onOpenFiles} title="打开完整文件管理器">
-                <FolderOpen size={14} strokeWidth={1.8} /> Files · 打开
+              <span>{zh ? "文件" : "Files"}</span>
+              <button className="project-files-launch" type="button" onClick={onOpenFiles} title={zh ? "打开完整的文件管理器" : "Open the full file manager"}>
+                <FolderOpen size={14} strokeWidth={1.8} /> {zh ? "打开文件" : "Open files"}
               </button>
             </div>
             {treeEntries.length ? (
@@ -631,7 +649,7 @@ export function ProjectDetailsPanel({
                 })}
               </div>
             ) : (
-              <p className="project-muted-line">{!workspaceStatus ? workspaceError ? "文件列表读取失败，请刷新重试。" : "正在读取文件列表…" : "还没有可显示的文件。"}</p>
+              <p className="project-muted-line">{!workspaceStatus ? workspaceError ? (zh ? "文件列表读取失败，请刷新重试。" : "Could not read the files; refresh to try again.") : (zh ? "正在读取文件列表…" : "Reading the files…") : (zh ? "还没有可显示的文件。" : "No files to show yet.")}</p>
             )}
           </div>
         </section>
@@ -639,30 +657,33 @@ export function ProjectDetailsPanel({
         <section className="project-instructions-card">
           <div className="project-card-heading">
             <div>
-              <span>Project Instructions</span>
-              <strong>项目级说明</strong>
+              <strong>{zh ? "项目说明" : "Project instructions"}</strong>
             </div>
             <FileText size={16} strokeWidth={1.8} aria-hidden="true" />
           </div>
           <p>
-            写给这个项目里所有任务看的固定背景、约束和偏好。保存后会从下一轮开始自动注入 Agent 运行上下文。
+            {zh
+              ? "写给这个项目里所有任务看的固定背景、约束和偏好。保存后从下一轮起自动加入 Agent 的上下文。"
+              : "Background, constraints and preferences every task in this project should know. Saved instructions join the agent's context from the next turn."}
           </p>
           <textarea
             value={draft}
             maxLength={12000}
             onChange={(event) => setDraft(event.target.value)}
-            placeholder="例如：这个项目是 Loom 桌面端。所有修改直接提交 main；优先保持 Codex 风格；不要改动 unrelated 代码。"
+            placeholder={zh
+              ? "例如：这个项目是 Loom 桌面端。所有修改直接提交 main；优先保持 Codex 风格；不要改动无关代码。"
+              : "e.g. This is the Loom desktop app. Commit straight to main; keep the Codex style; leave unrelated code alone."}
             aria-label="Project instructions"
           />
           <div className="project-instructions-actions">
-            <span>{notice || (dirty ? "有未保存修改" : "已同步，下一轮自动生效")}</span>
+            <span>{notice || (dirty ? (zh ? "有未保存的修改" : "Unsaved changes") : (zh ? "已同步，下一轮起生效" : "Saved; applies from the next turn"))}</span>
             <button type="button" onClick={() => setDraft(project.instructions ?? "")} disabled={!dirty || saving}>
               <RotateCcw size={14} strokeWidth={1.85} />
-              还原
+              {zh ? "还原" : "Revert"}
             </button>
             <button type="button" className="primary" onClick={() => void saveInstructions()} disabled={!dirty || saving}>
               <Save size={14} strokeWidth={1.85} />
-              {saving ? "保存中" : "保存"}
+              {saving ? (zh ? "保存中" : "Saving") : (zh ? "保存" : "Save")}
             </button>
           </div>
         </section>
@@ -679,12 +700,11 @@ export function ProjectDetailsPanel({
         <section className="project-thread-card">
           <div className="project-card-heading">
             <div>
-              <span>Threads</span>
-              <strong>项目会话</strong>
+              <strong>{zh ? "项目会话" : "Conversations"}</strong>
             </div>
             <button type="button" onClick={() => void onNewThread(project)}>
               <Plus size={14} strokeWidth={1.9} />
-              新对话
+              {zh ? "新对话" : "New conversation"}
             </button>
           </div>
 
@@ -702,28 +722,18 @@ export function ProjectDetailsPanel({
                   >
                     <span className={`project-thread-dot ${busy ? "busy" : ""}`} aria-hidden="true" />
                     <MessageSquareText size={14} strokeWidth={1.85} aria-hidden="true" />
-                    <span>{thread.title || "New conversation"}</span>
-                    <small>{busy ? "运行中" : relativeTime(thread.updatedAt)}</small>
+                    <span>{thread.title || (zh ? "新对话" : "New conversation")}</span>
+                    <small>{busy ? (zh ? "运行中" : "Running") : relativeTime(thread.updatedAt, zh)}</small>
                   </button>
                 );
               })}
             </div>
           ) : (
             <div className="project-empty-threads">
-              <span>这个项目还没有会话。</span>
-              <button type="button" onClick={() => void onNewThread(project)}>创建项目会话</button>
+              <span>{zh ? "这个项目还没有会话。" : "No conversations in this project yet."}</span>
+              <button type="button" onClick={() => void onNewThread(project)}>{zh ? "开始一个会话" : "Start a conversation"}</button>
             </div>
           )}
-        </section>
-
-        <section className="project-roadmap-card">
-          <span>下一步能力</span>
-          <div>
-            <small>AGENTS.md</small>
-            <small>Git commit</small>
-            <small>项目级模型</small>
-            <small>项目级权限</small>
-          </div>
         </section>
       </div>
     </aside>

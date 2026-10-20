@@ -313,5 +313,14 @@ export const SETTINGS_COPY: Record<string, string> = {
   "Loom local runtime directory": "Loom 本地运行目录",
   "Renderer fallback": "离线偏好缓存",
   "Raw snapshot": "原始快照",
-  "Useful when comparing renderer state with App Server state.": "用于核对界面与运行时状态。"
+  "Useful when comparing renderer state with App Server state.": "用于核对界面与运行时状态。",
+  "HTTPS remote sources only": "仅允许 HTTPS 远程来源",
+  "Current Browser Bridge is offline.": "当前浏览器桥接已离线。",
+  "Loom will stop current-browser tasks instead of opening an isolated browser or using Computer Use.": "Loom 会停止使用当前浏览器的任务，不会改为打开独立浏览器或使用电脑操控。",
+  "Install Edge bridge": "安装 Edge 桥接",
+  "Install Chrome bridge": "安装 Chrome 桥接",
+  "Browser OAuth": "浏览器 OAuth",
+  "Device OAuth fallback": "设备 OAuth 备用",
+  "GitHub CLI fallback": "GitHub CLI 备用",
+  "Fixed": "固定"
 };

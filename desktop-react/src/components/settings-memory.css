@@ -36,9 +36,9 @@
 .memory-stat-card span {
   color: #868e9c;
   font-size: 11px;
-  font-weight: 650;
-  letter-spacing: .03em;
-  text-transform: uppercase;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
 }
 
 .memory-stat-card strong {
@@ -358,9 +358,9 @@
 .memory-detail-head span {
   color: #9489ef;
   font-size: 10px;
-  font-weight: 650;
-  letter-spacing: .05em;
-  text-transform: uppercase;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
 }
 
 .memory-detail-head strong {
@@ -416,8 +416,8 @@
 .memory-detail-meta span {
   color: #737c89;
   font-size: 9.5px;
-  text-transform: uppercase;
-  letter-spacing: .04em;
+  text-transform: none;
+  letter-spacing: 0;
 }
 
 .memory-detail-meta strong {

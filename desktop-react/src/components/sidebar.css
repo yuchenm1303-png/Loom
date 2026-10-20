@@ -158,8 +158,9 @@ html[data-loom-density="spacious"] .sidebar.compact-sidebar { --sb-row-h: 38px; 
   border-radius: 8px;
 }
 
+/* An open search is shown by the field under it; the button keeps the neutral pressed tone. */
 .compact-sidebar-actions button.active {
-  color: var(--sb-accent);
+  color: var(--sb-ink);
   background: var(--sb-hover);
 }
 

@@ -59,6 +59,29 @@ const emptyCopy: Record<Tab, { title: string; body: string; chips: string[] }> =
   },
 };
 
+const emptyCopyZh: Record<Tab, { title: string; body: string; chips: string[] }> = {
+  activity: {
+    title: "运行时已就绪",
+    body: "Loom 工作时，工具调用、审批和执行事件会出现在这里。",
+    chips: ["工具", "审批", "错误"],
+  },
+  computer: {
+    title: "还没有电脑操作记录",
+    body: "桌面观察、操作、视觉定位、解析出的坐标和轨迹文件会出现在这里。",
+    chips: ["观察", "操作", "验证"],
+  },
+  changes: {
+    title: "没有工作区改动",
+    body: "文件编辑和差异会汇集在这里，不打断对话。",
+    chips: ["文件", "差异", "路径"],
+  },
+  terminal: {
+    title: "终端很安静",
+    body: "Loom 使用终端时，命令和进程输出会出现在这里。",
+    chips: ["命令", "stdout", "stderr"],
+  },
+};
+
 const emptyIcons: Array<{ id: Tab; icon: IconComponent }> = [
   { id: "activity", icon: Activity },
   { id: "computer", icon: MousePointer2 },
@@ -72,10 +95,21 @@ function statusOf(item: TranscriptItem): string {
   return String(item.status || "completed").toLowerCase();
 }
 
-function statusLabel(status: string): string {
+const STATUS_ZH: Record<string, string> = {
+  started: "进行中", running: "进行中", pending: "等待中", waiting: "等待中", waiting_approval: "等待审批",
+  completed: "已完成", success: "已完成", succeeded: "已完成", failed: "失败", error: "出错", denied: "已拒绝",
+  cancelled: "已取消", canceled: "已取消", interrupted: "已中断",
+};
+
+function statusLabel(status: string, zh = false): string {
+  if (zh) return STATUS_ZH[status] ?? status.replaceAll("_", " ");
   if (status === "started") return "Running";
   if (status === "waiting_approval" || status === "waiting") return "Waiting";
   return status.replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function eventCount(count: number, zh: boolean): string {
+  return zh ? `${count} 个事件` : `${count} ${count === 1 ? "event" : "events"}`;
 }
 
 function isRunningStatus(status: string): boolean {
@@ -194,7 +228,8 @@ function iconOf(item: TranscriptItem): IconComponent {
 }
 
 function EmptyState({ tab }: { tab: Tab }) {
-  const copy = emptyCopy[tab];
+  const zh = useI18n().language === "zh-CN";
+  const copy = (zh ? emptyCopyZh : emptyCopy)[tab];
   return (
     <div className={`runtime-empty runtime-empty-${tab}`}>
       <div className="runtime-empty-visual" aria-hidden="true">
@@ -230,6 +265,7 @@ const RuntimeEvent = memo(function RuntimeEvent({
   expanded: boolean;
   onToggle(id: string): void;
 }) {
+  const zh = useI18n().language === "zh-CN";
   const Icon = iconOf(item);
   const status = statusOf(item);
   const expandable = hasDetail(item);
@@ -249,7 +285,7 @@ const RuntimeEvent = memo(function RuntimeEvent({
           <span className="runtime-event-title" title={titleOf(item)}>{titleOf(item)}</span>
           <span className="runtime-event-subtitle">
             <span className={`runtime-status-dot status-${status}`} />
-            <span>{statusLabel(status)}</span>
+            <span>{statusLabel(status, zh)}</span>
             {timestamp ? <><span className="runtime-meta-separator" /> <span>{timestamp}</span></> : null}
           </span>
         </span>
@@ -266,11 +302,11 @@ const RuntimeEvent = memo(function RuntimeEvent({
   );
 });
 
-function sectionTitle(tab: Tab): string {
-  if (tab === "activity") return "Execution stream";
-  if (tab === "computer") return "Computer Use trace";
-  if (tab === "changes") return "Workspace edits";
-  return "Process output";
+function sectionTitle(tab: Tab, zh = false): string {
+  if (tab === "activity") return zh ? "执行记录" : "Execution stream";
+  if (tab === "computer") return zh ? "电脑操作记录" : "Computer Use trace";
+  if (tab === "changes") return zh ? "工作区改动" : "Workspace edits";
+  return zh ? "进程输出" : "Process output";
 }
 
 export const Inspector = memo(function Inspector({ items, onClose }: InspectorProps) {
@@ -404,8 +440,8 @@ export const Inspector = memo(function Inspector({ items, onClose }: InspectorPr
               {counts[id] > 0 ? (
                 <span
                   className="runtime-tab-count"
-                  title={`${counts[id]} ${counts[id] === 1 ? "event" : "events"}`}
-                  aria-label={`${counts[id]} ${counts[id] === 1 ? "event" : "events"}`}
+                  title={eventCount(counts[id], zh)}
+                  aria-label={eventCount(counts[id], zh)}
                 >
                   {counts[id] > 99 ? "99+" : counts[id]}
                 </span>
@@ -416,21 +452,21 @@ export const Inspector = memo(function Inspector({ items, onClose }: InspectorPr
 
         <div className="runtime-body">
           <div className="runtime-section-bar">
-            <span>{sectionTitle(tab)}</span>
+            <span>{sectionTitle(tab, zh)}</span>
             <span className="runtime-section-actions">
               {tab === "computer" ? (
                 <button className="computer-log-export-button" onClick={handleExportComputerLogs} disabled={exportingLogs}>
                   <Download size={12} strokeWidth={1.8} />
-                  <span>{exportingLogs ? "Exporting" : "Export logs"}</span>
+                  <span>{exportingLogs ? (zh ? "正在导出" : "Exporting") : (zh ? "导出日志" : "Export logs")}</span>
                 </button>
               ) : null}
               {tab === "changes" && changes.length ? (
                 <button className="runtime-review-button" type="button" onClick={() => setReviewOpen(true)}>
                   <FileDiff size={12} strokeWidth={1.8} />
-                  <span>Review</span>
+                  <span>{zh ? "审查" : "Review"}</span>
                 </button>
               ) : null}
-              <span>{visible.length ? `${visible.length} ${visible.length === 1 ? "event" : "events"}` : "Waiting"}</span>
+              <span>{visible.length ? eventCount(visible.length, zh) : (zh ? "等待中" : "Waiting")}</span>
             </span>
           </div>
 
@@ -438,9 +474,9 @@ export const Inspector = memo(function Inspector({ items, onClose }: InspectorPr
             <div className="runtime-pane">
               {tab === "computer" && (exportArchivePath || exportError) ? (
                 <div className={`computer-log-export-note ${exportError ? "error" : "success"}`}>
-                  <strong>{exportError ? "Export failed" : "Logs exported"}</strong>
+                  <strong>{exportError ? (zh ? "导出失败" : "Export failed") : (zh ? "日志已导出" : "Logs exported")}</strong>
                   <span>
-                    {exportError || `${exportArchivePath}${exportFileCount ? ` · ${exportFileCount} files` : ""}${exportSize ? ` · ${exportSize}` : ""}`}
+                    {exportError || `${exportArchivePath}${exportFileCount ? (zh ? ` · ${exportFileCount} 个文件` : ` · ${exportFileCount} files`) : ""}${exportSize ? ` · ${exportSize}` : ""}`}
                   </span>
                 </div>
               ) : null}
@@ -463,7 +499,7 @@ export const Inspector = memo(function Inspector({ items, onClose }: InspectorPr
 
           <div className="runtime-footer">
             <span className={`runtime-stream-mark ${busy ? "live" : ""}`} aria-hidden="true"><i /><i /><i /></span>
-            <span>{busy ? "Receiving runtime events" : "Runtime event stream ready"}</span>
+            <span>{busy ? (zh ? "正在接收运行事件" : "Receiving runtime events") : (zh ? "运行事件流已就绪" : "Runtime event stream ready")}</span>
           </div>
         </div>
       </aside>

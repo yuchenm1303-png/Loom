@@ -8,6 +8,7 @@ import {
   XCircle,
 } from "./icons";
 import { useEffect, useMemo, useState } from "react";
+import { useI18n } from "../i18n";
 import type { TranscriptItem } from "../types/loom";
 import { PanelEmpty } from "./PanelEmpty";
 import { PanelHeader } from "./PanelHeader";
@@ -26,7 +27,8 @@ type AgentFilter = "all" | "active" | "failed" | "done";
 
 interface AgentEventSummary {
   id: string;
-  label: string;
+  /** The tool that produced the event; worded when drawn (eventLabel). */
+  tool: string;
   status: string;
 }
 
@@ -83,13 +85,17 @@ function agentSnapshots(item: TranscriptItem): Record<string, unknown>[] {
   return snapshots;
 }
 
-function eventLabel(toolName: string): string {
-  if (toolName === "spawn_agent") return "已派出";
-  if (toolName === "send_agent_message") return "已追加任务";
-  if (toolName === "wait_agent") return "已同步状态";
-  if (toolName === "close_agent") return "已关闭";
-  if (toolName === "list_agents") return "已刷新工作区";
-  return "子代理活动";
+const EVENT_LABELS: Record<string, [zh: string, en: string]> = {
+  spawn_agent: ["已派出", "Dispatched"],
+  send_agent_message: ["已追加任务", "Task added"],
+  wait_agent: ["已同步状态", "Status synced"],
+  close_agent: ["已关闭", "Closed"],
+  list_agents: ["已刷新工作区", "Workspace refreshed"],
+};
+
+function eventLabel(toolName: string, zh: boolean): string {
+  const label = EVENT_LABELS[toolName];
+  return label ? label[zh ? 0 : 1] : (zh ? "子代理活动" : "Agent activity");
 }
 
 function mergeSnapshot(agent: AgentCardState, snapshot: Record<string, unknown>): AgentCardState {
@@ -199,7 +205,7 @@ function aggregateAgents(items: TranscriptItem[]): AgentCardState[] {
     agent.fallbackStatus = stringValue(item.status) || agent.fallbackStatus;
     agent.events.push({
       id: item.id,
-      label: eventLabel(toolName),
+      tool: toolName,
       status: stringValue(item.status) || "completed",
     });
     agents.set(key, agent);
@@ -272,28 +278,32 @@ function statusRank(status: AgentStatus): number {
   return 5;
 }
 
-function statusCopy(status: AgentStatus): string {
-  if (status === "starting") return "正在创建";
-  if (status === "running") return "正在工作";
-  if (status === "waiting") return "等待中";
-  if (status === "completed") return "已完成";
-  if (status === "failed") return "失败";
-  if (status === "closed") return "已关闭";
-  return "空闲";
+const STATUS_COPY: Record<AgentStatus, [zh: string, en: string]> = {
+  starting: ["正在创建", "Starting"],
+  running: ["正在工作", "Working"],
+  waiting: ["等待中", "Waiting"],
+  completed: ["已完成", "Done"],
+  failed: ["失败", "Failed"],
+  closed: ["已关闭", "Closed"],
+  idle: ["空闲", "Idle"],
+};
+
+function statusCopy(status: AgentStatus, zh: boolean): string {
+  return STATUS_COPY[status][zh ? 0 : 1];
 }
 
-function roleCopy(role: string): string {
+function roleCopy(role: string, zh: boolean): string {
   const value = role.trim();
-  if (!value || value === "worker") return "工作子代理";
+  if (!value || value === "worker") return zh ? "工作子代理" : "Worker";
   return value.replaceAll("_", " ");
 }
 
-function taskPreview(task: string, latestEvent?: AgentEventSummary): string {
+function taskPreview(task: string, zh: boolean, latestEvent?: AgentEventSummary): string {
   const source = task
     .replace(/\r?\n+/g, " ")
     .replace(/\s+/g, " ")
     .trim();
-  if (!source) return latestEvent?.label || "子代理任务";
+  if (!source) return latestEvent ? eventLabel(latestEvent.tool, zh) : (zh ? "子代理任务" : "Agent task");
 
   const taskMarker = source.match(/(?:任务|目标|负责|请完成|只做|工作内容)[：:]\s*(.+)$/i);
   let value = (taskMarker?.[1] || source)
@@ -306,16 +316,16 @@ function taskPreview(task: string, latestEvent?: AgentEventSummary): string {
   return value.length > 150 ? `${value.slice(0, 148).trimEnd()}…` : value;
 }
 
-function shortAgentId(agent: AgentCardState): string {
-  if (!agent.sessionId) return "准备中";
+function shortAgentId(agent: AgentCardState, zh: boolean): string {
+  if (!agent.sessionId) return zh ? "准备中" : "pending";
   return agent.sessionId.length > 8 ? agent.sessionId.slice(-8) : agent.sessionId;
 }
 
-function historyCopy(mode: string): string {
-  if (mode === "none") return "独立上下文";
-  if (mode === "all") return "完整上下文";
-  if (mode === "recent") return "最近上下文";
-  return "独立会话";
+function historyCopy(mode: string, zh: boolean): string {
+  if (mode === "none") return zh ? "独立上下文" : "Own context";
+  if (mode === "all") return zh ? "完整上下文" : "Full context";
+  if (mode === "recent") return zh ? "最近上下文" : "Recent context";
+  return zh ? "独立会话" : "Own session";
 }
 
 function StatusIcon({ status }: { status: AgentStatus }) {
@@ -327,11 +337,12 @@ function StatusIcon({ status }: { status: AgentStatus }) {
 }
 
 function AgentCard({ agent }: { agent: AgentCardState }) {
+  const zh = useI18n().language === "zh-CN";
   const status = normalizedStatus(agent);
   const [open, setOpen] = useState(false);
   const hasDetail = Boolean(agent.finalText || agent.error || agent.events.length > 1);
   const latestEvent = agent.events.at(-1);
-  const preview = taskPreview(agent.task, latestEvent);
+  const preview = taskPreview(agent.task, zh, latestEvent);
 
   return (
     <article className={`sub-agent-card status-${status} ${open ? "is-open" : ""}`}>
@@ -345,8 +356,8 @@ function AgentCard({ agent }: { agent: AgentCardState }) {
         <span className="sub-agent-avatar" aria-hidden="true"><Bot size={16} /></span>
         <span className="sub-agent-heading">
           <span className="sub-agent-title-row">
-            <strong>{roleCopy(agent.role)}</strong>
-            <span className="sub-agent-id">#{shortAgentId(agent)}</span>
+            <strong>{roleCopy(agent.role, zh)}</strong>
+            <span className="sub-agent-id">#{shortAgentId(agent, zh)}</span>
           </span>
           <span className="sub-agent-task" title={preview}>
             {preview}
@@ -354,15 +365,15 @@ function AgentCard({ agent }: { agent: AgentCardState }) {
         </span>
         <span className={`sub-agent-status ${status}`}>
           <StatusIcon status={status} />
-          {statusCopy(status)}
+          {statusCopy(status, zh)}
         </span>
         {hasDetail ? <ChevronRight size={14} className="sub-agent-chevron" aria-hidden="true" /> : null}
       </button>
 
       <div className="sub-agent-card-meta">
-        <span className="sub-agent-context-label">{historyCopy(agent.historyMode)}</span>
-        {agent.queueDepth > 0 ? <span>队列 {agent.queueDepth}</span> : null}
-        {latestEvent ? <span>{latestEvent.label}</span> : null}
+        <span className="sub-agent-context-label">{historyCopy(agent.historyMode, zh)}</span>
+        {agent.queueDepth > 0 ? <span>{zh ? `队列 ${agent.queueDepth}` : `${agent.queueDepth} queued`}</span> : null}
+        {latestEvent ? <span>{eventLabel(latestEvent.tool, zh)}</span> : null}
       </div>
 
       {hasDetail ? (
@@ -382,11 +393,11 @@ function AgentCard({ agent }: { agent: AgentCardState }) {
               ) : null}
 
               {agent.events.length > 1 ? (
-                <div className="sub-agent-event-strip" aria-label="Sub-agent activity">
+                <div className="sub-agent-event-strip" aria-label={zh ? "子代理活动" : "Sub-agent activity"}>
                   {agent.events.slice(-4).map((event) => (
                     <span key={event.id} className="sub-agent-event">
                       <span className={`sub-agent-event-dot ${event.status}`} />
-                      {event.label}
+                      {eventLabel(event.tool, zh)}
                     </span>
                   ))}
                 </div>
@@ -414,6 +425,7 @@ export function SubAgentWorkspace({
   docked?: boolean;
   onClose?(): void;
 }) {
+  const zh = useI18n().language === "zh-CN";
   const transcriptAgents = useMemo(() => aggregateAgents(items), [items]);
   const threadId = String(items.find((item) => item.threadId)?.threadId || "");
   const knownAgentIds = useMemo(
@@ -523,7 +535,7 @@ export function SubAgentWorkspace({
   if (!agents.length && !docked) return null;
 
   return (
-    <section className={`sub-agent-workspace ${counts.running ? "is-live" : ""} ${docked ? "is-docked" : ""}`.trim()} aria-label="子代理工作区">
+    <section className={`sub-agent-workspace ${counts.running ? "is-live" : ""} ${docked ? "is-docked" : ""}`.trim()} aria-label={zh ? "子代理工作区" : "Agents"}>
       <PanelHeader
         className="sub-agent-workspace-header"
         mark={<>
@@ -531,36 +543,38 @@ export function SubAgentWorkspace({
           <span className={`pl-pulse${counts.running ? " is-live" : ""}`} />
         </>}
         markClassName="sub-agent-workspace-mark"
-        title="子代理工作区"
-        subtitle={agents.length ? `${agents.length} 个代理 · 并行任务集中在这里管理` : "并行任务集中在这里管理"}
+        title={zh ? "子代理" : "Agents"}
+        subtitle={agents.length
+          ? (zh ? `${agents.length} 个代理 · 并行任务集中在这里` : `${agents.length} agents · parallel work in one place`)
+          : (zh ? "并行任务集中在这里" : "Parallel work in one place")}
         metaClassName="sub-agent-workspace-summary"
-        meta={counts.failed ? <span className="pl-chip is-danger">{counts.failed} 失败</span>
-          : counts.running ? <span className="pl-chip is-live">{counts.running} 运行中</span>
-          : counts.completed ? <span className="pl-chip">{counts.completed} 已完成</span>
-          : <span className="pl-chip is-empty">0 个代理</span>}
-        closeLabel="关闭子代理工作区"
+        meta={counts.failed ? <span className="pl-chip is-danger">{zh ? `${counts.failed} 失败` : `${counts.failed} failed`}</span>
+          : counts.running ? <span className="pl-chip is-live">{zh ? `${counts.running} 运行中` : `${counts.running} running`}</span>
+          : counts.completed ? <span className="pl-chip">{zh ? `${counts.completed} 已完成` : `${counts.completed} done`}</span>
+          : <span className="pl-chip is-empty">{zh ? "0 个代理" : "No agents"}</span>}
+        closeLabel={zh ? "关闭子代理" : "Close agents"}
         closeClassName="sub-agent-workspace-close"
         onClose={docked && onClose ? onClose : undefined}
       />
 
       {agents.length ? (
         <div className="sub-agent-toolbar">
-          <div className="sub-agent-filter" role="tablist" aria-label="筛选子代理">
+          <div className="sub-agent-filter" role="tablist" aria-label={zh ? "筛选子代理" : "Filter agents"}>
             <button type="button" role="tab" aria-selected={filter === "all"} className={filter === "all" ? "active" : ""} onClick={() => setFilter("all")}>
-              全部 <span>{agents.length}</span>
+              {zh ? "全部" : "All"} <span>{agents.length}</span>
             </button>
             <button type="button" role="tab" aria-selected={filter === "active"} className={filter === "active" ? "active" : ""} onClick={() => setFilter("active")}>
-              进行中 <span>{counts.running}</span>
+              {zh ? "进行中" : "Running"} <span>{counts.running}</span>
             </button>
             <button type="button" role="tab" aria-selected={filter === "failed"} className={filter === "failed" ? "active" : ""} onClick={() => setFilter("failed")}>
-              失败 <span>{counts.failed}</span>
+              {zh ? "失败" : "Failed"} <span>{counts.failed}</span>
             </button>
             <button type="button" role="tab" aria-selected={filter === "done"} className={filter === "done" ? "active" : ""} onClick={() => setFilter("done")}>
-              已结束 <span>{agents.length - counts.running}</span>
+              {zh ? "已结束" : "Ended"} <span>{agents.length - counts.running}</span>
             </button>
           </div>
           <span className="sub-agent-toolbar-note">
-            {counts.running ? `${counts.running} 个任务正在并行执行` : "全部任务状态已同步"}
+            {counts.running ? (zh ? `${counts.running} 个任务正在并行执行` : `${counts.running} running in parallel`) : (zh ? "全部任务状态已同步" : "Every status is up to date")}
           </span>
         </div>
       ) : null}
@@ -568,14 +582,16 @@ export function SubAgentWorkspace({
       <div className={`sub-agent-grid ${agents.length ? "" : "is-empty"}`.trim()}>
         {agents.length ? (
           visibleAgents.length ? visibleAgents.map((agent) => <AgentCard key={agent.key} agent={agent} />) : (
-            <div className="sub-agent-filter-empty">当前筛选下没有子代理</div>
+            <div className="sub-agent-filter-empty">{zh ? "当前筛选下没有子代理" : "No agents under this filter"}</div>
           )
         ) : (
           <PanelEmpty
             icon={<Bot size={22} strokeWidth={1.65} />}
-            title="暂无子代理"
-            copy="当 Loom 把复杂任务分派给子代理时，它们会在这里出现，并持续显示运行状态与结果。"
-            chips={["独立上下文", "并行执行", "结果汇总"]}
+            title={zh ? "暂无子代理" : "No agents yet"}
+            copy={zh
+              ? "当 Loom 把复杂任务分派给子代理时，它们会出现在这里，并持续显示运行状态与结果。"
+              : "When Loom hands parts of a task to agents, they appear here with their status and results."}
+            chips={zh ? ["独立上下文", "并行执行", "结果汇总"] : ["Own context", "Parallel", "Results"]}
           />
         )}
       </div>

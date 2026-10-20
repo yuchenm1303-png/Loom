@@ -85,23 +85,27 @@ html[data-loom-theme="light"] {
   color: var(--loom-workspace-ink) !important;
 }
 
-/* The dark-first semantic palette must not force near-white code onto the
-   light review surface. Keep the same meaning while restoring readable
-   contrast for the complete line, including the <code> child. */
+/* On the light review surface the row is a light wash of its meaning and the
+   line keeps the reading ink (a green or red line of code is harder to read
+   and says what the marker and the wash already say). */
 html[data-loom-theme="light"] .review-code-row.is-add,
+html[data-loom-theme="light"] .inline-diff-row.is-add {
+  background: rgba(22, 139, 82, .07) !important;
+  color: var(--loom-workspace-ink) !important;
+}
+
 html[data-loom-theme="light"] .review-code-row.is-add code,
-html[data-loom-theme="light"] .inline-diff-row.is-add,
-html[data-loom-theme="light"] .inline-diff-row.is-add code {
-  background: rgba(22, 139, 82, .105) !important;
-  color: #146c43 !important;
+html[data-loom-theme="light"] .inline-diff-row.is-add code,
+html[data-loom-theme="light"] .review-code-row.is-delete code,
+html[data-loom-theme="light"] .inline-diff-row.is-delete code {
+  background: transparent !important;
+  color: inherit !important;
 }
 
 html[data-loom-theme="light"] .review-code-row.is-delete,
-html[data-loom-theme="light"] .review-code-row.is-delete code,
-html[data-loom-theme="light"] .inline-diff-row.is-delete,
-html[data-loom-theme="light"] .inline-diff-row.is-delete code {
-  background: rgba(217, 54, 80, .095) !important;
-  color: #873040 !important;
+html[data-loom-theme="light"] .inline-diff-row.is-delete {
+  background: rgba(217, 54, 80, .065) !important;
+  color: var(--loom-workspace-ink) !important;
 }
 
 html[data-loom-theme="light"] .review-code-row.is-add .review-line-number,

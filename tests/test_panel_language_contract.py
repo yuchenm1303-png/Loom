@@ -257,15 +257,26 @@ def test_empty_panels_share_one_still_state() -> None:
 
 def test_cards_inside_the_docks_share_one_corner() -> None:
     kit = read("components/panel-language.css")
-    registry = kit[kit.index(":root:root :is(\n  .project-overview-card,\n"):]
+    registry = kit[kit.index(":root:root:root :is(\n  .project-stage-section,\n"):]
     registry = registry[:registry.index("}")]
 
     assert "--pl-radius-card" in registry
-    for card in (
-        ".project-overview-card", ".project-workspace-card", ".project-instructions-card", ".project-thread-card",
-        ".project-memory-card", ".project-agent-files-card", ".project-repository-card", ".sub-agent-card",
-    ):
+    for card in (".project-stage-section", ".project-commit-box", ".sub-agent-card"):
         assert card in registry, card
+    # The project panel's parts are sections parted by a hairline, not cards; its small facts (the overview and
+    # the Git tiles) take the card corner on a tone, without a frame.
+    sections = kit[kit.index(":root:root:root :is(\n  .project-workspace-card,\n"):]
+    sections = sections[:sections.index("}")]
+    for section in (
+        ".project-workspace-card", ".project-instructions-card", ".project-thread-card",
+        ".project-memory-card", ".project-agent-files-card", ".project-repository-card",
+    ):
+        assert section in sections, section
+    assert "border-top: 1px solid var(--pl-edge);" in sections and "border-radius: 0;" in sections
+    assert "background: transparent;" in sections
+    tiles = kit[kit.index(":root:root:root :is(.project-overview-card, .project-workspace-stat) {"):]
+    tiles = tiles[:tiles.index("}")]
+    assert "border: 0;" in tiles and "border-radius: var(--pl-radius-card);" in tiles
 
 
 def test_dock_content_is_one_card_one_chip_one_segmented_control() -> None:
@@ -276,10 +287,10 @@ def test_dock_content_is_one_card_one_chip_one_segmented_control() -> None:
     assert "--pl-slab:" in kit
     for selector in (
         ":root:root:root .sub-agent-status", ":root:root:root .sub-agent-avatar", ":root:root:root .sub-agent-filter button.active",
-        ":root:root:root .runtime-tab-glider", ":root:root:root .project-workspace-stat",
+        ":root:root:root .runtime-tab-glider", ":root:root:root :is(.project-overview-card, .project-workspace-stat)",
     ):
         assert selector in kit, selector
-    card = kit[kit.index(":root:root:root :is(\n  .project-overview-card,\n"):]
+    card = kit[kit.index(":root:root:root :is(\n  .project-stage-section,\n"):]
     card = card[:card.index("\n}\n")]
     assert "background: var(--pl-card)" in card and "border: 1px solid var(--pl-line)" in card and "box-shadow: none" in card
 

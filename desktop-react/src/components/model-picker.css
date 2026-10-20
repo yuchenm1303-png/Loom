@@ -277,10 +277,10 @@ html[data-loom-theme="light"] .model-manager-popover .mp {
   padding: 10px 10px 5px;
   color: var(--mp-faint);
   font-size: 11px;
-  font-weight: 600;
+  font-weight: 500;
   line-height: 1.2;
-  letter-spacing: .06em;
-  text-transform: uppercase;
+  letter-spacing: 0;
+  text-transform: none;
 }
 
 .mp-section:first-child > .mp-label {

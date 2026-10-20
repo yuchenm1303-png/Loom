@@ -170,9 +170,9 @@
 .appearance-reading-preview-label {
   color: #777f8b;
   font-size: 11.5px;
-  font-weight: 650;
-  letter-spacing: .06em;
-  text-transform: uppercase;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
 }
 
 .appearance-reading-preview-message {

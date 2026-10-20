@@ -81,6 +81,17 @@
 :root .composer-wrap .composer-tool { height: 34px; padding-inline: 10px; }
 :root .composer-wrap .sticker-chip { width: 34px; padding: 0; }
 
+/* The composer measures itself: next to an open review or panel it is narrow while the window is not. Below
+   600px of its own width the attach button is its glyph alone, so the permission and the model keep one row
+   (they wrapped to a third line). */
+:root .composer-wrap .composer { container: loom-composer / inline-size; }
+@container loom-composer (max-width: 600px) {
+  :root .composer-wrap .composer-tool { width: 34px; padding: 0; justify-content: center; }
+  :root .composer-wrap .composer-tool > span:not(.composer-glyph-well) { display: none; }
+  :root .composer-wrap .composer-left { gap: 2px; }
+  :root .composer-wrap .composer-chip { padding-inline: 8px; }
+}
+
 @media (max-width: 760px) {
   :root .composer-wrap { padding-inline: 14px; }
   :root .composer-wrap .composer { padding: 15px 14px 12px; }

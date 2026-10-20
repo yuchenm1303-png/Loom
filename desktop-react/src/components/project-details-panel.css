@@ -80,7 +80,6 @@
 .project-workspace-card,
 .project-instructions-card,
 .project-thread-card,
-.project-roadmap-card,
 .project-running-guard {
   border: 1px solid rgba(255, 255, 255, .075);
   background:
@@ -100,14 +99,13 @@
 
 .project-overview-card span,
 .project-card-heading span,
-.project-roadmap-card > span,
 .project-subheading span {
   color: #8e96a5;
   font-size: 10px;
   line-height: 12px;
-  text-transform: uppercase;
-  letter-spacing: .1em;
-  font-weight: 650;
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: 500;
 }
 
 .project-overview-card strong {
@@ -117,8 +115,7 @@
   font-weight: 650;
 }
 
-.project-overview-card small,
-.project-roadmap-card small {
+.project-overview-card small {
   color: #8e96a5;
   font-size: 11px;
 }
@@ -150,8 +147,7 @@
 
 .project-workspace-card,
 .project-instructions-card,
-.project-thread-card,
-.project-roadmap-card {
+.project-thread-card {
   border-radius: 18px;
   padding: 13px;
   margin-bottom: 12px;
@@ -216,9 +212,9 @@
   color: #8e96a5;
   font-size: 10px;
   line-height: 12px;
-  text-transform: uppercase;
-  letter-spacing: .08em;
-  font-weight: 650;
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: 500;
 }
 
 .project-workspace-stat strong {
@@ -521,24 +517,6 @@
   font-size: 12px;
 }
 
-.project-roadmap-card {
-  display: grid;
-  gap: 10px;
-}
-
-.project-roadmap-card div {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
-.project-roadmap-card small {
-  padding: 5px 8px;
-  border-radius: 999px;
-  border: 1px solid rgba(255, 255, 255, .07);
-  background: rgba(255, 255, 255, .035);
-}
-
 html[data-loom-reduced-motion="true"] .project-card-heading button,
 html[data-loom-reduced-motion="true"] .project-changed-file,
 html[data-loom-reduced-motion="true"] .project-instructions-actions button,
@@ -607,9 +585,9 @@ html[data-loom-reduced-motion="true"] .project-empty-threads button {
   grid-area: label;
   color: #a49cad;
   font-size: 10px;
-  font-weight: 650;
-  letter-spacing: .08em;
-  text-transform: uppercase;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
 }
 
 .project-memory-total strong {
@@ -995,9 +973,9 @@ html[data-loom-reduced-motion="true"] .project-empty-threads button {
 .project-memory-index > div span {
   color: #7d748e;
   font-size: 9px;
-  font-weight: 650;
-  letter-spacing: .09em;
-  text-transform: uppercase;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
 }
 
 .project-memory-index > div strong {
@@ -1117,10 +1095,6 @@ html[data-loom-reduced-motion="true"] .project-empty-threads button {
   color: #d7d2ff;
   border-color: rgba(139, 124, 246, .32);
   background: rgba(139, 124, 246, .12);
-}
-
-@media (prefers-reduced-motion: reduce) {
-
 }
 
 :root[data-loom-reduced-motion="true"] .project-details-panel {

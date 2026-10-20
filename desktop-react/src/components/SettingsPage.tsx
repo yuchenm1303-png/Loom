@@ -1413,7 +1413,7 @@ export function SettingsPage({ runtime, models, threadId, running, onRefreshMode
 
         <Section title="Discovery status" caption="View discovered, installed, and active skills.">
           <div className="skills-stat-grid">
-            <div className="skills-stat-card"><span>Preference</span><strong>{enabled ? "开启" : "关闭"}</strong><StatusPill tone={enabled ? "ready" : "off"}>{enabled ? "Active" : "Off"}</StatusPill></div>
+            <div className="skills-stat-card"><span>Preference</span><strong>{enabled ? "On" : "Off"}</strong><StatusPill tone={enabled ? "ready" : "off"}>{enabled ? "Active" : "Off"}</StatusPill></div>
             <div className="skills-stat-card"><span>Discovered skills</span><strong>{String(discoveredCount)}</strong><small>Project and user directories</small></div>
             <div className="skills-stat-card"><span>Installed skills</span><strong>{String(installedCount)}</strong><small>&lt;LOOM_HOME&gt;/skills</small></div>
             <div className="skills-stat-card"><span>In use</span><strong>{String(activeSkillCount)}</strong><small>Loaded into context</small></div>
@@ -1444,7 +1444,7 @@ export function SettingsPage({ runtime, models, threadId, running, onRefreshMode
             </div>
             <div className="skills-install-grid">
               <button type="button" onClick={() => void copyText("loom skill install ./my-skill", "Local install command copied.")}><FolderOpen size={16} /><strong>Local directory</strong><span>Requires SKILL.md</span></button>
-              <button type="button" onClick={() => void copyText("loom skill install https://github.com/owner/repository/tree/main/path", "GitHub tree command copied.")}><Globe2 size={16} /><strong>GitHub repository</strong><span>仅允许 HTTPS 远程来源</span></button>
+              <button type="button" onClick={() => void copyText("loom skill install https://github.com/owner/repository/tree/main/path", "GitHub tree command copied.")}><Globe2 size={16} /><strong>GitHub repository</strong><span>HTTPS remote sources only</span></button>
               <button type="button" onClick={() => void copyText("loom skill install ./skill.zip", "ZIP command copied.")}><Database size={16} /><strong>ZIP archive</strong><span>Paths are checked before installation</span></button>
               <button type="button" onClick={() => void copyText("loom skill search <query>", "Search command copied.")}><Search size={16} /><strong>Search skills</strong><span>Find workflows by name or description</span></button>
             </div>
@@ -1470,7 +1470,7 @@ export function SettingsPage({ runtime, models, threadId, running, onRefreshMode
         <Section title="安全控制" caption="安装器只复制和校验 bundle，不执行外部代码。这里展示的是当前 main 已启用的保护边界。">
           <div className="settings-card skills-security-grid">
             {[
-              "仅允许 HTTPS 远程来源",
+              "HTTPS remote sources only",
               "安装时不执行脚本",
               "ZIP 路径穿越检查",
               "Symlink 拒绝 / 跳过",

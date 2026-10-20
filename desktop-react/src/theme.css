@@ -2925,16 +2925,6 @@ html[data-loom-theme="light"] .review-code-row:hover {
   background: rgba(28,31,37,.018);
 }
 
-html[data-loom-theme="light"] .review-code-row.is-add {
-  background: rgba(22,139,82,.105);
-  color: #146c43;
-}
-
-html[data-loom-theme="light"] .review-code-row.is-delete {
-  background: rgba(217,54,80,.095);
-  color: #873040;
-}
-
 html[data-loom-theme="light"] .review-line-number {
   border-right-color: #e2e5e9;
   color: #9299a3;

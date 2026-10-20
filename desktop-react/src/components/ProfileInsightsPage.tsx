@@ -296,7 +296,11 @@ const TokenHeatmap = memo(function TokenHeatmap({ data, format }: { data: Profil
   }, [data]);
 
   const weeks = useMemo(() => buildWeeks(data.days, data.range.startDate, data.range.endDate), [data]);
-  const markers = useMemo(() => monthMarkers(weeks), [weeks]);
+  // Every day of the range is a square (with or without a record), so every month of it gets its label.
+  const markers = useMemo(
+    () => monthMarkers(weeks, 3, (cell) => cell.date >= data.range.startDate && cell.date <= data.range.endDate),
+    [weeks, data.range.startDate, data.range.endDate],
+  );
   const levelFor = useMemo(() => heatScale(data.days.map((day) => day.totalTokens)), [data]);
   const monthName = useMemo(() => new Intl.DateTimeFormat(zh ? "zh-CN" : "en-US", { month: "short" }), [zh]);
   const activeDays = data.days.filter((day) => day.totalTokens > 0 || day.turns > 0 || day.toolCalls > 0).length;
@@ -365,7 +369,12 @@ const TokenHeatmap = memo(function TokenHeatmap({ data, format }: { data: Profil
             onMouseLeave={() => setTooltip(null)}
           >
             {weeks.flatMap((week, column) => week.map((cell, row) => {
-              if (!cell.day) return <span key={cell.date} className="profile-heat-cell is-padding" />;
+              // A day of the year with no record is an empty square, so the year reads whole (a blank stretch
+              // before the first record looked like a broken chart); only the days outside the range are left out.
+              if (!cell.day) {
+                const inRange = cell.date >= data.range.startDate && cell.date <= data.range.endDate;
+                return <span key={cell.date} className={`profile-heat-cell ${inRange ? "level-0" : "is-padding"}`} />;
+              }
               const level = levelFor(cell.day.totalTokens);
               return (
                 <span

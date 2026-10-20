@@ -59,6 +59,8 @@ function repositoryHarness(client, details = false) {
     if (name.endsWith("useMotionPresence")) return { useMotionPresence: () => ({ mounted: true, phase: "entered" }) };
     if (name.endsWith("motion/tokens")) return { RETAIN: { panel: 420 } };
     if (name.endsWith("visiblePolling")) return { startVisiblePolling: read => { void read(); return () => {}; } };
+    // The panels speak the interface language; the harness reads them in Chinese.
+    if (name.endsWith("i18n")) return { useI18n: () => ({ language: "zh-CN", t: key => key }) };
     return {};
   }, exports, { loom: client, addEventListener() {}, removeEventListener() {}, setTimeout, clearTimeout }, { body: {} });
   return {

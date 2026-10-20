@@ -3,6 +3,8 @@ import { createRoot } from "react-dom/client";
 import { ArtifactPreviewDock } from "../../src/components/ArtifactPreviewDock";
 import type { TranscriptItem } from "../../src/types/loom";
 import "../../src/theme.css";
+// The dock speaks the interface language; this fixture (and artifacts-browser.mjs) reads it in Chinese.
+document.documentElement.dataset.loomLanguage = "zh-CN";
 const items = ["test_page.html", "report.md", "test_page.html", "image.png"].map((path, index) => ({
   id: String(index), type: "file_edit", threadId: "thread", turnId: "turn", paths: [path], status: "completed",
 })) as TranscriptItem[];
