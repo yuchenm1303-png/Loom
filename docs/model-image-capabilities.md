@@ -13,6 +13,21 @@ endpoint and model so separate Host bridge processes use the same evidence.
 Provider evidence expires after 24 hours. Different endpoints cannot share it.
 A saved connection can explicitly declare supported/unsupported, or remain unknown.
 
+For sparse OpenCode listings, policy synchronization supplements existing rows
+using models.dev's exact provider/model input modalities. Only canonical OpenCode
+endpoints qualify; custom endpoints never inherit public endpoint evidence. This
+does not add models or change permissions, and explicit/conflicting upstream
+metadata takes precedence. Public metadata is fetched without credentials, cached
+for one hour, and retained for at most 24 hours during outages. Failed or malformed
+supplemental metadata leaves capabilities unknown without failing model discovery.
+Console configuration also preserves nested `modalities.input` declarations.
+
+On 2026-10-20, `minimax-m3.1-flash-free` on the configured OpenCode Go endpoint
+correctly identified a synthetic image's red left half and blue right half.
+Its exact models.dev entry declares image input; Go's `/models` row itself only
+published identity fields. This explains the previous unknown warning and is
+covered by the real HTTP policy-to-Desktop catalog integration fixture.
+
 Model bindings and profiles represent all three states. Unknown is not registered
 as the VISION capability. The request validator still allows an image request to
 an unknown endpoint and preserves its image parts. Only an explicit unsupported

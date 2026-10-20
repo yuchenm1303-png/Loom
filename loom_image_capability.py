@@ -49,9 +49,11 @@ def image_capability(metadata: object) -> dict[str, object]:
             if value is not None:
                 signals.append((value, "capabilities." + key))
     architecture = metadata.get("architecture")
+    modalities_metadata = metadata.get("modalities")
     for source, modalities in (
         ("input_modalities", metadata.get("input_modalities")),
         ("architecture.input_modalities", architecture.get("input_modalities") if isinstance(architecture, Mapping) else None),
+        ("modalities.input", modalities_metadata.get("input") if isinstance(modalities_metadata, Mapping) else None),
     ):
         if isinstance(modalities, list) and modalities and all(isinstance(item, str) for item in modalities):
             signals.append(("image" in [item.casefold() for item in modalities], source))

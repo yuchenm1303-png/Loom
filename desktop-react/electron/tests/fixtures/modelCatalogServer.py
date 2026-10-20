@@ -10,13 +10,14 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[4]))
 from services.loom_model_policy.catalog_sync import CatalogSynchronizer
 from services.loom_model_policy.policy import PolicyStore
 from services.loom_model_policy.server import ModelPolicyApplication, PolicyRequestHandler
+from services.loom_model_policy.image_catalog import ImageCatalog
 
 phase = [False]
 
 
 class Upstream(BaseHTTPRequestHandler):
     def do_GET(self):
-        data = [{"id": "omen-alpha"}] + ([{"id": "beam-free"}] if phase[0] else [])
+        data = [{"id": "omen-alpha"}] + ([{"id": "beam-free"}, {"id": "minimax-m3.1-flash-free"}] if phase[0] else [])
         self.send_response(200)
         self.end_headers()
         self.wfile.write(json.dumps({"data": data}).encode())
@@ -33,6 +34,13 @@ app.accounts = SimpleNamespace(user_id_for_authorization=lambda auth: 7,
     model_access=lambda auth: {"enabled": True})
 sync = CatalogSynchronizer(app.store, environ={"OPENCODE_GO_API_KEY": "fixture-only",
     "LOOM_OPENCODE_GO_BASE_URL": f"http://127.0.0.1:{upstream.server_port}"})
+# Serve a realistic sparse listing over loopback while enrichment matches its
+# production endpoint identity; no external metadata/inference request is made.
+sync.image_catalog = ImageCatalog(fetch=lambda: {"opencode-go": {"models": {"minimax-m3.1-flash-free": {
+    "id": "minimax-m3.1-flash-free", "modalities": {"input": ["text", "image"]}}}}})
+enrich = sync.image_catalog.enrich
+sync.image_catalog.enrich = lambda group, base, rows: enrich(group,
+    "https://opencode.ai/zen/go/v1" if group == "opencode-go" else base, rows)
 sync.refresh()
 original_access = app.access
 

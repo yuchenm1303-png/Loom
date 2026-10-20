@@ -11,6 +11,7 @@ from pathlib import Path
 from loom_image_capability import image_capability
 
 from .catalog import GROUPS, OPENCODE_CONSOLE_FREE_MODELS, is_opencode_console_free, selection_for_model
+from .image_catalog import ImageCatalog
 
 
 # Provider routes are shared with the gateway; model additions do not
@@ -69,15 +70,16 @@ def parse_opencode_console_config(payload: dict) -> list[dict]:
         # another transport (e.g. /responses).
         if info.get("api") not in (None, "chat/completions", "chat-completions"):
             continue
-        rows[model] = {"id": model, "name": str(info.get("name") or model)}
+        rows[model] = {**info, "id": model, "name": str(info.get("name") or model)}
     return parse_models("opencode-console", {"data": list(rows.values())})
 
 
 class CatalogSynchronizer:
-    def __init__(self, store, *, environ=None, fetch=None):
+    def __init__(self, store, *, environ=None, fetch=None, image_catalog=None):
         self.store = store
         self.environ = os.environ if environ is None else environ
         self.fetch = fetch or self._fetch
+        self.image_catalog = image_catalog or ImageCatalog(fetch=(lambda: {}) if fetch is not None else None)
         self.stopped = threading.Event()
         self.guard = threading.Lock()
         self.thread = None
@@ -151,6 +153,7 @@ class CatalogSynchronizer:
                 )
             else:
                 models = parse_models(group_id, self.fetch(base.rstrip("/") + "/models", credential))
+            models = self.image_catalog.enrich(group_id, base, models)
             self.store.replace_provider_catalog(group_id, models)
         except Exception:
             # Never persist raw upstream errors: URLs or response bodies may

@@ -27,6 +27,10 @@ def test_provider_rejection_survives_unknown_metadata_and_remains_endpoint_scope
     ({"input_modalities": ["text"]}, False),
     ({"input_modalities": []}, None),
     ({"architecture": {"input_modalities": ["text", "image"]}}, True),
+    ({"modalities": {"input": ["text", "image", "video"]}}, True),
+    ({"modalities": {"input": ["text"]}}, False),
+    ({"modalities": {"input": []}}, None),
+    ({"vision": False, "modalities": {"input": ["image"]}}, None),
     ({"capabilities": {"vision": True}}, True),
     ({"vision": True, "input_modalities": ["text"]}, None),
 ])

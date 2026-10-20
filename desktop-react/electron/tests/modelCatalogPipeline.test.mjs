@@ -51,6 +51,9 @@ test("upstream discovery reaches the Desktop picker while another provider is in
     assert.ok(beam, "a new model is visible without changing local bundled definitions");
     assert.equal(beam.groupId, "opencode-go");
     assert.equal(beam.available, true);
+    const vision = picker.profiles.find(row => row.model === "minimax-m3.1-flash-free");
+    assert.equal(vision.vision, true, "supplemental provider modalities reach the Desktop without a model-name allowlist");
+    assert.equal(vision.imageInput.source, "models.dev/opencode-go:modalities");
     assert.equal(picker.profiles.filter(row => row.groupId === "opencode-console").length, consoleCount);
     assert.notEqual(picker.catalogSync.providers.find(row => row.groupId === "opencode-console").state, "synced");
     const consoleSelection = picker.profiles.find(row => row.groupId === "opencode-console").selection;
