@@ -12,6 +12,12 @@ def chat_tool_fragments(message, *, legacy_id: str):
     """Normalize modern and legacy Chat Completions fields by wire shape."""
     calls = tuple(getattr(message, "tool_calls", None) or ())
     legacy = getattr(message, "function_call", None)
+    # Some compatible endpoints include an empty legacy envelope on the final
+    # chunk, even after modern tool_calls. It carries no tool-call information.
+    if legacy is not None and not (
+        getattr(legacy, "name", None) or getattr(legacy, "arguments", None)
+    ):
+        legacy = None
     if calls and legacy is not None:
         raise AIResponseError("response mixes modern and legacy tool fields")
     if legacy is not None:
