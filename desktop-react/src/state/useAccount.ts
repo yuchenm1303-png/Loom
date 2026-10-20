@@ -34,6 +34,8 @@ function transportFailure(cause: unknown): LoomAccountError {
 export function useAccount() {
   const revision = useRef(0);
   const mutating = useRef(false);
+  const refreshing = useRef(false);
+  const recovery = useRef({ needed: false, delay: 5_000, after: 0 });
   const [account, setAccount] = useState<LoomAccountSnapshot>(EMPTY_ACCOUNT);
   const [capabilities, setCapabilities] = useState<LoomAuthCapabilities>(EMPTY_CAPABILITIES);
   const [ready, setReady] = useState(false);
@@ -43,21 +45,33 @@ export function useAccount() {
   const clearError = useCallback(() => setError(null), []);
 
   const refresh = useCallback(async () => {
-    if (mutating.current) return;
+    if (mutating.current || refreshing.current) return;
+    refreshing.current = true;
     const current = ++revision.current;
+    const reconnect = (needed: boolean) => {
+      const state = recovery.current;
+      state.needed = needed;
+      state.after = Date.now() + state.delay;
+      state.delay = needed ? Math.min(60_000, state.delay * 2) : 5_000;
+    };
     try {
       const result = await window.loom.accountStatus();
       if (current !== revision.current) return;
       if (result.ok) {
         setAccount(result.snapshot);
         setError(null);
+        reconnect(result.snapshot.configured && !result.snapshot.reachable);
       } else {
         setError(result.error);
+        reconnect(result.error.status === 0 || Number(result.error.status) >= 500
+          || ["ACCOUNT_SERVICE_UNREACHABLE", "ACCOUNT_REQUEST_TIMEOUT", "ACCOUNT_REQUEST_FAILED"].includes(result.error.code));
       }
     } catch (cause) {
       if (current !== revision.current) return;
       setError(transportFailure(cause));
+      reconnect(true);
     } finally {
+      refreshing.current = false;
       if (current === revision.current) setReady(true);
     }
   }, []);
@@ -85,11 +99,17 @@ export function useAccount() {
 
   useEffect(() => {
     const handleAccountRefresh = () => { void refresh(); };
+    // Retry transient outages even when focus/online events never fire. Reads
+    // coalesce; authentication mutations are never replayed by this timer.
+    const timer = window.setInterval(() => {
+      if (recovery.current.needed && Date.now() >= recovery.current.after) void refresh();
+    }, 1_000);
     window.addEventListener("loom:account-refresh", handleAccountRefresh);
     window.addEventListener("focus", handleAccountRefresh);
     window.addEventListener("online", handleAccountRefresh);
     window.addEventListener("loom:web-host-reconnected", handleAccountRefresh);
     return () => {
+      window.clearInterval(timer);
       window.removeEventListener("loom:account-refresh", handleAccountRefresh);
       window.removeEventListener("focus", handleAccountRefresh);
       window.removeEventListener("online", handleAccountRefresh);

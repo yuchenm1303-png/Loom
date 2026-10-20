@@ -319,7 +319,7 @@ export function AccountDialog({
   const offlineNotice = offline ? (
     <p className="loom-account-notice" role="status">
       <AlertTriangle size={15} aria-hidden="true" />
-      <span>{zh ? "无法连接账号服务，请检查网络或服务状态。" : "Could not reach the account service."}</span>
+      <span>{zh ? "账号服务暂时无法连接，正在自动重连。" : "Account service is temporarily unavailable. Reconnecting automatically."}</span>
       <button type="button" onClick={() => void onRetry()} disabled={busy}>
         {zh ? "重试" : "Retry"}
       </button>
