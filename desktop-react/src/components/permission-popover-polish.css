@@ -275,36 +275,6 @@ html[data-loom-theme="light"] .permission-popover .composer-option-icon.danger {
   background: rgba(182,80,96,.050);
 }
 
-html[data-loom-theme="light"] .permission-popover .permission-badge {
-  background: #f7f8fa;
-  border-color: #e0e3e7;
-  color: #717985;
-}
-
-html[data-loom-theme="light"] .permission-popover .permission-badge.safe {
-  color: #39765a;
-  border-color: rgba(57,118,90,.15);
-  background: rgba(57,118,90,.045);
-}
-
-html[data-loom-theme="light"] .permission-popover .permission-badge.recommended {
-  color: #5e50bd;
-  border-color: rgba(105,90,216,.17);
-  background: rgba(105,90,216,.060);
-}
-
-html[data-loom-theme="light"] .permission-popover .permission-badge.flexible {
-  color: #536d97;
-  border-color: rgba(83,109,151,.14);
-  background: rgba(83,109,151,.045);
-}
-
-html[data-loom-theme="light"] .permission-popover .permission-badge.danger {
-  color: #aa4857;
-  border-color: rgba(182,80,96,.15);
-  background: rgba(182,80,96,.045);
-}
-
 html[data-loom-theme="light"] .permission-popover .permission-option.active .composer-option-check {
   color: #695ad8;
   background: rgba(105,90,216,.075);

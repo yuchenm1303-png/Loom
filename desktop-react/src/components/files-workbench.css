@@ -80,7 +80,7 @@
   border: 0;
   background: var(--pl-well);
   color: var(--pl-ink);
-  font-family: "Cascadia Code", "JetBrains Mono", "SFMono-Regular", Consolas, monospace !important;
+  font-family: var(--loom-code-font) !important;
   font-size: 13px !important;
   line-height: 1.75;
   tab-size: 2;

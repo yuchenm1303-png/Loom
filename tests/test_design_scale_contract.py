@@ -31,6 +31,8 @@ def declarations(prop: str) -> list[tuple[Path, str]]:
     found: list[tuple[Path, str]] = []
     for path in stylesheets():
         css = re.sub(r"/\*.*?\*/", "", path.read_text(encoding="utf-8"), flags=re.S)
+        # An @font-face's weight is the range of weights a face covers (styles.css), not a weight the UI asks for.
+        css = re.sub(r"@font-face\s*\{[^}]*\}", "", css)
         found.extend((path, value) for value in re.findall(rf"(?<![\w-]){prop}\s*:\s*([^;}}]+)", css))
     return found
 

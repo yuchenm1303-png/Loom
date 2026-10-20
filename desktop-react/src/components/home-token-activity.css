@@ -48,13 +48,13 @@ html[data-loom-theme="light"] .home-token-activity {
   gap: 7px;
   color: var(--home-ink-2);
   font-size: var(--loom-font-meta, 12.5px);
-  font-weight: 600;
+  font-weight: 500;
   line-height: 1.2;
 }
 
 .home-token-label svg {
   flex: none;
-  color: rgb(var(--home-accent-rgb));
+  color: var(--home-ink-3);
 }
 
 .home-token-total {
@@ -70,8 +70,8 @@ html[data-loom-theme="light"] .home-token-activity {
   color: var(--home-ink);
   font-size: 28px;
   line-height: 1;
-  font-weight: 650;
-  letter-spacing: -.035em;
+  font-weight: 600;
+  letter-spacing: -.03em;
   font-variant-numeric: tabular-nums;
 }
 
@@ -104,7 +104,7 @@ html[data-loom-theme="light"] .home-token-activity {
 
 .home-token-facts b {
   color: var(--home-ink-2);
-  font-weight: 600;
+  font-weight: 500;
 }
 
 .home-token-dot {
@@ -116,13 +116,11 @@ html[data-loom-theme="light"] .home-token-activity {
   opacity: .6;
 }
 
+/* The streak is one more fact on the line, in the accent's ink: no pill. */
 .home-token-streak {
-  margin-left: 4px;
-  padding: 1px 7px;
-  border-radius: 999px;
+  margin-left: 2px;
   color: rgb(var(--home-accent-rgb));
-  background: rgba(var(--home-accent-rgb),.12);
-  font-weight: 600;
+  font-weight: 500;
 }
 
 .home-token-empty {
@@ -141,7 +139,7 @@ html[data-loom-theme="light"] .home-token-activity {
   color: rgb(var(--home-accent-rgb));
   font: inherit;
   font-size: var(--loom-font-micro, 11.5px);
-  font-weight: 600;
+  font-weight: 500;
   line-height: 1.2;
   cursor: pointer;
 }

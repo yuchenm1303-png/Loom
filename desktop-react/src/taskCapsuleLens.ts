@@ -1,12 +1,11 @@
 // Pointer light for the work log. While the pointer is over an expandable row
 // (or a folded stage's line), the row-relative pointer position is written
 // to --lens-x / --lens-y so weave.css can centre a soft radial
-// light there. Only two custom properties change; nothing moves. Modelled on
-// starterCardPointerGlow.ts: rAF-throttled, cleared when the pointer leaves,
-// and off entirely under reduced motion.
+// light there. Only two custom properties change; nothing moves. rAF-throttled,
+// cleared when the pointer leaves, and off entirely under reduced motion.
 //
 // The empty export makes this a module: without it, its top-level `let`s would
-// share the global scope with starterCardPointerGlow.ts and collide.
+// share the global scope with other side-effect scripts and collide.
 export {};
 
 const CAPSULE_SELECTOR = ".wv-row.is-expandable, .wv-line";

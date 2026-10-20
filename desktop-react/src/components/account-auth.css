@@ -447,7 +447,7 @@
   border-radius: 9px;
   background: var(--bg-deep, #090a0d);
   color: var(--muted, #858c99);
-  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+  font-family: var(--loom-code-font);
   font-size: .655rem;
   line-height: 1.5;
   overflow-wrap: anywhere;

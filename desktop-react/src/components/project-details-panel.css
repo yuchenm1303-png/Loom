@@ -328,7 +328,7 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   color: #cfd6e2;
-  font-family: var(--code-font, "JetBrains Mono", ui-monospace, SFMono-Regular, Consolas, monospace);
+  font-family: var(--loom-code-font);
   font-size: 11px;
 }
 

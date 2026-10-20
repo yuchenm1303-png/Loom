@@ -413,7 +413,7 @@ html[data-loom-theme="light"] .model-manager-popover .mp {
 
 .mp-row-sub {
   color: var(--mp-faint);
-  font-family: var(--loom-code-font, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
+  font-family: var(--loom-code-font);
   font-size: 11.5px;
   line-height: 1.35;
 }
@@ -915,7 +915,7 @@ html[data-loom-theme="light"] .mp-mark {
   outline: none;
   background: var(--mp-field);
   color: var(--mp-muted);
-  font-family: var(--loom-code-font, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
+  font-family: var(--loom-code-font);
   font-size: 11.5px;
   text-overflow: ellipsis;
   white-space: nowrap;

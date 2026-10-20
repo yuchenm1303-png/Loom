@@ -368,18 +368,6 @@ html[data-loom-theme="light"] .composer .model-chip > span {
   box-shadow: none;
 }
 
-.composer .composer-divider {
-  height: 14px;
-  margin-inline: 2px 3px;
-  background: linear-gradient(
-    180deg,
-    transparent,
-    rgba(128,136,149,.24) 22%,
-    rgba(128,136,149,.24) 78%,
-    transparent
-  );
-}
-
 .composer .composer-tool > svg,
 .composer .composer-chip > svg:not(.composer-chip-chevron) {
   width: 15px;
@@ -616,20 +604,6 @@ html[data-loom-theme="light"] .composer .composer-chip-chevron {
 .composer .sticker-chip .composer-glyph-well,
 .composer .composer-tool .composer-glyph-well {
   color: #6f7a87;
-}
-
-.composer .composer-divider {
-  height: 16px;
-  margin-inline: 3px 4px;
-  opacity: .8;
-  background: linear-gradient(
-    180deg,
-    transparent 0%,
-    rgba(115,125,138,.13) 18%,
-    rgba(115,125,138,.28) 50%,
-    rgba(115,125,138,.13) 82%,
-    transparent 100%
-  );
 }
 
 /* The label answers a hand by colour. It used to lean .35px, which moves words by less than a pixel and softens them. */

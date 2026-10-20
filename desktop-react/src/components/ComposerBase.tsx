@@ -135,7 +135,7 @@ function permissionPresentation(mode: string, chinese = false): PermissionPresen
 
 function PermissionIcon({ mode, toolbar = false }: { mode: string; toolbar?: boolean }) {
   const Icon = mode === "read-only" ? Eye : mode === "workspace" ? FolderCog : mode === "full-access" ? KeyRound : ShieldCheck;
-  return <Icon size={toolbar ? 18 : 15} strokeWidth={toolbar ? 1.75 : 2}
+  return <Icon size={toolbar ? 16 : 15} strokeWidth={toolbar ? 1.75 : 2}
     className={toolbar ? "composer-control-icon composer-permission-icon" : undefined}
     aria-hidden="true" focusable="false" />;
 }
@@ -144,7 +144,7 @@ function PermissionIcon({ mode, toolbar = false }: { mode: string; toolbar?: boo
 // The toolbar's own marks live in the icon module, so they move like every other glyph.
 function ComposerControlIcon({ kind }: { kind: "attach" | "model" }) {
   const Icon = kind === "attach" ? Paperclip : ModelLayers;
-  return <Icon className="composer-control-icon" data-control-icon={kind} size={18} strokeWidth={1.75} focusable="false" />;
+  return <Icon className="composer-control-icon" data-control-icon={kind} size={16} strokeWidth={1.75} focusable="false" />;
 }
 
 
@@ -479,7 +479,6 @@ export function Composer({
               <span className="composer-glyph-well attach" aria-hidden="true"><ComposerControlIcon kind="attach" /></span>
               <span>{zh ? "附件" : "Attach"}</span>
             </button>
-            <span className="composer-divider" />
 
             <div className="composer-control-anchor">
               <button

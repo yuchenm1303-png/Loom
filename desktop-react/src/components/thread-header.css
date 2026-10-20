@@ -570,28 +570,6 @@ html[data-loom-reduced-motion="true"] .thread-header [class*="context"][role="me
   justify-content: center;
 }
 
-.thread-header-leading .thread-header-icon-button {
-  width: 28px;
-  height: 28px;
-  border-radius: 7px;
-  border-color: transparent;
-  background: transparent;
-  color: #7d8490;
-  box-shadow: none;
-}
-
-.thread-header-leading .thread-header-icon-button:hover {
-  color: #c7cbd3;
-  border-color: transparent;
-  background: rgba(255, 255, 255, .035);
-}
-
-.thread-header-leading .thread-header-icon-button.active {
-  color: #aaa2f0;
-  border-color: transparent;
-  background: transparent;
-}
-
 .thread-header-main {
   gap: 0;
 }
@@ -616,8 +594,8 @@ html[data-loom-reduced-motion="true"] .thread-header [class*="context"][role="me
   max-width: min(520px, 44vw);
   font-size: 14px !important;
   line-height: 20px;
-  font-weight: 650;
-  letter-spacing: -.014em;
+  font-weight: 600;
+  letter-spacing: -.006em;
 }
 
 .thread-header .workspace-path-button {
@@ -670,24 +648,6 @@ html[data-loom-reduced-motion="true"] .thread-header [class*="context"][role="me
   background: transparent !important;
 }
 
-html[data-loom-theme="light"] .thread-header-leading .thread-header-icon-button {
-  color: #8b919a;
-  border-color: transparent;
-  background: transparent;
-}
-
-html[data-loom-theme="light"] .thread-header-leading .thread-header-icon-button:hover {
-  color: #363b43;
-  border-color: transparent;
-  background: rgba(28, 31, 37, .035);
-}
-
-html[data-loom-theme="light"] .thread-header-leading .thread-header-icon-button.active {
-  color: #675bc5;
-  border-color: transparent;
-  background: transparent;
-}
-
 html[data-loom-theme="light"] .thread-header.polished-thread-header .thread-title-line strong {
   color: #181b20;
 }
@@ -734,94 +694,30 @@ html[data-loom-theme="light"] .thread-header .workspace-path-button:not(:disable
   }
 }
 
-/* Triangle sidebar toggle ---------------------------------------------------
-   Quiet by default, with a short spring turn and a soft halo on interaction. */
+/* Sidebar toggle ------------------------------------------------------------
+   A small triangle in the header's muted ink that brightens on a neutral plate under the pointer. Whether the
+   sidebar is open is shown by the sidebar itself, so the pressed state has no colour of its own. */
 .thread-header-leading .thread-sidebar-triangle {
   position: relative;
-  width: 26px;
-  height: 26px;
+  width: 28px;
+  height: 28px;
   border: 0 !important;
   border-radius: 8px;
-  background: transparent !important;
   box-shadow: none !important;
-  color: #7f8793;
-  isolation: isolate;
-  transition: color var(--loom-dur-fast) ease;
-}
-
-.thread-header-leading .thread-sidebar-triangle::before {
-  content: "";
-  position: absolute;
-  inset: 2px;
-  z-index: -1;
-  border-radius: 7px;
-  background:
-    radial-gradient(circle at 50% 45%,
-      rgba(150, 141, 245, .14),
-      rgba(150, 141, 245, .055) 48%,
-      transparent 74%);
-  opacity: 0;
-  transform: scale(.72);
+  color: var(--loom-workspace-muted);
   transition:
-    opacity var(--loom-dur-fast) ease,
-    transform var(--loom-dur-fast) var(--loom-ease-out);
-  pointer-events: none;
-}
-
-.thread-header-leading .thread-sidebar-triangle:hover {
-  color: #c8cdd5;
-}
-
-.thread-header-leading .thread-sidebar-triangle:hover::before {
-  opacity: 1;
-  transform: scale(1);
-}
-
-.thread-header-leading .thread-sidebar-triangle.active {
-  background: transparent !important;
-  border-color: transparent !important;
-  color: #979da8;
+    color var(--loom-dur-fast) ease,
+    background-color var(--loom-dur-fast) ease;
 }
 
 .thread-sidebar-triangle-mark {
-  width: 8px;
-  height: 10px;
+  width: 9px;
+  height: 11px;
   display: block;
   fill: currentColor;
   stroke: none;
-  opacity: .96;
 }
 
-html[data-loom-theme="light"] .thread-header-leading .thread-sidebar-triangle {
-  background: transparent !important;
-  border-color: transparent !important;
-  color: #8a9099;
-}
-
-html[data-loom-theme="light"] .thread-header-leading .thread-sidebar-triangle::before {
-  background:
-    radial-gradient(circle at 50% 45%,
-      rgba(105, 90, 216, .13),
-      rgba(105, 90, 216, .045) 48%,
-      transparent 74%);
-}
-
-html[data-loom-theme="light"] .thread-header-leading .thread-sidebar-triangle:hover {
-  color: #555c66;
-}
-
-html[data-loom-theme="light"] .thread-header-leading .thread-sidebar-triangle.active {
-  background: transparent !important;
-  border-color: transparent !important;
-  color: #747b86;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .thread-header-leading .thread-sidebar-triangle,
-  .thread-header-leading .thread-sidebar-triangle::before {
-    transition: none !important;
-  }
-}
 
 .thread-header-icon-button:focus-visible,
 .thread-meta-chip:focus-visible {

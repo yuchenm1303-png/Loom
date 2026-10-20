@@ -209,7 +209,7 @@
 .tool-detail pre,
 .activity-row code,
 .activity-detail code {
-  font-family: var(--loom-code-font, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace);
+  font-family: var(--loom-code-font);
 }
 
 .markdown-code-block pre,
@@ -224,7 +224,7 @@ html[data-loom-code-wrap="true"] .markdown-code-block pre code {
   overflow-wrap: anywhere;
 }
 
-html[data-loom-ambient-effects="false"] .chat-ambient {
+html[data-loom-ambient-effects="false"] .transcript-scroll > .chat-ambient {
   display: none;
 }
 

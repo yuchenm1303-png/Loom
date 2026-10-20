@@ -136,11 +136,6 @@
 /* Toolbar                                                                     */
 /* -------------------------------------------------------------------------- */
 
-:root .composer-wrap.composer-refined .composer .composer-divider {
-  height: 14px;
-  background: var(--cq-line);
-}
-
 /* Controls are plain: no border, no fill at rest. Hover and open are a tint of
    the surface. They never lift, scale, or throw a light streak across. */
 :root .composer-wrap.composer-refined .composer .composer-tool,
@@ -452,7 +447,7 @@
 :root .composer-wrap.composer-refined .permission-popover .composer-option-title-row strong {
   color: var(--cq-ink);
   font-size: 13px;
-  font-weight: 600;
+  font-weight: 500;
 }
 
 :root .composer-wrap.composer-refined .composer-option-description,
@@ -462,38 +457,26 @@
   line-height: 1.5;
 }
 
-/* Tags: a tinted word, not an outlined pill. Colour appears only where it
-   carries meaning (the safe end, the recommended default, the risky end). */
+/* Tags: a word after the title, not a pill. Colour only where it carries
+   meaning: the recommended default and the risky end. */
 :root .composer-wrap.composer-refined .permission-badge,
 :root .composer-wrap.composer-refined .permission-popover .permission-badge {
   min-height: 17px;
-  padding: 0 6px;
+  padding: 0;
   border: 0;
-  border-radius: 5px;
-  background: var(--cq-hover);
+  border-radius: 0;
+  background: none;
   color: var(--cq-ink-3);
   font-size: 11.5px;
-  font-weight: 500;
+  font-weight: 400;
   letter-spacing: 0;
 }
 
-:root .composer-wrap.composer-refined .permission-badge.safe {
-  background: color-mix(in srgb, var(--cq-safe) 12%, transparent);
-  color: var(--cq-safe);
-}
-
 :root .composer-wrap.composer-refined .permission-badge.recommended {
-  background: color-mix(in srgb, var(--accent) 13%, transparent);
   color: var(--cq-accent-ink);
 }
 
-:root .composer-wrap.composer-refined .permission-badge.flexible {
-  background: var(--cq-hover);
-  color: var(--cq-ink-3);
-}
-
 :root .composer-wrap.composer-refined .permission-badge.danger {
-  background: color-mix(in srgb, var(--cq-danger) 12%, transparent);
   color: var(--cq-danger);
 }
 

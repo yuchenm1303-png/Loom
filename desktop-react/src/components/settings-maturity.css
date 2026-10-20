@@ -512,7 +512,7 @@ button.general-default-card:hover .general-default-card-head > svg:last-child,
   border-radius: 9px;
   padding: 14px 16px;
   color: rgba(224, 227, 235, 0.86);
-  font-family: var(--loom-code-font, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace);
+  font-family: var(--loom-code-font);
   font-size: var(--loom-code-font-size, 12px);
   line-height: 1.65;
 }
@@ -580,7 +580,7 @@ button.general-default-card:hover .general-default-card-head > svg:last-child,
 
 .mature-model-card code {
   color: rgba(219, 216, 240, 0.88);
-  font-family: var(--loom-code-font, ui-monospace, monospace);
+  font-family: var(--loom-code-font);
   font-size: var(--loom-code-font-size, 12px);
 }
 
@@ -615,7 +615,7 @@ button.general-default-card:hover .general-default-card-head > svg:last-child,
   border: 1px solid var(--settings-border);
   background: #17191e;
   color: rgba(213, 211, 225, 0.88);
-  font-family: var(--loom-code-font, ui-monospace, monospace);
+  font-family: var(--loom-code-font);
   font-size: 11.5px;
   box-shadow: none;
 }
@@ -629,7 +629,7 @@ button.general-default-card:hover .general-default-card-head > svg:last-child,
   border-radius: 9px;
   padding: 14px;
   color: rgba(190, 194, 205, 0.80);
-  font-family: var(--loom-code-font, ui-monospace, monospace);
+  font-family: var(--loom-code-font);
   font-size: var(--loom-code-font-size, 12px);
   line-height: 1.55;
 }
@@ -701,7 +701,7 @@ button.general-default-card:hover .general-default-card-head > svg:last-child,
 .settings-shell code,
 .settings-shell pre,
 .settings-shell kbd {
-  font-family: var(--loom-code-font, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace);
+  font-family: var(--loom-code-font);
 }
 
 html[data-loom-density="compact"] .activity-row,

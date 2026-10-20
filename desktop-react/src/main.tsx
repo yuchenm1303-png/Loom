@@ -10,7 +10,6 @@ import { I18nProvider, bootstrapDocumentLanguage } from "./i18n";
 import { bootstrapTheme } from "./theme";
 import { applyRendererScale, installNativeRendererScaleSync } from "./rendererScale";
 import { installWebBridge, isLoomWebRuntime } from "./webBridge";
-import "./starterCardPointerGlow";
 import "./pointerContrast";
 import "./pointerMotion";
 import "./renderer-styles";
@@ -105,8 +104,8 @@ try {
   document.documentElement.style.setProperty("--loom-chat-font-size", `${chatFontSize}px`);
   document.documentElement.style.setProperty("--loom-message-line-height", MESSAGE_LINE_HEIGHTS[messageLineHeight]);
   const mono = codeFont === "system"
-    ? "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace"
-    : `${codeFont}, ui-monospace, monospace`;
+    ? "'Loom Mono', 'Cascadia Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace"
+    : `${codeFont}, "Loom Mono", ui-monospace, monospace`;
   document.documentElement.style.setProperty("--loom-code-font", mono);
   document.documentElement.style.setProperty("--loom-code-font-size", `${codeFontSize}px`);
   document.documentElement.style.setProperty("--loom-code-line-height", CODE_LINE_HEIGHTS[codeLineHeight]);
@@ -123,7 +122,7 @@ try {
   document.documentElement.style.setProperty("--loom-message-line-height", "1.72");
   document.documentElement.style.setProperty(
     "--loom-code-font",
-    "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace",
+    "'Loom Mono', 'Cascadia Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace",
   );
   document.documentElement.style.setProperty("--loom-code-font-size", "12px");
   document.documentElement.style.setProperty("--loom-code-line-height", "1.62");

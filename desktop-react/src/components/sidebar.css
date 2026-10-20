@@ -1,5 +1,5 @@
 /* Conversation sidebar -----------------------------------------------------
-   The one stylesheet for the sidebar: surface, brand, primary actions,
+   The one stylesheet for the sidebar: surface, primary actions,
    search, project and conversation lists, footer, and the conversation
    context menu. The panel's grid placement and open/close motion live in
    workspace-panels.css.
@@ -145,25 +145,6 @@ html[data-loom-density="spacious"] .sidebar.compact-sidebar { --sb-row-h: 38px; 
   app-region: no-drag;
 }
 
-.codex-sidebar-brand {
-  min-width: 0;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  color: var(--sb-ink);
-}
-
-.codex-sidebar-brand-label {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 16px;
-  line-height: 20px;
-  font-weight: 650;
-  letter-spacing: -.01em;
-}
-
 .compact-sidebar-actions {
   flex: none;
   display: flex;
@@ -180,144 +161,6 @@ html[data-loom-density="spacious"] .sidebar.compact-sidebar { --sb-row-h: 38px; 
 .compact-sidebar-actions button.active {
   color: var(--sb-accent);
   background: var(--sb-hover);
-}
-
-/* The orbit mark: a core, two tilted orbits drawn back half first, and two
-   sparks. The back halves pass behind the core, the front halves over it. */
-.codex-sidebar-brand-mark {
-  position: relative;
-  width: 26px;
-  height: 26px;
-  flex: 0 0 26px;
-  display: grid;
-  place-items: center;
-  isolation: isolate;
-}
-
-.codex-sidebar-brand-aura {
-  position: absolute;
-  z-index: 0;
-  width: 30px;
-  height: 30px;
-  border-radius: 50%;
-  background: radial-gradient(circle, rgba(117,102,238,.18) 0%, rgba(73,183,255,.08) 42%, transparent 72%);
-  filter: blur(4px);
-  opacity: .82;
-  animation: sidebar-brand-aura 4.8s ease-in-out infinite;
-}
-
-.codex-sidebar-brand-core {
-  position: relative;
-  z-index: 4;
-  width: 9px;
-  height: 9px;
-  border-radius: 50%;
-  background: radial-gradient(circle at 34% 28%, #f5f2ff 0 10%, #a8e4ff 18%, #728dff 44%, #8569ee 73%, #6552c9 100%);
-  box-shadow:
-    0 0 6px rgba(99,132,255,.46),
-    0 0 13px rgba(126,95,233,.24);
-  animation: sidebar-brand-core 4.2s ease-in-out infinite;
-}
-
-.codex-sidebar-brand-orbit {
-  position: absolute;
-  z-index: 2;
-  width: 25px;
-  height: 11px;
-  border-radius: 50%;
-  pointer-events: none;
-  filter: drop-shadow(0 0 2.5px rgba(117,101,234,.18));
-}
-
-.codex-sidebar-brand-orbit::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  padding: 1px;
-  border-radius: inherit;
-  background: conic-gradient(
-    from 18deg,
-    transparent 0 9%,
-    rgba(75,205,255,.92) 19%,
-    rgba(95,117,242,.95) 40%,
-    rgba(153,116,255,.90) 63%,
-    rgba(195,156,255,.58) 72%,
-    transparent 86% 100%
-  );
-  -webkit-mask:
-    linear-gradient(#000 0 0) content-box,
-    linear-gradient(#000 0 0);
-  -webkit-mask-composite: xor;
-  mask-composite: exclude;
-}
-
-.codex-sidebar-brand-orbit-a { animation: sidebar-brand-orbit-a 9s linear infinite; }
-
-.codex-sidebar-brand-orbit-b {
-  z-index: 1;
-  width: 22px;
-  height: 10px;
-  opacity: .76;
-  animation: sidebar-brand-orbit-b 12s linear infinite;
-}
-
-.codex-sidebar-brand-orbit-b::before {
-  padding: .8px;
-  background: conic-gradient(
-    from 206deg,
-    transparent 0 15%,
-    rgba(85,99,226,.14) 21%,
-    rgba(70,194,255,.70) 38%,
-    rgba(119,94,235,.72) 58%,
-    rgba(173,129,255,.52) 71%,
-    transparent 87% 100%
-  );
-}
-
-.codex-sidebar-brand-orbit-back {
-  z-index: 2;
-  clip-path: inset(0 0 49% 0);
-  opacity: .58;
-}
-
-.codex-sidebar-brand-orbit-front {
-  z-index: 5;
-  clip-path: inset(49% 0 0 0);
-}
-
-.codex-sidebar-brand-spark {
-  position: absolute;
-  z-index: 6;
-  width: 2.5px;
-  height: 2.5px;
-  border-radius: 50%;
-  background: #9a88f3;
-  box-shadow: 0 0 5px rgba(139,124,246,.42);
-}
-
-.codex-sidebar-brand-spark-a {
-  top: 3px;
-  right: 1px;
-  animation: sidebar-brand-spark-a 4.8s ease-in-out infinite;
-}
-
-.codex-sidebar-brand-spark-b {
-  left: 1px;
-  bottom: 4px;
-  opacity: .7;
-  background: #6fcfff;
-  box-shadow: 0 0 5px rgba(83,190,255,.36);
-  animation: sidebar-brand-spark-b 5.8s ease-in-out -1.4s infinite;
-}
-
-html[data-loom-theme="light"] .codex-sidebar-brand-aura {
-  background: radial-gradient(circle, rgba(105,90,216,.14) 0%, rgba(74,170,235,.065) 44%, transparent 72%);
-}
-
-html[data-loom-theme="light"] .codex-sidebar-brand-core {
-  box-shadow:
-    0 0 5px rgba(92,119,232,.30),
-    0 0 9px rgba(105,90,216,.16);
 }
 
 /* Primary actions ----------------------------------------------------------- */
@@ -374,17 +217,15 @@ html[data-loom-theme="light"] .codex-sidebar-brand-core {
   font-weight: 500;
 }
 
-/* New conversation is the one tinted control in the sidebar. */
+/* New conversation is the first row, not a button on a tinted plate: only its quill keeps the accent. */
 .sidebar-new-conversation {
   color: var(--sb-ink);
-  background: rgba(var(--sb-accent-rgb),.13);
 }
 
 .sidebar-new-conversation > svg { color: var(--sb-accent); }
-.sidebar-new-conversation > span { font-weight: 600; }
 
 .sidebar-new-conversation:hover {
-  background: rgba(var(--sb-accent-rgb),.2);
+  background: var(--sb-hover);
 }
 
 .sidebar-secondary-action > svg { color: var(--sb-ink-3); }
@@ -394,8 +235,6 @@ html[data-loom-theme="light"] .codex-sidebar-brand-core {
   background: var(--sb-hover);
 }
 
-html[data-loom-theme="light"] .sidebar-new-conversation { background: rgba(var(--sb-accent-rgb),.085); }
-html[data-loom-theme="light"] .sidebar-new-conversation:hover { background: rgba(var(--sb-accent-rgb),.13); }
 
 /* Search --------------------------------------------------------------------- */
 .compact-search-shell {
@@ -792,7 +631,7 @@ html[data-loom-theme="light"] .compact-search {
   background: transparent;
 }
 
-/* Same raised pill and short accent rail as Settings navigation. Each pill is
+/* The selected conversation is a raised neutral pill, as in Settings navigation: no rail, no tint. Each pill is
    anchored to its row, so scrolling, filtering and resizing need no pixel sync. */
 .compact-thread-scroll { position: relative; isolation: isolate; }
 .thread-selection-pill {
@@ -800,24 +639,13 @@ html[data-loom-theme="light"] .compact-search {
   z-index: 0;
   inset: 1px;
   border-radius: 9px;
-  background: linear-gradient(90deg, rgba(var(--sb-accent-rgb),.07), transparent 72%), var(--sb-selection-surface);
+  background: var(--sb-selection-surface);
   box-shadow: var(--sb-selection-shadow);
   opacity: 0;
   pointer-events: none;
   transform-origin: center;
 }
 .compact-thread-row.active .thread-selection-pill { opacity: 1; }
-.thread-selection-pill::before {
-  content: "";
-  position: absolute;
-  left: 0;
-  top: 50%;
-  width: 3px;
-  height: 16px;
-  margin-top: -8px;
-  border-radius: 0 3px 3px 0;
-  background: var(--sb-accent);
-}
 .compact-thread-row > .compact-thread-main { position: relative; z-index: 1; }
 
 .compact-thread-main {
@@ -854,7 +682,7 @@ html[data-loom-theme="light"] .compact-search {
 
 .compact-thread-row.active .compact-thread-title,
 .compact-thread-row.unread .compact-thread-title {
-  font-weight: 600;
+  font-weight: 500;
 }
 
 .compact-thread-row.active { box-shadow: none; }
@@ -1304,35 +1132,6 @@ html[data-loom-theme="light"] .thread-context-menu {
 }
 
 /* Motion --------------------------------------------------------------------- */
-@keyframes sidebar-brand-orbit-a {
-  from { transform: rotate(18deg); }
-  to { transform: rotate(378deg); }
-}
-
-@keyframes sidebar-brand-orbit-b {
-  from { transform: rotate(-56deg); }
-  to { transform: rotate(-416deg); }
-}
-
-@keyframes sidebar-brand-core {
-  0%, 100% { transform: scale(.96); }
-  50% { transform: scale(1.08); }
-}
-
-@keyframes sidebar-brand-aura {
-  0%, 100% { opacity: .62; transform: scale(.92); }
-  50% { opacity: .92; transform: scale(1.09); }
-}
-
-@keyframes sidebar-brand-spark-a {
-  0%, 100% { transform: translate(0,0) scale(.8); opacity: .38; }
-  50% { transform: translate(-2px,2px) scale(1.25); opacity: .95; }
-}
-
-@keyframes sidebar-brand-spark-b {
-  0%, 100% { transform: translate(0,0) scale(.82); opacity: .30; }
-  50% { transform: translate(2px,-2px) scale(1.15); opacity: .74; }
-}
 
 @keyframes compact-thread-pulse {
   0% { opacity: 1; scale: 1; }
@@ -1343,10 +1142,6 @@ html[data-loom-theme="light"] .thread-context-menu {
    still going makes the browser resolve its element again on each of them (whether or not the animation runs on
    the compositor): eight of them here cost about a quarter of a frame at 165 Hz. App sets html[data-loom-live]
    for the length of a run; a closed sidebar is not seen either. */
-html[data-loom-live] :is(.codex-sidebar-brand-aura, .codex-sidebar-brand-core, .codex-sidebar-brand-orbit, .codex-sidebar-brand-spark),
-.workspace-panels.sidebar-closed :is(.codex-sidebar-brand-aura, .codex-sidebar-brand-core, .codex-sidebar-brand-orbit, .codex-sidebar-brand-spark) {
-  animation-play-state: paused !important;
-}
 
 @keyframes sidebar-notice-in {
   from { opacity: 0; }

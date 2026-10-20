@@ -273,7 +273,7 @@ html[data-loom-theme="light"] {
 }
 
 code.pl-subtitle {
-  font-family: var(--loom-code-font, var(--code-font, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace));
+  font-family: var(--loom-code-font);
   font-size: 11.5px;
 }
 

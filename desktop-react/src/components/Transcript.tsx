@@ -1653,20 +1653,6 @@ function EmptyState({ disabled, onPrompt, onOpenInsights, connecting, startupSta
   return (
     <section className="empty-state">
       <div className="empty-intro">
-        <div className="empty-hero" aria-hidden="true">
-          <span className="empty-hero-aura" />
-          <span className="empty-hero-field" />
-          <span className="empty-loom-sweep" />
-          <span className="empty-loom-orbit empty-loom-orbit-a" />
-          <span className="empty-loom-orbit empty-loom-orbit-b" />
-          <span className="empty-loom-orbit empty-loom-orbit-c" />
-          <span className="empty-loom-core" />
-          <span className="empty-loom-pulse empty-loom-pulse-a" />
-          <span className="empty-loom-pulse empty-loom-pulse-b" />
-          <span className="empty-spark spark-one" />
-          <span className="empty-spark spark-two" />
-          <span className="empty-spark spark-three" />
-        </div>
         <h1>{lang ? "今天我们做点什么？" : "What are we working on?"}</h1>
         <p>
           {lang
@@ -1738,11 +1724,7 @@ export const Transcript = memo(function Transcript({ threadId, items, running, c
 
   return (
     <TranscriptHistoryContext.Provider value={historyRef.current.ids}><div ref={scrollRef} className={`transcript-scroll ${!items.length ? "is-empty" : ""}`}>
-      <div className="chat-ambient" aria-hidden="true">
-        <span className="ambient-glow glow-one" />
-        <span className="ambient-glow glow-two" />
-        <span className="ambient-grid" />
-      </div>
+      <div className="chat-ambient" aria-hidden="true" />
       <main className={`transcript ${!items.length ? "is-empty" : ""}`} aria-live="polite">
         {!items.length ? (
           <EmptyState

@@ -19,11 +19,6 @@
 :root .app-shell .run-progress-frame.top .run-progress-primary { display: none; }
 :root .app-shell .run-progress-frame.top .run-progress-meta { grid-column: 2; justify-self: end; }
 :root .app-shell .thread-header .workspace-path-button { display: none; }
-:root .app-shell .thread-header .thread-sidebar-triangle-mark {
-  width: 16px;
-  height: 18px;
-  align-self: center;
-}
 :root .app-shell .thread-header-leading,
 :root .app-shell .thread-header-main { align-self: center; }
 :root .app-shell .thread-header :is(.thread-status-chip, .thread-agent-button, .thread-review-check-button, .thread-artifact-button) {
@@ -58,7 +53,7 @@
   color: var(--ws-ink);
   box-shadow: none;
 }
-:root .app-shell .thread-header :is(.thread-review-button, .thread-header-icon-button).active {
+:root .app-shell .thread-header :is(.thread-review-button, .thread-header-icon-button:not(.thread-sidebar-triangle)).active {
   background: var(--ws-selected);
   color: var(--ws-accent);
   border-color: transparent;
@@ -87,7 +82,7 @@
 :root .app-shell .turn-block { --turn-gap: 14px; gap: var(--turn-gap); }
 :root .app-shell .turn-process.has-guidance .turn-process-content > .transcript-entry:not(.entry-steering-user) { width: 100%; }
 :root .app-shell .assistant-message { color: var(--ws-ink); }
-:root .app-shell .user-message { background: var(--ws-hover); border-color: transparent; box-shadow: none; border-radius: 10px; }
+:root .app-shell .user-message { background: var(--ws-hover); border-color: transparent; box-shadow: none; border-radius: 14px; }
 /* Attachment cards and text already have their own surfaces. */
 :root .app-shell .user-message.has-attachments,
 :root .app-shell .user-message.has-attachments:hover {

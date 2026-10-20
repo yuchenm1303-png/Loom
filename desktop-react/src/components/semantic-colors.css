@@ -1,38 +1,41 @@
 /* Unified semantic colors ---------------------------------------------------
-   Keep Loom's purple product accent, but make success/error/info signals
-   crisp and unmistakable against the dark UI. Loaded late so legacy muted
-   values converge on one shared palette without changing component behavior. */
+   Keep Loom's purple product accent; status colours say their meaning without
+   shouting. On the dark canvas they sit at the lightness of the secondary text
+   with moderate chroma (OKLCH: success .78 / .135, danger .72 / .155): the old
+   neon (.82 / .18, .69 / .20) was the most saturated thing on any screen it
+   reached, which is every diff counter and every status dot. Loaded late so
+   legacy muted values converge on one shared palette. */
 
 :root {
-  --success: #43e68f;
-  --danger: #ff5a72;
-  --warning: #f7c85d;
-  --info: #73b4ff;
+  --success: #65d193;
+  --danger: #f67781;
+  --warning: #f0c464;
+  --info: #7fb9f9;
 
-  --semantic-success: #43e68f;
-  --semantic-success-text: #72f5ac;
-  --semantic-success-strong: #55ef9b;
-  --semantic-success-soft: rgba(67, 230, 143, 0.17);
-  --semantic-success-fill: rgba(43, 211, 123, 0.22);
-  --semantic-success-border: rgba(67, 230, 143, 0.48);
-  --semantic-success-glow: rgba(67, 230, 143, 0.22);
+  --semantic-success: #65d193;
+  --semantic-success-text: #82dfa6;
+  --semantic-success-strong: #6fd89b;
+  --semantic-success-soft: rgba(101, 209, 147, 0.14);
+  --semantic-success-fill: rgba(101, 209, 147, 0.10);
+  --semantic-success-border: rgba(101, 209, 147, 0.40);
+  --semantic-success-glow: rgba(101, 209, 147, 0.18);
 
-  --semantic-danger: #ff5a72;
-  --semantic-danger-text: #ff7b8e;
-  --semantic-danger-strong: #ff6b80;
-  --semantic-danger-soft: rgba(255, 72, 99, 0.17);
-  --semantic-danger-fill: rgba(238, 52, 82, 0.13);
-  --semantic-danger-border: rgba(255, 72, 99, 0.48);
-  --semantic-danger-glow: rgba(255, 72, 99, 0.28);
+  --semantic-danger: #f67781;
+  --semantic-danger-text: #fa979c;
+  --semantic-danger-strong: #f8818a;
+  --semantic-danger-soft: rgba(246, 119, 129, 0.14);
+  --semantic-danger-fill: rgba(246, 119, 129, 0.10);
+  --semantic-danger-border: rgba(246, 119, 129, 0.42);
+  --semantic-danger-glow: rgba(246, 119, 129, 0.20);
 
-  --semantic-info: #73b4ff;
-  --semantic-info-text: #9ac9ff;
-  --semantic-info-soft: rgba(115, 180, 255, 0.12);
-  --semantic-info-border: rgba(115, 180, 255, 0.30);
+  --semantic-info: #7fb9f9;
+  --semantic-info-text: #a5cdfb;
+  --semantic-info-soft: rgba(127, 185, 249, 0.12);
+  --semantic-info-border: rgba(127, 185, 249, 0.30);
 }
 
-/* Light surfaces need the same saturation, but with deeper foreground tones
-   so vivid status colors stay crisp instead of turning pastel on white. */
+/* Light surfaces keep deeper foreground tones so status colors stay crisp
+   instead of turning pastel on white. */
 html[data-loom-theme="light"] {
   --success: #168b52;
   --danger: #d93650;
@@ -69,17 +72,17 @@ html[data-loom-theme="light"] {
   color: var(--semantic-danger-strong) !important;
 }
 
-/* Full review diff: stronger fills and brighter line furniture. */
+/* Full review diff: the row carries a light tint of its meaning, the code keeps the reading ink. */
 .review-code-row.is-add,
 .inline-diff-row.is-add {
   background: var(--semantic-success-fill) !important;
-  color: #e5fff0 !important;
+  color: var(--loom-workspace-ink) !important;
 }
 
 .review-code-row.is-delete,
 .inline-diff-row.is-delete {
   background: var(--semantic-danger-fill) !important;
-  color: #ffe7eb !important;
+  color: var(--loom-workspace-ink) !important;
 }
 
 /* The dark-first semantic palette must not force near-white code onto the
@@ -125,24 +128,24 @@ html[data-loom-theme="light"] .inline-diff-row.is-delete .inline-diff-marker {
 
 .review-code-row.is-add .review-line-number,
 .inline-diff-row.is-add .inline-diff-number {
-  color: rgba(85, 239, 155, 0.94) !important;
+  color: color-mix(in srgb, var(--semantic-success-strong) 78%, transparent) !important;
 }
 
 .review-code-row.is-delete .review-line-number,
 .inline-diff-row.is-delete .inline-diff-number {
-  color: rgba(255, 107, 128, 0.95) !important;
+  color: color-mix(in srgb, var(--semantic-danger-strong) 78%, transparent) !important;
 }
 
 .review-code-row.is-add .review-line-marker,
 .inline-diff-row.is-add .inline-diff-marker {
   color: var(--semantic-success-strong) !important;
-  text-shadow: 0 0 12px var(--semantic-success-glow);
+  text-shadow: none;
 }
 
 .review-code-row.is-delete .review-line-marker,
 .inline-diff-row.is-delete .inline-diff-marker {
   color: var(--semantic-danger-strong) !important;
-  text-shadow: 0 0 12px var(--semantic-danger-glow);
+  text-shadow: none;
 }
 
 /* Compact activity status dots. */
@@ -150,14 +153,14 @@ html[data-loom-theme="light"] .inline-diff-row.is-delete .inline-diff-marker {
 .runtime-status-dot.status-success,
 .runtime-status-dot.status-succeeded {
   background: var(--semantic-success-strong) !important;
-  box-shadow: 0 0 0 3px var(--semantic-success-soft), 0 0 10px var(--semantic-success-glow) !important;
+  box-shadow: 0 0 0 3px var(--semantic-success-soft) !important;
 }
 
 .runtime-status-dot.status-failed,
 .runtime-status-dot.status-error,
 .runtime-status-dot.status-denied {
   background: var(--semantic-danger-strong) !important;
-  box-shadow: 0 0 0 3px var(--semantic-danger-soft), 0 0 10px var(--semantic-danger-glow) !important;
+  box-shadow: 0 0 0 3px var(--semantic-danger-soft) !important;
 }
 
 /* Runtime inspector failure states. */
@@ -169,11 +172,11 @@ html[data-loom-theme="light"] .inline-diff-row.is-delete .inline-diff-marker {
 
 .runtime-health.warning .runtime-health-dot {
   background: var(--semantic-danger-strong) !important;
-  box-shadow: 0 0 0 3px var(--semantic-danger-soft), 0 0 10px var(--semantic-danger-glow) !important;
+  box-shadow: 0 0 0 3px var(--semantic-danger-soft) !important;
 }
 
 .runtime-event.is-failed {
-  background: linear-gradient(90deg, rgba(255, 82, 107, .045), transparent 74%) !important;
+  background: color-mix(in srgb, var(--semantic-danger-fill) 50%, transparent) !important;
 }
 
 .runtime-event.is-failed .runtime-event-icon {
@@ -185,8 +188,8 @@ html[data-loom-theme="light"] .inline-diff-row.is-delete .inline-diff-marker {
 /* Chat / turn level failures. */
 .error-row {
   color: var(--semantic-danger-text) !important;
-  border-color: rgba(255, 82, 107, .24) !important;
-  background: linear-gradient(90deg, rgba(255, 82, 107, .105), rgba(255, 82, 107, .035)) !important;
+  border-color: color-mix(in srgb, var(--semantic-danger-border) 50%, transparent) !important;
+  background: var(--semantic-danger-fill) !important;
 }
 
 .error-row .error-icon,
@@ -216,11 +219,11 @@ html[data-loom-theme="light"] .inline-diff-row.is-delete .inline-diff-marker {
   background: transparent !important;
 }
 
-/* Settings status surfaces use the same success/error language. */
+/* Settings status surfaces use the same success/error language: the word and its dot take the colour, no pill. */
 .settings-status-pill.ready {
   color: var(--semantic-success-text) !important;
-  border-color: var(--semantic-success-border) !important;
-  background: var(--semantic-success-soft) !important;
+  border-color: transparent !important;
+  background: transparent !important;
 }
 
 .settings-status-pill.ready .settings-status-dot {
@@ -232,8 +235,8 @@ html[data-loom-theme="light"] .inline-diff-row.is-delete .inline-diff-marker {
    through to the neutral base style and a broken provider reads as healthy. */
 .settings-status-pill.error {
   color: var(--semantic-danger-text) !important;
-  border-color: var(--semantic-danger-border) !important;
-  background: var(--semantic-danger-soft) !important;
+  border-color: transparent !important;
+  background: transparent !important;
 }
 
 .settings-status-pill.error .settings-status-dot {

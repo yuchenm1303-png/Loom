@@ -505,8 +505,8 @@ function applyAppearance(settings: DesktopSettings): void {
   document.documentElement.style.setProperty("--loom-chat-font-size", `${appearance.chatFontSize}px`);
   document.documentElement.style.setProperty("--loom-message-line-height", MESSAGE_LINE_HEIGHT_VALUES[appearance.messageLineHeight] ?? MESSAGE_LINE_HEIGHT_VALUES.comfortable);
   const mono = appearance.codeFont === "system"
-    ? "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace"
-    : `${appearance.codeFont}, ui-monospace, monospace`;
+    ? "'Loom Mono', 'Cascadia Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace"
+    : `${appearance.codeFont}, "Loom Mono", ui-monospace, monospace`;
   document.documentElement.style.setProperty("--loom-code-font", mono);
   document.documentElement.style.setProperty("--loom-code-font-size", `${appearance.codeFontSize}px`);
   document.documentElement.style.setProperty("--loom-code-line-height", CODE_LINE_HEIGHT_VALUES[appearance.codeLineHeight] ?? CODE_LINE_HEIGHT_VALUES.comfortable);

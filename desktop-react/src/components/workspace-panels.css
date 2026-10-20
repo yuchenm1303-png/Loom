@@ -488,7 +488,6 @@ html[data-loom-reduced-motion="true"] .workspace-panel-resizer {
 
 
 /* Unified panel-transition performance guard ------------------------------- */
-body.loom-panel-motion .workspace-panels .ambient-glow,
 body.loom-panel-motion .workspace-panels .run-progress-live-dot,
 body.loom-panel-motion .workspace-panels .tg-pulse,
 body.loom-panel-motion .workspace-panels .tg-bead,

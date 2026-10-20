@@ -154,7 +154,7 @@
   white-space: pre-wrap;
   word-break: break-word;
   color: #d9dfeb;
-  font-family: var(--code-font, "JetBrains Mono", ui-monospace, SFMono-Regular, Consolas, monospace);
+  font-family: var(--loom-code-font);
   font-size: 11.4px;
   line-height: 18px;
 }

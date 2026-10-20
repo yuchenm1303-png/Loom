@@ -44,7 +44,7 @@
   justify-content: space-between;
   color: #68717e;
   background: rgba(255,255,255,.012);
-  font: 9.5px/1 "SFMono-Regular", Consolas, monospace;
+  font: 9.5px/1 var(--loom-code-font);
 }
 
 .terminal-run-status .is-running { color: #9e98d9; }
@@ -59,7 +59,7 @@
   border-top: 1px solid rgba(255,255,255,.025);
   background: #090b0e;
   color: #aeb5c0;
-  font: .78em/1.55 "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font: .78em/1.55 var(--loom-code-font);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
@@ -93,7 +93,7 @@
   outline: none;
   background: rgba(255,255,255,.025);
   color: #c8cdd5;
-  font: 10px/1 "SFMono-Regular", Consolas, monospace;
+  font: 10px/1 var(--loom-code-font);
   transition: border-color var(--loom-dur-fast) ease, background var(--loom-dur-fast) ease;
 }
 

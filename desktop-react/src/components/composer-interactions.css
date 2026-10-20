@@ -280,15 +280,6 @@
 }
 
 /* Divider participates in focus, so the control strip feels connected. */
-.composer-refined .composer-divider {
-  transition:
-    background var(--loom-dur-panel) ease,
-    opacity var(--loom-dur-panel) ease;
-}
-
-.composer-refined .composer:is(.is-focused, :focus-within, .has-panel) .composer-divider {
-  background: color-mix(in srgb, var(--composer-accent) 12%, #2d313a);
-}
 
 /* Send -------------------------------------------------------------------- */
 .composer-refined .composer .send-button {
@@ -486,15 +477,6 @@ html[data-loom-theme="light"] .composer-refined .composer .sticker-chip.is-open 
   border-color: rgba(105,90,216,.14);
   background: rgba(105,90,216,.055);
   box-shadow: 0 0 0 3px rgba(105,90,216,.025);
-}
-
-html[data-loom-theme="light"] .composer-refined .composer-divider {
-  background: rgba(28,31,37,.10);
-  opacity: .68;
-}
-
-html[data-loom-theme="light"] .composer-refined .composer:is(.is-focused, :focus-within, .has-panel) .composer-divider {
-  background: rgba(105,90,216,.13);
 }
 
 /* Disabled send is intentionally a quiet neutral disc. */

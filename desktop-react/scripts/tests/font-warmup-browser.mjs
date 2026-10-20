@@ -3,7 +3,8 @@ const { chromium } = await import(process.env.LOOM_PLAYWRIGHT_MODULE || "playwri
 const browser = await chromium.launch({ executablePath: process.env.LOOM_CHROMIUM_PATH, headless: true });
 const origin = process.env.LOOM_TEST_ORIGIN || "http://127.0.0.1:5173";
 
-// The UI face is a variable font and each weight is an instance made on its first layout (7-10ms). After the app has
+// The UI face is a variable font and each weight is an instance made on its first layout. Through the local() faces in
+// styles.css that is 2-3ms (it was 16-20ms when each weight was a named instance of the system font). After the app has
 // been idle for a moment the weights the stylesheets use are already made, and one the stylesheets do not use is not:
 // that difference is what the warm-up buys, and it is what this measures.
 try {
@@ -32,7 +33,7 @@ try {
   const listed = Math.max(...costs.listed);
   const unlisted = Math.min(...costs.unlisted);
   assert.ok(listed < unlisted, `a weight the app uses costs ${listed.toFixed(1)}ms at most to lay out, one it does not ${unlisted.toFixed(1)}ms at least`);
-  assert.ok(unlisted > 3, `the comparison is meaningful: a fresh instance costs ${unlisted.toFixed(1)}ms`);
+  assert.ok(unlisted > 1, `the comparison is meaningful: a fresh instance costs ${unlisted.toFixed(1)}ms`);
   assert.deepEqual(errors, []);
   console.log(`PASS: font instances are made while the app is idle (a listed weight ${listed.toFixed(1)}ms, a fresh one ${unlisted.toFixed(1)}ms)`);
 } finally {

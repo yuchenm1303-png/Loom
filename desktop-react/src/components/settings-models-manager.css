@@ -254,7 +254,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
   color: #cbc8dc;
-  font-family: var(--loom-code-font, ui-monospace, monospace);
+  font-family: var(--loom-code-font);
   font-size: 11.5px;
   white-space: nowrap;
 }
@@ -644,7 +644,7 @@
   background: rgba(255,255,255,.02);
   color: #9299a5;
   font: inherit;
-  font-family: var(--loom-code-font, ui-monospace, monospace);
+  font-family: var(--loom-code-font);
   font-size: 10px;
   cursor: pointer;
 }

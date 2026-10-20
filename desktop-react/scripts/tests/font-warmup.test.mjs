@@ -21,7 +21,8 @@ function* files(directory) {
 test("every weight the source asks for is made while the app is idle", () => {
   const used = new Map();
   for (const path of files(fileURLToPath(new URL("../../src", import.meta.url)))) {
-    const text = readFileSync(path, "utf8");
+    // An @font-face's weight is the range a face covers (styles.css), not a weight the UI asks for.
+    const text = readFileSync(path, "utf8").replace(/@font-face\s*\{[^}]*\}/g, "");
     for (const match of text.matchAll(/font-weight\s*:\s*(\d{3})\b|fontWeight\s*:\s*(\d{3})\b/g)) {
       const weight = Number(match[1] ?? match[2]);
       used.set(weight, path);

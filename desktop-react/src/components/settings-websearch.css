@@ -463,7 +463,7 @@
 .websearch-test-result code {
   overflow-wrap: anywhere;
   color: var(--text-2);
-  font-family: var(--loom-code-font, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-family: var(--loom-code-font);
   font-size: 10.5px;
 }
 

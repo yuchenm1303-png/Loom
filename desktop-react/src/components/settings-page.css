@@ -419,7 +419,7 @@
   padding: 7px 10px;
   background: rgba(255,255,255,.045);
   color: #d8dae1;
-  font: 12px/1.1 "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font: 12px/1.1 var(--loom-code-font);
 }
 
 .settings-option-grid {
@@ -1112,7 +1112,7 @@
   padding: 6px 8px;
   background: rgba(255,255,255,.035);
   color: #cbd0dc;
-  font: 11.5px/1.1 "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font: 11.5px/1.1 var(--loom-code-font);
 }
 
 .skills-source-card p,

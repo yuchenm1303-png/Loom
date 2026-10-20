@@ -1,15 +1,12 @@
 /* Matching toolbar controls with a quiet resting state. The control holds still,
-   its surface takes a wash, and its glyph does the moving (icon-motion.css). */
+   its surface takes the neutral hover wash and its glyph the reading ink; the glyph
+   does the moving (icon-motion.css). Colour is kept for the focus ring. */
 .app-shell .composer .composer-refined-control {
-  --control-ink: #aaa1e0;
-  --control-wash: rgba(145,130,218,.085);
+  --control-ink: var(--loom-workspace-ink, #eceef3);
+  --control-wash: var(--loom-workspace-hover, rgba(224,230,242,.055));
   border-radius: 8px;
   transition: color var(--loom-dur-fast) ease, background-color var(--loom-dur-fast) ease,
     border-color var(--loom-dur-fast) ease, box-shadow var(--loom-dur-fast) ease !important;
-}
-html[data-loom-theme="light"] .app-shell .composer .composer-refined-control {
-  --control-ink: #7567b8;
-  --control-wash: rgba(117,103,184,.065);
 }
 .app-shell .composer .composer-refined-control .composer-glyph-well {
   width: 20px;
@@ -25,15 +22,15 @@ html[data-loom-theme="light"] .app-shell .composer .composer-refined-control {
   display: none;
 }
 .app-shell .composer .composer-refined-control .composer-control-icon {
-  width: 18px;
-  height: 18px;
+  width: 16px;
+  height: 16px;
   stroke-width: 1.75;
   overflow: visible;
 }
 .app-shell .composer .composer-refined-control:is(:hover, :focus-visible):not(:disabled) {
   background: var(--control-wash);
   border-color: transparent;
-  box-shadow: inset 0 1px 0 rgba(255,255,255,.05);
+  box-shadow: none;
 }
 .app-shell .composer .composer-refined-control:is(:hover, :focus-visible, .is-open):not(:disabled) .composer-glyph-well {
   color: var(--control-ink);
@@ -46,8 +43,8 @@ html[data-loom-theme="light"] .app-shell .composer .composer-refined-control {
   border-color: transparent;
 }
 .app-shell .composer .composer-refined-control:focus-visible {
-  outline: 2px solid var(--control-ink);
-  outline-offset: 3px;
+  outline: 2px solid var(--pl-focus, rgba(167,151,245,.55));
+  outline-offset: 2px;
 }
 /* The caret turns in icon-motion.css; here it only takes the control's ink. */
 .app-shell .composer .composer-refined-control .composer-chip-chevron {

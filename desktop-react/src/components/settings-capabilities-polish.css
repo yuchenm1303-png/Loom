@@ -167,9 +167,9 @@
   width: 32px;
   height: 32px;
   border-radius: 8px;
-  color: #aaa2e6;
-  background: #191923;
-  border: 1px solid rgba(154,140,255,.11);
+  color: var(--sr-ink-3, #8b93a1);
+  background: var(--sr-hover, rgba(240,242,245,.04));
+  border: 1px solid transparent;
   box-shadow: none;
 }
 

@@ -58,9 +58,9 @@
 
   --sr-nav-pill: color-mix(in srgb, var(--sr-ink) 7%, transparent);
   --sr-nav-pill-shadow: none;
-  --sr-seg-thumb: linear-gradient(180deg, color-mix(in srgb, var(--sr-accent) 24%, transparent), color-mix(in srgb, var(--sr-accent) 13%, transparent));
-  --sr-seg-thumb-line: color-mix(in srgb, var(--sr-accent) 38%, transparent);
-  --sr-seg-thumb-shadow: 0 4px 12px -4px color-mix(in srgb, var(--sr-accent) 40%, transparent), inset 0 1px 0 rgba(255, 255, 255, .09);
+  --sr-seg-thumb: color-mix(in srgb, var(--sr-ink) 11%, transparent);
+  --sr-seg-thumb-line: transparent;
+  --sr-seg-thumb-shadow: 0 1px 2px rgba(0, 0, 0, .28);
   --sr-shadow-card: 0 1px 2px rgba(0, 0, 0, .12);
   --sr-shadow-control: none;
   --sr-shadow-pop: 0 18px 40px -14px rgba(0, 0, 0, .65), 0 2px 8px rgba(0, 0, 0, .3);
@@ -101,8 +101,8 @@ html[data-loom-theme="light"] .settings-host {
   --sr-nav-pill: #ffffff;
   --sr-nav-pill-shadow: 0 1px 2px rgba(22, 26, 40, .08), 0 0 0 1px color-mix(in srgb, var(--sr-ink) 7%, transparent);
   --sr-seg-thumb: #ffffff;
-  --sr-seg-thumb-line: color-mix(in srgb, var(--sr-accent) 26%, transparent);
-  --sr-seg-thumb-shadow: 0 1px 3px rgba(22, 26, 40, .12), 0 3px 10px -3px color-mix(in srgb, var(--sr-accent) 30%, transparent);
+  --sr-seg-thumb-line: transparent;
+  --sr-seg-thumb-shadow: 0 1px 2px rgba(22, 26, 40, .1), 0 0 0 1px rgba(22, 26, 40, .06);
   --sr-shadow-card: 0 1px 2px rgba(22, 26, 40, .045), 0 0 0 .5px rgba(22, 26, 40, .02);
   --sr-shadow-control: 0 1px 1px rgba(22, 26, 40, .05);
   --sr-shadow-pop: 0 18px 38px -16px rgba(32, 36, 66, .28), 0 2px 8px rgba(32, 36, 66, .08);
@@ -248,10 +248,12 @@ html[data-loom-theme="light"] .settings-host {
   -webkit-box-orient: vertical;
 }
 
-/* Navigation */
+/* Navigation: group names are written as words (sentence case), not shouted. */
 .settings-shell.settings-refined .settings-nav-label {
   color: var(--sr-ink-4);
-  letter-spacing: .07em;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
 }
 
 .settings-shell.settings-refined .settings-nav button {
@@ -283,7 +285,7 @@ html[data-loom-theme="light"] .settings-host {
 }
 
 .settings-shell.settings-refined .settings-nav button.active > svg {
-  color: var(--sr-accent);
+  color: var(--sr-ink);
 }
 
 .settings-shell.settings-refined .settings-nav-pip {
@@ -291,16 +293,9 @@ html[data-loom-theme="light"] .settings-host {
   box-shadow: var(--sr-nav-pill-shadow);
 }
 
+/* The selected page is the raised neutral pill alone, as in the conversation sidebar. */
 .settings-shell.settings-refined .settings-nav-pip::before {
-  content: "";
-  position: absolute;
-  left: 0;
-  top: 50%;
-  width: 3px;
-  height: 16px;
-  margin-top: -8px;
-  border-radius: 0 3px 3px 0;
-  background: var(--sr-accent);
+  display: none;
 }
 
 .settings-shell.settings-refined .settings-nav-empty {
@@ -437,10 +432,13 @@ html[data-loom-theme="light"] .settings-host {
   color: var(--sr-ink-3);
 }
 
+/* A value is read, not run: the secondary ink in the interface face, no box. */
 .settings-shell.settings-refined .settings-detail-row code {
-  border: 1px solid var(--sr-line);
-  background: var(--sr-inset);
+  padding: 0;
+  border: 0;
+  background: none;
   color: var(--sr-ink-2);
+  font-family: var(--loom-font-family);
 }
 
 .settings-shell.settings-refined .mature-diagnostics-preview {
@@ -449,17 +447,17 @@ html[data-loom-theme="light"] .settings-host {
   color: var(--sr-ink-2);
 }
 
-/* Icon tiles */
+/* Icon tiles: a glyph in the muted ink on the faintest plate; colour is for state, not for decoration. */
 .settings-shell.settings-refined .mature-preference-icon,
 .settings-shell.settings-refined .capability-icon,
 .settings-shell.settings-refined .capability-list .capability-icon,
 .settings-shell.settings-refined .general-default-card-icon,
 .settings-shell.settings-refined .general-overview-icon,
 .settings-shell.settings-refined .model-summary-icon {
-  color: var(--sr-accent-ink);
-  border: 1px solid color-mix(in srgb, var(--sr-accent) 17%, transparent);
-  background: var(--sr-accent-faint);
-  transition: background-color var(--loom-dur-fast) ease, border-color var(--loom-dur-fast) ease;
+  color: var(--sr-ink-3);
+  border: 1px solid transparent;
+  background: var(--sr-hover);
+  transition: background-color var(--loom-dur-fast) ease, color var(--loom-dur-fast) ease;
 }
 
 .settings-shell.settings-refined .mature-preference-icon {
@@ -470,34 +468,40 @@ html[data-loom-theme="light"] .settings-host {
 
 .settings-shell.settings-refined .mature-preference-row:hover .mature-preference-icon,
 .settings-shell.settings-refined .capability-row:hover .capability-icon {
-  border-color: color-mix(in srgb, var(--sr-accent) 28%, transparent);
-  background: var(--sr-accent-soft);
+  color: var(--sr-ink-2);
+  background: var(--sr-press);
 }
 
-/* Status pills keep the geometry set by the earlier sheets; only colour moves. */
+/* A status is a word with its dot, in its colour: no pill around it. */
 .settings-shell.settings-refined .settings-status-pill {
-  border-color: var(--sr-line);
-  background: var(--sr-inset);
+  padding-inline: 0;
+  border-color: transparent;
+  background: transparent;
   color: var(--sr-ink-3);
   box-shadow: none;
 }
 
 .settings-shell.settings-refined .settings-status-pill.ready {
-  border-color: color-mix(in srgb, var(--sr-ok) 28%, transparent);
-  background: color-mix(in srgb, var(--sr-ok) 10%, transparent);
+  border-color: transparent;
+  background: transparent;
   color: var(--sr-ok);
 }
 
 .settings-shell.settings-refined .settings-status-pill.warning {
-  border-color: color-mix(in srgb, var(--sr-warn) 32%, transparent);
-  background: color-mix(in srgb, var(--sr-warn) 11%, transparent);
+  border-color: transparent;
+  background: transparent;
   color: var(--sr-warn);
 }
 
 .settings-shell.settings-refined .settings-status-pill.off {
-  border-color: var(--sr-line-soft);
+  border-color: transparent;
   background: transparent;
   color: var(--sr-ink-4);
+}
+
+/* Beside a switch, "On" says what the switch already says. */
+.settings-shell.settings-refined .capability-title-line .settings-status-pill.ready {
+  display: none;
 }
 
 .settings-shell.settings-refined .settings-status-pill.muted {

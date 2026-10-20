@@ -135,7 +135,7 @@ html[data-loom-review-open="true"] {
   color: #dfe2e8;
   font-size: 12px;
   font-weight: 600;
-  font-family: var(--loom-code-font, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace);
+  font-family: var(--loom-code-font);
 }
 
 .review-file-stats {
@@ -188,7 +188,7 @@ html[data-loom-review-open="true"] {
   min-width: max-content;
   width: 100%;
   padding: 8px 0 30px;
-  font-family: var(--loom-code-font, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace);
+  font-family: var(--loom-code-font);
   font-size: var(--loom-code-font-size, 12px);
   line-height: 1.58;
 }

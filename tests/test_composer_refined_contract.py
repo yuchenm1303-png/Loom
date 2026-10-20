@@ -207,14 +207,16 @@ def test_colour_on_the_toolbar_means_something() -> None:
     assert "background: var(--cq-send);" in send and "color: var(--cq-send-ink);" in send
 
 
-def test_permission_tags_are_tinted_words_not_outlined_pills() -> None:
+def test_permission_tags_are_words_not_pills() -> None:
     css = read(REFINED)
 
+    # A tag is a word after the title: no outline, no plate.
     badge = body_of(css, f"{SCOPE} .permission-badge")
-    assert "border: 0;" in badge and "border-radius: 5px;" in badge
-    for tone, token in (("safe", "--cq-safe"), ("danger", "--cq-danger")):
+    assert "border: 0;" in badge and "background: none;" in badge and "padding: 0;" in badge
+    # Colour only where it means something: the recommended default and the risky end.
+    for tone, token in (("recommended", "--cq-accent-ink"), ("danger", "--cq-danger")):
         body = body_of(css, f"{SCOPE} .permission-badge.{tone}")
-        assert f"var({token})" in body
+        assert f"var({token})" in body and "background" not in body
     # The selected row is a tint with a check, not a bordered card with a bar.
     active = body_of(css, f"{SCOPE} .composer-option.active")
     assert "border: 0;" in active and "box-shadow: none;" in active

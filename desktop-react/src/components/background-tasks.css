@@ -40,9 +40,9 @@
 .background-task-state.is-success { color: var(--pl-ok); }
 .background-task-state.is-failed { color: var(--pl-danger); }
 .background-task-detail { padding:0 12px 12px; display:grid; gap:7px; }
-.background-task-command { font:11.5px/1.5 var(--loom-code-font, ui-monospace, Consolas, monospace); color: var(--pl-secondary); overflow-wrap:anywhere; padding:9px; border-radius:7px; background: var(--pl-well); max-height:100px; overflow:auto; }
+.background-task-command { font:11.5px/1.5 var(--loom-code-font); color: var(--pl-secondary); overflow-wrap:anywhere; padding:9px; border-radius:7px; background: var(--pl-well); max-height:100px; overflow:auto; }
 .background-task-location { color: var(--pl-faint); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; font-size:11.5px; }
-.background-task-log { margin:0; padding:12px; min-height:70px; max-height:280px; overflow:auto; white-space:pre-wrap; overflow-wrap:anywhere; color: var(--pl-secondary); background: var(--pl-well); border:1px solid var(--pl-line); border-radius:9px; font:11.5px/1.65 var(--loom-code-font, ui-monospace, Consolas, monospace); user-select:text; }
+.background-task-log { margin:0; padding:12px; min-height:70px; max-height:280px; overflow:auto; white-space:pre-wrap; overflow-wrap:anywhere; color: var(--pl-secondary); background: var(--pl-well); border:1px solid var(--pl-line); border-radius:9px; font:11.5px/1.65 var(--loom-code-font); user-select:text; }
 .background-task-detail small { color: var(--pl-muted); }
 .background-task-error, .background-task-notice { color: var(--pl-danger)!important; }
 .background-task-notice { display:flex; align-items:center; gap:7px; padding:8px 14px; overflow-wrap:anywhere; font-size:11.5px; }

@@ -1,10 +1,13 @@
 import { useEffect, useState } from "react";
 import { Folder, FolderOpen, GitBranch, Laptop, GitPullRequest } from "./icons";
 import type { ProjectRecord } from "../types/loom";
+import { useI18n } from "../i18n";
 import "./project-git-bar.css";
 import { startVisiblePolling } from "../visiblePolling";
 
 export function ProjectGitBar({ project, onOpen, onFiles }: { project: ProjectRecord; onOpen(): void; onFiles(): void }) {
+  const { language } = useI18n();
+  const zh = language === "zh-CN";
   const [repository, setRepository] = useState<{isRepo:boolean;branch:string;isWorktree:boolean;additions:number;deletions:number;ahead:number;behind:number;repository:string}|null>(null);
   useEffect(() => {
     let live = true;
@@ -16,13 +19,13 @@ export function ProjectGitBar({ project, onOpen, onFiles }: { project: ProjectRe
     const stop = startVisiblePolling(refresh, 15000);
     return () => { live = false; stop(); };
   }, [project.id]);
-  return <div className="project-git-bar" aria-label="当前项目与 Git">
-    <span><Laptop size={13}/>Local</span>
+  return <div className="project-git-bar" aria-label={zh ? "当前项目与 Git" : "Project and Git"}>
+    <span><Laptop size={13}/>{zh ? "本机" : "Local"}</span>
     <button onClick={onOpen} title={project.root}><Folder size={13}/>{project.name}</button>
-    <button onClick={onFiles} title="打开项目文件管理器"><FolderOpen size={13}/>Files</button>
-    {repository?.isRepo && <button onClick={onOpen}><GitBranch size={13}/>{repository.branch || "游离 HEAD"}<small>↑{repository.ahead} ↓{repository.behind}</small></button>}
+    <button onClick={onFiles} title={zh ? "打开项目文件管理器" : "Open the project's files"}><FolderOpen size={13}/>{zh ? "文件" : "Files"}</button>
+    {repository?.isRepo && <button onClick={onOpen}><GitBranch size={13}/>{repository.branch || (zh ? "游离 HEAD" : "detached HEAD")}<small>↑{repository.ahead} ↓{repository.behind}</small></button>}
     {repository?.isWorktree ? <span>worktree</span> : null}
-    {repository && (repository.additions > 0 || repository.deletions > 0) && <button onClick={onOpen} title="已跟踪文件相对 HEAD 的变更"><span className="git-additions">+{repository.additions}</span><span className="git-deletions">−{repository.deletions}</span></button>}
-    <button className="project-git-pr" onClick={onOpen}><GitPullRequest size={13}/>仓库 / PR</button>
+    {repository && (repository.additions > 0 || repository.deletions > 0) && <button onClick={onOpen} title={zh ? "已跟踪文件相对 HEAD 的变更" : "Changes to tracked files since HEAD"}><span className="git-additions">+{repository.additions}</span><span className="git-deletions">−{repository.deletions}</span></button>}
+    <button className="project-git-pr" onClick={onOpen}><GitPullRequest size={13}/>{zh ? "仓库 · PR" : "Repository · PR"}</button>
   </div>;
 }

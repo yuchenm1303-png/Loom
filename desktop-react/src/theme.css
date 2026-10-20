@@ -11,7 +11,7 @@
   --loom-workspace-ink: #eceef3;
   --loom-workspace-secondary: #bbc1cc;
   --loom-workspace-muted: #949dab;
-  --loom-workspace-line: rgba(224,230,242,.12);
+  --loom-workspace-line: rgba(224,230,242,.09);
   --loom-workspace-hover: rgba(224,230,242,.055);
   --loom-workspace-selection: rgba(167,151,245,.12);
   --loom-workspace-accent: #b5a7f5;
@@ -41,7 +41,7 @@ html[data-loom-theme="light"] {
   --loom-workspace-ink: #20242d;
   --loom-workspace-secondary: #444c5a;
   --loom-workspace-muted: #626d7d;
-  --loom-workspace-line: rgba(32,42,58,.12);
+  --loom-workspace-line: rgba(32,42,58,.1);
   --loom-workspace-hover: rgba(32,42,58,.04);
   --loom-workspace-selection: rgba(105,82,199,.085);
   --loom-workspace-accent: #6047b8;
@@ -146,7 +146,7 @@ html[data-loom-theme="light"] .thread-heading strong {
 }
 
 html[data-loom-theme="light"] .thread-heading span,
-html[data-loom-theme="light"] .thread-header-copy span {
+html[data-loom-theme="light"] .thread-header-copy span:not(.animated-thread-title) {
   color: #747b86;
 }
 
@@ -155,18 +155,6 @@ html[data-loom-theme="light"] .thread-header-mark {
   border-color: rgba(105,90,216,.16);
   background: rgba(105,90,216,.06);
   box-shadow: inset 0 1px rgba(255,255,255,.72), 0 8px 20px rgba(33,37,45,.05);
-}
-
-html[data-loom-theme="light"] .transcript-scroll {
-  background:
-    radial-gradient(ellipse at 50% -12%, rgba(105,90,216,.04), transparent 48%),
-    var(--bg);
-}
-
-html[data-loom-theme="light"] .ambient-grid {
-  background-image:
-    linear-gradient(rgba(28,31,37,.025) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(28,31,37,.022) 1px, transparent 1px);
 }
 
 html[data-loom-theme="light"] .user-message {
@@ -290,54 +278,6 @@ html[data-loom-theme="light"] .model-manager-popover small {
 html[data-loom-theme="light"] .model-core-glyph {
   color: #695ad8;
   background: rgba(105,90,216,.055);
-}
-
-/* Markdown */
-html[data-loom-theme="light"] .markdown-body {
-  color: #343941;
-}
-
-html[data-loom-theme="light"] .markdown-body h1,
-html[data-loom-theme="light"] .markdown-body h2,
-html[data-loom-theme="light"] .markdown-body h3,
-html[data-loom-theme="light"] .markdown-body h4,
-html[data-loom-theme="light"] .markdown-body h5,
-html[data-loom-theme="light"] .markdown-body h6 {
-  color: #20232a;
-}
-
-html[data-loom-theme="light"] .markdown-body em {
-  color: #414751;
-}
-
-html[data-loom-theme="light"] .markdown-body del,
-html[data-loom-theme="light"] .markdown-body blockquote {
-  color: #747c87;
-}
-
-html[data-loom-theme="light"] .markdown-body a {
-  color: #6253ca;
-  border-bottom-color: rgba(98,83,202,.28);
-}
-
-html[data-loom-theme="light"] .markdown-code-block {
-  border-color: #d8dbe1;
-  background: var(--loom-code-bg);
-  box-shadow: inset 0 1px rgba(255,255,255,.72), 0 8px 24px rgba(27,31,40,.05);
-}
-
-html[data-loom-theme="light"] .markdown-code-head {
-  border-bottom-color: #dde0e5;
-  color: #737b86;
-  background: #eef0f2;
-}
-
-html[data-loom-theme="light"] .markdown-code-block pre {
-  color: #38404a;
-}
-
-html[data-loom-theme="light"] .markdown-body hr {
-  background: linear-gradient(90deg, #d9dce1, #cfd3d9 45%, transparent 100%);
 }
 
 /* Inspector */
@@ -825,114 +765,6 @@ html[data-loom-theme="light"] .composer .send-button.stop {
 /* Finish the remaining dark-only message surfaces with exact component
    selectors. Dark theme stays untouched because every override is scoped to
    data-loom-theme="light". */
-
-/* Markdown tables ---------------------------------------------------------- */
-html[data-loom-theme="light"] .markdown-body table {
-  border-color: #d7dbe1;
-  background: #ffffff;
-  box-shadow: 0 7px 20px rgba(27,31,40,.045);
-}
-
-html[data-loom-theme="light"] .markdown-body th,
-html[data-loom-theme="light"] .markdown-body td {
-  border-right-color: #dde1e6;
-  border-bottom-color: #dde1e6;
-}
-
-html[data-loom-theme="light"] .markdown-body th {
-  color: #2d333b;
-  background: linear-gradient(180deg, #f5f6f8, #eef0f3);
-}
-
-html[data-loom-theme="light"] .markdown-body td {
-  color: #4b535d;
-  background: #ffffff;
-}
-
-html[data-loom-theme="light"] .markdown-body tbody tr:nth-child(even) td {
-  background: #fafbfc;
-}
-
-/* Fenced code (inline code is markdown-message.css's, from the workspace tokens) ----- */
-html[data-loom-theme="light"] .markdown-code-block {
-  border-color: #d7dbe1;
-  background: #f7f8fa;
-  box-shadow:
-    inset 0 1px rgba(255,255,255,.9),
-    0 7px 20px rgba(27,31,40,.04);
-}
-
-html[data-loom-theme="light"] .markdown-code-head {
-  border-bottom-color: #dde1e6;
-  color: #68717c;
-  background: #eef0f3;
-}
-
-html[data-loom-theme="light"] .markdown-code-head button {
-  color: #68717c;
-}
-
-html[data-loom-theme="light"] .markdown-code-head button:hover {
-  color: #30363e;
-  background: rgba(28,31,37,.05);
-}
-
-html[data-loom-theme="light"] .markdown-code-block pre {
-  color: #38414b;
-}
-
-html[data-loom-theme="light"] .markdown-code-block .hljs-keyword,
-html[data-loom-theme="light"] .markdown-code-block .hljs-selector-tag,
-html[data-loom-theme="light"] .markdown-code-block .hljs-literal {
-  color: #6552bd;
-}
-
-html[data-loom-theme="light"] .markdown-code-block .hljs-string,
-html[data-loom-theme="light"] .markdown-code-block .hljs-attr {
-  color: #397258;
-}
-
-html[data-loom-theme="light"] .markdown-code-block .hljs-number,
-html[data-loom-theme="light"] .markdown-code-block .hljs-symbol {
-  color: #916127;
-}
-
-html[data-loom-theme="light"] .markdown-code-block .hljs-comment,
-html[data-loom-theme="light"] .markdown-code-block .hljs-quote {
-  color: #7a838e;
-}
-
-html[data-loom-theme="light"] .markdown-code-block .hljs-title,
-html[data-loom-theme="light"] .markdown-code-block .hljs-function,
-html[data-loom-theme="light"] .markdown-code-block .hljs-section {
-  color: #35699f;
-}
-
-html[data-loom-theme="light"] .markdown-code-block .hljs-built_in,
-html[data-loom-theme="light"] .markdown-code-block .hljs-type {
-  color: #925d86;
-}
-
-html[data-loom-theme="light"] .markdown-code-block .hljs-variable,
-html[data-loom-theme="light"] .markdown-code-block .hljs-template-variable {
-  color: #49515c;
-}
-
-/* Markdown supporting surfaces -------------------------------------------- */
-html[data-loom-theme="light"] .markdown-body blockquote {
-  border-left-color: rgba(105,90,216,.30);
-  color: #626b76;
-  background: linear-gradient(90deg, rgba(105,90,216,.055), transparent 72%);
-}
-
-html[data-loom-theme="light"] .markdown-body .katex-display {
-  border-color: rgba(105,90,216,.12);
-  background: rgba(105,90,216,.035);
-}
-
-html[data-loom-theme="light"] .markdown-body .katex {
-  color: #30363e;
-}
 
 /* Light theme: models settings manager ------------------------------------ */
 /* ModelsSettingsPanel is a newer surface than the legacy model-summary cards.
@@ -1432,14 +1264,6 @@ html[data-loom-theme="light"] .capability-list .capability-row {
 
 html[data-loom-theme="light"] .capability-list .capability-row:hover {
   background: #fafbfc;
-}
-
-html[data-loom-theme="light"] .capability-list .capability-icon,
-html[data-loom-theme="light"] .capability-list .capability-row:nth-child(1) .capability-icon,
-html[data-loom-theme="light"] .capability-list .capability-row:nth-child(2) .capability-icon {
-  border-color: rgba(105,90,216,.15);
-  background: rgba(105,90,216,.07);
-  color: #6253ca;
 }
 
 html[data-loom-theme="light"] .capability-list .capability-title-line strong,

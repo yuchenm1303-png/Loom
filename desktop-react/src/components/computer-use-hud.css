@@ -256,7 +256,7 @@
 .hud-bubble-line b{
   max-width:58%;
   color:#e7f8ff;
-  font-family:var(--loom-code-font,ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace);
+  font-family:var(--loom-code-font);
   font-weight:650;
   overflow:hidden;
   text-overflow:ellipsis;
