@@ -143,6 +143,10 @@ html[data-loom-theme="light"] .transcript {
   animation: none !important;
 }
 
+.transcript-entry[data-restored="true"] :is(.user-link-card, .user-rich-code-block, .user-message-image-preview, .user-message-attachment-card, .user-message-media-preview) {
+  animation: none !important;
+}
+
 /* Rich surfaces arrive as one unit instead of every child running its own
    shimmer. This covers code, links, media, attachments, tables and images. */
 .turn-block.is-active .user-link-card,

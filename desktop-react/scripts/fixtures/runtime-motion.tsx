@@ -35,10 +35,10 @@ const api = {
     </I18nProvider></StrictMode>)); },
   presence(open: boolean, identity = "one") { flushSync(() => root.render(<StrictMode><Presence open={open} identity={identity} /></StrictMode>)); },
   plain(content: string, streaming: boolean) { flushSync(() => root.render(<StrictMode><MarkdownMessage content={content} streaming={streaming} /></StrictMode>)); },
-  turn(items: TranscriptItem[], running: boolean) { flushSync(() => root.render(<StrictMode><I18nProvider><div className="app-shell" style={{ display: "block", height: "100vh", minHeight: 0 }}>
+  turn(items: TranscriptItem[], running: boolean, threadId?: string) { flushSync(() => root.render(<StrictMode><I18nProvider><div className="app-shell" style={{ display: "block", height: "100vh", minHeight: 0 }}>
     <div className="conversation-stage" style={{ height: "100%" }}>
-    <Transcript items={items} running={running} currentTurnId="turn-1" onApproval={() => {}} />
-    <TranscriptScrollController items={items} running={running} threadId="thread-1" currentTurnId="turn-1" />
+    <Transcript key={threadId} threadId={threadId} items={items} running={running} currentTurnId="turn-1" onApproval={() => {}} />
+    <TranscriptScrollController items={items} running={running} threadId={threadId ?? "thread-1"} currentTurnId="turn-1" />
     </div>
     </div></I18nProvider></StrictMode>)); },
   lightbox() { flushSync(() => root.render(<StrictMode><Lightbox /></StrictMode>)); },

@@ -1,4 +1,5 @@
-import { useLayoutEffect, useRef, useState } from "react";
+import { useContext, useLayoutEffect, useRef, useState } from "react";
+import { TranscriptHistoryContext } from "./transcriptContexts";
 import { useReducedMotion } from "../motion/useReducedMotion";
 import { DUR, STAGGER_MS } from "../motion/tokens";
 import type { TranscriptItem } from "../types/loom";
@@ -16,8 +17,9 @@ const VIEWPORT_REFRESH_MS = 64;
 export function useEarlierProcessHandoff(items: TranscriptItem[], progress: Progress, active: boolean,
   open: boolean, pending: ReadonlySet<string>, groups: (items: TranscriptItem[]) => string[][]) {
   const reduce = useReducedMotion();
+  const history = useContext(TranscriptHistoryContext);
   const [state, setState] = useState<Snapshot>(() => ({ progress, active, open, reduce,
-    retained: new Set(active ? progress.earlier.map(item => item.id) : []), folding: new Set() }));
+    retained: new Set(active ? progress.earlier.filter(item => !history.has(item.id)).map(item => item.id) : []), folding: new Set() }));
   const rootRef = useRef<HTMLElement>(null);
   const [viewportRevision, setViewportRevision] = useState(0);
   // Whether anything is waiting to leave the screen. Scrolling and growing change nothing until something is.

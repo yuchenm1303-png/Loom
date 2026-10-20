@@ -111,8 +111,13 @@ html[data-loom-theme="light"] {
 }
 
 .wv-step[data-born="live"],
-.wv-earlier {
+.wv-earlier:not([data-restored="true"]) {
   animation: wv-grow var(--loom-dur-flow) var(--loom-ease-move) backwards;
+}
+
+.wv-step[data-restored="true"] :is(.wv-tag, .wv-sub-text),
+.wv-stage[data-restored="true"] .wv-line-text {
+  animation: none;
 }
 
 /* The line the older steps fold into is itself born growing, like any step. */

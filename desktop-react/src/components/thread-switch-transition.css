@@ -1,47 +1,10 @@
-/* Give immediate feedback while keeping the mounted transcript readable.
-   The words keep still: the stage dims a little while the read resolves, and
-   fades back in once the new thread is there. No overlay, no travel, no loop. */
+/* Keep the mounted thread readable while loading; the replacement arrives at full opacity. */
 .workspace {
   position: relative;
   isolation: isolate;
 }
 
-.workspace > .conversation-stage {
-  transition: opacity var(--loom-dur-fast-out) var(--loom-ease-in);
-}
-
 .workspace.is-thread-switching > .conversation-stage {
   opacity: .72;
   animation: none;
-}
-
-.workspace.is-thread-entering:not(.is-thread-switching) > .conversation-stage {
-  animation: loom-thread-surface-in var(--loom-dur-base) var(--loom-ease-out) both;
-}
-
-@keyframes loom-thread-surface-in {
-  from {
-    opacity: .72;
-  }
-  to {
-    opacity: 1;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .workspace > .conversation-stage {
-    transition: opacity 70ms linear !important;
-  }
-
-  .workspace.is-thread-entering > .conversation-stage {
-    animation: none !important;
-  }
-}
-
-:root[data-loom-reduced-motion="true"] .workspace > .conversation-stage {
-  transition: opacity 70ms linear !important;
-}
-
-:root[data-loom-reduced-motion="true"] .workspace.is-thread-entering > .conversation-stage {
-  animation: none !important;
 }

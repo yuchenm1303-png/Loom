@@ -3,6 +3,8 @@ import type { FileEditDelta } from "./activityModel";
 
 /** True inside the live sequence of an active turn (not its earlier history). */
 export const LiveSequenceContext = createContext(false);
+/** Records already present when a conversation is opened, including its active turn. */
+export const TranscriptHistoryContext = createContext<ReadonlySet<string>>(new Set());
 
 /** The model's per-step narration stays out of the log unless the reader asks for it, once per turn. */
 export const ProcessNotesContext = createContext<{ show: boolean }>({ show: false });
@@ -24,8 +26,9 @@ const seenActivity = new Set<string>();
  */
 export function useBornLive(key: string, liveOverride?: boolean): boolean {
   const contextLive = useContext(LiveSequenceContext);
+  const history = useContext(TranscriptHistoryContext);
   const live = liveOverride ?? contextLive;
-  const [born] = useState(() => live && !seenActivity.has(key));
+  const [born] = useState(() => live && !history.has(key.replace(/^notes:/, "")) && !seenActivity.has(key));
   useLayoutEffect(() => {
     seenActivity.add(key);
   }, [key]);

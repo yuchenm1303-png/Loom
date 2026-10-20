@@ -30,7 +30,7 @@ try {
     assert.ok(selection.title.includes(titles[0]), 'header identifies the newly selected thread before it loads');
     assert.equal(selection.switching, true);
     assert.ok(selection.pillAnimations > 0, 'pill moves on the first frame, without waiting for thread/read');
-    assert.equal(await page.locator('.thread-agent-button').isDisabled(), true, 'old transcript actions cannot target the previous thread under the new title');
+    assert.equal(await page.locator('.conversation-stage').evaluate(el => el.inert), true, 'old transcript actions cannot target the previous thread under the new title');
     assert.equal(await page.locator('.thread-sidebar-triangle').isEnabled(), true, 'sidebar navigation remains available while loading');
     await page.waitForTimeout(420);
     assert.equal(await page.locator('.thread-switch-overlay').count(), 0, 'slow reads never show a loading overlay');
@@ -42,7 +42,7 @@ try {
       composerOpacity: Number(getComputedStyle(document.querySelector('.composer-stage')).opacity),
     }));
     assert.ok(pendingSurface.opacity >= .6 && pendingSurface.opacity < 1, 'pending transcript stays readable with subtle feedback');
-    assert.notEqual(pendingSurface.translate, 'none', 'pending transcript moves before the read completes');
+    assert.equal(pendingSurface.translate, 'none', 'navigation never moves the transcript surface');
     assert.equal(pendingSurface.transcriptInert, true);
     assert.equal(pendingSurface.composerInert, true, 'keyboard interaction cannot send to the old conversation');
     assert.equal(pendingSurface.composerOpacity, 1, 'composer is never covered or dimmed');
@@ -55,6 +55,8 @@ try {
     // Finish the second request while the first is still blocked.
     await page.evaluate(() => window.navigationFixture.release('visual-2'));
     await page.locator('.markdown-body').filter({ hasText: 'Loaded visual-2' }).waitFor();
+    assert.equal(await page.locator('.conversation-stage').evaluate(el => getComputedStyle(el).opacity), '1', 'loaded transcript is immediately opaque');
+    assert.equal(await page.locator('.workspace.is-thread-entering').count(), 0, 'loaded transcript has no entrance replay');
     assert.ok(await page.evaluate(() => window.navigationFixture.pending.has('visual-1')));
     await page.evaluate(() => window.navigationFixture.release('visual-1'));
     await page.waitForTimeout(100);

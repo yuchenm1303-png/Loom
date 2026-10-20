@@ -158,8 +158,6 @@ function TranscriptScrollControllerState({
   const forceBottomRef = useRef(false);
   const lastThreadIdRef = useRef(String(threadId ?? ""));
   const lastTurnIdRef = useRef(String(currentTurnId ?? ""));
-  const lastUserMessageIdRef = useRef("");
-  const lastActivityItemIdRef = useRef("");
   const lastScrollTopRef = useRef(0);
   const frameRef = useRef<number | null>(null);
   const bottomTargetRef = useRef(0);
@@ -167,9 +165,9 @@ function TranscriptScrollControllerState({
   const bottomTargetDirtyRef = useRef(true);
   const snapBottomRef = useRef(false);
   // Entering a conversation is positioning, not live content growth. Keep
-  // late measurements pinned until new transcript data or reader input arrives.
+  // late measurements pinned until new activity or reader input arrives.
   const navigationPinRef = useRef(true);
-  const lastItemsRef = useRef(items);
+  const hasTranscriptDataRef = useRef(items.length > 0);
   // The glide toward the live edge: where the spring is, what we last wrote (to tell our own scrolling from anyone
   // else's), when it last stepped, and whether it is still moving.
   const motionRef = useRef<FollowState>({ position: 0, velocity: 0 });
@@ -203,6 +201,8 @@ function TranscriptScrollControllerState({
   };
   const latestUserId = useMemo(() => latestUserMessageId(items), [items]);
   const latestActivityId = useMemo(() => latestActivityItemId(items), [items]);
+  const lastUserMessageIdRef = useRef(latestUserId);
+  const lastActivityItemIdRef = useRef(latestActivityId);
 
   hasOlderRef.current = Boolean(hasOlder);
   loadingOlderRef.current = Boolean(loadingOlder);
@@ -486,10 +486,11 @@ function TranscriptScrollControllerState({
     const turnChanged = Boolean(nextTurnId) && nextTurnId !== lastTurnIdRef.current;
     const userMessageAdded = Boolean(latestUserId) && latestUserId !== lastUserMessageIdRef.current;
     const activityAdded = Boolean(latestActivityId) && latestActivityId !== lastActivityItemIdRef.current;
-    if (!threadChanged && items !== lastItemsRef.current) navigationPinRef.current = false;
-    lastItemsRef.current = items;
+    const historyArrived = !hasTranscriptDataRef.current && items.length > 0
+      && !items.some(item => item.status === "sending");
+    hasTranscriptDataRef.current ||= items.length > 0;
 
-    if (threadChanged) {
+    if (threadChanged || historyArrived) {
       // A real thread replacement should still pin before paint. Animating from
       // the previous conversation's scroll position would expose stale geometry.
       userDetachedRef.current = false;
@@ -500,6 +501,7 @@ function TranscriptScrollControllerState({
       setJumpVisible(false);
       positionConversation(scroller);
     } else if (turnChanged || userMessageAdded) {
+      navigationPinRef.current = false;
       // Sending is different from swapping conversations: the user is already
       // looking at this viewport. Keep it force-following, but let the bottom
       // anchor travel through the same short spring as the bubble entrance so
@@ -516,6 +518,7 @@ function TranscriptScrollControllerState({
       setJumpVisible(false);
       scheduleBottomSync(scroller, true);
     } else if (activityAdded && followingRef.current) {
+      navigationPinRef.current = false;
       // Let new task rows and the viewport share the same spring. The previous
       // hard snap made a polished row entrance look like the whole transcript
       // jumped when several tools arrived together.

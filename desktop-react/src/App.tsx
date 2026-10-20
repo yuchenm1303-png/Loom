@@ -461,9 +461,7 @@ export default function App() {
   const [resizingPanel, setResizingPanel] = useState<ResizePanel | null>(null);
   const [shortcuts, setShortcuts] = useState<ShortcutSettings>(() => readShortcutSettings());
   const [dismissedApprovalIds, setDismissedApprovalIds] = useState<Set<string>>(() => new Set());
-  const [threadEntering, setThreadEntering] = useState(false);
   const openComposerAccount = useCallback(() => setAccountOpen(true), []);
-  const previousThreadIdRef = useRef("");
   useEffect(() => {
     const onStartBranch = (event: Event) => {
       const detail = (event as CustomEvent<{
@@ -575,24 +573,6 @@ export default function App() {
   }, [browserOpen, reviewOpen, agentsOpen, projectDetailsOpen, artifactPreviewOpen, filesProjectId, backgroundTasksOpen]);
   const inspectorVisible = inspectorOpen && !browserOpen && !reviewOpen && !projectDetailsOpen && !agentsOpen && !artifactPreviewOpen;
 
-  useLayoutEffect(() => {
-    const previousThreadId = previousThreadIdRef.current;
-    previousThreadIdRef.current = activeThreadId;
-    // Home -> first send continues the already visible optimistic transcript.
-    // Do not retain the last conversation ID and replay a full-surface fade.
-    if (!activeThreadId) {
-      setThreadEntering(false);
-      return;
-    }
-    if (!previousThreadId || previousThreadId === activeThreadId || prefersReducedMotionNow()) {
-      setThreadEntering(false);
-      return;
-    }
-
-    setThreadEntering(true);
-    const timer = window.setTimeout(() => setThreadEntering(false), DUR.base);
-    return () => window.clearTimeout(timer);
-  }, [activeThreadId]);
   const sidebarLayoutOpen = sidebarOpen;
   const inspectorLayoutOpen = inspectorVisible;
   const reviewLayoutOpen = reviewOpen;
@@ -1487,7 +1467,7 @@ export default function App() {
       />
 
       <section
-        className={`workspace ${threadSwitching ? "is-thread-switching" : ""} ${threadEntering ? "is-thread-entering" : ""}`.trim()}
+        className={`workspace ${threadSwitching ? "is-thread-switching" : ""}`.trim()}
         aria-busy={threadSwitching ? true : undefined}
       >
         <ThreadHeader
@@ -1559,6 +1539,7 @@ export default function App() {
           ) : null}
           {branchError ? <div className="loom-branch-error" role="alert"><span>{branchError}</span><button type="button" aria-label={t("branch.dismissError")} onClick={() => setBranchError("")}><X size={14} /></button></div> : null}
           <Transcript
+            threadId={thread?.id}
             items={transcriptItems}
             running={transcriptRunning}
             currentTurnId={confirmedTurnRunning ? thread?.currentTurnId : undefined}

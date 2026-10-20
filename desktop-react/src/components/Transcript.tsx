@@ -67,7 +67,7 @@ import { ThinkingGlyph } from "./ThinkingGlyph";
 import { TurnArtifactsPreview } from "./TurnArtifactsPreview";
 import { UserMessageContent, optimisticUserMessageContent } from "./UserMessageContent";
 import { dispatchQuoteReply } from "./quoteReply";
-import { FileEditDeltaContext, LiveSequenceContext, ProcessNotesContext, useBornLive } from "./transcriptContexts";
+import { FileEditDeltaContext, LiveSequenceContext, ProcessNotesContext, TranscriptHistoryContext, useBornLive } from "./transcriptContexts";
 import { WeaveStage, type ProcessHandoff } from "./WeaveFlow";
 import { useRuntimeCopy } from "./runtimeCopy";
 import "./message-actions.css";
@@ -76,6 +76,7 @@ import "./conversation-motion.css";
 import "../taskCapsuleLens";
 
 interface TranscriptProps {
+  threadId?: string;
   items: TranscriptItem[];
   running?: boolean;
   currentTurnId?: string | null;
@@ -684,6 +685,7 @@ interface AssistantMessageProps {
 }
 
 function AssistantMessage({ item, streaming, onPrompt, decisionInteractive, promptDisabled, workspace, variant }: AssistantMessageProps) {
+  const restored = useContext(TranscriptHistoryContext).has(item.id);
   const copy = useRuntimeCopy();
   const parsed = splitReasoning(item.text ?? "");
   const providerReasoning = String(item.reasoning ?? "").trim();
@@ -753,7 +755,7 @@ function AssistantMessage({ item, streaming, onPrompt, decisionInteractive, prom
             </div>
           </div>
         ) : null}
-        {answer ? <MarkdownMessage content={answer} workspace={workspace} streaming={live} messageKey={`${item.id}:answer`} interrupted={interrupted} /> : null}
+        {answer ? <MarkdownMessage content={answer} workspace={workspace} streaming={live} messageKey={`${item.id}:answer`} interrupted={interrupted} revealOnMount={restored} /> : null}
         {!note && cardsReady && branchVisible && !branchDismissed ? (
           <TaskBranchCard
             key={item.id + (manualBranchOpen ? ":manual" : ":proposal")}
@@ -1175,8 +1177,12 @@ function liveEdgeState(items: TranscriptItem[]): { quiet: boolean; started: bool
  * and a sentence drawn that way stays a message after its step completes.
  */
 function useSettledLiveText(items: TranscriptItem[], active: boolean): { items: TranscriptItem[]; released: ReadonlySet<string> } {
+  const history = useContext(TranscriptHistoryContext);
   const [released, setReleased] = useState<ReadonlySet<string>>(NO_MESSAGE_IDS);
-  const settled = useMemo(() => (active ? settleLiveText(items, released) : { items, held: "" }), [active, items, released]);
+  const settled = useMemo(() => {
+    const next = active ? settleLiveText(items, released) : { items, held: "" };
+    return next.held && history.has(next.held) ? { items, held: "" } : next;
+  }, [active, items, released, history]);
   const { held } = settled;
   useEffect(() => {
     if (!held) return;
@@ -1280,6 +1286,8 @@ function TurnProcess({
     [handoff.earlier, showNotes, isQuietNote],
   );
   const earlierEntry = useMotionPresence(live && earlierShown > 0, RETAIN.foldBase);
+  const history = useContext(TranscriptHistoryContext);
+  const restoredEarlier = useRef(earlierShown > 0 && history.has(allItems[0]?.id ?? ""));
 
   // The standalone thinking capsule: shown at once while the turn has produced
   // nothing yet, and after a short grace during later quiet gaps.
@@ -1353,7 +1361,7 @@ function TurnProcess({
                 <NotesSwitch turnKey={allItems[0]?.id ?? ""} live={active} label={showNotes ? copy.notesHide : copy.notesShow(noteCount)} pressed={showNotes} onToggle={() => setShowNotes((value) => !value)} />
               ) : null}
               {live && earlierEntry.mounted ? (
-                <div className="earlier-process-entry" data-motion-phase={earlierEntry.phase} inert={!earlierShown}>
+                <div className="earlier-process-entry" data-motion-phase={restoredEarlier.current && earlierShown ? "entered" : earlierEntry.phase} inert={!earlierShown}>
                 <div className={`earlier-task-process ${earlierOpen ? "is-open" : ""} ${handoff.folding.size ? "is-receiving" : ""}`.trim()}>
                   <button type="button" className="earlier-process-toggle" aria-expanded={earlierOpen}
                     aria-controls={earlierHistoryId}
@@ -1422,6 +1430,7 @@ function UserEntry({ item, sending, onLaunched, onEntranceEnd, onApproval, onPro
   promptDisabled?: boolean;
   workspace?: string;
 }) {
+  const restored = useContext(TranscriptHistoryContext).has(item.id);
   const ref = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
     const entry = ref.current;
@@ -1432,7 +1441,7 @@ function UserEntry({ item, sending, onLaunched, onEntranceEnd, onApproval, onPro
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   return (
-    <div ref={ref} className={`transcript-entry entry-user_message ${sending ? "is-sending" : ""}`}
+    <div ref={ref} data-restored={restored ? "true" : undefined} className={`transcript-entry entry-user_message ${sending ? "is-sending" : ""}`}
       onAnimationEnd={(event) => {
         if (event.target === event.currentTarget && event.animationName === "loom-user-send-entry") onEntranceEnd();
       }}>
@@ -1503,7 +1512,8 @@ const TurnView = memo(function TurnView({
   // Sending owns its full animation even if the runtime completes immediately.
   // History mounts inactive, so opening a past turn does not launch its bubble.
   const reduce = useReducedMotion();
-  const [sending, setSending] = useState(active && !reduce);
+  const history = useContext(TranscriptHistoryContext);
+  const [sending, setSending] = useState(active && !reduce && !history.has(derived.initialUser?.id ?? ""));
   const [heldSettle, setSettle] = useState<SettlePhase>(null);
   const wasActiveRef = useRef(active);
   // The render in which the turn completes already belongs to the hold. The layout effect below says so before
@@ -1694,8 +1704,13 @@ function EmptyState({ disabled, onPrompt, onOpenInsights, connecting, startupSta
   );
 }
 
-export const Transcript = memo(function Transcript({ items, running, currentTurnId, workspace, promptDisabled, onPrompt, onApproval, onOpenInsights, connecting, startupStage, usageReady }: TranscriptProps) {
+export const Transcript = memo(function Transcript({ threadId, items, running, currentTurnId, workspace, promptDisabled, onPrompt, onApproval, onOpenInsights, connecting, startupStage, usageReady }: TranscriptProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
+  const historyRef = useRef<{ threadId?: string; ready: boolean; ids: ReadonlySet<string> }>({ ready: false, ids: new Set() });
+  if (historyRef.current.threadId !== threadId || (!historyRef.current.ready && items.length > 0)) {
+    historyRef.current = { threadId, ready: items.length > 0,
+      ids: new Set(threadId && !items.some(item => item.status === "sending") ? items.map(item => item.id) : []) };
+  }
   const hasItems = items.length > 0;
   // The stage draws its edge fades once there is a transcript. Publishing that as an
   // attribute replaces `.conversation-stage:has(.transcript-entry)`, a :has() anchored on
@@ -1722,7 +1737,7 @@ export const Transcript = memo(function Transcript({ items, running, currentTurn
   }, [items, onPrompt, promptDisabled, running]);
 
   return (
-    <><div ref={scrollRef} className={`transcript-scroll ${!items.length ? "is-empty" : ""}`}>
+    <TranscriptHistoryContext.Provider value={historyRef.current.ids}><div ref={scrollRef} className={`transcript-scroll ${!items.length ? "is-empty" : ""}`}>
       <div className="chat-ambient" aria-hidden="true">
         <span className="ambient-glow glow-one" />
         <span className="ambient-glow glow-two" />
@@ -1765,6 +1780,6 @@ export const Transcript = memo(function Transcript({ items, running, currentTurn
           )
         ))}
       </main>
-    </div><TranscriptEdgeScrollbar scrollerRef={scrollRef} /></>
+    </div><TranscriptEdgeScrollbar scrollerRef={scrollRef} /></TranscriptHistoryContext.Provider>
   );
 });

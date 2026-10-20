@@ -58,7 +58,7 @@ import { activityIdentity, ActivityGlyph as ToolIdentityGlyph } from "./ToolIden
 import { deferredActivityIndices } from "./presentationOrdering";
 import { usePendingPresentations } from "./StreamingPresentation";
 import { formatStepDuration } from "./stepFormat";
-import { FileEditDeltaContext, LiveSequenceContext, ProcessNotesContext, useBornLive } from "./transcriptContexts";
+import { FileEditDeltaContext, LiveSequenceContext, ProcessNotesContext, TranscriptHistoryContext, useBornLive } from "./transcriptContexts";
 import { useRuntimeCopy, type ActivityCategory, type RuntimeCopy } from "./runtimeCopy";
 import "./weave.css";
 
@@ -351,6 +351,8 @@ const WeaveRow = memo(function WeaveRow({ row, open, workspace, copy, delta, ret
   const tail = useThrottled(tailNow, 220);
   const failure = rowFailure(row);
   const sub = executing ? (tail || tailNow) : failure;
+  const restored = useContext(TranscriptHistoryContext).has(row.item.id);
+  const settledSubOnMount = useRef(Boolean(sub) && restored);
   const subKind = executing ? "tail" : "failure";
   const animate = live && !still;
   const subPresence = useMotionPresence(Boolean(sub), RETAIN.fold);
@@ -376,6 +378,7 @@ const WeaveRow = memo(function WeaveRow({ row, open, workspace, copy, delta, ret
       data-status={status}
       data-row-key={row.key}
       data-born={born ? "live" : undefined}
+      data-restored={restored ? "true" : undefined}
       data-settled={settled ?? undefined}
       data-retired={retired ? "true" : undefined}
       inert={retired}
@@ -437,7 +440,7 @@ const WeaveRow = memo(function WeaveRow({ row, open, workspace, copy, delta, ret
         ) : null}
 
         {subPresence.mounted ? (
-          <div className="wv-sub-fold" data-open={sub && (!animate || subPresence.phase !== "entering") ? "true" : "false"} inert>
+          <div className="wv-sub-fold" data-open={sub && (settledSubOnMount.current || !animate || subPresence.phase !== "entering") ? "true" : "false"} inert>
             <div className="wv-sub-inner">
               <div className={`wv-sub is-${subShown.kind}`}>
                 <span className="wv-sub-text" key={subShown.text}>{subShown.text}</span>
@@ -557,6 +560,7 @@ export const WeaveStage = memo(function WeaveStage({
   renderNote,
 }: WeaveStageProps) {
   const copy = useRuntimeCopy();
+  const restored = useContext(TranscriptHistoryContext).has(items[0]?.id ?? "");
   const deltas = useContext(FileEditDeltaContext);
   const notes = useContext(ProcessNotesContext);
   const rows = useMemo(() => buildActivityRows(items), [items]);
@@ -603,7 +607,7 @@ export const WeaveStage = memo(function WeaveStage({
   // A live stage that has grown long keeps its newest steps as rows. The older ones become one line.
   const windowed = live && !superseded && segments.length === 1 && isActivityItem(segments[0][0].item);
   const folded = windowed ? foldedCount(segments[0].length) : 0;
-  const [settledFold, setSettledFold] = useState(0);
+  const [settledFold, setSettledFold] = useState(restored ? folded : 0);
   useEffect(() => {
     if (folded <= settledFold) return;
     // The rows that just folded collapse in place; once that motion is over they are released.
@@ -670,7 +674,7 @@ export const WeaveStage = memo(function WeaveStage({
   const renderTools = (segment: ActivityRowModel[]) => (
     <div className="wv-list">
       {folded ? (
-        <div className="wv-earlier" key="earlier"><div className="wv-earlier-inner">
+        <div className="wv-earlier" data-restored={restored ? "true" : undefined} key="earlier"><div className="wv-earlier-inner">
           <Line
             tones={earlierTones}
             labels={labels.slice(0, folded)}
@@ -679,7 +683,7 @@ export const WeaveStage = memo(function WeaveStage({
             duration={0}
             open={earlierOpen}
             controls={earlierId}
-            animated={live}
+            animated={live && !restored}
             copy={copy}
             onToggle={() => {
               setOpening(!earlierOpen);
@@ -718,10 +722,11 @@ export const WeaveStage = memo(function WeaveStage({
     <section
       className={`wv-stage ${collapsible ? "is-collapsible" : ""} ${open ? "is-open" : ""} ${keepOpen ? "is-running" : ""}`.replace(/\s+/g, " ").trim()}
       data-opening={opening ? "true" : undefined}
+      data-restored={restored ? "true" : undefined}
       aria-label={copy.activityRegion}
     >
       {collapsible ? (
-        <Fold open className="wv-summary-fold" animateIn={live}>
+        <Fold open className="wv-summary-fold" animateIn={live && !restored}>
           <Line
             tones={tones}
             labels={labels}
@@ -730,7 +735,7 @@ export const WeaveStage = memo(function WeaveStage({
             duration={stageDuration(toolRows)}
             open={open}
             controls={bodyId}
-            animated={live}
+            animated={live && !restored}
             copy={copy}
             onToggle={() => {
               setOpening(!open);
