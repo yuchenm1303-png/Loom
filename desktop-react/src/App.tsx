@@ -1336,6 +1336,8 @@ export default function App() {
   latestProjectHandlers.current = { openProjectDetails, handleMoveProject };
   const stableOpenProject = useCallback((projectId: string) => latestProjectHandlers.current.openProjectDetails(projectId), []);
   const stableMoveProject = useCallback((threadId: string, projectId: string) => latestProjectHandlers.current.handleMoveProject(threadId, projectId), []);
+  // The sidebar's own toggle (its top row) only ever closes it; stable, so the memoised sidebar does not redraw.
+  const closeSidebar = useCallback(() => runLayoutTransition(() => setSidebarOpen(false), "left-close"), [runLayoutTransition]);
 
   const progressProps = {
     modelActivity: loom.modelActivity,
@@ -1456,6 +1458,7 @@ export default function App() {
         onDelete={loom.deleteThread}
         onFork={loom.forkThread}
         onViewChange={loom.setThreadView}
+        onClose={closeSidebar}
       />
 
       <div
@@ -1486,6 +1489,7 @@ export default function App() {
             () => setSidebarOpen(open => !open),
             sidebarOpen ? "left-close" : "left-open",
           )}
+          onNewConversation={() => loom.newThread()}
           title={threadTitle}
           workspace={selectedThread?.workspace || workspace}
           connection={loom.connection}

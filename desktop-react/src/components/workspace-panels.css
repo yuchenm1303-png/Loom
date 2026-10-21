@@ -15,11 +15,15 @@
   --loom-inspector-track: 0px;
 }
 
+/* The sidebar's card insets itself from the window's edges with margins (sidebar.css), so it stretches over the
+   rest of its grid area rather than taking the 100% height every panel gets in shell-fix.css. */
 .workspace-panels > .sidebar {
   grid-column: 1;
   grid-row: 1;
   position: relative;
   z-index: 32;
+  width: auto;
+  height: auto;
 }
 
 .workspace-panels > .workspace {
@@ -63,8 +67,6 @@
 .workspace-panels > .sidebar,
 .workspace-panels > .inspector {
   min-width: 0;
-  width: 100%;
-  height: 100%;
   contain: layout paint style;
   backface-visibility: hidden;
   will-change: transform, opacity;
@@ -72,6 +74,12 @@
     opacity var(--loom-dur-base) ease,
     transform var(--loom-dur-panel) var(--loom-ease-out),
     visibility 0s linear 0s;
+}
+
+/* The inspector fills its track (the sidebar stretches, see above). */
+.workspace-panels > .inspector {
+  width: 100%;
+  height: 100%;
 }
 
 .workspace-panels.sidebar-open > .sidebar,
@@ -375,6 +383,12 @@ html[data-loom-layout-transition="true"] .workspace-panels > .inspector {
 .workspace-panel-resizer-left {
   left: var(--loom-sidebar-track);
   transform: translateX(-50%);
+}
+
+/* Its line runs along the sidebar card's straight edge only, clear of the inset and the corners (sidebar.css). */
+.workspace-panel-resizer-left::before {
+  top: calc(var(--loom-sidebar-inset, 0px) + var(--loom-sidebar-corner, 0px));
+  bottom: calc(var(--loom-sidebar-inset, 0px) + var(--loom-sidebar-corner, 0px));
 }
 
 .workspace-panel-resizer-right {

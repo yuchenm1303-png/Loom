@@ -45,9 +45,9 @@ function scan(selector) {
 const dock = (id) => async (page) => { await page.locator(`.loom-tool-button[data-tool-id="${id}"]`).evaluate((el) => el.click()); };
 const surfaces = {
   base: async () => {},
-  "sidebar closed": async (page) => { await page.locator(".thread-sidebar-triangle").click(); },
+  "sidebar closed": async (page) => { await page.locator(".codex-sidebar-topbar .sidebar-toggle").click(); },
   // The field opens under the first row and its top edge is still on the rail.
-  "sidebar search": async (page) => { await page.locator(".compact-sidebar-actions button").click(); },
+  "sidebar search": async (page) => { await page.locator(".compact-search-toggle").click(); },
   inspector: dock("inspector"),
   agents: dock("agents"),
   review: dock("review"),
@@ -63,8 +63,10 @@ const surfaces = {
 // What must be on the rail in each state (the scan reports only what it finds).
 // Every dock, the palette and the workbench use PanelHeader, whose close button is .pl-close.
 const expected = {
-  base: ["sidebar-new-conversation"],
-  "sidebar closed": ["thread-sidebar-triangle"],
+  // The sidebar's top row is three icons: its toggle, search and the quill. Closed, the header shows the toggle and
+  // the quill instead.
+  base: ["sidebar-toggle", "sidebar-new-conversation"],
+  "sidebar closed": ["sidebar-toggle", "thread-new-conversation"],
   "sidebar search": ["compact-search"],
   inspector: [],
   agents: ["sub-agent-workspace-close"],

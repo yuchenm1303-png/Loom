@@ -37,10 +37,21 @@ try {
     });
     assert.ok(bounds.workspace <= bounds.rail + 1, "dock overlaps conversation content");
 
-    await page.locator('.thread-header .thread-sidebar-triangle').click();
+    // The sidebar's toggle stays on one spot: it closes the sidebar from its top row and opens it again from the
+    // header, and the keyboard follows it from one to the other instead of falling back to the page.
+    const cardToggle = page.locator('.codex-sidebar-topbar .sidebar-toggle');
+    const headerToggle = page.locator('.thread-header .sidebar-toggle');
+    const spot = await cardToggle.boundingBox();
+    await cardToggle.focus();
+    await page.keyboard.press("Enter");
     await page.locator(".app-shell.sidebar-closed").waitFor({ timeout: 4000 });
-    await page.locator('.thread-header .thread-sidebar-triangle').click();
+    await page.waitForFunction(() => document.activeElement?.matches(".thread-header .sidebar-toggle"), null, { timeout: 2000 });
+    const moved = await headerToggle.boundingBox();
+    assert.ok(Math.abs(moved.x - spot.x) <= 1 && Math.abs(moved.y - spot.y) <= 1,
+      `the sidebar opens from where it closed: ${JSON.stringify({ spot, moved })}`);
+    await page.keyboard.press("Enter");
     await page.locator(".app-shell.sidebar-open").waitFor({ timeout: 4000 });
+    await page.waitForFunction(() => document.activeElement?.matches(".codex-sidebar-topbar .sidebar-toggle"), null, { timeout: 2000 });
 
     await dock.locator('[data-tool-id="agents"]').click();
     await page.locator('.sub-agent-dock[data-open="true"]').waitFor({ timeout: 5000 });

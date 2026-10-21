@@ -53,7 +53,7 @@
   color: var(--ws-ink);
   box-shadow: none;
 }
-:root .app-shell .thread-header :is(.thread-review-button, .thread-header-icon-button:not(.thread-sidebar-triangle)).active {
+:root .app-shell .thread-header :is(.thread-review-button, .thread-header-icon-button).active {
   background: var(--ws-selected);
   color: var(--ws-accent);
   border-color: transparent;

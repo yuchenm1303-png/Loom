@@ -7,9 +7,18 @@
    Text uses whole-pixel sizes and line boxes and rows never keep a
    transform: on Windows both soften glyphs (see renderer-crispness.css). */
 
+/* The sidebar is a card floating on the workspace canvas, like the right tool dock and the composer.
+   workspace-panels.css reads the inset and corner too: the resizer's line runs along the card's straight edge. */
+:root {
+  --loom-sidebar-inset: 8px;
+  --loom-sidebar-corner: 16px;
+}
+
 .sidebar.compact-sidebar {
   --sb-font: var(--loom-font-family);
-  --sb-bg: var(--loom-workspace-navigation);
+  /* Half a step over the canvas, short of the dock's panel tone: a large area reads lighter than a small one. */
+  --sb-bg: color-mix(in srgb, var(--loom-workspace-canvas) 50%, var(--loom-workspace-panel));
+  --sb-lift: 0 8px 24px rgba(0,0,0,.22), 0 1px 2px rgba(0,0,0,.18);
   --sb-glow: transparent;
   --sb-edge: rgba(255,255,255,.065);
   --sb-ink: var(--loom-workspace-ink);
@@ -35,16 +44,20 @@
   min-width: 0;
   display: flex;
   flex-direction: column;
-  /* In the desktop shell the sidebar reaches the top of the window and its first row sits on the
-     window rail's centre line (--loom-rail-height, window-chrome.css; unset on the web, where
-     this is the plain 12px). */
-  padding: max(12px, calc((var(--loom-rail-height, 0px) - var(--sb-row-h)) / 2)) 10px 10px;
+  /* Inset from the window's edges, the corner nested around the rows' (row 8 + padding 7 + hairline 1 = 16, the
+     tool dock's corner). In the desktop shell the first row still sits on the window rail's centre line
+     (--loom-rail-height, window-chrome.css: 8 + 1 + 5 + 32 / 2 = 30); on the web, where the rail is unset, and in
+     spacious density it keeps 5px under the card's edge. */
+  margin: var(--loom-sidebar-inset) 0 var(--loom-sidebar-inset) var(--loom-sidebar-inset);
+  padding: max(5px, calc((var(--loom-rail-height, 0px) - var(--sb-row-h)) / 2 - var(--loom-sidebar-inset) - 1px)) 7px 7px;
   overflow: hidden;
   isolation: isolate;
-  border-right: 1px solid var(--sb-edge);
+  border: 1px solid var(--sb-edge);
+  border-radius: var(--loom-sidebar-corner);
   background:
     radial-gradient(240px 120px at 0 0, var(--sb-glow), transparent 72%),
     var(--sb-bg);
+  box-shadow: var(--sb-lift);
   color: var(--sb-ink-2);
   font-family: var(--sb-font);
   -webkit-font-smoothing: auto;
@@ -53,7 +66,8 @@
 }
 
 html[data-loom-theme="light"] .sidebar.compact-sidebar {
-  --sb-bg: var(--loom-workspace-navigation);
+  --sb-bg: var(--loom-workspace-panel);
+  --sb-lift: 0 6px 18px rgba(32,42,58,.07), 0 1px 2px rgba(32,42,58,.05);
   --sb-glow: transparent;
   --sb-edge: rgba(28,31,37,.085);
   --sb-ink: var(--loom-workspace-ink);
@@ -66,8 +80,9 @@ html[data-loom-theme="light"] .sidebar.compact-sidebar {
   --sb-accent-rgb: 105,90,216;
   --sb-active: var(--loom-workspace-selection);
   --sb-active-ink: #1c1f26;
-  --sb-selection-surface: #ffffff;
-  --sb-selection-shadow: 0 1px 2px rgba(22,26,40,.08), 0 0 0 1px rgba(28,31,38,.07);
+  /* On the white card a raised white pill would be a card in a card: the selection is a wash of ink, as in dark. */
+  --sb-selection-surface: color-mix(in srgb, #1c1f26 7%, transparent);
+  --sb-selection-shadow: none;
   --sb-field: #ffffff;
   --sb-guide: rgba(28,31,37,.08);
   --sb-thumb: rgba(28,31,37,.16);
@@ -84,6 +99,7 @@ html[data-loom-density="spacious"] .sidebar.compact-sidebar { --sb-row-h: 38px; 
 }
 
 /* Icon-only buttons share one quiet treatment. */
+.sidebar-toggle,
 .compact-sidebar-actions button,
 .compact-search button,
 .sidebar-section-title button,
@@ -106,6 +122,7 @@ html[data-loom-density="spacious"] .sidebar.compact-sidebar { --sb-row-h: 38px; 
     opacity var(--loom-dur-fast) ease;
 }
 
+.sidebar-toggle:hover,
 .compact-sidebar-actions button:hover,
 .compact-search button:hover,
 .sidebar-section-title button:hover,
@@ -122,23 +139,25 @@ html[data-loom-density="spacious"] .sidebar.compact-sidebar { --sb-row-h: 38px; 
   outline-offset: -2px;
 }
 
-/* Top bar -------------------------------------------------------------------- */
+/* Top bar --------------------------------------------------------------------
+   Three quiet controls on the window rail and no words: the sidebar's toggle at the corner (the header puts
+   it back on the same spot while the sidebar is closed), search and the quill at the other end. */
 .codex-sidebar-topbar {
   flex: none;
   height: var(--sb-row-h);
   padding: 0;
   display: flex;
   align-items: center;
-  justify-content: flex-end;
   gap: 8px;
   user-select: none;
 }
 
 /* On the desktop this row, and the search field that opens under it, reach into the window's
-   draggable rail (window-chrome.css), so they are cut out of the drag region. Only while the
-   search is open: a closed one is clipped to nothing but Chromium would still keep its rectangle. */
-:root.loom-desktop-chrome .codex-sidebar-topbar,
-:root.loom-desktop-chrome .codex-sidebar-topbar *,
+   draggable rail (window-chrome.css), so its buttons and the open field are cut out of the drag
+   region; the empty stretch between the toggle and search still moves the window, like the rest of
+   the rail. The field only while it is open: a closed one is clipped to nothing but Chromium would
+   still keep its rectangle. */
+:root.loom-desktop-chrome .codex-sidebar-topbar button,
 :root.loom-desktop-chrome .compact-search-shell.open,
 :root.loom-desktop-chrome .compact-search-shell.open * {
   -webkit-app-region: no-drag;
@@ -147,11 +166,13 @@ html[data-loom-density="spacious"] .sidebar.compact-sidebar { --sb-row-h: 38px; 
 
 .compact-sidebar-actions {
   flex: none;
+  margin-left: auto;
   display: flex;
   align-items: center;
   gap: 2px;
 }
 
+.sidebar-toggle,
 .compact-sidebar-actions button {
   width: 30px;
   height: 30px;
@@ -164,16 +185,13 @@ html[data-loom-density="spacious"] .sidebar.compact-sidebar { --sb-row-h: 38px; 
   background: var(--sb-hover);
 }
 
-/* Primary actions ----------------------------------------------------------- */
-.codex-sidebar-primary {
-  flex: 1;
-  min-width: 0;
-  margin-top: 0;
-  display: grid;
-  gap: 2px;
+/* New conversation is the quill alone, the one accent in the sidebar. */
+.compact-sidebar-actions .sidebar-new-conversation > .sidebar-action-icon {
+  width: 20px;
+  height: 20px;
+  color: var(--sb-accent);
 }
 
-.sidebar-new-conversation,
 .sidebar-secondary-action {
   width: 100%;
   height: var(--sb-row-h);
@@ -192,21 +210,13 @@ html[data-loom-density="spacious"] .sidebar.compact-sidebar { --sb-row-h: 38px; 
     color var(--loom-dur-fast) ease;
 }
 
-.sidebar-new-conversation > svg,
 .sidebar-secondary-action > svg {
   width: 16px;
   height: 16px;
   flex: 0 0 16px;
+  color: var(--sb-ink-3);
 }
 
-.sidebar-new-conversation > .sidebar-action-icon,
-.sidebar-secondary-action > .sidebar-action-icon {
-  width: 20px;
-  height: 20px;
-  flex-basis: 20px;
-}
-
-.sidebar-new-conversation > span,
 .sidebar-secondary-action > span {
   min-width: 0;
   flex: 1 1 auto;
@@ -217,19 +227,6 @@ html[data-loom-density="spacious"] .sidebar.compact-sidebar { --sb-row-h: 38px; 
   line-height: 20px;
   font-weight: 500;
 }
-
-/* New conversation is the first row, not a button on a tinted plate: only its quill keeps the accent. */
-.sidebar-new-conversation {
-  color: var(--sb-ink);
-}
-
-.sidebar-new-conversation > svg { color: var(--sb-accent); }
-
-.sidebar-new-conversation:hover {
-  background: var(--sb-hover);
-}
-
-.sidebar-secondary-action > svg { color: var(--sb-ink-3); }
 
 .sidebar-secondary-action:hover {
   color: var(--sb-ink);
@@ -310,12 +307,16 @@ html[data-loom-theme="light"] .compact-search {
 .compact-thread-scroll {
   flex: 1 1 auto;
   min-height: 0;
-  margin: 12px -6px 0 0;
-  padding: 0 0 12px;
+  margin: 2px -6px 0 0;
+  padding: 10px 0 14px;
   overflow-x: hidden;
   overflow-y: auto;
   overscroll-behavior: contain;
   scrollbar-gutter: stable;
+  /* Rows fade out at both ends of the list instead of being cut off (there is no rule above the footer). The
+     padding is as deep as each fade, so the first and the last row come to rest clear of it. */
+  -webkit-mask-image: linear-gradient(to bottom, transparent, #000 10px, #000 calc(100% - 14px), transparent);
+  mask-image: linear-gradient(to bottom, transparent, #000 10px, #000 calc(100% - 14px), transparent);
 }
 
 .sidebar.compact-sidebar .compact-thread-scroll {
@@ -691,7 +692,7 @@ html[data-loom-theme="light"] .compact-thread-row.is-paused {
   box-shadow: inset 0 0 0 1px rgba(var(--thread-state-rgb), .18);
 }
 
-/* The selected conversation is a raised neutral pill, as in Settings navigation: no rail, no tint. Each pill is
+/* The selected conversation is a neutral wash of the ink in both themes: no rail, no accent. Each pill is
    anchored to its row, so scrolling, filtering and resizing need no pixel sync. */
 .compact-thread-scroll { position: relative; isolation: isolate; }
 .thread-selection-pill {
@@ -763,7 +764,9 @@ html[data-loom-theme="light"] .compact-thread-row.is-paused {
   border-radius: 5px;
   background: rgba(var(--thread-state-rgb), .13);
   color: var(--thread-state-ink);
-  font-size: 10px;
+  /* At the interface's readability floor (11.5px, typography-scale.css), in whole pixels like the rest of the
+     sidebar: a status is read, it is not a count badge. */
+  font-size: 12px;
   line-height: 16px;
   font-weight: 600;
   letter-spacing: .01em;
@@ -908,8 +911,7 @@ html[data-loom-theme="light"] .compact-thread-row.is-paused {
 /* Footer --------------------------------------------------------------------- */
 .compact-sidebar-footer {
   flex: none;
-  padding-top: 6px;
-  border-top: 1px solid var(--sb-edge);
+  padding-top: 2px;
 }
 
 .compact-sidebar-footer > button {

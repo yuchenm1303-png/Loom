@@ -31,7 +31,7 @@ try {
     assert.equal(selection.switching, true);
     assert.ok(selection.pillAnimations > 0, 'pill moves on the first frame, without waiting for thread/read');
     assert.equal(await page.locator('.conversation-stage').evaluate(el => el.inert), true, 'old transcript actions cannot target the previous thread under the new title');
-    assert.equal(await page.locator('.thread-sidebar-triangle').isEnabled(), true, 'sidebar navigation remains available while loading');
+    assert.equal(await page.locator('.codex-sidebar-topbar .sidebar-toggle').isEnabled(), true, 'sidebar navigation remains available while loading');
     await page.waitForTimeout(420);
     assert.equal(await page.locator('.thread-switch-overlay').count(), 0, 'slow reads never show a loading overlay');
     const pendingSurface = await page.evaluate(() => ({
@@ -71,7 +71,12 @@ try {
     const bounds = await row(2).boundingBox();
     assert.ok(Math.abs(geometry.y - bounds.y - 1) < 1 && Math.abs(geometry.height - bounds.height + 2) < 1, 'pill lands exactly inside its row');
     assert.equal(await row(2).evaluate(el => getComputedStyle(el).transform), 'none', 'titles never travel or stretch');
-    if (theme === 'light') assert.ok((await pill.evaluate(el => getComputedStyle(el).backgroundImage)).includes('linear-gradient'));
+    // On the white sidebar card the selection is a wash of ink, not a raised white pill (a card in a card).
+    if (theme === 'light') {
+      const surface = await pill.evaluate(el => ({ background: getComputedStyle(el).backgroundColor, shadow: getComputedStyle(el).boxShadow }));
+      assert.equal(surface.shadow, 'none', 'the light selection is not raised');
+      assert.match(surface.background, /\/ 0?\.0\d+\)$/, `the light selection is a translucent wash (${surface.background})`);
+    }
     if (process.env.LOOM_SIDEBAR_SCREENSHOTS) await page.screenshot({ path: `${process.env.LOOM_SIDEBAR_SCREENSHOTS}/sidebar-${theme}.png` });
 
     // Return to the loaded thread cancels a pending switch immediately.

@@ -66,8 +66,18 @@ const projects = [
 const titles = english
   ? ["Email validation on login", "Fix model panel alignment", "Image attachments", "Light theme audit", "Browser control", "Relay quick login"]
   : ["登录页邮箱校验", "修复模型面板卡片错位", "优化图片附件发送", "检查项目面板浅色主题", "排查浏览器控制", "中转站快捷登录"];
-const threads = titles.map((title, index) => ({
-  id: `live-${index}`, projectId: index < 4 ? "loom" : "relay", title, customTitle: true, workspace,
+// ?recent=N: N more conversations outside any project, so the sidebar shows its Recent list and has to scroll.
+const recentTitles = english
+  ? ["Release notes draft", "Clean up old build caches", "Compare two pricing sheets", "Weekly status summary", "Rename screenshots by date", "Check the backup schedule", "Explain a failing CI job", "Translate the onboarding page"]
+  : ["整理发布说明草稿", "清理旧的构建缓存", "对比两份报价表", "本周进展小结", "按日期重命名截图", "检查备份计划", "解释 CI 失败原因", "翻译新手引导页"];
+const recentCount = Math.max(0, Math.min(60, Number(params.get("recent") || 0) || 0));
+const threads = [
+  ...titles.map((title, index) => ({ id: `live-${index}`, projectId: index < 4 ? "loom" : "relay", title })),
+  ...Array.from({ length: recentCount }, (_, index) => ({
+    id: `recent-${index}`, projectId: undefined, title: `${recentTitles[index % recentTitles.length]}${index < recentTitles.length ? "" : ` ${Math.floor(index / recentTitles.length) + 1}`}`,
+  })),
+].map((thread) => ({
+  ...thread, customTitle: true, workspace,
   permissionMode: "full-access", status: "idle", createdAt: historyAt, updatedAt: historyAt,
   usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
 }));

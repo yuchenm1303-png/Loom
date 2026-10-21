@@ -13,6 +13,7 @@ import {
   FolderOpen,
   FolderPlus,
   GitFork,
+  PanelLeft,
   Pencil,
   Pin,
   PinOff,
@@ -61,6 +62,7 @@ const SIDEBAR_COPY = {
     expand: (name: string) => `Expand ${name}`,
     fork: "Fork",
     forked: "Forked into a new conversation",
+    hideSidebar: "Hide sidebar",
     idLabel: "conversation ID",
     loadingConversations: "Loading conversations",
     markRead: "Mark as read",
@@ -136,6 +138,7 @@ const SIDEBAR_COPY = {
     expand: (name: string) => `展开 ${name}`,
     fork: "分叉",
     forked: "已创建分叉会话",
+    hideSidebar: "收起侧栏",
     idLabel: "会话 ID",
     loadingConversations: "正在加载对话",
     markRead: "标记为已读",
@@ -212,6 +215,8 @@ interface SidebarProps {
   onDelete(threadId: string): Promise<void>;
   onFork(threadId: string): Promise<void>;
   onViewChange(view: ThreadView): Promise<void> | void;
+  /** Closes the sidebar from its own top row; the header offers to open it again. */
+  onClose?(): void;
 }
 
 // Widths of the placeholder rows shown while the conversation list loads.
@@ -353,6 +358,7 @@ export const Sidebar = memo(function Sidebar({
   onDelete,
   onFork,
   onViewChange,
+  onClose,
 }: SidebarProps) {
   const { language } = useI18n();
   const copy = SIDEBAR_COPY[language === "zh-CN" ? "zh" : "en"];
@@ -1009,27 +1015,33 @@ export const Sidebar = memo(function Sidebar({
 
   return (
     <aside className="sidebar compact-sidebar codex-sidebar">
+      {/* The top row is three quiet controls on the window rail: the sidebar's own toggle at the corner, where the
+          header shows it again while the sidebar is closed, then search and the quill. */}
       <div className="codex-sidebar-topbar">
-        {threadView !== "archived" ? (
-          <div className="codex-sidebar-primary">
-            <NewConversationRow
-              ref={newRowRef}
-              label={copy.newConversation}
-              title={`${copy.newConversation} · Ctrl N`}
-              onNew={onNew}
-            />
-          </div>
+        {onClose ? (
+          <button type="button" className="sidebar-toggle" onClick={onClose} title={copy.hideSidebar} aria-label={copy.hideSidebar}>
+            <PanelLeft size={17} strokeWidth={1.75} aria-hidden="true" />
+          </button>
         ) : null}
         <div className="compact-sidebar-actions">
           <button
             type="button"
             onClick={searchOpen ? closeSearch : focusSearch}
-            className={searchOpen ? "active" : ""}
+            className={searchOpen ? "compact-search-toggle active" : "compact-search-toggle"}
             title={`${copy.search} · Ctrl K`}
             aria-label={copy.search}
           >
             <Search size={16} strokeWidth={1.85} />
           </button>
+          {threadView !== "archived" ? (
+            <NewConversationRow
+              ref={newRowRef}
+              label={copy.newConversation}
+              title={`${copy.newConversation} · Ctrl N`}
+              onNew={onNew}
+              iconOnly
+            />
+          ) : null}
         </div>
       </div>
 
