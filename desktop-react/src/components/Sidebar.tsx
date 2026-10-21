@@ -103,6 +103,8 @@ const SIDEBAR_COPY = {
     restore: "Restore",
     restored: "Conversation restored",
     running: "Running",
+    waitingApproval: "Needs approval",
+    paused: "Paused",
     search: "Search conversations",
     searchArchived: "Search archived",
     titleLabel: "title",
@@ -176,6 +178,8 @@ const SIDEBAR_COPY = {
     restore: "恢复",
     restored: "会话已恢复",
     running: "运行中",
+    waitingApproval: "待审批",
+    paused: "已暂停",
     search: "搜索对话",
     searchArchived: "搜索归档",
     titleLabel: "标题",
@@ -775,6 +779,14 @@ export const Sidebar = memo(function Sidebar({
   const renderThreadRow = (thread: ThreadRecord) => {
     const active = thread.id === activeId;
     const running = threadIsBusy(thread);
+    const runState = thread.status === "waiting_approval"
+      ? "waiting-approval"
+      : thread.status === "running"
+        ? thread.paused ? "paused" : "running"
+        : "";
+    const statusLabel = runState === "running" ? copy.running
+      : runState === "waiting-approval" ? copy.waitingApproval
+      : runState === "paused" ? copy.paused : "";
     const pinned = pinnedIds.has(thread.id);
     const unread = unreadIds.has(thread.id);
     const busy = busyThreadId === thread.id;
@@ -785,7 +797,8 @@ export const Sidebar = memo(function Sidebar({
     return (
       <div
         key={thread.id}
-        className={`compact-thread-row ${depth ? "is-branch" : ""} ${active ? "active" : ""} ${pinned ? "pinned" : ""} ${unread ? "unread" : ""} ${renaming ? "renaming" : ""}`}
+        className={`compact-thread-row ${depth ? "is-branch" : ""} ${active ? "active" : ""} ${pinned ? "pinned" : ""} ${unread ? "unread" : ""} ${renaming ? "renaming" : ""} ${runState ? `is-${runState}` : ""}`}
+        data-run-state={runState || undefined}
         data-loom-own-menu=""
         data-thread-id={thread.id}
         data-parent-thread-id={thread.parentThreadId || undefined}
@@ -816,7 +829,11 @@ export const Sidebar = memo(function Sidebar({
               }}
               aria-label={copy.renameConversation}
             />
-            <span className={`compact-thread-dot ${running ? "running" : unread ? "unread" : ""}`} aria-hidden="true" />
+            {runState ? (
+              <span className="compact-thread-status" aria-label={statusLabel}>
+                <span className="compact-thread-status-mark" aria-hidden="true" />{statusLabel}
+              </span>
+            ) : <span className={`compact-thread-dot ${unread ? "unread" : ""}`} aria-hidden="true" />}
           </div>
         ) : (
           <button
@@ -830,12 +847,15 @@ export const Sidebar = memo(function Sidebar({
             onFocus={() => onPrefetch?.(thread.id)}
             onClick={() => void openThread(thread)}
             type="button"
-            title={`${thread.title || copy.untitled}${time ? ` · ${time}` : ""}`}
+            title={`${thread.title || copy.untitled}${statusLabel ? ` · ${statusLabel}` : ""}${time ? ` · ${time}` : ""}`}
             aria-current={active ? "page" : undefined}
           >
             <span className="compact-thread-title"><AnimatedThreadTitle title={thread.title || copy.untitled} /></span>
-            <span className={`compact-thread-dot ${running ? "running" : unread ? "unread" : ""}`} aria-hidden="true" />
-            {running ? <span className="sr-only">{copy.running}</span> : null}
+            {runState ? (
+              <span className="compact-thread-status">
+                <span className="compact-thread-status-mark" aria-hidden="true" />{statusLabel}
+              </span>
+            ) : <span className={`compact-thread-dot ${unread ? "unread" : ""}`} aria-hidden="true" />}
             {unread ? <span className="sr-only">{copy.unread}</span> : null}
           </button>
         )}
