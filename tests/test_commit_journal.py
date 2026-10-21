@@ -89,6 +89,7 @@ def test_a_crash_inside_a_commit_is_redone_exactly_once(tmp_path, monkeypatch, c
 
 def test_a_later_commit_after_recovery_keeps_both_events(tmp_path, monkeypatch):
     store, session = _store(tmp_path)
+    session.final_text = "state the snapshot does not hold yet"  # an event that changes nothing is not written as a snapshot
     monkeypatch.setattr(store, "_write_session", lambda *args: (_ for _ in ()).throw(Crash()))
     with pytest.raises(Crash):
         store.commit_event(session, _event(session, "event-3"))

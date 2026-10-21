@@ -143,6 +143,19 @@ def atomic_text(path, text):
         _discard_temp(temp)
 
 
+def atomic_bytes(path, data):
+    """atomic_text for a document that is already encoded, so nothing is encoded twice."""
+    temp = path.with_name(f".{path.name}.{uuid.uuid4().hex}.tmp")
+    try:
+        with temp.open("wb") as handle:
+            handle.write(data)
+            handle.flush()
+            os.fsync(handle.fileno())
+        replace_with_retry(temp, path)
+    finally:
+        _discard_temp(temp)
+
+
 def repair_tail(path):
     if not path.exists():
         return

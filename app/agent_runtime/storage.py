@@ -3,7 +3,9 @@ from __future__ import annotations
 import json
 import os
 import re
+import threading
 import uuid
+from collections import OrderedDict
 from datetime import datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
@@ -11,7 +13,7 @@ from typing import Any
 
 from app.ai import AIMessage, ImagePart, MessageRole, ModelUsage, TextPart, ToolCall
 
-from .journal import atomic_json, atomic_text, session_lock, recover, repair_tail
+from .journal import atomic_bytes, atomic_json, atomic_text, session_lock, recover, repair_tail
 from .event_cache import EventParseCache, _clone
 from .session_overview import SessionOverviewCache
 
@@ -223,6 +225,70 @@ def session_to_dict(session: AgentSession) -> dict[str, Any]:
     }
 
 
+def _encode(value: Any) -> bytes:
+    return json.dumps(value, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+
+
+# Standing in for the messages while the rest of the snapshot is encoded. It is made once, so a message or a tool
+# argument cannot contain it by accident; if one ever does, ``encode`` notices and encodes in one piece.
+_MESSAGES_TOKEN = "loom-messages-" + uuid.uuid4().hex
+_UPDATED_AT = re.compile(r'"updated_at":"[^"]*"')
+# Sessions whose encoded messages are kept between commits.
+_ENCODER_SESSIONS = 8
+
+
+class _SnapshotEncoder:
+    """Encodes the snapshot of one session, reusing what cannot have changed since the last time.
+
+    A long conversation is megabytes of messages and every durable event commits a snapshot: three or four
+    commits for each tool call, each re-encoding the whole of it (36 ms for a 3.7 MB session, with the
+    indented, key-sorted encoding the file used to have, which also keeps Python's JSON encoder out of its
+    C fast path). Messages are frozen, so the encoding of one that is still in the session is the encoding it
+    had. A message that carries tool calls is the exception: its arguments are a dict that a tool may edit in
+    place (a typed secret is redacted there), so it is always encoded again. The request context frames are not
+    reused: a frame gets its capture timings after it was first saved. The rest of the document is encoded each time.
+    """
+
+    def __init__(self) -> None:
+        # id(object) -> (object, encoding). The object is held so that the id cannot be reused while the entry
+        # exists; entries of objects that left the session are dropped at each call.
+        self._messages: dict[int, tuple[object, bytes]] = {}
+        # What the snapshot file holds, as far as this process wrote it: what it was made of, and the size and
+        # modification time the file had afterwards (so a file somebody else touched is never taken for ours).
+        self.persisted: object = None
+        self.persisted_file: tuple[int, int] | None = None
+
+    @staticmethod
+    def _reuse(known: dict[int, tuple[object, bytes]], item: object, record: object, kept: dict[int, tuple[object, bytes]]) -> bytes:
+        entry = known.get(id(item))
+        if entry is None or entry[0] is not item:
+            entry = (item, _encode(record))
+        kept[id(item)] = entry
+        return entry[1]
+
+    def encode(self, session: AgentSession) -> tuple[bytes, object]:
+        """The snapshot, and a key that two snapshots share exactly when they say the same thing.
+
+        ``updated_at`` is left out of the key: it moves with every commit and says nothing about the state.
+        """
+        payload = session_to_dict(session)
+        records = payload["messages"]
+        kept: dict[int, tuple[object, bytes]] = {}
+        parts = [_encode(record) if message.tool_calls else self._reuse(self._messages, message, record, kept)
+                 for message, record in zip(session.messages, records)]
+        self._messages = kept
+        payload["messages"] = _MESSAGES_TOKEN
+        text = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
+        needle = '"' + _MESSAGES_TOKEN + '"'
+        if text.count(needle) != 1:
+            payload["messages"] = records
+            data = _encode(payload)
+            return data, ("whole", _UPDATED_AT.sub('"updated_at":""', data.decode("utf-8"), count=1))
+        head, _, tail = text.partition(needle)
+        data = head.encode("utf-8") + b"[" + b",".join(parts) + b"]" + tail.encode("utf-8")
+        return data, (_UPDATED_AT.sub('"updated_at":""', head, count=1), tail, parts)
+
+
 def session_from_dict(payload: dict[str, Any]) -> AgentSession:
     return AgentSession(
         session_id=str(payload.get("session_id") or ""),
@@ -423,6 +489,8 @@ class FileAgentSessionStore:
         self.root.mkdir(parents=True, exist_ok=True)
         self._event_cache = EventParseCache()
         self._overview_cache = SessionOverviewCache()
+        self._encoders: OrderedDict[str, _SnapshotEncoder] = OrderedDict()
+        self._encoders_guard = threading.Lock()
 
     def session_dir(self, session_id: str) -> Path:
         value = str(session_id or "").strip()
@@ -477,17 +545,47 @@ class FileAgentSessionStore:
 
     def _save(self, session: AgentSession) -> None:
         session.updated_at = utc_now()
-        self._write_session(session, self._session_text(session))
+        encoder, data, key = self._snapshot(session)
+        if self._persisted(encoder, key, session.session_id):
+            return
+        self._write_session(session, data)
+        self._remember(encoder, key, session.session_id)
 
-    @staticmethod
-    def _session_text(session: AgentSession) -> str:
-        return json.dumps(session_to_dict(session), ensure_ascii=False, indent=2, sort_keys=True)
+    def _snapshot(self, session: AgentSession) -> tuple[_SnapshotEncoder, bytes, object]:
+        """The snapshot, encoded. Callers hold the session's commit lock, which is what serializes its encoder."""
+        with self._encoders_guard:
+            encoder = self._encoders.pop(session.session_id, None) or _SnapshotEncoder()
+            self._encoders[session.session_id] = encoder
+            while len(self._encoders) > _ENCODER_SESSIONS:
+                self._encoders.popitem(last=False)
+        data, key = encoder.encode(session)
+        return encoder, data, key
 
-    def _write_session(self, session: AgentSession, data: str) -> None:
+    def _snapshot_file(self, session_id: str) -> tuple[int, int] | None:
+        try:
+            stat = (self.session_dir(session_id) / "session.json").stat()
+        except OSError:
+            return None
+        return stat.st_size, stat.st_mtime_ns
+
+    def _persisted(self, encoder: _SnapshotEncoder, key: object, session_id: str) -> bool:
+        """Whether session.json already says what this snapshot says, so that writing it again would add nothing.
+
+        Most events of a tool call (it was requested, it started, a process printed) change nothing a snapshot
+        holds, and rewriting megabytes for each of them was most of what a long session spent per step. The file
+        has to be exactly the one this process wrote last: a file that was replaced or recovered is written again.
+        """
+        return (encoder.persisted is not None and encoder.persisted == key
+                and encoder.persisted_file is not None and encoder.persisted_file == self._snapshot_file(session_id))
+
+    def _remember(self, encoder: _SnapshotEncoder, key: object, session_id: str) -> None:
+        encoder.persisted, encoder.persisted_file = key, self._snapshot_file(session_id)
+
+    def _write_session(self, session: AgentSession, data: bytes | str) -> None:
         directory = self.session_dir(session.session_id)
         directory.mkdir(parents=True, exist_ok=True)
         # Share the same fsynced, atomic Windows-safe path as redo recovery.
-        atomic_text(directory / "session.json", data)
+        (atomic_bytes if isinstance(data, bytes) else atomic_text)(directory / "session.json", data)
 
     def load(self, session_id: str) -> AgentSession:
         target = self.session_dir(session_id) / "session.json"
@@ -541,14 +639,19 @@ class FileAgentSessionStore:
             session.updated_at = utc_now()
             payload = {"event_id": event.event_id, "session_id": event.session_id,
                 "turn_id": event.turn_id, "kind": event.kind.value, "created_at": event.created_at, "data": event.data}
-            # Encode the snapshot once and keep that text in the journal: a long
+            # Encode the snapshot once and keep that encoding in the journal: a long
             # session is megabytes, and it used to be encoded twice for every event.
-            snapshot = self._session_text(session)
-            atomic_text(directory / ".pending-commit.json",
-                        '{"session":' + snapshot + ',"event":' + json.dumps(payload, ensure_ascii=False, separators=(",", ":")) + "}")
+            encoder, snapshot, key = self._snapshot(session)
+            if self._persisted(encoder, key, session.session_id):
+                # The event changed nothing the snapshot holds: appending it is the whole commit.
+                self._append_event(event)
+                return
+            atomic_bytes(directory / ".pending-commit.json",
+                         b'{"session":' + snapshot + b',"event":' + _encode(payload) + b"}")
             self._append_event(event)
             self._write_session(session, snapshot)
             (directory / ".pending-commit.json").unlink()
+            self._remember(encoder, key, session.session_id)
 
     def append_event(self, event: AgentEvent) -> None:
         directory = self.session_dir(event.session_id)
