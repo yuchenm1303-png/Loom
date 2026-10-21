@@ -19,6 +19,7 @@ behaviors:
 """
 
 import json
+import threading
 from dataclasses import replace
 from typing import Any
 
@@ -46,9 +47,12 @@ def install() -> None:
     original_agent_tools = manager_cls.agent_tools
 
     def refresh_if_store_changed(self: Any) -> bool:
-        before = str(self.github_status().get("bindingId") or "")
         changed = bool(original_refresh_if_store_changed(self))
         if changed:
+            return True
+        if getattr(self, "_loom_probe_found", False):
+            # A credential turned up while the last Step was running.
+            self._loom_probe_found = False
             return True
 
         status = self.github_status()
@@ -59,14 +63,30 @@ def install() -> None:
         last = float(getattr(self, "_loom_last_external_credential_probe", float("-inf")))
         if now - last < _REPROBE_SECONDS:
             return False
+        probing = getattr(self, "_loom_probe_thread", None)
+        if probing is not None and probing.is_alive():
+            return False
         self._loom_last_external_credential_probe = now
 
         # Shared keyring / GH_TOKEN / GITHUB_TOKEN / gh CLI state can change
         # without touching connectors.json. Re-run normal validation, then tell
         # the runtime to rebuild future Step tools only if authority changed.
-        self.refresh()
-        after = str(self.github_status().get("bindingId") or "")
-        return after != before
+        # The check runs gh as a subprocess (and may call api.github.com), so it
+        # runs beside the step instead of in front of it, and what it finds is
+        # taken up at the next Step boundary: that is where it could first be
+        # used anyway. Run inline it cost every step 100-250 ms.
+        def probe() -> None:
+            try:
+                was = str(self.github_status().get("bindingId") or "")
+                self.refresh()
+                if str(self.github_status().get("bindingId") or "") != was:
+                    self._loom_probe_found = True
+            except Exception:
+                pass
+
+        self._loom_probe_thread = threading.Thread(target=probe, name="loom-connector-reprobe", daemon=True)
+        self._loom_probe_thread.start()
+        return False
 
     def agent_tools(self: Any):
         tools = list(original_agent_tools(self))

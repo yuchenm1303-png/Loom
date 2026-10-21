@@ -371,3 +371,34 @@ def test_the_github_cli_is_not_run_when_an_earlier_credential_already_works(tmp_
 
     assert manager.github_status()["credentialSource"] == "keyring"
     assert calls == [], "gh was spawned even though the keyring token validated"
+
+
+def test_the_gh_lookup_is_shared_by_the_status_checks_of_a_step_and_then_looked_up_again(tmp_path: Path, monkeypatch) -> None:
+    """shutil.which walks the whole PATH (20 ms on Windows) and a step boundary asks six times."""
+    import app.connectors as connectors
+
+    lookups = []
+    installed = {"gh": ""}
+    clock = [100.0]
+    monkeypatch.setattr(connectors.shutil, "which", lambda name: lookups.append(name) or installed["gh"] or None)
+    monkeypatch.setattr(connectors.time, "monotonic", lambda: clock[0])
+    manager = ConnectorManager(
+        tmp_path / "home",
+        vault=FakeVault(),
+        environment={},
+        client_factory=FakeGitHubClient,
+        command_runner=lambda *a, **k: FakeCommandResult(),
+        defer_initial_refresh=True,
+    )
+    for _ in range(6):
+        assert manager.github_status()["githubCliAvailable"] is False
+    assert lookups == ["gh"]
+
+    # gh gets installed: it is seen as soon as the remembered answer is old, not before and not much later.
+    assert connectors._GH_BINARY_CACHE_SECONDS <= 10, "installing gh must show up within seconds"
+    installed["gh"] = "C:/tools/gh.exe"
+    clock[0] += connectors._GH_BINARY_CACHE_SECONDS - 0.5
+    assert manager.github_status()["githubCliAvailable"] is False
+    clock[0] += 1.0
+    assert manager.github_status()["githubCliAvailable"] is True
+    assert lookups == ["gh", "gh"]

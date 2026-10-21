@@ -39,6 +39,9 @@ _DEFAULT_GITHUB_OAUTH_SCOPES = "repo read:org"
 # How long a model step waits for the launch-time credential check before
 # binding the GitHub tools to whatever state it has.
 _INITIAL_REFRESH_STEP_WAIT_SECONDS = 3.0
+# How long the location of the gh executable is remembered (see ConnectorManager._gh_binary): long enough for the
+# status checks of one step boundary to share a lookup, short enough that installing gh shows up at once.
+_GH_BINARY_CACHE_SECONDS = 5.0
 
 
 class ConnectorError(RuntimeError):
@@ -469,7 +472,15 @@ class ConnectorManager:
         return digest[:24]
 
     def _gh_binary(self) -> str:
-        return shutil.which("gh") or ""
+        # github_status() asks this on every call (six times in the step boundary of one model step) and
+        # shutil.which walks the whole of a Windows PATH for it: 20 ms each.
+        now = time.monotonic()
+        found = getattr(self, "_gh_binary_found", None)
+        if found is not None and now - found[0] < _GH_BINARY_CACHE_SECONDS:
+            return found[1]
+        path = shutil.which("gh") or ""
+        self._gh_binary_found = (now, path)
+        return path
 
     def _gh_token(self) -> str:
         binary = self._gh_binary()

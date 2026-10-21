@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import subprocess
+import time
 from pathlib import Path
 
 from app.connector_oauth_refresh import RefreshingConnectorManager
@@ -79,6 +80,9 @@ def test_disconnected_manager_reprobes_shared_vault_without_state_file_change(tm
     assert manager.state_store.mtime_ns() == original_mtime
 
     monotonic[0] = 6.0
+    # The probe runs beside the Step (gh is a subprocess); the Step boundary that follows it picks the result up.
+    assert manager.refresh_if_store_changed() is False
+    manager._loom_probe_thread.join(10)
     assert manager.refresh_if_store_changed() is True
     status = manager.github_status()
     assert status["connected"] is True
@@ -123,3 +127,38 @@ def test_live_status_discovers_shared_credential_without_retargeting_old_step_to
     new_result = new_repo.handler(None, {"repository": "acme/widgets"})
     assert new_result.ok is True
     assert new_result.data["repository"]["full_name"] == "acme/widgets"
+
+
+def test_the_step_boundary_does_not_wait_for_the_credential_probe(tmp_path: Path) -> None:
+    """gh and api.github.com can take seconds; a Step must not queue behind them every five seconds."""
+
+    def slow_command(*_args, **_kwargs):
+        time.sleep(0.4)
+        return subprocess.CompletedProcess(args=[], returncode=1, stdout="", stderr="not logged in")
+
+    monotonic = [0.0]
+    manager = RefreshingConnectorManager(
+        tmp_path / "home",
+        vault=SharedVault(),
+        environment={},
+        client_factory=FakeGitHubClient,
+        command_runner=slow_command,
+        clock=lambda: monotonic[0],
+        wall_clock=lambda: 1_000.0,
+        defer_initial_refresh=True,
+    )
+    manager._gh_binary = lambda: "gh"
+    monotonic[0] = 6.0
+    started = time.perf_counter()
+    assert manager.refresh_if_store_changed() is False
+    assert time.perf_counter() - started < 0.2
+    # A second boundary while the probe is still running starts no second one.
+    first = manager._loom_probe_thread
+    monotonic[0] = 12.0
+    assert manager.refresh_if_store_changed() is False
+    assert manager._loom_probe_thread is first
+    first.join(10)
+    monotonic[0] = 18.0
+    assert manager.refresh_if_store_changed() is False
+    assert manager._loom_probe_thread is not first
+    manager._loom_probe_thread.join(10)
