@@ -13,6 +13,7 @@ import {
   GitFork,
   Pencil,
   Reply,
+  RotateCcw,
   Search,
   ThumbsDown,
   ThumbsUp,
@@ -889,7 +890,7 @@ const ItemView = memo(function ItemView({
   if (item.type === "error") return <ErrorRow item={item} />;
   if (item.type === "model_retry") return (
     <details className="model-retry-notice">
-      <summary>↻ {item.text}</summary>
+      <summary><RotateCcw size={11} strokeWidth={1.5} aria-hidden="true" /><span>{item.text}</span></summary>
       <p>{item.content}</p>
     </details>
   );

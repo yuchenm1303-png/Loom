@@ -1,3 +1,34 @@
-.model-retry-notice { color: var(--text-secondary, #969daa); margin: 12px 0; font-size: 13px; }
-.model-retry-notice summary { cursor: pointer; }
-.model-retry-notice p { white-space: pre-wrap; overflow-wrap: anywhere; margin: 8px 0; }
+.model-retry-notice {
+  color: var(--text-secondary, #969daa);
+  margin: 4px 0;
+  font-size: 11px;
+  line-height: 1.6;
+}
+.model-retry-notice summary {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  width: fit-content;
+  max-width: 100%;
+  padding: 2px 0;
+  list-style: none;
+  cursor: pointer;
+  opacity: .65;
+}
+.model-retry-notice summary::-webkit-details-marker { display: none; }
+.model-retry-notice summary svg { flex: none; }
+.model-retry-notice summary:hover,
+.model-retry-notice summary:focus-visible,
+.model-retry-notice[open] summary { opacity: 1; }
+.model-retry-notice summary:focus-visible {
+  outline: 1px solid currentColor;
+  outline-offset: 3px;
+  border-radius: 3px;
+}
+.model-retry-notice p {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  margin: 4px 0 4px 16px;
+  max-height: 160px;
+  overflow-y: auto;
+}
