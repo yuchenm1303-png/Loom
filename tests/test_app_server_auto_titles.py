@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import threading
 import time
 from pathlib import Path
 
@@ -74,6 +75,45 @@ def test_empty_response_fails_once_without_retry(tmp_path: Path) -> None:
         time.sleep(0.1)
         assert len([r for r in platform.requests if r.tool_choice is ToolChoice.NONE]) == 1
     finally:
+        runtime.close()
+
+
+def test_title_waits_for_session_model_preparation(tmp_path: Path) -> None:
+    service, runtime, default_platform, workspace = _service(tmp_path, "错误的默认模型标题")
+    selected_platform = TitlePlatform("询问模型身份")
+    preparing = threading.Event()
+    release = threading.Event()
+    scheduled = threading.Event()
+    original_schedule = service._schedule_auto_title
+
+    def schedule(*args, **kwargs):
+        scheduled.set()
+        return original_schedule(*args, **kwargs)
+
+    def prepare(session):
+        # Account model preparation removes the old platform before resolving
+        # the selected gateway model, leaving the global default in the gap.
+        runtime.clear_session_model(session.session_id)
+        preparing.set()
+        assert release.wait(3)
+        runtime.set_session_model(session.session_id, selected_platform)
+
+    service._prepare_turn = prepare
+    service._schedule_auto_title = schedule
+    try:
+        thread_id = service.thread_start({"workspace": str(workspace)})["thread"]["id"]
+        service.turn_start({"threadId": thread_id, "input": "你是什么模型呢"})
+        assert preparing.wait(3)
+        assert not scheduled.is_set()
+        assert not default_platform.requests
+        release.set()
+        metadata = _wait(lambda: service.thread_library.read(thread_id)
+                         if service.thread_library.read(thread_id).get("titleSource") == "auto" else None)
+        assert metadata["title"] == "询问模型身份"
+        assert not default_platform.requests
+        assert any(r.tool_choice is ToolChoice.NONE for r in selected_platform.requests)
+    finally:
+        release.set()
         runtime.close()
 
 

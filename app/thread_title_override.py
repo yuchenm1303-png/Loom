@@ -770,13 +770,20 @@ def _patch_service(module: ModuleType) -> None:
             try:
                 if self.thread_library.mark_auto_title_pending(thread_id, source_prompt=user_prompt):
                     _notify_thread_updated(self, thread_id, "auto_title_pending")
-                    self._schedule_auto_title(thread_id, user_prompt=user_prompt)
             except Exception:
                 pass
         return result
 
     def on_runtime_event(self: Any, event: Any) -> None:
         original_runtime_event(self, event)
+        # turn/start returns while model preparation is still running. Account
+        # model preparation clears the session platform before rebuilding it;
+        # starting here earlier could send titles through the global default.
+        # A user message is emitted only after preparation has finished.
+        from app.agent_runtime import AgentEventKind
+
+        if event.kind is AgentEventKind.USER_MESSAGE:
+            self._schedule_auto_title(event.session_id, user_prompt=str(event.data.get("text") or ""))
 
     service_cls._record = record
     service_cls._managed_record = managed_record
