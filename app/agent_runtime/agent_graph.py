@@ -148,6 +148,19 @@ class AgentGraphStore:
             ).fetchone()
         return _node_from_row(row) if row is not None else None
 
+    def sub_agent_session_ids(self) -> frozenset[str]:
+        """Every session id that belongs to the internal agent graph.
+
+        One query answers this for the whole library. The conversation list
+        used to ask the graph about one session at a time, and every one of
+        those questions opened and closed its own SQLite connection, so
+        listing a few hundred conversations spent nearly all of its time on
+        connection setup instead of on the conversations themselves.
+        """
+        with self._lock, self._connect() as connection:
+            rows = connection.execute("SELECT session_id FROM agent_graph").fetchall()
+        return frozenset(str(row["session_id"]) for row in rows)
+
     def root_for_session(self, session_id: str) -> str:
         key = _key(session_id)
         node = self.get(key)

@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, urlsplit
 from urllib.error import HTTPError, URLError
-from urllib.request import ProxyHandler, Request, build_opener
+from urllib.request import OpenerDirector, ProxyHandler, Request, build_opener
 
 from .browser_diagnostics import BrowserDiagnosticLog, summarize_bridge_args, summarize_browser_state_payload
 from .browser_session import (
@@ -172,6 +172,12 @@ class BrowserExtensionBridge:
         self._retired_runtimes: set[str] = set()
         self._heartbeat_stop = threading.Event()
         self._heartbeat_thread: threading.Thread | None = None
+        # One opener for the whole bridge. Building one per request made every
+        # heartbeat and every command rebuild its SSL context, which reloads
+        # the Windows certificate store each time and cost more than the
+        # loopback request it wrapped.
+        self._opener: OpenerDirector | None = None
+        self._opener_lock = threading.Lock()
         self._log("bridge.created", host=self.host, port=self.port, command_timeout=self.command_timeout)
 
     @classmethod
@@ -246,6 +252,22 @@ class BrowserExtensionBridge:
                 "runtime_clients": len(self._runtime_clients),
             }
 
+    def _loopback_opener(self) -> OpenerDirector:
+        """A proxy-free opener, built once and shared by every request.
+
+        The bridge only ever talks to a loopback address, so a proxy is
+        never wanted. Reusing the opener keeps the SSL context, and with it
+        the Windows certificate store, loaded for the lifetime of the bridge
+        instead of once per heartbeat.
+        """
+        opener = self._opener
+        if opener is not None:
+            return opener
+        with self._opener_lock:
+            if self._opener is None:
+                self._opener = build_opener(ProxyHandler({}))
+            return self._opener
+
     def _remote_request(self, endpoint: str, body=None, *, timeout: float = 2.0):
         data = json.dumps(body).encode("utf-8") if body is not None else None
         request = Request(
@@ -254,7 +276,7 @@ class BrowserExtensionBridge:
                      "Content-Type": "application/json"},
         )
         try:
-            with build_opener(ProxyHandler({})).open(request, timeout=timeout) as response:
+            with self._loopback_opener().open(request, timeout=timeout) as response:
                 payload = json.loads(response.read(32_000_000).decode("utf-8"))
         except HTTPError as exc:
             if exc.code == HTTPStatus.UNAUTHORIZED:
@@ -271,7 +293,7 @@ class BrowserExtensionBridge:
     def _connect_existing(self) -> bool:
         try:
             request = Request(f"{self.url}/browser-extension/v1/health")
-            with build_opener(ProxyHandler({})).open(request, timeout=1.0) as response:
+            with self._loopback_opener().open(request, timeout=1.0) as response:
                 health = json.loads(response.read(4096).decode("utf-8"))
         except HTTPError:
             self._bind_error = f"port {self.port} is occupied by a service that is not a compatible Loom browser bridge"

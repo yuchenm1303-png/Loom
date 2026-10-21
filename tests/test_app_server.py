@@ -559,6 +559,56 @@ def test_sub_agent_sessions_stay_out_of_top_level_thread_list(tmp_path: Path) ->
         runtime.close()
 
 
+def test_thread_list_reads_the_agent_graph_once_per_listing(tmp_path: Path) -> None:
+    """Listing conversations must not ask the agent graph about one session at a time.
+
+    The per-session lookup opened and closed a SQLite connection for every
+    conversation in the library, which is what made the Host busy while the
+    background-task panel polled.
+    """
+
+    home = tmp_path / "home"
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    store = FileAgentSessionStore(home)
+    platform = RecordingPlatform([])
+    runtime = MultiAgentRuntime(
+        platform=platform,
+        store=store,
+        tools=ToolRegistry(),
+        default_permission_mode=PermissionMode.WORKSPACE,
+        auto_drain_queue=False,
+    )
+    service = LoomAppServerService(
+        runtime=runtime,
+        store=store,
+        model="test-model",
+        default_workspace=workspace,
+        default_permission_mode=PermissionMode.WORKSPACE,
+    )
+    calls: list[str] = []
+    real_sub_agent_session_ids = runtime.agent_graph.sub_agent_session_ids
+
+    def counting_sub_agent_session_ids():
+        calls.append("sub_agent_session_ids")
+        return real_sub_agent_session_ids()
+
+    runtime.agent_graph.sub_agent_session_ids = counting_sub_agent_session_ids
+    try:
+        for _ in range(5):
+            service.thread_start({"workspace": str(workspace)})
+
+        calls.clear()
+        listed = service.thread_list({"limit": 100})["threads"]
+
+        assert len(listed) == 5
+        assert calls == ["sub_agent_session_ids"], (
+            f"expected one agent-graph read per listing, saw {calls}"
+        )
+    finally:
+        runtime.close()
+
+
 def test_stdio_transport_emits_json_only_and_processes_requests(tmp_path: Path) -> None:
     service, runtime, _store, _platform, _workspace = _build_service(tmp_path, [])
     try:

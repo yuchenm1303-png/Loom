@@ -682,6 +682,27 @@ class LoomAppServerService:
             # runtime failure.
             return False
 
+    def _sub_agent_session_ids(self) -> frozenset[str]:
+        """Every session id that belongs to the internal agent graph.
+
+        The whole set is fetched in one query. Asking the graph about one
+        session at a time made a conversation listing cost one SQLite
+        connection per conversation, which dominated the cost of the listing
+        itself once a library grew past a few hundred conversations.
+        """
+
+        graph = getattr(self.runtime, "agent_graph", None)
+        lister = getattr(graph, "sub_agent_session_ids", None)
+        if not callable(lister):
+            return frozenset()
+        try:
+            return frozenset(lister())
+        except Exception:
+            # Conversation listing should stay available even if graph metadata
+            # is temporarily unreadable; do not turn a sidebar refresh into a
+            # runtime failure.
+            return frozenset()
+
     def _list_session_objects(self, *, overview: bool = True) -> list[Any]:
         """Every top-level conversation, newest first.
 
@@ -694,10 +715,11 @@ class LoomAppServerService:
         sessions: list[Any] = []
         loader = getattr(self.store, "load_overview", self.store.load) if overview else self.store.load
         if self.store.root.is_dir():
+            sub_agent_ids = self._sub_agent_session_ids()
             for directory in self.store.root.iterdir():
                 if not (directory / "session.json").is_file():
                     continue
-                if self._is_sub_agent_session(directory.name):
+                if directory.name in sub_agent_ids:
                     continue
                 try:
                     sessions.append(loader(directory.name))

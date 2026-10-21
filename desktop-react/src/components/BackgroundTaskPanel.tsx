@@ -76,6 +76,9 @@ export function BackgroundTaskPanel({
 
   // Poll even when closed (at a lower frequency) so the header count is useful.
   // Do not share or consume the terminal/read delta cursor used by command cards.
+  // The closed cadence is deliberately slow: terminal/list walks the whole
+  // conversation library on the Host, so a fast background poll spent the
+  // Host's time on a number that only changes when a task actually ends.
   useEffect(() => {
     if (!workspace || !connected) {
       setProcesses([]);
@@ -96,7 +99,7 @@ export function BackgroundTaskPanel({
         if (disposed) return;
         setError(cause instanceof Error ? cause.message : String(cause));
       } finally {
-        if (!disposed) timeout = window.setTimeout(() => void poll(), open ? 1800 : 7000);
+        if (!disposed) timeout = window.setTimeout(() => void poll(), open ? 1800 : 30_000);
       }
     };
     void poll();

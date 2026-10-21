@@ -523,3 +523,33 @@ def test_a_second_loom_instance_reuses_the_bridge_without_rebinding():
         assert first.status()["runtime_clients"] == 0
     finally:
         first.stop()
+
+
+def test_loopback_opener_is_built_once_and_reused():
+    """One opener for the whole bridge.
+
+    Building an opener per request rebuilt the SSL context every time, which
+    reloads the Windows certificate store and cost more than the loopback
+    request it wrapped.
+    """
+
+    bridge = BrowserExtensionBridge(port=0, token="loom-opener-reuse-test")
+
+    first = bridge._loopback_opener()
+    second = bridge._loopback_opener()
+
+    assert first is second
+    assert bridge._opener is first
+
+
+def test_loopback_opener_is_built_again_after_a_failed_request():
+    """A request that fails must leave a usable opener behind."""
+
+    bridge = BrowserExtensionBridge(port=0, token="loom-opener-reuse-test")
+
+    opener = bridge._loopback_opener()
+
+    with pytest.raises(Exception):
+        bridge._remote_request("status", timeout=0.001)
+
+    assert bridge._loopback_opener() is opener
