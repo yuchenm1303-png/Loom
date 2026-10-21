@@ -174,9 +174,19 @@ def _consume_forced_compaction(rt, session) -> bool:
     return True
 
 
+# The only kinds of event that say what the provider reported for the context (see _provider_context_usage).
+_USAGE_EVENT_KINDS = ("context_checkpointed", "model_response", "model_response_rejected")
+
+
 def _latest_provider_context_tokens(rt, session) -> int | None:
     """Return the newest surviving provider-reported context usage."""
     try:
+        select = getattr(rt.store, "context_select", None)
+        if callable(select):
+            # Every other event is skipped by the scan below, so they need not be made.
+            events = select(session.session_id, kinds=_USAGE_EVENT_KINDS)
+            return _provider_context_usage(events,
+                accounting_events=_events_for_current_model(rt, session, events))[1]
         projected = getattr(rt.store, "context_events", None)
         if callable(projected):
             events = projected(session.session_id)
@@ -250,6 +260,10 @@ def _local_tokens_after_latest_model_message(messages: Sequence[AIMessage]) -> i
 
 
 def _calibration_events(rt, session):
+    select = getattr(rt.store, "context_select", None)
+    if callable(select):
+        # Three accounting questions per step, each about the newest events: do not make objects of the whole log.
+        return _events_for_current_model(rt, session, select(session.session_id, last=_CALIBRATION_EVENT_SCAN_LIMIT))
     projected = getattr(rt.store, "context_events", None)
     if callable(projected):
         events = projected(session.session_id)[-_CALIBRATION_EVENT_SCAN_LIMIT:]
@@ -781,8 +795,10 @@ def _prepare_context_with_model(rt, session, step, token):
     # is enough; parsing every tool result in a long log before each model step
     # was most of the preparation time.
     read_events = getattr(rt.store, "context_events", None) or getattr(rt.store, "events", None)
+    select_events = getattr(rt.store, "context_select", None)
     model_requested_rollover = pending_context_rollover(
-        read_events(session.session_id) if callable(read_events) else (),
+        select_events(session.session_id, kinds=("context_checkpointed", "context_rollover_requested"))
+        if callable(select_events) else read_events(session.session_id) if callable(read_events) else (),
         getattr(session, "current_turn_id", "")
     )
     message_count_fits = (

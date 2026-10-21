@@ -652,7 +652,7 @@ class TurnRunner:
                 diff = rt.diff_trackers.snapshot(session.session_id, session.current_turn_id)
                 rt.store.save(session)
                 from .plan_state import active_plan, summary as plan_summary
-                task_state = plan_summary(active_plan(rt._lifecycle_events(session.session_id)))
+                task_state = plan_summary(active_plan(rt._lifecycle_events(session.session_id, kinds=(Event.PLAN_UPDATED,))))
                 rt._emit_event(
                     session,
                     Event.TURN_COMPLETED,

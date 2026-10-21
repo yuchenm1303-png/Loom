@@ -593,26 +593,37 @@ class AgentRuntime:
         extra["request_layout"] = request_metadata(self, session, messages, step.tool_router.definitions())
         return messages, extra
 
-    def _lifecycle_events(self, session_id):
+    def _lifecycle_events(self, session_id, *, turn_id=None, kinds=None):
         """Chronology and per-call bookkeeping without tool or request bodies.
 
         Repeat detection and latency diagnostics read this before every tool call
         and at every turn end. Parsing the whole transcript for them is what made
         long conversations slow to act.
+
+        ``turn_id`` and ``kinds`` say which of the events the caller reads. A store that can narrow the view
+        does it before making events of the rest; any other gives the same events after the fact.
         """
-        return getattr(self.store, "context_events", self.store.events)(session_id)
+        if turn_id is None and kinds is None:
+            return getattr(self.store, "context_events", self.store.events)(session_id)
+        select = getattr(self.store, "context_select", None)
+        if callable(select):
+            return select(session_id, turn_id=turn_id, kinds=kinds)
+        wanted = None if kinds is None else frozenset(kinds)
+        return tuple(event for event in getattr(self.store, "context_events", self.store.events)(session_id)
+                     if (turn_id is None or event.turn_id == turn_id) and (wanted is None or event.kind in wanted))
 
     def _execution_context(self, session):
         """Shared task state for both core and context-managed request builders."""
         from .execution_guidance import model_execution_guidance
-        turn_events = self._lifecycle_events(session.session_id)
         guidance, guidance_metadata = model_execution_guidance(
-            turn_events,
+            self._lifecycle_events(session.session_id, turn_id=session.current_turn_id),
             turn_id=session.current_turn_id,
         )
         messages = [guidance] if guidance is not None else []
         from .task_plan import plan_context
-        plan = plan_context(turn_events, session.current_turn_id)
+        # A plan outlives the turn that made it, but only its own events say what it is.
+        plan = plan_context(self._lifecycle_events(session.session_id, kinds=(AgentEventKind.PLAN_UPDATED,)),
+                            session.current_turn_id)
         if plan is not None:
             messages.append(plan)
         return messages, guidance_metadata
@@ -1139,9 +1150,7 @@ class AgentRuntime:
         from .execution_guidance import tool_call_fingerprint
         fingerprint = tool_call_fingerprint(call)
         count = 1
-        for event in self._lifecycle_events(session.session_id):
-            if event.turn_id != session.current_turn_id:
-                continue
+        for event in self._lifecycle_events(session.session_id, turn_id=session.current_turn_id):
             data = event.data.get("data", {})
             if isinstance(data, dict) and data.get("invalid_request_fingerprint") == fingerprint:
                 count += 1
@@ -1172,13 +1181,15 @@ class AgentRuntime:
         call_fingerprint = tool_call_fingerprint(prepared.call)
         if prepared.tool.effect is ToolEffect.READ_ONLY:
             repeat_count = recent_read_only_repeat_count(
-                self._lifecycle_events(session.session_id),
+                self._lifecycle_events(session.session_id, turn_id=session.current_turn_id,
+                                       kinds=(AgentEventKind.TOOL_STARTED,)),
                 turn_id=session.current_turn_id,
                 fingerprint=call_fingerprint,
             )
         elif prepared.tool.effect is ToolEffect.SENSITIVE:
             repeat_count = recent_tool_repeat_count(
-                self._lifecycle_events(session.session_id),
+                self._lifecycle_events(session.session_id, turn_id=session.current_turn_id,
+                                       kinds=(AgentEventKind.TOOL_STARTED,)),
                 turn_id=session.current_turn_id,
                 fingerprint=call_fingerprint,
             )
@@ -1680,7 +1691,7 @@ class AgentRuntime:
             from .turn_timing import turn_timing_metadata
 
             timing = turn_timing_metadata(
-                self._lifecycle_events(session.session_id),
+                self._lifecycle_events(session.session_id, turn_id=session.current_turn_id),
                 turn_id=session.current_turn_id,
                 kind=kind,
                 now=created_at,

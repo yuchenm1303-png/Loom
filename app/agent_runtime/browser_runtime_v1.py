@@ -490,10 +490,19 @@ class BrowserRuntime(_BrowserRuntime):
     def _collect_model_observations(self, session, step):
         messages, extra = super()._collect_model_observations(session, step)
         context_events = getattr(self.store, "context_events", self.store.events)
-        events = context_events(session.session_id)
-        already_requested = any(event.turn_id == session.current_turn_id
-            and event.kind is AgentEventKind.MODEL_REQUESTED for event in events)
+        select = getattr(self.store, "context_select", None)
+        if callable(select):
+            # Asked at every step: only the first of a turn needs the whole log (below).
+            events = None
+            already_requested = bool(select(session.session_id, turn_id=session.current_turn_id,
+                                            kinds=(AgentEventKind.MODEL_REQUESTED,)))
+        else:
+            events = context_events(session.session_id)
+            already_requested = any(event.turn_id == session.current_turn_id
+                and event.kind is AgentEventKind.MODEL_REQUESTED for event in events)
         if not already_requested:
+            if events is None:
+                events = context_events(session.session_id)
             # An opened lease absent from this Host is not recoverable. Record
             # that fact once, without loading and overwriting a session snapshot.
             latest_leases = {}

@@ -327,7 +327,8 @@ class CodeModeRuntime(SkillRuntime):
         call_fingerprint = tool_call_fingerprint(nested_call)
         repeat_count = (
             recent_read_only_repeat_count(
-                self._lifecycle_events(session.session_id),
+                self._lifecycle_events(session.session_id, turn_id=session.current_turn_id,
+                                       kinds=(AgentEventKind.TOOL_STARTED,)),
                 turn_id=session.current_turn_id,
                 fingerprint=call_fingerprint,
             )

@@ -100,7 +100,7 @@ class EventParseCache:
             return _clone(records) if shared else records
         return [build(record, shared) for record in records]
 
-    def read(self, path, limit, tail_reader, *, project=None, parse=None, build=None):
+    def read(self, path, limit, tail_reader, *, project=None, parse=None, build=None, select=None):
         """Parsed records of ``path``, one per line, shared by every reader of this view.
 
         ``project`` reshapes a parsed record. ``parse`` replaces ``json.loads`` for
@@ -110,6 +110,10 @@ class EventParseCache:
 
         Records are returned as copies. ``build(record, shared)`` makes the caller's
         own object from one instead, so only what the caller keeps is copied.
+
+        ``select`` narrows the view before it is handed over: it is given the list of records and returns the ones
+        wanted (a turn, some kinds, the newest few). What it leaves out is never made into an object, which is most
+        of the cost of reading a long log that is already parsed.
         """
         key = (str(path), limit, project, parse)
         parse_line = json.loads if parse is None else parse
@@ -125,7 +129,7 @@ class EventParseCache:
             if entry is not None and entry["signature"] == signature:
                 self._entries.move_to_end(key)
                 self._hits += 1
-                cached = entry["visible"]
+                cached = select(entry["visible"]) if select is not None else entry["visible"]
             else:
                 cached = None
         if cached is not None:
@@ -230,4 +234,4 @@ class EventParseCache:
         # What the cache did not keep has no other holder, so the caller can
         # have the parsed objects themselves; copying them would only repeat
         # the cost of parsing a history too large to cache.
-        return self._deliver(visible, build, shared=retained)
+        return self._deliver(select(visible) if select is not None else visible, build, shared=retained)

@@ -36,11 +36,11 @@ def test_a_multi_step_turn_never_reads_the_whole_event_log(tmp_path, monkeypatch
     full_reads = []
     real_view = FileAgentSessionStore._view
 
-    def spy(self, session_id, *, limit=None, project=None, parse=None):
+    def spy(self, session_id, *, limit=None, project=None, parse=None, select=None):
         # The patch is class-wide, so a thread left behind by an earlier test could otherwise be counted.
         if session_id == session.session_id and limit is None and project is None and parse is None:
             full_reads.append(session_id)
-        return real_view(self, session_id, limit=limit, project=project, parse=parse)
+        return real_view(self, session_id, limit=limit, project=project, parse=parse, select=select)
 
     monkeypatch.setattr(FileAgentSessionStore, "_view", spy)
     try:

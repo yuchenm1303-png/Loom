@@ -693,6 +693,28 @@ class FileAgentSessionStore:
             return ()
         return self._view(session_id, limit=limit, project=_context_event_projection if context_only else None)
 
+    def context_select(self, session_id: str, *, turn_id: str | None = None, kinds=None,
+                       last: int | None = None) -> tuple[AgentEvent, ...]:
+        """The context projection narrowed to what a caller reads, before any event of the rest is made.
+
+        ``turn_id`` keeps the events of one turn, ``kinds`` those of some kinds (kinds or their values), and
+        ``last`` the newest few of what remains. The result is what the same filters give on
+        ``context_events()``, in the same order; on a long log it costs the events kept, not the events there are.
+        """
+        wanted = None if kinds is None else frozenset(getattr(kind, "value", kind) for kind in kinds)
+        count = None if last is None else int(last)
+        if count is not None and count <= 0:
+            return ()
+
+        def select(records):
+            if turn_id is not None:
+                records = [record for record in records if str(record.get("turn_id") or "") == turn_id]
+            if wanted is not None:
+                records = [record for record in records if record.get("kind") in wanted]
+            return records[-count:] if count is not None else records
+
+        return self._view(session_id, project=_context_event_projection, select=select)
+
     def last_event(self, session_id: str, kinds) -> AgentEvent | None:
         """The newest event of one of ``kinds``, found by reading the log from its end.
 
@@ -731,12 +753,12 @@ class FileAgentSessionStore:
             _event_from_payload(newest) if newest is not None else None,
         )
 
-    def _view(self, session_id: str, *, limit: int | None = None, project=None, parse=None) -> tuple[AgentEvent, ...]:
+    def _view(self, session_id: str, *, limit: int | None = None, project=None, parse=None, select=None) -> tuple[AgentEvent, ...]:
         path = self.session_dir(session_id) / "events.jsonl"
         with session_lock(path.parent):
             recover(path.parent)
             events = self._event_cache.read(path, limit, _recent_event_lines, project=project, parse=parse,
-                                            build=_build_event)
+                                            build=_build_event, select=select)
         return tuple(events)
 
 

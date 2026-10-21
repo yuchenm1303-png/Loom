@@ -253,3 +253,199 @@ def test_last_event_reads_the_end_of_the_log_not_all_of_it(tmp_path, monkeypatch
     parsed.clear()
     assert store.last_event(SESSION, (E.TOOL_COMPLETED,)).event_id == "event-299"
     assert sum(len(text) for text in parsed) < 10_000
+
+
+def _second_turn(store):
+    """A second turn, so that narrowing by turn has something to leave out."""
+    store.append_event(_event(8, E.TURN_STARTED, "turn-2", source="user"))
+    store.append_event(_event(9, E.MODEL_REQUESTED, "turn-2", model="m"))
+    store.append_event(_event(10, E.TOOL_STARTED, "turn-2", call_id="b", tool="read", effect="read_only", call_fingerprint="f", repeat_count=0))
+    store.append_event(_event(11, E.MODEL_RESPONSE, "turn-2", text="again", usage={"total_tokens": 9}))
+    store.append_event(_event(12, E.PLAN_UPDATED, "turn-2", plan=[{"step": "a", "status": "pending"}]))
+    store.append_event(_event(13, E.TOOL_STARTED, "turn-2", call_id="c", tool="read", effect="read_only", call_fingerprint="g", repeat_count=1))
+    store.append_event(_event(14, E.TURN_COMPLETED, "turn-2", text="done"))
+
+
+@pytest.mark.parametrize("turn_id, kinds, last", [
+    ("turn-2", None, None),
+    (None, (E.TOOL_STARTED, E.PLAN_UPDATED), None),
+    (None, None, 3),
+    ("turn-2", (E.TOOL_STARTED,), None),
+    ("turn-2", (E.TOOL_STARTED, E.MODEL_REQUESTED), 2),
+    ("turn-1", ("model_requested", "model_response"), None),
+    (None, (E.CONTEXT_CHECKPOINTED,), None),
+    ("no-such-turn", None, None),
+    ("", None, None),
+    (None, None, 1000),
+])
+def test_a_selection_is_what_the_same_filters_give_on_the_whole_view(store, turn_id, kinds, last):
+    _second_turn(store)
+    full = store.context_events(SESSION)
+    expected = [e for e in full
+                if (turn_id is None or e.turn_id == turn_id) and (kinds is None or e.kind in {E(k) for k in kinds})]
+    expected = expected[-last:] if last else expected
+    chosen = store.context_select(SESSION, turn_id=turn_id, kinds=kinds, last=last)
+    assert [e.event_id for e in chosen] == [e.event_id for e in expected]
+    assert [(e.turn_id, e.kind, e.created_at, e.data) for e in chosen] == [(e.turn_id, e.kind, e.created_at, e.data) for e in expected]
+
+
+def test_nothing_asked_for_gives_nothing(store):
+    assert store.context_select(SESSION, last=0) == () and store.context_select(SESSION, kinds=()) == ()
+
+
+def test_a_selection_builds_only_the_events_it_keeps(store, monkeypatch):
+    _second_turn(store)
+    store.context_events(SESSION)  # parse once, as a running session has
+    built = []
+    real = storage._build_event
+    monkeypatch.setattr(storage, "_build_event", lambda record, shared: built.append(record["event_id"]) or real(record, shared))
+    kept = store.context_select(SESSION, turn_id="turn-2", kinds=(E.TOOL_STARTED,))
+    assert [e.event_id for e in kept] == ["event-10", "event-13"] and built == ["event-10", "event-13"]
+    built.clear()
+    store.context_select(SESSION, last=3)
+    assert built == ["event-12", "event-13", "event-14"]
+
+
+def test_a_selection_follows_the_log_as_it_grows(store):
+    before = [event.event_id for event in store.context_select(SESSION, last=2)]
+    store.append_event(_event(8, E.USER_MESSAGE, text="next"))
+    store.append_event(_event(9, E.TURN_STARTED, source="user"))
+    after = [event.event_id for event in store.context_select(SESSION, last=2)]
+    assert before == ["event-6", "event-7"] and after == ["event-8", "event-9"]
+
+
+def test_a_caller_cannot_change_what_a_selection_shares_with_the_cache(store):
+    for event in store.context_select(SESSION, last=2):
+        event.data["injected"] = True
+    for event in store.context_select(SESSION, turn_id="turn-1", kinds=(E.TURN_COMPLETED,)):
+        event.data["injected"] = True
+    assert all("injected" not in event.data for event in store.context_events(SESSION))
+
+
+def test_the_calibration_questions_read_the_tail_not_the_whole_log(store, monkeypatch):
+    """Three accounting questions per model step are about the newest events only."""
+    from types import SimpleNamespace
+    from app.agent_runtime import context_budget
+
+    monkeypatch.setattr(context_budget, "_CALIBRATION_EVENT_SCAN_LIMIT", 3)
+    rt = SimpleNamespace(store=store)
+    session = SimpleNamespace(session_id=SESSION, profile_id="p")
+    monkeypatch.setattr(store, "context_events", lambda *args, **kwargs: pytest.fail("the whole view was built"))
+    events = context_budget._calibration_events(rt, session)
+    assert [event.event_id for event in events] == ["event-5", "event-6", "event-7"]
+
+
+class _WithoutSelect:
+    """A store that only has the older reads, which every narrowed read must still work on."""
+
+    def __init__(self, backing):
+        self.backing = backing
+
+    def events(self, session_id, **kwargs):
+        return self.backing.events(session_id, **kwargs)
+
+    def context_events(self, session_id):
+        return self.backing.context_events(session_id)
+
+
+def _runtime_on(store):
+    from app.agent_runtime import AgentRuntime
+
+    runtime = object.__new__(AgentRuntime)
+    runtime.store = store
+    return runtime
+
+
+def test_the_runtime_reads_the_same_events_with_and_without_a_store_that_narrows(store):
+    _second_turn(store)
+    narrowing, plain = _runtime_on(store), _runtime_on(_WithoutSelect(store))
+    for kwargs in ({}, {"turn_id": "turn-2"}, {"kinds": (E.PLAN_UPDATED,)}, {"turn_id": "turn-2", "kinds": (E.TOOL_STARTED,)}):
+        assert [e.event_id for e in narrowing._lifecycle_events(SESSION, **kwargs)] == [
+            e.event_id for e in plain._lifecycle_events(SESSION, **kwargs)]
+    assert [e.event_id for e in narrowing._lifecycle_events(SESSION, turn_id="turn-2", kinds=(E.TOOL_STARTED,))] == ["event-10", "event-13"]
+
+
+def test_the_execution_context_is_the_same_with_and_without_a_store_that_narrows(store):
+    from types import SimpleNamespace
+
+    _second_turn(store)
+    session = SimpleNamespace(session_id=SESSION, current_turn_id="turn-2")
+    with_select = _runtime_on(store)._execution_context(session)
+    without = _runtime_on(_WithoutSelect(store))._execution_context(session)
+    assert [m.content for m in with_select[0]] == [m.content for m in without[0]] and with_select[1] == without[1]
+    # the second turn has a repeated read-only call and an active plan, so both halves of the answer are real
+    assert {m.name for m in with_select[0]} == {"loom_execution_guidance", "loom_task_plan"}
+
+
+def test_provider_usage_and_rollover_are_the_same_with_and_without_a_store_that_narrows(store):
+    from types import SimpleNamespace
+    from app.agent_runtime import context_budget
+
+    session = SimpleNamespace(session_id=SESSION, profile_id="p", current_turn_id="turn-2")
+
+    def answers(backing):
+        rt = SimpleNamespace(store=backing)
+        from app.agent_runtime.context_tools import pending_context_rollover
+        select = getattr(backing, "context_select", None)
+        rollover = pending_context_rollover(
+            select(SESSION, kinds=("context_checkpointed", "context_rollover_requested")) if select else backing.context_events(SESSION), "turn-2")
+        return context_budget._latest_provider_context_tokens(rt, session), rollover
+
+    _second_turn(store)
+    assert answers(store) == answers(_WithoutSelect(store)) == (9, False)
+    store.append_event(_event(15, E.CONTEXT_ROLLOVER_REQUESTED, "turn-2"))
+    assert answers(store) == answers(_WithoutSelect(store)) == (9, True)
+    store.append_event(_event(16, E.CONTEXT_CHECKPOINTED, "turn-2"))
+    assert answers(store) == answers(_WithoutSelect(store)) == (None, False)
+    store.append_event(_event(17, E.MODEL_RESPONSE, "turn-2", usage={"input_tokens": 40, "output_tokens": 2}))
+    assert answers(store) == answers(_WithoutSelect(store)) == (42, False)
+    # A response the runtime rejected still tells what the provider counted.
+    store.append_event(_event(18, E.MODEL_RESPONSE_REJECTED, "turn-2", reason="empty", usage={"total_tokens": 77}))
+    assert answers(store) == answers(_WithoutSelect(store)) == (77, False)
+
+
+def test_a_model_step_never_builds_the_whole_lifecycle_view(tmp_path):
+    """Per step the runtime asks about one turn, some kinds, or the newest few: never for every event there is."""
+    from app.agent_runtime import AgentRuntime, AgentTool, SandboxManager, SandboxPolicy, ToolRegistry, ToolResult
+    from app.agent_runtime.contracts import PermissionMode
+    from app.ai import ModelResponse, ToolCall
+
+    class Counting(FileAgentSessionStore):
+        def __init__(self, root):
+            super().__init__(root)
+            self.whole_view_reads, self.selections = 0, []
+
+        def context_events(self, session_id):
+            self.whole_view_reads += 1
+            return super().context_events(session_id)
+
+        def context_select(self, session_id, **kwargs):
+            self.selections.append(kwargs)
+            return super().context_select(session_id, **kwargs)
+
+    class Scripted:
+        def __init__(self, responses):
+            self.responses = iter(responses)
+
+        def execute_chat(self, profile, request):
+            return next(self.responses)
+
+    tool = AgentTool("echo", "echo text", {"type": "object"}, lambda context, arguments: ToolResult(ok=True, content="ok"))
+    platform = Scripted([
+        ModelResponse(tool_calls=(ToolCall("a", "echo", {"text": "one"}),)),
+        ModelResponse(tool_calls=(ToolCall("b", "echo", {"text": "two"}),)),
+        ModelResponse(text="done"),
+    ])
+    store = Counting(tmp_path)
+    runtime = AgentRuntime(platform=platform, store=store, tools=ToolRegistry((tool,)),
+                           sandbox_manager=SandboxManager(policy=SandboxPolicy.OFF))
+    try:
+        session = runtime.create_session("agent.fast", permission_mode=PermissionMode.FULL_ACCESS)
+        runtime.start_turn(session.session_id, "use the tool twice")
+    finally:
+        runtime.close()
+    # The browser runtime reads the log whole once, at the first model request of a turn, to find leases that were
+    # left open; no later step of the turn does.
+    assert store.whole_view_reads <= 1
+    assert any(selection.get("turn_id") for selection in store.selections)
+    assert any(selection.get("kinds") for selection in store.selections)
