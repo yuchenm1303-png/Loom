@@ -891,7 +891,11 @@ export class DesktopModelManager {
     return this.runPythonBridge<T>("loom_model_admin.py", command, payload);
   }
 
-  private runAdminAsync<T>(command: "metadata", payload: Record<string, unknown>): Promise<T> {
+  discover(input: { baseUrl: string; apiKey: string }): Promise<{ models: string[]; latencyMs: number }> {
+    return this.runAdminAsync("discover", { baseUrl: input.baseUrl, apiKey: input.apiKey });
+  }
+
+  private runAdminAsync<T>(command: "metadata" | "discover", payload: Record<string, unknown>): Promise<T> {
     return this.runPythonBridgeAsync<T>("loom_model_admin.py", command, payload);
   }
 

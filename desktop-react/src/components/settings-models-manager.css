@@ -718,7 +718,7 @@
   gap: 6px;
 }
 
-.models-form-grid > label.wide,
+.models-form-grid > .wide,
 .models-form-switch.wide {
   grid-column: 1 / -1;
 }
@@ -832,7 +832,7 @@
   .models-search { min-width: 0; width: 100%; }
   .models-filter { width: fit-content; }
   .models-form-grid { grid-template-columns: 1fr; }
-  .models-form-grid > label.wide, .models-form-switch.wide { grid-column: auto; }
+  .models-form-grid > .wide, .models-form-switch.wide { grid-column: auto; }
   .models-profile-data { grid-template-columns: 1fr; }
 }
 

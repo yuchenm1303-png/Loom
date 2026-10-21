@@ -1612,6 +1612,7 @@ const desktopOperations: WebRelayOperations = {
     : runAddModel((args[0] || {}) as AddModelInput),
   updateModel: async (args) => runUpdateModel((args[0] || {}) as EditModelInput),
   testModel: async (args) => runTestModel(String(args[0] || "")),
+  discoverModels: async (args) => modelManager.discover(args[0] as { baseUrl: string; apiKey: string }),
   queryModelUsage: async (args) => queryModelUsage(String(args[0] || ""), Boolean(args[1])),
   deleteModel: async (args) => deleteModel(String(args[0] || "")),
   setReasoning: async (args) => runSetReasoning(...args.map((value) => String(value || ""))),
@@ -1827,6 +1828,7 @@ handleHostChannel("loom:model-add", (_event, threadOrInput: string | AddModelInp
 ));
 handleHostChannel("loom:model-update", (_event, input: EditModelInput) => runUpdateModel(input));
 handleHostChannel("loom:model-test", async (_event, selection: string) => runTestModel(selection));
+handleHostChannel("loom:model-discover", (_event, input: { baseUrl: string; apiKey: string }) => modelManager.discover(input));
 const modelUsageService = new ModelUsageService((input, init) => net.fetch(input as string, init));
 async function queryModelUsage(selection: string, force = false) {
   try {

@@ -6,6 +6,7 @@ import sys
 import time
 import urllib.error
 import urllib.request
+import urllib.parse
 from typing import Any
 
 from app.ai.model_selection_store import ModelSelectionStore
@@ -72,6 +73,44 @@ def _model_list_url(base_url: str, provider: str) -> str:
     if not base:
         raise ValueError("model endpoint has no Base URL")
     return f"{base}/models"
+
+
+class _NoDiscoveryRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
+def _discover(payload: dict[str, Any]) -> dict[str, Any]:
+    """Read an unsaved connection's catalog without persisting or echoing its key."""
+    base = str(payload.get("baseUrl") or "").strip().rstrip("/")
+    parsed = urllib.parse.urlsplit(base)
+    if parsed.scheme not in {"http", "https"} or not parsed.hostname or parsed.username or parsed.password or parsed.query or parsed.fragment:
+        raise ValueError("Use an HTTP(S) base URL without credentials, query or fragment")
+    key = str(payload.get("apiKey") or "").strip()
+    if not key or "\r" in key or "\n" in key:
+        raise ValueError("A valid gateway API key is required")
+    request = urllib.request.Request(base + "/models", headers={
+        "Authorization": "Bearer " + key, "Accept": "application/json",
+    })
+    started = time.perf_counter()
+    try:
+        with urllib.request.build_opener(_NoDiscoveryRedirect()).open(request, timeout=8) as response:
+            body = response.read(1024 * 1024 + 1)
+    except urllib.error.HTTPError as exc:
+        raise RuntimeError(f"Model discovery returned HTTP {exc.code}; check the gateway address and key") from None
+    except (OSError, urllib.error.URLError):
+        raise RuntimeError("Could not reach the gateway; start Magpie and check its address") from None
+    if len(body) > 1024 * 1024:
+        raise ValueError("Model catalog exceeds the size limit")
+    try:
+        decoded = json.loads(body)
+    except (ValueError, UnicodeDecodeError):
+        raise ValueError("Gateway did not return a JSON model catalog") from None
+    if not isinstance(decoded, dict) or not isinstance(decoded.get("data"), list):
+        raise ValueError("Gateway did not return an OpenAI-compatible model catalog")
+    models = sorted({item["id"] for item in decoded["data"]
+                     if isinstance(item, dict) and isinstance(item.get("id"), str) and item["id"].strip()})
+    return {"models": models, "latencyMs": round((time.perf_counter() - started) * 1000)}
 
 
 def _test(
@@ -150,13 +189,15 @@ def _test(
 
 def main(argv: list[str] | None = None) -> int:
     args = list(sys.argv[1:] if argv is None else argv)
-    if len(args) != 1 or args[0] not in {"metadata", "update", "test"}:
-        sys.stderr.write("usage: loom_model_admin.py {metadata|update|test}\n")
+    if len(args) != 1 or args[0] not in {"metadata", "update", "test", "discover"}:
+        sys.stderr.write("usage: loom_model_admin.py {metadata|update|test|discover}\n")
         return 2
     try:
         store = ModelConfigStore()
         payload = _read()
-        if args[0] == "metadata":
+        if args[0] == "discover":
+            result = _discover(payload)
+        elif args[0] == "metadata":
             result = _metadata(store)
         elif args[0] == "update":
             result = _update(store, payload)

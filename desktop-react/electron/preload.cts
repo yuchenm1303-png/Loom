@@ -73,6 +73,7 @@ const api = {
     typeof first === "string" ? ipcRenderer.invoke("loom:model-add", first, second) : ipcRenderer.invoke("loom:model-add", first),
   updateModel: (input: Record<string, unknown>) => ipcRenderer.invoke("loom:model-update", input),
   testModel: (selection: string) => ipcRenderer.invoke("loom:model-test", selection),
+  discoverModels: (input: { baseUrl: string; apiKey: string }) => ipcRenderer.invoke("loom:model-discover", input),
   queryModelUsage: (selection: string, force = false) => ipcRenderer.invoke("loom:model-usage", selection, force),
   deleteModel: (selection: string) => ipcRenderer.invoke("loom:model-delete", selection),
   setReasoning: (...args: string[]) => ipcRenderer.invoke("loom:reasoning-set", ...args),

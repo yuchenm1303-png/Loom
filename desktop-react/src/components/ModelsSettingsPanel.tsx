@@ -20,7 +20,7 @@ import {
   X,
   Zap,
 } from "./icons";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useI18n } from "../i18n";
 import type {
   AddModelInput,
@@ -215,6 +215,9 @@ export function ModelsSettingsPanel({ initialSnapshot, runtimeModel, running, on
   const [filter, setFilter] = useState<Filter>("all");
   const [formMode, setFormMode] = useState<FormMode>(null);
   const [form, setForm] = useState<ModelFormState>(EMPTY_FORM);
+  const [catalog, setCatalog] = useState<{ models: string[]; latencyMs: number } | null>(null);
+  const discoveryRequest = useRef(0);
+  const [magpieForm, setMagpieForm] = useState(false);
   const [error, setError] = useState("");
   const [confirmDelete, setConfirmDelete] = useState("");
   const [tests, setTests] = useState<Record<string, ModelTestResult>>({});
@@ -222,6 +225,10 @@ export function ModelsSettingsPanel({ initialSnapshot, runtimeModel, running, on
   const [otherModel, setOtherModel] = useState("");
 
   useEffect(() => setSnapshot(initialSnapshot), [initialSnapshot]);
+  useEffect(() => {
+    discoveryRequest.current += 1;
+    setCatalog(null);
+  }, [form.baseUrl, form.apiKey, form.adapter, formMode]);
 
   const current = snapshot?.current;
   const profiles = snapshot?.profiles ?? [];
@@ -285,12 +292,14 @@ export function ModelsSettingsPanel({ initialSnapshot, runtimeModel, running, on
   }
 
   function openAdd() {
+    setMagpieForm(false);
     setForm({ ...EMPTY_FORM });
     setFormMode("add");
     setError("");
   }
 
   function openEdit(profile: ModelProfile) {
+    setMagpieForm(false);
     if (profile.kind !== "saved" || profile.selection === current?.selection) return;
     setForm({
       selection: profile.selection,
@@ -303,6 +312,29 @@ export function ModelsSettingsPanel({ initialSnapshot, runtimeModel, running, on
     });
     setFormMode("edit");
     setError("");
+  }
+
+  function openMagpie() {
+    setMagpieForm(true);
+    setForm({ ...EMPTY_FORM, name: "Magpie", baseUrl: "http://127.0.0.1:3425/v1", apiKey: "magpie" });
+    setFormMode("add");
+    setError("");
+  }
+
+  async function discover() {
+    if (busy || running) return;
+    const request = ++discoveryRequest.current;
+    setBusy("discover");
+    setError("");
+    setCatalog(null);
+    try {
+      const result = await window.loom.discoverModels({ baseUrl: form.baseUrl.trim(), apiKey: form.apiKey.trim() });
+      if (request === discoveryRequest.current) setCatalog(result);
+    } catch (cause) {
+      if (request === discoveryRequest.current) setError(cause instanceof Error ? cause.message : String(cause));
+    } finally {
+      setBusy("");
+    }
   }
 
   async function submitForm() {
@@ -410,6 +442,9 @@ export function ModelsSettingsPanel({ initialSnapshot, runtimeModel, running, on
           </button>
           <button type="button" className="models-primary-action" onClick={openAdd} disabled={running || Boolean(busy)}>
             <Plus size={14} />{c.add}
+          </button>
+          <button type="button" className="mature-action-button" onClick={openMagpie} disabled={running || Boolean(busy)}>
+            <Server size={14} />{language === "zh-CN" ? "连接 Magpie" : "Connect Magpie"}
           </button>
         </div>
       </div>
@@ -569,11 +604,26 @@ export function ModelsSettingsPanel({ initialSnapshot, runtimeModel, running, on
               <button type="button" onClick={() => setFormMode(null)}><X size={16} /></button>
             </div>
             <div className="models-form-grid">
+              {magpieForm ? <p className="wide">{language === "zh-CN"
+                ? "先启动 Magpie 并登录模型账号，再获取模型列表。本机默认密钥为 magpie；连接其他机器时，请填写该网关的地址和密钥。"
+                : "Start Magpie and sign in to a provider, then fetch its models. The local default key is magpie; for another machine, enter its gateway address and key."}</p> : null}
               <label className="wide"><span>{c.name}</span><input autoFocus value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} /></label>
               <label><span>{c.apiType}</span><select value={form.adapter} onChange={(event) => setForm({ ...form, adapter: event.target.value as ModelFormState["adapter"] })}><option value="openai-compatible">OpenAI Compatible</option><option value="openai">OpenAI</option></select></label>
               <label><span>{c.modelId}</span><input value={form.model} onChange={(event) => setForm({ ...form, model: event.target.value })} /></label>
               <label className="wide"><span>{c.baseUrl}</span><input value={form.baseUrl} disabled={form.adapter === "openai"} placeholder={form.adapter === "openai" ? "OpenAI default" : "https://api.example.com/v1"} onChange={(event) => setForm({ ...form, baseUrl: event.target.value })} /></label>
               <label className="wide"><span>{formMode === "edit" ? c.apiKeyEdit : c.apiKey}</span><div className="models-secret-field"><KeyRound size={14} /><input type="password" value={form.apiKey} onChange={(event) => setForm({ ...form, apiKey: event.target.value })} /></div></label>
+              {form.adapter === "openai-compatible" ? <div className="wide">
+                <button type="button" className="mature-action-button" disabled={Boolean(busy) || running || !form.baseUrl.trim() || !form.apiKey.trim()} onClick={() => void discover()}>
+                  <RefreshCw size={14} spinning={busy === "discover"} />{language === "zh-CN" ? "获取模型列表" : "Fetch models"}
+                </button>
+                {catalog ? <p role="status">{catalog.models.length
+                  ? `${catalog.models.length} ${c.discovered} · ${catalog.latencyMs}ms`
+                  : language === "zh-CN" ? "连接成功，但没有可用模型。请在 Magpie 中登录账号并启用模型。" : "Connected, but no models are available. Sign in and enable models in Magpie."}</p> : null}
+                {catalog?.models.length ? <label><span>{language === "zh-CN" ? "选择网关模型" : "Choose gateway model"}</span><select aria-label={language === "zh-CN" ? "选择网关模型" : "Choose gateway model"} value={catalog.models.includes(form.model) ? form.model : ""} onChange={(event) => setForm({ ...form, model: event.target.value, vision: null })}>
+                  <option value="" disabled>{language === "zh-CN" ? "请选择模型" : "Select a model"}</option>
+                  {catalog.models.map((model) => <option key={model} value={model}>{model}</option>)}
+                </select></label> : null}
+              </div> : null}
               <div className="models-form-switch wide"><div><Eye size={15} /><span><strong>{c.vision}</strong><small>{c.visionDesc}</small></span></div><select aria-label={c.vision} value={form.vision === null ? "unknown" : String(form.vision)} onChange={(event) => setForm({ ...form, vision: event.target.value === "unknown" ? null : event.target.value === "true" })}><option value="unknown">{language === "zh-CN" ? "未确认" : "Unknown"}</option><option value="true">{language === "zh-CN" ? "支持" : "Supported"}</option><option value="false">{language === "zh-CN" ? "不支持" : "Unsupported"}</option></select></div>
             </div>
             <div className="models-key-note"><KeyRound size={13} /><span>{c.keyNote}</span></div>
