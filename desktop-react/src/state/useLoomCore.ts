@@ -1299,6 +1299,10 @@ export function useLoom() {
       } else if (message.method === "approval/requested") {
         const approval = params.approval as PendingApproval | undefined;
         if (approval && approval.threadId === activeId) {
+          setThreads((current) => current.map((entry) => entry.id === activeId
+            && (!entry.currentTurnId || entry.currentTurnId === approval.turnId)
+            ? { ...entry, status: "waiting_approval", currentTurnId: approval.turnId }
+            : entry));
           setActive((current) => current && current.thread.id === activeId
             ? {
                 ...current,
