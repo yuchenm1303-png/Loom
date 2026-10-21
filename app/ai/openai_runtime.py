@@ -248,6 +248,9 @@ class OpenAIChatBackend:
         timeout = max(float(request_timeout_seconds), profile.stream_idle_timeout_seconds)
         if not 10.0 <= timeout <= 600.0:
             raise ValueError("request_timeout_seconds must be within 10..600")
+        # Whether the client is the SDK's own: only then is a request body worth sending around the SDK's typed
+        # transform (see _create). A client handed in (a test double) keeps seeing the keyword arguments as built.
+        self._sdk_client = client is None
         if client is None:
             try:
                 from openai import OpenAI
@@ -323,10 +326,28 @@ class OpenAIChatBackend:
             kwargs["extra_body"] = extra_body
         return kwargs
 
+    def _wire_kwargs(self, kwargs: dict[str, Any]) -> dict[str, Any]:
+        """The same request, with the messages handed to the SDK as extra body instead of as an argument.
+
+        ``create(messages=...)`` walks every message through the SDK's typed-dict transform before the body is
+        encoded: 145 ms for 930 short messages and about 300 ms for a real long conversation, on every step, linear in
+        the length of the conversation. Loom builds the messages as the plain dicts the wire wants, so the transform
+        changes nothing in them; ``extra_body`` is merged into the body untouched, replacing the empty list that
+        stands in for them, at the same position (the body is byte-for-byte the one the transform produced).
+        """
+        if not self._sdk_client or not kwargs.get("messages"):
+            return kwargs
+        wire = dict(kwargs)
+        extra = dict(wire.get("extra_body") or {})
+        extra["messages"] = wire["messages"]
+        wire["messages"] = []
+        wire["extra_body"] = extra
+        return wire
+
     def _create(self, kwargs: dict[str, Any]) -> Any:
         # TurnRunner owns retry budgets and emits one durable event per attempt.
         try:
-            return self.client.chat.completions.create(**kwargs)
+            return self.client.chat.completions.create(**self._wire_kwargs(kwargs))
         except Exception as exc:
             if _quota_exhausted(exc):
                 raise AIQuotaExceeded(status_code=_provider_status_code(exc)) from exc
