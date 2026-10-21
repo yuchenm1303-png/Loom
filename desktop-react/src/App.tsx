@@ -441,7 +441,6 @@ export default function App() {
   const [agentsOpen, setAgentsOpen] = useState(false);
   const [artifactPreview, setArtifactPreview] = useState<{ path: string; workspace: string } | null>(null);
   const autoOpenedAgentsForThreadRef = useRef("");
-  const autoOpenedTaskPlanForThreadRef = useRef("");
   const [selectedProjectId, setSelectedProjectId] = useState("");
   const [branchError, setBranchError] = useState("");
   const [reportingBranch, setReportingBranch] = useState(false);
@@ -892,23 +891,10 @@ export default function App() {
     setBackgroundTasksOpen(false);
     setArtifactPreview(null);
     autoOpenedAgentsForThreadRef.current = "";
-    autoOpenedTaskPlanForThreadRef.current = "";
   }, [thread?.id]);
 
-  // The plan is a dock tool now, but a running turn still opens it once per
-  // thread so the progress that used to be permanent does not become hidden.
-  useEffect(() => {
-    const threadId = String(thread?.id || "");
-    if (!threadId || !running || taskMilestones.length === 0) return;
-    if (autoOpenedTaskPlanForThreadRef.current === threadId) return;
-    autoOpenedTaskPlanForThreadRef.current = threadId;
-    const frame = window.requestAnimationFrame(() => {
-      // Automatic progress must not displace a tool the user is inspecting.
-      if (backgroundTasksOpen || browserOpen || reviewOpen || agentsOpen || artifactPreviewOpen || projectDetailsOpen || inspectorVisible) return;
-      setTaskPlanOpen(true);
-    });
-    return () => window.cancelAnimationFrame(frame);
-  }, [running, taskMilestones.length, thread?.id, backgroundTasksOpen, browserOpen, reviewOpen, agentsOpen, artifactPreviewOpen, projectDetailsOpen, inspectorVisible]);
+  // Progress remains available in the dock; opening a thread or receiving plan
+  // updates must not open a palette over the conversation.
 
   // Two palettes share the same edge, and a modal takes the whole window: the plan yields to both.
   useEffect(() => {
