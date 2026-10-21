@@ -72,3 +72,12 @@ not repaired with task-text keywords or runtime monkeypatches.
 Sources checked on 2026-10-08:
 - [OpenAI Responses streaming events](https://developers.openai.com/api/reference/resources/responses/streaming-events)
 - [Messages streaming](https://platform.claude.com/docs/en/build-with-claude/streaming)
+
+Thinking Chat Completions tool replay preserves provider reasoning separately
+from display text. For compatible requests with reasoning history or explicit
+thinking/effort enabled, assistant tool steps include `reasoning_content` even
+when its value is empty. Empty does not mean the field can be omitted. Existing
+reasoning is returned unchanged; no synthetic chain, history deletion or tool
+reexecution is used to repair the request. Native OpenAI and ordinary compatible
+non-thinking requests do not gain the empty extension field. Storage round trips
+and request-local tool ID mapping are covered by the reasoning replay tests.

@@ -38,6 +38,7 @@ from app.ai import (
     ProviderAdapter,
     ProviderConnection,
     StreamEventKind,
+    ToolCall,
 )
 from app.ai.openai_runtime import _message_payload
 from app.ai.openai_streaming import OpenAIStreamingChatBackend
@@ -119,6 +120,46 @@ def test_a_provider_that_never_sent_reasoning_never_receives_it():
     payload = _message_payload(AIMessage(role=MessageRole.ASSISTANT, content="answer"))
 
     assert "reasoning_content" not in payload
+
+
+def test_thinking_tool_replay_keeps_empty_reasoning_through_storage_and_codec():
+    from app.ai.tool_wire import ToolWireCodec
+    backend = _backend([])
+    history = (
+        AIMessage(role=MessageRole.USER, content="inspect"),
+        AIMessage(role=MessageRole.ASSISTANT, content="", reasoning="plan", tool_calls=(ToolCall("a", "read", {}),)),
+        AIMessage(role=MessageRole.TOOL, tool_call_id="a", content="first result"),
+        AIMessage(role=MessageRole.ASSISTANT, content="", tool_calls=(ToolCall("b", "read", {}),)),
+        AIMessage(role=MessageRole.TOOL, tool_call_id="b", content="second result"),
+    )
+    restored = tuple(_message_from_dict(_message_to_dict(message)) for message in history)
+    request = ChatRequest(messages=restored, tools=())
+    wire = backend._request_kwargs(ToolWireCodec(request).encode(request))["messages"]
+    assert wire[1]["reasoning_content"] == "plan"
+    assert wire[3]["reasoning_content"] == ""
+    assert "reasoning_content" not in wire[2]
+    assert wire[3]["tool_calls"][0]["id"] == wire[4]["tool_call_id"]
+
+
+def test_empty_tool_reasoning_does_not_change_native_or_non_thinking_protocols():
+    from dataclasses import replace
+    backend = _backend([])
+    message = AIMessage(role=MessageRole.ASSISTANT, content="", tool_calls=(ToolCall("a", "read", {}),))
+    request = ChatRequest(messages=(message,), tools=())
+    assert "reasoning_content" not in backend._request_kwargs(request)["messages"][0]
+    backend.connection = replace(backend.connection, adapter=ProviderAdapter.OPENAI, base_url=None)
+    request = replace(request, messages=(AIMessage(role=MessageRole.ASSISTANT, content="answer", reasoning="plan"), message))
+    assert "reasoning_content" not in backend._request_kwargs(request)["messages"][1]
+
+
+@pytest.mark.parametrize("kind,value", [("minimax-thinking", "enabled"), ("openai-effort", "high")])
+def test_first_empty_tool_step_is_replayable_with_explicit_thinking(kind, value):
+    from app.ai.reasoning import ReasoningKind, ReasoningRequest
+    backend = _backend([])
+    request = ChatRequest(messages=(AIMessage(role=MessageRole.ASSISTANT, content="",
+        tool_calls=(ToolCall("a", "read", {}),)),), tools=(),
+        reasoning=ReasoningRequest(kind=ReasoningKind(kind), value=value))
+    assert backend._request_kwargs(request)["messages"][0]["reasoning_content"] == ""
 
 
 def test_reasoning_is_rejected_on_non_assistant_roles():

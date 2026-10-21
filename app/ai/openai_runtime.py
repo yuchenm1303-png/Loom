@@ -66,6 +66,7 @@ def _message_payload(
     message: AIMessage,
     *,
     include_auto_image_detail: bool = True,
+    replay_empty_reasoning: bool = False,
 ) -> dict[str, Any]:
     payload: dict[str, Any] = {"role": message.role.value}
     if isinstance(message.content, str):
@@ -96,7 +97,7 @@ def _message_payload(
     # several compatible endpoints reject it even for system/user messages.
     if message.tool_call_id:
         payload["tool_call_id"] = message.tool_call_id
-    if message.reasoning:
+    if message.reasoning or (replay_empty_reasoning and message.role.value == "assistant" and message.tool_calls):
         # Thinking-mode providers reject a replayed assistant turn whose own
         # reasoning is missing. Only ever populated from what this provider
         # itself returned, so a provider that never emits it never receives it.
@@ -270,6 +271,15 @@ class OpenAIChatBackend:
         return f"{self.connection.adapter.value}-chat"
 
     def _request_kwargs(self, request: ChatRequest) -> dict[str, Any]:
+        # A thinking tool step can legitimately emit no reasoning tokens. Its
+        # empty field still belongs in the replay contract; absence is rejected
+        # by strict providers. Scope this to compatible thinking conversations,
+        # leaving native OpenAI and ordinary non-thinking requests unchanged.
+        replay_empty_reasoning = self.connection.adapter is ProviderAdapter.OPENAI_COMPATIBLE and (
+            any(message.reasoning for message in request.messages)
+            or (request.reasoning is not None and request.reasoning.kind in {ReasoningKind.MINIMAX_THINKING, ReasoningKind.OPENAI_EFFORT}
+                and request.reasoning.value not in {"disabled", "none"})
+        )
         kwargs: dict[str, Any] = {
             "model": self.profile.model,
             "messages": [
@@ -278,6 +288,7 @@ class OpenAIChatBackend:
                     include_auto_image_detail=(
                         self.connection.adapter is ProviderAdapter.OPENAI
                     ),
+                    replay_empty_reasoning=replay_empty_reasoning,
                 )
                 for message in request.messages
             ],
