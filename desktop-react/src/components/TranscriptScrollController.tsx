@@ -46,8 +46,14 @@ function prefersReducedMotion(): boolean {
   return Boolean(reducedMotionQuery?.matches) || document.documentElement.dataset.loomReducedMotion === "true";
 }
 
+const SCROLLER_SELECTOR = ".conversation-stage > .transcript-scroll";
+let knownScroller: HTMLDivElement | null = null;
+
+/** The follow loop asks every frame, and a query that has to walk a long page for it was a tenth of the loop. */
 function transcriptScroller(): HTMLDivElement | null {
-  return document.querySelector<HTMLDivElement>(".conversation-stage > .transcript-scroll");
+  if (knownScroller?.isConnected && knownScroller.matches(SCROLLER_SELECTOR)) return knownScroller;
+  knownScroller = document.querySelector<HTMLDivElement>(SCROLLER_SELECTOR);
+  return knownScroller;
 }
 
 /** Publish intent changes only, rather than an attribute mutation every frame. */

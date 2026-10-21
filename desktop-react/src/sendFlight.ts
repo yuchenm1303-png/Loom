@@ -133,7 +133,9 @@ interface Flight {
  * where it was measured: there the message makes its ordinary entrance.
  */
 function pageIsCssZoomed(): boolean {
-  const zoom = Number.parseFloat(getComputedStyle(document.documentElement).zoom);
+  // The zoom is only ever set inline on the root (rendererScale.ts, webBridge.ts). Reading the computed style
+  // instead made the browser resolve style for the whole page, in the middle of a React commit.
+  const zoom = Number.parseFloat(document.documentElement.style.zoom);
   return Number.isFinite(zoom) && Math.abs(zoom - 1) > 0.001;
 }
 
@@ -343,6 +345,9 @@ function copyEntry(entry: HTMLElement, role: "text" | "card"): HTMLElement {
 
 export function launchSendFlight(entry: HTMLElement, kind: SendKind = "send"): boolean {
   if (flights.has(entry)) return true;
+  // Most entries that ask were not just sent (a steering message of an older turn, mounted with the history):
+  // the answer is no before anything is measured.
+  if (!origin || origin.kind !== kind) return false;
   if (!flightsAllowed()) return false;
   const start = takeOrigin(kind);
   if (!start) return false;

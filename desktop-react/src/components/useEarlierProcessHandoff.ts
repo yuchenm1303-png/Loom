@@ -46,14 +46,29 @@ export function useEarlierProcessHandoff(items: TranscriptItem[], progress: Prog
     const scroller = rootRef.current?.closest<HTMLElement>(".transcript-scroll");
     return Boolean(scroller && scroller.dataset.following === "true" && !document.hidden);
   };
-  const offscreen = (ids: string[]) => {
+  // Where every record's slot ends and where the view starts, read once for all records and kept for the viewport
+  // revision it was read in. This used to be read for each group on every commit of the live turn (a layout read
+  // right after React had changed the DOM): about a thousand times a second, 10% of the main thread, and the
+  // source of 20-50 ms frames. The revision moves when the view scrolls or the turn grows, which is when the
+  // answer can change; `fresh` reads again (the timers that act on the answer ask for that).
+  const slotEdges = useRef<{ revision: number; top: number; bottoms: Map<string, number> } | null>(null);
+  const offscreen = (ids: string[], fresh = false) => {
     const scroller = rootRef.current?.closest<HTMLElement>(".transcript-scroll");
     if (!scroller || !ownsLiveEdge()) return false;
-    const top = scroller.getBoundingClientRect().top;
-    const slots = [...rootRef.current!.querySelectorAll<HTMLElement>("[data-process-items]")];
+    let edges = slotEdges.current;
+    if (fresh || !edges || edges.revision !== viewportRevision) {
+      const top = scroller.getBoundingClientRect().top;
+      const bottoms = new Map<string, number>();
+      for (const node of rootRef.current!.querySelectorAll<HTMLElement>("[data-process-items]")) {
+        const bottom = node.getBoundingClientRect().bottom;
+        for (const id of (node.dataset.processItems ?? "").split(" ")) if (id && !bottoms.has(id)) bottoms.set(id, bottom);
+      }
+      edges = slotEdges.current = { revision: viewportRevision, top, bottoms };
+    }
+    const { top, bottoms } = edges;
     return ids.every(id => {
-      const slot = slots.find(node => node.dataset.processItems?.split(" ").includes(id));
-      return slot && slot.getBoundingClientRect().bottom <= top;
+      const bottom = bottoms.get(id);
+      return bottom !== undefined && bottom <= top;
     });
   };
 
@@ -133,7 +148,7 @@ export function useEarlierProcessHandoff(items: TranscriptItem[], progress: Prog
           // intent. Reversing on that geometry creates a fold/follow feedback
           // loop. Only loss of follow ownership (or opening history) cancels it.
           if (!previous.active || previous.open || !ownsLiveEdge()
-            || (phase === "holding" && !offscreen(ids))
+            || (phase === "holding" && !offscreen(ids, true))
             || !ids.every(id => previous.retained.has(id))) return previous;
           const retained = new Set(previous.retained);
           const folding = new Set(previous.folding);
