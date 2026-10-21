@@ -188,6 +188,12 @@ def _usage_from_dict(payload: Any) -> ModelUsage:
 
 
 def session_to_dict(session: AgentSession) -> dict[str, Any]:
+    return _session_document(session, [_message_to_dict(message) for message in session.messages],
+                             session.request_context_frames)
+
+
+def _session_document(session: AgentSession, messages: Any, frames: Any) -> dict[str, Any]:
+    """The snapshot with ``messages`` and ``frames`` as given, so that the encoder can stand in for the two big lists."""
     return {
         "version": 2,
         "session_id": session.session_id,
@@ -209,8 +215,8 @@ def session_to_dict(session: AgentSession) -> dict[str, Any]:
         "model_vision": session.model_vision,
         "reasoning_kind": session.reasoning_kind,
         "reasoning_value": session.reasoning_value,
-        "messages": [_message_to_dict(message) for message in session.messages],
-        "request_context_frames": session.request_context_frames,
+        "messages": messages,
+        "request_context_frames": frames,
         "pending_tool_calls": [_tool_call_to_dict(call) for call in session.pending_tool_calls],
         "pending_step_id": session.pending_step_id,
         "pending_bindings": session.pending_bindings,
@@ -229,64 +235,104 @@ def _encode(value: Any) -> bytes:
     return json.dumps(value, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
 
 
-# Standing in for the messages while the rest of the snapshot is encoded. It is made once, so a message or a tool
-# argument cannot contain it by accident; if one ever does, ``encode`` notices and encodes in one piece.
+# Standing in for the two big lists while the rest of the snapshot is encoded. They are made once, so a message or a
+# tool argument cannot contain them by accident; if one ever does, ``encode`` notices and encodes in one piece.
 _MESSAGES_TOKEN = "loom-messages-" + uuid.uuid4().hex
+_FRAMES_TOKEN = "loom-frames-" + uuid.uuid4().hex
 _UPDATED_AT = re.compile(r'"updated_at":"[^"]*"')
 # Sessions whose encoded messages are kept between commits.
 _ENCODER_SESSIONS = 8
+# The newest context frames are encoded again at every commit: the step that appended one adds its capture timings
+# after the snapshot that first held it was written. Older frames are final.
+_FRAMES_REENCODED = 3
+# Likewise for the messages that carry tool calls: the arguments are the dict a tool handler is handed (see
+# orchestrator), so a handler may edit them while the call runs. Once newer calls have been made, the call has finished.
+_CALL_MESSAGES_REENCODED = 8
 
 
 class _SnapshotEncoder:
     """Encodes the snapshot of one session, reusing what cannot have changed since the last time.
 
-    A long conversation is megabytes of messages and every durable event commits a snapshot: three or four
-    commits for each tool call, each re-encoding the whole of it (36 ms for a 3.7 MB session, with the
-    indented, key-sorted encoding the file used to have, which also keeps Python's JSON encoder out of its
-    C fast path). Messages are frozen, so the encoding of one that is still in the session is the encoding it
-    had. A message that carries tool calls is the exception: its arguments are a dict that a tool may edit in
-    place (a typed secret is redacted there), so it is always encoded again. The request context frames are not
-    reused: a frame gets its capture timings after it was first saved. The rest of the document is encoded each time.
+    A long conversation is megabytes of messages and every durable event commits a snapshot: five commits for each
+    tool call, each encoding the whole of it (36 ms for a 3.7 MB session with the indented, key-sorted encoding the
+    file used to have, which also keeps Python's JSON encoder out of its C fast path). The conversation only grows
+    at its end, so the encodings of the messages and of the context frames that are still the ones of the last
+    snapshot are reused, and only what was added is encoded. Two kinds of item are encoded again anyway:
+
+    * the newest few messages that carry tool calls, because their arguments are a dict that a tool handler is handed
+      and may edit in place while the call runs (see ``_CALL_MESSAGES_REENCODED``); every other message is frozen,
+      so its encoding is a fact about it;
+    * the newest few frames (see ``_FRAMES_REENCODED``).
+
+    The rest of the document is small and encoded each time.
     """
 
     def __init__(self) -> None:
-        # id(object) -> (object, encoding). The object is held so that the id cannot be reused while the entry
-        # exists; entries of objects that left the session are dropped at each call.
-        self._messages: dict[int, tuple[object, bytes]] = {}
+        # What the previous snapshot was made of, and the encodings of those items, in order.
+        self._messages: list[AIMessage] = []
+        self._message_parts: list[bytes] = []
+        self._call_positions: list[int] = []
+        self._frames: list[dict[str, Any]] = []
+        self._frame_parts: list[bytes] = []
         # What the snapshot file holds, as far as this process wrote it: what it was made of, and the size and
         # modification time the file had afterwards (so a file somebody else touched is never taken for ours).
         self.persisted: object = None
         self.persisted_file: tuple[int, int] | None = None
 
-    @staticmethod
-    def _reuse(known: dict[int, tuple[object, bytes]], item: object, record: object, kept: dict[int, tuple[object, bytes]]) -> bytes:
-        entry = known.get(id(item))
-        if entry is None or entry[0] is not item:
-            entry = (item, _encode(record))
-        kept[id(item)] = entry
-        return entry[1]
+    def _encode_messages(self, messages: list[AIMessage]) -> list[bytes]:
+        known = self._messages
+        reuse = len(known)
+        # List comparison takes the identity shortcut for every message that is still the same object, which is
+        # nearly all of them; a message replaced by an equal one gives the same encoding, so it passes as well.
+        if reuse and (len(messages) < reuse or messages[:reuse] != known):
+            reuse = 0
+        if reuse:
+            parts = self._message_parts[:reuse]
+            calls = self._call_positions
+            for index in calls[-_CALL_MESSAGES_REENCODED:]:
+                parts[index] = _encode(_message_to_dict(messages[index]))
+        else:
+            parts, calls = [], []
+        for index in range(reuse, len(messages)):
+            message = messages[index]
+            parts.append(_encode(_message_to_dict(message)))
+            if message.tool_calls:
+                calls.append(index)
+        self._messages, self._message_parts, self._call_positions = messages, parts, calls
+        return parts
+
+    def _encode_frames(self, frames: list[dict[str, Any]]) -> list[bytes]:
+        known = self._frames
+        reuse = len(known)
+        if reuse and (len(frames) < reuse or frames[:reuse] != known):
+            reuse = 0
+        kept = max(0, reuse - _FRAMES_REENCODED)
+        parts = self._frame_parts[:kept]
+        for index in range(kept, len(frames)):
+            parts.append(_encode(frames[index]))
+        self._frames, self._frame_parts = frames, parts
+        return parts
 
     def encode(self, session: AgentSession) -> tuple[bytes, object]:
         """The snapshot, and a key that two snapshots share exactly when they say the same thing.
 
         ``updated_at`` is left out of the key: it moves with every commit and says nothing about the state.
         """
-        payload = session_to_dict(session)
-        records = payload["messages"]
-        kept: dict[int, tuple[object, bytes]] = {}
-        parts = [_encode(record) if message.tool_calls else self._reuse(self._messages, message, record, kept)
-                 for message, record in zip(session.messages, records)]
-        self._messages = kept
-        payload["messages"] = _MESSAGES_TOKEN
-        text = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
-        needle = '"' + _MESSAGES_TOKEN + '"'
-        if text.count(needle) != 1:
-            payload["messages"] = records
-            data = _encode(payload)
+        messages = list(session.messages)
+        frames = list(session.request_context_frames)
+        message_parts = self._encode_messages(messages)
+        frame_parts = self._encode_frames(frames)
+        text = json.dumps(_session_document(session, _MESSAGES_TOKEN, _FRAMES_TOKEN), ensure_ascii=False, separators=(",", ":"))
+        messages_needle, frames_needle = '"' + _MESSAGES_TOKEN + '"', '"' + _FRAMES_TOKEN + '"'
+        if text.count(messages_needle) != 1 or text.count(frames_needle) != 1 or text.find(messages_needle) > text.find(frames_needle):
+            # A field of the document says the placeholder (or the fields are not in the order assumed): encode it plainly.
+            data = _encode(_session_document(session, [_message_to_dict(message) for message in messages], frames))
             return data, ("whole", _UPDATED_AT.sub('"updated_at":""', data.decode("utf-8"), count=1))
-        head, _, tail = text.partition(needle)
-        data = head.encode("utf-8") + b"[" + b",".join(parts) + b"]" + tail.encode("utf-8")
-        return data, (_UPDATED_AT.sub('"updated_at":""', head, count=1), tail, parts)
+        head, _, rest = text.partition(messages_needle)
+        middle, _, tail = rest.partition(frames_needle)
+        data = b"".join((head.encode("utf-8"), b"[", b",".join(message_parts), b"]", middle.encode("utf-8"),
+                         b"[", b",".join(frame_parts), b"]", tail.encode("utf-8")))
+        return data, (_UPDATED_AT.sub('"updated_at":""', head, count=1), middle, tail, message_parts, frame_parts)
 
 
 def session_from_dict(payload: dict[str, Any]) -> AgentSession:
@@ -647,7 +693,7 @@ class FileAgentSessionStore:
                 self._append_event(event)
                 return
             atomic_bytes(directory / ".pending-commit.json",
-                         b'{"session":' + snapshot + b',"event":' + _encode(payload) + b"}")
+                         b"".join((b'{"session":', snapshot, b',"event":', _encode(payload), b"}")))
             self._append_event(event)
             self._write_session(session, snapshot)
             (directory / ".pending-commit.json").unlink()
