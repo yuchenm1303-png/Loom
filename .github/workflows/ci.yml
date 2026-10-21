@@ -84,6 +84,7 @@ jobs:
           node scripts/tests/model-catalog-browser.mjs
           node scripts/tests/image-input-browser.mjs
           node scripts/tests/renderer-performance-browser.mjs
+          node scripts/tests/sidebar-run-status-browser.mjs
           node scripts/tests/control-popover-response-browser.mjs
           node scripts/tests/right-tool-dock-browser.mjs
           node scripts/tests/right-tool-dock-motion-browser.mjs
