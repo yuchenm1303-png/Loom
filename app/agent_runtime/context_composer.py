@@ -12,6 +12,7 @@ from dataclasses import replace
 from time import perf_counter
 
 from app.ai import AIMessage, ImagePart, MessageRole, TextPart
+from .message_memo import MessageMemo
 from .storage import _message_from_dict, _message_to_dict
 
 
@@ -50,16 +51,27 @@ def _latest_records(frames):
     return list(latest.values())
 
 
+# The identity of each history message, worked out once while the message is in use: a request is rendered
+# several times a step and each time every message of the history had its digest taken again.
+_identities = MessageMemo()
+
+
 def _history_identity(message):
     # Tool result bodies can be reduced for one request; identity belongs to the
     # call, not its preview. Assistant call IDs likewise survive history repair.
+    # (Only what is frozen goes into it, so it is a fact about the message.)
+    known = _identities.get(message)
+    if known is not None:
+        return known
     if message.role is MessageRole.TOOL:
         payload = {"role": "tool", "call_id": message.tool_call_id}
     elif message.tool_calls:
         payload = {"role": message.role.value, "call_ids": [call.call_id for call in message.tool_calls]}
     else:
         payload = _message_to_dict(message)
-    return hashlib.sha256(json.dumps(payload, ensure_ascii=False, sort_keys=True).encode()).hexdigest()
+    digest = hashlib.sha256(json.dumps(payload, ensure_ascii=False, sort_keys=True).encode()).hexdigest()
+    _identities.put(message, digest)
+    return digest
 
 
 def _history_anchors(history):
@@ -229,13 +241,13 @@ def compact_frames(runtime, session, replacement_count):
 
 
 def request_metadata(runtime, session, messages, tools):
-    from .context_budget import estimate_tokens
+    from .context_budget import message_estimates
     serialized_tools = [{"name": tool.name, "description": tool.description, "parameters": tool.input_schema}
                         for tool in tools]
     return {"composer": "context_composer_v1", "message_count": len(messages),
             "canonical_history_messages": len(session.messages),
             "context_frames": len(session.request_context_frames),
-            "sections": [{"role": m.role.value, "name": m.name or "history",
-                          "estimated_tokens": estimate_tokens((m,))} for m in messages],
+            "sections": [{"role": m.role.value, "name": m.name or "history", "estimated_tokens": estimate}
+                         for m, estimate in zip(messages, message_estimates(messages))],
             "tools_digest": hashlib.sha256(json.dumps(serialized_tools, ensure_ascii=False,
                                                        sort_keys=True).encode()).hexdigest()}

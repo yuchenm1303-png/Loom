@@ -14,6 +14,7 @@ from app.ai.execution_control import ModelCancelled
 
 from .context_compaction import build_compacted_history, summarization_prompt
 from .model_replan import revision, wait_for_signal
+from .message_memo import MessageMemo
 from .context_limits import ResolvedContextLimits, resolve_context_limits
 from .context_reducer import ContextReductionStats, reduce_tool_outputs
 from .history import repair_tool_history
@@ -76,6 +77,49 @@ class ContextBudgetExceeded(RuntimeError):
         )
 
 
+# What each message adds to the estimator's text, remembered while the message is in use (see message_memo).
+_measurements = MessageMemo()
+
+
+def _measure_message(message) -> tuple[int, int]:
+    """The bytes a message adds to the estimator's JSON text, and the images in it."""
+    from .storage import _message_to_dict
+
+    payload = _message_to_dict(message)
+    content = payload.get("content")
+    images = 0
+    if isinstance(content, list):
+        for item in content:
+            if not isinstance(item, dict) or item.get("type") != "image":
+                continue
+            images += 1
+            image_url = str(item.get("image_url") or "")
+            metadata, separator, _encoded = image_url.partition(",")
+            if (
+                separator
+                and metadata.casefold().startswith("data:image/")
+                and ";base64" in metadata.casefold()
+            ):
+                item["image_url"] = metadata + separator
+    return len(json.dumps(payload, ensure_ascii=False).encode("utf-8")), images
+
+
+def _finished_call_ids(messages) -> frozenset[str]:
+    return frozenset(message.tool_call_id for message in messages if message.role is MessageRole.TOOL)
+
+
+def _measure(message, finished) -> tuple[int, int]:
+    calls = message.tool_calls
+    if calls and not all(call.call_id in finished for call in calls):
+        # A call without its result may still be running, and a handler may edit the arguments it was handed.
+        return _measure_message(message)
+    found = _measurements.get(message)
+    if found is None:
+        found = _measure_message(message)
+        _measurements.put(message, found)
+    return found
+
+
 def estimate_tokens(messages, tools=()) -> int:
     """Fallback token estimate used only when provider usage is unavailable.
 
@@ -83,38 +127,38 @@ def estimate_tokens(messages, tools=()) -> int:
     cannot assume one tokenizer across OpenAI-compatible providers, so this
     estimator is deliberately a fallback and a hard-request safety check, not the
     primary normal-path compaction clock.
-    """
-    from .storage import _message_to_dict
 
-    data = []
-    image_count = 0
-    for message in messages:
-        payload = _message_to_dict(message)
-        content = payload.get("content")
-        if isinstance(content, list):
-            for item in content:
-                if not isinstance(item, dict) or item.get("type") != "image":
-                    continue
-                image_count += 1
-                image_url = str(item.get("image_url") or "")
-                metadata, separator, _encoded = image_url.partition(",")
-                if (
-                    separator
-                    and metadata.casefold().startswith("data:image/")
-                    and ";base64" in metadata.casefold()
-                ):
-                    item["image_url"] = metadata + separator
-        data.append(payload)
+    It counts a third of the bytes of the JSON text of the messages and the tool schemas. The text is not built:
+    each message's share of it is measured once while the message is in use, which is what makes the estimate of a
+    long history cost its length in additions and not in megabytes of JSON, several times a step.
+    """
+    finished = _finished_call_ids(messages)
+    data_bytes, image_count = 2, 0
+    for index, message in enumerate(messages):
+        size, images = _measure(message, finished)
+        data_bytes += size + (2 if index else 0)  # the ", " between messages
+        image_count += images
     schemas = [
         {"name": tool.name, "description": tool.description, "parameters": tool.input_schema}
         for tool in tools
     ]
-    text = json.dumps([data, schemas], ensure_ascii=False)
+    schema_bytes = len(json.dumps(schemas, ensure_ascii=False).encode("utf-8"))
+    # json.dumps([data, schemas]) is "[" data ", " schemas "]".
     return (
-        math.ceil(len(text.encode("utf-8")) / 3)
+        math.ceil((data_bytes + schema_bytes + 4) / 3)
         + 8 * len(messages)
         + image_count * _IMAGE_TOKEN_ESTIMATE
     )
+
+
+def message_estimates(messages) -> list[int]:
+    """``estimate_tokens((message,))`` for each message, a call being finished when the whole list has its result."""
+    finished = _finished_call_ids(messages)
+    estimates = []
+    for message in messages:
+        size, images = _measure(message, finished)
+        estimates.append(math.ceil((size + 8) / 3) + 8 + images * _IMAGE_TOKEN_ESTIMATE)
+    return estimates
 
 
 def estimate_tool_schema_tokens(tools=()) -> int:
