@@ -238,7 +238,7 @@ export function RightToolDock(props: RightToolDockProps) {
   const tabStop = stopId && enabled.includes(stopId) ? stopId : enabled[0] ?? null;
   // The pointer wins over the keyboard; nothing is lit while a tool is being carried.
   const hot = dragId ? null : hoverId ?? focusId;
-  const glideId = hot && !items[hot].disabled ? hot : null;
+  const glideId = hot;
 
   /** Where every slot's top sits (px from the dock's top), as it is painted now, transforms included. */
   const captureTops = (): Map<DockId, number> => {

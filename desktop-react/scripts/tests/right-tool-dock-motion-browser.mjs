@@ -93,12 +93,14 @@ try {
     assert.equal((await glider(page)).on, "false");
     assert.equal((await tip(page)).on, "false");
 
-    // A tool that cannot be used is not lit, and its name says why.
+    // Disabled tools still receive the glider, and their names explain why they cannot be used.
     if (disabled.length) {
       at = await centre(page, disabled[0]);
       await page.mouse.move(at.x, at.y, { steps: 5 });
       await page.waitForFunction(() => document.querySelector(".loom-tool-tip")?.dataset.on === "true", null, { timeout: 2500 });
-      assert.equal((await glider(page)).on, "false", "a disabled tool is not lit");
+      assert.equal((await glider(page)).on, "true", "the glider also follows disabled tools");
+      near((await glider(page)).top, (await box(page, disabled[0])).y, 1,
+        "the glider lands on the disabled tool instead of skipping it");
       assert.ok(await page.locator(".loom-tool-tip-note").count(), "its name carries the reason");
       await page.mouse.move(40, 400, { steps: 4 });
     }
