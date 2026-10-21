@@ -105,7 +105,7 @@ test("every builtin group queries its trusted gateway with account authenticatio
       windows: [{ label: "Monthly", remainingPercent: 12 }], balances: [], scope: "loom-shared-provider-account",
       privateUpstreamKey: "must-not-leak" }));
   });
-  for (const [selection, suffix] of [["builtin:ant-ling", ""], ["builtin:minimax", "/minimax"], ["builtin:deepseek", "/deepseek"], ["builtin:intern:demo", "/intern"], ["builtin:opencode-go:demo", "/opencode-go"], ["managed:demo", "/managed-relay"]]) {
+  for (const [selection, suffix] of [["builtin:ant-ling", ""], ["builtin:minimax", "/minimax"], ["builtin:deepseek", "/deepseek"], ["builtin:intern:demo", "/intern"], ["builtin:opencode-go:demo", "/opencode-go"], ["builtin:opencode-console:demo", "/opencode-console"], ["managed:demo", "/managed-relay"]]) {
     const result = await service.query({ ...spec, selection, kind: "builtin", model: "demo", authMode: "loom-account",
       baseUrl: "https://account.smirel.com/model/v1" + suffix }, false, "loom_model_test");
     assert.equal(result.status, "ok");
@@ -140,5 +140,30 @@ test("HTTP rejections remain distinct from unsupported or zero quota", async () 
     assert.equal(result.code, `HTTP_${status}`);
     assert.deepEqual(result.windows, []);
     assert.ok(!JSON.stringify(result).includes("private-provider-body"));
+  }
+});
+
+test("current Go endpoint aliases and Relay boolean success schemas are supported", () => {
+  for (const path of ["/zen/go/v1", "/inference/go/v1", "/inference/go/openai/v1"]) {
+    assert.equal(usageEndpoint("https://opencode.ai" + path).provider, "OpenCode Go");
+  }
+  assert.equal(usageEndpoint("https://opencode.ai/inference/openai/v1"), null);
+  for (const code of [true, 0, "0", 200, "200"]) {
+    assert.equal(parseModelUsage("Muxway Relay", { code, data: { total_available: 3 } }, "demo").balances[0].total, "3");
+  }
+  assert.throws(() => parseModelUsage("Muxway Relay", { code: false, data: { total_available: 3 } }, "demo"));
+  const balance = parseModelUsage("OpenCode Go", { usage: {}, billing: { balance: true } }, "demo");
+  assert.equal(balance.status, "unsupported");
+  assert.equal(balance.code, "BALANCE_AMOUNT_UNAVAILABLE");
+});
+
+test("gateway denials retain safe cause and provider, but discard arbitrary server content", async () => {
+  const builtin = { ...spec, selection: "builtin:minimax", kind: "builtin", authMode: "loom-account", baseUrl: "https://account.smirel.com/model/v1/minimax" };
+  for (const code of ["MODEL_NOT_ENTITLED", "INVALID_MODEL_TOKEN", "ACCOUNT_DISABLED", "private-secret"]) {
+    const service = new ModelUsageService(async () => new Response(JSON.stringify({ error: { code, message: "private-secret" } }), { status: 403 }));
+    const result = await service.query(builtin, false, "account");
+    assert.equal(result.provider, "MiniMax");
+    assert.equal(result.code, code === "private-secret" ? "HTTP_403" : code);
+    assert.ok(!JSON.stringify(result).includes("private-secret"));
   }
 });

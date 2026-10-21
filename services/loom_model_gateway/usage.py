@@ -44,7 +44,7 @@ def endpoint(group, base):
     if group == "opencode-go" and host == "opencode.ai":
         return "https://opencode.ai/zen/go/v1/usage"
     if group == "managed-relay" and host == "muxway.dev":
-        return "https://muxway.dev/api/usage/token/"
+        return "https://muxway.dev/api/usage/token"
     return None
 
 
@@ -115,7 +115,7 @@ def parse_usage(group, payload, model, checked_at=None):
             return snapshot(group, "unsupported", code="BALANCE_AMOUNT_UNAVAILABLE",
                 message="当前为余额计费，Go 接口未返回余额金额；不能据此判断为零。")
     elif group == "managed-relay":
-        if payload.get("code") is not None and str(payload["code"]) != "0":
+        if payload.get("code") is False or (payload.get("code") is not None and payload["code"] is not True and payload["code"] not in (0, "0", 200, "200")):
             raise ValueError("relay business error")
         data = payload.get("data")
         if not isinstance(data, dict) or payload.get("success") is False:
@@ -136,16 +136,17 @@ class UsageService:
         self._guard = threading.Lock()
         self._cache = {}
         self._locks = {}
+        self._successful = {}
 
     def query(self, group, base, key, model, force=False):
         started = time.monotonic()
         url = endpoint(group, base)
+        if not key:
+            return snapshot(group, "unconfigured", code="MISSING_UPSTREAM_KEY", message="服务器尚未配置此供应商凭证。")
         if not url:
             return snapshot(group, "unsupported", code="NO_VERIFIED_API", dashboardUrl=CONSOLES.get(group),
                 message=("Intern 余额接口需要控制台登录态，API Key 不能直接读取；请在供应商控制台查看。"
                     if group == "intern" else "此供应商尚无已验证的 API Key 额度查询接口；请在供应商控制台查看，不代表没有额度。"))
-        if not key:
-            return snapshot(group, "unconfigured", code="MISSING_UPSTREAM_KEY", message="服务器尚未配置此供应商凭证。")
         cache_key = hashlib.sha256((url + "\0" + key).encode()).hexdigest()
         with self._guard:
             lock = self._locks.setdefault(cache_key, threading.Lock())
@@ -161,12 +162,33 @@ class UsageService:
                         oldest = next(iter(self._cache))
                         self._cache.pop(oldest)
                         self._locks.pop(oldest, None)
+                        self._successful.pop(oldest, None)
             _, payload, checked, code = cached
         if payload is None:
+            if code in {"HTTP_401", "HTTP_403"}:
+                with self._guard:
+                    self._successful.pop(cache_key, None)
+            if code in {"HTTP_404", "HTTP_405"}:
+                return snapshot(group, "unsupported", checkedAt=checked, code="USAGE_ENDPOINT_UNAVAILABLE",
+                    message="当前服务商未开放此额度查询接口，请在其控制台查看；不代表没有额度。")
+            if code not in {"HTTP_401", "HTTP_403"}:
+                with self._guard:
+                    previous = self._successful.get(cache_key)
+                if previous and time.monotonic() - previous[0] < 900:
+                    try:
+                        return {**parse_usage(group, previous[1], model, previous[2]), "stale": True, "code": code,
+                            "message": "刷新暂时失败，显示上次成功查询的额度；不是实时余额。"}
+                    except (ValueError, TypeError, AttributeError, KeyError):
+                        pass
             return snapshot(group, "error", checkedAt=checked, code=code,
-                message="供应商额度接口暂时无法读取（" + code + "），请稍后刷新；这不代表额度为零。")
+                message=("供应商拒绝读取此凭证的额度，请检查服务器 Key 的区域、套餐类型和查询权限；不代表额度为零。"
+                    if code in {"HTTP_401", "HTTP_403"} else
+                    "供应商额度接口暂时无法读取（" + code + "），请稍后刷新；这不代表额度为零。"))
         try:
-            return parse_usage(group, payload, model, checked)
+            result = parse_usage(group, payload, model, checked)
+            with self._guard:
+                self._successful[cache_key] = (time.monotonic(), payload, checked)
+            return result
         except (ValueError, TypeError, AttributeError, KeyError):
             return snapshot(group, "error", checkedAt=checked, code="INVALID_USAGE_RESPONSE",
                 message="供应商未返回此模型的有效额度数据；请确认套餐类型或在控制台查看。")

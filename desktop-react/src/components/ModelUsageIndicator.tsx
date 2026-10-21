@@ -26,7 +26,10 @@ export function ModelUsageIndicator({ selection, zh, onOpen }: { selection: stri
       data = { status: "error", provider: "", windows: [], balances: [], checkedAt: Date.now(), message: "无法连接额度查询服务，请稍后刷新" };
     }
     if (id !== requestId.current) return;
-    setState({ selection, loading: false, data });
+    setState(previous => ({ selection, loading: false, data:
+      data.status === "error" && !["MODEL_NOT_ENTITLED", "ACCOUNT_DISABLED", "INVALID_MODEL_TOKEN", "HTTP_401", "HTTP_403"].includes(data.code || "")
+        && previous.selection === selection && previous.data?.status === "ok" && Date.now() - previous.data.checkedAt < 900_000
+        ? { ...previous.data, stale: true, message: data.message, code: data.code } : data }));
   }, [selection]);
 
   useEffect(() => {
@@ -82,7 +85,7 @@ export function ModelUsageIndicator({ selection, zh, onOpen }: { selection: stri
         </div>)}
         {data?.message ? <p role="status">{data.message}</p> : null}
         {data?.dashboardUrl ? <button type="button" onClick={() => void window.loom.openExternal(data.dashboardUrl!)}>{zh ? "打开供应商控制台" : "Open provider console"}</button> : null}
-        {data?.status === "ok" ? <small className="model-usage-updated">{zh ? "更新于 " : "Updated "}{new Date(data.checkedAt).toLocaleTimeString()} · {zh ? "以供应商数据为准" : "Provider reported"}</small> : null}
+        {data?.status === "ok" ? <small className="model-usage-updated">{data.stale ? (zh ? "上次成功查询：" : "Last successful check: ") : (zh ? "更新于 " : "Updated ")}{new Date(data.checkedAt).toLocaleTimeString()} · {zh ? "以供应商数据为准" : "Provider reported"}</small> : null}
       </div> : null}
     </div>
   );

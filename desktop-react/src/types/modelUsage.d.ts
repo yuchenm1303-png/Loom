@@ -19,4 +19,5 @@ export interface ModelUsage {
   code?: string;
   scope?: string;
   dashboardUrl?: string;
+  stale?: boolean;
 }

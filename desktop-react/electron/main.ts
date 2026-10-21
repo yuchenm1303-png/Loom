@@ -1835,7 +1835,11 @@ async function queryModelUsage(selection: string, force = false) {
     await assertSignedInForModels();
     const spec = await modelManager.resolveAsync(selection);
     const token = spec.authMode === "loom-account" ? await accountClient.modelCredential() : undefined;
-    return await modelUsageService.query(spec, force, token);
+    const result = await modelUsageService.query(spec, force, token);
+    if (spec.authMode === "loom-account" && ["INVALID_MODEL_TOKEN", "MISSING_TOKEN", "HTTP_401"].includes(result.code || "")) {
+      return await modelUsageService.query(spec, true, await accountClient.modelCredential(true));
+    }
+    return result;
   }
   catch { return { status: "error" as const, provider: "", checkedAt: Date.now(), windows: [], balances: [], message: "暂时无法读取此模型连接，请稍后刷新" }; }
 }

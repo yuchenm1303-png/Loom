@@ -160,3 +160,32 @@ def test_provider_fetch_has_size_bound_timeout_and_no_redirects(monkeypatch):
     assert payload is None
     assert observed[0][1] == 8
     assert observed[0][0].get_header("Authorization") == "Bearer private-key"
+
+
+@pytest.mark.parametrize("code", [True, 0, "0", 200, "200"])
+def test_relay_current_success_envelopes(code):
+    assert parse_usage("managed-relay", {"code": code, "data": {"total_available": 3}}, "demo")["balances"][0]["total"] == "3"
+
+
+def test_missing_credentials_are_distinct_from_no_query_api():
+    for group in PROVIDERS:
+        result = UsageService().query(group, PROVIDERS[group][0], "", "demo")
+        assert result["status"] == "unconfigured"
+
+
+def test_outage_keeps_recent_success_but_auth_rejection_invalidates_it():
+    service = UsageService()
+    args = ("opencode-go", PROVIDERS["opencode-go"][0], "key", "demo", True)
+    service._fetch = Mock(side_effect=lambda *_: (time.monotonic(), GO, 1234, ""))
+    assert service.query(*args)["status"] == "ok"
+    time.sleep(.02)  # Separate refreshes from coalesced requests on Windows clocks.
+    service._fetch = Mock(side_effect=lambda *_: (time.monotonic(), None, 2345, "NETWORK_ERROR"))
+    result = service.query(*args)
+    assert result["stale"] and result["checkedAt"] == 1234
+    time.sleep(.02)
+    service._fetch = Mock(side_effect=lambda *_: (time.monotonic(), None, 2345, "HTTP_403"))
+    result = service.query(*args)
+    assert result["status"] == "error" and not result.get("stale")
+    time.sleep(.02)
+    service._fetch = Mock(side_effect=lambda *_: (time.monotonic(), None, 3456, "NETWORK_ERROR"))
+    assert service.query(*args)["status"] == "error"

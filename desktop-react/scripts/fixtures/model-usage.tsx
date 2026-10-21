@@ -28,7 +28,7 @@ function App() {
   return <I18nProvider><div style={{ padding: 24 }}>
     {["minimax", "deepseek", "unsupported"].map(value => <button key={value} onClick={() => setSelection(value)}>{value}</button>)}
     <div style={{ position: "fixed", bottom: 48, left: 24, right: 24 }}>
-      <Composer modelSnapshot={snapshot} onSend={() => {}} onInterrupt={() => {}} />
+      <Composer modelSnapshot={snapshot} accountAuthenticated onSend={() => {}} onInterrupt={() => {}} />
     </div>
   </div></I18nProvider>;
 }

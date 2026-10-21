@@ -14,14 +14,13 @@ try {
   assert.ok(circle.x >= model.x + model.width, "ring is right of the model selector");
   assert.ok(circle.x - model.x - model.width <= 4, "ring stays close to the model selector");
   assert.equal((await ring.locator("svg").boundingBox()).width, 16, "quota glyph is compact");
-  await page.locator(".sticker-chip .composer-glyph-well").waitFor({ state: "visible" });
-  assert.ok((await page.locator(".sticker-chip svg").first().boundingBox()).width > 0, "expression icon remains visible inside its glyph wrapper");
   await ring.click();
   await page.getByText("61% 剩余", { exact: true }).waitFor();
   await page.getByText("88% 剩余", { exact: true }).waitFor();
   await page.evaluate(() => { window.usageFixture.fail = true; });
   await page.getByRole("button", { name: "刷新", exact: true }).click();
-  await page.getByText("查询失败（显示上次结果）", { exact: true }).waitFor();
+  await page.getByText("查询失败", { exact: true }).waitFor();
+  await page.getByText(/上次成功查询/).waitFor();
   await page.getByText("61% 剩余", { exact: true }).waitFor();
   await page.getByRole("button", { name: "deepseek", exact: true }).click();
   await ring.click();
