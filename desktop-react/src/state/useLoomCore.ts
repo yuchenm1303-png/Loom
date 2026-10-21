@@ -859,13 +859,22 @@ export function useLoom() {
       const result = await requireBridge().call<{ turn: TurnRecord }>("turn/start", params);
       threadReadCacheRef.current.delete(threadId);
       const turn = result.turn;
+      // The sidebar is fed by the thread list, not active.thread. Promote the
+      // acknowledged run immediately even if the host notification is delayed.
+      setThreads((current) => current.map((entry) => entry.id === threadId
+        && !(entry.currentTurnId === turn.id && terminalStatus(entry.status))
+        ? { ...entry, status: "running", paused: false, currentTurnId: turn.id }
+        : entry));
       setItems((current) => current.map((item) => item.id === pendingId ? { ...item, turnId: turn.id } : item));
       setActive((current) => current && current.thread.id === threadId
+        && !(current.thread.currentTurnId === turn.id && terminalStatus(current.thread.status))
         ? {
             ...current,
             pendingApproval: null,
             thread: {
               ...current.thread,
+              status: "running",
+              paused: false,
               currentTurnId: turn.id,
             },
           }
@@ -890,6 +899,8 @@ export function useLoom() {
     if (!result.accepted) throw new Error("任务尚未开始或已经结束，请刷新任务状态后重试。");
     setActive(current => current?.thread.id === thread.id && current.thread.currentTurnId === thread.currentTurnId
       ? { ...current, thread: { ...current.thread, paused: result.paused } } : current);
+    setThreads(current => current.map(entry => entry.id === thread.id && entry.currentTurnId === thread.currentTurnId
+      ? { ...entry, paused: result.paused } : entry));
   }, [active?.thread]);
 
   const interrupt = useCallback(async () => {
@@ -1123,6 +1134,14 @@ export function useLoom() {
       }
       if (message.method === "turn/started") {
         const turn = params.turn as TurnRecord | undefined;
+        if (turn && threadId) {
+          setThreads((current) => current.map((entry) => {
+            if (entry.id !== threadId
+              || (entry.currentTurnId && entry.currentTurnId !== turn.id && entry.status === "running")
+              || (entry.currentTurnId === turn.id && terminalStatus(entry.status))) return entry;
+            return { ...entry, status: "running", paused: false, currentTurnId: turn.id };
+          }));
+        }
         if (turn && threadId === activeId) {
           if (terminalTurnRef.current?.threadId === threadId && terminalTurnRef.current.turnId === turn.id) return;
           threadStateRevisionRef.current += 1;
@@ -1148,6 +1167,24 @@ export function useLoom() {
         return;
       }
       if (message.method === "thread/started" && threadViewRef.current === "active") void refreshThreads("active");
+      // Background conversations continue after navigation. Their turn events
+      // must still retire or update the sidebar badge without reopening them.
+      if (threadId && threadId !== activeId && message.method === "turn/completed") {
+        const turn = params.turn as TurnRecord | undefined;
+        if (turn) setThreads((current) => current.map((entry) => entry.id === threadId
+          && (!entry.currentTurnId || entry.currentTurnId === turn.id)
+          ? { ...entry, status: turn.status, paused: false, currentTurnId: turn.id }
+          : entry));
+        return;
+      }
+      if (threadId && threadId !== activeId && message.method === "approval/requested") {
+        const approval = params.approval as PendingApproval | undefined;
+        if (approval) setThreads((current) => current.map((entry) => entry.id === threadId
+          && (!entry.currentTurnId || entry.currentTurnId === approval.turnId)
+          ? { ...entry, status: "waiting_approval", currentTurnId: approval.turnId }
+          : entry));
+        return;
+      }
       if (!activeId || threadId !== activeId) return;
 
       if (message.method === "context/updated") {
@@ -1229,6 +1266,9 @@ export function useLoom() {
             threadReadCacheRef.current.delete(activeId);
             setTurnActive(false);
             setTurnStartedAt(null);
+            setThreads((current) => current.map((entry) => entry.id === activeId
+              && (!failedTurnId || !entry.currentTurnId || entry.currentTurnId === failedTurnId)
+              ? { ...entry, status: "failed", paused: false } : entry));
             setActive((current) => {
               if (!current || current.thread.id !== activeId) return current;
               if (
@@ -1278,6 +1318,10 @@ export function useLoom() {
         setTurnActive(false);
         setTurnStartedAt(null);
         if (turn) {
+          setThreads((current) => current.map((entry) => entry.id === activeId
+            && (!entry.currentTurnId || entry.currentTurnId === turn.id)
+            ? { ...entry, status: turn.status, paused: false, currentTurnId: turn.id }
+            : entry));
           if (terminalStatus(turn.status)) terminalTurnRef.current = { threadId: activeId, turnId: turn.id, status: turn.status };
           setItems(current => settleCompletedTurnItems(current, turn));
           setActive((current) => current && current.thread.id === activeId
