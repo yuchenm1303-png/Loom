@@ -4,6 +4,7 @@ import json
 import sys
 import argparse
 import os
+import shutil
 import subprocess
 import pytest
 from pathlib import Path
@@ -323,7 +324,17 @@ def test_workspace_mode_auto_allows_file_write(tmp_path):
     ]
 
 
-def test_workspace_mode_still_requires_approval_for_process_execution(tmp_path):
+def test_workspace_mode_still_requires_approval_for_process_execution(tmp_path, monkeypatch):
+    # The approval is AUTO's unsandboxed fallback: with a working OS sandbox the command runs contained.
+    # Hide the launchers so the test means the same thing on every machine (newer CI images ship bwrap).
+    real_which = shutil.which
+    launchers = {"bwrap", "wxc-exec", "wxc-exec.exe"}
+    monkeypatch.setattr(
+        shutil,
+        "which",
+        lambda name, *args, **kwargs: None if name in launchers else real_which(name, *args, **kwargs),
+    )
+    monkeypatch.delenv("LOOM_WINDOWS_SANDBOX_EXECUTABLE", raising=False)
     project = tmp_path / "project"
     project.mkdir()
     platform = ScriptedPlatform(

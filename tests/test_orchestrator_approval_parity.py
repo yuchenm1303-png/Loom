@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import shutil
+from contextlib import nullcontext
 from dataclasses import replace
+from unittest import mock
 
 from app.ai import ToolCall
 from app.agent_runtime.contracts import PermissionMode, ToolEffect
@@ -35,12 +38,15 @@ def _step(tmp_path, policy, *, granular=None, sandbox_policy=SandboxPolicy.AUTO,
         approval_policy=policy,
         granular_approval=granular,
     )
-    manager = SandboxManager(
-        policy=sandbox_policy,
-        bubblewrap_executable="/synthetic/bwrap" if backend else "",
-        probe_backend=False,
-        system_name="Linux",
-    )
+    # Without an explicit executable the manager looks for bwrap on PATH, and newer CI images ship it
+    # there; hide it so "no backend" means the same thing on every machine.
+    with nullcontext() if backend else mock.patch.object(shutil, "which", return_value=None):
+        manager = SandboxManager(
+            policy=sandbox_policy,
+            bubblewrap_executable="/synthetic/bwrap" if backend else "",
+            probe_backend=False,
+            system_name="Linux",
+        )
     return StepContext.build(
         step_id="step-1",
         session_id="session-1",
