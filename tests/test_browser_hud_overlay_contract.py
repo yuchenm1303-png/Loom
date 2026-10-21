@@ -8,6 +8,11 @@ ROOT = Path(__file__).resolve().parents[1]
 EXT = ROOT / "extensions" / "browser-current-tab"
 
 
+def _edge_rules(source: str) -> list[str]:
+    """The stylesheet rules of the edge glow, one per line, whatever the indentation."""
+    return [line.strip() for line in source.splitlines() if line.strip().startswith(".edge")]
+
+
 def test_browser_hud_is_standalone_and_keeps_dom_target_overlay() -> None:
     background = (EXT / "background.js").read_text(encoding="utf-8")
     browser_hud = (EXT / "browser-hud.js").read_text(encoding="utf-8")
@@ -77,11 +82,11 @@ def test_browser_hud_tracks_computer_visual_language_without_sharing_lifecycle()
         assert token in desktop
         assert token in browser_hud
 
-    # The edge breathing layers intentionally share the same visual parameters;
-    # their runtime/lifecycle implementations remain independent.
-    filter_pattern = r"filter:blur\((?:14|8)px\) saturate\([^)]+\);opacity:[^;}]+"
-    assert re.findall(filter_pattern, desktop)[:2] == re.findall(filter_pattern, browser_hud)[:2]
-    assert len(re.findall(filter_pattern, desktop)) >= 2
+    # The edge glow layers intentionally share the same visual parameters (colours, fade, breathing
+    # range); their runtime/lifecycle implementations remain independent.
+    desktop_edge = _edge_rules(desktop)
+    assert desktop_edge == _edge_rules(browser_hud)
+    assert len(desktop_edge) >= 8
     assert "BrowserWindow" in desktop
     assert "loom-browser-hud-root-v2" in browser_hud
     assert "cloneNode(true)" not in browser_hud
@@ -104,3 +109,31 @@ def test_browser_hud_all_visual_layers_stay_visible_during_user_interaction() ->
     assert "lastY = height * 0.46" in browser_hud
     assert 'id="cursor" class="cursor"' in browser_hud
     assert "cursor.classList.remove('hidden')" not in browser_hud
+
+
+def test_automation_huds_do_not_run_a_full_viewport_effect_stack() -> None:
+    """The automation overlay is on screen for the whole of a browser or desktop task.
+
+    Two full-viewport conic-gradient layers with a blur filter, backdrop filters on
+    three panels and infinite animations over all of it kept the integrated GPU of
+    the development machine at 99-100% (measured: any other window dropped from
+    165 to 62-101 fps while the overlay was up). The edge glow is now four thin
+    strips per layer with its colours and falloff baked in, breathing on a 12 Hz
+    timer; none of the following may come back.
+    """
+
+    desktop = (ROOT / "desktop-react" / "electron" / "hudWindow.ts").read_text(encoding="utf-8")
+    browser_hud = (EXT / "browser-hud.js").read_text(encoding="utf-8")
+
+    for name, source in (("hudWindow.ts", desktop), ("browser-hud.js", browser_hud)):
+        assert "backdrop-filter" not in source, name
+        assert "filter:blur(14px)" not in source and "filter:blur(8px)" not in source, name
+        assert "::before{--breath" not in source and "edge::after" not in source, name
+        # No CSS animation runs on the glow itself: it is driven by a timer.
+        for rule in _edge_rules(source):
+            assert "animation" not in rule, (name, rule[:60])
+        assert source.count('<i class="a n"></i>') == 1 and source.count('<i class="b e"></i>') == 1, name
+        assert "setInterval(breathe" in source, name
+        # No ambient loop may animate a paint-only property (box-shadow) on the main thread.
+        assert "@keyframes pulse{" not in source and "@keyframes loomBrowserPulse" not in source, name
+        assert "@keyframes orbit" not in source and "@keyframes loomBrowserOrbit" not in source, name

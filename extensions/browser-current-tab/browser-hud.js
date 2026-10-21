@@ -2,7 +2,7 @@
   'use strict';
 
   const INSTALL_KEY = '__loomBrowserHudRuntimeV2';
-  const GENERATION = '0.1.24';
+  const GENERATION = '0.1.26';
   const SOURCE_HOST_ID = 'loom-browser-page-hud-root';
   const HOST_ID = 'loom-browser-hud-root-v2';
   const LEGACY_HOST_IDS = ['loom-browser-hud-root', 'loom-browser-computer-hud-root'];
@@ -31,16 +31,21 @@
     :host{all:initial}
     #hud{--x:50vw;--y:46vh;--bubble-x:calc(50vw + 54px);--bubble-y:calc(46vh + 24px);--bubble-width:420px;--accent:#a994ff;position:fixed;inset:0;opacity:0;visibility:hidden;pointer-events:none;overflow:hidden;color:#eef5ff;font-family:Inter,Segoe UI,system-ui,sans-serif;transition:opacity .16s ease,visibility .16s ease}
     #hud.live{opacity:1;visibility:visible}
-    .edge{position:absolute;inset:0;overflow:hidden;isolation:isolate;z-index:0}.edge::before,.edge::after{content:"";position:absolute;inset:0;background:conic-gradient(from var(--angle,0deg) at 50% 50%,#62f3ff 0deg,#58c7ff 34deg,#7779ff 72deg,#ba62ff 112deg,#ff4ab8 156deg,#ff4979 198deg,#ff9e4d 234deg,#ffe55a 268deg,#abf15f 302deg,#48eacb 336deg,#62f3ff 360deg);animation:loomBrowserOrbit 7.5s linear infinite,loomBrowserBreath 1.55s ease-in-out infinite}
-    .edge::before{--breath-min:.22;--breath-max:.50;filter:blur(14px) saturate(1.08);opacity:var(--breath-min);-webkit-mask:linear-gradient(to bottom,#000,transparent) top/100% 34px no-repeat,linear-gradient(to top,#000,transparent) bottom/100% 34px no-repeat,linear-gradient(to right,#000,transparent) left/34px 100% no-repeat,linear-gradient(to left,#000,transparent) right/34px 100% no-repeat;mask:linear-gradient(to bottom,#000,transparent) top/100% 34px no-repeat,linear-gradient(to top,#000,transparent) bottom/100% 34px no-repeat,linear-gradient(to right,#000,transparent) left/34px 100% no-repeat,linear-gradient(to left,#000,transparent) right/34px 100% no-repeat}
-    .edge::after{--breath-min:.32;--breath-max:.64;filter:blur(8px) saturate(1.18);opacity:var(--breath-min);-webkit-mask:linear-gradient(to bottom,#000,transparent) top/100% 16px no-repeat,linear-gradient(to top,#000,transparent) bottom/100% 16px no-repeat,linear-gradient(to right,#000,transparent) left/16px 100% no-repeat,linear-gradient(to left,#000,transparent) right/16px 100% no-repeat;mask:linear-gradient(to bottom,#000,transparent) top/100% 16px no-repeat,linear-gradient(to top,#000,transparent) bottom/100% 16px no-repeat,linear-gradient(to right,#000,transparent) left/16px 100% no-repeat,linear-gradient(to left,#000,transparent) right/16px 100% no-repeat;animation-delay:-1.2s,-.45s}
-    .pill{position:absolute;top:20px;left:50%;z-index:60;transform:translateX(-50%);display:flex;align-items:center;gap:11px;max-width:min(720px,calc(100vw - 40px));padding:10px 15px;border-radius:999px;background:rgba(12,14,22,.78);border:1px solid rgba(169,148,255,.30);backdrop-filter:blur(18px) saturate(1.2);box-shadow:0 14px 34px rgba(0,0,0,.30),0 0 28px rgba(169,148,255,.12)}
-    .dot{width:8px;height:8px;border-radius:50%;background:var(--accent);box-shadow:0 0 0 0 rgba(169,148,255,.45);animation:loomBrowserPulse 1.45s infinite;flex:0 0 auto}.pill strong{color:#f8fbff;font-size:13px;font-weight:760;white-space:nowrap}.pill span:last-child{color:#aeb8cc;font-size:12px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-    .cursor{position:absolute;left:0;top:0;z-index:80;width:82px;height:82px;opacity:1!important;visibility:visible!important;transform:translate3d(var(--x),var(--y),0) translate(-10px,-10px);transition:transform 210ms cubic-bezier(.18,.78,.18,1);will-change:transform}.aura{position:absolute;left:34px;top:34px;width:72px;height:72px;border-radius:50%;transform:translate(-50%,-50%);background:radial-gradient(ellipse at 34% 28%,rgba(70,238,255,.18),rgba(150,122,255,.06) 54%,transparent 78%);filter:blur(8px);opacity:.66;animation:loomBrowserAura 2.2s ease-in-out infinite}.cursor svg{position:absolute;left:0;top:0;width:40px;height:40px;overflow:visible;transform-origin:10px 10.5px;animation:loomBrowserFloat 2.15s ease-in-out infinite;filter:drop-shadow(0 0 7px rgba(90,236,255,.38)) drop-shadow(0 6px 12px rgba(52,35,120,.26))}
+    .pill{position:absolute;top:20px;left:50%;z-index:60;transform:translateX(-50%);display:flex;align-items:center;gap:11px;max-width:min(720px,calc(100vw - 40px));padding:10px 15px;border-radius:999px;background:rgba(12,14,22,.84);border:1px solid rgba(169,148,255,.30);box-shadow:0 14px 34px rgba(0,0,0,.30),0 0 28px rgba(169,148,255,.12)}
+    .dot{position:relative;width:8px;height:8px;border-radius:50%;background:var(--accent);flex:0 0 auto}.dot::before{content:"";position:absolute;inset:0;border-radius:50%;background:rgba(169,148,255,.45);animation:loomBrowserRing 1.45s steps(14,jump-none) infinite}.pill strong{color:#f8fbff;font-size:13px;font-weight:760;white-space:nowrap}.pill span:last-child{color:#aeb8cc;font-size:12px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .cursor{position:absolute;left:0;top:0;z-index:80;width:82px;height:82px;opacity:1!important;visibility:visible!important;transform:translate3d(var(--x),var(--y),0) translate(-10px,-10px);transition:transform 210ms cubic-bezier(.18,.78,.18,1);will-change:transform}.aura{position:absolute;left:34px;top:34px;width:72px;height:72px;border-radius:50%;transform:translate(-50%,-50%);background:radial-gradient(circle closest-side at 50% 50%,rgba(70,238,255,.18),rgba(150,122,255,.06) 54%,transparent);opacity:.66;animation:loomBrowserAura 2.2s steps(14,jump-none) infinite}.cursor svg{position:absolute;left:0;top:0;width:40px;height:40px;overflow:visible;transform-origin:10px 10.5px;animation:loomBrowserFloat 2.15s steps(14,jump-none) infinite;filter:drop-shadow(0 0 7px rgba(90,236,255,.38)) drop-shadow(0 6px 12px rgba(52,35,120,.26))}
     .wave{position:absolute;left:10px;top:10.5px;width:24px;height:24px;border-radius:50%;border:1.5px solid rgba(112,235,255,.95);box-shadow:0 0 18px rgba(120,105,255,.20);transform:translate(-50%,-50%) scale(.25);opacity:0}.cursor.clicking svg{animation:loomBrowserPress .34s cubic-bezier(.2,.8,.2,1)}.cursor.clicking .wave{animation:loomBrowserWave .6s ease-out}
-    .bubble{position:absolute;left:0;top:0;z-index:40;width:var(--bubble-width);min-height:112px;padding:14px 15px 13px;border-radius:17px;background:rgba(8,17,27,.86);border:1px solid rgba(169,148,255,.24);backdrop-filter:blur(18px) saturate(1.18);box-shadow:0 16px 45px rgba(0,0,0,.40),0 0 26px rgba(169,148,255,.09);transform:translate3d(var(--bubble-x),var(--bubble-y),0) scale(.78);transform-origin:left top;transition:transform 210ms cubic-bezier(.18,.78,.18,1)}.bubble-title{min-height:17px;margin-bottom:7px;color:#f8fbff;font-size:13px;font-weight:780}.line{display:flex;justify-content:space-between;gap:12px;color:#9fb0c1;font-size:12px;line-height:1.7}.line b{max-width:58%;color:#e7f8ff;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-weight:650;text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.thought{margin-top:8px;color:#c6d4e6;font-size:12px;line-height:1.45;max-height:35px;overflow:hidden}
-    .timeline{position:absolute;left:50%;bottom:24px;z-index:50;transform:translateX(-50%);display:flex;gap:8px;padding:9px;border-radius:999px;background:rgba(8,10,16,.68);border:1px solid rgba(255,255,255,.09);backdrop-filter:blur(16px);box-shadow:0 15px 34px rgba(0,0,0,.32)}.phase{display:flex;align-items:center;gap:6px;padding:7px 10px;border-radius:999px;color:#7f8ea3;font-size:11px;font-weight:650}.phase i{width:7px;height:7px;border-radius:50%;background:#344054}.phase.done{color:#a9f1d0}.phase.done i{background:#6ce6b5}.phase.active{color:#f5fbff;background:rgba(255,255,255,.08)}.phase.active i{background:var(--accent);box-shadow:0 0 12px var(--accent)}
-    @keyframes loomBrowserOrbit{to{--angle:360deg}}@keyframes loomBrowserBreath{0%,100%{opacity:var(--breath-min,.24)}50%{opacity:var(--breath-max,.58)}}@keyframes loomBrowserPulse{70%{box-shadow:0 0 0 9px transparent}100%{box-shadow:0 0 0 0 transparent}}@keyframes loomBrowserFloat{0%,100%{transform:translate(-.5px,-.5px) rotate(-2.5deg) scale(1,.95)}50%{transform:translate(-.5px,-1.5px) rotate(-2.5deg) scale(1.009,.958)}}@keyframes loomBrowserAura{0%,100%{transform:translate(-50%,-50%) scale(.97);opacity:.52}50%{transform:translate(-50%,-50%) scale(1.07);opacity:.78}}@keyframes loomBrowserPress{0%{transform:translate(-.5px,-.5px) rotate(-2.5deg) scale(1,.95)}45%{transform:translate(-.5px,-.5px) rotate(-2.5deg) scale(.94,.90)}100%{transform:translate(-.5px,-.5px) rotate(-2.5deg) scale(1,.95)}}@keyframes loomBrowserWave{0%{opacity:1;transform:translate(-50%,-50%) scale(.35)}100%{opacity:0;transform:translate(-50%,-50%) scale(3.8)}}
+    .bubble{position:absolute;left:0;top:0;z-index:40;width:var(--bubble-width);min-height:112px;padding:14px 15px 13px;border-radius:17px;background:rgba(8,17,27,.88);border:1px solid rgba(169,148,255,.24);box-shadow:0 16px 45px rgba(0,0,0,.40),0 0 26px rgba(169,148,255,.09);transform:translate3d(var(--bubble-x),var(--bubble-y),0) scale(.78);transform-origin:left top;transition:transform 210ms cubic-bezier(.18,.78,.18,1)}.bubble-title{min-height:17px;margin-bottom:7px;color:#f8fbff;font-size:13px;font-weight:780}.line{display:flex;justify-content:space-between;gap:12px;color:#9fb0c1;font-size:12px;line-height:1.7}.line b{max-width:58%;color:#e7f8ff;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-weight:650;text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.thought{margin-top:8px;color:#c6d4e6;font-size:12px;line-height:1.45;max-height:35px;overflow:hidden}
+    .timeline{position:absolute;left:50%;bottom:24px;z-index:50;transform:translateX(-50%);display:flex;gap:8px;padding:9px;border-radius:999px;background:rgba(8,10,16,.76);border:1px solid rgba(255,255,255,.09);box-shadow:0 15px 34px rgba(0,0,0,.32)}.phase{display:flex;align-items:center;gap:6px;padding:7px 10px;border-radius:999px;color:#7f8ea3;font-size:11px;font-weight:650}.phase i{width:7px;height:7px;border-radius:50%;background:#344054}.phase.done{color:#a9f1d0}.phase.done i{background:#6ce6b5}.phase.active{color:#f5fbff;background:rgba(255,255,255,.08)}.phase.active i{background:var(--accent);box-shadow:0 0 12px var(--accent)}
+    @keyframes loomBrowserRing{0%{transform:scale(1);opacity:1}70%{transform:scale(3.25);opacity:0}100%{transform:scale(1);opacity:0}}@keyframes loomBrowserFloat{0%,100%{transform:translate(-.5px,-.5px) rotate(-2.5deg) scale(1,.95)}50%{transform:translate(-.5px,-1.5px) rotate(-2.5deg) scale(1.009,.958)}}@keyframes loomBrowserAura{0%,100%{transform:translate(-50%,-50%) scale(.97);opacity:.52}50%{transform:translate(-50%,-50%) scale(1.07);opacity:.78}}@keyframes loomBrowserPress{0%{transform:translate(-.5px,-.5px) rotate(-2.5deg) scale(1,.95)}45%{transform:translate(-.5px,-.5px) rotate(-2.5deg) scale(.94,.90)}100%{transform:translate(-.5px,-.5px) rotate(-2.5deg) scale(1,.95)}}@keyframes loomBrowserWave{0%{opacity:1;transform:translate(-50%,-50%) scale(.35)}100%{opacity:0;transform:translate(-50%,-50%) scale(3.8)}}
+    .edge{position:absolute;inset:0;overflow:hidden;pointer-events:none}
+    .edge i{position:absolute;display:block;opacity:var(--min);background:conic-gradient(from 0deg at var(--cx) var(--cy),var(--ring));-webkit-mask-image:linear-gradient(var(--dir),var(--fade)),linear-gradient(var(--end),var(--ends));mask-image:linear-gradient(var(--dir),var(--fade)),linear-gradient(var(--end),var(--ends));-webkit-mask-composite:source-in;mask-composite:intersect}
+    .edge .a{--ring:#59f5ff 0deg,#51c9ff 34deg,#7678ff 72deg,#bf60ff 112deg,#ff46bd 156deg,#ff4679 198deg,#ff9d45 234deg,#ffe54f 268deg,#a7f355 302deg,#3eedcb 336deg,#59f5ff 360deg;--fade:rgba(0,0,0,.5) 0px,rgba(0,0,0,.548) 5.667px,rgba(0,0,0,.527) 11.333px,rgba(0,0,0,.444) 17px,rgba(0,0,0,.316) 22.667px,rgba(0,0,0,.163) 28.333px,transparent 34px;--ends:rgba(0,0,0,.5) 0px,rgba(0,0,0,.691) 7px,rgba(0,0,0,.841) 14px,rgba(0,0,0,.933) 21px,rgba(0,0,0,.977) 28px,rgba(0,0,0,.994) 35px,rgba(0,0,0,.994) calc(100% - 35px),rgba(0,0,0,.977) calc(100% - 28px),rgba(0,0,0,.933) calc(100% - 21px),rgba(0,0,0,.841) calc(100% - 14px),rgba(0,0,0,.691) calc(100% - 7px),rgba(0,0,0,.5) 100%;--t:34px;--min:.22;--max:.50}
+    .edge .b{--ring:#4df8ff 0deg,#48cbff 34deg,#7577ff 72deg,#c45dff 112deg,#ff42c3 156deg,#ff417a 198deg,#ff9b3c 234deg,#ffe642 268deg,#a3f649 302deg,#31f1cc 336deg,#4df8ff 360deg;--fade:rgba(0,0,0,.5) 0px,rgba(0,0,0,.525) 2.667px,rgba(0,0,0,.498) 5.333px,rgba(0,0,0,.421) 8px,rgba(0,0,0,.303) 10.667px,rgba(0,0,0,.159) 13.333px,transparent 16px;--ends:rgba(0,0,0,.5) 0px,rgba(0,0,0,.691) 4px,rgba(0,0,0,.841) 8px,rgba(0,0,0,.933) 12px,rgba(0,0,0,.977) 16px,rgba(0,0,0,.994) 20px,rgba(0,0,0,.994) calc(100% - 20px),rgba(0,0,0,.977) calc(100% - 16px),rgba(0,0,0,.933) calc(100% - 12px),rgba(0,0,0,.841) calc(100% - 8px),rgba(0,0,0,.691) calc(100% - 4px),rgba(0,0,0,.5) 100%;--t:16px;--min:.32;--max:.64}
+    .edge .n{inset:0 0 auto 0;height:var(--t);--cx:50%;--cy:50vh;--dir:to bottom;--end:to right}
+    .edge .s{inset:auto 0 0 0;height:var(--t);--cx:50%;--cy:calc(var(--t) - 50vh);--dir:to top;--end:to right}
+    .edge .w{inset:0 auto 0 0;width:var(--t);--cx:50vw;--cy:50%;--dir:to right;--end:to bottom}
+    .edge .e{inset:0 0 0 auto;width:var(--t);--cx:calc(var(--t) - 50vw);--cy:50%;--dir:to left;--end:to bottom}
     @media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}
   `;
 
@@ -60,6 +65,8 @@
   let refreshInFlight = null;
   let recoveryTimer = null;
   let storageListener = null;
+  let breathTimer = 0;
+  const motionQuery = typeof matchMedia === 'function' ? matchMedia('(prefers-reduced-motion: reduce)') : null;
 
   const phases = ['观察', '分析', '移动', '点击', '完成'];
   const clean = (value, fallback = '') => String(value || fallback).replace(/\s+/g, ' ').trim().slice(0, 220);
@@ -87,16 +94,44 @@
       document.documentElement.appendChild(host);
     }
     const root = host.shadowRoot || host.attachShadow({ mode: 'open' });
-    root.innerHTML = `<style>${STYLES}</style><div id="hud"><div class="edge"></div><div class="pill"><i class="dot"></i><strong id="title">Loom 正在控制浏览器</strong><span id="meta">Browser Use</span></div><div id="cursor" class="cursor"><div class="aura"></div>${SVG_CURSOR}<div class="wave"></div></div><div class="bubble"><div id="bubbleTitle" class="bubble-title">准备浏览器自动化</div><div class="line"><span>目标置信度</span><b id="confidence">browser</b></div><div class="line"><span>执行坐标</span><b id="point">—</b></div><div class="line"><span>动作来源</span><b id="source">browser runtime</b></div><div id="thought" class="thought">等待下一步浏览器动作。</div></div><div class="timeline" id="timeline"></div></div>`;
+    root.innerHTML = `<style>${STYLES}</style><div id="hud"><div class="edge"><i class="a n"></i><i class="a s"></i><i class="a w"></i><i class="a e"></i><i class="b n"></i><i class="b s"></i><i class="b w"></i><i class="b e"></i></div><div class="pill"><i class="dot"></i><strong id="title">Loom 正在控制浏览器</strong><span id="meta">Browser Use</span></div><div id="cursor" class="cursor"><div class="aura"></div>${SVG_CURSOR}<div class="wave"></div></div><div class="bubble"><div id="bubbleTitle" class="bubble-title">准备浏览器自动化</div><div class="line"><span>目标置信度</span><b id="confidence">browser</b></div><div class="line"><span>执行坐标</span><b id="point">—</b></div><div class="line"><span>动作来源</span><b id="source">browser runtime</b></div><div id="thought" class="thought">等待下一步浏览器动作。</div></div><div class="timeline" id="timeline"></div></div>`;
     renderer = {
       host, root,
-      hud: root.getElementById('hud'), title: root.getElementById('title'), meta: root.getElementById('meta'), cursor: root.getElementById('cursor'),
+      hud: root.getElementById('hud'), glow: [...root.querySelectorAll('.edge i')], title: root.getElementById('title'), meta: root.getElementById('meta'), cursor: root.getElementById('cursor'),
       bubbleTitle: root.getElementById('bubbleTitle'), confidence: root.getElementById('confidence'), point: root.getElementById('point'), source: root.getElementById('source'),
       thought: root.getElementById('thought'), timeline: root.getElementById('timeline'),
     };
     renderTimeline(0);
     place(null);
     return renderer;
+  }
+
+  // The glow breathes on a timer, not on an infinite CSS animation: a compositor animation over the
+  // whole viewport keeps the GPU producing a frame for every refresh (this overlay used to take the
+  // whole integrated GPU of the machine), while a 12 Hz timer only asks for what the eye can use.
+  function breathe() {
+    const nodes = renderer?.glow;
+    if (!nodes) return;
+    const t = performance.now() / 1000;
+    for (const node of nodes) {
+      const inner = node.classList.contains('b');
+      const k = 0.5 - 0.5 * Math.cos(2 * Math.PI * (((t + (inner ? 0.45 : 0)) / 1.55) % 1));
+      const lo = inner ? 0.32 : 0.22;
+      const hi = inner ? 0.64 : 0.5;
+      node.style.opacity = (lo + (hi - lo) * k).toFixed(3);
+    }
+  }
+
+  function breathing(on) {
+    const run = on && !motionQuery?.matches && !document.hidden;
+    if (run && !breathTimer) { breathe(); breathTimer = setInterval(breathe, 83); }
+    else if (!run && breathTimer) { clearInterval(breathTimer); breathTimer = 0; }
+  }
+
+  // The glow runs exactly while the HUD is live (and its page is visible); the live class stays
+  // where it has always been decided.
+  function syncBreath() {
+    breathing(Boolean(renderer?.hud.classList.contains('live')));
   }
 
   function renderTimeline(active) {
@@ -122,6 +157,7 @@
 
   function hide() {
     if (renderer) renderer.hud.classList.remove('live');
+    syncBreath();
   }
 
   function extractPresentation() {
@@ -183,6 +219,7 @@
     // of the session gate, so an action's markup can never reveal the HUD in a
     // tab Loom is not driving.
     if (driven()) view.hud.classList.add('live');
+    syncBreath();
     view.title.textContent = 'Loom 正在控制浏览器';
     view.meta.textContent = presentation.title || 'Browser Use';
     view.bubbleTitle.textContent = presentation.title || 'Browser action';
@@ -223,10 +260,12 @@
     // and came back on the next click. While Loom drives this tab, it shows.
     if (!active) {
       renderer?.hud.classList.remove('live');
+      syncBreath();
       return;
     }
     const view = ensureRenderer();
     view.hud.classList.add('live');
+    syncBreath();
     place(lastX === null ? null : { x: lastX, y: lastY });
   }
 
@@ -252,6 +291,7 @@
     const point = Number.isFinite(x) && Number.isFinite(y) ? { x, y } : null;
     place(point);
     view.hud.classList.add('live');
+    syncBreath();
     view.title.textContent = 'Loom 正在控制浏览器';
     view.meta.textContent = title;
     view.bubbleTitle.textContent = title;
@@ -327,6 +367,9 @@
 
   function dispose() {
     clearInterval(recoveryTimer);
+    clearInterval(breathTimer);
+    breathTimer = 0;
+    document.removeEventListener('visibilitychange', syncBreath);
     try { if (storageListener) chrome.storage.onChanged.removeListener(storageListener); } catch (_) {}
     sourceObserver?.disconnect();
     documentObserver?.disconnect();
@@ -353,6 +396,7 @@
     documentObserver = new MutationObserver(sync);
     documentObserver.observe(document.documentElement, { childList: true, subtree: true });
     addEventListener('resize', onResize, { passive: true });
+    document.addEventListener('visibilitychange', syncBreath);
   }
 
   globalThis[INSTALL_KEY] = { generation: GENERATION, sync, hide, dispose, present };
