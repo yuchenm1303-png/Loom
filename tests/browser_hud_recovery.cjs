@@ -20,6 +20,7 @@ const {chromium} = require('playwright');
     const live = () => page.evaluate(() => !!document.getElementById('loom-browser-hud-root-v2')?.shadowRoot?.getElementById('hud')?.classList.contains('live'));
     assert.equal(await live(),false,'identity failure must not claim ownership');
     await page.waitForFunction(() => document.getElementById('loom-browser-hud-root-v2')?.shadowRoot?.getElementById('hud')?.classList.contains('live'));
+    assert.equal(await page.evaluate(() => document.getElementById('loom-browser-hud-root-v2').shadowRoot.querySelector('.timeline')),null,'phase bar must not be rendered');
     await page.evaluate(() => document.getElementById('loom-browser-hud-root-v2').remove());
     await page.waitForFunction(() => document.getElementById('loom-browser-hud-root-v2')?.shadowRoot?.getElementById('hud')?.classList.contains('live'));
     assert.equal(await page.$eval('#target',el=>document.elementFromPoint(el.getBoundingClientRect().left+5,el.getBoundingClientRect().top+5)===el),true,'HUD must not intercept input');

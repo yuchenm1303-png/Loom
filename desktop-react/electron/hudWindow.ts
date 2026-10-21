@@ -60,13 +60,12 @@ function hudDocument(): string {
 <style>
 html,body{margin:0;width:100%;height:100%;background:transparent;overflow:hidden;font-family:Inter,Segoe UI,system-ui,sans-serif;user-select:none;cursor:default;}
 #hud{--x:50vw;--y:50vh;--bubble-x:calc(50vw + 54px);--bubble-y:calc(50vh + 24px);--bubble-width:420px;--accent:#66d9ff;position:fixed;inset:0;opacity:0;visibility:hidden;pointer-events:none;overflow:hidden;transition:opacity .16s ease,visibility .16s ease;}
-#hud.live{opacity:1;visibility:visible;}#hud.browser{--accent:#a994ff;}#hud.capture-safe .cursor,#hud.capture-safe .bubble,#hud.capture-safe .timeline,#hud.capture-safe .pill{opacity:0!important;}
+#hud.live{opacity:1;visibility:visible;}#hud.browser{--accent:#a994ff;}#hud.capture-safe .cursor,#hud.capture-safe .bubble,#hud.capture-safe .pill{opacity:0!important;}
 .pill{position:absolute;top:20px;left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:11px;max-width:min(720px,calc(100vw - 40px));padding:10px 15px;border-radius:999px;background:rgba(12,14,22,.78);border:1px solid color-mix(in srgb,var(--accent) 30%,transparent);box-shadow:0 14px 34px rgba(0,0,0,.30),0 0 28px color-mix(in srgb,var(--accent) 12%,transparent);}
 .dot{position:relative;width:8px;height:8px;border-radius:50%;background:var(--accent);flex:0 0 auto}.dot::before{content:"";position:absolute;inset:0;border-radius:50%;background:color-mix(in srgb,var(--accent) 50%,transparent);animation:ring 1.45s steps(14,jump-none) infinite}.pill strong{color:#f8fbff;font-size:13px;font-weight:760;white-space:nowrap}.pill span:last-child{color:#aeb8cc;font-size:12px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}@keyframes ring{0%{transform:scale(1);opacity:1}70%{transform:scale(3.25);opacity:0}100%{transform:scale(1);opacity:0}}
 .cursor{position:absolute;left:0;top:0;width:82px;height:82px;transform:translate3d(var(--x),var(--y),0) translate(-10px,-10px);transition:transform 210ms cubic-bezier(.18,.78,.18,1);will-change:transform}.aura{position:absolute;left:27px;top:27px;width:52px;height:52px;border-radius:50%;transform:translate(-50%,-50%);background:radial-gradient(circle closest-side at 50% 50%,rgba(70,238,255,.12),rgba(150,122,255,.035) 54%,transparent);opacity:.30;animation:aura 2.2s steps(14,jump-none) infinite}.cursor svg{position:absolute;left:0;top:0;width:36px;height:36px;overflow:visible;transform-origin:10px 10.5px;animation:float 2.15s steps(14,jump-none) infinite;filter:drop-shadow(0 0 3px rgba(90,236,255,.14)) drop-shadow(0 4px 7px rgba(52,35,120,.10))}@keyframes float{0%,100%{transform:translate(-.5px,-.5px) rotate(-2.5deg) scale(1,.95)}50%{transform:translate(-.5px,-1.5px) rotate(-2.5deg) scale(1.009,.958)}}@keyframes aura{0%,100%{transform:translate(-50%,-50%) scale(.98);opacity:.24}50%{transform:translate(-50%,-50%) scale(1.05);opacity:.42}}
 .wave{position:absolute;left:10px;top:10.5px;width:24px;height:24px;border-radius:50%;border:1.5px solid rgba(112,235,255,.95);box-shadow:0 0 18px rgba(120,105,255,.20);transform:translate(-50%,-50%) scale(.25);opacity:0}.cursor.clicking svg{animation:press .34s cubic-bezier(.2,.8,.2,1)}.cursor.clicking .wave{animation:wave .6s ease-out}@keyframes press{0%{transform:translate(-.5px,-.5px) rotate(-2.5deg) scale(1,.95)}45%{transform:translate(-.5px,-.5px) rotate(-2.5deg) scale(.94,.90)}100%{transform:translate(-.5px,-.5px) rotate(-2.5deg) scale(1,.95)}}@keyframes wave{0%{opacity:1;transform:translate(-50%,-50%) scale(.35)}100%{opacity:0;transform:translate(-50%,-50%) scale(3.8)}}
 .bubble{position:absolute;left:0;top:0;width:var(--bubble-width);min-height:112px;padding:14px 15px 13px;border-radius:17px;background:rgba(8,17,27,.86);border:1px solid color-mix(in srgb,var(--accent) 24%,transparent);box-shadow:0 16px 45px rgba(0,0,0,.40),0 0 26px color-mix(in srgb,var(--accent) 9%,transparent);transform:translate3d(var(--bubble-x),var(--bubble-y),0) scale(.78);transform-origin:left top;transition:transform 210ms cubic-bezier(.18,.78,.18,1),opacity .18s ease}.bubble-title{min-height:17px;margin-bottom:7px;color:#f8fbff;font-size:13px;font-weight:780}.line{display:flex;justify-content:space-between;gap:12px;color:#9fb0c1;font-size:12px;line-height:1.7}.line b{max-width:58%;color:#e7f8ff;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-weight:650;text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.thought{margin-top:8px;color:#c6d4e6;font-size:12px;line-height:1.45;max-height:35px;overflow:hidden}
-.timeline{position:absolute;left:50%;bottom:24px;transform:translateX(-50%);display:flex;gap:8px;padding:9px;border-radius:999px;background:rgba(8,10,16,.68);border:1px solid rgba(255,255,255,.09);box-shadow:0 15px 34px rgba(0,0,0,.32)}.phase{display:flex;align-items:center;gap:6px;padding:7px 10px;border-radius:999px;color:#7f8ea3;font-size:11px;font-weight:650}.phase i{width:7px;height:7px;border-radius:50%;background:#344054}.phase.done{color:#a9f1d0}.phase.done i{background:#6ce6b5}.phase.active{color:#f5fbff;background:rgba(255,255,255,.08)}.phase.active i{background:var(--accent);box-shadow:0 0 12px var(--accent)}
 @media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}
 .edge{position:absolute;inset:0;overflow:hidden;pointer-events:none}
 .edge i{position:absolute;display:block;opacity:var(--min);background:conic-gradient(from 0deg at var(--cx) var(--cy),var(--ring));-webkit-mask-image:linear-gradient(var(--dir),var(--fade)),linear-gradient(var(--end),var(--ends));mask-image:linear-gradient(var(--dir),var(--fade)),linear-gradient(var(--end),var(--ends));-webkit-mask-composite:source-in;mask-composite:intersect}
@@ -84,7 +83,6 @@ html,body{margin:0;width:100%;height:100%;background:transparent;overflow:hidden
   <div class="pill"><i class="dot"></i><strong id="title">Loom 正在观察</strong><span id="meta">Computer Use</span></div>
   <div id="cursor" class="cursor"><div class="aura"></div><svg viewBox="0 0 64 64" focusable="false"><defs><path id="shape" d="M 7.8 7.8 C 8.91 5.71, 13.83 7.17, 20.4 10.4 C 26.97 13.63, 49.02 25.34, 51.1 29.1 C 53.18 32.86, 37.42 31.38, 34.1 35.2 C 30.78 39.02, 30.93 52.78, 29.2 54.3 C 27.47 55.82, 25.14 49.77, 22.7 45.2 C 20.26 40.63, 15.36 29.87, 13.1 24.2 C 10.84 18.53, 6.69 9.89, 7.8 7.8 Z"/><linearGradient id="base" x1="9" y1="9" x2="42" y2="55" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#2EF1FF"/><stop offset=".23" stop-color="#69E9FF"/><stop offset=".54" stop-color="#EDF7FF"/><stop offset=".78" stop-color="#E6D9FF"/><stop offset="1" stop-color="#FF9FCE"/></linearGradient><radialGradient id="white" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(29 28) rotate(32) scale(18 14)"><stop offset="0" stop-color="#fff" stop-opacity=".96"/><stop offset=".36" stop-color="#fff" stop-opacity=".80"/><stop offset="1" stop-color="#EEF7FF" stop-opacity="0"/></radialGradient><linearGradient id="rim" x1="9" y1="8" x2="42" y2="56" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#CCFEFF" stop-opacity=".97"/><stop offset=".30" stop-color="#78F0FF" stop-opacity=".94"/><stop offset=".66" stop-color="#C0BEFF" stop-opacity=".86"/><stop offset="1" stop-color="#FFC5E2" stop-opacity=".95"/></linearGradient><clipPath id="clip"><use href="#shape"/></clipPath></defs><use href="#shape" fill="url(#base)"/><use href="#shape" fill="url(#white)"/><use href="#shape" fill="none" stroke="url(#rim)" stroke-width="1.02" stroke-linejoin="round"/><g clip-path="url(#clip)"><path d="M12 12.8 C20.9 14.7 33.4 20.3 45.8 27.7" fill="none" stroke="rgba(255,255,255,.44)" stroke-width=".90" stroke-linecap="round"/></g></svg><div class="wave"></div></div>
   <div class="bubble"><div id="bubbleTitle" class="bubble-title">准备视觉自动化</div><div class="line"><span>目标置信度</span><b id="confidence">—</b></div><div class="line"><span>执行坐标</span><b id="point">—</b></div><div class="line"><span>动作来源</span><b id="source">runtime</b></div><div id="thought" class="thought">等待下一步浏览器或桌面动作。</div></div>
-  <div class="timeline" id="timeline"></div>
 </div>
 <script>
 (function(){
@@ -97,8 +95,6 @@ html,body{margin:0;width:100%;height:100%;background:transparent;overflow:hidden
   const source=document.getElementById('source');
   const thought=document.getElementById('thought');
   const cursor=document.getElementById('cursor');
-  const timeline=document.getElementById('timeline');
-  const phases=['观察','分析','移动','点击','验证'];
   let lastClick='';
   let settleTimer=0;
   let lastX=null,lastY=null;
@@ -132,23 +128,12 @@ html,body{margin:0;width:100%;height:100%;background:transparent;overflow:hidden
     hud.style.setProperty('--bubble-width',bw+'px');
     point.textContent=Math.round(x)+', '+Math.round(y);
   }
-  function renderTimeline(active){
-    timeline.textContent='';
-    phases.forEach(function(label,index){
-      const item=document.createElement('span');
-      item.className='phase '+(index<active?'done':index===active?'active':'');
-      item.innerHTML='<i></i><span></span>';
-      item.lastChild.textContent=label;
-      timeline.appendChild(item);
-    });
-  }
   function render(payload){
     if(!payload || payload.visible===false){
       hud.classList.remove('live');
       breathing(false);
       return;
     }
-    const phase=clamp(Math.round(Number(payload.phase)||0),0,4);
     hud.className=(payload.source==='browser'?'browser':'computer')+(payload.captureSafe===true?' capture-safe':'')+' live';
     breathing(true);
     title.textContent=text(payload.title,payload.source==='browser'?'Loom 正在控制浏览器':'Loom 正在控制桌面');
@@ -158,7 +143,6 @@ html,body{margin:0;width:100%;height:100%;background:transparent;overflow:hidden
     source.textContent=text(payload.actionSource,payload.source==='browser'?'browser-use + DOM':'screenshot + UIA');
     thought.textContent=text(payload.thought||payload.result,'等待下一步浏览器或桌面动作。');
     place(payload);
-    renderTimeline(phase);
     if(payload.clickRevision && payload.clickRevision!==lastClick){
       lastClick=String(payload.clickRevision);
       cursor.classList.remove('clicking');
@@ -169,7 +153,6 @@ html,body{margin:0;width:100%;height:100%;background:transparent;overflow:hidden
     }
   }
   if(window.loomHud && window.loomHud.onUpdate) window.loomHud.onUpdate(render);
-  renderTimeline(0);
 })();
 </script>
 </body>

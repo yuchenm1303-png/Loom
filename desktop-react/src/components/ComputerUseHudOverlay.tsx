@@ -155,9 +155,6 @@ export function ComputerUseHudOverlay() {
   }, []);
 
   const state = payload ?? DEFAULT_PAYLOAD;
-  const phases = language === "zh-CN"
-    ? ["观察", "分析", "移动", "点击", "验证"]
-    : ["Observe", "Analyze", "Move", "Act", "Verify"];
   const sourceLabel = state.source === "browser"
     ? language === "zh-CN" ? "浏览器自动化" : "Browser Use"
     : language === "zh-CN" ? "桌面控制" : "Computer Use";
@@ -283,13 +280,6 @@ export function ComputerUseHudOverlay() {
         <div className="hud-bubble-thought">{state.thought}</div>
       </div>
 
-      <div className="hud-bottom-timeline">
-        {phases.map((label, index) => (
-          <div key={label} className={["hud-phase", index < state.phase ? "done" : "", index === state.phase ? "active" : ""].filter(Boolean).join(" ")}>
-            <i />{label}
-          </div>
-        ))}
-      </div>
     </div>
   );
 }

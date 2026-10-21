@@ -34,7 +34,7 @@ def test_browser_hud_keeps_dom_target_and_owns_its_visual_lifecycle():
     assert "class=\"edge\"" in source
     assert 'id="cursor" class="cursor"' in source
     assert "class=\"bubble\"" in source
-    assert "id=\"timeline\"" in source
+    assert "id=\"timeline\"" not in source
     assert "getBoundingClientRect()" in source
     assert "DOM exact" in source
     assert "browser + DOM" in source

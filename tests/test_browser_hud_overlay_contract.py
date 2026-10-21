@@ -42,8 +42,21 @@ def test_browser_hud_is_standalone_and_keeps_dom_target_overlay() -> None:
     assert "z-index:80" in browser_hud
     assert "clicking" in browser_hud
 
-    for token in ("class=\"edge\"", "class=\"pill\"", "id=\"cursor\"", "class=\"bubble\"", "id=\"timeline\""):
+    for token in ("class=\"edge\"", "class=\"pill\"", "id=\"cursor\"", "class=\"bubble\""):
         assert token in browser_hud
+
+
+def test_phase_bar_is_removed_from_all_hud_renderers() -> None:
+    sources = [
+        EXT / "browser-hud.js",
+        ROOT / "desktop-react" / "electron" / "hudWindow.ts",
+        ROOT / "desktop-react" / "src" / "components" / "ComputerUseHudOverlay.tsx",
+        ROOT / "desktop-react" / "src" / "components" / "computer-use-hud.css",
+    ]
+    for path in sources:
+        source = path.read_text(encoding="utf-8")
+        for removed in ('id="timeline"', "renderTimeline", "hud-bottom-timeline", "hud-phase", ".timeline{"):
+            assert removed not in source, (path, removed)
 
 
 def test_browser_hud_hot_reload_replaces_old_runtime_in_existing_tabs() -> None:
@@ -78,7 +91,7 @@ def test_browser_hud_tracks_computer_visual_language_without_sharing_lifecycle()
     desktop = (ROOT / "desktop-react" / "electron" / "hudWindow.ts").read_text(encoding="utf-8")
     browser_hud = (EXT / "browser-hud.js").read_text(encoding="utf-8")
 
-    for token in ("--bubble-width:420px", "top:20px", "bottom:24px", "width:82px;height:82px"):
+    for token in ("--bubble-width:420px", "top:20px", "width:82px;height:82px"):
         assert token in desktop
         assert token in browser_hud
 

@@ -2,7 +2,7 @@
   'use strict';
 
   const INSTALL_KEY = '__loomBrowserHudRuntimeV2';
-  const GENERATION = '0.1.26';
+  const GENERATION = '0.1.27';
   const SOURCE_HOST_ID = 'loom-browser-page-hud-root';
   const HOST_ID = 'loom-browser-hud-root-v2';
   const LEGACY_HOST_IDS = ['loom-browser-hud-root', 'loom-browser-computer-hud-root'];
@@ -36,7 +36,6 @@
     .cursor{position:absolute;left:0;top:0;z-index:80;width:82px;height:82px;opacity:1!important;visibility:visible!important;transform:translate3d(var(--x),var(--y),0) translate(-10px,-10px);transition:transform 210ms cubic-bezier(.18,.78,.18,1);will-change:transform}.aura{position:absolute;left:34px;top:34px;width:72px;height:72px;border-radius:50%;transform:translate(-50%,-50%);background:radial-gradient(circle closest-side at 50% 50%,rgba(70,238,255,.18),rgba(150,122,255,.06) 54%,transparent);opacity:.66;animation:loomBrowserAura 2.2s steps(14,jump-none) infinite}.cursor svg{position:absolute;left:0;top:0;width:40px;height:40px;overflow:visible;transform-origin:10px 10.5px;animation:loomBrowserFloat 2.15s steps(14,jump-none) infinite;filter:drop-shadow(0 0 7px rgba(90,236,255,.38)) drop-shadow(0 6px 12px rgba(52,35,120,.26))}
     .wave{position:absolute;left:10px;top:10.5px;width:24px;height:24px;border-radius:50%;border:1.5px solid rgba(112,235,255,.95);box-shadow:0 0 18px rgba(120,105,255,.20);transform:translate(-50%,-50%) scale(.25);opacity:0}.cursor.clicking svg{animation:loomBrowserPress .34s cubic-bezier(.2,.8,.2,1)}.cursor.clicking .wave{animation:loomBrowserWave .6s ease-out}
     .bubble{position:absolute;left:0;top:0;z-index:40;width:var(--bubble-width);min-height:112px;padding:14px 15px 13px;border-radius:17px;background:rgba(8,17,27,.88);border:1px solid rgba(169,148,255,.24);box-shadow:0 16px 45px rgba(0,0,0,.40),0 0 26px rgba(169,148,255,.09);transform:translate3d(var(--bubble-x),var(--bubble-y),0) scale(.78);transform-origin:left top;transition:transform 210ms cubic-bezier(.18,.78,.18,1)}.bubble-title{min-height:17px;margin-bottom:7px;color:#f8fbff;font-size:13px;font-weight:780}.line{display:flex;justify-content:space-between;gap:12px;color:#9fb0c1;font-size:12px;line-height:1.7}.line b{max-width:58%;color:#e7f8ff;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-weight:650;text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.thought{margin-top:8px;color:#c6d4e6;font-size:12px;line-height:1.45;max-height:35px;overflow:hidden}
-    .timeline{position:absolute;left:50%;bottom:24px;z-index:50;transform:translateX(-50%);display:flex;gap:8px;padding:9px;border-radius:999px;background:rgba(8,10,16,.76);border:1px solid rgba(255,255,255,.09);box-shadow:0 15px 34px rgba(0,0,0,.32)}.phase{display:flex;align-items:center;gap:6px;padding:7px 10px;border-radius:999px;color:#7f8ea3;font-size:11px;font-weight:650}.phase i{width:7px;height:7px;border-radius:50%;background:#344054}.phase.done{color:#a9f1d0}.phase.done i{background:#6ce6b5}.phase.active{color:#f5fbff;background:rgba(255,255,255,.08)}.phase.active i{background:var(--accent);box-shadow:0 0 12px var(--accent)}
     @keyframes loomBrowserRing{0%{transform:scale(1);opacity:1}70%{transform:scale(3.25);opacity:0}100%{transform:scale(1);opacity:0}}@keyframes loomBrowserFloat{0%,100%{transform:translate(-.5px,-.5px) rotate(-2.5deg) scale(1,.95)}50%{transform:translate(-.5px,-1.5px) rotate(-2.5deg) scale(1.009,.958)}}@keyframes loomBrowserAura{0%,100%{transform:translate(-50%,-50%) scale(.97);opacity:.52}50%{transform:translate(-50%,-50%) scale(1.07);opacity:.78}}@keyframes loomBrowserPress{0%{transform:translate(-.5px,-.5px) rotate(-2.5deg) scale(1,.95)}45%{transform:translate(-.5px,-.5px) rotate(-2.5deg) scale(.94,.90)}100%{transform:translate(-.5px,-.5px) rotate(-2.5deg) scale(1,.95)}}@keyframes loomBrowserWave{0%{opacity:1;transform:translate(-50%,-50%) scale(.35)}100%{opacity:0;transform:translate(-50%,-50%) scale(3.8)}}
     .edge{position:absolute;inset:0;overflow:hidden;pointer-events:none}
     .edge i{position:absolute;display:block;opacity:var(--min);background:conic-gradient(from 0deg at var(--cx) var(--cy),var(--ring));-webkit-mask-image:linear-gradient(var(--dir),var(--fade)),linear-gradient(var(--end),var(--ends));mask-image:linear-gradient(var(--dir),var(--fade)),linear-gradient(var(--end),var(--ends));-webkit-mask-composite:source-in;mask-composite:intersect}
@@ -68,7 +67,6 @@
   let breathTimer = 0;
   const motionQuery = typeof matchMedia === 'function' ? matchMedia('(prefers-reduced-motion: reduce)') : null;
 
-  const phases = ['观察', '分析', '移动', '点击', '完成'];
   const clean = (value, fallback = '') => String(value || fallback).replace(/\s+/g, ' ').trim().slice(0, 220);
   const clamp = (value, min, max) => Math.min(max, Math.max(min, Number.isFinite(Number(value)) ? Number(value) : min));
 
@@ -94,14 +92,13 @@
       document.documentElement.appendChild(host);
     }
     const root = host.shadowRoot || host.attachShadow({ mode: 'open' });
-    root.innerHTML = `<style>${STYLES}</style><div id="hud"><div class="edge"><i class="a n"></i><i class="a s"></i><i class="a w"></i><i class="a e"></i><i class="b n"></i><i class="b s"></i><i class="b w"></i><i class="b e"></i></div><div class="pill"><i class="dot"></i><strong id="title">Loom 正在控制浏览器</strong><span id="meta">Browser Use</span></div><div id="cursor" class="cursor"><div class="aura"></div>${SVG_CURSOR}<div class="wave"></div></div><div class="bubble"><div id="bubbleTitle" class="bubble-title">准备浏览器自动化</div><div class="line"><span>目标置信度</span><b id="confidence">browser</b></div><div class="line"><span>执行坐标</span><b id="point">—</b></div><div class="line"><span>动作来源</span><b id="source">browser runtime</b></div><div id="thought" class="thought">等待下一步浏览器动作。</div></div><div class="timeline" id="timeline"></div></div>`;
+    root.innerHTML = `<style>${STYLES}</style><div id="hud"><div class="edge"><i class="a n"></i><i class="a s"></i><i class="a w"></i><i class="a e"></i><i class="b n"></i><i class="b s"></i><i class="b w"></i><i class="b e"></i></div><div class="pill"><i class="dot"></i><strong id="title">Loom 正在控制浏览器</strong><span id="meta">Browser Use</span></div><div id="cursor" class="cursor"><div class="aura"></div>${SVG_CURSOR}<div class="wave"></div></div><div class="bubble"><div id="bubbleTitle" class="bubble-title">准备浏览器自动化</div><div class="line"><span>目标置信度</span><b id="confidence">browser</b></div><div class="line"><span>执行坐标</span><b id="point">—</b></div><div class="line"><span>动作来源</span><b id="source">browser runtime</b></div><div id="thought" class="thought">等待下一步浏览器动作。</div></div></div>`;
     renderer = {
       host, root,
       hud: root.getElementById('hud'), glow: [...root.querySelectorAll('.edge i')], title: root.getElementById('title'), meta: root.getElementById('meta'), cursor: root.getElementById('cursor'),
       bubbleTitle: root.getElementById('bubbleTitle'), confidence: root.getElementById('confidence'), point: root.getElementById('point'), source: root.getElementById('source'),
-      thought: root.getElementById('thought'), timeline: root.getElementById('timeline'),
+      thought: root.getElementById('thought'),
     };
-    renderTimeline(0);
     place(null);
     return renderer;
   }
@@ -132,27 +129,6 @@
   // where it has always been decided.
   function syncBreath() {
     breathing(Boolean(renderer?.hud.classList.contains('live')));
-  }
-
-  function renderTimeline(active) {
-    const view = renderer || ensureRenderer();
-    view.timeline.textContent = '';
-    phases.forEach((label, index) => {
-      const item = document.createElement('span');
-      item.className = `phase ${index < active ? 'done' : index === active ? 'active' : ''}`;
-      item.innerHTML = '<i></i><span></span>';
-      item.lastChild.textContent = label;
-      view.timeline.appendChild(item);
-    });
-  }
-
-  function phaseFor(title) {
-    const value = String(title || '').toLowerCase();
-    if (/click|type|select|drag|press/.test(value)) return 3;
-    if (/hover|scroll|opening|navigat|refresh|switch|back|forward/.test(value)) return 2;
-    if (/screenshot|captured|done|complete/.test(value)) return 4;
-    if (/read|state|inspect|observe/.test(value)) return 0;
-    return 1;
   }
 
   function hide() {
@@ -226,7 +202,6 @@
     view.confidence.textContent = presentation.point ? 'DOM exact' : 'browser';
     view.source.textContent = presentation.point ? 'browser + DOM' : 'browser runtime';
     view.thought.textContent = presentation.subtitle || 'Browser Use';
-    renderTimeline(phaseFor(presentation.title));
     if (isNewAction && /^click\b/i.test(presentation.title)) pulseClick();
   }
 
@@ -298,7 +273,6 @@
     view.confidence.textContent = point ? 'DOM exact' : 'browser';
     view.source.textContent = point ? 'browser + CDP' : 'browser runtime';
     view.thought.textContent = subtitle;
-    renderTimeline(Number.isInteger(data.phase) ? clamp(data.phase, 0, phases.length - 1) : phaseFor(title));
     if (data.click) pulseClick();
     return true;
   }
