@@ -73,7 +73,7 @@ test("first home send creates once and sends text or attachments to the new conv
       modelSwitchTasks: { current: new Map() }, activeIdRef: { current: "" },
       startThread: async () => { starts++; return { id: "new" }; },
       threadReadCacheRef: { current: new Map() }, crypto: { randomUUID: () => "id" },
-      setItems: () => {}, setTurnActive: () => {}, setTurnStartedAt: () => {}, setActive: () => {},
+      setItems: () => {}, setTurnActive: () => {}, setTurnStartedAt: () => {}, setActive: () => {}, setThreads: () => {},
       threadStateRevisionRef: { current: 0 },
       requireBridge: () => ({ call: async (method, params) => { calls.push({ method, params }); return { turn: { id: "turn" } }; } }),
     });
@@ -127,7 +127,7 @@ test("leaving while model preparation waits does not send into another thread", 
     startThread: () => assert.fail("existing thread"),
     crypto: { randomUUID: () => "id" }, setItems: update => { items = update(items); },
     setTurnActive: () => assert.fail("other thread state must survive"), setTurnStartedAt: () => {},
-    threadReadCacheRef: { current: new Map() }, setActive: () => {},
+    threadReadCacheRef: { current: new Map() }, setActive: () => {}, setThreads: () => {},
     requireBridge: () => ({ call: async (method, params) => { sent.push(params); return { turn: { id: "turn-a" } }; } }),
   });
   const request = send("hello");
