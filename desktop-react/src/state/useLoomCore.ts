@@ -1075,7 +1075,9 @@ export function useLoom() {
       }
 
       const nestedItem = params.item as Record<string, unknown> | undefined;
-      const threadId = String(params.threadId ?? nestedItem?.threadId ?? "");
+      const nestedTurn = params.turn as Record<string, unknown> | undefined;
+      const nestedApproval = params.approval as Record<string, unknown> | undefined;
+      const threadId = String(params.threadId ?? nestedItem?.threadId ?? nestedTurn?.threadId ?? nestedApproval?.threadId ?? "");
       const activeId = activeIdRef.current;
       if (message.method === "turn/pauseState") {
         threadReadCacheRef.current.delete(threadId);
