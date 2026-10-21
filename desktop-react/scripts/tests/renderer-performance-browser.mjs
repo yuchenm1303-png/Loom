@@ -34,7 +34,7 @@ try {
   });
   assert.equal(await page.evaluate(() => window.performanceFixture.historyReads()), beforeReads,
     "background thread updates must not scan or rebuild the active transcript");
-  const backgroundStatusCount = await page.locator('.compact-thread-row[data-thread-id="visual-1"] .compact-thread-dot.running').count();
+  const backgroundStatusCount = await page.locator('.compact-thread-row[data-thread-id="visual-1"] .compact-thread-status-mark').count();
   if (!backgroundStatusCount) {
     const diagnostic = await page.evaluate(() => ({
       row: document.querySelector('.compact-thread-row[data-thread-id="visual-1"]')?.outerHTML?.slice(0, 1100) || null,
