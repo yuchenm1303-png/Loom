@@ -62,6 +62,12 @@ Object.assign(window, { performanceFixture: {
       thread: { ...threads[1], status: "running", updatedAt: `2026-10-07T12:01:${String(index % 60).padStart(2, "0")}Z` },
     } }));
   },
+  setThreadStatus(id: string, status: string, paused = false) {
+    const thread = threads.find(entry => entry.id === id);
+    if (!thread) throw new Error(`Unknown fixture thread: ${id}`);
+    Object.assign(thread, { status, paused, currentTurnId: "turn-live" });
+    notificationListeners.forEach(listener => listener({ method: "thread/updated", params: { thread: { ...thread } } }));
+  },
 } });
 const profile = { selection: "builtin:minimax", id: "minimax-m3", kind: "builtin", name: "MiniMax-M3",
   adapter: "openai-compatible", model: "MiniMax-M3", configured: true, vision: true };
