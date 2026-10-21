@@ -7,7 +7,7 @@
 //     curve is one of the scale's;
 //   - a popover or a menu comes in on `fast` from a readable .72 and leaves on `fast-out`, and never moves;
 //   - what carries words does not move at all: in these interactions the only things that travel are the selection
-//     pills and the bars of a chart, and the docks on their a61 depth;
+//     pills and the bars of a chart, and a dock by a few pixels of depth while it comes and goes;
 //   - folds take a fold's time, in-place surfaces take `base` in and `base-out` out, the docks keep their numbers;
 //   - with reduced motion nothing takes time.
 import assert from "node:assert/strict";
@@ -35,6 +35,8 @@ const INOUT = "cubic-bezier(0.4, 0, 0.2, 1)";
 // "jump to latest" button (an arrow in a disc), a chart's bars. Icons, pseudo-element rings and the docks' view
 // transitions are left out by describeRow.
 const MARKS = (row) => /^(span\.thread-selection-pill|i\.settings-nav-pip|button\.transcript-jump-latest(\.is-visible)?)$/.test(row.target) || /^profile-(bar|hour)-grow$/.test(row.name);
+// The right-hand docks: the inspector (a grid column) and the portal docks.
+const DOCK = (row) => /^(aside|div)\.(inspector|review-workspace|sub-agent-dock|artifact-preview-dock|project-details-panel)(\.|$)/.test(row.target);
 
 async function tour(theme, reduced) {
   const { browser, page, errors } = await open(chromium, { origin, executablePath, theme, reducedMotion: reduced ? "reduce" : "no-preference" });
@@ -67,6 +69,7 @@ for (const theme of (process.env.LOOM_THEMES || "dark,light").split(",")) {
   const offScale = shown.filter((row) => {
     const d = describeRow(row);
     if (d.reversed || d.viewTransition) return false; // a transition cut short by its own reversal; the docks (a61)
+    if (row.duration === 0) return false; // a hold, not a step: something hidden once its exit is over
     if (row.kind === "script" && row.name !== "loom-layout-anchor" && row.duration >= 320 && row.duration <= 390) return false; // a mark's travel
     return !SCALE.has(row.duration);
   });
@@ -104,7 +107,8 @@ for (const theme of (process.env.LOOM_THEMES || "dark,light").split(",")) {
   // ---- what carries words does not move ----------------------------------------------------------------------------
   const travelling = shown.filter((row) => {
     const d = describeRow(row);
-    return d.moves.length && !d.icon && !d.pseudo && !d.viewTransition && !d.layoutAnchor && !d.reversed && !MARKS(row);
+    return d.moves.length && !d.icon && !d.pseudo && !d.viewTransition && !d.layoutAnchor && !d.reversed && !MARKS(row)
+      && !(DOCK(row) && /^dock-/.test(row.step)); // a dock's own depth, read below
   });
   assert.deepEqual(travelling.map((row) => `${row.step}: ${row.target} ${row.name} ${d_moves(row)}`), [], `${theme}: nothing that carries words travels`);
   for (const step of ["thread-switch", "settings-page", "settings-page-far"]) {
@@ -129,11 +133,9 @@ for (const theme of (process.env.LOOM_THEMES || "dark,light").split(",")) {
   }
   assert.equal(find(rows, "settings-open", (row) => row.target === "main.settings-main").delay, 40, `${theme}: the page follows the sidebar by one stagger`);
 
-  // ---- switching: the stage fades, the pill glides, the title fades -------------------------------------------------
-  const stage = find(rows, "thread-switch", (row) => row.name === "loom-thread-surface-in", "the stage's entrance");
-  assert.equal(stage.duration, 240);
-  assert.equal(stage.first.opacity, "0.72");
-  assert.deepEqual(Object.keys(stage.first), ["opacity"], `${theme}: the stage fades and does not move`);
+  // ---- switching: the conversation is there at once, the pill glides, the title fades ---------------------------------
+  // The replacing conversation arrives at full opacity, settled at its live edge (1ea15edb): the stage has no entrance.
+  assert.deepEqual(inStep(rows, "thread-switch").filter((row) => /^loom-thread-surface/.test(row.name)).map((row) => `${row.target} ${row.name}`), [], `${theme}: the conversation arrives at full opacity`);
   const pill = find(rows, "thread-switch", (row) => row.target === "span.thread-selection-pill" && /translate/.test(Object.keys(row.last).join()), "the selection pill");
   assert.ok(pill.duration >= 320 && pill.duration <= 390, `${theme}: the pill travels in ${pill.duration}ms`);
   assert.equal(pill.easing, "cubic-bezier(0.2, 0, 0, 1)");
@@ -158,15 +160,24 @@ for (const theme of (process.env.LOOM_THEMES || "dark,light").split(",")) {
     assert.equal(hit.easing, easing, `${theme}: ${step} curve`);
   }
 
-  // ---- the docks keep the a61 depth ---------------------------------------------------------------------------------
-  for (const step of ["dock-open", "dock-close"]) {
-    const arrive = find(rows, step, (row) => row.name === "loom-panel-surface-in-right", "the dock's entrance");
-    assert.equal(arrive.duration, 292);
-    assert.equal(arrive.delay, 72);
-    assert.equal(find(rows, step, (row) => row.name === "loom-panel-surface-out-right", "the dock's exit").duration, 78);
+  // ---- the docks: a few pixels of depth on the panel step ---------------------------------------------------------
+  // Right-hand changes run without a View Transition (App.tsx: a snapshot of a newly mounted panel could block input),
+  // so the a61 snapshots do not run for these docks. A dock drifts a few pixels and fades, in on panel/out and out on
+  // panel/in, and is seen until it has gone (the inspector used to be hidden on the first frame of its close).
+  for (const [step, easing, end] of [["dock-open", OUT, "first"], ["dock-close", IN, "last"]]) {
+    const drift = find(rows, step, (row) => DOCK(row) && row.name === "transform", "the dock's drift");
+    assert.equal(drift.duration, 390, `${theme}: ${step}: the dock drifts on the panel step`);
+    assert.equal(drift.easing, easing, `${theme}: ${step}: the dock's drift curve`);
+    const px = Math.abs(Number(/translate3d\((-?[\d.]+)px/.exec(drift[end].transform || "")?.[1]));
+    assert.ok(px > 0 && px <= 24, `${theme}: ${step}: a few pixels of depth, not a slide (${drift[end].transform})`);
+    find(rows, step, (row) => DOCK(row) && row.name === "opacity", "the dock's fade");
     const anchors = inStep(rows, step).filter((row) => row.name === "loom-layout-anchor");
     assert.ok(anchors.length >= 2 && anchors.every((row) => row.duration === 390 && row.easing === MOVE), `${theme}: ${step}: the workspace follows the dock on the panel step (${anchors.map((row) => row.target + " " + row.duration + " " + row.easing).join("; ")})`);
   }
+  const leave = find(rows, "dock-close", (row) => DOCK(row) && row.name === "opacity", "the dock's fade out");
+  assert.deepEqual([leave.duration, leave.easing], [390, IN], `${theme}: the dock fades out on panel/in`);
+  const hold = find(rows, "dock-close", (row) => DOCK(row) && row.name === "visibility", "the hold before the dock is hidden");
+  assert.equal(hold.delay, 390, `${theme}: the dock is hidden when its exit is over, not before`);
 }
 
 function d_moves(row) {

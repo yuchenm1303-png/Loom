@@ -89,11 +89,31 @@
   pointer-events: none;
 }
 
+/* The inspector leaves like the other right docks (.pl-dock, panel-language.css): it fades and drifts on the
+   panel step, on the in curve, and is hidden once it has gone. Its track closes at once
+   (.inspector-layout-closed), so while it leaves it is pinned where it was, at the end of its own grid area,
+   over the conversation that glides into its place. It used to be hidden on the first frame of the close. */
 .workspace-panels.inspector-closed > .inspector {
+  position: absolute;
+  /* Both lines: for an absolutely placed grid child an `auto` end is the container's edge, past the rail. */
+  grid-column: 3 / 4;
+  inset: 0 0 0 auto;
+  width: var(--loom-inspector-panel-size, var(--inspector-width, 316px));
   opacity: 0;
   transform: translate3d(16px,0,0);
   visibility: hidden;
   pointer-events: none;
+  transition:
+    opacity var(--loom-dur-panel) var(--loom-ease-in),
+    transform var(--loom-dur-panel) var(--loom-ease-in),
+    visibility 0s linear var(--loom-dur-panel);
+}
+
+/* Replaced by another dock, it goes at once rather than fading over the one that arrives (panel-switching.css
+   does the same for the portal docks). */
+html[data-loom-panel-handoff="right-swap"] .workspace-panels.inspector-closed > .inspector {
+  visibility: hidden;
+  transition: none;
 }
 
 /* Scoped a61 panel snapshots --------------------------------------------------

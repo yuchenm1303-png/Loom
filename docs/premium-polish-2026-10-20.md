@@ -47,14 +47,22 @@
 
 - `panel-switching.css` 用 `html[data-loom-panel-handoff]:has(.loom-tool-button[aria-pressed="true"])` 问“有没有工具被按下”，这是挂在根上的 `:has()`，运行时每次 DOM 变化都要重算（`css-has-invalidation.test.mjs` 因此是红的，CI 的脚本步骤也红）。交接本身已经带着意图（right-open / right-swap / right-close），改用它。
 - 另一个会话的 `1ea15edb` 有意去掉了切换会话时的整面淡入、并让“出生动画”认得历史记录，但两条 Python 合约测试还在断言旧行为，CI 的 pytest 因此连续两次失败、安装包没有发布。测试改成断言新行为。
+- 第二批推送之后 CI 又红了，和界面无关：GitHub 把 `ubuntu-latest` 换成了 26.04，这个镜像自带 `bwrap`。`SandboxManager` 没拿到可执行文件时会去 PATH 里找，于是两条描述“没有沙箱后端”的测试找到了一个真的后端（`test_bootstrap` 等不到审批，`REQUIRED` 变成允许）。两条测试现在把启动器从查找里藏起来，在任何机器上意思都一样（`a3d2f010`）；产品行为没变：沙箱可用时命令在沙箱里直接运行。
 
 ## 六、动画
 
 这一轮没有改动画的“尺子”：`spec.mjs` 跑同一批交互，仍是 22 种“时长 + 曲线”组合，和动画语言那一轮结束时一样。改的是：去掉了上面那些常驻循环（空闲时页面上没有在跑的动画，运行时只有侧栏那个运行中的小点在呼吸）；首页卡片的箭头在悬停时淡入并轻推 1px；输入框控件的悬停只变色。
+
+### 检查器的退场（第三批）
+
+- `933842fe` 为了不让截图阻塞输入，让所有右侧变化都不走 View Transition。审查、子代理、产物、项目这几块面板有自己的动画（`.pl-dock`：淡入、漂移几像素，panel 时长，进 out 出 in），检查器原来靠 a61 快照，于是只剩下兜底：打开时从全透明淡入，关闭时第一帧就被 `visibility` 藏起来，淡出和位移在看不见的地方跑完 390ms。
+- 现在检查器和其它面板一样离开：panel 时长、in 曲线、淡出并向右漂移 16px，退场结束才隐藏。它的网格轨道在关闭时立即收起，所以退场期间它被钉在原来的位置（在自己的网格区域末端绝对定位，`grid-column: 3 / 4`：绝对定位的网格子元素，`auto` 的结束线是容器边缘，不写会越过工具栏 66px），会话在它下面滑进来。被另一个面板替换（right-swap）时仍然立即消失，不和新面板叠在一起。
+- `motion-language-browser.mjs` 还在等右侧已经不用的 a61 快照动画、以及 `1ea15edb` 去掉的切换淡入，所以一直是红的。现在它读的是现在的规则：面板只漂移几像素（不超过 24px），进 panel/out、出 panel/in，退场结束才隐藏；切换会话时会话以完整不透明度出现。三个变异（第一帧就隐藏、长距离滑动、退场用 out 曲线）各自让它以对应的消息失败。
 
 ## 七、怎么复测
 
 - 截图：`C:/tmp/lux/tools/survey.mjs`（每个界面、两种主题；`LANG_UI=""` 是中文）。
 - 语言：`C:/tmp/lux/tools/lang-scan.mjs`（中文界面里的英文、英文界面里的中文；`FULL=1` 扫整页）。
 - 哪条规则赢：`C:/tmp/lux/tools/who.mjs`（CDP 的 matched styles，带文件名）。
-- 测试：渲染相关的 Python 合约测试全部通过；节点单测 270 个通过；浏览器测试和未改动的基线逐条比较，失败的只有基线上本来就失败的那几个（disclosure-motion、earlier-process、execution-sequence、model-usage、motion-language、progress-feedback、project-send、runtime-effects、sidebar-navigation、weave-flow、workspace-visual、component-surfaces、browser-sidebar）。
+- 测试：渲染相关的 Python 合约测试全部通过；节点单测 270 个通过；浏览器测试和未改动的基线逐条比较，失败的只有基线上本来就失败的那几个（disclosure-motion、earlier-process、execution-sequence、model-usage、motion-language、progress-feedback、project-send、runtime-effects、sidebar-navigation、weave-flow、workspace-visual、component-surfaces、browser-sidebar）。第三批之后 motion-language 是绿的。
+- 动画逐帧：`C:/tmp/lux/tools/film-dock.mjs`（点击后暂停页面上所有动画和过渡，一起拨时钟逐帧截图；真实计时器同时放慢，否则面板内容会在拨钟期间被释放）、`dock-probe.mjs` / `swap-probe.mjs`（每帧的位置、可见性、不透明度）。
