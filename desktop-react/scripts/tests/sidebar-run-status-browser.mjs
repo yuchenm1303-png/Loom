@@ -27,6 +27,11 @@ try {
     await row.getByText("运行中", { exact: true }).waitFor();
     assert.equal(await row.getAttribute("data-run-state"), "running");
     assert.equal(await row.locator(".compact-thread-status-mark").count(), 1);
+    // The background transitions from transparent on the next paint frame.
+    await page.waitForFunction(() => {
+      const element = document.querySelector('.compact-thread-row[data-thread-id="visual-1"]');
+      return element && getComputedStyle(element).backgroundColor !== "rgba(0, 0, 0, 0)";
+    });
     assert.notEqual(await row.evaluate(el => getComputedStyle(el).backgroundColor), "rgba(0, 0, 0, 0)",
       "non-selected running threads receive a visible surface");
     assert.equal(await row.locator(".thread-quick-actions button").nth(1).isDisabled(), true,
