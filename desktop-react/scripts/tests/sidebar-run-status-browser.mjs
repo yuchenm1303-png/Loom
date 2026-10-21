@@ -24,7 +24,7 @@ try {
       }, { status, paused });
 
     await change("running");
-    await row.locator(".compact-thread-status").getByText(theme === "dark" ? "运行中" : "运行中").waitFor();
+    await row.getByText("运行中", { exact: true }).waitFor();
     assert.equal(await row.getAttribute("data-run-state"), "running");
     assert.equal(await row.locator(".compact-thread-status-mark").count(), 1);
     assert.notEqual(await row.evaluate(el => getComputedStyle(el).backgroundColor), "rgba(0, 0, 0, 0)",
@@ -49,6 +49,19 @@ try {
     await change("failed");
     assert.equal(await row.locator(".compact-thread-status").count(), 0,
       "finished and failed threads do not remain highlighted as running");
+
+    // A non-selected thread must also react to TURN_STARTED / TURN_COMPLETED,
+    // including notifications carrying their thread ID only in the turn.
+    await page.evaluate(() => window.performanceFixture.emit({ method: "turn/started", params: {
+      turn: { id: "turn-next", threadId: "visual-1", status: "running" },
+    } }));
+    await row.getByText("运行中", { exact: true }).waitFor();
+    await page.evaluate(() => window.performanceFixture.emit({ method: "turn/completed", params: {
+      turn: { id: "turn-next", threadId: "visual-1", status: "completed" },
+    } }));
+    await page.waitForFunction(() =>
+      !document.querySelector('.compact-thread-row[data-thread-id="visual-1"]')?.dataset.runState,
+    );
 
     await change("running");
     await page.evaluate(() => { document.documentElement.dataset.loomReducedMotion = "true"; });
