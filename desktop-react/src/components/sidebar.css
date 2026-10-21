@@ -1249,7 +1249,8 @@ html[data-loom-theme="light"] .thread-context-menu {
 
 :root[data-loom-reduced-motion="true"] :is(.compact-sidebar, .thread-context-menu),
 :root[data-loom-reduced-motion="true"] :is(.compact-sidebar, .thread-context-menu) *,
-:root[data-loom-reduced-motion="true"] :is(.compact-sidebar, .thread-context-menu) *::before {
+:root[data-loom-reduced-motion="true"] :is(.compact-sidebar, .thread-context-menu) *::before,
+:root[data-loom-reduced-motion="true"] :is(.compact-sidebar, .thread-context-menu) *::after {
   animation: none !important;
   transition-duration: .001ms !important;
 }
@@ -1257,7 +1258,8 @@ html[data-loom-theme="light"] .thread-context-menu {
 @media (prefers-reduced-motion: reduce) {
   :is(.compact-sidebar, .thread-context-menu),
   :is(.compact-sidebar, .thread-context-menu) *,
-  :is(.compact-sidebar, .thread-context-menu) *::before {
+  :is(.compact-sidebar, .thread-context-menu) *::before,
+  :is(.compact-sidebar, .thread-context-menu) *::after {
     animation: none !important;
     transition-duration: .001ms !important;
   }
