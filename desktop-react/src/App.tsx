@@ -15,6 +15,7 @@ import { AccountDialog } from "./components/AccountDialog";
 import { ArtifactPreviewDock } from "./components/ArtifactPreviewDock";
 import { Composer } from "./components/Composer";
 import { BrowserWorkspace } from "./components/BrowserWorkspace";
+import { browserPageUrl, type BrowserActivityTarget } from "./components/browserActivityModel";
 import { Inspector } from "./components/Inspector";
 import { LanguageSettingsDock } from "./components/LanguageSettingsDock";
 import { ProfileInsightsPage } from "./components/ProfileInsightsPage";
@@ -420,6 +421,7 @@ export default function App() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [browserOpen, setBrowserOpen] = useState(false);
+  const [browserActivityTarget, setBrowserActivityTarget] = useState<BrowserActivityTarget | null>(null);
   const browserAvailable = typeof window.loom?.embeddedBrowser === "function";
   const settingsPresence = useMotionPresence(settingsOpen, RETAIN.base);
   const [profileOpen, setProfileOpen] = useState(false);
@@ -911,6 +913,27 @@ export default function App() {
   }, [taskMilestones.length]);
 
   useEffect(() => {
+    const openBrowserActivity = (event: Event) => {
+      const target = (event as CustomEvent<BrowserActivityTarget>).detail;
+      if (!browserAvailable || !target || !browserPageUrl(target.url)) return;
+      runLayoutTransition(() => {
+        setReviewOpen(false);
+        setAgentsOpen(false);
+        setArtifactPreview(null);
+        setSelectedProjectId("");
+        setFilesProjectId("");
+        setBackgroundTasksOpen(false);
+        setTaskPlanOpen(false);
+        setInspectorOpen(false);
+        setBrowserActivityTarget({ ...target });
+        setBrowserOpen(true);
+      }, rightOpenIntent);
+    };
+    window.addEventListener("loom:browser-activity-open", openBrowserActivity);
+    return () => window.removeEventListener("loom:browser-activity-open", openBrowserActivity);
+  }, [browserAvailable, runLayoutTransition, rightOpenIntent]);
+
+  useEffect(() => {
     const handleArtifactPreview = (event: Event) => {
       const detail = (event as CustomEvent<{ path?: string; workspace?: string }>).detail;
       const targetPath = String(detail?.path || "").trim();
@@ -1381,6 +1404,7 @@ export default function App() {
             closeBrowser();
             return;
           }
+          setBrowserActivityTarget(null);
           runLayoutTransition(() => {
             setReviewOpen(false);
             setAgentsOpen(false);
@@ -1638,6 +1662,7 @@ export default function App() {
         onClose={browserDock ? closeBrowser : closeArtifactPreview}
         ariaLabel={browserDock ? t("settings.browser.title") : undefined}
         content={browserDock && browserAvailable ? visible => <BrowserWorkspace
+          target={browserActivityTarget}
           hidden={!visible || settingsPresence.mounted || profilePresence.mounted || accountOpen || reviewOpen || agentsOpen || projectDetailsOpen || artifactPreviewOpen || Boolean(filesProjectId) || backgroundTasksOpen}
           onClose={closeBrowser}
         /> : undefined}

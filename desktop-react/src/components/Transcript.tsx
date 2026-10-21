@@ -65,6 +65,7 @@ import { StreamingPresentation, usePendingPresentations } from "./StreamingPrese
 import { deferredActivityIndices } from "./presentationOrdering";
 import { isSubAgentToolItem } from "./SubAgentWorkspace";
 import { ThinkingGlyph } from "./ThinkingGlyph";
+import { BrowserActivityCards } from "./BrowserActivityCards";
 import { TurnArtifactsPreview } from "./TurnArtifactsPreview";
 import { UserMessageContent, optimisticUserMessageContent } from "./UserMessageContent";
 import { dispatchQuoteReply } from "./quoteReply";
@@ -1586,6 +1587,8 @@ const TurnView = memo(function TurnView({
           workspace={workspace}
         />
       ) : null}
+
+      <BrowserActivityCards items={items} active={active} workspace={workspace} />
 
       {!active && derived.finalAssistant ? (
         <div className="transcript-entry entry-assistant_message turn-final-answer" key={derived.finalAssistant.id}>

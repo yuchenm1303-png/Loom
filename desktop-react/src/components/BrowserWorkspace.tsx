@@ -2,7 +2,9 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, typ
 import { ArrowLeft, ArrowRight, Globe2, Plus, RotateCw, X } from "./icons";
 import { useI18n } from "../i18n";
 import { PanelHeader } from "./PanelHeader";
+import { matchingBrowserTab, type BrowserActivityTarget } from "./browserActivityModel";
 import "./browser-workspace.css";
+import "./browser-activity-card.css";
 
 export interface EmbeddedBrowserTab {
   id: string;
@@ -31,30 +33,34 @@ const EMPTY: EmbeddedBrowserState = { tabs: [], activeId: null };
 
 interface BrowserWorkspaceProps {
   hidden?: boolean;
+  target?: BrowserActivityTarget | null;
   onClose(): void;
 }
 
-export function BrowserWorkspace({ hidden = false, onClose }: BrowserWorkspaceProps) {
+export function BrowserWorkspace({ hidden = false, target, onClose }: BrowserWorkspaceProps) {
   const { language } = useI18n();
   const zh = language === "zh-CN";
   const bridge = window.loom.embeddedBrowser;
   const [state, setState] = useState<EmbeddedBrowserState>(EMPTY);
   const [address, setAddress] = useState("");
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState<BrowserActivityTarget | null>(null);
   const viewportRef = useRef<HTMLDivElement>(null);
   const addressRef = useRef<HTMLInputElement>(null);
   const active = useMemo(() => state.tabs.find(tab => tab.id === state.activeId), [state]);
 
-  const send = useCallback(async (command: EmbeddedBrowserCommand): Promise<void> => {
-    if (!bridge) return;
+  const send = useCallback(async (command: EmbeddedBrowserCommand): Promise<boolean> => {
+    if (!bridge) return false;
     try {
       const next = await bridge(command);
       // Navigation events can arrive before this RPC returns. Snapshot is still
       // useful as the authoritative ordering for tab create/close/select.
       setState(next);
       setError("");
+      return true;
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
+      return false;
     }
   }, [bridge]);
 
@@ -65,6 +71,21 @@ export function BrowserWorkspace({ hidden = false, onClose }: BrowserWorkspacePr
     void send({ action: "snapshot" });
     return () => { disposeState?.(); disposeFocus?.(); };
   }, [bridge, send]);
+
+  useEffect(() => {
+    if (!bridge || !target) return;
+    let cancelled = false;
+    void bridge({ action: "snapshot" }).then(async next => {
+      if (cancelled) return;
+      const tabId = target.status !== "closed" ? matchingBrowserTab(target, next.tabs) : null;
+      if (tabId) {
+        setNotice(null);
+        const selected = await bridge({ action: "select-tab", tabId });
+        if (!cancelled) setState(selected);
+      } else setNotice(target);
+    }).catch(cause => { if (!cancelled) setError(cause instanceof Error ? cause.message : String(cause)); });
+    return () => { cancelled = true; };
+  }, [bridge, target]);
 
   useEffect(() => {
     setAddress(active?.url || "");
@@ -158,6 +179,14 @@ export function BrowserWorkspace({ hidden = false, onClose }: BrowserWorkspacePr
         closeLabel={zh ? "关闭浏览器" : "Close browser"}
         onClose={onClose}
       />
+      {notice ? <div className="browser-session-notice" role="status">
+        <strong>{notice.title || notice.url}</strong>
+        <p>{notice.connection === "embedded"
+          ? (zh ? "原标签页已关闭或当前不可用。可以在新标签页重新打开网址。" : "The original tab is closed or unavailable. You can reopen its URL in a new tab.")
+          : (zh ? "这个页面由外部浏览器操作，现场仍在原窗口。在内置浏览器打开会创建新页面，不会沿用原会话。" : "This session is in an external browser. Opening here creates a new page with a separate session.")}</p>
+        <button type="button" onClick={async () => { if (await send({ action: "new-tab", url: notice.url })) setNotice(null); }}>{zh ? "在新标签页打开" : "Open in new tab"}</button>
+        <button type="button" onClick={() => setNotice(null)}>{zh ? "关闭提示" : "Dismiss"}</button>
+      </div> : null}
       <div className="browser-tabs" role="tablist" aria-label={zh ? "浏览器标签页" : "Browser tabs"}>
         {state.tabs.map(tab => (
           <div key={tab.id} className={"browser-tab " + (tab.id === state.activeId ? "active" : "")}>
