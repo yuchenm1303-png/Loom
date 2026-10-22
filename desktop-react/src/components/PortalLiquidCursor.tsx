@@ -298,6 +298,59 @@ function parseBackdropBlur(style: CSSStyleDeclaration) {
   return match ? Math.min(24, cssNumber(match[1])) : 0;
 }
 
+// CSS pseudo-elements do not appear in childNodes, but controls such as the
+// landing-page theme switch draw their dark thumb entirely with ::after.
+// Recreate that painted thumb in the lens texture instead of sampling just
+// the (white) switch track.
+function drawSwitchPseudo(
+  ctx: CanvasRenderingContext2D,
+  el: HTMLElement,
+  rect: DOMRect,
+  roiLeft: number,
+  roiTop: number,
+  opacity: number,
+) {
+  if (el.getAttribute("role") !== "switch") return;
+  const pseudo = getComputedStyle(el, "::after");
+  if (pseudo.content === "none" || pseudo.content === "normal" ||
+      pseudo.display === "none" || pseudo.visibility === "hidden" ||
+      !visibleColor(pseudo.backgroundColor)) return;
+  const width = cssNumber(pseudo.width);
+  const height = cssNumber(pseudo.height);
+  if (width <= 0 || height <= 0) return;
+
+  const hostStyle = getComputedStyle(el);
+  const left = pseudo.left !== "auto"
+    ? cssNumber(hostStyle.borderLeftWidth) + cssNumber(pseudo.left)
+    : rect.width - cssNumber(hostStyle.borderRightWidth) - cssNumber(pseudo.right) - width;
+  const top = pseudo.top !== "auto"
+    ? cssNumber(hostStyle.borderTopWidth) + cssNumber(pseudo.top)
+    : rect.height - cssNumber(hostStyle.borderBottomWidth) - cssNumber(pseudo.bottom) - height;
+
+  // getComputedStyle resolves translateX() to a matrix; the theme switch
+  // animates its thumb using the matrix translation, not changing 'left'.
+  let dx = 0;
+  let dy = 0;
+  if (pseudo.transform && pseudo.transform !== "none") {
+    try {
+      const matrix = new DOMMatrixReadOnly(pseudo.transform);
+      dx = matrix.m41;
+      dy = matrix.m42;
+    } catch {
+      // Unsupported transform: paint at the base position.
+    }
+  }
+
+  ctx.save();
+  ctx.globalAlpha = opacity * Math.max(0, Math.min(1, cssNumber(pseudo.opacity, 1)));
+  ctx.fillStyle = pseudo.backgroundColor;
+  const pseudoRect = new DOMRect(0, 0, width, height);
+  roundedRect(ctx, rect.left - roiLeft + left + dx, rect.top - roiTop + top + dy,
+    width, height, radiusFromStyle(pseudo, pseudoRect));
+  ctx.fill();
+  ctx.restore();
+}
+
 function rasterizePortal(
   root: HTMLElement,
   canvas: HTMLCanvasElement,
@@ -318,7 +371,11 @@ function rasterizePortal(
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   drawWallpaper(ctx, wallpaper, roiLeft, roiTop, window.innerWidth, window.innerHeight, roiWidth, roiHeight);
 
-  const content = root.querySelector<HTMLElement>(".loom-portal-shell") ?? root;
+  // The editorial homepage has both the visible shell and a hidden legacy portal.
+  // Sample its visible root, not the hidden classic shell, or the lens goes blank.
+  const content = root.classList.contains("loom-editorial")
+    ? root
+    : (root.querySelector<HTMLElement>(".loom-portal-shell") ?? root);
 
   const renderElement = (el: HTMLElement, parentOpacity: number) => {
     if (el.dataset.loomLiquidCursor === "true" || el.closest("[data-loom-liquid-cursor='true']")) return;
@@ -418,6 +475,7 @@ function rasterizePortal(
         }
       }
     }
+    drawSwitchPseudo(ctx, el, rect, roiLeft, roiTop, opacity);
   };
 
   renderElement(content, 1);
@@ -509,7 +567,15 @@ function createProgram(gl: WebGLRenderingContext) {
       float edgeSafety = smoothstep(0.012, 0.075, textureEdgeDistance);
       displacement *= edgeSafety;
 
-      vec2 sampleUv = screenUv - normal * (displacement / u_resolution);
+      // The former hard +/-32% Y clamp created a constant-displacement
+      // plateau on shallow snapped buttons. That sharp change in slope read
+      // as two horizontal cuts through text and chromatic fringes. Limit
+      // both axes continuously so the optics remain smooth at every height.
+      vec2 refraction = normal * displacement;
+      vec2 bendReach = max(vec2(22.0, 13.0), halfSize * vec2(0.68, 0.66));
+      vec2 bendRatio = refraction / bendReach;
+      refraction *= inversesqrt(vec2(1.0) + bendRatio * bendRatio);
+      vec2 sampleUv = screenUv - refraction / u_resolution;
 
       vec2 centerUv = u_lensCenter / u_resolution;
       sampleUv = (sampleUv - centerUv) / max(u_zoom, 1.0) + centerUv;
@@ -559,7 +625,7 @@ export function PortalLiquidCursor() {
   useEffect(() => {
     const canvas = canvasRef.current;
     const dot = dotRef.current;
-    const root = canvas?.closest(".loom-portal-page") as HTMLElement | null;
+    const root = (canvas?.closest(".loom-portal-page") ?? document.querySelector(".loom-portal-page")) as HTMLElement | null;
     if (!canvas || !dot || !root) return;
 
     const finePointer = window.matchMedia("(pointer: fine)").matches;
@@ -656,6 +722,9 @@ export function PortalLiquidCursor() {
     let snappedRoiWidth = FREE_ROI_SIZE;
     let snappedRoiHeight = FREE_ROI_SIZE;
     let rasterDirty = true;
+    // CSS ::after transitions do not mutate DOM attributes on every frame.
+    // Keep sampling while the snapped control's visual thumb is animating.
+    let refractionMotionUntil = 0;
     let textureReady = false;
     let snapDirty = true;
     let running = false;
@@ -798,13 +867,24 @@ export function PortalLiquidCursor() {
           const rect = target.getBoundingClientRect();
           const finalLensWidth = Math.min(Math.max(38, window.innerWidth - 20), Math.max(38, rect.width + SNAP_PADDING * 2));
           const finalLensHeight = Math.min(Math.max(34, window.innerHeight - 20), Math.max(34, rect.height + SNAP_PADDING * 2));
-          snappedRoiWidth = Math.min(
-            MAX_ROI_SIZE,
-            Math.max(FREE_ROI_SIZE, Math.ceil((finalLensWidth + SNAP_ROI_PADDING * 2) / 16) * 16),
+          // Allocate the entire capture surface once on snap entry. Growing
+          // the canvas each spring frame destroyed the WebGL texture and made
+          // the wide Ask input flicker continuously.
+          snappedRoiWidth = Math.max(
+            snappedRoiWidth,
+            Math.min(window.innerWidth, Math.max(
+              FREE_ROI_SIZE,
+              Math.min(MAX_ROI_SIZE, Math.ceil((finalLensWidth + SNAP_ROI_PADDING * 2) / 16) * 16),
+              Math.ceil(Math.max(finalLensWidth, width.value) * 1.08 + 80),
+            )),
           );
-          snappedRoiHeight = Math.min(
-            MAX_ROI_SIZE,
-            Math.max(FREE_ROI_SIZE, Math.ceil((finalLensHeight + SNAP_ROI_PADDING * 2) / 16) * 16),
+          snappedRoiHeight = Math.max(
+            snappedRoiHeight,
+            Math.min(window.innerHeight, Math.max(
+              FREE_ROI_SIZE,
+              Math.min(MAX_ROI_SIZE, Math.ceil((finalLensHeight + SNAP_ROI_PADDING * 2) / 16) * 16),
+              Math.ceil(Math.max(finalLensHeight, height.value) * 1.08 + 80),
+            )),
           );
         }
       }
@@ -834,6 +914,7 @@ export function PortalLiquidCursor() {
         snap.value > 0.025 ||
         lensWidth > BASE_WIDTH + 4 ||
         lensHeight > BASE_HEIGHT + 4;
+      // Keep capture dimensions fixed throughout the snap/release animation.
       const desiredWidth = holdSnappedRoi ? snappedRoiWidth : FREE_ROI_SIZE;
       const desiredHeight = holdSnappedRoi ? snappedRoiHeight : FREE_ROI_SIZE;
 
@@ -879,17 +960,18 @@ export function PortalLiquidCursor() {
           roiLockedTarget = target;
           rasterDirty = true;
         }
-        return;
+      } else {
+        roiLockedTarget = null;
+        if (!Number.isFinite(roiLeft) || !Number.isFinite(roiTop)) {
+          roiLeft = Math.round(Math.max(minLeft, Math.min(maxLeft, lensX - roiWidth / 2)));
+          roiTop = Math.round(Math.max(minTop, Math.min(maxTop, lensY - roiHeight / 2)));
+          rasterDirty = true;
+          return;
+        }
       }
 
-      roiLockedTarget = null;
-      if (!Number.isFinite(roiLeft) || !Number.isFinite(roiTop)) {
-        roiLeft = Math.round(Math.max(minLeft, Math.min(maxLeft, lensX - roiWidth / 2)));
-        roiTop = Math.round(Math.max(minTop, Math.min(maxTop, lensY - roiHeight / 2)));
-        rasterDirty = true;
-        return;
-      }
-
+      // The target center is only an initialization hint. During the snap
+      // transition, the ROI must still track the actual animated lens.
       const halfW = lensWidth / 2;
       const halfH = lensHeight / 2;
       const marginX = Math.max(8, Math.min(FREE_ROI_PADDING, (roiWidth - lensWidth) / 2 - 8));
@@ -905,6 +987,20 @@ export function PortalLiquidCursor() {
       else if (lensX > maxX) nextLeft += Math.max(ROI_DEADZONE, lensX - maxX);
       if (lensY < minY) nextTop -= Math.max(ROI_DEADZONE, minY - lensY);
       else if (lensY > maxY) nextTop += Math.max(ROI_DEADZONE, lensY - maxY);
+
+      // A deadzone is useful while stationary, but it is not enough during a
+      // long snap-to-snap spring transition: enforce complete containment of
+      // the visible lens, including the shader's small edge deformation.
+      const lensLeft = Math.max(0, lensX - lensWidth * 0.52 - 12);
+      const lensRight = Math.min(window.innerWidth, lensX + lensWidth * 0.52 + 12);
+      const lensTop = Math.max(0, lensY - lensHeight * 0.52 - 12);
+      const lensBottom = Math.min(window.innerHeight, lensY + lensHeight * 0.52 + 12);
+      nextLeft = lensRight - lensLeft <= roiWidth
+        ? Math.min(lensLeft, Math.max(lensRight - roiWidth, nextLeft))
+        : (lensLeft + lensRight - roiWidth) / 2;
+      nextTop = lensBottom - lensTop <= roiHeight
+        ? Math.min(lensTop, Math.max(lensBottom - roiHeight, nextTop))
+        : (lensTop + lensBottom - roiHeight) / 2;
 
       nextLeft = Math.round(Math.max(minLeft, Math.min(maxLeft, nextLeft)));
       nextTop = Math.round(Math.max(minTop, Math.min(maxTop, nextTop)));
@@ -948,6 +1044,15 @@ export function PortalLiquidCursor() {
     const frame = (now: number) => {
       const dt = Math.min(0.032, Math.max(0.001, (now - lastTime) / 1000));
       lastTime = now;
+      if (now < refractionMotionUntil && activeTarget?.isConnected) {
+        // Follow the actual CSS animation, including ::after pseudo-elements.
+        // A short tail captures the final frame even if transitionend fires
+        // before the next texture-upload interval.
+        if (activeTarget.getAnimations({ subtree: true }).some(animation => animation.playState === "running")) {
+          refractionMotionUntil = Math.max(refractionMotionUntil, now + 80);
+        }
+        rasterDirty = true;
+      }
       const magneticSettled = updateMagneticTargets(dt);
       updateTargets();
 
@@ -1008,7 +1113,8 @@ export function PortalLiquidCursor() {
         Math.abs(height.velocity) < 0.08 &&
         Math.abs(pressure.target - pressure.value) < 0.001 &&
         Math.abs(pressure.velocity) < 0.01 &&
-        magneticSettled;
+        magneticSettled &&
+        now >= refractionMotionUntil;
 
       // Pointer/input/layout events wake the loop. A stationary cursor does
       // not need continuous DOM measurements and WebGL draws once springs settle.
@@ -1020,6 +1126,55 @@ export function PortalLiquidCursor() {
     };
 
     const wake = () => ensureFrame();
+
+    const refreshAnimatedRefraction = (event: Event) => {
+      const source = event.target;
+      if (!(source instanceof Node) || !activeTarget?.isConnected ||
+          (source !== activeTarget && !activeTarget.contains(source))) return;
+      refractionMotionUntil = Math.max(refractionMotionUntil, performance.now() + 360);
+      rasterDirty = true;
+      wake();
+    };
+
+    // The lens is a pointer-events:none visual overlay. When it snaps from
+    // outside the DOM hit box, the browser would otherwise click empty space.
+    // Redirect only a real primary-pointer click near the CURRENT snap target.
+    // Leave clicks within the element (and all keyboard clicks) fully native.
+    const handleSnappedClick = (event: MouseEvent) => {
+      if (!event.isTrusted || event.defaultPrevented || event.button !== 0 ||
+          event.detail === 0 || !pointerInside ||
+          event.ctrlKey || event.metaKey || event.altKey || event.shiftKey) return;
+      if (Math.hypot(event.clientX - pointerX, event.clientY - pointerY) > 2) return;
+
+      const candidate = findSnapTarget();
+      if (!candidate || !candidate.isConnected || candidate.closest("[inert], [aria-hidden='true']")) return;
+      if (rectDistance(candidate.getBoundingClientRect(), event.clientX, event.clientY) > RELEASE_DISTANCE) return;
+
+      const actionSelector = "button:not(:disabled), a[href], input:not(:disabled), textarea:not(:disabled), select:not(:disabled), [role='button'], [role='link'], [role='switch']";
+      const action = candidate.matches(actionSelector)
+        ? candidate
+        : candidate.querySelector<HTMLElement>(actionSelector);
+      if (!action || action.matches(":disabled, [aria-disabled='true']") ||
+          action.closest("[inert], [aria-hidden='true']")) return;
+      const source = event.target;
+      if (source instanceof Node && candidate.contains(source)) return;
+      // A neighboring button, native label or modal must keep its own click.
+      const nativeAction = source instanceof Element
+        ? source.closest("button, a[href], input, textarea, select, label, summary, [role='button'], [role='link'], [role='switch']")
+        : null;
+      if (nativeAction && !candidate.contains(nativeAction)) return;
+      if (source instanceof Element && source.closest("[role='dialog'], .auth-modal.is-open") &&
+          !candidate.contains(source)) return;
+
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      if (action.matches("input, textarea, select")) action.focus({ preventScroll: true });
+      // HTMLElement.click() triggers the existing React/DOM/native handlers,
+      // including the switch and navigation, exactly once. Synthetic clicks
+      // do not pass the isTrusted guard above, so they cannot recurse.
+      action.click();
+    };
+
     const handlePointerMove = (event: PointerEvent) => {
       pointerX = event.clientX;
       pointerY = event.clientY;
@@ -1069,19 +1224,32 @@ export function PortalLiquidCursor() {
       wake();
     };
 
-    const observer = new MutationObserver(() => {
+    const observer = new MutationObserver((mutations) => {
       refreshMagneticTargets();
+      // Theme switches animate their pseudo-element after aria-checked changes.
+      // Observing only the mutation captures its initial frame, not the slide.
+      if (mutations.some(mutation =>
+        mutation.attributeName === "aria-checked" &&
+        mutation.target instanceof HTMLElement &&
+        mutation.target.getAttribute("role") === "switch" &&
+        activeTarget === mutation.target
+      )) {
+        refractionMotionUntil = Math.max(refractionMotionUntil, performance.now() + 360);
+      }
       rasterDirty = true;
       snapDirty = true;
       wake();
     });
-    observer.observe(root, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ["type", "value", "placeholder"] });
+    observer.observe(root, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ["type", "value", "placeholder", "aria-checked"] });
     const resizeObserver = new ResizeObserver(() => { rasterDirty = true; snapDirty = true; wake(); });
     resizeObserver.observe(root);
 
     wallpaper.addEventListener("load", () => { rasterDirty = true; wake(); }, { once: true });
     document.fonts?.ready.then(() => { rasterDirty = true; wake(); }).catch(() => {});
 
+    window.addEventListener("click", handleSnappedClick, true);
+    root.addEventListener("transitionrun", refreshAnimatedRefraction);
+    root.addEventListener("animationstart", refreshAnimatedRefraction);
     root.addEventListener("pointermove", handlePointerMove);
     root.addEventListener("pointerdown", handlePointerDown);
     root.addEventListener("pointerup", handlePointerUp);
@@ -1103,6 +1271,9 @@ export function PortalLiquidCursor() {
       window.cancelAnimationFrame(raf);
       observer.disconnect();
       resizeObserver.disconnect();
+      window.removeEventListener("click", handleSnappedClick, true);
+      root.removeEventListener("transitionrun", refreshAnimatedRefraction);
+      root.removeEventListener("animationstart", refreshAnimatedRefraction);
       root.removeEventListener("pointermove", handlePointerMove);
       root.removeEventListener("pointerdown", handlePointerDown);
       root.removeEventListener("pointerup", handlePointerUp);
