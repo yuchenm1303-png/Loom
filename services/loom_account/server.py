@@ -216,6 +216,7 @@ class AccountConfig:
     refresh_ttl_seconds: int = 30 * 24 * 60 * 60
     public_base_url: str = "https://account.smirel.com/v1"
     web_origin: str = "https://loom.smirel.com"
+    web_origins: tuple[str, ...] = ()
     email_provider: str = ""
     email_from: str = ""
     resend_api_key: str = ""
@@ -1601,11 +1602,11 @@ class AccountApplication:
 
     def _safe_return_to(self, value: str) -> str:
         origin = self.store.config.web_origin.rstrip("/")
+        allowed = [origin] + [item.rstrip("/") for item in self.store.config.web_origins]
         candidate = str(value or "").strip() or origin + "/"
         try:
             parsed = urlsplit(candidate)
-            expected = urlsplit(origin)
-            if parsed.scheme == expected.scheme and parsed.netloc == expected.netloc:
+            if any(parsed.scheme == urlsplit(item).scheme and parsed.netloc == urlsplit(item).netloc for item in allowed):
                 return candidate
             # The installed desktop app owns this registered protocol. Only a
             # fixed callback with a high-entropy one-time nonce is allowed.
@@ -2172,6 +2173,11 @@ def main(argv: list[str] | None = None) -> int:
         ),
         public_base_url=os.environ.get("LOOM_ACCOUNT_PUBLIC_BASE_URL", "https://account.smirel.com/v1").rstrip("/"),
         web_origin=os.environ.get("LOOM_WEB_ORIGIN", "https://loom.smirel.com").rstrip("/"),
+        web_origins=tuple(
+            item.rstrip("/")
+            for item in os.environ.get("LOOM_WEB_ORIGINS", "").split(",")
+            if item.strip()
+        ),
         email_provider=os.environ.get("LOOM_EMAIL_PROVIDER", "").strip().casefold(),
         email_from=os.environ.get("LOOM_EMAIL_FROM", "").strip(),
         resend_api_key=os.environ.get("LOOM_RESEND_API_KEY", "").strip(),

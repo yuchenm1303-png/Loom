@@ -12,7 +12,9 @@ const RELEASE_DISTANCE = 17;
 const SNAP_PADDING = 10;
 const FREE_ROI_PADDING = 64;
 const ROI_DEADZONE = 35;
-const WALLPAPER_URL = "https://smirel.com/download/wallpaper-beach-blue-v1-original.png";
+// The lens samples the page it is drawn on. A separate wallpaper would show
+// through the refraction as a second, unrelated background.
+const WALLPAPER_URL = "";
 const SNAP_SELECTOR = [
   ".loom-portal-brand",
   ".loom-primary-action:not(:disabled)",
@@ -149,7 +151,7 @@ function drawWallpaper(
   roiWidth: number,
   roiHeight: number,
 ) {
-  ctx.fillStyle = "#21313c";
+  ctx.fillStyle = getComputedStyle(document.body).backgroundColor || "#1f1e1d";
   ctx.fillRect(0, 0, roiWidth, roiHeight);
   if (image?.complete && image.naturalWidth > 0 && image.naturalHeight > 0) {
     const scale = Math.max(viewportWidth / image.naturalWidth, viewportHeight / image.naturalHeight);
@@ -635,7 +637,7 @@ export function PortalLiquidCursor() {
     const wallpaper = new Image();
     wallpaper.crossOrigin = "anonymous";
     wallpaper.decoding = "async";
-    wallpaper.src = WALLPAPER_URL;
+    if (WALLPAPER_URL) wallpaper.src = WALLPAPER_URL;
 
     let pointerX = window.innerWidth / 2;
     let pointerY = window.innerHeight / 2;
@@ -856,8 +858,16 @@ export function PortalLiquidCursor() {
         rasterDirty = true;
       }
 
-      const maxLeft = Math.max(0, window.innerWidth - roiWidth);
-      const maxTop = Math.max(0, window.innerHeight - roiHeight);
+      // The lens itself must never be clipped: allow the capture window to
+      // extend past the viewport and pad the missing area with transparency.
+      // Clamping roiLeft/roiTop into [0, max] was cutting the lens in half
+      // whenever it snapped to a bottom- or edge-docked target.
+      const overflowX = Math.max(0, roiWidth - window.innerWidth);
+      const overflowY = Math.max(0, roiHeight - window.innerHeight);
+      const minLeft = -overflowX;
+      const minTop = -overflowY;
+      const maxLeft = 0;
+      const maxTop = 0;
 
       if (target) {
         const state = magneticStates.get(target);
@@ -867,8 +877,8 @@ export function PortalLiquidCursor() {
         const baseCenterX = rect.left + rect.width / 2 - (state?.appliedX ?? 0);
         const baseCenterY = rect.top + rect.height / 2 - (state?.appliedY ?? 0);
         if (roiLockedTarget !== target || !Number.isFinite(roiLeft) || !Number.isFinite(roiTop)) {
-          roiLeft = Math.round(Math.max(0, Math.min(maxLeft, baseCenterX - roiWidth / 2)));
-          roiTop = Math.round(Math.max(0, Math.min(maxTop, baseCenterY - roiHeight / 2)));
+          roiLeft = Math.round(Math.max(minLeft, Math.min(maxLeft, baseCenterX - roiWidth / 2)));
+          roiTop = Math.round(Math.max(minTop, Math.min(maxTop, baseCenterY - roiHeight / 2)));
           roiLockedTarget = target;
           rasterDirty = true;
         }
@@ -877,8 +887,8 @@ export function PortalLiquidCursor() {
 
       roiLockedTarget = null;
       if (!Number.isFinite(roiLeft) || !Number.isFinite(roiTop)) {
-        roiLeft = Math.round(Math.max(0, Math.min(maxLeft, lensX - roiWidth / 2)));
-        roiTop = Math.round(Math.max(0, Math.min(maxTop, lensY - roiHeight / 2)));
+        roiLeft = Math.round(Math.max(minLeft, Math.min(maxLeft, lensX - roiWidth / 2)));
+        roiTop = Math.round(Math.max(minTop, Math.min(maxTop, lensY - roiHeight / 2)));
         rasterDirty = true;
         return;
       }
@@ -899,8 +909,8 @@ export function PortalLiquidCursor() {
       if (lensY < minY) nextTop -= Math.max(ROI_DEADZONE, minY - lensY);
       else if (lensY > maxY) nextTop += Math.max(ROI_DEADZONE, lensY - maxY);
 
-      nextLeft = Math.round(Math.max(0, Math.min(maxLeft, nextLeft)));
-      nextTop = Math.round(Math.max(0, Math.min(maxTop, nextTop)));
+      nextLeft = Math.round(Math.max(minLeft, Math.min(maxLeft, nextLeft)));
+      nextTop = Math.round(Math.max(minTop, Math.min(maxTop, nextTop)));
       if (nextLeft !== roiLeft || nextTop !== roiTop) {
         roiLeft = nextLeft;
         roiTop = nextTop;

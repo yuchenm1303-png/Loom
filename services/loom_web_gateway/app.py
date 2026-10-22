@@ -19,6 +19,11 @@ from starlette.middleware.gzip import GZipMiddleware
 ACCOUNT_BASE_URL = os.environ.get("LOOM_ACCOUNT_API_BASE_URL", "https://account.smirel.com/v1").rstrip("/")
 STATIC_DIR = Path(os.environ.get("LOOM_WEB_STATIC_DIR", "/app/static")).resolve()
 WEB_ORIGIN = os.environ.get("LOOM_WEB_ORIGIN", "https://loom.smirel.com").rstrip("/")
+WEB_ORIGINS = tuple(
+    item.rstrip("/")
+    for item in os.environ.get("LOOM_WEB_ORIGINS", "").split(",")
+    if item.strip()
+)
 BUILD_SHA = os.environ.get("LOOM_BUILD_SHA", "unknown")
 TELEMETRY_SECRET = str(os.environ.get("LOOM_TELEMETRY_SECRET", "") or "").strip()
 ACCESS_COOKIE = "loom_web_access"
@@ -405,6 +410,25 @@ async def auth_status(request: Request) -> Response:
     return response
 
 
+def _allowed_origins() -> set[str]:
+    return {WEB_ORIGIN, *WEB_ORIGINS}
+
+
+def _request_origin(request: Request) -> str:
+    """The origin the browser actually used, when it is one we serve.
+
+    The same gateway answers on several hostnames (the landing page and the
+    workspace). A sign-in must come back to the page that started it, so the
+    reply origin follows the request instead of a fixed constant.
+    """
+    host = (request.headers.get("x-forwarded-host") or request.headers.get("host") or "").strip()
+    if not host:
+        return WEB_ORIGIN
+    scheme = (request.headers.get("x-forwarded-proto") or request.url.scheme or "https").strip()
+    candidate = f"{scheme}://{host}".rstrip("/")
+    return candidate if candidate in _allowed_origins() else WEB_ORIGIN
+
+
 async def _auth_form(endpoint: str, request: Request) -> Response:
     try:
         body = await request.json()
@@ -500,7 +524,7 @@ async def auth_oauth_start(provider: str) -> Response:
     if provider not in {"google", "github"}:
         return JSONResponse({"ok": False, "error": _error("OAUTH_PROVIDER_INVALID", "Unsupported sign-in provider.", 400)}, status_code=400)
     return RedirectResponse(
-        f"{ACCOUNT_BASE_URL}/auth/oauth/{provider}/start?{urlencode({'return_to': WEB_ORIGIN + '/'})}",
+        f"{ACCOUNT_BASE_URL}/auth/oauth/{provider}/start?{urlencode({'return_to': _request_origin(request) + '/'})}",
         status_code=302,
     )
 
@@ -856,9 +880,9 @@ async def _cancel_tasks(tasks) -> None:
 
 @app.websocket("/api/ws/browser")
 async def browser_socket(websocket: WebSocket) -> None:
-    expected_origin = os.environ.get("LOOM_WEB_ORIGIN", "https://loom.smirel.com").rstrip("/")
+    expected_origins = _allowed_origins()
     origin = str(websocket.headers.get("origin") or "").rstrip("/")
-    if origin != expected_origin:
+    if origin not in expected_origins:
         await websocket.close(code=4403, reason="origin not allowed")
         return
     access = websocket.cookies.get(ACCESS_COOKIE, "")
