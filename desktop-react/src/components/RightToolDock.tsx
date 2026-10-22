@@ -141,15 +141,6 @@ export function RightToolDock(props: RightToolDockProps) {
   const [hushed, setHushed] = useState<DockId | null>(null);
   const [tip, setTip] = useState<{ id: DockId | null; on: boolean }>({ id: null, on: false });
   const [announcement, setAnnouncement] = useState("");
-  const [expanded, setExpanded] = useState(() => {
-    try { return localStorage.getItem("loom.ui.toolDock.labels") === "true"; } catch { return false; }
-  });
-  useLayoutEffect(() => {
-    document.documentElement.style.setProperty("--loom-tool-rail-custom", expanded ? "142px" : "66px");
-    document.documentElement.style.setProperty("--loom-tool-rail-track", expanded ? "142px" : "66px");
-    try { localStorage.setItem("loom.ui.toolDock.labels", String(expanded)); } catch {}
-    return () => { document.documentElement.style.removeProperty("--loom-tool-rail-custom"); document.documentElement.style.removeProperty("--loom-tool-rail-track"); };
-  }, [expanded]);
   const [brokenAvatar, setBrokenAvatar] = useState("");
   const dockRef = useRef<HTMLDivElement>(null);
   const gliderRef = useRef<HTMLSpanElement>(null);
@@ -236,9 +227,6 @@ export function RightToolDock(props: RightToolDockProps) {
       onClick: props.onOpenSettings,
     },
   };
-  const shortLabels: Record<DockId, string> = zh
-    ? { files:"项目文件", browser:"浏览器", review:"代码审查", artifacts:"产物预览", tasks:"任务进度", background:"后台进程", agents:"子代理", inspector:"运行详情", profile:"使用洞察", account:"账号", settings:"设置" }
-    : { files:"Files", browser:"Browser", review:"Changes", artifacts:"Artifacts", tasks:"Plan", background:"Processes", agents:"Agents", inspector:"Run details", profile:"Usage", account:"Account", settings:"Settings" };
   const nameOf = (id: DockId) => {
     const item = items[id];
     // The count lives in the words (the dot only says there is one), where it is read in full.
@@ -551,7 +539,6 @@ export function RightToolDock(props: RightToolDockProps) {
           onDragStart={event => event.preventDefault()}
         >
           {item.icon}
-          <span className="loom-tool-visible-label">{shortLabels[id]}</span>
           {item.progress ? (
             <span className="loom-tool-progress" data-complete={ratio >= 1 ? "true" : "false"} aria-hidden="true">
               <span style={{ transform: `scaleX(${ratio})` }} />
@@ -567,11 +554,11 @@ export function RightToolDock(props: RightToolDockProps) {
       </div>
     );
   });
-  rows.splice(UTILITY_SLOT, 0, <span className="loom-tool-divider" key="divider" aria-hidden="true"><span>{zh ? "个人与设置" : "PERSONAL"}</span></span>);
-  rows.splice(4, 0, <span className="loom-tool-divider" key="activity-divider" aria-hidden="true"><span>{zh ? "任务执行" : "EXECUTION"}</span></span>);
+  rows.splice(UTILITY_SLOT, 0, <span className="loom-tool-divider" key="divider" aria-hidden="true"></span>);
+  rows.splice(4, 0, <span className="loom-tool-divider" key="activity-divider" aria-hidden="true"></span>);
 
   return (
-    <aside data-expanded={expanded ? "true" : "false"} className="loom-tool-rail" aria-label={zh ? "快捷工具" : "Quick tools"} data-motion-phase={presence.phase}>
+    <aside className="loom-tool-rail" aria-label={zh ? "快捷工具" : "Quick tools"} data-motion-phase={presence.phase}>
       <div className="loom-tool-stage">
         <div
           className="loom-tool-dock"
@@ -584,7 +571,6 @@ export function RightToolDock(props: RightToolDockProps) {
           onScroll={() => setHushed(tip.id)}
         >
           <span className="loom-tool-glider" ref={gliderRef} data-on="false" aria-hidden="true" />
-          <button type="button" className="loom-tool-label-toggle" title={zh ? (expanded ? "收起工具名称" : "展开工具名称") : (expanded ? "Hide tool names" : "Show tool names")} aria-label={zh ? (expanded ? "收起工具名称" : "展开工具名称") : (expanded ? "Hide tool names" : "Show tool names")} aria-pressed={expanded} onClick={() => setExpanded(value => !value)}><PanelRightOpen size={14}/>{expanded ? <span>{zh ? "工作区" : "WORKSPACE"}</span> : null}</button>
           {rows}
         </div>
         <div className="loom-tool-tip" ref={tipRef} data-on={tip.on ? "true" : "false"} aria-hidden="true">

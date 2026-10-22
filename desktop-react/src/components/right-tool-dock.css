@@ -446,19 +446,3 @@ html[data-loom-reduced-motion="true"] .loom-tool-tip { transition: none !importa
 html[data-loom-reduced-motion="true"] .loom-tool-count::after,
 html[data-loom-reduced-motion="true"] .loom-tool-tip-body { animation: none !important; }
 .loom-tool-count.dock-numeric { width: auto; min-width: 13px; height: 13px; padding: 0 3px; display: grid; place-items: center; font-size: 8px; font-weight: 600; line-height: 1; border-radius: 6px; color: var(--dock-ink-lit); background: var(--dock-surface); border: 1px solid var(--loom-workspace-line, #ffffff30); box-shadow: none; }
-
-html .app-shell.workspace-panels { --loom-tool-rail-track: var(--loom-tool-rail-custom, 66px); }
-.loom-tool-visible-label, .loom-tool-divider > span { display: none; }
-.loom-tool-label-toggle { display: flex; align-items: center; justify-content: center; gap: 8px; width: 32px; min-height: 26px; margin: 0 0 3px; border: 0; border-radius: 6px; background: transparent; color: var(--dock-ink); cursor: pointer; font: inherit; font-size: 9px; letter-spacing: .05em; }
-.loom-tool-label-toggle:hover { background: var(--dock-wash); color: var(--dock-ink-lit); }
-.loom-tool-label-toggle:focus-visible { outline: 2px solid var(--dock-accent); }
-.loom-tool-rail[data-expanded="true"] .loom-tool-dock { width: 124px; border-radius: 15px; }
-.loom-tool-rail[data-expanded="true"] .loom-tool-position { width: 112px; }
-.loom-tool-rail[data-expanded="true"] .loom-tool-button { display: flex; align-items: center; width: 112px; padding: 0 9px; justify-content: flex-start; border-radius: 7px; }
-.loom-tool-rail[data-expanded="true"] .loom-tool-button > svg { flex-shrink: 0; }
-.loom-tool-rail[data-expanded="true"] .loom-tool-visible-label { display: block; margin-left: 9px; font-size: 11px; font-weight: 450; white-space: nowrap; letter-spacing: 0; }
-.loom-tool-rail[data-expanded="true"] .loom-tool-divider { display: flex; align-items: center; width: 100%; height: 20px; padding: 7px 9px 0; margin: 3px 0; box-sizing: border-box; background: transparent; border-top: 1px solid var(--loom-workspace-line, #ffffff15); }
-.loom-tool-rail[data-expanded="true"] .loom-tool-divider > span { display: block; color: var(--dock-ink); font-size: 9px; letter-spacing: .04em; opacity: .8; }
-.loom-tool-rail[data-expanded="true"] .loom-tool-glider { width: 112px; border-radius: 7px; }
-.loom-tool-rail[data-expanded="true"] .loom-tool-label-toggle { justify-content: flex-start; width: 112px; padding-left: 9px; }
-.loom-tool-rail[data-expanded="true"] .loom-tool-count.dock-numeric { right: 1px; top: -1px; }
