@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import http.client
 from types import SimpleNamespace
 
 import pytest
@@ -14,6 +15,7 @@ from app.ai.contracts import (
     StreamEventKind,
 )
 from app.ai.reasoning import ReasoningKind, ReasoningRequest
+from app.ai.errors import AITransportError
 from app.ai.opencode_go_runtime import (
     OPENCODE_GO_USER_AGENT,
     _OpenCodeGoChatBackend,
@@ -59,6 +61,43 @@ def _request(reasoning: ReasoningRequest | None = None) -> ChatRequest:
         reasoning=reasoning,
         session_id="thread-stable-id",
     )
+
+
+@pytest.mark.parametrize("failure", [
+    http.client.RemoteDisconnected("closed without response"),
+    http.client.IncompleteRead(b"", 10),
+    ConnectionResetError("connection reset"),
+    TimeoutError("deadline"),
+])
+@pytest.mark.parametrize("stream", [False, True])
+def test_messages_open_disconnects_enter_transport_retry_policy(monkeypatch, failure, stream):
+    import urllib.request
+    backend = object.__new__(_OpenCodeGoMessagesBackend)
+    backend.base_url = "https://example.invalid/v1"
+    backend.timeout = 10
+    backend._payload = lambda request, stream: {"model": "test", "stream": stream}
+    backend._headers = lambda request: {}
+    def fail(*args, **kwargs):
+        raise failure
+    monkeypatch.setattr(urllib.request, "urlopen", fail)
+    with pytest.raises(AITransportError) as caught:
+        backend._open(_request(), stream=stream)
+    assert caught.value.retryable is True
+    assert caught.value.status_code is None
+    assert caught.value.__cause__ is failure
+
+
+def test_messages_body_disconnect_is_classified_before_response_commit():
+    backend = object.__new__(_OpenCodeGoMessagesBackend)
+    class InterruptedResponse:
+        def __enter__(self): return self
+        def __exit__(self, *args): return False
+        def read(self): raise http.client.IncompleteRead(b"partial", 10)
+    backend._open = lambda request, stream: InterruptedResponse()
+    with pytest.raises(AITransportError) as caught:
+        backend.complete(_request())
+    assert caught.value.retryable
+    assert isinstance(caught.value.__cause__, http.client.IncompleteRead)
 
 
 @pytest.mark.parametrize("model", ["muse-spark-1.3-contributor", "gpt-5.6-luna", "grok-4.7"])

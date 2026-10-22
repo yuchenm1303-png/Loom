@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import http.client
 import threading
 import urllib.error
 import urllib.request
@@ -575,12 +576,25 @@ class _OpenCodeGoMessagesBackend:
             ) from exc
         except urllib.error.URLError as exc:
             raise AITransportError(f"OpenCode Go Messages transport failed: {exc.reason}") from exc
+        except (http.client.RemoteDisconnected, http.client.IncompleteRead, ConnectionError, TimeoutError) as exc:
+            # urlopen can raise these directly, outside URLError. Opening the
+            # response occurs before any tool result/output is committed; let
+            # TurnRunner apply its normal cancellable transport retry policy.
+            raise AITransportError(
+                f"OpenCode Go Messages connection failed: {type(exc).__name__}",
+                retryable=True,
+            ) from exc
 
     def complete(self, request: ChatRequest) -> ModelResponse:
         check_cancelled()
         with self._open(request, stream=False) as response:
             try:
                 payload = decode_argument_json(response.read().decode("utf-8"))
+            except (http.client.RemoteDisconnected, http.client.IncompleteRead, ConnectionError, TimeoutError) as exc:
+                raise AITransportError(
+                    f"OpenCode Go Messages response interrupted: {type(exc).__name__}",
+                    retryable=True,
+                ) from exc
             except (ValueError, UnicodeDecodeError) as exc:
                 raise AIResponseError("Messages response contains invalid JSON") from exc
         if not isinstance(payload, dict):
