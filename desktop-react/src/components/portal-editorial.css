@@ -582,3 +582,15 @@
   .loom-editorial .editorial-latest a,
   .loom-editorial .editorial-ask form { transition: none !important; }
 }
+
+
+/* The legacy short-viewport rule used to hide *every* starter span. Now that
+   each starter has a three-column grid, hiding the number/arrow collapses
+   the auto-placement into the tiny first column and creates giant cards. */
+@media (max-height: 830px) and (min-width: 761px) {
+  .loom-editorial .editorial-starter .editorial-starter-number,
+  .loom-editorial .editorial-starter .editorial-starter-arrow { display: block; }
+  .loom-editorial .editorial-starter .editorial-starter-copy { display: flex; }
+  .loom-editorial .editorial-starter .editorial-starter-copy > span { display: block; }
+  .loom-editorial .editorial-latest a:nth-child(n+3) { display: flex; }
+}
