@@ -163,8 +163,11 @@ class AgentRuntime:
         from .task_plan import update_plan_tool
         from .plan_tools import manage_plan_tool
         from .evidence import record_check_tool, read_check_ledger_tool
+        from .visual_feedback import VisualFeedback, view_images_tool
+        self.visual_feedback = VisualFeedback()
         for runtime_tool in (durable_tool_result_tool(store), run_scratch_dir_tool(store), update_plan_tool(store),
-                             manage_plan_tool(store), record_check_tool(store), read_check_ledger_tool(store), task_history_tool(store)):
+                             manage_plan_tool(store), record_check_tool(store), read_check_ledger_tool(store), task_history_tool(store),
+                             view_images_tool(self.visual_feedback)):
             if self.tools.get(runtime_tool.name) is None:
                 self.tools.register(runtime_tool)
         self.policy = policy or ToolPolicy()
@@ -264,6 +267,7 @@ class AgentRuntime:
         return getattr(self, "reasoning", None)
 
     def close(self) -> None:
+        self.visual_feedback.clear()
         getattr(self, "_request_ephemeral_frames", {}).clear()
         self._session_platforms.clear()
         self._session_reasoning.clear()
@@ -557,7 +561,8 @@ class AgentRuntime:
         return TurnRunner(self).run(session, token)
 
     def _request_stable_contracts(self):
-        return ()
+        from .verification import DEVELOPMENT_FEEDBACK_CONTRACT
+        return (DEVELOPMENT_FEEDBACK_CONTRACT,)
 
     def register_request_context_provider(self, name, provider):
         """Register an owner contribution, never a request-builder wrapper."""
@@ -570,7 +575,7 @@ class AgentRuntime:
                      for message in provider(session, step))
 
     def _collect_model_observations(self, session, step):
-        return [], {}
+        return self.visual_feedback.collect(session)
 
     def _request_metadata(self, session, step):
         return {}
@@ -626,6 +631,13 @@ class AgentRuntime:
                             session.current_turn_id)
         if plan is not None:
             messages.append(plan)
+        from .verification import verification_context
+        check_context = ToolContext(session.session_id, session.current_turn_id, Path(session.workspace_dir))
+        checks, _ = verification_context(
+            self._lifecycle_events(session.session_id, turn_id=session.current_turn_id,
+                                   kinds=(AgentEventKind.CHECK_RECORDED,)), check_context)
+        if checks is not None:
+            messages.append(checks)
         return messages, guidance_metadata
 
     def steer(
@@ -1245,6 +1257,7 @@ class AgentRuntime:
                 "environment_policy": step.environment_policy,
                 "active_skills": session.active_skills,
                 "diff_tracker": tracker,
+                "visual_feedback": self.visual_feedback,
             },
             emit_event=emit_event,
         )
@@ -1567,6 +1580,7 @@ class AgentRuntime:
         *,
         step: StepContext | None = None,
     ) -> None:
+        self.visual_feedback.adopt(session, call, result)
         # Use the same immutable model limits that governed the tool call whenever
         # possible. Durable lifecycle events keep the exact result; only active
         # model history gets the bounded projection.
@@ -1616,6 +1630,20 @@ class AgentRuntime:
             AgentEventKind.TOOL_FAILED if failed else AgentEventKind.TOOL_COMPLETED,
             data=data,
         )
+        assessment = result.data.get("verification") if call.name == "exec" else None
+        spec = call.arguments.get("verification") if call.name == "exec" else None
+        if assessment is None and isinstance(spec, dict) and spec.get("case_id") and not result.ok:
+            assessment = {"case_id": spec["case_id"], "expectation": str(spec.get("expectation", ""))[:2000],
+                          "verdict": "blocked", "assessment_source": "runtime_command_failure",
+                          "observed": result.content[:2000]}
+        if isinstance(assessment, dict) and spec:
+            from .evidence import resolve_evidence
+            context = ToolContext(session.session_id, session.current_turn_id, Path(session.workspace_dir))
+            refs = [{"call_id": call.call_id}]
+            facts, invalid = resolve_evidence(self.store, context, refs)
+            if not invalid:
+                self._emit_event(session, AgentEventKind.CHECK_RECORDED,
+                                 data={**assessment, "evidence_refs": refs, "evidence_facts": facts})
 
     def _append_tool_result(
         self,
@@ -1666,7 +1694,14 @@ class AgentRuntime:
         pass
 
     def _on_turn_finished(self, session, event):
-        pass
+        self.visual_feedback.clear(session.session_id)
+
+    def _verification_summary(self, session):
+        from .verification import verification_summary
+        return verification_summary(
+            self._lifecycle_events(session.session_id, turn_id=session.current_turn_id,
+                                   kinds=(AgentEventKind.CHECK_RECORDED,)),
+            ToolContext(session.session_id, session.current_turn_id, Path(session.workspace_dir)))
 
     def _on_turn_activated(self, session_id, token):
         pass

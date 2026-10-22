@@ -1981,6 +1981,8 @@ def browser_tools(runtime: "BrowserRuntime") -> tuple[AgentTool, ...]:
                           "lifecycle": exc.lifecycle, "resume_requires_new_session": True})
         return execute
 
+    from .browser_capture import browser_capture_sequence_tool
+    tools.append(browser_capture_sequence_tool(runtime))
     return tuple(replace(tool, handler=lifecycle_handler(tool.handler)) for tool in tools)
 
 

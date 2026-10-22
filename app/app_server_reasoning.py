@@ -415,6 +415,8 @@ class ReasoningManagedLoomAppServerService(ManagedStreamingLoomAppServerService)
             "browser_switch_tab": "切换浏览器标签页",
             "browser_close_tab": "关闭浏览器标签页",
             "browser_screenshot": "保存浏览器截图",
+            "browser_capture_sequence": "采集浏览器连续画面",
+            "view_images": "查看图片与运行截图",
             "browser_close": "关闭浏览器会话",
         }
         return labels.get(name, name or "执行自动化工具")

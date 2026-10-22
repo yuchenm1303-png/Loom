@@ -72,6 +72,16 @@ def test_execution_action_factory_is_typed_and_extensible(tmp_path):
     ) is None
 
 
+def test_verification_scope_is_bound_to_pending_action_but_not_command_approval_cache(tmp_path):
+    spec = {"case_id": "check", "expectation": "Test passes", "subject_paths": ["source.py"]}
+    first = ExecActionIdentity.build(_step(tmp_path), _call(wait=True, pty=False, verification=spec))
+    changed = ExecActionIdentity.build(_step(tmp_path), _call(wait=True, pty=False,
+        verification={**spec, "subject_paths": ["other.py"]}))
+    assert first.digest() != changed.digest()
+    assert first.approval_cache_key() == changed.approval_cache_key()
+    assert "source.py" not in json.dumps(first.binding_payload())
+
+
 def test_exec_action_captures_execution_shape_without_copying_private_values(tmp_path):
     action = ExecActionIdentity.build(_step(tmp_path), _call())
     payload = action.binding_payload()

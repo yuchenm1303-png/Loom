@@ -661,6 +661,7 @@ class TurnRunner:
                         "execution_end_source": decision.source,
                         "task_completion": task_state["status"],
                         "plan_summary": task_state,
+                        "verification": rt._verification_summary(session),
                         "final_step_id": step.step_id,
                         "diff_revision": diff.revision,
                         "changed_paths": list(diff.paths),

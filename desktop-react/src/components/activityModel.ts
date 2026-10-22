@@ -221,10 +221,21 @@ function isBrowserScreenshotActivity(item: TranscriptItem): boolean {
 }
 
 export function browserScreenshotPaths(item: TranscriptItem): string[] {
-  if (!isBrowserScreenshotActivity(item)) return [];
+  const name = String(item.toolName ?? "").trim().toLowerCase();
+  if (!isBrowserScreenshotActivity(item) && !(item.type === "tool_call" && ["view_images", "browser_capture_sequence"].includes(name))) return [];
   const result = item.result;
   if (!result || typeof result !== "object" || Array.isArray(result)) return [];
-  const path = String((result as Record<string, unknown>).path ?? "").trim();
+  const data = result as Record<string, unknown>;
+  if (name === "view_images") {
+    const images = Array.isArray(data.images) ? data.images : [];
+    return [...new Set(images.flatMap((image) => {
+      if (!image || typeof image !== "object") return [];
+      const path = String((image as Record<string, unknown>).path ?? "").trim();
+      return /\.(png|jpe?g|webp|gif|bmp)$/i.test(path) ? [path] : [];
+    }))].slice(0, 8);
+  }
+  const capture = data.capture && typeof data.capture === "object" ? data.capture as Record<string, unknown> : {};
+  const path = String(name === "browser_capture_sequence" ? capture.contact_sheet ?? "" : data.path ?? "").trim();
   if (!path || !/\.png$/i.test(path)) return [];
   return [path];
 }

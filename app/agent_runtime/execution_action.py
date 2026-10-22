@@ -30,6 +30,7 @@ _EXEC_ARGUMENT_NAMES = frozenset(
         "rows",
         "cols",
         "wait",
+        "verification",
         "sandbox_permissions",
         "additional_permissions",
         "justification",
@@ -74,6 +75,12 @@ def _validate_exec_argument_shape(arguments: dict[str, object]) -> None:
     for name in ("pty", "wait"):
         if name in arguments and not isinstance(arguments[name], bool):
             raise ValueError(f"{name} must be a boolean")
+    if "verification" in arguments:
+        from .verification import VERIFICATION_SCHEMA
+        from .tools import validate_tool_arguments
+        validate_tool_arguments(VERIFICATION_SCHEMA, arguments["verification"])
+        if arguments.get("wait", True) is not True or arguments.get("pty", False):
+            raise ValueError("exec.verification requires wait=true and pty=false")
     for name in ("rows", "cols"):
         if name in arguments and (
             isinstance(arguments[name], bool) or not isinstance(arguments[name], int)
@@ -225,6 +232,7 @@ class ExecActionIdentity:
     additional_permissions: AdditionalPermissionProfile | None
     justification: str
     prefix_rule: tuple[str, ...]
+    verification_identity: str = ""
 
     @property
     def kind(self) -> str:
@@ -274,6 +282,7 @@ class ExecActionIdentity:
             additional_permissions=additional_permissions,
             justification=justification,
             prefix_rule=prefix_rule,
+            verification_identity=_private_identity(arguments["verification"]) if "verification" in arguments else "",
         )
 
     def approval_cache_key(self, *, environment_id: str = "local") -> ExecApprovalCacheKey:
@@ -309,6 +318,7 @@ class ExecActionIdentity:
             ),
             "justification": self.justification,
             "prefix_rule": list(self.prefix_rule),
+            **({"verification_identity": self.verification_identity} if self.verification_identity else {}),
         }
 
     def instance_payload(self) -> dict[str, Any]:

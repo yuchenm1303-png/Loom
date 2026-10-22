@@ -90,16 +90,23 @@ def record_check_tool(store):
                     timestamps.append(datetime.fromisoformat(fact["recorded_at"].replace("Z", "+00:00")))
                 except ValueError:
                     pass
-        data = {**arguments, "evidence_facts": facts,
+        scope = {}
+        if arguments.get("subject_paths"):
+            from .verification import subject_snapshot
+            scope = {"subject_snapshot": subject_snapshot(context, arguments["subject_paths"]),
+                     "assessment_source": "assistant_assessment", "snapshot_timing": "assessment_recorded"}
+        data = {**arguments, **scope, "evidence_facts": facts,
                 "elapsed_seconds": (max(timestamps) - min(timestamps)).total_seconds() if len(timestamps) >= 2 else None}
         context.emit(Event.CHECK_RECORDED, data)
         return ToolResult(True, "Check recorded; verdict is the assistant's assessment, references are runtime verified.", data)
-    return AgentTool("record_check", "Record a test or verification assessment backed by executed calls or workspace files. Runtime calculates elapsed time between referenced result events; it does not verify your verdict.",
+    return AgentTool("record_check", "Record a visual or functional assessment backed by executed calls or workspace files. Include subject_paths for changed source files/directories so later edits mark the assessment stale. Observe current behavior before recording; the snapshot is taken now, not retroactively at evidence execution. Runtime verifies references, not your verdict.",
         {"type": "object", "additionalProperties": False, "properties": {
             "case_id": {"type": "string", "minLength": 1, "maxLength": 240},
             "expectation": {"type": "string", "minLength": 1, "maxLength": 4000},
             "observed": {"type": "string", "minLength": 1, "maxLength": 4000},
             "verdict": {"enum": ["passed", "failed", "blocked", "not_covered"]},
+            "subject_paths": {"type": "array", "minItems": 1, "maxItems": 32,
+                              "items": {"type": "string", "minLength": 1}},
             "evidence_refs": EVIDENCE_REFS_SCHEMA},
          "required": ["case_id", "expectation", "observed", "verdict", "evidence_refs"]},
         record, effect=ToolEffect.READ_ONLY, supports_parallel_tool_calls=False)
@@ -112,6 +119,9 @@ def read_check_ledger_tool(store):
             entries = [entry for entry in entries if entry["case_id"] == arguments["case_id"]]
         offset, limit = arguments.get("offset", 0), arguments.get("limit", 50)
         selected = entries[offset:offset + limit]
+        from .verification import check_freshness
+        snapshots = {}
+        selected = [{**entry, "freshness": check_freshness(entry, context, snapshots=snapshots)} for entry in selected]
         data = {"entries": selected, "total": len(entries), "next_offset": offset + len(selected)}
         return ToolResult(True, json.dumps(data, ensure_ascii=False), data)
     return AgentTool("read_check_ledger", "Read durable verification records for this session, including runtime evidence facts and assistant assessments. To export a workspace deliverable, pass the returned entries to append_workspace_jsonl.",

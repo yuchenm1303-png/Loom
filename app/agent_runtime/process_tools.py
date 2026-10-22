@@ -241,6 +241,8 @@ def _exec_schema(*, include_wait: bool = True) -> dict[str, Any]:
     }
     if include_wait:
         properties["wait"] = {"type": "boolean"}
+        from .verification import VERIFICATION_SCHEMA
+        properties["verification"] = VERIFICATION_SCHEMA
     return {
         "type": "object",
         "properties": properties,
@@ -250,6 +252,26 @@ def _exec_schema(*, include_wait: bool = True) -> dict[str, Any]:
 
 
 def exec_tool() -> AgentTool:
+    def execute(context, arguments):
+        spec = arguments.get("verification")
+        if spec is None:
+            return _exec_handler(context, arguments)
+        from .tools import validate_tool_arguments
+        from .verification import VERIFICATION_SCHEMA, subject_snapshot, assess_command
+        validate_tool_arguments(VERIFICATION_SCHEMA, spec)
+        if arguments.get("wait", True) is not True or arguments.get("pty", False):
+            raise ValueError("exec.verification requires wait=true and pty=false; start the app separately")
+        before = subject_snapshot(context, spec["subject_paths"])
+        result = _exec_handler(context, arguments)
+        try:
+            after = subject_snapshot(context, spec["subject_paths"])
+        except (ValueError, OSError):
+            after = None
+        assessment = assess_command(spec, before, after, result)
+        return ToolResult(result.ok, result.content + "\nVerification: " + assessment["verdict"]
+                          + " (declared exit-code check only).",
+                          {**result.data, "verification": assessment})
+
     return AgentTool(
         name="exec",
         description=(
@@ -259,10 +281,13 @@ def exec_tool() -> AgentTool:
             "overrides are explicit and secret-like names are rejected. On Windows prefer direct "
             "argv for external programs (for example curl.exe); PowerShell curl can be an "
             "Invoke-WebRequest alias. Do not wrap external argv in cmd /c or powershell -Command "
-            "unless shell features are needed. Pass scripts as files for complex shell logic."
+            "unless shell features are needed. Pass scripts as files for complex shell logic. "
+            "For repeatable checks, set verification with case_id, expectation, subject_paths and optional "
+            "expected_exit_code. Loom records the actual exit status against the tested source bytes and "
+            "marks results stale after source changes. Requires wait=true, pty=false."
         ),
         input_schema=_exec_schema(include_wait=True),
-        handler=lambda context, arguments: _exec_handler(context, arguments),
+        handler=execute,
         effect=ToolEffect.SENSITIVE,
         supports_parallel_tool_calls=True,
     )
