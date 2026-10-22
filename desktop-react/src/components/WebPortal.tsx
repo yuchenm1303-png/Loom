@@ -4,6 +4,7 @@ import "./portal-host-card.css";
 import "./portal-content.css";
 import "./portal-liquid-cursor.css";
 import "./portal-editorial.css";
+import "./portal-auth-dialog.css";
 import type { CSSProperties, FormEvent } from "react";
 import { useEffect, useRef, useState } from "react";
 import { Laptop, Download, UserRound, LogOut, Check, ArrowRight, Github, Mail, KeyRound, ShieldCheck, Eye, EyeOff, FolderOpen, MessagesSquare } from "./icons";
@@ -112,6 +113,7 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
   const editorial = pageMode === "editorial";
   usePortalStyles(!editorial);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const authDialogRef = useRef<HTMLElement>(null);
   const [lightEditorial, setLightEditorial] = useState(() => {
     try { return window.localStorage.getItem("loom.editorial.theme") === "light"; }
     catch { return false; }
@@ -128,15 +130,45 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
     return () => window.removeEventListener("popstate", sync);
   }, []);
   useEffect(() => {
-    if (!drawerOpen) return;
-    const dismiss = (event: KeyboardEvent) => {
+    if (!editorial || !drawerOpen) return;
+    const dialog = authDialogRef.current;
+    if (!dialog) return;
+    const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const selector = 'a[href], button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])';
+    const focusables = () => Array.from(dialog.querySelectorAll<HTMLElement>(selector))
+      .filter((element) => element.getClientRects().length > 0 && !element.closest("[inert], [aria-hidden='true']"));
+    const focusFrame = window.requestAnimationFrame(() => {
+      (dialog.querySelector<HTMLInputElement>('input[name="email"]') ?? focusables()[0] ?? dialog).focus({ preventScroll: true });
+    });
+    const handleKeys = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
+        event.preventDefault();
         dismissDrawer();
+      } else if (event.key === "Tab") {
+        const elements = focusables();
+        if (!elements.length) {
+          event.preventDefault();
+          dialog.focus();
+          return;
+        }
+        const first = elements[0];
+        const last = elements[elements.length - 1];
+        if (event.shiftKey && (document.activeElement === first || !dialog.contains(document.activeElement))) {
+          event.preventDefault();
+          last.focus();
+        } else if (!event.shiftKey && (document.activeElement === last || !dialog.contains(document.activeElement))) {
+          event.preventDefault();
+          first.focus();
+        }
       }
     };
-    window.addEventListener("keydown", dismiss);
-    return () => window.removeEventListener("keydown", dismiss);
-  }, [drawerOpen]);
+    document.addEventListener("keydown", handleKeys);
+    return () => {
+      window.cancelAnimationFrame(focusFrame);
+      document.removeEventListener("keydown", handleKeys);
+      if (opener?.isConnected) opener.focus({ preventScroll: true });
+    };
+  }, [editorial, drawerOpen]);
   function switchPage(next: "editorial" | "classic") {
     if (pageMode === next) return;
     window.history.pushState(null, "", next === "classic" ? "/classic" : "/");
@@ -494,16 +526,38 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
         </div>
       ) : null}
       <main
+        ref={authDialogRef}
+        tabIndex={editorial && drawerOpen ? -1 : undefined}
         className={editorial ? `release-shell loom-portal-shell${drawerOpen ? " editorial-panel-backdrop" : ""}` : "release-shell loom-portal-shell"}
         inert={editorial && !drawerOpen}
         aria-hidden={editorial && !drawerOpen ? true : undefined}
         role={editorial && drawerOpen ? "dialog" : undefined}
         aria-modal={editorial && drawerOpen ? true : undefined}
-        aria-label={editorial && drawerOpen ? (zh ? "账户与设备" : "Account and device") : undefined}
+        aria-labelledby={editorial && drawerOpen ? "editorial-dialog-title" : undefined}
         onClick={editorial ? (event) => { if (event.target === event.currentTarget) dismissDrawer(); } : undefined}
       >
         <section className={editorial ? "loom-module-grid editorial-panel" : "loom-module-grid"}>
-          {editorial ? <header className="editorial-panel-top"><strong>{authenticated ? (zh ? "账户与设备" : "Account & device") : (zh ? "登录 Loom" : "Sign in to Loom")}</strong><button type="button" className="editorial-panel-close" aria-label={zh ? "关闭" : "Close"} onClick={dismissDrawer}>×</button></header> : null}
+          {editorial ? <header className="editorial-panel-top">
+            <div className="editorial-modal-brand" aria-label="Smirel Loom">
+              <img src={SMIREL_LOGO} alt="Smirel" />
+              <span className="editorial-modal-brand-divider" aria-hidden="true" />
+              <span>Loom</span>
+            </div>
+            <button type="button" className="editorial-panel-close" aria-label={zh ? "关闭" : "Close"} onClick={dismissDrawer}>×</button>
+            <h2 id="editorial-dialog-title">
+              {authenticated ? (zh ? "你的 Loom 工作区" : "Your Loom workspace")
+                : authStep === "verify" ? (zh ? "验证邮箱" : "Verify email")
+                : authStep === "forgot" ? (zh ? "找回密码" : "Reset password")
+                : authStep === "reset" ? (zh ? "设置新密码" : "Set new password")
+                : authMode === "register" ? (zh ? "创建账户" : "Create account")
+                : (zh ? "登录 Loom" : "Sign in to Loom")}
+            </h2>
+            <p>{authenticated
+              ? (zh ? "连接本机 Host，继续你的工作。" : "Connect your Host to continue working.")
+              : authStep === "form"
+                ? (zh ? "继续进入你的本地工作区。" : "Continue to your local workspace.")
+                : (zh ? "安全地继续你的账户操作。" : "Continue securely with your account.")}</p>
+          </header> : null}
           <article className="loom-stage-copy loom-intro-module cards fade">
             <header className="loom-card-brand-row">
               <a className="brand loom-portal-brand" href="https://smirel.com/" target="_blank" rel="noopener noreferrer" aria-label={zh ? "访问 Smirel 个人主页（在新标签页打开）" : "Visit Smirel homepage (opens in a new tab)"} data-liquid-snap="true" data-magnetic-hover="true">
