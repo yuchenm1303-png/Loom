@@ -325,6 +325,21 @@ export const Composer = memo(function Composer(props: ComposerProps) {
   // makes unsent input vanish during a normal running-state transition.
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [sendErrors, setSendErrors] = useState<Record<string, string>>({});
+  // A prompt submitted on the editorial landing page is a draft, not an
+  // automatic Agent command. Restore it here only after the actual workspace
+  // is mounted and the user can review it before sending.
+  useEffect(() => {
+    let pending = "";
+    try {
+      pending = window.sessionStorage.getItem("loom.portal.pendingPrompt") || "";
+      if (pending) window.sessionStorage.removeItem("loom.portal.pendingPrompt");
+    } catch { /* Browser storage may be disabled. */ }
+    if (!pending) return;
+    const key = props.threadId || UNBOUND_DRAFT_KEY;
+    setDrafts((current) => current[key] ? current : { ...current, [key]: pending });
+    const frame = requestAnimationFrame(() => document.querySelector<HTMLTextAreaElement>(".composer textarea")?.focus());
+    return () => cancelAnimationFrame(frame);
+  }, []);
   const draftKey = props.threadId || UNBOUND_DRAFT_KEY;
   const draftValue = drafts[draftKey] ?? "";
 
