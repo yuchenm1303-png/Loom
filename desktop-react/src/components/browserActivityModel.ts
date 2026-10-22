@@ -26,7 +26,7 @@ export function browserPageUrl(value: unknown): string {
   } catch { return ""; }
 }
 
-/** Fold observations into one card per runtime browser, never one card per action. */
+/** Only confirmed sidebar browser sessions produce cards; automation elsewhere stays in the tool log. */
 export function collectBrowserActivities(items: TranscriptItem[], active: boolean): BrowserActivity[] {
   const sessions = new Map<string, BrowserActivity>();
   for (const item of items) {
@@ -53,12 +53,12 @@ export function collectBrowserActivities(items: TranscriptItem[], active: boolea
       url: url || previous?.url || browserPageUrl(args.url),
       title: text(result.title) || (changedPage ? "" : previous?.title || ""),
       tabId: observedTabId || previous?.tabId || "",
-      connection: text(result.browser_connection) || previous?.connection || text(args.connect),
+      connection: text(result.browser_connection) || previous?.connection || "",
       screenshot: /\.png$/i.test(screenshot) ? screenshot : changedPage ? "" : previous?.screenshot || "",
       status: closed ? "closed" : failed ? "failed" : active && waiting ? "waiting" : active && busy ? "working" : "ready",
     });
   }
-  return [...sessions.values()].filter(session => session.url);
+  return [...sessions.values()].filter(session => session.url && session.connection === "embedded");
 }
 
 export function matchingBrowserTab(target: BrowserActivity, tabs: { id: string; url: string }[]): string | null {

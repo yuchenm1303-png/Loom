@@ -30,7 +30,15 @@ test("status follows the latest call and active turns only", () => {
 });
 test("multiple browsers stay separate; discovery and failed opens do not become cards", () => {
   assert.equal(collect([tool("browser_backends", {}, {}), tool("browser_open", { url: "https://example.com/" }, {}, "failed")], true).length, 0);
-  assert.equal(collect([opened, tool("browser_open", {}, { browser_id: "b2", url: "https://example.org/" })], true).length, 2);
+  assert.equal(collect([opened, tool("browser_open", {}, { browser_id: "b2", browser_connection: "embedded", url: "https://example.org/" })], true).length, 2);
+});
+test("external automation and unconfirmed connections never produce sidebar browser cards", () => {
+  for (const connection of ["isolated", "external", "chrome", "edge", ""]) {
+    const external = tool("browser_open", { connect: "embedded" }, { browser_id: "outside", browser_connection: connection, url: "https://example.org/" });
+    assert.deepEqual(collect([external], true), []);
+    assert.deepEqual(collect([opened, external], false).map(page => page.id), ["b1"]);
+  }
+  assert.deepEqual(collect([opened, tool("browser_state", { browser_id: "b1" }, { browser_connection: "external" })], true), []);
 });
 test("only embedded identity can select a live tab; a closed identity cannot match by URL", () => {
   const target = collect([opened], false)[0];

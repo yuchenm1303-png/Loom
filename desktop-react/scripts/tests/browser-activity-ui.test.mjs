@@ -20,8 +20,8 @@ test("image cards render direct PNGs and immediately load their page in the side
         import { BrowserActivityCards } from './src/components/BrowserActivityCards';
         import { BrowserWorkspace } from './src/components/BrowserWorkspace';
         import { I18nProvider } from './src/i18n';
-        import { RightToolDock } from './src/components/RightToolDock';
-        window.commands = []; window.tabs = [];
+        import { RightToolDock, DEFAULT_TOOL_ORDER } from './src/components/RightToolDock';
+        window.commands = []; window.tabs = []; window.expectedDockCount = DEFAULT_TOOL_ORDER.length;
         window.loom = {
           readLocalImage: async () => { throw new Error('local image unavailable'); },
           embeddedBrowser: async command => {
@@ -43,8 +43,8 @@ test("image cards render direct PNGs and immediately load their page in the side
             return () => window.removeEventListener('loom:browser-activity-open', open);
           }, []);
           const items = [{id:'open', type:'tool_call',toolName:'browser_open',status:'completed',result:{
-            browser_id:'external',browser_connection:'isolated',url:location.origin + (broken ? '/missing.png' : '/artifacts/check.png'), title:'Preview'
-          }}];
+            browser_id:'sidebar',browser_connection:'embedded',url:location.origin + (broken ? '/missing.png' : '/artifacts/check.png'), title:'Preview'
+          }}, {id:'outside',type:'tool_call',toolName:'browser_open',status:'completed',result:{browser_id:'external',browser_connection:'isolated',url:'https://outside.example/',title:'External automation'}}];
           return <><RightToolDock {...dockProps}/><BrowserActivityCards items={items} active={false} workspace="fixture" />
             {target && <BrowserWorkspace target={target} onClose={() => setTarget(null)} />}</>;
         }
@@ -75,6 +75,7 @@ test("image cards render direct PNGs and immediately load their page in the side
               throw new Error(label);
             };
             await waitFor(() => document.querySelector('.browser-activity-visual img')?.naturalWidth > 0, 'Direct PNG preview failed');
+            if(document.querySelectorAll('.browser-activity-card').length !== 1) throw new Error('External automation created a browser card');
             document.querySelector('.browser-activity-card').click();
             await waitFor(() => window.commands.some(c => c.action === 'new-tab'), 'Card did not open page');
             if(window.commands.filter(c => c.action === 'new-tab').length !== 1) throw new Error('Duplicate page created');
@@ -83,7 +84,7 @@ test("image cards render direct PNGs and immediately load their page in the side
             document.querySelector('.browser-activity-card').click();
             await waitFor(() => window.commands.some(c => c.action === 'select-tab'), 'Existing copy not reused');
             if(window.commands.filter(c => c.action === 'new-tab').length !== 1) throw new Error('Repeated click created duplicate');
-            if(document.querySelectorAll('[data-tool-id]').length !== 11) throw new Error('Detailed dock entries missing');
+            if(document.querySelectorAll('[data-tool-id]').length !== window.expectedDockCount) throw new Error('Detailed dock entries missing');
             document.querySelector('[data-tool-id="background"]').click();
             await waitFor(() => window.selectedActivity === 'background', 'Activity action not connected');
             document.querySelector('[aria-label="Page tools"]').click();
