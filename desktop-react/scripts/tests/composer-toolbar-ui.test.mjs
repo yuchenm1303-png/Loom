@@ -10,7 +10,7 @@ import { buildSync } from "esbuild";
 
 const require = createRequire(import.meta.url);
 const project = fileURLToPath(new URL("../..", import.meta.url));
-test("compact composer preserves drafts and connects workspace, reasoning and preview tools", () => {
+test("compact composer preserves drafts and connects workspace, tool selection and preview tools", () => {
   const directory = mkdtempSync(join(tmpdir(), "loom-composer-tools-"));
   try {
     buildSync({ stdin: { resolveDir: project, loader: "tsx", contents: `
@@ -60,9 +60,7 @@ test("compact composer preserves drafts and connects workspace, reasoning and pr
             await waitFor(()=>button('Preview message'),'Composer did not mount');
             button('Open workspace files').click();if(window.openedFiles!==1)throw Error('Workspace action disconnected');
             button('Attach files').click();await waitFor(()=>document.body.textContent.includes('notes.txt'),'Attachment missing');
-            button('Reasoning effort').click();await waitFor(()=>document.querySelector('[role="radio"]'),'Reasoning panel missing');
-            [...document.querySelectorAll('[role="radio"]')].find(b=>b.textContent.includes('High')).click();
-            await waitFor(()=>window.reasoningChanges[0]?.[1]==='high','Reasoning change not applied');
+            if(document.querySelector('.reasoning-chip'))throw Error('Standalone reasoning control remains');
             button('Preview message').click();await waitFor(()=>document.querySelector('.composer-draft-preview'),'Preview missing');
             const preview=document.querySelector('.composer-draft-preview');
             if(!preview.textContent.includes('Check <unsafe> text')||!preview.textContent.includes('notes.txt'))throw Error('Preview lost draft context');
@@ -108,13 +106,7 @@ test("compact composer preserves drafts and connects workspace, reasoning and pr
           for(const width of [680,450,360]){
             win.setContentSize(width,800);
             await win.webContents.executeJavaScript('new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))');
-            await win.webContents.executeJavaScript(\`(async()=>{
-              window.checkToolbar();document.querySelector('.reasoning-chip').click();
-              await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
-              const box=document.querySelector('.composer-reasoning-popover').getBoundingClientRect();
-              if(box.left<0||box.right>innerWidth)throw Error('Reasoning popover outside narrow window');
-              document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape'}));
-            })()\`);
+            await win.webContents.executeJavaScript('window.checkToolbar()');
           }
           await win.webContents.executeJavaScript(\`(async()=>{
             document.querySelector('[aria-label="Send message"]').click();

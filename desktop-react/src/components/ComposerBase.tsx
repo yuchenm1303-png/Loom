@@ -23,7 +23,6 @@ import { recordSendOrigin } from "../sendFlight";
 import { Crossfade } from "./Crossfade";
 import { ModelPanel } from "./ModelPanel";
 import { ModelUsageIndicator } from "./ModelUsageIndicator";
-import { ReasoningThread } from "./ReasoningThread";
 import { ComposerDraftTools } from "./ComposerDraftTools";
 import { ComposerToolSelector } from "./ComposerToolSelector";
 import { ComposerAttachmentStrip } from "./ComposerAttachmentStrip";
@@ -82,7 +81,7 @@ interface ComposerProps {
   onInterrupt(): Promise<void> | void;
 }
 
-type OpenPanel = "permission" | "model" | "reasoning" | null;
+type OpenPanel = "permission" | "model" | null;
 
 type PermissionPresentation = {
   label: string;
@@ -427,8 +426,6 @@ export function Composer({
 
   const currentPermission = permissionPresentation(permissionMode || "approval", zh);
   const currentModel = modelSnapshot?.current?.model || model || "Model";
-  const reasoning = modelSnapshot?.current?.reasoning ?? null;
-  const reasoningLabel = reasoning?.options.find(option => option.value === reasoning.value)?.label || (zh ? "自动" : "Auto");
   const workspaceName = workspace?.replace(/[\\/]+$/, "").split(/[\\/]/).pop();
   const hasDraftContent = Boolean(value.trim() || quote || attachments.length);
   const canSend = Boolean(
@@ -582,19 +579,6 @@ export function Composer({
                   </div>
                 </div>
               ) : null}
-            </div>
-
-            <div className="composer-control-anchor composer-reasoning-anchor">
-              <button type="button" className={`composer-chip composer-refined-control reasoning-chip ${openPanel === "reasoning" ? "is-open" : ""}`}
-                title={zh ? "推理强度" : "Reasoning effort"} aria-label={zh ? "推理强度" : "Reasoning effort"}
-                aria-haspopup="dialog" aria-expanded={openPanel === "reasoning"} onClick={() => togglePanel("reasoning")}>
-                <Sparkles size={14} /><span>{reasoningLabel}</span>
-              </button>
-              {renderedPanel === "reasoning" ? <div className="composer-popover composer-reasoning-popover" data-motion-phase={panelPresence.phase}
-                inert={!openPanel} role="dialog" aria-label={zh ? "推理强度" : "Reasoning effort"}>
-                <ReasoningThread reasoning={reasoning} busy={modelBusy || !onReasoningChange || !accountAuthenticated} running={running}
-                  onChange={async (kind, nextValue) => { await onReasoningChange?.(kind, nextValue); }} />
-              </div> : null}
             </div>
 
             <div className="composer-control-anchor model-control-anchor">

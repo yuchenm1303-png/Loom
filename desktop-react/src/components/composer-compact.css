@@ -41,8 +41,6 @@
 .composer-draft-preview-body p { white-space: pre-wrap; margin: 10px 0; line-height: 1.6; user-select: text; }
 .composer-draft-preview-body ul { padding-left: 20px; }
 .composer-draft-preview small { display: block; margin-top: 10px; color: var(--loom-workspace-muted); line-height: 1.5; }
-:root .composer-wrap.composer-refined .composer-reasoning-anchor { position: static; }
-:root .composer-wrap.composer-refined .composer-reasoning-popover { left: 0; width: min(360px, calc(100cqw - 28px)); box-sizing: border-box; padding: 8px; }
 :root .composer-wrap.composer-refined .composer-hint { font-size: 10.5px !important; margin-top: 6px; }
 @container (max-width: 680px) {
   :root .composer-wrap.composer-refined .composer-workspace-button > span,
@@ -53,6 +51,5 @@
   :root .composer-wrap.composer-refined .composer-model-label { max-width: 85px; }
   :root .composer-wrap.composer-refined .composer-left { gap: 1px; }
   :root .composer-wrap.composer-refined .composer-toolbar-divider { display: none; }
-  :root .composer-wrap.composer-refined .reasoning-chip > span { display: none; }
   :root .composer-wrap.composer-refined .composer-toolbar { gap: 3px; }
 }
