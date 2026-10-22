@@ -298,6 +298,59 @@ function parseBackdropBlur(style: CSSStyleDeclaration) {
   return match ? Math.min(24, cssNumber(match[1])) : 0;
 }
 
+// CSS pseudo-elements do not appear in childNodes, but controls such as the
+// landing-page theme switch draw their dark thumb entirely with ::after.
+// Recreate that painted thumb in the lens texture instead of sampling just
+// the (white) switch track.
+function drawSwitchPseudo(
+  ctx: CanvasRenderingContext2D,
+  el: HTMLElement,
+  rect: DOMRect,
+  roiLeft: number,
+  roiTop: number,
+  opacity: number,
+) {
+  if (el.getAttribute("role") !== "switch") return;
+  const pseudo = getComputedStyle(el, "::after");
+  if (pseudo.content === "none" || pseudo.content === "normal" ||
+      pseudo.display === "none" || pseudo.visibility === "hidden" ||
+      !visibleColor(pseudo.backgroundColor)) return;
+  const width = cssNumber(pseudo.width);
+  const height = cssNumber(pseudo.height);
+  if (width <= 0 || height <= 0) return;
+
+  const hostStyle = getComputedStyle(el);
+  const left = pseudo.left !== "auto"
+    ? cssNumber(hostStyle.borderLeftWidth) + cssNumber(pseudo.left)
+    : rect.width - cssNumber(hostStyle.borderRightWidth) - cssNumber(pseudo.right) - width;
+  const top = pseudo.top !== "auto"
+    ? cssNumber(hostStyle.borderTopWidth) + cssNumber(pseudo.top)
+    : rect.height - cssNumber(hostStyle.borderBottomWidth) - cssNumber(pseudo.bottom) - height;
+
+  // getComputedStyle resolves translateX() to a matrix; the theme switch
+  // animates its thumb using the matrix translation, not changing 'left'.
+  let dx = 0;
+  let dy = 0;
+  if (pseudo.transform && pseudo.transform !== "none") {
+    try {
+      const matrix = new DOMMatrixReadOnly(pseudo.transform);
+      dx = matrix.m41;
+      dy = matrix.m42;
+    } catch {
+      // Unsupported transform: paint at the base position.
+    }
+  }
+
+  ctx.save();
+  ctx.globalAlpha = opacity * Math.max(0, Math.min(1, cssNumber(pseudo.opacity, 1)));
+  ctx.fillStyle = pseudo.backgroundColor;
+  const pseudoRect = new DOMRect(0, 0, width, height);
+  roundedRect(ctx, rect.left - roiLeft + left + dx, rect.top - roiTop + top + dy,
+    width, height, radiusFromStyle(pseudo, pseudoRect));
+  ctx.fill();
+  ctx.restore();
+}
+
 function rasterizePortal(
   root: HTMLElement,
   canvas: HTMLCanvasElement,
@@ -422,6 +475,7 @@ function rasterizePortal(
         }
       }
     }
+    drawSwitchPseudo(ctx, el, rect, roiLeft, roiTop, opacity);
   };
 
   renderElement(content, 1);
@@ -563,7 +617,7 @@ export function PortalLiquidCursor() {
   useEffect(() => {
     const canvas = canvasRef.current;
     const dot = dotRef.current;
-    const root = canvas?.closest(".loom-portal-page") as HTMLElement | null;
+    const root = (canvas?.closest(".loom-portal-page") ?? document.querySelector(".loom-portal-page")) as HTMLElement | null;
     if (!canvas || !dot || !root) return;
 
     const finePointer = window.matchMedia("(pointer: fine)").matches;
@@ -1104,7 +1158,7 @@ export function PortalLiquidCursor() {
       snapDirty = true;
       wake();
     });
-    observer.observe(root, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ["type", "value", "placeholder"] });
+    observer.observe(root, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ["type", "value", "placeholder", "aria-checked"] });
     const resizeObserver = new ResizeObserver(() => { rasterDirty = true; snapDirty = true; wake(); });
     resizeObserver.observe(root);
 
