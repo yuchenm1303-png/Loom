@@ -425,7 +425,7 @@
   <div class="loom-portal-page" id="portal">
   <div class="page" id="site">
     <header class="site-head">
-      <h1 class="wordmark"><a href="#top" aria-label="Loom home"><img class="smirel-word" src="assets/smirel-logo.png" alt="Smirel"><img class="mark-icon" src="assets/loom-icon.png" alt="">Loom</a></h1>
+      <h1 class="wordmark"><a href="#top" aria-label="Loom home" data-liquid-snap="true" data-magnetic-hover="true"><img class="smirel-word" src="assets/smirel-logo.png" alt="Smirel"><img class="mark-icon" src="assets/loom-icon.png" alt="">Loom</a></h1>
       <div class="head-right">
         <span>Local · 127.0.0.1</span>
 <button class="auth-button" type="button" id="authButton">Sign in</button>
@@ -436,7 +436,7 @@
     <main id="top">
       <section class="hero" aria-labelledby="intro">
         <h2 id="intro" class="hero-copy">
-          A local agent runtime for real work. It reads the codebase, edits files, runs commands and browses the web — on your machine, with your permission. <a href="https://app.smirel.com/" target="_blank" rel="noopener">Open Loom</a>
+          A local agent runtime for real work. It reads the codebase, edits files, runs commands and browses the web — on your machine, with your permission. <a href="https://app.smirel.com/" target="_blank" rel="noopener" data-liquid-snap="true" data-magnetic-hover="true">Open Loom</a>
         </h2>
 
         <dl class="ledger" aria-label="At a glance">
@@ -452,19 +452,19 @@
           <span>04</span>
         </div>
         <div class="starters">
-          <button class="starter" type="button" data-prompt="Inspect this project, map the architecture, and tell me what I should understand first.">
+          <button class="starter" type="button" data-liquid-snap="true" data-prompt="Inspect this project, map the architecture, and tell me what I should understand first.">
             <span class="starter-title">Inspect this project</span>
             <span class="starter-note">Map the architecture and tell me what matters first.</span>
           </button>
-          <button class="starter" type="button" data-prompt="Help me implement a feature in this project. Start by identifying the smallest clean approach.">
+          <button class="starter" type="button" data-liquid-snap="true" data-prompt="Help me implement a feature in this project. Start by identifying the smallest clean approach.">
             <span class="starter-title">Implement a feature</span>
             <span class="starter-note">Turn a product idea into a focused code change.</span>
           </button>
-          <button class="starter" type="button" data-prompt="Investigate the current project for the problem I am seeing and trace it to the root cause before making changes.">
+          <button class="starter" type="button" data-liquid-snap="true" data-prompt="Investigate the current project for the problem I am seeing and trace it to the root cause before making changes.">
             <span class="starter-title">Trace a problem</span>
             <span class="starter-note">Follow the failure to its root cause before changing code.</span>
           </button>
-          <button class="starter" type="button" data-prompt="Use the available tools and workspace to complete a useful multi-step task for this project.">
+          <button class="starter" type="button" data-liquid-snap="true" data-prompt="Use the available tools and workspace to complete a useful multi-step task for this project.">
             <span class="starter-title">Run a workflow</span>
             <span class="starter-note">Use tools and the workspace to complete a multi-step task.</span>
           </button>
@@ -516,8 +516,8 @@
     <div class="ask">
       <form id="askForm" autocomplete="off">
         <div class="ask-row">
-          <input id="askInput" type="text" placeholder="Ask Loom to inspect, edit, run, browse…" aria-label="Ask Loom">
-          <button class="ask-send" type="submit">Send</button>
+          <input id="askInput" type="text" placeholder="Ask Loom to inspect, edit, run, browse…" aria-label="Ask Loom" data-liquid-snap="true" data-magnetic-hover="true">
+          <button class="ask-send" type="submit" data-liquid-snap="true" data-magnetic-hover="true">Send</button>
         </div>
         <div class="ask-foot">
           <span>Windows · v0.1.115 · Full access</span>
@@ -637,7 +637,6 @@
     loadAccount();
 
       Array.prototype.forEach.call(document.querySelectorAll("a,button"), function (el) {
-        if (el.classList.contains("starter")) return;
         el.setAttribute("data-magnetic-hover", "true");
       });
     })();
