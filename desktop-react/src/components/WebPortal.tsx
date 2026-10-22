@@ -114,6 +114,7 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
   usePortalStyles(!editorial);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const authDialogRef = useRef<HTMLElement>(null);
+  const modalOpenerRef = useRef<HTMLElement | null>(null);
   const [lightEditorial, setLightEditorial] = useState(() => {
     try { return window.localStorage.getItem("loom.editorial.theme") === "light"; }
     catch { return false; }
@@ -133,7 +134,9 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
     if (!editorial || !drawerOpen) return;
     const dialog = authDialogRef.current;
     if (!dialog) return;
-    const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    // React marks the editorial shell inert when the dialog opens. Capture
+    // the actual opener at click time, before the browser drops its focus.
+    const opener = modalOpenerRef.current;
     const selector = 'a[href], button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])';
     const focusables = () => Array.from(dialog.querySelectorAll<HTMLElement>(selector))
       .filter((element) => element.getClientRects().length > 0 && !element.closest("[inert], [aria-hidden='true']"));
@@ -167,6 +170,7 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
       window.cancelAnimationFrame(focusFrame);
       document.removeEventListener("keydown", handleKeys);
       if (opener?.isConnected) opener.focus({ preventScroll: true });
+      modalOpenerRef.current = null;
     };
   }, [editorial, drawerOpen]);
   function switchPage(next: "editorial" | "classic") {
@@ -175,6 +179,10 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
     setPageMode(next);
     setDrawerOpen(false);
     setPromptError("");
+  }
+  function openEditorialModal() {
+    if (document.activeElement instanceof HTMLElement) modalOpenerRef.current = document.activeElement;
+    setDrawerOpen(true);
   }
   function dismissDrawer() {
     setDrawerOpen(false);
@@ -200,7 +208,7 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
     if (authenticated && hostState === "online") {
       onEnter();
     } else {
-      setDrawerOpen(true);
+      openEditorialModal();
     }
   }
   useEffect(() => {
@@ -454,11 +462,11 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
           : (zh ? "重新连接 Loom Host" : "Reconnect Loom Host");
 
   return (
-    <div className={["loom-portal-page", "is-modular", editorial ? "loom-editorial" : "loom-classic", editorial && lightEditorial ? "is-light" : ""].filter(Boolean).join(" ")}>
+    <div className={["loom-portal-page", "is-modular", editorial ? "loom-editorial" : "loom-classic", editorial && lightEditorial ? "is-light" : "", editorial && drawerOpen ? "is-modal-open" : ""].filter(Boolean).join(" ")}>
       {!editorial ? <PortalWallpaper /> : null}
       <PortalLiquidCursor />
       {editorial ? (
-        <div className="editorial-shell">
+        <div className="editorial-shell" inert={drawerOpen}>
           <header className="editorial-header">
             <a className="editorial-brand" href="https://smirel.com/" target="_blank" rel="noopener noreferrer" aria-label="Smirel" data-liquid-snap="true" data-magnetic-hover="true">
               <img src={SMIREL_LOGO} alt="Smirel" /><span className="editorial-brand-divider" /><span className="editorial-brand-name">Loom</span>
@@ -466,7 +474,7 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
             <nav className="editorial-meta" aria-label={zh ? "主页操作" : "Home actions"}>
               <span className="editorial-runtime" role="status">{authenticated ? (hostState === "online" ? (zh ? "Host 已连接" : "Host connected") : (zh ? "Host 未连接" : "Host disconnected")) : (zh ? "本地优先 · 私有" : "Local-first · Private")}</span>
               <a href="/classic" onClick={(event) => { event.preventDefault(); switchPage("classic"); }} data-liquid-snap="true" data-magnetic-hover="true">{zh ? "经典主页" : "Classic home"}</a>
-              <button type="button" onClick={() => setDrawerOpen(true)} data-liquid-snap="true" data-magnetic-hover="true">{authenticated ? (account.account.user?.display_name?.trim() || (zh ? "我的账户" : "My account")) : (zh ? "登录 / 注册" : "Sign in")}</button>
+              <button type="button" onClick={openEditorialModal} data-liquid-snap="true" data-magnetic-hover="true">{authenticated ? (account.account.user?.display_name?.trim() || (zh ? "我的账户" : "My account")) : (zh ? "登录 / 注册" : "Sign in")}</button>
               <button className="editorial-theme" type="button" role="switch" aria-label={zh ? "切换深浅主题" : "Toggle light and dark theme"} aria-checked={lightEditorial} onClick={toggleEditorialTheme} data-liquid-snap="true" />
             </nav>
           </header>
