@@ -858,16 +858,13 @@ export function PortalLiquidCursor() {
         rasterDirty = true;
       }
 
-      // The lens itself must never be clipped: allow the capture window to
-      // extend past the viewport and pad the missing area with transparency.
-      // Clamping roiLeft/roiTop into [0, max] was cutting the lens in half
-      // whenever it snapped to a bottom- or edge-docked target.
-      const overflowX = Math.max(0, roiWidth - window.innerWidth);
-      const overflowY = Math.max(0, roiHeight - window.innerHeight);
-      const minLeft = -overflowX;
-      const minTop = -overflowY;
-      const maxLeft = 0;
-      const maxTop = 0;
+      // Move the captured texture with the cursor and clamp it to the viewport.
+      // A zero-width clamp pinned the canvas at (0, 0), clipping the lens
+      // whenever its center traveled outside the capture area.
+      const minLeft = 0;
+      const minTop = 0;
+      const maxLeft = Math.max(0, window.innerWidth - roiWidth);
+      const maxTop = Math.max(0, window.innerHeight - roiHeight);
 
       if (target) {
         const state = magneticStates.get(target);
