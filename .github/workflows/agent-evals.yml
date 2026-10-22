@@ -1,0 +1,23 @@
+name: Agent task evaluation contracts
+on:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  quick:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install -e '.[dev]'
+      - run: python -m pytest tests/test_agent_task_evals.py
+      - run: python -m evals.run --output eval-results
+      - uses: actions/upload-artifact@v4
+        with:
+          name: agent-eval-contracts
+          path: eval-results/

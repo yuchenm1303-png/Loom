@@ -1,0 +1,135 @@
+{
+  "schema_version": 1,
+  "suite_sha256": "2b3a454e9675ecd8bc77cbb901ef90dcea89011791cfdaa30e402dd111badea3",
+  "revision": "a5e5663b572ba869ce2861c412d9f2a008c629f8",
+  "dirty": true,
+  "mode": "oracle",
+  "model": "unknown",
+  "prompt_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "context_strategy": "runtime-default",
+  "context_limits": null,
+  "success_rate": null,
+  "attempted": 0,
+  "tasks": [
+    {
+      "id": "code-sum",
+      "category": "coding",
+      "status": "oracle_checked",
+      "reason": "negative oracle rejected untouched fixture",
+      "seconds": null,
+      "tokens": null,
+      "interventions": null,
+      "false_completion": null
+    },
+    {
+      "id": "code-dedupe",
+      "category": "coding",
+      "status": "oracle_checked",
+      "reason": "negative oracle rejected untouched fixture",
+      "seconds": null,
+      "tokens": null,
+      "interventions": null,
+      "false_completion": null
+    },
+    {
+      "id": "code-slug",
+      "category": "coding",
+      "status": "oracle_checked",
+      "reason": "negative oracle rejected untouched fixture",
+      "seconds": null,
+      "tokens": null,
+      "interventions": null,
+      "false_completion": null
+    },
+    {
+      "id": "file-csv",
+      "category": "files",
+      "status": "oracle_checked",
+      "reason": "negative oracle rejected untouched fixture",
+      "seconds": null,
+      "tokens": null,
+      "interventions": null,
+      "false_completion": null
+    },
+    {
+      "id": "file-json",
+      "category": "files",
+      "status": "oracle_checked",
+      "reason": "negative oracle rejected untouched fixture",
+      "seconds": null,
+      "tokens": null,
+      "interventions": null,
+      "false_completion": null
+    },
+    {
+      "id": "file-unicode",
+      "category": "files",
+      "status": "oracle_checked",
+      "reason": "negative oracle rejected untouched fixture",
+      "seconds": null,
+      "tokens": null,
+      "interventions": null,
+      "false_completion": null
+    },
+    {
+      "id": "browser-price",
+      "category": "browser",
+      "status": "oracle_checked",
+      "reason": "negative oracle rejected untouched fixture",
+      "seconds": null,
+      "tokens": null,
+      "interventions": null,
+      "false_completion": null
+    },
+    {
+      "id": "browser-table",
+      "category": "browser",
+      "status": "oracle_checked",
+      "reason": "negative oracle rejected untouched fixture",
+      "seconds": null,
+      "tokens": null,
+      "interventions": null,
+      "false_completion": null
+    },
+    {
+      "id": "browser-link",
+      "category": "browser",
+      "status": "oracle_checked",
+      "reason": "negative oracle rejected untouched fixture",
+      "seconds": null,
+      "tokens": null,
+      "interventions": null,
+      "false_completion": null
+    },
+    {
+      "id": "resume-sum",
+      "category": "recovery",
+      "status": "oracle_checked",
+      "reason": "negative oracle rejected untouched fixture",
+      "seconds": null,
+      "tokens": null,
+      "interventions": null,
+      "false_completion": null
+    },
+    {
+      "id": "resume-sort",
+      "category": "recovery",
+      "status": "oracle_checked",
+      "reason": "negative oracle rejected untouched fixture",
+      "seconds": null,
+      "tokens": null,
+      "interventions": null,
+      "false_completion": null
+    },
+    {
+      "id": "resume-count",
+      "category": "recovery",
+      "status": "oracle_checked",
+      "reason": "negative oracle rejected untouched fixture",
+      "seconds": null,
+      "tokens": null,
+      "interventions": null,
+      "false_completion": null
+    }
+  ]
+}
