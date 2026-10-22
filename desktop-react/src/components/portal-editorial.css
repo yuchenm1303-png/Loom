@@ -722,3 +722,59 @@
   .loom-editorial .editorial-starter { min-height: 70px; padding: 14px 0; }
   .loom-editorial .editorial-ask-row { padding-inline: 0; }
 }
+/* Quiet home: separate content with space; reserve surfaces for interaction. */
+.loom-editorial .editorial-header { border-bottom: 0; }
+.loom-editorial .editorial-section-head > span { display: none; }
+.loom-editorial .editorial-ledger { border: 0; padding-top: 8px; }
+.loom-editorial .editorial-ledger > div { border: 0; min-height: 48px; }
+.loom-editorial .editorial-starters { border: 0; row-gap: 12px; }
+.loom-editorial .editorial-starter {
+  grid-template-columns: minmax(0, 1fr);
+  border: 0;
+  padding: 18px 16px;
+  margin-left: -16px;
+  border-radius: 8px;
+  transition: background-color .18s ease;
+}
+.loom-editorial .editorial-starter .editorial-starter-number { display: none; }
+.loom-editorial .editorial-starter:hover,
+.loom-editorial .editorial-starter:focus-visible {
+  background: color-mix(in srgb, var(--ed-ink) 4%, transparent);
+}
+.loom-editorial .editorial-latest { border: 0; max-width: 780px; }
+.loom-editorial .editorial-latest a,
+.loom-editorial .editorial-latest a:last-child { border: 0; padding-block: 7px; }
+.loom-editorial .editorial-section { margin-top: 40px; }
+.loom-editorial .editorial-link-text {
+  min-height: 44px;
+  padding: 10px 22px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--ed-ink);
+  color: var(--ed-paper);
+  font: 500 13px/1.5 Inter, ui-sans-serif, system-ui, sans-serif;
+}
+.loom-editorial .editorial-link-text:hover {
+  background: var(--ed-ink-muted);
+  color: var(--ed-paper);
+}
+.loom-editorial .editorial-ask form {
+  border: 0;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--ed-ink) 5%, var(--ed-paper));
+}
+.loom-editorial .editorial-ask form:focus-within {
+  outline: 1px solid var(--ed-ink-faint);
+  outline-offset: 3px;
+}
+.loom-editorial .editorial-ask-row { padding: 12px 20px; }
+.loom-editorial .editorial-ask-foot { padding-top: 14px; }
+@media (max-height: 860px) and (min-width: 901px) {
+  .loom-editorial .editorial-section { margin-top: 28px; }
+  .loom-editorial .editorial-starter { padding-block: 12px; }
+}
+@media (max-width: 580px) {
+  .loom-editorial .editorial-section { margin-top: 36px; }
+  .loom-editorial .editorial-starters { row-gap: 4px; }
+  .loom-editorial .editorial-ask-row { padding: 12px 14px; }
+}
