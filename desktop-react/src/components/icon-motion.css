@@ -42,7 +42,7 @@
   --ic-t-lift: var(--loom-dur-slow);
   --ic-t-draw: var(--loom-dur-panel);
   --ic-t-run: 700ms;
-  --ic-t-write: 640ms;
+  --ic-t-write: 500ms;
   --ic-t-spin: 900ms;
 
   /* curves: a quick, soft-landing spring in; a plain ease out */
@@ -400,6 +400,18 @@
   :root:not([data-loom-reduced-motion="true"]) [data-written="odd"] [data-icon="quill"] .li-ink { animation: li-flick-odd var(--ic-t-write) linear backwards; }
   :root:not([data-loom-reduced-motion="true"]) [data-written="even"] [data-icon="quill"] .li-scribe { animation: li-write-even var(--ic-t-write) linear backwards; }
   :root:not([data-loom-reduced-motion="true"]) [data-written="even"] [data-icon="quill"] .li-ink { animation: li-flick-even var(--ic-t-write) linear backwards; }
+  :root:not([data-loom-reduced-motion="true"]) [data-confirmed="odd"] [data-icon="quill"] { animation: li-confirm-odd 180ms ease-out; }
+  :root:not([data-loom-reduced-motion="true"]) [data-confirmed="even"] [data-icon="quill"] { animation: li-confirm-even 180ms ease-out; }
+}
+
+/* Keyboard shortcut: a small nib press, independent of the hover stroke. */
+@keyframes li-confirm-odd {
+  0%, 100% { scale: 1; }
+  35% { scale: .92; }
+}
+@keyframes li-confirm-even {
+  0%, 100% { scale: 1; }
+  35% { scale: .92; }
 }
 
 @keyframes li-write-odd {

@@ -191,8 +191,8 @@ test("the quill writes itself again when a conversation is started, and never un
   // click and from the shortcut, and the count lives in the row: a row that mounts later starts at rest.
   const row = read("components/NewConversationRow.tsx");
   assert.match(row, /data-written=\{starts \? \(starts % 2 \? "odd" : "even"\) : undefined\}/, "the row does not say odd and even by turns");
-  assert.match(row, /onClick=\{\(\) => \{\s*setStarts\(/, "a click on the row does not count as a start");
-  assert.match(row, /useImperativeHandle\(ref, \(\) => \(\{ write: \(\) => setStarts\(/, "the row cannot be told that a conversation was started elsewhere");
+  assert.match(row, /onClick=\{\(\) => \{\s*confirm\(\);\s*void onNew\(\);/, "click should confirm immediately without replaying the hover stroke");
+  assert.match(row, /useImperativeHandle\(ref,[\s\S]*setConfirmations\(/, "the shortcut needs a separate confirmation");
   const sidebar = read("components/Sidebar.tsx");
   assert.match(sidebar, /<NewConversationRow\s[^>]*ref=\{newRowRef\}/, "the sidebar does not draw the primary row through NewConversationRow");
   assert.match(sidebar, /key === "n"\) \{\s*event\.preventDefault\(\);\s*newRowRef\.current\?\.write\(\);\s*void onNew\(\);/, "the new-conversation shortcut does not make the quill write");
