@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
 
+from .kept_connection import KeptConnection
 from .storage import utc_now
 
 
@@ -88,19 +89,19 @@ class DurableThreadStateStore:
         self.root.mkdir(parents=True, exist_ok=True)
         self.path = self.root / "state.db"
         self._lock = threading.RLock()
+        self._kept = KeptConnection(self.path, foreign_keys=True)
         self._initialize()
 
     @contextmanager
     def _connect(self):
-        connection = sqlite3.connect(self.path, timeout=30.0, isolation_level=None)
-        connection.row_factory = sqlite3.Row
-        connection.execute("PRAGMA foreign_keys = ON")
-        connection.execute("PRAGMA busy_timeout = 30000")
-        try:
-            with connection:
-                yield connection
-        finally:
-            connection.close()
+        # Always entered under self._lock (see kept_connection).
+        with self._kept.use() as connection:
+            yield connection
+
+    def close_connection(self) -> None:
+        """Release the file handles of the state database; the next use opens it again."""
+        with self._lock:
+            self._kept.close()
 
     def _initialize(self) -> None:
         with self._lock, self._connect() as connection:

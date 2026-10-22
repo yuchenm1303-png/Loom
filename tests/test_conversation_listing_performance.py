@@ -73,10 +73,12 @@ def test_listing_a_large_library_opens_one_database_connection(tmp_path, monkeyp
     ids = store.sub_agent_session_ids()
 
     assert ids == frozenset({"child-a"})
-    assert len(opened) == 1, f"expected one connection, opened {opened}"
+    # The store keeps its connection open between calls, so a listing opens none; what it must never do is one per
+    # conversation.
+    assert len(opened) <= 1, f"expected at most one connection, opened {opened}"
 
 
-def test_sub_agent_session_ids_opens_exactly_one_connection_per_call(tmp_path, monkeypatch):
+def test_sub_agent_session_ids_opens_at_most_one_connection_per_call(tmp_path, monkeypatch):
     store = AgentGraphStore(tmp_path)
     for index in range(20):
         store.add_child(parent_session_id="parent", child_session_id=f"child-{index}")
@@ -86,4 +88,4 @@ def test_sub_agent_session_ids_opens_exactly_one_connection_per_call(tmp_path, m
     ids = store.sub_agent_session_ids()
 
     assert len(ids) == 20
-    assert len(opened) == 1, f"expected one connection, opened {opened}"
+    assert len(opened) <= 1, f"expected at most one connection, opened {opened}"

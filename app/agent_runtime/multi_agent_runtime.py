@@ -98,7 +98,10 @@ class MultiAgentRuntime(ContextAgentRuntime):
         try:
             self.agent_control.shutdown(wait=False)
         finally:
-            super().close()
+            try:
+                super().close()
+            finally:
+                self.agent_graph.close_connection()
 
     def _agent_tree_state(self, session_id: str) -> dict[str, Any]:
         root_session_id = self.agent_graph.root_for_session(session_id)

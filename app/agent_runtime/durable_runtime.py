@@ -41,6 +41,12 @@ class DurableAgentRuntime(CoreAgentRuntime):
         self.auto_drain_queue = bool(auto_drain_queue)
         self.max_auto_queued_turns = max(1, int(max_auto_queued_turns))
 
+    def close(self) -> None:
+        try:
+            super().close()
+        finally:
+            self.durable_state.close_connection()
+
     def get_session(self, session_id: str) -> AgentSession:
         session = self._upgrade_default_system_prompt(self.store.load(session_id))
         self.durable_state.reconcile_dispatches(session.session_id, session.current_turn_id)

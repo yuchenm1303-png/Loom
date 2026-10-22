@@ -121,7 +121,10 @@ class MemoryRuntime(MultiAgentRuntime):
         self._memory_pipeline = None
         if pipeline is not None:
             pipeline.stop()
-        super().close()
+        try:
+            super().close()
+        finally:
+            self.memory_store.close_connection()
 
     def extract_memory_from_thread(
         self,
