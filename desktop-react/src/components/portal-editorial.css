@@ -587,3 +587,138 @@
   .loom-editorial .editorial-starter .editorial-starter-copy > span { display: block; }
   .loom-editorial .editorial-latest a:nth-child(n+3) { display: flex; }
 }
+
+
+/* Frameless editorial study: replace visual containers with rhythm and type.
+   This affects the new home only; classic home, controls and cursor are intact. */
+.loom-editorial .editorial-ledger {
+  overflow: visible;
+  padding: 0;
+  margin: 0;
+  border: 0;
+  border-top: 1px solid var(--ed-rule-soft);
+  border-radius: 0;
+  background: transparent;
+}
+.loom-editorial .editorial-ledger > div {
+  min-height: 54px;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--ed-rule-soft);
+}
+.loom-editorial .editorial-link-text {
+  min-height: 0;
+  margin-top: 25px;
+  padding: 0 0 4px;
+  border: 0;
+  border-bottom: 1px solid var(--ed-ink-muted);
+  border-radius: 0;
+  background: transparent;
+  color: var(--ed-ink);
+  font: 400 17px/1.45 var(--ed-serif);
+  transition: color .18s ease, border-color .18s ease;
+}
+.loom-editorial .editorial-link-text:hover {
+  background: transparent;
+  border-color: var(--ed-ink);
+  color: var(--ed-ink);
+}
+.loom-editorial .editorial-starters {
+  column-gap: clamp(30px, 5vw, 68px);
+  row-gap: 0;
+  border-top: 1px solid var(--ed-rule-soft);
+}
+.loom-editorial .editorial-starter {
+  min-height: 80px;
+  padding: 17px 0 16px;
+  border: 0;
+  border-bottom: 1px solid var(--ed-rule-soft);
+  border-radius: 0;
+  background: transparent;
+  transition: color .18s ease, opacity .18s ease;
+}
+.loom-editorial .editorial-starter:hover,
+.loom-editorial .editorial-starter:focus-visible {
+  border-color: var(--ed-rule-soft);
+  background: transparent;
+}
+.loom-editorial .editorial-starter:hover strong,
+.loom-editorial .editorial-starter:focus-visible strong {
+  color: var(--ed-ink);
+  text-decoration: underline;
+  text-decoration-color: var(--ed-ink-faint);
+  text-underline-offset: 5px;
+}
+.loom-editorial .editorial-latest {
+  overflow: visible;
+  border: 0;
+  border-top: 1px solid var(--ed-rule-soft);
+  border-radius: 0;
+  background: transparent;
+}
+.loom-editorial .editorial-latest a {
+  min-height: 43px;
+  padding: 9px 0;
+  background: transparent;
+  border-bottom: 1px solid var(--ed-rule-soft);
+}
+.loom-editorial .editorial-latest a:last-child {
+  border-bottom: 1px solid var(--ed-rule-soft);
+}
+.loom-editorial .editorial-latest a:hover {
+  background: transparent;
+}
+.loom-editorial .editorial-latest a:hover span:first-child {
+  text-decoration: underline;
+  text-decoration-color: var(--ed-ink-faint);
+  text-underline-offset: 4px;
+}
+.loom-editorial .editorial-ask form {
+  border: 0;
+  border-bottom: 1px solid var(--ed-rule);
+  border-radius: 0;
+  background: transparent;
+  transition: border-color .18s ease;
+}
+.loom-editorial .editorial-ask form:focus-within {
+  border-color: var(--ed-ink-muted);
+}
+.loom-editorial .editorial-ask-row {
+  min-height: 60px;
+  gap: 16px;
+  padding: 6px 0;
+}
+.loom-editorial .editorial-ask-row button {
+  min-width: 0;
+  min-height: 38px;
+  padding: 7px 0 5px 10px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--ed-ink);
+  font: 400 16px/1.2 var(--ed-serif);
+  transition: color .18s ease;
+}
+.loom-editorial .editorial-ask-row button:hover {
+  border: 0;
+  background: transparent;
+  color: var(--ed-ink-muted);
+}
+.loom-editorial .editorial-ask-row button span {
+  color: var(--ed-ink-faint);
+}
+.loom-editorial .editorial-ask-foot {
+  padding-inline: 0;
+}
+@media (max-height: 860px) and (min-width: 901px) {
+  .loom-editorial .editorial-starter { min-height: 72px; padding: 12px 0; }
+  .loom-editorial .editorial-latest a { min-height: 39px; padding: 7px 0; }
+  .loom-editorial .editorial-link-text { margin-top: 15px; }
+}
+@media (max-width: 900px) {
+  .loom-editorial .editorial-starters { column-gap: 28px; row-gap: 0; }
+}
+@media (max-width: 580px) {
+  .loom-editorial .editorial-starters { grid-template-columns: 1fr; }
+  .loom-editorial .editorial-starter { min-height: 70px; padding: 14px 0; }
+  .loom-editorial .editorial-ask-row { padding-inline: 0; }
+}
