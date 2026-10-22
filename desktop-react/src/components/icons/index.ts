@@ -78,6 +78,8 @@ export {
 
 export {
   AlertCircle,
+  ArrowDown,
+  Minimize2,
   AlertTriangle,
   Ban,
   Blocks,

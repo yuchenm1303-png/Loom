@@ -346,6 +346,7 @@ export interface LoomShortcutSettings {
   focusComposer?: string;
   toggleSidebar?: string;
   toggleInspector?: string;
+  toggleTerminal?: string;
   attachFiles?: string;
   stopTask?: string;
 }

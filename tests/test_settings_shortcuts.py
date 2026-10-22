@@ -18,6 +18,7 @@ def test_shortcut_defaults_are_normalized(tmp_path) -> None:
     assert store.snapshot()["shortcuts"] == DEFAULT_SETTINGS["shortcuts"]
     assert store.snapshot()["shortcuts"]["newConversation"] == "Ctrl+N"
     assert store.snapshot()["shortcuts"]["stopTask"] == "Escape"
+    assert store.snapshot()["shortcuts"]["toggleTerminal"] == "Ctrl+`"
 
 
 def test_shortcut_preferences_persist(tmp_path) -> None:
@@ -25,10 +26,12 @@ def test_shortcut_preferences_persist(tmp_path) -> None:
 
     _set(store, "shortcuts.newConversation", "Ctrl+Shift+N")
     _set(store, "shortcuts.toggleInspector", "Alt+I")
+    _set(store, "shortcuts.toggleTerminal", "Ctrl+Shift+T")
     result = _set(store, "shortcuts.attachFiles", "Ctrl+Alt+A")
 
     assert result["shortcuts"]["newConversation"] == "Ctrl+Shift+N"
     assert result["shortcuts"]["toggleInspector"] == "Alt+I"
+    assert result["shortcuts"]["toggleTerminal"] == "Ctrl+Shift+T"
     assert result["shortcuts"]["attachFiles"] == "Ctrl+Alt+A"
 
     reloaded = LoomSettingsStore(tmp_path / "home").snapshot()["shortcuts"]

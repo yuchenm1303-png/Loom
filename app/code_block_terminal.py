@@ -26,6 +26,7 @@ _EXECUTABLE_LANGUAGES = {
     "shell",
     "terminal",
     "zsh",
+    "python", "py", "python3", "javascript", "js", "node", "nodejs",
 }
 _PROCESS_CONTEXT: dict[str, tuple[str, str]] = {}
 _PROCESS_CONTEXT_LOCK = threading.RLock()
@@ -124,6 +125,15 @@ def _shell_argv(language: str, command: str) -> tuple[str, ...]:
     if not command.strip():
         raise ValueError("command must not be empty")
 
+    if lang in {"python", "py", "python3"}:
+        executable = shutil.which("python") or shutil.which("python3") or sys.executable
+        return executable, "-u", "-c", command
+    if lang in {"javascript", "js", "node", "nodejs"}:
+        executable = shutil.which("node")
+        if not executable:
+            raise RuntimeError("Node.js is not installed on this machine")
+        return executable, "--input-type=module", "--eval", command
+
     if os.name == "nt":
         if lang in {"cmd", "bat", "batch"}:
             executable = os.environ.get("COMSPEC") or shutil.which("cmd") or "cmd.exe"
@@ -132,6 +142,7 @@ def _shell_argv(language: str, command: str) -> tuple[str, ...]:
             executable = shutil.which(lang)
             if executable:
                 return executable, "-lc", command
+            raise RuntimeError(f"{lang} is not installed on this machine")
         executable = shutil.which("pwsh") or shutil.which("powershell") or "powershell.exe"
         return executable, "-NoLogo", "-NoProfile", "-Command", command
 
@@ -218,6 +229,9 @@ def _process(service, params: dict[str, Any]):
 
 
 def _dispatch(service, method: str, params: dict[str, Any]) -> dict[str, Any]:
+    if method == "terminal/profiles" or method.startswith("terminal/session/"):
+        from .interactive_terminal import dispatch
+        return dispatch(service, method, params)
     if method == "terminal/run":
         return _run(service, params)
     if method == "terminal/list":
@@ -273,6 +287,8 @@ def _install_on_app_server(module) -> None:
                 "permissionMode": "thread",
                 "authorization": "explicit-user-run",
                 "backgroundTasks": True,
+                "sessions": True,
+                "resize": True,
             }
         return result
 

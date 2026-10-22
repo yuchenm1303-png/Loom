@@ -44,6 +44,7 @@ const COMMANDS: ShortcutCommand[] = [
   { id: "stopTask", label: "Stop active task", detail: "Stop the current task.", group: "Conversation", icon: Square },
   { id: "toggleSidebar", label: "Toggle sidebar", detail: "Show or hide the sidebar.", group: "Workspace", icon: PanelLeft },
   { id: "toggleInspector", label: "Toggle inspector", detail: "Show or hide the activity panel.", group: "Workspace", icon: PanelRight },
+  { id: "toggleTerminal", label: "Toggle terminal", detail: "Show or hide project terminal sessions.", group: "Workspace", icon: PanelRight },
 ];
 
 const GROUPS: ShortcutCommand["group"][] = ["Navigation", "Conversation", "Workspace"];

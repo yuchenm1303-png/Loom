@@ -20,6 +20,8 @@ const STATIC_SETTING_TRANSLATIONS: Record<string, string> = {
   "Computer Use": "电脑操控",
   "Browser": "浏览器",
   "Terminal": "终端",
+  "Toggle terminal": "显示或隐藏终端",
+  "Show or hide project terminal sessions.": "显示或隐藏项目终端会话。",
   "Plugins": "插件",
   "MCP": "MCP",
   "Skills": "技能",

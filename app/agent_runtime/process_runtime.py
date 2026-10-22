@@ -105,8 +105,10 @@ class _BoundedBuffer:
         self.cursor = 0
         self.truncated = False
         self.dropped_bytes = 0
+        self.total_chars = 0
 
     def append(self, chunk: str) -> None:
+        self.total_chars += len(chunk)
         text = self.text + str(chunk)
         removed = max(0, len(text) - self.limit)
         if removed:
@@ -606,7 +608,7 @@ class ManagedProcess:
         permission_mode: str,
         sandbox: SandboxSnapshot,
         backend: ProcessBackend,
-        timeout_seconds: int,
+        timeout_seconds: int | None,
         rows: int | None,
         cols: int | None,
     ) -> None:
@@ -637,7 +639,8 @@ class ManagedProcess:
             name=f"loom-{self.process_id}-timeout",
             daemon=True,
         )
-        self._timeout_thread.start()
+        if timeout_seconds is not None:
+            self._timeout_thread.start()
 
     @property
     def process(self):
@@ -697,6 +700,8 @@ class ManagedProcess:
         return ProcessState.EXITED
 
     def _timeout_watch(self) -> None:
+        if self.timeout_seconds is None:
+            return
         deadline = self.started_monotonic + self.timeout_seconds
         while self.running:
             remaining = deadline - time.monotonic()
@@ -801,7 +806,16 @@ class ManagedProcess:
     def close_stdin(self) -> None:
         self.backend.close_stdin()
 
-    def resize(self, *, rows: int, cols: int) -> ProcessSnapshot:
+    def read_terminal(self, cursor: int = 0) -> dict:
+        """Independent PTY reader; never consume the agent's delta cursor."""
+        with self._lock:
+            end = self._stdout.total_chars
+            start = end - len(self._stdout.text)
+            offset = max(start, min(cursor, end))
+            return {"output": self._stdout.text[offset - start:], "cursor": end,
+                    "truncated": cursor < start, "reset": cursor > end}
+
+    def resize(self, *, rows: int, cols: int, drain_delta: bool = True) -> ProcessSnapshot:
         parsed_rows, parsed_cols = validate_terminal_size(rows, cols)
         if not self.running:
             raise RuntimeError("cannot resize an exited process")
@@ -809,7 +823,7 @@ class ManagedProcess:
         with self._lock:
             self._rows = parsed_rows
             self._cols = parsed_cols
-        return self.snapshot(drain_delta=True)
+        return self.snapshot(drain_delta=drain_delta)
 
     def interrupt(self) -> None:
         if not self.running:
@@ -916,7 +930,7 @@ class ProcessStore:
         argv: tuple[str, ...],
         cwd: Path,
         permission_mode: str,
-        timeout_seconds: int,
+        timeout_seconds: int | None,
         permissions: PermissionSnapshot | None = None,
         environment_policy: ShellEnvironmentPolicy | None = None,
         stdin_text: str = "",

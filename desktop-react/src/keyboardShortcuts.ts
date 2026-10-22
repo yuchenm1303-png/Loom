@@ -5,6 +5,7 @@ export type ShortcutCommandId =
   | "focusComposer"
   | "toggleSidebar"
   | "toggleInspector"
+  | "toggleTerminal"
   | "attachFiles"
   | "stopTask";
 
@@ -25,6 +26,7 @@ export const DEFAULT_SHORTCUTS: ShortcutSettings = {
   focusComposer: "Ctrl+L",
   toggleSidebar: "Ctrl+B",
   toggleInspector: "Ctrl+Shift+I",
+  toggleTerminal: "Ctrl+`",
   attachFiles: "Ctrl+Shift+A",
   stopTask: "Escape",
 };

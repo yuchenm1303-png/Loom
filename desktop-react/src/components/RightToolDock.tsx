@@ -5,7 +5,7 @@ import {
 import { flushSync } from "react-dom";
 import {
   FileDiff, FolderOpen, GitFork, Globe2, ListChecks, PanelsTopLeft, PanelRightClose, PanelRightOpen,
-  Pulse, Settings, Terminal, UserRound,
+  Pulse, Settings, Terminal, UserRound, Clock3,
 } from "./icons";
 import { useI18n } from "../i18n";
 import { normalizeShortcut } from "../keyboardShortcuts";
@@ -15,16 +15,16 @@ import { useReducedMotion } from "../motion/useReducedMotion";
 import "./right-tool-dock.css";
 
 type DockId =
-  | "files" | "browser" | "background" | "tasks" | "agents" | "review"
+  | "files" | "browser" | "terminal" | "background" | "tasks" | "agents" | "review"
   | "artifacts" | "inspector" | "profile" | "account" | "settings";
 
 const ORDER_KEY = "loom.ui.rightToolDock.order.v1";
 export const DEFAULT_TOOL_ORDER: readonly DockId[] = [
-  "files", "browser", "review", "artifacts", "tasks", "background", "agents", "inspector", "profile", "account", "settings",
+  "files", "browser", "review", "artifacts", "terminal", "tasks", "background", "agents", "inspector", "profile", "account", "settings",
 ];
 /** Where the utilities start. The rule above them belongs to the slot, so a tool dragged across it joins the other group. */
-const UTILITY_SLOT = 8;
-const toolGroup = (id: DockId) => ["profile", "account", "settings"].includes(id) ? 2 : ["tasks", "background", "agents", "inspector"].includes(id) ? 1 : 0;
+const UTILITY_SLOT = 9;
+const toolGroup = (id: DockId) => ["profile", "account", "settings"].includes(id) ? 2 : ["terminal", "tasks", "background", "agents", "inspector"].includes(id) ? 1 : 0;
 /** Pointer travel before a press becomes a drag, so a click with a shaky hand is still a click. */
 const DRAG_THRESHOLD = 4;
 /** How long a lifted tool takes to settle into its slot, in step with `--dock-settle` in the stylesheet. */
@@ -77,6 +77,7 @@ export interface RightToolDockProps {
   browserAvailable: boolean;
   browserOpen: boolean;
   backgroundOpen: boolean;
+  terminalOpen?: boolean;
   backgroundRunningCount: number;
   taskOpen: boolean;
   taskCompleted: number;
@@ -97,6 +98,7 @@ export interface RightToolDockProps {
   onOpenFiles(): void;
   onToggleBrowser(): void;
   onToggleBackground(): void;
+  onToggleTerminal?(): void;
   onToggleTasks(): void;
   onToggleAgents(): void;
   onToggleReview(): void;
@@ -171,11 +173,17 @@ export function RightToolDock(props: RightToolDockProps) {
       onClick: props.onToggleBrowser,
     },
     background: {
-      label: zh ? "后台任务" : "Background tasks", icon: <Terminal size={16} strokeWidth={1.75} />,
+      label: zh ? "后台任务" : "Background tasks", icon: <Clock3 size={16} strokeWidth={1.75} />,
       active: props.backgroundOpen, disabled: props.loading || !props.hasWorkspace,
       reason: zh ? "请等待对话载入" : "Wait for the conversation",
       count: props.backgroundRunningCount, live: props.backgroundRunningCount > 0,
       onClick: props.onToggleBackground,
+    },
+    terminal: {
+      label: zh ? "终端" : "Terminal", icon: <Terminal size={16} strokeWidth={1.75} />,
+      active: Boolean(props.terminalOpen), disabled: props.loading || !props.hasWorkspace,
+      reason: zh ? "先选择项目或等待对话载入" : "Select a project or wait for the conversation",
+      onClick: () => props.onToggleTerminal?.(),
     },
     tasks: {
       label: props.taskTotal

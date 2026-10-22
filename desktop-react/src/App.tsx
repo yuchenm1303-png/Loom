@@ -6,6 +6,8 @@ import {
   useMemo,
   useRef,
   useState,
+  lazy,
+  Suspense,
   type CSSProperties,
   type KeyboardEvent as ReactKeyboardEvent,
   type PointerEvent as ReactPointerEvent,
@@ -34,6 +36,7 @@ import { SubAgentDock } from "./components/SubAgentDock";
 import { ThreadHeader } from "./components/ThreadHeader";
 import { RightToolDock } from "./components/RightToolDock";
 import { BackgroundTaskPanel } from "./components/BackgroundTaskPanel";
+import { OPEN_TERMINAL_EVENT, type TerminalRequest } from "./terminal";
 import { TaskProgressPanel } from "./components/TaskProgressPanel";
 import { latestTaskPlan } from "./components/liveTaskProgress";
 import { Transcript } from "./components/Transcript";
@@ -91,6 +94,8 @@ type LayoutMotionIntent =
   | "right-close"
   | "right-swap"
   | "neutral";
+const TerminalPanel = lazy(() => import("./components/TerminalPanel"));
+
 type LayoutMotionAnchorKind =
   | "header-leading"
   | "header-copy"
@@ -453,6 +458,9 @@ export default function App() {
   }, []);
   const [reviewOpen, setReviewOpen] = useState(false);
   const [backgroundTasksOpen, setBackgroundTasksOpen] = useState(false);
+  const [terminalOpen, setTerminalOpen] = useState(false);
+  const [terminalMounted, setTerminalMounted] = useState(false);
+  const [terminalRequest, setTerminalRequest] = useState<TerminalRequest | null>(null);
   const [backgroundRunningCount, setBackgroundRunningCount] = useState(0);
   const [taskPlanOpen, setTaskPlanOpen] = useState(false);
   const [agentsOpen, setAgentsOpen] = useState(false);
@@ -895,6 +903,32 @@ export default function App() {
     }, rightSurfaceOpen ? "right-close" : "neutral");
   }
 
+  function toggleTerminal(): void {
+    if (terminalOpen) { setTerminalOpen(false); return; }
+    runLayoutTransition(() => {
+      closeSidePanelsForPalette();
+      setBackgroundTasksOpen(false); setTaskPlanOpen(false);
+      setTerminalMounted(true); setTerminalOpen(true);
+    }, rightSurfaceOpen ? "right-close" : "neutral");
+  }
+
+  useEffect(() => {
+    const receive = (event: Event) => {
+      const request = (event as CustomEvent<TerminalRequest>).detail;
+      if (!request?.workspace || request.workspace !== (selectedThread?.workspace || workspace)) return;
+      runLayoutTransition(() => {
+        closeSidePanelsForPalette(); setBackgroundTasksOpen(false); setTaskPlanOpen(false);
+        setTerminalMounted(true); setTerminalRequest(request); setTerminalOpen(true);
+      }, rightSurfaceOpen ? "right-close" : "neutral");
+    };
+    window.addEventListener(OPEN_TERMINAL_EVENT, receive);
+    return () => window.removeEventListener(OPEN_TERMINAL_EVENT, receive);
+  }, [selectedThread?.workspace, workspace, rightSurfaceOpen, runLayoutTransition]);
+
+  useEffect(() => {
+    if (rightSurfaceOpen || backgroundTasksOpen || taskPlanOpen || settingsOpen || profileOpen || accountOpen || filesProjectId) setTerminalOpen(false);
+  }, [rightSurfaceOpen, backgroundTasksOpen, taskPlanOpen, settingsOpen, profileOpen, accountOpen, filesProjectId]);
+
   function toggleTaskPlan(): void {
     if (taskPlanOpen) {
       setTaskPlanOpen(false);
@@ -914,6 +948,7 @@ export default function App() {
     setTaskPlanOpen(false);
     setBackgroundTasksOpen(false);
     setArtifactPreview(null);
+    setTerminalOpen(false);
     autoOpenedAgentsForThreadRef.current = "";
   }, [thread?.id]);
 
@@ -1068,6 +1103,13 @@ export default function App() {
         return;
       }
 
+      if (eventMatchesShortcut(event, shortcuts.toggleTerminal)) {
+        consume(); toggleTerminal(); return;
+      }
+      // Shell keystrokes, including Ctrl+C, Tab, arrows and Escape, belong to
+      // the terminal rather than conversation shortcuts or agent interruption.
+      if (target?.closest(".terminal-panel")) return;
+
       if (eventMatchesShortcut(event, shortcuts.stopTask) && running) {
         consume();
         void loom.interrupt();
@@ -1137,7 +1179,7 @@ export default function App() {
 
     window.addEventListener("keydown", handleShortcut, true);
     return () => window.removeEventListener("keydown", handleShortcut, true);
-  }, [loom, reviewOpen, runLayoutTransition, running, shortcuts, sidebarOpen]);
+  }, [loom, reviewOpen, runLayoutTransition, running, shortcuts, sidebarOpen, terminalOpen, rightSurfaceOpen]);
 
   // An approval the reader answers folds away instead of taking its height back in one frame.
   const transcriptItems = useLeavingItems(
@@ -1404,6 +1446,7 @@ export default function App() {
         browserAvailable={browserAvailable}
         browserOpen={browserOpen}
         backgroundOpen={backgroundTasksOpen}
+        terminalOpen={terminalOpen}
         backgroundRunningCount={backgroundRunningCount}
         taskOpen={taskPlanOpen}
         taskCompleted={taskCompleted}
@@ -1418,7 +1461,7 @@ export default function App() {
         inspectorOpen={inspectorVisible}
         accountAuthenticated={account.account.authenticated}
         accountAvatar={account.account.user?.avatar_data_url?.trim() || undefined}
-        shortcuts={{ settings: shortcuts.openSettings, inspector: shortcuts.toggleInspector }}
+        shortcuts={{ settings: shortcuts.openSettings, inspector: shortcuts.toggleInspector, terminal: shortcuts.toggleTerminal }}
         onOpenFiles={() => {
           if (dockProject) setFilesProjectId(dockProject.id);
         }}
@@ -1442,6 +1485,7 @@ export default function App() {
           }, rightOpenIntent);
         }}
         onToggleBackground={toggleBackgroundTasks}
+        onToggleTerminal={toggleTerminal}
         onToggleTasks={toggleTaskPlan}
         onToggleAgents={toggleAgents}
         onToggleReview={toggleReview}
@@ -1527,6 +1571,13 @@ export default function App() {
           onCompactContext={() => void loom.compactContext()}
         />
 
+        {terminalMounted && <Suspense fallback={null}><TerminalPanel
+          workspace={selectedThread?.workspace || workspace}
+          connected={loom.connection === "ready"}
+          open={terminalOpen}
+          request={terminalRequest}
+          onClose={() => setTerminalOpen(false)}
+        /></Suspense>}
         <BackgroundTaskPanel
           workspace={selectedThread?.workspace || workspace}
           connected={loom.connection === "ready"}

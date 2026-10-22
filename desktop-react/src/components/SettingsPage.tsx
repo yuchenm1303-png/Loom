@@ -1263,7 +1263,7 @@ export function SettingsPage({ runtime, models, threadId, running, onRefreshMode
             <div>
               <span>Terminal profile</span>
               <strong>{shellLabel} · {prefs.encoding === "utf-8" ? "UTF-8" : "System encoding"} · {prefs.commandTimeoutSeconds}s</strong>
-              <p>终端偏好集中保存，后续 Shell、Process Runtime、Browser/Computer 调试命令都可以共享这一套默认值。</p>
+              <p>从右侧工具栏打开终端，可创建独立 Shell 会话。收起面板后继续运行，关闭会话时结束对应进程。</p>
             </div>
           </div>
           <div className="terminal-quick-actions">
@@ -1298,7 +1298,7 @@ export function SettingsPage({ runtime, models, threadId, running, onRefreshMode
               { icon: FolderOpen, title: "默认工作区", detail: "新命令默认贴近当前项目路径，减少误操作目录。", value: text(runtime.defaultWorkspace, "workspace") },
               { icon: Database, title: "环境变量", detail: "敏感值不在设置页明文展示，运行时按权限注入。", value: "受控" },
               { icon: BrainCircuit, title: "输出摘要", detail: "长 stdout / stderr 保留原始日志，同时给 Agent 提供压缩摘要。", value: "自动" },
-              { icon: Activity, title: "长任务", detail: "后台任务需要可追踪 PID，并可在后续面板接入停止/查看日志。", value: "托管" },
+              { icon: Activity, title: "长任务", detail: "在终端和后台任务面板中查看输出、跟踪状态或停止进程。", value: "托管" },
               { icon: RefreshCw, title: "重试策略", detail: "失败命令不自动无限重试，避免重复写入或重复部署。", value: "安全" },
               { icon: Copy, title: "命令复用", detail: "常用命令可一键复制，后续可升级为模板库。", value: "就绪" },
             ].map((item) => {

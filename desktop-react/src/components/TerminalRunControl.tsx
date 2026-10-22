@@ -1,5 +1,7 @@
-import { LoaderCircle, Play, Send, Square } from "./icons";
+import { LoaderCircle, Play, Send, Square, Terminal } from "./icons";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useI18n } from "../i18n";
+import { EXECUTABLE_LANGUAGES, openTerminal } from "../terminal";
 import "./terminal-run-control.css";
 
 interface TerminalSnapshot {
@@ -12,24 +14,12 @@ interface TerminalSnapshot {
   timedOut?: boolean;
   outputTruncated?: boolean;
   failure?: string;
+  output?: string;
+  cursor?: number;
+  truncated?: boolean;
 }
 
-const EXECUTABLE_LANGUAGES = new Set([
-  "bash",
-  "bat",
-  "batch",
-  "cmd",
-  "console",
-  "powershell",
-  "ps1",
-  "pwsh",
-  "sh",
-  "shell",
-  "terminal",
-  "zsh",
-]);
-
-const ANSI_ESCAPE = new RegExp("\\u001B(?:[@-_]|\\[[0-?]*[ -/]*[@-~])", "g");
+const ANSI_ESCAPE = new RegExp("\\u001B(?:\\][^\\u0007]*(?:\\u0007|\\u001B\\\\)|\\[[0-?]*[ -/]*[@-~]|[@-_])", "g");
 
 function cleanTerminalOutput(value: string): string {
   return String(value || "")
@@ -59,6 +49,8 @@ export function TerminalRunControl({
   workspace?: string;
   disabled?: boolean;
 }) {
+  const { language: uiLanguage } = useI18n();
+  const zh = uiLanguage === "zh-CN";
   const executable = EXECUTABLE_LANGUAGES.has(language.toLowerCase());
   const [processId, setProcessId] = useState("");
   const [running, setRunning] = useState(false);
@@ -69,33 +61,45 @@ export function TerminalRunControl({
   const [input, setInput] = useState("");
   const [starting, setStarting] = useState(false);
   const startedAtRef = useRef(0);
+  const cursor = useRef(0);
+  const launching = useRef(false);
+  const context = useRef("");
+  context.current = `${workspace}\u0000${language}\u0000${command}`;
+  useEffect(() => {
+    setProcessId(""); setRunning(false); setOutput(""); setFailure(""); setReturnCode(null); cursor.current = 0;
+  }, [workspace, language, command]);
 
   const applySnapshot = useCallback((snapshot: TerminalSnapshot) => {
     setProcessId(snapshot.processId || "");
     setRunning(Boolean(snapshot.running));
     setReturnCode(snapshot.returnCode ?? null);
-    const chunk = cleanTerminalOutput(`${snapshot.stdoutDelta || ""}${snapshot.stderrDelta || ""}`);
-    if (chunk) setOutput((current) => current + chunk);
+    const chunk = cleanTerminalOutput(snapshot.output || "");
+    if (chunk) setOutput((current) => (current + chunk).slice(-100_000));
+    if (snapshot.cursor !== undefined) cursor.current = snapshot.cursor;
+    if (snapshot.truncated) setOutput(current => `[${zh ? "早期输出已截断" : "Earlier output truncated"}]\n${current}`);
     if (snapshot.failure) setFailure(snapshot.failure);
     if (!snapshot.running && startedAtRef.current) {
       setElapsedMs(Date.now() - startedAtRef.current);
     }
-  }, []);
+  }, [zh]);
 
   useEffect(() => {
     if (!processId || !workspace) return;
     let disposed = false;
     let timer = 0;
+    let exitPolls = 0;
 
     const poll = async () => {
       try {
-        const snapshot = await window.loom.call<TerminalSnapshot>("terminal/read", {
+        const snapshot = await window.loom.call<TerminalSnapshot>("terminal/session/read", {
           processId,
           workspace,
+          cursor: cursor.current,
         });
         if (disposed) return;
         applySnapshot(snapshot);
-        if (snapshot.running) timer = window.setTimeout(() => void poll(), 180);
+        if (!snapshot.running) exitPolls += 1;
+        if (snapshot.running || exitPolls < 3) timer = window.setTimeout(() => void poll(), 180);
       } catch (error) {
         if (disposed) return;
         setRunning(false);
@@ -114,7 +118,8 @@ export function TerminalRunControl({
   if (!executable || !workspace) return null;
 
   async function runCommand() {
-    if (disabled || starting || running) return;
+    if (disabled || launching.current || running) return;
+    launching.current = true;
     setStarting(true);
     setOutput("");
     setFailure("");
@@ -122,13 +127,17 @@ export function TerminalRunControl({
     setElapsedMs(0);
     setInput("");
     setProcessId("");
+    cursor.current = 0;
     startedAtRef.current = Date.now();
+    const runContext = context.current;
     try {
-      const snapshot = await window.loom.call<TerminalSnapshot>("terminal/run", {
+      const snapshot = await window.loom.call<TerminalSnapshot>("terminal/session/create", {
         command,
         language,
         workspace,
+        title: `${language} · ${command.split("\n")[0].slice(0, 35)}`,
       });
+      if (context.current !== runContext) return;
       applySnapshot(snapshot);
     } catch (error) {
       setFailure(errorMessage(error));
@@ -136,6 +145,7 @@ export function TerminalRunControl({
       setElapsedMs(Date.now() - startedAtRef.current);
     } finally {
       setStarting(false);
+      launching.current = false;
     }
   }
 
@@ -157,7 +167,7 @@ export function TerminalRunControl({
     if (!value || !processId || !workspace || !running) return;
     setInput("");
     try {
-      const snapshot = await window.loom.call<TerminalSnapshot>("terminal/write", {
+      const snapshot = await window.loom.call<TerminalSnapshot>("terminal/session/write", {
         processId,
         workspace,
         text: `${value}\r`,
@@ -170,36 +180,39 @@ export function TerminalRunControl({
 
   const hasResult = Boolean(processId || output || failure || returnCode !== null);
   const status = running || starting
-    ? "Running"
+    ? (zh ? "运行中" : "Running")
     : failure
-      ? "Failed"
+      ? (zh ? "失败" : "Failed")
       : returnCode === null
         ? ""
-        : `Exit ${returnCode}`;
+        : `${zh ? "退出码" : "Exit"} ${returnCode}`;
 
   return (
     <>
-      <button
+      <div className="terminal-run-actions"><button
         type="button"
         className={`terminal-run-launch ${running ? "is-running" : ""}`}
         onClick={() => running ? void interrupt() : void runCommand()}
         disabled={disabled || starting}
-        title={disabled ? "Wait for the response to finish" : running ? "Stop command" : "Run in project terminal"}
-        aria-label={running ? "Stop command" : "Run command"}
+        title={disabled ? (zh ? "等待此代码块生成完成" : "Wait for this code block to finish") : running ? (zh ? "停止命令" : "Stop command") : (zh ? "在项目目录运行" : "Run in project directory")}
+        aria-label={running ? (zh ? "停止命令" : "Stop command") : (zh ? "运行代码" : "Run command")}
       >
         {starting ? <LoaderCircle size={12} /> : running ? <Square size={11} /> : <Play size={11} fill="currentColor" />}
-        <span>{running ? "Stop" : "Run"}</span>
-      </button>
+        <span>{running ? (zh ? "停止" : "Stop") : (zh ? "运行" : "Run")}</span>
+      </button><button type="button" className="terminal-run-open" disabled={disabled || starting} title={zh ? "在终端中打开并运行" : "Open and run in terminal"} aria-label={zh ? "在终端中运行" : "Run in terminal"} onClick={() => {
+        if (!workspace) return;
+        openTerminal(processId ? { workspace, processId } : { workspace, command, language });
+      }}><Terminal size={12} /><span>{zh ? "终端" : "Terminal"}</span></button></div>
 
       {hasResult ? (
         <div className="terminal-run-panel">
           <div className="terminal-run-status">
-            <span>Terminal</span>
+            <span>{zh ? "终端输出" : "Terminal output"}</span>
             <span className={failure || (returnCode !== null && returnCode !== 0) ? "is-error" : running ? "is-running" : "is-success"}>
               {status}{!running && !starting && elapsedMs ? ` · ${formatElapsed(elapsedMs)}` : ""}
             </span>
           </div>
-          <pre className="terminal-run-output">{output || (running || starting ? "Starting…" : failure || "No output")}</pre>
+          <pre className="terminal-run-output" aria-live="off">{output || (running || starting ? (zh ? "正在启动…" : "Starting…") : failure || (zh ? "无输出" : "No output"))}</pre>
           {failure ? <div className="terminal-run-error">{failure}</div> : null}
           {running ? (
             <div className="terminal-run-input-row">
@@ -212,8 +225,8 @@ export function TerminalRunControl({
                     void sendInput();
                   }
                 }}
-                placeholder="Type input and press Enter"
-                aria-label="Terminal input"
+                placeholder={zh ? "输入内容并按 Enter" : "Type input and press Enter"}
+                aria-label={zh ? "终端输入" : "Terminal input"}
               />
               <button type="button" onClick={() => void sendInput()} disabled={!input} title="Send input" aria-label="Send terminal input">
                 <Send size={12} />
