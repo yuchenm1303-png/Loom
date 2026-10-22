@@ -1107,6 +1107,46 @@ export function PortalLiquidCursor() {
     };
 
     const wake = () => ensureFrame();
+
+    // The lens is a pointer-events:none visual overlay. When it snaps from
+    // outside the DOM hit box, the browser would otherwise click empty space.
+    // Redirect only a real primary-pointer click near the CURRENT snap target.
+    // Leave clicks within the element (and all keyboard clicks) fully native.
+    const handleSnappedClick = (event: MouseEvent) => {
+      if (!event.isTrusted || event.defaultPrevented || event.button !== 0 ||
+          event.detail === 0 || !pointerInside ||
+          event.ctrlKey || event.metaKey || event.altKey || event.shiftKey) return;
+      if (Math.hypot(event.clientX - pointerX, event.clientY - pointerY) > 2) return;
+
+      const candidate = findSnapTarget();
+      if (!candidate || !candidate.isConnected || candidate.closest("[inert], [aria-hidden='true']")) return;
+      if (rectDistance(candidate.getBoundingClientRect(), event.clientX, event.clientY) > RELEASE_DISTANCE) return;
+
+      const actionSelector = "button:not(:disabled), a[href], input:not(:disabled), textarea:not(:disabled), select:not(:disabled), [role='button'], [role='link'], [role='switch']";
+      const action = candidate.matches(actionSelector)
+        ? candidate
+        : candidate.querySelector<HTMLElement>(actionSelector);
+      if (!action || action.matches(":disabled, [aria-disabled='true']") ||
+          action.closest("[inert], [aria-hidden='true']")) return;
+      const source = event.target;
+      if (source instanceof Node && candidate.contains(source)) return;
+      // A neighboring button, native label or modal must keep its own click.
+      const nativeAction = source instanceof Element
+        ? source.closest("button, a[href], input, textarea, select, label, summary, [role='button'], [role='link'], [role='switch']")
+        : null;
+      if (nativeAction && !candidate.contains(nativeAction)) return;
+      if (source instanceof Element && source.closest("[role='dialog'], .auth-modal.is-open") &&
+          !candidate.contains(source)) return;
+
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      if (action.matches("input, textarea, select")) action.focus({ preventScroll: true });
+      // HTMLElement.click() triggers the existing React/DOM/native handlers,
+      // including the switch and navigation, exactly once. Synthetic clicks
+      // do not pass the isTrusted guard above, so they cannot recurse.
+      action.click();
+    };
+
     const handlePointerMove = (event: PointerEvent) => {
       pointerX = event.clientX;
       pointerY = event.clientY;
@@ -1169,6 +1209,7 @@ export function PortalLiquidCursor() {
     wallpaper.addEventListener("load", () => { rasterDirty = true; wake(); }, { once: true });
     document.fonts?.ready.then(() => { rasterDirty = true; wake(); }).catch(() => {});
 
+    window.addEventListener("click", handleSnappedClick, true);
     root.addEventListener("pointermove", handlePointerMove);
     root.addEventListener("pointerdown", handlePointerDown);
     root.addEventListener("pointerup", handlePointerUp);
@@ -1190,6 +1231,7 @@ export function PortalLiquidCursor() {
       window.cancelAnimationFrame(raf);
       observer.disconnect();
       resizeObserver.disconnect();
+      window.removeEventListener("click", handleSnappedClick, true);
       root.removeEventListener("pointermove", handlePointerMove);
       root.removeEventListener("pointerdown", handlePointerDown);
       root.removeEventListener("pointerup", handlePointerUp);
