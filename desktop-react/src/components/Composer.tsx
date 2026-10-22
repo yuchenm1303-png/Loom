@@ -1,4 +1,4 @@
-import { Paperclip, Pause, Send, Sparkles, Square } from "./icons";
+import { FolderOpen, Paperclip, Pause, Send, Sparkles, Square } from "./icons";
 import {
   type ComponentProps,
   type FormEvent,
@@ -14,6 +14,7 @@ import { recordSendOrigin } from "../sendFlight";
 import type { Attachment } from "../types/loom";
 import { Composer as ComposerBase } from "./ComposerBase";
 import { ComposerAttachmentStrip } from "./ComposerAttachmentStrip";
+import { ComposerDraftTools } from "./ComposerDraftTools";
 import {
   MAX_COMPOSER_ATTACHMENTS,
   appendComposerAttachments,
@@ -29,6 +30,8 @@ import "./composer.css";
 type ComposerProps = ComponentProps<typeof ComposerBase>;
 
 function SteeringComposer({
+  workspace,
+  onOpenWorkspace,
   threadId,
   draftValue,
   onDraftValueChange,
@@ -248,15 +251,19 @@ function SteeringComposer({
             <button
               type="button"
               className="composer-tool"
+              aria-label={zh ? "添加附件" : "Attach files"}
               title={zh ? "给当前任务补充图片或文件" : "Attach files to the active task"}
               onClick={() => void pickAttachments()}
               disabled={stopping}
             >
               <Paperclip size={15} />
-              <span>{zh ? "附件" : "Attach"}</span>
             </button>
+            {workspace && onOpenWorkspace ? <button type="button" className="composer-tool composer-workspace-button"
+              title={workspace} aria-label={zh ? "查看工作目录" : "Open workspace files"} onClick={onOpenWorkspace}>
+              <FolderOpen size={14} /><span>{workspace.replace(/[\\/]+$/, "").split(/[\\/]/).pop()}</span></button> : null}
           </div>
           <div className="composer-right">
+            <ComposerDraftTools text={formatQuotedPrompt(quote, value)} attachments={attachments} threadId={threadId} disabled={stopping} />
             <button
               type="submit"
               className={`send-button ${canGuide ? "is-ready" : "is-idle"}`}

@@ -3,6 +3,7 @@ import {
   ChevronDown,
   Cpu,
   Eye,
+  FolderOpen,
   FolderCog,
   KeyRound,
   LockKeyhole,
@@ -22,6 +23,8 @@ import { recordSendOrigin } from "../sendFlight";
 import { Crossfade } from "./Crossfade";
 import { ModelPanel } from "./ModelPanel";
 import { ModelUsageIndicator } from "./ModelUsageIndicator";
+import { ReasoningThread } from "./ReasoningThread";
+import { ComposerDraftTools } from "./ComposerDraftTools";
 import { ComposerAttachmentStrip } from "./ComposerAttachmentStrip";
 import {
   MAX_COMPOSER_ATTACHMENTS,
@@ -36,9 +39,12 @@ import "./composer-attachment-polish.css";
 import "./composer-stability.css";
 import "./composer-control-pills.css";
 import "./model-input-notice.css";
+import "./composer-compact.css";
 import { imageAttachmentState } from "./modelInput";
 
 interface ComposerProps {
+  workspace?: string;
+  onOpenWorkspace?(): void;
   threadId?: string;
   draftValue?: string;
   onDraftValueChange?(value: string): void;
@@ -74,7 +80,7 @@ interface ComposerProps {
   onInterrupt(): Promise<void> | void;
 }
 
-type OpenPanel = "permission" | "model" | null;
+type OpenPanel = "permission" | "model" | "reasoning" | null;
 
 type PermissionPresentation = {
   label: string;
@@ -149,6 +155,8 @@ function ComposerControlIcon({ kind }: { kind: "attach" | "model" }) {
 
 
 export function Composer({
+  workspace,
+  onOpenWorkspace,
   threadId,
   draftValue,
   onDraftValueChange,
@@ -200,6 +208,7 @@ export function Composer({
   useEffect(() => {
     modelRequestVersion.current += 1;
     setModelError("");
+    setOpenPanel(null);
   }, [threadId]);
 
   async function selectModel(action: (() => Promise<void> | void) | undefined) {
@@ -412,6 +421,9 @@ export function Composer({
 
   const currentPermission = permissionPresentation(permissionMode || "approval", zh);
   const currentModel = modelSnapshot?.current?.model || model || "Model";
+  const reasoning = modelSnapshot?.current?.reasoning ?? null;
+  const reasoningLabel = reasoning?.options.find(option => option.value === reasoning.value)?.label || (zh ? "自动" : "Auto");
+  const workspaceName = workspace?.replace(/[\\/]+$/, "").split(/[\\/]/).pop();
   const hasDraftContent = Boolean(value.trim() || quote || attachments.length);
   const canSend = Boolean(
     !disabled
@@ -472,13 +484,19 @@ export function Composer({
             <button
               type="button"
               className="composer-tool composer-refined-control"
+              aria-label={zh ? "添加附件" : "Attach files"}
               title={zh ? "添加附件，也可以粘贴或拖入文件" : "Attach files, or paste and drop them here"}
               onClick={() => void pickAttachments()}
               disabled={disabled}
             >
               <span className="composer-glyph-well attach" aria-hidden="true"><ComposerControlIcon kind="attach" /></span>
-              <span>{zh ? "附件" : "Attach"}</span>
             </button>
+
+            {workspace && onOpenWorkspace ? <button type="button" className="composer-tool composer-workspace-button"
+              title={`${zh ? "查看工作目录" : "Open workspace files"} · ${workspace}`} aria-label={zh ? "查看工作目录" : "Open workspace files"}
+              onClick={onOpenWorkspace}><FolderOpen size={14} /><span>{workspaceName}</span></button> : null}
+
+            <span className="composer-toolbar-divider" aria-hidden="true" />
 
             <div className="composer-control-anchor">
               <button
@@ -491,7 +509,7 @@ export function Composer({
                 onClick={() => togglePanel("permission")}
               >
                 <span className="composer-glyph-well access" aria-hidden="true"><PermissionIcon mode={permissionMode || "approval"} toolbar /></span>
-                <span>{currentPermission.label}</span>
+                <span className="composer-permission-label">{currentPermission.label}</span>
                 <ChevronDown size={13} className="composer-chip-chevron" />
               </button>
 
@@ -557,6 +575,19 @@ export function Composer({
               ) : null}
             </div>
 
+            <div className="composer-control-anchor composer-reasoning-anchor">
+              <button type="button" className={`composer-chip composer-refined-control reasoning-chip ${openPanel === "reasoning" ? "is-open" : ""}`}
+                title={zh ? "推理强度" : "Reasoning effort"} aria-label={zh ? "推理强度" : "Reasoning effort"}
+                aria-haspopup="dialog" aria-expanded={openPanel === "reasoning"} onClick={() => togglePanel("reasoning")}>
+                <Sparkles size={14} /><span>{reasoningLabel}</span>
+              </button>
+              {renderedPanel === "reasoning" ? <div className="composer-popover composer-reasoning-popover" data-motion-phase={panelPresence.phase}
+                inert={!openPanel} role="dialog" aria-label={zh ? "推理强度" : "Reasoning effort"}>
+                <ReasoningThread reasoning={reasoning} busy={modelBusy || !onReasoningChange || !accountAuthenticated} running={running}
+                  onChange={async (kind, nextValue) => { await onReasoningChange?.(kind, nextValue); }} />
+              </div> : null}
+            </div>
+
             <div className="composer-control-anchor model-control-anchor">
               <button
                 type="button"
@@ -575,7 +606,7 @@ export function Composer({
                 }}
               >
                 <span className="composer-glyph-well model" aria-hidden="true"><ComposerControlIcon kind="model" /></span>
-                <span>{currentModel}</span>
+                <span className="composer-model-label">{currentModel}</span>
                 <ChevronDown size={13} className="composer-chip-chevron" />
               </button>
 
@@ -631,6 +662,8 @@ export function Composer({
           </div>
 
           <div className="composer-right">
+            <ComposerDraftTools text={formatQuotedPrompt(quote, value)} attachments={attachments} threadId={threadId} disabled={disabled || submitting}
+              onPreviewOpen={() => setOpenPanel(null)} />
             <Crossfade identity={`${Boolean(running)}:${stopping}`}>
               {!running ? <span className={submitting ? "composer-running-label" : "composer-keycap"} role={submitting ? "status" : undefined}>{submitting ? (zh ? "正在发送…" : "Sending…") : "Enter ↵"}</span> : (
                 <span className="composer-running-label" role="status">

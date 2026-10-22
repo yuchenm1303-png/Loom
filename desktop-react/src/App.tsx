@@ -1608,6 +1608,8 @@ export default function App() {
             approval={thread.status === "waiting_approval" || visibleApproval}
             completed={thread.status === "completed"} />}
           <Composer
+            workspace={workspace}
+            onOpenWorkspace={dockProject ? () => setFilesProjectId(dockProject.id) : undefined}
             threadId={thread?.id}
             disabled={loom.connection !== "ready" || archived}
             starting={connecting}

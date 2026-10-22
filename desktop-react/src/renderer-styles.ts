@@ -39,3 +39,4 @@ import "./components/panel-language.css";
 import "./components/window-rail.css";
 import "./motion/press.css";
 import "./components/send-flight.css";
+import "./components/composer-compact.css";
