@@ -178,6 +178,10 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
     setDrawerOpen(false);
     setPromptError("");
   }
+  function openEditorialModal() {
+    if (document.activeElement instanceof HTMLElement) modalReturnFocusRef.current = document.activeElement;
+    setDrawerOpen(true);
+  }
   function dismissDrawer() {
     setDrawerOpen(false);
     requestAnimationFrame(() => modalReturnFocusRef.current?.isConnected && modalReturnFocusRef.current.focus({ preventScroll: true }));
@@ -203,7 +207,7 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
     if (authenticated && hostState === "online") {
       onEnter();
     } else {
-      setDrawerOpen(true);
+      openEditorialModal();
     }
   }
   useEffect(() => {
@@ -469,7 +473,7 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
             <nav className="editorial-meta" aria-label={zh ? "主页操作" : "Home actions"}>
               <span className="editorial-runtime" role="status">{authenticated ? (hostState === "online" ? (zh ? "Host 已连接" : "Host connected") : (zh ? "Host 未连接" : "Host disconnected")) : (zh ? "本地优先 · 私有" : "Local-first · Private")}</span>
               <a href="/classic" onClick={(event) => { event.preventDefault(); switchPage("classic"); }} data-liquid-snap="true" data-magnetic-hover="true">{zh ? "经典主页" : "Classic home"}</a>
-              <button type="button" onClick={() => setDrawerOpen(true)} data-liquid-snap="true" data-magnetic-hover="true">{authenticated ? (account.account.user?.display_name?.trim() || (zh ? "我的账户" : "My account")) : (zh ? "登录 / 注册" : "Sign in")}</button>
+              <button type="button" onClick={openEditorialModal} data-liquid-snap="true" data-magnetic-hover="true">{authenticated ? (account.account.user?.display_name?.trim() || (zh ? "我的账户" : "My account")) : (zh ? "登录 / 注册" : "Sign in")}</button>
               <button className="editorial-theme" type="button" role="switch" aria-label={zh ? "切换深浅主题" : "Toggle light and dark theme"} aria-checked={lightEditorial} onClick={toggleEditorialTheme} data-liquid-snap="true" />
             </nav>
           </header>
