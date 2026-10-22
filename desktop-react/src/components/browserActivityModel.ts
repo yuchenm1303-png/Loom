@@ -67,3 +67,26 @@ export function matchingBrowserTab(target: BrowserActivity, tabs: { id: string; 
   if (target.tabId) return tabs.find(tab => tab.id === target.tabId)?.id ?? null;
   return tabs.find(tab => tab.url === target.url)?.id ?? null;
 }
+
+/** Image pages are already previews; local artifacts can survive their temporary HTTP server. */
+export function browserImagePreview(value: string): { url: string; localPath: string } | null {
+  const safe = browserPageUrl(value);
+  if (!safe) return null;
+  const url = new URL(safe);
+  if (!/\.(png|jpe?g|webp|gif|avif)$/i.test(url.pathname)) return null;
+  let path = "";
+  if (["127.0.0.1", "localhost", "[::1]"].includes(url.hostname)) {
+    try {
+      const decoded = decodeURIComponent(url.pathname).replace(/^\/+/, "");
+      if (decoded.startsWith("artifacts/") && !decoded.split(/[\\/]/).includes("..")) path = decoded;
+    } catch { /* Keep the HTTP URL when its path cannot be decoded. */ }
+  }
+  return { url: safe, localPath: path };
+}
+
+export function browserActivityOpenCommand(target: BrowserActivity, tabs: { id: string; url: string }[]):
+  { action: "select-tab"; tabId: string } | { action: "new-tab"; url: string } {
+  const original = target.status !== "closed" ? matchingBrowserTab(target, tabs) : null;
+  const existing = original || tabs.find(tab => tab.url === target.url)?.id;
+  return existing ? { action: "select-tab", tabId: existing } : { action: "new-tab", url: target.url };
+}

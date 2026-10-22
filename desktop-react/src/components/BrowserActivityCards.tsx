@@ -2,21 +2,39 @@ import { useEffect, useMemo, useState } from "react";
 import { Globe2, ArrowUpRight } from "./icons";
 import { useI18n } from "../i18n";
 import type { TranscriptItem } from "../types/loom";
-import { collectBrowserActivities, type BrowserActivityTarget } from "./browserActivityModel";
+import { browserImagePreview, collectBrowserActivities, type BrowserActivityTarget } from "./browserActivityModel";
 import "./browser-activity-card.css";
 
-export function BrowserActivityImage({ path, workspace, title }: { path: string; workspace?: string; title: string }) {
-  const [image, setImage] = useState<{ path: string; workspace?: string; source: string } | null>(null);
+export function BrowserActivityImage({ path, url, workspace, title }: { path: string; url: string; workspace?: string; title: string }) {
+  const { language } = useI18n();
+  const preview = browserImagePreview(url);
+  const key = JSON.stringify([path, url, workspace]);
+  const [image, setImage] = useState<{ key: string; source: string } | null>(null);
+  const [failed, setFailed] = useState("");
   useEffect(() => {
     let alive = true;
-    if (path && workspace) void window.loom.readLocalImage(path, workspace).then(result => {
-      if (alive) setImage({ path, workspace, source: result.dataUrl });
-    }).catch(() => {});
+    setFailed("");
+    const load = async () => {
+      const candidates = [...new Set([path, preview?.localPath].filter(Boolean))] as string[];
+      if (workspace) for (const candidate of candidates) {
+        try {
+          const result = await window.loom.readLocalImage(candidate, workspace);
+          if (alive) setImage({ key, source: result.dataUrl });
+          return;
+        } catch { /* Try the next local source, then the original image URL. */ }
+      }
+      if (!alive) return;
+      if (preview) setImage({ key, source: preview.url });
+      else if (path) setFailed(key);
+    };
+    void load();
     return () => { alive = false; };
-  }, [path, workspace]);
-  return image?.path === path && image.workspace === workspace
-    ? <img src={image.source} alt={title} loading="lazy" decoding="async" />
-    : <span className="browser-activity-placeholder" aria-hidden="true"><Globe2 size={30} strokeWidth={1.2} /></span>;
+  }, [key]);
+  return image?.key === key && failed !== key
+    ? <img src={image.source} alt={title} loading="lazy" decoding="async" referrerPolicy="no-referrer" onError={() => setFailed(key)} />
+    : <span className="browser-activity-placeholder"><Globe2 size={30} strokeWidth={1.2} aria-hidden="true" />
+      <span>{language === "zh-CN" ? (failed === key ? "预览不可用 · 点击打开页面" : "点击在侧栏打开页面") : (failed === key ? "Preview unavailable · Open page" : "Open page in sidebar")}</span>
+    </span>;
 }
 
 export function BrowserActivityCards({ items, active, workspace }: { items: TranscriptItem[]; active: boolean; workspace?: string }) {
@@ -36,7 +54,7 @@ export function BrowserActivityCards({ items, active, workspace }: { items: Tran
         disabled={typeof window.loom.embeddedBrowser !== "function"}
         aria-label={`${zh ? "在侧栏查看" : "View in sidebar"} · ${title}`}
         onClick={() => window.dispatchEvent(new CustomEvent("loom:browser-activity-open", { detail: target }))}>
-        <span className="browser-activity-visual"><BrowserActivityImage path={page.screenshot} workspace={workspace} title={title} />
+        <span className="browser-activity-visual"><BrowserActivityImage path={page.screenshot} url={page.url} workspace={workspace} title={title} />
           <span className="browser-activity-badge" data-state={page.status}><i />{labels[page.status]}</span>
         </span>
         <span className="browser-activity-footer"><span className="browser-activity-copy"><strong>{title}</strong>

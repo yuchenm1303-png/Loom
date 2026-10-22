@@ -2,7 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, typ
 import { ArrowLeft, ArrowRight, Globe2, Plus, RotateCw, X } from "./icons";
 import { useI18n } from "../i18n";
 import { PanelHeader } from "./PanelHeader";
-import { matchingBrowserTab, type BrowserActivityTarget } from "./browserActivityModel";
+import { browserActivityOpenCommand, type BrowserActivityTarget } from "./browserActivityModel";
 import "./browser-workspace.css";
 import "./browser-activity-card.css";
 
@@ -48,6 +48,9 @@ export function BrowserWorkspace({ hidden = false, target, onClose }: BrowserWor
   const viewportRef = useRef<HTMLDivElement>(null);
   const addressRef = useRef<HTMLInputElement>(null);
   const active = useMemo(() => state.tabs.find(tab => tab.id === state.activeId), [state]);
+  const pageError = error || active?.error || "";
+  const localServerOffline = /ERR_CONNECTION_REFUSED|ERR_CONNECTION_CLOSED/.test(pageError)
+    && /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(?=[:/]|$)/i.test(active?.url || "");
 
   const send = useCallback(async (command: EmbeddedBrowserCommand): Promise<boolean> => {
     if (!bridge) return false;
@@ -77,12 +80,12 @@ export function BrowserWorkspace({ hidden = false, target, onClose }: BrowserWor
     let cancelled = false;
     void bridge({ action: "snapshot" }).then(async next => {
       if (cancelled) return;
-      const tabId = target.status !== "closed" ? matchingBrowserTab(target, next.tabs) : null;
-      if (tabId) {
-        setNotice(null);
-        const selected = await bridge({ action: "select-tab", tabId });
-        if (!cancelled) setState(selected);
-      } else setNotice(target);
+      const command = browserActivityOpenCommand(target, next.tabs);
+      const selected = await bridge(command);
+      if (cancelled) return;
+      setState(selected);
+      setError("");
+      setNotice(command.action === "new-tab" ? target : null);
     }).catch(cause => { if (!cancelled) setError(cause instanceof Error ? cause.message : String(cause)); });
     return () => { cancelled = true; };
   }, [bridge, target]);
@@ -182,9 +185,8 @@ export function BrowserWorkspace({ hidden = false, target, onClose }: BrowserWor
       {notice ? <div className="browser-session-notice" role="status">
         <strong>{notice.title || notice.url}</strong>
         <p>{notice.connection === "embedded"
-          ? (zh ? "原标签页已关闭或当前不可用。可以在新标签页重新打开网址。" : "The original tab is closed or unavailable. You can reopen its URL in a new tab.")
-          : (zh ? "这个页面由外部浏览器操作，现场仍在原窗口。在内置浏览器打开会创建新页面，不会沿用原会话。" : "This session is in an external browser. Opening here creates a new page with a separate session.")}</p>
-        <button type="button" onClick={async () => { if (await send({ action: "new-tab", url: notice.url })) setNotice(null); }}>{zh ? "在新标签页打开" : "Open in new tab"}</button>
+          ? (zh ? "原标签页已不可用，已在新标签页重新打开。" : "The original tab is unavailable. Reopened in a new tab.")
+          : (zh ? "已在内置浏览器打开页面。此页面使用独立会话，外部浏览器的登录状态不会同步。" : "Opened in Loom browser with a separate session. External browser sign-in is not shared.")}</p>
         <button type="button" onClick={() => setNotice(null)}>{zh ? "关闭提示" : "Dismiss"}</button>
       </div> : null}
       <div className="browser-tabs" role="tablist" aria-label={zh ? "浏览器标签页" : "Browser tabs"}>
@@ -257,7 +259,9 @@ export function BrowserWorkspace({ hidden = false, target, onClose }: BrowserWor
           />
         </form>
       </div>
-      {error || active?.error ? <div className="browser-error" role="alert">{error || active?.error}</div> : null}
+      {pageError ? <div className="browser-error" role="alert">{localServerOffline
+        ? (zh ? "本地预览服务未运行，页面暂时无法打开。重新启动生成此页面的预览服务后，点击刷新。" : "The local preview server is unavailable. Restart the preview server, then reload this page.")
+        : pageError}</div> : null}
       <div className="browser-viewport" ref={viewportRef}>
         {!active?.url ? <div className="browser-new-tab">
           <Globe2 size={38} strokeWidth={1.15}/>

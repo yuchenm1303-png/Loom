@@ -5,7 +5,8 @@
 .browser-activity-card:disabled { cursor: default; opacity: .75; }
 .browser-activity-visual { display: block; position: relative; aspect-ratio: 2.8; overflow: hidden; background: var(--loom-workspace-hover, #ffffff04); border-bottom: 1px solid var(--loom-workspace-line, #ffffff16); }
 .browser-activity-visual img { width: 100%; height: 100%; object-fit: cover; object-position: top; display: block; }
-.browser-activity-placeholder { display: grid; place-items: center; width: 100%; height: 100%; color: var(--loom-workspace-muted, #949dab); background: radial-gradient(ellipse at center, #a797f510, transparent 70%); }
+.browser-activity-placeholder { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; width: 100%; height: 100%; color: var(--loom-workspace-muted, #949dab); background: radial-gradient(ellipse at center, #a797f510, transparent 70%); }
+.browser-activity-placeholder > span { font-size: 12px; padding: 0 16px 20px; text-align: center; }
 .browser-activity-badge { position: absolute; bottom: 10px; left: 12px; display: inline-flex; align-items: center; gap: 6px; padding: 5px 9px; border-radius: 7px; font-size: 11px; line-height: 1.3; background: var(--loom-workspace-canvas, #17181c); color: var(--loom-workspace-secondary, #bbc1cc); border: 1px solid var(--loom-workspace-line, #ffffff16); }
 .browser-activity-badge i { width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
 .browser-activity-badge[data-state="working"] { color: var(--loom-workspace-accent, #b5a7f5); }
