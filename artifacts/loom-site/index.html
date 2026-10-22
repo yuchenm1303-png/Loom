@@ -1,0 +1,533 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark light">
+<title>Loom — A local agent runtime for real work</title>
+<meta name="description" content="Loom is a local agent runtime that reads your codebase, edits files, runs commands and browses the web — on your machine.">
+<meta property="og:title" content="Loom — A local agent runtime for real work">
+<meta property="og:description" content="Reads code, edits files, runs commands, browses the web. On your machine.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://loom.smirel.com/">
+<link rel="icon" href="assets/loom-icon.png">
+<style>
+  @font-face {
+    font-family: "Newsreader";
+    src: url("assets/newsreader.woff2") format("woff2");
+    font-weight: 400 500;
+    font-style: normal;
+    font-display: swap;
+  }
+
+  :root {
+    --paper: #1f1e1d;
+    --paper-2: #252421;
+    --ink: #f0ede4;
+    --ink-2: #c9c4b8;
+    --ink-3: #918c81;
+    --ink-4: #6a665e;
+    --rule: #45423c;
+    --rule-soft: #33312c;
+    --selection: rgba(120, 165, 255, .24);
+    --serif: "Newsreader", "Iowan Old Style", Georgia, "Times New Roman", serif;
+    --sans: "Inter", ui-sans-serif, -apple-system, "Segoe UI", sans-serif;
+    --page: 1200px;
+    --ease: cubic-bezier(.2,.7,.3,1);
+    color-scheme: dark;
+  }
+
+  html[data-theme="light"] {
+    --paper: #fbfaf6;
+    --paper-2: #f4f1e9;
+    --ink: #1d1b18;
+    --ink-2: #4a463f;
+    --ink-3: #7a766c;
+    --ink-4: #a39d91;
+    --rule: #d8d3c6;
+    --rule-soft: #e8e3d8;
+    --selection: rgba(0, 100, 255, .15);
+    color-scheme: light;
+  }
+
+  * { box-sizing: border-box; }
+  .loom-portal-page { width: 100%; min-height: 100dvh; }
+  html { background: var(--paper); scroll-behavior: smooth; scrollbar-width: none; }
+  html::-webkit-scrollbar, body::-webkit-scrollbar { width: 0; height: 0; }
+  html, body { margin: 0; padding: 0; }
+
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: 16px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+    transition: background-color .25s var(--ease), color .25s var(--ease);
+  }
+
+  ::selection { background: var(--selection); color: inherit; }
+  a { color: inherit; }
+  button { font: inherit; color: inherit; }
+
+  .page {
+    width: min(var(--page), calc(100% - 80px));
+    margin: 0 auto;
+    min-height: 100dvh;
+    padding: 30px 0 0;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* Masthead -------------------------------------------------------------- */
+  .site-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 32px;
+    padding-bottom: 18px;
+  }
+
+  .wordmark {
+    margin: 0;
+    font-family: var(--serif);
+    font-size: 30px;
+    line-height: 1;
+    font-weight: 500;
+    letter-spacing: -.02em;
+  }
+  .wordmark a { text-decoration: none; display: inline-flex; align-items: center; }
+  .smirel-word { height: 22px; width: auto; margin-right: 12px; }
+  .mark-icon { width: 22px; height: 22px; border-radius: 6px; margin-right: 9px; vertical-align: -3px; }
+
+  .head-right {
+    display: flex;
+    align-items: center;
+    gap: 18px;
+    font-size: 11px;
+    letter-spacing: .02em;
+    color: var(--ink-3);
+    white-space: nowrap;
+  }
+
+  .switch {
+    position: relative;
+    width: 36px;
+    height: 18px;
+    padding: 0;
+    border: 1px solid var(--ink-4);
+    border-radius: 2rem;
+    background: transparent;
+    cursor: pointer;
+    transition: background-color .2s ease, border-color .2s ease;
+  }
+  .switch::after {
+    content: "";
+    position: absolute;
+    left: 2px;
+    top: 2px;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: var(--ink-3);
+    transition: transform .2s ease, background-color .2s ease;
+  }
+  .switch[aria-checked="true"] { background: var(--ink); border-color: var(--ink); }
+  .switch[aria-checked="true"]::after { transform: translateX(18px); background: var(--paper); }
+  .switch:focus-visible { outline: 1px solid var(--ink); outline-offset: 3px; }
+
+  /* Hero ------------------------------------------------------------------ */
+  main { flex: 1 0 auto; }
+
+  .hero {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 260px;
+    gap: 80px;
+    align-items: start;
+    padding: 60px 0 0;
+  }
+
+  .hero-copy {
+    margin: 0;
+    max-width: 700px;
+    font-family: var(--serif);
+    font-size: 30px;
+    line-height: 1.46;
+    font-weight: 400;
+    letter-spacing: -.012em;
+    text-wrap: pretty;
+  }
+
+  .hero-copy a {
+    text-decoration: underline;
+    text-decoration-thickness: 1px;
+    text-underline-offset: 4px;
+    text-decoration-color: color-mix(in srgb, var(--ink) 32%, transparent);
+    transition: text-decoration-color .15s ease;
+  }
+  .hero h1 a:hover { text-decoration-color: var(--ink); }
+
+  .ledger {
+    margin: 6px 0 0;
+    border-top: 1px solid var(--ink);
+  }
+  .ledger > div {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    align-items: baseline;
+    gap: 16px;
+    padding: 9px 0 10px;
+    border-bottom: 1px solid var(--rule-soft);
+  }
+  .ledger dt {
+    font-size: 10px;
+    line-height: 1.4;
+    letter-spacing: .14em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+  }
+  .ledger dd {
+    margin: 0;
+    font-family: var(--serif);
+    font-size: 21px;
+    line-height: 1.2;
+    letter-spacing: -.01em;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Sections -------------------------------------------------------------- */
+  .section { margin-top: 64px; }
+
+  .section-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 24px;
+    margin-bottom: 18px;
+  }
+  .section-head h2 {
+    margin: 0;
+    font-size: 10px;
+    line-height: 1.4;
+    letter-spacing: .18em;
+    text-transform: uppercase;
+    font-weight: 400;
+    color: var(--ink-3);
+  }
+  .section-head span {
+    font-size: 10px;
+    letter-spacing: .1em;
+    color: var(--ink-4);
+  }
+
+  /* Starters -------------------------------------------------------------- */
+  .starters {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    column-gap: 72px;
+    border-top: 1px solid var(--rule);
+  }
+
+  .starter {
+    display: block;
+    width: 100%;
+    padding: 20px 0 22px;
+    border: 0;
+    border-bottom: 1px solid var(--rule-soft);
+    background: none;
+    text-align: left;
+    color: inherit;
+    cursor: pointer;
+    transition: color .15s ease;
+  }
+
+  .starter-title {
+    display: inline-block;
+    font-family: var(--serif);
+    font-size: 21px;
+    line-height: 1.3;
+    letter-spacing: -.008em;
+    text-decoration: underline;
+    text-decoration-thickness: 1px;
+    text-underline-offset: 4px;
+    text-decoration-color: transparent;
+    transition: text-decoration-color .18s ease;
+  }
+  .starter-note {
+    display: block;
+    margin-top: 3px;
+    font-size: 15px;
+    line-height: 23px;
+    color: var(--ink-3);
+  }
+  .starter:hover .starter-title,
+  .starter:focus-visible .starter-title { text-decoration-color: color-mix(in srgb, var(--ink) 55%, transparent); }
+  .starter:focus-visible { outline: 1px solid var(--ink); outline-offset: 2px; }
+
+  /* Latest ---------------------------------------------------------------- */
+  .latest { border-top: 1px solid var(--rule); }
+
+  .latest a {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 32px;
+    padding: 13px 0 14px;
+    border-bottom: 1px solid var(--rule-soft);
+    text-decoration: none;
+    color: inherit;
+  }
+  .latest-title {
+    font-family: var(--serif);
+    font-size: 17px;
+    line-height: 1.55;
+    text-decoration: underline;
+    text-decoration-thickness: 1px;
+    text-underline-offset: 3px;
+    text-decoration-color: transparent;
+    transition: text-decoration-color .18s ease;
+  }
+  .latest a:hover .latest-title { text-decoration-color: color-mix(in srgb, var(--ink) 45%, transparent); }
+  .latest time {
+    font-size: 10.5px;
+    letter-spacing: .04em;
+    color: var(--ink-4);
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Composer -------------------------------------------------------------- */
+  .ask {
+    margin-top: auto;
+    padding: 36px 0 18px;
+  }
+  .ask form { border-top: 1px solid var(--ink); padding-top: 18px; }
+  .ask-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 28px;
+  }
+  .ask input {
+    width: 100%;
+    border: 0;
+    padding: 0;
+    background: transparent;
+    color: var(--ink);
+    font-family: var(--serif);
+    font-size: 21px;
+    line-height: 1.5;
+    outline: none;
+  }
+  .ask input::placeholder { color: var(--ink-4); opacity: 1; }
+  .ask-send {
+    border: 0;
+    background: none;
+    padding: 2px 0;
+    color: var(--ink);
+    font-family: var(--serif);
+    font-size: 17px;
+    text-decoration: underline;
+    text-underline-offset: 4px;
+    text-decoration-color: var(--ink-4);
+    cursor: pointer;
+    transition: text-decoration-color .15s ease;
+  }
+  .ask-send:hover { text-decoration-color: var(--ink); }
+  .ask-send:focus-visible { outline: 1px solid var(--ink); outline-offset: 3px; }
+
+  .ask-foot {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 24px;
+    margin-top: 12px;
+    font-size: 10px;
+    letter-spacing: .04em;
+    color: var(--ink-4);
+  }
+
+  /* Lens cursor ----------------------------------------------------------- */
+  :root { --loom-dur-press: .12s; }
+  html.loom-liquid-cursor-active.loom-liquid-cursor-active body .loom-portal-page.loom-portal-page,
+  html.loom-liquid-cursor-active.loom-liquid-cursor-active body .loom-portal-page.loom-portal-page *,
+  html.loom-liquid-cursor-active body .loom-portal-page,
+  html.loom-liquid-cursor-active body .loom-portal-page *,
+  html.loom-liquid-cursor-active body .loom-portal-page *::before,
+  html.loom-liquid-cursor-active body .loom-portal-page *::after { cursor: none !important; }
+  .loom-liquid-cursor-canvas { position: fixed; left: 0; top: 0; width: 420px; height: 420px; z-index: 2147483000; pointer-events: none; opacity: 0; background: transparent; will-change: transform, opacity; transition: opacity var(--loom-dur-press) linear; }
+  .loom-liquid-cursor-dot { position: fixed; left: 0; top: 0; width: 3.5px; height: 3.5px; border-radius: 999px; z-index: 2147483001; pointer-events: none; opacity: 0; background: rgba(255,255,255,.94); box-shadow: 0 0 0 1px rgba(8,18,28,.2), 0 0 7px rgba(255,255,255,.36); will-change: transform, opacity; transition: opacity var(--loom-dur-press) linear; }
+  @media (pointer: coarse), (prefers-reduced-motion: reduce) { .loom-liquid-cursor-canvas, .loom-liquid-cursor-dot { display: none !important; } }
+
+  /* Responsive ------------------------------------------------------------ */
+  @media (max-width: 1000px) {
+    .page { width: calc(100% - 56px); }
+    .hero { grid-template-columns: minmax(0, 1fr); gap: 40px; padding-top: 66px; }
+    .ledger { max-width: 420px; }
+    .section { margin-top: 74px; }
+    .starters { column-gap: 44px; }
+  }
+
+  @media (max-width: 700px) {
+    .page { width: calc(100% - 36px); padding-top: 22px; }
+    .hero { padding-top: 52px; }
+    .hero-copy { font-size: 25px; }
+    .section { margin-top: 58px; }
+    .starters { grid-template-columns: minmax(0, 1fr); }
+    .latest a { gap: 18px; }
+    .latest-title { font-size: 16px; }
+    .ask { padding-top: 64px; }
+    .ask input { font-size: 19px; }
+    .ask-foot { flex-direction: column; gap: 4px; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { transition: none !important; animation: none !important; }
+  }
+</style>
+</head>
+<body>
+  <div class="loom-portal-page" id="portal">
+  <div class="page" id="site">
+    <header class="site-head">
+      <h1 class="wordmark"><a href="#top" aria-label="Loom home"><img class="smirel-word" src="assets/smirel-logo.png" alt="Smirel"><img class="mark-icon" src="assets/loom-icon.png" alt="">Loom</a></h1>
+      <div class="head-right">
+        <span>Local · 127.0.0.1</span>
+        <button class="switch" type="button" role="switch" aria-checked="true" aria-label="Dark mode" id="themeSwitch"></button>
+      </div>
+    </header>
+
+    <main id="top">
+      <section class="hero" aria-labelledby="intro">
+        <h2 id="intro" class="hero-copy">
+          A local agent runtime for real work. It reads the codebase, edits files, runs commands and browses the web — on your machine, with your permission. <a href="https://app.smirel.com/" target="_blank" rel="noopener">Open Loom</a>
+        </h2>
+
+        <dl class="ledger" aria-label="At a glance">
+          <div><dt>Runtime</dt><dd>Local</dd></div>
+          <div><dt>Tools</dt><dd>Files · Shell · Web</dd></div>
+          <div><dt>Release</dt><dd>0.1.115</dd></div>
+        </dl>
+      </section>
+
+      <section class="section" id="start" aria-labelledby="start-title">
+        <div class="section-head">
+          <h2 id="start-title">Start</h2>
+          <span>04</span>
+        </div>
+        <div class="starters">
+          <button class="starter" type="button" data-prompt="Inspect this project, map the architecture, and tell me what I should understand first.">
+            <span class="starter-title">Inspect this project</span>
+            <span class="starter-note">Map the architecture and tell me what matters first.</span>
+          </button>
+          <button class="starter" type="button" data-prompt="Help me implement a feature in this project. Start by identifying the smallest clean approach.">
+            <span class="starter-title">Implement a feature</span>
+            <span class="starter-note">Turn a product idea into a focused code change.</span>
+          </button>
+          <button class="starter" type="button" data-prompt="Investigate the current project for the problem I am seeing and trace it to the root cause before making changes.">
+            <span class="starter-title">Trace a problem</span>
+            <span class="starter-note">Follow the failure to its root cause before changing code.</span>
+          </button>
+          <button class="starter" type="button" data-prompt="Use the available tools and workspace to complete a useful multi-step task for this project.">
+            <span class="starter-title">Run a workflow</span>
+            <span class="starter-note">Use tools and the workspace to complete a multi-step task.</span>
+          </button>
+        </div>
+      </section>
+
+      <section class="section" id="latest" aria-labelledby="latest-title">
+        <div class="section-head">
+          <h2 id="latest-title">Latest</h2>
+          <span>03</span>
+        </div>
+        <div class="latest">
+          <a href="https://github.com/yuchenm1303-png/Loom/releases" target="_blank" rel="noopener">
+            <span class="latest-title">v0.1.115 — browser cards, sidebar pages, steadier previews</span>
+            <time>22 Oct</time>
+          </a>
+          <a href="https://github.com/yuchenm1303-png/Loom/releases" target="_blank" rel="noopener">
+            <span class="latest-title">v0.1.114 — conversation home and dock alignment</span>
+            <time>21 Oct</time>
+          </a>
+          <a href="https://github.com/yuchenm1303-png/Loom/releases" target="_blank" rel="noopener">
+            <span class="latest-title">v0.1.113 — packaging and update channel</span>
+            <time>18 Oct</time>
+          </a>
+        </div>
+      </section>
+    </main>
+
+    <div class="ask">
+      <form id="askForm" autocomplete="off">
+        <div class="ask-row">
+          <input id="askInput" type="text" placeholder="Ask Loom to inspect, edit, run, browse…" aria-label="Ask Loom">
+          <button class="ask-send" type="submit">Send</button>
+        </div>
+        <div class="ask-foot">
+          <span>Windows · v0.1.115 · Full access</span>
+          <span>Prompt is copied, then Loom opens</span>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  </div>
+
+  <script>
+    (function () {
+      "use strict";
+      var APP = "https://app.smirel.com/";
+      var root = document.documentElement;
+      var sw = document.getElementById("themeSwitch");
+      var saved = null;
+      try { saved = localStorage.getItem("loom.site.theme"); } catch (e) {}
+      var forced = new URLSearchParams(location.search).get("theme");
+      var dark = forced === "dark" || forced === "light"
+        ? forced === "dark"
+        : (saved ? saved === "dark" : true);
+
+      function apply(next) {
+        root.dataset.theme = next ? "dark" : "light";
+        sw.setAttribute("aria-checked", next ? "true" : "false");
+        sw.setAttribute("aria-label", next ? "Switch to light theme" : "Switch to dark theme");
+      }
+      apply(dark);
+      sw.addEventListener("click", function () {
+        dark = root.dataset.theme !== "dark";
+        apply(dark);
+        try { localStorage.setItem("loom.site.theme", dark ? "dark" : "light"); } catch (e) {}
+      });
+
+      function openWith(text) {
+        if (text) {
+          try {
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+              navigator.clipboard.writeText(text).catch(function () {});
+            }
+          } catch (e) {}
+        }
+        window.open(APP, "_blank", "noopener");
+      }
+
+      document.getElementById("askForm").addEventListener("submit", function (event) {
+        event.preventDefault();
+        openWith(document.getElementById("askInput").value.trim());
+      });
+
+      Array.prototype.forEach.call(document.querySelectorAll("[data-prompt]"), function (button) {
+        button.addEventListener("click", function () {
+          openWith(button.getAttribute("data-prompt"));
+        });
+      });
+
+      Array.prototype.forEach.call(document.querySelectorAll("a,button"), function (el) {
+        if (el.classList.contains("starter")) return;
+        el.setAttribute("data-magnetic-hover", "true");
+      });
+    })();
+  </script>
+  <script src="assets/cursor.js?v=3" defer></script>
+</body>
+</html>
