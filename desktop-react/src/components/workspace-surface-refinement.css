@@ -104,6 +104,16 @@
   padding: 12px calc(var(--ws-gutter) + var(--ws-scroll-inset, 0px)) 16px;
 }
 :root .app-shell .composer-stage { background: var(--ws-canvas); }
+/* Balance the dock's reserved right track so the conversation and input share
+   the visual centre between the sidebar and the window's right edge. Keep
+   compact workspaces free of this extra inset. */
+@container loom-workspace (min-width: 900px) {
+  :root .app-shell .conversation-stage,
+  :root .app-shell .composer-stage {
+    padding-left: var(--loom-tool-rail-track, 0px);
+    box-sizing: border-box;
+  }
+}
 :root .app-shell .project-git-bar {
   width: min(var(--content-width), calc(100% - 2 * (var(--ws-gutter) + var(--ws-scroll-inset, 0px))));
   max-width: none;
