@@ -2,9 +2,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from types import SimpleNamespace
+import pytest
 
 from app.ai import AIMessage, MessageRole, ModelContextLimits, ModelResponse, ModelUsage, ToolCall
-from app.ai.errors import AIResponseError
+from app.ai.errors import AIResponseError, AITransportError
 from app.agent_runtime.context_budget import estimate_tokens, prepare_context
 from app.agent_runtime.context_compaction import build_compacted_history, summarization_prompt
 
@@ -266,7 +267,11 @@ def test_completed_compaction_does_not_invent_semantic_finish_reason_retries():
     assert metadata["compaction_attempts"] == 1
 
 
-def test_context_window_error_drops_oldest_logical_tool_group_then_retries():
+@pytest.mark.parametrize("failure", [
+    AIResponseError("maximum context window exceeded"),
+    AITransportError("OpenCode Go Messages HTTP 400: context window exceeds limit (2013)", status_code=400, retryable=False),
+])
+def test_context_window_error_drops_oldest_logical_tool_group_then_retries(failure):
     call = ToolCall(call_id="call-1", name="read_file", arguments={"path": "a.txt"})
     history = [
         AIMessage(role=MessageRole.ASSISTANT, content="", tool_calls=(call,)),
@@ -276,7 +281,7 @@ def test_context_window_error_drops_oldest_logical_tool_group_then_retries():
     ]
     runtime = FakeRuntime(
         [
-            AIResponseError("maximum context window exceeded"),
+            failure,
             ModelResponse(text="summary"),
         ]
     )

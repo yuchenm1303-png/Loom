@@ -15,7 +15,10 @@ class ScriptedPlatform:
         self.requests.append((profile_id, request))
         if not self.responses:
             raise AssertionError("scripted platform ran out of responses")
-        return self.responses.pop(0)
+        result = self.responses.pop(0)
+        if isinstance(result, BaseException):
+            raise result
+        return result
 
 
 def _runtime(tmp_path, responses):
@@ -43,6 +46,28 @@ def _runtime(tmp_path, responses):
     ]
     store.save(session)
     return runtime, platform, store, session
+
+
+def test_messages_http_context_rejection_compacts_before_resampling(tmp_path):
+    from app.ai.errors import AITransportError
+    runtime, platform, store, session = _runtime(tmp_path, [
+        AITransportError("OpenCode Go Messages HTTP 400: invalid params, context window exceeds limit (2013)",
+            status_code=400, retryable=False),
+        ModelResponse(text="Summary: four previous questions answered; continue requested work."),
+        ModelResponse(text="Completed after compaction."),
+    ])
+    try:
+        result = runtime.start_turn(session.session_id, "Continue the work.")
+        assert result.status is AgentStatus.COMPLETED
+        assert len(platform.requests) == 3
+        assert platform.requests[1][1].tools == ()
+        assert platform.requests[1][1].tool_choice is ToolChoice.NONE
+        assert any(message.name == "loom_compaction" for message in platform.requests[2][1].messages)
+        rejected = [e for e in store.events(session.session_id) if e.kind is AgentEventKind.MODEL_RESPONSE_REJECTED]
+        assert rejected[0].data["reason"] == "context_window_exceeded"
+        assert any(e.kind is AgentEventKind.CONTEXT_CHECKPOINTED for e in store.events(session.session_id))
+    finally:
+        runtime.close()
 
 
 def test_model_compaction_is_separate_no_tool_task_and_counts_usage(tmp_path):

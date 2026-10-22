@@ -375,6 +375,26 @@ class TurnRunner:
                             retry_sampling = True
                             break
                         except (AITransportError, ModelRequestTimeout) as exc:
+                            if isinstance(exc, AITransportError) and is_context_window_error(exc):
+                                # HTTP adapters report request rejection as a transport
+                                # error, while SDK adapters may use AIResponseError.
+                                # Context recovery must not depend on that wrapper.
+                                session.model_steps += 1
+                                rt._emit_event(session, Event.MODEL_RESPONSE_REJECTED, data={
+                                    **model_identity, "step_id": step.step_id,
+                                    "reason": "context_window_exceeded",
+                                    "error_type": type(exc).__name__, "error": str(exc),
+                                    "provider_status_code": exc.status_code, "attempt": attempt,
+                                    "rejected_input_tokens": int(extra.get("calibrated_input_tokens_after") or 0) if isinstance(extra, dict) else 0,
+                                })
+                                rt._release_step_context(step)
+                                if attempt >= rt.limits.model_retries:
+                                    raise RuntimeError("model context window is smaller than the configured limits and compaction could not recover") from exc
+                                request_forced_compaction(rt, session)
+                                attempt += 1
+                                recovery_instruction = recovery_partial = recovery_reasoning = ""
+                                retry_sampling = True
+                                break
                             if isinstance(exc, (ModelRequestTimeout, AITransportError)):
                                 rt._emit_event(session, Event.MODEL_RESPONSE_REJECTED, data={
                                     **model_identity,
