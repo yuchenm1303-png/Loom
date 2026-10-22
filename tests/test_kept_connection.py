@@ -237,3 +237,46 @@ def test_a_transaction_that_could_not_end_is_rolled_back_rather_than_kept_open(t
             pass
     assert events == ["commit failed", "rolled back"]
     assert kept._busy is False  # and the next use is not mistaken for a nested one
+
+
+# --- ties in time -------------------------------------------------------------------------------------------------
+# Opening a connection per call made every store call take 8-10 ms, so two items made one after the other never shared
+# a timestamp (utc_now() has millisecond resolution). With the connection kept they do, and anything ordered by
+# `created_at, <random uuid>` came back in random order: CI caught a queue that returned its second turn first.
+
+
+def test_turns_queued_in_the_same_millisecond_run_in_the_order_they_were_queued(tmp_path, monkeypatch):
+    from app.agent_runtime import durable_state
+
+    monkeypatch.setattr(durable_state, "utc_now", lambda: "2026-10-22T00:00:00.000+00:00")
+    store = DurableThreadStateStore(tmp_path)
+    queued = [store.enqueue("s1", f"turn {number}") for number in range(40)]
+
+    assert [item.queue_id for item in store.list_queue("s1")] == [item.queue_id for item in queued]
+    claimed = [store.claim_next("s1", f"turn-{number}") for number in range(40)]
+    assert [item.queue_id for item in claimed] == [item.queue_id for item in queued]
+    assert store.claim_next("s1", "one-too-many") is None
+
+
+def test_turns_queued_in_different_milliseconds_are_still_ordered_by_time_first(tmp_path, monkeypatch):
+    from app.agent_runtime import durable_state
+
+    stamps = iter(["2026-10-22T00:00:00.003+00:00", "2026-10-22T00:00:00.001+00:00", "2026-10-22T00:00:00.002+00:00"])
+    monkeypatch.setattr(durable_state, "utc_now", lambda: next(stamps, "2026-10-22T00:00:01.000+00:00"))
+    store = DurableThreadStateStore(tmp_path)
+    late, early, middle = (store.enqueue("s1", name) for name in ("late", "early", "middle"))
+    assert [item.text for item in store.list_queue("s1")] == ["early", "middle", "late"]
+    assert [store.claim_next("s1", f"t{n}").queue_id for n in range(3)] == [early.queue_id, middle.queue_id, late.queue_id]
+
+
+def test_agents_added_in_the_same_millisecond_are_listed_in_the_order_they_were_added(tmp_path, monkeypatch):
+    from app.agent_runtime import agent_graph
+
+    monkeypatch.setattr(agent_graph, "utc_now", lambda: "2026-10-22T00:00:00.000+00:00")
+    graph = AgentGraphStore(tmp_path)
+    names = [f"{'zyxwvutsrqponmlkjihgfedcba'[number % 26]}-child-{number}" for number in range(30)]  # not alphabetical
+    for name in names:
+        graph.add_child(parent_session_id="root", child_session_id=name)
+
+    assert [node.session_id for node in graph.list_children("root")] == names
+    assert [node.session_id for node in graph.list_tree("root")] == names

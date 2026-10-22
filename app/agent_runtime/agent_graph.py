@@ -196,7 +196,7 @@ class AgentGraphStore:
         if not include_closed:
             query += " AND relation_status = ?"
             params.append(AgentRelationStatus.ACTIVE.value)
-        query += " ORDER BY created_at ASC, session_id ASC"
+        query += " ORDER BY created_at ASC, rowid ASC"
         with self._lock, self._connect() as connection:
             rows = connection.execute(query, tuple(params)).fetchall()
         return tuple(_node_from_row(row) for row in rows)
@@ -213,7 +213,7 @@ class AgentGraphStore:
         if not include_closed:
             query += " AND relation_status = ?"
             params.append(AgentRelationStatus.ACTIVE.value)
-        query += " ORDER BY created_at ASC, session_id ASC"
+        query += " ORDER BY created_at ASC, rowid ASC"
         with self._lock, self._connect() as connection:
             rows = connection.execute(query, tuple(params)).fetchall()
         return tuple(_node_from_row(row) for row in rows)

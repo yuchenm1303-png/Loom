@@ -277,7 +277,7 @@ class DurableThreadStateStore:
                 """
                 SELECT * FROM thread_queue
                 WHERE session_id = ?
-                ORDER BY created_at ASC, queue_id ASC
+                ORDER BY created_at ASC, rowid ASC
                 """,
                 (key,),
             ).fetchall()
@@ -307,7 +307,7 @@ class DurableThreadStateStore:
                 """
                 SELECT * FROM thread_queue
                 WHERE session_id = ? AND state = ?
-                ORDER BY created_at ASC, queue_id ASC
+                ORDER BY created_at ASC, rowid ASC
                 LIMIT 1
                 """,
                 (key, QueueItemState.PENDING.value),
