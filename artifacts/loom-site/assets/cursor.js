@@ -75,8 +75,12 @@ Error generating stack: `+u.message+`
       float edgeSafety = smoothstep(0.012, 0.075, textureEdgeDistance);
       displacement *= edgeSafety;
 
+      // A continuous two-axis bend prevents horizontal cutoff bands on
+      // short magnetic targets while preserving the glass edge profile.
       vec2 refraction = normal * displacement;
-      refraction.y = clamp(refraction.y, -halfSize.y * 0.32, halfSize.y * 0.32);
+      vec2 bendReach = max(vec2(22.0, 13.0), halfSize * vec2(0.68, 0.66));
+      vec2 bendRatio = refraction / bendReach;
+      refraction *= inversesqrt(vec2(1.0) + bendRatio * bendRatio);
       vec2 sampleUv = screenUv - refraction / u_resolution;
 
       vec2 centerUv = u_lensCenter / u_resolution;
