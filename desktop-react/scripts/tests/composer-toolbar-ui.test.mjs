@@ -21,7 +21,13 @@ test("compact composer preserves drafts and connects workspace, reasoning and pr
       import './src/renderer-styles';
       localStorage.setItem('loom.settings.language','en');
       window.sent = 0; window.reasoningChanges=[]; window.openedFiles=0;
-      window.loom={pickFiles:async()=>['C:/fixture/notes.txt']};
+      window.loom={pickFiles:async()=>['C:/fixture/notes.txt'],call:async()=>({tools:[
+        {name:'read_file',description:'Read file contents',available:true},
+        {name:'write_file',description:'Write file contents',available:true},
+        {name:'web_search',description:'Search the web',available:true},
+        {name:'skill_load',description:'Load a skill',available:true},
+        {name:'browser_open',description:'Browser disabled',available:false}],
+        skills:[{name:'review',description:'Review changes'}]})};
       function Fixture(){
         const [value,setValue]=useState('Check <unsafe> text');
         const [effort,setEffort]=useState('low');
@@ -31,7 +37,7 @@ test("compact composer preserves drafts and connects workspace, reasoning and pr
           workspace="C:/fixture/project" onOpenWorkspace={()=>window.openedFiles++}
           model="deepseek-flash-long-model-name" modelSnapshot={{current:{model:'deepseek-flash-long-model-name',reasoning}}}
           permissionMode="approval" onReasoningChange={async(kind,value)=>{window.reasoningChanges.push([kind,value]);setEffort(value)}}
-          onSend={()=>window.sent++} onInterrupt={()=>{}}/>;
+          onSend={(_text,_attachments,tools)=>{window.sent++;window.submittedTools=tools}} onInterrupt={()=>{}}/>;
       }
       createRoot(document.getElementById('root')).render(<I18nProvider><Fixture/></I18nProvider>);
     ` }, bundle: true, platform: "browser", format: "iife", jsx: "automatic",
@@ -76,6 +82,27 @@ test("compact composer preserves drafts and connects workspace, reasoning and pr
             };window.checkToolbar();
             button('Expand editor').click();button('Preview message').click();window.switchThread();
             await waitFor(()=>!document.querySelector('.composer-draft-preview')&&button('Expand editor'),'Thread retained draft panels');
+            button('Tools & skills').click();
+            await waitFor(()=>document.querySelectorAll('.composer-tools-row').length===5,'Real tool catalog did not load');
+            const byText=text=>[...document.querySelectorAll('.composer-tools-popover button')].find(b=>b.textContent===text);
+            byText('Select none').click();await waitFor(()=>document.body.textContent.includes('Chat only'),'Chat-only mode missing');
+            if([...document.querySelectorAll('.composer-tools-row input')].some(input=>input.checked))throw Error('Select none kept tools enabled');
+            const search=document.querySelector('.composer-tools-search input');
+            Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(search,'write_file');search.dispatchEvent(new Event('input',{bubbles:true}));
+            await waitFor(()=>document.querySelectorAll('.composer-tools-row').length===1,'Tool search did not filter');
+            document.querySelector('.composer-tools-row input').click();
+            await waitFor(()=>document.querySelector('.composer-tools-row input').checked,'Tool selection not applied');
+            Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(search,'');search.dispatchEvent(new Event('input',{bubbles:true}));
+            await waitFor(()=>document.querySelectorAll('.composer-tools-row').length===5,'Tool search did not clear');
+            if(!document.querySelector('.composer-tools-row[data-unavailable="true"] input').disabled)throw Error('Disabled capability became selectable');
+            document.querySelector('[role="tab"]:last-child').click();
+            await waitFor(()=>document.querySelector('.composer-tools-skill'),'Skills tab missing');
+            document.querySelector('.composer-tools-skill').click();
+            await waitFor(()=>document.querySelector('textarea').value.includes('$review'),'Skill reference not inserted');
+            button('Tools & skills').click();await waitFor(()=>document.querySelector('.composer-tools-modes'),'Selector did not reopen');
+            byText('Select all').click();await waitFor(()=>document.querySelector('.composer-tools-count')?.textContent==='4','Select all included unavailable tools');
+            byText('Auto').click();await waitFor(()=>!document.querySelector('.composer-tools-count'),'Auto mode did not reset selection');
+            byText('Select none').click();button('Close tool selection').click();
             return 'COMPOSER_TOOLS_PASS';
           })()\`);console.log(result);
           for(const width of [680,450,360]){
@@ -89,6 +116,11 @@ test("compact composer preserves drafts and connects workspace, reasoning and pr
               document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape'}));
             })()\`);
           }
+          await win.webContents.executeJavaScript(\`(async()=>{
+            document.querySelector('[aria-label="Send message"]').click();
+            await new Promise(r=>setTimeout(r,50));
+            if(window.sent!==1||JSON.stringify(window.submittedTools)!=='[]')throw Error('Selected tool surface not attached to send');
+          })()\`);
           server.close();app.exit(0);
         }catch(error){console.error(error);server.close();app.exit(1)}
       });

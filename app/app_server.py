@@ -17,6 +17,8 @@ from app.agent_runtime import AgentEvent, AgentEventKind, AgentStatus, Permissio
 from app.agent_runtime.storage import utc_now
 from app.agent_runtime.steering import _input_id, _receipt
 from app.agent_runtime.tools import set_tool_capability_settings, tool_capability_name
+from app.agent_runtime.tools import ToolExposure, _capability_allows
+from app.agent_runtime.tool_selection import parse_tool_selection
 from app.agent_runtime.account_tool_access import set_account_tool_access_credential
 from app.agent_runtime.shell_environment import (
     build_environment_from_settings,
@@ -134,6 +136,7 @@ def _thread_record(
         "profileId": session.profile_id,
         "workspace": session.workspace_dir,
         "permissionMode": session.permission_mode.value,
+        "toolSelection": getattr(session, "tool_selection", None),
         "modelSelection": getattr(session, "model_selection", "") or None,
         "model": getattr(session, "model", "") or None,
         "modelProvider": getattr(session, "model_provider", "") or None,
@@ -1105,6 +1108,7 @@ class LoomAppServerService:
             permission_mode=source.permission_mode,
         )
         fork.messages = copy.deepcopy(source.messages)
+        fork.tool_selection = copy.deepcopy(source.tool_selection)
         fork.forked_from_id = source.session_id
         fork.status = AgentStatus.IDLE
         fork.current_turn_id = ""
@@ -1119,6 +1123,28 @@ class LoomAppServerService:
         record = self._record(fork, active=False)
         return {"thread": record, "forkedFromId": source.session_id}
 
+    def tools_catalog(self, params: dict[str, Any]) -> dict[str, Any]:
+        session_id = str(params.get("threadId") or "").strip()
+        workspace = Path(self._load(session_id).workspace_dir) if session_id else self._requested_workspace(params)
+        tools = {tool.name: tool for tool in self.runtime.tools.all()
+                 if not str(tool.binding_key or "").startswith("mcp-binding:")}
+        manager = getattr(self.runtime, "mcp_clients", None)
+        if manager is not None:
+            tools.update({tool.name: tool for tool in manager.capture_binding().agent_tools()})
+        skills = []
+        errors = []
+        skill_manager = getattr(self.runtime, "skill_manager", None)
+        if skill_manager is not None:
+            snapshot = skill_manager.discover(workspace)
+            skills = [self.runtime._skill_record(skill) for skill in snapshot.skills]
+            errors = list(snapshot.errors)
+        return {"tools": [{"name": tool.name, "description": tool.description,
+                           "available": _capability_allows(tool, None),
+                           "deferred": tool.exposure is ToolExposure.DEFERRED}
+                          for tool in sorted(tools.values(), key=lambda tool: tool.name)
+                          if tool.exposure in (ToolExposure.DIRECT, ToolExposure.DEFERRED)],
+                "skills": skills, "errors": errors}
+
     def turn_start(self, params: dict[str, Any]) -> dict[str, Any]:
         session_id = self._required_text(params, "threadId")
         attachments = params.get("attachments") or ()
@@ -1128,6 +1154,7 @@ class LoomAppServerService:
         if not text and not attachments:
             raise ValueError("turn/start requires input")
         session = self._load(session_id)
+        selection = parse_tool_selection(params["toolSelection"]) if "toolSelection" in params else session.tool_selection
         if session.status is AgentStatus.WAITING_APPROVAL:
             raise RuntimeError("resolve the pending approval before starting another turn")
         if self._is_active(session_id):
@@ -1153,6 +1180,8 @@ class LoomAppServerService:
 
         def run_turn() -> Any:
             try:
+                session.tool_selection = selection
+                self.store.save(session)
                 self._prepare_turn(session)
             except Exception as exc:
                 if cancelled.is_set():
@@ -1857,6 +1886,7 @@ class LoomRpcController:
             "thread/fork": self.service.thread_fork,
             "agent/list": self.service.agent_list,
             "turn/start": self.service.turn_start,
+            "tools/catalog": self.service.tools_catalog,
             "turn/interrupt": self.service.turn_interrupt,
             "turn/pause": self.service.turn_pause,
             "turn/resume": self.service.turn_resume,

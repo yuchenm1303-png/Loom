@@ -43,6 +43,7 @@ from .steering import (_content_record, _content_from_record, _content_digest, _
                        _STEERING_PROMPT, _STEERING_PROMPT_MARKER)
 from .model_replan import request_replan
 from .tools import ToolContext, ToolPolicy, ToolRegistry, ToolResult
+from .tool_selection import selected_step
 
 
 from .system_prompts import (
@@ -1497,6 +1498,7 @@ class AgentRuntime:
             next_model_step=next_model_step,
             step_id=step_id,
         )
+        step = selected_step(session, step)
         key = (step.session_id, step.turn_id, step.step_id)
         with self._captured_steps_guard:
             existing = self._captured_steps.get(key)

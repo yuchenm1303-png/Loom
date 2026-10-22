@@ -200,9 +200,12 @@ class CodeModeRuntime(SkillRuntime):
         return "\n".join(parts)
 
     def _code_mode_router(self, session: AgentSession) -> ToolRouter:
+        from .tool_selection import tool_is_selected
         activated = set(self._activation_names(session))
         visible: list[AgentTool] = []
         for tool in self.tools.all():
+            if not tool_is_selected(session, tool.name):
+                continue
             if tool.name == _CODE_MODE_TOOL_NAME:
                 continue
             if not _nested_capability_allows(tool):

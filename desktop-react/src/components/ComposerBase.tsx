@@ -25,6 +25,7 @@ import { ModelPanel } from "./ModelPanel";
 import { ModelUsageIndicator } from "./ModelUsageIndicator";
 import { ReasoningThread } from "./ReasoningThread";
 import { ComposerDraftTools } from "./ComposerDraftTools";
+import { ComposerToolSelector } from "./ComposerToolSelector";
 import { ComposerAttachmentStrip } from "./ComposerAttachmentStrip";
 import {
   MAX_COMPOSER_ATTACHMENTS,
@@ -43,6 +44,7 @@ import "./composer-compact.css";
 import { imageAttachmentState } from "./modelInput";
 
 interface ComposerProps {
+  toolSelection?: string[] | null;
   workspace?: string;
   onOpenWorkspace?(): void;
   threadId?: string;
@@ -76,7 +78,7 @@ interface ComposerProps {
   /** True when the bound model was declared able to read images. */
   imagesAllowed?: boolean;
   imageSupport?: boolean | null;
-  onSend(input: string, attachments: { path: string; name: string }[]): Promise<void> | void;
+  onSend(input: string, attachments: { path: string; name: string }[], toolSelection?: string[] | null): Promise<void> | void;
   onInterrupt(): Promise<void> | void;
 }
 
@@ -155,6 +157,7 @@ function ComposerControlIcon({ kind }: { kind: "attach" | "model" }) {
 
 
 export function Composer({
+  toolSelection: savedToolSelection,
   workspace,
   onOpenWorkspace,
   threadId,
@@ -188,6 +191,9 @@ export function Composer({
   const { language } = useI18n();
   const zh = language === "zh-CN";
   const [localValue, setLocalValue] = useState("");
+  const [toolSelection, setToolSelection] = useState<string[] | null>(savedToolSelection ?? null);
+  const savedToolSelectionKey = JSON.stringify(savedToolSelection ?? null);
+  useEffect(() => { setToolSelection(JSON.parse(savedToolSelectionKey)); }, [threadId, savedToolSelectionKey]);
   const value = draftValue ?? localValue;
   const setValue = onDraftValueChange ?? setLocalValue;
   const [attachments, setAttachments] = useState<Attachment[]>([]);
@@ -367,7 +373,7 @@ export function Composer({
     try {
       // Where the text is drawn now: the message flies from here once the transcript has its entry (sendFlight.ts).
       recordSendOrigin(textareaRef.current);
-      const request = onSend(input, sendable.map((item) => ({ path: item.path, name: item.name })));
+      const request = onSend(input, sendable.map((item) => ({ path: item.path, name: item.name })), toolSelection);
       setValue("");
       await request;
       setQuote(null);
@@ -481,6 +487,9 @@ export function Composer({
 
         <div className="composer-toolbar composer-toolbar-idle">
           <div className="composer-left">
+            <ComposerToolSelector threadId={threadId} workspace={workspace} selection={toolSelection} onChange={setToolSelection}
+              disabled={disabled || submitting || running} onOpen={() => setOpenPanel(null)}
+              onInsertSkill={name => { setValue(`${value}${value && !/\s$/.test(value) ? " " : ""}$${name} `); textareaRef.current?.focus(); }} />
             <button
               type="button"
               className="composer-tool composer-refined-control"

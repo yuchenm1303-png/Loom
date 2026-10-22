@@ -116,6 +116,8 @@ class ToolSearchRuntime(ConfiguredMCPRuntime):
         )
 
     def _search_tools(self, context: ToolContext, arguments: dict[str, Any]) -> ToolResult:
+        from .tool_selection import tool_is_selected
+        session = self.store.load(context.session_id)
         context.raise_if_cancelled()
         query = str(arguments.get("query") or "").strip()
         if not query:
@@ -134,6 +136,7 @@ class ToolSearchRuntime(ConfiguredMCPRuntime):
             tool.name: tool
             for tool in self.tools.all()
             if tool.name != "tool_search" and tool.exposure in (ToolExposure.DIRECT, ToolExposure.DEFERRED)
+            and tool_is_selected(session, tool.name)
         }
         scored: list[tuple[int, str, AgentTool]] = []
         for tool in candidates.values():
@@ -213,6 +216,9 @@ class ToolSearchRuntime(ConfiguredMCPRuntime):
         intent succeeds on its own re-issue instead of ending the turn. Disabled
         capabilities stay unavailable.
         """
+        from .tool_selection import tool_is_selected
+        if not tool_is_selected(session, call.name):
+            return False
         tool = self.tools.get(call.name)
         if tool is None or tool.exposure is not ToolExposure.DEFERRED or not _capability_allows(tool, None):
             return False
@@ -252,7 +258,7 @@ class ToolSearchRuntime(ConfiguredMCPRuntime):
             next_model_step=next_model_step,
             step_id=step_id,
         )
-        activations = self._activation_names(session)
+        activations = tuple(set(self._activation_names(session)) | set(session.tool_selection or ()))
 
         # Preserve the exact Step-scoped execution authority produced by lower
         # runtime layers (especially ConfiguredMCPRuntime's McpBinding). Tool

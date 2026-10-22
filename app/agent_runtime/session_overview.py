@@ -9,7 +9,7 @@ _FIELDS = (
     "session_id", "profile_id", "workspace_dir", "permission_mode", "created_at",
     "updated_at", "status", "current_turn_id", "forked_from_id", "model_selection",
     "model", "model_provider", "model_base_url", "model_vision", "reasoning_kind",
-    "reasoning_value", "usage",
+    "reasoning_value", "tool_selection", "usage",
 )
 
 

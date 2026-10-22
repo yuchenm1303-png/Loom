@@ -117,6 +117,7 @@ export function useLoom() {
   const send = useCallback(async (
     input: string,
     attachments: { path: string; name: string }[] = [],
+    toolSelection?: string[] | null,
   ) => {
     const thread = loom.active?.thread;
     const text = input.trim();
@@ -128,7 +129,7 @@ export function useLoom() {
       && !activeTurnHasTerminalError;
 
     if (!running) {
-      await loom.send(input, attachments);
+      await loom.send(input, attachments, toolSelection);
       return;
     }
     if (!thread?.id || thread.archived) return;

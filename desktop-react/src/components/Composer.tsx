@@ -340,10 +340,10 @@ export const Composer = memo(function Composer(props: ComposerProps) {
 
   const sharedProps = {
     ...props,
-    onSend: async (input: string, attachments: { path: string; name: string }[]) => {
+    onSend: async (input: string, attachments: { path: string; name: string }[], toolSelection?: string[] | null) => {
       setSendErrors((current) => ({ ...current, [draftKey]: "" }));
       try {
-        await props.onSend(input, attachments);
+        await props.onSend(input, attachments, toolSelection);
       } catch (cause) {
         const failedThreadId = cause instanceof Error ? (cause as Error & { sendThreadId?: string }).sendThreadId : undefined;
         const failedDraftKey = failedThreadId || draftKey;

@@ -178,6 +178,7 @@ class AgentSession:
     model_vision: bool | None = None
     reasoning_kind: str = ""
     reasoning_value: str = ""
+    tool_selection: list[str] | None = None
     messages: list[AIMessage] = field(default_factory=list)
     request_context_frames: list[dict[str, Any]] = field(default_factory=list)
     pending_tool_calls: list[ToolCall] = field(default_factory=list)
