@@ -12,7 +12,9 @@ def read(path: Path) -> str:
 def test_header_uses_explicit_glass_style_layers() -> None:
     header = read(COMPONENTS / "ThreadHeader.tsx")
     assert 'import "./thread-header.css";' in header
-    assert 'className="thread-header polished-thread-header"' in header
+    # The class list is a template since the sidebar toggle moved into the header (7df7e6fa): it adds
+    # `has-sidebar-toggle` while the sidebar is closed. The two layer classes are still what this pins.
+    assert 'className={`thread-header polished-thread-header' in header
     assert (COMPONENTS / "thread-header.css").is_file()
 
 
