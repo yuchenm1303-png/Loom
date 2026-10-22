@@ -429,3 +429,6 @@
 @media (prefers-reduced-motion: reduce) {
   .loom-portal-page.is-modular.loom-editorial .editorial-panel { animation: none; transition: none; }
 }
+
+/* Freeze the editorial page under the modal while its own content scrolls. */
+.loom-portal-page.is-modular.loom-editorial.is-modal-open { overflow: hidden; }
