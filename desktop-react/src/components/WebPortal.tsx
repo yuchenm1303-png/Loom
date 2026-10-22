@@ -595,7 +595,7 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
 
           <aside className={`loom-control${!authenticated ? " is-auth-mode" : ""}`} id="account">
             <div className="loom-sidebar-module cards fade">
-            {!authenticated ? <section className="loom-login-module loom-auth-v2">
+            {!authenticated ? <section className="loom-login-module loom-auth-v2" data-auth-step={authStep}>
               <div className="loom-control-top">
                 <div>
                   <p className="kicker">LOOM ACCOUNT</p>
