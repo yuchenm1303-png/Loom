@@ -1,0 +1,15 @@
+"""Versioned, synthetic task fixtures. Oracles never enter the model prompt."""
+TASKS = [
+ dict(id='code-sum', category='coding', files={'main.py':'def solve(xs): return 0\n'}, prompt='Fix main.py solve(xs) to sum all numeric items.', expression='[m.solve([]),m.solve([2,-5,9])]', expected=[0,6]),
+ dict(id='code-dedupe', category='coding', files={'main.py':'def solve(xs): return xs\n'}, prompt='Implement solve(xs) removing duplicates while preserving first occurrence order.', expression='m.solve([3,1,3,2,1])', expected=[3,1,2]),
+ dict(id='code-slug', category='coding', files={'main.py':'def solve(s): return s\n'}, prompt='Implement solve(s): strip whitespace, lowercase, replace whitespace runs with one hyphen.', expression='m.solve("  Hello   WORLD  ")', expected='hello-world'),
+ dict(id='file-csv', category='files', files={'input.csv':'name,amount\na,7\nb,3\na,5\n'}, prompt='Aggregate input.csv amounts by name into result.json.', expected={'a':12,'b':3}),
+ dict(id='file-json', category='files', files={'input.json':'[{"id":2},{"id":1},{"id":2}]'}, prompt='Write sorted unique id values from input.json to result.json as an array.', expected=[1,2]),
+ dict(id='file-unicode', category='files', files={'资料.txt':'苹果\n梨\n苹果\n'}, prompt='Count each line in 资料.txt and write a JSON object to result.json.', expected={'苹果':2,'梨':1}),
+ dict(id='browser-price', category='browser', files={'index.html':'<h1>Catalog</h1><p>Tea: 17</p><p>Coffee: 23</p>'}, prompt='Use browser tools to inspect {url}; write product prices to result.json with keys Tea and Coffee.', expected={'Tea':17,'Coffee':23}),
+ dict(id='browser-table', category='browser', files={'index.html':'<table><tr><td>North</td><td>8</td></tr><tr><td>South</td><td>12</td></tr></table>'}, prompt='Use browser tools to inspect {url}; write the region with highest value to result.json as a JSON string.', expected='South'),
+ dict(id='browser-link', category='browser', files={'index.html':'<a href="details.html">Details</a>', 'details.html':'<p>Reference: LOOM-482</p>'}, prompt='Use browser tools to follow Details at {url}; write its reference code as a JSON string to result.json.', expected='LOOM-482'),
+ dict(id='resume-sum', category='recovery', files={'input.json':'[4,8,15,16,23,42]'}, prompt='Read input.json, persist a checkpoint with the sum of its first three items in checkpoint.json; stop.', followup='Resume from checkpoint.json. Write the total sum of input.json to result.json.', checkpoint=27, expected=108),
+ dict(id='resume-sort', category='recovery', files={'input.json':'[9,2,7,1]'}, prompt='Read input.json and persist its first two items sorted in checkpoint.json; stop.', followup='Resume from checkpoint.json and write all input.json items sorted to result.json.', checkpoint=[2,9], expected=[1,2,7,9]),
+ dict(id='resume-count', category='recovery', files={'input.txt':'red\nblue\nred\ngreen\n'}, prompt='Persist counts of the first two input.txt lines in checkpoint.json; stop.', followup='Resume from checkpoint.json and write counts of all input.txt lines to result.json.', checkpoint={'red':1,'blue':1}, expected={'red':2,'blue':1,'green':1}),
+]

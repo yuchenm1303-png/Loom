@@ -1,0 +1,31 @@
+name: Paid agent task evaluation
+on:
+  workflow_dispatch:
+    inputs:
+      model:
+        description: Explicit model identifier (paid execution)
+        required: true
+        type: string
+permissions:
+  contents: read
+jobs:
+  real:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install -e '.[browser]'
+      - name: Run opt-in model benchmark
+        env:
+          LOOM_API_KEY: ${{ secrets.LOOM_EVAL_API_KEY }}
+          LOOM_BASE_URL: ${{ vars.LOOM_EVAL_BASE_URL }}
+          EVAL_MODEL: ${{ inputs.model }}
+        run: python -m evals.run --mode real --allow-paid --model "$EVAL_MODEL" --output eval-results
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: paid-agent-eval
+          path: eval-results/
