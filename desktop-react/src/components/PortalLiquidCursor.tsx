@@ -802,13 +802,17 @@ export function PortalLiquidCursor() {
           const rect = target.getBoundingClientRect();
           const finalLensWidth = Math.min(Math.max(38, window.innerWidth - 20), Math.max(38, rect.width + SNAP_PADDING * 2));
           const finalLensHeight = Math.min(Math.max(34, window.innerHeight - 20), Math.max(34, rect.height + SNAP_PADDING * 2));
-          snappedRoiWidth = Math.min(
-            MAX_ROI_SIZE,
-            Math.max(FREE_ROI_SIZE, Math.ceil((finalLensWidth + SNAP_ROI_PADDING * 2) / 16) * 16),
+          // Retain the previous lens's capture area during a snap-to-snap
+          // transition. Shrinking here would cut off the still-moving lens.
+          snappedRoiWidth = Math.max(
+            snappedRoiWidth,
+            Math.min(MAX_ROI_SIZE, Math.max(FREE_ROI_SIZE,
+              Math.ceil((Math.max(finalLensWidth, width.value) + SNAP_ROI_PADDING * 2) / 16) * 16)),
           );
-          snappedRoiHeight = Math.min(
-            MAX_ROI_SIZE,
-            Math.max(FREE_ROI_SIZE, Math.ceil((finalLensHeight + SNAP_ROI_PADDING * 2) / 16) * 16),
+          snappedRoiHeight = Math.max(
+            snappedRoiHeight,
+            Math.min(MAX_ROI_SIZE, Math.max(FREE_ROI_SIZE,
+              Math.ceil((Math.max(finalLensHeight, height.value) + SNAP_ROI_PADDING * 2) / 16) * 16)),
           );
         }
       }
@@ -838,8 +842,14 @@ export function PortalLiquidCursor() {
         snap.value > 0.025 ||
         lensWidth > BASE_WIDTH + 4 ||
         lensHeight > BASE_HEIGHT + 4;
-      const desiredWidth = holdSnappedRoi ? snappedRoiWidth : FREE_ROI_SIZE;
-      const desiredHeight = holdSnappedRoi ? snappedRoiHeight : FREE_ROI_SIZE;
+      // Include the live, animated lens even if it is wider than the
+      // destination's capture preset (or the 1200px performance cap).
+      const desiredWidth = holdSnappedRoi
+        ? Math.max(snappedRoiWidth, Math.ceil(lensWidth * 1.04 + 24))
+        : FREE_ROI_SIZE;
+      const desiredHeight = holdSnappedRoi
+        ? Math.max(snappedRoiHeight, Math.ceil(lensHeight * 1.04 + 24))
+        : FREE_ROI_SIZE;
 
       if (!holdSnappedRoi) {
         snappedRoiWidth = FREE_ROI_SIZE;
@@ -883,17 +893,18 @@ export function PortalLiquidCursor() {
           roiLockedTarget = target;
           rasterDirty = true;
         }
-        return;
+      } else {
+        roiLockedTarget = null;
+        if (!Number.isFinite(roiLeft) || !Number.isFinite(roiTop)) {
+          roiLeft = Math.round(Math.max(minLeft, Math.min(maxLeft, lensX - roiWidth / 2)));
+          roiTop = Math.round(Math.max(minTop, Math.min(maxTop, lensY - roiHeight / 2)));
+          rasterDirty = true;
+          return;
+        }
       }
 
-      roiLockedTarget = null;
-      if (!Number.isFinite(roiLeft) || !Number.isFinite(roiTop)) {
-        roiLeft = Math.round(Math.max(minLeft, Math.min(maxLeft, lensX - roiWidth / 2)));
-        roiTop = Math.round(Math.max(minTop, Math.min(maxTop, lensY - roiHeight / 2)));
-        rasterDirty = true;
-        return;
-      }
-
+      // The target center is only an initialization hint. During the snap
+      // transition, the ROI must still track the actual animated lens.
       const halfW = lensWidth / 2;
       const halfH = lensHeight / 2;
       const marginX = Math.max(8, Math.min(FREE_ROI_PADDING, (roiWidth - lensWidth) / 2 - 8));
@@ -909,6 +920,20 @@ export function PortalLiquidCursor() {
       else if (lensX > maxX) nextLeft += Math.max(ROI_DEADZONE, lensX - maxX);
       if (lensY < minY) nextTop -= Math.max(ROI_DEADZONE, minY - lensY);
       else if (lensY > maxY) nextTop += Math.max(ROI_DEADZONE, lensY - maxY);
+
+      // A deadzone is useful while stationary, but it is not enough during a
+      // long snap-to-snap spring transition: enforce complete containment of
+      // the visible lens, including the shader's small edge deformation.
+      const lensLeft = Math.max(0, lensX - lensWidth * 0.52 - 12);
+      const lensRight = Math.min(window.innerWidth, lensX + lensWidth * 0.52 + 12);
+      const lensTop = Math.max(0, lensY - lensHeight * 0.52 - 12);
+      const lensBottom = Math.min(window.innerHeight, lensY + lensHeight * 0.52 + 12);
+      nextLeft = lensRight - lensLeft <= roiWidth
+        ? Math.min(lensLeft, Math.max(lensRight - roiWidth, nextLeft))
+        : (lensLeft + lensRight - roiWidth) / 2;
+      nextTop = lensBottom - lensTop <= roiHeight
+        ? Math.min(lensTop, Math.max(lensBottom - roiHeight, nextTop))
+        : (lensTop + lensBottom - roiHeight) / 2;
 
       nextLeft = Math.round(Math.max(minLeft, Math.min(maxLeft, nextLeft)));
       nextTop = Math.round(Math.max(minTop, Math.min(maxTop, nextTop)));
