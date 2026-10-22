@@ -722,6 +722,9 @@ export function PortalLiquidCursor() {
     let snappedRoiWidth = FREE_ROI_SIZE;
     let snappedRoiHeight = FREE_ROI_SIZE;
     let rasterDirty = true;
+    // CSS ::after transitions do not mutate DOM attributes on every frame.
+    // Keep sampling while the snapped control's visual thumb is animating.
+    let refractionMotionUntil = 0;
     let textureReady = false;
     let snapDirty = true;
     let running = false;
@@ -1041,6 +1044,15 @@ export function PortalLiquidCursor() {
     const frame = (now: number) => {
       const dt = Math.min(0.032, Math.max(0.001, (now - lastTime) / 1000));
       lastTime = now;
+      if (now < refractionMotionUntil && activeTarget?.isConnected) {
+        // Follow the actual CSS animation, including ::after pseudo-elements.
+        // A short tail captures the final frame even if transitionend fires
+        // before the next texture-upload interval.
+        if (activeTarget.getAnimations({ subtree: true }).some(animation => animation.playState === "running")) {
+          refractionMotionUntil = Math.max(refractionMotionUntil, now + 80);
+        }
+        rasterDirty = true;
+      }
       const magneticSettled = updateMagneticTargets(dt);
       updateTargets();
 
@@ -1101,7 +1113,8 @@ export function PortalLiquidCursor() {
         Math.abs(height.velocity) < 0.08 &&
         Math.abs(pressure.target - pressure.value) < 0.001 &&
         Math.abs(pressure.velocity) < 0.01 &&
-        magneticSettled;
+        magneticSettled &&
+        now >= refractionMotionUntil;
 
       // Pointer/input/layout events wake the loop. A stationary cursor does
       // not need continuous DOM measurements and WebGL draws once springs settle.
@@ -1113,6 +1126,15 @@ export function PortalLiquidCursor() {
     };
 
     const wake = () => ensureFrame();
+
+    const refreshAnimatedRefraction = (event: Event) => {
+      const source = event.target;
+      if (!(source instanceof Node) || !activeTarget?.isConnected ||
+          (source !== activeTarget && !activeTarget.contains(source))) return;
+      refractionMotionUntil = Math.max(refractionMotionUntil, performance.now() + 360);
+      rasterDirty = true;
+      wake();
+    };
 
     // The lens is a pointer-events:none visual overlay. When it snaps from
     // outside the DOM hit box, the browser would otherwise click empty space.
@@ -1202,8 +1224,18 @@ export function PortalLiquidCursor() {
       wake();
     };
 
-    const observer = new MutationObserver(() => {
+    const observer = new MutationObserver((mutations) => {
       refreshMagneticTargets();
+      // Theme switches animate their pseudo-element after aria-checked changes.
+      // Observing only the mutation captures its initial frame, not the slide.
+      if (mutations.some(mutation =>
+        mutation.attributeName === "aria-checked" &&
+        mutation.target instanceof HTMLElement &&
+        mutation.target.getAttribute("role") === "switch" &&
+        activeTarget === mutation.target
+      )) {
+        refractionMotionUntil = Math.max(refractionMotionUntil, performance.now() + 360);
+      }
       rasterDirty = true;
       snapDirty = true;
       wake();
@@ -1216,6 +1248,8 @@ export function PortalLiquidCursor() {
     document.fonts?.ready.then(() => { rasterDirty = true; wake(); }).catch(() => {});
 
     window.addEventListener("click", handleSnappedClick, true);
+    root.addEventListener("transitionrun", refreshAnimatedRefraction);
+    root.addEventListener("animationstart", refreshAnimatedRefraction);
     root.addEventListener("pointermove", handlePointerMove);
     root.addEventListener("pointerdown", handlePointerDown);
     root.addEventListener("pointerup", handlePointerUp);
@@ -1238,6 +1272,8 @@ export function PortalLiquidCursor() {
       observer.disconnect();
       resizeObserver.disconnect();
       window.removeEventListener("click", handleSnappedClick, true);
+      root.removeEventListener("transitionrun", refreshAnimatedRefraction);
+      root.removeEventListener("animationstart", refreshAnimatedRefraction);
       root.removeEventListener("pointermove", handlePointerMove);
       root.removeEventListener("pointerdown", handlePointerDown);
       root.removeEventListener("pointerup", handlePointerUp);
