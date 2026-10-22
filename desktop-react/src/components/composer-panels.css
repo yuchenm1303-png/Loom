@@ -30,7 +30,8 @@
   --cp-hover: rgba(224, 230, 242, .055);
   --cp-selected: rgba(224, 230, 242, .08);
   --cp-track: rgba(224, 230, 242, .11);
-  --cp-tick: rgba(224, 230, 242, .3);
+  --cp-gauge-off: rgba(224, 230, 242, .17);
+  --cp-gauge-major: rgba(224, 230, 242, .44);
   --cp-box: rgba(224, 230, 242, .3);
   --cp-ink: var(--loom-workspace-ink, #eceef3);
   --cp-ink-2: var(--loom-workspace-secondary, #bbc1cc);
@@ -41,8 +42,6 @@
   --cp-focus: color-mix(in srgb, var(--accent, #8b7cf6) 60%, transparent);
   --cp-warn: #d6aa66;
   --cp-danger: #e48d97;
-  --cp-knob: #f4f5f8;
-  --cp-knob-shadow: 0 1px 2px rgba(0, 0, 0, .5), 0 0 0 .5px rgba(0, 0, 0, .4);
   --cp-slab: rgba(224, 230, 242, .1);
   --cp-slab-shadow: 0 1px 2px rgba(0, 0, 0, .3);
   --cp-shadow: var(--pl-shadow-float, 0 1px 2px rgba(0, 0, 0, .35), 0 26px 64px -20px rgba(0, 0, 0, .78));
@@ -58,13 +57,12 @@ html[data-loom-theme="light"] .cp {
   --cp-hover: rgba(28, 32, 42, .045);
   --cp-selected: rgba(28, 32, 42, .065);
   --cp-track: rgba(28, 32, 42, .1);
-  --cp-tick: rgba(28, 32, 42, .26);
+  --cp-gauge-off: rgba(28, 32, 42, .15);
+  --cp-gauge-major: rgba(28, 32, 42, .36);
   --cp-box: rgba(28, 32, 42, .3);
   --cp-ink-4: #8a919d;
   --cp-warn: #9a6a1a;
   --cp-danger: #b8404f;
-  --cp-knob: #ffffff;
-  --cp-knob-shadow: 0 1px 3px rgba(20, 24, 34, .24), 0 0 0 .5px rgba(20, 24, 34, .2);
   --cp-slab: #ffffff;
   --cp-slab-shadow: 0 1px 2px rgba(20, 24, 34, .12), 0 0 0 .5px rgba(20, 24, 34, .1);
 }
@@ -983,9 +981,13 @@ html[data-loom-theme="light"] .cp-mark {
   color: var(--cp-ink);
 }
 
-/* Model card: reasoning. Stops sit at the centres of equal columns, so the first and the last label fit inside the
-   card; the rail runs from the first centre to the last, the fill and the knob follow --cp-t (0 at the first stop,
-   1 at the last), and the knob travels on the settle spring. */
+/* Model card: reasoning. A scale: a tick for every step between the levels, taller the deeper the reasoning, a longer
+   one on each level, lit in the accent up to the chosen level, and a needle on it (ReasoningControl.tsx draws it). The
+   ticks never change while the needle travels. The accent copy of them is revealed by a window that slides with the
+   needle: the window moves one way and its ticks the other, so they stay where they are and only the window's edge
+   sweeps across them. That and the needle are `transform` transitions on the settle spring, which run on the
+   compositor: a level change restyles nothing per frame (a custom property carrying the needle's place restyled every
+   tick on every frame, ~3 ms a frame in this app). */
 .cp-reasoning {
   padding: 0 10px 12px;
 }
@@ -995,119 +997,145 @@ html[data-loom-theme="light"] .cp-mark {
 }
 
 .cp-steps {
-  --cp-edge: calc(50% / var(--cp-count, 1));
+  /* The ticks run from the centre of the first column to the centre of the last, and the needle with them. */
+  --cp-edge: calc(50% / var(--cp-n, 1));
+  --cp-scale-h: 42px;
   position: relative;
   display: grid;
-  grid-template-columns: repeat(var(--cp-count, 1), minmax(0, 1fr));
+  grid-template-columns: repeat(var(--cp-n, 1), minmax(0, 1fr));
   margin: 4px 0 0;
+  padding-top: var(--cp-scale-h);
+  cursor: pointer;
+  touch-action: pan-y;
+  user-select: none;
 }
 
-.cp-steps-rail {
+.cp-steps.is-dragging {
+  cursor: grabbing;
+}
+
+.cp-scale {
   position: absolute;
   z-index: 0;
-  top: 9px;
-  left: var(--cp-edge);
+  top: 0;
   right: var(--cp-edge);
-  height: 4px;
-  margin-top: -2px;
+  left: var(--cp-edge);
+  height: var(--cp-scale-h);
   pointer-events: none;
 }
 
-.cp-steps-track,
-.cp-steps-fill {
+.cp-ticks,
+.cp-lit,
+.cp-lit-ticks,
+.cp-slide {
   position: absolute;
   inset: 0;
-  border-radius: 2px;
 }
 
-.cp-steps-track {
-  background: var(--cp-track);
+.cp-ticks > span {
+  position: absolute;
+  bottom: 3px;
+  width: 2px;
+  margin-left: -1px;
+  border-radius: 1px;
+  background: var(--cp-gauge-off);
+  transform-origin: 50% 100%;
+  transition:
+    transform var(--loom-dur-fast) var(--loom-ease-out),
+    background-color var(--loom-dur-fast) var(--loom-ease-out);
 }
 
-.cp-steps-fill {
+.cp-ticks > .is-major {
+  background: var(--cp-gauge-major);
+}
+
+/* The level under the pointer: its tick stands a little taller and reads brighter before it is chosen. */
+.cp-ticks > .is-peek {
+  background: var(--cp-ink-2);
+  transform: scaleY(1.12);
+}
+
+/* The window runs past the scale by a few px (the first and the last tick are centred on its edges). */
+.cp-lit {
+  overflow: clip;
+  overflow-clip-margin: 3px;
+}
+
+.cp-lit .cp-ticks > span {
   background: var(--cp-accent);
-  transform: scaleX(var(--cp-t, 0));
-  transform-origin: left center;
-  transition: transform var(--loom-dur-flow) var(--loom-spring-settle);
 }
 
-/* The knob rides a layer as wide as the rail: moving that layer by --cp-t of its own width puts the knob on the stop. */
-.cp-steps-knob {
-  position: absolute;
-  z-index: 2;
-  top: 9px;
-  left: var(--cp-edge);
-  right: var(--cp-edge);
-  height: 0;
-  pointer-events: none;
+.cp-lit .cp-ticks > .is-major,
+.cp-lit .cp-ticks > .is-peek {
+  background: var(--cp-accent-ink);
 }
 
-.cp-steps-knob > i {
+.cp-needle {
   position: absolute;
-  top: 0;
-  left: 0;
+  bottom: 0;
+  left: -1px;
+  width: 2px;
+  border-radius: 1px;
+  background: var(--cp-ink);
+  box-shadow: 0 0 0 1.5px var(--cp-surface);
+  transform-origin: 50% 100%;
+}
+
+.cp-pin {
+  position: absolute;
+  bottom: -3.5px;
+  left: -3.5px;
+  width: 7px;
+  height: 7px;
+}
+
+.cp-pin-dot {
+  display: block;
   width: 100%;
-  height: 0;
-  transform: translateX(calc(var(--cp-t, 0) * 100%));
+  height: 100%;
+  border-radius: 50%;
+  background: var(--cp-ink);
+  transition: scale var(--loom-dur-press) var(--loom-ease-out);
+}
+
+/* A press takes hold of the needle. */
+.cp-steps.is-held .cp-pin-dot {
+  scale: 1.3;
+}
+
+.cp-lit,
+.cp-lit-ticks,
+.cp-slide,
+.cp-needle,
+.cp-pin {
   transition: transform var(--loom-dur-flow) var(--loom-spring-settle);
 }
 
-.cp-steps-knob > i::before {
-  content: "";
-  position: absolute;
-  top: -8px;
-  left: -8px;
-  width: 16px;
-  height: 16px;
-  border-radius: 50%;
-  background: var(--cp-knob);
-  box-shadow: var(--cp-knob-shadow);
+/* A drag carries the needle with the pointer, with no spring in between; it settles onto a level when let go. */
+.cp-steps.is-dragging :is(.cp-lit, .cp-lit-ticks, .cp-slide, .cp-needle, .cp-pin) {
+  transition: none;
 }
 
 .cp-step {
   position: relative;
   z-index: 1;
   display: flex;
-  flex-direction: column;
-  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
   min-width: 0;
-  height: 44px;
-  padding: 0 1px;
+  height: 24px;
+  padding: 4px 1px 0;
   border: 0;
   border-radius: 8px;
   background: transparent;
   color: var(--cp-ink-3);
   font: inherit;
-  cursor: pointer;
+  cursor: inherit;
   transition: color var(--loom-dur-fast) var(--loom-ease-out);
-}
-
-.cp-step::before {
-  content: "";
-  position: absolute;
-  top: 7px;
-  left: 50%;
-  width: 4px;
-  height: 4px;
-  margin-left: -2px;
-  border-radius: 50%;
-  background: var(--cp-tick);
-  transition:
-    background-color var(--loom-dur-fast) var(--loom-ease-out),
-    transform var(--loom-dur-fast) var(--loom-ease-out);
-}
-
-.cp-step.is-filled::before {
-  background: rgba(255, 255, 255, .62);
-}
-
-.cp-step:hover:not([aria-disabled="true"])::before {
-  transform: scale(1.5);
 }
 
 .cp-step-label {
   max-width: 100%;
-  margin-top: auto;
   overflow: hidden;
   font-size: 12px;
   font-weight: 500;
@@ -1120,7 +1148,7 @@ html[data-loom-theme="light"] .cp-mark {
   font-size: 11.5px;
 }
 
-.cp-step:hover:not([aria-disabled="true"]),
+.cp-step.is-peek,
 .cp-step:focus-visible {
   color: var(--cp-ink-2);
 }
@@ -1139,6 +1167,7 @@ html[data-loom-theme="light"] .cp-mark {
 }
 
 .cp-reasoning.is-locked .cp-steps {
+  cursor: default;
   opacity: .5;
 }
 
@@ -1173,22 +1202,25 @@ html[data-loom-theme="light"] .cp-mark {
   color: var(--cp-danger);
 }
 
+/* A model that decides for itself: the same ticks, nothing lit and no needle. */
 .cp-auto {
   display: flex;
   align-items: center;
-  gap: 10px;
-  margin-top: 6px;
+  gap: 14px;
+  margin-top: 8px;
   color: var(--cp-ink);
   font-size: 13px;
   font-weight: 500;
 }
 
-.cp-auto::after {
-  content: "";
+.cp-auto .cp-scale {
+  position: relative;
+  top: auto;
+  right: auto;
+  left: auto;
   flex: 1;
-  height: 4px;
-  border-radius: 2px;
-  background: var(--cp-track);
+  height: 18px;
+  margin-inline: 1px;
 }
 
 /* Forms: a new connection, a custom model ID, a provider's key. ------------------------------------------------------ */

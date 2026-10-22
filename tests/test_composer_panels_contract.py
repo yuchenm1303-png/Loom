@@ -155,8 +155,9 @@ def test_they_come_and_go_as_one_popover() -> None:
 
 def test_only_marks_travel() -> None:
     css = read(SHEET)
-    # The reasoning knob and the fill, and the segmented slab: the settle spring on the flow step.
-    for selector in (".cp-steps-knob > i", ".cp-steps-fill"):
+    # The reasoning needle with its pin, and the window that reveals the lit ticks as it passes, and the segmented slab:
+    # the settle spring on the flow step.
+    for selector in (".cp-lit", ".cp-lit-ticks", ".cp-slide", ".cp-needle", ".cp-pin"):
         assert "transition: transform var(--loom-dur-flow) var(--loom-spring-settle);" in bodies_of(css, selector), selector
     slab = body_of(css, ".cp-seg[data-ready] .cp-seg-slab")
     assert "transform var(--loom-dur-flow) var(--loom-spring-settle)" in slab
@@ -172,14 +173,16 @@ def test_colour_has_one_meaning() -> None:
         if re.search(r"var\(--cp-accent(-ink)?[,)]", body) and selector != ".cp"
         for part in selector.split(",")
     })
-    # The accent marks the current choice: a check, a ticked box, the reasoning fill, the word "Recommended",
-    # the count of a custom tool set. Nothing else is violet.
+    # The accent marks the current choice: a check, a ticked box, the lit ticks of the reasoning scale (the stretch up to
+    # the chosen level), the word "Recommended", the count of a custom tool set. Nothing else is violet.
     assert accent == sorted([
         ".composer-toolbar .composer-tools-count",
         ".cp-check:checked",
         ".cp-check:indeterminate",
+        ".cp-lit .cp-ticks > .is-major",
+        ".cp-lit .cp-ticks > .is-peek",
+        ".cp-lit .cp-ticks > span",
         ".cp-row-end.is-check",
-        ".cp-steps-fill",
         ".cp-tag.is-accent",
     ]), accent
     # Unrestricted access and a low quota are the warn colour; tags are words, not pills.
@@ -189,17 +192,60 @@ def test_colour_has_one_meaning() -> None:
     assert "background" not in tag and "border" not in tag and "padding" not in tag
 
 
-def test_the_reasoning_rail_is_quiet() -> None:
+def test_the_reasoning_scale_is_quiet() -> None:
     source = read(COMPONENTS / "ReasoningControl.tsx")
     css = read(SHEET)
-    # One knob, one fill, one tick per level: no comet, aura, burst, orbit or ghost.
+    # Ticks, a lit copy of them and one needle: no comet, aura, burst, orbit or ghost.
     for gone in ("comet", "aura", "burst", "orbit", "ghost", "strand", "spine"):
         assert gone not in source and gone not in stripped(css), gone
-    assert 'className="cp-steps-knob"' in source and 'className="cp-steps-fill"' in source
-    # The rail owns its arrows (the panel's row walk leaves them alone) and a level is never disabled mid-change.
+    for part in ('className="cp-scale"', 'className="cp-lit"', 'className="cp-slide"', 'className="cp-needle"',
+                 'className="cp-pin"', 'className="cp-ticks"'):
+        assert part in source, part
+    # The scale owns its arrows (the panel's row walk leaves them alone) and a level is never disabled mid-change.
     assert "event.preventDefault();" in source and "aria-disabled={locked || count < 2 || undefined}" in source
-    knob = body_of(css, ".cp-steps-knob > i::before")
-    assert "background: var(--cp-knob);" in knob and "box-shadow: var(--cp-knob-shadow);" in knob
+    # The window that reveals the lit copy of the ticks clips it (a few px past the scale: the first and the last tick are
+    # centred on its ends).
+    window = bodies_of(css, ".cp-lit")
+    assert "overflow: clip;" in window and "overflow-clip-margin: 3px;" in window
+    # The needle and its pin are the reading ink; only a hairline of the panel's own surface sets them off the ticks.
+    needle = body_of(css, ".cp-needle")
+    assert "background: var(--cp-ink);" in needle and "box-shadow: 0 0 0 1.5px var(--cp-surface);" in needle
+    assert "background: var(--cp-ink);" in body_of(css, ".cp-pin-dot")
+    # A press and a drag choose through the scale itself; a pointer never clicks a level twice (the click that is left
+    # is the keyboard's and assistive technology's, which carry no pointer).
+    assert "event.detail === 0" in source and "setPointerCapture" in source
+    # Letting go chooses, a drag in between does not: the Host is told once, from pointer-up, never from a move.
+    move = source[source.index("function onPointerMove"):source.index("function onPointerUp")]
+    assert "commit(" not in move and "onChange(" not in move
+
+
+def test_the_scale_never_restyles_per_frame() -> None:
+    """The first build carried the needle's place in an animated custom property that every tick read: in this app that
+    restyled ~190 elements and cost ~3 ms on every frame of the 320ms spring (the app's global sheets make each
+    restyled element dear, and an inherited property restyles them all). Now the ticks stand still and the needle,
+    its pin and the window that reveals the lit copy of the ticks are `transform` transitions, which the compositor
+    runs: a level change restyles nothing per frame."""
+    source = read(COMPONENTS / "ReasoningControl.tsx")
+    css = stripped(read(SHEET))
+    assert "@property" not in css
+    # No custom property carries the needle's place, and none is transitioned.
+    assert "--cp-pos" not in source and "--cp-pos" not in css and "--cp-peek" not in css
+    reasoning = re.compile(r"\.cp-(?:steps|step|scale|ticks|lit|lit-ticks|slide|needle|pin|pin-dot)(?![\w-])")
+    animated: set[str] = set()
+    for selector, body in rules(css):
+        if not reasoning.search(selector):
+            continue
+        for value in re.findall(r"(?<![\w-])transition\s*:\s*([^;]+);", body):
+            animated |= set(re.findall(r"(?:^|,)\s*([a-z-]+)\s+var\(", value))
+    # Only what the compositor or a few elements can carry: never a size or a position, which would be laid out on
+    # every frame, and never a custom property.
+    assert animated and animated <= {"transform", "scale", "color", "background-color"}, animated
+    # The ticks are drawn once, whatever the needle does (only a hovered level changes them).
+    assert "const Ticks = memo(" in source
+    # The needle is placed by the scale's own geometry, as inline transforms on the few elements that move.
+    for place in ("translateX(${(place - 1) * 100}%)", "translateX(${(1 - place) * 100}%)", "translateX(${place * 100}%)",
+                  "scaleY(${height / NEEDLE_MAX})", "translateY(${-height}px)"):
+        assert place in source, place
 
 
 def test_text_is_on_the_ladder_and_above_the_floor() -> None:

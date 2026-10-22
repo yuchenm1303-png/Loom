@@ -596,9 +596,19 @@ const EFFORT = [
   ["high", "High", "Use deeper reasoning for complex multi-step work."],
   ["xhigh", "Extra high", "Use extra reasoning depth for difficult multi-step work."],
 ] as const;
-let effort = params.get("effort") || "minimal";
-const effortState = () => ({ kind: "openai-effort", value: effort, defaultValue: "medium", source: "catalog",
-  options: EFFORT.map(([value, label, description]) => ({ value, label, description, advanced: value === "xhigh" })) });
+// ?ladder=<n>: n levels instead of five (0 = the model decides for itself), to see the reasoning scale at other lengths.
+const LADDERS: Record<string, readonly (readonly [string, string, string])[]> = {
+  "0": [],
+  "1": [["adaptive", "Adaptive", "The model decides when a deeper pass is worth it."]],
+  "2": [["disabled", "Off", "Answer straight away."], ["enabled", "On", "Think before answering."]],
+  "3": [EFFORT[1], EFFORT[2], EFFORT[3]],
+  "6": [["none", "None", "No deliberate reasoning."], ...EFFORT],
+  "8": [["none", "None", "No deliberate reasoning."], ...EFFORT, ["max", "Max", "The highest setting the model supports."], ["ultra", "Ultra", "The model's longest extended reasoning."]],
+};
+const ladder = LADDERS[params.get("ladder") ?? ""] ?? EFFORT;
+let effort = params.get("effort") || ladder[0]?.[0] || "";
+const effortState = () => ({ kind: "openai-effort", value: effort, defaultValue: ladder.find(([value]) => value === "medium")?.[0] ?? ladder[0]?.[0] ?? "", source: "catalog",
+  options: ladder.map(([value, label, description]) => ({ value, label, description, advanced: value === "xhigh" })) });
 const goModel = (model: string, family: string) => ({ selection: `builtin:opencode-go:${model}`, id: model, kind: "builtin", name: model,
   model, adapter: "opencode-go", baseUrl: "https://account.example.invalid/model/v1/opencode-go", groupId: "opencode-go",
   groupName: "OpenCode Go", groupOrder: 10, family, configured: true, available: true, authMode: "loom-account" });
