@@ -42,3 +42,38 @@ test("request skips cache and handles API failure", async () => {
     await assert.rejects(model.fetchPortalRelease(signal));
   } finally { globalThis.fetch = original; }
 });
+
+
+test("editorial route is the default and the classic portal remains reachable", () => {
+  const portal = readFileSync(new URL("../../src/components/WebPortal.tsx", import.meta.url), "utf8");
+  assert.ok(portal.includes('=== "/classic" ? "classic" : "editorial"'));
+  assert.ok(portal.includes('next === "classic" ? "/classic" : "/"'));
+  assert.ok(portal.includes("loom-editorial"));
+  assert.ok(portal.includes("loom-classic-switch"));
+  assert.ok(portal.includes("editorial-panel-backdrop"));
+  assert.ok(portal.includes("usePortalStyles(!editorial)"));
+});
+
+test("both homepage designs reuse the existing authentication and Host gate", () => {
+  const portal = readFileSync(new URL("../../src/components/WebPortal.tsx", import.meta.url), "utf8");
+  const gate = readFileSync(new URL("../../src/components/WebAppGate.tsx", import.meta.url), "utf8");
+  for (const key of ["account.login(", "account.registerStart(", "account.verifyEmail(",
+    "account.forgotPassword(", "account.resetPassword(", "account.oauthExchange(",
+    "<HostSetupActions", "onOpenProfile", "fetchPortalRelease("]) {
+    assert.ok(portal.includes(key), "Missing shared portal function: " + key);
+  }
+  assert.ok(gate.includes("<WebPortal"));
+  assert.ok(gate.includes("onEnter={enterOrRetry}"));
+  assert.ok(gate.includes("onOpenProfile={openProfile}"));
+});
+
+test("a landing-page request becomes a reviewable composer draft", () => {
+  const portal = readFileSync(new URL("../../src/components/WebPortal.tsx", import.meta.url), "utf8");
+  const composer = readFileSync(new URL("../../src/components/Composer.tsx", import.meta.url), "utf8");
+  const lens = readFileSync(new URL("../../src/components/PortalLiquidCursor.tsx", import.meta.url), "utf8");
+  assert.ok(portal.includes('sessionStorage.setItem("loom.portal.pendingPrompt"'));
+  assert.ok(portal.includes('pendingPrompt && authenticated && hostState === "online"'));
+  assert.ok(composer.includes('sessionStorage.getItem("loom.portal.pendingPrompt")'));
+  assert.ok(composer.includes("setDrafts("));
+  assert.ok(lens.includes('root.classList.contains("loom-editorial")'));
+});
