@@ -318,7 +318,11 @@ function rasterizePortal(
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   drawWallpaper(ctx, wallpaper, roiLeft, roiTop, window.innerWidth, window.innerHeight, roiWidth, roiHeight);
 
-  const content = root.querySelector<HTMLElement>(".loom-portal-shell") ?? root;
+  // The editorial homepage has both the visible shell and a hidden legacy portal.
+  // Sample its visible root, not the hidden classic shell, or the lens goes blank.
+  const content = root.classList.contains("loom-editorial")
+    ? root
+    : (root.querySelector<HTMLElement>(".loom-portal-shell") ?? root);
 
   const renderElement = (el: HTMLElement, parentOpacity: number) => {
     if (el.dataset.loomLiquidCursor === "true" || el.closest("[data-loom-liquid-cursor='true']")) return;
