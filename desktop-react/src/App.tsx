@@ -32,6 +32,7 @@ import { usePetEnabled } from "./petPreferences";
 import { SettingsComputerLogExport } from "./components/SettingsComputerLogExport";
 import { SettingsPage } from "./components/SettingsPage";
 import { Sidebar } from "./components/Sidebar";
+import { SidebarControls, type SidebarControlsHandle } from "./components/SidebarControls";
 import { SubAgentDock } from "./components/SubAgentDock";
 import { ThreadHeader } from "./components/ThreadHeader";
 import { RightToolDock } from "./components/RightToolDock";
@@ -97,7 +98,6 @@ type LayoutMotionIntent =
 const TerminalPanel = lazy(() => import("./components/TerminalPanel"));
 
 type LayoutMotionAnchorKind =
-  | "header-leading"
   | "header-copy"
   | "header-actions"
   | "transcript"
@@ -109,17 +109,7 @@ type LayoutMotionAnchorSnapshot = {
   selector: string;
   leftX: number;
   rightX: number;
-  topY: number;
   kind: LayoutMotionAnchorKind;
-};
-type LayoutViewTransition = {
-  ready?: Promise<void>;
-  updateCallbackDone: Promise<void>;
-  finished: Promise<void>;
-  skipTransition(): void;
-};
-type LayoutTransitionDocument = Document & {
-  startViewTransition?: (update: () => void | Promise<void>) => LayoutViewTransition;
 };
 
 type LayoutStyle = CSSProperties & {
@@ -256,8 +246,6 @@ function clearPanelWidth(key: string): void {
  * monotonic: old screen coordinate -> new screen coordinate, with no recoil.
  */
 const PANEL_LAYOUT_ANCHORS: Array<{ selector: string; kind: LayoutMotionAnchorKind }> = [
-  { selector: ':is(.sidebar-open > .sidebar, .sidebar-closed .thread-header-leading) [data-sidebar-control="toggle"]', kind: "header-leading" },
-  { selector: ':is(.sidebar-open > .sidebar, .sidebar-closed .thread-header-leading) [data-sidebar-control="compose"]', kind: "header-leading" },
   { selector: ".thread-header-copy", kind: "header-copy" },
   { selector: ".polished-thread-header-actions", kind: "header-actions" },
   { selector: ".transcript", kind: "transcript" },
@@ -303,7 +291,6 @@ function captureLayoutAnchors(root: HTMLElement | null): LayoutMotionAnchorSnaps
       selector: target.selector,
       leftX: rect.left,
       rightX: rect.right,
-      topY: rect.top,
       kind: target.kind,
     });
 
@@ -330,7 +317,14 @@ function anchorXForIntent(
 
   // Mirror the rule for the left rail: the workspace's right edge is the
   // invariant, so width growth/shrinkage must not manufacture a false recoil.
+  // Except for a column that fills a narrow workspace and grows as the sidebar
+  // closes (a right-hand dock open, or a small window): its left edge carries
+  // the eye, so the column glides from where it was and the width it gained
+  // comes out from under the dock or the rail on the right, instead of its
+  // left edge jumping the sidebar's width in one frame. (Shrinking as the
+  // sidebar opens, it keeps the right edge: the left part goes under the card.)
   if (intent === "left-open" || intent === "left-close") {
+    if (rect.width > capture.rightX - capture.leftX + 1) return { previous: capture.leftX, next: rect.left };
     return { previous: capture.rightX, next: rect.right };
   }
 
@@ -346,25 +340,15 @@ function animateLayoutAnchors(
 ): Animation[] {
   const animations: Animation[] = [];
   for (const capture of captures) {
-    if (capture.kind === "header-leading") {
-      // Snapshot groups own the shared buttons when available. The fallback
-      // resolves their new DOM host instead of dropping the removed control.
-      if (document.documentElement.dataset.loomLayoutTransition === "true") continue;
-      const destination = document.querySelector<HTMLElement>(capture.selector);
-      if (!destination) continue;
-      capture.element = destination;
-    }
     if (!capture.element.isConnected) continue;
     const rect = capture.element.getBoundingClientRect();
     const anchor = anchorXForIntent(capture, rect, intent);
     const deltaX = anchor.previous - anchor.next;
-    const deltaY = capture.kind === "header-leading" ? capture.topY - rect.top : 0;
-    if (Math.abs(deltaX) < .5 && Math.abs(deltaY) < .5) continue;
+    if (Math.abs(deltaX) < .5) continue;
 
-    // Keep the live workspace geometry on the same clock as the confirmed a61
-    // panel choreography. The side-surface View Transition group runs 390ms;
-    // finishing the header/transcript/composer at 230–300ms made the main UI
-    // visibly arrive before the inspector was done settling.
+    // The panel clock, which the docks settle on and the sidebar's toolbar travels on (sidebar-controls.css):
+    // finishing the header/transcript/composer at 230–300ms made the main UI visibly arrive before the docks were
+    // done settling.
     const duration = DUR.panel;
 
     // Animate the independent CSS translate property instead of transform.
@@ -373,7 +357,7 @@ function animateLayoutAnchors(
     capture.element.style.willChange = "translate";
     const animation = capture.element.animate(
       [
-        { translate: `${deltaX}px ${deltaY}px` },
+        { translate: `${deltaX}px 0px` },
         { translate: "0px 0px" },
       ],
       {
@@ -388,6 +372,13 @@ function animateLayoutAnchors(
   return animations;
 }
 
+
+/** `value`, except while `hold` is on: then the value it had when the hold began. */
+function useHeldWhile<T>(value: T, hold: boolean): T {
+  const kept = useRef(value);
+  if (!hold) kept.current = value;
+  return hold ? kept.current : value;
+}
 
 export default function App() {
   useEffect(() => {
@@ -415,18 +406,14 @@ export default function App() {
   }, []);
   const resizeRef = useRef<ResizeSession | null>(null);
   const resizeReleaseFrameRef = useRef<number | null>(null);
-  const layoutViewTransitionRef = useRef<LayoutViewTransition | null>(null);
   const layoutTransitionSerialRef = useRef(0);
   const reduceMotion = useReducedMotion();
   useLayoutEffect(() => {
     if (!reduceMotion) return;
     layoutTransitionSerialRef.current += 1;
-    layoutViewTransitionRef.current?.skipTransition();
-    layoutViewTransitionRef.current = null;
     settleLayoutAnchorAnimations(shellRef.current);
     clearLayoutAnchorStyles(shellRef.current);
-    delete document.documentElement.dataset.loomLayoutTransition;
-    delete document.documentElement.dataset.loomLayoutIntent;
+    delete document.documentElement.dataset.loomPanelHandoff;
     document.body.classList.remove("loom-panel-motion");
     window.dispatchEvent(new Event("loom:panel-resize-end"));
   }, [reduceMotion]);
@@ -439,6 +426,8 @@ export default function App() {
     catch { /* The panel remains usable when storage is unavailable. */ }
   }, [inspectorOpen]);
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [sidebarSearchOpen, setSidebarSearchOpen] = useState(false);
+  const sidebarControlsRef = useRef<SidebarControlsHandle>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [browserOpen, setBrowserOpen] = useState(false);
   const [browserActivityTarget, setBrowserActivityTarget] = useState<BrowserActivityTarget | null>(null);
@@ -446,6 +435,26 @@ export default function App() {
   const settingsPresence = useMotionPresence(settingsOpen, RETAIN.base);
   const [profileOpen, setProfileOpen] = useState(false);
   const profilePresence = useMotionPresence(profileOpen, RETAIN.base);
+  // Settings and the profile page cover the shell. It goes inert (no focus, no pointer, out of the accessibility tree)
+  // a painted frame after they arrive, not with them, and comes back as they start to leave: making the whole app
+  // inert, or live again, re-styles every element in it, and a frame of the page would wait for that.
+  const shellCovered = settingsPresence.mounted || profilePresence.mounted;
+  const shellStaysCovered = settingsOpen || profileOpen;
+  const [shellInert, setShellInert] = useState(false);
+  useEffect(() => {
+    if (!shellStaysCovered) {
+      setShellInert(false);
+      return;
+    }
+    let second = 0;
+    const first = requestAnimationFrame(() => {
+      second = requestAnimationFrame(() => setShellInert(true));
+    });
+    return () => {
+      cancelAnimationFrame(first);
+      cancelAnimationFrame(second);
+    };
+  }, [shellStaysCovered]);
   const [accountOpen, setAccountOpen] = useState(false);
   useEffect(() => {
     const openProfile = () => {
@@ -529,6 +538,10 @@ export default function App() {
   const activeThreadId = thread?.id ?? "";
   const selectedThreadId = loom.openingThreadId || activeThreadId;
   const threadSwitching = Boolean(loom.openingThreadId && loom.openingThreadId !== activeThreadId);
+  // While another conversation opens, the header's meter and the dock's counts keep what they showed (the meter
+  // dimmed, the dock's tools disabled) until the new conversation's arrive. Dropping them to nothing made the meter
+  // and the counts vanish and come back on every switch.
+  const heldContext = useHeldWhile(loom.context, threadSwitching);
   const selectedThread = loom.threads.find(candidate => candidate.id === selectedThreadId) ?? thread;
   const runtimeTurnRunning = thread?.status === "running" || thread?.status === "waiting_approval";
   // A terminal error ends an orphaned turn even when the last thread snapshot
@@ -568,6 +581,14 @@ export default function App() {
   const renderableArtifacts = useMemo(() => renderableArtifactPaths(loom.items), [loom.items]);
   const artifactCount = renderableArtifacts.length;
   const agentCount = useMemo(() => subAgentCount(loom.items), [loom.items]);
+  const heldCounts = useHeldWhile({ agents: agentCount, review: changedFileCount, artifacts: artifactCount }, threadSwitching);
+  // The project line above the composer folds in and out between a project's conversation and one outside any
+  // project (a new conversation): it used to come and go in one frame and move the conversation by its height.
+  const currentProject = loom.projects.find((project) => project.id === thread?.projectId) ?? null;
+  const gitBarPresence = useMotionPresence(Boolean(currentProject), RETAIN.foldBase);
+  const lastGitBarProject = useRef(currentProject);
+  if (currentProject) lastGitBarProject.current = currentProject;
+  const gitBarProject = currentProject ?? lastGitBarProject.current;
   const taskMilestones = useMemo(() => latestTaskPlan(loom.items), [loom.items]);
   const taskCompleted = taskMilestones.filter(step => step.status === "completed").length;
   const selectedProject = selectedProjectId
@@ -622,12 +643,8 @@ export default function App() {
   ) => {
     if (prefersReducedMotionNow()) {
       layoutTransitionSerialRef.current += 1;
-      layoutViewTransitionRef.current?.skipTransition();
-      layoutViewTransitionRef.current = null;
       settleLayoutAnchorAnimations(shellRef.current);
       clearLayoutAnchorStyles(shellRef.current);
-      delete document.documentElement.dataset.loomLayoutTransition;
-      delete document.documentElement.dataset.loomLayoutIntent;
       delete document.documentElement.dataset.loomPanelHandoff;
       document.body.classList.remove("loom-panel-motion");
       flushSync(update);
@@ -638,102 +655,42 @@ export default function App() {
     const serial = layoutTransitionSerialRef.current + 1;
     layoutTransitionSerialRef.current = serial;
 
-    // Preserve the exact a61 side-surface choreography, but do not snapshot the
-    // workspace or its text. Only the panel surface is captured; the handful of
-    // live elements whose coordinates really change are moved with FLIP.
-    layoutViewTransitionRef.current?.skipTransition();
-    layoutViewTransitionRef.current = null;
+    // Nothing is snapshotted. Every dock runs its own transitions on the real element, so a second click turns it
+    // around from where it is painted; the sidebar's toolbar glides between its two places (SidebarControls); and the
+    // few live elements whose coordinates really change are carried by FLIP on the panel clock. A View Transition
+    // froze the window for a frame or more before anything moved, re-styled the whole page twice, and in Electron drew
+    // the toolbar's buttons fading out and popping back in.
     const captures = captureLayoutAnchors(shellRef.current);
     document.body.classList.add("loom-panel-motion");
-    document.documentElement.dataset.loomLayoutTransition = "true";
-    document.documentElement.dataset.loomLayoutIntent = intent;
+    const docked = intent !== "neutral";
+    if (intent === "right-open" || intent === "right-close" || intent === "right-swap") {
+      document.documentElement.dataset.loomPanelHandoff = intent;
+    } else {
+      delete document.documentElement.dataset.loomPanelHandoff;
+    }
 
     const finish = () => {
       if (layoutTransitionSerialRef.current !== serial) return;
-      layoutViewTransitionRef.current = null;
       clearLayoutAnchorStyles(shellRef.current);
-      delete document.documentElement.dataset.loomLayoutTransition;
-      delete document.documentElement.dataset.loomLayoutIntent;
       delete document.documentElement.dataset.loomPanelHandoff;
       document.body.classList.remove("loom-panel-motion");
       window.dispatchEvent(new Event("loom:panel-resize-end"));
     };
 
-    const transitionDocument = document as LayoutTransitionDocument;
-    const liveRightMotion = intent === "right-open" || intent === "right-close" || intent === "right-swap";
-    // Only the sidebar snapshots (its card and the toolbar controls it shares with the header). Every other change
-    // moves live: a snapshot costs a frozen frame and two whole-page style recalcs before anything moves, and a
-    // neutral change (a palette, a swap inside one dock) has nothing for it to carry.
-    const sidebarSnapshot = intent === "left-open" || intent === "left-close";
-    if (!sidebarSnapshot || typeof transitionDocument.startViewTransition !== "function") {
-      // Snapshot-only rules hide the old surface immediately. Without that
-      // API, let the real panel own its enter/exit transition instead.
-      delete document.documentElement.dataset.loomLayoutTransition;
-      delete document.documentElement.dataset.loomLayoutIntent;
-      // Taking a View Transition snapshot of a newly mounted review/preview
-      // can block input for hundreds of milliseconds. These panels already
-      // animate themselves; keep their text live and move only layout anchors.
-      if (liveRightMotion) document.documentElement.dataset.loomPanelHandoff = intent;
-      flushSync(update);
-      const animations = animateLayoutAnchors(captures, intent);
-      if (liveRightMotion) {
-        // Keep outgoing surfaces hidden for their whole retained lifetime,
-        // including swaps that do not move any layout anchors.
-        void Promise.allSettled([
-          ...animations.map((animation) => animation.finished),
-          new Promise<void>((resolve) => window.setTimeout(resolve, RETAIN.panel)),
-        ]).then(finish);
-      } else if (!animations.length) {
-        afterPaint(finish);
-      } else {
-        void Promise.allSettled(animations.map((animation) => animation.finished)).then(finish);
-      }
-      return;
+    flushSync(update);
+    const animations = animateLayoutAnchors(captures, intent);
+    if (docked) {
+      // A dock's own transitions run for the panel clock whether or not anything around it moves (a swap moves no
+      // anchors), and a leaving dock stays hidden for its whole retained lifetime.
+      void Promise.allSettled([
+        ...animations.map((animation) => animation.finished),
+        new Promise<void>((resolve) => window.setTimeout(resolve, RETAIN.panel)),
+      ]).then(finish);
+    } else if (!animations.length) {
+      afterPaint(finish);
+    } else {
+      void Promise.allSettled(animations.map((animation) => animation.finished)).then(finish);
     }
-
-    let transition: LayoutViewTransition;
-    let committedInsideTransition = false;
-    let liveAnimations: Animation[] = [];
-    try {
-      transition = transitionDocument.startViewTransition(() => {
-        // skipTransition ends snapshots, not a queued update callback. A
-        // superseded click must never reopen its panel after the newer click.
-        if (layoutTransitionSerialRef.current !== serial) return;
-        flushSync(update);
-        committedInsideTransition = true;
-
-        // Install the first FLIP keyframe in the same update callback that
-        // commits the new grid. The browser therefore never exposes one frame
-        // at the new coordinate before sending the element back to the old one.
-        liveAnimations = animateLayoutAnchors(captures, intent);
-      });
-    } catch {
-      if (layoutTransitionSerialRef.current !== serial) return;
-      delete document.documentElement.dataset.loomLayoutTransition;
-      if (!committedInsideTransition) flushSync(update);
-      const animations = committedInsideTransition
-        ? liveAnimations
-        : animateLayoutAnchors(captures, intent);
-      if (!animations.length) {
-        afterPaint(finish);
-      } else {
-        void Promise.allSettled(animations.map((animation) => animation.finished)).then(finish);
-      }
-      return;
-    }
-
-    layoutViewTransitionRef.current = transition;
-    // A reversal deliberately skips the previous snapshot. Consume ready's
-    // rejection as well as finished so it cannot become an unhandled error.
-    void transition.ready?.catch(() => undefined);
-    const liveLayoutMotion = transition.updateCallbackDone
-      .then(() => {
-        if (layoutTransitionSerialRef.current !== serial) return;
-        return Promise.allSettled(liveAnimations.map((animation) => animation.finished));
-      })
-      .catch(() => undefined);
-
-    void Promise.allSettled([transition.finished, liveLayoutMotion]).then(finish);
   }, []);
 
   useLayoutEffect(() => {
@@ -1032,12 +989,9 @@ export default function App() {
     if (session?.frame !== null && session?.frame !== undefined) cancelAnimationFrame(session.frame);
     if (resizeReleaseFrameRef.current !== null) cancelAnimationFrame(resizeReleaseFrameRef.current);
     layoutTransitionSerialRef.current += 1;
-    layoutViewTransitionRef.current?.skipTransition();
-    layoutViewTransitionRef.current = null;
     settleLayoutAnchorAnimations(shellRef.current);
     clearLayoutAnchorStyles(shellRef.current);
-    delete document.documentElement.dataset.loomLayoutTransition;
-    delete document.documentElement.dataset.loomLayoutIntent;
+    delete document.documentElement.dataset.loomPanelHandoff;
     document.body.classList.remove("loom-panel-resizing");
     document.body.classList.remove("loom-panel-motion");
   }, []);
@@ -1120,6 +1074,7 @@ export default function App() {
         consume();
         setSettingsOpen(false);
         if (!sidebarOpen) runLayoutTransition(() => setSidebarOpen(true), "left-open");
+        sidebarControlsRef.current?.write();
         void loom.newThread();
         return;
       }
@@ -1127,16 +1082,19 @@ export default function App() {
       if (eventMatchesShortcut(event, shortcuts.searchConversations)) {
         consume();
         setSettingsOpen(false);
-        if (!sidebarOpen) runLayoutTransition(() => setSidebarOpen(true), "left-open");
-        afterPaint(() => {
-          const input = document.querySelector<HTMLInputElement>(".compact-search.open input");
-          if (input) {
-            input.focus();
-            input.select();
-            return;
-          }
-          document.querySelector<HTMLButtonElement>('button[aria-label="Search conversations"]')?.click();
-        });
+        if (!sidebarOpen) {
+          runLayoutTransition(() => {
+            setSidebarOpen(true);
+            setSidebarSearchOpen(true);
+          }, "left-open");
+        } else if (!sidebarSearchOpen) {
+          setSidebarSearchOpen(true);
+        } else {
+          // Already open: take the keyboard back to it, its query selected.
+          const input = document.querySelector<HTMLInputElement>(".compact-search-shell.open input");
+          input?.focus();
+          input?.select();
+        }
         return;
       }
 
@@ -1179,7 +1137,7 @@ export default function App() {
 
     window.addEventListener("keydown", handleShortcut, true);
     return () => window.removeEventListener("keydown", handleShortcut, true);
-  }, [loom, reviewOpen, runLayoutTransition, running, shortcuts, sidebarOpen, terminalOpen, rightSurfaceOpen]);
+  }, [loom, reviewOpen, runLayoutTransition, running, shortcuts, sidebarOpen, sidebarSearchOpen, terminalOpen, rightSurfaceOpen]);
 
   // An approval the reader answers folds away instead of taking its height back in one frame.
   const transcriptItems = useLeavingItems(
@@ -1400,8 +1358,22 @@ export default function App() {
   latestProjectHandlers.current = { openProjectDetails, handleMoveProject };
   const stableOpenProject = useCallback((projectId: string) => latestProjectHandlers.current.openProjectDetails(projectId), []);
   const stableMoveProject = useCallback((threadId: string, projectId: string) => latestProjectHandlers.current.handleMoveProject(threadId, projectId), []);
-  // The sidebar's own toggle (its top row) only ever closes it; stable, so the memoised sidebar does not redraw.
-  const closeSidebar = useCallback(() => runLayoutTransition(() => setSidebarOpen(false), "left-close"), [runLayoutTransition]);
+  // The sidebar's toolbar (SidebarControls): the toggle, and search, which opens the sidebar for it when it is closed.
+  const toggleSidebar = useCallback(() => runLayoutTransition(
+    () => setSidebarOpen((open) => !open),
+    sidebarOpen ? "left-close" : "left-open",
+  ), [runLayoutTransition, sidebarOpen]);
+  const toggleSidebarSearch = useCallback(() => {
+    if (sidebarOpen) {
+      setSidebarSearchOpen((open) => !open);
+      return;
+    }
+    runLayoutTransition(() => {
+      setSidebarOpen(true);
+      setSidebarSearchOpen(true);
+    }, "left-open");
+  }, [runLayoutTransition, sidebarOpen]);
+  const startConversation = useCallback(() => loom.newThread(), [loom.newThread]);
 
   const progressProps = {
     modelActivity: loom.modelActivity,
@@ -1434,9 +1406,9 @@ export default function App() {
     <>
       <div
         ref={shellRef}
-        className={`app-shell workspace-panels ${sidebarOpen ? "sidebar-open" : "sidebar-closed"} ${sidebarLayoutOpen ? "sidebar-layout-open" : "sidebar-layout-closed"} ${inspectorVisible ? "inspector-open" : "inspector-closed"} ${inspectorLayoutOpen ? "inspector-layout-open" : "inspector-layout-closed"} ${reviewLayoutOpen ? "with-review" : ""} ${agentsLayoutOpen ? "with-agents" : ""} ${artifactLayoutOpen ? "with-artifact-preview" : ""} ${projectDetailsLayoutOpen ? "with-project-details" : ""} ${resizingPanel ? "is-resizing" : ""} ${settingsPresence.mounted || profilePresence.mounted ? "is-settings-obscured" : ""}`}
+        className={`app-shell workspace-panels ${sidebarOpen ? "sidebar-open" : "sidebar-closed"} ${sidebarLayoutOpen ? "sidebar-layout-open" : "sidebar-layout-closed"} ${inspectorVisible ? "inspector-open" : "inspector-closed"} ${inspectorLayoutOpen ? "inspector-layout-open" : "inspector-layout-closed"} ${reviewLayoutOpen ? "with-review" : ""} ${agentsLayoutOpen ? "with-agents" : ""} ${artifactLayoutOpen ? "with-artifact-preview" : ""} ${projectDetailsLayoutOpen ? "with-project-details" : ""} ${resizingPanel ? "is-resizing" : ""} ${shellCovered ? "is-settings-obscured" : ""}`}
         style={layoutStyle}
-        aria-hidden={settingsPresence.mounted || profilePresence.mounted ? true : undefined}
+        inert={shellInert}
       >
       <RightToolDock
         hidden={settingsPresence.mounted || profilePresence.mounted || accountOpen || Boolean(filesProjectId)}
@@ -1453,11 +1425,11 @@ export default function App() {
         taskTotal={taskMilestones.length}
         taskRunning={running && taskMilestones.some(step => step.status === "in_progress")}
         agentsOpen={agentsOpen}
-        agentCount={threadSwitching ? 0 : agentCount}
+        agentCount={heldCounts.agents}
         reviewOpen={reviewOpen}
-        reviewCount={threadSwitching ? 0 : changedFileCount}
+        reviewCount={heldCounts.review}
         artifactsOpen={artifactPreviewOpen}
-        artifactCount={threadSwitching ? 0 : artifactCount}
+        artifactCount={heldCounts.artifacts}
         inspectorOpen={inspectorVisible}
         accountAuthenticated={account.account.authenticated}
         accountAvatar={account.account.user?.avatar_data_url?.trim() || undefined}
@@ -1502,6 +1474,14 @@ export default function App() {
           setSettingsOpen(true);
         }}
       />
+      <SidebarControls
+        ref={sidebarControlsRef}
+        open={sidebarOpen}
+        searchOpen={sidebarOpen && sidebarSearchOpen}
+        onToggle={toggleSidebar}
+        onSearch={toggleSidebarSearch}
+        onNew={startConversation}
+      />
       <Sidebar
         threads={loom.threads}
         loading={connecting}
@@ -1524,7 +1504,8 @@ export default function App() {
         onDelete={loom.deleteThread}
         onFork={loom.forkThread}
         onViewChange={loom.setThreadView}
-        onClose={closeSidebar}
+        searchOpen={sidebarSearchOpen}
+        onSearchOpenChange={setSidebarSearchOpen}
       />
 
       <div
@@ -1551,11 +1532,6 @@ export default function App() {
       >
         <ThreadHeader
           sidebarOpen={sidebarOpen}
-          onToggleSidebar={() => runLayoutTransition(
-            () => setSidebarOpen(open => !open),
-            sidebarOpen ? "left-close" : "left-open",
-          )}
-          onNewConversation={() => loom.newThread()}
           title={threadTitle}
           workspace={selectedThread?.workspace || workspace}
           connection={loom.connection}
@@ -1565,7 +1541,8 @@ export default function App() {
           archived={archived}
           model={currentModel}
           permissionMode={permissionMode}
-          context={threadSwitching ? null : loom.context}
+          context={heldContext}
+          contextPending={threadSwitching}
           compacting={!threadSwitching && loom.compacting}
           compactionProgress={threadSwitching ? null : loom.compactionProgress}
           onCompactContext={() => void loom.compactContext()}
@@ -1651,10 +1628,13 @@ export default function App() {
         </div>
 
         <div className="composer-stage" inert={threadSwitching}>
-          {(() => {
-            const currentProject = loom.projects.find(project => project.id === thread?.projectId);
-            return currentProject ? <ProjectGitBar project={currentProject} onOpen={() => openProjectDetails(currentProject.id)} onFiles={() => setFilesProjectId(currentProject.id)}/> : null;
-          })()}
+          {gitBarPresence.mounted && gitBarProject ? (
+            <div className="project-git-fold" data-motion-phase={gitBarPresence.phase} inert={!currentProject}>
+              <div className="project-git-fold-body">
+                <ProjectGitBar project={gitBarProject} onOpen={() => openProjectDetails(gitBarProject.id)} onFiles={() => setFilesProjectId(gitBarProject.id)}/>
+              </div>
+            </div>
+          ) : null}
           {petEnabled && thread && <LoomPet key={thread.id} running={running}
             approval={thread.status === "waiting_approval" || visibleApproval}
             completed={thread.status === "completed"} />}

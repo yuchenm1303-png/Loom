@@ -74,8 +74,10 @@ export const SAMPLER = `(() => {
 })()`;
 
 const tool = (id) => [["click", `.loom-tool-button[data-tool-id="${id}"]`]];
-const sidebarClose = [["click", ".codex-sidebar-topbar .sidebar-toggle"]];
-const sidebarOpen = [["click", ".thread-header .sidebar-toggle"]];
+// The toolbar's toggle (one button in both states); the second selector is the card's / the header's own toggle of
+// builds before SidebarControls, so two builds can be compared.
+const sidebarClose = [["click", ".sidebar-controls .sidebar-toggle, .codex-sidebar-topbar .sidebar-toggle"]];
+const sidebarOpen = [["click", ".sidebar-controls .sidebar-toggle, .thread-header .sidebar-toggle"]];
 
 // [kind, spec, dx, dy]: click | rclick (at the element's centre, or dx/dy from its top left), key, wait.
 export const SCENARIOS = [
@@ -90,8 +92,8 @@ export const SCENARIOS = [
   { name: "process-collapse", subjects: [".turn-process-grid"], steps: [["click", ".turn-process-header"]], wait: 700 },
   { name: "search-open", subjects: [".compact-search-shell"], steps: [["click", 'button[aria-label="Search conversations"]']], wait: 500 },
   { name: "search-close", subjects: [".compact-search-shell"], steps: [["key", "Escape"]], wait: 500 },
-  { name: "sidebar-close", subjects: [".workspace-panels > .sidebar", ".composer"], steps: sidebarClose, wait: 800 },
-  { name: "sidebar-open", subjects: [".workspace-panels > .sidebar", ".composer"], steps: sidebarOpen, wait: 800 },
+  { name: "sidebar-close", subjects: [".workspace-panels > .sidebar", ".thread-header-copy", ".composer"], steps: sidebarClose, wait: 800 },
+  { name: "sidebar-open", subjects: [".workspace-panels > .sidebar", ".thread-header-copy", ".composer"], steps: sidebarOpen, wait: 800 },
   { name: "inspector-open", subjects: [".workspace-panels > .inspector", ".composer"], steps: tool("inspector"), wait: 800 },
   { name: "inspector-close", subjects: [".workspace-panels > .inspector", ".composer"], steps: tool("inspector"), wait: 800 },
   { name: "review-open", subjects: [".review-workspace", ".composer"], steps: tool("review"), wait: 800 },
@@ -103,7 +105,7 @@ export const SCENARIOS = [
   { name: "background-close", subjects: [".background-task-panel"], steps: tool("background"), wait: 600 },
   { name: "settings-open", subjects: [".settings-main", ".settings-sidebar"], steps: tool("settings"), wait: 900 },
   { name: "settings-close", subjects: [".settings-main", ".settings-sidebar"], steps: [["click", ".settings-back"]], wait: 700 },
-  { name: "rt-sidebar", roundTrip: true, subjects: [".workspace-panels > .sidebar", ".composer"], steps: [...sidebarClose, ["wait", 120], ...sidebarOpen], wait: 900 },
+  { name: "rt-sidebar", roundTrip: true, subjects: [".workspace-panels > .sidebar", ".thread-header-copy", ".composer"], steps: [...sidebarClose, ["wait", 120], ...sidebarOpen], wait: 900 },
   { name: "rt-inspector", roundTrip: true, subjects: [".workspace-panels > .inspector", ".composer"], steps: [...tool("inspector"), ["wait", 140], ...tool("inspector")], wait: 900 },
   { name: "rt-review", roundTrip: true, subjects: [".review-workspace", ".composer"], steps: [...tool("review"), ["wait", 140], ...tool("review")], wait: 900 },
   { name: "rt-model", roundTrip: true, subjects: [".model-popover"], steps: [["click", ".composer .model-chip"], ["wait", 70], ["key", "Escape"]], wait: 600 },

@@ -9,22 +9,43 @@ def read(path: str) -> str:
     return (ROOT / path).read_text(encoding="utf-8")
 
 
-def test_right_docks_are_live_and_the_sidebar_snapshots_only_its_card_and_shared_controls() -> None:
+def test_no_dock_is_snapshotted() -> None:
     app = read("desktop-react/src/App.tsx")
     css = read("desktop-react/src/components/workspace-panels.css")
 
     assert 'import { flushSync } from "react-dom"' in app
     assert "runLayoutTransition" in app
-    # Right-hand changes never wait for a snapshot: the docks run their own transitions on the real element (a second
-    # click turns them around where they are painted) and the workspace follows by FLIP.
-    assert 'const liveRightMotion = intent === "right-open" || intent === "right-close" || intent === "right-swap";' in app
-    # A neutral change (a palette, a swap inside one dock) moves live as well: only the sidebar snapshots.
-    assert 'const sidebarSnapshot = intent === "left-open" || intent === "left-close";' in app
-    assert 'if (!sidebarSnapshot || typeof transitionDocument.startViewTransition !== "function")' in app
-    # The sidebar's snapshot captures only the card and the two controls it shares with the header.
-    names = set(re.findall(r"view-transition-name:\s*([\w-]+)", css))
-    assert names == {"none", "loom-sidebar", "loom-sidebar-toggle", "loom-sidebar-compose"}, names
+    # Every dock, the sidebar included, runs its own transitions on the real element (a second click turns it around
+    # where it is painted) and the workspace follows by FLIP. A snapshot froze the window before anything moved and, in
+    # Electron, drew the sidebar's shared toolbar fading out and popping back in.
+    assert "startViewTransition" not in app
+    assert "view-transition" not in css
+    assert 'if (intent === "right-open" || intent === "right-close" || intent === "right-swap") {' in app
     assert "data-loom-layout-capture" not in css
+
+
+def test_the_sidebar_toolbar_is_one_set_of_buttons() -> None:
+    app = read("desktop-react/src/App.tsx")
+    sidebar = read("desktop-react/src/components/Sidebar.tsx")
+    header = read("desktop-react/src/components/ThreadHeader.tsx")
+    controls = read("desktop-react/src/components/SidebarControls.tsx")
+    css = read("desktop-react/src/components/sidebar-controls.css")
+
+    # The toggle, search and the quill are rendered once, by App, above the card and the header; neither of those
+    # draws a copy of its own, so nothing disappears in one place to reappear in another.
+    assert "<SidebarControls" in app
+    assert 'data-sidebar-control="toggle"' in controls and 'data-sidebar-control="search"' in controls
+    assert "<NewConversationRow" in controls
+    assert "data-sidebar-control" not in sidebar and "NewConversationRow" not in sidebar
+    assert "data-sidebar-control" not in header and "NewConversationRow" not in header
+    # The card keeps their row; the closed header keeps their room.
+    assert '<div className="codex-sidebar-topbar" aria-hidden="true" />' in sidebar
+    assert '{sidebarOpen ? null : <div className="thread-header-leading" aria-hidden="true" />}' in header
+    # The trail (search, the quill) glides between the card row's end and the toggle on the layout clock; dragging
+    # the sidebar's edge carries it frame for frame.
+    assert "transition: translate var(--loom-dur-panel) var(--loom-ease-move);" in css
+    assert ".workspace-panels.sidebar-open > .sidebar-controls .sidebar-controls-trail {" in css
+    assert ".workspace-panels.is-resizing > .sidebar-controls .sidebar-controls-trail {\n  transition: none;" in css
 
 
 def test_relocating_live_elements_use_flip_instead_of_disappear_reappear() -> None:
@@ -33,8 +54,8 @@ def test_relocating_live_elements_use_flip_instead_of_disappear_reappear() -> No
 
     assert "captureLayoutAnchors" in app
     assert "animateLayoutAnchors" in app
-    # The sidebar's toggle and quill have two homes (the card's top row, the header); FLIP finds the one they are in.
-    assert """selector: ':is(.sidebar-open > .sidebar, .sidebar-closed .thread-header-leading) [data-sidebar-control="toggle"]'""" in app
+    # The sidebar's toolbar is not an anchor: its buttons never change hosts (sidebar-controls.css moves them).
+    assert "data-sidebar-control" not in app
     assert 'selector: ".thread-header-copy"' in app
     assert 'selector: ".polished-thread-header-actions"' in app
     assert 'selector: ".transcript"' in app
@@ -44,8 +65,11 @@ def test_relocating_live_elements_use_flip_instead_of_disappear_reappear() -> No
     assert 'selector: ".composer-stage"' not in app
     assert 'animation.id = "loom-layout-anchor"' in app
     assert "animation.commitStyles()" in app
-    # Only the sidebar's shared toolbar controls move vertically (between the card's top row and the header).
-    assert 'const deltaY = capture.kind === "header-leading" ? capture.topY - rect.top : 0;' in app
+    # Anchors move along the row only.
+    assert '{ translate: `${deltaX}px 0px` }' in app
+    # Opening the sidebar starts the title and the composer left of the workspace's new edge, under the arriving card:
+    # the workspace stops clipping while the motion runs, so nothing is cut by an edge nobody can see yet.
+    assert "body.loom-panel-motion .workspace-panels > .workspace {\n  overflow: visible;\n}" in css
 
     assert "loom-readable" not in css
     assert "loom-transcript-old" not in css
@@ -56,10 +80,6 @@ def test_relocating_live_elements_use_flip_instead_of_disappear_reappear() -> No
 def test_a61_depth_is_the_one_dock_language() -> None:
     css = read("desktop-react/src/components/workspace-panels.css")
     docks = read("desktop-react/src/components/panel-language.css")
-
-    # The sidebar's snapshot keeps the a61 keyframes on the panel clock.
-    assert "animation: loom-panel-surface-in-left var(--loom-dur-panel) var(--loom-ease-move) both" in css
-    assert "animation: loom-panel-surface-out-left var(--loom-dur-panel) var(--loom-ease-move) both" in css
 
     # The a61 character: a few pixels of travel and a shade of scale anchored at the dock's own edge, settling on the
     # out curve; leaving quickly (a61's snapshots left in 78-92 ms, the fast-out step is 120).
@@ -136,9 +156,14 @@ def test_layout_flip_is_edge_anchored_and_installed_in_the_commit_frame() -> Non
     assert 'return { previous: capture.leftX, next: rect.left }' in app
     assert 'intent === "left-open" || intent === "left-close"' in app
     assert 'return { previous: capture.rightX, next: rect.right }' in app
-    assert 'liveAnimations = animateLayoutAnchors(captures, intent)' in app
-    assert 'committedInsideTransition = true' in app
-    assert '{ translate: `${deltaX}px ${deltaY}px` }' in app
+    # A column that fills a narrow workspace and grows as the sidebar closes glides from its old left edge, the width it
+    # gained coming out from under the dock or the rail, instead of its left edge jumping the sidebar's width
+    # (sidebar-toolbar-motion-browser.mjs checks the composer's first frame).
+    assert "if (rect.width > capture.rightX - capture.leftX + 1) return { previous: capture.leftX, next: rect.left };" in app
+    # The first FLIP keyframe is installed right after the commit, in the same task, so the browser never paints
+    # one frame at the new coordinate before sending the element back to the old one.
+    assert "flushSync(update);\n    const animations = animateLayoutAnchors(captures, intent);" in app
+    assert '{ translate: `${deltaX}px 0px` }' in app
     assert 'willChange = "translate"' in app
 
 

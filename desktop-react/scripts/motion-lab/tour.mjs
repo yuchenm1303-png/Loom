@@ -30,6 +30,8 @@ try {
   const errors = [];
   page.on("pageerror", (error) => errors.push(error.message));
   if (flag("--popin")) await page.addInitScript(popinProbe);
+  // Both projects open, so their conversations are on screen to be chosen.
+  await page.addInitScript(() => localStorage.setItem("loom.sidebar.expandedProjects", JSON.stringify(["loom", "relay"])));
   await page.addInitScript(() => {
     const rec = { frames: [], shifts: [], on: false, peakAnimations: 0 };
     window.__tour = rec;
@@ -70,19 +72,31 @@ try {
   const row = (title) => page.locator(".compact-thread-main", { hasText: title }).first();
   const at = { position: { x: 36, y: 12 } };
   const settle = (ms) => page.waitForTimeout(ms);
+  const tool = (id) => page.locator(`.loom-tool-button[data-tool-id="${id}"]`);
   const steps = [
     ["sidebar-hover", async () => { for (const title of ["修复模型面板卡片错位", "优化图片附件发送", "检查项目面板浅色主题"]) { await row(title).hover(at); await settle(140); } await page.mouse.move(700, 400); }, 300],
     ["sidebar-select-thread", async () => { await row("优化图片附件发送").click(at); }, 900],
     ["sidebar-select-back", async () => { await row("登录页邮箱校验").click(at); }, 900],
+    ["new-conversation", async () => { await byLabel("新对话").click(); }, 900],
+    ["sidebar-select-after-new", async () => { await row("登录页邮箱校验").click(at); }, 900],
     ["sidebar-search-open", async () => { await byLabel("搜索对话").click(); }, 500],
     ["sidebar-search-type", async () => { await page.locator(".compact-search input").type("模型", { delay: 60 }); }, 500],
     ["sidebar-search-close", async () => { await page.keyboard.press("Escape"); }, 500],
     ["sidebar-fold-project", async () => { await byLabel("折叠 Loom").click(); }, 500],
     ["sidebar-unfold-project", async () => { await byLabel("展开 Loom").click(); }, 500],
+    ["archive-open", async () => { await byLabel("打开归档").click(); }, 800],
+    ["archive-close", async () => { await page.locator(".sidebar-secondary-action").first().click(); }, 800],
     ["sidebar-hide", async () => { await byLabel("收起侧栏").click(); }, 700],
     ["header-show-sidebar", async () => { await byLabel("展开侧栏").click(); }, 700],
-    ["inspector-open", async () => { await byLabel("打开运行检查器").click(); }, 800],
-    ["inspector-close", async () => { await page.locator(".thread-inspector-button").click(); }, 800],
+    ["inspector-open", async () => { await tool("inspector").click(); }, 800],
+    ["inspector-close", async () => { await tool("inspector").click(); }, 800],
+    ["review-open", async () => { await tool("review").click(); }, 900],
+    ["agents-swap", async () => { await tool("agents").click(); }, 900],
+    ["artifacts-swap", async () => { await tool("artifacts").click(); }, 900],
+    ["artifacts-close", async () => { await tool("artifacts").click(); }, 800],
+    ["tasks-open", async () => { await tool("tasks").click(); }, 700],
+    ["background-swap", async () => { await tool("background").click(); }, 700],
+    ["background-close", async () => { await tool("background").click(); }, 700],
     ["process-expand", async () => { await page.locator(".turn-process-header").first().click(); }, 900],
     ["process-collapse", async () => { await page.locator(".turn-process-header").first().click(); }, 900],
     ["message-hover", async () => { await page.locator(".assistant-message-shell").last().hover(); }, 400],
@@ -94,24 +108,24 @@ try {
     ["composer-permission-close", async () => { await page.keyboard.press("Escape"); }, 500],
     ["composer-model-open", async () => { await page.locator(".model-chip").click(); }, 700],
     ["composer-model-close", async () => { await page.keyboard.press("Escape"); }, 500],
-    ["composer-sticker-open", async () => { await byLabel("表情设置").click(); }, 600],
-    ["composer-sticker-close", async () => { await page.keyboard.press("Escape"); }, 500],
     ["context-menu-open", async () => { await row("修复模型面板卡片错位").click({ button: "right", ...at }); }, 600],
     ["context-menu-close", async () => { await page.keyboard.press("Escape"); }, 500],
-    ["settings-open", async () => { await byLabel("打开 Loom 设置").click(); }, 1100],
+    ["settings-open", async () => { await tool("settings").click(); }, 1100],
     ["settings-page-2", async () => { const buttons = page.locator(".settings-nav button"); await buttons.nth(2).click(); }, 800],
     ["settings-page-3", async () => { const buttons = page.locator(".settings-nav button"); await buttons.nth(4).click(); }, 800],
     ["settings-page-4", async () => { const buttons = page.locator(".settings-nav button"); await buttons.nth(6).click(); }, 800],
     // Settings has no Escape: it closes with its own "Back to Loom".
     ["settings-close", async () => { await page.locator(".settings-back").click(); }, 1000],
-    ["profile-open", async () => { await byLabel("个人主页与使用洞察").click(); }, 1100],
+    ["profile-open", async () => { await tool("profile").click(); }, 1100],
     ["profile-close", async () => { await page.keyboard.press("Escape"); }, 1000],
-    ["account-open", async () => { await page.locator(".thread-account-button").click(); }, 900],
+    ["account-open", async () => { await tool("account").click(); }, 900],
     ["account-close", async () => { await page.keyboard.press("Escape"); }, 700],
     ["project-details-open", async () => { await page.locator(".project-git-pr").click(); }, 900],
     ["project-details-close", async () => { await page.locator(".project-details-close").click(); }, 800],
+    ["files-open", async () => { await tool("files").click(); }, 900],
+    ["files-close", async () => { await page.keyboard.press("Escape"); }, 800],
     // Every page of settings in turn (the first one opened with the settings themselves).
-    ["settings-walk-open", async () => { await byLabel("打开 Loom 设置").click(); }, 1000],
+    ["settings-walk-open", async () => { await tool("settings").click(); }, 1000],
     ...Array.from({ length: 12 }, (_, index) => [`settings-walk-${index + 1}`, async () => {
       const buttons = page.locator(".settings-nav button");
       if (index < await buttons.count()) await buttons.nth(index).click();

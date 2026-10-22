@@ -46,8 +46,10 @@ def test_transcript_reanchors_once_when_final_layout_commits() -> None:
 def test_every_visible_panel_close_path_uses_the_same_coordinator() -> None:
     app = read("desktop-react/src/App.tsx")
 
-    assert 'onToggleSidebar={() => runLayoutTransition(' in app
+    # The sidebar's one toggle (SidebarControls) opens and closes it through the coordinator.
+    assert "const toggleSidebar = useCallback(() => runLayoutTransition(" in app
     assert 'sidebarOpen ? "left-close" : "left-open"' in app
+    assert "onToggle={toggleSidebar}" in app
     assert 'runLayoutTransition(() => setInspectorOpen(false), "right-close")' in app
     assert 'onClose={handleCloseInspector}' in app
     assert 'onClose={() => runLayoutTransition(() => setReviewOpen(false), "right-close")}' in app
@@ -57,11 +59,13 @@ def test_every_visible_panel_close_path_uses_the_same_coordinator() -> None:
 def test_direction_metadata_is_cleaned_after_every_transition() -> None:
     app = read("desktop-react/src/App.tsx")
 
-    assert 'delete document.documentElement.dataset.loomLayoutIntent' in app
-    assert app.count('delete document.documentElement.dataset.loomLayoutIntent') >= 3
-    # The hand-off says which way a right-hand change goes (a replaced dock goes at once).
+    # Nothing is snapshotted any more, so there is no snapshot state to clean up.
+    assert "loomLayoutIntent" not in app
+    assert "loomLayoutTransition" not in app
+    # The hand-off says which way a right-hand change goes (a replaced dock goes at once); it is cleared when the
+    # motion ends, when reduced motion applies it at once, and when the app unmounts.
     assert 'document.documentElement.dataset.loomPanelHandoff = intent' in app
-    assert app.count('delete document.documentElement.dataset.loomPanelHandoff') >= 2
+    assert app.count('delete document.documentElement.dataset.loomPanelHandoff') >= 4
 
 
 def test_layout_motion_moves_live_anchors_without_snapshotting_workspace() -> None:
@@ -72,10 +76,10 @@ def test_layout_motion_moves_live_anchors_without_snapshotting_workspace() -> No
     assert "animateLayoutAnchors" in app
     assert 'selector: ".transcript"' in app
     assert 'selector: ".composer"' in app
-    # Only the sidebar's shared toolbar controls move vertically.
-    assert 'const deltaY = capture.kind === "header-leading" ? capture.topY - rect.top : 0;' in app
-    assert "transition.updateCallbackDone" in app
-    assert "view-transition-name: loom-workspace" not in css
+    # Anchors move along the row only; the sidebar's toolbar carries its own buttons (sidebar-controls.css).
+    assert '{ translate: `${deltaX}px 0px` }' in app
+    assert "startViewTransition" not in app
+    assert "view-transition-name" not in css
     assert "loom-readable" not in css
 
 

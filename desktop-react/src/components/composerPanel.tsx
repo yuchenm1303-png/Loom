@@ -92,14 +92,20 @@ export function useComposerPanelHost(rootRef: RefObject<HTMLElement | null>): Ho
   }, [openId]);
 
   // The transcript's jump button steps aside while a panel is up. An attribute on the workspace, because
-  // `.workspace:has(.composer-popover)` was re-evaluated on every change in the transcript.
+  // `.workspace:has(.composer-popover)` was re-evaluated on every change in the transcript. The shell gets it too:
+  // the workspace, lifted over the docks for the panel, would cover the sidebar's toolbar lying on the header.
   const mounted = mountedIds.size > 0;
   useLayoutEffect(() => {
     if (!mounted) return;
     const workspace = rootRef.current?.closest(".workspace");
     if (!workspace) return;
+    const shell = workspace.closest(".app-shell");
     workspace.setAttribute("data-composer-popover", "");
-    return () => workspace.removeAttribute("data-composer-popover");
+    shell?.setAttribute("data-composer-popover", "");
+    return () => {
+      workspace.removeAttribute("data-composer-popover");
+      shell?.removeAttribute("data-composer-popover");
+    };
   }, [mounted, rootRef]);
 
   return useMemo(() => ({ openId, mounted, open, close, report }), [openId, mounted, open, close, report]);

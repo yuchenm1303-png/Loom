@@ -31,7 +31,7 @@ try {
     assert.equal(selection.switching, true);
     assert.ok(selection.pillAnimations > 0, 'pill moves on the first frame, without waiting for thread/read');
     assert.equal(await page.locator('.conversation-stage').evaluate(el => el.inert), true, 'old transcript actions cannot target the previous thread under the new title');
-    assert.equal(await page.locator('.codex-sidebar-topbar .sidebar-toggle').isEnabled(), true, 'sidebar navigation remains available while loading');
+    assert.equal(await page.locator('.sidebar-controls .sidebar-toggle').isEnabled(), true, 'sidebar navigation remains available while loading');
     await page.waitForTimeout(420);
     assert.equal(await page.locator('.thread-switch-overlay').count(), 0, 'slow reads never show a loading overlay');
     const pendingSurface = await page.evaluate(() => ({

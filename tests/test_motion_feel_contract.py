@@ -97,14 +97,12 @@ def test_docks_are_live_surfaces_that_leave_on_the_short_step() -> None:
     panels = read("components/workspace-panels.css")
     language = read("components/panel-language.css")
 
-    # Right-hand changes never wait for a snapshot (it had to paint and capture the old frame first). Only the sidebar
-    # snapshots, and only its card and the two toolbar controls it shares with the header.
-    assert 'const sidebarSnapshot = intent === "left-open" || intent === "left-close";' in app
-    assert 'if (!sidebarSnapshot || typeof transitionDocument.startViewTransition !== "function")' in app
-    named = set()
+    # No dock waits for a snapshot: a View Transition had to paint and capture the old frame first, re-styled the page
+    # twice, and in Electron drew the sidebar's shared toolbar fading out and popping back in.
+    assert "startViewTransition" not in app
     for path in stylesheets():
-        named |= set(re.findall(r"view-transition-name:\s*([\w-]+)", strip_comments(path.read_text(encoding="utf-8"))))
-    assert named <= {"none", "loom-sidebar", "loom-sidebar-toggle", "loom-sidebar-compose"}, named
+        css = strip_comments(path.read_text(encoding="utf-8"))
+        assert "view-transition-name" not in css and "::view-transition" not in css, rel(path)
 
     # The sidebar and the inspector: readable on their first frame, settled on the panel clock, gone on fast-out.
     assert "opacity var(--loom-dur-fast) var(--loom-ease-out) calc(var(--loom-dur-fast) * -.2)" in panels
@@ -269,3 +267,61 @@ def test_the_loops_that_say_alive_keep_one_tempo() -> None:
     assert "animation: li-spin var(--loom-period-breathe) linear infinite;" in read("components/sidebar.css")
     thinking = read("components/inline-thinking.css")
     assert "--thinking-cycle: var(--loom-period-shimmer);" in thinking
+
+
+def test_switching_keeps_what_the_header_and_the_dock_show() -> None:
+    app = read("App.tsx")
+    meter = read("components/ContextMeter.tsx")
+    meter_css = read("components/context-meter.css")
+    dock = read("components/RightToolDock.tsx")
+
+    # While another conversation opens, the meter and the dock's counts keep their last values (the meter dimmed and
+    # marked pending) instead of dropping to nothing and coming back (view-switch-continuity-browser.mjs plays it).
+    assert "function useHeldWhile<T>(value: T, hold: boolean): T {" in app
+    assert "const heldContext = useHeldWhile(loom.context, threadSwitching);" in app
+    assert "context={heldContext}" in app and "contextPending={threadSwitching}" in app
+    assert "agentCount={heldCounts.agents}" in app and "threadSwitching ? 0 :" not in app
+    # The meter has a presence of its own: it fades in, and out still showing its last reading.
+    assert "const presence = useMotionPresence(Boolean(current), RETAIN.fast);" in meter
+    assert "if (!presence.mounted || !report) return null;" in meter
+    assert 'data-pending={pending ? "true" : undefined}' in meter
+    assert '.context-meter[data-pending="true"] {\n  opacity: .45;\n}' in meter_css
+    assert '.context-meter[data-motion-phase="exiting"] {\n  opacity: 0;' in meter_css
+    # A count's dot stays in its tool and says on or off, so it fades and grows either way.
+    assert 'data-on={item.count > 0 ? "true" : "false"}' in dock
+    assert 'item.count > 0 ? <span className="loom-tool-count' not in dock
+
+
+def test_the_project_line_folds_instead_of_jumping() -> None:
+    app = read("App.tsx")
+    css = read("components/project-git-bar.css")
+
+    assert "const gitBarPresence = useMotionPresence(Boolean(currentProject), RETAIN.foldBase);" in app
+    assert '<div className="project-git-fold" data-motion-phase={gitBarPresence.phase} inert={!currentProject}>' in app
+    assert "grid-template-rows var(--loom-dur-base) var(--loom-ease-inout)" in css
+    assert ".project-git-fold[data-motion-phase=\"exiting\"] {\n  grid-template-rows: 0fr;\n  opacity: 0;" in css
+    starting = css[css.index("@starting-style {\n  .project-git-fold {"):]
+    assert "grid-template-rows: 0fr;" in starting[:starting.index("}\n}")]
+
+
+def test_settings_paints_its_frame_before_its_page() -> None:
+    app = read("App.tsx")
+    page = read("components/SettingsPage.tsx")
+    motion = read("global-motion.css")
+    hook = read("motion/usePaintedOnce.ts")
+
+    # The first frame after the click is settings' frame; the page body is rendered once that frame is painted.
+    assert "requestAnimationFrame(() => setPainted(true))" in hook
+    assert "const bodyPainted = usePaintedOnce();" in page
+    assert "const content = !bodyPainted ? null : (() => {" in page
+    # The covered app goes inert a painted frame after the overlay arrives and is live again as it starts to leave:
+    # making the whole app inert re-styles every element in it. No inherited property is toggled on the shell.
+    assert "inert={shellInert}" in app
+    assert "const shellStaysCovered = settingsOpen || profileOpen;" in app
+    assert ".app-shell.is-settings-obscured {" not in motion
+    # The sidebar is readable on its first frame; the page follows from nothing, so its late body arrives unseen.
+    starting = motion[motion.index("@starting-style {\n  .settings-host"):]
+    starting = starting[:starting.index("}\n}")]
+    assert '.settings-host[data-motion-phase="entered"] .settings-sidebar {\n    opacity: .72;' in starting
+    assert '.settings-host[data-motion-phase="entered"] .settings-main {\n    opacity: 0;' in starting
+    assert "opacity: .72;" in read("components/profile-insights.css")

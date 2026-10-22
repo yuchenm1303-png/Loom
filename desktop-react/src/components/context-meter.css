@@ -250,6 +250,27 @@
   display: inline-flex;
   align-items: center;
 }
+
+/* The meter itself (ContextMeter's presence): it fades in when a reading arrives (something that arrives by itself
+   starts from nothing, on the base step) and out on fast-out, still showing its last reading, when there is none any
+   more (a new conversation). While another conversation opens it keeps that reading, dimmed, until the new one comes:
+   it used to vanish and come back on every switch. */
+.context-meter {
+  transition: opacity var(--loom-dur-base) var(--loom-ease-out);
+}
+@starting-style {
+  .context-meter {
+    opacity: 0;
+  }
+}
+.context-meter[data-pending="true"] {
+  opacity: .45;
+}
+.context-meter[data-motion-phase="exiting"] {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--loom-dur-fast-out) var(--loom-ease-exit);
+}
 .context-meter-chip {
   transition: transform var(--loom-dur-fast) ease, border-color var(--loom-dur-fast) ease, background var(--loom-dur-fast) ease, color var(--loom-dur-fast) ease, box-shadow var(--loom-dur-fast) ease;
 }

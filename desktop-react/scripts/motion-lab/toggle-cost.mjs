@@ -15,7 +15,7 @@ const n = Number(option("--n", "5"));
 const only = option("--only") ? new Set(option("--only").split(",")) : null;
 
 const TOGGLES = {
-  sidebar: [".codex-sidebar-topbar .sidebar-toggle", ".thread-header .sidebar-toggle"],
+  sidebar: [".sidebar-controls .sidebar-toggle, .codex-sidebar-topbar .sidebar-toggle", ".sidebar-controls .sidebar-toggle, .thread-header .sidebar-toggle"],
   inspector: ['.loom-tool-button[data-tool-id="inspector"]', '.loom-tool-button[data-tool-id="inspector"]'],
   review: ['.loom-tool-button[data-tool-id="review"]', '.loom-tool-button[data-tool-id="review"]'],
 };

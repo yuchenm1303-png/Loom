@@ -10,3 +10,31 @@
 .project-git-bar .project-git-pr { margin-left:auto; }
 .project-git-bar .git-additions { height:auto; padding:0; color:var(--semantic-success-strong, var(--success)); font-variant-numeric:tabular-nums; }
 .project-git-bar .git-deletions { height:auto; padding:0; color:var(--semantic-danger-strong, var(--danger)); font-variant-numeric:tabular-nums; }
+
+/* The line folds in and out (App keeps it while it folds away) on the base step both ways, its words fading with it,
+   so the conversation above glides by the line's height instead of jumping by it. */
+.project-git-fold {
+  display: grid;
+  grid-template-rows: 1fr;
+  transition:
+    grid-template-rows var(--loom-dur-base) var(--loom-ease-inout),
+    opacity var(--loom-dur-base) var(--loom-ease-out);
+}
+@starting-style {
+  .project-git-fold {
+    grid-template-rows: 0fr;
+    opacity: 0;
+  }
+}
+.project-git-fold[data-motion-phase="exiting"] {
+  grid-template-rows: 0fr;
+  opacity: 0;
+  transition:
+    grid-template-rows var(--loom-dur-base) var(--loom-ease-inout),
+    opacity var(--loom-dur-fast-out) var(--loom-ease-exit);
+}
+.project-git-fold-body {
+  min-height: 0;
+  overflow: clip;
+  overflow-clip-margin: 4px;
+}

@@ -155,91 +155,12 @@ html[data-loom-panel-handoff="right-swap"] .workspace-panels.inspector-closed > 
   transition: none;
 }
 
-/* The sidebar's snapshot ------------------------------------------------------
-   The sidebar opens and closes through a View Transition that captures only the card and the two toolbar controls
-   it shares with the header (the toggle and the quill): their groups move between the two toolbars on the panel
-   clock while the card arrives and leaves with the a61 depth, and nothing readable around them is captured. Its live
-   transitions above are what runs without the API (and with reduced motion, which takes no time). The right-hand
-   docks never snapshot: they move live (App.tsx). */
-html[data-loom-layout-transition="true"] {
-  view-transition-name: none;
-}
-
-html[data-loom-layout-transition="true"]:is(
-  [data-loom-layout-intent="left-open"],
-  [data-loom-layout-intent="left-close"]
-) .workspace-panels.sidebar-open > .sidebar {
-  view-transition-name: loom-sidebar;
-}
-
-/* Extract the shared controls from the card snapshot. Their groups interpolate
-   position on the same clock as the live header, without the card's exit fade
-   or delayed entrance. Only the visible toolbar supplies each identity. */
-html[data-loom-layout-transition="true"] .sidebar-open > .sidebar [data-sidebar-control="toggle"],
-html[data-loom-layout-transition="true"] .sidebar-closed .thread-header-leading [data-sidebar-control="toggle"] {
-  view-transition-name: loom-sidebar-toggle;
-}
-
-html[data-loom-layout-transition="true"] .sidebar-open > .sidebar [data-sidebar-control="compose"],
-html[data-loom-layout-transition="true"] .sidebar-closed .thread-header-leading [data-sidebar-control="compose"] {
-  view-transition-name: loom-sidebar-compose;
-}
-
-::view-transition-group(loom-sidebar-toggle),
-::view-transition-group(loom-sidebar-compose) {
-  animation-duration: var(--loom-dur-panel);
-  animation-timing-function: var(--loom-ease-move);
-}
-
-::view-transition-old(loom-sidebar-toggle),
-::view-transition-old(loom-sidebar-compose) {
-  animation: none;
-  opacity: 0;
-}
-
-::view-transition-new(loom-sidebar-toggle),
-::view-transition-new(loom-sidebar-compose) {
-  animation: none;
-  mix-blend-mode: normal;
-  opacity: 1;
-}
-
-::view-transition-group(loom-sidebar) {
-  animation-duration: var(--loom-dur-panel);
-  animation-timing-function: var(--loom-ease-move);
-  animation-fill-mode: both;
-}
-
-::view-transition-old(loom-sidebar),
-::view-transition-new(loom-sidebar) {
-  mix-blend-mode: normal;
-}
-
-/* The a61 depth, on the panel clock. */
-::view-transition-new(loom-sidebar) {
-  transform-origin: left center;
-  animation: loom-panel-surface-in-left var(--loom-dur-panel) var(--loom-ease-move) both;
-}
-
-::view-transition-old(loom-sidebar) {
-  transform-origin: left center;
-  animation: loom-panel-surface-out-left var(--loom-dur-panel) var(--loom-ease-move) both;
-}
-
-@keyframes loom-panel-surface-in-left {
-  from { opacity: 0; transform: translate3d(-10px,0,0) scale(.99); }
-  28% { opacity: .84; }
-  to { opacity: 1; transform: translate3d(0,0,0) scale(1); }
-}
-
-@keyframes loom-panel-surface-out-left {
-  from { opacity: 1; transform: translate3d(0,0,0) scale(1); }
-  to { opacity: 0; transform: translate3d(-5px,0,0) scale(.994); }
-}
-
-/* The snapshot owns the sidebar while it runs; its live transition stays still underneath. */
-html[data-loom-layout-transition="true"] .workspace-panels > .sidebar {
-  transition: none !important;
+/* While a dock moves, the conversation is carried from where it was to where it lands (FLIP, App.tsx), and opening
+   the sidebar starts it left of the workspace's new edge, under the arriving card: the workspace stops clipping for
+   that time, so the title and the composer slide out from under the card instead of being cut by an edge nobody can
+   see yet. */
+body.loom-panel-motion .workspace-panels > .workspace {
+  overflow: visible;
 }
 
 .workspace-panel-resizer {

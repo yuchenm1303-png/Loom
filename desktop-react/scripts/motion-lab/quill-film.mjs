@@ -1,13 +1,13 @@
-// Frame-exact films of the new-conversation row's quill on the real sidebar (the live-app fixture), at device pixels and
+// Frame-exact films of the new-conversation quill on the sidebar's toolbar (the live-app fixture), at device pixels and
 // enlarged without smoothing: what is drawn at 20 px is what is judged.
 //   node scripts/motion-lab/quill-film.mjs [--scene in|out|press|click|shortcut] [--theme dark|light] [--zoom 5] [--dsf 1.5]
 //        [--times 0,60,120,...] [--pad 5] [--fixed 1] [--probe 700] [--reduced 1] [--out file.png]
 //
-//   in        the pointer arrives: the quill takes its pose about the nib (the barb a beat later).
+//   in        the pointer arrives: the quill leans in about its nib (the barb a beat later).
 //   out       the pointer leaves: back to rest.
 //   press     the button is held: the glyph gives toward its nib.
-//   click     a click: the line is pulled back into the nib and written again, the barb struck last (data-written).
-//   shortcut  the same start without the pointer (Ctrl+N, sent to the sidebar as the event the app listens for).
+//   click     a click: one stroke, the pen flicked up and back while the barb is struck again (data-stroke).
+//   shortcut  the same stroke without the pointer (Ctrl+N, sent as the event the app listens for).
 //
 // Every animation and transition under the row is paused and seeked, so frames are exact and not timed. `--fixed 1` shoots
 // the same box in every frame (the default follows the glyph, which shrinks under a press). `--probe <ms>` also prints, every
@@ -89,10 +89,10 @@ if (args.probe) {
     const r = await page.evaluate((t) => {
       window.__film.forEach((a) => { a.pause(); a.currentTime = t; });
       const style = (sel) => getComputedStyle(document.querySelector(`.sidebar-new-conversation ${sel}`));
-      return { quill: style(".li-quill").transform, barb: style(".li-barb").transform, line: style(".quill-outline").strokeDasharray, tip: style(".li-barb").strokeDasharray, glyph: getComputedStyle(document.querySelector(".sidebar-new-conversation > svg")).scale };
+      return { quill: style(".li-quill").transform, barb: style(".li-barb").transform, line: style(".quill-outline").strokeDasharray, tip: style(".li-barb").strokeDashoffset, scribe: style(".li-scribe").transform, glyph: getComputedStyle(document.querySelector(".sidebar-new-conversation > svg")).scale };
     }, t);
     const length = (dash) => (dash === "none" ? 1 : parseFloat(dash));
-    console.log(`${String(t).padStart(4)} ms  quill ${turn(r.quill).toFixed(2).padStart(6)}°  barb ${turn(r.barb).toFixed(2).padStart(6)}°  line ${length(r.line).toFixed(3)}  barb-line ${length(r.tip).toFixed(3)}  scale ${r.glyph}`);
+    console.log(`${String(t).padStart(4)} ms  quill ${turn(r.quill).toFixed(2).padStart(6)}°  barb ${turn(r.barb).toFixed(2).padStart(6)}°  line ${length(r.line).toFixed(3)}  stroke ${turn(r.scribe).toFixed(2).padStart(6)}°  barb drawn ${Math.max(0, 1 - parseFloat(r.tip)).toFixed(3)}  scale ${r.glyph}`);
   }
 }
 

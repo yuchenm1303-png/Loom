@@ -214,7 +214,7 @@ try {
   assert.ok(fallback.opacity < .01, 'fallback fades to invisible before unmount');
   await panel.waitFor({ state: 'detached' });
   const moving = await page.evaluate(() => {
-    document.querySelector('.codex-sidebar-topbar .sidebar-toggle').click();
+    document.querySelector('.sidebar-controls .sidebar-toggle').click();
     const count = document.getAnimations().filter(a => a.id === 'loom-layout-anchor' && a.playState === 'running').length;
     document.documentElement.dataset.loomReducedMotion = 'true';
     return count;

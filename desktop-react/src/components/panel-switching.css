@@ -1,13 +1,3 @@
-/* Panel snapshots are visual only. Keep the live dock available so another
-   click can interrupt the transition instead of waiting for its top layer. */
-html[data-loom-layout-transition="true"]::view-transition,
-html[data-loom-layout-transition="true"]::view-transition-group(*),
-html[data-loom-layout-transition="true"]::view-transition-image-pair(*),
-html[data-loom-layout-transition="true"]::view-transition-old(*),
-html[data-loom-layout-transition="true"]::view-transition-new(*) {
-  pointer-events: none;
-}
-
 /* A floating palette is not captured as a side-surface snapshot. On a tool
    swap, release its old pixels immediately rather than fading it over the
    newly entering panel. Ordinary close still keeps its gentle exit.

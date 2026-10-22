@@ -1,0 +1,70 @@
+/* The app's tooltip (GlobalTooltip.tsx): the material of the quick-tool dock's names, on the popover scale. It reads
+   on its first frame (.72, set by the script for one frame) and settles on fast, leaves on fast-out; moving on to the
+   next named control while it shows, it glides there. */
+.loom-tooltip {
+  --tt-surface: color-mix(in srgb, var(--loom-workspace-panel, #191c22) 90%, #fff);
+  --tt-line: var(--loom-workspace-line, rgba(224, 230, 242, .12));
+  --tt-ink: var(--loom-workspace-ink, #eceef3);
+  --tt-shadow: 0 10px 28px rgba(0, 0, 0, .34), 0 1px 3px rgba(0, 0, 0, .22);
+  position: fixed;
+  z-index: 2147483000;
+  top: 0;
+  left: 0;
+  box-sizing: border-box;
+  max-width: 320px;
+  padding: 6px 9px;
+  border: 1px solid var(--tt-line);
+  border-radius: 8px;
+  background: var(--tt-surface);
+  color: var(--tt-ink);
+  box-shadow: var(--tt-shadow);
+  font-family: var(--loom-font-family, inherit);
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 500;
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+  pointer-events: none;
+  user-select: none;
+  opacity: 0;
+  visibility: hidden;
+  transition:
+    opacity var(--loom-dur-fast-out) var(--loom-ease-exit),
+    visibility 0s linear var(--loom-dur-fast-out);
+}
+
+/* A shortcut after the name, in the quieter ink of a key. */
+.loom-tooltip-keys {
+  margin-left: 8px;
+  color: var(--loom-workspace-muted, #949dab);
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+}
+
+html[data-loom-theme="light"] .loom-tooltip {
+  --tt-shadow: 0 8px 23px rgba(25, 36, 64, .13), 0 1px 3px rgba(25, 36, 64, .08);
+}
+
+.loom-tooltip[data-on="true"] {
+  opacity: 1;
+  visibility: visible;
+  transition: opacity var(--loom-dur-fast) var(--loom-ease-out);
+}
+
+.loom-tooltip[data-on="true"][data-glide="true"] {
+  transition:
+    opacity var(--loom-dur-fast) var(--loom-ease-out),
+    translate var(--loom-dur-base) var(--loom-ease-glide);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .loom-tooltip,
+  .loom-tooltip[data-on="true"] {
+    transition: none;
+  }
+}
+
+html[data-loom-reduced-motion="true"] .loom-tooltip,
+html[data-loom-reduced-motion="true"] .loom-tooltip[data-on="true"] {
+  transition: none;
+}

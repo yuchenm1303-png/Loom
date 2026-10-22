@@ -98,9 +98,7 @@ html[data-loom-density="spacious"] .sidebar.compact-sidebar { --sb-row-h: 38px; 
   font-family: inherit;
 }
 
-/* Icon-only buttons share one quiet treatment. */
-.sidebar-toggle,
-.compact-sidebar-actions button,
+/* Icon-only buttons share one quiet treatment (the toolbar on the top row has its own: sidebar-controls.css). */
 .compact-search button,
 .sidebar-section-title button,
 .project-disclosure-button,
@@ -122,8 +120,6 @@ html[data-loom-density="spacious"] .sidebar.compact-sidebar { --sb-row-h: 38px; 
     opacity var(--loom-dur-fast) ease;
 }
 
-.sidebar-toggle:hover,
-.compact-sidebar-actions button:hover,
 .compact-search button:hover,
 .sidebar-section-title button:hover,
 .project-disclosure-button:hover,
@@ -140,56 +136,21 @@ html[data-loom-density="spacious"] .sidebar.compact-sidebar { --sb-row-h: 38px; 
 }
 
 /* Top bar --------------------------------------------------------------------
-   Three quiet controls on the window rail and no words: the sidebar's toggle at the corner (the header puts
-   it back on the same spot while the sidebar is closed), search and the quill at the other end. */
+   The room for the sidebar's toolbar (toggle, search and the quill: sidebar-controls.css), which lies over it on the
+   window rail and stays there when the card goes. */
 .codex-sidebar-topbar {
   flex: none;
   height: var(--sb-row-h);
-  padding: 0;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  user-select: none;
 }
 
-/* On the desktop this row, and the search field that opens under it, reach into the window's
-   draggable rail (window-chrome.css), so its buttons and the open field are cut out of the drag
-   region; the empty stretch between the toggle and search still moves the window, like the rest of
-   the rail. The field only while it is open: a closed one is clipped to nothing but Chromium would
-   still keep its rectangle. */
-:root.loom-desktop-chrome .codex-sidebar-topbar button,
+/* On the desktop the search field that opens under the top row reaches into the window's draggable rail
+   (window-chrome.css), so the open field is cut out of the drag region; the toolbar's buttons are cut out by their
+   own rule. The field only while it is open: a closed one is clipped to nothing but Chromium would still keep its
+   rectangle. */
 :root.loom-desktop-chrome .compact-search-shell.open,
 :root.loom-desktop-chrome .compact-search-shell.open * {
   -webkit-app-region: no-drag;
   app-region: no-drag;
-}
-
-.compact-sidebar-actions {
-  flex: none;
-  margin-left: auto;
-  display: flex;
-  align-items: center;
-  gap: 2px;
-}
-
-.sidebar-toggle,
-.compact-sidebar-actions button {
-  width: 30px;
-  height: 30px;
-  border-radius: 8px;
-}
-
-/* An open search is shown by the field under it; the button keeps the neutral pressed tone. */
-.compact-sidebar-actions button.active {
-  color: var(--sb-ink);
-  background: var(--sb-hover);
-}
-
-/* New conversation is the quill alone, the one accent in the sidebar. */
-.compact-sidebar-actions .sidebar-new-conversation > .sidebar-action-icon {
-  width: 20px;
-  height: 20px;
-  color: var(--sb-accent);
 }
 
 .sidebar-secondary-action {

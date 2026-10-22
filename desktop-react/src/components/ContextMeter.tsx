@@ -9,6 +9,8 @@ import { contextMeterModel } from "./contextMeterModel";
 
 interface ContextMeterProps {
   report: ContextReport | null;
+  /** Another conversation is opening: the meter keeps the last reading, dimmed, until the new one arrives. */
+  pending?: boolean;
   compacting: boolean;
   progress: ContextCompactionProgress | null;
   busy: boolean;
@@ -30,12 +32,18 @@ function tone(report: ContextReport): "calm" | "warm" | "hot" {
   return "calm";
 }
 
-export function ContextMeter({ report, compacting, progress, busy, onCompact }: ContextMeterProps) {
+export function ContextMeter({ report: current, pending = false, compacting, progress, busy, onCompact }: ContextMeterProps) {
   const { language } = useI18n();
   const zh = language === "zh-CN";
   const [open, setOpen] = useState(false);
   const panelPresence = useMotionPresence(open, RETAIN.fast);
   const rootRef = useRef<HTMLDivElement | null>(null);
+  // The meter fades in when a reading arrives and out, still showing it, when there is none any more (a new
+  // conversation); it used to be there or not from one frame to the next.
+  const presence = useMotionPresence(Boolean(current), RETAIN.fast);
+  const lastReport = useRef(current);
+  if (current) lastReport.current = current;
+  const report = current ?? lastReport.current;
 
   useEffect(() => {
     if (!open) return;
@@ -53,7 +61,7 @@ export function ContextMeter({ report, compacting, progress, busy, onCompact }: 
     };
   }, [open]);
 
-  if (!report) return null;
+  if (!presence.mounted || !report) return null;
 
   const meter = contextMeterModel(report);
   const budget = meter.budget ?? 1;
@@ -108,7 +116,7 @@ export function ContextMeter({ report, compacting, progress, busy, onCompact }: 
   })();
 
   return (
-    <div className="context-meter" ref={rootRef}>
+    <div className="context-meter" ref={rootRef} data-motion-phase={presence.phase} data-pending={pending ? "true" : undefined}>
       <button
         type="button"
         className={`context-meter-chip ${level} ${compacting ? "is-compacting" : ""}`}

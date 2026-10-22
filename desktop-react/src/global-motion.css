@@ -5,11 +5,6 @@
    panel is unmounted in one frame. Avoid animating layout, filters and large
    shadows unless the geometry itself must change. */
 
-.app-shell.is-settings-obscured {
-  pointer-events: none;
-  user-select: none;
-}
-
 /* Settings now overlays the live application instead of replacing/unmounting
    it. The conversation tree remains warm and keeps its scroll/layout state. */
 .settings-host {
@@ -57,9 +52,15 @@
   will-change: auto;
 }
 
-/* Where the entrance starts. A starting style has no extra weight: it must come after the rule it starts from. */
+/* Where the entrance starts. The sidebar (the way back, the title, the pages) is readable on its first frame, like
+   everything opened on demand: the opaque canvas is there at once, and both columns starting from nothing left a
+   blank page in front of the app for the first frames. The page follows it by one stagger from nothing: its body is
+   painted a frame later (SettingsPage, usePaintedOnce) and arrives inside that fade. A starting style has no extra
+   weight: it must come after the rule it starts from. */
 @starting-style {
-  .settings-host[data-motion-phase="entered"] .settings-sidebar,
+  .settings-host[data-motion-phase="entered"] .settings-sidebar {
+    opacity: .72;
+  }
   .settings-host[data-motion-phase="entered"] .settings-main {
     opacity: 0;
   }

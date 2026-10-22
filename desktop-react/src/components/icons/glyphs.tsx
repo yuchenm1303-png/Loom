@@ -90,7 +90,6 @@ export const Pencil = createIcon("pencil", "Pencil", <g className="li li-all">
  * stays intact while the outer group writes a short, fading ink stroke.
  */
 export const Quill = createIcon("quill", "Quill", <>
-  <path className="li-ink" pathLength={1} d="M2.91 21.95Q4.1 20.65 5.51 21.5T8.11 21.15" strokeWidth={1.25} />
   <g className="li-scribe"><g className="li li-quill">
   <path className="quill-outline" pathLength={1} d="M2.91 21.95C3.93 19.53 7.09 16.36 8.37 14.15C9.13 12.81 8.8 6.04 13.3 3.19C15.73 1.68 19.29 2.94 19.77 5.99C19.91 7.35 19.34 7.74 19.27 8.87C19.23 9.95 20.05 10.34 19.86 11.4C19.1 13.97 17.36 13.47 16.38 14.23C15.45 14.94 16.64 16.26 15.01 17.27C11.71 18.6 7.51 17.94 5.62 17.87" />
   <path className="li li-barb" pathLength={1} d="M9.77 12.96C11.09 11.19 13.19 9.48 15.26 7.89" />

@@ -5,6 +5,7 @@ import App from "./App";
 import { WebAppGate } from "./components/WebAppGate";
 import { BootErrorBoundary } from "./components/BootErrorBoundary";
 import { GlobalContextMenu } from "./components/GlobalContextMenu";
+import { GlobalTooltip } from "./components/GlobalTooltip";
 import { SoftwareUpdatePortal } from "./components/SoftwareUpdatePortal";
 import { I18nProvider, bootstrapDocumentLanguage } from "./i18n";
 import { bootstrapTheme } from "./theme";
@@ -144,6 +145,7 @@ createRoot(rootElement).render(
             <App />
             {!isLoomWebRuntime() ? <SoftwareUpdatePortal /> : null}
             <GlobalContextMenu />
+            <GlobalTooltip />
           </WebAppGate>
         </WindowChrome>
       </I18nProvider>

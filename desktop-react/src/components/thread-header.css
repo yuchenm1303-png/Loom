@@ -617,11 +617,6 @@ html[data-loom-theme="light"] .thread-header .workspace-path-button:not(:disable
     gap: 8px;
   }
 
-  .thread-header-leading .thread-header-icon-button {
-    width: 27px;
-    height: 27px;
-  }
-
   .thread-header-copy {
     gap: 8px;
   }
@@ -636,45 +631,19 @@ html[data-loom-theme="light"] .thread-header .workspace-path-button:not(:disable
   }
 }
 
-/* Sidebar toggle and quill --------------------------------------------------
-   Only while the sidebar is closed (open, its own top row carries both). The toggle sits on the spot of the
-   sidebar's toggle, so opening and closing happen under one resting pointer: the card's inset 8 + hairline 1 +
-   padding 7 = 16 from the window's edge, at every width (the header's own padding is 20, or 10 in a narrow
-   workspace). Shared transition identities carry them between the two toolbars. */
+/* The sidebar's toolbar --------------------------------------------------------
+   Only while the sidebar is closed: its toggle, search and quill (SidebarControls) lie over the header's start, the
+   toggle on the spot of the card's own (inset 8 + hairline 1 + padding 7 = 16 from the window's edge, at every
+   width: the header's own padding is 20, or 10 in a narrow workspace), and this keeps their room: three 30px buttons
+   two pixels apart. */
 :root .thread-header.polished-thread-header.has-sidebar-toggle {
   padding-left: 16px;
 }
 
 .thread-header-leading {
-  gap: 2px;
-}
-
-.thread-header-leading :is(.sidebar-toggle, .thread-new-conversation) {
-  width: 30px;
+  width: 94px;
   height: 30px;
-  padding: 0;
-  border: 0 !important;
-  border-radius: 8px;
-  display: grid;
-  place-items: center;
-  box-shadow: none !important;
-  background: transparent;
-  color: var(--loom-workspace-muted);
-  cursor: pointer;
-  transition:
-    color var(--loom-dur-fast) ease,
-    background-color var(--loom-dur-fast) ease;
-}
-
-.thread-header-leading :is(.sidebar-toggle, .thread-new-conversation):hover {
-  color: var(--loom-workspace-ink);
-  background: var(--loom-workspace-hover);
-}
-
-.thread-header-leading .thread-new-conversation > .sidebar-action-icon {
-  width: 20px;
-  height: 20px;
-  color: var(--loom-workspace-accent);
+  visibility: hidden;
 }
 
 

@@ -51,6 +51,7 @@ import { isLoomWebRuntime } from "../webBridge";
 import { applyThemePreference, type LoomThemePreference } from "../theme";
 import { applyPetVisibility, DEFAULT_PET_ENABLED, DESKTOP_SETTINGS_STORAGE_KEY } from "../petPreferences";
 import { useMotionPresence } from "../motion/useMotionPresence";
+import { usePaintedOnce } from "../motion/usePaintedOnce";
 import { RETAIN } from "../motion/tokens";
 import type {
   InitializeResult,
@@ -1520,7 +1521,11 @@ export function SettingsPage({ runtime, models, threadId, running, onRefreshMode
     return <><div className="settings-page-heading settings-heading-with-action"><div><h1>Developer</h1><p>Inspect runtime status and copy diagnostics.</p></div><button className="mature-action-button" type="button" onClick={() => void copyText(diagnostics, "Diagnostics copied.")}><Copy size={14} />Copy diagnostics</button></div><Section title="Runtime diagnostics"><div className="settings-card settings-detail-list"><DetailRow label="Registered tools" value={String(runtime.registeredToolCount ?? "—")} /><DetailRow label="Exposed tools" value={String(runtime.exposedToolCount ?? "—")} /><DetailRow label="Settings schema" value={String(settings.schemaVersion ?? 1)} /><DetailRow label="Image attachments" value={runtime.attachments?.images === false ? "Disabled" : "Enabled"} /><DetailRow label="File attachments" value={runtime.attachments?.files === false ? "Disabled" : "Enabled"} /></div></Section><Section title="Integration summary"><div className="settings-card settings-detail-list"><DetailRow label="Web Search" value={text(webStatus?.provider, capabilityStatusText(webStatus))} /><DetailRow label="MCP servers" value={String(mcpStatus?.connected_servers ?? "Not reported")} /><DetailRow label="MCP tools" value={String(mcpStatus?.tool_count ?? "Not reported")} /><DetailRow label="Computer Use" value={capabilityStatusText(computerStatus)} /><DetailRow label="Browser Use" value={capabilityStatusText(browserStatus)} /></div></Section><Section title="Raw snapshot" caption="Useful when comparing renderer state with App Server state."><pre className="mature-diagnostics-preview">{diagnostics.slice(0, 6500)}</pre></Section></>;
   };
 
-  const content = (() => {
+  // Opened, settings paints its frame (the sidebar, the empty page) in the frame after the click and the page itself a
+  // frame later, while it is already fading in: the first frame used to wait for the whole page (~50-120 ms of render,
+  // style and layout).
+  const bodyPainted = usePaintedOnce();
+  const content = !bodyPainted ? null : (() => {
     if (page === "general") return renderGeneral();
     if (page === "appearance") return renderAppearance();
     if (page === "models") return renderModels();

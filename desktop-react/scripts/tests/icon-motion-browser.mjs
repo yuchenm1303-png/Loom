@@ -163,9 +163,10 @@ try {
     await context.close();
   }
 
-  // 8. The quill stands on its nib: engaged it takes a pose about that point and the barb follows; a start
-  //    (`data-written` on the row) makes it write a short ink stroke and lift, ending at
-  //    rest, again for the next start; under reduced motion none of it happens.
+  // 8. The quill stands on its nib: engaged it leans in to write about that point, the barb a beat behind; pressed it
+  //    gives toward the nib; a stroke (`data-stroke` on the row, for a new conversation) flicks the pen up off the page
+  //    and back while the barb is drawn into its root and struck again, ending at rest, again for the next stroke;
+  //    under reduced motion none of it happens.
   {
     const { context, page } = await openLab();
     const cell = "window.iconLab.cell('quill', 'live')";
@@ -174,19 +175,24 @@ try {
       return Math.round((Math.atan2(m.b, m.a) * 1800) / Math.PI) / 10;
     }, part);
     const playing = () => page.evaluate(`${cell}.getAnimations({ subtree: true }).map((a) => a.animationName).filter(Boolean).sort().join(",")`);
-    const look = (part, at) => page.evaluate(({ part, at }) => {
+    const at = (time) => page.evaluate((time) => {
       const node = window.iconLab.cell("quill", "live");
-      for (const a of node.getAnimations({ subtree: true })) if (a.animationName) { a.pause(); a.currentTime = at; }
-      const style = getComputedStyle(node.querySelector(part));
-      return { length: parseFloat(style.strokeDasharray), opacity: Number(style.opacity) };
-    }, { part, at });
+      for (const a of node.getAnimations({ subtree: true })) if (a.animationName) { a.pause(); a.currentTime = time; }
+      const scribe = new DOMMatrix(getComputedStyle(node.querySelector(".li-scribe")).transform);
+      return {
+        turn: Math.round((Math.atan2(scribe.b, scribe.a) * 1800) / Math.PI) / 10,
+        barb: parseFloat(getComputedStyle(node.querySelector(".li-barb")).strokeDashoffset),
+        outline: Number(getComputedStyle(node.querySelector(".quill-outline")).opacity),
+      };
+    }, time);
 
-    // Pose: straighter about the nib, the barb a little further, both back at rest after the pointer leaves.
+    // Lean: into the page about the nib, the barb a little further, both back at rest after the pointer leaves.
     assert.equal(await turn(".li-quill"), 0);
     await hover(page, "quill");
     await page.waitForTimeout(800);
-    assert.equal(await turn(".li-quill"), -5);
-    assert.equal(await turn(".li-barb"), -8);
+    assert.equal(await turn(".li-quill"), 6);
+    assert.equal(await turn(".li-barb"), 2);
+    assert.equal(await playing(), "", "hovering plays nothing of its own");
     const origin = await page.evaluate(() => {
       const svg = window.iconLab.cell("quill", "live").querySelector("svg");
       const box = svg.getBoundingClientRect();
@@ -199,47 +205,50 @@ try {
     assert.equal(await turn(".li-quill"), 0);
     assert.equal(await turn(".li-barb"), 0);
 
-    // A start keeps the feather intact, writes a stroke, then lifts and leaves no held animation.
+    // A stroke keeps the feather whole, flicks the pen up and back, strikes the barb again, and holds nothing.
     assert.equal(await playing(), "");
-    await page.evaluate(`${cell}.setAttribute("data-written", "odd")`);
-    assert.equal(await playing(), "li-flick-odd,li-write-odd");
-    assert.equal((await look(".quill-outline", 96)).opacity, 1, "the feather stays visible at touchdown");
-    assert.ok((await look(".li-ink", 300)).opacity > .5, "ink appears while writing");
-    const displaced = await page.evaluate(`new DOMMatrix(getComputedStyle(${cell}.querySelector(".li-scribe")).transform).e`);
-    assert.ok(displaced > 2 && displaced < 6, "the nib travels along the ink stroke");
-    assert.ok((await look(".li-ink", 620)).opacity < .1, "ink fades after lifting");
+    await page.evaluate(`${cell}.setAttribute("data-stroke", "odd")`);
+    assert.equal(await playing(), "li-strike-odd,li-stroke-odd");
+    const drawn = await at(92);
+    assert.ok(drawn.barb > 1, `the barb is drawn back into its root as the pen lifts (${drawn.barb})`);
+    const lift = await at(110);
+    assert.ok(lift.turn < -7, `the pen flicks up off the page (${lift.turn}°)`);
+    assert.equal(lift.outline, 1, "the feather stays whole");
+    const down = await at(290);
+    assert.ok(down.turn > 0 && down.turn < 2.5, `it comes back down a hair past where it stood (${down.turn}°)`);
+    assert.ok(down.barb < .05, `and the barb is struck again (${down.barb})`);
     await page.evaluate(`${cell}.getAnimations({ subtree: true }).forEach((a) => a.play())`);
-    await page.waitForTimeout(900);
-    assert.equal(await playing(), "", "the animation ends and holds nothing");
-    assert.equal(await page.evaluate(`getComputedStyle(${cell}.querySelector(".quill-outline")).strokeDasharray`), "none", "rest is the drawing itself");
-    // the next start plays again, even though the first is still on the row
-    await page.evaluate(`${cell}.setAttribute("data-written", "even")`);
-    assert.equal(await playing(), "li-flick-even,li-write-even");
+    await page.waitForTimeout(700);
+    assert.equal(await playing(), "", "the stroke ends and holds nothing");
+    assert.equal(await turn(".li-scribe"), 0);
+    // the next stroke plays again, even though the first is still on the row
+    await page.evaluate(`${cell}.setAttribute("data-stroke", "even")`);
+    assert.equal(await playing(), "li-strike-even,li-stroke-even");
     await context.close();
   }
   {
-    // What the cascade plays for a start: the animation names of the line and of the barb. (A collapsed tempo would hide
+    // What the cascade plays for a stroke: the animation names of the pen and of the barb. (A collapsed tempo would hide
     // a running animation from getAnimations within a millisecond; a name does not go away.)
     const played = (page) => page.evaluate(() => {
       const cell = window.iconLab.cell("quill", "live");
-      cell.setAttribute("data-written", "odd");
-      return ["li-scribe", "li-ink"].map((part) => getComputedStyle(cell.querySelector("." + part)).animationName).join(",");
+      cell.setAttribute("data-stroke", "odd");
+      return ["li-scribe", "li-barb"].map((part) => getComputedStyle(cell.querySelector("." + part)).animationName).join(",");
     });
     const system = await openLab({ reducedMotion: "reduce" });
-    assert.equal(await played(system.page), "none,none", "a start must not animate under reduced motion");
+    assert.equal(await played(system.page), "none,none", "a stroke must not animate under reduced motion");
     await system.context.close();
     // The app's own setting does the same without the system's.
     const app = await openLab();
     await app.page.evaluate("document.documentElement.setAttribute('data-loom-reduced-motion', 'true')");
-    assert.equal(await played(app.page), "none,none", "a start must not animate when the app's reduced-motion setting is on");
+    assert.equal(await played(app.page), "none,none", "a stroke must not animate when the app's reduced-motion setting is on");
     await hover(app.page, "quill");
     await app.page.waitForTimeout(500);
     const turned = await app.page.evaluate("getComputedStyle(window.iconLab.cell('quill', 'live').querySelector('.li-quill')).transform");
-    assert.equal(turned, "matrix(1, 0, 0, 1, 0, 0)", "the quill must not take a pose when the app's reduced-motion setting is on");
+    assert.equal(turned, "matrix(1, 0, 0, 1, 0, 0)", "the quill must not lean when the app's reduced-motion setting is on");
     await app.context.close();
-    // And the same start does animate when nothing asks for less.
+    // And the same stroke does animate when nothing asks for less.
     const normal = await openLab();
-    assert.equal(await played(normal.page), "li-write-odd,li-flick-odd");
+    assert.equal(await played(normal.page), "li-stroke-odd,li-strike-odd");
     await normal.context.close();
   }
   console.log("icon motion: ok");

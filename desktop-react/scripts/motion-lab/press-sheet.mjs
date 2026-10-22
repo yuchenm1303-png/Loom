@@ -49,7 +49,7 @@ await page.waitForTimeout(600);
 await page.mouse.move(2, 890);
 await shoot("sidebar conversation row", ".compact-thread-row", { index: 1 });
 await shoot("project row", ".project-group-main");
-await shoot("sidebar toggle", ".codex-sidebar-topbar .sidebar-toggle");
+await shoot("sidebar toggle", ".sidebar-controls .sidebar-toggle");
 await shoot("message action", ".message-action-button");
 await shoot("process header", ".turn-process-header");
 await shoot("composer chip (model)", ".composer .model-chip");

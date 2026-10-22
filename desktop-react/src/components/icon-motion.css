@@ -42,7 +42,7 @@
   --ic-t-lift: var(--loom-dur-slow);
   --ic-t-draw: var(--loom-dur-panel);
   --ic-t-run: 700ms;
-  --ic-t-write: 500ms;
+  --ic-t-stroke: 420ms;
   --ic-t-spin: var(--loom-period-spin);
 
   /* curves: a quick, soft-landing spring in; a plain ease out */
@@ -71,7 +71,7 @@
     --ic-t-lift: 1ms;
     --ic-t-draw: 1ms;
     --ic-t-run: 1ms;
-    --ic-t-write: 1ms;
+    --ic-t-stroke: 1ms;
     }
 }
 
@@ -81,7 +81,7 @@
   --ic-t-lift: 1ms;
   --ic-t-draw: 1ms;
   --ic-t-run: 1ms;
-  --ic-t-write: 1ms;
+  --ic-t-stroke: 1ms;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -200,6 +200,8 @@
 [data-icon="panel-left"] .li-divider,
 [data-icon="panels"] .li-divider { transform: translate(calc(var(--ic-lean) * 1.8px), 0); }
 [data-icon="panel-right"] .li-divider { transform: translate(calc(var(--ic-lean) * -1.8px), 0); }
+/* The sidebar's toggle (SidebarControls) leans the way the sidebar will go: open, the divider moves in. */
+[aria-expanded="true"] > [data-icon="panel-left"] .li-divider { transform: translate(calc(var(--ic-lean) * -1.8px), 0); }
 
 /* -------------------------------------------------------------------------- */
 /* Turns. These glyphs look the same after the turn (a plus, an x, a refresh
@@ -368,81 +370,70 @@
   100% { opacity: 0; stroke-dashoffset: -1; }
 }
 
-/* The quill stands on its nib. Engaged, it rises a little straighter about that point, the way
-   a hand lifts the pen when it is about to write, and the barb follows a moment behind; it gets
-   there on the livelier spring and goes back on a plain ease. */
+/* The quill stands on its nib. Hovered or focused, it leans in to write, about that point, on the livelier
+   spring, and the barb (the soft part of a feather) follows a beat behind; it goes back on a plain ease. Pressed,
+   the pen gives toward its nib (the press language scales every glyph about its transform-origin). A new conversation
+   is one stroke (NewConversationRow's data-stroke): the pen flicks up off the page and settles back while the barb
+   is drawn into its root and struck again. An outer group carries the stroke, so the lean stays a transition of its
+   own and a stroke can run from either pose. */
+[data-icon="quill"] {
+  transform-origin: 12% 91.5%;
+}
+
 [data-icon="quill"] .li-quill,
 [data-icon="quill"] .li-barb {
   transition-timing-function: var(--ic-curve-lively);
 }
 
-/* Pressed, every glyph gives a little toward its middle; a pen gives toward its nib. */
-[data-icon="quill"] {
-  transform-origin: 12% 91.5%;
-}
-
 [data-icon="quill"] .li-quill {
-  transform-origin: 2.9px 21.95px;
-  transform: rotate(calc(var(--ic-on) * -5deg));
+  transform-origin: 2.91px 21.95px;
+  transform: rotate(calc(var(--ic-on) * 6deg));
 }
 
 [data-icon="quill"] .li-barb {
   transform-origin: 9.77px 12.96px;
-  transform: rotate(calc(var(--ic-on) * -8deg));
+  transform: rotate(calc(var(--ic-on) * 2deg));
   transition-delay: calc(var(--ic-on) * 45ms);
+  /* One dash as long as the path (pathLength 1): drawn whole at rest, and the stroke can draw it back. */
+  stroke-dasharray: 1 2;
 }
 
-/* Touch down, sign, lift. An outer group keeps the hover pose independent. */
-[data-icon="quill"] .li-scribe { transform-origin: 2.91px 21.95px; }
-[data-icon="quill"] .li-ink { opacity: 0; stroke-dasharray: 1; stroke-dashoffset: 1; }
+[data-icon="quill"] .li-scribe {
+  transform-origin: 2.91px 21.95px;
+}
+
 @media (prefers-reduced-motion: no-preference) {
-  :root:not([data-loom-reduced-motion="true"]) [data-written="odd"] [data-icon="quill"] .li-scribe { animation: li-write-odd var(--ic-t-write) linear backwards; }
-  :root:not([data-loom-reduced-motion="true"]) [data-written="odd"] [data-icon="quill"] .li-ink { animation: li-flick-odd var(--ic-t-write) linear backwards; }
-  :root:not([data-loom-reduced-motion="true"]) [data-written="even"] [data-icon="quill"] .li-scribe { animation: li-write-even var(--ic-t-write) linear backwards; }
-  :root:not([data-loom-reduced-motion="true"]) [data-written="even"] [data-icon="quill"] .li-ink { animation: li-flick-even var(--ic-t-write) linear backwards; }
-  :root:not([data-loom-reduced-motion="true"]) [data-confirmed="odd"] [data-icon="quill"] { animation: li-confirm-odd 180ms ease-out; }
-  :root:not([data-loom-reduced-motion="true"]) [data-confirmed="even"] [data-icon="quill"] { animation: li-confirm-even 180ms ease-out; }
+  :root:not([data-loom-reduced-motion="true"]) [data-stroke="odd"] [data-icon="quill"] .li-scribe { animation: li-stroke-odd var(--ic-t-stroke) linear; }
+  :root:not([data-loom-reduced-motion="true"]) [data-stroke="even"] [data-icon="quill"] .li-scribe { animation: li-stroke-even var(--ic-t-stroke) linear; }
+  :root:not([data-loom-reduced-motion="true"]) [data-stroke="odd"] [data-icon="quill"] .li-barb { animation: li-strike-odd var(--ic-t-stroke) linear; }
+  :root:not([data-loom-reduced-motion="true"]) [data-stroke="even"] [data-icon="quill"] .li-barb { animation: li-strike-even var(--ic-t-stroke) linear; }
 }
 
-/* Keyboard shortcut: a small nib press, independent of the hover stroke. */
-@keyframes li-confirm-odd {
-  0%, 100% { scale: 1; }
-  35% { scale: .92; }
+/* The flick: up off the page in a quarter of the time, back down a hair past where it stood, and settled. Two
+   identical copies, so the next stroke starts a new animation instead of continuing the finished one. */
+@keyframes li-stroke-odd {
+  0% { transform: rotate(0deg); animation-timing-function: cubic-bezier(.2, .7, .3, 1); }
+  26% { transform: translate(.5px, -.6px) rotate(-9deg); animation-timing-function: cubic-bezier(.4, 0, .3, 1); }
+  68% { transform: rotate(1.5deg); animation-timing-function: cubic-bezier(.3, 0, .3, 1); }
+  100% { transform: rotate(0deg); }
 }
-@keyframes li-confirm-even {
-  0%, 100% { scale: 1; }
-  35% { scale: .92; }
+@keyframes li-stroke-even {
+  0% { transform: rotate(0deg); animation-timing-function: cubic-bezier(.2, .7, .3, 1); }
+  26% { transform: translate(.5px, -.6px) rotate(-9deg); animation-timing-function: cubic-bezier(.4, 0, .3, 1); }
+  68% { transform: rotate(1.5deg); animation-timing-function: cubic-bezier(.3, 0, .3, 1); }
+  100% { transform: rotate(0deg); }
 }
 
-@keyframes li-write-odd {
-  0%, 100% { transform: translate(0, 0) rotate(0deg); animation-timing-function: cubic-bezier(.2, .7, .3, 1); }
-  14% { transform: translate(0, 0) rotate(4deg); animation-timing-function: ease-in-out; }
-  36% { transform: translate(2.6px, -.45px) rotate(-3deg); animation-timing-function: ease-in-out; }
-  56% { transform: translate(5.2px, -.8px) rotate(-7deg); animation-timing-function: cubic-bezier(.2, .7, .3, 1); }
-  74% { transform: translate(3px, -2px) rotate(-9deg); animation-timing-function: cubic-bezier(.22, .8, .3, 1); }
+/* The barb drawn back into its root as the pen lifts, and out again, root to tip, as it comes down. */
+@keyframes li-strike-odd {
+  0% { stroke-dashoffset: 0; animation-timing-function: cubic-bezier(.4, 0, .7, .4); }
+  22% { stroke-dashoffset: 1.06; animation-timing-function: cubic-bezier(.2, .6, .3, 1); }
+  72%, 100% { stroke-dashoffset: 0; }
 }
-@keyframes li-write-even {
-  0%, 100% { transform: translate(0, 0) rotate(0deg); animation-timing-function: cubic-bezier(.2, .7, .3, 1); }
-  14% { transform: translate(0, 0) rotate(4deg); animation-timing-function: ease-in-out; }
-  36% { transform: translate(2.6px, -.45px) rotate(-3deg); animation-timing-function: ease-in-out; }
-  56% { transform: translate(5.2px, -.8px) rotate(-7deg); animation-timing-function: cubic-bezier(.2, .7, .3, 1); }
-  74% { transform: translate(3px, -2px) rotate(-9deg); animation-timing-function: cubic-bezier(.22, .8, .3, 1); }
-}
-@keyframes li-flick-odd {
-  0%, 14% { stroke-dashoffset: 1; opacity: 0; }
-  15% { stroke-dashoffset: 1; opacity: .65; }
-  36% { stroke-dashoffset: .5; opacity: .65; }
-  56% { stroke-dashoffset: 0; opacity: .65; }
-  72% { stroke-dashoffset: 0; opacity: .45; }
-  100% { stroke-dashoffset: 0; opacity: 0; }
-}
-@keyframes li-flick-even {
-  0%, 14% { stroke-dashoffset: 1; opacity: 0; }
-  15% { stroke-dashoffset: 1; opacity: .65; }
-  36% { stroke-dashoffset: .5; opacity: .65; }
-  56% { stroke-dashoffset: 0; opacity: .65; }
-  72% { stroke-dashoffset: 0; opacity: .45; }
-  100% { stroke-dashoffset: 0; opacity: 0; }
+@keyframes li-strike-even {
+  0% { stroke-dashoffset: 0; animation-timing-function: cubic-bezier(.4, 0, .7, .4); }
+  22% { stroke-dashoffset: 1.06; animation-timing-function: cubic-bezier(.2, .6, .3, 1); }
+  72%, 100% { stroke-dashoffset: 0; }
 }
 
 /* -------------------------------------------------------------------------- */

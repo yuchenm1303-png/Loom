@@ -112,8 +112,8 @@ export function scenarios() {
     ["background-close", tool("background"), 800],
     ["dock-open", tool("inspector"), 900],
     ["dock-close", tool("inspector"), 900],
-    ["sidebar-close", (page) => page.locator(".codex-sidebar-topbar .sidebar-toggle").click(), 900],
-    ["sidebar-open", (page) => page.locator(".thread-header .sidebar-toggle").click(), 900],
+    ["sidebar-close", (page) => page.locator(".sidebar-controls .sidebar-toggle").click(), 900],
+    ["sidebar-open", (page) => page.locator(".sidebar-controls .sidebar-toggle").click(), 900],
   ];
 }
 

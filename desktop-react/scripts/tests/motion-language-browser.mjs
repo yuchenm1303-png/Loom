@@ -37,7 +37,8 @@ const INOUT = "cubic-bezier(0.4, 0, 0.2, 1)";
 // "jump to latest" button (an arrow in a disc), a chart's bars, the quick-tool dock (a capsule of icon tiles that slides
 // in from its edge, its glider and the name tip that follows it). Icons and pseudo-element rings are left out by
 // describeRow.
-const MARKS = (row) => /^(span\.thread-selection-pill|i\.settings-nav-pip|button\.transcript-jump-latest(\.is-visible)?|div\.loom-tool-(glider|tip|dock|position))/.test(row.target) || /^profile-(bar|hour)-grow$/.test(row.name);
+// (The sidebar toolbar's trail is two icons, search and the quill, travelling between the card's top row and the header.)
+const MARKS = (row) => /^(span\.thread-selection-pill|i\.settings-nav-pip|button\.transcript-jump-latest(\.is-visible)?|div\.loom-tool-(glider|tip|dock|position)|div\.sidebar-controls-trail)/.test(row.target) || /^profile-(bar|hour)-grow$/.test(row.name);
 // The docks: the inspector (a grid column), the portal docks, and the sidebar on the other side.
 const DOCK = (row) => /^(aside|div)\.(inspector|review-workspace|sub-agent-dock|artifact-preview-dock|project-details-panel|sidebar)(\.|$)/.test(row.target);
 
@@ -79,12 +80,8 @@ for (const theme of (process.env.LOOM_THEMES || "dark,light").split(",")) {
   assert.deepEqual(offScale.map((row) => `${row.step}: ${row.target} ${row.name} ${row.duration}ms`), [], `${theme}: every duration is a step of the scale`);
 
   const offCurve = shown.filter((row) => !CURVES.has(row.easing) && !/^linear\(/.test(row.easing));
-  // Only the sidebar snapshots (its card and the two toolbar controls it shares with the header); no other step does.
-  assert.deepEqual(shown.filter((row) => describeRow(row).viewTransition && !/^sidebar-/.test(row.step)).map((row) => `${row.step}: ${row.target}`), [], `${theme}: nothing but the sidebar is snapshotted`);
-  for (const step of ["sidebar-open", "sidebar-close"]) {
-    const snapshots = inStep(rows, step).filter((row) => describeRow(row).viewTransition);
-    assert.ok(snapshots.length && snapshots.every((row) => /loom-sidebar(-toggle|-compose)?\)/.test(row.target)), `${theme}: ${step} snapshots only the card and its shared controls (${snapshots.map((row) => row.target).join(", ")})`);
-  }
+  // Nothing is snapshotted: every surface moves live, the sidebar and its toolbar included.
+  assert.deepEqual(shown.filter((row) => describeRow(row).viewTransition).map((row) => `${row.step}: ${row.target}`), [], `${theme}: nothing is snapshotted`);
   assert.deepEqual(offCurve.map((row) => `${row.step}: ${row.target} ${row.name} ${row.easing}`), [], `${theme}: every curve is the scale's`);
 
   const distinct = new Set(shown.filter((row) => !describeRow(row).reversed && !describeRow(row).layoutAnchor)
@@ -176,9 +173,9 @@ for (const theme of (process.env.LOOM_THEMES || "dark,light").split(",")) {
   // A dock is a live surface (no View Transition: a snapshot costs a frozen frame before anything moves). It arrives
   // readable (its fade starts a fifth of the way in, where the out curve is at .72) with a few pixels of depth settling
   // on the panel step, and leaves on fast-out on the exit curve, seen until it has gone. The workspace follows on the
-  // panel step either way. (The sidebar keeps its snapshot for the toolbar controls it shares with the header; it is
-  // read above and by sidebar-toolbar-motion-browser.mjs.)
-  for (const [open_, close_] of [["dock-open", "dock-close"]]) {
+  // panel step either way. The sidebar is one of them; its toolbar's trail travels on the panel step as well (and
+  // sidebar-toolbar-motion-browser.mjs follows it frame by frame).
+  for (const [open_, close_] of [["dock-open", "dock-close"], ["sidebar-open", "sidebar-close"]]) {
     const drift = find(rows, open_, (row) => DOCK(row) && row.name === "transform", "the dock's drift in");
     assert.deepEqual([drift.duration, drift.easing], [390, OUT], `${theme}: ${open_}: the depth settles on the panel step`);
     const px = Math.abs(Number(/translate(?:3d)?\((-?[\d.]+)px/.exec(drift.first.transform || "")?.[1]));

@@ -153,6 +153,8 @@ export function RightToolDock(props: RightToolDockProps) {
   const flipFrom = useRef<Map<DockId, number> | null>(null);
   const refocus = useRef<DockId | null>(null);
   const tipTimer = useRef(0);
+  // The last count each tool showed, so a count that drops to none fades out with its number still on it.
+  const shownCounts = useRef(new Map<DockId, number>());
   const tipOn = useRef(false);
   const tipClosedAt = useRef(-1e9);
   const tipWasOn = useRef(false);
@@ -504,6 +506,12 @@ export function RightToolDock(props: RightToolDockProps) {
 
   if (!presence.mounted) return null;
 
+  const countLabel = (id: DockId, count: number) => {
+    if (count > 0) shownCounts.current.set(id, count);
+    const shown = shownCounts.current.get(id);
+    return shown === undefined ? "" : shown > 9 ? "9+" : shown;
+  };
+
   const tipItem = tip.id ? items[tip.id] : null;
   const tipKeys = tip.id && !items[tip.id].disabled ? shortcutKeys(props.shortcuts?.[tip.id]) : [];
   const rows = order.map((id, index) => {
@@ -551,8 +559,10 @@ export function RightToolDock(props: RightToolDockProps) {
               <span style={{ transform: `scaleX(${ratio})` }} />
             </span>
           ) : null}
+          {/* The dot stays in the button and says on or off (right-tool-dock.css fades and grows it either way): drawn only
+              while there was a count, it popped in and out. */}
           {item.count !== undefined
-            ? item.count > 0 ? <span className="loom-tool-count dock-numeric" data-on="true" data-live={item.live ? "true" : undefined} aria-hidden="true">{item.count > 9 ? "9+" : item.count}</span> : null
+            ? <span className="loom-tool-count dock-numeric" data-on={item.count > 0 ? "true" : "false"} data-live={item.live && item.count > 0 ? "true" : undefined} aria-hidden="true">{countLabel(id, item.count)}</span>
             : null}
           {item.status !== undefined
             ? <span className="loom-tool-status" data-on={item.status ? "true" : "false"} aria-hidden="true" />

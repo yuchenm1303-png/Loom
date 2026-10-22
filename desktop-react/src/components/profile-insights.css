@@ -77,9 +77,11 @@ html[data-loom-theme="light"] .profile-insights-host {
   opacity: 0;
 }
 
+/* Readable on its first frame, like settings: the opaque canvas is there at once, and a page starting from nothing
+   left it blank for the first frames. */
 @starting-style {
   .profile-insights-host[data-motion-phase="entered"] .profile-insights-page {
-    opacity: 0;
+    opacity: .72;
   }
 }
 

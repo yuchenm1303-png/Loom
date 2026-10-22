@@ -72,12 +72,12 @@ try {
       if (screenshots && width === 480) await page.screenshot({ path: `${screenshots}/workspace-${theme}-narrow.png` });
     }
     // A compact window can give the full width to the conversation via the
-    // sidebar's own toggle, without breaking the fixed input alignment; the header opens it again.
-    await page.locator(".codex-sidebar-topbar .sidebar-toggle").click();
+    // sidebar's toggle, without breaking the fixed input alignment; the same toggle opens it again.
+    await page.locator(".sidebar-controls .sidebar-toggle").click();
     await page.waitForTimeout(400);
     assert.ok((await page.locator(".decision-card").boundingBox()).width > 400);
     if (screenshots) await page.screenshot({ path: `${screenshots}/workspace-${theme}-compact.png` });
-    await page.locator(".thread-header .sidebar-toggle").click();
+    await page.locator(".sidebar-controls .sidebar-toggle").click();
     await page.setViewportSize({ width: 1440, height: 1000 });
     await page.waitForTimeout(400);
   }

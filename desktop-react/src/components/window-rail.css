@@ -139,7 +139,6 @@
 ) :is(button, a[href], input, select, textarea, summary, label, [role="button"], [role="tab"], [role="menuitem"], [role="switch"], [role="slider"], [tabindex]:not([tabindex="-1"])),
 :root.loom-desktop-chrome :is(
   .thread-header-actions,
-  .thread-header-leading,
   .workspace-panel-resizer,
   .sub-agent-dock-resizer,
   .artifact-preview-resizer

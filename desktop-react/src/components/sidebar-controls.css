@@ -1,0 +1,111 @@
+/* Sidebar controls -------------------------------------------------------------
+   The sidebar's toggle, search and quill are one toolbar over the window's corner (SidebarControls.tsx), above the
+   sidebar card and the header. With the sidebar open it lies on the card's top row: the toggle where the card's
+   padding starts (inset 8 + hairline 1 + padding 7 = 16 from the window's edge), search and the quill at the row's
+   other end. Closed, the toggle stays where it is, under a resting pointer, and the other two glide in beside it onto
+   the header's start, which keeps that room free (.thread-header-leading, thread-header.css). They travel on the
+   layout clock with the conversation that makes room (App.tsx, animateLayoutAnchors), and a second click turns them
+   around from where they are. All three sit on the rail's centre line (30px) in both places. */
+.sidebar-controls {
+  --sc-size: 30px;
+  --sc-gap: 2px;
+  --sc-left: calc(var(--loom-sidebar-inset, 8px) + 8px);
+  --sc-ink: var(--loom-workspace-muted);
+  --sc-ink-on: var(--loom-workspace-ink);
+  --sc-hover: rgba(255,255,255,.065);
+  --sc-active: rgba(255,255,255,.05);
+  --sc-accent: #a99ff8;
+  --sc-accent-rgb: 139,124,246;
+  position: absolute;
+  z-index: 40;
+  top: 15px;
+  left: var(--sc-left);
+  display: flex;
+  align-items: center;
+  gap: var(--sc-gap);
+  pointer-events: none;
+  user-select: none;
+}
+
+html[data-loom-theme="light"] .sidebar-controls {
+  --sc-hover: rgba(28,31,37,.055);
+  --sc-active: rgba(28,31,37,.05);
+  --sc-accent: #6152cc;
+  --sc-accent-rgb: 105,90,216;
+}
+
+/* A composer popover lifts the workspace over the docks (workspace-panels.css); the header's canvas would then cover
+   the controls lying on it, so they are lifted with it. */
+.workspace-panels[data-composer-popover] > .sidebar-controls {
+  z-index: 1703;
+}
+
+.sidebar-controls-trail {
+  display: flex;
+  align-items: center;
+  gap: var(--sc-gap);
+  /* Closed, the trail follows the toggle; open, it is carried to the card row's end: the card's right edge less its
+     hairline and padding, less the trail's own width. */
+  --sc-trail-open: calc(var(--loom-sidebar-panel-size, var(--sidebar-width, 252px)) - 8px - 2 * var(--sc-size) - var(--sc-gap));
+  --sc-trail-closed: calc(var(--sc-left) + var(--sc-size) + var(--sc-gap));
+  translate: 0 0;
+  transition: translate var(--loom-dur-panel) var(--loom-ease-move);
+}
+
+.workspace-panels.sidebar-open > .sidebar-controls .sidebar-controls-trail {
+  translate: calc(var(--sc-trail-open) - var(--sc-trail-closed)) 0;
+}
+
+/* Dragging the sidebar's edge carries the trail with it, frame for frame. */
+.workspace-panels.is-resizing > .sidebar-controls .sidebar-controls-trail {
+  transition: none;
+}
+
+.sidebar-controls-button {
+  flex: none;
+  width: var(--sc-size);
+  height: var(--sc-size);
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  display: grid;
+  place-items: center;
+  background: transparent;
+  color: var(--sc-ink);
+  cursor: pointer;
+  pointer-events: auto;
+  font: inherit;
+  transition:
+    color var(--loom-dur-fast) ease,
+    background-color var(--loom-dur-fast) ease;
+}
+
+.sidebar-controls-button:hover {
+  color: var(--sc-ink-on);
+  background: var(--sc-hover);
+}
+
+/* An open search is shown by the field under it; the button keeps the neutral pressed tone. */
+.sidebar-controls-button.active {
+  color: var(--sc-ink-on);
+  background: var(--sc-active);
+}
+
+.sidebar-controls-button:focus-visible {
+  outline: 2px solid rgba(var(--sc-accent-rgb), .5);
+  outline-offset: -2px;
+}
+
+/* The quill alone, the one accent on the toolbar. */
+.sidebar-controls .sidebar-action-icon {
+  width: 20px;
+  height: 20px;
+  color: var(--sc-accent);
+}
+
+/* In the desktop shell the toolbar lies on the window's draggable rail (window-chrome.css): its buttons are cut out
+   of the drag region, and the stretch between the toggle and search still moves the window. */
+:root.loom-desktop-chrome .sidebar-controls-button {
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}

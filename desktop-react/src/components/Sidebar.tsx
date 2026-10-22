@@ -1,5 +1,4 @@
 import { AnimatedThreadTitle } from "./AnimatedThreadTitle";
-import { NewConversationRow, type NewConversationRowHandle } from "./NewConversationRow";
 import {
   Archive,
   ArchiveRestore,
@@ -13,7 +12,6 @@ import {
   FolderOpen,
   FolderPlus,
   GitFork,
-  PanelLeft,
   Pencil,
   Pin,
   PinOff,
@@ -62,7 +60,6 @@ const SIDEBAR_COPY = {
     expand: (name: string) => `Expand ${name}`,
     fork: "Fork",
     forked: "Forked into a new conversation",
-    hideSidebar: "Hide sidebar",
     idLabel: "conversation ID",
     loadingConversations: "Loading conversations",
     markRead: "Mark as read",
@@ -138,7 +135,6 @@ const SIDEBAR_COPY = {
     expand: (name: string) => `展开 ${name}`,
     fork: "分叉",
     forked: "已创建分叉会话",
-    hideSidebar: "收起侧栏",
     idLabel: "会话 ID",
     loadingConversations: "正在加载对话",
     markRead: "标记为已读",
@@ -215,8 +211,9 @@ interface SidebarProps {
   onDelete(threadId: string): Promise<void>;
   onFork(threadId: string): Promise<void>;
   onViewChange(view: ThreadView): Promise<void> | void;
-  /** Closes the sidebar from its own top row; the header offers to open it again. */
-  onClose?(): void;
+  /** The search field under the top row; its button is on the sidebar's toolbar (SidebarControls), which App owns. */
+  searchOpen: boolean;
+  onSearchOpenChange(open: boolean): void;
 }
 
 // Widths of the placeholder rows shown while the conversation list loads.
@@ -358,12 +355,12 @@ export const Sidebar = memo(function Sidebar({
   onDelete,
   onFork,
   onViewChange,
-  onClose,
+  searchOpen,
+  onSearchOpenChange,
 }: SidebarProps) {
   const { language } = useI18n();
   const copy = SIDEBAR_COPY[language === "zh-CN" ? "zh" : "en"];
   const [query, setQuery] = useState("");
-  const [searchOpen, setSearchOpen] = useState(false);
   const [pinnedIds, setPinnedIds] = useState<Set<string>>(() => readStoredIds(PINNED_STORAGE_KEY));
   const [unreadIds, setUnreadIds] = useState<Set<string>>(() => readStoredIds(UNREAD_STORAGE_KEY));
   const [expandedProjectIds, setExpandedProjectIds] = useState<Set<string>>(() => readStoredIds(EXPANDED_PROJECTS_STORAGE_KEY));
@@ -380,7 +377,6 @@ export const Sidebar = memo(function Sidebar({
   const [renameValue, setRenameValue] = useState("");
   const [notice, setNotice] = useState<Notice | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
-  const newRowRef = useRef<NewConversationRowHandle>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   useSidebarSelectionMotion(scrollRef, activeId);
   const renameRef = useRef<HTMLInputElement>(null);
@@ -479,18 +475,24 @@ export const Sidebar = memo(function Sidebar({
   // "none": saying "No conversations yet" to someone with a hundred of them is wrong.
   const showLoading = Boolean(loading) && threads.length === 0;
 
-  const focusSearch = () => {
-    setSearchOpen(true);
-    requestAnimationFrame(() => {
-      searchRef.current?.focus();
+  // The field opens from the toolbar's search button or Ctrl K (App.tsx), with the sidebar opening for it if it was
+  // closed: it takes the keyboard as it opens, and closing it gives the whole list back.
+  const searchWasOpen = useRef(searchOpen);
+  useEffect(() => {
+    if (searchWasOpen.current === searchOpen) return;
+    searchWasOpen.current = searchOpen;
+    if (!searchOpen) {
+      setQuery("");
+      return;
+    }
+    const frame = requestAnimationFrame(() => {
+      searchRef.current?.focus({ preventScroll: true });
       searchRef.current?.select();
     });
-  };
+    return () => cancelAnimationFrame(frame);
+  }, [searchOpen]);
 
-  const closeSearch = () => {
-    setQuery("");
-    setSearchOpen(false);
-  };
+  const closeSearch = () => onSearchOpenChange(false);
 
   const togglePinned = (threadId: string) => {
     updateStoredSet(PINNED_STORAGE_KEY, setPinnedIds, threadId, !pinnedIds.has(threadId));
@@ -737,21 +739,10 @@ export const Sidebar = memo(function Sidebar({
 
   useEffect(() => {
     const handleShortcut = (event: KeyboardEvent) => {
+      // Ctrl K and Ctrl N belong to App (search opens the field through searchOpen, a new conversation strokes the
+      // toolbar's quill), which has already taken them.
+      if (event.defaultPrevented) return;
       const key = event.key.toLowerCase();
-      const commandKey = event.metaKey || event.ctrlKey;
-
-      if (commandKey && !event.altKey && !event.shiftKey && key === "k") {
-        event.preventDefault();
-        focusSearch();
-        return;
-      }
-
-      if (commandKey && !event.altKey && !event.shiftKey && key === "n") {
-        event.preventDefault();
-        newRowRef.current?.write();
-        void onNew();
-        return;
-      }
 
       if (event.key === "Escape" && contextMenu) {
         event.preventDefault();
@@ -759,7 +750,7 @@ export const Sidebar = memo(function Sidebar({
         return;
       }
 
-      const target = event.target as HTMLElement | null;
+      const target = event.target instanceof Element ? event.target : null;
       const editing = Boolean(target?.matches("input, textarea, [contenteditable='true']"));
       if (editing || !activeThread) return;
 
@@ -780,7 +771,7 @@ export const Sidebar = memo(function Sidebar({
 
     window.addEventListener("keydown", handleShortcut);
     return () => window.removeEventListener("keydown", handleShortcut);
-  }, [activeThread, contextMenu, onNew, pinnedIds, unreadIds]);
+  }, [activeThread, contextMenu, pinnedIds, unreadIds]);
 
   const renderThreadRow = (thread: ThreadRecord) => {
     const active = thread.id === activeId;
@@ -1015,35 +1006,9 @@ export const Sidebar = memo(function Sidebar({
 
   return (
     <aside className="sidebar compact-sidebar codex-sidebar">
-      {/* The top row is three quiet controls on the window rail: the sidebar's own toggle at the corner, where the
-          header shows it again while the sidebar is closed, then search and the quill. */}
-      <div className="codex-sidebar-topbar">
-        {onClose ? (
-          <button type="button" className="sidebar-toggle" data-sidebar-control="toggle" onClick={onClose} title={copy.hideSidebar} aria-label={copy.hideSidebar}>
-            <PanelLeft size={17} strokeWidth={1.75} aria-hidden="true" />
-          </button>
-        ) : null}
-        <div className="compact-sidebar-actions">
-          <button
-            type="button"
-            onClick={searchOpen ? closeSearch : focusSearch}
-            className={searchOpen ? "compact-search-toggle active" : "compact-search-toggle"}
-            title={`${copy.search} · Ctrl K`}
-            aria-label={copy.search}
-          >
-            <Search size={16} strokeWidth={1.85} />
-          </button>
-          {threadView !== "archived" ? (
-            <NewConversationRow
-              ref={newRowRef}
-              label={copy.newConversation}
-              title={`${copy.newConversation} · Ctrl N`}
-              onNew={onNew}
-              iconOnly
-            />
-          ) : null}
-        </div>
-      </div>
+      {/* The top row is where the sidebar's toolbar lies (SidebarControls, one layer up, above the card): the toggle at
+          its start, search and the quill at its end. It keeps the room and stays part of the window's drag rail. */}
+      <div className="codex-sidebar-topbar" aria-hidden="true" />
 
       <div className={`compact-search-shell ${searchOpen ? "open" : ""}`} aria-hidden={!searchOpen}>
         <div className="compact-search">

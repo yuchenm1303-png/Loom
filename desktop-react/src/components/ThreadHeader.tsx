@@ -1,10 +1,9 @@
-import { Archive, Check, Copy, PanelLeft } from "./icons";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Archive, Check, Copy } from "./icons";
+import { useEffect, useMemo, useState } from "react";
 import { useI18n } from "../i18n";
 import type { ContextCompactionProgress, ContextReport } from "../types/loom";
 import { ContextMeter } from "./ContextMeter";
 import { AnimatedThreadTitle } from "./AnimatedThreadTitle";
-import { NewConversationRow } from "./NewConversationRow";
 import "./thread-header.css";
 import "./thread-review-entry.css";
 
@@ -16,13 +15,13 @@ interface ThreadHeaderProps {
   running: boolean;
   loading?: boolean;
   archived: boolean;
+  /** Closed, the sidebar's toolbar (SidebarControls) lies on the header's start, and the header keeps it room. */
   sidebarOpen: boolean;
-  onToggleSidebar(): void;
-  /** Offered beside the toggle while the sidebar, and the quill in its top row, are away. */
-  onNewConversation?(): Promise<void> | void;
   model?: string;
   permissionMode?: string;
   context?: ContextReport | null;
+  /** Another conversation is opening and `context` is still the last one's. */
+  contextPending?: boolean;
   compacting?: boolean;
   compactionProgress?: ContextCompactionProgress | null;
   onCompactContext?(): void;
@@ -60,9 +59,8 @@ export function ThreadHeader({
   loading = false,
   archived,
   sidebarOpen,
-  onToggleSidebar,
-  onNewConversation,
   context = null,
+  contextPending = false,
   compacting = false,
   compactionProgress = null,
   onCompactContext,
@@ -86,19 +84,6 @@ export function ThreadHeader({
     return () => window.clearTimeout(timer);
   }, [copied]);
 
-  // The toggle lives in two places, the sidebar's top row and here, on the same spot. When it moves, the keyboard
-  // follows it instead of falling back to the page (only if it was on the toggle that just went away).
-  const toggleRef = useRef<HTMLButtonElement>(null);
-  const wasOpen = useRef(sidebarOpen);
-  useEffect(() => {
-    if (wasOpen.current === sidebarOpen) return;
-    wasOpen.current = sidebarOpen;
-    const active = document.activeElement;
-    const lost = !active || active === document.body;
-    if (!sidebarOpen && (lost || active?.closest(".sidebar"))) toggleRef.current?.focus({ preventScroll: true });
-    if (sidebarOpen && lost) document.querySelector<HTMLElement>(".codex-sidebar-topbar .sidebar-toggle")?.focus({ preventScroll: true });
-  }, [sidebarOpen]);
-
   const copyWorkspace = async () => {
     if (!workspace) return;
     try {
@@ -111,36 +96,10 @@ export function ThreadHeader({
 
   const workspaceFallback = t("common.workspace");
   const localWorkspace = t("common.localWorkspace");
-  const openSidebarLabel = language === "zh-CN" ? "展开侧栏" : "Show sidebar";
-  const newConversationLabel = language === "zh-CN" ? "新对话" : "New conversation";
   return (
     <header className={`thread-header polished-thread-header${sidebarOpen ? "" : " has-sidebar-toggle"}`}>
-      {/* While the sidebar is open its own top row carries the toggle and the quill; once it is closed they wait
-          here, the toggle on the same spot at the window's corner. */}
-      {sidebarOpen ? null : (
-        <div className="thread-header-leading">
-          <button
-            ref={toggleRef}
-            type="button"
-            className="thread-header-icon-button panel-toggle-button sidebar-toggle"
-            data-sidebar-control="toggle"
-            onClick={onToggleSidebar}
-            title={openSidebarLabel}
-            aria-label={openSidebarLabel}
-          >
-            <PanelLeft size={17} strokeWidth={1.75} aria-hidden="true" />
-          </button>
-          {onNewConversation ? (
-            <NewConversationRow
-              className="thread-header-icon-button thread-new-conversation"
-              label={newConversationLabel}
-              title={`${newConversationLabel} · Ctrl N`}
-              onNew={onNewConversation}
-              iconOnly
-            />
-          ) : null}
-        </div>
-      )}
+      {/* While the sidebar is closed its toolbar lies here, over the header's start (SidebarControls): this keeps it room. */}
+      {sidebarOpen ? null : <div className="thread-header-leading" aria-hidden="true" />}
       <div className="thread-header-main">
         <div className="thread-header-copy">
           <div className="thread-title-line">
@@ -172,6 +131,7 @@ export function ThreadHeader({
         {onCompactContext ? (
           <ContextMeter
             report={context}
+            pending={contextPending}
             compacting={compacting}
             progress={compactionProgress}
             busy={running || loading}

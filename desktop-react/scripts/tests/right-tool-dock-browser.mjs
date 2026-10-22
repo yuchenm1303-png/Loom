@@ -37,21 +37,20 @@ try {
     });
     assert.ok(bounds.workspace <= bounds.rail + 1, "dock overlaps conversation content");
 
-    // The sidebar's toggle stays on one spot: it closes the sidebar from its top row and opens it again from the
-    // header, and the keyboard follows it from one to the other instead of falling back to the page.
-    const cardToggle = page.locator('.codex-sidebar-topbar .sidebar-toggle');
-    const headerToggle = page.locator('.thread-header .sidebar-toggle');
-    const spot = await cardToggle.boundingBox();
-    await cardToggle.focus();
+    // The sidebar's toggle stays on one spot: the same button closes the sidebar from the card's top row and opens it
+    // again from the header's start (SidebarControls), so the keyboard simply stays on it.
+    const toggle = page.locator('.sidebar-controls .sidebar-toggle');
+    const spot = await toggle.boundingBox();
+    await toggle.focus();
     await page.keyboard.press("Enter");
     await page.locator(".app-shell.sidebar-closed").waitFor({ timeout: 4000 });
-    await page.waitForFunction(() => document.activeElement?.matches(".thread-header .sidebar-toggle"), null, { timeout: 2000 });
-    const moved = await headerToggle.boundingBox();
+    await page.waitForFunction(() => document.activeElement?.matches(".sidebar-controls .sidebar-toggle"), null, { timeout: 2000 });
+    const moved = await toggle.boundingBox();
     assert.ok(Math.abs(moved.x - spot.x) <= 1 && Math.abs(moved.y - spot.y) <= 1,
       `the sidebar opens from where it closed: ${JSON.stringify({ spot, moved })}`);
     await page.keyboard.press("Enter");
     await page.locator(".app-shell.sidebar-open").waitFor({ timeout: 4000 });
-    await page.waitForFunction(() => document.activeElement?.matches(".codex-sidebar-topbar .sidebar-toggle"), null, { timeout: 2000 });
+    await page.waitForFunction(() => document.activeElement?.matches(".sidebar-controls .sidebar-toggle"), null, { timeout: 2000 });
 
     await dock.locator('[data-tool-id="agents"]').click();
     await page.locator('.sub-agent-dock[data-open="true"]').waitFor({ timeout: 5000 });
