@@ -961,7 +961,7 @@ export function SettingsPage({ runtime, models, threadId, running, onRefreshMode
               <div className="general-row-copy"><strong>{zh ? "进度反馈" : "Progress feedback"}</strong><p>{zh ? "选择 Loom 工作时的反馈节奏。" : "How much Loom shares while working."}</p></div>
               <ProgressFeedbackControl compact mode={settings.agent?.progressFeedback} saving={feedbackSaving} onChange={mode => void saveProgressFeedback(mode)} />
             </div>
-            <details className="general-expression-details" open>
+            <details className="general-expression-details">
               <summary className="general-home-row"><div className="general-row-copy"><strong>{zh ? "聊天表情" : "Chat expression"}</strong><p>{zh ? "调整表情的频率、风格与数量。" : "Tune sticker frequency, variety, and quantity."}</p></div><ChevronRight size={16} /></summary>
               <div className="general-expression-body">
                 <StickerPanel preferences={runtime.stickerPreferences} disabled={running} onSave={async (preferences) => {

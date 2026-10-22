@@ -26,9 +26,9 @@
 .settings-host {
   color-scheme: dark;
 
-  --sr-page: #0c0e11;
-  --sr-sidebar: #101216;
-  --sr-card: var(--loom-workspace-panel, #14171c);
+  --sr-page: #111214;
+  --sr-sidebar: #151618;
+  --sr-card: #191a1d;
   --sr-raised: #1a1d23;
   --sr-inset: #0e1013;
   --sr-well: #0f1114;
@@ -70,8 +70,8 @@
 html[data-loom-theme="light"] .settings-host {
   color-scheme: light;
 
-  --sr-page: #f6f6f8;
-  --sr-sidebar: #eeeff2;
+  --sr-page: #fafaf9;
+  --sr-sidebar: #f3f3f1;
   --sr-card: #ffffff;
   --sr-raised: #ffffff;
   --sr-inset: #eceef1;
