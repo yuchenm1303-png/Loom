@@ -1,0 +1,341 @@
+/* Editorial sign-in surface: the complete classic portal stays unchanged. */
+/* The shell is still the existing WebPortal controller: auth, OAuth, Host and
+   account flows are shared. Only the editorial presentation is replaced. */
+.loom-portal-page.is-modular.loom-editorial.is-modal-open {
+  overflow: hidden;
+}
+.loom-portal-page.is-modular.loom-editorial > .loom-portal-shell.editorial-panel-backdrop {
+  display: grid;
+  place-items: center;
+  align-content: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: 100%;
+  height: 100dvh;
+  min-height: 0;
+  padding: 18px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  background: rgba(9, 9, 9, .66);
+  backdrop-filter: blur(3px);
+  -webkit-backdrop-filter: blur(3px);
+}
+.loom-portal-page.is-modular.loom-editorial .editorial-auth-dialog {
+  --auth-paper: #1c1c1b;
+  --auth-soft: #232321;
+  --auth-ink: #f0eee8;
+  --auth-muted: #a6a39b;
+  --auth-line: #3d3c38;
+  --loom-auth-border: var(--auth-line);
+  --loom-auth-border-focus: #aaa79e;
+  --loom-auth-field: var(--auth-soft);
+  --loom-auth-field-hover: #292825;
+  --loom-auth-field-focus: #292825;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+  gap: 0;
+  flex: none;
+  width: min(476px, calc(100vw - 36px));
+  height: auto;
+  max-height: calc(100dvh - 36px);
+  min-height: 0;
+  box-sizing: border-box;
+  padding: 27px 30px 26px;
+  margin: 0 auto;
+  overflow-x: hidden;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--auth-line) transparent;
+  background: var(--auth-paper);
+  border: 1px solid var(--auth-line);
+  border-radius: 12px;
+  box-shadow: 0 24px 88px rgba(0,0,0,.28);
+  color: var(--auth-ink);
+  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+}
+.loom-portal-page.loom-editorial.is-light .editorial-auth-dialog {
+  --auth-paper: #faf9f6;
+  --auth-soft: #f3f1ec;
+  --auth-ink: #25231f;
+  --auth-muted: #77736b;
+  --auth-line: #ddd9d0;
+  --loom-auth-border-focus: #77736b;
+  --loom-auth-field-hover: #eeeae2;
+  --loom-auth-field-focus: #eeeae2;
+  box-shadow: 0 20px 80px rgba(25,22,15,.16);
+}
+.loom-portal-page.is-modular.loom-editorial .editorial-auth-dialog:focus { outline: none; }
+.loom-portal-page.is-modular.loom-editorial .editorial-auth-dialog > .loom-intro-module { display: none !important; }
+.loom-portal-page.is-modular.loom-editorial .editorial-auth-dialog > .loom-control,
+.loom-portal-page.is-modular.loom-editorial .editorial-auth-dialog > .loom-control.is-auth-mode {
+  display: block;
+  width: 100%;
+  flex: 0 0 auto;
+  align-self: stretch;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+}
+.loom-portal-page.is-modular.loom-editorial .editorial-auth-dialog .loom-sidebar-module {
+  display: block;
+  width: 100%;
+  flex: 0 0 auto;
+  margin: 0;
+  padding: 0;
+  height: auto;
+  min-height: 0;
+  max-height: none;
+  overflow: visible;
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+}
+.loom-portal-page.is-modular.loom-editorial .editorial-auth-dialog .loom-login-module,
+.loom-portal-page.is-modular.loom-editorial .editorial-auth-dialog .loom-host-refined {
+  width: 100%;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+}
+.loom-portal-page.is-modular.loom-editorial .editorial-auth-dialog .loom-account-refined {
+  margin: 19px 0 0;
+  padding: 16px 0 0;
+  border-top: 1px solid var(--auth-line);
+}
+.loom-editorial .editorial-modal-header {
+  position: relative;
+  flex: none;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 32px;
+  margin: 0 0 14px;
+  padding: 0 24px;
+  border: 0;
+}
+.loom-editorial .editorial-modal-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 11px;
+  color: var(--auth-ink);
+  font: 400 22px/1 var(--ed-serif);
+  letter-spacing: -.03em;
+}
+.loom-editorial .editorial-modal-brand img {
+  display: block;
+  width: 61px;
+  height: 29px;
+  object-fit: contain;
+}
+.loom-editorial .editorial-modal-brand-divider { width: 1px; height: 19px; background: var(--auth-line); }
+.loom-editorial .editorial-modal-close {
+  position: absolute;
+  top: -8px;
+  right: -12px;
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--auth-muted);
+  font: 400 22px/1 ui-sans-serif, sans-serif;
+  cursor: pointer;
+}
+.loom-editorial .editorial-modal-close:hover { background: var(--auth-soft); color: var(--auth-ink); }
+.loom-portal-page.is-modular.loom-editorial .editorial-auth-dialog .loom-control-top { display: block; margin: 0; padding: 0; }
+.loom-portal-page.is-modular.loom-editorial .editorial-auth-dialog .loom-control-top h2 {
+  margin: 0;
+  max-width: none;
+  color: var(--auth-ink);
+  font: 400 30px/1.19 var(--ed-serif);
+  text-align: center;
+  letter-spacing: -.035em;
+}
+.loom-portal-page.is-modular.loom-editorial .editorial-auth-dialog .loom-auth-v2 .loom-control-copy {
+  margin: 8px auto 0;
+  max-width: 36ch;
+  color: var(--auth-muted);
+  font-size: 12px;
+  line-height: 1.55;
+  text-align: center;
+}
+.loom-portal-page.is-modular.loom-editorial .editorial-auth-dialog .loom-oauth-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0,1fr));
+  gap: 9px;
+  margin: 24px 0 0;
+}
+.loom-portal-page.is-modular.loom-editorial .editorial-auth-dialog .loom-oauth-button {
+  min-height: 42px;
+  min-width: 0;
+  padding: 0 9px;
+  border: 1px solid var(--auth-line);
+  border-radius: 7px;
+  background: transparent;
+  color: var(--auth-ink);
+  box-shadow: none;
+  font-size: 11px;
+  font-weight: 450;
+  line-height: 1.25;
+  gap: 8px;
+  transition: background .15s ease, border-color .15s ease;
+}
+.loom-portal-page.is-modular.loom-editorial .editorial-auth-dialog .loom-oauth-button:hover:not(:disabled) {
+  background: var(--auth-soft);
+  border-color: var(--auth-muted);
+}
+.loom-editorial .editorial-auth-dialog .loom-google-mark {
+  width: 18px;
+  height: 18px;
+  box-shadow: none;
+}
+.loom-portal-page.is-modular.loom-editorial .editorial-auth-dialog .loom-auth-divider {
+  gap: 12px;
+  margin-top: 20px;
+  color: var(--auth-muted);
+  font-size: 10px;
+  letter-spacing: 0;
+}
+.loom-portal-page.is-modular.loom-editorial .editorial-auth-dialog .loom-auth-divider::before,
+.loom-portal-page.is-modular.loom-editorial .editorial-auth-dialog .loom-auth-divider::after {
+  background: var(--auth-line);
+}
+.loom-portal-page.is-modular.loom-editorial .editorial-auth-dialog .loom-account-form {
+  display: grid;
+  gap: 13px;
+  margin: 19px 0 0;
+}
+.loom-portal-page.is-modular.loom-editorial .editorial-auth-dialog .loom-account-form > label,
+.loom-portal-page.is-modular.loom-editorial .editorial-auth-dialog .loom-password-field {
+  gap: 6px;
+  color: var(--auth-ink);
+  font-size: 11px;
+  line-height: 1.5;
+}
+.loom-portal-page.is-modular.loom-editorial .editorial-auth-dialog .loom-input-shell {
+  min-height: 45px;
+  gap: 0;
+  padding: 0 13px;
+  border: 1px solid var(--auth-line);
+  border-radius: 7px;
+  background: var(--auth-soft);
+  color: var(--auth-muted);
+  box-shadow: none;
+}
+.loom-portal-page.is-modular.loom-editorial .editorial-auth-dialog .loom-input-shell:hover { background: var(--loom-auth-field-hover); }
+.loom-portal-page.is-modular.loom-editorial .editorial-auth-dialog .loom-input-shell:focus-within {
+  border-color: var(--loom-auth-border-focus);
+  background: var(--loom-auth-field-focus);
+  box-shadow: none;
+}
+.loom-portal-page.is-modular.loom-editorial .editorial-auth-dialog .loom-input-shell > svg { display: none; }
+.loom-portal-page.is-modular.loom-editorial .editorial-auth-dialog .loom-auth-v2 .loom-input-shell input {
+  height: 43px !important;
+  color: var(--auth-ink) !important;
+  -webkit-text-fill-color: var(--auth-ink) !important;
+  caret-color: var(--auth-ink);
+  font-size: 12px;
+}
+.loom-portal-page.is-modular.loom-editorial .editorial-auth-dialog .loom-auth-v2 .loom-input-shell input::placeholder {
+  color: var(--auth-muted) !important;
+  -webkit-text-fill-color: var(--auth-muted) !important;
+  opacity: .74;
+}
+.loom-portal-page.is-modular.loom-editorial .editorial-auth-dialog .loom-auth-v2 .loom-input-shell input:-webkit-autofill {
+  -webkit-text-fill-color: var(--auth-ink) !important;
+  caret-color: var(--auth-ink);
+}
+.loom-portal-page.is-modular.loom-editorial .editorial-auth-dialog .loom-password-toggle {
+  margin: 0 -7px 0 0;
+  color: var(--auth-muted);
+}
+.loom-portal-page.is-modular.loom-editorial .editorial-auth-dialog .loom-password-toggle:hover {
+  background: transparent;
+  color: var(--auth-ink);
+}
+.loom-portal-page.is-modular.loom-editorial .editorial-auth-dialog .loom-inline-link {
+  color: var(--auth-muted);
+  font-size: 10px;
+}
+.loom-portal-page.is-modular.loom-editorial .editorial-auth-dialog .loom-inline-link:hover { color: var(--auth-ink); }
+.loom-portal-page.is-modular.loom-editorial .editorial-auth-dialog .loom-form-submit {
+  justify-content: center;
+  min-height: 45px;
+  margin: 5px 0 0;
+  padding: 0 14px;
+  border: 1px solid var(--auth-ink);
+  border-radius: 7px;
+  background: var(--auth-ink);
+  color: var(--auth-paper);
+  font: 400 15px/1.3 var(--ed-serif);
+  box-shadow: none;
+}
+.loom-portal-page.is-modular.loom-editorial .editorial-auth-dialog .loom-form-submit > span:last-child { display: none; }
+.loom-portal-page.is-modular.loom-editorial .editorial-auth-dialog .loom-form-submit:hover:not(:disabled) {
+  border-color: var(--auth-muted);
+  background: var(--auth-muted);
+  color: var(--auth-paper);
+}
+.loom-portal-page.is-modular.loom-editorial .editorial-auth-dialog .loom-form-submit:disabled { opacity: .52; cursor: wait; }
+.loom-portal-page.is-modular.loom-editorial .editorial-auth-dialog .loom-account-switch {
+  display: block;
+  width: fit-content;
+  min-height: 26px;
+  margin: 13px auto 0;
+  padding: 2px 0;
+  color: var(--auth-muted);
+  font-size: 11px;
+  font-weight: 400;
+  text-align: center;
+}
+.loom-portal-page.is-modular.loom-editorial .editorial-auth-dialog .loom-account-switch:hover { color: var(--auth-ink); }
+.loom-portal-page.is-modular.loom-editorial .editorial-auth-dialog .loom-auth-row {
+  justify-content: space-between;
+}
+.loom-portal-page.is-modular.loom-editorial .editorial-auth-dialog .loom-auth-row .loom-account-switch { margin: 12px 0 0; }
+.loom-portal-page.is-modular.loom-editorial .editorial-auth-dialog .loom-code-input {
+  height: 47px !important;
+  border-radius: 7px !important;
+  background: var(--auth-soft) !important;
+  border-color: var(--auth-line) !important;
+  color: var(--auth-ink) !important;
+}
+.loom-portal-page.is-modular.loom-editorial .editorial-auth-dialog .loom-password-strength { color: var(--auth-muted); }
+.loom-portal-page.is-modular.loom-editorial .editorial-auth-dialog .loom-password-strength small { color: var(--auth-muted); }
+.loom-portal-page.is-modular.loom-editorial .editorial-auth-dialog .loom-auth-v2 .form-note.is-error {
+  border-color: #785552;
+  border-radius: 6px;
+  background: rgba(143, 51, 42, .09);
+  color: #df9187;
+}
+.loom-portal-page.is-modular.loom-editorial .editorial-auth-dialog .loom-host-summary { margin-top: 17px; }
+.loom-portal-page.is-modular.loom-editorial .editorial-auth-dialog .loom-host-action,
+.loom-portal-page.is-modular.loom-editorial .editorial-auth-dialog .loom-profile-home-action {
+  border-radius: 7px;
+}
+.loom-portal-page.is-modular.loom-editorial .editorial-auth-dialog .loom-account-module {
+  background: transparent;
+}
+@media (max-width: 520px) {
+  .loom-portal-page.is-modular.loom-editorial .editorial-auth-dialog {
+    width: min(420px, calc(100vw - 24px));
+    max-height: calc(100dvh - 24px);
+    padding: 22px 20px;
+  }
+  .loom-portal-page.is-modular.loom-editorial > .loom-portal-shell.editorial-panel-backdrop { padding: 12px; }
+  .loom-portal-page.is-modular.loom-editorial .editorial-auth-dialog .loom-control-top h2 { font-size: 28px; }
+}
+@media (max-width: 380px) {
+  .loom-portal-page.is-modular.loom-editorial .editorial-auth-dialog .loom-oauth-grid { grid-template-columns: 1fr; }
+  .loom-portal-page.is-modular.loom-editorial .editorial-auth-dialog .loom-oauth-button { min-height: 40px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .loom-portal-page.is-modular.loom-editorial .editorial-auth-dialog * { transition: none !important; }
+}
