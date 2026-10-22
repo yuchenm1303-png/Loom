@@ -567,7 +567,9 @@ function createProgram(gl: WebGLRenderingContext) {
       float edgeSafety = smoothstep(0.012, 0.075, textureEdgeDistance);
       displacement *= edgeSafety;
 
-      vec2 sampleUv = screenUv - normal * (displacement / u_resolution);
+      vec2 refraction = normal * displacement;
+      refraction.y = clamp(refraction.y, -halfSize.y * 0.32, halfSize.y * 0.32);
+      vec2 sampleUv = screenUv - refraction / u_resolution;
 
       vec2 centerUv = u_lensCenter / u_resolution;
       sampleUv = (sampleUv - centerUv) / max(u_zoom, 1.0) + centerUv;
@@ -856,17 +858,24 @@ export function PortalLiquidCursor() {
           const rect = target.getBoundingClientRect();
           const finalLensWidth = Math.min(Math.max(38, window.innerWidth - 20), Math.max(38, rect.width + SNAP_PADDING * 2));
           const finalLensHeight = Math.min(Math.max(34, window.innerHeight - 20), Math.max(34, rect.height + SNAP_PADDING * 2));
-          // Retain the previous lens's capture area during a snap-to-snap
-          // transition. Shrinking here would cut off the still-moving lens.
+          // Allocate the entire capture surface once on snap entry. Growing
+          // the canvas each spring frame destroyed the WebGL texture and made
+          // the wide Ask input flicker continuously.
           snappedRoiWidth = Math.max(
             snappedRoiWidth,
-            Math.min(MAX_ROI_SIZE, Math.max(FREE_ROI_SIZE,
-              Math.ceil((Math.max(finalLensWidth, width.value) + SNAP_ROI_PADDING * 2) / 16) * 16)),
+            Math.min(window.innerWidth, Math.max(
+              FREE_ROI_SIZE,
+              Math.min(MAX_ROI_SIZE, Math.ceil((finalLensWidth + SNAP_ROI_PADDING * 2) / 16) * 16),
+              Math.ceil(Math.max(finalLensWidth, width.value) * 1.08 + 80),
+            )),
           );
           snappedRoiHeight = Math.max(
             snappedRoiHeight,
-            Math.min(MAX_ROI_SIZE, Math.max(FREE_ROI_SIZE,
-              Math.ceil((Math.max(finalLensHeight, height.value) + SNAP_ROI_PADDING * 2) / 16) * 16)),
+            Math.min(window.innerHeight, Math.max(
+              FREE_ROI_SIZE,
+              Math.min(MAX_ROI_SIZE, Math.ceil((finalLensHeight + SNAP_ROI_PADDING * 2) / 16) * 16),
+              Math.ceil(Math.max(finalLensHeight, height.value) * 1.08 + 80),
+            )),
           );
         }
       }
@@ -896,14 +905,9 @@ export function PortalLiquidCursor() {
         snap.value > 0.025 ||
         lensWidth > BASE_WIDTH + 4 ||
         lensHeight > BASE_HEIGHT + 4;
-      // Include the live, animated lens even if it is wider than the
-      // destination's capture preset (or the 1200px performance cap).
-      const desiredWidth = holdSnappedRoi
-        ? Math.max(snappedRoiWidth, Math.ceil(lensWidth * 1.04 + 24))
-        : FREE_ROI_SIZE;
-      const desiredHeight = holdSnappedRoi
-        ? Math.max(snappedRoiHeight, Math.ceil(lensHeight * 1.04 + 24))
-        : FREE_ROI_SIZE;
+      // Keep capture dimensions fixed throughout the snap/release animation.
+      const desiredWidth = holdSnappedRoi ? snappedRoiWidth : FREE_ROI_SIZE;
+      const desiredHeight = holdSnappedRoi ? snappedRoiHeight : FREE_ROI_SIZE;
 
       if (!holdSnappedRoi) {
         snappedRoiWidth = FREE_ROI_SIZE;
