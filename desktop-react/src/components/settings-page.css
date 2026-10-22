@@ -56,10 +56,6 @@
   color: #eef0f4;
 }
 
-.settings-back:active {
-  transform: translateX(-1px);
-}
-
 .settings-sidebar-title {
   min-height: 44px;
   padding: 0 8px;
@@ -191,10 +187,6 @@
     rgba(255,255,255,.045);
   border-color: rgba(167,154,244,.18);
   box-shadow: inset 3px 0 #8b7cf6, 0 10px 26px rgba(57,45,140,.14);
-}
-
-.settings-nav button:active {
-  transform: scale(.99);
 }
 
 .settings-nav button svg {
@@ -997,13 +989,6 @@
   border-color: rgba(139,124,246,.28);
   background: rgba(139,124,246,.10);
   color: #f3f4fb;
-}
-
-.skills-quick-actions button:active,
-.skills-command-strip button:active,
-.skills-install-grid button:active,
-.skills-row-actions button:active {
-  transform: translateY(1px);
 }
 
 .skills-quick-actions button {

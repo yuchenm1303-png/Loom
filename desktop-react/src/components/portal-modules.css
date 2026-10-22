@@ -131,10 +131,7 @@
 .loom-oauth-button:hover:not(:disabled) {
   border-color: rgba(255,255,255,.24);
   background: rgba(255,255,255,.085);
-  transform: translateY(-1px);
 }
-
-.loom-oauth-button:active:not(:disabled) { transform: translateY(0) scale(.99); }
 .loom-oauth-button:disabled { opacity: .48; cursor: wait; }
 
 .loom-google-mark {

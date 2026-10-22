@@ -1,3 +1,16 @@
+/* The tracks change on every dock toggle. Registered as not inherited, the change stays on the shell (its grid) instead
+   of re-styling every element of the app below it, which an inherited custom property would make the browser do; the
+   resize lines read the open widths themselves (they are hidden while their dock is closed). */
+@property --loom-sidebar-track {
+  syntax: "*";
+  inherits: false;
+}
+
+@property --loom-inspector-track {
+  syntax: "*";
+  inherits: false;
+}
+
 .app-shell.workspace-panels {
   --loom-sidebar-track: var(--loom-sidebar-panel-size, var(--sidebar-width, 252px));
   --loom-inspector-track: var(--loom-inspector-panel-size, var(--inspector-width, 316px));
@@ -64,22 +77,38 @@
   flex: none;
 }
 
+/* Docks ----------------------------------------------------------------------
+   The sidebar and the inspector arrive from their own edge with a little depth (the a61 language: a few pixels
+   of travel and a shade of scale, anchored at that edge) and leave the same way, quickly: leaving is never the
+   slow half of a toggle. Both are transitions on the real element, so a second click turns them around from
+   where they are painted, and nothing is snapshotted (a View Transition had to paint and capture the old frame
+   before the update could start: a frozen frame of 80-100 ms on every sidebar toggle). The conversation that
+   makes room is carried by FLIP on the panel clock (App.tsx, animateLayoutAnchors). The right-hand portal docks
+   (.pl-dock, panel-language.css) speak the same language through their presence phases. */
 .workspace-panels > .sidebar,
 .workspace-panels > .inspector {
   min-width: 0;
   contain: layout paint style;
   backface-visibility: hidden;
   will-change: transform, opacity;
+  /* Readable at once, settled on the panel clock: the fade starts a fifth of the way in (where the out curve is
+     at .72, the opacity every surface opened on demand shows on its first frame) and the depth settles from the
+     closed pose. */
   transition:
-    opacity var(--loom-dur-base) ease,
+    opacity var(--loom-dur-fast) var(--loom-ease-out) calc(var(--loom-dur-fast) * -.2),
     transform var(--loom-dur-panel) var(--loom-ease-out),
     visibility 0s linear 0s;
+}
+
+.workspace-panels > .sidebar {
+  transform-origin: left center;
 }
 
 /* The inspector fills its track (the sidebar stretches, see above). */
 .workspace-panels > .inspector {
   width: 100%;
   height: 100%;
+  transform-origin: right center;
 }
 
 .workspace-panels.sidebar-open > .sidebar,
@@ -87,34 +116,36 @@
   opacity: 1;
   visibility: visible;
   pointer-events: auto;
-  transform: translate3d(0,0,0);
+  transform: none;
 }
 
-.workspace-panels.sidebar-closed > .sidebar {
-  opacity: 0;
-  transform: translate3d(-16px,0,0);
-  visibility: hidden;
-  pointer-events: none;
-}
-
-/* The inspector leaves like the other right docks (.pl-dock, panel-language.css): it fades and drifts on the
-   panel step, on the in curve, and is hidden once it has gone. Its track closes at once
-   (.inspector-layout-closed), so while it leaves it is pinned where it was, at the end of its own grid area,
-   over the conversation that glides into its place. It used to be hidden on the first frame of the close. */
+/* Closed, a dock's track is gone at once (.sidebar-layout-closed / .inspector-layout-closed), so it is pinned where
+   it was, at its own edge, over the conversation that glides into its place, and hidden once it has left. */
+.workspace-panels.sidebar-closed > .sidebar,
 .workspace-panels.inspector-closed > .inspector {
   position: absolute;
-  /* Both lines: for an absolutely placed grid child an `auto` end is the container's edge, past the rail. */
-  grid-column: 3 / 4;
-  inset: 0 0 0 auto;
-  width: var(--loom-inspector-panel-size, var(--inspector-width, 316px));
   opacity: 0;
-  transform: translate3d(16px,0,0);
   visibility: hidden;
   pointer-events: none;
   transition:
-    opacity var(--loom-dur-panel) var(--loom-ease-in),
-    transform var(--loom-dur-panel) var(--loom-ease-in),
-    visibility 0s linear var(--loom-dur-panel);
+    opacity var(--loom-dur-fast-out) var(--loom-ease-exit),
+    transform var(--loom-dur-fast-out) var(--loom-ease-exit),
+    visibility 0s linear var(--loom-dur-fast-out);
+}
+
+/* Both grid lines: for an absolutely placed grid child an `auto` end is the container's edge, past the rail. */
+.workspace-panels.sidebar-closed > .sidebar {
+  grid-column: 1 / 2;
+  inset: 0 auto 0 0;
+  width: calc(var(--loom-sidebar-panel-size, var(--sidebar-width, 252px)) - var(--loom-sidebar-inset, 0px));
+  transform: translate3d(-8px, 0, 0) scale(.992);
+}
+
+.workspace-panels.inspector-closed > .inspector {
+  grid-column: 3 / 4;
+  inset: 0 0 0 auto;
+  width: var(--loom-inspector-panel-size, var(--inspector-width, 316px));
+  transform: translate3d(8px, 0, 0) scale(.992);
 }
 
 /* Replaced by another dock, it goes at once rather than fading over the one that arrives (panel-switching.css
@@ -124,10 +155,12 @@ html[data-loom-panel-handoff="right-swap"] .workspace-panels.inspector-closed > 
   transition: none;
 }
 
-/* Scoped a61 panel snapshots --------------------------------------------------
-   Keep the a61 panel depth motion, but never capture the root/workspace or
-   readable content. Unchanged sidebars and the top bar remain live pixels, so
-   opening one surface cannot make the rest of the interface tremble. */
+/* The sidebar's snapshot ------------------------------------------------------
+   The sidebar opens and closes through a View Transition that captures only the card and the two toolbar controls
+   it shares with the header (the toggle and the quill): their groups move between the two toolbars on the panel
+   clock while the card arrives and leaves with the a61 depth, and nothing readable around them is captured. Its live
+   transitions above are what runs without the API (and with reduced motion, which takes no time). The right-hand
+   docks never snapshot: they move live (App.tsx). */
 html[data-loom-layout-transition="true"] {
   view-transition-name: none;
 }
@@ -171,41 +204,18 @@ html[data-loom-layout-transition="true"] .sidebar-closed .thread-header-leading 
   opacity: 1;
 }
 
-html[data-loom-layout-transition="true"]:is(
-  [data-loom-layout-intent="right-open"],
-  [data-loom-layout-intent="right-close"],
-  [data-loom-layout-intent="right-swap"]
-) .workspace-panels > .inspector {
-  view-transition-name: loom-inspector;
-}
-
-::view-transition-group(loom-sidebar),
-::view-transition-group(loom-inspector),
-::view-transition-group(loom-review-surface),
-::view-transition-group(loom-agent-surface),
-::view-transition-group(loom-artifact-surface),
-::view-transition-group(loom-project-surface) {
+::view-transition-group(loom-sidebar) {
   animation-duration: var(--loom-dur-panel);
   animation-timing-function: var(--loom-ease-move);
   animation-fill-mode: both;
 }
 
 ::view-transition-old(loom-sidebar),
-::view-transition-new(loom-sidebar),
-::view-transition-old(loom-inspector),
-::view-transition-new(loom-inspector),
-::view-transition-old(loom-review-surface),
-::view-transition-new(loom-review-surface),
-::view-transition-old(loom-agent-surface),
-::view-transition-new(loom-agent-surface),
-::view-transition-old(loom-artifact-surface),
-::view-transition-new(loom-artifact-surface),
-::view-transition-old(loom-project-surface),
-::view-transition-new(loom-project-surface) {
+::view-transition-new(loom-sidebar) {
   mix-blend-mode: normal;
 }
 
-/* Preserve the exact a61 side-surface depth language. */
+/* The a61 depth, on the panel clock. */
 ::view-transition-new(loom-sidebar) {
   transform-origin: left center;
   animation: loom-panel-surface-in-left var(--loom-dur-panel) var(--loom-ease-move) both;
@@ -214,16 +224,6 @@ html[data-loom-layout-transition="true"]:is(
 ::view-transition-old(loom-sidebar) {
   transform-origin: left center;
   animation: loom-panel-surface-out-left var(--loom-dur-panel) var(--loom-ease-move) both;
-}
-
-::view-transition-new(loom-inspector) {
-  transform-origin: right center;
-  animation: loom-panel-surface-in-right 292ms cubic-bezier(.16,.78,.18,1) 72ms both;
-}
-
-::view-transition-old(loom-inspector) {
-  transform-origin: right center;
-  animation: loom-panel-surface-out-right 78ms cubic-bezier(.42,0,.72,.2) both;
 }
 
 @keyframes loom-panel-surface-in-left {
@@ -237,133 +237,8 @@ html[data-loom-layout-transition="true"]:is(
   to { opacity: 0; transform: translate3d(-5px,0,0) scale(.994); }
 }
 
-@keyframes loom-panel-surface-in-right {
-  from { opacity: 0; transform: translate3d(10px,0,0) scale(.99); }
-  28% { opacity: .84; }
-  to { opacity: 1; transform: translate3d(0,0,0) scale(1); }
-}
-
-@keyframes loom-panel-surface-out-right {
-  from { opacity: 1; transform: translate3d(0,0,0) scale(1); }
-  to { opacity: 0; transform: translate3d(5px,0,0) scale(.994); }
-}
-
-/* Portal panels keep the same a61 handoff, but only during right-side changes. */
-html[data-loom-layout-transition="true"]:is(
-  [data-loom-layout-intent="right-open"],
-  [data-loom-layout-intent="right-close"],
-  [data-loom-layout-intent="right-swap"]
-) .review-workspace[data-open="true"],
-html[data-loom-layout-transition="true"]:is(
-  [data-loom-layout-intent="right-open"],
-  [data-loom-layout-intent="right-close"],
-  [data-loom-layout-intent="right-swap"]
-) .sub-agent-dock[data-open="true"],
-html[data-loom-layout-transition="true"]:is(
-  [data-loom-layout-intent="right-open"],
-  [data-loom-layout-intent="right-close"],
-  [data-loom-layout-intent="right-swap"]
-) .artifact-preview-dock[data-open="true"],
-html[data-loom-layout-transition="true"]:is(
-  [data-loom-layout-intent="right-open"],
-  [data-loom-layout-intent="right-close"],
-  [data-loom-layout-intent="right-swap"]
-) .project-details-panel[data-open="true"] {
-  opacity: 1 !important;
-  transform: none !important;
-  visibility: visible !important;
-  transition: none !important;
-}
-
-html[data-loom-layout-transition="true"]:is(
-  [data-loom-layout-intent="right-open"],
-  [data-loom-layout-intent="right-close"],
-  [data-loom-layout-intent="right-swap"]
-) .review-workspace[data-open="false"],
-html[data-loom-layout-transition="true"]:is(
-  [data-loom-layout-intent="right-open"],
-  [data-loom-layout-intent="right-close"],
-  [data-loom-layout-intent="right-swap"]
-) .sub-agent-dock[data-open="false"],
-html[data-loom-layout-transition="true"]:is(
-  [data-loom-layout-intent="right-open"],
-  [data-loom-layout-intent="right-close"],
-  [data-loom-layout-intent="right-swap"]
-) .artifact-preview-dock[data-open="false"],
-html[data-loom-layout-transition="true"]:is(
-  [data-loom-layout-intent="right-open"],
-  [data-loom-layout-intent="right-close"],
-  [data-loom-layout-intent="right-swap"]
-) .project-details-panel[data-open="false"] {
-  opacity: 0 !important;
-  transform: none !important;
-  visibility: hidden !important;
-  pointer-events: none !important;
-  transition: none !important;
-}
-
-html[data-loom-layout-transition="true"]:is(
-  [data-loom-layout-intent="right-open"],
-  [data-loom-layout-intent="right-close"],
-  [data-loom-layout-intent="right-swap"]
-) .review-workspace {
-  view-transition-name: loom-review-surface;
-}
-
-html[data-loom-layout-transition="true"]:is(
-  [data-loom-layout-intent="right-open"],
-  [data-loom-layout-intent="right-close"],
-  [data-loom-layout-intent="right-swap"]
-) .sub-agent-dock {
-  view-transition-name: loom-agent-surface;
-}
-
-html[data-loom-layout-transition="true"]:is(
-  [data-loom-layout-intent="right-open"],
-  [data-loom-layout-intent="right-close"],
-  [data-loom-layout-intent="right-swap"]
-) .artifact-preview-dock {
-  view-transition-name: loom-artifact-surface;
-}
-
-html[data-loom-layout-transition="true"]:is(
-  [data-loom-layout-intent="right-open"],
-  [data-loom-layout-intent="right-close"],
-  [data-loom-layout-intent="right-swap"]
-) .project-details-panel {
-  view-transition-name: loom-project-surface;
-}
-
-::view-transition-old(loom-review-surface),
-::view-transition-old(loom-agent-surface),
-::view-transition-old(loom-artifact-surface),
-::view-transition-old(loom-project-surface) {
-  transform-origin: right center;
-  animation: loom-right-surface-out 92ms cubic-bezier(.42,0,.72,.2) both;
-}
-
-::view-transition-new(loom-review-surface),
-::view-transition-new(loom-agent-surface),
-::view-transition-new(loom-artifact-surface),
-::view-transition-new(loom-project-surface) {
-  transform-origin: right center;
-  animation: loom-right-surface-in 286ms cubic-bezier(.16,.78,.18,1) 88ms both;
-}
-
-@keyframes loom-right-surface-out {
-  from { opacity: 1; transform: translate3d(0,0,0) scale(1); }
-  to { opacity: 0; transform: translate3d(5px,0,0) scale(.992); }
-}
-
-@keyframes loom-right-surface-in {
-  from { opacity: 0; transform: translate3d(9px,0,0) scale(.988); }
-  24% { opacity: .78; }
-  to { opacity: 1; transform: translate3d(0,0,0) scale(1); }
-}
-
-/* The snapshot owns the changing panel; do not run its live transition below. */
-html[data-loom-layout-transition="true"] .workspace-panels > .sidebar,
-html[data-loom-layout-transition="true"] .workspace-panels > .inspector {
+/* The snapshot owns the sidebar while it runs; its live transition stays still underneath. */
+html[data-loom-layout-transition="true"] .workspace-panels > .sidebar {
   transition: none !important;
 }
 
@@ -413,7 +288,7 @@ html[data-loom-layout-transition="true"] .workspace-panels > .inspector {
 }
 
 .workspace-panel-resizer-left {
-  left: var(--loom-sidebar-track);
+  left: var(--loom-sidebar-panel-size, var(--sidebar-width, 252px));
   transform: translateX(-50%);
 }
 
@@ -424,7 +299,7 @@ html[data-loom-layout-transition="true"] .workspace-panels > .inspector {
 }
 
 .workspace-panel-resizer-right {
-  right: var(--loom-inspector-track);
+  right: var(--loom-inspector-panel-size, var(--inspector-width, 316px));
   transform: translateX(50%);
 }
 
@@ -613,61 +488,6 @@ body.loom-panel-motion .workspace-panels > .inspector .runtime-scroll {
   overflow-anchor: none;
 }
 
-/* Portal docks previously unmounted at 240ms while their 390ms transform was
-   still running. Presence now stays alive for 420ms; keep fallback CSS on the
-   same cadence when View Transitions are unavailable. */
-body.loom-panel-motion .review-workspace,
-body.loom-panel-motion .sub-agent-dock,
-body.loom-panel-motion .artifact-preview-dock,
-body.loom-panel-motion .project-details-panel {
-  transition-duration: var(--loom-dur-panel) !important;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  ::view-transition-group(loom-sidebar),
-  ::view-transition-group(loom-inspector),
-  ::view-transition-group(loom-review-surface),
-  ::view-transition-group(loom-agent-surface),
-  ::view-transition-group(loom-artifact-surface),
-  ::view-transition-group(loom-project-surface),
-  ::view-transition-old(loom-sidebar),
-  ::view-transition-new(loom-sidebar),
-  ::view-transition-old(loom-inspector),
-  ::view-transition-new(loom-inspector),
-  ::view-transition-old(loom-review-surface),
-  ::view-transition-new(loom-review-surface),
-  ::view-transition-old(loom-agent-surface),
-  ::view-transition-new(loom-agent-surface),
-  ::view-transition-old(loom-artifact-surface),
-  ::view-transition-new(loom-artifact-surface),
-  ::view-transition-old(loom-project-surface),
-  ::view-transition-new(loom-project-surface) {
-    animation-duration: .001ms !important;
-    animation-delay: 0ms !important;
-  }
-}
-
-html[data-loom-reduced-motion="true"]::view-transition-group(loom-sidebar),
-html[data-loom-reduced-motion="true"]::view-transition-group(loom-inspector),
-html[data-loom-reduced-motion="true"]::view-transition-group(loom-review-surface),
-html[data-loom-reduced-motion="true"]::view-transition-group(loom-agent-surface),
-html[data-loom-reduced-motion="true"]::view-transition-group(loom-artifact-surface),
-html[data-loom-reduced-motion="true"]::view-transition-group(loom-project-surface),
-html[data-loom-reduced-motion="true"]::view-transition-old(loom-sidebar),
-html[data-loom-reduced-motion="true"]::view-transition-new(loom-sidebar),
-html[data-loom-reduced-motion="true"]::view-transition-old(loom-inspector),
-html[data-loom-reduced-motion="true"]::view-transition-new(loom-inspector),
-html[data-loom-reduced-motion="true"]::view-transition-old(loom-review-surface),
-html[data-loom-reduced-motion="true"]::view-transition-new(loom-review-surface),
-html[data-loom-reduced-motion="true"]::view-transition-old(loom-agent-surface),
-html[data-loom-reduced-motion="true"]::view-transition-new(loom-agent-surface),
-html[data-loom-reduced-motion="true"]::view-transition-old(loom-artifact-surface),
-html[data-loom-reduced-motion="true"]::view-transition-new(loom-artifact-surface),
-html[data-loom-reduced-motion="true"]::view-transition-old(loom-project-surface),
-html[data-loom-reduced-motion="true"]::view-transition-new(loom-project-surface) {
-  animation-duration: .001ms !important;
-  animation-delay: 0ms !important;
-}
 
 
 /* Compact workspace tool rail is an actual final grid track, not a pointer-
@@ -688,7 +508,7 @@ html[data-loom-reduced-motion="true"]::view-transition-new(loom-project-surface)
 .workspace-panels > .inspector { grid-column: 3; }
 .workspace-panels > .loom-tool-rail { grid-column: 4; grid-row: 1; }
 .workspace-panels .workspace-panel-resizer-right {
-  right: calc(var(--loom-inspector-track) + var(--loom-tool-rail-track));
+  right: calc(var(--loom-inspector-panel-size, var(--inspector-width, 316px)) + var(--loom-tool-rail-track));
 }
 /* Review/artifact/subagent/project docks render as absolute/fixed right-side
    surfaces. Leave the real rail track free so controls never cover their UI. */

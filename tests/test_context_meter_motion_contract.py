@@ -38,8 +38,10 @@ def test_context_meter_exit_is_compositor_owned_not_inset_animated() -> None:
 def test_generic_header_popover_motion_does_not_double_animate_context_meter() -> None:
     css = HEADER_CSS.read_text(encoding="utf-8")
 
-    assert '[role="dialog"]:not(.context-meter-panel)' in css
-    assert '[role="menu"]:not(.context-meter-panel)' in css
+    # The header used to animate any [class*="context"] dialog or menu (and had to exclude the meter's panel); those
+    # aliases are gone, so the panel's own presence is its only motion, and the header names only the meter's chip.
     generic_start = css.index('/* Header context popover layering + motion')
     generic = css[generic_start:]
-    assert '.context-meter-panel)' in generic
+    assert '[class*="context"][role' not in generic
+    assert "header-context-popover-in" not in generic
+    assert ".thread-header .context-meter-chip[aria-expanded] {" in generic

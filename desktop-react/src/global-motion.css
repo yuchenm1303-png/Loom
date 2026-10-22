@@ -45,21 +45,9 @@
     opacity var(--loom-dur-base) var(--loom-ease-out);
 }
 
-.settings-host[data-motion-phase="entering"] .settings-sidebar,
-.settings-host[data-motion-phase="entering"] .settings-main,
 .settings-host[data-motion-phase="exiting"] .settings-sidebar,
 .settings-host[data-motion-phase="exiting"] .settings-main {
   will-change: opacity;
-}
-
-.settings-host[data-motion-phase="entering"] .settings-sidebar {
-  opacity: 0;
-  transform: none;
-}
-
-.settings-host[data-motion-phase="entering"] .settings-main {
-  opacity: 0;
-  transform: none;
 }
 
 .settings-host[data-motion-phase="entered"] .settings-sidebar,
@@ -67,6 +55,14 @@
   opacity: 1;
   transform: none;
   will-change: auto;
+}
+
+/* Where the entrance starts. A starting style has no extra weight: it must come after the rule it starts from. */
+@starting-style {
+  .settings-host[data-motion-phase="entered"] .settings-sidebar,
+  .settings-host[data-motion-phase="entered"] .settings-main {
+    opacity: 0;
+  }
 }
 
 .settings-host[data-motion-phase="entered"] .settings-main {
@@ -78,7 +74,7 @@
   transform: none;
   transition-duration: var(--loom-dur-base-out);
   transition-delay: 0ms;
-  transition-timing-function: var(--loom-ease-in);
+  transition-timing-function: var(--loom-ease-exit);
 }
 
 .settings-host[data-motion-phase="exiting"] .settings-main {
@@ -86,19 +82,13 @@
   transform: none;
   transition-duration: var(--loom-dur-base-out);
   transition-delay: 0ms;
-  transition-timing-function: var(--loom-ease-in);
+  transition-timing-function: var(--loom-ease-exit);
 }
 
 /* Controls should feel responsive, not twitchy. */
 .settings-nav button,
 .settings-back {
   transition-duration: var(--loom-dur-fast);
-}
-
-/* Motion-lifecycle surfaces use data-motion-phase instead of one-shot mount
-   keyframes so closing is just as deliberate as opening. */
-[data-motion-phase="entering"] {
-  --loom-presence-opacity: 0;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -134,14 +124,15 @@
     opacity var(--loom-dur-fast) var(--loom-ease-out);
 }
 
-.settings-toast[data-motion-phase="entering"] {
-  opacity: 0;
-  transform: none;
-}
-
 .settings-toast[data-motion-phase="entered"] {
   opacity: 1;
   transform: none;
+}
+
+@starting-style {
+  .settings-toast[data-motion-phase="entered"] {
+    opacity: 0;
+  }
 }
 
 .settings-toast[data-motion-phase="exiting"] {
@@ -149,7 +140,7 @@
   opacity: 0;
   transform: none;
   transition-duration: var(--loom-dur-fast-out);
-  transition-timing-function: var(--loom-ease-in);
+  transition-timing-function: var(--loom-ease-exit);
 }
 
 .settings-switch {

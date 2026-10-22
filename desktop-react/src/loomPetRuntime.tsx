@@ -1,6 +1,7 @@
 import { memo, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
 import { LoomPetArt, type PetPose } from "./LoomPetArt";
 import "./loom-pet.css";
+import { useReducedMotion } from "./motion/useReducedMotion";
 
 export type LoomPetState = "idle" | "listening" | "working" | "approval" | "sleeping";
 type Props = { running: boolean; approval: boolean; completed: boolean };
@@ -25,7 +26,7 @@ export const LoomPet = memo(function LoomPet({ running, approval, completed }: P
   const [look, setLook] = useState(0);
   const [pose, setPose] = useState<PetPose>(0);
   const [ear, setEar] = useState(false);
-  const [reducedMotion, setReducedMotion] = useState(false);
+  const reducedMotion = useReducedMotion();
   const previousRunning = useRef(running);
   const serial = useRef(0);
   const lastHello = useRef(-Infinity);
@@ -73,17 +74,6 @@ export const LoomPet = memo(function LoomPet({ running, approval, completed }: P
     sync();
     return () => { observer.disconnect(); attributes.disconnect(); window.removeEventListener("resize", sync); };
   }, [running]); // Composer swaps its idle/steering form when a turn changes.
-
-  useEffect(() => {
-    const media = window.matchMedia("(prefers-reduced-motion: reduce)");
-    const sync = () => setReducedMotion(media.matches
-      || document.documentElement.dataset.loomReducedMotion === "true");
-    const observer = new MutationObserver(sync);
-    observer.observe(document.documentElement, { attributes: true, attributeFilter: ["data-loom-reduced-motion"] });
-    media.addEventListener("change", sync);
-    sync();
-    return () => { media.removeEventListener("change", sync); observer.disconnect(); };
-  }, []);
 
   useEffect(() => {
     const stage = buttonRef.current?.closest(".composer-stage");

@@ -34,7 +34,7 @@
   pointer-events: none;
   opacity: 0;
   transition-duration: var(--loom-dur-fast-out);
-  transition-timing-function: var(--loom-ease-in);
+  transition-timing-function: var(--loom-ease-exit);
 }
 
 .loom-context-preview {
@@ -115,10 +115,6 @@
   outline: none;
   background: rgba(255,255,255,.055);
   color: #f3f4f7;
-}
-
-.loom-context-action:active:not(:disabled) {
-  transform: scale(.988);
 }
 
 .loom-context-action.is-primary {
@@ -295,10 +291,6 @@ html[data-loom-theme="light"] .loom-context-action kbd {
 .composer-quote-clear:hover {
   background: rgba(255,255,255,.05);
   color: #d2d5dc;
-}
-
-.composer-quote-clear:active {
-  transform: scale(.92);
 }
 
 html[data-loom-theme="light"] .composer-quote-reply {

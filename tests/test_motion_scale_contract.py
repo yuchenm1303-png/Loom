@@ -28,21 +28,17 @@ DURATIONS = {
 CURVES = {
     "out": "cubic-bezier(.16, .78, .18, 1)",
     "move": "cubic-bezier(.22, .7, .18, 1)",
-    "in": "cubic-bezier(.42, 0, .72, .2)",
+    "exit": "cubic-bezier(.3, .3, .55, 1)",
     "inout": "cubic-bezier(.4, 0, .2, 1)",
     "glide": "cubic-bezier(.2, 0, 0, 1)",
 }
 
-# Files whose numbers are physics or pinned geometry, not interaction timings. Each has its own tests: the docks' a61
-# depth (test_panel_enter_motion_contract), the send hand-off (test_capsule_motion_contract, send-flight.test.mjs), the
-# icon gestures (icon-motion.test.mjs), the pet, the soft pointer and the computer-use HUD, which are ornament.
+# Files whose numbers are physics, not interaction timings. Each has its own tests: the send hand-off
+# (test_capsule_motion_contract, send-flight.test.mjs), the icon gestures (icon-motion.test.mjs), the pet, the soft pointer
+# and the computer-use HUD, which are ornament. (The docks and the quick-tool dock used to be listed here; both are written
+# on the scale now.)
 PHYSICS = {
-    # The tool dock's own vocabulary (spring pops, a staggered arrival, a glider, tips that wait for a resting pointer),
-    # written at the same time as the scale (e5c1574b) with its own timers in RightToolDock.tsx and its own browser test
-    # (right-tool-dock-motion-browser.mjs). Bringing it onto the scale is a job for when that work has settled.
-    "components/right-tool-dock.css",
     "components/icon-motion.css",
-    "components/workspace-panels.css",
     "components/send-flight.css",
     "loom-pet.css",
     "pointer-click.css",
@@ -58,7 +54,7 @@ ONE_SHOTS = {
     "loom-user-send-media",
 }
 # Scripts whose numbers are physics (the flight, the pointer) or are not motion at all.
-SCRIPT_PHYSICS = {"sendFlight.ts", "sendFlightMotion.ts", "pointerClick.ts", "fontWarmup.ts", "webBridge.ts", "RightToolDock.tsx"}
+SCRIPT_PHYSICS = {"sendFlight.ts", "sendFlightMotion.ts", "pointerClick.ts", "fontWarmup.ts", "webBridge.ts"}
 
 TIME = re.compile(r"^-?(\d*\.?\d+)(ms|s)$")
 
@@ -165,7 +161,7 @@ def test_the_scale_is_written_once_and_the_scripts_repeat_it() -> None:
     assert "STAGGER_MS = 40" in script
     ease = dict(re.findall(r"(\w+):\s*\"(cubic-bezier\([^)]*\))\"", script))
     assert {name: re.sub(r"\s+", " ", value) for name, value in ease.items()} == CURVES
-    for name in ("soft", "lively", "pop"):
+    for name in ("settle", "soft", "lively", "pop"):
         in_css = re.search(rf"--loom-spring-{name}:\s*(linear\([^;]*\));", css).group(1)
         in_ts = re.search(rf"{name}:\s*\"(linear\([^\"]*\))\"", script).group(1)
         assert re.sub(r"\s+", " ", in_css) == re.sub(r"\s+", " ", in_ts), name
@@ -270,7 +266,7 @@ def test_a_fold_takes_a_fold_s_time() -> None:
 # Entrances that move: the docks (a61), the marks (a glyph, a bead, a ring, a bar being drawn, a tick) and the send
 # hand-off. Whatever carries words fades in; space is made by layout.
 TRAVELLING = re.compile(
-    r"^(loom-panel-surface-|loom-right-surface-|loom-sticker-pop$|wv-(glyph|bead|rail|halo|ring)|run-progress-mark-in$|"
+    r"^(loom-sticker-pop$|wv-(glyph|bead|rail|halo|ring)|run-progress-mark-in$|"
     r"profile-(bar|hour)-grow$|loom-task-icon-spring$|loom-reasoning-chevron-in$|task-plan-mark$|settings-eyebrow-draw$|"
     r"loom-user-|loom-flight-|li-|rt-|sidebar-brand|empty-loom|loom-pet|loom-hud|tg-|status-breathe|streaming-glow|dot-wave|"
     r"orbit-rotate|spark-float|ambient-drift|compact-thread-pulse|context-meter-|home-token-pulse|general-status-breathe|"
@@ -329,8 +325,6 @@ def test_one_function_asks_whether_motion_is_reduced() -> None:
             continue  # the hook itself, and the two places that write the setting
         if "dataset.loomReducedMotion" in source or "prefers-reduced-motion: reduce)\")" in source:
             copies.append(path.name)
-    # Ornament that predates the hook and has its own listener; this list may only get shorter.
-    assert sorted(copies) == sorted([
-        "TranscriptScrollController.tsx", "loomPetRuntime.tsx", "PortalLiquidCursor.tsx", "starterCardPointerGlow.ts",
-        "taskCapsuleLens.ts", "pointerMotion.ts", "pointerContrast.ts",
-    ]) or len(copies) <= 7, copies
+    # The ornament that used to carry its own copy (the pet, the soft pointer, the follow loop, the lens, the theme
+    # switch, the portal cursor) asks the hook now, and listens through onReducedMotionChange.
+    assert copies == [], copies

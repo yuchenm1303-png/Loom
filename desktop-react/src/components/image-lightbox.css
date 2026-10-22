@@ -4,10 +4,11 @@
   animation: none;
   transition: opacity var(--loom-dur-base) var(--loom-ease-out);
 }
-.user-message-image-lightbox:is([data-motion-phase="entering"],[data-motion-phase="exiting"]) { opacity: 0; }
+.user-message-image-lightbox[data-motion-phase="exiting"] { opacity: 0; }
+@starting-style { .user-message-image-lightbox[data-motion-phase="entered"] { opacity: 0; } }
 .user-message-image-lightbox[data-motion-phase="exiting"] {
   transition-duration: var(--loom-dur-base-out);
-  transition-timing-function: var(--loom-ease-in);
+  transition-timing-function: var(--loom-ease-exit);
 }
 @media (prefers-reduced-motion: reduce) {
   .user-message-image-lightbox[data-motion-phase] { transition: none; }

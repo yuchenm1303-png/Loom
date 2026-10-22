@@ -613,7 +613,15 @@ const handlers: Record<string, (args: Record<string, unknown>) => unknown> = {
   "thread/list": () => ({ threads, counts: { active: threads.length, archived: 12, all: threads.length + 12 } }),
   "project/list": () => ({ projects, unfiledThreadCount: 0 }),
   "thread/read": (args) => snapshot(String(args.threadId)),
-  "thread/context": () => ({ context: null }),
+  // ?context=1: the conversation has a measured context window, so the header shows its context meter.
+  "thread/context": () => (params.get("context") === "1" ? { context: {
+    windowKnown: true, windowTokens: 512000, effectiveWindowTokens: 486400, inputBudgetTokens: 482304, outputReserveTokens: 4096,
+    autoCompactTokens: 128000, toolOutputTokenLimit: 9500, limitsSource: "runtime", usedTokens: 64000, usedPercent: 13.3,
+    freeTokens: 418304, accounting: "provider_usage", messageCount: 42,
+    segments: [{ key: "conversation", tokens: 52000 }, { key: "toolSchemas", tokens: 12000 }, { key: "free", tokens: 418304 }],
+    pressure: { schemaMode: "compact", toolsOmitted: [], toolOutputsReduced: 0, toolOutputsCollapsed: 0, userMessagesTruncated: 0, blinded: false },
+    compactions: 0, lastCompactedAt: "", measuredAt: historyAt, measurementPending: false,
+  } } : { context: null }),
   // A conversation created from the home screen (the sidebar's "New conversation", then a send): the fixture has one thread.
   "thread/start": () => ({ thread: { ...thread, status: "idle", currentTurnId: undefined } }),
   "turn/start": (args) => {

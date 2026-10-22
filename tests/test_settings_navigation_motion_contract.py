@@ -213,8 +213,12 @@ def test_sidebar_highlight_is_one_text_free_pill_that_passes_under_the_labels() 
     playing = motion[motion.index("function playNavPillTravel"):motion.index("export function playPageTransition")]
     # Individual transform properties on a text-free element: translate carries it,
     # scale stretches it, each on its own animation and curve.
-    assert "{ translate: [`0 ${-travel}px`, \"0 0\"] }" in playing
-    assert "{ scale: [\"1 1\", `1 ${1 + stretch}`, \"1 1\"], offset: [0, 0.35, 1] }" in playing
+    # The travel is the shared glide (motion/glide.ts): translate on the glide curve, scale stretching it through the
+    # fast middle; a thin rail stretches more than a pill.
+    assert "glide(pip, 0, -travel, { stretch: Math.min(0.5, 0.12 + distance / 520) });" in playing
+    glide = (ROOT / "desktop-react" / "src" / "motion" / "glide.ts").read_text(encoding="utf-8")
+    assert "{ translate: [`${dx}px ${dy}px`, \"0px 0px\"] }" in glide
+    assert "{ scale: [`${fromX} ${fromY}`, middle, \"1 1\"], offset: [0, .35, 1] }" in glide
     assert 'pseudoElement: "::before"' in playing
     for layout_property in ("top:", "left:", "height:", "width:", "margin"):
         assert layout_property not in playing

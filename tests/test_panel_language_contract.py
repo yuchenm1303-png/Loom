@@ -190,7 +190,9 @@ def test_text_that_stays_in_place_is_revealed_by_opacity_alone() -> None:
     assert "transform" not in reveal
     assert "var(--loom-dur-base)" in reveal and "var(--loom-ease-out)" in reveal
     exiting = css_block(kit, '.pl-reveal[data-motion-phase="exiting"]')
-    assert "var(--loom-dur-base-out)" in exiting and "var(--loom-ease-in)" in exiting
+    assert "var(--loom-dur-base-out)" in exiting and "var(--loom-ease-exit)" in exiting
+    # Where it comes from is its starting style: it mounts straight into its entrance.
+    assert '@starting-style {\n  .pl-reveal[data-motion-phase="entered"] {\n    opacity: 0;' in kit
 
     for path in (
         "components/files-workbench.css", "components/background-tasks.css", "components/avatar-crop.css",
@@ -215,11 +217,12 @@ def test_a61_dock_depth_is_still_the_only_dock_entrance() -> None:
     panels = read("components/workspace-panels.css")
     kit = read("components/panel-language.css")
 
-    # Pinned by test_panel_enter_motion_contract; restated here because the new reveal tokens must
-    # never be mistaken for it. The dock fallback exists once, in the kit.
-    assert "animation: loom-right-surface-in 286ms cubic-bezier(.16,.78,.18,1) 88ms both" in panels
+    # Pinned by test_panel_enter_motion_contract: the sidebar and the inspector arrive with the a61 depth, live; the
+    # portal docks say the same once, in the kit, through their presence (a starting style, then fast-out).
+    assert "transform: translate3d(8px, 0, 0) scale(.992)" in panels
     assert "--loom-ease-out: cubic-bezier(.16, .78, .18, 1)" in read("motion-tokens.css")
-    assert kit.count('.pl-dock[data-motion-phase="entering"]') == 1
+    assert kit.count('@starting-style {\n  .pl-dock[data-motion-phase="entered"]') == 1
+    assert 'data-motion-phase="entering"' not in kit
     for path in (
         "components/sub-agent-dock.css", "components/artifact-preview-dock.css",
         "components/project-details-panel.css", "components/review-workspace.css", "components/review-dock.css",

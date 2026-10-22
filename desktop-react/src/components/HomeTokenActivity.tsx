@@ -252,7 +252,7 @@ export function HomeTokenActivity({ onOpenInsights, ready = true }: {
         </ul>
 
         {onOpenInsights ? (
-          <button className="home-token-link" type="button" onClick={onOpenInsights}>
+          <button className="home-token-link" type="button" data-press="none" onClick={onOpenInsights}>
             {zh ? "查看使用洞察" : "View insights"}
             <ArrowRight size={12} strokeWidth={2} aria-hidden="true" />
           </button>

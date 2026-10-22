@@ -211,10 +211,6 @@
   transition: border-color var(--loom-dur-fast) ease, background-color var(--loom-dur-fast) ease, color var(--loom-dur-fast) ease, transform var(--loom-dur-fast) var(--loom-ease-out);
 }
 
-.settings-shell.settings-refined .software-update-actions button:active:not(:disabled) {
-  transform: translateY(1px);
-}
-
 .settings-shell.settings-refined .software-update-primary {
   border: 1px solid var(--sr-accent-line);
   color: var(--sr-accent-ink);

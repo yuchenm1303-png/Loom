@@ -253,7 +253,6 @@
 .context-meter-chip {
   transition: transform var(--loom-dur-fast) ease, border-color var(--loom-dur-fast) ease, background var(--loom-dur-fast) ease, color var(--loom-dur-fast) ease, box-shadow var(--loom-dur-fast) ease;
 }
-.context-meter-chip:active { transform: scale(.96); }
 .context-meter-chip[aria-expanded="true"] {
   border-color: color-mix(in srgb, var(--accent, #695ad8) 32%, transparent);
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent, #695ad8) 7%, transparent);
@@ -265,12 +264,11 @@
 }
 /* The component owns one fixed surface. Content is readable at mount;
    the presence lifecycle only retains the surface for exit/reversal. */
-.context-meter-panel[data-motion-phase="entering"],
 .context-meter-panel[data-motion-phase="entered"] {
   opacity: 1;
 }
 @starting-style {
-  .context-meter-panel[data-motion-phase="entering"] {
+  .context-meter-panel[data-motion-phase="entered"] {
     opacity: .72;
   }
 }
@@ -278,7 +276,7 @@
   pointer-events: none;
   opacity: 0;
   will-change: opacity;
-  transition: opacity var(--loom-dur-fast-out) var(--loom-ease-in);
+  transition: opacity var(--loom-dur-fast-out) var(--loom-ease-exit);
 }
 .context-meter-fill { transition: width var(--loom-dur-slow) var(--loom-ease-out); }
 html[data-loom-theme="light"] .context-meter-panel {
@@ -292,12 +290,10 @@ html[data-loom-theme="light"] .context-meter-facts { margin-bottom: 10px; paddin
 html[data-loom-theme="light"] .context-meter-compact { height: 34px; border-radius: 9px; }
 @media (prefers-reduced-motion: reduce) {
   .context-meter *, .context-meter *::before, .context-meter *::after { animation: none !important; transition: none !important; }
-  .context-meter-chip:active { transform: none; }
 }
 html[data-loom-reduced-motion="true"] .context-meter *,
 html[data-loom-reduced-motion="true"] .context-meter *::before,
 html[data-loom-reduced-motion="true"] .context-meter *::after { animation: none !important; transition: none !important; }
-html[data-loom-reduced-motion="true"] .context-meter-chip:active { transform: none; }
 
 /* Compacting chip: keep progress copy inside the pill --------------------- */
 .context-meter-value {
@@ -778,10 +774,6 @@ html[data-loom-reduced-motion="true"] .context-meter-progress-segment.active i {
     0 0 0 1px color-mix(in srgb, var(--context-meter-color) 3%, transparent);
 }
 
-.context-meter-chip:active {
-  transform: none !important;
-}
-
 .context-meter-track {
   --context-used-percent: 0%;
   position: relative;
@@ -900,10 +892,6 @@ html[data-loom-reduced-motion="true"] .context-meter-progress-segment.active i {
     opacity var(--loom-dur-base) ease;
 }
 
-.context-meter-chip:hover .context-meter-value {
-  translate: 1px 0;
-}
-
 .context-meter-chip[aria-expanded="true"] .context-meter-value {
   color: color-mix(in srgb, var(--context-meter-color) 64%, var(--text, #e8eaee));
 }
@@ -961,10 +949,6 @@ html[data-loom-theme="light"] .context-meter-track::before {
     animation: none !important;
     transition: none !important;
   }
-
-  .context-meter-chip:hover .context-meter-value {
-    translate: none;
-  }
 }
 
 html[data-loom-reduced-motion="true"] .context-meter-chip::before,
@@ -974,8 +958,4 @@ html[data-loom-reduced-motion="true"] .context-meter-fill,
 html[data-loom-reduced-motion="true"] .context-meter-value {
   animation: none !important;
   transition: none !important;
-}
-
-html[data-loom-reduced-motion="true"] .context-meter-chip:hover .context-meter-value {
-  translate: none;
 }

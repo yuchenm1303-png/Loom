@@ -250,11 +250,29 @@ try {
     await page.locator('.loom-tool-button[data-tool-id="settings"]').evaluate((el) => el.click());
     await page.waitForFunction(() => !document.querySelector(".loom-tool-rail"), null, { timeout: 2000 });
     assert.ok((await page.evaluate(() => window.__phases)).includes("exiting"), "the dock fades out as settings covers the app, it does not vanish in a frame");
-    await page.evaluate(() => { window.__phases = []; });
+    // The rail mounts straight into "entered"; where the capsule comes from is its starting style (right-tool-dock.css),
+    // so on the frame it appears it is still hidden and to the side, and it settles from there.
+    await page.evaluate(() => {
+      window.__arrival = [];
+      new MutationObserver((records) => {
+        for (const record of records) for (const node of record.addedNodes) {
+          const rail = node.matches?.(".loom-tool-rail") ? node : node.querySelector?.(".loom-tool-rail");
+          if (!rail) continue;
+          const sample = (left) => {
+            const dock = rail.querySelector(".loom-tool-dock");
+            if (dock) window.__arrival.push({ phase: rail.dataset.motionPhase, opacity: Number(getComputedStyle(dock).opacity), moving: dock.getAnimations().length > 0 });
+            if (left > 0) requestAnimationFrame(() => sample(left - 1));
+          };
+          sample(40);
+        }
+      }).observe(document.body, { childList: true, subtree: true });
+    });
     await page.locator(".settings-back").click();
     await page.waitForFunction(() => document.querySelector(".loom-tool-rail")?.dataset.motionPhase === "entered", null, { timeout: 3000 });
-    const arrival = await page.evaluate(() => window.__phases);
-    assert.deepEqual(arrival.slice(0, 2), ["entering", "entered"], `the dock arrives (appears hidden, then settles), not in a frame: ${arrival}`);
+    await page.waitForTimeout(400);
+    const arrival = await page.evaluate(() => window.__arrival);
+    assert.ok(arrival.length > 1 && arrival[0].phase === "entered" && arrival[0].opacity < .2 && arrival.some((frame) => frame.moving),
+      `the dock arrives (it appears hidden and settles), not in a frame: ${JSON.stringify(arrival.slice(0, 4))}`);
     await page.waitForFunction(() => getComputedStyle(document.querySelector(".loom-tool-dock")).opacity === "1", null, { timeout: 2000 });
     assert.deepEqual(errors, [], `${theme} dock caused runtime errors`);
     await page.close();

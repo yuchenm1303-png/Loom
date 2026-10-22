@@ -225,7 +225,7 @@ html[data-loom-theme="light"] .home-token-activity {
 
 .home-token-activity.is-loading .home-token-grid,
 .home-token-skeleton {
-  animation: home-token-pulse 1.3s ease-in-out infinite alternate;
+  animation: home-token-pulse var(--loom-period-skeleton) ease-in-out infinite alternate;
 }
 
 .home-token-legend {

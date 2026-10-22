@@ -317,11 +317,11 @@ export function GlobalContextMenu() {
       x: Math.max(margin, Math.min(state.x, window.innerWidth - rect.width - margin)),
       y: Math.max(margin, Math.min(state.y, window.innerHeight - rect.height - margin)),
     });
+    // Placed before the first paint: the measurement above already gave the menu its starting style (hidden, .72),
+    // so it shows on the very frame it was asked for and fades the rest of the way from there.
     if (readyFrameRef.current !== null) cancelAnimationFrame(readyFrameRef.current);
-    readyFrameRef.current = requestAnimationFrame(() => {
-      readyFrameRef.current = null;
-      setPositioned(true);
-    });
+    readyFrameRef.current = null;
+    setPositioned(true);
   }, [state]);
 
   const actions = useMemo<MenuAction[]>(() => {

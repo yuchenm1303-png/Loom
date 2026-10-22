@@ -101,34 +101,38 @@ html[data-loom-theme="light"] {
   box-shadow: none;
 }
 
-/* What a dock does when the View Transitions API is not there (the a61 depth in
-   workspace-panels.css is the real entrance; while it runs these are forced to rest). It used to be
-   written four times, once per dock. */
+/* How a dock comes and goes: the depth language of the sidebar and the inspector (workspace-panels.css), through
+   its presence phases. It arrives from the right edge (a few pixels of travel and a shade of scale settling on the
+   panel clock, readable at once: .72 on its first frame, the rest on the fast step) and leaves the same way on the
+   short exit step. */
 .pl-dock[data-motion-phase] {
   backface-visibility: hidden;
+  transform-origin: right center;
   transition:
     transform var(--loom-dur-panel) var(--loom-ease-out),
-    opacity var(--loom-dur-base) ease;
-}
-
-.pl-dock[data-motion-phase="entering"] {
-  opacity: .9;
-  transform: translate3d(22px, 0, 0);
-  will-change: transform, opacity;
+    opacity var(--loom-dur-fast) var(--loom-ease-out);
 }
 
 .pl-dock[data-motion-phase="entered"] {
   opacity: 1;
-  transform: translate3d(0, 0, 0);
+  transform: none;
+}
+
+/* Readable at once: .72 on the frame it appears, like every surface opened on demand. */
+@starting-style {
+  .pl-dock[data-motion-phase="entered"] {
+    opacity: .72;
+    transform: translate3d(8px, 0, 0) scale(.992);
+  }
 }
 
 .pl-dock[data-motion-phase="exiting"] {
   pointer-events: none;
   opacity: 0;
-  transform: translate3d(14px, 0, 0);
+  transform: translate3d(8px, 0, 0) scale(.992);
   will-change: transform, opacity;
-  transition-duration: var(--loom-dur-flow-out);
-  transition-timing-function: var(--loom-ease-in);
+  transition-duration: var(--loom-dur-fast-out);
+  transition-timing-function: var(--loom-ease-exit);
 }
 
 /* Header --------------------------------------------------------------------
@@ -204,7 +208,7 @@ html[data-loom-theme="light"] {
   border: 1.5px solid var(--pl-accent);
   border-radius: 50%;
   opacity: 0;
-  animation: pl-pulse 1.8s ease-out infinite;
+  animation: pl-pulse var(--loom-period-breathe) ease-out infinite;
 }
 
 @keyframes pl-pulse {
@@ -318,10 +322,6 @@ code.pl-subtitle {
 .pl-icon-button:hover:not(:disabled) {
   background: var(--pl-hover);
   color: var(--pl-ink);
-}
-
-.pl-icon-button:active:not(:disabled) {
-  background: var(--pl-press);
 }
 
 .pl-icon-button:is([aria-pressed="true"], .is-active) {
@@ -818,15 +818,18 @@ body:is(.loom-agent-dock-resizing, .loom-artifact-dock-resizing) .pl-resizer::be
   transition: opacity var(--loom-dur-base) var(--loom-ease-out);
 }
 
-.pl-reveal:is([data-motion-phase="entering"], [data-motion-phase="exiting"]) {
-  opacity: 0;
-  will-change: opacity;
-}
-
 .pl-reveal[data-motion-phase="exiting"] {
   pointer-events: none;
+  opacity: 0;
+  will-change: opacity;
   transition-duration: var(--loom-dur-base-out);
-  transition-timing-function: var(--loom-ease-in);
+  transition-timing-function: var(--loom-ease-exit);
+}
+
+@starting-style {
+  .pl-reveal[data-motion-phase="entered"] {
+    opacity: 0;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

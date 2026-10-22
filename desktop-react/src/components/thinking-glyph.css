@@ -38,7 +38,7 @@ html[data-loom-theme="light"] .tg {
   margin: -3px 0 0 -3px;
   background: var(--tg-bead);
   box-shadow: 0 0 8px 1px var(--tg-glow);
-  animation: tg-bead var(--thinking-cycle, 2.6s) ease-in-out infinite;
+  animation: tg-bead var(--thinking-cycle, var(--loom-period-shimmer)) ease-in-out infinite;
 }
 
 /* The pulse is a soft disc that swells out of the bead and dissolves before it
@@ -51,7 +51,7 @@ html[data-loom-theme="light"] .tg {
   background: radial-gradient(circle closest-side, var(--tg-pulse) 0%, transparent 100%);
   opacity: 0;
   transform: scale(.3);
-  animation: tg-pulse var(--thinking-cycle, 2.6s) cubic-bezier(.2, .6, .3, 1) infinite;
+  animation: tg-pulse var(--thinking-cycle, var(--loom-period-shimmer)) cubic-bezier(.2, .6, .3, 1) infinite;
 }
 
 @keyframes tg-pulse {

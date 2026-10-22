@@ -281,7 +281,7 @@ function useFileEditItems(items: TranscriptItem[]): TranscriptItem[] {
 }
 
 export function ReviewWorkspace({ items, open, onClose }: ReviewWorkspaceProps) {
-  const presence = useMotionPresence(open, RETAIN.panel);
+  const presence = useMotionPresence(open, RETAIN.fast);
   const { language } = useI18n();
   const c = language === "zh-CN" ? COPY_TEXT.zh : COPY_TEXT.en;
   const [externalReview, setExternalReview] = useState<ExternalReview | null>(null);

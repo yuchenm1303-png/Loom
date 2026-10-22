@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import { prefersReducedMotionNow } from "../motion/useReducedMotion";
 
 const FREE_ROI_SIZE = 420;
 const SNAP_ROI_PADDING = 160;
@@ -560,7 +561,7 @@ export function PortalLiquidCursor() {
     if (!canvas || !dot || !root) return;
 
     const finePointer = window.matchMedia("(pointer: fine)").matches;
-    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const reducedMotion = prefersReducedMotionNow();
     if (!finePointer || reducedMotion) return;
 
     const gl = canvas.getContext("webgl", {

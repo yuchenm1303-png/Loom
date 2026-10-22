@@ -43,7 +43,7 @@
   --ic-t-draw: var(--loom-dur-panel);
   --ic-t-run: 700ms;
   --ic-t-write: 500ms;
-  --ic-t-spin: 900ms;
+  --ic-t-spin: var(--loom-period-spin);
 
   /* curves: a quick, soft-landing spring in; a plain ease out */
   --ic-ease: var(--loom-ease-out);
@@ -128,7 +128,7 @@
   .loom-icon:not([data-spinning="true"]) {
   --ic-dur: var(--ic-t-press);
   --ic-curve: ease-out;
-  scale: .88;
+  scale: var(--loom-press-glyph);
 }
 
 /* Parts that move share one transition; each rule below only sets the pose. */

@@ -93,10 +93,12 @@ test("only icon-motion.css owns the part names, the dials and the shared keyfram
 });
 
 test("a loader or a ring spinner turns at the one shared pace", () => {
+  // A loader turns at the icons' pace; a ring that only says "this conversation is running" (the sidebar's) turns on
+  // the scale's breathe period, like every other live status mark (motion-tokens.css).
   for (const sheet of stylesheets()) {
     if (sheet.name.endsWith("components/icon-motion.css")) continue;
     for (const [, value] of sheet.text.matchAll(/animation:\s*([^;]*\bspin\b[^;]*);/g)) {
-      assert.match(value, /^li-spin var\(--ic-t-spin\) linear infinite$/, `${sheet.name}: ${value}`);
+      assert.match(value, /^li-spin var\(--(ic-t-spin|loom-period-breathe)\) linear infinite$/, `${sheet.name}: ${value}`);
     }
   }
 });

@@ -34,9 +34,10 @@ def test_transient_surfaces_have_symmetric_presence() -> None:
     popovers = [line for line in composer.splitlines() if "<div className=" in line and "composer-popover " in line]
     assert popovers
     assert all("data-motion-phase={panelPresence.phase}" in line for line in popovers)
-    assert "useMotionPresence(open, RETAIN.panel)" in review
-    assert "useMotionPresence(open, RETAIN.panel)" in agents
-    assert "useMotionPresence(open && Boolean(projectProp), RETAIN.panel)" in project
+    # A dock leaves on fast-out, so it is held for that exit and no longer.
+    assert "useMotionPresence(open, RETAIN.fast)" in review
+    assert "useMotionPresence(open, RETAIN.fast)" in agents
+    assert "useMotionPresence(open && Boolean(projectProp), RETAIN.fast)" in project
 
 
 def test_sidebar_disclosures_do_not_use_display_none_for_projects() -> None:
@@ -46,7 +47,9 @@ def test_sidebar_disclosures_do_not_use_display_none_for_projects() -> None:
     assert "project-thread-list-shell" in sidebar
     assert "projectThreads.length && !collapsed" not in sidebar
     assert "grid-template-rows: 0fr" in css
-    assert "thread-menu-out" in css
+    # The conversation menu enters and leaves by transitions, so a second press turns it around.
+    assert ".thread-context-menu.is-closing {\n  pointer-events: none;\n  opacity: 0;" in css
+    assert "thread-menu-out" not in css
     assert "blur(18px) saturate(115%)" not in css
 
 
@@ -60,7 +63,7 @@ def test_panel_motion_suspends_stream_scroll_work() -> None:
     assert 'window.dispatchEvent(new Event("loom:panel-resize-end"))' in app
 
 
-def test_global_motion_uses_shared_tokens_and_double_frame_presence() -> None:
+def test_global_motion_uses_shared_tokens_and_starting_style_presence() -> None:
     tokens = read("desktop-react/src/motion-tokens.css")
     presence = read("desktop-react/src/motion/useMotionPresence.ts")
 
@@ -69,4 +72,7 @@ def test_global_motion_uses_shared_tokens_and_double_frame_presence() -> None:
     assert "--loom-dur-base: 240ms" in tokens
     assert "--loom-dur-flow: 320ms" in tokens
     assert "--loom-dur-panel: 390ms" in tokens
-    assert presence.count("requestAnimationFrame") >= 2
+    # A surface mounts straight into its entrance (its stylesheet's @starting-style is the first frame), and the exit's
+    # clock starts on the frame the exit starts.
+    assert 'phase: open ? "entered" : "exiting"' in presence
+    assert presence.count("requestAnimationFrame") == 1

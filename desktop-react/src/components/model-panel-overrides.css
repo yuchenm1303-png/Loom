@@ -105,7 +105,6 @@
 }
 
 .model-manager-popover .model-manager-actions > button:hover:not(:disabled) {
-  transform: translateY(-1px);
   border-color: rgba(135,126,179,.18);
   background:
     linear-gradient(180deg, rgba(255,255,255,.028), rgba(255,255,255,.015));
@@ -117,10 +116,6 @@
 .model-manager-popover .model-manager-actions > button:hover:not(:disabled)::before {
   opacity: 1;
   transform: translateX(5%);
-}
-
-.model-manager-popover .model-manager-actions > button:active:not(:disabled) {
-  transform: translateY(0) scale(.988);
 }
 
 .model-manager-action-icon {

@@ -54,7 +54,7 @@ function persistDockWidth(value: number): void {
 }
 
 export function SubAgentDock({ items, open, active, onClose }: SubAgentDockProps) {
-  const presence = useMotionPresence(open, RETAIN.panel);
+  const presence = useMotionPresence(open, RETAIN.fast);
   const agentItems = useMemo(() => items.filter(isSubAgentToolItem), [items]);
   const [width, setWidth] = useState(readDockWidth);
   const resizeRef = useRef<{

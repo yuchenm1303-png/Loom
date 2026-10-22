@@ -112,6 +112,8 @@ export function scenarios() {
     ["background-close", tool("background"), 800],
     ["dock-open", tool("inspector"), 900],
     ["dock-close", tool("inspector"), 900],
+    ["sidebar-close", (page) => page.locator(".codex-sidebar-topbar .sidebar-toggle").click(), 900],
+    ["sidebar-open", (page) => page.locator(".thread-header .sidebar-toggle").click(), 900],
   ];
 }
 
@@ -135,11 +137,9 @@ export function describeRow(row) {
   };
 }
 
-// The tool rail (right-tool-dock.css) has its own vocabulary, written alongside the scale and left as it is for now
-// (tests/test_motion_scale_contract.py lists it by file), so its tiles, glider and tips are not read against the scale.
 export function interesting(rows) {
   return rows.filter((row) => {
     const d = describeRow(row);
-    return !d.icon && !d.colour && !d.loop && !/ambient-glow|sidebar-brand|loom-tool-|view-transition-group|li-/.test(row.target + " " + row.name);
+    return !d.icon && !d.colour && !d.loop && !/ambient-glow|sidebar-brand|li-/.test(row.target + " " + row.name);
   });
 }

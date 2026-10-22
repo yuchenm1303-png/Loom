@@ -1,0 +1,36 @@
+/* Press ----------------------------------------------------------------------------------------------------
+   What a press does, for every control, in one place (docs/motion-feel-2026-10-21.md).
+
+   The surface answers on the frame the pointer goes down: it takes the press wash over whatever it already
+   shows (its hover wash, its selection, its fill) and lets go of it on the frame the pointer comes up. A glyph
+   inside gives a little (--loom-press-glyph, icon-motion.css). Nothing that carries words moves or scales: a
+   row, a card or a labelled button stays exactly where it is, so a press never blurs or shifts a line of text.
+
+   The wash is a background layer (background-image), so it keeps the control's own colour underneath, follows
+   its corners, and is the same small step everywhere. Controls used to answer in fourteen different ways
+   (scale .88 to .995, a pixel down, a pixel left, five families of tinted backgrounds, many nothing at all);
+   the per-family press colours and transforms are gone in favour of this rule.
+
+   A control opts out with data-press="none": the window's own buttons (they draw their own pressed state) and
+   controls that are text rather than a surface (a link-like button with no box). The rule names no component, so
+   every component keeps one stylesheet (tests/ui_stylesheet_ownership.py). */
+:root {
+  --loom-press-wash: rgba(255, 255, 255, .055);
+}
+
+html[data-loom-theme="light"] {
+  --loom-press-wash: rgba(28, 31, 37, .06);
+}
+
+:root :is(
+  button,
+  summary,
+  [role="button"],
+  [role="menuitem"],
+  [role="menuitemradio"],
+  [role="menuitemcheckbox"],
+  [role="option"],
+  [role="tab"]
+):not(:disabled, [aria-disabled="true"], [data-press="none"]):active {
+  background-image: linear-gradient(var(--loom-press-wash), var(--loom-press-wash));
+}

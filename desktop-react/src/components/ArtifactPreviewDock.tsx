@@ -74,7 +74,7 @@ export function ArtifactPreviewDock({
   const language = useLoomLanguage();
   const zh = language === "zh-CN";
   const ariaLabel = ariaLabelProp ?? (zh ? "产物侧栏" : "Artifacts");
-  const presence = useMotionPresence(open, RETAIN.panel);
+  const presence = useMotionPresence(open, RETAIN.fast);
   const [width, setWidth] = useState(readPreviewWidth);
   const [revision, setRevision] = useState(0);
   const [selected, setSelected] = useState(path);

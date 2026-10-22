@@ -52,14 +52,16 @@
   transition: opacity var(--loom-dur-base) ease;
 }
 
-.conversation-stage > .run-progress-frame.top[data-motion-phase="entering"] {
-  opacity: 0;
+@starting-style {
+  .conversation-stage > .run-progress-frame.top[data-motion-phase="entered"] {
+    opacity: 0;
+  }
 }
 
 /* Finishing: hold the outcome readable, then dissolve. */
 .conversation-stage > .run-progress-frame.top[data-motion-phase="exiting"] {
   opacity: 0;
-  transition: opacity var(--loom-dur-flow-out) var(--loom-ease-in) 560ms;
+  transition: opacity var(--loom-dur-flow-out) var(--loom-ease-exit) 560ms;
 }
 
 .run-progress-inline {
@@ -99,7 +101,7 @@
   background: #a79df3;
   color: transparent;
   box-shadow: 0 0 0 3px rgba(139,124,246,.07), 0 0 9px rgba(139,124,246,.18);
-  animation: run-progress-pulse 2.4s ease-in-out infinite;
+  animation: run-progress-pulse var(--loom-period-breathe) ease-in-out infinite;
   transition:
     width var(--loom-dur-base) var(--loom-ease-move),
     height var(--loom-dur-base) var(--loom-ease-move),

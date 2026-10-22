@@ -2,6 +2,7 @@ import { ChevronDown } from "./icons";
 import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { TranscriptItem } from "../types/loom";
 import { RETAIN } from "../motion/tokens";
+import { prefersReducedMotionNow as prefersReducedMotion } from "../motion/useReducedMotion";
 import { advanceFollow, snapScrollOffset, TargetFlow, type FollowState } from "./followMotion";
 import "./transcript-scroll-stability.css";
 
@@ -37,14 +38,6 @@ const DISCLOSURE_TOP_MARGIN_PX = 16;
 const FINAL_SETTLE_PIN_DELAY_MS = LIVE_SETTLE_WINDOW_MS + 90;
 const PANEL_RESIZE_END_EVENT = "loom:panel-resize-end";
 const PANEL_LAYOUT_COMMIT_EVENT = "loom:panel-layout-commit";
-
-// One shared query: the follow loop asks every frame, and matchMedia() itself
-// is not free.
-const reducedMotionQuery = typeof window !== "undefined" ? window.matchMedia?.("(prefers-reduced-motion: reduce)") : undefined;
-
-function prefersReducedMotion(): boolean {
-  return Boolean(reducedMotionQuery?.matches) || document.documentElement.dataset.loomReducedMotion === "true";
-}
 
 const SCROLLER_SELECTOR = ".conversation-stage > .transcript-scroll";
 let knownScroller: HTMLDivElement | null = null;

@@ -375,7 +375,6 @@
 }
 
 .loom-account-primary-button:active:not(:disabled) {
-  transform: none;
   box-shadow: 0 1px 2px rgba(0, 0, 0, .16);
 }
 
@@ -1247,13 +1246,12 @@ html[data-loom-theme="light"] .loom-account-primary-button:disabled {
   font-size: .77rem;
   font-weight: 650;
   cursor: pointer;
-  transition: border-color var(--loom-dur-fast) ease, background var(--loom-dur-fast) ease, box-shadow var(--loom-dur-fast) ease, transform var(--loom-dur-fast) ease;
+  transition: border-color var(--loom-dur-fast) ease, background var(--loom-dur-fast) ease, box-shadow var(--loom-dur-fast) ease;
 }
 .loom-account-oauth-button:hover:not(:disabled) {
   border-color: color-mix(in srgb, var(--accent, #8b7cf6) 45%, var(--border, #292d38));
   background: color-mix(in srgb, var(--accent, #8b7cf6) 8%, var(--panel-soft, #191c24));
   box-shadow: 0 3px 12px color-mix(in srgb, var(--accent, #8b7cf6) 9%, transparent);
-  transform: translateY(-1px);
 }
 .loom-account-oauth-button:focus-visible {
   outline: 2px solid var(--accent, #8b7cf6);
@@ -1285,5 +1283,4 @@ html[data-loom-theme="light"] .loom-account-primary-button:disabled {
 .loom-account-oauth + .loom-account-form { margin-top: 0; }
 @media (prefers-reduced-motion: reduce) {
   .loom-account-oauth-button { transition: none; }
-  .loom-account-oauth-button:hover:not(:disabled) { transform: none; }
 }

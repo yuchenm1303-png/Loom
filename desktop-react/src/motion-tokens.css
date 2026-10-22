@@ -1,28 +1,37 @@
 /* Loom motion scale ---------------------------------------------------------------------------------
-   The one place where time and curves are chosen. Every stylesheet writes its transitions and
+   The one place where time, curves and amplitudes are chosen. Every stylesheet writes its transitions and
    animations in these terms; tests/test_motion_scale_contract.py reads the sources and fails on a
    duration or a curve that is not here. Scripts take the same numbers from src/motion/tokens.ts (the
    same test keeps the two files equal). docs/motion-language-2026-10-18.md says how the scale is
-   used and why.
+   used; docs/motion-feel-2026-10-21.md how it feels in the hand (answer, exit, press, interruption).
 
    TIME. Six steps. What arrives takes the step; what leaves takes the shorter "-out" sibling, because
    leaving must never be the slow half of an interaction.
 
      press    90         the answer of a press
-     fast    150 / 120   whatever answers a hand: hover and focus, tooltips, popovers, menus, toasts
+     fast    150 / 120   whatever answers a hand: hover and focus, tooltips, popovers, menus, toasts;
+                         and every dock, which leaves on fast-out
      base    240 / 200   what appears in place: dialogs, pages, scrims, a block of content, a short fold
      flow    320 / 260   what changes size or place: a long fold, a switch, the travel of a mark
-     panel   390         the docks and the layout move that goes with them (a61, pinned by tests)
+     panel   390         the docks' arrival and the layout move that goes with them (the a61 clock)
      slow    520         what is drawn rather than shown: a bar filling, a spring settling, a glow
 
-   CURVES. `out` is for what arrives (the a61 depth curve), `in` for what leaves, `move` for what
+   CURVES. `out` is for what arrives (the a61 depth curve), `exit` for what leaves, `move` for what
    changes size or place, `inout` for a collapse that has to start and stop softly, `glide` for the
-   travel of a text-free mark. Text keeps still: whatever carries words fades, and space is made by
-   layout. Marks move, and only springs (below) are allowed to overshoot.
+   travel of a text-free mark. `exit` starts moving on the first frame (it begins at constant speed and
+   lands softly): an ease-in exit sat still for the first third of its time, so every close felt late.
+   Text keeps still: whatever carries words fades, and space is made by layout. Marks move, and only
+   springs (below) are allowed to overshoot.
 
-   SPRINGS. Damped springs sampled into linear(); only text-free marks ride them. `soft` settles with
-   about 3% overshoot, `lively` with 12% (a glyph that is meant to feel alive), `pop` with 10% (a
-   bead or a status dot being born). */
+   SPRINGS. Damped springs sampled into linear(); only text-free marks ride them. `settle` arrives with
+   half a percent of overshoot (a mark that slides to a new place), `soft` settles with about 3% overshoot, `lively` with 12% (a glyph that is meant to feel alive), `pop` with 10% (a
+   bead or a status dot being born).
+
+   PRESS. What a press does is owned by motion/press.css: the surface takes a wash at once and a glyph
+   gives `--loom-press-glyph`; nothing that carries words moves or scales.
+
+   PERIODS. Loops that say "this is alive" (a status dot breathing, a running thread, a light passing
+   over a label, a skeleton waiting) share four periods, so two of them on one screen keep time. */
 
 :root {
   --loom-dur-press: 90ms;
@@ -39,16 +48,28 @@
 
   --loom-ease-out: cubic-bezier(.16, .78, .18, 1);
   --loom-ease-move: cubic-bezier(.22, .7, .18, 1);
-  --loom-ease-in: cubic-bezier(.42, 0, .72, .2);
+  --loom-ease-exit: cubic-bezier(.3, .3, .55, 1);
   --loom-ease-inout: cubic-bezier(.4, 0, .2, 1);
   --loom-ease-glide: cubic-bezier(.2, 0, 0, 1);
 
+  /* zeta .86, half a percent of overshoot: a mark that slides to a new place and stops there (the dock's glider) */
+  --loom-spring-settle: linear(0, 0.028 3.8%, 0.097 7.7%, 0.189 11.5%, 0.291 15.4%, 0.393 19.2%, 0.491 23.1%, 0.581 26.9%, 0.661 30.8%, 0.73 34.6%, 0.789 38.5%, 0.838 42.3%, 0.878 46.2%, 0.91 50%, 0.936 53.8%, 0.956 57.7%, 0.971 61.5%, 0.982 65.4%, 0.99 69.2%, 0.996 73.1%, 1 76.9%, 1.002 80.8%, 1.004 84.6%, 1.005 88.5%, 1.005 92.3%, 1.005 96.2%, 1);
   /* zeta .74, settles in .52s, 3% overshoot: a quick attack and a long soft landing */
   --loom-spring-soft: linear(0, .038 3.8%, .13 7.7%, .251 11.5%, .382 15.4%, .51 19.2%, .627 23.1%, .729 26.9%, .814 30.8%, .882 34.6%, .934 38.5%, .972 42.3%, .999 46.2%, 1.016 50%, 1.026 53.8%, 1.031 57.7%, 1.031 61.5%, 1.03 65.4%, 1.027 69.2%, 1.023 73.1%, 1.018 76.9%, 1.015 80.8%, 1.011 84.6%, 1.008 88.5%, 1.005 92.3%, 1.003 96.2%, 1);
   /* zeta .55, settles in .62s, 12% overshoot: for a glyph that is meant to feel alive */
   --loom-spring-lively: linear(0, .068 3.8%, .231 7.7%, .433 11.5%, .636 15.4%, .813 19.2%, .951 23.1%, 1.046 26.9%, 1.101 30.8%, 1.124 34.6%, 1.123 38.5%, 1.107 42.3%, 1.083 46.2%, 1.057 50%, 1.033 53.8%, 1.013 57.7%, .999 61.5%, .99 65.4%, .985 69.2%, .984 73.1%, .985 76.9%, .988 80.8%, .991 84.6%, .995 88.5%, .997 92.3%, .999 96.2%, 1);
   /* 10% overshoot: a bead or a status dot being born */
   --loom-spring-pop: linear(0, 0.035, 0.125, 0.248, 0.387, 0.528, 0.662, 0.781, 0.881, 0.962, 1.023, 1.065, 1.091, 1.104, 1.107, 1.101, 1.091, 1.077, 1.062, 1.047, 1.033, 1.021, 1.01, 1.002, 0.996, 0.992, 0.99, 0.989, 0.989, 0.989, 0.991, 0.992, 0.994, 0.995, 0.997, 0.998, 0.999, 1, 1.001, 1.001, 1);
+
+  /* How far a glyph gives under a press (the control itself does not move). */
+  --loom-press-glyph: .88;
+
+  /* breathe: a live status dot or ring; shimmer: light passing over a label that is working; skeleton: a
+     placeholder waiting for content; spin: a ring or a glyph turning. */
+  --loom-period-breathe: 1.8s;
+  --loom-period-shimmer: 2.4s;
+  --loom-period-skeleton: 1.3s;
+  --loom-period-spin: 900ms;
 }
 
 /* Reduced motion collapses the clock itself, so everything written in these terms stops taking time. */
@@ -64,6 +85,7 @@
     --loom-dur-panel: 1ms;
     --loom-dur-slow: 1ms;
     --loom-stagger: 0ms;
+    --loom-press-glyph: 1;
   }
 }
 
@@ -78,4 +100,5 @@
   --loom-dur-panel: 1ms;
   --loom-dur-slow: 1ms;
   --loom-stagger: 0ms;
+  --loom-press-glyph: 1;
 }

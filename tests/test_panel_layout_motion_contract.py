@@ -25,7 +25,8 @@ def test_panel_tracks_have_one_direct_layout_source_of_truth() -> None:
 def test_inspector_retains_exit_content_then_releases_hidden_event_rows() -> None:
     app = read("desktop-react/src/App.tsx")
 
-    assert "const inspectorPresence = useMotionPresence(inspectorVisible, RETAIN.panel)" in app
+    # The inspector leaves on fast-out, so its content is held for that long and no longer.
+    assert "const inspectorPresence = useMotionPresence(inspectorVisible, RETAIN.fast)" in app
     # Keep the shell and selected tab warm, not every historical runtime row.
     # The browser performance regression covers teardown and rapid reversal.
     assert "items={inspectorPresence.mounted ? loom.items : EMPTY_TRANSCRIPT_ITEMS}" in app
@@ -58,6 +59,9 @@ def test_direction_metadata_is_cleaned_after_every_transition() -> None:
 
     assert 'delete document.documentElement.dataset.loomLayoutIntent' in app
     assert app.count('delete document.documentElement.dataset.loomLayoutIntent') >= 3
+    # The hand-off says which way a right-hand change goes (a replaced dock goes at once).
+    assert 'document.documentElement.dataset.loomPanelHandoff = intent' in app
+    assert app.count('delete document.documentElement.dataset.loomPanelHandoff') >= 2
 
 
 def test_layout_motion_moves_live_anchors_without_snapshotting_workspace() -> None:
@@ -68,7 +72,8 @@ def test_layout_motion_moves_live_anchors_without_snapshotting_workspace() -> No
     assert "animateLayoutAnchors" in app
     assert 'selector: ".transcript"' in app
     assert 'selector: ".composer"' in app
-    assert "deltaY" not in app
+    # Only the sidebar's shared toolbar controls move vertically.
+    assert 'const deltaY = capture.kind === "header-leading" ? capture.topY - rect.top : 0;' in app
     assert "transition.updateCallbackDone" in app
     assert "view-transition-name: loom-workspace" not in css
     assert "loom-readable" not in css
@@ -94,5 +99,5 @@ def test_live_workspace_uses_same_clock_as_a61_panel_group() -> None:
     assert "case \"header-leading\": return 230" not in app
     assert "case \"composer\": return 285" not in app
 
-    assert "animation-duration: var(--loom-dur-panel)" in css
-    assert "animation-timing-function: var(--loom-ease-move)" in css
+    # The docks' depth settles on the same panel step the workspace glides on.
+    assert "transform var(--loom-dur-panel) var(--loom-ease-out)" in css

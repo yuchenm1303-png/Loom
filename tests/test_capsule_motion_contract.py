@@ -437,10 +437,11 @@ def test_pointer_lens_writes_two_variables_and_respects_reduced_motion() -> None
 
     assert 'setProperty("--lens-x"' in lens and 'setProperty("--lens-y"' in lens
     assert "requestAnimationFrame" in lens
-    assert 'document.documentElement.dataset.loomReducedMotion === "true"' in lens
+    # The one question about reduced motion (motion/useReducedMotion.ts): the system's preference and the in-app one.
+    assert "if (prefersReducedMotionNow()) {" in lens
     assert 'const CAPSULE_SELECTOR = ".wv-row.is-expandable, .wv-line";' in lens
-    # A module, so its top-level state cannot collide with another side-effect script.
-    assert "export {};" in lens
+    # A module (it imports), so its top-level state cannot collide with another side-effect script.
+    assert 'import { prefersReducedMotionNow } from "./motion/useReducedMotion";' in lens
     assert 'import "../taskCapsuleLens";' in read(TRANSCRIPT)
 
     start = weave.index(".wv-row.is-expandable::after,\n.wv-line::after {")

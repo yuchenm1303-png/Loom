@@ -28,11 +28,6 @@
   border-color: rgba(139, 124, 246, .38);
   background: rgba(139, 124, 246, .14);
   color: #d6d1ff;
-  transform: translateY(-1px);
-}
-
-.computer-log-export-button:active:not(:disabled) {
-  transform: translateY(0) scale(.97);
 }
 
 .computer-log-export-button:disabled {

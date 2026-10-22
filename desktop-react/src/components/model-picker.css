@@ -34,7 +34,6 @@ html[data-loom-theme="light"] .composer-popover.model-manager-popover {
   --mp-accent-strong: #8b7cf6;
   --mp-accent-soft: rgba(139, 124, 246, .15);
   --mp-hover: rgba(255, 255, 255, .05);
-  --mp-press: rgba(255, 255, 255, .075);
   --mp-current: rgba(139, 124, 246, .11);
   --mp-current-hover: rgba(139, 124, 246, .15);
   --mp-hairline: rgba(255, 255, 255, .065);
@@ -59,7 +58,6 @@ html[data-loom-theme="light"] .model-manager-popover .mp {
   --mp-accent-strong: #695ad8;
   --mp-accent-soft: rgba(105, 90, 216, .09);
   --mp-hover: rgba(28, 31, 37, .045);
-  --mp-press: rgba(28, 31, 37, .07);
   --mp-current: rgba(105, 90, 216, .07);
   --mp-current-hover: rgba(105, 90, 216, .1);
   --mp-hairline: rgba(28, 31, 37, .075);
@@ -116,10 +114,6 @@ html[data-loom-theme="light"] .model-manager-popover .mp {
 .mp-back:hover {
   background: var(--mp-hover);
   color: var(--mp-text);
-}
-
-.mp-back:active {
-  background: var(--mp-press);
 }
 
 .mp-head-title {
@@ -330,10 +324,6 @@ html[data-loom-theme="light"] .model-manager-popover .mp {
 
 .mp-row:hover:not(:disabled) {
   background: var(--mp-hover);
-}
-
-.mp-row:active:not(:disabled) {
-  background: var(--mp-press);
 }
 
 .mp-row:focus-visible {

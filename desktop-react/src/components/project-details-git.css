@@ -39,7 +39,6 @@
   border-color: rgba(169, 157, 255, .22);
   background: rgba(139, 124, 246, .1);
   color: #f0edff;
-  transform: translateY(-1px);
 }
 
 .project-git-toolbar button:disabled,
@@ -133,7 +132,6 @@
 .project-stage-file-main:hover {
   border-color: rgba(53, 237, 145, .23);
   background: rgba(53, 237, 145, .07);
-  transform: translateY(-1px);
 }
 
 .project-stage-file-main code {

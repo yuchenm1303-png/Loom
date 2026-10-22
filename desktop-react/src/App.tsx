@@ -595,7 +595,7 @@ export default function App() {
   const agentsLayoutOpen = agentsOpen;
   const artifactLayoutOpen = artifactPreviewOpen || browserOpen;
   const projectDetailsLayoutOpen = projectDetailsOpen;
-  const inspectorPresence = useMotionPresence(inspectorVisible, RETAIN.panel);
+  const inspectorPresence = useMotionPresence(inspectorVisible, RETAIN.fast);
   const rightSurfaceOpen = inspectorVisible || reviewOpen || agentsOpen || artifactPreviewOpen || browserOpen || projectDetailsOpen;
   const rightOpenIntent: LayoutMotionIntent = rightSurfaceOpen ? "right-swap" : "right-open";
 
@@ -653,7 +653,11 @@ export default function App() {
 
     const transitionDocument = document as LayoutTransitionDocument;
     const liveRightMotion = intent === "right-open" || intent === "right-close" || intent === "right-swap";
-    if (liveRightMotion || typeof transitionDocument.startViewTransition !== "function") {
+    // Only the sidebar snapshots (its card and the toolbar controls it shares with the header). Every other change
+    // moves live: a snapshot costs a frozen frame and two whole-page style recalcs before anything moves, and a
+    // neutral change (a palette, a swap inside one dock) has nothing for it to carry.
+    const sidebarSnapshot = intent === "left-open" || intent === "left-close";
+    if (!sidebarSnapshot || typeof transitionDocument.startViewTransition !== "function") {
       // Snapshot-only rules hide the old surface immediately. Without that
       // API, let the real panel own its enter/exit transition instead.
       delete document.documentElement.dataset.loomLayoutTransition;

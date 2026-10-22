@@ -43,10 +43,6 @@
   background: color-mix(in srgb, var(--sr-ink, #ffffff) 5%, var(--sr-raised, #171922));
 }
 
-.settings-computer-log-export button:active:not(:disabled) {
-  transform: scale(.98);
-}
-
 .settings-computer-log-export button:focus-visible {
   outline: 2px solid color-mix(in srgb, var(--sr-accent, #8b7cf6) 62%, transparent);
   outline-offset: 2px;

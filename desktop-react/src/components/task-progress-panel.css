@@ -294,7 +294,7 @@ html[data-loom-theme="light"] .task-plan-panel {
   border: 1px solid var(--pl-accent);
   border-radius: 50%;
   opacity: 0;
-  animation: task-plan-pulse 1.9s ease-out infinite;
+  animation: task-plan-pulse var(--loom-period-breathe) ease-out infinite;
 }
 
 .task-plan-step.is-blocked .task-plan-step-mark {

@@ -73,13 +73,19 @@ html[data-loom-theme="light"] .profile-insights-host {
   transition: opacity var(--loom-dur-base) var(--loom-ease-out);
 }
 
-.profile-insights-host:is([data-motion-phase="entering"], [data-motion-phase="exiting"]) .profile-insights-page {
+.profile-insights-host[data-motion-phase="exiting"] .profile-insights-page {
   opacity: 0;
+}
+
+@starting-style {
+  .profile-insights-host[data-motion-phase="entered"] .profile-insights-page {
+    opacity: 0;
+  }
 }
 
 .profile-insights-host[data-motion-phase="exiting"] .profile-insights-page {
   transition-duration: var(--loom-dur-base-out);
-  transition-timing-function: var(--loom-ease-in);
+  transition-timing-function: var(--loom-ease-exit);
 }
 
 /* Top bar ------------------------------------------------------------------ */
@@ -126,11 +132,6 @@ html[data-loom-theme="light"] .profile-back-button:hover,
 html[data-loom-theme="light"] .profile-refresh-button:hover:not(:disabled) {
   background: rgba(30, 34, 42, .045);
   border-color: rgba(30, 34, 42, .04);
-}
-
-.profile-back-button:active,
-.profile-refresh-button:active:not(:disabled) {
-  transform: scale(.96);
 }
 
 .profile-back-button:focus-visible,
@@ -384,10 +385,6 @@ html[data-loom-theme="light"] .profile-refresh-button:hover:not(:disabled) {
   color: var(--profile-copy);
   border-color: var(--profile-line);
   background: color-mix(in srgb, var(--profile-copy) 5%, transparent);
-}
-
-.profile-edit-button:active {
-  transform: scale(.96);
 }
 
 .profile-edit-button:focus-visible {
@@ -978,7 +975,7 @@ html[data-loom-theme="light"] .profile-heat-tooltip {
   border-radius: 6px;
   background: linear-gradient(90deg, var(--profile-track) 0%, var(--profile-line) 50%, var(--profile-track) 100%);
   background-size: 200% 100%;
-  animation: profile-skeleton 1.4s ease-in-out infinite;
+  animation: profile-skeleton var(--loom-period-skeleton) ease-in-out infinite;
 }
 
 .profile-metric-card.is-skeleton {

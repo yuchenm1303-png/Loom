@@ -169,9 +169,7 @@
 
 :root .composer-wrap.composer-refined .composer .composer-tool:active:not(:disabled),
 :root .composer-wrap.composer-refined .composer .composer-chip:active:not(:disabled) {
-  background: var(--cq-press);
   box-shadow: none;
-  transform: none;
 }
 
 :root .composer-wrap.composer-refined .composer .composer-chip.is-open {
@@ -255,7 +253,6 @@
 }
 
 :root .composer-wrap.composer-refined .composer .send-button:active:not(:disabled) {
-  transform: none;
   opacity: .88;
 }
 
@@ -385,11 +382,6 @@
   border: 0;
   background: var(--cq-hover);
   box-shadow: none;
-  transform: none;
-}
-
-:root .composer-wrap.composer-refined .composer-option:active:not(:disabled) {
-  background: var(--cq-press);
   transform: none;
 }
 

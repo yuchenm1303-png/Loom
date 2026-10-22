@@ -95,10 +95,6 @@
   color: #adb4c0;
 }
 
-.runtime-tab:active {
-  transform: scale(.975);
-}
-
 .runtime-tab.active {
   border-color: transparent;
   background: transparent;

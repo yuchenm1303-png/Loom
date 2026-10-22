@@ -1,3 +1,5 @@
+import { prefersReducedMotionNow } from "./motion/useReducedMotion";
+
 export type LoomThemePreference = "system" | "light" | "dark";
 export type LoomResolvedTheme = "light" | "dark";
 
@@ -41,7 +43,7 @@ function markThemeTransition(changed: boolean, animate: boolean): void {
     transitionTimer = null;
   }
   root.classList.remove("loom-theme-transitioning");
-  if (!changed || !animate || root.dataset.loomReducedMotion === "true") return;
+  if (!changed || !animate || prefersReducedMotionNow()) return;
   void root.offsetWidth;
   root.classList.add("loom-theme-transitioning");
   transitionTimer = window.setTimeout(() => {

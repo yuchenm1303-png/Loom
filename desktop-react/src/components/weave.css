@@ -74,6 +74,17 @@ html[data-loom-theme="light"] {
     opacity var(--loom-dur-base) ease 40ms;
 }
 
+/* A fold that is mounted open grows from nothing on the frame it appears; one that history draws open
+   (`data-settled`) is simply there. */
+@starting-style {
+  .wv-fold[data-open="true"]:not([data-settled]),
+  .wv-sub-fold[data-open="true"]:not([data-settled]),
+  .wv-detail[data-open="true"] {
+    grid-template-rows: 0fr;
+    opacity: 0;
+  }
+}
+
 .wv-fold-inner,
 .wv-sub-inner,
 .wv-detail-inner {
@@ -449,7 +460,7 @@ html[data-loom-theme="light"] {
    the clock runs. Nothing else on the row moves. */
 .wv-step[data-tone="running"] .wv-halo,
 .wv-step[data-tone="waiting"] .wv-halo {
-  animation: wv-halo 2s ease-out infinite;
+  animation: wv-halo var(--loom-period-breathe) ease-out infinite;
 }
 
 .wv-step[data-tone="waiting"] .wv-halo {
@@ -477,7 +488,7 @@ html[data-loom-theme="light"] {
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
-  animation: thinking-text-shimmer 2.2s cubic-bezier(.33, .1, .67, .9) infinite;
+  animation: thinking-text-shimmer var(--loom-period-shimmer) cubic-bezier(.33, .1, .67, .9) infinite;
 }
 
 .wv-step[data-tone="running"] .wv-time {
@@ -497,7 +508,7 @@ html[data-loom-theme="light"] {
 .wv-step[data-born="live"] .wv-row.is-executing .wv-verb {
   animation:
     wv-fade-in var(--loom-dur-base) var(--loom-ease-out) 90ms backwards,
-    thinking-text-shimmer 2.2s cubic-bezier(.33, .1, .67, .9) 310ms infinite;
+    thinking-text-shimmer var(--loom-period-shimmer) cubic-bezier(.33, .1, .67, .9) 310ms infinite;
 }
 
 .wv-step[data-born="live"] .wv-meta,
@@ -662,7 +673,7 @@ html[data-loom-theme="light"] {
   border-radius: 999px;
   transform-origin: left center;
   background: linear-gradient(90deg, rgba(var(--loom-live-accent, 153, 145, 226), .2), var(--wv-accent));
-  animation: wv-breathe 1.8s var(--loom-ease-inout) infinite;
+  animation: wv-breathe var(--loom-period-breathe) var(--loom-ease-inout) infinite;
 }
 
 .wv-shots {

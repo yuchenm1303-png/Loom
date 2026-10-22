@@ -18,6 +18,7 @@
 //   - the per-block custom properties are registered as non-inherited, so
 //     setting them never restyles a block's descendants.
 
+import { glide } from "../motion/glide";
 import { DUR, EASE, SPRING, travelMs } from "../motion/tokens";
 import { prefersReducedMotionNow } from "../motion/useReducedMotion";
 
@@ -152,17 +153,10 @@ function playNavPillTravel(nav: HTMLElement | null, travel: number): void {
   if (!row || !pip || distance < 1 || typeof pip.animate !== "function") return;
 
   const duration = travelMs(distance);
-  const stretch = Math.min(0.5, 0.12 + distance / 520);
   const arrival = Math.round(duration * 0.55);
 
-  pip.animate(
-    { translate: [`0 ${-travel}px`, "0 0"] },
-    { duration, easing: EASE.glide },
-  );
-  pip.animate(
-    { scale: ["1 1", `1 ${1 + stretch}`, "1 1"], offset: [0, 0.35, 1] },
-    { duration, easing: EASE.inout },
-  );
+  // A thin rail: it stretches more along its way than a pill does.
+  glide(pip, 0, -travel, { stretch: Math.min(0.5, 0.12 + distance / 520) });
   pip.animate(
     { scale: ["1 .8", "1.8 1.15", "1 1"], offset: [0, 0.34, 1] },
     { duration: DUR.base, delay: arrival, easing: EASE.out, fill: "backwards", pseudoElement: "::before" },

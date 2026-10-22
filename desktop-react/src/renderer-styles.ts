@@ -37,4 +37,5 @@ import "./components/header-action-family.css";
 import "./components/task-lifecycle-motion.css";
 import "./components/panel-language.css";
 import "./components/window-rail.css";
+import "./motion/press.css";
 import "./components/send-flight.css";

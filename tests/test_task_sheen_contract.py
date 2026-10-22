@@ -38,7 +38,7 @@ def test_running_verb_is_lit_by_the_thinking_light() -> None:
     # The verb's own glyphs painted through a gradient: no overlay layer.
     assert "-webkit-background-clip: text;" in rule and "background-clip: text;" in rule
     assert "-webkit-text-fill-color: transparent;" in rule
-    assert "animation: thinking-text-shimmer 2.2s" in rule
+    assert "animation: thinking-text-shimmer var(--loom-period-shimmer)" in rule
     assert "will-change" not in rule and "filter" not in rule
     # One hue: the gradient only mixes the verb's two tones, taken from the theme.
     gradient = rule[rule.index("background-image: linear-gradient("):]
@@ -59,7 +59,7 @@ def test_live_light_follows_runtime_state_only() -> None:
     assert '${executing ? "is-executing" : ""}' in flow
     assert 'data-tone={tone}' in flow
     halo = block(weave, '.wv-step[data-tone="running"] .wv-halo,')
-    assert "animation: wv-halo 2s ease-out infinite;" in halo
+    assert "animation: wv-halo var(--loom-period-breathe) ease-out infinite;" in halo
     # The halo is a soft disc on a mark with no text in it: opacity and transform only.
     keyframes = weave[weave.index("@keyframes wv-halo"):]
     keyframes = keyframes[:keyframes.index("\n}\n")]

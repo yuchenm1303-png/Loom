@@ -9,15 +9,16 @@ try {
     page.on("pageerror", error => errors.push(error.message));
     await page.goto(`${origin}/scripts/fixtures/workspace-visual.html?browser=1&theme=${theme}&motion=${theme === "dark" ? "1" : "0"}`);
     await page.locator(".turn-final-answer").waitFor();
+    // Which way each right-hand change went (App.tsx writes the hand-off: a replaced dock goes at once), and that no
+    // change is snapshotted: every dock is a live surface.
     await page.evaluate(() => {
-      const start = document.startViewTransition.bind(document);
-      window.panelMotionFixture = { intents: [], failures: [] };
-      document.startViewTransition = update => {
-        window.panelMotionFixture.intents.push(document.documentElement.dataset.loomLayoutIntent);
-        const transition = start(update);
-        transition.ready.catch(error => window.panelMotionFixture.failures.push(error.message));
-        return transition;
-      };
+      window.panelMotionFixture = { intents: [], snapshots: 0 };
+      new MutationObserver(() => {
+        const intent = document.documentElement.dataset.loomPanelHandoff;
+        if (intent) window.panelMotionFixture.intents.push(intent);
+      }).observe(document.documentElement, { attributes: true, attributeFilter: ["data-loom-panel-handoff"] });
+      const start = document.startViewTransition?.bind(document);
+      if (start) document.startViewTransition = update => { window.panelMotionFixture.snapshots += 1; return start(update); };
     });
     const composer = page.locator(".composer textarea");
     await composer.fill("Keep this draft while browsing");
@@ -96,7 +97,7 @@ try {
     await dock.waitFor({ state: "detached" });
     await page.waitForFunction(() => !document.body.classList.contains("loom-panel-motion"));
     if (theme === "dark") assert.equal(await page.evaluate(() => window.panelMotionFixture.intents.at(-1)), "right-close");
-    assert.deepEqual(await page.evaluate(() => window.panelMotionFixture.failures), [], "shared sidebar transitions must not be skipped");
+    assert.equal(await page.evaluate(() => window.panelMotionFixture.snapshots), 0, "no dock change is snapshotted");
     assert.equal(await composer.inputValue(), "Keep this draft while browsing");
     assert.equal(await page.locator(".app-shell.with-artifact-preview").count(), 0);
     assert.equal(await page.evaluate(() => window.browserFixture.commands.filter(c => c.action === "bounds").at(-1).bounds), null);

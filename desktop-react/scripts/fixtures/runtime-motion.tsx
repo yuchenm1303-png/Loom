@@ -22,7 +22,8 @@ const decision = { title: "选择方案", allowCustomInput: true, options: [
 ] };
 function Presence({ open, identity }: { open: boolean; identity: string }) {
   const presence = useMotionPresence(open, 240, identity);
-  return presence.mounted ? <div id="presence" data-motion-phase={presence.phase} inert={!open}><button>Action</button></div> : null;
+  // A different surface is a different element (the key): it gets its own entrance from its starting style.
+  return presence.mounted ? <div key={identity} id="presence" data-motion-phase={presence.phase} inert={!open}><button>Action</button></div> : null;
 }
 function Lightbox() {
   const [open, setOpen] = useState(false);

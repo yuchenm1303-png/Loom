@@ -129,19 +129,20 @@ def test_birth_keeps_the_sweep_running_beside_the_label_fade() -> None:
     # more specific birth rules would otherwise replace the sweep with the fade.
     # Two births: the standalone capsule and a message's thinking header.
     assert row.count("backwards, var(--thinking-sweep);") == 2
-    assert "--thinking-sweep: thinking-text-shimmer var(--thinking-cycle, 2.6s)" in row
+    assert "--thinking-sweep: thinking-text-shimmer var(--thinking-cycle, var(--loom-period-shimmer))" in row
 
 
 def test_row_and_glyph_share_one_cadence() -> None:
     row = read(COMPONENTS / "inline-thinking.css")
     glyph = read(COMPONENTS / "thinking-glyph.css")
 
-    assert "--thinking-cycle: 2.6s;" in block(row, ".inline-thinking,\n.live-reasoning {", "}")
-    assert "thinking-text-shimmer var(--thinking-cycle, 2.6s)" in row
-    assert "tg-pulse var(--thinking-cycle, 2.6s)" in glyph
-    assert "tg-bead var(--thinking-cycle, 2.6s)" in glyph
+    # One tempo for everything that says "thinking": the scale's shimmer period (motion-tokens.css).
+    assert "--thinking-cycle: var(--loom-period-shimmer);" in block(row, ".inline-thinking,\n.live-reasoning {", "}")
+    assert "thinking-text-shimmer var(--thinking-cycle, var(--loom-period-shimmer))" in row
+    assert "tg-pulse var(--thinking-cycle, var(--loom-period-shimmer))" in glyph
+    assert "tg-bead var(--thinking-cycle, var(--loom-period-shimmer))" in glyph
     # The open reasoning panel's rail breathes with the same cycle.
-    assert "animation: reasoning-rail-sweep var(--thinking-cycle, 2.6s)" in row
+    assert "animation: reasoning-rail-sweep var(--thinking-cycle, var(--loom-period-shimmer))" in row
 
 
 def test_glyph_and_label_hold_still_under_reduced_motion() -> None:

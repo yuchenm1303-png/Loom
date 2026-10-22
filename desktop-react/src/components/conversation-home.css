@@ -127,7 +127,7 @@ html[data-loom-theme="light"] .empty-intro h1 {
   flex: none;
   border-radius: 50%;
   background: currentColor;
-  animation: empty-startup-pulse 1.3s ease-in-out infinite alternate;
+  animation: empty-startup-pulse var(--loom-period-skeleton) ease-in-out infinite alternate;
 }
 
 .empty-startup-note {
@@ -191,11 +191,6 @@ html[data-loom-reduced-motion="true"] .empty-startup-dot {
 .starter-card:hover:not(:disabled) {
   background: var(--home-surface-hover);
   box-shadow: var(--home-shadow-hover);
-}
-
-.starter-card:active:not(:disabled) {
-  transform: scale(.992);
-  transition-duration: var(--loom-dur-press);
 }
 
 .starter-card:focus-visible {

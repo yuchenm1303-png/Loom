@@ -219,11 +219,6 @@
   border-color: rgba(255,255,255,.045);
 }
 
-.composer-tool:active:not(:disabled),
-.composer-chip:active:not(:disabled) {
-  transform: scale(.96);
-}
-
 .composer-tool:disabled {
   color: #5d6471;
   opacity: .7;
@@ -290,7 +285,6 @@
 }
 
 .send-button:hover:not(:disabled) {
-  transform: translateY(-1px);
   background: #fff;
   box-shadow: 0 8px 18px rgba(0,0,0,.3), inset 0 1px 0 rgba(255,255,255,.9);
 }
@@ -298,10 +292,6 @@
 .send-button:hover:not(:disabled)::after {
   opacity: 1;
   transform: scale(1);
-}
-
-.send-button:active:not(:disabled) {
-  transform: translateY(0) scale(.94);
 }
 
 .send-button:disabled {
@@ -423,23 +413,17 @@
   transition: opacity var(--loom-dur-fast) var(--loom-ease-out);
 }
 
-.composer-popover[data-motion-phase="entering"] {
-  opacity: 1;
-  transform: none;
-  will-change: opacity;
-}
-
-/* Begin at mount with readable content, without waiting for presence RAFs.
-   Presence still owns the exit and reversals from their painted position. */
-@starting-style {
-  .composer-popover[data-motion-phase="entering"] {
-    opacity: .72;
-  }
-}
-
 .composer-popover[data-motion-phase="entered"] {
   opacity: 1;
   transform: none;
+}
+
+/* Readable at once: the popover starts at .72 on the frame it first appears. Presence owns the exit and turns it
+   around from where it is painted. */
+@starting-style {
+  .composer-popover[data-motion-phase="entered"] {
+    opacity: .72;
+  }
 }
 
 .composer-popover[data-motion-phase="exiting"] {
@@ -448,7 +432,7 @@
   transform: none;
   will-change: opacity;
   transition-duration: var(--loom-dur-fast-out);
-  transition-timing-function: var(--loom-ease-in);
+  transition-timing-function: var(--loom-ease-exit);
 }
 
 .composer-popover::before {
@@ -592,10 +576,6 @@
 .composer-option:hover:not(:disabled) {
   border-color: rgba(255,255,255,.055);
   background: rgba(255,255,255,.035);
-}
-
-.composer-option:active:not(:disabled) {
-  transform: scale(.992);
 }
 
 .composer-option.active {

@@ -126,7 +126,6 @@
 .runtime-section-actions button:hover:not(:disabled),
 .runtime-review-button:hover:not(:disabled),
 .computer-log-export-button:hover:not(:disabled) {
-  transform: translateY(-1px);
   color: #d7d3fa;
   border-color: rgba(139,124,246,.24);
   background:
@@ -141,13 +140,6 @@
 .computer-log-export-button:hover:not(:disabled)::before {
   opacity: .8;
   transform: translateX(40%);
-}
-
-.runtime-section-actions button:active:not(:disabled),
-.runtime-review-button:active:not(:disabled),
-.computer-log-export-button:active:not(:disabled) {
-  transform: translateY(0) scale(.97);
-  transition-duration: var(--loom-dur-press);
 }
 
 .runtime-section-actions button:focus-visible,

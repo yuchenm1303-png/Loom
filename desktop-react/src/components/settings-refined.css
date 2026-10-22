@@ -166,11 +166,6 @@ html[data-loom-theme="light"] .settings-host {
   background: var(--sr-hover);
 }
 
-.settings-shell.settings-refined .settings-back:active {
-  background: var(--sr-press);
-  transform: none;
-}
-
 .settings-shell.settings-refined .settings-brand-orb {
   color: var(--sr-accent-ink);
   border: 1px solid color-mix(in srgb, var(--sr-accent) 30%, transparent);
@@ -570,13 +565,6 @@ html[data-loom-theme="light"] .settings-host {
   color: var(--sr-ink);
 }
 
-.settings-shell.settings-refined .mature-action-button:active:not(:disabled),
-.settings-shell.settings-refined .mature-model-card button:active:not(:disabled),
-.settings-shell.settings-refined .general-copy-button:active,
-.settings-shell.settings-refined .general-reset-button:active {
-  transform: none;
-}
-
 .settings-shell.settings-refined .settings-row-link {
   color: var(--sr-ink-4);
   transition: background-color var(--loom-dur-fast) ease, color var(--loom-dur-fast) ease;
@@ -749,10 +737,6 @@ html[data-loom-theme="light"] .settings-host {
 .settings-shell.settings-refined .appearance-segmented button.active {
   color: var(--sr-accent-ink);
   background: transparent;
-}
-
-.settings-shell.settings-refined .appearance-segmented button:active {
-  transform: none;
 }
 
 /* -------------------------------------------------------------------------- */

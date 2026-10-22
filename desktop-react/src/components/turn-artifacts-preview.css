@@ -13,7 +13,6 @@
 .tc {
   --tc-line: var(--loom-workspace-line, rgba(224, 230, 242, .12));
   --tc-hover: var(--loom-workspace-hover, rgba(224, 230, 242, .055));
-  --tc-press: var(--pl-press, rgba(224, 230, 242, .09));
   --tc-ink: var(--loom-workspace-ink, #eceef3);
   --tc-secondary: var(--loom-workspace-secondary, #bbc1cc);
   --tc-muted: var(--loom-workspace-muted, #949dab);
@@ -204,10 +203,6 @@
   color: var(--tc-ink);
 }
 
-.tc-action:active {
-  background: var(--tc-press);
-}
-
 /* Reviewing is the way on, so it is the one word with a colour. */
 .tc-review {
   color: var(--tc-accent);
@@ -261,10 +256,6 @@
 
 .tc-file:hover {
   background: var(--tc-hover);
-}
-
-.tc-file:active {
-  background: var(--tc-press);
 }
 
 .tc-file-text {

@@ -21,11 +21,13 @@ try {
     assert.ok(await page.evaluate(() => document.querySelector('#presence') === window.originalPresence));
     await page.waitForTimeout(280);
     assert.equal(await page.locator('#presence').count(), 1, 'old timer cannot remove reopened content');
-    const swappedPhase = await page.evaluate(() => {
+    const swapped = await page.evaluate(() => {
       window.motionFixture.presence(true, 'another-panel');
-      return document.querySelector('#presence').dataset.motionPhase;
+      const element = document.querySelector('#presence');
+      return { phase: element.dataset.motionPhase, replaced: element !== window.originalPresence };
     });
-    assert.equal(swappedPhase, 'entering', 'a different surface gets its own entrance');
+    // A surface mounts straight into "entered"; a different one is a new element, so its starting style plays again.
+    assert.deepEqual(swapped, { phase: 'entered', replaced: true }, 'a different surface gets its own entrance');
     await page.locator('#presence[data-motion-phase="entered"]').waitFor();
     await page.evaluate(() => {
       window.motionFixture.presence(false);

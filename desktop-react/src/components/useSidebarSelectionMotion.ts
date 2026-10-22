@@ -1,6 +1,6 @@
 import { useLayoutEffect, useRef, type RefObject } from "react";
 import { useReducedMotion } from "../motion/useReducedMotion";
-import { EASE, travelMs } from "../motion/tokens";
+import { glide } from "../motion/glide";
 
 /** Move only the selection surface; titles and controls keep their geometry. */
 export function useSidebarSelectionMotion(scrollRef: RefObject<HTMLDivElement | null>, activeId?: string) {
@@ -25,18 +25,7 @@ export function useSidebarSelectionMotion(scrollRef: RefObject<HTMLDivElement | 
     const viewport = scroller.getBoundingClientRect();
     if (from.top < viewport.top || from.bottom > viewport.bottom
       || to.top < viewport.top || to.bottom > viewport.bottom) return;
-    const dx = from.left - to.left;
-    const dy = from.top - to.top;
-    const distance = Math.hypot(dx, dy);
-    if (distance < 1) return;
-    const duration = travelMs(distance);
-    animations.current = [pip.animate(
-      { translate: [`${dx}px ${dy}px`, "0px 0px"] },
-      { duration, easing: EASE.glide },
-    ), pip.animate(
-      { scale: [`${from.width / to.width} ${from.height / to.height}`, `1 ${1 + Math.min(.15, distance / 1200)}`, "1 1"], offset: [0, .35, 1] },
-      { duration, easing: EASE.inout },
-    )];
+    animations.current = glide(pip, from.left - to.left, from.top - to.top, { from: [from.width / to.width, from.height / to.height] });
   });
   useLayoutEffect(() => () => {
     animations.current.forEach(animation => animation.cancel());

@@ -130,9 +130,9 @@
 }
 
 .thread-state-dot.ready { background: #77b394; box-shadow: 0 0 0 3px rgba(118, 176, 146, .06); }
-.thread-state-dot.working { background: #aaa0ff; box-shadow: 0 0 0 3px rgba(139, 124, 246, .075), 0 0 10px rgba(139, 124, 246, .18); animation: header-state-breathe 1.8s ease-in-out infinite; }
+.thread-state-dot.working { background: #aaa0ff; box-shadow: 0 0 0 3px rgba(139, 124, 246, .075), 0 0 10px rgba(139, 124, 246, .18); animation: header-state-breathe var(--loom-period-breathe) ease-in-out infinite; }
 .thread-state-dot.approval { background: #d9ae6e; box-shadow: 0 0 0 3px rgba(217, 174, 110, .065); }
-.thread-state-dot.connecting { background: #98a0b2; box-shadow: 0 0 0 3px rgba(152, 160, 178, .06); animation: header-state-breathe 1.8s ease-in-out infinite; }
+.thread-state-dot.connecting { background: #98a0b2; box-shadow: 0 0 0 3px rgba(152, 160, 178, .06); animation: header-state-breathe var(--loom-period-breathe) ease-in-out infinite; }
 .thread-state-dot.archived { background: #777d87; }
 
 .workspace-path-button {
@@ -164,10 +164,6 @@
   color: #aeb5c0;
   background: rgba(255, 255, 255, .026);
   border-color: rgba(139, 124, 246, .12);
-}
-
-.workspace-path-button:not(:disabled):active {
-  transform: translateY(1px);
 }
 
 .workspace-path-button:disabled {
@@ -303,7 +299,7 @@
 
 .thread-status-chip.working .thread-status-orb,
 .thread-status-chip.connecting .thread-status-orb {
-  animation: header-state-breathe 1.8s ease-in-out infinite;
+  animation: header-state-breathe var(--loom-period-breathe) ease-in-out infinite;
 }
 
 .thread-header-meta {
@@ -441,10 +437,10 @@
   overflow: visible;
 }
 
-/* Context controls may be supplied by runtime-specific header extensions.
-   These selectors intentionally key off "context" so unrelated header buttons
-   and menus are left alone. */
-.thread-header [class*="context"][aria-expanded] {
+/* The context meter's chip: it rises above its neighbours while its panel is open. (These rules used to key off
+   [class*="context"]; a substring of the class attribute makes every class change re-style the whole subtree
+   below it, see theme.css.) */
+.thread-header .context-meter-chip[aria-expanded] {
   position: relative;
   z-index: 4;
   transform-origin: center;
@@ -456,69 +452,19 @@
     transform var(--loom-dur-fast) var(--loom-ease-out);
 }
 
-.thread-header [class*="context"][aria-expanded="true"] {
+.thread-header .context-meter-chip[aria-expanded="true"] {
   transform: none;
 }
 
-.thread-header [class*="context"][role="dialog"]:not(.context-meter-panel),
-.thread-header [class*="context"][role="menu"]:not(.context-meter-panel) {
-  position: absolute;
-  z-index: 90;
-  transform-origin: top right;
-  animation: header-context-popover-in var(--loom-dur-fast) var(--loom-ease-out) both;
-  will-change: opacity, transform;
-}
-
-.thread-header [class*="context"].closing,
-.thread-header [class*="context"].is-closing,
-.thread-header [class*="context"][data-state="closed"] {
-  pointer-events: none;
-  animation: header-context-popover-out var(--loom-dur-fast-out) var(--loom-ease-inout) both;
-}
-
-@keyframes header-context-popover-in {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
-}
-
-@keyframes header-context-popover-out {
-  from {
-    opacity: 1;
-  }
-  to {
-    opacity: 0;
-  }
-}
-
-/* Light-theme context window: a quiet floating card rather than another
-   heavy toolbar surface. */
-html[data-loom-theme="light"] .thread-header [class*="context"][role="dialog"]:not(.context-meter-panel),
-html[data-loom-theme="light"] .thread-header [class*="context"][role="menu"]:not(.context-meter-panel) {
-  border-color: rgba(28,31,37,.10) !important;
-  background:
-    radial-gradient(120% 80% at 82% -12%, rgba(105,90,216,.065), transparent 52%),
-    linear-gradient(180deg, rgba(255,255,255,.985), rgba(247,248,250,.985)) !important;
-  color: #30363e;
-  box-shadow:
-    0 22px 58px rgba(27,31,40,.14),
-    0 7px 22px rgba(27,31,40,.07),
-    inset 0 1px rgba(255,255,255,.94) !important;
-  backdrop-filter: blur(18px) saturate(112%);
-}
-
-html[data-loom-theme="light"] .thread-header [class*="context"][aria-expanded] {
+html[data-loom-theme="light"] .thread-header .context-meter-chip[aria-expanded] {
   border-color: rgba(28,31,37,.085);
   background: rgba(255,255,255,.72);
   color: #59626d;
   box-shadow: inset 0 1px rgba(255,255,255,.92);
 }
 
-html[data-loom-theme="light"] .thread-header [class*="context"][aria-expanded]:hover,
-html[data-loom-theme="light"] .thread-header [class*="context"][aria-expanded="true"] {
+html[data-loom-theme="light"] .thread-header .context-meter-chip[aria-expanded]:hover,
+html[data-loom-theme="light"] .thread-header .context-meter-chip[aria-expanded="true"] {
   border-color: rgba(105,90,216,.20);
   background: #fff;
   color: #4f44ae;
@@ -528,17 +474,13 @@ html[data-loom-theme="light"] .thread-header [class*="context"][aria-expanded="t
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .thread-header [class*="context"][aria-expanded],
-  .thread-header [class*="context"][role="dialog"]:not(.context-meter-panel),
-  .thread-header [class*="context"][role="menu"]:not(.context-meter-panel) {
+  .thread-header .context-meter-chip[aria-expanded] {
     animation: none !important;
     transition-duration: .001ms !important;
   }
 }
 
-html[data-loom-reduced-motion="true"] .thread-header [class*="context"][aria-expanded],
-html[data-loom-reduced-motion="true"] .thread-header [class*="context"][role="dialog"]:not(.context-meter-panel),
-html[data-loom-reduced-motion="true"] .thread-header [class*="context"][role="menu"]:not(.context-meter-panel) {
+html[data-loom-reduced-motion="true"] .thread-header .context-meter-chip[aria-expanded] {
   animation: none !important;
   transition-duration: .001ms !important;
 }

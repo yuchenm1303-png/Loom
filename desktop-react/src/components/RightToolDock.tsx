@@ -9,6 +9,7 @@ import {
 } from "./icons";
 import { useI18n } from "../i18n";
 import { normalizeShortcut } from "../keyboardShortcuts";
+import { DUR, RETAIN, SPRING } from "../motion/tokens";
 import { useMotionPresence } from "../motion/useMotionPresence";
 import { useReducedMotion } from "../motion/useReducedMotion";
 import "./right-tool-dock.css";
@@ -27,12 +28,10 @@ const toolGroup = (id: DockId) => ["profile", "account", "settings"].includes(id
 /** Pointer travel before a press becomes a drag, so a click with a shaky hand is still a click. */
 const DRAG_THRESHOLD = 4;
 /** How long a lifted tool takes to settle into its slot, in step with `--dock-settle` in the stylesheet. */
-const SETTLE_MS = 300;
+const SETTLE_MS = DUR.flow;
 /** A tooltip waits for a pointer that rests; one that is already open follows it at once. */
 const TIP_DELAY = 360;
 const TIP_WARM = 320;
-/** The spring the stylesheet calls `--dock-spring` (zeta .86, settles in .36 s), for the reorder the keyboard makes. */
-const SPRING = "linear(0, 0.028 3.8%, 0.097 7.7%, 0.189 11.5%, 0.291 15.4%, 0.393 19.2%, 0.491 23.1%, 0.581 26.9%, 0.661 30.8%, 0.73 34.6%, 0.789 38.5%, 0.838 42.3%, 0.878 46.2%, 0.91 50%, 0.936 53.8%, 0.956 57.7%, 0.971 61.5%, 0.982 65.4%, 0.99 69.2%, 0.996 73.1%, 1 76.9%, 1.002 80.8%, 1.004 84.6%, 1.005 88.5%, 1.005 92.3%, 1.005 96.2%, 1)";
 
 function readOrder(): DockId[] {
   try {
@@ -131,7 +130,7 @@ export function RightToolDock(props: RightToolDockProps) {
   const { language } = useI18n();
   const zh = language === "zh-CN";
   const reduce = useReducedMotion();
-  const presence = useMotionPresence(!props.hidden, 200);
+  const presence = useMotionPresence(!props.hidden, RETAIN.fast);
   const [order, setOrder] = useState(readOrder);
   const [hoverId, setHoverId] = useState<DockId | null>(null);
   const [focusId, setFocusId] = useState<DockId | null>(null);
@@ -479,7 +478,7 @@ export function RightToolDock(props: RightToolDockProps) {
       const id = node.dataset.slotId as DockId;
       const delta = (before.get(id) ?? NaN) - (after.get(id) ?? NaN);
       if (!Number.isFinite(delta) || Math.abs(delta) < 0.5) return;
-      node.animate([{ transform: `translateY(${delta}px)` }, { transform: "translateY(0)" }], { duration: 340, easing: SPRING });
+      node.animate([{ transform: `translateY(${delta}px)` }, { transform: "translateY(0)" }], { duration: DUR.flow, easing: SPRING.settle });
     });
   }, [order]);
 

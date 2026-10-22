@@ -37,7 +37,7 @@
 .general-heading-status.running > i {
   background: #a79df3;
   box-shadow: 0 0 0 4px rgba(139,124,246,.09), 0 0 14px rgba(139,124,246,.22);
-  animation: general-status-breathe 1.8s ease-in-out infinite;
+  animation: general-status-breathe var(--loom-period-breathe) ease-in-out infinite;
 }
 
 .general-overview-card {
@@ -187,7 +187,6 @@ button.general-default-card {
 }
 
 button.general-default-card:hover {
-  transform: translateY(-1px);
   border-color: rgba(139,124,246,.20);
   background:
     linear-gradient(180deg, rgba(139,124,246,.052), rgba(255,255,255,.012)),
@@ -478,7 +477,6 @@ button.general-default-card:hover .general-default-card-head > svg:last-child {
 }
 
 .general-quick-card:hover {
-  transform: translateY(-1px);
   border-color: rgba(139,124,246,.18);
   background: rgba(139,124,246,.045);
 }

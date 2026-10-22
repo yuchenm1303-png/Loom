@@ -82,7 +82,7 @@
 }
 .runtime-health.live .runtime-health-dot {
   background: var(--pl-accent);
-  animation: runtime-pulse 1.9s ease-out infinite;
+  animation: runtime-pulse var(--loom-period-breathe) ease-out infinite;
 }
 .runtime-health.warning {
   color: var(--pl-danger);
@@ -117,7 +117,6 @@
   cursor: pointer;
 }
 .runtime-tab:hover { color: #abb1bc; }
-.runtime-tab:active { transform: scale(.975); }
 .runtime-tab.active {
   background: transparent;
   color: #cbd0da;
@@ -348,7 +347,6 @@
 .runtime-event:hover .runtime-event-icon {
   color: #a8afba;
   border-color: #323744;
-  transform: translateY(-1px);
 }
 .runtime-event.is-running .runtime-event-icon {
   color: #a69df2;
@@ -398,7 +396,7 @@
 .runtime-status-dot.status-waiting_approval {
   background: #9b91ef;
   box-shadow: 0 0 0 3px rgba(139,124,246,.09);
-  animation: runtime-pulse 1.9s ease-out infinite;
+  animation: runtime-pulse var(--loom-period-breathe) ease-out infinite;
 }
 .runtime-status-dot.status-completed,
 .runtime-status-dot.status-success,

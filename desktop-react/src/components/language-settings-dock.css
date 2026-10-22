@@ -158,10 +158,6 @@
   color: var(--language-hover);
 }
 
-.language-settings-options button:active {
-  transform: scale(.93);
-}
-
 .language-settings-options button.active {
   color: var(--language-active);
   text-shadow: 0 0 10px rgba(151,130,255,.18);

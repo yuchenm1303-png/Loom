@@ -30,6 +30,17 @@ and `LOOM_TEST_ORIGIN` for a Vite dev server serving `desktop-react` (the `motio
 | `state-audit.mjs <url> [--scene home\|settings\|composer\|menu] [--states hover,focus,active] [--theme]` | Controls that change look on hover, focus or press without a transition (forces the pseudo-state through the DevTools protocol and reads computed style before and after). Focus rings appearing at once are right; borders derived from `currentColor` are false positives. |
 | `fuzz.mjs <url> [from] [to] [--speed 4] [--parallel 3] [--theme dark\|light]` | Seeded random runs of the live-app `fuzz` scenario (stages, notes, approvals, parallel calls, failures; endings: answer, error, stop, a decision card), each checked: no page error, nothing left live or running, the process folded, the view on the live edge and only ever moving toward it while following, no infinite animation left, the typing glow out, no DOM growth. A failing seed replays alone (`from = to`, or `?scenario=fuzz&seed=N`). |
 
+## Feel
+
+How an interaction answers the hand rather than what it runs: written up in `docs/motion-feel-2026-10-21.md`, guarded
+by `tests/test_motion_feel_contract.py` and `scripts/tests/motion-language-browser.mjs`.
+
+| Script | What it answers |
+| --- | --- |
+| `feel.mjs <origin> [--only a,b] [--theme] [--json out.json]` and `feel-electron.mjs` (`FEEL_ORIGIN=… [FEEL_ONLY=…] [FEEL_OUT=…] electron feel-electron.mjs`) | For each common interaction (popovers and menus, folds, the sidebar and every dock, settings, the background palette, and round trips where a second input lands mid-motion): ms from the input to the first frame that changes, to half way and to 90%, the largest one-frame step, and for round trips how the motion turns around. `feel-lib.mjs` holds the sampler, the interactions and the analysis. The Electron runner is the one to quote: a real window, the GPU and the display's refresh rate, the fixture built for production; headless Chrome paints in software and is good for shapes, not milliseconds. `feel-compare.mjs before.json after.json` puts two runs side by side. |
+| `toggle-cost.mjs <origin> [--n 5] [--why] [--only sidebar,inspector,review]` | What one panel toggle costs the main thread before anything can move (script, style, layout, median of n), and how many elements each style recalc of a traced toggle touched against the size of the document. `--why` lists the invalidations of the first big recalc; "WHOLE SUBTREE" next to a class change means a selector made it re-style everything below (that is how the class-substring selectors and the inherited dock tracks were found). |
+| `press-sheet.mjs <origin> <out.png> [--theme]` | A contact sheet of controls at rest, under the pointer and pressed (states forced through the DevTools protocol): rows, chips, icon buttons, menu items, cards, a dock's close button, settings. What `motion/press.css` draws. |
+
 What they found, and what was done about it, is written up in
 `docs/runtime-motion-thread-2026-10-10.md` (the work log) and `docs/runtime-motion-pass-2026-10-11.md` (the whole
 pass: ornament cost, follow spring, streaming text, completion, the decision card, fonts).

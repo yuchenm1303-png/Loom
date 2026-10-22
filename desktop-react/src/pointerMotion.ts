@@ -1,4 +1,5 @@
 import "./pointer-motion.css";
+import { onReducedMotionChange, prefersReducedMotionNow } from "./motion/useReducedMotion";
 
 // Native frames keep the OS-controlled hotspot at (0, 0). No following DOM
 // layer, positional easing, or character transforms are involved.
@@ -7,7 +8,6 @@ const assets = Object.entries(import.meta.glob<string>("./assets/cursor-motion/*
 })).map(([path, src]) => ({ src, scale: Number(/@([\d.]+)x\.png$/.exec(path)?.[1] ?? 1) }));
 const scales = [1, 1.5, 2, 3];
 const root = document.documentElement;
-const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)");
 const finePointer = matchMedia("(any-pointer: fine)");
 const images = new Map<string, HTMLImageElement>();
 let resolution: MediaQueryList | undefined;
@@ -35,7 +35,7 @@ function selectTarget(event: PointerEvent) {
 
 function allowed() {
   return ready && inside && !!frameTarget && !document.hidden && finePointer.matches
-    && !reducedMotion.matches && root.dataset.loomReducedMotion !== "true"
+    && !prefersReducedMotionNow()
     && !root.classList.contains("loom-liquid-cursor-active");
 }
 function setFrame(name = "") {
@@ -140,7 +140,7 @@ window.addEventListener("pointerup", onUp, { capture: true, passive: true });
 window.addEventListener("pointercancel", onCancel);
 window.addEventListener("blur", onBlur);
 document.addEventListener("visibilitychange", onBlur);
-reducedMotion.addEventListener("change", onPreferences);
+const stopWatchingMotion = onReducedMotionChange(onPreferences);
 finePointer.addEventListener("change", onPreferences);
 void preload();
 
@@ -149,7 +149,7 @@ if (import.meta.hot) import.meta.hot.dispose(() => {
   reset();
   observer.disconnect();
   resolution?.removeEventListener("change", preload);
-  reducedMotion.removeEventListener("change", onPreferences);
+  stopWatchingMotion();
   finePointer.removeEventListener("change", onPreferences);
   document.removeEventListener("pointermove", onMove);
   document.removeEventListener("pointerover", onOver);

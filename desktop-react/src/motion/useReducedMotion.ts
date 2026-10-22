@@ -25,6 +25,11 @@ export function prefersReducedMotionNow(): boolean {
   return snapshot();
 }
 
+/** Call `listener` whenever either preference changes (the system's or the in-app setting); returns the unsubscribe. */
+export function onReducedMotionChange(listener: () => void): () => void {
+  return subscribe(listener);
+}
+
 function subscribe(listener: () => void): () => void {
   listeners.add(listener);
   if (!disconnect) {

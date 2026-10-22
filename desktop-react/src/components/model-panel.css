@@ -82,7 +82,6 @@
 
 .model-manager-actions > button:hover:not(:disabled),
 .model-wide-action:hover:not(:disabled) {
-  transform: translateY(-1px);
   border-color: rgba(117,123,139,.38);
   background: rgba(255,255,255,.03);
   color: #c0c5ce;
@@ -367,11 +366,6 @@
 .model-home-action:hover:not(:disabled) {
   background: rgba(255,255,255,.032);
   color: #a8afba;
-  transform: translateX(1px);
-}
-
-.model-home-action:active:not(:disabled) {
-  transform: translateX(1px) scale(.995);
 }
 
 .model-home-action:disabled {

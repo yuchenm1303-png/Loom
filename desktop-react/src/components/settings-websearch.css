@@ -212,7 +212,6 @@
 }
 
 .websearch-choice:hover:not(:disabled) {
-  transform: translateY(-1px);
   border-color: color-mix(in srgb, var(--accent) 24%, var(--border-strong));
   background: var(--panel-hover);
   box-shadow: 0 9px 22px color-mix(in srgb, #000 7%, transparent), inset 0 1px color-mix(in srgb, #fff 3%, transparent);

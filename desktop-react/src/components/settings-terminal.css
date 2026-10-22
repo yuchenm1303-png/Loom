@@ -170,10 +170,6 @@
   border-color: rgba(255,255,255,.12);
 }
 
-.skills-install-grid button:active {
-  transform: none;
-}
-
 .skills-install-grid button svg {
   grid-row: 1 / span 2;
   align-self: center;

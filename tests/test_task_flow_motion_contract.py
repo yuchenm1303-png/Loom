@@ -216,7 +216,8 @@ def test_completed_process_fold_keeps_intrinsic_geometry_stable() -> None:
     closed_transition = source.index(".turn-process.is-settled .turn-process-grid {")
     open_transition = source.index(".turn-process.is-settled.is-open .turn-process-grid {")
     assert closed_transition < open_transition
-    assert "opacity var(--loom-dur-fast) ease 64ms" in source[closed_transition:open_transition]
+    # Closing answers on the frame of the click: the words go on the exit step while the track folds.
+    assert "opacity var(--loom-dur-fast-out) var(--loom-ease-exit)" in source[closed_transition:open_transition]
 
 
 def test_jump_to_latest_reuses_owned_follow_scheduler() -> None:

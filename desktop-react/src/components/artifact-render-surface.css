@@ -111,7 +111,6 @@
 }
 
 .artifact-inline-expand:hover {
-  transform: translateY(-1px);
   background: rgba(250,250,252,.96);
 }
 

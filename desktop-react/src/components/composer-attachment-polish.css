@@ -157,10 +157,6 @@
   color: #cfd3da;
 }
 
-.composer-attachment button:active {
-  transform: scale(.92);
-}
-
 .composer-attachment.is-blocked:has(> svg)::before {
   border-color: rgba(224, 142, 151, .22);
   background-color: rgba(224, 142, 151, .08);

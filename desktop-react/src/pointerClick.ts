@@ -1,4 +1,5 @@
 import "./pointer-click.css";
+import { onReducedMotionChange, prefersReducedMotionNow } from "./motion/useReducedMotion";
 
 const ripples = new Map<HTMLElement, Animation>();
 let layer: HTMLDivElement | null = null;
@@ -13,8 +14,7 @@ function clear() {
 
 function onPointerDown(event: PointerEvent) {
   if (event.button !== 0 || !event.isPrimary || event.pointerType === "touch"
-    || document.hidden || document.documentElement.dataset.loomReducedMotion === "true"
-    || window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;
+    || document.hidden || prefersReducedMotionNow()) return;
 
   if (!layer) {
     layer = document.createElement("div");
@@ -43,12 +43,9 @@ function onPointerDown(event: PointerEvent) {
   void animation.finished.then(remove, remove);
 }
 
-const media = window.matchMedia?.("(prefers-reduced-motion: reduce)");
-const observer = new MutationObserver(() => {
-  if (document.documentElement.dataset.loomReducedMotion === "true") clear();
+const stopWatchingMotion = onReducedMotionChange(() => {
+  if (prefersReducedMotionNow()) clear();
 });
-observer.observe(document.documentElement, { attributes: true, attributeFilter: ["data-loom-reduced-motion"] });
-media?.addEventListener("change", clear);
 document.addEventListener("pointerdown", onPointerDown, { capture: true, passive: true });
 document.addEventListener("visibilitychange", clear);
 window.addEventListener("blur", clear);
@@ -56,8 +53,7 @@ window.addEventListener("blur", clear);
 if (import.meta.hot) import.meta.hot.dispose(() => {
   clear();
   layer?.remove();
-  observer.disconnect();
-  media?.removeEventListener("change", clear);
+  stopWatchingMotion();
   document.removeEventListener("pointerdown", onPointerDown, true);
   document.removeEventListener("visibilitychange", clear);
   window.removeEventListener("blur", clear);

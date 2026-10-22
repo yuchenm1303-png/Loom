@@ -352,11 +352,6 @@ button.general-default-card:hover .general-default-card-head > svg:last-child,
   border-color: rgba(255, 255, 255, 0.12);
 }
 
-.mature-action-button:active:not(:disabled),
-.mature-model-card button:active:not(:disabled) {
-  transform: none;
-}
-
 .mature-action-button:disabled,
 .mature-model-card button:disabled {
   opacity: 0.48;
@@ -461,10 +456,6 @@ button.general-default-card:hover .general-default-card-head > svg:last-child,
   border-color: rgba(154, 140, 255, 0.52);
   background-color: #17191f;
   box-shadow: 0 0 0 3px rgba(154, 140, 255, 0.085);
-}
-
-.mature-select:active {
-  background-color: #1a1c22;
 }
 
 .mature-select:disabled {

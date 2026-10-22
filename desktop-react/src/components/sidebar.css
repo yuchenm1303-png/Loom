@@ -745,7 +745,7 @@ html[data-loom-theme="light"] .compact-thread-row.is-waiting-approval {
   border: 1.5px solid color-mix(in srgb, currentColor 22%, transparent);
   border-top-color: currentColor;
   border-radius: 50%;
-  animation: li-spin 1.8s linear infinite;
+  animation: li-spin var(--loom-period-breathe) linear infinite;
 }
 
 .compact-thread-row.is-paused .compact-thread-status-mark {
@@ -989,7 +989,14 @@ html[data-loom-theme="light"] .sidebar-notice.error { color: #b23a48; }
   color: var(--menu-ink);
   font-family: var(--loom-font-family);
   transform-origin: 0 0;
-  animation: thread-menu-in var(--loom-dur-fast) var(--loom-ease-out) both;
+  transition: opacity var(--loom-dur-fast) var(--loom-ease-out);
+}
+
+/* Readable at once (.72 on the frame it opens); a transition, so closing it while it arrives turns it around. */
+@starting-style {
+  .thread-context-menu {
+    opacity: .72;
+  }
 }
 
 html[data-loom-theme="light"] .thread-context-menu {
@@ -1012,7 +1019,9 @@ html[data-loom-theme="light"] .thread-context-menu {
 
 .thread-context-menu.is-closing {
   pointer-events: none;
-  animation: thread-menu-out var(--loom-dur-fast-out) var(--loom-ease-in) both;
+  opacity: 0;
+  transition-duration: var(--loom-dur-fast-out);
+  transition-timing-function: var(--loom-ease-exit);
 }
 
 .thread-context-menu > button {
@@ -1097,7 +1106,14 @@ html[data-loom-theme="light"] .thread-context-menu {
   display: grid;
   gap: 1px;
   background: var(--menu-well);
-  animation: thread-project-submenu-in var(--loom-dur-fast) var(--loom-ease-out) both;
+  transition: opacity var(--loom-dur-fast) var(--loom-ease-out);
+}
+
+@starting-style {
+  .thread-copy-submenu,
+  .thread-project-submenu {
+    opacity: 0;
+  }
 }
 
 .thread-project-submenu {
@@ -1195,18 +1211,6 @@ html[data-loom-theme="light"] .thread-context-menu {
   from { opacity: 0; }
 }
 
-@keyframes thread-menu-in {
-  from { opacity: .72; }
-}
-
-@keyframes thread-menu-out {
-  to { opacity: 0; }
-}
-
-@keyframes thread-project-submenu-in {
-  from { opacity: 0; }
-}
-
 :root[data-loom-reduced-motion="true"] :is(.compact-sidebar, .thread-context-menu),
 :root[data-loom-reduced-motion="true"] :is(.compact-sidebar, .thread-context-menu) *,
 :root[data-loom-reduced-motion="true"] :is(.compact-sidebar, .thread-context-menu) *::before,
@@ -1246,7 +1250,7 @@ html[data-loom-theme="light"] .thread-context-menu {
   border-radius: 6px;
   background: var(--sb-ink-3);
   opacity: .12;
-  animation: compact-sidebar-skeleton-pulse 1.3s ease-in-out infinite alternate;
+  animation: compact-sidebar-skeleton-pulse var(--loom-period-skeleton) ease-in-out infinite alternate;
 }
 
 @keyframes compact-sidebar-skeleton-pulse {

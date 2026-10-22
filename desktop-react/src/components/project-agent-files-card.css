@@ -60,7 +60,6 @@
   color: #f2f3f7;
   border-color: rgba(169, 157, 255, .22);
   background: rgba(139, 124, 246, .09);
-  transform: translateY(-1px);
 }
 
 .project-agent-file-tabs svg {

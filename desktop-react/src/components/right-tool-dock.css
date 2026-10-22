@@ -22,12 +22,12 @@
   --dock-shadow: 0 6px 18px rgba(0, 0, 0, .2), 0 1px 2px rgba(0, 0, 0, .16);
   --dock-tip-shadow: 0 10px 28px rgba(0, 0, 0, .34), 0 1px 3px rgba(0, 0, 0, .22);
   --dock-lift-shadow: 0 8px 20px rgba(0, 0, 0, .38), 0 1px 3px rgba(0, 0, 0, .3);
-  --dock-settle: 300ms;
-  /* Springs (scripts/motion-lab/icon-spring.mjs): glide = zeta .86 in .36 s (RightToolDock.tsx keeps a copy for the
-     keyboard's reorder), pop = zeta .52 in .46 s, ease = zeta .9 in .3 s. */
-  --dock-spring: linear(0, 0.028 3.8%, 0.097 7.7%, 0.189 11.5%, 0.291 15.4%, 0.393 19.2%, 0.491 23.1%, 0.581 26.9%, 0.661 30.8%, 0.73 34.6%, 0.789 38.5%, 0.838 42.3%, 0.878 46.2%, 0.91 50%, 0.936 53.8%, 0.956 57.7%, 0.971 61.5%, 0.982 65.4%, 0.99 69.2%, 0.996 73.1%, 1 76.9%, 1.002 80.8%, 1.004 84.6%, 1.005 88.5%, 1.005 92.3%, 1.005 96.2%, 1);
-  --dock-pop: linear(0, 0.058 3.3%, 0.202 6.7%, 0.388 10%, 0.582 13.3%, 0.761 16.7%, 0.91 20%, 1.021 23.3%, 1.095 26.7%, 1.135 30%, 1.148 33.3%, 1.14 36.7%, 1.119 40%, 1.092 43.3%, 1.063 46.7%, 1.037 50%, 1.014 53.3%, 0.998 56.7%, 0.986 60%, 0.98 63.3%, 0.978 66.7%, 0.979 70%, 0.982 73.3%, 0.986 76.7%, 0.99 80%, 0.994 83.3%, 0.998 86.7%, 1 90%, 1.002 93.3%, 1.003 96.7%, 1);
-  --dock-ease: linear(0, 0.035 4.5%, 0.118 9.1%, 0.224 13.6%, 0.337 18.2%, 0.447 22.7%, 0.548 27.3%, 0.637 31.8%, 0.714 36.4%, 0.778 40.9%, 0.83 45.5%, 0.872 50%, 0.905 54.5%, 0.931 59.1%, 0.951 63.6%, 0.966 68.2%, 0.977 72.7%, 0.985 77.3%, 0.991 81.8%, 0.995 86.4%, 0.998 90.9%, 0.999 95.5%, 1);
+  /* Motion is written on the shared scale (motion-tokens.css): the glider and a carried tool settle on
+     --loom-spring-settle (it was this dock's own glide spring, zeta .86), what is born pops on --loom-spring-pop,
+     what travels in glides; a set-down tool settles on the flow step (RightToolDock.tsx waits DUR.flow for it). */
+  --dock-settle: var(--loom-dur-flow);
+  /* The tools arrive one after another, half the scale's stagger apart: a dock is a short list. */
+  --dock-stagger: calc(var(--loom-stagger) / 2);
 
   grid-column: 4;
   grid-row: 1;
@@ -80,23 +80,31 @@ html[data-loom-theme="light"] .loom-tool-rail {
   pointer-events: auto;
   /* A carry drags across the page: nothing under it should be selected on the way. */
   user-select: none;
-  transition: opacity 260ms var(--loom-ease-out, ease), translate 420ms var(--dock-ease);
+  transition: opacity var(--loom-dur-base) var(--loom-ease-out), translate var(--loom-dur-panel) var(--loom-ease-glide);
 }
 
 /* Arriving and leaving (settings and the profile page cover the app): the capsule slides in from its edge and the tools
    follow it one after another; leaving is one quick fade. */
-.loom-tool-rail[data-motion-phase="entering"] .loom-tool-dock,
 .loom-tool-rail[data-motion-phase="exiting"] .loom-tool-dock {
   opacity: 0;
   translate: 12px 0;
 }
+@starting-style {
+  .loom-tool-rail[data-motion-phase="entered"] .loom-tool-dock {
+    opacity: 0;
+    translate: 12px 0;
+  }
+}
 .loom-tool-rail[data-motion-phase="exiting"] .loom-tool-dock {
   pointer-events: none;
-  transition-duration: 180ms, 220ms;
+  transition-duration: var(--loom-dur-fast-out);
+  transition-timing-function: var(--loom-ease-exit);
 }
-.loom-tool-rail[data-motion-phase="entering"] .loom-tool-position {
-  opacity: 0;
-  translate: 0 8px;
+@starting-style {
+  .loom-tool-rail[data-motion-phase="entered"] .loom-tool-position {
+    opacity: 0;
+    translate: 0 8px;
+  }
 }
 
 .loom-tool-position {
@@ -108,9 +116,9 @@ html[data-loom-theme="light"] .loom-tool-rail {
   padding: 1px 0;
   transform: translateY(calc(var(--shift, 0px) + var(--drag-y, 0px)));
   transition:
-    transform var(--dock-settle) var(--dock-spring),
-    opacity 300ms var(--loom-ease-out, ease) calc(var(--i, 0) * 22ms),
-    translate 460ms var(--dock-ease) calc(var(--i, 0) * 22ms);
+    transform var(--dock-settle) var(--loom-spring-settle),
+    opacity var(--loom-dur-flow) var(--loom-ease-out) calc(var(--i, 0) * var(--dock-stagger)),
+    translate var(--loom-dur-panel) var(--loom-ease-glide) calc(var(--i, 0) * var(--dock-stagger));
 }
 .loom-tool-position[data-disabled="true"] { cursor: not-allowed; }
 
@@ -136,12 +144,12 @@ html[data-loom-theme="light"] .loom-tool-rail {
   opacity: 0;
   transform: translateY(var(--glide-y, 0px));
   transition:
-    transform 360ms var(--dock-spring),
-    opacity 160ms ease;
+    transform var(--loom-dur-panel) var(--loom-spring-settle),
+    opacity var(--loom-dur-fast) ease;
   pointer-events: none;
 }
 .loom-tool-glider[data-on="true"] { opacity: 1; }
-.loom-tool-glider[data-park="true"] { transition-property: opacity; transition-duration: 160ms; }
+.loom-tool-glider[data-park="true"] { transition-property: opacity; transition-duration: var(--loom-dur-fast); }
 .loom-tool-dock[data-dragging] .loom-tool-glider { opacity: 0; }
 
 .loom-tool-button {
@@ -158,7 +166,7 @@ html[data-loom-theme="light"] .loom-tool-rail {
   border: 0;
   border-radius: var(--dock-inner);
   cursor: pointer;
-  transition: color 160ms ease, opacity 220ms ease, scale 280ms var(--dock-pop), box-shadow 220ms ease, background-color 220ms ease;
+  transition: color var(--loom-dur-fast) ease, opacity var(--loom-dur-base) ease, scale var(--loom-dur-flow) var(--loom-spring-pop), box-shadow var(--loom-dur-base) ease, background-color var(--loom-dur-base) ease;
 }
 .loom-tool-button > svg,
 .loom-tool-button > img {
@@ -195,7 +203,7 @@ html[data-loom-theme="light"] .loom-tool-rail {
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--dock-accent) 22%, transparent);
   opacity: 0;
   scale: .78;
-  transition: opacity 160ms ease, scale 380ms var(--dock-pop);
+  transition: opacity var(--loom-dur-fast) ease, scale var(--loom-dur-panel) var(--loom-spring-pop);
 }
 .loom-tool-button::after {
   content: "";
@@ -209,7 +217,7 @@ html[data-loom-theme="light"] .loom-tool-rail {
   background: var(--dock-accent);
   opacity: 0;
   scale: 1 .3;
-  transition: opacity 160ms ease, scale 380ms var(--dock-pop);
+  transition: opacity var(--loom-dur-fast) ease, scale var(--loom-dur-panel) var(--loom-spring-pop);
 }
 .loom-tool-button.is-active { color: var(--dock-accent); }
 .loom-tool-button.is-active:hover:not(:disabled),
@@ -225,13 +233,13 @@ html[data-loom-theme="light"] .loom-tool-rail {
   object-fit: cover;
   opacity: .92;
   box-shadow: 0 0 0 1px var(--loom-workspace-line, rgba(224, 230, 242, .12));
-  transition: opacity 160ms ease;
+  transition: opacity var(--loom-dur-fast) ease;
 }
 .loom-tool-button:hover > .loom-tool-avatar { opacity: 1; }
 
 /* Carried: lifted off the dock, the others make room (their shift is a transition of its own). */
 .loom-tool-position.is-lifted { z-index: 4; }
-.loom-tool-dock[data-dragging="true"] .loom-tool-position.is-lifted { transition-duration: 0s, 300ms, 460ms; }
+.loom-tool-dock[data-dragging="true"] .loom-tool-position.is-lifted { transition-duration: 0s, var(--loom-dur-flow), var(--loom-dur-panel); }
 .loom-tool-dock[data-dragging="true"] .loom-tool-position.is-lifted .loom-tool-button {
   scale: 1.07;
   background: color-mix(in srgb, var(--dock-surface) 86%, var(--dock-ink-lit));
@@ -263,7 +271,7 @@ html[data-loom-theme="light"] .loom-tool-rail {
   border-radius: inherit;
   background: var(--dock-accent);
   transform-origin: left center;
-  transition: transform 280ms var(--dock-spring);
+  transition: transform var(--loom-dur-flow) var(--loom-spring-settle);
 }
 .loom-tool-progress[data-complete="true"] > span { background: var(--dock-ok); }
 
@@ -279,7 +287,7 @@ html[data-loom-theme="light"] .loom-tool-rail {
   box-shadow: 0 0 0 2px var(--dock-notch, var(--dock-surface));
   opacity: 0;
   scale: .3;
-  transition: opacity 160ms ease, scale 420ms var(--dock-pop), box-shadow 160ms ease;
+  transition: opacity var(--loom-dur-fast) ease, scale var(--loom-dur-panel) var(--loom-spring-pop), box-shadow var(--loom-dur-fast) ease;
 }
 /* The notch is the colour the tool sits on, so a dot on a lit or an open tile is cut out of that tile. */
 .loom-tool-button:hover:not(:disabled),
@@ -301,7 +309,7 @@ html[data-loom-theme="light"] .loom-tool-rail {
   inset: 0;
   border-radius: 50%;
   background: inherit;
-  animation: loom-tool-ping 2200ms var(--loom-ease-out, ease-out) 2 both;
+  animation: loom-tool-ping var(--loom-period-breathe) var(--loom-ease-out) 2 both;
 }
 @keyframes loom-tool-ping {
   from { opacity: .55; transform: scale(1); }
@@ -333,10 +341,10 @@ html[data-loom-theme="light"] .loom-tool-rail {
   translate: 6px 0;
   transform: translateY(calc(var(--tip-y, 0px) - 50%));
   transition:
-    opacity 110ms ease,
-    translate 220ms var(--dock-ease),
-    transform 260ms var(--dock-ease),
-    visibility 0s linear 110ms;
+    opacity var(--loom-dur-fast-out) ease,
+    translate var(--loom-dur-base) var(--loom-ease-glide),
+    transform var(--loom-dur-base) var(--loom-ease-glide),
+    visibility 0s linear var(--loom-dur-fast-out);
 }
 .loom-tool-tip[data-on="true"] {
   opacity: 1;
@@ -345,9 +353,9 @@ html[data-loom-theme="light"] .loom-tool-rail {
   transition-delay: 0s;
 }
 .loom-tool-tip[data-park="true"] {
-  transition: opacity 110ms ease, translate 220ms var(--dock-ease), visibility 0s linear 110ms;
+  transition: opacity var(--loom-dur-fast) ease, translate var(--loom-dur-base) var(--loom-ease-glide), visibility 0s linear var(--loom-dur-fast-out);
 }
-.loom-tool-tip[data-park="true"][data-on="true"] { transition: opacity 110ms ease, translate 220ms var(--dock-ease); }
+.loom-tool-tip[data-park="true"][data-on="true"] { transition: opacity var(--loom-dur-fast) ease, translate var(--loom-dur-base) var(--loom-ease-glide); }
 .loom-tool-tip::after {
   content: "";
   position: absolute;
@@ -366,7 +374,7 @@ html[data-loom-theme="light"] .loom-tool-rail {
   display: flex;
   align-items: center;
   gap: 10px;
-  animation: loom-tool-tip-swap 160ms var(--loom-ease-out, ease-out) both;
+  animation: loom-tool-tip-swap var(--loom-dur-fast) var(--loom-ease-out) both;
 }
 @keyframes loom-tool-tip-swap { from { opacity: 0; } }
 .loom-tool-tip-text { display: grid; gap: 2px; }

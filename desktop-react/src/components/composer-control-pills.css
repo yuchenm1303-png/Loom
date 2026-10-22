@@ -45,7 +45,6 @@
 }
 
 .composer .composer-chip:hover:not(:disabled) {
-  transform: translateY(-1px);
   border-color: rgba(139,124,246,.14);
   background:
     linear-gradient(180deg, rgba(139,124,246,.060), rgba(139,124,246,.025));
@@ -61,9 +60,7 @@
 }
 
 .composer .composer-chip:active:not(:disabled) {
-  transform: translateY(0) scale(.972);
   box-shadow: inset 0 1px 3px rgba(0,0,0,.13);
-  transition-duration: var(--loom-dur-press);
 }
 
 .composer .composer-chip:focus-visible {
@@ -161,7 +158,6 @@ html[data-loom-theme="light"] .composer .composer-chip > svg:not(.composer-chip-
 }
 
 html[data-loom-theme="light"] .composer .composer-chip:hover:not(:disabled) {
-  transform: translateY(-1px);
   color: #343a43;
   border-color: rgba(105,90,216,.16);
   background:
@@ -348,8 +344,6 @@ html[data-loom-theme="light"] .composer .model-chip > span {
 
 .composer .composer-tool:active:not(:disabled),
 .composer .composer-chip:active:not(:disabled) {
-  transform: none;
-  background: rgba(255,255,255,.042);
   box-shadow: none;
 }
 
@@ -583,7 +577,6 @@ html[data-loom-theme="light"] .composer .composer-chip-chevron {
     inset 0 0 0 1px rgba(var(--composer-accent-rgb), .09),
     inset 0 1px rgba(255,255,255,.04),
     0 2px 7px rgba(var(--composer-accent-rgb), .08);
-  transform: translateY(-.55px);
 }
 
 .composer .composer-tool:hover:not(:disabled) .composer-glyph-well::before,

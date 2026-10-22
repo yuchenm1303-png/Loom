@@ -290,7 +290,6 @@
 .project-changed-file:hover {
   border-color: rgba(53, 237, 145, .24);
   background: rgba(53, 237, 145, .075);
-  transform: translateY(-1px);
 }
 
 .project-changed-file:disabled {

@@ -294,7 +294,6 @@ html[data-loom-density="spacious"] .tool-row {
 .appearance-theme-option:hover {
   border-color: var(--border-strong, #383d4a);
   background: var(--panel-raised, #151820);
-  transform: translateY(-1px);
 }
 
 .appearance-theme-option.active {

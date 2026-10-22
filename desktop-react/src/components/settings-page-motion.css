@@ -85,10 +85,6 @@
   transform: none;
 }
 
-.settings-shell.settings-refined .settings-nav button:active {
-  background-color: var(--sr-press);
-}
-
 .settings-shell.settings-refined .settings-nav-pip {
   position: absolute;
   z-index: 0;

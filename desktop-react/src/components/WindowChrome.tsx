@@ -64,9 +64,9 @@ export function WindowChrome({ children }: { children: ReactNode }) {
     <header className="loom-titlebar">
       <div className="loom-titlebar-drag" aria-hidden="true" />
       <div className="loom-window-controls">
-        <button type="button" className="loom-window-minimize" aria-label={minimizeLabel} title={minimizeLabel} onClick={() => void control("minimize")}><MinimizeGlyph /></button>
-        <button type="button" className="loom-window-maximize" aria-label={maximizeLabel} title={maximizeLabel} onClick={maximize}>{maximized ? <RestoreGlyph /> : <MaximizeGlyph />}</button>
-        <button type="button" className="loom-window-close" aria-label={closeLabel} title={closeLabel} onClick={() => void control("close")}><CloseGlyph /></button>
+        <button type="button" className="loom-window-minimize" data-press="none" aria-label={minimizeLabel} title={minimizeLabel} onClick={() => void control("minimize")}><MinimizeGlyph /></button>
+        <button type="button" className="loom-window-maximize" data-press="none" aria-label={maximizeLabel} title={maximizeLabel} onClick={maximize}>{maximized ? <RestoreGlyph /> : <MaximizeGlyph />}</button>
+        <button type="button" className="loom-window-close" data-press="none" aria-label={closeLabel} title={closeLabel} onClick={() => void control("close")}><CloseGlyph /></button>
       </div>
     </header>
     <div className="loom-window-content">{children}</div>

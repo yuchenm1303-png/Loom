@@ -226,11 +226,6 @@
     0 3px 10px rgba(0,0,0,.04);
 }
 
-.composer-refined .composer .composer-tool:active:not(:disabled) {
-  transform: none !important;
-  background: color-mix(in srgb, var(--composer-accent) 6%, rgba(255,255,255,.025));
-}
-
 /* Control pills ----------------------------------------------------------- */
 /* Remove the old fast glass sweep; open/hover state is conveyed through a
    quieter surface change and the meaningful icon/chevron motion. */
@@ -249,10 +244,6 @@
 
 .composer-refined .composer .composer-chip:hover:not(:disabled),
 .composer-refined .composer .composer-chip.is-open {
-  transform: none !important;
-}
-
-.composer-refined .composer .composer-chip:active:not(:disabled) {
   transform: none !important;
 }
 
@@ -318,7 +309,6 @@
 }
 
 .composer-refined .composer .send-button.is-ready:active {
-  transform: none !important;
   box-shadow:
     0 3px 10px color-mix(in srgb, var(--composer-accent) 14%, transparent),
     inset 0 1px rgba(255,255,255,.18);

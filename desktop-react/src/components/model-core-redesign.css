@@ -171,7 +171,6 @@
 .model-core-nav > button:hover:not(:disabled) {
   color: #9c93d3;
   background: rgba(255, 255, 255, .017);
-  transform: translateX(1px);
 }
 
 .model-core-nav > button:disabled {

@@ -133,9 +133,11 @@
   opacity: .7;
 }
 
-.turn-process.is-settled.is-open .turn-process-grid[data-motion-phase="entering"] {
-  grid-template-rows: 0fr;
-  opacity: 0;
+@starting-style {
+  .turn-process.is-settled.is-open .turn-process-grid[data-motion-phase="entered"] {
+    grid-template-rows: 0fr;
+    opacity: 0;
+  }
 }
 
 .turn-process-grid {
@@ -170,12 +172,13 @@
   border-left: 1px solid transparent;
 }
 
-/* Closing should preserve readable pixels until the geometry is already moving,
-   then fade while the track finishes. Opening remains a touch softer/slower. */
+/* Closing answers on the frame of the click: the words go quickly (the exit step) while the track folds softly
+   (inout), as every fold of the work log closes. It used to wait 64 ms before anything moved. Opening grows first
+   and the words arrive on the base step. */
 .turn-process.is-settled .turn-process-grid {
   transition:
     grid-template-rows var(--loom-dur-flow) var(--loom-ease-inout),
-    opacity var(--loom-dur-fast) ease 64ms;
+    opacity var(--loom-dur-fast-out) var(--loom-ease-exit);
 }
 
 .turn-process.is-settled.is-open .turn-process-grid {

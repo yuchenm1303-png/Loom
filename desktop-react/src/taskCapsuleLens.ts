@@ -3,10 +3,7 @@
 // to --lens-x / --lens-y so weave.css can centre a soft radial
 // light there. Only two custom properties change; nothing moves. rAF-throttled,
 // cleared when the pointer leaves, and off entirely under reduced motion.
-//
-// The empty export makes this a module: without it, its top-level `let`s would
-// share the global scope with other side-effect scripts and collide.
-export {};
+import { prefersReducedMotionNow } from "./motion/useReducedMotion";
 
 const CAPSULE_SELECTOR = ".wv-row.is-expandable, .wv-line";
 
@@ -53,7 +50,7 @@ document.addEventListener("pointermove", (event) => {
     active = next;
   }
   if (!active) return;
-  if (document.documentElement.dataset.loomReducedMotion === "true") {
+  if (prefersReducedMotionNow()) {
     leave();
     return;
   }

@@ -1931,70 +1931,14 @@ html[data-loom-theme="light"] .shortcuts-callout span {
   color: #69727d;
 }
 
-/* Light theme: context budget dashboard ---------------------------------- */
-/* The context widget can be supplied by different desktop/runtime revisions.
-   These aliases deliberately cover the known naming variants and make the
-   light theme robust when the widget is upgraded independently. */
+/* Light theme: the context meter in the thread header -------------------------------
+   These rules used to reach the meter through aliases for every name its widget once had
+   ([class*="context"] [class*="track"] and so on). A selector on a substring of the class attribute
+   makes the browser re-style the whole subtree below any element whose class changes (it cannot tell
+   which descendants the substring might match), which every panel toggle and every running turn paid
+   for. They name the meter now; each keeps the specificity and the declarations it had. */
 
-html[data-loom-theme="light"] :is(
-  .context-budget-trigger,
-  .context-window-trigger,
-  .context-usage-trigger,
-  .context-budget-summary,
-  .context-window-summary,
-  .context-usage-summary
-) {
-  min-height: 34px;
-  border: 1px solid rgba(28,31,37,.085) !important;
-  border-radius: 999px !important;
-  background: rgba(255,255,255,.86) !important;
-  color: #505965 !important;
-  box-shadow:
-    0 3px 10px rgba(27,31,40,.035),
-    inset 0 1px rgba(255,255,255,.96) !important;
-  backdrop-filter: blur(10px);
-}
-
-html[data-loom-theme="light"] :is(
-  .context-budget-trigger,
-  .context-window-trigger,
-  .context-usage-trigger,
-  .context-budget-summary,
-  .context-window-summary,
-  .context-usage-summary
-):hover {
-  border-color: rgba(105,90,216,.20) !important;
-  background: #ffffff !important;
-  color: #343a42 !important;
-  box-shadow:
-    0 7px 18px rgba(27,31,40,.065),
-    inset 0 1px rgba(255,255,255,.98) !important;
-}
-
-html[data-loom-theme="light"] :is(
-  .context-budget-trigger,
-  .context-window-trigger,
-  .context-usage-trigger,
-  .context-budget-summary,
-  .context-window-summary,
-  .context-usage-summary
-)[aria-expanded="true"] {
-  border-color: rgba(105,90,216,.24) !important;
-  background: rgba(105,90,216,.06) !important;
-  color: #5144ad !important;
-}
-
-/* Popover / panel shell. */
-html[data-loom-theme="light"] :is(
-  .context-budget-popover,
-  .context-window-popover,
-  .context-usage-popover,
-  .context-budget-panel,
-  .context-window-panel,
-  .context-usage-panel,
-  .thread-header [class*="context"][role="dialog"],
-  .thread-header [class*="context"][role="menu"]
-) {
+html[data-loom-theme="light"] .thread-header .context-meter-panel[role="dialog"] {
   width: min(360px, calc(100vw - 28px));
   padding: 14px !important;
   border: 1px solid rgba(28,31,37,.10) !important;
@@ -2011,87 +1955,12 @@ html[data-loom-theme="light"] :is(
   font-variant-numeric: tabular-nums;
 }
 
-/* Neutralize dark nested cards/chips left behind by older dark-first versions. */
-html[data-loom-theme="light"] :is(
-  .context-budget-popover,
-  .context-window-popover,
-  .context-usage-popover,
-  .context-budget-panel,
-  .context-window-panel,
-  .context-usage-panel
-) :is(
-  [class*="summary"],
-  [class*="metric"],
-  [class*="stat"],
-  [class*="meta"],
-  [class*="breakdown"],
-  [class*="legend"],
-  [class*="compact"]
-) {
-  border-color: rgba(28,31,37,.075) !important;
-  color: #525b66;
-}
-
-html[data-loom-theme="light"] :is(
-  .context-budget-popover,
-  .context-window-popover,
-  .context-usage-popover,
-  .context-budget-panel,
-  .context-window-panel,
-  .context-usage-panel
-) :is(
-  [class*="card"],
-  [class*="pill"],
-  [class*="chip"],
-  [class*="box"]
-) {
-  border-color: #dce0e5 !important;
-  background: #f6f7f9 !important;
-  color: #525b66 !important;
-  box-shadow: inset 0 1px rgba(255,255,255,.92) !important;
-}
-
-/* Header: treat the primary budget as the one strong number. */
-html[data-loom-theme="light"] :is(
-  .context-budget-title,
-  .context-window-title,
-  .context-usage-title,
-  [class*="context"] [class*="title"]
-) {
-  color: #59626d !important;
-  font-size: 12px;
-  font-weight: 600;
-  letter-spacing: .005em;
-}
-
-html[data-loom-theme="light"] :is(
-  .context-budget-total,
-  .context-window-total,
-  .context-usage-total,
-  [class*="context"] [class*="total"]
-) {
-  color: #252b32 !important;
-  font-weight: 650;
-  letter-spacing: -.018em;
-}
-
-html[data-loom-theme="light"] :is(
-  .context-budget-percent,
-  .context-window-percent,
-  .context-usage-percent,
-  [class*="context"] [class*="percent"]
-) {
+html[data-loom-theme="light"] .context-meter .context-meter-row-percent {
   color: #626b76 !important;
   font-weight: 650;
 }
 
-/* One calm segmented budget bar instead of a heavy progress slab. */
-html[data-loom-theme="light"] :is(
-  .context-budget-track,
-  .context-window-track,
-  .context-usage-track,
-  [class*="context"] [class*="track"]
-) {
+html[data-loom-theme="light"] .context-meter :is(.context-meter-track, .context-meter-compaction-track) {
   height: 7px !important;
   overflow: hidden;
   border: 0 !important;
@@ -2100,80 +1969,13 @@ html[data-loom-theme="light"] :is(
   box-shadow: inset 0 1px 2px rgba(27,31,40,.055) !important;
 }
 
-html[data-loom-theme="light"] :is(
-  .context-budget-track,
-  .context-window-track,
-  .context-usage-track,
-  [class*="context"] [class*="track"]
-) > * {
+html[data-loom-theme="light"] .context-meter :is(.context-meter-track, .context-meter-compaction-track) > * {
   min-width: 2px;
   height: 100%;
   border-radius: 999px;
 }
 
-/* Breakdown rows. */
-html[data-loom-theme="light"] :is(
-  .context-budget-row,
-  .context-window-row,
-  .context-usage-row,
-  [class*="context"] [class*="budget-row"],
-  [class*="context"] [class*="usage-row"],
-  [class*="context"] [class*="breakdown-row"]
-) {
-  min-height: 30px;
-  padding: 3px 2px;
-  border-radius: 8px;
-  color: #505965 !important;
-  transition: background var(--loom-dur-fast) ease, color var(--loom-dur-fast) ease;
-}
-
-html[data-loom-theme="light"] :is(
-  .context-budget-row,
-  .context-window-row,
-  .context-usage-row,
-  [class*="context"] [class*="budget-row"],
-  [class*="context"] [class*="usage-row"],
-  [class*="context"] [class*="breakdown-row"]
-):hover {
-  background: rgba(28,31,37,.028);
-  color: #343a42 !important;
-}
-
-html[data-loom-theme="light"] :is(
-  .context-budget-row,
-  .context-window-row,
-  .context-usage-row
-) strong,
-html[data-loom-theme="light"] [class*="context"] :is(
-  [class*="budget-row"],
-  [class*="usage-row"],
-  [class*="breakdown-row"]
-) strong {
-  color: #30363e;
-  font-weight: 650;
-}
-
-html[data-loom-theme="light"] :is(
-  .context-budget-row,
-  .context-window-row,
-  .context-usage-row
-) small,
-html[data-loom-theme="light"] [class*="context"] :is(
-  [class*="budget-row"],
-  [class*="usage-row"],
-  [class*="breakdown-row"]
-) small {
-  color: #737c87;
-}
-
-/* Make legend swatches look intentional on white instead of muddy blocks. */
-html[data-loom-theme="light"] :is(
-  .context-budget-swatch,
-  .context-window-swatch,
-  .context-usage-swatch,
-  [class*="context"] [class*="swatch"],
-  [class*="context"] [class*="dot"]
-) {
+html[data-loom-theme="light"] .context-meter .context-meter-swatch {
   width: 8px;
   height: 8px;
   flex: none;
@@ -2181,216 +1983,24 @@ html[data-loom-theme="light"] :is(
   box-shadow: 0 0 0 1px rgba(28,31,37,.045);
 }
 
-/* Secondary window/threshold/compaction metrics are one compact strip. */
-html[data-loom-theme="light"] :is(
-  .context-budget-stats,
-  .context-window-stats,
-  .context-usage-stats,
-  .context-budget-meta-grid,
-  .context-window-meta-grid,
-  [class*="context"] [class*="stats"],
-  [class*="context"] [class*="meta-grid"]
-) {
-  margin-top: 10px;
-  padding-top: 11px;
-  border-top: 1px solid rgba(28,31,37,.075);
-}
-
-html[data-loom-theme="light"] :is(
-  .context-budget-stats,
-  .context-window-stats,
-  .context-usage-stats,
-  .context-budget-meta-grid,
-  .context-window-meta-grid
-) > *,
-html[data-loom-theme="light"] [class*="context"] :is(
-  [class*="stats"],
-  [class*="meta-grid"]
-) > * {
-  background: transparent !important;
-  border-color: transparent !important;
-  box-shadow: none !important;
-}
-
-html[data-loom-theme="light"] :is(
-  .context-budget-stats,
-  .context-window-stats,
-  .context-usage-stats,
-  .context-budget-meta-grid,
-  .context-window-meta-grid
-) span,
-html[data-loom-theme="light"] [class*="context"] :is(
-  [class*="stats"],
-  [class*="meta-grid"]
-) span {
-  color: #727b86;
-}
-
-html[data-loom-theme="light"] :is(
-  .context-budget-stats,
-  .context-window-stats,
-  .context-usage-stats,
-  .context-budget-meta-grid,
-  .context-window-meta-grid
-) strong,
-html[data-loom-theme="light"] [class*="context"] :is(
-  [class*="stats"],
-  [class*="meta-grid"]
-) strong {
-  color: #3c444e;
-}
-
-/* Manual compaction action. This also removes the remaining black button/card
-   visible in the light-theme screenshots. */
-html[data-loom-theme="light"] :is(
-  .context-compact-button,
-  .context-budget-action,
-  .context-window-action,
-  .context-usage-action,
-  [class*="context"] [class*="compact-button"],
-  [class*="context"] [class*="action-button"]
-) {
-  min-height: 38px;
-  border: 1px solid #d9dde3 !important;
-  border-radius: 11px !important;
-  background: #f6f7f9 !important;
-  color: #59626d !important;
-  box-shadow: inset 0 1px rgba(255,255,255,.94) !important;
-  transition:
-    color var(--loom-dur-fast) ease,
-    background var(--loom-dur-fast) ease,
-    border-color var(--loom-dur-fast) ease,
-    box-shadow var(--loom-dur-fast) ease,
-    transform var(--loom-dur-fast) var(--loom-ease-out);
-}
-
-html[data-loom-theme="light"] :is(
-  .context-compact-button,
-  .context-budget-action,
-  .context-window-action,
-  .context-usage-action,
-  [class*="context"] [class*="compact-button"],
-  [class*="context"] [class*="action-button"]
-):hover:not(:disabled) {
-  border-color: rgba(105,90,216,.22) !important;
-  background: rgba(105,90,216,.06) !important;
-  color: #5144ad !important;
-  box-shadow:
-    0 5px 15px rgba(27,31,40,.05),
-    inset 0 1px rgba(255,255,255,.96) !important;
-  transform: translateY(-1px);
-}
-
-html[data-loom-theme="light"] :is(
-  .context-compact-button,
-  .context-budget-action,
-  .context-window-action,
-  .context-usage-action,
-  [class*="context"] [class*="compact-button"],
-  [class*="context"] [class*="action-button"]
-):disabled {
-  border-color: #e0e3e7 !important;
-  background: #f7f8fa !important;
-  color: #9299a3 !important;
-  opacity: 1 !important;
-  cursor: default;
-  box-shadow: none !important;
-}
-
-html[data-loom-theme="light"] :is(
-  .context-budget-note,
-  .context-window-note,
-  .context-usage-note,
-  .context-budget-footnote,
-  .context-window-footnote,
-  [class*="context"] [class*="footnote"],
-  [class*="context"] [class*="note"]
-) {
+html[data-loom-theme="light"] .context-meter .context-meter-note {
   color: #737c87 !important;
   font-size: 11px;
   line-height: 1.45;
 }
 
-/* Kill dark remnants from compact context controls when their implementation
-   does not expose a more specific semantic class. */
-html[data-loom-theme="light"] .thread-header :is(
-  [class*="context"],
-  [class*="budget"]
-) button:not(.thread-header-icon-button):not(.thread-review-button) {
+html[data-loom-theme="light"] .thread-header .context-meter button:not(.thread-header-icon-button):not(.thread-review-button) {
   border-color: #d9dde3;
   color: #59626d;
 }
 
-html[data-loom-theme="light"] .thread-header :is(
-  [class*="context"],
-  [class*="budget"]
-) button:not(.thread-header-icon-button):not(.thread-review-button):not(:disabled) {
+html[data-loom-theme="light"] .thread-header .context-meter button:not(.thread-header-icon-button):not(.thread-review-button):not(:disabled) {
   background: rgba(255,255,255,.84);
 }
 
-html[data-loom-theme="light"] .thread-header :is(
-  [class*="context"],
-  [class*="budget"]
-) button:not(.thread-header-icon-button):not(.thread-review-button):disabled {
+html[data-loom-theme="light"] .thread-header .context-meter button:not(.thread-header-icon-button):not(.thread-review-button):disabled {
   background: #f5f6f8;
   color: #949ba5;
-}
-
-/* Motion: quick enough to feel attached to the trigger, soft enough not to pop. */
-:is(
-  .context-budget-popover,
-  .context-window-popover,
-  .context-usage-popover,
-  .context-budget-panel,
-  .context-window-panel,
-  .context-usage-panel
-) {
-  transform-origin: top right;
-  animation: loom-context-panel-enter var(--loom-dur-fast) var(--loom-ease-out) both;
-}
-
-:is(
-  .context-budget-popover,
-  .context-window-popover,
-  .context-usage-popover,
-  .context-budget-panel,
-  .context-window-panel,
-  .context-usage-panel
-).closing,
-:is(
-  .context-budget-popover,
-  .context-window-popover,
-  .context-usage-popover,
-  .context-budget-panel,
-  .context-window-panel,
-  .context-usage-panel
-)[data-state="closed"] {
-  pointer-events: none;
-  animation: loom-context-panel-exit var(--loom-dur-fast-out) var(--loom-ease-inout) both;
-}
-
-@keyframes loom-context-panel-enter {
-  from { opacity: 0; }
-  to { opacity: 1; }
-}
-
-@keyframes loom-context-panel-exit {
-  from { opacity: 1; }
-  to { opacity: 0; }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  :is(
-    .context-budget-popover,
-    .context-window-popover,
-    .context-usage-popover,
-    .context-budget-panel,
-    .context-window-panel,
-    .context-usage-panel
-  ) {
-    animation: none !important;
-    transition: none !important;
-  }
 }
 
 /* Light theme: composer control-bar refinement --------------------------- */
@@ -2516,11 +2126,6 @@ html[data-loom-theme="light"] .composer .composer-chip.is-open svg {
   color: #6253ca;
 }
 
-html[data-loom-theme="light"] .composer .composer-tool:active:not(:disabled),
-html[data-loom-theme="light"] .composer .composer-chip:active:not(:disabled) {
-  transform: scale(.975);
-}
-
 html[data-loom-theme="light"] .composer .composer-tool:disabled,
 html[data-loom-theme="light"] .composer .composer-chip:disabled {
   color: #9aa1aa;
@@ -2606,7 +2211,7 @@ html[data-loom-theme="light"] .composer-running-label i {
   background: #7567de;
   box-shadow: 0 0 0 3px rgba(105,90,216,.08);
   transform: none;
-  animation: composer-status-breathe-refined 1.8s ease-in-out infinite;
+  animation: composer-status-breathe-refined var(--loom-period-breathe) ease-in-out infinite;
 }
 
 @keyframes composer-status-breathe-refined {
@@ -2639,12 +2244,7 @@ html[data-loom-theme="light"] .composer .send-button:not(:disabled):not(.stop) {
 
 html[data-loom-theme="light"] .composer .send-button:hover:not(:disabled):not(.stop) {
   background: #5f51c9;
-  transform: translateY(-1px);
   box-shadow: 0 7px 16px rgba(105,90,216,.21);
-}
-
-html[data-loom-theme="light"] .composer .send-button:active:not(:disabled) {
-  transform: scale(.96);
 }
 
 html[data-loom-theme="light"] .composer .send-button:disabled {
@@ -2666,7 +2266,6 @@ html[data-loom-theme="light"] .composer .send-button.stop:hover:not(:disabled) {
   border-color: rgba(217,54,80,.32);
   background: rgba(217,54,80,.14);
   color: #b4253d;
-  transform: translateY(-1px);
 }
 
 html[data-loom-theme="light"] .composer .send-button.stop:disabled {
@@ -2812,7 +2411,6 @@ html[data-loom-theme="light"] .runtime-event:hover .runtime-event-icon {
   color: #5144ad;
   border-color: rgba(105,90,216,.18);
   background: #fbfaff;
-  transform: translateY(-1px);
 }
 
 html[data-loom-theme="light"] .runtime-event.is-running .runtime-event-icon {

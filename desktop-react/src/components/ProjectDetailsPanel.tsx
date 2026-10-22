@@ -239,7 +239,7 @@ export function ProjectDetailsPanel({
   onOpenFiles,
 }: ProjectDetailsPanelProps) {
   const zh = useI18n().language === "zh-CN";
-  const presence = useMotionPresence(open && Boolean(projectProp), RETAIN.panel);
+  const presence = useMotionPresence(open && Boolean(projectProp), RETAIN.fast);
   const lastProjectRef = useRef<ProjectRecord | null>(projectProp);
   if (projectProp) lastProjectRef.current = projectProp;
   const project = projectProp ?? lastProjectRef.current;

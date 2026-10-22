@@ -89,9 +89,10 @@ export function Fold({ open, ms = FOLD_MS, animateIn = true, className = "", chi
   const whenOpen = useRef(children);
   if (open) whenOpen.current = children;
   if (!presence.mounted) return null;
-  const shown = open && (settledOnMount.current || presence.phase !== "entering");
+  // A fold that mounts open grows from nothing on the frame it appears (weave.css, @starting-style); one that history
+  // draws already open is simply there.
   return (
-    <div className={`wv-fold ${className}`.trim()} data-open={shown ? "true" : "false"} inert={!open}>
+    <div className={`wv-fold ${className}`.trim()} data-open={open ? "true" : "false"} data-settled={settledOnMount.current ? "true" : undefined} inert={!open}>
       <div className="wv-fold-inner">{open ? children : whenOpen.current}</div>
     </div>
   );
@@ -440,7 +441,7 @@ const WeaveRow = memo(function WeaveRow({ row, open, workspace, copy, delta, ret
         ) : null}
 
         {subPresence.mounted ? (
-          <div className="wv-sub-fold" data-open={sub && (settledSubOnMount.current || !animate || subPresence.phase !== "entering") ? "true" : "false"} inert>
+          <div className="wv-sub-fold" data-open={sub ? "true" : "false"} data-settled={settledSubOnMount.current || !animate ? "true" : undefined} inert>
             <div className="wv-sub-inner">
               <div className={`wv-sub is-${subShown.kind}`}>
                 <span className="wv-sub-text" key={subShown.text}>{subShown.text}</span>
@@ -450,7 +451,7 @@ const WeaveRow = memo(function WeaveRow({ row, open, workspace, copy, delta, ret
         ) : null}
 
         {expandable ? (
-          <div className="wv-detail" data-open={open && detailPresence.phase !== "entering" ? "true" : "false"} data-motion-phase={detailPresence.phase} inert={!open}>
+          <div className="wv-detail" data-open={open ? "true" : "false"} data-motion-phase={detailPresence.phase} inert={!open}>
             <div className="wv-detail-inner">
               {detailPresence.mounted ? (
                 <div className="wv-sheet">
