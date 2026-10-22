@@ -92,14 +92,14 @@
   .wordmark {
     margin: 0;
     font-family: var(--serif);
-    font-size: 30px;
+    font-size: 40px;
     line-height: 1;
     font-weight: 500;
     letter-spacing: -.02em;
   }
   .wordmark a { text-decoration: none; display: inline-flex; align-items: center; }
-  .smirel-word { height: 22px; width: auto; margin-right: 12px; }
-  .mark-icon { width: 22px; height: 22px; border-radius: 6px; margin-right: 9px; vertical-align: -3px; }
+  .smirel-word { height: 34px; width: auto; margin-right: 16px; }
+  .mark-icon { width: 30px; height: 30px; border-radius: 8px; margin-right: 12px; vertical-align: -3px; }
 
   .head-right {
     display: flex;
@@ -349,7 +349,40 @@
     color: var(--ink-4);
   }
 
+  /* Auth --------------------------------------------------------------- */
+  .auth-button { border:0;background:none;padding:0;color:var(--ink-2);font-size:12.5px;letter-spacing:.02em;cursor:pointer;text-decoration:underline;text-decoration-color:transparent;text-underline-offset:4px;transition:color .15s ease,text-decoration-color .15s ease; }
+  .auth-button:hover { color:var(--ink); text-decoration-color: color-mix(in srgb,var(--ink) 45%,transparent); }
+  .auth-button:focus-visible { outline:1px solid var(--ink); outline-offset:2px; }
+  .auth-modal { position:fixed; inset:0; display:none; place-items:center; z-index:100; background:rgba(0,0,0,.55); backdrop-filter:blur(3px); }
+  .auth-modal.is-open { display:grid; }
+  .auth-card { position:relative; width:min(420px,calc(100% - 40px)); padding:34px 32px 30px; background:var(--bg-2); border:1px solid var(--rule); }
+  .auth-eyebrow { margin:0; font-size:10px; letter-spacing:.18em; text-transform:uppercase; color:var(--ink-4); }
+  .auth-card h2 { margin:10px 0 22px; font-family:var(--serif); font-size:30px; line-height:1.2; font-weight:400; letter-spacing:-.012em; }
+  .auth-field { display:block; margin-bottom:16px; }
+  .auth-field span { display:block; margin-bottom:6px; font-size:10.5px; letter-spacing:.12em; text-transform:uppercase; color:var(--ink-3); }
+  .auth-field input { width:100%; border:0; border-bottom:1px solid var(--rule); padding:8px 0 9px; background:transparent; color:var(--ink); font-family:var(--serif); font-size:17px; outline:none; }
+  .auth-field input:focus { border-color:var(--ink); }
+  .auth-msg { min-height:18px; margin:4px 0 18px; font-size:12px; color:var(--ink-3); }
+  .auth-msg.is-error { color:#e07a7a; }
+  .auth-submit { width:100%; height:42px; border:1px solid var(--ink); background:var(--ink); color:var(--bg); font-size:13px; letter-spacing:.02em; cursor:pointer; transition:opacity .15s ease; }
+  .auth-submit:hover { opacity:.88; }
+  .auth-submit:disabled { opacity:.45; cursor:default; }
+  .auth-divider { display:flex; align-items:center; gap:12px; margin:20px 0 16px; color:var(--ink-4); font-size:10px; letter-spacing:.1em; }
+  .auth-divider::before,.auth-divider::after { content:""; flex:1; height:1px; background:var(--rule-soft); }
+  .auth-oauth { display:grid; gap:8px; }
+  .auth-oauth-btn { display:block; padding:10px 0; text-align:center; border:1px solid var(--rule); color:var(--ink-2); font-size:12.5px; text-decoration:none; transition:border-color .15s ease,color .15s ease; }
+  .auth-oauth-btn:hover { border-color:var(--ink-3); color:var(--ink); }
+  .auth-toggle,.auth-close { border:0; background:none; color:var(--ink-3); cursor:pointer; }
+  .auth-toggle { display:block; margin-top:18px; font-size:12px; text-decoration:underline; text-underline-offset:3px; }
+  .auth-toggle:hover { color:var(--ink); }
+  .auth-close { position:absolute; top:14px; right:16px; font-size:20px; line-height:1; }
+  .auth-close:hover { color:var(--ink); }
+  .is-authed { color:var(--ink-2); font-size:12.5px; letter-spacing:.02em; }
+  .is-authed button { margin-left:10px; border:0; background:none; color:var(--ink-3); text-decoration:underline; text-underline-offset:3px; cursor:pointer; font-size:12px; }
+  .is-authed button:hover { color:var(--ink); }
+
   /* Lens cursor ----------------------------------------------------------- */
+
   :root { --loom-dur-press: .12s; }
   html.loom-liquid-cursor-active.loom-liquid-cursor-active body .loom-portal-page.loom-portal-page,
   html.loom-liquid-cursor-active.loom-liquid-cursor-active body .loom-portal-page.loom-portal-page *,
@@ -395,7 +428,8 @@
       <h1 class="wordmark"><a href="#top" aria-label="Loom home"><img class="smirel-word" src="assets/smirel-logo.png" alt="Smirel"><img class="mark-icon" src="assets/loom-icon.png" alt="">Loom</a></h1>
       <div class="head-right">
         <span>Local · 127.0.0.1</span>
-        <button class="switch" type="button" role="switch" aria-checked="true" aria-label="Dark mode" id="themeSwitch"></button>
+<button class="auth-button" type="button" id="authButton">Sign in</button>
+                <button class="switch" type="button" role="switch" aria-checked="true" aria-label="Dark mode" id="themeSwitch"></button>
       </div>
     </header>
 
@@ -459,6 +493,26 @@
       </section>
     </main>
 
+    <div class="auth-modal" id="authModal" aria-hidden="true">
+      <div class="auth-card">
+        <p class="auth-eyebrow" id="authEyebrow">Sign in</p>
+        <h2 id="authTitle">Welcome back</h2>
+        <form id="authForm" novalidate>
+          <label class="auth-field"><span>Email</span><input id="authEmail" type="email" autocomplete="email" required></label>
+          <label class="auth-field"><span>Password</span><input id="authPass" type="password" autocomplete="current-password" required></label>
+          <p class="auth-msg" id="authMsg"></p>
+          <button class="auth-submit" type="submit" id="authSubmit">Sign in</button>
+        </form>
+        <div class="auth-divider"><span>or</span></div>
+        <div class="auth-oauth">
+          <a class="auth-oauth-btn" href="/api/auth/oauth/start/google">Continue with Google</a>
+          <a class="auth-oauth-btn" href="/api/auth/oauth/start/github">Continue with GitHub</a>
+        </div>
+        <button class="auth-toggle" type="button" id="authToggle">Create an account</button>
+        <button class="auth-close" type="button" id="authClose" aria-label="Close">×</button>
+      </div>
+    </div>
+
     <div class="ask">
       <form id="askForm" autocomplete="off">
         <div class="ask-row">
@@ -521,6 +575,66 @@
           openWith(button.getAttribute("data-prompt"));
         });
       });
+
+    var authButton=document.getElementById("authButton");
+    var authModal=document.getElementById("authModal");
+    var authForm=document.getElementById("authForm");
+    var authEmail=document.getElementById("authEmail");
+    var authPass=document.getElementById("authPass");
+    var authMsg=document.getElementById("authMsg");
+    var authEyebrow=document.getElementById("authEyebrow");
+    var authTitle=document.getElementById("authTitle");
+    var authSubmit=document.getElementById("authSubmit");
+    var authToggle=document.getElementById("authToggle");
+    var authClose=document.getElementById("authClose");
+    var authMode="login";
+
+    function setAuthMode(mode){
+      authMode=mode;
+      if(mode==="login"){ authEyebrow.textContent="Sign in"; authTitle.textContent="Welcome back"; authSubmit.textContent="Sign in"; authToggle.textContent="Create an account"; }
+      else { authEyebrow.textContent="Register"; authTitle.textContent="Create account"; authSubmit.textContent="Create account"; authToggle.textContent="Already have an account?"; }
+      authMsg.textContent=""; authMsg.classList.remove("is-error");
+    }
+    function openAuth(){ authModal.classList.add("is-open"); authModal.setAttribute("aria-hidden","false"); }
+    function closeAuth(){ authModal.classList.remove("is-open"); authModal.setAttribute("aria-hidden","true"); }
+
+    authButton.addEventListener("click",function(){ if(authButton.dataset.signed) return; setAuthMode("login"); openAuth(); });
+    authClose.addEventListener("click",closeAuth);
+    authModal.addEventListener("click",function(e){ if(e.target===authModal) closeAuth(); });
+    authToggle.addEventListener("click",function(){ setAuthMode(authMode==="login"?"register":"login"); });
+
+    async function loadAccount(){
+      try{
+        var res=await fetch("/api/auth/status",{credentials:"include"});
+        var data=await res.json();
+        if(data.ok && data.snapshot && data.snapshot.user){
+          var u=data.snapshot.user;
+          var email=u.email||u.displayName||"Account";
+          authButton.outerHTML='<span class="is-authed">'+email+'<button type="button" id="signOut">Sign out</button></span>';
+          var so=document.getElementById("signOut");
+          if(so) so.addEventListener("click",async function(){
+            try{ await fetch("/api/auth/logout",{method:"POST",credentials:"include"}); }catch(e){}
+            window.location.reload();
+          });
+        }
+      }catch(e){}
+    }
+
+    authForm.addEventListener("submit",async function(event){
+      event.preventDefault();
+      authMsg.textContent=""; authMsg.classList.remove("is-error");
+      authSubmit.disabled=true;
+      var endpoint=authMode==="login"?"/api/auth/login":"/api/auth/register";
+      try{
+        var res=await fetch(endpoint,{method:"POST",headers:{"Content-Type":"application/json"},credentials:"include",body:JSON.stringify({email:authEmail.value,password:authPass.value})});
+        var data=await res.json();
+        if(data.ok){ closeAuth(); showToast("Signed in"); loadAccount(); }
+        else { authMsg.textContent=(data.error&&data.error.message)||"Sign in failed"; authMsg.classList.add("is-error"); }
+      }catch(err){ authMsg.textContent="Network error"; authMsg.classList.add("is-error"); }
+      authSubmit.disabled=false;
+    });
+
+    loadAccount();
 
       Array.prototype.forEach.call(document.querySelectorAll("a,button"), function (el) {
         if (el.classList.contains("starter")) return;
