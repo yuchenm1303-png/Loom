@@ -1653,7 +1653,8 @@ ipcMain.handle("loom:embedded-browser", async (event, command: EmbeddedBrowserCo
   }
   // No Chromium tab/process is created until the user first opens Browser.
   if (!embeddedBrowserManager) {
-    embeddedBrowserManager = new EmbeddedBrowserManager(mainWindow);
+    embeddedBrowserManager = new EmbeddedBrowserManager(mainWindow,
+      () => fs.readFile(path.join(browserExtensionSource(), "browser-hud.js"), "utf8"));
     embeddedBrowserAgentClient = new EmbeddedBrowserAgentClient(embeddedBrowserManager, embeddedBrowserToken());
     embeddedBrowserAgentClient.start();
   }

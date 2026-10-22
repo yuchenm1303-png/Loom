@@ -2,7 +2,7 @@
   'use strict';
 
   const INSTALL_KEY = '__loomBrowserHudRuntimeV2';
-  const GENERATION = '0.1.27';
+  const GENERATION = '0.1.28';
   const SOURCE_HOST_ID = 'loom-browser-page-hud-root';
   const HOST_ID = 'loom-browser-hud-root-v2';
   const LEGACY_HOST_IDS = ['loom-browser-hud-root', 'loom-browser-computer-hud-root'];
@@ -131,7 +131,8 @@
     breathing(Boolean(renderer?.hud.classList.contains('live')));
   }
 
-  function hide() {
+  function hide(stopStandalone = false) {
+    if (stopStandalone === true) standalone = false;
     if (renderer) renderer.hud.classList.remove('live');
     syncBreath();
   }
@@ -271,7 +272,7 @@
     view.meta.textContent = title;
     view.bubbleTitle.textContent = title;
     view.confidence.textContent = point ? 'DOM exact' : 'browser';
-    view.source.textContent = point ? 'browser + CDP' : 'browser runtime';
+    view.source.textContent = clean(data.source, point ? 'browser + CDP' : 'browser runtime');
     view.thought.textContent = subtitle;
     if (data.click) pulseClick();
     return true;

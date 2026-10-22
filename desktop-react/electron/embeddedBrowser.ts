@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
 import { normalizeBrowserAddress } from "./browserAddress.js";
+import { EmbeddedBrowserHud } from "./embeddedBrowserHud.js";
 
 /**
  * A native, sandboxed Electron webContents for each tab. No <webview> tag, no
@@ -69,8 +70,10 @@ export class EmbeddedBrowserManager {
   private viewport: { x: number; y: number; width: number; height: number } | null = null;
   private attached: WebContentsView | null = null;
   private disposed = false;
+  private readonly hud: EmbeddedBrowserHud;
 
-  constructor(private readonly window: BrowserWindow) {
+  constructor(private readonly window: BrowserWindow, loadHudSource?: () => string | Promise<string>) {
+    this.hud = new EmbeddedBrowserHud(loadHudSource);
     this.statePath = path.join(app.getPath("userData"), STATE_FILE);
     const browserSession = session.fromPartition(PARTITION);
     // Site content must never request native OS privileges without a dedicated
@@ -295,14 +298,17 @@ export class EmbeddedBrowserManager {
       case "stop-find": active?.view.webContents.stopFindInPage("clearSelection"); if (active) active.state.findResult = undefined; break;
       case "copy-screenshot": {
         if (!active?.state.url) throw new Error("Open a page before taking a screenshot.");
-        clipboard.writeImage(await active.view.webContents.capturePage());
+        clipboard.writeImage(await this.hud.capture(active.view.webContents, () => active.view.webContents.capturePage()));
         break;
       }
       case "devtools": active?.view.webContents.openDevTools({ mode: "detach" }); break;
       case "allow-ai":
         if (!this.tabs.has(command.tabId)) throw new Error("Missing browser tab.");
         if (command.enabled) this.aiAllowed.add(command.tabId);
-        else { this.aiAllowed.delete(command.tabId); this.aiLeases.delete(command.tabId); this.aiSignatures.delete(command.tabId); }
+        else {
+          this.aiAllowed.delete(command.tabId); this.aiLeases.delete(command.tabId); this.aiSignatures.delete(command.tabId);
+          await this.hud.hide(this.tabs.get(command.tabId)!.view.webContents, true);
+        }
         break;
       case "bounds": {
         const bounds = command.bounds;
@@ -385,14 +391,16 @@ export class EmbeddedBrowserManager {
     const argumentsJson = JSON.stringify({ index, action, value, clear });
     const script = "(() => {const opts=" + argumentsJson + ";"
       + "const nodes=[...document.querySelectorAll('a[href],button,input,textarea,select,[role=\"button\"],[contenteditable=\"true\"],[tabindex]')].filter(e=>{const r=e.getBoundingClientRect(),s=getComputedStyle(e);return r.width>0&&r.height>0&&s.display!=='none'&&s.visibility!=='hidden'}).slice(0,250);"
-      + "const e=nodes[opts.index];if(!e)return false;"
+      + "const e=nodes[opts.index];if(!e)return false;const rect=e.getBoundingClientRect();const point={x:Math.floor(rect.left+rect.width/2),y:Math.floor(rect.top+rect.height/2)};"
       + "if(opts.action==='click'||opts.action==='hover'){const r=e.getBoundingClientRect();return {x:Math.floor(r.left+r.width/2),y:Math.floor(r.top+r.height/2)}}"
       + ""
-      + "if(opts.action==='select_option'){if(!(e instanceof HTMLSelectElement))return false;e.value=opts.value;e.dispatchEvent(new Event('change',{bubbles:true}));return true}"
-      + "if(opts.action==='type_text'){e.focus();if(opts.clear&&'value' in e){const p=e instanceof HTMLTextAreaElement?HTMLTextAreaElement.prototype:HTMLInputElement.prototype;const setter=Object.getOwnPropertyDescriptor(p,'value')?.set;if(setter)setter.call(e,'');else e.value='';e.dispatchEvent(new Event('input',{bubbles:true}))}return true}"
+      + "if(opts.action==='select_option'){if(!(e instanceof HTMLSelectElement))return false;e.value=opts.value;e.dispatchEvent(new Event('change',{bubbles:true}));return point}"
+      + "if(opts.action==='type_text'){e.focus();if(opts.clear&&'value' in e){const p=e instanceof HTMLTextAreaElement?HTMLTextAreaElement.prototype:HTMLInputElement.prototype;const setter=Object.getOwnPropertyDescriptor(p,'value')?.set;if(setter)setter.call(e,'');else e.value='';e.dispatchEvent(new Event('input',{bubbles:true}))}return point}"
       + "return false})()";
     const found = await entry.view.webContents.executeJavaScript(script);
     if (!found) throw new Error("Element is no longer available; refresh browser_state.");
+    if (typeof found === "object") await this.hud.show(entry.view.webContents, action,
+      { point: found as { x: number; y: number }, click: action === "click" });
     if ((action === "click" || action === "hover") && typeof found === "object") {
       const pos = found as { x: number; y: number };
       if (!Number.isFinite(pos.x) || !Number.isFinite(pos.y)) throw new Error("Element has no clickable location.");
@@ -408,6 +416,30 @@ export class EmbeddedBrowserManager {
   // Browser-use tool handlers still enforce user entitlements, approval and URL
   // policy; this is the additional local consent/lease boundary in Electron.
   async agentCommand(action: string, args: Record<string, unknown>): Promise<Record<string, unknown>> {
+    const owner = String(args.session_id || "");
+    if (action === "finish_turn" || action === "release_tabs") {
+      for (const [id, leasedTo] of this.aiLeases) {
+        const tab = this.tabs.get(id);
+        if (leasedTo === owner && tab) await this.hud.hide(tab.view.webContents, true);
+      }
+      return this.executeAgentCommand(action, args);
+    }
+    const id = String(args.tab_id || this.activeId || "");
+    const entry = this.tabs.get(id);
+    const authorized = Boolean(owner && owner.length <= 180 && entry && this.aiAllowed.has(id)
+      && (!this.aiLeases.has(id) || this.aiLeases.get(id) === owner));
+    if (authorized && entry && action !== "screenshot") await this.hud.show(entry.view.webContents, action);
+    try {
+      const result = await this.executeAgentCommand(action, args);
+      if (authorized && entry && this.aiAllowed.has(id)) await this.hud.show(entry.view.webContents, action, { settled: true });
+      return result;
+    } catch (cause) {
+      if (authorized && entry && this.aiAllowed.has(id)) await this.hud.show(entry.view.webContents, action, { settled: true, failed: true });
+      throw cause;
+    }
+  }
+
+  private async executeAgentCommand(action: string, args: Record<string, unknown>): Promise<Record<string, unknown>> {
     const owner = String(args.session_id || "");
     if (!owner || owner.length > 180) throw new Error("Missing AI session.");
     if (action === "finish_turn" || action === "release_tabs") {
@@ -494,6 +526,7 @@ export class EmbeddedBrowserManager {
         if (![x,y].every(Number.isFinite) || x < 0 || y < 0 || x > 10000 || y > 10000) {
           throw new Error("Invalid click coordinates.");
         }
+        await this.hud.show(wc, action, { point: { x, y }, click: true });
         wc.sendInputEvent({ type:"mouseDown", x, y, button:"left", clickCount:1 });
         wc.sendInputEvent({ type:"mouseUp", x, y, button:"left", clickCount:1 });
         break;
@@ -506,7 +539,7 @@ export class EmbeddedBrowserManager {
         break;
       }
       case "screenshot": {
-        const image = await wc.capturePage();
+        const image = await this.hud.capture(wc, () => wc.capturePage());
         if (image.isEmpty()) throw new Error("No browser image is available.");
         let png = image.toPNG();
         if (png.byteLength > 6_000_000) png = image.resize({ width: Math.min(1600, image.getSize().width) }).toPNG();
@@ -583,6 +616,7 @@ export class EmbeddedBrowserManager {
 
   dispose(): void {
     if (this.disposed) return;
+    this.hud.dispose();
     this.saveTabs();
     this.detach();
     this.disposed = true;
