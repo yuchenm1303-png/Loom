@@ -815,6 +815,18 @@ class ManagedProcess:
             return {"output": self._stdout.text[offset - start:], "cursor": end,
                     "truncated": cursor < start, "reset": cursor > end}
 
+    def terminal_status(self) -> dict:
+        """Cheap UI status: no transcript snapshot and one OS process poll."""
+        returncode = self.backend.poll()
+        with self._lock:
+            state = (ProcessState.RUNNING if returncode is None else
+                     ProcessState.FAILED if self._failure else
+                     self._termination_reason or ProcessState.EXITED)
+            return {"processId": self.process_id, "running": returncode is None,
+                    "state": state.value, "returnCode": returncode,
+                    "failure": self._failure, "pty": self.backend.pty,
+                    "rows": self._rows, "cols": self._cols}
+
     def resize(self, *, rows: int, cols: int, drain_delta: bool = True) -> ProcessSnapshot:
         parsed_rows, parsed_cols = validate_terminal_size(rows, cols)
         if not self.running:

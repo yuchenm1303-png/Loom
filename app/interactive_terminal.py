@@ -51,15 +51,29 @@ def _registry(service) -> dict[str, dict[str, Any]]:
 
 
 def _record(managed, metadata) -> dict[str, Any]:
-    snapshot = managed.snapshot()
-    return {**metadata, 'processId': managed.process_id, 'running': snapshot.running,
-            'state': snapshot.state.value, 'returnCode': snapshot.returncode,
-            'failure': snapshot.failure, 'pty': snapshot.pty,
-            'rows': snapshot.rows, 'cols': snapshot.cols}
+    public = {key: value for key, value in metadata.items() if not key.startswith('_')}
+    return {**public, **managed.terminal_status()}
+
+
+def _managed(service, workspace: Path, process_id: str, metadata):
+    """The session owner was authenticated at creation, not on every keypress."""
+    if metadata['workspace'] != str(workspace):
+        raise ValueError('terminal process does not belong to this workspace')
+    owner = metadata.get('_sessionId')
+    if not owner:
+        # Compatibility with terminals created before this host was upgraded.
+        from .code_block_terminal import _process
+        managed = _process(service, {'workspace': str(workspace), 'processId': process_id})
+        metadata['_sessionId'] = managed.session_id
+        return managed
+    try:
+        return service.runtime.process_store.get(process_id, session_id=owner)
+    except (KeyError, PermissionError) as error:
+        raise ValueError('terminal process is no longer available') from error
 
 
 def dispatch(service, method: str, params: dict[str, Any]) -> dict[str, Any]:
-    from .code_block_terminal import _workspace, _execution_context, _process, _shell_argv
+    from .code_block_terminal import _workspace, _execution_context, _shell_argv
 
     if method == 'terminal/profiles':
         return {'profiles': [{k: v for k, v in p.items() if k != 'argv'} for p in _available_profiles(service)]}
@@ -73,7 +87,7 @@ def dispatch(service, method: str, params: dict[str, Any]) -> dict[str, Any]:
             if meta['workspace'] != str(workspace):
                 continue
             try:
-                managed = _process(service, {'workspace': str(workspace), 'processId': process_id})
+                managed = _managed(service, workspace, process_id, meta)
                 records.append(_record(managed, meta))
             except (KeyError, ValueError):
                 with _LOCK:
@@ -106,7 +120,7 @@ def dispatch(service, method: str, params: dict[str, Any]) -> dict[str, Any]:
             timeout_seconds=3600 if command else None, pty=True, rows=rows, cols=cols,
             env={'TERM': 'xterm-256color', 'COLORTERM': 'truecolor'},
         )
-        meta = {'workspace': str(workspace), 'cwd': str(cwd), 'shell': shell,
+        meta = {'_sessionId': session_id, 'workspace': str(workspace), 'cwd': str(cwd), 'shell': shell,
                 'title': str(params.get('title') or profile['label'])[:80],
                 'command': command, 'language': str(params.get('language') or 'shell'), 'createdAt': time.time()}
         with _LOCK:
@@ -124,7 +138,7 @@ def dispatch(service, method: str, params: dict[str, Any]) -> dict[str, Any]:
         if meta['workspace'] != str(workspace):
             raise ValueError('terminal process does not belong to this workspace')
         try:
-            _process(service, params).terminate_tree()
+            _managed(service, workspace, process_id, meta).terminate_tree()
         except ValueError:
             # Finished processes can already have been pruned by the shared
             # process store. Their stale tab must still be removable.
@@ -132,11 +146,14 @@ def dispatch(service, method: str, params: dict[str, Any]) -> dict[str, Any]:
         with _LOCK:
             registry.pop(process_id, None)
         return {'closed': True}
-    managed = _process(service, params)
+    process_id = str(params.get('processId') or '').strip()
+    if not process_id:
+        raise ValueError('processId is required')
     with _LOCK:
-        metadata = registry.get(managed.process_id)
+        metadata = registry.get(process_id)
     if not metadata:
         raise ValueError('Not an interactive terminal session')
+    managed = _managed(service, workspace, process_id, metadata)
     if method == 'terminal/session/read':
         cursor = params.get('cursor', 0)
         if isinstance(cursor, bool) or not isinstance(cursor, int) or cursor < 0:

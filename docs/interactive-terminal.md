@@ -45,6 +45,17 @@ process monitoring coexist. The host retains a bounded 100,000-character tail;
 the emulator retains up to 10,000 scrollback lines. When a reader falls behind
 the host tail, it receives a truncation flag instead of silently missing output.
 
+Existing terminal I/O resolves the process by its recorded session owner in
+memory; it never scans the conversation library or builds a full process
+transcript snapshot per key. Stdio read/write/resize requests use a dedicated
+FIFO beside the ordinary control queue. Input coalesces while an IPC write is
+in flight, preserving exact character/control order without a round trip per
+queued key. Input and tab activation wake output reads immediately; visible
+output polls at 16–32ms and hidden panes at 500ms. At most one read per pane is
+in flight. The browser regression also delays write acknowledgements by 80ms
+and measures the visible terminal renderer, rather than the intentionally
+debounced accessibility announcements.
+
 `tests/test_interactive_terminal.py` exercises real PTYs, ownership, directories,
 resizing, command completion and output rollover. The browser integration test
 uses an isolated temporary host and real PowerShell/ConPTY on Windows:

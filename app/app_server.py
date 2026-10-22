@@ -1921,6 +1921,9 @@ class JsonRpcStdioServer:
         # another conversation's preview. General RPCs retain their ordering.
         self._navigation_ingress: queue.Queue[Any] = queue.Queue(maxsize=self.ingress_limit)
         self._project_ingress: queue.Queue[Any] = queue.Queue(maxsize=self.ingress_limit)
+        # Keystrokes must not wait behind library scans, Git or model requests.
+        # One FIFO keeps raw terminal writes ordered independently of controls.
+        self._terminal_ingress: queue.Queue[Any] = queue.Queue(maxsize=self.ingress_limit)
         self._outbound: queue.Queue[Any] = queue.Queue(maxsize=self.outbound_limit)
         self._write_lock = threading.Lock()
         self._writer: TextIO | None = None
@@ -1994,6 +1997,9 @@ class JsonRpcStdioServer:
                     }
                 )
                 continue
+            if self.controller.initialized and self._is_terminal_io(payload):
+                self._admit_terminal_io(payload)
+                continue
             if self.controller.initialized and self._is_observational(payload):
                 try:
                     self._navigation_ingress.put_nowait(payload)
@@ -2026,6 +2032,21 @@ class JsonRpcStdioServer:
             and (params.get("presentationOnly") is True or params.get("threadOnly") is True)
         )
 
+    @staticmethod
+    def _is_terminal_io(payload: Any) -> bool:
+        if not isinstance(payload, dict) or not isinstance(payload.get('method'), str):
+            return False
+        return payload['method'] in {
+            'terminal/session/read', 'terminal/session/write', 'terminal/session/resize',
+        }
+
+    def _admit_terminal_io(self, payload: dict[str, Any]) -> None:
+        try:
+            self._terminal_ingress.put_nowait(payload)
+        except queue.Full:
+            self._send_response({'jsonrpc': '2.0', 'id': payload.get('id'), 'error': {
+                'code': -32001, 'message': 'Terminal input overloaded; retry later.'}})
+
     def _navigation_loop(self) -> None:
         self._request_queue_loop(self._navigation_ingress)
 
@@ -2055,10 +2076,13 @@ class JsonRpcStdioServer:
         output = threading.Thread(target=self._writer_loop, name="loom-app-writer", daemon=True)
         projects = threading.Thread(target=lambda: self._request_queue_loop(self._project_ingress),
                                     name="loom-app-projects", daemon=True)
+        terminal = threading.Thread(target=lambda: self._request_queue_loop(self._terminal_ingress),
+                                    name="loom-app-terminal", daemon=True)
         readers = [threading.Thread(target=self._navigation_loop, name=f"loom-app-navigation-{index}", daemon=True)
                    for index in range(4)]
         worker.start()
         projects.start()
+        terminal.start()
         for navigation in readers:
             navigation.start()
         output.start()
@@ -2073,6 +2097,10 @@ class JsonRpcStdioServer:
                     navigation_payload = json.loads(raw)
                 except json.JSONDecodeError:
                     navigation_payload = None
+                if (len(raw.encode('utf-8')) <= _MAX_MESSAGE_BYTES
+                        and self.controller.initialized and self._is_terminal_io(navigation_payload)):
+                    self._admit_terminal_io(navigation_payload)
+                    continue
                 if (len(raw.encode("utf-8")) <= _MAX_MESSAGE_BYTES
                         and self.controller.initialized and self._is_observational(navigation_payload)):
                     try:
@@ -2124,6 +2152,8 @@ class JsonRpcStdioServer:
             # writer on a join timeout silently loses delayed initialize/RPC
             # responses. Drain the request queue before its response queue.
             worker.join()
+            self._terminal_ingress.put(self._STOP)
+            terminal.join()
             self._project_ingress.put(self._STOP)
             projects.join()
             for _ in readers:

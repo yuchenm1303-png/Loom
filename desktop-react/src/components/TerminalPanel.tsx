@@ -20,6 +20,7 @@ import {
   X,
 } from "./icons";
 import { PanelHeader } from "./PanelHeader";
+import { createTerminalInputPump } from "../terminalInput";
 import { useI18n } from "../i18n";
 import {
   type TerminalSession,
@@ -30,7 +31,12 @@ import "@xterm/xterm/css/xterm.css";
 import "./terminal-panel.css";
 
 type Profile = { id: string; label: string };
-type PaneHandle = { term: XTerminal; search: SearchAddon; fit(): void };
+type PaneHandle = {
+  term: XTerminal;
+  search: SearchAddon;
+  fit(): void;
+  wake(): void;
+};
 const message = (error: unknown) =>
   error instanceof Error ? error.message : String(error);
 
@@ -123,25 +129,27 @@ function TerminalPane({
     let cursor = 0;
     let exitPolls = 0;
     let retries = 0;
-    let queue: Promise<unknown> = Promise.resolve();
+    let reading = false;
+    let readRequested = false;
     let resizeKey = "";
     const params = {
       workspace: session.workspace,
       processId: session.processId,
     };
-    const write = (text: string) => {
-      if (!live.current.connected || !live.current.running) return;
-      queue = queue
-        .then(() =>
-          disposed || !live.current.running || !live.current.connected
-            ? undefined
-            : window.loom.call("terminal/session/write", { ...params, text }),
-        )
-        .catch((error) => {
-          if (!disposed && live.current.running)
-            live.current.onError(message(error));
-        });
+    const wake = () => {
+      if (disposed || exitPolls >= 3) return;
+      clearTimeout(timer);
+      if (reading) readRequested = true;
+      else timer = window.setTimeout(poll, 0);
     };
+    const input = createTerminalInputPump({
+      send: (text) =>
+        window.loom.call("terminal/session/write", { ...params, text }),
+      writable: () =>
+        !disposed && live.current.connected && live.current.running,
+      activity: wake,
+      error: (error) => live.current.onError(message(error)),
+    });
     const fitTerminal = () => {
       if (!live.current.visible || !host.current?.clientWidth || disposed)
         return;
@@ -164,10 +172,10 @@ function TerminalPane({
           });
       }, 100);
     };
-    const controller: PaneHandle = { term, search, fit: fitTerminal };
+    const controller: PaneHandle = { term, search, fit: fitTerminal, wake };
     handle.current = controller;
     onReady(session.processId, controller);
-    const data = term.onData(write);
+    const data = term.onData(input.write);
     term.attachCustomKeyEventHandler((event) => {
       if (event.type !== "keydown") return true;
       if (
@@ -201,12 +209,19 @@ function TerminalPane({
       attributes: true,
       attributeFilter: ["data-loom-theme"],
     });
-    const poll = async () => {
+    async function poll() {
       if (disposed) return;
+      if (reading) {
+        readRequested = true;
+        return;
+      }
       if (!live.current.connected) {
         timer = window.setTimeout(poll, 800);
         return;
       }
+      reading = true;
+      readRequested = false;
+      let outputReceived = false;
       try {
         const result = await window.loom.call<TerminalRead>(
           "terminal/session/read",
@@ -224,7 +239,10 @@ function TerminalPane({
         live.current.running = result.running;
         term.options.disableStdin = !result.running;
         term.options.cursorBlink = result.running;
-        if (result.output) term.write(result.output);
+        if (result.output) {
+          term.write(result.output);
+          outputReceived = true;
+        }
         cursor = result.cursor;
         retries = 0;
         live.current.onStatus(result);
@@ -241,22 +259,29 @@ function TerminalPane({
         if (disposed) return;
         retries += 1;
         if (retries === 1) live.current.onError(message(error));
+      } finally {
+        reading = false;
       }
       if (!disposed)
         timer = window.setTimeout(
           poll,
           retries
             ? Math.min(5000, 500 * retries)
-            : live.current.visible
-              ? 90
-              : 500,
+            : readRequested
+              ? 0
+              : live.current.visible
+                ? outputReceived
+                  ? 16
+                  : 32
+                : 500,
         );
-    };
+    }
     void poll();
     return () => {
       disposed = true;
       clearTimeout(timer);
       clearTimeout(resizeTimer);
+      input.dispose();
       observer.disconnect();
       themes.disconnect();
       data.dispose();
@@ -270,6 +295,7 @@ function TerminalPane({
     handle.current.term.options.fontSize = fontSize;
     if (visible) {
       handle.current.fit();
+      handle.current.wake();
       handle.current.term.focus();
     }
   }, [visible, fontSize, connected]);

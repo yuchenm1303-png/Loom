@@ -37,13 +37,20 @@ const port = await new Promise((resolve, reject) => {
   });
 });
 server = `http://127.0.0.1:${port}`;
+let writeAcknowledgementDelay = 0;
+let writeRequests = 0;
 const rpc = async (method, params = {}) => {
+  if (method === "terminal/session/write") writeRequests += 1;
   const response = await fetch(server, {
     method: "POST",
     body: JSON.stringify({ method, params }),
   });
   const value = await response.json();
   if (value.error) throw new Error(value.error);
+  if (method === "terminal/session/write" && writeAcknowledgementDelay)
+    await new Promise((resolve) =>
+      setTimeout(resolve, writeAcknowledgementDelay),
+    );
   return value.result;
 };
 const browser = await chromium.launch({
@@ -85,6 +92,43 @@ try {
   await visibleOutput()
     .getByText("LOOM_REAL_TERMINAL", { exact: true })
     .waitFor({ timeout: 20000 });
+  // An 80ms IPC acknowledgement must not turn a 30-character command into
+  // 30 serial round trips. Measure actual shell output, with no local echo.
+  writeAcknowledgementDelay = 80;
+  const writesBefore = writeRequests;
+  const started = performance.now();
+  await page.keyboard.type("echo LOOM_LOW_LATENCY_0123456789");
+  await page.keyboard.press("Enter");
+  // Accessibility announcements intentionally debounce for a second; inspect
+  // the visible DOM renderer, which is what the user actually sees.
+  await page.waitForFunction(
+    () =>
+      [
+        ...document.querySelectorAll(
+          ".terminal-emulator:not([hidden]) .xterm-rows > div",
+        ),
+      ].some((row) => row.textContent.trim() === "LOOM_LOW_LATENCY_0123456789"),
+    null,
+    { polling: "raf" },
+  );
+  const elapsed = performance.now() - started;
+  const batchedWrites = writeRequests - writesBefore;
+  console.log(
+    JSON.stringify({
+      terminalCommandEchoMs: Math.round(elapsed),
+      writeAcknowledgementMs: 80,
+      batchedWrites,
+    }),
+  );
+  assert.ok(
+    elapsed < 700,
+    `typed input accumulated round-trip delays: ${elapsed}ms`,
+  );
+  assert.ok(
+    batchedWrites < 10,
+    `input was sent as ${batchedWrites} separate key requests`,
+  );
+  writeAcknowledgementDelay = 0;
   await page.keyboard.type(
     process.platform === "win32"
       ? '$env:LOOM_TERMINAL_TEST="retained"'
@@ -195,9 +239,20 @@ try {
     .filter({ hasText: "INLINE_CODE_RESULT" })
     .waitFor();
   const before = (await rpc("terminal/session/list")).sessions.length;
-  assert.equal(await codeBlocks.nth(2).locator('.terminal-run-actions').count(), 0, 'SQL and non-executable code never get a misleading Run button');
-  await codeBlocks.nth(1).getByRole('button', { name: 'Run command', exact: true }).click();
-  await codeBlocks.nth(1).locator('.terminal-run-output').filter({ hasText: 'JS_CODE_RESULT' }).waitFor();
+  assert.equal(
+    await codeBlocks.nth(2).locator(".terminal-run-actions").count(),
+    0,
+    "SQL and non-executable code never get a misleading Run button",
+  );
+  await codeBlocks
+    .nth(1)
+    .getByRole("button", { name: "Run command", exact: true })
+    .click();
+  await codeBlocks
+    .nth(1)
+    .locator(".terminal-run-output")
+    .filter({ hasText: "JS_CODE_RESULT" })
+    .waitFor();
   await codeBlocks
     .first()
     .getByRole("button", { name: "Run in terminal", exact: true })
@@ -234,7 +289,11 @@ try {
       "sidebar and workspace stacking cannot cover terminal controls",
     );
     await page.waitForTimeout(120);
-    assert.equal(await page.locator('.terminal-notice[role="alert"]').count(), 0, 'replaying an exited PTY must not try to write automatic terminal responses');
+    assert.equal(
+      await page.locator('.terminal-notice[role="alert"]').count(),
+      0,
+      "replaying an exited PTY must not try to write automatic terminal responses",
+    );
     if (process.env.LOOM_TERMINAL_SCREENSHOTS)
       await page.screenshot({
         path: `${process.env.LOOM_TERMINAL_SCREENSHOTS}/terminal-${theme}.png`,

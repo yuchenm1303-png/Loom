@@ -121,3 +121,30 @@ def test_shell_language_is_never_silently_reinterpreted(monkeypatch):
             _shell_argv('bash', 'echo hello')
     with pytest.raises(ValueError, match='not executable'):
         _shell_argv('sql', 'drop table example')
+
+
+def test_terminal_io_never_rescans_the_conversation_library(terminal):
+    call, service, _ = terminal
+    created = call('terminal/session/create')
+    pid = created['processId']
+    assert '_sessionId' not in created
+    def unexpected_scan():
+        raise AssertionError('a keystroke must not load every stored conversation')
+    service._list_session_objects = unexpected_scan
+    for _ in range(20):
+        call('terminal/session/read', processId=pid, cursor=0)
+        call('terminal/session/write', processId=pid, text=' ')
+    call('terminal/session/resize', processId=pid, rows=25, cols=100)
+    call('terminal/session/rename', processId=pid, title='Fast terminal')
+    assert call('terminal/session/list')['sessions'][0]['title'] == 'Fast terminal'
+    assert call('terminal/session/close', processId=pid)['closed']
+
+
+def test_terminal_status_does_not_snapshot_the_entire_transcript(terminal):
+    call, service, _ = terminal
+    created = call('terminal/session/create')
+    pid = created['processId']
+    managed = service.runtime.process_store.get(pid, session_id='terminal-test')
+    managed.snapshot = lambda **_: pytest.fail('terminal I/O must not construct process transcript snapshots')
+    assert call('terminal/session/read', processId=pid, cursor=0)['processId'] == pid
+    assert call('terminal/session/write', processId=pid, text=' ')['running']
