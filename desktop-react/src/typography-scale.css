@@ -69,15 +69,8 @@ body {
 .composer-hint { font-size: 12px !important; }
 
 /* Model manager ---------------------------------------------------------- */
-.model-manager-popover .composer-popover-heading strong { font-size: 14px !important; }
 .model-compact-current strong { font-size: 13px !important; }
 .model-compact-current span:not(.model-compact-icon) { font-size: 12px !important; }
-.model-manager-actions strong,
-.model-wide-action strong,
-.model-manager-popover .model-manager-actions strong { font-size: 13px !important; }
-.model-manager-actions small,
-.model-wide-action small,
-.model-manager-popover .model-manager-actions small { font-size: var(--loom-font-micro) !important; }
 
 /* Run progress ----------------------------------------------------------- */
 .run-progress-brand { font-size: 12px !important; }

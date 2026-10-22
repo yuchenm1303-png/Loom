@@ -42,7 +42,7 @@ def test_running_turn_uses_a_dedicated_editable_steering_state() -> None:
     assert '<ComposerBase {...sharedProps} />' in source
     assert "draftValue," in source
     assert "onDraftValueChange: setDraftValue" in source
-    assert 'className={`composer is-steering ${focused ? "is-focused" : ""} ${dragging ? "is-dragging" : ""}`}' in source
+    assert 'className={`composer is-steering ${focused ? "is-focused" : ""} ${dragging ? "is-dragging" : ""} ${panels.mounted ? "has-panel" : ""}`}' in source
     assert 'className={`composer is-running ${focused ? "is-focused" : ""}`}' not in source
     assert '"Guide the current task…"' in source
     assert 'aria-label="Guide the current task"' in source
@@ -61,7 +61,7 @@ def test_running_send_is_routed_to_turn_steer_not_a_second_turn_start() -> None:
     assert "const running = Boolean(loom.turnActive || threadIsRunning(thread))" in source
     assert "&& !activeTurnHasTerminalError;" in source
     assert 'if (!running) {' in source
-    assert 'await loom.send(input, attachments);' in source
+    assert 'await loom.send(input, attachments, toolSelection);' in source
     assert 'window.loom.call<SteeringReceipt>("turn/steer", {' in source
     assert 'await window.loom.call("turn/steer", {' not in source
     assert 'turnId,' in source

@@ -797,11 +797,11 @@ body:is(.loom-agent-dock-resizing, .loom-artifact-dock-resizing) .pl-resizer::be
 }
 
 /* Panels that hang off a control ---------------------------------------------
-   The permission popover was already refined to one quiet surface (composer-refined.css:
-   hairline, one soft shadow, no gradient). The model panel and the context menus keep their
-   own motion and content, but take the same shell. :root:root outranks the light-theme
-   copies of their old gradients. */
-:root:root :is(.composer-popover.model-manager-popover, .loom-context-menu) {
+   The composer's panels are one family with their own sheet (composer-panels.css: the same
+   hairline, the float shadow and the float corner below). The context menus keep their own
+   motion and content, but take the same shell. :root:root outranks the light-theme copies of
+   their old gradients. */
+:root:root .loom-context-menu {
   border: 1px solid var(--pl-line);
   border-radius: var(--pl-radius-float);
   background: var(--pl-surface-raised);

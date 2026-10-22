@@ -1,8 +1,8 @@
 /* Composer refinement layer
    =========================
-   One late stylesheet that gives the composer and everything that opens from it
-   (permission and expression popovers, attachments) the same quiet, precise
-   finish. The earlier composer sheets each patched the one before:
+   One late stylesheet that gives the composer (its field, toolbar and
+   attachments) a quiet, precise finish. The earlier composer sheets each
+   patched the one before:
    gradients, inner highlights, glows, lift-on-hover and a light streak on every
    chip. Together they read as moulded plastic. This layer takes the surface back
    to what it is, a hairline-bordered panel in a single colour, with colour spent
@@ -16,11 +16,10 @@
      scales or sweeps on hover. State is a tint of the surface.
    - Layout, motion (data-motion-phase) and font sizes owned by typography-scale.css
      are not restated here; this layer is skin only.
-   - Tokens are --cq-*; popovers sit inside .composer-wrap, so they share them.
-   - The model card (.model-manager-popover: model identity, the reasoning thread
-     and the model library) is deliberately NOT part of this layer. It keeps the
-     look model-core-redesign.css and model-picker.css give it; the popover frame
-     rules below step around it. */
+   - Tokens are --cq-*.
+   - The panels that open from the toolbar (tools, permissions, the model card,
+     quota, the preview) are NOT part of this layer: they are one family with one
+     sheet of their own, composer-panels.css. */
 
 /* -------------------------------------------------------------------------- */
 /* Tokens                                                                      */
@@ -308,193 +307,17 @@
 
 /* One quiet surface: hairline border, a single soft shadow, no arrow, no
    gradient, no highlight. */
-:root .composer-wrap.composer-refined .composer-popover:not(.model-manager-popover) {
-  padding: 6px;
-  border: 1px solid var(--cq-line);
-  border-radius: 13px;
-  background: var(--cq-pop);
-  box-shadow: var(--cq-shadow-pop);
-}
-
-:root .composer-wrap.composer-refined .composer-popover:not(.model-manager-popover)::before {
-  display: none;
-}
 
 /* Headers read as text. The icon tile, the bordered "context" pill and the
    heavier weights are decoration. */
-:root .composer-wrap.composer-refined .composer-popover-head {
-  align-items: center;
-  gap: 12px;
-  padding: 10px 10px 12px;
-  border-bottom: 1px solid var(--cq-line);
-}
-
-:root .composer-wrap.composer-refined .composer-popover-icon {
-  display: none;
-}
-
-:root .composer-wrap.composer-refined .composer-popover-heading strong {
-  color: var(--cq-ink);
-  font-size: 14px;
-  font-weight: 600;
-  letter-spacing: 0;
-}
-
-:root .composer-wrap.composer-refined .composer-popover-heading span:not(.composer-popover-icon) {
-  color: var(--cq-ink-3);
-  font-size: 11.5px;
-}
-
-:root .composer-wrap.composer-refined .composer-popover-context {
-  padding: 0;
-  border: 0;
-  background: none;
-  color: var(--cq-ink-4);
-  font-size: 11.5px;
-  font-weight: 500;
-  letter-spacing: 0;
-}
 
 /* Option lists: rows are plain until hovered; the chosen one is a tint with a
    check, not a bordered card with a bar and a gradient. */
-:root .composer-wrap.composer-refined .composer-option-list,
-:root .composer-wrap.composer-refined .permission-popover .composer-option-list {
-  gap: 2px;
-  padding: 6px 0 4px;
-}
-
-:root .composer-wrap.composer-refined .composer-option,
-:root .composer-wrap.composer-refined .permission-popover .permission-option {
-  min-height: 56px;
-  padding: 9px 10px;
-  grid-template-columns: 28px minmax(0, 1fr) 22px;
-  gap: 10px;
-  border: 0;
-  border-radius: 11px;
-  background: transparent;
-  box-shadow: none;
-  transform: none;
-  transition: background-color var(--loom-dur-fast) ease, color var(--loom-dur-fast) ease;
-}
-
-:root .composer-wrap.composer-refined .composer-option:hover:not(:disabled),
-:root .composer-wrap.composer-refined .permission-popover .permission-option:hover:not(:disabled) {
-  border: 0;
-  background: var(--cq-hover);
-  box-shadow: none;
-  transform: none;
-}
-
-:root .composer-wrap.composer-refined .composer-option.active,
-:root .composer-wrap.composer-refined .permission-popover .permission-option.active {
-  border: 0;
-  background: var(--cq-selected);
-  box-shadow: none;
-}
-
-:root .composer-wrap.composer-refined .composer-option.danger:not(.active):hover:not(:disabled) {
-  border: 0;
-  background: var(--cq-hover);
-}
-
-:root .composer-wrap.composer-refined .composer-option:focus-visible {
-  outline: 2px solid color-mix(in srgb, var(--accent) 60%, transparent);
-  outline-offset: -2px;
-}
 
 /* The icon is a bare glyph in the first column, not a bordered tile. */
-:root .composer-wrap.composer-refined .composer-option-icon,
-:root .composer-wrap.composer-refined .permission-popover .composer-option-icon {
-  width: 28px;
-  height: 28px;
-  border: 0;
-  border-radius: 8px;
-  background: transparent;
-  box-shadow: none;
-  color: var(--cq-ink-3);
-  transform: none;
-}
-
-:root .composer-wrap.composer-refined .composer-option.active .composer-option-icon {
-  color: var(--cq-ink);
-}
-
-:root .composer-wrap.composer-refined .permission-popover .permission-option:hover:not(:disabled) .composer-option-icon {
-  transform: none;
-}
-
-:root .composer-wrap.composer-refined .composer-option-icon.danger,
-:root .composer-wrap.composer-refined .composer-option.active .composer-option-icon.danger {
-  color: var(--cq-danger);
-}
-
-:root .composer-wrap.composer-refined .composer-option-icon.safe,
-:root .composer-wrap.composer-refined .composer-option-icon.recommended,
-:root .composer-wrap.composer-refined .composer-option-icon.flexible {
-  border: 0;
-  background: transparent;
-}
-
-:root .composer-wrap.composer-refined .composer-option-title-row strong,
-:root .composer-wrap.composer-refined .permission-popover .composer-option-title-row strong {
-  color: var(--cq-ink);
-  font-size: 13px;
-  font-weight: 500;
-}
-
-:root .composer-wrap.composer-refined .composer-option-description,
-:root .composer-wrap.composer-refined .permission-popover .composer-option-description {
-  color: var(--cq-ink-3);
-  font-size: 11.5px;
-  line-height: 1.5;
-}
 
 /* Tags: a word after the title, not a pill. Colour only where it carries
    meaning: the recommended default and the risky end. */
-:root .composer-wrap.composer-refined .permission-badge,
-:root .composer-wrap.composer-refined .permission-popover .permission-badge {
-  min-height: 17px;
-  padding: 0;
-  border: 0;
-  border-radius: 0;
-  background: none;
-  color: var(--cq-ink-3);
-  font-size: 11.5px;
-  font-weight: 400;
-  letter-spacing: 0;
-}
-
-:root .composer-wrap.composer-refined .permission-badge.recommended {
-  color: var(--cq-accent-ink);
-}
-
-:root .composer-wrap.composer-refined .permission-badge.danger {
-  color: var(--cq-danger);
-}
-
-:root .composer-wrap.composer-refined .composer-option-check,
-:root .composer-wrap.composer-refined .permission-popover .permission-option.active .composer-option-check,
-:root .composer-wrap.composer-refined .composer-option.active .composer-option-check {
-  background: none;
-  box-shadow: none;
-}
-
-:root .composer-wrap.composer-refined .composer-option.active .composer-option-check,
-:root .composer-wrap.composer-refined .permission-popover .permission-option.active .composer-option-check {
-  color: var(--cq-accent-ink);
-}
-
-:root .composer-wrap.composer-refined .permission-popover .permission-footnote {
-  margin-top: 4px;
-  padding: 10px 10px 6px;
-  border-top: 1px solid var(--cq-line);
-  color: var(--cq-ink-4);
-  font-size: 11.5px;
-}
-
-:root .composer-wrap.composer-refined .permission-popover .permission-footnote > svg {
-  color: var(--cq-ink-4);
-}
 
 /* -------------------------------------------------------------------------- */
 /* Expression (sticker) popover                                                */
@@ -727,16 +550,4 @@
   color: var(--cq-danger);
 }
 
-:root .composer-wrap.composer-refined .composer-popover-error {
-  border: 0;
-  background: color-mix(in srgb, var(--cq-danger) 11%, transparent);
-  color: var(--cq-danger);
-}
-
 /* A focus ring belongs to the focused option, without moving its label. */
-:root .composer-wrap.composer-refined .composer-popover:not(.model-manager-popover) button:focus-visible,
-:root .composer-wrap.composer-refined .composer-popover:not(.model-manager-popover) input:focus-visible,
-:root .composer-wrap.composer-refined .composer-popover:not(.model-manager-popover) textarea:focus-visible {
-  outline: 2px solid color-mix(in srgb, var(--cq-accent) 55%, transparent);
-  outline-offset: -2px;
-}

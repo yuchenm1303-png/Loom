@@ -61,17 +61,19 @@ def test_tokens_exist_in_both_themes_and_ride_the_workspace_palette() -> None:
     assert "--pl-header-height: var(--loom-rail-height, 60px)" in root
 
 
-def test_float_shell_matches_the_refined_composer_popover() -> None:
+def test_float_shell_is_shared_by_the_composer_panels_and_the_menus() -> None:
     kit = read("components/panel-language.css")
+    panels = read("components/composer-panels.css")
     refined = read("components/composer-refined.css")
 
-    # composer-refined.css made the permission popover one quiet surface: a 13px corner and one
-    # long soft shadow. Palettes, the model panel and the context menus take the same shell.
-    assert "border-radius: 13px;" in css_block(refined, ":root .composer-wrap.composer-refined .composer-popover:not(.model-manager-popover)")
+    # One quiet surface for everything that hangs off a control: a 13px corner and one long soft shadow.
+    # The composer's panels take the float tokens (composer-panels.css), the context menus the same shell here.
     assert "--pl-radius-float: 13px" in kit
     assert "--pl-shadow-float: 0 1px 2px rgba(0, 0, 0, .35), 0 26px 64px -20px rgba(0, 0, 0, .78)" in kit
     assert "--cq-shadow-pop: 0 1px 2px rgba(0, 0, 0, .35), 0 26px 64px -20px rgba(0, 0, 0, .78)" in refined
-    assert ".composer-popover.model-manager-popover" in kit and ".loom-context-menu" in kit
+    assert "--cp-shadow: var(--pl-shadow-float" in panels and "--cp-radius: var(--pl-radius-float" in panels
+    assert ":root:root .loom-context-menu {" in kit
+    assert "model-manager-popover" not in kit
 
 
 def test_every_dock_is_a_dock_with_the_shared_header() -> None:

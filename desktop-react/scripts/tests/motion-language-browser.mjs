@@ -93,8 +93,8 @@ for (const theme of (process.env.LOOM_THEMES || "dark,light").split(",")) {
 
   // ---- popovers and menus: readable at once, fast in, fast-out, no travel ------------------------------------------
   for (const [open_, close_, target] of [
-    ["permission-popover-open", "permission-popover-close", "div.composer-popover.permission-popover"],
-    ["model-popover-open", "model-popover-close", "div.composer-popover.model-popover"],
+    ["permission-popover-open", "permission-popover-close", "section.cp.permission-popover"],
+    ["model-popover-open", "model-popover-close", "section.cp.model-popover"],
     ["message-menu-open", "message-menu-close", "div.loom-context-menu.is-positioned"],
   ]) {
     const arrive = find(rows, open_, (row) => row.target === target && row.name === "opacity", "the opacity transition");

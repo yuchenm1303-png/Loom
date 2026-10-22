@@ -9,7 +9,7 @@
 :root .composer-wrap.composer-refined .composer-toolbar .composer-tool,
 :root .composer-wrap.composer-refined .composer-toolbar .composer-chip {
   height: 28px; min-height: 28px; padding: 0 7px; gap: 5px; border-radius: 6px;
-  font-size: 11.5px !important; line-height: 1; font-weight: 450; transform: none;
+  font-size: 11.5px !important; line-height: 1; font-weight: 500; transform: none;
 }
 :root .composer-wrap.composer-refined .composer-toolbar .composer-tool > svg,
 :root .composer-wrap.composer-refined .composer-toolbar .composer-chip > svg,
@@ -33,20 +33,10 @@
 .composer-toolbar-steering .composer-left > .composer-tool { order: 1; }
 .composer-toolbar-steering .composer-toolbar-divider { order: 2; }
 .composer-toolbar-steering .composer-control-anchor { order: 3; }
-:root .composer-wrap.composer-refined .composer:has(.composer-editor-toggle[aria-pressed="true"]) textarea {
+:root .composer-wrap.composer-refined .composer[data-editor-expanded] textarea {
   height: min(42vh, 320px) !important; min-height: min(42vh, 320px); max-height: min(42vh, 320px); overflow-y: auto;
 }
-:root .composer-wrap.composer-refined .composer:has(.composer-draft-preview) { overflow: visible; }
-:root .composer-wrap.composer-refined .composer-draft-preview {
-  left: auto; right: 0; bottom: calc(100% + 10px); width: min(480px, 100%); box-sizing: border-box;
-  max-height: min(55vh, 460px); padding: 14px; font-size: 12px;
-}
-.composer-draft-preview-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
-.composer-draft-preview-body { max-height: min(35vh, 300px); overflow-y: auto; overflow-wrap: anywhere; }
-.composer-draft-preview-body p { white-space: pre-wrap; margin: 10px 0; line-height: 1.6; user-select: text; }
-.composer-draft-preview-body ul { padding-left: 20px; }
-.composer-draft-preview small { display: block; margin-top: 10px; color: var(--loom-workspace-muted); line-height: 1.5; }
-:root .composer-wrap.composer-refined .composer-hint { font-size: 10.5px !important; margin-top: 6px; }
+:root .composer-wrap.composer-refined .composer-hint { font-size: 11.5px !important; margin-top: 6px; }
 @container (max-width: 680px) {
   :root .composer-wrap.composer-refined .composer-workspace-button > span,
   :root .composer-wrap.composer-refined .composer-permission-label { display: none; }

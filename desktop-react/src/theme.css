@@ -87,8 +87,7 @@ html.loom-theme-transitioning .inspector,
 html.loom-theme-transitioning .settings-host,
 html.loom-theme-transitioning .settings-sidebar,
 html.loom-theme-transitioning .settings-main,
-html.loom-theme-transitioning .settings-card,
-html.loom-theme-transitioning .composer-popover {
+html.loom-theme-transitioning .settings-card {
   transition:
     background-color var(--loom-dur-base) ease,
     background var(--loom-dur-base) ease,
@@ -242,42 +241,6 @@ html[data-loom-theme="light"] .composer-chip,
 html[data-loom-theme="light"] .composer-tool,
 html[data-loom-theme="light"] .composer-keycap {
   color: #646c78;
-}
-
-html[data-loom-theme="light"] .composer-popover,
-html[data-loom-theme="light"] .composer-popover.model-manager-popover {
-  border-color: rgba(28,31,37,.11);
-  background:
-    radial-gradient(115% 62% at 74% -8%, rgba(105,90,216,.045), transparent 54%),
-    linear-gradient(180deg, rgba(255,255,255,.995), rgba(247,248,250,.995));
-  box-shadow:
-    0 30px 76px rgba(27,31,40,.14),
-    0 8px 24px rgba(27,31,40,.07),
-    inset 0 1px rgba(255,255,255,.84);
-  color: #24272e;
-}
-
-html[data-loom-theme="light"] .composer-popover::before {
-  border-right-color: rgba(28,31,37,.11);
-  border-bottom-color: rgba(28,31,37,.11);
-  background: #f8f9fa;
-}
-
-html[data-loom-theme="light"] .model-core-copy strong,
-html[data-loom-theme="light"] .model-core-title,
-html[data-loom-theme="light"] .model-manager-popover strong {
-  color: #24272e;
-}
-
-html[data-loom-theme="light"] .model-core-copy span,
-html[data-loom-theme="light"] .model-manager-popover p,
-html[data-loom-theme="light"] .model-manager-popover small {
-  color: #737b86;
-}
-
-html[data-loom-theme="light"] .model-core-glyph {
-  color: #695ad8;
-  background: rgba(105,90,216,.055);
 }
 
 /* Inspector */
@@ -2074,11 +2037,6 @@ html[data-loom-theme="light"] .composer-right {
   gap: 6px;
 }
 
-html[data-loom-theme="light"] .composer-control-anchor {
-  min-height: 32px;
-  align-items: center;
-}
-
 /* Quiet controls by default; surface appears on hover/open, not all the time. */
 html[data-loom-theme="light"] .composer .composer-tool,
 html[data-loom-theme="light"] .composer .composer-chip {
@@ -2113,17 +2071,6 @@ html[data-loom-theme="light"] .composer .composer-chip:hover:not(:disabled) {
 html[data-loom-theme="light"] .composer .composer-tool:hover:not(:disabled) svg,
 html[data-loom-theme="light"] .composer .composer-chip:hover:not(:disabled) svg {
   color: #5246af;
-}
-
-html[data-loom-theme="light"] .composer .composer-chip.is-open {
-  border-color: rgba(105,90,216,.17);
-  background: rgba(105,90,216,.065);
-  color: #5144ad;
-  box-shadow: none;
-}
-
-html[data-loom-theme="light"] .composer .composer-chip.is-open svg {
-  color: #6253ca;
 }
 
 html[data-loom-theme="light"] .composer .composer-tool:disabled,

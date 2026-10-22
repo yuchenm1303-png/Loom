@@ -28,12 +28,12 @@ def test_transient_surfaces_have_symmetric_presence() -> None:
 
     assert "useMotionPresence(open, RETAIN.base)" in account
     assert "data-motion-phase={presence.phase}" in account
-    assert "panelPresence = useMotionPresence(Boolean(openPanel), RETAIN.fast, openPanel)" in composer
-    # Check every actual popover instead of a stale count: the old third
-    # popover was removed when its controls moved into the model manager.
-    popovers = [line for line in composer.splitlines() if "<div className=" in line and "composer-popover " in line]
-    assert popovers
-    assert all("data-motion-phase={panelPresence.phase}" in line for line in popovers)
+    # The composer's panels share one shell (composerPanel.tsx): held for the fast-out exit, phased, inert while leaving.
+    kit = read("desktop-react/src/components/composerPanel.tsx")
+    assert "useMotionPresence(open, RETAIN.fast)" in kit
+    assert "data-motion-phase={panel.phase}" in kit and "inert={!panel.open}" in kit
+    assert composer.count("<ComposerPanel panel=") == 2
+    assert "composer-popover " not in composer
     # A dock leaves on fast-out, so it is held for that exit and no longer.
     assert "useMotionPresence(open, RETAIN.fast)" in review
     assert "useMotionPresence(open, RETAIN.fast)" in agents

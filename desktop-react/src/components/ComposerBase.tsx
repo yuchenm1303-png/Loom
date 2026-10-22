@@ -1,11 +1,11 @@
 import {
   Check,
   ChevronDown,
-  Cpu,
   Eye,
   FolderOpen,
   FolderCog,
   KeyRound,
+  LoaderCircle,
   LockKeyhole,
   ModelLayers,
   Paperclip,
@@ -14,11 +14,9 @@ import {
   Sparkles,
   Square,
 } from "./icons";
-import { KeyboardEvent as ReactKeyboardEvent, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { KeyboardEvent as ReactKeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
 import type { AddModelInput, Attachment, ModelSnapshot, StickerPreferences } from "../types/loom";
 import { useI18n } from "../i18n";
-import { useMotionPresence } from "../motion/useMotionPresence";
-import { RETAIN } from "../motion/tokens";
 import { recordSendOrigin } from "../sendFlight";
 import { Crossfade } from "./Crossfade";
 import { ModelPanel } from "./ModelPanel";
@@ -26,6 +24,15 @@ import { ModelUsageIndicator } from "./ModelUsageIndicator";
 import { ComposerDraftTools } from "./ComposerDraftTools";
 import { ComposerToolSelector } from "./ComposerToolSelector";
 import { ComposerAttachmentStrip } from "./ComposerAttachmentStrip";
+import {
+  ComposerPanel,
+  ComposerPanelHost,
+  PanelFoot,
+  PanelHead,
+  useComposerPanel,
+  useComposerPanelHost,
+  useInheritedComposerPanelHost,
+} from "./composerPanel";
 import {
   MAX_COMPOSER_ATTACHMENTS,
   appendComposerAttachments,
@@ -82,8 +89,6 @@ interface ComposerProps {
   onSend(input: string, attachments: { path: string; name: string }[], toolSelection?: string[] | null): Promise<void> | void;
   onInterrupt(): Promise<void> | void;
 }
-
-type OpenPanel = "permission" | "model" | null;
 
 type PermissionPresentation = {
   label: string;
@@ -144,7 +149,7 @@ function permissionPresentation(mode: string, chinese = false): PermissionPresen
 
 function PermissionIcon({ mode, toolbar = false }: { mode: string; toolbar?: boolean }) {
   const Icon = mode === "read-only" ? Eye : mode === "workspace" ? FolderCog : mode === "full-access" ? KeyRound : ShieldCheck;
-  return <Icon size={toolbar ? 16 : 15} strokeWidth={toolbar ? 1.75 : 2}
+  return <Icon size={16} strokeWidth={1.75}
     className={toolbar ? "composer-control-icon composer-permission-icon" : undefined}
     aria-hidden="true" focusable="false" />;
 }
@@ -203,21 +208,25 @@ export function Composer({
   const [attachError, setAttachError] = useState("");
   const [dragging, setDragging] = useState(false);
   const [focused, setFocused] = useState(false);
-  const [openPanel, setOpenPanel] = useState<OpenPanel>(null);
-  const panelPresence = useMotionPresence(Boolean(openPanel), RETAIN.fast, openPanel);
-  const lastOpenPanelRef = useRef<Exclude<OpenPanel, null> | null>(openPanel);
-  if (openPanel) lastOpenPanelRef.current = openPanel;
-  const renderedPanel = openPanel ?? (panelPresence.mounted ? lastOpenPanelRef.current : null);
+  const composerRootRef = useRef<HTMLDivElement | null>(null);
+  // One host knows which of the composer's panels is open (composerPanel.tsx). The live-guidance composer lends its
+  // own host to these shared controls, so its preview and these panels still close each other.
+  const inheritedHost = useInheritedComposerPanelHost();
+  const ownHost = useComposerPanelHost(composerRootRef);
+  const panels = inheritedHost ?? ownHost;
+  const permissionPanel = useComposerPanel("permission", panels);
+  const modelPanel = useComposerPanel("model", panels);
   const [pendingSelection, setPendingSelection] = useState("");
   const [panelError, setPanelError] = useState("");
   const [modelError, setModelError] = useState("");
   const modelRequestVersion = useRef(0);
 
+  const { close: closePanels } = panels;
   useEffect(() => {
     modelRequestVersion.current += 1;
     setModelError("");
-    setOpenPanel(null);
-  }, [threadId]);
+    closePanels();
+  }, [threadId, closePanels]);
 
   async function selectModel(action: (() => Promise<void> | void) | undefined) {
     const version = ++modelRequestVersion.current;
@@ -238,19 +247,6 @@ export function Composer({
   const submittingRef = useRef(false);
   const [quote, setQuote] = useQuoteReply();
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
-  const composerRootRef = useRef<HTMLDivElement | null>(null);
-
-  // The transcript's jump button hides while a popover is mounted. Publish that
-  // as an attribute on the workspace: `.workspace:has(.composer-popover)` was
-  // re-evaluated on every DOM change in the transcript.
-  const popoverMounted = renderedPanel !== null;
-  useLayoutEffect(() => {
-    if (!popoverMounted) return;
-    const workspace = composerRootRef.current?.closest(".workspace");
-    if (!workspace) return;
-    workspace.setAttribute("data-composer-popover", "");
-    return () => workspace.removeAttribute("data-composer-popover");
-  }, [popoverMounted]);
 
   useEffect(() => {
     if (!running) setStopping(false);
@@ -290,33 +286,10 @@ export function Composer({
     setQuote(null);
   }, [threadId, setQuote, controlsOnly]);
 
+  // A panel that closes forgets its error.
   useEffect(() => {
-    function handlePointerDown(event: PointerEvent) {
-      if (!composerRootRef.current?.contains(event.target as Node)) {
-        setOpenPanel(null);
-        setPanelError("");
-      }
-    }
-
-    function handleEscape(event: KeyboardEvent) {
-      if (event.key === "Escape") {
-        const trigger = composerRootRef.current?.querySelector<HTMLButtonElement>('.composer-chip[aria-expanded="true"]');
-        if (trigger) {
-          event.preventDefault();
-          trigger.focus();
-        }
-        setOpenPanel(null);
-        setPanelError("");
-      }
-    }
-
-    document.addEventListener("pointerdown", handlePointerDown);
-    document.addEventListener("keydown", handleEscape);
-    return () => {
-      document.removeEventListener("pointerdown", handlePointerDown);
-      document.removeEventListener("keydown", handleEscape);
-    };
-  }, []);
+    if (!permissionPanel.open) setPanelError("");
+  }, [permissionPanel.open]);
 
 
   const addAttachments = (incoming: Attachment[]) => {
@@ -372,7 +345,7 @@ export function Composer({
     }
     submittingRef.current = true;
     setSubmitting(true);
-    setOpenPanel(null);
+    panels.close();
     try {
       // Where the text is drawn now: the message flies from here once the transcript has its entry (sendFlight.ts).
       recordSendOrigin(textareaRef.current);
@@ -404,14 +377,9 @@ export function Composer({
     }
   }
 
-  function togglePanel(panel: Exclude<OpenPanel, null>) {
-    setPanelError("");
-    setOpenPanel((current) => (current === panel ? null : panel));
-  }
-
   async function choosePermission(mode: string) {
     if (mode === permissionMode) {
-      setOpenPanel(null);
+      permissionPanel.close(true);
       return;
     }
     if (!onPermissionModeChange || running) return;
@@ -420,7 +388,7 @@ export function Composer({
     setPanelError("");
     try {
       await onPermissionModeChange(mode);
-      setOpenPanel(null);
+      permissionPanel.close(true);
     } catch (cause) {
       setPanelError(cause instanceof Error ? cause.message : "Could not update permission profile.");
     } finally {
@@ -442,98 +410,91 @@ export function Composer({
   const settingsControls = <>
             <span className="composer-toolbar-divider" aria-hidden="true" />
 
-            <div className="composer-control-anchor">
+            <div className="composer-control-anchor cp-anchor" ref={permissionPanel.anchorRef}>
               <button
+                ref={permissionPanel.triggerRef}
                 type="button"
-                className={`composer-chip permission-chip composer-refined-control ${openPanel === "permission" ? "is-open" : ""}`}
+                className={`composer-chip permission-chip composer-refined-control ${permissionPanel.open ? "is-open" : ""}`}
                 data-mode={permissionMode || "approval"}
-                title={zh ? "权限设置" : "Permission profile"}
+                title={zh ? "权限" : "Permissions"}
                 aria-haspopup="menu"
-                aria-expanded={openPanel === "permission"}
-                onClick={() => togglePanel("permission")}
+                aria-expanded={permissionPanel.open}
+                onClick={permissionPanel.toggle}
               >
                 <span className="composer-glyph-well access" aria-hidden="true"><PermissionIcon mode={permissionMode || "approval"} toolbar /></span>
                 <span className="composer-permission-label">{currentPermission.label}</span>
                 <ChevronDown size={13} className="composer-chip-chevron" />
               </button>
 
-              {renderedPanel === "permission" ? (
-                <div className={`composer-popover permission-popover ${running ? "is-locked" : ""}`} data-motion-phase={panelPresence.phase} inert={!openPanel} role="menu" aria-label="Permission profiles">
-                  <div className="composer-popover-head">
-                    <div className="composer-popover-heading">
-                      <span className="composer-popover-icon permission"><ShieldCheck size={16} /></span>
-                      <div>
-                        <strong>{zh ? "权限设置" : "Permission profile"}</strong>
-                        <span>{zh ? "选择当前对话的操作权限。" : "Choose access for this conversation."}</span>
-                      </div>
-                    </div>
-                    <span className="composer-popover-context">{zh ? "当前对话" : "Thread"}</span>
-                  </div>
-
-                  <div className="composer-option-list">
-                    {availablePermissionModes.map((mode) => {
-                      const presentation = permissionPresentation(mode, zh);
-                      const active = mode === permissionMode;
-                      const pending = pendingSelection === mode;
-                      return (
-                        <button
-                          key={mode}
-                          type="button"
-                          data-ic-row
-                          className={`composer-option permission-option ${active ? "active" : ""} ${presentation.tone === "danger" ? "danger" : ""}`}
-                          role="menuitemradio"
-                          aria-checked={active}
-                          disabled={Boolean(pendingSelection) || running || (!onPermissionModeChange && !active)}
-                          onClick={() => void choosePermission(mode)}
-                        >
-                          <span className={`composer-option-icon ${presentation.tone}`}><PermissionIcon mode={mode} /></span>
-                          <span className="composer-option-copy">
-                            <span className="composer-option-title-row">
-                              <strong>{presentation.label}</strong>
-                              <em className={`permission-badge ${presentation.tone}`}>{presentation.badge}</em>
-                            </span>
-                            <span className="composer-option-description">{presentation.description}</span>
+              <ComposerPanel panel={permissionPanel} label={zh ? "权限" : "Permissions"} role="menu" size="m"
+                className={`permission-popover ${running ? "is-locked" : ""}`}>
+                <PanelHead title={zh ? "权限" : "Permissions"} aside={zh ? "当前对话" : "This conversation"} />
+                <div className="cp-body">
+                  {availablePermissionModes.map((mode) => {
+                    const presentation = permissionPresentation(mode, zh);
+                    const active = mode === permissionMode;
+                    const pending = pendingSelection === mode;
+                    const tone = presentation.tone === "recommended" ? " is-accent" : presentation.tone === "danger" ? " is-warn" : "";
+                    return (
+                      <button
+                        key={mode}
+                        type="button"
+                        data-ic-row
+                        data-cp-item=""
+                        data-cp-current={active ? "" : undefined}
+                        className={`cp-row is-tall permission-option ${active ? "active" : ""}`}
+                        role="menuitemradio"
+                        aria-checked={active}
+                        disabled={Boolean(pendingSelection) || running || (!onPermissionModeChange && !active)}
+                        onClick={() => void choosePermission(mode)}
+                      >
+                        <span className={`cp-row-lead${presentation.tone === "danger" ? " is-warn" : ""}`}><PermissionIcon mode={mode} /></span>
+                        <span className="cp-row-text">
+                          <span className="cp-row-title">
+                            <span>{presentation.label}</span>
+                            <span className={`cp-tag${tone}`}>{presentation.badge}</span>
                           </span>
-                          <span className={`composer-option-check ${pending ? "pending" : ""}`}>
-                            {pending ? <span className="composer-mini-spinner" /> : active ? <Check size={13} /> : null}
-                          </span>
-                        </button>
-                      );
-                    })}
-                  </div>
-
-                  {panelError ? <div className="composer-popover-error">{panelError}</div> : null}
-                  <div className="composer-popover-footnote permission-footnote">
-                    <LockKeyhole size={13} strokeWidth={1.8} />
-                    <span>
-                      {zh
-                        ? (running
-                          ? "当前任务结束后才能切换权限；新权限会从下一轮开始生效。"
-                          : "权限切换会从下一轮开始生效，不会改变已经执行中的操作。")
-                        : (running
-                          ? "Finish the active turn before changing access. The new profile applies from the next turn."
-                          : "Permission changes apply from the next turn and do not alter work already in progress.")}
-                    </span>
-                  </div>
+                          <span className="cp-row-desc">{presentation.description}</span>
+                        </span>
+                        <span className={`cp-row-end${active ? " is-check" : ""}`} aria-hidden="true">
+                          {pending ? <LoaderCircle size={14} strokeWidth={2} /> : active ? <Check size={15} strokeWidth={2} /> : null}
+                        </span>
+                      </button>
+                    );
+                  })}
+                  {panelError ? <div className="cp-note is-error" role="alert">{panelError}</div> : null}
                 </div>
-              ) : null}
+                <PanelFoot>
+                  <LockKeyhole size={13} strokeWidth={1.75} aria-hidden="true" />
+                  <span>
+                    {zh
+                      ? (running
+                        ? "当前任务结束后才能切换权限；新权限从下一轮开始生效。"
+                        : "从下一轮开始生效，不会改变正在执行的操作。")
+                      : (running
+                        ? "Finish the active turn before changing access. The new access applies from the next turn."
+                        : "Applies from the next turn; work already in progress keeps its access.")}
+                  </span>
+                </PanelFoot>
+              </ComposerPanel>
             </div>
 
-            <div className="composer-control-anchor model-control-anchor">
+            <div className="composer-control-anchor model-control-anchor cp-anchor" ref={modelPanel.anchorRef}>
               <button
+                ref={modelPanel.triggerRef}
                 type="button"
-                className={`composer-chip model-chip composer-refined-control ${openPanel === "model" ? "is-open" : ""}`}
+                className={`composer-chip model-chip composer-refined-control ${modelPanel.open ? "is-open" : ""}`}
                 title={currentModel}
-                aria-haspopup="menu"
-                aria-expanded={openPanel === "model"}
+                aria-haspopup="dialog"
+                aria-expanded={modelPanel.open}
                 onClick={() => {
-                  if (openPanel !== "model") {
+                  if (!modelPanel.open) {
                     void Promise.resolve(onRefreshActiveThread?.()).catch(() => {
                       // The existing model list stays usable if Host status
                       // refresh fails; choosing a model surfaces RPC errors.
                     });
                   }
-                  togglePanel("model");
+                  modelPanel.toggle();
                 }}
               >
                 <span className="composer-glyph-well model" aria-hidden="true"><ComposerControlIcon kind="model" /></span>
@@ -541,65 +502,54 @@ export function Composer({
                 <ChevronDown size={13} className="composer-chip-chevron" />
               </button>
 
-              {renderedPanel === "model" ? (
-                <div className="composer-popover model-popover model-manager-popover" data-motion-phase={panelPresence.phase} inert={!openPanel} role="dialog" aria-label="Model manager">
-                  <div className="composer-popover-head">
-                    <div className="composer-popover-heading">
-                      <span className="composer-popover-icon model"><Cpu size={16} /></span>
-                      <div>
-                        <strong>{zh ? "模型" : "Models"}</strong>
-                        <span>{zh ? "选择当前会话使用的模型" : "Choose the model for this conversation"}</span>
-                      </div>
-                    </div>
-                  </div>
-
-                  <ModelPanel
-                    runtimeModel={model}
-                    snapshot={modelSnapshot ?? null}
-                    busy={modelBusy}
-                    running={running}
-                    accountAuthenticated={accountAuthenticated}
-                    onOpenAccount={onOpenAccount}
-                    onSwitchProfile={(selection) => selectModel(onModelProfileChange ? () => onModelProfileChange(selection) : undefined)}
-                    onSwitchCurrent={(nextModel) => selectModel(onCustomModelChange ? () => onCustomModelChange(nextModel) : undefined)}
-                    onConfigureProvider={async (provider, apiKey) => {
-                      if (!onConfigureModelProvider) throw new Error("Provider configuration is unavailable.");
-                      await onConfigureModelProvider(provider, apiKey);
-                    }}
-                    onRefresh={async () => {
-                      await onRefreshModels?.(true);
-                    }}
-                    onAddModel={async (input) => {
-                      if (!onAddModel) throw new Error("Adding model APIs is unavailable.");
-                      await onAddModel(input);
-                    }}
-                    onDeleteModel={async (selection) => {
-                      if (!onDeleteModel) throw new Error("Deleting model APIs is unavailable.");
-                      await onDeleteModel(selection);
-                    }}
-                    onReasoningChange={async (kind, nextValue) => {
-                      if (!onReasoningChange) throw new Error("Reasoning control is unavailable.");
-                      await onReasoningChange(kind, nextValue);
-                    }}
-                    onClose={() => setOpenPanel(null)}
-                  />
-                </div>
-              ) : null}
+              <ComposerPanel panel={modelPanel} label={zh ? "模型" : "Model"} size="l" className="model-popover model-manager-popover">
+                <ModelPanel
+                  runtimeModel={model}
+                  snapshot={modelSnapshot ?? null}
+                  busy={modelBusy}
+                  running={running}
+                  accountAuthenticated={accountAuthenticated}
+                  onOpenAccount={onOpenAccount}
+                  onSwitchProfile={(selection) => selectModel(onModelProfileChange ? () => onModelProfileChange(selection) : undefined)}
+                  onSwitchCurrent={(nextModel) => selectModel(onCustomModelChange ? () => onCustomModelChange(nextModel) : undefined)}
+                  onConfigureProvider={async (provider, apiKey) => {
+                    if (!onConfigureModelProvider) throw new Error("Provider configuration is unavailable.");
+                    await onConfigureModelProvider(provider, apiKey);
+                  }}
+                  onRefresh={async () => {
+                    await onRefreshModels?.(true);
+                  }}
+                  onAddModel={async (input) => {
+                    if (!onAddModel) throw new Error("Adding model APIs is unavailable.");
+                    await onAddModel(input);
+                  }}
+                  onDeleteModel={async (selection) => {
+                    if (!onDeleteModel) throw new Error("Deleting model APIs is unavailable.");
+                    await onDeleteModel(selection);
+                  }}
+                  onReasoningChange={async (kind, nextValue) => {
+                    if (!onReasoningChange) throw new Error("Reasoning control is unavailable.");
+                    await onReasoningChange(kind, nextValue);
+                  }}
+                  onClose={() => modelPanel.close(true)}
+                />
+              </ComposerPanel>
             </div>
 
-            <ModelUsageIndicator key={accountUsageIdentity} selection={accountAuthenticated ? modelSnapshot?.current?.selection || modelSnapshot?.primary?.selection || "" : ""} zh={zh} onOpen={() => setOpenPanel(null)} />
+            <ModelUsageIndicator key={accountUsageIdentity} selection={accountAuthenticated ? modelSnapshot?.current?.selection || modelSnapshot?.primary?.selection || "" : ""} zh={zh} />
 
   </>;
-  if (controlsOnly) return <div ref={composerRootRef} className="composer-shared-settings">
+  if (controlsOnly) return <ComposerPanelHost host={panels}><div ref={composerRootRef} className="composer-shared-settings">
     <ComposerToolSelector threadId={threadId} workspace={workspace} selection={toolSelection} onChange={setToolSelection}
-      readOnly={Boolean(running)} onOpen={() => setOpenPanel(null)} onInsertSkill={() => {}} />
+      readOnly={Boolean(running)} onInsertSkill={() => {}} />
     {settingsControls}
-  </div>;
+  </div></ComposerPanelHost>;
 
   return (
+    <ComposerPanelHost host={panels}>
     <div className="composer-wrap composer-refined" ref={composerRootRef}>
       <div
-        className={`composer ${focused ? "is-focused" : ""} ${running ? "is-running" : ""} ${openPanel ? "has-panel" : ""} ${dragging ? "is-dragging" : ""} ${hasDraftContent ? "has-content" : "is-empty"}`}
+        className={`composer ${focused ? "is-focused" : ""} ${running ? "is-running" : ""} ${panels.mounted ? "has-panel" : ""} ${dragging ? "is-dragging" : ""} ${hasDraftContent ? "has-content" : "is-empty"}`}
         onDragOver={(event) => {
           if (!event.dataTransfer.types.includes("Files")) return;
           event.preventDefault();
@@ -646,7 +596,7 @@ export function Composer({
         <div className="composer-toolbar composer-toolbar-idle">
           <div className="composer-left">
             <ComposerToolSelector threadId={threadId} workspace={workspace} selection={toolSelection} onChange={setToolSelection}
-              disabled={disabled || submitting || running} onOpen={() => setOpenPanel(null)}
+              disabled={disabled || submitting || running}
               onInsertSkill={name => { setValue(`${value}${value && !/\s$/.test(value) ? " " : ""}$${name} `); textareaRef.current?.focus(); }} />
             <button
               type="button"
@@ -668,8 +618,7 @@ export function Composer({
           </div>
 
           <div className="composer-right">
-            <ComposerDraftTools text={formatQuotedPrompt(quote, value)} attachments={attachments} threadId={threadId} disabled={disabled || submitting}
-              onPreviewOpen={() => setOpenPanel(null)} />
+            <ComposerDraftTools text={formatQuotedPrompt(quote, value)} attachments={attachments} threadId={threadId} disabled={disabled || submitting} />
             <Crossfade identity={`${Boolean(running)}:${stopping}`}>
               {!running ? <span className={submitting ? "composer-running-label" : "composer-keycap"} role={submitting ? "status" : undefined}>{submitting ? (zh ? "正在发送…" : "Sending…") : "Enter ↵"}</span> : (
                 <span className="composer-running-label" role="status">
@@ -694,5 +643,6 @@ export function Composer({
       </div>
       <div className="composer-hint is-shortcut">{zh ? "Enter 发送 · Shift + Enter 换行" : "Enter to send · Shift + Enter for a new line"}</div>
     </div>
+    </ComposerPanelHost>
   );
 }

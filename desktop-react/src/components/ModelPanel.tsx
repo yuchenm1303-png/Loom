@@ -3,7 +3,6 @@ import {
   Cat,
   Check,
   ChevronDown,
-  ChevronLeft,
   ChevronRight,
   KeyRound,
   LoaderCircle,
@@ -41,12 +40,19 @@ import moonshotLogo from "../assets/provider-logos/moonshotai.svg";
 import xiaomiLogo from "../assets/provider-logos/xiaomi.svg";
 import hunyuanLogo from "../assets/provider-logos/tencenthy.svg";
 import xLogo from "../assets/provider-logos/x.svg";
-import "./model-panel.css";
-import { ReasoningThread } from "./ReasoningThread";
+import { useI18n } from "../i18n";
+import { PanelFoot, PanelHead, PanelLabel } from "./composerPanel";
+import { ReasoningControl } from "./ReasoningControl";
 import { personalConnectionTemplate } from "../state/personalModelConnection";
 
+/*
+ * The model card: what answers this conversation and how hard it thinks (home), every model by provider (the library),
+ * one provider's models, and two forms (a personal connection, a custom model ID). It is the content of the composer's
+ * model panel; the shell, the motion and every rule it wears belong to the composer panel family (composerPanel.tsx,
+ * composer-panels.css). Each view is its own element, so a view that is swapped in fades in like the panel did.
+ */
+
 type ModelView = "list" | "profiles" | "group" | "add" | "custom";
-type NavDirection = "forward" | "back";
 
 interface ModelGroup {
   id: string;
@@ -115,7 +121,7 @@ function providerSetup(group: ModelGroup): ProviderSetup {
   return { credentialTarget, statusProfiles, catalogUnauthorized, needsKey };
 }
 
-// Hue and chroma feed OKLCH in model-picker.css for both logos and fallback monograms.
+// Hue and chroma feed OKLCH in composer-panels.css (.cp-mark) for both logos and fallback monograms.
 const PROVIDER_LOGOS: Record<string, string> = {
   minimax: minimaxLogo,
   "managed-relay:minimax": minimaxLogo,
@@ -150,37 +156,35 @@ function providerTint(id: string): readonly [number, number] {
   return [FALLBACK_HUES[hash % FALLBACK_HUES.length], 0.11];
 }
 
-function ProviderMark({ id, name, small = false }: { id: string; name: string; small?: boolean }) {
+type MarkSize = "small" | "default" | "large";
+
+function markClass(size: MarkSize): string {
+  return size === "small" ? "cp-mark is-small" : size === "large" ? "cp-mark is-large" : "cp-mark";
+}
+
+function ProviderMark({ id, name, size = "default" }: { id: string; name: string; size?: MarkSize }) {
   const [hue, chroma] = providerTint(id);
   const logo = PROVIDER_LOGOS[id] ?? (name === "OpenAI" ? openaiLogo : undefined);
   const initial = name.trim().match(/[\p{L}\p{N}]/u)?.[0]?.toUpperCase() ?? "?";
   return (
-    <span
-      className={`mp-mark ${small ? "mp-mark-sm" : ""}`}
-      style={{ "--mp-hue": hue, "--mp-chroma": chroma } as CSSProperties}
-      aria-hidden="true"
-    >
-      {logo ? <span className="mp-mark-logo" style={{ "--mp-logo": `url("${logo}")` } as CSSProperties} /> : initial}
+    <span className={markClass(size)} style={{ "--cp-hue": hue, "--cp-chroma": chroma } as CSSProperties} aria-hidden="true">
+      {logo ? <span className="cp-mark-logo" style={{ "--cp-logo": `url("${logo}")` } as CSSProperties} /> : initial}
     </span>
   );
 }
 
 function FamilyMark({ family }: { family: string }) {
   const icons: Record<string, ReactNode> = {
-    GLM: <BrainCircuit size={13} strokeWidth={1.9} />,
-    LongCat: <Cat size={13} strokeWidth={1.9} />,
-    Muse: <Music2 size={13} strokeWidth={1.9} />,
-    Other: <Shapes size={13} strokeWidth={1.9} />,
+    GLM: <BrainCircuit size={12} strokeWidth={1.75} />,
+    LongCat: <Cat size={12} strokeWidth={1.75} />,
+    Muse: <Music2 size={12} strokeWidth={1.75} />,
+    Other: <Shapes size={12} strokeWidth={1.75} />,
   };
   const icon = icons[family];
-  if (!icon) return <ProviderMark id={family.toLowerCase()} name={family} small />;
+  if (!icon) return <ProviderMark id={family.toLowerCase()} name={family} size="small" />;
   const [hue, chroma] = providerTint(family.toLowerCase());
   return (
-    <span
-      className="mp-mark mp-mark-sm"
-      style={{ "--mp-hue": hue, "--mp-chroma": chroma } as CSSProperties}
-      aria-hidden="true"
-    >
+    <span className="cp-mark is-small" style={{ "--cp-hue": hue, "--cp-chroma": chroma } as CSSProperties} aria-hidden="true">
       {icon}
     </span>
   );
@@ -227,9 +231,9 @@ function isConsoleFree(profile: ModelProfile): boolean {
 }
 const CONSOLE_FREE_RESTRICTION = "OpenCode currently restricts free-tier models to its own app; third-party clients such as Loom receive HTTP 403. This model cannot be used from Loom.";
 
-function modelPriceLabel(profile: ModelProfile): ReactNode {
-  if (isConsoleFree(profile)) return <span className="mp-price-restricted">Free · OpenCode only</span>;
-  if (profile.groupId === "opencode-console") return <span className="mp-price-metered">Pay as you go</span>;
+function modelPriceLabel(profile: ModelProfile): string | null {
+  if (isConsoleFree(profile)) return "Free · OpenCode only";
+  if (profile.groupId === "opencode-console") return "Pay as you go";
   return null;
 }
 
@@ -255,54 +259,9 @@ function unavailableReason(profile: ModelProfile): string {
   return profile.statusMessage || "This model is currently unavailable.";
 }
 
+const ITEM = "[data-cp-item]:not(:disabled)";
 
-const PICKER_ITEM = "[data-mp-item]:not(:disabled)";
-
-function focusPickerItem(item: HTMLElement) {
-  item.focus({ preventScroll: true });
-  item.scrollIntoView({ block: "nearest" });
-}
-
-// Arrow keys walk the visible rows; ArrowUp from the first row returns to search.
-function handlePickerKeyDown(event: ReactKeyboardEvent<HTMLDivElement>) {
-  if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
-  const root = event.currentTarget;
-  const items = Array.from(root.querySelectorAll<HTMLElement>(PICKER_ITEM));
-  if (!items.length) return;
-  event.preventDefault();
-  const index = items.indexOf(document.activeElement as HTMLElement);
-  if (event.key === "ArrowDown") {
-    focusPickerItem(items[Math.min(items.length - 1, index + 1)]);
-  } else if (index > 0) {
-    focusPickerItem(items[index - 1]);
-  } else {
-    root.querySelector<HTMLInputElement>(".mp-search input")?.focus();
-  }
-}
-
-function PickerHeader({
-  title,
-  meta,
-  backLabel,
-  onBack,
-}: {
-  title: ReactNode;
-  meta?: ReactNode;
-  backLabel: string;
-  onBack(): void;
-}) {
-  return (
-    <div className="mp-head">
-      <button type="button" className="mp-back" onClick={onBack} aria-label={backLabel} title={backLabel}>
-        <ChevronLeft size={17} strokeWidth={1.9} />
-      </button>
-      <div className="mp-head-title">{title}</div>
-      {meta ? <div className="mp-head-meta">{meta}</div> : null}
-    </div>
-  );
-}
-
-function PickerSearch({
+function PanelSearch({
   value,
   placeholder,
   label,
@@ -315,21 +274,21 @@ function PickerSearch({
 }) {
   const inputRef = useRef<HTMLInputElement | null>(null);
   return (
-    <label className="mp-search">
-      <Search size={15} strokeWidth={1.9} aria-hidden="true" />
+    <label className="cp-search">
+      <Search size={15} strokeWidth={1.75} aria-hidden="true" />
       <input
         ref={inputRef}
         value={value}
         onChange={(event) => onChange(event.target.value)}
         onKeyDown={(event) => {
           if (event.key === "Escape" && value) {
-            // First Escape clears the query; the next one closes the popover.
+            // First Escape clears the query; the next one closes the panel.
             event.preventDefault();
             event.stopPropagation();
             onChange("");
           } else if (event.key === "Enter" && value.trim()) {
             event.preventDefault();
-            event.currentTarget.closest(".mp")?.querySelector<HTMLElement>(PICKER_ITEM)?.click();
+            event.currentTarget.closest(".cp-view")?.querySelector<HTMLElement>(ITEM)?.click();
           }
         }}
         placeholder={placeholder}
@@ -341,7 +300,7 @@ function PickerSearch({
       {value ? (
         <button
           type="button"
-          className="mp-search-clear"
+          className="cp-icon"
           aria-label="Clear search"
           onClick={() => {
             onChange("");
@@ -356,9 +315,9 @@ function PickerSearch({
 }
 
 function ProviderRow({
-  group, current, accountAuthenticated, onOpen,
+  group, current, accountAuthenticated, zh, onOpen,
 }: {
-  group: ModelGroup; current: boolean; accountAuthenticated: boolean; onOpen(): void;
+  group: ModelGroup; current: boolean; accountAuthenticated: boolean; zh: boolean; onOpen(): void;
 }) {
   const setup = providerSetup(group);
   const total = visibleProfiles(group).length;
@@ -376,25 +335,19 @@ function ProviderRow({
         : unavailable
           ? "Unavailable"
           : available < total
-            ? `${available}/${total} available`
-            : `${total} ${total === 1 ? "model" : "models"}`;
+            ? `${available}/${total} ${zh ? "可用" : "available"}`
+            : zh ? `${total} 个模型` : `${total} ${total === 1 ? "model" : "models"}`;
   return (
-    <button
-      type="button"
-      className={`mp-row mp-provider ${current ? "is-current" : ""}`}
-      data-mp-item=""
-      data-ic-row
-      onClick={onOpen}
-    >
+    <button type="button" className="cp-row" data-cp-item="" data-ic-row onClick={onOpen}>
       <ProviderMark id={group.id} name={group.name} />
-      <span className="mp-row-text">
-        <span className="mp-row-line">
-          <span className="mp-row-title" title={group.name}>{group.name}</span>
-          {current ? <span className="mp-badge">Current</span> : null}
+      <span className="cp-row-text">
+        <span className="cp-row-title">
+          <span title={group.name}>{group.name}</span>
+          {current ? <span className="cp-tag is-accent">{zh ? "当前" : "Current"}</span> : null}
         </span>
       </span>
-      <span className={`mp-row-meta ${setup.needsKey || unavailable ? "is-attention" : ""}`}>{meta}</span>
-      <ChevronRight size={15} strokeWidth={1.9} className="mp-row-chevron" aria-hidden="true" />
+      <span className={`cp-row-meta ${setup.needsKey || unavailable ? "is-attention" : ""}`}>{meta}</span>
+      <span className="cp-row-end is-chevron" aria-hidden="true"><ChevronRight size={14} strokeWidth={1.75} /></span>
     </button>
   );
 }
@@ -402,7 +355,6 @@ function ProviderRow({
 interface ModelRowProps {
   profile: ModelProfile;
   current: boolean;
-  pending: boolean;
   disabled: boolean;
   dimmed?: boolean;
   leading?: ReactNode;
@@ -413,39 +365,27 @@ interface ModelRowProps {
   onSelect(): void;
 }
 
-function ModelRow({
-  profile,
-  current,
-  pending,
-  disabled,
-  dimmed,
-  leading,
-  meta,
-  metaAttention,
-  end,
-  title,
-  onSelect,
-}: ModelRowProps) {
+function ModelRow({ profile, current, disabled, dimmed, leading, meta, metaAttention, end, title, onSelect }: ModelRowProps) {
   return (
     <button
       type="button"
-      className={`mp-row mp-model ${current ? "is-current" : ""} ${dimmed ? "is-dimmed" : ""} ${disabled && dimmed ? "is-unavailable" : ""}`}
-      data-mp-item=""
+      className={`cp-row ${current ? "is-current" : ""} ${dimmed ? "is-dim" : ""}`}
+      data-cp-item=""
+      data-cp-current={current ? "" : undefined}
+      data-ic-row
       aria-current={current ? "true" : undefined}
       disabled={disabled}
       title={title ?? profileTooltip(profile)}
       onClick={onSelect}
     >
       {leading}
-      <span className="mp-row-text">
-        <span className="mp-row-title">{profile.name}</span>
-        {modelIdAddsInfo(profile) ? <span className="mp-row-sub">{profile.model}</span> : null}
+      <span className="cp-row-text">
+        <span className="cp-row-title"><span>{profile.name}</span></span>
+        {modelIdAddsInfo(profile) ? <span className="cp-row-sub">{profile.model}</span> : null}
       </span>
-      {meta ? <span className={`mp-row-meta ${metaAttention ? "is-attention" : ""}`}>{meta}</span> : null}
-      <span className="mp-row-end" aria-hidden="true">
-        {pending
-          ? <LoaderCircle size={14} strokeWidth={2} />
-          : end ?? (current ? <Check size={15} strokeWidth={2.2} /> : null)}
+      {meta ? <span className={`cp-row-meta ${metaAttention ? "is-attention" : ""}`}>{meta}</span> : null}
+      <span className={`cp-row-end ${current && !end ? "is-check" : ""}`} aria-hidden="true">
+        {end ?? (current ? <Check size={15} strokeWidth={2} /> : null)}
       </span>
     </button>
   );
@@ -483,22 +423,6 @@ function adapterLabel(adapter: string): string {
   return "OpenAI-compatible";
 }
 
-function profileSubtitle(profile: ModelProfile): string {
-  if (profile.kind === "builtin") {
-    if (profile.groupId === "opencode-console") {
-      return isConsoleFree(profile)
-        ? "OpenCode Console · Free (limited time), separate from Go"
-        : "OpenCode Console · Metered, separate from Go";
-    }
-    if (profile.adapter === "opencode-go") {
-      return `OpenCode Go · ${profile.family || "Model"} · ${profile.protocol || "auto"}`;
-    }
-    if (profile.groupId?.startsWith("managed-relay")) return `Built-in managed · ${endpointLabel(profile.baseUrl)}`;
-    return `Built-in · ${endpointLabel(profile.baseUrl)}`;
-  }
-  return `${adapterLabel(profile.adapter)} · ${endpointLabel(profile.baseUrl)}`;
-}
-
 function activeReasoningOption(reasoning: ModelReasoningState): ModelReasoningOption | undefined {
   return reasoning.options.find((option) => option.value === reasoning.value);
 }
@@ -519,8 +443,8 @@ export function ModelPanel({
   onReasoningChange,
   onClose,
 }: ModelPanelProps) {
+  const zh = useI18n().language === "zh-CN";
   const [view, setView] = useState<ModelView>("list");
-  const [direction, setDirection] = useState<NavDirection>("forward");
   const [error, setError] = useState("");
   const [customModel, setCustomModel] = useState(runtimeModel || snapshot?.current?.model || "");
   const [name, setName] = useState("");
@@ -555,8 +479,7 @@ export function ModelPanel({
   const currentSelection = snapshot?.current?.selection || "";
   const currentReasoning = snapshot?.current?.reasoning ?? null;
   const currentGroupName = snapshot?.current?.groupName || currentName;
-  const currentFamily = snapshot?.current?.family || "";
-  const currentProtocol = snapshot?.current?.protocol || "";
+  const currentGroupId = snapshot?.current ? profileGroupId(snapshot.current) : "current";
   const profiles = snapshot?.profiles ?? [];
   const groups = useMemo<ModelGroup[]>(() => {
     const grouped = new Map<string, ModelGroup>();
@@ -631,7 +554,7 @@ export function ModelPanel({
     if (view !== "group") return;
     const list = providerListRef.current;
     if (!list) return;
-    const row = list.querySelector<HTMLElement>(".mp-model.is-current");
+    const row = list.querySelector<HTMLElement>(".cp-row.is-current");
     if (row) {
       const listBox = list.getBoundingClientRect();
       const rowBox = row.getBoundingClientRect();
@@ -642,7 +565,7 @@ export function ModelPanel({
     // Short providers have no search field to take focus; keep arrow keys working.
     const active = document.activeElement;
     if (!active || active === document.body) {
-      (row ?? list.querySelector<HTMLElement>(PICKER_ITEM))?.focus({ preventScroll: true });
+      (row ?? list.querySelector<HTMLElement>(ITEM))?.focus({ preventScroll: true });
     }
   }, [view, selectedGroup]);
 
@@ -658,8 +581,7 @@ export function ModelPanel({
     }
   }
 
-  function navigate(next: ModelView, nextDirection: NavDirection = "forward") {
-    setDirection(nextDirection);
+  function navigate(next: ModelView) {
     setView(next);
     setError("");
   }
@@ -800,144 +722,131 @@ export function ModelPanel({
     }
   }
 
+  const backToLibrary = zh ? "返回模型列表" : "Back to models";
+  const signInNote = (copy: string) => (
+    <div className="cp-note">
+      <Lock size={13} strokeWidth={2} aria-hidden="true" />
+      <span>{copy} <button type="button" className="cp-link" onClick={onOpenAccount}>{zh ? "登录" : "Sign in"}</button></span>
+    </div>
+  );
+  const enterSubmits = (submit: () => void) => (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (event.key !== "Enter" || event.shiftKey || !(event.target instanceof HTMLInputElement)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    submit();
+  };
+
   if (view === "add") {
     return (
-      <div
-        className="mp mp-form"
-        data-direction={direction}
-        role="form"
-        onKeyDown={(event) => {
-          if (event.key !== "Enter" || event.shiftKey || !(event.target instanceof HTMLInputElement)) return;
-          event.preventDefault();
-          event.stopPropagation();
-          void submitAdd();
-        }}
-      >
-        <PickerHeader title="Add connection" backLabel="Back to models" onBack={() => navigate("profiles", "back")} />
-        <div className="mp-body mp-form-body">
-          {!accountAuthenticated ? (
-            <div className="mp-notice">
-              <Lock size={13} strokeWidth={2} aria-hidden="true" />
-              <span>Sign in to Loom before saving or using an API connection. <button type="button" className="mp-link" onClick={onOpenAccount}>Sign in</button></span>
-            </div>
-          ) : null}
-          <div className="mp-form-lead">Use your provider's API URL and key. Built-in models use your Loom account and need no personal connection.</div>
-          <label className="mp-field">
-            <span className="mp-field-label">Connection name</span>
-            <input value={name} onChange={(event) => setName(event.target.value)} placeholder="e.g. MiniMax work API" autoFocus />
-          </label>
-          <div className="mp-field-row">
-            <label className="mp-field">
-              <span className="mp-field-label">API type</span>
-              <span className="mp-select">
-                <select value={adapter} onChange={(event) => setAdapter(event.target.value as AddModelInput["adapter"])}>
-                  <option value="openai-compatible">OpenAI-compatible</option>
-                  <option value="openai">OpenAI</option>
-                </select>
-                <ChevronDown size={14} strokeWidth={1.9} aria-hidden="true" />
-              </span>
+      <div key="add" className="cp-view" role="form" onKeyDown={enterSubmits(() => void submitAdd())}>
+        <PanelHead title={zh ? "添加连接" : "Add connection"} onBack={() => navigate("profiles")} backLabel={backToLibrary} />
+        <div className="cp-body">
+          {!accountAuthenticated ? signInNote("Sign in to Loom before saving or using an API connection.") : null}
+          <div className="cp-form">
+            <div className="cp-form-lead">Use your provider's API URL and key. Built-in models use your Loom account and need no personal connection.</div>
+            <label className="cp-field">
+              <span className="cp-field-label">{zh ? "连接名称" : "Connection name"}</span>
+              <input value={name} onChange={(event) => setName(event.target.value)} placeholder="e.g. MiniMax work API" autoFocus />
             </label>
-            <label className="mp-field">
-              <span className="mp-field-label">Model ID</span>
+            <div className="cp-field-row">
+              <label className="cp-field">
+                <span className="cp-field-label">{zh ? "接口类型" : "API type"}</span>
+                <span className="cp-select">
+                  <select value={adapter} onChange={(event) => setAdapter(event.target.value as AddModelInput["adapter"])}>
+                    <option value="openai-compatible">OpenAI-compatible</option>
+                    <option value="openai">OpenAI</option>
+                  </select>
+                  <ChevronDown size={14} strokeWidth={1.75} aria-hidden="true" />
+                </span>
+              </label>
+              <label className="cp-field">
+                <span className="cp-field-label">{zh ? "模型 ID" : "Model ID"}</span>
+                <input value={model} onChange={(event) => setModel(event.target.value)} placeholder="MiniMax-M3" spellCheck={false} />
+              </label>
+            </div>
+            <label className="cp-field">
+              <span className="cp-field-label">Base URL</span>
               <input
-                value={model}
-                onChange={(event) => setModel(event.target.value)}
-                placeholder="MiniMax-M3"
+                value={baseUrl}
+                onChange={(event) => setBaseUrl(event.target.value)}
+                placeholder={adapter === "openai" ? "OpenAI default endpoint" : "https://api.example.com/v1"}
+                disabled={adapter === "openai"}
                 spellCheck={false}
               />
             </label>
+            <label className="cp-field">
+              <span className="cp-field-label">API key</span>
+              <input type="password" value={apiKey} onChange={(event) => setApiKey(event.target.value)} autoComplete="off" />
+              <span className="cp-field-hint">
+                <KeyRound size={12} strokeWidth={1.75} aria-hidden="true" />
+                {zh ? "保存在系统凭据库中。" : "Stored securely in your OS credential store."}
+              </span>
+            </label>
           </div>
-          <label className="mp-field">
-            <span className="mp-field-label">Base URL</span>
-            <input
-              value={baseUrl}
-              onChange={(event) => setBaseUrl(event.target.value)}
-              placeholder={adapter === "openai" ? "OpenAI default endpoint" : "https://api.example.com/v1"}
-              disabled={adapter === "openai"}
-              spellCheck={false}
-            />
-          </label>
-          <label className="mp-field">
-            <span className="mp-field-label">API key</span>
-            <input type="password" value={apiKey} onChange={(event) => setApiKey(event.target.value)} autoComplete="off" />
-            <span className="mp-field-hint">
-              <KeyRound size={12} strokeWidth={1.9} aria-hidden="true" />
-              Stored securely in your OS credential store.
-            </span>
-          </label>
-          {error ? <div className="mp-notice is-error">{error}</div> : null}
+          {error ? <div className="cp-note is-error" role="alert">{error}</div> : null}
         </div>
-        <div className="mp-foot mp-form-foot">
-          <button type="button" className="mp-foot-action" onClick={() => navigate("profiles", "back")}>Cancel</button>
-          <button type="button" className="mp-primary" disabled={locked || !accountAuthenticated} onClick={() => void submitAdd()}>
+        <PanelFoot className="is-actions">
+          <button type="button" className="cp-foot-action" onClick={() => navigate("profiles")}>{zh ? "取消" : "Cancel"}</button>
+          <button type="button" className="cp-primary" disabled={locked || !accountAuthenticated} onClick={() => void submitAdd()}>
             {busy ? <LoaderCircle size={14} strokeWidth={2} /> : null}
-            Save & use
+            {zh ? "保存并使用" : "Save & use"}
           </button>
-        </div>
+        </PanelFoot>
       </div>
     );
   }
 
   if (view === "custom") {
-    const connectionId = snapshot?.current ? profileGroupId(snapshot.current) : "current";
     return (
-      <div
-        className="mp mp-form"
-        data-direction={direction}
-        role="form"
-        onKeyDown={(event) => {
-          if (event.key !== "Enter" || event.shiftKey || !(event.target instanceof HTMLInputElement)) return;
-          event.preventDefault();
-          event.stopPropagation();
-          void submitCustom();
-        }}
-      >
-        <PickerHeader title="Custom model ID" backLabel="Back to models" onBack={() => navigate("profiles", "back")} />
-        <div className="mp-body mp-form-body">
-          <div className="mp-form-lead">Keep the current connection and change only the model it calls.</div>
-          <div className="mp-connection">
-            <ProviderMark id={connectionId} name={currentGroupName} />
-            <span className="mp-row-text">
-              <span className="mp-row-title">{currentName}</span>
-              <span className="mp-connection-meta">{adapterLabel(currentAdapter)} · {endpointLabel(currentBaseUrl)}</span>
-            </span>
-          </div>
-          <label className="mp-field">
-            <span className="mp-field-label">Model ID</span>
-            <input
-              value={customModel}
-              onChange={(event) => setCustomModel(event.target.value)}
-              placeholder="Model ID exposed by this API"
-              autoFocus
-              spellCheck={false}
-            />
-          </label>
-          {recent.length ? (
-            <div className="mp-field">
-              <span className="mp-field-label">Recent</span>
-              <div className="mp-chips">
-                {recent.map((item) => (
-                  <button
-                    key={item}
-                    type="button"
-                    className={`mp-chip ${item === customModel.trim() ? "is-selected" : ""}`}
-                    onClick={() => setCustomModel(item)}
-                  >
-                    {item}
-                  </button>
-                ))}
-              </div>
+      <div key="custom" className="cp-view" role="form" onKeyDown={enterSubmits(() => void submitCustom())}>
+        <PanelHead title={zh ? "自定义模型 ID" : "Custom model ID"} onBack={() => navigate("profiles")} backLabel={backToLibrary} />
+        <div className="cp-body">
+          <div className="cp-form">
+            <div className="cp-form-lead">Keep the current connection and change only the model it calls.</div>
+            <div className="cp-connection">
+              <ProviderMark id={currentGroupId} name={currentGroupName} />
+              <span className="cp-row-text">
+                <span className="cp-row-title"><span>{currentName}</span></span>
+                <span className="cp-row-sub">{adapterLabel(currentAdapter)} · {endpointLabel(currentBaseUrl)}</span>
+              </span>
             </div>
-          ) : null}
-          {error ? <div className="mp-notice is-error">{error}</div> : null}
+            <label className="cp-field">
+              <span className="cp-field-label">{zh ? "模型 ID" : "Model ID"}</span>
+              <input
+                value={customModel}
+                onChange={(event) => setCustomModel(event.target.value)}
+                placeholder="Model ID exposed by this API"
+                autoFocus
+                spellCheck={false}
+              />
+            </label>
+            {recent.length ? (
+              <div className="cp-field">
+                <span className="cp-field-label">{zh ? "最近使用" : "Recent"}</span>
+                <div className="cp-chips">
+                  {recent.map((item) => (
+                    <button
+                      key={item}
+                      type="button"
+                      className={`cp-chip ${item === customModel.trim() ? "is-selected" : ""}`}
+                      onClick={() => setCustomModel(item)}
+                    >
+                      {item}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+          </div>
+          {error ? <div className="cp-note is-error" role="alert">{error}</div> : null}
         </div>
-        <div className="mp-foot mp-form-foot">
-          <button type="button" className="mp-foot-action" onClick={() => navigate("profiles", "back")}>Cancel</button>
-          <button type="button" className="mp-primary" disabled={locked || !accountAuthenticated} onClick={() => void submitCustom()}>
+        <PanelFoot className="is-actions">
+          <button type="button" className="cp-foot-action" onClick={() => navigate("profiles")}>{zh ? "取消" : "Cancel"}</button>
+          <button type="button" className="cp-primary" disabled={locked || !accountAuthenticated} onClick={() => void submitCustom()}>
             {busy ? <LoaderCircle size={14} strokeWidth={2} /> : null}
-            Switch model
+            {zh ? "切换模型" : "Switch model"}
           </button>
-        </div>
+        </PanelFoot>
       </div>
     );
   }
@@ -964,83 +873,65 @@ export function ModelPanel({
     const adminBlockedChoices = blockedChoices.filter(profile => String(profile.statusMessage || "").includes("Loom Admin"));
 
     return (
-      <div className="mp mp-provider" data-direction={direction} onKeyDown={handlePickerKeyDown}>
-        <PickerHeader
-          title={(
-            <>
-              <ProviderMark id={activeGroup.id} name={activeGroup.name} small />
-              <span>{activeGroup.name}</span>
-            </>
-          )}
-          meta={!accountAuthenticated
+      <div key={`group:${activeGroup.id}`} className="cp-view">
+        <PanelHead
+          lead={<ProviderMark id={activeGroup.id} name={activeGroup.name} size="small" />}
+          title={<span>{activeGroup.name}</span>}
+          aside={!accountAuthenticated
             ? `${choices.length} models · sign in`
             : blockedChoices.length
-              ? `${availableChoices.length}/${choices.length} available`
-              : `${choices.length} ${choices.length === 1 ? "model" : "models"}`}
-          backLabel="Back to providers"
-          onBack={() => navigate("profiles", "back")}
+              ? `${availableChoices.length}/${choices.length} ${zh ? "可用" : "available"}`
+              : zh ? `${choices.length} 个模型` : `${choices.length} ${choices.length === 1 ? "model" : "models"}`}
+          onBack={() => navigate("profiles")}
+          backLabel={zh ? "返回供应商列表" : "Back to providers"}
         />
         {showSearch ? (
-          <PickerSearch
+          <PanelSearch
             value={groupQuery}
             onChange={setGroupQuery}
-            placeholder={`Search ${activeGroup.name}`}
+            placeholder={zh ? `搜索 ${activeGroup.name}` : `Search ${activeGroup.name}`}
             label={`Search ${activeGroup.name} models`}
           />
         ) : null}
 
-        <div className="mp-body" ref={providerListRef}>
-          {snapshot?.catalogMetadataError ? <div className="mp-notice" role="status">{snapshot.catalogMetadataError}</div> : null}
+        <div className="cp-body" ref={providerListRef}>
+          {snapshot?.catalogMetadataError ? <div className="cp-note" role="status">{snapshot.catalogMetadataError}</div> : null}
           {sync && accountAuthenticated ? (
-            <div className="mp-notice" role="status">
-              <span>{sync.message || "Model directory received."} {syncTime ? `Last successful sync: ${syncTime}.` : "No successful provider sync recorded."} <button type="button" className="mp-link" onClick={() => { void Promise.resolve(refreshRef.current?.()).catch(() => {}); }}>Refresh</button></span>
+            <div className="cp-note" role="status">
+              <span>{sync.message || "Model directory received."} {syncTime ? `Last successful sync: ${syncTime}.` : "No successful provider sync recorded."} <button type="button" className="cp-link" onClick={() => { void Promise.resolve(refreshRef.current?.()).catch(() => {}); }}>Refresh</button></span>
             </div>
           ) : null}
-          {!accountAuthenticated ? (
-            <div className="mp-notice">
-              <Lock size={13} strokeWidth={2} aria-hidden="true" />
-              <span>Sign in to Loom to use any model. <button type="button" className="mp-link" onClick={onOpenAccount}>Sign in</button></span>
-            </div>
-          ) : null}
+          {!accountAuthenticated ? signInNote("Sign in to Loom to use any model.") : null}
           {adminBlockedChoices.length > 0 && accountAuthenticated ? (
-            <div className="mp-notice is-error">
+            <div className="cp-note is-error">
               <Lock size={13} strokeWidth={2} aria-hidden="true" />
               <span>{adminBlockedChoices.length} built-in model{adminBlockedChoices.length === 1 ? " is" : "s are"} disabled by Loom Admin. You can still add a separate personal API connection below.</span>
             </div>
           ) : null}
           {activeGroup.id === "opencode-console" ? (
-            <div className="mp-notice mp-console-info" role="note">
+            <div className="cp-note" role="note">
               <span>OpenCode currently restricts free models to its own app (HTTP 403 from third-party clients). They cannot run in Loom. Console paid models need a separate Console key and admin approval; Go usage stays separate.</span>
             </div>
           ) : null}
           {hasBuiltinModels && accountAuthenticated && snapshot?.policySync?.state !== "fresh" ? (
-            <div className="mp-notice" role="status"><span>Model permissions are syncing. Last known states remain visible; the server checks access when a model runs. {snapshot?.policySync?.checkedAt ? `Last successful check: ${new Date(snapshot.policySync.checkedAt).toLocaleString()}.` : "No successful check yet."}</span></div>
+            <div className="cp-note" role="status"><span>Model permissions are syncing. Last known states remain visible; the server checks access when a model runs. {snapshot?.policySync?.checkedAt ? `Last successful check: ${new Date(snapshot.policySync.checkedAt).toLocaleString()}.` : "No successful check yet."}</span></div>
           ) : null}
           {credentialTarget ? (
-            <div
-              className="mp-connect"
-              role="form"
-              onKeyDown={(event) => {
-                if (event.key !== "Enter" || event.shiftKey || !(event.target instanceof HTMLInputElement)) return;
-                event.preventDefault();
-                event.stopPropagation();
-                void configureProvider(credentialTarget.provider);
-              }}
-            >
-              <div className="mp-connect-copy">
-                <span className="mp-connect-icon" aria-hidden="true"><KeyRound size={15} strokeWidth={1.9} /></span>
-                <span className="mp-connect-text">
-                  <span className="mp-connect-title">
+            <div className="cp-connect" role="form" onKeyDown={enterSubmits(() => void configureProvider(credentialTarget.provider))}>
+              <div className="cp-connect-copy">
+                <KeyRound size={15} strokeWidth={1.75} aria-hidden="true" />
+                <div>
+                  <div className="cp-connect-title">
                     {setup.catalogUnauthorized ? `Reconnect ${credentialTarget.label}` : `Connect ${credentialTarget.label}`}
-                  </span>
-                  <span className="mp-connect-hint">
+                  </div>
+                  <div className="cp-connect-hint">
                     {setup.catalogUnauthorized
                       ? "The saved credential was rejected by the provider. Enter the current group key to replace it securely."
                       : "The key is stored in your OS credential store and is never written into the model registry."}
-                  </span>
-                </span>
+                  </div>
+                </div>
               </div>
-              <div className="mp-connect-form">
+              <div className="cp-connect-form">
                 <input
                   type="password"
                   value={providerKey}
@@ -1051,92 +942,67 @@ export function ModelPanel({
                   autoFocus
                   disabled={!accountAuthenticated}
                 />
-                <button type="button" disabled={!accountAuthenticated || !providerKey.trim() || providerConfiguring} onClick={() => void configureProvider(credentialTarget.provider)}>
+                <button type="button" className="cp-primary" disabled={!accountAuthenticated || !providerKey.trim() || providerConfiguring} onClick={() => void configureProvider(credentialTarget.provider)}>
                   {providerConfiguring ? <LoaderCircle size={14} strokeWidth={2} /> : null}
-                  Connect
+                  {zh ? "连接" : "Connect"}
                 </button>
               </div>
             </div>
           ) : null}
 
-          {hasBuiltinModels ? (
-            <div className="mp-connect">
-              <div className="mp-connect-copy">
-                <span className="mp-connect-icon" aria-hidden="true"><KeyRound size={15} strokeWidth={1.9} /></span>
-                <span className="mp-connect-text">
-                  <span className="mp-connect-title">Use your own API key</span>
-                  <span className="mp-connect-hint">Creates a separate personal connection stored in your OS credential store. It does not change or bypass the built-in Loom Admin policy.</span>
-                </span>
-              </div>
-              <div className="mp-connect-form">
-                <button type="button" onClick={() => openOwnKey(activeGroup, visible[0])}>
-                  {accountAuthenticated ? "Add personal connection" : "Sign in first"}
-                </button>
-              </div>
-            </div>
-          ) : null}
-
-          {error ? <div className="mp-notice is-error" role="alert">{error}</div> : null}
+          {error ? <div className="cp-note is-error" role="alert">{error}</div> : null}
           {setup.statusProfiles.map((profile) => (
-            <div className="mp-notice is-error" key={profile.id}>{profile.statusMessage}</div>
+            <div className="cp-note is-error" key={profile.id}>{profile.statusMessage}</div>
           ))}
           {running ? (
-            <div className="mp-notice">
+            <div className="cp-note">
               <Lock size={13} strokeWidth={2} aria-hidden="true" />
-              <span>You can select another model now; it takes effect on the next turn.</span>
+              <span>{zh ? "现在可以选择其他模型，从下一轮开始生效。" : "You can select another model now; it takes effect on the next turn."}</span>
             </div>
           ) : null}
 
           {[...families.entries()].map(([family, familyProfiles]) => (
-            <section className="mp-section" key={family || activeGroup.id} aria-label={family || activeGroup.name}>
-              {family ? (
-                <div className="mp-label mp-label-provider">
-                  <FamilyMark family={family} />
-                  <span>{family}</span>
-                </div>
-              ) : null}
+            <section key={family || activeGroup.id} aria-label={family || activeGroup.name}>
+              {family ? <PanelLabel><FamilyMark family={family} />{family}</PanelLabel> : null}
               {familyProfiles.map((profile) => {
                 const current = isCurrentProfile(profile);
                 const deletable = profile.kind === "saved";
                 const deleting = pendingDelete === profile.selection;
                 const confirming = confirmDelete === profile.selection;
-                return (
-                  <div
+                const row = (
+                  <ModelRow
                     key={profile.selection}
-                    className={`mp-item ${deletable ? "has-action" : ""} ${confirming ? "is-confirming" : ""}`}
-                  >
-                    <ModelRow
-                      profile={profile}
-                      current={current}
-                      pending={false}
-                      disabled={!accountAuthenticated || profile.available === false || deleting || isConsoleFree(profile)}
-                      dimmed={!accountAuthenticated || profile.available === false || setup.needsKey || isConsoleFree(profile)}
-                      meta={!accountAuthenticated ? "Sign in" : profile.available === false ? unavailableLabel(profile) : profile.groupId === "opencode-console" ? modelPriceLabel(profile) : reasoningLabel(profile)}
-                      metaAttention={!accountAuthenticated || profile.available === false || isConsoleFree(profile)}
-                      end={!accountAuthenticated || profile.available === false || isConsoleFree(profile) ? <Lock size={13} strokeWidth={2} /> : undefined}
-                      title={!accountAuthenticated ? "Sign in to Loom to use models" : isConsoleFree(profile) ? CONSOLE_FREE_RESTRICTION : profile.available === false ? unavailableReason(profile) : undefined}
-                      onSelect={() => {
-                        if (!current && setup.needsKey) {
-                          setError(`Connect ${activeGroup.name} before selecting one of its models.`);
-                          return;
-                        }
-                        void chooseProfile(profile);
-                      }}
-                    />
-                    {deletable ? (
-                      <button
-                        type="button"
-                        className={`mp-item-action ${confirming ? "is-confirming" : ""}`}
-                        disabled={locked || Boolean(pendingDelete)}
-                        title={confirming ? `Click again to delete ${profile.name}` : `Delete ${profile.name}`}
-                        aria-label={confirming ? `Confirm delete ${profile.name}` : `Delete ${profile.name}`}
-                        onClick={() => void deleteProfile(profile)}
-                      >
-                        {deleting
-                          ? <LoaderCircle size={14} strokeWidth={2} />
-                          : <Trash2 size={14} strokeWidth={1.9} />}
-                      </button>
-                    ) : null}
+                    profile={profile}
+                    current={current}
+                    disabled={!accountAuthenticated || profile.available === false || deleting || isConsoleFree(profile)}
+                    dimmed={!accountAuthenticated || profile.available === false || setup.needsKey || isConsoleFree(profile)}
+                    meta={!accountAuthenticated ? "Sign in" : profile.available === false ? unavailableLabel(profile) : profile.groupId === "opencode-console" ? modelPriceLabel(profile) : reasoningLabel(profile)}
+                    metaAttention={!accountAuthenticated || profile.available === false || isConsoleFree(profile)}
+                    end={!accountAuthenticated || profile.available === false || isConsoleFree(profile) ? <Lock size={13} strokeWidth={2} /> : undefined}
+                    title={!accountAuthenticated ? "Sign in to Loom to use models" : isConsoleFree(profile) ? CONSOLE_FREE_RESTRICTION : profile.available === false ? unavailableReason(profile) : undefined}
+                    onSelect={() => {
+                      if (!current && setup.needsKey) {
+                        setError(`Connect ${activeGroup.name} before selecting one of its models.`);
+                        return;
+                      }
+                      void chooseProfile(profile);
+                    }}
+                  />
+                );
+                if (!deletable) return row;
+                return (
+                  <div key={profile.selection} className="cp-item">
+                    {row}
+                    <button
+                      type="button"
+                      className={`cp-icon ${confirming ? "is-confirming" : ""}`}
+                      disabled={locked || Boolean(pendingDelete)}
+                      title={confirming ? `Click again to delete ${profile.name}` : `Delete ${profile.name}`}
+                      aria-label={confirming ? `Confirm delete ${profile.name}` : `Delete ${profile.name}`}
+                      onClick={() => void deleteProfile(profile)}
+                    >
+                      {deleting ? <LoaderCircle size={14} strokeWidth={2} /> : <Trash2 size={14} strokeWidth={1.75} />}
+                    </button>
                   </div>
                 );
               })}
@@ -1144,10 +1010,35 @@ export function ModelPanel({
           ))}
 
           {tokens.length && !visible.length ? (
-            <div className="mp-empty">No models match “{groupQuery.trim()}”</div>
+            <div className="cp-empty">{zh ? `没有匹配“${groupQuery.trim()}”的模型` : `No models match “${groupQuery.trim()}”`}</div>
           ) : null}
           {confirmDelete ? (
-            <div className="mp-notice is-error">Click the trash icon again to delete this saved connection.</div>
+            <div className="cp-note is-error">Click the trash icon again to delete this saved connection.</div>
+          ) : null}
+
+          {hasBuiltinModels ? (
+            <>
+              <hr className="cp-divider" />
+              <button
+                type="button"
+                className="cp-row is-tall"
+                data-cp-item=""
+                data-ic-row
+                title="Creates a separate personal connection stored in your OS credential store. It does not change or bypass the built-in Loom Admin policy."
+                onClick={() => openOwnKey(activeGroup, visible[0])}
+              >
+                <span className="cp-row-lead"><KeyRound size={15} strokeWidth={1.75} aria-hidden="true" /></span>
+                <span className="cp-row-text">
+                  <span className="cp-row-title"><span>{zh ? "使用自己的 API Key" : "Use your own API key"}</span></span>
+                  <span className="cp-row-desc">
+                    {accountAuthenticated
+                      ? (zh ? "单独的个人连接，保存在系统凭据库中，不改变 Loom 的模型策略。" : "A separate personal connection, kept in your OS credential store.")
+                      : (zh ? "请先登录 Loom。" : "Sign in to Loom first.")}
+                  </span>
+                </span>
+                <span className="cp-row-end is-chevron" aria-hidden="true"><ChevronRight size={14} strokeWidth={1.75} /></span>
+              </button>
+            </>
           ) : null}
         </div>
       </div>
@@ -1157,50 +1048,48 @@ export function ModelPanel({
   // A provider view whose group vanished (its last saved model was deleted)
   // falls back to the library as well.
   if (view === "profiles" || view === "group") {
-    const currentGroupId = groups.find((group) => group.profiles.some(isCurrentProfile))?.id;
+    const currentProviderId = groups.find((group) => group.profiles.some(isCurrentProfile))?.id;
     const renderProviderRow = (group: ModelGroup) => (
       <ProviderRow
         key={group.id}
         group={group}
-        current={group.id === currentGroupId}
+        current={group.id === currentProviderId}
         accountAuthenticated={accountAuthenticated}
+        zh={zh}
         onOpen={() => openGroup(group.id)}
       />
     );
 
     return (
-      <div className="mp mp-library" data-direction={direction} onKeyDown={handlePickerKeyDown}>
-        <PickerHeader
-          title="Models"
-          meta={`${groups.length} ${groups.length === 1 ? "provider" : "providers"} · ${totalModels} models`}
-          backLabel="Back to model controls"
+      <div key="profiles" className="cp-view">
+        <PanelHead
+          title={zh ? "模型" : "Models"}
+          aside={zh
+            ? `${groups.length} 个供应商 · ${totalModels} 个模型`
+            : `${groups.length} ${groups.length === 1 ? "provider" : "providers"} · ${totalModels} models`}
           onBack={() => {
             setQuery("");
-            navigate("list", "back");
+            navigate("list");
           }}
+          backLabel={zh ? "返回" : "Back to model controls"}
         />
-        <PickerSearch
+        <PanelSearch
           value={query}
           onChange={setQuery}
-          placeholder="Search models or providers"
+          placeholder={zh ? "搜索模型或供应商" : "Search models or providers"}
           label="Search models and providers"
         />
 
-        <div className="mp-body">
-          {error ? <div className="mp-notice is-error" role="alert">{error}</div> : null}
+        <div className="cp-body">
+          {error ? <div className="cp-note is-error" role="alert">{error}</div> : null}
           {snapshot?.catalogSync?.providers.some(provider => provider.state === "unsupported") ? (
-            <div className="mp-notice" role="status">Some providers require a newer Host. Supported providers continue syncing normally.</div>
+            <div className="cp-note" role="status">Some providers require a newer Host. Supported providers continue syncing normally.</div>
           ) : null}
-          {!accountAuthenticated ? (
-            <div className="mp-notice">
-              <Lock size={13} strokeWidth={2} aria-hidden="true" />
-              <span>Sign in to Loom to use any model. The catalogue stays visible so you can see what is available. <button type="button" className="mp-link" onClick={onOpenAccount}>Sign in</button></span>
-            </div>
-          ) : null}
+          {!accountAuthenticated ? signInNote("Sign in to Loom to use any model. The catalogue stays visible so you can see what is available.") : null}
           {running ? (
-            <div className="mp-notice">
+            <div className="cp-note">
               <Lock size={13} strokeWidth={2} aria-hidden="true" />
-              <span>You can select another model now; it takes effect on the next turn.</span>
+              <span>{zh ? "现在可以选择其他模型，从下一轮开始生效。" : "You can select another model now; it takes effect on the next turn."}</span>
             </div>
           ) : null}
 
@@ -1209,11 +1098,8 @@ export function ModelPanel({
               {searchResults.models.map(({ group, matches }) => {
                 const needsKey = providerSetup(group).needsKey;
                 return (
-                  <section className="mp-section" key={group.id} aria-label={group.name}>
-                    <div className="mp-label mp-label-provider">
-                      <ProviderMark id={group.id} name={group.name} small />
-                      <span>{group.name}</span>
-                    </div>
+                  <section key={group.id} aria-label={group.name}>
+                    <PanelLabel><ProviderMark id={group.id} name={group.name} size="small" />{group.name}</PanelLabel>
                     {matches.map((profile) => {
                       const current = isCurrentProfile(profile);
                       const connectFirst = needsKey && !current;
@@ -1222,12 +1108,11 @@ export function ModelPanel({
                           key={profile.selection}
                           profile={profile}
                           current={current}
-                          pending={false}
                           disabled={!accountAuthenticated || profile.available === false || isConsoleFree(profile)}
                           dimmed={!accountAuthenticated || profile.available === false || isConsoleFree(profile)}
                           meta={!accountAuthenticated ? "Sign in" : profile.available === false ? unavailableLabel(profile) : connectFirst ? "Connect" : profile.groupId === "opencode-console" ? modelPriceLabel(profile) : reasoningLabel(profile)}
                           metaAttention={!accountAuthenticated || profile.available === false || connectFirst || isConsoleFree(profile)}
-                          end={!accountAuthenticated || profile.available === false || isConsoleFree(profile) ? <Lock size={13} strokeWidth={2} /> : connectFirst ? <ChevronRight size={14} strokeWidth={1.9} /> : undefined}
+                          end={!accountAuthenticated || profile.available === false || isConsoleFree(profile) ? <Lock size={13} strokeWidth={2} /> : connectFirst ? <ChevronRight size={14} strokeWidth={1.75} /> : undefined}
                           title={!accountAuthenticated ? "Sign in to Loom to use models" : isConsoleFree(profile) ? CONSOLE_FREE_RESTRICTION : profile.available === false ? unavailableReason(profile) : connectFirst ? `Connect ${group.name} to use ${profile.name}` : undefined}
                           onSelect={() => (connectFirst ? openGroup(group.id) : void chooseProfile(profile))}
                         />
@@ -1237,24 +1122,24 @@ export function ModelPanel({
                 );
               })}
               {searchResults.providers.length ? (
-                <section className="mp-section" aria-label="Providers">
-                  <div className="mp-label">Providers</div>
+                <section aria-label="Providers">
+                  <PanelLabel>{zh ? "供应商" : "Providers"}</PanelLabel>
                   {searchResults.providers.map(renderProviderRow)}
                 </section>
               ) : null}
               {!searchResults.models.length && !searchResults.providers.length ? (
-                <div className="mp-empty">
-                  <span>No models match “{query.trim()}”</span>
+                <div className="cp-empty">
+                  <span>{zh ? `没有匹配“${query.trim()}”的模型` : `No models match “${query.trim()}”`}</span>
                   <button
                     type="button"
-                    className="mp-link"
-                    data-mp-item=""
+                    className="cp-link"
+                    data-cp-item=""
                     onClick={() => {
                       setCustomModel(query.trim());
                       navigate("custom");
                     }}
                   >
-                    Use it as a custom model ID
+                    {zh ? "作为自定义模型 ID 使用" : "Use it as a custom model ID"}
                   </button>
                 </div>
               ) : null}
@@ -1262,8 +1147,8 @@ export function ModelPanel({
           ) : (
             <>
               {recentProfiles.length ? (
-                <section className="mp-section" aria-label="Recent models">
-                  <div className="mp-label">Recent</div>
+                <section aria-label="Recent models">
+                  <PanelLabel>{zh ? "最近使用" : "Recent"}</PanelLabel>
                   {recentProfiles.map((profile) => {
                     const groupId = profileGroupId(profile);
                     const group = groupsById.get(groupId);
@@ -1274,12 +1159,11 @@ export function ModelPanel({
                         key={profile.selection}
                         profile={profile}
                         current={false}
-                        pending={false}
                         disabled={!accountAuthenticated || isConsoleFree(profile)}
                         dimmed={isConsoleFree(profile)}
-                        leading={<ProviderMark id={groupId} name={providerName || profile.name} small />}
+                        leading={<ProviderMark id={groupId} name={providerName || profile.name} />}
                         meta={isConsoleFree(profile) ? modelPriceLabel(profile) : providerName}
-                        end={connectFirst ? <KeyRound size={13} strokeWidth={1.9} /> : undefined}
+                        end={connectFirst ? <KeyRound size={13} strokeWidth={1.75} /> : undefined}
                         title={isConsoleFree(profile) ? CONSOLE_FREE_RESTRICTION : connectFirst ? `Connect ${providerName} to use ${profile.name}` : undefined}
                         onSelect={() => (connectFirst ? openGroup(groupId) : void chooseProfile(profile))}
                       />
@@ -1287,62 +1171,64 @@ export function ModelPanel({
                   })}
                 </section>
               ) : null}
-              <section className="mp-section" aria-label="Providers">
-                <div className="mp-label">Providers</div>
+              <section aria-label="Providers">
+                <PanelLabel>{zh ? "供应商" : "Providers"}</PanelLabel>
                 {groups.map(renderProviderRow)}
               </section>
             </>
           )}
-
         </div>
 
-        <div className="mp-foot">
-          <button type="button" className="mp-foot-action" onClick={() => accountAuthenticated ? navigate("add") : onOpenAccount?.()}>
-            <Plus size={14} strokeWidth={2} aria-hidden="true" />
-            <span>Use own API key</span>
+        <PanelFoot className="is-actions">
+          <button type="button" className="cp-foot-action" onClick={() => accountAuthenticated ? navigate("add") : onOpenAccount?.()}>
+            <Plus size={14} strokeWidth={1.75} aria-hidden="true" />
+            <span>{zh ? "使用自己的 API Key" : "Use own API key"}</span>
           </button>
-          <button type="button" className="mp-foot-action" onClick={() => accountAuthenticated ? navigate("custom") : onOpenAccount?.()}>
-            <SlidersHorizontal size={14} strokeWidth={1.9} aria-hidden="true" />
-            <span>Custom model ID</span>
+          <button type="button" className="cp-foot-action" onClick={() => accountAuthenticated ? navigate("custom") : onOpenAccount?.()}>
+            <SlidersHorizontal size={14} strokeWidth={1.75} aria-hidden="true" />
+            <span>{zh ? "自定义模型 ID" : "Custom model ID"}</span>
           </button>
-        </div>
+        </PanelFoot>
       </div>
     );
   }
 
   return (
-    <div className="model-manager-view model-manager-home model-core-home" data-direction={direction}>
+    <div key="list" className="cp-view">
       <button
         type="button"
-        className="model-core-identity model-core-selector"
-        aria-label={`Choose model. Current model ${currentModel}`}
+        className="cp-identity composer-popover-head model-core-selector"
+        aria-label={zh ? `选择模型，当前为 ${currentModel}` : `Choose model. Current model ${currentModel}`}
         onClick={() => navigate("profiles")}
       >
-        <div className="model-core-copy" key={`${currentSelection}:${currentModel}`}>
-          <span className="model-core-title-row">
-            <strong title={currentModel}>{currentModel}</strong>
-            <ChevronRight size={13} strokeWidth={1.8} aria-hidden="true" />
-          </span>
-          <small>
+        <ProviderMark id={currentGroupId} name={currentGroupName} size="large" />
+        <span className="cp-identity-text">
+          <span className="cp-identity-name" title={currentModel}>{currentModel}</span>
+          <span className="cp-identity-meta">
             {!accountAuthenticated
-              ? "Sign in required"
+              ? (zh ? "需要登录" : "Sign in required")
               : <>
                   {currentGroupName}
                   {adapterLabel(currentAdapter) === currentGroupName ? null : ` · ${adapterLabel(currentAdapter)}`}
                 </>}
-          </small>
-        </div>
+          </span>
+        </span>
+        <span className="cp-identity-go" aria-hidden="true">
+          {zh ? "更换" : "Change"}
+          <ChevronRight size={14} strokeWidth={1.75} />
+        </span>
       </button>
 
-      <ReasoningThread
+      <hr className="cp-divider" />
+
+      <ReasoningControl
         reasoning={currentReasoning}
         busy={busy}
         running={running}
         onChange={onReasoningChange}
       />
 
-      {error ? <div className="composer-popover-error">{error}</div> : null}
+      {error ? <div className="cp-note is-error" role="alert">{error}</div> : null}
     </div>
   );
-
 }

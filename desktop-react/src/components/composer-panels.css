@@ -1,0 +1,1639 @@
+/* Composer panels ----------------------------------------------------------------------------------------------------
+   Everything that opens from the composer's toolbar: tools & skills, permissions, the model card (with its library,
+   a provider's models and the two forms), balance & quota, and the draft preview. They used to be five designs on ten
+   stacked sheets: five headers, three widths of corner, a blue bead with a comet and a burst inside a violet product,
+   three of five without an entrance or an exit, native purple checkboxes, a double focus ring, text at 8 and 10px.
+   This sheet is now their only owner (composerPanel.tsx is the kit, docs/composer-panels-2026-10-22.md the why):
+
+     shell     .cp            one surface: the composer's panel tone, a hairline, the float shadow, a 13px corner
+     anatomy   .cp-head       title (13/600) and what belongs at its end; .cp-body scrolls; .cp-foot is the quiet
+                              line under it (12, muted, above a hairline)
+     parts     .cp-label .cp-row .cp-note .cp-search .cp-seg .cp-check .cp-meter .cp-mark .cp-icon .cp-link
+     content   .cp-identity .cp-reasoning (model card)  .cp-form (connections)  .cp-tool (tools)  .cp-usage
+               .cp-preview
+
+   Colour has one meaning in all five: the accent marks the current choice (a check, the reasoning fill, a ticked
+   tool, the word "Recommended"); warn marks unrestricted access and a low quota; danger marks an error.
+
+   Motion is one dialect, the popover's: readable on the first frame (.72), the fast step in and fast-out away, never
+   moving the words. Inside, only marks move: the reasoning knob and the segmented slab travel on the settle spring
+   (flow); a view or a tab that is swapped in fades from .72 like the panel; a bar fills on the slow step.
+
+   No :has() (css-has-invalidation), weights from UI_FONT_WEIGHTS, sizes on the ladder (11.5 and up). */
+
+.cp {
+  --cp-surface: var(--loom-workspace-panel, #191c22);
+  --cp-line: var(--loom-workspace-line, rgba(224, 230, 242, .09));
+  --cp-line-strong: rgba(224, 230, 242, .17);
+  --cp-divider: rgba(224, 230, 242, .065);
+  --cp-field: rgba(224, 230, 242, .045);
+  --cp-hover: rgba(224, 230, 242, .055);
+  --cp-selected: rgba(224, 230, 242, .08);
+  --cp-track: rgba(224, 230, 242, .11);
+  --cp-tick: rgba(224, 230, 242, .3);
+  --cp-box: rgba(224, 230, 242, .3);
+  --cp-ink: var(--loom-workspace-ink, #eceef3);
+  --cp-ink-2: var(--loom-workspace-secondary, #bbc1cc);
+  --cp-ink-3: var(--loom-workspace-muted, #949dab);
+  --cp-ink-4: #6f7785;
+  --cp-accent: var(--accent, #8b7cf6);
+  --cp-accent-ink: var(--loom-workspace-accent, #b5a7f5);
+  --cp-focus: color-mix(in srgb, var(--accent, #8b7cf6) 60%, transparent);
+  --cp-warn: #d6aa66;
+  --cp-danger: #e48d97;
+  --cp-knob: #f4f5f8;
+  --cp-knob-shadow: 0 1px 2px rgba(0, 0, 0, .5), 0 0 0 .5px rgba(0, 0, 0, .4);
+  --cp-slab: rgba(224, 230, 242, .1);
+  --cp-slab-shadow: 0 1px 2px rgba(0, 0, 0, .3);
+  --cp-shadow: var(--pl-shadow-float, 0 1px 2px rgba(0, 0, 0, .35), 0 26px 64px -20px rgba(0, 0, 0, .78));
+  --cp-radius: var(--pl-radius-float, 13px);
+  --cp-radius-row: 8px;
+  --cp-inset: 16px;
+}
+
+html[data-loom-theme="light"] .cp {
+  --cp-line-strong: rgba(28, 32, 42, .2);
+  --cp-divider: rgba(28, 32, 42, .075);
+  --cp-field: rgba(28, 32, 42, .04);
+  --cp-hover: rgba(28, 32, 42, .045);
+  --cp-selected: rgba(28, 32, 42, .065);
+  --cp-track: rgba(28, 32, 42, .1);
+  --cp-tick: rgba(28, 32, 42, .26);
+  --cp-box: rgba(28, 32, 42, .3);
+  --cp-ink-4: #8a919d;
+  --cp-warn: #9a6a1a;
+  --cp-danger: #b8404f;
+  --cp-knob: #ffffff;
+  --cp-knob-shadow: 0 1px 3px rgba(20, 24, 34, .24), 0 0 0 .5px rgba(20, 24, 34, .2);
+  --cp-slab: #ffffff;
+  --cp-slab-shadow: 0 1px 2px rgba(20, 24, 34, .12), 0 0 0 .5px rgba(20, 24, 34, .1);
+}
+
+/* The anchors the panels hang from: the trigger and its panel, positioned together. */
+.cp-anchor {
+  position: relative;
+}
+
+/* Shell ------------------------------------------------------------------------------------------------------------ */
+
+.cp {
+  position: absolute;
+  bottom: calc(100% + 10px);
+  left: var(--cp-x, 0px);
+  z-index: 90;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  width: min(var(--cp-width, 360px), calc(100vw - 24px));
+  max-height: min(600px, var(--cp-room, 70vh));
+  overflow: hidden;
+  isolation: isolate;
+  color: var(--cp-ink);
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 18px;
+  letter-spacing: 0;
+  text-align: left;
+  white-space: normal;
+  cursor: default;
+  background: var(--cp-surface);
+  border: 1px solid var(--cp-line);
+  border-radius: var(--cp-radius);
+  box-shadow: var(--cp-shadow);
+  opacity: 1;
+  transform: none;
+  transition: opacity var(--loom-dur-fast) var(--loom-ease-out);
+}
+
+/* Leaving: gone on the fast-out step, and no longer taking input (the shell is inert). */
+.cp[data-motion-phase="exiting"] {
+  pointer-events: none;
+  opacity: 0;
+  transition-duration: var(--loom-dur-fast-out);
+  transition-timing-function: var(--loom-ease-exit);
+}
+
+/* Readable on the first frame: .72, then the fast step. Written after the rule it starts from. */
+@starting-style {
+  .cp[data-motion-phase="entered"] {
+    opacity: .72;
+  }
+}
+
+/* A view (the model card's library, a provider, a form) or a tab swapped in fades from where a panel starts. */
+.cp-view {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+  opacity: 1;
+  transition: opacity var(--loom-dur-fast) var(--loom-ease-out);
+}
+
+@starting-style {
+  .cp-view {
+    opacity: .72;
+  }
+}
+
+/* Anatomy ---------------------------------------------------------------------------------------------------------- */
+
+.cp-head {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 6px;
+  min-height: 48px;
+  padding: 10px 10px 6px var(--cp-inset);
+  box-sizing: border-box;
+}
+
+.cp-head.has-back {
+  padding-left: 8px;
+}
+
+.cp-head-text {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.cp-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--cp-ink);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 18px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.cp-title > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cp-subtitle {
+  overflow: hidden;
+  color: var(--cp-ink-3);
+  font-size: 12px;
+  line-height: 16px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.cp-aside {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 2px;
+  margin-left: 6px;
+  color: var(--cp-ink-3);
+  font-size: 12px;
+  line-height: 16px;
+  white-space: nowrap;
+}
+
+.cp-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  padding: 0 6px 6px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: var(--cp-track) transparent;
+}
+
+.cp-divider {
+  height: 1px;
+  margin: 4px 10px;
+  border: 0;
+  background: var(--cp-divider);
+}
+
+.cp-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 30px;
+  padding: 8px 10px 4px;
+  box-sizing: border-box;
+  color: var(--cp-ink-3);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 16px;
+}
+
+.cp-label > span {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.cp-foot {
+  display: flex;
+  flex: none;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px var(--cp-inset) 12px;
+  border-top: 1px solid var(--cp-divider);
+  color: var(--cp-ink-3);
+  font-size: 12px;
+  line-height: 17px;
+}
+
+.cp-foot > svg {
+  flex: none;
+  margin-top: 1px;
+  color: var(--cp-ink-4);
+}
+
+.cp-foot.is-actions {
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 8px;
+}
+
+/* Small parts ------------------------------------------------------------------------------------------------------ */
+
+.cp-icon {
+  display: inline-grid;
+  flex: none;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--cp-ink-3);
+  cursor: pointer;
+  transition:
+    background-color var(--loom-dur-fast) var(--loom-ease-out),
+    color var(--loom-dur-fast) var(--loom-ease-out);
+}
+
+.cp-icon:hover:not(:disabled) {
+  background: var(--cp-hover);
+  color: var(--cp-ink);
+}
+
+.cp-icon:disabled {
+  cursor: default;
+  opacity: .45;
+}
+
+
+/* A word that acts: Reset, Refresh, Sign in. */
+.cp-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 24px;
+  margin: -4px -6px;
+  padding: 0 6px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--cp-ink-3);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 16px;
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    background-color var(--loom-dur-fast) var(--loom-ease-out),
+    color var(--loom-dur-fast) var(--loom-ease-out);
+}
+
+.cp-link:hover:not(:disabled) {
+  background: var(--cp-hover);
+  color: var(--cp-ink);
+}
+
+.cp-link:disabled {
+  cursor: default;
+  opacity: .5;
+}
+
+.cp-note .cp-link {
+  height: auto;
+  margin: 0;
+  padding: 0;
+  color: var(--cp-ink);
+  text-decoration: underline;
+  text-decoration-color: var(--cp-line-strong);
+  text-underline-offset: 3px;
+}
+
+.cp-note .cp-link:hover:not(:disabled) {
+  background: none;
+  text-decoration-color: currentColor;
+}
+
+.cp-icon:focus-visible,
+.cp-link:focus-visible,
+.cp-row:focus-visible,
+.cp-identity:focus-visible,
+.cp-foot-action:focus-visible,
+.cp-primary:focus-visible,
+.cp-button:focus-visible,
+.cp-chip:focus-visible {
+  outline: 2px solid var(--cp-focus);
+  outline-offset: -2px;
+}
+
+/* Rows ------------------------------------------------------------------------------------------------------------- */
+
+.cp-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 36px;
+  margin: 0;
+  padding: 7px 10px;
+  box-sizing: border-box;
+  border: 0;
+  border-radius: var(--cp-radius-row);
+  background: transparent;
+  color: var(--cp-ink);
+  font: inherit;
+  font-size: 13px;
+  line-height: 18px;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color var(--loom-dur-fast) var(--loom-ease-out);
+}
+
+.cp-row + .cp-row {
+  margin-top: 1px;
+}
+
+.cp-row:hover:not(:disabled):not([aria-disabled="true"]) {
+  background: var(--cp-hover);
+}
+
+.cp-row.is-current,
+.cp-row[aria-checked="true"] {
+  background: var(--cp-selected);
+}
+
+.cp-row:disabled,
+.cp-row[aria-disabled="true"] {
+  cursor: default;
+}
+
+.cp-row.is-tall {
+  align-items: flex-start;
+  padding-block: 9px;
+}
+
+.cp-row-lead {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 20px;
+  height: 18px;
+  color: var(--cp-ink-3);
+}
+
+.cp-row-lead.is-warn {
+  color: var(--cp-warn);
+}
+
+.cp-row-text {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.cp-row-title {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+  color: var(--cp-ink);
+  font-weight: 500;
+}
+
+.cp-row-title > span:first-child {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.cp-row.is-dim .cp-row-title,
+.cp-row:disabled .cp-row-title {
+  color: var(--cp-ink-3);
+}
+
+.cp-row-desc {
+  color: var(--cp-ink-3);
+  font-size: 12px;
+  line-height: 17px;
+}
+
+.cp-row-sub {
+  overflow: hidden;
+  color: var(--cp-ink-4);
+  font-size: 12px;
+  line-height: 16px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.cp-row-meta {
+  flex: none;
+  max-width: 45%;
+  overflow: hidden;
+  color: var(--cp-ink-3);
+  font-size: 12px;
+  line-height: 16px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.cp-row-meta.is-attention {
+  color: var(--cp-warn);
+}
+
+.cp-row-end {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 16px;
+  height: 18px;
+  color: var(--cp-ink-4);
+}
+
+.cp-row-end.is-check {
+  color: var(--cp-accent-ink);
+}
+
+.cp-row:hover .cp-row-end.is-chevron {
+  color: var(--cp-ink-2);
+}
+
+.cp-tag {
+  flex: none;
+  color: var(--cp-ink-3);
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.cp-tag.is-accent {
+  color: var(--cp-accent-ink);
+}
+
+.cp-tag.is-warn {
+  color: var(--cp-warn);
+}
+
+/* A row that carries a second action at its end (a saved connection's delete). */
+.cp-item {
+  position: relative;
+}
+
+.cp-item > .cp-row {
+  padding-right: 44px;
+}
+
+.cp-item > .cp-icon {
+  position: absolute;
+  top: 50%;
+  right: 6px;
+  width: 26px;
+  height: 26px;
+  margin-top: -13px;
+  opacity: 0;
+  transition:
+    opacity var(--loom-dur-fast) var(--loom-ease-out),
+    background-color var(--loom-dur-fast) var(--loom-ease-out),
+    color var(--loom-dur-fast) var(--loom-ease-out);
+}
+
+.cp-item:hover > .cp-icon,
+.cp-item > .cp-icon:focus-visible,
+.cp-item > .cp-icon.is-confirming {
+  opacity: 1;
+}
+
+.cp-item > .cp-icon.is-confirming {
+  color: var(--cp-danger);
+}
+
+/* Notes, fields, controls -------------------------------------------------------------------------------------------- */
+
+.cp-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 2px 4px 6px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--cp-field);
+  color: var(--cp-ink-2);
+  font-size: 12px;
+  line-height: 17px;
+  overflow-wrap: anywhere;
+}
+
+.cp-note > svg {
+  flex: none;
+  margin-top: 1px;
+  color: var(--cp-ink-3);
+}
+
+.cp-note.is-error {
+  background: color-mix(in srgb, var(--cp-danger) 11%, transparent);
+  color: var(--cp-danger);
+}
+
+.cp-note.is-error > svg {
+  color: currentColor;
+}
+
+.cp-empty {
+  display: grid;
+  justify-items: start;
+  gap: 6px;
+  padding: 14px 10px;
+  color: var(--cp-ink-3);
+  font-size: 12px;
+  line-height: 17px;
+}
+
+.cp-search {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 8px;
+  height: 34px;
+  margin: 0 10px 8px;
+  padding: 0 6px 0 10px;
+  box-sizing: border-box;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  background: var(--cp-field);
+  color: var(--cp-ink-3);
+  cursor: text;
+  transition: border-color var(--loom-dur-fast) var(--loom-ease-out);
+}
+
+.cp-search:focus-within {
+  border-color: var(--cp-line-strong);
+}
+
+.cp-search > svg {
+  flex: none;
+}
+
+.cp-search input {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  box-shadow: none;
+  color: var(--cp-ink);
+  font: inherit;
+  font-size: 13px;
+}
+
+.cp-search input::placeholder {
+  color: var(--cp-ink-4);
+  opacity: 1;
+}
+
+.cp-search .cp-icon {
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+}
+
+/* Segmented: one slab travels to the chosen word. */
+.cp-seg {
+  position: relative;
+  display: grid;
+  grid-auto-columns: minmax(0, 1fr);
+  grid-auto-flow: column;
+  align-items: stretch;
+  padding: 2px;
+  border-radius: 9px;
+  background: var(--cp-field);
+  isolation: isolate;
+}
+
+.cp-seg-slab {
+  position: absolute;
+  z-index: 0;
+  top: 2px;
+  bottom: 2px;
+  left: 0;
+  width: var(--cp-slab-w, 0px);
+  border-radius: 7px;
+  background: var(--cp-slab);
+  box-shadow: var(--cp-slab-shadow);
+  pointer-events: none;
+  transform: translateX(var(--cp-slab-x, 0px));
+}
+
+.cp-seg[data-ready] .cp-seg-slab {
+  transition:
+    transform var(--loom-dur-flow) var(--loom-spring-settle),
+    width var(--loom-dur-flow) var(--loom-spring-settle);
+}
+
+.cp-seg[data-slab="off"] .cp-seg-slab {
+  opacity: 0;
+}
+
+.cp-seg > button {
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: 0;
+  height: 26px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--cp-ink-3);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 16px;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: color var(--loom-dur-fast) var(--loom-ease-out);
+}
+
+.cp-seg > button:hover:not(:disabled) {
+  color: var(--cp-ink-2);
+}
+
+.cp-seg > button[data-active="true"] {
+  color: var(--cp-ink);
+}
+
+.cp-seg > button:disabled {
+  cursor: default;
+  opacity: .45;
+}
+
+.cp-seg > button:focus-visible {
+  outline: 2px solid var(--cp-focus);
+  outline-offset: -2px;
+}
+
+.cp-seg small {
+  color: var(--cp-ink-4);
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+.cp-seg > button[data-active="true"] small {
+  color: var(--cp-ink-3);
+}
+
+/* A checkbox drawn in the family's terms: a rounded square that fills with the accent. */
+.cp-check {
+  display: inline-grid;
+  flex: none;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  margin: 1px 0 0;
+  border: 1.5px solid var(--cp-box);
+  border-radius: 5px;
+  background: transparent no-repeat center / 10px 10px;
+  appearance: none;
+  cursor: pointer;
+  transition:
+    background-color var(--loom-dur-fast) var(--loom-ease-out),
+    border-color var(--loom-dur-fast) var(--loom-ease-out);
+}
+
+.cp-check:checked,
+.cp-check:indeterminate {
+  border-color: var(--cp-accent);
+  background-color: var(--cp-accent);
+}
+
+.cp-check:checked {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10'%3E%3Cpath d='M2.1 5.3l1.9 1.9 3.9-4.3' fill='none' stroke='white' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+}
+
+.cp-check:indeterminate {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10'%3E%3Cpath d='M2.6 5h4.8' fill='none' stroke='white' stroke-width='1.6' stroke-linecap='round'/%3E%3C/svg%3E");
+}
+
+.cp-check:disabled {
+  cursor: default;
+  opacity: .4;
+}
+
+.cp-check:focus-visible {
+  outline: 2px solid var(--cp-focus);
+  outline-offset: 2px;
+}
+
+/* A quota bar: a track and what is left. */
+.cp-meter {
+  position: relative;
+  height: 4px;
+  overflow: hidden;
+  border-radius: 2px;
+  background: var(--cp-track);
+}
+
+.cp-meter > i {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: calc(var(--cp-value, 0) * 1%);
+  border-radius: inherit;
+  background: var(--cp-ink-2);
+  transition: width var(--loom-dur-slow) var(--loom-ease-move);
+}
+
+.cp-meter.is-low > i {
+  background: var(--cp-warn);
+}
+
+/* A provider's mark: its logo (or its initial) in its own hue, on a quiet tile. */
+.cp-mark {
+  --cp-hue: 280;
+  --cp-chroma: .12;
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 7px;
+  background: oklch(.31 calc(var(--cp-chroma) * .42) var(--cp-hue) / .72);
+  color: oklch(.84 calc(var(--cp-chroma) * .72) var(--cp-hue));
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1;
+}
+
+html[data-loom-theme="light"] .cp-mark {
+  background: oklch(.955 calc(var(--cp-chroma) * .3) var(--cp-hue));
+  color: oklch(.5 var(--cp-chroma) var(--cp-hue));
+}
+
+.cp-mark.is-small {
+  width: 18px;
+  height: 18px;
+  border-radius: 5px;
+  font-size: 11.5px;
+}
+
+.cp-mark.is-large {
+  width: 32px;
+  height: 32px;
+  border-radius: 9px;
+  font-size: 13px;
+}
+
+.cp-mark-logo {
+  width: 15px;
+  height: 15px;
+  background: currentColor;
+  -webkit-mask: var(--cp-logo) center / contain no-repeat;
+  mask: var(--cp-logo) center / contain no-repeat;
+}
+
+.cp-mark.is-small .cp-mark-logo {
+  width: 12px;
+  height: 12px;
+}
+
+.cp-mark.is-large .cp-mark-logo {
+  width: 18px;
+  height: 18px;
+}
+
+/* Buttons inside a panel: one primary, one plain, and the foot's actions. */
+.cp-primary,
+.cp-button {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 8px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 16px;
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    background-color var(--loom-dur-fast) var(--loom-ease-out),
+    color var(--loom-dur-fast) var(--loom-ease-out),
+    opacity var(--loom-dur-fast) var(--loom-ease-out);
+}
+
+.cp-primary {
+  background: var(--cp-ink);
+  color: var(--cp-surface);
+}
+
+.cp-primary:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--cp-ink) 88%, var(--cp-surface));
+}
+
+.cp-button {
+  background: var(--cp-field);
+  color: var(--cp-ink);
+}
+
+.cp-button:hover:not(:disabled) {
+  background: var(--cp-selected);
+}
+
+.cp-primary:disabled,
+.cp-button:disabled {
+  cursor: default;
+  opacity: .45;
+}
+
+.cp-foot-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 30px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--cp-ink-2);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 16px;
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    background-color var(--loom-dur-fast) var(--loom-ease-out),
+    color var(--loom-dur-fast) var(--loom-ease-out);
+}
+
+.cp-foot-action:hover:not(:disabled) {
+  background: var(--cp-hover);
+  color: var(--cp-ink);
+}
+
+.cp-foot-action > svg {
+  color: var(--cp-ink-3);
+}
+
+
+/* Model card: who answers ------------------------------------------------------------------------------------------ */
+
+.cp-identity {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 12px;
+  width: calc(100% - 12px);
+  min-height: 52px;
+  margin: 6px 6px 2px;
+  padding: 8px 10px;
+  box-sizing: border-box;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--cp-ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color var(--loom-dur-fast) var(--loom-ease-out);
+}
+
+.cp-identity:hover {
+  background: var(--cp-hover);
+}
+
+.cp-identity-text {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.cp-identity-name {
+  overflow: hidden;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 18px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.cp-identity-meta {
+  overflow: hidden;
+  color: var(--cp-ink-3);
+  font-size: 12px;
+  line-height: 16px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.cp-identity-go {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 2px;
+  color: var(--cp-ink-3);
+  font-size: 12px;
+  font-weight: 500;
+  transition: color var(--loom-dur-fast) var(--loom-ease-out);
+}
+
+.cp-identity:hover .cp-identity-go {
+  color: var(--cp-ink);
+}
+
+/* Model card: reasoning. Stops sit at the centres of equal columns, so the first and the last label fit inside the
+   card; the rail runs from the first centre to the last, the fill and the knob follow --cp-t (0 at the first stop,
+   1 at the last), and the knob travels on the settle spring. */
+.cp-reasoning {
+  padding: 0 10px 12px;
+}
+
+.cp-reasoning .cp-label {
+  padding-inline: 0;
+}
+
+.cp-steps {
+  --cp-edge: calc(50% / var(--cp-count, 1));
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(var(--cp-count, 1), minmax(0, 1fr));
+  margin: 4px 0 0;
+}
+
+.cp-steps-rail {
+  position: absolute;
+  z-index: 0;
+  top: 9px;
+  left: var(--cp-edge);
+  right: var(--cp-edge);
+  height: 4px;
+  margin-top: -2px;
+  pointer-events: none;
+}
+
+.cp-steps-track,
+.cp-steps-fill {
+  position: absolute;
+  inset: 0;
+  border-radius: 2px;
+}
+
+.cp-steps-track {
+  background: var(--cp-track);
+}
+
+.cp-steps-fill {
+  background: var(--cp-accent);
+  transform: scaleX(var(--cp-t, 0));
+  transform-origin: left center;
+  transition: transform var(--loom-dur-flow) var(--loom-spring-settle);
+}
+
+/* The knob rides a layer as wide as the rail: moving that layer by --cp-t of its own width puts the knob on the stop. */
+.cp-steps-knob {
+  position: absolute;
+  z-index: 2;
+  top: 9px;
+  left: var(--cp-edge);
+  right: var(--cp-edge);
+  height: 0;
+  pointer-events: none;
+}
+
+.cp-steps-knob > i {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 0;
+  transform: translateX(calc(var(--cp-t, 0) * 100%));
+  transition: transform var(--loom-dur-flow) var(--loom-spring-settle);
+}
+
+.cp-steps-knob > i::before {
+  content: "";
+  position: absolute;
+  top: -8px;
+  left: -8px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--cp-knob);
+  box-shadow: var(--cp-knob-shadow);
+}
+
+.cp-step {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 0;
+  height: 44px;
+  padding: 0 1px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--cp-ink-3);
+  font: inherit;
+  cursor: pointer;
+  transition: color var(--loom-dur-fast) var(--loom-ease-out);
+}
+
+.cp-step::before {
+  content: "";
+  position: absolute;
+  top: 7px;
+  left: 50%;
+  width: 4px;
+  height: 4px;
+  margin-left: -2px;
+  border-radius: 50%;
+  background: var(--cp-tick);
+  transition:
+    background-color var(--loom-dur-fast) var(--loom-ease-out),
+    transform var(--loom-dur-fast) var(--loom-ease-out);
+}
+
+.cp-step.is-filled::before {
+  background: rgba(255, 255, 255, .62);
+}
+
+.cp-step:hover:not([aria-disabled="true"])::before {
+  transform: scale(1.5);
+}
+
+.cp-step-label {
+  max-width: 100%;
+  margin-top: auto;
+  overflow: hidden;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 16px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.cp-steps.is-dense .cp-step-label {
+  font-size: 11.5px;
+}
+
+.cp-step:hover:not([aria-disabled="true"]),
+.cp-step:focus-visible {
+  color: var(--cp-ink-2);
+}
+
+.cp-step[aria-checked="true"] {
+  color: var(--cp-ink);
+}
+
+.cp-step:focus-visible {
+  outline: 2px solid var(--cp-focus);
+  outline-offset: -2px;
+}
+
+.cp-step[aria-disabled="true"] {
+  cursor: default;
+}
+
+.cp-reasoning.is-locked .cp-steps {
+  opacity: .5;
+}
+
+.cp-caption {
+  min-height: 17px;
+  margin-top: 8px;
+  color: var(--cp-ink-3);
+  font-size: 12px;
+  line-height: 17px;
+  opacity: 1;
+  transition: opacity var(--loom-dur-fast) var(--loom-ease-out);
+}
+
+@starting-style {
+  .cp-caption {
+    opacity: .72;
+  }
+}
+
+.cp-caption.is-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+.cp-caption.is-note > svg {
+  flex: none;
+  margin-top: 2px;
+}
+
+.cp-caption.is-error {
+  color: var(--cp-danger);
+}
+
+.cp-auto {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 6px;
+  color: var(--cp-ink);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.cp-auto::after {
+  content: "";
+  flex: 1;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--cp-track);
+}
+
+/* Forms: a new connection, a custom model ID, a provider's key. ------------------------------------------------------ */
+
+.cp-form {
+  display: grid;
+  gap: 12px;
+  padding: 2px 10px 10px;
+}
+
+.cp-form-lead {
+  color: var(--cp-ink-3);
+  font-size: 12px;
+  line-height: 17px;
+}
+
+.cp-field {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.cp-field-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 10px;
+}
+
+.cp-field-label {
+  color: var(--cp-ink-2);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 16px;
+}
+
+.cp-field input,
+.cp-field select,
+.cp-connect input {
+  width: 100%;
+  height: 34px;
+  margin: 0;
+  padding: 0 10px;
+  box-sizing: border-box;
+  border: 1px solid var(--cp-line);
+  border-radius: 8px;
+  outline: 0;
+  background: var(--cp-field);
+  box-shadow: none;
+  color: var(--cp-ink);
+  font: inherit;
+  font-size: 13px;
+  transition: border-color var(--loom-dur-fast) var(--loom-ease-out);
+}
+
+.cp-field input::placeholder,
+.cp-connect input::placeholder {
+  color: var(--cp-ink-4);
+  opacity: 1;
+}
+
+.cp-field input:focus,
+.cp-field select:focus,
+.cp-connect input:focus {
+  border-color: var(--cp-line-strong);
+}
+
+.cp-field input:disabled {
+  opacity: .5;
+}
+
+.cp-select {
+  position: relative;
+  display: block;
+}
+
+.cp-select select {
+  padding-right: 30px;
+  appearance: none;
+  cursor: pointer;
+}
+
+.cp-select > svg {
+  position: absolute;
+  top: 50%;
+  right: 10px;
+  margin-top: -7px;
+  color: var(--cp-ink-3);
+  pointer-events: none;
+}
+
+.cp-field-hint {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--cp-ink-3);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.cp-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.cp-chip {
+  height: 26px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 7px;
+  background: var(--cp-field);
+  color: var(--cp-ink-2);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition:
+    background-color var(--loom-dur-fast) var(--loom-ease-out),
+    color var(--loom-dur-fast) var(--loom-ease-out);
+}
+
+.cp-chip:hover {
+  background: var(--cp-hover);
+  color: var(--cp-ink);
+}
+
+.cp-chip.is-selected {
+  background: var(--cp-selected);
+  color: var(--cp-ink);
+}
+
+.cp-connection {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px;
+  border-radius: 10px;
+  background: var(--cp-field);
+}
+
+.cp-connect {
+  display: grid;
+  gap: 10px;
+  margin: 2px 4px 8px;
+  padding: 12px;
+  border-radius: 10px;
+  background: var(--cp-field);
+}
+
+.cp-connect-copy {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.cp-connect-copy > svg {
+  flex: none;
+  margin-top: 1px;
+  color: var(--cp-ink-3);
+}
+
+.cp-connect-title {
+  color: var(--cp-ink);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 18px;
+}
+
+.cp-connect-hint {
+  margin-top: 2px;
+  color: var(--cp-ink-3);
+  font-size: 12px;
+  line-height: 17px;
+}
+
+.cp-connect-form {
+  display: flex;
+  gap: 8px;
+}
+
+.cp-connect-form > .cp-button:only-child {
+  margin-left: 30px;
+}
+
+/* Tools & skills ------------------------------------------------------------------------------------------------- */
+
+.cp-tools-bar {
+  display: grid;
+  gap: 8px;
+  padding: 0 10px 8px;
+}
+
+.cp-tools-filter {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.cp-tools-filter .cp-search {
+  flex: 1 1 auto;
+  margin: 0;
+}
+
+.cp-tools-filter .cp-seg {
+  flex: none;
+}
+
+.cp-tool {
+  padding-block: 7px;
+  cursor: pointer;
+}
+
+/* Groups of tools sit apart, so a group's name reads as the start of a list rather than another row. */
+.composer-tools-list section + section {
+  margin-top: 6px;
+}
+
+.cp-tool .cp-row-desc {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* In Auto every available tool is on, but by the model's choice rather than yours: the ticks are neutral until the set is yours. */
+.composer-tools-list[data-mode="auto"] .cp-check:checked,
+.composer-tools-list[data-mode="auto"] .cp-check:indeterminate {
+  border-color: var(--cp-ink-4);
+  background-color: var(--cp-ink-4);
+}
+
+.cp-tool[data-unavailable="true"] {
+  cursor: default;
+}
+
+.cp-tool[data-unavailable="true"] .cp-row-title {
+  color: var(--cp-ink-3);
+}
+
+.cp-group-label {
+  gap: 10px;
+  justify-content: flex-start;
+  padding-inline: 10px;
+  cursor: pointer;
+}
+
+.cp-skill .cp-row-meta {
+  opacity: 0;
+  transition: opacity var(--loom-dur-fast) var(--loom-ease-out);
+}
+
+.cp-skill:hover .cp-row-meta,
+.cp-skill:focus-visible .cp-row-meta {
+  opacity: 1;
+}
+
+/* Balance & quota -------------------------------------------------------------------------------------------------- */
+
+.cp-usage-window,
+.cp-usage-balance {
+  padding: 8px 10px;
+}
+
+.cp-usage-line {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  color: var(--cp-ink-2);
+  font-size: 13px;
+  line-height: 18px;
+}
+
+.cp-usage-line strong {
+  color: var(--cp-ink);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+.cp-usage-window .cp-meter {
+  margin: 8px 0 6px;
+}
+
+.cp-usage-window small,
+.cp-usage-balance small {
+  display: block;
+  color: var(--cp-ink-3);
+  font-size: 12px;
+  line-height: 17px;
+}
+
+.cp-usage-balance small {
+  margin-top: 2px;
+}
+
+.cp-usage-scope {
+  margin: 2px 10px 6px;
+  color: var(--cp-ink-3);
+  font-size: 12px;
+  line-height: 17px;
+}
+
+/* Draft preview ---------------------------------------------------------------------------------------------------- */
+
+.cp-preview-text {
+  max-height: min(34vh, 280px);
+  margin: 0 4px;
+  padding: 10px 12px;
+  overflow-y: auto;
+  border-radius: 10px;
+  background: var(--cp-field);
+  color: var(--cp-ink);
+  font-size: 13px;
+  line-height: 20px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  user-select: text;
+}
+
+.cp-preview-text.is-empty {
+  color: var(--cp-ink-3);
+}
+
+.cp-files {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 8px 4px 2px;
+  padding: 0;
+  list-style: none;
+}
+
+.cp-files li {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  height: 26px;
+  padding: 0 8px;
+  box-sizing: border-box;
+  border-radius: 7px;
+  background: var(--cp-field);
+  color: var(--cp-ink-2);
+  font-size: 12px;
+}
+
+.cp-files li > span {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.cp-files li > svg {
+  flex: none;
+  color: var(--cp-ink-3);
+}
+
+/* The triggers --------------------------------------------------------------------------------------------------------
+   The toolbar control that holds an open panel wears the selected tint, so the panel and where it came from read as
+   one; its chevron turns. The tools trigger says how many tools a custom set holds, as a number beside its glyph. */
+.composer-toolbar .composer-tools-count {
+  min-width: 0;
+  color: var(--cp-accent-ink, var(--loom-workspace-accent));
+  font-size: 11.5px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+.composer-toolbar .composer-tools-trigger.has-count {
+  width: auto;
+  padding: 0 7px;
+  gap: 4px;
+}
+
+.composer-tool-selector {
+  display: flex;
+  align-items: center;
+}
+
+/* The quota ring: what is left of the tightest window, in the secondary ink (warn when it runs low). It sits right
+   against the model chip it reports on (the toolbar gap less two pixels). */
+.composer .model-usage-anchor {
+  margin-left: -2px;
+}
+
+.model-usage-button {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--loom-workspace-muted, #949dab);
+  cursor: pointer;
+  transition: background-color var(--loom-dur-fast) var(--loom-ease-out);
+}
+
+.model-usage-button:hover:not(:disabled),
+.model-usage-button[aria-expanded="true"] {
+  background: var(--loom-workspace-hover, rgba(224, 230, 242, .055));
+}
+
+.model-usage-button:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent, #8b7cf6) 60%, transparent);
+  outline-offset: 1px;
+}
+
+.model-usage-button:disabled {
+  cursor: default;
+}
+
+.model-usage-track,
+.model-usage-value {
+  fill: none;
+  stroke-width: 2.5;
+}
+
+.model-usage-track {
+  stroke: currentColor;
+  opacity: .3;
+}
+
+.model-usage-value {
+  stroke: var(--loom-workspace-secondary, #bbc1cc);
+  stroke-linecap: round;
+  transition: stroke-dasharray var(--loom-dur-slow) var(--loom-ease-move);
+}
+
+.model-usage-value.is-low {
+  stroke: #d6aa66;
+}
+
+html[data-loom-theme="light"] .model-usage-value.is-low {
+  stroke: #9a6a1a;
+}
+
+/* A trigger that holds an open panel wears the selected tint and the reading ink in both themes (an older light-theme
+   rule in theme.css painted its glyph violet, which said nothing the tint does not). */
+:root .composer-wrap.composer-refined .composer-toolbar :is(.composer-chip, .composer-tool, .model-usage-button)[aria-expanded="true"] {
+  background: var(--cq-selected);
+  color: var(--cq-ink);
+}
+
+:root .composer-wrap.composer-refined .composer-toolbar :is(.composer-chip, .composer-tool)[aria-expanded="true"] svg {
+  color: var(--cq-ink);
+}

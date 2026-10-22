@@ -20,7 +20,7 @@ WEIGHTS = {400, 500, 600, 650}
 SIZES = {11.5, 12, 13, 14, 15, 16, 18, 20, 24, 28, 32}
 # Declarations that still set text below the 11.5px floor (typography-scale.css says why that is a problem). They were
 # left as they were when the ladder was made, each is a panel to be looked at on its own, so this number may only go down.
-BELOW_THE_FLOOR = 333
+BELOW_THE_FLOOR = 303
 
 
 def stylesheets() -> list[Path]:

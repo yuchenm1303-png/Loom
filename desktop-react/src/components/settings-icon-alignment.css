@@ -11,7 +11,6 @@
 .transcript svg,
 .inspector svg,
 .run-progress-frame svg,
-.model-manager-popover svg,
 .sticker-panel svg {
   display: block;
   flex: 0 0 auto;

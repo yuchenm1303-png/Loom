@@ -59,5 +59,5 @@ def test_retry_after_terminal_error_starts_new_turn_instead_of_steering_dead_tur
 
     assert "&& !activeTurnHasTerminalError;" in send
     assert "if (!running) {" in send
-    assert "await loom.send(input, attachments);" in send
+    assert "await loom.send(input, attachments, toolSelection);" in send
     assert 'window.loom.call<SteeringReceipt>("turn/steer"' in send

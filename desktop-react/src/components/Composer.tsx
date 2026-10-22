@@ -24,6 +24,7 @@ import {
 } from "./composerAttachments";
 import { QuoteReplyBar, formatQuotedPrompt, useQuoteReply } from "./quoteReply";
 import { Crossfade } from "./Crossfade";
+import { ComposerPanelHost, useComposerPanelHost } from "./composerPanel";
 import "./composer.css";
 
 
@@ -62,6 +63,9 @@ function SteeringComposer({
   const [error, setError] = useState("");
   const [quote, setQuote] = useQuoteReply();
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  // The shared controls (tools, access, model, usage) and the preview are one set of panels here too.
+  const panels = useComposerPanelHost(rootRef);
 
   useEffect(() => {
     const textarea = textareaRef.current;
@@ -202,13 +206,14 @@ function SteeringComposer({
   const canGuide = !stopping && !imageNotice.blocked && Boolean(value.trim() || quote || attachments.length);
 
   return (
-    <div className="composer-wrap composer-refined live-steering-composer">
+    <ComposerPanelHost host={panels}>
+    <div ref={rootRef} className="composer-wrap composer-refined live-steering-composer">
       <form
         // Live steering is deliberately not `.is-running`: that legacy class
         // belongs to the old non-interactive working footer and historically
         // carried rules that suppressed the input row. Steering is its own
         // editable state and must never inherit those semantics again.
-        className={`composer is-steering ${focused ? "is-focused" : ""} ${dragging ? "is-dragging" : ""}`}
+        className={`composer is-steering ${focused ? "is-focused" : ""} ${dragging ? "is-dragging" : ""} ${panels.mounted ? "has-panel" : ""}`}
         onSubmit={submit}
         onDragOver={(event) => {
           if (!event.dataTransfer.types.includes("Files")) return;
@@ -314,6 +319,7 @@ function SteeringComposer({
             : (zh ? "可以随时补充要求，或点击停止结束任务。" : "Add guidance anytime, or stop to end this task.")}
       </Crossfade></div>
     </div>
+    </ComposerPanelHost>
   );
 }
 

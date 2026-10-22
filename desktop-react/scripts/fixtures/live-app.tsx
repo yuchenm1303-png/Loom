@@ -585,8 +585,66 @@ function interrupt() {
 
 const profile = { selection: "builtin:minimax", id: "minimax-m3", kind: "builtin", name: "MiniMax-M3",
   adapter: "openai-compatible", model: "MiniMax-M3", configured: true, vision: true };
-const models = { primary: profile, profiles: [profile], activeModelId: profile.id,
+
+// ?models=rich: what a signed-in account sees - three providers, a saved connection, recent models and the
+// five-step reasoning ladder on the model in use. The composer's model card and library are drawn from it.
+const richModels = params.get("models") === "rich";
+const EFFORT = [
+  ["minimal", "Minimal", "Use the model's smallest deliberate reasoning effort."],
+  ["low", "Low", "Use lighter reasoning for straightforward agent work."],
+  ["medium", "Medium", "Balance latency and reasoning depth for everyday work."],
+  ["high", "High", "Use deeper reasoning for complex multi-step work."],
+  ["xhigh", "Extra high", "Use extra reasoning depth for difficult multi-step work."],
+] as const;
+let effort = params.get("effort") || "minimal";
+const effortState = () => ({ kind: "openai-effort", value: effort, defaultValue: "medium", source: "catalog",
+  options: EFFORT.map(([value, label, description]) => ({ value, label, description, advanced: value === "xhigh" })) });
+const goModel = (model: string, family: string) => ({ selection: `builtin:opencode-go:${model}`, id: model, kind: "builtin", name: model,
+  model, adapter: "opencode-go", baseUrl: "https://account.example.invalid/model/v1/opencode-go", groupId: "opencode-go",
+  groupName: "OpenCode Go", groupOrder: 10, family, configured: true, available: true, authMode: "loom-account" });
+const richProfiles = [
+  ...[["muse-spark-1.3-contributor", "Muse"], ["muse-spark-1.3", "Muse"], ["kimi-k2.6", "Kimi"], ["glm-5.2", "GLM"], ["glm-5.2-air", "GLM"],
+    ["deepseek-v4-pro", "DeepSeek"], ["qwen3.5-coder", "Qwen"], ["longcat-flash-2", "LongCat"], ["mimo-v2.6", "MiMo"]]
+    .map(([model, family]) => goModel(model, family)),
+  { ...goModel("minimax-m2.7", "MiniMax"), available: false, catalogState: "retired", statusMessage: "Model is not in the confirmed provider catalog" },
+  { selection: "builtin:minimax", id: "minimax-m3", kind: "builtin", name: "MiniMax-M3", model: "MiniMax-M3", adapter: "openai-compatible",
+    baseUrl: "https://api.minimax.example.invalid/v1", groupId: "minimax", groupName: "MiniMax", groupOrder: 20, configured: true, available: true },
+  { selection: "builtin:minimax-lightning", id: "minimax-m3-lightning", kind: "builtin", name: "MiniMax-M3 Lightning", model: "MiniMax-M3-Lightning",
+    adapter: "openai-compatible", baseUrl: "https://api.minimax.example.invalid/v1", groupId: "minimax", groupName: "MiniMax", groupOrder: 20, configured: true, available: true },
+  { selection: "builtin:deepseek", id: "deepseek-v4-pro", kind: "builtin", name: "DeepSeek V4 Pro", model: "deepseek-v4-pro", adapter: "openai-compatible",
+    baseUrl: "https://api.deepseek.example.invalid/v1", groupId: "deepseek", groupName: "DeepSeek", groupOrder: 30, configured: true, available: true },
+  { selection: "builtin:deepseek-flash", id: "deepseek-v4-flash", kind: "builtin", name: "DeepSeek V4 Flash", model: "deepseek-v4-flash", adapter: "openai-compatible",
+    baseUrl: "https://api.deepseek.example.invalid/v1", groupId: "deepseek", groupName: "DeepSeek", groupOrder: 30, configured: true, available: true },
+  { selection: "saved:work-relay", id: "work-relay", kind: "saved", name: "Work relay", model: "qwen3.5-coder-plus", adapter: "openai-compatible",
+    baseUrl: "https://relay.example.invalid/v1", groupName: "Custom APIs", configured: true, available: true },
+];
+let currentSelection = "builtin:opencode-go:muse-spark-1.3-contributor";
+function richSnapshot() {
+  const profiles = richProfiles.map((row) => (row.selection === currentSelection && row.groupId === "opencode-go" ? { ...row, reasoning: effortState() } : row));
+  const current = profiles.find((row) => row.selection === currentSelection) ?? profiles[0];
+  return { primary: profiles[0], profiles, activeModelId: current.id, current: { ...current, provider: current.adapter },
+    recentModels: ["MiniMax-M3", "deepseek-v4-pro", "kimi-k2.6"], policySync: { state: "fresh", checkedAt: Date.now() } };
+}
+let models: Record<string, unknown> = richModels ? richSnapshot() : { primary: profile, profiles: [profile], activeModelId: profile.id,
   current: { ...profile, provider: profile.adapter }, recentModels: [] };
+
+// The composer's tools & skills selector asks the Host for this list.
+const toolCatalog = {
+  tools: [
+    ["web_search", "Search the web for current information."], ["web_fetch", "Fetch a web page and return its readable text."],
+    ["read_workspace_text", "Read a text file inside the workspace."], ["search_workspace_text", "Search file contents with a pattern."],
+    ["write_workspace_text", "Create or overwrite a text file in the workspace."], ["apply_patch", "Apply a unified diff to workspace files."],
+    ["glob_files", "List files that match a glob pattern."], ["exec_command", "Run a shell command in the workspace."],
+    ["write_stdin", "Send input to a running process."], ["browser_open", "Open a page in the embedded browser."],
+    ["browser_click", "Click an element on the current page."], ["spawn_agent", "Start a sub-agent for a focused task."],
+    ["skill_load", "Load a skill's instructions into the turn."],
+  ].map(([name, description]) => ({ name, description, available: name !== "browser_click" })),
+  skills: [
+    { name: "frontend-design", description: "Build distinctive, production-grade interfaces.", short_description: "Production-grade interface work" },
+    { name: "code-review", description: "Review a diff for correctness bugs and simplifications." },
+    { name: "pdf", description: "Read, fill, merge and split PDF files." },
+  ],
+};
 
 function snapshot(id: string) {
   const record = threads.find((entry) => entry.id === id) || threads[0];
@@ -597,6 +655,7 @@ function snapshot(id: string) {
 }
 
 const handlers: Record<string, (args: Record<string, unknown>) => unknown> = {
+  "tools/catalog": () => toolCatalog,
   "project/workspace_status": (args) => ({ projectId: args.projectId, root: workspace, exists: true, isDirectory: true,
     git: { available: true, isRepo: false, branch: "", summary: "", changedCount: 0, changedFiles: [], truncated: false },
     tree: { entries: [], truncated: false, limit: 100, maxDepth: 2 } }),
@@ -682,8 +741,22 @@ const bridge: Record<string, unknown> = {
     return structuredClone(handlers[method]?.(args) || {});
   },
   listModels: async () => models,
+  // ?models=rich answers the model card: a reasoning step and a model switch both come back as a new snapshot.
+  setReasoning: async (_threadId: string, _selection: string, _model: string, _kind: string, value: string) => {
+    effort = value;
+    if (richModels) models = richSnapshot();
+    return { runtime: {}, models };
+  },
+  switchModelProfile: async (...args: string[]) => {
+    if (richModels) { currentSelection = args[args.length - 1]; models = richSnapshot(); }
+    return { initialization: { runtime: {} }, models, hotSwitch: true };
+  },
   // The quota ring reads `windows[0]` and `balances.map`, so the catch-all `{}` below would crash the composer.
-  queryModelUsage: async () => ({ status: "unsupported", provider: "", windows: [], balances: [], checkedAt: Date.now(), message: "" }),
+  // ?usage=1: two windows of a shared plan, the tighter one drawn by the ring.
+  queryModelUsage: async () => (params.get("usage") === "1"
+    ? { status: "ok", provider: "OpenCode Go", scope: "loom-shared-opencode-go", checkedAt: Date.now(), balances: [],
+      windows: [{ label: "5h", remainingPercent: 61, resetsAt: Date.now() + 2.4 * 3_600_000 }, { label: "Weekly", remainingPercent: 88, resetsAt: Date.now() + 3.2 * 86_400_000 }] }
+    : { status: "unsupported", provider: "", windows: [], balances: [], checkedAt: Date.now(), message: "" }),
   accountStatus: async () => ({ ok: true, snapshot: { configured: true, reachable: true, authenticated: true,
     user: { id: "live-user", name: "Loom Designer", email: "live@example.invalid", ...(params.get("avatar") === "1" ? { avatar_data_url: fixtureAvatar } : params.get("avatar") === "bad" ? { avatar_data_url: "data:image/png;base64,AAAA" } : {}) },
     serviceUrl: "" } }),

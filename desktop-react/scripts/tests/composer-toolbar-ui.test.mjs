@@ -68,7 +68,7 @@ test("compact composer preserves drafts and connects workspace, tool selection a
             const preview=document.querySelector('.composer-draft-preview');
             if(!preview.textContent.includes('Check <unsafe> text')||!preview.textContent.includes('notes.txt'))throw Error('Preview lost draft context');
             if(preview.querySelector('unsafe'))throw Error('Draft interpreted as HTML');
-            button('Close preview').click();button('Expand editor').click();
+            button('Preview message').click();button('Expand editor').click();
             await waitFor(()=>document.querySelector('textarea').getBoundingClientRect().height>200,'Editor did not expand');
             if(document.querySelector('textarea').value!=='Check <unsafe> text'||window.sent!==0)throw Error('Draft mutated or sent by tools');
             button('Collapse editor').click();await waitFor(()=>document.querySelector('textarea').getBoundingClientRect().height<200,'Editor did not collapse');
@@ -86,7 +86,7 @@ test("compact composer preserves drafts and connects workspace, tool selection a
             button('Tools & skills').click();
             await waitFor(()=>document.querySelectorAll('.composer-tools-row').length===5,'Real tool catalog did not load');
             const byText=text=>[...document.querySelectorAll('.composer-tools-popover button')].find(b=>b.textContent===text);
-            byText('Select none').click();await waitFor(()=>document.body.textContent.includes('Chat only'),'Chat-only mode missing');
+            byText('Off').click();await waitFor(()=>document.body.textContent.includes('Chat only'),'Chat-only mode missing');
             if([...document.querySelectorAll('.composer-tools-row input')].some(input=>input.checked))throw Error('Select none kept tools enabled');
             const search=document.querySelector('.composer-tools-search input');
             Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(search,'write_file');search.dispatchEvent(new Event('input',{bubbles:true}));
@@ -101,9 +101,9 @@ test("compact composer preserves drafts and connects workspace, tool selection a
             document.querySelector('.composer-tools-skill').click();
             await waitFor(()=>document.querySelector('textarea').value.includes('$review'),'Skill reference not inserted');
             button('Tools & skills').click();await waitFor(()=>document.querySelector('.composer-tools-modes'),'Selector did not reopen');
-            byText('Select all').click();await waitFor(()=>document.querySelector('.composer-tools-count')?.textContent==='4','Select all included unavailable tools');
+            byText('Off').click();await waitFor(()=>!document.querySelector('.composer-tools-row input:checked'),'Off kept tools enabled');byText('Custom').click();await waitFor(()=>document.querySelector('.composer-tools-count')?.textContent==='4','Custom included unavailable tools');
             byText('Auto').click();await waitFor(()=>!document.querySelector('.composer-tools-count'),'Auto mode did not reset selection');
-            byText('Select none').click();button('Close tool selection').click();
+            byText('Off').click();document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape'}));
             return 'COMPOSER_TOOLS_PASS';
           })()\`);console.log(result);
           for(const width of [680,450,360]){

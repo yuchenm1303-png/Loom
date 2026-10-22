@@ -37,7 +37,7 @@ try {
   assert.equal(await ring.locator("text").count(), 0, "unsupported ring has no center symbol");
   assert.equal(await page.locator(".model-usage-window").count(), 0, "late old response cannot replace new selection");
   await page.keyboard.press("Escape");
-  assert.equal(await page.locator(".model-usage-popover").count(), 0);
+  await page.locator(".model-usage-popover").waitFor({ state: "detached" });
   await page.getByRole("button", { name: "minimax", exact: true }).click();
   await page.setViewportSize({ width: 600, height: 760 });
   await ring.click();

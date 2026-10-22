@@ -1,15 +1,16 @@
 """Contracts for the composer's refinement layer (composer-refined.css).
 
-The composer and the popovers that open from it had been patched by a dozen
-sheets: gradients, inner highlights, coloured glows, lift-on-hover, a light
-streak across every chip. Together they read as moulded plastic. The refinement
-layer replaces all of that with hairlines, one surface colour and tints for
-state. These tests keep it that way: no gloss, no motion beyond a colour fade,
-colour only where it means something, and everything scoped to the composer.
+The composer had been patched by a dozen sheets: gradients, inner highlights,
+coloured glows, lift-on-hover, a light streak across every chip. Together they
+read as moulded plastic. The refinement layer replaces all of that with
+hairlines, one surface colour and tints for state. These tests keep it that way:
+no gloss, no motion beyond a colour fade, colour only where it means something,
+and everything scoped to the composer.
 
-The model card (the popover behind the model chip: model identity, the reasoning
-thread, the model library) is the exception. It was given back to its own sheets
-at the user's request, so the layer must stay out of it.
+The panels that open from the composer (tools, permissions, the model card,
+quota, the preview) are not this layer's: they are one family with one sheet of
+their own (composer-panels.css, tests/test_composer_panels_contract.py), so the
+layer stays out of them.
 """
 
 import re
@@ -62,8 +63,6 @@ def test_refinement_loads_after_base_composer_sheets_before_workspace_geometry()
     assert "background: transparent;" in body_of(workspace, ":root .app-shell .composer-wrap.composer-refined")
     for earlier in (
         "./theme.css",
-        "./components/permission-popover-polish.css",
-        "./components/model-picker.css",
         "./components/composer-control-pills.css",
         "./components/conversation-home.css",
     ):
@@ -75,7 +74,7 @@ def test_both_composer_surfaces_opt_in() -> None:
     steering = read(COMPONENTS / "Composer.tsx")
 
     assert '<div className="composer-wrap composer-refined" ref={composerRootRef}>' in base
-    assert '<div className="composer-wrap composer-refined live-steering-composer">' in steering
+    assert 'className="composer-wrap composer-refined live-steering-composer"' in steering
     # The permission chip carries its mode, so unrestricted access can look different.
     assert 'data-mode={permissionMode || "approval"}' in base
     # The base surface retired its glow; retained glyph/glow decoration is hidden
@@ -93,7 +92,7 @@ def test_every_rule_is_scoped_to_the_composer() -> None:
     css = read(REFINED)
     found = rules(css)
 
-    assert len(found) > 100
+    assert len(found) > 60
     for selector_list, _ in found:
         for selector in selector_list.split(","):
             assert selector.strip().startswith((SCOPE, LIGHT_SCOPE)), selector.strip()
@@ -161,8 +160,6 @@ def test_controls_are_plain_until_touched() -> None:
     for state, token in (
         (f"{SCOPE} .composer .composer-chip:hover:not(:disabled)", "var(--cq-hover)"),
         (f"{SCOPE} .composer .composer-chip.is-open", "var(--cq-selected)"),
-        (f"{SCOPE} .composer-option:hover:not(:disabled)", "var(--cq-hover)"),
-        (f"{SCOPE} .composer-option.active", "var(--cq-selected)"),
     ):
         assert f"background: {token};" in body_of(css, state), state
     # Hover and open never lift or scale.
@@ -186,8 +183,6 @@ def test_decorations_the_old_sheets_added_are_switched_off() -> None:
         f"{SCOPE} .composer-spark",
         f"{SCOPE} .composer .composer-chip::before",
         f"{SCOPE} .composer .send-button::after",
-        f"{SCOPE} .composer-popover:not(.model-manager-popover)::before",
-        f"{SCOPE} .composer-popover-icon",
         f"{SCOPE} .sticker-panel-symbol",
     ):
         assert decoration in hidden, decoration
@@ -207,47 +202,14 @@ def test_colour_on_the_toolbar_means_something() -> None:
     assert "background: var(--cq-send);" in send and "color: var(--cq-send-ink);" in send
 
 
-def test_permission_tags_are_words_not_pills() -> None:
+def test_the_panels_are_not_this_layer_s() -> None:
+    """The panels have their own sheet; this layer neither styles them nor redirects their tokens."""
     css = read(REFINED)
-
-    # A tag is a word after the title: no outline, no plate.
-    badge = body_of(css, f"{SCOPE} .permission-badge")
-    assert "border: 0;" in badge and "background: none;" in badge and "padding: 0;" in badge
-    # Colour only where it means something: the recommended default and the risky end.
-    for tone, token in (("recommended", "--cq-accent-ink"), ("danger", "--cq-danger")):
-        body = body_of(css, f"{SCOPE} .permission-badge.{tone}")
-        assert f"var({token})" in body and "background" not in body
-    # The selected row is a tint with a check, not a bordered card with a bar.
-    active = body_of(css, f"{SCOPE} .composer-option.active")
-    assert "border: 0;" in active and "box-shadow: none;" in active
-
-
-def test_the_model_card_keeps_its_own_look() -> None:
-    """The model card went back to model-core-redesign.css and model-picker.css."""
-    css = read(REFINED)
-    guard = ":not(.model-manager-popover)"
     raw = [selector.strip() for selector_list, _ in rules(css) for selector in selector_list.split(",")]
-
-    # Nothing in the layer styles the card: not its identity, the reasoning thread
-    # (.rt), the model library (.mp) or the popover that holds them. The only
-    # mention allowed is the guard that keeps the shared popover frame off it.
-    card = re.compile(r"\.(?:mp|rt)(?!\w)|\.(?:mp|rt)-|model-manager|model-core|model-popover")
+    panel = re.compile(r"\.cp(?![\w-])|\.cp-|composer-popover|model-manager|permission-popover|composer-option|\.(?:mp|rt)-")
     for selector in raw:
-        assert not card.search(selector.replace(guard, "")), selector
-    # Its token sets are not redirected either.
-    body = stripped(css)
-    assert "--mp-" not in body and "--rt-" not in body and "--cq-thread" not in body
-
-    # The shared popover frame is the one rule that would otherwise reach it.
-    frame = f"{SCOPE} .composer-popover"
-    assert f"{frame}{guard}" in raw and f"{frame}{guard}::before" in raw
-    for selector in raw:
-        assert selector not in (frame, f"{frame}::before"), selector
-
-    # The layer still opts in only through the composer wrap, so the card's own
-    # sheets keep winning inside it.
-    for selector in raw:
-        assert selector.startswith((SCOPE, LIGHT_SCOPE)), selector
+        assert not panel.search(selector), selector
+    assert "--cp-" not in stripped(css)
 
 
 def test_send_is_a_disc() -> None:
