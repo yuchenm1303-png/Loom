@@ -39,6 +39,9 @@ const card = (page, turn) => page.locator(`section.turn-block[data-turn-id="turn
 const asked = (page) => page.evaluate(() => window.__asked.splice(0));
 async function reveal(page, turn) {
   const target = card(page, turn);
+  // A reader gets to an earlier turn by scrolling up, which is also what takes the view off the live edge: a view that
+  // still follows it goes back to the bottom as the page measures what it has not laid out yet.
+  await page.locator(".transcript-scroll").dispatchEvent("wheel", { deltaY: -1 });
   await target.evaluate((element) => element.scrollIntoView({ block: "center" }));
   await page.mouse.move(2, 2);
   await page.waitForTimeout(220);
@@ -46,6 +49,8 @@ async function reveal(page, turn) {
 }
 async function ready(page) {
   await page.locator('section.turn-block[data-turn-id="turn-change-6"] .tc').waitFor({ timeout: 20000 });
+  // The older turns of the window are mounted while the page is idle: the cards are looked at once all of them are there.
+  await page.waitForFunction(() => !document.querySelector(".transcript[data-older-pending]"), null, { timeout: 20000 });
   await page.waitForTimeout(500);
 }
 

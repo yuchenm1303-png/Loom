@@ -6,6 +6,8 @@ import re
 import threading
 import uuid
 from collections import OrderedDict
+from contextlib import contextmanager
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
@@ -15,6 +17,7 @@ from app.ai import AIMessage, ImagePart, MessageRole, ModelUsage, TextPart, Tool
 
 from .journal import atomic_bytes, atomic_json, atomic_text, session_lock, recover, repair_tail
 from .event_cache import EventParseCache, _clone
+from .event_index import LogIndexes
 from .session_overview import SessionOverviewCache
 
 from .contracts import (
@@ -530,6 +533,17 @@ def _build_event(record, shared):
     )
 
 
+@dataclass(frozen=True, slots=True)
+class PresentationWindow:
+    """The events one transcript window is made of, and the two things a thread read takes from the log beyond it."""
+
+    events: tuple[AgentEvent, ...]
+    has_more: bool
+    # The approval requests of the current turn (only when asked for) and its newest ``turn_completed``.
+    approvals: tuple[AgentEvent, ...] = ()
+    completion: AgentEvent | None = None
+
+
 class FileAgentSessionStore:
     """Local durable state for Loom Agent Runtime.
 
@@ -542,6 +556,8 @@ class FileAgentSessionStore:
         self.root = Path(runtime_root).expanduser().resolve() / "agent_runtime" / "sessions"
         self.root.mkdir(parents=True, exist_ok=True)
         self._event_cache = EventParseCache()
+        self._log_indexes = LogIndexes()
+        self._scope = threading.local()
         self._overview_cache = SessionOverviewCache()
         self._encoders: OrderedDict[str, _SnapshotEncoder] = OrderedDict()
         self._encoders_guard = threading.Lock()
@@ -641,14 +657,49 @@ class FileAgentSessionStore:
         # Share the same fsynced, atomic Windows-safe path as redo recovery.
         (atomic_bytes if isinstance(data, bytes) else atomic_text)(directory / "session.json", data)
 
+    @contextmanager
+    def read_scope(self):
+        """Within the block, loading a session again gives the object that was just loaded, unless it was saved since.
+
+        A thread read passes through several layers that each look at the session (to recover an orphaned turn, to
+        build the record, to name the thread) and each of them parsed the whole snapshot: 20 to 100 ms apiece on a
+        long conversation, three times for one read. The scope belongs to the calling thread and is meant for
+        reads; anything that saves the session is seen by the next load, which then reads the file again.
+        """
+        if getattr(self._scope, "loaded", None) is not None:
+            yield
+            return
+        self._scope.loaded = {}
+        try:
+            yield
+        finally:
+            self._scope.loaded = None
+
+    @staticmethod
+    def _file_identity(path: Path) -> tuple[int, int, int] | None:
+        try:
+            stat = path.stat()
+        except OSError:
+            return None
+        return stat.st_mtime_ns, stat.st_size, stat.st_ino
+
     def load(self, session_id: str) -> AgentSession:
         target = self.session_dir(session_id) / "session.json"
+        scope = getattr(self._scope, "loaded", None)
+        if scope is not None:
+            known = scope.get(session_id)
+            if known is not None and known[0] is not None and known[0] == self._file_identity(target):
+                return known[1]
         with session_lock(target.parent):
             recover(target.parent)
+            identity = self._file_identity(target)
             payload = json.loads(target.read_text(encoding="utf-8"))
         if not isinstance(payload, dict):
             raise ValueError("agent session snapshot must be a JSON object")
-        return session_from_dict(payload)
+        session = session_from_dict(payload)
+        if scope is not None:
+            scope[session_id] = (identity, session)
+        return session
 
     def require_session(self, session_id: str) -> None:
         """Raise FileNotFoundError unless the session exists, without parsing it.
@@ -785,6 +836,46 @@ class FileAgentSessionStore:
     def presentation_events(self, session_id: str) -> tuple[AgentEvent, ...]:
         """Every event a transcript is built from, without the request payloads it never reads."""
         return self._view(session_id, parse=_presentation_line)
+
+    def presentation_window(self, session_id: str, *, limit: int, before_turn_id: str = "",
+                            current_turn_id: str = "", approvals: bool = False) -> PresentationWindow | None:
+        """The ``presentation_events`` of the newest ``limit`` turns (those before ``before_turn_id`` when given).
+
+        The same events, in the same order, as narrowing the whole view to those turns; but the log is only indexed by
+        its line headers (once, and then by what was appended) and the lines of the window are the only ones parsed, so
+        what it costs follows the window rather than the history. ``completion`` is the newest ``turn_completed`` of
+        ``current_turn_id`` and ``approvals`` the approval requests of that turn (when asked for): what a thread read
+        takes from the log besides the window. None when the log cannot be read this way (its last line has no
+        newline); the caller then reads the whole view.
+        """
+        path = self.session_dir(session_id) / "events.jsonl"
+        with session_lock(path.parent):
+            recover(path.parent)
+            if not path.is_file():
+                if before_turn_id:
+                    # The whole view refuses a cursor that names no turn, and a log with no turns has none.
+                    raise ValueError("thread/read beforeTurnId is not present in this thread")
+                return PresentationWindow((), False)
+            with path.open("rb") as handle:
+                index = self._log_indexes.current(path, handle)
+                handle.seek(index.offset)
+                if handle.read().strip():
+                    return None
+                numbers, has_more = index.window(limit, before_turn_id)
+                lines = index.read(handle, numbers)
+                wanted = []
+                if approvals:
+                    wanted = [number for number in index.approvals if not current_turn_id or index.turns[number] == current_turn_id]
+                approval_lines = index.read(handle, wanted)
+                finished = index.completed.get(current_turn_id)
+                completion_line = index.read(handle, [finished])[0] if finished is not None else None
+        # The lines are bytes in hand: parsing them needs neither the file nor the lock, which commits are waiting for.
+        return PresentationWindow(
+            tuple(_event_from_payload(_presentation_line(line)) for line in lines),
+            has_more,
+            tuple(_event_from_payload(_presentation_line(line)) for line in approval_lines),
+            _event_from_payload(_presentation_line(completion_line)) if completion_line is not None else None,
+        )
 
     def checkpoint_events(self, session_id: str) -> tuple[AgentEvent, ...]:
         """The context checkpoints so far, in order, at the cost of a view that holds only them."""

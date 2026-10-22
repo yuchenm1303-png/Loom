@@ -22,15 +22,26 @@ test("navigation commits and releases overlay without waiting for a transition",
     const opening = { current: "" };
     let overlay = "";
     const next = { thread: { id: "new" } };
+    let painted;
+    const paint = new Promise(resolve => { painted = resolve; });
     const open = callback("openThread", {
       activeIdRef: selected, openingThreadIdRef: opening, openRequestRef: { current: 0 },
       setOpeningThreadId: value => { overlay = value; },
       cachedThreadRead: () => cached ? next : null,
       readThread: async () => next,
+      afterNextPaint: () => paint,
       applyThreadRead: result => { selected.current = result.thread.id; },
       startTransition: () => assert.fail("navigation must not be deferred behind streaming"),
     });
-    await open("new");
+    const opened = open("new");
+    if (cached) {
+      // A conversation from memory is built after the click has been answered, not inside it.
+      await Promise.resolve();
+      assert.equal(overlay, "new", "the click is answered: the selection is already the new conversation");
+      assert.equal(selected.current, "old", "the conversation itself waits for the frame that answers the click");
+      painted();
+    }
+    await opened;
     assert.equal(selected.current, "new");
     assert.equal(opening.current, "");
     assert.equal(overlay, "");

@@ -10,7 +10,7 @@ import traceback
 import uuid
 from collections import OrderedDict
 from pathlib import Path
-from typing import Any, Callable, TextIO
+from typing import Any, Callable, Iterable, TextIO
 
 from app.ai import AGENT_FAST_ROLE, ImagePart, MessageRole, TextPart
 from app.agent_runtime import AgentEvent, AgentEventKind, AgentStatus, PermissionMode
@@ -1018,6 +1018,19 @@ class LoomAppServerService:
         reader = getattr(self.store, "presentation_events", None)
         return reader(session_id) if callable(reader) else self.store.events(session_id)
 
+    def _presentation_window(self, session: Any, turn_limit: int | None, before_turn_id: str) -> Any:
+        """The events of one transcript window from a store that can read it without the rest of the log, else None."""
+        reader = getattr(self.store, "presentation_window", None)
+        if turn_limit is None or not callable(reader):
+            return None
+        return reader(
+            session.session_id,
+            limit=turn_limit,
+            before_turn_id=before_turn_id,
+            current_turn_id=session.current_turn_id,
+            approvals=getattr(session, "pending_approval", None) is not None,
+        )
+
     def thread_read(self, params: dict[str, Any]) -> dict[str, Any]:
         session_id = self._required_text(params, "threadId")
         session = self._load(session_id)
@@ -1030,34 +1043,46 @@ class LoomAppServerService:
         if bool(params.get("threadOnly", False)):
             return {"thread": thread}
 
-        events = (
-            self._transcript_events(session_id)
-            if bool(params.get("presentationOnly", False))
-            else self.store.events(session_id)
-        )
+        presentation_only = bool(params.get("presentationOnly", False))
         turn_limit_raw = params.get("turnLimit")
-        window_events = events
-        has_more_turns: bool | None = None
+        turn_limit: int | None = None
+        before_turn_id = ""
         if turn_limit_raw is not None and turn_limit_raw != "":
             turn_limit = int(turn_limit_raw)
             if not 1 <= turn_limit <= 100:
                 raise ValueError("thread/read turnLimit must be within 1..100")
             before_turn_id = str(params.get("beforeTurnId") or "").strip()
-            window_events, has_more_turns = _window_turn_events(
-                events,
-                limit=turn_limit,
-                before_turn_id=before_turn_id,
-            )
+
+        # A transcript window needs the newest turns, not the log around them: a store that keeps an index of its
+        # logs hands over exactly those events (and the two lines the rest of the answer reads), so opening a long
+        # conversation costs its window rather than its whole history. Anything else reads the full view below.
+        window = self._presentation_window(session, turn_limit, before_turn_id) if presentation_only else None
+        has_more_turns: bool | None = None
+        if window is not None:
+            events = window.events
+            window_events, has_more_turns = window.events, window.has_more
+            approval_events: Iterable[AgentEvent] = window.approvals
+            completion = window.completion
+        else:
+            events = self._transcript_events(session_id) if presentation_only else self.store.events(session_id)
+            window_events = events
+            if turn_limit is not None:
+                window_events, has_more_turns = _window_turn_events(
+                    events,
+                    limit=turn_limit,
+                    before_turn_id=before_turn_id,
+                )
+            approval_events = events
+            completion = next((event for event in reversed(events)
+                               if event.kind is AgentEventKind.TURN_COMPLETED and event.turn_id == session.current_turn_id), None)
 
         turns = _turn_records(session, window_events)
         result: dict[str, Any] = {
             "thread": thread,
             "turns": turns,
-            "pendingApproval": pending_approval_record(session, events),
-            "finalText": next((str(event.data.get("display_text", event.data.get("text")) or "")
-                               for event in reversed(events)
-                               if event.kind is AgentEventKind.TURN_COMPLETED and event.turn_id == session.current_turn_id),
-                              session.final_text),
+            "pendingApproval": pending_approval_record(session, approval_events),
+            "finalText": (str(completion.data.get("display_text", completion.data.get("text")) or "")
+                          if completion is not None else session.final_text),
             "rawFinalText": session.final_text,
             "error": session.error,
         }

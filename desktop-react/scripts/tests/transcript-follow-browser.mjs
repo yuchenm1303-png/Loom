@@ -25,6 +25,9 @@ try {
       const el = document.querySelector(".transcript-scroll");
       return el && el.scrollHeight - el.scrollTop - el.clientHeight < 3;
     });
+    // The older turns of the window are mounted once the page has been quiet for a moment; these scenarios are about
+    // following and leaving the live edge of a conversation that is all there, so they begin when it is.
+    await opened.waitForFunction(() => !document.querySelector(".transcript[data-older-pending]"), null, { timeout: 20000 });
     return opened;
   };
   const stateOf = target => target.evaluate(() => {

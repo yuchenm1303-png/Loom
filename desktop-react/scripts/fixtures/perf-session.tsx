@@ -9,9 +9,13 @@
 //   ?edits=0.3       share of cycles that write a file (default: the usual mix);
 //   ?editLines=40    lines per write, for diff-heavy histories
 //   ?threads=60      sidebar conversations (default 60)
+//   ?heavy=6         the first 6 conversations each have a history of their own (default 1: only the
+//                    first), so switching between them costs what switching between long sessions does
+//   ?readMs=400      how long a thread/read takes to answer (default 0: instantly)
 //   ?motion=0        reduced motion (default: animations on, like a real user)
 //   ?theme=light|dark
-//   ?real=<url>      replay a JSON file of TurnRecord[] (the thread/read shape)
+//   ?real=<url>      replay a JSON file of TurnRecord[] (the thread/read shape); a comma-separated
+//                    list replays one file per conversation, in sidebar order
 //
 // Drive it from a test through window.perfFixture: startLive({ tools, deltaMs,
 // toolMs, finalChars, plan, hold }) streams a turn (plan: the first tool is
@@ -78,7 +82,7 @@ const filler = (length: number) => {
 };
 const blob = (length: number) => ({ summary: "x".repeat(Math.max(0, length - 40)), ok: true });
 
-function finalAnswer(turn: number, long = false, forced = 0) {
+function finalAnswer(turn: number | string, long = false, forced = 0) {
   const sections = forced || (long ? 6 : int(1, 3));
   return Array.from({ length: sections }, (_, section) => `## 第 ${turn}.${section} 部分：检查结果
 
@@ -106,8 +110,9 @@ type Item = Record<string, unknown> & { id: string; type: string };
 type Turn = { id: string; threadId: string; status: string; startedAt: string; completedAt: string | null;
   finalItemId?: string; items: Item[] };
 
-function buildTurn(threadId: string, index: number, cycles: number, clock: { t: number }, long = false): Turn {
-  const turnId = `turn-${index}`;
+// `scope` keeps ids of different conversations apart, as the Host's uuids do: "" is the first conversation.
+function buildTurn(threadId: string, index: number, cycles: number, clock: { t: number }, long = false, scope = ""): Turn {
+  const turnId = `${scope}turn-${index}`;
   const stamp = () => iso((clock.t += 1400));
   const base = (id: string, type: string, extra: Record<string, unknown>): Item => {
     const at = stamp();
@@ -137,7 +142,7 @@ function buildTurn(threadId: string, index: number, cycles: number, clock: { t: 
     }
   }
   const finalId = `${turnId}-final`;
-  items.push(base(finalId, "assistant_message", { text: finalAnswer(index, long), rawText: "", reasoning: "", phase: "final_answer",
+  items.push(base(finalId, "assistant_message", { text: finalAnswer(scope ? `${scope}${index}` : index, long), rawText: "", reasoning: "", phase: "final_answer",
     stepId: `${turnId}-step-final`, finishReason: "stop" }));
   return { id: turnId, threadId, status: "completed", startedAt: items[0].createdAt as string,
     completedAt: items.at(-1)!.updatedAt as string, finalItemId: finalId, items };
@@ -145,13 +150,27 @@ function buildTurn(threadId: string, index: number, cycles: number, clock: { t: 
 
 const clock = { t: 0 };
 const mainThreadId = "perf-0";
-const realSource = params.get("real");
-const realTurns: Turn[] | null = realSource ? await (await fetch(realSource)).json() : null;
-if (realTurns) for (const turn of realTurns) { turn.threadId = mainThreadId; for (const item of turn.items) item.threadId = mainThreadId; }
+const realSources = (params.get("real") || "").split(",").map(source => source.trim()).filter(Boolean);
+const realHistories: Turn[][] = await Promise.all(realSources.map(async (source, index) => {
+  const loaded: Turn[] = await (await fetch(source)).json();
+  const id = `perf-${index}`;
+  for (const turn of loaded) { turn.threadId = id; for (const item of turn.items) item.threadId = id; }
+  return loaded;
+}));
+const realTurns: Turn[] | null = realHistories[0] ?? null;
 const turnCount = realTurns ? realTurns.length : num("turns", 30);
 const avgTools = num("tools", 30);
 const turns: Turn[] = realTurns ?? Array.from({ length: turnCount }, (_, index) =>
   buildTurn(mainThreadId, index, Math.max(0, Math.round(avgTools * (0.3 + rnd() * 1.4))), clock));
+// Every conversation with a history of its own. The first one is `turns`, which a live turn appends to.
+const heavy = Math.max(realHistories.length, num("heavy", 1));
+const histories = new Map<string, Turn[]>([[mainThreadId, turns]]);
+for (let index = 1; index < heavy; index++) {
+  const id = `perf-${index}`;
+  histories.set(id, realHistories[index] ?? Array.from({ length: turnCount }, (_, turn) =>
+    buildTurn(id, turn, Math.max(0, Math.round(avgTools * (0.3 + rnd() * 1.4))), clock, false, `${id}-`)));
+}
+const readMs = num("readMs", 0);
 
 const threadTitles = ["配置第三方登录与邮件验证", "修复模型面板卡片错位", "优化图片附件发送", "检查项目面板浅色主题", "优化审查面板", "确认 Computer Use 能力"];
 const threads = Array.from({ length: num("threads", 60) }, (_, index) => ({
@@ -274,13 +293,14 @@ function threadRead(args: Record<string, unknown>) {
   const id = String(args.threadId);
   (window as unknown as { perfFixture: { reads: string[] } }).perfFixture.reads.push(id);
   const thread = threads.find(entry => entry.id === id) || threads[0];
-  if (id !== mainThreadId) return { thread, turns: [], hasMoreTurns: false, oldestTurnId: null };
-  if (args.turnLimit === 1) return { thread, turns: turns.slice(-1), hasMoreTurns: turns.length > 1 };
+  const history = histories.get(id);
+  if (!history) return { thread, turns: [], hasMoreTurns: false, oldestTurnId: null };
+  if (args.turnLimit === 1) return { thread, turns: history.slice(-1), hasMoreTurns: history.length > 1 };
   const limit = Number(args.turnLimit) || 20;
   const before = String(args.beforeTurnId || "");
-  const end = before ? turns.findIndex(turn => turn.id === before) : turns.length;
+  const end = before ? history.findIndex(turn => turn.id === before) : history.length;
   const start = Math.max(0, end - limit);
-  const slice = turns.slice(start, end);
+  const slice = history.slice(start, end);
   return { thread, turns: slice, hasMoreTurns: start > 0, oldestTurnId: slice[0]?.id ?? null };
 }
 const handlers: Record<string, (args: Record<string, unknown>) => unknown> = {
@@ -303,7 +323,14 @@ const bridge: Record<string, unknown> = {
   connect: async () => ({ protocolVersion: 1, serverInfo: { name: "perf-fixture", version: "0" }, capabilities: {},
     runtime: { model: profile.name, defaultWorkspace: workspace, defaultPermissionMode: "full-access",
       permissionModes: ["read-only", "approval", "workspace", "full-access"] } }),
-  call: async (method: string, args: Record<string, unknown> = {}) => handlers[method]?.(args) || {},
+  call: async (method: string, args: Record<string, unknown> = {}) => {
+    if (method === "thread/read" && !args.threadOnly) {
+      if (readMs) await new Promise(resolve => setTimeout(resolve, readMs));
+      // A read arrives as a new object graph every time, and is deserialised on the page's main thread, as it is through IPC.
+      return structuredClone(threadRead(args));
+    }
+    return handlers[method]?.(args) || {};
+  },
   listModels: async () => models,
   accountStatus: async () => ({ ok: true, snapshot: { configured: true, reachable: true, authenticated: true,
     user: { id: "perf-user", name: "Loom Perf", email: "perf@example.invalid" }, serviceUrl: "" } }),

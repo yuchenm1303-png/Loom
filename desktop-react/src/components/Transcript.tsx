@@ -59,6 +59,7 @@ import { isLongNote } from "./processNote";
 import { HomeTokenActivity } from "./HomeTokenActivity";
 import { MarkdownMessage } from "./MarkdownMessage";
 import { TranscriptEdgeScrollbar } from "./TranscriptEdgeScrollbar";
+import { useProgressiveTurns } from "./progressiveTurns";
 import "./model-retry.css";
 import { DecisionPromptCard, DecisionPromptRecoveryCard, parseDecisionMessage } from "./DecisionPromptCard";
 import { StreamingPresentation, usePendingPresentations } from "./StreamingPresentation";
@@ -359,6 +360,11 @@ function processHandoffGroups(items: TranscriptItem[]): string[][] {
   return [...(agents.length ? [agents.map(item => item.id)] : []),
     ...activitySegments(buildActivityRows(items.filter(item => !isSubAgentToolItem(item))))
       .map(rows => [...new Set(rows.flatMap(row => [row.key, row.item.id]))])];
+}
+
+/** The identity of a block across renders: the same one whatever part of the conversation is mounted. */
+function turnBlockKey(block: TurnBlock, index: number): string {
+  return block.kind === "turn" ? block.id : (block.item.id || `loose-${index}`);
 }
 
 function groupTurns(items: TranscriptItem[]): TurnBlock[] {
@@ -1711,6 +1717,10 @@ export const Transcript = memo(function Transcript({ threadId, items, running, c
     return () => { delete stage.dataset.hasEntries; };
   }, [hasItems]);
   const turnBlocks = useStableTurnBlocks(items);
+  const blockKeys = useMemo(() => turnBlocks.map(turnBlockKey), [turnBlocks]);
+  // A conversation opens with its newest turns; the older ones of the window mount once the page has been quiet for a
+  // moment (not while a turn runs), or as soon as the reader scrolls toward them.
+  const firstMountedBlock = useProgressiveTurns(blockKeys, threadId, scrollRef, Boolean(running));
   const activeTurnId = running && currentTurnId ? String(currentTurnId) : "";
   const decisionInteractiveItemId = useMemo(() => {
     if (running || promptDisabled || !onPrompt) return "";
@@ -1728,7 +1738,7 @@ export const Transcript = memo(function Transcript({ threadId, items, running, c
   return (
     <TranscriptHistoryContext.Provider value={historyRef.current.ids}><div ref={scrollRef} className={`transcript-scroll ${!items.length ? "is-empty" : ""}`}>
       <div className="chat-ambient" aria-hidden="true" />
-      <main className={`transcript ${!items.length ? "is-empty" : ""}`} aria-live="polite">
+      <main className={`transcript ${!items.length ? "is-empty" : ""}`} aria-live="polite" data-older-pending={firstMountedBlock > 0 ? "true" : undefined}>
         {!items.length ? (
           <EmptyState
             disabled={promptDisabled}
@@ -1738,7 +1748,9 @@ export const Transcript = memo(function Transcript({ threadId, items, running, c
             startupStage={startupStage}
             usageReady={usageReady}
           />
-        ) : turnBlocks.map((block, index) => (
+        ) : turnBlocks.slice(firstMountedBlock).map((block, offset) => {
+          const index = firstMountedBlock + offset;
+          return (
           block.kind === "turn" ? (
             <TurnView
               key={block.items.find((item) => item.type === "user_message" && item.source !== "steering")?.clientMessageId || block.id}
@@ -1763,7 +1775,8 @@ export const Transcript = memo(function Transcript({ threadId, items, running, c
               />
             </div>
           )
-        ))}
+          );
+        })}
       </main>
     </div><TranscriptEdgeScrollbar scrollerRef={scrollRef} /></TranscriptHistoryContext.Provider>
   );

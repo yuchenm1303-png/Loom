@@ -20,6 +20,7 @@ import { isLoomWebRuntime } from "../webBridge";
 import { preservePendingUserIdentity, reconcilePendingUserMessage } from "../pendingUserMessage";
 import { buildApprovalResponse } from "./approvalProtocol";
 import { switchCurrentModelForThread, switchModelProfileForThread } from "./modelSwitchRouting";
+import { afterNextPaint } from "./afterNextPaint";
 import { RetainedBudgetMap } from "./retainedBudgetMap";
 import { runStartup, type StartupStage } from "./startupSequence";
 import { withThreadReadTimeout } from "./threadReadTimeout";
@@ -30,7 +31,11 @@ type ThreadCounts = { active: number; archived: number; all: number };
 type ThreadListResult = { threads: ThreadRecord[]; counts?: Partial<ThreadCounts> };
 type ThreadReadCacheEntry = { result: ThreadReadResult; cachedAt: number };
 
-const THREAD_READ_CACHE_LIMIT = 8;
+// Reads of idle conversations kept for opening them again. Bounded by what they hold rather than by how many there
+// are: three or four long conversations used to fill the old 16 MB, so flipping between a handful of them read from
+// the Host every time.
+const THREAD_READ_CACHE_LIMIT = 12;
+const THREAD_READ_CACHE_BYTES = 64 * 1024 * 1024;
 const THREAD_READ_CACHE_TTL_MS = 5 * 60_000;
 const THREAD_READ_WINDOW_TURNS = 20;
 const MODEL_CATALOG_POLL_MS = 10_000;
@@ -264,7 +269,7 @@ export function useLoom() {
   const openRequestRef = useRef(0);
   const openingThreadIdRef = useRef("");
   const loadingOlderTurnsRef = useRef(false);
-  const threadReadCacheRef = useRef<Map<string, ThreadReadCacheEntry>>(new RetainedBudgetMap(THREAD_READ_CACHE_LIMIT, 16 * 1024 * 1024));
+  const threadReadCacheRef = useRef<Map<string, ThreadReadCacheEntry>>(new RetainedBudgetMap(THREAD_READ_CACHE_LIMIT, THREAD_READ_CACHE_BYTES));
   const threadReadInflightRef = useRef<Map<string, Promise<ThreadReadResult>>>(new Map());
   const threadsRef = useRef<ThreadRecord[]>([]);
   const threadViewRef = useRef<ThreadView>("active");
@@ -643,6 +648,11 @@ export function useLoom() {
 
     const cached = cachedThreadRead(normalized);
     if (cached) {
+      // The click is answered first: the selection, the title and the dimmed surface are on screen before the
+      // conversation is built, which is a few frames' work in one task. Applied in the click itself, that work stood
+      // in front of the first thing the reader could see change.
+      await afterNextPaint();
+      if (openRequestRef.current !== requestId) return;
       applyThreadRead(cached);
       openingThreadIdRef.current = "";
       setOpeningThreadId("");

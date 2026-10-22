@@ -40,7 +40,10 @@ try {
       return result;
     }, items);
     assert.ok(frames.every(frame => frame.gap <= 2), `entry must stay at latest: ${JSON.stringify(frames.slice(0, 8))}`);
-    assert.equal(new Set(frames.map(frame => frame.height)).size, 1, `restored history must not unfold then shrink: ${JSON.stringify(frames.slice(0, 20))}`);
+    // The older turns of a window are mounted while the page is idle, so the page grows a little at a time; what it must
+    // never do is shrink (a fold or an unfold of history would), and the newest turn keeps its place (the gap above).
+    assert.ok(frames.every((frame, index) => !index || frame.height >= frames[index - 1].height), `restored history must not unfold then shrink: ${JSON.stringify(frames.slice(0, 20))}`);
+    await page.waitForFunction(() => !document.querySelector(".transcript[data-older-pending]"));
     assert.ok(frames.every(frame => frame.born === 0 && frame.folding === 0 && frame.subOpen), "history must start settled");
     assert.ok(await page.locator('.wv-sub.is-failure').count() > 0, "restored failure output is exercised");
     if (process.env.LOOM_ENTRY_SCREENSHOTS) await page.screenshot({ path: `${process.env.LOOM_ENTRY_SCREENSHOTS}/entry-${width}.png` });

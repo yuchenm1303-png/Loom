@@ -43,7 +43,7 @@ class _Spy:
         if name in self._hide:
             raise AttributeError(name)
         value = getattr(self._inner, name)
-        if name in {"events", "presentation_events", "context_state"} and callable(value):
+        if name in {"events", "presentation_events", "presentation_window", "context_state"} and callable(value):
             def recorded(*args, **kwargs):
                 self.calls.append(name)
                 return value(*args, **kwargs)
@@ -60,10 +60,19 @@ def test_the_transcript_read_matches_the_full_log_read_and_skips_request_payload
         service.store = spy
         light = service.thread_read(params)
         older = service.thread_read({**params, "beforeTurnId": light["oldestTurnId"]})
-        assert spy.calls == ["presentation_events", "presentation_events"]
+        # A store that indexes its logs hands over the window itself: neither the whole log nor its whole view is read.
+        assert spy.calls == ["presentation_window", "presentation_window"]
+
+        # The whole presentation view (a store without the window read) and the whole log give the same answers.
+        view = _Spy(runtime.store, hide=("presentation_window",))
+        service.store = view
+        assert light == service.thread_read(params)
+        assert older == service.thread_read({**params, "beforeTurnId": light["oldestTurnId"]})
+        assert view.calls == ["presentation_events", "presentation_events"]
 
         service.store = runtime.store
         service._transcript_events = lambda session_id: runtime.store.events(session_id)
+        service.store = _Spy(runtime.store, hide=("presentation_window",))
         assert light == service.thread_read(params)
         assert older == service.thread_read({**params, "beforeTurnId": light["oldestTurnId"]})
         assert [turn["id"] for turn in light["turns"]] == ["turn-3", "turn-4"] and light["hasMoreTurns"] is True

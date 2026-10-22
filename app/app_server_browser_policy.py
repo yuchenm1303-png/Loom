@@ -17,6 +17,14 @@ from .app_server_project_move import (
 class BrowserPolicyLoomAppServerService(ProjectMovableLoomAppServerService):
     """Production App Server browser wiring with explicit backend selection."""
 
+    def thread_read(self, params: dict[str, Any]) -> dict[str, Any]:
+        """Every layer of a thread read looks at the session; they share the one parse of it (see ``read_scope``)."""
+        scope = getattr(self.store, "read_scope", None)
+        if not callable(scope):
+            return super().thread_read(params)
+        with scope():
+            return super().thread_read(params)
+
     def _apply_capability_settings(self, settings: dict[str, Any]) -> None:
         super()._apply_capability_settings(settings)
         rewrite = getattr(self.runtime, "_rewrite_browser_open_description", None)
