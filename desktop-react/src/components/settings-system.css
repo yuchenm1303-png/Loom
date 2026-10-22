@@ -213,7 +213,7 @@
 .settings-shell.settings-refined .settings-nav { margin-top: 18px; scrollbar-width: thin; }
 .settings-shell.settings-refined .settings-nav section { margin-bottom: 22px; }
 .settings-shell.settings-refined .settings-nav-label { padding-left: 12px; color: var(--sr-ink-3); font-size: 11px; }
-.settings-shell.settings-refined .settings-nav button { min-height: 34px; padding: 7px 12px; gap: 11px; font-weight: 450; }
+.settings-shell.settings-refined .settings-nav button { min-height: 34px; padding: 7px 12px; gap: 11px; font-weight: 400; }
 .settings-shell.settings-refined .settings-nav button.active { font-weight: 600; }
 .settings-shell.settings-refined .settings-nav button.active > svg { color: var(--sr-accent); }
 .settings-shell.settings-refined .settings-sidebar-footer { padding: 14px 10px 2px; border-top-color: var(--sr-line-soft); }
