@@ -77,3 +77,31 @@ test("a landing-page request becomes a reviewable composer draft", () => {
   assert.ok(composer.includes("setDrafts("));
   assert.ok(lens.includes('root.classList.contains("loom-editorial")'));
 });
+
+
+test("magnetic glass refraction is smooth on short and tall targets in both homepage bundles", () => {
+  const react = readFileSync(new URL("../../src/components/PortalLiquidCursor.tsx", import.meta.url), "utf8");
+  const standalone = readFileSync(new URL("../../../artifacts/loom-site/assets/cursor.js", import.meta.url), "utf8");
+  for (const source of [react, standalone]) {
+    assert.ok(source.includes("vec2 bendReach = max(vec2(22.0, 13.0), halfSize * vec2(0.68, 0.66))"));
+    assert.ok(source.includes("refraction *= inversesqrt(vec2(1.0) + bendRatio * bendRatio)"));
+    assert.ok(!source.includes("refraction.y = clamp("), "a hard Y clamp flattens the optics into horizontal cutoff bands");
+    assert.ok(source.includes("float mask = 1.0 - smoothstep("), "keep the rounded glass silhouette");
+  }
+
+  const smoothLimit = (value, reach) => value / Math.sqrt(1 + (value / reach) ** 2);
+  for (const buttonHeight of [28, 36, 44, 60, 120]) {
+    const reach = Math.max(13, buttonHeight / 2 * 0.66);
+    const samples = [-100, -40, -20, -10, -1, 0, 1, 10, 20, 40, 100]
+      .map(value => smoothLimit(value, reach));
+    assert.ok(samples.every(value => Number.isFinite(value) && Math.abs(value) < reach));
+    assert.ok(samples.every((value, index) => index === 0 || samples[index - 1] < value),
+      "optical displacement must change smoothly without a flat clipped band");
+    const oldHardCutoff = buttonHeight / 2 * .32;
+    const epsilon = .001;
+    const leftSlope = (smoothLimit(oldHardCutoff, reach) - smoothLimit(oldHardCutoff - epsilon, reach)) / epsilon;
+    const rightSlope = (smoothLimit(oldHardCutoff + epsilon, reach) - smoothLimit(oldHardCutoff, reach)) / epsilon;
+    assert.ok(Math.abs(leftSlope - rightSlope) < .001,
+      "the old cutoff location must no longer produce a visible slope break");
+  }
+});
