@@ -128,3 +128,14 @@ test("editorial sign-in is a centered, accessible modal without a side drawer", 
   assert.ok(!styles.includes("justify-content: flex-end"), "do not reintroduce the right-hand drawer");
   assert.ok(portal.includes('next === "classic" ? "/classic" : "/"'), "classic homepage stays supported");
 });
+
+
+test("editorial dialog prevents background focus and restores its actual opener", () => {
+  const portal = readFileSync(new URL("../../src/components/WebPortal.tsx", import.meta.url), "utf8");
+  const css = readFileSync(new URL("../../src/components/portal-auth-dialog.css", import.meta.url), "utf8");
+  assert.ok(portal.includes('inert={drawerOpen}'), "background must be inert while login is visible");
+  assert.ok(portal.includes("modalOpenerRef.current = document.activeElement"), "remember opener before inert renders");
+  assert.ok(portal.includes("const opener = modalOpenerRef.current"), "restoration must use pre-render focus");
+  assert.ok(portal.includes("onClick={openEditorialModal}"), "Sign in must capture focus origin");
+  assert.match(css, /\.loom-portal-page\.is-modular\.loom-editorial\.is-modal-open\s*\{\s*overflow:\s*hidden/);
+});
