@@ -22,6 +22,8 @@ VERIFICATION_SCHEMA = {
                           "items": {"type": "string", "minLength": 1},
                           "description": "Workspace source files or directories tested by this command. Do not include generated output."},
         "expected_exit_code": {"type": "integer", "default": 0},
+        "check_kind": {"enum": ["functional", "static"], "default": "functional",
+                       "description": "Use static for builds/type checks; functional for behavior tests."},
     }, "required": ["case_id", "expectation", "subject_paths"],
 }
 
@@ -38,6 +40,13 @@ DEVELOPMENT_FEEDBACK_CONTRACT = (
     "A build pass, pixel change or finished tool call alone is not proof of task completion. "
     "When execution is blocked, record and report what could not be verified rather than claiming success or looping blindly. "
     "Do not run unrelated checks or require a browser for changes that have no visible behavior."
+    " Source edits automatically create loom_development_verification obligations even before a check is registered. "
+    "A terminal answer with unresolved obligations is returned for verification, not accepted as delivery. "
+    "For visual assessments record check_kind='visual' after exercising the UI and inspecting fresh images. "
+    "Use resolve_verification with evidence and a concrete reason for actual blockers or changes without runtime behavior."
+    " Verify the URL and served build/asset identity when testing a deployed or installed app; current workspace "
+    "source hashes alone cannot prove which build the browser is showing. Never treat a changed assertion, skipped "
+    "test or regenerated screenshot baseline as proof that the requested behavior was fixed."
 )
 
 
@@ -94,6 +103,7 @@ def assess_command(spec: dict, before: dict, after: dict | None, result) -> dict
                else "stale" if not unchanged else "passed")
     return {"case_id": spec["case_id"], "expectation": spec["expectation"],
             "verdict": verdict, "assessment_source": "runtime_exit_code",
+            "acceptance_evidence": True, "check_kind": spec.get("check_kind", "functional"),
             "observed": f"exit={data.get('returncode')}, expected={expected}; source matches at check boundaries: {unchanged}",
             "command_observation": {"returncode": data.get("returncode"), "expected_exit_code": expected,
                                     "state": data.get("state"), "source_matches_at_boundaries": unchanged},
@@ -113,9 +123,12 @@ def verification_summary(events, context: ToolContext) -> dict:
         recorded = data.get("verdict", "not_covered")
         freshness = check_freshness(data, context, snapshots=snapshots)
         status = ("stale" if freshness == "stale" else "blocked" if freshness == "unavailable" else recorded)
+        if status == "passed" and data.get("definition_changed"):
+            status = "needs_review"
         checks.append({"case_id": data.get("case_id"), "event_id": event.event_id,
                        "recorded_verdict": recorded, "status": status, "freshness": freshness,
                        "assessment_source": data.get("assessment_source", "assistant_assessment"),
+                       "definition_changed": bool(data.get("definition_changed")),
                        "expectation": str(data.get("expectation", ""))[:2000]})
     status = ("not_assessed" if not checks else "failed" if any(c["status"] == "failed" for c in checks)
               else "stale" if any(c["status"] == "stale" for c in checks)

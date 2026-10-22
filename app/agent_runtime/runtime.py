@@ -183,6 +183,10 @@ class AgentRuntime:
         self.orchestrator = orchestrator or ToolOrchestrator()
         self.process_store = process_store or ProcessStore()
         self.diff_trackers = diff_trackers or DiffTrackerRegistry()
+        from .development_verification import DevelopmentVerification, resolve_verification_tool
+        self.development_verification = DevelopmentVerification(self)
+        if self.tools.get("resolve_verification") is None:
+            self.tools.register(resolve_verification_tool(self.development_verification))
         self.model_executor = ModelExecutor()
         self.instruction_loader = InstructionLoader()
         configured_parallel_tools = (
@@ -597,6 +601,7 @@ class AgentRuntime:
         extra.update(session.request_context_frames[-1].get("metadata", {}) if session.request_context_frames else {})
         extra["estimated_input_tokens_after"] = estimate_tokens(messages, step.tool_router.definitions())
         extra["request_layout"] = request_metadata(self, session, messages, step.tool_router.definitions())
+        self.development_verification.delivered(session, extra)
         return messages, extra
 
     def _lifecycle_events(self, session_id, *, turn_id=None, kinds=None):
@@ -639,6 +644,9 @@ class AgentRuntime:
                                    kinds=(AgentEventKind.CHECK_RECORDED,)), check_context)
         if checks is not None:
             messages.append(checks)
+        development = self.development_verification.context(session)
+        if development is not None:
+            messages.append(development)
         return messages, guidance_metadata
 
     def steer(
@@ -1259,6 +1267,8 @@ class AgentRuntime:
                 "active_skills": session.active_skills,
                 "diff_tracker": tracker,
                 "visual_feedback": self.visual_feedback,
+                "development_verification": self.development_verification,
+                "execution_step": step,
             },
             emit_event=emit_event,
         )
@@ -1308,6 +1318,7 @@ class AgentRuntime:
                 "truncated": snapshot.truncated,
             },
         )
+        self.development_verification.observe(session)
 
     def _execute_prepared_tool(
         self,
@@ -1632,14 +1643,25 @@ class AgentRuntime:
             AgentEventKind.TOOL_FAILED if failed else AgentEventKind.TOOL_COMPLETED,
             data=data,
         )
-        assessment = result.data.get("verification") if call.name == "exec" else None
-        spec = call.arguments.get("verification") if call.name == "exec" else None
+        self.development_verification.observe(session, scan_git=call.name in {"exec", "exec_wait"})
+        self.development_verification.observed(session, call, result)
+        assessment = result.data.get("verification") if call.name in {"exec", "browser_run_check"} else None
+        spec = call.arguments.get("verification") if call.name in {"exec", "browser_run_check"} else None
         if assessment is None and isinstance(spec, dict) and spec.get("case_id") and not result.ok:
             assessment = {"case_id": spec["case_id"], "expectation": str(spec.get("expectation", ""))[:2000],
                           "verdict": "blocked", "assessment_source": "runtime_command_failure",
                           "observed": result.content[:2000]}
         if isinstance(assessment, dict) and spec:
             from .evidence import resolve_evidence
+            import hashlib
+            definition = assessment.get("recipe_fingerprint") or hashlib.sha256(json.dumps(
+                {"argv": call.arguments.get("argv"), "verification": spec}, sort_keys=True).encode()).hexdigest()
+            previous = next((e.data for e in self._lifecycle_events(session.session_id,
+                turn_id=session.current_turn_id, kinds=(AgentEventKind.CHECK_RECORDED,))
+                if e.data.get("case_id") == assessment.get("case_id") and e.data.get("definition_fingerprint")), {})
+            changed_definition = bool(previous.get("definition_fingerprint") and previous["definition_fingerprint"] != definition)
+            assessment = {**assessment, "definition_fingerprint": definition, "definition_changed": changed_definition,
+                          "acceptance_evidence": assessment.get("acceptance_evidence", False) and not changed_definition}
             context = ToolContext(session.session_id, session.current_turn_id, Path(session.workspace_dir))
             refs = [{"call_id": call.call_id}]
             facts, invalid = resolve_evidence(self.store, context, refs)
@@ -1666,7 +1688,11 @@ class AgentRuntime:
         session.pending_tool_calls.clear()
         session.pending_step_id = ""
         self._release_turn_steps(session)
-        self._emit_event(session, AgentEventKind.LIMIT_REACHED, data={"reason": reason})
+        self._emit_event(session, AgentEventKind.LIMIT_REACHED, data={
+            "reason": reason, "text": session.final_text,
+            "verification": self._verification_summary(session),
+            "development_verification": self.development_verification.summary(session),
+        })
         return self._result(session)
 
     def _cancel_if_requested(self, session: AgentSession, token: CancellationToken) -> bool:
@@ -1693,10 +1719,11 @@ class AgentRuntime:
         pass
 
     def _on_model_response(self, session, event):
-        pass
+        self.development_verification.confirm_delivery(session)
 
     def _on_turn_finished(self, session, event):
         self.visual_feedback.clear(session.session_id)
+        self.development_verification._pending_deliveries.pop(session.session_id, None)
 
     def _verification_summary(self, session):
         from .verification import verification_summary
@@ -1706,7 +1733,7 @@ class AgentRuntime:
             ToolContext(session.session_id, session.current_turn_id, Path(session.workspace_dir)))
 
     def _on_turn_activated(self, session_id, token):
-        pass
+        self.development_verification.begin(self.store.load(session_id))
 
     def _on_turn_deactivated(self, session_id, token):
         pass

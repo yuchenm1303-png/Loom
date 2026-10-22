@@ -38,10 +38,15 @@ let browser, page;
       } else if (request.action === 'click') {
         await page.locator('button').click();
         value = {url:page.url(), text:await page.locator('button').innerText()};
+      } else if (request.action === 'navigate') {
+        await page.goto(request.url);
+        value = {url:page.url(), text:await page.locator('button').innerText()};
       } else if (request.action === 'state') {
         value = {url:page.url(), text:await page.locator('button').innerText()};
       } else if (request.action === 'screenshot') {
         value = (await page.screenshot()).toString('base64');
+      } else if (request.action === 'evaluate') {
+        value = await page.evaluate(request.expression);
       } else if (request.action === 'close') {
         await browser?.close(); value = true;
       }
@@ -71,8 +76,8 @@ def test_real_chromium_capture_and_image_readback(tmp_path):
                 for line in self.process.stdout:
                     self.lines.put(line)
             threading.Thread(target=read, daemon=True).start()
-        def rpc(self, action):
-            self.process.stdin.write(json.dumps({"action": action}) + "\n")
+        def rpc(self, action, **kwargs):
+            self.process.stdin.write(json.dumps({"action": action, **kwargs}) + "\n")
             self.process.stdin.flush()
             result = json.loads(self.lines.get(timeout=30))
             if not result["ok"]:
@@ -90,8 +95,14 @@ def test_real_chromium_capture_and_image_readback(tmp_path):
         def click(self, index):
             assert index == 1
             return self.observation("click")
+        def navigate(self, url, *, new_tab=False):
+            result = self.rpc("navigate", url=url)
+            self.state_revision += 1
+            return BrowserPageState(url=result["url"], title="Local UI fixture", dom=f"[1]<button>{result['text']}</button>")
         def screenshot(self, *, full_page=False):
             return base64.b64decode(self.rpc("screenshot"))
+        def evaluate(self, expression, *, await_promise=True):
+            return {"ok": True, "value": self.rpc("evaluate", expression=expression), "value_type": "boolean"}
         def close(self):
             try:
                 if self.process.poll() is None:
@@ -125,5 +136,95 @@ def test_real_chromium_capture_and_image_readback(tmp_path):
             "images": [{"path": frames[0]["path"]}, {"path": frames[-1]["path"]}]})
         assert inspected.ok
         assert len(inspected.data["images"]) == 2
+        # Exercise the reusable acceptance tool against real browser DOM/actions.
+        from dataclasses import replace
+        session.current_turn_id = "live"
+        runtime.store.save(session)
+        step = runtime._build_step_context(session, next_model_step=True)
+        context = replace(context, services={"execution_step": step})
+        (tmp_path / "Panel.tsx").write_text("export const Panel = () => <button>Verified</button>")
+        recipe = {"browser_id": opened.data["browser_id"],
+            "state_revision": runtime.browser_sessions.snapshot(session.session_id, opened.data["browser_id"]).state_revision,
+            "verification": {"case_id": "live-ui", "expectation": "Button updates text and background",
+                             "subject_paths": ["Panel.tsx"]},
+            "steps": [{"type": "action", "tool": "browser_click", "arguments": {"index": 1}},
+                      {"type": "assert", "label": "Updated button and background", "expression":
+                       "document.querySelector('button').textContent === 'Verified' && getComputedStyle(document.body).backgroundColor === 'rgb(0, 0, 255)'"}]}
+        checked = runtime.tools.get("browser_run_check").handler(context, recipe)
+        assert checked.ok, checked.content
+        assert checked.data["verification"]["verdict"] == "passed"
+        assert checked.data["images"][0]["path"].endswith(".png")
+        # An intentionally broken assertion must fail; the runner must not heal it into a pass.
+        recipe["state_revision"] = runtime.browser_sessions.snapshot(session.session_id, opened.data["browser_id"]).state_revision
+        recipe["steps"][-1]["expression"] = "document.querySelector('button').textContent === 'BROKEN EXPECTATION'"
+        failed = runtime.tools.get("browser_run_check").handler(context, recipe)
+        assert not failed.ok
+        assert failed.data["verification"]["verdict"] == "failed"
+        assert failed.data["images"]
+        if os.environ.get("LOOM_VERIFICATION_LIVE_MODEL") == "1":
+            _live_model_eval(tmp_path, Backend)
     finally:
         runtime.close()
+
+
+def _live_model_eval(tmp_path, backend):
+    """Opt-in paid-model behavior evaluation; the model chooses its own tools.
+
+    No simulated model responses are used. Credentials remain in environment/RAM.
+    This intentionally has no prescribed screenshot call sequence in its prompt.
+    """
+    from functools import partial
+    from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
+    from app.agent_runtime import AgentRuntime
+    from app.agent_runtime.contracts import AgentLimits, AgentStatus, AgentEventKind as E
+    from app.agent_runtime.workspace_tools import loom_default_tools
+    from app.runtime_model_switch import build_runtime_model_platform
+
+    secret = os.environ.get("LOOM_VERIFICATION_MODEL_KEY", "")
+    assert secret, "LOOM_VERIFICATION_MODEL_KEY is required for explicit live-model evaluation"
+    project = tmp_path / "model-demo"
+    project.mkdir()
+    (project / "index.html").write_text('<!doctype html><style>body{margin:40px}#clip{height:12px;overflow:hidden}button{height:40px;width:160px}</style>'
+        '<div id="clip"><button onclick="this.textContent=\'Confirmed\'">Confirm</button></div>', encoding="utf-8")
+    class QuietHandler(SimpleHTTPRequestHandler):
+        def log_message(self, *_):
+            pass
+    server = ThreadingHTTPServer(("127.0.0.1", 0), partial(QuietHandler, directory=str(project)))
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    platform = build_runtime_model_platform(provider=os.environ.get("LOOM_VERIFICATION_MODEL_PROVIDER", "openai-compatible"),
+        base_url=os.environ["LOOM_VERIFICATION_MODEL_URL"], model=os.environ["LOOM_VERIFICATION_MODEL_NAME"],
+        api_key=secret, vision=True, request_timeout_seconds=90)
+    runtime = AgentRuntime(platform=platform, store=FileAgentSessionStore(tmp_path / "model-state"),
+        tools=loom_default_tools(), sandbox_manager=SandboxManager(policy=SandboxPolicy.OFF),
+        browser_backend_factory=backend, browser_security_policy=BrowserSecurityPolicy(resolve_dns=False, allow_private_networks=True),
+        auto_configure_browser=False, auto_configure_computer=False, auto_configure_web_search=False, mcp_servers=(),
+        limits=AgentLimits(max_model_steps=18, max_tool_calls=30, transport_retries=0))
+    try:
+        session = runtime.create_session("agent.fast", workspace_dir=project, permission_mode="full-access")
+        result = runtime.start_turn(session.session_id,
+            f"The action button at http://127.0.0.1:{server.server_port}/index.html is visibly cut off at the bottom. "
+            "Fix the local index.html so the entire button is visible, keeping its size and click behavior.")
+        events = runtime.store.events(session.session_id)
+        terminal = next((e for e in reversed(events) if e.kind is E.TURN_COMPLETED), None)
+        report = {"status": result.status.value, "steps": result.model_steps,
+                  "verification": terminal.data.get("development_verification") if terminal else None,
+                  "tools": [e.data.get("tool") for e in events if e.kind is E.TOOL_REQUESTED],
+                  "recovery_requests": sum(e.kind is E.VERIFICATION_FINISH_REQUESTED for e in events)}
+        (tmp_path / "live-model-report.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
+        assert result.status is AgentStatus.COMPLETED, report
+        assert report["verification"]["status"] == "passed", report
+        assert any(name in report["tools"] for name in ("browser_screenshot", "browser_run_check", "view_images")), report
+        # Independent browser oracle, not the model's own test or final prose.
+        verifier = backend(None)
+        try:
+            verifier.start()
+            verifier.navigate(f"http://127.0.0.1:{server.server_port}/index.html")
+            observed = verifier.evaluate("(() => { const b=document.querySelector('button'), r=b.getBoundingClientRect(); "
+                "return r.height >= 40 && document.elementFromPoint(r.x+r.width/2,r.bottom-2)?.closest('button') === b; })()")
+            assert observed["value"] is True, report
+        finally:
+            verifier.close()
+    finally:
+        runtime.close()
+        server.shutdown()
+        server.server_close()

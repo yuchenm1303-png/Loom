@@ -63,7 +63,9 @@ jobs:
       - name: Electron contracts
         run: npm run test:electron
       - name: Streaming presentation contracts
-        run: npm run test:streaming
+        run: |
+          npm run test:streaming
+          node --test scripts/tests/visual-feedback.test.mjs
       - name: Build React desktop
         run: npm run build
       - name: Verify deployable web portal

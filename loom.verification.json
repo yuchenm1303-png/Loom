@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "features": [
+    {
+      "id": "sidebar-motion",
+      "sources": ["desktop-react/src/components/Sidebar*", "desktop-react/src/components/sidebar*.css"],
+      "entry": "http://127.0.0.1:5199/scripts/fixtures/live-app.html?lang=en&theme=dark",
+      "setup": "From desktop-react: node node_modules/vite/bin/vite.js --host 127.0.0.1 --port 5199. This is a renderer fixture, not evidence of installed Electron behavior.",
+      "exercise": "Open and close the sidebar; reverse while moving. Repeat at narrow and wide viewports, and both themes. Capture the moving controls when changing transition behavior.",
+      "expectation": "Controls remain visible, movement is continuous and the resting toggle stays reachable. Use scripts/tests/sidebar-toolbar-motion-browser.mjs with LOOM_TEST_ORIGIN and inspect fresh captures."
+    },
+    {
+      "id": "composer",
+      "sources": ["desktop-react/src/components/Composer*", "desktop-react/src/components/composer*.css"],
+      "entry": "http://127.0.0.1:5199/scripts/fixtures/live-app.html?lang=en&theme=dark",
+      "setup": "From desktop-react: node node_modules/vite/bin/vite.js --host 127.0.0.1 --port 5199. Use a real desktop run as well if the change depends on native bridges.",
+      "exercise": "Type multiline input, focus each changed control, open and dismiss changed menus, and check narrow and wide layout with the same fixture state.",
+      "expectation": "Input and changed controls remain usable without clipping or unwanted focus loss. A renderer-only check does not establish native file, terminal, or deployment behavior."
+    }
+  ]
+}

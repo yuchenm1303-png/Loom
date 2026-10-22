@@ -41,6 +41,8 @@ class AgentEventKind(str, Enum):
     TURN_STOP_CHECKED = "turn_stop_checked"
     PLAN_UPDATED = "plan_updated"
     CHECK_RECORDED = "check_recorded"
+    VERIFICATION_UPDATED = "verification_updated"
+    VERIFICATION_FINISH_REQUESTED = "verification_finish_requested"
     BROWSER_SESSION_OPENED = "browser_session_opened"
     BROWSER_SESSION_RELEASED = "browser_session_released"
     TOOL_REQUESTED = "tool_requested"

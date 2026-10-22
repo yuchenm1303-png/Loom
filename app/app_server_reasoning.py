@@ -416,6 +416,8 @@ class ReasoningManagedLoomAppServerService(ManagedStreamingLoomAppServerService)
             "browser_close_tab": "关闭浏览器标签页",
             "browser_screenshot": "保存浏览器截图",
             "browser_capture_sequence": "采集浏览器连续画面",
+            "browser_run_check": "执行界面交互验收",
+            "resolve_verification": "记录验收阻塞或不适用原因",
             "view_images": "查看图片与运行截图",
             "browser_close": "关闭浏览器会话",
         }

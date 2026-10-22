@@ -530,6 +530,11 @@ class TurnRunner:
                 if not response.text and not response.tool_calls and response.end_turn is not False:
                     raise RuntimeError("agent model response contained neither text nor tool calls")
 
+                finish_review = None
+                if next_execution_action(response).action is ExecutionAction.DELIVER:
+                    rt.development_verification.observe(session, scan_git=True)
+                    finish_review = rt.development_verification.before_finish(session, accepting_response=True)
+
                 # Serialize the final sample-acceptance boundary against steering
                 # submission. ModelExecutor already notices guidance during token
                 # generation; this closes the final race after the provider has
@@ -581,7 +586,7 @@ class TurnRunner:
                                 for c in calls
                             ],
                             "phase": response.phase,
-                            "display_phase": "commentary" if calls or response.end_turn is False else "final_answer",
+                            "display_phase": "commentary" if calls or response.end_turn is False or finish_review else "final_answer",
                             "phase_source": "provider" if response.phase is not None else "unknown",
                             "end_turn": response.end_turn,
                             "execution_intent_source": next_execution_action(response).source,
@@ -608,6 +613,14 @@ class TurnRunner:
                     continue
                 if incomplete:
                     raise RuntimeError(f"model response did not complete: {reason}")
+                if finish_review:
+                    rt._emit_event(session, Event.VERIFICATION_FINISH_REQUESTED, data=finish_review)
+                    rt._release_step_context(step)
+                    if finish_review["exhausted"]:
+                        session.final_text = ("Verification incomplete: source changes still lack current acceptance evidence. "
+                                              "The run stopped after bounded verification recovery; no success was confirmed.")
+                        return rt._limit(session, "unresolved development verification after bounded recovery")
+                    continue
                 decision = next_execution_action(response)
                 if decision.action is ExecutionAction.EXECUTE_TOOLS:
                     session.tool_calls += len(calls)
@@ -668,6 +681,18 @@ class TurnRunner:
                     rt._active_tokens.pop(session.session_id, None)
                 session.status = AgentStatus.COMPLETED
                 session.final_text = response.text
+                development_summary = rt.development_verification.summary(session)
+                verification_notice = ""
+                if development_summary["status"] == "blocked":
+                    verification_notice = ("运行时验收记录：仍有阻塞项，不能据此确认修改后的界面或功能已通过验收。"
+                                           if session.communication_language == "zh" else
+                                           "Runtime verification: acceptance remains blocked; the changed UI or behavior is not confirmed as passing.")
+                elif development_summary["status"] == "pending":
+                    verification_notice = ("运行时验收记录：先前修改仍缺少当前验收证据，界面或功能尚未确认通过。"
+                                           if session.communication_language == "zh" else
+                                           "Runtime verification: earlier changes still lack current acceptance evidence and remain unverified.")
+                if verification_notice:
+                    session.final_text += "\n\n" + verification_notice
                 session.error = ""
                 diff = rt.diff_trackers.snapshot(session.session_id, session.current_turn_id)
                 rt.store.save(session)
@@ -677,11 +702,14 @@ class TurnRunner:
                     session,
                     Event.TURN_COMPLETED,
                     data={
-                        "text": response.text,
+                        "text": session.final_text,
+                        "model_text": response.text,
+                        "verification_notice": verification_notice,
                         "execution_end_source": decision.source,
                         "task_completion": task_state["status"],
                         "plan_summary": task_state,
                         "verification": rt._verification_summary(session),
+                        "development_verification": development_summary,
                         "final_step_id": step.step_id,
                         "diff_revision": diff.revision,
                         "changed_paths": list(diff.paths),

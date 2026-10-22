@@ -1,0 +1,44 @@
+name: Development verification loop
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  acceptance:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install runtime and isolated browser driver
+        run: |
+          python -m pip install -e '.[dev,browser]' 'Pillow>=11,<13'
+          npm install --prefix "$RUNNER_TEMP/loom-verification-browser" --no-package-lock --no-audit --no-fund playwright-core@1.63.0
+      - name: Exercise completion recovery and real Chromium acceptance
+        env:
+          LOOM_BROWSER_CAPTURE_LIVE: "1"
+        run: |
+          export LOOM_NODE_PATH="$(command -v node)"
+          export LOOM_PLAYWRIGHT_MODULE="$RUNNER_TEMP/loom-verification-browser/node_modules/playwright-core"
+          export LOOM_CHROMIUM_PATH="$(command -v google-chrome)"
+          test -n "$LOOM_CHROMIUM_PATH"
+          python -m pytest -o addopts= -q --junitxml="$RUNNER_TEMP/development-verification.xml" \
+            tests/test_automatic_verification.py tests/test_browser_verification.py \
+            tests/test_browser_capture_live.py tests/test_browser_capture_sequence.py \
+            tests/test_development_feedback.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: development-verification-results
+          path: ${{ runner.temp }}/development-verification.xml
+          if-no-files-found: ignore

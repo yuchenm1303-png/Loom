@@ -515,7 +515,8 @@ class StreamingAgentRuntime(CodeModeRuntime):
                     session,
                     step_id=step_id,
                     raw_text=raw_text,
-                    is_final=not bool(payload.get("tool_calls")),
+                    is_final=(payload.get("display_phase") == "final_answer"
+                              if "display_phase" in payload else not bool(payload.get("tool_calls"))),
                 )
                 payload["display_text"] = finalized.text
                 payload["display_runtime_authored"] = finalized.text != raw_text
@@ -531,6 +532,9 @@ class StreamingAgentRuntime(CodeModeRuntime):
                     (session.session_id, session.current_turn_id)
                 )
             if final_text is not None:
+                notice = str(payload.get("verification_notice") or "")
+                if notice:
+                    final_text += "\n\n" + notice
                 payload["display_text"] = final_text
                 payload["display_runtime_authored"] = final_text != str(payload.get("text") or "")
 

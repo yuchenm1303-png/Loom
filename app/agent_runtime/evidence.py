@@ -95,7 +95,21 @@ def record_check_tool(store):
             from .verification import subject_snapshot
             scope = {"subject_snapshot": subject_snapshot(context, arguments["subject_paths"]),
                      "assessment_source": "assistant_assessment", "snapshot_timing": "assessment_recorded"}
+        kind = arguments.get("check_kind", "functional")
+        service = context.service("development_verification", required=False)
+        acceptance_evidence = False
+        if service is not None:
+            current_session = service.runtime.store.load(context.session_id)
+            service.observe(current_session, scan_git=True)
+            acceptance_evidence = service.execution_evidence(current_session, refs)
+        if kind == "visual" and arguments["verdict"] == "passed":
+            if service is None or not service.visual_evidence(service.runtime.store.load(context.session_id), refs):
+                return ToolResult(False, "A visual pass requires a current-generation executed interaction and an image "
+                                  "delivered to the model. Cite both call IDs after exercising and inspecting the UI. "
+                                  "Source edits invalidate prior visual evidence.", {"execution_status": "not_executed"})
+            acceptance_evidence = True
         data = {**arguments, **scope, "evidence_facts": facts,
+                "check_kind": kind, "acceptance_evidence": acceptance_evidence,
                 "elapsed_seconds": (max(timestamps) - min(timestamps)).total_seconds() if len(timestamps) >= 2 else None}
         context.emit(Event.CHECK_RECORDED, data)
         return ToolResult(True, "Check recorded; verdict is the assistant's assessment, references are runtime verified.", data)
@@ -105,6 +119,7 @@ def record_check_tool(store):
             "expectation": {"type": "string", "minLength": 1, "maxLength": 4000},
             "observed": {"type": "string", "minLength": 1, "maxLength": 4000},
             "verdict": {"enum": ["passed", "failed", "blocked", "not_covered"]},
+            "check_kind": {"enum": ["functional", "visual", "static"]},
             "subject_paths": {"type": "array", "minItems": 1, "maxItems": 32,
                               "items": {"type": "string", "minLength": 1}},
             "evidence_refs": EVIDENCE_REFS_SCHEMA},

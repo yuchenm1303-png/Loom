@@ -222,11 +222,11 @@ function isBrowserScreenshotActivity(item: TranscriptItem): boolean {
 
 export function browserScreenshotPaths(item: TranscriptItem): string[] {
   const name = String(item.toolName ?? "").trim().toLowerCase();
-  if (!isBrowserScreenshotActivity(item) && !(item.type === "tool_call" && ["view_images", "browser_capture_sequence"].includes(name))) return [];
+  if (!isBrowserScreenshotActivity(item) && !(item.type === "tool_call" && ["view_images", "browser_capture_sequence", "browser_run_check"].includes(name))) return [];
   const result = item.result;
   if (!result || typeof result !== "object" || Array.isArray(result)) return [];
   const data = result as Record<string, unknown>;
-  if (name === "view_images") {
+  if (name === "view_images" || name === "browser_run_check") {
     const images = Array.isArray(data.images) ? data.images : [];
     return [...new Set(images.flatMap((image) => {
       if (!image || typeof image !== "object") return [];

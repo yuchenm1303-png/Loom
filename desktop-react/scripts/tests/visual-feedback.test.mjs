@@ -30,3 +30,9 @@ test("malformed or partial results do not create broken image cards", () => {
   assert.deepEqual(paths(item("browser_capture_sequence", { capture: { complete: false, frames: [] } })), []);
   assert.deepEqual(paths(item("echo", { path: "accidental.png" })), []);
 });
+
+test("browser acceptance failures still expose their captured evidence", () => {
+  assert.deepEqual(paths(item("browser_run_check", {
+    verification: { verdict: "failed" }, images: [{ path: "browser-screenshots/failed.png" }],
+  })), ["browser-screenshots/failed.png"]);
+});

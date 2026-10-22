@@ -1983,6 +1983,8 @@ def browser_tools(runtime: "BrowserRuntime") -> tuple[AgentTool, ...]:
 
     from .browser_capture import browser_capture_sequence_tool
     tools.append(browser_capture_sequence_tool(runtime))
+    from .browser_verification import browser_run_check_tool
+    tools.append(browser_run_check_tool(runtime))
     return tuple(replace(tool, handler=lifecycle_handler(tool.handler)) for tool in tools)
 
 

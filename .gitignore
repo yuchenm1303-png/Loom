@@ -54,6 +54,7 @@ venv/
 /*.bak
 /*.patch
 /*.json
+!/loom.verification.json
 /*.yaml
 /*.yml
 /*.png
