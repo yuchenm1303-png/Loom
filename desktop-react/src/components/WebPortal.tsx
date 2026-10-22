@@ -440,10 +440,15 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
           </header>
           <main className="editorial-body">
             <section className="editorial-hero" aria-labelledby="editorial-intro">
-              <h1 id="editorial-intro" className="editorial-hero-copy">
-                {zh ? "一个真正为你工作的本地 AI Agent。可以阅读项目、修改文件、执行命令和操作浏览器。由你掌控，运行在自己的电脑上。" : "A local agent runtime for real work. It reads the codebase, edits files, runs commands and browses the web — on your machine, with your permission."}
-                {" "}<button type="button" className="editorial-link-text" onClick={() => beginPrompt("")} data-liquid-snap="true" data-magnetic-hover="true">{zh ? "打开 Loom" : "Open Loom"}</button>
-              </h1>
+              <div className="editorial-hero-message">
+                <h1 id="editorial-intro" className="editorial-hero-copy">
+                  {zh ? "一个真正为你工作的本地 AI Agent。" : "A local agent runtime for real work."}
+                </h1>
+                <p className="editorial-hero-description">
+                  {zh ? "阅读项目、修改文件、执行命令和操作浏览器。运行在你的电脑上，一切由你掌控。" : "Read code, edit files, run commands and browse the web — on your computer, with your permission."}
+                </p>
+                <button type="button" className="editorial-link-text" onClick={() => beginPrompt("")} data-liquid-snap="true" data-magnetic-hover="true">{zh ? "打开 Loom" : "Open Loom"}<span aria-hidden="true">↗</span></button>
+              </div>
               <dl className="editorial-ledger">
                 <div><dt>{zh ? "运行环境" : "Runtime"}</dt><dd>{zh ? "本地" : "Local"}</dd></div>
                 <div><dt>{zh ? "工具" : "Tools"}</dt><dd>{zh ? "文件 · 终端 · 浏览器" : "Files · Shell · Web"}</dd></div>
@@ -458,7 +463,13 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
                   { title: zh ? "实现新功能" : "Implement a feature", note: zh ? "把想法变成清晰的代码改动。" : "Turn a product idea into a focused code change.", prompt: "Help me implement a feature in this project. Start by identifying the smallest clean approach." },
                   { title: zh ? "排查问题" : "Trace a problem", note: zh ? "沿着错误路径找到根因。" : "Follow the failure to its root cause.", prompt: "Investigate the current project for the problem I am seeing and trace it to the root cause before making changes." },
                   { title: zh ? "执行工作流" : "Run a workflow", note: zh ? "让 Agent 使用工具完成多步任务。" : "Use tools to complete a useful multi-step task.", prompt: "Use the available tools and workspace to complete a useful multi-step task for this project." },
-                ].map(item => <button className="editorial-starter" type="button" key={item.title} onClick={() => beginPrompt(item.prompt)} data-liquid-snap="true" data-magnetic-hover="true"><strong>{item.title}</strong><span>{item.note}</span></button>)}
+                ].map((item, index) => (
+                  <button className="editorial-starter" type="button" key={item.title} onClick={() => beginPrompt(item.prompt)} data-liquid-snap="true" data-magnetic-hover="true">
+                    <span className="editorial-starter-number" aria-hidden="true">0{index + 1}</span>
+                    <span className="editorial-starter-copy"><strong>{item.title}</strong><span>{item.note}</span></span>
+                    <span className="editorial-starter-arrow" aria-hidden="true">↗</span>
+                  </button>
+                ))}
               </div>
             </section>
             <section className="editorial-section" aria-labelledby="editorial-latest">
@@ -474,7 +485,7 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
             <form onSubmit={(event) => { event.preventDefault(); beginPrompt(prompt); }} autoComplete="off">
               <div className="editorial-ask-row">
                 <input type="text" value={prompt} onChange={(event) => setPrompt(event.target.value)} placeholder={zh ? "让 Loom 检查、修改、执行或浏览…" : "Ask Loom to inspect, edit, run, browse…"} aria-label={zh ? "给 Loom 发送任务" : "Ask Loom"} data-liquid-snap="true" data-magnetic-hover="true" />
-                <button type="submit" data-liquid-snap="true" data-magnetic-hover="true">{zh ? "发送" : "Send"}</button>
+                <button type="submit" data-liquid-snap="true" data-magnetic-hover="true">{zh ? "发送" : "Send"} <span aria-hidden="true">→</span></button>
               </div>
             </form>
             <div className="editorial-ask-foot"><span>{zh ? "Windows · 本机 Host · 由你掌控" : "Windows · Local Host · Your permission"}</span><span>{zh ? "任务将在 Loom 工作区中继续" : "Continue this task in the Loom workspace"}</span></div>
