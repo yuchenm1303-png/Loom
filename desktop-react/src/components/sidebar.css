@@ -633,63 +633,20 @@ html[data-loom-theme="light"] .compact-search {
   background: transparent;
 }
 
-/* Runtime highlights belong to the conversation, not the current selection.
-   They remain visible when another conversation is open or a project is expanded. */
+/* Selection owns the row surface. Runtime feedback stays in the small trailing
+   indicator so busy conversations do not compete with the conversation title. */
 .compact-thread-row.is-running,
 .compact-thread-row.is-waiting-approval,
 .compact-thread-row.is-paused {
-  --thread-state-rgb: 52, 197, 145;
-  --thread-state-ink: #57d9a4;
-  color: var(--sb-ink);
-  background: rgba(var(--thread-state-rgb), .095);
-  box-shadow: inset 0 0 0 1px rgba(var(--thread-state-rgb), .18);
+  --thread-state-ink: var(--sb-ink-3);
 }
 
 .compact-thread-row.is-waiting-approval {
-  --thread-state-rgb: 239, 179, 87;
-  --thread-state-ink: #f0bd70;
-}
-
-.compact-thread-row.is-paused {
-  --thread-state-rgb: 140, 158, 189;
-  --thread-state-ink: #a7b5ce;
-}
-
-html[data-loom-theme="light"] .compact-thread-row.is-running {
-  --thread-state-rgb: 17, 144, 101;
-  --thread-state-ink: #13815e;
+  --thread-state-ink: #b49b73;
 }
 
 html[data-loom-theme="light"] .compact-thread-row.is-waiting-approval {
-  --thread-state-rgb: 176, 114, 30;
-  --thread-state-ink: #a86b1b;
-}
-
-html[data-loom-theme="light"] .compact-thread-row.is-paused {
-  --thread-state-rgb: 95, 111, 137;
-  --thread-state-ink: #61728c;
-}
-
-.compact-thread-row:is(.is-running, .is-waiting-approval, .is-paused):is(:hover, :focus-within) {
-  background: rgba(var(--thread-state-rgb), .15);
-}
-
-.compact-thread-row:is(.is-running, .is-waiting-approval, .is-paused)::before {
-  content: "";
-  position: absolute;
-  z-index: 1;
-  left: 3px;
-  top: 8px;
-  bottom: 8px;
-  width: 2px;
-  border-radius: 2px;
-  background: var(--thread-state-ink);
-  pointer-events: none;
-}
-
-.compact-thread-row:is(.is-running, .is-waiting-approval, .is-paused) .thread-selection-pill {
-  background: rgba(var(--thread-state-rgb), .14);
-  box-shadow: inset 0 0 0 1px rgba(var(--thread-state-rgb), .18);
+  --thread-state-ink: #927440;
 }
 
 /* The selected conversation is a neutral wash of the ink in both themes: no rail, no accent. Each pill is
@@ -748,28 +705,21 @@ html[data-loom-theme="light"] .compact-thread-row.is-paused {
 
 .compact-thread-row.active { box-shadow: none; }
 
-.compact-thread-row:is(.is-running, .is-waiting-approval, .is-paused) .compact-thread-title {
-  font-weight: 500;
-}
-
 /* The live status stays readable at narrow widths and does not steal title space. */
 .compact-thread-status {
   display: inline-flex;
   flex: none;
-  gap: 5px;
+  gap: 6px;
   align-items: center;
   justify-content: center;
   min-height: 18px;
-  padding: 1px 6px;
-  border-radius: 5px;
-  background: rgba(var(--thread-state-rgb), .13);
-  color: var(--thread-state-ink);
+  padding: 1px 0 1px 4px;
+  color: var(--sb-ink-3);
   /* At the interface's readability floor (11.5px, typography-scale.css), in whole pixels like the rest of the
      sidebar: a status is read, it is not a count badge. */
   font-size: 12px;
   line-height: 16px;
-  font-weight: 600;
-  letter-spacing: .01em;
+  font-weight: 400;
   white-space: nowrap;
 }
 
@@ -777,19 +727,32 @@ html[data-loom-theme="light"] .compact-thread-row.is-paused {
   position: relative;
   display: block;
   flex: none;
+  width: 10px;
+  height: 10px;
+  box-sizing: border-box;
+  color: var(--thread-state-ink);
+}
+
+.compact-thread-row.is-waiting-approval .compact-thread-status-mark {
   width: 5px;
   height: 5px;
+  margin-inline: 2.5px;
   border-radius: 50%;
   background: currentColor;
 }
 
-.compact-thread-row.is-running .compact-thread-status-mark::after {
-  content: "";
-  position: absolute;
-  inset: 0;
+.compact-thread-row.is-running .compact-thread-status-mark {
+  border: 1.5px solid color-mix(in srgb, currentColor 22%, transparent);
+  border-top-color: currentColor;
   border-radius: 50%;
-  background: currentColor;
-  animation: compact-thread-pulse 2.4s ease-out infinite;
+  animation: li-spin 1.8s linear infinite;
+}
+
+.compact-thread-row.is-paused .compact-thread-status-mark {
+  background: linear-gradient(to right, currentColor 0 2px, transparent 2px 5px, currentColor 5px 7px, transparent 7px);
+  height: 8px;
+  width: 7px;
+  margin-inline: 1.5px;
 }
 
 /* Unread conversations keep a quiet mark when no run state takes priority. */
@@ -1225,13 +1188,8 @@ html[data-loom-theme="light"] .thread-context-menu {
 
 /* Motion --------------------------------------------------------------------- */
 
-@keyframes compact-thread-pulse {
-  0% { opacity: 1; scale: 1; }
-  70%, 100% { opacity: 0; scale: 2.67; }
-}
-
-/* Keep only the small composited run-state pulse; avoid animating the entire row.
-   The general interface respects the reduced-motion setting below. */
+/* Only the small run indicator rotates. The row and label stay still; reduced
+   motion keeps the same incomplete ring as a static status mark. */
 
 @keyframes sidebar-notice-in {
   from { opacity: 0; }

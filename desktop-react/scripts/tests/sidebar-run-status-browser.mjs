@@ -27,13 +27,17 @@ try {
     await row.getByText("运行中", { exact: true }).waitFor();
     assert.equal(await row.getAttribute("data-run-state"), "running");
     assert.equal(await row.locator(".compact-thread-status-mark").count(), 1);
-    // The background transitions from transparent on the next paint frame.
-    await page.waitForFunction(() => {
-      const element = document.querySelector('.compact-thread-row[data-thread-id="visual-1"]');
-      return element && getComputedStyle(element).backgroundColor !== "rgba(0, 0, 0, 0)";
-    });
-    assert.notEqual(await row.evaluate(el => getComputedStyle(el).backgroundColor), "rgba(0, 0, 0, 0)",
-      "non-selected running threads receive a visible surface");
+    assert.equal(await row.evaluate(el => getComputedStyle(el).backgroundColor), "rgba(0, 0, 0, 0)",
+      "background runs keep a neutral, transparent row");
+    assert.equal(await row.evaluate(el => getComputedStyle(el).boxShadow), "none");
+    assert.equal(await row.evaluate(el => getComputedStyle(el, "::before").content), "none",
+      "runtime status must not add a colored selection rail");
+    assert.equal(await row.locator(".compact-thread-status").evaluate(el => getComputedStyle(el).backgroundColor), "rgba(0, 0, 0, 0)");
+    await page.evaluate(() => window.performanceFixture.setThreadStatus("visual-0", "running"));
+    const selected = page.locator('.compact-thread-row[data-thread-id="visual-0"]');
+    assert.equal(await selected.locator(".thread-selection-pill").evaluate(el => getComputedStyle(el).boxShadow), "none");
+    await page.mouse.move(1100, 750);
+    await page.locator(".sidebar").screenshot({ path: `design/sidebar-status-${theme}.local.png` });
     assert.equal(await row.locator(".thread-quick-actions button").nth(1).isDisabled(), true,
       "active runs cannot be archived accidentally");
 
