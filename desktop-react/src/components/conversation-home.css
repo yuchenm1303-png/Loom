@@ -1,52 +1,36 @@
 /* Conversation home: the launch surface shown while a thread has no items.
-   Layout, intro and starter actions live here, the activity card in
-   home-token-activity.css. Surfaces are a tone above the canvas with a hairline,
-   not lifted cards: nothing here floats over anything else. */
+   An editorial page inside the app: one statement, one index of starters.
+   No cards, no glow, no filled surfaces — hairlines and measure do the work. */
+
+@font-face {
+  font-family: "Newsreader";
+  src: url("../assets/newsreader-latin.woff2") format("woff2");
+  font-weight: 400 500;
+  font-style: normal;
+  font-display: swap;
+}
 
 .empty-state {
-  --home-width: 720px;
-  --home-radius: 14px;
-  /* Space between the intro and the activity card; the queries below shrink it. */
-  --home-section-gap: 28px;
+  --home-measure: 660px;
+  --home-gap: 56px;
+  --home-rule: color-mix(in srgb, var(--loom-workspace-ink) 18%, transparent);
+  --home-rule-soft: color-mix(in srgb, var(--loom-workspace-ink) 9%, transparent);
   --home-ink: var(--loom-workspace-ink);
   --home-ink-2: var(--loom-workspace-secondary);
   --home-ink-3: var(--loom-workspace-muted);
-  --home-ink-4: #6a717d;
-  --home-accent-rgb: 139,124,246;
-  --home-surface: rgba(255,255,255,.026);
-  --home-surface-hover: rgba(255,255,255,.048);
-  --home-shadow: inset 0 0 0 1px rgba(255,255,255,.055);
-  --home-shadow-hover: inset 0 0 0 1px rgba(255,255,255,.085);
+  --home-serif: "Newsreader", "Iowan Old Style", Georgia, "Times New Roman", serif;
 
   width: 100%;
   flex: 1 0 auto;
   margin: 0;
-  /* The extra bottom padding lifts the block slightly above the geometric
-     centre, where a centred composition reads as centred. */
-  padding: 12px 0 calc(12px + 4cqh);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  text-align: center;
+  padding: 40px 0 24px;
+  display: block;
+  text-align: left;
   color: var(--home-ink-2);
 }
 
-html[data-loom-theme="light"] .empty-state {
-  --home-ink-4: #979ea9;
-  --home-accent-rgb: 105,90,216;
-  --home-surface: #ffffff;
-  --home-surface-hover: #ffffff;
-  --home-shadow:
-    0 0 0 1px rgba(24,27,36,.07),
-    0 1px 2px rgba(24,27,36,.035);
-  --home-shadow-hover:
-    0 0 0 1px rgba(24,27,36,.1),
-    0 4px 12px -4px rgba(24,27,36,.1);
-}
-
-/* The still light behind the greeting ("Ambient effects", drawn in styles.css) is the home's alone. */
-.transcript-scroll.is-empty > .chat-ambient { display: block; }
+/* The home is a page, not a poster: the ambient light is off here. */
+.transcript-scroll.is-empty > .chat-ambient { display: none; }
 
 /* The home fits the viewport at ordinary window heights; below that it
    scrolls instead of clipping the starters. */
@@ -55,75 +39,68 @@ html[data-loom-theme="light"] .empty-state {
   container-type: size;
 }
 
-/* The conversation transcript reserves room for the floating run strip
-   (workspace-surface-refinement.css); the home keeps its own, tighter inset. */
 .transcript.is-empty,
 :root .app-shell .transcript.is-empty {
-  padding-block: 24px 28px;
+  padding-block: 40px 28px;
 }
 
-/* The home arrives the way words do: by opacity, one block after the next (intro,
-   then activity, then actions). `backwards` keeps nothing around once it is done. */
 .empty-state > * {
   animation: loom-home-in var(--loom-dur-base) var(--loom-ease-out) backwards;
 }
 
 .empty-state > :nth-child(2) { animation-delay: var(--loom-stagger); }
-.empty-state > :nth-child(3) { animation-delay: calc(var(--loom-stagger) * 2); }
 
 @keyframes loom-home-in {
   from { opacity: 0; }
 }
 
-/* Intro --------------------------------------------------------------------- */
+/* Statement --------------------------------------------------------------- */
 .empty-intro {
-  width: min(var(--home-width), 100%);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
+  max-width: var(--home-measure);
 }
 
 .empty-intro h1 {
   margin: 0;
   color: var(--home-ink);
+  font-family: var(--home-serif);
   font-size: 28px;
-  line-height: 1.18;
-  font-weight: 600;
-  letter-spacing: -.022em;
-  text-wrap: balance;
+  line-height: 1.42;
+  font-weight: 400;
+  letter-spacing: -.012em;
+  text-wrap: pretty;
 }
 
 .empty-intro p {
-  max-width: 540px;
-  margin: 8px 0 0;
+  max-width: 600px;
+  margin: 12px 0 0;
   color: var(--home-ink-3);
-  font-size: var(--loom-font-ui, 13.5px);
-  line-height: 1.55;
-  text-wrap: balance;
+  font-family: var(--loom-font-ui, Inter, ui-sans-serif, sans-serif);
+  font-size: 15px;
+  line-height: 1.6;
+  text-wrap: pretty;
 }
 
 html[data-loom-theme="light"] .empty-intro h1 {
   text-shadow: none;
 }
 
-/* Launch status ------------------------------------------------------------- */
-/* Shown only while Loom is still starting, so the page never just looks idle. */
+/* Launch status ----------------------------------------------------------- */
 .empty-startup {
-  margin-top: 12px;
+  margin-top: 16px;
   display: inline-flex;
   flex-wrap: wrap;
   align-items: center;
-  justify-content: center;
   gap: 4px 10px;
   color: var(--home-ink-3);
-  font-size: var(--loom-font-ui, 13.5px);
+  font-family: var(--loom-font-ui, Inter, ui-sans-serif, sans-serif);
+  font-size: 13px;
   line-height: 1.5;
   animation: empty-startup-in var(--loom-dur-base) var(--loom-ease-out) both;
 }
 
 .empty-startup-dot {
-  width: 7px;
-  height: 7px;
+  width: 6px;
+  height: 6px;
   flex: none;
   border-radius: 50%;
   background: currentColor;
@@ -131,7 +108,8 @@ html[data-loom-theme="light"] .empty-intro h1 {
 }
 
 .empty-startup-note {
-  color: var(--home-ink-4);
+  color: var(--home-ink-3);
+  opacity: .72;
 }
 
 @keyframes empty-startup-in {
@@ -143,168 +121,153 @@ html[data-loom-theme="light"] .empty-intro h1 {
   to { opacity: 1; }
 }
 
+/* Starters ---------------------------------------------------------------- */
+.empty-start {
+  margin-top: var(--home-gap);
+}
+
+.empty-start h2 {
+  margin: 0 0 14px;
+  color: var(--home-ink-3);
+  font-family: var(--loom-font-ui, Inter, ui-sans-serif, sans-serif);
+  font-size: 11.5px;
+  line-height: 1.4;
+  font-weight: 400;
+  letter-spacing: .16em;
+  text-transform: uppercase;
+}
+
+.starter-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  column-gap: 48px;
+  border-top: 1px solid var(--home-rule);
+}
+
+.starter-card {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  padding: 15px 0 16px;
+  border: 0;
+  border-bottom: 1px solid var(--home-rule-soft);
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.starter-content {
+  display: block;
+  min-width: 0;
+}
+
+/* The title underlines only when the hand is on it: the row is the target. */
+.starter-title {
+  display: inline;
+  color: var(--home-ink);
+  font-family: var(--home-serif);
+  font-size: 20px;
+  line-height: 1.3;
+  font-weight: 400;
+  letter-spacing: -.008em;
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+  text-decoration-color: transparent;
+  transition: text-decoration-color .18s ease;
+}
+
+.starter-note {
+  display: block;
+  margin-top: 3px;
+  color: var(--home-ink-3);
+  font-family: var(--loom-font-ui, Inter, ui-sans-serif, sans-serif);
+  font-size: 12px;
+  line-height: 19px;
+}
+
+.starter-card:hover:not(:disabled) .starter-title,
+.starter-card:focus-visible .starter-title {
+  text-decoration-color: color-mix(in srgb, var(--home-ink) 55%, transparent);
+}
+
+.starter-card:focus-visible {
+  outline: 1px solid var(--home-ink);
+  outline-offset: 2px;
+}
+
+.starter-card:disabled {
+  opacity: .45;
+  cursor: default;
+}
+
+/* The way into token activity, kept as a footnote rather than a card. */
+.empty-insights {
+  margin-top: 16px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--home-ink-3);
+  font-family: var(--loom-font-ui, Inter, ui-sans-serif, sans-serif);
+  font-size: 11.5px;
+  line-height: 1.5;
+  letter-spacing: .04em;
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+  text-decoration-color: transparent;
+  transition: color .15s ease, text-decoration-color .15s ease;
+}
+
+.empty-insights:hover {
+  color: var(--home-ink);
+  text-decoration-color: color-mix(in srgb, var(--home-ink) 45%, transparent);
+}
+
+.empty-insights:focus-visible {
+  outline: 1px solid var(--home-ink);
+  outline-offset: 2px;
+}
+
+/* Short and narrow conversation panes -------------------------------------
+   Queries resolve against .transcript-scroll.is-empty, the pane between the
+   header and the composer, not the window. */
+@container (max-height: 620px) {
+  .empty-state { --home-gap: 36px; padding-top: 24px; }
+  .empty-intro h1 { font-size: 24px; }
+}
+
+@container (max-height: 480px) {
+  .empty-state { --home-gap: 24px; }
+  .empty-intro p { display: none; }
+}
+
+@container (max-width: 600px) {
+  .starter-grid { grid-template-columns: minmax(0, 1fr); }
+  .starter-card { padding: 12px 0 13px; }
+  .starter-note { font-size: 12px; }
+}
+
+/* Motion preferences ------------------------------------------------------ */
+html[data-loom-reduced-motion="true"] .empty-state > *,
 html[data-loom-reduced-motion="true"] .empty-startup,
 html[data-loom-reduced-motion="true"] .empty-startup-dot {
   animation: none;
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .empty-startup,
-  .empty-startup-dot {
-    animation: none;
-  }
-}
-
-/* Starter actions ----------------------------------------------------------- */
-.starter-grid {
-  width: min(var(--home-width), 100%);
-  margin-top: 12px;
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
-}
-
-.starter-card {
-  position: relative;
-  min-height: 72px;
-  padding: 14px 40px 14px 16px;
-  border: 0;
-  border-radius: var(--home-radius);
-  display: grid;
-  grid-template-columns: 20px minmax(0, 1fr);
-  align-items: start;
-  column-gap: 12px;
-  background: var(--home-surface);
-  box-shadow: var(--home-shadow);
-  color: inherit;
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
-  transition:
-    transform var(--loom-dur-fast) var(--loom-ease-out),
-    box-shadow var(--loom-dur-fast) ease,
-    background-color var(--loom-dur-fast) ease;
-}
-
-/* A card with words in it answers a hand by tone, not by moving: the plate brightens, the glyph takes the accent and
-   the arrow appears. One hue for all four; the glyph says what the card is. */
-.starter-card:hover:not(:disabled) {
-  background: var(--home-surface-hover);
-  box-shadow: var(--home-shadow-hover);
-}
-
-.starter-card:active:not(:disabled) {
-  transform: scale(.992);
-  transition-duration: var(--loom-dur-press);
-}
-
-.starter-card:focus-visible {
-  outline: none;
-  box-shadow: var(--home-shadow-hover), 0 0 0 2px rgba(var(--home-accent-rgb),.5);
-}
-
-.starter-card:disabled {
-  opacity: .5;
-  cursor: default;
-}
-
-.starter-icon {
-  width: 20px;
-  height: 20px;
-  display: grid;
-  place-items: center;
-  color: var(--home-ink-3);
-  transition: color var(--loom-dur-fast) ease;
-}
-
-.starter-card:hover:not(:disabled) .starter-icon,
-.starter-card:focus-visible .starter-icon {
-  color: rgb(var(--home-accent-rgb));
-}
-
-.starter-content {
-  min-width: 0;
-  display: grid;
-  gap: 4px;
-}
-
-.starter-content strong {
-  color: var(--home-ink);
-  font-size: var(--loom-font-ui, 13.5px);
-  font-weight: 500;
-  line-height: 20px;
-  letter-spacing: -.004em;
-}
-
-.starter-content > span {
-  color: var(--home-ink-3);
-  font-size: var(--loom-font-meta, 12.5px);
-  line-height: 1.5;
-}
-
-.starter-arrow {
-  position: absolute;
-  top: 16px;
-  right: 15px;
-  color: var(--home-ink-3);
-  opacity: 0;
-  transition:
-    opacity var(--loom-dur-fast) ease,
-    transform var(--loom-dur-base) var(--loom-ease-out);
-}
-
-.starter-card:hover:not(:disabled) .starter-arrow,
-.starter-card:focus-visible .starter-arrow {
-  opacity: 1;
-  transform: translate(1px, -1px);
-}
-
-/* Short and narrow conversation panes --------------------------------------
-   Queries resolve against .transcript-scroll.is-empty, the pane between the
-   header and the composer, not the window. Each step gives up the least useful
-   piece first so the starters stay on screen: the heading shrinks, then the
-   copy lines go. */
-@container (max-height: 640px) {
-  .empty-intro h1 { font-size: 24px; }
-  .empty-state { --home-section-gap: 18px; }
-}
-
-@container (max-height: 480px) {
-  .empty-intro p { display: none; }
-  .empty-state { --home-section-gap: 14px; }
-}
-
-@container (max-width: 620px) or (max-height: 480px) {
-  .starter-card {
-    min-height: 48px;
-    padding: 12px 34px 12px 14px;
-    column-gap: 10px;
-    border-radius: 12px;
-  }
-
-  .starter-content > span { display: none; }
-  .starter-arrow { top: 14px; right: 12px; }
-}
-
-@container (max-width: 440px) {
-  .starter-grid { grid-template-columns: minmax(0, 1fr); }
-}
-
-/* Motion preferences -------------------------------------------------------- */
-html[data-loom-reduced-motion="true"] .empty-state > * {
-  animation: none;
-}
-
-html[data-loom-reduced-motion="true"] .starter-card,
-html[data-loom-reduced-motion="true"] .starter-icon,
-html[data-loom-reduced-motion="true"] .starter-arrow {
+html[data-loom-reduced-motion="true"] .starter-title {
   transition: none;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .empty-state > * { animation: none; }
+  .empty-state > *,
+  .empty-startup,
+  .empty-startup-dot { animation: none; }
 
-  .starter-card,
-  .starter-icon,
-  .starter-arrow { transition: none; }
+  .starter-title { transition: none; }
 }
