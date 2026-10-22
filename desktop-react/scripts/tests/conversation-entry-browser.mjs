@@ -40,10 +40,11 @@ try {
       return result;
     }, items);
     assert.ok(frames.every(frame => frame.gap <= 2), `entry must stay at latest: ${JSON.stringify(frames.slice(0, 8))}`);
-    // The older turns of a window are mounted while the page is idle, so the page grows a little at a time; what it must
-    // never do is shrink (a fold or an unfold of history would), and the newest turn keeps its place (the gap above).
+    // The older turns of a window are mounted after the opening, so the page can grow; what it must never do is shrink
+    // (a fold or an unfold of history would), and the newest turn keeps its place (the gap above). This conversation is
+    // running (its last tool has not finished), so its older turns wait for the run to end or for the reader to scroll
+    // toward them (see thread-switch-progressive-browser.mjs); nothing below needs them.
     assert.ok(frames.every((frame, index) => !index || frame.height >= frames[index - 1].height), `restored history must not unfold then shrink: ${JSON.stringify(frames.slice(0, 20))}`);
-    await page.waitForFunction(() => !document.querySelector(".transcript[data-older-pending]"));
     assert.ok(frames.every(frame => frame.born === 0 && frame.folding === 0 && frame.subOpen), "history must start settled");
     assert.ok(await page.locator('.wv-sub.is-failure').count() > 0, "restored failure output is exercised");
     if (process.env.LOOM_ENTRY_SCREENSHOTS) await page.screenshot({ path: `${process.env.LOOM_ENTRY_SCREENSHOTS}/entry-${width}.png` });
