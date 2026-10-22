@@ -331,7 +331,37 @@ export const Composer = memo(function Composer(props: ComposerProps) {
   // makes unsent input vanish during a normal running-state transition.
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [sendErrors, setSendErrors] = useState<Record<string, string>>({});
+  const importedUnboundDraftRef = useRef(false);
+  // A prompt submitted on the editorial landing page is a draft, not an
+  // automatic Agent command. Restore it here only after the actual workspace
+  // is mounted and the user can review it before sending.
+  useEffect(() => {
+    let pending = "";
+    try {
+      pending = window.sessionStorage.getItem("loom.portal.pendingPrompt") || "";
+      if (pending) window.sessionStorage.removeItem("loom.portal.pendingPrompt");
+    } catch { /* Browser storage may be disabled. */ }
+    if (!pending) return;
+    const key = props.threadId || UNBOUND_DRAFT_KEY;
+    importedUnboundDraftRef.current = !props.threadId;
+    setDrafts((current) => current[key] ? current : { ...current, [key]: pending });
+    const frame = requestAnimationFrame(() => document.querySelector<HTMLTextAreaElement>(".composer textarea")?.focus());
+    return () => cancelAnimationFrame(frame);
+  }, []);
   const draftKey = props.threadId || UNBOUND_DRAFT_KEY;
+  useEffect(() => {
+    // The landing prompt may arrive before a thread is selected. Move only that
+    // imported draft into the first selected thread, not any normal user draft.
+    if (!props.threadId || !importedUnboundDraftRef.current) return;
+    importedUnboundDraftRef.current = false;
+    setDrafts((current) => {
+      const pending = current[UNBOUND_DRAFT_KEY];
+      if (!pending || current[props.threadId!]) return current;
+      const next = { ...current, [props.threadId!]: pending };
+      delete next[UNBOUND_DRAFT_KEY];
+      return next;
+    });
+  }, [props.threadId]);
   const draftValue = drafts[draftKey] ?? "";
 
   const setDraftValue = (nextValue: string) => {
