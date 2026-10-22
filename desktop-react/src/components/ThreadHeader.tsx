@@ -123,6 +123,7 @@ export function ThreadHeader({
             ref={toggleRef}
             type="button"
             className="thread-header-icon-button panel-toggle-button sidebar-toggle"
+            data-sidebar-control="toggle"
             onClick={onToggleSidebar}
             title={openSidebarLabel}
             aria-label={openSidebarLabel}

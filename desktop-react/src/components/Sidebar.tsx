@@ -1019,7 +1019,7 @@ export const Sidebar = memo(function Sidebar({
           header shows it again while the sidebar is closed, then search and the quill. */}
       <div className="codex-sidebar-topbar">
         {onClose ? (
-          <button type="button" className="sidebar-toggle" onClick={onClose} title={copy.hideSidebar} aria-label={copy.hideSidebar}>
+          <button type="button" className="sidebar-toggle" data-sidebar-control="toggle" onClick={onClose} title={copy.hideSidebar} aria-label={copy.hideSidebar}>
             <PanelLeft size={17} strokeWidth={1.75} aria-hidden="true" />
           </button>
         ) : null}

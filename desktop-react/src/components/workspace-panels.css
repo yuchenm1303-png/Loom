@@ -135,8 +135,40 @@ html[data-loom-layout-transition="true"] {
 html[data-loom-layout-transition="true"]:is(
   [data-loom-layout-intent="left-open"],
   [data-loom-layout-intent="left-close"]
-) .workspace-panels > .sidebar {
+) .workspace-panels.sidebar-open > .sidebar {
   view-transition-name: loom-sidebar;
+}
+
+/* Extract the shared controls from the card snapshot. Their groups interpolate
+   position on the same clock as the live header, without the card's exit fade
+   or delayed entrance. Only the visible toolbar supplies each identity. */
+html[data-loom-layout-transition="true"] .sidebar-open > .sidebar [data-sidebar-control="toggle"],
+html[data-loom-layout-transition="true"] .sidebar-closed .thread-header-leading [data-sidebar-control="toggle"] {
+  view-transition-name: loom-sidebar-toggle;
+}
+
+html[data-loom-layout-transition="true"] .sidebar-open > .sidebar [data-sidebar-control="compose"],
+html[data-loom-layout-transition="true"] .sidebar-closed .thread-header-leading [data-sidebar-control="compose"] {
+  view-transition-name: loom-sidebar-compose;
+}
+
+::view-transition-group(loom-sidebar-toggle),
+::view-transition-group(loom-sidebar-compose) {
+  animation-duration: var(--loom-dur-panel);
+  animation-timing-function: var(--loom-ease-move);
+}
+
+::view-transition-old(loom-sidebar-toggle),
+::view-transition-old(loom-sidebar-compose) {
+  animation: none;
+  opacity: 0;
+}
+
+::view-transition-new(loom-sidebar-toggle),
+::view-transition-new(loom-sidebar-compose) {
+  animation: none;
+  mix-blend-mode: normal;
+  opacity: 1;
 }
 
 html[data-loom-layout-transition="true"]:is(
@@ -176,12 +208,12 @@ html[data-loom-layout-transition="true"]:is(
 /* Preserve the exact a61 side-surface depth language. */
 ::view-transition-new(loom-sidebar) {
   transform-origin: left center;
-  animation: loom-panel-surface-in-left 292ms cubic-bezier(.16,.78,.18,1) 72ms both;
+  animation: loom-panel-surface-in-left var(--loom-dur-panel) var(--loom-ease-move) both;
 }
 
 ::view-transition-old(loom-sidebar) {
   transform-origin: left center;
-  animation: loom-panel-surface-out-left 78ms cubic-bezier(.42,0,.72,.2) both;
+  animation: loom-panel-surface-out-left var(--loom-dur-panel) var(--loom-ease-move) both;
 }
 
 ::view-transition-new(loom-inspector) {

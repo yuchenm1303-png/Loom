@@ -78,6 +78,7 @@ export const NewConversationRow = forwardRef<NewConversationRowHandle, NewConver
       ref={buttonRef}
       type="button"
       className={className}
+      data-sidebar-control={iconOnly ? "compose" : undefined}
       data-written={starts ? (starts % 2 ? "odd" : "even") : undefined}
       data-confirmed={confirmations ? (confirmations % 2 ? "odd" : "even") : undefined}
       onPointerEnter={(event) => { if (event.pointerType !== "touch") engage("pointer", true); }}

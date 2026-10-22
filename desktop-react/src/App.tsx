@@ -101,11 +101,14 @@ type LayoutMotionAnchorKind =
   | "run-progress";
 type LayoutMotionAnchorSnapshot = {
   element: HTMLElement;
+  selector: string;
   leftX: number;
   rightX: number;
+  topY: number;
   kind: LayoutMotionAnchorKind;
 };
 type LayoutViewTransition = {
+  ready?: Promise<void>;
   updateCallbackDone: Promise<void>;
   finished: Promise<void>;
   skipTransition(): void;
@@ -248,7 +251,8 @@ function clearPanelWidth(key: string): void {
  * monotonic: old screen coordinate -> new screen coordinate, with no recoil.
  */
 const PANEL_LAYOUT_ANCHORS: Array<{ selector: string; kind: LayoutMotionAnchorKind }> = [
-  { selector: ".thread-header-leading", kind: "header-leading" },
+  { selector: ':is(.sidebar-open > .sidebar, .sidebar-closed .thread-header-leading) [data-sidebar-control="toggle"]', kind: "header-leading" },
+  { selector: ':is(.sidebar-open > .sidebar, .sidebar-closed .thread-header-leading) [data-sidebar-control="compose"]', kind: "header-leading" },
   { selector: ".thread-header-copy", kind: "header-copy" },
   { selector: ".polished-thread-header-actions", kind: "header-actions" },
   { selector: ".transcript", kind: "transcript" },
@@ -291,8 +295,10 @@ function captureLayoutAnchors(root: HTMLElement | null): LayoutMotionAnchorSnaps
     const rect = element.getBoundingClientRect();
     captures.push({
       element,
+      selector: target.selector,
       leftX: rect.left,
       rightX: rect.right,
+      topY: rect.top,
       kind: target.kind,
     });
 
@@ -335,11 +341,20 @@ function animateLayoutAnchors(
 ): Animation[] {
   const animations: Animation[] = [];
   for (const capture of captures) {
+    if (capture.kind === "header-leading") {
+      // Snapshot groups own the shared buttons when available. The fallback
+      // resolves their new DOM host instead of dropping the removed control.
+      if (document.documentElement.dataset.loomLayoutTransition === "true") continue;
+      const destination = document.querySelector<HTMLElement>(capture.selector);
+      if (!destination) continue;
+      capture.element = destination;
+    }
     if (!capture.element.isConnected) continue;
     const rect = capture.element.getBoundingClientRect();
     const anchor = anchorXForIntent(capture, rect, intent);
     const deltaX = anchor.previous - anchor.next;
-    if (Math.abs(deltaX) < .5) continue;
+    const deltaY = capture.kind === "header-leading" ? capture.topY - rect.top : 0;
+    if (Math.abs(deltaX) < .5 && Math.abs(deltaY) < .5) continue;
 
     // Keep the live workspace geometry on the same clock as the confirmed a61
     // panel choreography. The side-surface View Transition group runs 390ms;
@@ -353,7 +368,7 @@ function animateLayoutAnchors(
     capture.element.style.willChange = "translate";
     const animation = capture.element.animate(
       [
-        { translate: `${deltaX}px 0px` },
+        { translate: `${deltaX}px ${deltaY}px` },
         { translate: "0px 0px" },
       ],
       {
@@ -696,6 +711,9 @@ export default function App() {
     }
 
     layoutViewTransitionRef.current = transition;
+    // A reversal deliberately skips the previous snapshot. Consume ready's
+    // rejection as well as finished so it cannot become an unhandled error.
+    void transition.ready?.catch(() => undefined);
     const liveLayoutMotion = transition.updateCallbackDone
       .then(() => {
         if (layoutTransitionSerialRef.current !== serial) return;
