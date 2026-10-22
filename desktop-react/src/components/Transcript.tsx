@@ -1064,6 +1064,7 @@ function Sequence({
               handoff={handoff}
               renderNote={renderNote}
             />
+            <BrowserActivityCards items={block.items} active={active} workspace={workspace} />
           </div>, true
           )
         )) : (isLeadNote(block.item) && !notes.show ? null : (
@@ -1587,8 +1588,6 @@ const TurnView = memo(function TurnView({
           workspace={workspace}
         />
       ) : null}
-
-      <BrowserActivityCards items={items} active={active} workspace={workspace} />
 
       {!active && derived.finalAssistant ? (
         <div className="transcript-entry entry-assistant_message turn-final-answer" key={derived.finalAssistant.id}>
