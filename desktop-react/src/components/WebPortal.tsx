@@ -167,10 +167,6 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
     }
   }
   useEffect(() => {
-    // Only a deliberate submitted prompt should enter the workspace automatically.
-    if (editorial && pendingPrompt && authenticated && hostState === "online") onEnter();
-  }, [editorial, pendingPrompt, authenticated, hostState, onEnter]);
-  useEffect(() => {
     const controller = new AbortController();
     const timeout = window.setTimeout(() => controller.abort(), 10000);
     fetchPortalRelease(controller.signal).then(setRelease).catch(() => {
@@ -196,6 +192,10 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
   const [resendWait, setResendWait] = useState(0);
   const [localError, setLocalError] = useState("");
   const authenticated = Boolean(account.account.authenticated && account.account.user);
+  useEffect(() => {
+    // Only a deliberate submitted prompt should enter the workspace automatically.
+    if (editorial && pendingPrompt && authenticated && hostState === "online") onEnter();
+  }, [editorial, pendingPrompt, authenticated, hostState, onEnter]);
   const strength = passwordScore(password);
   const strengthLabel = !password
     ? (zh ? "未输入" : "Not entered")
