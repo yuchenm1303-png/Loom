@@ -43,6 +43,8 @@ import "./composer-compact.css";
 import { imageAttachmentState } from "./modelInput";
 
 interface ComposerProps {
+  /** Share the same settings controls with the live guidance composer. */
+  controlsOnly?: boolean;
   toolSelection?: string[] | null;
   workspace?: string;
   onOpenWorkspace?(): void;
@@ -156,6 +158,7 @@ function ComposerControlIcon({ kind }: { kind: "attach" | "model" }) {
 
 
 export function Composer({
+  controlsOnly = false,
   toolSelection: savedToolSelection,
   workspace,
   onOpenWorkspace,
@@ -283,8 +286,9 @@ export function Composer({
   }, [quote]);
 
   useEffect(() => {
+    if (controlsOnly) return;
     setQuote(null);
-  }, [threadId, setQuote]);
+  }, [threadId, setQuote, controlsOnly]);
 
   useEffect(() => {
     function handlePointerDown(event: PointerEvent) {
@@ -435,73 +439,7 @@ export function Composer({
     && (value.trim() || quote || attachments.some((item) => imagesAllowed || !item.isImage))
   );
 
-  return (
-    <div className="composer-wrap composer-refined" ref={composerRootRef}>
-      <div
-        className={`composer ${focused ? "is-focused" : ""} ${running ? "is-running" : ""} ${openPanel ? "has-panel" : ""} ${dragging ? "is-dragging" : ""} ${hasDraftContent ? "has-content" : "is-empty"}`}
-        onDragOver={(event) => {
-          if (!event.dataTransfer.types.includes("Files")) return;
-          event.preventDefault();
-          setDragging(true);
-        }}
-        onDragLeave={(event) => {
-          if (event.currentTarget.contains(event.relatedTarget as Node)) return;
-          setDragging(false);
-        }}
-        onDrop={(event) => void onDrop(event)}
-      >
-        {quote ? <QuoteReplyBar quote={quote} onClear={() => setQuote(null)} /> : null}
-        <ComposerAttachmentStrip attachments={attachments} imagesAllowed={imagesAllowed} onRemove={removeAttachment} />
-
-        {modelError ? <p role="alert" className="composer-attach-error">{modelError}</p> : null}
-        {attachError ? <p className="composer-attach-error">{attachError}</p> : null}
-        {stopError ? <p className="composer-attach-error">Could not stop: {stopError}</p> : null}
-        {imageNotice.message ? <p className="composer-image-notice" role="status">{imageNotice.message}</p> : null}
-
-        <div className="composer-input-row">
-          <span className="composer-spark" aria-hidden="true"><Sparkles size={15} /></span>
-          <textarea
-            ref={textareaRef}
-            value={value}
-            onChange={(event) => setValue(event.target.value)}
-            onKeyDown={onKeyDown}
-            onPaste={(event) => void onPaste(event)}
-            onFocus={() => setFocused(true)}
-            onBlur={() => setFocused(false)}
-            placeholder={starting
-              ? (zh ? "Loom 正在启动，稍等片刻…" : "Loom is starting up…")
-              : !accountAuthenticated
-              ? (zh ? "登录 Loom 后才能使用模型和发送消息" : "Sign in to Loom to use models and send messages")
-              : quote
-                ? (zh ? "针对引用内容继续提问…" : "Ask about the quoted content…")
-                : zh
-                  ? (disabled ? "打开对话，开始工作" : "描述任务，或提出问题…")
-                  : (disabled ? "Open a thread to start" : "Describe a task or ask a question…")}
-            disabled={disabled || running || submitting}
-            rows={1}
-          />
-        </div>
-
-        <div className="composer-toolbar composer-toolbar-idle">
-          <div className="composer-left">
-            <ComposerToolSelector threadId={threadId} workspace={workspace} selection={toolSelection} onChange={setToolSelection}
-              disabled={disabled || submitting || running} onOpen={() => setOpenPanel(null)}
-              onInsertSkill={name => { setValue(`${value}${value && !/\s$/.test(value) ? " " : ""}$${name} `); textareaRef.current?.focus(); }} />
-            <button
-              type="button"
-              className="composer-tool composer-refined-control"
-              aria-label={zh ? "添加附件" : "Attach files"}
-              title={zh ? "添加附件，也可以粘贴或拖入文件" : "Attach files, or paste and drop them here"}
-              onClick={() => void pickAttachments()}
-              disabled={disabled}
-            >
-              <span className="composer-glyph-well attach" aria-hidden="true"><ComposerControlIcon kind="attach" /></span>
-            </button>
-
-            {workspace && onOpenWorkspace ? <button type="button" className="composer-tool composer-workspace-button"
-              title={`${zh ? "查看工作目录" : "Open workspace files"} · ${workspace}`} aria-label={zh ? "查看工作目录" : "Open workspace files"}
-              onClick={onOpenWorkspace}><FolderOpen size={14} /><span>{workspaceName}</span></button> : null}
-
+  const settingsControls = <>
             <span className="composer-toolbar-divider" aria-hidden="true" />
 
             <div className="composer-control-anchor">
@@ -651,6 +589,81 @@ export function Composer({
 
             <ModelUsageIndicator key={accountUsageIdentity} selection={accountAuthenticated ? modelSnapshot?.current?.selection || modelSnapshot?.primary?.selection || "" : ""} zh={zh} onOpen={() => setOpenPanel(null)} />
 
+  </>;
+  if (controlsOnly) return <div ref={composerRootRef} className="composer-shared-settings">
+    <ComposerToolSelector threadId={threadId} workspace={workspace} selection={toolSelection} onChange={setToolSelection}
+      readOnly={Boolean(running)} onOpen={() => setOpenPanel(null)} onInsertSkill={() => {}} />
+    {settingsControls}
+  </div>;
+
+  return (
+    <div className="composer-wrap composer-refined" ref={composerRootRef}>
+      <div
+        className={`composer ${focused ? "is-focused" : ""} ${running ? "is-running" : ""} ${openPanel ? "has-panel" : ""} ${dragging ? "is-dragging" : ""} ${hasDraftContent ? "has-content" : "is-empty"}`}
+        onDragOver={(event) => {
+          if (!event.dataTransfer.types.includes("Files")) return;
+          event.preventDefault();
+          setDragging(true);
+        }}
+        onDragLeave={(event) => {
+          if (event.currentTarget.contains(event.relatedTarget as Node)) return;
+          setDragging(false);
+        }}
+        onDrop={(event) => void onDrop(event)}
+      >
+        {quote ? <QuoteReplyBar quote={quote} onClear={() => setQuote(null)} /> : null}
+        <ComposerAttachmentStrip attachments={attachments} imagesAllowed={imagesAllowed} onRemove={removeAttachment} />
+
+        {modelError ? <p role="alert" className="composer-attach-error">{modelError}</p> : null}
+        {attachError ? <p className="composer-attach-error">{attachError}</p> : null}
+        {stopError ? <p className="composer-attach-error">Could not stop: {stopError}</p> : null}
+        {imageNotice.message ? <p className="composer-image-notice" role="status">{imageNotice.message}</p> : null}
+
+        <div className="composer-input-row">
+          <span className="composer-spark" aria-hidden="true"><Sparkles size={15} /></span>
+          <textarea
+            ref={textareaRef}
+            value={value}
+            onChange={(event) => setValue(event.target.value)}
+            onKeyDown={onKeyDown}
+            onPaste={(event) => void onPaste(event)}
+            onFocus={() => setFocused(true)}
+            onBlur={() => setFocused(false)}
+            placeholder={starting
+              ? (zh ? "Loom 正在启动，稍等片刻…" : "Loom is starting up…")
+              : !accountAuthenticated
+              ? (zh ? "登录 Loom 后才能使用模型和发送消息" : "Sign in to Loom to use models and send messages")
+              : quote
+                ? (zh ? "针对引用内容继续提问…" : "Ask about the quoted content…")
+                : zh
+                  ? (disabled ? "打开对话，开始工作" : "描述任务，或提出问题…")
+                  : (disabled ? "Open a thread to start" : "Describe a task or ask a question…")}
+            disabled={disabled || running || submitting}
+            rows={1}
+          />
+        </div>
+
+        <div className="composer-toolbar composer-toolbar-idle">
+          <div className="composer-left">
+            <ComposerToolSelector threadId={threadId} workspace={workspace} selection={toolSelection} onChange={setToolSelection}
+              disabled={disabled || submitting || running} onOpen={() => setOpenPanel(null)}
+              onInsertSkill={name => { setValue(`${value}${value && !/\s$/.test(value) ? " " : ""}$${name} `); textareaRef.current?.focus(); }} />
+            <button
+              type="button"
+              className="composer-tool composer-refined-control"
+              aria-label={zh ? "添加附件" : "Attach files"}
+              title={zh ? "添加附件，也可以粘贴或拖入文件" : "Attach files, or paste and drop them here"}
+              onClick={() => void pickAttachments()}
+              disabled={disabled}
+            >
+              <span className="composer-glyph-well attach" aria-hidden="true"><ComposerControlIcon kind="attach" /></span>
+            </button>
+
+            {workspace && onOpenWorkspace ? <button type="button" className="composer-tool composer-workspace-button"
+              title={`${zh ? "查看工作目录" : "Open workspace files"} · ${workspace}`} aria-label={zh ? "查看工作目录" : "Open workspace files"}
+              onClick={onOpenWorkspace}><FolderOpen size={14} /><span>{workspaceName}</span></button> : null}
+
+            {settingsControls}
 
           </div>
 

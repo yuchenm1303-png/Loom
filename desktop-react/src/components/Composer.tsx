@@ -41,6 +41,7 @@ function SteeringComposer({
   onPausedChange,
   imagesAllowed = true,
   imageSupport,
+  ...settingsProps
 }: ComposerProps) {
   const { language } = useI18n();
   const zh = language === "zh-CN";
@@ -248,6 +249,8 @@ function SteeringComposer({
 
         <div className="composer-toolbar composer-toolbar-steering">
           <div className="composer-left">
+            <ComposerBase {...settingsProps} controlsOnly running threadId={threadId} workspace={workspace}
+              onSend={onSend} onInterrupt={onInterrupt} />
             <button
               type="button"
               className="composer-tool"

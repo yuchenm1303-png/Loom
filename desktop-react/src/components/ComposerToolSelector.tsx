@@ -30,9 +30,9 @@ const names: Record<string, string> = {
   browser_open: "打开浏览器", browser_state: "读取页面", browser_click: "点击页面", browser_type: "输入页面内容", browser_screenshot: "浏览器截图",
   browser_navigate: "访问网页", browser_status: "浏览器状态", web_search_status: "搜索服务状态", skill_read_resource: "读取技能资源",
 };
-export function ComposerToolSelector({ threadId, workspace, selection, onChange, disabled, onOpen, onInsertSkill }: {
+export function ComposerToolSelector({ threadId, workspace, selection, onChange, disabled, readOnly = false, onOpen, onInsertSkill }: {
   threadId?: string; workspace?: string; selection: string[] | null; onChange(value: string[] | null): void;
-  disabled?: boolean; onOpen(): void; onInsertSkill(name: string): void;
+  disabled?: boolean; readOnly?: boolean; onOpen(): void; onInsertSkill(name: string): void;
 }) {
   const zh = useI18n().language === "zh-CN";
   const [open, setOpen] = useState(false);
@@ -89,9 +89,9 @@ export function ComposerToolSelector({ threadId, workspace, selection, onChange,
       <header className="composer-tools-head"><strong>{title}</strong><button type="button" className="composer-tool composer-icon-action"
         aria-label={zh ? "关闭工具选择" : "Close tool selection"} onClick={() => { setOpen(false); trigger.current?.focus(); }}><X size={14} /></button></header>
       <div className="composer-tools-modes">
-        <button type="button" aria-pressed={selection === null} onClick={() => onChange(null)}>{zh ? "自动" : "Auto"}</button>
-        <button type="button" disabled={!catalog || busy || Boolean(error)} onClick={() => onChange(available.map(tool => tool.name))}>{zh ? "全选" : "Select all"}</button>
-        <button type="button" disabled={!catalog || busy || Boolean(error)} aria-pressed={selection?.length === 0} onClick={() => onChange([])}>{zh ? "全不选" : "Select none"}</button>
+        <button type="button" disabled={readOnly} aria-pressed={selection === null} onClick={() => onChange(null)}>{zh ? "自动" : "Auto"}</button>
+        <button type="button" disabled={readOnly || !catalog || busy || Boolean(error)} onClick={() => onChange(available.map(tool => tool.name))}>{zh ? "全选" : "Select all"}</button>
+        <button type="button" disabled={readOnly || !catalog || busy || Boolean(error)} aria-pressed={selection?.length === 0} onClick={() => onChange([])}>{zh ? "全不选" : "Select none"}</button>
         <button type="button" className="composer-tools-refresh" title={zh ? "刷新工具与技能" : "Refresh tools & skills"}
           aria-label={zh ? "刷新工具与技能" : "Refresh tools & skills"} disabled={busy} onClick={() => setRevision(value => value + 1)}><RefreshCw size={13} /></button>
       </div>
@@ -119,14 +119,14 @@ export function ComposerToolSelector({ threadId, workspace, selection, onChange,
           return <div className="composer-tools-group" key={group}>
             <label className="composer-tools-group-title"><Icon size={13} /><span>{labels[group][zh ? 0 : 1]}</span>
               <input type="checkbox" aria-label={`${zh ? "选取整组" : "Select group"} · ${labels[group][zh ? 0 : 1]}`} checked={checked}
-                ref={element => { if (element) element.indeterminate = partial; }} disabled={!all.length || busy || Boolean(error)} onChange={event => toggle(all, event.target.checked)} /></label>
+                ref={element => { if (element) element.indeterminate = partial; }} disabled={readOnly || !all.length || busy || Boolean(error)} onChange={event => toggle(all, event.target.checked)} /></label>
             {entries.map(tool => <label className="composer-tools-row" key={tool.name} data-unavailable={!tool.available}>
-              <input type="checkbox" checked={tool.available && selected.has(tool.name)} disabled={!tool.available || busy || Boolean(error)}
+              <input type="checkbox" checked={tool.available && selected.has(tool.name)} disabled={readOnly || !tool.available || busy || Boolean(error)}
                 onChange={event => toggle([tool], event.target.checked)} />
               <span><strong>{zh ? names[tool.name] || tool.name : tool.name}</strong><small>{tool.description}</small>
                 {!tool.available ? <em>{zh ? "当前设置已禁用" : "Disabled in settings"}</em> : null}</span></label>)}
           </div>;
-        }) : skills.map(skill => <button className="composer-tools-skill" type="button" key={skill.name} disabled={busy}
+        }) : skills.map(skill => <button className="composer-tools-skill" type="button" key={skill.name} disabled={readOnly || busy}
           onClick={() => {
             if (selection !== null) onChange([...new Set([...selection, ...available.filter(tool => tool.name.startsWith("skill_")).map(tool => tool.name)])]);
             onInsertSkill(skill.name); setOpen(false);
@@ -134,7 +134,7 @@ export function ComposerToolSelector({ threadId, workspace, selection, onChange,
         {!busy && !error && !(tab === "tools" ? visibleTools.length : skills.length) ? <p>{zh ? "没有匹配的项目" : "No matching items"}</p> : null}
         {catalog?.errors?.length ? <p className="composer-tools-warning">{catalog.errors.join("\n")}</p> : null}
       </div>
-      <footer>{zh ? "选择在发送时生效，仍遵循权限与审批规则。" : "Applied when you send. Permissions and approvals still apply."}</footer>
+      <footer>{readOnly ? (zh ? "任务执行中，可查看工具；任务结束后可修改。" : "View tools while the task runs. Edit after it finishes.") : zh ? "选择在发送时生效，仍遵循权限与审批规则。" : "Applied when you send. Permissions and approvals still apply."}</footer>
     </section> : null}
   </div>;
 }

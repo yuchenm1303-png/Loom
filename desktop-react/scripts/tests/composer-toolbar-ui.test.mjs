@@ -17,6 +17,7 @@ test("compact composer preserves drafts and connects workspace, tool selection a
       import React, {useState} from 'react';
       import {createRoot} from 'react-dom/client';
       import {Composer} from './src/components/ComposerBase';
+      import {Composer as LiveComposer} from './src/components/Composer';
       import {I18nProvider} from './src/i18n';
       import './src/renderer-styles';
       localStorage.setItem('loom.settings.language','en');
@@ -30,10 +31,12 @@ test("compact composer preserves drafts and connects workspace, tool selection a
         skills:[{name:'review',description:'Review changes'}]})};
       function Fixture(){
         const [value,setValue]=useState('Check <unsafe> text');
+        const [running,setRunning]=useState(false);window.startRunning=()=>setRunning(true);
         const [effort,setEffort]=useState('low');
         const [thread,setThread]=useState('first'); window.switchThread=()=>setThread('second');
         const reasoning={kind:'effort',value:effort,defaultValue:'low',options:[{value:'low',label:'Low'},{value:'high',label:'High'}]};
-        return <Composer threadId={thread} draftValue={value} onDraftValueChange={setValue} accountAuthenticated
+        const Surface=running?LiveComposer:Composer;
+        return <Surface running={running} threadId={thread} draftValue={value} onDraftValueChange={setValue} accountAuthenticated
           workspace="C:/fixture/project" onOpenWorkspace={()=>window.openedFiles++}
           model="deepseek-flash-long-model-name" modelSnapshot={{current:{model:'deepseek-flash-long-model-name',reasoning}}}
           permissionMode="approval" onReasoningChange={async(kind,value)=>{window.reasoningChanges.push([kind,value]);setEffort(value)}}
@@ -112,6 +115,19 @@ test("compact composer preserves drafts and connects workspace, tool selection a
             document.querySelector('[aria-label="Send message"]').click();
             await new Promise(r=>setTimeout(r,50));
             if(window.sent!==1||JSON.stringify(window.submittedTools)!=='[]')throw Error('Selected tool surface not attached to send');
+            window.startRunning();
+            const waitFor=async(check)=>{for(let i=0;i<100;i++){if(check())return;await new Promise(r=>setTimeout(r,25));}throw Error('Running toolbar missing')};
+            await waitFor(()=>document.querySelector('.composer-toolbar-steering .model-chip'));
+            const live=document.querySelector('.composer-toolbar-steering');
+            for(const selector of ['.permission-chip','.model-chip','.model-usage-button','.composer-tools-trigger']){
+              if(!live.querySelector(selector)||live.querySelector(selector).getBoundingClientRect().width===0)throw Error('Running control hidden '+selector);
+            }
+            live.querySelector('.permission-chip').click();await waitFor(()=>document.querySelector('.permission-option'));
+            if([...document.querySelectorAll('.permission-option')].some(b=>!b.disabled))throw Error('Running permissions unlocked');
+            live.querySelector('.composer-tools-trigger').click();await waitFor(()=>document.querySelector('.composer-tools-row'));
+            if([...document.querySelectorAll('.composer-tools-row input')].some(b=>!b.disabled))throw Error('Running tool selection unlocked');
+            document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape'}));
+            window.checkToolbar();
           })()\`);
           server.close();app.exit(0);
         }catch(error){console.error(error);server.close();app.exit(1)}

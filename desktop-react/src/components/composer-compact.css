@@ -28,6 +28,11 @@
 :root .composer-wrap.composer-refined .composer-workspace-button > svg { flex-shrink: 0; }
 .composer-toolbar-divider { height: 13px; width: 1px; margin: 0 4px; background: var(--loom-workspace-line); }
 .composer-draft-tools { display: flex; align-items: center; gap: 2px; }
+.composer-shared-settings { display: contents; }
+.composer-toolbar-steering .composer-tool-selector { order: 0; }
+.composer-toolbar-steering .composer-left > .composer-tool { order: 1; }
+.composer-toolbar-steering .composer-toolbar-divider { order: 2; }
+.composer-toolbar-steering .composer-control-anchor { order: 3; }
 :root .composer-wrap.composer-refined .composer:has(.composer-editor-toggle[aria-pressed="true"]) textarea {
   height: min(42vh, 320px) !important; min-height: min(42vh, 320px); max-height: min(42vh, 320px); overflow-y: auto;
 }
