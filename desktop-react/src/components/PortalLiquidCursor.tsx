@@ -567,8 +567,14 @@ function createProgram(gl: WebGLRenderingContext) {
       float edgeSafety = smoothstep(0.012, 0.075, textureEdgeDistance);
       displacement *= edgeSafety;
 
+      // The former hard +/-32% Y clamp created a constant-displacement
+      // plateau on shallow snapped buttons. That sharp change in slope read
+      // as two horizontal cuts through text and chromatic fringes. Limit
+      // both axes continuously so the optics remain smooth at every height.
       vec2 refraction = normal * displacement;
-      refraction.y = clamp(refraction.y, -halfSize.y * 0.32, halfSize.y * 0.32);
+      vec2 bendReach = max(vec2(22.0, 13.0), halfSize * vec2(0.68, 0.66));
+      vec2 bendRatio = refraction / bendReach;
+      refraction *= inversesqrt(vec2(1.0) + bendRatio * bendRatio);
       vec2 sampleUv = screenUv - refraction / u_resolution;
 
       vec2 centerUv = u_lensCenter / u_resolution;
