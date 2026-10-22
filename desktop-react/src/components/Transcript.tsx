@@ -56,6 +56,7 @@ import {
 } from "./activityModel";
 import { liveTaskProgress } from "./liveTaskProgress";
 import { isLongNote } from "./processNote";
+import { HomeTokenActivity } from "./HomeTokenActivity";
 import { MarkdownMessage } from "./MarkdownMessage";
 import { TranscriptEdgeScrollbar } from "./TranscriptEdgeScrollbar";
 import "./model-retry.css";
@@ -1643,59 +1644,55 @@ function StartupStatus({ stage }: { stage: StartupStage }) {
   );
 }
 
-function EmptyState({ disabled, onPrompt, onOpenInsights, connecting, startupStage = "runtime" }: {
+function EmptyState({ disabled, onPrompt, onOpenInsights, connecting, startupStage = "runtime", usageReady = true }: {
   disabled?: boolean;
   onPrompt?(prompt: string): Promise<void> | void;
   onOpenInsights?(): void;
   connecting?: boolean;
   startupStage?: StartupStage;
+  usageReady?: boolean;
 }) {
   const { language } = useI18n();
   const lang = language === "zh-CN" ? 1 : 0;
   return (
     <section className="empty-state">
       <div className="empty-intro">
-        <h1>{lang ? "一个在本地运行的智能体。" : "A local agent runtime for real work."}</h1>
+        <h1>{lang ? "今天我们做点什么？" : "What are we working on?"}</h1>
         <p>
           {lang
-            ? "读代码、改文件、跑命令、查网页——都在这台机器上，按你的授权进行。"
-            : "It reads the codebase, edits files, runs commands, and browses the web — on this machine, with your permission."}
+            ? "浏览代码库、修改代码、排查故障，或把一个多步骤任务交给 Loom。"
+            : "Inspect a codebase, make a change, debug a failure, or hand Loom a multi-step task."}
         </p>
         {connecting ? <StartupStatus stage={startupStage} /> : null}
       </div>
 
-      <div className="empty-start">
-        <h2>{lang ? "开始" : "Start"}</h2>
-        <div className="starter-grid">
-          {starterPrompts.map(({ title, copy, prompt }) => (
-            <button
-              className="starter-card"
-              type="button"
-              key={title[0]}
-              disabled={disabled}
-              onClick={(event) => {
-                // The message sets off from the row that was pressed (sendFlight.ts).
-                recordCardOrigin(event.currentTarget);
-                void onPrompt?.(prompt[lang]);
-              }}
-            >
-              <span className="starter-content">
-                <span className="starter-title">{title[lang]}</span>
-                <span className="starter-note">{copy[lang]}</span>
-              </span>
-            </button>
-          ))}
-        </div>
-        {onOpenInsights ? (
-          <button className="empty-insights" type="button" onClick={onOpenInsights}>
-            {lang ? "Token 用量" : "Token activity"}
+      <HomeTokenActivity onOpenInsights={onOpenInsights} ready={usageReady && !connecting} />
+
+      <div className="starter-grid">
+        {starterPrompts.map(({ icon: Icon, title, copy, prompt }) => (
+          <button
+            className="starter-card"
+            type="button"
+            key={title[0]}
+            disabled={disabled}
+            onClick={(event) => {
+              // The message sets off from the card that was pressed (sendFlight.ts).
+              recordCardOrigin(event.currentTarget);
+              void onPrompt?.(prompt[lang]);
+            }}
+          >
+            <span className="starter-icon"><Icon size={17} strokeWidth={1.85} /></span>
+            <span className="starter-content">
+              <strong>{title[lang]}</strong>
+              <span>{copy[lang]}</span>
+            </span>
+            <ArrowUpRight className="starter-arrow" size={15} strokeWidth={1.8} aria-hidden="true" />
           </button>
-        ) : null}
+        ))}
       </div>
     </section>
   );
 }
-
 
 export const Transcript = memo(function Transcript({ threadId, items, running, currentTurnId, workspace, promptDisabled, onPrompt, onApproval, onOpenInsights, connecting, startupStage, usageReady }: TranscriptProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -1740,6 +1737,7 @@ export const Transcript = memo(function Transcript({ threadId, items, running, c
             onOpenInsights={onOpenInsights}
             connecting={connecting}
             startupStage={startupStage}
+            usageReady={usageReady}
           />
         ) : turnBlocks.map((block, index) => (
           block.kind === "turn" ? (
