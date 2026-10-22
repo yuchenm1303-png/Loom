@@ -86,8 +86,13 @@ test("image cards render direct PNGs and immediately load their page in the side
             if(document.querySelectorAll('[data-tool-id]').length !== 11) throw new Error('Detailed dock entries missing');
             document.querySelector('[data-tool-id="background"]').click();
             await waitFor(() => window.selectedActivity === 'background', 'Activity action not connected');
+            if(document.querySelector('.loom-tool-rail').dataset.expanded !== 'false') throw new Error('Tool names must be hidden by default');
             document.querySelector('.loom-tool-label-toggle').click();
             await waitFor(() => document.querySelector('.loom-tool-rail').dataset.expanded === 'true', 'Dock labels did not expand');
+            if(document.documentElement.style.getPropertyValue('--loom-tool-rail-track') !== '142px') throw new Error('Expanded dock did not reserve its width');
+            document.querySelector('.loom-tool-label-toggle').click();
+            await waitFor(() => document.querySelector('.loom-tool-rail').dataset.expanded === 'false', 'Dock labels did not collapse');
+            if(document.documentElement.style.getPropertyValue('--loom-tool-rail-track') !== '66px') throw new Error('Compact dock did not restore its width');
             document.querySelector('[aria-label="Page tools"]').click();
             await waitFor(() => document.querySelector('.browser-tools-menu'), 'Page tools menu missing');
             const zoom = document.querySelector('[aria-label="Zoom in"]'); zoom.click();
@@ -116,4 +121,3 @@ test("image cards render direct PNGs and immediately load their page in the side
     rmSync(directory, { recursive: true, force: true });
   }
 });
-

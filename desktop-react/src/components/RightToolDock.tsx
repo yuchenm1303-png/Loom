@@ -142,12 +142,13 @@ export function RightToolDock(props: RightToolDockProps) {
   const [tip, setTip] = useState<{ id: DockId | null; on: boolean }>({ id: null, on: false });
   const [announcement, setAnnouncement] = useState("");
   const [expanded, setExpanded] = useState(() => {
-    try { const saved = localStorage.getItem("loom.ui.toolDock.labels"); return saved === null ? window.innerWidth >= 1280 : saved === "true"; } catch { return window.innerWidth >= 1280; }
+    try { return localStorage.getItem("loom.ui.toolDock.labels") === "true"; } catch { return false; }
   });
   useLayoutEffect(() => {
     document.documentElement.style.setProperty("--loom-tool-rail-custom", expanded ? "142px" : "66px");
+    document.documentElement.style.setProperty("--loom-tool-rail-track", expanded ? "142px" : "66px");
     try { localStorage.setItem("loom.ui.toolDock.labels", String(expanded)); } catch {}
-    return () => { document.documentElement.style.removeProperty("--loom-tool-rail-custom"); };
+    return () => { document.documentElement.style.removeProperty("--loom-tool-rail-custom"); document.documentElement.style.removeProperty("--loom-tool-rail-track"); };
   }, [expanded]);
   const [brokenAvatar, setBrokenAvatar] = useState("");
   const dockRef = useRef<HTMLDivElement>(null);
@@ -583,7 +584,7 @@ export function RightToolDock(props: RightToolDockProps) {
           onScroll={() => setHushed(tip.id)}
         >
           <span className="loom-tool-glider" ref={gliderRef} data-on="false" aria-hidden="true" />
-          <button type="button" className="loom-tool-label-toggle" aria-label={zh ? (expanded ? "收起工具名称" : "展开工具名称") : (expanded ? "Hide tool names" : "Show tool names")} aria-pressed={expanded} onClick={() => setExpanded(value => !value)}><PanelRightOpen size={14}/>{expanded ? <span>{zh ? "工作区" : "WORKSPACE"}</span> : null}</button>
+          <button type="button" className="loom-tool-label-toggle" title={zh ? (expanded ? "收起工具名称" : "展开工具名称") : (expanded ? "Hide tool names" : "Show tool names")} aria-label={zh ? (expanded ? "收起工具名称" : "展开工具名称") : (expanded ? "Hide tool names" : "Show tool names")} aria-pressed={expanded} onClick={() => setExpanded(value => !value)}><PanelRightOpen size={14}/>{expanded ? <span>{zh ? "工作区" : "WORKSPACE"}</span> : null}</button>
           {rows}
         </div>
         <div className="loom-tool-tip" ref={tipRef} data-on={tip.on ? "true" : "false"} aria-hidden="true">
@@ -605,4 +606,3 @@ export function RightToolDock(props: RightToolDockProps) {
     </aside>
   );
 }
-
