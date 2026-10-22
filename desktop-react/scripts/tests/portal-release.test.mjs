@@ -105,3 +105,26 @@ test("magnetic glass refraction is smooth on short and tall targets in both home
       "the old cutoff location must no longer produce a visible slope break");
   }
 });
+
+
+test("editorial sign-in is a centered, accessible modal without a side drawer", () => {
+  const portal = readFileSync(new URL("../../src/components/WebPortal.tsx", import.meta.url), "utf8");
+  const styles = readFileSync(new URL("../../src/components/portal-auth-dialog.css", import.meta.url), "utf8");
+  assert.ok(portal.includes('import "./portal-auth-dialog.css"'), "dialog styles load after editorial styles");
+  assert.ok(portal.includes('aria-labelledby={editorial && drawerOpen ? "editorial-dialog-title" : undefined}'));
+  assert.ok(portal.includes('id="editorial-dialog-title"'));
+  assert.ok(portal.includes("editorial-modal-brand"));
+  assert.ok(portal.includes("data-auth-step={authStep}"));
+  assert.ok(portal.includes('event.key === "Escape"'));
+  assert.ok(portal.includes('event.key === "Tab"'));
+  assert.ok(portal.includes("opener.focus({ preventScroll: true })"));
+  assert.match(styles, /justify-content:\s*center/);
+  assert.match(styles, /align-items:\s*center/);
+  assert.match(styles, /max-width:\s*472px/);
+  assert.match(styles, /max-height:\s*calc\(100dvh - 40px\)/);
+  assert.ok(styles.includes('[data-auth-step="form"]'), "recovery and verification copy should stay visible");
+  assert.ok(styles.includes(".loom-host-refined"), "existing Host connection controls remain styled");
+  assert.ok(styles.includes(".loom-account-refined"), "existing account controls remain styled");
+  assert.ok(!styles.includes("justify-content: flex-end"), "do not reintroduce the right-hand drawer");
+  assert.ok(portal.includes('next === "classic" ? "/classic" : "/"'), "classic homepage stays supported");
+});
