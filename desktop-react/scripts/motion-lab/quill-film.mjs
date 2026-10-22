@@ -89,7 +89,7 @@ if (args.probe) {
     const r = await page.evaluate((t) => {
       window.__film.forEach((a) => { a.pause(); a.currentTime = t; });
       const style = (sel) => getComputedStyle(document.querySelector(`.sidebar-new-conversation ${sel}`));
-      return { quill: style(".li-quill").transform, barb: style(".li-barb").transform, line: style(".li-outline").strokeDasharray, tip: style(".li-barb").strokeDasharray, glyph: getComputedStyle(document.querySelector(".sidebar-new-conversation > svg")).scale };
+      return { quill: style(".li-quill").transform, barb: style(".li-barb").transform, line: style(".quill-outline").strokeDasharray, tip: style(".li-barb").strokeDasharray, glyph: getComputedStyle(document.querySelector(".sidebar-new-conversation > svg")).scale };
     }, t);
     const length = (dash) => (dash === "none" ? 1 : parseFloat(dash));
     console.log(`${String(t).padStart(4)} ms  quill ${turn(r.quill).toFixed(2).padStart(6)}°  barb ${turn(r.barb).toFixed(2).padStart(6)}°  line ${length(r.line).toFixed(3)}  barb-line ${length(r.tip).toFixed(3)}  scale ${r.glyph}`);

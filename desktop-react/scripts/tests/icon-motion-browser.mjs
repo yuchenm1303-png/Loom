@@ -164,7 +164,7 @@ try {
   }
 
   // 8. The quill stands on its nib: engaged it takes a pose about that point and the barb follows; a start
-  //    (`data-written` on the row) makes it pull its line back into the nib and write it again, ending at
+  //    (`data-written` on the row) makes it write a short ink stroke and lift, ending at
   //    rest, again for the next start; under reduced motion none of it happens.
   {
     const { context, page } = await openLab();
@@ -180,7 +180,6 @@ try {
       const style = getComputedStyle(node.querySelector(part));
       return { length: parseFloat(style.strokeDasharray), opacity: Number(style.opacity) };
     }, { part, at });
-    const stroke = async (part, at) => (await look(part, at)).length;
 
     // Pose: straighter about the nib, the barb a little further, both back at rest after the pointer leaves.
     assert.equal(await turn(".li-quill"), 0);
@@ -200,22 +199,19 @@ try {
     assert.equal(await turn(".li-quill"), 0);
     assert.equal(await turn(".li-barb"), 0);
 
-    // A start: the line goes back into the nib (a dot), is written again, then the barb is struck; nothing is left held.
+    // A start keeps the feather intact, writes a stroke, then lifts and leaves no held animation.
     assert.equal(await playing(), "");
     await page.evaluate(`${cell}.setAttribute("data-written", "odd")`);
     assert.equal(await playing(), "li-flick-odd,li-write-odd");
-    assert.equal(await stroke(".li-outline", 0), 1, "starts with the whole line");
-    assert.ok(Math.abs((await stroke(".li-outline", 96)) - 0.001) < 0.01, "the line is taken back into the nib");
-    const writing = await stroke(".li-outline", 300);
-    assert.ok(writing > 0.4 && writing < 0.99, `the line is part way when it is written again (${writing})`);
-    const waiting = await look(".li-barb", 300);
-    assert.ok(waiting.length < 0.01 && waiting.opacity === 0, `the barb waits, unseen, until the line is written (${JSON.stringify(waiting)})`);
-    const struck = await look(".li-barb", 560);
-    assert.ok(struck.length > 0.3 && struck.opacity === 1, `and is struck last (${JSON.stringify(struck)})`);
+    assert.equal((await look(".quill-outline", 96)).opacity, 1, "the feather stays visible at touchdown");
+    assert.ok((await look(".li-ink", 300)).opacity > .5, "ink appears while writing");
+    const displaced = await page.evaluate(`new DOMMatrix(getComputedStyle(${cell}.querySelector(".li-scribe")).transform).e`);
+    assert.ok(displaced > 2 && displaced < 6, "the nib travels along the ink stroke");
+    assert.ok((await look(".li-ink", 620)).opacity < .1, "ink fades after lifting");
     await page.evaluate(`${cell}.getAnimations({ subtree: true }).forEach((a) => a.play())`);
     await page.waitForTimeout(900);
     assert.equal(await playing(), "", "the animation ends and holds nothing");
-    assert.equal(await page.evaluate(`getComputedStyle(${cell}.querySelector(".li-outline")).strokeDasharray`), "none", "rest is the drawing itself");
+    assert.equal(await page.evaluate(`getComputedStyle(${cell}.querySelector(".quill-outline")).strokeDasharray`), "none", "rest is the drawing itself");
     // the next start plays again, even though the first is still on the row
     await page.evaluate(`${cell}.setAttribute("data-written", "even")`);
     assert.equal(await playing(), "li-flick-even,li-write-even");
@@ -227,7 +223,7 @@ try {
     const played = (page) => page.evaluate(() => {
       const cell = window.iconLab.cell("quill", "live");
       cell.setAttribute("data-written", "odd");
-      return ["li-outline", "li-barb"].map((part) => getComputedStyle(cell.querySelector("." + part)).animationName).join(",");
+      return ["li-scribe", "li-ink"].map((part) => getComputedStyle(cell.querySelector("." + part)).animationName).join(",");
     });
     const system = await openLab({ reducedMotion: "reduce" });
     assert.equal(await played(system.page), "none,none", "a start must not animate under reduced motion");

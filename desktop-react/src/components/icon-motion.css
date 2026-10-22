@@ -392,42 +392,45 @@
   transition-delay: calc(var(--ic-on) * 45ms);
 }
 
-/* Starting a conversation: the line is pulled back into the nib and the quill writes itself
-   again, shaft first, then the head, then the barb struck last. Like a ball that is let fall,
-   it picks up speed into the nib and leaves it fast and slows as it comes to rest. The row says
-   that one has been started (data-written, odd or even by turns, so that a second start replays
-   while the first is still running). Nothing is left held: at the end the rest pose is the
-   drawing itself. */
+/* Touch down, sign, lift. An outer group keeps the hover pose independent. */
+[data-icon="quill"] .li-scribe { transform-origin: 2.91px 21.95px; }
+[data-icon="quill"] .li-ink { opacity: 0; stroke-dasharray: 1; stroke-dashoffset: 1; }
 @media (prefers-reduced-motion: no-preference) {
-  :root:not([data-loom-reduced-motion="true"]) [data-written="odd"] [data-icon="quill"] .li-outline { animation: li-write-odd var(--ic-t-write) linear backwards; }
-  :root:not([data-loom-reduced-motion="true"]) [data-written="even"] [data-icon="quill"] .li-outline { animation: li-write-even var(--ic-t-write) linear backwards; }
-  :root:not([data-loom-reduced-motion="true"]) [data-written="odd"] [data-icon="quill"] .li-barb { animation: li-flick-odd var(--ic-t-write) linear backwards; }
-  :root:not([data-loom-reduced-motion="true"]) [data-written="even"] [data-icon="quill"] .li-barb { animation: li-flick-even var(--ic-t-write) linear backwards; }
+  :root:not([data-loom-reduced-motion="true"]) [data-written="odd"] [data-icon="quill"] .li-scribe { animation: li-write-odd var(--ic-t-write) linear backwards; }
+  :root:not([data-loom-reduced-motion="true"]) [data-written="odd"] [data-icon="quill"] .li-ink { animation: li-flick-odd var(--ic-t-write) linear backwards; }
+  :root:not([data-loom-reduced-motion="true"]) [data-written="even"] [data-icon="quill"] .li-scribe { animation: li-write-even var(--ic-t-write) linear backwards; }
+  :root:not([data-loom-reduced-motion="true"]) [data-written="even"] [data-icon="quill"] .li-ink { animation: li-flick-even var(--ic-t-write) linear backwards; }
 }
 
 @keyframes li-write-odd {
-  0% { stroke-dasharray: 1 3; animation-timing-function: cubic-bezier(.5, 0, .9, .55); }
-  14%, 16% { stroke-dasharray: .001 3; animation-timing-function: cubic-bezier(.25, .45, .45, 1); }
-  86%, 100% { stroke-dasharray: 1 3; }
+  0%, 100% { transform: translate(0, 0) rotate(0deg); animation-timing-function: cubic-bezier(.2, .7, .3, 1); }
+  14% { transform: translate(0, 0) rotate(4deg); animation-timing-function: ease-in-out; }
+  36% { transform: translate(2.6px, -.45px) rotate(-3deg); animation-timing-function: ease-in-out; }
+  56% { transform: translate(5.2px, -.8px) rotate(-7deg); animation-timing-function: cubic-bezier(.2, .7, .3, 1); }
+  74% { transform: translate(3px, -2px) rotate(-9deg); animation-timing-function: cubic-bezier(.22, .8, .3, 1); }
 }
 @keyframes li-write-even {
-  0% { stroke-dasharray: 1 3; animation-timing-function: cubic-bezier(.5, 0, .9, .55); }
-  14%, 16% { stroke-dasharray: .001 3; animation-timing-function: cubic-bezier(.25, .45, .45, 1); }
-  86%, 100% { stroke-dasharray: 1 3; }
+  0%, 100% { transform: translate(0, 0) rotate(0deg); animation-timing-function: cubic-bezier(.2, .7, .3, 1); }
+  14% { transform: translate(0, 0) rotate(4deg); animation-timing-function: ease-in-out; }
+  36% { transform: translate(2.6px, -.45px) rotate(-3deg); animation-timing-function: ease-in-out; }
+  56% { transform: translate(5.2px, -.8px) rotate(-7deg); animation-timing-function: cubic-bezier(.2, .7, .3, 1); }
+  74% { transform: translate(3px, -2px) rotate(-9deg); animation-timing-function: cubic-bezier(.22, .8, .3, 1); }
 }
 @keyframes li-flick-odd {
-  0% { stroke-dasharray: 1 3; opacity: 1; animation-timing-function: ease-in; }
-  6% { stroke-dasharray: .001 3; opacity: 1; }
-  7%, 76% { stroke-dasharray: .001 3; opacity: 0; }
-  77% { stroke-dasharray: .001 3; opacity: 1; animation-timing-function: cubic-bezier(.2, .5, .4, 1); }
-  100% { stroke-dasharray: 1 3; opacity: 1; }
+  0%, 14% { stroke-dashoffset: 1; opacity: 0; }
+  15% { stroke-dashoffset: 1; opacity: .65; }
+  36% { stroke-dashoffset: .5; opacity: .65; }
+  56% { stroke-dashoffset: 0; opacity: .65; }
+  72% { stroke-dashoffset: 0; opacity: .45; }
+  100% { stroke-dashoffset: 0; opacity: 0; }
 }
 @keyframes li-flick-even {
-  0% { stroke-dasharray: 1 3; opacity: 1; animation-timing-function: ease-in; }
-  6% { stroke-dasharray: .001 3; opacity: 1; }
-  7%, 76% { stroke-dasharray: .001 3; opacity: 0; }
-  77% { stroke-dasharray: .001 3; opacity: 1; animation-timing-function: cubic-bezier(.2, .5, .4, 1); }
-  100% { stroke-dasharray: 1 3; opacity: 1; }
+  0%, 14% { stroke-dashoffset: 1; opacity: 0; }
+  15% { stroke-dashoffset: 1; opacity: .65; }
+  36% { stroke-dashoffset: .5; opacity: .65; }
+  56% { stroke-dashoffset: 0; opacity: .65; }
+  72% { stroke-dashoffset: 0; opacity: .45; }
+  100% { stroke-dashoffset: 0; opacity: 0; }
 }
 
 /* -------------------------------------------------------------------------- */

@@ -2,7 +2,7 @@ import { forwardRef, useImperativeHandle, useState } from "react";
 import { Quill } from "./icons";
 
 export interface NewConversationRowHandle {
-  /** Make the quill write itself again: a conversation was just started from somewhere other than this row. */
+  /** Play the quill’s writing gesture again: a conversation was just started from somewhere other than this row. */
   write(): void;
 }
 
@@ -18,7 +18,7 @@ interface NewConversationRowProps {
 /**
  * The new-conversation control: the quill in the sidebar's top row, and in the header while the
  * sidebar is closed. Each time a conversation is started from it (a click here, or the shortcut
- * through `write`) its quill writes itself again; icon-motion.css plays that from `data-written`.
+ * through `write`) its quill writes a short ink stroke; icon-motion.css plays that from `data-written`.
  * The value alternates, odd and even, so that a second start replays the animation while the
  * first is still running. The count lives here and not in the sidebar, which would redraw every
  * conversation row for a flourish, and a row that mounts later starts at rest.
