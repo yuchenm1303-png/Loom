@@ -86,3 +86,18 @@ No turn lifecycle core, sandbox/approval, MCP, app-server, or durable session-st
 Translated/added coverage includes AGENTS discovery/precedence/rendering, empty-primary fallback blocking, nested scope, symlink behavior, shared byte budget, applied-cache reuse for a stable environment key, explicit invalidation/environment-key separation, 90% auto-compact default, provider-usage trigger, checkpoint invalidation of stale usage, local/manual compaction, contextual-user replacement history, context-window oldest-unit retry, cancellation without commit, and fail-closed irreducible overflow.
 
 GitHub Actions currently cannot be interpreted as an executable result. Runs observed for this branch report job failures before runner execution; jobs return no steps/logs. Therefore pytest/build/smoke status remains **unknown**, not passed and not code-failed.
+# Manual compaction handoff
+
+Manual compaction prepares the selected thread's model/credentials through the
+same boundary as a normal turn. It does not borrow the app's default model after
+restart. A terminal turn whose worker is still cleaning up hands off through its
+completion event; it is never unlocked while the worker is still operating.
+Duplicate queued compactions share one operation ID. Failures during preparation
+or worker startup release their operation state so another request can proceed.
+
+The standalone summary runs through the bounded model executor, budgets against
+declared/observed provider limits, and shrinks only its request projection on an
+explicit context overflow. Logical tool-call/result units stay together. The
+checkpoint archive retains the full original history. Permission failures are
+reported rather than bypassed with a different model or silently replaced by a
+successful local summary.

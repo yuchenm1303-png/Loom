@@ -70,6 +70,23 @@ def test_messages_http_context_rejection_compacts_before_resampling(tmp_path):
         runtime.close()
 
 
+def test_manual_compaction_trims_only_summary_request_after_provider_overflow(tmp_path):
+    from app.ai.errors import AITransportError
+    runtime, platform, store, session = _runtime(tmp_path, [
+        AITransportError("HTTP 400: context window exceeds limit (2013)", status_code=400, retryable=False),
+        ModelResponse(text="Summary preserving the task and remaining work."),
+    ])
+    try:
+        checkpoint = runtime.compact_context_with_model(session.session_id, keep_recent=4)
+        assert len(platform.requests) == 2
+        assert len(platform.requests[1][1].messages) < len(platform.requests[0][1].messages)
+        assert checkpoint.archived_message_count == 8
+        assert checkpoint.retained_message_count == 4
+        assert store.load(session.session_id).messages[-1].name == "loom_compaction"
+    finally:
+        runtime.close()
+
+
 def test_model_compaction_is_separate_no_tool_task_and_counts_usage(tmp_path):
     runtime, platform, store, session = _runtime(
         tmp_path,

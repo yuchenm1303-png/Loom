@@ -1449,6 +1449,20 @@ class ManagedStreamingLoomAppServerService(StreamingLoomAppServerService):
 
         operation_id = uuid.uuid4().hex
         started_at = _utc_now()
+        job = {"threadId": session_id, "operationId": operation_id, "started": True,
+               "keepRecent": keep_recent, "startedAt": started_at}
+        with self._guard:
+            pending = getattr(self, "_manual_compactions", None)
+            if pending is None:
+                pending = self._manual_compactions = {}
+            if session_id in pending:
+                return dict(pending[session_id])
+            pending[session_id] = job
+
+        def release() -> None:
+            with self._guard:
+                if self._manual_compactions.get(session_id) is job:
+                    self._manual_compactions.pop(session_id, None)
 
         def publish(status: str, stage: str, message: str, *, error: str = "") -> None:
             self._notify(
@@ -1468,12 +1482,16 @@ class ManagedStreamingLoomAppServerService(StreamingLoomAppServerService):
         def compact() -> None:
             publish("running", "preparing", "Preparing conversation history")
             try:
+                # Manual/internal model calls need the same per-thread model and
+                # refreshed account credential as an ordinary turn boundary.
+                self._prepare_turn(self._load(session_id))
                 publish("running", "summarizing", "Generating the handoff summary")
                 checkpoint = self.runtime.compact_context_with_model(
                     session_id,
                     keep_recent=keep_recent,
                 )
             except Exception as exc:
+                release()
                 publish(
                     "failed",
                     "failed",
@@ -1487,6 +1505,7 @@ class ManagedStreamingLoomAppServerService(StreamingLoomAppServerService):
                 "Context checkpoint created",
             )
             _ = checkpoint
+            release()
 
         # Compaction is a detached model call.  Its own lifecycle notification
         # makes progress and failure visible instead of asking the client to
@@ -1496,8 +1515,10 @@ class ManagedStreamingLoomAppServerService(StreamingLoomAppServerService):
             self._launch(
                 session_id,
                 compact,
+                after_current=True,
             )
         except Exception as exc:
+            release()
             publish(
                 "failed",
                 "failed",

@@ -1382,10 +1382,21 @@ class LoomAppServerService:
             "decision": decision,
         }
 
-    def _launch(self, session_id: str, operation: Callable[[], Any]) -> None:
+    def _launch(self, session_id: str, operation: Callable[[], Any], *, after_current: bool = False) -> None:
         with self._guard:
+            if not hasattr(self, "_operation_done"):
+                self._operation_done = {}
             if session_id in self._active_sessions:
+                predecessor = self._operation_done.get(session_id)
+                if after_current and predecessor is not None:
+                    def handoff() -> None:
+                        predecessor.wait()
+                        self._launch(session_id, operation, after_current=True)
+                    threading.Thread(target=handoff, daemon=True, name=f"loom-handoff-{session_id[:8]}").start()
+                    return
                 raise RuntimeError("thread already has an active app-server operation")
+            done = threading.Event()
+            self._operation_done[session_id] = done
             self._active_sessions.add(session_id)
             self._task_errors.pop(session_id, None)
 
@@ -1398,12 +1409,22 @@ class LoomAppServerService:
             finally:
                 with self._guard:
                     self._active_sessions.discard(session_id)
+                    self._operation_done.pop(session_id, None)
+                    done.set()
 
-        threading.Thread(
+        worker = threading.Thread(
             target=runner,
             name=f"loom-app-{session_id[:8]}-{uuid.uuid4().hex[:6]}",
             daemon=True,
-        ).start()
+        )
+        try:
+            worker.start()
+        except BaseException:
+            with self._guard:
+                self._active_sessions.discard(session_id)
+                self._operation_done.pop(session_id, None)
+                done.set()
+            raise
 
     @staticmethod
     def _required_text(params: dict[str, Any], key: str) -> str:

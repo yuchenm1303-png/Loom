@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import time
+import threading
 from pathlib import Path
 
 import pytest
@@ -331,6 +332,75 @@ def test_manual_compaction_publishes_visible_lifecycle(tmp_path: Path) -> None:
         }, progress
         assert all(item["operationId"] == result["operationId"] for item in progress)
         assert not any(item["status"] == "failed" for item in progress)
+    finally:
+        runtime.close()
+
+
+def test_manual_compaction_hands_off_after_cleanup_and_prepares_thread_model(tmp_path: Path):
+    service, runtime, workspace = _build_service(tmp_path, [])
+    entered, release, finished = threading.Event(), threading.Event(), threading.Event()
+    order = []
+    try:
+        thread_id = service.thread_start({"workspace": str(workspace), "permissionMode": "workspace"})["thread"]["id"]
+        def cleanup():
+            entered.set()
+            assert release.wait(5)
+            order.append("cleanup")
+        service._launch(thread_id, cleanup)
+        assert entered.wait(2)
+        service._prepare_turn = lambda session: order.append("prepared:" + session.session_id)
+        def compact(session_id, keep_recent=24):
+            order.append("compact:" + session_id)
+            finished.set()
+            return object()
+        runtime.compact_context_with_model = compact
+        first = service.thread_compact({"threadId": thread_id})
+        second = service.thread_compact({"threadId": thread_id})
+        assert first["operationId"] == second["operationId"]
+        assert not finished.is_set()
+        release.set()
+        assert finished.wait(3)
+        _wait_until(lambda: not service._is_active(thread_id))
+        assert order == ["cleanup", "prepared:" + thread_id, "compact:" + thread_id]
+        assert thread_id not in service._manual_compactions
+    finally:
+        release.set()
+        runtime.close()
+
+
+def test_compaction_model_preparation_failure_releases_operation_for_retry(tmp_path: Path):
+    service, runtime, workspace = _build_service(tmp_path, [])
+    notices = []
+    service.subscribe_notifications(lambda method, params: notices.append((method, params)))
+    try:
+        thread_id = service.thread_start({"workspace": str(workspace), "permissionMode": "workspace"})["thread"]["id"]
+        def denied(session):
+            raise RuntimeError("MODEL_NOT_ENTITLED")
+        service._prepare_turn = denied
+        first = service.thread_compact({"threadId": thread_id})
+        _wait_until(lambda: not service._is_active(thread_id))
+        assert thread_id not in service._manual_compactions
+        assert any(method == "context/compaction" and item["status"] == "failed" and "MODEL_NOT_ENTITLED" in item["error"] for method, item in notices)
+        service._prepare_turn = lambda session: None
+        runtime.compact_context_with_model = lambda *args, **kwargs: object()
+        second = service.thread_compact({"threadId": thread_id})
+        _wait_until(lambda: not service._is_active(thread_id))
+        assert first["operationId"] != second["operationId"]
+    finally:
+        runtime.close()
+
+
+def test_operation_start_failure_cannot_leave_a_stale_active_marker(tmp_path: Path, monkeypatch):
+    service, runtime, workspace = _build_service(tmp_path, [])
+    try:
+        thread_id = service.thread_start({"workspace": str(workspace), "permissionMode": "workspace"})["thread"]["id"]
+        def fail_start(self):
+            raise RuntimeError("thread start failed")
+        monkeypatch.setattr(threading.Thread, "start", fail_start)
+        with pytest.raises(RuntimeError, match="thread start failed"):
+            service._launch(thread_id, lambda: None)
+        assert not service._is_active(thread_id)
+        assert thread_id not in service._operation_done
     finally:
         runtime.close()
 

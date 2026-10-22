@@ -300,21 +300,46 @@ class ContextAgentRuntime(SandboxAgentRuntime):
             from .context_composer import capture_context, stable_prefix, render_request
             step = self._build_step_context(session, next_model_step=False)
             capture_context(self, session, step)
-            request_messages = render_request(self, session, stable_prefix(self, session, step), archived)
-            request_messages.append(AIMessage(role=MessageRole.USER,
-                content=summarization_prompt(communication_language)))
-            request = ChatRequest(
-                messages=tuple(request_messages),
-                tools=(),
-                tool_choice=ToolChoice.NONE,
-                max_output_tokens=(step.request_state.context_limits.output_reserve_tokens
-                    if step.request_state.context_limits.output_reserve_declared else None),
-                session_id=session.session_id,
-            )
-            response = self.platform_for_session(session.session_id).execute_chat(
-                session.profile_id,
-                request,
-            )
+            from .context_budget import (is_context_window_error, _trim_oldest_compaction_unit,
+                estimate_tokens, _resolved_input_budget, _estimator_calibration)
+            from app.ai.errors import AITransportError, AIResponseError
+            compact_input = tuple(archived)
+            try:
+                prefix = stable_prefix(self, session, step)
+                calibration, _ = _estimator_calibration(self, session)
+                ceiling = _resolved_input_budget(self, session, step.request_state.context_limits,
+                    fixed_tokens=int(estimate_tokens(render_request(self, session, prefix, ())) * calibration))
+                while True:
+                    request_messages = render_request(self, session, prefix, compact_input)
+                    request_messages.append(AIMessage(role=MessageRole.USER,
+                        content=summarization_prompt(communication_language)))
+                    if ceiling is not None and estimate_tokens(request_messages) * calibration > ceiling and len(compact_input) > 1:
+                        compact_input = _trim_oldest_compaction_unit(compact_input)
+                        continue
+                    request = ChatRequest(
+                        messages=tuple(request_messages), tools=(), tool_choice=ToolChoice.NONE,
+                        max_output_tokens=(step.request_state.context_limits.output_reserve_tokens
+                            if step.request_state.context_limits.output_reserve_declared else None),
+                        session_id=session.session_id,
+                    )
+                    try:
+                        response = self.model_executor.execute(
+                            self.platform_for_session(session.session_id), session.profile_id,
+                            request, CancellationToken(),
+                        )
+                        break
+                    except (AITransportError, AIResponseError) as exc:
+                        if not is_context_window_error(exc) or len(compact_input) <= 1:
+                            raise
+                        # Project the summarizer's input only. Keep canonical
+                        # history and the checkpoint archive intact, and always
+                        # drop a full tool-call/result unit together.
+                        target = max(1, estimate_tokens(compact_input) * 3 // 4)
+                        compact_input = _trim_oldest_compaction_unit(compact_input)
+                        while len(compact_input) > 1 and estimate_tokens(compact_input) > target:
+                            compact_input = _trim_oldest_compaction_unit(compact_input)
+            finally:
+                self._release_step_context(step)
             if not isinstance(response, ModelResponse):
                 raise TypeError("agent model platform must return ModelResponse")
             if response.tool_calls:
