@@ -236,3 +236,36 @@
 .browser-ai-control.enabled { color: var(--pl-ok); border-color: color-mix(in srgb, var(--pl-ok) 32%, transparent); }
 .browser-ai-indicator { width: 6px; height: 6px; border-radius: 50%; background: var(--pl-faint); }
 .browser-ai-control.enabled .browser-ai-indicator { background: var(--pl-ok); }
+.browser-navigation { position: relative; gap: 4px; padding: 9px 12px; }
+.browser-navigation .browser-ai-control { margin-left: 4px; font-size: 11px; padding: 7px 8px; }
+.browser-address-form { min-width: 80px; }
+.browser-tools { position: relative; flex: 0 0 auto; }
+.browser-tools-menu { position: absolute; z-index: 40; right: 0; top: calc(100% + 12px); width: 264px; padding: 8px; border: 1px solid var(--pl-edge); border-radius: 12px; background: var(--pl-surface); color: var(--pl-ink); box-shadow: 0 12px 36px #0003; }
+.browser-tools-caption { display: block; padding: 7px 9px; font-size: 10px; letter-spacing: .09em; color: var(--pl-muted); }
+.browser-tools-menu > button { width: 100%; display: flex; align-items: center; gap: 10px; padding: 10px; border: 0; border-radius: 6px; background: transparent; color: inherit; font: inherit; font-size: 12px; text-align: left; cursor: pointer; }
+.browser-tools-menu button:hover:not(:disabled), .browser-tools-menu button:focus-visible { background: var(--pl-hover); }
+.browser-tools-menu button:focus-visible, .browser-find button:focus-visible, .browser-start-form input:focus-visible, .browser-start-preview:focus-visible { outline: 2px solid var(--pl-focus, #a797f5); outline-offset: 1px; }
+.browser-tools-menu button:disabled { opacity: .4; cursor: default; }
+.browser-tools-menu kbd { margin-left: auto; color: var(--pl-muted); font: inherit; font-size: 10px; }
+.browser-tools-menu > p { margin: 8px 9px 5px; padding-top: 10px; border-top: 1px solid var(--pl-edge); color: var(--pl-muted); font-size: 11px; line-height: 1.6; }
+.browser-zoom { display: flex; align-items: center; padding: 4px 8px 8px; gap: 4px; border-bottom: 1px solid var(--pl-edge); margin-bottom: 4px; }
+.browser-zoom > span { margin-right: auto; font-size: 12px; }
+.browser-zoom button { display: inline-flex; align-items: center; justify-content: center; min-width: 28px; height: 28px; padding: 0 5px; border-radius: 5px; border: 1px solid var(--pl-edge); color: inherit; background: transparent; font: inherit; font-size: 11px; cursor: pointer; }
+.browser-find { display: flex; align-items: center; gap: 7px; padding: 8px 14px; background: var(--pl-surface); color: var(--pl-muted); border-bottom: 1px solid var(--pl-edge); }
+.browser-find input { flex: 1; min-width: 60px; padding: 5px 0; border: 0; outline: 0; background: transparent; color: var(--pl-ink); font: inherit; font-size: 12px; }
+.browser-find > span { font-size: 11px; min-width: 25px; }
+.browser-find button { border: 0; color: inherit; background: transparent; padding: 4px; cursor: pointer; }
+.browser-feedback { padding: 8px 14px; font-size: 12px; color: var(--pl-ok); background: var(--pl-surface); }
+.browser-session-notice { display: flex; align-items: center; gap: 12px; padding: 9px 14px; font-size: 11px; line-height: 1.5; }
+.browser-session-notice > span { flex: 1; }
+.browser-session-notice > button { display: flex; align-items: center; flex: 0 0 auto; margin: 0; padding: 3px; border: 0; background: transparent; }
+.browser-new-tab { pointer-events: auto; padding: 28px; text-align: center; gap: 15px; }
+.browser-new-tab > svg { margin-bottom: 5px; padding: 15px; box-sizing: content-box; border: 1px solid var(--pl-edge); border-radius: 19px; color: var(--pl-muted); }
+.browser-new-tab > span { font-size: clamp(18px, 2vw, 24px); letter-spacing: -.025em; }
+.browser-new-tab > small { max-width: 350px; line-height: 1.7; }
+.browser-start-form { display: flex; width: min(100%, 380px); margin: 8px 0 0; border: 1px solid var(--pl-edge); background: var(--pl-surface); border-radius: 9px; overflow: hidden; }
+.browser-start-form input { width: 0; flex: 1; border: 0; background: transparent; color: var(--pl-ink); padding: 11px 12px; font: inherit; font-size: 12px; outline: 0; }
+.browser-start-form button, .browser-start-preview { display: inline-flex; align-items: center; justify-content: center; gap: 8px; border: 0; background: var(--pl-hover); color: var(--pl-ink); padding: 10px 12px; font: inherit; font-size: 12px; cursor: pointer; }
+.browser-start-preview { margin-bottom: 8px; border: 1px solid var(--pl-edge); border-radius: 8px; background: transparent; }
+.browser-start-form button:disabled, .browser-start-preview:disabled { opacity: .4; cursor: default; }
+@media (max-width: 1100px) { .browser-navigation { padding: 7px; gap: 1px; } .browser-navigation .browser-icon-button { width: 27px; } }

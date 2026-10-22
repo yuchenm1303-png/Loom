@@ -86,6 +86,11 @@ const api = {
     ipcRenderer.on("loom:embedded-browser-state", handler);
     return () => ipcRenderer.removeListener("loom:embedded-browser-state", handler);
   },
+  onEmbeddedBrowserFind: (listener: () => void) => {
+    const handler = () => listener();
+    ipcRenderer.on("loom:embedded-browser-find", handler);
+    return () => ipcRenderer.removeListener("loom:embedded-browser-find", handler);
+  },
   onEmbeddedBrowserFocusAddress: (listener: () => void) => {
     const handler = () => listener();
     ipcRenderer.on("loom:embedded-browser-focus-address", handler);

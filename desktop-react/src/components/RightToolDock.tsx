@@ -19,11 +19,11 @@ type DockId =
 
 const ORDER_KEY = "loom.ui.rightToolDock.order.v1";
 export const DEFAULT_TOOL_ORDER: readonly DockId[] = [
-  "files", "browser", "background", "tasks", "agents", "review",
-  "artifacts", "inspector", "profile", "account", "settings",
+  "files", "browser", "review", "artifacts", "tasks", "background", "agents", "inspector", "profile", "account", "settings",
 ];
 /** Where the utilities start. The rule above them belongs to the slot, so a tool dragged across it joins the other group. */
-const UTILITY_SLOT = DEFAULT_TOOL_ORDER.length - 3;
+const UTILITY_SLOT = 8;
+const toolGroup = (id: DockId) => ["profile", "account", "settings"].includes(id) ? 2 : ["tasks", "background", "agents", "inspector"].includes(id) ? 1 : 0;
 /** Pointer travel before a press becomes a drag, so a click with a shaky hand is still a click. */
 const DRAG_THRESHOLD = 4;
 /** How long a lifted tool takes to settle into its slot, in step with `--dock-settle` in the stylesheet. */
@@ -49,7 +49,7 @@ function readOrder(): DockId[] {
         const next = merged.findIndex(existing => DEFAULT_TOOL_ORDER.indexOf(existing) > rank);
         merged.splice(next < 0 ? merged.length : next, 0, id);
       });
-      return merged;
+      return merged.sort((a, b) => toolGroup(a) - toolGroup(b));
     }
   } catch { /* The dock remains usable when storage is disabled. */ }
   return [...DEFAULT_TOOL_ORDER];
@@ -141,6 +141,14 @@ export function RightToolDock(props: RightToolDockProps) {
   const [hushed, setHushed] = useState<DockId | null>(null);
   const [tip, setTip] = useState<{ id: DockId | null; on: boolean }>({ id: null, on: false });
   const [announcement, setAnnouncement] = useState("");
+  const [expanded, setExpanded] = useState(() => {
+    try { const saved = localStorage.getItem("loom.ui.toolDock.labels"); return saved === null ? window.innerWidth >= 1280 : saved === "true"; } catch { return window.innerWidth >= 1280; }
+  });
+  useLayoutEffect(() => {
+    document.documentElement.style.setProperty("--loom-tool-rail-custom", expanded ? "142px" : "66px");
+    try { localStorage.setItem("loom.ui.toolDock.labels", String(expanded)); } catch {}
+    return () => { document.documentElement.style.removeProperty("--loom-tool-rail-custom"); };
+  }, [expanded]);
   const [brokenAvatar, setBrokenAvatar] = useState("");
   const dockRef = useRef<HTMLDivElement>(null);
   const gliderRef = useRef<HTMLSpanElement>(null);
@@ -227,6 +235,9 @@ export function RightToolDock(props: RightToolDockProps) {
       onClick: props.onOpenSettings,
     },
   };
+  const shortLabels: Record<DockId, string> = zh
+    ? { files:"项目文件", browser:"浏览器", review:"代码审查", artifacts:"产物预览", tasks:"任务进度", background:"后台进程", agents:"子代理", inspector:"运行详情", profile:"使用洞察", account:"账号", settings:"设置" }
+    : { files:"Files", browser:"Browser", review:"Changes", artifacts:"Artifacts", tasks:"Plan", background:"Processes", agents:"Agents", inspector:"Run details", profile:"Usage", account:"Account", settings:"Settings" };
   const nameOf = (id: DockId) => {
     const item = items[id];
     // The count lives in the words (the dot only says there is one), where it is read in full.
@@ -278,8 +289,9 @@ export function RightToolDock(props: RightToolDockProps) {
     session.tops = nodes.map(node => node.offsetTop);
     session.height = nodes[session.from].offsetHeight;
     session.scale = dock.getBoundingClientRect().height / (dock.offsetHeight || 1) || 1;
-    session.low = session.tops[0] - session.tops[session.from];
-    session.high = session.tops[nodes.length - 1] - session.tops[session.from];
+    const siblings = latestOrder.current.map((id, at) => toolGroup(id) === toolGroup(session.id) ? at : -1).filter(at => at >= 0);
+    session.low = session.tops[siblings[0]] - session.tops[session.from];
+    session.high = session.tops[siblings[siblings.length - 1]] - session.tops[session.from];
     nodes[session.from].classList.add("is-lifted");
     dock.dataset.dragging = "true";
     session.started = true;
@@ -297,6 +309,7 @@ export function RightToolDock(props: RightToolDockProps) {
     let to = session.from;
     let nearest = Infinity;
     session.tops.forEach((top, index) => {
+      if (toolGroup(latestOrder.current[index]) !== toolGroup(session.id)) return;
       const gap = Math.abs(top + session.height / 2 - middle);
       if (gap < nearest) { nearest = gap; to = index; }
     });
@@ -392,7 +405,7 @@ export function RightToolDock(props: RightToolDockProps) {
     const index = order.indexOf(id);
     if (event.altKey && vertical) {
       const next = index + (event.key === "ArrowUp" ? -1 : 1);
-      if (next < 0 || next >= order.length) return;
+      if (next < 0 || next >= order.length || toolGroup(order[next]) !== toolGroup(id)) return;
       event.preventDefault();
       refocus.current = id;
       commitOrder(moveItem(order, index, next), true);
@@ -537,13 +550,14 @@ export function RightToolDock(props: RightToolDockProps) {
           onDragStart={event => event.preventDefault()}
         >
           {item.icon}
+          <span className="loom-tool-visible-label">{shortLabels[id]}</span>
           {item.progress ? (
             <span className="loom-tool-progress" data-complete={ratio >= 1 ? "true" : "false"} aria-hidden="true">
               <span style={{ transform: `scaleX(${ratio})` }} />
             </span>
           ) : null}
           {item.count !== undefined
-            ? <span className="loom-tool-count" data-on={item.count > 0 ? "true" : "false"} data-live={item.live ? "true" : undefined} aria-hidden="true" />
+            ? item.count > 0 ? <span className="loom-tool-count dock-numeric" data-on="true" data-live={item.live ? "true" : undefined} aria-hidden="true">{item.count > 9 ? "9+" : item.count}</span> : null
             : null}
           {item.status !== undefined
             ? <span className="loom-tool-status" data-on={item.status ? "true" : "false"} aria-hidden="true" />
@@ -552,22 +566,24 @@ export function RightToolDock(props: RightToolDockProps) {
       </div>
     );
   });
-  rows.splice(UTILITY_SLOT, 0, <span className="loom-tool-divider" key="divider" aria-hidden="true" />);
+  rows.splice(UTILITY_SLOT, 0, <span className="loom-tool-divider" key="divider" aria-hidden="true"><span>{zh ? "个人与设置" : "PERSONAL"}</span></span>);
+  rows.splice(4, 0, <span className="loom-tool-divider" key="activity-divider" aria-hidden="true"><span>{zh ? "任务执行" : "EXECUTION"}</span></span>);
 
   return (
-    <aside className="loom-tool-rail" aria-label={zh ? "快捷工具" : "Quick tools"} data-motion-phase={presence.phase}>
+    <aside data-expanded={expanded ? "true" : "false"} className="loom-tool-rail" aria-label={zh ? "快捷工具" : "Quick tools"} data-motion-phase={presence.phase}>
       <div className="loom-tool-stage">
         <div
           className="loom-tool-dock"
           ref={dockRef}
           role="toolbar"
           aria-orientation="vertical"
-          aria-label={zh ? "快捷工具（拖动或按 Alt+↑/↓ 调整顺序）" : "Quick tools (drag, or press Alt+Up/Down, to reorder)"}
+          aria-label={zh ? "工作工具（拖动或 Alt+↑/↓ 在组内排序）" : "Workspace tools (drag or Alt+Up/Down to reorder within a group)"}
           data-press={pressed ? "true" : undefined}
           onPointerLeave={() => { setHoverId(null); setHushed(null); if (!drag.current) setPressed(false); }}
           onScroll={() => setHushed(tip.id)}
         >
           <span className="loom-tool-glider" ref={gliderRef} data-on="false" aria-hidden="true" />
+          <button type="button" className="loom-tool-label-toggle" aria-label={zh ? (expanded ? "收起工具名称" : "展开工具名称") : (expanded ? "Hide tool names" : "Show tool names")} aria-pressed={expanded} onClick={() => setExpanded(value => !value)}><PanelRightOpen size={14}/>{expanded ? <span>{zh ? "工作区" : "WORKSPACE"}</span> : null}</button>
           {rows}
         </div>
         <div className="loom-tool-tip" ref={tipRef} data-on={tip.on ? "true" : "false"} aria-hidden="true">
@@ -589,3 +605,4 @@ export function RightToolDock(props: RightToolDockProps) {
     </aside>
   );
 }
+

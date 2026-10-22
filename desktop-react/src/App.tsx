@@ -395,7 +395,7 @@ export default function App() {
   useEffect(() => {
     if (account.ready) void loom.refreshModels().catch(() => {});
   }, [account.ready, account.account.authenticated, account.account.user?.id, loom.refreshModels]);
-  const { t } = useI18n();
+  const { t, language } = useI18n();
   const shellRef = useRef<HTMLDivElement | null>(null);
   // The shell's width, kept by an observer. The separators' aria-valuemax is computed while rendering, and
   // clientWidth read there forces a layout in the middle of every streamed update.
@@ -1685,6 +1685,9 @@ export default function App() {
         ariaLabel={browserDock ? t("settings.browser.title") : undefined}
         content={browserDock && browserAvailable ? visible => <BrowserWorkspace
           target={browserActivityTarget}
+          workspace={workspace}
+          previewDisabled={Boolean(running)}
+          onStartPreview={() => handlePrompt(language === "zh-CN" ? "请检查当前项目，启动合适的开发预览服务，并使用内置浏览器打开预览网址。复用已有服务，不要重复启动。" : "Inspect this project, start its development preview server, and open the preview URL in the embedded browser. Reuse an existing server when available.")}
           hidden={!visible || settingsPresence.mounted || profilePresence.mounted || accountOpen || reviewOpen || agentsOpen || projectDetailsOpen || artifactPreviewOpen || Boolean(filesProjectId) || backgroundTasksOpen}
           onClose={closeBrowser}
         /> : undefined}

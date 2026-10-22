@@ -66,6 +66,7 @@ export interface LoomBridge {
   /** Sandboxed native webContents; available only in the Electron desktop UI. */
   embeddedBrowser?(command: import("../components/BrowserWorkspace").EmbeddedBrowserCommand): Promise<import("../components/BrowserWorkspace").EmbeddedBrowserState>;
   onEmbeddedBrowserChange?(listener: (state: import("../components/BrowserWorkspace").EmbeddedBrowserState) => void): () => void;
+  onEmbeddedBrowserFind?(listener: () => void): () => void;
   onEmbeddedBrowserFocusAddress?(listener: () => void): () => void;
   /** Open a folder or reveal a file in the native file manager. */
   revealPath(targetPath: string): Promise<boolean>;

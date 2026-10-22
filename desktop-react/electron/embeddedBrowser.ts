@@ -1,4 +1,4 @@
-import { app, BrowserWindow, session, WebContentsView } from "electron";
+import { app, BrowserWindow, clipboard, session, WebContentsView } from "electron";
 import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
@@ -18,6 +18,8 @@ export interface EmbeddedBrowserTab {
   canGoForward: boolean;
   error?: string;
   aiAllowed?: boolean;
+  zoomPercent?: number;
+  findResult?: { matches: number; activeMatchOrdinal: number };
 }
 export interface EmbeddedBrowserState {
   tabs: EmbeddedBrowserTab[];
@@ -25,6 +27,9 @@ export interface EmbeddedBrowserState {
 }
 export type EmbeddedBrowserCommand =
   | { action: "snapshot" }
+  | { action: "zoom"; percent: number }
+  | { action: "find"; text: string; forward?: boolean; next?: boolean }
+  | { action: "stop-find" | "copy-screenshot" | "devtools" }
   | { action: "allow-ai"; tabId: string; enabled: boolean }
   | { action: "bounds"; bounds: { x: number; y: number; width: number; height: number } | null }
   | { action: "new-tab"; url?: string }
@@ -128,6 +133,7 @@ export class EmbeddedBrowserManager {
       state.canGoForward = history.canGoForward();
       this.publish();
     };
+    view.webContents.on("found-in-page", (_event, result) => { state.findResult = { matches: result.matches, activeMatchOrdinal: result.activeMatchOrdinal }; update(); });
     view.webContents.on("did-start-loading", () => { state.loading = true; state.error = undefined; update(); });
     view.webContents.on("did-stop-loading", () => { state.loading = false; update(); });
     view.webContents.on("page-title-updated", (_event, title) => { state.title = title || tabLabel(state.url); update(); });
@@ -191,10 +197,12 @@ export class EmbeddedBrowserManager {
     view.webContents.on("before-input-event", (event, input) => {
       if (input.type !== "keyDown" || !(input.control || input.meta)) return;
       const key = input.key.toLowerCase();
-      if (!["l", "t", "w"].includes(key)) return;
+      if (!["l", "t", "w", "f", "-", "=", "+", "0"].includes(key)) return;
       event.preventDefault();
       if (key === "t") this.addTab("");
       else if (key === "w") this.closeTab(id);
+      else if (key === "f") { this.window.webContents.focus(); this.window.webContents.send("loom:embedded-browser-find"); }
+      else if (["-", "=", "+", "0"].includes(key)) { void this.command({ action: "zoom", percent: key === "0" ? 100 : Math.max(50, Math.min(200, Math.round(view.webContents.getZoomFactor() * 100) + (key === "-" ? -10 : 10))) }); }
       else this.window.webContents.send("loom:embedded-browser-focus-address");
     });
     if (activate) {
@@ -263,7 +271,7 @@ export class EmbeddedBrowserManager {
 
   snapshot(): EmbeddedBrowserState {
     return {
-      tabs: this.order.map(id => ({ ...this.tabs.get(id)!.state, aiAllowed: this.aiAllowed.has(id) })),
+      tabs: this.order.map(id => ({ ...this.tabs.get(id)!.state, zoomPercent: Math.round(this.tabs.get(id)!.view.webContents.getZoomFactor() * 100), aiAllowed: this.aiAllowed.has(id) })),
       activeId: this.activeId,
     };
   }
@@ -273,6 +281,24 @@ export class EmbeddedBrowserManager {
     const active = this.tabs.get(this.activeId || "");
     switch (command.action) {
       case "snapshot": break;
+      case "zoom": {
+        if (!Number.isFinite(command.percent) || command.percent < 50 || command.percent > 200) throw new Error("Zoom must be between 50% and 200%.");
+        active?.view.webContents.setZoomFactor(command.percent / 100);
+        break;
+      }
+      case "find": {
+        const query = command.text.trim().slice(0, 500);
+        if (query) active?.view.webContents.findInPage(query, { forward: command.forward !== false, findNext: !command.next });
+        else { active?.view.webContents.stopFindInPage("clearSelection"); if (active) active.state.findResult = undefined; }
+        break;
+      }
+      case "stop-find": active?.view.webContents.stopFindInPage("clearSelection"); if (active) active.state.findResult = undefined; break;
+      case "copy-screenshot": {
+        if (!active?.state.url) throw new Error("Open a page before taking a screenshot.");
+        clipboard.writeImage(await active.view.webContents.capturePage());
+        break;
+      }
+      case "devtools": active?.view.webContents.openDevTools({ mode: "detach" }); break;
       case "allow-ai":
         if (!this.tabs.has(command.tabId)) throw new Error("Missing browser tab.");
         if (command.enabled) this.aiAllowed.add(command.tabId);
@@ -567,3 +593,4 @@ export class EmbeddedBrowserManager {
     this.order.length = 0;
   }
 }
+

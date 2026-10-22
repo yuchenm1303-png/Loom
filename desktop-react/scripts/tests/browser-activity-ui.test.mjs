@@ -20,6 +20,7 @@ test("image cards render direct PNGs and immediately load their page in the side
         import { BrowserActivityCards } from './src/components/BrowserActivityCards';
         import { BrowserWorkspace } from './src/components/BrowserWorkspace';
         import { I18nProvider } from './src/i18n';
+        import { RightToolDock } from './src/components/RightToolDock';
         window.commands = []; window.tabs = [];
         window.loom = {
           readLocalImage: async () => { throw new Error('local image unavailable'); },
@@ -30,6 +31,8 @@ test("image cards render direct PNGs and immediately load their page in the side
           }
         };
         localStorage.setItem('loom.settings.language', 'en');
+        const dockProps = {hasWorkspace:true,filesAvailable:true,browserAvailable:true,browserOpen:true,backgroundOpen:false,backgroundRunningCount:2,taskOpen:false,taskCompleted:1,taskTotal:3,taskRunning:true,agentsOpen:false,agentCount:1,reviewOpen:false,reviewCount:2,artifactsOpen:false,artifactCount:1,inspectorOpen:false,accountAuthenticated:true,
+          onOpenFiles:()=>{},onToggleBrowser:()=>{},onToggleBackground:()=>{window.selectedActivity='background'},onToggleTasks:()=>{},onToggleAgents:()=>{},onToggleReview:()=>{},onToggleArtifacts:()=>{},onToggleInspector:()=>{},onOpenProfile:()=>{},onOpenAccount:()=>{},onOpenSettings:()=>{}};
         function Fixture() {
           const [target, setTarget] = useState(null);
           const [broken, setBroken] = useState(false);
@@ -42,7 +45,7 @@ test("image cards render direct PNGs and immediately load their page in the side
           const items = [{id:'open', type:'tool_call',toolName:'browser_open',status:'completed',result:{
             browser_id:'external',browser_connection:'isolated',url:location.origin + (broken ? '/missing.png' : '/artifacts/check.png'), title:'Preview'
           }}];
-          return <><BrowserActivityCards items={items} active={false} workspace="fixture" />
+          return <><RightToolDock {...dockProps}/><BrowserActivityCards items={items} active={false} workspace="fixture" />
             {target && <BrowserWorkspace target={target} onClose={() => setTarget(null)} />}</>;
         }
         createRoot(document.getElementById('root')).render(<I18nProvider><Fixture /></I18nProvider>);
@@ -80,6 +83,20 @@ test("image cards render direct PNGs and immediately load their page in the side
             document.querySelector('.browser-activity-card').click();
             await waitFor(() => window.commands.some(c => c.action === 'select-tab'), 'Existing copy not reused');
             if(window.commands.filter(c => c.action === 'new-tab').length !== 1) throw new Error('Repeated click created duplicate');
+            if(document.querySelectorAll('[data-tool-id]').length !== 11) throw new Error('Detailed dock entries missing');
+            document.querySelector('[data-tool-id="background"]').click();
+            await waitFor(() => window.selectedActivity === 'background', 'Activity action not connected');
+            document.querySelector('.loom-tool-label-toggle').click();
+            await waitFor(() => document.querySelector('.loom-tool-rail').dataset.expanded === 'true', 'Dock labels did not expand');
+            document.querySelector('[aria-label="Page tools"]').click();
+            await waitFor(() => document.querySelector('.browser-tools-menu'), 'Page tools menu missing');
+            const zoom = document.querySelector('[aria-label="Zoom in"]'); zoom.click();
+            await waitFor(() => window.commands.some(c => c.action === 'zoom' && c.percent === 110), 'Zoom control missing');
+            [...document.querySelectorAll('.browser-tools-menu > button')].find(b => b.textContent.includes('Find in page')).click();
+            await waitFor(() => document.querySelector('.browser-find input'), 'Find bar missing');
+            const input = document.querySelector('.browser-find input');
+            const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set; setter.call(input,'Preview'); input.dispatchEvent(new Event('input',{bubbles:true}));
+            await waitFor(() => window.commands.some(c => c.action === 'find' && c.text === 'Preview'), 'Find request not sent');
             window.useBrokenImage();
             await waitFor(() => document.querySelector('.browser-activity-placeholder')?.textContent.includes('Preview unavailable'), 'Broken image did not explain failure');
             return 'BROWSER_CARD_UI_PASS';
@@ -99,3 +116,4 @@ test("image cards render direct PNGs and immediately load their page in the side
     rmSync(directory, { recursive: true, force: true });
   }
 });
+
