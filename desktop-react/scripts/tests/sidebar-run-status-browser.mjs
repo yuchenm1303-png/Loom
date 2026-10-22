@@ -24,7 +24,9 @@ try {
       }, { status, paused });
 
     await change("running");
-    await row.getByText("运行中", { exact: true }).waitFor();
+    await row.locator('.compact-thread-status[aria-label="运行中"]').waitFor();
+    assert.equal(await row.locator(".compact-thread-status").textContent(), "",
+      "running status uses only the indicator while retaining its accessible label");
     assert.equal(await row.getAttribute("data-run-state"), "running");
     assert.equal(await row.locator(".compact-thread-status-mark").count(), 1);
     assert.equal(await row.evaluate(el => getComputedStyle(el).backgroundColor), "rgba(0, 0, 0, 0)",
@@ -64,7 +66,7 @@ try {
     await page.evaluate(() => window.performanceFixture.emit({ method: "turn/started", params: {
       turn: { id: "turn-next", threadId: "visual-1", status: "running" },
     } }));
-    await row.getByText("运行中", { exact: true }).waitFor();
+    await row.locator('.compact-thread-status[aria-label="运行中"]').waitFor();
     await page.evaluate(() => window.performanceFixture.emit({ method: "turn/completed", params: {
       turn: { id: "turn-next", threadId: "visual-1", status: "completed" },
     } }));

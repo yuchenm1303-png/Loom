@@ -837,7 +837,7 @@ export const Sidebar = memo(function Sidebar({
             />
             {runState ? (
               <span className="compact-thread-status" aria-label={statusLabel}>
-                <span className="compact-thread-status-mark" aria-hidden="true" />{statusLabel}
+                <span className="compact-thread-status-mark" aria-hidden="true" />{runState === "running" ? null : statusLabel}
               </span>
             ) : <span className={`compact-thread-dot ${unread ? "unread" : ""}`} aria-hidden="true" />}
           </div>
@@ -858,8 +858,8 @@ export const Sidebar = memo(function Sidebar({
           >
             <span className="compact-thread-title"><AnimatedThreadTitle title={thread.title || copy.untitled} /></span>
             {runState ? (
-              <span className="compact-thread-status">
-                <span className="compact-thread-status-mark" aria-hidden="true" />{statusLabel}
+              <span className="compact-thread-status" aria-label={statusLabel}>
+                <span className="compact-thread-status-mark" aria-hidden="true" />{runState === "running" ? null : statusLabel}
               </span>
             ) : <span className={`compact-thread-dot ${unread ? "unread" : ""}`} aria-hidden="true" />}
             {unread ? <span className="sr-only">{copy.unread}</span> : null}
