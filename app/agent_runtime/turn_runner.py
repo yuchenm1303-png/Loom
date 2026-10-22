@@ -127,6 +127,7 @@ class TurnRunner:
                 attempt = 0
                 reconnect_delay = 1.0
                 stall_replays = 0
+                retry_wait_ms = 0
                 while True:
                     if rt._cancel_if_requested(session, token):
                         return rt._result(session)
@@ -207,6 +208,7 @@ class TurnRunner:
                     # new semantic sampling step. Keep both the StepContext and
                     # prepared request stable until the provider yields a response.
                     retry_sampling = False
+                    preparation_reused = False
                     while True:
                         if rt._cancel_if_requested(session, token):
                             return rt._result(session)
@@ -221,12 +223,16 @@ class TurnRunner:
                             "permission_mode": step.world_state.permission_mode.value,
                             "reasoning": reasoning.as_safe_dict() if reasoning is not None else None,
                             "attempt": attempt,
-                            "request_preparation_ms": request_preparation_ms,
+                            "request_preparation_ms": 0 if preparation_reused else request_preparation_ms,
+                            "request_preparation_reused": preparation_reused,
+                            "retry_wait_ms": retry_wait_ms,
                             "requested_max_output_tokens": request.max_output_tokens,
                             "progress_feedback": progress_feedback_mode(step.request_state.system_prompt),
                             **extra,
                             **model_identity,
                         })
+                        preparation_reused = True
+                        retry_wait_ms = 0
                         try:
                             response = rt.model_executor.execute(
                                 rt.platform_for_session(session.session_id),
@@ -411,11 +417,13 @@ class TurnRunner:
                                 })
                             if not exc.retryable:
                                 raise
+                            wait_started = time.perf_counter()
                             signal = wait_for_signal(
                                 token,
                                 sample_steering_revision,
                                 max(getattr(exc, "retry_after_seconds", 0.0), reconnect_delay),
                             )
+                            retry_wait_ms += round((time.perf_counter() - wait_started) * 1000)
                             reconnect_delay = min(20.0, reconnect_delay * 2)
                             if signal == "cancel":
                                 raise ModelCancelled()

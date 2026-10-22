@@ -26,6 +26,8 @@ def test_raw_chunks_and_content_have_independent_clocks(monkeypatch):
     clock[0] = 105
     control.note_chunk()
     timing = control.stream_timing()
+    assert timing["execution_ms"] == 5000
+    assert timing["queue_wait_ms"] == 0
     assert timing["first_chunk_ms"] == 1000
     assert timing["first_content_ms"] == 2000
     assert timing["first_tool_fragment_ms"] == 2000
