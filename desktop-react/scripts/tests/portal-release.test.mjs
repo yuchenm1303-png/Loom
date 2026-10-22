@@ -105,3 +105,36 @@ test("magnetic glass refraction is smooth on short and tall targets in both home
       "the old cutoff location must no longer produce a visible slope break");
   }
 });
+
+
+test("editorial auth uses a centered minimal dialog while the classic portal is untouched", () => {
+  const portal = readFileSync(new URL("../../src/components/WebPortal.tsx", import.meta.url), "utf8");
+  const css = readFileSync(new URL("../../src/components/portal-auth-modal.css", import.meta.url), "utf8");
+  assert.ok(portal.includes('import "./portal-auth-modal.css"'));
+  assert.ok(portal.includes("editorial-auth-dialog"));
+  assert.ok(portal.includes("editorial-modal-brand"));
+  assert.ok(portal.includes('aria-modal={editorial && drawerOpen ? true : undefined}'));
+  assert.ok(portal.includes('inert={drawerOpen}'));
+  assert.ok(portal.includes('setPageMode(next)'));
+  assert.match(css, /place-items:\s*center/);
+  assert.match(css, /width:\s*min\(476px,/);
+  assert.match(css, /max-height:\s*calc\(100dvh - 36px\)/);
+  assert.match(css, /\.loom-oauth-grid/);
+  assert.match(css, /\.loom-account-form/);
+  assert.match(css, /\.loom-host-refined/);
+  assert.match(css, /prefers-reduced-motion:\s*reduce/);
+  assert.ok(!css.includes(".loom-classic "));
+});
+
+test("editorial sign-in preserves shared OAuth, registration, recovery, and modal keyboard controls", () => {
+  const portal = readFileSync(new URL("../../src/components/WebPortal.tsx", import.meta.url), "utf8");
+  for (const flow of ["account.login(", "account.oauthExchange(", "account.registerStart(",
+    "account.verifyEmail(", "account.resendEmail(", "account.forgotPassword(",
+    "account.resetPassword(", "<HostSetupActions", "onOpenProfile", "resetAuthFlow("]) {
+    assert.ok(portal.includes(flow), "Shared authentication flow missing: " + flow);
+  }
+  for (const action of ['event.key === "Escape"', 'event.key !== "Tab"',
+    "modalReturnFocusRef", "modalRef.current", "openEditorialModal()", "dismissDrawer()"]) {
+    assert.ok(portal.includes(action), "Keyboard or focus handling missing: " + action);
+  }
+});
