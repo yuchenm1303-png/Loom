@@ -447,7 +447,7 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
                 <p className="editorial-hero-description">
                   {zh ? "阅读项目、修改文件、执行命令和操作浏览器。运行在你的电脑上，一切由你掌控。" : "Read code, edit files, run commands and browse the web — on your computer, with your permission."}
                 </p>
-                <button type="button" className="editorial-link-text" onClick={() => beginPrompt("")} data-liquid-snap="true" data-magnetic-hover="true">{zh ? "打开 Loom" : "Open Loom"}<span aria-hidden="true">↗</span></button>
+                <button type="button" className="editorial-link-text" onClick={() => beginPrompt("")} data-liquid-snap="true" data-magnetic-hover="true">{zh ? "打开 Loom" : "Open Loom"}</button>
               </div>
               <dl className="editorial-ledger">
                 <div><dt>{zh ? "运行环境" : "Runtime"}</dt><dd>{zh ? "本地" : "Local"}</dd></div>
@@ -467,7 +467,7 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
                   <button className="editorial-starter" type="button" key={item.title} onClick={() => beginPrompt(item.prompt)} data-liquid-snap="true" data-magnetic-hover="true">
                     <span className="editorial-starter-number" aria-hidden="true">0{index + 1}</span>
                     <span className="editorial-starter-copy"><strong>{item.title}</strong><span>{item.note}</span></span>
-                    <span className="editorial-starter-arrow" aria-hidden="true">↗</span>
+                    
                   </button>
                 ))}
               </div>
@@ -475,8 +475,8 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
             <section className="editorial-section" aria-labelledby="editorial-latest">
               <div className="editorial-section-head"><h2 id="editorial-latest">{zh ? "最新动态" : "Latest"}</h2><span>03</span></div>
               <div className="editorial-latest">
-                <a href={release.notes} target="_blank" rel="noopener noreferrer" data-magnetic-hover="true"><span>{release.version ? `Loom ${release.version} — ${zh ? "最新稳定版本" : "Latest stable release"}` : (zh ? "查看最新稳定版本" : "Latest stable release")}</span><small>↗</small></a>
-                <a href="https://github.com/yuchenm1303-png/Loom/releases" target="_blank" rel="noopener noreferrer" data-magnetic-hover="true"><span>{zh ? "版本发布与更新记录" : "Release history and updates"}</span><small>↗</small></a>
+                <a href={release.notes} target="_blank" rel="noopener noreferrer" data-magnetic-hover="true"><span>{release.version ? `Loom ${release.version} — ${zh ? "最新稳定版本" : "Latest stable release"}` : (zh ? "查看最新稳定版本" : "Latest stable release")}</span></a>
+                <a href="https://github.com/yuchenm1303-png/Loom/releases" target="_blank" rel="noopener noreferrer" data-magnetic-hover="true"><span>{zh ? "版本发布与更新记录" : "Release history and updates"}</span></a>
                 <a href={release.download} data-magnetic-hover="true"><span>{zh ? "下载 Loom for Windows" : "Loom for Windows — download"}</span><small>↓</small></a>
               </div>
             </section>

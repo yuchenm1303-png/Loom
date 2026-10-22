@@ -402,7 +402,7 @@
 }
 .loom-editorial .editorial-starter {
   display: grid;
-  grid-template-columns: 23px minmax(0, 1fr) 16px;
+  grid-template-columns: 23px minmax(0, 1fr);
   align-items: center;
   gap: 16px;
   min-height: 81px;
@@ -450,12 +450,6 @@
 }
 .loom-editorial .editorial-starter:hover strong,
 .loom-editorial .editorial-starter:focus-visible strong { text-decoration: none; }
-.loom-editorial .editorial-starter .editorial-starter-arrow {
-  margin: 0;
-  color: var(--ed-ink-faint);
-  font: 15px/1 ui-sans-serif, system-ui, sans-serif;
-  text-align: right;
-}
 .loom-editorial .editorial-latest {
   overflow: hidden;
   border: 1px solid var(--ed-rule-soft);
@@ -588,8 +582,7 @@
    each starter has a three-column grid, hiding the number/arrow collapses
    the auto-placement into the tiny first column and creates giant cards. */
 @media (max-height: 830px) and (min-width: 761px) {
-  .loom-editorial .editorial-starter .editorial-starter-number,
-  .loom-editorial .editorial-starter .editorial-starter-arrow { display: block; }
+  .loom-editorial .editorial-starter .editorial-starter-number { display: block; }
   .loom-editorial .editorial-starter .editorial-starter-copy { display: flex; }
   .loom-editorial .editorial-starter .editorial-starter-copy > span { display: block; }
   .loom-editorial .editorial-latest a:nth-child(n+3) { display: flex; }
