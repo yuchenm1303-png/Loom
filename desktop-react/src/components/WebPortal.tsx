@@ -3,6 +3,7 @@ import "./portal-modules.css";
 import "./portal-host-card.css";
 import "./portal-content.css";
 import "./portal-liquid-cursor.css";
+import "./portal-editorial.css";
 import type { CSSProperties, FormEvent } from "react";
 import { useEffect, useRef, useState } from "react";
 import { Laptop, Download, UserRound, LogOut, Check, ArrowRight, Github, Mail, KeyRound, ShieldCheck, Eye, EyeOff, FolderOpen, MessagesSquare } from "./icons";
@@ -54,8 +55,9 @@ function passwordScore(value: string): number {
   return score;
 }
 
-function usePortalStyles() {
+function usePortalStyles(enabled: boolean) {
   useEffect(() => {
+    if (!enabled) return;
     document.documentElement.classList.add("wallpaper-ready");
     document.body.classList.add("beach-wallpaper-active");
     const links = PORTAL_STYLES.map((href) => {
@@ -71,7 +73,7 @@ function usePortalStyles() {
       document.documentElement.classList.remove("wallpaper-ready");
       document.body.classList.remove("beach-wallpaper-active");
     };
-  }, []);
+  }, [enabled]);
 }
 
 function PortalWallpaper() {
@@ -103,8 +105,72 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
   remoteMode?: boolean;
   onRemote?: () => void;
 }) {
-  usePortalStyles();
   const [release, setRelease] = useState(FALLBACK_RELEASE);
+  const [pageMode, setPageMode] = useState<"editorial" | "classic">(
+    () => window.location.pathname.replace(/\/+$/, "") === "/classic" ? "classic" : "editorial"
+  );
+  const editorial = pageMode === "editorial";
+  usePortalStyles(!editorial);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [lightEditorial, setLightEditorial] = useState(() => {
+    try { return window.localStorage.getItem("loom.editorial.theme") === "light"; }
+    catch { return false; }
+  });
+  const [prompt, setPrompt] = useState("");
+  const [pendingPrompt, setPendingPrompt] = useState("");
+  const [promptError, setPromptError] = useState("");
+  useEffect(() => {
+    const sync = () => {
+      setPageMode(window.location.pathname.replace(/\/+$/, "") === "/classic" ? "classic" : "editorial");
+      setDrawerOpen(false);
+    };
+    window.addEventListener("popstate", sync);
+    return () => window.removeEventListener("popstate", sync);
+  }, []);
+  useEffect(() => {
+    if (!drawerOpen) return;
+    const dismiss = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        dismissDrawer();
+      }
+    };
+    window.addEventListener("keydown", dismiss);
+    return () => window.removeEventListener("keydown", dismiss);
+  }, [drawerOpen]);
+  function switchPage(next: "editorial" | "classic") {
+    if (pageMode === next) return;
+    window.history.pushState(null, "", next === "classic" ? "/classic" : "/");
+    setPageMode(next);
+    setDrawerOpen(false);
+    setPromptError("");
+  }
+  function dismissDrawer() {
+    setDrawerOpen(false);
+    setPendingPrompt("");
+    try { window.sessionStorage.removeItem("loom.portal.pendingPrompt"); }
+    catch { /* Browser storage may be unavailable. */ }
+  }
+  function toggleEditorialTheme() {
+    const next = !lightEditorial;
+    setLightEditorial(next);
+    try { window.localStorage.setItem("loom.editorial.theme", next ? "light" : "dark"); }
+    catch { /* storage unavailable */ }
+  }
+  function beginPrompt(text: string) {
+    const next = text.trim();
+    setPromptError("");
+    if (next) {
+      setPrompt(next);
+      setPendingPrompt(next);
+      try { window.sessionStorage.setItem("loom.portal.pendingPrompt", next); }
+      catch { setPromptError("Your browser could not preserve this prompt. Copy it before entering the workspace."); }
+    }
+    if (authenticated && hostState === "online") {
+      onEnter();
+    } else {
+      setDrawerOpen(true);
+    }
+  }
   useEffect(() => {
     const controller = new AbortController();
     const timeout = window.setTimeout(() => controller.abort(), 10000);
@@ -131,6 +197,10 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
   const [resendWait, setResendWait] = useState(0);
   const [localError, setLocalError] = useState("");
   const authenticated = Boolean(account.account.authenticated && account.account.user);
+  useEffect(() => {
+    // Only a deliberate submitted prompt should enter the workspace automatically.
+    if (editorial && pendingPrompt && authenticated && hostState === "online") onEnter();
+  }, [editorial, pendingPrompt, authenticated, hostState, onEnter]);
   const strength = passwordScore(password);
   const strengthLabel = !password
     ? (zh ? "未输入" : "Not entered")
@@ -352,11 +422,77 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
           : (zh ? "重新连接 Loom Host" : "Reconnect Loom Host");
 
   return (
-    <div className="loom-portal-page is-modular">
-      <PortalWallpaper />
+    <div className={["loom-portal-page", "is-modular", editorial ? "loom-editorial" : "loom-classic", editorial && lightEditorial ? "is-light" : ""].filter(Boolean).join(" ")}>
+      {!editorial ? <PortalWallpaper /> : null}
       <PortalLiquidCursor />
-      <main className="release-shell loom-portal-shell">
-        <section className="loom-module-grid">
+      {editorial ? (
+        <div className="editorial-shell">
+          <header className="editorial-header">
+            <a className="editorial-brand" href="https://smirel.com/" target="_blank" rel="noopener noreferrer" aria-label="Smirel" data-liquid-snap="true" data-magnetic-hover="true">
+              <img src={SMIREL_LOGO} alt="Smirel" /><span className="editorial-brand-divider" /><span className="editorial-brand-name">Loom</span>
+            </a>
+            <nav className="editorial-meta" aria-label={zh ? "主页操作" : "Home actions"}>
+              <span className="editorial-runtime" role="status">{authenticated ? (hostState === "online" ? (zh ? "Host 已连接" : "Host connected") : (zh ? "Host 未连接" : "Host disconnected")) : (zh ? "本地优先 · 私有" : "Local-first · Private")}</span>
+              <a href="/classic" onClick={(event) => { event.preventDefault(); switchPage("classic"); }} data-liquid-snap="true" data-magnetic-hover="true">{zh ? "经典主页" : "Classic home"}</a>
+              <button type="button" onClick={() => setDrawerOpen(true)} data-liquid-snap="true" data-magnetic-hover="true">{authenticated ? (account.account.user?.display_name?.trim() || (zh ? "我的账户" : "My account")) : (zh ? "登录 / 注册" : "Sign in")}</button>
+              <button className="editorial-theme" type="button" role="switch" aria-label={zh ? "切换深浅主题" : "Toggle light and dark theme"} aria-checked={lightEditorial} onClick={toggleEditorialTheme} data-liquid-snap="true" />
+            </nav>
+          </header>
+          <main className="editorial-body">
+            <section className="editorial-hero" aria-labelledby="editorial-intro">
+              <h1 id="editorial-intro" className="editorial-hero-copy">
+                {zh ? "一个真正为你工作的本地 AI Agent。可以阅读项目、修改文件、执行命令和操作浏览器。由你掌控，运行在自己的电脑上。" : "A local agent runtime for real work. It reads the codebase, edits files, runs commands and browses the web — on your machine, with your permission."}
+                {" "}<button type="button" className="editorial-link-text" onClick={() => beginPrompt("")} data-liquid-snap="true" data-magnetic-hover="true">{zh ? "打开 Loom" : "Open Loom"}</button>
+              </h1>
+              <dl className="editorial-ledger">
+                <div><dt>{zh ? "运行环境" : "Runtime"}</dt><dd>{zh ? "本地" : "Local"}</dd></div>
+                <div><dt>{zh ? "工具" : "Tools"}</dt><dd>{zh ? "文件 · 终端 · 浏览器" : "Files · Shell · Web"}</dd></div>
+                <div><dt>{zh ? "最新稳定版" : "Release"}</dt><dd>{release.version || "—"}</dd></div>
+              </dl>
+            </section>
+            <section className="editorial-section" aria-labelledby="editorial-start">
+              <div className="editorial-section-head"><h2 id="editorial-start">{zh ? "开始" : "Start"}</h2><span>04</span></div>
+              <div className="editorial-starters">
+                {[
+                  { title: zh ? "检查项目" : "Inspect this project", note: zh ? "分析现有代码结构，找到最重要的部分。" : "Map the architecture and identify what matters first.", prompt: "Inspect this project, map the architecture, and tell me what I should understand first." },
+                  { title: zh ? "实现新功能" : "Implement a feature", note: zh ? "把想法变成清晰的代码改动。" : "Turn a product idea into a focused code change.", prompt: "Help me implement a feature in this project. Start by identifying the smallest clean approach." },
+                  { title: zh ? "排查问题" : "Trace a problem", note: zh ? "沿着错误路径找到根因。" : "Follow the failure to its root cause.", prompt: "Investigate the current project for the problem I am seeing and trace it to the root cause before making changes." },
+                  { title: zh ? "执行工作流" : "Run a workflow", note: zh ? "让 Agent 使用工具完成多步任务。" : "Use tools to complete a useful multi-step task.", prompt: "Use the available tools and workspace to complete a useful multi-step task for this project." },
+                ].map(item => <button className="editorial-starter" type="button" key={item.title} onClick={() => beginPrompt(item.prompt)} data-liquid-snap="true" data-magnetic-hover="true"><strong>{item.title}</strong><span>{item.note}</span></button>)}
+              </div>
+            </section>
+            <section className="editorial-section" aria-labelledby="editorial-latest">
+              <div className="editorial-section-head"><h2 id="editorial-latest">{zh ? "最新动态" : "Latest"}</h2><span>03</span></div>
+              <div className="editorial-latest">
+                <a href={release.notes} target="_blank" rel="noopener noreferrer" data-magnetic-hover="true"><span>{release.version ? `Loom ${release.version} — ${zh ? "最新稳定版本" : "Latest stable release"}` : (zh ? "查看最新稳定版本" : "Latest stable release")}</span><small>↗</small></a>
+                <a href="https://github.com/yuchenm1303-png/Loom/releases" target="_blank" rel="noopener noreferrer" data-magnetic-hover="true"><span>{zh ? "版本发布与更新记录" : "Release history and updates"}</span><small>↗</small></a>
+                <a href={release.download} data-magnetic-hover="true"><span>{zh ? "下载 Loom for Windows" : "Loom for Windows — download"}</span><small>↓</small></a>
+              </div>
+            </section>
+          </main>
+          <footer className="editorial-ask">
+            <form onSubmit={(event) => { event.preventDefault(); beginPrompt(prompt); }} autoComplete="off">
+              <div className="editorial-ask-row">
+                <input type="text" value={prompt} onChange={(event) => setPrompt(event.target.value)} placeholder={zh ? "让 Loom 检查、修改、执行或浏览…" : "Ask Loom to inspect, edit, run, browse…"} aria-label={zh ? "给 Loom 发送任务" : "Ask Loom"} data-liquid-snap="true" data-magnetic-hover="true" />
+                <button type="submit" data-liquid-snap="true" data-magnetic-hover="true">{zh ? "发送" : "Send"}</button>
+              </div>
+            </form>
+            <div className="editorial-ask-foot"><span>{zh ? "Windows · 本机 Host · 由你掌控" : "Windows · Local Host · Your permission"}</span><span>{zh ? "任务将在 Loom 工作区中继续" : "Continue this task in the Loom workspace"}</span></div>
+            {promptError ? <div className="editorial-notice" role="alert">{promptError}</div> : null}
+          </footer>
+        </div>
+      ) : null}
+      <main
+        className={editorial ? `release-shell loom-portal-shell${drawerOpen ? " editorial-panel-backdrop" : ""}` : "release-shell loom-portal-shell"}
+        inert={editorial && !drawerOpen}
+        aria-hidden={editorial && !drawerOpen ? true : undefined}
+        role={editorial && drawerOpen ? "dialog" : undefined}
+        aria-modal={editorial && drawerOpen ? true : undefined}
+        aria-label={editorial && drawerOpen ? (zh ? "账户与设备" : "Account and device") : undefined}
+        onClick={editorial ? (event) => { if (event.target === event.currentTarget) dismissDrawer(); } : undefined}
+      >
+        <section className={editorial ? "loom-module-grid editorial-panel" : "loom-module-grid"}>
+          {editorial ? <header className="editorial-panel-top"><strong>{authenticated ? (zh ? "账户与设备" : "Account & device") : (zh ? "登录 Loom" : "Sign in to Loom")}</strong><button type="button" className="editorial-panel-close" aria-label={zh ? "关闭" : "Close"} onClick={dismissDrawer}>×</button></header> : null}
           <article className="loom-stage-copy loom-intro-module cards fade">
             <header className="loom-card-brand-row">
               <a className="brand loom-portal-brand" href="https://smirel.com/" target="_blank" rel="noopener noreferrer" aria-label={zh ? "访问 Smirel 个人主页（在新标签页打开）" : "Visit Smirel homepage (opens in a new tab)"} data-liquid-snap="true" data-magnetic-hover="true">
@@ -506,6 +642,7 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
           </aside>
         </section>
       </main>
+      {!editorial ? <a className="loom-classic-switch" href="/" onClick={(event) => { event.preventDefault(); switchPage("editorial"); }} data-liquid-snap="true" data-magnetic-hover="true">{zh ? "切换到新版主页 ↗" : "Switch to the new homepage ↗"}</a> : null}
     </div>
   );
 }
