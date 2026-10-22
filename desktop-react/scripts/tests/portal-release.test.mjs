@@ -120,6 +120,7 @@ test("editorial sign-in is a centered, accessible modal without a side drawer", 
   assert.ok(portal.includes("opener.focus({ preventScroll: true })"));
   assert.match(styles, /justify-content:\s*center/);
   assert.match(styles, /align-items:\s*center/);
+  assert.match(styles, /flex-direction:\s*row/); // The modal flex-basis must size width, never height.
   assert.match(styles, /max-width:\s*472px/);
   assert.match(styles, /max-height:\s*calc\(100dvh - 40px\)/);
   assert.ok(styles.includes('[data-auth-step="form"]'), "recovery and verification copy should stay visible");
