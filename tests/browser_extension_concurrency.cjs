@@ -59,6 +59,40 @@ function harness() {
 }
 
 async function main() {
+  const reads = harness();
+  // Hold the tab listing open: DOM collection must start without waiting for it.
+  reads.run(`
+    let releaseTabListing;
+    let domReads = 0;
+    let stateArgs;
+    chrome.tabs.query = () => new Promise(resolve => { releaseTabListing = () => resolve([{id:1,windowId:10}]); });
+    chrome.scripting.executeScript = async options => {
+      domReads += 1; stateArgs = options.args;
+      return [{result:{dom:'fresh DOM',elements:[{loom_id:'fresh-id'}],page_info:{proof:'fresh'}}}];
+    };
+  `);
+  const reading = reads.run(`collectStateForTab({id:1,windowId:10,url:'https://page.example/'}, {showHud:false})`);
+  assert.equal(reads.run('domReads'), 1, 'DOM and tab-list reads must overlap');
+  reads.run('releaseTabListing()');
+  const state = await reading;
+  assert.equal(state.dom, 'fresh DOM');
+  assert.equal(state.tabs[0].tab_id, '1');
+  assert.equal(state.page_info.proof, 'fresh');
+  assert.equal(reads.run('stateArgs[1].show_hud'), false);
+  assert.deepEqual(reads.storage.loomElementIdsByTab['1'], ['fresh-id']);
+  reads.run(`chrome.tabs.query = async () => [];
+    chrome.scripting.executeScript = async () => { throw new Error('navigation replaced document'); };`);
+  const missing = await reads.run(`collectStateForTab({id:1,url:'https://page.example/'})`);
+  assert.equal(missing.errors[0], 'navigation replaced document');
+  assert.equal(missing.dom, '');
+  reads.run(`chrome.tabs.query = async () => { throw new Error('tabs unavailable'); };`);
+  await assert.rejects(reads.run(`collectStateForTab({id:1,url:'https://page.example/'})`), /tabs unavailable/);
+  reads.run(`chrome.tabs.query = async () => [];
+    chrome.scripting.executeScript = async () => { throw new Error('must not inject protected pages'); };`);
+  const protectedState = await reads.run(`collectStateForTab({id:1,url:'edge://settings/'})`);
+  assert.equal(protectedState.page_info.injectable, false);
+  assert.equal(protectedState.page_info.recovery.reason, 'privileged_current_tab');
+
   const updates = harness();
   updates.run(`chrome.runtime.getURL = path => path;
     let reloadCount = 0;

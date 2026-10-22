@@ -610,20 +610,33 @@ async function inject(tabId, func, args = [], world) {
 }
 
 async function collectStateForTab(tab, options = {}) {
+  const injectable = isInjectableUrl(tab.url || "");
+  // Independent fresh reads under the caller's existing tab command fence.
+  // Handle both promises immediately; a failed tab listing must not leave an
+  // unhandled injection rejection, nor turn into a successful partial state.
+  const [tabs, observation] = await Promise.all([
+    listOpenTabs(tab),
+    injectable
+      ? inject(tab.id, runPageAction, ["state", { show_hud: options.showHud !== false }]).then(
+        (page) => ({ page }),
+        (cause) => ({ error: cause instanceof Error ? cause.message : String(cause) }),
+      )
+      : null,
+  ]);
   const base = {
     url: tab.url || "about:blank",
     title: tab.title || "",
     dom: "",
-    tabs: await listOpenTabs(tab),
+    tabs,
     page_info: {
       extension_version: EXTENSION_VERSION,
       tab_id: String(tab.id),
-      injectable: isInjectableUrl(tab.url || ""),
+      injectable,
       browser_hud: "page-local",
     },
     errors: [],
   };
-  if (!isInjectableUrl(tab.url || "")) {
+  if (!injectable) {
     base.page_info.recovery = {
       action: "browser_navigate",
       automatic: true,
@@ -636,8 +649,9 @@ async function collectStateForTab(tab, options = {}) {
     );
     return base;
   }
+  if ("error" in observation) return { ...base, errors: [observation.error] };
   try {
-    const page = await inject(tab.id, runPageAction, ["state", { show_hud: options.showHud !== false }]);
+    const page = observation.page;
     await rememberElements(tab.id, page.elements);
     return {
       ...base,

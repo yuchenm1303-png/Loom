@@ -103,6 +103,11 @@ _BROWSER_ACTION_CONTRACT = (
     "the next dependent action. Do not batch dependent actions with the same state_revision; their "
     "indexes may change after the first action. A not_executed result is a scheduling conflict, "
     "not evidence that the browser feature failed."
+    " An action's returned observation is already the new browser state: use it directly instead "
+    "of calling browser_state again unless it is missing, stale, or insufficient for the next action. "
+    "browser_type focuses its indexed editable target itself; a preparatory click is unnecessary "
+    "unless the task specifically needs click behavior or caret placement. Wait only for an "
+    "observed pending condition, not routinely after every action."
 )
 
 

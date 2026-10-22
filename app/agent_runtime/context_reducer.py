@@ -6,6 +6,12 @@ from dataclasses import dataclass, replace
 from typing import Callable, Sequence
 
 from app.ai import AIMessage, MessageRole
+from app.agent_runtime.message_memo import MessageMemo
+
+
+# Keep one projection per immutable message, not one copy per request or budget.
+# Bounds also release history from sessions that are no longer active.
+_tool_projections = MessageMemo(entries=2048, budget=4_000_000)
 
 
 _TOOL_OMITTED = (
@@ -107,6 +113,20 @@ def _collapsed_tool_content(message: AIMessage) -> str:
     return json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
 
 
+def _project_tool_output(message: AIMessage, limit: int) -> tuple[AIMessage, int, int]:
+    cached = _tool_projections.get(message)
+    if cached is not None and cached[0] == limit:
+        return cached[1]
+    before = approx_text_tokens(message.content)
+    if before <= limit:
+        projection = (message, before, before)
+    else:
+        content = _reduced_tool_content(message, limit)
+        projection = (replace(message, content=content), before, approx_text_tokens(content))
+    _tool_projections.put(message, (limit, projection))
+    return projection
+
+
 def reduce_tool_outputs(
     messages: Sequence[AIMessage],
     *,
@@ -131,12 +151,10 @@ def reduce_tool_outputs(
     for index, message in enumerate(tuple(working)):
         if message.role is not MessageRole.TOOL or not isinstance(message.content, str):
             continue
-        before = approx_text_tokens(message.content)
-        if before <= limit:
+        projected, before, after = _project_tool_output(message, limit)
+        if projected is message:
             continue
-        content = _reduced_tool_content(message, limit)
-        after = approx_text_tokens(content)
-        working[index] = replace(message, content=content)
+        working[index] = projected
         reduced += 1
         saved += max(0, before - after)
 
