@@ -12,8 +12,7 @@ import {
   type LocalHostUpdateState,
   type LocalLoomHost,
 } from "../localHostDiscovery";
-import { EditorialHome } from "./EditorialHome";
-import type { PortalHostState } from "./WebPortal";
+import { WebPortal, type PortalHostState } from "./WebPortal";
 
 type HostState = "idle" | "discovering" | "pairing" | "connecting" | "updating" | "online" | "missing" | "offline" | "account-mismatch";
 type DeviceStatus = WebDeviceStatus;
@@ -402,7 +401,7 @@ export function WebAppGate({ children }: { children: ReactNode }) {
 
   if (!account.ready || !account.account.authenticated || !account.account.user || !entered) {
     return (
-      <EditorialHome
+      <WebPortal
         account={account}
         hostState={portalState}
         hostError={hostError}
