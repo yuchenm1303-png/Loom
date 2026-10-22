@@ -44,6 +44,10 @@ def test_transport_retries_continue_beyond_previous_limit_until_recovered(tmp_pa
         assert result.status is AgentStatus.COMPLETED
         assert platform.calls == 9
         assert waits == [1, 2, 4, 8, 16, 20, 20, 20]
+        requests = [e.data for e in store.events(session.session_id) if e.kind is AgentEventKind.MODEL_REQUESTED]
+        assert requests[0]["request_preparation_reused"] is False
+        assert all(r["request_preparation_reused"] and r["request_preparation_ms"] == 0 for r in requests[1:])
+        assert all(r["retry_wait_ms"] >= 0 for r in requests)
         retries = [e for e in store.events(session.session_id) if e.kind is AgentEventKind.MODEL_RESPONSE_REJECTED]
         assert [e.data["will_retry"] for e in retries] == [True] * 8
         assert not any(e.kind is AgentEventKind.TOOL_STARTED for e in store.events(session.session_id))

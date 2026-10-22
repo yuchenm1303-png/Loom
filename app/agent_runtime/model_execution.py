@@ -111,6 +111,7 @@ class ModelExecutor:
                     raise TimeoutError("model request concurrency limit reached")
             results: queue.Queue = queue.Queue(maxsize=1)
             control = ExecutionControl()
+            control.queue_wait_ms = round((control.started_at - started) * 1000)
             control.retry_observer = on_retry
             control.stall_timeout = self.stall_timeout
             registry = getattr(platform, "registry", None)

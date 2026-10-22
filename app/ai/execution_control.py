@@ -38,6 +38,7 @@ class ExecutionControl:
         self.max_content_gap = 0.0
         self.raw_chunk_reporting = False
         self.retry_observer = None
+        self.queue_wait_ms = 0
 
     def note_chunk(self) -> None:
         now = time.monotonic()
@@ -49,6 +50,8 @@ class ExecutionControl:
     def stream_timing(self) -> dict[str, int | None]:
         now = time.monotonic()
         return {
+            "execution_ms": round((now - self.started_at) * 1000),
+            "queue_wait_ms": self.queue_wait_ms,
             "first_chunk_ms": round((self.first_chunk_at - self.started_at) * 1000) if self.first_chunk_at else None,
             "first_content_ms": round((self.first_content_at - self.started_at) * 1000) if self.first_content_at else None,
             "first_tool_fragment_ms": round((self.first_tool_at - self.started_at) * 1000) if self.first_tool_at else None,

@@ -221,9 +221,14 @@ def render_request(runtime, session, prefix, history, *, replacement=False):
             output.extend(by_anchor.get(index, ()))
             if index < len(history):
                 output.append(history[index])
-    return [replace(message, content=strip_legacy_sticker_protocol(message.content))
-            if message.role is MessageRole.ASSISTANT and isinstance(message.content, str)
-            else message for message in output]
+    for index, message in enumerate(output):
+        if message.role is MessageRole.ASSISTANT and isinstance(message.content, str):
+            content = strip_legacy_sticker_protocol(message.content)
+            # Preserve immutable identity when projection changes nothing, so
+            # repeated budget passes can reuse their existing message measures.
+            if content != message.content:
+                output[index] = replace(message, content=content)
+    return output
 
 
 def compact_frames(runtime, session, replacement_count):
