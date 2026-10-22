@@ -101,9 +101,10 @@
     font-weight: 500;
     letter-spacing: -.02em;
   }
-  .wordmark a { text-decoration: none; display: inline-flex; align-items: center; }
-  .smirel-word { height: 40px; width: auto; margin-right: 14px; }
-  .mark-icon { width: 22px; height: 22px; border-radius: 6px; margin-right: 9px; vertical-align: -3px; }
+  /* Align the bottoms of both logos with the Loom wordmark baseline. */
+  .wordmark a { text-decoration: none; display: inline-flex; align-items: baseline; }
+  .smirel-word { height: 34px; width: auto; margin-right: 12px; flex: 0 0 auto; }
+  .mark-icon { width: 22px; height: 22px; border-radius: 6px; margin-right: 9px; flex: 0 0 auto; }
 
   .head-right {
     display: flex;
