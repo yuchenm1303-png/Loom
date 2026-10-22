@@ -55,8 +55,9 @@ function passwordScore(value: string): number {
   return score;
 }
 
-function usePortalStyles() {
+function usePortalStyles(enabled: boolean) {
   useEffect(() => {
+    if (!enabled) return;
     document.documentElement.classList.add("wallpaper-ready");
     document.body.classList.add("beach-wallpaper-active");
     const links = PORTAL_STYLES.map((href) => {
@@ -72,7 +73,7 @@ function usePortalStyles() {
       document.documentElement.classList.remove("wallpaper-ready");
       document.body.classList.remove("beach-wallpaper-active");
     };
-  }, []);
+  }, [enabled]);
 }
 
 function PortalWallpaper() {
@@ -104,12 +105,12 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
   remoteMode?: boolean;
   onRemote?: () => void;
 }) {
-  usePortalStyles();
   const [release, setRelease] = useState(FALLBACK_RELEASE);
   const [pageMode, setPageMode] = useState<"editorial" | "classic">(
     () => window.location.pathname.replace(/\/+$/, "") === "/classic" ? "classic" : "editorial"
   );
   const editorial = pageMode === "editorial";
+  usePortalStyles(!editorial);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [lightEditorial, setLightEditorial] = useState(() => {
     try { return window.localStorage.getItem("loom.editorial.theme") === "light"; }
@@ -130,9 +131,7 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
     if (!drawerOpen) return;
     const dismiss = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
-        setDrawerOpen(false);
-        setPendingPrompt("");
-        try { window.sessionStorage.removeItem("loom.portal.pendingPrompt"); } catch { /* storage unavailable */ }
+        dismissDrawer();
       }
     };
     window.addEventListener("keydown", dismiss);
@@ -144,6 +143,12 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
     setPageMode(next);
     setDrawerOpen(false);
     setPromptError("");
+  }
+  function dismissDrawer() {
+    setDrawerOpen(false);
+    setPendingPrompt("");
+    try { window.sessionStorage.removeItem("loom.portal.pendingPrompt"); }
+    catch { /* Browser storage may be unavailable. */ }
   }
   function toggleEditorialTheme() {
     const next = !lightEditorial;
@@ -481,10 +486,13 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
         className={editorial ? `release-shell loom-portal-shell${drawerOpen ? " editorial-panel-backdrop" : ""}` : "release-shell loom-portal-shell"}
         inert={editorial && !drawerOpen}
         aria-hidden={editorial && !drawerOpen ? true : undefined}
-        onClick={editorial ? (event) => { if (event.target === event.currentTarget) setDrawerOpen(false); } : undefined}
+        role={editorial && drawerOpen ? "dialog" : undefined}
+        aria-modal={editorial && drawerOpen ? true : undefined}
+        aria-label={editorial && drawerOpen ? (zh ? "账户与设备" : "Account and device") : undefined}
+        onClick={editorial ? (event) => { if (event.target === event.currentTarget) dismissDrawer(); } : undefined}
       >
         <section className={editorial ? "loom-module-grid editorial-panel" : "loom-module-grid"}>
-          {editorial ? <header className="editorial-panel-top"><strong>{authenticated ? (zh ? "账户与设备" : "Account & device") : (zh ? "登录 Loom" : "Sign in to Loom")}</strong><button type="button" className="editorial-panel-close" aria-label={zh ? "关闭" : "Close"} onClick={() => setDrawerOpen(false)}>×</button></header> : null}
+          {editorial ? <header className="editorial-panel-top"><strong>{authenticated ? (zh ? "账户与设备" : "Account & device") : (zh ? "登录 Loom" : "Sign in to Loom")}</strong><button type="button" className="editorial-panel-close" aria-label={zh ? "关闭" : "Close"} onClick={dismissDrawer}>×</button></header> : null}
           <article className="loom-stage-copy loom-intro-module cards fade">
             <header className="loom-card-brand-row">
               <a className="brand loom-portal-brand" href="https://smirel.com/" target="_blank" rel="noopener noreferrer" aria-label={zh ? "访问 Smirel 个人主页（在新标签页打开）" : "Visit Smirel homepage (opens in a new tab)"} data-liquid-snap="true" data-magnetic-hover="true">
