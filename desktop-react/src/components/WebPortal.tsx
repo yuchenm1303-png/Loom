@@ -472,7 +472,7 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
               <img src={SMIREL_LOGO} alt="Smirel" /><span className="editorial-brand-divider" /><span className="editorial-brand-name">Loom</span>
             </a>
             <nav className="editorial-meta" aria-label={zh ? "主页操作" : "Home actions"}>
-              <span className="editorial-runtime" role="status">{authenticated ? (hostState === "online" ? (zh ? "Host 已连接" : "Host connected") : (zh ? "Host 未连接" : "Host disconnected")) : (zh ? "本地优先 · 私有" : "Local-first · Private")}</span>
+              <span className="editorial-runtime" role="status"><span className="editorial-status-dot" aria-hidden="true" />{authenticated ? (hostState === "online" ? (zh ? "Host 已连接" : "Host connected") : (zh ? "Host 未连接" : "Host disconnected")) : (zh ? "本地优先 · 私有" : "Local-first · Private")}</span>
               <a href="/classic" onClick={(event) => { event.preventDefault(); switchPage("classic"); }} data-liquid-snap="true" data-magnetic-hover="true">{zh ? "经典主页" : "Classic home"}</a>
               <button type="button" onClick={openEditorialModal} data-liquid-snap="true" data-magnetic-hover="true">{authenticated ? (account.account.user?.display_name?.trim() || (zh ? "我的账户" : "My account")) : (zh ? "登录 / 注册" : "Sign in")}</button>
               <button className="editorial-theme" type="button" role="switch" aria-label={zh ? "切换深浅主题" : "Toggle light and dark theme"} aria-checked={lightEditorial} onClick={toggleEditorialTheme} data-liquid-snap="true" />
@@ -481,22 +481,27 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
           <main className="editorial-body">
             <section className="editorial-hero" aria-labelledby="editorial-intro">
               <div className="editorial-hero-message">
+                <span className="editorial-eyebrow">{zh ? "LOOM / 本地 AI AGENT" : "LOOM / LOCAL AI AGENT"}</span>
                 <h1 id="editorial-intro" className="editorial-hero-copy">
-                  {zh ? "一个真正为你工作的本地 AI Agent。" : "A local agent runtime for real work."}
+                  {zh ? "让工作在这里发生。" : "A quieter way to get things done."}
                 </h1>
                 <p className="editorial-hero-description">
-                  {zh ? "阅读项目、修改文件、执行命令和操作浏览器。运行在你的电脑上，一切由你掌控。" : "Read code, edit files, run commands and browse the web — on your computer, with your permission."}
+                  {zh ? "从阅读项目、修改代码，到执行命令和操作浏览器。Loom 在你的电脑上工作，始终由你掌控。" : "Explore projects, edit code, run commands and browse the web. Loom works on your computer, with you in control."}
                 </p>
-                <button type="button" className="editorial-link-text" onClick={() => beginPrompt("")} data-liquid-snap="true" data-magnetic-hover="true">{zh ? "打开 Loom" : "Open Loom"}</button>
+                <button type="button" className="editorial-link-text" onClick={() => beginPrompt("")} data-liquid-snap="true" data-magnetic-hover="true">{zh ? "打开工作区" : "Open workspace"} <span aria-hidden="true">↗</span></button>
               </div>
-              <dl className="editorial-ledger">
+              <aside className="editorial-context" aria-label={zh ? "Loom 运行信息" : "Loom at a glance"}>
+                <div className="editorial-context-label">{zh ? "运行概览" : "At a glance"}</div>
+                <dl className="editorial-ledger">
                 <div><dt>{zh ? "运行环境" : "Runtime"}</dt><dd>{zh ? "本地" : "Local"}</dd></div>
                 <div><dt>{zh ? "工具" : "Tools"}</dt><dd>{zh ? "文件 · 终端 · 浏览器" : "Files · Shell · Web"}</dd></div>
                 <div><dt>{zh ? "最新稳定版" : "Release"}</dt><dd>{release.version || "—"}</dd></div>
-              </dl>
+                </dl>
+              </aside>
             </section>
-            <section className="editorial-section" aria-labelledby="editorial-start">
-              <div className="editorial-section-head"><h2 id="editorial-start">{zh ? "开始" : "Start"}</h2><span>04</span></div>
+            <div className="editorial-content-grid">
+            <section className="editorial-section editorial-task-section" aria-labelledby="editorial-start">
+              <div className="editorial-section-head"><h2 id="editorial-start">{zh ? "从这里开始" : "Start with a task"}</h2><span>{zh ? "选择一个起点" : "Choose a starting point"}</span></div>
               <div className="editorial-starters">
                 {[
                   { title: zh ? "检查项目" : "Inspect this project", note: zh ? "分析现有代码结构，找到最重要的部分。" : "Map the architecture and identify what matters first.", prompt: "Inspect this project, map the architecture, and tell me what I should understand first." },
@@ -512,16 +517,18 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
                 ))}
               </div>
             </section>
-            <section className="editorial-section" aria-labelledby="editorial-latest">
-              <div className="editorial-section-head"><h2 id="editorial-latest">{zh ? "最新动态" : "Latest"}</h2><span>03</span></div>
+            <section className="editorial-section editorial-updates-section" aria-labelledby="editorial-latest">
+              <div className="editorial-section-head"><h2 id="editorial-latest">{zh ? "版本与下载" : "Release & downloads"}</h2></div>
               <div className="editorial-latest">
-                <a href={release.notes} target="_blank" rel="noopener noreferrer" data-magnetic-hover="true"><span>{release.version ? `Loom ${release.version} — ${zh ? "最新稳定版本" : "Latest stable release"}` : (zh ? "查看最新稳定版本" : "Latest stable release")}</span></a>
-                <a href="https://github.com/yuchenm1303-png/Loom/releases" target="_blank" rel="noopener noreferrer" data-magnetic-hover="true"><span>{zh ? "版本发布与更新记录" : "Release history and updates"}</span></a>
-                <a href={release.download} data-magnetic-hover="true"><span>{zh ? "下载 Loom for Windows" : "Loom for Windows — download"}</span><small>↓</small></a>
+                <a href={release.notes} target="_blank" rel="noopener noreferrer" data-magnetic-hover="true"><span>{release.version ? `Loom ${release.version} · ${zh ? "更新说明" : "What's new"}` : (zh ? "查看最新版本" : "Latest release")}</span><small aria-hidden="true">↗</small></a>
+                <a href="https://github.com/yuchenm1303-png/Loom/releases" target="_blank" rel="noopener noreferrer" data-magnetic-hover="true"><span>{zh ? "历史版本" : "Release history"}</span><small aria-hidden="true">↗</small></a>
+                <a href={release.download} data-magnetic-hover="true"><span>{zh ? "Windows 客户端" : "Download for Windows"}</span><small aria-hidden="true">↓</small></a>
               </div>
             </section>
+            </div>
           </main>
           <footer className="editorial-ask">
+            <div className="editorial-ask-label"><span>{zh ? "交给 Loom" : "Ask Loom"}</span><span>{zh ? "或从上方选择一个任务" : "Or begin with a task above"}</span></div>
             <form onSubmit={(event) => { event.preventDefault(); beginPrompt(prompt); }} autoComplete="off">
               <div className="editorial-ask-row">
                 <input type="text" value={prompt} onChange={(event) => setPrompt(event.target.value)} placeholder={zh ? "让 Loom 检查、修改、执行或浏览…" : "Ask Loom to inspect, edit, run, browse…"} aria-label={zh ? "给 Loom 发送任务" : "Ask Loom"} data-liquid-snap="true" data-magnetic-hover="true" />
