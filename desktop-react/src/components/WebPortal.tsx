@@ -487,44 +487,32 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
           <main className="editorial-body">
             <section className="editorial-hero" aria-labelledby="editorial-intro">
               <div className="editorial-hero-message">
-                <p className="editorial-eyebrow">{zh ? "你的本地 AI 工作伙伴" : "YOUR LOCAL AI COMPANION"}</p>
                 <h1 id="editorial-intro" className="editorial-hero-copy">{zh ? <>从容开始，<br />让事情向前。</> : <>A quieter way<br />to get things done.</>}</h1>
                 <p className="editorial-hero-description">
-                  {zh ? "与文件、代码和浏览器协作。在你的电脑上，由你掌控。" : "Work with files, code, and the web. On your computer, in your control."}
+                  {zh ? "在你的电脑上，让想法成为现实。" : "Your local AI, ready for real work."}
                 </p>
                 <div className="editorial-actions">
                   <button type="button" className="editorial-primary" onClick={openWorkspace} data-liquid-snap="true" data-magnetic-hover="true">{zh ? "进入工作区" : "Open workspace"}<ArrowRight size={16} aria-hidden="true" /></button>
                   <a className="editorial-download" href={release.download}>{zh ? "下载 Windows 版" : "Download for Windows"}<span aria-hidden="true">↓</span></a>
                 </div>
-                <div className="editorial-connection">
-                  <span className="editorial-runtime" data-state={authenticated ? hostState : "idle"} role="status"><span className="editorial-status-dot" aria-hidden="true" />{authenticated ? (hostState === "online" ? (zh ? "本机工作区已就绪" : "Your local workspace is ready") : hostState === "checking" ? (zh ? "正在连接本机 Host…" : "Connecting to your local Host…") : (zh ? "连接本机 Host 以开始" : "Connect your local Host to begin")) : (zh ? "在本机运行 · 由你掌控" : "Runs locally. You stay in control.")}</span>
-                  {authenticated && hostState !== "online" ? <button type="button" onClick={openEditorialModal}>{zh ? "连接" : "Connect"}<ArrowRight size={12} aria-hidden="true" /></button> : null}
-                </div>
               </div>
             </section>
             <section className="editorial-capabilities" aria-label={zh ? "Loom 的核心能力" : "What Loom can do"}>
               <article>
-                <span className="editorial-capability-label">{zh ? "01 / 文件与代码" : "01 / FILES & CODE"}</span>
-                <h2>{zh ? "理解你的项目。" : "Find your bearings."}</h2>
-                <p>{zh ? "梳理代码结构，阅读文件，让每一次改动都有上下文。" : "Explore a codebase, read files, and bring context to every change."}</p>
+                <h2>{zh ? "理解。" : "Explore."}</h2>
               </article>
               <article>
-                <span className="editorial-capability-label">{zh ? "02 / 工具与浏览器" : "02 / TOOLS & WEB"}</span>
-                <h2>{zh ? "让想法落地。" : "Put ideas to work."}</h2>
-                <p>{zh ? "修改代码、运行命令、浏览网页，把多步骤的工作串起来。" : "Edit code, run commands, and browse the web to move work forward."}</p>
+                <h2>{zh ? "创造。" : "Create."}</h2>
               </article>
               <article>
-                <span className="editorial-capability-label">{zh ? "03 / 本地运行" : "03 / LOCAL BY DESIGN"}</span>
-                <h2>{zh ? "始终由你掌控。" : "Keep the controls."}</h2>
-                <p>{zh ? "连接你电脑上的 Loom Host，在你的授权下使用本机工具。" : "Connect to Loom Host on your computer. Use local tools with your permission."}</p>
+                <h2>{zh ? "由你掌控。" : "Stay in control."}</h2>
               </article>
             </section>
           </main>
           <footer className="editorial-footer">
-            <a className="editorial-signature" href="https://smirel.com/" target="_blank" rel="noopener noreferrer">{zh ? "由 Smirel 构建" : "Made by Smirel"}</a>
+            <a className="editorial-signature" href="https://smirel.com/" target="_blank" rel="noopener noreferrer">Smirel</a>
             <nav aria-label={zh ? "资源" : "Resources"}>
-              <a href={release.download}>{zh ? "下载 Windows 版" : "Download for Windows"}</a>
-              <a href={release.notes} target="_blank" rel="noopener noreferrer">{zh ? "更新日志" : "Changelog"}{release.version ? <span className="editorial-version">{release.version}</span> : null}</a>
+              <a href={release.notes} target="_blank" rel="noopener noreferrer">{zh ? "更新" : "Updates"}</a>
               <a href="/classic" onClick={(event) => { event.preventDefault(); switchPage("classic"); }}>{zh ? "经典主页" : "Classic home"}</a>
             </nav>
           </footer>
