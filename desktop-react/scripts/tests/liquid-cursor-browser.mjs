@@ -120,6 +120,9 @@ try {
     const idleDraws = state.draws;
     await page.waitForTimeout(200);
     assert.equal((await probe()).draws, idleDraws, "idle lenses must sleep");
+    await page.mouse.move(860, 284);
+    await settle();
+    await shot("over-heading");
 
     for (const selector of ["#first", "#second", "#wide", "#tall", "#first"]) {
       await page.locator(selector).hover();

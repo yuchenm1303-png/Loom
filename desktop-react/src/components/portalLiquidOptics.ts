@@ -23,7 +23,6 @@ export const liquidFragmentShader = `
   varying vec2 v_uv;
   uniform sampler2D u_texture;
   uniform vec2 u_resolution;
-  uniform vec2 u_viewport;
   uniform vec2 u_lensCenter;
   uniform vec2 u_lensSize;
   uniform float u_strength;
@@ -68,7 +67,12 @@ export const liquidFragmentShader = `
     else if (q.x > q.y) normal = vec2(signP.x, 0.0);
     else normal = vec2(0.0, signP.y);
     float distNorm = clamp(1.0 + d / radius, 0.0, 1.0);
-    float displacement = pow(distNorm, max(0.12, u_pinch * radius / 100.0)) * u_strength * 40.0;
+    // A fixed 40px bend can exceed the radius of a small cursor. Bound the
+    // derivative of the sampling map as well as its displacement: otherwise
+    // neighbouring output pixels sample in reverse order and repeat glyphs.
+    float effectivePinch = max(2.0, u_pinch * radius / 100.0);
+    float bendBudget = radius * 0.55 / effectivePinch;
+    float displacement = pow(distNorm, effectivePinch) * bendBudget * clamp(u_strength, 0.0, 1.6);
 
     vec2 captureSize = u_resolution / u_dpr;
     vec2 boundary = min(pixel, captureSize - pixel);
@@ -83,9 +87,11 @@ export const liquidFragmentShader = `
     sampleUv = (sampleUv - centerUv) / max(u_zoom, 1.0) + centerUv;
     sampleUv = clamp(sampleUv, vec2(0.001), vec2(0.999));
 
-    // RGB separation is measured against the viewport, so changing the ROI
-    // during a snap cannot suddenly change the apparent colour fringe width.
-    vec2 chroma = normal * u_aberration * 0.02 * distNorm * edgeSafety * u_viewport / captureSize;
+    // Split only the rim, by a fraction of one CSS pixel. Viewport-normalized
+    // offsets grew to several pixels on desktop displays and coloured entire
+    // glyphs. ROI/DPR changes must not affect the physical fringe width.
+    float rim = pow(distNorm, 3.0);
+    vec2 chroma = normal * min(u_aberration, 0.18) * rim * edgeSafety / captureSize;
     vec3 color;
     color.r = texture2D(u_texture, clamp(sampleUv + chroma, 0.0, 1.0)).r;
     color.g = texture2D(u_texture, sampleUv).g;
@@ -98,8 +104,9 @@ export const liquidFragmentShader = `
     float rimWidth = 1.0 - squeezeStart;
     float progress = max(0.0, (distNorm - squeezeStart) / rimWidth);
     float reach = pow(progress, 1.5);
-    vec2 ray = normal * vec2(-1.0, -1.0);
-    vec2 reflectedUv = screenUv + ray * reach * (vec2(2.0) + pow(distNorm, 3.0) * 0.1 * u_viewport) / captureSize;
+    // Reflect nearby surface content. Sampling 10% of the entire viewport
+    // away painted unrelated text and icons into the cursor's rim.
+    vec2 reflectedUv = sampleUv - normal * reach * min(radius * 0.12, 4.0) / captureSize;
     float visibility = smoothstep(0.91, 0.975, distNorm);
     float reflectionWeight = u_reflection * visibility * clamp(1.0 - reach * 0.5, 0.0, 1.0) * edgeSafety;
     color += texture2D(u_texture, clamp(reflectedUv, 0.0, 1.0)).rgb * reflectionWeight;

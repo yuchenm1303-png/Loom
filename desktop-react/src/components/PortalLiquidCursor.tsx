@@ -162,7 +162,6 @@ export function PortalLiquidCursor() {
     const uniforms = {
       texture: gl.getUniformLocation(program, "u_texture"),
       resolution: gl.getUniformLocation(program, "u_resolution"),
-      viewport: gl.getUniformLocation(program, "u_viewport"),
       dpr: gl.getUniformLocation(program, "u_dpr"),
       reflection: gl.getUniformLocation(program, "u_reflection"),
       tint: gl.getUniformLocation(program, "u_tint"),
@@ -587,7 +586,6 @@ export function PortalLiquidCursor() {
         gl.bindTexture(gl.TEXTURE_2D, texture);
         gl.uniform1i(uniforms.texture, 0);
         gl.uniform2f(uniforms.resolution, canvas.width, canvas.height);
-        gl.uniform2f(uniforms.viewport, window.innerWidth, window.innerHeight);
         gl.uniform1f(uniforms.dpr, dpr);
         gl.uniform1f(uniforms.reflection, LIQUID_OPTICS.reflection);
         gl.uniform1f(uniforms.tint, LIQUID_OPTICS.tint);

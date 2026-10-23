@@ -18,6 +18,7 @@ createRoot(document.getElementById("root")!).render(
       p { width:380px; line-height:1.8; border-bottom:1px solid currentColor; padding-bottom:20px; }
     `}</style>
     <PortalLiquidCursor />
+    <div style={{ position: "absolute", left: 780, top: 210, fontSize: 84, pointerEvents: "none" }}>Loom</div>
     <div className="sheet">
       <button id="first" onClick={event => { event.currentTarget.dataset.clicks = String(Number(event.currentTarget.dataset.clicks || 0) + 1); }}>Open Loom</button>
       <button id="second">Another target</button>

@@ -17,9 +17,12 @@ global canvas prototype patches or editor property controls.
 
 - `portalLiquidOptics.ts`: optical settings and WebGL shaders. Rounded-box
   normals feed refraction, RGB separation, white tint and squeezed rim
-  reflection. Default settings match the reference's basic lens: strength
+  reflection. Base controls retain the reference's basic lens settings: strength
   0.95, pinch 7.7, aberration 0.12, reflection 0.15, tint 0.05, no idle wobble
-  or zoom. CSS-pixel optics stay stable when device scale or capture size changes.
+  or zoom. Displacement is bounded by the lens radius and profile derivative,
+  RGB separation is at most 0.18 CSS pixels per channel and only affects the
+  rim, and reflected content is sampled within 4 CSS pixels of the surface.
+  None of those distances scale with the viewport or capture size.
 - `portalLiquidMotion.ts`: stable substepped springs and snap-weight blending.
   The free follower continues tracking the mouse while a separate anchor
   follows the snapped element. Release blends back without jumping.
@@ -44,6 +47,10 @@ reduced-motion changes tear down the overlay and restore the native cursor.
 
 - `node --test desktop-react/scripts/tests/liquid-cursor-motion.test.mjs`
 - `node --test desktop-react/scripts/tests/portal-release.test.mjs`
+- Run Vite, then `node desktop-react/scripts/tests/liquid-cursor-optics-browser.mjs`
+  to render neutral stripe and gradient textures through the actual shader.
+  This detects RGB bands and reversed sampling, across small/wide/round lenses,
+  press strength, 1×/1.75× capture resolution and different ROI/viewport sizes.
 - Run Vite, then `node desktop-react/scripts/tests/liquid-cursor-browser.mjs`.
   Set `LOOM_TEST_ORIGIN`, `LOOM_PLAYWRIGHT_MODULE`, and `LOOM_CHROMIUM_PATH` as
   needed. Browser checks exercise WebGL, snapping, clicks, input, nested scroll,
