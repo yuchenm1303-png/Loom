@@ -1,12 +1,10 @@
 import { useEffect, useRef } from "react";
 import { rasterizePortal } from "./portalLiquidCapture";
 import { blendAnchor, stepSpring, type SpringValue } from "./portalLiquidMotion";
-import { LIQUID_OPTICS, liquidVertexShader, liquidFragmentShader } from "./portalLiquidOptics";
+import { createReferenceLensRenderer, liquidVertexShader, liquidFragmentShader } from "./portalLiquidOptics";
 import { useReducedMotion } from "../motion/useReducedMotion";
 
-const FREE_ROI_SIZE = 420;
-const SNAP_ROI_PADDING = 160;
-const MAX_ROI_SIZE = 1200;
+const FREE_ROI_SIZE = 260;
 const BASE_WIDTH = 80;
 const BASE_HEIGHT = 54;
 const FREE_OFFSET_Y = -32;
@@ -72,6 +70,7 @@ function createShader(gl: WebGLRenderingContext, type: number, source: string) {
 
 
 function createProgram(gl: WebGLRenderingContext) {
+  gl.getExtension("OES_standard_derivatives");
   const vertex = createShader(gl, gl.VERTEX_SHADER, liquidVertexShader);
   const fragment = createShader(gl, gl.FRAGMENT_SHADER, liquidFragmentShader);
   if (!vertex || !fragment) return null;
@@ -148,7 +147,7 @@ export function PortalLiquidCursor() {
 
     gl.bindBuffer(gl.ARRAY_BUFFER, uv);
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([0,0, 1,0, 0,1, 0,1, 1,0, 1,1]), gl.STATIC_DRAW);
-    const uvLocation = gl.getAttribLocation(program, "a_uv");
+    const uvLocation = gl.getAttribLocation(program, "a_texCoord");
     gl.enableVertexAttribArray(uvLocation);
     gl.vertexAttribPointer(uvLocation, 2, gl.FLOAT, false, 0, 0);
 
@@ -159,21 +158,7 @@ export function PortalLiquidCursor() {
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
 
-    const uniforms = {
-      texture: gl.getUniformLocation(program, "u_texture"),
-      resolution: gl.getUniformLocation(program, "u_resolution"),
-      dpr: gl.getUniformLocation(program, "u_dpr"),
-      reflection: gl.getUniformLocation(program, "u_reflection"),
-      tint: gl.getUniformLocation(program, "u_tint"),
-      lensCenter: gl.getUniformLocation(program, "u_lensCenter"),
-      lensSize: gl.getUniformLocation(program, "u_lensSize"),
-      strength: gl.getUniformLocation(program, "u_strength"),
-      pinch: gl.getUniformLocation(program, "u_pinch"),
-      aberration: gl.getUniformLocation(program, "u_aberration"),
-      zoom: gl.getUniformLocation(program, "u_zoom"),
-      wobble: gl.getUniformLocation(program, "u_wobble"),
-      time: gl.getUniformLocation(program, "u_time"),
-    };
+    const drawReferenceLens = createReferenceLensRenderer(gl, program);
 
     const wallpaper = new Image();
     wallpaper.crossOrigin = "anonymous";
@@ -363,7 +348,6 @@ export function PortalLiquidCursor() {
             snappedRoiWidth,
             Math.min(window.innerWidth, Math.max(
               FREE_ROI_SIZE,
-              Math.min(MAX_ROI_SIZE, Math.ceil((finalLensWidth + SNAP_ROI_PADDING * 2) / 16) * 16),
               Math.ceil(Math.max(finalLensWidth, width.value) * 1.08 + 80),
             )),
           );
@@ -371,7 +355,6 @@ export function PortalLiquidCursor() {
             snappedRoiHeight,
             Math.min(window.innerHeight, Math.max(
               FREE_ROI_SIZE,
-              Math.min(MAX_ROI_SIZE, Math.ceil((finalLensHeight + SNAP_ROI_PADDING * 2) / 16) * 16),
               Math.ceil(Math.max(finalLensHeight, height.value) * 1.08 + 80),
             )),
           );
@@ -571,33 +554,16 @@ export function PortalLiquidCursor() {
       dot.style.opacity = pointerInside ? (snap.value > 0.4 ? ".42" : ".86") : "0";
 
       if (textureReady) {
-        const pressWeight = Math.max(0, Math.min(1, deformation));
-        const releaseWeight = Math.max(0, -deformation);
-        const strength = LIQUID_OPTICS.strength + 0.62 * pressWeight;
-        const pinch = LIQUID_OPTICS.pinch - 0.85 * pressWeight;
-        const aberration = LIQUID_OPTICS.aberration + 0.01 * pressWeight;
-        const zoom = 1 + 0.025 * pressWeight;
-        const wobble = 0.06 * pressWeight + 0.18 * releaseWeight;
-
         gl.viewport(0, 0, canvas.width, canvas.height);
-        gl.clearColor(0, 0, 0, 0);
-        gl.clear(gl.COLOR_BUFFER_BIT);
-        gl.useProgram(program);
         gl.bindTexture(gl.TEXTURE_2D, texture);
-        gl.uniform1i(uniforms.texture, 0);
-        gl.uniform2f(uniforms.resolution, canvas.width, canvas.height);
-        gl.uniform1f(uniforms.dpr, dpr);
-        gl.uniform1f(uniforms.reflection, LIQUID_OPTICS.reflection);
-        gl.uniform1f(uniforms.tint, LIQUID_OPTICS.tint);
-        gl.uniform2f(uniforms.lensCenter, (lensX - roiLeft) * dpr, (lensY - roiTop) * dpr);
-        gl.uniform2f(uniforms.lensSize, width.value * dpr * (1 + 0.025 * deformation), height.value * dpr * (1 - 0.085 * deformation));
-        gl.uniform1f(uniforms.strength, strength);
-        gl.uniform1f(uniforms.pinch, pinch);
-        gl.uniform1f(uniforms.aberration, aberration);
-        gl.uniform1f(uniforms.zoom, zoom);
-        gl.uniform1f(uniforms.wobble, wobble);
-        gl.uniform1f(uniforms.time, now / 1000);
-        gl.drawArrays(gl.TRIANGLES, 0, 6);
+        drawReferenceLens({
+          roiWidth, roiHeight,
+          centerX: lensX - roiLeft, centerY: lensY - roiTop,
+          width: width.value * (1 + 0.025 * deformation),
+          height: height.value * (1 - 0.085 * deformation),
+          screenDpr: window.devicePixelRatio || 1,
+          time: now / 1000,
+        });
       }
 
       const settled =

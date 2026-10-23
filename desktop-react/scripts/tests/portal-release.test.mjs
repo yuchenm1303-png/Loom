@@ -77,31 +77,17 @@ test("the introduction homepage keeps task entry inside the workspace", () => {
   assert.ok(!portal.includes('pendingPrompt && authenticated'), "connecting must not auto-submit a homepage task");
 });
 
-test("magnetic glass refraction is smooth on short and tall targets in both homepage bundles", () => {
-  const react = readFileSync(new URL("../../src/components/portalLiquidOptics.ts", import.meta.url), "utf8");
-  const standalone = readFileSync(new URL("../../../artifacts/loom-site/assets/cursor.js", import.meta.url), "utf8");
-  for (const source of [react, standalone]) {
-    assert.ok(source.includes("vec2 bendReach = max(vec2(22.0, 13.0), halfSize * vec2(0.68, 0.66))"));
-    assert.ok(source.includes("refraction *= inversesqrt(vec2(1.0) + bendRatio * bendRatio)"));
-    assert.ok(!source.includes("refraction.y = clamp("), "a hard Y clamp flattens the optics into horizontal cutoff bands");
-    assert.ok(source.includes("float mask = 1.0 - smoothstep("), "keep the rounded glass silhouette");
-  }
-
-  const smoothLimit = (value, reach) => value / Math.sqrt(1 + (value / reach) ** 2);
-  for (const buttonHeight of [28, 36, 44, 60, 120]) {
-    const reach = Math.max(13, buttonHeight / 2 * 0.66);
-    const samples = [-100, -40, -20, -10, -1, 0, 1, 10, 20, 40, 100]
-      .map(value => smoothLimit(value, reach));
-    assert.ok(samples.every(value => Number.isFinite(value) && Math.abs(value) < reach));
-    assert.ok(samples.every((value, index) => index === 0 || samples[index - 1] < value),
-      "optical displacement must change smoothly without a flat clipped band");
-    const oldHardCutoff = buttonHeight / 2 * .32;
-    const epsilon = .001;
-    const leftSlope = (smoothLimit(oldHardCutoff, reach) - smoothLimit(oldHardCutoff - epsilon, reach)) / epsilon;
-    const rightSlope = (smoothLimit(oldHardCutoff + epsilon, reach) - smoothLimit(oldHardCutoff, reach)) / epsilon;
-    assert.ok(Math.abs(leftSlope - rightSlope) < .001,
-      "the old cutoff location must no longer produce a visible slope break");
-  }
+test("both homepage bundles use the unmodified reference refraction shader", async () => {
+  const { createHash } = await import("node:crypto");
+  const source = readFileSync(new URL("../../src/components/liquid-glass-reference/shaders.ts", import.meta.url), "utf8").replace(/\r\n/g, "\n");
+  const shader = source.match(/export const liquidFragmentShader = `([\s\S]*?)`;/)[1];
+  const manifest = JSON.parse(readFileSync(new URL("../../src/components/liquid-glass-reference/provenance.json", import.meta.url), "utf8"));
+  const vertex = source.match(/export const liquidVertexShader = `([\s\S]*?)`;/)[1];
+  assert.equal(createHash("sha256").update(vertex).digest("hex"), manifest.vertexSha256);
+  assert.equal(createHash("sha256").update(shader).digest("hex"), manifest.fragmentSha256);
+  assert.equal(manifest.fragmentSha256, "fd113354e2a5c49e2af467464259b67752e1379fdf348179b3ce4fe07ec9470a");
+  const standalone = readFileSync(new URL("../../../artifacts/loom-site/assets/cursor.js", import.meta.url), "utf8").replace(/\r\n/g, "\n");
+  assert.ok(standalone.includes(shader), "the standalone bundle must carry the exact reference shader too");
 });
 
 

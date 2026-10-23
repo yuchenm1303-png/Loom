@@ -3,58 +3,54 @@
 The React portal and `artifacts/loom-site` use the same `PortalLiquidCursor`.
 Rebuild the standalone script with `node desktop-react/scripts/build-portal-cursor.mjs`.
 
-## Reference
+## Original refraction source
 
-The Candid reference at <https://invigorated-illustrations-883631.framer.app/>
-publishes Glassify, LiquidGlass_1, Snappy and MagneticHover_Prod modules in its
-[bundle source map](https://framerusercontent.com/sites/71OP8x9NcfOXaqvd3cdaVM/jrVWzt4799Mu6PJLYdCt1xwbaM34Kg75R2-5dFX5Roo.DE1c7s7k.mjs.map).
-Loom adapts its single-lens optical pipeline and free/pinned/weight motion
-arrangement to the existing renderer. It does not depend on Framer or include
-the reference's general-purpose cluster engine, page scroll controller,
-global canvas prototype patches or editor property controls.
+`desktop-react/src/components/liquid-glass-reference/shaders.ts` contains the
+**verbatim vertex and fragment shader strings** from the reference site's
+`LiquidGlass_1.js`, recovered from its published bundle source map. URLs and
+SHA-256 hashes are recorded in the adjacent `provenance.json`.
 
-## Responsibilities
+The shader equations, array sizes, original UV conversion, SDF, normal
+calculation, displacement, blur, RGB separation and reflection code are
+unchanged. No Loom-specific GLSL limiter, colour-fringe formula or optical
+fallback is substituted. The regression suite pins the original fragment hash
+and checks that the standalone homepage contains exactly the same string.
 
-- `portalLiquidOptics.ts`: optical settings and WebGL shaders. Rounded-box
-  normals feed refraction, RGB separation, white tint and squeezed rim
-  reflection. Base controls retain the reference's basic lens settings: strength
-  0.95, pinch 7.7, aberration 0.12, reflection 0.15, tint 0.05, no idle wobble
-  or zoom. Displacement is bounded by the lens radius and profile derivative,
-  RGB separation is at most 0.18 CSS pixels per channel and only affects the
-  rim, and reflected content is sampled within 4 CSS pixels of the surface.
-  None of those distances scale with the viewport or capture size.
-- `portalLiquidMotion.ts`: stable substepped springs and snap-weight blending.
-  The free follower continues tracking the mouse while a separate anchor
-  follows the snapped element. Release blends back without jumping.
-- `portalLiquidCapture.ts`: DOM sampling of text, images, SVG, input values,
-  switch pseudo-elements, backgrounds and borders, respecting ancestor clips.
-- `PortalLiquidCursor.tsx`: magnetic controls, input/click handling,
-  ROI lifetime, texture uploads and lifecycle cleanup. Capture size is held
-  through morph/release; a continuous displacement limiter prevents horizontal
-  cutoff bands on shallow controls. Animation sleeps after springs settle.
+`portalLiquidOptics.ts` is only a WebGL uniform adapter. It follows the
+reference's `renderLoopCallback`: lens positions are bottom-up ROI-local UVs;
+lens sizes and `u_resolution` use screen DPR, independent of capture resolution;
+`u_globalBounds` and `u_roiBounds` are both `(0,0,1,1)` for the single ROI.
+It passes the reference Mouse lens settings (strength .95, pinch 7.7,
+aberration .12, white tint .05, blur 4, no zoom or wobble) and the actual
+homepage LiquidGlass instance settings (merge enabled, smoothness .24,
+backdrop blur and reflections disabled). Component defaults alone are not the
+published site's configuration.
 
-The default free lens remains 80 × 54 CSS pixels. Entry distance is 12 pixels,
-exit distance 17 pixels and target padding 10 pixels. `data-liquid-snap` and
-`data-magnetic-hover` provide explicit opt-in outside existing portal controls.
-Current `.loom-site` links/buttons/inputs are also recognized without changing
-the homepage markup. Inputs snap but do not move magnetically.
+## Loom integration
 
-Loom retains press/release compression, native keyboard interaction and trusted
-primary-click forwarding from just outside a snapped control. System and app
-reduced-motion changes tear down the overlay and restore the native cursor.
+- `portalLiquidCapture.ts` reconstructs visible DOM content into a texture.
+- `portalLiquidMotion.ts` handles free/pinned/weight spring motion.
+- `PortalLiquidCursor.tsx` owns magnetic controls, click/input handling,
+  capture region, uploads, lifecycle and idle sleep. Press feedback changes
+  the lens geometry; it does not replace or alter the reference optics.
+
+The free capture region follows the reference's 260px locked box. It expands
+when needed to contain a large snapped control and stays allocated through
+snap/release to avoid invalidating the texture every frame. The cursor is
+80 × 54 CSS pixels, with 12px snap entry, 17px release and 10px target padding.
+System/app reduced motion tears down the overlay and restores the native cursor.
 
 ## Validation
 
 - `node --test desktop-react/scripts/tests/liquid-cursor-motion.test.mjs`
 - `node --test desktop-react/scripts/tests/portal-release.test.mjs`
-- Run Vite, then `node desktop-react/scripts/tests/liquid-cursor-optics-browser.mjs`
-  to render neutral stripe and gradient textures through the actual shader.
-  This detects RGB bands and reversed sampling, across small/wide/round lenses,
-  press strength, 1×/1.75× capture resolution and different ROI/viewport sizes.
-- Run Vite, then `node desktop-react/scripts/tests/liquid-cursor-browser.mjs`.
-  Set `LOOM_TEST_ORIGIN`, `LOOM_PLAYWRIGHT_MODULE`, and `LOOM_CHROMIUM_PATH` as
-  needed. Browser checks exercise WebGL, snapping, clicks, input, nested scroll,
-  theme capture, reduced motion, device scale and sleep/wake behavior.
+- With Vite running, `node desktop-react/scripts/tests/liquid-cursor-optics-browser.mjs`
+  checks original shader compilation, actual uniforms, ROI/DPR mapping and
+  asymmetric texture orientation across small, wide and round lenses.
+- `node desktop-react/scripts/tests/liquid-cursor-browser.mjs` checks motion,
+  clicks, input, scroll, themes, reduced motion and idle sleep at 1×/2×.
 
+Browser tests accept `LOOM_TEST_ORIGIN`, `LOOM_PLAYWRIGHT_MODULE` and
+`LOOM_CHROMIUM_PATH`; set `LOOM_CURSOR_SCREENSHOT_DIR` to save visual evidence.
 DOM capture remains a reconstruction, not a browser screenshot: arbitrary CSS
 filters, masks and stacking contexts are not fully reproduced.

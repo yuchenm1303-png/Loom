@@ -29,11 +29,11 @@ try {
         if (result) locations.set(result, name);
         return result;
       };
-      for (const method of ["uniform1f", "uniform2f"]) {
+      for (const method of ["uniform1f", "uniform1i", "uniform2f", "uniform4f", "uniform2fv", "uniform4fv"]) {
         const original = proto[method];
         proto[method] = function(location, ...values) {
           const name = locations.get(location);
-          if (name) window.lensProbe.uniforms[name] = values;
+          if (name) window.lensProbe.uniforms[name] = ArrayBuffer.isView(values[0]) ? Array.from(values[0]) : values;
           return original.call(this, location, ...values);
         };
       }
@@ -42,10 +42,22 @@ try {
         draw.apply(this, args);
         const probe = window.lensProbe;
         probe.draws++;
-        const center = probe.uniforms.u_lensCenter;
+        const u = probe.uniforms;
+        const position = u["u_positions[0]"];
+        const resolution = u.u_resolution;
+        const center = position && resolution ? [position[0] * resolution[0], (1 - position[1]) * resolution[1]] : null;
+        if (center) {
+          u.u_lensCenter = center;
+          u.u_lensSize = u["u_lensSizes[0]"];
+          u.u_dpr = [window.devicePixelRatio || 1];
+          u.u_wobble = [u["u_lensExtra[0]"][0]];
+          u.u_zoom = [u["u_lensExtra[0]"][2]];
+          u.u_tint = [u["u_tintColors[0]"][3]];
+          u.u_strength = [u["u_lensSettings[0]"][1]];
+        }
         if (center) {
           const pixel = new Uint8Array(4);
-          this.readPixels(Math.floor(center[0]), this.drawingBufferHeight - Math.ceil(center[1]), 1, 1, this.RGBA, this.UNSIGNED_BYTE, pixel);
+          this.readPixels(Math.floor(position[0] * this.drawingBufferWidth), Math.floor(position[1] * this.drawingBufferHeight), 1, 1, this.RGBA, this.UNSIGNED_BYTE, pixel);
           probe.pixel = Array.from(pixel);
         }
       };
@@ -111,8 +123,8 @@ try {
     assert.equal(state.pixel[3], 255, "the shader must draw a real opaque lens centre");
     assert.equal(state.uniforms.u_wobble[0], 0);
     assert.equal(state.uniforms.u_zoom[0], 1);
-    assert.equal(state.uniforms.u_tint[0], 0.05);
-    assert.equal(state.uniforms.u_strength[0], 0.95);
+    assert.ok(Math.abs(state.uniforms.u_tint[0] - 0.05) < 0.0001);
+    assert.ok(Math.abs(state.uniforms.u_strength[0] - 0.95) < 0.0001);
     let box = await lensBox();
     assert.ok(Math.abs(box.x - 720) < 0.2 && Math.abs(box.y - 268) < 0.2);
     assert.ok(Math.abs(box.width - 80) < 0.2 && Math.abs(box.height - 54) < 0.2);

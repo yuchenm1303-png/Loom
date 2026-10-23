@@ -1,117 +1,78 @@
-// Single-lens adaptation of the Glassify / LiquidGlass optical pipeline.
-// Reference and integration notes: docs/portal-liquid-cursor.md.
+export { liquidVertexShader, liquidFragmentShader } from "./liquid-glass-reference/shaders";
+
+// Glassify cursor settings from the reference site's Mouse component.
 export const LIQUID_OPTICS = {
-  strength: 0.95,
-  pinch: 7.7,
-  aberration: 0.12,
-  reflection: 0.15,
-  tint: 0.05,
+  strength: 0.95, pinch: 7.7, aberration: 0.12,
+  reflection: 0.15, tint: 0.05, blur: 4,
 } as const;
 
-export const liquidVertexShader = `
-  attribute vec2 a_position;
-  attribute vec2 a_uv;
-  varying vec2 v_uv;
-  void main() {
-    v_uv = a_uv;
-    gl_Position = vec4(a_position, 0.0, 1.0);
-  }
-`;
+const uniformNames = [
+  "u_texture", "u_resolution", "u_globalBounds", "u_roiBounds",
+  "u_positions[0]", "u_lensSizes[0]", "u_tintColors[0]", "u_lensSettings[0]",
+  "u_lensOptical[0]", "u_lensExtra[0]", "u_lensCount", "u_zoomAmount", "u_time",
+  "u_blurSamples", "u_rimSamples", "u_enableZIndex", "u_mergeMode", "u_mergeSmoothness",
+  "u_enableBackdropBlur", "u_enableReflections", "u_reflectionReach", "u_reflectionBlur",
+  "u_reflectionSqueeze", "u_reflectionRayDir", "u_reflectionFade", "u_reflectionRimSoftness",
+] as const;
+type UniformName = typeof uniformNames[number];
 
-export const liquidFragmentShader = `
-  precision highp float;
-  varying vec2 v_uv;
-  uniform sampler2D u_texture;
-  uniform vec2 u_resolution;
-  uniform vec2 u_lensCenter;
-  uniform vec2 u_lensSize;
-  uniform float u_strength;
-  uniform float u_pinch;
-  uniform float u_aberration;
-  uniform float u_zoom;
-  uniform float u_wobble;
-  uniform float u_time;
-  uniform float u_reflection;
-  uniform float u_tint;
-  uniform float u_dpr;
+// Host adapter for the reference's renderLoopCallback uniform contract.
+// All optical equations live in the unmodified vendored shaders.
+export function createReferenceLensRenderer(gl: WebGLRenderingContext, program: WebGLProgram) {
+  const uniforms = Object.fromEntries(uniformNames.map(name => [name, gl.getUniformLocation(program, name)])) as Record<UniformName, WebGLUniformLocation | null>;
+  const positions = new Float32Array(100);
+  const sizes = new Float32Array(100);
+  const tints = new Float32Array(200);
+  const settings = new Float32Array(200);
+  const opticals = new Float32Array(200);
+  const extras = new Float32Array(200);
+  for (let index = 0; index < 50; index++) extras[index * 4 + 2] = 1;
 
-  float sdRoundBox(vec2 p, vec2 b, float r) {
-    vec2 q = abs(p) - b + vec2(r);
-    return length(max(q, 0.0)) + min(max(q.x, q.y), 0.0) - r;
-  }
-
-  vec2 warpPoint(vec2 p, float radius) {
-    float angle = atan(p.y, p.x);
-    float wave = sin(angle * 3.0 + u_time * 1.7) * 0.46
-      + cos(angle * 5.0 - u_time * 2.3) * 0.28
-      + sin(angle * 7.0 + u_time * 3.1) * 0.16;
-    return p - normalize(p + vec2(0.0001)) * wave * u_wobble * radius * 0.055;
-  }
-
-  void main() {
-    vec2 screenUv = vec2(v_uv.x, 1.0 - v_uv.y);
-    // Optics use CSS pixels, independent of capture resolution and ROI size.
-    vec2 pixel = screenUv * u_resolution / u_dpr;
-    vec2 halfSize = max(u_lensSize * 0.5 / u_dpr, vec2(2.0));
-    float radius = max(2.0, min(halfSize.x, halfSize.y));
-    vec2 local = warpPoint(pixel - u_lensCenter / u_dpr, radius);
-    float d = sdRoundBox(local, halfSize, radius);
-    if (d > 1.5) { gl_FragColor = vec4(0.0); return; }
-
-    // Analytic rounded-box normal, as in calculateLens. No finite-difference
-    // seam through the middle of a shallow, wide snapped button.
-    vec2 q = abs(local) - halfSize + vec2(radius);
-    vec2 signP = vec2(local.x >= 0.0 ? 1.0 : -1.0, local.y >= 0.0 ? 1.0 : -1.0);
-    vec2 normal;
-    if (q.x > 0.0 && q.y > 0.0) normal = normalize(q) * signP;
-    else if (q.x > q.y) normal = vec2(signP.x, 0.0);
-    else normal = vec2(0.0, signP.y);
-    float distNorm = clamp(1.0 + d / radius, 0.0, 1.0);
-    // A fixed 40px bend can exceed the radius of a small cursor. Bound the
-    // derivative of the sampling map as well as its displacement: otherwise
-    // neighbouring output pixels sample in reverse order and repeat glyphs.
-    float effectivePinch = max(2.0, u_pinch * radius / 100.0);
-    float bendBudget = radius * 0.55 / effectivePinch;
-    float displacement = pow(distNorm, effectivePinch) * bendBudget * clamp(u_strength, 0.0, 1.6);
-
-    vec2 captureSize = u_resolution / u_dpr;
-    vec2 boundary = min(pixel, captureSize - pixel);
-    float edgeSafety = smoothstep(2.0, 30.0, min(boundary.x, boundary.y));
-    vec2 refraction = normal * displacement * edgeSafety;
-    // Preserve Loom's continuous limiter on narrow targets and viewport edges.
-    vec2 bendReach = max(vec2(22.0, 13.0), halfSize * vec2(0.68, 0.66));
-    vec2 bendRatio = refraction / bendReach;
-    refraction *= inversesqrt(vec2(1.0) + bendRatio * bendRatio);
-    vec2 sampleUv = screenUv - refraction / captureSize;
-    vec2 centerUv = u_lensCenter / u_resolution;
-    sampleUv = (sampleUv - centerUv) / max(u_zoom, 1.0) + centerUv;
-    sampleUv = clamp(sampleUv, vec2(0.001), vec2(0.999));
-
-    // Split only the rim, by a fraction of one CSS pixel. Viewport-normalized
-    // offsets grew to several pixels on desktop displays and coloured entire
-    // glyphs. ROI/DPR changes must not affect the physical fringe width.
-    float rim = pow(distNorm, 3.0);
-    vec2 chroma = normal * min(u_aberration, 0.18) * rim * edgeSafety / captureSize;
-    vec3 color;
-    color.r = texture2D(u_texture, clamp(sampleUv + chroma, 0.0, 1.0)).r;
-    color.g = texture2D(u_texture, sampleUv).g;
-    color.b = texture2D(u_texture, clamp(sampleUv - chroma, 0.0, 1.0)).b;
-    color = mix(color, vec3(1.0), u_tint);
-
-    // LiquidGlass's squeezed rim reflection: reach, warp, soft visibility,
-    // distance fade. Only the outer rim contributes, keeping text clear.
-    float squeezeStart = 0.95;
-    float rimWidth = 1.0 - squeezeStart;
-    float progress = max(0.0, (distNorm - squeezeStart) / rimWidth);
-    float reach = pow(progress, 1.5);
-    // Reflect nearby surface content. Sampling 10% of the entire viewport
-    // away painted unrelated text and icons into the cursor's rim.
-    vec2 reflectedUv = sampleUv - normal * reach * min(radius * 0.12, 4.0) / captureSize;
-    float visibility = smoothstep(0.91, 0.975, distNorm);
-    float reflectionWeight = u_reflection * visibility * clamp(1.0 - reach * 0.5, 0.0, 1.0) * edgeSafety;
-    color += texture2D(u_texture, clamp(reflectedUv, 0.0, 1.0)).rgb * reflectionWeight;
-
-    float mask = 1.0 - smoothstep(-1.15, 0.9, d);
-    gl_FragColor = vec4(color * mask, mask);
-  }
-`;
+  return ({ roiWidth, roiHeight, centerX, centerY, width, height, screenDpr, time }: {
+    roiWidth: number; roiHeight: number; centerX: number; centerY: number;
+    width: number; height: number; screenDpr: number; time: number;
+  }) => {
+    // ROI-local bottom-up UVs, physical lens sizes, and screenDpr, independent
+    // of the texture's capture resolution: exactly the reference convention.
+    positions[0] = centerX / roiWidth;
+    positions[1] = 1 - centerY / roiHeight;
+    sizes[0] = width * screenDpr; sizes[1] = height * screenDpr;
+    tints.set([1, 1, 1, LIQUID_OPTICS.tint]);
+    settings.set([0, LIQUID_OPTICS.strength, LIQUID_OPTICS.pinch, 9999 * screenDpr]);
+    opticals.set([LIQUID_OPTICS.blur, LIQUID_OPTICS.reflection, 0, 0]);
+    extras.set([0, LIQUID_OPTICS.aberration, 1, 0]);
+    gl.useProgram(program);
+    gl.uniform1i(uniforms.u_texture, 0);
+    gl.uniform2f(uniforms.u_resolution, Math.max(1, Math.round(roiWidth * screenDpr)), Math.max(1, Math.round(roiHeight * screenDpr)));
+    gl.uniform4f(uniforms.u_globalBounds, 0, 0, 1, 1);
+    gl.uniform4f(uniforms.u_roiBounds, 0, 0, 1, 1);
+    gl.uniform2fv(uniforms["u_positions[0]"], positions);
+    gl.uniform2fv(uniforms["u_lensSizes[0]"], sizes);
+    gl.uniform4fv(uniforms["u_tintColors[0]"], tints);
+    gl.uniform4fv(uniforms["u_lensSettings[0]"], settings);
+    gl.uniform4fv(uniforms["u_lensOptical[0]"], opticals);
+    gl.uniform4fv(uniforms["u_lensExtra[0]"], extras);
+    gl.uniform1i(uniforms.u_lensCount, 1);
+    gl.uniform1f(uniforms.u_zoomAmount, 1);
+    gl.uniform1f(uniforms.u_time, time);
+    // Actual LiquidGlass instance settings from the reference homepage,
+    // including merge mode and disabled reflections, not component defaults.
+    gl.uniform1f(uniforms.u_blurSamples, 0);
+    gl.uniform1f(uniforms.u_rimSamples, 0);
+    gl.uniform1i(uniforms.u_enableZIndex, 0);
+    gl.uniform1i(uniforms.u_mergeMode, 1);
+    gl.uniform1f(uniforms.u_mergeSmoothness, 0.24);
+    gl.uniform1i(uniforms.u_enableBackdropBlur, 0);
+    gl.uniform1i(uniforms.u_enableReflections, 0);
+    gl.uniform1f(uniforms.u_reflectionReach, 136 * screenDpr);
+    gl.uniform1f(uniforms.u_reflectionBlur, screenDpr * 0.15);
+    gl.uniform1f(uniforms.u_reflectionSqueeze, 100);
+    gl.uniform1f(uniforms.u_reflectionRayDir, 1);
+    gl.uniform1f(uniforms.u_reflectionFade, 0.5);
+    gl.uniform1f(uniforms.u_reflectionRimSoftness, 0.29);
+    gl.disable(gl.SCISSOR_TEST);
+    gl.clearColor(0, 0, 0, 0);
+    gl.clear(gl.COLOR_BUFFER_BIT);
+    gl.drawArrays(gl.TRIANGLES, 0, 6);
+  };
+}
