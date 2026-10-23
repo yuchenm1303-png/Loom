@@ -5,6 +5,7 @@ import "./portal-content.css";
 import "./portal-liquid-cursor.css";
 import "./portal-editorial.css";
 import "./portal-auth-dialog.css";
+import "./portal-home-icon.css";
 import type { CSSProperties, FormEvent } from "react";
 import { useEffect, useRef, useState } from "react";
 import { Laptop, Download, UserRound, LogOut, Check, ArrowRight, Github, Mail, KeyRound, ShieldCheck, Eye, EyeOff, FolderOpen, MessagesSquare } from "./icons";
