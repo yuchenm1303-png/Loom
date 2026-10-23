@@ -321,7 +321,7 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
     if (account.busy) return;
     setLocalError("");
     setLogoutNotice("");
-    const success = await account.logout();
+    const success = await account.logoutWithResult();
     if (!success) {
       setLocalError(account.error?.message || (zh
         ? "退出失败，请检查网络连接并重试。"
