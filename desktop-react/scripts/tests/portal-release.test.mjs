@@ -144,7 +144,7 @@ test("editorial dialog prevents background focus and restores its actual opener"
 
 test("original Loom artwork is the rightmost editorial header action", () => {
   const portal = readFileSync(new URL("../../src/components/WebPortal.tsx", import.meta.url), "utf8");
-  const css = readFileSync(new URL("../../src/components/portal-editorial.css", import.meta.url), "utf8");
+  const css = readFileSync(new URL("../../src/components/portal-home-icon.css", import.meta.url), "utf8");
   const icon = readFileSync(new URL("../../public/loom-icon.png", import.meta.url));
   const header = portal.slice(portal.indexOf('<nav className="editorial-meta"'), portal.indexOf("</nav>", portal.indexOf('<nav className="editorial-meta"')));
   assert.ok(header.indexOf("editorial-home-icon") > header.indexOf("editorial-theme"), "icon belongs at the far right");
@@ -153,5 +153,6 @@ test("original Loom artwork is the rightmost editorial header action", () => {
   assert.ok(header.includes('aria-label={zh ? "打开 Loom 工作区" : "Open Loom workspace"}'));
   assert.equal(icon.subarray(0, 8).toString("hex"), "89504e470d0a1a0a", "copied asset must be a real PNG");
   assert.ok(css.includes(".editorial-meta .editorial-home-icon"), "header icon must have explicit layout");
+  assert.ok(portal.includes('import "./portal-home-icon.css";'), "keep icon layout independent of homepage CSS rewrites");
   assert.ok(portal.includes('next === "classic" ? "/classic" : "/"'), "classic route stays intact");
 });
