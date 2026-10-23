@@ -212,10 +212,15 @@ export function useAccount() {
     [run],
   );
 
-  const logout = useCallback(
+  const logoutWithResult = useCallback(
     () => run(() => window.loom.accountLogout()),
     [run],
   );
+
+  // Keep the original Promise<void> interface used by the workspace.
+  const logout = useCallback(async () => {
+    await logoutWithResult();
+  }, [logoutWithResult]);
 
   return {
     account,
@@ -236,5 +241,6 @@ export function useAccount() {
     oauthExchange,
     updateProfile,
     logout,
+    logoutWithResult,
   };
 }
