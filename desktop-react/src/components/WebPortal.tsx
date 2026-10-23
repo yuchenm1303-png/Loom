@@ -487,7 +487,10 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
           <main className="editorial-body">
             <section className="editorial-hero" aria-labelledby="editorial-intro">
               <div className="editorial-hero-message">
-                <h1 id="editorial-intro" className="editorial-hero-copy">{zh ? <>从容开始，<br />让事情向前。</> : <>A quieter way<br />to get things done.</>}</h1>
+                <h1 id="editorial-intro" className="editorial-hero-copy">
+                  <span className="editorial-title-line">{zh ? "从容开始，" : "A quieter way"}</span>{" "}
+                  <span className="editorial-title-line editorial-title-finish">{zh ? "让事情向前。" : "to get things done."}</span>
+                </h1>
                 <p className="editorial-hero-description">
                   {zh ? "在你的电脑上，让想法成为现实。" : "Your local AI, ready for real work."}
                 </p>

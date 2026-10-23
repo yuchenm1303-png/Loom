@@ -58,7 +58,7 @@
   align-items: center;
   justify-content: space-between;
   gap: 24px;
-  min-height: 40px;
+  min-height: 44px;
 }
 .loom-editorial .editorial-brand { color: var(--ed-ink); }
 .loom-editorial .editorial-brand-name {
@@ -78,6 +78,7 @@
 }
 .loom-editorial .editorial-meta button:hover { color: var(--ed-ink); }
 .loom-editorial .editorial-meta > button:first-child {
+  min-height: 44px;
   max-width: 160px;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -103,6 +104,7 @@
   transition: transform .2s ease;
 }
 .loom-editorial.is-light .editorial-theme::after { transform: translateX(13px); }
+.loom-editorial .editorial-theme::before { content: ""; position: absolute; inset: -12px -6px; }
 .loom-editorial .editorial-body {
   display: flex;
   flex: 1 0 auto;
@@ -116,13 +118,16 @@
 .loom-editorial .editorial-hero-copy {
   margin: 0;
   color: var(--ed-ink);
-  font: 400 clamp(60px, 7.6vw, 104px)/1.02 var(--ed-serif);
+  font: 400 clamp(60px, 7.6vw, 104px)/1.08 var(--ed-serif);
   letter-spacing: -.043em;
   text-wrap: balance;
 }
+.loom-editorial .editorial-title-line { display: block; }
+.loom-editorial .editorial-title-finish { font-style: italic; letter-spacing: -.055em; }
+.loom-editorial:lang(zh-CN) .editorial-title-finish { font-style: normal; letter-spacing: -.043em; }
 .loom-editorial .editorial-hero-description {
   max-width: 620px;
-  margin: 30px auto 0;
+  margin: 27px auto 0;
   color: var(--ed-ink-muted);
   font: 400 clamp(20px, 1.8vw, 24px)/1.5 var(--ed-serif);
   text-wrap: pretty;
@@ -132,47 +137,55 @@
   flex-wrap: wrap;
   align-items: center;
   justify-content: center;
-  gap: 28px;
-  margin-top: 40px;
+  gap: 32px;
+  margin-top: 32px;
 }
 .loom-editorial .editorial-primary {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 24px;
-  min-height: 50px;
-  padding: 12px 25px;
+  min-height: 52px;
+  padding: 12px 27px;
   border: 1px solid var(--ed-ink);
-  border-radius: 6px;
+  border-radius: 99px;
   background: var(--ed-ink);
   color: var(--ed-paper);
   font: 400 19px/1.3 var(--ed-serif);
   cursor: pointer;
-  transition: background .18s ease, border-color .18s ease;
+  transition: background .18s ease, border-color .18s ease, box-shadow .18s ease;
 }
-.loom-editorial .editorial-primary:hover { background: var(--ed-ink-muted); border-color: var(--ed-ink-muted); }
+.loom-editorial .editorial-primary:hover { background: var(--ed-ink); border-color: var(--ed-ink); box-shadow: 0 0 0 5px color-mix(in srgb, var(--ed-ink) 8%, transparent); }
+.loom-editorial .editorial-primary svg { transition: transform .18s ease; }
+.loom-editorial .editorial-primary:hover svg { transform: translateX(3px); }
 .loom-editorial .editorial-download {
   display: inline-flex;
   align-items: center;
+  min-height: 48px;
   gap: 12px;
   color: var(--ed-ink-muted);
   font: 400 19px/1.4 var(--ed-serif);
   text-decoration: none;
+  text-underline-offset: 6px;
+  text-decoration-thickness: 1px;
 }
-.loom-editorial .editorial-download:hover { color: var(--ed-ink); }
+.loom-editorial .editorial-download:hover { color: var(--ed-ink); text-decoration: underline; }
 .loom-editorial .editorial-download span { font: 14px/1 ui-sans-serif, sans-serif; }
 .loom-editorial .editorial-capabilities {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 32px;
-  margin-top: clamp(64px, 11vh, 120px);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 20px 38px;
+  margin-top: clamp(44px, 7vh, 76px);
   text-align: center;
 }
-.loom-editorial .editorial-capabilities article { min-width: 0; }
+.loom-editorial .editorial-capabilities article { display: flex; align-items: center; gap: 38px; min-width: 0; }
+.loom-editorial .editorial-capabilities article + article::before { content: ""; flex: none; width: 3px; height: 3px; border-radius: 50%; background: var(--ed-rule); }
 .loom-editorial .editorial-capabilities h2 {
   margin: 0;
   color: var(--ed-ink-muted);
-  font: 400 clamp(26px, 2.5vw, 34px)/1.2 var(--ed-serif);
+  font: 400 clamp(24px, 2vw, 28px)/1.2 var(--ed-serif);
   letter-spacing: -.025em;
 }
 .loom-editorial .editorial-footer {
@@ -185,7 +198,7 @@
   font-size: 14px;
 }
 .loom-editorial .editorial-footer nav { display: flex; flex-wrap: wrap; gap: 24px; }
-.loom-editorial .editorial-footer a { color: inherit; text-decoration: none; transition: color .18s ease; }
+.loom-editorial .editorial-footer a { display: inline-flex; align-items: center; min-height: 44px; color: inherit; text-decoration: none; transition: color .18s ease; }
 .loom-editorial .editorial-footer a:hover { color: var(--ed-ink); }
 /* Keep the shared portal out of layout until its accessible dialog opens.
    Dialog appearance and focus behavior live in portal-auth-dialog.css. */
@@ -211,7 +224,8 @@
   .loom-portal-page.loom-editorial .editorial-shell { width: calc(100% - 40px); padding: 22px 0; }
   .loom-editorial .editorial-meta { gap: 16px; }
   .loom-editorial .editorial-body { padding: 64px 0; }
-  .loom-editorial .editorial-capabilities { grid-template-columns: 1fr; gap: 22px; margin: 64px 0 0; }
+  .loom-editorial .editorial-capabilities { flex-direction: column; gap: 16px; margin-top: 48px; }
+  .loom-editorial .editorial-capabilities article + article::before { display: none; }
   .loom-editorial .editorial-footer { flex-direction: column; gap: 16px; text-align: center; }
   .loom-editorial .editorial-footer nav { justify-content: center; gap: 18px; }
 }
