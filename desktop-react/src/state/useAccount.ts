@@ -212,9 +212,10 @@ export function useAccount() {
     [run],
   );
 
-  const logout = useCallback(async () => {
-    await run(() => window.loom.accountLogout());
-  }, [run]);
+  const logout = useCallback(
+    () => run(() => window.loom.accountLogout()),
+    [run],
+  );
 
   return {
     account,
