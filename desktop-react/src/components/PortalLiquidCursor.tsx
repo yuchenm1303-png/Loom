@@ -1,5 +1,8 @@
 import { useEffect, useRef } from "react";
-import { prefersReducedMotionNow } from "../motion/useReducedMotion";
+import { rasterizePortal } from "./portalLiquidCapture";
+import { blendAnchor, stepSpring, type SpringValue } from "./portalLiquidMotion";
+import { LIQUID_OPTICS, liquidVertexShader, liquidFragmentShader } from "./portalLiquidOptics";
+import { useReducedMotion } from "../motion/useReducedMotion";
 
 const FREE_ROI_SIZE = 420;
 const SNAP_ROI_PADDING = 160;
@@ -28,6 +31,7 @@ const SNAP_SELECTOR = [
   ".loom-account-switch:not(:disabled)",
   ".loom-host-setup-retry:not(:disabled)",
   ".loom-profile-home-action:not(:disabled)",
+  ".loom-site a[href], .loom-site button:not(:disabled), .loom-site input:not(:disabled)",
   "[data-liquid-snap='true']",
 ].join(",");
 
@@ -43,443 +47,14 @@ const MAGNETIC_SELECTOR = [
   ".loom-account-switch:not(:disabled)",
   ".loom-host-setup-retry:not(:disabled)",
   ".loom-profile-home-action:not(:disabled)",
+  ".loom-site a[href], .loom-site button:not(:disabled)",
   "[data-magnetic-hover='true']",
 ].join(",");
-
-type SpringValue = { value: number; velocity: number; target: number };
-
-function stepSpring(spring: SpringValue, dt: number, stiffness: number, damping: number) {
-  const acceleration = (spring.target - spring.value) * stiffness;
-  spring.velocity += acceleration * dt;
-  spring.velocity *= Math.exp(-damping * dt);
-  spring.value += spring.velocity * dt;
-}
 
 function rectDistance(rect: DOMRect, x: number, y: number) {
   const dx = Math.max(rect.left - x, 0, x - rect.right);
   const dy = Math.max(rect.top - y, 0, y - rect.bottom);
   return Math.hypot(dx, dy);
-}
-
-function intersects(rect: DOMRect, left: number, top: number, width: number, height: number) {
-  return rect.right >= left && rect.left <= left + width && rect.bottom >= top && rect.top <= top + height;
-}
-
-function cssNumber(value: string, fallback = 0) {
-  const parsed = Number.parseFloat(value);
-  return Number.isFinite(parsed) ? parsed : fallback;
-}
-
-function radiusFromStyle(style: CSSStyleDeclaration, rect: DOMRect) {
-  const raw = style.borderTopLeftRadius || "0";
-  if (raw.includes("%")) return Math.min(rect.width, rect.height) * cssNumber(raw) / 100;
-  return Math.min(cssNumber(raw), Math.min(rect.width, rect.height) / 2);
-}
-
-function roundedRect(ctx: CanvasRenderingContext2D, x: number, y: number, width: number, height: number, radius: number) {
-  const r = Math.max(0, Math.min(radius, width / 2, height / 2));
-  ctx.beginPath();
-  ctx.moveTo(x + r, y);
-  ctx.lineTo(x + width - r, y);
-  ctx.quadraticCurveTo(x + width, y, x + width, y + r);
-  ctx.lineTo(x + width, y + height - r);
-  ctx.quadraticCurveTo(x + width, y + height, x + width - r, y + height);
-  ctx.lineTo(x + r, y + height);
-  ctx.quadraticCurveTo(x, y + height, x, y + height - r);
-  ctx.lineTo(x, y + r);
-  ctx.quadraticCurveTo(x, y, x + r, y);
-  ctx.closePath();
-}
-
-function visibleColor(value: string) {
-  return value !== "transparent" && value !== "rgba(0, 0, 0, 0)" && value !== "rgba(0,0,0,0)";
-}
-
-function safeImageForCanvas(img: HTMLImageElement) {
-  if (!img.complete || img.naturalWidth <= 0 || img.naturalHeight <= 0) return false;
-  try {
-    const url = new URL(img.currentSrc || img.src, window.location.href);
-    return url.origin === window.location.origin || img.crossOrigin === "anonymous";
-  } catch {
-    return false;
-  }
-}
-
-function drawImageFit(
-  ctx: CanvasRenderingContext2D,
-  img: HTMLImageElement,
-  rect: DOMRect,
-  style: CSSStyleDeclaration,
-  roiLeft: number,
-  roiTop: number,
-) {
-  const fit = style.objectFit || "fill";
-  const boxX = rect.left - roiLeft;
-  const boxY = rect.top - roiTop;
-  let sx = 0;
-  let sy = 0;
-  let sw = img.naturalWidth;
-  let sh = img.naturalHeight;
-
-  if (fit === "cover" || fit === "contain") {
-    const boxRatio = rect.width / Math.max(rect.height, 1);
-    const imageRatio = img.naturalWidth / Math.max(img.naturalHeight, 1);
-    const cropWidth = fit === "cover" ? imageRatio > boxRatio : imageRatio < boxRatio;
-    if (cropWidth) {
-      sw = img.naturalHeight * boxRatio;
-      sx = (img.naturalWidth - sw) / 2;
-    } else {
-      sh = img.naturalWidth / boxRatio;
-      sy = (img.naturalHeight - sh) / 2;
-    }
-  }
-
-  try {
-    ctx.drawImage(img, sx, sy, sw, sh, boxX, boxY, rect.width, rect.height);
-  } catch {
-    // Skip any image the browser refuses to expose to canvas.
-  }
-}
-
-function drawWallpaper(
-  ctx: CanvasRenderingContext2D,
-  image: HTMLImageElement | null,
-  roiLeft: number,
-  roiTop: number,
-  viewportWidth: number,
-  viewportHeight: number,
-  roiWidth: number,
-  roiHeight: number,
-) {
-  ctx.fillStyle = getComputedStyle(document.body).backgroundColor || "#1f1e1d";
-  ctx.fillRect(0, 0, roiWidth, roiHeight);
-  if (image?.complete && image.naturalWidth > 0 && image.naturalHeight > 0) {
-    const scale = Math.max(viewportWidth / image.naturalWidth, viewportHeight / image.naturalHeight);
-    const drawnWidth = image.naturalWidth * scale;
-    const drawnHeight = image.naturalHeight * scale;
-    const pageX = (viewportWidth - drawnWidth) * 0.54;
-    const pageY = (viewportHeight - drawnHeight) * 0.5;
-
-    const srcX = Math.max(0, (roiLeft - pageX) / scale);
-    const srcY = Math.max(0, (roiTop - pageY) / scale);
-    const srcRight = Math.min(image.naturalWidth, (roiLeft + roiWidth - pageX) / scale);
-    const srcBottom = Math.min(image.naturalHeight, (roiTop + roiHeight - pageY) / scale);
-    const srcWidth = Math.max(0, srcRight - srcX);
-    const srcHeight = Math.max(0, srcBottom - srcY);
-    if (srcWidth > 0 && srcHeight > 0) {
-      const destX = pageX + srcX * scale - roiLeft;
-      const destY = pageY + srcY * scale - roiTop;
-      ctx.drawImage(image, srcX, srcY, srcWidth, srcHeight, destX, destY, srcWidth * scale, srcHeight * scale);
-    }
-  }
-
-  const veil = ctx.createLinearGradient(0, -roiTop, 0, viewportHeight - roiTop);
-  veil.addColorStop(0, "rgba(4,10,16,.17)");
-  veil.addColorStop(1, "rgba(4,10,16,.28)");
-  ctx.fillStyle = veil;
-  ctx.fillRect(0, 0, roiWidth, roiHeight);
-
-  const cx = viewportWidth * 0.5 - roiLeft;
-  const cy = viewportHeight * 0.34 - roiTop;
-  const radius = Math.max(viewportWidth, viewportHeight) * 0.72;
-  const vignette = ctx.createRadialGradient(cx, cy, radius * 0.24, cx, cy, radius);
-  vignette.addColorStop(0, "rgba(3,8,14,0)");
-  vignette.addColorStop(1, "rgba(3,8,14,.22)");
-  ctx.fillStyle = vignette;
-  ctx.fillRect(0, 0, roiWidth, roiHeight);
-}
-
-function drawTextNode(
-  ctx: CanvasRenderingContext2D,
-  node: Text,
-  style: CSSStyleDeclaration,
-  roiLeft: number,
-  roiTop: number,
-  roiWidth: number,
-  roiHeight: number,
-  inheritedOpacity: number,
-) {
-  const value = node.data;
-  if (!value.trim()) return;
-  const color = style.color;
-  if (!visibleColor(color)) return;
-  const matches = Array.from(value.matchAll(/\S+\s*/g)).slice(0, 80);
-  if (!matches.length) return;
-
-  ctx.save();
-  ctx.globalAlpha = inheritedOpacity;
-  ctx.fillStyle = color;
-  ctx.font = `${style.fontStyle || "normal"} ${style.fontWeight || "400"} ${style.fontSize || "16px"} ${style.fontFamily || "sans-serif"}`;
-  ctx.textBaseline = "alphabetic";
-  const letterAware = ctx as CanvasRenderingContext2D & { letterSpacing?: string };
-  if ("letterSpacing" in letterAware) letterAware.letterSpacing = style.letterSpacing;
-
-  const transform = style.textTransform;
-  for (const match of matches) {
-    const index = match.index ?? 0;
-    const end = Math.min(value.length, index + match[0].length);
-    const range = document.createRange();
-    try {
-      range.setStart(node, index);
-      range.setEnd(node, end);
-      for (const rect of Array.from(range.getClientRects())) {
-        if (!intersects(rect, roiLeft, roiTop, roiWidth, roiHeight)) continue;
-        let text = match[0].replace(/\s+$/g, "");
-        if (!text) continue;
-        if (transform === "uppercase") text = text.toUpperCase();
-        if (transform === "lowercase") text = text.toLowerCase();
-        if (transform === "capitalize") text = text.replace(/\b\w/g, (part) => part.toUpperCase());
-        ctx.fillText(text, rect.left - roiLeft, rect.top - roiTop + rect.height * 0.8, Math.max(rect.width + 2, 1));
-      }
-    } catch {
-      // React may update a text node between range reads.
-    } finally {
-      range.detach();
-    }
-  }
-  ctx.restore();
-}
-
-function drawSvgIcon(ctx: CanvasRenderingContext2D, svg: SVGSVGElement, roiLeft: number, roiTop: number, opacity: number) {
-  for (const shape of Array.from(svg.querySelectorAll<SVGGeometryElement>("path, rect, circle, ellipse, line, polyline, polygon"))) {
-    const style = getComputedStyle(shape);
-    const matrix = shape.getScreenCTM();
-    if (!matrix || style.display === "none" || style.visibility === "hidden") continue;
-    const number = (name: string) => cssNumber(shape.getAttribute(name) ?? "0");
-    const path = new Path2D(shape.tagName === "path" ? shape.getAttribute("d") ?? "" : undefined);
-    switch (shape.tagName) {
-      case "rect": path.roundRect(number("x"), number("y"), number("width"), number("height"), { x: number("rx"), y: shape.hasAttribute("ry") ? number("ry") : number("rx") }); break;
-      case "circle": path.arc(number("cx"), number("cy"), number("r"), 0, Math.PI * 2); break;
-      case "ellipse": path.ellipse(number("cx"), number("cy"), number("rx"), number("ry"), 0, 0, Math.PI * 2); break;
-      case "line": path.moveTo(number("x1"), number("y1")); path.lineTo(number("x2"), number("y2")); break;
-      case "polyline":
-      case "polygon": {
-        const points = (shape as SVGPolylineElement).points;
-        for (let i = 0; i < points.numberOfItems; i++) {
-          const point = points.getItem(i);
-          if (i === 0) path.moveTo(point.x, point.y);
-          else path.lineTo(point.x, point.y);
-        }
-        if (shape.tagName === "polygon") path.closePath();
-        break;
-      }
-    }
-    ctx.save();
-    ctx.translate(-roiLeft, -roiTop);
-    ctx.transform(matrix.a, matrix.b, matrix.c, matrix.d, matrix.e, matrix.f);
-    let alpha = opacity;
-    for (let element: Element | null = shape; element && element !== svg; element = element.parentElement) {
-      alpha *= cssNumber(getComputedStyle(element).opacity, 1);
-    }
-    ctx.globalAlpha = alpha * cssNumber(style.fillOpacity, 1);
-    if (style.fill !== "none") {
-      ctx.fillStyle = style.fill === "currentcolor" ? style.color : style.fill;
-      ctx.fill(path, style.fillRule === "evenodd" ? "evenodd" : "nonzero");
-    }
-    if (style.stroke !== "none") {
-      ctx.globalAlpha = alpha * cssNumber(style.strokeOpacity, 1);
-      ctx.strokeStyle = style.stroke === "currentcolor" ? style.color : style.stroke;
-      ctx.lineWidth = cssNumber(style.strokeWidth, 1);
-      ctx.lineCap = style.strokeLinecap as CanvasLineCap;
-      ctx.lineJoin = style.strokeLinejoin as CanvasLineJoin;
-      ctx.miterLimit = cssNumber(style.strokeMiterlimit, 4);
-      ctx.setLineDash(style.strokeDasharray === "none" ? [] : style.strokeDasharray.split(/[ ,]+/).map(value => cssNumber(value)));
-      ctx.lineDashOffset = cssNumber(style.strokeDashoffset);
-      ctx.stroke(path);
-    }
-    ctx.restore();
-  }
-}
-
-function parseBackdropBlur(style: CSSStyleDeclaration) {
-  const extended = style as CSSStyleDeclaration & { webkitBackdropFilter?: string };
-  const raw = style.backdropFilter || extended.webkitBackdropFilter || "";
-  const match = raw.match(/blur\(([\d.]+)px\)/i);
-  return match ? Math.min(24, cssNumber(match[1])) : 0;
-}
-
-// CSS pseudo-elements do not appear in childNodes, but controls such as the
-// landing-page theme switch draw their dark thumb entirely with ::after.
-// Recreate that painted thumb in the lens texture instead of sampling just
-// the (white) switch track.
-function drawSwitchPseudo(
-  ctx: CanvasRenderingContext2D,
-  el: HTMLElement,
-  rect: DOMRect,
-  roiLeft: number,
-  roiTop: number,
-  opacity: number,
-) {
-  if (el.getAttribute("role") !== "switch") return;
-  const pseudo = getComputedStyle(el, "::after");
-  if (pseudo.content === "none" || pseudo.content === "normal" ||
-      pseudo.display === "none" || pseudo.visibility === "hidden" ||
-      !visibleColor(pseudo.backgroundColor)) return;
-  const width = cssNumber(pseudo.width);
-  const height = cssNumber(pseudo.height);
-  if (width <= 0 || height <= 0) return;
-
-  const hostStyle = getComputedStyle(el);
-  const left = pseudo.left !== "auto"
-    ? cssNumber(hostStyle.borderLeftWidth) + cssNumber(pseudo.left)
-    : rect.width - cssNumber(hostStyle.borderRightWidth) - cssNumber(pseudo.right) - width;
-  const top = pseudo.top !== "auto"
-    ? cssNumber(hostStyle.borderTopWidth) + cssNumber(pseudo.top)
-    : rect.height - cssNumber(hostStyle.borderBottomWidth) - cssNumber(pseudo.bottom) - height;
-
-  // getComputedStyle resolves translateX() to a matrix; the theme switch
-  // animates its thumb using the matrix translation, not changing 'left'.
-  let dx = 0;
-  let dy = 0;
-  if (pseudo.transform && pseudo.transform !== "none") {
-    try {
-      const matrix = new DOMMatrixReadOnly(pseudo.transform);
-      dx = matrix.m41;
-      dy = matrix.m42;
-    } catch {
-      // Unsupported transform: paint at the base position.
-    }
-  }
-
-  ctx.save();
-  ctx.globalAlpha = opacity * Math.max(0, Math.min(1, cssNumber(pseudo.opacity, 1)));
-  ctx.fillStyle = pseudo.backgroundColor;
-  const pseudoRect = new DOMRect(0, 0, width, height);
-  roundedRect(ctx, rect.left - roiLeft + left + dx, rect.top - roiTop + top + dy,
-    width, height, radiusFromStyle(pseudo, pseudoRect));
-  ctx.fill();
-  ctx.restore();
-}
-
-function rasterizePortal(
-  root: HTMLElement,
-  canvas: HTMLCanvasElement,
-  scratch: HTMLCanvasElement,
-  wallpaper: HTMLImageElement | null,
-  roiLeft: number,
-  roiTop: number,
-  roiWidth: number,
-  roiHeight: number,
-  dpr: number,
-) {
-  const ctx = canvas.getContext("2d", { alpha: true });
-  const scratchCtx = scratch.getContext("2d", { alpha: true });
-  if (!ctx || !scratchCtx) return false;
-
-  ctx.setTransform(1, 0, 0, 1, 0, 0);
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  drawWallpaper(ctx, wallpaper, roiLeft, roiTop, window.innerWidth, window.innerHeight, roiWidth, roiHeight);
-
-  // The editorial homepage has both the visible shell and a hidden legacy portal.
-  // Sample its visible root, not the hidden classic shell, or the lens goes blank.
-  const content = root.classList.contains("loom-editorial")
-    ? root
-    : (root.querySelector<HTMLElement>(".loom-portal-shell") ?? root);
-
-  const renderElement = (el: HTMLElement, parentOpacity: number) => {
-    if (el.dataset.loomLiquidCursor === "true" || el.closest("[data-loom-liquid-cursor='true']")) return;
-    if (el.closest(".cosmos") || el.classList.contains("beach-wallpaper")) return;
-    const style = getComputedStyle(el);
-    if (style.display === "none" || style.visibility === "hidden") return;
-    const ownOpacity = Math.max(0, Math.min(1, cssNumber(style.opacity, 1)));
-    const opacity = parentOpacity * ownOpacity;
-    if (opacity <= 0.002) return;
-
-    const rect = el.getBoundingClientRect();
-    if (!intersects(rect, roiLeft, roiTop, roiWidth, roiHeight)) return;
-
-    const localX = rect.left - roiLeft;
-    const localY = rect.top - roiTop;
-    const radius = radiusFromStyle(style, rect);
-    const blur = parseBackdropBlur(style);
-
-    if (blur > 0 && (el.classList.contains("cards") || el.classList.contains("loom-host-onboarding"))) {
-      scratchCtx.setTransform(1, 0, 0, 1, 0, 0);
-      scratchCtx.clearRect(0, 0, scratch.width, scratch.height);
-      scratchCtx.filter = `blur(${Math.max(1, blur * dpr)}px)`;
-      scratchCtx.drawImage(canvas, 0, 0);
-      scratchCtx.filter = "none";
-      ctx.save();
-      roundedRect(ctx, localX, localY, rect.width, rect.height, radius);
-      ctx.clip();
-      ctx.setTransform(1, 0, 0, 1, 0, 0);
-      ctx.globalAlpha = opacity;
-      ctx.drawImage(scratch, 0, 0);
-      ctx.restore();
-    }
-
-    if (visibleColor(style.backgroundColor)) {
-      ctx.save();
-      ctx.globalAlpha = opacity;
-      ctx.fillStyle = style.backgroundColor;
-      roundedRect(ctx, localX, localY, rect.width, rect.height, radius);
-      ctx.fill();
-      ctx.restore();
-    }
-
-    const borderWidth = Math.max(
-      cssNumber(style.borderTopWidth),
-      cssNumber(style.borderRightWidth),
-      cssNumber(style.borderBottomWidth),
-      cssNumber(style.borderLeftWidth),
-    );
-    if (borderWidth > 0 && style.borderTopStyle !== "none" && visibleColor(style.borderTopColor)) {
-      ctx.save();
-      ctx.globalAlpha = opacity;
-      ctx.strokeStyle = style.borderTopColor;
-      ctx.lineWidth = borderWidth;
-      roundedRect(
-        ctx,
-        localX + borderWidth / 2,
-        localY + borderWidth / 2,
-        Math.max(0, rect.width - borderWidth),
-        Math.max(0, rect.height - borderWidth),
-        Math.max(0, radius - borderWidth / 2),
-      );
-      ctx.stroke();
-      ctx.restore();
-    }
-
-    if (el instanceof HTMLImageElement && safeImageForCanvas(el)) {
-      ctx.save();
-      ctx.globalAlpha = opacity;
-      drawImageFit(ctx, el, rect, style, roiLeft, roiTop);
-      ctx.restore();
-    }
-
-    if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) {
-      const text = el instanceof HTMLInputElement && el.type === "password"
-        ? (el.value ? "•".repeat(el.value.length) : el.placeholder)
-        : el.value || el.placeholder;
-      if (text && visibleColor(style.color)) {
-        ctx.save();
-        ctx.globalAlpha = opacity;
-        ctx.fillStyle = style.color;
-        ctx.font = `${style.fontStyle || "normal"} ${style.fontWeight || "400"} ${style.fontSize || "16px"} ${style.fontFamily || "sans-serif"}`;
-        ctx.textBaseline = "middle";
-        ctx.fillText(text, localX + cssNumber(style.paddingLeft), localY + rect.height / 2, Math.max(1, rect.width - cssNumber(style.paddingLeft) - cssNumber(style.paddingRight)));
-        ctx.restore();
-      }
-    }
-
-    for (const child of Array.from(el.childNodes)) {
-      if (child.nodeType === Node.TEXT_NODE) {
-        drawTextNode(ctx, child as Text, style, roiLeft, roiTop, roiWidth, roiHeight, opacity);
-      } else if (child instanceof HTMLElement) {
-        renderElement(child, opacity);
-      } else if (child instanceof SVGSVGElement) {
-        const svgStyle = getComputedStyle(child);
-        if (svgStyle.display !== "none" && svgStyle.visibility !== "hidden" && intersects(child.getBoundingClientRect(), roiLeft, roiTop, roiWidth, roiHeight)) {
-          drawSvgIcon(ctx, child, roiLeft, roiTop, opacity * cssNumber(svgStyle.opacity, 1));
-        }
-      }
-    }
-    drawSwitchPseudo(ctx, el, rect, roiLeft, roiTop, opacity);
-  };
-
-  renderElement(content, 1);
-  return true;
 }
 
 function createShader(gl: WebGLRenderingContext, type: number, source: string) {
@@ -497,111 +72,8 @@ function createShader(gl: WebGLRenderingContext, type: number, source: string) {
 
 
 function createProgram(gl: WebGLRenderingContext) {
-  const vertex = createShader(gl, gl.VERTEX_SHADER, `
-    attribute vec2 a_position;
-    attribute vec2 a_uv;
-    varying vec2 v_uv;
-    void main() {
-      v_uv = a_uv;
-      gl_Position = vec4(a_position, 0.0, 1.0);
-    }
-  `);
-  const fragment = createShader(gl, gl.FRAGMENT_SHADER, `
-    precision highp float;
-    varying vec2 v_uv;
-    uniform sampler2D u_texture;
-    uniform vec2 u_resolution;
-    uniform vec2 u_lensCenter;
-    uniform vec2 u_lensSize;
-    uniform float u_strength;
-    uniform float u_pinch;
-    uniform float u_aberration;
-    uniform float u_zoom;
-    uniform float u_wobble;
-    uniform float u_time;
-
-    float sdRoundBox(vec2 p, vec2 b, float r) {
-      vec2 q = abs(p) - b + vec2(r);
-      return length(max(q, 0.0)) + min(max(q.x, q.y), 0.0) - r;
-    }
-
-    vec2 warpPoint(vec2 p, float radius) {
-      float angle = atan(p.y, p.x);
-      float wave =
-        sin(angle * 3.0 + u_time * 1.7) * 0.46 +
-        cos(angle * 5.0 - u_time * 2.3) * 0.28 +
-        sin(angle * 7.0 + u_time * 3.1) * 0.16;
-      vec2 radial = normalize(p + vec2(0.0001));
-      vec2 tangent = vec2(-radial.y, radial.x);
-      return p - radial * wave * u_wobble * radius * 0.055
-               + tangent * sin(angle * 2.0 + u_time * 1.25) * u_wobble * radius * 0.012;
-    }
-
-    void main() {
-      vec2 screenUv = vec2(v_uv.x, 1.0 - v_uv.y);
-      vec2 pixel = screenUv * u_resolution;
-      vec2 halfSize = max(u_lensSize * 0.5, vec2(2.0));
-      float radius = max(2.0, min(halfSize.x, halfSize.y));
-      vec2 local = warpPoint(pixel - u_lensCenter, radius);
-      float d = sdRoundBox(local, halfSize, radius);
-      if (d > 1.5) {
-        gl_FragColor = vec4(0.0);
-        return;
-      }
-
-      float e = 1.0;
-      float dx = sdRoundBox(local + vec2(e, 0.0), halfSize, radius) - sdRoundBox(local - vec2(e, 0.0), halfSize, radius);
-      float dy = sdRoundBox(local + vec2(0.0, e), halfSize, radius) - sdRoundBox(local - vec2(0.0, e), halfSize, radius);
-      vec2 normal = normalize(vec2(dx, dy) + vec2(0.00001));
-      float distNorm = clamp(1.0 + d / radius, 0.0, 1.0);
-      float effectivePinch = u_pinch * (radius / 100.0);
-      float displacement = pow(distNorm, max(0.12, effectivePinch)) * u_strength * 40.0;
-
-      // When the lens is physically close to a viewport/capture boundary there is
-      // no real off-screen texture to refract. Fade the displacement there instead
-      // of CLAMP_TO_EDGE stretching one texture column into a blank-looking slab.
-      float textureEdgeDistance = min(
-        min(screenUv.x, 1.0 - screenUv.x),
-        min(screenUv.y, 1.0 - screenUv.y)
-      );
-      float edgeSafety = smoothstep(0.012, 0.075, textureEdgeDistance);
-      displacement *= edgeSafety;
-
-      // The former hard +/-32% Y clamp created a constant-displacement
-      // plateau on shallow snapped buttons. That sharp change in slope read
-      // as two horizontal cuts through text and chromatic fringes. Limit
-      // both axes continuously so the optics remain smooth at every height.
-      vec2 refraction = normal * displacement;
-      vec2 bendReach = max(vec2(22.0, 13.0), halfSize * vec2(0.68, 0.66));
-      vec2 bendRatio = refraction / bendReach;
-      refraction *= inversesqrt(vec2(1.0) + bendRatio * bendRatio);
-      vec2 sampleUv = screenUv - refraction / u_resolution;
-
-      vec2 centerUv = u_lensCenter / u_resolution;
-      sampleUv = (sampleUv - centerUv) / max(u_zoom, 1.0) + centerUv;
-      sampleUv = clamp(sampleUv, vec2(0.001), vec2(0.999));
-
-      vec2 chroma = normal * u_aberration * 0.02 * distNorm * edgeSafety;
-      vec3 color;
-      color.r = texture2D(u_texture, clamp(sampleUv + chroma, 0.0, 1.0)).r;
-      color.g = texture2D(u_texture, sampleUv).g;
-      color.b = texture2D(u_texture, clamp(sampleUv - chroma, 0.0, 1.0)).b;
-
-      // Keep the surface almost optically clear.
-      float edge = smoothstep(0.76, 1.0, distNorm);
-      vec3 reflected = texture2D(u_texture, clamp(sampleUv + normal * 0.008 * edge, 0.0, 1.0)).rgb;
-      color = mix(color, reflected, edge * 0.035);
-
-      vec2 lightDir = normalize(vec2(-0.62, -0.78));
-      float directional = pow(max(dot(normal, lightDir), 0.0), 7.0);
-      float rim = edge * (0.008 + directional * 0.070);
-      color += vec3(0.62, 0.78, 0.88) * rim;
-
-      float mask = 1.0 - smoothstep(-1.15, 0.9, d);
-      float edgeGlass = smoothstep(0.90, 1.0, distNorm) * 0.015;
-      gl_FragColor = vec4((color + vec3(edgeGlass)) * mask, mask);
-    }
-  `);
+  const vertex = createShader(gl, gl.VERTEX_SHADER, liquidVertexShader);
+  const fragment = createShader(gl, gl.FRAGMENT_SHADER, liquidFragmentShader);
   if (!vertex || !fragment) return null;
   const program = gl.createProgram();
   if (!program) return null;
@@ -621,6 +93,7 @@ function createProgram(gl: WebGLRenderingContext) {
 export function PortalLiquidCursor() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const dotRef = useRef<HTMLDivElement>(null);
+  const reducedMotion = useReducedMotion();
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -629,7 +102,6 @@ export function PortalLiquidCursor() {
     if (!canvas || !dot || !root) return;
 
     const finePointer = window.matchMedia("(pointer: fine)").matches;
-    const reducedMotion = prefersReducedMotionNow();
     if (!finePointer || reducedMotion) return;
 
     const gl = canvas.getContext("webgl", {
@@ -690,6 +162,10 @@ export function PortalLiquidCursor() {
     const uniforms = {
       texture: gl.getUniformLocation(program, "u_texture"),
       resolution: gl.getUniformLocation(program, "u_resolution"),
+      viewport: gl.getUniformLocation(program, "u_viewport"),
+      dpr: gl.getUniformLocation(program, "u_dpr"),
+      reflection: gl.getUniformLocation(program, "u_reflection"),
+      tint: gl.getUniformLocation(program, "u_tint"),
       lensCenter: gl.getUniformLocation(program, "u_lensCenter"),
       lensSize: gl.getUniformLocation(program, "u_lensSize"),
       strength: gl.getUniformLocation(program, "u_strength"),
@@ -731,6 +207,10 @@ export function PortalLiquidCursor() {
 
     const x: SpringValue = { value: pointerX, velocity: 0, target: pointerX };
     const y: SpringValue = { value: pointerY + FREE_OFFSET_Y, velocity: 0, target: pointerY + FREE_OFFSET_Y };
+    const pinX: SpringValue = { ...x };
+    const pinY: SpringValue = { ...y };
+    let lensX = x.value;
+    let lensY = y.value;
     const width: SpringValue = { value: BASE_WIDTH, velocity: 0, target: BASE_WIDTH };
     const height: SpringValue = { value: BASE_HEIGHT, velocity: 0, target: BASE_HEIGHT };
     const snap: SpringValue = { value: 0, velocity: 0, target: 0 };
@@ -835,13 +315,17 @@ export function PortalLiquidCursor() {
     refreshMagneticTargets();
 
     const findSnapTarget = () => {
-      if (activeTarget?.isConnected) {
-        if (rectDistance(activeTarget.getBoundingClientRect(), pointerX, pointerY) <= RELEASE_DISTANCE) return activeTarget;
+      if (activeTarget?.isConnected && !activeTarget.closest("[inert], [aria-hidden='true']")) {
+        const rect = activeTarget.getBoundingClientRect();
+        const style = getComputedStyle(activeTarget);
+        if (rect.width > 0 && rect.height > 0 && style.visibility !== "hidden" && style.pointerEvents !== "none" &&
+            rectDistance(rect, pointerX, pointerY) <= RELEASE_DISTANCE) return activeTarget;
       }
       activeTarget = null;
       let closest = SNAP_DISTANCE + 0.001;
       for (const candidate of Array.from(root.querySelectorAll<HTMLElement>(SNAP_SELECTOR))) {
         if (candidate.dataset.loomLiquidCursor === "true") continue;
+        if (candidate.closest("[inert], [aria-hidden='true']")) continue;
         const style = getComputedStyle(candidate);
         if (style.pointerEvents === "none" || style.visibility === "hidden" || style.display === "none") continue;
         const rect = candidate.getBoundingClientRect();
@@ -864,6 +348,12 @@ export function PortalLiquidCursor() {
         rasterDirty = true;
         roiLockedTarget = null;
         if (target) {
+          if (!previousTarget) {
+            pinX.value = lensX;
+            pinX.velocity = 0;
+            pinY.value = lensY;
+            pinY.velocity = 0;
+          }
           const rect = target.getBoundingClientRect();
           const finalLensWidth = Math.min(Math.max(38, window.innerWidth - 20), Math.max(38, rect.width + SNAP_PADDING * 2));
           const finalLensHeight = Math.min(Math.max(34, window.innerHeight - 20), Math.max(34, rect.height + SNAP_PADDING * 2));
@@ -890,14 +380,12 @@ export function PortalLiquidCursor() {
       }
       if (target) {
         const rect = target.getBoundingClientRect();
-        x.target = rect.left + rect.width / 2;
-        y.target = rect.top + rect.height / 2;
+        pinX.target = rect.left + rect.width / 2;
+        pinY.target = rect.top + rect.height / 2;
         width.target = Math.min(Math.max(38, window.innerWidth - 20), Math.max(38, rect.width + SNAP_PADDING * 2));
         height.target = Math.min(Math.max(34, window.innerHeight - 20), Math.max(34, rect.height + SNAP_PADDING * 2));
         snap.target = 1;
       } else {
-        x.target = pointerX;
-        y.target = pointerY + FREE_OFFSET_Y;
         width.target = BASE_WIDTH;
         height.target = BASE_HEIGHT;
         snap.target = 0;
@@ -930,6 +418,9 @@ export function PortalLiquidCursor() {
         roiHeight = boundedHeight;
         if (resizeSurfaces(roiWidth, roiHeight)) {
           textureReady = false;
+          // A new backing store needs a texture in this same frame; capture
+          // throttling must not hide the lens for one frame on snap entry.
+          lastCapture = Number.NEGATIVE_INFINITY;
           lastRoiLeft = Number.NaN;
           lastRoiTop = Number.NaN;
         }
@@ -1044,11 +535,11 @@ export function PortalLiquidCursor() {
     const frame = (now: number) => {
       const dt = Math.min(0.032, Math.max(0.001, (now - lastTime) / 1000));
       lastTime = now;
-      if (now < refractionMotionUntil && activeTarget?.isConnected) {
+      if (now < refractionMotionUntil) {
         // Follow the actual CSS animation, including ::after pseudo-elements.
         // A short tail captures the final frame even if transitionend fires
         // before the next texture-upload interval.
-        if (activeTarget.getAnimations({ subtree: true }).some(animation => animation.playState === "running")) {
+        if ((activeTarget ?? root).getAnimations({ subtree: true }).some(animation => animation.playState === "running")) {
           refractionMotionUntil = Math.max(refractionMotionUntil, now + 80);
         }
         rasterDirty = true;
@@ -1057,8 +548,12 @@ export function PortalLiquidCursor() {
       updateTargets();
 
       const snapping = Boolean(activeTarget) || snap.target > 0.001;
-      stepSpring(x, dt, snapping ? 300 : 500, snapping ? 25 : 60);
-      stepSpring(y, dt, snapping ? 300 : 500, snapping ? 25 : 60);
+      x.target = pointerX;
+      y.target = pointerY + FREE_OFFSET_Y;
+      stepSpring(x, dt, 500, 40);
+      stepSpring(y, dt, 500, 40);
+      stepSpring(pinX, dt, 300, 25);
+      stepSpring(pinY, dt, 300, 25);
       stepSpring(width, dt, snapping ? 235 : 310, snapping ? 19 : 32);
       stepSpring(height, dt, snapping ? 235 : 310, snapping ? 19 : 32);
       stepSpring(snap, dt, 220, 18);
@@ -1066,7 +561,9 @@ export function PortalLiquidCursor() {
       stepSpring(pressure, dt, pressed ? 620 : 400, pressed ? 38 : 23);
       const deformation = Math.max(-0.22, Math.min(1.08, pressure.value));
 
-      updateRoi(x.value, y.value, width.value, height.value);
+      lensX = blendAnchor(x.value, pinX.value, snap.value);
+      lensY = blendAnchor(y.value, pinY.value, snap.value);
+      updateRoi(lensX, lensY, width.value, height.value);
       uploadTexture(roiLeft, roiTop, now);
 
       canvas.style.transform = `translate3d(${roiLeft}px, ${roiTop}px, 0)`;
@@ -1077,11 +574,11 @@ export function PortalLiquidCursor() {
       if (textureReady) {
         const pressWeight = Math.max(0, Math.min(1, deformation));
         const releaseWeight = Math.max(0, -deformation);
-        const strength = (0.95 + (1.14 - 0.95) * snap.value) + 0.62 * pressWeight;
-        const pinch = (7.7 + (7.35 - 7.7) * snap.value) - 0.85 * pressWeight;
-        const aberration = 0.10 + (0.13 - 0.10) * Math.max(snap.value, pressWeight);
-        const zoom = 1 + 0.055 * snap.value + 0.025 * pressWeight;
-        const wobble = 0.12 + 0.05 * snap.value + 0.06 * pressWeight + 0.18 * releaseWeight;
+        const strength = LIQUID_OPTICS.strength + 0.62 * pressWeight;
+        const pinch = LIQUID_OPTICS.pinch - 0.85 * pressWeight;
+        const aberration = LIQUID_OPTICS.aberration + 0.01 * pressWeight;
+        const zoom = 1 + 0.025 * pressWeight;
+        const wobble = 0.06 * pressWeight + 0.18 * releaseWeight;
 
         gl.viewport(0, 0, canvas.width, canvas.height);
         gl.clearColor(0, 0, 0, 0);
@@ -1090,7 +587,11 @@ export function PortalLiquidCursor() {
         gl.bindTexture(gl.TEXTURE_2D, texture);
         gl.uniform1i(uniforms.texture, 0);
         gl.uniform2f(uniforms.resolution, canvas.width, canvas.height);
-        gl.uniform2f(uniforms.lensCenter, (x.value - roiLeft) * dpr, (y.value - roiTop) * dpr);
+        gl.uniform2f(uniforms.viewport, window.innerWidth, window.innerHeight);
+        gl.uniform1f(uniforms.dpr, dpr);
+        gl.uniform1f(uniforms.reflection, LIQUID_OPTICS.reflection);
+        gl.uniform1f(uniforms.tint, LIQUID_OPTICS.tint);
+        gl.uniform2f(uniforms.lensCenter, (lensX - roiLeft) * dpr, (lensY - roiTop) * dpr);
         gl.uniform2f(uniforms.lensSize, width.value * dpr * (1 + 0.025 * deformation), height.value * dpr * (1 - 0.085 * deformation));
         gl.uniform1f(uniforms.strength, strength);
         gl.uniform1f(uniforms.pinch, pinch);
@@ -1107,6 +608,11 @@ export function PortalLiquidCursor() {
         Math.abs(width.target - width.value) < 0.08 &&
         Math.abs(height.target - height.value) < 0.08 &&
         Math.abs(snap.target - snap.value) < 0.002 &&
+        Math.abs(snap.velocity) < 0.002 &&
+        (!activeTarget || (
+          Math.abs(pinX.target - pinX.value) < 0.08 && Math.abs(pinX.velocity) < 0.08 &&
+          Math.abs(pinY.target - pinY.value) < 0.08 && Math.abs(pinY.velocity) < 0.08
+        )) &&
         Math.abs(x.velocity) < 0.08 &&
         Math.abs(y.velocity) < 0.08 &&
         Math.abs(width.velocity) < 0.08 &&
@@ -1226,6 +732,9 @@ export function PortalLiquidCursor() {
 
     const observer = new MutationObserver((mutations) => {
       refreshMagneticTargets();
+      if (mutations.some(mutation => mutation.attributeName?.includes("theme"))) {
+        refractionMotionUntil = Math.max(refractionMotionUntil, performance.now() + 360);
+      }
       // Theme switches animate their pseudo-element after aria-checked changes.
       // Observing only the mutation captures its initial frame, not the slide.
       if (mutations.some(mutation =>
@@ -1240,7 +749,8 @@ export function PortalLiquidCursor() {
       snapDirty = true;
       wake();
     });
-    observer.observe(root, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ["type", "value", "placeholder", "aria-checked"] });
+    observer.observe(root, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ["type", "value", "placeholder", "aria-checked", "class", "data-loom-site-theme", "data-theme"] });
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme", "data-loom-theme"] });
     const resizeObserver = new ResizeObserver(() => { rasterDirty = true; snapDirty = true; wake(); });
     resizeObserver.observe(root);
 
@@ -1258,6 +768,7 @@ export function PortalLiquidCursor() {
     root.addEventListener("pointerenter", handlePointerEnter);
     root.addEventListener("input", handleInput, true);
     root.addEventListener("change", handleInput, true);
+    root.addEventListener("load", handleInput, true);
     window.addEventListener("scroll", handleScroll, true);
     window.addEventListener("resize", handleResize);
     window.addEventListener("blur", handlePointerLeave);
@@ -1282,6 +793,7 @@ export function PortalLiquidCursor() {
       root.removeEventListener("pointerenter", handlePointerEnter);
       root.removeEventListener("input", handleInput, true);
       root.removeEventListener("change", handleInput, true);
+      root.removeEventListener("load", handleInput, true);
       window.removeEventListener("scroll", handleScroll, true);
       window.removeEventListener("resize", handleResize);
       window.removeEventListener("blur", handlePointerLeave);
@@ -1295,7 +807,7 @@ export function PortalLiquidCursor() {
       gl.deleteBuffer(uv);
       gl.deleteProgram(program);
     };
-  }, []);
+  }, [reducedMotion]);
 
   return (
     <>
