@@ -115,6 +115,26 @@
   transition: color .18s ease;
 }
 .loom-editorial .editorial-meta :is(a,button:not(.editorial-theme)):hover { color: var(--ed-ink); }
+.loom-editorial .editorial-meta .editorial-home-icon {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: 30px;
+  height: 30px;
+  padding: 2px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  opacity: .88;
+  transition: opacity .18s ease, transform .18s ease;
+}
+.loom-editorial .editorial-meta .editorial-home-icon:hover { opacity: 1; transform: translateY(-1px); }
+.loom-editorial .editorial-meta .editorial-home-icon img {
+  display: block;
+  width: 25px;
+  height: 25px;
+  object-fit: contain;
+}
 .loom-editorial .editorial-theme {
   position: relative;
   flex: none;
