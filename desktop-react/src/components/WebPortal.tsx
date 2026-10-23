@@ -476,6 +476,9 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
               <a href="/classic" onClick={(event) => { event.preventDefault(); switchPage("classic"); }} data-liquid-snap="true" data-magnetic-hover="true">{zh ? "经典主页" : "Classic home"}</a>
               <button type="button" onClick={openEditorialModal} data-liquid-snap="true" data-magnetic-hover="true">{authenticated ? (account.account.user?.display_name?.trim() || (zh ? "我的账户" : "My account")) : (zh ? "登录 / 注册" : "Sign in")}</button>
               <button className="editorial-theme" type="button" role="switch" aria-label={zh ? "切换深浅主题" : "Toggle light and dark theme"} aria-checked={lightEditorial} onClick={toggleEditorialTheme} data-liquid-snap="true" />
+              <button className="editorial-home-icon" type="button" onClick={() => beginPrompt("")} aria-label={zh ? "打开 Loom 工作区" : "Open Loom workspace"} title={zh ? "打开 Loom" : "Open Loom"} data-liquid-snap="true" data-magnetic-hover="true">
+                <img src="/loom-icon.png" alt="" aria-hidden="true" />
+              </button>
             </nav>
           </header>
           <main className="editorial-body">
