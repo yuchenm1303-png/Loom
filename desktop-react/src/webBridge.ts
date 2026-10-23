@@ -594,10 +594,12 @@ export function installWebBridge(): void {
       return result;
     },
     accountLogout: async () => {
-      try { window.sessionStorage.removeItem(REMOTE_DEVICE_SESSION_KEY); } catch {}
-      closeSocket();
       const result = await accountRequest("logout", { method: "POST", body: "{}" });
-      dispatchAuthChanged();
+      if (result.ok) {
+        try { window.sessionStorage.removeItem(REMOTE_DEVICE_SESSION_KEY); } catch {}
+        closeSocket();
+        dispatchAuthChanged();
+      }
       return result;
     },
     listModels: (forceRefresh = false) => invoke("listModels", [Boolean(forceRefresh)]),

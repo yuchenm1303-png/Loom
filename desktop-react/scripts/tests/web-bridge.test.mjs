@@ -8,7 +8,7 @@ const source = readFileSync(new URL("../../src/webBridge.ts", import.meta.url), 
   .replaceAll("import.meta.env.VITE_LOOM_WEB_SOCKET_URL", '""');
 let generation = 0;
 
-async function setup({ deferAccount = false, deviceStatus = {} } = {}) {
+async function setup({ deferAccount = false, deviceStatus = {}, logoutSucceeds = true } = {}) {
   const storage = new Map([["loom.web.localDeviceId", "host-a"]]);
   const localStorage = { getItem: (key) => storage.get(key) || null, setItem: (key, value) => storage.set(key, value), removeItem: (key) => storage.delete(key) };
   const target = new EventTarget();
@@ -27,9 +27,14 @@ async function setup({ deferAccount = false, deviceStatus = {} } = {}) {
   });
   globalThis.document = { documentElement: { dataset: {}, style: {} } };
   globalThis.CustomEvent ??= class extends Event { constructor(type, init) { super(type); this.detail = init.detail; } };
-  globalThis.fetch = async () => {
+  globalThis.fetch = async (url) => {
     accountCalls++;
     await accountGate;
+    if (String(url).endsWith("/logout")) {
+      return { json: async () => logoutSucceeds
+        ? ({ ok: true, snapshot: { authenticated: false, user: null } })
+        : ({ ok: false, error: { code: "LOGOUT_UNAVAILABLE", message: "Could not sign out" } }) };
+    }
     return { json: async () => ({ ok: true, snapshot: { authenticated: true } }) };
   };
   class Socket extends EventTarget {
@@ -140,4 +145,41 @@ test("a dropped socket reports Host offline and the next call reconnects", async
     assert.equal(env.sockets.length, 2);
     assert.equal(env.intervals.size, 1);
   } finally { window.removeEventListener("loom:web-device-status", listener); await env.close(); }
+});
+
+test("successful web sign-out revokes the session and closes its Host socket", async () => {
+  const env = await setup();
+  const events = [];
+  const onChanged = () => events.push("changed");
+  window.addEventListener("loom:web-auth-changed", onChanged);
+  try {
+    await window.loom.connect();
+    assert.equal(env.sockets[0].readyState, 1);
+    const result = await window.loom.accountLogout();
+    assert.equal(result.ok, true);
+    assert.equal(result.snapshot.authenticated, false);
+    assert.equal(env.sockets[0].readyState, 3);
+    assert.equal(events.length, 1);
+  } finally {
+    window.removeEventListener("loom:web-auth-changed", onChanged);
+    await env.close();
+  }
+});
+
+test("failed web sign-out keeps current Host socket and does not announce sign-out", async () => {
+  const env = await setup({ logoutSucceeds: false });
+  const events = [];
+  const onChanged = () => events.push("changed");
+  window.addEventListener("loom:web-auth-changed", onChanged);
+  try {
+    await window.loom.connect();
+    const result = await window.loom.accountLogout();
+    assert.equal(result.ok, false);
+    assert.equal(result.error.code, "LOGOUT_UNAVAILABLE");
+    assert.equal(env.sockets[0].readyState, 1);
+    assert.equal(events.length, 0);
+  } finally {
+    window.removeEventListener("loom:web-auth-changed", onChanged);
+    await env.close();
+  }
 });

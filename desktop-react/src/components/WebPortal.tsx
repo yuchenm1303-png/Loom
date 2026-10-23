@@ -237,6 +237,7 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
   const [challengeEmail, setChallengeEmail] = useState("");
   const [resendWait, setResendWait] = useState(0);
   const [localError, setLocalError] = useState("");
+  const [logoutNotice, setLogoutNotice] = useState("");
   const authenticated = Boolean(account.account.authenticated && account.account.user);
   useEffect(() => {
     // Only a deliberate submitted prompt should enter the workspace automatically.
@@ -317,9 +318,33 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
     setResendWait(0);
   }
 
+  async function signOutOfWeb(switchAccount = false) {
+    if (account.busy) return;
+    setLocalError("");
+    setLogoutNotice("");
+    const success = await account.logoutWithResult();
+    if (!success) {
+      setLocalError(account.error?.message || (zh
+        ? "退出失败，请检查网络连接并重试。"
+        : "Could not sign out. Check your connection and try again."));
+      return;
+    }
+    resetAuthFlow("login");
+    setEmail("");
+    setPrompt("");
+    setPendingPrompt("");
+    try { window.sessionStorage.removeItem("loom.portal.pendingPrompt"); }
+    catch { /* storage unavailable */ }
+    setLogoutNotice(switchAccount
+      ? (zh ? "已退出当前网页账号，请登录其他账号。" : "Signed out of this web account. Sign in with another account.")
+      : (zh ? "已退出网页账号。本机 Loom Host 不受影响。" : "Signed out of Loom Web. Your local Loom Host is unchanged."));
+    setDrawerOpen(true);
+  }
+
   async function submitAuth(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setLocalError("");
+    setLogoutNotice("");
     account.clearError();
     const form = new FormData(event.currentTarget);
     const submittedEmail = fieldValue(form, "email", email).trim();
@@ -572,7 +597,7 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
                 : (zh ? "登录 Loom" : "Sign in to Loom")}
             </h2>
             <p>{authenticated
-              ? (zh ? "连接本机 Host，继续你的工作。" : "Connect your Host to continue working.")
+              ? (zh ? "查看工作区、设备和账号状态。" : "Your workspace, device and account.")
               : authStep === "form"
                 ? (zh ? "继续进入你的本地工作区。" : "Continue to your local workspace.")
                 : (zh ? "安全地继续你的账户操作。" : "Continue securely with your account.")}</p>
@@ -676,7 +701,8 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
                 </form>
                 <button className="loom-account-switch" type="button" onClick={() => resetAuthFlow("login")}>{zh ? "← 返回登录" : "← Back to sign in"}</button>
               </>}
-              {(localError || account.error) ? <p className="form-note is-error">{localError || account.error?.message}</p> : null}
+              {logoutNotice ? <p className="loom-logout-notice" role="status">{logoutNotice}</p> : null}
+              {(localError || account.error) ? <p className="form-note is-error" role="alert">{account.error?.message || localError}</p> : null}
             </section> : <>
               <section className="loom-host-module loom-host-refined" data-host-state={hostState} aria-label={zh ? "Host 连接" : "Host connection"}>
                 <div className="loom-host-meta">
@@ -694,7 +720,7 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
                 </div>
                 <p className="loom-control-copy" role="status">{hostState === "checking" && hostError ? hostError : hostText}</p>
                 {hostState === "account-mismatch" ? <div className="loom-auth-row">
-                  <button className="loom-account-switch" type="button" disabled={account.busy} onClick={() => void account.logout()}>{zh ? "切换网页账号" : "Switch web account"}</button>
+                  <button className="loom-account-switch" type="button" disabled={account.busy} onClick={() => void signOutOfWeb(true)}>{zh ? "切换网页账号" : "Switch web account"}</button>
                   <button className="loom-account-switch" type="button" onClick={onEnter}>{zh ? "重试连接" : "Retry connection"}</button>
                 </div> : null}
                 {hostState === "unbound" || hostState === "offline" ? <HostSetupActions zh={zh} download={release.download} onRetry={onEnter} hostDetected={hostDetected} /> : null}
@@ -705,18 +731,31 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
               <section className="loom-account-module loom-account-refined" aria-label={zh ? "账户与设备" : "Account and device"}>
                 <div className="loom-account-heading">
                   <h2>{zh ? "账户与设备" : "Account & device"}</h2>
-                  <button className="loom-account-switch" type="button" disabled={account.busy} onClick={() => void account.logout()}><LogOut size={13} aria-hidden="true" />{zh ? "退出登录" : "Sign out"}</button>
+                  <button className="loom-account-switch loom-sign-out-action" type="button"
+                    disabled={account.busy} aria-label={zh ? "退出 Loom 网页账号" : "Sign out of Loom Web"}
+                    onClick={() => void signOutOfWeb()}>
+                    <LogOut size={15} aria-hidden="true" />
+                    {account.busy ? (zh ? "正在退出…" : "Signing out…") : (zh ? "退出登录" : "Sign out")}
+                  </button>
                 </div>
+                <p className="loom-account-session-note">{zh ? "这里管理网页登录。本机 Host 的登录不会随之退出。" : "Web account session only. Signing out here does not sign out your local Host."}</p>
+                {(localError || account.error) ? <p className="loom-logout-error" role="alert">{account.error?.message || localError}</p> : null}
                 <dl className="loom-identity-list">
                   <div className="loom-identity-row">
                     <dt><UserRound size={18} strokeWidth={1.5} aria-hidden="true" /><span>{zh ? "已登录账户" : "Signed-in account"}</span></dt>
                     <dd title={account.account.user?.email || ""}><span>{account.account.user?.display_name?.trim() || account.account.user?.email}</span><Check size={13} aria-hidden="true" /></dd>
+                    {account.account.user?.email ? <dd className="loom-identity-secondary">{account.account.user.email}</dd> : null}
                   </div>
                   <div className="loom-identity-row">
                     <dt><Laptop size={18} strokeWidth={1.5} aria-hidden="true" /><span>{zh ? "当前电脑" : "This computer"}</span></dt>
                     <dd><span>{selectedDeviceName || (zh ? "等待发现" : "Waiting for discovery")}</span></dd>
+                    <dd className="loom-identity-secondary">{hostState === "online" ? (zh ? "已连接" : "Connected") : hostState === "checking" ? (zh ? "连接中" : "Connecting") : (zh ? "未连接" : "Disconnected")}</dd>
                   </div>
                 </dl>
+                <button type="button" className="loom-account-switch loom-switch-account-action"
+                  disabled={account.busy} onClick={() => void signOutOfWeb(true)}>
+                  {zh ? "切换账号" : "Switch account"}
+                </button>
                 {onOpenProfile ? <button className="loom-form-submit loom-profile-home-action" type="button" onClick={onOpenProfile}>
                   <span>{zh ? "进入个人主页" : "Open profile home"}</span><ArrowRight size={15} aria-hidden="true" />
                 </button> : null}
