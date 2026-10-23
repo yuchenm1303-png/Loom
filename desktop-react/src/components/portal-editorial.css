@@ -108,9 +108,9 @@
   flex: 1 0 auto;
   flex-direction: column;
   justify-content: center;
-  width: min(680px, 100%);
+  width: min(920px, 100%);
   margin: 0 auto;
-  padding: clamp(32px, 5vh, 80px) 0 clamp(40px, 6vh, 96px);
+  padding: clamp(24px, 4vh, 64px) 0 clamp(28px, 4vh, 64px);
 }
 .loom-editorial .editorial-hero { text-align: center; }
 .loom-editorial .editorial-eyebrow {
@@ -135,90 +135,59 @@
   line-height: 1.8;
   text-wrap: pretty;
 }
-.loom-editorial .editorial-ask { margin-top: 38px; }
-.loom-editorial .editorial-ask form {
-  padding: 21px 21px 15px;
-  border: 1px solid var(--ed-rule);
-  border-radius: 16px;
-  background: var(--ed-paper-soft);
-  box-shadow: 0 8px 32px rgba(0,0,0,.05);
-  transition: border-color .18s ease, box-shadow .18s ease;
-}
-.loom-editorial .editorial-ask form:focus-within {
-  border-color: var(--ed-accent);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ed-accent) 9%, transparent);
-}
-.loom-editorial .editorial-ask textarea {
-  display: block;
-  box-sizing: border-box;
-  width: 100%;
-  min-width: 0;
-  min-height: 68px;
-  max-height: 240px;
-  resize: vertical;
-  margin: 0;
-  padding: 0;
-  border: 0;
-  outline: none;
-  background: transparent;
-  color: var(--ed-ink);
-  font: 400 22px/1.5 var(--ed-serif);
-}
-.loom-editorial .editorial-ask textarea::placeholder { color: var(--ed-ink-muted); opacity: 1; }
-.loom-editorial .editorial-composer-bottom {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  margin-top: 12px;
-}
-.loom-editorial .editorial-composer-bottom > span { color: var(--ed-ink-faint); font-size: 11px; }
-.loom-editorial .editorial-send {
-  display: grid;
-  flex: none;
-  place-items: center;
-  width: 36px;
-  height: 36px;
-  padding: 0;
-  border: 0;
-  border-radius: 50%;
-  background: var(--ed-ink);
-  color: var(--ed-paper);
-  cursor: pointer;
-  transition: background .18s ease, opacity .18s ease;
-}
-.loom-editorial .editorial-send:hover:not(:disabled) { background: var(--ed-ink-muted); }
-.loom-editorial .editorial-send:disabled { opacity: .3; cursor: default; }
-.loom-editorial .editorial-starters {
+.loom-editorial .editorial-actions {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   justify-content: center;
-  gap: 8px;
-  margin-top: 18px;
+  gap: 28px;
+  margin-top: 30px;
 }
-.loom-editorial .editorial-starter {
+.loom-editorial .editorial-primary {
   display: inline-flex;
   align-items: center;
-  gap: 13px;
-  padding: 7px 12px;
-  border: 1px solid transparent;
+  justify-content: center;
+  gap: 24px;
+  min-height: 44px;
+  padding: 10px 21px;
+  border: 1px solid var(--ed-ink);
   border-radius: 6px;
-  background: none;
-  color: var(--ed-ink-muted);
-  font: 400 15px/1.4 var(--ed-serif);
+  background: var(--ed-ink);
+  color: var(--ed-paper);
+  font: 400 17px/1.3 var(--ed-serif);
   cursor: pointer;
-  transition: background .18s ease, color .18s ease;
+  transition: background .18s ease, border-color .18s ease;
 }
-.loom-editorial .editorial-starter span { color: var(--ed-ink-faint); font: 12px/1 ui-sans-serif, sans-serif; }
-.loom-editorial .editorial-starter:hover { background: var(--ed-paper-soft); color: var(--ed-ink); }
+.loom-editorial .editorial-primary:hover { background: var(--ed-ink-muted); border-color: var(--ed-ink-muted); }
+.loom-editorial .editorial-download {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--ed-ink-muted);
+  font: 400 16px/1.4 var(--ed-serif);
+  text-decoration: none;
+}
+.loom-editorial .editorial-download:hover { color: var(--ed-ink); }
+.loom-editorial .editorial-download span { font: 14px/1 ui-sans-serif, sans-serif; }
+.loom-editorial .editorial-capabilities {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 42px;
+  margin-top: clamp(40px, 6vh, 80px);
+  padding-top: 25px;
+  border-top: 1px solid var(--ed-rule-soft);
+}
+.loom-editorial .editorial-capabilities article { min-width: 0; }
+.loom-editorial .editorial-capability-label { color: var(--ed-ink-faint); font-size: 9px; letter-spacing: .13em; }
+.loom-editorial .editorial-capabilities h2 { margin: 12px 0 9px; font: 400 25px/1.2 var(--ed-serif); letter-spacing: -.025em; }
+.loom-editorial .editorial-capabilities p { margin: 0; color: var(--ed-ink-muted); font-size: 12px; line-height: 1.8; text-wrap: pretty; }
 .loom-editorial .editorial-connection {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   justify-content: center;
   gap: 10px;
-  margin-top: 28px;
+  margin-top: 20px;
   color: var(--ed-ink-faint);
   font-size: 11px;
 }
@@ -238,7 +207,6 @@
   text-underline-offset: 3px;
   cursor: pointer;
 }
-.loom-editorial .editorial-notice { margin-top: 14px; font-size: 12px; text-align: center; color: var(--ed-ink-muted); }
 .loom-editorial .editorial-footer {
   display: flex;
   flex: none;
@@ -252,7 +220,6 @@
 .loom-editorial .editorial-footer a { color: inherit; text-decoration: none; transition: color .18s ease; }
 .loom-editorial .editorial-footer a:hover { color: var(--ed-ink); }
 .loom-editorial .editorial-version { margin-left: 7px; font-size: 10px; }
-.loom-editorial .editorial-sr-only { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 /* Keep the shared portal out of layout until its accessible dialog opens.
    Dialog appearance and focus behavior live in portal-auth-dialog.css. */
 .loom-portal-page.is-modular.loom-editorial > .loom-portal-shell:not(.editorial-panel-backdrop) { display: none !important; }
@@ -276,7 +243,8 @@
 @media (max-width: 700px) {
   .loom-portal-page.loom-editorial .editorial-shell { width: calc(100% - 40px); padding: 22px 0; }
   .loom-editorial .editorial-meta { gap: 16px; }
-  .loom-editorial .editorial-body { padding: 72px 0 80px; }
+  .loom-editorial .editorial-body { padding: 64px 0; }
+  .loom-editorial .editorial-capabilities { grid-template-columns: 1fr; gap: 28px; max-width: 440px; margin: 52px auto 0; padding-top: 28px; }
   .loom-editorial .editorial-footer { flex-direction: column; gap: 16px; text-align: center; }
   .loom-editorial .editorial-footer nav { justify-content: center; gap: 18px; }
 }
@@ -287,10 +255,9 @@
   .loom-editorial .editorial-meta > button:first-child { max-width: 70px; }
   .loom-editorial .editorial-hero-copy { font-size: clamp(36px, 11.3vw, 44px); }
   .loom-editorial .editorial-hero-description { font-size: 13px; }
-  .loom-editorial .editorial-ask form { padding: 18px 16px 13px; }
-  .loom-editorial .editorial-ask textarea { font-size: 20px; }
-  .loom-editorial .editorial-starters { gap: 2px; }
-  .loom-editorial .editorial-starter { padding: 7px 9px; gap: 7px; font-size: 14px; }
+  .loom-editorial .editorial-actions { gap: 20px; }
+  .loom-editorial .editorial-primary { font-size: 16px; padding-inline: 16px; gap: 16px; }
+  .loom-editorial .editorial-download { font-size: 15px; gap: 8px; }
 }
 @media (prefers-reduced-motion: reduce) {
   .loom-editorial *, .loom-editorial *::before, .loom-editorial *::after { animation: none !important; transition: none !important; }

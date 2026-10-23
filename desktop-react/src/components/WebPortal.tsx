@@ -120,10 +120,6 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
     try { return window.localStorage.getItem("loom.editorial.theme") === "light"; }
     catch { return false; }
   });
-  const [prompt, setPrompt] = useState("");
-  const promptInputRef = useRef<HTMLTextAreaElement>(null);
-  const [pendingPrompt, setPendingPrompt] = useState("");
-  const [promptError, setPromptError] = useState("");
   useEffect(() => {
     const sync = () => {
       setPageMode(window.location.pathname.replace(/\/+$/, "") === "/classic" ? "classic" : "editorial");
@@ -180,7 +176,6 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
     window.history.pushState(null, "", next === "classic" ? "/classic" : "/");
     setPageMode(next);
     setDrawerOpen(false);
-    setPromptError("");
   }
   function openEditorialModal() {
     if (document.activeElement instanceof HTMLElement) modalOpenerRef.current = document.activeElement;
@@ -188,7 +183,6 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
   }
   function dismissDrawer() {
     setDrawerOpen(false);
-    setPendingPrompt("");
     try { window.sessionStorage.removeItem("loom.portal.pendingPrompt"); }
     catch { /* Browser storage may be unavailable. */ }
   }
@@ -198,15 +192,7 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
     try { window.localStorage.setItem("loom.editorial.theme", next ? "light" : "dark"); }
     catch { /* storage unavailable */ }
   }
-  function beginPrompt(text: string) {
-    const next = text.trim();
-    setPromptError("");
-    if (next) {
-      setPrompt(next);
-      setPendingPrompt(next);
-      try { window.sessionStorage.setItem("loom.portal.pendingPrompt", next); }
-      catch { setPromptError("Your browser could not preserve this prompt. Copy it before entering the workspace."); }
-    }
+  function openWorkspace() {
     if (authenticated && hostState === "online") {
       onEnter();
     } else {
@@ -240,10 +226,6 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
   const [localError, setLocalError] = useState("");
   const [logoutNotice, setLogoutNotice] = useState("");
   const authenticated = Boolean(account.account.authenticated && account.account.user);
-  useEffect(() => {
-    // Only a deliberate submitted prompt should enter the workspace automatically.
-    if (editorial && pendingPrompt && authenticated && hostState === "online") onEnter();
-  }, [editorial, pendingPrompt, authenticated, hostState, onEnter]);
   const strength = passwordScore(password);
   const strengthLabel = !password
     ? (zh ? "未输入" : "Not entered")
@@ -332,8 +314,6 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
     }
     resetAuthFlow("login");
     setEmail("");
-    setPrompt("");
-    setPendingPrompt("");
     try { window.sessionStorage.removeItem("loom.portal.pendingPrompt"); }
     catch { /* storage unavailable */ }
     setLogoutNotice(switchAccount
@@ -499,7 +479,7 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
             <nav className="editorial-meta" aria-label={zh ? "主页操作" : "Home actions"}>
               <button type="button" onClick={openEditorialModal} data-liquid-snap="true" data-magnetic-hover="true">{authenticated ? (account.account.user?.display_name?.trim() || (zh ? "我的账户" : "My account")) : (zh ? "登录 / 注册" : "Sign in")}</button>
               <button className="editorial-theme" type="button" role="switch" aria-label={zh ? "切换深浅主题" : "Toggle light and dark theme"} aria-checked={lightEditorial} onClick={toggleEditorialTheme} data-liquid-snap="true" />
-              <button className="editorial-home-icon" type="button" onClick={() => beginPrompt("")} aria-label={zh ? "打开 Loom 工作区" : "Open Loom workspace"} title={zh ? "打开 Loom" : "Open Loom"} data-liquid-snap="true" data-magnetic-hover="true">
+              <button className="editorial-home-icon" type="button" onClick={openWorkspace} aria-label={zh ? "打开 Loom 工作区" : "Open Loom workspace"} title={zh ? "打开 Loom" : "Open Loom"} data-liquid-snap="true" data-magnetic-hover="true">
                 <img src="/loom-icon.png" alt="" aria-hidden="true" />
               </button>
             </nav>
@@ -512,31 +492,32 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
                 <p className="editorial-hero-description">
                   {zh ? "与文件、代码和浏览器协作。在你的电脑上，由你掌控。" : "Work with files, code, and the web. On your computer, in your control."}
                 </p>
+                <div className="editorial-actions">
+                  <button type="button" className="editorial-primary" onClick={openWorkspace} data-liquid-snap="true" data-magnetic-hover="true">{zh ? "进入工作区" : "Open workspace"}<ArrowRight size={16} aria-hidden="true" /></button>
+                  <a className="editorial-download" href={release.download}>{zh ? "下载 Windows 版" : "Download for Windows"}<span aria-hidden="true">↓</span></a>
+                </div>
+                <div className="editorial-connection">
+                  <span className="editorial-runtime" data-state={authenticated ? hostState : "idle"} role="status"><span className="editorial-status-dot" aria-hidden="true" />{authenticated ? (hostState === "online" ? (zh ? "本机工作区已就绪" : "Your local workspace is ready") : hostState === "checking" ? (zh ? "正在连接本机 Host…" : "Connecting to your local Host…") : (zh ? "连接本机 Host 以开始" : "Connect your local Host to begin")) : (zh ? "在本机运行 · 由你掌控" : "Runs locally. You stay in control.")}</span>
+                  {authenticated && hostState !== "online" ? <button type="button" onClick={openEditorialModal}>{zh ? "连接" : "Connect"}<ArrowRight size={12} aria-hidden="true" /></button> : null}
+                </div>
               </div>
             </section>
-            <section className="editorial-ask" aria-label={zh ? "开始一个任务" : "Start a task"}>
-              <form onSubmit={(event) => { event.preventDefault(); if (prompt.trim()) beginPrompt(prompt); }} autoComplete="off">
-                <label className="editorial-sr-only" htmlFor="editorial-prompt">{zh ? "给 Loom 发送任务" : "Ask Loom"}</label>
-                <textarea id="editorial-prompt" ref={promptInputRef} rows={2} value={prompt} onChange={(event) => setPrompt(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); if (prompt.trim()) beginPrompt(prompt); } }} placeholder={zh ? "今天想一起完成什么？" : "What would you like to work on?"} />
-                <div className="editorial-composer-bottom">
-                  <span>{zh ? "一个想法，就是开始。" : "Every task starts with a thought."}</span>
-                  <button className="editorial-send" type="submit" disabled={!prompt.trim()} aria-label={zh ? "发送任务" : "Send task"}><ArrowRight size={19} aria-hidden="true" /></button>
-                </div>
-              </form>
-              <div className="editorial-starters" aria-label={zh ? "任务示例" : "Suggested tasks"}>
-                {[
-                  { title: zh ? "了解一个项目" : "Explore a project", prompt: zh ? "检查这个项目，梳理它的架构，并告诉我最先应该了解什么。" : "Inspect this project, map the architecture, and tell me what I should understand first." },
-                  { title: zh ? "实现一个想法" : "Build a feature", prompt: zh ? "帮我在这个项目中实现一个功能，先找出最小、最清晰的实现方式。" : "Help me implement a feature in this project. Start by identifying the smallest clean approach." },
-                  { title: zh ? "排查一个问题" : "Fix a problem", prompt: zh ? "排查当前项目中我遇到的问题，在修改代码之前先追查根本原因。" : "Investigate the current project for the problem I am seeing and trace it to the root cause before making changes." },
-                ].map((item) => (
-                  <button className="editorial-starter" type="button" key={item.title} onClick={() => { setPrompt(item.prompt); setPromptError(""); promptInputRef.current?.focus(); }}>{item.title}<span aria-hidden="true">↗</span></button>
-                ))}
-              </div>
-              <div className="editorial-connection">
-                <span className="editorial-runtime" data-state={authenticated ? hostState : "idle"} role="status"><span className="editorial-status-dot" aria-hidden="true" />{authenticated ? (hostState === "online" ? (zh ? "本机工作区已就绪" : "Your local workspace is ready") : hostState === "checking" ? (zh ? "正在连接本机 Host…" : "Connecting to your local Host…") : (zh ? "连接本机 Host 以开始" : "Connect your local Host to begin")) : (zh ? "在本机运行 · 由你掌控" : "Runs locally. You stay in control.")}</span>
-                {authenticated && hostState !== "online" ? <button type="button" onClick={openEditorialModal}>{zh ? "连接" : "Connect"}<ArrowRight size={12} aria-hidden="true" /></button> : null}
-              </div>
-              {promptError ? <div className="editorial-notice" role="alert">{promptError}</div> : null}
+            <section className="editorial-capabilities" aria-label={zh ? "Loom 的核心能力" : "What Loom can do"}>
+              <article>
+                <span className="editorial-capability-label">{zh ? "01 / 文件与代码" : "01 / FILES & CODE"}</span>
+                <h2>{zh ? "理解你的项目。" : "Find your bearings."}</h2>
+                <p>{zh ? "梳理代码结构，阅读文件，让每一次改动都有上下文。" : "Explore a codebase, read files, and bring context to every change."}</p>
+              </article>
+              <article>
+                <span className="editorial-capability-label">{zh ? "02 / 工具与浏览器" : "02 / TOOLS & WEB"}</span>
+                <h2>{zh ? "让想法落地。" : "Put ideas to work."}</h2>
+                <p>{zh ? "修改代码、运行命令、浏览网页，把多步骤的工作串起来。" : "Edit code, run commands, and browse the web to move work forward."}</p>
+              </article>
+              <article>
+                <span className="editorial-capability-label">{zh ? "03 / 本地运行" : "03 / LOCAL BY DESIGN"}</span>
+                <h2>{zh ? "始终由你掌控。" : "Keep the controls."}</h2>
+                <p>{zh ? "连接你电脑上的 Loom Host，在你的授权下使用本机工具。" : "Connect to Loom Host on your computer. Use local tools with your permission."}</p>
+              </article>
             </section>
           </main>
           <footer className="editorial-footer">

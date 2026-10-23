@@ -67,17 +67,15 @@ test("both homepage designs reuse the existing authentication and Host gate", ()
   assert.ok(gate.includes("onOpenProfile={openProfile}"));
 });
 
-test("a landing-page request becomes a reviewable composer draft", () => {
+test("the introduction homepage keeps task entry inside the workspace", () => {
   const portal = readFileSync(new URL("../../src/components/WebPortal.tsx", import.meta.url), "utf8");
-  const composer = readFileSync(new URL("../../src/components/Composer.tsx", import.meta.url), "utf8");
-  const lens = readFileSync(new URL("../../src/components/portalLiquidCapture.ts", import.meta.url), "utf8");
-  assert.ok(portal.includes('sessionStorage.setItem("loom.portal.pendingPrompt"'));
-  assert.ok(portal.includes('pendingPrompt && authenticated && hostState === "online"'));
-  assert.ok(composer.includes('sessionStorage.getItem("loom.portal.pendingPrompt")'));
-  assert.ok(composer.includes("setDrafts("));
-  assert.ok(lens.includes('root.classList.contains("loom-editorial")'));
+  const home = portal.slice(portal.indexOf('<main className="editorial-body">'), portal.indexOf('<footer className="editorial-footer">'));
+  assert.ok(home.includes('onClick={openWorkspace}'));
+  assert.ok(home.includes('href={release.download}'));
+  assert.ok(home.includes('editorial-capabilities'));
+  assert.ok(!/<(?:input|textarea|form)\b/.test(home), "homepage introduces Loom without a chat composer");
+  assert.ok(!portal.includes('pendingPrompt && authenticated'), "connecting must not auto-submit a homepage task");
 });
-
 
 test("magnetic glass refraction is smooth on short and tall targets in both homepage bundles", () => {
   const react = readFileSync(new URL("../../src/components/portalLiquidOptics.ts", import.meta.url), "utf8");
@@ -149,7 +147,7 @@ test("original Loom artwork is the rightmost editorial header action", () => {
   const header = portal.slice(portal.indexOf('<nav className="editorial-meta"'), portal.indexOf("</nav>", portal.indexOf('<nav className="editorial-meta"')));
   assert.ok(header.indexOf("editorial-home-icon") > header.indexOf("editorial-theme"), "icon belongs at the far right");
   assert.ok(header.includes('src="/loom-icon.png"'), "render the restored original asset");
-  assert.ok(header.includes('onClick={() => beginPrompt("")}'), "icon opens the workspace entry flow");
+  assert.ok(header.includes('onClick={openWorkspace}'), "icon opens the workspace entry flow");
   assert.ok(header.includes('aria-label={zh ? "打开 Loom 工作区" : "Open Loom workspace"}'));
   assert.equal(icon.subarray(0, 8).toString("hex"), "89504e470d0a1a0a", "copied asset must be a real PNG");
   assert.ok(css.includes(".editorial-meta .editorial-home-icon"), "header icon must have explicit layout");
