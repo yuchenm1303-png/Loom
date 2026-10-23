@@ -691,7 +691,7 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
                 <button className="loom-account-switch" type="button" onClick={() => resetAuthFlow("login")}>{zh ? "← 返回登录" : "← Back to sign in"}</button>
               </>}
               {logoutNotice ? <p className="loom-logout-notice" role="status">{logoutNotice}</p> : null}
-              {(localError || account.error) ? <p className="form-note is-error" role="alert">{localError || account.error?.message}</p> : null}
+              {(localError || account.error) ? <p className="form-note is-error" role="alert">{account.error?.message || localError}</p> : null}
             </section> : <>
               <section className="loom-host-module loom-host-refined" data-host-state={hostState} aria-label={zh ? "Host 连接" : "Host connection"}>
                 <div className="loom-host-meta">
@@ -728,7 +728,7 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
                   </button>
                 </div>
                 <p className="loom-account-session-note">{zh ? "这里管理网页登录。本机 Host 的登录不会随之退出。" : "Web account session only. Signing out here does not sign out your local Host."}</p>
-                {(localError || account.error) ? <p className="loom-logout-error" role="alert">{localError || account.error?.message}</p> : null}
+                {(localError || account.error) ? <p className="loom-logout-error" role="alert">{account.error?.message || localError}</p> : null}
                 <dl className="loom-identity-list">
                   <div className="loom-identity-row">
                     <dt><UserRound size={18} strokeWidth={1.5} aria-hidden="true" /><span>{zh ? "已登录账户" : "Signed-in account"}</span></dt>
