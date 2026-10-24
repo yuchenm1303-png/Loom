@@ -16,7 +16,7 @@
   border-radius: 9px;
   color: var(--ed-ink);
   cursor: pointer;
-  transition: background-color .18s ease;
+  transition: background-color var(--loom-dur-fast) linear;
 }
 .loom-portal-page.loom-editorial .editorial-meta .editorial-home-icon:hover {
   background: color-mix(in srgb, var(--ed-ink) 7%, transparent);

@@ -69,7 +69,7 @@ test("both homepage designs reuse the existing authentication and Host gate", ()
 
 test("the introduction homepage keeps task entry inside the workspace", () => {
   const portal = readFileSync(new URL("../../src/components/WebPortal.tsx", import.meta.url), "utf8");
-  const home = portal.slice(portal.indexOf('<main className="editorial-body">'), portal.indexOf('<footer className="editorial-footer">'));
+  const home = portal.slice(portal.indexOf('<main className="editorial-body">'), portal.indexOf('<footer className="editorial-footer'));
   assert.ok(home.includes('onClick={openWorkspace}'));
   assert.ok(home.includes('href={release.download}'));
   assert.ok(home.includes('editorial-capabilities'));

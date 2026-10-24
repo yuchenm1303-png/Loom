@@ -1,14 +1,41 @@
-/* The homepage shares its account and Host controllers with /classic. */
+/* Loom's home page, set in the manner of darioamodei.com.
+
+   What the reference does (read from its front end, 2026-10-24): Newsreader throughout, the 24 pt cut for text and
+   the 60 pt Display cut for large sizes; slate #1f1e1d on ivory #f0eee6 and the reverse, following the system until
+   the reader picks a side; one 620px column with 20px of side padding; body 20px / 1.6; links always underlined
+   (0.08em thick, 0.1em off the letters); "•" lists with an .8em gap; a 40x20 pill as the only control in the header;
+   no cards, no shadows, no gradients. Here the typeface is Newsreader's variable file, which carries both cuts on an
+   optical-size axis, so font-optical-sizing picks the cut that belongs to the size. Sizes, weights and motion are on
+   the product's own scales (tests/test_design_scale_contract.py, tests/test_motion_scale_contract.py). */
+
+@font-face {
+  font-family: "Newsreader";
+  src: url("../assets/fonts/newsreader/newsreader-latin-opsz-normal.woff2") format("woff2");
+  font-weight: 400 650;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Newsreader";
+  src: url("../assets/fonts/newsreader/newsreader-latin-opsz-italic.woff2") format("woff2");
+  font-weight: 400 650;
+  font-style: italic;
+  font-display: swap;
+}
+
+/* The page follows the system; dark is slate with ivory type, light the reverse. */
 .loom-portal-page.loom-editorial {
-  --ed-paper: #1c1c1b;
-  --ed-paper-soft: #242422;
-  --ed-ink: #f0eee8;
-  --ed-ink-muted: #b5b1a9;
-  --ed-ink-faint: #96928a;
-  --ed-rule: #41403c;
-  --ed-rule-soft: #33332f;
+  --ed-paper: #1f1e1d;
+  --ed-paper-soft: #262523;
+  --ed-ink: #f0eee6;
+  --ed-ink-muted: #b0aea5;
+  --ed-ink-faint: #87867f;
+  --ed-rule: #3d3d3a;
+  --ed-rule-soft: #2f2e2b;
   --ed-accent: #99b7c5;
-  --ed-serif: "Iowan Old Style", "Newsreader", Georgia, "Times New Roman", serif;
+  /* Latin first, so a failed download falls to Georgia and not to the Latin of a Chinese face. */
+  --ed-serif: "Newsreader", Georgia, "Iowan Old Style", "Times New Roman", "Noto Serif SC", "Source Han Serif SC", "Songti SC", "STSong", "SimSun", serif;
+  color-scheme: dark;
   position: relative;
   isolation: isolate;
   width: 100%;
@@ -18,188 +45,384 @@
   overflow-x: hidden;
   background: var(--ed-paper);
   color: var(--ed-ink);
-  font-family: Inter, ui-sans-serif, system-ui, "Segoe UI", sans-serif;
+  font-family: var(--ed-serif);
+  font-size: 20px;
+  font-weight: 400;
   line-height: 1.6;
+  font-optical-sizing: auto;
+  font-kerning: normal;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
   scrollbar-width: thin;
   scrollbar-color: var(--ed-rule) transparent;
 }
 .loom-portal-page.loom-editorial.is-light {
-  --ed-paper: #f9f8f5;
-  --ed-paper-soft: #fdfcf9;
-  --ed-ink: #25231f;
-  --ed-ink-muted: #625e56;
-  --ed-ink-faint: #726d65;
-  --ed-rule: #cdc8be;
-  --ed-rule-soft: #e1ddd5;
+  color-scheme: light;
+  --ed-paper: #f0eee6;
+  --ed-paper-soft: #faf9f5;
+  --ed-ink: #1f1e1d;
+  --ed-ink-muted: #5e5d59;
+  --ed-ink-faint: #6b6a64;
+  --ed-rule: #d1cfc5;
+  --ed-rule-soft: #e3e1d8;
   --ed-accent: #537b8c;
 }
 .loom-editorial :is(button, input, textarea) { font-family: inherit; }
+.loom-editorial ::selection { background: rgba(0, 100, 255, .26); color: inherit; }
 .loom-editorial :is(button, a):focus-visible {
-  outline: 2px solid var(--ed-accent);
-  outline-offset: 5px;
+  outline: 2px solid var(--ed-ink);
+  outline-offset: 3px;
 }
+
+/* Every colour of the page moves on one clock, so a change of theme and a hover are the same gesture. It sits before
+   the rules below, which only add what is theirs (a transform, a fold). */
+.loom-portal-page.loom-editorial,
+.loom-editorial .editorial-shell *,
+.loom-editorial .editorial-shell *::before,
+.loom-editorial .editorial-shell *::after {
+  transition:
+    color var(--loom-dur-fast) linear,
+    background-color var(--loom-dur-fast) linear,
+    border-color var(--loom-dur-fast) linear,
+    text-decoration-color var(--loom-dur-fast) linear;
+}
+
+/* The column */
 .loom-portal-page.loom-editorial .editorial-shell {
   position: relative;
   z-index: 1;
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
-  width: min(1240px, calc(100% - 96px));
-  height: auto;
+  width: 100%;
+  max-width: 620px;
   min-height: 100dvh;
   margin: 0 auto;
-  padding: 28px 0 25px;
+  padding: 0 20px;
   background: none;
   color: inherit;
 }
+.loom-editorial .editorial-shell :where(p) { margin: 0 0 1em; text-wrap: pretty; }
+.loom-editorial .editorial-shell :is(h1, h2) { text-wrap: balance; }
+.loom-editorial .editorial-shell a {
+  color: inherit;
+  text-decoration: underline;
+  text-decoration-thickness: .08em;
+  text-underline-offset: .1em;
+}
+.loom-editorial .editorial-shell a:hover { color: var(--ed-ink-muted); }
+
+/* Header: the name, and the controls the reference has least of. It stays at the top while the page moves under it. */
 .loom-editorial .editorial-header {
+  position: sticky;
+  top: 0;
+  z-index: 5;
   display: flex;
   flex: none;
   align-items: center;
   justify-content: space-between;
-  gap: 24px;
-  min-height: 44px;
+  gap: 16px;
+  padding: 30px 0 10px;
+  background: var(--ed-paper);
 }
-.loom-editorial .editorial-brand { color: var(--ed-ink); }
+/* What scrolls under the header fades out before it meets the header's edge, so no half line shows beneath it. */
+.loom-editorial .editorial-header::after {
+  content: "";
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  height: 20px;
+  background: linear-gradient(var(--ed-paper), transparent);
+  pointer-events: none;
+}
+.loom-editorial .editorial-brand { color: var(--ed-ink); text-decoration: none; }
 .loom-editorial .editorial-brand-name {
-  font: 500 33px/1 var(--ed-serif);
-  letter-spacing: -.045em;
+  font-size: 28px;
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: 0;
 }
 .loom-editorial .editorial-brand-period { color: var(--ed-accent); }
-.loom-editorial .editorial-meta { display: flex; align-items: center; gap: 26px; min-width: 0; }
-.loom-editorial .editorial-meta button {
-  border: 0;
+.loom-editorial .editorial-meta { display: flex; align-items: center; gap: 16px; min-width: 0; }
+.loom-editorial .editorial-meta > button:first-child {
+  max-width: 160px;
+  min-height: 44px;
   padding: 0;
+  overflow: hidden;
+  border: 0;
   background: none;
   color: var(--ed-ink-muted);
-  font-size: 14px;
-  cursor: pointer;
-  transition: color .18s ease;
-}
-.loom-editorial .editorial-meta button:hover { color: var(--ed-ink); }
-.loom-editorial .editorial-meta > button:first-child {
-  min-height: 44px;
-  max-width: 160px;
-  overflow: hidden;
+  font-size: 16px;
+  line-height: 1;
+  text-decoration: underline;
+  text-decoration-color: transparent;
+  text-decoration-thickness: .08em;
+  text-underline-offset: .22em;
   text-overflow: ellipsis;
   white-space: nowrap;
+  cursor: pointer;
 }
+.loom-editorial .editorial-meta > button:first-child:hover { color: var(--ed-ink); text-decoration-color: currentColor; }
+
+/* The pill of the reference: always an ivory track with a dark knob; the knob sits left in light, right in dark. */
 .loom-editorial .editorial-theme {
   position: relative;
   flex: none;
-  width: 32px;
-  height: 19px;
-  border: 1px solid var(--ed-rule) !important;
-  border-radius: 99px;
+  box-sizing: border-box;
+  width: 40px;
+  height: 20px;
+  padding: 0;
+  border: 1px solid #1f1e1d;
+  border-radius: 2rem;
+  background: #faf9f5;
+  cursor: pointer;
 }
 .loom-editorial .editorial-theme::after {
   content: "";
   position: absolute;
-  top: 3px;
-  left: 3px;
-  width: 11px;
-  height: 11px;
+  top: 2px;
+  left: 2px;
+  width: 14px;
+  height: 14px;
   border-radius: 50%;
-  background: var(--ed-ink-muted);
-  transition: transform .2s ease;
+  background: #1f1e1d;
+  transform: translateX(20px);
+  transition: transform var(--loom-dur-fast) var(--loom-ease-move);
 }
-.loom-editorial.is-light .editorial-theme::after { transform: translateX(13px); }
+.loom-editorial.is-light .editorial-theme::after { transform: translateX(0); }
 .loom-editorial .editorial-theme::before { content: ""; position: absolute; inset: -12px -6px; }
+
+/* The body of the page: the name of the thing, what it is, where to start, the version. */
 .loom-editorial .editorial-body {
-  display: flex;
+  display: block;
   flex: 1 0 auto;
-  flex-direction: column;
-  justify-content: center;
-  width: min(1100px, 100%);
-  margin: 0 auto;
-  padding: clamp(24px, 4vh, 64px) 0 clamp(28px, 4vh, 64px);
+  padding-top: clamp(40px, 10vh, 96px);
 }
-.loom-editorial .editorial-hero { text-align: center; }
 .loom-editorial .editorial-hero-copy {
-  margin: 0;
-  color: var(--ed-ink);
-  font: 400 clamp(60px, 7.6vw, 104px)/1.08 var(--ed-serif);
-  letter-spacing: -.043em;
-  text-wrap: balance;
+  margin: 0 0 .6em;
+  font-size: clamp(40px, 11.4vw, 60px);
+  font-weight: 400;
+  line-height: 1.08;
+  letter-spacing: -.012em;
 }
 .loom-editorial .editorial-title-line { display: block; }
-.loom-editorial .editorial-title-finish { font-style: italic; letter-spacing: -.055em; }
-.loom-editorial:lang(zh-CN) .editorial-title-finish { font-style: normal; letter-spacing: -.043em; }
-.loom-editorial .editorial-hero-description {
-  max-width: 620px;
-  margin: 27px auto 0;
-  color: var(--ed-ink-muted);
-  font: 400 clamp(20px, 1.8vw, 24px)/1.5 var(--ed-serif);
-  text-wrap: pretty;
+.loom-editorial .editorial-title-finish { font-style: italic; }
+.loom-editorial .editorial-intro p { max-width: 580px; }
+.loom-editorial .editorial-more {
+  display: inline;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-decoration: underline;
+  text-decoration-thickness: .08em;
+  text-underline-offset: .1em;
+  cursor: pointer;
 }
+.loom-editorial .editorial-more:hover { color: var(--ed-ink-muted); }
+/* What the "More" opens is made by layout, so it takes a fold's time and what sits below it glides. */
+.loom-editorial .editorial-more-panel {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  transition: grid-template-rows var(--loom-dur-flow-out) var(--loom-ease-exit), opacity var(--loom-dur-base-out) var(--loom-ease-exit);
+}
+.loom-editorial .editorial-more-panel[data-open="true"] {
+  grid-template-rows: 1fr;
+  opacity: 1;
+  transition: grid-template-rows var(--loom-dur-flow) var(--loom-ease-move), opacity var(--loom-dur-base) var(--loom-ease-out);
+}
+.loom-editorial .editorial-more-panel > div { min-height: 0; overflow: hidden; }
 .loom-editorial .editorial-actions {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  justify-content: center;
-  gap: 32px;
-  margin-top: 32px;
+  gap: 14px 28px;
+  margin: 12px 0 0;
 }
 .loom-editorial .editorial-primary {
   display: inline-flex;
   align-items: center;
-  justify-content: center;
-  gap: 24px;
-  min-height: 52px;
-  padding: 12px 27px;
-  border: 1px solid var(--ed-ink);
-  border-radius: 99px;
+  gap: 14px;
+  padding: .7em 1em;
+  border: 0;
+  border-radius: .5rem;
   background: var(--ed-ink);
   color: var(--ed-paper);
-  font: 400 19px/1.3 var(--ed-serif);
+  font-size: 20px;
+  font-weight: 500;
+  line-height: 1;
   cursor: pointer;
-  transition: background .18s ease, border-color .18s ease, box-shadow .18s ease;
 }
-.loom-editorial .editorial-primary:hover { background: var(--ed-ink); border-color: var(--ed-ink); box-shadow: 0 0 0 5px color-mix(in srgb, var(--ed-ink) 8%, transparent); }
-.loom-editorial .editorial-primary svg { transition: transform .18s ease; }
+.loom-editorial .editorial-primary:hover { background: color-mix(in srgb, var(--ed-ink) 84%, var(--ed-paper)); }
+.loom-editorial .editorial-primary svg { transition: transform var(--loom-dur-fast) var(--loom-ease-move); }
 .loom-editorial .editorial-primary:hover svg { transform: translateX(3px); }
-.loom-editorial .editorial-download {
-  display: inline-flex;
-  align-items: center;
-  min-height: 48px;
-  gap: 12px;
+/* The arrow is a sign, not a word: inline-block keeps the link's underline from running under it. */
+.loom-editorial .editorial-download span { display: inline-block; margin-left: .35em; }
+.loom-editorial .editorial-release {
+  margin: 28px 0 0;
   color: var(--ed-ink-muted);
-  font: 400 19px/1.4 var(--ed-serif);
-  text-decoration: none;
-  text-underline-offset: 6px;
-  text-decoration-thickness: 1px;
+  font-size: 16px;
+  line-height: 1.5;
 }
-.loom-editorial .editorial-download:hover { color: var(--ed-ink); text-decoration: underline; }
-.loom-editorial .editorial-download span { font: 14px/1 ui-sans-serif, sans-serif; }
-.loom-editorial .editorial-capabilities {
+.loom-editorial .editorial-version { font-variant-numeric: lining-nums tabular-nums; }
+
+/* Sections: a heading and what belongs to it, as in the lists of the reference. */
+.loom-editorial .editorial-section { margin-top: clamp(56px, 10vh, 84px); }
+.loom-editorial .editorial-section h2 {
+  margin: 0 0 .7em;
+  font-size: 24px;
+  font-weight: 600;
+  line-height: 1.2;
+}
+.loom-editorial .editorial-list {
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: center;
-  gap: 20px 38px;
-  margin-top: clamp(44px, 7vh, 76px);
-  text-align: center;
-}
-.loom-editorial .editorial-capabilities article { display: flex; align-items: center; gap: 38px; min-width: 0; }
-.loom-editorial .editorial-capabilities article + article::before { content: ""; flex: none; width: 3px; height: 3px; border-radius: 50%; background: var(--ed-rule); }
-.loom-editorial .editorial-capabilities h2 {
+  flex-direction: column;
+  gap: .8em;
   margin: 0;
-  color: var(--ed-ink-muted);
-  font: 400 clamp(24px, 2vw, 28px)/1.2 var(--ed-serif);
-  letter-spacing: -.025em;
+  padding: 0;
+  list-style: none;
 }
+.loom-editorial .editorial-list li { position: relative; padding-left: 1em; }
+.loom-editorial .editorial-list li::before { content: "•"; position: absolute; left: .3em; }
+.loom-editorial .editorial-section strong { font-weight: 600; }
+
+/* A task, start to finish: a thread with a knot for every step; the last one is waiting for you. */
+.loom-editorial .editorial-thread { margin: 0; }
+.loom-editorial .editorial-thread ol {
+  display: grid;
+  gap: 14px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.loom-editorial .editorial-thread li {
+  position: relative;
+  display: grid;
+  grid-template-columns: 3em minmax(0, 1fr);
+  column-gap: 12px;
+  padding-left: 25px;
+  color: var(--ed-ink-muted);
+  font-size: 18px;
+  line-height: 1.5;
+}
+.loom-editorial .editorial-thread li::before {
+  content: "";
+  position: absolute;
+  top: 9px;
+  left: 0;
+  box-sizing: border-box;
+  width: 9px;
+  height: 9px;
+  border: 1px solid var(--ed-ink-faint);
+  border-radius: 50%;
+  background: var(--ed-paper);
+}
+.loom-editorial .editorial-thread li:not(:last-child)::after {
+  content: "";
+  position: absolute;
+  top: 19px;
+  bottom: -23px;
+  left: 4px;
+  width: 1px;
+  background: var(--ed-rule);
+  transform-origin: top;
+}
+.loom-editorial .editorial-thread time {
+  padding-top: 2px;
+  color: var(--ed-ink-faint);
+  font-size: 15px;
+  font-variant-numeric: lining-nums tabular-nums;
+}
+.loom-editorial .editorial-thread li.is-waiting { color: var(--ed-ink); }
+.loom-editorial .editorial-thread li.is-waiting::before {
+  border-color: var(--ed-accent);
+  background: var(--ed-accent);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--ed-accent) 24%, transparent);
+}
+.loom-editorial .editorial-thread figcaption {
+  margin-top: 22px;
+  padding-left: 25px;
+  color: var(--ed-ink-faint);
+  font-size: 16px;
+  font-style: italic;
+  line-height: 1.5;
+}
+/* It is drawn once, when it comes into view: the words fade in where they are, the line is drawn down. */
+.loom-editorial .editorial-thread[data-state="armed"] li,
+.loom-editorial .editorial-thread[data-state="armed"] figcaption { opacity: 0; }
+.loom-editorial .editorial-thread[data-state="armed"] li:not(:last-child)::after { transform: scaleY(0); }
+.loom-editorial .editorial-thread[data-state="in"] li,
+.loom-editorial .editorial-thread[data-state="in"] figcaption {
+  animation: editorial-fade var(--loom-dur-slow) var(--loom-ease-out) both;
+  animation-delay: calc(var(--i, 0) * 180ms);
+}
+.loom-editorial .editorial-thread[data-state="in"] figcaption { animation-delay: 760ms; }
+.loom-editorial .editorial-thread[data-state="in"] li:not(:last-child)::after {
+  animation: editorial-thread-draw var(--loom-dur-flow) var(--loom-ease-move) both;
+  animation-delay: calc(var(--i, 0) * 180ms + 140ms);
+}
+
+/* Getting started: numbers hang in the margin, the way the bullets do. */
+.loom-editorial .editorial-steps {
+  display: flex;
+  flex-direction: column;
+  gap: .8em;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  counter-reset: editorial-step;
+}
+.loom-editorial .editorial-steps li {
+  position: relative;
+  padding-left: 1.6em;
+  counter-increment: editorial-step;
+}
+.loom-editorial .editorial-steps li::before {
+  content: counter(editorial-step) ".";
+  position: absolute;
+  left: 0;
+  color: var(--ed-ink-muted);
+  font-variant-numeric: lining-nums tabular-nums;
+}
+
+/* Footer: small, and at the bottom of the page even when the page is short. */
 .loom-editorial .editorial-footer {
   display: flex;
   flex: none;
-  align-items: center;
+  flex-wrap: wrap;
+  align-items: baseline;
   justify-content: space-between;
-  gap: 24px;
+  gap: 4px 24px;
+  margin-top: clamp(72px, 14vh, 120px);
+  padding: 0 0 40px;
   color: var(--ed-ink-faint);
-  font-size: 14px;
+  font-size: 16px;
+  line-height: 1.5;
 }
-.loom-editorial .editorial-footer nav { display: flex; flex-wrap: wrap; gap: 24px; }
-.loom-editorial .editorial-footer a { display: inline-flex; align-items: center; min-height: 44px; color: inherit; text-decoration: none; transition: color .18s ease; }
+.loom-editorial .editorial-footer p { margin: 0; }
+.loom-editorial .editorial-footer nav { display: flex; flex-wrap: wrap; gap: 4px 24px; }
 .loom-editorial .editorial-footer a:hover { color: var(--ed-ink); }
+
+/* The page is shown when its typeface is in: the blocks arrive one after another, and only fade. */
+.loom-editorial .editorial-shell[data-type-ready="false"] .editorial-reveal { opacity: 0; }
+.loom-editorial .editorial-shell[data-type-ready="true"] .editorial-reveal {
+  animation: editorial-fade var(--loom-dur-slow) var(--loom-ease-out) both;
+  animation-delay: calc(var(--i, 0) * 70ms);
+}
+@keyframes editorial-fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes editorial-thread-draw { from { transform: scaleY(0); } to { transform: scaleY(1); } }
+
+/* Chinese: the same page, with the room a Chinese line needs and no italics. */
+.loom-editorial:lang(zh-CN) { line-height: 1.8; }
+.loom-editorial:lang(zh-CN) .editorial-hero-copy { font-weight: 500; line-height: 1.25; letter-spacing: .01em; }
+.loom-editorial:lang(zh-CN) .editorial-title-finish,
+.loom-editorial:lang(zh-CN) .editorial-thread figcaption { font-style: normal; }
+.loom-editorial:lang(zh-CN) .editorial-thread em { font-style: normal; }
+.loom-editorial:lang(zh-CN) .editorial-thread li { line-height: 1.7; }
+
 /* Keep the shared portal out of layout until its accessible dialog opens.
    Dialog appearance and focus behavior live in portal-auth-dialog.css. */
 .loom-portal-page.is-modular.loom-editorial > .loom-portal-shell:not(.editorial-panel-backdrop) { display: none !important; }
@@ -220,25 +443,13 @@
   text-decoration: none;
   backdrop-filter: blur(16px);
 }
-@media (max-width: 700px) {
-  .loom-portal-page.loom-editorial .editorial-shell { width: calc(100% - 40px); padding: 22px 0; }
-  .loom-editorial .editorial-meta { gap: 16px; }
-  .loom-editorial .editorial-body { padding: 64px 0; }
-  .loom-editorial .editorial-capabilities { flex-direction: column; gap: 16px; margin-top: 48px; }
-  .loom-editorial .editorial-capabilities article + article::before { display: none; }
-  .loom-editorial .editorial-footer { flex-direction: column; gap: 16px; text-align: center; }
-  .loom-editorial .editorial-footer nav { justify-content: center; gap: 18px; }
-}
-@media (max-width: 420px) {
-  .loom-editorial .editorial-header { gap: 12px; }
-  .loom-editorial .editorial-brand-name { font-size: 29px; }
+
+@media (max-width: 520px) {
+  .loom-editorial .editorial-header { gap: 12px; padding-top: 20px; }
   .loom-editorial .editorial-meta { gap: 12px; }
-  .loom-editorial .editorial-meta > button:first-child { max-width: 70px; }
-  .loom-editorial .editorial-hero-copy { font-size: clamp(44px, 12.5vw, 54px); }
-  .loom-editorial .editorial-hero-description { font-size: 20px; margin-top: 24px; }
-  .loom-editorial .editorial-actions { gap: 20px; }
-  .loom-editorial .editorial-primary { font-size: 18px; padding-inline: 18px; gap: 16px; }
-  .loom-editorial .editorial-download { font-size: 18px; gap: 8px; }
+  .loom-editorial .editorial-meta > button:first-child { max-width: 96px; }
+  .loom-editorial .editorial-brand-name { font-size: 24px; }
+  .loom-editorial .editorial-footer { flex-direction: column; }
 }
 @media (prefers-reduced-motion: reduce) {
   .loom-editorial *, .loom-editorial *::before, .loom-editorial *::after { animation: none !important; transition: none !important; }
