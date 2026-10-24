@@ -2,27 +2,27 @@
    The existing account, OAuth, verification and Host controllers are shared
    with /classic; only the presentation of the editorial surface changes. */
 .loom-portal-page.loom-editorial {
-  --dialog-surface: #1c1c1b;
-  --dialog-field: #242422;
-  --dialog-field-hover: #2a2927;
-  --dialog-edge: #42403b;
-  --dialog-rule: #373530;
-  --dialog-text: #f1eee7;
-  --dialog-muted: #a7a39c;
-  --dialog-quiet: #817e76;
-  --dialog-accent: #f1eee7;
-  --dialog-on-accent: #1c1c1b;
+  --dialog-surface: #262523;
+  --dialog-field: #2e2d2a;
+  --dialog-field-hover: #353430;
+  --dialog-edge: #4a4944;
+  --dialog-rule: #3a3935;
+  --dialog-text: #f0eee6;
+  --dialog-muted: #b0aea5;
+  --dialog-quiet: #87867f;
+  --dialog-accent: #f0eee6;
+  --dialog-on-accent: #1f1e1d;
 }
 .loom-portal-page.loom-editorial.is-light {
-  --dialog-surface: #fcfaf6;
-  --dialog-field: #f4f1ea;
-  --dialog-field-hover: #eeebe4;
-  --dialog-edge: #cbc6bd;
-  --dialog-rule: #e2ded5;
-  --dialog-text: #24221f;
-  --dialog-muted: #68645d;
-  --dialog-quiet: #8a857d;
-  --dialog-accent: #272521;
+  --dialog-surface: #faf9f5;
+  --dialog-field: #f0eee6;
+  --dialog-field-hover: #e8e6dc;
+  --dialog-edge: #d1cfc5;
+  --dialog-rule: #e3e1d8;
+  --dialog-text: #1f1e1d;
+  --dialog-muted: #5e5d59;
+  --dialog-quiet: #6b6a64;
+  --dialog-accent: #1f1e1d;
   --dialog-on-accent: #faf9f5;
 }
 .loom-portal-page.is-modular.loom-editorial > .loom-portal-shell.editorial-panel-backdrop {

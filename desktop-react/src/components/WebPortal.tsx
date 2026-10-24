@@ -6,7 +6,7 @@ import "./portal-liquid-cursor.css";
 import "./portal-editorial.css";
 import "./portal-auth-dialog.css";
 import "./portal-home-icon.css";
-import type { CSSProperties, FormEvent } from "react";
+import type { CSSProperties, FormEvent, ReactNode } from "react";
 import { useEffect, useRef, useState } from "react";
 import { Laptop, Download, UserRound, LogOut, Check, ArrowRight, Github, Mail, KeyRound, ShieldCheck, Eye, EyeOff, FolderOpen, MessagesSquare } from "./icons";
 import { useI18n } from "../i18n";
@@ -14,6 +14,7 @@ import { useAccount } from "../state/useAccount";
 import { HostSetupActions } from "./HostSetupActions";
 import { PortalLiquidCursor } from "./PortalLiquidCursor";
 import { FALLBACK_RELEASE, fetchPortalRelease } from "../portalRelease";
+import { PORTAL_HOME_COPY } from "./portalHomeCopy";
 
 export type PortalHostState = "idle" | "checking" | "online" | "offline" | "unbound" | "account-mismatch";
 type AccountController = ReturnType<typeof useAccount>;
@@ -55,6 +56,31 @@ function passwordScore(value: string): number {
   if (/[a-z]/.test(value) && /[A-Z]/.test(value)) score += 1;
   if (/\d/.test(value) && /[^A-Za-z0-9]/.test(value)) score += 1;
   return score;
+}
+
+const EDITORIAL_THEME_KEY = "loom.editorial.theme";
+
+function storedEditorialTheme(): "light" | "dark" | null {
+  try {
+    const stored = window.localStorage.getItem(EDITORIAL_THEME_KEY);
+    return stored === "light" || stored === "dark" ? stored : null;
+  } catch {
+    return null;
+  }
+}
+
+function prefersLightScheme(): boolean {
+  return typeof window.matchMedia === "function" && window.matchMedia("(prefers-color-scheme: light)").matches;
+}
+
+// Words between asterisks are set in italic.
+function emphasize(text: string): ReactNode[] {
+  return text.split("*").map((part, index) => (index % 2 ? <em key={index}>{part}</em> : part));
+}
+
+// The home page's blocks arrive one after another; --i is a block's place in that order.
+function revealIndex(index: number): CSSProperties {
+  return { "--i": index } as CSSProperties;
 }
 
 function usePortalStyles(enabled: boolean) {
@@ -116,10 +142,53 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
   const [drawerOpen, setDrawerOpen] = useState(false);
   const authDialogRef = useRef<HTMLElement>(null);
   const modalOpenerRef = useRef<HTMLElement | null>(null);
-  const [lightEditorial, setLightEditorial] = useState(() => {
-    try { return window.localStorage.getItem("loom.editorial.theme") === "light"; }
-    catch { return false; }
-  });
+  // The home page follows the system's light or dark setting until the visitor picks a side; the pick is then kept.
+  const [lightEditorial, setLightEditorial] = useState(() => (storedEditorialTheme() ?? (prefersLightScheme() ? "light" : "dark")) === "light");
+  const [typeReady, setTypeReady] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(false);
+  const [threadState, setThreadState] = useState<"armed" | "in">(() => typeof IntersectionObserver === "function" ? "armed" : "in");
+  const threadRef = useRef<HTMLElement>(null);
+  useEffect(() => {
+    if (typeof window.matchMedia !== "function") return;
+    const query = window.matchMedia("(prefers-color-scheme: light)");
+    const follow = (event: MediaQueryListEvent) => { if (!storedEditorialTheme()) setLightEditorial(event.matches); };
+    query.addEventListener("change", follow);
+    return () => query.removeEventListener("change", follow);
+  }, []);
+  useEffect(() => {
+    if (!editorial) return;
+    // A phone's address bar takes the page's colour.
+    const meta = document.createElement("meta");
+    meta.name = "theme-color";
+    meta.content = lightEditorial ? "#f0eee6" : "#1f1e1d";
+    document.head.appendChild(meta);
+    return () => meta.remove();
+  }, [editorial, lightEditorial]);
+  useEffect(() => {
+    if (!editorial) return;
+    let live = true;
+    const show = () => { if (live) setTypeReady(true); };
+    // The page is shown once its typeface is in, so words never change fonts under the reader's eyes; a slow network shows it anyway.
+    const timer = window.setTimeout(show, 1200);
+    if (document.fonts?.load) {
+      void Promise.all([document.fonts.load('400 20px "Newsreader"'), document.fonts.load('italic 400 20px "Newsreader"')]).then(show, show);
+    } else {
+      show();
+    }
+    return () => { live = false; window.clearTimeout(timer); };
+  }, [editorial]);
+  useEffect(() => {
+    const node = threadRef.current;
+    if (!editorial || !node || threadState === "in") return;
+    const observer = new IntersectionObserver((entries) => {
+      if (entries.some((entry) => entry.isIntersecting)) {
+        setThreadState("in");
+        observer.disconnect();
+      }
+    }, { threshold: 0.4 });
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [editorial, threadState]);
   useEffect(() => {
     const sync = () => {
       setPageMode(window.location.pathname.replace(/\/+$/, "") === "/classic" ? "classic" : "editorial");
@@ -189,7 +258,7 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
   function toggleEditorialTheme() {
     const next = !lightEditorial;
     setLightEditorial(next);
-    try { window.localStorage.setItem("loom.editorial.theme", next ? "light" : "dark"); }
+    try { window.localStorage.setItem(EDITORIAL_THEME_KEY, next ? "light" : "dark"); }
     catch { /* storage unavailable */ }
   }
   function openWorkspace() {
@@ -210,6 +279,7 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
   const { language } = useI18n();
   const zh = language === "zh-CN";
   const copy = HOST_COPY[zh ? "zh" : "en"];
+  const home = PORTAL_HOME_COPY[zh ? "zh" : "en"];
   const [authMode, setAuthMode] = useState<"login" | "register">("login");
   const [authStep, setAuthStep] = useState<AuthStep>("form");
   const [email, setEmail] = useState("");
@@ -473,12 +543,12 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
       {!editorial ? <PortalWallpaper /> : null}
       <PortalLiquidCursor />
       {editorial ? (
-        <div className="editorial-shell" inert={drawerOpen}>
-          <header className="editorial-header">
+        <div className="editorial-shell" inert={drawerOpen} data-type-ready={typeReady ? "true" : "false"}>
+          <header className="editorial-header editorial-reveal" style={revealIndex(0)}>
             <span className="editorial-brand" aria-label="Loom"><span className="editorial-brand-name">Loom<span className="editorial-brand-period" aria-hidden="true">.</span></span></span>
             <nav className="editorial-meta" aria-label={zh ? "主页操作" : "Home actions"}>
               <button type="button" onClick={openEditorialModal} data-liquid-snap="true" data-magnetic-hover="true">{authenticated ? (account.account.user?.display_name?.trim() || (zh ? "我的账户" : "My account")) : (zh ? "登录 / 注册" : "Sign in")}</button>
-              <button className="editorial-theme" type="button" role="switch" aria-label={zh ? "切换深浅主题" : "Toggle light and dark theme"} aria-checked={lightEditorial} onClick={toggleEditorialTheme} data-liquid-snap="true" />
+              <button className="editorial-theme" type="button" role="switch" aria-label={zh ? "深色模式" : "Dark mode"} aria-checked={!lightEditorial} onClick={toggleEditorialTheme} data-liquid-snap="true" />
               <button className="editorial-home-icon" type="button" onClick={openWorkspace} aria-label={zh ? "打开 Loom 工作区" : "Open Loom workspace"} title={zh ? "打开 Loom" : "Open Loom"} data-liquid-snap="true" data-magnetic-hover="true">
                 <img src="/loom-icon.png" alt="" aria-hidden="true" />
               </button>
@@ -486,37 +556,65 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
           </header>
           <main className="editorial-body">
             <section className="editorial-hero" aria-labelledby="editorial-intro">
-              <div className="editorial-hero-message">
-                <h1 id="editorial-intro" className="editorial-hero-copy">
-                  <span className="editorial-title-line">{zh ? "从容开始，" : "A quieter way"}</span>{" "}
-                  <span className="editorial-title-line editorial-title-finish">{zh ? "让事情向前。" : "to get things done."}</span>
-                </h1>
-                <p className="editorial-hero-description">
-                  {zh ? "在你的电脑上，让想法成为现实。" : "Your local AI, ready for real work."}
+              <h1 id="editorial-intro" className="editorial-hero-copy editorial-reveal" style={revealIndex(1)}>
+                <span className="editorial-title-line">{home.title[0]}</span>{" "}
+                <span className="editorial-title-line editorial-title-finish">{home.title[1]}</span>
+              </h1>
+              <div className="editorial-intro editorial-reveal" style={revealIndex(2)}>
+                <p>
+                  {home.intro}
+                  {moreOpen || zh ? null : <span aria-hidden="true">{" …"}</span>}
+                  {" "}
+                  <button type="button" className="editorial-more" aria-expanded={moreOpen} aria-controls="editorial-more" onClick={() => setMoreOpen((open) => !open)}>{moreOpen ? home.less : home.more}</button>
                 </p>
-                <div className="editorial-actions">
-                  <button type="button" className="editorial-primary" onClick={openWorkspace} data-liquid-snap="true" data-magnetic-hover="true">{zh ? "进入工作区" : "Open workspace"}<ArrowRight size={16} aria-hidden="true" /></button>
-                  <a className="editorial-download" href={release.download}>{zh ? "下载 Windows 版" : "Download for Windows"}<span aria-hidden="true">↓</span></a>
+                <div id="editorial-more" className="editorial-more-panel" data-open={moreOpen ? "true" : "false"} inert={!moreOpen}>
+                  <div>{home.moreParagraphs.map((paragraph) => <p key={paragraph}>{paragraph}</p>)}</div>
                 </div>
               </div>
+              <div className="editorial-actions editorial-reveal" style={revealIndex(3)}>
+                <button type="button" className="editorial-primary" onClick={openWorkspace} data-liquid-snap="true" data-magnetic-hover="true">{home.open}<ArrowRight size={16} aria-hidden="true" /></button>
+                <a className="editorial-download" href={release.download}>{home.download}<span aria-hidden="true">↓</span></a>
+              </div>
+              <p className="editorial-release editorial-reveal" style={revealIndex(4)}>
+                {release.version ? <><span className="editorial-version">{release.version}</span><span aria-hidden="true"> · </span></> : null}
+                {home.platform}
+                {release.package ? <><span aria-hidden="true"> · </span>{release.package}</> : null}
+                <span aria-hidden="true"> · </span>
+                <a href={release.notes} target="_blank" rel="noopener noreferrer">{home.notes}</a>
+              </p>
             </section>
-            <section className="editorial-capabilities" aria-label={zh ? "Loom 的核心能力" : "What Loom can do"}>
-              <article>
-                <h2>{zh ? "理解。" : "Explore."}</h2>
-              </article>
-              <article>
-                <h2>{zh ? "创造。" : "Create."}</h2>
-              </article>
-              <article>
-                <h2>{zh ? "由你掌控。" : "Stay in control."}</h2>
-              </article>
+            <section id="loom-capabilities" className="editorial-section editorial-capabilities editorial-reveal" style={revealIndex(5)} aria-labelledby="editorial-do-title">
+              <h2 id="editorial-do-title">{home.doing.heading}</h2>
+              <ul className="editorial-list">
+                {home.doing.items.map((item) => <li key={item.lead}><strong>{item.lead}</strong> {item.text}</li>)}
+              </ul>
+            </section>
+            <section className="editorial-section editorial-session editorial-reveal" style={revealIndex(6)} aria-labelledby="editorial-session-title">
+              <h2 id="editorial-session-title">{home.session.heading}</h2>
+              <figure ref={threadRef} className="editorial-thread" data-state={threadState} aria-label={home.session.label}>
+                <ol>
+                  {home.session.rows.map((row, index) => (
+                    <li key={row.text} className={index === home.session.rows.length - 1 ? "is-waiting" : undefined} style={revealIndex(index)}>
+                      <time dateTime={row.time}>{row.time}</time>
+                      <span>{emphasize(row.text)}</span>
+                    </li>
+                  ))}
+                </ol>
+                <figcaption>{home.session.note}</figcaption>
+              </figure>
+            </section>
+            <section id="loom-how" className="editorial-section editorial-start editorial-reveal" style={revealIndex(7)} aria-labelledby="editorial-start-title">
+              <h2 id="editorial-start-title">{home.start.heading}</h2>
+              <ol className="editorial-steps">
+                {home.start.steps.map((step) => <li key={step.lead}><strong>{step.lead}</strong> {step.text}</li>)}
+              </ol>
             </section>
           </main>
-          <footer className="editorial-footer">
-            <a className="editorial-signature" href="https://smirel.com/" target="_blank" rel="noopener noreferrer">Smirel</a>
+          <footer className="editorial-footer editorial-reveal" style={revealIndex(8)}>
+            <p>{home.madeBy[0]}<a className="editorial-signature" href="https://smirel.com/" target="_blank" rel="noopener noreferrer">Smirel</a>{home.madeBy[1]}</p>
             <nav aria-label={zh ? "资源" : "Resources"}>
-              <a href={release.notes} target="_blank" rel="noopener noreferrer">{zh ? "更新" : "Updates"}</a>
-              <a href="/classic" onClick={(event) => { event.preventDefault(); switchPage("classic"); }}>{zh ? "经典主页" : "Classic home"}</a>
+              <a href={release.notes} target="_blank" rel="noopener noreferrer">{home.updates}</a>
+              <a href="/classic" onClick={(event) => { event.preventDefault(); switchPage("classic"); }}>{home.classic}</a>
             </nav>
           </footer>
         </div>
