@@ -1,0 +1,2 @@
+.model-brand-icon { display:inline-flex; align-items:center; justify-content:center; flex:none; vertical-align:middle; color:inherit; }
+.model-brand-icon.has-logo { background-color:currentColor; mask-image:var(--model-brand-logo); mask-size:contain; mask-position:center; mask-repeat:no-repeat; }

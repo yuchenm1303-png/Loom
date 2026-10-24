@@ -5,7 +5,7 @@
 .models-provider-nav button { width:100%; display:flex; align-items:center; gap:10px; padding:12px 10px; margin-bottom:4px; border:1px solid transparent; border-radius:8px; background:transparent; color:var(--sr-ink-2,#b4bac5); text-align:left; cursor:pointer; font:inherit; }
 .models-provider-nav button:hover { background:var(--sr-raised,#202127); }
 .models-provider-nav button.selected { background:color-mix(in srgb,#9a8cff 10%,transparent); border-color:color-mix(in srgb,#9a8cff 25%,transparent); color:var(--sr-ink,#f0f2f5); }
-.models-provider-nav button > span:first-of-type { min-width:0; flex:1; display:grid; gap:4px; }
+.models-provider-nav .models-provider-name { min-width:0; flex:1; display:grid; gap:4px; }
 .models-provider-nav strong,.models-provider-nav small { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .models-provider-nav strong { font-size:12px; font-weight:600; }
 .models-provider-nav small,.models-provider-count { font-size:10px; color:var(--sr-ink-3,#898e99); }

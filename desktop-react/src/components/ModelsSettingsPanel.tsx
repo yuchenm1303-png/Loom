@@ -1,10 +1,8 @@
 import {
   Activity,
-  BrainCircuit,
   Check,
   ChevronRight,
   CircleAlert,
-  Cpu,
   Eye,
   Gauge,
   KeyRound,
@@ -33,6 +31,7 @@ import type {
 import "./settings-models-manager.css";
 import "./settings-models-workspace.css";
 import { groupModelProfiles } from "./modelProviderGroups";
+import { ModelBrandIcon } from "./ModelBrandIcon";
 
 type Filter = "all" | "builtin" | "saved";
 type FormMode = "add" | "edit" | null;
@@ -477,7 +476,7 @@ export function ModelsSettingsPanel({ initialSnapshot, runtimeModel, running, on
         <div className="models-section-heading"><h2>{c.activeModel}</h2></div>
         <div className="models-active-card">
           <div className="models-active-main">
-            <span className="models-active-icon"><BrainCircuit size={24} strokeWidth={1.7} /></span>
+            <span className="models-active-icon"><ModelBrandIcon size={24} identities={[current?.model, current?.family, current?.groupId, current?.groupName, current?.name]} /></span>
             <div className="models-active-copy">
               <div className="models-active-title-line">
                 <span className="settings-eyebrow">{current?.kind === "saved" ? c.saved : c.managed}</span>
@@ -550,7 +549,7 @@ export function ModelsSettingsPanel({ initialSnapshot, runtimeModel, running, on
             <div className="models-provider-nav-label">{c.provider}<span>{filteredGroups.length}</span></div>
             {filteredGroups.map(group => <button type="button" key={group.id} aria-current={selectedGroup?.id === group.id ? "true" : undefined}
               className={selectedGroup?.id === group.id ? "selected" : ""} onClick={() => { setSelectedProvider(group.id); setConfirmDelete(""); }}>
-              <Server size={17} /><span><strong>{group.name}</strong><small>{group.endpoint}</small></span>
+              <ModelBrandIcon size={19} identities={[group.id, group.name, group.endpoint]} /><span className="models-provider-name"><strong>{group.name}</strong><small>{group.endpoint}</small></span>
               <span className="models-provider-count">{group.profiles.length}</span>
             </button>)}
             {!filteredGroups.length ? <p>{c.noProfiles}</p> : null}
@@ -579,7 +578,7 @@ export function ModelsSettingsPanel({ initialSnapshot, runtimeModel, running, on
             return (
               <article className={`models-profile-card ${active ? "active" : ""}`} key={profile.selection}>
                 <div className="models-profile-head">
-                  <span className="models-profile-icon"><Cpu size={17} /></span>
+                  <span className="models-profile-icon"><ModelBrandIcon size={18} identities={[profile.model, profile.family, profile.name, profile.groupId, profile.groupName]} /></span>
                   <div className="models-profile-title"><strong>{profile.name}</strong><span title={profile.model}>{profile.model}</span></div>
                   <span className={`models-kind-badge ${profile.kind}`}>{profile.kind === "saved" ? c.saved : c.builtin}</span>
                 </div>

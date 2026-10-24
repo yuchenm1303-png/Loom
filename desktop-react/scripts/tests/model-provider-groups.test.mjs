@@ -22,4 +22,3 @@ test('unavailable models remain visible and empty catalogs are supported', () =>
   const retired = profile({ available: false, statusMessage: 'Retired' });
   assert.equal(groupModelProfiles([retired])[0].profiles[0], retired);
 });
-
