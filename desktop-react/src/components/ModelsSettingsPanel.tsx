@@ -4,7 +4,6 @@ import {
   Check,
   ChevronRight,
   CircleAlert,
-  Copy,
   Cpu,
   Eye,
   Gauge,
@@ -32,6 +31,8 @@ import type {
   ReasoningUpdateResult,
 } from "../types/loom";
 import "./settings-models-manager.css";
+import "./settings-models-workspace.css";
+import { groupModelProfiles } from "./modelProviderGroups";
 
 type Filter = "all" | "builtin" | "saved";
 type FormMode = "add" | "edit" | null;
@@ -67,10 +68,10 @@ const COPY = {
   en: {
     eyebrow: "Inference",
     title: "Models",
-    subtitle: "Choose a model and manage its connection.",
+    subtitle: "Manage providers and choose the model used for new chats.",
     refresh: "Refresh",
     add: "Add connection",
-    activeModel: "Active model",
+    activeModel: "Default model",
     ready: "Ready",
     managed: "Managed",
     saved: "Saved",
@@ -89,7 +90,7 @@ const COPY = {
     all: "All",
     builtinFilter: "Built-in",
     savedFilter: "Saved",
-    setActive: "Set active",
+    setActive: "Use as default",
     current: "Current",
     edit: "Edit",
     delete: "Delete",
@@ -127,10 +128,10 @@ const COPY = {
   zh: {
     eyebrow: "推理配置",
     title: "模型",
-    subtitle: "选择模型，管理连接与思考强度。",
+    subtitle: "按提供商管理连接，选择新对话使用的模型。",
     refresh: "刷新",
     add: "添加模型",
-    activeModel: "当前模型",
+    activeModel: "默认模型",
     ready: "可用",
     managed: "托管",
     saved: "已保存",
@@ -149,7 +150,7 @@ const COPY = {
     all: "全部",
     builtinFilter: "内置",
     savedFilter: "自定义",
-    setActive: "设为当前",
+    setActive: "设为默认",
     current: "当前",
     edit: "编辑",
     delete: "删除",
@@ -193,25 +194,13 @@ function adapterLabel(value: string): string {
   return "OpenAI Compatible";
 }
 
-function endpointLabel(value: string): string {
-  if (!value) return "OpenAI default";
-  try {
-    return new URL(value).host;
-  } catch {
-    return value;
-  }
-}
-
-function copyToClipboard(value: string): Promise<void> {
-  return navigator.clipboard?.writeText ? navigator.clipboard.writeText(value) : Promise.resolve();
-}
-
 export function ModelsSettingsPanel({ initialSnapshot, runtimeModel, running, onSnapshot }: ModelsSettingsPanelProps) {
   const { language } = useI18n();
   const c = language === "zh-CN" ? COPY.zh : COPY.en;
   const [snapshot, setSnapshot] = useState<ModelSnapshot | null>(initialSnapshot);
   const [busy, setBusy] = useState("");
   const [query, setQuery] = useState("");
+  const [selectedProvider, setSelectedProvider] = useState("");
   const [filter, setFilter] = useState<Filter>("all");
   const [formMode, setFormMode] = useState<FormMode>(null);
   const [form, setForm] = useState<ModelFormState>(EMPTY_FORM);
@@ -223,6 +212,29 @@ export function ModelsSettingsPanel({ initialSnapshot, runtimeModel, running, on
   const [tests, setTests] = useState<Record<string, ModelTestResult>>({});
   const [testErrors, setTestErrors] = useState<Record<string, string>>({});
   const [otherModel, setOtherModel] = useState("");
+  const modalRef = useRef<HTMLElement>(null);
+  const busyRef = useRef(busy);
+  busyRef.current = busy;
+
+  useEffect(() => {
+    if (!formMode) return;
+    const previous = document.activeElement as HTMLElement | null;
+    function handleKey(event: KeyboardEvent) {
+      if (event.key === "Escape" && !busyRef.current) {
+        event.preventDefault();
+        event.stopPropagation();
+        setFormMode(null);
+      }
+      if (event.key !== "Tab") return;
+      const items = modalRef.current?.querySelectorAll<HTMLElement>('button:not(:disabled), input:not(:disabled), select:not(:disabled), [tabindex="0"]');
+      if (!items?.length) return;
+      const first = items[0], last = items[items.length - 1];
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+      if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+    }
+    document.addEventListener("keydown", handleKey, true);
+    return () => { document.removeEventListener("keydown", handleKey, true); previous?.focus(); };
+  }, [formMode]);
 
   useEffect(() => setSnapshot(initialSnapshot), [initialSnapshot]);
   useEffect(() => {
@@ -234,15 +246,20 @@ export function ModelsSettingsPanel({ initialSnapshot, runtimeModel, running, on
   const profiles = snapshot?.profiles ?? [];
   const currentModel = current?.model || runtimeModel || "—";
 
-  const visibleProfiles = useMemo(() => {
+  const providerGroups = useMemo(() => groupModelProfiles(profiles), [profiles]);
+  const filteredGroups = useMemo(() => {
     const needle = query.trim().toLowerCase();
-    return profiles.filter((profile) => {
-      if (filter !== "all" && profile.kind !== filter) return false;
-      if (!needle) return true;
-      return [profile.name, profile.model, profile.baseUrl, profile.adapter]
-        .some((value) => String(value || "").toLowerCase().includes(needle));
-    });
-  }, [filter, profiles, query]);
+    return providerGroups.map(group => ({ ...group, profiles: group.profiles.filter(profile =>
+      (filter === "all" || profile.kind === filter) && (!needle ||
+        [group.name, profile.name, profile.model, profile.baseUrl, profile.adapter]
+          .some(value => value.toLowerCase().includes(needle))))
+    })).filter(group => group.profiles.length);
+  }, [providerGroups, filter, query]);
+  const selectedGroup = filteredGroups.find(group => group.id === selectedProvider)
+    || filteredGroups.find(group => group.profiles.some(profile => profile.selection === current?.selection))
+    || filteredGroups[0];
+  const visibleProfiles = selectedGroup?.profiles ?? [];
+  const providerSync = snapshot?.catalogSync?.providers.find(provider => provider.groupId === selectedGroup?.id);
 
   function commit(next: ModelSnapshot) {
     setSnapshot(next);
@@ -262,7 +279,7 @@ export function ModelsSettingsPanel({ initialSnapshot, runtimeModel, running, on
   }
 
   async function activate(profile: ModelProfile) {
-    if (profile.available === false || busy || profile.selection === current?.selection) return;
+    if (running || profile.available === false || busy || profile.selection === current?.selection) return;
     setBusy(`activate:${profile.selection}`);
     setError("");
     try {
@@ -276,7 +293,9 @@ export function ModelsSettingsPanel({ initialSnapshot, runtimeModel, running, on
   }
 
   async function test(profile: ModelProfile) {
+    if (busy) return;
     setBusy(`test:${profile.selection}`);
+    setTests(currentTests => { const next = { ...currentTests }; delete next[profile.selection]; return next; });
     setTestErrors((currentErrors) => ({ ...currentErrors, [profile.selection]: "" }));
     try {
       const result = await window.loom.testModel<ModelTestResult>(profile.selection);
@@ -410,7 +429,7 @@ export function ModelsSettingsPanel({ initialSnapshot, runtimeModel, running, on
 
   async function switchOtherModel(model = otherModel) {
     const value = model.trim();
-    if (!value || busy) return;
+    if (running || !value || busy) return;
     setBusy("other-model");
     setError("");
     try {
@@ -470,12 +489,13 @@ export function ModelsSettingsPanel({ initialSnapshot, runtimeModel, running, on
               <span>{adapterLabel(current?.provider || current?.adapter || "openai-compatible")}</span>
             </div>
             {current ? (
-              <button type="button" className="models-test-button" onClick={() => void test(current)} disabled={busy === `test:${current.selection}`}>
+              <button type="button" className="models-test-button" onClick={() => void test(current)} disabled={Boolean(busy)}>
                 <Wifi size={14} />{busy === `test:${current.selection}` ? c.testing : c.test}
               </button>
             ) : null}
           </div>
 
+          <details className="models-current-details"><summary>{language === "zh-CN" ? "连接详情与模型能力" : "Connection details & capabilities"}</summary>
           <div className="models-active-meta">
             <div><span>{c.modelId}</span><code>{currentModel}</code></div>
             <div><span>{c.endpoint}</span><code title={current?.baseUrl || ""}>{current?.baseUrl || "OpenAI default"}</code></div>
@@ -490,6 +510,7 @@ export function ModelsSettingsPanel({ initialSnapshot, runtimeModel, running, on
             {(currentTest?.capabilities.reasoning ?? Boolean(currentReasoning)) ? <span><Sparkles size={12} />{c.capabilityReasoning}</span> : null}
           </div>
 
+          </details>
           {currentReasoning ? (
             <div className="models-reasoning-row">
               <div><Gauge size={15} /><span><strong>{c.defaultReasoning}</strong><small>{currentReasoning.source}</small></span></div>
@@ -512,20 +533,41 @@ export function ModelsSettingsPanel({ initialSnapshot, runtimeModel, running, on
       </section>
 
       <section className="models-section">
-        <div className="models-section-heading">
-          <div><h2>{c.profiles}</h2><p>{c.profilesCaption}</p></div>
-        </div>
+
         <div className="models-toolbar">
-          <label className="models-search"><Search size={14} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={c.search} /></label>
+          <label className="models-search"><Search size={14} /><input value={query} onChange={(event) => setQuery(event.target.value)} aria-label={c.search} placeholder={c.search} /></label>
           <div className="models-filter" role="group" aria-label="Model profile filter">
             {(["all", "builtin", "saved"] as const).map((value) => (
-              <button type="button" key={value} className={filter === value ? "active" : ""} onClick={() => setFilter(value)}>
+              <button type="button" key={value} className={filter === value ? "active" : ""} aria-pressed={filter === value} onClick={() => { setFilter(value); setConfirmDelete(""); }}>
                 {value === "all" ? c.all : value === "builtin" ? c.builtinFilter : c.savedFilter}
               </button>
             ))}
           </div>
         </div>
 
+        <div className="models-provider-workspace">
+          <nav className="models-provider-nav" aria-label={c.provider}>
+            <div className="models-provider-nav-label">{c.provider}<span>{filteredGroups.length}</span></div>
+            {filteredGroups.map(group => <button type="button" key={group.id} aria-current={selectedGroup?.id === group.id ? "true" : undefined}
+              className={selectedGroup?.id === group.id ? "selected" : ""} onClick={() => { setSelectedProvider(group.id); setConfirmDelete(""); }}>
+              <Server size={17} /><span><strong>{group.name}</strong><small>{group.endpoint}</small></span>
+              <span className="models-provider-count">{group.profiles.length}</span>
+            </button>)}
+            {!filteredGroups.length ? <p>{c.noProfiles}</p> : null}
+          </nav>
+          <div className="models-provider-content">
+            {selectedGroup ? <header className="models-provider-header">
+              <div><span className="settings-eyebrow">{selectedGroup.profiles[0].kind === "saved" ? c.saved : c.managed}</span><h2>{selectedGroup.name}</h2>
+                <p>{selectedGroup.profiles.length} {language === "zh-CN" ? "个模型 · 选择模型用于新对话" : "models · Choose a default for new chats"}</p></div>
+              <span className="models-kind-badge">{selectedGroup.profiles[0].kind === "saved" ? c.savedFilter : c.builtinFilter}</span>
+            </header> : null}
+            {selectedGroup ? <details className="models-provider-connection"><summary><Server size={14} />{language === "zh-CN" ? "连接与接口信息" : "Connection & endpoint"}<ChevronRight size={14} /></summary>
+              <dl><div><dt>{c.endpoint}</dt><dd>{selectedGroup.profiles[0].baseUrl || "https://api.openai.com/v1"}</dd></div>
+              <div><dt>{c.apiType}</dt><dd>{adapterLabel(selectedGroup.profiles[0].adapter)}</dd></div></dl>
+              <p><KeyRound size={13} />{language === "zh-CN" ? "密钥安全保存。自定义连接可在对应模型的编辑入口中更新。" : "Credentials are stored securely. Edit a saved model to update its connection."}</p>
+            </details> : null}
+            {providerSync && providerSync.state !== "synced" && providerSync.state !== "unsupported" ? <div className="models-lock-banner" role="status"><CircleAlert size={15} /><span>{providerSync.message || (language === "zh-CN" ? "模型目录暂未同步，显示已保存的列表。可刷新重试。" : "Catalog sync is unavailable. Showing saved models; refresh to retry.")}</span></div> : null}
+            {snapshot?.catalogMetadataError ? <div className="models-error-banner" role="status">{snapshot.catalogMetadataError}</div> : null}
         <div className="models-profile-grid">
           {visibleProfiles.map((profile) => {
             const active = profile.selection === current?.selection;
@@ -538,18 +580,15 @@ export function ModelsSettingsPanel({ initialSnapshot, runtimeModel, running, on
               <article className={`models-profile-card ${active ? "active" : ""}`} key={profile.selection}>
                 <div className="models-profile-head">
                   <span className="models-profile-icon"><Cpu size={17} /></span>
-                  <div className="models-profile-title"><strong>{profile.name}</strong><span>{adapterLabel(profile.adapter)}</span></div>
+                  <div className="models-profile-title"><strong>{profile.name}</strong><span title={profile.model}>{profile.model}</span></div>
                   <span className={`models-kind-badge ${profile.kind}`}>{profile.kind === "saved" ? c.saved : c.builtin}</span>
-                </div>
-                <div className="models-profile-data">
-                  <div><span>{c.modelId}</span><code>{profile.model}</code></div>
-                  <div><span>{c.endpoint}</span><code title={profile.baseUrl}>{endpointLabel(profile.baseUrl)}</code></div>
                 </div>
                 <div className="models-capability-row compact">
                   <span>{c.chat}</span><span>{c.stream}</span>
                   <span title={profile.imageInput?.source}>{profile.vision === true ? c.capabilityVision : profile.vision === false ? (language === "zh-CN" ? "不支持图片" : "Images unsupported") : (language === "zh-CN" ? "图片能力未确认" : "Image support unknown")}</span>
                   {(testResult?.capabilities.reasoning ?? Boolean(profile.reasoning)) ? <span>{c.capabilityReasoning}</span> : null}
                 </div>
+                {profile.available === false ? <div className="models-unavailable-reason"><CircleAlert size={13} /><span>{profile.statusMessage || profile.catalogMessage || (language === "zh-CN" ? "提供商暂未提供该模型，请刷新目录或检查连接。" : "This model is unavailable. Refresh the catalog or check its connection.")}</span></div> : null}
                 {(testResult || testError) ? (
                   <div className={`models-card-diagnostic ${testError ? "error" : "success"}`}>
                     <i />
@@ -560,14 +599,14 @@ export function ModelsSettingsPanel({ initialSnapshot, runtimeModel, running, on
                   <button
                     type="button"
                     className={active ? "active" : ""}
-                    disabled={profile.available === false || Boolean(busy) || active}
+                    disabled={running || profile.available === false || Boolean(busy) || active}
                     title={profile.available === false ? (profile.statusMessage || "No longer advertised by the provider") : undefined}
                     onClick={() => void activate(profile)}
                   >
                     {isSwitching ? <RefreshCw size={13} spinning /> : active ? <Check size={13} /> : <ChevronRight size={13} />}
                     {profile.available === false ? (language === "zh-CN" ? "已失效" : "Unavailable") : active ? c.current : c.setActive}
                   </button>
-                  <button type="button" disabled={isTesting} onClick={() => void test(profile)}><Wifi size={13} />{isTesting ? c.testing : c.test}</button>
+                  <button type="button" disabled={Boolean(busy)} onClick={() => void test(profile)}><Wifi size={13} />{isTesting ? c.testing : c.test}</button>
                   {profile.kind === "saved" ? (
                     <>
                       <button type="button" disabled={profile.available === false || running || Boolean(busy) || active} title={active ? c.activeEdit : c.edit} onClick={() => openEdit(profile)}><Pencil size={13} />{c.edit}</button>
@@ -583,25 +622,28 @@ export function ModelsSettingsPanel({ initialSnapshot, runtimeModel, running, on
           })}
           {!visibleProfiles.length ? <div className="models-empty-state">{c.noProfiles}</div> : null}
         </div>
-      </section>
-
-      <section className="models-section">
-        <div className="models-section-heading"><div><h2>{c.recent}</h2><p>{c.recentCaption}</p></div></div>
-        <div className="models-recent-panel">
-          <div className="models-other-model-row">
-            <input value={otherModel} onChange={(event) => setOtherModel(event.target.value)} placeholder="gpt-5 / claude / qwen / ..." disabled={Boolean(busy)} />
-            <button type="button" disabled={!otherModel.trim() || Boolean(busy)} onClick={() => void switchOtherModel()}><RefreshCw size={13} />{c.switch}</button>
           </div>
-          {recent.length ? <div className="models-recent-chips">{recent.map((model) => <button type="button" key={model} disabled={Boolean(busy)} onClick={() => void switchOtherModel(model)}>{model}</button>)}</div> : <span className="models-recent-empty">{c.noRecent}</span>}
         </div>
       </section>
 
+      <details className="models-section models-advanced-section">
+        <summary>{c.recent}</summary>
+        <p>{c.recentCaption}</p>
+        <div className="models-recent-panel">
+          <div className="models-other-model-row">
+            <input value={otherModel} onChange={(event) => setOtherModel(event.target.value)} placeholder="gpt-5 / claude / qwen / ..." disabled={running || Boolean(busy)} />
+            <button type="button" disabled={running || !otherModel.trim() || Boolean(busy)} onClick={() => void switchOtherModel()}><RefreshCw size={13} />{c.switch}</button>
+          </div>
+          {recent.length ? <div className="models-recent-chips">{recent.map((model) => <button type="button" key={model} disabled={running || Boolean(busy)} onClick={() => void switchOtherModel(model)}>{model}</button>)}</div> : <span className="models-recent-empty">{c.noRecent}</span>}
+        </div>
+      </details>
+
       {formMode ? (
         <div className="models-modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setFormMode(null); }}>
-          <section className="models-modal" role="dialog" aria-modal="true" aria-label={formMode === "add" ? c.addTitle : c.editTitle}>
+          <section ref={modalRef} className="models-modal" role="dialog" aria-modal="true" aria-label={formMode === "add" ? c.addTitle : c.editTitle}>
             <div className="models-modal-head">
               <div><span className="models-modal-icon">{formMode === "add" ? <Plus size={17} /> : <Pencil size={17} />}</span><div><strong>{formMode === "add" ? c.addTitle : c.editTitle}</strong><span>{adapterLabel(form.adapter)}</span></div></div>
-              <button type="button" onClick={() => setFormMode(null)}><X size={16} /></button>
+              <button type="button" aria-label={c.cancel} onClick={() => setFormMode(null)}><X size={16} /></button>
             </div>
             <div className="models-form-grid">
               {magpieForm ? <p className="wide">{language === "zh-CN"
