@@ -875,6 +875,24 @@ class LoomAppServerService:
             self._notify("runtime/updated", {"runtime": self.runtime_status()})
             return result
 
+    def _mcp_marketplace(self):
+        from app.mcp_marketplace import MCPMarketplace
+        with self._guard:
+            client = getattr(self, "_mcp_marketplace_client", None)
+            if client is None:
+                client = MCPMarketplace(self.store.root.parents[1] / "mcp-registry-cache")
+                self._mcp_marketplace_client = client
+            return client
+
+    def mcp_marketplace_list(self, params: dict[str, Any]) -> dict[str, Any]:
+        return self._mcp_marketplace().list(params)
+
+    def mcp_marketplace_detail(self, params: dict[str, Any]) -> dict[str, Any]:
+        return self._mcp_marketplace().detail(params)
+
+    def mcp_marketplace_prepare(self, params: dict[str, Any]) -> dict[str, Any]:
+        return self._mcp_marketplace().prepare(params)
+
     def plugins_list(self, params: dict[str, Any]) -> dict[str, Any]:
         from app.plugin_manager import PluginManager
         manager = PluginManager(self.store.root.parents[1])
@@ -1933,6 +1951,9 @@ class LoomRpcController:
             "account/tool-access-credential": self.service.account_tool_access_credential_set,
             "mcp/list": self.service.mcp_list,
             "mcp/manage": self.service.mcp_manage,
+            "mcp/marketplace/list": self.service.mcp_marketplace_list,
+            "mcp/marketplace/detail": self.service.mcp_marketplace_detail,
+            "mcp/marketplace/prepare": self.service.mcp_marketplace_prepare,
             "settings/get": self.service.settings_get,
             "settings/set": self.service.settings_set,
             "project/list": self.service.project_list,
