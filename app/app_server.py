@@ -861,6 +861,20 @@ class LoomAppServerService:
         self._notify("runtime/updated", {"runtime": status})
         return {"settings": snapshot, "runtime": status}
 
+    def mcp_list(self, params: dict[str, Any]) -> dict[str, Any]:
+        from app.mcp_settings import MCPSettings
+        with self._guard:
+            return MCPSettings(self.runtime).snapshot()
+
+    def mcp_manage(self, params: dict[str, Any]) -> dict[str, Any]:
+        from app.mcp_settings import MCPSettings
+        with self._guard:
+            if self._active_sessions:
+                raise RuntimeError("Finish active turns before changing MCP servers")
+            result = MCPSettings(self.runtime).manage(params)
+            self._notify("runtime/updated", {"runtime": self.runtime_status()})
+            return result
+
     def plugins_list(self, params: dict[str, Any]) -> dict[str, Any]:
         from app.plugin_manager import PluginManager
         manager = PluginManager(self.store.root.parents[1])
@@ -1917,6 +1931,8 @@ class LoomRpcController:
         handlers: dict[str, Callable[[dict[str, Any]], Any]] = {
             "runtime/status": lambda value: self.service.runtime_status(),
             "account/tool-access-credential": self.service.account_tool_access_credential_set,
+            "mcp/list": self.service.mcp_list,
+            "mcp/manage": self.service.mcp_manage,
             "settings/get": self.service.settings_get,
             "settings/set": self.service.settings_set,
             "project/list": self.service.project_list,

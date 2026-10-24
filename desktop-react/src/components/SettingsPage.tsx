@@ -1,3 +1,4 @@
+import { McpSettingsPanel } from "./McpSettingsPanel";
 import { StickerPanel } from "./StickerPanel";
 import { ProgressFeedbackControl } from "./ProgressFeedbackControl";
 import type { ProgressFeedbackMode } from "../types/loom";
@@ -1354,7 +1355,7 @@ export function SettingsPage({ runtime, models, threadId, running, onRefreshMode
   const renderMcp = () => {
     const enabled = capabilityEnabled("mcp");
     const badge = capabilityLabel(mcpStatus, enabled);
-    return <><div className="settings-page-heading settings-heading-with-switch"><div><h1>MCP</h1><p>Connect tools from MCP servers.</p></div><div className="settings-master-switch"><StatusPill tone={badge.tone}>{badge.text}</StatusPill><SettingSwitch checked={enabled} disabled={running || busyCapability !== null} label="Toggle MCP" onChange={(value) => void setCapability("mcp", value)} /></div></div><Section title="Discovery"><div className="settings-card settings-detail-list"><DetailRow label="Runtime" value={capabilityStatusText(mcpStatus)} /><DetailRow label="Connected servers" value={String(mcpStatus?.connected_servers ?? "Not reported")} /><DetailRow label="Discovered tools" value={String(mcpStatus?.tool_count ?? "Not reported")} /><DetailRow label="Transport" value={text(mcpStatus?.transport, "Configured server transports")} /></div></Section><div className="settings-callout"><Info size={16} /><div><strong>Server configuration is read-only here.</strong><span>Use your runtime configuration to add or change MCP servers.</span></div></div></>;
+    return <><div className="settings-page-heading settings-heading-with-switch"><div><h1>MCP</h1><p>Connect tools from MCP servers.</p></div><div className="settings-master-switch"><StatusPill tone={badge.tone}>{badge.text}</StatusPill><SettingSwitch checked={enabled} disabled={running || busyCapability !== null} label="Toggle MCP" onChange={(value) => void setCapability("mcp", value)} /></div></div><McpSettingsPanel running={running} enabled={enabled} /></>;
   };
 
   const renderSkills = () => {

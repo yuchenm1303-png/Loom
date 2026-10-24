@@ -90,6 +90,13 @@ class ConfiguredMCPRuntime(BrowserBackendRegistryMixin, SingleLoopComputerRuntim
         elif mcp_config_path is not None:
             self.mcp_config_path = str(Path(mcp_config_path).expanduser().resolve())
 
+        from app.mcp_settings import load_managed
+        self.mcp_external_configs = tuple(resolved_servers or ())
+        self.mcp_managed_path = str(Path(runtime_home or Path(self.mcp_config_path).parent) / "mcp-servers.json")
+        managed = load_managed(self.mcp_managed_path)
+        external_names = {c.name for c in self.mcp_external_configs}
+        resolved_servers = (*self.mcp_external_configs, *(c for c in managed if c.name not in external_names))
+
         # Any Loom-owned browser is visible. BrowserRuntime historically defaults
         # to headless=True because it began life as a backend primitive, but an
         # explicit isolated desktop browser must be inspectable by the user.

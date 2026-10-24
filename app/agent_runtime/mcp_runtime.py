@@ -636,6 +636,10 @@ class MCPClientManager:
                 )
             except Exception as exc:
                 safe = redact_secrets(f"{type(exc).__name__}: {exc}")
+                from app.mcp_credentials import resolve
+                secret = resolve(config.bearer_token_env) if config.bearer_token_env else None
+                if secret:
+                    safe = safe.replace(secret, "[REDACTED]")
                 self._errors[config.name] = safe
                 if config.required:
                     raise MCPUnavailableError(f"required MCP server {config.name!r} failed: {safe}") from exc
@@ -696,7 +700,8 @@ class MCPClientManager:
                 cwd=config.cwd or None,
             )
         elif config.bearer_token_env:
-            token = os.environ.get(config.bearer_token_env)
+            from app.mcp_credentials import resolve
+            token = resolve(config.bearer_token_env)
             if not token:
                 raise MCPConfigurationError(
                     f"MCP server {config.name!r} requires environment variable {config.bearer_token_env!r}"
