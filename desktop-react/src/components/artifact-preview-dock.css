@@ -4,21 +4,35 @@
 :root {
   --artifact-preview-pane-width: clamp(460px, 44vw, 680px);
 }
-.artifact-library { min-height: 0; overflow: auto; padding: 20px; color: var(--pl-ink); }
-.artifact-library-note { font-size: 12px; line-height: 1.7; color: var(--pl-muted); margin: 13px 2px 20px; }
-.artifact-library-list { display: grid; gap: 12px; }
+.artifact-library { min-height: 0; overflow: auto; padding: 0 20px 24px; color: var(--pl-ink); scrollbar-gutter: stable; }
+.artifact-library-tools { position: sticky; top: 0; z-index: 1; padding: 20px 0 12px; background: var(--pl-surface); }
+.artifact-search { gap: 10px; }
+.artifact-search input { min-width: 0; }
+.artifact-search button { display: grid; place-items: center; flex-shrink: 0; width: 26px; height: 26px; padding: 0; border: 0; border-radius: 6px; background: transparent; color: var(--pl-muted); cursor: pointer; }
+.artifact-search button:hover { color: var(--pl-ink); background: var(--pl-hover); }
+.artifact-library-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 14px; }
+.artifact-library-toolbar select { max-width: 55%; padding: 6px 9px; border: 1px solid var(--pl-line); border-radius: 7px; background: var(--pl-surface); color: var(--pl-secondary); font: inherit; font-size: 12px; cursor: pointer; }
+.artifact-library-toolbar > span { color: var(--pl-muted); font-size: 11px; text-align: right; }
+.artifact-library-note { font-size: 11px; line-height: 1.6; color: var(--pl-muted); margin: 12px 0 0; }
+.artifact-library-list { display: grid; gap: 7px; }
 .artifact-library-card { position: relative; animation: artifact-card-arrive var(--loom-dur-base) var(--loom-ease-out) both; }
-.artifact-card-main { width: 100%; display: flex; align-items: center; gap: 13px; padding: 17px 45px 17px 15px; border: 0; background: transparent; color: inherit; text-align: left; cursor: pointer; border-radius: inherit; }
-.artifact-card-icon { display: grid; place-items: center; flex-shrink: 0; width: 42px; height: 46px; border-radius: 12px; color: var(--pl-accent); background: var(--pl-accent-wash); }
-.artifact-card-copy { min-width: 0; flex: 1; display: grid; gap: 6px; }
-.artifact-card-copy strong { font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.artifact-card-copy span { font-size: 11.5px; color: var(--pl-muted); }
-.artifact-card-copy small { color: var(--pl-faint); font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.artifact-card-main { width: 100%; display: flex; align-items: center; gap: 12px; padding: 13px 48px 13px 13px; border: 0; background: transparent; color: inherit; text-align: left; cursor: pointer; border-radius: inherit; }
+.artifact-card-icon { display: grid; place-items: center; flex-shrink: 0; width: 36px; height: 40px; border-radius: 9px; color: var(--pl-accent); background: var(--pl-accent-wash); }
+.artifact-card-icon[data-kind="code"], .artifact-card-icon[data-kind="text"], .artifact-card-icon[data-kind="data"] { color: var(--pl-secondary); background: var(--pl-hover); }
+.artifact-card-copy { min-width: 0; flex: 1; display: grid; gap: 4px; }
+.artifact-card-copy strong { font-size: 13px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.artifact-card-copy .artifact-card-meta { font-size: 10.5px; line-height: 1.5; color: var(--pl-muted); }
+.artifact-card-copy .artifact-card-meta[data-running="true"] { color: var(--pl-accent); }
+.artifact-card-copy small { color: var(--pl-muted); font-size: 11px; line-height: 1.5; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; direction: rtl; text-align: left; unicode-bidi: plaintext; }
+.artifact-card-chevron { flex-shrink: 0; color: var(--pl-faint); }
+.artifact-card-main:hover .artifact-card-chevron { color: var(--pl-accent); }
 .artifact-card-external { position: absolute; right: 10px; top: 50%; transform: translateY(-50%); display: grid; place-items: center; width: 30px; height: 30px; border: 0; border-radius: var(--pl-radius-control); color: var(--pl-muted); background: transparent; cursor: pointer; transition: color var(--loom-dur-fast) ease, background-color var(--loom-dur-fast) ease; }
 .artifact-card-external:hover { color: var(--pl-ink); background: var(--pl-hover); }
 .artifact-library-empty { display: grid; justify-items: center; gap: 13px; padding: 64px 18px; text-align: center; color: var(--pl-muted); }
 .artifact-library-empty strong { font-size: 14px; font-weight: 650; color: var(--pl-ink); }
 .artifact-library-empty span { font-size: 13px; line-height: 1.7; color: var(--pl-muted); }
+.artifact-library-empty button { padding: 7px 12px; color: var(--pl-secondary); background: var(--pl-card); border: 1px solid var(--pl-line); border-radius: 8px; font: inherit; font-size: 12px; cursor: pointer; }
+.artifact-search button:focus-visible, .artifact-library-toolbar select:focus-visible, .artifact-library-empty button:focus-visible { outline: 2px solid var(--pl-focus); outline-offset: 2px; }
 .artifact-back { display: grid; place-items: center; width: 100%; height: 100%; border: 0; background: transparent; color: inherit; cursor: pointer; border-radius: inherit; }
 .artifact-card-main:focus-visible, .artifact-card-external:focus-visible, .artifact-back:focus-visible { outline: 2px solid var(--pl-focus); outline-offset: -2px; }
 /* A card that arrives is revealed, not moved: it carries text. */

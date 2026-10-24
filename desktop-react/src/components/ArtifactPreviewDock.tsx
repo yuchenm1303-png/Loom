@@ -1,4 +1,4 @@
-import { ArrowLeft, ExternalLink, FileCode2, RefreshCw, Search, Package, ChevronRight, Image, FileText, Music, Film, Globe } from "./icons";
+import { ArrowLeft, ExternalLink, FileCode2, RefreshCw, Search, Package, ChevronRight, Image, FileText, Music, Film, Globe, X } from "./icons";
 import { useEffect, useMemo, useRef, useState, type ReactNode, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from "react";
 import { createPortal } from "react-dom";
 import { artifactName, artifactRenderer, canRenderArtifact, normalizeArtifactPath } from "../artifactRenderers";
@@ -79,7 +79,8 @@ export function ArtifactPreviewDock({
   const [revision, setRevision] = useState(0);
   const [selected, setSelected] = useState(path);
   const [query, setQuery] = useState("");
-  useEffect(() => { setSelected(path); setQuery(""); }, [path, open, workspace]);
+  const [kind, setKind] = useState("all");
+  useEffect(() => { setSelected(path); setQuery(""); setKind("all"); }, [path, open, workspace]);
   const artifacts = useMemo(() => {
     const entries = new Map<string, { path: string; revision: number; running: boolean }>();
     for (const item of items) {
@@ -96,6 +97,19 @@ export function ArtifactPreviewDock({
     }
     return [...entries.values()].reverse();
   }, [items]);
+  const kindLabels = zh
+    ? { web: "网页", image: "图片", pdf: "PDF", text: "文本", audio: "音频", video: "视频", code: "代码", data: "数据", file: "文件" }
+    : { web: "Web", image: "Images", pdf: "PDF", text: "Text", audio: "Audio", video: "Video", code: "Code", data: "Data", file: "Files" };
+  const availableKinds = [...new Set(artifacts.map(item => artifactRenderer(item.path).kind))];
+  const visibleArtifacts = artifacts.filter(item =>
+    item.path.toLowerCase().includes(query.trim().toLowerCase()) &&
+    (kind === "all" || artifactRenderer(item.path).kind === kind));
+  const directoryLabel = (value: string) => {
+    const root = normalizeArtifactPath(workspace).replace(/\/$/, "");
+    const relative = root && value.toLowerCase().startsWith(`${root.toLowerCase()}/`)
+      ? value.slice(root.length + 1) : value;
+    return relative.includes("/") ? relative.slice(0, relative.lastIndexOf("/")) : (zh ? "工作区根目录" : "Workspace root");
+  };
   const selectedArtifact = artifacts.find(item => item.path === selected);
   const resizeRef = useRef<{
     pointerId: number;
@@ -252,20 +266,29 @@ export function ArtifactPreviewDock({
       />
 
       {!selected ? <div className="artifact-library">
-        <label className="artifact-search pl-field"><Search size={15} /><input value={query} onChange={event => setQuery(event.target.value)} placeholder={zh ? "查找产物…" : "Find an artifact…"} aria-label={zh ? "查找产物" : "Find an artifact"} /></label>
-        <p className="artifact-library-note">{zh ? "网页、文件与交互内容集中在这里，同一文件的更新会合并。" : "Pages, files and interactive content collect here; updates to one file are merged."}</p>
+        <div className="artifact-library-tools">
+          <div className="artifact-search pl-field"><Search size={16} /><input value={query} onChange={event => setQuery(event.target.value)} placeholder={zh ? "搜索文件名或路径…" : "Search files or paths…"} aria-label={zh ? "查找产物" : "Find an artifact"} />{query && <button type="button" onClick={() => setQuery("")} aria-label={zh ? "清空搜索" : "Clear search"}><X size={14} /></button>}</div>
+          <div className="artifact-library-toolbar">
+            <select aria-label={zh ? "文件类型" : "File type"} value={kind} onChange={event => setKind(event.target.value)}>
+              <option value="all">{zh ? "全部类型" : "All types"}</option>
+              {availableKinds.map(value => <option value={value} key={value}>{kindLabels[value]}</option>)}
+            </select>
+            <span role="status">{zh ? `${visibleArtifacts.length} 个文件` : `${visibleArtifacts.length} files`}{(query || kind !== "all") && (zh ? ` / 共 ${artifacts.length} 个` : ` / ${artifacts.length} total`)}</span>
+          </div>
+          <p className="artifact-library-note">{zh ? "按最近更新排列 · 同一文件的修改自动合并" : "Recently updated · Changes to the same file are merged"}</p>
+        </div>
         <div className="artifact-library-list">
-          {artifacts.filter(item => item.path.toLowerCase().includes(query.toLowerCase())).map(item => {
+          {visibleArtifacts.map(item => {
             const Icon = artifactIcons[artifactRenderer(item.path).kind];
             return <article className="artifact-library-card pl-card is-interactive" key={item.path}>
             <button className="artifact-card-main" type="button" onClick={() => setSelected(item.path)}>
-              <span className="artifact-card-icon"><Icon size={21} /></span>
-              <span className="artifact-card-copy"><strong>{artifactName(item.path)}</strong><span>{artifactRenderer(item.path).label} · {item.running ? (zh ? "更新中" : "updating") : (zh ? "可预览" : "ready")}{item.revision > 1 ? (zh ? ` · ${item.revision} 次更新` : ` · ${item.revision} updates`) : ""}</span><small title={item.path}>{item.path}</small></span>
-              <ChevronRight size={16} />
+              <span className="artifact-card-icon" data-kind={artifactRenderer(item.path).kind}><Icon size={19} /></span>
+              <span className="artifact-card-copy"><strong title={artifactName(item.path)}>{artifactName(item.path)}</strong><small title={item.path}>{directoryLabel(item.path)}</small><span className="artifact-card-meta" data-running={item.running}>{zh ? artifactRenderer(item.path).label : kindLabels[artifactRenderer(item.path).kind]} · {item.running ? (zh ? "更新中" : "updating") : (zh ? "可预览" : "ready")}{item.revision > 1 ? (zh ? ` · ${item.revision} 次更新` : ` · ${item.revision} updates`) : ""}</span></span>
+              <ChevronRight className="artifact-card-chevron" size={15} />
             </button>
             <button className="artifact-card-external" type="button" aria-label={zh ? `打开 ${artifactName(item.path)}` : `Open ${artifactName(item.path)}`} title={zh ? "在独立窗口打开" : "Open in its own window"} onClick={() => void window.loom.openLocalArtifact(item.path, workspace)}><ExternalLink size={14} /></button>
           </article>; })}
-          {!artifacts.length || !artifacts.some(item => item.path.toLowerCase().includes(query.toLowerCase())) ? <div className="artifact-library-empty"><Package size={30} /><strong>{query ? (zh ? "没有匹配的产物" : "No matching artifacts") : (zh ? "产物会出现在这里" : "Artifacts appear here")}</strong><span>{query ? (zh ? "试试其他文件名" : "Try another file name") : (zh ? "生成的网页、图片、文档和文件会自动收集。" : "Pages, images, documents and files the work produces are collected automatically.")}</span></div> : null}
+          {!visibleArtifacts.length ? <div className="artifact-library-empty"><Package size={30} /><strong>{query || kind !== "all" ? (zh ? "没有匹配的产物" : "No matching artifacts") : (zh ? "产物会出现在这里" : "Artifacts appear here")}</strong><span>{query || kind !== "all" ? (zh ? "试试其他文件名或文件类型" : "Try another file name or type") : (zh ? "生成的网页、图片、文档和文件会自动收集。" : "Pages, images, documents and files the work produces are collected automatically.")}</span>{(query || kind !== "all") && <button type="button" onClick={() => { setQuery(""); setKind("all"); }}>{zh ? "重置筛选" : "Reset filters"}</button>}</div> : null}
         </div>
       </div> : <div className="artifact-preview-canvas" data-renderer-kind={renderer.kind}>
         {renderer.side ? (

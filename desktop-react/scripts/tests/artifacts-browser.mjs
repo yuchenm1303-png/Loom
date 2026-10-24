@@ -9,6 +9,16 @@ try {
   await page.getByText("产物 · 3", { exact: true }).waitFor();
   assert.equal(await page.locator(".artifact-library-card").count(), 3);
   await page.getByText("网页 · 可预览 · 2 次更新", { exact: true }).waitFor();
+  await page.getByRole("combobox", { name: "文件类型" }).selectOption("web");
+  assert.equal(await page.locator(".artifact-library-card").count(), 1);
+  await page.getByRole("textbox", { name: "查找产物" }).fill("missing");
+  await page.getByRole("button", { name: "重置筛选" }).click();
+  assert.equal(await page.locator(".artifact-library-card").count(), 3);
+  assert.equal(await page.getByRole("combobox", { name: "文件类型" }).inputValue(), "all");
+  await page.getByRole("textbox", { name: "查找产物" }).fill(" report ");
+  assert.equal(await page.locator(".artifact-library-card").count(), 1);
+  await page.getByRole("button", { name: "清空搜索" }).click();
+  assert.equal(await page.locator(".artifact-library-card").count(), 3);
   await page.getByRole("textbox", { name: "查找产物" }).fill("test_page");
   assert.equal(await page.locator(".artifact-library-card").count(), 1);
   await page.locator(".artifact-card-main").click();
@@ -26,6 +36,7 @@ try {
   await page.setViewportSize({ width: 480, height: 800 });
   const bounds = await page.getByRole("complementary", { name: "产物侧栏" }).boundingBox();
   assert.ok(bounds && bounds.x >= 0 && bounds.x + bounds.width <= 480, "dock fits narrow window");
+  assert.ok(await page.locator(".artifact-library").evaluate(el => el.scrollWidth <= el.clientWidth), "library does not overflow horizontally");
   await page.keyboard.press("Escape");
   await page.waitForTimeout(450);
   assert.equal(await page.locator(".artifact-preview-dock").count(), 0);
