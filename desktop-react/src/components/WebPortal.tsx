@@ -6,7 +6,7 @@ import "./portal-liquid-cursor.css";
 import "./portal-editorial.css";
 import "./portal-auth-dialog.css";
 import "./portal-home-icon.css";
-import type { CSSProperties, FormEvent, ReactNode } from "react";
+import type { CSSProperties, FormEvent, MouseEvent, ReactNode } from "react";
 import { useEffect, useRef, useState } from "react";
 import { Laptop, Download, UserRound, LogOut, Check, ArrowRight, Github, Mail, KeyRound, ShieldCheck, Eye, EyeOff, FolderOpen, MessagesSquare } from "./icons";
 import { useI18n } from "../i18n";
@@ -148,6 +148,8 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
   const [moreOpen, setMoreOpen] = useState(false);
   const [threadState, setThreadState] = useState<"armed" | "in">(() => typeof IntersectionObserver === "function" ? "armed" : "in");
   const threadRef = useRef<HTMLElement>(null);
+  const pageRef = useRef<HTMLDivElement>(null);
+  const [stuck, setStuck] = useState(false);
   useEffect(() => {
     if (typeof window.matchMedia !== "function") return;
     const query = window.matchMedia("(prefers-color-scheme: light)");
@@ -179,16 +181,25 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
   }, [editorial]);
   useEffect(() => {
     const node = threadRef.current;
-    if (!editorial || !node || threadState === "in") return;
+    if (!editorial || !typeReady || !node || threadState === "in") return;
     const observer = new IntersectionObserver((entries) => {
       if (entries.some((entry) => entry.isIntersecting)) {
         setThreadState("in");
         observer.disconnect();
       }
-    }, { threshold: 0.4 });
+    }, { threshold: 0.12 });
     observer.observe(node);
     return () => observer.disconnect();
-  }, [editorial, threadState]);
+  }, [editorial, typeReady, threadState]);
+  useEffect(() => {
+    // The header takes a hairline once the page has moved under it.
+    const page = pageRef.current;
+    if (!editorial || !page) return;
+    const follow = () => setStuck(page.scrollTop > 4);
+    follow();
+    page.addEventListener("scroll", follow, { passive: true });
+    return () => page.removeEventListener("scroll", follow);
+  }, [editorial]);
   useEffect(() => {
     const sync = () => {
       setPageMode(window.location.pathname.replace(/\/+$/, "") === "/classic" ? "classic" : "editorial");
@@ -268,6 +279,16 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
       openEditorialModal();
     }
   }
+  // The page scrolls inside its own frame, so a section is reached by scrolling to it, not by a hash in the address.
+  // Whether it glides is the stylesheet's call (scroll-behavior, off when motion is reduced).
+  function goToSection(event: MouseEvent<HTMLAnchorElement>, id: string) {
+    event.preventDefault();
+    document.getElementById(id)?.scrollIntoView({ block: "start" });
+  }
+  function goToTop(event: MouseEvent<HTMLAnchorElement>) {
+    event.preventDefault();
+    pageRef.current?.scrollTo({ top: 0 });
+  }
   useEffect(() => {
     const controller = new AbortController();
     const timeout = window.setTimeout(() => controller.abort(), 10000);
@@ -280,6 +301,26 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
   const zh = language === "zh-CN";
   const copy = HOST_COPY[zh ? "zh" : "en"];
   const home = PORTAL_HOME_COPY[zh ? "zh" : "en"];
+  useEffect(() => {
+    // Below the first screen, each block is shown as it comes into view; without an observer everything is simply shown.
+    // A change of language makes new blocks, so it is watched again (blocks already seen are left as they are).
+    const page = pageRef.current;
+    if (!editorial || !typeReady || !page) return;
+    const blocks = Array.from(page.querySelectorAll<HTMLElement>("[data-reveal]:not([data-seen])"));
+    if (typeof IntersectionObserver !== "function") {
+      blocks.forEach((block) => { block.dataset.seen = "true"; });
+      return;
+    }
+    const observer = new IntersectionObserver((entries) => {
+      for (const entry of entries) {
+        if (!entry.isIntersecting) continue;
+        (entry.target as HTMLElement).dataset.seen = "true";
+        observer.unobserve(entry.target);
+      }
+    }, { threshold: 0.2 });
+    blocks.forEach((block) => observer.observe(block));
+    return () => observer.disconnect();
+  }, [editorial, typeReady, zh]);
   const [authMode, setAuthMode] = useState<"login" | "register">("login");
   const [authStep, setAuthStep] = useState<AuthStep>("form");
   const [email, setEmail] = useState("");
@@ -539,13 +580,18 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
           : (zh ? "重新连接 Loom Host" : "Reconnect Loom Host");
 
   return (
-    <div className={["loom-portal-page", "is-modular", editorial ? "loom-editorial" : "loom-classic", editorial && lightEditorial ? "is-light" : "", editorial && drawerOpen ? "is-modal-open" : ""].filter(Boolean).join(" ")}>
+    <div ref={pageRef} className={["loom-portal-page", "is-modular", editorial ? "loom-editorial" : "loom-classic", editorial && lightEditorial ? "is-light" : "", editorial && drawerOpen ? "is-modal-open" : ""].filter(Boolean).join(" ")}>
       {!editorial ? <PortalWallpaper /> : null}
       <PortalLiquidCursor />
       {editorial ? (
         <div className="editorial-shell" inert={drawerOpen} data-type-ready={typeReady ? "true" : "false"}>
-          <header className="editorial-header editorial-reveal" style={revealIndex(0)}>
-            <span className="editorial-brand" aria-label="Loom"><span className="editorial-brand-name">Loom<span className="editorial-brand-period" aria-hidden="true">.</span></span></span>
+          <header className="editorial-header editorial-reveal" style={revealIndex(0)} data-stuck={stuck ? "true" : "false"}>
+            <a className="editorial-brand" href="/" aria-label="Loom" onClick={goToTop} data-liquid-snap="true" data-magnetic-hover="true"><span className="editorial-brand-name">Loom<span className="editorial-brand-period" aria-hidden="true">.</span></span></a>
+            <nav className="editorial-nav" aria-label={home.nav.label}>
+              <a href="#loom-capabilities" onClick={(event) => goToSection(event, "loom-capabilities")} data-liquid-snap="true" data-magnetic-hover="true">{home.nav.doing}</a>
+              <a href="#loom-start" onClick={(event) => goToSection(event, "loom-start")} data-liquid-snap="true" data-magnetic-hover="true">{home.nav.start}</a>
+              <a href={release.download} data-liquid-snap="true" data-magnetic-hover="true">{home.nav.download}</a>
+            </nav>
             <nav className="editorial-meta" aria-label={zh ? "主页操作" : "Home actions"}>
               <button type="button" onClick={openEditorialModal} data-liquid-snap="true" data-magnetic-hover="true">{authenticated ? (account.account.user?.display_name?.trim() || (zh ? "我的账户" : "My account")) : (zh ? "登录 / 注册" : "Sign in")}</button>
               <button className="editorial-theme" type="button" role="switch" aria-label={zh ? "深色模式" : "Dark mode"} aria-checked={!lightEditorial} onClick={toggleEditorialTheme} data-liquid-snap="true" />
@@ -556,57 +602,79 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
           </header>
           <main className="editorial-body">
             <section className="editorial-hero" aria-labelledby="editorial-intro">
-              <h1 id="editorial-intro" className="editorial-hero-copy editorial-reveal" style={revealIndex(1)}>
-                <span className="editorial-title-line">{home.title[0]}</span>{" "}
-                <span className="editorial-title-line editorial-title-finish">{home.title[1]}</span>
+              <h1 id="editorial-intro" className="editorial-hero-copy">
+                <span className="editorial-title-line editorial-reveal" style={revealIndex(1)}>{home.title[0]}</span>{" "}
+                <span className="editorial-title-line editorial-title-finish editorial-reveal" style={revealIndex(2)}>{home.title[1]}</span>
               </h1>
-              <div className="editorial-intro editorial-reveal" style={revealIndex(2)}>
-                <p>
-                  {home.intro}
-                  {moreOpen || zh ? null : <span aria-hidden="true">{" …"}</span>}
-                  {" "}
-                  <button type="button" className="editorial-more" aria-expanded={moreOpen} aria-controls="editorial-more" onClick={() => setMoreOpen((open) => !open)}>{moreOpen ? home.less : home.more}</button>
-                </p>
-                <div id="editorial-more" className="editorial-more-panel" data-open={moreOpen ? "true" : "false"} inert={!moreOpen}>
-                  <div>{home.moreParagraphs.map((paragraph) => <p key={paragraph}>{paragraph}</p>)}</div>
+              <div className="editorial-hero-lower">
+                <div className="editorial-hero-text">
+                  <div className="editorial-intro editorial-reveal" style={revealIndex(3)}>
+                    <p>
+                      {home.intro}
+                      {moreOpen || zh ? null : <span aria-hidden="true">{"\u00a0…"}</span>}
+                      {"\u00a0"}
+                      <button type="button" className="editorial-more" aria-expanded={moreOpen} aria-controls="editorial-more" onClick={() => setMoreOpen((open) => !open)}>{moreOpen ? home.less : home.more}</button>
+                    </p>
+                    <div id="editorial-more" className="editorial-more-panel" data-open={moreOpen ? "true" : "false"} inert={!moreOpen}>
+                      <div>{home.moreParagraphs.map((paragraph) => <p key={paragraph}>{paragraph}</p>)}</div>
+                    </div>
+                  </div>
+                  <div className="editorial-actions editorial-reveal" style={revealIndex(4)}>
+                    <button type="button" className="editorial-primary" onClick={openWorkspace} data-liquid-snap="true" data-magnetic-hover="true">{home.open}<ArrowRight size={16} aria-hidden="true" /></button>
+                    <a className="editorial-download" href={release.download}>{home.download}<span aria-hidden="true">↓</span></a>
+                  </div>
+                  <p className="editorial-release editorial-reveal" style={revealIndex(5)}>
+                    {release.version ? <><span className="editorial-version">{release.version}</span><span aria-hidden="true"> · </span></> : null}
+                    {home.platform}
+                    {release.package ? <><span aria-hidden="true"> · </span>{release.package}</> : null}
+                    <span aria-hidden="true"> · </span>
+                    <a href={release.notes} target="_blank" rel="noopener noreferrer">{home.notes}</a>
+                  </p>
                 </div>
+                <figure ref={threadRef} className="editorial-session editorial-thread editorial-reveal" style={revealIndex(6)} data-state={threadState} aria-label={home.session.label}>
+                  <p className="editorial-session-head">{home.session.heading}</p>
+                  <p className="editorial-session-ask">{home.session.ask}</p>
+                  <ol>
+                    {home.session.rows.map((row, index) => (
+                      <li key={row.text} className={index === home.session.rows.length - 1 ? "is-waiting" : undefined} style={revealIndex(index)}>
+                        <time dateTime={row.time}>{row.time}</time>
+                        <span>{emphasize(row.text)}</span>
+                      </li>
+                    ))}
+                  </ol>
+                  <figcaption>{home.session.note}</figcaption>
+                </figure>
               </div>
-              <div className="editorial-actions editorial-reveal" style={revealIndex(3)}>
-                <button type="button" className="editorial-primary" onClick={openWorkspace} data-liquid-snap="true" data-magnetic-hover="true">{home.open}<ArrowRight size={16} aria-hidden="true" /></button>
-                <a className="editorial-download" href={release.download}>{home.download}<span aria-hidden="true">↓</span></a>
-              </div>
-              <p className="editorial-release editorial-reveal" style={revealIndex(4)}>
-                {release.version ? <><span className="editorial-version">{release.version}</span><span aria-hidden="true"> · </span></> : null}
-                {home.platform}
-                {release.package ? <><span aria-hidden="true"> · </span>{release.package}</> : null}
-                <span aria-hidden="true"> · </span>
-                <a href={release.notes} target="_blank" rel="noopener noreferrer">{home.notes}</a>
-              </p>
             </section>
-            <section id="loom-capabilities" className="editorial-section editorial-capabilities editorial-reveal" style={revealIndex(5)} aria-labelledby="editorial-do-title">
-              <h2 id="editorial-do-title">{home.doing.heading}</h2>
+            <section id="loom-capabilities" className="editorial-section editorial-capabilities" aria-labelledby="editorial-do-title">
+              <h2 id="editorial-do-title" data-reveal>{home.doing.heading}</h2>
               <ul className="editorial-list">
-                {home.doing.items.map((item) => <li key={item.lead}><strong>{item.lead}</strong> {item.text}</li>)}
+                {home.doing.items.map((item, index) => (
+                  <li key={item.lead} data-reveal style={revealIndex(index)}>
+                    <span className="editorial-index" aria-hidden="true">{`0${index + 1}`}</span>
+                    <strong>{item.lead}</strong>
+                    <p>{item.text}</p>
+                  </li>
+                ))}
               </ul>
             </section>
-            <section className="editorial-section editorial-session editorial-reveal" style={revealIndex(6)} aria-labelledby="editorial-session-title">
-              <h2 id="editorial-session-title">{home.session.heading}</h2>
-              <figure ref={threadRef} className="editorial-thread" data-state={threadState} aria-label={home.session.label}>
-                <ol>
-                  {home.session.rows.map((row, index) => (
-                    <li key={row.text} className={index === home.session.rows.length - 1 ? "is-waiting" : undefined} style={revealIndex(index)}>
-                      <time dateTime={row.time}>{row.time}</time>
-                      <span>{emphasize(row.text)}</span>
-                    </li>
-                  ))}
-                </ol>
-                <figcaption>{home.session.note}</figcaption>
-              </figure>
-            </section>
-            <section id="loom-how" className="editorial-section editorial-start editorial-reveal" style={revealIndex(7)} aria-labelledby="editorial-start-title">
-              <h2 id="editorial-start-title">{home.start.heading}</h2>
+            <section id="loom-start" className="editorial-section editorial-start" aria-labelledby="editorial-start-title">
+              <div className="editorial-start-lead" data-reveal>
+                <h2 id="editorial-start-title">{home.start.heading}</h2>
+                <p>{home.start.lead}</p>
+                <div className="editorial-actions">
+                  <button type="button" className="editorial-primary" onClick={openWorkspace} data-liquid-snap="true" data-magnetic-hover="true">{home.open}<ArrowRight size={16} aria-hidden="true" /></button>
+                  <a className="editorial-download" href={release.download}>{home.download}<span aria-hidden="true">↓</span></a>
+                </div>
+              </div>
               <ol className="editorial-steps">
-                {home.start.steps.map((step) => <li key={step.lead}><strong>{step.lead}</strong> {step.text}</li>)}
+                {home.start.steps.map((step, index) => (
+                  <li key={step.lead} data-reveal style={revealIndex(index)}>
+                    <span className="editorial-index" aria-hidden="true">{index + 1}</span>
+                    <strong>{step.lead}</strong>
+                    <p>{step.text}</p>
+                  </li>
+                ))}
               </ol>
             </section>
           </main>
