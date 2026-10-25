@@ -602,12 +602,12 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
           </header>
           <main className="editorial-body">
             <section className="editorial-hero" aria-labelledby="editorial-intro">
-              <h1 id="editorial-intro" className="editorial-hero-copy">
-                <span className="editorial-title-line editorial-reveal" style={revealIndex(1)}>{home.title[0]}</span>{" "}
-                <span className="editorial-title-line editorial-title-finish editorial-reveal" style={revealIndex(2)}>{home.title[1]}</span>
-              </h1>
-              <div className="editorial-hero-lower">
+              <div className="editorial-hero-grid">
                 <div className="editorial-hero-text">
+                  <h1 id="editorial-intro" className="editorial-hero-copy">
+                    <span className="editorial-title-line editorial-reveal" style={revealIndex(1)}>{home.title[0]}</span>{" "}
+                    <span className="editorial-title-line editorial-title-finish editorial-reveal" style={revealIndex(2)}>{home.title[1]}</span>
+                  </h1>
                   <div className="editorial-intro editorial-reveal" style={revealIndex(3)}>
                     <p>
                       {home.intro}

@@ -67,7 +67,7 @@ test("the page keeps the reference's palette, type and links", () => {
 
 test("the page is laid on a wide frame and a 12-column grid; its prose keeps the reference's measure", () => {
   const root = rule(".loom-portal-page.loom-editorial");
-  assert.match(root, /--ed-wide:\s*clamp\(1360px,\s*60vw,\s*1560px\)/, "a frame of 1360 to 1560px");
+  assert.match(root, /--ed-wide:\s*clamp\(1280px,\s*58vw,\s*1440px\)/, "a frame of 1280 to 1440px");
   assert.match(root, /--ed-edge:\s*max\(var\(--ed-gutter\),\s*calc\(\(100% - var\(--ed-wide\)\) \/ 2\)\)/, "never closer than the gutter to the window");
   const shell = rule(".loom-portal-page.loom-editorial .editorial-shell");
   assert.match(shell, /width:\s*100%/);
@@ -75,15 +75,25 @@ test("the page is laid on a wide frame and a 12-column grid; its prose keeps the
   assert.match(css, /\.editorial-shell > :is\(\.editorial-header, \.editorial-body, \.editorial-footer\)\s*\{[^}]*padding-inline:\s*var\(--ed-edge\)/);
   // The reference's 580px measure is still the width of every paragraph.
   assert.match(rule(".loom-editorial .editorial-intro p"), /max-width:\s*580px/);
-  // Two grids of twelve columns: the hero's lower row (words and picture) and the sections.
-  for (const selector of [".loom-editorial .editorial-hero-lower", ".loom-editorial .editorial-section"]) {
+  // Two grids of twelve columns: the hero (the words, and the picture beside them) and the sections.
+  for (const selector of [".loom-editorial .editorial-hero-grid", ".loom-editorial .editorial-section"]) {
     assert.match(rule(selector), /grid-template-columns:\s*repeat\(12,\s*minmax\(0,\s*1fr\)\)/, selector);
   }
-  // The headline is set across the width, large and light. A clamp is not a rung of the size ladder.
-  const title = rule(".loom-editorial .editorial-hero-copy");
-  assert.match(title, /font-size:\s*clamp\(40px,\s*min\(8\.6vw,\s*13\.4vh\),\s*140px\)/);
-  assert.match(title, /font-weight:\s*400/);
-  assert.match(rule(".loom-editorial .editorial-section h2"), /font-size:\s*clamp\(36px,\s*4\.8vw,\s*64px\)/);
+  // The type is one quiet scale: the headline is set to the five columns it sits in (72px holds in 517px, so its second
+  // line is as wide as the paragraph under it), a section's heading is two thirds of that or less, an item's title 24px,
+  // text 18 to 20px. A clamp is not a rung of the size ladder, so these are read as numbers.
+  const title = root.match(/--ed-title:\s*clamp\((\d+)px,\s*([\d.]+)vw,\s*(\d+)px\)/);
+  assert.ok(title, "the headline's size is one variable");
+  const titleMax = Number(title[3]);
+  assert.ok(titleMax >= 60 && titleMax <= 76, `the headline is quiet: at most ${titleMax}px`);
+  const headline = rule(".loom-editorial .editorial-hero-copy");
+  assert.match(headline, /font-size:\s*var\(--ed-title\)/);
+  assert.match(headline, /font-weight:\s*400/);
+  assert.match(headline, /line-height:\s*1\.08/, "the cap line is the top of the line box, which the picture's hairline stands on");
+  const heading = rule(".loom-editorial .editorial-section h2").match(/font-size:\s*clamp\((\d+)px,\s*([\d.]+)vw,\s*(\d+)px\)/);
+  assert.ok(heading && Number(heading[3]) <= titleMax * 0.66 && Number(heading[3]) >= 40, `a section's heading is smaller than the headline: ${heading?.[3]}px`);
+  assert.match(rule(".loom-editorial .editorial-list strong"), /font-size:\s*24px/);
+  assert.match(rule(".loom-editorial .editorial-steps strong"), /font-size:\s*24px/);
   // It narrows in steps: the picture goes under the words, the columns become one, the nav goes, the phone settles.
   for (const width of [1100, 960, 760, 520]) assert.ok(css.includes(`@media (max-width: ${width}px)`), `${width}px step`);
   assert.match(css, /@media \(max-width: 760px\)\s*\{[^@]*\.editorial-nav\s*\{\s*display:\s*none/);
@@ -91,9 +101,10 @@ test("the page is laid on a wide frame and a 12-column grid; its prose keeps the
 
 test("the first screen is laid out from the top, so opening More moves only what is under it", () => {
   const hero = rule(".loom-editorial .editorial-hero");
-  assert.ok(!/justify-content:\s*space-(?:between|around|evenly)/.test(hero), "free space goes below the words, not between them");
+  assert.ok(!/(?:display:\s*flex|justify-content)/.test(hero), "free space goes below the words, not between them");
   assert.match(hero, /min-height:\s*min\(calc\(100dvh - var\(--ed-head\)\),\s*900px\)/, "the first screen is a screen, up to a limit");
-  assert.match(rule(".loom-editorial .editorial-hero-lower"), /align-items:\s*start/);
+  assert.match(hero, /padding-block:\s*clamp\(40px,\s*19vh,\s*200px\)/, "the group sits where a share of the window's height puts it");
+  assert.match(rule(".loom-editorial .editorial-hero-grid"), /align-items:\s*start/);
   assert.match(css, /@media \(max-width: 960px\)\s*\{[^@]*\.editorial-hero\s*\{\s*min-height:\s*0/, "stacked, it is as tall as its words");
 });
 
@@ -121,15 +132,24 @@ test("the header is a nav: sections by scrolling, a hairline once the page has m
   assert.ok(!portal.includes("prefers-reduced-motion: reduce)\")"), "the stylesheet decides; no second copy of the question (test_motion_scale_contract)");
 });
 
-test("the one picture is a task, start to finish, beside the words", () => {
-  const lower = portal.slice(portal.indexOf('<div className="editorial-hero-lower">'), portal.indexOf('<section id="loom-capabilities"'));
-  assert.ok(lower.indexOf("editorial-hero-text") < lower.indexOf("editorial-session"), "the words first, the picture after");
+test("the one picture is a task, start to finish, beside the words and opened by a hairline", () => {
+  const grid = portal.slice(portal.indexOf('<div className="editorial-hero-grid">'), portal.indexOf('<section id="loom-capabilities"'));
+  // One column of words (the name, the sentence, where to start), then the picture.
+  assert.ok(grid.indexOf("editorial-hero-text") < grid.indexOf("<h1 ") && grid.indexOf("<h1 ") < grid.indexOf("editorial-intro") && grid.indexOf("editorial-intro") < grid.indexOf("editorial-actions"));
+  assert.ok(grid.indexOf("editorial-release") < grid.indexOf("editorial-session"), "the words first, the picture after");
   for (const part of ["{home.session.heading}", "{home.session.ask}", "{home.session.note}", "data-state={threadState}", "aria-label={home.session.label}"]) {
-    assert.ok(lower.includes(part), part);
+    assert.ok(grid.includes(part), part);
   }
-  assert.ok(lower.includes('index === home.session.rows.length - 1 ? "is-waiting"'), "the last step is the one waiting for you");
+  assert.ok(grid.includes('index === home.session.rows.length - 1 ? "is-waiting"'), "the last step is the one waiting for you");
   assert.equal((portal.match(/<figure\b/g) ?? []).length, 1);
+  assert.equal((grid.match(/<h1\b/g) ?? []).length, 1);
   assert.match(rule(".loom-editorial .editorial-thread li.is-waiting::before"), /background:\s*var\(--ed-accent\)/);
+  // No box: like the items below it, the picture is opened by one hairline, and that hairline is level with the headline's cap line.
+  const picture = rule(".loom-editorial .editorial-session");
+  assert.match(picture, /border-top:\s*1px solid var\(--ed-rule\)/);
+  assert.match(picture, /margin:\s*calc\(var\(--ed-title\) \* \.04\) 0 0;/, "level with the cap line: half the leading below the top of the headline's box");
+  assert.ok(!/(?:background|border-radius|box-shadow|border:)/.test(picture), "a hairline, not a card");
+  assert.match(rule(".loom-editorial .editorial-thread li::before"), /background:\s*var\(--ed-paper\)/, "the knots are cut out of the page, not of a card");
   // The picture is drawn when it is in view, a little after the card itself has faded in.
   assert.match(css, /\.editorial-thread\[data-state="in"\] li,[^{]*\{[^}]*animation-delay:\s*calc\(360ms \+ var\(--i, 0\) \* 180ms\)/);
 });
