@@ -44,16 +44,22 @@ export function McpSettingsPanel({ running, enabled }: { running: boolean; enabl
     setSetupContext(context); setTab("installed");
     setToken(""); setDraft({ ...server }); setEditing(name); setArgs(JSON.stringify(server.args, null, 2)); setEnv(JSON.stringify(server.env_from, null, 2)); setError(""); setNotice(""); setDeleting("");
   }
-  async function manage(action: string, name: string, server?: Server) {
+  async function manage(action: string, name: string, server?: Server, credential = token): Promise<boolean> {
     setBusy(true); setError(""); setNotice("");
     try {
-      const result = await window.loom.call<Snapshot>("mcp/manage", { action, name, server, ...(action === "save" && token ? { token } : {}) });
+      const result = await window.loom.call<Snapshot>("mcp/manage", { action, name, server, ...(action === "save" && credential ? { token: credential } : {}) });
       setSnapshot(result); setToken(""); setDraft(null); setDeleting("");
       const changed = result.servers.find(s => s.name === (server?.name ?? name));
-      if (changed?.enabled && !changed.connected) setError(changed.error || t("Saved, but not connected. Check the configuration and retry.", "配置已保存，但尚未连接，请检查配置后重试。"));
+      if (changed?.enabled && !changed.connected) { setError(changed.error || t("Saved, but not connected. Check the configuration and retry.", "配置已保存，但尚未连接，请检查配置后重试。")); return false; }
       else setNotice(t("MCP configuration applied.", "MCP 配置已生效。"));
-    } catch (e) { setError(String(e)); }
+      return true;
+    } catch (e) { setError(String(e)); return false; }
     finally { setBusy(false); }
+  }
+  async function install(server: Server, _context: McpSetupContext, credential: string) {
+    const existing = snapshot?.servers.find(item => item.name === server.name);
+    if (existing && !existing.editable) { setError(t("This name is managed by runtime configuration or a plugin. Add it manually with another name.", "此名称由运行时或插件管理，请使用其他名称手动添加。")); return false; }
+    return manage("save", existing?.name ?? "", server, credential);
   }
   function save(event: React.FormEvent) {
     event.preventDefault();
@@ -69,8 +75,8 @@ export function McpSettingsPanel({ running, enabled }: { running: boolean; enabl
     } catch (e) { setError(String(e)); }
   }
   const change = (key: keyof Server, value: string | number | boolean) => setDraft(current => current ? { ...current, [key]: value } : current);
-  return <div className="mcp-manager">
-    <div className="mcp-summary"><span>{t("Connected servers", "已连接服务")} <strong>{snapshot?.connected_servers ?? "—"}</strong></span><span>{t("External tools", "外部工具")} <strong>{snapshot?.remote_tool_count ?? "—"}</strong></span><button type="button" onClick={() => void refresh()} disabled={busy}>{t("Refresh", "刷新")}</button><button type="button" disabled={locked} onClick={() => open(blank())}>{t("Add server", "添加服务")}</button></div>
+  return <div className="mcp-manager mcp-settings">
+    <div className="mcp-summary"><span>{t("Connected servers", "已连接服务")} <strong>{snapshot?.connected_servers ?? "—"}</strong></span><span>{t("External tools", "外部工具")} <strong>{snapshot?.remote_tool_count ?? "—"}</strong></span><button type="button" onClick={() => void refresh()} disabled={busy}>{t("Refresh", "刷新")}</button>{tab === "installed" && <button type="button" disabled={locked} onClick={() => open(blank())}>{t("Add server", "添加服务")}</button>}</div>
     <div className="mcp-market-tabs" role="tablist" aria-label={t("MCP views", "MCP 视图")} onKeyDown={event => { if (!busy && ["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) { event.preventDefault(); const next = event.key === "Home" ? "marketplace" : event.key === "End" ? "installed" : tab === "marketplace" ? "installed" : "marketplace"; setTab(next); document.getElementById(next === "marketplace" ? "mcp-market-tab" : "mcp-installed-tab")?.focus(); } }}><button id="mcp-market-tab" role="tab" disabled={busy} tabIndex={tab === "marketplace" ? 0 : -1} aria-controls="mcp-market-panel" aria-selected={tab === "marketplace"} type="button" onClick={() => setTab("marketplace")}>{t("Marketplace", "应用市场")}</button><button id="mcp-installed-tab" role="tab" disabled={busy} tabIndex={tab === "installed" ? 0 : -1} aria-controls="mcp-installed-panel" aria-selected={tab === "installed"} type="button" onClick={() => setTab("installed")}>{t("Installed", "已配置")}{snapshot ? ` · ${snapshot.servers.length}` : ""}</button></div>
     {busy && <p role="status">{t("Updating MCP servers…", "正在更新 MCP 服务…")}</p>}
     {running && <p role="status">{t("Finish active turns before changing servers.", "请等待当前任务结束后修改服务。")}</p>}
@@ -109,9 +115,9 @@ export function McpSettingsPanel({ running, enabled }: { running: boolean; enabl
         {snapshot.tools.some(tool => tool.server === server.name) && <details><summary>{t("Available tools", "可用工具")}</summary>{snapshot.tools.filter(tool => tool.server === server.name).map(tool => <div className="mcp-tool" key={tool.name}><strong>{tool.name}</strong><p>{tool.description}</p></div>)}</details>}
       </article>)}
     </section>}
-    {tab === "marketplace" && <div id="mcp-market-panel" role="tabpanel" aria-labelledby="mcp-market-tab"><McpMarketplace locked={locked} installedNames={snapshot?.servers.map(server => server.name) ?? []} onConfigure={(server, context) => open(server, "", context)} />
-    <section className="mcp-quick-setup"><h2>{t("Quick setup", "快捷配置")}</h2><p>{t("Templates link to publisher instructions. Review requirements before connecting.", "模板附有发布者说明，请先查看依赖和授权要求。")}</p><input aria-label={t("Search templates", "搜索模板")} placeholder={t("Search templates…", "搜索模板…")} value={search} onChange={e => setSearch(e.target.value)} />
+    {tab === "marketplace" && <div id="mcp-market-panel" role="tabpanel" aria-labelledby="mcp-market-tab"><McpMarketplace locked={locked} installedNames={snapshot?.servers.map(server => server.name) ?? []} onInstall={install} onAddServer={() => open(blank())} onManage={() => setTab("installed")} />
+    <details className="mcp-quick-setup"><summary>{t("Popular service templates", "常用服务模板")}</summary><p>{t("Templates link to publisher instructions. Review requirements before connecting.", "模板附有发布者说明，请先查看依赖和授权要求。")}</p><input aria-label={t("Search templates", "搜索模板")} placeholder={t("Search templates…", "搜索模板…")} value={search} onChange={e => setSearch(e.target.value)} />
       <div className="mcp-presets">{presets.filter(p => `${p.name} ${p.description.join(" ")}`.toLowerCase().includes(search.toLowerCase())).map(p => <article className="settings-card" key={p.name}><h3>{p.name}</h3><p>{p.description[zh ? 1 : 0]}</p><div className="mcp-actions"><a href={p.docs} target="_blank" rel="noreferrer">{t("Publisher docs", "发布者文档")}</a><button disabled={locked} onClick={() => open({ ...blank(), ...p.server })}>{t("Configure", "配置")}</button></div></article>)}</div>
-    </section></div>}
+    </details></div>}
   </div>;
 }

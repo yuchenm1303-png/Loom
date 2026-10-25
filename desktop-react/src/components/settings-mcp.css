@@ -66,3 +66,68 @@
 .mcp-quick-setup { margin-top: 32px; padding-top: 24px; border-top: 1px solid var(--sr-line, #36363e); }
 .mcp-sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
 @media(max-width: 760px) { .mcp-market-heading { align-items: flex-start; flex-direction: column; } .mcp-market-detail { padding: 18px; } }
+/* MCP marketplace: keep service actions visible without affecting plugin cards. */
+.mcp-settings { gap: 20px; min-width: 0; }
+.mcp-settings .mcp-summary { border: 0; padding: 0; gap: 16px; font-size: 12px; color: var(--sr-ink-3, #a1a1aa); }
+.mcp-settings .mcp-summary span { margin-right: 0; }
+.mcp-settings .mcp-summary strong { color: var(--sr-ink, #eee); }
+.mcp-settings .mcp-summary button:first-of-type { margin-left: auto; }
+.mcp-settings .mcp-market-tabs { width: 100%; box-sizing: border-box; border: 1px solid var(--sr-line, #34343b); }
+.mcp-settings .mcp-market-tabs button { flex: 1; padding: 11px; font-weight: 600; }
+.mcp-marketplace { gap: 16px; }
+.mcp-marketplace .mcp-market-search { display: grid; grid-template-columns: minmax(160px, 1fr) auto 40px auto; gap: 10px; }
+.mcp-marketplace .mcp-search-field { display: flex; align-items: center; gap: 10px; min-width: 0; padding: 0 13px; border: 1px solid var(--sr-line, #44444e); border-radius: 10px; background: var(--sr-raised, #232329); color: var(--sr-ink-3, #aaa); }
+.mcp-marketplace .mcp-search-field:focus-within { outline: 2px solid var(--sr-accent, #a99aff); outline-offset: 2px; }
+.mcp-marketplace .mcp-search-field input { background: transparent; border: 0; outline: none; padding: 11px 0; }
+.mcp-marketplace .mcp-search-field input:focus-visible { outline: none; }
+.mcp-marketplace .mcp-market-search select { width: 100%; height: 42px; }
+.mcp-manager .mcp-icon-button { display: inline-flex; align-items: center; justify-content: center; padding: 9px; width: 40px; height: 40px; flex-shrink: 0; }
+.mcp-manager .mcp-add-button, .mcp-manager .mcp-install-button, .mcp-manager .mcp-manage-button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; white-space: nowrap; font-weight: 600; }
+.mcp-manager .mcp-install-button { background: var(--sr-accent, #a99aff); color: #171326; border-color: transparent; min-height: 38px; padding: 9px 18px; }
+.mcp-manager .mcp-install-button:hover:not(:disabled) { filter: brightness(1.1); }
+.mcp-directory-meta { display: flex; justify-content: space-between; gap: 12px; font-size: 12px; color: var(--sr-ink-3, #aaa); }
+.mcp-directory-meta a { display: inline-flex; align-items: center; gap: 5px; }
+.mcp-manager .mcp-cache-note { font-size: 11px; color: var(--sr-ink-3, #aaa); }
+.mcp-marketplace .mcp-market-grid { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+.mcp-marketplace .mcp-market-card { display: grid; grid-template-columns: 42px minmax(0, 1fr) auto; gap: 18px; padding: 22px; border-radius: 14px; transition: border-color .15s; }
+.mcp-marketplace .mcp-market-card:hover { border-color: color-mix(in srgb, var(--sr-accent, #a99aff) 45%, var(--sr-line, #34343b)); }
+.mcp-market-card-content { min-width: 0; }
+.mcp-market-title-line { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.mcp-market-title-line h3 { margin: 0; font-size: 16px; overflow-wrap: anywhere; }
+.mcp-market-publisher { font-size: 12px; color: var(--sr-ink-3, #aaa); margin-top: 5px; overflow-wrap: anywhere; }
+.mcp-marketplace .mcp-market-card p { margin: 12px 0; min-height: 0; line-height: 1.65; }
+.mcp-marketplace .mcp-market-tags { gap: 6px; }
+.mcp-marketplace .mcp-market-tags span { display: inline-flex; align-items: center; gap: 5px; padding: 3px 8px; border: 1px solid var(--sr-line, #34343b); background: transparent; border-radius: 6px; }
+.mcp-market-card-actions { display: flex; flex-direction: column; align-items: stretch; gap: 9px; }
+.mcp-manager .mcp-details-button { display: inline-flex; align-items: center; justify-content: center; gap: 4px; border-color: transparent; background: transparent; color: var(--sr-ink-3, #aaa); padding: 5px; }
+.mcp-installed-badge { display: inline-flex; align-items: center; gap: 4px; color: var(--sr-accent, #b5a7ff); font-size: 11px; }
+.mcp-market-loading, .mcp-dialog-loading { display: flex; align-items: center; justify-content: center; gap: 10px; padding: 32px; color: var(--sr-ink-3, #aaa); }
+.mcp-settings .mcp-quick-setup { margin-top: 8px; padding-top: 18px; }
+.mcp-quick-setup summary { cursor: pointer; font-size: 13px; color: var(--sr-ink-3, #aaa); }
+.mcp-dialog-backdrop { position: fixed; inset: 0; z-index: 10000; display: flex; align-items: center; justify-content: center; padding: 24px; box-sizing: border-box; background: #0009; backdrop-filter: blur(5px); color: var(--sr-ink, #eee); font-family: inherit; }
+.mcp-install-dialog { width: min(100%, 580px); max-height: calc(100dvh - 48px); overflow-y: auto; box-sizing: border-box; padding: 26px; background: var(--sr-page, #151618); border: 1px solid var(--sr-line, #44444e); border-radius: 18px; box-shadow: 0 24px 90px #0006; outline: none; }
+.mcp-dialog-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 16px; }
+.mcp-dialog-eyebrow { font-size: 10px; letter-spacing: .12em; color: var(--sr-ink-3, #aaa); }
+.mcp-dialog-heading h2 { margin: 8px 0 0; font-size: 21px; overflow-wrap: anywhere; }
+.mcp-install-dialog fieldset { border: 0; padding: 0; margin: 0; display: grid; gap: 18px; min-width: 0; }
+.mcp-runtime-note { display: flex; align-items: flex-start; gap: 8px; }
+.mcp-runtime-note svg { flex-shrink: 0; margin-top: 3px; }
+.mcp-auth-fields { display: grid; gap: 16px; }
+.mcp-auth-fields h3 { margin: 0; font-size: 13px; }
+.mcp-dialog-footer { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 10px; border-top: 1px solid var(--sr-line, #34343b); padding-top: 20px; margin-top: 4px; }
+@keyframes mcp-spin { to { transform: rotate(360deg); } }
+.mcp-spin { animation: mcp-spin 1s linear infinite; }
+@media (max-width: 620px) {
+  .mcp-marketplace .mcp-market-search { grid-template-columns: minmax(0, 1fr) 40px auto; }
+  .mcp-marketplace .mcp-search-field { grid-column: 1 / -1; }
+  .mcp-marketplace .mcp-market-card { grid-template-columns: minmax(0, 1fr) auto; padding: 18px; gap: 14px; }
+  .mcp-marketplace .mcp-market-monogram { display: none; }
+  .mcp-market-card-actions { align-self: start; }
+  .mcp-marketplace .mcp-market-tags { gap: 4px; }
+  .mcp-directory-meta { flex-wrap: wrap; }
+  .mcp-dialog-backdrop { padding: 12px; }
+  .mcp-install-dialog { padding: 20px; max-height: calc(100dvh - 24px); border-radius: 14px; }
+}
+@media (prefers-reduced-motion: reduce) { .mcp-spin { animation: none; } .mcp-marketplace .mcp-market-card { transition: none; } }
+html[data-loom-theme="light"] .mcp-manager .mcp-install-button { color: #fff; }
+.mcp-marketplace a, .mcp-dialog-backdrop a { color: var(--sr-accent-ink, #b5a7ff); }
