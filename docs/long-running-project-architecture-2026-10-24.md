@@ -2,6 +2,8 @@
 
 研究日期：2026-10-24。状态：可评审的设计方案，尚未实现重型项目执行。本文区分已读源码、官方说明和 Loom 的设计建议；不把示例、营销描述或数小时实验当成一周无人值守的验证。
 
+2026-10-25 补充：[首版实施规格](long-running-project-spec-2026-10-25.md)将本研究收敛为具体协议；[SQL 草案](long-running-project-schema-v1.sql)仅用于设计验证。后续规格选择独立 projects.sqlite3 与跨存储幂等核对，取代本文早期偏向同库的候选；暂停与执行状态也改为正交表达。发生差异时以实施规格为准。
+
 ## 1. 决策摘要
 
 在 Loom 现有 Agent Runtime 上增加项目级控制层，暂称 Project Runner。保留现有模型/工具循环、权限、会话日志、计划图、证据系统和上下文管理。首版不整体引入 OpenHands、LangGraph 或 Temporal 替换 runtime。
