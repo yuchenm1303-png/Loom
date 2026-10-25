@@ -1,0 +1,9 @@
+.ambient-panel { display: grid; gap: 16px; }
+.ambient-panel p { overflow-wrap: anywhere; white-space: pre-wrap; }
+.ambient-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.ambient-form, .ambient-task { padding: 18px; display: grid; gap: 12px; }
+.ambient-form label { display: grid; gap: 6px; }
+.ambient-panel input, .ambient-panel select, .ambient-panel textarea { color: inherit; background: var(--bg-secondary, transparent); border: 1px solid var(--border, #8886); border-radius: 6px; padding: 8px; min-width: 0; }
+.ambient-panel input[type=checkbox] { justify-self: start; }
+.ambient-panel button { border: 1px solid #8886; border-radius: 6px; padding: 7px 12px; background: transparent; color: inherit; cursor: pointer; }
+.ambient-panel button:disabled { opacity: .5; cursor: default; }

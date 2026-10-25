@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any, TextIO
 
 from app.agent_runtime import PermissionMode
+from .ambient_service import AmbientControllerMixin, AmbientServiceMixin
 
 from .app_server_local_ipc import LocalAppServerIpcServer, runtime_home_from_store
 from .app_server_project_move import (
@@ -14,7 +15,7 @@ from .app_server_project_move import (
 )
 
 
-class BrowserPolicyLoomAppServerService(ProjectMovableLoomAppServerService):
+class BrowserPolicyLoomAppServerService(AmbientServiceMixin, ProjectMovableLoomAppServerService):
     """Production App Server browser wiring with explicit backend selection."""
 
     def thread_read(self, params: dict[str, Any]) -> dict[str, Any]:
@@ -103,7 +104,7 @@ class BrowserPolicyLoomAppServerService(ProjectMovableLoomAppServerService):
         return super()._hud_point(tool_name, args, result)
 
 
-class BrowserPolicyLoomRpcController(ProjectMovableLoomRpcController):
+class BrowserPolicyLoomRpcController(AmbientControllerMixin, ProjectMovableLoomRpcController):
     def _initialize(self, params: dict[str, Any]) -> dict[str, Any]:
         result = super()._initialize(params)
         hud = dict(result.get("capabilities", {}).get("automationHud") or {})
@@ -162,6 +163,7 @@ def serve_browser_policy_managed_streaming_stdio(
         print("[loom-startup] app-server ready for initialize", file=sys.stderr, flush=True)
         return server.serve(reader=reader, writer=writer)
     finally:
+        service.ambient.close()
         if local_server is not None:
             local_server.close()
         close = getattr(runtime, "close", None)

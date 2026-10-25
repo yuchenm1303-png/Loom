@@ -1,3 +1,4 @@
+import { AmbientSettingsPanel } from "./AmbientSettingsPanel";
 import { PluginsSettingsPanel } from "./PluginsSettingsPanel";
 import { McpSettingsPanel } from "./McpSettingsPanel";
 import { StickerPanel } from "./StickerPanel";
@@ -82,6 +83,7 @@ import "./settings-general-home.css";
 import "./settings-system.css";
 
 type PageKey =
+  | "ambient"
   | "general"
   | "appearance"
   | "models"
@@ -314,6 +316,7 @@ const NAV_GROUPS: { label: string; items: NavItem[] }[] = [
     label: "Loom",
     items: [
       { key: "general", label: "General", icon: Settings2 },
+      { key: "ambient", label: "Ambient assistant", icon: Activity },
       { key: "appearance", label: "Appearance", icon: Palette },
       { key: "models", label: "Models", icon: Cpu },
       { key: "capabilities", label: "Capabilities", icon: Blocks },
@@ -1507,6 +1510,7 @@ export function SettingsPage({ runtime, models, threadId, running, onRefreshMode
   const bodyPainted = usePaintedOnce();
   const content = !bodyPainted ? null : (() => {
     if (page === "general") return renderGeneral();
+    if (page === "ambient") return <AmbientSettingsPanel threadId={threadId} />;
     if (page === "appearance") return renderAppearance();
     if (page === "models") return renderModels();
     if (page === "capabilities") return renderCapabilities();
