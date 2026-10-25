@@ -13,6 +13,7 @@ export type McpServer = {
   connected?: boolean;
   tool_count?: number;
   error?: string;
+  plugin?: string;
 };
 
 export type McpSetupContext = {

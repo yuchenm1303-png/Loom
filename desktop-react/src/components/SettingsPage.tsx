@@ -1,3 +1,4 @@
+import { PluginsSettingsPanel } from "./PluginsSettingsPanel";
 import { McpSettingsPanel } from "./McpSettingsPanel";
 import { StickerPanel } from "./StickerPanel";
 import { ProgressFeedbackControl } from "./ProgressFeedbackControl";
@@ -170,15 +171,6 @@ type RuntimeView = InitializeResult["runtime"] & {
   capabilityStatus?: Partial<Record<CapabilityKey, Record<string, unknown>>>;
   registeredToolCount?: number;
   exposedToolCount?: number;
-};
-
-type PluginRecord = {
-  name?: string;
-  version?: string;
-  enabled?: boolean;
-  status?: string;
-  source?: string;
-  description?: string;
 };
 
 type BrowserExtensionSetupResult = Awaited<ReturnType<Window["loom"]["setupBrowserExtension"]>> & {
@@ -616,8 +608,6 @@ export function SettingsPage({ runtime, models, threadId, running, onRefreshMode
   const lastNoticeRef = useRef<SettingsNotice | null>(notice);
   if (notice) lastNoticeRef.current = notice;
   const visibleNotice = notice ?? lastNoticeRef.current;
-  const [plugins, setPlugins] = useState<PluginRecord[] | null>(null);
-  const [pluginsError, setPluginsError] = useState("");
   const [browserSetupBusy, setBrowserSetupBusy] = useState(false);
   const [browserSetup, setBrowserSetup] = useState<BrowserExtensionSetupResult | null>(null);
   const [browserConnectionCheck, setBrowserConnectionCheck] = useState<"idle" | "checking" | "connected" | "offline">("idle");
@@ -714,15 +704,6 @@ export function SettingsPage({ runtime, models, threadId, running, onRefreshMode
     const timer = window.setTimeout(() => setNotice(null), 2600);
     return () => window.clearTimeout(timer);
   }, [notice]);
-
-  useEffect(() => {
-    if (page !== "plugins" || plugins !== null || pluginsError) return;
-    let disposed = false;
-    void window.loom.call<{ plugins?: PluginRecord[] }>("plugin/list", {})
-      .then((result) => { if (!disposed) setPlugins(Array.isArray(result.plugins) ? result.plugins : []); })
-      .catch((cause) => { if (!disposed) setPluginsError(cause instanceof Error ? cause.message : String(cause)); });
-    return () => { disposed = true; };
-  }, [page, plugins, pluginsError]);
 
   const filteredGroups = useMemo(() => {
     const needle = query.trim().toLowerCase();
@@ -1348,9 +1329,7 @@ export function SettingsPage({ runtime, models, threadId, running, onRefreshMode
     );
   };
 
-  const renderPlugins = () => (
-    <><div className="settings-page-heading settings-heading-with-action"><div><h1>Plugins</h1><p>Manage installed plugins and view their status.</p></div><button className="mature-action-button" type="button" onClick={() => { setPlugins(null); setPluginsError(""); }}><RefreshCw size={14} />Refresh</button></div><Section title="Installed plugins" caption="Plugin activation may require a runtime restart."><div className="settings-card plugin-list">{plugins === null && !pluginsError ? <div className="settings-empty-state">Loading plugins…</div> : null}{pluginsError ? <div className="settings-callout-inline"><CircleAlert size={15} /><span>{pluginsError}</span></div> : null}{plugins?.map((plugin, index) => <div className="plugin-row" key={`${plugin.name || "plugin"}-${index}`}><div className="capability-icon"><Box size={17} /></div><div><strong>{plugin.name || "Plugin"}</strong><span>{plugin.description || plugin.source || plugin.version || "Installed extension"}</span></div><StatusPill tone={plugin.enabled === false ? "off" : "ready"}>{plugin.enabled === false ? "Disabled" : plugin.status || "Enabled"}</StatusPill></div>)}{plugins?.length === 0 ? <div className="settings-empty-state">No plugins are installed.</div> : null}</div></Section></>
-  );
+  const renderPlugins = () => <PluginsSettingsPanel running={running} />;
 
   const renderMcp = () => {
     const enabled = capabilityEnabled("mcp");

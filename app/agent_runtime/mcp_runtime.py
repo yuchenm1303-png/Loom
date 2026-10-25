@@ -256,7 +256,8 @@ class MCPServerConfig:
         for child_name, source_name in self.env_from:
             if not child_name or not source_name:
                 raise MCPConfigurationError(f"MCP server {self.name!r} has invalid env_from mapping")
-            value = os.environ.get(source_name)
+            from app.mcp_credentials import resolve
+            value = resolve(source_name)
             if value is None:
                 raise MCPConfigurationError(
                     f"MCP server {self.name!r} requires environment variable {source_name!r}"
@@ -640,6 +641,10 @@ class MCPClientManager:
                 secret = resolve(config.bearer_token_env) if config.bearer_token_env else None
                 if secret:
                     safe = safe.replace(secret, "[REDACTED]")
+                for _, source_name in config.env_from:
+                    env_secret = resolve(source_name)
+                    if env_secret:
+                        safe = safe.replace(env_secret, "[REDACTED]")
                 self._errors[config.name] = safe
                 if config.required:
                     raise MCPUnavailableError(f"required MCP server {config.name!r} failed: {safe}") from exc

@@ -76,7 +76,8 @@ class MCPSettings:
         managed = load_managed(self.path)
         state = self.runtime.mcp_clients.status()
         statuses = {item['name']: item for item in state['servers']}
-        return {'servers': [{**project(c), **statuses.get(c.name, {}), 'editable': editable}
+        owners = getattr(self.runtime, 'plugin_mcp_owners', {})
+        return {'servers': [{**project(c), **statuses.get(c.name, {}), 'editable': editable, 'plugin': owners.get(c.name, '')}
                             for c, editable in [*((c, False) for c in self.runtime.mcp_external_configs), *((c, True) for c in managed)]],
                 'connected_servers': state['connected_servers'], 'remote_tool_count': state['tool_count'],
                 'sdk_available': state['sdk_available'], 'config_path': str(self.path),

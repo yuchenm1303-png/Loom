@@ -4,7 +4,7 @@ import re
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
-from typing import Sequence
+from typing import Callable, Sequence
 
 import yaml
 
@@ -45,6 +45,9 @@ class SkillDefinition:
     path: Path
     root: Path
     scope: SkillScope
+    plugin_name: str = ""
+    source_name: str = ""
+    source_revision: str = ""
 
     def __post_init__(self) -> None:
         name = str(self.name or "").strip()
@@ -193,10 +196,12 @@ class SkillManager:
         user_roots: Sequence[Path] = (),
         max_file_bytes: int = _MAX_SKILL_FILE_BYTES,
         max_skills: int = _MAX_DISCOVERED_SKILLS,
+        plugin_provider: Callable[[], tuple[SkillDefinition, ...]] | None = None,
     ) -> None:
         self.user_roots = tuple(Path(root).expanduser() for root in user_roots)
         self.max_file_bytes = max(1024, int(max_file_bytes))
         self.max_skills = max(1, min(4096, int(max_skills)))
+        self.plugin_provider = plugin_provider
 
     def roots_for_workspace(self, workspace: Path) -> tuple[SkillRoot, ...]:
         roots: list[SkillRoot] = []
@@ -254,7 +259,7 @@ class SkillManager:
                     if resolved_path.stat().st_size > self.max_file_bytes:
                         errors.append(f"skill file is too large: {resolved_path}")
                         continue
-                    text = resolved_path.read_text(encoding="utf-8")
+                    text = resolved_path.read_text(encoding="utf-8-sig")
                     parsed = parse_skill_document(text, default_name=path.parent.name)
                     key = parsed.name.casefold()
                     if key in names:
@@ -272,10 +277,19 @@ class SkillManager:
                     )
                 except (OSError, UnicodeError, SkillError) as exc:
                     errors.append(f"{path}: {type(exc).__name__}: {exc}")
+        if self.plugin_provider is not None:
+            for skill in self.plugin_provider():
+                if skill.name.casefold() not in names and len(skills) < self.max_skills:
+                    names.add(skill.name.casefold())
+                    skills.append(skill)
         return SkillCatalogSnapshot(tuple(skills), tuple(errors))
 
     def load(self, skill: SkillDefinition) -> str:
         resolved_root = skill.root.resolve(strict=True)
+        if skill.plugin_name and skill.source_revision:
+            from app.plugin_packages import tree_hash
+            if tree_hash(resolved_root) != skill.source_revision:
+                raise SkillError("Plugin files changed after installation; reinstall the plugin before loading its skills")
         resolved_path = skill.path.resolve(strict=True)
         try:
             resolved_path.relative_to(resolved_root)
@@ -284,10 +298,10 @@ class SkillManager:
         if resolved_path.stat().st_size > self.max_file_bytes:
             raise SkillError("skill file exceeds the configured size limit")
         parsed = parse_skill_document(
-            resolved_path.read_text(encoding="utf-8"),
-            default_name=skill.name,
+            resolved_path.read_text(encoding="utf-8-sig"),
+            default_name=skill.source_name or skill.name,
         )
-        if parsed.name.casefold() != skill.name.casefold():
+        if parsed.name.casefold() != (skill.source_name or skill.name).casefold():
             raise SkillError("skill identity changed after discovery")
         return parsed.instructions
 

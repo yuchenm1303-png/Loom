@@ -894,20 +894,54 @@ class LoomAppServerService:
         return self._mcp_marketplace().prepare(params)
 
     def plugins_list(self, params: dict[str, Any]) -> dict[str, Any]:
+        from app.plugin_runtime import PluginLifecycle
+        with self._guard:
+            return PluginLifecycle(self.runtime, self.store.root.parents[1]).snapshot()
+
+    def _plugin_catalog(self):
+        from app.plugin_catalog import PluginCatalog
+        with self._guard:
+            if not hasattr(self, "_plugin_catalog_client"):
+                self._plugin_catalog_client = PluginCatalog(self.store.root.parents[1])
+            return self._plugin_catalog_client
+
+    def plugins_catalog(self, params: dict[str, Any]) -> dict[str, Any]:
+        return self._plugin_catalog().list(params)
+
+    def plugins_preview(self, params: dict[str, Any]) -> dict[str, Any]:
         from app.plugin_manager import PluginManager
         manager = PluginManager(self.store.root.parents[1])
-        return {"plugins": manager.list(), "activation": "runtime-restart"}
+        source = params.get("source")
+        hint = str(params.get("nameHint") or "")
+        catalog_name = ""
+        update_for = ""
+        if params.get("catalogName"):
+            hint = str(params["catalogName"])
+            catalog_name = hint
+            source = self._plugin_catalog().source(hint)
+        elif params.get("name"):
+            update_for = str(params["name"])
+            record = manager.get(update_for)
+            source = record["source"]
+            catalog_name = record.get("catalogName", "")
+            if catalog_name:
+                source = self._plugin_catalog().source(catalog_name, refresh=True)
+                hint = catalog_name
+        if not source:
+            raise ValueError("Choose a plugin source")
+        return {**manager.preview(source, name_hint=hint, catalog_name=catalog_name), "updateFor": update_for}
 
     def plugins_manage(self, params: dict[str, Any]) -> dict[str, Any]:
         from app.plugin_manager import PluginManager
+        from app.plugin_runtime import PluginLifecycle
+        if params.get("action") == "discard":
+            return PluginManager(self.store.root.parents[1]).discard(params.get("token"))
         with self._guard:
             if self._active_sessions:
                 raise RuntimeError("finish active turns before changing plugins")
-            manager = PluginManager(self.store.root.parents[1])
-            action = self._required_text(params, "action")
-            if action in {"install", "upgrade"}:
-                return manager.install(self._required_text(params, "source"), upgrade=action == "upgrade", enabled=not bool(params.get("disabled", False)))
-            return manager.change(self._required_text(params, "name"), action, release=str(params.get("version", "")))
+            result = PluginLifecycle(self.runtime, self.store.root.parents[1]).manage(params)
+            self._notify("runtime/updated", {"runtime": self.runtime_status()})
+            return result
 
     # ---- projects --------------------------------------------------------
 
@@ -1962,6 +1996,8 @@ class LoomRpcController:
             "project/remove": self.service.project_remove,
             "plugin/list": self.service.plugins_list,
             "plugin/manage": self.service.plugins_manage,
+            "plugin/preview": self.service.plugins_preview,
+            "plugin/catalog": self.service.plugins_catalog,
             "thread/start": self.service.thread_start,
             "thread/resume": self.service.thread_resume,
             "thread/list": self.service.thread_list,

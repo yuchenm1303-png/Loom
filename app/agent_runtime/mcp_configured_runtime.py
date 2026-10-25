@@ -91,7 +91,13 @@ class ConfiguredMCPRuntime(BrowserBackendRegistryMixin, SingleLoopComputerRuntim
             self.mcp_config_path = str(Path(mcp_config_path).expanduser().resolve())
 
         from app.mcp_settings import load_managed
-        self.mcp_external_configs = tuple(resolved_servers or ())
+        from app.plugin_manager import PluginManager
+        self.plugin_manager = PluginManager(runtime_home or Path(self.mcp_config_path).parent)
+        plugin_components = self.plugin_manager.components(verify=True)
+        self.mcp_operator_configs = tuple(resolved_servers or ())
+        self.plugin_mcp_owners = plugin_components["owners"]
+        self.plugin_errors = plugin_components["errors"]
+        self.mcp_external_configs = (*self.mcp_operator_configs, *plugin_components["mcp"])
         self.mcp_managed_path = str(Path(runtime_home or Path(self.mcp_config_path).parent) / "mcp-servers.json")
         managed = load_managed(self.mcp_managed_path)
         external_names = {c.name for c in self.mcp_external_configs}

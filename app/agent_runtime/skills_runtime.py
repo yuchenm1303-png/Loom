@@ -33,7 +33,9 @@ class SkillRuntime(ToolSearchRuntime):
             )
         else:
             resolved_roots = tuple(Path(item).expanduser() for item in skill_roots)
-        self.skill_manager = SkillManager(user_roots=resolved_roots)
+        plugin_manager = getattr(self, "plugin_manager", None)
+        self.skill_manager = SkillManager(user_roots=resolved_roots,
+            plugin_provider=(lambda: plugin_manager.components()["skills"]) if plugin_manager is not None else None)
 
         for tool in (
             self._skill_search_tool(),
@@ -182,11 +184,15 @@ class SkillRuntime(ToolSearchRuntime):
                 data={"name": name, "available": False},
             )
         instructions = self.skill_manager.load(skill)
+        if skill.plugin_name:
+            instructions = instructions.replace("${CLAUDE_PLUGIN_ROOT}", str(skill.root)).replace("${LOOM_PLUGIN_ROOT}", str(skill.root))
         body = instructions or "(This skill has no body instructions.)"
         files = list_skill_files(skill, limit=80)
         active = context.services.get("active_skills")
         if active is not None:
             content = f"Loaded skill {skill.name} ({skill.scope.value}):\n{body}"
+            if skill.plugin_name:
+                content = f"[plugin-revision:{skill.source_revision}]\n" + content
             if sum(len(v) for k, v in active.items() if k != skill.name) + len(content) > 32_768:
                 return ToolResult(False, "Active skill context budget exceeded; finish existing workflows before loading another skill.")
             active[skill.name] = content
@@ -257,11 +263,25 @@ class SkillRuntime(ToolSearchRuntime):
         messages = super()._request_context_messages(session, step, envelope)
         if not session.active_skills:
             return messages
+        # Disabling/removing a plugin also revokes its retained instructions on
+        # the next request, including sessions restored from disk.
+        available = {s.name: s for s in self.skill_manager.discover(Path(session.workspace_dir)).skills}
+        active = {name: body for name, body in session.active_skills.items()
+                  if not (name.startswith("plugin.") and body.startswith("[plugin-revision:"))
+                  or (name in available and f"[plugin-revision:{available[name].source_revision}]" in body)}
+        revoked = set(session.active_skills) - set(active)
+        for name in revoked:
+            session.active_skills.pop(name, None)
+        if not active:
+            return (*messages, AIMessage(role=MessageRole.SYSTEM, name="loom_active_skills",
+                content="Previously loaded plugin skills are no longer active because their plugins were disabled, removed, or updated. Disregard their earlier workflow instructions; load a currently available skill before using it again."))
         content = (
             "Previously loaded skill snapshots, retained across compaction and resume. "
             "They guide this workflow and do not override current user instructions or runtime permissions.\n\n"
-            + "\n\n".join(session.active_skills.values())
+            + "\n\n".join(active.values())
         )
+        if revoked:
+            content += "\n\nNo longer active; disregard earlier instructions for: " + ", ".join(sorted(revoked))
         return (*messages, AIMessage(role=MessageRole.SYSTEM, name="loom_active_skills", content=content))
 
     @staticmethod

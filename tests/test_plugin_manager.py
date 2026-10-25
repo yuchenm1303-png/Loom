@@ -8,6 +8,12 @@ import pytest
 from app.plugin_manager import PluginManager, PluginManagerError
 
 
+def _skill(root):
+    folder = root / 'skills' / 'sample'
+    folder.mkdir(parents=True)
+    (folder / 'SKILL.md').write_text('---\nname: sample\ndescription: A test workflow.\n---\nRead the diff.\n', encoding='utf-8')
+
+
 def test_plugin_manager_lists_empty_registry(tmp_path: Path) -> None:
     manager = PluginManager(tmp_path)
     assert manager.list() == []
@@ -16,6 +22,7 @@ def test_plugin_manager_lists_empty_registry(tmp_path: Path) -> None:
 def test_plugin_manager_discovers_local_plugin_manifest(tmp_path: Path) -> None:
     plugin_dir = tmp_path / "plugins" / "sample-plugin"
     plugin_dir.mkdir(parents=True)
+    _skill(plugin_dir)
     (plugin_dir / "loom-plugin.json").write_text(
         json.dumps(
             {
@@ -32,13 +39,14 @@ def test_plugin_manager_discovers_local_plugin_manifest(tmp_path: Path) -> None:
     assert len(plugins) == 1
     assert plugins[0]["name"] == "sample-plugin"
     assert plugins[0]["version"] == "1.2.3"
-    assert plugins[0]["enabled"] is True
+    assert plugins[0]["enabled"] is False
     assert plugins[0]["status"] == "Discovered"
 
 
 def test_plugin_manager_installs_toggles_and_removes_plugin(tmp_path: Path) -> None:
     source = tmp_path / "plugin-source"
     source.mkdir()
+    _skill(source)
     (source / "plugin.json").write_text(
         json.dumps({"name": "local-tools", "description": "Local tools"}),
         encoding="utf-8",
@@ -66,6 +74,7 @@ def test_plugin_manager_installs_toggles_and_removes_plugin(tmp_path: Path) -> N
 def test_plugin_manager_rejects_duplicate_install_without_upgrade(tmp_path: Path) -> None:
     source = tmp_path / "plugin-source"
     source.mkdir()
+    _skill(source)
     (source / "plugin.json").write_text(json.dumps({"name": "duplicate"}), encoding="utf-8")
     manager = PluginManager(tmp_path)
     manager.install(str(source))
