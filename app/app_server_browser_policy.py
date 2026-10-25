@@ -6,6 +6,7 @@ from typing import Any, TextIO
 
 from app.agent_runtime import PermissionMode
 from .ambient_service import AmbientControllerMixin, AmbientServiceMixin
+from .project_runner.service import ProjectControllerMixin, ProjectServiceMixin
 
 from .app_server_local_ipc import LocalAppServerIpcServer, runtime_home_from_store
 from .app_server_project_move import (
@@ -15,7 +16,7 @@ from .app_server_project_move import (
 )
 
 
-class BrowserPolicyLoomAppServerService(AmbientServiceMixin, ProjectMovableLoomAppServerService):
+class BrowserPolicyLoomAppServerService(ProjectServiceMixin, AmbientServiceMixin, ProjectMovableLoomAppServerService):
     """Production App Server browser wiring with explicit backend selection."""
 
     def thread_read(self, params: dict[str, Any]) -> dict[str, Any]:
@@ -104,7 +105,7 @@ class BrowserPolicyLoomAppServerService(AmbientServiceMixin, ProjectMovableLoomA
         return super()._hud_point(tool_name, args, result)
 
 
-class BrowserPolicyLoomRpcController(AmbientControllerMixin, ProjectMovableLoomRpcController):
+class BrowserPolicyLoomRpcController(ProjectControllerMixin, AmbientControllerMixin, ProjectMovableLoomRpcController):
     def _initialize(self, params: dict[str, Any]) -> dict[str, Any]:
         result = super()._initialize(params)
         hud = dict(result.get("capabilities", {}).get("automationHud") or {})
