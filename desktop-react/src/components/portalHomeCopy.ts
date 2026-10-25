@@ -3,6 +3,7 @@
 
 export type PortalHomeCopy = {
   brandLabel: string;
+  nav: { label: string; doing: string; start: string; download: string };
   title: [string, string];
   intro: string;
   more: string;
@@ -13,8 +14,8 @@ export type PortalHomeCopy = {
   platform: string;
   notes: string;
   doing: { heading: string; items: { lead: string; text: string }[] };
-  session: { heading: string; rows: { time: string; text: string }[]; note: string; label: string };
-  start: { heading: string; steps: { lead: string; text: string }[] };
+  session: { heading: string; ask: string; rows: { time: string; text: string }[]; note: string; label: string };
+  start: { heading: string; lead: string; steps: { lead: string; text: string }[] };
   madeBy: [string, string];
   updates: string;
   classic: string;
@@ -23,6 +24,7 @@ export type PortalHomeCopy = {
 export const PORTAL_HOME_COPY: { en: PortalHomeCopy; zh: PortalHomeCopy } = {
   en: {
     brandLabel: "Loom home",
+    nav: { label: "Page sections", doing: "What it does", start: "Getting started", download: "Download" },
     title: ["A quieter way", "to get things done."],
     intro: "Loom is a personal AI agent that works on your own computer, with your files, your code and your browser. It shows every step as it happens, and it asks before it does anything that matters.",
     more: "More",
@@ -45,6 +47,7 @@ export const PORTAL_HOME_COPY: { en: PortalHomeCopy; zh: PortalHomeCopy } = {
     },
     session: {
       heading: "A task, start to finish",
+      ask: "“Fix the failing release test, then push it.”",
       rows: [
         { time: "09:12", text: "Read the project and the failing test." },
         { time: "09:13", text: "Found the cause in *release.py* and fixed it." },
@@ -56,6 +59,7 @@ export const PORTAL_HOME_COPY: { en: PortalHomeCopy; zh: PortalHomeCopy } = {
     },
     start: {
       heading: "Getting started",
+      lead: "Install once, then work from the desktop app or from this page.",
       steps: [
         { lead: "Install Loom for Windows.", text: "The installer includes the Host that does the work on your computer." },
         { lead: "Sign in.", text: "The web workspace finds that Host on this computer and connects on its own." },
@@ -68,6 +72,7 @@ export const PORTAL_HOME_COPY: { en: PortalHomeCopy; zh: PortalHomeCopy } = {
   },
   zh: {
     brandLabel: "Loom 首页",
+    nav: { label: "页面章节", doing: "能做什么", start: "开始使用", download: "下载" },
     title: ["从容开始，", "让事情向前。"],
     intro: "Loom 是运行在你自己电脑上的个人 AI 助手。它能读懂你的文件和代码，使用你的浏览器，每一步都让你看得见，并在做重要的事之前先问你。",
     more: "更多",
@@ -90,6 +95,7 @@ export const PORTAL_HOME_COPY: { en: PortalHomeCopy; zh: PortalHomeCopy } = {
     },
     session: {
       heading: "一项任务，从头到尾",
+      ask: "“修好未通过的发布测试，然后推送。”",
       rows: [
         { time: "09:12", text: "读取项目和未通过的测试。" },
         { time: "09:13", text: "在 *release.py* 中找到原因并修复。" },
@@ -101,6 +107,7 @@ export const PORTAL_HOME_COPY: { en: PortalHomeCopy; zh: PortalHomeCopy } = {
     },
     start: {
       heading: "开始使用",
+      lead: "安装一次，之后在桌面应用或这个页面里都能使用。",
       steps: [
         { lead: "安装 Windows 版。", text: "安装包里自带在你电脑上干活的 Host。" },
         { lead: "登录。", text: "网页工作区会自动找到这台电脑上的 Host 并连接。" },
