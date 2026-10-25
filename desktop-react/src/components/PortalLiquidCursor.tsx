@@ -122,7 +122,13 @@ export function PortalLiquidCursor() {
     const resizeSurfaces = (cssWidth: number, cssHeight: number) => {
       const nextWidth = Math.max(1, Math.round(cssWidth * dpr));
       const nextHeight = Math.max(1, Math.round(cssHeight * dpr));
-      if (canvas.width === nextWidth && canvas.height === nextHeight) return false;
+      // Every surface has to match. The capture and scratch canvases are what
+      // the texture is made of, and a capture left at its default size is
+      // painted with the wrong proportions and cut short: the lens then shows
+      // the control under it as a smear.
+      if (canvas.width === nextWidth && canvas.height === nextHeight &&
+          capture.width === nextWidth && capture.height === nextHeight &&
+          scratch.width === nextWidth && scratch.height === nextHeight) return false;
       for (const target of [canvas, capture, scratch]) {
         target.width = nextWidth;
         target.height = nextHeight;
@@ -179,6 +185,8 @@ export function PortalLiquidCursor() {
     let roiLeft = Number.NaN;
     let roiTop = Number.NaN;
     let roiLockedTarget: HTMLElement | null = null;
+    let roiLockedBaseX = Number.NaN;
+    let roiLockedBaseY = Number.NaN;
     let snappedRoiWidth = FREE_ROI_SIZE;
     let snappedRoiHeight = FREE_ROI_SIZE;
     let rasterDirty = true;
@@ -427,14 +435,24 @@ export function PortalLiquidCursor() {
         // The button can still wobble inside this texture without dragging the ROI.
         const baseCenterX = rect.left + rect.width / 2 - (state?.appliedX ?? 0);
         const baseCenterY = rect.top + rect.height / 2 - (state?.appliedY ?? 0);
-        if (roiLockedTarget !== target || !Number.isFinite(roiLeft) || !Number.isFinite(roiTop)) {
+        // The lock follows the target's place on the page. A page that reflows
+        // under the cursor (a font that finishes loading, a header that grows)
+        // moves the target, and a window locked to the old place samples the
+        // page from somewhere else: the control under the lens is then drawn
+        // displaced and smeared.
+        if (roiLockedTarget !== target || !Number.isFinite(roiLeft) || !Number.isFinite(roiTop) ||
+            Math.abs(baseCenterX - roiLockedBaseX) >= 1 || Math.abs(baseCenterY - roiLockedBaseY) >= 1) {
           roiLeft = Math.round(Math.max(minLeft, Math.min(maxLeft, baseCenterX - roiWidth / 2)));
           roiTop = Math.round(Math.max(minTop, Math.min(maxTop, baseCenterY - roiHeight / 2)));
           roiLockedTarget = target;
+          roiLockedBaseX = baseCenterX;
+          roiLockedBaseY = baseCenterY;
           rasterDirty = true;
         }
       } else {
         roiLockedTarget = null;
+        roiLockedBaseX = Number.NaN;
+        roiLockedBaseY = Number.NaN;
         if (!Number.isFinite(roiLeft) || !Number.isFinite(roiTop)) {
           roiLeft = Math.round(Math.max(minLeft, Math.min(maxLeft, lensX - roiWidth / 2)));
           roiTop = Math.round(Math.max(minTop, Math.min(maxTop, lensY - roiHeight / 2)));
@@ -487,7 +505,11 @@ export function PortalLiquidCursor() {
       const moved = Math.abs(roiLeft - lastRoiLeft) >= 0.75 || Math.abs(roiTop - lastRoiTop) >= 0.75;
       if (!rasterDirty && !moved) return;
       const minCaptureInterval = activeTarget ? 16 : 32;
-      if (now - lastCapture < minCaptureInterval) return;
+      // A capture window that moved is refreshed in the same frame. The canvas
+      // is drawn at the new position, so a texture taken at the old one shows
+      // the page from somewhere else and the control under the cursor reads as
+      // flickering while the lens travels.
+      if (!moved && now - lastCapture < minCaptureInterval) return;
       lastCapture = now;
       lastRoiLeft = roiLeft;
       lastRoiTop = roiTop;

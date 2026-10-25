@@ -20,11 +20,20 @@ and checks that the standalone homepage contains exactly the same string.
 reference's `renderLoopCallback`: lens positions are bottom-up ROI-local UVs;
 lens sizes and `u_resolution` use screen DPR, independent of capture resolution;
 `u_globalBounds` and `u_roiBounds` are both `(0,0,1,1)` for the single ROI.
-It passes the reference Mouse lens settings (strength .95, pinch 7.7,
-aberration .12, white tint .05, blur 4, no zoom or wobble) and the actual
-homepage LiquidGlass instance settings (merge enabled, smoothness .24,
-backdrop blur and reflections disabled). Component defaults alone are not the
-published site's configuration.
+It passes the reference Mouse lens settings (pinch 7.7, aberration .12, white
+tint .05, blur 4, no zoom or wobble) and the actual homepage LiquidGlass instance
+settings (merge enabled, smoothness .24, backdrop blur and reflections
+disabled). Component defaults alone are not the published site's configuration.
+
+One uniform is scaled on the host side: the bend. The shader bends the sampled
+map by `strength * 40` pixels at the rim, and its slope there is that bend
+times `pinch / 100`. At the reference strength that slope is 2.9, so the map
+folds over itself: neighbouring pixels sample in reverse order, the glyphs
+under the lens repeat, and a control the lens is mounted on reads as a
+flickering double of its own label. `lensBendStrength` scales the strength so
+the bend stays a tenth under the `100 / pinch` pixels the map can carry
+without folding. The vendored GLSL is not edited, and the shape of the
+reference's bend curve is untouched: only its size is held to the lens.
 
 ## Loom integration
 
@@ -33,6 +42,19 @@ published site's configuration.
 - `PortalLiquidCursor.tsx` owns magnetic controls, click/input handling,
   capture region, uploads, lifecycle and idle sleep. Press feedback changes
   the lens geometry; it does not replace or alter the reference optics.
+
+A capture window that moves is captured again in the same frame: the canvas is
+drawn at the new position, so a texture taken at the old one would show the
+page from somewhere else, and the control under the cursor would read as
+flickering while the lens travels. The window also follows the target's place
+on the page: a page that reflows under the cursor (a font that finishes
+loading, a header that grows) moves the target, and a window locked to the old
+place samples the page from somewhere else.
+
+The WebGL canvas, the capture canvas and the scratch canvas are resized
+together, never one alone. The texture is made of the capture canvas, so a
+capture left at a different size is painted with the wrong proportions and cut
+short, and the lens then shows the control under it as a smear.
 
 The free capture region follows the reference's 260px locked box. It expands
 when needed to contain a large snapped control and stays allocated through

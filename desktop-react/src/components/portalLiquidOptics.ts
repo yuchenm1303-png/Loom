@@ -6,6 +6,20 @@ export const LIQUID_OPTICS = {
   reflection: 0.15, tint: 0.05, blur: 4,
 } as const;
 
+// The shader bends the sampled map by `strength * 40` pixels at the rim, and
+// its slope there is that bend times `pinch / 100`. At the reference settings
+// the slope is 2.9, so the map folds over itself: neighbouring pixels sample
+// in reverse order, the glyphs under the lens repeat, and a control the lens
+// mounts on reads as a flickering double of its own label.
+//
+// The bend is bounded here, on the host side, so the map stays monotonic. The
+// vendored GLSL is untouched; only the uniform it reads is scaled to the most
+// the map can carry without folding: `100 / pinch` pixels, a tenth under it.
+export function lensBendStrength(radius: number): number {
+  const bendBudget = (100 / LIQUID_OPTICS.pinch) * 0.9;
+  return Math.min(LIQUID_OPTICS.strength, bendBudget / 40);
+}
+
 const uniformNames = [
   "u_texture", "u_resolution", "u_globalBounds", "u_roiBounds",
   "u_positions[0]", "u_lensSizes[0]", "u_tintColors[0]", "u_lensSettings[0]",
@@ -38,7 +52,9 @@ export function createReferenceLensRenderer(gl: WebGLRenderingContext, program: 
     positions[1] = 1 - centerY / roiHeight;
     sizes[0] = width * screenDpr; sizes[1] = height * screenDpr;
     tints.set([1, 1, 1, LIQUID_OPTICS.tint]);
-    settings.set([0, LIQUID_OPTICS.strength, LIQUID_OPTICS.pinch, 9999 * screenDpr]);
+    // The shader's own radius: the bend is scaled to what this lens can carry.
+    const radius = Math.min(sizes[0], sizes[1]) * 0.5;
+    settings.set([0, lensBendStrength(radius), LIQUID_OPTICS.pinch, 9999 * screenDpr]);
     opticals.set([LIQUID_OPTICS.blur, LIQUID_OPTICS.reflection, 0, 0]);
     extras.set([0, LIQUID_OPTICS.aberration, 1, 0]);
     gl.useProgram(program);

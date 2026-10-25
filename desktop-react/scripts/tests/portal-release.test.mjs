@@ -140,3 +140,30 @@ test("original Loom artwork is the rightmost editorial header action", () => {
   assert.ok(portal.includes('import "./portal-home-icon.css";'), "keep icon layout independent of homepage CSS rewrites");
   assert.ok(portal.includes('next === "classic" ? "/classic" : "/"'), "classic route stays intact");
 });
+
+test("the glass cursor keeps the control it is mounted on readable", () => {
+  const cursor = readFileSync(new URL("../../src/components/PortalLiquidCursor.tsx", import.meta.url), "utf8");
+  const optics = readFileSync(new URL("../../src/components/portalLiquidOptics.ts", import.meta.url), "utf8");
+
+  // The bend of the sampled map may not exceed what the map can carry: a bend
+  // of strength * 40 px folds it over itself, repeats the glyphs under the
+  // lens and reads as a flickering double of the label of the control.
+  assert.ok(optics.includes("export function lensBendStrength"), "the bend is bounded on the host side");
+  assert.ok(optics.includes("100 / LIQUID_OPTICS.pinch"), "the bound is the fold the reference shader cannot carry");
+  assert.ok(optics.includes("lensBendStrength(radius)"), "the renderer reads the bounded strength");
+
+  // Every surface is resized together: the texture is made of the capture
+  // canvas, and a capture left at another size smears the control it shows.
+  for (const surface of ["canvas", "capture", "scratch"]) {
+    assert.ok(cursor.includes(`${surface}.width === nextWidth && ${surface}.height === nextHeight`),
+      `the ${surface} surface is measured before it is skipped`);
+  }
+  assert.ok(cursor.includes("for (const target of [canvas, capture, scratch])"), "all three surfaces are resized together");
+
+  // A capture window that moved is refreshed in the same frame, and it
+  // follows the target's place on the page.
+  assert.ok(cursor.includes("if (!moved && now - lastCapture < minCaptureInterval) return;"),
+    "a moved capture window is not held back by the capture interval");
+  assert.ok(cursor.includes("Math.abs(baseCenterX - roiLockedBaseX) >= 1"),
+    "the capture window follows the target when the page reflows");
+});
