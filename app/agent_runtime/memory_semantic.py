@@ -1072,7 +1072,9 @@ def _related_score(
 
 
 def _terms(text: str) -> set[str]:
-    return {match.group(0).casefold() for match in _TERM_RE.finditer(str(text or ""))}
+    from .memory_retrieval import terms
+
+    return set(terms(text))
 
 
 def _normalize(text: str) -> str:

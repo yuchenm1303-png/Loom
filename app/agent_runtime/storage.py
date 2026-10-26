@@ -798,6 +798,12 @@ class FileAgentSessionStore:
             return ()
         return self._view(session_id, limit=limit, project=_context_event_projection if context_only else None)
 
+    def turn_events(self, session_id: str, turn_id: str) -> tuple[AgentEvent, ...]:
+        """Read raw evidence for one turn without materializing other turns."""
+        return self._view(session_id, select=lambda records: [
+            record for record in records if str(record.get("turn_id") or "") == turn_id
+        ])
+
     def context_select(self, session_id: str, *, turn_id: str | None = None, kinds=None,
                        last: int | None = None) -> tuple[AgentEvent, ...]:
         """The context projection narrowed to what a caller reads, before any event of the rest is made.

@@ -71,13 +71,18 @@ def memory_tools(store: MemoryStore) -> tuple[AgentTool, ...]:
             _search_record(hit.record, score=hit.score, reasons=hit.reasons)
             for hit in hits
         ]
-        data = {"query": query, "memories": matches}
+        handoffs = store.search_handoffs(query, workspace=context.workspace, limit=min(3, limit),
+                                        exclude_session_id=context.session_id)
+        for handoff in handoffs:
+            handoff["memory_id"] = f"handoff:{handoff['session_id']}:{handoff['turn_id']}"
+            handoff["evidence"] = str(handoff["evidence"])[:1600]
+        data = {"query": query, "memories": matches, "handoffs": handoffs}
         return ToolResult(
             ok=True,
             content=(
                 _MEMORY_AUTHORITY_NOTICE + "\nNo relevant long-term memories found."
-                if not matches
-                else _MEMORY_AUTHORITY_NOTICE + "\n" + json.dumps(matches, ensure_ascii=False, indent=2)
+                if not matches and not handoffs
+                else _MEMORY_AUTHORITY_NOTICE + "\n" + json.dumps(data, ensure_ascii=False, indent=2)
             ),
             data=data,
         )
@@ -89,6 +94,13 @@ def memory_tools(store: MemoryStore) -> tuple[AgentTool, ...]:
         memory_id = str(arguments.get("memory_id") or "").strip()
         if not memory_id:
             raise ValueError("memory_id must not be empty")
+        if memory_id.startswith("handoff:"):
+            handoff = store.read_handoff(memory_id, workspace=context.workspace)
+            return ToolResult(
+                ok=handoff is not None,
+                content=_MEMORY_AUTHORITY_NOTICE + "\n" + json.dumps(handoff, ensure_ascii=False),
+                data={"handoff": handoff, "found": handoff is not None},
+            )
         evidence_limit = int(arguments.get("evidence_limit") or 12)
         record = store.get_visible(memory_id, workspace=context.workspace)
         if record is None:
@@ -130,6 +142,7 @@ def memory_tools(store: MemoryStore) -> tuple[AgentTool, ...]:
             "last_success_at": state.last_success_at,
             "failure_count": state.failure_count,
             "retry_at": state.retry_at,
+            "last_error": state.last_error,
         }
         return ToolResult(
             ok=True,

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import hashlib
-import math
+import json
 import re
 import sqlite3
 import threading
@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Iterable
 
 from .kept_connection import KeptConnection
+from .memory_retrieval import rank as rank_memory
 from .storage import utc_now
 
 
@@ -341,6 +342,25 @@ class MemoryStore:
                     last_error TEXT NOT NULL DEFAULT '',
                     updated_at TEXT NOT NULL
                 );
+                CREATE TABLE IF NOT EXISTS memory_handoffs (
+                    session_id TEXT NOT NULL,
+                    turn_id TEXT NOT NULL,
+                    scope_key TEXT NOT NULL,
+                    terminal_event_id TEXT NOT NULL,
+                    outcome TEXT NOT NULL,
+                    request TEXT NOT NULL,
+                    evidence TEXT NOT NULL,
+                    paths TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    PRIMARY KEY(session_id, turn_id)
+                );
+                CREATE INDEX IF NOT EXISTS idx_memory_handoffs_workspace
+                ON memory_handoffs(scope_key, updated_at DESC);
+                CREATE TABLE IF NOT EXISTS memory_handoff_tombstones (
+                    session_id TEXT NOT NULL,
+                    turn_id TEXT NOT NULL,
+                    PRIMARY KEY(session_id, turn_id)
+                );
                 """
             )
             _ensure_column(
@@ -413,6 +433,96 @@ class MemoryStore:
                 """
             )
 
+    def save_handoff(self, *, session_id: str, turn_id: str, workspace: str,
+                     terminal_event_id: str, outcome: str, request: str,
+                     evidence: str, paths: list[str], updated_at: str) -> None:
+        """Observed work, not a claim that a feature is verified or deployed."""
+        with self._lock, self._connect() as connection:
+            connection.execute(
+                """INSERT INTO memory_handoffs
+                SELECT ?, ?, ?, ?, ?, ?, ?, ?, ? WHERE NOT EXISTS (
+                    SELECT 1 FROM memory_handoff_tombstones WHERE session_id=? AND turn_id=?
+                )
+                ON CONFLICT(session_id, turn_id) DO UPDATE SET
+                terminal_event_id=excluded.terminal_event_id, outcome=excluded.outcome,
+                request=excluded.request, evidence=excluded.evidence, paths=excluded.paths,
+                updated_at=excluded.updated_at""",
+                (session_id, turn_id, workspace_memory_key(workspace), terminal_event_id,
+                 outcome, redact_secrets(request)[:4000], redact_secrets(evidence)[:12000],
+                 json.dumps([redact_secrets(str(p)) for p in paths[:100]], ensure_ascii=False), updated_at,
+                 session_id, turn_id),
+            )
+
+    def search_handoffs(self, query: str, *, workspace: str | Path,
+                        limit: int = 3, exclude_session_id: str = "") -> list[dict[str, object]]:
+        with self._lock, self._connect() as connection:
+            rows = connection.execute(
+                """SELECT * FROM memory_handoffs WHERE scope_key=? AND session_id!=?
+                ORDER BY updated_at DESC LIMIT 500""",
+                (workspace_memory_key(workspace), exclude_session_id),
+            ).fetchall()
+        documents = [f"{r['request']} {r['paths']} {r['evidence']}" for r in rows]
+        ranked = []
+        for row, (score, reasons) in zip(rows, rank_memory(query, documents)):
+            if score <= 0:
+                continue
+            item = dict(row)
+            item.pop("scope_key")
+            item["paths"] = json.loads(str(item["paths"]))
+            # Retrieval must not substitute old execution outcomes for verification.
+            item["verification"] = "historical observation; recheck current files and deployment"
+            item["score"] = score
+            item["reasons"] = list(reasons)
+            ranked.append(item)
+        ranked.sort(key=lambda item: (float(item["score"]), str(item["updated_at"])), reverse=True)
+        return ranked[:max(1, min(10, int(limit)))]
+
+    def read_handoff(self, memory_id: str, *, workspace: str | Path) -> dict[str, object] | None:
+        parts = memory_id.split(":")
+        if len(parts) != 3 or parts[0] != "handoff":
+            return None
+        with self._lock, self._connect() as connection:
+            row = connection.execute(
+                "SELECT * FROM memory_handoffs WHERE session_id=? AND turn_id=? AND scope_key=?",
+                (parts[1], parts[2], workspace_memory_key(workspace)),
+            ).fetchone()
+        if not row:
+            return None
+        result = dict(row)
+        result.pop("scope_key")
+        result["paths"] = json.loads(str(result["paths"]))
+        return result
+
+    def delete_handoff(self, memory_id: str, *, workspace: str | Path) -> bool:
+        handoff = self.read_handoff(memory_id, workspace=workspace)
+        if handoff is None:
+            return False
+        with self._lock, self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            try:
+                self._forget_handoff(connection, str(handoff["session_id"]), str(handoff["turn_id"]))
+                connection.execute("COMMIT")
+            except Exception:
+                connection.execute("ROLLBACK")
+                raise
+        return True
+
+    @staticmethod
+    def _forget_handoff(connection, session_id: str, turn_id: str) -> None:
+        connection.execute("INSERT OR IGNORE INTO memory_handoff_tombstones VALUES (?, ?)", (session_id, turn_id))
+        connection.execute("DELETE FROM memory_handoffs WHERE session_id=? AND turn_id=?", (session_id, turn_id))
+
+    def extraction_for_range(self, session_id: str, start: str, end: str) -> MemoryExtraction | None:
+        if not start or not end:
+            return None
+        with self._lock, self._connect() as connection:
+            row = connection.execute(
+                """SELECT * FROM memory_extractions WHERE source_session_id=?
+                AND source_start_event_id=? AND source_end_event_id=? LIMIT 1""",
+                (session_id, start, end),
+            ).fetchone()
+        return MemoryExtraction(**dict(row)) if row else None
+
     def add_extraction(
         self,
         *,
@@ -440,6 +550,15 @@ class MemoryStore:
         with self._lock, self._connect() as connection:
             connection.execute("BEGIN IMMEDIATE")
             try:
+                if start_event_id and end_event_id:
+                    existing = connection.execute(
+                        """SELECT * FROM memory_extractions WHERE source_session_id=?
+                        AND source_start_event_id=? AND source_end_event_id=? LIMIT 1""",
+                        (session_id, start_event_id, end_event_id),
+                    ).fetchone()
+                    if existing:
+                        connection.execute("COMMIT")
+                        return MemoryExtraction(**dict(existing))
                 connection.execute(
                     """
                     INSERT INTO memory_extractions(
@@ -955,6 +1074,12 @@ class MemoryStore:
                     return False
 
                 fingerprint = str(row["fingerprint"])
+                sources = connection.execute(
+                    "SELECT DISTINCT source_session_id, source_turn_id FROM memory_evidence WHERE memory_id=?",
+                    (key,),
+                ).fetchall()
+                for source in sources:
+                    self._forget_handoff(connection, source["source_session_id"], source["source_turn_id"])
                 connection.execute(
                     "DELETE FROM memory_evidence WHERE memory_id = ?",
                     (key,),
@@ -982,10 +1107,10 @@ class MemoryStore:
         *,
         workspace: str | Path | None = None,
         include_global: bool = True,
-        limit: int = 100,
+        limit: int | None = 100,
         status: str = "active",
     ) -> tuple[MemoryRecord, ...]:
-        cap = max(1, min(1000, int(limit)))
+        cap = -1 if limit is None else max(1, min(1000, int(limit)))
         wanted_status = str(status or "active").strip().casefold()
         if wanted_status not in {"active", "archived", "superseded"}:
             raise ValueError("memory status must be active, archived, or superseded")
@@ -1095,67 +1220,28 @@ class MemoryStore:
         records = self.list_records(
             workspace=workspace,
             include_global=include_global,
-            limit=500,
+            limit=None,
         )
         if not records:
             return ()
 
-        query_norm = _normalize(text)
-        query_terms = _terms(text)
         scored: list[MemorySearchHit] = []
-        for record in records:
-            body_norm = _normalize(record.text)
-            body_terms = _terms(record.text)
-            overlap = len(query_terms.intersection(body_terms))
-            contains_query = bool(query_norm and query_norm in body_norm)
-            contains_body = bool(body_norm and body_norm in query_norm)
-            if require_query_match and not (overlap or contains_query or contains_body):
+        matches = rank_memory(text, [record.text for record in records])
+        for record, (relevance, match_reasons) in zip(records, matches):
+            if require_query_match and relevance <= 0:
                 continue
-
-            score = float(overlap * 3)
-            reasons: list[str] = []
-            if overlap:
-                reasons.append(f"term_overlap:{overlap}")
-            if contains_query:
-                score += 12.0
-                reasons.append("phrase_match")
-            elif contains_body:
-                score += 5.0
-                reasons.append("query_contains_memory")
-            if record.category is MemoryCategory.PREFERENCE:
-                score += 0.75
-                reasons.append("preference")
-            importance_boost = record.importance * 0.35
-            score += importance_boost
-            if record.importance >= 4:
-                reasons.append(f"importance:{record.importance}")
-            if record.source_count > 1:
-                score += math.log2(max(1, record.source_count)) * 0.25
-                reasons.append(f"sources:{record.source_count}")
-            if record.usage_count:
-                score += math.log2(max(1, record.usage_count + 1)) * 0.2
-                reasons.append(f"used:{record.usage_count}")
+            # Metadata only breaks relevance ties. Injection frequency is not feedback.
+            reasons = list(match_reasons)
+            score = relevance * 10
             if record.scope is MemoryScope.WORKSPACE:
-                score += 0.5
+                score += 0.2
                 reasons.append("workspace")
-            score += max(0.0, min(1.0, record.confidence)) * 0.4
-            age_days = _age_days(
-                record.last_verified_at
-                or record.last_used_at
-                or record.updated_at
-            )
-            freshness = max(0.0, 1.0 - min(age_days, 365.0) / 365.0)
-            score += freshness * 0.6
-            if age_days <= 30:
-                reasons.append("recent")
-            if score > 0.0:
-                scored.append(
-                    MemorySearchHit(
-                        record=record,
-                        score=score,
-                        reasons=tuple(reasons),
-                    )
-                )
+            score += record.importance * 0.05 + record.confidence * 0.05
+            # Never refresh a fact merely because it was retrieved.
+            age_days = _age_days(record.last_verified_at or record.updated_at)
+            score += max(0.0, 1 - min(age_days, 365) / 365) * 0.15
+            if relevance > 0:
+                scored.append(MemorySearchHit(record=record, score=score, reasons=tuple(reasons)))
 
         scored.sort(
             key=lambda item: (item.score, item.record.updated_at),

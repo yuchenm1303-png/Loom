@@ -35,7 +35,11 @@ class MemoryPipeline:
         self._thread.start()
 
     def on_event(self, event: AgentEvent) -> None:
-        if event.kind is AgentEventKind.TURN_COMPLETED:
+        if event.kind in {
+            AgentEventKind.TURN_COMPLETED, AgentEventKind.TURN_FAILED,
+            AgentEventKind.TURN_CANCELLED, AgentEventKind.TURN_INTERRUPTED,
+            AgentEventKind.LIMIT_REACHED,
+        }:
             self.schedule(event.session_id)
 
     def schedule(self, session_id: str, *, delay: float | None = None) -> None:
