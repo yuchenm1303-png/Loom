@@ -2,6 +2,8 @@
 
 状态：已实现单 worker 后端执行切片，不是完整重型功能。实施目标见 [首版规格](long-running-project-spec-2026-10-25.md)。
 
+2026-10-26：[第二批独立验收与自动返工](project-runner-independent-review-2026-10-26.md)已扩展本底座；新项目默认进入独立验收，manual 策略及旧记录保留本页描述的第一批行为。以下边界按第一批交付时点记录。
+
 ## 已可运行
 
 - Host 的生产 BrowserPolicy Service/Controller 加载 Project Runner，使用现有 agent runtime、凭证准备、权限和工具执行链。

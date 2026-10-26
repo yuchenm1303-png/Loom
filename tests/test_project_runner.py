@@ -42,7 +42,8 @@ def build(tmp_path, responses, *, tools=(), service_class=Service):
 
 def create(service, source, **kwargs):
     return service.project_run_create({"operationId": str(uuid.uuid4()), "threadId": source,
-        "objective": "Implement a working project", "tokenBudget": 1000, "maxEpisodes": 8, **kwargs})
+        "objective": "Implement a working project", "tokenBudget": 1000, "maxEpisodes": 8,
+        "reviewPolicy": "manual", **kwargs})
 
 
 def control(service, run, action):
@@ -350,7 +351,7 @@ def test_production_host_loads_both_schedulers_and_routes_project_rpc(tmp_path):
     try:
         rpc = BrowserPolicyLoomRpcController(service)
         run = rpc._dispatch("projectRun/create", {"operationId": "production-create", "threadId": source,
-            "objective": "Build the product", "tokenBudget": 1000, "maxEpisodes": 4})["run"]
+            "objective": "Build the product", "tokenBudget": 1000, "maxEpisodes": 4, "reviewPolicy": "manual"})["run"]
         control(service, run, "start")
         for _ in range(3):
             cycle(service)

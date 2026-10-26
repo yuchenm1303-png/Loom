@@ -2,24 +2,14 @@
 from __future__ import annotations
 
 import copy
-import os
 from pathlib import Path
-import subprocess
 
 from app.agent_runtime import PermissionMode
 from app.agent_runtime.contracts import AgentEventKind as E
 from app.app_server_local_ipc import runtime_home_from_store
 from .runner import ProjectRunner
 from .store import ProjectStore
-
-
-def git(root, *args):
-    result = subprocess.run(["git", "-C", str(root), *args], capture_output=True, text=True,
-                            encoding="utf-8", errors="replace", timeout=30,
-                            creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0)
-    if result.returncode:
-        raise ValueError(f"Git operation failed: {result.stderr[:2000]}")
-    return result.stdout.strip()
+from .review import git, candidate, review_workspace, assess, snapshot, definition_hash
 
 
 class ProjectExecutor:
@@ -28,6 +18,8 @@ class ProjectExecutor:
 
     @staticmethod
     def session_key(run):
+        if run["phase"] == "verifying":
+            return f"review-{run['reviewCandidate']['id']}"
         return "planner" if run["phase"] == "planning" else f"worker-{run['taskIndex']}"
 
     def session(self, run):
@@ -41,6 +33,9 @@ class ProjectExecutor:
         if common != Path(run["gitCommonDir"]):
             raise ValueError("project workspace identity changed; inspect before continuing")
         git(workspace, "merge-base", "--is-ancestor", run["baseCommit"], "HEAD")
+        if run["phase"] == "verifying":
+            expected = self.service.project_store.candidate(run)
+            workspace = review_workspace(run, expected, workspace, self.home / "reviews" / run["id"] / expected["id"])
         if key in run["sessions"]:
             return run["sessions"][key]
         source = self.service._load(run["sourceThreadId"])
@@ -58,6 +53,23 @@ class ProjectExecutor:
             library.write(session.session_id, {"title": f"Project {run['id'][:8]} · {key}",
                           "titleSource": "manual", "autoTitleDisabled": True, "projectRunId": run["id"]})
         return session.session_id
+
+    def result_facts(self, run, episode, reply):
+        source = self.home / "workspaces" / run["id"]
+        if run.get("reviewPolicy") != "independent":
+            return {}
+        if episode["phase"] == "working" and reply.get("action") == "candidate":
+            return {"candidate": candidate(run, source)}
+        if episode["phase"] == "verifying":
+            expected = self.service.project_store.candidate(run)
+            workspace = Path(self.service._load(episode["sessionId"]).workspace_dir)
+            events = self.service.store.events(episode["sessionId"])
+            assessment = assess(run, episode, reply, expected, source, workspace, events)
+            facts = {"assessment": assessment}
+            if assessment["verdict"] == "passed" and run["reviewScope"] == "task" and run["taskIndex"] + 1 == len(run["plan"]):
+                facts["finalCandidate"] = candidate({**run, "reviewScope": "project", "taskIndex": len(run["plan"])}, source)
+            return facts
+        return {}
 
     def dispatch(self, episode):
         service = self.service
@@ -163,11 +175,18 @@ class ProjectServiceMixin:
         if len(objective) > 20000:
             raise ValueError("objective is too long")
         budget, episodes = params.get("tokenBudget"), params.get("maxEpisodes")
+        policy, cycles = params.get("reviewPolicy", "independent"), params.get("maxReviewCycles", 3)
+        if not isinstance(policy, str) or policy not in {"manual", "independent"} or type(cycles) is not int or not 1 <= cycles <= 10:
+            raise ValueError("reviewPolicy must be manual or independent; maxReviewCycles must be within 1..10")
         if type(budget) is not int or not 1 <= budget <= 1_000_000_000:
             raise ValueError("tokenBudget must be a positive integer")
         if type(episodes) is not int or not 1 <= episodes <= 10000:
             raise ValueError("maxEpisodes must be within 1..10000")
         request = {"threadId": source.session_id, "objective": objective, "tokenBudget": budget, "maxEpisodes": episodes}
+        # Omitted fields preserve retry fingerprints for already-created v1 runs.
+        for key in ("reviewPolicy", "maxReviewCycles"):
+            if key in params:
+                request[key] = params[key]
         previous = self.project_store.lookup(params.get("operationId"), {"action": "create", **request})
         if previous:
             return previous
@@ -180,7 +199,8 @@ class ProjectServiceMixin:
             "sourceThreadId": source.session_id, "objective": objective, "tokenBudget": budget, "maxEpisodes": episodes,
             "repository": str(root), "baseCommit": git(root, "rev-parse", "HEAD"),
             "gitCommonDir": str(Path(git(root, "rev-parse", "--path-format=absolute", "--git-common-dir")).resolve()),
-            "budgetEnforcement": "between_episodes", "delivery": "isolated_candidate_only"}, request=request)
+            "budgetEnforcement": "between_episodes", "delivery": "isolated_candidate_only",
+            "reviewPolicy": policy, "maxReviewCycles": cycles}, request=request)
 
     def project_control(self, params, action):
         with self.project_runner.guard:
@@ -190,24 +210,64 @@ class ProjectServiceMixin:
                 self.project_runner.executor.cancel(run["activeEpisode"])
             return run
 
+    def project_read(self, run_id):
+        run = self.project_store.get(run_id)
+        run["verificationFreshness"] = "not_assessed"
+        if run.get("verifiedCandidate"):
+            try:
+                expected = run["verifiedCandidate"]
+                current = snapshot(self.project_store.home / "workspaces" / run["id"])
+                run["verificationFreshness"] = "current" if current["digest"] == expected["digest"] and definition_hash(run) == expected["definitionHash"] else "stale"
+            except (ValueError, OSError):
+                run["verificationFreshness"] = "unavailable"
+        return run
+
+    def project_review(self, params):
+        with self.project_runner.guard:
+            run_id = self._required_text(params, "runId")
+            revision = params.get("expectedRevision")
+            if type(revision) is not int or revision < 1:
+                raise ValueError("expectedRevision must be a positive integer")
+            request = {"action": "review", "id": run_id, "expectedRevision": revision,
+                       **{key: params[key] for key in ("tokenBudget", "maxEpisodes", "maxReviewCycles") if key in params}}
+            previous = self.project_store.lookup(params.get("operationId"), request)
+            if previous:
+                return previous
+            run = self.project_store.get(run_id)
+            if run["revision"] != revision or not self.project_store.can_review(run):
+                raise ValueError("Review requires a settled candidate at the current revision")
+            policy = {key: params.get(key, run.get(key, default)) for key, default in
+                      (("tokenBudget", 1000), ("maxEpisodes", 8), ("maxReviewCycles", 3))}
+            for key, maximum in (("tokenBudget", 1_000_000_000), ("maxEpisodes", 10000), ("maxReviewCycles", 10)):
+                if type(policy[key]) is not int or not 1 <= policy[key] <= maximum:
+                    raise ValueError(f"Invalid review policy {key}")
+            source = self.project_store.home / "workspaces" / run["id"]
+            frozen = candidate({**run, "reviewScope": "project", "taskIndex": len(run["plan"])}, source)
+            return self.project_store.begin_review(params.get("operationId"), request, frozen, policy)
+
 
 class ProjectControllerMixin:
     def _initialize(self, params):
         result = super()._initialize(params)
         result.setdefault("capabilities", {})["projectRunner"] = {
-            "version": 1, "maxWorkers": 1, "delivery": "isolated_candidate_only", "tokenLimit": "between_episodes"}
+            "version": 2, "maxWorkers": 1, "delivery": "isolated_candidate_only", "tokenLimit": "between_episodes",
+            "independentReview": True, "automaticRework": True}
         return result
 
     def _dispatch(self, method, params):
         if method == "projectRun/create":
             return {"run": self.service.project_run_create(params)}
         if method == "projectRun/get":
-            return {"run": self.service.project_store.get(self.service._required_text(params, "runId"))}
+            return {"run": self.service.project_read(self.service._required_text(params, "runId"))}
         if method == "projectRun/list":
             return {"runs": self.service.project_store.list(), "error": self.service.project_runner.error}
         if method == "projectRun/events":
             return {"events": self.service.project_store.events(self.service._required_text(params, "runId"),
                     int(params.get("afterSequence", 0)), int(params.get("limit", 100)))}
+        if method == "projectRun/assessments":
+            return {"assessments": self.service.project_store.assessments(self.service._required_text(params, "runId"))}
+        if method == "projectRun/review":
+            return {"run": self.service.project_review(params)}
         if method in {f"projectRun/{action}" for action in ("start", "pause", "resume", "cancel")}:
             return {"run": self.service.project_control(params, method.split("/")[1])}
         return super()._dispatch(method, params)
