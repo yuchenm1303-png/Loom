@@ -706,6 +706,15 @@ def _patch_service(module: ModuleType) -> None:
             return
         with self._auto_title_guard:
             if thread_id in self._auto_title_inflight:
+                if force:
+                    # A later successful turn can race with the final few
+                    # instructions of a failed title worker. Do not drop that
+                    # explicit recovery request while the old worker exits.
+                    pending = getattr(self, "_auto_title_forced_pending", None)
+                    if pending is None:
+                        pending = set()
+                        self._auto_title_forced_pending = pending
+                    pending.add(thread_id)
                 return
             metadata = self.thread_library.read(thread_id)
             if bool(metadata.get("autoTitleDisabled")) or _metadata_title_blocks_auto_title(metadata):
@@ -801,6 +810,11 @@ def _patch_service(module: ModuleType) -> None:
         finally:
             with self._auto_title_guard:
                 self._auto_title_inflight.discard(thread_id)
+                pending = getattr(self, "_auto_title_forced_pending", set())
+                retry_forced = thread_id in pending
+                pending.discard(thread_id)
+            if retry_forced:
+                self._schedule_auto_title(thread_id, force=True)
             # Short-lived retry timers give first-turn transient failures a real
             # second chance even if the user does not send another message.
             # Long cooldowns (e.g. balance errors) resume on read/list/turn
