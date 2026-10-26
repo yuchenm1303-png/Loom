@@ -43,7 +43,7 @@ def test_committed_title_is_displayed_as_saved() -> None:
     assert _metadata_display_title({"title": "你好，我是模型。", "titleSource": "auto"}) == ("你好，我是模型。", "auto")
 
 
-def test_store_saves_nonempty_raw_title_and_rejects_second_attempt(tmp_path: Path) -> None:
+def test_failed_title_is_cooldown_gated_but_recoverable(tmp_path: Path) -> None:
     session_id = "title-state"
     directory = tmp_path / session_id
     directory.mkdir()
@@ -53,4 +53,14 @@ def test_store_saves_nonempty_raw_title_and_rejects_second_attempt(tmp_path: Pat
     assert store.claim_auto_title_attempt(session_id, source_prompt="你好")
     store.finish_auto_title_attempt(session_id, "empty", source_prompt="你好")
     assert store.read(session_id)["autoTitleFallback"] is True
+    assert store.read(session_id)["autoTitleNextRetryAt"]
     assert not store.mark_auto_title_pending(session_id, source_prompt="你好")
+    assert not store.claim_auto_title_attempt(session_id, source_prompt="你好")
+
+    store.write(session_id, {"autoTitleNextRetryAt": "2000-01-01T00:00:00+00:00"})
+    assert store.mark_auto_title_pending(session_id, source_prompt="你好")
+    assert store.claim_auto_title_attempt(session_id, source_prompt="你好")
+    assert store.write_auto_title_if_untitled(session_id, "打招呼", source_prompt="你好")
+    assert store.read(session_id)["titleSource"] == "auto"
+    assert store.read(session_id)["autoTitleAttempts"] == 2
+    assert not store.claim_auto_title_attempt(session_id, source_prompt="你好")
