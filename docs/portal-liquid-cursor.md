@@ -25,15 +25,9 @@ tint .05, blur 4, no zoom or wobble) and the actual homepage LiquidGlass instanc
 settings (merge enabled, smoothness .24, backdrop blur and reflections
 disabled). Component defaults alone are not the published site's configuration.
 
-One uniform is scaled on the host side: the bend. The shader bends the sampled
-map by `strength * 40` pixels at the rim, and its slope there is that bend
-times `pinch / 100`. At the reference strength that slope is 2.9, so the map
-folds over itself: neighbouring pixels sample in reverse order, the glyphs
-under the lens repeat, and a control the lens is mounted on reads as a
-flickering double of its own label. `lensBendStrength` scales the strength so
-the bend stays a tenth under the `100 / pinch` pixels the map can carry
-without folding. The vendored GLSL is not edited, and the shape of the
-reference's bend curve is untouched: only its size is held to the lens.
+The reference strength is passed directly as 0.95, without host-side scaling.
+This restores the optical configuration from commit `06c5562c`. Independent
+capture sizing, reflow tracking and upload-timing fixes remain in place.
 
 ## Loom integration
 

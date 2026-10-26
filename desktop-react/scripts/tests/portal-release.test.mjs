@@ -145,12 +145,8 @@ test("the glass cursor keeps the control it is mounted on readable", () => {
   const cursor = readFileSync(new URL("../../src/components/PortalLiquidCursor.tsx", import.meta.url), "utf8");
   const optics = readFileSync(new URL("../../src/components/portalLiquidOptics.ts", import.meta.url), "utf8");
 
-  // The bend of the sampled map may not exceed what the map can carry: a bend
-  // of strength * 40 px folds it over itself, repeats the glyphs under the
-  // lens and reads as a flickering double of the label of the control.
-  assert.ok(optics.includes("export function lensBendStrength"), "the bend is bounded on the host side");
-  assert.ok(optics.includes("100 / LIQUID_OPTICS.pinch"), "the bound is the fold the reference shader cannot carry");
-  assert.ok(optics.includes("lensBendStrength(radius)"), "the renderer reads the bounded strength");
+  assert.ok(!optics.includes("lensBendStrength"), "do not override the restored reference strength");
+  assert.ok(optics.includes("settings.set([0, LIQUID_OPTICS.strength, LIQUID_OPTICS.pinch"));
 
   // Every surface is resized together: the texture is made of the capture
   // canvas, and a capture left at another size smears the control it shows.

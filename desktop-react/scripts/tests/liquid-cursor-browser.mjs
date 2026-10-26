@@ -124,13 +124,7 @@ try {
     assert.equal(state.uniforms.u_wobble[0], 0);
     assert.equal(state.uniforms.u_zoom[0], 1);
     assert.ok(Math.abs(state.uniforms.u_tint[0] - 0.05) < 0.0001);
-    // The rim bend may not exceed what the sampled map can carry: a bend of
-    // strength * 40 px folds the map over itself, repeats the glyphs under the
-    // lens and reads as a flickering double of the label of the control the
-    // lens is mounted on.
-    const bend = state.uniforms.u_strength[0] * 40;
-    assert.ok(bend <= (100 / 7.7) * 0.9 + 0.001, `the rim bend stays inside the lens (${bend}px)`);
-    assert.ok(state.uniforms.u_strength[0] > 0.2, "the lens still bends the page");
+    assert.ok(Math.abs(state.uniforms.u_strength[0] - 0.95) < 0.0001, "restore the original reference strength");
     let box = await lensBox();
     assert.ok(Math.abs(box.x - 720) < 0.2 && Math.abs(box.y - 268) < 0.2);
     assert.ok(Math.abs(box.width - 80) < 0.2 && Math.abs(box.height - 54) < 0.2);
