@@ -842,9 +842,16 @@ def _patch_service(module: ModuleType) -> None:
         if event.kind is AgentEventKind.USER_MESSAGE:
             self._schedule_auto_title(event.session_id, user_prompt=str(event.data.get("text") or ""))
         elif event.kind is AgentEventKind.TURN_COMPLETED:
-            # A successful later turn is evidence that the chosen model works
-            # again, so it may bypass a stale cooldown from an earlier 402.
-            self._schedule_auto_title(event.session_id, force=True)
+            # Only a *later* successful user turn may bypass a balance-error
+            # cooldown. Completion of the first turn must not immediately
+            # retry the same rejected gateway/title request.
+            try:
+                session = self.store.load(event.session_id)
+                user_turns = sum(1 for message in session.messages if message.role is module.MessageRole.USER)
+            except (FileNotFoundError, OSError, ValueError, json.JSONDecodeError):
+                user_turns = 0
+            if user_turns > 1:
+                self._schedule_auto_title(event.session_id, force=True)
 
     service_cls._record = record
     service_cls._managed_record = managed_record
