@@ -526,7 +526,9 @@ def test_a_policy_rule_does_not_cover_the_unsandboxed_fallback(tmp_path):
         store=FileAgentSessionStore(tmp_path / "state"),
         tools=ToolRegistry((_exec_tool(lambda *_: ToolResult(ok=True, content="ok")),)),
         # No backend at all: AUTO would run the command unsandboxed after approval.
-        sandbox_manager=SandboxManager(policy=SandboxPolicy.AUTO, system_name="Linux", bubblewrap_executable="", probe_backend=False),
+        # An unsupported platform name, because an empty bubblewrap path falls
+        # back to whatever bwrap the host has on PATH (CI's runner has one).
+        sandbox_manager=SandboxManager(policy=SandboxPolicy.AUTO, system_name="plan9", probe_backend=False),
         test_approval_policy=ApprovalPolicy.ON_REQUEST,
     )
     try:
