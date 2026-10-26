@@ -56,7 +56,10 @@ def image_capability(metadata: object) -> dict[str, object]:
         ("modalities.input", modalities_metadata.get("input") if isinstance(modalities_metadata, Mapping) else None),
     ):
         if isinstance(modalities, list) and modalities and all(isinstance(item, str) for item in modalities):
-            signals.append(("image" in [item.casefold() for item in modalities], source))
+            # Providers publish either broad modalities or concrete MIME types.
+            # image/png is image evidence, not an unfamiliar text-only modality.
+            values = [item.strip().casefold() for item in modalities]
+            signals.append((any(item == "image" or item.startswith("image/") for item in values), source))
     if not signals:
         return {"supported": None, "source": str(normalized.get("source") or "unknown")[:120] if isinstance(normalized, Mapping) else "unknown"}
     if len({value for value, _ in signals}) != 1:

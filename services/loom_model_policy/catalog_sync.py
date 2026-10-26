@@ -126,11 +126,13 @@ class CatalogSynchronizer:
 
     def _refresh_provider(self, group_id: str, manifest: dict) -> None:
         try:
+            base, key_names, url_names = PROVIDERS[group_id]
+            base = next((self.environ[name].strip() for name in url_names if self.environ.get(name, "").strip()), base)
             if group_id in manifest:
                 models = parse_models(group_id, {"data": manifest[group_id]})
+                models = self.image_catalog.enrich(group_id, base, models)
                 self.store.replace_provider_catalog(group_id, models, "manifest")
                 return
-            base, key_names, url_names = PROVIDERS[group_id]
             credential = next((self.environ[name].strip() for name in key_names if self.environ.get(name, "").strip()), "")
             if group_id == "opencode-console" and not credential:
                 # Free models are seeded at DB initialization. Refresh must not
@@ -146,7 +148,6 @@ class CatalogSynchronizer:
             if not credential:
                 self.store.catalog_failure(group_id, "Discovery credential is not configured; bundled or last successful catalog retained.")
                 return
-            base = next((self.environ[name].strip() for name in url_names if self.environ.get(name, "").strip()), base)
             if group_id == "opencode-console":
                 models = parse_opencode_console_config(
                     self.fetch("https://opencode.ai/console/api/v2/config", credential)

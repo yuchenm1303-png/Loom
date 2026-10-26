@@ -13,14 +13,28 @@ endpoint and model so separate Host bridge processes use the same evidence.
 Provider evidence expires after 24 hours. Different endpoints cannot share it.
 A saved connection can explicitly declare supported/unsupported, or remain unknown.
 
-For sparse OpenCode listings, policy synchronization supplements existing rows
-using models.dev's exact provider/model input modalities. Only canonical OpenCode
+For sparse listings, policy synchronization supplements existing rows using
+models.dev's exact provider/model input modalities. Canonical OpenCode Go/Console,
+MiniMax international/China (including their documented API aliases), and DeepSeek
 endpoints qualify; custom endpoints never inherit public endpoint evidence. This
 does not add models or change permissions, and explicit/conflicting upstream
 metadata takes precedence. Public metadata is fetched without credentials, cached
 for one hour, and retained for at most 24 hours during outages. Failed or malformed
 supplemental metadata leaves capabilities unknown without failing model discovery.
 Console configuration also preserves nested `modalities.input` declarations.
+Both broad `image` declarations and concrete MIME types such as `image/png` are
+image evidence. Text/video-only modality lists are not image evidence. Unknown
+manifest rows follow the same enrichment path; explicit declarations still win.
+Personal connection tests use the same origin/provider matching, and an unset
+saved preference no longer overwrites discovered support. Explicit user settings
+and endpoint-scoped rejection evidence retain precedence. Other groups can supply
+their own explicit model metadata; missing declarations remain unknown, never a
+model-name-based negative or a blanket claim of support.
+
+On 2026-10-25 the configured MiniMax official endpoint's `MiniMax-M3.1-Flash`
+correctly returned `LEFT=red;RIGHT=blue` for a generated red/blue test image.
+The policy-to-Desktop integration fixture covers this official route separately
+from the OpenCode Go model, with exact endpoint identity and MIME metadata.
 
 On 2026-10-20, `minimax-m3.1-flash-free` on the configured OpenCode Go endpoint
 correctly identified a synthetic image's red left half and blue right half.

@@ -28,6 +28,10 @@ def test_provider_rejection_survives_unknown_metadata_and_remains_endpoint_scope
     ({"input_modalities": []}, None),
     ({"architecture": {"input_modalities": ["text", "image"]}}, True),
     ({"modalities": {"input": ["text", "image", "video"]}}, True),
+    ({"modalities": {"input": ["text", "image/png", "image/jpeg"]}}, True),
+    ({"input_modalities": ["text", " IMAGE/WEBP "]}, True),
+    ({"modalities": {"input": ["text", "video/mp4"]}}, False),
+    ({"vision": False, "modalities": {"input": ["image/png"]}}, None),
     ({"modalities": {"input": ["text"]}}, False),
     ({"modalities": {"input": []}}, None),
     ({"vision": False, "modalities": {"input": ["image"]}}, None),
@@ -69,6 +73,26 @@ def test_expired_evidence_is_not_reused(tmp_path, monkeypatch):
     cache.put("https://example/v1", "model", {"supported": True, "source": "provider/models"})
     monkeypatch.setattr(time, "time", lambda: now + 86401)
     assert cache.get("https://example/v1", "model") is None
+
+
+@pytest.mark.parametrize("configured,expected", [(None, True), (False, False), (True, True)])
+def test_personal_connection_test_preserves_discovered_vision_unless_explicitly_configured(tmp_path, monkeypatch, configured, expected):
+    import io, json
+    from types import SimpleNamespace
+    import loom_model_admin as admin
+    from services.loom_model_policy.image_catalog import ImageCatalog
+    model = "MiniMax-M3.1-Flash"
+    base = "https://api.minimaxi.com/v1"
+    monkeypatch.setattr(admin, "_resolve", lambda *args: {"model": model, "baseUrl": base, "provider": "openai-compatible", "apiKey": "fixture-only"})
+    response = io.BytesIO(json.dumps({"data": [{"id": model}]}).encode())
+    response.status = 200
+    monkeypatch.setattr(admin.urllib.request, "urlopen", lambda *args, **kwargs: response)
+    monkeypatch.setattr(ImageCatalog, "_fetch", staticmethod(lambda: {"minimax-cn": {"models": {model: {
+        "id": model, "modalities": {"input": ["text", "image/png"]}}}}}))
+    store = SimpleNamespace(home=tmp_path, model_for_selection=lambda _: SimpleNamespace(vision=configured))
+    result = admin._test(store, None, None, {"selection": "saved:test"})
+    assert result["capabilities"]["vision"] is expected
+    assert ImageCapabilityStore(tmp_path).get(base, model)["supported"] is True
 
 
 @pytest.mark.parametrize("supported", [True, False, None])

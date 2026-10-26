@@ -160,14 +160,16 @@ def _test(
             target = str(resolved.get("model") or "").casefold()
             listed = any(item.casefold() == target for item in ids if item)
             match = next((item for item in data if isinstance(item, dict) and str(item.get("id") or "").casefold() == target), None)
-            evidence = image_capability(match)
-            ImageCapabilityStore(store.home).put(resolved.get("baseUrl", ""), resolved["model"], evidence)
+            from services.loom_model_policy.image_catalog import ImageCatalog
+            row = {"model": resolved["model"], "image_input": image_capability(match)}
+            evidence = ImageCatalog().enrich_endpoint(resolved.get("baseUrl", ""), [row])[0]["image_input"]
+            evidence = ImageCapabilityStore(store.home).put(resolved.get("baseUrl", ""), resolved["model"], evidence)
             resolved["vision"] = evidence["supported"]
     except (UnicodeDecodeError, json.JSONDecodeError):
         pass
 
     saved = store.model_for_selection(selection)
-    vision = saved.vision if saved is not None else resolved.get("vision")
+    vision = saved.vision if saved is not None and saved.vision is not None else resolved.get("vision")
     reasoning = resolved.get("reasoning")
     return {
         "ok": True,

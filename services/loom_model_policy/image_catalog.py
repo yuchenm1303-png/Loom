@@ -1,4 +1,4 @@
-"""Supplement sparse OpenCode listings with exact endpoint/model modality data.
+"""Supplement sparse provider listings with exact endpoint/model modality data.
 
 This never adds models or permissions. It only annotates models the configured
 provider itself advertised. Custom upstreams never inherit public-host evidence.
@@ -19,8 +19,15 @@ _BASES = {
         "https://opencode.ai/inference/go/openai/v1"},
     "opencode-console": {"https://opencode.ai/zen/v1", "https://opencode.ai/inference/v1",
         "https://opencode.ai/inference/openai/v1"},
+    "minimax": {"https://api.minimax.io/v1", "https://api.minimax.io/anthropic",
+        "https://api.minimax.io/anthropic/v1"},
+    "minimax-cn": {"https://api.minimaxi.com/v1", "https://api.minimaxi.com/anthropic",
+        "https://api.minimaxi.com/anthropic/v1", "https://api.minimax.cn/v1",
+        "https://api.minimax.cn/anthropic", "https://api.minimax.cn/anthropic/v1"},
+    "deepseek": {"https://api.deepseek.com", "https://api.deepseek.com/v1"},
 }
-_PROVIDERS = {"opencode-go": "opencode-go", "opencode-console": "opencode"}
+_PROVIDERS = {"opencode-go": "opencode-go", "opencode-console": "opencode", "minimax": "minimax",
+    "minimax-cn": "minimax-cn", "deepseek": "deepseek"}
 
 
 def _base(value):
@@ -75,6 +82,10 @@ class ImageCatalog:
             return models if isinstance(models, dict) else {}
 
     def enrich(self, group, base, rows):
+        # Regional catalogs remain separate; a Chinese endpoint cannot inherit
+        # evidence from an international or aggregator route with the same ID.
+        if group == "minimax" and _base(base) in _BASES["minimax-cn"]:
+            group = "minimax-cn"
         if group not in _BASES or _base(base) not in _BASES[group]:
             return rows
         published = self._models(group)
@@ -99,3 +110,8 @@ class ImageCatalog:
             else:
                 result.append(row)
         return result
+
+    def enrich_endpoint(self, base, rows):
+        """Personal connections use the same exact-origin contract as built-ins."""
+        group = next((group for group, bases in _BASES.items() if _base(base) in bases), None)
+        return self.enrich(group, base, rows) if group is not None else rows

@@ -1,4 +1,5 @@
 from concurrent.futures import ThreadPoolExecutor
+import pytest
 
 from services.loom_model_policy.image_catalog import ImageCatalog
 from services.loom_model_policy.catalog_sync import CatalogSynchronizer, parse_models, parse_opencode_console_config
@@ -7,6 +8,43 @@ from services.loom_model_policy.policy import PolicyStore
 
 MODEL = "minimax-m3.1-flash-free"
 BASE = "https://opencode.ai/zen/go/v1"
+
+
+@pytest.mark.parametrize("group,base,provider", [
+    ("minimax", "https://api.minimaxi.com/v1", "minimax-cn"),
+    ("minimax", "https://api.minimax.cn/anthropic/v1", "minimax-cn"),
+    ("minimax", "https://api.minimax.io/v1", "minimax"),
+    ("minimax", "https://api.minimax.io/anthropic", "minimax"),
+    ("deepseek", "https://api.deepseek.com/v1", "deepseek"),
+])
+def test_official_provider_and_personal_routes_share_exact_capability_evidence(group, base, provider):
+    model = "MiniMax-M3.1-Flash"
+    catalog = ImageCatalog(fetch=lambda: {provider: {"models": {model: {"id": model,
+        "modalities": {"input": ["text", "image/png"]}}}}})
+    original = parse_models(group, {"data": [{"id": model}]})
+    result = catalog.enrich(group, base, original)
+    assert result[0]["image_input"] == {"supported": True, "source": "models.dev/" + provider + ":modalities"}
+    assert catalog.enrich_endpoint(base, original) == result
+    assert catalog.enrich(group, "https://custom.test/v1", original) == original
+
+
+def test_regional_catalogs_do_not_inherit_matching_ids_from_other_routes():
+    model = "MiniMax-M3.1-Flash"
+    catalog = ImageCatalog(fetch=lambda: {"minimax": {"models": {model: {"id": model,
+        "modalities": {"input": ["image"]}}}}})
+    original = parse_models("minimax", {"data": [{"id": model}]})
+    assert catalog.enrich("minimax", "https://api.minimaxi.com/v1", original) == original
+
+
+def test_manifest_rows_with_unknown_capabilities_are_enriched_without_changing_permissions(tmp_path):
+    model = "MiniMax-M3.1-Flash"
+    catalog = ImageCatalog(fetch=lambda: {"minimax-cn": {"models": {model: {"id": model,
+        "modalities": {"input": ["text", "image"]}}}}})
+    store = PolicyStore(tmp_path / "policy.db")
+    sync = CatalogSynchronizer(store, environ={}, fetch=lambda *_: {}, image_catalog=catalog)
+    sync._refresh_provider("minimax", {"minimax": [{"id": model}]})
+    row = next(row for row in store.catalog()["models"] if row["model"] == model)
+    assert row["image_input"]["supported"] is True and row["source"] == "manifest"
 
 
 def published(modalities=None, api="https://opencode.ai/inference/go/openai/v1"):

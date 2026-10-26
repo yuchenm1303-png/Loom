@@ -18,6 +18,8 @@ phase = [False]
 class Upstream(BaseHTTPRequestHandler):
     def do_GET(self):
         data = [{"id": "omen-alpha"}] + ([{"id": "beam-free"}, {"id": "minimax-m3.1-flash-free"}] if phase[0] else [])
+        if self.path.startswith("/minimax/"):
+            data = [{"id": "MiniMax-M3.1-Flash"}]
         self.send_response(200)
         self.end_headers()
         self.wfile.write(json.dumps({"data": data}).encode())
@@ -33,14 +35,18 @@ app.store = PolicyStore(Path(sys.argv[1]) / "policy.db")
 app.accounts = SimpleNamespace(user_id_for_authorization=lambda auth: 7,
     model_access=lambda auth: {"enabled": True})
 sync = CatalogSynchronizer(app.store, environ={"OPENCODE_GO_API_KEY": "fixture-only",
+    "MINIMAX_API_KEY": "fixture-only", "LOOM_MINIMAX_BASE_URL": f"http://127.0.0.1:{upstream.server_port}/minimax",
     "LOOM_OPENCODE_GO_BASE_URL": f"http://127.0.0.1:{upstream.server_port}"})
 # Serve a realistic sparse listing over loopback while enrichment matches its
 # production endpoint identity; no external metadata/inference request is made.
 sync.image_catalog = ImageCatalog(fetch=lambda: {"opencode-go": {"models": {"minimax-m3.1-flash-free": {
-    "id": "minimax-m3.1-flash-free", "modalities": {"input": ["text", "image"]}}}}})
+    "id": "minimax-m3.1-flash-free", "modalities": {"input": ["text", "image"]}}}},
+    "minimax-cn": {"models": {"MiniMax-M3.1-Flash": {"id": "MiniMax-M3.1-Flash",
+        "modalities": {"input": ["text", "image/png"]}}}}})
 enrich = sync.image_catalog.enrich
 sync.image_catalog.enrich = lambda group, base, rows: enrich(group,
-    "https://opencode.ai/zen/go/v1" if group == "opencode-go" else base, rows)
+    "https://opencode.ai/zen/go/v1" if group == "opencode-go" else
+    "https://api.minimaxi.com/v1" if group == "minimax" else base, rows)
 sync.refresh()
 original_access = app.access
 
