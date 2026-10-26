@@ -1,9 +1,738 @@
-.ambient-panel { display: grid; gap: 16px; }
-.ambient-panel p { overflow-wrap: anywhere; white-space: pre-wrap; }
-.ambient-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
-.ambient-form, .ambient-task { padding: 18px; display: grid; gap: 12px; }
-.ambient-form label { display: grid; gap: 6px; }
-.ambient-panel input, .ambient-panel select, .ambient-panel textarea { color: inherit; background: var(--bg-secondary, transparent); border: 1px solid var(--border, #8886); border-radius: 6px; padding: 8px; min-width: 0; }
-.ambient-panel input[type=checkbox] { justify-self: start; }
-.ambient-panel button { border: 1px solid #8886; border-radius: 6px; padding: 7px 12px; background: transparent; color: inherit; cursor: pointer; }
-.ambient-panel button:disabled { opacity: .5; cursor: default; }
+/* Reuse the Settings palette; no global control overrides. */
+.ambient-panel {
+  --am-ink: var(--sr-ink,#edf0f3);
+  --am-muted: var(--sr-ink-2,#bbc1ca);
+  --am-subtle: var(--sr-ink-3,#8b93a1);
+  --am-card: var(--sr-card,#18191c);
+  --am-field: color-mix(in srgb,var(--am-ink) 2.2%,transparent);
+  --am-line: color-mix(in srgb,var(--am-ink) 8%,transparent);
+  --am-hover: color-mix(in srgb,var(--am-ink) 4%,transparent);
+  --am-green: var(--sr-ok,#86cba6);
+  color: var(--am-ink);
+  display: grid;
+  gap: 18px;
+  width: 100%;
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 4px 0 16px;
+  font-size: 13px;
+  line-height: 1.5;
+  text-align: start;
+}
+.ambient-panel *, .ambient-panel *::before, .ambient-panel *::after {
+  box-sizing: border-box;
+}
+.ambient-panel :is(h1,h2,h3,p) {
+  margin: 0;
+}
+.ambient-panel button {
+  font: inherit;
+  cursor: pointer;
+  -webkit-app-region: no-drag;
+}
+.ambient-panel button:disabled {
+  cursor: default;
+  opacity: .4;
+}
+.ambient-panel :is(button,input,select,textarea):focus-visible {
+  outline: 2px solid var(--sr-accent,#9c8ef8);
+  outline-offset: 3px;
+}
+.ambient-panel svg {
+  flex: 0 0 auto;
+}
+.ambient-panel .ambient-eyebrow {
+  color: var(--am-subtle);
+  font-size: 10px;
+  font-weight: 550;
+  letter-spacing: .15em;
+  margin-bottom: 10px;
+}
+.ambient-panel .ambient-heading h1 {
+  color: var(--am-ink);
+  font-size: 29px;
+  font-weight: 560;
+  letter-spacing: -.035em;
+  line-height: 1.2;
+}
+.ambient-panel .ambient-heading p {
+  color: var(--am-muted);
+  font-size: 13px;
+  margin-top: 9px;
+}
+.ambient-panel .ambient-statusbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  min-height: 50px;
+  padding: 9px 0;
+  border-block: 1px solid var(--am-line);
+}
+.ambient-panel .ambient-host-state {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+}
+.ambient-panel .ambient-host-state strong {
+  font-size: 12px;
+  font-weight: 550;
+  white-space: nowrap;
+}
+.ambient-panel .ambient-status-caption {
+  font-size: 11px;
+  color: var(--am-muted);
+  margin-inline-start: 8px;
+}
+.ambient-panel .ambient-status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--am-subtle);
+  flex: 0 0 auto;
+}
+.ambient-panel .ambient-status-dot[data-state=online] {
+  background: var(--am-green);
+  box-shadow: 0 0 0 4px color-mix(in srgb,var(--am-green) 8%,transparent);
+}
+.ambient-panel .ambient-status-dot[data-state=paused] {
+  background: var(--sr-warn,#e2b96d);
+}
+.ambient-panel .ambient-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 32px;
+  padding: 7px 11px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  color: var(--am-ink);
+  background: transparent;
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.4;
+  white-space: nowrap;
+  transition: background-color 140ms ease,border-color 140ms ease;
+}
+.ambient-panel .ambient-button-quiet {
+  color: var(--am-muted);
+}
+.ambient-panel .ambient-button-quiet:hover:not(:disabled) {
+  color: var(--am-ink);
+  background: var(--am-hover);
+}
+.ambient-panel .ambient-button-primary {
+  background: var(--am-ink);
+  color: var(--sr-page,#111214);
+  border-color: var(--am-ink);
+  min-height: 35px;
+  padding-inline: 14px;
+}
+.ambient-panel .ambient-button-primary:hover:not(:disabled) {
+  background: color-mix(in srgb,var(--am-ink) 85%,var(--am-card));
+}
+.ambient-panel .ambient-workspace {
+  display: grid;
+  grid-template-columns: minmax(0,1.8fr) minmax(245px,1fr);
+  gap: 24px;
+  align-items: start;
+}
+.ambient-panel .ambient-editor {
+  min-width: 0;
+  border: 1px solid var(--am-line);
+  background: var(--am-card);
+  border-radius: 12px;
+  padding: 22px;
+}
+.ambient-panel .ambient-section-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 5px 12px;
+  margin-bottom: 18px;
+}
+.ambient-panel .ambient-section-heading h2 {
+  font-size: 14px;
+  line-height: 1.4;
+  font-weight: 550;
+  letter-spacing: -.015em;
+}
+.ambient-panel .ambient-section-heading > span {
+  color: var(--am-subtle);
+  font-size: 10px;
+}
+.ambient-panel .ambient-fields {
+  display: grid;
+  gap: 15px;
+  padding: 0;
+  border: 0;
+  margin: 0;
+  min-width: 0;
+}
+.ambient-panel .ambient-field-pair {
+  display: grid;
+  grid-template-columns: minmax(0,1fr) minmax(0,1fr);
+  gap: 14px;
+}
+.ambient-panel .ambient-field {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  align-content: start;
+}
+.ambient-panel .ambient-field > span {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--am-muted);
+  font-size: 12px;
+  font-weight: 450;
+}
+.ambient-panel .ambient-field em {
+  color: var(--am-subtle);
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 400;
+}
+.ambient-panel .ambient-field :is(input,select,textarea) {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  min-height: 36px;
+  margin: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--am-line);
+  border-radius: 6px;
+  box-shadow: none;
+  background: var(--am-field);
+  color: var(--am-ink);
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.5;
+  transition: border-color 140ms ease,background-color 140ms ease;
+}
+.ambient-panel .ambient-field :is(input,select,textarea):hover {
+  border-color: color-mix(in srgb,var(--am-ink) 15%,transparent);
+}
+.ambient-panel .ambient-field :is(input,select,textarea):focus {
+  border-color: color-mix(in srgb,var(--am-ink) 30%,transparent);
+  background: color-mix(in srgb,var(--am-ink) 3.5%,transparent);
+}
+.ambient-panel .ambient-field :is(input,textarea)::placeholder {
+  color: var(--am-subtle);
+  opacity: .75;
+}
+.ambient-panel .ambient-field textarea {
+  resize: vertical;
+  min-height: 80px;
+  max-height: 320px;
+}
+.ambient-panel .ambient-field small {
+  color: var(--am-subtle);
+  font-size: 10px;
+  line-height: 1.6;
+}
+.ambient-panel .ambient-select-wrap {
+  position: relative;
+  min-width: 0;
+}
+.ambient-panel .ambient-select-wrap select {
+  appearance: none;
+  padding-inline-end: 30px;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+.ambient-panel .ambient-select-wrap > svg {
+  position: absolute;
+  inset-inline-end: 11px;
+  top: 50%;
+  transform: translateY(-50%);
+  pointer-events: none;
+  color: var(--am-subtle);
+}
+.ambient-panel .ambient-field select option {
+  background: var(--am-card);
+  color: var(--am-ink);
+}
+.ambient-panel .ambient-trigger-options {
+  display: grid;
+  grid-template-columns: repeat(4,minmax(0,1fr));
+  gap: 7px;
+}
+.ambient-panel .ambient-trigger {
+  min-width: 0;
+  padding: 10px 9px 9px;
+  border: 1px solid var(--am-line);
+  border-radius: 7px;
+  text-align: start;
+  color: var(--am-muted);
+  background: transparent;
+  transition: border-color 140ms ease,background-color 140ms ease;
+}
+.ambient-panel .ambient-trigger:hover:not(:disabled) {
+  background: var(--am-hover);
+}
+.ambient-panel .ambient-trigger[aria-pressed=true] {
+  color: var(--am-ink);
+  border-color: color-mix(in srgb,var(--am-ink) 24%,transparent);
+  background: color-mix(in srgb,var(--am-ink) 5%,transparent);
+}
+.ambient-panel .ambient-trigger-top {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 500;
+}
+.ambient-panel .ambient-trigger-check {
+  margin-inline-start: auto;
+}
+.ambient-panel .ambient-trigger small {
+  display: block;
+  color: var(--am-subtle);
+  font-size: 9px;
+  margin-top: 7px;
+  line-height: 1.4;
+}
+.ambient-panel .ambient-limits {
+  border-top: 1px solid var(--am-line);
+}
+.ambient-panel .ambient-limits > summary, .ambient-panel .ambient-disclosure > summary {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  list-style: none;
+  cursor: pointer;
+  color: var(--am-muted);
+  font-size: 11px;
+  padding: 14px 0;
+}
+.ambient-panel summary::-webkit-details-marker {
+  display: none;
+}
+.ambient-panel summary:focus-visible {
+  outline: 2px solid var(--sr-accent,#9c8ef8);
+  outline-offset: 3px;
+  border-radius: 3px;
+}
+.ambient-panel summary:hover {
+  color: var(--am-ink);
+}
+.ambient-panel summary > svg:last-child {
+  margin-inline-start: auto;
+  transition: transform 140ms ease;
+}
+.ambient-panel details[open] > summary > svg:last-child {
+  transform: rotate(180deg);
+}
+.ambient-panel .ambient-limit-preview {
+  margin-inline-start: auto;
+  color: var(--am-subtle);
+  font-variant-numeric: tabular-nums;
+  font-size: 10px;
+}
+.ambient-panel .ambient-limits summary > svg:last-child {
+  margin-inline-start: 0;
+}
+.ambient-panel .ambient-limits-body {
+  padding-bottom: 8px;
+}
+.ambient-panel .ambient-limits-body p {
+  color: var(--am-subtle);
+  font-size: 10px;
+  margin-top: 10px;
+  line-height: 1.6;
+}
+.ambient-panel .ambient-editor-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: -6px;
+}
+.ambient-panel .ambient-enable {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--am-muted);
+  font-size: 11px;
+  position: relative;
+  cursor: pointer;
+  flex: 0 0 auto;
+}
+.ambient-panel .ambient-enable input {
+  position: absolute;
+  width: 28px;
+  height: 17px;
+  top: 0;
+  inset-inline-start: 0;
+  opacity: 0;
+  margin: 0;
+  cursor: pointer;
+}
+.ambient-panel .ambient-switch-track {
+  width: 28px;
+  height: 17px;
+  border-radius: 10px;
+  background: color-mix(in srgb,var(--am-ink) 15%,transparent);
+  padding: 3px;
+  transition: background-color 140ms ease;
+}
+.ambient-panel .ambient-switch-track::after {
+  content: "";
+  display: block;
+  width: 11px;
+  height: 11px;
+  background: var(--am-muted);
+  border-radius: 50%;
+  transition: transform 140ms ease;
+}
+.ambient-panel .ambient-enable input:checked + .ambient-switch-track {
+  background: var(--am-ink);
+}
+.ambient-panel .ambient-enable input:checked + .ambient-switch-track::after {
+  transform: translateX(11px);
+  background: var(--sr-page,#111214);
+}
+.ambient-panel .ambient-enable input:focus-visible + .ambient-switch-track {
+  outline: 2px solid var(--sr-accent,#9c8ef8);
+  outline-offset: 3px;
+}
+.ambient-panel .ambient-enable input:disabled {
+  cursor: default;
+}
+.ambient-panel .ambient-save-actions {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+.ambient-panel .ambient-saved {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  color: var(--am-green);
+  margin-inline-end: 5px;
+}
+.ambient-panel .ambient-task-list {
+  min-width: 0;
+  padding: 8px 0;
+}
+.ambient-panel .ambient-list-heading {
+  align-items: center;
+  margin-bottom: 0;
+}
+.ambient-panel .ambient-list-heading h2 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+.ambient-panel .ambient-count {
+  color: var(--am-subtle);
+  font-size: 10px;
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+}
+.ambient-panel .ambient-list-caption {
+  color: var(--am-subtle);
+  font-size: 10px;
+  margin: 1px 0 15px;
+}
+.ambient-panel .ambient-icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 27px;
+  height: 27px;
+  padding: 0;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--am-subtle);
+  transition: color 140ms ease,background-color 140ms ease;
+}
+.ambient-panel .ambient-icon-button:hover:not(:disabled) {
+  color: var(--am-ink);
+  background: var(--am-hover);
+}
+.ambient-panel .ambient-delete:hover:not(:disabled) {
+  color: var(--sr-danger,#f0919b);
+}
+.ambient-panel .ambient-empty {
+  min-height: 245px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 11px;
+  text-align: center;
+  padding: 26px 15px;
+  color: var(--am-subtle);
+}
+.ambient-panel .ambient-empty-mark {
+  width: 48px;
+  height: 48px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--am-line);
+  border-radius: 14px;
+  margin-bottom: 3px;
+}
+.ambient-panel .ambient-empty h3 {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--am-muted);
+}
+.ambient-panel .ambient-empty p {
+  font-size: 11px;
+  line-height: 1.8;
+  max-width: 220px;
+}
+.ambient-panel .ambient-task-item {
+  border-bottom: 1px solid var(--am-line);
+  padding: 14px 0 11px;
+  min-width: 0;
+}
+.ambient-panel .ambient-task-item[data-selected=true] .ambient-task-glyph {
+  color: var(--am-ink);
+}
+.ambient-panel .ambient-task-open {
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: start;
+}
+.ambient-panel .ambient-task-title {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+}
+.ambient-panel .ambient-task-glyph {
+  display: inline-flex;
+  color: var(--am-muted);
+}
+.ambient-panel .ambient-task-title h3 {
+  font-size: 13px;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ambient-panel .ambient-task-enabled {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--am-subtle);
+  flex: 0 0 auto;
+  margin-inline-start: auto;
+}
+.ambient-panel .ambient-task-enabled[data-enabled=true] {
+  background: var(--am-green);
+}
+.ambient-panel .ambient-task-schedule {
+  display: block;
+  margin: 7px 0 0 24px;
+  color: var(--am-subtle);
+  font-size: 10px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ambient-panel .ambient-task-outcome {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  min-width: 0;
+  font-size: 10px;
+  color: var(--am-muted);
+  margin: 11px 0 3px 24px;
+}
+.ambient-panel .ambient-task-outcome > span:nth-child(2) {
+  flex-shrink: 0;
+}
+.ambient-panel .ambient-task-result {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--am-subtle);
+}
+.ambient-panel .ambient-task-bottom {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 5px;
+  margin: 8px 0 0 24px;
+}
+.ambient-panel .ambient-task-usage {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  color: var(--am-subtle);
+  font-size: 9px;
+  font-variant-numeric: tabular-nums;
+}
+.ambient-panel .ambient-task-usage i {
+  width: 2px;
+  height: 2px;
+  background: currentColor;
+  border-radius: 50%;
+}
+.ambient-panel .ambient-task-actions {
+  display: flex;
+  flex: 0 0 auto;
+}
+.ambient-panel .ambient-run-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--am-subtle);
+  display: block;
+  flex: 0 0 auto;
+}
+.ambient-panel .ambient-run-dot[data-status=completed] {
+  background: var(--am-green);
+}
+.ambient-panel .ambient-run-dot:is([data-status=failed],[data-status=needs_review],[data-status=waiting_approval],[data-status=limited]) {
+  background: var(--sr-warn,#e2b96d);
+}
+.ambient-panel .ambient-run-dot[data-status=running] {
+  background: var(--sr-accent,#9c8ef8);
+}
+.ambient-panel .ambient-activity {
+  border-top: 1px solid var(--am-line);
+  margin-top: 1px;
+}
+.ambient-panel .ambient-disclosure + .ambient-disclosure {
+  border-top: 1px solid var(--am-line);
+}
+.ambient-panel .ambient-disclosure > summary {
+  padding: 15px 0;
+  font-size: 11px;
+}
+.ambient-panel .ambient-disclosure-body {
+  padding: 0 0 15px 24px;
+}
+.ambient-panel .ambient-log-row {
+  display: flex;
+  gap: 9px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--am-line);
+  align-items: baseline;
+}
+.ambient-panel .ambient-log-row > div {
+  min-width: 0;
+}
+.ambient-panel .ambient-log-row strong {
+  color: var(--am-muted);
+  font-size: 11px;
+  font-weight: 500;
+}
+.ambient-panel .ambient-log-row p {
+  color: var(--am-subtle);
+  font-size: 11px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  margin-top: 5px;
+  line-height: 1.7;
+}
+.ambient-panel .ambient-log-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: baseline;
+  color: var(--am-subtle);
+  font-size: 10px;
+}
+.ambient-panel .ambient-disclosure-body > .ambient-button {
+  margin-top: 10px;
+}
+.ambient-panel .ambient-history-empty {
+  color: var(--am-subtle);
+  font-size: 11px;
+  padding: 2px 0 8px;
+}
+.ambient-panel .ambient-footnote {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  color: var(--am-subtle);
+  margin-top: -7px;
+}
+.ambient-panel .ambient-footnote p {
+  font-size: 10px;
+  line-height: 1.8;
+}
+.ambient-panel .ambient-inline-note, .ambient-panel .ambient-error {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  color: var(--am-muted);
+  font-size: 11px;
+  line-height: 1.7;
+}
+.ambient-panel .ambient-error {
+  padding: 12px 14px;
+  border: 1px solid color-mix(in srgb,var(--sr-warn,#e2b96d) 25%,transparent);
+  border-radius: 8px;
+  color: var(--sr-warn,#e2b96d);
+}
+.ambient-panel .ambient-error span {
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+@media (max-width:1100px) {
+  .ambient-panel .ambient-workspace {
+  grid-template-columns: minmax(0,1fr);
+  gap: 22px;
+}
+  .ambient-panel .ambient-task-list {
+  border-top: 1px solid var(--am-line);
+  padding-top: 17px;
+}
+  .ambient-panel .ambient-empty {
+  min-height: 160px;
+}
+}
+@media (max-width:600px) {
+  .ambient-panel {
+  gap: 17px;
+}
+  .ambient-panel .ambient-heading h1 {
+  font-size: 25px;
+}
+  .ambient-panel .ambient-editor {
+  padding: 17px;
+}
+  .ambient-panel .ambient-field-pair {
+  grid-template-columns: minmax(0,1fr);
+  gap: 17px;
+}
+  .ambient-panel .ambient-trigger-options {
+  grid-template-columns: repeat(2,minmax(0,1fr));
+}
+  .ambient-panel .ambient-status-caption {
+  display: none;
+}
+  .ambient-panel .ambient-editor-footer {
+  flex-wrap: wrap;
+  gap: 14px;
+}
+  .ambient-panel .ambient-section-heading > span {
+  display: none;
+}
+}
+@media (prefers-reduced-motion:reduce) { .ambient-panel *, .ambient-panel *::after {
+  transition: none;
+} }
