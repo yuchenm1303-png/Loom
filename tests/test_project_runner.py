@@ -41,7 +41,7 @@ def build(tmp_path, responses, *, tools=(), service_class=Service):
 
 
 def create(service, source, **kwargs):
-    return service.project_create({"operationId": str(uuid.uuid4()), "threadId": source,
+    return service.project_run_create({"operationId": str(uuid.uuid4()), "threadId": source,
         "objective": "Implement a working project", "tokenBudget": 1000, "maxEpisodes": 8, **kwargs})
 
 
@@ -187,6 +187,28 @@ def test_restart_reconciles_finished_turn_without_resampling(tmp_path):
         runtime.close()
 
 
+def test_workspace_project_create_and_project_run_create_are_distinct(tmp_path):
+    """Production mixin must not steal the existing project/create RPC."""
+    service, runtime, _, workspace, source = build(tmp_path, [])
+    try:
+        rpc = Controller(service)
+        project = rpc._dispatch("project/create", {"root": str(workspace)})["project"]
+        assert Path(project["root"]).resolve() == workspace.resolve()
+
+        run = rpc._dispatch("projectRun/create", {
+            "operationId": "create-regression-run",
+            "threadId": source,
+            "objective": "Verify distinct project creation commands",
+            "tokenBudget": 1000,
+            "maxEpisodes": 2,
+        })["run"]
+        assert run["sourceThreadId"] == source
+        assert run["state"] == "created"
+        assert service.project_store.get(run["id"])["id"] == run["id"]
+    finally:
+        runtime.close()
+
+
 def test_rpc_exposes_run_and_event_cursor_and_rejects_dirty_source(tmp_path):
     service, runtime, _, workspace, source = build(tmp_path, [])
     try:
@@ -208,10 +230,10 @@ def test_create_retry_keeps_original_snapshot_after_repository_changes(tmp_path)
     params = {"operationId": "stable-create", "threadId": source, "objective": "Build app",
               "tokenBudget": 100, "maxEpisodes": 3}
     try:
-        run = service.project_create(params)
+        run = service.project_run_create(params)
         (workspace / "README.md").write_text("a later unrelated edit")
-        assert service.project_create(params)["baseCommit"] == run["baseCommit"]
-        assert service.project_create(params)["id"] == run["id"]
+        assert service.project_run_create(params)["baseCommit"] == run["baseCommit"]
+        assert service.project_run_create(params)["id"] == run["id"]
     finally:
         runtime.close()
 
