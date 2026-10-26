@@ -355,7 +355,7 @@ class ToolSearchRuntime(ConfiguredMCPRuntime):
             self._clear_session_activations(session_id)
         return result
 
-    def resume_approval(self, session_id: str, call_id: str, *, approved: bool):
+    def resume_approval(self, session_id: str, call_id: str, *, approved: bool, **options):
         # Activation bookkeeping is not execution authority. The parent runtime
         # must resume the original in-process captured StepContext; after restart
         # that authority is unavailable and resume fails closed.
@@ -364,7 +364,7 @@ class ToolSearchRuntime(ConfiguredMCPRuntime):
         if pending is not None and pending.call_id == str(call_id or "").strip():
             for call in session.pending_tool_calls:
                 self._activate_deferred_name(session.session_id, session.current_turn_id, call.name)
-        result = super().resume_approval(session_id, call_id, approved=approved)
+        result = super().resume_approval(session_id, call_id, approved=approved, **options)
         if result.status is not AgentStatus.WAITING_APPROVAL:
             self._clear_session_activations(session_id)
         return result

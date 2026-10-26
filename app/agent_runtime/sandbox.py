@@ -15,11 +15,20 @@ from typing import Mapping
 
 from .contracts import PermissionMode
 from .permissions import FileSystemAccess, PermissionSnapshot, permission_snapshot
+from .windows_sandbox_prep import (
+    LOOM_SANDBOX_TOOLS_CAPABILITY,
+    WindowsSandboxPrepStatus,
+    sandbox_can_read,
+    windows_sandbox_prep_status,
+)
 
 
 _MXC_SCHEMA_VERSION = "0.8.0-alpha"
 _MXC_CONFIG_LIMIT = 22_000
 _MXC_TIERS = frozenset({"base-container", "appcontainer-bfs", "appcontainer-dacl"})
+# In this tier MXC enforces nothing itself: the AppContainer access check is the
+# boundary, and MXC edits DACLs to open each declared path.
+_MXC_DACL_TIER = "appcontainer-dacl"
 _MXC_ENV_ALWAYS = frozenset(
     {
         "ALLUSERSPROFILE",
@@ -80,6 +89,11 @@ class SandboxSnapshot:
     enforced: bool
     reason: str
     network_isolated: bool = False
+    # True when the sandbox leaves the Windows display subsystem (Win32k)
+    # reachable. Console developer tools (node, git, PowerShell, java) cannot
+    # start without it, but a command can then read the screen. Clipboard,
+    # input injection and other processes' windows stay blocked.
+    display_access: bool = False
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -90,6 +104,7 @@ class SandboxSnapshot:
             "enforced": self.enforced,
             "reason": self.reason,
             "network_isolated": self.network_isolated,
+            "display_access": self.display_access,
         }
 
 
@@ -115,6 +130,7 @@ class SandboxManager:
         policy: SandboxPolicy | str = SandboxPolicy.AUTO,
         bubblewrap_executable: str | None = None,
         windows_mxc_executable: str | None = None,
+        windows_ui_access: bool | None = None,
         probe_backend: bool = True,
         system_name: str | None = None,
     ) -> None:
@@ -122,6 +138,12 @@ class SandboxManager:
         self.system_name = str(system_name or platform.system()).strip().casefold()
         self.bubblewrap_executable = ""
         self.windows_mxc_executable = ""
+        self.windows_mxc_tier = ""
+        self.windows_ui_access = (
+            _windows_ui_access_from_environment()
+            if windows_ui_access is None
+            else bool(windows_ui_access)
+        )
         self._backend_available = False
         self._backend_reason = "No supported OS sandbox backend is available."
 
@@ -163,6 +185,15 @@ class SandboxManager:
                 ok, reason = self._probe_windows_mxc(self.windows_mxc_executable)
                 self._backend_available = ok
                 self._backend_reason = reason
+                if ok:
+                    self.windows_mxc_tier = _probed_tier(reason)
+                    if self.windows_mxc_tier == _MXC_DACL_TIER:
+                        prep = self.windows_prep_status()
+                        if not prep.complete:
+                            self._backend_reason = (
+                                f"{reason} Host preparation missing: {'; '.join(prep.missing())}."
+                                + (f" Run once as administrator: {prep.command()}" if prep.command() else "")
+                            )
             return
 
         self._backend_reason = (
@@ -239,6 +270,20 @@ class SandboxManager:
                 warning_text = f" Warnings: {'; '.join(values)[:220]}"
         return True, f"Microsoft MXC probe succeeded with {tier}.{warning_text}"
 
+    def windows_prep_status(
+        self,
+        *,
+        tool_dirs: tuple[str, ...] = (),
+        force: bool = False,
+    ) -> WindowsSandboxPrepStatus:
+        """Read-only view of the elevated host preparation MXC's DACL tier needs."""
+
+        return windows_sandbox_prep_status(
+            sandbox_executable=self.windows_mxc_executable or None,
+            tool_dirs=tool_dirs,
+            force=force,
+        )
+
     @staticmethod
     def mode_for_permissions(permissions: PermissionSnapshot) -> SandboxMode:
         access = permission_snapshot(permissions).file_system_access
@@ -309,6 +354,7 @@ class SandboxManager:
                 enforced=True,
                 reason=self._backend_reason,
                 network_isolated=network_isolated,
+                display_access=backend is SandboxBackend.WINDOWS_MXC and self.windows_ui_access,
             )
         return SandboxSnapshot(
             policy=self.policy,
@@ -429,6 +475,13 @@ class SandboxManager:
             return argv
 
         readonly_paths = self._windows_tool_read_paths(argv=argv, environment=environment)
+        if self.windows_mxc_tier == _MXC_DACL_TIER:
+            # MXC's own "already accessible" check ignores capability ACEs, so
+            # a declared folder that the prep script opened to Loom's capability
+            # (C:\Program Files\nodejs) would still make it try, and fail, to
+            # rewrite a DACL this user cannot edit. Undeclared, the kernel's
+            # AppContainer check grants it through the capability.
+            readonly_paths = [path for path in readonly_paths if not sandbox_can_read(path)]
         if mode is SandboxMode.READ_ONLY:
             readonly_paths.insert(0, str(workspace))
             readwrite_paths: list[str] = []
@@ -460,9 +513,17 @@ class SandboxManager:
                 "egress": {"default": "deny"},
                 "ingress": {"default": "deny", "hostLoopback": "deny"},
             },
-            "ui": {"disable": True, "clipboard": "none", "injection": False},
+            # With every Win32k call blocked, anything that links user32 dies
+            # with STATUS_DLL_INIT_FAILED (0xC0000142): node, PowerShell, git,
+            # java, curl, where. Measured on Windows 11 23H2 (MXC's AppContainer
+            # +DACL tier) with Win32k allowed: the clipboard, keyboard/mouse
+            # injection, other processes' windows and key observation stay
+            # blocked, but the process can still read the screen, because
+            # wxc-exec pins the child to winsta0\default and offers no private
+            # desktop. LOOM_WINDOWS_SANDBOX_UI=locked restores the lockdown.
+            "ui": {"disable": not self.windows_ui_access, "clipboard": "none", "injection": False},
             "processContainer": {
-                "capabilities": [],
+                "capabilities": [LOOM_SANDBOX_TOOLS_CAPABILITY],
                 "ui": {
                     "isolation": "container",
                     "desktopSystemControl": False,
@@ -561,6 +622,21 @@ class SandboxManager:
                 output.append(str(path.resolve()))
 
         return _unique_paths(output)
+
+
+def _windows_ui_access_from_environment() -> bool:
+    value = str(os.environ.get("LOOM_WINDOWS_SANDBOX_UI") or "").strip().casefold()
+    return value not in {"locked", "lockdown", "off", "disabled", "0", "false", "no"}
+
+
+def _probed_tier(reason: str) -> str:
+    """The isolation tier named by ``_probe_windows_mxc``'s success reason."""
+
+    prefix = "Microsoft MXC probe succeeded with "
+    text = str(reason or "")
+    if not text.startswith(prefix):
+        return ""
+    return text[len(prefix):].split(".", 1)[0].strip().casefold()
 
 
 def _unique_paths(values: list[str]) -> list[str]:

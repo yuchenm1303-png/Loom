@@ -7,7 +7,16 @@ from enum import Enum
 from app.ai import ToolCall
 
 from .approval_actions import ApprovalDecisionStore, ReviewDecision, approval_action_for
-from .contracts import PermissionMode
+from .approval_rules import (
+    ApprovalRuleError,
+    PrefixRule,
+    ProjectApprovalRules,
+    RuleSandbox,
+    best_rule,
+    derive_prefix_rule,
+    normalized_command,
+)
+from .contracts import ApprovalKind, PermissionMode
 from .execution_action import ExecActionIdentity
 from .permissions import (
     AdditionalPermissionProfile,
@@ -19,7 +28,7 @@ from .permissions import (
     SandboxPermissions,
 )
 from .sandbox import SandboxMode, SandboxPolicy
-from .sandbox_denial import classify_exec_sandbox_denial
+from .sandbox_denial import classify_exec_sandbox_denial, sandbox_denial_of
 from .sandbox_failure import SandboxExecutionError
 from .account_tool_access import account_tool_access_status
 from .step import StepContext
@@ -67,8 +76,21 @@ class ToolOrchestrator:
     the returned decision and resume the exact same bound action.
     """
 
-    def __init__(self, *, permission_engine: PermissionEngine | None = None) -> None:
+    # Whether the runtime on top of this orchestrator can honor a decision that
+    # remembers a grant (SandboxAgentRuntime sets it). Without it nothing wider
+    # than "this one call" is offered, so no card shows a choice that cannot work.
+    remembers_approvals = False
+
+    def __init__(
+        self,
+        *,
+        permission_engine: PermissionEngine | None = None,
+        project_rules: ProjectApprovalRules | None = None,
+    ) -> None:
         self.permission_engine = permission_engine or PermissionEngine()
+        # Saved per-project command prefixes. None (an in-memory store, a test)
+        # means grants can only last for a session.
+        self.project_rules = project_rules
         self._approval_stores: dict[str, ApprovalDecisionStore] = {}
         self._approval_stores_guard = threading.RLock()
 
@@ -137,6 +159,186 @@ class ToolOrchestrator:
             decision=PermissionDecision.ALLOW,
             reason="Equivalent action was approved for this session.",
         )
+
+    # ---- scoped approvals: session prefixes / tools and saved project prefixes ----
+
+    @staticmethod
+    def _rules_allow_unsandboxed(step: StepContext) -> bool:
+        """Whether this step's policy would let a saved rule run a command unsandboxed."""
+
+        permissions = step.permissions
+        policy = permissions.approval_policy
+        if policy is ApprovalPolicy.NEVER:
+            return False
+        if policy is ApprovalPolicy.GRANULAR and not (
+            permissions.granular_approval is not None
+            and permissions.granular_approval.sandbox_approval
+        ):
+            return False
+        sandbox = step.world_state.sandbox
+        if sandbox is not None and sandbox.policy is SandboxPolicy.REQUIRED and sandbox.mode is not SandboxMode.DISABLED:
+            return False
+        return True
+
+    def _exec_rule(self, step: StepContext, action: ExecActionIdentity) -> PrefixRule | None:
+        # Scoped grants are always reviewed. Explicit environment overrides can
+        # change what a name resolves to (PATH) or how the program behaves, so a
+        # saved rule, which names only argv, must not vouch for them.
+        if action.explicit_environment_names or action.sandbox_permissions.uses_additional_permissions:
+            return None
+        command = normalized_command(action.argv)
+        if not command:
+            return None
+        rules = list(self._approval_store(step.session_id).prefix_rules())
+        if self.project_rules is not None:
+            rules.extend(self.project_rules.rules(step.world_state.workspace_dir))
+        if not rules:
+            return None
+        return best_rule(
+            rules,
+            command,
+            escalated_request=action.sandbox_permissions.requires_escalated_permissions,
+            allow_unsandboxed=self._rules_allow_unsandboxed(step),
+        )
+
+    def _apply_rules(self, step: StepContext, prepared: PreparedToolCall) -> PreparedToolCall:
+        """Let a remembered grant stand in for a prompt it already answered."""
+
+        if prepared.decision is PermissionDecision.DENY:
+            return prepared
+        tool = prepared.tool
+        if tool.name == "exec":
+            action = prepared.exec_action
+            if action is None:
+                return prepared
+            rule = self._exec_rule(step, action)
+            if rule is None:
+                return prepared
+            label = " ".join(rule.prefix)
+            if rule.sandbox is RuleSandbox.UNSANDBOXED:
+                # The user already agreed that this command runs outside the
+                # sandbox, so do not make it fail inside the sandbox first.
+                return replace(
+                    prepared,
+                    decision=PermissionDecision.ALLOW,
+                    reason=f"Allowed to run outside the sandbox by a saved rule: {label}",
+                    sandbox_permissions=SandboxPermissions.REQUIRE_ESCALATED,
+                )
+            if prepared.decision is not PermissionDecision.APPROVAL:
+                return prepared
+            # A "policy" grant says "run it as the sandbox would". It does not
+            # cover the AUTO fallback that runs with no sandbox at all.
+            if self._exec_needs_unsandboxed_fallback_approval(step, tool):
+                return prepared
+            return replace(
+                prepared,
+                decision=PermissionDecision.ALLOW,
+                reason=f"Allowed by a saved rule: {label}",
+            )
+        if prepared.decision is not PermissionDecision.APPROVAL:
+            return prepared
+        if self._approval_store(step.session_id).has_tool_rule(tool.name):
+            return replace(
+                prepared,
+                decision=PermissionDecision.ALLOW,
+                reason=f"{tool.name} was approved for this session.",
+            )
+        return prepared
+
+    def approval_options(
+        self,
+        step: StepContext,
+        call: ToolCall,
+        tool: AgentTool,
+        *,
+        kind: ApprovalKind = ApprovalKind.INITIAL,
+    ) -> dict[str, object]:
+        """What a reviewer may choose to remember, derived from the waiting call itself."""
+
+        if not self.remembers_approvals:
+            return {}
+        if tool.name != "exec":
+            return {"session_scope": {"kind": "tool", "tool": tool.name}}
+        try:
+            action = ExecActionIdentity.build(step, call)
+        except (TypeError, ValueError):
+            return {}
+        if action.sandbox_permissions.uses_additional_permissions:
+            return {"session_scope": {"kind": "command"}}
+        sandbox = self._rule_sandbox(action, kind)
+        prefix = None
+        if not action.explicit_environment_names:
+            prefix = derive_prefix_rule(action.argv, proposed=action.prefix_rule)
+        if prefix is None:
+            return {"session_scope": {"kind": "command"}, "rule_sandbox": sandbox.value}
+        options: dict[str, object] = {
+            "session_scope": {"kind": "prefix", "prefix": list(prefix)},
+            "proposed_prefix_rule": list(prefix),
+            "rule_sandbox": sandbox.value,
+        }
+        if self.project_rules is not None:
+            options["can_persist_rule"] = True
+        return options
+
+    @staticmethod
+    def _rule_sandbox(action: ExecActionIdentity, kind: ApprovalKind) -> RuleSandbox:
+        if kind is ApprovalKind.SANDBOX_ESCALATION or action.sandbox_permissions.requires_escalated_permissions:
+            return RuleSandbox.UNSANDBOXED
+        return RuleSandbox.POLICY
+
+    def remember_approval(
+        self,
+        step: StepContext,
+        call: ToolCall,
+        *,
+        project: bool,
+        kind: ApprovalKind = ApprovalKind.INITIAL,
+    ) -> dict[str, object] | None:
+        """Remember the grant for the call that was just reviewed.
+
+        The prefix always comes from the call itself, never from the client.
+        Returns a description of what was remembered, or None when this call has
+        nothing wider than the exact-action cache to remember.
+        """
+
+        tool = step.tool_router.get(call.name)
+        if tool is None:
+            raise ValueError(f"unknown tool: {call.name}")
+        store = self._approval_store(step.session_id)
+        if tool.name != "exec":
+            if project:
+                raise ValueError("only command prefixes can be saved for a project")
+            store.add_tool_rule(tool.name)
+            return {"scope": "session", "tool": tool.name}
+        action = ExecActionIdentity.build(step, call)
+        if action.sandbox_permissions.uses_additional_permissions or action.explicit_environment_names:
+            if project:
+                raise ValueError("this command cannot be saved as a project rule")
+            return None
+        sandbox = self._rule_sandbox(action, kind)
+        prefix = derive_prefix_rule(action.argv, proposed=action.prefix_rule)
+        if project:
+            if prefix is None:
+                raise ValueError("this command has no safe prefix to save")
+            if self.project_rules is None:
+                raise ApprovalRuleError("saved approval rules are unavailable in this runtime")
+            self.project_rules.add(step.world_state.workspace_dir, PrefixRule(prefix, sandbox))
+            return {"scope": "project", "prefix": list(prefix), "sandbox": sandbox.value}
+        if prefix is not None:
+            rule = PrefixRule(prefix, sandbox)
+        else:
+            command = normalized_command(action.argv)
+            try:
+                rule = PrefixRule(command, sandbox, exact=True)
+            except ValueError:
+                return None
+        store.add_prefix_rule(rule)
+        return {
+            "scope": "session",
+            "prefix": list(rule.prefix),
+            "sandbox": sandbox.value,
+            **({"exact": True} if rule.exact else {}),
+        }
 
     @staticmethod
     def _exec_needs_unsandboxed_fallback_approval(step: StepContext, tool: AgentTool) -> bool:
@@ -429,20 +631,26 @@ class ToolOrchestrator:
         validate_tool_arguments(tool.input_schema, call.arguments)
 
         if tool.name == "exec":
-            return self._apply_cached_review(step, self._prepare_exec(step, call, tool))
+            return self._apply_rules(
+                step,
+                self._apply_cached_review(step, self._prepare_exec(step, call, tool)),
+            )
 
         decision, reason = self.evaluate_tool(
             step,
             tool,
             legacy_policy=legacy_policy,
         )
-        return self._apply_cached_review(
+        return self._apply_rules(
             step,
-            PreparedToolCall(
-                call=call,
-                tool=tool,
-                decision=decision,
-                reason=reason,
+            self._apply_cached_review(
+                step,
+                PreparedToolCall(
+                    call=call,
+                    tool=tool,
+                    decision=decision,
+                    reason=reason,
+                ),
             ),
         )
 
@@ -490,6 +698,14 @@ class ToolOrchestrator:
         # without inferring network denial from stderr.
         if policy is ApprovalPolicy.ON_REQUEST and network_approval_context is not None:
             wants_no_sandbox_approval = True
+        # Loom platform adaptation, like the AUTO fallback in _prepare_exec:
+        # when the sandbox could not even start the command (Windows MXC on a
+        # host it cannot fully serve), the action never ran, and the per-command
+        # answer is the same question an unavailable backend asks. Codex's
+        # on-request model would hand a bare exit code back to the model.
+        denial = sandbox_denial_of(result) or {}
+        if policy is ApprovalPolicy.ON_REQUEST and denial.get("startup") is True:
+            wants_no_sandbox_approval = True
         if not wants_no_sandbox_approval:
             return SandboxRetryPlan(SandboxRetryDisposition.NONE)
 
@@ -498,10 +714,51 @@ class ToolOrchestrator:
             and already_approved
             and network_approval_context is None
         )
+        explanation = str(denial.get("detail") or "").strip()
         return SandboxRetryPlan(
             SandboxRetryDisposition.WITHOUT_SANDBOX,
             approval_required=not bypass_retry_approval,
-            retry_reason=str(result.content or "sandbox denied the first attempt").strip(),
+            retry_reason=(
+                f"Sandbox denied: {explanation}"
+                if explanation
+                else str(result.content or "sandbox denied the first attempt").strip()
+            ),
+        )
+
+    def explain_unretried_denial(
+        self,
+        step: StepContext,
+        prepared: PreparedToolCall,
+        result: ToolResult,
+    ) -> ToolResult:
+        """Tell the model what it may do about a sandbox denial nobody will retry."""
+
+        if prepared.tool.name != "exec" or sandbox_denial_of(result) is None:
+            return result
+        if result.data.get("sandbox_guidance"):
+            return result
+        sandbox = step.world_state.sandbox
+        policy = step.permissions.approval_policy
+        if sandbox is not None and sandbox.policy is SandboxPolicy.REQUIRED:
+            guidance = (
+                "Loom's sandbox policy is required here, so this command cannot run outside the "
+                "sandbox. Report what was blocked."
+            )
+        elif policy is ApprovalPolicy.ON_REQUEST:
+            guidance = (
+                "If the command must run outside the sandbox, call exec again with "
+                'sandbox_permissions="require_escalated" and a one-sentence justification; Loom '
+                "will ask the user."
+            )
+        else:
+            guidance = (
+                "The current permission mode does not allow running it outside the sandbox. "
+                "Report what was blocked instead of retrying the same command."
+            )
+        return ToolResult(
+            ok=False,
+            content=f"{result.content}\n{guidance}",
+            data={**result.data, "sandbox_guidance": guidance},
         )
 
     def execute(

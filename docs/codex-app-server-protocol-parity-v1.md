@@ -33,7 +33,7 @@ Test behavior was cross-checked against the v2 integration suite, especially `te
 | thread / turn / item | Explicit `Thread`, `Turn`, tagged `ThreadItem`; item identity is stable | Durable session/turn reconstruction and transcript items; tool id remains `tool:<callId>` | Partial type parity; Loom keeps product-specific item names |
 | item lifecycle | `item/started`, deltas, `item/completed` with thread/turn/item identity | Same notification lifecycle; same-call events reduce into one stable item | Aligned for existing Loom items |
 | server request vs notification | Approval, user input and elicitation are server requests with JSON-RPC request ids; lifecycle is notification | Lifecycle remains notification. Approval uses `approval/requested` carrying a durable `requestId`, answered by `approval/respond` | **Transport deviation**; Electron bridge cannot answer server-initiated requests yet |
-| command execution approval | `threadId`, `turnId`, `itemId`, `startedAtMs`, optional `approvalId`, structured reason/network context/decisions | `requestId`, `threadId`, `turnId`, tool `itemId`, Loom `approvalItemId`, `callId`, `startedAtMs`, structured metadata and decisions | Correlation semantics ported; response decision set currently only accept/decline |
+| command execution approval | `threadId`, `turnId`, `itemId`, `startedAtMs`, optional `approvalId`, structured reason/network context/decisions | `requestId`, `threadId`, `turnId`, tool `itemId`, Loom `approvalItemId`, `callId`, `startedAtMs`, structured metadata and decisions | Correlation semantics ported; decisions `accept`, `acceptForSession`, `acceptWithPrefixRule`, `decline` (see "Scoped decisions") |
 | file-change approval | Dedicated `item/fileChange/requestApproval` request and typed response | No dedicated runtime event/request boundary currently exposed | Not yet portable in this window |
 | MCP approval / elicitation | Typed MCP server elicitation request; nullable turn correlation where appropriate | Loom app-server currently receives no equivalent runtime event | Not yet portable in this window |
 | network approval context | Structured `NetworkApprovalContext { host, protocol }`; network policy decisions are typed | Serializer passes structured `networkApprovalContext` only when runtime provides it | Current runtime does not emit it; never inferred from `reason` |
@@ -114,6 +114,21 @@ The response is correlated to the exact durable request and turn:
 ```
 
 For comparison, Codex's target transport is a true server request such as `item/commandExecution/requestApproval` with a JSON-RPC `id`; `itemId` identifies the command item under review, and the client responds to that request id. Loom's `requestId` is the durable runtime event id used to make the current notification/request adapter safe across refresh and reconnect.
+
+## Scoped decisions
+
+`availableDecisions` lists what one request honors; a response outside that list is rejected and the request stays pending. `accept` and `decline` are always offered.
+
+| Decision | Codex counterpart | Effect |
+| --- | --- | --- |
+| `accept` | `accept` | this call only |
+| `acceptForSession` | `acceptForSession` | also remember, for the session, a command prefix (exec; the exact command when no safe prefix exists) or the tool (other tools) |
+| `acceptWithPrefixRule` | `acceptWithExecpolicyAmendment` | also save the command prefix for the project in `<home>/approval-rules.json` |
+| `decline` + optional `feedback` | `decline` | refuse; `feedback` (string, at most 2000 characters, decline only) is returned to the model |
+
+The request also carries what each wider decision would save, read by the runtime from the waiting call (never supplied by the client): `proposedPrefixRule` (string array or null), `sessionScope` (`{kind: "prefix" | "tool" | "command", prefix?, tool?}` or null), `ruleSandbox` (`policy` | `unsandboxed` | null) and, for a sandbox denial, `sandboxDenial` (`kind`, `startup`, `detail`, `remediation`). A runtime that cannot remember a grant offers only `accept` and `decline`. The transcript approval item carries the same fields so the card needs nothing else.
+
+`approvalRules/list` (`workspace?`) and `approvalRules/remove` (`workspace`, `prefix`, `sandbox`, `exact?`) read and delete the saved rules. Rule safety limits are in `docs/windows-sandbox.md`.
 
 ## State machine
 

@@ -1,6 +1,7 @@
 import { startTransition, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
   AddModelInput,
+  ApprovalDecision,
   ContextCompactionProgress,
   ContextReport,
   InitializeResult,
@@ -1054,9 +1055,9 @@ export function useLoom() {
     }
   }, [active?.thread.id, active?.thread.model, active?.thread.modelSelection, models?.current?.model, models?.current?.selection]);
 
-  const respondApproval = useCallback(async (item: TranscriptItem, approved: boolean) => {
+  const respondApproval = useCallback(async (item: TranscriptItem, choice: ApprovalDecision | boolean, feedback?: string) => {
     if (!active?.thread.id || !item.callId) return;
-    const params = buildApprovalResponse(active.pendingApproval, item.callId, approved);
+    const params = buildApprovalResponse(active.pendingApproval, item.callId, choice, feedback);
     if (params.threadId !== active.thread.id) {
       throw new Error("The pending approval belongs to a different thread. Reload the thread.");
     }

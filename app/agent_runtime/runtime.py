@@ -9,7 +9,7 @@ from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
 from contextlib import nullcontext
 from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import Any, Callable, Protocol
+from typing import Any, Callable, Mapping, Protocol
 
 from app.ai import AIMessage, ChatRequest, MessageRole, ModelResponse, ModelUsage, ToolCall, ToolChoice
 
@@ -94,6 +94,18 @@ class CancellationToken:
 
 
 EventListener = Callable[[AgentEvent], None]
+
+
+MAX_DENIAL_FEEDBACK_CHARS = 2000
+
+
+def _clean_denial_feedback(value: object) -> str:
+    """The reason a reviewer gave for declining, bounded and free of control bytes."""
+
+    text = "".join(ch for ch in str(value or "") if ch in "\n\t" or ch >= " ").strip()
+    if len(text) > MAX_DENIAL_FEEDBACK_CHARS:
+        text = text[: MAX_DENIAL_FEEDBACK_CHARS - 1].rstrip() + "…"
+    return text
 
 
 def _optional_env_int(name: str) -> int | None:
@@ -440,6 +452,8 @@ class AgentRuntime:
         call_id: str,
         *,
         approved: bool,
+        feedback: str = "",
+        review: Mapping[str, object] | None = None,
     ) -> AgentRunResult:
         lock = self._session_lock(session_id)
         with lock:
@@ -475,11 +489,12 @@ class AgentRuntime:
             call = session.pending_tool_calls.pop(0)
             token = self._activate(session.session_id)
             try:
+                review_data = {"review": dict(review)} if review else {}
                 if approved:
                     self._emit_event(
                         session,
                         AgentEventKind.TOOL_APPROVED,
-                        data={"call_id": call.call_id, "tool": call.name, "step_id": step.step_id},
+                        data={"call_id": call.call_id, "tool": call.name, "step_id": step.step_id, **review_data},
                     )
                     if not self._consume_tool_call(
                         session,
@@ -490,6 +505,7 @@ class AgentRuntime:
                     ):
                         return self._result(session)
                 else:
+                    explanation = _clean_denial_feedback(feedback)
                     self._emit_event(
                         session,
                         AgentEventKind.TOOL_DENIED,
@@ -498,12 +514,22 @@ class AgentRuntime:
                             "tool": call.name,
                             "source": "user",
                             "step_id": step.step_id,
+                            **({"feedback": explanation} if explanation else {}),
+                            **review_data,
                         },
                     )
                     self._append_tool_result(
                         session,
                         call,
-                        ToolResult(ok=False, content="Tool call denied by the user."),
+                        ToolResult(
+                            ok=False,
+                            content=(
+                                f"Tool call denied by the user. The user explained: {explanation}"
+                                if explanation
+                                else "Tool call denied by the user."
+                            ),
+                            data={"user_feedback": explanation} if explanation else {},
+                        ),
                         failed=True,
                         step=step,
                     )
@@ -1108,6 +1134,7 @@ class AgentRuntime:
                         "reason": prepared.reason,
                         "permission_mode": execution_step.world_state.permission_mode.value,
                         "step_id": execution_step.step_id,
+                        **self.orchestrator.approval_options(execution_step, call, prepared.tool),
                     },
                 )
                 return False

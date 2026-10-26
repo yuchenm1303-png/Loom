@@ -41,7 +41,7 @@ import { useReducedMotion } from "../motion/useReducedMotion";
 import { endSendFlight, launchSendFlight, recordCardOrigin } from "../sendFlight";
 import { useEarlierProcessHandoff } from "./useEarlierProcessHandoff";
 import { LIVE_STATUS_GRACE_MS, LIVE_TEXT_HOLD_MS, TURN_FOLD_MS, TURN_SETTLE_HOLD_MS } from "../presentationTiming";
-import type { TranscriptItem } from "../types/loom";
+import type { ApprovalDecision, TranscriptItem } from "../types/loom";
 import { TaskBranchCard, parseTaskBranchProposal } from "./TaskBranchCard";
 import { groupExecutionSequence, isActivityItem, isProcessCommentary, reportIds, settleLiveText } from "./executionSequence";
 import {
@@ -86,7 +86,7 @@ interface TranscriptProps {
   workspace?: string;
   promptDisabled?: boolean;
   onPrompt?(prompt: string): Promise<void> | void;
-  onApproval(item: TranscriptItem, approved: boolean): void;
+  onApproval(item: TranscriptItem, decision: ApprovalDecision, feedback?: string): void;
   /** Opens the usage insights page from the home activity card. */
   onOpenInsights?(): void;
   /** The window is still launching: the home screen says so instead of looking idle. */
@@ -816,19 +816,70 @@ function AssistantMessage({ item, streaming, onPrompt, decisionInteractive, prom
   );
 }
 
-function ApprovalCard({ item, onApproval }: { item: TranscriptItem; onApproval(item: TranscriptItem, approved: boolean): void }) {
+function ApprovalCard({ item, onApproval }: { item: TranscriptItem; onApproval(item: TranscriptItem, decision: ApprovalDecision, feedback?: string): void }) {
   const copy = useRuntimeCopy();
+  const [declining, setDeclining] = useState(false);
+  const [feedback, setFeedback] = useState("");
+  // The runtime says which wider grants this request honors and what each would
+  // save; an older Host that says nothing offers just allow and deny.
+  const offered: readonly ApprovalDecision[] = item.availableDecisions ?? ["accept", "decline"];
+  const outside = item.ruleSandbox === "unsandboxed";
+  const scope = item.sessionScope ?? null;
+  const prefix = item.proposedPrefixRule?.join(" ") ?? "";
+  const sessionLabel = !offered.includes("acceptForSession") || !scope ? ""
+    : scope.kind === "prefix" && scope.prefix?.length ? copy.approvalSessionPrefix(scope.prefix.join(" "), outside)
+    : scope.kind === "tool" && scope.tool ? copy.approvalSessionTool(scope.tool)
+    : copy.approvalSessionCommand(outside);
+  const detail = String(item.retryReason ?? "").trim();
+  const remedy = item.sandboxDenial?.remediation?.trim() ?? "";
+  const sendDecline = () => onApproval(item, "decline", feedback.trim() || undefined);
   return (
-    <div className="approval-card">
+    <div className={`approval-card${declining ? " is-declining" : ""}`}>
       <div className="approval-icon"><CircleAlert size={16} /></div>
       <div className="approval-main">
         <div className="approval-title">{copy.approvalTitle}</div>
         <div className="approval-copy">{item.toolName || copy.approvalTool}{item.reason ? ` · ${item.reason}` : ""}</div>
+        {detail ? <div className="approval-detail">{detail}</div> : null}
+        {remedy ? <div className="approval-detail">{copy.approvalFix}<code className="approval-command">{remedy}</code></div> : null}
+        {declining ? (
+          <textarea
+            className="approval-feedback"
+            autoFocus
+            rows={2}
+            maxLength={2000}
+            value={feedback}
+            aria-label={copy.approvalFeedbackLabel}
+            placeholder={copy.approvalFeedbackPlaceholder}
+            onChange={(event) => setFeedback(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Escape") { event.preventDefault(); setDeclining(false); }
+              else if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) { event.preventDefault(); sendDecline(); }
+            }}
+          />
+        ) : null}
       </div>
       <div className="approval-actions">
-        <button className="button secondary" onClick={() => onApproval(item, false)}>{copy.deny}</button>
-        <button className="button primary" onClick={() => onApproval(item, true)}><Check size={14} /> {copy.allow}</button>
+        {declining ? (
+          <>
+            <button className="button secondary" onClick={() => setDeclining(false)}>{copy.approvalCancel}</button>
+            <button className="button primary" onClick={sendDecline}>{copy.approvalSendDecline}</button>
+          </>
+        ) : (
+          <>
+            <button className="button secondary" onClick={() => onApproval(item, "decline")}>{copy.deny}</button>
+            <button className="button primary" onClick={() => onApproval(item, "accept")}><Check size={14} /> {copy.allow}</button>
+          </>
+        )}
       </div>
+      {declining ? null : (
+        <div className="approval-more">
+          {sessionLabel ? <button type="button" className="approval-link" onClick={() => onApproval(item, "acceptForSession")}>{sessionLabel}</button> : null}
+          {prefix && offered.includes("acceptWithPrefixRule") ? (
+            <button type="button" className="approval-link" onClick={() => onApproval(item, "acceptWithPrefixRule")}>{copy.approvalProjectPrefix(prefix, outside)}</button>
+          ) : null}
+          <button type="button" className="approval-link" onClick={() => setDeclining(true)}>{copy.approvalDeclineWithReason}</button>
+        </div>
+      )}
     </div>
   );
 }
@@ -860,7 +911,7 @@ const ItemView = memo(function ItemView({
 }: {
   item: TranscriptItem;
   streaming?: boolean;
-  onApproval(item: TranscriptItem, approved: boolean): void;
+  onApproval(item: TranscriptItem, decision: ApprovalDecision, feedback?: string): void;
   onPrompt?(prompt: string): Promise<void> | void;
   decisionInteractive?: boolean;
   promptDisabled?: boolean;
@@ -918,7 +969,7 @@ function Sequence({
   collapseEnded = false,
 }: {
   items: TranscriptItem[];
-  onApproval(item: TranscriptItem, approved: boolean): void;
+  onApproval(item: TranscriptItem, decision: ApprovalDecision, feedback?: string): void;
   onPrompt?(prompt: string): Promise<void> | void;
   keepActivityOpen?: boolean;
   active?: boolean;
@@ -1234,7 +1285,7 @@ function TurnProcess({
   settle: SettlePhase;
   open: boolean;
   onOpenChange(open: boolean): void;
-  onApproval(item: TranscriptItem, approved: boolean): void;
+  onApproval(item: TranscriptItem, decision: ApprovalDecision, feedback?: string): void;
   onPrompt?(prompt: string): Promise<void> | void;
   promptDisabled?: boolean;
   workspace?: string;
@@ -1434,7 +1485,7 @@ function UserEntry({ item, sending, onLaunched, onEntranceEnd, onApproval, onPro
   sending: boolean;
   onLaunched(): void;
   onEntranceEnd(): void;
-  onApproval(item: TranscriptItem, approved: boolean): void;
+  onApproval(item: TranscriptItem, decision: ApprovalDecision, feedback?: string): void;
   onPrompt?(prompt: string): Promise<void> | void;
   promptDisabled?: boolean;
   workspace?: string;
@@ -1463,7 +1514,7 @@ interface TurnViewProps {
   turnId: string;
   items: TranscriptItem[];
   active: boolean;
-  onApproval(item: TranscriptItem, approved: boolean): void;
+  onApproval(item: TranscriptItem, decision: ApprovalDecision, feedback?: string): void;
   onPrompt?(prompt: string): Promise<void> | void;
   decisionInteractiveItemId?: string;
   promptDisabled?: boolean;

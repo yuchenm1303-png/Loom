@@ -1,5 +1,13 @@
 from __future__ import annotations
 
+import json
+import ntpath
+import os
+import re
+from dataclasses import dataclass
+from typing import Callable
+
+from .sandbox_failure import SandboxFailureKind
 from .tools import ToolResult
 
 
@@ -12,6 +20,58 @@ _SANDBOX_DENIED_KEYWORDS = (
     "landlock",
     "failed to write file",
 )
+
+# NTSTATUS exit codes of a Windows process that died while starting.
+_STATUS_DLL_INIT_FAILED = 0xC0000142
+_STATUS_ACCESS_DENIED = 0xC0000022
+# Localized "Access is denied" (en, zh-CN, zh-TW) plus the Node/libuv codes.
+_WINDOWS_ACCESS_MARKERS = (
+    "access is denied",
+    "access denied",
+    "拒绝访问",
+    "存取被拒",
+    "eperm",
+    "eacces",
+)
+_MXC_ERROR_RE = re.compile(r'\{"error":\s*\{"code":\s*"(?P<code>[^"]+)".*\}\}')
+_MXC_DACL_RE = re.compile(r"DACL fallback requires write-DAC permission on '(?P<path>[^']+)'")
+_ROOT_LSTAT_RE = re.compile(r"(?:EPERM|EACCES)[^\n]*lstat '[A-Za-z]:\\{1,2}'")
+_NULL_DEVICE_RE = re.compile(r"could not open '/dev/null'|\\\\\.\\nul", re.IGNORECASE)
+
+# Startup denials: the process never got to do its work. Retrying the same
+# action outside the sandbox cannot repeat a side effect it never had.
+_STARTUP_KINDS = frozenset({"win32k", "dll_init", "dacl", "launch", "null_device", "system_drive"})
+# Kinds the one-time host preparation fixes.
+_HOST_PREP_KINDS = frozenset({"dll_init", "dacl", "null_device", "system_drive"})
+
+
+@dataclass(frozen=True, slots=True)
+class SandboxDenial:
+    kind: str
+    detail: str
+    program: str = ""
+    path: str = ""
+    remediation: str = ""
+
+    @property
+    def startup(self) -> bool:
+        return self.kind in _STARTUP_KINDS
+
+    def explanation(self) -> str:
+        text = f"Sandbox denied: {self.detail}"
+        if self.remediation:
+            text += f" One-time fix (administrator): {self.remediation}"
+        return text
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "kind": self.kind,
+            "startup": self.startup,
+            "detail": self.detail,
+            "program": self.program,
+            "path": self.path,
+            "remediation": self.remediation,
+        }
 
 
 def is_likely_sandbox_denied_result(result: ToolResult) -> bool:
@@ -47,22 +107,207 @@ def is_likely_sandbox_denied_result(result: ToolResult) -> bool:
     )
 
 
-def classify_exec_sandbox_denial(result: ToolResult) -> ToolResult:
-    """Promote one proven/likely sandbox failure into Loom's typed result shape."""
+def _program_name(data: dict) -> str:
+    argv = data.get("argv")
+    if isinstance(argv, list) and argv:
+        return ntpath.basename(str(argv[0]).replace("/", "\\")) or str(argv[0])
+    return "the command"
+
+
+def _mxc_error_message(text: str) -> tuple[str, str] | None:
+    """The ``{"error": {...}}`` record wxc-exec appends when it fails itself."""
+
+    for line in reversed(text.splitlines()):
+        match = _MXC_ERROR_RE.search(line)
+        if match is None:
+            continue
+        try:
+            payload = json.loads(line[match.start():match.end()])
+        except ValueError:
+            continue
+        error = payload.get("error") if isinstance(payload, dict) else None
+        if isinstance(error, dict):
+            return str(error.get("code") or ""), str(error.get("message") or "")
+    return None
+
+
+def _has_access_marker(text: str) -> bool:
+    folded = text.casefold()
+    return any(marker in folded for marker in _WINDOWS_ACCESS_MARKERS) or any(
+        keyword in folded for keyword in ("permission denied", "operation not permitted")
+    )
+
+
+def windows_mxc_denial(data: dict) -> SandboxDenial | None:
+    """Recognize a command the Windows MXC sandbox stopped, from its exit and output.
+
+    Only enforced ``windows-mxc`` runs that failed qualify. wxc-exec's own
+    ``backend_error`` records count only when they describe an access failure:
+    "file not found" is the command's problem, not the sandbox's.
+    """
+
+    sandbox = data.get("sandbox")
+    if not isinstance(sandbox, dict) or sandbox.get("enforced") is not True:
+        return None
+    if str(sandbox.get("backend") or "") != "windows-mxc":
+        return None
+    returncode = data.get("returncode")
+    if returncode in {None, 0} or isinstance(returncode, bool):
+        return None
+    program = _program_name(data)
+    text = "\n".join(
+        str(data.get(name) or "") for name in ("stderr", "stdout", "aggregated_output")
+    )
+
+    mxc_error = _mxc_error_message(text)
+    if mxc_error is not None:
+        _, message = mxc_error
+        folded = message.casefold()
+        if "status_dll_init_failed" in folded or "win32k" in folded:
+            return SandboxDenial(
+                "win32k",
+                f"{program} could not start because the sandbox blocked its Win32k (UI subsystem) "
+                "initialization (STATUS_DLL_INIT_FAILED).",
+                program=program,
+            )
+        dacl = _MXC_DACL_RE.search(message)
+        if dacl is not None:
+            return _dacl_denial(program, dacl.group("path"))
+        if "0x80070005" in folded or _has_access_marker(message):
+            return SandboxDenial(
+                "launch",
+                f"the Windows sandbox could not launch {program}: access denied ({message.strip()[:200]}).",
+                program=program,
+            )
+        return None
+
+    dacl = _MXC_DACL_RE.search(text)
+    if dacl is not None:
+        return _dacl_denial(program, dacl.group("path"))
+
+    code = int(returncode) & 0xFFFFFFFF
+    if code == _STATUS_DLL_INIT_FAILED:
+        return SandboxDenial(
+            "dll_init",
+            f"{program} could not start inside the Windows sandbox: a DLL failed to initialize "
+            "(STATUS_DLL_INIT_FAILED, 0xC0000142), usually because the AppContainer cannot open "
+            "something it needs at startup.",
+            program=program,
+        )
+    if code == _STATUS_ACCESS_DENIED:
+        return SandboxDenial(
+            "launch",
+            f"the Windows sandbox could not start {program}: access denied (STATUS_ACCESS_DENIED).",
+            program=program,
+        )
+    if _NULL_DEVICE_RE.search(text) and _has_access_marker(text):
+        return SandboxDenial(
+            "null_device",
+            f"{program} could not open the NUL device. Windows sandboxes (AppContainers) cannot use "
+            "NUL until an administrator prepares this machine; the kernel resets it at every boot.",
+            program=program,
+        )
+    if _ROOT_LSTAT_RE.search(text):
+        return SandboxDenial(
+            "system_drive",
+            f"{program} could not read the system drive root's metadata. Windows sandboxes "
+            "(AppContainers) need a one-time host preparation for that.",
+            program=program,
+        )
+    if _has_access_marker(text):
+        return SandboxDenial(
+            "access",
+            f"{program} reported an access denial while running in the Windows sandbox, which "
+            "blocks files outside the workspace, the user profile and the network.",
+            program=program,
+        )
+    return None
+
+
+def _dacl_denial(program: str, path: str) -> SandboxDenial:
+    return SandboxDenial(
+        "dacl",
+        f"the Windows sandbox could not open {path} to {program}: the folder's permissions are "
+        "protected, so only an administrator can grant the sandbox read access.",
+        program=program,
+        path=path,
+    )
+
+
+def _default_prep_command(denial: SandboxDenial) -> str:
+    from .windows_sandbox_prep import windows_sandbox_prep_status
+
+    status = windows_sandbox_prep_status(
+        sandbox_executable=os.environ.get("LOOM_WINDOWS_SANDBOX_EXECUTABLE") or None,
+        tool_dirs=(denial.path,) if denial.path else (),
+    )
+    if status.complete:
+        return ""
+    return status.command()
+
+
+def classify_exec_sandbox_denial(
+    result: ToolResult,
+    *,
+    prep_command: Callable[[SandboxDenial], str] | None = None,
+) -> ToolResult:
+    """Promote one proven/likely sandbox failure into Loom's typed result shape.
+
+    Windows MXC failures get a structured ``sandbox_denial`` and a plain reason
+    in front of the output, so neither the model nor the user is left with a
+    bare exit code such as 3221225794.
+    """
 
     if result.data.get("failure_kind") == "sandbox":
         return result
+    denial = windows_mxc_denial(result.data)
+    if denial is not None:
+        if denial.kind in _HOST_PREP_KINDS:
+            remediation = (prep_command or _default_prep_command)(denial)
+            if remediation:
+                denial = SandboxDenial(
+                    denial.kind, denial.detail, program=denial.program,
+                    path=denial.path, remediation=remediation,
+                )
+        data = dict(result.data)
+        data.update(
+            {
+                "failure_kind": "sandbox",
+                "sandbox_failure": SandboxFailureKind.DENIED.value,
+                "sandbox_detection": "windows_mxc",
+                "sandbox_denial": denial.to_dict(),
+            }
+        )
+        return ToolResult(ok=False, content=f"{denial.explanation()}\n{result.content}", data=data)
     if not is_likely_sandbox_denied_result(result):
         return result
     data = dict(result.data)
     data.update(
         {
             "failure_kind": "sandbox",
-            "sandbox_failure": "denied",
+            "sandbox_failure": SandboxFailureKind.DENIED.value,
             "sandbox_detection": "codex_heuristic",
         }
     )
     return ToolResult(ok=False, content=result.content, data=data)
 
 
-__all__ = ["classify_exec_sandbox_denial", "is_likely_sandbox_denied_result"]
+def sandbox_denial_of(result: ToolResult) -> dict | None:
+    """The structured denial a typed result carries, if any."""
+
+    if (
+        result.data.get("failure_kind") != "sandbox"
+        or result.data.get("sandbox_failure") != SandboxFailureKind.DENIED.value
+    ):
+        return None
+    denial = result.data.get("sandbox_denial")
+    return dict(denial) if isinstance(denial, dict) else {}
+
+
+__all__ = [
+    "SandboxDenial",
+    "classify_exec_sandbox_denial",
+    "is_likely_sandbox_denied_result",
+    "sandbox_denial_of",
+    "windows_mxc_denial",
+]

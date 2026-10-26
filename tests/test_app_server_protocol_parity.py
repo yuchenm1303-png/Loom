@@ -119,7 +119,11 @@ def test_refresh_and_resume_keep_the_same_durable_approval_identity(tmp_path: Pa
         assert first["approvalStage"] == "initial"
         assert "kind" not in first
         assert first["retryReason"] is None
+        # DurableAgentRuntime cannot remember a grant, so only the one-call
+        # decisions are offered (tests/test_approval_scopes.py covers the rest).
         assert first["availableDecisions"] == ["accept", "decline"]
+        assert first["sessionScope"] is None
+        assert first["proposedPrefixRule"] is None
 
         # A newly constructed app-server adapter over the same durable runtime
         # reconstructs the exact same approval identity on resume/rejoin.

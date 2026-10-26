@@ -327,6 +327,17 @@ export interface RuntimeCopy {
   approvalTool: string;
   deny: string;
   allow: string;
+  /** Remember a command prefix for this session; `outside` when it runs without the sandbox. */
+  approvalSessionPrefix(prefix: string, outside: boolean): string;
+  approvalSessionTool(tool: string): string;
+  approvalSessionCommand(outside: boolean): string;
+  approvalProjectPrefix(prefix: string, outside: boolean): string;
+  approvalDeclineWithReason: string;
+  approvalFeedbackLabel: string;
+  approvalFeedbackPlaceholder: string;
+  approvalSendDecline: string;
+  approvalCancel: string;
+  approvalFix: string;
   turnFailed: string;
   copy: string;
   copied: string;
@@ -568,6 +579,16 @@ const ZH: RuntimeCopy = {
   approvalTool: "工具",
   deny: "拒绝",
   allow: "允许",
+  approvalSessionPrefix: (prefix, outside) => `本会话内允许 ${prefix} …${outside ? "（不进沙箱）" : ""}`,
+  approvalSessionTool: (tool) => `本会话内允许 ${tool}`,
+  approvalSessionCommand: (outside) => `本会话内允许此命令${outside ? "（不进沙箱）" : ""}`,
+  approvalProjectPrefix: (prefix, outside) => `此项目始终允许 ${prefix} …${outside ? "（不进沙箱）" : ""}`,
+  approvalDeclineWithReason: "拒绝并说明…",
+  approvalFeedbackLabel: "拒绝的原因",
+  approvalFeedbackPlaceholder: "告诉模型为什么拒绝、应该怎么做（Ctrl+Enter 发送）",
+  approvalSendDecline: "拒绝",
+  approvalCancel: "取消",
+  approvalFix: "一次性修复（需管理员）：",
   turnFailed: "这一轮没有完成",
   copy: "复制",
   copied: "已复制",
@@ -704,6 +725,16 @@ const EN: RuntimeCopy = {
   approvalTool: "Tool",
   deny: "Deny",
   allow: "Allow",
+  approvalSessionPrefix: (prefix, outside) => `Allow ${prefix} … this session${outside ? " (outside the sandbox)" : ""}`,
+  approvalSessionTool: (tool) => `Allow ${tool} this session`,
+  approvalSessionCommand: (outside) => `Allow this command this session${outside ? " (outside the sandbox)" : ""}`,
+  approvalProjectPrefix: (prefix, outside) => `Always allow ${prefix} … in this project${outside ? " (outside the sandbox)" : ""}`,
+  approvalDeclineWithReason: "Deny and explain…",
+  approvalFeedbackLabel: "Why you are denying it",
+  approvalFeedbackPlaceholder: "Tell the model why and what to do instead (Ctrl+Enter to send)",
+  approvalSendDecline: "Deny",
+  approvalCancel: "Cancel",
+  approvalFix: "One-time fix (administrator): ",
   turnFailed: "This turn didn't finish",
   copy: "Copy",
   copied: "Copied",

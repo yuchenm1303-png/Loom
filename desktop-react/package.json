@@ -116,6 +116,14 @@
         "to": "wxc-exec.exe"
       },
       {
+        "from": "node_modules/@microsoft/mxc-sdk/bin/x64/wxc-host-prep.exe",
+        "to": "wxc-host-prep.exe"
+      },
+      {
+        "from": "../scripts/windows-sandbox-prep.ps1",
+        "to": "windows-sandbox-prep.ps1"
+      },
+      {
         "from": "../extensions/browser-current-tab",
         "to": "browser-current-tab"
       }

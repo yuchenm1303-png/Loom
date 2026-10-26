@@ -7,6 +7,7 @@ from dataclasses import replace
 from pathlib import Path
 
 from .approval_actions import ReviewDecision
+from .approval_rules import ApprovalRuleError, ProjectApprovalRules
 from .context_limits import resolve_context_limits
 from .contracts import (
     AgentEventKind,
@@ -30,10 +31,19 @@ from .sandbox_attempt import (
     ensure_attempt_aware_sandbox_manager,
     sandbox_attempt_scope,
 )
+from .sandbox_denial import sandbox_denial_of
 from .sandbox_tools import sandbox_status_tool
 from .step import RequestStateSnapshot, StepContext
 from .tools import ToolContext, ToolResult, ToolRouter
 
+
+_APPROVING_REVIEWS = frozenset(
+    {
+        ReviewDecision.APPROVED,
+        ReviewDecision.APPROVED_FOR_SESSION,
+        ReviewDecision.APPROVED_WITH_PREFIX_RULE,
+    }
+)
 
 _APPROVAL_ATTEMPT: ContextVar[tuple[str, str, SandboxAttempt] | None] = ContextVar(
     "loom_approval_sandbox_attempt",
@@ -132,9 +142,24 @@ class SandboxAgentRuntime(DurableAgentRuntime):
 
         super().__init__(*args, **kwargs)
         self.sandbox_manager = self.process_store.sandbox_manager
+        self._enable_scoped_approvals()
         tool = sandbox_status_tool()
         if self.tools.get(tool.name) is None:
             self.tools.register(tool)
+
+    def _enable_scoped_approvals(self) -> None:
+        """Offer session grants, and project grants where a Loom home can keep them."""
+
+        self.orchestrator.remembers_approvals = True
+        if getattr(self.orchestrator, "project_rules", None) is not None:
+            return
+        root = getattr(self.store, "root", None)
+        if not isinstance(root, Path):
+            return
+        # FileAgentSessionStore keeps sessions at <home>/agent_runtime/sessions.
+        if root.name != "sessions" or root.parent.name != "agent_runtime":
+            return
+        self.orchestrator.project_rules = ProjectApprovalRules(root.parents[1])
 
     def sandbox_status(self, session_id: str) -> SandboxSnapshot:
         session = self.store.load(session_id)
@@ -155,6 +180,7 @@ class SandboxAgentRuntime(DurableAgentRuntime):
         *,
         approved: bool,
         review_decision: ReviewDecision | str | None = None,
+        feedback: str = "",
     ):
         # Keep action validation, session-cache mutation, cancellation ordering,
         # and the resumed execution under the same reentrant ExecutionLease. The
@@ -166,6 +192,7 @@ class SandboxAgentRuntime(DurableAgentRuntime):
                 call_id,
                 approved=approved,
                 review_decision=review_decision,
+                feedback=feedback,
             )
 
     def _resume_approval_locked(
@@ -175,6 +202,7 @@ class SandboxAgentRuntime(DurableAgentRuntime):
         *,
         approved: bool,
         review_decision: ReviewDecision | str | None,
+        feedback: str = "",
     ):
         resolved_review = (
             ReviewDecision(review_decision)
@@ -190,10 +218,10 @@ class SandboxAgentRuntime(DurableAgentRuntime):
             raise ValueError(
                 f"review decision {resolved_review.value} is not supported by the boolean resume boundary"
             )
-        if approved != (
-            resolved_review in {ReviewDecision.APPROVED, ReviewDecision.APPROVED_FOR_SESSION}
-        ):
+        if approved != (resolved_review in _APPROVING_REVIEWS):
             raise ValueError("approved flag does not match review_decision")
+        if feedback and approved:
+            raise ValueError("feedback only accompanies a declined review")
 
         session = self.store.load(session_id)
         pending = session.pending_approval
@@ -240,16 +268,32 @@ class SandboxAgentRuntime(DurableAgentRuntime):
         # second equivalent action later in the same resumed turn can hit cache.
         # Loom mirrors that ordering only after the durable action binding above
         # has proven this is still the exact reviewed action.
-        if (
-            resolved_review is ReviewDecision.APPROVED_FOR_SESSION
-            and validation_step is not None
-            and validation_call is not None
-        ):
-            self.orchestrator.record_review_decision(
-                validation_step,
-                validation_call,
-                resolved_review,
-            )
+        review: dict[str, object] = {"decision": resolved_review.value}
+        if validation_step is not None and validation_call is not None:
+            kind = pending.kind if pending is not None else ApprovalKind.INITIAL
+            if resolved_review is ReviewDecision.APPROVED_FOR_SESSION:
+                self.orchestrator.record_review_decision(
+                    validation_step,
+                    validation_call,
+                    resolved_review,
+                )
+                remembered = self.orchestrator.remember_approval(
+                    validation_step, validation_call, project=False, kind=kind
+                )
+                if remembered:
+                    review["rule"] = remembered
+            elif resolved_review is ReviewDecision.APPROVED_WITH_PREFIX_RULE:
+                try:
+                    remembered = self.orchestrator.remember_approval(
+                        validation_step, validation_call, project=True, kind=kind
+                    )
+                except (ApprovalRuleError, OSError) as exc:
+                    # The reviewer still said yes to this call; failing to save
+                    # the wider grant must not turn that into a refusal.
+                    review["rule_error"] = str(exc)
+                else:
+                    if remembered:
+                        review["rule"] = remembered
 
         if (
             approved
@@ -266,6 +310,7 @@ class SandboxAgentRuntime(DurableAgentRuntime):
                     session_id,
                     call_id,
                     approved=True,
+                    review=review,
                 )
             finally:
                 _APPROVAL_ATTEMPT.reset(token)
@@ -274,6 +319,8 @@ class SandboxAgentRuntime(DurableAgentRuntime):
             session_id,
             call_id,
             approved=approved,
+            feedback=feedback,
+            review=review,
         )
 
     def _consume_tool_call(
@@ -355,13 +402,30 @@ class SandboxAgentRuntime(DurableAgentRuntime):
             approval_granted=approval_granted,
         )
 
-    def _request_sandbox_retry_approval(self, session, prepared, step, result: ToolResult) -> None:
+    def _request_sandbox_retry_approval(
+        self,
+        session,
+        prepared,
+        step,
+        result: ToolResult,
+        retry_reason: str = "",
+    ) -> None:
         call = prepared.call
-        retry_reason = str(result.content or "sandbox containment rejected the first attempt").strip()
-        reason = (
-            "The sandbox denied this approved exec attempt. Current policy requires a fresh review "
-            "before the same bound action may retry once without OS-level containment."
+        retry_reason = (
+            str(retry_reason or "").strip()
+            or str(result.content or "sandbox containment rejected the first attempt").strip()
         )
+        denial = sandbox_denial_of(result)
+        if denial and denial.get("startup") is True:
+            reason = (
+                "The OS sandbox could not start this command. Approval lets the same bound action "
+                "run once without OS-level containment."
+            )
+        else:
+            reason = (
+                "The sandbox denied this approved exec attempt. Current policy requires a fresh review "
+                "before the same bound action may retry once without OS-level containment."
+            )
         session.pending_tool_calls.insert(0, call)
         session.pending_approval = PendingToolApproval(
             call_id=call.call_id,
@@ -401,6 +465,10 @@ class SandboxAgentRuntime(DurableAgentRuntime):
                 "kind": ApprovalKind.SANDBOX_ESCALATION.value,
                 "permission_mode": step.world_state.permission_mode.value,
                 "step_id": step.step_id,
+                **({"sandbox_denial": denial} if denial else {}),
+                **self.orchestrator.approval_options(
+                    step, call, prepared.tool, kind=ApprovalKind.SANDBOX_ESCALATION
+                ),
             },
         )
 
@@ -522,9 +590,11 @@ class SandboxAgentRuntime(DurableAgentRuntime):
                 result,
                 already_approved=approval_granted,
             )
-            if plan.disposition is SandboxRetryDisposition.WITHOUT_SANDBOX:
+            if plan.disposition is not SandboxRetryDisposition.WITHOUT_SANDBOX:
+                result = self.orchestrator.explain_unretried_denial(step, prepared, result)
+            else:
                 if plan.approval_required:
-                    self._request_sandbox_retry_approval(session, prepared, step, result)
+                    self._request_sandbox_retry_approval(session, prepared, step, result, plan.retry_reason)
                     return False
                 retry_attempt = SandboxAttempt.retry_without_sandbox(plan.retry_reason)
                 with sandbox_attempt_scope(retry_attempt):

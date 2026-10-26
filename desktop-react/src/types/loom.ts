@@ -109,12 +109,44 @@ export interface TranscriptItem {
   reason?: string;
   error?: string;
   effect?: string;
+  /** Approval items: the decisions this request honors, and what "remember" would cover. */
+  availableDecisions?: ApprovalDecision[];
+  proposedPrefixRule?: string[] | null;
+  sessionScope?: ApprovalSessionScope | null;
+  ruleSandbox?: "policy" | "unsandboxed" | null;
+  retryReason?: string | null;
+  sandboxDenial?: SandboxDenialInfo | null;
   updatedAt?: string;
   createdAt?: string;
   [key: string]: unknown;
 }
 
-export type ApprovalDecision = "accept" | "decline";
+/**
+ * accept                one time, this call only
+ * acceptForSession      also remember a command prefix (exec) or the tool for this session
+ * acceptWithPrefixRule  also save the command prefix for this project
+ * decline               refuse; the reviewer may say why
+ */
+export type ApprovalDecision = "accept" | "acceptForSession" | "acceptWithPrefixRule" | "decline";
+
+/** What an `acceptForSession` would remember, read by the runtime from the waiting call. */
+export interface ApprovalSessionScope {
+  kind: "prefix" | "tool" | "command";
+  prefix?: string[];
+  tool?: string;
+}
+
+/** Why the OS sandbox stopped a command, when it did. */
+export interface SandboxDenialInfo {
+  kind: string;
+  /** The command never got going, so running it again cannot repeat a side effect. */
+  startup: boolean;
+  detail: string;
+  program: string;
+  path: string;
+  /** The one-time administrator command that fixes it, when there is one. */
+  remediation: string;
+}
 
 export interface PendingApproval {
   /** Durable correlation id. Null means display-only legacy state; responses fail closed. */
@@ -139,6 +171,12 @@ export interface PendingApproval {
   permissionMode: string | null;
   networkApprovalContext: Record<string, unknown> | null;
   availableDecisions: ApprovalDecision[];
+  /** The command prefix `acceptWithPrefixRule` would save; null when none is safe to offer. */
+  proposedPrefixRule?: string[] | null;
+  sessionScope?: ApprovalSessionScope | null;
+  /** Whether a remembered rule runs the command in the sandbox or outside it. */
+  ruleSandbox?: "policy" | "unsandboxed" | null;
+  sandboxDenial?: SandboxDenialInfo | null;
 }
 
 export interface TurnRecord {

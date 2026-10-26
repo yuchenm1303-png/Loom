@@ -10,6 +10,10 @@ const DESKTOP_ROOT = path.resolve(__dirname, "..");
 const REPO_ROOT = path.resolve(DESKTOP_ROOT, "..");
 const RUNTIME_SOURCE = path.join(DESKTOP_ROOT, "runtime-dist", "python");
 const MXC_SOURCE = path.join(DESKTOP_ROOT, "node_modules", "@microsoft", "mxc-sdk", "bin", "x64", "wxc-exec.exe");
+// The sandbox prep script runs Microsoft's signed wxc-host-prep.exe elevated once,
+// so both travel beside wxc-exec.exe; see scripts/windows-sandbox-prep.ps1.
+const MXC_HOST_PREP_SOURCE = path.join(DESKTOP_ROOT, "node_modules", "@microsoft", "mxc-sdk", "bin", "x64", "wxc-host-prep.exe");
+const SANDBOX_PREP_SCRIPT = path.join(REPO_ROOT, "scripts", "windows-sandbox-prep.ps1");
 const EXTENSION_SOURCE = path.join(REPO_ROOT, "extensions", "browser-current-tab");
 const OUTPUT_ROOT = path.join(DESKTOP_ROOT, "host-runtime-release");
 const CONFIG_PATH = path.join(REPO_ROOT, "host-runtime", "runtime.json");
@@ -28,6 +32,8 @@ function fail(message) {
 if (process.platform !== "win32") fail("Host runtime packaging must run on Windows.");
 if (!fs.existsSync(RUNTIME_SOURCE)) fail(`Missing frozen runtime: ${RUNTIME_SOURCE}`);
 if (!fs.existsSync(MXC_SOURCE)) fail(`Missing MXC executable: ${MXC_SOURCE}`);
+if (!fs.existsSync(MXC_HOST_PREP_SOURCE)) fail(`Missing MXC host prep: ${MXC_HOST_PREP_SOURCE}`);
+if (!fs.existsSync(SANDBOX_PREP_SCRIPT)) fail(`Missing sandbox prep script: ${SANDBOX_PREP_SCRIPT}`);
 if (!fs.existsSync(path.join(EXTENSION_SOURCE, "manifest.json"))) fail(`Missing browser extension: ${EXTENSION_SOURCE}`);
 
 const config = JSON.parse(fs.readFileSync(CONFIG_PATH, "utf8"));
@@ -45,6 +51,8 @@ const stage = path.join(OUTPUT_ROOT, `Loom-Host-Runtime-${version}-win-x64`);
 fs.mkdirSync(stage, { recursive: true });
 fs.cpSync(RUNTIME_SOURCE, stage, { recursive: true, force: true });
 fs.copyFileSync(MXC_SOURCE, path.join(stage, "wxc-exec.exe"));
+fs.copyFileSync(MXC_HOST_PREP_SOURCE, path.join(stage, "wxc-host-prep.exe"));
+fs.copyFileSync(SANDBOX_PREP_SCRIPT, path.join(stage, "windows-sandbox-prep.ps1"));
 fs.cpSync(EXTENSION_SOURCE, path.join(stage, "browser-current-tab"), { recursive: true, force: true });
 
 const manifest = JSON.parse(fs.readFileSync(path.join(RUNTIME_SOURCE, "manifest.json"), "utf8"));

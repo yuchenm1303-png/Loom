@@ -27,7 +27,10 @@ from app.agent_runtime.shell_environment import (
 from app.app_server_protocol import (
     APPROVAL_DECISIONS,
     approval_request_from_event,
+    available_decisions,
     pending_approval_record,
+    review_for_decision,
+    validated_feedback,
 )
 from app.projects import UNFILED, ProjectStore, ProjectStoreError
 from app.settings import LoomSettingsStore
@@ -355,6 +358,14 @@ def _apply_event_to_item(item: dict[str, Any], event: AgentEvent) -> None:
         item["arguments"] = copy.deepcopy(data.get("arguments") or {})
         item["effect"] = str(data.get("effect") or "")
         item["reason"] = str(data.get("reason") or "")
+        # What the approval card may offer beyond allow and deny, so the card
+        # needs nothing but its own item (see app_server_protocol).
+        item["availableDecisions"] = available_decisions(data)
+        item["proposedPrefixRule"] = copy.deepcopy(data.get("proposed_prefix_rule"))
+        item["sessionScope"] = copy.deepcopy(data.get("session_scope"))
+        item["ruleSandbox"] = str(data.get("rule_sandbox") or "") or None
+        item["retryReason"] = str(data.get("retry_reason") or "") or None
+        item["sandboxDenial"] = copy.deepcopy(data.get("sandbox_denial"))
     elif kind is AgentEventKind.TOOL_APPROVED:
         item["status"] = "approved"
     elif kind is AgentEventKind.PROCESS_STARTED:
@@ -1438,6 +1449,7 @@ class LoomAppServerService:
             raise ValueError(
                 f"approval/respond decision must be one of: {', '.join(APPROVAL_DECISIONS)}"
             )
+        feedback = validated_feedback(params.get("feedback"), decision)
         session = self._load(session_id)
         if session.status is not AgentStatus.WAITING_APPROVAL:
             raise RuntimeError("thread is not waiting for approval")
@@ -1456,12 +1468,23 @@ class LoomAppServerService:
             raise RuntimeError("pending approval has no durable request identity")
         if expected_request_id != request_id:
             raise ValueError("requestId does not match the pending approval")
+        # A wider grant than "this one call" is honored only when the runtime
+        # offered it for this very request.
+        if decision not in (approval.get("availableDecisions") or ["accept", "decline"]):
+            raise ValueError(f"decision {decision!r} is not available for this approval")
+        review_decision, may_run = review_for_decision(decision)
+        options: dict[str, Any] = {}
+        if decision not in {"accept", "decline"} or feedback:
+            options["review_decision"] = review_decision
+        if feedback:
+            options["feedback"] = feedback
         self._launch(
             session_id,
             lambda: self.runtime.resume_approval(
                 session_id,
                 call_id,
-                approved=decision == "accept",
+                approved=may_run,
+                **options,
             ),
         )
         return {
@@ -1472,6 +1495,34 @@ class LoomAppServerService:
             "callId": call_id,
             "decision": decision,
         }
+
+    def approval_rules_list(self, params: dict[str, Any]) -> dict[str, Any]:
+        """Command prefixes saved per project, for review and removal."""
+
+        rules = getattr(getattr(self.runtime, "orchestrator", None), "project_rules", None)
+        if rules is None:
+            return {"available": False, "projects": []}
+        workspace = params.get("workspace")
+        return {
+            "available": True,
+            "projects": rules.snapshot(str(workspace) if workspace else None),
+        }
+
+    def approval_rules_remove(self, params: dict[str, Any]) -> dict[str, Any]:
+        rules = getattr(getattr(self.runtime, "orchestrator", None), "project_rules", None)
+        if rules is None:
+            raise RuntimeError("saved approval rules are unavailable")
+        workspace = self._required_text(params, "workspace")
+        prefix = params.get("prefix")
+        if not isinstance(prefix, list) or any(not isinstance(item, str) for item in prefix):
+            raise ValueError("approvalRules/remove prefix must be an array of strings")
+        removed = rules.remove(
+            workspace,
+            prefix,
+            str(params.get("sandbox") or "policy"),
+            exact=bool(params.get("exact")),
+        )
+        return {"removed": removed}
 
     def _launch(self, session_id: str, operation: Callable[[], Any], *, after_current: bool = False) -> None:
         with self._guard:
@@ -1961,6 +2012,8 @@ class LoomRpcController:
                     "requestNotification": "approval/requested",
                     "responseMethod": "approval/respond",
                     "decisions": list(APPROVAL_DECISIONS),
+                    "declineFeedback": True,
+                    "rules": ["approvalRules/list", "approvalRules/remove"],
                     "staleResponses": "rejected",
                 },
                 "notifications": [
@@ -1988,6 +2041,8 @@ class LoomRpcController:
             "mcp/marketplace/list": self.service.mcp_marketplace_list,
             "mcp/marketplace/detail": self.service.mcp_marketplace_detail,
             "mcp/marketplace/prepare": self.service.mcp_marketplace_prepare,
+            "approvalRules/list": self.service.approval_rules_list,
+            "approvalRules/remove": self.service.approval_rules_remove,
             "settings/get": self.service.settings_get,
             "settings/set": self.service.settings_set,
             "project/list": self.service.project_list,

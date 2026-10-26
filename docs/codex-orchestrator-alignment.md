@@ -48,7 +48,9 @@ This is deliberately narrower than putting the full host environment into every 
 
 Loom now has a `SandboxExecutionError` contract with explicit failure kinds (`denied`, `unavailable`, `configuration`) and an `escalatable` bit. `ToolOrchestrator.execute()` preserves that structure in the resulting `ToolResult.data` instead of flattening it into an ordinary exception string.
 
-This is still not a claim that all current sandbox failures are classified. The current Bubblewrap/MXC process path does **not** manufacture a typed `denied` result from a generic non-zero exit code or stderr text. A backend should emit `SandboxExecutionError(DENIED, ..., escalatable=True)` only when it has a trustworthy containment-specific signal.
+This is still not a claim that all current sandbox failures are classified. The Bubblewrap path does **not** manufacture a typed `denied` result from a generic non-zero exit code or stderr text. A backend should emit `SandboxExecutionError(DENIED, ..., escalatable=True)` only when it has a trustworthy containment-specific signal.
+
+Windows MXC now has such signals (2026-10-24, `sandbox_denial.windows_mxc_denial`): `STATUS_DLL_INIT_FAILED` (`0xC0000142`), the `backend_error` JSON that `wxc-exec` writes when it cannot start the program, `DACL fallback requires write-DAC permission on '<path>'`, and the NUL-device and `lstat 'C:\'` access failures. They produce `failure_kind=sandbox`, `sandbox_failure=denied` and a structured `sandbox_denial` (`kind`, `startup`, `detail`, `remediation`). A `startup` denial means the command never ran; under `on-request` that is enough to ask for the one-shot no-sandbox retry (the same question an unavailable backend already asks), where Codex would hand the model a bare exit code. See `docs/windows-sandbox.md`.
 
 ## Explicit sandbox attempts and one-shot escalation
 
@@ -71,7 +73,7 @@ For a real sensitive `exec` under `WORKSPACE`/`APPROVAL`, this can intentionally
 
 The runtime records the first failed attempt and the subsequent approval/attempt as observable events under the same call id. The app-server reducer already updates that call item through `failed -> waiting_approval -> running -> completed/failed` rather than creating duplicate tool items. The current static `pendingApproval` snapshot still exposes the human-readable reason but does not yet include `kind`/`retryReason`; the raw approval event does include both fields.
 
-Most importantly, this state machine remains dormant for ordinary Bubblewrap/MXC command failures until those backends can produce a trustworthy typed denial. Loom still does not guess from `Permission denied`, exit code, or arbitrary stderr.
+Most importantly, this state machine stays dormant for ordinary Bubblewrap command failures until that backend can produce a trustworthy typed denial; on Windows MXC it runs on the specific signals above. Loom still does not guess from arbitrary stderr beyond Codex's keyword heuristic, and a denial that is not a `startup` denial does not prompt under `on-request`.
 
 ## CI cleanup and current infrastructure limitation
 
@@ -88,7 +90,7 @@ It also does not yet make Loom's StepContext as broad as Codex's current StepCon
 1. move request-state capture lower into the core runtime so lower-level runtime compositions do not need a compatibility fallback;
 2. replace the current exec-specific environment fingerprint with a first-class typed execution-action snapshot when the core runtime can carry action objects end to end;
 3. make MCP binding a first-class typed object rather than canonical JSON inside request state;
-4. connect trustworthy backend-specific containment-denial signals to `SandboxExecutionError` without stderr guessing;
+4. connect trustworthy containment-denial signals of the Bubblewrap backend (Windows MXC is done) to the typed denial without stderr guessing;
 5. expose approval `kind`/`retryReason` in the static app-server pending-approval snapshot as well as the event stream;
 6. add network approval on the same orchestration boundary.
 

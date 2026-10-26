@@ -219,6 +219,77 @@ html .approval-actions .button {
   font-size: 10.5px;
 }
 
+/* Wider grants and the reason for a refusal sit under the two main choices, quiet
+   enough that the common case stays one tap. */
+html .approval-detail {
+  font-size: 12px;
+  line-height: 1.45;
+  color: #858c98;
+  overflow-wrap: anywhere;
+}
+
+html .approval-command {
+  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  font-size: 12px;
+  user-select: all;
+  overflow-wrap: anywhere;
+}
+
+html .approval-feedback {
+  width: 100%;
+  min-height: 54px;
+  margin-top: 4px;
+  padding: 7px 9px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.45;
+  resize: vertical;
+}
+
+html .approval-feedback:focus-visible {
+  outline: 1px solid var(--accent-soft, #8175e2);
+  outline-offset: 1px;
+}
+
+html .approval-more {
+  grid-column: 2 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+}
+
+html .approval-link {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--muted, #858c98);
+  font: inherit;
+  font-size: 12px;
+  line-height: 1.5;
+  text-align: left;
+  cursor: pointer;
+}
+
+html .approval-link:hover {
+  color: var(--text, #ddd8e8);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+html .approval-link:focus-visible {
+  outline: 1px solid var(--accent-soft, #8175e2);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+html[data-loom-theme="light"] .approval-detail {
+  color: #7d8189;
+}
+
 html[data-loom-theme="light"] .approval-card {
   border-color: rgba(65, 57, 43, .10);
   background:
@@ -270,5 +341,9 @@ html[data-loom-theme="light"] .approval-actions .button.primary {
     grid-column: 2;
     justify-content: flex-start;
     padding-top: 2px;
+  }
+
+  html .approval-more {
+    grid-column: 2;
   }
 }

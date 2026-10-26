@@ -231,6 +231,7 @@ class AttemptAwareSandboxManager(SandboxManager):
             enforced=False,
             reason=detail,
             network_isolated=False,
+            display_access=False,
         )
         return SandboxCommand(
             argv=tuple(argv),

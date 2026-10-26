@@ -115,7 +115,11 @@ def test_windows_workspace_mxc_plan_uses_current_schema_and_blocks_network(tmp_p
         "egress": {"default": "deny"},
         "ingress": {"default": "deny", "hostLoopback": "deny"},
     }
-    assert config["ui"] == {"disable": True, "clipboard": "none", "injection": False}
+    # Win32k stays reachable (PowerShell/git/where.exe die with 0xC0000142
+    # without it); clipboard and input injection do not.
+    assert config["ui"] == {"disable": False, "clipboard": "none", "injection": False}
+    # Tool folders the prep script opened are readable through this capability.
+    assert config["processContainer"]["capabilities"] == ["loomSandboxTools"]
     filesystem = config["filesystem"]
     assert str(workspace) in filesystem["readwritePaths"]
     assert str((workspace / ".git").resolve()) in filesystem["readonlyPaths"]

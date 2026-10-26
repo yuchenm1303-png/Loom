@@ -379,3 +379,125 @@ def test_plain_failed_tool_result_is_not_inferred_as_sandbox_denial(tmp_path):
         assert len(attempts) == 1
     finally:
         runtime.close()
+
+
+def _windows_failure(argv, *, returncode, stderr=""):
+    """What exec returns when Windows MXC stopped the command (before typing)."""
+
+    return ToolResult(
+        ok=False,
+        content=f"process=proc-1 status=exited backend=pipe\nsandbox=windows-mxc:workspace\nexit={returncode}",
+        data={
+            "argv": list(argv),
+            "returncode": returncode,
+            "stdout": "",
+            "stderr": stderr,
+            "sandbox": {"enforced": True, "backend": "windows-mxc"},
+        },
+    )
+
+
+def _tool_result_text(runtime, session_id: str) -> str:
+    session = runtime.store.load(session_id)
+    return "\n".join(
+        str(message.content)
+        for message in session.messages
+        if getattr(getattr(message, "role", None), "value", "") == "tool"
+    )
+
+
+def test_on_request_windows_startup_denial_asks_to_run_once_outside_the_sandbox(tmp_path, monkeypatch):
+    from app.agent_runtime import sandbox_denial
+    from app.agent_runtime.contracts import AgentEventKind
+
+    monkeypatch.setattr(sandbox_denial, "_default_prep_command", lambda _denial: "")
+    attempts = []
+
+    def handler(_context, _arguments):
+        attempt = current_sandbox_attempt()
+        attempts.append(attempt)
+        if attempt.kind is SandboxAttemptKind.INITIAL:
+            return _windows_failure(["git.exe", "status"], returncode=3221225794)
+        return ToolResult(ok=True, content="ran outside the sandbox")
+
+    runtime = _runtime(tmp_path, handler, "done")
+    try:
+        session = _session(runtime, tmp_path)
+        waiting = runtime.start_turn(session.session_id, "Run the action.")
+
+        # Workspace mode (on-request) used to hand the model a bare 3221225794.
+        assert waiting.status is AgentStatus.WAITING_APPROVAL
+        pending = waiting.pending_approval
+        assert pending is not None
+        assert pending.kind is ApprovalKind.SANDBOX_ESCALATION
+        assert "could not start this command" in pending.reason
+        assert pending.retry_reason.startswith("Sandbox denied: git.exe could not start inside the Windows sandbox")
+        requested = [
+            event for event in runtime.store.events(session.session_id)
+            if event.kind is AgentEventKind.TOOL_APPROVAL_REQUIRED
+        ]
+        assert requested[-1].data["sandbox_denial"]["kind"] == "dll_init"
+        assert requested[-1].data["sandbox_denial"]["startup"] is True
+
+        completed = runtime.resume_approval(session.session_id, "exec-1", approved=True)
+        assert completed.status is AgentStatus.COMPLETED
+        assert [attempt.kind for attempt in attempts] == [SandboxAttemptKind.INITIAL, SandboxAttemptKind.RETRY]
+        assert attempts[1].selection is SandboxAttemptSelection.NO_SANDBOX
+    finally:
+        runtime.close()
+
+
+def test_never_policy_explains_a_windows_startup_denial_without_retrying(tmp_path, monkeypatch):
+    from app.agent_runtime import sandbox_denial
+
+    monkeypatch.setattr(sandbox_denial, "_default_prep_command", lambda _denial: "")
+    attempts = []
+
+    def handler(_context, _arguments):
+        attempts.append(current_sandbox_attempt())
+        return _windows_failure(
+            ["git.exe", "status"],
+            returncode=128,
+            stderr="fatal: could not open '/dev/null' for reading and writing: Permission denied",
+        )
+
+    runtime = _runtime(tmp_path, handler, "reported", approval_policy=ApprovalPolicy.NEVER)
+    try:
+        session = _session(runtime, tmp_path)
+        completed = runtime.start_turn(session.session_id, "Run the action.")
+
+        assert completed.status is AgentStatus.COMPLETED
+        assert len(attempts) == 1
+        text = _tool_result_text(runtime, session.session_id)
+        assert "Sandbox denied: git.exe could not open the NUL device" in text
+        assert "does not allow running it outside the sandbox" in text
+    finally:
+        runtime.close()
+
+
+def test_on_request_runtime_access_denial_tells_the_model_how_to_escalate(tmp_path, monkeypatch):
+    from app.agent_runtime import sandbox_denial
+
+    monkeypatch.setattr(sandbox_denial, "_default_prep_command", lambda _denial: "")
+    attempts = []
+
+    def handler(_context, _arguments):
+        attempts.append(current_sandbox_attempt())
+        return _windows_failure(["cmd.exe", "/c", "type", "x"], returncode=1, stderr="Access is denied.")
+
+    runtime = _runtime(tmp_path, handler, "reported")
+    try:
+        session = _session(runtime, tmp_path)
+        completed = runtime.start_turn(session.session_id, "Run the action.")
+
+        # The command ran and hit a denial mid-way: Codex parity, no automatic
+        # prompt; the model gets the reason and the escalation route.
+        assert completed.status is AgentStatus.COMPLETED
+        assert completed.pending_approval is None
+        assert len(attempts) == 1
+        text = _tool_result_text(runtime, session.session_id)
+        assert "Sandbox denied: cmd.exe reported an access denial" in text
+        assert "call exec again with sandbox_permissions=" in text
+        assert "require_escalated" in text
+    finally:
+        runtime.close()

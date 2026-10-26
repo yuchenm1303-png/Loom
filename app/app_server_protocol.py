@@ -7,7 +7,66 @@ from typing import Any, Iterable
 from app.agent_runtime import AgentEvent, AgentEventKind
 
 
-APPROVAL_DECISIONS = ("accept", "decline")
+# Every decision a client may send. Which of them one request actually offers
+# is listed in its ``availableDecisions``; a response outside that list is
+# rejected. ``accept``/``decline`` are always offered.
+#   accept                one time, this call only
+#   acceptForSession      also remember a command prefix (exec) or the tool
+#                         for the rest of this session
+#   acceptWithPrefixRule  also save the command prefix for this project
+#   decline               refuse; ``feedback`` may say why
+APPROVAL_DECISIONS = ("accept", "acceptForSession", "acceptWithPrefixRule", "decline")
+MAX_APPROVAL_FEEDBACK_CHARS = 2000
+
+# decision -> (runtime ReviewDecision value, whether the call may run)
+_DECISION_REVIEW = {
+    "accept": ("approved", True),
+    "acceptForSession": ("approved_for_session", True),
+    "acceptWithPrefixRule": ("approved_with_prefix_rule", True),
+    "decline": ("denied", False),
+}
+
+
+def review_for_decision(decision: str) -> tuple[str, bool]:
+    try:
+        return _DECISION_REVIEW[decision]
+    except KeyError:
+        raise ValueError(
+            f"approval/respond decision must be one of: {', '.join(APPROVAL_DECISIONS)}"
+        ) from None
+
+
+def validated_feedback(value: Any, decision: str) -> str:
+    """The reviewer's reason for declining; only a decline may carry one."""
+
+    if value is None:
+        return ""
+    if not isinstance(value, str):
+        raise ValueError("approval/respond feedback must be a string")
+    text = value.strip()
+    if not text:
+        return ""
+    if decision != "decline":
+        raise ValueError("approval/respond feedback is only accepted with the decline decision")
+    if len(text) > MAX_APPROVAL_FEEDBACK_CHARS:
+        raise ValueError(
+            f"approval/respond feedback must be at most {MAX_APPROVAL_FEEDBACK_CHARS} characters"
+        )
+    return text
+
+
+def available_decisions(data: dict[str, Any]) -> list[str]:
+    """The decisions one waiting approval can honor, from what the runtime offered."""
+
+    decisions = ["accept"]
+    scope = data.get("session_scope")
+    if isinstance(scope, dict) and scope.get("kind") in {"prefix", "tool", "command"}:
+        decisions.append("acceptForSession")
+    prefix = data.get("proposed_prefix_rule")
+    if data.get("can_persist_rule") is True and isinstance(prefix, list) and prefix:
+        decisions.append("acceptWithPrefixRule")
+    decisions.append("decline")
+    return decisions
 
 
 def _timestamp_ms(value: str) -> int:
@@ -89,7 +148,14 @@ def approval_request_from_event(
             "network_approval_context",
             "networkApprovalContext",
         ),
-        "availableDecisions": list(APPROVAL_DECISIONS),
+        # What the reviewer may remember beyond this one call. The prefix and
+        # scope are the runtime's own reading of the waiting call, so the card
+        # shows exactly what a "remember" decision would save.
+        "proposedPrefixRule": _structured_value(data, "proposed_prefix_rule"),
+        "sessionScope": _structured_value(data, "session_scope"),
+        "ruleSandbox": str(data.get("rule_sandbox") or "") or None,
+        "sandboxDenial": _structured_value(data, "sandbox_denial"),
+        "availableDecisions": available_decisions(data),
     }
 
 
@@ -129,12 +195,20 @@ def pending_approval_record(
         "reason": str(getattr(pending, "reason", "") or ""),
         "permissionMode": None,
         "networkApprovalContext": None,
-        "availableDecisions": list(APPROVAL_DECISIONS),
+        "proposedPrefixRule": None,
+        "sessionScope": None,
+        "ruleSandbox": None,
+        "sandboxDenial": None,
+        "availableDecisions": ["accept", "decline"],
     }
 
 
 __all__ = [
     "APPROVAL_DECISIONS",
+    "MAX_APPROVAL_FEEDBACK_CHARS",
     "approval_request_from_event",
+    "available_decisions",
     "pending_approval_record",
+    "review_for_decision",
+    "validated_feedback",
 ]

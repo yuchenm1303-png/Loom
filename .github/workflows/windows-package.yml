@@ -85,6 +85,14 @@ jobs:
           $browserExtension = Join-Path $resources "browser-current-tab\manifest.json"
           if (-not (Test-Path $runtime)) { throw "Packaged private Python runtime was not found at $runtime" }
           if (-not (Test-Path $mxc)) { throw "Packaged MXC executable was not found at $mxc" }
+          # The one-time sandbox preparation (docs/windows-sandbox.md) runs from these two files.
+          foreach ($name in @("wxc-host-prep.exe", "windows-sandbox-prep.ps1")) {
+            if (-not (Test-Path (Join-Path $resources $name))) { throw "Packaged Windows sandbox preparation file was not found: $name" }
+          }
+          $hostPrep = Get-AuthenticodeSignature (Join-Path $resources "wxc-host-prep.exe")
+          if ($hostPrep.Status -ne "Valid" -or $hostPrep.SignerCertificate.Subject -notmatch "O=Microsoft Corporation") {
+            throw "Packaged wxc-host-prep.exe is not validly signed by Microsoft: $($hostPrep.Status)"
+          }
           if (-not (Test-Path $browserExtension)) { throw "Packaged Current Tab Bridge extension was not found at $browserExtension" }
           $expectedIdentity = node desktop-react/scripts/host-runtime-identity.mjs | ConvertFrom-Json
           if ($LASTEXITCODE -ne 0) { throw "Cannot resolve packaged runtime source identity." }

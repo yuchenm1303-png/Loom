@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import uuid
 from pathlib import Path
+from typing import Any
 
 from app.ai import AIMessage, MessageRole
 
@@ -161,9 +162,10 @@ class DurableAgentRuntime(CoreAgentRuntime):
         call_id: str,
         *,
         approved: bool,
+        **options: Any,
     ) -> AgentRunResult:
         before = self.store.load(session_id).usage.total_tokens
-        result = super().resume_approval(session_id, call_id, approved=approved)
+        result = super().resume_approval(session_id, call_id, approved=approved, **options)
         result = self._track_goal_usage(result, before_tokens=before)
         if self.auto_drain_queue and result.status is AgentStatus.COMPLETED:
             return self._drain_queue(session_id, result)

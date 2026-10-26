@@ -64,7 +64,7 @@ import {
 } from "./keyboardShortcuts";
 import { useAccount } from "./state/useAccount";
 import { currentTurnHasTerminalError, useLoom } from "./state/useLoom";
-import type { ThreadRecord, TranscriptItem } from "./types/loom";
+import type { ApprovalDecision, ThreadRecord, TranscriptItem } from "./types/loom";
 
 const RESOLVED_APPROVAL_STATUSES = new Set([
   "approved",
@@ -1292,7 +1292,7 @@ export default function App() {
     commitPanelWidth(panel, current + delta);
   };
 
-  const handleApproval = useCallback(async (item: TranscriptItem, approved: boolean): Promise<void> => {
+  const handleApproval = useCallback(async (item: TranscriptItem, decision: ApprovalDecision, feedback?: string): Promise<void> => {
     setDismissedApprovalIds((current) => {
       const next = new Set(current);
       next.add(item.id);
@@ -1300,7 +1300,7 @@ export default function App() {
     });
 
     try {
-      await loom.respondApproval(item, approved);
+      await loom.respondApproval(item, decision, feedback);
     } catch (cause) {
       setDismissedApprovalIds((current) => {
         const next = new Set(current);

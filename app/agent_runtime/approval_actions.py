@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import threading
 from dataclasses import dataclass
 from enum import Enum
 from typing import Iterable
@@ -9,6 +10,7 @@ from typing import Iterable
 from app.ai import ToolCall
 
 from .apply_patch_action import ApplyPatchActionIdentity, ApplyPatchApprovalCacheKey
+from .approval_rules import PrefixRule
 from .command_approval import canonicalize_command_for_approval
 from .execution_action import ExecActionIdentity, ExecApprovalCacheKey, execution_action_for
 from .permissions import AdditionalPermissionProfile, SandboxPermissions
@@ -19,10 +21,14 @@ class ReviewDecision(str, Enum):
 
     Policy-amendment and network/MCP-specific variants stay with their owning
     subsystems. The common outcomes intentionally mirror Codex protocol names.
+    ``APPROVED_FOR_SESSION`` remembers a command prefix (exec) or the tool for
+    the rest of the session; ``APPROVED_WITH_PREFIX_RULE`` is Codex's
+    ApprovedExecpolicyAmendment: the prefix is saved for the project.
     """
 
     APPROVED = "approved"
     APPROVED_FOR_SESSION = "approved_for_session"
+    APPROVED_WITH_PREFIX_RULE = "approved_with_prefix_rule"
     DENIED = "denied"
     TIMED_OUT = "timed_out"
     ABORTED = "aborted"
@@ -172,6 +178,11 @@ class ApprovalDecisionStore:
 
     def __init__(self) -> None:
         self._decisions: dict[str, ReviewDecision] = {}
+        # Wider session grants than one exact action: command prefixes (exec)
+        # and whole tools (everything else). See approval_rules.py.
+        self._prefix_rules: list[PrefixRule] = []
+        self._tool_rules: set[str] = set()
+        self._rules_guard = threading.Lock()
 
     def lookup(self, keys: Iterable[ApprovalCacheKey]) -> ReviewDecision | None:
         values = tuple(keys)
@@ -201,8 +212,30 @@ class ApprovalDecisionStore:
         for key in tuple(keys):
             self._decisions[approval_cache_digest(key)] = resolved
 
+    def add_prefix_rule(self, rule: PrefixRule) -> bool:
+        with self._rules_guard:
+            if any(existing.key == rule.key for existing in self._prefix_rules):
+                return False
+            self._prefix_rules.append(rule)
+            return True
+
+    def prefix_rules(self) -> tuple[PrefixRule, ...]:
+        with self._rules_guard:
+            return tuple(self._prefix_rules)
+
+    def add_tool_rule(self, tool_name: str) -> None:
+        with self._rules_guard:
+            self._tool_rules.add(str(tool_name))
+
+    def has_tool_rule(self, tool_name: str) -> bool:
+        with self._rules_guard:
+            return str(tool_name) in self._tool_rules
+
     def clear(self) -> None:
         self._decisions.clear()
+        with self._rules_guard:
+            self._prefix_rules.clear()
+            self._tool_rules.clear()
 
 
 __all__ = [
