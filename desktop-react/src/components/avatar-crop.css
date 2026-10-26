@@ -1,93 +1,68 @@
-/* Scrim, card and reveal are the panel language's (.pl-scrim .pl-modal .pl-reveal). */
+/* Avatar crop dialog ----------------------------------------------------------------------------------------------
+   Opens over the profile editor of the account dialog (AvatarCropDialog.tsx). Scrim, card and reveal are the panel
+   language's (.pl-scrim .pl-modal .pl-reveal); inside it speaks like the account dialog (account-auth.css): a plain
+   title and one line, the photo in a square with the round avatar cut out of a dimmed veil (the picture is shown as
+   a circle everywhere else, so that is what is framed), the zoom between − and +, and ink for the one action. */
+
 .loom-avatar-crop-backdrop {
   z-index: 1320;
 }
 
 .loom-avatar-crop-dialog {
-  width: min(424px, calc(100vw - 32px));
+  --crop-primary-hover: color-mix(in srgb, var(--pl-ink) 45%, #fff);
+  width: min(360px, calc(100vw - 32px));
+}
+
+html[data-loom-theme="light"] .loom-avatar-crop-dialog {
+  --crop-primary-hover: color-mix(in srgb, var(--pl-ink) 86%, #fff);
 }
 
 .loom-avatar-crop-header {
-  min-height: 78px;
-  padding: 17px 18px 15px;
-  border-bottom: 1px solid rgba(255, 255, 255, .055);
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 16px;
+  gap: 12px;
+  padding: 20px 14px 0 24px;
 }
 
 .loom-avatar-crop-header > div {
   min-width: 0;
-  display: flex;
-  align-items: flex-start;
-  gap: 11px;
-}
-
-.loom-avatar-crop-mark {
-  flex: none;
-  width: 34px;
-  height: 34px;
-  border-radius: 11px;
-  display: grid;
-  place-items: center;
-  color: #aa9fff;
-  background: rgba(139, 124, 246, .11);
-  border: 1px solid rgba(166, 151, 255, .16);
+  padding-top: 4px;
 }
 
 .loom-avatar-crop-header h3 {
-  margin: 1px 0 0;
-  font-size: 15px;
-  line-height: 1.25;
-  font-weight: 650;
+  margin: 0;
+  color: var(--pl-ink);
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.35;
   letter-spacing: -.01em;
 }
 
 .loom-avatar-crop-header p {
-  margin: 5px 0 0;
-  color: var(--loom-muted, #8f96a3);
-  font-size: 11.5px;
-  line-height: 1.45;
-}
-
-.loom-avatar-crop-close {
-  width: 30px;
-  height: 30px;
-  flex: none;
-  border: 1px solid transparent;
-  border-radius: 9px;
-  display: grid;
-  place-items: center;
-  background: transparent;
-  color: var(--loom-muted, #8f96a3);
-  cursor: pointer;
-}
-
-.loom-avatar-crop-close:hover:not(:disabled) {
-  color: var(--loom-text, #f3f4f6);
-  border-color: rgba(255, 255, 255, .07);
-  background: rgba(255, 255, 255, .05);
+  margin: 4px 0 0;
+  color: var(--pl-muted);
+  font-size: 13px;
+  line-height: 1.5;
 }
 
 .loom-avatar-crop-body {
-  padding: 20px 24px 16px;
+  padding: 20px 24px 0;
 }
 
 .loom-avatar-crop-stage {
+  --crop-check: color-mix(in srgb, var(--pl-ink) 5%, transparent);
   position: relative;
-  margin: 0 auto;
   max-width: 100%;
+  margin: 0 auto;
   overflow: hidden;
-  border-radius: 24px;
+  border-radius: 14px;
   background:
-    linear-gradient(45deg, rgba(255,255,255,.035) 25%, transparent 25%, transparent 75%, rgba(255,255,255,.035) 75%),
-    linear-gradient(45deg, rgba(255,255,255,.035) 25%, transparent 25%, transparent 75%, rgba(255,255,255,.035) 75%),
-    #0b0d12;
+    linear-gradient(45deg, var(--crop-check) 25%, transparent 25%, transparent 75%, var(--crop-check) 75%),
+    linear-gradient(45deg, var(--crop-check) 25%, transparent 25%, transparent 75%, var(--crop-check) 75%),
+    color-mix(in srgb, var(--pl-ink) 3%, var(--pl-surface-raised));
   background-size: 20px 20px;
   background-position: 0 0, 10px 10px;
-  border: 1px solid rgba(255, 255, 255, .09);
-  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, .18);
   touch-action: none;
   user-select: none;
   outline: none;
@@ -102,7 +77,8 @@
 }
 
 .loom-avatar-crop-stage:focus-visible {
-  box-shadow: 0 0 0 2px rgba(139, 124, 246, .78), inset 0 0 0 1px rgba(0, 0, 0, .18);
+  outline: 2px solid var(--pl-focus);
+  outline-offset: 3px;
 }
 
 .loom-avatar-crop-stage > img {
@@ -121,174 +97,160 @@
   display: grid;
   place-items: center;
   padding: 24px;
-  color: var(--loom-muted, #8f96a3);
-  font-size: 12px;
+  color: var(--pl-muted);
+  font-size: 13px;
+  line-height: 1.5;
   text-align: center;
 }
 
-.loom-avatar-crop-frame {
+/* The round window: a circle whose shadow is the veil over everything outside it. */
+.loom-avatar-crop-window {
   position: absolute;
   inset: 0;
-  border: 1.5px solid rgba(255, 255, 255, .82);
-  border-radius: 24px;
-  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, .15);
-  pointer-events: none;
-}
-
-.loom-avatar-crop-grid {
-  position: absolute;
   z-index: 1;
+  border-radius: 50%;
+  box-shadow:
+    0 0 0 999px rgba(8, 10, 14, .55),
+    inset 0 0 0 1.5px rgba(255, 255, 255, .8);
   pointer-events: none;
-  background: rgba(255, 255, 255, .22);
-  opacity: .7;
 }
-
-.loom-avatar-crop-grid.is-v1,
-.loom-avatar-crop-grid.is-v2 {
-  top: 0;
-  bottom: 0;
-  width: 1px;
-}
-
-.loom-avatar-crop-grid.is-v1 { left: 33.333%; }
-.loom-avatar-crop-grid.is-v2 { right: 33.333%; }
-
-.loom-avatar-crop-grid.is-h1,
-.loom-avatar-crop-grid.is-h2 {
-  left: 0;
-  right: 0;
-  height: 1px;
-}
-
-.loom-avatar-crop-grid.is-h1 { top: 33.333%; }
-.loom-avatar-crop-grid.is-h2 { bottom: 33.333%; }
 
 .loom-avatar-crop-controls {
-  margin-top: 15px;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.loom-avatar-crop-zoom-row {
-  min-width: 0;
-  flex: 1;
   display: grid;
-  grid-template-columns: auto auto minmax(80px, 1fr) 42px;
+  grid-template-columns: auto minmax(0, 1fr) auto 40px;
   align-items: center;
-  gap: 7px;
-  color: var(--loom-muted, #8f96a3);
-  font-size: 11.5px;
+  gap: 6px;
+  margin-top: 16px;
 }
 
-.loom-avatar-crop-zoom-row input[type="range"] {
+.loom-avatar-crop-step {
+  width: 28px;
+  height: 28px;
+}
+
+.loom-avatar-crop-controls input[type="range"] {
   width: 100%;
-  accent-color: #8b7cf6;
+  height: 20px;
+  margin: 0;
+  background: transparent;
   cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
 }
 
-.loom-avatar-crop-zoom-row strong {
-  color: var(--loom-text, #f3f4f6);
-  font-size: 11px;
-  font-weight: 600;
+.loom-avatar-crop-controls input[type="range"]::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: 999px;
+  background: linear-gradient(to right, var(--pl-ink) var(--crop-fill, 0%), var(--pl-line) var(--crop-fill, 0%));
+}
+
+.loom-avatar-crop-controls input[type="range"]::-webkit-slider-thumb {
+  width: 14px;
+  height: 14px;
+  margin-top: -5px;
+  border: 0;
+  border-radius: 50%;
+  background: var(--pl-ink);
+  box-shadow: 0 0 0 3px var(--pl-surface-raised);
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+.loom-avatar-crop-controls input[type="range"]:focus-visible {
+  outline: 2px solid var(--pl-focus);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+.loom-avatar-crop-controls input[type="range"]:disabled {
+  opacity: .5;
+  cursor: default;
+}
+
+.loom-avatar-crop-value {
+  color: var(--pl-muted);
+  font-size: 12px;
   text-align: right;
   font-variant-numeric: tabular-nums;
 }
 
-.loom-avatar-crop-reset {
-  height: 29px;
-  padding: 0 9px;
-  border: 1px solid rgba(255, 255, 255, .07);
-  border-radius: 9px;
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  background: rgba(255, 255, 255, .025);
-  color: var(--loom-muted, #8f96a3);
-  font-size: 11px;
-  cursor: pointer;
-}
-
-.loom-avatar-crop-reset:hover:not(:disabled) {
-  color: var(--loom-text, #f3f4f6);
-  background: rgba(255, 255, 255, .055);
-}
-
-.loom-avatar-crop-hint,
 .loom-avatar-crop-error {
-  margin: 10px 0 0;
-  font-size: 10.5px;
-  line-height: 1.45;
-}
-
-.loom-avatar-crop-hint {
-  color: color-mix(in srgb, var(--loom-muted, #8f96a3) 82%, transparent);
-}
-
-.loom-avatar-crop-error {
-  color: #f49a9a;
+  margin: 12px 0 0;
+  color: var(--pl-danger);
+  font-size: 13px;
+  line-height: 1.5;
 }
 
 .loom-avatar-crop-actions {
-  padding: 13px 18px 16px;
-  border-top: 1px solid rgba(255, 255, 255, .055);
   display: flex;
-  justify-content: flex-end;
+  align-items: center;
   gap: 8px;
+  padding: 20px 24px 24px;
 }
 
 .loom-avatar-crop-actions button {
-  min-width: 74px;
-  height: 34px;
-  padding: 0 13px;
-  border: 1px solid rgba(255, 255, 255, .075);
+  box-sizing: border-box;
+  height: 36px;
+  padding: 0 14px;
+  border: 1px solid var(--pl-line);
   border-radius: 10px;
-  background: rgba(255, 255, 255, .035);
-  color: var(--loom-text, #f3f4f6);
-  font-size: 12px;
-  font-weight: 600;
+  background: transparent;
+  color: var(--pl-ink);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
   cursor: pointer;
+  transition:
+    background-color var(--loom-dur-fast) ease,
+    border-color var(--loom-dur-fast) ease,
+    color var(--loom-dur-fast) ease;
 }
 
 .loom-avatar-crop-actions button:hover:not(:disabled) {
-  background: rgba(255, 255, 255, .065);
+  background-color: var(--pl-hover);
 }
 
 .loom-avatar-crop-actions button.is-primary {
-  border-color: rgba(150, 136, 250, .36);
-  background: linear-gradient(180deg, #8e81ee, #7466d9);
-  color: #fff;
-  box-shadow: 0 8px 22px rgba(92, 76, 198, .24), inset 0 1px rgba(255, 255, 255, .18);
+  border-color: transparent;
+  background-color: var(--pl-ink);
+  color: var(--pl-surface-raised);
+  font-weight: 600;
 }
 
-.loom-avatar-crop-actions button:disabled,
-.loom-avatar-crop-close:disabled,
-.loom-avatar-crop-reset:disabled {
-  opacity: .48;
+.loom-avatar-crop-actions button.is-primary:hover:not(:disabled) {
+  background-color: var(--crop-primary-hover);
+}
+
+/* Reset is a word, not a button: it sits apart, at the start of the row. */
+.loom-avatar-crop-actions .loom-avatar-crop-reset {
+  height: auto;
+  margin-right: auto;
+  padding: 0;
+  border: 0;
+  color: var(--pl-muted);
+}
+
+.loom-avatar-crop-actions .loom-avatar-crop-reset:hover:not(:disabled) {
+  background-color: transparent;
+  color: var(--pl-ink);
+}
+
+.loom-avatar-crop-actions button:disabled {
+  opacity: .5;
   cursor: default;
 }
 
-html[data-loom-theme="light"] .loom-avatar-crop-header,
-html[data-loom-theme="light"] .loom-avatar-crop-actions {
-  border-color: rgba(27, 31, 40, .07);
-}
-
-html[data-loom-theme="light"] .loom-avatar-crop-stage {
-  border-color: rgba(27, 31, 40, .1);
-  background-color: #e9ebf0;
-}
-
-html[data-loom-theme="light"] .loom-avatar-crop-reset,
-html[data-loom-theme="light"] .loom-avatar-crop-actions button:not(.is-primary) {
-  border-color: rgba(27, 31, 40, .09);
-  background: rgba(27, 31, 40, .035);
-}
-
 @media (max-width: 520px) {
-  .loom-avatar-crop-backdrop { padding: 12px; }
-  .loom-avatar-crop-dialog { width: min(392px, calc(100vw - 24px)); }
-  .loom-avatar-crop-body { padding-inline: 16px; }
-  .loom-avatar-crop-controls { align-items: stretch; flex-direction: column; }
-  .loom-avatar-crop-reset { justify-content: center; }
-}
+  .loom-avatar-crop-backdrop {
+    padding: 12px;
+  }
 
+  .loom-avatar-crop-body {
+    padding-inline: 16px;
+  }
+
+  .loom-avatar-crop-actions {
+    padding-inline: 16px;
+  }
+}

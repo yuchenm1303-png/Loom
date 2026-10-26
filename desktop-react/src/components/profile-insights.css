@@ -290,7 +290,8 @@ html[data-loom-theme="light"] .profile-refresh-button:hover:not(:disabled) {
   flex: none;
   width: 60px;
   height: 60px;
-  border-radius: 19px;
+  /* A picture is a circle wherever Loom shows it: the dock, the account dialog, the crop window. */
+  border-radius: 50%;
   display: grid;
   place-items: center;
   color: var(--profile-accent);

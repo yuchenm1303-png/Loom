@@ -1,29 +1,34 @@
 import {
-  AlertTriangle,
-  ArrowUpRight,
+  AlertCircle,
   Camera,
-  CheckCircle2,
+  Check,
+  ChevronRight,
   Eye,
   EyeOff,
-  Github,
   LogOut,
   Pencil,
+  Pulse,
   ShieldCheck,
+  Upload,
   UserRound,
   X,
 } from "./icons";
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
   type FormEvent,
   type KeyboardEvent as ReactKeyboardEvent,
+  type ReactNode,
 } from "react";
 import { useI18n } from "../i18n";
 import { useMotionPresence } from "../motion/useMotionPresence";
-import { RETAIN } from "../motion/tokens";
+import { useReducedMotion } from "../motion/useReducedMotion";
+import { DUR, EASE, RETAIN } from "../motion/tokens";
 import { AvatarCropDialog } from "./AvatarCropDialog";
+import { Crossfade } from "./Crossfade";
 import type { LoomAccountError, LoomAccountSnapshot, LoomAuthCapabilities } from "../types/account";
 import {
   ACCOUNT_PASSWORD_MIN_LENGTH,
@@ -53,9 +58,86 @@ interface AccountDialogProps {
 }
 
 type AuthMode = "login" | "register";
+/** What the card shows under the identity. Switching views cross-fades the words and morphs the card's height. */
+type View = "checking" | "error" | "unconfigured" | "form" | "account" | "editor";
 
+const NAME_MAX = 48;
 const FOCUSABLE =
   'button:not([disabled]), input:not([disabled]), [href], select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+/**
+ * The body of the card changes height on the flow step when it starts to show something else, instead of jumping:
+ * the old words fade out above the new ones (Crossfade) while the edge glides. The painted height is kept by a
+ * ResizeObserver, so a switch that interrupts another one continues from where the edge is.
+ */
+function useHeightMorph(identity: string, reduce: boolean) {
+  const nodeRef = useRef<HTMLDivElement | null>(null);
+  const heightRef = useRef<number | null>(null);
+  const observerRef = useRef<ResizeObserver | null>(null);
+  const shownRef = useRef(identity);
+  const ref = useCallback((node: HTMLDivElement | null) => {
+    observerRef.current?.disconnect();
+    observerRef.current = null;
+    nodeRef.current = node;
+    heightRef.current = node ? node.getBoundingClientRect().height : null;
+    if (!node) return;
+    const observer = new ResizeObserver(() => { heightRef.current = node.getBoundingClientRect().height; });
+    observer.observe(node);
+    observerRef.current = observer;
+  }, []);
+  useLayoutEffect(() => {
+    if (shownRef.current === identity) return;
+    shownRef.current = identity;
+    const node = nodeRef.current;
+    const from = heightRef.current;
+    if (!node || from === null || reduce) return;
+    for (const running of node.getAnimations()) running.cancel();
+    const to = node.getBoundingClientRect().height;
+    if (Math.abs(to - from) < 1) return;
+    node.dataset.morphing = "";
+    const animation = node.animate([{ height: `${from}px` }, { height: `${to}px` }], { duration: DUR.flow, easing: EASE.move });
+    const settle = () => { if (!node.getAnimations().length) delete node.dataset.morphing; };
+    animation.addEventListener("finish", settle);
+    animation.addEventListener("cancel", settle);
+  }, [identity, reduce]);
+  return ref;
+}
+
+/** A few lines that make room for themselves (layout, on the base step) and fade in once the room is there. */
+function Fold({ open, children, className = "" }: { open: boolean; children: ReactNode; className?: string }) {
+  return (
+    <div className={`acct-fold${open ? " is-open" : ""}${className ? ` ${className}` : ""}`} aria-hidden={!open} inert={!open}>
+      <div className="acct-fold-inner">{children}</div>
+    </div>
+  );
+}
+
+/** The last non-empty value, so a message can still be read while its fold closes. */
+function useLastShown(value: string): string {
+  const last = useRef(value);
+  if (value) last.current = value;
+  return value || last.current;
+}
+
+function GoogleMark() {
+  return (
+    <svg className="acct-brand" viewBox="0 0 48 48" aria-hidden="true">
+      <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z" />
+      <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z" />
+      <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z" />
+      <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z" />
+    </svg>
+  );
+}
+
+function GithubMark() {
+  return (
+    <svg className="acct-brand" viewBox="0 0 16 16" aria-hidden="true">
+      <path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z" />
+    </svg>
+  );
+}
+
 export function AccountDialog({
   open,
   account,
@@ -76,18 +158,23 @@ export function AccountDialog({
 }: AccountDialogProps) {
   const { language } = useI18n();
   const zh = language === "zh-CN";
+  const reduce = useReducedMotion();
   const presence = useMotionPresence(open, RETAIN.base);
   const [mode, setMode] = useState<AuthMode>("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [revealPassword, setRevealPassword] = useState(false);
+  const [emailTouched, setEmailTouched] = useState(false);
+  const [confirmTouched, setConfirmTouched] = useState(false);
   const [localError, setLocalError] = useState("");
   const [oauthOpening, setOauthOpening] = useState<"google" | "github" | null>(null);
+  const [oauthWaiting, setOauthWaiting] = useState<"google" | "github" | null>(null);
   const [editingProfile, setEditingProfile] = useState(false);
   const [profileName, setProfileName] = useState("");
   const [profileAvatar, setProfileAvatar] = useState("");
   const [profileError, setProfileError] = useState("");
+  const [brokenAvatar, setBrokenAvatar] = useState("");
   const [avatarCropFile, setAvatarCropFile] = useState<File | null>(null);
   // The crop dialog leaves like every panel does, still showing the picture it was cropping.
   const cropPresence = useMotionPresence(Boolean(avatarCropFile), RETAIN.base);
@@ -99,48 +186,73 @@ export function AccountDialog({
   const emailRef = useRef<HTMLInputElement | null>(null);
   const passwordRef = useRef<HTMLInputElement | null>(null);
   const confirmRef = useRef<HTMLInputElement | null>(null);
+  const nameRef = useRef<HTMLInputElement | null>(null);
   const avatarInputRef = useRef<HTMLInputElement | null>(null);
-  const restoreFocusRef = useRef<HTMLElement | null>(null);
   const initialProfileEditConsumedRef = useRef(false);
 
-  const showForm = ready && account.configured && !(account.authenticated && account.user);
+  const signedIn = Boolean(account.authenticated && account.user);
+  // The profile page opens this dialog straight into the editor: it is the editor from its first frame.
+  const opensInEditor = open && initialProfileEdit && !initialProfileEditConsumedRef.current;
+  const liveView: View = !ready
+    ? "checking"
+    : !account.configured
+      ? (error ? "error" : "unconfigured")
+      : signedIn
+        ? (editingProfile || opensInEditor ? "editor" : "account")
+        : "form";
+  // While it leaves, the card keeps showing what it showed: closing never flashes another view.
+  const shownViewRef = useRef<View>(liveView);
+  if (open) shownViewRef.current = liveView;
+  const view = shownViewRef.current;
+  const stageRef = useHeightMorph(view, reduce);
 
   useEffect(() => {
     if (open) void onRetry();
   }, [open, onRetry]);
 
-  // Remember who opened the dialog and hand focus back on close, so keyboard
-  // users are not dumped at the top of the document.
+  // Remember who opened the dialog and hand focus back on close, so keyboard users are not dumped at the top of the
+  // document. The right tool dock hides while the card is up and comes back with new buttons: when the opener is
+  // gone, its successor is found by the tool's id.
   useEffect(() => {
     if (!open) return;
-    restoreFocusRef.current =
-      document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const toolId = opener?.closest<HTMLElement>("[data-tool-id]")?.dataset.toolId;
     return () => {
-      const previous = restoreFocusRef.current;
-      restoreFocusRef.current = null;
-      if (previous && document.contains(previous)) previous.focus();
+      const target = opener && document.contains(opener)
+        ? opener
+        : toolId ? document.querySelector<HTMLElement>(`[data-tool-id="${CSS.escape(toolId)}"]`) : null;
+      target?.focus();
     };
   }, [open]);
 
-  // Clear the transient fields on close, and put focus on the first useful
-  // control once the dialog is actually on screen. `ready` is a dependency so
-  // the email field is focused when the form appears after the status probe.
+  // The transient fields are cleared once the card is gone (not when it starts to leave, which would show the
+  // cleared form during the exit).
   useEffect(() => {
-    if (!open) {
-      setPassword("");
-      setConfirm("");
-      setLocalError("");
-      setRevealPassword(false);
-      setEditingProfile(false);
-      setProfileError("");
-      setAvatarCropFile(null);
-      return;
-    }
+    if (presence.mounted) return;
+    setPassword("");
+    setConfirm("");
+    setLocalError("");
+    setRevealPassword(false);
+    setEmailTouched(false);
+    setConfirmTouched(false);
+    setOauthWaiting(null);
+    setEditingProfile(false);
+    setProfileError("");
+    setAvatarCropFile(null);
+  }, [presence.mounted]);
+
+  // Focus follows the view: the first field of a form, otherwise the card itself so the keyboard stays inside it.
+  useEffect(() => {
+    if (!open) return;
     const timer = window.setTimeout(() => {
-      (emailRef.current ?? closeRef.current)?.focus();
+      const root = dialogRef.current;
+      if (!root) return;
+      if (view === "form") (emailRef.current ?? closeRef.current)?.focus();
+      else if (view === "editor") (nameRef.current ?? closeRef.current)?.focus();
+      else if (!root.contains(document.activeElement)) (view === "account" ? root : closeRef.current ?? root).focus();
     }, 0);
     return () => window.clearTimeout(timer);
-  }, [open, ready]);
+  }, [open, view]);
 
   useEffect(() => {
     if (editingProfile) return;
@@ -180,6 +292,11 @@ export function AccountDialog({
     if (editingProfile && error) setProfileError(accountErrorText(error, zh));
   }, [editingProfile, error, zh]);
 
+  // A finished quick sign-in, or anything else that changes who is signed in, ends the wait for the browser.
+  useEffect(() => {
+    setOauthWaiting(null);
+  }, [signedIn]);
+
   const beginProfileEdit = () => {
     onClearError();
     setProfileName(account.user?.display_name?.trim() || "");
@@ -188,10 +305,16 @@ export function AccountDialog({
     setEditingProfile(true);
   };
 
+  const cancelProfileEdit = () => {
+    setProfileError("");
+    if (closeAfterProfileEdit) onClose();
+    else setEditingProfile(false);
+  };
+
   const saveProfile = async () => {
     const name = profileName.trim();
-    if (name.length > 48) {
-      setProfileError(zh ? "昵称最多 48 个字符。" : "Nickname must be 48 characters or fewer.");
+    if (name.length > NAME_MAX) {
+      setProfileError(zh ? `昵称最多 ${NAME_MAX} 个字符。` : `Nickname must be ${NAME_MAX} characters or fewer.`);
       return;
     }
     const ok = await onUpdateProfile(name, profileAvatar);
@@ -212,10 +335,12 @@ export function AccountDialog({
   const switchMode = useCallback(
     (next: AuthMode) => {
       setMode(next);
-      // A failed sign-in message is meaningless under the other tab.
+      // A failed sign-in message is meaningless under the other mode.
       setLocalError("");
       setConfirm("");
+      setConfirmTouched(false);
       setRevealPassword(false);
+      setOauthWaiting(null);
       onClearError();
     },
     [onClearError],
@@ -231,7 +356,10 @@ export function AccountDialog({
 
     const root = dialogRef.current;
     if (!root) return;
-    const focusable = Array.from(root.querySelectorAll<HTMLElement>(FOCUSABLE));
+    // Folded fields and the words that are fading out are inert; the picture's own button and the file input are
+    // reached through the "Change photo" link instead.
+    const focusable = Array.from(root.querySelectorAll<HTMLElement>(FOCUSABLE))
+      .filter((element) => element.tabIndex >= 0 && !element.closest("[inert]"));
     if (!focusable.length) return;
 
     const first = focusable[0];
@@ -239,7 +367,7 @@ export function AccountDialog({
     const active = document.activeElement;
 
     if (event.shiftKey) {
-      if (active === first || !root.contains(active)) {
+      if (active === first || active === root || !root.contains(active)) {
         event.preventDefault();
         last.focus();
       }
@@ -251,26 +379,31 @@ export function AccountDialog({
     }
   };
 
+  const message = localError || (view === "form" ? accountErrorText(error, zh) : "");
+  const shownMessage = useLastShown(message);
+  const shownProfileError = useLastShown(profileError);
+
   if (!presence.mounted) return null;
 
   const emailValue = email.trim();
-  const emailInvalid = email.length > 0 && !isValidAccountEmail(emailValue);
-  const confirmMismatch = mode === "register" && confirm.length > 0 && confirm !== password;
-  const confirmMatches = mode === "register" && confirm.length > 0 && confirm === password;
-  const submitLabel = mode === "login"
-    ? (zh ? "登录 Loom" : "Sign in to Loom")
-    : (zh ? "创建 Loom 账号" : "Create Loom account");
+  const emailInvalid = emailTouched && email.length > 0 && !isValidAccountEmail(emailValue);
+  const register = mode === "register";
+  const confirmChecked = register && confirm.length > 0 && (confirmTouched || confirm.length >= password.length);
+  const confirmMismatch = confirmChecked && confirm !== password;
+  const confirmMatches = register && confirm.length > 0 && confirm === password;
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     setLocalError("");
+    setOauthWaiting(null);
 
     if (!isValidAccountEmail(emailValue)) {
+      setEmailTouched(true);
       setLocalError(zh ? "请输入有效的邮箱地址。" : "Enter a valid email address.");
       emailRef.current?.focus();
       return;
     }
-    if (mode === "register") {
+    if (register) {
       if (password.length < ACCOUNT_PASSWORD_MIN_LENGTH) {
         setLocalError(
           zh
@@ -281,15 +414,16 @@ export function AccountDialog({
         return;
       }
       if (password !== confirm) {
+        setConfirmTouched(true);
         setLocalError(zh ? "两次输入的密码不一致。" : "Passwords do not match.");
         confirmRef.current?.focus();
         return;
       }
     }
 
-    const ok = mode === "login"
-      ? await onLogin(emailValue, password)
-      : await onRegister(emailValue, password);
+    const ok = register
+      ? await onRegister(emailValue, password)
+      : await onLogin(emailValue, password);
     if (ok) {
       setPassword("");
       setConfirm("");
@@ -300,10 +434,12 @@ export function AccountDialog({
   const startOAuth = async (provider: "google" | "github") => {
     onClearError();
     setLocalError("");
+    setOauthWaiting(null);
     setOauthOpening(provider);
     try {
       const result = await window.loom.accountOAuthStart(provider);
       if (!result.ok) setLocalError(result.error.message || (zh ? "无法打开快捷登录。" : "Could not start quick sign-in."));
+      else setOauthWaiting(provider);
     } catch {
       setLocalError(zh ? "无法打开浏览器授权，请重试。" : "Could not open browser sign-in. Try again.");
     } finally {
@@ -311,20 +447,372 @@ export function AccountDialog({
     }
   };
 
-  const displayName = account.user?.display_name?.trim() || account.user?.email || "";
+  const user = account.user;
+  const displayName = user?.display_name?.trim() || user?.email || "";
   const offline = account.configured && !account.reachable;
-  const message = localError || accountErrorText(error, zh);
   const serviceLabel = accountServiceLabel(account.serviceUrl);
+  const serviceNote = serviceLabel ? `${zh ? "账号服务" : "Account service"}: ${serviceLabel}` : "";
+  const quickSignIn = Boolean(capabilities?.google || capabilities?.github);
 
-  const offlineNotice = offline ? (
-    <p className="loom-account-notice" role="status">
-      <AlertTriangle size={15} aria-hidden="true" />
-      <span>{zh ? "账号服务暂时无法连接，正在自动重连。" : "Account service is temporarily unavailable. Reconnecting automatically."}</span>
-      <button type="button" onClick={() => void onRetry()} disabled={busy}>
-        {zh ? "重试" : "Retry"}
-      </button>
-    </p>
-  ) : null;
+  // ---- the identity ------------------------------------------------------------------------------------------
+  const editing = view === "editor";
+  const picture = editing ? profileAvatar : (view === "account" ? user?.avatar_data_url || "" : "");
+  const drawable = picture && picture !== brokenAvatar ? picture : "";
+  const initial = ((editing ? profileName.trim() : "") || displayName).slice(0, 1).toUpperCase();
+  const person = editing || view === "account";
+  const markKey = !person ? "empty" : drawable ? `picture:${drawable.length}:${drawable.slice(-24)}` : `initial:${initial}`;
+  const markFace = !person ? (
+    <span className="acct-mark-face is-empty"><UserRound size={24} strokeWidth={1.6} /></span>
+  ) : drawable ? (
+    <span className="acct-mark-face is-picture">
+      <img src={drawable} alt="" draggable={false} onError={() => setBrokenAvatar(drawable)} />
+    </span>
+  ) : (
+    <span className="acct-mark-face is-initial">{initial || <UserRound size={24} strokeWidth={1.6} />}</span>
+  );
+  const status = view === "account" ? (offline ? "offline" : "online") : null;
+
+  const title = (() => {
+    switch (view) {
+      case "checking": return zh ? "Loom 账号" : "Loom account";
+      case "error": return zh ? "无法读取登录状态" : "Couldn't load your account";
+      case "unconfigured": return zh ? "账号服务尚未配置" : "Account service isn't set up";
+      case "form": return register ? (zh ? "创建 Loom 账号" : "Create your Loom account") : (zh ? "登录 Loom" : "Sign in to Loom");
+      case "account": return displayName;
+      case "editor": return zh ? "编辑个人资料" : "Edit profile";
+    }
+  })();
+  const lead = (() => {
+    switch (view) {
+      case "checking": return zh ? "正在确认登录状态…" : "Checking your sign-in…";
+      case "error": return accountErrorText(error, zh) || (zh ? "账号请求失败，请稍后重试。" : "The account request failed.");
+      case "unconfigured": return zh ? "当前版本不会连接任何第三方服务。" : "This build doesn't connect to any third-party service.";
+      case "form": return register
+        ? (zh ? "注册后即可使用 Loom 的云端能力。" : "One account for Loom's cloud features.")
+        : (zh ? "登录后即可使用与你账号绑定的云端能力。" : "Sign in to use Loom's cloud features.");
+      case "account": return user?.email || "";
+      case "editor": return zh ? "头像和昵称会同步到 Loom 各处。" : "Your photo and nickname appear across Loom.";
+    }
+  })();
+
+  // ---- the views ---------------------------------------------------------------------------------------------
+  const offlineNotice = (
+    <Fold open={offline} className="acct-notice-fold">
+      <p className="acct-notice" role="status">
+        <span className="acct-pulse is-warning" aria-hidden="true" />
+        <span>{zh ? "暂时连不上账号服务，正在自动重连。" : "Can't reach the account service. Reconnecting…"}</span>
+        <button type="button" className="acct-link" data-press="none" onClick={() => void onRetry()} disabled={busy}>
+          {zh ? "重试" : "Retry"}
+        </button>
+      </p>
+    </Fold>
+  );
+
+  const spinner = <span className="acct-spinner" aria-hidden="true" />;
+
+  const body = (() => {
+    switch (view) {
+      case "checking":
+        return null;
+      case "error":
+        return (
+          <div className="acct-view">
+            <button type="button" className="acct-button is-secondary" onClick={() => void onRetry()} disabled={busy}>
+              {zh ? "重试" : "Try again"}
+            </button>
+          </div>
+        );
+      case "unconfigured":
+        return (
+          <div className="acct-view">
+            <p className="acct-explain">
+              {zh ? "部署 Loom Account Service 后，为桌面端设置 " : "Deploy Loom Account Service, then set "}
+              <code>LOOM_ACCOUNT_API_BASE_URL</code>
+              {zh ? "。" : " for the desktop app."}
+            </p>
+            <button type="button" className="acct-button is-secondary" onClick={() => void onRetry()} disabled={busy}>
+              {zh ? "重新检查" : "Check again"}
+            </button>
+          </div>
+        );
+      case "form":
+        return (
+          <div className="acct-view">
+            {offlineNotice}
+            {quickSignIn ? (
+              <>
+                <div className="acct-oauth">
+                  {capabilities?.google ? (
+                    <button type="button" className="acct-button is-secondary acct-oauth-button" disabled={busy || oauthOpening !== null} onClick={() => void startOAuth("google")}>
+                      {oauthOpening === "google" ? spinner : <GoogleMark />}
+                      <span>{oauthOpening === "google" ? (zh ? "正在打开…" : "Opening…") : "Google"}</span>
+                    </button>
+                  ) : null}
+                  {capabilities?.github ? (
+                    <button type="button" className="acct-button is-secondary acct-oauth-button" disabled={busy || oauthOpening !== null} onClick={() => void startOAuth("github")}>
+                      {oauthOpening === "github" ? spinner : <GithubMark />}
+                      <span>{oauthOpening === "github" ? (zh ? "正在打开…" : "Opening…") : "GitHub"}</span>
+                    </button>
+                  ) : null}
+                </div>
+                <Fold open={oauthWaiting !== null}>
+                  <p className="acct-waiting" role="status">
+                    <span className="acct-pulse" aria-hidden="true" />
+                    {zh ? "请在浏览器中完成登录…" : "Finish signing in in your browser…"}
+                  </p>
+                </Fold>
+                <div className="acct-divider" aria-hidden="true"><span>{zh ? "或" : "or"}</span></div>
+              </>
+            ) : null}
+
+            <form className="acct-form" onSubmit={(event) => void submit(event)} noValidate>
+              <div className="acct-field">
+                <div className="acct-label-row">
+                  <label htmlFor="loom-account-email">{zh ? "邮箱" : "Email"}</label>
+                  <span className="acct-label-note tone-bad" id="loom-account-email-hint" aria-live="polite">
+                    {emailInvalid ? (zh ? "邮箱格式不完整" : "Looks incomplete") : ""}
+                  </span>
+                </div>
+                <input
+                  id="loom-account-email"
+                  ref={emailRef}
+                  className="acct-input"
+                  type="email"
+                  value={email}
+                  onChange={(event) => setEmail(event.target.value)}
+                  onBlur={() => setEmailTouched(true)}
+                  autoComplete="email"
+                  disabled={busy}
+                  spellCheck={false}
+                  aria-invalid={emailInvalid}
+                  aria-describedby={emailInvalid ? "loom-account-email-hint" : undefined}
+                  placeholder="name@example.com"
+                />
+              </div>
+
+              <div className="acct-field">
+                <div className="acct-label-row">
+                  <label htmlFor="loom-account-password">{zh ? "密码" : "Password"}</label>
+                  <span className="acct-label-note" id="loom-account-password-hint">
+                    <Crossfade identity={register ? "rule" : "none"}>
+                      {register ? (zh ? `至少 ${ACCOUNT_PASSWORD_MIN_LENGTH} 位` : `At least ${ACCOUNT_PASSWORD_MIN_LENGTH} characters`) : ""}
+                    </Crossfade>
+                  </span>
+                </div>
+                <span className="acct-input-wrap">
+                  <input
+                    id="loom-account-password"
+                    ref={passwordRef}
+                    className="acct-input has-reveal"
+                    type={revealPassword ? "text" : "password"}
+                    value={password}
+                    onChange={(event) => setPassword(event.target.value)}
+                    autoComplete={register ? "new-password" : "current-password"}
+                    disabled={busy}
+                    minLength={register ? ACCOUNT_PASSWORD_MIN_LENGTH : undefined}
+                    aria-describedby={register ? "loom-account-password-hint" : undefined}
+                    placeholder={register ? (zh ? "设置密码" : "Choose a password") : (zh ? "输入密码" : "Your password")}
+                  />
+                  <button
+                    type="button"
+                    className="acct-reveal"
+                    onClick={() => setRevealPassword((value) => !value)}
+                    disabled={busy}
+                    aria-pressed={revealPassword}
+                    aria-label={
+                      revealPassword
+                        ? (zh ? "隐藏密码" : "Hide password")
+                        : (zh ? "显示密码" : "Show password")
+                    }
+                  >
+                    {revealPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                  </button>
+                </span>
+              </div>
+
+              <Fold open={register}>
+                <div className="acct-field">
+                  <div className="acct-label-row">
+                    <label htmlFor="loom-account-confirm">{zh ? "确认密码" : "Confirm password"}</label>
+                    <span
+                      className={`acct-label-note ${confirmMismatch ? "tone-bad" : confirmMatches ? "tone-ok" : ""}`}
+                      id="loom-account-confirm-hint"
+                      aria-live="polite"
+                    >
+                      {confirmMismatch
+                        ? (zh ? "两次输入不一致" : "Doesn't match")
+                        : confirmMatches
+                          ? <><Check size={13} aria-hidden="true" />{zh ? "一致" : "Matches"}</>
+                          : ""}
+                    </span>
+                  </div>
+                  <input
+                    id="loom-account-confirm"
+                    ref={confirmRef}
+                    className="acct-input"
+                    type={revealPassword ? "text" : "password"}
+                    value={confirm}
+                    onChange={(event) => setConfirm(event.target.value)}
+                    onBlur={() => setConfirmTouched(true)}
+                    autoComplete="new-password"
+                    disabled={busy}
+                    minLength={ACCOUNT_PASSWORD_MIN_LENGTH}
+                    aria-invalid={confirmMismatch}
+                    aria-describedby={confirmMismatch || confirmMatches ? "loom-account-confirm-hint" : undefined}
+                    placeholder={zh ? "再输入一次" : "Type it again"}
+                  />
+                </div>
+              </Fold>
+
+              <Fold open={Boolean(message)}>
+                {message ? (
+                  <p className="acct-error" role="alert"><AlertCircle size={14} aria-hidden="true" />{message}</p>
+                ) : (
+                  <p className="acct-error" aria-hidden="true"><AlertCircle size={14} aria-hidden="true" />{shownMessage}</p>
+                )}
+              </Fold>
+
+              <button className="acct-button is-primary acct-submit" type="submit" disabled={busy}>
+                <Crossfade identity={busy ? "busy" : mode}>
+                  {busy ? (
+                    <span className="acct-button-label">{spinner}{register ? (zh ? "正在创建…" : "Creating account…") : (zh ? "正在登录…" : "Signing in…")}</span>
+                  ) : (
+                    <span className="acct-button-label">{register ? (zh ? "创建账号" : "Create account") : (zh ? "登录" : "Sign in")}</span>
+                  )}
+                </Crossfade>
+              </button>
+            </form>
+
+            <p className="acct-switch">
+              <Crossfade identity={mode}>
+                <span>
+                  {register ? (zh ? "已有账号？" : "Already have an account?") : (zh ? "还没有账号？" : "New to Loom?")}
+                  <button type="button" className="acct-link" data-press="none" onClick={() => switchMode(register ? "login" : "register")} disabled={busy}>
+                    {register ? (zh ? "登录" : "Sign in") : (zh ? "创建账号" : "Create account")}
+                  </button>
+                </span>
+              </Crossfade>
+            </p>
+
+            <p
+              className="acct-footnote"
+              title={[
+                zh
+                  ? "密码不会保存到本机；只有加密后的会话令牌会进入系统安全存储。"
+                  : "Your password is never stored locally; only an encrypted session token enters the system's secure storage.",
+                serviceNote,
+              ].filter(Boolean).join("\n")}
+            >
+              <ShieldCheck size={13} aria-hidden="true" />
+              {zh ? "密码不会保存在这台设备上" : "Your password never stays on this device"}
+            </p>
+          </div>
+        );
+      case "account":
+        return (
+          <div className="acct-view">
+            {offlineNotice}
+            <div className="acct-list">
+              <button type="button" className="acct-row" onClick={beginProfileEdit} disabled={busy}>
+                <Pencil size={16} aria-hidden="true" />
+                <span>{zh ? "编辑个人资料" : "Edit profile"}</span>
+                <ChevronRight className="acct-row-chevron" size={16} aria-hidden="true" />
+              </button>
+              {onOpenProfile ? (
+                <button type="button" className="acct-row" onClick={() => { onClose(); onOpenProfile(); }} disabled={busy}>
+                  <Pulse size={16} aria-hidden="true" />
+                  <span>{zh ? "个人主页与使用洞察" : "Profile & insights"}</span>
+                  <ChevronRight className="acct-row-chevron" size={16} aria-hidden="true" />
+                </button>
+              ) : null}
+            </div>
+            <div className="acct-foot">
+              <button type="button" className="acct-signout" disabled={busy} onClick={() => void onLogout()}>
+                <Crossfade identity={busy ? "busy" : "idle"}>
+                  {busy
+                    ? <span className="acct-button-label">{spinner}{zh ? "正在退出…" : "Signing out…"}</span>
+                    : <span className="acct-button-label"><LogOut size={15} aria-hidden="true" />{zh ? "退出登录" : "Sign out"}</span>}
+                </Crossfade>
+              </button>
+              <span
+                className="acct-secure"
+                title={[
+                  zh ? "会话凭据保存在系统安全存储中，密码不会保存在本机。" : "Your session is kept in the system's secure storage; your password is never stored.",
+                  serviceNote,
+                ].filter(Boolean).join("\n")}
+              >
+                <ShieldCheck size={13} aria-hidden="true" />
+                {zh ? "凭据已安全保存在本机" : "Stored securely on this device"}
+              </span>
+            </div>
+          </div>
+        );
+      case "editor":
+        return (
+          <div className="acct-view">
+            <div className="acct-label-row acct-photo-row">
+              <span className="acct-label">{zh ? "头像" : "Photo"}</span>
+              <span className="acct-photo-actions">
+                {profileAvatar ? (
+                  <button type="button" className="acct-link is-quiet" data-press="none" onClick={() => setProfileAvatar("")} disabled={busy}>
+                    {zh ? "移除" : "Remove"}
+                  </button>
+                ) : null}
+                <button
+                  type="button"
+                  className="acct-link"
+                  data-press="none"
+                  onClick={() => avatarInputRef.current?.click()}
+                  disabled={busy}
+                  title={zh ? "PNG、JPEG 或 WebP，上传后可裁剪" : "PNG, JPEG or WebP. You can crop it next."}
+                >
+                  <Upload size={14} aria-hidden="true" />
+                  {profileAvatar ? (zh ? "更换" : "Change") : (zh ? "上传" : "Upload")}
+                </button>
+              </span>
+            </div>
+            <div className="acct-field acct-name-field">
+              <div className="acct-label-row">
+                <label htmlFor="loom-account-nickname">{zh ? "昵称" : "Nickname"}</label>
+                <span className="acct-label-note is-count">{profileName.trim().length} / {NAME_MAX}</span>
+              </div>
+              <input
+                id="loom-account-nickname"
+                ref={nameRef}
+                className="acct-input"
+                value={profileName}
+                onChange={(event) => setProfileName(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" && !busy) { event.preventDefault(); void saveProfile(); }
+                }}
+                maxLength={NAME_MAX}
+                placeholder={user?.email.split("@")[0]}
+                disabled={busy}
+              />
+            </div>
+            <Fold open={Boolean(profileError)}>
+              {profileError ? (
+                <p className="acct-error" role="alert"><AlertCircle size={14} aria-hidden="true" />{profileError}</p>
+              ) : (
+                <p className="acct-error" aria-hidden="true"><AlertCircle size={14} aria-hidden="true" />{shownProfileError}</p>
+              )}
+            </Fold>
+            <div className="acct-actions">
+              <button type="button" className="acct-button is-secondary" onClick={cancelProfileEdit} disabled={busy}>
+                {zh ? "取消" : "Cancel"}
+              </button>
+              <button type="button" className="acct-button is-primary" onClick={() => void saveProfile()} disabled={busy}>
+                <Crossfade identity={busy ? "busy" : "idle"}>
+                  {busy
+                    ? <span className="acct-button-label">{spinner}{zh ? "正在保存…" : "Saving…"}</span>
+                    : <span className="acct-button-label">{zh ? "保存" : "Save"}</span>}
+                </Crossfade>
+              </button>
+            </div>
+          </div>
+        );
+    }
+  })();
 
   return (
     <div
@@ -344,11 +832,14 @@ export function AccountDialog({
     >
       <section
         ref={dialogRef}
-        className={`loom-account-dialog ${account.authenticated && account.user ? "is-signed-in" : ""}`}
+        className="loom-account-dialog"
+        data-view={view}
         role="dialog"
         aria-modal="true"
         aria-labelledby="loom-account-title"
+        aria-describedby="loom-account-lead"
         aria-busy={busy}
+        tabIndex={-1}
         onKeyDown={onKeyDown}
       >
         <button
@@ -359,304 +850,57 @@ export function AccountDialog({
           disabled={busy}
           aria-label={zh ? "关闭" : "Close"}
         >
-          <X size={17} />
+          <X size={16} />
         </button>
 
-        <header className="loom-account-header">
-          {!account.authenticated ? <span className="loom-account-mark" aria-hidden="true"><UserRound size={21} /></span> : null}
-          <div>
-            <h2 id="loom-account-title">
-              {account.authenticated
-                ? (zh ? "Loom 账号" : "Loom account")
-                : (zh ? "登录 Loom" : "Sign in to Loom")}
-            </h2>
-            <p>
-              {account.authenticated
-                ? (zh ? "管理个人资料与云端服务。" : "Manage your profile and cloud services.")
-                : (zh ? "登录后即可使用与你账号绑定的云端能力。" : "Sign in to use cloud features attached to your account.")}
-            </p>
-          </div>
+        <header className="acct-head">
+          <span className={`acct-mark${view === "checking" ? " is-checking" : ""}${editing ? " is-editable" : ""}`}>
+            <Crossfade identity={markKey} className="acct-mark-faces">{markFace}</Crossfade>
+            {editing ? (
+              <button
+                type="button"
+                className="acct-mark-edit"
+                tabIndex={-1}
+                onClick={() => avatarInputRef.current?.click()}
+                disabled={busy}
+                aria-label={zh ? "更换头像" : "Change photo"}
+              >
+                <Camera size={18} aria-hidden="true" />
+              </button>
+            ) : null}
+            {status ? (
+              <span
+                key={status}
+                className={`acct-mark-dot is-${status}`}
+                role="img"
+                aria-label={status === "online" ? (zh ? "已登录" : "Signed in") : (zh ? "已登录，暂时离线" : "Signed in, offline")}
+                title={status === "online" ? (zh ? "已登录" : "Signed in") : (zh ? "已登录，暂时离线" : "Signed in, offline")}
+              />
+            ) : editing ? (
+              <span className="acct-mark-badge" aria-hidden="true"><Camera size={12} /></span>
+            ) : null}
+          </span>
+          <h2 id="loom-account-title" className="acct-title">
+            <Crossfade identity={title}>{title}</Crossfade>
+          </h2>
+          <p id="loom-account-lead" className="acct-lead">
+            <Crossfade identity={lead}>{lead}</Crossfade>
+          </p>
         </header>
 
-        {!ready ? (
-          <div className="loom-account-state" role="status">
-            <span className="loom-account-spinner" aria-hidden="true" />
-            {zh ? "正在检查登录状态…" : "Checking sign-in status…"}
-          </div>
-        ) : !account.configured && error ? (
-          <div className="loom-account-unconfigured" role="alert">
-            <AlertTriangle size={20} />
-            <strong>{zh ? "无法读取登录状态" : "Could not load sign-in status"}</strong>
-            <p>{message}</p>
-            <button type="button" onClick={() => void onRetry()} disabled={busy}>
-              {zh ? "重试" : "Retry"}
-            </button>
-          </div>
-        ) : !account.configured ? (
-          <div className="loom-account-unconfigured">
-            <ShieldCheck size={20} />
-            <strong>{zh ? "账号服务尚未配置" : "Account service is not configured"}</strong>
-            <p>
-              {zh
-                ? "当前版本不会连接任何第三方站点。部署 Loom Account Service 后，只需为桌面端设置 LOOM_ACCOUNT_API_BASE_URL。"
-                : "This build will not connect to any third-party service. Deploy Loom Account Service and set LOOM_ACCOUNT_API_BASE_URL for the desktop app."}
-            </p>
-            <button type="button" onClick={() => void onRetry()} disabled={busy}>
-              {zh ? "重新检查" : "Check again"}
-            </button>
-          </div>
-        ) : account.authenticated && account.user ? (
-          <div className="loom-account-signed-in">
-            {offlineNotice}
-            <div className="loom-account-profile">
-              <span className={`loom-account-avatar ${account.user.avatar_data_url ? "has-image" : ""}`} aria-hidden="true">
-                {account.user.avatar_data_url ? <img src={account.user.avatar_data_url} alt="" /> : displayName.slice(0, 1).toUpperCase()}
-              </span>
-              <div>
-                <strong>{displayName}</strong>
-                <span>{account.user.email}</span>
-              </div>
-              <span className="loom-account-session-status"><CheckCircle2 size={13} aria-hidden="true" />{zh ? "已登录" : "Signed in"}</span>
-            </div>
-            {editingProfile ? (
-              <div className="loom-account-profile-editor">
-                <div className="loom-account-editor-heading">
-                  <div>
-                    <strong>{zh ? "编辑个人资料" : "Edit profile"}</strong>
-                    <span>{zh ? "更新头像和昵称，修改会同步到 Loom 各处。" : "Update your photo and nickname across Loom."}</span>
-                  </div>
-                </div>
-                <div className="loom-account-avatar-editor">
-                  <button type="button" className={`loom-account-avatar loom-account-avatar-button ${profileAvatar ? "has-image" : ""}`} onClick={() => avatarInputRef.current?.click()} disabled={busy} aria-label={zh ? "更换头像" : "Change avatar"}>
-                    {profileAvatar ? <img src={profileAvatar} alt="" /> : <span>{(profileName || displayName).slice(0, 1).toUpperCase()}</span>}
-                    <i><Camera size={14} /></i>
-                  </button>
-                  <input ref={avatarInputRef} className="loom-account-avatar-input" tabIndex={-1} type="file" accept="image/png,image/jpeg,image/webp" onChange={(event) => chooseAvatar(event.target.files?.[0])} disabled={busy} />
-                  <div className="loom-account-avatar-copy">
-                    <button type="button" className="loom-account-change-avatar" onClick={() => avatarInputRef.current?.click()} disabled={busy}>{zh ? "更换头像" : "Change photo"}</button>
-                    <span>{zh ? "PNG、JPEG 或 WebP · 上传后可裁剪" : "PNG, JPEG or WebP · crop after upload"}</span>
-                    {profileAvatar ? <button type="button" className="loom-account-text-button" onClick={() => setProfileAvatar("")} disabled={busy}>{zh ? "移除头像" : "Remove photo"}</button> : null}
-                  </div>
-                </div>
-                <label className="loom-account-profile-name">
-                  <span>{zh ? "昵称" : "Nickname"}</span>
-                  <input value={profileName} onChange={(event) => setProfileName(event.target.value)} maxLength={48} placeholder={account.user.email.split("@")[0]} disabled={busy} />
-                  <div className="loom-account-profile-name-meta">
-                    <span>{zh ? "这是其他位置显示的名称" : "This is the name shown across Loom"}</span>
-                    <small>{profileName.trim().length} / 48</small>
-                  </div>
-                </label>
-                {profileError ? <p className="loom-account-profile-error" role="alert">{profileError}</p> : null}
-                <div className="loom-account-profile-editor-actions">
-                  <button type="button" onClick={() => {
-                    setProfileError("");
-                    if (closeAfterProfileEdit) onClose();
-                    else setEditingProfile(false);
-                  }} disabled={busy}>{zh ? "取消" : "Cancel"}</button>
-                  <button type="button" className="is-primary" onClick={() => void saveProfile()} disabled={busy}>{busy ? (zh ? "保存中…" : "Saving…") : (zh ? "保存资料" : "Save profile")}</button>
-                </div>
-              </div>
-            ) : (
-              <div className="loom-account-profile-actions">
-                <button type="button" className="loom-account-action-card" onClick={beginProfileEdit} disabled={busy}>
-                  <span className="loom-account-action-icon"><Pencil size={15} /></span>
-                  <span className="loom-account-action-copy">
-                    <strong>{zh ? "编辑资料" : "Edit profile"}</strong>
-                    <small>{zh ? "修改昵称与头像" : "Change nickname and photo"}</small>
-                  </span>
-                  <ArrowUpRight className="loom-account-action-arrow" size={16} />
-                </button>
-                {onOpenProfile ? (
-                  <button type="button" className="loom-account-action-card" onClick={() => { onClose(); onOpenProfile(); }} disabled={busy}>
-                    <span className="loom-account-action-icon"><UserRound size={15} /></span>
-                    <span className="loom-account-action-copy">
-                      <strong>{zh ? "个人主页" : "Profile home"}</strong>
-                      <small>{zh ? "查看使用概览与账户信息" : "View usage and account details"}</small>
-                    </span>
-                    <ArrowUpRight className="loom-account-action-arrow" size={14} />
-                  </button>
-                ) : null}
-              </div>
-            )}
-            <div className="loom-account-security-note">
-              <ShieldCheck size={16} aria-hidden="true" />
-              <span>{zh ? "凭据已安全保存在此设备上。" : "Credentials securely stored on this device."}</span>
-            </div>
-            <button
-              type="button"
-              className="loom-account-secondary-button loom-account-signout-button"
-              disabled={busy}
-              onClick={() => void onLogout()}
-            >
-              {busy ? <span className="loom-account-spinner" aria-hidden="true" /> : <LogOut size={15} />}
-              {busy ? (zh ? "正在退出…" : "Signing out…") : (zh ? "退出登录" : "Sign out")}
-            </button>
-          </div>
-        ) : (
-          <>
-            {offlineNotice}
+        <div ref={stageRef} className="acct-stage">
+          <Crossfade block identity={view} className="acct-views">{body}</Crossfade>
+        </div>
 
-            <div
-              className="loom-account-tabs"
-              role="group"
-              aria-label={zh ? "登录或注册" : "Sign in or create an account"}
-            >
-              <button
-                type="button"
-                className={mode === "login" ? "active" : ""}
-                aria-pressed={mode === "login"}
-                onClick={() => switchMode("login")}
-              >
-                {zh ? "登录" : "Sign in"}
-              </button>
-              <button
-                type="button"
-                className={mode === "register" ? "active" : ""}
-                aria-pressed={mode === "register"}
-                onClick={() => switchMode("register")}
-              >
-                {zh ? "注册" : "Create account"}
-              </button>
-            </div>
-
-            {(capabilities?.google || capabilities?.github) ? (
-              <div className="loom-account-oauth">
-                <div className="loom-account-oauth-grid">
-                  {capabilities?.google ? (
-                    <button type="button" className="loom-account-oauth-button" disabled={busy || oauthOpening !== null} onClick={() => void startOAuth("google")}>
-                      <span className="loom-account-google-mark" aria-hidden="true">G</span>
-                      <span>{oauthOpening === "google" ? (zh ? "正在打开…" : "Opening…") : "Google"}</span>
-                    </button>
-                  ) : null}
-                  {capabilities?.github ? (
-                    <button type="button" className="loom-account-oauth-button" disabled={busy || oauthOpening !== null} onClick={() => void startOAuth("github")}>
-                      <Github size={17} aria-hidden="true" />
-                      <span>{oauthOpening === "github" ? (zh ? "正在打开…" : "Opening…") : "GitHub"}</span>
-                    </button>
-                  ) : null}
-                </div>
-                <div className="loom-account-oauth-divider"><span>{zh ? "或使用邮箱继续" : "or continue with email"}</span></div>
-              </div>
-            ) : null}
-
-            <form className="loom-account-form" onSubmit={(event) => void submit(event)} noValidate>
-              <div className="loom-account-field">
-                <label htmlFor="loom-account-email">{zh ? "邮箱" : "Email"}</label>
-                <span className="loom-account-input-wrap">
-                  <input
-                    id="loom-account-email"
-                    ref={emailRef}
-                    type="email"
-                    value={email}
-                    onChange={(event) => setEmail(event.target.value)}
-                    autoComplete="email"
-                    disabled={busy}
-                    spellCheck={false}
-                    aria-invalid={emailInvalid}
-                    aria-describedby={emailInvalid ? "loom-account-email-hint" : undefined}
-                    placeholder="name@example.com"
-                  />
-                </span>
-                {emailInvalid ? (
-                  <p className="loom-account-hint tone-bad" id="loom-account-email-hint">
-                    {zh ? "邮箱格式看起来不正确。" : "That email address looks incomplete."}
-                  </p>
-                ) : null}
-              </div>
-
-              <div className="loom-account-field">
-                <label htmlFor="loom-account-password">{zh ? "密码" : "Password"}</label>
-                <span className="loom-account-input-wrap has-reveal">
-                  <input
-                    id="loom-account-password"
-                    ref={passwordRef}
-                    type={revealPassword ? "text" : "password"}
-                    value={password}
-                    onChange={(event) => setPassword(event.target.value)}
-                    autoComplete={mode === "login" ? "current-password" : "new-password"}
-                    disabled={busy}
-                    minLength={mode === "register" ? ACCOUNT_PASSWORD_MIN_LENGTH : undefined}
-                    aria-describedby={mode === "register" ? "loom-account-password-hint" : undefined}
-                    placeholder="••••••••"
-                  />
-                  <button
-                    type="button"
-                    className="loom-account-reveal"
-                    onClick={() => setRevealPassword((value) => !value)}
-                    disabled={busy}
-                    aria-pressed={revealPassword}
-                    aria-label={
-                      revealPassword
-                        ? (zh ? "隐藏密码" : "Hide password")
-                        : (zh ? "显示密码" : "Show password")
-                    }
-                  >
-                    {revealPassword ? <EyeOff size={15} /> : <Eye size={15} />}
-                  </button>
-                </span>
-                {mode === "register" ? (
-                  <p className="loom-account-hint" id="loom-account-password-hint">
-                    {zh
-                      ? `至少 ${ACCOUNT_PASSWORD_MIN_LENGTH} 位字符。`
-                      : `At least ${ACCOUNT_PASSWORD_MIN_LENGTH} characters.`}
-                  </p>
-                ) : null}
-              </div>
-
-              {mode === "register" ? (
-                <div className="loom-account-field">
-                  <label htmlFor="loom-account-confirm">{zh ? "确认密码" : "Confirm password"}</label>
-                  <span className="loom-account-input-wrap">
-                    <input
-                      id="loom-account-confirm"
-                      ref={confirmRef}
-                      type={revealPassword ? "text" : "password"}
-                      value={confirm}
-                      onChange={(event) => setConfirm(event.target.value)}
-                      autoComplete="new-password"
-                      disabled={busy}
-                      minLength={ACCOUNT_PASSWORD_MIN_LENGTH}
-                      aria-invalid={confirmMismatch}
-                      aria-describedby={
-                        confirmMismatch || confirmMatches ? "loom-account-confirm-hint" : undefined
-                      }
-                      placeholder="••••••••"
-                    />
-                  </span>
-                  {confirmMismatch ? (
-                    <p className="loom-account-hint tone-bad" id="loom-account-confirm-hint">
-                      {zh ? "两次输入的密码不一致。" : "Passwords do not match."}
-                    </p>
-                  ) : confirmMatches ? (
-                    <p className="loom-account-hint tone-ok" id="loom-account-confirm-hint">
-                      <CheckCircle2 size={13} aria-hidden="true" />
-                      {zh ? "两次输入一致。" : "Passwords match."}
-                    </p>
-                  ) : null}
-                </div>
-              ) : null}
-
-              {message ? (
-                <p className="loom-account-error" role="alert">{message}</p>
-              ) : null}
-
-              <button className="loom-account-primary-button" type="submit" disabled={busy}>
-                {busy ? <span className="loom-account-spinner" aria-hidden="true" /> : null}
-                {busy ? (zh ? "处理中…" : "Working…") : submitLabel}
-              </button>
-            </form>
-
-            <p className="loom-account-footnote">
-              <ShieldCheck size={13} aria-hidden="true" />
-              {zh
-                ? "密码不会保存到本机；只有加密后的会话令牌会进入系统安全存储。"
-                : "Your password is never stored locally; only encrypted session tokens enter OS secure storage."}
-            </p>
-            {serviceLabel ? (
-              <p className="loom-account-service">{zh ? "服务地址" : "Service"} · {serviceLabel}</p>
-            ) : null}
-          </>
-        )}
+        <input
+          ref={avatarInputRef}
+          className="acct-file-input"
+          tabIndex={-1}
+          type="file"
+          accept="image/png,image/jpeg,image/webp"
+          onChange={(event) => chooseAvatar(event.target.files?.[0])}
+          disabled={busy || !editing}
+        />
       </section>
       <AvatarCropDialog
         file={avatarCropFile ?? (cropPresence.mounted ? lastCropFileRef.current : null)}

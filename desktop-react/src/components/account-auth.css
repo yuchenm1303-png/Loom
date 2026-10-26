@@ -1,1195 +1,957 @@
-/* Loom account surfaces — header affordance + sign-in dialog.
-   Every colour goes through the project's semantic tokens (styles.css :root for
-   the dark baseline, theme.css html[data-loom-theme="light"] for the light
-   remap), with a short light-theme block at the end for the few values a token
-   cannot express. The fallbacks below mirror the dark baseline so this file
-   still renders correctly in isolation, e.g. in the design preview page. */
+/* Loom account dialog --------------------------------------------------------------------------------------------
+   Sign-in, registration, the signed-in account and the profile editor, in one card (AccountDialog.tsx). The card is
+   the panel language's modal: scrim, hairline, the modal corner and shadow, and the opacity reveal (.pl-scrim
+   .pl-reveal in panel-language.css). Everything inside it is `.acct-*` and owned by this file. The web portal has its
+   own account form (portal-*.css, `.loom-account-form` and friends); those sheets are loaded in the desktop app too,
+   which is why nothing here is named like them.
 
-/* ------------------------------------------------------------------ header */
+   Layout: one column, centred on an identity. The circle is empty while nobody is signed in and becomes your picture
+   (or your initial) once you are; the title and the line under it say where you are. Below them the card shows one
+   view: the form, the account, the editor, or a state of the service. Field notes sit on the label's line, so typing
+   never pushes the form around.
 
-.thread-account-button {
-  position: relative;
-}
+   Motion, on the scale of motion-tokens.css: the card and its scrim fade in and out together (.pl-reveal); inside,
+   the identity settles and the view follows a stagger later. Switching views cross-fades the words (Crossfade, faster
+   out than in) while the card's height glides on the flow step (useHeightMorph in AccountDialog.tsx); the card hangs
+   from a fixed line, so only its lower edge moves. A line that appears inside a view (the confirmation field, an
+   error, a notice) makes its own room on the base step and fades in once the room is there. Words only fade; the
+   marks (the circle, its status dot and badge, a chevron) are what move. */
 
-.thread-account-button.signed-in {
-  color: var(--accent-soft, #aaa0ff);
-  background: var(--accent-faint, rgba(139, 124, 246, .12));
-  border-color: color-mix(in srgb, var(--accent, #8b7cf6) 18%, transparent);
-}
+/* ------------------------------------------------------------------ shell */
 
-.thread-account-button.signed-in:hover {
-  color: var(--accent-soft, #aaa0ff);
-  background: color-mix(in srgb, var(--accent, #8b7cf6) 16%, transparent);
-}
-
-.thread-account-initial {
-  width: 18px;
-  height: 18px;
-  border-radius: 50%;
-  display: grid;
-  place-items: center;
-  background: color-mix(in srgb, var(--accent, #8b7cf6) 28%, transparent);
-  color: var(--accent-soft, #aaa0ff);
-  font-size: .62rem;
-  font-weight: 650;
-  line-height: 1;
-  letter-spacing: 0;
-  user-select: none;
-}
-
-.thread-account-avatar-image {
-  width: 20px;
-  height: 20px;
-  border: 1px solid color-mix(in srgb, var(--accent, #8b7cf6) 28%, transparent);
-  border-radius: 50%;
-  display: block;
-  object-fit: cover;
-}
-
-.thread-account-dot {
-  position: absolute;
-  right: 5px;
-  bottom: 5px;
-  width: 5px;
-  height: 5px;
-  border: 1px solid var(--bg, #0b0c0f);
-  border-radius: 50%;
-  background: var(--success, #82b49b);
-}
-
-/* The avatar already fills most of the 30px button, so the status dot tucks
-   into the corner instead of colliding with the initial. */
-.thread-account-button.signed-in .thread-account-dot {
-  right: 2px;
-  bottom: 2px;
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--success, #82b49b) 14%, transparent);
-}
-
-/* The avatar holds still. A thin ring draws in around it and the status dot
-   swells, the way an icon's part would. */
-.thread-account-button::before {
-  content: "";
-  position: absolute;
-  inset: 2px;
-  border: 1.2px solid color-mix(in srgb, var(--accent, #8b7cf6) 55%, transparent);
-  border-radius: 999px;
-  opacity: 0;
-  scale: .88;
-  transition: opacity var(--loom-dur-base) ease, scale var(--loom-dur-flow) var(--loom-ease-out);
-  pointer-events: none;
-}
-
-.thread-account-button:is(:hover, :focus-visible):not(:disabled)::before {
-  opacity: .7;
-  scale: 1;
-}
-
-.thread-account-dot {
-  transition: transform var(--loom-dur-base) var(--loom-ease-out);
-}
-
-.thread-account-button:is(:hover, :focus-visible):not(:disabled) .thread-account-dot {
-  transform: scale(1.25);
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .thread-account-button::before,
-  .thread-account-dot { transition: none; }
-}
-
-:root[data-loom-reduced-motion="true"] .thread-account-button::before,
-:root[data-loom-reduced-motion="true"] .thread-account-dot { transition: none; }
-
-/* ------------------------------------------------------------------ dialog */
-
-/* Scrim, fade in and out: the panel language (.pl-scrim .pl-reveal in panel-language.css). */
 .loom-account-backdrop {
   z-index: 1200;
   overflow-y: auto;
 }
 
+/* Hung from a line rather than centred: when the card changes height, only its lower edge moves. (Two classes:
+   panel-language.css, which centres every scrim, is loaded after this sheet.) */
+.loom-account-backdrop.pl-scrim {
+  align-items: start;
+}
+
 .loom-account-dialog {
+  /* Opaque fills: the faces of the identity circle (they are stacked while they cross-fade, so nothing may show
+     through) and the field's own colour, for the autofill repaint. */
+  --acct-solid: color-mix(in srgb, var(--pl-ink) 5%, var(--pl-surface-raised));
+  --acct-field-solid: color-mix(in srgb, var(--pl-ink) 4.5%, var(--pl-surface-raised));
+  --acct-line-strong: color-mix(in srgb, var(--pl-ink) 20%, transparent);
+  /* The ink button brightens a step under the pointer (the light theme's ink is dark, so it lightens there too). */
+  --acct-primary-hover: color-mix(in srgb, var(--pl-ink) 45%, #fff);
   position: relative;
   box-sizing: border-box;
-  width: min(438px, 100%);
+  width: min(400px, 100%);
   min-width: 0;
   max-height: calc(100dvh - 48px);
+  margin-top: clamp(0px, calc(14vh - 64px), 64px);
   overflow-y: auto;
   overscroll-behavior: contain;
-  padding: 26px 28px 24px;
+  padding: 32px 32px 28px;
   border: 1px solid var(--pl-line);
   border-radius: var(--pl-radius-modal);
   background: var(--pl-surface-raised);
+  color: var(--pl-ink);
   box-shadow: var(--pl-shadow-modal);
   contain: layout paint style;
-  backface-visibility: hidden;
+  outline: none;
 }
 
 .loom-account-close {
   position: absolute;
   top: 14px;
   right: 14px;
-  width: 30px;
-  height: 30px;
+  z-index: 3;
 }
 
 .loom-account-close:disabled {
-  cursor: not-allowed;
+  cursor: default;
 }
 
-/* --------------------------------------------------------------- structure */
+/* --------------------------------------------------------------- identity */
 
-.loom-account-header {
-  display: grid;
-  grid-template-columns: 42px 1fr;
-  gap: 13px;
-  padding-right: 30px;
-}
-
-.loom-account-mark {
-  width: 42px;
-  height: 42px;
-  border: 1px solid color-mix(in srgb, var(--accent, #8b7cf6) 26%, var(--border, #292d38));
-  border-radius: 12px;
-  display: grid;
-  place-items: center;
-  color: var(--accent-soft, #aaa0ff);
-  background:
-    radial-gradient(120% 120% at 32% 0%, color-mix(in srgb, var(--accent, #8b7cf6) 20%, transparent), transparent 72%),
-    var(--panel-soft, #191c24);
-}
-
-.loom-account-header h2 {
-  margin: 0;
-  color: var(--text, #f0f1f4);
-  font-size: 1.12rem;
-  font-weight: 650;
-  letter-spacing: -.022em;
-}
-
-.loom-account-header p {
-  margin: 6px 0 0;
-  color: var(--muted, #858c99);
-  font-size: .755rem;
-  line-height: 1.55;
-}
-
-/* ------------------------------------------------------------------- tabs */
-
-.loom-account-tabs {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 4px;
-  margin-top: 22px;
-  padding: 4px;
-  border-radius: 11px;
-  background: var(--bg-deep, #090a0d);
-}
-
-.loom-account-tabs button {
-  height: 33px;
-  border: 1px solid transparent;
-  border-radius: 8px;
-  background: transparent;
-  color: var(--muted, #858c99);
-  font: inherit;
-  font-size: .745rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition: color var(--loom-dur-fast) ease, background var(--loom-dur-fast) ease, border-color var(--loom-dur-fast) ease, box-shadow var(--loom-dur-fast) ease;
-}
-
-.loom-account-tabs button:hover:not(.active) {
-  color: var(--text-2, #bcc1cb);
-}
-
-.loom-account-tabs button.active {
-  border-color: color-mix(in srgb, var(--accent, #8b7cf6) 26%, var(--border, #292d38));
-  background: var(--panel, #101217);
-  color: var(--accent-soft, #aaa0ff);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, .16);
-}
-
-/* ------------------------------------------------------------------- form */
-
-.loom-account-form {
+.acct-head {
   display: flex;
   flex-direction: column;
-  gap: 14px;
-  margin-top: 18px;
+  align-items: center;
+  padding-inline: 16px;
+  text-align: center;
 }
 
-/* The caption is a sibling of the input rather than a wrapper, so the reveal
-   button is not nested inside a <label> (which would forward its clicks). */
-.loom-account-field {
-  display: flex;
-  flex-direction: column;
-  gap: 7px;
-}
-
-.loom-account-field > label {
-  color: var(--text-2, #bcc1cb);
-  font-size: .72rem;
-  font-weight: 600;
-}
-
-.loom-account-input-wrap {
+.acct-mark {
   position: relative;
-  display: block;
+  flex: none;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
 }
 
-.loom-account-form input {
-  width: 100%;
-  height: 44px;
-  padding: 0 12px;
-  border: 1px solid var(--border, #292d38);
-  border-radius: 10px;
-  outline: none;
-  background: var(--bg-deep, #090a0d);
-  color: var(--text, #f0f1f4);
-  font: inherit;
-  font-size: .84rem;
-  transition: border-color var(--loom-dur-fast) ease, box-shadow var(--loom-dur-fast) ease, background var(--loom-dur-fast) ease;
-}
-
-.loom-account-input-wrap.has-reveal input {
-  padding-right: 42px;
-}
-
-.loom-account-form input::placeholder {
-  color: var(--faint, #59606c);
-}
-
-.loom-account-form input:hover:not(:disabled) {
-  border-color: var(--border-strong, #383d4a);
-}
-
-.loom-account-form input:focus {
-  border-color: color-mix(in srgb, var(--accent, #8b7cf6) 56%, var(--border, #292d38));
-  box-shadow: 0 0 0 3px var(--accent-faint, rgba(139, 124, 246, .12));
-}
-
-.loom-account-form input:disabled {
-  opacity: .6;
-  cursor: not-allowed;
-}
-
-.loom-account-form input[aria-invalid="true"] {
-  border-color: color-mix(in srgb, var(--danger, #dc7c86) 62%, var(--border, #292d38));
-}
-
-.loom-account-form input[aria-invalid="true"]:focus {
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--danger, #dc7c86) 13%, transparent);
-}
-
-/* Chromium paints autofilled fields with its own background; repaint them with
-   the theme surface and keep the focus ring while doing so. */
-.loom-account-form input:-webkit-autofill,
-.loom-account-form input:-webkit-autofill:hover {
-  -webkit-text-fill-color: var(--text, #f0f1f4);
-  caret-color: var(--text, #f0f1f4);
-  box-shadow: 0 0 0 40px var(--bg-deep, #090a0d) inset;
-}
-
-.loom-account-form input:-webkit-autofill:focus {
-  box-shadow:
-    0 0 0 40px var(--bg-deep, #090a0d) inset,
-    0 0 0 3px var(--accent-faint, rgba(139, 124, 246, .12));
-}
-
-.loom-account-reveal {
+.acct-mark-faces {
   position: absolute;
-  top: 50%;
-  right: 6px;
-  transform: translateY(-50%);
-  width: 30px;
-  height: 30px;
-  border: 0;
-  border-radius: 7px;
+  inset: 0;
+  display: grid;
+  border-radius: 50%;
+}
+
+.acct-mark-faces > * {
+  display: grid;
+}
+
+.acct-mark-face {
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
   display: grid;
   place-items: center;
-  background: transparent;
-  color: var(--faint, #59606c);
-  cursor: pointer;
-  transition: color var(--loom-dur-fast) ease, background var(--loom-dur-fast) ease;
-}
-
-.loom-account-reveal:hover:not(:disabled) {
-  color: var(--text-2, #bcc1cb);
-  background: color-mix(in srgb, var(--text, #f0f1f4) 7%, transparent);
-}
-
-.loom-account-reveal:disabled {
-  opacity: .45;
-  cursor: not-allowed;
-}
-
-.loom-account-hint {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin: 0;
-  color: var(--muted, #858c99);
-  font-size: .675rem;
-  line-height: 1.45;
-}
-
-.loom-account-hint.tone-ok {
-  color: var(--success, #82b49b);
-}
-
-.loom-account-hint.tone-bad {
-  color: var(--danger, #dc7c86);
-}
-
-/* ---------------------------------------------------------------- buttons */
-
-.loom-account-primary-button,
-.loom-account-secondary-button {
-  min-height: 42px;
-  border-radius: 10px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  font: inherit;
-  font-size: .78rem;
-  font-weight: 650;
-  cursor: pointer;
-  transition: transform var(--loom-dur-fast) var(--loom-ease-out), box-shadow var(--loom-dur-fast) ease, background var(--loom-dur-fast) ease, border-color var(--loom-dur-fast) ease, color var(--loom-dur-fast) ease;
-}
-
-.loom-account-primary-button {
-  margin-top: 2px;
-  border: 1px solid color-mix(in srgb, var(--text, #f0f1f4) 88%, transparent);
-  background: var(--text, #f0f1f4);
-  color: var(--bg, #0b0c0f);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, .16);
-}
-
-.loom-account-primary-button:hover:not(:disabled) {
-  transform: none;
-  box-shadow:
-    0 6px 18px color-mix(in srgb, var(--accent, #8b7cf6) 24%, transparent),
-    0 1px 2px rgba(0, 0, 0, .18);
-}
-
-.loom-account-primary-button:active:not(:disabled) {
-  box-shadow: 0 1px 2px rgba(0, 0, 0, .16);
-}
-
-.loom-account-primary-button:disabled,
-.loom-account-secondary-button:disabled {
-  opacity: .55;
-  cursor: not-allowed;
-}
-
-.loom-account-secondary-button {
-  border: 1px solid var(--border, #292d38);
-  background: transparent;
-  color: var(--text, #f0f1f4);
-}
-
-.loom-account-secondary-button:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--text, #f0f1f4) 6%, transparent);
-  border-color: var(--border-strong, #383d4a);
-}
-
-.loom-account-spinner {
-  flex: 0 0 auto;
-  width: 13px;
-  height: 13px;
-  border: 1.6px solid color-mix(in srgb, currentColor 26%, transparent);
-  border-top-color: currentColor;
+  overflow: hidden;
   border-radius: 50%;
-  animation: li-spin var(--ic-t-spin) linear infinite;
-}
-
-/* ------------------------------------------------------------ feedback */
-
-.loom-account-error {
-  margin: 0;
-  padding: 9px 11px;
-  border: 1px solid color-mix(in srgb, var(--danger, #dc7c86) 26%, transparent);
-  border-radius: 9px;
-  background: color-mix(in srgb, var(--danger, #dc7c86) 8%, transparent);
-  color: var(--danger, #dc7c86);
-  font-size: .715rem;
-  line-height: 1.5;
-}
-
-.loom-account-footnote,
-.loom-account-security-note {
-  display: flex;
-  align-items: flex-start;
-  gap: 7px;
-  color: var(--muted, #858c99);
-  font-size: .675rem;
-  line-height: 1.5;
-}
-
-.loom-account-footnote {
-  margin: 15px 0 0;
-}
-
-.loom-account-footnote svg,
-.loom-account-security-note svg,
-.loom-account-hint svg {
-  flex: 0 0 auto;
-  margin-top: 1px;
-}
-
-.loom-account-service {
-  margin: 12px 0 0;
-  padding: 7px 10px;
-  border: 1px solid var(--border-soft, #1d2028);
-  border-radius: 9px;
-  background: var(--bg-deep, #090a0d);
-  color: var(--muted, #858c99);
-  font-family: var(--loom-code-font);
-  font-size: .655rem;
-  line-height: 1.5;
-  overflow-wrap: anywhere;
-}
-
-/* Offline banner: the service is configured but did not answer. */
-.loom-account-notice {
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  margin: 18px 0 0;
-  padding: 9px 11px;
-  border: 1px solid color-mix(in srgb, var(--warning, #d7ad6d) 28%, transparent);
-  border-radius: 9px;
-  background: color-mix(in srgb, var(--warning, #d7ad6d) 9%, transparent);
-  color: var(--warning, #d7ad6d);
-  font-size: .71rem;
-  line-height: 1.5;
-}
-
-.loom-account-notice svg {
-  flex: 0 0 auto;
-  margin-top: 1px;
-}
-
-.loom-account-notice button {
-  flex: 0 0 auto;
-  margin-left: auto;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  color: inherit;
-  font: inherit;
-  font-weight: 650;
-  text-decoration: underline;
-  text-underline-offset: 2px;
-  cursor: pointer;
-}
-
-.loom-account-notice button:disabled {
-  opacity: .5;
-  cursor: not-allowed;
-}
-
-/* Pushes the notice above the form instead of below it. */
-.loom-account-notice + .loom-account-form,
-.loom-account-notice + .loom-account-tabs {
-  margin-top: 14px;
-}
-
-/* --------------------------------------------------------------- states */
-
-.loom-account-state,
-.loom-account-unconfigured {
-  margin-top: 22px;
-  padding: 18px;
-  border: 1px solid var(--border, #292d38);
-  border-radius: 12px;
-  color: var(--muted, #858c99);
-  background: var(--bg-deep, #090a0d);
-  font-size: .755rem;
-}
-
-.loom-account-state {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-}
-
-.loom-account-unconfigured {
-  display: grid;
-  grid-template-columns: 24px 1fr;
-  gap: 7px 10px;
-}
-
-.loom-account-unconfigured > svg {
-  color: var(--warning, #d7ad6d);
-  margin-top: 1px;
-}
-
-.loom-account-unconfigured strong {
-  color: var(--text, #f0f1f4);
-  font-size: .785rem;
-}
-
-.loom-account-unconfigured p {
-  grid-column: 1 / -1;
-  margin: 4px 0 0;
-  line-height: 1.55;
-}
-
-.loom-account-signed-in {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-  margin-top: 22px;
-  animation: loom-account-rise var(--loom-dur-base) var(--loom-ease-out) both;
-}
-
-.loom-account-profile {
-  display: grid;
-  grid-template-columns: 42px 1fr 20px;
-  gap: 12px;
-  align-items: center;
-  padding: 14px;
-  border: 1px solid var(--border, #292d38);
-  border-radius: 12px;
-  background: var(--bg-deep, #090a0d);
-}
-
-.loom-account-avatar {
-  width: 42px;
-  height: 42px;
-  border-radius: 50%;
-  display: grid;
-  place-items: center;
-  border: 1px solid color-mix(in srgb, var(--accent, #8b7cf6) 24%, transparent);
-  background: color-mix(in srgb, var(--accent, #8b7cf6) 18%, transparent);
-  color: var(--accent-soft, #aaa0ff);
-  font-size: 1rem;
-  font-weight: 650;
+  background: var(--acct-solid);
   user-select: none;
 }
 
-.loom-account-profile div {
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
+.acct-mark-face.is-empty {
+  color: var(--pl-faint);
+  box-shadow: inset 0 0 0 1px var(--pl-line);
 }
 
-.loom-account-profile strong,
-.loom-account-profile span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+.acct-mark-face.is-initial {
+  background: color-mix(in srgb, var(--pl-accent) 16%, var(--pl-surface-raised));
+  color: var(--pl-accent);
+  font-size: 24px;
+  font-weight: 600;
+  line-height: 1;
 }
 
-.loom-account-profile strong {
-  color: var(--text, #f0f1f4);
-  font-size: .785rem;
-}
-
-.loom-account-profile div span {
-  color: var(--muted, #858c99);
-  font-size: .685rem;
-}
-
-.loom-account-profile > svg {
-  color: var(--success, #82b49b);
-}
-
-.loom-account-avatar.has-image {
-  overflow: hidden;
-  padding: 0;
-  background: var(--panel-soft, #191c24);
-}
-
-.loom-account-avatar img {
+.acct-mark-face img {
   width: 100%;
   height: 100%;
   display: block;
   object-fit: cover;
 }
 
-.loom-account-profile-actions {
+/* A hairline over every face, so a dark picture keeps its edge on the dark card. */
+.acct-mark::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 1px var(--pl-edge);
+  pointer-events: none;
+}
+
+/* Checking: an arc turns around the empty circle. */
+.acct-mark.is-checking::before {
+  content: "";
+  position: absolute;
+  inset: -5px;
+  border: 1.5px solid transparent;
+  border-top-color: var(--pl-accent);
+  border-radius: 50%;
+  animation: li-spin var(--ic-t-spin) linear infinite;
+}
+
+/* Signed in (green) or signed in while the service is out of reach (amber). */
+.acct-mark-dot {
+  position: absolute;
+  right: 2px;
+  bottom: 2px;
+  z-index: 2;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--pl-ok);
+  box-shadow: 0 0 0 2.5px var(--pl-surface-raised);
+}
+
+.acct-mark-dot.is-offline {
+  background: var(--warning);
+}
+
+/* Editing: the picture is a button (pointer only; the keyboard has the "Change photo" link) and wears a badge. */
+.acct-mark-edit {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px;
-}
-
-.loom-account-profile-actions button,
-.loom-account-profile-editor-actions button {
-  min-height: 38px;
-  border: 1px solid var(--border, #292d38);
-  border-radius: 10px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 7px;
-  background: var(--panel-soft, #191c24);
-  color: var(--text-2, #bcc1cb);
-  font: inherit;
-  font-size: .72rem;
-  font-weight: 650;
-  cursor: pointer;
-  transition: background var(--loom-dur-fast) ease, border-color var(--loom-dur-fast) ease, color var(--loom-dur-fast) ease;
-}
-
-.loom-account-profile-actions button:hover:not(:disabled),
-.loom-account-profile-editor-actions button:hover:not(:disabled) {
-  border-color: color-mix(in srgb, var(--accent, #8b7cf6) 34%, var(--border, #292d38));
-  color: var(--text, #f0f1f4);
-}
-
-.loom-account-profile-editor {
-  display: grid;
-  grid-template-columns: 72px 1fr;
-  gap: 14px;
-  padding: 14px;
-  border: 1px solid var(--border, #292d38);
-  border-radius: 12px;
-  background: color-mix(in srgb, var(--bg-deep, #090a0d) 78%, transparent);
-}
-
-.loom-account-avatar-editor {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 7px;
-}
-
-.loom-account-avatar-button {
-  position: relative;
-  width: 58px;
-  height: 58px;
+  place-items: center;
   padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(8, 10, 14, .5);
+  color: #fff;
+  opacity: 0;
   cursor: pointer;
+  transition: opacity var(--loom-dur-fast) ease;
 }
 
-.loom-account-avatar-button > i {
+.acct-mark-edit:hover:not(:disabled) {
+  opacity: 1;
+}
+
+.acct-mark-badge {
   position: absolute;
   right: -2px;
   bottom: -2px;
-  width: 23px;
-  height: 23px;
-  border: 2px solid var(--bg-deep, #090a0d);
-  border-radius: 50%;
+  z-index: 2;
+  width: 22px;
+  height: 22px;
   display: grid;
   place-items: center;
-  background: var(--accent, #8b7cf6);
-  color: #fff;
+  border-radius: 50%;
+  background: var(--pl-ink);
+  color: var(--pl-surface-raised);
+  box-shadow: 0 0 0 2.5px var(--pl-surface-raised);
+  pointer-events: none;
 }
 
-.loom-account-avatar-input {
-  display: none;
+.acct-title {
+  max-width: 100%;
+  margin: 16px 0 0;
+  color: var(--pl-ink);
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 1.35;
+  letter-spacing: -.01em;
+  overflow-wrap: anywhere;
+  text-wrap: balance;
 }
 
-.loom-account-text-button {
-  border: 0;
-  padding: 0;
-  background: transparent;
-  color: var(--muted, #858c99);
-  font: inherit;
-  font-size: .62rem;
-  cursor: pointer;
+.acct-lead {
+  max-width: 300px;
+  margin: 4px 0 0;
+  color: var(--pl-muted);
+  font-size: 13px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+  text-wrap: balance;
 }
 
-.loom-account-profile-name {
+/* ------------------------------------------------------------------ views */
+
+.acct-stage {
   position: relative;
+}
+
+/* While the height glides, what does not fit yet (or any more) is cut at the edge; focus rings may still show. */
+.acct-stage[data-morphing] {
+  overflow: clip;
+  overflow-clip-margin: 6px;
+}
+
+.acct-stage > .acct-views {
+  position: relative;
+  display: grid;
+}
+
+/* The view that is leaving does not take room: the card is already as high as the one that arrives. */
+.acct-stage > .acct-views > .crossfade-out {
+  position: absolute;
+  inset: 0 0 auto;
+}
+
+.acct-view {
   display: flex;
   flex-direction: column;
-  gap: 7px;
   min-width: 0;
+  padding-top: 24px;
 }
 
-.loom-account-profile-name > span {
-  color: var(--text-2, #bcc1cb);
-  font-size: .69rem;
-  font-weight: 600;
-}
-
-.loom-account-profile-name input {
+.acct-view > .acct-button {
   width: 100%;
-  height: 40px;
-  padding: 0 48px 0 11px;
-  border: 1px solid var(--border, #292d38);
-  border-radius: 9px;
-  outline: none;
-  background: var(--bg-deep, #090a0d);
-  color: var(--text, #f0f1f4);
-  font: inherit;
-  font-size: .75rem;
 }
 
-.loom-account-profile-name small {
-  position: absolute;
-  right: 10px;
-  bottom: 12px;
-  color: var(--faint, #68707d);
-  font-size: .6rem;
+.acct-explain {
+  margin: 0 0 16px;
+  color: var(--pl-muted);
+  font-size: 13px;
+  line-height: 1.6;
+  text-align: center;
+  text-wrap: balance;
 }
 
-.loom-account-profile-error {
-  grid-column: 1 / -1;
-  margin: 0;
-  color: var(--danger, #df8585);
-  font-size: .67rem;
+.acct-explain code {
+  padding: 1px 5px;
+  border-radius: 5px;
+  background: var(--pl-card);
+  color: var(--pl-secondary);
+  font-family: var(--loom-code-font);
+  font-size: 12px;
+  overflow-wrap: anywhere;
 }
 
-.loom-account-profile-editor-actions {
-  grid-column: 1 / -1;
+/* A few lines that make room for themselves, then fade in. */
+.acct-fold {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  transition:
+    grid-template-rows var(--loom-dur-base) var(--loom-ease-move),
+    opacity var(--loom-dur-fast-out) var(--loom-ease-exit);
+}
+
+.acct-fold.is-open {
+  grid-template-rows: 1fr;
+  opacity: 1;
+  transition:
+    grid-template-rows var(--loom-dur-base) var(--loom-ease-move),
+    opacity var(--loom-dur-base) var(--loom-ease-out) var(--loom-stagger);
+}
+
+.acct-fold-inner {
+  min-height: 0;
+  overflow: clip;
+  overflow-clip-margin: 4px;
+}
+
+/* --------------------------------------------------------------- the form */
+
+.acct-oauth {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
 }
 
-.loom-account-profile-editor-actions button.is-primary {
-  border-color: color-mix(in srgb, var(--accent, #8b7cf6) 58%, var(--border, #292d38));
-  background: color-mix(in srgb, var(--accent, #8b7cf6) 24%, var(--panel-soft, #191c24));
-  color: var(--text, #f0f1f4);
-}
-
-.loom-account-security-note {
-  padding: 0 3px;
-}
-
-/* ------------------------------------------------ signed-in account */
-
-.loom-account-dialog.is-signed-in {
-  width: min(460px, 100%);
-  padding: 28px;
-}
-.loom-account-dialog.is-signed-in .loom-account-close { top: 22px; right: 22px; }
-.loom-account-dialog.is-signed-in .loom-account-header { display: block; padding-right: 32px; }
-.loom-account-dialog.is-signed-in .loom-account-header h2 {
-  font-size: 20px;
-  font-weight: 650;
-  letter-spacing: -.035em;
-}
-.loom-account-dialog.is-signed-in .loom-account-header p { margin-top: 7px; font-size: 13px; line-height: 1.5; }
-.loom-account-dialog.is-signed-in .loom-account-signed-in { gap: 0; margin-top: 26px; }
-.loom-account-dialog.is-signed-in .loom-account-profile {
-  grid-template-columns: 56px minmax(0, 1fr);
-  gap: 4px 16px;
-  padding: 0 0 24px;
-  border: 0;
-  border-radius: 0;
-  background: transparent;
-}
-.loom-account-dialog.is-signed-in .loom-account-profile .loom-account-avatar {
-  grid-row: 1 / 3;
-  width: 56px;
-  height: 56px;
-  border-color: var(--border, #292d38);
-}
-.loom-account-dialog.is-signed-in .loom-account-profile strong { font-size: 18px; font-weight: 650; line-height: 1.4; }
-.loom-account-dialog.is-signed-in .loom-account-profile div span {
-  font-size: 13px;
-  white-space: normal;
-  overflow-wrap: anywhere;
-  line-height: 1.5;
-}
-.loom-account-profile .loom-account-session-status {
-  grid-column: 2;
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  color: var(--success, #82b49b);
-  font-size: 11.5px;
-  line-height: 1.5;
-}
-.loom-account-profile-actions {
-  grid-template-columns: minmax(0, 1fr);
-  gap: 0;
-  padding: 6px 0;
-  border-block: 1px solid var(--border-soft, #1d2028);
-}
-.loom-account-profile-actions .loom-account-action-card {
-  min-width: 0;
-  width: 100%;
-  min-height: 72px;
-  padding: 12px 10px;
-  border: 0;
-  border-radius: 10px;
-  justify-content: flex-start;
-  gap: 14px;
-  text-align: left;
-  background: transparent;
-  box-shadow: none;
-  transition: background var(--loom-dur-fast) ease, color var(--loom-dur-fast) ease;
-}
-.loom-account-profile-actions .loom-account-action-card:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--text, #f0f1f4) 4%, transparent);
-}
-.loom-account-action-icon {
-  width: 30px;
-  height: 30px;
-  flex: 0 0 auto;
-  display: grid;
-  place-items: center;
-  color: var(--muted, #858c99);
-}
-.loom-account-action-icon svg { width: 18px; height: 18px; }
-.loom-account-action-copy { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 4px; }
-.loom-account-action-copy strong { color: var(--text, #f0f1f4); font-size: 14px; font-weight: 600; line-height: 1.35; }
-.loom-account-action-copy small {
-  color: var(--muted, #858c99);
-  font-size: 12px !important;
-  font-weight: 400;
-  line-height: 1.5;
-  white-space: normal;
-  overflow-wrap: anywhere;
-}
-.loom-account-action-arrow { flex: 0 0 auto; color: var(--faint, #68707d); }
-.loom-account-action-card:hover:not(:disabled) .loom-account-action-arrow { color: var(--accent-soft, #aaa0ff); }
-
-.loom-account-profile-editor {
-  grid-template-columns: 142px minmax(0, 1fr);
-  gap: 16px 18px;
-  padding: 18px;
-  border-color: color-mix(in srgb, var(--accent, #8b7cf6) 16%, var(--border, #292d38));
-  border-radius: 16px;
-  background:
-    radial-gradient(80% 60% at 0 0, color-mix(in srgb, var(--accent, #8b7cf6) 6%, transparent), transparent 72%),
-    color-mix(in srgb, var(--bg-deep, #090a0d) 82%, transparent);
-  box-shadow: inset 0 1px color-mix(in srgb, var(--text, #f0f1f4) 3%, transparent);
-}
-
-.loom-account-editor-heading {
+.acct-oauth > :only-child {
   grid-column: 1 / -1;
+}
+
+.acct-brand {
+  flex: none;
+  width: 16px;
+  height: 16px;
+}
+
+.acct-waiting {
   display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-}
-
-.loom-account-editor-heading > div {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.loom-account-editor-heading strong {
-  color: var(--text, #f0f1f4);
-  font-size: .76rem;
-  font-weight: 650;
-}
-
-.loom-account-editor-heading span {
-  color: var(--muted, #858c99);
-  font-size: .625rem;
-  line-height: 1.45;
-}
-
-.loom-account-avatar-editor {
-  display: flex;
-  flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 9px;
-  min-height: 130px;
-  padding: 12px;
-  border: 1px solid color-mix(in srgb, var(--border, #292d38) 72%, transparent);
-  border-radius: 13px;
-  background: color-mix(in srgb, var(--panel-soft, #191c24) 36%, transparent);
+  gap: 10px;
+  margin: 12px 0 0;
+  color: var(--pl-muted);
+  font-size: 12px;
+  line-height: 1.5;
 }
 
-.loom-account-avatar-button {
-  width: 66px;
-  height: 66px;
-  border-color: color-mix(in srgb, var(--accent, #8b7cf6) 36%, transparent);
-  box-shadow: 0 6px 18px rgba(0, 0, 0, .18), inset 0 1px color-mix(in srgb, var(--text, #f0f1f4) 5%, transparent);
+.acct-divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 18px 0;
+  color: var(--pl-faint);
+  font-size: 12px;
+  line-height: 1;
 }
 
-.loom-account-avatar-button > i {
-  right: -1px;
-  bottom: -1px;
-  width: 25px;
-  height: 25px;
-  border-width: 2px;
-  box-shadow: 0 4px 12px color-mix(in srgb, var(--accent, #8b7cf6) 30%, transparent);
+.acct-divider::before,
+.acct-divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--pl-line);
 }
 
-.loom-account-avatar-copy {
-  min-width: 0;
+.acct-form {
   display: flex;
   flex-direction: column;
+  min-width: 0;
+}
+
+.acct-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.acct-field + .acct-field,
+.acct-fold-inner > .acct-field {
+  margin-top: 14px;
+}
+
+.acct-label-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 18px;
+}
+
+.acct-label-row > label,
+.acct-label {
+  color: var(--pl-secondary);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.5;
+}
+
+.acct-label-note {
+  min-width: 0;
+  display: inline-flex;
   align-items: center;
   gap: 4px;
+  color: var(--pl-faint);
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: nowrap;
+  transition: color var(--loom-dur-fast) ease;
+}
+
+.acct-label-note.tone-bad {
+  color: var(--pl-danger);
+}
+
+.acct-label-note.tone-ok {
+  color: var(--pl-ok);
+}
+
+.acct-label-note.is-count {
+  font-variant-numeric: tabular-nums;
+}
+
+.acct-input-wrap {
+  position: relative;
+  display: block;
+}
+
+.acct-input {
+  box-sizing: border-box;
+  width: 100%;
+  height: 40px;
+  padding: 0 12px;
+  border: 1px solid var(--pl-line);
+  border-radius: 10px;
+  outline: none;
+  background: var(--pl-field);
+  color: var(--pl-ink);
+  font: inherit;
+  font-size: 14px;
+  transition:
+    border-color var(--loom-dur-fast) ease,
+    box-shadow var(--loom-dur-fast) ease;
+}
+
+.acct-input.has-reveal {
+  padding-right: 44px;
+}
+
+.acct-input::placeholder {
+  color: var(--pl-faint);
+}
+
+.acct-input:hover:not(:disabled, :focus) {
+  border-color: var(--acct-line-strong);
+}
+
+.acct-input:focus {
+  border-color: color-mix(in srgb, var(--pl-accent) 60%, transparent);
+  box-shadow: 0 0 0 3px var(--pl-accent-wash);
+}
+
+.acct-input:disabled {
+  opacity: .7;
+  cursor: default;
+}
+
+.acct-input[aria-invalid="true"] {
+  border-color: color-mix(in srgb, var(--pl-danger) 60%, transparent);
+}
+
+.acct-input[aria-invalid="true"]:focus {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--pl-danger) 14%, transparent);
+}
+
+/* Chromium paints autofilled fields with its own colour; paint them with the field's again. */
+.acct-input:-webkit-autofill,
+.acct-input:-webkit-autofill:hover {
+  -webkit-text-fill-color: var(--pl-ink);
+  caret-color: var(--pl-ink);
+  box-shadow: 0 0 0 40px var(--acct-field-solid) inset;
+}
+
+.acct-input:-webkit-autofill:focus {
+  box-shadow:
+    0 0 0 40px var(--acct-field-solid) inset,
+    0 0 0 3px var(--pl-accent-wash);
+}
+
+.acct-reveal {
+  position: absolute;
+  top: 50%;
+  right: 5px;
+  translate: 0 -50%;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  display: grid;
+  place-items: center;
+  background: transparent;
+  color: var(--pl-faint);
+  cursor: pointer;
+  transition:
+    color var(--loom-dur-fast) ease,
+    background-color var(--loom-dur-fast) ease;
+}
+
+.acct-reveal:hover:not(:disabled) {
+  color: var(--pl-ink);
+  background-color: var(--pl-hover);
+}
+
+.acct-reveal:disabled {
+  opacity: .45;
+  cursor: default;
+}
+
+.acct-error {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 12px 0 0;
+  color: var(--pl-danger);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.acct-error svg {
+  flex: none;
+  margin-top: 3px;
+}
+
+.acct-submit {
+  width: 100%;
+  margin-top: 20px;
+}
+
+.acct-switch {
+  margin: 16px 0 0;
+  color: var(--pl-muted);
+  font-size: 13px;
+  line-height: 1.5;
   text-align: center;
 }
 
-.loom-account-change-avatar,
-.loom-account-text-button {
-  border: 0;
-  padding: 0;
-  background: transparent;
+.acct-switch .acct-link {
+  margin-left: 6px;
+}
+
+.acct-footnote {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  margin: 20px 0 0;
+  color: var(--pl-faint);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+/* ---------------------------------------------------------------- buttons */
+
+.acct-button {
+  box-sizing: border-box;
+  min-width: 0;
+  height: 40px;
+  padding: 0 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border: 1px solid transparent;
+  border-radius: 10px;
   font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
   cursor: pointer;
+  transition:
+    background-color var(--loom-dur-fast) ease,
+    border-color var(--loom-dur-fast) ease,
+    color var(--loom-dur-fast) ease,
+    opacity var(--loom-dur-fast) ease;
 }
 
-.loom-account-change-avatar {
-  color: var(--text, #f0f1f4);
-  font-size: .69rem;
-  font-weight: 650;
+/* The product's primary action: ink on the card, in both themes. */
+.acct-button.is-primary {
+  background-color: var(--pl-ink);
+  color: var(--pl-surface-raised);
 }
 
-.loom-account-change-avatar:hover:not(:disabled) {
-  color: var(--accent-soft, #aaa0ff);
+.acct-button.is-primary:hover:not(:disabled) {
+  background-color: var(--acct-primary-hover);
 }
 
-.loom-account-avatar-copy > span {
-  max-width: 116px;
-  color: var(--faint, #68707d);
-  font-size: .57rem;
-  line-height: 1.38;
+.acct-button.is-secondary {
+  border-color: var(--pl-line);
+  background-color: transparent;
+  color: var(--pl-ink);
+  font-weight: 500;
 }
 
-.loom-account-text-button {
-  margin-top: 3px;
-  color: var(--muted, #858c99);
-  font-size: .6rem;
+.acct-button.is-secondary:hover:not(:disabled) {
+  border-color: var(--acct-line-strong);
+  background-color: var(--pl-hover);
 }
 
-.loom-account-text-button:hover:not(:disabled) {
-  color: var(--danger, #dc7c86);
+.acct-button:disabled {
+  opacity: .5;
+  cursor: default;
 }
 
-.loom-account-profile-name {
-  align-self: center;
+/* While a request runs the controls are held, not greyed out: the one that was pressed shows the progress. */
+.loom-account-dialog[aria-busy="true"] .acct-button:disabled {
+  opacity: .82;
+  cursor: progress;
+}
+
+.acct-button-label {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   gap: 8px;
 }
 
-.loom-account-profile-name > span {
-  color: var(--text-2, #bcc1cb);
-  font-size: .67rem;
-  font-weight: 650;
+.acct-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--pl-ink);
+  font: inherit;
+  font-weight: 500;
+  text-decoration: underline;
+  text-decoration-color: transparent;
+  text-underline-offset: 3px;
+  cursor: pointer;
+  transition:
+    color var(--loom-dur-fast) ease,
+    text-decoration-color var(--loom-dur-fast) ease;
 }
 
-.loom-account-profile-name input {
+.acct-link:hover:not(:disabled) {
+  text-decoration-color: currentColor;
+}
+
+.acct-link:disabled {
+  opacity: .5;
+  cursor: default;
+}
+
+.acct-link.is-quiet {
+  color: var(--pl-muted);
+}
+
+.acct-link.is-quiet:hover:not(:disabled) {
+  color: var(--pl-danger);
+}
+
+.acct-spinner {
+  flex: none;
+  box-sizing: border-box;
+  width: 14px;
+  height: 14px;
+  border: 1.5px solid color-mix(in srgb, currentColor 25%, transparent);
+  border-top-color: currentColor;
+  border-radius: 50%;
+  animation: li-spin var(--ic-t-spin) linear infinite;
+}
+
+/* --------------------------------------------------------------- notices */
+
+.acct-notice {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 16px;
+  padding: 9px 12px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--warning) 10%, transparent);
+  color: color-mix(in srgb, var(--warning) 85%, var(--pl-ink));
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.acct-notice .acct-link {
+  margin-left: auto;
+  color: inherit;
+  font-weight: 600;
+}
+
+/* A dot that breathes while something is under way (the browser sign-in, a reconnect). */
+.acct-pulse {
+  --acct-pulse: var(--pl-accent);
+  position: relative;
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--acct-pulse);
+}
+
+.acct-pulse.is-warning {
+  --acct-pulse: var(--warning);
+}
+
+.acct-pulse::after {
+  content: "";
+  position: absolute;
+  inset: -2px;
+  border: 1.5px solid var(--acct-pulse);
+  border-radius: 50%;
+  opacity: 0;
+  animation: pl-pulse var(--loom-period-breathe) ease-out infinite;
+}
+
+/* ---------------------------------------------------------------- account */
+
+.acct-list {
+  display: flex;
+  flex-direction: column;
+  padding: 4px;
+  border: 1px solid var(--pl-edge);
+  border-radius: 12px;
+  background: var(--pl-card);
+}
+
+.acct-row {
+  min-width: 0;
   height: 44px;
-  padding: 0 13px;
-  border-radius: 11px;
-  font-size: .76rem;
-  transition: border-color var(--loom-dur-fast) ease, box-shadow var(--loom-dur-fast) ease, background var(--loom-dur-fast) ease;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 10px 0 12px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--pl-ink);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color var(--loom-dur-fast) ease;
 }
 
-.loom-account-profile-name input:hover:not(:disabled) {
-  border-color: var(--border-strong, #383d4a);
+.acct-row > svg:first-child {
+  flex: none;
+  color: var(--pl-muted);
 }
 
-.loom-account-profile-name input:focus {
-  border-color: color-mix(in srgb, var(--accent, #8b7cf6) 54%, var(--border, #292d38));
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent, #8b7cf6) 10%, transparent);
+.acct-row > span {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.loom-account-profile-name-meta {
+.acct-row:hover:not(:disabled) {
+  background-color: var(--pl-hover);
+}
+
+.acct-row:disabled {
+  opacity: .5;
+  cursor: default;
+}
+
+.acct-row-chevron {
+  flex: none;
+  color: var(--pl-faint);
+  transition:
+    translate var(--loom-dur-fast) var(--loom-ease-out),
+    color var(--loom-dur-fast) ease;
+}
+
+.acct-row:hover:not(:disabled) .acct-row-chevron {
+  translate: 2px 0;
+  color: var(--pl-secondary);
+}
+
+.acct-foot {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-}
-
-.loom-account-profile-name-meta > span,
-.loom-account-profile-name-meta small {
-  position: static;
-  color: var(--faint, #68707d);
-  font-size: .585rem;
-  font-weight: 500;
-  line-height: 1.35;
-}
-
-.loom-account-profile-name-meta small {
-  flex: 0 0 auto;
-  font-variant-numeric: tabular-nums;
-}
-
-.loom-account-profile-editor-actions {
-  grid-column: 1 / -1;
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-  padding-top: 2px;
-}
-
-.loom-account-profile-editor-actions button {
-  min-width: 84px;
-  min-height: 36px;
-  padding: 0 14px;
-  border-radius: 10px;
-  background: transparent;
-}
-
-.loom-account-profile-editor-actions button.is-primary {
-  min-width: 102px;
-  border-color: color-mix(in srgb, var(--accent, #8b7cf6) 52%, var(--border, #292d38));
-  background: linear-gradient(180deg,
-    color-mix(in srgb, var(--accent, #8b7cf6) 48%, var(--panel-soft, #191c24)),
-    color-mix(in srgb, var(--accent, #8b7cf6) 35%, var(--panel-soft, #191c24)));
-  box-shadow: 0 6px 18px color-mix(in srgb, var(--accent, #8b7cf6) 15%, transparent), inset 0 1px color-mix(in srgb, #fff 12%, transparent);
-}
-
-.loom-account-profile-editor-actions button.is-primary:hover:not(:disabled) {
-  border-color: color-mix(in srgb, var(--accent, #8b7cf6) 68%, var(--border, #292d38));
-  background: linear-gradient(180deg,
-    color-mix(in srgb, var(--accent, #8b7cf6) 56%, var(--panel-soft, #191c24)),
-    color-mix(in srgb, var(--accent, #8b7cf6) 42%, var(--panel-soft, #191c24)));
-}
-
-.loom-account-profile-error {
-  grid-column: 1 / -1;
-  padding: 8px 10px;
-  border: 1px solid color-mix(in srgb, var(--danger, #df8585) 22%, transparent);
-  border-radius: 9px;
-  background: color-mix(in srgb, var(--danger, #df8585) 7%, transparent);
-}
-
-.loom-account-dialog.is-signed-in .loom-account-security-note {
-  gap: 7px;
-  margin-top: 18px;
-  padding: 0;
-  font-size: 11.5px;
-  line-height: 1.6;
-}
-.loom-account-dialog.is-signed-in .loom-account-security-note svg { width: 14px; height: 14px; color: var(--muted, #858c99); }
-.loom-account-dialog.is-signed-in .loom-account-signout-button {
-  align-self: flex-start;
-  min-height: 34px;
   margin-top: 16px;
-  padding: 6px 10px;
+}
+
+.acct-signout {
+  flex: none;
+  height: 32px;
   margin-left: -10px;
-  border-color: transparent;
+  padding: 0 10px;
+  border: 0;
   border-radius: 8px;
   background: transparent;
-  color: var(--muted, #858c99);
+  color: var(--pl-muted);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition:
+    color var(--loom-dur-fast) ease,
+    background-color var(--loom-dur-fast) ease;
+}
+
+.acct-signout:hover:not(:disabled) {
+  color: var(--pl-danger);
+  background-color: color-mix(in srgb, var(--pl-danger) 8%, transparent);
+}
+
+.acct-signout:disabled {
+  cursor: progress;
+}
+
+.acct-secure {
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  overflow: hidden;
+  color: var(--pl-faint);
   font-size: 12px;
-  font-weight: 600;
-}
-.loom-account-dialog.is-signed-in .loom-account-signout-button:hover:not(:disabled) {
-  border-color: transparent;
-  background: color-mix(in srgb, var(--danger, #dc7c86) 7%, transparent);
-  color: var(--danger, #dc7c86);
+  line-height: 1.5;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
-@media (max-width: 520px) {
-  .loom-account-dialog.is-signed-in {
-    padding: 24px 20px 20px;
-  }
-
-  .loom-account-profile-actions {
-    grid-template-columns: 1fr;
-  }
-
-  .loom-account-profile-editor {
-    grid-template-columns: 1fr;
-  }
-
-  .loom-account-editor-heading,
-  .loom-account-avatar-editor,
-  .loom-account-profile-name,
-  .loom-account-profile-error,
-  .loom-account-profile-editor-actions {
-    grid-column: 1;
-  }
-
-  .loom-account-avatar-editor {
-    min-height: 0;
-    flex-direction: row;
-    justify-content: flex-start;
-    text-align: left;
-  }
-
-  .loom-account-avatar-copy {
-    align-items: flex-start;
-    text-align: left;
-  }
-
-  .loom-account-avatar-copy > span {
-    max-width: none;
-  }
-
-  .loom-account-avatar-button {
-    width: 58px;
-    height: 58px;
-  }
+.acct-secure svg {
+  flex: none;
 }
 
-/* ---------------------------------------------------------- focus & motion */
+/* ----------------------------------------------------------------- editor */
 
-.loom-account-dialog :focus-visible,
-.loom-account-backdrop :focus-visible {
-  outline: 2px solid color-mix(in srgb, var(--accent, #8b7cf6) 70%, transparent);
+.acct-photo-row {
+  align-items: center;
+}
+
+.acct-photo-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 16px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.acct-name-field {
+  margin-top: 16px;
+}
+
+.acct-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 24px;
+}
+
+.acct-file-input {
+  display: none;
+}
+
+/* ------------------------------------------------------- focus and motion */
+
+.loom-account-dialog :focus-visible {
+  outline: 2px solid var(--pl-focus);
   outline-offset: 2px;
 }
 
-@keyframes loom-account-rise {
-  from { opacity: 0; }
-  to { opacity: 1; }
+/* The field draws its own ring; the card itself takes focus only to keep the keyboard inside it. */
+.loom-account-dialog .acct-input:focus-visible,
+.loom-account-dialog:focus-visible {
+  outline: none;
 }
 
-html[data-loom-reduced-motion="true"] .loom-account-backdrop,
-html[data-loom-reduced-motion="true"] .loom-account-dialog,
-html[data-loom-reduced-motion="true"] .loom-account-signed-in {
+/* Inside the card the words change by fading through: out on the short step, and in once the old ones are all but
+   gone (100ms), so two titles are never read on top of each other. */
+.loom-account-dialog .crossfade-out {
+  animation-duration: var(--loom-dur-fast-out);
+  animation-timing-function: var(--loom-ease-exit);
+}
+
+.loom-account-dialog .crossfade-in {
+  animation-duration: var(--loom-dur-base);
+  animation-timing-function: var(--loom-ease-out);
+  animation-delay: calc(var(--loom-stagger) * 2.5);
+}
+
+/* The circle's faces are opaque and stacked: the old one stays put while the new one settles over it. */
+.acct-mark-faces > .crossfade-out {
   animation: none;
 }
 
-html[data-loom-reduced-motion="true"] .loom-account-primary-button,
-html[data-loom-reduced-motion="true"] .loom-account-secondary-button {
-  transition: none;
+.acct-mark-faces > .crossfade-in {
+  animation: acct-face-swap var(--loom-dur-base) var(--loom-ease-out) both;
 }
 
-html[data-loom-reduced-motion="true"] .loom-account-primary-button:hover:not(:disabled) {
-  transform: none;
+@keyframes acct-face-swap {
+  from { opacity: 0; scale: .9; }
+  to { opacity: 1; scale: 1; }
+}
+
+/* Opening: the identity settles, the view follows a stagger later, a status mark is born. */
+.acct-head,
+.acct-stage {
+  transition: opacity var(--loom-dur-base) var(--loom-ease-out);
+}
+
+.acct-stage {
+  transition-delay: var(--loom-stagger);
+}
+
+.acct-mark {
+  transition: scale var(--loom-dur-slow) var(--loom-spring-soft);
+}
+
+.acct-mark-dot,
+.acct-mark-badge {
+  transition:
+    scale var(--loom-dur-slow) var(--loom-spring-pop),
+    opacity var(--loom-dur-fast) var(--loom-ease-out);
+}
+
+@starting-style {
+  .acct-head,
+  .acct-stage {
+    opacity: 0;
+  }
+
+  .acct-mark {
+    scale: .92;
+  }
+
+  .acct-mark-dot,
+  .acct-mark-badge {
+    opacity: 0;
+    scale: 0;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .loom-account-backdrop,
-  .loom-account-dialog,
-  .loom-account-signed-in {
+  .acct-pulse::after {
     animation: none;
   }
 
-  .loom-account-primary-button:hover:not(:disabled) {
-    transform: none;
+  .acct-mark-faces > .crossfade-in {
+    animation: none;
   }
 }
 
-/* ------------------------------------------------- light theme specifics */
-/* Everything above is expressed with semantic tokens, so it already follows the
-   theme. Only a few things genuinely cannot be: the accent is a light lavender
-   in the dark theme and a dark violet in the light theme, so one fill cannot
-   carry white text in both.
-
-   These rules used to live in src/theme.css. Styling this dialog from two files
-   meant CSS specificity silently picked the winner, and the primary button came
-   out a different colour in each theme by accident rather than by design. Keep
-   account styling in this file. */
-
-/* In the light theme --accent is dark enough to carry white text (5.1:1). In
-   the dark theme it is a light lavender (3.2:1 against white), so the dark CTA
-   uses the inverted surface instead — which is also what the rest of the app
-   does for its primary actions. */
-html[data-loom-theme="light"] .loom-account-primary-button {
-  border-color: color-mix(in srgb, var(--accent, #695ad8) 82%, #000);
-  background: var(--accent, #695ad8);
-  color: #fff;
-  box-shadow: 0 7px 18px color-mix(in srgb, var(--accent, #695ad8) 22%, transparent);
+:root[data-loom-reduced-motion="true"] .acct-pulse::after,
+:root[data-loom-reduced-motion="true"] .acct-mark-faces > .crossfade-in {
+  animation: none;
 }
 
-html[data-loom-theme="light"] .loom-account-primary-button:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--accent, #695ad8) 90%, #000);
-  box-shadow: 0 9px 22px color-mix(in srgb, var(--accent, #695ad8) 28%, transparent);
-}
+/* ------------------------------------------------------------- small windows */
 
-html[data-loom-theme="light"] .loom-account-primary-button:disabled {
-  border-color: var(--border, #d8dbe1);
-  background: var(--panel-soft, #f0f1f3);
-  color: var(--faint, #9aa1ab);
-  box-shadow: none;
-  opacity: 1;
+@media (max-height: 640px) {
+  .loom-account-dialog {
+    margin-top: 0;
+  }
 }
-
-/* --------------------------------------------------------------- responsive */
 
 @media (max-width: 480px) {
   .loom-account-backdrop {
@@ -1197,90 +959,18 @@ html[data-loom-theme="light"] .loom-account-primary-button:disabled {
   }
 
   .loom-account-dialog {
-    max-height: calc(100dvh - 28px);
-    padding: 22px 20px 20px;
+    padding: 28px 20px 20px;
   }
 
-  .loom-account-header {
-    padding-right: 26px;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .loom-account-backdrop,
-  .loom-account-dialog {
-    transition: none !important;
+  .acct-oauth {
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 
-:root[data-loom-reduced-motion="true"] .loom-account-backdrop,
-:root[data-loom-reduced-motion="true"] .loom-account-dialog {
-  transition: none !important;
-}
-
-/* ------------------------------------------------------ account quick sign-in */
-.loom-account-oauth {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  margin-top: 18px;
-}
-.loom-account-oauth-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 9px;
-}
-.loom-account-oauth-grid:has(> :only-child) { grid-template-columns: 1fr; }
-.loom-account-oauth-button {
-  height: 42px;
-  min-width: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 9px;
-  border: 1px solid var(--border, #292d38);
-  border-radius: 11px;
-  background: color-mix(in srgb, var(--panel-soft, #191c24) 90%, transparent);
-  color: var(--text, #f0f1f4);
-  font: inherit;
-  font-size: .77rem;
-  font-weight: 650;
-  cursor: pointer;
-  transition: border-color var(--loom-dur-fast) ease, background var(--loom-dur-fast) ease, box-shadow var(--loom-dur-fast) ease;
-}
-.loom-account-oauth-button:hover:not(:disabled) {
-  border-color: color-mix(in srgb, var(--accent, #8b7cf6) 45%, var(--border, #292d38));
-  background: color-mix(in srgb, var(--accent, #8b7cf6) 8%, var(--panel-soft, #191c24));
-  box-shadow: 0 3px 12px color-mix(in srgb, var(--accent, #8b7cf6) 9%, transparent);
-}
-.loom-account-oauth-button:focus-visible {
-  outline: 2px solid var(--accent, #8b7cf6);
-  outline-offset: 2px;
-}
-.loom-account-oauth-button:disabled { opacity: .52; cursor: not-allowed; }
-.loom-account-google-mark {
-  font-size: 1.1rem;
-  font-weight: 650;
-  line-height: 1;
-  color: #4285f4;
-  text-shadow: -1px 0 #34a853, 1px 0 #ea4335, 0 1px #fbbc05;
-}
-.loom-account-oauth-divider {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  color: var(--muted, #858c99);
-  font-size: .685rem;
-  white-space: nowrap;
-}
-.loom-account-oauth-divider::before,
-.loom-account-oauth-divider::after {
-  content: "";
-  flex: 1;
-  height: 1px;
-  background: var(--border, #292d38);
-}
-.loom-account-oauth + .loom-account-form { margin-top: 0; }
-@media (prefers-reduced-motion: reduce) {
-  .loom-account-oauth-button { transition: none; }
+/* ------------------------------------------------------- light theme specifics */
+/* Everything above follows the theme through the panel tokens. Only the field's solid fill is said again: the light
+   theme's fields are white on a white card. */
+html[data-loom-theme="light"] .loom-account-dialog {
+  --acct-field-solid: var(--pl-field);
+  --acct-primary-hover: color-mix(in srgb, var(--pl-ink) 86%, #fff);
 }

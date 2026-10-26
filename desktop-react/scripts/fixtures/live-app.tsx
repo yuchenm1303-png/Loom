@@ -739,6 +739,81 @@ function embeddedBrowser(command: Record<string, unknown>): BrowserState {
   return browserState;
 }
 
+// The account service. Without ?account the user is simply signed in (the dock's account tool, the profile page).
+// ?account=in|out|offline|offline-in|unconfigured|error plays the service the dialog talks to: sign-in, registration,
+// quick sign-in (?oauth=0 hides it), profile edits and sign-out answer after ?authLatency ms (default 900) and
+// change what the next status read returns; the status read itself takes ?accountLatency ms. Password "wrong" is
+// refused, an email starting with "taken" is already registered.
+const accountMode = params.get("account");
+const avatarParam = params.get("avatar");
+const fixtureUser = (email = "designer@example.com", extra: Record<string, unknown> = {}) => ({
+  id: 7, email, display_name: accountMode ? "Loom Designer" : undefined, status: "active",
+  ...(avatarParam === "1" ? { avatar_data_url: fixtureAvatar } : avatarParam === "bad" ? { avatar_data_url: "data:image/png;base64,AAAA" } : {}),
+  ...extra,
+});
+let accountSnapshot = accountMode === null
+  ? { configured: true, reachable: true, authenticated: true, serviceUrl: "",
+    user: { ...fixtureUser("live@example.invalid"), id: "live-user", name: "Loom Designer" } }
+  : {
+    configured: accountMode !== "unconfigured",
+    reachable: !["offline", "offline-in", "unconfigured"].includes(accountMode),
+    authenticated: accountMode === "in" || accountMode === "offline-in",
+    user: accountMode === "in" || accountMode === "offline-in" ? fixtureUser() : null,
+    serviceUrl: accountMode === "unconfigured" ? "" : "https://account.example.invalid/v1",
+  };
+const authLatency = Math.max(0, Number(params.get("authLatency") ?? 900) || 0);
+const accountLatency = Math.max(0, Number(params.get("accountLatency") || 0) || 0);
+const oauthListeners = new Set<(result: Record<string, unknown>) => void>();
+const settle = (ms: number) => new Promise((resolve) => window.setTimeout(resolve, ms));
+const signedIn = (email: string) => {
+  accountSnapshot = { ...accountSnapshot, reachable: true, authenticated: true, user: fixtureUser(email) };
+  return { ok: true, snapshot: structuredClone(accountSnapshot) };
+};
+const accountBridge: Record<string, unknown> = {
+  accountStatus: async () => {
+    if (accountLatency) await settle(accountLatency);
+    if (accountMode === "error") return { ok: false, error: { code: "ACCOUNT_SERVICE_UNREACHABLE", message: "unreachable", status: 0 } };
+    return { ok: true, snapshot: structuredClone(accountSnapshot) };
+  },
+  accountCapabilities: async () => ({ ok: true, capabilities: {
+    emailVerification: true, passwordReset: true, legacyRegistration: true,
+    google: Boolean(accountMode) && params.get("oauth") !== "0", github: Boolean(accountMode) && params.get("oauth") !== "0" } }),
+  accountLogin: async (email: string, password: string) => {
+    await settle(authLatency);
+    if (password === "wrong") return { ok: false, error: { code: "INVALID_CREDENTIALS", message: "Invalid email or password.", status: 401 } };
+    return signedIn(email);
+  },
+  accountRegister: async (email: string) => {
+    await settle(authLatency);
+    if (email.startsWith("taken")) return { ok: false, error: { code: "EMAIL_EXISTS", message: "Email already registered.", status: 409 } };
+    return signedIn(email);
+  },
+  accountOAuthStart: async () => {
+    await settle(Math.min(authLatency, 500));
+    // The browser round trip: the result arrives on its own a moment later, as the deep link does.
+    window.setTimeout(() => {
+      signedIn("designer@example.com");
+      oauthListeners.forEach((listener) => listener({ ok: true }));
+    }, authLatency * 2);
+    return { ok: true };
+  },
+  onAccountOAuthResult: (listener: (result: Record<string, unknown>) => void) => {
+    oauthListeners.add(listener);
+    return () => oauthListeners.delete(listener);
+  },
+  accountUpdateProfile: async (displayName: string, avatarDataUrl: string) => {
+    await settle(authLatency);
+    const user = { ...(accountSnapshot.user ?? fixtureUser()), display_name: displayName, avatar_data_url: avatarDataUrl };
+    accountSnapshot = { ...accountSnapshot, user };
+    return { ok: true, snapshot: structuredClone(accountSnapshot) };
+  },
+  accountLogout: async () => {
+    await settle(authLatency);
+    accountSnapshot = { ...accountSnapshot, authenticated: false, user: null };
+    return { ok: true, snapshot: structuredClone(accountSnapshot) };
+  },
+};
+
 const bridge: Record<string, unknown> = {
   embeddedBrowser: async (command: Record<string, unknown>) => embeddedBrowser(command),
   onEmbeddedBrowserChange: (listener: (state: BrowserState) => void) => { browserListeners.add(listener); return () => browserListeners.delete(listener); },
@@ -767,9 +842,7 @@ const bridge: Record<string, unknown> = {
     ? { status: "ok", provider: "OpenCode Go", scope: "loom-shared-opencode-go", checkedAt: Date.now(), balances: [],
       windows: [{ label: "5h", remainingPercent: 61, resetsAt: Date.now() + 2.4 * 3_600_000 }, { label: "Weekly", remainingPercent: 88, resetsAt: Date.now() + 3.2 * 86_400_000 }] }
     : { status: "unsupported", provider: "", windows: [], balances: [], checkedAt: Date.now(), message: "" }),
-  accountStatus: async () => ({ ok: true, snapshot: { configured: true, reachable: true, authenticated: true,
-    user: { id: "live-user", name: "Loom Designer", email: "live@example.invalid", ...(params.get("avatar") === "1" ? { avatar_data_url: fixtureAvatar } : params.get("avatar") === "bad" ? { avatar_data_url: "data:image/png;base64,AAAA" } : {}) },
-    serviceUrl: "" } }),
+  ...accountBridge,
   onNotification: (listener: Listener) => {
     listeners.add(listener);
     return () => listeners.delete(listener);

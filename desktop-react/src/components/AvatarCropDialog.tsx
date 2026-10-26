@@ -1,5 +1,5 @@
-import { Crop, RotateCcw, X, ZoomIn } from "./icons";
-import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type WheelEvent } from "react";
+import { Minus, Plus, X } from "./icons";
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent, type WheelEvent } from "react";
 import type { MotionPresencePhase } from "../motion/useMotionPresence";
 import "./avatar-crop.css";
 
@@ -198,14 +198,11 @@ export function AvatarCropDialog({ file, open = true, phase = "entered", zh, onC
     <div className="loom-avatar-crop-backdrop pl-scrim pl-reveal" data-motion-phase={phase} inert={!open} role="presentation" onMouseDown={(event) => {
       if (event.target === event.currentTarget && !applying) onCancel();
     }}>
-      <section className="loom-avatar-crop-dialog pl-modal" role="dialog" aria-modal="true" aria-labelledby="loom-avatar-crop-title">
+      <section className="loom-avatar-crop-dialog pl-modal" role="dialog" aria-modal="true" aria-labelledby="loom-avatar-crop-title" aria-describedby="loom-avatar-crop-lead">
         <header className="loom-avatar-crop-header">
           <div>
-            <span className="loom-avatar-crop-mark" aria-hidden="true"><Crop size={17} /></span>
-            <div>
-              <h3 id="loom-avatar-crop-title">{zh ? "裁剪头像" : "Crop avatar"}</h3>
-              <p>{zh ? "拖动图片选择区域，滚轮或滑块调整缩放。" : "Drag to position the image, then zoom to frame it."}</p>
-            </div>
+            <h3 id="loom-avatar-crop-title">{zh ? "裁剪头像" : "Crop photo"}</h3>
+            <p id="loom-avatar-crop-lead">{zh ? "拖动调整位置，滚轮或滑块缩放。" : "Drag to place it; scroll or use the slider to zoom."}</p>
           </div>
           <button type="button" autoFocus className="loom-avatar-crop-close pl-icon-button" onClick={onCancel} disabled={applying} aria-label={zh ? "取消裁剪" : "Cancel crop"}>
             <X size={16} />
@@ -222,6 +219,10 @@ export function AvatarCropDialog({ file, open = true, phase = "entered", zh, onC
             onPointerCancel={endDrag}
             onWheel={onWheelZoom}
             tabIndex={image ? 0 : -1}
+            role={image ? "group" : undefined}
+            aria-label={image
+              ? (zh ? "头像取景。方向键移动图片，按住 Shift 移动更多。" : "Photo framing. Arrow keys move the photo; hold Shift to move it further.")
+              : undefined}
             onKeyDown={(event) => {
               if (!image) return;
               const step = event.shiftKey ? 12 : 4;
@@ -246,47 +247,48 @@ export function AvatarCropDialog({ file, open = true, phase = "entered", zh, onC
             ) : (
               <div className="loom-avatar-crop-loading">{error || (zh ? "正在读取图片…" : "Loading image…")}</div>
             )}
-            {image ? (
-              <>
-                <span className="loom-avatar-crop-grid is-v1" aria-hidden="true" />
-                <span className="loom-avatar-crop-grid is-v2" aria-hidden="true" />
-                <span className="loom-avatar-crop-grid is-h1" aria-hidden="true" />
-                <span className="loom-avatar-crop-grid is-h2" aria-hidden="true" />
-                <span className="loom-avatar-crop-frame" aria-hidden="true" />
-              </>
-            ) : null}
+            {/* The avatar is round: what falls outside the circle is dimmed, and only the circle is kept in view. */}
+            {image ? <span className="loom-avatar-crop-window" aria-hidden="true" /> : null}
           </div>
 
           <div className="loom-avatar-crop-controls">
-            <div className="loom-avatar-crop-zoom-row">
-              <ZoomIn size={14} aria-hidden="true" />
-              <span>{zh ? "缩放" : "Zoom"}</span>
-              <input
-                type="range"
-                min="1"
-                max="3"
-                step="0.01"
-                value={zoom}
-                onChange={(event) => changeZoom(Number(event.target.value))}
-                disabled={!image || applying}
-                aria-label={zh ? "头像缩放" : "Avatar zoom"}
-              />
-              <strong>{Math.round(zoom * 100)}%</strong>
-            </div>
-            <button type="button" className="loom-avatar-crop-reset" onClick={() => { setZoom(1); setOffsetX(0); setOffsetY(0); }} disabled={!image || applying}>
-              <RotateCcw size={13} />
-              {zh ? "重置" : "Reset"}
+            <button type="button" className="loom-avatar-crop-step pl-icon-button" onClick={() => changeZoom(zoom - .25)} disabled={!image || applying || zoom <= 1} aria-label={zh ? "缩小" : "Zoom out"}>
+              <Minus size={14} />
             </button>
+            <input
+              type="range"
+              min="1"
+              max="3"
+              step="0.01"
+              style={{ "--crop-fill": `${((zoom - 1) / 2) * 100}%` } as CSSProperties}
+              value={zoom}
+              onChange={(event) => changeZoom(Number(event.target.value))}
+              disabled={!image || applying}
+              aria-label={zh ? "头像缩放" : "Avatar zoom"}
+              aria-valuetext={`${Math.round(zoom * 100)}%`}
+            />
+            <button type="button" className="loom-avatar-crop-step pl-icon-button" onClick={() => changeZoom(zoom + .25)} disabled={!image || applying || zoom >= 3} aria-label={zh ? "放大" : "Zoom in"}>
+              <Plus size={14} />
+            </button>
+            <span className="loom-avatar-crop-value">{Math.round(zoom * 100)}%</span>
           </div>
 
           {error && image ? <p className="loom-avatar-crop-error" role="alert">{error}</p> : null}
-          <p className="loom-avatar-crop-hint">{zh ? "提示：也可以用方向键微调位置，按住 Shift 可加速。" : "Tip: use arrow keys for fine positioning; hold Shift for larger steps."}</p>
         </div>
 
         <footer className="loom-avatar-crop-actions">
+          <button
+            type="button"
+            className="loom-avatar-crop-reset"
+            data-press="none"
+            onClick={() => { setZoom(1); setOffsetX(0); setOffsetY(0); }}
+            disabled={!image || applying || (zoom === 1 && offsetX === 0 && offsetY === 0)}
+          >
+            {zh ? "重置" : "Reset"}
+          </button>
           <button type="button" onClick={onCancel} disabled={applying}>{zh ? "取消" : "Cancel"}</button>
           <button type="button" className="is-primary" onClick={() => void applyCrop()} disabled={!image || applying}>
-            {applying ? (zh ? "处理中…" : "Processing…") : (zh ? "使用这张头像" : "Use this photo")}
+            {applying ? (zh ? "处理中…" : "Processing…") : (zh ? "使用头像" : "Use photo")}
           </button>
         </footer>
       </section>
