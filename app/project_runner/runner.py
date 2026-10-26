@@ -7,6 +7,7 @@ import threading
 import uuid
 
 from .store import encoded
+from .review import criteria, StaleCandidate
 
 
 def object_reply(text):
@@ -99,13 +100,31 @@ class ProjectRunner:
             return ("Plan this long-running project. Do not edit files or execute commands. Return only JSON: "
                     '{"tasks":[{"instructions":"scoped implementation", "acceptance":["observable behavior"]}]}. '
                     "Tasks run in order; cover the entire objective with at most 16 tasks.\n" + run["objective"])
+        if run["phase"] == "verifying":
+            return ("Independently verify this frozen project candidate in your separate checkout. "
+                    "Do not implement fixes, change source/tests/acceptance, commit, merge, or publish. "
+                    "Inspect the actual code and exercise behavior; worker summaries are claims, not proof. "
+                    "Build/type-check success alone is not behavioral acceptance; use functional checks or exercised browser assertions. "
+                    "Use exec with wait=true, pty=false and verification.case_id equal to each criterion ID, "
+                    "verification.expectation exactly equal to its expectation, and subject_paths covering actual candidate source. "
+                    "Browser interactions may use browser_run_check with the same IDs. Ignore generated outputs only via the repository's existing ignore rules. "
+                    "Check the entire objective for missing behavior, not just the declared test names. "
+                    "Return only JSON: {\"verdict\":\"passed|needs_changes|blocked|continue\",\"summary\":\"observed facts\","
+                    "\"checks\":[{\"criterionId\":\"task-1:1\",\"eventId\":\"real CHECK_RECORDED event id\"}],"
+                    "\"issues\":[{\"taskId\":\"task-1\",\"description\":\"reproducible problem and expected behavior\"}]}. "
+                    "eventId is optional: the runner resolves the latest real check for each criterion in this review session; never invent IDs. "
+                    "passed requires all criteria with current executed evidence; needs_changes requires concrete scoped issues. "
+                    "Use blocked if the environment cannot verify behavior; continue if more checking needs another episode.\n"
+                    + encoded({"objective": run["objective"], "scope": run["reviewScope"], "criteria": criteria(run),
+                               "plan": run["plan"], "candidate": run["reviewCandidate"]}))
         task = run["plan"][run["taskIndex"]]
         return ("Continue this persistent project in its isolated workspace. Preserve prior work. "
                 "Use normal Loom tools and permissions. Run concrete checks for every acceptance criterion. "
                 "Do not merge, push, deploy, or change branches. A final response ends only this episode. "
                 'Return only JSON: {"action":"continue|candidate|blocked","summary":"facts and next steps"}. '
                 "Use candidate only when this task is implemented and checked; it remains subject to independent review.\n"
-                + encoded({"objective": run["objective"], "task": task, "priorWork": run.get("handoff", "")}))
+                + encoded({"objective": run["objective"], "task": task, "priorWork": run.get("handoff", ""),
+                           "reviewFeedback": run.get("feedback", [])}))
 
     def tick(self):
         with self.guard:
@@ -133,6 +152,14 @@ class ProjectRunner:
             return
         try:
             session_id = self.executor.session(run)
+        except StaleCandidate as exc:
+            with self.store.transaction() as db:
+                current = self.store._read(db, run["id"])
+                if current["revision"] == run["revision"]:
+                    self._rework(current, {"scope": current.get("reviewScope", "task"), "verdict": "stale",
+                                          "summary": str(exc), "issues": []})
+                    self.store.save(db, current, "review_invalidated")
+            return
         except Exception as exc:
             self._block(run, str(exc))
             return
@@ -162,11 +189,58 @@ class ProjectRunner:
                 current.update(state="needs_review", control="paused", reason=reason)
                 self.store.save(db, current, "needs_review")
 
+    @staticmethod
+    def _rework(run, assessment):
+        scope = assessment["scope"]
+        key = "project" if scope == "project" else run["plan"][run["taskIndex"]]["id"]
+        failures = run.setdefault("reviewFailures", {})
+        failures[key] = failures.get(key, 0) + 1
+        issues = assessment["issues"]
+        index = min((i for i, task in enumerate(run["plan"]) if any(issue["taskId"] == task["id"] for issue in issues)),
+                    default=0 if scope == "project" else run["taskIndex"])
+        run["feedback"] = issues or [{"taskId": run["plan"][index]["id"], "description": assessment["summary"]}]
+        run.update(phase="working", taskIndex=index, reviewScope="task", reviewCandidate=None,
+                   handoff="Independent review requires changes: " + assessment["summary"], verificationStatus="pending")
+        for task in run["plan"][index:]:
+            task["state"] = "pending"
+        if failures[key] >= run.get("maxReviewCycles", 3):
+            run.update(state="needs_review", control="paused", reason=f"Review cycle limit reached for {key}")
+
+    def _review_result(self, db, run, episode, facts):
+        assessment = facts["assessment"]
+        self.store.put_assessment(db, run, episode, assessment)
+        verdict = assessment["verdict"]
+        if verdict in {"needs_changes", "stale"}:
+            self._rework(run, assessment)
+        elif verdict == "blocked":
+            run.update(state="needs_review", control="paused", reason=assessment["summary"])
+        elif verdict == "passed" and run["reviewScope"] == "project":
+            for task in run["plan"]:
+                task["state"] = "verified"
+            run.update(state="ready_for_review", control="paused", verificationStatus="passed",
+                       verifiedCandidate=run["reviewCandidate"], reason="Independent acceptance passed; integration and publication remain pending")
+        elif verdict == "passed":
+            run["plan"][run["taskIndex"]]["state"] = "verified"
+            run["taskIndex"] += 1
+            run["feedback"] = []
+            run["reviewCandidate"] = None
+            if run["taskIndex"] == len(run["plan"]):
+                run.update(reviewScope="project", phase="verifying")
+                self.store.put_candidate(db, run, facts["finalCandidate"])
+            else:
+                run["phase"] = "working"
+
     def _poll(self, run):
         episode = run["activeEpisode"]
         result = self.executor.poll(episode)
         if result is None:
             return
+        facts = {}
+        if result["state"] == "completed":
+            try:
+                facts = self.executor.result_facts(run, episode, object_reply(result["text"]))
+            except (ValueError, TypeError, OSError) as exc:
+                result = {**result, "state": "failed", "error": f"Candidate review facts rejected: {exc}"}
         with self.store.transaction() as db:
             current = self.store._read(db, run["id"])
             if not current["activeEpisode"] or current["activeEpisode"]["id"] != episode["id"]:
@@ -200,6 +274,8 @@ class ProjectRunner:
                 if episode["phase"] == "planning":
                     current["plan"] = validate_plan(reply)
                     current["phase"] = "working"
+                elif episode["phase"] == "verifying":
+                    self._review_result(db, current, episode, facts)
                 else:
                     action, summary = reply.get("action"), reply.get("summary")
                     if action not in {"continue", "candidate", "blocked"} or not isinstance(summary, str) or not summary.strip():
@@ -209,10 +285,14 @@ class ProjectRunner:
                         raise ValueError(summary[:2000])
                     if action == "candidate":
                         current["plan"][episode["taskIndex"]]["state"] = "candidate"
-                        current["taskIndex"] += 1
-                        if current["taskIndex"] == len(current["plan"]):
-                            current.update(state="ready_for_review", control="paused",
-                                           reason="Implementation candidates only; independent acceptance and integration required")
+                        if current.get("reviewPolicy") == "independent":
+                            current.update(phase="verifying", reviewScope="task", verificationStatus="pending")
+                            self.store.put_candidate(db, current, facts["candidate"])
+                        else:
+                            current["taskIndex"] += 1
+                            if current["taskIndex"] == len(current["plan"]):
+                                current.update(state="ready_for_review", control="paused",
+                                               reason="Implementation candidates only; independent acceptance and integration required")
             except (ValueError, TypeError) as exc:
                 current.update(state="needs_review", control="paused", reason=str(exc))
             self.store.save(db, current, "episode_settled")
