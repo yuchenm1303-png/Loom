@@ -158,6 +158,8 @@ test("the download section names the release, and the footer points at the proje
   assert.ok(portal.includes('id="loom-download"') && portal.includes('goToSection(event, "loom-download")'), "the nav's Download reaches the section");
   const panel = rule(".loom-editorial .editorial-download-panel");
   assert.match(panel, /border-top:\s*1px solid var\(--ed-rule\)/, "a hairline, like every block");
+  // The installer is a link, so it needs its own foreground: the global link colour would paint it ink on ink.
+  assert.match(rule(".loom-editorial .editorial-download-panel .editorial-primary"), /color:\s*var\(--ed-paper\)/);
 });
 
 test("the one picture is a task, start to finish, beside the words and opened by a hairline", () => {

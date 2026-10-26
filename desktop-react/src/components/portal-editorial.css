@@ -632,7 +632,10 @@
 }
 .loom-editorial .editorial-download-panel dd { margin: 0; color: var(--ed-ink); font-size: 16px; line-height: 1.5; }
 .loom-editorial .editorial-download-panel .editorial-actions { margin-top: 22px; }
-.loom-editorial .editorial-download-panel .editorial-primary { text-decoration: none; }
+.loom-editorial .editorial-download-panel .editorial-primary {
+  color: var(--ed-paper);
+  text-decoration: none;
+}
 
 /* Getting started: the way in on the left, three steps on the right. */
 .loom-editorial .editorial-start-lead { grid-column: 1 / span 5; min-width: 0; }
