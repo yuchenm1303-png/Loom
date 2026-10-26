@@ -7,6 +7,7 @@ import json
 import re
 import sys
 import threading
+from datetime import datetime, timedelta, timezone
 from types import ModuleType
 from typing import Any
 
@@ -14,8 +15,13 @@ _TARGET_MODULE = "app.app_server_thread_management"
 _INSTALLED = False
 _PATCHED = False
 
-_AUTO_TITLE_VERSION = 10
-_AUTO_TITLE_MAX_ATTEMPTS = 1
+_AUTO_TITLE_VERSION = 11
+# Attempts are durable diagnostics, not a permanent failure latch. Failed titles
+# are retried with backoff, including legacy threads exhausted by version 10.
+_AUTO_TITLE_MAX_ATTEMPTS = 0  # unlimited over time; bounded by retry cooldowns
+_AUTO_TITLE_RETRY_DELAYS = (30, 120, 600, 1800, 7200, 21600)
+_AUTO_TITLE_BALANCE_RETRY_SECONDS = 3600
+_AUTO_TITLE_TIMER_LIMIT_SECONDS = 600
 _AUTO_TITLE_MAX_CHARS = 36
 _AUTO_TITLE_PROMPT_MAX_BYTES = 960
 _AUTO_TITLE_SCHEMA = {
@@ -98,6 +104,27 @@ def _utc_now() -> str:
     from datetime import datetime, timezone
 
     return datetime.now(timezone.utc).isoformat(timespec="milliseconds")
+
+
+def _auto_title_retry_delay(attempts: int, error: str) -> int:
+    # A 402 is unlikely to be fixed by rapidly repeating the same paid call.
+    reason = str(error or "").casefold()
+    if "insufficient_balance" in reason or "insufficient balance" in reason or "402" in reason:
+        return _AUTO_TITLE_BALANCE_RETRY_SECONDS
+    return _AUTO_TITLE_RETRY_DELAYS[min(max(0, attempts - 1), len(_AUTO_TITLE_RETRY_DELAYS) - 1)]
+
+
+def _auto_title_retry_wait_seconds(metadata: dict[str, Any]) -> float:
+    raw = str(metadata.get("autoTitleNextRetryAt") or "").strip()
+    if not raw:
+        return 0.0  # Old one-attempt fallback threads should be recoverable.
+    try:
+        retry_at = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+        if retry_at.tzinfo is None:
+            retry_at = retry_at.replace(tzinfo=timezone.utc)
+    except ValueError:
+        return 0.0
+    return max(0.0, (retry_at - datetime.now(timezone.utc)).total_seconds())
 
 
 def _has_cjk(value: str) -> bool:
@@ -419,7 +446,7 @@ def _patch_thread_library(module: ModuleType) -> None:
             )
             canonical_source = stored_source or clean_source
             attempts = max(0, int(payload.get("autoTitleAttempts") or 0))
-            if attempts >= _AUTO_TITLE_MAX_ATTEMPTS:
+            if _auto_title_retry_wait_seconds(payload) > 0:
                 return False
 
             payload.update(
@@ -432,6 +459,7 @@ def _patch_thread_library(module: ModuleType) -> None:
                     "autoTitlePendingSourcePrompt": canonical_source,
                     "autoTitlePendingAt": _utc_now(),
                     "autoTitleAttempts": attempts,
+                    "autoTitleNextRetryAt": "",
                     "autoTitleVersion": _AUTO_TITLE_VERSION,
                     "autoTitleLastError": "",
                 }
@@ -439,7 +467,7 @@ def _patch_thread_library(module: ModuleType) -> None:
             self._write_unlocked(session_id, payload)
             return True
 
-    def claim_auto_title_attempt(self: Any, session_id: str, *args: Any, source_prompt: str = "", **kwargs: Any) -> bool:
+    def claim_auto_title_attempt(self: Any, session_id: str, *args: Any, source_prompt: str = "", force: bool = False, **kwargs: Any) -> bool:
         with self._guard:
             payload = self._read_unlocked(session_id)
             if bool(payload.get("autoTitleDisabled")) or _metadata_title_blocks_auto_title(payload):
@@ -456,7 +484,7 @@ def _patch_thread_library(module: ModuleType) -> None:
                 return False
 
             attempts = max(0, int(payload.get("autoTitleAttempts") or 0))
-            if attempts >= _AUTO_TITLE_MAX_ATTEMPTS:
+            if not force and _auto_title_retry_wait_seconds(payload) > 0:
                 return False
 
             payload.update(
@@ -469,6 +497,7 @@ def _patch_thread_library(module: ModuleType) -> None:
                     "autoTitlePendingSourcePrompt": clean_source,
                     "autoTitleAttemptedAt": _utc_now(),
                     "autoTitleAttempts": attempts + 1,
+                    "autoTitleNextRetryAt": "",
                     "autoTitleVersion": _AUTO_TITLE_VERSION,
                     "autoTitleLastError": "",
                 }
@@ -511,6 +540,7 @@ def _patch_thread_library(module: ModuleType) -> None:
                     "autoTitlePending": False,
                     "autoTitleFallback": False,
                     "autoTitleSourcePrompt": canonical_source,
+                    "autoTitleNextRetryAt": "",
                     "autoTitleVersion": _AUTO_TITLE_VERSION,
                     "autoTitleLastError": "",
                 }
@@ -544,14 +574,16 @@ def _patch_thread_library(module: ModuleType) -> None:
                 return
             canonical_source = stored_source or clean_source
             attempts = max(0, int(payload.get("autoTitleAttempts") or 0))
-            pending = attempts < _AUTO_TITLE_MAX_ATTEMPTS
+            retry_after = _auto_title_retry_delay(attempts, error)
+            retry_at = datetime.now(timezone.utc) + timedelta(seconds=retry_after)
 
             payload.update(
                 {
                     "title": "",
-                    "titleSource": "pending" if pending else "fallback",
-                    "autoTitlePending": pending,
-                    "autoTitleFallback": not pending,
+                    "titleSource": "fallback",
+                    "autoTitlePending": False,
+                    "autoTitleFallback": True,
+                    "autoTitleNextRetryAt": retry_at.isoformat(timespec="milliseconds"),
                     "autoTitleSourcePrompt": canonical_source,
                     "autoTitlePendingSourcePrompt": canonical_source,
                     "autoTitleVersion": _AUTO_TITLE_VERSION,
@@ -584,6 +616,7 @@ def _patch_service(module: ModuleType) -> None:
 
     original_record = service_cls._record
     original_turn_start = service_cls.turn_start
+    original_thread_list = service_cls.thread_list
     original_thread_read = service_cls.thread_read
     original_runtime_event = service_cls._on_runtime_event
 
@@ -628,6 +661,15 @@ def _patch_service(module: ModuleType) -> None:
         record["branchReportedAt"] = str(metadata.get("branchReportedAt") or "") or None
         return record
 
+    def thread_list(self: Any, params: dict[str, Any]) -> dict[str, Any]:
+        payload = original_thread_list(self, params)
+        # Keep this bounded: recent visible failed threads heal after restarts,
+        # without launching title calls for the entire conversation archive.
+        for record in (payload.get("threads") or [])[:8]:
+            if record.get("titleSource") in {"pending", "fallback"}:
+                self._schedule_auto_title(str(record.get("id") or ""))
+        return payload
+
     def thread_read(self: Any, params: dict[str, Any]) -> dict[str, Any]:
         payload = original_thread_read(self, params)
         thread = payload.get("thread") if isinstance(payload, dict) else None
@@ -654,30 +696,40 @@ def _patch_service(module: ModuleType) -> None:
         thread["autoTitleFallback"] = bool(metadata.get("autoTitleFallback"))
         thread["archived"] = bool(archived_at)
         thread["archivedAt"] = archived_at or None
+        # A thread whose initial provider failed must not stay untitled forever.
+        self._schedule_auto_title(thread_id)
         return payload
 
-    def schedule_auto_title(self: Any, thread_id: str, *, user_prompt: str = "") -> None:
+    def schedule_auto_title(self: Any, thread_id: str, *, user_prompt: str = "", force: bool = False) -> None:
         thread_id = str(thread_id or "").strip()
         if not thread_id or self._is_sub_agent_session(thread_id):
             return
         with self._auto_title_guard:
             if thread_id in self._auto_title_inflight:
+                if force:
+                    # A later successful turn can race with the final few
+                    # instructions of a failed title worker. Do not drop that
+                    # explicit recovery request while the old worker exits.
+                    pending = getattr(self, "_auto_title_forced_pending", None)
+                    if pending is None:
+                        pending = set()
+                        self._auto_title_forced_pending = pending
+                    pending.add(thread_id)
                 return
             metadata = self.thread_library.read(thread_id)
             if bool(metadata.get("autoTitleDisabled")) or _metadata_title_blocks_auto_title(metadata):
                 return
-            attempts = max(0, int(metadata.get("autoTitleAttempts") or 0))
-            if attempts >= _AUTO_TITLE_MAX_ATTEMPTS:
+            if not force and _auto_title_retry_wait_seconds(metadata) > 0:
                 return
             self._auto_title_inflight.add(thread_id)
         threading.Thread(
             target=self._generate_auto_title,
-            args=(thread_id, user_prompt),
+            args=(thread_id, user_prompt, force),
             name=f"loom-title-{thread_id[:8]}",
             daemon=True,
         ).start()
 
-    def generate_auto_title(self: Any, thread_id: str, user_prompt: str = "") -> None:
+    def generate_auto_title(self: Any, thread_id: str, user_prompt: str = "", force: bool = False) -> None:
         source_prompt = ""
 
         def finish(error: str) -> None:
@@ -716,7 +768,7 @@ def _patch_service(module: ModuleType) -> None:
                 finish("empty_title_context")
                 return
 
-            if not self.thread_library.claim_auto_title_attempt(thread_id, source_prompt=source_prompt):
+            if not self.thread_library.claim_auto_title_attempt(thread_id, source_prompt=source_prompt, force=force):
                 return
             title = ""
             errors: list[str] = []
@@ -758,6 +810,25 @@ def _patch_service(module: ModuleType) -> None:
         finally:
             with self._auto_title_guard:
                 self._auto_title_inflight.discard(thread_id)
+                pending = getattr(self, "_auto_title_forced_pending", set())
+                retry_forced = thread_id in pending
+                pending.discard(thread_id)
+            if retry_forced:
+                self._schedule_auto_title(thread_id, force=True)
+            # Short-lived retry timers give first-turn transient failures a real
+            # second chance even if the user does not send another message.
+            # Long cooldowns (e.g. balance errors) resume on read/list/turn
+            # rather than retaining an unbounded number of sleeping threads.
+            try:
+                metadata = self.thread_library.read(thread_id)
+                if metadata.get("autoTitleFallback") and not _metadata_title_blocks_auto_title(metadata):
+                    wait = _auto_title_retry_wait_seconds(metadata)
+                    if 0 < wait <= _AUTO_TITLE_TIMER_LIMIT_SECONDS:
+                        timer = threading.Timer(wait + 0.05, self._schedule_auto_title, args=(thread_id,))
+                        timer.daemon = True
+                        timer.start()
+            except (FileNotFoundError, OSError, ValueError, json.JSONDecodeError):
+                pass
 
     def turn_start(self: Any, params: dict[str, Any]) -> dict[str, Any]:
         result = original_turn_start(self, params)
@@ -784,9 +855,21 @@ def _patch_service(module: ModuleType) -> None:
 
         if event.kind is AgentEventKind.USER_MESSAGE:
             self._schedule_auto_title(event.session_id, user_prompt=str(event.data.get("text") or ""))
+        elif event.kind is AgentEventKind.TURN_COMPLETED:
+            # Only a *later* successful user turn may bypass a balance-error
+            # cooldown. Completion of the first turn must not immediately
+            # retry the same rejected gateway/title request.
+            try:
+                session = self.store.load(event.session_id)
+                user_turns = sum(1 for message in session.messages if message.role is module.MessageRole.USER)
+            except (FileNotFoundError, OSError, ValueError, json.JSONDecodeError):
+                user_turns = 0
+            if user_turns > 1:
+                self._schedule_auto_title(event.session_id, force=True)
 
     service_cls._record = record
     service_cls._managed_record = managed_record
+    service_cls.thread_list = thread_list
     service_cls.thread_read = thread_read
     service_cls._schedule_auto_title = schedule_auto_title
     service_cls._generate_auto_title = generate_auto_title

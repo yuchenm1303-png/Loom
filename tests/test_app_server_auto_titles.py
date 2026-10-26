@@ -64,17 +64,117 @@ def test_first_message_generates_plain_title_without_validation(tmp_path: Path) 
         runtime.close()
 
 
-def test_empty_response_fails_once_without_retry(tmp_path: Path) -> None:
+def test_empty_response_retries_after_cooldown(tmp_path: Path) -> None:
     service, runtime, platform, workspace = _service(tmp_path, "   ")
     try:
         thread_id = service.thread_start({"workspace": str(workspace)})["thread"]["id"]
         service.turn_start({"threadId": thread_id, "input": "修复标题"})
         metadata = _wait(lambda: service.thread_library.read(thread_id) if service.thread_library.read(thread_id).get("autoTitleFallback") else None)
         assert metadata["autoTitleAttempts"] == 1
+        assert metadata["autoTitleNextRetryAt"]
         service.thread_read({"threadId": thread_id})
         time.sleep(0.1)
         assert len([r for r in platform.requests if r.tool_choice is ToolChoice.NONE]) == 1
+
+        # Simulate the clock passing the persisted cooldown. The user does not
+        # need to send the same prompt again or recreate the conversation.
+        platform.title = "修复标题生成"
+        service.thread_library.write(thread_id, {"autoTitleNextRetryAt": "2000-01-01T00:00:00+00:00"})
+        service.thread_read({"threadId": thread_id})
+        metadata = _wait(lambda: service.thread_library.read(thread_id) if service.thread_library.read(thread_id).get("titleSource") == "auto" else None)
+        assert metadata["title"] == "修复标题生成"
+        assert metadata["autoTitleAttempts"] == 2
+        assert metadata["autoTitleNextRetryAt"] == ""
+        assert len([r for r in platform.requests if r.tool_choice is ToolChoice.NONE]) == 2
     finally:
+        runtime.close()
+
+
+def test_old_exhausted_title_is_backfilled_when_opened(tmp_path: Path) -> None:
+    service, runtime, platform, workspace = _service(tmp_path, "修复会话标题")
+    try:
+        thread_id = service.thread_start({"workspace": str(workspace)})["thread"]["id"]
+        service.thread_library.write(thread_id, {
+            "title": "",
+            "titleSource": "fallback",
+            "autoTitleFallback": True,
+            "autoTitleAttempts": 1,
+            "autoTitleSourcePrompt": "修复会话标题",
+            "autoTitleVersion": 10,
+        })
+        service.thread_read({"threadId": thread_id})
+        metadata = _wait(lambda: service.thread_library.read(thread_id) if service.thread_library.read(thread_id).get("titleSource") == "auto" else None)
+        assert metadata["title"] == "修复会话标题"
+        assert metadata["autoTitleAttempts"] == 2
+    finally:
+        runtime.close()
+
+
+def test_balance_error_can_recover_on_successful_later_turn(tmp_path: Path) -> None:
+    service, runtime, platform, workspace = _service(tmp_path, "恢复后的标题")
+    original_execute = platform.execute_chat
+    failed = threading.Event()
+
+    def insufficient_balance(profile_id, request):
+        if request.tool_choice is ToolChoice.NONE:
+            failed.set()
+            raise RuntimeError("APIStatusError: Error code: 402 Insufficient Balance")
+        return original_execute(profile_id, request)
+
+    platform.execute_chat = insufficient_balance
+    try:
+        thread_id = service.thread_start({"workspace": str(workspace)})["thread"]["id"]
+        service.turn_start({"threadId": thread_id, "input": "查看项目首页代码"})
+        assert failed.wait(3)
+        metadata = _wait(lambda: service.thread_library.read(thread_id) if service.thread_library.read(thread_id).get("autoTitleFallback") else None)
+        assert metadata["autoTitleAttempts"] == 1
+        assert metadata["autoTitleNextRetryAt"]
+        assert metadata["titleSource"] == "fallback"
+
+        # When a provider/model works again, turn completion can bypass the
+        # previous balance error's long cooldown. It still uses first prompt.
+        platform.execute_chat = original_execute
+        service._schedule_auto_title(thread_id, force=True)
+        metadata = _wait(lambda: service.thread_library.read(thread_id) if service.thread_library.read(thread_id).get("titleSource") == "auto" else None)
+        assert metadata["title"] == "恢复后的标题"
+        assert metadata["autoTitleAttempts"] == 2
+        assert metadata["autoTitleSourcePrompt"] == "查看项目首页代码"
+    finally:
+        runtime.close()
+
+
+def test_manual_rename_wins_race_with_retry(tmp_path: Path) -> None:
+    service, runtime, platform, workspace = _service(tmp_path, "不应覆盖手动标题")
+    started = threading.Event()
+    release = threading.Event()
+    original_execute = platform.execute_chat
+
+    def blocked_title(profile_id, request):
+        if request.tool_choice is ToolChoice.NONE:
+            started.set()
+            assert release.wait(3)
+        return original_execute(profile_id, request)
+
+    platform.execute_chat = blocked_title
+    try:
+        thread_id = service.thread_start({"workspace": str(workspace)})["thread"]["id"]
+        service.thread_library.write(thread_id, {
+            "title": "",
+            "titleSource": "fallback",
+            "autoTitleFallback": True,
+            "autoTitleAttempts": 1,
+            "autoTitleSourcePrompt": "修复网页标题",
+        })
+        service.thread_read({"threadId": thread_id})
+        assert started.wait(3)
+        service.thread_rename({"threadId": thread_id, "title": "我手动起的名字"})
+        release.set()
+        _wait(lambda: thread_id not in service._auto_title_inflight)
+        metadata = service.thread_library.read(thread_id)
+        assert metadata["title"] == "我手动起的名字"
+        assert metadata["titleSource"] == "manual"
+    finally:
+        release.set()
         runtime.close()
 
 
