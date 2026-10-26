@@ -85,10 +85,31 @@ request line, a lead for "Getting started" and the nav labels, both languages).
   plain SVG, not pseudo-elements. So the numbers are elements (`.editorial-index`), and every control the lens should snap to
   carries `data-liquid-snap` (brand, nav, Sign in, pill, icon, the primary button).
 
+## The page's chrome, completed (2026-10-26)
+
+The page had a full account dialog from the first version (Google/GitHub, email and password, create account, email
+verification, password reset), but the only way into it was a plain text "Sign in" in the header; on a narrow window the
+nav disappeared with nothing in its place, and the page could not change its own language. The authentication logic is
+untouched; this round only completes the chrome around it.
+
+- **Header.** The Smirel mark and a rule introduce the name; language (EN / 中文, writing the shared
+`loom.settings.language`), an account pill (Sign in, or an avatar and the signed-in name), the theme pill, and — under
+760px — a menu button follow; the Loom icon stays last. Under 430px the house mark gives its room to the account and the
+menu. The account pill opens the same drawer as before. Everything carrying words still only fades.
+- **Narrow header.** Under 760px the three section links and the language switch move into a menu panel under the header.
+It also carries a direct download and the account entry; it closes on Escape, on a selection, when the drawer opens, or
+when the window returns to the desktop header. It is a disclosure (`aria-expanded` / `aria-controls`), not a second page.
+- **Download.** `#loom-download` now sits between “What Loom does” and “Getting started”: the platform, the live version
+and installer size, the installer, and the release notes. The header's Download link scrolls there instead of starting a
+download from the nav; the hero, the section and “Getting started” still point straight at the installer.
+- **Footer.** Download, Documentation (the repository README), GitHub, Updates, Classic home. The maker line is unchanged.
+- **Tests.** `portal-home.test.mjs` now also holds the visible account entry, the language switch, the narrow menu, the
+download section and the footer links (16 tests).
+
 ## Files
 
-- `desktop-react/src/components/WebPortal.tsx`: the editorial markup and the state (theme, More, thread, type-ready, stuck, reveal).
-- `desktop-react/src/components/portalHomeCopy.ts`: all the words.
+- `desktop-react/src/components/WebPortal.tsx`: the editorial markup and the state (theme, More, thread, type-ready, stuck, reveal, language, narrow menu, account entry).
+- `desktop-react/src/components/portalHomeCopy.ts`: all the words, including the download block and the footer links.
 - `desktop-react/src/components/portal-editorial.css`: the page. `portal-home-icon.css` (icon), `portal-auth-dialog.css`
   (the sign-in dialog, retuned to the same two colours) are as before.
 - `desktop-react/src/assets/fonts/newsreader/`: the two font files, `OFL.txt`, and `README.md` (provenance, hashes, exact

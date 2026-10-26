@@ -96,7 +96,7 @@ test("the page is laid on a wide frame and a 12-column grid; its prose keeps the
   assert.match(rule(".loom-editorial .editorial-steps strong"), /font-size:\s*24px/);
   // It narrows in steps: the picture goes under the words, the columns become one, the nav goes, the phone settles.
   for (const width of [1100, 960, 760, 520]) assert.ok(css.includes(`@media (max-width: ${width}px)`), `${width}px step`);
-  assert.match(css, /@media \(max-width: 760px\)\s*\{[^@]*\.editorial-nav\s*\{\s*display:\s*none/);
+  assert.match(css, /@media \(max-width: 760px\)\s*\{[^@]*\.editorial-nav[^{]*\{[^}]*display:\s*none/);
 });
 
 test("the first screen is laid out from the top, so opening More moves only what is under it", () => {
@@ -112,12 +112,12 @@ test("the header is a nav: sections by scrolling, a hairline once the page has m
   const header = portal.slice(portal.indexOf('<header className="editorial-header'), portal.indexOf("</header>"));
   assert.ok(header.includes('data-stuck={stuck ? "true" : "false"}'));
   assert.ok(header.indexOf("editorial-brand") < header.indexOf("editorial-nav") && header.indexOf("editorial-nav") < header.indexOf("editorial-meta"));
-  for (const target of ["loom-capabilities", "loom-start"]) {
+  for (const target of ["loom-capabilities", "loom-start", "loom-download"]) {
     assert.ok(header.includes(`href="#${target}"`) && header.includes(`goToSection(event, "${target}")`), `${target} is a link that scrolls`);
     assert.ok(portal.includes(`id="${target}"`), `${target} exists`);
   }
-  assert.ok(portal.includes("event.preventDefault();\n    document.getElementById(id)?.scrollIntoView({ block: \"start\" });"), "no hash in the address");
-  assert.ok(header.includes('href={release.download}'), "Download is the installer");
+  assert.ok(portal.includes('document.getElementById(id)?.scrollIntoView({ block: "start" })'), "no hash in the address");
+  assert.ok(portal.includes('href={release.download}'), "the download section carries the installer");
   // The page is the scroller, so the hairline follows its scroll, and only when the boolean changes.
   assert.ok(portal.includes('page.addEventListener("scroll", follow, { passive: true })'));
   assert.ok(portal.includes("setStuck(page.scrollTop > 4)"));
@@ -130,6 +130,34 @@ test("the header is a nav: sections by scrolling, a hairline once the page has m
   assert.match(rule(".loom-portal-page.loom-editorial"), /scroll-padding-top:\s*calc\(var\(--ed-head\) \+ 24px\)/);
   assert.match(css, /@media \(prefers-reduced-motion: no-preference\)\s*\{\s*:root:not\(\[data-loom-reduced-motion="true"\]\) \.loom-portal-page\.loom-editorial\s*\{\s*scroll-behavior:\s*smooth/);
   assert.ok(!portal.includes("prefers-reduced-motion: reduce)\")"), "the stylesheet decides; no second copy of the question (test_motion_scale_contract)");
+});
+
+test("the header offers a visible account entry, a language switch and a mobile menu", () => {
+  const header = portal.slice(portal.indexOf('<header className="editorial-header'), portal.indexOf("</header>"));
+  assert.ok(header.includes('className="editorial-account"') && header.includes("onClick={openEditorialModal}"), "sign-in is a button, not a line of text");
+  assert.ok(header.includes('className="editorial-account-avatar"'), "a signed-in visitor gets an avatar and a name");
+  assert.ok(header.includes('className="editorial-language"') && header.includes('onClick={toggleLanguage}'), "the page can change language from its header");
+  assert.ok(portal.includes('setLanguage(zh ? "en" : "zh-CN")'), "the switch uses the shared language setting");
+  assert.ok(header.includes('className="editorial-menu-button"') && header.includes('aria-controls="editorial-mobile-menu"'), "the narrow header has a menu button");
+  assert.ok(portal.includes('id="editorial-mobile-menu"') && portal.includes('aria-expanded={menuOpen}'), "the menu panel exists and reports its state");
+  assert.ok(portal.includes('window.matchMedia("(min-width: 761px)")'), "the menu closes when the desktop header returns");
+  assert.match(rule(".loom-editorial .editorial-account"), /border:\s*1px solid var\(--ed-rule\)/);
+  assert.match(rule(".loom-editorial .editorial-menu-button"), /display:\s*none/);
+  assert.match(css, /@media \(max-width: 760px\)\s*\{[^@]*\.editorial-menu-button\s*\{\s*display:\s*grid/);
+  // The house mark's base rule has three classes; the phone rule must match its specificity, or it never hides.
+  assert.match(css, /@media \(max-width: 430px\)\s*\{[^@]*\.loom-editorial \.editorial-shell \.editorial-smirel-mark[^{]*\{[^}]*display:\s*none/);
+});
+
+test("the download section names the release, and the footer points at the project", () => {
+  const section = portal.slice(portal.indexOf('<section id="loom-download"'), portal.indexOf('<section id="loom-start"'));
+  for (const part of ["{home.downloadSection.heading}", "{home.downloadSection.lead}", "{home.downloadSection.platform}", "{release.version", "{release.package", "href={release.download}", "href={release.notes}"]) {
+    assert.ok(section.includes(part), part);
+  }
+  assert.ok(portal.includes('href={`${RELEASES_URL}#readme`}'), "documentation points at the repository readme");
+  assert.ok(portal.includes("href={RELEASES_URL}") && portal.includes("{home.links.github}"), "the footer points at the repository");
+  assert.ok(portal.includes('id="loom-download"') && portal.includes('goToSection(event, "loom-download")'), "the nav's Download reaches the section");
+  const panel = rule(".loom-editorial .editorial-download-panel");
+  assert.match(panel, /border-top:\s*1px solid var\(--ed-rule\)/, "a hairline, like every block");
 });
 
 test("the one picture is a task, start to finish, beside the words and opened by a hairline", () => {
@@ -168,9 +196,9 @@ test("below the first screen each block is shown as it comes into view, and ever
 
 test("the glass cursor can snap to every control, and what it redraws is made of elements", () => {
   const header = portal.slice(portal.indexOf('<header className="editorial-header'), portal.indexOf("</header>"));
-  // brand, three nav links, sign-in, theme switch, icon: the lens samples buttons and links, text, plain fills and borders.
-  assert.equal((header.match(/data-liquid-snap="true"/g) ?? []).length, 7);
-  assert.equal((header.match(/data-magnetic-hover="true"/g) ?? []).length, 6, "the theme switch stays put");
+  // the house mark, brand, three nav links, language, account, theme switch, menu, icon: the lens samples buttons and links, text, plain fills and borders.
+  assert.equal((header.match(/data-liquid-snap="true"/g) ?? []).length, 10);
+  assert.equal((header.match(/data-magnetic-hover="true"/g) ?? []).length, 9, "the theme switch stays put");
   // Numbers are elements (a pseudo-element is not redrawn into the lens).
   assert.ok(portal.includes('<span className="editorial-index" aria-hidden="true">{`0${index + 1}`}</span>'));
   assert.ok(portal.includes('<span className="editorial-index" aria-hidden="true">{index + 1}</span>'));
@@ -201,6 +229,8 @@ test("both languages tell the same page", () => {
     session: copy.session.rows.length,
     steps: copy.start.steps.length,
     nav: Object.keys(copy.nav).sort().join(),
+    downloadSection: Object.keys(copy.downloadSection).sort().join(),
+    links: Object.keys(copy.links).sort().join(),
   });
   assert.deepEqual(shape(zh), shape(en));
   for (const [name, copy] of Object.entries({ en, zh })) {
@@ -213,6 +243,7 @@ test("both languages tell the same page", () => {
     // What the card says was asked is in quotation marks, and says something; the nav names the two sections and the installer.
     assert.match(copy.session.ask, /^[“"].+[”"]$/, `${name}: the request is quoted`);
     assert.ok(copy.start.lead.length > 10, `${name}: getting started has a lead`);
+    assert.ok(copy.downloadSection.heading.length > 0 && copy.downloadSection.lead.length > 10, `${name}: the download section has words`);
     for (const key of ["label", "doing", "start", "download"]) assert.ok(copy.nav[key].length > 0, `${name}: nav.${key}`);
   }
   assert.equal(en.title.join(" "), "A quieter way to get things done.");

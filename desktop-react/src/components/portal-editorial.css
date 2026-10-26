@@ -156,6 +156,33 @@
   letter-spacing: 0;
 }
 .loom-editorial .editorial-brand-period { color: var(--ed-accent); }
+/* The house mark stands to the left of the name, so the top corner says who made it. */
+.loom-editorial .editorial-brand-group {
+  justify-self: start;
+  display: inline-flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+}
+.loom-editorial .editorial-shell .editorial-smirel-mark {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  text-decoration: none;
+}
+.loom-editorial .editorial-shell .editorial-smirel-mark:hover { color: var(--ed-ink); }
+.loom-editorial .editorial-smirel-mark img {
+  display: block;
+  width: 104px;
+  height: 34px;
+  object-fit: contain;
+}
+.loom-editorial .editorial-brand-rule {
+  flex: none;
+  width: 1px;
+  height: 22px;
+  background: var(--ed-rule);
+}
 .loom-editorial .editorial-nav { display: flex; align-items: center; gap: clamp(20px, 3vw, 44px); }
 .loom-editorial .editorial-shell .editorial-nav a {
   padding-block: 14px;
@@ -165,26 +192,118 @@
   text-decoration-color: transparent;
 }
 .loom-editorial .editorial-shell .editorial-nav a:hover { color: var(--ed-ink); text-decoration-color: currentColor; }
-.loom-editorial .editorial-meta { display: flex; align-items: center; justify-self: end; gap: 16px; min-width: 0; }
-.loom-editorial .editorial-meta > button:first-child {
-  max-width: 160px;
-  min-height: 44px;
-  padding: 0;
-  overflow: hidden;
+.loom-editorial .editorial-meta { display: flex; align-items: center; justify-self: end; gap: 10px; min-width: 0; }
+.loom-editorial .editorial-language {
+  min-height: 36px;
+  padding: 0 4px;
   border: 0;
   background: none;
   color: var(--ed-ink-muted);
-  font-size: 16px;
+  font-size: 14px;
   line-height: 1;
-  text-decoration: underline;
-  text-decoration-color: transparent;
-  text-decoration-thickness: .08em;
-  text-underline-offset: .22em;
-  text-overflow: ellipsis;
-  white-space: nowrap;
   cursor: pointer;
 }
-.loom-editorial .editorial-meta > button:first-child:hover { color: var(--ed-ink); text-decoration-color: currentColor; }
+.loom-editorial .editorial-language:hover { color: var(--ed-ink); }
+.loom-editorial .editorial-account {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 180px;
+  min-height: 36px;
+  padding: 0 14px;
+  overflow: hidden;
+  border: 1px solid var(--ed-rule);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--ed-ink);
+  font-size: 14px;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+  text-decoration: none;
+}
+.loom-editorial .editorial-account:hover { border-color: var(--ed-ink-muted); background: var(--ed-paper-soft); }
+.loom-editorial .editorial-account-avatar {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--ed-ink);
+  color: var(--ed-paper);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+}
+.loom-editorial .editorial-account-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.loom-editorial .editorial-menu-button {
+  display: none;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--ed-ink);
+  cursor: pointer;
+}
+.loom-editorial .editorial-menu-lines { display: grid; gap: 5px; width: 18px; }
+.loom-editorial .editorial-menu-lines i { display: block; width: 18px; height: 1px; background: currentColor; }
+
+/* The narrow header keeps one disclosure for the nav, the account and the language. */
+.loom-editorial .editorial-mobile-menu { display: none; }
+@media (max-width: 760px) {
+  .loom-editorial .editorial-mobile-menu {
+    position: fixed;
+    top: var(--ed-head);
+    left: 0;
+    right: 0;
+    z-index: 4;
+    display: grid;
+    gap: 0;
+    max-height: calc(100dvh - var(--ed-head));
+    padding: 8px var(--ed-edge) 24px;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    border-bottom: 1px solid var(--ed-rule);
+    background: var(--ed-paper);
+    animation: editorial-fade var(--loom-dur-base) var(--loom-ease-out) both;
+  }
+  .loom-editorial .editorial-mobile-menu nav { display: flex; flex-direction: column; }
+  .loom-editorial .editorial-mobile-menu nav a {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 15px 0;
+    border-bottom: 1px solid var(--ed-rule-soft);
+    color: var(--ed-ink);
+    font-size: 20px;
+    line-height: 1.2;
+    text-decoration: none;
+  }
+  .loom-editorial .editorial-mobile-menu nav a:hover { color: var(--ed-ink-muted); }
+  .loom-editorial .editorial-mobile-menu-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px 24px;
+    padding-top: 20px;
+  }
+  .loom-editorial .editorial-mobile-menu-actions button {
+    padding: 0;
+    border: 0;
+    background: none;
+    color: var(--ed-ink-muted);
+    font-size: 15px;
+    line-height: 1.4;
+    text-decoration: underline;
+    text-decoration-thickness: .08em;
+    text-underline-offset: .1em;
+    cursor: pointer;
+  }
+  .loom-editorial .editorial-mobile-menu-actions button:hover { color: var(--ed-ink); }
+}
 
 /* The pill of the reference: always an ivory track with a dark knob; the knob sits left in light, right in dark. */
 .loom-editorial .editorial-theme {
@@ -481,6 +600,40 @@
   text-wrap: balance;
 }
 
+/* Download: the one file, named, with the release it belongs to. */
+.loom-editorial .editorial-download-lead { grid-column: 1 / span 5; min-width: 0; }
+.loom-editorial .editorial-download-lead h2 { margin-bottom: .4em; }
+.loom-editorial .editorial-download-lead > p {
+  max-width: 24em;
+  margin: 0;
+  color: var(--ed-ink-muted);
+  text-wrap: balance;
+}
+.loom-editorial .editorial-download-panel {
+  grid-column: 7 / span 6;
+  min-width: 0;
+  padding: clamp(16px, 2.4vh, 22px) 0 0;
+  border-top: 1px solid var(--ed-rule);
+}
+.loom-editorial .editorial-download-panel dl { margin: 0; }
+.loom-editorial .editorial-download-panel dl > div {
+  display: grid;
+  grid-template-columns: 8em minmax(0, 1fr);
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--ed-rule-soft);
+}
+.loom-editorial .editorial-download-panel dt {
+  color: var(--ed-ink-faint);
+  font-size: 13px;
+  letter-spacing: .08em;
+  line-height: 1.5;
+  text-transform: uppercase;
+}
+.loom-editorial .editorial-download-panel dd { margin: 0; color: var(--ed-ink); font-size: 16px; line-height: 1.5; }
+.loom-editorial .editorial-download-panel .editorial-actions { margin-top: 22px; }
+.loom-editorial .editorial-download-panel .editorial-primary { text-decoration: none; }
+
 /* Getting started: the way in on the left, three steps on the right. */
 .loom-editorial .editorial-start-lead { grid-column: 1 / span 5; min-width: 0; }
 .loom-editorial .editorial-start-lead h2 { margin-bottom: .4em; }
@@ -607,20 +760,36 @@
   .loom-editorial .editorial-hero-grid { display: block; }
   .loom-editorial .editorial-session { margin-top: 56px; }
   .loom-editorial .editorial-start-lead,
-  .loom-editorial .editorial-start .editorial-steps { grid-column: 1 / -1; }
-  .loom-editorial .editorial-start .editorial-steps { margin-top: 40px; }
+  .loom-editorial .editorial-start .editorial-steps,
+  .loom-editorial .editorial-download-lead,
+  .loom-editorial .editorial-download-panel { grid-column: 1 / -1; }
+  .loom-editorial .editorial-start .editorial-steps,
+  .loom-editorial .editorial-download-panel { margin-top: 40px; }
 }
 @media (max-width: 760px) {
   .loom-editorial .editorial-header { grid-template-columns: minmax(0, 1fr) auto; }
-  .loom-editorial .editorial-nav { display: none; }
+  .loom-editorial .editorial-nav,
+  .loom-editorial .editorial-language { display: none; }
+  .loom-editorial .editorial-meta { gap: 8px; }
+  .loom-editorial .editorial-menu-button { display: grid; }
   .loom-editorial .editorial-list { grid-template-columns: minmax(0, 1fr); row-gap: 36px; }
 }
 @media (max-width: 520px) {
   .loom-editorial .editorial-header { column-gap: 12px; }
-  .loom-editorial .editorial-meta { gap: 12px; }
-  .loom-editorial .editorial-meta > button:first-child { max-width: 96px; }
+  .loom-editorial .editorial-meta { gap: 6px; }
+  .loom-editorial .editorial-account { max-width: 104px; padding: 0 10px; font-size: 13px; }
+  .loom-editorial .editorial-account-name { max-width: 64px; }
+  .loom-editorial .editorial-brand-group { gap: 10px; }
+  .loom-editorial .editorial-smirel-mark img { width: 84px; height: 28px; }
+  .loom-editorial .editorial-brand-rule { height: 18px; }
   .loom-portal-page.loom-editorial { --ed-title: clamp(40px, 11.4vw, 52px); }
   .loom-editorial .editorial-footer { flex-direction: column; }
+  .loom-editorial .editorial-download-panel dl > div { grid-template-columns: 6.5em minmax(0, 1fr); }
+}
+@media (max-width: 430px) {
+  /* The corner is the name on a phone; the house mark would crowd the account and the menu. */
+  .loom-editorial .editorial-shell .editorial-smirel-mark,
+  .loom-editorial .editorial-brand-rule { display: none; }
 }
 @media (prefers-reduced-motion: reduce) {
   .loom-editorial *, .loom-editorial *::before, .loom-editorial *::after { animation: none !important; transition: none !important; }

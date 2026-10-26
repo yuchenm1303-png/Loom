@@ -13,7 +13,7 @@ import { useI18n } from "../i18n";
 import { useAccount } from "../state/useAccount";
 import { HostSetupActions } from "./HostSetupActions";
 import { PortalLiquidCursor } from "./PortalLiquidCursor";
-import { FALLBACK_RELEASE, fetchPortalRelease } from "../portalRelease";
+import { FALLBACK_RELEASE, fetchPortalRelease, RELEASES_URL } from "../portalRelease";
 import { PORTAL_HOME_COPY } from "./portalHomeCopy";
 
 export type PortalHostState = "idle" | "checking" | "online" | "offline" | "unbound" | "account-mismatch";
@@ -140,6 +140,7 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
   const editorial = pageMode === "editorial";
   usePortalStyles(!editorial);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
   const authDialogRef = useRef<HTMLElement>(null);
   const modalOpenerRef = useRef<HTMLElement | null>(null);
   // The home page follows the system's light or dark setting until the visitor picks a side; the pick is then kept.
@@ -201,9 +202,22 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
     return () => page.removeEventListener("scroll", follow);
   }, [editorial]);
   useEffect(() => {
+    // The mobile menu is a page-level disclosure: Escape closes it, and so does a return to the desktop header.
+    if (!editorial || !menuOpen) return;
+    const closeOnEscape = (event: KeyboardEvent) => { if (event.key === "Escape") setMenuOpen(false); };
+    const closeOnWide = () => { if (window.matchMedia("(min-width: 761px)").matches) setMenuOpen(false); };
+    document.addEventListener("keydown", closeOnEscape);
+    window.addEventListener("resize", closeOnWide);
+    return () => {
+      document.removeEventListener("keydown", closeOnEscape);
+      window.removeEventListener("resize", closeOnWide);
+    };
+  }, [editorial, menuOpen]);
+  useEffect(() => {
     const sync = () => {
       setPageMode(window.location.pathname.replace(/\/+$/, "") === "/classic" ? "classic" : "editorial");
       setDrawerOpen(false);
+      setMenuOpen(false);
     };
     window.addEventListener("popstate", sync);
     return () => window.removeEventListener("popstate", sync);
@@ -256,9 +270,11 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
     window.history.pushState(null, "", next === "classic" ? "/classic" : "/");
     setPageMode(next);
     setDrawerOpen(false);
+    setMenuOpen(false);
   }
   function openEditorialModal() {
     if (document.activeElement instanceof HTMLElement) modalOpenerRef.current = document.activeElement;
+    setMenuOpen(false);
     setDrawerOpen(true);
   }
   function dismissDrawer() {
@@ -283,7 +299,12 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
   // Whether it glides is the stylesheet's call (scroll-behavior, off when motion is reduced).
   function goToSection(event: MouseEvent<HTMLAnchorElement>, id: string) {
     event.preventDefault();
+    setMenuOpen(false);
     document.getElementById(id)?.scrollIntoView({ block: "start" });
+  }
+  function toggleLanguage() {
+    setLanguage(zh ? "en" : "zh-CN");
+    setMenuOpen(false);
   }
   function goToTop(event: MouseEvent<HTMLAnchorElement>) {
     event.preventDefault();
@@ -297,8 +318,10 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
     }).finally(() => window.clearTimeout(timeout));
     return () => { controller.abort(); window.clearTimeout(timeout); };
   }, []);
-  const { language } = useI18n();
+  const { language, setLanguage } = useI18n();
   const zh = language === "zh-CN";
+  const accountName = account.account.user?.display_name?.trim() || account.account.user?.email || "";
+  const accountInitial = (accountName || "L").slice(0, 1).toUpperCase();
   const copy = HOST_COPY[zh ? "zh" : "en"];
   const home = PORTAL_HOME_COPY[zh ? "zh" : "en"];
   useEffect(() => {
@@ -586,20 +609,44 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
       {editorial ? (
         <div className="editorial-shell" inert={drawerOpen} data-type-ready={typeReady ? "true" : "false"}>
           <header className="editorial-header editorial-reveal" style={revealIndex(0)} data-stuck={stuck ? "true" : "false"}>
-            <a className="editorial-brand" href="/" aria-label="Loom" onClick={goToTop} data-liquid-snap="true" data-magnetic-hover="true"><span className="editorial-brand-name">Loom<span className="editorial-brand-period" aria-hidden="true">.</span></span></a>
+            <div className="editorial-brand-group">
+              <a className="editorial-smirel-mark" href="https://smirel.com/" target="_blank" rel="noopener noreferrer" aria-label={zh ? "访问 Smirel 官网（在新标签页打开）" : "Visit Smirel homepage (opens in a new tab)"} data-liquid-snap="true" data-magnetic-hover="true">
+                <img src={SMIREL_LOGO} alt="" aria-hidden="true" />
+              </a>
+              <span className="editorial-brand-rule" aria-hidden="true" />
+              <a className="editorial-brand" href="/" aria-label="Loom" onClick={goToTop} data-liquid-snap="true" data-magnetic-hover="true"><span className="editorial-brand-name">Loom<span className="editorial-brand-period" aria-hidden="true">.</span></span></a>
+            </div>
             <nav className="editorial-nav" aria-label={home.nav.label}>
               <a href="#loom-capabilities" onClick={(event) => goToSection(event, "loom-capabilities")} data-liquid-snap="true" data-magnetic-hover="true">{home.nav.doing}</a>
               <a href="#loom-start" onClick={(event) => goToSection(event, "loom-start")} data-liquid-snap="true" data-magnetic-hover="true">{home.nav.start}</a>
-              <a href={release.download} data-liquid-snap="true" data-magnetic-hover="true">{home.nav.download}</a>
+              <a href="#loom-download" onClick={(event) => goToSection(event, "loom-download")} data-liquid-snap="true" data-magnetic-hover="true">{home.nav.download}</a>
             </nav>
             <nav className="editorial-meta" aria-label={zh ? "主页操作" : "Home actions"}>
-              <button type="button" onClick={openEditorialModal} data-liquid-snap="true" data-magnetic-hover="true">{authenticated ? (account.account.user?.display_name?.trim() || (zh ? "我的账户" : "My account")) : (zh ? "登录 / 注册" : "Sign in")}</button>
+              <button className="editorial-language" type="button" onClick={toggleLanguage} aria-label={zh ? "Switch to English" : "切换到中文"} title={zh ? "Switch to English" : "切换到中文"} data-liquid-snap="true" data-magnetic-hover="true">{zh ? "EN" : "中文"}</button>
+              <button className="editorial-account" type="button" onClick={openEditorialModal} aria-label={authenticated ? (zh ? "账户与设备" : "Account and device") : (zh ? "登录或创建账户" : "Sign in or create an account")} data-liquid-snap="true" data-magnetic-hover="true">
+                {authenticated ? <><span className="editorial-account-avatar" aria-hidden="true">{accountInitial}</span><span className="editorial-account-name">{accountName}</span></> : <span>{zh ? "登录" : "Sign in"}</span>}
+              </button>
               <button className="editorial-theme" type="button" role="switch" aria-label={zh ? "深色模式" : "Dark mode"} aria-checked={!lightEditorial} onClick={toggleEditorialTheme} data-liquid-snap="true" />
+              <button className="editorial-menu-button" type="button" aria-expanded={menuOpen} aria-controls="editorial-mobile-menu" aria-label={menuOpen ? (zh ? "关闭菜单" : "Close menu") : (zh ? "打开菜单" : "Open menu")} onClick={() => setMenuOpen((open) => !open)} data-liquid-snap="true" data-magnetic-hover="true">
+                <span className="editorial-menu-lines" aria-hidden="true"><i /><i /><i /></span>
+              </button>
               <button className="editorial-home-icon" type="button" onClick={openWorkspace} aria-label={zh ? "打开 Loom 工作区" : "Open Loom workspace"} title={zh ? "打开 Loom" : "Open Loom"} data-liquid-snap="true" data-magnetic-hover="true">
                 <img src="/loom-icon.png" alt="" aria-hidden="true" />
               </button>
             </nav>
           </header>
+          {menuOpen ? <div id="editorial-mobile-menu" className="editorial-mobile-menu">
+            <nav aria-label={home.nav.label}>
+              <a href="#loom-capabilities" onClick={(event) => goToSection(event, "loom-capabilities")} data-liquid-snap="true" data-magnetic-hover="true">{home.nav.doing}</a>
+              <a href="#loom-start" onClick={(event) => goToSection(event, "loom-start")} data-liquid-snap="true" data-magnetic-hover="true">{home.nav.start}</a>
+              <a href="#loom-download" onClick={(event) => goToSection(event, "loom-download")} data-liquid-snap="true" data-magnetic-hover="true">{home.nav.download}</a>
+              <a href={release.download} data-liquid-snap="true" data-magnetic-hover="true">{zh ? "下载 Windows 版" : "Download for Windows"}<span aria-hidden="true">↓</span></a>
+            </nav>
+            <div className="editorial-mobile-menu-actions">
+              <button type="button" onClick={openEditorialModal} data-liquid-snap="true" data-magnetic-hover="true">{authenticated ? (zh ? "账户与设备" : "Account and device") : (zh ? "登录 / 注册" : "Sign in / Create account")}</button>
+              <button type="button" onClick={toggleLanguage} data-liquid-snap="true" data-magnetic-hover="true">{zh ? "English" : "中文"}</button>
+            </div>
+          </div> : null}
           <main className="editorial-body">
             <section className="editorial-hero" aria-labelledby="editorial-intro">
               <div className="editorial-hero-grid">
@@ -658,6 +705,23 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
                 ))}
               </ul>
             </section>
+            <section id="loom-download" className="editorial-section editorial-download" aria-labelledby="editorial-download-title">
+              <div className="editorial-download-lead" data-reveal>
+                <h2 id="editorial-download-title">{home.downloadSection.heading}</h2>
+                <p>{home.downloadSection.lead}</p>
+              </div>
+              <div className="editorial-download-panel" data-reveal>
+                <dl>
+                  <div><dt>{home.downloadSection.platformLabel}</dt><dd>{home.downloadSection.platform}</dd></div>
+                  <div><dt>{home.downloadSection.versionLabel}</dt><dd>{release.version ? `${release.version} · Stable` : (zh ? "最新稳定版" : "Latest stable")}</dd></div>
+                  <div><dt>{home.downloadSection.installerLabel}</dt><dd>{release.package || "Windows x64"}</dd></div>
+                </dl>
+                <div className="editorial-actions">
+                  <a className="editorial-primary" href={release.download} data-liquid-snap="true" data-magnetic-hover="true">{home.download}<Download size={16} aria-hidden="true" /></a>
+                  <a className="editorial-download" href={release.notes} target="_blank" rel="noopener noreferrer">{home.notes}<span aria-hidden="true"> ↗</span></a>
+                </div>
+              </div>
+            </section>
             <section id="loom-start" className="editorial-section editorial-start" aria-labelledby="editorial-start-title">
               <div className="editorial-start-lead" data-reveal>
                 <h2 id="editorial-start-title">{home.start.heading}</h2>
@@ -681,6 +745,9 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
           <footer className="editorial-footer editorial-reveal" style={revealIndex(8)}>
             <p>{home.madeBy[0]}<a className="editorial-signature" href="https://smirel.com/" target="_blank" rel="noopener noreferrer">Smirel</a>{home.madeBy[1]}</p>
             <nav aria-label={zh ? "资源" : "Resources"}>
+              <a href="#loom-download" onClick={(event) => goToSection(event, "loom-download")}>{home.links.download}</a>
+              <a href={`${RELEASES_URL}#readme`} target="_blank" rel="noopener noreferrer">{home.links.documentation}</a>
+              <a href={RELEASES_URL} target="_blank" rel="noopener noreferrer">{home.links.github}</a>
               <a href={release.notes} target="_blank" rel="noopener noreferrer">{home.updates}</a>
               <a href="/classic" onClick={(event) => { event.preventDefault(); switchPage("classic"); }}>{home.classic}</a>
             </nav>
