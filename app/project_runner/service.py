@@ -157,7 +157,7 @@ class ProjectServiceMixin:
             original_close()
         self.runtime.close = close
 
-    def project_create(self, params):
+    def project_run_create(self, params):
         source = self._load(self._required_text(params, "threadId"))
         objective = self._required_text(params, "objective")
         if len(objective) > 20000:
@@ -200,7 +200,7 @@ class ProjectControllerMixin:
 
     def _dispatch(self, method, params):
         if method == "projectRun/create":
-            return {"run": self.service.project_create(params)}
+            return {"run": self.service.project_run_create(params)}
         if method == "projectRun/get":
             return {"run": self.service.project_store.get(self.service._required_text(params, "runId"))}
         if method == "projectRun/list":
