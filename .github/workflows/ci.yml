@@ -76,12 +76,17 @@ jobs:
         run: node --check scripts/setup-ufo.mjs && node --check scripts/ufo-preflight.mjs
       - name: Install React desktop dependencies
         run: npm ci --no-audit --no-fund
-      - name: Configure the Electron SUID sandbox helper
-        # Ubuntu 24.04 blocks unprivileged user namespaces, so Electron falls back to chrome-sandbox,
-        # which must be root-owned and setuid or the browser tests abort at launch.
+      - name: Let Electron use its sandbox on the runner
+        # Ubuntu 24.04 restricts unprivileged user namespaces through AppArmor, which makes Electron abort at launch
+        # ("The SUID sandbox helper binary was found, but is not configured correctly"). Allow the namespace sandbox
+        # and, when this Electron ships the setuid helper, configure it too. Test launches only; no product code.
         run: |
-          sudo chown root:root node_modules/electron/dist/chrome-sandbox
-          sudo chmod 4755 node_modules/electron/dist/chrome-sandbox
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          helper=$(find node_modules/electron/dist -name chrome-sandbox | head -n 1)
+          if [ -n "$helper" ]; then
+            sudo chown root:root "$helper"
+            sudo chmod 4755 "$helper"
+          fi
       - name: Typecheck React desktop
         run: npm run typecheck
       - name: Prepare Electron fixtures
