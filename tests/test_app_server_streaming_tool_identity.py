@@ -62,6 +62,22 @@ def _runtime_event(kind: AgentEventKind, *, event_id: str, data: dict[str, objec
     )
 
 
+def test_preparation_and_compaction_are_published_before_model_sampling(tmp_path):
+    runtime = _RuntimeStub()
+    service = StreamingLoomAppServerService(runtime=runtime, store=SimpleNamespace(root=tmp_path),
+        model="test-model", default_workspace=tmp_path, default_permission_mode=PermissionMode.WORKSPACE)
+    observed = []
+    service.subscribe_notifications(lambda method, params: observed.append((method, params)))
+    for phase in ("preparing", "compacting"):
+        runtime.runtime_listener(_runtime_event(AgentEventKind.TURN_PHASE_CHANGED,
+            event_id=phase, data={"phase": phase}))
+    runtime.runtime_listener(_runtime_event(AgentEventKind.MODEL_REQUESTED,
+        event_id="sampling", data={"step_id": "step-1"}))
+    phases = [params["phase"] for method, params in observed if method == "turn/modelActivity"]
+    assert phases == ["preparing", "compacting", "waiting_model"]
+    assert all(params["turnId"] == "turn-1" for method, params in observed if method == "turn/modelActivity")
+
+
 def test_streamed_tool_arguments_keep_the_durable_call_item_identity(tmp_path) -> None:
     runtime = _RuntimeStub()
     service = StreamingLoomAppServerService(

@@ -1604,6 +1604,7 @@ export default function App() {
           {branchError ? <div className="loom-branch-error" role="alert"><span>{branchError}</span><button type="button" aria-label={t("branch.dismissError")} onClick={() => setBranchError("")}><X size={14} /></button></div> : null}
           <Transcript
             threadId={thread?.id}
+            runtimePhase={loom.modelActivity?.turnId === thread?.currentTurnId ? loom.modelActivity?.phase : undefined}
             items={transcriptItems}
             running={transcriptRunning}
             currentTurnId={confirmedTurnRunning ? thread?.currentTurnId : undefined}

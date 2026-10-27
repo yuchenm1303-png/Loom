@@ -348,6 +348,10 @@ class DevelopmentVerification:
     def latest(self, session):
         # Read several times per step; only the newest state matters, so on a long session do not build
         # (and copy) every earlier 20 KB state just to throw them away.
+        newest = getattr(self.runtime.store, "last_event", None)
+        if callable(newest):
+            event = newest(session.session_id, (E.VERIFICATION_UPDATED,))
+            return event.data if event is not None else None
         select = getattr(self.runtime.store, "context_select", None)
         if callable(select):
             newest = select(session.session_id, kinds=(E.VERIFICATION_UPDATED,), last=1)
@@ -427,15 +431,14 @@ class DevelopmentVerification:
         previous = self.latest(session)
         if previous and previous.get("turn_id") == session.current_turn_id:
             return  # approval resume / safe handoff retains the original baseline
-        started = time.perf_counter()
-        baseline, discovery, head = git_state(session.workspace_dir)
-        self._spent(session.session_id, "attribution_scan_ms", started)
-        resolved = {s["path"]: s["status"] for s in self.summary(session)["subjects"]} if previous else {}
-        carried = {p: item for p, item in (previous or {}).get("subjects", {}).items()
-                   if resolved.get(p) not in {"passed", "blocked", "not_applicable"}}
+        # Attribution belongs to the mutating tool's workspace lease, where
+        # execution() already captures the before/after state. Scanning here
+        # neither attributes edits nor protects tools, but delays every reply.
+        # Carry evidence unchanged; summary() checks freshness when it is used.
+        carried = dict((previous or {}).get("subjects", {}))
         self.runtime._emit_event(session, E.VERIFICATION_UPDATED,
-            data={"turn_id": session.current_turn_id, "baseline": baseline, "discovery": discovery,
-                  "subjects": carried, "last_git": baseline, "head": head, "observations": []})
+            data={"turn_id": session.current_turn_id, "baseline": {}, "discovery": "deferred",
+                  "subjects": carried, "last_git": {}, "head": "", "observations": []})
 
     def observe(self, session, *, scan_git=False):
         started = time.perf_counter()
@@ -462,16 +465,15 @@ class DevelopmentVerification:
             kind = source_kind(path)
             if kind is None:
                 continue
+            old = subjects.get(path)
+            if old is not None and path not in paths:
+                # Prior-turn obligations need no per-tool filesystem reads;
+                # summary() checks evidence freshness when it is consumed.
+                continue
             try:
                 snapshot = subject_snapshot(context, [path])
             except (ValueError, OSError):
                 snapshot = None
-            old = subjects.get(path)
-            if old is not None and path not in paths:
-                # A carried subject changed by someone else (the user, another session in this checkout,
-                # a pull) stays the earlier turn's follow-up; only this turn's own edits make it this
-                # turn's obligation, or every unrelated change would block finishing.
-                continue
             if old is None or old.get("snapshot") != snapshot:
                 try:
                     changed_at = context.resolve_workspace_path(path).stat().st_mtime_ns
@@ -486,7 +488,11 @@ class DevelopmentVerification:
     def summary(self, session, *, delivered_ids=()):
         state = self.latest(session) or {}
         context = ToolContext(session.session_id, session.current_turn_id, Path(session.workspace_dir))
-        events = self.events(session)
+        # An ordinary conversation has no development obligations. Do not read
+        # its entire check history (or touch source files) just to report that.
+        select = getattr(self.runtime.store, "context_select", None)
+        events = (() if not state.get("subjects") else
+                  select(session.session_id, kinds=(E.CHECK_RECORDED,)) if callable(select) else self.events(session))
         subjects = []
         snapshots = {}
         latest = {}

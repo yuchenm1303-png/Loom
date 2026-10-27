@@ -202,6 +202,9 @@ class AgentRuntime:
         if self.tools.get("resolve_verification") is None:
             self.tools.register(resolve_verification_tool(self.development_verification))
         self.model_executor = ModelExecutor()
+        from .idle_compaction import IdleCompaction
+        self.idle_compaction = IdleCompaction(self)
+        self._idle_observed_tokens = {}
         self.instruction_loader = InstructionLoader()
         configured_parallel_tools = (
             max_parallel_tools
@@ -286,6 +289,7 @@ class AgentRuntime:
         return getattr(self, "reasoning", None)
 
     def close(self) -> None:
+        self.idle_compaction.close()
         self.visual_feedback.clear()
         getattr(self, "_request_ephemeral_frames", {}).clear()
         self._session_platforms.clear()
@@ -1749,10 +1753,19 @@ class AgentRuntime:
 
     def _on_model_response(self, session, event):
         self.development_verification.confirm_delivery(session)
+        self._idle_observed_tokens[session.session_id] = int(event.data.get("usage", {}).get("input_tokens") or 0)
 
     def _on_turn_finished(self, session, event):
         self.visual_feedback.clear(session.session_id)
         self.development_verification._pending_deliveries.pop(session.session_id, None)
+        observed = self._idle_observed_tokens.pop(session.session_id, 0)
+        try:
+            self.idle_compaction.schedule(session, observed)
+        except Exception:
+            # Optional idle work cannot turn a durably completed task into a
+            # failure after its final answer has already been delivered.
+            import logging
+            logging.getLogger(__name__).warning("Could not schedule idle context summary", exc_info=True)
 
     def _verification_summary(self, session):
         from .verification import verification_summary
@@ -1762,7 +1775,10 @@ class AgentRuntime:
             ToolContext(session.session_id, session.current_turn_id, Path(session.workspace_dir)))
 
     def _on_turn_activated(self, session_id, token):
-        self.development_verification.begin(self.store.load(session_id))
+        self.idle_compaction.cancel()
+        session = self.store.load(session_id)
+        self._emit_event(session, AgentEventKind.TURN_PHASE_CHANGED, data={"phase": "preparing"})
+        self.development_verification.begin(session)
 
     def _on_turn_deactivated(self, session_id, token):
         pass

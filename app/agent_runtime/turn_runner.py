@@ -112,6 +112,7 @@ class TurnRunner:
         tool_fault_batches = 0
         tools_finished_at = None
         try:
+            rt.idle_compaction.apply_ready(session)
             while True:
                 if rt._cancel_if_requested(session, token):
                     return rt._result(session)
@@ -147,6 +148,7 @@ class TurnRunner:
                         return rt._limit(session, "model step limit reached")
                     sample_steering_revision = _consume_steering_for_sample(rt, session, token)
                     request_preparation_started = time.perf_counter()
+                    rt._emit_event(session, Event.TURN_PHASE_CHANGED, data={"phase": "preparing"})
                     # Capture once so request context, advertised tools, and all
                     # tool calls from this response share one immutable world.
                     step = rt._capture_step_context(session, next_model_step=True)

@@ -395,7 +395,8 @@ def _context_event_projection(payload):
     """
     data = payload.get("data") or {}
     kind = payload.get("kind")
-    if kind in {"plan_updated", "browser_session_opened", "browser_session_released"}:
+    if kind in {"plan_updated", "browser_session_opened", "browser_session_released",
+                "context_summary_prepared", "context_summary_accounted", "turn_phase_changed"}:
         selected = dict(data)
     elif kind in {"verification_updated", "verification_finish_requested"}:
         selected = dict(data)
@@ -827,6 +828,34 @@ class FileAgentSessionStore:
         count = None if last is None else int(last)
         if count is not None and count <= 0:
             return ()
+
+        # Select headers before parsing bodies. Previously this filtered the
+        # fully materialized context view: one check lookup decoded every tool
+        # result and every earlier verification snapshot on a cold long log.
+        path = self.session_dir(session_id) / "events.jsonl"
+        with session_lock(path.parent):
+            recover(path.parent)
+            if not path.is_file():
+                return ()
+            with path.open("rb") as handle:
+                index = self._log_indexes.current(path, handle)
+                handle.seek(index.offset)
+                incomplete = bool(handle.read().strip())
+                if not incomplete:
+                    candidates = (index.turn_lines.get(turn_id, ())
+                                  if turn_id and turn_id == turn_id.strip() else range(index.lines))
+                    # Scan backwards for last=N so recent-state reads do not
+                    # allocate the whole history's candidate list either.
+                    numbers = []
+                    for number in reversed(candidates):
+                        if ((turn_id is None or index.turns[number] == turn_id)
+                                and (wanted is None or index.kinds[number] in wanted)):
+                            numbers.append(number)
+                            if count is not None and len(numbers) >= count:
+                                break
+                    lines = index.read(handle, list(reversed(numbers)))
+        if not incomplete:
+            return tuple(_event_from_payload(_context_event_projection(json.loads(line))) for line in lines)
 
         def select(records):
             if turn_id is not None:

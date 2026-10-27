@@ -867,8 +867,18 @@ def _prepare_context_with_model(rt, session, step, token):
     # for, so this trigger simply never fires there. Guessing a threshold instead
     # is what made a 21k conversation compact four times in three minutes.
     token_limit_reached = compaction_trigger is not None and compaction_context_tokens >= compaction_trigger
-    if hard_request_fits and not token_limit_reached:
-        return projected_visible, _metadata(
+    # A soft working-set target must not delay the first answer when a modest
+    # prompt still fits the actual model window. Large histories, provider
+    # overflow, explicit rollover and model-native thresholds remain mandatory.
+    # Tool continuations compact normally; completed turns warm a summary idle.
+    defer_soft_compaction = (
+        hard_request_fits and token_limit_reached and working_attainable
+        and getattr(step, "model_step", 0) == 1
+        and compaction_context_tokens < working_input_budget * 2
+        and (not limits.window_known or compaction_context_tokens < limits.auto_compact_token_limit)
+    )
+    if hard_request_fits and (not token_limit_reached or defer_soft_compaction):
+        metadata = _metadata(
             envelope=envelope,
             communication_language=communication_language,
             limits=limits,
@@ -883,6 +893,9 @@ def _prepare_context_with_model(rt, session, step, token):
             input_budget=input_budget,
             working_context_attainable=working_attainable,
         )
+        if defer_soft_compaction:
+            metadata["soft_compaction_deferred"] = True
+        return projected_visible, metadata
 
     # The compaction model may use the request-only reduced projection, but the
     # durable checkpoint must archive/repair canonical history. Keep those two
@@ -928,6 +941,11 @@ def _prepare_context_with_model(rt, session, step, token):
     import time
     recovery_started = time.perf_counter()
     compaction_model_ms = 0
+
+    phase_event = getattr(rt, "_emit_event", None)
+    if callable(phase_event):
+        from .contracts import AgentEventKind
+        phase_event(session, AgentEventKind.TURN_PHASE_CHANGED, data={"phase": "compacting"})
 
     while True:
         _raise_if_cancelled(token)

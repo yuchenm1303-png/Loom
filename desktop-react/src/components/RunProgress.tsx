@@ -7,10 +7,11 @@ import type { TranscriptItem } from "../types/loom";
 import { buildActivityRows } from "./activityModel";
 import { runtimeCopy, describeActivity } from "./runtimeCopy";
 import { Crossfade } from "./Crossfade";
+import { turnPhaseLabel } from "./turnPhase";
 import "./run-progress.css";
 
 interface RunProgressProps {
-  modelActivity?: { turnId: string; active: boolean; contentGapSeconds: number } | null;
+  modelActivity?: { turnId: string; active: boolean; contentGapSeconds: number; phase?: string } | null;
   items: TranscriptItem[];
   startedAt?: number | null;
   threadStatus?: string;
@@ -152,7 +153,10 @@ export function RunProgress({ items, startedAt, threadStatus, currentTurnId, tot
   const [now, setNow] = useState(() => Date.now());
   const runItems = useMemo(() => currentRunItems(items, currentTurnId), [currentTurnId, items]);
   const rawPhase = useMemo(() => phaseFor(runItems, threadStatus, language), [language, runItems, threadStatus]);
-  const presentedPhase = usePresentedPhase(rawPhase);
+  const runtimePhase = modelActivity?.turnId === currentTurnId
+    ? turnPhaseLabel(modelActivity?.phase, language) : undefined;
+  const presentedPhase = usePresentedPhase(runtimePhase && rawPhase.kind !== "urgent"
+    ? { label: runtimePhase, kind: "gap" } : rawPhase);
   const stats = useMemo(() => runStats(runItems), [runItems]);
   const tokenLabel = formatTokens(totalTokens);
   const finished = finishedLabel(threadStatus, language);
@@ -164,7 +168,7 @@ export function RunProgress({ items, startedAt, threadStatus, currentTurnId, tot
   const stalled = silentSeconds >= 6;
   const phase = finishing
     ? finished.label
-    : stalled
+    : stalled && !runtimePhase
       ? copy.runPhase.stalled
       : presentedPhase;
 

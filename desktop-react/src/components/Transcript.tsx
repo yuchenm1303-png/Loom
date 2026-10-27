@@ -77,8 +77,12 @@ import "./message-actions.css";
 import "./turn-flow.css";
 import "./conversation-motion.css";
 import "../taskCapsuleLens";
+import { turnPhaseLabel } from "./turnPhase";
+
+const TurnPhaseContext = createContext<string | undefined>(undefined);
 
 interface TranscriptProps {
+  runtimePhase?: string;
   threadId?: string;
   items: TranscriptItem[];
   running?: boolean;
@@ -318,11 +322,12 @@ function ReasoningBlock({
 /** The standalone live capsule for the gaps no message or tool row explains. */
 function ThinkingCapsule() {
   const copy = useRuntimeCopy();
+  const phase = useContext(TurnPhaseContext);
   const ref = useThinkingRegistration(true);
   return (
     <div ref={ref} className="inline-thinking" role="status" aria-live="polite">
       <ThinkingGlyph />
-      <span className="thinking-shimmer">{copy.thinking}</span>
+      <span className="thinking-shimmer">{turnPhaseLabel(phase, copy.lang) ?? copy.thinking}</span>
     </div>
   );
 }
@@ -1768,7 +1773,7 @@ function EmptyState({ disabled, onPrompt, onOpenInsights, connecting, startupSta
   );
 }
 
-export const Transcript = memo(function Transcript({ threadId, items, running, currentTurnId, workspace, promptDisabled, onPrompt, onApproval, onOpenInsights, connecting, startupStage, usageReady }: TranscriptProps) {
+export const Transcript = memo(function Transcript({ threadId, items, running, currentTurnId, workspace, promptDisabled, onPrompt, onApproval, onOpenInsights, connecting, startupStage, usageReady, runtimePhase }: TranscriptProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const historyRef = useRef<{ threadId?: string; ready: boolean; ids: ReadonlySet<string> }>({ ready: false, ids: new Set() });
   if (historyRef.current.threadId !== threadId || (!historyRef.current.ready && items.length > 0)) {
@@ -1805,7 +1810,7 @@ export const Transcript = memo(function Transcript({ threadId, items, running, c
   }, [items, onPrompt, promptDisabled, running]);
 
   return (
-    <TranscriptHistoryContext.Provider value={historyRef.current.ids}><div ref={scrollRef} className={`transcript-scroll ${!items.length ? "is-empty" : ""}`}>
+    <TurnPhaseContext.Provider value={running ? runtimePhase : undefined}><TranscriptHistoryContext.Provider value={historyRef.current.ids}><div ref={scrollRef} className={`transcript-scroll ${!items.length ? "is-empty" : ""}`}>
       <div className="chat-ambient" aria-hidden="true" />
       <main className={`transcript ${!items.length ? "is-empty" : ""}`} aria-live="polite" data-older-pending={firstMountedBlock > 0 ? "true" : undefined}>
         {!items.length ? (
@@ -1847,6 +1852,6 @@ export const Transcript = memo(function Transcript({ threadId, items, running, c
           );
         })}
       </main>
-    </div><TranscriptEdgeScrollbar scrollerRef={scrollRef} /></TranscriptHistoryContext.Provider>
+    </div><TranscriptEdgeScrollbar scrollerRef={scrollRef} /></TranscriptHistoryContext.Provider></TurnPhaseContext.Provider>
   );
 });

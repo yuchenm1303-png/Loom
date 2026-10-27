@@ -138,7 +138,9 @@ class ModelExecutor:
                 while True:
                     self._check_signal(token, steering_revision)
                     if on_activity is not None and time.monotonic() >= next_activity:
-                        on_activity({"active": True, "contentGapSeconds": max(0, time.monotonic() - (control.progress_at or control.started_at))})
+                        on_activity({"active": True,
+                            "phase": "running" if control.progress_at else "waiting_model",
+                            "contentGapSeconds": max(0, time.monotonic() - (control.progress_at or control.started_at))})
                         next_activity = time.monotonic() + 2.0
                     try:
                         ok, result = results.get(timeout=0.05)

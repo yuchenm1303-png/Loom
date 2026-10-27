@@ -305,6 +305,15 @@ class StreamingLoomAppServerService(LoomAppServerService):
             )
 
     def _on_runtime_event(self, event: AgentEvent) -> None:
+        phase = (event.data.get("phase") if event.kind is AgentEventKind.TURN_PHASE_CHANGED else
+                 "waiting_model" if event.kind is AgentEventKind.MODEL_REQUESTED else
+                 "retrying" if event.kind is AgentEventKind.MODEL_TRANSPORT_RETRY else
+                 "running" if event.kind in {AgentEventKind.MODEL_RESPONSE, AgentEventKind.TOOL_STARTED} else None)
+        if phase:
+            self._notify("turn/modelActivity", {
+                "threadId": event.session_id, "turnId": event.turn_id,
+                "phase": phase, "active": False, "contentGapSeconds": 0,
+            })
         if (
             event.kind is AgentEventKind.MODEL_RESPONSE_REJECTED
             and str(event.data.get("reason") or "") == "superseded_by_steering"
