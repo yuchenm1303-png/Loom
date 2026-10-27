@@ -66,7 +66,7 @@ jobs:
       - name: Run macOS Computer Use contract tests
         run: |
           desktop-react/.packaging-venv-mac/bin/python -m pip install "pytest>=8,<9"
-          desktop-react/.packaging-venv-mac/bin/python -m pytest -q tests/test_computer_macos.py
+          desktop-react/.packaging-venv-mac/bin/python -m pytest -q tests/test_computer_macos.py tests/test_macos_sandbox_security.py
           desktop-react/.packaging-venv-mac/bin/python tests/macos_native_bridge_contract.py
 
       - name: Package unsigned test DMG
@@ -79,6 +79,9 @@ jobs:
           set -euo pipefail
           APP="release/mac-arm64/Loom.app"
           test -d "$APP"
+          plutil -lint "$APP/Contents/Info.plist"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP/Contents/Info.plist")" = "com.loom.agent"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$APP/Contents/Info.plist")" = "Loom"
           RESOURCES="$APP/Contents/Resources"
           test -x "$RESOURCES/python"
           test -f "$RESOURCES/manifest.json"
@@ -96,10 +99,23 @@ jobs:
           LOOM_SMOKE_HOST_EXECUTABLE: ${{ github.workspace }}/desktop-react/release/mac-arm64/Loom.app/Contents/MacOS/Loom
         run: node scripts/host-process-smoke.mjs --packaged
 
+      - name: Generate verifiable DMG SHA-256 checksum
+        working-directory: desktop-react
+        run: |
+          set -euo pipefail
+          cd release
+          shopt -s nullglob
+          images=(*mac-arm64.dmg)
+          test "${#images[@]}" -eq 1
+          shasum -a 256 "${images[0]}" > SHA256SUMS-macos-arm64.txt
+          shasum -a 256 -c SHA256SUMS-macos-arm64.txt
+
       - name: Save experimental unsigned DMG
         uses: actions/upload-artifact@v4
         with:
           name: loom-macos-arm64-experimental
-          path: desktop-react/release/*mac-arm64.dmg
+          path: |
+            desktop-react/release/*mac-arm64.dmg
+            desktop-react/release/SHA256SUMS-macos-arm64.txt
           if-no-files-found: error
           retention-days: 7
