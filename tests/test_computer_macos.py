@@ -104,8 +104,8 @@ def test_mac_unicode_injected_as_quartz_key_events_without_clipboard(monkeypatch
     )
     assert outcome.ok
     assert events == [
-        (True, (20320, 22909, 55357, 56832)),
-        (False, (20320, 22909, 55357, 56832)),
+        (True, tuple(chr(code) for code in (20320, 22909, 55357, 56832))),
+        (False, tuple(chr(code) for code in (20320, 22909, 55357, 56832))),
     ]
     assert outcome.details["input_backend"] == "quartz-unicode"
     assert outcome.details["typed_text_length"] == 3
