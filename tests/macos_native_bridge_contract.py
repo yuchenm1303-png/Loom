@@ -27,7 +27,11 @@ def main() -> None:
     Quartz.CGEventKeyboardSetUnicodeString(event, len(units), tuple(chr(unit) for unit in units))
     length, readback = Quartz.CGEventKeyboardGetUnicodeString(event, 20, None, None)
     assert length == len(units), (length, len(units))
-    assert tuple(ord(ch) if isinstance(ch, str) else int(ch) for ch in readback[:length]) == units, (readback, units)
+    # PyObjC decodes UTF-16 surrogate pairs when returning the event payload:
+    # length measures UTF-16 units, whereas readback is a Python Unicode string.
+    assert len(readback.encode("utf-16-le")) // 2 == length, (readback, length)
+    assert tuple(int.from_bytes(readback.encode("utf-16-le")[i:i + 2], "little")
+                 for i in range(0, len(readback.encode("utf-16-le")), 2)) == units, (readback, units)
     print("loom-macos-native-bridge-ok")
 
 
