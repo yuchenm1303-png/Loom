@@ -76,6 +76,10 @@ jobs:
         run: node --check scripts/setup-ufo.mjs && node --check scripts/ufo-preflight.mjs
       - name: Install React desktop dependencies
         run: npm ci --no-audit --no-fund
+      - name: Download the Electron binary once
+        # npm ci leaves node_modules/electron/dist empty here, and the first require("electron") downloads it lazily.
+        # Three test files do that at the same moment and race on the file (ETXTBSY), so fetch it before they run.
+        run: node node_modules/electron/install.js
       - name: Let Electron use its sandbox on the runner
         # Ubuntu 24.04 restricts unprivileged user namespaces through AppArmor, which makes Electron abort at launch
         # ("The SUID sandbox helper binary was found, but is not configured correctly"). Allow the namespace sandbox
