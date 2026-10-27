@@ -74,7 +74,7 @@ test("image cards render direct PNGs and immediately load their page in the side
               for(let i=0;i<100;i++){if(check())return;await new Promise(r=>setTimeout(r,30));}
               throw new Error(label);
             };
-            await waitFor(() => document.querySelector('.browser-activity-visual img')?.naturalWidth > 0, 'Direct PNG preview failed');
+            await waitFor(() => document.querySelector('.browser-activity-visual img')?.naturalWidth > 0, 'Direct PNG preview failed: ' + (document.querySelector('.browser-activity-visual')?.outerHTML || document.body.innerHTML).slice(0, 600));
             if(document.querySelectorAll('.browser-activity-card').length !== 1) throw new Error('External automation created a browser card');
             document.querySelector('.browser-activity-card').click();
             await waitFor(() => window.commands.some(c => c.action === 'new-tab'), 'Card did not open page');
