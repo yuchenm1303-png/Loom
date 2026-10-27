@@ -11,8 +11,11 @@ Mac installer and must not replace the Windows release until native smoke tests 
   and unsigned arm64 DMG have a dedicated macOS build gate.
 - On macOS the Computer Use tool uses the **primary display** screenshot and
   pyautogui coordinates after explicit macOS consent. Unlike the Windows backend,
-  this does not provide accessibility-tree control discovery, individual window
-  targeting, secondary displays, or Unicode text injection.
+  this does not provide accessibility-tree control discovery, specific-window
+  targeting, or secondary-display capture. Text input uses native Quartz Unicode
+  key events instead of changing the clipboard; apps may still decline that input.
+- macOS can enumerate on-screen apps and activate an app from a fresh observation;
+  it does **not** promise to activate a particular window or a hidden app.
 - macOS OS-level sandboxing has **not** been implemented. The existing Loom
   approval policy still applies, but it is not a substitute for an OS sandbox.
 - Automatic desktop updates remain Windows-only until Mac's signing,
@@ -50,13 +53,15 @@ consent and refuses to inject input if either requirement is missing.
 
 Visual-only macOS observations expose no semantic control IDs. When an action
 requires one of these, Loom fails explicitly rather than silently redirecting
-the click to the wrong target. Computer Use tasks involving multiple monitors
-or Unicode typing are not complete yet. Browser-native tools should be
-preferred for web form input.
+the click to the wrong target. Known, visible apps can be activated but not a
+specific window. Secondary-monitor capture and input remain unsupported. Native
+Unicode keyboard events support Chinese and emoji without clipboard changes,
+but individual apps may ignore injected text, so a screenshot is required to
+verify insertion. Browser-native tools remain preferable for complex web forms.
 
 ## Promotion checklist
 
-1. Get green macOS arm64 CI on the feature branch.
+1. Keep macOS arm64 CI green (build, native Unicode bridge, frozen Host and DMG checks).
 2. Install the DMG on an actual Apple Silicon Mac, verify Host RPC, model switch,
    local workspace file operations, browser capture and long-running sessions.
 3. Verify real Screen Recording and Accessibility TCC prompts plus input control.
