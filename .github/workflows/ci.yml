@@ -96,7 +96,8 @@ jobs:
       - name: Prepare Electron fixtures
         run: npm run build:electron
       - name: Desktop scripts and relay contracts
-        run: npm run test:ufo-scripts
+        # Three of these launch a real Electron window, which needs a display on the runner.
+        run: xvfb-run -a npm run test:ufo-scripts
       - name: Electron contracts
         run: npm run test:electron
       - name: Streaming presentation contracts
