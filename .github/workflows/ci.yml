@@ -76,6 +76,12 @@ jobs:
         run: node --check scripts/setup-ufo.mjs && node --check scripts/ufo-preflight.mjs
       - name: Install React desktop dependencies
         run: npm ci --no-audit --no-fund
+      - name: Configure the Electron SUID sandbox helper
+        # Ubuntu 24.04 blocks unprivileged user namespaces, so Electron falls back to chrome-sandbox,
+        # which must be root-owned and setuid or the browser tests abort at launch.
+        run: |
+          sudo chown root:root node_modules/electron/dist/chrome-sandbox
+          sudo chmod 4755 node_modules/electron/dist/chrome-sandbox
       - name: Typecheck React desktop
         run: npm run typecheck
       - name: Prepare Electron fixtures
