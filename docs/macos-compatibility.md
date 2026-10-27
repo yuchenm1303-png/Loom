@@ -18,6 +18,11 @@ Mac installer and must not replace the Windows release until native smoke tests 
   it does **not** promise to activate a particular window or a hidden app.
 - macOS OS-level sandboxing has **not** been implemented. The existing Loom
   approval policy still applies, but it is not a substitute for an OS sandbox.
+  The `sandbox_status` tool reports `enforced=false` on macOS. Choosing the
+  `required` sandbox policy fails closed on read-only and workspace command
+  execution instead of running an unsandboxed command. The default `auto`
+  policy is **not isolated** on macOS; avoid running untrusted shell commands
+  in the preview build.
 - Automatic desktop updates remain Windows-only until Mac's signing,
   notarization, update feed, and rollback path have been independently verified.
 
@@ -41,7 +46,12 @@ System Settings > Privacy & Security after attempting to open it.
 For an automated build, use the **macOS Desktop (experimental)** GitHub Actions
 workflow on the feature branch. It checks architecture, builds the app, tests the
 frozen Python Host and saves the candidate DMG as a short-lived artifact. The
-workflow does not publish or promote it to a release.
+workflow does not publish or promote it to a release. It additionally
+checks the app bundle identifier and executable and uploads a
+`SHA256SUMS-macos-arm64.txt` checksum alongside the unsigned DMG. After
+downloading and extracting the artifact, use `shasum -a 256 -c
+SHA256SUMS-macos-arm64.txt` in the same directory before installing. This
+verifies transfer integrity but does **not** replace Apple signing/notarization.
 
 ## Computer Use permission setup
 
@@ -50,6 +60,13 @@ The first screen capture requires **Screen & System Audio Recording** (called
 also require **Accessibility**. Grant both in System Settings > Privacy &
 Security for Loom and relaunch the app after permission changes. Loom checks
 consent and refuses to inject input if either requirement is missing.
+
+For safe coordinate actions, Loom rejects a screenshot if its primary-display
+pixel aspect ratio does not match the logical pointer coordinate space. This
+catches common external-monitor capture mismatches instead of clicking the wrong
+display. It also rejects input from screenshots over two minutes old and releases
+injected Command/Shift/Option modifiers even when a keyboard action fails.
+These checks **do not** add secondary-monitor support.
 
 Visual-only macOS observations expose no semantic control IDs. When an action
 requires one of these, Loom fails explicitly rather than silently redirecting
