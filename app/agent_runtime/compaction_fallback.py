@@ -91,10 +91,11 @@ def build_deterministic_compaction_summary(
 
 
 def _invalid_compaction_error(exc: BaseException) -> bool:
+    # Every unusable-output reason (tool calls, tool markup, empty, wrong language)
+    # gets the local checkpoint; failing the user's turn over a summary is worse.
     text = str(exc or "").casefold()
     return (
-        "context compaction model repeatedly returned unexpected tool calls" in text
-        or "context compaction model repeatedly returned an empty summary" in text
+        "context compaction model repeatedly returned " in text
         or "context compaction model returned unexpected tool calls" in text
         or "context compaction model returned an empty summary" in text
     )
@@ -147,13 +148,18 @@ def _fit_fallback_replacement(
         max_messages=runtime.limits.max_messages,
     )
 
+    def over_message_limit(items: Sequence[Any]) -> bool:
+        # 0 means unlimited, as everywhere else that reads RuntimeLimits.max_messages.
+        limit = runtime.limits.max_messages
+        return limit > 0 and len(transient) + len(items) > limit
+
     def projected_tokens(items: Sequence[Any]) -> int:
         from .context_composer import render_request
         return budget.estimate_tokens(render_request(runtime, session, transient, items, replacement=True), tools)
 
     while (
         projected_tokens(replacement) > limits.input_budget_tokens
-        or len(transient) + len(replacement) > runtime.limits.max_messages
+        or over_message_limit(replacement)
     ) and len(replacement) > 1:
         removable = next(
             (
@@ -195,7 +201,7 @@ def _fit_fallback_replacement(
     estimated_after = projected_tokens(replacement)
     if (
         estimated_after > limits.input_budget_tokens
-        or len(transient) + len(replacement) > runtime.limits.max_messages
+        or over_message_limit(replacement)
     ):
         raise budget.ContextBudgetExceeded(
             estimated_tokens=estimated_after,

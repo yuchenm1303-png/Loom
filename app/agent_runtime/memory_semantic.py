@@ -959,6 +959,10 @@ class SemanticMemoryRuntime(MemoryRuntime):
 
     def _process_semantic_job(self, extraction_id: str) -> None:
         pipeline = self._semantic_pipeline
+        foreground = getattr(self, "_foreground_turn_running", None)
+        if pipeline is not None and callable(foreground) and foreground():
+            pipeline.schedule(extraction_id, delay=max(1.0, float(getattr(self, "memory_idle_seconds", 45.0))))
+            return
         job = self.memory_semantic_store.claim(extraction_id)
         if job is None:
             return

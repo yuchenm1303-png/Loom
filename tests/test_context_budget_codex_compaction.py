@@ -353,6 +353,36 @@ def test_repeated_compaction_tool_calls_fall_back_without_failing_turn():
     assert session.messages[-1].name == "loom_compaction"
 
 
+def test_fallback_checkpoint_fits_when_the_message_limit_is_unlimited():
+    # RuntimeLimits.max_messages defaults to 0, meaning unlimited. The fallback once read 0 as a
+    # hard cap, so in production every deterministic checkpoint failed the turn instead.
+    unexpected = ModelResponse(
+        tool_calls=(ToolCall(call_id="call-compact", name="exec", arguments={}),),
+        finish_reason="tool_calls",
+    )
+    runtime = FakeRuntime([unexpected, unexpected, unexpected])
+    runtime.limits.max_messages = 0
+    session = Session(_history())
+
+    _messages, metadata = prepare_context(runtime, session, Step(), Token())
+
+    assert metadata["compaction_fallback"] == "deterministic"
+    assert runtime.commits[-1]["summary"].startswith("Deterministic Loom checkpoint")
+
+
+def test_repeated_wrong_language_summary_falls_back_without_failing_turn():
+    english = ModelResponse(text="This handoff keeps switching to English.")
+    runtime = FakeRuntime([english, english, english])
+    session = Session(_history())
+    session.messages.append(AIMessage(role=MessageRole.USER, content="继续检查这个问题"))
+
+    _messages, metadata = prepare_context(runtime, session, Step(), Token())
+
+    assert len(runtime.model_executor.requests) == runtime.limits.model_retries + 1
+    assert metadata["compaction_fallback"] == "deterministic"
+    assert runtime.commits[-1]["summary"].startswith("Deterministic Loom checkpoint")
+
+
 def test_replacement_history_contains_real_users_and_summary_not_tool_or_assistant_items():
     call = ToolCall(call_id="call-2", name="echo", arguments={"text": "x"})
     history = [

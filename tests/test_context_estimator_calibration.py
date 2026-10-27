@@ -350,17 +350,21 @@ def test_summary_of_serialized_tool_markup_is_retried_not_committed():
     assert runtime.commits[-1]["summary"] == "PROGRESS: audited the OAuth handlers."
 
 
-def test_persistent_serialized_tool_markup_fails_instead_of_committing_garbage():
+def test_persistent_serialized_tool_markup_checkpoints_locally_instead_of_committing_garbage():
+    # The markup is never committed as a summary, and the user's turn does not fail over it either:
+    # the deterministic local checkpoint takes the summary's place, as for every unusable output.
     markup = "<invoke name=\"exec\"><argv><item>cmd</item></argv></invoke>"
     runtime = _forced_compaction_runtime(
         [ModelResponse(text=markup, finish_reason="stop") for _ in range(3)]
     )
     session = Session([AIMessage(role=MessageRole.USER, content="build the feature")])
 
-    with pytest.raises(RuntimeError, match="tool-call markup instead of a summary"):
-        prepare_context(runtime, session, Step(), Token())
+    _messages, metadata = prepare_context(runtime, session, Step(), Token())
 
-    assert runtime.commits == []
+    assert metadata["compaction_fallback"] == "deterministic"
+    summary = runtime.commits[-1]["summary"]
+    assert summary.startswith("Deterministic Loom checkpoint")
+    assert markup not in summary
 
 
 def test_reasoning_only_summary_is_retried_rather_than_committed_empty():

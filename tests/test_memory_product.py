@@ -420,3 +420,48 @@ def test_project_memory_rpc_exposes_only_workspace_scoped_memory(tmp_path):
     assert runtime.memory_store.get(workspace_record.memory_id) is None
     assert runtime.memory_store.get(global_record.memory_id) is not None
     runtime.close()
+
+
+def test_background_extraction_waits_while_any_turn_is_running(tmp_path):
+    # At Host start the backlog once extracted memory from ~30 old conversations during the
+    # user's turn, on the same provider and process. Background work now yields to a live turn.
+    platform = ScriptedPlatform(
+        [
+            ModelResponse(text="foreground done", usage=ModelUsage(5, 2, 7)),
+            ModelResponse(text=_memory_payload(), usage=ModelUsage(12, 8, 20)),
+        ]
+    )
+    runtime, _store = _runtime(
+        tmp_path,
+        platform,
+        memory_enabled=True,
+        memory_auto_extract=False,
+        memory_semantic_auto=False,
+    )
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    session = runtime.create_session(AGENT_FAST_ROLE.role_id, workspace_dir=workspace)
+    assert runtime.start_turn(session.session_id, "Use pytest for this workspace.").status is AgentStatus.COMPLETED
+    runtime.memory_auto_extract = True
+    scheduled = []
+
+    class Pipeline:
+        def schedule(self, session_id, *, delay=None):
+            scheduled.append((session_id, delay))
+
+    runtime._memory_pipeline = Pipeline()
+    with runtime._active_tokens_guard:
+        runtime._active_tokens["another-conversation"] = object()
+    try:
+        runtime._process_memory_session(session.session_id)
+        assert len(platform.requests) == 1
+        assert [sid for sid, _ in scheduled] == [session.session_id]
+        assert scheduled[0][1] >= 1.0
+    finally:
+        with runtime._active_tokens_guard:
+            runtime._active_tokens.pop("another-conversation", None)
+    runtime._process_memory_session(session.session_id)
+    assert len(platform.requests) == 2
+    assert runtime.memory_store.counts(workspace=workspace)["total"] == 1
+    runtime._memory_pipeline = None
+    runtime.close()

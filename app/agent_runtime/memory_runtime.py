@@ -564,13 +564,28 @@ class MemoryRuntime(MultiAgentRuntime):
             ),
         )
 
+    def _foreground_turn_running(self) -> bool:
+        """Whether any conversation is mid-turn. Background memory work yields to it.
+
+        Extraction and consolidation are model calls on the same provider and process as the
+        user's turn; at Host start a backlog of every old conversation once ran during one.
+        """
+        guard = getattr(self, "_active_tokens_guard", None)
+        tokens = getattr(self, "_active_tokens", None)
+        if guard is None or tokens is None:
+            return False
+        with guard:
+            return bool(tokens)
+
     def _process_memory_session(self, session_id: str) -> None:
         pipeline = self._memory_pipeline
         try:
             session = self.store.load(session_id)
-            if session.status in {AgentStatus.RUNNING, AgentStatus.WAITING_APPROVAL}:
+            if (session.status in {AgentStatus.RUNNING, AgentStatus.WAITING_APPROVAL}
+                    or self._foreground_turn_running()):
                 if pipeline is not None:
-                    pipeline.schedule(session_id, delay=self.memory_idle_seconds)
+                    # At least a second: with a tiny idle setting this would otherwise spin for the whole turn.
+                    pipeline.schedule(session_id, delay=max(1.0, self.memory_idle_seconds))
                 return
             self.extract_memory_from_events(session_id)
         except FileNotFoundError:

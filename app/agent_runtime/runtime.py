@@ -4,6 +4,7 @@ import json
 import os
 import queue
 import threading
+import time
 import uuid
 from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
 from contextlib import nullcontext
@@ -1669,8 +1670,10 @@ class AgentRuntime:
             AgentEventKind.TOOL_FAILED if failed else AgentEventKind.TOOL_COMPLETED,
             data=data,
         )
+        recorded = time.perf_counter()
         self.development_verification.observe(session)
         self.development_verification.observed(session, call, result)
+        self.development_verification._spent(session.session_id, "result_bookkeeping_ms", recorded)
         assessment = result.data.get("verification") if call.name in {"exec", "browser_run_check"} else None
         spec = call.arguments.get("verification") if call.name in {"exec", "browser_run_check"} else None
         if assessment is None and isinstance(spec, dict) and spec.get("case_id") and not result.ok:

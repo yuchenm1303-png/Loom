@@ -48,47 +48,114 @@ def _digest(value):
     return hashlib.sha256(json.dumps(value, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
 
 
+_GIT_TIMEOUT = 3.0
+_GIT_ENV = {**os.environ, "GIT_OPTIONAL_LOCKS": "0", "GIT_TERMINAL_PROMPT": "0", "LC_ALL": "C"}
+_prefixes = {}
+_prefix_guard = threading.Lock()
+
+
+def _git(workspace, *args, timeout=_GIT_TIMEOUT):
+    """One bounded git process, or None.
+
+    Output goes to a temporary file, not a pipe: on Windows a pipe stays open while any
+    process that inherited its handle lives, and ``subprocess.run(timeout=...)`` then
+    waits for that process too. A file returns when git does, and the kill is final.
+    Optional locks are off, so a scan never takes or waits on index.lock.
+    """
+    import tempfile
+    with tempfile.TemporaryFile() as out:
+        try:
+            process = subprocess.Popen(["git", "-c", "core.fsmonitor=false", *args], cwd=workspace,
+                stdin=subprocess.DEVNULL, stdout=out, stderr=subprocess.DEVNULL, env=_GIT_ENV,
+                creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0)
+        except OSError:
+            return None
+        try:
+            code = process.wait(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            try:
+                process.wait(timeout=1)
+            except subprocess.TimeoutExpired:
+                pass
+            return None
+        if code:
+            return None
+        out.seek(0)
+        return out.read(512_001)
+
+
+def _git_prefix(workspace):
+    """The workspace's path inside its repository; constant for a folder, so asked once."""
+    key = os.path.normcase(os.path.abspath(str(workspace)))
+    with _prefix_guard:
+        if key in _prefixes:
+            return _prefixes[key]
+    output = _git(workspace, "rev-parse", "--show-prefix")
+    if output is None:
+        return None
+    prefix = output.decode("utf-8", errors="replace").strip()
+    with _prefix_guard:
+        _prefixes[key] = prefix
+    return prefix
+
+
+def git_state(workspace):
+    """(dirty source fingerprints, discovery, HEAD) from one ``git status`` run.
+
+    Porcelain v2 with ``--branch`` carries the HEAD oid, so attribution needs one
+    process per scan instead of separate status, prefix and rev-parse runs.
+    """
+    output = _git(workspace, "status", "--porcelain=v2", "-z", "--branch", "--untracked-files=all",
+                  "--ignore-submodules=all", "--", ".", ":(exclude).cache", ":(exclude)node_modules",
+                  ":(exclude).loom")
+    if output is None:
+        files, discovery = plain_sources(workspace)
+        return files, discovery, ""
+    if len(output) > 512_000:
+        return {}, "scope_too_large", ""
+    prefix = _git_prefix(workspace)
+    if prefix is None:
+        files, discovery = plain_sources(workspace)
+        return files, discovery, ""
+    head, names = "", []
+    records = output.decode("utf-8", errors="replace").split("\0")
+    index = 0
+    while index < len(records):
+        record = records[index]
+        index += 1
+        if record.startswith("# branch.oid "):
+            value = record[len("# branch.oid "):].strip()
+            head = value if len(value) == 40 else ""
+        elif record.startswith("1 "):
+            names.append(record.split(" ", 8)[-1])
+        elif record.startswith("2 "):
+            names.append(record.split(" ", 9)[-1])
+            if index < len(records):
+                names.append(records[index])  # the rename's original path
+                index += 1
+        elif record.startswith("u "):
+            names.append(record.split(" ", 10)[-1])
+        elif record.startswith("? "):
+            names.append(record[2:])
+    names = [p[len(prefix):] for p in names if p.startswith(prefix)]
+    paths = sorted({p for p in names if source_kind(p)})
+    if len(paths) > 128:
+        return {}, "scope_too_large", head
+    context = ToolContext("workspace", "observation", Path(workspace))
+    files = {}
+    for path in paths:
+        try:
+            files.update(subject_snapshot(context, [path])["files"])
+        except (ValueError, OSError):
+            files[path] = "unavailable"
+    return files, "available", head
+
+
 def git_sources(workspace):
     """Dirty source fingerprints, bounded and read-only. Never opens unrelated clean files."""
-    try:
-        output = subprocess.run(["git", "status", "--porcelain=v1", "-z", "--untracked-files=all", "--", ".",
-                                 ":(exclude).cache", ":(exclude)node_modules", ":(exclude).loom"],
-            cwd=workspace, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, timeout=3,
-            creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0)
-        if output.returncode:
-            return plain_sources(workspace)
-        if len(output.stdout) > 512_000:
-            return {}, "scope_too_large"
-        prefix_result = subprocess.run(["git", "rev-parse", "--show-prefix"], cwd=workspace,
-            stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, timeout=3,
-            creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0)
-        prefix = prefix_result.stdout.decode("utf-8", errors="replace").strip()
-        records = output.stdout.decode("utf-8", errors="replace").split("\0")
-        names, index = [], 0
-        while index < len(records):
-            record = records[index]
-            index += 1
-            if len(record) < 4:
-                continue
-            names.append(record[3:])
-            if "R" in record[:2] or "C" in record[:2]:
-                if index < len(records):
-                    names.append(records[index])
-                    index += 1
-        names = [p[len(prefix):] for p in names if p.startswith(prefix)]
-        paths = sorted({p for p in names if source_kind(p)})
-        if len(paths) > 128:
-            return {}, "scope_too_large"
-        context = ToolContext("workspace", "observation", Path(workspace))
-        files = {}
-        for path in paths:
-            try:
-                files.update(subject_snapshot(context, [path])["files"])
-            except (ValueError, OSError):
-                files[path] = "unavailable"
-        return files, "available"
-    except (OSError, subprocess.TimeoutExpired):
-        return plain_sources(workspace)
+    files, discovery, _ = git_state(workspace)
+    return files, discovery
 
 
 def plain_sources(workspace):
@@ -112,28 +179,18 @@ def plain_sources(workspace):
 
 
 def git_head(workspace):
-    try:
-        result = subprocess.run(["git", "rev-parse", "HEAD"], cwd=workspace, stdout=subprocess.PIPE,
-            stderr=subprocess.DEVNULL, timeout=3,
-            creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0)
-        value = result.stdout.decode("ascii", errors="ignore").strip()
-        return value if result.returncode == 0 and len(value) == 40 else ""
-    except (OSError, subprocess.TimeoutExpired):
-        return ""
+    output = _git(workspace, "rev-parse", "HEAD")
+    value = output.decode("ascii", errors="ignore").strip() if output is not None else ""
+    return value if len(value) == 40 else ""
 
 
 def committed_paths(workspace, before, after):
     if not before or not after or before == after:
         return []
-    try:
-        result = subprocess.run(["git", "diff", "--relative", "--name-only", "-z", "--no-renames", before, after, "--", "."],
-            cwd=workspace, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, timeout=3,
-            creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0)
-        if result.returncode == 0 and len(result.stdout) <= 512_000:
-            return [p for p in result.stdout.decode("utf-8", errors="replace").split("\0") if source_kind(p)][:128]
-    except (OSError, subprocess.TimeoutExpired):
-        pass
-    return []
+    output = _git(workspace, "diff", "--relative", "--name-only", "-z", "--no-renames", before, after, "--", ".")
+    if output is None or len(output) > 512_000:
+        return []
+    return [p for p in output.decode("utf-8", errors="replace").split("\0") if source_kind(p)][:128]
 
 
 def feature_recipes(context, paths):
@@ -163,6 +220,51 @@ def feature_recipes(context, paths):
         return [], f"invalid: {str(exc)[:200]}"
 
 
+_GIT_READS = {"status", "log", "show", "diff", "grep", "rev-parse", "ls-files", "ls-tree", "blame",
+              "check-ignore", "merge-base", "cat-file", "describe", "shortlog", "rev-list", "for-each-ref",
+              "show-ref", "help", "version", "whatchanged", "name-rev", "count-objects"}
+_SHELL_READS = {"dir", "type", "findstr", "find", "where", "echo", "more", "tree", "ver", "cd", "rg", "ls", "cat",
+                "head", "tail", "wc", "grep", "pwd", "which", "stat", "file", "du", "df"}
+
+
+def _read_only_words(words):
+    if not words:
+        return False
+    program = os.path.basename(words[0]).lower()
+    if program.endswith(".exe"):
+        program = program[:-4]
+    if program == "git":
+        rest = list(words[1:])
+        while rest and rest[0] in {"-C", "-c", "--git-dir", "--work-tree"}:
+            rest = rest[2:]
+        while rest and rest[0].startswith("-") and rest[0] not in {"--version", "--help"}:
+            rest = rest[1:]
+        return bool(rest) and rest[0].lower() in _GIT_READS or (bool(rest) and rest[0] in {"--version", "--help"})
+    return program in _SHELL_READS
+
+
+def read_only_command(argv):
+    """True only for commands that provably cannot write: a git read or a listing/search, no redirection.
+
+    Anything else, including every interpreter, is treated as a possible writer and scanned.
+    """
+    if not isinstance(argv, (list, tuple)) or not argv or not all(isinstance(a, str) for a in argv):
+        return False
+    program = os.path.basename(argv[0]).lower()
+    if program.endswith(".exe"):
+        program = program[:-4]
+    if program == "cmd" and len(argv) >= 3 and argv[1].lower() in {"/c", "/s", "/d"}:
+        line = " ".join(a for a in argv[1:] if a.lower() not in {"/c", "/s", "/d"})
+        if any(mark in line for mark in (">", "%", "^", "`", "$(")):
+            return False
+        import re
+        segments = [segment.strip() for segment in re.split(r"&&|\|\||&|\|", line)]
+        return all(_read_only_words(segment.split()) for segment in segments if segment) and any(segments)
+    if any(mark in a for a in argv[1:] for mark in (">",)) and program in _SHELL_READS:
+        return False
+    return _read_only_words(list(argv))
+
+
 class DevelopmentVerification:
     _workspace_guard = threading.Lock()
     _workspace_locks = {}
@@ -170,27 +272,49 @@ class DevelopmentVerification:
     def __init__(self, runtime):
         self.runtime = runtime
         self._pending_deliveries = {}
+        self._timing = {}
+        self._timing_guard = threading.Lock()
+
+    def _spent(self, session_id, key, started):
+        elapsed = (time.perf_counter() - started) * 1000
+        with self._timing_guard:
+            bucket = self._timing.setdefault(session_id, {})
+            bucket[key] = round(bucket.get(key, 0) + elapsed, 1)
+
+    def take_timing(self, session_id):
+        """What verification cost since the last model request, for that request's event."""
+        with self._timing_guard:
+            return self._timing.pop(session_id, {})
 
     @contextmanager
-    def execution(self, context, tool_name):
+    def execution(self, context, tool_name, arguments=None):
         """Attribute mutations inside a tool boundary, not at an arbitrary later scan.
 
         Local mutating tools share a workspace lease. Foreign processes are not
         inferred to belong to this task merely because HEAD/status changed.
+        A command that cannot write (a search, a listing, a git read) is not scanned.
         """
         if tool_name not in {"exec", "apply_patch", "write_workspace_text"}:
+            yield
+            return
+        if tool_name == "exec" and read_only_command((arguments or {}).get("argv")):
             yield
             return
         key = os.path.normcase(str(context.workspace.resolve()))
         with self._workspace_guard:
             lock = self._workspace_locks.setdefault(key, threading.RLock())
         with lock:
-            before, available = git_sources(context.workspace) if tool_name == "exec" else ({}, "unavailable")
-            head = git_head(context.workspace) if available == "available" else ""
+            started = time.perf_counter()
+            if tool_name == "exec":
+                before, available, head = git_state(context.workspace)
+            else:
+                before, available, head = {}, "unavailable", ""
+            self._spent(context.session_id, "attribution_scan_ms", started)
             try:
                 yield
             finally:
                 if available == "available":
+                    started = time.perf_counter()
                     try:
                         self._capture_execution(context, before, head)
                     except (OSError, ValueError, RuntimeError):
@@ -198,17 +322,22 @@ class DevelopmentVerification:
                         # operation into a reported tool failure and invite replay.
                         import logging
                         logging.getLogger(__name__).warning("Could not capture source attribution for %s", context.turn_id)
+                    self._spent(context.session_id, "attribution_scan_ms", started)
 
     def _capture_execution(self, context, before, head):
-        after, status = git_sources(context.workspace)
+        after, status, new_head = git_state(context.workspace)
         if status != "available":
             return
-        candidates = set(before) | set(after) | set(committed_paths(context.workspace, head, git_head(context.workspace)))
-        current = subject_snapshot(context, sorted(candidates))["files"] if candidates else {}
+        candidates = set(before) | set(after) | set(committed_paths(context.workspace, head, new_head))
+        missing = sorted(candidates - set(after))
+        current = {**(subject_snapshot(context, missing)["files"] if missing else {}),
+                   **{p: v for p, v in after.items() if p in candidates}}
         changed = {p for p in candidates if before.get(p) != current.get(p)}
+        if not changed:
+            return
         session = self.runtime.store.load(context.session_id)
         state = self.latest(session)
-        if state and changed:
+        if state:
             owned = sorted(set(state.get("owned_paths", [])) | changed)
             self.runtime._emit_event(session, E.VERIFICATION_UPDATED, data={**state, "owned_paths": owned})
 
@@ -217,6 +346,12 @@ class DevelopmentVerification:
         return self.runtime._lifecycle_events(session.session_id, kinds=KINDS)
 
     def latest(self, session):
+        # Read several times per step; only the newest state matters, so on a long session do not build
+        # (and copy) every earlier 20 KB state just to throw them away.
+        select = getattr(self.runtime.store, "context_select", None)
+        if callable(select):
+            newest = select(session.session_id, kinds=(E.VERIFICATION_UPDATED,), last=1)
+            return newest[-1].data if newest else None
         return next((e.data for e in reversed(self.events(session)) if e.kind is E.VERIFICATION_UPDATED), None)
 
     @staticmethod
@@ -292,15 +427,24 @@ class DevelopmentVerification:
         previous = self.latest(session)
         if previous and previous.get("turn_id") == session.current_turn_id:
             return  # approval resume / safe handoff retains the original baseline
-        baseline, discovery = git_sources(session.workspace_dir)
+        started = time.perf_counter()
+        baseline, discovery, head = git_state(session.workspace_dir)
+        self._spent(session.session_id, "attribution_scan_ms", started)
         resolved = {s["path"]: s["status"] for s in self.summary(session)["subjects"]} if previous else {}
         carried = {p: item for p, item in (previous or {}).get("subjects", {}).items()
                    if resolved.get(p) not in {"passed", "blocked", "not_applicable"}}
         self.runtime._emit_event(session, E.VERIFICATION_UPDATED,
             data={"turn_id": session.current_turn_id, "baseline": baseline, "discovery": discovery,
-                  "subjects": carried, "last_git": baseline, "head": git_head(session.workspace_dir), "observations": []})
+                  "subjects": carried, "last_git": baseline, "head": head, "observations": []})
 
     def observe(self, session, *, scan_git=False):
+        started = time.perf_counter()
+        try:
+            self._observe(session, scan_git=scan_git)
+        finally:
+            self._spent(session.session_id, "observe_ms", started)
+
+    def _observe(self, session, *, scan_git=False):
         state = self.latest(session)
         if state is None:
             return
@@ -310,11 +454,9 @@ class DevelopmentVerification:
         last_git, discovery = state.get("last_git", {}), state.get("discovery", "unavailable")
         head = state.get("head", "")
         if scan_git:
-            current, discovery = git_sources(session.workspace_dir)
+            current, discovery, head = git_state(session.workspace_dir)
             if discovery == "available":
                 last_git = current
-            new_head = git_head(session.workspace_dir)
-            head = new_head
         context = ToolContext(session.session_id, session.current_turn_id, Path(session.workspace_dir))
         for path in sorted(paths | subjects.keys()):
             kind = source_kind(path)
@@ -325,6 +467,11 @@ class DevelopmentVerification:
             except (ValueError, OSError):
                 snapshot = None
             old = subjects.get(path)
+            if old is not None and path not in paths:
+                # A carried subject changed by someone else (the user, another session in this checkout,
+                # a pull) stays the earlier turn's follow-up; only this turn's own edits make it this
+                # turn's obligation, or every unrelated change would block finishing.
+                continue
             if old is None or old.get("snapshot") != snapshot:
                 try:
                     changed_at = context.resolve_workspace_path(path).stat().st_mtime_ns

@@ -1,0 +1,11 @@
+# Build context for services/loom_web_gateway/Dockerfile only (BuildKit reads <Dockerfile>.dockerignore).
+# The image installs its own dependencies with `npm ci`; a node_modules left in the checkout must never be
+# copied over them. One from Electron 36 did exactly that and failed every deploy after the move to 44.
+**/node_modules
+**/dist
+**/dist-electron
+**/.cursor-build
+.git
+.cache
+.loom
+artifacts

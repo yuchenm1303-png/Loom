@@ -35,20 +35,24 @@ def test_ui_edit_without_check_registration_creates_obligation_and_bounds_false_
     runtime, session, workspace = make_runtime(tmp_path, platform)
     try:
         result = runtime.start_turn(session.session_id, "Fix the clipped panel")
-        assert result.status is AgentStatus.LIMIT_REACHED
-        assert "Verification incomplete" in result.final_text
+        # Recovery stays bounded, but the work and the model's report are kept: the turn completes
+        # and says what is unverified instead of being thrown away as a failed run.
+        assert result.status is AgentStatus.COMPLETED
+        assert result.final_text.startswith("All good.")
+        assert "1 source file(s) changed in this turn still lack current acceptance evidence" in result.final_text
         assert len(platform.requests) == 4
         assert development(platform.requests[1])["subjects"][0]["kind"] == "visual"
         assert development(platform.requests[1])["unresolved"] == 1
         events = runtime.store.events(session.session_id)
-        assert not any(e.kind is E.TURN_COMPLETED for e in events)
+        assert not any(e.kind is E.LIMIT_REACHED for e in events)
         attempts = [e for e in events if e.kind is E.VERIFICATION_FINISH_REQUESTED]
         assert [e.data["attempt"] for e in attempts] == [1, 2, 3]
-        stopped = next(e for e in events if e.kind is E.LIMIT_REACHED)
-        assert stopped.data["development_verification"]["unresolved"] == 1
-        assert "Verification incomplete" in stopped.data["text"]
+        assert attempts[-1].data["exhausted"] is True
+        completed = next(e for e in events if e.kind is E.TURN_COMPLETED)
+        assert completed.data["development_verification"]["unresolved"] == 1
+        assert completed.data["verification_notice"]
         endings = [e for e in events if e.kind is E.MODEL_RESPONSE and not e.data.get("tool_calls")]
-        assert all(e.data["display_phase"] == "commentary" for e in endings)
+        assert [e.data["display_phase"] for e in endings] == ["commentary", "commentary", "final_answer"]
         assert result.usage.total_tokens >= 0
     finally:
         runtime.close()
@@ -151,7 +155,7 @@ def test_shell_edits_of_already_dirty_source_are_observed(tmp_path):
     (workspace / "Panel.tsx").write_text("already dirty")
     try:
         result = runtime.start_turn(session.session_id, "Fix the panel through a script")
-        assert result.status is AgentStatus.LIMIT_REACHED
+        assert result.status is AgentStatus.COMPLETED
         assert development(platform.requests[1])["subjects"][0]["path"] == "Panel.tsx"
     finally:
         runtime.close()
@@ -173,7 +177,7 @@ def test_edits_committed_inside_one_command_are_still_observed(tmp_path):
     subprocess.run(["git", "-C", str(workspace), "commit", "-qm", "baseline"], check=True)
     try:
         result = runtime.start_turn(session.session_id, "Fix the UI")
-        assert result.status is AgentStatus.LIMIT_REACHED
+        assert result.status is AgentStatus.COMPLETED
         assert development(platform.requests[1])["subjects"][0]["path"] == "Panel.tsx"
     finally:
         runtime.close()

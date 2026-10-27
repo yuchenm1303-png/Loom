@@ -82,7 +82,7 @@ def test_app_server_patched_production_request_contains_turn_protocol(tmp_path):
 
 
 def test_default_prompt_exposes_decision_cards_without_turning_routine_work_into_questions() -> None:
-    assert DEFAULT_AGENT_SYSTEM_PROMPT_VERSION == 12
+    assert DEFAULT_AGENT_SYSTEM_PROMPT_VERSION == 13
     assert "```loom-decision" in DEFAULT_AGENT_SYSTEM_PROMPT
     assert '"title"' not in DEFAULT_AGENT_SYSTEM_PROMPT
     assert "routine implementation details" in DEFAULT_AGENT_SYSTEM_PROMPT
@@ -132,3 +132,12 @@ def test_production_runs_silent_batches_and_preserves_request_contract_after_rel
             assert request.parallel_tool_calls is True
     finally:
         runtime.close()
+
+
+def test_v13_bounds_waiting_on_external_systems_and_v12_sessions_still_migrate() -> None:
+    from app.agent_runtime.system_prompts import _V12_DEFAULT_AGENT_SYSTEM_PROMPT
+    assert "Do not wait on an external system" in DEFAULT_AGENT_SYSTEM_PROMPT
+    assert "A deployment that has not happened is a finding to report" in DEFAULT_AGENT_SYSTEM_PROMPT
+    assert _V12_DEFAULT_AGENT_SYSTEM_PROMPT in _LEGACY_DEFAULT_AGENT_SYSTEM_PROMPTS
+    assert "Do not wait on an external system" not in _V12_DEFAULT_AGENT_SYSTEM_PROMPT
+    assert DEFAULT_AGENT_SYSTEM_PROMPT not in _LEGACY_DEFAULT_AGENT_SYSTEM_PROMPTS

@@ -110,6 +110,7 @@ class TurnRunner:
     def run(self, session, token):
         rt = self.runtime
         tool_fault_batches = 0
+        tools_finished_at = None
         try:
             while True:
                 if rt._cancel_if_requested(session, token):
@@ -240,6 +241,13 @@ class TurnRunner:
                             "retry_wait_ms": retry_wait_ms,
                             "requested_max_output_tokens": request.max_output_tokens,
                             "progress_feedback": progress_feedback_mode(step.request_state.system_prompt),
+                            # Host time between steps, by cause: what the last tool batch's results cost to
+                            # record and attribute, and the wait from that batch's end to this request.
+                            "host_overhead_ms": {
+                                **rt.development_verification.take_timing(session.session_id),
+                                **({"after_tools_ms": round((request_preparation_started - tools_finished_at) * 1000)}
+                                   if tools_finished_at is not None and not preparation_reused else {}),
+                            },
                             **extra,
                             **model_identity,
                         })
@@ -615,7 +623,8 @@ class TurnRunner:
                                 for c in calls
                             ],
                             "phase": response.phase,
-                            "display_phase": "commentary" if calls or response.end_turn is False or finish_review else "final_answer",
+                            "display_phase": ("commentary" if calls or response.end_turn is False
+                                              or (finish_review and not finish_review["exhausted"]) else "final_answer"),
                             "phase_source": "provider" if response.phase is not None else "unknown",
                             "end_turn": response.end_turn,
                             "execution_intent_source": next_execution_action(response).source,
@@ -644,12 +653,11 @@ class TurnRunner:
                     raise RuntimeError(f"model response did not complete: {reason}")
                 if finish_review:
                     rt._emit_event(session, Event.VERIFICATION_FINISH_REQUESTED, data=finish_review)
-                    rt._release_step_context(step)
-                    if finish_review["exhausted"]:
-                        session.final_text = ("Verification incomplete: source changes still lack current acceptance evidence. "
-                                              "The run stopped after bounded verification recovery; no success was confirmed.")
-                        return rt._limit(session, "unresolved development verification after bounded recovery")
-                    continue
+                    if not finish_review["exhausted"]:
+                        rt._release_step_context(step)
+                        continue
+                    # Recovery is bounded, and so is its verdict: the work done and the model's own report stand,
+                    # completed with a notice that names what stays unverified, never discarded as a failed run.
                 decision = next_execution_action(response)
                 if decision.action is ExecutionAction.EXECUTE_TOOLS:
                     session.tool_calls += len(calls)
@@ -697,6 +705,7 @@ class TurnRunner:
                     }
                     if not rt._process_pending_tools(session, token, step=step):
                         return rt._result(session)
+                    tools_finished_at = time.perf_counter()
                     continue
                 if decision.action is ExecutionAction.SAMPLE:
                     rt._release_step_context(step)
@@ -719,9 +728,17 @@ class TurnRunner:
                                            if session.communication_language == "zh" else
                                            "Runtime verification: acceptance remains blocked; the changed UI or behavior is not confirmed as passing.")
                 elif development_summary["status"] == "pending":
-                    verification_notice = ("运行时验收记录：先前修改仍缺少当前验收证据，界面或功能尚未确认通过。"
-                                           if session.communication_language == "zh" else
-                                           "Runtime verification: earlier changes still lack current acceptance evidence and remain unverified.")
+                    own = sum(s.get("origin_turn_id") == session.current_turn_id and s["status"] not in
+                              {"passed", "blocked", "not_applicable"} for s in development_summary["subjects"])
+                    if own:
+                        verification_notice = (f"运行时验收记录：本轮修改的 {own} 个源文件还没有当前验收证据，界面或功能尚未确认通过。"
+                                               if session.communication_language == "zh" else
+                                               f"Runtime verification: {own} source file(s) changed in this turn still lack "
+                                               "current acceptance evidence and remain unverified.")
+                    else:
+                        verification_notice = ("运行时验收记录：先前修改仍缺少当前验收证据，界面或功能尚未确认通过。"
+                                               if session.communication_language == "zh" else
+                                               "Runtime verification: earlier changes still lack current acceptance evidence and remain unverified.")
                 if verification_notice:
                     session.final_text += "\n\n" + verification_notice
                 session.error = ""
