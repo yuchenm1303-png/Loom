@@ -85,18 +85,8 @@ try {
   if (!fs.existsSync(executable)) throw new Error("Frozen macOS Python Host is missing");
   const browsers = path.join(runtimeDir, "browsers");
   fs.cpSync(browserCache, browsers, { recursive: true, force: true });
-  const chrome = [
-    "chromium-*/chrome-mac*/Chromium.app/Contents/MacOS/Chromium",
-    "chromium-*/chrome-mac*/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing",
-  ].flatMap(pattern => {
-    // The browser path is validated by first-run-test, not guessed from a revision.
-    const parts = pattern.split("/");
-    const parent = fs.readdirSync(browsers).filter(name => name.startsWith("chromium-"));
-    return parent.map(name => path.join(browsers, name, ...parts.slice(1)));
-  }).some(p => fs.existsSync(p));
-  // Chromium revisions may change directory layout; the frozen runtime's own
-  // first-run launch gate is authoritative for whether the payload works.
-  if (!chrome) console.log("[mac-runtime] Chromium directory layout differs; testing bundled browser launch");
+  // first-run-test checks the real Playwright Chromium executable and launch;
+  // the browser layout varies by Playwright revision and macOS architecture.
   run(executable, ["self-test"]);
   run(executable, ["first-run-test"]);
   verifyPackagedRuntime(runtimeDir);
