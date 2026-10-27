@@ -20,6 +20,8 @@ def _operator(monkeypatch, *, screen=True, accessibility=True):
         moveTo=lambda *args: calls.append(("move", args)),
         press=lambda *args: calls.append(("press", args)),
         hotkey=lambda *args: calls.append(("hotkey", args)),
+        keyDown=lambda key: calls.append(("down", key)),
+        keyUp=lambda key: calls.append(("up", key)),
         write=lambda *args, **kwargs: calls.append(("write", args)),
     )
     quartz = SimpleNamespace(
@@ -164,4 +166,67 @@ def test_mac_shortcut_uses_command_modifier(monkeypatch):
     operator.execute(
         ComputerAction(type=ComputerActionType.HOTKEY, keys=("ctrl", "a")), observation
     )
-    assert calls == [("hotkey", ("command", "a"))]
+    assert calls == [
+        ("down", "command"), ("down", "a"), ("up", "a"), ("up", "command")
+    ]
+
+
+def test_mac_refuses_screen_capture_mismatched_to_logical_display(monkeypatch):
+    operator, calls = _operator(monkeypatch)
+    pyautogui = sys.modules["pyautogui"]
+    # Two screens or a wrongly cropped image can produce a mismatched aspect.
+    pyautogui.screenshot = lambda: Image.new("RGB", (300, 100))
+    with pytest.raises(RuntimeError, match="does not match the primary display"):
+        operator.observe()
+    assert calls == []
+
+
+def test_mac_refuses_action_from_stale_observation(monkeypatch):
+    from dataclasses import replace
+
+    operator, calls = _operator(monkeypatch)
+    observation = operator.observe()
+    metadata = dict(observation.metadata)
+    metadata["captured_at_monotonic"] -= computer_macos.MAX_OBSERVATION_AGE_SECONDS + 1
+    expired = replace(observation, metadata=metadata)
+    action = ComputerAction(type=ComputerActionType.CLICK, point=ComputerPoint(0.5, 0.5))
+    with pytest.raises(RuntimeError, match="screenshot is stale"):
+        operator.execute(action, expired)
+    assert calls == []
+
+
+def test_mac_multiple_keys_use_one_chord(monkeypatch):
+    operator, calls = _operator(monkeypatch)
+    operator.execute(
+        ComputerAction(type=ComputerActionType.KEY, keys=("ctrl", "shift", "a")),
+        operator.observe(),
+    )
+    assert calls == [
+        ("down", "command"), ("down", "shift"), ("down", "a"),
+        ("up", "a"), ("up", "shift"), ("up", "command")
+    ]
+
+
+def test_mac_releases_held_shortcut_modifiers_when_key_fails(monkeypatch):
+    operator, calls = _operator(monkeypatch)
+    pyautogui = sys.modules["pyautogui"]
+
+    def key_down(key):
+        calls.append(("down", key))
+        if key == "a":
+            raise RuntimeError("keyboard unavailable")
+
+    pyautogui.keyDown = key_down
+    with pytest.raises(RuntimeError, match="keyboard unavailable"):
+        operator.execute(
+            ComputerAction(type=ComputerActionType.HOTKEY, keys=("ctrl", "a")),
+            operator.observe(),
+        )
+    assert calls == [
+        ("down", "command"), ("down", "a"), ("up", "command")
+    ]
+
+
+def test_mac_screen_scale_allows_retina_and_nonretina():
+    assert computer_macos._screen_scale(100, 50, 100, 50) == 1
+    assert computer_macos._screen_scale(100, 50, 200, 100) == 2
