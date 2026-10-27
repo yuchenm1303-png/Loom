@@ -67,7 +67,7 @@ test("image cards render direct PNGs and immediately load their page in the side
         });
         await new Promise(resolve => server.listen(0,'127.0.0.1',resolve));
         try {
-          const win = new BrowserWindow({show:false,webPreferences:{contextIsolation:true,backgroundThrottling:false}});
+          const win = new BrowserWindow({show:process.platform==='linux',webPreferences:{contextIsolation:true,backgroundThrottling:false}});
           await win.loadURL('http://127.0.0.1:'+server.address().port+'/');
           const outcome = await win.webContents.executeJavaScript(\`(async () => {
             const waitFor = async (check, label) => {
