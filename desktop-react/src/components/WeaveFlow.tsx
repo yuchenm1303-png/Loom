@@ -692,8 +692,10 @@ export const WeaveStage = memo(function WeaveStage({
             }}
           />
           <div id={earlierId}>
+            {/* Built only while open: a long live stage folds hundreds of rows here, and a closed (or closing) fold
+                draws what it held when it was open, so building them on every update was work thrown away. */}
             <Fold open={earlierOpen}>
-              <div className="wv-list is-nested">{earlierRows.map((row) => renderRow(row, { still: true }))}</div>
+              {earlierOpen ? <div className="wv-list is-nested">{earlierRows.map((row) => renderRow(row, { still: true }))}</div> : null}
             </Fold>
           </div>
         </div></div>
@@ -706,7 +708,8 @@ export const WeaveStage = memo(function WeaveStage({
     </div>
   );
 
-  const body = (
+  // Built only while the stage is open: a folded stage draws what it held when it was last open.
+  const renderBody = () => (
     <div className="wv-list">
       {segments.map((segment, index) => {
         if (deferred.has(index)) return null;
@@ -746,7 +749,7 @@ export const WeaveStage = memo(function WeaveStage({
         </Fold>
       ) : null}
       <div id={bodyId} className="wv-body-slot">
-        <Fold open={open} animateIn={false}>{body}</Fold>
+        <Fold open={open} animateIn={false}>{open ? renderBody() : null}</Fold>
       </div>
     </section>
   );
