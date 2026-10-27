@@ -101,7 +101,8 @@ def relay(monkeypatch):
             return 200, {"user": {"id": 7}}
         raise AssertionError(path)
 
-    monkeypatch.setenv("LOOM_WEB_ORIGIN", "https://testserver")
+    # The gateway reads its origin at import time, so patch the constant it uses.
+    monkeypatch.setattr(gateway, "WEB_ORIGIN", "https://testserver")
     monkeypatch.setattr(gateway, "_account_request", account)
     monkeypatch.setattr(gateway, "hub", gateway.RelayHub())
     gateway._refresh_tasks.clear()
@@ -118,6 +119,21 @@ def browser(client, device="a"):
 def host(client, device):
     connection = client.websocket_connect("/api/ws/device", headers={"authorization": "Bearer access"})
     return connection
+
+
+@pytest.mark.parametrize("provider", ["github", "Google"])
+def test_oauth_start_redirects_to_the_account_service_and_returns_to_this_origin(relay, provider):
+    client, _ = relay
+    result = client.get(f"/api/auth/oauth/start/{provider}", follow_redirects=False)
+    assert result.status_code == 302
+    target = result.headers["location"]
+    assert target.startswith(f"{gateway.ACCOUNT_BASE_URL}/auth/oauth/{provider.lower()}/start?")
+    assert "return_to=https%3A%2F%2Ftestserver%2F" in target
+
+
+def test_oauth_start_rejects_unknown_providers(relay):
+    client, _ = relay
+    assert client.get("/api/auth/oauth/start/nope", follow_redirects=False).status_code == 400
 
 
 def test_two_hosts_stay_online_and_requests_use_selected_device(relay):

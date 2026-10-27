@@ -519,7 +519,7 @@ async def auth_reset_password(request: Request) -> Response:
 
 
 @app.get("/api/auth/oauth/start/{provider}")
-async def auth_oauth_start(provider: str) -> Response:
+async def auth_oauth_start(provider: str, request: Request) -> Response:
     provider = str(provider).casefold()
     if provider not in {"google", "github"}:
         return JSONResponse({"ok": False, "error": _error("OAUTH_PROVIDER_INVALID", "Unsupported sign-in provider.", 400)}, status_code=400)
