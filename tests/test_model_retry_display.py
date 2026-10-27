@@ -22,8 +22,8 @@ def test_permanent_or_exhausted_failure_never_claims_to_retry():
     assert _event_item_identity(event(AgentEventKind.MODEL_RESPONSE_REJECTED, {"will_retry": False})) is None
 
 
-def test_transport_retries_continue_beyond_previous_limit_until_recovered(tmp_path, monkeypatch):
-    from app.agent_runtime import AgentRuntime, AgentStatus, FileAgentSessionStore, SandboxManager, SandboxPolicy
+def test_transport_retries_continue_while_the_configured_budget_allows_until_recovered(tmp_path, monkeypatch):
+    from app.agent_runtime import AgentLimits, AgentRuntime, AgentStatus, FileAgentSessionStore, SandboxManager, SandboxPolicy
     from app.ai.errors import AITransportError
     waits = []
     monkeypatch.setattr("app.agent_runtime.turn_runner.wait_for_signal", lambda token, revision, seconds: waits.append(seconds))
@@ -31,25 +31,27 @@ def test_transport_retries_continue_beyond_previous_limit_until_recovered(tmp_pa
         calls = 0
         def execute_chat(self, profile, request):
             self.calls += 1
-            if self.calls <= 8:
+            if self.calls <= 5:
                 raise AITransportError("upstream unavailable", retryable=True, status_code=429)
             from app.ai import ModelResponse
             return ModelResponse(text="Done")
     platform = Platform()
     store = FileAgentSessionStore(tmp_path / "state")
-    runtime = AgentRuntime(platform=platform, store=store, sandbox_manager=SandboxManager(policy=SandboxPolicy.OFF))
+    # The default budget is two retries inside 90 s; this run asks for the five retries the limit allows.
+    runtime = AgentRuntime(platform=platform, store=store, sandbox_manager=SandboxManager(policy=SandboxPolicy.OFF),
+        limits=AgentLimits(transport_retries=5, max_recovery_seconds=600))
     try:
         session = runtime.create_session("agent.fast", workspace_dir=tmp_path)
         result = runtime.start_turn(session.session_id, "Check")
         assert result.status is AgentStatus.COMPLETED
-        assert platform.calls == 9
-        assert waits == [1, 2, 4, 8, 16, 20, 20, 20]
+        assert platform.calls == 6
+        assert waits == [1, 2, 4, 8, 16]
         requests = [e.data for e in store.events(session.session_id) if e.kind is AgentEventKind.MODEL_REQUESTED]
         assert requests[0]["request_preparation_reused"] is False
         assert all(r["request_preparation_reused"] and r["request_preparation_ms"] == 0 for r in requests[1:])
         assert all(r["retry_wait_ms"] >= 0 for r in requests)
         retries = [e for e in store.events(session.session_id) if e.kind is AgentEventKind.MODEL_RESPONSE_REJECTED]
-        assert [e.data["will_retry"] for e in retries] == [True] * 8
+        assert [e.data["will_retry"] for e in retries] == [True] * 5
         assert not any(e.kind is AgentEventKind.TOOL_STARTED for e in store.events(session.session_id))
     finally:
         runtime.close()

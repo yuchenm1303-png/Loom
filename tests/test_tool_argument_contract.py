@@ -78,7 +78,7 @@ def test_invalid_declaration_is_a_configuration_error_not_a_model_repair():
 
 
 @pytest.mark.parametrize("undeclared", [False, True])
-def test_schema_repair_feedback_is_actionable_and_batch_execution_is_atomic(tmp_path, undeclared):
+def test_schema_repair_feedback_is_actionable_and_a_valid_predecessor_keeps_its_progress(tmp_path, undeclared):
     from app.agent_runtime import AgentRuntime, AgentStatus, AgentTool, FileAgentSessionStore, ToolRegistry, ToolResult, SandboxManager, SandboxPolicy
     from app.ai import MessageRole
     calls, requests = [], []
@@ -89,7 +89,7 @@ def test_schema_repair_feedback_is_actionable_and_batch_execution_is_atomic(tmp_
         def execute_chat(self, profile, request):
             requests.append(request)
             if len(requests) == 1:
-                response = ModelResponse(tool_calls=(ToolCall("valid-in-rejected-batch", "record_once", {"value": "must-not-execute"}),
+                response = ModelResponse(tool_calls=(ToolCall("valid-before-the-fault", "record_once", {"value": "kept"}),
                     ToolCall("invalid", "unknown_record" if undeclared else "record_once", {"value": ["private-value"]})), finish_reason="tool_calls")
             elif len(requests) == 2:
                 response = ModelResponse(tool_calls=(ToolCall("corrected", "record_once", {"value": "once"}),), finish_reason="tool_calls")
@@ -101,13 +101,13 @@ def test_schema_repair_feedback_is_actionable_and_batch_execution_is_atomic(tmp_
     try:
         session = runtime.create_session("agent.fast", workspace_dir=tmp_path)
         assert runtime.start_turn(session.session_id, "Record").status is AgentStatus.COMPLETED
-        assert calls == ["once"]
-        # Each call of the faulty batch is answered by its own correlated result; none ran.
+        # A valid call ahead of the fault runs once and is answered; only the faulty call is sent back for repair,
+        # and the model is not asked to replay the member that succeeded.
+        assert calls == ["kept", "once"]
+        # Each call of the batch is answered by its own correlated result.
         results = {m.tool_call_id: m for m in requests[1].messages if m.role is MessageRole.TOOL}
-        assert set(results) == {"valid-in-rejected-batch", "invalid"}
-        held = json.loads(results["valid-in-rejected-batch"].content)
-        assert held["data"]["execution_status"] == "not_executed"
-        assert "must-not-execute" not in results["valid-in-rejected-batch"].content
+        assert set(results) == {"valid-before-the-fault", "invalid"}
+        assert "Saved" in results["valid-before-the-fault"].content
         feedback = json.loads(results["invalid"].content)
         assert feedback["data"]["execution_status"] == "not_executed"
         if undeclared:
@@ -118,7 +118,7 @@ def test_schema_repair_feedback_is_actionable_and_batch_execution_is_atomic(tmp_
         assert "private-value" not in results["invalid"].content
         events = runtime.store.events(session.session_id)
         assert not [e for e in events if e.kind.value == "model_response_rejected"]
-        assert {e.data["call_id"] for e in events if e.kind.value == "tool_failed"} == {"valid-in-rejected-batch", "invalid"}
+        assert {e.data["call_id"] for e in events if e.kind.value == "tool_failed"} == {"invalid"}
     finally:
         runtime.close()
 

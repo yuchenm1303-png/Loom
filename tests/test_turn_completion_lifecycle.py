@@ -1,6 +1,6 @@
 from app.ai import ModelResponse
 from app.agent_runtime.context_runtime import ContextAgentRuntime
-from app.agent_runtime.contracts import AgentStatus, AgentEventKind as Event
+from app.agent_runtime.contracts import AgentLimits, AgentStatus, AgentEventKind as Event
 from app.agent_runtime.storage import FileAgentSessionStore
 from app.agent_runtime.sandbox import SandboxManager, SandboxPolicy
 from scripted_agent_platform import Scripted
@@ -17,8 +17,11 @@ def make_runtime(tmp_path, responses, **options):
 
 def test_long_history_followup_does_not_invoke_an_implicit_completion_reviewer(tmp_path):
     from app.ai import AIMessage, MessageRole
+    # The default 64k working context would compact this history with a model call of its own; this test is about
+    # completion review, so it runs without a working-context policy.
     rt, session, platform = make_runtime(tmp_path, [ModelResponse(text="Report saved; long-run coverage is still unverified."),
-        ModelResponse(text="Not fully done: report exists, long-run coverage remains unverified.")])
+        ModelResponse(text="Not fully done: report exists, long-run coverage remains unverified.")],
+        limits=AgentLimits(working_context_tokens=None))
     try:
         session.messages = [AIMessage(role=MessageRole.USER, content="Test everything"),
             AIMessage(role=MessageRole.ASSISTANT, content="Repeated old progress. " * 10000)]
