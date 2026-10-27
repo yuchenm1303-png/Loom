@@ -54,6 +54,8 @@ def start(service, params):
         raise ValueError("Prepare a new integration from the original delivered run")
     root = identity(parent)
     ref = git(root, "symbolic-ref", "HEAD")
+    if parent.get("completionPolicy") == "local_integrate" and ref != parent.get("completionRef"):
+        raise ValueError("Automatic integration source branch changed")
     if not ref.startswith("refs/heads/") or git(root, "status", "--porcelain"):
         raise ValueError("Integration requires a clean source branch")
     head = git(root, "rev-parse", "HEAD")
@@ -75,6 +77,8 @@ def start(service, params):
         reviewFailures={}, feedback=[], verificationStatus="pending", reason="Merged content requires fresh independent acceptance",
         createdAt=time.time(), baseCommit=head, tokenBudget=budget, maxEpisodes=episodes, delivery="isolated_candidate_only",
         integrationTarget={"parentRunId": run_id, "ref": ref, "head": head, "deliveryCommit": receipt["commit"]})
+    if parent.get("completionPolicy") == "local_integrate":
+        child["workflowOwnerId"] = parent["id"]
     workspace = store.home / "workspaces" / child["id"]
     git(root, "worktree", "add", "--detach", str(workspace), commit)
     frozen = candidate(child, workspace)

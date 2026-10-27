@@ -10,12 +10,15 @@ from app.app_server_local_ipc import runtime_home_from_store
 from .runner import ProjectRunner
 from .store import ProjectStore
 from .review import git, candidate, review_workspace, assess, snapshot, definition_hash
-from . import delivery, integration
+from . import delivery, integration, workflow
 
 
 class ProjectExecutor:
     def __init__(self, service, home):
         self.service, self.home = service, home
+
+    def advance_workflow(self, run):
+        return workflow.advance(self.service, run)
 
     @staticmethod
     def session_key(run):
@@ -177,6 +180,9 @@ class ProjectServiceMixin:
             raise ValueError("objective is too long")
         budget, episodes = params.get("tokenBudget"), params.get("maxEpisodes")
         policy, cycles = params.get("reviewPolicy", "independent"), params.get("maxReviewCycles", 3)
+        completion = params.get("completionPolicy", "manual")
+        if completion not in ("manual", "local_integrate") or (completion == "local_integrate" and policy != "independent"):
+            raise ValueError("completionPolicy must be manual or local_integrate with independent review")
         if not isinstance(policy, str) or policy not in {"manual", "independent"} or type(cycles) is not int or not 1 <= cycles <= 10:
             raise ValueError("reviewPolicy must be manual or independent; maxReviewCycles must be within 1..10")
         if type(budget) is not int or not 1 <= budget <= 1_000_000_000:
@@ -185,7 +191,7 @@ class ProjectServiceMixin:
             raise ValueError("maxEpisodes must be within 1..10000")
         request = {"threadId": source.session_id, "objective": objective, "tokenBudget": budget, "maxEpisodes": episodes}
         # Omitted fields preserve retry fingerprints for already-created v1 runs.
-        for key in ("reviewPolicy", "maxReviewCycles"):
+        for key in ("reviewPolicy", "maxReviewCycles", "completionPolicy"):
             if key in params:
                 request[key] = params[key]
         previous = self.project_store.lookup(params.get("operationId"), {"action": "create", **request})
@@ -196,15 +202,25 @@ class ProjectServiceMixin:
             raise ValueError("first project-runner version requires a Git repository root")
         if git(root, "status", "--porcelain"):
             raise ValueError("commit or separate existing workspace changes before creating a project run")
+        completion_ref = git(root, "symbolic-ref", "HEAD") if completion == "local_integrate" else None
         return self.project_store.create(params.get("operationId"), {
             "sourceThreadId": source.session_id, "objective": objective, "tokenBudget": budget, "maxEpisodes": episodes,
             "repository": str(root), "baseCommit": git(root, "rev-parse", "HEAD"),
             "gitCommonDir": str(Path(git(root, "rev-parse", "--path-format=absolute", "--git-common-dir")).resolve()),
             "budgetEnforcement": "between_episodes", "delivery": "isolated_candidate_only",
-            "reviewPolicy": policy, "maxReviewCycles": cycles}, request=request)
+            "reviewPolicy": policy, "maxReviewCycles": cycles, "completionPolicy": completion,
+            "workflowControl": "paused", "workflowStatus": "idle", "completionRef": completion_ref}, request=request)
 
     def project_control(self, params, action):
         with self.project_runner.guard:
+            current = self.project_store.get(self._required_text(params, "runId"))
+            if current.get("completionPolicy") == "local_integrate":
+                run = workflow.control(self, params, action)
+                if action == "cancel":
+                    for target in (run, self.project_store.get(run["integrationRunId"]) if run.get("integrationRunId") else run):
+                        if target["activeEpisode"]:
+                            self.project_runner.executor.cancel(target["activeEpisode"])
+                return run
             run = self.project_store.control(params.get("operationId"), self._required_text(params, "runId"),
                                              params.get("expectedRevision"), action)
             if action == "cancel" and run["activeEpisode"]:
@@ -291,8 +307,8 @@ class ProjectControllerMixin:
     def _initialize(self, params):
         result = super()._initialize(params)
         result.setdefault("capabilities", {})["projectRunner"] = {
-            "version": 4, "maxWorkers": 1, "delivery": "local_verified_branch", "tokenLimit": "between_episodes",
-            "independentReview": True, "automaticRework": True, "reviewedIntegration": True}
+            "version": 5, "maxWorkers": 1, "delivery": "local_verified_branch", "tokenLimit": "between_episodes",
+            "independentReview": True, "automaticRework": True, "reviewedIntegration": True, "automaticLocalCompletion": True}
         return result
 
     def _dispatch(self, method, params):

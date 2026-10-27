@@ -138,7 +138,15 @@ class ProjectRunner:
                    for r in self.store.list()):
                 return
             for run in self.store.list():
+                advance = getattr(self.executor, "advance_workflow", None)
+                if advance and advance(run):
+                    return
                 if run["state"] == "running" and run["control"] == "active":
+                    if run.get("workflowOwnerId"):
+                        owner = self.store.get(run["workflowOwnerId"])
+                        if (owner.get("workflowControl") != "active" or owner.get("workflowStatus") in {"blocked", "completed"}
+                                or owner.get("integrationRunId") != run["id"]):
+                            continue
                     self._dispatch(run)
                     return
 
