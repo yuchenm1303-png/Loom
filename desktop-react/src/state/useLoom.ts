@@ -85,6 +85,9 @@ export function useLoom() {
   // The runtime uses a different durable item id, so clientInputId/inputId is the
   // stable identity across optimistic and authoritative representations.
   useEffect(() => {
+    // Items change on every streamed update. With nothing pending, even a no-op functional update schedules
+    // another pass of the whole App per update, and fast streaming chained those into an update-depth loop.
+    if (!optimisticSteers.length) return;
     const durableInputIds = new Set(
       loom.items
         .map((item) => String(item.inputId ?? "").trim())
@@ -99,7 +102,7 @@ export function useLoom() {
         ? current
         : next;
     });
-  }, [activeThreadId, loom.items]);
+  }, [activeThreadId, loom.items, optimisticSteers.length]);
 
   const visibleItems = useMemo(() => {
     const durableInputIds = new Set(

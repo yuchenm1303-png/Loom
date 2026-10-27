@@ -110,8 +110,16 @@ interface ToolSpec {
 const COMMAND_TOOL = /^(exec|execute|exec_command|shell|run_command|run-command|command|powershell|pwsh|bash|sh|cmd)$/;
 const EDIT_TOOL = /^(write_workspace_text|replace_workspace_text|write_file|write-file|edit_file|edit-file|apply_patch|apply-patch|patch_file|patch-file|replace_text|replace-text)$/;
 
+/** Asked for many times per item on every update of a live turn; an item's name never changes in place. */
+const normalizedNames = new WeakMap<TranscriptItem, string>();
+
 export function normalizedToolName(item: TranscriptItem): string {
-  return String(item.toolName ?? "").trim().toLowerCase().replace(/[\s-]+/g, "_");
+  let name = normalizedNames.get(item);
+  if (name === undefined) {
+    name = String(item.toolName ?? "").trim().toLowerCase().replace(/[\s-]+/g, "_");
+    normalizedNames.set(item, name);
+  }
+  return name;
 }
 
 export function isCommandTool(item: TranscriptItem): boolean {
@@ -182,8 +190,19 @@ export function commandDisplay(value: unknown): string {
   return argv.join(" ").trim();
 }
 
+const itemCommands = new WeakMap<TranscriptItem, string>();
+
 export function commandFromItem(item: TranscriptItem | null | undefined): string {
   if (!item) return "";
+  let command = itemCommands.get(item);
+  if (command === undefined) {
+    command = commandFromItemUncached(item);
+    itemCommands.set(item, command);
+  }
+  return command;
+}
+
+function commandFromItemUncached(item: TranscriptItem): string {
   if (item.type === "process") {
     return commandDisplay(item.argv) || text(item.command) || text(item.toolName);
   }

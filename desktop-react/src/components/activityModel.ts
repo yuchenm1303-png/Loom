@@ -265,7 +265,8 @@ export function turnProcessBreakdown(items: TranscriptItem[], copyForSummary: Ru
       if (row.item.type === "file_edit" && String(row.item.diff ?? "").trim()) lastDiff = String(row.item.diff);
       continue;
     }
-    const category = describeActivity(row.item, row.wrapper, itemStatus(row.item), copyForSummary, { fallbackToolLabel: "", screenshotCount: 0 }).category;
+    // Screenshot rows describe as "image", which is neither a search nor a read, so they still land below.
+    const category = describeRow(row, copyForSummary).category;
     if (category === "search" || category === "web") { searches += 1; continue; }
     if (isFileReadTool(row.item)) {
       const before = readPaths.size;
@@ -343,7 +344,28 @@ export function identitySource(row: ActivityRowModel): TranscriptItem {
   return source;
 }
 
+/**
+ * A live stage asks for every step's description on every update (labels, summaries, the row comparator), and
+ * a long turn has hundreds of steps: re-describing them all for each streamed token was what made a long turn
+ * slow. Items are replaced, never mutated, when they change, so a description stays valid as long as its
+ * inputs are the same objects.
+ */
+const describedRows = new WeakMap<TranscriptItem, {
+  wrapper: TranscriptItem | null;
+  copy: RuntimeCopy;
+  delta: FileEditDelta | undefined;
+  description: ActivityDescription;
+}>();
+
 export function describeRow(row: ActivityRowModel, copy: RuntimeCopy, delta?: FileEditDelta): ActivityDescription {
+  const cached = describedRows.get(row.item);
+  if (cached && cached.wrapper === row.wrapper && cached.copy === copy && cached.delta === delta) return cached.description;
+  const description = describeRowUncached(row, copy, delta);
+  describedRows.set(row.item, { wrapper: row.wrapper, copy, delta, description });
+  return description;
+}
+
+function describeRowUncached(row: ActivityRowModel, copy: RuntimeCopy, delta?: FileEditDelta): ActivityDescription {
   const status = rowStatus(row);
   const screenshots = browserScreenshotPaths(row.item).length;
   const primary = row.item.type === "file_edit" && delta ? { ...row.item, paths: delta.paths } : row.item;

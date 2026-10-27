@@ -345,11 +345,19 @@ function useSettledFlag(value: boolean, delayMs: number): boolean {
   return value && settled;
 }
 
+/** Whether a message asks for a decision, per message object: a long turn would otherwise re-parse every message per token. */
+const asksForDecision = new WeakMap<TranscriptItem, boolean>();
+
 function decisionMessageIds(items: TranscriptItem[]): Set<string> {
   return new Set(items.filter(item => item.type === "assistant_message"
     && item.phase === "commentary").filter(item => {
-      const parsed = parseDecisionMessage(item.text ?? "");
-      return parsed.decisions.length > 0 || parsed.incomplete;
+      let asks = asksForDecision.get(item);
+      if (asks === undefined) {
+        const parsed = parseDecisionMessage(item.text ?? "");
+        asks = parsed.decisions.length > 0 || parsed.incomplete;
+        asksForDecision.set(item, asks);
+      }
+      return asks;
     }).map(item => item.id));
 }
 
@@ -1611,7 +1619,17 @@ const TurnView = memo(function TurnView({
     wasActiveRef.current = active;
   }, [active, reduce]);
 
-  const fileDeltas = useMemo(() => fileEditDeltas(derived.orderedItems), [derived.orderedItems]);
+  // The deltas split every cumulative diff of the turn. Only a file_edit item changes them, so a streamed token
+  // or a finished command keeps the same map (and the step descriptions cached against it).
+  const fileDeltasRef = useRef<{ edits: TranscriptItem[]; deltas: ReturnType<typeof fileEditDeltas> } | null>(null);
+  const fileDeltas = useMemo(() => {
+    const edits = derived.orderedItems.filter((item) => item.type === "file_edit");
+    const previous = fileDeltasRef.current;
+    if (previous && previous.edits.length === edits.length && previous.edits.every((item, index) => item === edits[index])) return previous.deltas;
+    const deltas = fileEditDeltas(derived.orderedItems);
+    fileDeltasRef.current = { edits, deltas };
+    return deltas;
+  }, [derived.orderedItems]);
   const thinkingHandle = useRef<ThinkingHandle>({ element: null, mountedAt: 0 }).current;
   const settling = settle !== null;
 
