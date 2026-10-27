@@ -349,10 +349,12 @@ class _WithoutSelect:
 
 
 def _runtime_on(store):
+    from types import SimpleNamespace
     from app.agent_runtime import AgentRuntime
 
     runtime = object.__new__(AgentRuntime)
     runtime.store = store
+    runtime.development_verification = SimpleNamespace(context=lambda session: None)
     return runtime
 
 
@@ -369,7 +371,7 @@ def test_the_execution_context_is_the_same_with_and_without_a_store_that_narrows
     from types import SimpleNamespace
 
     _second_turn(store)
-    session = SimpleNamespace(session_id=SESSION, current_turn_id="turn-2")
+    session = SimpleNamespace(session_id=SESSION, current_turn_id="turn-2", workspace_dir=".")
     with_select = _runtime_on(store)._execution_context(session)
     without = _runtime_on(_WithoutSelect(store))._execution_context(session)
     assert [m.content for m in with_select[0]] == [m.content for m in without[0]] and with_select[1] == without[1]
