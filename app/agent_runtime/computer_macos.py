@@ -23,6 +23,9 @@ from .computer_types import (
     ComputerRect,
 )
 
+# Agent input must be grounded in a recent, correctly scaled screenshot.
+MAX_OBSERVATION_AGE_SECONDS = 120
+
 CAPTURE_PROFILES = {
     "fast": (60, 1_440_000),
     "balanced": (72, 2_500_000),
@@ -72,6 +75,38 @@ def _key(value: str) -> str:
         "return": "enter", "esc": "escape", "del": "delete",
     }
     return aliases.get(value.lower(), value.lower())
+
+
+def _screen_scale(width: int, height: int, image_width: int, image_height: int) -> float:
+    """Refuse screenshots that cannot map one-to-one to the primary display.
+
+    macOS screenshots can use Retina backing pixels, so dimensions need not
+    equal logical pointer coordinates. Both axes must have the same scale.
+    A screenshot spanning multiple displays is *not* a valid primary frame.
+    """
+    scale_x = image_width / width
+    scale_y = image_height / height
+    if not (0.95 <= scale_x <= 3.1 and abs(scale_x - scale_y) <= 0.03):
+        raise RuntimeError(
+            "macOS screenshot does not match the primary display; "
+            "check display arrangement and observe again before input"
+        )
+    return scale_x
+
+
+def _safe_hotkey(pyautogui, keys: tuple[str, ...]) -> None:
+    """Always release injected modifiers, including on failed key presses."""
+    normalized = tuple(_key(key) for key in keys)
+    if not normalized:
+        raise ValueError("macOS keyboard shortcut requires at least one key")
+    held: list[str] = []
+    try:
+        for key in normalized:
+            pyautogui.keyDown(key)
+            held.append(key)
+    finally:
+        for key in reversed(held):
+            pyautogui.keyUp(key)
 
 
 def _unicode_units(text: str, *, max_units: int = 20):
@@ -223,6 +258,8 @@ class MacOSComputerOperator:
             if width < 1 or height < 1:
                 raise RuntimeError("macOS primary-display geometry is unavailable")
             image = pyautogui.screenshot()
+            scale = _screen_scale(width, height, image.width, image.height)
+            capture_time = time.monotonic()
             # On Retina screens the screenshot may use backing pixels while
             # pyautogui coordinates use points. Both describe the same display;
             # normalized image points map to the logical coordinate frame.
@@ -260,6 +297,8 @@ class MacOSComputerOperator:
                     "backend": self.name,
                     "capture_profile": self.capture_profile,
                     "screenshot_pixels": [image.width, image.height],
+                    "display_scale": scale,
+                    "captured_at_monotonic": capture_time,
                     "coordinate_space": "primary_display_logical_points",
                 },
             )
@@ -276,6 +315,13 @@ class MacOSComputerOperator:
         if action.control_id:
             raise RuntimeError("macOS visual backend cannot target control_id; use screenshot coordinates")
         with self._lock:
+            captured = observation.metadata.get("captured_at_monotonic")
+            if not isinstance(captured, (int, float)) or not (
+                0 <= time.monotonic() - captured <= MAX_OBSERVATION_AGE_SECONDS
+            ):
+                raise RuntimeError("macOS screenshot is stale; observe again before input")
+            if observation.frame.source != "primary_display":
+                raise RuntimeError("macOS action requires a primary-display observation")
             if action.type is ComputerActionType.SWITCH_WINDOW:
                 _activate_visible_app(action.window_id, observation)
                 return ComputerExecution(
@@ -325,14 +371,17 @@ class MacOSComputerOperator:
                 else:
                     pyautogui.hscroll(amount if action.direction == "right" else -amount)
             elif action.type is ComputerActionType.HOTKEY:
-                pyautogui.hotkey(*(_key(key) for key in action.keys))
+                _safe_hotkey(pyautogui, action.keys)
             elif action.type is ComputerActionType.KEY:
-                for key in action.keys:
-                    pyautogui.press(_key(key))
+                if len(action.keys) > 1:
+                    _safe_hotkey(pyautogui, action.keys)
+                else:
+                    for key in action.keys:
+                        pyautogui.press(_key(key))
             elif action.type is ComputerActionType.CLEAR_TEXT:
                 if point:
                     pyautogui.click(*point)
-                pyautogui.hotkey("command", "a")
+                _safe_hotkey(pyautogui, ("command", "a"))
                 pyautogui.press("backspace")
             elif action.type is ComputerActionType.TYPE:
                 if point:
