@@ -25,7 +25,7 @@ def test_context_projection_caches_large_history_without_losing_durable_results(
                       "evidence_refs": [{"call_id": "verify"}]}]}
     store.append_event(AgentEvent("plan", "abcdef", "turn", E.PLAN_UPDATED, "2026-10-05T00:00:01Z", plan))
     projected = store.context_events("abcdef")
-    assert projected[0].data == {}
+    assert projected[0].data == {"call_id": "verify", "data": {}}  # the id stays so a plan can cite it; the body does not
     assert projected[1].data == plan
     metrics = store._event_cache.metrics()
     assert store.context_events("abcdef") == projected
