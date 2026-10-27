@@ -228,6 +228,10 @@ def test_standalone_service_survives_first_runtime_detach(monkeypatch, concurren
         assert 1 <= len(processes) <= (2 if concurrent else 1)
         a.stop()
         assert any(process.poll() is None for process in processes)
+        # The service drops the stopped client on its own thread, so the count settles a moment after stop().
+        deadline = time.monotonic() + 5
+        while b.status()["runtime_clients"] != 1 and time.monotonic() < deadline:
+            time.sleep(0.05)
         assert b.status()["runtime_clients"] == 1
         output = {}
         caller = call_in_thread(b, output, "b")
