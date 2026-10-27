@@ -10,12 +10,13 @@ def main() -> None:
         raise RuntimeError("macOS bridge contract requires Darwin")
     import Quartz
     import AppKit
+    import ApplicationServices
     from app.agent_runtime.computer_macos import _unicode_units
 
     assert AppKit.NSWorkspace is not None
     assert callable(Quartz.CGWindowListCopyWindowInfo)
     assert callable(Quartz.CGPreflightScreenCaptureAccess)
-    assert callable(Quartz.AXIsProcessTrusted)
+    assert callable(ApplicationServices.AXIsProcessTrusted)
 
     text = "你好😀"
     units = next(iter(_unicode_units(text)))
