@@ -238,7 +238,9 @@ class AmbientScheduler:
             for run in self._runs("running", "waiting_approval", task=task_id):
                 if run["task"] == task_id and run["status"] in {"running", "waiting_approval"}:
                     try:
-                        self.executor.cancel(run)
+                        receipt = self.executor.cancel(run)
+                        if isinstance(receipt, dict):
+                            run["cancelReceipt"] = {key: receipt.get(key) for key in ("requested", "turnId", "status")}
                         run["status"] = "cancelling"
                     except Exception as exc:
                         run.update(status="needs_review", error=f"Cancellation needs inspection: {exc}")
@@ -296,7 +298,7 @@ class AmbientScheduler:
                 if outcome:
                     previous = run["status"]
                     run.update(outcome)
-                    if previous == "cancelling":
+                    if previous == "cancelling" and run["status"] != "needs_review":
                         run["status"] = "cancelled"
                     self._save("runs", run)
                     if run["status"] != "running" and run["status"] != previous:
