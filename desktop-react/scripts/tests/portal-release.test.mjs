@@ -146,7 +146,9 @@ test("the glass cursor keeps the control it is mounted on readable", () => {
   const optics = readFileSync(new URL("../../src/components/portalLiquidOptics.ts", import.meta.url), "utf8");
 
   assert.ok(!optics.includes("lensBendStrength"), "do not override the restored reference strength");
-  assert.ok(optics.includes("settings.set([0, LIQUID_OPTICS.strength, LIQUID_OPTICS.pinch"));
+  // The strength is a per-call setting that defaults to the reference value.
+  assert.ok(optics.includes("strength = LIQUID_OPTICS.strength"));
+  assert.ok(optics.includes("settings.set([0, strength, LIQUID_OPTICS.pinch"));
 
   // Every surface is resized together: the texture is made of the capture
   // canvas, and a capture left at another size smears the control it shows.
