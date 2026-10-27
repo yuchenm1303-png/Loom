@@ -19,6 +19,8 @@ from .computer_types import (
     ComputerExecution,
     ComputerFrame,
     ComputerObservation,
+    ComputerWindow,
+    ComputerRect,
 )
 
 CAPTURE_PROFILES = {
@@ -71,6 +73,101 @@ def _key(value: str) -> str:
     return aliases.get(value.lower(), value.lower())
 
 
+def _unicode_units(text: str, *, max_units: int = 20):
+    """Yield UTF-16 units without splitting a surrogate pair across events."""
+    chunk: list[int] = []
+    for char in text:
+        data = char.encode("utf-16-le")
+        units = [int.from_bytes(data[i:i + 2], "little") for i in range(0, len(data), 2)]
+        if len(chunk) + len(units) > max_units and chunk:
+            yield tuple(chunk)
+            chunk = []
+        chunk.extend(units)
+    if chunk:
+        yield tuple(chunk)
+
+
+def _insert_unicode(text: str) -> None:
+    """Send Unicode via Quartz without touching another app's clipboard.
+
+    Some native controls ignore the CGEvent Unicode payload. The caller must
+    re-observe the UI; event injection is not proof the editor accepted text.
+    """
+    import Quartz
+
+    for units in _unicode_units(text):
+        down = Quartz.CGEventCreateKeyboardEvent(None, 0, True)
+        up = Quartz.CGEventCreateKeyboardEvent(None, 0, False)
+        if down is None or up is None:
+            raise RuntimeError("macOS could not create Unicode keyboard events")
+        Quartz.CGEventKeyboardSetUnicodeString(down, len(units), units)
+        Quartz.CGEventKeyboardSetUnicodeString(up, len(units), units)
+        try:
+            Quartz.CGEventPost(Quartz.kCGHIDEventTap, down)
+        finally:
+            # Release even if the event post fails; never strand a key down.
+            Quartz.CGEventPost(Quartz.kCGHIDEventTap, up)
+        time.sleep(0.003)
+
+
+def _visible_applications(width: int, height: int):
+    """Best-effort app-level window list; IDs identify apps, not AX controls."""
+    import AppKit
+    import Quartz
+
+    front = AppKit.NSWorkspace.sharedWorkspace().frontmostApplication()
+    foreground_pid = int(front.processIdentifier()) if front else 0
+    windows = []
+    seen_pids = set()
+    options = Quartz.kCGWindowListOptionOnScreenOnly | Quartz.kCGWindowListExcludeDesktopElements
+    for info in Quartz.CGWindowListCopyWindowInfo(options, Quartz.kCGNullWindowID) or []:
+        pid = int(info.get("kCGWindowOwnerPID", 0) or 0)
+        if pid <= 0 or pid in seen_pids:
+            continue
+        if int(info.get("kCGWindowLayer", 0) or 0) != 0:
+            continue
+        bounds = info.get("kCGWindowBounds") or {}
+        x = round(float(bounds.get("X", 0)))
+        y = round(float(bounds.get("Y", 0)))
+        w = round(float(bounds.get("Width", 0)))
+        h = round(float(bounds.get("Height", 0)))
+        if w <= 0 or h <= 0 or x >= width or y >= height or x + w <= 0 or y + h <= 0:
+            continue
+        seen_pids.add(pid)
+        app_name = str(info.get("kCGWindowOwnerName") or "")
+        window_title = str(info.get("kCGWindowName") or "")
+        windows.append(ComputerWindow(
+            window_id=f"macpid:{pid}", title=window_title or app_name,
+            process_name=app_name,
+            rect=ComputerRect(x, y, x + w, y + h),
+            foreground=(pid == foreground_pid),
+        ))
+        if len(windows) >= 32:
+            break
+    active = next((window for window in windows if window.foreground), None)
+    if active is None and foreground_pid:
+        # The frontmost app may not expose a conventional on-screen window.
+        name = str(front.localizedName() or "") if front else ""
+        active = ComputerWindow(window_id=f"macpid:{foreground_pid}",
+                                title=name, process_name=name, foreground=True)
+    return active, tuple(windows)
+
+
+def _activate_visible_app(window_id: str, observation: ComputerObservation) -> None:
+    import AppKit
+
+    if window_id not in {window.window_id for window in observation.windows}:
+        raise RuntimeError("macOS application target is stale; observe again before switching")
+    if not window_id.startswith("macpid:"):
+        raise RuntimeError("unsupported macOS application target")
+    pid = int(window_id.split(":", 1)[1])
+    application = AppKit.NSRunningApplication.runningApplicationWithProcessIdentifier_(pid)
+    if application is None or application.isTerminated():
+        raise RuntimeError("macOS target application is no longer running")
+    if not application.activateWithOptions_(AppKit.NSApplicationActivateIgnoringOtherApps):
+        raise RuntimeError("macOS could not activate the selected application")
+
+
 class MacOSComputerOperator:
     name = "macos-quartz"
 
@@ -99,10 +196,11 @@ class MacOSComputerOperator:
             "screen_recording_granted": bool(preflight()) if callable(preflight) else False,
             "accessibility_granted": bool(trusted()) if callable(trusted) else False,
             "capture_profile": self.capture_profile,
-            "observation": "primary-display screenshot (visual only; no accessibility-tree controls)",
+            "observation": "primary-display screenshot + visible application list, no accessibility-tree controls",
             "semantic_layer": {"state": "unavailable", "reason": "macos_visual_backend"},
             "multi_monitor": "primary-display only",
-            "window_switch": "unsupported",
+            "window_switch": "app_activation_only",
+            "unicode_input": "Quartz keyboard Unicode events; clipboard remains unchanged",
         }
 
     def observe(self) -> ComputerObservation:
@@ -137,12 +235,19 @@ class MacOSComputerOperator:
             else:
                 image.save(output, format="PNG")
                 media_type = "image/png"
+            try:
+                active, windows = _visible_applications(width, height)
+            except (ImportError, OSError, ValueError, AttributeError):
+                active, windows = None, ()
             return ComputerObservation(
                 observation_id=uuid.uuid4().hex,
                 frame=ComputerFrame(
                     frame_id=uuid.uuid4().hex, origin_x=0, origin_y=0,
                     width=width, height=height, source="primary_display",
+                    window_id=active.window_id if active else "",
                 ),
+                active_window=active,
+                windows=windows,
                 image_data=output.getvalue(),
                 image_media_type=media_type,
                 semantics={"state": "unavailable", "requested": semantics, "reason": "macos_visual_backend"},
@@ -163,9 +268,27 @@ class MacOSComputerOperator:
         _require_permission(screen=True, input_=True)
         import pyautogui
 
-        if action.control_id or action.window_id:
-            raise RuntimeError("macOS visual backend cannot target control_id/window_id; use screenshot coordinates")
+        if action.control_id:
+            raise RuntimeError("macOS visual backend cannot target control_id; use screenshot coordinates")
         with self._lock:
+            if action.type is ComputerActionType.SWITCH_WINDOW:
+                _activate_visible_app(action.window_id, observation)
+                return ComputerExecution(
+                    ok=True, message="macOS application activation requested; verify foreground app",
+                    action=action, native=True,
+                    details={"input_backend": "appkit", "verification": "foreground_app"},
+                )
+            if action.window_id:
+                raise RuntimeError("macOS coordinate actions do not accept window_id")
+            if observation.frame.window_id:
+                try:
+                    import AppKit
+                    front = AppKit.NSWorkspace.sharedWorkspace().frontmostApplication()
+                    actual = f"macpid:{int(front.processIdentifier())}" if front else ""
+                except (ImportError, AttributeError) as exc:
+                    raise RuntimeError("macOS foreground could not be verified; observe again") from exc
+                if actual != observation.frame.window_id:
+                    raise RuntimeError("macOS foreground changed; observe again before input")
             size = pyautogui.size()
             if (size.width, size.height) != (observation.frame.width, observation.frame.height):
                 raise RuntimeError("macOS display geometry changed; observe again before acting")
@@ -209,17 +332,18 @@ class MacOSComputerOperator:
             elif action.type is ComputerActionType.TYPE:
                 if point:
                     pyautogui.click(*point)
-                # pyautogui.write cannot reliably type non-ASCII on macOS.
-                # Refuse rather than silently corrupting user text or clipboard.
-                if not action.text.isascii():
-                    raise RuntimeError("macOS Unicode text insertion is not yet supported by this backend")
-                pyautogui.write(action.text, interval=0.002)
+                _insert_unicode(action.text)
             else:
                 raise RuntimeError(f"unsupported macOS Computer Use action: {action.type.value}")
             return ComputerExecution(
                 ok=True, message="macOS desktop action injected; verify with a new observation",
                 action=action, native=False, fallback_used=True,
-                details={"input_backend": "pyautogui-macos", "verification": "visual_reobserve"},
+                details={
+                    "input_backend": "quartz-unicode" if action.type is ComputerActionType.TYPE
+                    else "pyautogui-macos",
+                    "verification": "visual_reobserve",
+                    "typed_text_length": len(action.text) if action.type is ComputerActionType.TYPE else 0,
+                },
             )
 
     def close(self) -> None:
