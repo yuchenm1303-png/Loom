@@ -100,13 +100,24 @@ def _safe_hotkey(pyautogui, keys: tuple[str, ...]) -> None:
     if not normalized:
         raise ValueError("macOS keyboard shortcut requires at least one key")
     held: list[str] = []
+    failed = False
     try:
         for key in normalized:
-            pyautogui.keyDown(key)
+            # keyDown might have sent the event before raising. Release it too.
             held.append(key)
+            pyautogui.keyDown(key)
+    except BaseException:
+        failed = True
+        raise
     finally:
+        release_errors: list[Exception] = []
         for key in reversed(held):
-            pyautogui.keyUp(key)
+            try:
+                pyautogui.keyUp(key)
+            except Exception as exc:
+                release_errors.append(exc)
+        if release_errors and not failed:
+            raise RuntimeError("macOS shortcut key release failed") from release_errors[0]
 
 
 def _unicode_units(text: str, *, max_units: int = 20):
