@@ -1,0 +1,86 @@
+name: macOS Desktop (experimental)
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - ".github/workflows/macos-desktop.yml"
+      - "desktop-react/**"
+      - "app/**"
+      - "loom_desktop_runtime.py"
+      - "pyproject.toml"
+      - "host-runtime/**"
+  push:
+    branches:
+      - "feat/macos-desktop-support"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: macos-desktop-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-arm64:
+    name: Apple Silicon bootstrap and package smoke
+    runs-on: macos-15
+    timeout-minutes: 90
+    env:
+      CSC_IDENTITY_AUTO_DISCOVERY: "false"
+      PYTHONUTF8: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: desktop-react/package-lock.json
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          architecture: arm64
+
+      - name: Confirm native Apple Silicon builder
+        run: |
+          test "$(uname -s)" = "Darwin"
+          test "$(uname -m)" = "arm64"
+          python3 --version
+          node --version
+
+      - name: Install renderer and Electron dependencies
+        working-directory: desktop-react
+        run: npm ci --no-audit --no-fund
+
+      - name: Build desktop and frozen Python Host
+        working-directory: desktop-react
+        run: |
+          npm run build
+          npm run build:runtime:mac
+
+      - name: Package unsigned test DMG
+        working-directory: desktop-react
+        run: npx electron-builder --mac dmg --arm64 --publish never
+
+      - name: Validate packaged Host and macOS bundle
+        working-directory: desktop-react
+        run: |
+          set -euo pipefail
+          APP="release/mac-arm64/Loom.app"
+          test -d "$APP"
+          RESOURCES="$APP/Contents/Resources"
+          test -x "$RESOURCES/python"
+          test -f "$RESOURCES/manifest.json"
+          test -f "$RESOURCES/browser-current-tab/manifest.json"
+          "$RESOURCES/python" self-test
+          "$RESOURCES/python" first-run-test
+          node scripts/verify-packaged-runtime.mjs "$RESOURCES"
+          python3 -c 'import json,platform,sys; p=json.load(open(sys.argv[1])); assert p["platform"]=="darwin" and p["arch"]=="arm64",p' "$RESOURCES/manifest.json"
+          find release -maxdepth 1 -name '*mac-arm64.dmg' -size +1M | grep -q .
+      - name: Save experimental unsigned DMG
+        uses: actions/upload-artifact@v4
+        with:
+          name: loom-macos-arm64-experimental
+          path: desktop-react/release/*mac-arm64.dmg
+          if-no-files-found: error
+          retention-days: 7
