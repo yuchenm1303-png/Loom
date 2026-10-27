@@ -77,6 +77,7 @@ try {
     "--collect-all", "jsonschema",
     "--collect-all", "Quartz",
     "--collect-all", "ApplicationServices",
+    "--collect-all", "AppKit",
     path.join(repoRoot, "loom_desktop_runtime.py"),
   ]);
 
