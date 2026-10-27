@@ -10,7 +10,7 @@ from app.app_server_local_ipc import runtime_home_from_store
 from .runner import ProjectRunner
 from .store import ProjectStore
 from .review import git, candidate, review_workspace, assess, snapshot, definition_hash
-from . import delivery
+from . import delivery, integration
 
 
 class ProjectExecutor:
@@ -291,8 +291,8 @@ class ProjectControllerMixin:
     def _initialize(self, params):
         result = super()._initialize(params)
         result.setdefault("capabilities", {})["projectRunner"] = {
-            "version": 3, "maxWorkers": 1, "delivery": "local_verified_branch", "tokenLimit": "between_episodes",
-            "independentReview": True, "automaticRework": True}
+            "version": 4, "maxWorkers": 1, "delivery": "local_verified_branch", "tokenLimit": "between_episodes",
+            "independentReview": True, "automaticRework": True, "reviewedIntegration": True}
         return result
 
     def _dispatch(self, method, params):
@@ -311,6 +311,10 @@ class ProjectControllerMixin:
             return {"run": self.service.project_review(params)}
         if method == "projectRun/deliver":
             return {"run": self.service.project_deliver(params)}
+        if method in {"projectRun/prepareIntegration", "projectRun/applyIntegration"}:
+            with self.service.project_runner.guard:
+                handler = integration.start if method.endswith("prepareIntegration") else integration.apply
+                return {"run": handler(self.service, params)}
         if method in {f"projectRun/{action}" for action in ("start", "pause", "resume", "cancel")}:
             return {"run": self.service.project_control(params, method.split("/")[1])}
         return super()._dispatch(method, params)

@@ -24,7 +24,7 @@ def git(root, *args, raw=False):
         encoding="utf-8", errors="strict", timeout=30,
         creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0)
     if result.returncode:
-        raise ValueError(f"Git operation failed: {result.stderr[:2000]}")
+        raise ValueError(f"Git operation failed: {(result.stderr or result.stdout)[:2000]}")
     return result.stdout if raw else result.stdout.strip()
 
 
