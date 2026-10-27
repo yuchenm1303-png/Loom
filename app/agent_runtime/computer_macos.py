@@ -101,8 +101,11 @@ def _insert_unicode(text: str) -> None:
         up = Quartz.CGEventCreateKeyboardEvent(None, 0, False)
         if down is None or up is None:
             raise RuntimeError("macOS could not create Unicode keyboard events")
-        Quartz.CGEventKeyboardSetUnicodeString(down, len(units), units)
-        Quartz.CGEventKeyboardSetUnicodeString(up, len(units), units)
+        # PyObjC 12's UniChar bridge accepts one-character strings, not
+        # Python integer UTF-16 code units. Surrogate halves remain separate.
+        characters = tuple(chr(unit) for unit in units)
+        Quartz.CGEventKeyboardSetUnicodeString(down, len(characters), characters)
+        Quartz.CGEventKeyboardSetUnicodeString(up, len(characters), characters)
         try:
             Quartz.CGEventPost(Quartz.kCGHIDEventTap, down)
         finally:
