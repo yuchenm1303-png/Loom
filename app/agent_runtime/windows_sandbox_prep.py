@@ -10,17 +10,25 @@ an ordinary machine stay out of reach without an administrator:
 * tool directories with a protected DACL, such as ``C:\\Program Files\\nodejs``,
   which MXC cannot edit and so refuses to declare.
 
-``scripts/windows-sandbox-prep.ps1`` fixes all three once, elevated. This module
+``scripts/windows-sandbox-prep.ps1`` fixes them once, elevated. This module
 only *reads* security descriptors, so Loom can say exactly what is missing
 without administrator rights, and can avoid declaring directories the sandbox
 already reads (MXC would otherwise try, and fail, to rewrite their DACL).
 
 The tool-directory grant goes to Loom's own capability SID rather than ALL
 APPLICATION PACKAGES, so it opens those directories to Loom's sandbox only.
+
+A fourth thing is per workspace. ``git`` resolves its working directory with
+``GetLongPathNameW`` (it lists every folder above it) and ``node`` ``lstat``s each
+of them to resolve a script's real path, but an AppContainer is only given the
+workspace itself. The folders above a workspace therefore need a *non-inherited*
+"synchronize, list, read attributes, traverse" ACE for the capability: the
+sandbox then sees the names inside those folders and nothing below them.
 """
 
 from __future__ import annotations
 
+import ntpath
 import os
 import platform
 import re
@@ -54,7 +62,13 @@ _SDDL_ALIASES = {
 
 _FILE_READ_DATA = 0x1
 _FILE_WRITE_DATA = 0x2
+_FILE_TRAVERSE = 0x20
 _FILE_READ_ATTRIBUTES = 0x80
+_SYNCHRONIZE = 0x100000
+# What a folder above the workspace must grant: opening it at all needs
+# SYNCHRONIZE (CreateFile asks for it), node's lstat needs READ_ATTRIBUTES, and
+# git's GetLongPathNameW needs to list it.
+_TRAVERSE_RIGHTS = _SYNCHRONIZE | _FILE_READ_DATA | _FILE_READ_ATTRIBUTES | _FILE_TRAVERSE
 _FILE_GENERIC_READ = 0x120089
 _FILE_GENERIC_WRITE = 0x120116
 _FILE_GENERIC_EXECUTE = 0x1200A0
@@ -170,6 +184,35 @@ def sddl_lets_sandbox_read(sddl: str) -> bool:
     return dacl_grants(sddl, _SANDBOX_READER_SIDS, _READ_AND_EXECUTE)
 
 
+def sddl_lets_sandbox_traverse(sddl: str) -> bool:
+    """Whether the sandbox can open, stat and list the folder this descriptor guards."""
+
+    return dacl_grants(sddl, _SANDBOX_READER_SIDS, _TRAVERSE_RIGHTS)
+
+
+def ancestors_of(path: str | Path) -> tuple[str, ...]:
+    """Every folder above ``path``, the drive root first; ``path`` itself excluded.
+
+    ``C:\\Users\\me\\Loom`` -> ``C:\\``, ``C:\\Users``, ``C:\\Users\\me``. Pure string work,
+    so it behaves the same on every OS and in tests.
+    """
+
+    full = ntpath.normpath(str(path).replace("/", "\\"))
+    drive, rest = ntpath.splitdrive(full)
+    if not drive:
+        return ()
+    parts = [part for part in rest.split("\\") if part]
+    if not parts:
+        # A drive root has nothing above it.
+        return ()
+    chain = [drive + "\\"]
+    current = drive + "\\"
+    for part in parts[:-1]:
+        current = ntpath.join(current, part)
+        chain.append(current)
+    return tuple(chain)
+
+
 # Loom's sandbox is an ordinary (not less-privileged) AppContainer, so the
 # ALL APPLICATION PACKAGES ACE is the one its access checks consult.
 def sddl_lets_appcontainer_use_null_device(sddl: str) -> bool:
@@ -251,6 +294,7 @@ def _read_sddl(target: str, *, device: bool = False) -> str | None:
 _CACHE_SECONDS = 30.0
 _cache_guard = threading.Lock()
 _read_cache: dict[str, tuple[float, bool]] = {}
+_traverse_cache: dict[str, tuple[float, bool | None]] = {}
 
 
 def sandbox_can_read(path: str | Path) -> bool:
@@ -273,16 +317,51 @@ def sandbox_can_read(path: str | Path) -> bool:
     return readable
 
 
+def sandbox_can_traverse(path: str | Path) -> bool | None:
+    """True when the sandbox can list ``path``; None when its descriptor cannot be read."""
+
+    key = "traverse|" + os.path.normcase(str(path))
+    now = time.monotonic()
+    with _cache_guard:
+        hit = _traverse_cache.get(key)
+        if hit is not None and now - hit[0] < _CACHE_SECONDS:
+            return hit[1]
+    sddl = _read_sddl(str(path))
+    answer = None if not sddl else sddl_lets_sandbox_traverse(sddl)
+    with _cache_guard:
+        _traverse_cache[key] = (now, answer)
+    return answer
+
+
+def missing_workspace_ancestors(workspace: str | Path) -> tuple[str, ...]:
+    """The folders above ``workspace`` that the sandbox cannot list yet (read-only check).
+
+    A folder whose descriptor cannot be read is not reported: nothing is known
+    about it, and a wrong claim would only send the user to run a script for nothing.
+    """
+
+    if not _is_windows():
+        return ()
+    return tuple(path for path in ancestors_of(workspace) if sandbox_can_traverse(path) is False)
+
+
 @dataclass(frozen=True, slots=True)
 class WindowsSandboxPrepStatus:
     null_device_ready: bool | None
     system_drive_ready: bool | None
     script: str = ""
     missing_tool_dirs: tuple[str, ...] = field(default_factory=tuple)
+    # Set when a workspace was asked about: the folders above it the sandbox cannot list.
+    workspace: str = ""
+    missing_ancestors: tuple[str, ...] = field(default_factory=tuple)
 
     @property
     def complete(self) -> bool:
         return bool(self.null_device_ready) and bool(self.system_drive_ready) and not self.missing_tool_dirs
+
+    @property
+    def workspace_ready(self) -> bool:
+        return not self.missing_ancestors
 
     def missing(self) -> tuple[str, ...]:
         names: list[str] = []
@@ -292,18 +371,25 @@ class WindowsSandboxPrepStatus:
             names.append("system drive root")
         if self.missing_tool_dirs:
             names.append("tool folders: " + ", ".join(self.missing_tool_dirs))
+        if self.missing_ancestors:
+            names.append("folders above the workspace: " + ", ".join(self.missing_ancestors))
         return tuple(names)
 
     def command(self) -> str:
         if not self.script:
             return ""
-        return f'powershell -NoProfile -ExecutionPolicy Bypass -File "{self.script}"'
+        base = f'powershell -NoProfile -ExecutionPolicy Bypass -File "{self.script}"'
+        if self.workspace and self.missing_ancestors:
+            return f'{base} -Workspace "{self.workspace}"'
+        return base
 
     def to_dict(self) -> dict[str, object]:
         return {
             "nullDeviceReady": self.null_device_ready,
             "systemDriveReady": self.system_drive_ready,
             "missingToolDirs": list(self.missing_tool_dirs),
+            "workspace": self.workspace,
+            "missingAncestors": list(self.missing_ancestors),
             "complete": self.complete,
             "command": self.command(),
         }
@@ -326,22 +412,29 @@ def locate_prep_script(sandbox_executable: str | Path | None = None) -> str:
 
 
 _status_guard = threading.Lock()
-_status_cache: dict[tuple[str, tuple[str, ...]], tuple[float, WindowsSandboxPrepStatus]] = {}
+_status_cache: dict[tuple[str, tuple[str, ...], str], tuple[float, WindowsSandboxPrepStatus]] = {}
 
 
 def windows_sandbox_prep_status(
     *,
     sandbox_executable: str | Path | None = None,
     tool_dirs: tuple[str, ...] = (),
+    workspace: str | Path | None = None,
     force: bool = False,
 ) -> WindowsSandboxPrepStatus:
     """Read-only check of the host preparation; cached briefly.
 
     ``tool_dirs`` are folders Loom just failed to declare (protected DACLs);
     they are reported missing until the capability ACE shows up on them.
+    ``workspace`` adds the folders above it that the sandbox cannot list.
     """
 
-    key = (str(sandbox_executable or ""), tuple(os.path.normcase(item) for item in tool_dirs))
+    workspace_text = str(workspace) if workspace else ""
+    key = (
+        str(sandbox_executable or ""),
+        tuple(os.path.normcase(item) for item in tool_dirs),
+        os.path.normcase(workspace_text),
+    )
     now = time.monotonic()
     if not force:
         with _status_guard:
@@ -350,7 +443,7 @@ def windows_sandbox_prep_status(
                 return hit[1]
     script = locate_prep_script(sandbox_executable)
     if not _is_windows():
-        status = WindowsSandboxPrepStatus(None, None, script=script)
+        status = WindowsSandboxPrepStatus(None, None, script=script, workspace=workspace_text)
     else:
         null_sddl = _read_sddl(r"\\.\NUL", device=True)
         drive = (os.environ.get("SystemDrive") or "C:").rstrip("\\/") + "\\"
@@ -361,6 +454,8 @@ def windows_sandbox_prep_status(
             system_drive_ready=None if root_sddl is None else sddl_lets_appcontainer_stat_root(root_sddl),
             script=script,
             missing_tool_dirs=missing_dirs,
+            workspace=workspace_text,
+            missing_ancestors=missing_workspace_ancestors(workspace_text) if workspace_text else (),
         )
     with _status_guard:
         _status_cache[key] = (now, status)
@@ -374,10 +469,14 @@ __all__ = [
     "PREP_SCRIPT_NAME",
     "SddlAce",
     "WindowsSandboxPrepStatus",
+    "ancestors_of",
     "dacl_grants",
     "locate_prep_script",
+    "missing_workspace_ancestors",
     "parse_dacl_aces",
     "sandbox_can_read",
+    "sandbox_can_traverse",
+    "sddl_lets_sandbox_traverse",
     "sddl_lets_appcontainer_stat_root",
     "sddl_lets_appcontainer_use_null_device",
     "sddl_lets_sandbox_read",

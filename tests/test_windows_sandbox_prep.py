@@ -9,16 +9,19 @@ import pytest
 
 from app.agent_runtime import PermissionMode, SandboxManager, SandboxPolicy
 from app.agent_runtime import sandbox as sandbox_module
+from app.agent_runtime import windows_sandbox_prep as prep_module
 from app.agent_runtime.windows_sandbox_prep import (
     LOOM_SANDBOX_TOOLS_CAPABILITY,
     LOOM_SANDBOX_TOOLS_CAPABILITY_SID,
     WindowsSandboxPrepStatus,
+    ancestors_of,
     dacl_grants,
     locate_prep_script,
     parse_dacl_aces,
     sddl_lets_appcontainer_stat_root,
     sddl_lets_appcontainer_use_null_device,
     sddl_lets_sandbox_read,
+    sddl_lets_sandbox_traverse,
 )
 
 
@@ -269,3 +272,157 @@ def test_linux_sandbox_never_reports_display_access(tmp_path):
     snapshot = manager.snapshot(workspace=tmp_path, permission_mode=PermissionMode.WORKSPACE)
     assert snapshot.enforced is True
     assert snapshot.display_access is False
+
+
+# ---- the folders above a workspace ---------------------------------------------------
+
+# The user's profile folder and the system drive root as they read before preparation. The
+# root's ALL APPLICATION PACKAGES entry is the one prepare-system-drive adds: it lets the
+# sandbox stat the root and nothing more.
+HOME_FOLDER = "D:PAI(A;OICIID;FA;;;SY)(A;OICIID;FA;;;BA)(A;OICIID;FA;;;S-1-5-21-111-222-333-1001)"
+ROOT_PREPARED = ROOT_UNPREPARED + "(A;;0x120088;;;AC)"
+LIST_ENTRY = f"(A;;0x1000a1;;;{LOOM_SANDBOX_TOOLS_CAPABILITY_SID})"
+
+
+@pytest.mark.parametrize(
+    ("path", "above"),
+    [
+        (r"C:\Users\me\Loom", ("C:\\", r"C:\Users", r"C:\Users\me")),
+        ("C:/Users/me/Loom/", ("C:\\", r"C:\Users", r"C:\Users\me")),
+        (r"C:\Users\me\..\you\Loom", ("C:\\", r"C:\Users", r"C:\Users\you")),
+        (r"c:\loom", ("c:\\",)),
+        ("E:\\项目\\子", ("E:\\", "E:\\项目")),
+        ("C:\\", ()),
+        (r"relative\path", ()),
+    ],
+)
+def test_ancestors_of_lists_every_folder_above_a_path_drive_root_first(path, above):
+    assert ancestors_of(path) == above
+
+
+def test_a_folder_is_listable_only_with_a_non_inherited_entry_for_the_sandbox():
+    # Nothing in either descriptor names the sandbox; the root entry only lets it stat.
+    assert sddl_lets_sandbox_traverse(HOME_FOLDER) is False
+    assert sddl_lets_sandbox_traverse(ROOT_UNPREPARED) is False
+    assert sddl_lets_sandbox_traverse(ROOT_PREPARED) is False
+    # Loom's own capability, on that folder alone.
+    assert sddl_lets_sandbox_traverse(HOME_FOLDER + LIST_ENTRY) is True
+    assert sddl_lets_sandbox_traverse(ROOT_PREPARED + LIST_ENTRY) is True
+    # A folder that ALL APPLICATION PACKAGES may already read and run is open as well.
+    assert sddl_lets_sandbox_traverse(GIT_INHERITED) is True
+
+
+@pytest.mark.parametrize(
+    "entry",
+    [
+        # Reaches the children only, not the folder itself.
+        f"(A;OICIIO;0x1000a1;;;{LOOM_SANDBOX_TOOLS_CAPABILITY_SID})",
+        # Without SYNCHRONIZE CreateFile cannot open the folder (measured with (RD,X,RA)).
+        f"(A;;0xa1;;;{LOOM_SANDBOX_TOOLS_CAPABILITY_SID})",
+        # Stat without listing is not enough for git's GetLongPathNameW.
+        f"(A;;0x100080;;;{LOOM_SANDBOX_TOOLS_CAPABILITY_SID})",
+        # Stat and traverse, still no listing.
+        f"(A;;0x1000a0;;;{LOOM_SANDBOX_TOOLS_CAPABILITY_SID})",
+        # Listing without read-attributes: node's lstat of the folder fails.
+        f"(A;;0x100021;;;{LOOM_SANDBOX_TOOLS_CAPABILITY_SID})",
+        # Another capability's entry (the first one in ROOT_UNPREPARED) means nothing to Loom.
+        "(A;;0x1000a1;;;S-1-15-3-65536-1-2-3-4-5-6-7)",
+        # A deny wins over the grant.
+        f"(D;;0x1;;;{LOOM_SANDBOX_TOOLS_CAPABILITY_SID})" + LIST_ENTRY,
+    ],
+)
+def test_entries_that_do_not_open_the_folder_itself_to_the_sandbox_do_not_count(entry):
+    assert sddl_lets_sandbox_traverse(HOME_FOLDER + entry) is False
+
+
+def test_status_command_names_the_workspace_only_while_its_parents_are_closed():
+    script = r"C:\Loom\windows-sandbox-prep.ps1"
+    closed = WindowsSandboxPrepStatus(
+        True, True, script=script, workspace=r"C:\Users\me\Loom", missing_ancestors=("C:\\", r"C:\Users"),
+    )
+    assert closed.complete is True  # the machine-wide parts are in place
+    assert closed.workspace_ready is False
+    assert closed.missing() == ("folders above the workspace: C:\\, C:\\Users",)
+    assert closed.command().endswith(rf'-File "{script}" -Workspace "C:\Users\me\Loom"')
+    assert closed.to_dict()["missingAncestors"] == ["C:\\", r"C:\Users"]
+
+    opened = WindowsSandboxPrepStatus(True, True, script=script, workspace=r"C:\Users\me\Loom")
+    assert opened.workspace_ready is True
+    assert opened.missing() == ()
+    assert "-Workspace" not in opened.command()
+
+
+def test_missing_ancestors_skip_folders_whose_descriptor_cannot_be_read(monkeypatch):
+    monkeypatch.setattr(prep_module, "_is_windows", lambda: True)
+    answers = {"C:\\": False, r"C:\Users": None, r"C:\Users\me": True}
+    monkeypatch.setattr(prep_module, "sandbox_can_traverse", lambda path: answers[str(path)])
+
+    # Unknown is not "closed": a wrong claim would send the user to run a script for nothing.
+    assert prep_module.missing_workspace_ancestors(r"C:\Users\me\Loom") == ("C:\\",)
+
+    monkeypatch.setattr(prep_module, "_is_windows", lambda: False)
+    assert prep_module.missing_workspace_ancestors(r"C:\Users\me\Loom") == ()
+
+
+def test_prep_script_opens_the_folders_above_a_workspace_without_inheritance_and_undoes_it():
+    script = Path(locate_prep_script(None)).read_text(encoding="utf-8")
+    # Windows PowerShell 5.1 reads a script without a BOM as ANSI: keep it ASCII.
+    assert script.isascii()
+    # Python and the script must ask for the same rights.
+    assert f"$TraverseRights = 0x{prep_module._TRAVERSE_RIGHTS:X}" in script
+    install = script[script.index("function Install-Prep"):script.index("function Remove-Prep")]
+    undo = script[script.index("function Remove-Prep"):script.index("\ntry {")]
+    grants = [line for line in install.splitlines() if "/grant" in line and "(S,RD,RA,X)" in line]
+    assert len(grants) == 1
+    # The entry belongs on each folder alone: nothing below those folders opens up.
+    assert "(OI)" not in grants[0] and "(CI)" not in grants[0] and "/T" not in grants[0]
+    assert "$AncestorLog" in install and "$AncestorLog" in undo
+    assert "/remove:g" in undo
+
+
+# ---- git inside the sandbox -----------------------------------------------------------
+
+
+def _child_env(manager: SandboxManager, workspace: Path) -> dict[str, str]:
+    prepared = manager.prepare(
+        argv=("git", "diff"),
+        cwd=workspace,
+        workspace=workspace,
+        permission_mode=PermissionMode.WORKSPACE,
+        environment={
+            "PATH": "",
+            # The caller's own git configuration is not forwarded into the sandbox.
+            "GIT_CONFIG_COUNT": "5",
+            "GIT_CONFIG_KEY_0": "core.autocrlf",
+            "GIT_CONFIG_VALUE_0": "true",
+        },
+    )
+    return dict(item.split("=", 1) for item in _config(prepared.argv)["process"]["env"])
+
+
+def test_git_in_the_windows_sandbox_gets_a_symlink_free_config(tmp_path, monkeypatch):
+    workspace = (tmp_path / "workspace").resolve()
+    workspace.mkdir()
+    monkeypatch.delenv("LOOM_WINDOWS_SANDBOX_GIT_SYMLINKS", raising=False)
+
+    manager = _plain_windows_manager()
+    assert manager.windows_git_compat is True
+    env = _child_env(manager, workspace)
+    # With core.symlinks=true the sandbox refuses git's work-tree chdir (GetFinalPathNameByHandleW),
+    # so `git diff`, `grep`, `blame` and `reset --hard` died with "must be run in a work tree".
+    assert env["GIT_CONFIG_COUNT"] == "1"
+    assert env["GIT_CONFIG_KEY_0"] == "core.symlinks"
+    assert env["GIT_CONFIG_VALUE_0"] == "false"
+
+
+@pytest.mark.parametrize("value", ["keep", "KEEP", "off", "0", "false"])
+def test_environment_can_keep_the_machines_own_symlink_setting(tmp_path, monkeypatch, value):
+    workspace = (tmp_path / "workspace").resolve()
+    workspace.mkdir()
+    monkeypatch.setenv("LOOM_WINDOWS_SANDBOX_GIT_SYMLINKS", value)
+
+    manager = _plain_windows_manager()
+    assert manager.windows_git_compat is False
+    assert not [name for name in _child_env(manager, workspace) if name.startswith("GIT_CONFIG")]
+    # An explicit argument wins over the environment.
+    assert _plain_windows_manager(windows_git_compat=True).windows_git_compat is True

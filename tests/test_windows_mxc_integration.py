@@ -5,6 +5,7 @@ import shutil
 import socket
 import subprocess
 import sys
+import tempfile
 import uuid
 from pathlib import Path
 
@@ -202,11 +203,37 @@ def test_windows_mxc_still_denies_reading_the_user_profile(tmp_path):
         secret.unlink(missing_ok=True)
 
 
-def _prepared_host(manager: SandboxManager):
-    status = manager.windows_prep_status(force=True)
-    if manager.windows_mxc_tier == "appcontainer-dacl" and not status.complete:
-        pytest.skip("Windows sandbox host preparation has not run: " + "; ".join(status.missing()))
+def _prepared_host(manager: SandboxManager, workspace: Path | None = None):
+    status = manager.windows_prep_status(force=True, workspace=workspace)
+    if manager.windows_mxc_tier == "appcontainer-dacl":
+        if not status.complete:
+            pytest.skip("Windows sandbox host preparation has not run: " + "; ".join(status.missing()))
+        if not status.workspace_ready:
+            pytest.skip(
+                "the folders above the test workspace are closed to the sandbox ("
+                + "; ".join(status.missing())
+                + "). Set LOOM_SANDBOX_TEST_ROOT to a folder whose parents the prep script opened "
+                "(run it with -Workspace <folder>\\x), or run: "
+                + (status.command() or "scripts/windows-sandbox-prep.ps1")
+            )
     return status
+
+
+@pytest.fixture()
+def developer_workspace(tmp_path):
+    """A fresh workspace; LOOM_SANDBOX_TEST_ROOT picks a parent the sandbox may list."""
+
+    root = str(os.environ.get("LOOM_SANDBOX_TEST_ROOT") or "").strip()
+    if not root:
+        workspace = (tmp_path / "workspace").resolve()
+        workspace.mkdir()
+        yield workspace
+        return
+    workspace = Path(tempfile.mkdtemp(prefix="loom-sbx-", dir=root)).resolve()
+    try:
+        yield workspace
+    finally:
+        shutil.rmtree(workspace, ignore_errors=True)
 
 
 @pytest.mark.parametrize(
@@ -217,14 +244,13 @@ def _prepared_host(manager: SandboxManager):
         ("npm", ("--version",), "."),
     ],
 )
-def test_windows_mxc_runs_developer_tools_after_host_preparation(tmp_path, tool, arguments, expected):
+def test_windows_mxc_runs_developer_tools_after_host_preparation(developer_workspace, tool, arguments, expected):
     manager = _required_mxc_manager()
     executable = shutil.which(tool)
     if not executable:
         pytest.skip(f"{tool} is not installed")
-    _prepared_host(manager)
-    workspace = (tmp_path / "workspace").resolve()
-    workspace.mkdir()
+    workspace = developer_workspace
+    _prepared_host(manager, workspace)
     if tool == "git":
         # git status also opens NUL and reads the repository it runs in.
         init = subprocess.run([executable, "init", "-q", str(workspace)], capture_output=True, text=True)
@@ -237,3 +263,75 @@ def test_windows_mxc_runs_developer_tools_after_host_preparation(tmp_path, tool,
     assert result.returncode == 0, (result.stderr or result.stdout)[-2000:]
     assert result.sandbox.enforced is True
     assert expected in result.stdout
+
+
+def test_windows_mxc_lists_the_folders_above_a_workspace_but_reads_and_writes_nothing_in_them(developer_workspace):
+    manager = _required_mxc_manager()
+    workspace = developer_workspace
+    _prepared_host(manager, workspace)
+    parent = workspace.parent
+    name = f".loom-ancestor-probe-{uuid.uuid4().hex}.txt"
+    probe = parent / name
+    probe.write_text("parent-secret", encoding="utf-8")
+    try:
+        script = (
+            "import os\n"
+            f"parent = {str(parent)!r}\n"
+            f"name = {name!r}\n"
+            "print('LISTED=' + str(name in os.listdir(parent)))\n"
+            "try:\n open(os.path.join(parent, name), 'rb').read()\n"
+            "except OSError as exc:\n print('CONTENT_BLOCKED=' + type(exc).__name__)\n"
+            "else:\n print('CONTENT_READ')\n"
+            "try:\n open(os.path.join(parent, name + '.new'), 'wb').write(b'x')\n"
+            "except OSError as exc:\n print('PARENT_WRITE_BLOCKED=' + type(exc).__name__)\n"
+            "else:\n print('PARENT_WRITTEN')\n"
+        )
+        result = _run_boxed(manager, workspace, (sys.executable, "-I", "-S", "-c", script), session="mxc-ancestors")
+        assert result.returncode == 0, (result.stderr or result.stdout)[-2000:]
+        assert "LISTED=True" in result.stdout
+        assert "CONTENT_BLOCKED=" in result.stdout
+        assert "CONTENT_READ" not in result.stdout
+        assert "PARENT_WRITE_BLOCKED=" in result.stdout
+        assert "PARENT_WRITTEN" not in result.stdout
+        assert not (parent / (name + ".new")).exists()
+    finally:
+        probe.unlink(missing_ok=True)
+
+
+def test_windows_mxc_git_can_diff_grep_and_reset_the_work_tree(developer_workspace):
+    manager = _required_mxc_manager()
+    git = shutil.which("git")
+    if not git:
+        pytest.skip("git is not installed")
+    workspace = developer_workspace
+    _prepared_host(manager, workspace)
+
+    def host_git(*arguments: str) -> None:
+        done = subprocess.run(
+            [git, "-c", "user.name=loom", "-c", "user.email=loom@example.invalid", *arguments],
+            cwd=workspace,
+            capture_output=True,
+            text=True,
+        )
+        assert done.returncode == 0, done.stderr
+
+    host_git("init", "-q")
+    (workspace / "a.txt").write_text("hello\n", encoding="utf-8")
+    host_git("add", "a.txt")
+    host_git("commit", "-q", "-m", "init")
+    (workspace / "a.txt").write_text("hello\nmore\n", encoding="utf-8")
+
+    # These entered the work tree through GetFinalPathNameByHandleW, which an AppContainer is
+    # refused while core.symlinks is true; the sandbox's git config now says false.
+    for argv, expected in (
+        ((git, "diff", "--stat"), "a.txt"),
+        ((git, "grep", "more"), "a.txt:"),
+        ((git, "config", "--get", "core.symlinks"), "false"),
+    ):
+        result = _run_boxed(manager, workspace, argv, session="mxc-git-" + argv[1])
+        assert result.returncode == 0, (result.stderr or result.stdout)[-2000:]
+        assert expected in result.stdout
+
+    reset = _run_boxed(manager, workspace, (git, "reset", "--hard", "HEAD"), session="mxc-git-reset")
+    assert reset.returncode == 0, (reset.stderr or reset.stdout)[-2000:]
+    assert (workspace / "a.txt").read_text(encoding="utf-8").replace("\r\n", "\n") == "hello\n"

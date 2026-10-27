@@ -5,7 +5,7 @@ One-time administrator preparation for Loom's Windows sandbox.
 .DESCRIPTION
 Loom runs workspace commands in a Microsoft MXC AppContainer. On Windows builds
 without the BaseContainer API (Windows 11 23H2 and GitHub's windows-latest are
-two), MXC falls back to the "AppContainer + DACL" tier, and three things stay
+two), MXC falls back to the "AppContainer + DACL" tier, and four things stay
 out of the sandbox's reach until an administrator opens them:
 
   1. The NUL device. Its security descriptor names no AppContainer SID, and the
@@ -18,6 +18,15 @@ out of the sandbox's reach until an administrator opens them:
      cannot edit them, so node and npm cannot start. This script grants read and
      execute on them to Loom's own capability SID (loomSandboxTools) only;
      other AppContainer apps gain nothing.
+  4. The folders above each workspace (C:\, C:\Users, C:\Users\you, ...). git
+     resolves its working directory with GetLongPathNameW and node lstat()s every
+     folder above a script, but MXC only opens the workspace itself, so git stops
+     with "Unable to read current working directory" and node with EPERM. This
+     script lets Loom's capability SID list each of those folders: one entry per
+     folder, for that folder alone (not inherited). The sandbox then sees the
+     names of the entries inside them (the top-level folders of C:\ and of your
+     profile, say) and nothing inside any of those entries. The workspaces are the
+     ones Loom has registered (~\.loom\projects.json) plus any -Workspace.
 
 Writes outside the workspace, reads of the user profile (~/.ssh and the like)
 and network access stay blocked: none of these changes widen them.
@@ -29,10 +38,15 @@ under %ProgramFiles%\Loom\SandboxPrep, which only administrators can replace.
 Run without arguments from any terminal; it asks for elevation (UAC) itself.
   -Status  report what is prepared; needs no administrator rights.
   -DryRun  print every change it would make, change nothing; needs no administrator rights.
-  -Undo    remove the boot task, the system-drive ACE and the tool-folder grants.
+  -Undo    remove the boot task, the system-drive ACE, the tool-folder grants and the
+           workspace-parent grants.
 
 .PARAMETER ToolDir
 Extra tool folders to open to Loom's sandbox (read and execute only).
+
+.PARAMETER Workspace
+Extra workspace folders whose parent folders the sandbox must be able to list.
+Loom's registered projects are always included; -NoProjects leaves them out.
 #>
 [CmdletBinding()]
 param(
@@ -40,10 +54,13 @@ param(
     [switch]$DryRun,
     [switch]$Undo,
     [string[]]$ToolDir = @(),
+    [string[]]$Workspace = @(),
+    [switch]$NoProjects,
     [string]$MxcBin = "",
     [switch]$NoElevate,
     # Internal: elevated relaunch arguments.
     [string]$ToolDirList = "",
+    [string]$WorkspaceList = "",
     [switch]$PauseAtEnd
 )
 
@@ -55,11 +72,15 @@ $AllAppPackagesSid = "S-1-15-2-1"
 $InstallDir = Join-Path $env:ProgramFiles "Loom\SandboxPrep"
 $HostPrepCopy = Join-Path $InstallDir "wxc-host-prep.exe"
 $GrantLog = Join-Path $InstallDir "granted-tool-dirs.txt"
+$AncestorLog = Join-Path $InstallDir "granted-ancestors.txt"
 $TaskPath = "\Loom\"
 $TaskName = "Sandbox NUL device"
 $ToolNames = @("git", "node", "npm", "npx", "pnpm", "yarn", "bun", "deno", "pwsh", "python", "py", "uv",
     "cargo", "rustc", "go", "java", "dotnet", "gh", "rg")
 $ReadAndExecute = 0x1200A9
+# SYNCHRONIZE | LIST/READ_DATA | READ_ATTRIBUTES | TRAVERSE, icacls (S,RD,RA,X). CreateFile
+# asks for SYNCHRONIZE, so without it neither node's lstat nor git's directory listing opens.
+$TraverseRights = 0x1000A1
 
 function Test-Administrator {
     $principal = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
@@ -94,7 +115,7 @@ function Assert-MicrosoftSigned([string]$Path) {
     }
 }
 
-function Test-SandboxReadable([string]$Directory) {
+function Test-SandboxAccess([string]$Directory, [int64]$Mask) {
     try {
         $acl = Get-Acl -LiteralPath $Directory
     } catch {
@@ -107,12 +128,20 @@ function Test-SandboxReadable([string]$Directory) {
         if (($rule.PropagationFlags -band [Security.AccessControl.PropagationFlags]::InheritOnly) -ne 0) { continue }
         $rights = [int64]$rule.FileSystemRights -band 0xFFFFFFFF
         if ($rule.AccessControlType -eq "Deny") {
-            if (($rights -band $ReadAndExecute) -ne 0) { return $false }
+            if (($rights -band $Mask) -ne 0) { return $false }
             continue
         }
         $granted = $granted -bor $rights
     }
-    return (($granted -band $ReadAndExecute) -eq $ReadAndExecute)
+    return (($granted -band $Mask) -eq $Mask)
+}
+
+function Test-SandboxReadable([string]$Directory) {
+    return (Test-SandboxAccess $Directory $ReadAndExecute)
+}
+
+function Test-SandboxTraversable([string]$Directory) {
+    return (Test-SandboxAccess $Directory $TraverseRights)
 }
 
 function Test-TooBroad([string]$Directory) {
@@ -157,6 +186,72 @@ function Find-ToolDirs {
         $result += $full
     }
     return $result
+}
+
+function Get-LoomHome {
+    if ($env:LOOM_HOME) { return $env:LOOM_HOME }
+    return (Join-Path $env:USERPROFILE ".loom")
+}
+
+# The roots of the projects Loom has registered for the signed-in user.
+function Get-ProjectRoots {
+    $registry = Join-Path (Get-LoomHome) "projects.json"
+    if (-not (Test-Path -LiteralPath $registry -PathType Leaf)) { return @() }
+    try {
+        $payload = Get-Content -LiteralPath $registry -Raw -Encoding UTF8 | ConvertFrom-Json
+    } catch {
+        Write-Warning ("Could not read {0}: {1}" -f $registry, $_.Exception.Message)
+        return @()
+    }
+    $roots = @()
+    if ($payload -and $payload.PSObject.Properties["projects"]) {
+        foreach ($project in @($payload.projects)) {
+            if ($project -and $project.PSObject.Properties["root"] -and $project.root) { $roots += [string]$project.root }
+        }
+    }
+    return $roots
+}
+
+# Workspaces whose parent folders matter: -Workspace, the elevated relaunch's list and Loom's projects.
+function Get-WorkspaceDirs {
+    $found = New-Object System.Collections.Generic.List[string]
+    foreach ($item in $Workspace) { if ($item) { $found.Add($item) } }
+    # A vertical bar cannot be part of a Windows path, so it is a safe separator.
+    foreach ($item in ($WorkspaceList -split "\|")) { if ($item) { $found.Add($item) } }
+    if (-not $NoProjects) {
+        foreach ($item in (Get-ProjectRoots)) { $found.Add($item) }
+    }
+    $unique = @{}
+    $result = @()
+    foreach ($item in $found) {
+        if (-not (Test-Path -LiteralPath $item -PathType Container)) { continue }
+        $full = (Resolve-Path -LiteralPath $item).Path.TrimEnd("\")
+        # A drive root has no folder above it, and MXC takes no network shares as workspaces.
+        if ($full.Length -le 2 -or $full.StartsWith("\\")) { continue }
+        if ($unique.ContainsKey($full.ToLowerInvariant())) { continue }
+        $unique[$full.ToLowerInvariant()] = $true
+        $result += $full
+    }
+    return $result
+}
+
+# Every folder above $Directory, the drive root first; $Directory itself is left out.
+function Get-AncestorDirs([string]$Directory) {
+    $chain = @()
+    $parent = [IO.Path]::GetDirectoryName([IO.Path]::GetFullPath($Directory).TrimEnd("\"))
+    while ($parent) {
+        $chain = @($parent) + $chain
+        $parent = [IO.Path]::GetDirectoryName($parent)
+    }
+    return $chain
+}
+
+# Reading a SYSTEM-owned task needs administrator rights; do not call it absent when it is just hidden.
+function Get-BootTaskState {
+    $task = Get-ScheduledTask -TaskPath $TaskPath -TaskName $TaskName -ErrorAction SilentlyContinue
+    if ($task) { return "True" }
+    if (Test-Administrator) { return "False" }
+    return "unknown (only an administrator can see it)"
 }
 
 function Get-NullDeviceSddl {
@@ -207,10 +302,9 @@ function Test-SystemDriveReady {
 }
 
 function Show-Status {
-    $task = Get-ScheduledTask -TaskPath $TaskPath -TaskName $TaskName -ErrorAction SilentlyContinue
     Write-Host ("NUL device open to AppContainers : {0}" -f (Test-NullDeviceReady))
     Write-Host ("System drive root metadata       : {0}" -f (Test-SystemDriveReady))
-    Write-Host ("Boot task reapplying NUL         : {0}" -f [bool]$task)
+    Write-Host ("Boot task reapplying NUL         : {0}" -f (Get-BootTaskState))
     Write-Host ("Signed wxc-host-prep copy        : {0}" -f (Test-Path -LiteralPath $HostPrepCopy))
     foreach ($directory in (Find-ToolDirs)) {
         if (Test-UnderUserProfile $directory) {
@@ -218,6 +312,14 @@ function Show-Status {
             continue
         }
         Write-Host ("Tool folder readable by sandbox  : {0}  {1}" -f (Test-SandboxReadable $directory), $directory)
+    }
+    foreach ($workspaceDir in (Get-WorkspaceDirs)) {
+        $missing = @(Get-AncestorDirs $workspaceDir | Where-Object { -not (Test-SandboxTraversable $_) })
+        if ($missing.Count -eq 0) {
+            Write-Host ("Workspace parents listable       : True   {0}" -f $workspaceDir)
+        } else {
+            Write-Host ("Workspace parents listable       : False  {0}  (closed: {1})" -f $workspaceDir, ($missing -join ", "))
+        }
     }
 }
 
@@ -289,11 +391,43 @@ function Install-Prep {
         foreach ($directory in $newlyGranted) { if ($granted -notcontains $directory) { $granted += $directory } }
         Set-Content -LiteralPath $GrantLog -Value $granted -Encoding UTF8
     }
+
+    # git (GetLongPathNameW) and node (lstat) look at every folder above the workspace, and the
+    # sandbox is only given the workspace itself. The entry is on each folder alone (no
+    # inheritance), so nothing below those folders opens up.
+    $ancestorsGranted = @()
+    if (Test-Path -LiteralPath $AncestorLog) { $ancestorsGranted = @(Get-Content -LiteralPath $AncestorLog -Encoding UTF8) }
+    $ancestorsNew = @()
+    $ancestorsSeen = @{}
+    $workspaceDirs = @(Get-WorkspaceDirs)
+    if ($workspaceDirs.Count -eq 0) {
+        Write-Host "No workspace folder known (no registered Loom project, no -Workspace): the folders above a workspace stay closed."
+    }
+    foreach ($workspaceDir in $workspaceDirs) {
+        foreach ($directory in @(Get-AncestorDirs $workspaceDir)) {
+            $key = $directory.ToLowerInvariant()
+            if ($ancestorsSeen.ContainsKey($key)) { continue }
+            $ancestorsSeen[$key] = $true
+            if (Test-SandboxTraversable $directory) { continue }
+            $ancestorsNew += $directory
+            Step "let Loom's sandbox list $directory (that folder only: it sees the names of its entries, not what is inside them; not inherited)" {
+                & icacls.exe $directory /grant ("*{0}:(S,RD,RA,X)" -f $CapabilitySid) /C /Q | Out-Null
+                if ($LASTEXITCODE -ne 0) { Write-Warning "icacls reported errors for $directory (exit $LASTEXITCODE)." }
+            }
+        }
+    }
+    if (-not $DryRun) {
+        foreach ($directory in $ancestorsNew) { if ($ancestorsGranted -notcontains $directory) { $ancestorsGranted += $directory } }
+        if ($ancestorsGranted.Count -gt 0) { Set-Content -LiteralPath $AncestorLog -Value $ancestorsGranted -Encoding UTF8 }
+    }
     Write-Host ""
     if ($DryRun) {
         Write-Host "Dry run only: nothing was changed. Run without -DryRun to apply."
     } else {
         Write-Host "Done. Loom's Windows sandbox can now start git, node, npm and PowerShell."
+        Write-Host ("Check: NUL device open {0}; system drive root {1}; boot task {2}; folders above workspaces opened now: {3}" -f
+            (Test-NullDeviceReady), (Test-SystemDriveReady), (Get-BootTaskState), $ancestorsNew.Count)
+        Write-Host "Add a project later? Run this script again (it only changes what is still closed)."
     }
 }
 
@@ -313,6 +447,14 @@ function Remove-Prep {
         foreach ($directory in (Get-Content -LiteralPath $GrantLog)) {
             if (-not $directory -or -not (Test-Path -LiteralPath $directory)) { continue }
             Step "remove Loom's sandbox capability from $directory" {
+                & icacls.exe $directory /remove:g ("*{0}" -f $CapabilitySid) /C /Q | Out-Null
+            }
+        }
+    }
+    if (Test-Path -LiteralPath $AncestorLog) {
+        foreach ($directory in @(Get-Content -LiteralPath $AncestorLog -Encoding UTF8)) {
+            if (-not $directory -or -not (Test-Path -LiteralPath $directory)) { continue }
+            Step "remove Loom's sandbox capability from $directory (the folder above a workspace)" {
                 & icacls.exe $directory /remove:g ("*{0}" -f $CapabilitySid) /C /Q | Out-Null
             }
         }
@@ -342,6 +484,10 @@ try {
             $relaunch += @("-MxcBin", "`"$(Split-Path -Parent $source)`"")
             $dirs = (Find-ToolDirs | Where-Object { -not (Test-UnderUserProfile $_) }) -join ";"
             if ($dirs) { $relaunch += @("-ToolDirList", "`"$dirs`"") }
+            # Resolved here, as the signed-in user: the elevated process may be another account.
+            $workspaces = (Get-WorkspaceDirs) -join "|"
+            if ($workspaces) { $relaunch += @("-WorkspaceList", "`"$workspaces`"") }
+            $relaunch += "-NoProjects"
         }
         $shell = (Get-Process -Id $PID).Path
         $process = Start-Process -FilePath $shell -Verb RunAs -ArgumentList $relaunch -Wait -PassThru

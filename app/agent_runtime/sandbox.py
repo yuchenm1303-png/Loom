@@ -60,6 +60,12 @@ _MXC_ENV_ALWAYS = frozenset(
     }
 )
 _SECRET_ENV_MARKERS = ("API_KEY", "TOKEN", "SECRET", "PASSWORD", "PASSWD", "PRIVATE_KEY")
+# With core.symlinks=true (Git for Windows' default where symlinks work) git enters its work
+# tree through GetFinalPathNameByHandleW, and an AppContainer is refused that call: `git diff`,
+# `grep`, `blame` and `reset --hard` stop with "this operation must be run in a work tree".
+# The sandbox cannot create symlinks either (WinError 1314), so a git that sees a file system
+# without them loses nothing there. Measured with Git for Windows on Windows 11 23H2.
+_WINDOWS_GIT_CONFIG = (("core.symlinks", "false"),)
 
 
 class SandboxPolicy(str, Enum):
@@ -131,6 +137,7 @@ class SandboxManager:
         bubblewrap_executable: str | None = None,
         windows_mxc_executable: str | None = None,
         windows_ui_access: bool | None = None,
+        windows_git_compat: bool | None = None,
         probe_backend: bool = True,
         system_name: str | None = None,
     ) -> None:
@@ -143,6 +150,11 @@ class SandboxManager:
             _windows_ui_access_from_environment()
             if windows_ui_access is None
             else bool(windows_ui_access)
+        )
+        self.windows_git_compat = (
+            _windows_git_compat_from_environment()
+            if windows_git_compat is None
+            else bool(windows_git_compat)
         )
         self._backend_available = False
         self._backend_reason = "No supported OS sandbox backend is available."
@@ -274,6 +286,7 @@ class SandboxManager:
         self,
         *,
         tool_dirs: tuple[str, ...] = (),
+        workspace: str | Path | None = None,
         force: bool = False,
     ) -> WindowsSandboxPrepStatus:
         """Read-only view of the elevated host preparation MXC's DACL tier needs."""
@@ -281,6 +294,7 @@ class SandboxManager:
         return windows_sandbox_prep_status(
             sandbox_executable=self.windows_mxc_executable or None,
             tool_dirs=tool_dirs,
+            workspace=workspace,
             force=force,
         )
 
@@ -541,8 +555,7 @@ class SandboxManager:
             )
         return (executable, "--config-base64", encoded)
 
-    @staticmethod
-    def _windows_mxc_environment(environment: Mapping[str, str]) -> dict[str, str]:
+    def _windows_mxc_environment(self, environment: Mapping[str, str]) -> dict[str, str]:
         output: dict[str, str] = {}
         for raw_name, raw_value in environment.items():
             name = str(raw_name)
@@ -553,6 +566,13 @@ class SandboxManager:
                 value = str(raw_value)
                 if "\x00" not in value:
                     output[name] = value
+        if self.windows_git_compat:
+            # GIT_CONFIG_* is not forwarded from the caller, so there is no count to extend.
+            # Every git the command starts, scripts included, reads these.
+            for index, (key, value) in enumerate(_WINDOWS_GIT_CONFIG):
+                output[f"GIT_CONFIG_KEY_{index}"] = key
+                output[f"GIT_CONFIG_VALUE_{index}"] = value
+            output["GIT_CONFIG_COUNT"] = str(len(_WINDOWS_GIT_CONFIG))
         return output
 
     @staticmethod
@@ -627,6 +647,11 @@ class SandboxManager:
 def _windows_ui_access_from_environment() -> bool:
     value = str(os.environ.get("LOOM_WINDOWS_SANDBOX_UI") or "").strip().casefold()
     return value not in {"locked", "lockdown", "off", "disabled", "0", "false", "no"}
+
+
+def _windows_git_compat_from_environment() -> bool:
+    value = str(os.environ.get("LOOM_WINDOWS_SANDBOX_GIT_SYMLINKS") or "").strip().casefold()
+    return value not in {"keep", "machine", "off", "disabled", "0", "false", "no"}
 
 
 def _probed_tier(reason: str) -> str:

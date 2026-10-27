@@ -37,12 +37,24 @@ _MXC_ERROR_RE = re.compile(r'\{"error":\s*\{"code":\s*"(?P<code>[^"]+)".*\}\}')
 _MXC_DACL_RE = re.compile(r"DACL fallback requires write-DAC permission on '(?P<path>[^']+)'")
 _ROOT_LSTAT_RE = re.compile(r"(?:EPERM|EACCES)[^\n]*lstat '[A-Za-z]:\\{1,2}'")
 _NULL_DEVICE_RE = re.compile(r"could not open '/dev/null'|\\\\\.\\nul", re.IGNORECASE)
+# git resolves its working directory with GetLongPathNameW, which lists every folder
+# above it; the sandbox only gets the workspace itself.
+_CWD_RE = re.compile(r"current working directory|当前工作目录", re.IGNORECASE)
+# node lstat()s each folder above a script to find its real path.
+_ANCESTOR_STAT_RE = re.compile(
+    r"(?:EPERM|EACCES)[^\n]*?(?:lstat|stat|scandir) '(?P<path>[A-Za-z]:\\{1,2}[^'\n]*)'"
+)
+_NODE_MODULE_LOADER_RE = re.compile(r"node:internal/modules|Module\._findPath|toRealPath")
 
 # Startup denials: the process never got to do its work. Retrying the same
 # action outside the sandbox cannot repeat a side effect it never had.
-_STARTUP_KINDS = frozenset({"win32k", "dll_init", "dacl", "launch", "null_device", "system_drive"})
+_STARTUP_KINDS = frozenset(
+    {"win32k", "dll_init", "dacl", "launch", "null_device", "system_drive", "cwd", "ancestor"}
+)
 # Kinds the one-time host preparation fixes.
-_HOST_PREP_KINDS = frozenset({"dll_init", "dacl", "null_device", "system_drive"})
+_HOST_PREP_KINDS = frozenset({"dll_init", "dacl", "null_device", "system_drive", "cwd", "ancestor"})
+# Kinds that name a workspace whose parent folders the sandbox cannot list.
+_WORKSPACE_KINDS = frozenset({"cwd", "ancestor"})
 
 
 @dataclass(frozen=True, slots=True)
@@ -52,9 +64,13 @@ class SandboxDenial:
     program: str = ""
     path: str = ""
     remediation: str = ""
+    # None: decided by the kind. A denial the kind alone cannot place sets it.
+    startup_override: bool | None = None
 
     @property
     def startup(self) -> bool:
+        if self.startup_override is not None:
+            return self.startup_override
         return self.kind in _STARTUP_KINDS
 
     def explanation(self) -> str:
@@ -138,12 +154,15 @@ def _has_access_marker(text: str) -> bool:
     )
 
 
-def windows_mxc_denial(data: dict) -> SandboxDenial | None:
+def windows_mxc_denial(data: dict, *, workspace: str | os.PathLike[str] | None = None) -> SandboxDenial | None:
     """Recognize a command the Windows MXC sandbox stopped, from its exit and output.
 
     Only enforced ``windows-mxc`` runs that failed qualify. wxc-exec's own
     ``backend_error`` records count only when they describe an access failure:
     "file not found" is the command's problem, not the sandbox's.
+
+    ``workspace`` is the folder the sandbox opened. The command's own cwd may be
+    deeper, but only the folders above the workspace are closed to it.
     """
 
     sandbox = data.get("sandbox")
@@ -214,6 +233,27 @@ def windows_mxc_denial(data: dict) -> SandboxDenial | None:
             "(AppContainers) need a one-time host preparation for that.",
             program=program,
         )
+    root = str(workspace or "").strip() or str(data.get("cwd") or "").strip()
+    if root and _CWD_RE.search(text) and _has_access_marker(text):
+        return SandboxDenial(
+            "cwd",
+            f"{program} could not read its working directory: the sandbox cannot list the folders "
+            f"above {root}.",
+            program=program,
+            path=root,
+        )
+    stat_match = _ANCESTOR_STAT_RE.search(text)
+    if stat_match is not None and root and _is_ancestor(stat_match.group("path"), root):
+        return SandboxDenial(
+            "ancestor",
+            f"{program} could not look at {stat_match.group('path')}, a folder above its workspace "
+            f"{root}: the sandbox is only given the workspace itself.",
+            program=program,
+            path=root,
+            # Node resolves a script's real path before running any of it; anywhere
+            # else the command may already have done part of its work.
+            startup_override=bool(_NODE_MODULE_LOADER_RE.search(text)),
+        )
     if _has_access_marker(text):
         return SandboxDenial(
             "access",
@@ -222,6 +262,14 @@ def windows_mxc_denial(data: dict) -> SandboxDenial | None:
             program=program,
         )
     return None
+
+
+def _is_ancestor(candidate: str, descendant: str) -> bool:
+    """Whether ``candidate`` is a folder above ``descendant`` (Windows spelling, case-insensitive)."""
+
+    above = ntpath.normcase(ntpath.normpath(candidate)).rstrip("\\")
+    below = ntpath.normcase(ntpath.normpath(descendant))
+    return bool(above) and below.startswith(above + "\\") and below != above
 
 
 def _dacl_denial(program: str, path: str) -> SandboxDenial:
@@ -237,10 +285,16 @@ def _dacl_denial(program: str, path: str) -> SandboxDenial:
 def _default_prep_command(denial: SandboxDenial) -> str:
     from .windows_sandbox_prep import windows_sandbox_prep_status
 
+    workspace_kind = denial.kind in _WORKSPACE_KINDS
     status = windows_sandbox_prep_status(
         sandbox_executable=os.environ.get("LOOM_WINDOWS_SANDBOX_EXECUTABLE") or None,
-        tool_dirs=(denial.path,) if denial.path else (),
+        tool_dirs=(denial.path,) if denial.path and not workspace_kind else (),
+        workspace=denial.path if workspace_kind else None,
     )
+    if workspace_kind:
+        # Nothing to fix when the folders above it are already listable: the
+        # failure then has another cause and a script run would not help.
+        return "" if status.workspace_ready else status.command()
     if status.complete:
         return ""
     return status.command()
@@ -250,6 +304,7 @@ def classify_exec_sandbox_denial(
     result: ToolResult,
     *,
     prep_command: Callable[[SandboxDenial], str] | None = None,
+    workspace: str | os.PathLike[str] | None = None,
 ) -> ToolResult:
     """Promote one proven/likely sandbox failure into Loom's typed result shape.
 
@@ -260,7 +315,7 @@ def classify_exec_sandbox_denial(
 
     if result.data.get("failure_kind") == "sandbox":
         return result
-    denial = windows_mxc_denial(result.data)
+    denial = windows_mxc_denial(result.data, workspace=workspace)
     if denial is not None:
         if denial.kind in _HOST_PREP_KINDS:
             remediation = (prep_command or _default_prep_command)(denial)
@@ -268,6 +323,7 @@ def classify_exec_sandbox_denial(
                 denial = SandboxDenial(
                     denial.kind, denial.detail, program=denial.program,
                     path=denial.path, remediation=remediation,
+                    startup_override=denial.startup_override,
                 )
         data = dict(result.data)
         data.update(

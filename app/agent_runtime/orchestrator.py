@@ -799,7 +799,7 @@ class ToolOrchestrator:
             if not isinstance(result, ToolResult):
                 raise TypeError("agent tool handler must return ToolResult")
             if prepared.tool.name == "exec":
-                result = classify_exec_sandbox_denial(result)
+                result = classify_exec_sandbox_denial(result, workspace=context.workspace)
             return result
         except SandboxExecutionError as exc:
             return ToolResult(

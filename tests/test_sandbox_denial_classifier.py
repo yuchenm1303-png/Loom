@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 from app.agent_runtime.sandbox_denial import (
     classify_exec_sandbox_denial,
     is_likely_sandbox_denied_result,
@@ -64,7 +66,7 @@ def test_preclassified_platform_denial_is_preserved():
     assert classify_exec_sandbox_denial(raw) is raw
 
 
-def _mxc_result(*, returncode, stdout="", stderr="", argv=None, enforced=True, backend="windows-mxc"):
+def _mxc_result(*, returncode, stdout="", stderr="", argv=None, enforced=True, backend="windows-mxc", cwd=""):
     return ToolResult(
         ok=False,
         content=f"process=proc-1 status=exited backend=pipe\nsandbox={backend}:workspace\nexit={returncode}",
@@ -74,6 +76,7 @@ def _mxc_result(*, returncode, stdout="", stderr="", argv=None, enforced=True, b
             "stdout": stdout,
             "stderr": stderr,
             "sandbox": {"enforced": enforced, "backend": backend},
+            "cwd": cwd,
         },
     )
 
@@ -184,3 +187,153 @@ def test_windows_rules_need_an_enforced_mxc_sandbox():
     )
     assert linux.data["sandbox_detection"] == "codex_heuristic"
     assert "sandbox_denial" not in linux.data
+
+
+# Captured from git 2.x and Node 20 running in an AppContainer that was only given the workspace.
+GIT_CWD_STDERR = "fatal: Unable to read current working directory: Permission denied\n"
+NODE_ANCESTOR_STDERR = (
+    "node:fs:2734\n"
+    "    const out = binding.lstat(base, false, undefined, true /* throwIfNoEntry */);\n"
+    "                        ^\n"
+    "\n"
+    "Error: EPERM: operation not permitted, lstat 'C:\\tmp'\n"
+    "    at Object.realpathSync (node:fs:2734:25)\n"
+    "    at toRealPath (node:internal/modules/helpers:63:13)\n"
+    "    at Module._findPath (node:internal/modules/cjs/loader:781:22)\n"
+)
+WORKSPACE = r"C:\tmp\ws"
+
+
+def test_git_that_cannot_read_its_working_directory_names_the_folders_above_the_workspace():
+    asked = []
+
+    def prep(denial):
+        asked.append((denial.kind, denial.path))
+        return r'powershell -File "C:\Loom\windows-sandbox-prep.ps1" -Workspace "C:\tmp\ws"'
+
+    typed = classify_exec_sandbox_denial(
+        _mxc_result(returncode=128, stderr=GIT_CWD_STDERR, cwd=WORKSPACE + r"\src"),
+        prep_command=prep,
+        workspace=WORKSPACE,
+    )
+
+    denial = typed.data["sandbox_denial"]
+    assert denial["kind"] == "cwd"
+    assert denial["startup"] is True
+    # The closed folders sit above the workspace, not above the command's deeper cwd.
+    assert denial["path"] == WORKSPACE
+    assert asked == [("cwd", WORKSPACE)]
+    assert "-Workspace" in denial["remediation"]
+    assert "One-time fix (administrator)" in typed.content
+
+
+def test_workspace_denials_fall_back_to_the_command_cwd_when_the_workspace_is_unknown():
+    typed = classify_exec_sandbox_denial(
+        _mxc_result(returncode=128, stderr=GIT_CWD_STDERR, cwd=WORKSPACE),
+        prep_command=_no_prep,
+    )
+    assert typed.data["sandbox_denial"]["kind"] == "cwd"
+    assert typed.data["sandbox_denial"]["path"] == WORKSPACE
+
+
+def test_node_that_cannot_stat_a_folder_above_the_workspace_never_ran_the_script():
+    typed = classify_exec_sandbox_denial(
+        _mxc_result(returncode=1, stderr=NODE_ANCESTOR_STDERR, argv=["node.exe", "build.js"], cwd=WORKSPACE),
+        prep_command=_no_prep,
+        workspace=WORKSPACE,
+    )
+
+    denial = typed.data["sandbox_denial"]
+    assert denial["kind"] == "ancestor"
+    # Node resolves a script's real path before it runs any of it, so a retry repeats nothing.
+    assert denial["startup"] is True
+    assert denial["path"] == WORKSPACE
+    assert r"C:\tmp, a folder above its workspace" in typed.content
+
+
+def test_a_script_that_lists_a_folder_above_the_workspace_has_already_started():
+    stderr = (
+        "Error: EPERM: operation not permitted, scandir 'C:\\Users'\n"
+        "    at Object.readdirSync (node:fs:1507:3)\n"
+        "    at scan (C:\\Users\\me\\ws\\scan.js:3:6)\n"
+    )
+    typed = classify_exec_sandbox_denial(
+        _mxc_result(returncode=1, stderr=stderr, argv=["node.exe", "scan.js"], cwd=r"C:\Users\me\ws"),
+        # With a fix command to print, the denial is rebuilt: it must keep its own verdict.
+        prep_command=lambda _denial: r'powershell -File "C:\Loom\windows-sandbox-prep.ps1" -Workspace "C:\Users\me\ws"',
+        workspace=r"C:\Users\me\ws",
+    )
+
+    denial = typed.data["sandbox_denial"]
+    assert denial["kind"] == "ancestor"
+    assert "-Workspace" in denial["remediation"]
+    # Output may exist and side effects may have happened: this is not a startup failure.
+    assert denial["startup"] is False
+
+
+@pytest.mark.parametrize("stat_path", [r"C:\tmp", r"c:\TMP", "C:\\\\tmp"])
+def test_folders_above_the_workspace_match_in_any_spelling(stat_path):
+    stderr = f"Error: EPERM: operation not permitted, lstat '{stat_path}'\n"
+    typed = classify_exec_sandbox_denial(
+        _mxc_result(returncode=1, stderr=stderr, argv=["node.exe", "x.js"], cwd=WORKSPACE),
+        prep_command=_no_prep,
+        workspace=WORKSPACE,
+    )
+    assert typed.data["sandbox_denial"]["kind"] == "ancestor"
+
+
+@pytest.mark.parametrize(
+    "stat_path",
+    [
+        WORKSPACE,
+        WORKSPACE + "2",
+        WORKSPACE + r"\src",
+        # Text that begins the workspace path without ending on a folder boundary.
+        r"C:\tm",
+        WORKSPACE[:-1],
+        r"C:\other",
+        r"D:\tmp",
+    ],
+)
+def test_only_folders_above_the_workspace_count_as_ancestors(stat_path):
+    stderr = f"Error: EPERM: operation not permitted, lstat '{stat_path}'\n"
+    typed = classify_exec_sandbox_denial(
+        _mxc_result(returncode=1, stderr=stderr, argv=["node.exe", "x.js"], cwd=WORKSPACE),
+        prep_command=_no_prep,
+        workspace=WORKSPACE,
+    )
+    # The workspace itself, a sibling that shares its prefix, something below it, a partial
+    # folder name and other folders are ordinary access denials: the one-time script cannot fix
+    # them.
+    assert typed.data["sandbox_denial"]["kind"] == "access"
+
+
+def test_default_remediation_asks_for_the_workspace_only_while_its_parents_are_closed(monkeypatch):
+    from app.agent_runtime import windows_sandbox_prep as prep_module
+
+    state = {"missing": ("C:\\", r"C:\tmp")}
+    calls = []
+
+    def fake_status(**kwargs):
+        calls.append(kwargs)
+        return prep_module.WindowsSandboxPrepStatus(
+            True,
+            True,
+            script=r"C:\Loom\windows-sandbox-prep.ps1",
+            workspace=str(kwargs.get("workspace") or ""),
+            missing_ancestors=state["missing"],
+        )
+
+    monkeypatch.setattr(prep_module, "windows_sandbox_prep_status", fake_status)
+    raw = _mxc_result(returncode=128, stderr=GIT_CWD_STDERR, cwd=WORKSPACE)
+
+    closed = classify_exec_sandbox_denial(raw, workspace=WORKSPACE)
+    assert closed.data["sandbox_denial"]["remediation"].endswith(r'-Workspace "C:\tmp\ws"')
+    assert calls[0]["workspace"] == WORKSPACE
+    assert not calls[0]["tool_dirs"]
+
+    state["missing"] = ()
+    opened = classify_exec_sandbox_denial(raw, workspace=WORKSPACE)
+    # Something else stopped git; running the script would change nothing.
+    assert opened.data["sandbox_denial"]["remediation"] == ""
+    assert "One-time fix" not in opened.content
