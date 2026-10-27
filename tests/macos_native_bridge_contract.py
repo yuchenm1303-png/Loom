@@ -11,7 +11,6 @@ def main() -> None:
     import Quartz
     import AppKit
     import ApplicationServices
-    from app.agent_runtime.computer_macos import _unicode_units
 
     assert AppKit.NSWorkspace is not None
     assert callable(Quartz.CGWindowListCopyWindowInfo)
@@ -19,7 +18,8 @@ def main() -> None:
     assert callable(ApplicationServices.AXIsProcessTrusted)
 
     text = "你好😀"
-    units = next(iter(_unicode_units(text)))
+    raw = text.encode("utf-16-le")
+    units = tuple(int.from_bytes(raw[i:i + 2], "little") for i in range(0, len(raw), 2))
     event = Quartz.CGEventCreateKeyboardEvent(None, 0, True)
     if event is None:
         raise RuntimeError("Quartz could not allocate a keyboard event")
