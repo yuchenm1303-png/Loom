@@ -104,7 +104,24 @@ and installer size, the installer, and the release notes. The header's Download 
 download from the nav; the hero, the section and “Getting started” still point straight at the installer.
 - **Footer.** Download, Documentation (the repository README), GitHub, Updates, Classic home. The maker line is unchanged.
 - **Tests.** `portal-home.test.mjs` now also holds the visible account entry, the language switch, the narrow menu, the
-download section and the footer links (16 tests).
+download section and the footer links (17 tests).
+
+### Lens stops (2026-10-26)
+
+The glass cursor is no longer limited to the controls that carry `data-liquid-snap`. Every native control inside the
+portal is a stop by selector: `button`, input buttons, `a[href]`, `summary`, and the button/link/switch/tab/menuitem roles.
+That covers the header, footer, narrow menu and the buttons that only mount when the account dialog opens. The older
+class selectors stay for whole surfaces (the input shell, the brand), so an inner input does not become a second stop.
+
+- **Reading stops.** The task label, the quoted request, each thread row, the three capability titles, the three step
+titles and the three download rows carry `data-liquid-snap`. They are text, not controls: the lens magnifies them but they
+do not move.
+- **Crop.** A reading stop asks for a tighter lens with `data-liquid-snap-pad` (6px on the thread and download rows, 8px on
+titles); controls keep the 10px padding. The value is clamped to 4–18px.
+- **Motion.** Only the curated magnetic marks translate under the pointer. Every other control is a still stop, which keeps
+a dialog full of small buttons from twitching.
+- **Cost.** The stop list is cached in `snapTargets` and refreshed from the existing `MutationObserver`, not queried on every
+pointermove. That is what keeps a freshly mounted auth dialog covered without the flicker of remeasuring every button.
 
 ## Files
 
@@ -112,6 +129,8 @@ download section and the footer links (16 tests).
 - `desktop-react/src/components/portalHomeCopy.ts`: all the words, including the download block and the footer links.
 - `desktop-react/src/components/portal-editorial.css`: the page. `portal-home-icon.css` (icon), `portal-auth-dialog.css`
   (the sign-in dialog, retuned to the same two colours) are as before.
+- `desktop-react/src/components/PortalLiquidCursor.tsx`: the lens, its native-control selector, cached stops and the reading
+  stops' crop.
 - `desktop-react/src/assets/fonts/newsreader/`: the two font files, `OFL.txt`, and `README.md` (provenance, hashes, exact
   subsetting commands). Bundled through the build, so the gateway serves them hashed and immutable.
 - `desktop-react/scripts/tests/portal-home.test.mjs`: the source contract of all of the above.

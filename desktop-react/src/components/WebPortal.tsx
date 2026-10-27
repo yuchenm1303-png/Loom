@@ -679,11 +679,11 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
                   </p>
                 </div>
                 <figure ref={threadRef} className="editorial-session editorial-thread editorial-reveal" style={revealIndex(6)} data-state={threadState} aria-label={home.session.label}>
-                  <p className="editorial-session-head">{home.session.heading}</p>
-                  <p className="editorial-session-ask">{home.session.ask}</p>
+                  <p className="editorial-session-head" data-liquid-snap="true" data-liquid-snap-pad="8">{home.session.heading}</p>
+                  <p className="editorial-session-ask" data-liquid-snap="true" data-liquid-snap-pad="8">{home.session.ask}</p>
                   <ol>
                     {home.session.rows.map((row, index) => (
-                      <li key={row.text} className={index === home.session.rows.length - 1 ? "is-waiting" : undefined} style={revealIndex(index)}>
+                      <li key={row.text} className={index === home.session.rows.length - 1 ? "is-waiting" : undefined} data-liquid-snap="true" data-liquid-snap-pad="6" style={revealIndex(index)}>
                         <time dateTime={row.time}>{row.time}</time>
                         <span>{emphasize(row.text)}</span>
                       </li>
@@ -699,7 +699,7 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
                 {home.doing.items.map((item, index) => (
                   <li key={item.lead} data-reveal style={revealIndex(index)}>
                     <span className="editorial-index" aria-hidden="true">{`0${index + 1}`}</span>
-                    <strong>{item.lead}</strong>
+                    <strong data-liquid-snap="true" data-liquid-snap-pad="8">{item.lead}</strong>
                     <p>{item.text}</p>
                   </li>
                 ))}
@@ -712,9 +712,9 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
               </div>
               <div className="editorial-download-panel" data-reveal>
                 <dl>
-                  <div><dt>{home.downloadSection.platformLabel}</dt><dd>{home.downloadSection.platform}</dd></div>
-                  <div><dt>{home.downloadSection.versionLabel}</dt><dd>{release.version ? `${release.version} · Stable` : (zh ? "最新稳定版" : "Latest stable")}</dd></div>
-                  <div><dt>{home.downloadSection.installerLabel}</dt><dd>{release.package || "Windows x64"}</dd></div>
+                  <div data-liquid-snap="true" data-liquid-snap-pad="6"><dt>{home.downloadSection.platformLabel}</dt><dd>{home.downloadSection.platform}</dd></div>
+                  <div data-liquid-snap="true" data-liquid-snap-pad="6"><dt>{home.downloadSection.versionLabel}</dt><dd>{release.version ? `${release.version} · Stable` : (zh ? "最新稳定版" : "Latest stable")}</dd></div>
+                  <div data-liquid-snap="true" data-liquid-snap-pad="6"><dt>{home.downloadSection.installerLabel}</dt><dd>{release.package || "Windows x64"}</dd></div>
                 </dl>
                 <div className="editorial-actions">
                   <a className="editorial-primary" href={release.download} data-liquid-snap="true" data-magnetic-hover="true">{home.download}<Download size={16} aria-hidden="true" /></a>
@@ -735,7 +735,7 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
                 {home.start.steps.map((step, index) => (
                   <li key={step.lead} data-reveal style={revealIndex(index)}>
                     <span className="editorial-index" aria-hidden="true">{index + 1}</span>
-                    <strong>{step.lead}</strong>
+                    <strong data-liquid-snap="true" data-liquid-snap-pad="8">{step.lead}</strong>
                     <p>{step.text}</p>
                   </li>
                 ))}

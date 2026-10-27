@@ -10,6 +10,7 @@ import ts from "typescript";
 
 const read = (path) => readFileSync(new URL(path, import.meta.url), "utf8").replace(/\r\n/g, "\n");
 const portal = read("../../src/components/WebPortal.tsx");
+const cursor = read("../../src/components/PortalLiquidCursor.tsx");
 const css = read("../../src/components/portal-editorial.css");
 const dialogCss = read("../../src/components/portal-auth-dialog.css");
 const fontDir = new URL("../../src/assets/fonts/newsreader/", import.meta.url);
@@ -204,6 +205,29 @@ test("the glass cursor can snap to every control, and what it redraws is made of
   // Numbers are elements (a pseudo-element is not redrawn into the lens).
   assert.ok(portal.includes('<span className="editorial-index" aria-hidden="true">{`0${index + 1}`}</span>'));
   assert.ok(portal.includes('<span className="editorial-index" aria-hidden="true">{index + 1}</span>'));
+});
+
+test("every control is a lens stop, and the reading stops get a tighter crop", () => {
+  // Native controls are stops by selector, so dialogs and menus that mount
+  // later are covered without adding an attribute to each one.
+  for (const selector of ["button:not(:disabled)", "input[type='button']:not(:disabled)", "a[href]", "summary", "[role='button']", "[role='switch']", "[data-liquid-snap='true']"]) {
+    assert.ok(cursor.includes(selector), selector);
+  }
+  assert.ok(cursor.includes("let snapTargets: HTMLElement[] = [];"), "the stop list is cached");
+  assert.ok((cursor.match(/refreshSnapTargets\(\);/g) ?? []).length >= 2, "refreshed at start and after React mounts");
+  assert.ok(cursor.includes("for (const candidate of snapTargets)"), "pointer moves walk the cached list");
+  assert.ok(cursor.includes("dataset.liquidSnapPad") && cursor.includes("Math.min(18, Math.max(4, requestedPad))"), "a reading stop can ask for a tighter crop");
+  // Only the page's deliberate marks move; the many utility controls only magnify.
+  const magnetic = cursor.slice(cursor.indexOf("const MAGNETIC_SELECTOR"), cursor.indexOf("function rectDistance"));
+  assert.ok(!magnetic.includes('"button:not(:disabled)"'), "every button snaps, but only marked ones are magnetic");
+  for (const marker of [
+    'className="editorial-session-head" data-liquid-snap="true" data-liquid-snap-pad="8"',
+    'className="editorial-session-ask" data-liquid-snap="true" data-liquid-snap-pad="8"',
+    'data-liquid-snap="true" data-liquid-snap-pad="6" style={revealIndex(index)}',
+    '<strong data-liquid-snap="true" data-liquid-snap-pad="8">{item.lead}</strong>',
+    '<strong data-liquid-snap="true" data-liquid-snap-pad="8">{step.lead}</strong>',
+    '<div data-liquid-snap="true" data-liquid-snap-pad="6"><dt>{home.downloadSection.platformLabel}</dt>',
+  ]) assert.ok(portal.includes(marker), marker);
 });
 
 test("the page follows the system's light or dark setting until the visitor chooses", () => {

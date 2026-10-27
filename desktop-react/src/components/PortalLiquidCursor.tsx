@@ -16,7 +16,24 @@ const ROI_DEADZONE = 35;
 // The lens samples the page it is drawn on. A separate wallpaper would show
 // through the refraction as a second, unrelated background.
 const WALLPAPER_URL = "";
+// Every native control is a lens stop, even when a new dialog or menu has just
+// mounted it. The class list below keeps the older portal's larger surfaces
+// (input shells, brand) as single stops instead of their inner pieces.
+const CONTROL_SELECTOR = [
+  "button:not(:disabled)",
+  "input[type='button']:not(:disabled)",
+  "input[type='submit']:not(:disabled)",
+  "input[type='reset']:not(:disabled)",
+  "a[href]",
+  "summary",
+  "[role='button']:not([aria-disabled='true'])",
+  "[role='link']",
+  "[role='switch']",
+  "[role='tab']:not([aria-disabled='true'])",
+  "[role='menuitem']:not([aria-disabled='true'])",
+].join(",");
 const SNAP_SELECTOR = [
+  CONTROL_SELECTOR,
   ".loom-portal-brand",
   ".loom-primary-action:not(:disabled)",
   ".loom-secondary-action",
@@ -216,6 +233,14 @@ export function PortalLiquidCursor() {
 
     const magneticStates = new Map<HTMLElement, MagneticState>();
     let magneticTargets: HTMLElement[] = [];
+    let snapTargets: HTMLElement[] = [];
+
+    // Querying every control on every pointermove gets expensive as dialogs
+    // mount more buttons. Keep one list and refresh it from the mutation
+    // observer, which already watches the page for React's changes.
+    const refreshSnapTargets = () => {
+      snapTargets = Array.from(root.querySelectorAll<HTMLElement>(SNAP_SELECTOR));
+    };
 
     const refreshMagneticTargets = () => {
       const next = Array.from(root.querySelectorAll<HTMLElement>(MAGNETIC_SELECTOR));
@@ -305,6 +330,7 @@ export function PortalLiquidCursor() {
     };
 
     refreshMagneticTargets();
+    refreshSnapTargets();
 
     const findSnapTarget = () => {
       if (activeTarget?.isConnected && !activeTarget.closest("[inert], [aria-hidden='true']")) {
@@ -315,7 +341,8 @@ export function PortalLiquidCursor() {
       }
       activeTarget = null;
       let closest = SNAP_DISTANCE + 0.001;
-      for (const candidate of Array.from(root.querySelectorAll<HTMLElement>(SNAP_SELECTOR))) {
+      for (const candidate of snapTargets) {
+        if (!candidate.isConnected) continue;
         if (candidate.dataset.loomLiquidCursor === "true") continue;
         if (candidate.closest("[inert], [aria-hidden='true']")) continue;
         const style = getComputedStyle(candidate);
@@ -347,8 +374,10 @@ export function PortalLiquidCursor() {
             pinY.velocity = 0;
           }
           const rect = target.getBoundingClientRect();
-          const finalLensWidth = Math.min(Math.max(38, window.innerWidth - 20), Math.max(38, rect.width + SNAP_PADDING * 2));
-          const finalLensHeight = Math.min(Math.max(34, window.innerHeight - 20), Math.max(34, rect.height + SNAP_PADDING * 2));
+          const requestedPad = Number(target.dataset.liquidSnapPad);
+          const pad = Number.isFinite(requestedPad) ? Math.min(18, Math.max(4, requestedPad)) : SNAP_PADDING;
+          const finalLensWidth = Math.min(Math.max(38, window.innerWidth - 20), Math.max(38, rect.width + pad * 2));
+          const finalLensHeight = Math.min(Math.max(34, window.innerHeight - 20), Math.max(34, rect.height + pad * 2));
           // Allocate the entire capture surface once on snap entry. Growing
           // the canvas each spring frame destroyed the WebGL texture and made
           // the wide Ask input flicker continuously.
@@ -370,10 +399,12 @@ export function PortalLiquidCursor() {
       }
       if (target) {
         const rect = target.getBoundingClientRect();
+        const requestedPad = Number(target.dataset.liquidSnapPad);
+        const pad = Number.isFinite(requestedPad) ? Math.min(18, Math.max(4, requestedPad)) : SNAP_PADDING;
         pinX.target = rect.left + rect.width / 2;
         pinY.target = rect.top + rect.height / 2;
-        width.target = Math.min(Math.max(38, window.innerWidth - 20), Math.max(38, rect.width + SNAP_PADDING * 2));
-        height.target = Math.min(Math.max(34, window.innerHeight - 20), Math.max(34, rect.height + SNAP_PADDING * 2));
+        width.target = Math.min(Math.max(38, window.innerWidth - 20), Math.max(38, rect.width + pad * 2));
+        height.target = Math.min(Math.max(34, window.innerHeight - 20), Math.max(34, rect.height + pad * 2));
         snap.target = 1;
       } else {
         width.target = BASE_WIDTH;
@@ -718,6 +749,7 @@ export function PortalLiquidCursor() {
 
     const observer = new MutationObserver((mutations) => {
       refreshMagneticTargets();
+      refreshSnapTargets();
       if (mutations.some(mutation => mutation.attributeName?.includes("theme"))) {
         refractionMotionUntil = Math.max(refractionMotionUntil, performance.now() + 360);
       }
@@ -735,7 +767,7 @@ export function PortalLiquidCursor() {
       snapDirty = true;
       wake();
     });
-    observer.observe(root, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ["type", "value", "placeholder", "aria-checked", "class", "data-loom-site-theme", "data-theme"] });
+    observer.observe(root, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ["type", "value", "placeholder", "aria-checked", "class", "disabled", "aria-disabled", "href", "role", "data-liquid-snap", "data-liquid-snap-pad", "data-loom-site-theme", "data-theme"] });
     observer.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme", "data-loom-theme"] });
     const resizeObserver = new ResizeObserver(() => { rasterDirty = true; snapDirty = true; wake(); });
     resizeObserver.observe(root);
