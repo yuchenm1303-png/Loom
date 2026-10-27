@@ -12,16 +12,21 @@ _LOCKS: dict[str, threading.Lock] = {}
 _LOCKS_GUARD = threading.Lock()
 
 
-def execute(service, operation: str, params: dict, error):
-    project_id = service._required_text(params, "projectId")
-    _, root = _root_or_rpc_error(service, project_id)
+def repository_operation_lock(root):
+    """Shared Host lock for UI Git workflow and project-run integration."""
     common = _run_git(root, "rev-parse", "--git-common-dir")
     directory = Path(common.stdout.strip()) if common and common.returncode == 0 else root
     if not directory.is_absolute():
         directory = root / directory
     key = str(directory.resolve()).casefold()
     with _LOCKS_GUARD:
-        lock = _LOCKS.setdefault(key, threading.Lock())
+        return _LOCKS.setdefault(key, threading.Lock())
+
+
+def execute(service, operation: str, params: dict, error):
+    project_id = service._required_text(params, "projectId")
+    _, root = _root_or_rpc_error(service, project_id)
+    lock = repository_operation_lock(root)
     if not lock.acquire(blocking=False):
         raise error(-32036, "仓库正在执行其他 Git 操作，请稍后重试")
     try:
