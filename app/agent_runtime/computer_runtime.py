@@ -796,8 +796,8 @@ class ComputerUseRuntime(BrowserRuntime):
             "typed_text_persistence": "transient_only for model-produced tool calls",
             "credential_persistence": "runtime environment only; not stored in Loom session state",
             "observation_mode": (
-                "screenshot + UIA hybrid" if backend_name == "windows-uia" else
-                "primary-display screenshot, visual-only" if backend_name == "macos-quartz" else "unavailable"
+                "screenshot + UIA hybrid" if self.computer_backend_name == "windows-uia" else
+                "primary-display screenshot, visual-only" if self.computer_backend_name == "macos-quartz" else "unavailable"
             ),
             "verification": "post-action re-observation; deterministic foreground-window check for switch_window",
             "diagnostics": {"mode": self.computer_diagnostics.mode, "log_dir": str(self.computer_diagnostics.root)},
