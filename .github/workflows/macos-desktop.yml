@@ -84,6 +84,13 @@ jobs:
           node scripts/verify-packaged-runtime.mjs "$RESOURCES"
           python3 -c 'import json,platform,sys; p=json.load(open(sys.argv[1])); assert p["platform"]=="darwin" and p["arch"]=="arm64",p' "$RESOURCES/manifest.json"
           find release -maxdepth 1 -name '*mac-arm64.dmg' -size +1M | grep -q .
+      - name: Verify installed Electron Host, local IPC and workspace lifecycle
+        timeout-minutes: 7
+        working-directory: desktop-react
+        env:
+          LOOM_SMOKE_HOST_EXECUTABLE: ${{ github.workspace }}/desktop-react/release/mac-arm64/Loom.app/Contents/MacOS/Loom
+        run: node scripts/host-process-smoke.mjs --packaged
+
       - name: Save experimental unsigned DMG
         uses: actions/upload-artifact@v4
         with:
