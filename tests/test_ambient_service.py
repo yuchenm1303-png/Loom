@@ -95,6 +95,11 @@ def test_preparation_cancellation_disables_future_wakeups(tmp_path):
         _wait_until(lambda: not service._is_active(thread))
         service.ambient.tick()
         assert not service.ambient.snapshot()["tasks"][0]["enabled"]
+        reconciled = service.ambient.snapshot()["runs"][0]
+        assert reconciled["status"] == "cancelled"
+        assert reconciled["error"] == ""
+        assert reconciled["tokens"] == 0
+        assert reconciled["cancelReceipt"]["turnId"] == run["turnId"]
         assert not service.ambient.event(item["id"], "2")
         assert not platform.requests
     finally:

@@ -46,6 +46,13 @@ class ServiceExecutor:
             if service._is_active(run["threadId"]):
                 return None
             if session.current_turn_id != run["turnId"]:
+                receipt = run.get("cancelReceipt") or {}
+                if (receipt.get("requested") is True and receipt.get("turnId") == run["turnId"]
+                        and receipt.get("status") == "interrupted"
+                        and not service._task_errors.get(run["threadId"])):
+                    # App Server acknowledged cancellation of this preparation before
+                    # inference/history began. There is no runtime turn to reconcile.
+                    return {"status": "cancelled", "tokens": 0, "result": "", "error": ""}
                 return {"status": "needs_review", "error": service._task_errors.get(run["threadId"])
                         or "Thread changed before result reconciliation; inspect thread"}
             status = session.status.value
@@ -54,8 +61,8 @@ class ServiceExecutor:
             return {"status": status, "tokens": max(0, session.usage.total_tokens - run["usageStart"]),
                     "result": session.final_text, "error": session.error}
 
-    def cancel(self, run: dict) -> None:
-        self.service._ambient_interrupt({"threadId": run["threadId"], "turnId": run["turnId"]})
+    def cancel(self, run: dict) -> dict:
+        return self.service._ambient_interrupt({"threadId": run["threadId"], "turnId": run["turnId"]})
 
 
 class AmbientServiceMixin:

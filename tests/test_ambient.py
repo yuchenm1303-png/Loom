@@ -239,6 +239,24 @@ def test_cancellation_error_cannot_undo_disable(tmp_path):
         scheduler.close()
 
 
+def test_cancel_without_a_known_outcome_still_requires_review(tmp_path):
+    executor = Executor()
+    scheduler = AmbientScheduler(tmp_path, executor)
+    try:
+        item = task(scheduler)
+        scheduler.event(item["id"], "1")
+        scheduler.tick()
+        scheduler.cancel(item["id"])
+        executor.outcome = {"status": "needs_review", "error": "Thread changed before reconciliation"}
+        scheduler.tick()
+        run = scheduler.snapshot()["runs"][0]
+        assert run["status"] == "needs_review"
+        assert run["error"] == executor.outcome["error"]
+        assert not scheduler.snapshot()["tasks"][0]["enabled"]
+    finally:
+        scheduler.close()
+
+
 @pytest.mark.parametrize("values", [{"seconds": 0, "kind": "interval"}, {"nextAt": float("nan"), "kind": "once"}, {"maxRuns": -1}])
 def test_invalid_task_rejected(tmp_path, values):
     scheduler = AmbientScheduler(tmp_path, Executor())
