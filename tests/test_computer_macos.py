@@ -28,6 +28,7 @@ def _operator(monkeypatch, *, screen=True, accessibility=True):
     )
     monkeypatch.setitem(sys.modules, "pyautogui", pyautogui)
     monkeypatch.setitem(sys.modules, "Quartz", quartz)
+    monkeypatch.setitem(sys.modules, "ApplicationServices", SimpleNamespace(AXIsProcessTrusted=lambda: accessibility))
     monkeypatch.setattr(computer_macos, "macos_computer_available", lambda: True)
     return computer_macos.MacOSComputerOperator(), calls
 
