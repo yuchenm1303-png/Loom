@@ -55,7 +55,8 @@ def _require_permission(*, screen: bool = False, input_: bool = False) -> None:
                 "Grant access to Loom and restart the application."
             )
     if input_:
-        trusted = getattr(Quartz, "AXIsProcessTrusted", None)
+        import ApplicationServices
+        trusted = getattr(ApplicationServices, "AXIsProcessTrusted", None)
         if not callable(trusted) or not trusted():
             raise PermissionError(
                 "Loom needs Accessibility access: macOS System Settings > "
@@ -189,7 +190,8 @@ class MacOSComputerOperator:
         import Quartz
 
         preflight = getattr(Quartz, "CGPreflightScreenCaptureAccess", None)
-        trusted = getattr(Quartz, "AXIsProcessTrusted", None)
+        import ApplicationServices
+        trusted = getattr(ApplicationServices, "AXIsProcessTrusted", None)
         return {
             "backend": self.name,
             "platform": "Darwin",
