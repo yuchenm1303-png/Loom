@@ -24,10 +24,10 @@ def main() -> None:
     if event is None:
         raise RuntimeError("Quartz could not allocate a keyboard event")
     # Test PyObjC's UniChar* argument conversion, NOT posting to the user's input.
-    Quartz.CGEventKeyboardSetUnicodeString(event, len(units), units)
+    Quartz.CGEventKeyboardSetUnicodeString(event, len(units), tuple(chr(unit) for unit in units))
     length, readback = Quartz.CGEventKeyboardGetUnicodeString(event, 20, None, None)
     assert length == len(units), (length, len(units))
-    assert tuple(readback[:length]) == units, (readback, units)
+    assert tuple(ord(ch) if isinstance(ch, str) else int(ch) for ch in readback[:length]) == units, (readback, units)
     print("loom-macos-native-bridge-ok")
 
 
