@@ -176,6 +176,8 @@
   width: 104px;
   height: 34px;
   object-fit: contain;
+  /* The artwork carries transparent padding, so its ink ends below the box: lift it onto the Loom baseline. */
+  transform: translateY(-9px);
 }
 .loom-editorial .editorial-brand-rule {
   flex: none;
@@ -783,7 +785,7 @@
   .loom-editorial .editorial-account { max-width: 104px; padding: 0 10px; font-size: 13px; }
   .loom-editorial .editorial-account-name { max-width: 64px; }
   .loom-editorial .editorial-brand-group { gap: 10px; }
-  .loom-editorial .editorial-smirel-mark img { width: 84px; height: 28px; }
+  .loom-editorial .editorial-smirel-mark img { width: 84px; height: 28px; transform: translateY(-6px); }
   .loom-editorial .editorial-brand-rule { height: 18px; }
   .loom-portal-page.loom-editorial { --ed-title: clamp(40px, 11.4vw, 52px); }
   .loom-editorial .editorial-footer { flex-direction: column; }
