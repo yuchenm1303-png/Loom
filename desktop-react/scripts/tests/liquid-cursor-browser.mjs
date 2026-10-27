@@ -124,10 +124,10 @@ try {
     assert.equal(state.uniforms.u_wobble[0], 0);
     assert.equal(state.uniforms.u_zoom[0], 1);
     assert.ok(Math.abs(state.uniforms.u_tint[0] - 0.05) < 0.0001);
-    assert.ok(Math.abs(state.uniforms.u_strength[0] - 0.72) < 0.0001, "the free lens keeps most of the reference glass");
+    assert.ok(Math.abs(state.uniforms.u_strength[0] - 0.95) < 0.0001, "restore the original reference strength");
     let box = await lensBox();
-    assert.ok(Math.abs(box.x - 720) < 0.2 && Math.abs(box.y - 264) < 0.2);
-    assert.ok(Math.abs(box.width - 84) < 0.2 && Math.abs(box.height - 58) < 0.2);
+    assert.ok(Math.abs(box.x - 720) < 0.2 && Math.abs(box.y - 268) < 0.2);
+    assert.ok(Math.abs(box.width - 80) < 0.2 && Math.abs(box.height - 54) < 0.2);
     await shot("free");
     const idleDraws = state.draws;
     await page.waitForTimeout(200);
@@ -141,33 +141,14 @@ try {
       await settle();
       box = await lensBox();
       const target = await page.locator(selector).boundingBox();
-      const expectedWidth = Math.min(300, Math.max(44, target.width + 20));
-      const expectedHeight = Math.min(92, Math.max(38, target.height + 20));
       assert.ok(Math.abs(box.x - (target.x + target.width / 2)) < 0.4, `${selector}: anchor X ${box.x} vs ${target.x + target.width / 2}`);
       assert.ok(Math.abs(box.y - (target.y + target.height / 2)) < 0.4, `${selector}: anchor Y`);
-      assert.ok(Math.abs(box.width - expectedWidth) < 0.4, `${selector}: capped width ${box.width} vs ${expectedWidth}`);
-      assert.ok(Math.abs(box.height - expectedHeight) < 0.4, `${selector}: capped height ${box.height} vs ${expectedHeight}`);
+      assert.ok(Math.abs(box.width - target.width - 20) < 0.4, `${selector}: matched width`);
+      assert.ok(Math.abs(box.height - target.height - 20) < 0.4, `${selector}: matched height`);
       assert.ok(box.x - box.width / 2 >= box.roi.left - 1 && box.x + box.width / 2 <= box.roi.right + 1, "capture contains the entire lens");
       assert.equal((await probe()).pixel[3], 255);
       await shot(selector.slice(1));
     }
-
-    // A long reading stop is capped and centred on the painted words instead
-    // of swelling into a band across the page.
-    const read = await page.locator("#read").boundingBox();
-    await page.mouse.move(read.x + read.width - 30, read.y + read.height / 2);
-    await settle();
-    box = await lensBox();
-    assert.ok(Math.abs(box.width - 420) < 0.4, `reading stop stays capped: ${box.width}`);
-    const text = await page.locator("#read").evaluate(el => {
-      const range = document.createRange(); range.selectNodeContents(el);
-      const rects = Array.from(range.getClientRects());
-      return { left: Math.min(...rects.map(r => r.left)), right: Math.max(...rects.map(r => r.right)) };
-    });
-    assert.ok(Math.abs(box.x - (text.left + text.right) / 2) < 1, `reading stop centres on its words: ${box.x}`);
-    assert.ok(Math.abs(box.y - (read.y + read.height / 2)) < 0.4, "reading stop stays on its line");
-    assert.ok(Math.abs((await probe()).uniforms.u_strength[0] - 0.22) < 0.0001, "reading stops use the calm figure");
-    await shot("read");
 
     // A near-target click outside the native hit box forwards exactly once.
     const first = await page.locator("#first").boundingBox();
@@ -189,7 +170,7 @@ try {
     await page.mouse.move(1180, 120, { steps: 6 });
     await settle();
     box = await lensBox();
-    assert.ok(Math.abs(box.width - 84) < 0.2);
+    assert.ok(Math.abs(box.width - 80) < 0.2);
 
     await page.locator("#theme").click();
     await settle();

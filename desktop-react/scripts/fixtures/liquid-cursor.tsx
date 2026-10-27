@@ -24,7 +24,6 @@ createRoot(document.getElementById("root")!).render(
       <button id="second">Another target</button>
       <p>Inspect a project and make something useful.<br />这是多行中文，用来检查透镜里面的文字换行是否准确。页面内容应当清晰稳定。</p>
       <input id="wide" placeholder="Ask Loom to inspect, edit, run, browse…" />
-      <div id="read" data-liquid-snap="true" data-liquid-lens="read" data-liquid-snap-pad="8" style={{ width: 820, marginTop: 40, borderBottom: "1px solid currentColor", lineHeight: "26px" }}>Ready to push one commit. Waiting for your approval.</div>
       <button id="tall">A tall target</button>
       <button id="theme" role="switch" aria-checked="false" aria-label="Change theme" onClick={event => {
         const next = event.currentTarget.getAttribute("aria-checked") !== "true";

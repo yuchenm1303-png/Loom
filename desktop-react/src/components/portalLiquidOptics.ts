@@ -28,11 +28,9 @@ export function createReferenceLensRenderer(gl: WebGLRenderingContext, program: 
   const extras = new Float32Array(200);
   for (let index = 0; index < 50; index++) extras[index * 4 + 2] = 1;
 
-  return ({ roiWidth, roiHeight, centerX, centerY, width, height, screenDpr, time,
-    strength = LIQUID_OPTICS.strength, aberration = LIQUID_OPTICS.aberration }: {
+  return ({ roiWidth, roiHeight, centerX, centerY, width, height, screenDpr, time }: {
     roiWidth: number; roiHeight: number; centerX: number; centerY: number;
     width: number; height: number; screenDpr: number; time: number;
-    strength?: number; aberration?: number;
   }) => {
     // ROI-local bottom-up UVs, physical lens sizes, and screenDpr, independent
     // of the texture's capture resolution: exactly the reference convention.
@@ -40,9 +38,9 @@ export function createReferenceLensRenderer(gl: WebGLRenderingContext, program: 
     positions[1] = 1 - centerY / roiHeight;
     sizes[0] = width * screenDpr; sizes[1] = height * screenDpr;
     tints.set([1, 1, 1, LIQUID_OPTICS.tint]);
-    settings.set([0, strength, LIQUID_OPTICS.pinch, 9999 * screenDpr]);
+    settings.set([0, LIQUID_OPTICS.strength, LIQUID_OPTICS.pinch, 9999 * screenDpr]);
     opticals.set([LIQUID_OPTICS.blur, LIQUID_OPTICS.reflection, 0, 0]);
-    extras.set([0, aberration, 1, 0]);
+    extras.set([0, LIQUID_OPTICS.aberration, 1, 0]);
     gl.useProgram(program);
     gl.uniform1i(uniforms.u_texture, 0);
     gl.uniform2f(uniforms.u_resolution, Math.max(1, Math.round(roiWidth * screenDpr)), Math.max(1, Math.round(roiHeight * screenDpr)));

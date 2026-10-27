@@ -2,39 +2,21 @@ import { useEffect, useRef } from "react";
 import { rasterizePortal } from "./portalLiquidCapture";
 import { blendAnchor, stepSpring, type SpringValue } from "./portalLiquidMotion";
 import { createReferenceLensRenderer, liquidVertexShader, liquidFragmentShader } from "./portalLiquidOptics";
-import { LENS_STRENGTH, lensFrameFor } from "./portalLiquidFrame";
 import { useReducedMotion } from "../motion/useReducedMotion";
 
-const FREE_ROI_SIZE = 320;
-const BASE_WIDTH = 84;
-const BASE_HEIGHT = 58;
-const FREE_OFFSET_Y = -36;
+const FREE_ROI_SIZE = 260;
+const BASE_WIDTH = 80;
+const BASE_HEIGHT = 54;
+const FREE_OFFSET_Y = -32;
 const SNAP_DISTANCE = 12;
 const RELEASE_DISTANCE = 17;
-const FREE_STRENGTH = LENS_STRENGTH.free;
+const SNAP_PADDING = 10;
 const FREE_ROI_PADDING = 64;
 const ROI_DEADZONE = 35;
 // The lens samples the page it is drawn on. A separate wallpaper would show
 // through the refraction as a second, unrelated background.
 const WALLPAPER_URL = "";
-// Every native control is a lens stop, even when a new dialog or menu has just
-// mounted it. The class list below keeps the older portal's larger surfaces
-// (input shells, brand) as single stops instead of their inner pieces.
-const CONTROL_SELECTOR = [
-  "button:not(:disabled)",
-  "input[type='button']:not(:disabled)",
-  "input[type='submit']:not(:disabled)",
-  "input[type='reset']:not(:disabled)",
-  "a[href]:not([data-liquid-snap='false'])",
-  "summary",
-  "[role='button']:not([aria-disabled='true'])",
-  "[role='link']",
-  "[role='switch']",
-  "[role='tab']:not([aria-disabled='true'])",
-  "[role='menuitem']:not([aria-disabled='true'])",
-].join(",");
 const SNAP_SELECTOR = [
-  CONTROL_SELECTOR,
   ".loom-portal-brand",
   ".loom-primary-action:not(:disabled)",
   ".loom-secondary-action",
@@ -214,35 +196,6 @@ export function PortalLiquidCursor() {
     let textureReady = false;
     let snapDirty = true;
     let running = false;
-    let lensStrength: number = FREE_STRENGTH;
-    let lensReading = false;
-    // Text inside a wide block usually ends before the block does. Centring
-    // the reading lens on the box would park it over empty paper on the right
-    // of a short line, so it is centred on the painted words instead.
-    let readingCenter: { target: HTMLElement | null; x: number; y: number; left: number; top: number } = {
-      target: null, x: Number.NaN, y: Number.NaN, left: Number.NaN, top: Number.NaN,
-    };
-
-    const contentCenter = (target: HTMLElement, rect: DOMRect) => {
-      if (readingCenter.target === target && Number.isFinite(readingCenter.x) &&
-          Math.abs(readingCenter.left - rect.left) < 1 && Math.abs(readingCenter.top - rect.top) < 1) return readingCenter;
-      let x = rect.left + rect.width / 2;
-      let y = rect.top + rect.height / 2;
-      try {
-        const range = document.createRange();
-        range.selectNodeContents(target);
-        const rects = Array.from(range.getClientRects()).filter(r => r.width > 1 && r.height > 1);
-        if (rects.length) {
-          x = (Math.min(...rects.map(r => r.left)) + Math.max(...rects.map(r => r.right))) / 2;
-          y = (Math.min(...rects.map(r => r.top)) + Math.max(...rects.map(r => r.bottom))) / 2;
-        }
-        range.detach();
-      } catch {
-        // A target React replaces mid-read keeps its box centre.
-      }
-      readingCenter = { target, x, y, left: rect.left, top: rect.top };
-      return readingCenter;
-    };
 
     const x: SpringValue = { value: pointerX, velocity: 0, target: pointerX };
     const y: SpringValue = { value: pointerY + FREE_OFFSET_Y, velocity: 0, target: pointerY + FREE_OFFSET_Y };
@@ -263,14 +216,6 @@ export function PortalLiquidCursor() {
 
     const magneticStates = new Map<HTMLElement, MagneticState>();
     let magneticTargets: HTMLElement[] = [];
-    let snapTargets: HTMLElement[] = [];
-
-    // Querying every control on every pointermove gets expensive as dialogs
-    // mount more buttons. Keep one list and refresh it from the mutation
-    // observer, which already watches the page for React's changes.
-    const refreshSnapTargets = () => {
-      snapTargets = Array.from(root.querySelectorAll<HTMLElement>(SNAP_SELECTOR));
-    };
 
     const refreshMagneticTargets = () => {
       const next = Array.from(root.querySelectorAll<HTMLElement>(MAGNETIC_SELECTOR));
@@ -360,22 +305,18 @@ export function PortalLiquidCursor() {
     };
 
     refreshMagneticTargets();
-    refreshSnapTargets();
 
     const findSnapTarget = () => {
       if (activeTarget?.isConnected && !activeTarget.closest("[inert], [aria-hidden='true']")) {
         const rect = activeTarget.getBoundingClientRect();
         const style = getComputedStyle(activeTarget);
         if (rect.width > 0 && rect.height > 0 && style.visibility !== "hidden" && style.pointerEvents !== "none" &&
-            rectDistance(rect, pointerX, pointerY) <= RELEASE_DISTANCE &&
-            pointerX >= rect.left - RELEASE_DISTANCE && pointerX <= rect.right + RELEASE_DISTANCE) return activeTarget;
+            rectDistance(rect, pointerX, pointerY) <= RELEASE_DISTANCE) return activeTarget;
       }
       activeTarget = null;
       let closest = SNAP_DISTANCE + 0.001;
-      for (const candidate of snapTargets) {
-        if (!candidate.isConnected) continue;
+      for (const candidate of Array.from(root.querySelectorAll<HTMLElement>(SNAP_SELECTOR))) {
         if (candidate.dataset.loomLiquidCursor === "true") continue;
-        if (candidate.dataset.liquidSnap === "false") continue;
         if (candidate.closest("[inert], [aria-hidden='true']")) continue;
         const style = getComputedStyle(candidate);
         if (style.pointerEvents === "none" || style.visibility === "hidden" || style.display === "none") continue;
@@ -398,7 +339,6 @@ export function PortalLiquidCursor() {
       if (target !== previousTarget) {
         rasterDirty = true;
         roiLockedTarget = null;
-        readingCenter = { target: null, x: Number.NaN, y: Number.NaN, left: Number.NaN, top: Number.NaN };
         if (target) {
           if (!previousTarget) {
             pinX.value = lensX;
@@ -407,7 +347,8 @@ export function PortalLiquidCursor() {
             pinY.velocity = 0;
           }
           const rect = target.getBoundingClientRect();
-          const frame = lensFrameFor(target, rect);
+          const finalLensWidth = Math.min(Math.max(38, window.innerWidth - 20), Math.max(38, rect.width + SNAP_PADDING * 2));
+          const finalLensHeight = Math.min(Math.max(34, window.innerHeight - 20), Math.max(34, rect.height + SNAP_PADDING * 2));
           // Allocate the entire capture surface once on snap entry. Growing
           // the canvas each spring frame destroyed the WebGL texture and made
           // the wide Ask input flicker continuously.
@@ -415,34 +356,28 @@ export function PortalLiquidCursor() {
             snappedRoiWidth,
             Math.min(window.innerWidth, Math.max(
               FREE_ROI_SIZE,
-              Math.ceil(Math.max(frame.width, width.value) * 1.08 + 80),
+              Math.ceil(Math.max(finalLensWidth, width.value) * 1.08 + 80),
             )),
           );
           snappedRoiHeight = Math.max(
             snappedRoiHeight,
             Math.min(window.innerHeight, Math.max(
               FREE_ROI_SIZE,
-              Math.ceil(Math.max(frame.height, height.value) * 1.08 + 80),
+              Math.ceil(Math.max(finalLensHeight, height.value) * 1.08 + 80),
             )),
           );
         }
       }
       if (target) {
         const rect = target.getBoundingClientRect();
-        const frame = lensFrameFor(target, rect);
-        const center = frame.reading ? contentCenter(target, rect) : null;
-        pinX.target = center ? center.x : frame.centerX;
-        pinY.target = center ? center.y : frame.centerY;
-        width.target = frame.width;
-        height.target = frame.height;
-        lensStrength = frame.strength;
-        lensReading = frame.reading;
+        pinX.target = rect.left + rect.width / 2;
+        pinY.target = rect.top + rect.height / 2;
+        width.target = Math.min(Math.max(38, window.innerWidth - 20), Math.max(38, rect.width + SNAP_PADDING * 2));
+        height.target = Math.min(Math.max(34, window.innerHeight - 20), Math.max(34, rect.height + SNAP_PADDING * 2));
         snap.target = 1;
       } else {
         width.target = BASE_WIDTH;
         height.target = BASE_HEIGHT;
-        lensStrength = FREE_STRENGTH;
-        lensReading = false;
         snap.target = 0;
       }
     };
@@ -648,8 +583,6 @@ export function PortalLiquidCursor() {
           centerX: lensX - roiLeft, centerY: lensY - roiTop,
           width: width.value * (1 + 0.025 * deformation),
           height: height.value * (1 - 0.085 * deformation),
-          strength: lensStrength,
-          aberration: lensReading ? 0.05 : 0.12,
           screenDpr: window.devicePixelRatio || 1,
           time: now / 1000,
         });
@@ -785,7 +718,6 @@ export function PortalLiquidCursor() {
 
     const observer = new MutationObserver((mutations) => {
       refreshMagneticTargets();
-      refreshSnapTargets();
       if (mutations.some(mutation => mutation.attributeName?.includes("theme"))) {
         refractionMotionUntil = Math.max(refractionMotionUntil, performance.now() + 360);
       }
@@ -803,7 +735,7 @@ export function PortalLiquidCursor() {
       snapDirty = true;
       wake();
     });
-    observer.observe(root, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ["type", "value", "placeholder", "aria-checked", "class", "disabled", "aria-disabled", "href", "role", "data-liquid-snap", "data-liquid-snap-pad", "data-loom-site-theme", "data-theme"] });
+    observer.observe(root, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ["type", "value", "placeholder", "aria-checked", "class", "data-loom-site-theme", "data-theme"] });
     observer.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme", "data-loom-theme"] });
     const resizeObserver = new ResizeObserver(() => { rasterDirty = true; snapDirty = true; wake(); });
     resizeObserver.observe(root);
