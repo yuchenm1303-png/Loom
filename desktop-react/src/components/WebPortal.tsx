@@ -660,7 +660,7 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
                       {home.intro}
                       {moreOpen || zh ? null : <span aria-hidden="true">{"\u00a0…"}</span>}
                       {"\u00a0"}
-                      <button type="button" className="editorial-more" aria-expanded={moreOpen} aria-controls="editorial-more" onClick={() => setMoreOpen((open) => !open)}>{moreOpen ? home.less : home.more}</button>
+                      <button type="button" className="editorial-more" aria-expanded={moreOpen} aria-controls="editorial-more" data-liquid-snap="false" onClick={() => setMoreOpen((open) => !open)}>{moreOpen ? home.less : home.more}</button>
                     </p>
                     <div id="editorial-more" className="editorial-more-panel" data-open={moreOpen ? "true" : "false"} inert={!moreOpen}>
                       <div>{home.moreParagraphs.map((paragraph) => <p key={paragraph}>{paragraph}</p>)}</div>
@@ -675,15 +675,15 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
                     {home.platform}
                     {release.package ? <><span aria-hidden="true"> · </span>{release.package}</> : null}
                     <span aria-hidden="true"> · </span>
-                    <a href={release.notes} target="_blank" rel="noopener noreferrer">{home.notes}</a>
+                    <a href={release.notes} target="_blank" rel="noopener noreferrer" data-liquid-snap="false">{home.notes}</a>
                   </p>
                 </div>
                 <figure ref={threadRef} className="editorial-session editorial-thread editorial-reveal" style={revealIndex(6)} data-state={threadState} aria-label={home.session.label}>
-                  <p className="editorial-session-head" data-liquid-snap="true" data-liquid-snap-pad="8">{home.session.heading}</p>
-                  <p className="editorial-session-ask" data-liquid-snap="true" data-liquid-snap-pad="8">{home.session.ask}</p>
+                  <p className="editorial-session-head" data-liquid-snap="true" data-liquid-lens="read" data-liquid-snap-pad="8">{home.session.heading}</p>
+                  <p className="editorial-session-ask" data-liquid-snap="true" data-liquid-lens="read" data-liquid-snap-pad="8">{home.session.ask}</p>
                   <ol>
                     {home.session.rows.map((row, index) => (
-                      <li key={row.text} className={index === home.session.rows.length - 1 ? "is-waiting" : undefined} data-liquid-snap="true" data-liquid-snap-pad="6" style={revealIndex(index)}>
+                      <li key={row.text} className={index === home.session.rows.length - 1 ? "is-waiting" : undefined} data-liquid-snap="true" data-liquid-lens="read" data-liquid-snap-pad="6" style={revealIndex(index)}>
                         <time dateTime={row.time}>{row.time}</time>
                         <span>{emphasize(row.text)}</span>
                       </li>
@@ -699,7 +699,7 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
                 {home.doing.items.map((item, index) => (
                   <li key={item.lead} data-reveal style={revealIndex(index)}>
                     <span className="editorial-index" aria-hidden="true">{`0${index + 1}`}</span>
-                    <strong data-liquid-snap="true" data-liquid-snap-pad="8">{item.lead}</strong>
+                    <strong data-liquid-snap="true" data-liquid-lens="read" data-liquid-snap-pad="8">{item.lead}</strong>
                     <p>{item.text}</p>
                   </li>
                 ))}
@@ -712,9 +712,9 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
               </div>
               <div className="editorial-download-panel" data-reveal>
                 <dl>
-                  <div data-liquid-snap="true" data-liquid-snap-pad="6"><dt>{home.downloadSection.platformLabel}</dt><dd>{home.downloadSection.platform}</dd></div>
-                  <div data-liquid-snap="true" data-liquid-snap-pad="6"><dt>{home.downloadSection.versionLabel}</dt><dd>{release.version ? `${release.version} · Stable` : (zh ? "最新稳定版" : "Latest stable")}</dd></div>
-                  <div data-liquid-snap="true" data-liquid-snap-pad="6"><dt>{home.downloadSection.installerLabel}</dt><dd>{release.package || "Windows x64"}</dd></div>
+                  <div data-liquid-snap="true" data-liquid-lens="read" data-liquid-snap-pad="6"><dt>{home.downloadSection.platformLabel}</dt><dd>{home.downloadSection.platform}</dd></div>
+                  <div data-liquid-snap="true" data-liquid-lens="read" data-liquid-snap-pad="6"><dt>{home.downloadSection.versionLabel}</dt><dd>{release.version ? `${release.version} · Stable` : (zh ? "最新稳定版" : "Latest stable")}</dd></div>
+                  <div data-liquid-snap="true" data-liquid-lens="read" data-liquid-snap-pad="6"><dt>{home.downloadSection.installerLabel}</dt><dd>{release.package || "Windows x64"}</dd></div>
                 </dl>
                 <div className="editorial-actions">
                   <a className="editorial-primary" href={release.download} data-liquid-snap="true" data-magnetic-hover="true">{home.download}<Download size={16} aria-hidden="true" /></a>
@@ -735,7 +735,7 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
                 {home.start.steps.map((step, index) => (
                   <li key={step.lead} data-reveal style={revealIndex(index)}>
                     <span className="editorial-index" aria-hidden="true">{index + 1}</span>
-                    <strong data-liquid-snap="true" data-liquid-snap-pad="8">{step.lead}</strong>
+                    <strong data-liquid-snap="true" data-liquid-lens="read" data-liquid-snap-pad="8">{step.lead}</strong>
                     <p>{step.text}</p>
                   </li>
                 ))}
@@ -743,7 +743,7 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
             </section>
           </main>
           <footer className="editorial-footer editorial-reveal" style={revealIndex(8)}>
-            <p>{home.madeBy[0]}<a className="editorial-signature" href="https://smirel.com/" target="_blank" rel="noopener noreferrer">Smirel</a>{home.madeBy[1]}</p>
+            <p>{home.madeBy[0]}<a className="editorial-signature" href="https://smirel.com/" target="_blank" rel="noopener noreferrer" data-liquid-snap="false">Smirel</a>{home.madeBy[1]}</p>
             <nav aria-label={zh ? "资源" : "Resources"}>
               <a href="#loom-download" onClick={(event) => goToSection(event, "loom-download")}>{home.links.download}</a>
               <a href={`${RELEASES_URL}#readme`} target="_blank" rel="noopener noreferrer">{home.links.documentation}</a>

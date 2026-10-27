@@ -123,6 +123,16 @@ a dialog full of small buttons from twitching.
 - **Cost.** The stop list is cached in `snapTargets` and refreshed from the existing `MutationObserver`, not queried on every
 pointermove. That is what keeps a freshly mounted auth dialog covered without the flicker of remeasuring every button.
 
+### The lens reads what it holds (2026-10-27)
+
+The glass cursor was mounting on too much and refracting too hard: a thread row became a band across the page, a one-line lens folded its own text into three copies, and the inside of the glass was a dark hole because the texture had no page colour under the words.
+
+- **Mount points.** Every control is still a stop, but three inline links are not: "More" in the intro, "Release notes" in the release line and "Smirel" in the footer carry `data-liquid-snap="false"`. They are sentences first; snapping there made the lens jump while reading.
+- **Sizes.** `portalLiquidFrame.ts` owns the numbers. A control is framed whole with 10px of padding, capped at 300 x 92; a reading stop is capped at 420 wide and at least 58 high, so a 20px line sits in the flat middle of the glass instead of under the rim. The free lens is 84 x 58, 36px above the pointer.
+- **Position.** A reading stop is centred on its painted words (`Range.getClientRects`), not on its box: the thread row is 820px wide but its sentence is 430px, and centring on the box parked the lens over empty paper.
+- **Optics.** The reference shader spends `strength * 40` pixels of displacement at the rim. One figure for every lens turned a 46px-high row into three stacked copies of its line, so strength is now per kind: 0.72 free, 0.44 control, 0.22 reading, with less chromatic aberration when reading.
+- **Capture.** `rasterizePortal` fills the texture with the resolved page colour (walking from `.loom-portal-page` to `html`, then `--ed-paper`) before drawing anything, and the wallpaper veil is no longer laid over a flat page. The shader writes an opaque interior, so an unfilled texture was painted black.
+
 ## Files
 
 - `desktop-react/src/components/WebPortal.tsx`: the editorial markup and the state (theme, More, thread, type-ready, stuck, reveal, language, narrow menu, account entry).

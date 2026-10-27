@@ -2,15 +2,16 @@ import { useEffect, useRef } from "react";
 import { rasterizePortal } from "./portalLiquidCapture";
 import { blendAnchor, stepSpring, type SpringValue } from "./portalLiquidMotion";
 import { createReferenceLensRenderer, liquidVertexShader, liquidFragmentShader } from "./portalLiquidOptics";
+import { LENS_STRENGTH, lensFrameFor } from "./portalLiquidFrame";
 import { useReducedMotion } from "../motion/useReducedMotion";
 
-const FREE_ROI_SIZE = 260;
-const BASE_WIDTH = 80;
-const BASE_HEIGHT = 54;
-const FREE_OFFSET_Y = -32;
+const FREE_ROI_SIZE = 320;
+const BASE_WIDTH = 84;
+const BASE_HEIGHT = 58;
+const FREE_OFFSET_Y = -36;
 const SNAP_DISTANCE = 12;
 const RELEASE_DISTANCE = 17;
-const SNAP_PADDING = 10;
+const FREE_STRENGTH = LENS_STRENGTH.free;
 const FREE_ROI_PADDING = 64;
 const ROI_DEADZONE = 35;
 // The lens samples the page it is drawn on. A separate wallpaper would show
@@ -24,7 +25,7 @@ const CONTROL_SELECTOR = [
   "input[type='button']:not(:disabled)",
   "input[type='submit']:not(:disabled)",
   "input[type='reset']:not(:disabled)",
-  "a[href]",
+  "a[href]:not([data-liquid-snap='false'])",
   "summary",
   "[role='button']:not([aria-disabled='true'])",
   "[role='link']",
@@ -213,6 +214,35 @@ export function PortalLiquidCursor() {
     let textureReady = false;
     let snapDirty = true;
     let running = false;
+    let lensStrength: number = FREE_STRENGTH;
+    let lensReading = false;
+    // Text inside a wide block usually ends before the block does. Centring
+    // the reading lens on the box would park it over empty paper on the right
+    // of a short line, so it is centred on the painted words instead.
+    let readingCenter: { target: HTMLElement | null; x: number; y: number; left: number; top: number } = {
+      target: null, x: Number.NaN, y: Number.NaN, left: Number.NaN, top: Number.NaN,
+    };
+
+    const contentCenter = (target: HTMLElement, rect: DOMRect) => {
+      if (readingCenter.target === target && Number.isFinite(readingCenter.x) &&
+          Math.abs(readingCenter.left - rect.left) < 1 && Math.abs(readingCenter.top - rect.top) < 1) return readingCenter;
+      let x = rect.left + rect.width / 2;
+      let y = rect.top + rect.height / 2;
+      try {
+        const range = document.createRange();
+        range.selectNodeContents(target);
+        const rects = Array.from(range.getClientRects()).filter(r => r.width > 1 && r.height > 1);
+        if (rects.length) {
+          x = (Math.min(...rects.map(r => r.left)) + Math.max(...rects.map(r => r.right))) / 2;
+          y = (Math.min(...rects.map(r => r.top)) + Math.max(...rects.map(r => r.bottom))) / 2;
+        }
+        range.detach();
+      } catch {
+        // A target React replaces mid-read keeps its box centre.
+      }
+      readingCenter = { target, x, y, left: rect.left, top: rect.top };
+      return readingCenter;
+    };
 
     const x: SpringValue = { value: pointerX, velocity: 0, target: pointerX };
     const y: SpringValue = { value: pointerY + FREE_OFFSET_Y, velocity: 0, target: pointerY + FREE_OFFSET_Y };
@@ -337,13 +367,15 @@ export function PortalLiquidCursor() {
         const rect = activeTarget.getBoundingClientRect();
         const style = getComputedStyle(activeTarget);
         if (rect.width > 0 && rect.height > 0 && style.visibility !== "hidden" && style.pointerEvents !== "none" &&
-            rectDistance(rect, pointerX, pointerY) <= RELEASE_DISTANCE) return activeTarget;
+            rectDistance(rect, pointerX, pointerY) <= RELEASE_DISTANCE &&
+            pointerX >= rect.left - RELEASE_DISTANCE && pointerX <= rect.right + RELEASE_DISTANCE) return activeTarget;
       }
       activeTarget = null;
       let closest = SNAP_DISTANCE + 0.001;
       for (const candidate of snapTargets) {
         if (!candidate.isConnected) continue;
         if (candidate.dataset.loomLiquidCursor === "true") continue;
+        if (candidate.dataset.liquidSnap === "false") continue;
         if (candidate.closest("[inert], [aria-hidden='true']")) continue;
         const style = getComputedStyle(candidate);
         if (style.pointerEvents === "none" || style.visibility === "hidden" || style.display === "none") continue;
@@ -366,6 +398,7 @@ export function PortalLiquidCursor() {
       if (target !== previousTarget) {
         rasterDirty = true;
         roiLockedTarget = null;
+        readingCenter = { target: null, x: Number.NaN, y: Number.NaN, left: Number.NaN, top: Number.NaN };
         if (target) {
           if (!previousTarget) {
             pinX.value = lensX;
@@ -374,10 +407,7 @@ export function PortalLiquidCursor() {
             pinY.velocity = 0;
           }
           const rect = target.getBoundingClientRect();
-          const requestedPad = Number(target.dataset.liquidSnapPad);
-          const pad = Number.isFinite(requestedPad) ? Math.min(18, Math.max(4, requestedPad)) : SNAP_PADDING;
-          const finalLensWidth = Math.min(Math.max(38, window.innerWidth - 20), Math.max(38, rect.width + pad * 2));
-          const finalLensHeight = Math.min(Math.max(34, window.innerHeight - 20), Math.max(34, rect.height + pad * 2));
+          const frame = lensFrameFor(target, rect);
           // Allocate the entire capture surface once on snap entry. Growing
           // the canvas each spring frame destroyed the WebGL texture and made
           // the wide Ask input flicker continuously.
@@ -385,30 +415,34 @@ export function PortalLiquidCursor() {
             snappedRoiWidth,
             Math.min(window.innerWidth, Math.max(
               FREE_ROI_SIZE,
-              Math.ceil(Math.max(finalLensWidth, width.value) * 1.08 + 80),
+              Math.ceil(Math.max(frame.width, width.value) * 1.08 + 80),
             )),
           );
           snappedRoiHeight = Math.max(
             snappedRoiHeight,
             Math.min(window.innerHeight, Math.max(
               FREE_ROI_SIZE,
-              Math.ceil(Math.max(finalLensHeight, height.value) * 1.08 + 80),
+              Math.ceil(Math.max(frame.height, height.value) * 1.08 + 80),
             )),
           );
         }
       }
       if (target) {
         const rect = target.getBoundingClientRect();
-        const requestedPad = Number(target.dataset.liquidSnapPad);
-        const pad = Number.isFinite(requestedPad) ? Math.min(18, Math.max(4, requestedPad)) : SNAP_PADDING;
-        pinX.target = rect.left + rect.width / 2;
-        pinY.target = rect.top + rect.height / 2;
-        width.target = Math.min(Math.max(38, window.innerWidth - 20), Math.max(38, rect.width + pad * 2));
-        height.target = Math.min(Math.max(34, window.innerHeight - 20), Math.max(34, rect.height + pad * 2));
+        const frame = lensFrameFor(target, rect);
+        const center = frame.reading ? contentCenter(target, rect) : null;
+        pinX.target = center ? center.x : frame.centerX;
+        pinY.target = center ? center.y : frame.centerY;
+        width.target = frame.width;
+        height.target = frame.height;
+        lensStrength = frame.strength;
+        lensReading = frame.reading;
         snap.target = 1;
       } else {
         width.target = BASE_WIDTH;
         height.target = BASE_HEIGHT;
+        lensStrength = FREE_STRENGTH;
+        lensReading = false;
         snap.target = 0;
       }
     };
@@ -614,6 +648,8 @@ export function PortalLiquidCursor() {
           centerX: lensX - roiLeft, centerY: lensY - roiTop,
           width: width.value * (1 + 0.025 * deformation),
           height: height.value * (1 - 0.085 * deformation),
+          strength: lensStrength,
+          aberration: lensReading ? 0.05 : 0.12,
           screenDpr: window.devicePixelRatio || 1,
           time: now / 1000,
         });

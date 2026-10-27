@@ -32,6 +32,21 @@ function visibleColor(value: string) {
   return value !== "transparent" && value !== "rgba(0, 0, 0, 0)" && value !== "rgba(0,0,0,0)";
 }
 
+// The lens paints an opaque texture, so whatever is behind the page has to be
+// resolved before any element is drawn. Using the body's background alone read
+// "transparent" on the editorial page (the colour lives on .loom-portal-page),
+// and the texture then had an alpha of zero under every word: the shader wrote
+// those pixels as opaque black, so the lens showed a dark hole with squeezed
+// text in it instead of the page.
+function resolvePageBackground(element: HTMLElement) {
+  for (let node: HTMLElement | null = element; node; node = node.parentElement) {
+    const color = getComputedStyle(node).backgroundColor;
+    if (visibleColor(color)) return color;
+  }
+  const paper = getComputedStyle(element).getPropertyValue("--ed-paper").trim();
+  return paper || getComputedStyle(document.body).backgroundColor || "#f0eee6";
+}
+
 function safeImageForCanvas(img: HTMLImageElement) {
   if (!img.complete || img.naturalWidth <= 0 || img.naturalHeight <= 0) return false;
   try {
@@ -91,6 +106,7 @@ function drawImageFit(
 function drawWallpaper(
   ctx: CanvasRenderingContext2D,
   image: HTMLImageElement | null,
+  background: string,
   roiLeft: number,
   roiTop: number,
   viewportWidth: number,
@@ -98,7 +114,7 @@ function drawWallpaper(
   roiWidth: number,
   roiHeight: number,
 ) {
-  ctx.fillStyle = getComputedStyle(document.body).backgroundColor || "#1f1e1d";
+  ctx.fillStyle = background;
   ctx.fillRect(0, 0, roiWidth, roiHeight);
   if (!image) return;
   if (image?.complete && image.naturalWidth > 0 && image.naturalHeight > 0) {
@@ -121,19 +137,13 @@ function drawWallpaper(
     }
   }
 
+  // A wallpaper needs its veil to stay quiet behind the words. A flat page
+  // colour does not: a tint over the paper only made the lens read as a dirty
+  // rectangle, so the veil is kept to the photo it was written for.
   const veil = ctx.createLinearGradient(0, -roiTop, 0, viewportHeight - roiTop);
-  veil.addColorStop(0, "rgba(4,10,16,.17)");
-  veil.addColorStop(1, "rgba(4,10,16,.28)");
+  veil.addColorStop(0, "rgba(4,10,16,.10)");
+  veil.addColorStop(1, "rgba(4,10,16,.16)");
   ctx.fillStyle = veil;
-  ctx.fillRect(0, 0, roiWidth, roiHeight);
-
-  const cx = viewportWidth * 0.5 - roiLeft;
-  const cy = viewportHeight * 0.34 - roiTop;
-  const radius = Math.max(viewportWidth, viewportHeight) * 0.72;
-  const vignette = ctx.createRadialGradient(cx, cy, radius * 0.24, cx, cy, radius);
-  vignette.addColorStop(0, "rgba(3,8,14,0)");
-  vignette.addColorStop(1, "rgba(3,8,14,.22)");
-  ctx.fillStyle = vignette;
   ctx.fillRect(0, 0, roiWidth, roiHeight);
 }
 
@@ -334,13 +344,17 @@ export function rasterizePortal(
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  drawWallpaper(ctx, wallpaper, roiLeft, roiTop, window.innerWidth, window.innerHeight, roiWidth, roiHeight);
 
   // The editorial homepage has both the visible shell and a hidden legacy portal.
   // Sample its visible root, not the hidden classic shell, or the lens goes blank.
   const content = root.classList.contains("loom-editorial")
     ? root
     : (root.querySelector<HTMLElement>(".loom-portal-shell") ?? root);
+
+  drawWallpaper(
+    ctx, wallpaper, resolvePageBackground(content),
+    roiLeft, roiTop, window.innerWidth, window.innerHeight, roiWidth, roiHeight,
+  );
 
   const renderElement = (el: HTMLElement, parentOpacity: number) => {
     if (el.dataset.loomLiquidCursor === "true" || el.closest("[data-loom-liquid-cursor='true']")) return;
