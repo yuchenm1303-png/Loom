@@ -38,7 +38,13 @@ def _replace_packaged_workspace(argv: list[str]) -> list[str]:
     if not getattr(sys, "frozen", False):
         return argv
     args = list(argv)
-    workspace = Path.home() / "Documents" / "Loom Workspace"
+    # ~/Documents is privacy-protected by macOS and would cause a TCC prompt
+    # on the first, otherwise headless, Host startup.
+    workspace = (
+        Path.home() / "Library" / "Application Support" / "Loom" / "Workspace"
+        if sys.platform == "darwin"
+        else Path.home() / "Documents" / "Loom Workspace"
+    )
     workspace.mkdir(parents=True, exist_ok=True)
     try:
         index = args.index("--workspace")
