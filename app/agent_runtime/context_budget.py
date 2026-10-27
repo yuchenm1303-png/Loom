@@ -805,8 +805,10 @@ def _prepare_context_with_model(rt, session, step, token):
     projected_history, reduction_stats = reduce_tool_outputs(
         canonical_history,
         per_output_token_limit=limits.tool_output_token_limit,
-        target_total_tokens=(int(working_input_budget / calibration) if working_attainable else None),
-        estimate_total=lambda history: estimate_tokens(render(history), tools),
+        # Preserve observations until semantic compaction can summarize them.
+        # Collapsing to the soft target first hides the threshold crossing and
+        # can keep the agent running on stubs indefinitely.
+        target_total_tokens=None,
         keep_recent_outputs=2,
     )
     projected_visible = render(projected_history)

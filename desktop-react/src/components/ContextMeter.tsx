@@ -272,8 +272,8 @@ export function ContextMeter({ report: current, pending = false, compacting, pro
           {report.pressure.blinded ? (
             <p className="context-meter-alert">
               {zh
-                ? `已折叠 ${report.pressure.toolOutputsCollapsed} 条工具结果 —— 模型读不到这些命令的输出了。压缩或换更大窗口的模型可以恢复。`
-                : `${report.pressure.toolOutputsCollapsed} tool results were collapsed — the agent can no longer read those command outputs. Compacting, or a larger window, restores them.`}
+                ? `当前请求省略了 ${report.pressure.toolOutputsCollapsed} 条工具结果的正文。这是上下文内容受限提示，不代表模型窗口已满；原始结果仍保留在历史记录中。`
+                : `This request omits the bodies of ${report.pressure.toolOutputsCollapsed} tool results. This warns about omitted content, not a full model window; original results remain in history.`}
             </p>
           ) : null}
 

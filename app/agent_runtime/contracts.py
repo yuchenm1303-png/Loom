@@ -98,7 +98,9 @@ class AgentLimits:
     model_retries: int = 2
     transport_retries: int = 2
     max_recovery_seconds: float = 90.0
-    working_context_tokens: int | None = 64_000
+    # A working-set cap is opt-in. Provider capacity drives normal compaction;
+    # a universal 64k cap silently discards observations on million-token models.
+    working_context_tokens: int | None = None
 
     def __post_init__(self) -> None:
         if self.max_recovery_seconds <= 0:
