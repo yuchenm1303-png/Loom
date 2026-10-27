@@ -4,7 +4,8 @@ import sys
 from types import SimpleNamespace
 
 import pytest
-from PIL import Image
+
+Image = pytest.importorskip('PIL.Image')
 
 from app.agent_runtime import computer_macos
 from app.agent_runtime.computer_types import ComputerAction, ComputerActionType, ComputerPoint
