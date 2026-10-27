@@ -52,6 +52,11 @@ jobs:
         working-directory: desktop-react
         run: npm ci --no-audit --no-fund
 
+      - name: Preflight native macOS Unicode and Accessibility APIs
+        run: |
+          python3 -m pip install "pyobjc-framework-Quartz>=10,<13" "pyobjc-framework-ApplicationServices>=10,<13" "pyobjc-framework-Cocoa>=10,<13"
+          python3 tests/macos_native_bridge_contract.py
+
       - name: Build desktop and frozen Python Host
         working-directory: desktop-react
         run: |
