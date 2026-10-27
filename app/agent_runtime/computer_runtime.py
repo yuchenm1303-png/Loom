@@ -11,6 +11,7 @@ from .browser_runtime_v1 import BrowserRuntime
 from .computer_alibaba import AlibabaGUIPlusGroundingBackend, GUI_PLUS_GROUNDER_ALIASES
 from .computer_diagnostics import ComputerDiagnostics
 from .computer_grounding import ComputerGroundingBackend, UITarsGroundingBackend
+from .computer_macos import MacOSComputerOperator, macos_computer_available
 from .computer_semantics import SemanticState
 from .computer_transient import ComputerTransientInputPlatform
 from .computer_types import (
@@ -681,9 +682,13 @@ class ComputerUseRuntime(BrowserRuntime):
 
         operator = computer_operator
         backend_name = str(getattr(operator, "name", "custom") or "custom") if operator is not None else "disabled"
-        if operator is None and auto_configure_computer and windows_computer_available():
-            operator = PyWinAutoWindowsOperator()
-            backend_name = operator.name
+        if operator is None and auto_configure_computer:
+            if windows_computer_available():
+                operator = PyWinAutoWindowsOperator()
+            elif macos_computer_available():
+                operator = MacOSComputerOperator()
+            if operator is not None:
+                backend_name = operator.name
 
         profile = str(
             computer_model_profile
@@ -790,7 +795,10 @@ class ComputerUseRuntime(BrowserRuntime):
             "screenshot_persistence": "none unless computer_observe save_screenshot=true",
             "typed_text_persistence": "transient_only for model-produced tool calls",
             "credential_persistence": "runtime environment only; not stored in Loom session state",
-            "observation_mode": "screenshot + UIA hybrid when Windows backend is enabled",
+            "observation_mode": (
+                "screenshot + UIA hybrid" if backend_name == "windows-uia" else
+                "primary-display screenshot, visual-only" if backend_name == "macos-quartz" else "unavailable"
+            ),
             "verification": "post-action re-observation; deterministic foreground-window check for switch_window",
             "diagnostics": {"mode": self.computer_diagnostics.mode, "log_dir": str(self.computer_diagnostics.root)},
             **operator_status,
