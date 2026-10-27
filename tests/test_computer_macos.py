@@ -223,7 +223,7 @@ def test_mac_releases_held_shortcut_modifiers_when_key_fails(monkeypatch):
             operator.observe(),
         )
     assert calls == [
-        ("down", "command"), ("down", "a"), ("up", "command")
+        ("down", "command"), ("down", "a"), ("up", "a"), ("up", "command")
     ]
 
 
