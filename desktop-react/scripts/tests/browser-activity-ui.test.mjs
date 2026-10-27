@@ -74,7 +74,10 @@ test("image cards render direct PNGs and immediately load their page in the side
               for(let i=0;i<100;i++){if(check())return;await new Promise(r=>setTimeout(r,30));}
               throw new Error(label);
             };
-            await waitFor(() => document.querySelector('.browser-activity-visual img')?.naturalWidth > 0, 'Direct PNG preview failed: ' + (document.querySelector('.browser-activity-visual')?.outerHTML || document.body.innerHTML).slice(0, 600));
+            window.__imgErr = ''; document.querySelector('.browser-activity-visual img')?.addEventListener('error', () => { window.__imgErr = 'error-event'; });
+            const probe = () => { const i = document.querySelector('.browser-activity-visual img'); return i ? 'complete=' + i.complete + ' w=' + i.naturalWidth + ' ' + window.__imgErr + ' rect=' + JSON.stringify(i.getBoundingClientRect()) + ' vis=' + document.visibilityState : 'no img'; };
+            const fetched = await fetch(location.origin + '/artifacts/check.png').then(r => r.status + ' ' + r.headers.get('content-type'), e => String(e));
+            await waitFor(() => document.querySelector('.browser-activity-visual img')?.naturalWidth > 0, 'Direct PNG preview failed: ' + fetched + ' | ' + probe() + ' | ' + (document.querySelector('.browser-activity-visual')?.outerHTML || document.body.innerHTML).slice(0, 600));
             if(document.querySelectorAll('.browser-activity-card').length !== 1) throw new Error('External automation created a browser card');
             document.querySelector('.browser-activity-card').click();
             await waitFor(() => window.commands.some(c => c.action === 'new-tab'), 'Card did not open page');
