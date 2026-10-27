@@ -43,15 +43,15 @@
 }
 .ambient-panel .ambient-eyebrow {
   color: var(--am-subtle);
-  font-size: 10px;
-  font-weight: 550;
+  font-size: 11.5px;
+  font-weight: 500;
   letter-spacing: .15em;
   margin-bottom: 10px;
 }
 .ambient-panel .ambient-heading h1 {
   color: var(--am-ink);
-  font-size: 29px;
-  font-weight: 560;
+  font-size: 28px;
+  font-weight: 500;
   letter-spacing: -.035em;
   line-height: 1.2;
 }
@@ -77,11 +77,11 @@
 }
 .ambient-panel .ambient-host-state strong {
   font-size: 12px;
-  font-weight: 550;
+  font-weight: 500;
   white-space: nowrap;
 }
 .ambient-panel .ambient-status-caption {
-  font-size: 11px;
+  font-size: 11.5px;
   color: var(--am-muted);
   margin-inline-start: 8px;
 }
@@ -110,11 +110,11 @@
   border-radius: 7px;
   color: var(--am-ink);
   background: transparent;
-  font-size: 11px;
+  font-size: 11.5px;
   font-weight: 500;
   line-height: 1.4;
   white-space: nowrap;
-  transition: background-color 140ms ease,border-color 140ms ease;
+  transition: background-color var(--loom-dur-fast) var(--loom-ease-out),border-color var(--loom-dur-fast) var(--loom-ease-out);
 }
 .ambient-panel .ambient-button-quiet {
   color: var(--am-muted);
@@ -157,12 +157,12 @@
 .ambient-panel .ambient-section-heading h2 {
   font-size: 14px;
   line-height: 1.4;
-  font-weight: 550;
+  font-weight: 500;
   letter-spacing: -.015em;
 }
 .ambient-panel .ambient-section-heading > span {
   color: var(--am-subtle);
-  font-size: 10px;
+  font-size: 11.5px;
 }
 .ambient-panel .ambient-fields {
   display: grid;
@@ -190,11 +190,11 @@
   gap: 8px;
   color: var(--am-muted);
   font-size: 12px;
-  font-weight: 450;
+  font-weight: 400;
 }
 .ambient-panel .ambient-field em {
   color: var(--am-subtle);
-  font-size: 10px;
+  font-size: 11.5px;
   font-style: normal;
   font-weight: 400;
 }
@@ -213,7 +213,7 @@
   font: inherit;
   font-size: 13px;
   line-height: 1.5;
-  transition: border-color 140ms ease,background-color 140ms ease;
+  transition: border-color var(--loom-dur-fast) var(--loom-ease-out),background-color var(--loom-dur-fast) var(--loom-ease-out);
 }
 .ambient-panel .ambient-field :is(input,select,textarea):hover {
   border-color: color-mix(in srgb,var(--am-ink) 15%,transparent);
@@ -233,7 +233,7 @@
 }
 .ambient-panel .ambient-field small {
   color: var(--am-subtle);
-  font-size: 10px;
+  font-size: 11.5px;
   line-height: 1.6;
 }
 .ambient-panel .ambient-select-wrap {
@@ -271,7 +271,7 @@
   text-align: start;
   color: var(--am-muted);
   background: transparent;
-  transition: border-color 140ms ease,background-color 140ms ease;
+  transition: border-color var(--loom-dur-fast) var(--loom-ease-out),background-color var(--loom-dur-fast) var(--loom-ease-out);
 }
 .ambient-panel .ambient-trigger:hover:not(:disabled) {
   background: var(--am-hover);
@@ -285,7 +285,7 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 11px;
+  font-size: 11.5px;
   font-weight: 500;
 }
 .ambient-panel .ambient-trigger-check {
@@ -294,7 +294,7 @@
 .ambient-panel .ambient-trigger small {
   display: block;
   color: var(--am-subtle);
-  font-size: 9px;
+  font-size: 11.5px;
   margin-top: 7px;
   line-height: 1.4;
 }
@@ -308,7 +308,7 @@
   list-style: none;
   cursor: pointer;
   color: var(--am-muted);
-  font-size: 11px;
+  font-size: 11.5px;
   padding: 14px 0;
 }
 .ambient-panel summary::-webkit-details-marker {
@@ -324,7 +324,7 @@
 }
 .ambient-panel summary > svg:last-child {
   margin-inline-start: auto;
-  transition: transform 140ms ease;
+  transition: transform var(--loom-dur-fast) var(--loom-ease-out);
 }
 .ambient-panel details[open] > summary > svg:last-child {
   transform: rotate(180deg);
@@ -333,7 +333,7 @@
   margin-inline-start: auto;
   color: var(--am-subtle);
   font-variant-numeric: tabular-nums;
-  font-size: 10px;
+  font-size: 11.5px;
 }
 .ambient-panel .ambient-limits summary > svg:last-child {
   margin-inline-start: 0;
@@ -343,7 +343,7 @@
 }
 .ambient-panel .ambient-limits-body p {
   color: var(--am-subtle);
-  font-size: 10px;
+  font-size: 11.5px;
   margin-top: 10px;
   line-height: 1.6;
 }
@@ -359,7 +359,7 @@
   align-items: center;
   gap: 8px;
   color: var(--am-muted);
-  font-size: 11px;
+  font-size: 11.5px;
   position: relative;
   cursor: pointer;
   flex: 0 0 auto;
@@ -380,7 +380,7 @@
   border-radius: 10px;
   background: color-mix(in srgb,var(--am-ink) 15%,transparent);
   padding: 3px;
-  transition: background-color 140ms ease;
+  transition: background-color var(--loom-dur-fast) var(--loom-ease-out);
 }
 .ambient-panel .ambient-switch-track::after {
   content: "";
@@ -389,7 +389,7 @@
   height: 11px;
   background: var(--am-muted);
   border-radius: 50%;
-  transition: transform 140ms ease;
+  transition: transform var(--loom-dur-fast) var(--loom-ease-out);
 }
 .ambient-panel .ambient-enable input:checked + .ambient-switch-track {
   background: var(--am-ink);
@@ -416,7 +416,7 @@
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  font-size: 10px;
+  font-size: 11.5px;
   color: var(--am-green);
   margin-inline-end: 5px;
 }
@@ -436,13 +436,13 @@
 }
 .ambient-panel .ambient-count {
   color: var(--am-subtle);
-  font-size: 10px;
+  font-size: 11.5px;
   font-weight: 400;
   font-variant-numeric: tabular-nums;
 }
 .ambient-panel .ambient-list-caption {
   color: var(--am-subtle);
-  font-size: 10px;
+  font-size: 11.5px;
   margin: 1px 0 15px;
 }
 .ambient-panel .ambient-icon-button {
@@ -456,7 +456,7 @@
   border-radius: 5px;
   background: transparent;
   color: var(--am-subtle);
-  transition: color 140ms ease,background-color 140ms ease;
+  transition: color var(--loom-dur-fast) var(--loom-ease-out),background-color var(--loom-dur-fast) var(--loom-ease-out);
 }
 .ambient-panel .ambient-icon-button:hover:not(:disabled) {
   color: var(--am-ink);
@@ -491,7 +491,7 @@
   color: var(--am-muted);
 }
 .ambient-panel .ambient-empty p {
-  font-size: 11px;
+  font-size: 11.5px;
   line-height: 1.8;
   max-width: 220px;
 }
@@ -544,7 +544,7 @@
   display: block;
   margin: 7px 0 0 24px;
   color: var(--am-subtle);
-  font-size: 10px;
+  font-size: 11.5px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -554,7 +554,7 @@
   gap: 6px;
   align-items: center;
   min-width: 0;
-  font-size: 10px;
+  font-size: 11.5px;
   color: var(--am-muted);
   margin: 11px 0 3px 24px;
 }
@@ -580,7 +580,7 @@
   align-items: center;
   gap: 6px;
   color: var(--am-subtle);
-  font-size: 9px;
+  font-size: 11.5px;
   font-variant-numeric: tabular-nums;
 }
 .ambient-panel .ambient-task-usage i {
@@ -619,7 +619,7 @@
 }
 .ambient-panel .ambient-disclosure > summary {
   padding: 15px 0;
-  font-size: 11px;
+  font-size: 11.5px;
 }
 .ambient-panel .ambient-disclosure-body {
   padding: 0 0 15px 24px;
@@ -636,12 +636,12 @@
 }
 .ambient-panel .ambient-log-row strong {
   color: var(--am-muted);
-  font-size: 11px;
+  font-size: 11.5px;
   font-weight: 500;
 }
 .ambient-panel .ambient-log-row p {
   color: var(--am-subtle);
-  font-size: 11px;
+  font-size: 11.5px;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   margin-top: 5px;
@@ -653,14 +653,14 @@
   gap: 10px;
   align-items: baseline;
   color: var(--am-subtle);
-  font-size: 10px;
+  font-size: 11.5px;
 }
 .ambient-panel .ambient-disclosure-body > .ambient-button {
   margin-top: 10px;
 }
 .ambient-panel .ambient-history-empty {
   color: var(--am-subtle);
-  font-size: 11px;
+  font-size: 11.5px;
   padding: 2px 0 8px;
 }
 .ambient-panel .ambient-footnote {
@@ -671,7 +671,7 @@
   margin-top: -7px;
 }
 .ambient-panel .ambient-footnote p {
-  font-size: 10px;
+  font-size: 11.5px;
   line-height: 1.8;
 }
 .ambient-panel .ambient-inline-note, .ambient-panel .ambient-error {
@@ -679,7 +679,7 @@
   align-items: baseline;
   gap: 8px;
   color: var(--am-muted);
-  font-size: 11px;
+  font-size: 11.5px;
   line-height: 1.7;
 }
 .ambient-panel .ambient-error {
@@ -710,7 +710,7 @@
   gap: 17px;
 }
   .ambient-panel .ambient-heading h1 {
-  font-size: 25px;
+  font-size: 24px;
 }
   .ambient-panel .ambient-editor {
   padding: 17px;

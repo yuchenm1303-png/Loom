@@ -4,7 +4,7 @@
 .terminal-run-actions .is-running { color: var(--loom-workspace-accent); }
 .terminal-run-actions button:disabled { opacity: .4; cursor: default; }
 .terminal-run-actions button:focus-visible { outline: 2px solid var(--loom-workspace-accent); outline-offset: -2px; }
-.markdown-code-block:has(.terminal-run-actions) .markdown-code-head > span { max-width: calc(100% - 190px); overflow: hidden; text-overflow: ellipsis; }
+.markdown-code-head > span { max-width: calc(100% - 190px); overflow: hidden; text-overflow: ellipsis; }
 .terminal-run-panel { border-top: 1px solid var(--loom-workspace-line); background: var(--md-code-bg); }
 .terminal-run-status { min-height: 30px; padding: 5px 13px; display: flex; align-items: center; justify-content: space-between; gap: 10px; color: var(--md-code-label); font: 11px/1.5 var(--loom-code-font); }
 .terminal-run-status .is-running { color: var(--loom-workspace-accent); }
@@ -22,5 +22,5 @@
   .terminal-run-actions { right: 70px; }
   .terminal-run-actions button { width: 26px; padding: 0; justify-content: center; }
   .terminal-run-actions span { display: none; }
-  .markdown-code-block:has(.terminal-run-actions) .markdown-code-head > span { max-width: calc(100% - 130px); }
+  .markdown-code-head > span { max-width: calc(100% - 130px); }
 }

@@ -62,7 +62,7 @@ html[data-loom-theme="light"] .terminal-content { --terminal-bg: #f8f9fb; }
 .terminal-footer .is-running { color: var(--pl-ok); }
 .terminal-footer-actions { display: flex; gap: 3px; align-items: center; }
 .terminal-footer select { height: 24px; font-size: 11px; padding: 0 2px; }
-@keyframes terminal-panel-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+@keyframes terminal-panel-in { from { opacity: 0; } to { opacity: 1; } }
 @media (max-width: 650px) {
   .terminal-panel { top: 8px; right: calc(var(--loom-tool-rail-track, 62px) + 6px); width: calc(100vw - var(--loom-tool-rail-track, 62px) - 14px); max-width: calc(100vw - var(--loom-tool-rail-track, 62px) - 14px); height: calc(100dvh - 16px); max-height: calc(100dvh - 16px); min-width: 0; resize: none; }
   .terminal-panel .pl-header { padding-inline: 10px; gap: 6px; }

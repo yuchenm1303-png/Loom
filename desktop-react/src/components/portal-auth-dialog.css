@@ -77,11 +77,11 @@
   color: var(--dialog-text);
   box-shadow: 0 22px 75px rgba(0,0,0,.26);
   font-family: ui-sans-serif, system-ui, "Segoe UI", sans-serif;
-  animation: loom-dialog-enter .19s ease-out both;
+  animation: loom-dialog-enter var(--loom-dur-base) var(--loom-ease-out) both;
 }
 @keyframes loom-dialog-enter {
-  from { opacity: 0; transform: translateY(8px); }
-  to { opacity: 1; transform: translateY(0); }
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 .loom-portal-page.is-modular.loom-editorial .editorial-panel > .loom-intro-module {
   display: none !important;
@@ -253,8 +253,8 @@
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
-  font-size: 19px;
-  font-weight: 750;
+  font-size: 18px;
+  font-weight: 650;
   box-shadow: none;
 }
 .loom-editorial .editorial-panel .loom-auth-divider {
@@ -262,7 +262,7 @@
   gap: 13px;
   margin: 18px 0 0;
   color: var(--dialog-quiet);
-  font-size: 11px;
+  font-size: 11.5px;
   letter-spacing: 0;
 }
 .loom-editorial .editorial-panel .loom-auth-divider::before,
@@ -330,7 +330,7 @@
 .loom-editorial .editorial-panel .loom-password-toggle:hover { color: var(--dialog-text); background: var(--dialog-field-hover); }
 .loom-editorial .editorial-panel .loom-inline-link {
   color: var(--dialog-muted);
-  font-size: 10px;
+  font-size: 11.5px;
 }
 .loom-editorial .editorial-panel .loom-inline-link:hover { color: var(--dialog-text); }
 .loom-editorial .editorial-panel .loom-auth-v2 .loom-form-submit,
@@ -363,7 +363,7 @@
   margin: 10px auto 0;
   padding: 0;
   color: var(--dialog-muted);
-  font-size: 11px;
+  font-size: 11.5px;
   font-weight: 400;
   text-decoration: underline;
   text-underline-offset: 3px;
@@ -469,7 +469,7 @@
 }
 .loom-editorial .editorial-panel .loom-account-session-note {
   margin: 8px 0 0;
-  font-size: 11px;
+  font-size: 11.5px;
   line-height: 1.55;
   color: var(--dialog-quiet);
 }
@@ -479,7 +479,7 @@
   min-width: 0;
   overflow-wrap: anywhere;
   color: var(--dialog-muted);
-  font-size: 11px;
+  font-size: 11.5px;
   line-height: 1.5;
 }
 .loom-editorial .editorial-panel .loom-switch-account-action {

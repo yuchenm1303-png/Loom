@@ -50,9 +50,9 @@
 .mcp-market-card-top h3 { margin: 0 0 4px; font-size: 15px; overflow-wrap: anywhere; }
 .mcp-market-monogram { background: color-mix(in srgb, var(--sr-accent, #9c8ef8) 15%, transparent); border-radius: 11px; width: 40px; height: 40px; display: grid; place-items: center; color: var(--sr-accent-ink, #c7bbff); font-size: 13px; font-weight: 600; flex-shrink: 0; }
 .mcp-market-card p { margin: 0; min-height: 42px; }
-.mcp-market-card code, .mcp-market-detail code { font-size: 11px; color: var(--sr-ink-3, #aaa); overflow-wrap: anywhere; }
+.mcp-market-card code, .mcp-market-detail code { font-size: 11.5px; color: var(--sr-ink-3, #aaa); overflow-wrap: anywhere; }
 .mcp-market-card-bottom { margin-top: auto; }
-.mcp-market-tags, .mcp-market-meta { display: flex; flex-wrap: wrap; gap: 8px; font-size: 11px; color: var(--sr-ink-3, #aaa); }
+.mcp-market-tags, .mcp-market-meta { display: flex; flex-wrap: wrap; gap: 8px; font-size: 11.5px; color: var(--sr-ink-3, #aaa); }
 .mcp-market-tags span { padding: 4px 8px; background: var(--sr-inset, #121215); border-radius: 6px; }
 .mcp-market-detail { padding: 24px; min-width: 0; }
 .mcp-market-detail h3 { margin: 0; }
@@ -87,9 +87,9 @@
 .mcp-manager .mcp-install-button:hover:not(:disabled) { filter: brightness(1.1); }
 .mcp-directory-meta { display: flex; justify-content: space-between; gap: 12px; font-size: 12px; color: var(--sr-ink-3, #aaa); }
 .mcp-directory-meta a { display: inline-flex; align-items: center; gap: 5px; }
-.mcp-manager .mcp-cache-note { font-size: 11px; color: var(--sr-ink-3, #aaa); }
+.mcp-manager .mcp-cache-note { font-size: 11.5px; color: var(--sr-ink-3, #aaa); }
 .mcp-marketplace .mcp-market-grid { grid-template-columns: minmax(0, 1fr); gap: 12px; }
-.mcp-marketplace .mcp-market-card { display: grid; grid-template-columns: 42px minmax(0, 1fr) auto; gap: 18px; padding: 22px; border-radius: 14px; transition: border-color .15s; }
+.mcp-marketplace .mcp-market-card { display: grid; grid-template-columns: 42px minmax(0, 1fr) auto; gap: 18px; padding: 22px; border-radius: 14px; transition: border-color var(--loom-dur-fast) var(--loom-ease-out); }
 .mcp-marketplace .mcp-market-card:hover { border-color: color-mix(in srgb, var(--sr-accent, #a99aff) 45%, var(--sr-line, #34343b)); }
 .mcp-market-card-content { min-width: 0; }
 .mcp-market-title-line { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
@@ -100,23 +100,22 @@
 .mcp-marketplace .mcp-market-tags span { display: inline-flex; align-items: center; gap: 5px; padding: 3px 8px; border: 1px solid var(--sr-line, #34343b); background: transparent; border-radius: 6px; }
 .mcp-market-card-actions { display: flex; flex-direction: column; align-items: stretch; gap: 9px; }
 .mcp-manager .mcp-details-button { display: inline-flex; align-items: center; justify-content: center; gap: 4px; border-color: transparent; background: transparent; color: var(--sr-ink-3, #aaa); padding: 5px; }
-.mcp-installed-badge { display: inline-flex; align-items: center; gap: 4px; color: var(--sr-accent, #b5a7ff); font-size: 11px; }
+.mcp-installed-badge { display: inline-flex; align-items: center; gap: 4px; color: var(--sr-accent, #b5a7ff); font-size: 11.5px; }
 .mcp-market-loading, .mcp-dialog-loading { display: flex; align-items: center; justify-content: center; gap: 10px; padding: 32px; color: var(--sr-ink-3, #aaa); }
 .mcp-settings .mcp-quick-setup { margin-top: 8px; padding-top: 18px; }
 .mcp-quick-setup summary { cursor: pointer; font-size: 13px; color: var(--sr-ink-3, #aaa); }
 .mcp-dialog-backdrop { position: fixed; inset: 0; z-index: 10000; display: flex; align-items: center; justify-content: center; padding: 24px; box-sizing: border-box; background: #0009; backdrop-filter: blur(5px); color: var(--sr-ink, #eee); font-family: inherit; }
 .mcp-install-dialog { width: min(100%, 580px); max-height: calc(100dvh - 48px); overflow-y: auto; box-sizing: border-box; padding: 26px; background: var(--sr-page, #151618); border: 1px solid var(--sr-line, #44444e); border-radius: 18px; box-shadow: 0 24px 90px #0006; outline: none; }
 .mcp-dialog-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 16px; }
-.mcp-dialog-eyebrow { font-size: 10px; letter-spacing: .12em; color: var(--sr-ink-3, #aaa); }
-.mcp-dialog-heading h2 { margin: 8px 0 0; font-size: 21px; overflow-wrap: anywhere; }
+.mcp-dialog-eyebrow { font-size: 11.5px; letter-spacing: .12em; color: var(--sr-ink-3, #aaa); }
+.mcp-dialog-heading h2 { margin: 8px 0 0; font-size: 20px; overflow-wrap: anywhere; }
 .mcp-install-dialog fieldset { border: 0; padding: 0; margin: 0; display: grid; gap: 18px; min-width: 0; }
 .mcp-runtime-note { display: flex; align-items: flex-start; gap: 8px; }
 .mcp-runtime-note svg { flex-shrink: 0; margin-top: 3px; }
 .mcp-auth-fields { display: grid; gap: 16px; }
 .mcp-auth-fields h3 { margin: 0; font-size: 13px; }
 .mcp-dialog-footer { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 10px; border-top: 1px solid var(--sr-line, #34343b); padding-top: 20px; margin-top: 4px; }
-@keyframes mcp-spin { to { transform: rotate(360deg); } }
-.mcp-spin { animation: mcp-spin 1s linear infinite; }
+.mcp-spin { animation: li-spin var(--ic-t-spin) linear infinite; }
 @media (max-width: 620px) {
   .mcp-marketplace .mcp-market-search { grid-template-columns: minmax(0, 1fr) 40px auto; }
   .mcp-marketplace .mcp-search-field { grid-column: 1 / -1; }

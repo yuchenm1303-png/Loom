@@ -12,8 +12,8 @@
 .artifact-search button:hover { color: var(--pl-ink); background: var(--pl-hover); }
 .artifact-library-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 14px; }
 .artifact-library-toolbar select { max-width: 55%; padding: 6px 9px; border: 1px solid var(--pl-line); border-radius: 7px; background: var(--pl-surface); color: var(--pl-secondary); font: inherit; font-size: 12px; cursor: pointer; }
-.artifact-library-toolbar > span { color: var(--pl-muted); font-size: 11px; text-align: right; }
-.artifact-library-note { font-size: 11px; line-height: 1.6; color: var(--pl-muted); margin: 12px 0 0; }
+.artifact-library-toolbar > span { color: var(--pl-muted); font-size: 11.5px; text-align: right; }
+.artifact-library-note { font-size: 11.5px; line-height: 1.6; color: var(--pl-muted); margin: 12px 0 0; }
 .artifact-library-list { display: grid; gap: 7px; }
 .artifact-library-card { position: relative; animation: artifact-card-arrive var(--loom-dur-base) var(--loom-ease-out) both; }
 .artifact-card-main { width: 100%; display: flex; align-items: center; gap: 12px; padding: 13px 48px 13px 13px; border: 0; background: transparent; color: inherit; text-align: left; cursor: pointer; border-radius: inherit; }
@@ -21,9 +21,9 @@
 .artifact-card-icon[data-kind="code"], .artifact-card-icon[data-kind="text"], .artifact-card-icon[data-kind="data"] { color: var(--pl-secondary); background: var(--pl-hover); }
 .artifact-card-copy { min-width: 0; flex: 1; display: grid; gap: 4px; }
 .artifact-card-copy strong { font-size: 13px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.artifact-card-copy .artifact-card-meta { font-size: 10.5px; line-height: 1.5; color: var(--pl-muted); }
+.artifact-card-copy .artifact-card-meta { font-size: 11.5px; line-height: 1.5; color: var(--pl-muted); }
 .artifact-card-copy .artifact-card-meta[data-running="true"] { color: var(--pl-accent); }
-.artifact-card-copy small { color: var(--pl-muted); font-size: 11px; line-height: 1.5; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; direction: rtl; text-align: left; unicode-bidi: plaintext; }
+.artifact-card-copy small { color: var(--pl-muted); font-size: 11.5px; line-height: 1.5; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; direction: rtl; text-align: left; unicode-bidi: plaintext; }
 .artifact-card-chevron { flex-shrink: 0; color: var(--pl-faint); }
 .artifact-card-main:hover .artifact-card-chevron { color: var(--pl-accent); }
 .artifact-card-external { position: absolute; right: 10px; top: 50%; transform: translateY(-50%); display: grid; place-items: center; width: 30px; height: 30px; border: 0; border-radius: var(--pl-radius-control); color: var(--pl-muted); background: transparent; cursor: pointer; transition: color var(--loom-dur-fast) ease, background-color var(--loom-dur-fast) ease; }
