@@ -11,6 +11,8 @@ import json
 import os
 import subprocess
 import time
+import threading
+from contextlib import contextmanager
 from pathlib import Path
 
 from app.ai import AIMessage, MessageRole
@@ -20,7 +22,7 @@ from .verification import subject_snapshot, check_freshness
 
 
 KINDS = (E.VERIFICATION_UPDATED, E.VERIFICATION_FINISH_REQUESTED, E.CHECK_RECORDED)
-_IGNORED = {".git", ".loom", "node_modules", "__pycache__", ".venv", "venv", "dist", "dist-electron"}
+_IGNORED = {".git", ".loom", ".cache", ".cursor-build", "node_modules", "__pycache__", ".venv", "venv", "dist", "dist-electron"}
 _SOURCE = {".py", ".js", ".mjs", ".cjs", ".ts", ".tsx", ".jsx", ".vue", ".svelte", ".css", ".scss",
            ".html", ".rs", ".go", ".java", ".kt", ".swift", ".qml", ".xaml", ".svg"}
 _VISUAL = {".tsx", ".jsx", ".vue", ".svelte", ".css", ".scss", ".html", ".qml", ".xaml", ".svg"}
@@ -49,7 +51,8 @@ def _digest(value):
 def git_sources(workspace):
     """Dirty source fingerprints, bounded and read-only. Never opens unrelated clean files."""
     try:
-        output = subprocess.run(["git", "status", "--porcelain=v1", "-z", "--untracked-files=all", "--", "."],
+        output = subprocess.run(["git", "status", "--porcelain=v1", "-z", "--untracked-files=all", "--", ".",
+                                 ":(exclude).cache", ":(exclude)node_modules", ":(exclude).loom"],
             cwd=workspace, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, timeout=3,
             creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0)
         if output.returncode:
@@ -161,9 +164,53 @@ def feature_recipes(context, paths):
 
 
 class DevelopmentVerification:
+    _workspace_guard = threading.Lock()
+    _workspace_locks = {}
+
     def __init__(self, runtime):
         self.runtime = runtime
         self._pending_deliveries = {}
+
+    @contextmanager
+    def execution(self, context, tool_name):
+        """Attribute mutations inside a tool boundary, not at an arbitrary later scan.
+
+        Local mutating tools share a workspace lease. Foreign processes are not
+        inferred to belong to this task merely because HEAD/status changed.
+        """
+        if tool_name not in {"exec", "apply_patch", "write_workspace_text"}:
+            yield
+            return
+        key = os.path.normcase(str(context.workspace.resolve()))
+        with self._workspace_guard:
+            lock = self._workspace_locks.setdefault(key, threading.RLock())
+        with lock:
+            before, available = git_sources(context.workspace) if tool_name == "exec" else ({}, "unavailable")
+            head = git_head(context.workspace) if available == "available" else ""
+            try:
+                yield
+            finally:
+                if available == "available":
+                    try:
+                        self._capture_execution(context, before, head)
+                    except (OSError, ValueError, RuntimeError):
+                        # Auxiliary attribution must not convert an executed
+                        # operation into a reported tool failure and invite replay.
+                        import logging
+                        logging.getLogger(__name__).warning("Could not capture source attribution for %s", context.turn_id)
+
+    def _capture_execution(self, context, before, head):
+        after, status = git_sources(context.workspace)
+        if status != "available":
+            return
+        candidates = set(before) | set(after) | set(committed_paths(context.workspace, head, git_head(context.workspace)))
+        current = subject_snapshot(context, sorted(candidates))["files"] if candidates else {}
+        changed = {p for p in candidates if before.get(p) != current.get(p)}
+        session = self.runtime.store.load(context.session_id)
+        state = self.latest(session)
+        if state and changed:
+            owned = sorted(set(state.get("owned_paths", [])) | changed)
+            self.runtime._emit_event(session, E.VERIFICATION_UPDATED, data={**state, "owned_paths": owned})
 
     def events(self, session):
         # context_select is indexed and preserves only the small verification payloads.
@@ -259,15 +306,14 @@ class DevelopmentVerification:
             return
         subjects = dict(state.get("subjects", {}))
         paths = set(self.runtime.diff_trackers.snapshot(session.session_id, session.current_turn_id).paths)
+        paths.update(state.get("owned_paths", []))
         last_git, discovery = state.get("last_git", {}), state.get("discovery", "unavailable")
         head = state.get("head", "")
         if scan_git:
             current, discovery = git_sources(session.workspace_dir)
             if discovery == "available":
-                paths.update(p for p in current.keys() | last_git.keys() if current.get(p) != last_git.get(p))
                 last_git = current
             new_head = git_head(session.workspace_dir)
-            paths.update(committed_paths(session.workspace_dir, head, new_head))
             head = new_head
         context = ToolContext(session.session_id, session.current_turn_id, Path(session.workspace_dir))
         for path in sorted(paths | subjects.keys()):

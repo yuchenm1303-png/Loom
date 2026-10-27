@@ -90,6 +90,62 @@ def turn_timing_metadata(
     if kind not in _TERMINAL_KINDS:
         return metadata
 
+    # Pair actual request/receipt times. Parallel tools contribute their union,
+    # not a sum that can exceed the entire turn's elapsed wall time.
+    pending_model = None
+    pending_tools = {}
+    tool_intervals = []
+    model_ms = preparation_ms = retry_wait_ms = queue_ms = first_content_ms = 0
+    generation_ms = first_content_samples = 0
+    compaction_ms = 0
+    rejected_ms = 0
+    for event in turn_events:
+        data = event.data
+        if event.kind is AgentEventKind.MODEL_REQUESTED:
+            pending_model = event.created_at
+            preparation_ms += int(data.get("request_preparation_ms") or 0)
+            if not data.get("request_preparation_reused"):
+                compaction_ms += int(data.get("context_compaction_ms") or 0)
+            retry_wait_ms += int(data.get("retry_wait_ms") or 0)
+        elif event.kind in {AgentEventKind.MODEL_RESPONSE, AgentEventKind.MODEL_RESPONSE_REJECTED}:
+            duration = _elapsed_ms(pending_model, event.created_at) if pending_model else 0
+            model_ms += duration or 0
+            if event.kind is AgentEventKind.MODEL_RESPONSE_REJECTED:
+                rejected_ms += duration or 0
+            timing = data.get("stream_timing") or {}
+            queue_ms += int(timing.get("queue_wait_ms") or 0)
+            first_content_ms += int(timing.get("first_content_ms") or 0)
+            if timing.get("first_content_ms") is not None:
+                first_content_samples += 1
+                generation_ms += max(0, int(timing.get("execution_ms") or 0) - int(timing["first_content_ms"]))
+            pending_model = None
+        elif event.kind is AgentEventKind.TOOL_STARTED:
+            pending_tools[str(data.get("call_id"))] = event.created_at
+        elif event.kind in {AgentEventKind.TOOL_COMPLETED, AgentEventKind.TOOL_FAILED}:
+            start = pending_tools.pop(str(data.get("call_id")), None)
+            left, right = _elapsed_ms(started.created_at, start) if start else None, _elapsed_ms(started.created_at, event.created_at)
+            if left is not None and right is not None:
+                tool_intervals.append((left, right))
+    tool_ms = 0
+    if pending_model:
+        model_ms += _elapsed_ms(pending_model, now) or 0
+    for start in pending_tools.values():
+        left, right = _elapsed_ms(started.created_at, start), _elapsed_ms(started.created_at, now)
+        if left is not None and right is not None:
+            tool_intervals.append((left, right))
+    previous_end = 0
+    for left, right in sorted(tool_intervals):
+        tool_ms += max(0, right - max(left, previous_end))
+        previous_end = max(previous_end, right)
+    metadata.update(model_round_trips=len(model_requests), model_wait_ms=model_ms,
+                    model_rejected_ms=rejected_ms, model_queue_ms=queue_ms,
+                    model_time_to_content_ms=first_content_ms, tool_wall_ms=tool_ms,
+                    model_generation_ms=generation_ms, model_first_content_samples=first_content_samples,
+                    request_preparation_total_ms=preparation_ms, retry_wait_total_ms=retry_wait_ms,
+                    context_compaction_ms=compaction_ms,
+                    context_assembly_ms=max(0, preparation_ms - compaction_ms),
+                    runtime_other_ms=max(0, (elapsed or 0) - model_ms - tool_ms - preparation_ms - retry_wait_ms))
+
     if model_requests:
         first_model_latency = _elapsed_ms(started.created_at, model_requests[0].created_at)
         if first_model_latency is not None:

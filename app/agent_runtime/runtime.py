@@ -130,9 +130,10 @@ class ToolBatchPlan:
     runnable: tuple[ToolCall, ...]
     immediate: tuple[tuple[ToolCall, ToolResult], ...]
     blocked: bool = False
+    execution_step: StepContext | None = None
 
 
-_BATCH_FAULT_RETRY = "reissue_batch"
+_BATCH_FAULT_RETRY = "retry_failed_call_only"
 
 
 class AgentRuntime:
@@ -962,6 +963,9 @@ class AgentRuntime:
         _ = (session, call)
         return False
 
+    def _resolve_batch_step(self, session: AgentSession, step: StepContext, calls: list[ToolCall]) -> StepContext:
+        return step
+
     def _plan_tool_batch(
         self,
         session: AgentSession,
@@ -972,11 +976,12 @@ class AgentRuntime:
 
         Availability and argument checks belong to the orchestrator, the same
         authority dispatch uses, so each call is judged against the step it was
-        issued in. A batch with any faulty call executes none of its calls: every
-        call gets a correlated, not-executed result and the model re-issues the
-        batch. Byte-identical read-only requests run once; repeated state-changing
+        issued in or its permission-preserving derived dispatch snapshot. A fault
+        holds dependent state-changing successors, while the valid prefix and
+        independent reads retain their own correlated outcomes. Byte-identical read-only requests run once; repeated state-changing
         actions retain their original multiplicity.
         """
+        step = self._resolve_batch_step(session, step, calls)
         faults: dict[str, ToolResult] = {}
         for call in calls:
             try:
@@ -987,7 +992,7 @@ class AgentRuntime:
                         ok=False,
                         content=(
                             f"Tool {call.name!r} is not in this step's tool list, so this call was not executed. "
-                            "It is now activated for your next model step: issue the calls again with its advertised schema."
+                            "It is now activated for your next model step: reissue only this call with its advertised schema. Do not replay successful batch members."
                         ),
                         data={"failure_kind": "tool_not_in_step", "execution_status": "not_executed",
                               "tool": call.name, "activated_for_next_step": True,
@@ -995,32 +1000,25 @@ class AgentRuntime:
                     )
                 else:
                     faults[call.call_id] = self._invalid_tool_request_result(session, call, exc)
-        if faults:
-            invalid_ids = [call.call_id for call in calls if call.call_id in faults]
-            held = ToolResult(
-                ok=False,
-                content=(
-                    f"Not executed: {len(invalid_ids)} call(s) in this response were invalid, so none of this "
-                    "response's calls ran. Correct the invalid call(s) and issue the calls again."
-                ),
-                data={"failure_kind": "batch_not_executed", "execution_status": "not_executed",
-                      "invalid_call_ids": invalid_ids, "retry_policy": _BATCH_FAULT_RETRY},
-            )
-            return ToolBatchPlan(
-                runnable=(),
-                immediate=tuple((call, faults.get(call.call_id, held)) for call in calls),
-                blocked=True,
-            )
-
         from .execution_guidance import tool_call_fingerprint
 
         first_by_fingerprint: dict[str, str] = {}
         runnable: list[ToolCall] = []
         immediate: list[tuple[ToolCall, ToolResult]] = []
+        ordering_barrier = False
         for call in calls:
+            if call.call_id in faults:
+                immediate.append((call, faults[call.call_id]))
+                ordering_barrier = True
+                continue
             # Repeated UI actions are not idempotent: two identical scrolls,
             # clicks or keys can be deliberate. Only collapse duplicate reads.
             tool = step.tool_router.get(call.name)
+            if ordering_barrier and tool is not None and tool.effect is not ToolEffect.READ_ONLY:
+                immediate.append((call, ToolResult(False,
+                    "Not executed: an earlier call failed validation. Correct that predecessor before issuing this state-changing action again.",
+                    {"failure_kind": "dependency_not_executed", "execution_status": "not_executed"})))
+                continue
             if tool is None or tool.effect is not ToolEffect.READ_ONLY:
                 runnable.append(call)
                 continue
@@ -1036,7 +1034,8 @@ class AgentRuntime:
                 data={"failure_kind": "duplicate_call", "execution_status": "not_executed",
                       "duplicate_of_call_id": first},
             )))
-        return ToolBatchPlan(runnable=tuple(runnable), immediate=tuple(immediate))
+        return ToolBatchPlan(runnable=tuple(runnable), immediate=tuple(immediate),
+                             blocked=bool(faults) and not runnable, execution_step=step)
 
     def _process_pending_tools(
         self,
@@ -1670,7 +1669,7 @@ class AgentRuntime:
             AgentEventKind.TOOL_FAILED if failed else AgentEventKind.TOOL_COMPLETED,
             data=data,
         )
-        self.development_verification.observe(session, scan_git=call.name in {"exec", "exec_wait"})
+        self.development_verification.observe(session)
         self.development_verification.observed(session, call, result)
         assessment = result.data.get("verification") if call.name in {"exec", "browser_run_check"} else None
         spec = call.arguments.get("verification") if call.name in {"exec", "browser_run_check"} else None

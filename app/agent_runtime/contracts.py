@@ -96,9 +96,15 @@ class AgentLimits:
     context_window_tokens: int | None = None
     output_reserve_tokens: int | None = None
     model_retries: int = 2
-    transport_retries: int = 5
+    transport_retries: int = 2
+    max_recovery_seconds: float = 90.0
+    working_context_tokens: int | None = 64_000
 
     def __post_init__(self) -> None:
+        if self.max_recovery_seconds <= 0:
+            raise ValueError("max_recovery_seconds must be positive")
+        if self.working_context_tokens is not None and self.working_context_tokens <= 0:
+            raise ValueError("working_context_tokens must be positive or None")
         if self.model_retries < 0 or self.model_retries > 5:
             raise ValueError("model_retries must be within 0..5")
         if self.transport_retries < 0 or self.transport_retries > 5:

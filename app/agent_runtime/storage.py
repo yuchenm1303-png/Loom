@@ -407,10 +407,21 @@ def _context_event_projection(payload):
         selected = {key: data[key] for key in ("call_id", "tool", "effect", "call_fingerprint", "repeat_count") if key in data}
     elif kind == "tool_failed":
         result = data.get("data") or {}
-        selected = {"data": {key: result[key] for key in ("invalid_request_fingerprint", "repeat_count") if key in result}}
+        selected = {key: data[key] for key in ("call_id", "tool", "ok") if key in data}
+        selected["data"] = {key: result[key] for key in ("invalid_request_fingerprint", "repeat_count",
+                    "failure_kind", "operation_id", "recovery_scope", "execution_status") if key in result}
+    elif kind == "tool_completed":
+        selected = {key: data[key] for key in ("call_id", "tool", "ok") if key in data}
+        result = data.get("data") or {}
+        selected["data"] = {key: result[key] for key in ("effect", "browser_id") if key in result}
     elif kind in {"model_requested", "model_response", "model_response_rejected"}:
         selected = {key: data[key] for key in ("profile_id", "provider", "model", "usage", "reason",
                     "estimated_input_tokens_before", "estimated_input_tokens_after", "rejected_input_tokens") if key in data}
+        selected.update({key: data[key] for key in ("request_preparation_ms", "model_execution_ms",
+                        "stream_timing", "retry_wait_ms", "will_retry", "attempt", "request_purpose",
+                        "context_compaction_ms") if key in data})
+        if "request_preparation_reused" in data:
+            selected["request_preparation_reused"] = data["request_preparation_reused"]
     else:
         selected = {}
     if "browser_resources" in data:

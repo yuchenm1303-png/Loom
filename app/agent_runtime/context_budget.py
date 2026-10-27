@@ -805,6 +805,9 @@ def _prepare_context_with_model(rt, session, step, token):
     projected_history, reduction_stats = reduce_tool_outputs(
         canonical_history,
         per_output_token_limit=limits.tool_output_token_limit,
+        target_total_tokens=(int(working_input_budget / calibration) if working_attainable else None),
+        estimate_total=lambda history: estimate_tokens(render(history), tools),
+        keep_recent_outputs=2,
     )
     projected_visible = render(projected_history)
     estimated_projected = estimate_tokens(projected_visible, tools)
@@ -919,6 +922,10 @@ def _prepare_context_with_model(rt, session, step, token):
     summary_request_ceiling = (
         input_budget + output_budget_tokens if input_budget is not None else None
     )
+    transport_failures = 0
+    import time
+    recovery_started = time.perf_counter()
+    compaction_model_ms = 0
 
     while True:
         _raise_if_cancelled(token)
@@ -947,6 +954,7 @@ def _prepare_context_with_model(rt, session, step, token):
             reconnect_delay = 1.0
             continue
 
+        summary_model_started = time.perf_counter()
         try:
             stream_scope = getattr(rt, "_internal_model_stream_scope", None)
             with stream_scope() if callable(stream_scope) else nullcontext():
@@ -971,12 +979,20 @@ def _prepare_context_with_model(rt, session, step, token):
                 isinstance(exc, AITransportError)
                 and exc.retryable
             ):
-                signal = wait_for_signal(token, revision(token), max(getattr(exc, "retry_after_seconds", 0.0), reconnect_delay))
+                transport_failures += 1
+                retry_delay = max(getattr(exc, "retry_after_seconds", 0.0), reconnect_delay)
+                if (transport_failures > getattr(rt.limits, "transport_retries", 2)
+                        or time.perf_counter() - recovery_started + retry_delay > getattr(rt.limits, "max_recovery_seconds", 90)):
+                    raise
+                signal = wait_for_signal(token, revision(token), retry_delay)
                 if signal == "cancel":
                     raise ModelCancelled()
                 reconnect_delay = min(20.0, reconnect_delay * 2)
                 continue
             raise
+
+        finally:
+            compaction_model_ms += round((time.perf_counter() - summary_model_started) * 1000)
 
         if not isinstance(candidate, ModelResponse):
             raise TypeError("compaction model must return ModelResponse")
@@ -1150,6 +1166,7 @@ def _prepare_context_with_model(rt, session, step, token):
         {
             "auto_compacted": True,
             "compaction_attempts": response_attempts,
+            "context_compaction_ms": compaction_model_ms,
             "compaction_trimmed_messages": trimmed_messages,
             "summary_request_ceiling_tokens": summary_request_ceiling,
             "compaction_trigger_tokens": compaction_trigger,

@@ -535,6 +535,7 @@ class SandboxAgentRuntime(DurableAgentRuntime):
 
         call = prepared.call
         attempt = current_sandbox_attempt()
+        call_fingerprint, repeat_count = self._tool_repeat_metadata(session, prepared)
         self._emit_event(
             session,
             AgentEventKind.TOOL_STARTED,
@@ -543,23 +544,13 @@ class SandboxAgentRuntime(DurableAgentRuntime):
                 "tool": call.name,
                 "step_id": step.step_id,
                 "sandbox_attempt": attempt.to_dict(),
+                "effect": prepared.tool.effect.value,
+                "call_fingerprint": call_fingerprint,
+                "repeat_count": repeat_count,
             },
         )
-        tracker = self.diff_trackers.for_turn(session.session_id, session.current_turn_id)
-        diff_revision_before = tracker.revision
-        context = ToolContext(
-            session_id=session.session_id,
-            turn_id=session.current_turn_id,
-            workspace=Path(step.world_state.workspace_dir),
-            permission_mode=step.world_state.permission_mode.value,
-            is_cancelled=lambda: token.cancelled,
-            services={
-                "process_store": self.process_store,
-                "permission_snapshot": step.permissions,
-                "environment_policy": step.environment_policy,
-                "active_skills": session.active_skills,
-                "diff_tracker": tracker,
-            },
+        context, tracker, diff_revision_before = self._tool_context(
+            session, token, step,
             emit_event=lambda kind, data: self._emit_event(session, kind, data=data),
         )
         result = self._run_prepared_once(

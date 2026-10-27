@@ -280,11 +280,15 @@ async function main() {
     await Promise.all([...inFlightCommands]);
   })()`);
   assert(stalled.run(`results.find(r => r.id === 'hung').error.includes('completion is unknown')`));
+  assert.equal(stalled.run(`results.find(r => r.id === 'hung').operation.execution_status`), 'unknown');
+  assert.equal(stalled.run(`results.find(r => r.id === 'after').operation.operation_id`), 'hung');
   assert(stalled.run(`results.find(r => r.id === 'after').error.includes('not executed')`));
   assert(!stalled.run(`started.includes('a:click')`));
   assert(stalled.run(`results.find(r => r.id === 'other').ok`));
   await stalled.run(`(async () => { finishHung(); await new Promise(r => setTimeout(r, 0)); })()`);
   assert.equal(stalled.run('stalledCommands.size'), 0);
+  assert.equal(stalled.run(`results.filter(r => r.id === 'hung').length`), 2);
+  assert.equal(stalled.run(`results.filter(r => r.id === 'hung')[1].operation.execution_status`), 'settled');
   await stalled.run(`executeCommand({id: 'recovered', action: 'state', args: {session_id: 'a'}})`);
   assert(stalled.run(`results.find(r => r.id === 'recovered').ok`));
   await stalled.run(`executeCommand({id: 'expired', action: 'click', deadlineAt: Date.now()-1, args: {session_id: 'a'}})`);

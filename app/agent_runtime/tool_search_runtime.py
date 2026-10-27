@@ -3,6 +3,7 @@ from __future__ import annotations
 import math
 import re
 import threading
+import uuid
 from dataclasses import replace
 from typing import Any
 
@@ -225,6 +226,37 @@ class ToolSearchRuntime(ConfiguredMCPRuntime):
         self._activate_deferred_name(session.session_id, session.current_turn_id, call.name)
         return True
 
+    def _resolve_batch_step(self, session, step, calls):
+        """Resolve local deferred handlers without another inference round.
+
+        This derives a new dispatch snapshot from the captured permissions and
+        environment; it never refreshes an MCP binding from a live registry.
+        """
+        from .tool_selection import tool_is_selected
+        from .tools import ToolRouter
+        available = {tool.name: tool for tool in step.tool_router.all()}
+        candidates = {tool.name: tool for tool in self.tools.all()
+                      if not str(tool.binding_key or "").startswith("mcp-binding:")}
+        if step.mcp_binding is not None:
+            for tool in step.mcp_binding.agent_tools():
+                candidates[tool.name] = (replace(tool, exposure=ToolExposure.DEFERRED)
+                    if self.defer_mcp_tools and tool.exposure is ToolExposure.DIRECT else tool)
+        for call in calls:
+            tool = candidates.get(call.name)
+            if (call.name not in available and tool is not None
+                    and tool.exposure is ToolExposure.DEFERRED
+                    and tool_is_selected(session, call.name) and _capability_allows(tool, None)):
+                available[call.name] = tool
+                self._activate_deferred_name(session.session_id, session.current_turn_id, call.name)
+        if len(available) == len(step.tool_router.all()):
+            return step
+        derived = replace(step, step_id=step.step_id + "-dispatch-" + uuid.uuid4().hex[:8],
+                          tool_router=ToolRouter(tuple(available.values())),
+                          world_state=replace(step.world_state, tool_names=tuple(sorted(available))))
+        with self._captured_steps_guard:
+            self._captured_steps[(derived.session_id, derived.turn_id, derived.step_id)] = derived
+        return derived
+
     def _clear_session_activations(self, session_id: str) -> None:
         wanted = str(session_id)
         with self._tool_search_guard:
@@ -299,7 +331,7 @@ class ToolSearchRuntime(ConfiguredMCPRuntime):
         plan = plan_tool_schema_pressure(
             base_router,
             max_schema_tokens=schema_token_budget(
-                limits.input_budget_tokens,
+                min(limits.input_budget_tokens, limits.working_input_budget_tokens or limits.input_budget_tokens),
                 conversation_tokens=self._conversation_pressure(session),
             ),
             pinned_names=activations,

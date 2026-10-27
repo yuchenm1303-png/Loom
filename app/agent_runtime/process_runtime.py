@@ -622,6 +622,7 @@ class ManagedProcess:
         self.timeout_seconds = timeout_seconds
         self.started_monotonic = time.monotonic()
         self._lock = threading.RLock()
+        self._activity = threading.Event()
         self._stdout = _BoundedBuffer(_MAX_TRANSCRIPT_CHARS)
         self._stderr = _BoundedBuffer(_MAX_TRANSCRIPT_CHARS)
         self._termination_reason: ProcessState | None = None
@@ -655,6 +656,7 @@ class ManagedProcess:
                     chunk = reader()
                     if chunk:
                         self._append(stream, chunk)
+                        self._activity.set()
                         continue
                     if self.backend.poll() is not None:
                         return
@@ -665,6 +667,7 @@ class ManagedProcess:
                         if not self._failure:
                             self._failure = f"{type(exc).__name__}: {exc}"
             finally:
+                self._activity.set()
                 if self.backend.poll() is not None:
                     try:
                         self.backend.close()
@@ -884,7 +887,9 @@ class ManagedProcess:
             if wait_deadline is not None and time.monotonic() >= wait_deadline:
                 return self.snapshot()
             if self.running:
-                time.sleep(0.02)
+                remaining = 0.1 if wait_deadline is None else max(0, min(0.1, wait_deadline - time.monotonic()))
+                self._activity.wait(remaining)
+                self._activity.clear()
         for thread in (self._stdout_thread, self._stderr_thread):
             if thread is not None:
                 thread.join(timeout=0.5)

@@ -288,10 +288,10 @@ def _tool_names(request):
 
 
 @pytest.mark.parametrize("through_platform", [False, True])
-def test_repeated_undeclared_calls_are_each_answered_and_never_end_the_turn(tmp_path, through_platform):
+def test_undeclared_calls_are_answered_before_the_recovery_budget_is_exhausted(tmp_path, through_platform):
     calls = []
     responses = [ModelResponse(tool_calls=(ToolCall(f"c{i}", "unknown_record", {"value": "x"}),),
-                               finish_reason="tool_calls") for i in range(4)]
+                               finish_reason="tool_calls") for i in range(2)]
     responses.append(ModelResponse(text="Done", finish_reason="stop"))
     platform = _Scripted(responses, through_platform=through_platform)
     runtime = _runtime(tmp_path, platform, (_record(calls),))
@@ -301,7 +301,7 @@ def test_repeated_undeclared_calls_are_each_answered_and_never_end_the_turn(tmp_
         events = runtime.store.events(session.session_id)
         assert calls == []
         assert not [e for e in events if e.kind.value == "model_response_rejected"]
-        assert sum(e.kind.value == "tool_failed" for e in events) == 4
+        assert sum(e.kind.value == "tool_failed" for e in events) == 2
     finally:
         runtime.close()
 
@@ -316,9 +316,9 @@ def test_a_model_that_never_stops_issuing_faulty_calls_ends_the_turn_as_a_bounde
     try:
         session = runtime.create_session("agent.fast", workspace_dir=tmp_path)
         result = runtime.start_turn(session.session_id, "Record")
-        assert result.status is AgentStatus.FAILED
-        assert "could not run" in result.error
-        assert calls == [] and len(platform.requests) == 5
+        assert result.status is AgentStatus.LIMIT_REACHED
+        assert "no progress" in result.error
+        assert calls == [] and len(platform.requests) == 3
     finally:
         runtime.close()
 
@@ -348,12 +348,10 @@ def test_a_repeated_call_in_one_batch_runs_once_and_is_answered_as_a_repeat(tmp_
         runtime.close()
 
 
-def test_a_deferred_tool_called_without_a_search_is_activated_and_runs_on_the_next_step(tmp_path):
+def test_a_deferred_tool_called_without_a_search_executes_in_derived_dispatch_step(tmp_path):
     calls = []
     platform = _Scripted([
         ModelResponse(tool_calls=(ToolCall("direct", "mcp.github.create_issue", {"value": "bug"}),),
-                      finish_reason="tool_calls"),
-        ModelResponse(tool_calls=(ToolCall("retry", "mcp.github.create_issue", {"value": "bug"}),),
                       finish_reason="tool_calls"),
         ModelResponse(text="Done", finish_reason="stop"),
     ])
@@ -367,9 +365,8 @@ def test_a_deferred_tool_called_without_a_search_is_activated_and_runs_on_the_ne
         assert calls == ["bug"]
         assert "mcp.github.create_issue" not in _tool_names(platform.requests[0])
         assert "mcp.github.create_issue" in _tool_names(platform.requests[1])
-        failure = next(e.data for e in runtime.store.events(session.session_id) if e.kind.value == "tool_failed")
-        assert failure["data"]["failure_kind"] == "tool_not_in_step"
-        assert failure["data"]["activated_for_next_step"] is True
+        assert not any(e.kind.value == "tool_failed" for e in runtime.store.events(session.session_id))
+        assert len(platform.requests) == 2
     finally:
         runtime.close()
 
@@ -383,8 +380,6 @@ def test_a_later_turn_that_calls_a_deferred_tool_without_searching_recovers_insi
                       finish_reason="tool_calls"),
         ModelResponse(text="first done", finish_reason="stop"),
         ModelResponse(tool_calls=(ToolCall("second-direct", "mcp.github.create_issue", {"value": "two"}),),
-                      finish_reason="tool_calls"),
-        ModelResponse(tool_calls=(ToolCall("second", "mcp.github.create_issue", {"value": "two"}),),
                       finish_reason="tool_calls"),
         ModelResponse(text="second done", finish_reason="stop"),
     ])

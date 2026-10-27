@@ -299,9 +299,12 @@ def exec_wait_tool() -> AgentTool:
             str(arguments["process_id"]),
             session_id=context.session_id,
         )
-        raw_wait = arguments.get("wait_timeout_seconds", 30)
-        wait_seconds = float(30 if raw_wait is None else raw_wait)
-        if not 0 <= wait_seconds <= _MAX_WAIT_SECONDS:
+        raw_wait = arguments.get("wait_timeout_seconds")
+        # Finite jobs already have a lifecycle deadline. Wait on that operation
+        # once instead of returning every 30s for another model sampling round.
+        wait_seconds = (None if raw_wait is None and managed.timeout_seconds is not None
+                        else float(30 if raw_wait is None else raw_wait))
+        if wait_seconds is not None and not 0 <= wait_seconds <= _MAX_WAIT_SECONDS:
             raise ValueError(
                 f"wait_timeout_seconds must be within 0..{int(_MAX_WAIT_SECONDS)}"
             )
@@ -337,6 +340,7 @@ def exec_wait_tool() -> AgentTool:
         name="exec_wait",
         description=(
             "Wait for an existing managed process, streaming newly observed terminal/stdout output. "
+            "Omit wait_timeout_seconds for a finite job to await its exit or original lifetime deadline without model polling. "
             "A wait_timeout_seconds window only stops this wait call; the process keeps its original "
             "lifetime timeout."
         ),

@@ -795,7 +795,11 @@ class ToolOrchestrator:
             )
 
         try:
-            result = prepared.tool.handler(context, prepared.call.arguments)
+            from contextlib import nullcontext
+            service = context.services.get("development_verification")
+            scope = service.execution(context, prepared.tool.name) if service is not None else nullcontext()
+            with scope:
+                result = prepared.tool.handler(context, prepared.call.arguments)
             if not isinstance(result, ToolResult):
                 raise TypeError("agent tool handler must return ToolResult")
             if prepared.tool.name == "exec":
@@ -808,6 +812,9 @@ class ToolOrchestrator:
                 data=exc.to_result_data(),
             )
         except Exception as exc:
+            from .browser_session import BrowserOperationError
+            if isinstance(exc, BrowserOperationError):
+                return ToolResult(False, str(exc), exc.to_result_data())
             return ToolResult(ok=False, content=f"{type(exc).__name__}: {exc}")
 
 

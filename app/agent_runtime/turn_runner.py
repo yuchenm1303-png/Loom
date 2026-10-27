@@ -117,6 +117,15 @@ class TurnRunner:
                 if session.pending_tool_calls and not rt._process_pending_tools(session, token):
                     return rt._result(session)
                 rt._consume_steering(session)
+                from .execution_progress import unresolved_operation_loop
+                blocked_operation = unresolved_operation_loop(rt._lifecycle_events(
+                    session.session_id, turn_id=session.current_turn_id,
+                    kinds=(Event.TOOL_FAILED, Event.TOOL_COMPLETED, Event.TURN_DIFF_UPDATED)))
+                if blocked_operation:
+                    session.final_text = ("工具恢复没有取得新进展，已停止重复调用；已有工作已保留。"
+                        if session.communication_language == "zh" else
+                        "Tool recovery made no progress; repeated calls stopped and existing work is preserved.")
+                    return rt._limit(session, f"tool recovery made no progress: {blocked_operation}")
                 if rt.limits.max_model_steps > 0 and session.model_steps >= rt.limits.max_model_steps:
                     return rt._limit(session, "model step limit reached")
 
@@ -128,6 +137,8 @@ class TurnRunner:
                 reconnect_delay = 1.0
                 stall_replays = 0
                 retry_wait_ms = 0
+                transport_failures = 0
+                recovery_started = None
                 while True:
                     if rt._cancel_if_requested(session, token):
                         return rt._result(session)
@@ -224,6 +235,7 @@ class TurnRunner:
                             "reasoning": reasoning.as_safe_dict() if reasoning is not None else None,
                             "attempt": attempt,
                             "request_preparation_ms": 0 if preparation_reused else request_preparation_ms,
+                            "request_purpose": "recovery" if transport_failures or recovery_instruction else "generation",
                             "request_preparation_reused": preparation_reused,
                             "retry_wait_ms": retry_wait_ms,
                             "requested_max_output_tokens": request.max_output_tokens,
@@ -401,6 +413,13 @@ class TurnRunner:
                                 recovery_instruction = recovery_partial = recovery_reasoning = ""
                                 retry_sampling = True
                                 break
+                            transport_failures += 1
+                            if recovery_started is None:
+                                recovery_started = model_request_started
+                            recovery_elapsed = time.perf_counter() - recovery_started
+                            retry_delay = max(getattr(exc, "retry_after_seconds", 0.0), reconnect_delay)
+                            retry_allowed = (exc.retryable and transport_failures <= rt.limits.transport_retries
+                                and recovery_elapsed + retry_delay <= rt.limits.max_recovery_seconds)
                             if isinstance(exc, (ModelRequestTimeout, AITransportError)):
                                 rt._emit_event(session, Event.MODEL_RESPONSE_REJECTED, data={
                                     **model_identity,
@@ -412,16 +431,18 @@ class TurnRunner:
                                     "error": str(exc),
                                     "attempt": attempt,
                                     "retryable": exc.retryable,
-                                    "will_retry": exc.retryable,
+                                    "will_retry": retry_allowed,
+                                    "transport_failures": transport_failures,
+                                    "recovery_elapsed_ms": round(recovery_elapsed * 1000),
                                     "stream_timing": getattr(exc, "stream_timing", {}),
                                 })
-                            if not exc.retryable:
+                            if not retry_allowed:
                                 raise
                             wait_started = time.perf_counter()
                             signal = wait_for_signal(
                                 token,
                                 sample_steering_revision,
-                                max(getattr(exc, "retry_after_seconds", 0.0), reconnect_delay),
+                                retry_delay,
                             )
                             retry_wait_ms += round((time.perf_counter() - wait_started) * 1000)
                             reconnect_delay = min(20.0, reconnect_delay * 2)
@@ -540,7 +561,7 @@ class TurnRunner:
 
                 finish_review = None
                 if next_execution_action(response).action is ExecutionAction.DELIVER:
-                    rt.development_verification.observe(session, scan_git=True)
+                    rt.development_verification.observe(session)
                     finish_review = rt.development_verification.before_finish(session, accepting_response=True)
 
                 # Serialize the final sample-acceptance boundary against steering
@@ -645,10 +666,12 @@ class TurnRunner:
                             "arguments": call.arguments,
                             "step_id": step.step_id,
                         })
-                    # Every call of this response is answered before the next sample. A
-                    # faulty call holds the whole batch so none of it runs; a repeated call
-                    # runs once and is answered as a repeat.
+                    # Answer each call once; retain independent progress while
+                    # preserving ordering barriers after invalid predecessors.
                     plan = rt._plan_tool_batch(session, step, list(calls))
+                    if plan.execution_step is not None and plan.execution_step is not step:
+                        rt._release_step_context(step)
+                        step = plan.execution_step
                     for call, result in plan.immediate:
                         rt._append_tool_result(session, call, result, failed=True, step=step)
                     tool_fault_batches = tool_fault_batches + 1 if plan.blocked else 0

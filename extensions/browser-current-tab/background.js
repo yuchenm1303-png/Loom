@@ -237,20 +237,39 @@ async function executeCommand(command) {
   let ok = false;
   let error = "";
   let timer;
+  let operation = null;
+  let timedOut = false;
+  let finishInitialReport;
+  const initialReported = new Promise(resolve => { finishInitialReport = resolve; });
+  const session = commandSession(command.args);
   try {
-    const session = commandSession(command.args);
-    if (stalledCommands.has(session)) throw new Error("Previous browser command is still pending; this command was not executed. Wait for recovery; do not repeat input.");
+    if (stalledCommands.has(session)) {
+      operation = {operation_id: stalledCommands.get(session), recovery_scope: session, execution_status: "not_executed"};
+      throw new Error("Previous browser command is still pending; this command was not executed. Wait for recovery; do not repeat input.");
+    }
     const remaining = (command.deadlineAt || Date.now() + 40000) - Date.now();
     if (remaining <= 0) throw new Error("Browser command expired in the controller queue; it was not executed.");
     const execution = Promise.resolve().then(() => dispatchCommand(command.action, command.args || {}));
     const clearStall = () => {
       if (stalledCommands.get(session) === command.id) stalledCommands.delete(session);
     };
-    execution.then(clearStall, clearStall);
+    const reportSettlement = async (ok, result, error) => {
+      clearStall();
+      if (!timedOut) return;
+      await initialReported;
+      await bridgeFetch("/browser-extension/v1/result", {method: "POST",
+        body: JSON.stringify({id: command.id, ok, result, error,
+          operation: {operation_id: command.id, recovery_scope: session, execution_status: "settled"}})});
+    };
+    execution.then(value => reportSettlement(true, value, ""),
+      cause => reportSettlement(false, null, cause instanceof Error ? cause.message : String(cause)))
+      .catch(cause => console.warn("[loom-browser-settlement]", cause));
     result = await Promise.race([
       execution,
       new Promise((_, reject) => {
         timer = setTimeout(() => {
+          timedOut = true;
+          operation = {operation_id: command.id, recovery_scope: session, execution_status: "unknown"};
           stalledCommands.set(session, command.id);
           reject(new Error(`Browser command ${command.action} exceeded its execution deadline; completion is unknown. Controller fenced until the outstanding operation settles; do not repeat input.`));
         }, remaining);
@@ -262,10 +281,11 @@ async function executeCommand(command) {
   } finally {
     clearTimeout(timer);
   }
-  await bridgeFetch("/browser-extension/v1/result", {
-    method: "POST",
-    body: JSON.stringify({ id: command.id, ok, result, error }),
-  });
+  try {
+    await bridgeFetch("/browser-extension/v1/result", {
+      method: "POST", body: JSON.stringify({ id: command.id, ok, result, error, ...(operation ? {operation} : {}) }),
+    });
+  } finally { finishInitialReport(); }
 }
 
 async function startPolling() {

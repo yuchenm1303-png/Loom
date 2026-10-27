@@ -190,13 +190,16 @@ def resolve_context_limits(rt: Any, session: Any) -> ResolvedContextLimits:
     safety_tokens = max(0, min(2048, input_budget // 100))
 
     profile_working = getattr(profile_limits, "working_context_tokens", None)
-    working_context = env_working if env_working is not None else profile_working
-    working_source = "runtime_env" if env_working is not None else "model_profile" if profile_working is not None else "undeclared"
+    runtime_working = getattr(rt.limits, "working_context_tokens", None)
+    working_context = env_working if env_working is not None else profile_working if profile_working is not None else runtime_working
+    working_source = ("runtime_env" if env_working is not None else "model_profile"
+                      if profile_working is not None else "runtime_policy" if runtime_working is not None else "undeclared")
     working_input_budget = None
     if working_context is not None:
         working_context = int(working_context)
-        if working_context <= output_reserve:
+        if working_context <= output_reserve and working_source != "runtime_policy":
             raise ValueError("working context must exceed the output reserve")
+        working_context = max(working_context, output_reserve + 4096)
         if window_known:
             working_context = min(working_context, effective_window)
         working_input_budget = working_context - output_reserve

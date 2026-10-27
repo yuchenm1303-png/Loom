@@ -133,6 +133,7 @@ def reduce_tool_outputs(
     per_output_token_limit: int,
     target_total_tokens: int | None = None,
     estimate_total: Callable[[Sequence[AIMessage]], int] | None = None,
+    keep_recent_outputs: int = 0,
 ) -> tuple[tuple[AIMessage, ...], ContextReductionStats]:
     """Shrink tool observations in a request copy without mutating durable history.
 
@@ -160,13 +161,17 @@ def reduce_tool_outputs(
 
     if target_total_tokens is not None and estimate_total is not None:
         target = max(1, int(target_total_tokens))
+        remaining = estimate_total(tuple(working))
+        protected = set([index for index, message in enumerate(working) if message.role is MessageRole.TOOL][-keep_recent_outputs:]) if keep_recent_outputs else set()
         # Prefer collapsing older observations so the newest tool result keeps a
         # useful preview. This differs from cache-oriented prefix trimming but is
         # better aligned with an interactive desktop agent's semantic needs.
         for index, message in enumerate(tuple(working)):
-            if estimate_total(tuple(working)) <= target:
+            if remaining <= target:
                 break
             if message.role is not MessageRole.TOOL or not isinstance(message.content, str):
+                continue
+            if index in protected:
                 continue
             collapsed_content = _collapsed_tool_content(message)
             if message.content == collapsed_content:
@@ -178,6 +183,7 @@ def reduce_tool_outputs(
             working[index] = replace(message, content=collapsed_content)
             collapsed += 1
             saved += before - after
+            remaining -= before - after
 
     return tuple(working), ContextReductionStats(
         tool_outputs_reduced=reduced,

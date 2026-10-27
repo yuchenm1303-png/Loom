@@ -6,6 +6,7 @@ import json
 import os
 import threading
 import time
+import uuid
 from collections import deque
 from concurrent.futures import TimeoutError as FutureTimeoutError
 from dataclasses import dataclass
@@ -17,6 +18,7 @@ from .browser_page_hud import PageHud, hud_presentation
 from .browser_session import (
     BrowserBackend,
     BrowserError,
+    BrowserOperationError,
     BrowserLaunchOptions,
     BrowserPageState,
     BrowserTextNotFoundError,
@@ -46,6 +48,8 @@ _HUD_SILENT_ACTIONS = frozenset({"start", "close", "screenshot"})
 class _AsyncLoopThread:
     def __init__(self, *, name: str) -> None:
         self._ready = threading.Event()
+        self._pending_operation = None
+        self._operation_lock = threading.Lock()
         self._loop: asyncio.AbstractEventLoop | None = None
         self._thread = threading.Thread(target=self._run_loop, name=name, daemon=True)
         self._thread.start()
@@ -69,16 +73,48 @@ class _AsyncLoopThread:
             loop.close()
 
     def run(self, coroutine: Coroutine[Any, Any, Any], *, timeout: float = _DEFAULT_ACTION_TIMEOUT):
+        with self._operation_lock:
+            return self._run_operation(coroutine, timeout=timeout)
+
+    def _run_operation(self, coroutine, *, timeout):
+        pending = self._pending_operation
+        if pending is not None:
+            operation_id, settled = pending
+            coroutine.close()
+            raise BrowserOperationError("The original browser operation requires reconciliation and a fresh state read; no new input was executed.",
+                                        operation_id=operation_id, resource=str(id(self)), status="not_executed")
         loop = self._loop
         if loop is None or loop.is_closed():
             coroutine.close()
             raise RuntimeError("browser async loop is closed")
-        future = asyncio.run_coroutine_threadsafe(coroutine, loop)
+        operation_id, settled = uuid.uuid4().hex, threading.Event()
+
+        async def execute():
+            try:
+                return await coroutine
+            finally:
+                settled.set()
+
+        future = asyncio.run_coroutine_threadsafe(execute(), loop)
         try:
             return future.result(timeout=max(1.0, float(timeout)))
         except FutureTimeoutError as exc:
+            if future.done():
+                # A coroutine's own TimeoutError is not a lost operation.
+                return future.result()
             future.cancel()
-            raise BrowserError("browser action timed out") from exc
+            self._pending_operation = (operation_id, settled)
+            raise BrowserOperationError("Browser action deadline exceeded; its outcome is unknown. Do not replay input.",
+                                        operation_id=operation_id, resource=str(id(self))) from exc
+
+    def prepare_observation(self):
+        with self._operation_lock:
+            if self._pending_operation is not None:
+                operation_id, settled = self._pending_operation
+                if not settled.wait(timeout=2.0):
+                    raise BrowserOperationError("Original operation has not settled; fresh observation is not yet safe.",
+                                                operation_id=operation_id, resource=str(id(self)), status="not_executed")
+                self._pending_operation = None
 
     def close(self) -> None:
         loop = self._loop
@@ -189,6 +225,13 @@ class BrowserUseBackend(BrowserBackend):
         )
         self._announce_action(action, args)
         try:
+            reconcile = getattr(self._runner, "prepare_observation", None)
+            if action == "state" and callable(reconcile):
+                try:
+                    reconcile()
+                except Exception:
+                    coroutine.close()
+                    raise
             state = self._runner.run(coroutine, timeout=timeout or self.action_timeout_seconds)
         except Exception as exc:
             self._log(

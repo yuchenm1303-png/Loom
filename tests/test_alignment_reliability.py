@@ -507,9 +507,8 @@ def test_stream_retry_does_not_duplicate_tool_side_effect(tmp_path):
     rt.close()
 
 
-def test_mixed_batch_holds_every_call_and_answers_each_one_without_running_any(tmp_path):
-    # A batch with a faulty call executes none of its calls (docs/tool-call-contract-2026-10-14.md),
-    # so re-issuing the batch after the correlated results cannot duplicate a side effect.
+def test_mixed_batch_executes_valid_prefix_and_reports_each_correlated_result(tmp_path):
+    # Valid independent work is retained; only the invalid call needs correction.
     calls = []
     tool = AgentTool("effect", "test", {"type": "object", "properties": {"argv": {"type": "array", "items": {"type": "string"}}}, "required": ["argv"]},
         lambda c, a: calls.append(a["argv"]) or ToolResult(True, "done"))
@@ -522,19 +521,18 @@ def test_mixed_batch_holds_every_call_and_answers_each_one_without_running_any(t
     session = rt.create_session("agent.fast")
     result = rt.start_turn(session.session_id, "work")
     assert result.status is AgentStatus.COMPLETED
-    assert calls == [["corrected"]]
+    assert calls == [["once"], ["corrected"]]
     observations = [m for m in platform.requests[1].messages if m.role is MessageRole.TOOL]
-    assert [m.tool_call_id for m in observations] == ["valid-prefix", "bad"]
-    held = json.loads(observations[0].content)
-    assert not held["ok"] and held["data"]["failure_kind"] == "batch_not_executed"
-    assert held["data"]["execution_status"] == "not_executed"
-    failure = json.loads(observations[-1].content)
+    by_id = {m.tool_call_id: json.loads(m.content) for m in observations}
+    assert set(by_id) == {"valid-prefix", "bad"}
+    assert by_id["valid-prefix"]["ok"]
+    failure = by_id["bad"]
     assert not failure["ok"]
     assert "argv" in failure["content"]
     assert failure["data"]["execution_status"] == "not_executed"
     events = rt.store.events(session.session_id)
     assert not any(e.kind.value == "model_response_rejected" for e in events)
-    assert sum(e.kind.value == "tool_started" for e in events) == 1
+    assert sum(e.kind.value == "tool_started" for e in events) == 2
     assert any(c.call_id == "bad" for m in rt.store.load(session.session_id).messages for c in m.tool_calls)
     rt.close()
 
@@ -544,7 +542,7 @@ def test_repeated_tool_errors_remain_results_and_model_can_recover(tmp_path, too
     calls = []
     tool = AgentTool("effect", "test", {"type": "object", "required": ["argv"]},
         lambda c, a: calls.append(1) or ToolResult(True, "done"))
-    responses = [ModelResponse(tool_calls=(ToolCall(f"bad-{i}", tool_name, arguments),)) for i in range(4)]
+    responses = [ModelResponse(tool_calls=(ToolCall(f"bad-{i}", tool_name, arguments),)) for i in range(2)]
     responses += [ModelResponse(tool_calls=(ToolCall("fixed", "effect", {"argv": []}),)), ModelResponse(text="done")]
     platform = Scripted(responses)
     rt = make_runtime(tmp_path, platform, [tool], limits=AgentLimits(model_retries=0))
@@ -554,10 +552,10 @@ def test_repeated_tool_errors_remain_results_and_model_can_recover(tmp_path, too
     assert calls == [1]
     events = rt.store.events(session.session_id)
     failures = [e for e in events if e.kind.value == "tool_failed"]
-    assert [e.data["call_id"] for e in failures] == [f"bad-{i}" for i in range(4)]
+    assert [e.data["call_id"] for e in failures] == [f"bad-{i}" for i in range(2)]
     assert all(e.data["data"]["execution_status"] == "not_executed" for e in failures)
     assert not any(e.kind.value == "model_response_rejected" for e in events)
-    assert len(platform.requests) == 6
+    assert len(platform.requests) == 4
     rt.close()
 
 
@@ -609,8 +607,8 @@ def test_model_timeout_after_tool_retries_sampling_without_repeating_tool(tmp_pa
     rt.close()
 
 
-@pytest.mark.parametrize("retryable, expected_calls", [(True, 8), (False, 1)])
-def test_model_timeout_retries_until_user_cancels(tmp_path, retryable, expected_calls, monkeypatch):
+@pytest.mark.parametrize("retryable, expected_calls", [(True, 2), (False, 1)])
+def test_model_timeout_cancellation_interrupts_bounded_recovery(tmp_path, retryable, expected_calls, monkeypatch):
     from app.agent_runtime.model_execution import ModelRequestTimeout
     class P:
         count = 0
@@ -618,7 +616,7 @@ def test_model_timeout_retries_until_user_cancels(tmp_path, retryable, expected_
             self.count += 1
             raise ModelRequestTimeout("timed out", reason="test_timeout", retryable=retryable)
     platform = P()
-    monkeypatch.setattr("app.agent_runtime.turn_runner.wait_for_signal", lambda *args: "cancel" if platform.count >= 8 else None)
+    monkeypatch.setattr("app.agent_runtime.turn_runner.wait_for_signal", lambda *args: "cancel" if platform.count >= 2 else None)
     rt = make_runtime(tmp_path, platform)
     session = rt.create_session("agent.fast")
     result = rt.start_turn(session.session_id, "work")

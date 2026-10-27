@@ -100,6 +100,8 @@ class _BridgeCommand:
     args: dict[str, Any]
     created_at: float = field(default_factory=time.monotonic)
     event: threading.Event = field(default_factory=threading.Event)
+    settled: threading.Event = field(default_factory=threading.Event)
+    operation: dict[str, Any] | None = None
     result: dict[str, Any] | None = None
     error: str = ""
     dispatched_at: float = 0.0
@@ -149,6 +151,7 @@ class BrowserExtensionBridge:
         self._condition = threading.Condition(threading.RLock())
         self._commands: list[_BridgeCommand] = []
         self._pending: dict[str, _BridgeCommand] = {}
+        self._unresolved: dict[tuple[str, str], _BridgeCommand] = {}
         self._server: ThreadingHTTPServer | None = None
         self._thread: threading.Thread | None = None
         self._closed = False
@@ -287,6 +290,12 @@ class BrowserExtensionBridge:
         if not isinstance(payload, dict):
             raise BrowserError("invalid shared browser bridge response")
         if payload.get("ok") is not True:
+            receipt = payload.get("operation")
+            if isinstance(receipt, dict):
+                from .browser_session import BrowserOperationError
+                raise BrowserOperationError(str(payload.get("error") or "browser operation unresolved"),
+                    operation_id=str(receipt["operation_id"]), resource=str(receipt["recovery_scope"]),
+                    status=str(receipt["execution_status"]))
             raise BrowserError(str(payload.get("error") or "invalid shared browser bridge response"))
         return payload
 
@@ -434,6 +443,7 @@ class BrowserExtensionBridge:
                 command.event.set()
             self._commands.clear()
             self._pending.clear()
+            self._unresolved.clear()
             self._condition.notify_all()
         if server is not None:
             server.shutdown()
@@ -503,6 +513,19 @@ class BrowserExtensionBridge:
                     raise BrowserError("reload the Loom browser extension (0.1.19 or newer) for shared runtime control")
                 info["session_id"] = (args or {}).get("session_id")
             return result
+        from .browser_session import BrowserOperationError
+        resource_key = (_runtime_id, str((args or {}).get("session_id") or "default"))
+        with self._condition:
+            previous = self._unresolved.get(resource_key)
+        if previous is not None:
+            # Await the existing receipt rather than enqueueing a duplicate.
+            settled = previous.settled.wait(timeout=2.0)
+            if not settled or action not in {"state", "screenshot", "tabs"}:
+                raise BrowserOperationError(
+                    "Original browser operation is unresolved or requires a fresh observation. No new input was sent.",
+                    operation_id=previous.command_id, resource=":".join(resource_key), status="not_executed")
+            with self._condition:
+                self._unresolved.pop(resource_key, None)
         action_name = str(action)
         wait_seconds = self.command_timeout if timeout is None else max(1.0, float(timeout))
         command_args = dict(args or {})
@@ -536,10 +559,13 @@ class BrowserExtensionBridge:
                 # disappear from both indexes. Leaving it in _commands lets an
                 # extension that reconnects later execute an operation Loom has
                 # already reported as failed (a "ghost" click/type/navigation).
-                pending = self._pending.pop(command.command_id, None)
-                if pending is command:
+                pending = self._pending.get(command.command_id)
+                if pending is command and not command.dispatched_at:
+                    self._pending.pop(command.command_id, None)
                     command.cancelled = True
                     self._commands[:] = [queued for queued in self._commands if queued is not command]
+                elif pending is command:
+                    self._unresolved[resource_key] = command
                 phase = "dispatched" if command.dispatched_at else "queued"
                 silent_ms = int((time.monotonic() - self._last_poll_at) * 1000) if self._last_poll_at else -1
             elapsed_ms = int((time.monotonic() - command.created_at) * 1000)
@@ -555,21 +581,38 @@ class BrowserExtensionBridge:
             # to reinstall a working extension because a page was slow is how a
             # real 45-second browser_open got reported as a broken install.
             if phase == "dispatched":
-                raise BrowserError(
+                raise BrowserOperationError(
                     f"the browser extension collected this {action_name} command but did not finish it "
                     f"within {elapsed_ms // 1000}s. Completion is unknown; bridge connectivity does not "
                     "prove command execution is healthy. Do not repeat state-changing input until "
-                    "the outstanding command has been reconciled."
+                    "the outstanding command has been reconciled.",
+                    operation_id=command.command_id, resource=":".join(resource_key),
                 )
-            raise BrowserError(
+            raise BrowserOperationError(
                 "the Loom browser extension is not collecting commands "
                 f"({'never polled this bridge' if silent_ms < 0 else f'last poll {silent_ms // 1000}s ago'}). "
                 "Registration heartbeats alone do not establish a command reader. "
-                "Install/enable extensions/browser-current-tab and make sure its bridge URL/token match Loom."
+                "Install/enable extensions/browser-current-tab and make sure its bridge URL/token match Loom.",
+                operation_id=f"reader:{self._broker_id}:{int(self._last_poll_at * 1000)}",
+                resource=":".join(resource_key), status="not_executed",
             )
         elapsed_ms = int((time.monotonic() - command.created_at) * 1000)
         if command.error:
             self._log("bridge.command.failed", command_id=command.command_id, action=action_name, elapsed_ms=elapsed_ms, error=command.error)
+            if command.operation is not None:
+                receipt = command.operation
+                if receipt.get("execution_status") == "unknown":
+                    with self._condition:
+                        self._unresolved[resource_key] = command
+                raise BrowserOperationError(command.error, operation_id=str(receipt["operation_id"]),
+                    resource=str(receipt["recovery_scope"]), status=str(receipt["execution_status"]))
+            try:
+                receipt_capable = tuple(int(part) for part in self._last_client_version.split(".")) >= (0, 1, 27)
+            except ValueError:
+                receipt_capable = False
+            if not receipt_capable and command.dispatched_at:
+                raise BrowserOperationError(command.error + " Reload browser extension 0.1.27+ before retrying: this version cannot report operation settlement.",
+                    operation_id="legacy:" + ":".join(resource_key), resource=":".join(resource_key))
             raise BrowserError(command.error)
         result = command.result or {}
         if not isinstance(result, dict):
@@ -659,7 +702,9 @@ class BrowserExtensionBridge:
                         bridge._touch_runtime(runtime)
                         self._send_json({"ok": True, "status": bridge.status()})
                     except BrowserError as exc:
-                        self._send_json({"ok": False, "error": str(exc)})
+                        from .browser_session import BrowserOperationError
+                        self._send_json({"ok": False, "error": str(exc),
+                                         **({"operation": exc.to_result_data()} if isinstance(exc, BrowserOperationError) else {})})
                     return
                 if parsed.path == "/browser-extension/v1/poll":
                     if not self._authorized(parsed):
@@ -762,7 +807,9 @@ class BrowserExtensionBridge:
                                 bridge._runtime_sessions.get(runtime, set()).discard(session)
                         self._send_json({"ok": True, "result": result, "broker_id": bridge._broker_id})
                     except (BrowserError, ValueError, TypeError) as exc:
-                        self._send_json({"ok": False, "error": str(exc)})
+                        from .browser_session import BrowserOperationError
+                        self._send_json({"ok": False, "error": str(exc),
+                                         **({"operation": exc.to_result_data()} if isinstance(exc, BrowserOperationError) else {})})
                     return
                 if parsed.path == "/browser-extension/v1/register":
                     if not self._authorized(parsed):
@@ -798,15 +845,23 @@ class BrowserExtensionBridge:
                     command_id = str(body.get("id") or "")
                     ok = body.get("ok") is True
                     with bridge._condition:
-                        command = bridge._pending.pop(command_id, None)
+                        command = bridge._pending.get(command_id)
+                        operation = body.get("operation")
+                        unresolved = isinstance(operation, dict) and operation.get("execution_status") == "unknown"
+                        if not unresolved:
+                            bridge._pending.pop(command_id, None)
                         bridge._last_result_at = time.monotonic()
                     if command is not None and not command.cancelled:
+                        command.operation = operation if isinstance(operation, dict) else None
+                        command.error = ""
                         if ok:
                             result = body.get("result") or {}
                             command.result = result if isinstance(result, dict) else {"value": result}
                         else:
                             command.error = str(body.get("error") or "browser extension command failed")
                         command.event.set()
+                        if not unresolved:
+                            command.settled.set()
                         bridge._log(
                             "bridge.result.received",
                             command_id=command.command_id,

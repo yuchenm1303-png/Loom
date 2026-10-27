@@ -352,25 +352,12 @@ class CodeModeRuntime(SkillRuntime):
                 "repeat_count": repeat_count,
             },
         )
-        tracker = self.diff_trackers.for_turn(session.session_id, session.current_turn_id)
-        diff_revision_before = tracker.revision
-        context = ToolContext(
-            session_id=session.session_id,
-            turn_id=session.current_turn_id,
-            workspace=Path(step.world_state.workspace_dir),
-            permission_mode=step.world_state.permission_mode.value,
-            is_cancelled=lambda: token.cancelled,
-            services={
-                "process_store": self.process_store,
-                "permission_snapshot": step.permissions,
-                "environment_policy": step.environment_policy,
-                "active_skills": session.active_skills,
-                "diff_tracker": tracker,
-            },
+        context, tracker, diff_revision_before = self._tool_context(
+            session, token, nested_step,
             emit_event=lambda kind, data: self._emit_event(session, kind, data=data),
         )
         try:
-            nested_result = prepared.tool.handler(context, nested_call.arguments)
+            nested_result = self.orchestrator.execute(prepared, context)
             if not isinstance(nested_result, ToolResult):
                 raise TypeError("agent tool handler must return ToolResult")
         except Exception as exc:

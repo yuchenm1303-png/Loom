@@ -42,6 +42,19 @@ class BrowserError(RuntimeError):
     pass
 
 
+class BrowserOperationError(BrowserError):
+    """A resource-scoped execution receipt, never permission to replay input."""
+
+    def __init__(self, message: str, *, operation_id: str, resource: str, status: str = "unknown"):
+        super().__init__(message)
+        self.operation_id, self.resource, self.status = operation_id, resource, status
+
+    def to_result_data(self) -> dict[str, object]:
+        return {"failure_kind": "browser_operation_unresolved", "operation_id": self.operation_id,
+                "recovery_scope": self.resource, "execution_status": self.status,
+                "retry_policy": "reconcile_original_operation", "retryable": False}
+
+
 class BrowserStaleStateError(BrowserError):
     """The action was not dispatched because its observation was superseded."""
 

@@ -44,6 +44,7 @@ def test_replay_native_actions_strict_assertion_and_model_delivery(capture_runti
     step = runtime._build_step_context(session, next_model_step=True)
     runtime._prepare_model_request(session, step, None)
     assert runtime.development_verification.summary(session)["unresolved"] == 1
+
     assert runtime.development_verification.before_finish(session) is not None
     assert runtime.development_verification.before_finish(session, accepting_response=True) is None
     assert runtime.development_verification.summary(session)["unresolved"] == 1
@@ -55,6 +56,17 @@ def test_replay_native_actions_strict_assertion_and_model_delivery(capture_runti
     tracker.record_text_change("Panel.tsx", before="export {}", after="export const Changed = true")
     runtime.development_verification.observe(session)
     assert runtime.development_verification.summary(session)["unresolved"] == 1
+
+
+@pytest.mark.parametrize("mode,passes", [("render", True), ("interaction", False)])
+def test_static_layout_recipe_does_not_require_an_unrelated_click(capture_runtime, monkeypatch, mode, passes):
+    runtime, session, context, opened, backend = prepare(capture_runtime, monkeypatch)
+    args = recipe(opened)
+    args["mode"] = mode
+    args["steps"][0] = {"type": "action", "tool": "browser_state", "arguments": {}}
+    result = runtime.tools.get("browser_run_check").handler(context, args)
+    assert result.ok is passes, result.content
+    assert backend.clicked == 0
 
 
 @pytest.mark.parametrize("value", [False, "true", 1, None, {"passed": True}])
