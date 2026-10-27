@@ -10,6 +10,7 @@ from app.app_server_local_ipc import runtime_home_from_store
 from .runner import ProjectRunner
 from .store import ProjectStore
 from .review import git, candidate, review_workspace, assess, snapshot, definition_hash
+from . import delivery
 
 
 class ProjectExecutor:
@@ -234,6 +235,8 @@ class ProjectServiceMixin:
             if previous:
                 return previous
             run = self.project_store.get(run_id)
+            if run.get("deliveryReceipt", {}).get("status") == "prepared":
+                raise ValueError("Reconcile prepared delivery before starting another review")
             if run["revision"] != revision or not self.project_store.can_review(run):
                 raise ValueError("Review requires a settled candidate at the current revision")
             policy = {key: params.get(key, run.get(key, default)) for key, default in
@@ -245,12 +248,50 @@ class ProjectServiceMixin:
             frozen = candidate({**run, "reviewScope": "project", "taskIndex": len(run["plan"])}, source)
             return self.project_store.begin_review(params.get("operationId"), request, frozen, policy)
 
+    def project_deliver(self, params):
+        with self.project_runner.guard:
+            run_id = self._required_text(params, "runId")
+            revision = params.get("expectedRevision")
+            if type(revision) is not int or revision < 1:
+                raise ValueError("expectedRevision must be a positive integer")
+            request = {"action": "deliver", "id": run_id, "expectedRevision": revision}
+            operation = params.get("operationId")
+            run = self.project_store.lookup(operation, request)
+            if run and run.get("deliveryReceipt", {}).get("status") == "delivered":
+                return run
+            if run is None:
+                run = self.project_store.get(run_id)
+                if run["revision"] != revision or run.get("deliveryReceipt"):
+                    raise ValueError("Read the current revision; retry a prepared delivery with its original operationId")
+                if not run.get("verifiedCandidate") or not run.get("reviewCandidate"):
+                    raise ValueError("Delivery requires independent whole-project acceptance")
+                expected = self.project_store.candidate(run)
+                receipt = delivery.prepare(run, expected, self.project_store.home / "workspaces" / run_id,
+                                           self.project_store.home)
+                def record(db):
+                    current = self.project_store._read(db, run_id)
+                    if current["revision"] != revision:
+                        raise ValueError("Project changed while preparing delivery")
+                    current["deliveryReceipt"] = receipt
+                    self.project_store.save(db, current, "delivery_prepared")
+                    return current
+                run = self.project_store.command(operation, request, record)
+            expected = self.project_store.candidate(run)
+            delivery.validate(run, expected, self.project_store.home / "workspaces" / run_id)
+            receipt = delivery.publish_local(run, run["deliveryReceipt"])
+            with self.project_store.transaction() as db:
+                current = self.project_store._read(db, run_id)
+                current.update(deliveryReceipt=receipt, state="delivered", control="paused",
+                               delivery="local_verified_branch", reason="Verified local branch delivered; merge and remote publication pending")
+                self.project_store.save(db, current, "delivered")
+                return current
+
 
 class ProjectControllerMixin:
     def _initialize(self, params):
         result = super()._initialize(params)
         result.setdefault("capabilities", {})["projectRunner"] = {
-            "version": 2, "maxWorkers": 1, "delivery": "isolated_candidate_only", "tokenLimit": "between_episodes",
+            "version": 3, "maxWorkers": 1, "delivery": "local_verified_branch", "tokenLimit": "between_episodes",
             "independentReview": True, "automaticRework": True}
         return result
 
@@ -268,6 +309,8 @@ class ProjectControllerMixin:
             return {"assessments": self.service.project_store.assessments(self.service._required_text(params, "runId"))}
         if method == "projectRun/review":
             return {"run": self.service.project_review(params)}
+        if method == "projectRun/deliver":
+            return {"run": self.service.project_deliver(params)}
         if method in {f"projectRun/{action}" for action in ("start", "pause", "resume", "cancel")}:
             return {"run": self.service.project_control(params, method.split("/")[1])}
         return super()._dispatch(method, params)

@@ -161,7 +161,7 @@ class ProjectStore:
                 raise ValueError("stale project revision; read the run before retrying")
             if action not in {"start", "pause", "resume", "cancel"}:
                 raise ValueError("unknown project control action")
-            if run["state"] in {"cancelled", "ready_for_review"}:
+            if run["state"] in {"cancelled", "ready_for_review", "delivered"}:
                 raise ValueError("project run is terminal")
             if action in {"start", "resume"}:
                 if run["state"] == "needs_review":
