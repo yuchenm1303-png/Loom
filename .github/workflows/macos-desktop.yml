@@ -62,6 +62,7 @@ jobs:
         run: |
           desktop-react/.packaging-venv-mac/bin/python -m pip install "pytest>=8,<9"
           desktop-react/.packaging-venv-mac/bin/python -m pytest -q tests/test_computer_macos.py
+          desktop-react/.packaging-venv-mac/bin/python tests/macos_native_bridge_contract.py
 
       - name: Package unsigned test DMG
         working-directory: desktop-react
@@ -79,6 +80,7 @@ jobs:
           test -f "$RESOURCES/browser-current-tab/manifest.json"
           "$RESOURCES/python" self-test
           "$RESOURCES/python" first-run-test
+          "$RESOURCES/python" -c 'import Quartz, AppKit; from app.agent_runtime.computer_macos import _unicode_units; e=Quartz.CGEventCreateKeyboardEvent(None,0,True); u=next(_unicode_units("你好😀")); Quartz.CGEventKeyboardSetUnicodeString(e,len(u),u); print("loom-frozen-quartz-ok")'
           node scripts/verify-packaged-runtime.mjs "$RESOURCES"
           python3 -c 'import json,platform,sys; p=json.load(open(sys.argv[1])); assert p["platform"]=="darwin" and p["arch"]=="arm64",p' "$RESOURCES/manifest.json"
           find release -maxdepth 1 -name '*mac-arm64.dmg' -size +1M | grep -q .
