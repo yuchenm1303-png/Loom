@@ -11,6 +11,7 @@ import { BACKGROUND_HOST_ARG, isBackgroundHostLaunch, loomHostLaunchMode, type L
 import { currentHostRuntimeProtocol, currentHostRuntimeVersion } from "./hostRuntime.js";
 import { collectHostHealthSnapshot } from "./hostHealth.js";
 import { ensureHostRuntimeUpdate, hostRuntimeUpdateState } from "./hostRuntimeUpdater.js";
+import { lastDialogFolder, rememberDialogChoice } from "./dialogLocations.js";
 
 // Only the independent Host process owns discovery, relay and Agent Runtime.
 // Desktop and browser are clients; neither owns the Host's lifetime.
@@ -398,9 +399,11 @@ async function handleInvoke(frame: InvokeFrame): Promise<void> {
     } else if (frame.operation === "pickDirectory") {
       const selection = await dialog.showOpenDialog({
         title: "Add project folder",
+        defaultPath: lastDialogFolder("project-folder"),
         properties: ["openDirectory", "createDirectory"],
       });
       result = selection.canceled || !selection.filePaths.length ? "" : selection.filePaths[0];
+      if (result) rememberDialogChoice("project-folder", String(result));
     } else {
       throw new Error(`Unsupported Loom Web operation: ${frame.operation}`);
     }

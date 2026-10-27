@@ -5,21 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="color-scheme" content="dark light" />
     <title>Loom</title>
-    <script>
-      (function () {
-        var preference = "dark";
-        try {
-          var stored = JSON.parse(localStorage.getItem("loom.settings.desktop.v2") || "{}");
-          var value = stored && stored.appearance && stored.appearance.theme;
-          if (value === "light" || value === "dark" || value === "system") preference = value;
-        } catch (_) {}
-        var dark = preference === "dark" || (preference === "system" && window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches);
-        var resolved = dark ? "dark" : "light";
-        document.documentElement.dataset.loomThemePreference = preference;
-        document.documentElement.dataset.loomTheme = resolved;
-        document.documentElement.style.colorScheme = resolved;
-      })();
-    </script>
+    <script src="/loom-boot.js"></script>
     <style>
       html, body, #root { width: 100%; height: 100%; margin: 0; }
       body { background: #0d0e11; color: #eceef2; font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
@@ -42,21 +28,6 @@
         </div>
       </div>
     </div>
-    <script>
-      function showBootFailure(label, value) {
-        var detail = document.getElementById("boot-detail");
-        if (!detail) return;
-        var message = value && value.message ? value.message : String(value || "Unknown renderer error");
-        detail.textContent = label + "\n" + message;
-        detail.style.color = "#dc7c86";
-      }
-      window.addEventListener("error", function (event) {
-        showBootFailure("Renderer script error", event.error || event.message);
-      });
-      window.addEventListener("unhandledrejection", function (event) {
-        showBootFailure("Renderer promise rejection", event.reason);
-      });
-    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

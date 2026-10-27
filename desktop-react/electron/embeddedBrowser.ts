@@ -1,8 +1,9 @@
-import { app, BrowserWindow, clipboard, session, WebContentsView } from "electron";
+import { app, BrowserWindow, session, WebContentsView } from "electron";
 import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
 import { normalizeBrowserAddress } from "./browserAddress.js";
+import { writeClipboardImage } from "./clipboardImage.js";
 import { EmbeddedBrowserHud } from "./embeddedBrowserHud.js";
 
 /**
@@ -298,7 +299,7 @@ export class EmbeddedBrowserManager {
       case "stop-find": active?.view.webContents.stopFindInPage("clearSelection"); if (active) active.state.findResult = undefined; break;
       case "copy-screenshot": {
         if (!active?.state.url) throw new Error("Open a page before taking a screenshot.");
-        clipboard.writeImage(await this.hud.capture(active.view.webContents, () => active.view.webContents.capturePage()));
+        await writeClipboardImage(await this.hud.capture(active.view.webContents, () => active.view.webContents.capturePage()));
         break;
       }
       case "devtools": active?.view.webContents.openDevTools({ mode: "detach" }); break;

@@ -7,8 +7,12 @@ import { applyModelPolicy, policyAllowsSelection, policyBlockedMessage } from ".
 import { assertModelConnection } from "./modelConnection.js";
 import { app, BrowserWindow, clipboard, dialog, ipcMain, nativeImage, nativeTheme, net, protocol, shell } from "electron";
 import { ModelUsageService } from "./modelUsage.js";
+import { writeClipboardImage } from "./clipboardImage.js";
+import { installRendererContentSecurity, type RendererDocument } from "./contentSecurity.js";
+import { lastDialogFolder, rememberDialogChoice } from "./dialogLocations.js";
+import { fromLoomRenderer, sentByLoomRenderer, trustRendererDocument } from "./rendererIpc.js";
 import { ChildProcessWithoutNullStreams, spawn, spawnSync } from "node:child_process";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import path from "node:path";
 import fs from "node:fs/promises";
 import fsSync from "node:fs";
@@ -283,7 +287,7 @@ async function syncBrowserExtensionAssets(): Promise<{ target: string; version: 
 
 async function setupBrowserExtension(browser: "edge" | "chrome" = "edge", extensionConnected = false): Promise<Record<string, unknown>> {
   const { target, version, installTargets } = await syncBrowserExtensionAssets();
-  if (!extensionConnected) clipboard.writeText(target);
+  if (!extensionConnected) await clipboard.writeText(target);
   const folderError = extensionConnected ? "" : await shell.openPath(target);
   const managementUrl = browser === "chrome" ? "chrome://extensions" : "edge://extensions";
   const roots = browser === "chrome"
@@ -718,7 +722,7 @@ async function copyImageSource(sourceValue: string): Promise<boolean> {
   }
 
   if (!image || image.isEmpty()) throw new Error("Image could not be decoded");
-  clipboard.writeImage(image);
+  await writeClipboardImage(image);
   return true;
 }
 
@@ -1225,12 +1229,17 @@ function devServerUrlFromArgs(): string | null {
   return arg?.slice(prefix.length).trim() || null;
 }
 
-async function loadRenderer(window: BrowserWindow): Promise<void> {
+function rendererDocument(): RendererDocument {
   const devUrl = devServerUrlFromArgs();
+  if (devUrl) return { url: devUrl, development: true };
+  return { url: pathToFileURL(path.join(DESKTOP_ROOT, "dist", "index.html")).href, development: false };
+}
+
+async function loadRenderer(window: BrowserWindow, document: RendererDocument): Promise<void> {
   try {
-    if (devUrl) {
-      console.log(`[loom-desktop] loading dev renderer ${devUrl}`);
-      await window.loadURL(devUrl);
+    if (document.development) {
+      console.log(`[loom-desktop] loading dev renderer ${document.url}`);
+      await window.loadURL(document.url);
       return;
     }
     const builtIndex = path.join(DESKTOP_ROOT, "dist", "index.html");
@@ -1324,7 +1333,12 @@ function createWindow(): void {
     console.error("Loom renderer process exited", detail);
     showRendererFailure("Loom renderer process exited", detail);
   });
-  void loadRenderer(window);
+  // What this window shows is decided once: the bridge answers only that document, and that document
+  // is the only one the Content-Security-Policy is attached to. Both are in place before it loads.
+  const document = rendererDocument();
+  trustRendererDocument(window, document.url);
+  installRendererContentSecurity(window, document);
+  void loadRenderer(window, document);
   window.on("closed", () => {
     embeddedBrowserAgentClient?.stop();
     embeddedBrowserAgentClient = null;
@@ -1352,8 +1366,8 @@ function ensureDesktopUi(): void {
 // from the table: a web client has no renderer to answer a dialog.
 // ---------------------------------------------------------------------------
 
-function runWriteClipboardText(value: string): boolean {
-  clipboard.writeText(String(value || ""));
+async function runWriteClipboardText(value: string): Promise<boolean> {
+  await clipboard.writeText(String(value || ""));
   return true;
 }
 
@@ -1642,10 +1656,10 @@ const desktopOperations: WebRelayOperations = {
 handleHostChannel("loom:connect", () => rpc.connect());
 handleHostChannel("loom:call", (_event, method: string, params?: Record<string, unknown>) => runRpcCall(method, params ?? {}));
 // Disconnecting a UI must never stop shared web tasks or the Agent Runtime.
+// Every other renderer channel checks its sender (rendererIpc.ts); this one does nothing.
 ipcMain.handle("loom:disconnect", () => true);
 ipcMain.handle("loom:embedded-browser", async (event, command: EmbeddedBrowserCommand) => {
-  if (!mainWindow || mainWindow.isDestroyed() || event.sender !== mainWindow.webContents
-      || event.senderFrame !== mainWindow.webContents.mainFrame) {
+  if (!mainWindow || mainWindow.isDestroyed() || !sentByLoomRenderer(event)) {
     throw new Error("Embedded browser is only available in Loom Desktop.");
   }
   if (!command || typeof command !== "object" || typeof command.action !== "string") {
@@ -1660,7 +1674,7 @@ ipcMain.handle("loom:embedded-browser", async (event, command: EmbeddedBrowserCo
   }
   return embeddedBrowserManager.command(command);
 });
-ipcMain.handle("loom:set-native-theme", (_event, source: "system" | "light" | "dark") => {
+ipcMain.handle("loom:set-native-theme", fromLoomRenderer((_event, source: "system" | "light" | "dark") => {
   const next = source === "light" || source === "dark" ? source : "system";
   nativeTheme.themeSource = next;
   const resolved = nativeTheme.shouldUseDarkColors ? "dark" : "light";
@@ -1669,36 +1683,44 @@ ipcMain.handle("loom:set-native-theme", (_event, source: "system" | "light" | "d
     window.setBackgroundColor(resolved === "dark" ? "#0d0e11" : "#f7f7f8");
   }
   return resolved;
-});
+}));
 handleHostChannel("loom:export-computer-logs", () => exportComputerLogs());
 handleHostChannel("loom:export-browser-logs", () => exportBrowserLogs());
 handleHostChannel("loom:setup-browser-extension", (_event, browser: "edge" | "chrome" = "edge", extensionConnected = false) => setupBrowserExtension(browser, extensionConnected));
-ipcMain.handle("loom:reveal-path", (_event, targetPath: string) => revealPath(targetPath));
-ipcMain.handle("loom:copy-image-source", (_event, source: string) => copyImageSource(source));
-ipcMain.handle("loom:clipboard-read-text", () => clipboard.readText());
-ipcMain.handle("loom:clipboard-write-text", (_event, value: string) => runWriteClipboardText(value));
-ipcMain.handle("loom:open-external", (_event, url: string) => openExternalUrl(url));
-ipcMain.handle("loom:open-local-artifact", (_event, targetPath: string, workspaceRoot: string) => (
+ipcMain.handle("loom:reveal-path", fromLoomRenderer((_event, targetPath: string) => revealPath(targetPath)));
+ipcMain.handle("loom:copy-image-source", fromLoomRenderer((_event, source: string) => copyImageSource(source)));
+ipcMain.handle("loom:clipboard-read-text", fromLoomRenderer(() => clipboard.readText()));
+ipcMain.handle("loom:clipboard-write-text", fromLoomRenderer((_event, value: string) => runWriteClipboardText(value)));
+ipcMain.handle("loom:open-external", fromLoomRenderer((_event, url: string) => openExternalUrl(url)));
+ipcMain.handle("loom:open-local-artifact", fromLoomRenderer((_event, targetPath: string, workspaceRoot: string) => (
   openLocalArtifact(targetPath, workspaceRoot)
-));
-ipcMain.handle("loom:local-artifact-preview-url", (_event, targetPath: string, workspaceRoot: string) => (
+)));
+ipcMain.handle("loom:local-artifact-preview-url", fromLoomRenderer((_event, targetPath: string, workspaceRoot: string) => (
   localArtifactPreviewUrl(targetPath, workspaceRoot)
-));
-ipcMain.handle("loom:read-local-image", (_event, targetPath: string, workspaceRoot: string) => (
+)));
+ipcMain.handle("loom:read-local-image", fromLoomRenderer((_event, targetPath: string, workspaceRoot: string) => (
   readLocalImage(targetPath, workspaceRoot)
-));
-ipcMain.handle("loom:read-local-media", (_event, targetPath: string, workspaceRoot: string) => (
+)));
+ipcMain.handle("loom:read-local-media", fromLoomRenderer((_event, targetPath: string, workspaceRoot: string) => (
   readLocalMedia(targetPath, workspaceRoot)
-));
-ipcMain.handle("loom:pick-files", async () => {
-  const result = await dialog.showOpenDialog({ title: "Attach files", properties: ["openFile", "multiSelections"] });
-  return result.canceled ? [] : result.filePaths;
-});
-ipcMain.handle("loom:stage-temp-file", (_event, name: string, bytes: Uint8Array) => runStageTempFile(name, bytes));
-ipcMain.handle("loom:pick-directory", async () => {
-  const result = await dialog.showOpenDialog({ title: "Add project folder", properties: ["openDirectory", "createDirectory"] });
-  return result.canceled || !result.filePaths.length ? "" : result.filePaths[0];
-});
+)));
+ipcMain.handle("loom:pick-files", fromLoomRenderer(async () => {
+  const result = await dialog.showOpenDialog({
+    title: "Attach files", defaultPath: lastDialogFolder("attach-files"), properties: ["openFile", "multiSelections"],
+  });
+  if (result.canceled) return [];
+  rememberDialogChoice("attach-files", result.filePaths[0]);
+  return result.filePaths;
+}));
+ipcMain.handle("loom:stage-temp-file", fromLoomRenderer((_event, name: string, bytes: Uint8Array) => runStageTempFile(name, bytes)));
+ipcMain.handle("loom:pick-directory", fromLoomRenderer(async () => {
+  const result = await dialog.showOpenDialog({
+    title: "Add project folder", defaultPath: lastDialogFolder("project-folder"), properties: ["openDirectory", "createDirectory"],
+  });
+  if (result.canceled || !result.filePaths.length) return "";
+  rememberDialogChoice("project-folder", result.filePaths[0]);
+  return result.filePaths[0];
+}));
 // Account handlers return a discriminated result rather than rejecting: an IPC
 // rejection only carries an Error's message, which would drop the service's
 // machine readable `code` and force the renderer to show raw English text.
@@ -1775,14 +1797,14 @@ async function runAccountChallenge(
 
 handleHostChannel("loom:account-status", () => runAccountAction(() => accountClient.status()));
 handleHostChannel("loom:account-capabilities", () => runAccountCapabilities(() => accountClient.capabilities()));
-ipcMain.handle("loom:account-oauth-start", async (_event, provider: string) => {
+ipcMain.handle("loom:account-oauth-start", fromLoomRenderer(async (_event, provider: string) => {
   try {
     await startDesktopOAuth(String(provider || ""));
     return { ok: true };
   } catch (error) {
     return { ok: false, error: accountErrorPayload(error) };
   }
-});
+}));
 handleHostChannel("loom:account-login", (_event, email: string, password: string) =>
   runAccountMutation(() => accountClient.login(String(email || ""), String(password || "")))
 );

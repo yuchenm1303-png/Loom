@@ -4,6 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import asar from "@electron/asar";
+import { FuseV1Options, getCurrentFuseWire } from "@electron/fuses";
 import { verifyPackagedUpdateConfig } from "./packaged-update-config.mjs";
 import { verifyPackagedRuntime } from "./verify-packaged-runtime.mjs";
 
@@ -15,6 +16,16 @@ const localPackage = JSON.parse(fs.readFileSync(path.join(root, "package.json"),
 await verifyPackagedUpdateConfig(path.dirname(archive), localPackage);
 const packedPackage = JSON.parse(asar.extractFile(archive, "package.json").toString());
 assert.equal(packedPackage.version, localPackage.version, "Packaged version differs from the workspace");
+
+// The fuses electron-builder was asked to set must be the ones in the executable.
+const executable = path.join(path.dirname(path.dirname(archive)), `${localPackage.build.productName}.exe`);
+const wire = await getCurrentFuseWire(executable);
+const FUSE_ON = "1".charCodeAt(0);
+for (const [setting, wanted] of Object.entries(localPackage.build.electronFuses)) {
+  const option = FuseV1Options[setting[0].toUpperCase() + setting.slice(1)];
+  assert.notEqual(option, undefined, `Unknown fuse in build.electronFuses: ${setting}`);
+  assert.equal(wire[option] === FUSE_ON, wanted, `Packaged executable has ${setting} ${wanted ? "off" : "on"}`);
+}
 
 // Legacy cached releases must not be reachable from a complete installation.
 const entry = asar.extractFile(archive, "dist-electron/entry.js").toString();
@@ -49,4 +60,12 @@ const rendererScripts = asar.listPackage(archive)
   .map(file => asar.extractFile(archive, file.replace(/^[\\/]/, "")).toString());
 assert.ok(rendererScripts.some(script => script.includes("draftPermissionMode")),
   "Packaged renderer lacks draft permission support; rebuild from current source before releasing");
+
+// The window's Content-Security-Policy refuses inline scripts, so the packaged page must not contain one.
+const packagedPage = asar.extractFile(archive, "dist/index.html").toString();
+for (const [tag, attributes, body] of packagedPage.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script>/g)) {
+  assert.ok(/\ssrc=/.test(` ${attributes}`) && !body.trim(), `Packaged index.html contains an inline script: ${tag.slice(0, 80)}`);
+}
+assert.ok(asar.listPackage(archive).some(name => /[\\/]dist-electron[\\/]contentSecurity\.js$/.test(name)),
+  "The window's Content-Security-Policy module is not packaged");
 console.log(`Packaged application verified: ${checked} files match the current build (v${localPackage.version}).`);

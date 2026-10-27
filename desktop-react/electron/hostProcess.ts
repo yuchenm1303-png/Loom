@@ -7,6 +7,7 @@ import { existsSync, unlinkSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { HostClient, HostServer, type HostHandler } from "./hostTransport.js";
 import { hostDataPath } from "./hostPaths.js";
+import { fromLoomRenderer } from "./rendererIpc.js";
 export { hostDataPath } from "./hostPaths.js";
 
 export const HOST_ARG = "--loom-host";
@@ -164,7 +165,7 @@ export async function prepareDesktopHost(): Promise<void> {
 
 export function handleHostChannel(channel: string, handler: (...args: any[]) => unknown): void {
   if (isHostProcess) handlers.set(channel, (args) => handler(undefined, ...args));
-  else ipcMain.handle(channel, (_event, ...args) => callHost(channel, args));
+  else ipcMain.handle(channel, fromLoomRenderer((_event, ...args: unknown[]) => callHost(channel, args)));
 }
 
 export function broadcastHostEvent(channel: string, value: unknown): void {
