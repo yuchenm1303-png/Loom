@@ -24,12 +24,15 @@ out of the sandbox's reach until an administrator opens them:
      with "Unable to read current working directory" and node with EPERM. This
      script lets Loom's capability SID list each of those folders: one entry per
      folder, for that folder alone (not inherited). The sandbox then sees the
-     names of the entries inside them (the top-level folders of C:\ and of your
-     profile, say) and nothing inside any of those entries. The workspaces are the
-     ones Loom has registered (~\.loom\projects.json) plus any -Workspace.
+     names, sizes and times of the entries directly inside them (the top-level
+     folders of C:\ and of your profile, say) and nothing inside any of those
+     entries. The workspaces are the ones Loom has registered
+     (~\.loom\projects.json) plus any -Workspace.
 
-Writes outside the workspace, reads of the user profile (~/.ssh and the like)
-and network access stay blocked: none of these changes widen them.
+Writes outside the workspace, reading the content of files in the user profile
+(~/.ssh and the like) and network access stay blocked: none of these changes
+widen them. Only item 4 shows more than before, and only entry names and their
+size and time.
 
 wxc-host-prep.exe is Microsoft's tool from @microsoft/mxc-sdk. Its Authenticode
 signature is checked before it runs elevated, and the boot task runs a copy

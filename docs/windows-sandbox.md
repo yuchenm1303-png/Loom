@@ -169,6 +169,12 @@ failure has another cause and a script run would change nothing).
 boot task that reapplies the NUL descriptor belongs to SYSTEM, so only an administrator can see
 it: `-Status` then says *unknown*, not *False*, and the elevated run ends with its own check.
 
+The MXC tests that run real tools (`tests/test_windows_mxc_integration.py`) skip themselves until
+the host is prepared *and* the folders above their workspace are open. pytest's temp folder is
+not one of the registered projects, so on a prepared machine point them at a folder whose parents
+the script opened: `LOOM_SANDBOX_TEST_ROOT=C:\Users\you` (the tests create and remove a
+`loom-sbx-*` folder directly under it).
+
 `SandboxManager` also drops a declared read-only path from the MXC config when the sandbox
 can already read it through the capability or `ALL APPLICATION PACKAGES`; MXC would
 otherwise try, and fail, to rewrite a DACL it cannot edit.
