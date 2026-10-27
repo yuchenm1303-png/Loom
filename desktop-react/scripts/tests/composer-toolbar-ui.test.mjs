@@ -55,7 +55,7 @@ test("compact composer preserves drafts and connects workspace, tool selection a
           else res.end('<html data-loom-theme="dark"><link rel="stylesheet" href="/bundle.css"><style>body{margin:0}#root{width:100%}</style><div id="root"></div><script src="/bundle.js"></script></html>');
         });await new Promise(r=>server.listen(0,'127.0.0.1',r));
         try{
-          const win=new BrowserWindow({show:false,width:1100,height:800,webPreferences:{contextIsolation:true}});
+          const win=new BrowserWindow({show:false,width:1100,height:800,webPreferences:{contextIsolation:true,backgroundThrottling:false}});
           await win.loadURL('http://127.0.0.1:'+server.address().port+'/');
           const result=await win.webContents.executeJavaScript(\`(async()=>{
             const waitFor=async(check,label)=>{for(let i=0;i<100;i++){if(check())return;await new Promise(r=>setTimeout(r,25));}throw Error(label)};
