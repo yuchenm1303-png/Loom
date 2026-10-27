@@ -40,7 +40,9 @@
     "package:win:dir": "npm run build && npm run build:runtime:win && electron-builder --win --x64 --dir",
     "package:win": "npm run test:electron && node --test scripts/tests/update-release.test.mjs scripts/tests/software-update-status.test.mjs && npm run build && npm run build:runtime:win && electron-builder --win --x64 --dir --publish never && node scripts/host-process-smoke.mjs --packaged && node scripts/host-process-smoke.mjs --packaged --pending-update && node scripts/verify-packaged-renderer.mjs && electron-builder --win nsis --x64 --prepackaged release/win-unpacked --publish never && node scripts/verify-installer-release.mjs && npm run test:installer",
     "package:win:publish": "npm run package:win && electron-builder --win nsis --x64 --prepackaged release/win-unpacked --publish always",
-    "build:web": "npm run build:renderer"
+    "build:web": "npm run build:renderer",
+    "build:runtime:mac": "node scripts/build-macos-runtime.mjs",
+    "package:mac:arm64": "npm run build && npm run build:runtime:mac && electron-builder --mac dmg --arm64 --publish never"
   },
   "dependencies": {
     "@xterm/addon-fit": "^0.11.0",
@@ -112,18 +114,6 @@
         "to": "."
       },
       {
-        "from": "node_modules/@microsoft/mxc-sdk/bin/x64/wxc-exec.exe",
-        "to": "wxc-exec.exe"
-      },
-      {
-        "from": "node_modules/@microsoft/mxc-sdk/bin/x64/wxc-host-prep.exe",
-        "to": "wxc-host-prep.exe"
-      },
-      {
-        "from": "../scripts/windows-sandbox-prep.ps1",
-        "to": "windows-sandbox-prep.ps1"
-      },
-      {
         "from": "../extensions/browser-current-tab",
         "to": "browser-current-tab"
       }
@@ -139,7 +129,21 @@
         }
       ],
       "requestedExecutionLevel": "asInvoker",
-      "icon": "build/icon.png"
+      "icon": "build/icon.png",
+      "extraResources": [
+        {
+          "from": "node_modules/@microsoft/mxc-sdk/bin/x64/wxc-exec.exe",
+          "to": "wxc-exec.exe"
+        },
+        {
+          "from": "node_modules/@microsoft/mxc-sdk/bin/x64/wxc-host-prep.exe",
+          "to": "wxc-host-prep.exe"
+        },
+        {
+          "from": "../scripts/windows-sandbox-prep.ps1",
+          "to": "windows-sandbox-prep.ps1"
+        }
+      ]
     },
     "nsis": {
       "include": "build/installer.nsh",
@@ -149,6 +153,22 @@
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
       "shortcutName": "Loom"
+    },
+    "mac": {
+      "category": "public.app-category.developer-tools",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64"
+          ]
+        }
+      ],
+      "minimumSystemVersion": "13.0",
+      "identity": null,
+      "hardenedRuntime": false,
+      "artifactName": "Loom-${version}-mac-${arch}.${ext}",
+      "icon": "build/icon.png"
     }
   }
 }
