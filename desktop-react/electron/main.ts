@@ -286,17 +286,27 @@ async function setupBrowserExtension(browser: "edge" | "chrome" = "edge", extens
   if (!extensionConnected) clipboard.writeText(target);
   const folderError = extensionConnected ? "" : await shell.openPath(target);
   const managementUrl = browser === "chrome" ? "chrome://extensions" : "edge://extensions";
-  const roots = browser === "chrome"
-    ? [
-        path.join(process.env.PROGRAMFILES || "", "Google", "Chrome", "Application", "chrome.exe"),
-        path.join(process.env["PROGRAMFILES(X86)"] || "", "Google", "Chrome", "Application", "chrome.exe"),
-        path.join(process.env.LOCALAPPDATA || "", "Google", "Chrome", "Application", "chrome.exe"),
-      ]
-    : [
-        path.join(process.env["PROGRAMFILES(X86)"] || "", "Microsoft", "Edge", "Application", "msedge.exe"),
-        path.join(process.env.PROGRAMFILES || "", "Microsoft", "Edge", "Application", "msedge.exe"),
-        path.join(process.env.LOCALAPPDATA || "", "Microsoft", "Edge", "Application", "msedge.exe"),
-      ];
+  const roots = process.platform === "darwin"
+    ? (browser === "chrome"
+        ? [
+            "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+            path.join(app.getPath("home"), "Applications/Google Chrome.app/Contents/MacOS/Google Chrome"),
+          ]
+        : [
+            "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
+            path.join(app.getPath("home"), "Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge"),
+          ])
+    : browser === "chrome"
+      ? [
+          path.join(process.env.PROGRAMFILES || "", "Google", "Chrome", "Application", "chrome.exe"),
+          path.join(process.env["PROGRAMFILES(X86)"] || "", "Google", "Chrome", "Application", "chrome.exe"),
+          path.join(process.env.LOCALAPPDATA || "", "Google", "Chrome", "Application", "chrome.exe"),
+        ]
+      : [
+          path.join(process.env["PROGRAMFILES(X86)"] || "", "Microsoft", "Edge", "Application", "msedge.exe"),
+          path.join(process.env.PROGRAMFILES || "", "Microsoft", "Edge", "Application", "msedge.exe"),
+          path.join(process.env.LOCALAPPDATA || "", "Microsoft", "Edge", "Application", "msedge.exe"),
+        ];
   const executable = roots.find((candidate) => candidate && fsSync.existsSync(candidate));
   let openError = "";
   if (!extensionConnected && executable) {
@@ -1856,6 +1866,9 @@ app.whenReady().then(async () => {
   // Windows notifications on the same application identity. electron-builder
   // stamps the executable with the icon configured for this appId.
   if (process.platform === "win32") app.setAppUserModelId("com.loom.agent");
+  // The long-lived macOS Host has no user-facing window and must not create
+  // a second Dock icon alongside the desktop UI.
+  if (isHostProcess && process.platform === "darwin") app.dock?.hide();
   // electron-builder registers loom:// for the installed application.
   // Reassert ownership on packaged launches without registering a dev instance.
   if (!isHostProcess && app.isPackaged) app.setAsDefaultProtocolClient("loom");
