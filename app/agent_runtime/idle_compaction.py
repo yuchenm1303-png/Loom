@@ -65,6 +65,11 @@ def _history_digest(history):
     return digest.hexdigest()
 
 
+RESUME_IDLE_SECONDS = 3600
+RESUME_MIN_CONTEXT_TOKENS = 48_000
+_TERMINAL_KINDS = (E.TURN_COMPLETED, E.TURN_FAILED, E.TURN_CANCELLED, E.TURN_INTERRUPTED, E.LIMIT_REACHED)
+
+
 class IdleCompaction:
     def __init__(self, runtime):
         self.runtime = runtime
@@ -230,6 +235,42 @@ class IdleCompaction:
             # A model/window change or an unusually large new input may make an
             # otherwise valid candidate unsuitable. Normal budgeting decides.
             return False
+        return True
+
+    def compact_on_resume(self, session):
+        """Ask the first step of a turn to compact a long history the user is coming back to.
+
+        Speculation above only runs after a completed turn and near the model's
+        own compaction point. A thread left for an hour or more (often after a
+        stopped turn) and reopened with a new message otherwise carries every
+        old tool result into every step, which on a million-token model never
+        reaches that point. The summary keeps user messages and unfinished
+        work; the provider's prompt cache has expired by then anyway.
+        """
+        from datetime import datetime, timezone
+        from .context_budget import estimate_tokens, request_forced_compaction
+        if os.environ.get("LOOM_IDLE_COMPACTION", "1").strip().casefold() in {"0", "false", "off"}:
+            return False
+        if session.model_steps or len(session.messages) < 12:
+            return False
+        last_event = getattr(self.runtime.store, "last_event", None)
+        previous = last_event(session.session_id, _TERMINAL_KINDS) if callable(last_event) else None
+        if previous is None:
+            return False
+        try:
+            ended = datetime.fromisoformat(str(previous.created_at).replace("Z", "+00:00"))
+        except ValueError:
+            return False
+        if ended.tzinfo is None:
+            ended = ended.replace(tzinfo=timezone.utc)
+        if (datetime.now(timezone.utc) - ended).total_seconds() < RESUME_IDLE_SECONDS:
+            return False
+        # The history about to be sent, not the last provider figure: that one can
+        # describe an older, already-reduced request (3.6k on a 104k thread).
+        # 0.7 is the estimator's measured bias against provider accounting.
+        if estimate_tokens(session.messages) * 7 // 10 < RESUME_MIN_CONTEXT_TOKENS:
+            return False
+        request_forced_compaction(self.runtime, session)
         return True
 
     def _candidate_path(self, session_id):

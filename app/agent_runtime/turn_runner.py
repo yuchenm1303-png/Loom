@@ -112,7 +112,8 @@ class TurnRunner:
         tool_fault_batches = 0
         tools_finished_at = None
         try:
-            rt.idle_compaction.apply_ready(session)
+            if not rt.idle_compaction.apply_ready(session):
+                rt.idle_compaction.compact_on_resume(session)
             while True:
                 if rt._cancel_if_requested(session, token):
                     return rt._result(session)

@@ -158,7 +158,9 @@ def build_compacted_history(
     selected_reversed: list[AIMessage] = []
     remaining = COMPACT_USER_MESSAGE_MAX_TOKENS
     for message in reversed(tuple(history)):
-        if not is_real_user_message(message):
+        # A stopped-turn note stays beside the message it precedes; a summary
+        # alone would read the unfinished work as still wanted.
+        if not is_real_user_message(message) and str(getattr(message, "name", "") or "") != STOPPED_TURN_MESSAGE_NAME:
             continue
         cost = max(0, int(token_counter((message,))))
         if cost <= remaining:

@@ -168,3 +168,50 @@ def test_gitignored_probe_is_not_a_source_change_but_project_source_is(tmp_path)
         assert "Execute the missing verification now" not in gate[-1].content
     finally:
         runtime.close()
+
+
+def _returning_to(tmp_path, ended_at, *, size=2400):
+    """A long thread whose last turn was stopped at ``ended_at``."""
+    import uuid
+    from app.ai import AIMessage, MessageRole
+    from app.agent_runtime.contracts import AgentEvent, AgentEventKind as E
+    platform = _Scripted(ModelResponse(text="Earlier you debugged the proxy chain; nothing is pending."),
+                         ModelResponse(text="Here are three providers."))
+    runtime, session, _ = make_runtime(tmp_path, platform)
+    session.messages = [m for i in range(8) for m in (
+        AIMessage(role=MessageRole.USER, content=f"check proxy hop {i}"),
+        AIMessage(role=MessageRole.ASSISTANT, content="ssh probe output line. " * size))]
+    session.status = AgentStatus.CANCELLED
+    runtime.store.save(session)
+    runtime.store.append_event(AgentEvent(str(uuid.uuid4()), session.session_id, "old-turn",
+                                          E.TURN_CANCELLED, ended_at, {}))
+    return runtime, session, platform
+
+
+def test_a_long_thread_reopened_after_an_hour_starts_from_a_summary(tmp_path) -> None:
+    runtime, session, platform = _returning_to(tmp_path, "2026-10-22T15:51:28+00:00")
+    try:
+        result = runtime.start_turn(session.session_id, "where can I buy a Vietnam exit IP")
+        assert result.status is AgentStatus.COMPLETED
+        assert len(platform.requests) == 2
+        answer = platform.requests[1].messages
+        assert any(m.name == "loom_compaction" for m in answer)
+        assert not any("ssh probe output line." in str(m.content) for m in answer)
+        names = [m.name for m in answer]
+        question = next(i for i, m in enumerate(answer) if m.content == "where can I buy a Vietnam exit IP")
+        assert "loom_turn_stopped" in names and names.index("loom_turn_stopped") < question
+    finally:
+        runtime.close()
+
+
+@pytest.mark.parametrize("recent, size", [(True, 2400), (False, 20)], ids=["within-the-hour", "short-history"])
+def test_recent_or_short_threads_keep_their_history(tmp_path, recent, size) -> None:
+    from app.agent_runtime.storage import utc_now
+    runtime, session, platform = _returning_to(tmp_path, utc_now() if recent else "2026-10-22T15:51:28+00:00", size=size)
+    platform.responses.pop(0)
+    try:
+        runtime.start_turn(session.session_id, "where can I buy a Vietnam exit IP")
+        assert len(platform.requests) == 1
+        assert any("ssh probe output line." in str(m.content) for m in platform.requests[0].messages)
+    finally:
+        runtime.close()
