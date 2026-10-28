@@ -1,19 +1,20 @@
 /* Loom's original app artwork sits at the far right of the editorial header.
-   Separate from the homepage layout stylesheet so unrelated refinements do
-   not accidentally remove it. Classic portal is intentionally unaffected. */
+   It shares the 36px control row of the header. Separate from the homepage
+   layout stylesheet so unrelated refinements do not accidentally remove it.
+   Classic portal is intentionally unaffected. */
 .loom-portal-page.loom-editorial .editorial-meta .editorial-home-icon {
   display: inline-flex;
-  flex: 0 0 38px;
+  flex: 0 0 36px;
   align-items: center;
   justify-content: center;
-  width: 38px;
-  min-width: 38px;
-  height: 38px;
-  margin: 0 0 0 2px;
+  width: 36px;
+  min-width: 36px;
+  height: 36px;
+  margin: 0;
   padding: 2px;
   background: transparent;
   border: 0;
-  border-radius: 9px;
+  border-radius: 10px;
   color: var(--ed-ink);
   cursor: pointer;
   transition: background-color var(--loom-dur-fast) linear;
@@ -38,8 +39,8 @@
     margin-left: 0;
   }
   .loom-portal-page.loom-editorial .editorial-meta .editorial-home-icon img {
-    width: 29px;
-    height: 29px;
+    width: 28px;
+    height: 28px;
   }
 }
 @media (prefers-reduced-motion: reduce) {

@@ -139,7 +139,7 @@
   z-index: 5;
   display: grid;
   flex: none;
-  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
   column-gap: 24px;
   height: var(--ed-head);
@@ -185,40 +185,57 @@
   height: 22px;
   background: var(--ed-rule);
 }
-.loom-editorial .editorial-nav { display: flex; align-items: center; gap: clamp(20px, 3vw, 44px); }
+/* The header is one control row: the nav, the language switch, the account pill, the theme switch and the icon are
+   all 36px tall and share the row's centre line, so their bottoms and the text baselines inside them line up. */
+.loom-editorial .editorial-nav { justify-self: center; display: flex; align-items: center; gap: clamp(20px, 3vw, 40px); height: 36px; }
 .loom-editorial .editorial-shell .editorial-nav a {
-  padding-block: 14px;
+  display: inline-flex;
+  align-items: center;
+  height: 100%;
+  padding: 0;
   color: var(--ed-ink-muted);
   font-size: 16px;
   line-height: 1;
   text-decoration-color: transparent;
 }
 .loom-editorial .editorial-shell .editorial-nav a:hover { color: var(--ed-ink); text-decoration-color: currentColor; }
-.loom-editorial .editorial-meta { display: flex; align-items: center; justify-self: end; gap: 10px; min-width: 0; }
+.loom-editorial .editorial-meta { display: flex; align-items: center; justify-self: end; gap: 12px; height: 36px; min-width: 0; }
 .loom-editorial .editorial-language {
-  min-height: 36px;
-  padding: 0 4px;
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  height: 36px;
+  min-width: 44px;
+  padding: 0 6px;
   border: 0;
   background: none;
   color: var(--ed-ink-muted);
-  font-size: 14px;
+  font-size: 16px;
   line-height: 1;
+  white-space: nowrap;
+  text-decoration: underline;
+  text-decoration-thickness: .08em;
+  text-decoration-color: transparent;
+  text-underline-offset: .1em;
   cursor: pointer;
 }
-.loom-editorial .editorial-language:hover { color: var(--ed-ink); }
+.loom-editorial .editorial-language:hover { color: var(--ed-ink); text-decoration-color: currentColor; }
 .loom-editorial .editorial-account {
   display: inline-flex;
   align-items: center;
   gap: 8px;
+  box-sizing: border-box;
   max-width: 180px;
-  min-height: 36px;
+  height: 36px;
   padding: 0 14px;
   overflow: hidden;
   border: 1px solid var(--ed-rule);
   border-radius: 999px;
   background: transparent;
   color: var(--ed-ink);
-  font-size: 14px;
+  font-size: 16px;
   line-height: 1;
   white-space: nowrap;
   cursor: pointer;
@@ -241,6 +258,7 @@
 .loom-editorial .editorial-account-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .loom-editorial .editorial-menu-button {
   display: none;
+  flex: none;
   place-items: center;
   width: 36px;
   height: 36px;
@@ -253,9 +271,10 @@
 .loom-editorial .editorial-menu-lines { display: grid; gap: 5px; width: 18px; }
 .loom-editorial .editorial-menu-lines i { display: block; width: 18px; height: 1px; background: currentColor; }
 
-/* The narrow header keeps one disclosure for the nav, the account and the language. */
+/* The narrow header keeps one disclosure for the nav, the account and the language. It begins at 960px, where the
+   header first has room for the centred nav, the account pill and the icon side by side. */
 .loom-editorial .editorial-mobile-menu { display: none; }
-@media (max-width: 760px) {
+@media (max-width: 960px) {
   .loom-editorial .editorial-mobile-menu {
     position: fixed;
     top: var(--ed-head);
@@ -760,6 +779,9 @@
   .loom-editorial .editorial-session { grid-column: 7 / span 6; }
 }
 @media (max-width: 960px) {
+  .loom-editorial .editorial-header { grid-template-columns: minmax(0, 1fr) auto; }
+  .loom-editorial .editorial-nav { display: none; }
+  .loom-editorial .editorial-menu-button { display: grid; }
   .loom-portal-page.loom-editorial { --ed-title: clamp(40px, 7.2vw, 60px); }
   .loom-editorial .editorial-hero { min-height: 0; padding-top: clamp(32px, 7vh, 72px); }
   .loom-editorial .editorial-hero-grid { display: block; }
@@ -772,11 +794,8 @@
   .loom-editorial .editorial-download-panel { margin-top: 40px; }
 }
 @media (max-width: 760px) {
-  .loom-editorial .editorial-header { grid-template-columns: minmax(0, 1fr) auto; }
-  .loom-editorial .editorial-nav,
   .loom-editorial .editorial-language { display: none; }
   .loom-editorial .editorial-meta { gap: 8px; }
-  .loom-editorial .editorial-menu-button { display: grid; }
   .loom-editorial .editorial-list { grid-template-columns: minmax(0, 1fr); row-gap: 36px; }
 }
 @media (max-width: 520px) {

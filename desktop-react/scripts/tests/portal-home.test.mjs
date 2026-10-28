@@ -98,7 +98,7 @@ test("the page is laid on a wide frame and a 12-column grid; its prose keeps the
   assert.match(rule(".loom-editorial .editorial-steps strong"), /font-size:\s*24px/);
   // It narrows in steps: the picture goes under the words, the columns become one, the nav goes, the phone settles.
   for (const width of [1100, 960, 760, 520]) assert.ok(css.includes(`@media (max-width: ${width}px)`), `${width}px step`);
-  assert.match(css, /@media \(max-width: 760px\)\s*\{[^@]*\.editorial-nav[^{]*\{[^}]*display:\s*none/);
+  assert.match(css, /@media \(max-width: 960px\)\s*\{[^@]*\.editorial-nav[^{]*\{[^}]*display:\s*none/);
 });
 
 test("the first screen is laid out from the top, so opening More moves only what is under it", () => {
@@ -142,10 +142,10 @@ test("the header offers a visible account entry, a language switch and a mobile 
   assert.ok(portal.includes('setLanguage(zh ? "en" : "zh-CN")'), "the switch uses the shared language setting");
   assert.ok(header.includes('className="editorial-menu-button"') && header.includes('aria-controls="editorial-mobile-menu"'), "the narrow header has a menu button");
   assert.ok(portal.includes('id="editorial-mobile-menu"') && portal.includes('aria-expanded={menuOpen}'), "the menu panel exists and reports its state");
-  assert.ok(portal.includes('window.matchMedia("(min-width: 761px)")'), "the menu closes when the desktop header returns");
+  assert.ok(portal.includes('window.matchMedia("(min-width: 961px)")'), "the menu closes when the desktop header returns");
   assert.match(rule(".loom-editorial .editorial-account"), /border:\s*1px solid var\(--ed-rule\)/);
   assert.match(rule(".loom-editorial .editorial-menu-button"), /display:\s*none/);
-  assert.match(css, /@media \(max-width: 760px\)\s*\{[^@]*\.editorial-menu-button\s*\{\s*display:\s*grid/);
+  assert.match(css, /@media \(max-width: 960px\)\s*\{[^@]*\.editorial-menu-button\s*\{\s*display:\s*grid/);
   // The house mark's base rule has three classes; the phone rule must match its specificity, or it never hides.
   assert.match(css, /@media \(max-width: 430px\)\s*\{[^@]*\.loom-editorial \.editorial-shell \.editorial-smirel-mark[^{]*\{[^}]*display:\s*none/);
 });

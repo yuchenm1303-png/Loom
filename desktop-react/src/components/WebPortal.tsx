@@ -205,7 +205,7 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
     // The mobile menu is a page-level disclosure: Escape closes it, and so does a return to the desktop header.
     if (!editorial || !menuOpen) return;
     const closeOnEscape = (event: KeyboardEvent) => { if (event.key === "Escape") setMenuOpen(false); };
-    const closeOnWide = () => { if (window.matchMedia("(min-width: 761px)").matches) setMenuOpen(false); };
+    const closeOnWide = () => { if (window.matchMedia("(min-width: 961px)").matches) setMenuOpen(false); };
     document.addEventListener("keydown", closeOnEscape);
     window.addEventListener("resize", closeOnWide);
     return () => {

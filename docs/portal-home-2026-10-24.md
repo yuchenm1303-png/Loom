@@ -73,7 +73,9 @@ request line, a lead for "Getting started" and the nav labels, both languages).
   the left (columns 1 to 5), three numbered steps on the right (7 to 12).
 - **Footer.** A full-width hairline, the maker on the left, Updates and Classic home on the right.
 - **Narrower.** 1100px: the words take six columns. 960px: the picture goes under the words, the sections stack, the headline is
-  `clamp(40px, 7.2vw, 60px)`, the hero is as tall as its words. 760px: the nav goes and the capabilities become one column.
+  `clamp(40px, 7.2vw, 60px)`, the hero is as tall as its words. 960px: the nav moves into the menu and the header
+  keeps the language, the account and the icon (the centred nav had been running into them from 761 to about 850px);
+  760px: the language follows into the menu and the capabilities become one column.
   520px: the headline is `clamp(40px, 11.4vw, 52px)`.
 - **Motion.** Still opacity only for anything with words. The first screen arrives in order as before (header, the two lines of
   the headline, intro, buttons, release, card; the card's rows start after it). Below it, every heading, item and step carries
@@ -132,6 +134,25 @@ The glass cursor was mounting on too much and refracting too hard: a thread row 
 - **Position.** A reading stop is centred on its painted words (`Range.getClientRects`), not on its box: the thread row is 820px wide but its sentence is 430px, and centring on the box parked the lens over empty paper.
 - **Optics.** The reference shader spends `strength * 40` pixels of displacement at the rim. One figure for every lens turned a 46px-high row into three stacked copies of its line, so strength is now per kind: 0.72 free, 0.44 control, 0.22 reading, with less chromatic aberration when reading.
 - **Capture.** `rasterizePortal` fills the texture with the resolved page colour (walking from `.loom-portal-page` to `html`, then `--ed-paper`) before drawing anything, and the wallpaper veil is no longer laid over a flat page. The shader writes an opaque interior, so an unfilled texture was painted black.
+
+## The header on one row (2026-10-28)
+
+- **One control row.** The nav links, the language switch, the account pill, the theme switch and the icon are all 36px
+tall and centred on the header's one line, so their boxes share the same bottom edge (53.5px at the 72px header).
+Before, the nav links were 44px, the icon 38px and the switch 20px, each centred on its own box. The nav links no longer
+carry 14px of vertical padding; the language switch is a 36px, 44px-minimum button like the account pill, and the icon
+is 36px with a 10px radius.
+- **One type size.** Nav, language and account are 16px (the language and the account were 14px), the wordmark stays
+24px; the meta gap is 12px and the nav gap tops out at 40px.
+- **One hover.** Nav links and the language switch both take the ink colour and their underline on hover; the account
+keeps its hairline and soft paper, the icon its 7% wash.
+- **The narrow header starts at 960px.** At 761 to about 850px the centred nav ran into the account pill (34.7px at
+761), and at 901px a squeezed language switch wrapped onto two lines; the nav now enters the menu at 960px (the first
+width that holds the name, the centred nav and all five controls) and the resize handler closes the menu at 961px.
+The language stays in the header until 760px, where it also enters the menu.
+- **Checked.** The built bundle served locally, at 390 / 761 / 850 / 960 / 961 / 1016 / 1440px, light and dark:
+all five controls have the same 36px box and one baseline, no horizontal overflow, the menu opens and closes at 850 and
+960, the theme switch flips, the account dialog opens and closes.
 
 ## Files
 
