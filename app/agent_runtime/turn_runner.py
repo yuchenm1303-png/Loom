@@ -424,8 +424,16 @@ class TurnRunner:
                                 retry_sampling = True
                                 break
                             transport_failures += 1
-                            if recovery_started is None:
-                                recovery_started = model_request_started
+                            timing = getattr(exc, "stream_timing", {}) or {}
+                            if recovery_started is None or timing.get("content_chunk_count", 0):
+                                # The budget is time without a working provider.
+                                # It starts when a failure is detected, not when a
+                                # potentially long, healthy sample began, and it
+                                # restarts when a retry streamed output before
+                                # failing: that provider was answering. Retries
+                                # that die silent still add up; transport_retries
+                                # caps the count either way.
+                                recovery_started = time.perf_counter()
                             recovery_elapsed = time.perf_counter() - recovery_started
                             retry_delay = max(getattr(exc, "retry_after_seconds", 0.0), reconnect_delay)
                             retry_allowed = (exc.retryable and transport_failures <= rt.limits.transport_retries
@@ -477,6 +485,7 @@ class TurnRunner:
                                 # writes; neither case consumes format repairs.
                                 stall_replays += 1
                                 recovery_instruction = "stream_stall_timeout" if stall_replays > 1 else ""
+                            if isinstance(exc, ModelRequestTimeout) or timing.get("content_chunk_count", 0):
                                 # A timed-out sample may already have streamed a
                                 # partial reply. Give the retry a fresh step so
                                 # its deltas cannot append to that abandoned text.

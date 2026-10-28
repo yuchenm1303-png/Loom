@@ -147,12 +147,12 @@ def test_reducer_uses_one_aggregate_estimation_and_preserves_full_history():
     assert [m.tool_call_id for m in projected] == [m.tool_call_id for m in history]
 
 
-def test_default_working_budget_is_operating_policy_not_provider_capacity():
+def test_default_does_not_invent_working_budget_for_unknown_capacity():
     rt = SimpleNamespace(limits=AgentLimits(), platform=SimpleNamespace())
     limits = resolve_context_limits(rt, SimpleNamespace(profile_id="test", session_id="s"))
     assert not limits.window_known
-    assert limits.working_context_tokens == 64000
-    assert limits.working_context_source == "runtime_policy"
+    assert limits.working_context_tokens is None
+    assert limits.working_context_source == "undeclared"
 
 
 def test_long_history_is_projected_before_first_model_call_without_erasing_durable_evidence(tmp_path):
@@ -172,8 +172,11 @@ def test_long_history_is_projected_before_first_model_call_without_erasing_durab
         assert len(platform.requests) == 1  # no model-driven compaction or recovery round
         request = platform.requests[0]
         assert any(m.content == "Align the header; preserve the current brand" for m in request.messages)
-        from app.agent_runtime.context_budget import estimate_tokens
-        assert estimate_tokens(request.messages, request.tools) < 64000
+        # An undeclared window must not silently turn observations into stubs
+        # merely to satisfy the retired universal 64k work target.
+        observations = [m for m in request.messages if m.role is MessageRole.TOOL]
+        assert len(observations) == 100
+        assert all("evidence " * 100 in str(m.content) for m in observations)
         durable = rt.store.load(session.session_id).messages
         assert sum(len(str(m.content)) for m in durable) > 1_000_000
     finally:
