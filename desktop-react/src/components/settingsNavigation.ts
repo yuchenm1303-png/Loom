@@ -2,6 +2,7 @@ import { useSyncExternalStore } from "react";
 
 export type NativeSettingsRoute =
   | "ambient"
+  | "projectRuns"
   | "general"
   | "appearance"
   | "models"
