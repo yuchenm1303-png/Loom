@@ -4,9 +4,11 @@ export interface ProjectRun {
   workflowControl?: string; workflowStatus?: string; workflowError?: string; workflowOwnerId?: string;
   integrationRunId?: string; integrationTarget?: { parentRunId: string };
   tokensUsed: number; tokenBudget: number; episodesUsed: number; maxEpisodes: number;
-  plan: { id: string; instructions: string; acceptance: string[]; state: string }[];
+  plan: { id: string; instructions: string; acceptance: string[]; state: string; dependsOn?: string[]; fileScopes?: string[] }[];
   activeEpisode?: { sessionId: string; state: string } | null;
   verificationStatus?: string; verificationFreshness?: string;
+  maxWorkers?: number; teamOwnerId?: string; parallelStatus?: string;
+  teamChildren?: { runId: string; taskId: string; state: string }[];
   deliveryReceipt?: { commit: string; ref: string; integration?: string; publication?: string; status: string };
 }
 export interface ProjectAssessment { id: string; verdict: string; summary: string; scope: string;
@@ -14,7 +16,7 @@ export interface ProjectAssessment { id: string; verdict: string; summary: strin
 export type ProjectAction = "start" | "pause" | "resume" | "cancel" | "deliver" | "review" | "prepareIntegration" | "applyIntegration";
 export function actions(run: ProjectRun, child?: ProjectRun): ProjectAction[] {
   if (["cancelled", "integrated"].includes(run.state)) return [];
-  if (run.workflowOwnerId) return run.state === "needs_review" && !run.activeEpisode && run.plan.length ? ["review"] : [];
+  if (run.teamOwnerId || run.workflowOwnerId) return run.state === "needs_review" && !run.activeEpisode && run.plan.length ? ["review"] : [];
   if (run.completionPolicy === "local_integrate") {
     const target = child || run;
     const result: ProjectAction[] = ["cancel"];

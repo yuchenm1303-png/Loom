@@ -9,6 +9,7 @@ try {
   await page.goto(`${origin}/scripts/fixtures/project-runs.html?empty`);
   await page.getByRole("textbox", { name: "目标与验收要求" }).fill("实现离线笔记工具并验证重启恢复");
   await page.getByRole("checkbox").check();
+  await page.getByRole("combobox", { name: "并行执行上限" }).selectOption("2");
   await page.evaluate(() => { window.projectRunTest.failNext = true; });
   await page.getByRole("button", { name: "创建，暂不执行" }).click();
   await page.getByRole("button", { name: "重试上次请求" }).waitFor();
@@ -18,12 +19,24 @@ try {
   assert.equal(creation.length, 2); assert.deepEqual(creation[0], creation[1]);
   assert.equal(await page.evaluate(() => window.projectRunTest.runs.length), 1);
   assert.equal(creation[0].params.completionPolicy, "local_integrate");
+  assert.equal(creation[0].params.maxWorkers, 2);
   assert.equal(await page.evaluate(() => window.projectRunTest.calls.some(item => item.method === "projectRun/start")), false);
   await page.getByRole("button", { name: "启动", exact: true }).click();
   await page.getByRole("button", { name: "暂停", exact: true }).click();
   await page.getByRole("button", { name: "继续", exact: true }).waitFor();
   await page.evaluate(() => {
     const state = window.projectRunTest, root = state.runs[0];
+    Object.assign(root, { state: "running", control: "active", phase: "parallel", workflowControl: "active", teamChildren: [{ runId: "team-alpha", taskId: "task-1", state: "running" }] });
+    state.runs.push({ ...root, id: "team-alpha", teamOwnerId: root.id, maxWorkers: 1, teamChildren: undefined, completionPolicy: "manual", phase: "working", plan: [] });
+  });
+  await page.getByRole("button", { name: "刷新", exact: true }).click();
+  await page.getByRole("button", { name: "task-1 · 执行中", exact: true }).click();
+  await page.getByText(/协作任务的预算与暂停由主任务统一控制。/).waitFor();
+  assert.equal(await page.getByRole("button", { name: "暂停", exact: true }).count(), 0);
+  await page.getByRole("button", { name: "返回主任务", exact: true }).click();
+  await page.evaluate(() => {
+    const state = window.projectRunTest, root = state.runs[0];
+    state.runs.splice(1); root.teamChildren = undefined;
     Object.assign(root, { workflowControl: "active", workflowStatus: "awaiting_review", state: "delivered", integrationRunId: "child" });
     state.runs.push({ ...root, id: "child", revision: 3, objective: root.objective, integrationRunId: undefined, workflowOwnerId: root.id,
       integrationTarget: { parentRunId: root.id }, completionPolicy: "manual", state: "running", phase: "verifying", control: "active",

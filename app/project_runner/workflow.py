@@ -65,6 +65,8 @@ def control(service, params, action):
             raise ValueError("stale project revision; read the run before retrying")
         if root["state"] == "cancelled" or root.get("workflowStatus") == "completed":
             raise ValueError("project workflow is terminal")
+        if root.get("completionPolicy") != "local_integrate" and root["state"] in {"ready_for_review", "delivered", "integrated"}:
+            raise ValueError("project run is terminal")
         child_id = root.get("integrationRunId")
         pending = root.get("workflowStep")
         if not child_id and pending and pending["action"] == "prepare":
@@ -85,7 +87,7 @@ def control(service, params, action):
                 if target["tokensUsed"] >= target["tokenBudget"] or target["episodesUsed"] >= target["maxEpisodes"]:
                     raise ValueError("project budget exhausted")
                 target.update(state="running", control="active")
-            root.update(workflowControl="active", workflowStatus="active", workflowError="")
+            root.update(workflowControl="active", workflowStatus="active", workflowError="", reason="")
             step = root.get("workflowStep")
             if step and not db.execute("SELECT 1 FROM project_commands WHERE operation=?", (step["params"]["operationId"],)).fetchone():
                 root["workflowStep"] = None
@@ -100,6 +102,20 @@ def control(service, params, action):
             raise ValueError("unknown project control action")
         if child:
             store.save(db, child, "workflow_" + action)
+        for item in root.get("teamChildren", []):
+            team = store._read(db, item["runId"])
+            changed = False
+            if team.get("teamOwnerId") != root["id"]:
+                continue
+            if any(key in params for key in ("tokenBudget", "maxEpisodes")):
+                for key in ("tokenBudget", "maxEpisodes"):
+                    team[key] = root[key]
+                changed = True
+            if action in {"start", "resume"} and team["state"] == "running" and team["control"] == "budget_limited":
+                team.update(control="active", reason="")
+                changed = True
+            if changed:
+                store.save(db, team, "team_budget_updated")
         store.save(db, root, "workflow_" + action)
         return root
     return store.command(params.get("operationId"), {"action": action, "id": run_id, "expectedRevision": revision,

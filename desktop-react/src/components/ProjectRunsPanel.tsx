@@ -16,6 +16,7 @@ const labels: Record<string, [string, string]> = {
   stale: ["已过期", "Stale"], continue: ["继续检查", "Continue checking"], not_assessed: ["未验收", "Not assessed"],
   current: ["当前有效", "Current"], unavailable: ["无法确认", "Unavailable"], task: ["单项任务", "Task"], project: ["完整项目", "Whole project"],
   integration_review: ["合并验收中", "Reviewing integration"], deliver: ["交付成果", "Delivering"],
+  parallel: ["并行开发", "Parallel implementation"],
   prepare: ["准备合并", "Preparing integration"], apply: ["集成成果", "Applying integration"], prepared: ["准备执行", "Prepared"],
 };
 const actionLabels: Record<ProjectAction, [string, string]> = {
@@ -36,6 +37,7 @@ export function ProjectRunsPanel({ threadId, onOpenThread }: { threadId?: string
   const [tokens, setTokens] = useState("100000");
   const [episodes, setEpisodes] = useState("100");
   const [automatic, setAutomatic] = useState(false);
+  const [workers, setWorkers] = useState(1);
   const [budgetTokens, setBudgetTokens] = useState("");
   const [budgetEpisodes, setBudgetEpisodes] = useState("");
   const [error, setError] = useState("");
@@ -86,11 +88,12 @@ export function ProjectRunsPanel({ threadId, onOpenThread }: { threadId?: string
       else if (action === "create") result = await command.current.send("projectRun/create", {
         threadId: source, objective: objective.trim(), ...budgetValues(tokens, episodes),
         reviewPolicy: "independent", completionPolicy: automatic ? "local_integrate" : "manual",
+        maxWorkers: workers,
       });
       else {
         if (!run) return;
         let extra: Record<string, number> = {};
-        if (["review", "prepareIntegration"].includes(action) || (action === "resume" && run.completionPolicy === "local_integrate")) {
+        if ((!run.teamOwnerId && ["review", "prepareIntegration"].includes(action)) || (action === "resume" && (run.completionPolicy === "local_integrate" || (run.maxWorkers || 1) > 1))) {
           const values = budgetValues(budgetTokens, budgetEpisodes);
           extra = action === "resume" ? Object.fromEntries(Object.entries(values).filter(([key, value]) => value !== current?.[key as "tokenBudget" | "maxEpisodes"])) : values;
         }
@@ -125,6 +128,7 @@ export function ProjectRunsPanel({ threadId, onOpenThread }: { threadId?: string
     : item.completionPolicy === "local_integrate" && item.workflowControl === "paused" && item.state !== "created" ? "paused"
     : item.completionPolicy === "local_integrate" && ["deliver", "prepare", "apply"].includes(item.workflowStatus || "") ? item.workflowStatus!
     : item.integrationRunId && item.workflowControl === "active" ? "integration_review"
+    : item.teamOwnerId && !item.activeEpisode && runs.find(parent => parent.id === item.teamOwnerId)?.control === "paused" ? "paused"
     : item.activeEpisode?.state === "waiting_approval" ? "waiting_approval" : item.activeEpisode?.state === "outcome_unknown" ? "outcome_unknown"
     : item.control === "budget_limited" ? "budget_limited" : item.state === "running" && item.control === "paused" ? "paused" : item.state;
   return <section className="project-runs" aria-label={copy("持久项目", "Persistent projects")}>
@@ -144,6 +148,8 @@ export function ProjectRunsPanel({ threadId, onOpenThread }: { threadId?: string
           <div className="pr-pair"><label>{copy("总 token 预算", "Total token budget")}<input type="number" min={1} max={1e9} step={1} required value={tokens} onChange={e => setTokens(e.target.value)} /></label>
             <label>{copy("最多执行轮次", "Maximum episodes")}<input type="number" min={1} max={10000} step={1} required value={episodes} onChange={e => setEpisodes(e.target.value)} /></label></div>
           <label className="pr-check"><input type="checkbox" checked={automatic} onChange={e => setAutomatic(e.target.checked)} />{copy("验收通过后自动集成到本地源分支", "Automatically integrate into the local source branch after acceptance")}</label>
+          <label>{copy("并行执行上限", "Concurrency limit")}<select value={workers} onChange={e => setWorkers(Number(e.target.value))}><option value={1}>{copy("1 · 逐项执行", "1 · Sequential")}</option><option value={2}>{copy("2 · 独立任务可并行", "2 · Parallel independent tasks")}</option></select></label>
+          <p className="pr-muted">{copy("有依赖或共享资源的任务仍会串行。并行任务共用总预算。", "Dependencies and shared resources remain serialized. Parallel tasks share the total budget.")}</p>
           <p className="pr-muted">{copy("需要已提交且干净的 Git 工作区。自动模式会更新本地源分支，不会推送或发布。创建后仍需点击启动。", "Requires a clean, committed Git workspace. Automatic mode updates the local source branch without pushing or publishing. Start the task after creating it.")}</p>
           <button type="submit" disabled={!source || !objective.trim()}>{copy("创建，暂不执行", "Create without starting")}</button>
         </fieldset>
@@ -154,7 +160,7 @@ export function ProjectRunsPanel({ threadId, onOpenThread }: { threadId?: string
       {!loaded && <p role="status">{copy("正在读取…", "Loading…")}</p>}
       {loaded && !runs.length && <p className="pr-muted">{copy("还没有持久任务。创建后可在这里查看真实进度。", "No persistent tasks yet. Create one to follow its progress here.")}</p>}
       {runs.map(item => <button className="pr-run" key={item.id} aria-current={selected === item.id ? "true" : undefined} onClick={() => setSelected(item.id)}>
-        <span>{item.objective}</span><small>{item.integrationTarget ? copy("合并验收 · ", "Integration review · ") : ""}{label(status(item))}</small></button>)}
+        <span>{item.objective}</span><small>{item.teamOwnerId ? copy("协作任务 · ", "Team task · ") : item.integrationTarget ? copy("合并验收 · ", "Integration review · ") : ""}{label(status(item))}</small></button>)}
     </nav><article aria-busy={busy}>
       {!run || !current ? <p className="pr-muted">{copy("选择任务查看步骤、验收和用量。", "Choose a task to inspect steps, acceptance and usage.")}</p> : <>
         <div className="pr-detail-heading"><h2>{run.objective}</h2><span className="pr-status">{label(status(run))}</span></div>
@@ -163,18 +169,24 @@ export function ProjectRunsPanel({ threadId, onOpenThread }: { threadId?: string
         <p>{copy("当前阶段：", "Current phase: ")}{label(current.phase)}{current.id !== run.id ? copy(" · 合并结果重新验收", " · Reviewing merged content") : ""}</p>
         {run.integrationRunId && <button onClick={() => setSelected(run.integrationRunId!)}>{copy("查看合并验收任务", "View integration review")}</button>}
         {run.workflowOwnerId && <p>{copy("此任务由主任务统一控制。", "This task is controlled by its parent.")} <button onClick={() => setSelected(run.workflowOwnerId!)}>{copy("返回主任务", "Back to parent")}</button></p>}
+        {run.teamOwnerId && <p>{copy("协作任务的预算与暂停由主任务统一控制。", "The parent owns this task’s budget and pause controls.")} <button onClick={() => setSelected(run.teamOwnerId!)}>{copy("返回主任务", "Back to parent")}</button></p>}
+        {run.teamChildren?.length ? <div className="pr-actions">{run.teamChildren.map(item => <button key={item.runId} onClick={() => setSelected(item.runId)}>{item.taskId} · {item.state === "merged" ? copy("已合并", "Merged") : label(status(runs.find(child => child.id === item.runId) || run))}</button>)}</div> : null}
         {(run.workflowError || current.reason || run.reason) && <p className="pr-notice">{run.workflowError || current.reason || run.reason}</p>}
         <dl className="pr-metrics"><div><dt>{copy("累计 token", "Cumulative tokens")}</dt><dd>{current.tokensUsed.toLocaleString()} / {current.tokenBudget.toLocaleString()}</dd></div>
           <div><dt>{copy("执行轮次", "Episodes")}</dt><dd>{current.episodesUsed} / {current.maxEpisodes}</dd></div>
           <div><dt>{copy("已实现步骤", "Implemented steps")}</dt><dd>{current.plan.filter(item => ["verified", "candidate"].includes(item.state)).length} / {current.plan.length}</dd></div>
           <div><dt>{copy("完整验收", "Whole-project acceptance")}</dt><dd>{current.verificationStatus === "passed" ? label("passed") : copy("尚未通过", "Not yet passed")}</dd></div></dl>
+        {(run.maxWorkers || 1) > 1 && <p className="pr-muted">{copy("协作任务当前执行数：", "Active team tasks: ")}{runs.filter(item => item.teamOwnerId === run.id && item.activeEpisode && item.activeEpisode.state !== "outcome_unknown").length} / {run.maxWorkers}</p>}
         <p className="pr-muted">{copy("token 限额在执行轮次之间检查，单轮可能超出。空闲、查看状态不会调用模型；电脑睡眠或 Host 退出时不执行。", "Token limits are checked between episodes; one episode may exceed the limit. Idle/status checks do not call a model. Tasks do not execute while the computer sleeps or Host is stopped.")}</p>
-        <details><summary>{copy("总预算与追加额度", "Total budgets and explicit increases")}</summary><div className="pr-pair">
+        {!run.teamOwnerId && <details><summary>{copy("总预算与追加额度", "Total budgets and explicit increases")}</summary><div className="pr-pair">
           <label>{copy("总 token 上限", "Total token limit")}<input type="number" min={1} max={1e9} step={1} value={budgetTokens} onChange={e => setBudgetTokens(e.target.value)} /></label>
           <label>{copy("总执行轮次上限", "Total episode limit")}<input type="number" min={1} max={10000} step={1} value={budgetEpisodes} onChange={e => setBudgetEpisodes(e.target.value)} /></label></div>
-          <p className="pr-muted">{copy("填写总上限，并通过继续或重新验收提交；不是额外增加的数量。", "Enter total limits, then submit via Resume or Review again; these are not incremental amounts.")}</p></details>
+          <p className="pr-muted">{copy("填写总上限，并通过继续或重新验收提交；不是额外增加的数量。", "Enter total limits, then submit via Resume or Review again; these are not incremental amounts.")}</p></details>}
         <div className="pr-actions">{actions(run, current.id !== run.id ? current : undefined).map(action => <button key={action} disabled={disabled} onClick={() => void mutate(action)}>{actionLabels[action][zh ? 0 : 1]}</button>)}</div>
-        <ol className="pr-plan">{current.plan.map(task => <li key={task.id}><div><strong>{task.instructions}</strong><span>{label(task.state)}</span></div><ul>{task.acceptance.map((text, index) => <li key={index}>{text}</li>)}</ul></li>)}</ol>
+        <ol className="pr-plan">{current.plan.map(task => <li key={task.id}><div><strong>{task.instructions}</strong><span>{label(task.state)}</span></div>
+          {task.dependsOn?.length ? <p className="pr-muted">{copy("依赖：", "Depends on: ")}{task.dependsOn.join(", ")}</p> : null}
+          {task.fileScopes?.length ? <p className="pr-muted">{copy("文件范围：", "File scope: ")}{task.fileScopes.join(", ")}</p> : null}
+          <ul>{task.acceptance.map((text, index) => <li key={index}>{text}</li>)}</ul></li>)}</ol>
         {current.activeEpisode && <div><p className="pr-muted">{copy("执行会话：", "Execution session: ")}{current.activeEpisode.sessionId} · {label(current.activeEpisode.state)}</p>
           {onOpenThread && <button disabled={busy} onClick={() => void onOpenThread(current.activeEpisode!.sessionId).catch(e => setError(String(e)))}>{copy("打开执行会话 / 处理审批", "Open execution / handle approval")}</button>}</div>}
         <button disabled={busy} onClick={() => void inspect()}>{copy("读取验收证据与有效性", "Read acceptance evidence and freshness")}</button>

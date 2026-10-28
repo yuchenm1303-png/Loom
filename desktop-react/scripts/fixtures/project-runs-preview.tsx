@@ -24,6 +24,7 @@ Object.assign(window, { loom: { async call(method: string, values: Record<string
   if (method === "projectRun/create") {
     run = { ...structuredClone(base), id: `created-${state.runs.length}`, objective: String(values.objective),
       tokenBudget: Number(values.tokenBudget), maxEpisodes: Number(values.maxEpisodes), completionPolicy: String(values.completionPolicy) };
+    run.maxWorkers = Number(values.maxWorkers || 1);
     state.runs.push(run);
   } else {
     run = state.runs.find(item => item.id === values.runId)!;

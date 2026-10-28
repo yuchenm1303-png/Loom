@@ -1,0 +1,192 @@
+"""Bounded task DAGs with isolated runs, pooled usage and serial aggregation."""
+import copy
+from pathlib import PurePosixPath, Path
+import time
+import uuid
+
+from .review import candidate, git, snapshot
+from .store import encoded
+
+
+def configure(plan, raw):
+    for index, (task, supplied) in enumerate(zip(plan, raw)):
+        dependencies = supplied.get("dependsOn", [plan[index-1]["id"]] if index else [])
+        if not isinstance(dependencies, list) or any(not isinstance(item, str) or item not in {p["id"] for p in plan[:index]} for item in dependencies) or len(set(dependencies)) != len(dependencies):
+            raise ValueError("Dependencies must be unique earlier task IDs")
+        scopes = supplied.get("fileScopes", ["*"])
+        if not isinstance(scopes, list) or not 1 <= len(scopes) <= 32:
+            raise ValueError("Tasks require 1..32 relative file scopes")
+        normalized = []
+        for scope in scopes:
+            if scope == "*" and "fileScopes" not in supplied:
+                normalized.append(scope)
+                continue
+            if not isinstance(scope, str) or not scope.strip() or len(scope) > 300 or "\\" in scope or ":" in scope or "*" in scope:
+                raise ValueError("File scopes must be concrete relative paths")
+            path = PurePosixPath(scope)
+            if path.is_absolute() or any(part.casefold() in {"..", ".git"} for part in path.parts) or str(path) == ".":
+                raise ValueError("File scopes must remain within the workspace")
+            normalized.append(str(path))
+        resources = supplied.get("sharedResources", ["project_environment"])
+        if not isinstance(resources, list) or len(resources) > 16 or any(not isinstance(item, str) or not item.strip() or len(item) > 100 for item in resources):
+            raise ValueError("Invalid shared resources")
+        task.update(dependsOn=dependencies, fileScopes=normalized, sharedResources=sorted({item.strip().casefold() for item in resources}))
+    return plan
+
+
+def overlap(left, right):
+    return any(a == "*" or b == "*" or a.casefold() == b.casefold() or a.casefold().startswith(b.casefold()+"/") or
+               b.casefold().startswith(a.casefold()+"/") for a in left for b in right)
+
+
+def allowed(store, run, source):
+    if not run.get("teamOwnerId"):
+        return
+    baseline = store.candidate(run, run["teamBaseCandidateId"])["files"]
+    current = snapshot(source)["files"]
+    scopes = run["plan"][0]["fileScopes"]
+    for name in baseline.keys() | current.keys():
+        if baseline.get(name) != current.get(name) and not any(scope == "*" or name.casefold() == scope.casefold() or name.casefold().startswith(scope.casefold()+"/") for scope in scopes):
+            raise ValueError(f"Task changed a file outside its declared scope: {name}")
+
+
+def owner(store, run):
+    return store.get(run["teamOwnerId"]) if run.get("teamOwnerId") else None
+
+
+def cancelled(store, run):
+    parent = owner(store, run)
+    return run["state"] == "cancelled" or bool(parent and parent["state"] == "cancelled")
+
+
+def eligible(store, run, active):
+    parent = owner(store, run)
+    if parent is None:
+        return not active
+    if parent["state"] != "running" or parent["control"] != "active" or parent["phase"] != "parallel":
+        return False
+    if run["id"] not in {item["runId"] for item in parent.get("teamChildren", []) if item["state"] == "running"}:
+        return False
+    return len(active) < parent["maxWorkers"] and all(item.get("teamOwnerId") == parent["id"] for item in active)
+
+
+def spawn(service, root, task, source):
+    store = service.project_store
+    child = {key: copy.deepcopy(root[key]) for key in ("sourceThreadId", "repository", "gitCommonDir", "budgetEnforcement",
+        "tokenBudget", "maxEpisodes", "maxReviewCycles")}
+    child.update(id=str(uuid.uuid4()), revision=0, state="running", control="active", phase="working",
+        objective="Implement only this assigned task: " + task["instructions"] + "\nProject context (other tasks are outside this run): " + root["objective"],
+        baseCommit=git(source, "rev-parse", "HEAD"), teamOwnerId=root["id"], plan=[{**copy.deepcopy(task), "state": "pending"}],
+        taskIndex=0, sessions={}, activeEpisode=None, episodesUsed=0, tokensUsed=0, reason="", createdAt=time.time(),
+        reviewPolicy="independent", reviewScope="task", reviewFailures={}, feedback=[], reviewCandidate=None,
+        completionPolicy="manual", delivery="isolated_candidate_only")
+    workspace = store.home / "workspaces" / child["id"]
+    git(root["repository"], "worktree", "add", "--detach", str(workspace), child["baseCommit"])
+    baseline = candidate(child, workspace)
+    with store.transaction() as db:
+        current = store._read(db, root["id"])
+        if current["revision"] != root["revision"]:
+            raise ValueError("Parallel plan revision changed")
+        db.execute("INSERT INTO project_runs VALUES(?,0,?)", (child["id"], encoded(child)))
+        store.put_candidate(db, child, baseline)
+        child.update(teamBaseCandidateId=baseline["id"], reviewCandidate=None)
+        store.save(db, child, "parallel_task_started")
+        current.setdefault("teamChildren", []).append({"runId": child["id"], "taskId": task["id"], "state": "running"})
+        store.save(db, current, "parallel_task_adopted")
+
+
+def aggregate(service, root, child, source):
+    store = service.project_store
+    allowed(store, child, store.home / "workspaces" / child["id"])
+    intent = root.get("parallelMerge")
+    if not intent:
+        if child["state"] == "ready_for_review":
+            params = root.get("parallelDelivery")
+            if not params:
+                params = {"operationId": f"team-deliver-{child['id']}", "runId": child["id"], "expectedRevision": child["revision"]}
+                with store.transaction() as db:
+                    current = store._read(db, root["id"])
+                    current["parallelDelivery"] = params
+                    store.save(db, current, "parallel_delivery_prepared")
+            if params["runId"] != child["id"]:
+                raise ValueError("Reconcile the previously prepared delivery first")
+            child = service.project_deliver(params)
+        if git(source, "status", "--porcelain"):
+            raise ValueError("Aggregate workspace has user changes; inspect before continuing")
+        old = git(source, "rev-parse", "HEAD")
+        tree = git(source, "merge-tree", "--write-tree", old, child["deliveryReceipt"]["commit"]).splitlines()[0]
+        commit = git(source, "-c", "user.name=Loom Project Runner", "-c", "user.email=loom@localhost", "commit-tree", tree,
+            "-p", old, "-p", child["deliveryReceipt"]["commit"], "-m", f"Aggregate independently reviewed task {child['id']}")
+        intent = {"runId": child["id"], "before": old, "commit": commit}
+        with store.transaction() as db:
+            current = store._read(db, root["id"])
+            current["parallelMerge"] = intent
+            store.save(db, current, "parallel_merge_prepared")
+    if intent["runId"] != child["id"]:
+        raise ValueError("Reconcile the previously prepared task merge first")
+    if git(source, "status", "--porcelain") or git(source, "rev-parse", "HEAD") not in {intent["before"], intent["commit"]}:
+        raise ValueError("Aggregate changed since merge preparation")
+    hooks = store.home / "empty-parallel-hooks"
+    hooks.mkdir(exist_ok=True)
+    git(source, "-c", f"core.hooksPath={hooks}", "checkout", "--detach", intent["commit"])
+    if git(source, "status", "--porcelain") or git(source, "rev-parse", "HEAD") != intent["commit"]:
+        raise ValueError("Aggregate checkout requires inspection")
+    with store.transaction() as db:
+        current = store._read(db, root["id"])
+        item = next(item for item in current["teamChildren"] if item["runId"] == child["id"])
+        item.update(state="merged", commit=intent["commit"])
+        next(task for task in current["plan"] if task["id"] == item["taskId"])["state"] = "candidate"
+        current["parallelMerge"] = None
+        current["parallelDelivery"] = None
+        store.save(db, current, "parallel_task_merged")
+
+
+def advance(service, root):
+    if root.get("maxWorkers", 1) <= 1 or root["phase"] != "parallel" or root["state"] != "running" or root["control"] != "active":
+        return False
+    store = service.project_store
+    try:
+        source = store.home / "workspaces" / root["id"]
+        if Path(git(source, "rev-parse", "--path-format=absolute", "--git-common-dir")).resolve() != Path(root["gitCommonDir"]).resolve():
+            raise ValueError("Aggregate repository identity changed")
+        children = [(item, store.get(item["runId"])) for item in root.get("teamChildren", [])]
+        pending_id = (root.get("parallelMerge") or root.get("parallelDelivery") or {}).get("runId")
+        children.sort(key=lambda pair: pair[0]["runId"] != pending_id)
+        for item, child in children:
+            if item["state"] == "merged":
+                continue
+            if child["state"] == "needs_review" or child["control"] == "budget_limited" or child["state"] == "cancelled":
+                raise ValueError("Parallel task needs inspection: " + (child.get("reason") or child["id"]))
+            if child["state"] in {"ready_for_review", "delivered"} and not child["activeEpisode"]:
+                aggregate(service, root, child, source)
+                return True
+        merged = {item["taskId"] for item, _ in children if item["state"] == "merged"}
+        if len(merged) == len(root["plan"]):
+            frozen = candidate({**root, "reviewScope": "project", "taskIndex": len(root["plan"])}, source)
+            with store.transaction() as db:
+                current = store._read(db, root["id"])
+                current.update(phase="verifying", reviewScope="project", taskIndex=len(root["plan"]), verificationStatus="pending", parallelStatus="merged")
+                store.put_candidate(db, current, frozen)
+                store.save(db, current, "parallel_aggregate_review")
+            return True
+        occupied = [child for item, child in children if item["state"] != "merged"]
+        if len(occupied) >= root["maxWorkers"]:
+            return False
+        assigned = {item["taskId"] for item, _ in children}
+        for task in root["plan"]:
+            if task["id"] in assigned or not set(task["dependsOn"]) <= merged:
+                continue
+            if any(overlap(task["fileScopes"], child["plan"][0]["fileScopes"]) or
+                   set(task["sharedResources"]) & set(child["plan"][0]["sharedResources"]) for child in occupied):
+                continue
+            spawn(service, root, task, source)
+            return True
+    except Exception as exc:
+        with store.transaction() as db:
+            current = store._read(db, root["id"])
+            current.update(control="paused", parallelStatus="blocked", reason=f"Parallel coordination stopped: {exc}")
+            if current.get("completionPolicy") == "local_integrate":
+                current.update(workflowStatus="blocked", workflowError=current["reason"])
+            store.save(db, current, "parallel_blocked")
+        return True
+    return False

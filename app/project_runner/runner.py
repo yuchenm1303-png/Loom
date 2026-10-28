@@ -1,4 +1,4 @@
-"""One serial worker; an ended conversation is never a completed project."""
+"""Bounded task execution; an ended conversation is never a completed project."""
 from __future__ import annotations
 
 import json
@@ -8,6 +8,7 @@ import uuid
 
 from .store import encoded
 from .review import criteria, StaleCandidate
+from . import parallel
 
 
 def object_reply(text):
@@ -97,6 +98,11 @@ class ProjectRunner:
 
     def prompt(self, run):
         if run["phase"] == "planning":
+            if run.get("maxWorkers", 1) > 1:
+                return ('Plan this project as ordered task IDs task-1, task-2, etc. Return only JSON {"tasks":[{"instructions":"scoped implementation",'
+                    '"acceptance":["observable behavior"],"dependsOn":[],"fileScopes":["relative/file.py"],"sharedResources":[]}]}. '
+                    "Use 1..16 tasks. Dependencies may reference only earlier task IDs. Only explicitly independent tasks with disjoint file scopes and no shared resources run together. "
+                    "List common ports, databases, GUI/browser or environment resources in sharedResources. Omitted declarations serialize safely.\n" + run["objective"])
             return ("Plan this long-running project. Do not edit files or execute commands. Return only JSON: "
                     '{"tasks":[{"instructions":"scoped implementation", "acceptance":["observable behavior"]}]}. '
                     "Tasks run in order; cover the entire objective with at most 16 tasks.\n" + run["objective"])
@@ -107,7 +113,9 @@ class ProjectRunner:
                     "Build/type-check success alone is not behavioral acceptance; use functional checks or exercised browser assertions. "
                     "Use exec with wait=true, pty=false and verification.case_id equal to each criterion ID, "
                     "verification.expectation exactly equal to its expectation, and subject_paths covering actual candidate source. "
-                    "Browser interactions may use browser_run_check with the same IDs. Ignore generated outputs only via the repository's existing ignore rules. "
+                    + ("For parallel task review, do not use browser/desktop, bind server ports or mutate shared environments; report blocked if these are necessary. "
+                       if run.get("teamOwnerId") else "Browser interactions may use browser_run_check with the same IDs. ")
+                    + "Ignore generated outputs only via the repository's existing ignore rules. "
                     "Check the entire objective for missing behavior, not just the declared test names. "
                     "Return only JSON: {\"verdict\":\"passed|needs_changes|blocked|continue\",\"summary\":\"observed facts\","
                     "\"checks\":[{\"criterionId\":\"task-1:1\",\"eventId\":\"real CHECK_RECORDED event id\"}],"
@@ -123,6 +131,7 @@ class ProjectRunner:
                 "Do not merge, push, deploy, or change branches. A final response ends only this episode. "
                 'Return only JSON: {"action":"continue|candidate|blocked","summary":"facts and next steps"}. '
                 "Use candidate only when this task is implemented and checked; it remains subject to independent review.\n"
+                + ("Work only inside declared fileScopes. Do not use desktop/browser, start servers or mutate shared/external environments. " if run.get("teamOwnerId") else "")
                 + encoded({"objective": run["objective"], "task": task, "priorWork": run.get("handoff", ""),
                            "reviewFeedback": run.get("feedback", [])}))
 
@@ -133,25 +142,29 @@ class ProjectRunner:
             for run in runs:
                 if run["activeEpisode"]:
                     self._poll(run)
-            # One global serial worker; waiting approval also owns the slot.
-            if any(r["activeEpisode"] and r["activeEpisode"]["state"] != "outcome_unknown"
-                   for r in self.store.list()):
-                return
             for run in self.store.list():
+                advance_parallel = getattr(self.executor, "advance_parallel", None)
+                if advance_parallel and advance_parallel(run):
+                    return
+                active = [r for r in self.store.list() if r["activeEpisode"] and r["activeEpisode"]["state"] != "outcome_unknown"]
+                if run["activeEpisode"] or not parallel.eligible(self.store, run, active):
+                    continue
                 advance = getattr(self.executor, "advance_workflow", None)
                 if advance and advance(run):
                     return
-                if run["state"] == "running" and run["control"] == "active":
+                if run["state"] == "running" and run["control"] == "active" and run["phase"] != "parallel":
                     if run.get("workflowOwnerId"):
                         owner = self.store.get(run["workflowOwnerId"])
                         if (owner.get("workflowControl") != "active" or owner.get("workflowStatus") in {"blocked", "completed"}
                                 or owner.get("integrationRunId") != run["id"]):
                             continue
                     self._dispatch(run)
-                    return
+                    if not run.get("teamOwnerId"):
+                        return
 
     def _dispatch(self, run):
-        if run["episodesUsed"] >= run["maxEpisodes"] or run["tokensUsed"] >= run["tokenBudget"]:
+        budget_owner = parallel.owner(self.store, run) or run
+        if budget_owner["episodesUsed"] >= budget_owner["maxEpisodes"] or budget_owner["tokensUsed"] >= budget_owner["tokenBudget"]:
             with self.store.transaction() as db:
                 current = self.store._read(db, run["id"])
                 if current["revision"] == run["revision"]:
@@ -181,6 +194,12 @@ class ProjectRunner:
             current["sessions"][self.executor.session_key(run)] = session_id
             current["activeEpisode"] = episode
             current["episodesUsed"] += 1
+            if current.get("teamOwnerId"):
+                parent = self.store._read(db, current["teamOwnerId"])
+                if parent["episodesUsed"] >= parent["maxEpisodes"] or parent["tokensUsed"] >= parent["tokenBudget"]:
+                    raise ValueError("Shared project budget exhausted")
+                parent["episodesUsed"] += 1
+                self.store.save(db, parent, "parallel_episode_reserved")
             db.execute("INSERT INTO project_episodes VALUES(?,?,?,?,?,?)",
                        (episode["id"], run["id"], session_id, episode["turnId"], "prepared", encoded(episode)))
             self.store.save(db, current, "episode_prepared")
@@ -269,6 +288,10 @@ class ProjectRunner:
                     self.store.save(db, current, "needs_review")
                 return
             current["tokensUsed"] += result["tokens"]
+            if current.get("teamOwnerId"):
+                parent = self.store._read(db, current["teamOwnerId"])
+                parent["tokensUsed"] += result["tokens"]
+                self.store.save(db, parent, "parallel_usage_settled")
             current["activeEpisode"] = None
             db.execute("UPDATE project_episodes SET state=?,data=? WHERE id=?",
                        (state, encoded({**episode, "result": result}), episode["id"]))
@@ -282,6 +305,9 @@ class ProjectRunner:
                 if episode["phase"] == "planning":
                     current["plan"] = validate_plan(reply)
                     current["phase"] = "working"
+                    if current.get("maxWorkers", 1) > 1:
+                        parallel.configure(current["plan"], reply["tasks"])
+                        current.update(phase="parallel", parallelStatus="active", teamChildren=[])
                 elif episode["phase"] == "verifying":
                     self._review_result(db, current, episode, facts)
                 else:

@@ -84,10 +84,10 @@ class ProjectStore:
         db.execute("INSERT INTO project_candidates VALUES(?,?,?)", (snapshot["id"], run["id"], encoded(snapshot)))
         run["reviewCandidate"] = {key: value for key, value in snapshot.items() if key != "files"}
 
-    def candidate(self, run):
+    def candidate(self, run, candidate_id=None):
         with self.lock:
             row = self.db.execute("SELECT data FROM project_candidates WHERE id=? AND run_id=?",
-                                  (run["reviewCandidate"]["id"], run["id"])).fetchone()
+                                  (candidate_id or run["reviewCandidate"]["id"], run["id"])).fetchone()
             if row is None:
                 raise ValueError("Missing project candidate snapshot")
             return json.loads(row[0])

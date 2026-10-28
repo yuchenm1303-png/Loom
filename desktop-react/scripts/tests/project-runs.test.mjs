@@ -36,6 +36,7 @@ test("controls follow owner, child review and unknown execution boundaries", () 
   assert.deepEqual(actions({ ...run, state: "integrated" }), []);
   assert.deepEqual(actions({ ...run, workflowOwnerId: "other", state: "needs_review", plan: [{}], activeEpisode: { state: "outcome_unknown" } }), []);
   assert.deepEqual(actions({ ...run, workflowOwnerId: "other", state: "needs_review", plan: [{}] }), ["review"]);
+  assert.deepEqual(actions({ ...run, teamOwnerId: "other" }), []);
 });
 test("manual candidate never offers delivery without independent acceptance", () => {
   const candidate = { ...run, completionPolicy: "manual", state: "ready_for_review", plan: [{}] };
