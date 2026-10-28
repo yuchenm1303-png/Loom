@@ -1,4 +1,5 @@
 import { AmbientSettingsPanel } from "./AmbientSettingsPanel";
+import { ProjectRunsPanel } from "./ProjectRunsPanel";
 import { PluginsSettingsPanel } from "./PluginsSettingsPanel";
 import { McpSettingsPanel } from "./McpSettingsPanel";
 import { StickerPanel } from "./StickerPanel";
@@ -84,6 +85,7 @@ import "./settings-system.css";
 
 type PageKey =
   | "ambient"
+  | "projectRuns"
   | "general"
   | "appearance"
   | "models"
@@ -186,6 +188,7 @@ interface SettingsPageProps {
   running: boolean;
   onRefreshModels?(forceRefresh?: boolean): Promise<ModelSnapshot> | void;
   onClose(): void;
+  onOpenThread?(id: string): Promise<void>;
 }
 
 interface NavItem {
@@ -317,6 +320,7 @@ const NAV_GROUPS: { label: string; items: NavItem[] }[] = [
     items: [
       { key: "general", label: "General", icon: Settings2 },
       { key: "ambient", label: "Ambient assistant", icon: Activity },
+      { key: "projectRuns", label: "Persistent projects", icon: FolderOpen },
       { key: "appearance", label: "Appearance", icon: Palette },
       { key: "models", label: "Models", icon: Cpu },
       { key: "capabilities", label: "Capabilities", icon: Blocks },
@@ -586,7 +590,7 @@ function SegmentedControl<T extends string>({ value, options, onChange, label }:
   );
 }
 
-export function SettingsPage({ runtime, models, threadId, running, onRefreshModels, onClose }: SettingsPageProps) {
+export function SettingsPage({ runtime, models, threadId, running, onRefreshModels, onClose, onOpenThread }: SettingsPageProps) {
   const activeRoute = useSettingsRoute();
   const { language } = useI18n();
   const [page, setPage] = useState<PageKey>(() => activeRoute as PageKey);
@@ -1511,6 +1515,7 @@ export function SettingsPage({ runtime, models, threadId, running, onRefreshMode
   const content = !bodyPainted ? null : (() => {
     if (page === "general") return renderGeneral();
     if (page === "ambient") return <AmbientSettingsPanel threadId={threadId} />;
+    if (page === "projectRuns") return <ProjectRunsPanel threadId={threadId} onOpenThread={onOpenThread} />;
     if (page === "appearance") return renderAppearance();
     if (page === "models") return renderModels();
     if (page === "capabilities") return renderCapabilities();

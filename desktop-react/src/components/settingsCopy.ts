@@ -1,5 +1,6 @@
 /** Shared settings terminology and concise help text. Technical values stay verbatim. */
 export const SETTINGS_COPY: Record<string, string> = {
+  "Persistent projects": "持久项目",
   "Runtime overview": "运行概览",
   "Memory behavior": "记忆偏好",
   "Visible memories": "可用记忆",

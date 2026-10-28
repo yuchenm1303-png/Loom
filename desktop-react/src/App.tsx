@@ -1781,6 +1781,7 @@ export default function App() {
             threadId={thread?.id}
             running={Boolean(running)}
             onRefreshModels={loom.refreshModels}
+            onOpenThread={async id => { await loom.openThread(id); setSettingsOpen(false); }}
             onClose={() => setSettingsOpen(false)}
           />
           <SettingsComputerLogExport />
