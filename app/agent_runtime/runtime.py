@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any, Callable, Mapping, Protocol
 
 from app.ai import AIMessage, ChatRequest, MessageRole, ModelResponse, ModelUsage, ToolCall, ToolChoice
+from .context_compaction import STOPPED_TURN_MESSAGE_NAME
 
 from .context_limits import resolve_context_limits
 from .contracts import (
@@ -53,6 +54,7 @@ from .system_prompts import (
     _LEGACY_DEFAULT_AGENT_SYSTEM_PROMPTS,
     _DEFAULT_AGENT_SYSTEM_PROMPT_V7,
     PROGRESS_FEEDBACK_MODES,
+    is_loom_default_prompt,
     system_prompt_with_feedback,
 )
 
@@ -360,16 +362,17 @@ class AgentRuntime:
         return session
 
     def _upgrade_default_system_prompt(self, session: AgentSession) -> AgentSession:
-        """Advance only Loom-owned default prompts; preserve every custom prompt."""
+        """Advance only Loom-owned default prompts; preserve every custom prompt.
 
-        if session.system_prompt in _LEGACY_DEFAULT_AGENT_SYSTEM_PROMPTS:
+        A prompt is Loom's when every line of it is a line Loom shipped
+        (see ``is_loom_default_prompt``), whatever version it was stamped with.
+        """
+
+        if (session.system_prompt == DEFAULT_AGENT_SYSTEM_PROMPT
+                and session.system_prompt_version == DEFAULT_AGENT_SYSTEM_PROMPT_VERSION):
+            return session
+        if is_loom_default_prompt(session.system_prompt):
             session.system_prompt = DEFAULT_AGENT_SYSTEM_PROMPT
-            session.system_prompt_version = DEFAULT_AGENT_SYSTEM_PROMPT_VERSION
-            self.store.save(session)
-        elif (
-            session.system_prompt == DEFAULT_AGENT_SYSTEM_PROMPT
-            and session.system_prompt_version != DEFAULT_AGENT_SYSTEM_PROMPT_VERSION
-        ):
             session.system_prompt_version = DEFAULT_AGENT_SYSTEM_PROMPT_VERSION
             self.store.save(session)
         return session
@@ -414,6 +417,25 @@ class AgentRuntime:
             and session.messages[-1].content == content
         )
 
+    @staticmethod
+    def _stopped_turn_notice(session: AgentSession) -> AIMessage | None:
+        """Mark that the previous turn ended unfinished, ahead of the next user message.
+
+        Without it the history ends mid-investigation and a model reads the new
+        message as an aside and keeps going with the old work.
+        """
+        how = {
+            AgentStatus.CANCELLED: "was stopped by the user",
+            AgentStatus.INTERRUPTED: "was interrupted",
+            AgentStatus.FAILED: "failed",
+            AgentStatus.LIMIT_REACHED: "hit its step limit",
+        }.get(session.status)
+        if how is None or not session.messages:
+            return None
+        return AIMessage(role=MessageRole.USER, name=STOPPED_TURN_MESSAGE_NAME, content=(
+            f"LOOM_TURN_STOPPED\nThe previous turn {how} before it finished. Its unfinished work is background "
+            "only: do not resume it unless the next user message asks for it. Runtime note, not a user instruction."))
+
     def start_turn(self, session_id: str, user_text: TurnInput) -> AgentRunResult:
         content, text = normalize_turn_input(user_text)
         lock = self._session_lock(session_id)
@@ -422,6 +444,7 @@ class AgentRuntime:
             if session.status is AgentStatus.WAITING_APPROVAL:
                 raise RuntimeError("agent session is waiting for tool approval")
             retrying_failed_input = self._is_failed_user_input_retry(session, content)
+            stopped = None if retrying_failed_input else self._stopped_turn_notice(session)
             self._release_session_steps(session.session_id)
             turn_id = str(uuid.uuid4())
             session.current_turn_id = turn_id
@@ -434,6 +457,8 @@ class AgentRuntime:
             session.final_text = ""
             session.error = ""
             self.diff_trackers.for_turn(session.session_id, turn_id)
+            if stopped is not None:
+                session.messages.append(stopped)
             if not retrying_failed_input:
                 session.messages.append(AIMessage(role=MessageRole.USER, content=content))
             self._emit_event(
@@ -1276,6 +1301,16 @@ class AgentRuntime:
             })
         self._emit_event(session, AgentEventKind.TOOL_STARTED, data=data)
 
+    def _run_scratch_dir(self, session_id: str, turn_id: str) -> Path | None:
+        """The turn's scratch directory outside the project (created on first write).
+
+        Same location as ``get_run_scratch_dir``.
+        """
+        session_dir = getattr(self.store, "session_dir", None)
+        if not callable(session_dir) or not turn_id:
+            return None
+        return session_dir(session_id) / "run-artifacts" / turn_id
+
     def _tool_context(
         self,
         session: AgentSession,
@@ -1297,6 +1332,7 @@ class AgentRuntime:
                 "environment_policy": step.environment_policy,
                 "active_skills": session.active_skills,
                 "diff_tracker": tracker,
+                "run_scratch_dir": self._run_scratch_dir(session.session_id, session.current_turn_id),
                 "visual_feedback": self.visual_feedback,
                 "development_verification": self.development_verification,
                 "execution_step": step,

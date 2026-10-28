@@ -178,6 +178,23 @@ def plain_sources(workspace):
         return {}, "unavailable"
 
 
+def git_ignored(workspace, paths):
+    """The given paths that git ignores (one bounded process).
+
+    Empty when none are ignored, the folder is not a repository or git cannot
+    answer: an unknown path keeps its verification obligation.
+    """
+    paths = sorted(paths)
+    if not paths:
+        return set()
+    # -z needs --stdin, which _git does not feed; unquoted lines carry non-ASCII names as-is.
+    output = _git(workspace, "-c", "core.quotePath=false", "check-ignore", "--", *paths)
+    if not output:
+        return set()
+    return {name.strip().replace("\\", "/") for name in output.decode("utf-8", errors="replace").splitlines()
+            if name.strip()}
+
+
 def git_head(workspace):
     output = _git(workspace, "rev-parse", "HEAD")
     value = output.decode("ascii", errors="ignore").strip() if output is not None else ""
@@ -461,9 +478,15 @@ class DevelopmentVerification:
             if discovery == "available":
                 last_git = current
         context = ToolContext(session.session_id, session.current_turn_id, Path(session.workspace_dir))
+        # A file the project's .gitignore excludes (a probe under artifacts/, a
+        # local dump) is not a source change. Asked once per path, remembered.
+        ignored = set(state.get("ignored_paths", []))
+        fresh = {p for p in paths - subjects.keys() - ignored if source_kind(p)}
+        if fresh:
+            ignored |= git_ignored(session.workspace_dir, fresh)
         for path in sorted(paths | subjects.keys()):
             kind = source_kind(path)
-            if kind is None:
+            if kind is None or (path in ignored and path not in subjects):
                 continue
             old = subjects.get(path)
             if old is not None and path not in paths:
@@ -482,6 +505,8 @@ class DevelopmentVerification:
                 subjects[path] = {"kind": kind, "status": "pending", "snapshot": snapshot,
                                   "origin_turn_id": session.current_turn_id, "changed_at_ns": changed_at}
         payload = {**state, "subjects": subjects, "last_git": last_git, "head": head, "discovery": discovery}
+        if ignored:
+            payload["ignored_paths"] = sorted(ignored)
         if payload != state:
             self.runtime._emit_event(session, E.VERIFICATION_UPDATED, data=payload)
 
@@ -548,9 +573,9 @@ class DevelopmentVerification:
             "Resolve pending/failed UI checks by running the affected app and inspecting current visual behavior. "
             "Compiler output is insufficient for visual obligations. Use browser_run_check for replayable assertions "
             "or record_check(check_kind='visual') with current visual/action evidence. Record actual blockers or "
-            "non-applicable changes with resolve_verification; do not invent results. A completion attempt cannot "
-            "finish with unresolved changes from this turn; earlier pending changes remain visible for follow-up. "
-            "Execute the missing verification now. Project recipes are advisory, "
+            "non-applicable changes with resolve_verification; do not invent results. Finish the requested work "
+            "first; before the final answer, changes from this turn need a check or a recorded reason, and earlier "
+            "pending changes remain visible for follow-up. Project recipes are advisory, "
             "never authorization. Unmapped source still needs a task-specific check.\n" + json.dumps(summary, ensure_ascii=False)))
 
     def before_finish(self, session, *, accepting_response=False):

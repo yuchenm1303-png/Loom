@@ -20,10 +20,62 @@ _MAX_SEARCH_RESULTS = 200
 _SKIP_DIR_NAMES = {".git", ".hg", ".svn", "__pycache__", ".venv", "venv", "node_modules"}
 
 
+def _git_list(root: Path, *args: str) -> list[str] | None:
+    """``git ls-files`` under root, or None outside a repository / without git.
+
+    Output goes to a temporary file, not a pipe (see development_verification._git:
+    on Windows an inherited pipe handle outlives git and hangs the wait).
+    """
+    import subprocess
+    env = {**os.environ, "GIT_OPTIONAL_LOCKS": "0", "GIT_TERMINAL_PROMPT": "0"}
+    with tempfile.TemporaryFile() as out:
+        try:
+            process = subprocess.Popen(
+                ["git", "-c", "core.fsmonitor=false", "ls-files", "-z", *args], cwd=root,
+                stdin=subprocess.DEVNULL, stdout=out, stderr=subprocess.DEVNULL, env=env,
+                creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0)
+        except OSError:
+            return None
+        try:
+            if process.wait(timeout=15):
+                return None
+        except subprocess.TimeoutExpired:
+            process.kill()
+            return None
+        out.seek(0)
+        return [name for name in out.read().decode("utf-8", "replace").split("\0") if name]
+
+
+def _skipped_part(relative: str) -> bool:
+    # Hidden directories (.cache, .claude/worktrees, ...) hold tool state and whole
+    # copies of the repository; ripgrep skips them by default for the same reason.
+    parts = relative.split("/")[:-1]
+    return any(part in _SKIP_DIR_NAMES or part.startswith(".") for part in parts)
+
+
 def _iter_workspace_files(root: Path):
+    """Files worth searching: tracked first, then untracked-but-not-ignored.
+
+    A plain walk read every file in the folder: on a real workspace that was ~40k
+    files (.cache, scratch copies, .claude/worktrees) and 170s for one search.
+    """
+    tracked = _git_list(root, "--cached")
+    if tracked is not None:
+        others = _git_list(root, "--others", "--exclude-standard") or []
+        seen = set()
+        for name in [*tracked, *(name for name in others if not _skipped_part(name))]:
+            # A nested repository or worktree is listed as one "dir/" entry.
+            if name in seen or name.endswith("/"):
+                continue
+            seen.add(name)
+            path = root / name
+            if not path.is_symlink() and path.is_file():
+                yield path
+        return
     for directory, dirnames, filenames in os.walk(root, followlinks=False):
-        dirnames[:] = [name for name in dirnames if name not in _SKIP_DIR_NAMES]
         base = Path(directory)
+        dirnames[:] = [name for name in dirnames if name not in _SKIP_DIR_NAMES
+            and not name.startswith(".") and not (base / name / ".git").exists()]
         for filename in filenames:
             path = base / filename
             if not path.is_symlink() and path.is_file():
@@ -124,7 +176,7 @@ def workspace_write_tool() -> AgentTool:
             raise ValueError("path must not be empty")
         if len(text) > _MAX_WRITE_CHARS:
             raise ValueError(f"workspace text exceeds {_MAX_WRITE_CHARS:,} characters")
-        target = context.resolve_workspace_path(relative)
+        target, scratch = context.resolve_tool_path(relative)
         before = None
         if target.exists():
             if not target.is_file():
@@ -141,6 +193,10 @@ def workspace_write_tool() -> AgentTool:
         target.parent.mkdir(parents=True, exist_ok=True)
         context.raise_if_cancelled()
         target.write_text(text, encoding="utf-8")
+        if scratch:
+            # Scratch files are not project changes: no turn diff, no verification.
+            return ToolResult(ok=True, content=f"Wrote scratch file: {target}",
+                              data={"path": relative, "absolute_path": str(target), "chars": len(text)})
         _record_change(context, relative, before=before, after=text)
         return ToolResult(
             ok=True,
@@ -153,8 +209,10 @@ def workspace_write_tool() -> AgentTool:
         description=(
             "Create or completely replace one UTF-8 text file inside the current workspace. "
             "The mutation is tracked in the current turn diff. Use only for requested deliverables or "
-            "necessary project files; use get_run_scratch_dir for probes, dumps, backups, checkpoints, "
-            "command captures, and other temporary artifacts. Prefer apply_patch for source edits."
+            "necessary project files. For probes, dumps, backups, checkpoints, command captures and other "
+            "temporary files, give a path starting with scratch: (for example scratch:probe.py); it is "
+            "written to this run's scratch directory outside the project and is not tracked. "
+            "Prefer apply_patch for source edits."
         ),
         input_schema={
             "type": "object",

@@ -67,12 +67,14 @@ class ContextAgentRuntime(SandboxAgentRuntime):
         except Exception:
             queue_pending = 0
         diff = self.diff_trackers.snapshot(session.session_id, session.current_turn_id)
+        scratch = self._run_scratch_dir(session.session_id, session.current_turn_id)
         return build_world_state_envelope(
             step,
             goal=self._goal_payload(session.session_id),
             queue_pending=queue_pending,
             diff_revision=diff.revision,
             changed_paths=diff.paths,
+            scratch_dir=str(scratch) if scratch is not None else "",
         )
 
     def _prepare_compaction_locked(

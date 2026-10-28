@@ -76,6 +76,25 @@
 - Windows 执行摩擦又多耗了 4–5 步：`cmd /c` 拆坏多行脚本、scp 不认中文路径、SSH 超时。
 - 次要：token 估算偏高约 45%（第一步估 15.3 万，实际 10.5 万）。
 
+## 实施状态（2026-10-28）
+
+P0 和 P1 已完成，P2 只做了其中的 Windows `cmd` 提示一条。实际做法和下面的方案有两处不同：
+
+- P0-1 没有新增 `system_prompt_source` 字段，而是按行判断：存储文本的**每一行**都是 Loom 发布过的行
+  （`is_loom_default_prompt`），就认定为默认提示词，加载时换成当前版本。不看版本号，因为已有契约
+  （`test_task_convergence`）要求带版本号的自定义文本保持不变。本机 174 个会话中，142 个主会话会升级，
+  14 个子代理会话保持原样。快照表 `_LEGACY_DEFAULT_AGENT_SYSTEM_PROMPTS` 保留，作为“Loom 写过的行”的来源；
+  以后改提示词时，仍要把上一版放进快照表（v13 已放入）。
+- P0-2 的标记名为 `loom_turn_stopped`，覆盖 cancelled / interrupted / failed（重试失败输入时除外）/ limit_reached，
+  已在 `is_real_user_message` 中排除。
+- P1-5：`write_workspace_text` / `read_workspace_text` 接受 `scratch:<相对路径>`，写入本轮的 `run-artifacts` 目录，
+  不进 turn diff，也不触发验证；`LOOM_RUNTIME_STATE.scratch_dir` 给出路径。
+- P1-4：新出现的路径用一次 `git check-ignore` 过滤，结果记在验证状态的 `ignored_paths` 里；
+  轮中途的提示改为“先完成请求的工作，给最终答案前再处理”。
+
+测试：`tests/test_turn_scope.py`（11 个），7 个变异全部被抓到。真实会话 `223b796b` 的副本回放结果：
+请求里是 v14 提示词，问题前面有停止标记，运行时状态里有 `scratch_dir`。没有用真实模型回放。
+
 ## 修复方案
 
 ### P0-1 提示词改为“引用”，不再存全文（根治第 1 条）

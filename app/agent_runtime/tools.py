@@ -82,6 +82,9 @@ def _capability_allows(tool: "AgentTool", capability_settings: CapabilitySetting
     return True
 
 
+SCRATCH_PATH_PREFIX = "scratch:"
+
+
 class ToolExposure(str, Enum):
     DIRECT = "direct"
     DEFERRED = "deferred"
@@ -118,6 +121,25 @@ class ToolContext:
         except ValueError as exc:
             raise ValueError("tool path escapes the agent workspace") from exc
         return candidate
+
+    def resolve_tool_path(self, path: str) -> tuple[Path, bool]:
+        """(target, is_scratch). ``scratch:<relative>`` names the turn's scratch directory."""
+        value = str(path or "").strip()
+        if not value.startswith(SCRATCH_PATH_PREFIX):
+            return self.resolve_workspace_path(value), False
+        relative = value[len(SCRATCH_PATH_PREFIX):].lstrip("/\\").strip()
+        root = self.service("run_scratch_dir", required=False)
+        if root is None:
+            raise ValueError("this run has no scratch directory")
+        if not relative:
+            raise ValueError("scratch path must name a file")
+        root = Path(root).resolve()
+        candidate = (root / relative).resolve()
+        try:
+            candidate.relative_to(root)
+        except ValueError as exc:
+            raise ValueError("tool path escapes the scratch directory") from exc
+        return candidate, True
 
     def service(self, name: str, *, required: bool = True) -> Any:
         key = str(name or "").strip()

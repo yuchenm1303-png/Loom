@@ -331,6 +331,7 @@ class DurableAgentRuntime(CoreAgentRuntime):
             retrying_failed_input = (
                 source == "user" and self._is_failed_user_input_retry(session, content)
             )
+            stopped = None if retrying_failed_input else self._stopped_turn_notice(session)
 
             resolved_turn_id = str(turn_id or uuid.uuid4()).strip()
             if not resolved_turn_id:
@@ -345,6 +346,8 @@ class DurableAgentRuntime(CoreAgentRuntime):
             session.final_text = ""
             session.error = ""
             self.diff_trackers.for_turn(session.session_id, resolved_turn_id)
+            if stopped is not None:
+                session.messages.append(stopped)
             if not retrying_failed_input:
                 session.messages.append(AIMessage(role=MessageRole.USER, content=content))
             start_data: dict[str, object] = {

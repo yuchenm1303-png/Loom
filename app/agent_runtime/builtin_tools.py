@@ -66,7 +66,7 @@ def _list_workspace(context: ToolContext, arguments: dict[str, Any]) -> ToolResu
 
 def _read_workspace_text(context: ToolContext, arguments: dict[str, Any]) -> ToolResult:
     relative = str(arguments["path"])
-    path = context.resolve_workspace_path(relative)
+    path, _ = context.resolve_tool_path(relative)
     if not path.is_file():
         return ToolResult(ok=False, content=f"Workspace file does not exist: {relative}")
     if path.stat().st_size > 256_000:
@@ -118,7 +118,8 @@ def builtin_read_only_tools() -> ToolRegistry:
             ),
             AgentTool(
                 name="read_workspace_text",
-                description="Read one UTF-8 text file inside this agent session workspace only.",
+                description=("Read one UTF-8 text file inside this agent session workspace, "
+                             "or in the run scratch directory with a path starting with scratch:."),
                 input_schema={
                     "type": "object",
                     "properties": {"path": {"type": "string"}},

@@ -70,6 +70,7 @@ SUMMARY_PREFIX = (
 
 COMPACT_USER_MESSAGE_MAX_TOKENS = 20_000
 COMPACTION_MESSAGE_NAME = "loom_compaction"
+STOPPED_TURN_MESSAGE_NAME = "loom_turn_stopped"
 
 
 def _content_text(message: AIMessage) -> str:
@@ -90,7 +91,7 @@ def is_real_user_message(message: AIMessage) -> bool:
     return (
         message.role is MessageRole.USER
         and str(getattr(message, "name", "") or "") not in {
-            COMPACTION_MESSAGE_NAME, COMPACTION_REFERENCE_MESSAGE_NAME,
+            COMPACTION_MESSAGE_NAME, COMPACTION_REFERENCE_MESSAGE_NAME, STOPPED_TURN_MESSAGE_NAME,
             "loom_runtime_state", "loom_communication_language", "loom_project_instructions",
             "loom_memory", "loom_active_skills", "loom_task_plan", "loom_execution_progress",
             "loom_execution_guidance", "loom_tool_observation", "loom_tool_observation_text",

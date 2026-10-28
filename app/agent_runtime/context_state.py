@@ -87,6 +87,8 @@ def build_host_environment() -> dict[str, Any]:
         "shell_invocation": (
             "exec runs argv directly with no implicit shell. To use the shell, "
             f"name it in argv, for example {_shell_example(shell)}."
+            + (" cmd /c takes one line; put a multi-line script in a file and run the file."
+               if Path(shell).stem.casefold() == "cmd" else "")
         ),
         "current_date": now.date().isoformat(),
         "utc_offset": f"{offset[:3]}:{offset[3:]}" if len(offset) == 5 else offset,
@@ -109,6 +111,7 @@ def build_world_state_envelope(
     queue_pending: int = 0,
     diff_revision: int = 0,
     changed_paths: tuple[str, ...] = (),
+    scratch_dir: str = "",
 ) -> WorldStateEnvelope:
     sandbox = step.world_state.sandbox
     state: dict[str, Any] = {
@@ -128,6 +131,13 @@ def build_world_state_envelope(
             "changed_paths": list(changed_paths),
         },
     }
+    if scratch_dir:
+        state["scratch_dir"] = {
+            "path": scratch_dir,
+            "use": ("Temporary probes, dumps and command captures go here, not into the workspace. "
+                    "Workspace file tools reach it with a path starting with scratch:, e.g. scratch:probe.py; "
+                    "exec can use the absolute path."),
+        }
     identity = {
         "session_id": step.session_id,
         "turn_id": step.turn_id,
