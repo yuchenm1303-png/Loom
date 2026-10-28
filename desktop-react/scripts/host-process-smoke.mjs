@@ -178,5 +178,22 @@ try {
       await exited;
     }
   }
+  // A process that left the killed tree (its parent exited first) still holds
+  // the inherited stdout/stderr pipes, and an open pipe keeps this script alive
+  // forever: two release builds hung here for hours after the last line.
+  for (const child of children) {
+    child.stdout?.destroy();
+    child.stderr?.destroy();
+    child.unref();
+  }
+  setTimeout(() => {
+    console.error("Host smoke: handles still open 15s after cleanup; leftover processes:");
+    if (process.platform === "win32") {
+      spawnSync("powershell.exe", ["-NoProfile", "-Command",
+        "Get-CimInstance Win32_Process | Where-Object { $_.Name -match '^(Loom|electron|python|node|chrome)\\.exe$' } | Format-List ProcessId,ParentProcessId,Name,CommandLine"],
+        { windowsHide: true, stdio: ["ignore", "inherit", "inherit"], timeout: 20_000 });
+    }
+    process.exit(process.exitCode ?? 0);
+  }, 15_000).unref();
   await rm(temp, { recursive: true, force: true, maxRetries: 5, retryDelay: 300 });
 }

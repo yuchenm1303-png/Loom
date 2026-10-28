@@ -74,6 +74,8 @@ jobs:
 
       - name: Build Windows installer
         working-directory: desktop-react
+        # Normally 6-8 minutes; a hung smoke test must fail instead of holding the queue.
+        timeout-minutes: 30
         run: npm run package:win
 
       - name: Verify packaged private runtime
