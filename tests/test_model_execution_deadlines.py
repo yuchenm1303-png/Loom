@@ -210,3 +210,25 @@ def test_progress_is_recorded_per_provider_chunk_not_per_public_event():
         "progress must be recorded before any StreamEvent is produced, or "
         "reasoning-only responses report no progress at all"
     )
+
+
+def test_a_dead_stream_is_caught_in_90s_unless_the_profile_tuned_its_idle_timeout(monkeypatch):
+    """A real run sat 300s on a stream that had died after 1,647 chunks. Once output
+    has started, silence means a dead connection (reasoning deltas count as output)."""
+    from types import SimpleNamespace
+    from app.agent_runtime.model_execution import MID_STREAM_STALL_SECONDS, ModelRequestTimeout
+    from app.ai.profiles import DEFAULT_STREAM_IDLE_TIMEOUT_SECONDS
+    executor = ModelExecutor()
+    clock = [0.0]
+    monkeypatch.setattr("app.agent_runtime.model_execution.time.monotonic", lambda: clock[0])
+    streaming = SimpleNamespace(progress_at=10, stall_timeout=DEFAULT_STREAM_IDLE_TIMEOUT_SECONDS)
+    clock[0] = 10 + MID_STREAM_STALL_SECONDS - 1
+    executor._check_deadlines(streaming, 0, 300)
+    clock[0] = 10 + MID_STREAM_STALL_SECONDS
+    with pytest.raises(ModelRequestTimeout) as failure:
+        executor._check_deadlines(streaming, 0, 300)
+    assert failure.value.reason == "stream_stall_timeout" and failure.value.retryable
+    # A profile that chose its own idle timeout keeps it.
+    executor._check_deadlines(SimpleNamespace(progress_at=10, stall_timeout=600), 0, 600)
+    # Before any output the first-output deadline still applies, not the 90s bound.
+    executor._check_deadlines(SimpleNamespace(progress_at=0, stall_timeout=300), 0, 300)

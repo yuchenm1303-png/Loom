@@ -17,6 +17,13 @@ from .model_replan import begin_sampling, changed, end_sampling
 
 _log = logging.getLogger(__name__)
 
+# Once a stream has produced anything (reasoning deltas count), silence means
+# the connection died, not that the model is thinking. Across ~5,600 successful
+# responses on this machine one gap after first output exceeded 90s (148s,
+# MiniMax-M3); the 300s idle default made every dead stream cost five minutes.
+# A profile that sets its own idle timeout keeps it.
+MID_STREAM_STALL_SECONDS = 90.0
+
 
 class ModelRequestTimeout(TimeoutError):
     """Only safe model-sampling timeouts may be retried; tools never run here."""
@@ -44,8 +51,8 @@ class ModelExecutor:
     - nothing received yet -> ``timeout``, exactly as before. A backend with no
       streaming path never reports progress, so its behaviour is unchanged.
     - producing -> allowed to continue, as long as no single gap exceeds
-      ``stall_timeout``. A stream that truly dies is now caught sooner than the
-      old 150s, not later.
+      ``stall_timeout`` (``MID_STREAM_STALL_SECONDS`` while that is the
+      untuned default). A stream that truly dies is caught in 90s, not 300s.
     - ``max_duration`` remains as a backstop against a runaway that streams
       forever.
     """
@@ -87,6 +94,8 @@ class ModelExecutor:
             return
         idle = now - progress_at
         stall_timeout = getattr(control, "stall_timeout", self.stall_timeout)
+        if stall_timeout == DEFAULT_STREAM_IDLE_TIMEOUT_SECONDS:
+            stall_timeout = MID_STREAM_STALL_SECONDS
         if idle >= stall_timeout:
             raise ModelRequestTimeout(
                 f"model stopped producing output for {int(idle)}s "

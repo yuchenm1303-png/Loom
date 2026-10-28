@@ -74,3 +74,40 @@ def test_recovery_budget_still_bounds_repeated_slow_failures(tmp_path, monkeypat
         assert failures[-1]["recovery_elapsed_ms"] >= 100_000
     finally:
         runtime.close()
+
+
+def test_retries_that_streamed_before_stalling_restart_the_budget(tmp_path, monkeypatch):
+    """Two dead streams in a row: the provider answered both times, so the second
+    stall still gets its replay (with the smaller-writes instruction) instead of
+    failing the turn because the first 90s stall used up the budget."""
+    clock = [100.0]
+    monkeypatch.setattr("app.agent_runtime.turn_runner.time.perf_counter", lambda: clock[0])
+    monkeypatch.setattr("app.agent_runtime.turn_runner.wait_for_signal", lambda *args: None)
+
+    class Platform:
+        calls = 0
+        prompts = []
+        def execute_chat(self, profile, request):
+            self.calls += 1
+            self.prompts.append(str(request))
+            if self.calls <= 2:
+                from app.ai.execution_control import note_progress
+                note_progress()
+                clock[0] += 95
+                raise ModelRequestTimeout("stalled", reason="stream_stall_timeout", retryable=True)
+            return ModelResponse(text="Recovered")
+
+    platform = Platform()
+    runtime = AgentRuntime(platform=platform, store=FileAgentSessionStore(tmp_path / "state"),
+        sandbox_manager=SandboxManager(policy=SandboxPolicy.OFF), limits=AgentLimits())
+    try:
+        session = runtime.create_session("agent.fast", workspace_dir=tmp_path)
+        assert runtime.start_turn(session.session_id, "Continue").status is AgentStatus.COMPLETED
+        assert platform.calls == 3
+        failures = [e.data for e in runtime.store.events(session.session_id)
+                    if e.kind.value == "model_response_rejected"]
+        assert [e["will_retry"] for e in failures] == [True, True]
+        assert "stalled while generating output" not in platform.prompts[1]
+        assert "stalled while generating output" in platform.prompts[2]
+    finally:
+        runtime.close()
