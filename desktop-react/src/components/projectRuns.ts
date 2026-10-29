@@ -6,6 +6,7 @@ export interface ProjectRun {
   tokensUsed: number; tokenBudget: number; episodesUsed: number; maxEpisodes: number;
   budgetPosition?: { knownTokens: number; inFlightTokens: number; assumedUnknownTokens: number; unknownRequests: number;
     chargedTokens: number; tokenBudget: number; hardBillingCap: boolean };
+  knowledge?: { notes: string[]; acceptedChecks: number; recoveries: Record<string, number> };
   plan: { id: string; instructions: string; acceptance: string[]; state: string; dependsOn?: string[]; fileScopes?: string[] }[];
   activeEpisode?: { sessionId: string; state: string } | null;
   verificationStatus?: string; verificationFreshness?: string;

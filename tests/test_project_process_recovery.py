@@ -87,9 +87,10 @@ def _reopen(manifest):
     return service, runtime, platform
 
 
-@pytest.mark.parametrize("boundary", ["prepared", "model_in_flight", "tool_in_flight"])
-def test_killed_host_never_replays_an_uncertain_episode(tmp_path, monkeypatch, boundary):
-    manifest = _kill_at(tmp_path / boundary, boundary)
+def test_killed_host_never_replays_a_tool_whose_outcome_is_uncertain(tmp_path, monkeypatch):
+    # A tool was running when the Host died: its side effect may be partial. Never
+    # replay it and never guess; the run waits for reconciliation.
+    manifest = _kill_at(tmp_path / "tool_in_flight", "tool_in_flight")
     monkeypatch.setattr(ProjectRunner, "start", lambda self: None)
     service, runtime, platform = _reopen(manifest)
     try:
@@ -103,15 +104,40 @@ def test_killed_host_never_replays_an_uncertain_episode(tmp_path, monkeypatch, b
             assert service.project_store.db.execute(
                 "SELECT COUNT(*) FROM project_episodes WHERE run_id=?", (run["id"],)).fetchone()[0] == 2
         position = service.project_budget.report(run)
-        if boundary == "model_in_flight":
-            assert position["knownTokens"] == 5
-            assert position["unknownRequests"] == 1 and position["assumedUnknownTokens"] >= 5
-        elif boundary == "tool_in_flight":
-            workspace = service.project_store.home / "workspaces" / run["id"]
-            assert (workspace / "partial.txt").read_text(encoding="utf-8") == "written once"
-            assert position["knownTokens"] == 12 and position["unknownRequests"] == 0
+        workspace = service.project_store.home / "workspaces" / run["id"]
+        assert (workspace / "partial.txt").read_text(encoding="utf-8") == "written once"
+        assert position["knownTokens"] == 12 and position["unknownRequests"] == 0
         with pytest.raises(ValueError, match="reconciliation"):
             control(service, run, "resume")
+    finally:
+        runtime.close()
+
+
+@pytest.mark.parametrize("boundary", ["prepared", "model_in_flight"])
+def test_killed_host_continues_an_episode_in_which_no_tool_had_run(tmp_path, monkeypatch, boundary):
+    # A Host update, sleep or crash while the model is thinking is the common case on a
+    # multi-day run. The turn's durable events prove no tool ran, so there is nothing to
+    # replay or reconcile: the turn is closed as interrupted and a new episode continues.
+    manifest = _kill_at(tmp_path / boundary, boundary)
+    monkeypatch.setattr(ProjectRunner, "start", lambda self: None)
+    service, runtime, platform = _reopen(manifest)
+    try:
+        for _ in range(4):
+            cycle(service)
+        run = service.project_store.get(manifest["runId"])
+        assert run["state"] == "ready_for_review", run["reason"]
+        assert run["episodesUsed"] == 3 and len(platform.requests) == 1  # one new episode, nothing replayed
+        with service.project_store.lock:
+            states = [row[0] for row in service.project_store.db.execute(
+                "SELECT state FROM project_episodes WHERE run_id=? ORDER BY rowid", (run["id"],))]
+        assert states == ["completed", "interrupted", "completed"]
+        kinds = [item["kind"] for item in service.project_store.events(run["id"], limit=200)]
+        assert kinds.count("interrupted_episode_continued") == 1 and "needs_review" not in kinds
+        position = service.project_budget.report(run)
+        assert position["knownTokens"] == 10
+        assert position["unknownRequests"] == (1 if boundary == "model_in_flight" else 0)
+        worker = runtime.get_session(run["sessions"]["worker-0"])
+        assert worker.status.value == "completed"
     finally:
         runtime.close()
 

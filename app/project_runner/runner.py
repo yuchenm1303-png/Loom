@@ -13,6 +13,7 @@ from . import parallel
 from .budget import ProjectBudget
 from .errors import ReplyFormatError
 from . import checks
+from .janitor import Janitor
 
 # How an episode ended decides what the runner does next, from the fields the
 # runtime records (limit kind, provider_failure, retryable, status). The string
@@ -21,6 +22,7 @@ from . import checks
 #   kind                what happened                               next
 #   budget              a request was refused at the token budget   budget_limited (add budget)
 #   episode_bound       the episode hit its step/tool limit         next episode continues
+#   interrupted         the Host stopped mid-episode, no tool ran   next episode continues (no replay)
 #   no_progress         it kept repeating one failing operation     next episode, told to change approach
 #   provider_transient  provider/network failed, retryable          wait 30 s .. 30 min, continue
 #   review_evidence     a review verdict lacked accepted evidence   back to the reviewer, with why
@@ -32,9 +34,13 @@ from . import checks
 # allowance stops the run for inspection. Any accepted episode resets every counter.
 MAX_EPISODE_BOUND_RETRIES = 7
 MAX_TRANSIENT_STREAK = 10
+MAX_INTERRUPTIONS = 5
 MAX_REVIEW_REJECTIONS = 2
 RECOVERY = {
     "episode_bound": ("episodeLimitStreak", lambda: MAX_EPISODE_BOUND_RETRIES, "episode_limit_reached"),
+    # A Host update, sleep or crash mid-episode with only model requests in flight. A tool
+    # in flight is still an uncertain side effect and stops the run for reconciliation.
+    "interrupted": ("interruptionStreak", lambda: MAX_INTERRUPTIONS, "interrupted_episode_continued"),
     # The runtime's loop guard (like OpenHands' stuck detector) ends a turn that keeps
     # repeating a failing operation; the corrective step is a new approach, not a halt.
     "no_progress": ("noProgressStreak", lambda: MAX_REVIEW_REJECTIONS, "no_progress_retry"),
@@ -72,6 +78,8 @@ def provider_transient(result):
 def episode_outcome(state, result, refused):
     if state != "completed" and refused:
         return "budget"
+    if result.get("interrupted") and result.get("sideEffectFree"):
+        return "interrupted"
     if state == "limit_reached" and (result.get("limit") in CONTINUABLE_LIMITS or (
             result.get("limit") is None and result.get("error") in LEGACY_EPISODE_LIMITS)):
         return "episode_bound"
@@ -142,6 +150,7 @@ class ProjectRunner:
     def __init__(self, store, executor, budget=None):
         self.store, self.executor = store, executor
         self.budget = budget or ProjectBudget(lambda: self.store, set())
+        self.janitor = Janitor()
         self.lease = (store.home / "scheduler.lock").open("a+b")
         try:
             if os.fstat(self.lease.fileno()).st_size == 0:
@@ -266,6 +275,10 @@ class ProjectRunner:
 
     def tick(self):
         with self.guard:
+            try:
+                self.janitor.sweep(self.store)
+            except Exception:
+                pass  # cleanup is never worth stopping the scheduler for
             self.budget.apply_late()
             runs = self.store.list()
             # Reconcile even while paused/cancelled; never drop late usage/results.
@@ -509,6 +522,9 @@ class ProjectRunner:
         if kind == "episode_bound":
             run["handoff"] = (f"The previous episode ended at its per-episode bound ({error}); "
                               "continue from the workspace and session state.\n" + run.get("handoff", ""))[:12000]
+        elif kind == "interrupted":
+            run["handoff"] = ("The previous episode was interrupted (the Host stopped) before it finished; no tool had "
+                              "run in it. Continue from the workspace and session state.\n" + run.get("handoff", ""))[:12000]
         elif kind == "no_progress":
             run["handoff"] = ("The previous episode was stopped for repeating the same failing operation without "
                               "progress. Do not retry it as before: read the error, change the approach or the "

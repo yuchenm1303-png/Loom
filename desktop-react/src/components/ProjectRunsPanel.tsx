@@ -18,6 +18,13 @@ const labels: Record<string, [string, string]> = {
   integration_review: ["合并验收中", "Reviewing integration"], deliver: ["交付成果", "Delivering"],
   parallel: ["并行开发", "Parallel implementation"],
   prepare: ["准备合并", "Preparing integration"], apply: ["集成成果", "Applying integration"], prepared: ["准备执行", "Prepared"],
+  episode_limit_reached: ["单轮上限后续跑", "continued after an episode limit"],
+  interrupted_episode_continued: ["中断后续跑", "continued after an interruption"],
+  transient_failure_retry: ["网络/服务故障后重试", "retried after a provider outage"],
+  no_progress_retry: ["换思路重试", "retried with a new approach"],
+  review_evidence_rejected: ["验收证据退回", "verdict sent back for evidence"],
+  reply_rejected: ["回复格式退回", "reply sent back for format"],
+  scope_rejected: ["越界改动退回", "out-of-scope change sent back"],
 };
 const actionLabels: Record<ProjectAction, [string, string]> = {
   start: ["启动", "Start"], pause: ["暂停", "Pause"], resume: ["继续", "Resume"], cancel: ["取消任务", "Cancel task"],
@@ -175,8 +182,11 @@ export function ProjectRunsPanel({ threadId, onOpenThread }: { threadId?: string
         <dl className="pr-metrics"><div><dt>{copy("累计 token", "Cumulative tokens")}</dt><dd>{current.tokensUsed.toLocaleString()} / {current.tokenBudget.toLocaleString()}</dd></div>
           {current.budgetPosition && current.budgetPosition.chargedTokens !== current.tokensUsed && <div><dt>{copy("含进行中/未知用量", "Incl. in-flight/unknown")}</dt><dd>{current.budgetPosition.chargedTokens.toLocaleString()}{current.budgetPosition.unknownRequests ? copy(`（${current.budgetPosition.unknownRequests} 次未知）`, ` (${current.budgetPosition.unknownRequests} unknown)`) : ""}</dd></div>}
           <div><dt>{copy("执行轮次", "Episodes")}</dt><dd>{current.episodesUsed} / {current.maxEpisodes}</dd></div>
+          {!!run.knowledge?.acceptedChecks && <div><dt>{copy("已验收检查", "Accepted checks")}</dt><dd>{run.knowledge.acceptedChecks}</dd></div>}
           <div><dt>{copy("已实现步骤", "Implemented steps")}</dt><dd>{current.plan.filter(item => ["verified", "candidate"].includes(item.state)).length} / {current.plan.length}</dd></div>
           <div><dt>{copy("完整验收", "Whole-project acceptance")}</dt><dd>{current.verificationStatus === "passed" ? label("passed") : copy("尚未通过", "Not yet passed")}</dd></div></dl>
+        {!!run.knowledge && Object.keys(run.knowledge.recoveries).length > 0 && <p className="pr-muted">{copy("自动恢复：", "Recovered automatically: ")}{Object.entries(run.knowledge.recoveries).map(([kind, count]) => `${label(kind)} ${count}`).join(copy("，", ", "))}</p>}
+        {!!run.knowledge?.notes.length && <details><summary>{copy(`项目笔记（${run.knowledge.notes.length}）`, `Project notes (${run.knowledge.notes.length})`)}</summary><ul>{run.knowledge.notes.map((note, index) => <li key={index}>{note}</li>)}</ul></details>}
         {(run.maxWorkers || 1) > 1 && <p className="pr-muted">{copy("协作任务当前执行数：", "Active team tasks: ")}{runs.filter(item => item.teamOwnerId === run.id && item.activeEpisode && item.activeEpisode.state !== "outcome_unknown").length} / {run.maxWorkers}</p>}
         <p className="pr-muted">{copy("每次模型请求发出前检查 token 限额（含并行任务与摘要）；已发出的请求会完成并计费，因此可能略超，且不等于服务商的计费上限。未报告用量的请求按估算计入。空闲、查看状态不会调用模型；电脑睡眠或 Host 退出时不执行。", "The token limit is checked before every model request, including parallel tasks and summaries. A request already sent finishes and is charged, so usage can slightly exceed the limit; this is not a provider billing cap. Requests without reported usage count as estimates. Idle/status checks do not call a model. Tasks do not execute while the computer sleeps or Host is stopped.")}</p>
         {!run.teamOwnerId && <details><summary>{copy("总预算与追加额度", "Total budgets and explicit increases")}</summary><div className="pr-pair">

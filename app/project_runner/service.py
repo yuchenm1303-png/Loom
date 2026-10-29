@@ -182,12 +182,26 @@ class ProjectExecutor:
             events = [e for e in service.store.events(session.session_id) if e.turn_id == episode["turnId"]]
             terminal = next((e for e in reversed(events) if e.kind in {
                 E.TURN_COMPLETED, E.TURN_FAILED, E.TURN_CANCELLED, E.TURN_INTERRUPTED, E.LIMIT_REACHED}), None)
-            if terminal is None or session.current_turn_id != episode["turnId"]:
-                return {"state": "outcome_unknown", "error": service._task_errors.get(session.session_id)
-                        or "No matching durable terminal turn; execution must not be replayed"}
             # Each usage event keeps its ID: the ledger charges an event once,
             # however often it is offered (live listener, this poll, a restart).
             usage = [(e.event_id, tokens) for e in events if (tokens := event_tokens(e)) is not None]
+            # The turn's durable events show whether anything beyond model requests ran.
+            # Without a tool call there is no side effect to replay or reconcile.
+            no_tools = not any(e.kind in {E.TOOL_REQUESTED, E.TOOL_STARTED} for e in events)
+            if terminal is None or session.current_turn_id != episode["turnId"]:
+                if no_tools:
+                    # The Host stopped (update, sleep, crash) before the turn ended and
+                    # before any tool ran. Close the turn durably; a new episode continues.
+                    if session.current_turn_id == episode["turnId"] and session.status.value == "running":
+                        service.runtime.recover_interrupted(session.session_id)
+                    return {"state": "interrupted", "interrupted": True, "sideEffectFree": True,
+                            "error": "Host stopped before the episode ended; no tool had run",
+                            "tokens": sum(tokens for _, tokens in usage), "usage": usage}
+                return {"state": "outcome_unknown", "error": service._task_errors.get(session.session_id)
+                        or "No matching durable terminal turn; execution must not be replayed"}
+            if terminal.kind is E.TURN_INTERRUPTED:
+                return {"state": "interrupted", "interrupted": True, "sideEffectFree": no_tools,
+                        "error": session.error or "Turn interrupted", "tokens": sum(tokens for _, tokens in usage), "usage": usage}
             error = session.error or (terminal.data.get("reason", "Runtime limit reached") if terminal.kind is E.LIMIT_REACHED else "")
             # The outcome as the runtime recorded it, so the runner decides on fields,
             # not on message text. Older events lack them; the runner falls back then.
@@ -339,8 +353,25 @@ class ProjectServiceMixin:
     def project_budget_position(self, run):
         return {**run, "budgetPosition": self.project_budget.report(run)}
 
+    def project_knowledge(self, run):
+        """What a long run has learned and recovered from, for the person watching it."""
+        from .runner import RECOVERY
+        store = self.project_store
+        ids = [run["id"], *(item["runId"] for item in run.get("teamChildren", []))]
+        if run.get("integrationRunId"):
+            ids.append(run["integrationRunId"])
+        events = {event for _, _, event in RECOVERY.values()}
+        with store.lock:
+            marks = ",".join("?" * len(ids))
+            recoveries = {kind: count for kind, count in store.db.execute(
+                f"SELECT kind, COUNT(*) FROM project_events WHERE run_id IN ({marks}) GROUP BY kind", ids) if kind in events}
+            kept = store.db.execute("SELECT COUNT(*) FROM project_checks WHERE root_id=?",
+                                    (checks.registry_root(run),)).fetchone()[0]
+        return {"notes": checks.notes_for(store, run), "acceptedChecks": kept, "recoveries": recoveries}
+
     def project_read(self, run_id):
         run = self.project_budget_position(self.project_store.get(run_id))
+        run["knowledge"] = self.project_knowledge(run)
         run["verificationFreshness"] = "not_assessed"
         if run.get("verifiedCandidate"):
             try:
@@ -430,7 +461,8 @@ class ProjectControllerMixin:
         if method == "projectRun/get":
             return {"run": self.service.project_read(self.service._required_text(params, "runId"))}
         if method == "projectRun/list":
-            return {"runs": [self.service.project_budget_position(run) for run in self.service.project_store.list()],
+            return {"runs": [{**self.service.project_budget_position(run), "knowledge": self.service.project_knowledge(run)}
+                             for run in self.service.project_store.list()],
                     "error": self.service.project_runner.error}
         if method == "projectRun/events":
             return {"events": self.service.project_store.events(self.service._required_text(params, "runId"),

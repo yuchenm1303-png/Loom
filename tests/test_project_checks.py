@@ -90,5 +90,7 @@ def test_notes_from_one_task_reach_later_episodes_once(tmp_path):
         with service.project_store.lock:
             rows = service.project_store.db.execute("SELECT note FROM project_notes").fetchall()
         assert [row[0] for row in rows] == [note]
+        knowledge = service.project_read(run["id"])["knowledge"]
+        assert knowledge["notes"] == [note] and knowledge["acceptedChecks"] == 0 and knowledge["recoveries"] == {}
     finally:
         runtime.close()
